@@ -209,6 +209,36 @@ titels in de volgorde waarin hij ze tegenkwam). Een kring betekent dat geen van
 die werkpakketten ooit kan beginnen; welke pijl de verkeerde is, is een
 inhoudelijk oordeel en geen bestandsfout.
 
+### Wat de matrix ermee doet
+
+Onder "Weergave" staat een schakelaar **Afhankelijkheden**, en die staat uit.
+De matrix is eerst een beeld van wat er te doen is; de afhankelijkheden zijn
+een tweede lezing die een flink bredere kolom kost. Zet je 'm aan, dan gebeuren
+er drie dingen tegelijk, en uit zet ze alle drie weer terug.
+
+De kaart schuift naar rechts, één stap per werkpakket in de langste keten
+achter zich binnen dezelfde fase. Een stap is een hele kaartbreedte plus de
+ruimte voor de pijl, dus een kaart staat echt naast zijn voorwaarde en niet er
+half overheen. Alleen binnen dezelfde fase geteld: wie op iets uit een eerdere
+fase wacht, staat er al voorbij door in een latere kolom te staan.
+
+De kaart gaat op de rij van de voorwaarde staan waar hij op wacht, zolang die
+plek vrij is. Daardoor loopt een keten op één lijn en zijn de pijlen recht.
+Staat die plek al vol, dan begint hij een rij eronder. Een kaart die in deze
+cel niets voor zich heeft begint altijd een eigen rij, zodat twee werkpakketten
+alleen naast elkaar staan als de een echt op de ander wacht.
+
+En de pijl zelf wordt getekend. Wijs een kaart aan en de hele keten waar hij in
+zit licht op, in beide richtingen doorgelopen; de rest van de matrix valt terug.
+
+Je bepaalt de plaatsing dus niet zelf. `volgorde` blijft wel gelden: dat bepaalt
+welke kaart als eerste een rij claimt, en daarmee de volgorde binnen de cel.
+
+Dat rekenwerk gebeurt in de browser en niet bij de build, over de kaarten die
+het zoekveld en het categoriefilter op dat moment laten staan. Filter je een
+kaart weg, dan schuift de rest aan in plaats van een gat te laten, en een keten
+loopt niet door over een kaart die niet op het scherm staat.
+
 ## Onderzoeksvragen
 
 Een vraag is een gewone string, óf een mapping met een verwijzing naar het

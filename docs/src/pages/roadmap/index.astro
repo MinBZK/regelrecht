@@ -222,6 +222,29 @@ const pathname = '/roadmap';
           </fieldset>
 
           {/*
+            Turns the dependency view on: the arrows, the indenting and the row
+            packing. Off by default — the matrix is first of all a picture of
+            what there is to do, and this is a second reading of it that costs
+            a much wider column.
+
+            Its own class, not `rr-filter__option`: that one carries the
+            categorie filter's hide-rule, and a checked schakelaar would then
+            hide every card on the matrix.
+          */}
+          <fieldset class="rr-filter">
+            <legend class="rr-filter__legend">
+              <nldd-text size="sm" weight="medium" color="secondary">
+                Weergave
+              </nldd-text>
+            </legend>
+            <nldd-checkbox-field
+              class="rr-weergave__option"
+              id="rr-afhankelijkheden"
+              label="Afhankelijkheden"
+            />
+          </fieldset>
+
+          {/*
             The zoekfilter. Unlike the categorie filter beside it this one
             needs a script: CSS cannot compare a typed string to a card's text.
             It is progressive — with no JavaScript the field never appears (the
@@ -260,7 +283,20 @@ const pathname = '/roadmap';
         role="region"
         aria-label="Roadmapmatrix, horizontaal scrollbaar"
       >
-        <table class="rr-matrix" style={`--rr-fase-count: ${fases.length}`}>
+        {/*
+          The dependency overlay sits in its own positioned wrapper so the SVG
+          can be placed against the table's own box rather than the scroll
+          container's: the container scrolls, the table does not move inside
+          it, and anchoring to the scroller would slide every arrow out of
+          place the moment you pan sideways.
+
+          aria-hidden: every werkpakket page lists the same dependencies under
+          "Afhankelijkheden", as links. Reading the curves to a screen reader
+          adds nothing that is not already there in text.
+        */}
+        <div class="rr-matrix-canvas">
+          <svg class="rr-afhankelijk" aria-hidden="true" focusable="false"></svg>
+          <table class="rr-matrix" style={`--rr-fase-count: ${fases.length}`}>
           <caption class="rr-matrix__caption">
             Werkpakketten per fase (kolommen) en discipline (rijen). De vijf
             fases zijn Wat (in twee stappen), Hoe, Waar en Garantie. De
@@ -350,7 +386,8 @@ const pathname = '/roadmap';
               ))
             }
           </tbody>
-        </table>
+          </table>
+        </div>
       </div>
     </nldd-container>
   </nldd-simple-section>
@@ -550,4 +587,369 @@ const pathname = '/roadmap';
    * covers both. Same pattern as wireSearch() in Base.astro.
    */
   document.addEventListener('astro:page-load', wireZoek);
+</script>
+
+<script>
+  /*
+   * De afhankelijkhedenweergave: waar een kaart komt te staan, en de pijlen
+   * ertussen.
+   *
+   * Alles hier gebeurt in de browser, niets tijdens de build. Waar een kaart
+   * hoort te staan hangt af van welke kaarten er op dat moment staan, en dat
+   * bepalen de twee filters pas als er iemand typt of aanvinkt. Rekende de
+   * build de inspringing uit, dan liet een weggefilterde kaart een gat in de
+   * matrix achter en liep een keten door over kaarten die niet op het scherm
+   * stonden.
+   *
+   * Zonder JavaScript gebeurt er niets: de schakelaar staat uit, de cellen
+   * zijn een gewone stapel kaarten en de overlay blijft leeg.
+   */
+
+  /** Hoe lang de pijlpunt is, in dezelfde eenheid als de paden. */
+  const PIJL_LENGTE = 11;
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+
+  /**
+   * De maten staan in roadmap.css op .rr-matrix en worden hier gelezen, niet
+   * herhaald: de kolombreedte die dit script uitrekent en de opmaak die de
+   * stylesheet aanbrengt moeten dezelfde getallen gebruiken.
+   */
+  function maten(table: HTMLElement) {
+    const stijl = getComputedStyle(table);
+    const px = (naam: string) => parseFloat(stijl.getPropertyValue(naam)) || 0;
+    const kaart = px('--rr-kaart-breedte');
+    const ruimte = px('--rr-pijl-ruimte');
+    return { stap: kaart + ruimte, basis: kaart + (ruimte - px('--rr-matrix-gat')) };
+  }
+
+  type Plek = { kolom: number; rij: number };
+
+  function wireAfhankelijkheden() {
+    const canvas = document.querySelector<HTMLElement>('.rr-matrix-canvas');
+    const svg = canvas?.querySelector<SVGSVGElement>('.rr-afhankelijk');
+    const table = canvas?.querySelector<HTMLElement>('.rr-matrix');
+    const schakelaar = document.getElementById('rr-afhankelijkheden');
+    if (!canvas || !svg || !table || !schakelaar) return;
+
+    const kaarten = Array.from(
+      table.querySelectorAll<HTMLElement>('.rr-wp-card[data-wp-id]'),
+    );
+    if (!kaarten.length) return;
+
+    const faseVolgorde = Array.from(
+      table.querySelectorAll<HTMLElement>('thead th[id^="rr-fase-"]'),
+    ).map((th) => th.id.slice('rr-fase-'.length));
+
+    const aan = () => schakelaar.hasAttribute('checked');
+    const { stap: STAP, basis: KOLOM_BASIS } = maten(table);
+
+    /*
+     * Op het scherm of niet. Het zoek- en beleggingsfilter verbergen met een
+     * klasse en het categoriefilter met een :has()-regel, dus geen van drieën
+     * is aan één attribuut af te lezen; de gerenderde hoogte vat ze alle drie
+     * samen en kan niet uit de pas lopen met de CSS zoals een tweede kopie van
+     * die logica in JS zou doen. Dat is dezelfde maat die de zoekteller
+     * gebruikt.
+     */
+    const zichtbaar = (kaart: HTMLElement) => kaart.offsetHeight > 0;
+
+    let plekken = new Map<string, Plek>();
+    let buren = new Map<string, Set<string>>();
+
+    /** Een pijl: `van` moet af zijn voordat `naar` kan beginnen. */
+    let pijlen: { van: string; naar: string }[] = [];
+
+    function indeel() {
+      // Eerst alles terugzetten, zodat een uitgezette weergave en een
+      // weggefilterde kaart geen plaatsing achterlaten die niemand meer beheert.
+      for (const kaart of kaarten) {
+        kaart.style.removeProperty('grid-column');
+        kaart.style.removeProperty('grid-row');
+      }
+      table!.style.removeProperty('--rr-fase-kolommen');
+      svg!.replaceChildren();
+      plekken = new Map();
+      buren = new Map();
+      pijlen = [];
+      if (!aan()) return;
+
+      const zichtbare = kaarten.filter(zichtbaar);
+      const ids = new Set(zichtbare.map((k) => k.dataset.wpId!));
+      const fase = new Map(zichtbare.map((k) => [k.dataset.wpId!, k.dataset.fase!]));
+      const voorwaarden = new Map(
+        zichtbare.map((k) => [
+          k.dataset.wpId!,
+          (k.dataset.afhankelijkVan ?? '')
+            .split(' ')
+            .filter((v) => v && ids.has(v)),
+        ]),
+      );
+
+      for (const [naar, van] of voorwaarden) {
+        for (const v of van) pijlen.push({ van: v, naar });
+      }
+      for (const pijl of pijlen) {
+        for (const [a, b] of [
+          [pijl.van, pijl.naar],
+          [pijl.naar, pijl.van],
+        ]) {
+          if (!buren.has(a)) buren.set(a, new Set());
+          buren.get(a)!.add(b);
+        }
+      }
+
+      /*
+       * Hoe ver naar rechts: de langste keten van voorwaarden erachter binnen
+       * dezelfde fase. Alleen dezelfde fase, want de matrix zet de fases al
+       * links naar rechts; wie op iets uit een eerdere fase wacht staat er al
+       * voorbij door in een latere kolom te staan.
+       *
+       * De kring die dit zou laten rondlopen is bij de build al afgevangen
+       * (assertReferencesResolve); `bezig` is er zodat een kring die hier toch
+       * komt één keer rondgaat in plaats van eeuwig.
+       */
+      const diepte = new Map<string, number>();
+      const bezig = new Set<string>();
+      const bereken = (id: string): number => {
+        const bekend = diepte.get(id);
+        if (bekend !== undefined) return bekend;
+        if (bezig.has(id)) return 0;
+        bezig.add(id);
+        const eigen = (voorwaarden.get(id) ?? [])
+          .filter((v) => fase.get(v) === fase.get(id))
+          .map((v) => bereken(v) + 1);
+        bezig.delete(id);
+        const uitkomst = eigen.length ? Math.max(...eigen) : 0;
+        diepte.set(id, uitkomst);
+        return uitkomst;
+      };
+      for (const id of ids) bereken(id);
+
+      /*
+       * En hoe ver naar beneden: een kaart gaat op de rij van de voorwaarde
+       * waar hij op wacht, zolang die plek vrij is, zodat een keten op één lijn
+       * loopt en de pijlen recht zijn. Heeft hij in deze cel niets voor zich,
+       * dan begint hij een eigen rij — twee werkpakketten staan zo alleen naast
+       * elkaar als de een echt op de ander wacht. De DOM-volgorde binnen een cel
+       * is `volgorde`, dus wie het eerst komt claimt de rij.
+       */
+      const cellen = new Map<HTMLElement, HTMLElement[]>();
+      for (const kaart of zichtbare) {
+        const cel = kaart.closest<HTMLElement>('.rr-cel-raster')!;
+        if (!cellen.has(cel)) cellen.set(cel, []);
+        cellen.get(cel)!.push(kaart);
+      }
+
+      for (const [, inCel] of cellen) {
+        const bezetteRijen: Set<number>[] = [];
+        const hier = new Map<string, Plek>();
+        for (const kaart of inCel) {
+          const id = kaart.dataset.wpId!;
+          const kolom = diepte.get(id) ?? 0;
+          const voorganger = (voorwaarden.get(id) ?? [])
+            .map((v) => hier.get(v))
+            .filter((plek): plek is Plek => plek !== undefined)
+            .sort((a, b) => b.kolom - a.kolom)[0];
+          const rij =
+            voorganger !== undefined && !bezetteRijen[voorganger.rij]?.has(kolom)
+              ? voorganger.rij
+              : bezetteRijen.push(new Set()) - 1;
+          bezetteRijen[rij].add(kolom);
+          const plek = { kolom, rij };
+          hier.set(id, plek);
+          plekken.set(id, plek);
+          kaart.style.gridColumn = String(kolom + 1);
+          kaart.style.gridRow = String(rij + 1);
+        }
+      }
+
+      // Elke fasekolom zo breed als zijn diepste keten.
+      table!.style.setProperty(
+        '--rr-fase-kolommen',
+        faseVolgorde
+          .map((f) => {
+            const diepst = zichtbare
+              .filter((k) => k.dataset.fase === f)
+              .reduce((m, k) => Math.max(m, diepte.get(k.dataset.wpId!) ?? 0), 0);
+            return `minmax(${KOLOM_BASIS + diepst * STAP}px, 1fr)`;
+          })
+          .join(' '),
+      );
+
+      teken();
+    }
+
+    function doos(id: string) {
+      const el = table!.querySelector<HTMLElement>(`[data-wp-id="${id}"]`);
+      if (!el || !zichtbaar(el)) return null;
+      const r = el.getBoundingClientRect();
+      const c = canvas!.getBoundingClientRect();
+      return {
+        left: r.left - c.left,
+        right: r.right - c.left,
+        mid: r.top - c.top + r.height / 2,
+      };
+    }
+
+    /*
+     * De pijl verlaat de voorwaarde aan de kant die naar de wachtende kaart
+     * wijst en komt daar aan de kant terug. Gespiegeld waar een latere fase
+     * voorwaarde is voor een eerdere, want de andere route stuurt de kromme
+     * dwars over de kaart waarop hij begint. Kaarten boven elkaar in dezelfde
+     * kolom knopen allebei rechts aan en de kromme bolt ernaast uit.
+     *
+     * De kromme komt horizontaal aan, dus de lijn stopt één pijlpunt vóór de
+     * kaart: anders loopt de streep onder de punt door en komt er aan de
+     * voorkant weer uit.
+     */
+    function pad(
+      van: NonNullable<ReturnType<typeof doos>>,
+      naar: NonNullable<ReturnType<typeof doos>>,
+    ) {
+      const gestapeld = Math.abs(van.left - naar.left) < 8;
+      const naarRechts = van.right <= naar.left;
+      const x1 = gestapeld || naarRechts ? van.right : van.left;
+      const x2 = gestapeld ? naar.right : naarRechts ? naar.left : naar.right;
+      const bocht = gestapeld ? 64 : Math.max(48, Math.abs(x2 - x1) * 0.45);
+      const richting = gestapeld || naarRechts ? 1 : -1;
+      const eind = x2 - PIJL_LENGTE * (gestapeld ? 1 : richting);
+      const c2 = eind + bocht * (gestapeld ? 1 : -richting);
+      return `M ${x1} ${van.mid} C ${x1 + bocht * richting} ${van.mid}, ${c2} ${naar.mid}, ${eind} ${naar.mid}`;
+    }
+
+    function teken() {
+      svg!.replaceChildren();
+      // scrollWidth, niet offsetWidth: het grid is breder dan de scroller die
+      // het afknipt, en een SVG op die maat snijdt elke pijl voorbij de vouw af.
+      const breed = table!.scrollWidth;
+      const hoog = table!.scrollHeight;
+      svg!.setAttribute('width', String(breed));
+      svg!.setAttribute('height', String(hoog));
+      svg!.setAttribute('viewBox', `0 0 ${breed} ${hoog}`);
+
+      const defs = document.createElementNS(SVG_NS, 'defs');
+      const marker = document.createElementNS(SVG_NS, 'marker');
+      marker.setAttribute('id', 'rr-pijlpunt');
+      marker.setAttribute('viewBox', '0 0 10 8');
+      // refX op de voet van de punt, zodat hij vóór het einde van de lijn staat
+      // en zijn tip op de kaart landt. Op de tip zou hij precies het stuk
+      // dekken waar de lijn nog loopt.
+      marker.setAttribute('refX', '0');
+      marker.setAttribute('refY', '4');
+      marker.setAttribute('markerWidth', String(PIJL_LENGTE));
+      marker.setAttribute('markerHeight', String(PIJL_LENGTE));
+      marker.setAttribute('orient', 'auto-start-reverse');
+      marker.setAttribute('markerUnits', 'userSpaceOnUse');
+      const punt = document.createElementNS(SVG_NS, 'polygon');
+      punt.setAttribute('points', '0,0 10,4 0,8');
+      marker.appendChild(punt);
+      defs.appendChild(marker);
+      svg!.appendChild(defs);
+
+      for (const pijl of pijlen) {
+        const van = doos(pijl.van);
+        const naar = doos(pijl.naar);
+        if (!van || !naar) continue;
+        const path = document.createElementNS(SVG_NS, 'path');
+        path.setAttribute('d', pad(van, naar));
+        path.setAttribute('class', 'rr-afhankelijk__lijn');
+        path.setAttribute('marker-end', 'url(#rr-pijlpunt)');
+        path.dataset.van = pijl.van;
+        path.dataset.naar = pijl.naar;
+        svg!.appendChild(path);
+      }
+    }
+
+    /*
+     * Wijs een kaart aan en de hele keten waar hij in zit blijft staan: alles
+     * waar hij op wacht, alles wat op hem wacht, en zo door in beide
+     * richtingen. De rest van de matrix valt terug, kaarten inbegrepen — de
+     * pijlen alleen waren te weinig om als volgorde van werk te lezen, omdat
+     * de kaarten ertussen even hard bleven staan.
+     *
+     * De keten loopt over `buren`, en daar staat alleen in wat zichtbaar is.
+     * Een kaart die weggefilterd is geeft dus geen doorgang naar de volgende.
+     */
+    function keten(id: string): Set<string> {
+      const gezien = new Set<string>([id]);
+      const wachtrij = [id];
+      while (wachtrij.length) {
+        for (const buur of buren.get(wachtrij.pop()!) ?? []) {
+          if (gezien.has(buur)) continue;
+          gezien.add(buur);
+          wachtrij.push(buur);
+        }
+      }
+      return gezien;
+    }
+
+    function accent(id: string | null) {
+      // Een kaart zonder afhankelijkheden heeft geen keten om te tonen, en de
+      // rest van de matrix dimmen zou ruis zijn bij elke muisbeweging.
+      const leden = id !== null && buren.has(id) ? keten(id) : null;
+      canvas!.classList.toggle('rr-matrix-canvas--accent', leden !== null);
+      for (const kaart of kaarten) {
+        kaart.classList.toggle(
+          'rr-wp-card--in-keten',
+          leden !== null && leden.has(kaart.dataset.wpId!),
+        );
+      }
+      for (const path of svg!.querySelectorAll<SVGPathElement>(
+        '.rr-afhankelijk__lijn',
+      )) {
+        path.classList.toggle(
+          'rr-afhankelijk__lijn--actief',
+          leden !== null &&
+            leden.has(path.dataset.van!) &&
+            leden.has(path.dataset.naar!),
+        );
+      }
+    }
+
+    for (const kaart of kaarten) {
+      const id = kaart.dataset.wpId!;
+      kaart.addEventListener('pointerenter', () => accent(id));
+      kaart.addEventListener('pointerleave', () => accent(null));
+      kaart.addEventListener('focusin', () => accent(id));
+      kaart.addEventListener('focusout', () => accent(null));
+    }
+
+    /*
+     * Opnieuw indelen zodra er iets verandert aan wat er staat. Altijd een
+     * frame later: nldd-checkbox-field stuurt zijn `change` terwijl `checked`
+     * nog alleen een property is en Lit hem een microtask later naar het
+     * attribuut spiegelt, en het is dat attribuut dat de :has()-regels lezen.
+     * Meteen meten geeft dus de opmaak van vóór de klik. Dezelfde reden als bij
+     * de zoekteller hierboven.
+     */
+    let gepland = 0;
+    const indeelStraks = () => {
+      cancelAnimationFrame(gepland);
+      gepland = requestAnimationFrame(indeel);
+    };
+
+    schakelaar.addEventListener('change', indeelStraks);
+    for (const optie of document.querySelectorAll('.rr-filter__option')) {
+      optie.addEventListener('change', indeelStraks);
+    }
+    // Het zoek- en het beleggingsfilter zijn een eigen script dat kaarten een
+    // klasse geeft; hier kijken we naar het gevolg in plaats van naar de
+    // invoer, zodat ze niet aan elkaar vastzitten.
+    new MutationObserver(indeelStraks).observe(table, {
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class'],
+    });
+    new ResizeObserver(indeelStraks).observe(table);
+
+    indeel();
+  }
+
+  /*
+   * Gebonden op astro:page-load en niet op het topniveau, om dezelfde reden als
+   * het zoekveld hierboven: bij een ClientRouter-navigatie terug naar /roadmap
+   * is de DOM vers omgewisseld en zou een binding op het topniveau niet meer
+   * draaien.
+   */
+  document.addEventListener('astro:page-load', wireAfhankelijkheden);
 </script>
