@@ -20,12 +20,19 @@ function jsonResponse(body) {
   };
 }
 
-/** De weigering van de server, in diezelfde vorm: `{"error": "…"}` bij een 400. */
-function rejection(message) {
+/**
+ * De weigering van de server, in diezelfde vorm: `{"error": "…"}`.
+ *
+ * De status doet er voor deze app niet toe — een verzoek dat niet klopt (400) en
+ * een cel die weigert te besluiten (409) komen allebei met hun eigen uitleg, en
+ * die uitleg is wat op het scherm hoort. Hij staat hier als argument zodat een
+ * test de twee naast elkaar kan zetten.
+ */
+function rejection(message, status = 400) {
   const body = JSON.stringify({ error: message });
   return {
     ok: false,
-    status: 400,
+    status,
     headers: { get: () => 'application/json' },
     json: async () => JSON.parse(body),
     text: async () => body,
@@ -225,6 +232,37 @@ describe('de pagina', () => {
     const rows = wrapper.findAll('nldd-text-cell').map((cell) => cell.attributes('supporting-text'));
     expect(rows.some((text) => text?.includes("cel 'toeslagen' had geen 'aanvraag_ontvangen'"))).toBe(true);
     expect(wrapper.findAll('nldd-banner').filter((item) => item.attributes('variant') === 'critical')).toHaveLength(0);
+  });
+
+  // Een besluit dat de cel weigert komt als 409 terug met de reden erin. Die
+  // reden is het antwoord — waarom er geen besluit is — en hoort dus in het
+  // formulier te staan dat hem uitlokte, en niet als een kale status of een
+  // eigen verzinsel over "er ging iets mis". Deze test staat er omdat de server
+  // hier ooit een 500 van maakte: toen was er niets te lezen dat de weigering
+  // van een defect onderscheidde.
+  it('toont de reden van een geweigerd besluit bij het formulier', async () => {
+    const reden =
+      "cel 'toeslagen': besluit 'zorgtoeslag_toekenning' kon input 'toetsingsinkomen' niet "
+      + "accepteren van cel 'belastingdienst': die stelde niets vast";
+    const wrapper = await mountApp();
+    try {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (_url, init) => (init?.method === 'POST' ? rejection(reden, 409) : jsonResponse(worldFixture))),
+      );
+
+      const world = useWorld();
+      await world.act({ id: worldFixture.actions[1].id, label: 'Toekennen' }, {});
+      await flushPromises();
+
+      const kritiek = wrapper
+        .findAll('nldd-banner')
+        .filter((item) => item.attributes('variant') === 'critical');
+      expect(kritiek).toHaveLength(1);
+      expect(kritiek[0].attributes('supporting-text')).toBe(reden);
+    } finally {
+      useWorld().dismissError();
+    }
   });
 
   // De store is er één per pagina, dus deze test maakt hem achteraf weer leeg;
