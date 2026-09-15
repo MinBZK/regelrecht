@@ -9,7 +9,6 @@ import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api } from '../api.js';
 import { session, refreshSession } from '../session.js';
-import PocBanner from './PocBanner.vue';
 
 // Functionele sitenaam onder het woordmerk, per portaal vast; afgeleid
 // van de portal-prop zodat hij nooit per pagina kan verschillen.
@@ -87,7 +86,11 @@ function onSelect(event, item) {
 </script>
 
 <template>
-  <PocBanner />
+  <!-- Geen eigen voorbehoud-balk meer: het portaal injecteert er al een boven
+       elke pagina van een poc (packages/poc-portal, `voorbehoud_strip`), met
+       de casusnaam en de status erbij. Twee balken onder elkaar die hetzelfde
+       zeggen lezen als een fout, en de bovenste is de inhoudelijke. Napp is
+       als losse poc begonnen, vandaar dat hij er zelf een had. -->
   <nldd-skip-link text="Direct naar de inhoud">
     <!-- Rijkshuisstijl: het woordmerk naast het beeldmerk is de officiële
          organisatienaam, op elk portaal identiek; de functionele sitenaam
