@@ -356,13 +356,17 @@ async function submit() {
             <nldd-icon-cell icon="chevron-right" size="16" color="secondary"></nldd-icon-cell>
           </nldd-list-item>
 
-          <!-- Bij een wetsvorm: waar elke input vandaan kwam. Geen gram, want
-               een berekende input ligt nergens in een kroniek. -->
+          <!-- Bij een wetsvorm: waar elke input vandaan kwam. Een input die uit
+               een eigen kroniek kwam, draagt het gram dat hem droeg en brengt de
+               bezoeker erheen; een berekende input of een parameter ligt nergens
+               in een kroniek, en dan is er niets om heen te gaan. -->
           <nldd-list-item
             v-for="input in explanationOpen ? explanation.inputs : []"
             :key="`input-${input.name}`"
             slot="children"
             size="sm"
+            :button="Boolean(input.gram) || undefined"
+            @click="input.gram && emit('show-gram', input.gram)"
           >
             <nldd-spacer-cell size="20"></nldd-spacer-cell>
             <nldd-icon-cell icon="arrow-right" size="16" color="secondary"></nldd-icon-cell>
@@ -373,6 +377,10 @@ async function submit() {
               :text="humanize(input.name)"
               :supporting-text="input.zin"
             ></nldd-text-cell>
+            <template v-if="input.gram">
+              <nldd-spacer-cell size="8"></nldd-spacer-cell>
+              <nldd-icon-cell icon="chevron-right" size="16" color="secondary"></nldd-icon-cell>
+            </template>
           </nldd-list-item>
 
           <!-- Niets gelezen: dan is wat er wél lag het enige wat er te melden

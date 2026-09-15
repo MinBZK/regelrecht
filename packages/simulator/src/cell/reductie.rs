@@ -98,8 +98,32 @@ impl Reductie {
     ///
     /// Eén cel, altijd: die van het antwoord. Dat is geen aanname maar een
     /// meting — zie de moduledocs en `tests/invarianten.rs`.
+    ///
+    /// Alles langs wat een cel kán noemen, en niet alleen de grammen: een
+    /// wetsvorm draagt met [`InputHerkomst::Cel`] een tweede plek waar een
+    /// vreemde cel zou kunnen opduiken. Die variant hoort in een reductie
+    /// onbereikbaar te zijn, en dat is precies waarom ze hier meegemeten wordt
+    /// — een meting die de enige weg overslaat waarlangs de eigenschap kan
+    /// breken, meet de eigenschap niet.
     pub fn genoemde_cellen(&self) -> impl Iterator<Item = &str> {
-        self.grammen.iter().map(|gram| gram.gram.cell.as_str())
+        let uit_de_inputs = match &self.vorm {
+            ReductieVorm::Wetsvorm(wetsvorm) => Some(wetsvorm.inputs.iter()),
+            ReductieVorm::Kroniekfilter(_) => None,
+        };
+        self.grammen
+            .iter()
+            .map(|gram| gram.gram.cell.as_str())
+            .chain(
+                uit_de_inputs
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|input| match &input.herkomst {
+                        InputHerkomst::Cel { cell, .. } => Some(cell.as_str()),
+                        InputHerkomst::Parameter { .. }
+                        | InputHerkomst::EigenKroniek { .. }
+                        | InputHerkomst::Regeling { .. } => None,
+                    }),
+            )
     }
 }
 

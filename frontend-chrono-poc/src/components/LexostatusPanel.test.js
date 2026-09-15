@@ -54,6 +54,49 @@ const nothing = {
   },
 };
 
+// Een wetsvorm: de engine rekende, en per input staat erbij waar hij vandaan
+// kwam — de een uit de vraag, de ander uit een eigen kroniek met het gram dat
+// hem droeg.
+const berekend = {
+  cell: 'toeslagen',
+  name: 'zorgtoeslag_rechtstoestand',
+  op_moment: '2025-02-01',
+  outcome: { established: { heeft_recht_op_zorgtoeslag: true } },
+  reductie: {
+    vorm: {
+      soort: 'wetsvorm',
+      regulation: 'wet_op_de_zorgtoeslag',
+      regulation_valid_from: '2025-01-01',
+      output: 'heeft_recht_op_zorgtoeslag',
+      inputs: [
+        { name: 'bsn', herkomst: { herkomst: 'parameter', parameter: 'bsn' } },
+        {
+          name: 'verzamelinkomen',
+          herkomst: {
+            herkomst: 'eigen_kroniek',
+            chronicle: 'inkomensleveringen',
+            gram: 'toeslagen|inkomensleveringen|0',
+          },
+        },
+      ],
+      op_moment: '2025-02-01',
+    },
+    grammen: [
+      {
+        cell: 'toeslagen',
+        chronicle: 'inkomensleveringen',
+        id: 'toeslagen|inkomensleveringen|0',
+        kind: 'lexogram',
+        name: 'inkomenslevering',
+        volgnummer: 0,
+        op_moment: '2024-11-15',
+        regulation_valid_from: null,
+        bijdrage: null,
+      },
+    ],
+  },
+};
+
 function mountPanel(answer) {
   const ask = vi.fn(async () => answer);
   return { wrapper: mount(LexostatusPanel, { props: { snapshot: worldFixture, ask } }), ask };
@@ -264,6 +307,26 @@ describe('hoe het antwoord tot stand kwam', () => {
     const cell = rows[0].find('nldd-text-cell');
     expect(cell.attributes('text')).toBe('Geen gram gelezen');
     expect(cell.attributes('supporting-text')).toContain('2 over een ander onderwerp');
+  });
+
+  // Een input die uit een eigen kroniek kwam, draagt het gram dat hem droeg.
+  // Alleen zeggen "uit kroniek X" laat de lezer zoeken naar welke vastlegging
+  // dat dan was, terwijl het antwoord het weet.
+  it('brengt de bezoeker van een input uit een kroniek naar het gram dat hem droeg', async () => {
+    const { wrapper } = mountPanel(berekend);
+    await submit(wrapper);
+    await disclosure(wrapper).trigger('click');
+
+    const rijen = children(wrapper);
+    const uitDeVraag = rijen.find((rij) => rij.find('nldd-text-cell').attributes('text') === 'Bsn');
+    expect(uitDeVraag.attributes('button')).toBeUndefined();
+
+    const uitDeKroniek = rijen.find(
+      (rij) => rij.find('nldd-text-cell').attributes('text') === 'Verzamelinkomen',
+    );
+    expect(uitDeKroniek.attributes('button')).toBe('true');
+    await uitDeKroniek.trigger('click');
+    expect(wrapper.emitted('show-gram')).toStrictEqual([['toeslagen|inkomensleveringen|0']]);
   });
 
   it('laat de uitklap weg als het antwoord niet zegt hoe het tot stand kwam', async () => {

@@ -109,6 +109,20 @@ cells:
           where:
             partnerschap_type: HUWELIJK
 
+      - name: laatste_geregistreerd_partnerschap
+        doc: de laatste vastlegging die een geregistreerd partnerschap was
+        inputs:
+          - name: bsn
+            type: string
+        outputs:
+          - partnerschap_type
+        reduction:
+          chronicle: relaties
+          key: bsn
+          latest: true
+          where:
+            partnerschap_type: GEREGISTREERD_PARTNERSCHAP
+
       - name: betaald_tot_nu_toe
         doc: wat er op deze zaak betaald is, opgeteld
         inputs:
@@ -348,23 +362,31 @@ fn de_som_noemt_elk_meegeteld_gram_met_zijn_bijdrage() {
         ],
         "elk meegeteld gram hoort in de uitleg te staan"
     );
-    let bijdragen: Vec<String> = reductie
+    let bijdragen: Vec<Option<&Value>> = reductie
         .grammen
         .iter()
-        .map(|gram| format!("{:?}", gram.bijdrage))
+        .map(|gram| gram.bijdrage.as_ref())
         .collect();
     assert_eq!(
-        bijdragen.len(),
-        2,
-        "elke bijdrage hoort bij haar eigen gram: {bijdragen:?}"
+        bijdragen,
+        [Some(&Value::Int(100)), Some(&Value::Int(250))],
+        "elk meegeteld gram hoort te zeggen wát het bijdroeg, en het bedrag hoort \
+         dat van die vastlegging te zijn"
     );
-    for gram in &reductie.grammen {
-        assert!(
-            gram.bijdrage.is_some(),
-            "een meegeteld gram zonder bijdrage laat de som onnavolgbaar: {}",
-            beschrijf(gram)
-        );
-    }
+
+    // En de bijdragen zijn de som: dát is wat "na te rekenen" betekent. Een
+    // uitleg waarvan de getallen niet op de uitkomst uitkomen, verklaart een
+    // ander antwoord dan het gegeven antwoord.
+    let uitkomst = answer
+        .values()
+        .unwrap_or_else(|| panic!("op deze zaak is betaald, dus hier hoort een bedrag te staan"))
+        .get("bedrag")
+        .cloned();
+    assert_eq!(
+        uitkomst,
+        Some(Value::Int(350)),
+        "100 + 250 is wat de uitleg optelt, en dat hoort de uitkomst te zijn"
+    );
 
     // En het gram van de andere zaak doet niet mee: de sleutel is wat de zaken
     // scheidt, en een uitleg die te veel noemt, verklaart een ander bedrag.
@@ -533,12 +555,42 @@ fn niets_vastgesteld_onderscheidt_de_verkeerde_zaak_van_het_verkeerde_moment() {
 }
 
 /// Een voorwaarde die niets overlaat, telt apart.
+///
+/// Over deze persoon ligt er van alles, op tijd en onder de juiste sleutel; het
+/// is de `where` waarop het afvalt. Dat is een derde reden om niets vast te
+/// stellen, en wie hem niet van de andere twee kan onderscheiden, gaat op de
+/// verkeerde plek zoeken.
 #[test]
 fn niets_vastgesteld_telt_wat_op_de_voorwaarde_afviel() {
-    // Op dit moment ligt er alleen de vastlegging van 2023: een huwelijk. Vraag
-    // je naar het laatste huwelijk vóórdat dat er was, dan valt er niets af op
-    // de voorwaarde; vraag je het ná de wijziging, dan is de tweede vastlegging
-    // wat er afvalt.
+    let answer = ask(
+        "register",
+        "laatste_geregistreerd_partnerschap",
+        &param("bsn", BSN),
+        "2025-01-01",
+    );
+    let gemist = uitleg(&answer)
+        .gemist
+        .unwrap_or_else(|| panic!("niets vastgesteld hoort te zeggen wat er wél lag"));
+
+    assert_eq!(gemist.in_de_stroom, 2);
+    assert_eq!(gemist.na_het_moment, 0);
+    assert_eq!(gemist.andere_sleutel, 0);
+    assert_eq!(
+        gemist.buiten_de_voorwaarden, 2,
+        "beide vastleggingen gaan over deze persoon en liggen op tijd; ze vielen \
+         af op de voorwaarde, en dat is iets anders dan een lege stroom of een \
+         te vroege vraag"
+    );
+}
+
+/// De sleutel valt af vóór de voorwaarde eraan toekomt.
+///
+/// De drie tellingen sluiten elkaar uit — een gram telt één keer, bij de eerste
+/// reden waarop het afviel. Zonder die volgorde zou een gram van een ander
+/// onderwerp ook "buiten de voorwaarden" heten, en dan wijzen de getallen twee
+/// kanten op.
+#[test]
+fn niets_vastgesteld_laat_de_sleutel_voor_de_voorwaarde_afvallen() {
     let answer = ask(
         "register",
         "laatste_huwelijk",
