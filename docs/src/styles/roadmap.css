@@ -58,6 +58,11 @@
  * and the counter below the other. Aligning on the top instead leaves the
  * input floating level with the word "Filter op categorie".
  *
+ * That bottom alignment is also why the counter's line is reserved rather than
+ * allowed to appear and disappear (see .rr-zoek__count): growing the block
+ * downwards would otherwise push the input up by its line-height the moment
+ * someone starts typing, and the whole row would jump under the cursor.
+ *
  * The zoekfilter takes the leftover width (`flex: 1`) with a floor of 260px.
  * Below that the row wraps: the field drops under the checkboxes and runs the
  * full measure, which is what the space allows on a phone. The design system
@@ -68,6 +73,17 @@
   flex-wrap: wrap;
   align-items: end;
   gap: var(--primitives-space-16, 1rem);
+}
+
+/*
+ * Holds the counter's line whether or not there is text in it, so the row
+ * above it cannot shift. `min-height` on the element itself (rather than a
+ * non-breaking space in the markup) keeps the live region genuinely empty when
+ * there is nothing to announce — a screen reader should hear the count appear,
+ * not a blank string being replaced.
+ */
+.rr-roadmap .rr-zoek__count {
+  min-height: 1.5em;
 }
 
 /*
