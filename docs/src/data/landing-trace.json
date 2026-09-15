@@ -4,7 +4,7 @@
     "law": "wet_op_de_zorgtoeslag",
     "output": "hoogte_zorgtoeslag",
     "scenario": "corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/scenarios/eligibility.feature",
-    "total_duration_us": 3337,
+    "total_duration_us": 3994,
     "total_steps": 141
   },
   "root": {
@@ -144,7 +144,7 @@
                     "result": true
                   }
                 ],
-                "duration_us": 19,
+                "duration_us": 9,
                 "message": "Compute OR(...) = True",
                 "name": "OR",
                 "node_id": "n0.3.0",
@@ -152,7 +152,7 @@
                 "result": true
               }
             ],
-            "duration_us": 51,
+            "duration_us": 37,
             "message": "Computing is_verzekerd",
             "name": "is_verzekerd",
             "node_id": "n0.3",
@@ -160,7 +160,7 @@
             "result": true
           }
         ],
-        "duration_us": 131,
+        "duration_us": 119,
         "name": "zorgverzekeringswet#is_verzekerd",
         "node_id": "n0",
         "node_type": "cross_law_reference",
@@ -280,7 +280,7 @@
                 "result": false
               }
             ],
-            "duration_us": 10,
+            "duration_us": 9,
             "message": "Computing heeft_toeslagpartner",
             "name": "heeft_toeslagpartner",
             "node_id": "n1.2",
@@ -288,7 +288,7 @@
             "result": false
           }
         ],
-        "duration_us": 50,
+        "duration_us": 49,
         "name": "algemene_wet_inkomensafhankelijke_regelingen#heeft_toeslagpartner",
         "node_id": "n1",
         "node_type": "cross_law_reference",
@@ -389,6 +389,9 @@
                     "source": {
                       "kind": "DATA_SOURCE",
                       "provider": "box1"
+                    },
+                    "type_spec": {
+                      "unit": "eurocent"
                     }
                   },
                   {
@@ -509,7 +512,10 @@
                             "node_id": "n2.1.1.6.0.0",
                             "node_type": "resolve",
                             "resolve_type": "PARAMETER",
-                            "result": 3000000
+                            "result": 3000000,
+                            "type_spec": {
+                              "unit": "eurocent"
+                            }
                           },
                           {
                             "anchor": {
@@ -581,10 +587,13 @@
                         "name": "ADD",
                         "node_id": "n2.1.1.6.0",
                         "node_type": "operation",
-                        "result": 3000000
+                        "result": 3000000,
+                        "type_spec": {
+                          "unit": "eurocent"
+                        }
                       }
                     ],
-                    "duration_us": 25,
+                    "duration_us": 19,
                     "message": "Computing box1_inkomen",
                     "name": "box1_inkomen",
                     "node_id": "n2.1.1.6",
@@ -595,7 +604,7 @@
                     }
                   }
                 ],
-                "duration_us": 90,
+                "duration_us": 88,
                 "name": "wet_inkomstenbelasting_2001#box1_inkomen",
                 "node_id": "n2.1.1",
                 "node_type": "cross_law_reference",
@@ -649,6 +658,9 @@
                     "source": {
                       "kind": "DATA_SOURCE",
                       "provider": "box2"
+                    },
+                    "type_spec": {
+                      "unit": "eurocent"
                     }
                   },
                   {
@@ -670,6 +682,9 @@
                     "source": {
                       "kind": "DATA_SOURCE",
                       "provider": "box2"
+                    },
+                    "type_spec": {
+                      "unit": "eurocent"
                     }
                   },
                   {
@@ -706,7 +721,10 @@
                             "node_id": "n2.1.2.3.0.0",
                             "node_type": "resolve",
                             "resolve_type": "PARAMETER",
-                            "result": 0
+                            "result": 0,
+                            "type_spec": {
+                              "unit": "eurocent"
+                            }
                           },
                           {
                             "anchor": {
@@ -722,18 +740,24 @@
                             "node_id": "n2.1.2.3.0.1",
                             "node_type": "resolve",
                             "resolve_type": "PARAMETER",
-                            "result": 0
+                            "result": 0,
+                            "type_spec": {
+                              "unit": "eurocent"
+                            }
                           }
                         ],
-                        "duration_us": 5,
+                        "duration_us": 8,
                         "message": "Compute ADD(...) = 0",
                         "name": "ADD",
                         "node_id": "n2.1.2.3.0",
                         "node_type": "operation",
-                        "result": 0
+                        "result": 0,
+                        "type_spec": {
+                          "unit": "eurocent"
+                        }
                       }
                     ],
-                    "duration_us": 8,
+                    "duration_us": 11,
                     "message": "Computing box2_inkomen",
                     "name": "box2_inkomen",
                     "node_id": "n2.1.2.3",
@@ -744,7 +768,7 @@
                     }
                   }
                 ],
-                "duration_us": 51,
+                "duration_us": 53,
                 "name": "wet_inkomstenbelasting_2001#box2_inkomen",
                 "node_id": "n2.1.2",
                 "node_type": "cross_law_reference",
@@ -787,7 +811,10 @@
                         "node_id": "n2.1.3.0.0",
                         "node_type": "resolve",
                         "resolve_type": "PARAMETER",
-                        "result": 3000000
+                        "result": 3000000,
+                        "type_spec": {
+                          "unit": "eurocent"
+                        }
                       },
                       {
                         "anchor": {
@@ -806,15 +833,18 @@
                         "result": 0
                       }
                     ],
-                    "duration_us": 5,
+                    "duration_us": 4,
                     "message": "Compute ADD(...) = 3000000",
                     "name": "ADD",
                     "node_id": "n2.1.3.0",
                     "node_type": "operation",
-                    "result": 3000000
+                    "result": 3000000,
+                    "type_spec": {
+                      "unit": "eurocent"
+                    }
                   }
                 ],
-                "duration_us": 9,
+                "duration_us": 7,
                 "message": "Computing toetsingsinkomen",
                 "name": "toetsingsinkomen",
                 "node_id": "n2.1.3",
@@ -825,7 +855,7 @@
                 }
               }
             ],
-            "duration_us": 191,
+            "duration_us": 190,
             "name": "wet_inkomstenbelasting_2001#toetsingsinkomen",
             "node_id": "n2.1",
             "node_type": "cross_law_reference",
@@ -888,7 +918,10 @@
                     "node_id": "n2.3.0.0",
                     "node_type": "resolve",
                     "resolve_type": "PARAMETER",
-                    "result": 3000000
+                    "result": 3000000,
+                    "type_spec": {
+                      "unit": "eurocent"
+                    }
                   },
                   {
                     "anchor": {
@@ -906,15 +939,18 @@
                     "result": 0
                   }
                 ],
-                "duration_us": 4,
+                "duration_us": 6,
                 "message": "Compute ADD(...) = 3000000",
                 "name": "ADD",
                 "node_id": "n2.3.0",
                 "node_type": "operation",
-                "result": 3000000
+                "result": 3000000,
+                "type_spec": {
+                  "unit": "eurocent"
+                }
               }
             ],
-            "duration_us": 7,
+            "duration_us": 9,
             "message": "Computing toetsingsinkomen",
             "name": "toetsingsinkomen",
             "node_id": "n2.3",
@@ -925,7 +961,7 @@
             }
           }
         ],
-        "duration_us": 236,
+        "duration_us": 237,
         "name": "algemene_wet_inkomensafhankelijke_regelingen#toetsingsinkomen",
         "node_id": "n2",
         "node_type": "cross_law_reference",
@@ -963,7 +999,7 @@
                   "url": "https://wetten.overheid.nl/BWBR0050536/2025-01-01#Artikel1",
                   "valid_from": "2025-01-01"
                 },
-                "duration_us": 6,
+                "duration_us": 1,
                 "message": "Computing standaardpremie",
                 "name": "standaardpremie",
                 "node_id": "n3.0.0",
@@ -990,7 +1026,7 @@
                 "result": 2025
               }
             ],
-            "duration_us": 34,
+            "duration_us": 29,
             "message": "Open term 'standaardpremie' implemented by regeling_standaardpremie article 1",
             "name": "standaardpremie",
             "node_id": "n3.0",
@@ -1025,10 +1061,13 @@
                 "node_id": "n3.1.0",
                 "node_type": "resolve",
                 "resolve_type": "PARAMETER",
-                "result": 211200
+                "result": 211200,
+                "type_spec": {
+                  "unit": "eurocent"
+                }
               }
             ],
-            "duration_us": 3,
+            "duration_us": 4,
             "message": "Computing standaardpremie",
             "name": "standaardpremie",
             "node_id": "n3.1",
@@ -1039,7 +1078,7 @@
             }
           }
         ],
-        "duration_us": 61,
+        "duration_us": 56,
         "message": "Internal reference: wet_op_de_zorgtoeslag#standaardpremie",
         "name": "wet_op_de_zorgtoeslag#standaardpremie",
         "node_id": "n3",
@@ -1105,6 +1144,9 @@
                 "source": {
                   "kind": "DATA_SOURCE",
                   "provider": "box3"
+                },
+                "type_spec": {
+                  "unit": "eurocent"
                 }
               },
               {
@@ -1126,6 +1168,9 @@
                 "source": {
                   "kind": "DATA_SOURCE",
                   "provider": "box3"
+                },
+                "type_spec": {
+                  "unit": "eurocent"
                 }
               },
               {
@@ -1147,6 +1192,9 @@
                 "source": {
                   "kind": "DATA_SOURCE",
                   "provider": "box3"
+                },
+                "type_spec": {
+                  "unit": "eurocent"
                 }
               },
               {
@@ -1168,6 +1216,9 @@
                 "source": {
                   "kind": "DATA_SOURCE",
                   "provider": "box3"
+                },
+                "type_spec": {
+                  "unit": "eurocent"
                 }
               },
               {
@@ -1214,7 +1265,10 @@
                             "node_id": "n4.0.5.0.0.0",
                             "node_type": "resolve",
                             "resolve_type": "PARAMETER",
-                            "result": 0
+                            "result": 0,
+                            "type_spec": {
+                              "unit": "eurocent"
+                            }
                           },
                           {
                             "anchor": {
@@ -1230,7 +1284,10 @@
                             "node_id": "n4.0.5.0.0.1",
                             "node_type": "resolve",
                             "resolve_type": "PARAMETER",
-                            "result": 0
+                            "result": 0,
+                            "type_spec": {
+                              "unit": "eurocent"
+                            }
                           },
                           {
                             "anchor": {
@@ -1246,7 +1303,10 @@
                             "node_id": "n4.0.5.0.0.2",
                             "node_type": "resolve",
                             "resolve_type": "PARAMETER",
-                            "result": 0
+                            "result": 0,
+                            "type_spec": {
+                              "unit": "eurocent"
+                            }
                           }
                         ],
                         "duration_us": 6,
@@ -1254,7 +1314,10 @@
                         "name": "ADD",
                         "node_id": "n4.0.5.0.0",
                         "node_type": "operation",
-                        "result": 0
+                        "result": 0,
+                        "type_spec": {
+                          "unit": "eurocent"
+                        }
                       },
                       {
                         "anchor": {
@@ -1270,7 +1333,10 @@
                         "node_id": "n4.0.5.0.1",
                         "node_type": "resolve",
                         "resolve_type": "PARAMETER",
-                        "result": 0
+                        "result": 0,
+                        "type_spec": {
+                          "unit": "eurocent"
+                        }
                       }
                     ],
                     "duration_us": 11,
@@ -1278,10 +1344,13 @@
                     "name": "SUBTRACT",
                     "node_id": "n4.0.5.0",
                     "node_type": "operation",
-                    "result": 0
+                    "result": 0,
+                    "type_spec": {
+                      "unit": "eurocent"
+                    }
                   }
                 ],
-                "duration_us": 16,
+                "duration_us": 15,
                 "message": "Computing rendementsgrondslag",
                 "name": "rendementsgrondslag",
                 "node_id": "n4.0.5",
@@ -1292,7 +1361,7 @@
                 }
               }
             ],
-            "duration_us": 74,
+            "duration_us": 66,
             "name": "wet_inkomstenbelasting_2001#rendementsgrondslag",
             "node_id": "n4.0",
             "node_type": "cross_law_reference",
@@ -1432,7 +1501,7 @@
                                 "result": false
                               }
                             ],
-                            "duration_us": 5,
+                            "duration_us": 4,
                             "message": "Compute EQUALS(...) = False",
                             "name": "EQUALS",
                             "node_id": "n4.2.0.1.0.0",
@@ -1440,7 +1509,7 @@
                             "result": false
                           }
                         ],
-                        "duration_us": 6,
+                        "duration_us": 7,
                         "message": "CASE 0: False",
                         "name": "CASE_0",
                         "node_id": "n4.2.0.1.0",
@@ -1471,7 +1540,10 @@
                             "node_id": "n4.2.0.1.1.0",
                             "node_type": "resolve",
                             "resolve_type": "DEFINITION",
-                            "result": 14189600
+                            "result": 14189600,
+                            "type_spec": {
+                              "unit": "eurocent"
+                            }
                           }
                         ],
                         "duration_us": 2,
@@ -1498,7 +1570,7 @@
                 "result": true
               }
             ],
-            "duration_us": 22,
+            "duration_us": 21,
             "message": "Computing vermogen_onder_grens",
             "name": "vermogen_onder_grens",
             "node_id": "n4.2",
@@ -1506,7 +1578,7 @@
             "result": true
           }
         ],
-        "duration_us": 139,
+        "duration_us": 131,
         "message": "Internal reference: wet_op_de_zorgtoeslag#vermogen_onder_grens",
         "name": "wet_op_de_zorgtoeslag#vermogen_onder_grens",
         "node_id": "n4",
@@ -1541,7 +1613,7 @@
             "result": true
           }
         ],
-        "duration_us": 20,
+        "duration_us": 19,
         "message": "Hook PreActions on BESCHIKKING stage BESLUIT → algemene_wet_bestuursrecht:3:46",
         "name": "algemene_wet_bestuursrecht:3:46",
         "node_id": "n5",
@@ -1626,7 +1698,7 @@
                                       "url": "https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2",
                                       "valid_from": "2025-01-01"
                                     },
-                                    "duration_us": 1,
+                                    "duration_us": 3,
                                     "name": "heeft_toeslagpartner",
                                     "node_id": "n6.0.0.0.0.0.0.0",
                                     "node_type": "resolve",
@@ -1634,7 +1706,7 @@
                                     "result": false
                                   }
                                 ],
-                                "duration_us": 4,
+                                "duration_us": 6,
                                 "message": "Compute EQUALS(...) = False",
                                 "name": "EQUALS",
                                 "node_id": "n6.0.0.0.0.0.0",
@@ -1642,7 +1714,7 @@
                                 "result": false
                               }
                             ],
-                            "duration_us": 5,
+                            "duration_us": 8,
                             "message": "CASE 0: False",
                             "name": "CASE_0",
                             "node_id": "n6.0.0.0.0.0",
@@ -1676,7 +1748,7 @@
                                 "result": 211200
                               }
                             ],
-                            "duration_us": 3,
+                            "duration_us": 2,
                             "message": "DEFAULT: 211200",
                             "name": "DEFAULT",
                             "node_id": "n6.0.0.0.0.1",
@@ -1684,7 +1756,7 @@
                             "result": 211200
                           }
                         ],
-                        "duration_us": 12,
+                        "duration_us": 13,
                         "message": "IF(took default) = 211200",
                         "name": "IF",
                         "node_id": "n6.0.0.0.0",
@@ -1797,10 +1869,13 @@
                                         "node_id": "n6.0.0.0.1.0.0.1.0",
                                         "node_type": "resolve",
                                         "resolve_type": "DEFINITION",
-                                        "result": 0.01896
+                                        "result": 0.01896,
+                                        "type_spec": {
+                                          "unit": "ratio"
+                                        }
                                       }
                                     ],
-                                    "duration_us": 18,
+                                    "duration_us": 19,
                                     "message": "DEFAULT: 0.01896",
                                     "name": "DEFAULT",
                                     "node_id": "n6.0.0.0.1.0.0.1",
@@ -1870,7 +1945,7 @@
                                         "result": false
                                       }
                                     ],
-                                    "duration_us": 5,
+                                    "duration_us": 4,
                                     "message": "CASE 0: False",
                                     "name": "CASE_0",
                                     "node_id": "n6.0.0.0.1.0.1.0",
@@ -1901,7 +1976,10 @@
                                         "node_id": "n6.0.0.0.1.0.1.1.0",
                                         "node_type": "resolve",
                                         "resolve_type": "DEFINITION",
-                                        "result": 2820096
+                                        "result": 2820096,
+                                        "type_spec": {
+                                          "unit": "eurocent"
+                                        }
                                       }
                                     ],
                                     "duration_us": 2,
@@ -1912,7 +1990,7 @@
                                     "result": 2820096
                                   }
                                 ],
-                                "duration_us": 11,
+                                "duration_us": 10,
                                 "message": "IF(took default) = 2820096",
                                 "name": "IF",
                                 "node_id": "n6.0.0.0.1.0.1",
@@ -1920,7 +1998,7 @@
                                 "result": 2820096
                               }
                             ],
-                            "duration_us": 44,
+                            "duration_us": 43,
                             "message": "Compute MULTIPLY(...) = 53469.02016",
                             "name": "MULTIPLY",
                             "node_id": "n6.0.0.0.1.0",
@@ -2028,7 +2106,7 @@
                                                 "result": false
                                               }
                                             ],
-                                            "duration_us": 4,
+                                            "duration_us": 5,
                                             "message": "CASE 0: False",
                                             "name": "CASE_0",
                                             "node_id": "n6.0.0.0.1.1.0.0.1.0",
@@ -2059,10 +2137,13 @@
                                                 "node_id": "n6.0.0.0.1.1.0.0.1.1.0",
                                                 "node_type": "resolve",
                                                 "resolve_type": "DEFINITION",
-                                                "result": 2820096
+                                                "result": 2820096,
+                                                "type_spec": {
+                                                  "unit": "eurocent"
+                                                }
                                               }
                                             ],
-                                            "duration_us": 3,
+                                            "duration_us": 2,
                                             "message": "DEFAULT: 2820096",
                                             "name": "DEFAULT",
                                             "node_id": "n6.0.0.0.1.1.0.0.1.1",
@@ -2078,7 +2159,7 @@
                                         "result": 2820096
                                       }
                                     ],
-                                    "duration_us": 17,
+                                    "duration_us": 15,
                                     "message": "Compute GREATER_THAN(...) = True",
                                     "name": "GREATER_THAN",
                                     "node_id": "n6.0.0.0.1.1.0.0",
@@ -2086,7 +2167,7 @@
                                     "result": true
                                   }
                                 ],
-                                "duration_us": 19,
+                                "duration_us": 18,
                                 "message": "CASE 0: True",
                                 "name": "CASE_0",
                                 "node_id": "n6.0.0.0.1.1.0",
@@ -2186,7 +2267,7 @@
                                                         "result": false
                                                       }
                                                     ],
-                                                    "duration_us": 4,
+                                                    "duration_us": 2,
                                                     "message": "Compute EQUALS(...) = False",
                                                     "name": "EQUALS",
                                                     "node_id": "n6.0.0.0.1.1.1.0.0.1.0.0",
@@ -2194,7 +2275,7 @@
                                                     "result": false
                                                   }
                                                 ],
-                                                "duration_us": 6,
+                                                "duration_us": 69,
                                                 "message": "CASE 0: False",
                                                 "name": "CASE_0",
                                                 "node_id": "n6.0.0.0.1.1.1.0.0.1.0",
@@ -2225,7 +2306,10 @@
                                                     "node_id": "n6.0.0.0.1.1.1.0.0.1.1.0",
                                                     "node_type": "resolve",
                                                     "resolve_type": "DEFINITION",
-                                                    "result": 2820096
+                                                    "result": 2820096,
+                                                    "type_spec": {
+                                                      "unit": "eurocent"
+                                                    }
                                                   }
                                                 ],
                                                 "duration_us": 2,
@@ -2236,7 +2320,7 @@
                                                 "result": 2820096
                                               }
                                             ],
-                                            "duration_us": 12,
+                                            "duration_us": 75,
                                             "message": "IF(took default) = 2820096",
                                             "name": "IF",
                                             "node_id": "n6.0.0.0.1.1.1.0.0.1",
@@ -2244,7 +2328,7 @@
                                             "result": 2820096
                                           }
                                         ],
-                                        "duration_us": 16,
+                                        "duration_us": 80,
                                         "message": "Compute SUBTRACT(...) = 179904",
                                         "name": "SUBTRACT",
                                         "node_id": "n6.0.0.0.1.1.1.0.0",
@@ -2265,10 +2349,13 @@
                                         "node_id": "n6.0.0.0.1.1.1.0.1",
                                         "node_type": "resolve",
                                         "resolve_type": "DEFINITION",
-                                        "result": 0.137
+                                        "result": 0.137,
+                                        "type_spec": {
+                                          "unit": "ratio"
+                                        }
                                       }
                                     ],
-                                    "duration_us": 23,
+                                    "duration_us": 85,
                                     "message": "Compute MULTIPLY(...) = 24646.848",
                                     "name": "MULTIPLY",
                                     "node_id": "n6.0.0.0.1.1.1.0",
@@ -2276,7 +2363,7 @@
                                     "result": 24646.848
                                   }
                                 ],
-                                "duration_us": 25,
+                                "duration_us": 89,
                                 "message": "THEN: 24646.848",
                                 "name": "THEN",
                                 "node_id": "n6.0.0.0.1.1.1",
@@ -2284,7 +2371,7 @@
                                 "result": 24646.848
                               }
                             ],
-                            "duration_us": 48,
+                            "duration_us": 112,
                             "message": "IF(case 0 matched) = 24646.848",
                             "name": "IF",
                             "node_id": "n6.0.0.0.1.1",
@@ -2292,7 +2379,7 @@
                             "result": 24646.848
                           }
                         ],
-                        "duration_us": 98,
+                        "duration_us": 160,
                         "message": "Compute ADD(...) = 78115.86816",
                         "name": "ADD",
                         "node_id": "n6.0.0.0.1",
@@ -2300,7 +2387,7 @@
                         "result": 78115.86816
                       }
                     ],
-                    "duration_us": 115,
+                    "duration_us": 179,
                     "message": "Compute SUBTRACT(...) = 133084.13184",
                     "name": "SUBTRACT",
                     "node_id": "n6.0.0.0",
@@ -2308,7 +2395,7 @@
                     "result": 133084.13184
                   }
                 ],
-                "duration_us": 119,
+                "duration_us": 183,
                 "message": "Compute MAX(...) = 133084.13184",
                 "name": "MAX",
                 "node_id": "n6.0.0",
@@ -2316,15 +2403,18 @@
                 "result": 133084.13184
               }
             ],
-            "duration_us": 123,
+            "duration_us": 190,
             "message": "Compute ROUND(...) = 133084",
             "name": "ROUND",
             "node_id": "n6.0",
             "node_type": "operation",
-            "result": 133084
+            "result": 133084,
+            "type_spec": {
+              "unit": "eurocent"
+            }
           }
         ],
-        "duration_us": 145,
+        "duration_us": 206,
         "legal_basis": {
           "article": "2",
           "bwb_id": "BWBR0018451",
@@ -2382,7 +2472,7 @@
                       "url": "https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2",
                       "valid_from": "2025-01-01"
                     },
-                    "duration_us": 0,
+                    "duration_us": 1,
                     "name": "is_verzekerde",
                     "node_id": "n7.0.0.0",
                     "node_type": "resolve",
@@ -2390,7 +2480,7 @@
                     "result": true
                   }
                 ],
-                "duration_us": 2,
+                "duration_us": 4,
                 "message": "Compute EQUALS(...) = True",
                 "name": "EQUALS",
                 "node_id": "n7.0.0",
@@ -2458,7 +2548,7 @@
                     "result": 133084
                   }
                 ],
-                "duration_us": 7,
+                "duration_us": 2,
                 "message": "Compute GREATER_THAN(...) = True",
                 "name": "GREATER_THAN",
                 "node_id": "n7.0.2",
@@ -2466,7 +2556,7 @@
                 "result": true
               }
             ],
-            "duration_us": 17,
+            "duration_us": 14,
             "message": "Compute AND(...) = True",
             "name": "AND",
             "node_id": "n7.0",
@@ -2474,7 +2564,7 @@
             "result": true
           }
         ],
-        "duration_us": 22,
+        "duration_us": 19,
         "legal_basis": {
           "article": "2",
           "bwb_id": "BWBR0018451",
@@ -2523,7 +2613,7 @@
         "node_type": "hook_resolution"
       }
     ],
-    "duration_us": 966,
+    "duration_us": 1003,
     "message": "wet_op_de_zorgtoeslag (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)",
     "name": "wet_op_de_zorgtoeslag (hoogte_zorgtoeslag)",
     "node_id": "n",

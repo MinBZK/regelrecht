@@ -184,26 +184,32 @@ html {
   cursor: ew-resize;
 }
 
-/* The grip itself: a disc centred on the divider, in both engines' spellings
-   (they cannot be combined in one selector — an unknown pseudo-element drops
-   the whole rule). */
+/* The thumb stays but is not painted: the divider drawn on the track already
+   marks the position, and a disc floating over the text read as an artefact.
+   It keeps its size so there is still something to grab, and both engines'
+   spellings are written out separately — an unknown pseudo-element would drop
+   the whole rule. */
 .rr-wipe__handle::-webkit-slider-thumb {
   appearance: none;
-  width: 2rem;
-  height: 2rem;
-  border-radius: 50%;
-  border: 1px solid var(--semantics-dividers-color);
-  background: var(--semantics-surfaces-base-background-color);
+  width: 2.5rem;
+  height: 2.5rem;
+  background: transparent;
+  border: 0;
   cursor: ew-resize;
 }
 
 .rr-wipe__handle::-moz-range-thumb {
-  width: 2rem;
-  height: 2rem;
-  border-radius: 50%;
-  border: 1px solid var(--semantics-dividers-color);
-  background: var(--semantics-surfaces-base-background-color);
+  width: 2.5rem;
+  height: 2.5rem;
+  background: transparent;
+  border: 0;
   cursor: ew-resize;
+}
+
+/* Keyboard users get the divider highlighted instead of an invisible thumb. */
+.rr-wipe__handle:focus-visible {
+  outline: 2px solid var(--semantics-dividers-color);
+  outline-offset: -2px;
 }
 
 .rr-wipe__handle::-moz-range-track {

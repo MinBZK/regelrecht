@@ -303,10 +303,20 @@ articles:
     url: https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel3
     machine_readable:
       definitions:
+        # Artikel 3 noemt deze grenzen in euro's (141.896 en 179.429); ze staan
+        # hier in eurocent, net als de andere bedragen in deze wet. De eenheid
+        # stond er niet bij, waardoor een spoor ze als kaal getal meldde
+        # (RFC-023).
         vermogensgrens_alleenstaand:
           value: 14189600
+          type: amount
+          type_spec:
+            unit: eurocent
         vermogensgrens_aanvrager_met_toeslagpartner:
           value: 17942900
+          type: amount
+          type_spec:
+            unit: eurocent
       execution:
         produces:
           legal_character: TOETS

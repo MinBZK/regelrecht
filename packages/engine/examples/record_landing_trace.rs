@@ -69,25 +69,92 @@ fn sum_duration(node: &regelrecht_engine::trace::PathNode) -> u64 {
 fn prune(
     node: &regelrecht_engine::trace::PathNode,
     depth: usize,
+    constants: &std::collections::HashMap<String, regelrecht_engine::trace::ValueTypeSpec>,
+) -> regelrecht_engine::trace::PathNode {
+    prune_with_unit(node, depth, None, constants)
+}
+
+fn prune_with_unit(
+    node: &regelrecht_engine::trace::PathNode,
+    depth: usize,
+    inherited: Option<&regelrecht_engine::trace::ValueTypeSpec>,
+    constants: &std::collections::HashMap<String, regelrecht_engine::trace::ValueTypeSpec>,
 ) -> regelrecht_engine::trace::PathNode {
     let mut copy = node.clone();
 
-    // A cross-law call carries the result of the law it called, and the unit
-    // sits on the step inside that law which produced it. Lifting it up keeps
-    // the declaration the law really made, rather than the display guessing
-    // later which numbers are money.
+    // A step can carry a value whose unit is declared somewhere else in the
+    // tree: a cross-law call takes it from the step inside the called law that
+    // produced it, and a rounding or a resolve takes it from the action it
+    // belongs to. Both are the same declaration, made once by a law, so the
+    // unit travels to every step holding that same value. An amount is shown
+    // as an amount because a law said so, never because a number looked like
+    // money.
     if copy.type_spec.is_none() {
         if let Some(found) = declared_unit(node) {
             copy.type_spec = Some(found);
+        } else if let Some(declared) = constants.get(&copy.name) {
+            copy.type_spec = Some(declared.clone());
+        } else if let Some(from_above) = inherited {
+            copy.type_spec = Some(from_above.clone());
         }
     }
+
+    // Passed down only while the value is unchanged; a child computing
+    // something else declares its own unit or shows none.
+    let pass_down = copy
+        .type_spec
+        .clone()
+        .filter(|_| copy.result.is_some())
+        .map(|spec| (copy.result.clone(), spec));
 
     if depth >= DISPLAY_DEPTH {
         copy.children = Vec::new();
     } else {
-        copy.children = node.children.iter().map(|c| prune(c, depth + 1)).collect();
+        copy.children = node
+            .children
+            .iter()
+            .map(|c| {
+                // Only a child holding the very same value inherits the unit.
+                let handed = pass_down
+                    .as_ref()
+                    .filter(|(value, _)| *value == c.result)
+                    .map(|(_, spec)| spec);
+                prune_with_unit(c, depth + 1, handed, constants)
+            })
+            .collect();
     }
     copy
+}
+
+/// Units the law declares on its constants, by name.
+///
+/// The engine stamps a unit when it resolves an input or computes a declared
+/// output, but a constant is resolved straight out of a value map that carries
+/// no declaration, so the unit does not reach the step. Rather than widen the
+/// engine for the sake of a demo, the recorder reads the same declarations out
+/// of the law it already loads. Still the law's word, just fetched here.
+fn definition_units(
+    law: &regelrecht_engine::article::ArticleBasedLaw,
+) -> std::collections::HashMap<String, regelrecht_engine::trace::ValueTypeSpec> {
+    let mut units = std::collections::HashMap::new();
+    for article in &law.articles {
+        let Some(mr) = &article.machine_readable else {
+            continue;
+        };
+        for (name, definition) in mr.definitions.iter().flatten() {
+            if let regelrecht_engine::article::Definition::Structured {
+                type_spec: Some(spec),
+                ..
+            } = definition
+            {
+                let reported = regelrecht_engine::trace::ValueTypeSpec::from_declaration(spec);
+                if !reported.is_empty() {
+                    units.insert(name.clone(), reported);
+                }
+            }
+        }
+    }
+    units
 }
 
 /// The unit declared by the step that produced this node's value.
@@ -129,6 +196,11 @@ fn main() {
         .expect("Could not find regulation directory");
 
     let mut loaded = 0;
+    // Collected while loading, where the YAML is already in hand: the units the
+    // laws declare on their constants, which the engine does not carry onto a
+    // trace step (see `definition_units`).
+    let mut constants: std::collections::HashMap<String, regelrecht_engine::trace::ValueTypeSpec> =
+        std::collections::HashMap::new();
     for entry in WalkDir::new(&regulation_dir)
         .follow_links(true)
         .into_iter()
@@ -139,6 +211,12 @@ fn main() {
             if let Ok(content) = std::fs::read_to_string(path) {
                 if service.load_law(&content).is_ok() {
                     loaded += 1;
+                    if let Ok(law) = serde_yaml_ng::from_str::<
+                        regelrecht_engine::article::ArticleBasedLaw,
+                    >(&content)
+                    {
+                        constants.extend(definition_units(&law));
+                    }
                 }
             }
         }
@@ -240,7 +318,7 @@ fn main() {
     let total_steps = count(&trace);
     let total_us: u64 = sum_duration(&trace);
 
-    let pruned = prune(&trace, 0);
+    let pruned = prune(&trace, 0, &constants);
     let document = regelrecht_engine::trace::TraceDocument::new(pruned);
 
     // The page states how long the real evaluation took and how many steps it
