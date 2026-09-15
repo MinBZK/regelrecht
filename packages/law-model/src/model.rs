@@ -28,6 +28,46 @@ pub struct LegalBasis {
     pub description: Option<String>,
 }
 
+/// A citation of the provision an element carries out, in the shape the schema
+/// gives `legal_basis` on a field or an action.
+///
+/// Deliberately not [`LegalBasis`]: that one addresses a whole law from the
+/// document header with `law_id`/`article`, while this one cites a provision
+/// down to the lid and carries the wording that ties it to the text. The two
+/// name different things and the schema spells them differently, so folding
+/// them together would mean one of the two lying about its field names.
+///
+/// Every field is optional: a citation that names only an article is still a
+/// citation, and the schema demands none of them.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct ProvisionReference {
+    /// Name of the law, as the law writes it ("Wet op de zorgtoeslag").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub law: Option<String>,
+    /// BWB identification number (`BWBR` + 7 digits).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bwb_id: Option<String>,
+    /// Article number, as a string: article numbers are not integers ("1a").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub article: Option<String>,
+    /// Lid number within the article.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paragraph: Option<String>,
+    /// Sentence number, for a reference finer than a lid.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sentence: Option<String>,
+    /// Link to the provision on wetten.overheid.nl.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    /// Juriconnect BWB 1.3 reference.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub juriconnect: Option<String>,
+    /// How this element relates to the words of the provision, in Dutch. This
+    /// is the part a reader of a trace actually reads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub explanation: Option<String>,
+}
+
 /// Type specification for input/output/definition fields.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct TypeSpec {
@@ -440,6 +480,11 @@ pub struct Action {
     /// Decimal places for rounding operations (ROUND/CEIL/FLOOR; RFC-024)
     #[serde(default)]
     pub precision: Option<i64>,
+    /// The provision this action carries out (RFC-039). Read onto the action's
+    /// trace step, so a result can cite the sentence it follows from rather
+    /// than only the article it was reached through.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub legal_basis: Option<ProvisionReference>,
 }
 
 /// Execution specification within machine_readable section

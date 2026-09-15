@@ -323,6 +323,77 @@ fn every_step_is_anchored_to_the_provision_it_came_from() {
     );
 }
 
+/// What the corpus cites travels with the step that carries it out (RFC-039),
+/// and stays distinct from the anchor: the anchor is where the engine was, the
+/// legal basis is the provision the modeller holds the action to. Here they
+/// refer to the same article and the citation is the finer of the two, naming
+/// the lid the engine cannot infer on its own.
+#[test]
+fn an_action_carries_the_provision_the_corpus_cites() {
+    let service = setup_zorgtoeslag_service();
+
+    let mut params = BTreeMap::new();
+    params.insert("bsn".to_string(), Value::String("999993653".to_string()));
+
+    let result = service
+        .evaluate_law_output_with_trace(
+            "wet_op_de_zorgtoeslag",
+            "hoogte_zorgtoeslag",
+            params,
+            "2025-01-01",
+        )
+        .expect("Law evaluation should succeed");
+    let root = result.trace.expect("traced evaluation produces a trace");
+
+    fn walk<'a>(
+        node: &'a regelrecht_engine::trace::PathNode,
+        out: &mut Vec<&'a regelrecht_engine::trace::PathNode>,
+    ) {
+        out.push(node);
+        for child in &node.children {
+            walk(child, out);
+        }
+    }
+    let mut nodes = Vec::new();
+    walk(&root, &mut nodes);
+
+    let step = nodes
+        .iter()
+        .find(|n| n.name == "hoogte_zorgtoeslag" && n.legal_basis.is_some())
+        .expect("the toeslag action states the provision it carries out");
+    let basis = step.legal_basis.as_ref().unwrap();
+
+    assert_eq!(basis.article.as_deref(), Some("2"));
+    assert_eq!(basis.paragraph.as_deref(), Some("1"));
+    assert_eq!(basis.bwb_id.as_deref(), Some("BWBR0018451"));
+    assert_eq!(
+        basis.juriconnect.as_deref(),
+        Some("jci1.3:c:BWBR0018451&artikel=2&lid=1")
+    );
+    assert!(
+        basis
+            .explanation
+            .as_deref()
+            .is_some_and(|e| e.contains("standaardpremie")),
+        "the citation carries the modeller's wording: {:?}",
+        basis.explanation
+    );
+
+    // A citation names a provision, not the file it was loaded from.
+    assert_eq!(basis.law_id, None, "a citation carries no corpus id");
+    assert_eq!(basis.valid_from, None, "a citation carries no load date");
+
+    // The anchor is the engine's own account, and it is coarser: it knows the
+    // article it was evaluating, never the lid.
+    let anchor = step.anchor.as_ref().expect("the step is anchored too");
+    assert_eq!(anchor.law_id.as_deref(), Some("wet_op_de_zorgtoeslag"));
+    assert_eq!(anchor.article.as_deref(), Some("2"));
+    assert_eq!(
+        anchor.paragraph, None,
+        "the engine does not guess a lid it was never told"
+    );
+}
+
 /// A trace travels as a document with its version inside it, not as a bare
 /// step (RFC-039). Consumers read `root`.
 #[test]

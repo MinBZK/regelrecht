@@ -30,7 +30,7 @@
 //! ```
 
 use crate::types::{PathNodeType, ResolveType, TypeSpec, Value};
-use regelrecht_law_model::{Article, ArticleBasedLaw};
+use regelrecht_law_model::{Article, ArticleBasedLaw, ProvisionReference};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -238,6 +238,13 @@ impl LegalAnchor {
     /// citation the engine cannot support. The article's `url` is the link to
     /// the official text, which is what makes a step clickable through to
     /// wetten.overheid.nl.
+    ///
+    /// `law` is copied from the header as written, which for some laws is a
+    /// `#reference` to an output the law computes about itself rather than a
+    /// title. Resolving it would mean evaluating a law output while recording a
+    /// step about one, so it is passed through unresolved: `law_id` is always a
+    /// usable identifier, and a display that wants a title should prefer the
+    /// `law` on a `legal_basis`, which the corpus writes out in full.
     pub fn from_article(law: &ArticleBasedLaw, article: &Article) -> Self {
         Self {
             law_id: Some(law.id.clone()),
@@ -247,6 +254,27 @@ impl LegalAnchor {
             article: Some(article.number.clone()),
             url: article.url.clone(),
             valid_from: law.valid_from.clone(),
+            ..Self::default()
+        }
+    }
+
+    /// What the corpus cites, as written (RFC-039).
+    ///
+    /// Carries the citation across unchanged, down to the lid and the
+    /// modeller's explanation. `law_id`, `law_uuid` and `valid_from` stay
+    /// absent: a citation names a provision, not the corpus file the engine
+    /// happened to load it from, and a reference may well point at a law that
+    /// is not in the corpus at all.
+    pub fn from_provision(reference: &ProvisionReference) -> Self {
+        Self {
+            law: reference.law.clone(),
+            bwb_id: reference.bwb_id.clone(),
+            article: reference.article.clone(),
+            paragraph: reference.paragraph.clone(),
+            sentence: reference.sentence.clone(),
+            url: reference.url.clone(),
+            juriconnect: reference.juriconnect.clone(),
+            explanation: reference.explanation.clone(),
             ..Self::default()
         }
     }
@@ -1430,10 +1458,6 @@ mod tests {
         );
     }
 
-    /// An anchor with nothing in it is left off the node instead of appearing
-    /// as an empty object, so a consumer can read "absent" as "the corpus does
-    /// not cite this element" rather than having to check every field.
-    #[test]
     /// `from_article` reports every field the law header and the article
     /// carry. Each is asserted separately because a dropped one is invisible:
     /// the anchor still looks populated, and a reader silently loses the link
@@ -1479,6 +1503,51 @@ articles:
         assert_eq!(anchor.explanation, None);
         assert_eq!(anchor.paragraph, None);
         assert_eq!(anchor.sentence, None);
+    }
+
+    /// `from_provision` carries the corpus citation across field for field,
+    /// including the ones the zorgtoeslag corpus happens not to write. Each is
+    /// asserted separately for the same reason as the anchor's: a dropped
+    /// field leaves a citation that still looks complete, and the reader
+    /// silently loses the lid, the sentence, or the modeller's wording.
+    #[test]
+    fn a_citation_carries_what_the_corpus_wrote() {
+        let reference = ProvisionReference {
+            law: Some("Wet op de zorgtoeslag".to_string()),
+            bwb_id: Some("BWBR0018451".to_string()),
+            article: Some("2".to_string()),
+            paragraph: Some("1".to_string()),
+            sentence: Some("2".to_string()),
+            url: Some("https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2".to_string()),
+            juriconnect: Some("jci1.3:c:BWBR0018451&artikel=2&lid=1".to_string()),
+            explanation: Some("Het verschil tussen standaardpremie en normpremie.".to_string()),
+        };
+
+        let basis = LegalAnchor::from_provision(&reference);
+
+        assert_eq!(basis.law.as_deref(), Some("Wet op de zorgtoeslag"));
+        assert_eq!(basis.bwb_id.as_deref(), Some("BWBR0018451"));
+        assert_eq!(basis.article.as_deref(), Some("2"));
+        assert_eq!(basis.paragraph.as_deref(), Some("1"));
+        assert_eq!(basis.sentence.as_deref(), Some("2"));
+        assert_eq!(
+            basis.url.as_deref(),
+            Some("https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2")
+        );
+        assert_eq!(
+            basis.juriconnect.as_deref(),
+            Some("jci1.3:c:BWBR0018451&artikel=2&lid=1")
+        );
+        assert_eq!(
+            basis.explanation.as_deref(),
+            Some("Het verschil tussen standaardpremie en normpremie.")
+        );
+
+        // A citation names a provision, not the corpus file it was read from:
+        // the reference may well point at a law the corpus does not hold.
+        assert_eq!(basis.law_id, None);
+        assert_eq!(basis.law_uuid, None);
+        assert_eq!(basis.valid_from, None);
     }
 
     /// The addressing setters put their value on the current step, and each is
@@ -1552,6 +1621,12 @@ articles:
         assert!(root.legal_basis.is_none());
     }
 
+    /// An anchor with nothing in it is left off the node instead of appearing
+    /// as an empty object, so a consumer can read "absent" as "the corpus does
+    /// not cite this element" rather than having to check every field. A
+    /// non-empty `legal_basis` on the same step is kept: the two are recorded
+    /// independently.
+    #[test]
     fn an_empty_anchor_is_not_recorded() {
         let mut builder = TraceBuilder::new_untimed();
         builder.push("artikel_1", PathNodeType::Article);

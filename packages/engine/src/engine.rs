@@ -328,6 +328,13 @@ impl<'a> ArticleEngine<'a> {
             if tracing_active {
                 context.trace_push(output_name, PathNodeType::Action);
                 context.trace_set_message(format!("Computing {}", output_name));
+                // RFC-039: the anchor says which article the engine was in; this
+                // says which provision the modeller holds the action to. They
+                // agree here, and where they do not, that difference is the
+                // thing worth seeing.
+                if let Some(ref basis) = action.legal_basis {
+                    context.trace_set_legal_basis(LegalAnchor::from_provision(basis));
+                }
             }
 
             let value = match self.evaluate_action(action, context) {

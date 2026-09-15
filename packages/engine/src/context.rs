@@ -303,6 +303,14 @@ impl RuleContext {
         }
     }
 
+    /// Record what the corpus cites as the basis of the current step (RFC-039).
+    /// No-op if trace is None.
+    pub fn trace_set_legal_basis(&self, legal_basis: LegalAnchor) {
+        if let Some(ref trace) = self.trace {
+            trace.borrow_mut().set_legal_basis(legal_basis);
+        }
+    }
+
     /// Set a message on the current trace node. No-op if trace is None.
     pub fn trace_set_message(&self, msg: impl Into<String>) {
         if let Some(ref trace) = self.trace {

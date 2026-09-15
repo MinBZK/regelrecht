@@ -145,6 +145,20 @@ articles:
               unit: eurocent
         actions:
           - output: hoogte_zorgtoeslag
+            # RFC-039: the action states which sentence of the law it carries out,
+            # so a trace step can cite the text it came from instead of only naming
+            # the article it was reached through.
+            legal_basis:
+              law: Wet op de zorgtoeslag
+              bwb_id: BWBR0018451
+              article: '2'
+              paragraph: '1'
+              url: https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2
+              juriconnect: jci1.3:c:BWBR0018451&artikel=2&lid=1
+              explanation: >-
+                Het verschil tussen de standaardpremie en de normpremie. Lid 1
+                verdubbelt de standaardpremie bij een toeslagpartner; de
+                normpremie zelf volgt uit lid 2 en lid 3.
             # RFC-024: round the toeslag to whole eurocent (rekenkundig/half-up).
             # The engine no longer rounds eurocent outputs implicitly; the rounding
             # is stated explicitly here as a law-modeled instruction.
@@ -222,6 +236,17 @@ articles:
                                   - $percentage_toetsingsinkomen
                           default: 0
           - output: heeft_recht_op_zorgtoeslag
+            legal_basis:
+              law: Wet op de zorgtoeslag
+              bwb_id: BWBR0018451
+              article: '2'
+              paragraph: '1'
+              url: https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2
+              juriconnect: jci1.3:c:BWBR0018451&artikel=2&lid=1
+              explanation: >-
+                De aanspraak ontstaat pas als het verschil uit lid 1 positief is.
+                Verzekerd zijn volgt uit artikel 1 onderdeel a, de vermogenstoets
+                uit artikel 3; beide zijn hier voorwaarde.
             value:
               operation: AND
               conditions:
