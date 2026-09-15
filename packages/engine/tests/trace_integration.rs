@@ -5,7 +5,7 @@
 
 mod common;
 
-use regelrecht_engine::{LawExecutionService, Value};
+use regelrecht_engine::{LawExecutionService, PathNodeType, Value};
 use std::collections::BTreeMap;
 use walkdir::WalkDir;
 
@@ -561,6 +561,34 @@ fn a_declared_value_reports_its_unit() {
     assert!(
         with_unit.iter().any(|(_, u)| *u == "eurocent"),
         "expected an amount in eurocent, got {with_unit:?}"
+    );
+
+    // Two separate paths stamp the unit, and each is asserted on a step only it
+    // can produce. A single "some step has a unit" check passes while either
+    // one is silently gutted, which is exactly what a mutation found.
+    //
+    // An action reporting the unit the law declares for its output: this one
+    // goes through the rule context.
+    assert_eq!(
+        nodes
+            .iter()
+            .find(|n| n.name == "hoogte_zorgtoeslag" && n.node_type == PathNodeType::Action)
+            .and_then(|n| n.type_spec.as_ref()?.unit.as_deref()),
+        Some("eurocent"),
+        "the action computing the amount reports the unit its output declares"
+    );
+
+    // An input resolved from a register, carrying the unit its declaration
+    // gives it: this one goes through the resolution context.
+    let resolved_with_unit: Vec<&str> = nodes
+        .iter()
+        .filter(|n| n.node_type == PathNodeType::Resolve)
+        .filter(|n| n.type_spec.as_ref().and_then(|t| t.unit.as_deref()) == Some("eurocent"))
+        .map(|n| n.name.as_str())
+        .collect();
+    assert!(
+        !resolved_with_unit.is_empty(),
+        "a resolved amount reports the unit its input declares; none did"
     );
 
     // A trace reports what a value is, not what it was allowed to be. The
