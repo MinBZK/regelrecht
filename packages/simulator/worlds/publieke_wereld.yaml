@@ -415,28 +415,28 @@ actions:
   - id: toeslagen.toekenning
     actor: toeslagen
     label: Beslis op de aanvraag
+    # Geen voorwaarde in dit bestand: of dit besluit nu genomen kan worden,
+    # volgt uit zijn eigen inputs. Het leest `is_verzekerde` uit de eigen
+    # kroniek `inkomensleveringen`, op de persoon uit de aanvraag die deze cel
+    # ontving — dus zolang die aanvraag er niet ligt, is er geen persoon en geen
+    # feit, en zegt het beeld dat met zoveel woorden.
     doc: Kan pas als er een aanvraag ligt.
     decides:
       cell: toeslagen
       besluit: zorgtoeslag_toekenning
-    available_when:
-      cell: toeslagen
-      chronicle: aanvragen
-      field: jaar
-      equals: 2024
 
   - id: toeslagen.vaststelling
     actor: toeslagen
     label: Stel de zorgtoeslag definitief vast
-    doc: Kan pas als er een toekenning ligt.
+    # Dit besluit leest dezelfde eigen feiten als de toekenning en leest het
+    # eerste besluit niet terug, dus het kan zodra de aanvraag er ligt. Dat het
+    # in dit verhaal ná de toekenning komt, is een keuze van de behandelaar en
+    # geen voorwaarde — en dat is precies wat er eerder met de hand bijgeschreven
+    # stond terwijl de definitie het niet zei.
+    doc: Kan zodra er een aanvraag ligt; in dit verhaal volgt zij op de toekenning.
     decides:
       cell: toeslagen
       besluit: zorgtoeslag_vaststelling
-    available_when:
-      cell: toeslagen
-      chronicle: beschikkingen
-      field: besluit
-      equals: zorgtoeslag_toekenning
 
 deadlines:
   - label: aanvraag ontvangen vóór 1 maart

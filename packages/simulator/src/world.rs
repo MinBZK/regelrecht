@@ -58,7 +58,9 @@ use crate::journal::{
 };
 use crate::receipt::GramReceipt;
 use crate::security::{Identity, SignedAnswer};
-use crate::snapshot::{crossing_snapshot, gram_id, gram_kind, ActionState, Snapshot, WorldView};
+use crate::snapshot::{
+    crossing_snapshot, gram_id, gram_kind, prefilled, ActionState, Snapshot, WorldView,
+};
 use chrono::NaiveDate;
 use regelrecht_engine::{CellResolver, Value};
 use serde::{Deserialize, Serialize};
@@ -157,8 +159,6 @@ pub struct ActionDefinition {
     pub doc: Option<String>,
     /// Wat de actie uitwerkt.
     pub effect: ActionEffect,
-    /// Wanneer deze actie kan; altijd, als het er niet staat.
-    pub available_when: Option<Availability>,
 }
 
 /// De twee dingen die een actie kan uitwerken.
@@ -203,9 +203,6 @@ struct ActionFields {
     /// Zie [`ActionEffect::Decides`].
     #[serde(default)]
     decides: Option<DecidesAction>,
-    /// Zie [`ActionDefinition::available_when`].
-    #[serde(default)]
-    available_when: Option<Availability>,
 }
 
 impl TryFrom<ActionFields> for ActionDefinition {
@@ -236,7 +233,6 @@ impl TryFrom<ActionFields> for ActionDefinition {
             label: fields.label,
             doc: fields.doc,
             effect,
-            available_when: fields.available_when,
         })
     }
 }
@@ -305,48 +301,6 @@ pub struct DecidesAction {
     pub cell: String,
     /// De besluit-definitie die uitgevoerd wordt.
     pub besluit: String,
-}
-
-/// Wanneer een actie kan: één simpele voorwaarde over een kroniek.
-///
-/// Leest als: *er ligt in kroniek `chronicle` van cel `cell` een feit waarin
-/// veld `field` de waarde `equals` heeft.* Daarmee kan een actie wachten tot het
-/// verhaal zover is — beslissen kan pas als er een aanvraag ligt — zonder dat de
-/// volgorde in Rust vastgelegd wordt.
-///
-/// Met opzet klein. Dit is geen tweede reductietaal: er komt geen waarde naar
-/// buiten, alleen ja of nee, en de vraag gaat over de wereld en niet over een
-/// cel die een andere cel bevraagt.
-///
-/// [`Self::cell`] hoeft niet de actor te zijn — de wereld kent alle cellen en
-/// beantwoordt de vraag zelf, zoals ze ook het beeld van alle kronieken maakt.
-/// Twee dingen volgen daaruit, en het is beter ze hier te zeggen dan ze later te
-/// moeten uitleggen: dit is géén contact over een celgrens (het staat dus niet in
-/// het vraaggraf en niet in het observatielog), en het is ook geen weg waarlangs
-/// een cel iets te weten komt. Moet de actor zélf weten dat er iets gebeurd is,
-/// dan hoort dat als levering in zijn eigen kroniek te liggen — `delivers_to` —
-/// en dan wijst de voorwaarde naar die kroniek.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Availability {
-    /// De cel wiens kroniek nagekeken wordt.
-    pub cell: String,
-    /// De kroniekstroom.
-    pub chronicle: String,
-    /// Het veld waarop gekeken wordt.
-    pub field: String,
-    /// De waarde die dat veld moet hebben.
-    pub equals: Value,
-}
-
-impl Availability {
-    /// Leesbare voorwaarde, voor het beeld van de wereld en voor een weigering.
-    fn describe(&self) -> String {
-        format!(
-            "in kroniek '{}' van cel '{}' ligt nog geen feit met {} = {}",
-            self.chronicle, self.cell, self.field, self.equals
-        )
-    }
 }
 
 /// Een termijn die waarschuwt als een feit op tijd ontbreekt.
@@ -883,8 +837,12 @@ impl World {
     /// velden die ze documenteert, van het type dat ze noemt. Bij een actie die
     /// een besluit start, is dat formulier dat van het besluit zelf.
     ///
-    /// Kan de actie nu niet ([`Availability`]), dan is dat een leesbare weigering
-    /// en geen stilte: er staat in wat er nog niet vastligt.
+    /// Kan de actie nu niet, dan is dat een leesbare weigering en geen stilte: er
+    /// staat in welk feit er nog niet vastligt. Dat wordt gewogen op de waarden
+    /// die de invuller **verstuurt** en niet op de voorinvulling waarmee het
+    /// beeld haar aanbood: wie een ander onderwerp invult, vraagt om een besluit
+    /// over díe zaak, en dan hoort de vraag "ligt het feit er?" ook daarover te
+    /// gaan.
     pub fn act(
         &mut self,
         action_id: &str,
@@ -907,13 +865,6 @@ impl World {
             })?
             .clone();
 
-        if let Some(reason) = self.unavailable(&action) {
-            return Err(SimulatorError::ActionNotAvailable {
-                action: action.id.clone(),
-                reason,
-            });
-        }
-
         check_documented_params(
             &action.actor,
             Subject::Actie,
@@ -921,6 +872,13 @@ impl World {
             &self.form(&action)?,
             form_values,
         )?;
+
+        if let Some(reason) = self.unavailable(&action, form_values) {
+            return Err(SimulatorError::ActionNotAvailable {
+                action: action.id.clone(),
+                reason,
+            });
+        }
 
         // Wie de actie doet, staat in het wereldbestand, en wat een lezer erover
         // te zien krijgt ook: het journaal schrijft het label van de actie op en
@@ -1060,6 +1018,17 @@ impl World {
         &self.warnings
     }
 
+    /// Elk contact dat tot nu toe over een celgrens ging, in volgorde.
+    ///
+    /// Materiaal voor het **meetinstrument** en voor niets anders: geen cel kan
+    /// hierbij, geen beslissing leunt erop, en wie deze lijst weglaat verandert
+    /// geen enkele uitkomst. Hij staat hier zodat een meting op een wereld
+    /// zonder scenario — bijvoorbeeld: levert het opvragen van het beeld
+    /// verkeer op? — niet op het beeld hoeft te leunen dat ze meet.
+    pub fn crossings(&self) -> &[SignedAnswer] {
+        &self.crossings
+    }
+
     /// Het journaal van deze wereld: één regel per gebeurtenis, in volgorde.
     ///
     /// Dezelfde regels die het beeld draagt, en de enige bron voor het verhaal:
@@ -1080,12 +1049,18 @@ impl World {
         self.definition
             .actions
             .iter()
-            .map(|action| ActionState {
-                action,
+            .map(|action| {
                 // Onbereikbaar leeg: het optuigen heeft elke actie aan haar cel en
                 // haar besluit gebonden, dus het formulier is er.
-                form: self.form(action).unwrap_or_default(),
-                unavailable: self.unavailable(action),
+                let form = self.form(action).unwrap_or_default();
+                let prefill = prefilled(&form, self.clock, &self.cells);
+                let unavailable = self.unavailable(action, &prefill);
+                ActionState {
+                    action,
+                    form,
+                    prefill,
+                    unavailable,
+                }
             })
             .collect()
     }
@@ -1107,19 +1082,35 @@ impl World {
     }
 
     /// Waarom deze actie nu niet kan; `None` als ze kan.
-    fn unavailable(&self, action: &ActionDefinition) -> Option<String> {
-        let condition = action.available_when.as_ref()?;
-        // Onbereikbaar: het optuigen heeft de cel van de voorwaarde al gevonden.
-        let cell = self.cells.get(&condition.cell)?;
-        if cell.has_fact(
-            &condition.chronicle,
-            &condition.field,
-            &condition.equals,
-            self.clock,
-        ) {
+    ///
+    /// De vraag wordt niet in het wereldbestand beantwoord maar in de
+    /// **besluitdefinitie**, en dat is het hele punt: een besluit zegt zelf al
+    /// welke feiten het uit welke eigen kroniek leest, dus een handgeschreven
+    /// voorwaarde ernaast is een tweede opsomming van hetzelfde — en die gaat
+    /// afwijken zodra er een input bij komt. Wat hier gebeurt is dus een
+    /// droogloop van die resolutie op de voorgevulde parameters: levert elk
+    /// eigen feit een waarde op, dan kan de actie, en anders noemt de reden het
+    /// feit dat ontbreekt (zie [`Cell::missing_own_fact`]).
+    ///
+    /// Een `records`-actie kan altijd. Zij *is* het feit; wachten tot er iets
+    /// ligt zou betekenen dat een actor niet kan vastleggen wat hem overkwam.
+    ///
+    /// Geen contact over een celgrens, en dat is een eis en geen gevolg: het
+    /// beeld van de wereld wordt bij elke stap opgevraagd, dus een check die
+    /// over een grens reikt zou verkeer opleveren dat niemand vroeg (invariant
+    /// I1). Wat een besluit van een ander accepteert, blijft daarom buiten deze
+    /// vraag — dat weegt het besluit zelf, op het moment dat het genomen wordt.
+    fn unavailable(
+        &self,
+        action: &ActionDefinition,
+        prefill: &BTreeMap<String, Value>,
+    ) -> Option<String> {
+        let ActionEffect::Decides(decides) = &action.effect else {
             return None;
-        }
-        Some(condition.describe())
+        };
+        // Onbereikbaar: het optuigen heeft de besluitende cel al gevonden.
+        let cell = self.cells.get(&decides.cell)?;
+        cell.missing_own_fact(&decides.besluit, prefill, self.clock)
     }
 
     /// Eén cel van deze wereld, of de fout die zegt dat ze er niet is.
@@ -2293,20 +2284,6 @@ fn check_actions(actions: &[ActionDefinition], cells: &BTreeMap<String, Cell>) -
                 check_prefill(&decides.cell, &action.id, &definition.params, cells)?;
             }
         }
-
-        if let Some(condition) = &action.available_when {
-            cells
-                .get(&condition.cell)
-                .ok_or_else(|| SimulatorError::UnknownCell {
-                    cell: condition.cell.clone(),
-                })?
-                .check_stream_field(
-                    Subject::Actie,
-                    &action.id,
-                    &condition.chronicle,
-                    &condition.field,
-                )?;
-        }
     }
     Ok(())
 }
@@ -2317,11 +2294,13 @@ fn check_actions(actions: &[ActionDefinition], cells: &BTreeMap<String, Cell>) -
 ///
 /// Een verwijzing naar een cel of een stroom die er niet is, vult nooit iets in
 /// — en dat zou niemand merken, want "nog niets vastgelegd" is hier een geldige
-/// uitkomst. Een typfout in `$last:` hoort dus bij het optuigen te vallen, net
-/// als een typfout in `available_when`. De **stroom** wel en het **veld** niet,
-/// en dat is geen slordigheid: welke velden een stroom kent, wordt afgeleid uit
-/// wat erin ligt, en een kroniek die pas tijdens de run gevuld wordt kent er bij
-/// het optuigen nog geen. Een veldnaam afkeuren zou dan precies de
+/// uitkomst. Een typfout in `$last:` hoort dus bij het optuigen te vallen, en
+/// hier des te meer: de voorinvulling bepaalt ook of een besluit-actie nu kan
+/// (zie [`World::unavailable`]), dus een verwijzing die nergens op slaat zou een
+/// actie stil voorgoed op "kan nu niet" zetten. De **stroom** wel en het **veld**
+/// niet, en dat is geen slordigheid: welke velden een stroom kent, wordt afgeleid
+/// uit wat erin ligt, en een kroniek die pas tijdens de run gevuld wordt kent er
+/// bij het optuigen nog geen. Een veldnaam afkeuren zou dan precies de
 /// voorinvulling weigeren die na de eerste actie zou gaan werken.
 ///
 /// En een voorinvulling die nu al een waarde ís, gaat door dezelfde typetoets
@@ -3869,7 +3848,7 @@ cells:
     #[test]
     fn een_termijn_naar_een_onbekende_stroom_faalt_bij_het_optuigen() {
         let mut spec = definition(&actie_cellen(), "2024-01-01", &[], &no_settings());
-        spec.actions = vec![aanvraag_actie("")];
+        spec.actions = vec![aanvraag_actie()];
         spec.deadlines = vec![Deadline {
             label: "aanvraag op tijd".to_string(),
             at: date("2024-03-01"),
@@ -3970,10 +3949,9 @@ lexostatus_definitions:
         ]
     }
 
-    /// De aanvraag-actie, met of zonder voorwaarde.
-    fn aanvraag_actie(available_when: &str) -> ActionDefinition {
-        let yaml = format!(
-            r"
+    /// De aanvraag-actie.
+    fn aanvraag_actie() -> ActionDefinition {
+        let yaml = r"
 id: burger.aanvraag
 actor: burger
 label: Aanvraag indienen
@@ -3992,16 +3970,15 @@ records:
     chronicle: aanvragen
     name: aanvraag_ontvangen
     intake: aanvraag
-{available_when}"
-        );
-        serde_yaml_ng::from_str(&yaml)
+";
+        serde_yaml_ng::from_str(yaml)
             .unwrap_or_else(|e| panic!("testactie moet parsen: {e}\n{yaml}"))
     }
 
     /// Een wereld met die ene actie erin.
-    fn actie_wereld(available_when: &str) -> Result<World> {
+    fn actie_wereld() -> Result<World> {
         let mut spec = definition(&actie_cellen(), "2024-01-01", &[], &no_settings());
-        spec.actions = vec![aanvraag_actie(available_when)];
+        spec.actions = vec![aanvraag_actie()];
         World::from_definition(&spec, &regulation_root())
     }
 
@@ -4022,7 +3999,7 @@ records:
     #[test]
     fn een_actie_legt_vast_bij_de_actor_en_levert_bij_de_ontvanger() {
         let mut world =
-            actie_wereld("").unwrap_or_else(|e| panic!("de wereld moet op te tuigen zijn: {e}"));
+            actie_wereld().unwrap_or_else(|e| panic!("de wereld moet op te tuigen zijn: {e}"));
         let events = world
             .act("burger.aanvraag", &aanvraag_waarden())
             .unwrap_or_else(|e| panic!("de actie moet kunnen: {e}"));
@@ -4063,37 +4040,28 @@ records:
         );
     }
 
-    /// Een actie die op een feit wacht, weigert leesbaar zolang dat feit er niet
-    /// is — en kan zodra het er is.
+    /// Een `records`-actie kan altijd, ook in een wereld waarin nog niets ligt.
+    ///
+    /// Zij *is* het feit. Haar laten wachten tot er iets vastligt zou betekenen
+    /// dat een actor niet kan vastleggen wat hem overkwam — en dan zou er in een
+    /// verse wereld niets te beginnen zijn. Wat wél kan wachten is een besluit,
+    /// en dat volgt uit zijn eigen inputs (zie [`Cell::missing_own_fact`]).
     #[test]
-    fn een_actie_met_een_voorwaarde_kan_pas_als_het_feit_er_ligt() {
-        let voorwaarde = "available_when:
-  cell: toeslagen
-  chronicle: aanvragen
-  field: jaar
-  equals: 2024
-";
-        let mut world = actie_wereld(voorwaarde)
-            .unwrap_or_else(|e| panic!("de wereld moet op te tuigen zijn: {e}"));
+    fn een_actie_die_een_feit_vastlegt_kan_altijd() {
+        let mut world =
+            actie_wereld().unwrap_or_else(|e| panic!("de wereld moet op te tuigen zijn: {e}"));
 
-        let err = world
-            .act("burger.aanvraag", &aanvraag_waarden())
-            .expect_err("zonder het feit hoort de actie te weigeren");
-        let SimulatorError::ActionNotAvailable { reason, .. } = &err else {
-            panic!("verwachtte ActionNotAvailable, kreeg {err}");
-        };
         assert!(
-            reason.contains("aanvragen") && reason.contains("jaar"),
-            "de weigering hoort te zeggen wat er nog niet ligt, kreeg: {reason}"
-        );
-        assert!(
-            !world
+            world
                 .snapshot()
                 .actions
                 .iter()
-                .any(|action| action.available),
-            "en het beeld hoort de actie als nog-niet-mogelijk te tonen"
+                .all(|action| action.available && action.unavailable_reason.is_none()),
+            "een vastlegging wacht op niets"
         );
+        world
+            .act("burger.aanvraag", &aanvraag_waarden())
+            .unwrap_or_else(|e| panic!("en ze kan ook echt: {e}"));
     }
 
     /// Het formulier van een actie is een belofte, en dus even streng als de
@@ -4102,7 +4070,7 @@ records:
     #[test]
     fn een_formulier_weigert_een_veld_dat_het_niet_documenteert() {
         let mut world =
-            actie_wereld("").unwrap_or_else(|e| panic!("de wereld moet op te tuigen zijn: {e}"));
+            actie_wereld().unwrap_or_else(|e| panic!("de wereld moet op te tuigen zijn: {e}"));
 
         let mut erbij = aanvraag_waarden();
         erbij.insert("toetsingsinkomen".to_string(), Value::Int(81000));
@@ -4132,7 +4100,7 @@ records:
     /// als hij erop drukt.
     #[test]
     fn een_actie_zonder_sleutelveld_in_haar_formulier_faalt_bij_het_optuigen() {
-        let mut actie = aanvraag_actie("");
+        let mut actie = aanvraag_actie();
         let ActionEffect::Records(records) = &mut actie.effect else {
             panic!("de testactie legt vast");
         };
@@ -4331,7 +4299,7 @@ records:
     /// Aan jezelf leveren wat je net zelf vastlegde, is geen tweede feit.
     #[test]
     fn een_levering_aan_de_eigen_cel_wordt_geweigerd() {
-        let mut actie = aanvraag_actie("");
+        let mut actie = aanvraag_actie();
         let ActionEffect::Records(records) = &mut actie.effect else {
             panic!("de testactie legt vast");
         };
@@ -4357,7 +4325,7 @@ records:
     #[test]
     fn twee_acties_met_hetzelfde_id_worden_geweigerd() {
         let mut spec = definition(&actie_cellen(), "2024-01-01", &[], &no_settings());
-        spec.actions = vec![aanvraag_actie(""), aanvraag_actie("")];
+        spec.actions = vec![aanvraag_actie(), aanvraag_actie()];
         let err = World::from_definition(&spec, &regulation_root())
             .expect_err("twee acties met hetzelfde id horen te falen");
         assert!(
@@ -4370,7 +4338,7 @@ records:
     #[test]
     fn een_onbekende_actie_noemt_de_acties_die_er_wel_zijn() {
         let mut world =
-            actie_wereld("").unwrap_or_else(|e| panic!("de wereld moet op te tuigen zijn: {e}"));
+            actie_wereld().unwrap_or_else(|e| panic!("de wereld moet op te tuigen zijn: {e}"));
         let err = world
             .act("burger.verantwoording", &aanvraag_waarden())
             .expect_err("een actie die er niet is hoort te falen");
