@@ -36,8 +36,16 @@ const { aggregate } = await mod('sim/metrics.js');
 const { patchDefinitionValue, readDefinitionValue } = await mod('lib/yamlPatch.js');
 const { DEFAULT_JAREN, peildataTussen, PERSONA_PEILDATA_VAN, PERSONA_PEILDATA_TOT, categorieLabel } =
   await mod('lib/nieuwkomerFacts.js');
-const { addHandeling, listHandelingen, listTarieven, patchHandeling, patchTarief, removeHandeling } =
-  await mod('lib/handelingenPatch.js');
+const {
+  ACTIES,
+  addHandeling,
+  keurHandelingenArgumenten,
+  listHandelingen,
+  listTarieven,
+  patchHandeling,
+  patchTarief,
+  removeHandeling,
+} = await mod('lib/handelingenPatch.js');
 
 const SESSION_DIR = process.env.OCW_SESSION_DIR;
 const PERSONA_PEILDATA = peildataTussen(PERSONA_PEILDATA_VAN, PERSONA_PEILDATA_TOT);
@@ -221,30 +229,32 @@ async function wijzigHandelingen({ actie, id, velden, handeling, tarief, waarde,
   const huidig = readHandelingenWerkversie();
   if (!huidig) return 'Deze casus heeft geen data/handelingen.yaml.';
 
+  // Het JSON-schema noemt alleen `actie` verplicht, omdat "verplicht bij deze
+  // actie" er alleen als oneOf in past. Deze controle zegt in één melding welk
+  // argument bij welke actie hoort, in plaats van de patch-functie te laten
+  // struikelen over een waarde die er nooit was.
+  const argumentFout = keurHandelingenArgumenten({ actie, id, velden, handeling, tarief, waarde });
+  if (argumentFout) return `Wijziging NIET toegepast: ${argumentFout}`;
+
   let nieuw;
   let melding;
   try {
     if (actie === 'verwijder') {
-      if (!id) return 'Geef het id van de handeling die je wilt verwijderen.';
       const r = removeHandeling(huidig, id);
       nieuw = r.yaml;
       melding = `Handeling ${id} verwijderd (${r.verwijderd.partij}, ${r.verwijderd.sector ?? 'po en vo'}, ${r.verwijderd.minuten} min).`;
     } else if (actie === 'voeg_toe') {
-      const r = addHandeling(huidig, handeling ?? {});
+      const r = addHandeling(huidig, handeling);
       nieuw = r.yaml;
       melding = `Handeling ${r.toegevoegd.id} toegevoegd (${r.toegevoegd.minuten} min, tarief ${r.toegevoegd.tarief}).`;
     } else if (actie === 'wijzig') {
-      if (!id) return 'Geef het id van de handeling die je wilt wijzigen.';
-      const r = patchHandeling(huidig, id, velden ?? {});
+      const r = patchHandeling(huidig, id, velden);
       nieuw = r.yaml;
       melding = `Handeling ${id} gewijzigd: ${r.veranderd.join('; ')}.`;
-    } else if (actie === 'wijzig_tarief') {
-      if (!tarief) return 'Geef de naam van het tarief.';
+    } else {
       const r = patchTarief(huidig, tarief, waarde);
       nieuw = r.yaml;
       melding = `Tarief ${tarief} van ${r.oud} naar ${r.nieuw} eurocent per uur.`;
-    } else {
-      return 'Onbekende actie. Kies verwijder, voeg_toe, wijzig of wijzig_tarief.';
     }
   } catch (e) {
     return `Wijziging NIET toegepast: ${String(e?.message ?? e)}`;
@@ -479,32 +489,37 @@ const TOOLS = [
       'komen" verwijdert de po-handeling met tarief accountant, en raakt de ' +
       'regelgeving niet. Lees eerst lees_handelingen voor de id\'s. Reken het ' +
       'effect daarna door met simuleer_populatie: de uitvoeringslast bij ' +
-      'scholen en DUO verandert mee.',
+      'scholen en DUO verandert mee. Elke actie heeft zijn eigen verplichte ' +
+      'argumenten en accepteert die van een andere actie niet: verwijder heeft ' +
+      'id, voeg_toe heeft handeling, wijzig heeft id en velden, wijzig_tarief ' +
+      'heeft tarief en waarde.',
     inputSchema: {
       type: 'object',
       properties: {
         actie: {
           type: 'string',
-          enum: ['verwijder', 'voeg_toe', 'wijzig', 'wijzig_tarief'],
-          description: 'Wat je wilt doen.',
+          enum: ACTIES,
+          description: 'Wat je wilt doen. Bepaalt welke andere argumenten verplicht zijn.',
         },
-        id: { type: 'string', description: 'Id van de handeling (bij verwijder en wijzig).' },
+        id: { type: 'string', description: 'Verplicht bij actie=verwijder en actie=wijzig: id van de handeling.' },
         velden: {
           type: 'object',
           description:
-            'Bij actie=wijzig: de velden die je wilt zetten, bv. {"minuten": 45} ' +
-            'of {"sector": null} om de handeling voor po en vo te laten tellen.',
+            'Verplicht bij actie=wijzig: de velden die je wilt zetten, bv. ' +
+            '{"minuten": 45} of {"sector": null} om de handeling voor po en vo ' +
+            'te laten tellen. Toegestaan zijn omschrijving, partij, sector, ' +
+            'aanleiding, minuten, tarief en vanaf_jaar; een ander veld wordt geweigerd.',
           additionalProperties: true,
         },
         handeling: {
           type: 'object',
           description:
-            'Bij actie=voeg_toe: de nieuwe handeling met id, partij, aanleiding, ' +
-            'minuten en tarief (sector en vanaf_jaar optioneel).',
+            'Verplicht bij actie=voeg_toe: de nieuwe handeling met id, partij, ' +
+            'aanleiding, minuten en tarief (sector en vanaf_jaar optioneel).',
           additionalProperties: true,
         },
-        tarief: { type: 'string', description: 'Bij actie=wijzig_tarief: de tariefnaam.' },
-        waarde: { type: 'number', description: 'Bij actie=wijzig_tarief: eurocent per uur.' },
+        tarief: { type: 'string', description: 'Verplicht bij actie=wijzig_tarief: de tariefnaam.' },
+        waarde: { type: 'number', description: 'Verplicht bij actie=wijzig_tarief: eurocent per uur.' },
         toelichting: { type: 'string', description: 'Korte omschrijving voor de gebruiker.' },
       },
       required: ['actie'],

@@ -132,6 +132,60 @@ function normaliseer(veld, waarde) {
   return VELDEN[veld] === 'number' ? Number(waarde) : waarde;
 }
 
+/** Wat elke actie van wijzig_handelingen nodig heeft, naast `actie` zelf. */
+const ACTIE_ARGUMENTEN = {
+  verwijder: ['id'],
+  voeg_toe: ['handeling'],
+  wijzig: ['id', 'velden'],
+  wijzig_tarief: ['tarief', 'waarde'],
+};
+
+export const ACTIES = Object.keys(ACTIE_ARGUMENTEN);
+
+/** Wat het ontbrekende argument in de foutmelding heet. */
+const ARGUMENT_OMSCHRIJVING = {
+  id: 'het id van de handeling ("id")',
+  handeling: 'de nieuwe handeling ("handeling", met id, partij, aanleiding, minuten en tarief)',
+  velden: 'de velden die je wilt zetten ("velden", bijvoorbeeld {"minuten": 45})',
+  tarief: 'de naam van het tarief ("tarief")',
+  waarde: 'de nieuwe tariefwaarde in eurocent per uur ("waarde")',
+};
+
+/**
+ * Keur de argumenten van wijzig_handelingen: hoort dit argument bij deze actie,
+ * en is alles er wat die actie nodig heeft?
+ *
+ * Waarom hier en niet in het JSON-schema van de tool: een schema kan "verplicht
+ * bij deze actie" alleen met oneOf/allOf uitdrukken, en dat is precies de vorm
+ * waar een assistent overheen leest. Het schema noemde daarom alleen `actie`
+ * verplicht, waardoor {actie: "wijzig_tarief"} zonder waarde schema-geldig was.
+ * De patch-functie weigerde dat wel, maar met een melding over een tariefwaarde
+ * in plaats van over het ontbrekende argument.
+ *
+ * Geeft een foutmelding terug, of null als de argumenten in orde zijn.
+ */
+export function keurHandelingenArgumenten({ actie, ...rest } = {}) {
+  const verwacht = ACTIE_ARGUMENTEN[actie];
+  if (!verwacht) {
+    return `Onbekende actie "${actie ?? '(geen)'}". Kies ${ACTIES.join(', ')}.`;
+  }
+  const ontbreekt = verwacht.filter((arg) => rest[arg] === undefined || rest[arg] === null);
+  if (ontbreekt.length) {
+    return `Bij actie "${actie}" hoort ${ontbreekt.map((arg) => ARGUMENT_OMSCHRIJVING[arg]).join(' en ')}.`;
+  }
+  // Een argument van een andere actie meesturen betekent meestal dat de
+  // assistent de verkeerde actie koos: {actie: "wijzig", tarief: "accountant"}
+  // is een tariefwijziging die als veldwijziging is ingepakt. Stil negeren geeft
+  // dan een wijziging die niet is wat er gevraagd werd.
+  const vreemd = Object.keys(ARGUMENT_OMSCHRIJVING).filter(
+    (arg) => !verwacht.includes(arg) && rest[arg] !== undefined && rest[arg] !== null,
+  );
+  if (vreemd.length) {
+    return `Argument "${vreemd[0]}" hoort niet bij actie "${actie}". Die actie gebruikt: ${verwacht.join(', ')}.`;
+  }
+  return null;
+}
+
 /**
  * Nieuwe yaml-tekst zonder de handeling met dit id.
  * Gooit als het id niet bestaat -- stil niets doen is precies de "de assistent
@@ -202,7 +256,9 @@ export function patchHandeling(yamlText, id, velden) {
   const veranderd = [];
   for (const [veld, waarde] of entries) {
     if (waarde === null) {
-      if (!(veld in VELDEN)) throw new Error(`Onbekend veld "${veld}".`);
+      if (!(veld in VELDEN)) {
+        throw new Error(`Onbekend veld "${veld}". Toegestaan: ${Object.keys(VELDEN).join(', ')}.`);
+      }
       if (veld in handeling) {
         veranderd.push(`${veld}: ${handeling[veld]} -> (weg)`);
         delete handeling[veld];

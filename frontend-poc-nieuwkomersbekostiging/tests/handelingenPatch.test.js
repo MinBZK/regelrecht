@@ -15,7 +15,9 @@ import { fileURLToPath } from 'url';
 import yaml from 'js-yaml';
 import { aggregate } from '../src/sim/metrics.js';
 import {
+  ACTIES,
   addHandeling,
+  keurHandelingenArgumenten,
   listHandelingen,
   listTarieven,
   patchHandeling,
@@ -180,6 +182,69 @@ describe('een tarief wijzigen', () => {
 
   it('weigert een negatief tarief', () => {
     expect(() => patchTarief(leesBasis(), 'accountant', -1)).toThrow(/niet-negatief getal/);
+  });
+});
+
+/**
+ * De argumenten van wijzig_handelingen, één tool met vier acties. Het
+ * JSON-schema noemt alleen `actie` verplicht, dus {actie: "wijzig_tarief"}
+ * zonder waarde is schema-geldig; de assistent kreeg dan een melding over een
+ * tariefwaarde terug in plaats van over het argument dat hij vergat.
+ */
+describe('de argumenten van een handelingenwijziging', () => {
+  it('laat een volledige aanroep door', () => {
+    expect(keurHandelingenArgumenten({ actie: 'wijzig_tarief', tarief: 'accountant', waarde: 12000 })).toBeNull();
+    expect(keurHandelingenArgumenten({ actie: 'verwijder', id: 'iets' })).toBeNull();
+    expect(keurHandelingenArgumenten({ actie: 'wijzig', id: 'iets', velden: { minuten: 45 } })).toBeNull();
+    expect(keurHandelingenArgumenten({ actie: 'voeg_toe', handeling: { id: 'iets' } })).toBeNull();
+  });
+
+  it('noemt elke actie die er is', () => {
+    expect(ACTIES).toEqual(['verwijder', 'voeg_toe', 'wijzig', 'wijzig_tarief']);
+  });
+
+  it.each([
+    [{ actie: 'wijzig_tarief', tarief: 'accountant' }, /tariefwaarde/],
+    [{ actie: 'wijzig_tarief', waarde: 12000 }, /naam van het tarief/],
+    [{ actie: 'wijzig_tarief' }, /naam van het tarief.*tariefwaarde/],
+    [{ actie: 'verwijder' }, /id van de handeling/],
+    [{ actie: 'wijzig', id: 'iets' }, /velden/],
+    [{ actie: 'wijzig', velden: { minuten: 45 } }, /id van de handeling/],
+    [{ actie: 'voeg_toe' }, /nieuwe handeling/],
+  ])('weigert %o, want het argument hoort bij de actie', (argumenten, melding) => {
+    expect(keurHandelingenArgumenten(argumenten)).toMatch(melding);
+  });
+
+  // Een tariefnaam bij actie=wijzig is een tariefwijziging die als
+  // veldwijziging is ingepakt. Stil negeren geeft dan een andere wijziging dan
+  // er gevraagd werd.
+  it('weigert een argument van een andere actie', () => {
+    expect(keurHandelingenArgumenten({ actie: 'wijzig', id: 'iets', velden: { minuten: 45 }, tarief: 'accountant' }))
+      .toMatch(/"tarief" hoort niet bij actie "wijzig"/);
+  });
+
+  it.each([[undefined], [null], [''], ['wijzig_minuten']])('weigert %p als actie', (actie) => {
+    expect(keurHandelingenArgumenten({ actie })).toMatch(/Onbekende actie/);
+  });
+
+  it('weigert een aanroep zonder argumenten', () => {
+    expect(keurHandelingenArgumenten()).toMatch(/Onbekende actie/);
+  });
+
+  // Een leeg `velden` is schema-geldig (additionalProperties, geen minimum) en
+  // moet dus door de patch-functie geweigerd worden, niet door deze keuring:
+  // hij ís meegestuurd.
+  it('laat een leeg velden-object door en laat de patch erover oordelen', () => {
+    expect(keurHandelingenArgumenten({ actie: 'wijzig', id: 'iets', velden: {} })).toBeNull();
+    expect(() => patchHandeling(leesBasis(), 'accountantsvalidatie_nieuwkomers', {})).toThrow(/minstens één veld/);
+  });
+
+  // `velden` staat op additionalProperties: true, dus het schema laat elk veld
+  // toe. De melding moet zeggen welke er wel bestaan, ook als de waarde null is
+  // (de manier om een veld weg te halen).
+  it.each([['rood'], [null]])('weigert een onbekend veld met waarde %p en noemt de velden die wel bestaan', (waarde) => {
+    expect(() => patchHandeling(leesBasis(), 'accountantsvalidatie_nieuwkomers', { kleur: waarde }))
+      .toThrow(/Onbekend veld "kleur"\. Toegestaan: omschrijving, partij, sector, aanleiding, minuten, tarief, vanaf_jaar\./);
   });
 });
 
