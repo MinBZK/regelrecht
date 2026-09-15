@@ -76,6 +76,16 @@ describe('het grammenoverzicht', () => {
     expect(rows(wrapper)[0].find('nldd-tag').attributes('text')).toBe('Executogram');
   });
 
+  // Waar het zaakkenmerk vandaan komt: het staat onder de naam van het besluit
+  // dat het invulde, en niet alleen in de uitklap.
+  it('zet bij een besluit de zaak onder de naam van het gram', () => {
+    const wrapper = mount(GramPanel, { props: { snapshot: worldFixture } });
+    const besluit = allGrams(worldFixture).find((row) => row.chronicle === 'beschikkingen');
+    const row = rows(wrapper).find((candidate) => columns(candidate).includes(besluit.name));
+    const supporting = row.findAll('nldd-text-cell').map((cell) => cell.attributes('supporting-text'));
+    expect(supporting).toContain(`zaak ${besluit.gram.fields.zaakkenmerk.value}`);
+  });
+
   it('laat op cel filteren', async () => {
     const wrapper = mount(GramPanel, { props: { snapshot: worldFixture } });
     const cell = worldFixture.cells[0].id;

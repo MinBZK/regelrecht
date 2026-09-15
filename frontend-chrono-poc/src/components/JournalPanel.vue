@@ -11,7 +11,7 @@ import {
   journalCellOptions,
   journalRows,
 } from '../world/journal.js';
-import { gramKind } from '../world/snapshot.js';
+import { gramByRef, gramKind } from '../world/snapshot.js';
 
 // Het journaal: wie deed wat, en wat veranderde er daardoor aan de stand van de
 // zaak. Eén regel per gebeurtenis, in de volgorde waarin ze ontstond.
@@ -29,7 +29,9 @@ import { gramKind } from '../world/snapshot.js';
 // verschillen per cel. De grammen zijn knoppen: ze openen het gram zoals het in
 // zijn eigen kroniek staat, met de herkomst van elke waarde erbij. Dat is
 // dezelfde rij als in de kolom van de cel (`GramRow`) en niet een tweede
-// weergave ernaast.
+// weergave ernaast. Bij een gram met een zaakkenmerk staat dat kenmerk vooraan:
+// zo is te zien welke zaak deze gebeurtenis raakte, en waar het kenmerk vandaan
+// komt dat een reductie straks als sleutel vraagt.
 
 const props = defineProps({
   /** Het beeld van de wereld. */
@@ -109,12 +111,10 @@ const detail = ref(null);
 const gramDialog = ref(null);
 
 function showGram(row, gram) {
-  const cell = (props.snapshot?.cells ?? []).find((candidate) => candidate.id === gram.cell);
-  const chronicle = (cell?.chronicles ?? []).find((candidate) => candidate.stream === gram.chronicle);
-  // Het gram-id is `<cel>|<kroniek>|<plek>`; de plek is de index in precies deze
-  // lijst, want het beeld geeft de grammen in de volgorde waarin ze vastliggen.
-  const index = Number(String(gram.id).split('|').at(-1));
-  const found = Number.isInteger(index) ? ((chronicle?.grams ?? [])[index] ?? null) : null;
+  // Het gram-id is `<cel>|<kroniek>|<plek>`; dezelfde weg terug als waarmee de
+  // regel haar zaak leest, en dus niet een tweede manier om hetzelfde gram te
+  // vinden.
+  const found = gramByRef(props.snapshot, gram);
   detail.value = found ? { gram: found, ref: gram, moment: row.entry.moment } : null;
   if (found) gramDialog.value?.show?.();
 }
@@ -227,7 +227,7 @@ function questionParams(question) {
         <!-- De grammen die door deze gebeurtenis ontstonden. Knoppen: ze openen
              het gram zoals het in zijn eigen kroniek staat. -->
         <nldd-list-item
-          v-for="gram in isOpen(row.id) ? row.entry.grams : []"
+          v-for="gram in isOpen(row.id) ? row.grams : []"
           :key="gram.id"
           slot="children"
           size="sm"
@@ -240,11 +240,15 @@ function questionParams(question) {
           <nldd-cell width="132px">
             <nldd-tag size="sm" :color="gramKind(gram.kind).color" :text="gramKind(gram.kind).label"></nldd-tag>
           </nldd-cell>
+          <!-- De zaak voorop: dat kenmerk zegt waar dit gram bij hoort, en het
+               is wat een besluit, een betaling en een latere vaststelling aan
+               elkaar knoopt. Draagt het gram er geen, dan begint de regel
+               gewoon bij de cel. -->
           <nldd-text-cell
             size="sm"
             min-width="160px"
             :text="gram.name"
-            :supporting-text="`${gram.cell} · ${gram.chronicle}`"
+            :supporting-text="[gram.zaak, gram.cell, gram.chronicle].filter(Boolean).join(' · ')"
           ></nldd-text-cell>
           <nldd-spacer-cell size="8"></nldd-spacer-cell>
           <nldd-icon-cell icon="chevron-right" size="16" color="secondary"></nldd-icon-cell>

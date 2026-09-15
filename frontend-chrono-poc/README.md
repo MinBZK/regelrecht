@@ -110,8 +110,42 @@ zegt de kaart dat ("al besloten op …") en vraagt ze om bevestiging voordat ze 
 nog eens doet. De knop blijft bruikbaar — een tweede besluit over dezelfde zaak
 is juist het verhaal van deze opstelling — maar er komt een decretogram bij, en
 dat hoort een klik te zijn die iemand bedoelde. Welke zaak het is leest de app af
-aan de parameters van het besluit zoals het gram ze vastlegde; het
-zaakkenmerk-sjabloon staat in het wereldbestand en niet in het beeld.
+aan de parameters van het besluit zoals het gram ze vastlegde, en niet uit het
+zaakkenmerk-sjabloon: dat sjabloon staat wel in het beeld, maar het **invullen**
+ervan is werk van de cel, met een weigering eraan vast voor een waarde waarin een
+scheidingsteken voorkomt. Een tweede plek die het kenmerk samenstelt zou daarvan
+af kunnen wijken.
+
+## Het zaakkenmerk komt niet uit het niets
+
+Een vraag aan een cel vraagt om precies de parameters die de cel documenteert, en
+één daarvan is moeilijker dan de rest: het **zaakkenmerk**. Een BSN weet de
+vrager; een zaakkenmerk ontstaat pas bij een besluit, uit een sjabloon in het
+wereldbestand (`zorgtoeslag/{bsn}`), en het is daarna de sleutel waarop de kroniek
+met beschikkingen groepeert. Wie dat niet weet, typt er iets en krijgt "niets
+vastgesteld" terug — een geldig antwoord op een vraag over een zaak die niet
+bestaat.
+
+Het tabblad **Lexostatus** maakt die keten zichtbaar, en alles ervan komt uit het
+beeld:
+
+- het formulier is dat van de gekozen definitie: één veld per gedocumenteerde
+  parameter, met haar type. De cel accepteert precies deze namen, dus ze hoeven
+  niet geraden te worden;
+- de `doc` van de definitie staat erboven als toelichting;
+- bij de parameter die de **sleutel** van de reductie is, staat de kroniek en de
+  vorm erbij ("sleutel van kroniek `beschikkingen`, vorm `zorgtoeslag/{bsn}`").
+  Die vorm komt van de besluiten van diezelfde cel, en staat daarom ook als tag in
+  haar kolom;
+- het veld biedt de kenmerken aan die er **nu in die kroniek liggen**
+  (`nldd-combo-box` met `allow-custom`). Vrije invoer blijft: een vraag over een
+  zaak die er nog niet is, is een geldige vraag, en dat antwoord te zien krijgen
+  is precies wat deze opstelling wil laten zien.
+
+En het kenmerk zelf staat waar het ontstaat: in het journaal en in het tabblad
+Grammen draagt een gram dat er een heeft zijn zaak onder de naam ("zaak
+zorgtoeslag/999993653"), en in een uitgeklapt decretogram staat het als eerste
+veld.
 
 ## Het observatielog is een meetinstrument
 

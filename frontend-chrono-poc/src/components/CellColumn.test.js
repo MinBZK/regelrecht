@@ -22,8 +22,13 @@ describe('een kolom per cel', () => {
     expect(wrapper.text()).toContain('toeslagen');
     const tags = attrs(wrapper, 'nldd-tag', 'text');
     for (const law of cell.laws) expect(tags).toContain(law);
-    for (const name of cell.lexostatussen) expect(tags).toContain(name);
-    for (const besluit of cell.besluiten) expect(tags).toContain(besluit);
+    for (const definition of cell.lexostatussen) expect(tags).toContain(definition.name);
+    // Bij een besluit staat het zaakkenmerk-sjabloon erbij: dat is de vorm die
+    // de sleutel van de kroniek met beschikkingen krijgt, en die vorm hoort te
+    // staan op de plek waar ze vandaan komt.
+    for (const besluit of cell.besluiten) {
+      expect(tags).toContain(`${besluit.name} · ${besluit.zaakkenmerk}`);
+    }
   });
 
   it('noemt een cel zonder wetten een bron-cel', () => {
