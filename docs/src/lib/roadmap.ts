@@ -12,6 +12,7 @@
  * render, so a value can never render as a tag the schema would have rejected.
  */
 import { z } from 'astro:content';
+import { normaliseerZoekterm } from '~/lib/roadmap-zoek';
 import configJson from '~/data/roadmap-config.json';
 import paperHeadings from '~/research/rules-as-executed.headings.json';
 import { getRfcs } from '~/lib/rfcs';
@@ -125,7 +126,7 @@ type NonEmpty = [string, ...string[]];
 
 /**
  * The value `data-categorie` carries for a werkpakket without a categorie.
- * Six of the nineteen have none, so the filter needs a way to show them:
+ * Twenty of the forty-nine have none, so the filter needs a way to show them:
  * without one, checking any box hides them with no control to bring them
  * back. Shared by the page and the stylesheet's selectors.
  */
@@ -292,6 +293,59 @@ export function werkpakkettenInCel<T extends { data: WerkpakketData }>(
       (w) => w.data.faseId === faseId && w.data.disciplineId === disciplineId,
     )
     .sort((a, b) => a.data.volgorde - b.data.volgorde);
+}
+
+/**
+ * Everything of a werkpakket that the zoekfilter on /roadmap matches against,
+ * as one lowercased string.
+ *
+ * Full text in the literal sense: the toelichting and the onderzoeksvragen are
+ * in here too, and those render only on the detail page. Searching the card's
+ * visible words alone would mean a term you read in a toelichting finds
+ * nothing, which is the case where a search earns its place — 34 of the 49
+ * werkpakketten have a toelichting and 32 have onderzoeksvragen.
+ *
+ * The labels go in next to the ids (`hoog`, not just `Hoog`), because someone
+ * types what the tag says, not what the frontmatter stores. Fase and discipline
+ * come from the matrix axes, so "garantie" finds that column's cards even
+ * though the word is nowhere on them.
+ *
+ * Normalised through the same function the typed query goes through — it lives
+ * in lib/roadmap-zoek.ts precisely so both sides can import it — so a search
+ * for "verifieren" matches the capability "Verifiëren en simuleren".
+ */
+export function zoektekst(data: WerkpakketData): string {
+  const vragen = data.onderzoeksvragen.map((v) =>
+    typeof v === 'string' ? v : v.vraag,
+  );
+
+  return normaliseerZoekterm(
+    [
+      data.titel,
+      data.toelichting,
+      ...vragen,
+      getFase(data.faseId)?.naam,
+      getFase(data.faseId)?.ondertitel,
+      getDiscipline(data.disciplineId)?.naam,
+      getDiscipline(data.disciplineId)?.ondertitel,
+      getPrioriteit(data.prioriteit)?.label,
+      getCategorie(data.categorie)?.label,
+      getCapability(data.capability)?.label,
+      getOnderzoek(data.onderzoek)?.label,
+      getBouw(data.bouw)?.label,
+      data.omvang && `omvang ${data.omvang}`,
+      data.capaciteit,
+      // Both ways an RFC gets written: "RFC-013" (as the site renders it) and
+      // "rfc 13" (as people type it). A bare number is left out on purpose —
+      // "13" would match every werkpakket whose text happens to contain it.
+      ...data.rfcs.flatMap((n) => [
+        `rfc-${String(n).padStart(3, '0')}`,
+        `rfc ${n}`,
+      ]),
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
 }
 
 /**

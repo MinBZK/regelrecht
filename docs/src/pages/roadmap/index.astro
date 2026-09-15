@@ -144,13 +144,51 @@ const pathname = '/roadmap';
         </nldd-title>
 
         {/*
-          The filter works without any JavaScript of our own:
+          The categorie filter works without any JavaScript of our own:
           nldd-checkbox-field reflects `checked` onto its host element, so the
           :has() rules in roadmap.css can read the state straight off the
           component. A <fieldset> and <legend> group the controls, which is
           what a group of checkboxes needs and what the design system has no
           component for.
+
+          It composes with the zoekfilter above rather than overriding it: a
+          card shows when both allow it. The specificity that makes that hold
+          is spelled out in roadmap.css.
         */}
+        {/*
+          The zoekfilter. Unlike the categorie filter below it this one needs a
+          script: CSS cannot compare a typed string to a card's text. It is
+          progressive — with no JavaScript the field never appears (the script
+          unhides it), so a dead input is never shown.
+
+          `rr-zoek-count` is the live region that says how much is left; it is
+          the only feedback that a search which matches nothing did anything,
+          since an empty matrix on its own reads as a broken page.
+        */}
+        <nldd-container class="rr-zoek" gap="8" hidden>
+          {/*
+            `width` is the component's own attribute, so the cap needs no CSS
+            of ours. It pairs with the component's max-width:100%, so the field
+            still shrinks below this on a narrow screen instead of overflowing.
+            Left to stretch, it would run the full docs measure and read as a
+            field for a paragraph rather than for a couple of words.
+          */}
+          <nldd-search-field
+            id="rr-zoek-veld"
+            placeholder="Zoek in werkpakketten"
+            accessible-label="Zoek in werkpakketten"
+            width="420px"
+            no-spellcheck
+          ></nldd-search-field>
+          <nldd-text
+            id="rr-zoek-count"
+            size="sm"
+            color="secondary"
+            role="status"
+            aria-live="polite"
+          ></nldd-text>
+        </nldd-container>
+
         <fieldset class="rr-filter">
           <legend class="rr-filter__legend">
             <nldd-text size="sm" weight="medium" color="secondary">
@@ -272,3 +310,112 @@ const pathname = '/roadmap';
     </nldd-container>
   </nldd-simple-section>
 </Base>
+
+{/*
+  The zoekfilter.
+
+  A module script, so it is bundled and `normaliseerZoekterm` is the very
+  function the build used to write every `data-zoek` — the two sides of a
+  search have to normalise identically, and importing it is the only way to
+  keep that true without a second copy drifting. It comes from
+  lib/roadmap-zoek.ts rather than lib/roadmap.ts for a hard reason: the latter
+  imports astro:content and node:fs, which a client bundle cannot have.
+
+  It matches on all terms, in any order: "garantie toezicht" finds a card that
+  has both words anywhere in its text, not the phrase. That is what someone
+  typing two words means, and it makes the field forgiving about the order the
+  words happen to appear in.
+
+  Hiding is a class on the card, not `display` set inline: the categorie filter
+  already owns `display` through its :has() rules, and a script writing
+  element.style would beat those and strand a card visible that the categorie
+  filter had hidden. As a class the two compose — a card shows only when both
+  filters allow it, which is what a reader expects of two controls side by side.
+*/}
+<script>
+  import { normaliseerZoekterm } from '~/lib/roadmap-zoek';
+
+  function wireZoek() {
+    const field = document.getElementById('rr-zoek-veld');
+    const count = document.getElementById('rr-zoek-count');
+    const cards = Array.from(
+      document.querySelectorAll<HTMLElement>('.rr-wp-card[data-zoek]'),
+    );
+    if (!field || !count || !cards.length) return;
+
+    // The field is hidden in the markup so it never shows without this script
+    // behind it. `hidden` sits on the wrapper, which also holds the counter.
+    field.closest<HTMLElement>('.rr-zoek')?.removeAttribute('hidden');
+
+    const filter = (raw: string) => {
+      const terms = normaliseerZoekterm(raw).split(' ').filter(Boolean);
+
+      for (const card of cards) {
+        const haystack = card.dataset.zoek ?? '';
+        const match = terms.every((term) => haystack.includes(term));
+        card.classList.toggle('rr-wp-card--geen-treffer', !match);
+      }
+
+      /*
+       * Count what is actually on screen, not what the search matched.
+       *
+       * The categorie filter hides cards through its own CSS, which this
+       * script knows nothing about, so counting search matches would state a
+       * number the reader cannot see — and with a categorie checked and a
+       * query typed it could announce "1 van de 49 gevonden" over an empty
+       * matrix. Asking the browser for the rendered height settles it against
+       * both filters at once and cannot drift from the CSS the way a second
+       * copy of the categorie logic in JS would.
+       *
+       * Read after the loop above, so the class changes are already applied.
+       */
+      const zichtbaar = cards.filter((card) => card.offsetHeight > 0).length;
+
+      // Silent while the field is empty: with nothing typed the count would
+      // state the obvious on every page load and read as a result.
+      if (!terms.length) {
+        count.textContent = '';
+      } else if (zichtbaar === 0) {
+        count.textContent = 'Geen werkpakketten gevonden.';
+      } else {
+        // "werkpakketten" stays plural whatever the count: the noun in this
+        // sentence belongs to the total, not to the hits. "1 van de 49
+        // werkpakket" is what agreeing with the hit count produces.
+        count.textContent = `${zichtbaar} van de ${cards.length} werkpakketten gevonden.`;
+      }
+    };
+
+    // `input` covers typing and the component's own clear button; `search`
+    // fires on Enter, where the value is already the same, so re-running is
+    // harmless and keeps the two paths from needing different code.
+    for (const event of ['input', 'search']) {
+      field.addEventListener(event, (e) => {
+        filter((e as CustomEvent<{ value: string }>).detail?.value ?? '');
+      });
+    }
+
+    // The categorie checkboxes change what is on screen without the query
+    // changing, so the count has to be recomputed from their state too —
+    // otherwise it keeps reporting the tally from the last keystroke.
+    for (const optie of document.querySelectorAll('.rr-filter__option')) {
+      optie.addEventListener('change', () => filter(fieldValue(field)));
+    }
+  }
+
+  /** The field's current text, via the property the component reflects. */
+  function fieldValue(field: HTMLElement): string {
+    return (field as HTMLElement & { value?: string }).value ?? '';
+  }
+
+  /*
+   * Bound on astro:page-load, not at top level. Base.astro renders
+   * <ClientRouter />, and a module script runs once per document: on a
+   * ClientRouter navigation back to /roadmap the DOM is swapped in fresh —
+   * `hidden` back on the wrapper, no listeners — and a top-level binding would
+   * never run again, leaving no search field at all until a hard reload. Since
+   * every card links to a detail page, that return trip is the normal path
+   * through this page. astro:page-load also fires on the initial load, so this
+   * covers both. Same pattern as wireSearch() in Base.astro.
+   */
+  document.addEventListener('astro:page-load', wireZoek);
+</script>
