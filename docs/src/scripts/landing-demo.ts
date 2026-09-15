@@ -272,7 +272,7 @@ class ScrollyDemo extends HTMLElement {
     if (reduceMotion() || !('IntersectionObserver' in window)) {
       beats.forEach((b) => b.setAttribute('data-visible', 'true'));
       // Still run: the trace is content, not decoration. `startRun` checks the
-      // same preference and puts the rows up without walking through them.
+      // preference again and puts the rows up in one go.
       void this.liveRun(lang);
       return;
     }
@@ -536,6 +536,19 @@ class ScrollyDemo extends HTMLElement {
     steps.forEach((s) => s.setAttribute('data-done', 'false'));
     run.removeAttribute('data-complete');
 
+    // Reduced motion: the trace is content, the walk-through is decoration, so
+    // put every row up at once and be done. Checked here rather than at the
+    // call sites, because every path into the player wants the same answer.
+    if (reduceMotion()) {
+      steps.forEach((s) => s.setAttribute('data-done', 'true'));
+      run.setAttribute('data-state', 'done');
+      run.setAttribute('data-complete', 'true');
+      if (status) status.textContent = labels.done;
+      if (replay) replay.hidden = this.replaySuppressed;
+      this.showAmount(lang);
+      return;
+    }
+
     const scroller = this.querySelector<HTMLElement>('[data-steps-scroll]');
     if (scroller) scroller.scrollTop = 0;
     const interval = Math.max(MIN_STEP_MS, RUN_MS / Math.max(1, steps.length));
@@ -563,20 +576,6 @@ class ScrollyDemo extends HTMLElement {
     });
   }
 
-  /** Show the finished state without animating, for reduced motion. */
-  private finishRun(lang: string) {
-    const run = this.querySelector<HTMLElement>('[data-run]');
-    const status = this.querySelector<HTMLElement>('[data-run-status]');
-    if (!run) return;
-    this.hasRun = true;
-    run.setAttribute('data-state', 'done');
-    run.setAttribute('data-complete', 'true');
-    this.querySelectorAll<HTMLElement>('[data-step]').forEach((s) =>
-      s.setAttribute('data-done', 'true'),
-    );
-    if (status) status.textContent = lang === 'en' ? 'Done' : 'Klaar';
-    this.showAmount(lang);
-  }
 }
 
 if (!customElements.get('rr-scrolly')) {

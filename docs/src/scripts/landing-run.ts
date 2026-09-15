@@ -23,9 +23,9 @@ import {
   traceRoot,
   GRAMMAR,
   ExecutionContext,
-  // Copied into this project by `just landing-laws`, not imported from the
-  // workspace: see script/landing-laws.sh for why, and for the --check that
-  // fails the build when this copy falls behind the shared package.
+  // Copied into this project rather than imported from the workspace; see
+  // script/landing-laws.sh for why. The copy is remade on every build (npm
+  // `prebuild`), so what ships is always current with the shared package.
 } from '~/lib/gherkin/index.js';
 
 /** The output the panel puts on screen; the scenario asserts it too. */

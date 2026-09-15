@@ -244,7 +244,13 @@ impl RuleContext {
             trace: self.trace.clone(), // Share the same trace builder
             law_id: Rc::clone(&self.law_id),
             unpassed_optional: Rc::clone(&self.unpassed_optional),
-            anchor: None,
+            // A child context evaluates inside the same article as its parent:
+            // `create_child` is what a FOREACH body runs in, and that body is
+            // no less anchored than the operation containing it. Resetting this
+            // to `None` dropped the anchor from every trace step inside a loop
+            // (participatiewet uses FOREACH in the live corpus), because
+            // `trace_push` only stamps one when the context carries it.
+            anchor: self.anchor.clone(),
         }
     }
 

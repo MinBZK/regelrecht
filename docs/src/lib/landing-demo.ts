@@ -15,16 +15,12 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-// Two roots, because the sources sit in two places. Deriving either from
-// `import.meta.url` does not survive the build: this module is bundled, so at
-// build time it no longer sits where its source does. `process.cwd()` is the
-// docs project in `astro dev`, in `astro build` and in the image.
-const project = process.cwd();
-const repo = join(project, '..');
-
-/** A file inside the docs project. */
-const readLocal = (...parts: string[]) =>
-  readFileSync(join(project, ...parts), 'utf8');
+// Everything read here lives outside the docs project, in the corpus. Deriving
+// the root from `import.meta.url` does not survive the build: this module is
+// bundled, so at build time it no longer sits where its source does.
+// `process.cwd()` is the docs project in `astro dev`, in `astro build` and in
+// the image, and the repository is one level above it.
+const repo = join(process.cwd(), '..');
 
 /** A file elsewhere in the repository, chiefly the corpus. */
 const read = (...parts: string[]) => readFileSync(join(repo, ...parts), 'utf8');

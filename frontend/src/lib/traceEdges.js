@@ -113,12 +113,21 @@ export function flattenTraceSteps(root, rootLawId) {
     // carries the provision the engine was in. Falling back to the
     // `targetLaw#output` name keeps a trace recorded before RFC-039 working,
     // and covers a step the engine could not anchor.
-    let descendLawId = node.anchor?.law_id ?? currentLawId;
-    if (!node.anchor?.law_id && node.node_type === 'cross_law_reference') {
+    //
+    // A cross-law reference is the exception, and its own anchor is the wrong
+    // answer there. The engine opens the trace guard for the call while it is
+    // still in the calling context and only then enters the target provision
+    // (packages/engine/src/service.rs), so `anchor.law_id` on this node is the
+    // law that made the call, never the one being called. Reading it would
+    // attribute every step underneath to the caller. The name carries the
+    // target, so that is what the descent follows.
+    let descendLawId;
+    if (node.node_type === 'cross_law_reference') {
       const hashIdx = node.name.indexOf('#');
-      if (hashIdx > 0) {
-        descendLawId = node.name.substring(0, hashIdx);
-      }
+      descendLawId =
+        hashIdx > 0 ? node.name.substring(0, hashIdx) : (node.anchor?.law_id ?? currentLawId);
+    } else {
+      descendLawId = node.anchor?.law_id ?? currentLawId;
     }
 
     const children = node.children ?? [];
