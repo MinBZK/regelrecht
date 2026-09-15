@@ -317,7 +317,7 @@ pub struct Cell {
     /// Dezelfde kennis waarmee de definities van de cel getoetst zijn, bewaard
     /// zodat de wereld haar **acties** en **termijnen** er langs dezelfde weg
     /// tegen kan toetsen (zie [`Self::check_stream`]). Zou de wereld een eigen
-    /// lijstje bijhouden, dan zou een veldnaam die de cel afwijst in een actie
+    /// lijstje bijhouden, dan zou een stroom die de cel niet houdt in een actie
     /// stil goedgekeurd worden.
     streams: config::StreamFields,
     /// De gepubliceerde lexostatussen, op naam.

@@ -1925,9 +1925,9 @@ Zie [De vijf invarianten](#de-vijf-invarianten-en-de-gate-eronder).
 Alles wat een actie belooft, wordt bij het optuigen getoetst: bestaat de actor,
 bestaat de cel, houdt ze de stroom, kan die stroom haar sleutelveld uit het
 formulier krijgen, en bestaat het besluit. Een actie die pas bij de eerste klik
-omvalt, is een typfout die op het verkeerde moment boven water komt. De stroom met decretogrammen
-(`beschikkingen`) is geen doel voor een actie: daar ontstaat een gram door te
-besluiten.
+omvalt, is een typfout die op het verkeerde moment boven water komt. De stroom met
+decretogrammen (`beschikkingen`) is geen doel voor een actie: daar ontstaat een
+gram door te besluiten.
 
 ### Voorinvulling: wat de wereld al weet
 
