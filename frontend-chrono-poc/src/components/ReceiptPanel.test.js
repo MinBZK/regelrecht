@@ -82,14 +82,39 @@ describe('het receipt van een decretogram', () => {
   it('toont elke sectie van het receipt met haar regels', async () => {
     const wrapper = await panel();
     const titles = wrapper.findAll('nldd-title').map((title) => title.text());
+    // Het gram staat erbij, met zijn moment in de logische tijd naast de
+    // wandkloktijd van de banner: dat die twee verschillen is het hele punt.
+    expect(titles.join(' ')).toContain('Het gram waar dit receipt bij hoort');
     expect(titles.join(' ')).toContain('Herkomst van de uitvoering');
     expect(titles.join(' ')).toContain('Resultaten');
 
     const all = wrapper.findAll('nldd-list-item').map((item) =>
       item.findAll('nldd-text-cell').map((cell) => cell.attributes('text')),
     );
+    expect(all).toContainEqual(['Op moment', receiptFixture.gram.op_moment]);
     expect(all).toContainEqual(['Regulation id', 'wet_op_de_zorgtoeslag']);
     expect(all).toContainEqual(['Outputs · hoogte zorgtoeslag', '197178.01']);
+  });
+
+  it('zegt het als een besluit niets van een ander overnam, in plaats van te zwijgen', async () => {
+    // "Niets geaccepteerd" is zelf een uitspraak over invariant I5; een tabel die
+    // verdwijnt laat een lezer raden of er niets was of niets geladen werd.
+    const receipt = cloneReceipt();
+    receipt.accepted_values = [];
+    const wrapper = await panel(receipt);
+    expect(tableRows(wrapper, 0)).toHaveLength(0);
+    expect(wrapper.findAll('nldd-table')[0].attributes('empty-text')).toBe(
+      'Geen geaccepteerde waarden',
+    );
+  });
+
+  it('zegt het als het receipt geen wandkloktijd draagt', async () => {
+    const receipt = cloneReceipt();
+    receipt.timestamp.wall_clock = null;
+    const wrapper = await panel(receipt);
+    expect(wrapper.find('nldd-banner').attributes('text')).toBe(
+      'Geen wandkloktijd vastgelegd bij deze uitvoering',
+    );
   });
 
   it('zegt "geen receipt" met de melding van de server als er geen is', async () => {

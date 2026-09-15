@@ -76,6 +76,19 @@ const regulations = computed(() => loadedRegulations(receipt.value));
 const accepted = computed(() => acceptedValues(receipt.value));
 const timestamp = computed(() => receiptTimestamp(receipt.value));
 
+/**
+ * De kop van de tijdstempel-banner.
+ *
+ * Draagt het receipt geen wandkloktijd, dan staat dát er — een lege plek is hier
+ * zelf iets om te zien, en "Uitgevoerd op" gevolgd door niets is een melding die
+ * belooft wat ze niet waarmaakt.
+ */
+const executedAt = computed(() =>
+  timestamp.value?.wallClock
+    ? `Uitgevoerd op ${timestamp.value.wallClock}`
+    : 'Geen wandkloktijd vastgelegd bij deze uitvoering',
+);
+
 /** De regel onder een geaccepteerde waarde: waar ze vandaan komt en wanneer. */
 function acceptedDetail(value) {
   return [
@@ -121,78 +134,77 @@ function validity(regulation) {
         v-if="timestamp"
         variant="neutral"
         icon="time"
-        :text="`Uitgevoerd op ${timestamp.wallClock}`"
+        :text="executedAt"
         :supporting-text="timestamp.note"
       ></nldd-banner>
 
-      <template v-if="accepted.length > 0">
-        <nldd-title size="6">
-          <span>Geaccepteerde waarden</span>
-          <span slot="subtitle">van een ander overgenomen in plaats van nagerekend</span>
-        </nldd-title>
-        <nldd-table
-          columns="minmax(160px, 1fr) 120px minmax(200px, 1fr) minmax(160px, 1fr)"
-          accessible-label="Waarden die dit besluit van een andere cel accepteerde"
-          empty-text="Geen geaccepteerde waarden"
-          empty-supporting-text="Dit besluit rekende alles zelf uit."
-        >
-          <nldd-table-row slot="header">
-            <nldd-text-cell size="sm" text="Waarde"></nldd-text-cell>
-            <nldd-text-cell size="sm" text="Uitkomst"></nldd-text-cell>
-            <nldd-text-cell size="sm" text="Bron"></nldd-text-cell>
-            <nldd-text-cell size="sm" text="Bevoegd gezag"></nldd-text-cell>
-          </nldd-table-row>
-          <nldd-table-row v-for="value in accepted" :key="value.output">
-            <nldd-text-cell size="sm" :text="humanize(value.output)"></nldd-text-cell>
-            <nldd-text-cell size="sm" :text="formatValue(value.value)"></nldd-text-cell>
-            <nldd-text-cell
-              size="sm"
-              :text="`cel '${value.cell}'`"
-              :supporting-text="acceptedDetail(value)"
-            ></nldd-text-cell>
-            <!-- Zwijgt de bron over haar gezag, dan staat dát er, en niet het
-                 cel-id nog een keer onder een andere naam: een adres is geen
-                 gezag. -->
-            <nldd-cell v-if="value.authority">
-              <nldd-tag size="sm" color="oranje" :text="value.authority"></nldd-tag>
-            </nldd-cell>
-            <nldd-text-cell
-              v-else
-              size="sm"
-              color="secondary"
-              text="niet genoemd door de bron"
-            ></nldd-text-cell>
-          </nldd-table-row>
-        </nldd-table>
-      </template>
+      <!-- Ook als de lijst leeg is: dat een besluit niets van een ander overnam is
+           zelf iets om te zien (invariant I5), en de lege stand van de tabel zegt
+           dat met zoveel woorden in plaats van stil te verdwijnen. -->
+      <nldd-title size="6">
+        <span>Geaccepteerde waarden</span>
+        <span slot="subtitle">van een ander overgenomen in plaats van nagerekend</span>
+      </nldd-title>
+      <nldd-table
+        columns="minmax(160px, 1fr) 120px minmax(200px, 1fr) minmax(160px, 1fr)"
+        accessible-label="Waarden die dit besluit van een andere cel accepteerde"
+        empty-text="Geen geaccepteerde waarden"
+        empty-supporting-text="Dit besluit rekende alles zelf uit."
+      >
+        <nldd-table-row slot="header">
+          <nldd-text-cell size="sm" text="Waarde"></nldd-text-cell>
+          <nldd-text-cell size="sm" text="Uitkomst"></nldd-text-cell>
+          <nldd-text-cell size="sm" text="Bron"></nldd-text-cell>
+          <nldd-text-cell size="sm" text="Bevoegd gezag"></nldd-text-cell>
+        </nldd-table-row>
+        <nldd-table-row v-for="value in accepted" :key="value.output">
+          <nldd-text-cell size="sm" :text="humanize(value.output)"></nldd-text-cell>
+          <nldd-text-cell size="sm" :text="formatValue(value.value)"></nldd-text-cell>
+          <nldd-text-cell
+            size="sm"
+            :text="`cel '${value.cell}'`"
+            :supporting-text="acceptedDetail(value)"
+          ></nldd-text-cell>
+          <!-- Zwijgt de bron over haar gezag, dan staat dát er, en niet het
+               cel-id nog een keer onder een andere naam: een adres is geen
+               gezag. -->
+          <nldd-cell v-if="value.authority">
+            <nldd-tag size="sm" color="oranje" :text="value.authority"></nldd-tag>
+          </nldd-cell>
+          <nldd-text-cell
+            v-else
+            size="sm"
+            color="secondary"
+            text="niet genoemd door de bron"
+          ></nldd-text-cell>
+        </nldd-table-row>
+      </nldd-table>
 
-      <template v-if="regulations.length > 0">
-        <nldd-title size="6">
-          <span>Geladen regelingen</span>
-          <span slot="subtitle">met de hash waarmee deze uitvoering te reproduceren is</span>
-        </nldd-title>
-        <nldd-table
-          columns="minmax(260px, 1fr) 160px minmax(240px, 2fr)"
-          accessible-label="De regelingen die tijdens de uitvoering geladen waren"
-          empty-text="Geen geladen regelingen"
-          empty-supporting-text="Dit receipt noemt geen regelingen."
-        >
-          <nldd-table-row slot="header">
-            <nldd-text-cell size="sm" text="Regeling"></nldd-text-cell>
-            <nldd-text-cell size="sm" text="Versie"></nldd-text-cell>
-            <nldd-text-cell size="sm" text="Hash"></nldd-text-cell>
-          </nldd-table-row>
-          <nldd-table-row v-for="(regulation, position) in regulations" :key="position">
-            <nldd-text-cell size="sm" :text="regulation.id"></nldd-text-cell>
-            <nldd-text-cell size="sm" :text="validity(regulation)"></nldd-text-cell>
-            <nldd-text-cell
-              size="sm"
-              color="secondary"
-              :text="regulation.hash ?? 'geen hash vastgelegd'"
-            ></nldd-text-cell>
-          </nldd-table-row>
-        </nldd-table>
-      </template>
+      <nldd-title size="6">
+        <span>Geladen regelingen</span>
+        <span slot="subtitle">met de hash waarmee deze uitvoering te reproduceren is</span>
+      </nldd-title>
+      <nldd-table
+        columns="minmax(260px, 1fr) 160px minmax(240px, 2fr)"
+        accessible-label="De regelingen die tijdens de uitvoering geladen waren"
+        empty-text="Geen geladen regelingen"
+        empty-supporting-text="Dit receipt noemt geen regelingen."
+      >
+        <nldd-table-row slot="header">
+          <nldd-text-cell size="sm" text="Regeling"></nldd-text-cell>
+          <nldd-text-cell size="sm" text="Versie"></nldd-text-cell>
+          <nldd-text-cell size="sm" text="Hash"></nldd-text-cell>
+        </nldd-table-row>
+        <nldd-table-row v-for="(regulation, position) in regulations" :key="position">
+          <nldd-text-cell size="sm" :text="regulation.id"></nldd-text-cell>
+          <nldd-text-cell size="sm" :text="validity(regulation)"></nldd-text-cell>
+          <nldd-text-cell
+            size="sm"
+            color="secondary"
+            :text="regulation.hash ?? 'geen hash vastgelegd'"
+          ></nldd-text-cell>
+        </nldd-table-row>
+      </nldd-table>
 
       <template v-for="section in sections" :key="section.key">
         <nldd-title size="6">
