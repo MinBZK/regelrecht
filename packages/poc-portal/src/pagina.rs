@@ -52,6 +52,7 @@ fn omhulsel(titel: &str, inhoud: &str) -> String {
 <body>
 <nldd-app-view>
 <nldd-page>
+{thema}
 {inhoud}
 </nldd-page>
 </nldd-app-view>
@@ -60,7 +61,31 @@ fn omhulsel(titel: &str, inhoud: &str) -> String {
 "#,
         titel = esc(titel),
         inhoud = inhoud,
+        thema = thema_knop(),
     )
+}
+
+/// De licht/donker-keuze, rechtsboven op elke pagina van het portaal.
+///
+/// `anchor` maakt het menu zelf de schakelaar: het luistert op een klik op de
+/// knop en opent en sluit zichzelf. De bedrading eromheen (lezen, toepassen,
+/// bewaren) staat in `/_assets/nldd.js`, want POC_CSP staat `script-src 'self'`
+/// zonder unsafe-inline: een <script> hier zou geweigerd worden.
+///
+/// `data-thema-menu` is de haak die dat script zoekt. De waarden zijn Nederlands
+/// omdat de UI dat is; het script vertaalt ze naar de vorm die de rest van
+/// regelrecht onder `rr-theme` bewaart.
+fn thema_knop() -> &'static str {
+    r#"  <nldd-container layout="row" horizontal-alignment="right" padding="12" padding-bottom="0">
+    <nldd-button id="thema-knop" variant="neutral-transparent" size="sm"
+      start-icon="light-mode" text="Weergave" expandable
+      popup-type="menu" accessible-label="Kies licht of donker"></nldd-button>
+    <nldd-menu anchor="thema-knop" data-thema-menu>
+      <nldd-menu-item type="radio" value="systeem" text="Systeem" icon="display"></nldd-menu-item>
+      <nldd-menu-item type="radio" value="licht" text="Licht" icon="light-mode"></nldd-menu-item>
+      <nldd-menu-item type="radio" value="donker" text="Donker" icon="dark-mode"></nldd-menu-item>
+    </nldd-menu>
+  </nldd-container>"#
 }
 
 /// One card on the public index.
@@ -102,19 +127,81 @@ pub fn index(registry: &Registry) -> String {
         .collect::<Vec<_>>()
         .join("\n");
 
+    // De hero draagt zijn eigen contentkleur, dus `color="inherit"` op de titel
+    // en de tekst houdt het contrast in licht én donker zonder een eigen
+    // `scheme`. Hetzelfde patroon als de demo (frontend-demo HomeView) en de
+    // docs-landing (docs/src/components/LandingSections.astro), die het ook al
+    // in kale HTML doet.
     let inhoud = format!(
-        r#"  <nldd-simple-section sm-padding-block="32" md-padding-block="64">
-    <nldd-title size="1"><h1>Proof-of-concepts</h1></nldd-title>
+        r#"  <nldd-hero main-width="full" main-background="donkerblauw" padding-bottom="0">
+    <nldd-title size="1" color="inherit">
+      <span slot="overline">regelrecht</span>
+      <h1>Proof-of-concepts</h1>
+      <span slot="subtitle">Wat wetgeving doet als je haar uitvoert</span>
+    </nldd-title>
     <nldd-spacer size="16"></nldd-spacer>
-    <nldd-rich-text>
-      <p>Verkenningen rond wet- en regelgeving, elk in een eigen omgeving. Het
-      zijn geen productiesystemen en er kunnen geen rechten aan worden
-      ontleend.</p>
-      <p>Elke omgeving zit achter een eigen wachtwoord.</p>
+    <nldd-rich-text color="inherit">
+      <p>Elke omgeving hieronder neemt één stuk regelgeving en voert het uit:
+      dezelfde regels, maar dan als iets dat rekent. Daarmee is te zien wat een
+      regeling betekent voor wie eronder valt, wat een variant zou veranderen,
+      en wat de uitvoering ervan kost.</p>
     </nldd-rich-text>
-    <nldd-spacer size="24"></nldd-spacer>
+  </nldd-hero>
+
+  <nldd-simple-section sm-padding-block="32" md-padding-block="48">
+    <nldd-title slot="header" size="3">
+      <h2>De omgevingen</h2>
+      <span slot="subtitle">Elk achter een eigen wachtwoord, want het zijn verkenningen en geen productiesystemen.</span>
+    </nldd-title>
     <nldd-collection layout="grid" item-width="320px">
 {kaarten}
+    </nldd-collection>
+  </nldd-simple-section>
+
+  <nldd-simple-section background="tinted" sm-padding-block="32" md-padding-block="48">
+    <nldd-title slot="header" size="3">
+      <h2>Verder lezen</h2>
+      <span slot="subtitle">Het werk waar deze verkenningen uit voortkomen.</span>
+    </nldd-title>
+    <nldd-collection layout="grid" item-width="240px">
+      <nldd-card href="https://regelrecht.rijks.app" target="_blank" accessible-label="regelrecht.rijks.app">
+        <nldd-container padding="16" gap="8">
+          <nldd-icon name="home" size="24"></nldd-icon>
+          <nldd-title size="5"><h3>regelrecht.rijks.app</h3></nldd-title>
+          <nldd-rich-text size="sm" spacing="tight">
+            <p>Wat regelrecht is, voor wie, en hoe je meedoet.</p>
+          </nldd-rich-text>
+        </nldd-container>
+      </nldd-card>
+      <nldd-card href="https://docs.regelrecht.rijks.app/docs/" target="_blank" accessible-label="Documentatie">
+        <nldd-container padding="16" gap="8">
+          <nldd-icon name="document" size="24"></nldd-icon>
+          <nldd-title size="5"><h3>Documentatie</h3></nldd-title>
+          <nldd-rich-text size="sm" spacing="tight">
+            <p>Het wetformaat, de engine, de RFC&#39;s en hoe je zelf een wet
+            toevoegt.</p>
+          </nldd-rich-text>
+        </nldd-container>
+      </nldd-card>
+      <nldd-card href="https://regelrecht.rijks.app/research/" target="_blank" accessible-label="Onderzoek">
+        <nldd-container padding="16" gap="8">
+          <nldd-icon name="library" size="24"></nldd-icon>
+          <nldd-title size="5"><h3>Onderzoek</h3></nldd-title>
+          <nldd-rich-text size="sm" spacing="tight">
+            <p>Het position paper Rules as Executed en het onderzoek eromheen.</p>
+          </nldd-rich-text>
+        </nldd-container>
+      </nldd-card>
+      <nldd-card href="https://demo.regelrecht.rijks.app" target="_blank" accessible-label="De demo">
+        <nldd-container padding="16" gap="8">
+          <nldd-icon name="media-play" size="24"></nldd-icon>
+          <nldd-title size="5"><h3>De demo</h3></nldd-title>
+          <nldd-rich-text size="sm" spacing="tight">
+            <p>Tachtig wetten die samen rekenen, op fictieve personen, zonder
+            wachtwoord.</p>
+          </nldd-rich-text>
+        </nldd-container>
+      </nldd-card>
     </nldd-collection>
   </nldd-simple-section>"#
     );
@@ -385,6 +472,13 @@ mod tests {
             "nldd-banner",
             "nldd-form-field",
             "nldd-password-field",
+            // Geverifieerd tegen custom-elements.json van het pakket:
+            // nldd-menu-item draagt value/type/selected/icon en vuurt `select`,
+            // en nldd-menu positioneert zich op `anchor` en opent zichzelf.
+            "nldd-hero",
+            "nldd-icon",
+            "nldd-menu",
+            "nldd-menu-item",
         ];
         let r = registry();
         let mut html = index(&r);
