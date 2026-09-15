@@ -34,13 +34,31 @@
         <nldd-banner v-if="initError" variant="critical">De rekenmachine kon niet worden geladen: {{ initError.message }}</nldd-banner>
         <nldd-banner v-else-if="!ready" variant="accent">Een moment, de regelgeving wordt geladen…</nldd-banner>
         <nldd-banner v-if="error" variant="critical">{{ error }}</nldd-banner>
-        <nldd-banner v-if="variantNogNietGeldig" variant="accent">
-          Deze variant geldt vanaf {{ datumLabel(variantVanafDatum) }}; op deze peildatum is hij gelijk aan huidig recht.
-        </nldd-banner>
       </div>
     </nldd-simple-section>
 
     <template v-if="ready && ist">
+      <!-- De uitkomst staat boven het bestand: dat is waar de bezoeker voor
+           komt, en bij twee kolommen naast elkaar is het ook het enige dat de
+           variant van huidig recht onderscheidt. De leerlingenlijst is de
+           onderbouwing en staat eronder. -->
+      <nldd-simple-section>
+        <nldd-title :size="4">
+          <span>Wat er uit het bestand volgt</span>
+          <span slot="subtitle">Drempel, formulieren, deadline en het geld voor deze peildatum.</span>
+        </nldd-title>
+        <!-- Deze melding stond bovenaan de pagina, buiten beeld tegen de tijd
+             dat je bij de kolommen bent. Twee identieke kolommen lezen dan als
+             een fout, terwijl het antwoord is dat de variant later ingaat. -->
+        <nldd-banner v-if="variantNogNietGeldig" variant="accent">
+          Deze variant geldt vanaf {{ datumLabel(variantVanafDatum) }}; op deze peildatum is hij gelijk aan huidig recht.
+        </nldd-banner>
+        <div class="kolommen">
+          <aanvraag-kaart :titel="istTitel" :entry="ist.entry" :sector="sector" :peildatum="peildatum" :deadline="ist.deadline" />
+          <aanvraag-kaart v-if="variant" :titel="variantTitel" :entry="variant.entry" :sector="sector" :peildatum="peildatum" :deadline="variant.deadline" />
+        </div>
+      </nldd-simple-section>
+
       <nldd-simple-section background="tinted">
         <div class="school-kop">
           <nldd-title :size="3">
@@ -54,17 +72,6 @@
         </div>
         <nldd-activity-indicator v-if="loading" size="24" timing="instant"></nldd-activity-indicator>
         <bestand-nieuwkomers v-else :leerlingen="(bestandKolom === 'variant' && variant ? variant : ist).leerlingen" :sector="sector" />
-      </nldd-simple-section>
-
-      <nldd-simple-section>
-        <nldd-title :size="4">
-          <span>Wat er uit het bestand volgt</span>
-          <span slot="subtitle">Drempel, formulieren, deadline en het geld voor deze peildatum.</span>
-        </nldd-title>
-        <div class="kolommen">
-          <aanvraag-kaart :titel="istTitel" :entry="ist.entry" :sector="sector" :peildatum="peildatum" :deadline="ist.deadline" />
-          <aanvraag-kaart v-if="variant" :titel="variantTitel" :entry="variant.entry" :sector="sector" :peildatum="peildatum" :deadline="variant.deadline" />
-        </div>
       </nldd-simple-section>
 
       <nldd-simple-section>
