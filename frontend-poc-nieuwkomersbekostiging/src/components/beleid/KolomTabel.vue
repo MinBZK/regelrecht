@@ -151,7 +151,20 @@ function cellDelta(row, col) {
 function cellColor(row, col) {
   const v = valueOf(row, col);
   if (row.kind === 'bool') return v === true ? 'success' : v === false ? 'critical' : 'secondary';
-  if (row.kind === 'bool3') return Array.isArray(v) && v.every((x) => x === true) ? 'success' : Array.isArray(v) && v.some((x) => x === false) ? 'critical' : 'secondary';
+  // Een bool3-cel toont drie oordelen naast elkaar (po, vo, uitvoering). Eén
+  // `false` kleurde de hele cel rood, inclusief de twee vinkjes ernaast: dat
+  // leest als "hier is iets mis" terwijl er staat dat twee van de drie wel
+  // binnen budget blijven. Alles goed is `success`, alles mis is `critical`,
+  // en daartussen `warning` — de cel is dan gemengd, en dat is wat de kleur
+  // moet zeggen.
+  if (row.kind === 'bool3') {
+    if (!Array.isArray(v)) return 'secondary';
+    const oordelen = v.filter((x) => typeof x === 'boolean');
+    if (!oordelen.length) return 'secondary';
+    if (oordelen.every((x) => x === true)) return 'success';
+    if (oordelen.every((x) => x === false)) return 'critical';
+    return 'warning';
+  }
   return 'default';
 }
 </script>
