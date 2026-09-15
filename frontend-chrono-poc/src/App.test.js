@@ -255,18 +255,23 @@ describe('de pagina', () => {
       await world.act({ id: worldFixture.actions[1].id, label: 'Toekennen' }, {});
       await flushPromises();
 
+      // Bij de kaart die het verzoek deed, en met de reden van de cel als tekst:
+      // dat is het verschil met "er ging iets mis". Dat de titel erbij staat, is
+      // de helft van de test — kwam de reden alleen in de banner bovenaan terecht
+      // ('De server kon dit niet doen'), dan las een bezoeker hem als een storing.
       const kritiek = wrapper
         .findAll('nldd-banner')
         .filter((item) => item.attributes('variant') === 'critical');
       expect(kritiek).toHaveLength(1);
+      expect(kritiek[0].attributes('text')).toBe('Deze actie is niet uitgevoerd');
       expect(kritiek[0].attributes('supporting-text')).toBe(reden);
     } finally {
       useWorld().dismissError();
     }
   });
 
-  // De store is er één per pagina, dus deze test maakt hem achteraf weer leeg;
-  // hij is de enige die er een fout in achterlaat.
+  // De store is er één per pagina, dus elke test die er een fout in achterlaat,
+  // maakt hem achteraf weer leeg — deze en de vorige zijn de enige twee.
   it('zet een geweigerde actie bovenaan zodra haar eigen paneel niet meer in beeld is', async () => {
     const melding = "parameter 'ondertekend_op' is geen datum: '09-01-2024' (verwacht jjjj-mm-dd)";
     const wrapper = await mountApp();
