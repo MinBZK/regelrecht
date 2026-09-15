@@ -1,0 +1,228 @@
+---
+# Reference ledger for the fixture: tiles canonical.md completely and passes all
+# four gates. Fictional document, fictional norm corpus - see tests/README.md.
+document:
+  id: toelichting_fictieve_tegemoetkoming
+  title: Toelichting fictieve tegemoetkoming
+  source_url: https://example.org/fictief/toelichting.pdf
+  source_sha256: '0000000000000000000000000000000000000000000000000000000000000000'
+  retrieved_at: '2026-01-01'
+  status: toelichting
+  binding_note: Aan deze toelichting kunnen geen rechten worden ontleend.
+  canonical: canonical.md
+
+segments:
+  - id: s001
+    path: []
+    disposition: navigational
+    reason: Titelregel, geen normatieve inhoud.
+    text: Toelichting fictieve tegemoetkoming
+
+  - id: s002
+    number: '1'
+    path: [1 Inleiding]
+    disposition: normative
+    text: |-
+      1 Inleiding
+
+      Deze toelichting legt uit hoe de fictieve tegemoetkoming wordt vastgesteld. Aan deze
+      toelichting kunnen geen rechten worden ontleend.
+
+  - id: s003
+    number: '2'
+    path: [2 Wie komt in aanmerking]
+    disposition: normative
+    text: |-
+      2 Wie komt in aanmerking
+
+      De aanvrager moet op de peildatum ingezetene zijn van het werkgebied. Een aanvrager die
+      in het buitenland woont komt niet in aanmerking.
+
+  - id: s004
+    number: '3'
+    path: [3 Berekening]
+    disposition: normative
+    text: |-
+      3 Berekening
+
+      Van het besteedbaar inkomen wordt 20% vrijgelaten. Omdat er ook andere heffingen worden
+      opgelegd, wordt van het bedrag dat overblijft nog eens 50% vrijgelaten. De tegemoetkoming
+      bedraagt in de regel ten hoogste 1.200 euro per jaar.
+
+  - id: s005
+    number: '4'
+    path: [4 Aanvraag]
+    disposition: normative
+    text: |-
+      4 Aanvraag
+
+      Het verzoek wordt binnen 6 weken na dagtekening ingediend. Indien het verzoek te laat
+      wordt ingediend, wordt het niet in behandeling genomen.
+
+  - id: s006
+    number: '5'
+    path: [5 Colofon]
+    disposition: informative
+    reason: Vaststellingsregel en contactgegevens; geen norm en geen uitleg van een norm.
+    text: |-
+      5 Colofon
+
+      Vastgesteld door het fictieve bestuur. Vragen? Bel het informatienummer.
+
+statements:
+  - id: S1
+    slug: documentstatus-geen-rechten
+    segment: s002
+    quote: Aan deze toelichting kunnen geen rechten worden ontleend.
+    anchor:
+      exact: geen rechten worden ontleend
+      prefix: 'Aan deze toelichting kunnen '
+      suffix: . 2 Wie komt
+    type: informatief
+    bindingness: informative
+    anchoring:
+      status: niet-gevonden
+      search_terms: [rechten ontlenen, geen rechten, status toelichting]
+      searched_in: [regulation/**/*.yaml]
+    deviation_class: geen
+    bucket: letter-getrouw
+    action: >-
+      Geen actie. Bepaalt wel de status van het hele document: statements hieruit zijn
+      uitleg, nooit zelfstandige norm.
+
+  - id: S2
+    slug: ingezetene-op-peildatum
+    segment: s003
+    quote: De aanvrager moet op de peildatum ingezetene zijn van het werkgebied.
+    anchor:
+      exact: moet op de peildatum ingezetene zijn
+      prefix: 'De aanvrager '
+      suffix: ' van het werkgebied.'
+    type: normatief
+    bindingness: hard
+    anchoring:
+      status: verankerd
+      norm_ref: fictieve_verordening art 2 lid 1
+      norm_quote: ingezetene van het werkgebied op de peildatum
+    deviation_class: geen
+    bucket: letter-getrouw
+    action: Geen wijziging.
+
+  - id: S3
+    slug: uitsluiting-buitenland
+    segment: s003
+    quote: Een aanvrager die in het buitenland woont komt niet in aanmerking.
+    anchor:
+      exact: komt niet in aanmerking
+      prefix: 'in het buitenland woont '
+      suffix: . 3 Berekening
+    type: uitzondering
+    bindingness: hard
+    anchoring:
+      status: geparafraseerd
+      norm_ref: fictieve_verordening art 2 lid 1
+      norm_quote: ingezetene van het werkgebied op de peildatum
+    deviation_class: herformulering
+    bucket: letter-getrouw
+    action: >-
+      Geen wijziging; de uitsluiting is de spiegelzijde van de ingezetene-eis, geen
+      zelfstandig criterium.
+
+  - id: S4
+    slug: eerste-vrijlating-20pct
+    segment: s004
+    quote: Van het besteedbaar inkomen wordt 20% vrijgelaten.
+    anchor:
+      exact: wordt 20% vrijgelaten
+      prefix: 'Van het besteedbaar inkomen '
+      suffix: . Omdat er ook
+    type: kwantitatief
+    bindingness: hard
+    anchoring:
+      status: verankerd
+      norm_ref: fictieve_verordening art 3 lid 1
+      norm_quote: ten minste 80 percent van het besteedbaar inkomen is aangewend
+    deviation_class: geen
+    bucket: letter-getrouw
+    action: Geen wijziging.
+
+  - id: S5
+    slug: tweede-vrijlating-50pct
+    segment: s004
+    quote: >-
+      Omdat er ook andere heffingen worden opgelegd, wordt van het bedrag dat overblijft
+      nog eens 50% vrijgelaten.
+    anchor:
+      exact: nog eens 50% vrijgelaten
+      prefix: 'dat overblijft '
+      suffix: . De tegemoetkoming
+    type: kwantitatief
+    bindingness: hard
+    anchoring:
+      status: niet-gevonden
+      search_terms: [50%, vrijlating, nog eens, andere heffingen]
+      searched_in: [regulation/**/*.yaml]
+    deviation_class: toelichting-bleed
+    bucket: LETTER-vs-TOELICHTING
+    action: >-
+      Jurist-vraag: is de tweede vrijlating bindend beleid? Zo ja, hoort hij in de
+      verordening, niet in de toelichting. Model blijft tot dat besluit op 80%.
+
+  - id: S6
+    slug: maximum-per-jaar
+    segment: s004
+    quote: De tegemoetkoming bedraagt in de regel ten hoogste 1.200 euro per jaar.
+    anchor:
+      exact: in de regel ten hoogste 1.200 euro per jaar
+      prefix: 'De tegemoetkoming bedraagt '
+      suffix: . 4 Aanvraag
+    type: kwantitatief
+    bindingness: soft-default
+    anchoring:
+      status: niet-gevonden
+      search_terms: ['1.200', ten hoogste, maximum tegemoetkoming]
+      searched_in: [regulation/**/*.yaml]
+    deviation_class: toelichting-bleed
+    bucket: LETTER-vs-TOELICHTING
+    action: >-
+      Jurist-vraag. Let op de bindendheid: "in de regel" is een weerlegbare hoofdregel,
+      geen hard maximum. Als harde grens modelleren zou de afwijkbevoegdheid wegnemen.
+
+  - id: S7
+    slug: indieningstermijn-6-weken
+    segment: s005
+    quote: Het verzoek wordt binnen 6 weken na dagtekening ingediend.
+    anchor:
+      exact: binnen 6 weken na dagtekening
+      prefix: 'Het verzoek wordt '
+      suffix: ' ingediend.'
+    type: procedureel
+    bindingness: hard
+    anchoring:
+      status: verankerd
+      norm_ref: fictieve_verordening art 5 lid 1
+      norm_quote: binnen zes weken na de dagtekening van de beschikking
+    deviation_class: geen
+    bucket: letter-getrouw
+    action: Geen wijziging.
+
+  - id: S8
+    slug: gevolg-te-late-indiening
+    segment: s005
+    quote: >-
+      Indien het verzoek te laat wordt ingediend, wordt het niet in behandeling genomen.
+    anchor:
+      exact: wordt het niet in behandeling genomen
+      prefix: 'te laat wordt ingediend, '
+      suffix: . 5 Colofon
+    type: procedureel
+    bindingness: hard
+    anchoring:
+      status: niet-gevonden
+      search_terms: [niet in behandeling, termijnoverschrijding, te laat]
+      searched_in: [regulation/**/*.yaml]
+    deviation_class: toelichting-bleed
+    bucket: LETTER-vs-TOELICHTING
+    action: >-
+      Jurist-vraag: de verordening kent de sanctie niet-ontvankelijk niet expliciet;
+      Awb 4:5 zou een herstelmogelijkheid vergen. Signaal voor de verordening.
