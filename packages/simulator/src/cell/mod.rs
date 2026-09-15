@@ -39,7 +39,9 @@ pub use besluit::{
 // uitkomst van een besluit van een vast veld kunnen onderscheiden om de herkomst
 // van elke waarde te kunnen noemen. `pub(crate)`, want het is geen contract naar
 // buiten — wat een gram draagt, staat in [`Decretogram`].
-pub(crate) use besluit::{fixed_fields, recorded_input, INPUTS, RECEIPT, REGULATION};
+pub(crate) use besluit::{
+    fixed_fields, recorded_input, BESLUIT, COMPETENT_AUTHORITY, INPUTS, RECEIPT, REGULATION,
+};
 // Het formulier van een actie wordt tegen dezelfde toets gehouden als de
 // parameters van een lexostatus of een besluit: precies wat gedocumenteerd is,
 // niets erbij en niets van het verkeerde type.
@@ -566,6 +568,28 @@ impl Cell {
         let events = self.stream_view(stream)?;
         let index = events.len().checked_sub(1)?;
         Some((index, events.get(index)?))
+    }
+
+    /// Eén gram uit één kroniekstroom, op zijn plek in de volgorde van
+    /// vastlegging.
+    ///
+    /// `None` als de cel de stroom niet houdt of er op die plek niets ligt. Uit
+    /// hetzelfde inspectiebeeld als [`Self::inspect`] en om dezelfde reden
+    /// `pub(crate)`: de wereld mag een gram aanwijzen dat het beeld al geeft
+    /// (bijvoorbeeld om er het uitvoeringsreceipt van te lezen), een cel komt er
+    /// niet aan.
+    pub(crate) fn gram(&self, stream: &str, index: usize) -> Option<&ChronicleEvent> {
+        self.stream_view(stream)?.get(index)
+    }
+
+    /// De kroniekstromen die deze cel houdt, in de volgorde van haar
+    /// configuratie. Voor de melding die zegt welke er wél zijn.
+    pub(crate) fn stream_names(&self) -> Vec<&str> {
+        self.chronicles
+            .view()
+            .into_iter()
+            .map(|view| view.stream)
+            .collect()
     }
 
     /// De grammen van één stroom, geleend uit het inspectiebeeld.

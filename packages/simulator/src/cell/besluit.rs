@@ -734,6 +734,16 @@ pub enum InputOrigin {
     Accepted {
         /// De cel die de waarde vaststelde.
         cell: String,
+        /// Het bevoegd gezag dat die cel bij haar antwoord noemde, als zij dat
+        /// doet (`competent_authority` in de uitkomsten van haar lexostatus).
+        ///
+        /// De cel is een adres, dit is een gezag, en voor RFC-013
+        /// `accepted_values` is het tweede wat telt: wie het terugleest hoort te
+        /// zien wiens vaststelling geaccepteerd is en niet alleen bij welk
+        /// systeem ze opgehaald is. `None` betekent dat de bevraagde lexostatus
+        /// er niets over publiceert — een gat bij de bron, en geen uitnodiging
+        /// om het hier in te vullen.
+        authority: Option<String>,
         /// De lexostatus waaronder ze dat publiceert.
         lexostatus: String,
         /// De uitkomst van die lexostatus die de waarde droeg.
@@ -793,6 +803,7 @@ impl InputOrigin {
             ])),
             Self::Accepted {
                 cell,
+                authority,
                 lexostatus,
                 field,
                 op_moment,
@@ -804,6 +815,10 @@ impl InputOrigin {
                     Value::String("geaccepteerd".to_string()),
                 ),
                 ("cell".to_string(), Value::String(cell.clone())),
+                (
+                    COMPETENT_AUTHORITY.to_string(),
+                    optional_text(authority.as_deref()),
+                ),
                 ("lexostatus".to_string(), Value::String(lexostatus.clone())),
                 ("field".to_string(), Value::String(field.clone())),
                 (
@@ -869,15 +884,25 @@ impl InputOrigin {
             Self::Parameter { parameter } => format!("parameter '{parameter}'"),
             Self::Accepted {
                 cell,
+                authority,
                 lexostatus,
                 field,
                 op_moment,
                 asked_by,
                 signature,
-            } => format!(
-                "geaccepteerd van cel '{cell}' ({lexostatus}.{field} op {op_moment}), \
-                 gevraagd door {asked_by} [{signature}]"
-            ),
+            } => {
+                // Het gezag erbij zodra de bron het noemt, en anders niets: een
+                // verslag hoort niet "bevoegd gezag: onbekend" te zeggen over een
+                // lexostatus die er nooit iets over beloofd heeft.
+                let gezag = match authority {
+                    Some(authority) => format!(", bevoegd gezag {authority}"),
+                    None => String::new(),
+                };
+                format!(
+                    "geaccepteerd van cel '{cell}'{gezag} ({lexostatus}.{field} op \
+                     {op_moment}), gevraagd door {asked_by} [{signature}]"
+                )
+            }
             Self::EarlierDecretogram {
                 besluit,
                 zaakkenmerk,

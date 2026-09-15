@@ -55,6 +55,7 @@ use crate::journal::{
     changes, AcceptedValue, GramRef, IndicatorParam, JournalActor, JournalEntry, JournalKind,
     Reading,
 };
+use crate::receipt::GramReceipt;
 use crate::security::{Identity, SignedAnswer};
 use crate::snapshot::{crossing_snapshot, gram_id, gram_kind, ActionState, Snapshot, WorldView};
 use chrono::NaiveDate;
@@ -1004,6 +1005,44 @@ impl World {
             warnings: &self.warnings,
             journal: &self.journal,
         })
+    }
+
+    /// Het uitvoeringsreceipt van één gram uit één kroniek van één cel.
+    ///
+    /// Het beeld van de wereld draagt het receipt niet — het bevat wandkloktijd,
+    /// en een contract dat per run verschilt is geen contract — maar het gram
+    /// draagt het wél: een decretogram *is* het RFC-013 Execution Receipt van het
+    /// besluit (RFC-022 §1.2). Dit is de weg ernaartoe **op verzoek**, zodat dat
+    /// van buitenaf na te kijken is zonder het in het beeld te trekken.
+    ///
+    /// Alleen lezen, net als [`World::snapshot`] en [`World::reduce`]: er
+    /// verandert niets door het op te vragen, en geen cel kan hier komen. Wie
+    /// naar een gram wijst dat geen decretogram uit het besluit-pad is, krijgt
+    /// [`SimulatorError::GramWithoutReceipt`] — "er is er geen" en niet een leeg
+    /// receipt, want er is nooit een uitvoering geweest.
+    ///
+    /// `index` is de plek in de kroniek, geteld vanaf nul, in de volgorde waarin
+    /// het beeld de grammen geeft en waarmee een journaalregel ernaar wijst (zie
+    /// [`crate::journal::GramRef`]).
+    pub fn gram_receipt(&self, cell: &str, chronicle: &str, index: usize) -> Result<GramReceipt> {
+        let found = self.cell(cell)?;
+        let streams = found.stream_names();
+        if !streams.contains(&chronicle) {
+            return Err(SimulatorError::UnknownChronicle {
+                cell: cell.to_string(),
+                stream: chronicle.to_string(),
+                known: streams.join(", "),
+            });
+        }
+        let event = found
+            .gram(chronicle, index)
+            .ok_or_else(|| SimulatorError::UnknownGram {
+                cell: cell.to_string(),
+                stream: chronicle.to_string(),
+                index,
+                count: found.stream_len(chronicle).unwrap_or_default(),
+            })?;
+        crate::receipt::build(cell, chronicle, index, event)
     }
 
     /// De waarschuwingen die tot nu toe zijn ontstaan, in volgorde.
