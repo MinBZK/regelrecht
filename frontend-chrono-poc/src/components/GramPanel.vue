@@ -4,6 +4,7 @@ import ReceiptPanel from './ReceiptPanel.vue';
 import { fieldValue } from '../world/events.js';
 import { formatMoment } from '../world/format.js';
 import { allGrams, cells, gramKind } from '../world/snapshot.js';
+import { carriesReceipt } from '../world/receipt.js';
 
 // Alle grammen van alle cellen in één chronologisch overzicht: moment, cel,
 // kroniek, type, naam (met de zaak eronder als het gram er een draagt), kanaal en
@@ -24,9 +25,10 @@ import { allGrams, cells, gramKind } from '../world/snapshot.js';
 // Dat het receipt niet in het beeld zit, betekende wel dat van buitenaf niet te
 // zien was dát een decretogram het draagt — terwijl een decretogram het RFC-013
 // Execution Receipt van het besluit *is* (RFC-022 §1.2). Daarom heeft een
-// decretogram hier een tweede uitklap, **Receipt**, die het bij de server
-// opvraagt voor dat ene gram (zie `ReceiptPanel`). Op verzoek en per gram: zo
-// blijft het beeld receipt-loos en is het receipt toch na te kijken.
+// decretogram dat langs het besluit-pad ontstond hier een tweede uitklap,
+// **Receipt**, die het bij de server opvraagt voor dat ene gram (zie
+// `ReceiptPanel`). Op verzoek en per gram: zo blijft het beeld receipt-loos en is
+// het receipt toch na te kijken.
 
 const props = defineProps({
   /** Het beeld van de wereld. */
@@ -145,10 +147,10 @@ watch(
 // iemand een rij opendeed.
 const receiptOpen = ref(new Set());
 
-/** Draagt dit gram een receipt om op te vragen? Alleen een decretogram. */
-function hasReceipt(row) {
-  return row.kind === 'decretogram';
-}
+// Draagt dit gram een receipt om op te vragen? Niet elk decretogram doet dat —
+// een bron-cel zonder engine legt haar eigen vaststelling ook als decretogram
+// vast, en daar heeft nooit een uitvoering achter gedraaid. Zie `carriesReceipt`.
+const hasReceipt = (row) => carriesReceipt(row.gram);
 
 function isReceiptOpen(id) {
   return receiptOpen.value.has(id);
@@ -275,7 +277,8 @@ function toggleReceipt(id) {
 
         <!-- De tweede uitklap: het receipt van dit besluit. Een eigen knop en
              niet meteen zichtbaar, want erachter zit een verzoek aan de server —
-             het receipt staat niet in het beeld. -->
+             het receipt staat niet in het beeld. Alleen bij een gram dat er ook
+             echt een draagt: zie `hasReceipt`. -->
         <nldd-list-item
           v-if="isOpen(row.id) && hasReceipt(row)"
           slot="children"

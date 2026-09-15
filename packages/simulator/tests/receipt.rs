@@ -227,6 +227,66 @@ fn een_executogram_draagt_geen_receipt() {
     );
 }
 
+/// Niet elk decretogram draagt een receipt, en het beeld zegt aan welk veld dat
+/// te zien is.
+///
+/// Een bron-cel zonder engine legt haar eigen vaststelling ook als decretogram
+/// vast — even goed een besluit van die cel, alleen heeft er nooit een uitvoering
+/// gedraaid. Wie op de soort alleen afgaat, biedt een receipt aan dat er niet is.
+/// Het onderscheid staat in het beeld: `Decretogram::event` schrijft de
+/// **regeling** en het receipt in dezelfde vastlegging, dus een gram met een
+/// regeling in beeld is precies een gram met een receipt. Daar leunt de uitklap
+/// in het Grammen-tabblad op, en daarom staat het hier vast.
+#[test]
+fn het_beeld_zegt_aan_de_regeling_welk_gram_een_receipt_draagt() {
+    let world = met_een_toekenning();
+    let beeld = world.snapshot();
+
+    let mut zonder_receipt = 0;
+    for cel in &beeld.cells {
+        for kroniek in &cel.chronicles {
+            for (plek, gram) in kroniek.grams.iter().enumerate() {
+                let draagt_regeling = gram.fields.contains_key("regulation");
+                let receipt = world.gram_receipt(&cel.id, &kroniek.stream, plek);
+                assert_eq!(
+                    receipt.is_ok(),
+                    draagt_regeling,
+                    "cel '{}', stroom '{}', plek {plek} ('{}'): het beeld en het receipt \
+                     horen het eens te zijn over of er een uitvoering achter zat",
+                    cel.id,
+                    kroniek.stream,
+                    gram.name
+                );
+                if !draagt_regeling {
+                    zonder_receipt += 1;
+                }
+            }
+        }
+    }
+    assert!(
+        zonder_receipt > 0,
+        "deze wereld hoort grammen te hebben waar geen uitvoering achter zat"
+    );
+}
+
+/// Een eigen vaststelling van een bron-cel is een decretogram zonder receipt.
+///
+/// De scherpe van hierboven, op één gram: `belastingdienst` heeft geen engine en
+/// legt haar aanslag zelf vast. Dat is `intake: eigen_besluit` en dus een
+/// decretogram, maar er is nooit iets uitgevoerd — en dan is "er is er geen" het
+/// antwoord.
+#[test]
+fn een_eigen_vaststelling_zonder_engine_draagt_geen_receipt() {
+    let world = met_een_toekenning();
+    let error = world
+        .gram_receipt("belastingdienst", "aanslagen", 0)
+        .expect_err("een bron-cel zonder engine voert niets uit");
+    assert!(
+        matches!(error, SimulatorError::GramWithoutReceipt { .. }),
+        "{error}"
+    );
+}
+
 /// Wijzen naar iets dat er niet is, zegt wat er wél is.
 #[test]
 fn een_onbekende_kroniek_of_plek_noemt_wat_er_wel_ligt() {

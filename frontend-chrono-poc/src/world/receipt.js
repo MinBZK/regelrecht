@@ -14,6 +14,7 @@
  * module doet is ordenen en benoemen, niet selecteren.
  */
 import { humanize } from './format.js';
+import { regulationOf } from './snapshot.js';
 
 /**
  * De volgorde waarin de secties gelezen horen te worden.
@@ -50,6 +51,26 @@ const OWN_VIEW = ['gram', 'accepted_values', 'timestamp'];
 
 /** De lijst binnen `scope` die als tabel getoond wordt in plaats van als regels. */
 const LOADED_REGULATIONS = 'loaded_regulations';
+
+/**
+ * Draagt dit gram een uitvoeringsreceipt om op te vragen?
+ *
+ * Twee eisen, en de tweede is de echte. Een decretogram is een besluit dat de cel
+ * zelf nam, maar een **bron-cel zonder engine** legt haar eigen vaststelling ook
+ * zo vast: even goed een decretogram, alleen heeft er nooit een uitvoering
+ * gedraaid, en dan is er geen receipt. Het beeld laat dat verschil aan één veld
+ * zien — de **regeling** — want die schrijft `Decretogram::event` in dezelfde
+ * vastlegging als het receipt zelf
+ * (`packages/simulator/src/cell/besluit.rs`); een gram dat er geen draagt, heeft
+ * ook geen uitvoering achter zich.
+ *
+ * Zonder die tweede toets zou een uitklap "Receipt" beloven wat de server met een
+ * 404 moet weigeren, en een aanbod dat alleen een foutmelding oplevert is erger
+ * dan geen aanbod.
+ */
+export function carriesReceipt(gram) {
+  return gram?.kind === 'decretogram' && regulationOf(gram) !== null;
+}
 
 /** Het gram waar dit receipt bij hoort; leeg als het antwoord het niet draagt. */
 export function receiptGram(receipt) {
