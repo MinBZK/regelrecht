@@ -734,6 +734,7 @@ jobs:
       # aanhangen kost geen runnerminuut en geen nieuwe required context bij
       # branch protection.
       - e2e
+      - chrono-poc-e2e
       - cross-law-integrity
       - provenance-checks
       - docs-a11y
@@ -774,6 +775,7 @@ jobs:
           check frontend-tests "${{ needs.frontend-tests.result }}"
           check nldd-imports "${{ needs.nldd-imports.result }}"
           check e2e "${{ needs.e2e.result }}"
+          check chrono-poc-e2e "${{ needs.chrono-poc-e2e.result }}"
           check cross-law-integrity "${{ needs.cross-law-integrity.result }}"
           check provenance-checks "${{ needs.provenance-checks.result }}"
           check docs-a11y "${{ needs.docs-a11y.result }}"
@@ -1026,6 +1028,108 @@ jobs:
       - name: Skip (no relevant changes)
         if: needs.changes.outputs.ci != 'true'
         run: echo "No relevant changes, skipping e2e suite"
+
+  # De browserbewijsronde van de chronolexografie-testopstelling: de echte
+  # server met de publieke wereld erin, een echte Chromium ervoor, en de
+  # veertig beweringen die eerder met de hand door die wereld liepen. Dat
+  # handwerk was eenmalig; hier hoort het bij elke PR.
+  #
+  # Een eigen baan en niet aangehangen aan `e2e`: die bouwt WASM en draait de
+  # editor met een gemockte backend, deze bouwt een server en draait hem echt.
+  # Samen zouden ze elkaars tijd en foutmeldingen dragen.
+  chrono-poc-e2e:
+    name: E2E chronolexografie
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      # Parity met de andere npm-jobs: de workspace kan @nldd-pakketten van
+      # npm.pkg.github.com halen.
+      packages: read
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        if: needs.changes.outputs.ci == 'true'
+
+      - name: Install just
+        if: needs.changes.outputs.ci == 'true'
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3  # v4.0.0
+
+      - name: Install Rust toolchain
+        if: needs.changes.outputs.ci == 'true'
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
+
+      - name: Run sccache
+        if: needs.changes.outputs.ci == 'true'
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba  # v0.0.11
+
+      - name: Cache cargo registry (shared)
+        if: needs.changes.outputs.ci == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('packages/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-registry-
+
+      - name: Setup Node.js
+        if: needs.changes.outputs.ci == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v6
+        with:
+          node-version: '22'
+          registry-url: https://npm.pkg.github.com
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install workspace dependencies
+        if: needs.changes.outputs.ci == 'true'
+        run: npm ci --ignore-scripts
+
+      # Dezelfde cache en dezelfde sleutel als de baan hierboven: beide banen
+      # halen hun browser uit de playwright-versie in de lockfile, dus ze delen
+      # de download van ~150 MB.
+      - name: Cache Playwright browsers
+        if: needs.changes.outputs.ci == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+          restore-keys: ${{ runner.os }}-playwright-
+
+      - name: Install Playwright Chromium
+        if: needs.changes.outputs.ci == 'true'
+        working-directory: frontend-chrono-poc
+        run: |
+          # De runner-image draagt een Google Chrome-apt-bron mee die geregeld een
+          # kapotte index geeft ("Hash Sum mismatch") en dan elke apt-get update laat
+          # falen; wij gebruiken die bron niet, dus weg ermee vóór apt-get update.
+          sudo rm -f /etc/apt/sources.list.d/google-chrome*.list
+          npx playwright install --with-deps chromium
+
+      # Bouwt de bundel en de server (`chrono-poc-e2e` hangt aan
+      # `build-chrono-poc` en bouwt daarna de binary) en draait dan de suite.
+      # De poort kiest de configuratie zelf; de wereld is de publieke wereld uit
+      # deze checkout, en de login staat uit.
+      - name: Run chrono-poc e2e suite
+        if: needs.changes.outputs.ci == 'true'
+        run: just chrono-poc-e2e
+
+      - name: Upload Playwright report
+        if: failure() && needs.changes.outputs.ci == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: playwright-report-chrono-poc
+          path: frontend-chrono-poc/playwright-report
+          retention-days: 7
+
+      - name: Skip (no relevant changes)
+        if: needs.changes.outputs.ci != 'true'
+        run: echo "No relevant changes, skipping chrono-poc e2e suite"
 
   # Security audit
   audit:
