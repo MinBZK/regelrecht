@@ -416,13 +416,22 @@ const pathname = '/roadmap';
       hertelStraks(raw);
     };
 
-    // `input` covers typing and the component's own clear button; `search`
-    // fires on Enter, where the value is already the same, so re-running is
-    // harmless and keeps the two paths from needing different code.
+    /*
+     * `input` covers typing and the component's own clear button; `search`
+     * fires on Enter, where the value is already the same, so re-running is
+     * harmless and keeps the two paths from needing different code.
+     *
+     * The query is read from the field's `.value`, never from `event.detail`.
+     * Base.astro:866 records why, from a bug this repo already had on this
+     * same component and these same two events: detail's `.value` is not
+     * reliably a plain string, and it broke `query.trim()` there. Here it
+     * would reach normaliseerZoekterm(), which calls .normalize() on it.
+     * `.value` is also what the inner input's own native `input` event leaves
+     * correct — that one bubbles (composed) carrying no detail at all, where
+     * a `detail?.value ?? ''` would silently wipe the query.
+     */
     for (const event of ['input', 'search']) {
-      field.addEventListener(event, (e) => {
-        filter((e as CustomEvent<{ value: string }>).detail?.value ?? '');
-      });
+      field.addEventListener(event, () => filter(fieldValue(field)));
     }
 
     // The categorie checkboxes change what is on screen without the query
@@ -433,9 +442,19 @@ const pathname = '/roadmap';
     }
   }
 
-  /** The field's current text, via the property the component reflects. */
+  /**
+   * The field's current text, via the property the component reflects — the
+   * single place the query is read, so the `event.detail` trap documented at
+   * Base.astro:866 has no second entrance here.
+   *
+   * The typeof guard is the same defence one level down: everything
+   * downstream calls string methods on this, so a value that is not a string
+   * becomes an empty query (showing everything) rather than a thrown handler
+   * that leaves the matrix frozen on the previous result.
+   */
   function fieldValue(field: HTMLElement): string {
-    return (field as HTMLElement & { value?: string }).value ?? '';
+    const value = (field as HTMLElement & { value?: unknown }).value;
+    return typeof value === 'string' ? value : '';
   }
 
   /*
