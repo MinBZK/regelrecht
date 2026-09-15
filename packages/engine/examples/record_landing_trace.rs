@@ -29,7 +29,7 @@ const DATE: &str = "2025-01-01";
 /// What the scenario asserts. Recording a trace that computes something else
 /// means the corpus moved, and the landing page should not quietly show the new
 /// number: a demo that silently re-baselines proves nothing.
-const EXPECTED: i64 = 209692;
+const EXPECTED: i64 = 157731;
 
 fn record(entries: Vec<(&str, Value)>) -> BTreeMap<String, Value> {
     entries

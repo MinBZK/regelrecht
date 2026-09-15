@@ -36,14 +36,16 @@ articles:
 
 
       2. De normpremie bedraagt een percentage van het drempelinkomen in het berekeningsjaar, vermeerderd met een
-      percentage van het toetsingsinkomen van de verzekerde. Ingeval de verzekerde een toeslagpartner heeft, wordt het
-      gezamenlijk toetsingsinkomen van de verzekerde en de toeslagpartner in aanmerking genomen.
+      percentage van het toetsingsinkomen van de verzekerde in dat jaar voorzover dat toetsingsinkomen het
+      drempelinkomen te boven gaat. Voor een verzekerde met een partner wordt daarbij het gezamenlijke toetsingsinkomen
+      in aanmerking genomen.
 
 
-      3. De percentages, bedoeld in het tweede lid, bedragen voor een verzekerde met een toeslagpartner 4,273 procent van
-      het drempelinkomen, vermeerderd met 13,700 procent van het toetsingsinkomen, en voor een verzekerde zonder
-      toeslagpartner 1,896 procent van het drempelinkomen, vermeerderd met 13,700 procent van het toetsingsinkomen. Bij
-      ministeriële regeling kunnen deze percentages worden gewijzigd.
+      3. De percentages worden voor verzekerden met een partner vastgesteld op 4,273% van het drempelinkomen,
+      vermeerderd met 13,700% van het toetsingsinkomen voor zover dat boven het drempelinkomen uitgaat en voor een
+      verzekerde zonder partner op 1,896% van het drempelinkomen, vermeerderd met 13,700% van het toetsingsinkomen voor
+      zover dat boven het drempelinkomen uitgaat. Deze percentages kunnen bij algemene maatregel van bestuur worden
+      gewijzigd.
 
 
       4. In afwijking van het eerste lid bedraagt de aanspraak op een zorgtoeslag voor een verzekerde met een partner die
@@ -64,13 +66,28 @@ articles:
         # RFC-023: constants declare their quantity-kind. Money is eurocent;
         # the percentages here are stored as 0-1 ratios (1,896% = 0.01896), so
         # they carry unit: ratio — not percentage. The label never divides by 100.
+        # Artikel 1, onderdeel f: het drempelinkomen is "108% van het twaalfvoud
+        # van het voor de maand januari van het berekeningsjaar geldende [...]
+        # bedrag per maand" uit de Wet minimumloon. Voor 2025: 1,08 x 12 x
+        # 2.176,00 = 28.200,96 euro.
+        #
+        # De wet kent EEN drempelinkomen; alleen de percentages verschillen per
+        # huishoudtype (lid 3). Beide constanten dragen daarom dezelfde waarde;
+        # de keuze tussen de twee in de berekening hieronder is daarmee een
+        # no-op geworden en kan later verdwijnen.
+        #
+        # Hier stonden eerder 39.719 en 55.875. Dat zijn geen drempelinkomens
+        # maar inkomensgrenzen: het maximale inkomen waarbij nog recht bestaat,
+        # dat zelf uit de drempel, de percentages en de standaardpremie volgt.
+        # Met die waarden werd de afbouwtak nooit geraakt en keerde de wet voor
+        # elk inkomen onder de grens hetzelfde bedrag uit (issue #1429).
         drempelinkomen_alleenstaande:
-          value: 3971900
+          value: 2820096
           type: amount
           type_spec:
             unit: eurocent
         drempelinkomen_aanvrager_met_toeslagpartner:
-          value: 5587500
+          value: 2820096
           type: amount
           type_spec:
             unit: eurocent
@@ -199,17 +216,24 @@ articles:
                                     value: true
                                   then: $percentage_drempelinkomen_partner
                               default: $percentage_drempelinkomen_alleenstaande
-                            - operation: MIN
-                              values:
-                                - $toetsingsinkomen
-                                - operation: IF
-                                  cases:
-                                    - when:
-                                        operation: EQUALS
-                                        subject: $heeft_toeslagpartner
-                                        value: true
-                                      then: $drempelinkomen_aanvrager_met_toeslagpartner
-                                  default: $drempelinkomen_alleenstaande
+                            # Lid 3 zegt "van het drempelinkomen", zonder
+                            # voorbehoud: het eerste percentage gaat over de
+                            # volle drempel, ook als het inkomen lager is.
+                            # Hier stond een MIN met het toetsingsinkomen, die
+                            # lage inkomens een te lage normpremie en dus een te
+                            # hoge toeslag gaf (issue #1429). De tabel in
+                            # kst-35925-XVI-14 vraag 374 wijst dat uit: bij een
+                            # inkomen onder de drempel houdt de gepubliceerde
+                            # toeslag een vast bedrag aan, wat alleen klopt
+                            # zonder deze MIN.
+                            - operation: IF
+                              cases:
+                                - when:
+                                    operation: EQUALS
+                                    subject: $heeft_toeslagpartner
+                                    value: true
+                                  then: $drempelinkomen_aanvrager_met_toeslagpartner
+                              default: $drempelinkomen_alleenstaande
                         - operation: IF
                           cases:
                             - when:
