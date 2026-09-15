@@ -123,18 +123,20 @@ class ScrollyDemo extends HTMLElement {
         const box = wipe.getBoundingClientRect();
         const viewport = window.innerHeight;
 
-        // The wipe stays shut until the panel has properly arrived, and only
-        // then follows the scroll. Measuring from the moment the panel first
-        // touches the bottom edge would have it half open before the visitor
-        // has scrolled at all, which is what it used to do.
-        //
-        // It runs from "the panel's top has reached three quarters up the
-        // viewport" to "the panel's top has reached one fifth up", a stretch
-        // the visitor crosses while the panel is the thing they are looking at.
+        // The wipe follows the panel's travel up the viewport, from "its top
+        // has reached three quarters up" to "its top has reached one fifth up".
         const start = viewport * 0.75;
         const end = viewport * 0.2;
         const travelled = (start - box.top) / (start - end);
-        const progress = Math.min(1, Math.max(0, travelled));
+
+        // Position alone is not enough. On a short page, or when the panel
+        // already sits high at rest, it would start part-way open before the
+        // visitor has scrolled at all: the statute must be readable in full
+        // first, or the promise of a before-and-after is broken on arrival.
+        // So the panel's own travel is capped by how far the page has actually
+        // been scrolled, measured over one viewport.
+        const scrolled = window.scrollY / viewport;
+        const progress = Math.min(1, Math.max(0, Math.min(travelled, scrolled)));
         // 100% is the statute covering the whole pane, 0% is the YAML fully
         // uncovered. Scrolling down reveals the machine-readable rule, so
         // progress counts down: the further you scroll, the more is shown.
