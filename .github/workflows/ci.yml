@@ -98,10 +98,18 @@ jobs:
       - name: Check for modifications to released schema versions
         if: needs.changes.outputs.ci == 'true'
         run: |
-          # Get list of versioned schema directories that exist on main
+          # Get list of versioned schema directories that exist on main.
+          # Two version axes: the law schema under schema/vX.Y.Z, and a
+          # companion format on its own axis under schema/<name>/vN, because a
+          # trace shape and a law shape change for different reasons (RFC-039).
+          # Both are immutable once on main, so both are listed here; without
+          # the second pattern a published trace schema could be edited in
+          # place, which is the thing this job exists to prevent.
+          # `-r` is needed for the second pattern: the companion directories sit
+          # one level deeper, and a non-recursive ls-tree stops at schema/trace.
           git fetch origin main
-          EXISTING_VERSIONS=$(git ls-tree -d --name-only origin/main schema/ 2>/dev/null \
-            | grep -E '^schema/v[0-9]+\.[0-9]+\.[0-9]+$' || true)
+          EXISTING_VERSIONS=$(git ls-tree -d -r --name-only origin/main schema/ 2>/dev/null \
+            | grep -E '^schema/(v[0-9]+\.[0-9]+\.[0-9]+|[a-z0-9_-]+/v[0-9]+)$' || true)
 
           if [ -z "$EXISTING_VERSIONS" ]; then
             echo "No existing schema versions on main, skipping check"
