@@ -144,9 +144,12 @@ html {
   background: var(--semantics-surfaces-base-background-color);
 }
 
+/* Tall enough that the statute is readable in one go and the YAML shows enough
+   of itself to be worth scrolling. Both panes share the height, because they
+   are stacked and the wipe slides between them. */
 .rr-wipe__pane {
   margin: 0;
-  min-height: 16rem;
+  min-height: 30rem;
 }
 
 /* Clipped, never resized. Narrowing the pane to reveal what is under it would
@@ -162,19 +165,42 @@ html {
   clip-path: inset(0 calc(100% - var(--rr-wipe)) 0 0);
 }
 
-/* The YAML scrolls inside its own <pre>, which is focusable and labelled. The
-   wrapper must not scroll too: a second scrollable region with no keyboard
-   access is an accessibility failure, and two nested ones are confusing to
-   operate even with one. */
+/* nldd-code-viewer brings its own scrolling, keyboard handling and label, so
+   the pane hands it the height and stays out of the way. It used to clip here
+   instead, which cut the YAML off mid-file with no way to read the rest. */
 .rr-wipe__pane--under {
-  max-height: 24rem;
+  height: 30rem;
   overflow: hidden;
 }
 
-/* The range input lies across the whole pane, invisible, so that dragging
-   anywhere works; its thumb is the only painted part and rides the divider.
-   A vertical line is drawn behind it with a gradient on the track, which is
-   the one way to get a full-height rule out of a native range input. */
+/* The height the viewer is held to. It sizes itself to its content otherwise,
+   and offers no hook to cap it from outside: no `part`, no height custom
+   property, and a height here alone leaves the element inside its shadow root
+   free to grow. The script adopts one rule into that shadow root to finish the
+   job (see `capCodeViewer`); reported to the user, since a component that
+   cannot be given a height is the thing that is missing. */
+.rr-wipe__pane--under nldd-code-viewer {
+  display: block;
+  height: 100%;
+}
+
+/* The divider itself, painted the full height of the pane. Drawn separately
+   from the control so the control can be narrow. */
+.rr-wipe__rule {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--rr-wipe);
+  width: 1px;
+  background: var(--semantics-dividers-color);
+  pointer-events: none;
+}
+
+/* The control spans the pane, because a range input drags along its own width
+   and cutting it short would cut the travel short too. It lets everything
+   through, though: pointer events pass to whatever is underneath, so the YAML
+   stays scrollable, and a narrow strip on the divider is put back in front to
+   catch the drag. */
 .rr-wipe__handle {
   position: absolute;
   inset: 0;
@@ -182,35 +208,32 @@ html {
   height: 100%;
   margin: 0;
   appearance: none;
-  background: linear-gradient(
-    to right,
-    transparent calc(var(--rr-wipe) - 1px),
-    var(--semantics-dividers-color) calc(var(--rr-wipe) - 1px),
-    var(--semantics-dividers-color) var(--rr-wipe),
-    transparent var(--rr-wipe)
-  );
+  background: transparent;
+  pointer-events: none;
   cursor: ew-resize;
 }
 
-/* The thumb stays but is not painted: the divider drawn on the track already
-   marks the position, and a disc floating over the text read as an artefact.
-   It keeps its size so there is still something to grab, and both engines'
+/* The thumb takes the pointer events but is not painted: the divider already
+   marks the position, and a pill floating over the text read as an artefact.
+   It is as tall as the pane so the whole edge can be grabbed. Both engines'
    spellings are written out separately — an unknown pseudo-element would drop
    the whole rule. */
 .rr-wipe__handle::-webkit-slider-thumb {
   appearance: none;
-  width: 2.5rem;
-  height: 2.5rem;
-  background: transparent;
+  width: 1.25rem;
+  height: 30rem;
   border: 0;
+  background: transparent;
+  pointer-events: auto;
   cursor: ew-resize;
 }
 
 .rr-wipe__handle::-moz-range-thumb {
-  width: 2.5rem;
-  height: 2.5rem;
-  background: transparent;
+  width: 1.25rem;
+  height: 30rem;
   border: 0;
+  background: transparent;
+  pointer-events: auto;
   cursor: ew-resize;
 }
 
@@ -436,7 +459,7 @@ html {
 
 @media (max-width: 40rem) {
   .rr-wipe__pane {
-    min-height: 12rem;
+    min-height: 20rem;
   }
   .rr-run__amount {
     font-size: 1.375rem;

@@ -212,10 +212,11 @@ const amount = demo.trace.root.result;
             </nldd-blockquote>
           </div>
         </div>
-        {/* The range input IS the handle: it sits on the divider rather than
-            in a bar of its own, so the thing you grab is the edge you move.
-            Keeping a real <input type="range"> means the keyboard, the arrow
-            keys and assistive technology all work without being rebuilt. */}
+        {/* The divider is drawn on its own so the control can let everything
+            but its own thumb through: the YAML underneath has to stay
+            scrollable. Keeping a real <input type="range"> means the keyboard,
+            the arrow keys and assistive technology all work unchanged. */}
+        <div class="rr-wipe__rule" aria-hidden="true"></div>
         <input
           class="rr-wipe__handle"
           type="range"

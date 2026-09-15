@@ -66,6 +66,7 @@ class ScrollyDemo extends HTMLElement {
     const lang = this.dataset.lang === 'en' ? 'en' : 'nl';
 
     this.setAttribute('data-enhanced', 'true');
+    this.capCodeViewer();
     this.initWipe();
     this.initValues(lang);
     this.initReveal(lang);
@@ -98,6 +99,55 @@ class ScrollyDemo extends HTMLElement {
     const out = this.querySelector<HTMLOutputElement>('[data-amount-out]');
     if (out) {
       out.textContent = formatValue(this.dataset.amount ?? 'null', 'eurocent', lang);
+    }
+  }
+
+  /**
+   * Let the YAML scroll inside its own frame.
+   *
+   * nldd-code-viewer sizes itself to its content and offers no way in from
+   * outside: no `part`, no height custom property, and a height on the host
+   * leaves the element inside its shadow root free to grow, so its scroller
+   * never learns it is out of room. Without this the panel stretched to some
+   * 2700 pixels. A stylesheet adopted into the shadow root caps the element the
+   * scroller measures against, after which the viewer's own scrolling works as
+   * built. Reported to the user: capping it from the outside is what the
+   * component is missing.
+   */
+  private async capCodeViewer() {
+    const viewer = this.querySelector('.rr-wipe__pane--under nldd-code-viewer');
+    if (!viewer || typeof CSSStyleSheet === 'undefined') return;
+
+    // The shadow root does not exist yet when this element connects, so wait
+    // for the component to be defined and to finish its first render.
+    try {
+      await customElements.whenDefined('nldd-code-viewer');
+      await (viewer as any).updateComplete;
+    } catch {
+      // Keep going: the root may be there anyway.
+    }
+
+    const root = (viewer as any).shadowRoot as ShadowRoot | undefined;
+    if (!root) return;
+
+    try {
+      const sheet = new CSSStyleSheet();
+      // A pixel height, not a percentage: `100%` resolves against a parent
+      // that has none of its own here, so the editor kept growing to fit its
+      // content and its scroller never saw a limit. The pane's own height is
+      // the figure to hold it to.
+      const pane = viewer.closest('.rr-wipe__pane--under') as HTMLElement | null;
+      const height = Math.round(pane?.getBoundingClientRect().height ?? 0);
+      if (height <= 0) return;
+
+      sheet.replaceSync(
+        `.code-viewer, .cm-editor { height: ${height}px; max-height: ${height}px; }` +
+          ' .cm-scroller { overflow: auto; }',
+      );
+      root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet];
+    } catch {
+      // Constructable stylesheets are not available everywhere; without them
+      // the YAML simply shows down to the fold, which is what it did before.
     }
   }
 
