@@ -151,9 +151,19 @@ pub fn voorbehoud_strip(poc: &Poc) -> String {
     // The strip stays one row high. Its job here is to be present on every
     // screenshot and every deep link, not to repeat the argument; the full text
     // is in the `title` attribute for anyone who wants it in full.
+    // De kleuren via `light-dark()`, met `color-scheme` op de strook zelf: hij
+    // landt in de pagina van een andere app, dus hij kan niets van het
+    // ontwerpsysteem aannemen en moet zijn eigen stand meebrengen. De vaste
+    // ambertint hiervoor stond als een lichtbak in een donkere poc.
+    //
+    // `color-scheme: light dark` laat de strook de voorkeur van de bezoeker
+    // volgen; een poc die zichzelf op `data-scheme` vastzet, zet daarmee ook
+    // deze strook goed, want dat attribuut staat op het root-element erboven.
     let stijl = "position:sticky;top:0;z-index:2147483647;display:flex;gap:.75rem;\
-                 align-items:baseline;padding:.4rem 1rem;background:#fef3c7;color:#4b3a05;\
-                 font:500 .8125rem/1.4 system-ui,sans-serif;border-bottom:1px solid #d7b95c";
+                 align-items:baseline;padding:.4rem 1rem;color-scheme:light dark;\
+                 background:light-dark(#fef3c7,#3b2f0b);color:light-dark(#4b3a05,#f4e2a8);\
+                 font:500 .8125rem/1.4 system-ui,sans-serif;\
+                 border-bottom:1px solid light-dark(#d7b95c,#6b571c)";
     let tekst = "flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
     format!(
         r#"<div data-poc-portaal style="{stijl}" title="{uitleg} {voorbehoud}"><strong style="flex:none">{titel} — demonstratie, {status}</strong>"#,
