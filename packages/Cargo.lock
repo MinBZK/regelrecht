@@ -4231,7 +4231,7 @@ dependencies = [
  "sqlx",
  "time",
  "tokio",
- "tower-http 0.7.0",
+ "tower-http 0.7.1",
  "tower-sessions",
  "tower-sessions-memory-store",
  "tracing",
@@ -4261,7 +4261,7 @@ dependencies = [
  "time",
  "tokio",
  "tower",
- "tower-http 0.7.0",
+ "tower-http 0.7.1",
  "tracing",
 ]
 
