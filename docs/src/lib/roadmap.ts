@@ -58,6 +58,7 @@ export interface WerkpakketData {
   volgorde: number;
   onderzoeksvragen: (string | { vraag: string; paper: string })[];
   samenhangIds: string[];
+  afhankelijkVan: string[];
   onderzoek: string;
   bouw: string;
   belegging: { stand: string; sinds?: string };
@@ -747,7 +748,48 @@ export function assertReferencesResolve(
         problems.push(`${waar}: samenhangId "${samenhangId}" bestaat niet`);
       }
     }
+    for (const afhankelijkheid of data.afhankelijkVan) {
+      if (!ids.has(afhankelijkheid)) {
+        problems.push(
+          `${waar}: afhankelijkVan "${afhankelijkheid}" bestaat niet`,
+        );
+      }
+      if (afhankelijkheid === data.id) {
+        problems.push(`${waar}: afhankelijkVan wijst naar zichzelf`);
+      }
+    }
   }
+
+  /*
+   * A cycle means none of the werkpakketten in it can ever start, which is a
+   * statement about the plan and not about the file it was written in. The
+   * build says which ones, in the order it walked them, because the fix is a
+   * judgement about which of those arrows is the wrong one.
+   */
+  const kleur = new Map<string, 'bezig' | 'klaar'>();
+  const pad: string[] = [];
+  const titel = new Map(werkpakketten.map(({ data }) => [data.id, data.titel]));
+  const afhankelijkheden = new Map(
+    werkpakketten.map(({ data }) => [data.id, data.afhankelijkVan]),
+  );
+  const loop = (id: string) => {
+    if (kleur.get(id) === 'klaar') return;
+    if (kleur.get(id) === 'bezig') {
+      const kring = [...pad.slice(pad.indexOf(id)), id]
+        .map((stap) => titel.get(stap) ?? stap)
+        .join(' → ');
+      problems.push(`afhankelijkheden lopen rond: ${kring}`);
+      return;
+    }
+    kleur.set(id, 'bezig');
+    pad.push(id);
+    for (const volgende of afhankelijkheden.get(id) ?? []) {
+      if (ids.has(volgende)) loop(volgende);
+    }
+    pad.pop();
+    kleur.set(id, 'klaar');
+  };
+  for (const { data } of werkpakketten) loop(data.id);
 
   if (problems.length) {
     throw new Error(

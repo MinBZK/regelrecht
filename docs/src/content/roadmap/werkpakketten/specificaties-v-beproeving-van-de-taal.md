@@ -59,6 +59,8 @@ onderzoek: open
 bouw: deels
 rfcs:
   - 14
+afhankelijkVan:
+  - specificaties-iv-de-ontbrekende-delen-bouwen
 samenhangIds:
   - specificaties-i-documentatie-op-orde
   - specificaties-iv-de-ontbrekende-delen-bouwen

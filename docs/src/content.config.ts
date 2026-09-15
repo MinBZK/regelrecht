@@ -129,6 +129,12 @@ const werkpakketten = defineCollection({
       )
       .default([]),
     samenhangIds: z.array(slug()).default([]),
+    // Werkpakketten that have to be delivered before this one can start.
+    // Distinct from samenhangIds, which is a mutual "these belong together"
+    // and carries no order: the matrix draws an arrow for this field and none
+    // for that one. assertReferencesResolve() checks that every id exists,
+    // that nothing depends on itself, and that the graph has no cycle.
+    afhankelijkVan: z.array(slug()).default([]),
     // Two axes that genuinely diverge, so two fields rather than one.
     // A question can be answered without anything being built (onderzoek
     // 'beantwoord', bouw 'niet'), and a thing can be built while the question

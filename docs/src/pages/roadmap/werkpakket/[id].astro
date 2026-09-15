@@ -79,6 +79,15 @@ const samenhang = wp.samenhangIds
   .map((id: string) => all.find((w) => w.data.id === id))
   .filter(Boolean);
 
+// Both directions of the dependency, because both are things you need to know
+// before you plan: what this werkpakket waits for, and what waits for it. Only
+// the first is written down anywhere; the second is that same field read the
+// other way round, so it cannot drift.
+const wachtOp = wp.afhankelijkVan
+  .map((id: string) => all.find((w) => w.data.id === id))
+  .filter(Boolean);
+const blokkeert = all.filter((w) => w.data.afhankelijkVan.includes(wp.id));
+
 // The absolute path of the source file, so the toelichting's markdown can be
 // stamped with the line numbers the select-to-edit affordance reads.
 // entry.filePath is relative to the docs/ project root, which is where the
@@ -338,6 +347,64 @@ const kerngegevens = [
                 </nldd-list-item>
               ))}
             </nldd-list>
+          </nldd-container>
+        )
+      }
+
+      {
+        (wachtOp.length > 0 || blokkeert.length > 0) && (
+          <nldd-container gap="12">
+            <nldd-title size="4"><h2>Afhankelijkheden</h2></nldd-title>
+            {wachtOp.length > 0 && (
+              <nldd-container gap="8">
+                <nldd-text size="sm" weight="medium" color="secondary">
+                  Kan pas beginnen als dit opgeleverd is
+                </nldd-text>
+                <nldd-list type="navigation" variant="box-tinted">
+                  {wachtOp.map((related) => (
+                    <nldd-list-item href={`/roadmap/werkpakket/${related!.data.id}`}>
+                      <nldd-text-cell
+                        text={related!.data.titel}
+                        supporting-text={[
+                          getFase(related!.data.faseId)?.naam,
+                          getDiscipline(related!.data.disciplineId)?.naam,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
+                        width="full"
+                      />
+                      <nldd-spacer-cell />
+                      <nldd-icon-cell size="20" icon="chevron-right" />
+                    </nldd-list-item>
+                  ))}
+                </nldd-list>
+              </nldd-container>
+            )}
+            {blokkeert.length > 0 && (
+              <nldd-container gap="8">
+                <nldd-text size="sm" weight="medium" color="secondary">
+                  Wacht op dit werkpakket
+                </nldd-text>
+                <nldd-list type="navigation" variant="box-tinted">
+                  {blokkeert.map((related) => (
+                    <nldd-list-item href={`/roadmap/werkpakket/${related.data.id}`}>
+                      <nldd-text-cell
+                        text={related.data.titel}
+                        supporting-text={[
+                          getFase(related.data.faseId)?.naam,
+                          getDiscipline(related.data.disciplineId)?.naam,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
+                        width="full"
+                      />
+                      <nldd-spacer-cell />
+                      <nldd-icon-cell size="20" icon="chevron-right" />
+                    </nldd-list-item>
+                  ))}
+                </nldd-list>
+              </nldd-container>
+            )}
           </nldd-container>
         )
       }

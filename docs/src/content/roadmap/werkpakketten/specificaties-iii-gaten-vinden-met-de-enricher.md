@@ -55,6 +55,9 @@ bouw: deels
 rfcs:
   - 12
   - 35
+afhankelijkVan:
+  - specificaties-ii-enrichment-overhaul-landen
+  - infrastructuur-voor-lokale-ai
 samenhangIds:
   - specificaties-i-documentatie-op-orde
   - specificaties-ii-enrichment-overhaul-landen
