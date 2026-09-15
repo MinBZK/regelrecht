@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/trace/v1/trace-schema.json",
+  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-trace-v1/schema/trace/v1/trace-schema.json",
   "title": "RegelRecht Execution Trace Schema v1",
   "description": "An execution trace: the tree of steps an engine took to reach a result, addressable and anchored to the provisions the steps came from (RFC-039). Versioned on its own axis, under schema/trace/v<trace_version>/, because a trace shape and a law shape change for different reasons. The note sidecar went under a law-schema version directory and froze there in v0.5.3, which is the coupling this avoids. A conformant engine produces this document; a text rendering of it is a presentation and not part of the contract.",
   "type": "object",
@@ -98,7 +98,7 @@
         },
         "type_spec": {
           "$ref": "#/definitions/TypeSpec",
-          "description": "Unit and precision of 'result' as the law declares them, so a consumer can present 209692 as an amount in euros. Present when the value has a declaration that carries one, which parameters, inputs, outputs and definitions can; a result computed mid-expression has no declaration and so no type_spec in version 1, even where an engine could infer a unit for it. Only 'unit' and 'precision' are meaningful here: 'min' and 'max' are part of the declaration's shape and say nothing about a result."
+          "description": "Unit and precision of 'result' as the law declares them, so a consumer can present 209692 as an amount in euros. Present when the value has a declaration that carries one, which parameters, inputs, outputs and definitions can; a result computed mid-expression has no declaration and so no type_spec in version 1, even where an engine could infer a unit for it. Carries only 'unit' and 'precision': the law schema's 'min' and 'max' constrain what a value may be, which says nothing about one already computed."
         },
         "duration_us": {
           "type": "integer",
@@ -204,23 +204,25 @@
     },
     "TypeSpec": {
       "type": "object",
-      "description": "Unit and precision of a value, as the law schema declares them (RFC-023).",
+      "description": "Unit and precision of a value, as the law schema declares them (RFC-023). Only these two: the law schema's type_spec also carries min and max, which constrain what a value may be and say nothing about one that has been computed.",
       "properties": {
         "unit": {
           "type": "string",
-          "description": "Unit of measurement, e.g. 'eurocent', 'ratio', 'days'. A label, never a computational constraint."
+          "description": "Unit of measurement for the value (RFC-023). A label, never a computational constraint: tagging a value never changes it. 'ratio' (0-1) and 'percentage' (0-100) are distinct labels; any division by 100 is an explicit value operation, never implied by the label. Same closed set as the law schema, so a unit that could not be declared on a law cannot be reported on a trace either.",
+          "enum": [
+            "euro",
+            "eurocent",
+            "ratio",
+            "percentage",
+            "years",
+            "weeks",
+            "months",
+            "days"
+          ]
         },
         "precision": {
           "type": "integer",
           "description": "Number of decimal places for the value in its own unit."
-        },
-        "min": {
-          "type": "number",
-          "description": "Minimum allowed value."
-        },
-        "max": {
-          "type": "number",
-          "description": "Maximum allowed value."
         }
       },
       "additionalProperties": false
