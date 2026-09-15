@@ -594,4 +594,14 @@ describe('de zaak van een gram', () => {
     expect(gramByRef(worldFixture, { id: 'nergens|iets|0' })).toBeNull();
     expect(gramByRef(worldFixture, null)).toBeNull();
   });
+
+  // Een plek die geen rij cijfers is, hoort niets aan te wijzen. `Number('')` is
+  // 0, dus zonder toets op de tekst zou een id met een lege plek het eerste gram
+  // van de kroniek opleveren: een verwijzing die klopt lijkt te zijn.
+  it('wijst bij een plek die geen getal is niets aan, ook niet het eerste gram', () => {
+    const { chronicle } = fixtureGram('toeslagen', 'decretogram');
+    for (const plek of ['', ' 0 ', '0x0', '-1', '1e0']) {
+      expect(gramByRef(worldFixture, { id: `toeslagen|${chronicle.stream}|${plek}` })).toBeNull();
+    }
+  });
 });

@@ -175,8 +175,13 @@ export function gramByRef(snapshot, ref) {
   const parts = String(ref?.id ?? '').split('|');
   if (parts.length !== 3) return null;
   const [cellId, stream, position] = parts;
+  // Een plek is een rij cijfers, en dat wordt hier op de tekst getoetst en niet
+  // op wat `Number` ervan maakt: `Number('')` is 0 en `Number(' 1 ')` is 1, dus
+  // een id met een lege of slordige plek zou anders stil een gram áánwijzen —
+  // een verwijzing die klopt lijkt te zijn terwijl ze het niet is. Niets
+  // teruggeven is hier het eerlijke antwoord.
+  if (!/^\d+$/.test(position)) return null;
   const index = Number(position);
-  if (!Number.isInteger(index)) return null;
   const cell = cells(snapshot).find((candidate) => candidate.id === cellId);
   const chronicle = chronicles(cell).find((candidate) => candidate.stream === stream);
   return (chronicle?.grams ?? [])[index] ?? null;
