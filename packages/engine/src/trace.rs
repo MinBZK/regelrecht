@@ -34,6 +34,37 @@ use regelrecht_law_model::{Article, ArticleBasedLaw};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
+/// The version of the trace document format this engine emits (RFC-039).
+///
+/// Bumped when a change would break a consumer; a new optional field does not.
+/// It travels inside the document rather than beside it, because an archived
+/// trace has to stay readable without whatever handed it over.
+pub const TRACE_VERSION: u32 = 1;
+
+/// An execution trace as a document: a version and the outermost step
+/// (RFC-039, `schema/trace/v1/trace-schema.json`).
+///
+/// This is what an engine publishes and what a second engine has to produce.
+/// Consumers read `root`; they used to be handed the step itself, and that is
+/// the one breaking change in RFC-039.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TraceDocument {
+    /// Format version. See [`TRACE_VERSION`].
+    pub trace_version: u32,
+    /// The outermost step, which is the evaluation the caller asked for.
+    pub root: PathNode,
+}
+
+impl TraceDocument {
+    /// Wrap a completed trace as a document at the current format version.
+    pub fn new(root: PathNode) -> Self {
+        Self {
+            trace_version: TRACE_VERSION,
+            root,
+        }
+    }
+}
+
 /// A node in the execution trace tree.
 ///
 /// Each node represents a single step in the execution process, such as:

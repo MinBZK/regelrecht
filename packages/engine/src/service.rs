@@ -34,7 +34,7 @@ use crate::error::{EngineError, Result};
 use crate::operations::ValueResolver;
 use crate::priority;
 use crate::resolver::{RuleResolver, SelectionReason};
-use crate::trace::{LegalAnchor, TraceBuilder};
+use crate::trace::{LegalAnchor, TraceBuilder, ValueSource};
 use crate::types::{
     Connectivity, LegalStatus, MissingKind, PathNodeType, RegulatoryLayer, ResolveType,
     UntranslatableMode, Value,
@@ -223,6 +223,13 @@ impl<'a> ResolutionContext<'a> {
     fn trace_set_resolve_type(&self, rt: ResolveType) {
         if let Some(ref tb) = self.trace {
             tb.borrow_mut().set_resolve_type(rt);
+        }
+    }
+
+    /// Record where the current node's value came from (RFC-039).
+    fn trace_set_source(&self, source: ValueSource) {
+        if let Some(ref tb) = self.trace {
+            tb.borrow_mut().set_source(source);
         }
     }
 
@@ -2172,6 +2179,16 @@ impl LawExecutionService {
                     let _guard = res_ctx.trace_guard(&input.name, PathNodeType::Resolve);
                     res_ctx.trace_set_resolve_type(ResolveType::DataSource);
                     res_ctx.trace_set_result(data_match.value.clone());
+                    // Which organization supplied this fact, in a field
+                    // (RFC-039). The message below says the same thing for a
+                    // person reading a terminal; it used to be the only place
+                    // it was said, so consumers matched a regular expression
+                    // against it.
+                    res_ctx.trace_set_source(ValueSource {
+                        kind: ResolveType::DataSource,
+                        provider: Some(data_match.source_name.clone()),
+                        scope: data_match.law_scope.clone(),
+                    });
                     res_ctx.trace_set_message(format!(
                         "Resolving from SOURCE {}: {}",
                         data_match.source_name, data_match.value

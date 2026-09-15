@@ -63,7 +63,7 @@ use crate::config;
 use crate::engine::OutputProvenance;
 use crate::error::EngineError;
 use crate::service::{ExecutionOutcome, LawExecutionService, StageState};
-use crate::trace::{PathNode, TraceBuilder};
+use crate::trace::{PathNode, TraceBuilder, TraceDocument};
 use crate::types::{RegulatoryLayer, Value};
 
 /// Does this annotation note target a law other than `law_id`?
@@ -238,7 +238,7 @@ struct WasmExecuteResultWithTrace {
     #[serde(skip_serializing_if = "Option::is_none")]
     law_uuid: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    trace: Option<PathNode>,
+    trace: Option<TraceDocument>,
     #[serde(skip_serializing_if = "Option::is_none")]
     trace_text: Option<String>,
     engine_version: String,
@@ -468,7 +468,7 @@ impl WasmEngine {
                     article_number: result.article_number,
                     law_id: result.law_id,
                     law_uuid: result.law_uuid,
-                    trace: result.trace,
+                    trace: result.trace.map(TraceDocument::new),
                     trace_text,
                     engine_version: result.engine_version,
                     schema_version: result.schema_version,
@@ -493,14 +493,14 @@ impl WasmEngine {
                 struct TracedErrorResult {
                     error: String,
                     #[serde(skip_serializing_if = "Option::is_none")]
-                    trace: Option<PathNode>,
+                    trace: Option<TraceDocument>,
                     #[serde(skip_serializing_if = "Option::is_none")]
                     trace_text: Option<String>,
                 }
 
                 let err_result = TracedErrorResult {
                     error: source.to_string(),
-                    trace: trace_node,
+                    trace: trace_node.map(TraceDocument::new),
                     trace_text,
                 };
 
@@ -592,7 +592,7 @@ impl WasmEngine {
                     article_number: result.article_number,
                     law_id: result.law_id,
                     law_uuid: result.law_uuid,
-                    trace: result.trace,
+                    trace: result.trace.map(TraceDocument::new),
                     trace_text,
                     engine_version: result.engine_version,
                     schema_version: result.schema_version,
@@ -615,14 +615,14 @@ impl WasmEngine {
                 struct TracedErrorResult {
                     error: String,
                     #[serde(skip_serializing_if = "Option::is_none")]
-                    trace: Option<PathNode>,
+                    trace: Option<TraceDocument>,
                     #[serde(skip_serializing_if = "Option::is_none")]
                     trace_text: Option<String>,
                 }
 
                 let err_result = TracedErrorResult {
                     error: source.to_string(),
-                    trace: trace_node,
+                    trace: trace_node.map(TraceDocument::new),
                     trace_text,
                 };
 

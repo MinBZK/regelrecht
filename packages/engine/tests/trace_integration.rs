@@ -322,3 +322,44 @@ fn every_step_is_anchored_to_the_provision_it_came_from() {
         "at least one step should name its article number"
     );
 }
+
+/// A trace travels as a document with its version inside it, not as a bare
+/// step (RFC-039). Consumers read `root`.
+#[test]
+fn a_trace_is_published_as_a_versioned_document() {
+    let service = setup_zorgtoeslag_service();
+
+    let mut params = BTreeMap::new();
+    params.insert("bsn".to_string(), Value::String("999993653".to_string()));
+
+    let result = service
+        .evaluate_law_output_with_trace(
+            "wet_op_de_zorgtoeslag",
+            "hoogte_zorgtoeslag",
+            params,
+            "2025-01-01",
+        )
+        .expect("Law evaluation should succeed");
+
+    let doc = regelrecht_engine::trace::TraceDocument::new(
+        result.trace.expect("traced evaluation produces a trace"),
+    );
+    let json = serde_json::to_value(&doc).expect("serializes");
+
+    // The two top-level keys the schema requires, and nothing else.
+    let obj = json.as_object().expect("an object");
+    let mut keys: Vec<&str> = obj.keys().map(String::as_str).collect();
+    keys.sort();
+    assert_eq!(keys, vec!["root", "trace_version"]);
+    assert_eq!(obj["trace_version"], serde_json::json!(1));
+
+    // The root is a step, and it is anchored all the way down.
+    assert!(obj["root"].get("node_type").is_some(), "root is a step");
+    assert!(obj["root"].get("node_id").is_some(), "root is addressable");
+
+    // It reads back as a document.
+    let parsed: regelrecht_engine::trace::TraceDocument =
+        serde_json::from_value(json).expect("deserializes");
+    assert_eq!(parsed.trace_version, doc.trace_version);
+    assert_eq!(parsed.root.node_id, doc.root.node_id);
+}
