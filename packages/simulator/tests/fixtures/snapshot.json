@@ -1129,7 +1129,7 @@
       "id": "toeslagen.vaststelling",
       "actor": "toeslagen",
       "label": "Stel de zorgtoeslag definitief vast",
-      "doc": "Kan pas als er een toekenning ligt.",
+      "doc": "Kan zodra er een aanvraag ligt; in dit verhaal volgt zij op de toekenning.",
       "effect": {
         "soort": "decides",
         "cell": "toeslagen",
