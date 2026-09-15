@@ -13,6 +13,7 @@
  * simply visible, which is the whole content in reading order.
  */
 import { demo } from '~/lib/landing-demo';
+import LandingWipe from './LandingWipe.astro';
 
 interface Props {
   lang: 'nl' | 'en';
@@ -37,6 +38,7 @@ const nl = {
   factsPost: (s: number, ms: string) => `${s} stappen in ${ms} ms, over zes wetten.`,
   replay: 'Opnieuw afspelen',
   slider: 'Sleep of scroll om de wettekst en de machineleesbare regel over elkaar te schuiven.',
+  slider2: 'Sleep of scroll om de toelichting en het scenario over elkaar te schuiven.',
   sliderLeft: 'Wettekst',
   sliderRight: 'Machineleesbaar',
   sourceLaw: 'Bron: wetten.overheid.nl',
@@ -61,6 +63,7 @@ const en = {
   factsPost: (s: number, ms: string) => `${s} steps in ${ms} ms, across six laws.`,
   replay: 'Replay',
   slider: 'Drag or scroll to wipe between the statute and the machine-readable rule.',
+  slider2: 'Drag or scroll to wipe between the memorandum and the scenario.',
   sliderLeft: 'Statute',
   sliderRight: 'Machine-readable',
   sourceLaw: 'Source: wetten.overheid.nl',
@@ -194,67 +197,50 @@ const amount = demo.trace.root.result;
       <nldd-rich-text><p>{t.steps[0].p}</p></nldd-rich-text>
       <nldd-spacer size="16" />
 
-      <div class="rr-wipe" data-wipe>
+      <LandingWipe
+        label={t.slider}
+        leftLabel={t.sliderLeft}
+        rightLabel={t.sliderRight}
+      >
         {/* nldd-code-viewer brings the syntax highlighting, the copy button,
             its own keyboard-reachable scroll region and the theme handling.
             `wrap` matters here: without it the YAML scrolls sideways under the
             wipe, and a line that is half-covered must not reflow. */}
-        <div class="rr-wipe__pane rr-wipe__pane--under">
-          <nldd-code-viewer language="yaml" variant="simple" wrap>{demo.yaml}</nldd-code-viewer>
-        </div>
-        <div class="rr-wipe__pane rr-wipe__pane--over" data-wipe-over>
-          <div class="rr-wipe__prose">
-            <nldd-blockquote cite={demo.lawUrl}>
-              <p>{demo.prose}</p>
-              <span slot="attribution">
-                <a href={demo.lawUrl} rel="noreferrer">{t.sourceLaw}</a>
-              </span>
-            </nldd-blockquote>
-          </div>
-        </div>
-        {/* The divider is drawn on its own so the control can let everything
-            but its own thumb through: the YAML underneath has to stay
-            scrollable. Keeping a real <input type="range"> means the keyboard,
-            the arrow keys and assistive technology all work unchanged. */}
-        <div class="rr-wipe__rule" aria-hidden="true"></div>
-        <input
-          class="rr-wipe__handle"
-          type="range"
-          min="0"
-          max="100"
-          value="100"
-          step="1"
-          aria-label={t.slider}
-          data-wipe-input
-        />
-      </div>
-      <p class="rr-wipe__legend">
-        <span>{t.sliderLeft}</span><span>{t.sliderRight}</span>
-      </p>
+        <nldd-code-viewer slot="under" language="yaml" variant="simple" wrap>{demo.yaml}</nldd-code-viewer>
+        <nldd-blockquote slot="over" cite={demo.lawUrl}>
+          <p>{demo.prose}</p>
+          <span slot="attribution">
+            <a href={demo.lawUrl} rel="noreferrer">{t.sourceLaw}</a>
+          </span>
+        </nldd-blockquote>
+      </LandingWipe>
     </article>
 
-    {/* 3: the memorandum */}
+    {/* 3 + 4: the second wipe, memorandum over scenario.
+        Mirrored on purpose: the first wipe uncovers to the right, this one to
+        the left. The pair then reads as the same move made twice, from either
+        side, rather than as one gesture repeated. */}
     <article class="rr-beat" data-beat="1">
-      <p class="rr-beat__tag">{t.steps[2].tag}</p>
+      <p class="rr-beat__tag">{t.steps[2].tag} &rarr; {t.steps[3].tag}</p>
       <nldd-title size="3"><h3>{t.steps[2].h}</h3></nldd-title>
-      <nldd-rich-text><p>{t.steps[2].p}</p></nldd-rich-text>
-      <nldd-spacer size="16" />
-      <nldd-blockquote>
-        <p>{demo.memorandum}</p>
-        <span slot="attribution">Kamerstukken II 2021/22, 35 925 XVI, nr. 14</span>
-      </nldd-blockquote>
-    </article>
-
-    {/* 4: the scenario */}
-    <article class="rr-beat" data-beat="2">
-      <p class="rr-beat__tag">{t.steps[3].tag}</p>
-      <nldd-title size="3"><h3>{t.steps[3].h}</h3></nldd-title>
       <nldd-rich-text><p>{t.steps[3].p}</p></nldd-rich-text>
       <nldd-spacer size="16" />
-      {/* Gherkin is one of the languages the viewer highlights. No `wrap`:
-          the data tables are aligned on their pipes and reflowing them would
-          destroy the alignment, so this one scrolls sideways instead. */}
-      <nldd-code-viewer language="gherkin" variant="box-base">{demo.gherkin}</nldd-code-viewer>
+
+      <LandingWipe
+        direction="rtl"
+        label={t.slider2}
+        leftLabel={t.steps[2].tag}
+        rightLabel={t.steps[3].tag}
+      >
+        {/* Gherkin is one of the languages the viewer highlights. No `wrap`:
+            the data tables are aligned on their pipes and reflowing them would
+            destroy the alignment, so this one scrolls sideways instead. */}
+        <nldd-code-viewer slot="under" language="gherkin" variant="simple">{demo.gherkin}</nldd-code-viewer>
+        <nldd-blockquote slot="over">
+          <p>{demo.memorandum}</p>
+          <span slot="attribution">Kamerstukken II 2021/22, 35 925 XVI, nr. 14</span>
+        </nldd-blockquote>
+      </LandingWipe>
       <p class="rr-beat__source"><code>{demo.scenarioPath}</code></p>
     </article>
 

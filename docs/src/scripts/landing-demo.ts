@@ -66,8 +66,13 @@ class ScrollyDemo extends HTMLElement {
     const lang = this.dataset.lang === 'en' ? 'en' : 'nl';
 
     this.setAttribute('data-enhanced', 'true');
-    this.capCodeViewer();
-    this.initWipe();
+    // Every wipe on the page, however many there are: the panels differ in
+    // what they show, not in how they behave.
+    this.querySelectorAll<HTMLElement>('[data-wipe]').forEach((wipe) => {
+      const viewer = wipe.querySelector('.rr-wipe__pane--under nldd-code-viewer');
+      if (viewer) void this.capCodeViewer(viewer);
+      this.initWipe(wipe);
+    });
     this.initValues(lang);
     this.initReveal(lang);
   }
@@ -114,9 +119,8 @@ class ScrollyDemo extends HTMLElement {
    * built. Reported to the user: capping it from the outside is what the
    * component is missing.
    */
-  private async capCodeViewer() {
-    const viewer = this.querySelector('.rr-wipe__pane--under nldd-code-viewer');
-    if (!viewer || typeof CSSStyleSheet === 'undefined') return;
+  private async capCodeViewer(viewer: Element) {
+    if (typeof CSSStyleSheet === 'undefined') return;
 
     // The shadow root does not exist yet when this element connects, so wait
     // for the component to be defined and to finish its first render.
@@ -158,10 +162,9 @@ class ScrollyDemo extends HTMLElement {
    * and with assistive technology. Scrolling nudges the same input, which is
    * what makes it feel scroll-driven without taking the control away.
    */
-  private initWipe() {
-    const wipe = this.querySelector<HTMLElement>('[data-wipe]');
-    const input = this.querySelector<HTMLInputElement>('[data-wipe-input]');
-    if (!wipe || !input) return;
+  private initWipe(wipe: HTMLElement) {
+    const input = wipe.querySelector<HTMLInputElement>('[data-wipe-input]');
+    if (!input) return;
 
     const apply = (pct: number) => {
       wipe.style.setProperty('--rr-wipe', `${pct}%`);
@@ -179,6 +182,9 @@ class ScrollyDemo extends HTMLElement {
     let userOwned = false;
     input.addEventListener('pointerdown', () => (userOwned = true));
     input.addEventListener('keydown', () => (userOwned = true));
+
+    // Where the page stood when this panel first reached the bottom edge.
+    let armedAt: number | null = null;
 
     // Coalesced into one frame: a scroll listener that measures and writes on
     // every event forces layout per event and can wedge the page.
@@ -205,10 +211,14 @@ class ScrollyDemo extends HTMLElement {
         // already sits high at rest, it would start part-way open before the
         // visitor has scrolled at all: the statute must be readable in full
         // first, or the promise of a before-and-after is broken on arrival.
-        // So the panel's own travel is capped by how far the page has actually
-        // been scrolled, measured over half a viewport: enough to hold the wipe
-        // shut on arrival without slowing the rest of it down.
-        const scrolled = window.scrollY / (viewport * 0.5);
+        // So the panel's own travel is capped by how far the page has scrolled
+        // since this panel first came into view, measured over half a viewport.
+        // Measured per panel, not from the top of the document: the second wipe
+        // sits far down the page, where `scrollY` is large before it is even in
+        // sight, and the cap would never bite.
+        if (armedAt === null && box.top <= viewport) armedAt = window.scrollY;
+        const scrolled =
+          armedAt === null ? 0 : (window.scrollY - armedAt) / (viewport * 0.5);
         const progress = Math.min(1, Math.max(0, Math.min(travelled, scrolled)));
         // 100% is the statute covering the whole pane, 0% is the YAML fully
         // uncovered. Scrolling down reveals the machine-readable rule, so

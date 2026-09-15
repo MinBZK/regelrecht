@@ -165,6 +165,22 @@ html {
   clip-path: inset(0 calc(100% - var(--rr-wipe)) 0 0);
 }
 
+/* Mirrored: the covering pane retreats to the left instead of to the right.
+   Same component, same behaviour, the other way round, so the two wipes on the
+   page read as one move made from either side. */
+.rr-wipe--rtl .rr-wipe__pane--over {
+  clip-path: inset(0 0 0 calc(100% - var(--rr-wipe)));
+}
+
+.rr-wipe--rtl .rr-wipe__rule {
+  left: auto;
+  right: var(--rr-wipe);
+}
+
+.rr-wipe--rtl .rr-wipe__handle {
+  direction: rtl;
+}
+
 /* nldd-code-viewer brings its own scrolling, keyboard handling and label, so
    the pane hands it the height and stays out of the way. It used to clip here
    instead, which cut the YAML off mid-file with no way to read the rest. */
