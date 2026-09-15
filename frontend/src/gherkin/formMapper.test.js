@@ -91,7 +91,7 @@ Feature: Assertions
     Then output "b" is false
     Then output "c" equals 42
     Then output "d" equals "hello"
-    Then output "e" is null
+    Then output "e" is absent
     Then output "f" contains "sub"
 `);
 
@@ -153,6 +153,30 @@ Feature: Param table
       { name: 'type_beplanting', value: 'boom' },
       { name: 'postcode', value: 1012 },
     ]);
+  });
+
+  // RFC-036: an empty value cell is a parameter that is not passed. The runners
+  // leave it out, so the form does too; the word null is an absence and stays.
+  it('leaves a parameter with an empty cell out of the form', () => {
+    const parsed = parseFeature(`
+Feature: Blank cell
+
+  Scenario: Not filled in
+    Given the following parameters:
+      | bsn             | 999993653 |
+      | aanvraag_bedrag |           |
+      | partner_bsn     | null      |
+    When I evaluate "past_aanvraag" of "test_null_semantics_bron"
+`);
+
+    const form = mapFeatureToForm(parsed);
+    expect(form.scenarios[0].setup.parameters).toEqual([
+      { name: 'bsn', value: 999993653 },
+      { name: 'partner_bsn', value: null },
+    ]);
+    const gherkin = formStateToGherkin(form);
+    expect(gherkin).not.toContain('aanvraag_bedrag');
+    expect(gherkin).toContain('Given parameter "partner_bsn" is "null"');
   });
 
   it('keeps a single-row parameter table', () => {
@@ -386,6 +410,59 @@ Feature: Background override
     expect(form.scenarios[1].setup.parameters).toHaveLength(0);
   });
 
+  // RFC-036: a blank field is "not filled in", never `parameter "x" is ""`
+  // (which the Rust runner would read back as an absence, null).
+  it('drops a scenario parameter the form left blank instead of writing is ""', () => {
+    const parsed = parseFeature(`
+Feature: Blank field
+
+  Background:
+    Given parameter "bsn" is "999993653"
+
+  Scenario: Test
+    Given parameter "aanvraag_bedrag" is 250
+    Given parameter "huur" is 650
+    When I evaluate "result" of "law"
+`);
+
+    const form = mapFeatureToForm(parsed);
+    syncEditedValues(form, 0, {
+      parameterValues: { bsn: '999993653', aanvraag_bedrag: '', huur: '700' },
+      calculationDate: null,
+    });
+
+    expect(form.scenarios[0].setup.parameters).toEqual([{ name: 'huur', value: 700 }]);
+    const gherkin = formStateToGherkin(form);
+    expect(gherkin).not.toContain('aanvraag_bedrag');
+    expect(gherkin).not.toContain('is ""');
+    expect(gherkin).toContain('Given parameter "huur" is 700');
+  });
+
+  it('never writes is "" for a background parameter the form left blank', () => {
+    const parsed = parseFeature(`
+Feature: Blank background field
+
+  Background:
+    Given parameter "bsn" is "999993653"
+    Given parameter "loon" is 30000
+
+  Scenario: Test
+    When I evaluate "result" of "law"
+`);
+
+    const form = mapFeatureToForm(parsed);
+    syncEditedValues(form, 0, {
+      parameterValues: { bsn: '999993653', loon: '' },
+      calculationDate: null,
+    });
+
+    // There is no step that un-passes a background parameter; the background
+    // value stands and no override is written.
+    expect(form.scenarios[0].setup.parameters).toHaveLength(0);
+    expect(form.background.parameters[1].value).toBe(30000);
+    expect(formStateToGherkin(form)).not.toContain('is ""');
+  });
+
   it('does not add override when value matches background', () => {
     const parsed = parseFeature(`
 Feature: No-op sync
@@ -484,5 +561,63 @@ Feature: Round trip
       reform.scenarios[0].setup.parameters.map((p) => [p.name, p.value]),
     );
     expect(params).toEqual({ bsn: 999993653, is_verzekerde: true, gemeente: 'GM0384' });
+  });
+});
+
+describe('unknown assertions (RFC-036)', () => {
+  const feature = `
+Feature: Unknown
+
+  Scenario: Missing rent
+    Given the calculation date is "2025-01-01"
+    When I evaluate "toeslag" of "wet"
+    Then output "toeslag" is unknown
+    Then output "recht" is unknown for lack of "huur"
+`;
+
+  it('extracts both forms', () => {
+    const form = mapFeatureToForm(parseFeature(feature));
+    expect(form.scenarios[0].unmatchedSteps).toEqual([]);
+    expect(form.scenarios[0].assertions).toEqual([
+      { assertionType: 'unknown', outputName: 'toeslag', value: null },
+      { assertionType: 'unknownFor', outputName: 'recht', value: 'huur' },
+    ]);
+  });
+
+  it('writes both forms back out unchanged', () => {
+    const text = formStateToGherkin(mapFeatureToForm(parseFeature(feature)));
+    expect(text).toContain('    Then output "toeslag" is unknown\n');
+    expect(text).toContain('    Then output "recht" is unknown for lack of "huur"\n');
+  });
+});
+
+describe('data-source blank cells (RFC-036)', () => {
+  const text =
+    'Feature: Blank\n' +
+    '\n' +
+    '  Scenario: No rent known\n' +
+    '    Given the following "huurgegevens" data with key "bsn":\n' +
+    '      | bsn | huur | partner_bsn |\n' +
+    '      | 1 |  | null |\n' +
+    '    When I evaluate "x" of "law"\n';
+
+  it('keeps a blank cell blank and the word null as it is through a round trip', () => {
+    const form = mapFeatureToForm(parseFeature(text));
+    expect(form.scenarios[0].setup.dataSources[0].rows).toEqual([['1', '', 'null']]);
+    expect(formStateToGherkin(form)).toBe(text);
+  });
+
+  it('writes a cell the form cleared as blank, not as null', () => {
+    const form = mapFeatureToForm(parseFeature(text));
+    syncEditedValues(form, 0, {
+      parameterValues: {},
+      dataSources: [{
+        sourceName: 'huurgegevens',
+        keyField: 'bsn',
+        fields: [{ name: 'huur', type: 'amount' }, { name: 'partner_bsn', type: 'string' }],
+        rows: [{ _id: 1, bsn: '1', huur: '', partner_bsn: '' }],
+      }],
+    });
+    expect(formStateToGherkin(form)).toContain('      | 1 |  |  |\n');
   });
 });

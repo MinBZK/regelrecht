@@ -33,6 +33,7 @@ pub mod context;
 pub mod data_source;
 pub mod engine;
 pub mod error;
+mod load_check;
 pub mod operations;
 pub mod priority;
 pub mod receipt;
@@ -41,6 +42,7 @@ pub mod resolver;
 pub mod schema;
 pub mod service;
 pub mod trace;
+pub mod typecheck;
 pub mod types;
 pub mod units;
 pub mod uri;
@@ -79,8 +81,8 @@ pub use resolver::RuleResolver;
 pub use service::{ExecutionOutcome, LawExecutionService, LawInfo, ServiceProvider, StageState};
 pub use trace::{PathNode, TraceBuilder};
 pub use types::{
-    Connectivity, LegalStatus, Operation, ParameterType, PathNodeType, RegulatoryLayer,
-    ResolveType, UntranslatableMode, Value,
+    Connectivity, LegalStatus, MissingFact, MissingKind, Operation, ParameterType, PathNodeType,
+    RegulatoryLayer, ResolveType, UntranslatableMode, Value,
 };
 pub use uri::{internal_reference, ReferenceType, RegelrechtUri, RegelrechtUriBuilder};
 

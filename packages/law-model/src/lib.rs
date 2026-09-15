@@ -26,4 +26,4 @@ pub use model::{
     OverrideDeclaration, Parameter, ProcedureAppliesTo, ProcedureDefinition, Produces, Source,
     Stage, StageRequirement, TypeSpec, UntranslatableEntry,
 };
-pub use value::{Operation, ParameterType, RegulatoryLayer, Value};
+pub use value::{MissingFact, MissingKind, Operation, ParameterType, RegulatoryLayer, Value};

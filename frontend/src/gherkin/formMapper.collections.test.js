@@ -87,7 +87,24 @@ Feature: Empty
     expect(formStateToGherkin(again)).toBe(text);
   });
 
-  it('writes a null cell for a missing value and reads it back', () => {
+  it('leaves the key out for an empty cell and writes it back empty (RFC-036)', () => {
+    const text =
+      'Feature: Empty cell\n' +
+      '\n' +
+      '  Scenario: Age not stated\n' +
+      '    Given parameter "medebewoners" is the collection:\n' +
+      '      | leeftijd | naam |\n' +
+      '      |  | Bob |\n' +
+      '      | 40 | null |\n' +
+      '    When I evaluate "x" of "law"\n';
+    const form = mapFeatureToForm(parseFeature(text));
+    const [param] = form.scenarios[0].setup.parameters;
+    expect(param.value).toEqual([{ naam: 'Bob' }, { leeftijd: 40, naam: null }]);
+    expect(Object.hasOwn(param.value[0], 'leeftijd')).toBe(false);
+    expect(formStateToGherkin(form)).toBe(text);
+  });
+
+  it('writes a null cell for a stated absence and reads it back', () => {
     const form = mapFeatureToForm(parseFeature(`
 Feature: Null cell
 

@@ -75,8 +75,22 @@ pub struct Parameter {
     pub param_type: ParameterType,
     #[serde(default)]
     pub required: Option<bool>,
+    /// Whether `null` (absence) is a legitimate value of this field (RFC-036).
+    /// Defaults to false: the engine refuses a `null` that reaches a field not
+    /// declared nullable, and the static type check refuses a law that tests a
+    /// non-nullable field for absence. Unknown (a fact nobody has) is not
+    /// governed by this flag.
+    #[serde(default)]
+    pub nullable: Option<bool>,
     #[serde(default)]
     pub description: Option<String>,
+}
+
+impl Parameter {
+    /// Whether the caller may pass `null` for this parameter (RFC-036).
+    pub fn is_nullable(&self) -> bool {
+        self.nullable.unwrap_or(false)
+    }
 }
 
 /// Input definition in execution spec
@@ -89,8 +103,23 @@ pub struct Input {
     pub source: Option<Source>,
     #[serde(default)]
     pub type_spec: Option<TypeSpec>,
+    /// Whether `null` (absence) is a legitimate value of this field (RFC-036).
+    /// Defaults to false: the engine refuses a `null` that reaches a field not
+    /// declared nullable, and the static type check refuses a law that tests a
+    /// non-nullable field for absence. Unknown (a fact nobody has) is not
+    /// governed by this flag.
+    #[serde(default)]
+    pub nullable: Option<bool>,
     #[serde(default)]
     pub description: Option<String>,
+}
+
+impl Input {
+    /// Whether a data source or another law may deliver `null` for this input
+    /// (RFC-036).
+    pub fn is_nullable(&self) -> bool {
+        self.nullable.unwrap_or(false)
+    }
 }
 
 /// Output definition in execution spec
@@ -101,8 +130,22 @@ pub struct Output {
     pub output_type: ParameterType,
     #[serde(default)]
     pub type_spec: Option<TypeSpec>,
+    /// Whether `null` (absence) is a legitimate value of this field (RFC-036).
+    /// Defaults to false: the engine refuses a `null` that reaches a field not
+    /// declared nullable, and the static type check refuses a law that tests a
+    /// non-nullable field for absence. Unknown (a fact nobody has) is not
+    /// governed by this flag.
+    #[serde(default)]
+    pub nullable: Option<bool>,
     #[serde(default)]
     pub description: Option<String>,
+}
+
+impl Output {
+    /// Whether this output may evaluate to `null` (RFC-036).
+    pub fn is_nullable(&self) -> bool {
+        self.nullable.unwrap_or(false)
+    }
 }
 
 /// Produces specification for execution.
@@ -728,6 +771,30 @@ impl Article {
         self.get_execution_spec()
             .and_then(|exec| exec.input.as_deref())
             .unwrap_or(&[])
+    }
+
+    /// Get parameters from this article's execution spec.
+    pub fn get_parameters(&self) -> &[Parameter] {
+        self.get_execution_spec()
+            .and_then(|exec| exec.parameters.as_deref())
+            .unwrap_or(&[])
+    }
+
+    /// Get outputs from this article's execution spec.
+    pub fn get_outputs(&self) -> &[Output] {
+        self.get_execution_spec()
+            .and_then(|exec| exec.output.as_deref())
+            .unwrap_or(&[])
+    }
+
+    /// The declaration of the output named `name`, if this article declares it.
+    pub fn find_output(&self, name: &str) -> Option<&Output> {
+        self.get_outputs().iter().find(|o| o.name == name)
+    }
+
+    /// The declaration of the parameter named `name`, if this article declares it.
+    pub fn find_parameter(&self, name: &str) -> Option<&Parameter> {
+        self.get_parameters().iter().find(|p| p.name == name)
     }
 
     /// Get open terms declared by this article.

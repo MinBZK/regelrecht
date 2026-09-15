@@ -29,13 +29,30 @@ articles:
         actions:
           # EQUALS is structureel: Int(42) en String("42") zijn niet gelijk.
           # Daarmee verraadt de uitkomst welk type de stap heeft opgeleverd.
+          # De parameter is als tekst gedeclareerd, maar juist welk type de
+          # stap aanlevert staat hier ter discussie; de typecontrole (RFC-037,
+          # T3) zou een vergelijking van een tekst met het getal 42 terecht
+          # afkeuren. De vergelijking gaat daarom over lijsten van één element:
+          # die vergelijkt EQUALS element voor element, met dezelfde uitkomst.
           - output: waarde_is_getal
             value:
               operation: EQUALS
-              subject: $waarde
-              value: 42
+              subject:
+                operation: LIST
+                items:
+                  - $waarde
+              value:
+                operation: LIST
+                items:
+                  - 42
           - output: waarde_is_tekst
             value:
               operation: EQUALS
-              subject: $waarde
-              value: '42'
+              subject:
+                operation: LIST
+                items:
+                  - $waarde
+              value:
+                operation: LIST
+                items:
+                  - '42'

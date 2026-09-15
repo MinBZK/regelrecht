@@ -77,6 +77,7 @@ export const PACKAGES = [
   'regelrecht-grafana',
   'regelrecht-lawmaking',
   'regelrecht-docs',
+  'regelrecht-demo',
   'regelrecht-poc',
   'regelrecht-poc-napp',
 ];

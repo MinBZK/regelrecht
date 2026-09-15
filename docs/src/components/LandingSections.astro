@@ -436,6 +436,11 @@ function exampleImage(key: string): ImageMetadata {
                       <li>{b}</li>
                     ))}
                   </ul>
+                  {ex.link && (
+                    <p>
+                      <a href={ex.link.href}>{ex.link.label}</a>
+                    </p>
+                  )}
                 </nldd-rich-text>
               </nldd-container>
             </>

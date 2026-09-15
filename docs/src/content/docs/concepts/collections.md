@@ -122,7 +122,9 @@ An error in `filter` or `body` aborts the whole operation. Partial results are n
 
 An [untranslatable](./untranslatables) taints the whole result, wherever it appears. Dropping the untranslatable elements and combining the rest would produce a number that looks complete and is not.
 
-The same holds for a value the engine cannot determine. A `filter` that evaluates to `null` makes the result `null`, because the engine cannot tell whether that element belongs in the collection. A `body` that evaluates to `null` does too: the element is definitely in the collection and its contribution is unknown, so `ADD`, `MIN` and `MAX` report that rather than a total that is short by an unknown amount. `OR` and `AND` settle on a definitive `true` or `false` where one exists, and are `null` otherwise.
+The same holds for a fact nobody has ([RFC-036](/rfcs/rfc-036)). A `filter` that evaluates to *unknown* makes the result unknown, because the engine cannot tell whether that element belongs in the collection. A `body` that evaluates to unknown does too: the element is definitely in the collection and its contribution is not known, so `ADD`, `MIN` and `MAX` report that rather than a total that is short by an unknown amount, naming the missing facts. `OR` and `AND` settle on a definitive `true` or `false` where one exists, and are unknown otherwise.
+
+An *absent* value (`null`) is different: it is a fact, not a gap. A filter that evaluates to `null`, or a body that is `null` under `ADD`, `MIN`, `MAX`, `AND` or `OR`, is an error, because the law is treating "geen" as a verdict or an amount without saying so. The law has to state what absence means for that element (`EQUALS … null` in the filter, say).
 
 An element whose filter is definitively `false` is simply skipped, and an empty collection returns the identities in the table above. Nothing is missing in either case.
 

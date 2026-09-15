@@ -68,6 +68,9 @@ export interface LandingContent {
       p: string
       bullets: string[]
       reverse?: boolean
+      // Set where the screenshot shows a screen a reader can actually open.
+      // The editor has none: it sits behind a login.
+      link?: NavLink
     }[]
   }
   innovation: {
@@ -312,7 +315,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           meta: 'Wat-als-analyse',
           link: {
             label: 'Live demo',
-            href: 'https://ui.lac.apps.digilab.network/simulation',
+            href: 'https://demo.regelrecht.rijks.app/simulatie',
           },
           text: 'Een omgeving waarin de gevolgen van nieuwe wetgeving doorgerekend zouden kunnen worden, voordat ze in werking treden. Bedoeld om maatschappelijke impact en onbedoelde effecten zichtbaar te maken.',
         },
@@ -328,7 +331,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       lede: 'Wat zouden de mogelijkheden van het RegelRecht-ecosysteem kunnen zijn? Een paar denkrichtingen voor transparante regeltoepassing, wetgevingstesting en de werkomgeving van de juridische experts zelf.',
       cases: [
         {
-          img: '/burger-nl-screenshot.png',
+          img: '/portaal-screenshot.png',
           alt: 'Schermafbeelding van een persoonlijk regeldashboard: een lijst met toeslagen en uitkeringen waarbij per regel de herkomst in de wet wordt getoond.',
           h: 'Persoonlijk regeldashboard',
           p: 'Wat als burgers op één plek al hun toeslagen, uitkeringen en verplichtingen zouden kunnen zien? Elke regel zou dan traceerbaar kunnen zijn terug naar de machine-uitvoerbare wetgeving, met volledige transparantie over hoe besluiten tot stand komen.',
@@ -337,6 +340,10 @@ export const content: Record<'nl' | 'en', LandingContent> = {
             'Volledige traceerbaarheid: kan een pad van wet naar persoonlijke situatie gelegd worden?',
             'Proactieve communicatie: kunnen burgers automatisch geïnformeerd worden bij regelwijzigingen?',
           ],
+          link: {
+            label: 'Bekijk in de demo',
+            href: 'https://demo.regelrecht.rijks.app/portaal',
+          },
         },
         {
           img: '/simulatie-screenshot.png',
@@ -350,6 +357,10 @@ export const content: Record<'nl' | 'en', LandingContent> = {
             'Kwaliteitscontrole: kunnen inconsistenties vóór implementatie worden gedetecteerd?',
           ],
           reverse: true,
+          link: {
+            label: 'Bekijk in de demo',
+            href: 'https://demo.regelrecht.rijks.app/simulatie',
+          },
         },
         {
           img: '/editor-notities-screenshot.png',
@@ -769,7 +780,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           meta: 'What-if analysis',
           link: {
             label: 'Live demo',
-            href: 'https://ui.lac.apps.digilab.network/simulation',
+            href: 'https://demo.regelrecht.rijks.app/simulatie',
           },
           text: 'An environment where the consequences of new legislation could be modelled before it takes effect, to surface societal impact and unintended effects.',
         },
@@ -785,7 +796,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       lede: 'What could the RegelRecht ecosystem make possible? A handful of directions for transparent rule application, legislative testing, and the working environment of the legal experts themselves.',
       cases: [
         {
-          img: '/burger-nl-screenshot.png',
+          img: '/portaal-screenshot.png',
           alt: 'Screenshot of a personal rules dashboard: a list of benefits and allowances where each rule shows its origin in the law.',
           h: 'Personal rules dashboard',
           p: 'What if citizens could see all their benefits, allowances and obligations in one place? Every rule could then be traceable back to the machine-executable legislation, with full transparency about how decisions are reached.',
@@ -794,6 +805,10 @@ export const content: Record<'nl' | 'en', LandingContent> = {
             'Full traceability: can a path be drawn from law to personal situation?',
             'Proactive communication: can citizens be informed automatically when rules change?',
           ],
+          link: {
+            label: 'See it in the demo',
+            href: 'https://demo.regelrecht.rijks.app/portaal',
+          },
         },
         {
           img: '/simulatie-screenshot.png',
@@ -807,6 +822,10 @@ export const content: Record<'nl' | 'en', LandingContent> = {
             'Quality control: can inconsistencies be detected before implementation?',
           ],
           reverse: true,
+          link: {
+            label: 'See it in the demo',
+            href: 'https://demo.regelrecht.rijks.app/simulatie',
+          },
         },
         {
           img: '/editor-notities-screenshot.png',

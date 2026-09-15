@@ -29,7 +29,7 @@ jobs:
   in-diff:
     name: Mutation Testing (diff)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -42,7 +42,12 @@ jobs:
 
       - name: Install mold linker
         # Required by packages/.cargo/config.toml (mold linker on x86_64-linux).
-        run: sudo apt-get update && sudo apt-get install -y mold
+        run: |
+          # De runner-image draagt een Google Chrome-apt-bron mee die geregeld een
+          # kapotte index geeft ("Hash Sum mismatch") en dan elke apt-get update laat
+          # falen; wij gebruiken die bron niet, dus weg ermee vóór apt-get update.
+          sudo rm -f /etc/apt/sources.list.d/google-chrome*.list
+          sudo apt-get update && sudo apt-get install -y mold
 
       - name: Restore cargo registry (shared met CI)
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
@@ -96,7 +101,16 @@ jobs:
         working-directory: packages/engine
         run: |
           set +e
-          cargo mutants --in-place --timeout-multiplier 3 \
+          # Een vaste ondergrens, geen multiplier op de baseline. De
+          # baseline meet een warme testrun (seconden); een mutant draait
+          # daarna op een runner die tegelijk compileert, en dan haalt
+          # dezelfde suite die grens niet. Op 9 september 2026 liepen 46
+          # van de 370 mutanten daardoor in een timeout terwijl de suite
+          # in acht seconden groen was: de poort meldde "mogelijk een
+          # oneindige lus" waar in werkelijkheid 46 overlevers verstopt
+          # zaten. Twee minuten is ruim boven elke echte run en nog altijd
+          # kort genoeg om een echte lus af te kappen.
+          cargo mutants --in-place --timeout 120 \
             --in-diff "$RUNNER_TEMP/pr.diff"
           code=$?
           set -e
