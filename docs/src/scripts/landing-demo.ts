@@ -61,6 +61,24 @@ class ScrollyDemo extends HTMLElement {
   private observer?: IntersectionObserver;
   private hasRun = false;
   private observerFired = false;
+  private liveRunning = false;
+  /** The engine module, once fetching has started. */
+  private enginePromise: Promise<typeof import('~/scripts/landing-run.ts')> | null = null;
+  /** Suppresses the replay button until there is a run to replay. */
+  private replaySuppressed = false;
+
+  /**
+   * Hide or show the replay button, remembering the choice.
+   *
+   * `startRun` unhides it whenever a run finishes, so the suppression has to
+   * live somewhere that survives that; a flag here is read back on every such
+   * reveal rather than fought over with attributes.
+   */
+  private setReplayHidden(hidden: boolean) {
+    this.replaySuppressed = hidden;
+    const replay = this.querySelector<HTMLElement>('[data-replay]');
+    if (replay) replay.hidden = hidden;
+  }
 
   connectedCallback() {
     const lang = this.dataset.lang === 'en' ? 'en' : 'nl';
@@ -81,7 +99,7 @@ class ScrollyDemo extends HTMLElement {
     this.observer?.disconnect();
   }
 
-  /** The recorded results, rendered once so they are right without JS timing. */
+  /** Format the values of the rows the run produced. */
   private initValues(lang: string) {
     this.querySelectorAll<HTMLElement>('[data-value]').forEach((el) => {
       el.textContent = formatValue(
@@ -91,10 +109,9 @@ class ScrollyDemo extends HTMLElement {
       );
     });
 
-    // The total is left empty here on purpose. Without JS the server-rendered
-    // amount stands in the markup and is simply read; with JS the replay fills
-    // it in at the end, because an outcome that is already on screen while the
-    // steps are still arriving gives the walk-through nothing to arrive at.
+    // The total stays empty until the last step lands: an outcome that is
+    // already on screen while the steps are still arriving gives the
+    // walk-through nothing to arrive at.
     const out = this.querySelector<HTMLOutputElement>('[data-amount-out]');
     if (out) out.textContent = '';
   }
@@ -254,7 +271,9 @@ class ScrollyDemo extends HTMLElement {
 
     if (reduceMotion() || !('IntersectionObserver' in window)) {
       beats.forEach((b) => b.setAttribute('data-visible', 'true'));
-      this.finishRun(lang);
+      // Still run: the trace is content, not decoration. `startRun` checks the
+      // same preference and puts the rows up without walking through them.
+      void this.liveRun(lang);
       return;
     }
 
@@ -265,7 +284,15 @@ class ScrollyDemo extends HTMLElement {
           const el = entry.target as HTMLElement;
           this.observerFired = true;
           el.setAttribute('data-visible', 'true');
-          if (el.querySelector('[data-run]')) this.startRun(lang);
+          // The run panel starts the engine when it comes into view: the
+          // animation is the point of arriving there, and it should not wait
+          // for a press. Fetching begins earlier, when the panel before it
+          // appears, so the download is usually done by the time this fires.
+          if (el.querySelector('[data-run]')) {
+            void this.liveRun(lang);
+          } else {
+            void this.warmEngine();
+          }
         });
       },
       // A panel can be taller than the viewport (the scenario one is), and a
@@ -286,6 +313,14 @@ class ScrollyDemo extends HTMLElement {
       const onScreen = box.top < window.innerHeight && box.bottom > 0;
       b.setAttribute('data-visible', onScreen ? 'true' : 'false');
       this.observer?.observe(b);
+      // A panel that is already on screen when the page loads -- someone
+      // following a link straight to #demo, or a short page on a tall window --
+      // gets the same treatment as one scrolled into view. The observer reports
+      // transitions, so without this the run would simply never start there.
+      if (onScreen) {
+        if (b.querySelector('[data-run]')) void this.liveRun(lang);
+        else void this.warmEngine();
+      }
     });
 
     // A last resort: if the observer has not fired at all a few seconds in,
@@ -296,20 +331,181 @@ class ScrollyDemo extends HTMLElement {
     // visible: a first panel revealed here because it was already on screen
     // would otherwise satisfy the check while every panel below it stayed
     // hidden forever.
-    // It reveals the panels but does not finish the run: the run is the one
-    // thing that must not be over before the visitor has reached it, and a
-    // fallback that completes it would put the outcome on screen while the
-    // steps are still waiting to be walked.
+    // It reveals the panels and starts the run too. An earlier version left the
+    // run alone, on the reasoning that it must not be over before the visitor
+    // arrives; that held while the panel shipped with a recording to fall back
+    // on. It no longer does, so a run that never starts is simply an empty
+    // panel.
     window.setTimeout(() => {
       if (this.observerFired) return;
       beats.forEach((b) => b.setAttribute('data-visible', 'true'));
+      void this.liveRun(lang);
     }, 4000);
 
+    // Running again means running again: the engine executes the scenario
+    // afresh and the player walks through that new trace. Replaying the rows
+    // already on screen would look identical and mean something weaker.
     const replay = this.querySelector<HTMLButtonElement>('[data-replay]');
     replay?.addEventListener('click', () => {
       this.hasRun = false;
-      this.startRun(lang);
+      void this.liveRun(lang);
     });
+
+    // The replay button appears only once there is a live trace to replay.
+    this.setReplayHidden(true);
+  }
+
+  /**
+   * Start fetching the engine and the laws, without running anything yet.
+   *
+   * Called when an earlier panel scrolls into view, so the roughly 600 KB is
+   * usually on the machine by the time the run panel arrives and the animation
+   * can begin at once. Failure is silent here: the run itself reports it.
+   */
+  private async warmEngine(): Promise<void> {
+    if (this.enginePromise) return;
+    this.enginePromise = import('~/scripts/landing-run.ts')
+      .then((m) => m.prepare(import.meta.env.BASE_URL ?? '/').then(() => m))
+      .catch((err) => {
+        this.enginePromise = null;
+        throw err;
+      });
+    try {
+      await this.enginePromise;
+    } catch {
+      // Reported when the run is attempted, not while warming up.
+    }
+  }
+
+  /**
+   * Run the scenario here and let the player walk through what comes back.
+   *
+   * No button: reaching this panel is the request. The engine is what the panel
+   * is about, so waiting for a press would mean an empty frame at exactly the
+   * moment the visitor arrived to see it fill.
+   */
+  private async liveRun(lang: string): Promise<void> {
+    if (this.liveRunning || this.hasRun) return;
+    this.liveRunning = true;
+
+    const label = (key: string, fallback: string) => this.dataset[key] ?? fallback;
+    const empty = this.querySelector<HTMLElement>('[data-empty]');
+    const status = this.querySelector<HTMLElement>('[data-run-status]');
+    if (empty) empty.textContent = label('tLoading', 'Loading…');
+    if (status) status.textContent = label('tLoading', 'Loading…');
+
+    try {
+      await this.warmEngine();
+      const mod = await (this.enginePromise ?? import('~/scripts/landing-run.ts'));
+      const result = await mod.runScenario(import.meta.env.BASE_URL ?? '/');
+      this.renderLive(result, lang);
+    } catch (err) {
+      console.error('[landing] live run failed', err);
+      if (empty) {
+        empty.hidden = false;
+        empty.textContent = label('tFailed', 'The run failed.');
+      }
+      if (status) status.textContent = '';
+    } finally {
+      this.liveRunning = false;
+    }
+  }
+
+  /**
+   * Swap the recorded rows for the ones that just ran.
+   *
+   * Only the rows change. The tree, the columns and the replay are the same
+   * code that renders the recording, so what a visitor sees after pressing the
+   * button is the same panel showing a different run -- not a second design.
+   */
+  private renderLive(result: import('~/scripts/landing-run.ts').RunResult, lang: string) {
+    const list = this.querySelector<HTMLElement>('.rr-trace');
+    if (!list) return;
+
+    // Readable names, passed in as data by the component: the kinds of step,
+    // and the law names, in the page's language.
+    let labels: { outputs: Record<string, string>; laws: Record<string, string>; kinds: Record<string, string> };
+    try {
+      labels = JSON.parse(this.dataset.labels ?? '{}');
+    } catch {
+      labels = { outputs: {}, laws: {}, kinds: {} };
+    }
+    const kindLabels = labels.kinds ?? {};
+    const lawLabels = labels.laws ?? {};
+
+    // Nothing to explain once there are rows.
+    const empty = this.querySelector<HTMLElement>('[data-empty]');
+    if (empty) empty.hidden = true;
+
+    list.textContent = '';
+    result.beats.forEach((b, i) => {
+      const row = document.createElement('li');
+      row.className = 'rr-trace__row';
+      row.dataset.step = String(i);
+      row.dataset.type = b.type;
+
+      const kind = document.createElement('span');
+      kind.className = 'rr-trace__kind';
+      kind.dataset.kind = b.type;
+      kind.textContent = kindLabels[b.type] ?? b.type;
+
+      const name = document.createElement('span');
+      name.className = 'rr-trace__name';
+      const tree = document.createElement('span');
+      tree.className = 'rr-trace__tree';
+      tree.setAttribute('aria-hidden', 'true');
+      tree.textContent = b.tree;
+      const code = document.createElement('code');
+      code.textContent = b.identifier;
+      name.append(tree, code);
+      if (b.law) {
+        const law = document.createElement('span');
+        law.className = 'rr-trace__law';
+        law.textContent = lawLabels[b.law] ?? b.law.replace(/_/g, ' ');
+        name.append(law);
+      }
+
+      const value = document.createElement('span');
+      value.className = 'rr-trace__value';
+      value.dataset.value = JSON.stringify(b.result ?? null);
+      value.dataset.unit = b.unit ?? '';
+
+      // No per-step timing column. The engine cannot measure one under
+      // WebAssembly -- `Instant::now()` trips RefCell aliasing in
+      // wasm-bindgen, so the traced entry points force an untimed builder and
+      // `duration_us` is always absent (RFC-039 says no consumer may depend on
+      // it). The recording used to carry them because it ran natively. An
+      // empty column on 136 rows would read as "took no time" rather than "not
+      // measured here", so the column is gone; the total is measured in the
+      // page and stated under the trace.
+      row.append(kind, name, value);
+      list.append(row);
+    });
+
+    // The amount this run produced, which the replay reveals at the last step.
+    this.dataset.amount = String(result.amount ?? 'null');
+
+    const facts = this.querySelector<HTMLElement>('[data-facts]');
+    if (facts) {
+      const ms = result.durationMs.toFixed(2).replace('.', lang === 'en' ? '.' : ',');
+      const pre = this.dataset.tLive ?? '';
+      // Say that the walk-through is slowed down. The engine takes a couple of
+      // milliseconds and the animation takes seconds, so a visitor who watches
+      // 136 steps crawl past and then reads "1.60 ms" has every reason to
+      // distrust the number. The measurement is real; the pace is a choice.
+      const slow = this.dataset.tSlow ?? '';
+      facts.textContent =
+        lang === 'en'
+          ? `${pre} ${result.steps} steps in ${ms} ms. ${slow}`
+          : `${pre} ${result.steps} stappen in ${ms} ms. ${slow}`;
+    }
+
+    this.initValues(lang);
+    // There is a live trace now, so replaying it means something: it walks
+    // through the run that just happened, not a stand-in for one.
+    this.setReplayHidden(false);
+    this.hasRun = false;
+    this.startRun(lang);
   }
 
   /**
@@ -360,7 +556,7 @@ class ScrollyDemo extends HTMLElement {
           run.setAttribute('data-state', 'done');
           run.setAttribute('data-complete', 'true');
           if (status) status.textContent = labels.done;
-          if (replay) replay.hidden = false;
+          if (replay) replay.hidden = this.replaySuppressed;
           this.showAmount(lang);
         }
       }, i * interval);

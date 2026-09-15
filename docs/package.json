@@ -16,6 +16,8 @@
   },
   "dependencies": {
     "@astrojs/mdx": "^7.0.5",
+    "@cucumber/gherkin": "^42.0.1",
+    "@cucumber/messages": "^34.2.1",
     "@nldd/design-system": "^0.8.83",
     "astro": "^7.1.6",
     "astro-pagefind": "^2.0.1",

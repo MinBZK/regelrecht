@@ -1,16 +1,18 @@
 ---
 /*
- * The scrollytelling demo: one law, five representations, revealed one by one
- * as the visitor scrolls.
+ * The scrollytelling demo: one law in its several forms, revealed one by one as
+ * the visitor scrolls.
  *
- * Everything here is read from the repository at build time (see
- * ~/lib/landing-demo). The trace is a recording of the scenario that sits
- * beside the law and that CI runs on every push, so the amount on this page is
- * the amount a failing test would catch.
+ * The statute, the YAML, the memorandum and the scenario are read from the
+ * repository at build time (see ~/lib/landing-demo). The execution is not: the
+ * engine runs the scenario in the visitor's browser when this panel comes into
+ * view (~/scripts/landing-run.ts), so the trace on screen is one that happened
+ * on their machine rather than a recording of one that happened on ours.
  *
  * No framework: the docs site ships no UI-framework integration, so this is
- * plain custom elements plus an IntersectionObserver. Without JS every panel is
- * simply visible, which is the whole content in reading order.
+ * plain custom elements plus an IntersectionObserver. Without JS the four
+ * read-from-the-repository panels are simply visible, and the run panel says it
+ * needs JavaScript instead of showing a stand-in.
  */
 import { demo } from '~/lib/landing-demo';
 import LandingWipe from './LandingWipe.astro';
@@ -21,22 +23,26 @@ interface Props {
 const { lang } = Astro.props;
 
 const nl = {
-  title: 'Eén wet, vijf gedaanten',
-  lede: 'Scroll door een echte uitvoering van de Wet op de zorgtoeslag. Elk blok hieronder komt rechtstreeks uit deze repository; niets is nagemaakt voor de demo.',
+  title: 'Van wettekst naar digitale werking',
+  lede: 'Sleep de lijn om te zien wat er tussen de Wet op de zorgtoeslag en een uitgerekend bedrag zit. Onderaan rekent de engine het scenario echt uit.',
   steps: [
-    { tag: 'Wettekst', h: 'Wat de wet zegt', p: 'Artikel 2, eerste lid. De tekst die iedereen kan opzoeken.' },
+    { tag: 'Wettekst', h: 'Wat de wet zegt', p: 'Artikel 2, eerste lid van de Wet op de zorgtoeslag: wie er recht op heeft. De tekst die iedereen kan opzoeken.' },
     { tag: 'Machineleesbaar', h: 'Wat de machine leest', p: 'Dezelfde regel, uitvoerbaar. De verwijzing naar het lid staat erbij, dus een uitkomst kan later zeggen waar ze vandaan komt.' },
     { tag: 'Toelichting', h: 'Waarom het er zo staat', p: 'De wetgever aan het woord, letterlijk uit de parlementaire stukken.' },
-    { tag: 'Scenario', h: 'Hoe we het controleren', p: 'De wetgever rekent de zorgtoeslag zelf voor in de Kamerstukken. Die tabel is hier een uitvoerbaar scenario: dezelfde formule, nagerekend tot op de euro. Het draait bij elke wijziging; gaat het om, dan is de wet veranderd.' },
-    { tag: 'Uitvoering', h: 'De engine rekent', p: 'Precies dat scenario, echt uitgevoerd.' },
+    { tag: 'Scenario', h: 'Hoe we het controleren', p: 'De wetgever rekent de zorgtoeslag zelf voor in de Kamerstukken. Die tabel is hier een uitvoerbaar scenario: dezelfde formule, nagerekend tot op de euro. Valt het om, dan is de wet veranderd of klopt de uitvoering niet meer.' },
+    { tag: 'Uitvoering', h: 'De engine rekent', p: 'Precies dat scenario, uitgevoerd op de machine-uitvoerbare wet hierboven. Wat je hieronder ziet gebeuren, gebeurt nu: de engine draait in deze browser, op jouw machine.' },
   ],
   runLabel: 'Uitvoeren',
   running: 'Bezig met uitvoeren',
   done: 'Klaar',
   resultLabel: 'Zorgtoeslag per jaar',
-  factsPre: 'Werkelijk uitgevoerd:',
-  factsPost: (s: number, ms: string) => `${s} stappen in ${ms} ms, over zes wetten.`,
-  replay: 'Opnieuw afspelen',
+  beforeRun: 'De engine en de wetten worden opgehaald; het scenario draait hier, in je browser.',
+  noScript: 'Hiervoor is JavaScript nodig: de engine draait in je eigen browser, niet op een server.',
+  replay: 'Opnieuw uitvoeren',
+  runLoading: 'Engine laden…',
+  runLive: 'Zojuist uitgevoerd in je browser:',
+  runSlow: 'Hierboven vertraagd afgespeeld, anders was het voorbij voor je het zag.',
+  runFailed: 'Uitvoeren lukte niet. Het scenario staat in de repository en draait ook met `just bdd`.',
   slider: 'Sleep of scroll om de wettekst en de machineleesbare regel over elkaar te schuiven.',
   slider2: 'Sleep of scroll om de toelichting en het scenario over elkaar te schuiven.',
   sliderLeft: 'Wettekst',
@@ -46,22 +52,26 @@ const nl = {
 };
 
 const en = {
-  title: 'One law, five forms',
-  lede: 'Scroll through a real execution of the Dutch Healthcare Allowance Act. Every block below comes straight from this repository; nothing is mocked up for the demo.',
+  title: 'From statute text to digital execution',
+  lede: 'Drag the divider to see what sits between the Dutch Healthcare Allowance Act and an amount worked out. At the bottom the engine runs the scenario for real.',
   steps: [
-    { tag: 'Statute', h: 'What the law says', p: 'Article 2, first paragraph. The text anyone can look up.' },
+    { tag: 'Statute', h: 'What the law says', p: 'Article 2, first paragraph of the Wet op de zorgtoeslag: who is entitled to it. The text anyone can look up.' },
     { tag: 'Machine-readable', h: 'What the machine reads', p: 'The same rule, executable. It carries the citation, so a result can say later where it came from.' },
     { tag: 'Memorandum', h: 'Why it reads that way', p: 'The legislature in its own words, quoted from the parliamentary papers.' },
-    { tag: 'Scenario', h: 'How we check it', p: 'The legislature works the allowance out itself in the parliamentary papers. That table is an executable scenario here: the same formula, checked to the euro. It runs on every change; if it breaks, the law moved.' },
-    { tag: 'Execution', h: 'The engine runs', p: 'That very scenario, actually executed.' },
+    { tag: 'Scenario', h: 'How we check it', p: 'The legislature works the allowance out itself in the parliamentary papers. That table is an executable scenario here: the same formula, checked to the euro. If it breaks, either the law moved or the execution no longer matches it.' },
+    { tag: 'Execution', h: 'The engine runs', p: 'That very scenario, executed against the machine-executable law above. What you see happening below is happening now: the engine runs in this browser, on your machine.' },
   ],
   runLabel: 'Run',
   running: 'Running',
   done: 'Done',
   resultLabel: 'Allowance per year',
-  factsPre: 'Actually executed:',
-  factsPost: (s: number, ms: string) => `${s} steps in ${ms} ms, across six laws.`,
-  replay: 'Replay',
+  beforeRun: 'Fetching the engine and the laws; the scenario runs here, in your browser.',
+  noScript: 'This needs JavaScript: the engine runs in your own browser, not on a server.',
+  replay: 'Run again',
+  runLoading: 'Loading the engine…',
+  runLive: 'Just executed in your browser:',
+  runSlow: 'Played back slowly above; at full speed it would be over before you saw it.',
+  runFailed: 'The run failed. The scenario is in the repository and also runs with `just bdd`.',
   slider: 'Drag or scroll to wipe between the statute and the machine-readable rule.',
   slider2: 'Drag or scroll to wipe between the memorandum and the scenario.',
   sliderLeft: 'Statute',
@@ -71,10 +81,7 @@ const en = {
 };
 
 const t = lang === 'en' ? en : nl;
-const ms = demo.durationMs.toFixed(2).replace('.', lang === 'en' ? '.' : ',');
 
-// The beats the replay walks through, as recorded. `result` is whatever the
-// engine produced; the renderer decides how to show it, never what it is.
 //
 // A cross-law step is named `other_law#output`, and its anchor says where the
 // engine was when it made the call, which is this law's article 2 every time.
@@ -126,51 +133,20 @@ const KINDS: Record<string, string> = {
   requirement: 'req',
   cached: 'cached',
 };
-const kindLabel = (t: string) => KINDS[t] ?? t;
-
 const humanise = (id: string) => id.replace(/_/g, ' ');
-const label = (id: string) => LABELS[id]?.[lang] ?? humanise(id);
-const lawLabel = (id: string) => LAW_LABELS[id]?.[lang] ?? humanise(id);
 
-// Every step the engine took, in the order it took them, with the nesting kept
-// as depth. The page claims this is what really happened, so it shows the whole
-// trace rather than its top layer: a list of seven under a line reading "131
-// steps" invites exactly the doubt the demo exists to remove.
-function flatten(node: any, depth: number, out: any[]) {
-  const raw: string = node.name ?? '';
-  const [before, output] = raw.includes('#') ? raw.split('#') : [null, raw];
-  out.push({
-    name: label(output),
-    identifier: output,
-    law: before ? lawLabel(before) : null,
-    type: node.node_type,
-    result: node.result,
-    article: before ? null : (node.anchor?.article ?? null),
-    unit: node.type_spec?.unit ?? null,
-    depth,
-    // The kind of step, where a resolved value came from, and what it cost.
-    // This is a trace, so it may look like one: these are the things an
-    // engineer reads it for. The RFC-039 address stays in the recording but is
-    // not shown; see the row markup for why.
-    resolve: node.resolve_type ?? null,
-    provider: node.source?.provider ?? null,
-    us: node.duration_us ?? null,
-  });
-  for (const child of node.children ?? []) flatten(child, depth + 1, out);
-}
-
-const beats: any[] = [];
-for (const child of demo.trace.root.children ?? []) flatten(child, 0, beats);
-
-// The box-drawing prefixes the recorder computed, one per step in this same
-// order. Drawn rather than indented: the shapes distinguish a cross-law scope
-// from the arithmetic inside it, which plain indentation flattens away.
-const tree: string[] = (demo.trace as any).recording?.tree ?? [];
-beats.forEach((b, i) => {
-  b.tree = tree[i] ?? '';
+// The labels the browser needs once it has a trace to render. They are passed
+// as data rather than used here: there is nothing to label until the engine has
+// run, and that happens in the visitor's browser.
+const labels = JSON.stringify({
+  outputs: Object.fromEntries(
+    Object.entries(LABELS).map(([id, v]) => [id, v[lang] ?? humanise(id)]),
+  ),
+  laws: Object.fromEntries(
+    Object.entries(LAW_LABELS).map(([id, v]) => [id, v[lang] ?? humanise(id)]),
+  ),
+  kinds: KINDS,
 });
-
-const amount = demo.trace.root.result;
 ---
 
 <nldd-simple-section
@@ -189,7 +165,15 @@ const amount = demo.trace.root.result;
   </nldd-rich-text>
   <nldd-spacer size="32" />
 
-  <rr-scrolly class="rr-scrolly" data-amount={String(amount)} data-lang={lang}>
+  <rr-scrolly
+    class="rr-scrolly"
+    data-labels={labels}
+    data-lang={lang}
+    data-t-loading={t.runLoading}
+    data-t-live={t.runLive}
+    data-t-slow={t.runSlow}
+    data-t-failed={t.runFailed}
+  >
     {/* 1 + 2: the wipe between prose and YAML */}
     <article class="rr-beat" data-beat="0">
       <p class="rr-beat__tag">{t.steps[0].tag} &rarr; {t.steps[1].tag}</p>
@@ -241,9 +225,15 @@ const amount = demo.trace.root.result;
             the data tables are aligned on their pipes and reflowing them would
             destroy the alignment, so this one scrolls sideways instead. */}
         <nldd-code-viewer slot="under" language="gherkin" variant="simple">{demo.gherkin}</nldd-code-viewer>
-        <nldd-blockquote slot="over">
+        {/* The citation links to the published document, like the statute
+            quotation above does. It is a quotation from the parliamentary
+            papers, so it has to be checkable; and both the citation and the
+            link come out of the same annotation, so they cannot drift apart. */}
+        <nldd-blockquote slot="over" cite={demo.memorandumUrl}>
           <p>{demo.memorandum}</p>
-          <span slot="attribution">Kamerstukken II 2021/22, 35 925 XVI, nr. 14</span>
+          <span slot="attribution">
+            <a href={demo.memorandumUrl} rel="noreferrer">{demo.memorandumCitation}</a>
+          </span>
         </nldd-blockquote>
       </LandingWipe>
     </article>
@@ -266,39 +256,16 @@ const amount = demo.trace.root.result;
             aria-label={t.steps[4].h}
             data-steps-scroll
           >
-          {/* A trace rendered as a trace: monospace, addressed, indented by the
-              nesting the engine recorded. nldd-list is deliberately not used
-              here (reported to the user): its rows are made for readable
-              records, and this is a machine's own account, where the alignment
-              of the columns is what makes it scannable. */}
-          <ol class="rr-trace">
-            {beats.map((b: any, i: number) => (
-              <li class="rr-trace__row" data-step={i} data-type={b.type}>
-                {/* The address RFC-039 gives the step is in the recording and
-                    stays there; it is not printed. At ten levels deep it runs
-                    to 26 characters and would set the column width for all 140
-                    rows, crowding out the values and timings that are what the
-                    panel is for. The tree lines already show where a step sits. */}
-                <span class="rr-trace__kind" data-kind={b.type}>{kindLabel(b.type)}</span>
-                <span class="rr-trace__name">
-                  <span class="rr-trace__tree" aria-hidden="true">{b.tree}</span>
-                  <code>{b.identifier}</code>
-                  {/* Only the law a cross-law call consults. The anchor says
-                      where the engine was, which is this article on nearly
-                      every step, so printing it per row adds nothing but
-                      noise. */}
-                  {b.law && <span class="rr-trace__law">{b.law}</span>}
-                  {b.provider && <span class="rr-trace__src">&larr; {b.provider}</span>}
-                </span>
-                <span
-                  class="rr-trace__value"
-                  data-value={JSON.stringify(b.result)}
-                  data-unit={b.unit ?? ''}
-                />
-                <span class="rr-trace__us">{b.us != null && b.us > 0 ? `${b.us}µs` : ''}</span>
-              </li>
-            ))}
-          </ol>
+          {/* Empty until the engine has run. A trace rendered as a trace:
+              monospace, indented by the nesting the engine reports. nldd-list
+              is deliberately not used here (reported to the user): its rows are
+              made for readable records, and this is a machine's own account,
+              where the alignment of the columns is what makes it scannable. */}
+          <ol class="rr-trace"></ol>
+          <p class="rr-run__empty" data-empty>{t.beforeRun}</p>
+          {/* Without JS the button never appears, so say why rather than leave
+              an empty frame. */}
+          <noscript><p class="rr-run__empty">{t.noScript}</p></noscript>
           </div>
 
           <nldd-spacer size="16" />
@@ -308,7 +275,7 @@ const amount = demo.trace.root.result;
             <output class="rr-run__amount" data-amount-out></output>
           </p>
           <nldd-rich-text>
-            <p class="rr-run__facts">{t.factsPre} {t.factsPost(demo.steps, ms)}</p>
+            <p class="rr-run__facts" data-facts></p>
           </nldd-rich-text>
           <nldd-spacer size="8" />
           {/* `text` rather than slotted content: the default slot is not the

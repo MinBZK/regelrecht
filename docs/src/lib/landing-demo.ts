@@ -1,13 +1,16 @@
 /*
- * The five things the landing-page demo shows, all read from the repository at
- * build time rather than retyped here.
+ * What the landing-page demo shows, all read from the repository at build time
+ * rather than retyped here: the prose a citizen can look up, the YAML that
+ * makes it executable, the memorandum that says why it reads that way, and the
+ * scenario that checks it. Retyping any of them would make the page an
+ * illustration of the claim instead of an instance of it, and it would drift
+ * the moment the corpus moved.
  *
- * The point of the demo is that one law is the same law in five
- * representations: the prose a citizen can look up, the YAML that makes it
- * executable, the memorandum that says why it reads that way, the scenario that
- * checks it, and the trace of that scenario actually running. Retyping any of
- * them would make the page an illustration of the claim instead of an instance
- * of it, and it would drift the moment the corpus moved.
+ * The fifth thing, the run itself, is not here: it happens in the visitor's
+ * browser (see ~/scripts/landing-run.ts). There used to be a recording of it
+ * alongside, and that was one execution too many -- two traces of the same law
+ * that had to be kept saying the same thing, on a page whose whole argument is
+ * that one law should have one execution.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -30,18 +33,6 @@ const LAW = 'corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml';
 const SCENARIO =
   'corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/scenarios/eligibility.feature';
 const ANNOTATIONS = 'corpus/annotations/wet_op_de_zorgtoeslag/annotations.yaml';
-
-/**
- * The recorded run, written by `just record-landing-trace`.
- *
- * Read from disk rather than imported: a JSON import resolves differently
- * between dev and build here, and reading the file keeps one code path for all
- * five sources.
- */
-export const trace = JSON.parse(readLocal('src', 'data', 'landing-trace.json')) as {
-  root: Record<string, any>;
-  recording: { total_steps: number; total_duration_us: number };
-};
 
 /**
  * Article 2 lid 1, as the law states it.
@@ -144,17 +135,55 @@ function memorandum(annotations: string): string {
     .trim();
 }
 
+/**
+ * Where the quoted passage comes from: the citation as the annotation states
+ * it, and the link to the published document.
+ *
+ * Both are read out of the one annotation that holds the quotation, rather
+ * than written out here, so a citation can never end up pointing at a
+ * different document than the text beside it. A quotation from the
+ * parliamentary papers without a way to check it is the kind of claim this
+ * page exists to avoid making.
+ */
+function memorandumSource(annotations: string): { citation: string; url: string } {
+  const marker = 'Verslag houdende een lijst van vragen en antwoorden bij de';
+  const quoted = annotations.indexOf(marker);
+  if (quoted === -1) throw new Error(`${ANNOTATIONS}: the worked-example annotation is missing`);
+
+  // The `creator:` line sits above the body, the `source:` link below it, both
+  // inside the same annotation. Bound the search at the next annotation so a
+  // missing field borrows neither from the one before nor the one after.
+  const blockStart = annotations.lastIndexOf('\n  - type: Annotation', quoted);
+  const after = annotations.indexOf('\n  - type: Annotation', quoted);
+  const block = annotations.slice(
+    blockStart === -1 ? 0 : blockStart,
+    after === -1 ? annotations.length : after,
+  );
+
+  const citation = block.match(/^\s*creator:\s*(.+)$/m)?.[1]?.trim();
+  if (!citation) throw new Error(`${ANNOTATIONS}: the worked-example annotation has no creator`);
+
+  const url = block.match(/^\s*source:\s*(https:\/\/\S+)$/m)?.[1]?.trim();
+  if (!url) throw new Error(`${ANNOTATIONS}: the worked-example annotation has no source link`);
+
+  return { citation, url };
+}
+
 const lawYaml = read(LAW);
+const annotationsYaml = read(ANNOTATIONS);
+const memorandumFrom = memorandumSource(annotationsYaml);
 
 export const demo = {
-  trace,
   prose: articleTwoLidOne(lawYaml),
   yaml: computationYaml(lawYaml),
-  memorandum: memorandum(read(ANNOTATIONS)),
+  memorandum: memorandum(annotationsYaml),
+  // Dutch in both languages: a citation is a findable address, not a
+  // description. Translating it would name a document that does not exist
+  // under that name in the official record.
+  memorandumCitation: memorandumFrom.citation,
+  memorandumUrl: memorandumFrom.url,
   gherkin: scenario(read(SCENARIO)),
   scenarioPath: SCENARIO,
   lawPath: LAW,
   lawUrl: 'https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2',
-  steps: trace.recording.total_steps as number,
-  durationMs: (trace.recording.total_duration_us as number) / 1000,
 };

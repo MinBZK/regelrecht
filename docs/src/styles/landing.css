@@ -207,6 +207,25 @@ html {
   pointer-events: none;
 }
 
+/* A grip drawn on the divider, because a first-time visitor could not tell the
+   edge was draggable at all: it read as scroll-driven only. Small, centred, and
+   out of the way of the text, but present. The arrows say which way it moves. */
+.rr-wipe__rule::after {
+  content: '\00A0\2039\00A0\203A\00A0';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 0.35rem 0.1rem;
+  border-radius: 999px;
+  border: 1px solid var(--semantics-dividers-color);
+  background: var(--semantics-surfaces-base-background-color);
+  font-size: 0.8125rem;
+  line-height: 1;
+  letter-spacing: -0.05em;
+  opacity: 0.85;
+}
+
 /* The control spans the pane, because a range input drags along its own width
    and cutting it short would cut the travel short too. It lets everything
    through, though: pointer events pass to whatever is underneath, so the YAML
@@ -231,7 +250,7 @@ html {
    the whole rule. */
 .rr-wipe__handle::-webkit-slider-thumb {
   appearance: none;
-  width: 1.25rem;
+  width: 1.75rem;
   height: var(--rr-wipe-height);
   border: 0;
   background: transparent;
@@ -240,7 +259,7 @@ html {
 }
 
 .rr-wipe__handle::-moz-range-thumb {
-  width: 1.25rem;
+  width: 1.75rem;
   height: var(--rr-wipe-height);
   border: 0;
   background: transparent;
@@ -400,12 +419,6 @@ html {
 }
 
 /* Timings are the least of it, and mostly zero; present but quiet. */
-.rr-trace__us {
-  opacity: 0.35;
-  font-size: 0.72rem;
-  text-align: end;
-}
-
 /* An operation is scaffolding between the steps that matter. */
 .rr-trace__row[data-type='operation'] {
   opacity: 0.72;

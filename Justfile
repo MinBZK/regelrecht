@@ -35,6 +35,16 @@ wasm-build:
     wasm-bindgen --target web --out-dir frontend/public/wasm/pkg packages/target/wasm32-unknown-unknown/release/regelrecht_engine.wasm
     # The demo runs the same engine in the browser; keep the two copies identical.
     mkdir -p frontend-demo/public/wasm/pkg && cp frontend/public/wasm/pkg/* frontend-demo/public/wasm/pkg/
+    # The landing page runs the zorgtoeslag scenario in the visitor's browser
+    # when the panel scrolls into view, so the amount it shows is computed there
+    # and then rather than asserted. Same artifact again: one engine, three
+    # places.
+    mkdir -p docs/public/wasm/pkg && cp frontend/public/wasm/pkg/* docs/public/wasm/pkg/
+
+# Copy the laws, the scenario and the canonical-grammar runner into the docs
+# project, so the landing page can run the scenario in the visitor's browser.
+landing-laws:
+    ./script/landing-laws.sh
 
 # --- Quality checks ---
 
@@ -902,16 +912,6 @@ poc-assistent casus="terugbetaalregimes" poort="3600":
     POC_VARIANT_OPSLAG=0 \
     PORT={{poort}} \
     node packages/poc-assistent/index.js
-
-# Re-record the trace the landing page replays (RFC-039).
-#
-# The docs site ships no engine and a full evaluation takes about three
-# milliseconds, far too fast to watch, so the engine runs here and the page
-# replays what it recorded. Run this after changing the zorgtoeslag chain: the
-# recorder refuses to write if the outcome is no longer the amount the scenario
-# beside the law asserts, so the page can never quietly show a different number.
-record-landing-trace:
-    cd packages && cargo run --example record_landing_trace -- ../docs/src/data/landing-trace.json
 
 # --- Architecture model ---
 
