@@ -32,11 +32,14 @@ const world = resolve(
 );
 
 /**
- * Een vrije poort, bij voorkeur uit 7100-7300.
+ * Een vrije poort, bij voorkeur uit 7180-7300.
  *
- * Dat bereik is wat de dev-container naar de host doorzet, zodat een blijvende
- * server (`--debug`, `--ui`) ook buiten de container te bekijken is. Is alles
- * bezet — meerdere worktrees naast elkaar — dan doet elke vrije poort het ook.
+ * 7100-7300 is wat de dev-container naar de host doorzet, zodat een blijvende
+ * server (`--debug`, `--ui`) ook buiten de container te bekijken is. Het telt
+ * pas vanaf 7180 zodat de poorten die een mens zelf aanwijst — `just
+ * chrono-poc` staat op 7160 — niet onder zijn handen vandaan gegrepen worden.
+ * Is alles bezet, meerdere worktrees naast elkaar, dan doet elke vrije poort
+ * het ook.
  */
 async function freePort() {
   const available = (port) =>

@@ -289,7 +289,7 @@ chrono-poc WORLD='packages/simulator/worlds/publieke_wereld.yaml' PORT='7160': b
 #
 # Eerst bouwen, dan pas Playwright: het recept levert de bundel (STATIC_DIR) en
 # de binary af, zodat de `webServer` uit de configuratie een start is en geen
-# build. De poort kiest die configuratie zelf, uit 7100-7300.
+# build. De poort kiest die configuratie zelf, uit 7180-7300.
 #
 # Geen `ci_flags` op die build, anders dan bij de andere cargo-recepten: die
 # server wordt zo meteen door playwright met `cargo run` gestart, en cargo ziet

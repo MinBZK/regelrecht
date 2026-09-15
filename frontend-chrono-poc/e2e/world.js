@@ -10,9 +10,22 @@ import { expect } from '@playwright/test';
  *
  * `playwright.config.js` zet `CHRONO_POC_E2E_BASE` zodra hij de poort gekozen
  * heeft (of `E2E_BASE` overgenomen heeft), en workers erven die variabele. Hier
- * opnieuw een poort kiezen zou een adres opleveren waar niets luistert.
+ * opnieuw een poort kiezen zou een adres opleveren waar niets luistert, en een
+ * vaste val-terug-poort zou de suite zonder een woord tegen de dev-server van
+ * iemand anders aan zetten — een wereld waarin de checks iets heel anders meten
+ * dan ze beweren. Ontbreekt de variabele, dan is er iets mis met de
+ * doorgifte en zeggen we dat.
  */
-export const BASE = process.env.CHRONO_POC_E2E_BASE || process.env.E2E_BASE || 'http://localhost:7160';
+export function baseUrl() {
+  const base = process.env.CHRONO_POC_E2E_BASE || process.env.E2E_BASE;
+  if (!base) {
+    throw new Error(
+      'CHRONO_POC_E2E_BASE is niet gezet: draai de suite via haar configuratie ' +
+        '(`just chrono-poc-e2e`), die kiest de poort en geeft hem hierlangs door.',
+    );
+  }
+  return base;
+}
 
 /** De grammen van één kroniek van één cel, of een lege lijst. */
 export function grams(world, cell, stream) {
@@ -47,7 +60,7 @@ export function hasDelta(entry) {
  */
 export async function openSession(browser) {
   const context = await browser.newContext({
-    baseURL: BASE,
+    baseURL: baseUrl(),
     viewport: { width: 1500, height: 1000 },
   });
   const page = await context.newPage();
@@ -124,12 +137,27 @@ function session(context, page, pageErrors) {
 
   /** Zet de klok vooruit tot `date` (dd-mm-jjjj) en laat de triggers afgaan. */
   const advance = async (date) => {
-    const field = page.locator('nldd-date-field input[type=text]').last();
+    // Op het label van het veld en niet op "het laatste datumveld van de
+    // pagina": een actie met een datumparameter draagt er ook een, en welke
+    // van de twee de laatste is hangt aan de volgorde waarin de wereld haar
+    // acties opsomt. Het label komt van de nldd-form-field eromheen terecht op
+    // de `aria-label` van de input erin.
+    const field = page.locator('input[aria-label="Spoel vooruit tot"]');
     await field.fill(date);
     await field.press('Tab');
     await page.getByRole('button', { name: 'Vooruitspoelen' }).click();
     await page.waitForTimeout(1200);
   };
+
+  /**
+   * Het formulier van één actie, gezocht op de actie-id die haar kaart toont.
+   *
+   * Niet op volgorde (`form` nummer twee): een actie erbij in het wereldbestand
+   * verschuift die nummering, en dan vult een check stilzwijgend het verkeerde
+   * formulier in.
+   */
+  const actionForm = (id) =>
+    page.locator('nldd-card', { has: page.getByText(id, { exact: true }) }).locator('form');
 
   /** Vul een veld van een actieformulier op zijn label; ook checkboxen. */
   const fillByLabel = async (form, label, value) => {
@@ -163,6 +191,7 @@ function session(context, page, pageErrors) {
     world,
     worldWhen,
     tab,
+    actionForm,
     body,
     textAll,
     advance,

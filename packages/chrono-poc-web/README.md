@@ -160,7 +160,7 @@ just chrono-poc-e2e --headed   # of --ui / --debug; alles achter het recept gaat
 ```
 
 Het recept bouwt eerst de bundel en de binary; daarna start
-`playwright.config.js` deze server zelf, op een vrije poort uit 7100-7300, met
+`playwright.config.js` deze server zelf, op een vrije poort uit 7180-7300, met
 `CHRONO_POC_WORLD_SOURCE=local:packages/simulator/worlds/publieke_wereld.yaml`
 en zonder login. De testnamen zijn de check-id's van de ronde die eerder met de
 hand liep (`L1`…`E6`), zodat een rode regel in CI dezelfde naam draagt als het

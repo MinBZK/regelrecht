@@ -17,13 +17,19 @@ import { grams, hasDelta, kindIs, openSession } from './world.js';
 // persoon.
 const BSN = '999993653';
 
+// De drie acties van de publieke wereld, op id. De kaart van een actie draagt
+// haar id zichtbaar; daarop zoeken houdt een check bij zijn eigen formulier,
+// ook als de wereld er een actie bij krijgt.
+const AANVRAAG = 'burger.aanvraag';
+const TOEKENNING = 'toeslagen.toekenning';
+const VASTSTELLING = 'toeslagen.vaststelling';
+
 test.describe.configure({ mode: 'serial' });
 
 test.describe('publieke wereld', () => {
   /** @type {Awaited<ReturnType<typeof openSession>>} */
   let s;
   let page;
-  let forms;
   let world;
   let fields;
   let earlyDecision;
@@ -31,7 +37,13 @@ test.describe('publieke wereld', () => {
   test.beforeAll(async ({ browser }) => {
     s = await openSession(browser);
     page = s.page;
-    forms = page.locator('form');
+  });
+
+  // Een uitzondering in de app laat de wereld-API ongemoeid, dus een check die
+  // alleen naar het wereldbeeld kijkt blijft groen terwijl het scherm stuk is.
+  // Daarom draagt elke stap ook deze bewering.
+  test.afterEach(() => {
+    expect(s.pageErrors).toEqual([]);
   });
 
   test.afterAll(async () => {
@@ -79,15 +91,15 @@ test.describe('publieke wereld', () => {
   });
 
   test('F2: het formulier toont die voorgevulde waarde', async () => {
-    await expect(forms.nth(0).locator('input[aria-label="Bsn"]')).toHaveValue(BSN);
+    await expect(s.actionForm(AANVRAAG).locator('input[aria-label="Bsn"]')).toHaveValue(BSN);
   });
 
   test('F3: een datumparameter krijgt een datumveld', async () => {
-    await expect(forms.nth(0).locator('nldd-date-field')).not.toHaveCount(0);
+    await expect(s.actionForm(AANVRAAG).locator('nldd-date-field')).not.toHaveCount(0);
   });
 
   test('S1: de aanvraag levert twee grammen — bij de burger en bij de ontvanger', async () => {
-    await forms.nth(0).locator('button[type=submit]').click();
+    await s.actionForm(AANVRAAG).locator('button[type=submit]').click();
     world = await s.worldWhen(
       (w) => grams(w, 'burger', 'aanvragen').length === 1 && grams(w, 'toeslagen', 'aanvragen').length === 1,
       'de aanvraag landt bij de burger én bij toeslagen',
@@ -120,8 +132,8 @@ test.describe('publieke wereld', () => {
 
   test('D1: het decretogram is een BESCHIKKING met het bevoegd gezag uit de wet', async () => {
     await s.advance('01-03-2024');
-    await s.fillByLabel(forms.nth(1), 'Bsn', BSN);
-    await forms.nth(1).locator('button[type=submit]').click();
+    await s.fillByLabel(s.actionForm(TOEKENNING), 'Bsn', BSN);
+    await s.actionForm(TOEKENNING).locator('button[type=submit]').click();
     world = await s.worldWhen(
       (w) => grams(w, 'toeslagen', 'beschikkingen').length === 1,
       'de toekenning legt een decretogram vast',
@@ -167,6 +179,9 @@ test.describe('publieke wereld', () => {
     const origin = JSON.stringify(fields.toetsingsinkomen.origin);
     expect(origin).toMatch(/belastingdienst/);
     expect(origin).toMatch(/asked_by/);
+    // Het moment waarop de bron bevraagd is, en niet zomaar een moment: een
+    // waarde die op de verkeerde dag is opgehaald is een ander feit.
+    expect(origin).toMatch(/"op_moment":\s*"2024-03-01"/);
   });
 
   test('X1: precies één cross-cel-vraag in het observatielog', async () => {
@@ -182,7 +197,9 @@ test.describe('publieke wereld', () => {
   test('J3: de cross-cel-vraag hangt onder dat besluit', async () => {
     const vragen = world.journal.filter((e) => kindIs(e, 'Vraag'));
     expect(vragen.length).toBeGreaterThanOrEqual(1);
-    for (const vraag of vragen) expect(vraag.parent, JSON.stringify(vraag)).not.toBeNull();
+    // `?? null`: een veld dat verdwijnt is `undefined`, en dat glipt langs een
+    // kale `not.toBeNull()` heen — precies de regressie die deze check zoekt.
+    for (const vraag of vragen) expect(vraag.parent ?? null, JSON.stringify(vraag)).not.toBeNull();
   });
 
   test('J4: de UI toont de journaalregel van het besluit', async () => {
@@ -197,8 +214,8 @@ test.describe('publieke wereld', () => {
   });
 
   test('A2: een tweede besluit vraagt eerst om bevestiging', async () => {
-    await s.fillByLabel(forms.nth(1), 'Bsn', BSN);
-    await forms.nth(1).locator('button[type=submit]').click();
+    await s.fillByLabel(s.actionForm(TOEKENNING), 'Bsn', BSN);
+    await s.actionForm(TOEKENNING).locator('button[type=submit]').click();
     await expect.poll(async () => /Toch besluiten/.test(await s.textAll())).toBe(true);
   });
 
@@ -213,14 +230,16 @@ test.describe('publieke wereld', () => {
 
   test('M1: een lexostatus op een eerder moment heeft niets vastgesteld', async () => {
     await s.tab('Lexostatus');
-    const keuze = page.locator('select');
+    // Binnen het formulier: de keuzelijsten van de instellingen staan in
+    // dezelfde boom, en buiten dat formulier geteld schuift `nth(0)` mee met wat
+    // er elders op het scherm bij komt.
+    const keuze = page.locator('form select');
     await keuze.nth(0).selectOption('toeslagen');
     await page.waitForTimeout(200);
     await keuze.nth(1).selectOption('zorgtoeslagbeschikking');
-    const parameters = page.locator('nldd-text-field input[type=text]');
-    await parameters.nth(0).fill('zaakkenmerk');
-    await parameters.nth(1).fill(`zorgtoeslag/${BSN}`);
-    const moment = page.locator('nldd-date-field input[type=text]').first();
+    await page.locator('input[aria-label="Naam van de parameter"]').fill('zaakkenmerk');
+    await page.locator('input[aria-label="Waarde van de parameter"]').fill(`zorgtoeslag/${BSN}`);
+    const moment = page.locator('input[aria-label="Op moment"]');
     await moment.fill('01-02-2024');
     await moment.press('Tab');
     await page.getByText('Vraag stellen').first().click();
@@ -228,7 +247,7 @@ test.describe('publieke wereld', () => {
   });
 
   test('M2: op het besluitmoment is het wel vastgesteld', async () => {
-    const moment = page.locator('nldd-date-field input[type=text]').first();
+    const moment = page.locator('input[aria-label="Op moment"]');
     await moment.fill('01-03-2024');
     await moment.press('Tab');
     await page.getByText('Vraag stellen').first().click();
@@ -278,8 +297,8 @@ test.describe('publieke wereld', () => {
   });
 
   test('V1: de vaststelling legt een tweede decretogram vast', async () => {
-    await s.fillByLabel(forms.nth(2), 'Bsn', BSN);
-    await forms.nth(2).locator('button[type=submit]').click();
+    await s.fillByLabel(s.actionForm(VASTSTELLING), 'Bsn', BSN);
+    await s.actionForm(VASTSTELLING).locator('button[type=submit]').click();
     world = await s.worldWhen(
       (w) => grams(w, 'toeslagen', 'beschikkingen').length === 2,
       'de vaststelling levert een tweede decretogram',
@@ -321,6 +340,10 @@ test.describe('een tweede sessie', () => {
 
   test.beforeAll(async ({ browser }) => {
     s = await openSession(browser);
+  });
+
+  test.afterEach(() => {
+    expect(s.pageErrors).toEqual([]);
   });
 
   test.afterAll(async () => {
