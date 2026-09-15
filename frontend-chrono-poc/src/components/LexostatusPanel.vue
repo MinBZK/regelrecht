@@ -2,7 +2,15 @@
 import { computed, ref, watch } from 'vue';
 import { formatMoment, formatValue, humanize } from '../world/format.js';
 import { fieldValue } from '../world/events.js';
-import { cells, describeParam, gramKind, lexostatusDefinitions, lexostatusParams, readLexostatus } from '../world/snapshot.js';
+import {
+  cells,
+  describeParam,
+  gramKind,
+  lexostatusDefinitions,
+  lexostatusParams,
+  placeholderFor,
+  readLexostatus,
+} from '../world/snapshot.js';
 
 // Een cel een vraag stellen: wat stelt u onder deze naam vast, op dit moment?
 //
@@ -271,7 +279,7 @@ async function submit() {
             allow-custom
             :value="values[param.name] ?? ''"
             :accessible-label="`Waarde van ${param.name}`"
-            :placeholder="param.patterns[0] ?? ''"
+            :placeholder="placeholderFor(param)"
             @change="setParam(param, $event)"
             @input="setParam(param, $event)"
           >
@@ -301,7 +309,7 @@ async function submit() {
             v-else
             :value="values[param.name] ?? ''"
             :accessible-label="`Waarde van ${param.name}`"
-            :placeholder="param.patterns[0] ?? ''"
+            :placeholder="placeholderFor(param)"
             @input="setParam(param, $event)"
           ></nldd-text-field>
         </nldd-form-field>
