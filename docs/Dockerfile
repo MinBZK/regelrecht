@@ -15,6 +15,13 @@ COPY docs/package.json docs/package-lock.json* docs/.npmrc ./
 # pa11y draait in de CI-baan, niet in dit image.
 RUN npm ci --ignore-scripts
 COPY docs/ .
+# The landing page reads the law, its scenario and its annotations straight out
+# of the corpus at build time, so that what it shows cannot drift from what the
+# repository holds (see docs/src/lib/landing-demo.ts). Those files live outside
+# docs/, and the build resolves them one level above the project directory, so
+# the layout here mirrors the repository: /app is docs/, /corpus is corpus/.
+COPY corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/ /corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/
+COPY corpus/annotations/wet_op_de_zorgtoeslag/ /corpus/annotations/wet_op_de_zorgtoeslag/
 RUN npx playwright install --with-deps chromium
 RUN npm run build
 

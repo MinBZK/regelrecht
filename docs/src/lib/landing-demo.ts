@@ -12,12 +12,18 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-// The repository root, reached from the Astro project directory. Deriving it
-// from `import.meta.url` does not survive the build: this module is bundled,
-// so at build time it no longer sits where its source does. `process.cwd()` is
-// the docs project both in `astro dev` and in `astro build`.
-const repo = join(process.cwd(), '..');
+// Two roots, because the sources sit in two places. Deriving either from
+// `import.meta.url` does not survive the build: this module is bundled, so at
+// build time it no longer sits where its source does. `process.cwd()` is the
+// docs project in `astro dev`, in `astro build` and in the image.
+const project = process.cwd();
+const repo = join(project, '..');
 
+/** A file inside the docs project. */
+const readLocal = (...parts: string[]) =>
+  readFileSync(join(project, ...parts), 'utf8');
+
+/** A file elsewhere in the repository, chiefly the corpus. */
 const read = (...parts: string[]) => readFileSync(join(repo, ...parts), 'utf8');
 
 const LAW = 'corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml';
@@ -32,7 +38,7 @@ const ANNOTATIONS = 'corpus/annotations/wet_op_de_zorgtoeslag/annotations.yaml';
  * between dev and build here, and reading the file keeps one code path for all
  * five sources.
  */
-export const trace = JSON.parse(read('docs/src/data/landing-trace.json')) as {
+export const trace = JSON.parse(readLocal('src', 'data', 'landing-trace.json')) as {
   root: Record<string, any>;
   recording: { total_steps: number; total_duration_us: number };
 };
