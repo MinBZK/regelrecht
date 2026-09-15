@@ -146,7 +146,7 @@ export const ACTIES = Object.keys(ACTIE_ARGUMENTEN);
 const ARGUMENT_OMSCHRIJVING = {
   id: 'het id van de handeling ("id")',
   handeling: 'de nieuwe handeling ("handeling", met id, partij, aanleiding, minuten en tarief)',
-  velden: 'de velden die je wilt zetten ("velden", bijvoorbeeld {"minuten": 45})',
+  velden: 'een map met de velden die je wilt zetten ("velden", bijvoorbeeld {"minuten": 45})',
   tarief: 'de naam van het tarief ("tarief")',
   waarde: 'de nieuwe tariefwaarde in eurocent per uur ("waarde")',
 };
@@ -171,7 +171,8 @@ export function keurHandelingenArgumenten({ actie, ...rest } = {}) {
   }
   const ontbreekt = verwacht.filter((arg) => rest[arg] === undefined || rest[arg] === null);
   if (ontbreekt.length) {
-    return `Bij actie "${actie}" hoort ${ontbreekt.map((arg) => ARGUMENT_OMSCHRIJVING[arg]).join(' en ')}.`;
+    const werkwoord = ontbreekt.length > 1 ? 'horen' : 'hoort';
+    return `Bij actie "${actie}" ${werkwoord} ${ontbreekt.map((arg) => ARGUMENT_OMSCHRIJVING[arg]).join(' en ')}.`;
   }
   // Een argument van een andere actie meesturen betekent meestal dat de
   // assistent de verkeerde actie koos: {actie: "wijzig", tarief: "accountant"}
