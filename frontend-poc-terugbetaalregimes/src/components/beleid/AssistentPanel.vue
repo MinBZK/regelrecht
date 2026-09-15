@@ -1,10 +1,10 @@
 <template>
   <div class="assistent">
     <nldd-banner v-if="health === 'onbereikbaar'" variant="accent">
-      De assistent-backend draait niet. Start hem met <code>just server</code> in een tweede terminal.
+      De assistent-backend draait niet. Start hem met <code>just poc-assistent terugbetaalregimes</code> in een tweede terminal.
     </nldd-banner>
     <nldd-banner v-else-if="health === 'geen-cli'" variant="warning">
-      De backend draait, maar de Claude Code CLI is niet gevonden. Installeer die en herstart met <code>just server</code>.
+      De backend draait, maar de Claude Code CLI is niet gevonden. Installeer die en herstart met <code>just poc-assistent terugbetaalregimes</code>.
     </nldd-banner>
 
     <nldd-segmented-control size="sm" :value="modus" @change="modus = $event.detail?.value ?? modus">

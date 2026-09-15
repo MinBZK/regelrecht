@@ -876,6 +876,33 @@ poc: poc-build
     POC_PORT=8611 \
     cargo run --manifest-path packages/Cargo.toml --package regelrecht-poc-portal
 
+# Start de beleidsassistent van één casus, naast `just poc` in een tweede terminal
+#
+# In het image doet start.sh dit met een poort per casus; lokaal is één casus
+# tegelijk genoeg. Het portaal proxyt /<casus>/api hiernaartoe zodra
+# POC_ASSISTENT_<CASUS> gezet is, dus `just poc` moet die variabele kennen:
+#
+#     POC_ASSISTENT_TERUGBETAALREGIMES=http://127.0.0.1:3600 just poc
+#
+# Vereist een ingelogde Claude CLI (`claude setup-token`) of ANTHROPIC_API_KEY;
+# zonder allebei weigert de assistent te starten.
+
+# Start de beleidsassistent van één casus (naast `just poc`)
+poc-assistent casus="terugbetaalregimes" poort="3600":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}${ANTHROPIC_API_KEY:-}" ]; then
+      echo "geen CLAUDE_CODE_OAUTH_TOKEN of ANTHROPIC_API_KEY; draai eerst \`claude setup-token\`" >&2
+      exit 1
+    fi
+    echo "beleidsassistent {{casus}} → http://127.0.0.1:{{poort}}"
+    POC_CASUS={{casus}} \
+    POC_CASUS_DIR="$(pwd)/corpus-poc/{{casus}}" \
+    POC_WASM_DIR="$(pwd)/.poc-static/{{casus}}/wasm/pkg" \
+    POC_VARIANT_OPSLAG=0 \
+    PORT={{poort}} \
+    node packages/poc-assistent/index.js
+
 # --- Architecture model ---
 
 # Generate the code-derived architecture model

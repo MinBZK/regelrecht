@@ -85,6 +85,7 @@ articles:
                 false betekent inschrijving op onderwijsnummer
           - name: verblijfstitel_code
             type: number
+            nullable: true
             source:
               description: >-
                 BRP-verblijfstitelcode zoals opgenomen in het register

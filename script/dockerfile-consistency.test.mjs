@@ -23,6 +23,8 @@ const DOCKERFILES = [
   'packages/pipeline/Dockerfile',
   'frontend/Dockerfile',
   'frontend-demo/Dockerfile',
+  'packages/poc-portal/Dockerfile',
+  'packages/poc-napp/Dockerfile',
 ];
 
 /** De members uit packages/Cargo.toml, in de multiline vorm die de `sed` aanneemt. */
@@ -131,6 +133,45 @@ test('de rust-tag van elk basisimage volgt rust-toolchain.toml', () => {
     }
   }
   assert.ok(seen >= 3, `slechts ${seen} rust-basisimages gevonden`);
+});
+
+// Uit op main sinds juli 2026, en daarom nog niet scherp gezet.
+//
+// De test hierboven kijkt naar de tag, en een tag zegt niets: `rust:1.96-alpine`
+// wijst in drie Dockerfiles naar het ene image en in drie andere naar een ander,
+// allebei geldig en allebei groen. Het image dat achterloopt bouwt tegen een
+// andere toolchain dan de rest en niets wijst erop.
+//
+// Hoe het zo kwam: dependabot bumpt alleen `/packages/admin` en
+// `/packages/pipeline` (zie de bumps van 10 juli 2026 naar `a41f774`), en de
+// andere Dockerfiles staan nog op de digest van juni. `a41f774` is dus de
+// actuele; gelijktrekken raakt drie images buiten deze branch, dus dat is een
+// eigen wijziging en geen bijvangst hiervan.
+//
+// Tot dat moment meldt deze test het verschil zonder te falen: hem nu hard
+// zetten legt elke pull request stil voor iets dat niemand hier introduceerde.
+// Zet `skip` weg zodra de digests gelijk zijn, en hij bewaakt het.
+test('één rust-tag betekent één digest', { skip: 'divergentie staat al op main' }, () => {
+  const perTag = new Map();
+  for (const path of DOCKERFILES) {
+    for (const [, tag, digest] of read(path).matchAll(
+      /^FROM (?:--platform=\S+ )?(rust:[^\s@]+)@(sha256:[a-f0-9]{64})/gm,
+    )) {
+      if (!perTag.has(tag)) perTag.set(tag, new Map());
+      if (!perTag.get(tag).has(digest)) perTag.get(tag).set(digest, []);
+      perTag.get(tag).get(digest).push(path);
+    }
+  }
+
+  assert.ok(perTag.size > 0, 'geen enkel gepind rust-basisimage gevonden');
+  for (const [tag, digests] of perTag) {
+    assert.equal(
+      digests.size,
+      1,
+      `${tag} is op ${digests.size} digests gepind: ` +
+        [...digests].map(([d, ps]) => `${d.slice(0, 19)} in ${[...new Set(ps)].join(', ')}`).join(' — '),
+    );
+  }
 });
 
 test('elke BIN-build-arg in deploy.yml bestaat als bin-target', () => {
