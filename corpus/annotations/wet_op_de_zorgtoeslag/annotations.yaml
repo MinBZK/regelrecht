@@ -100,3 +100,89 @@ annotations:
         value: open-norm-partial
         purpose: tagging
     workflow: resolved
+
+  # === Memorie van toelichting (RFC-039) ===
+  # Notes that carry the legislature's own words to the text they explain, so a
+  # trace can show not only what the engine computed but why the provision is
+  # there. Every quotation below was retrieved from the published document and
+  # checked literally against it; nothing here is paraphrase.
+
+  # The MvT states the core of article 2 in one sentence, in the same terms the
+  # article uses. It is the passage that justifies the subtraction the engine
+  # performs, which is why it hangs on the words granting the difference.
+  - type: Annotation
+    motivation: describing
+    creator: Kamerstukken II 2004/05, 29 762, nr. 3
+    target:
+      source: regelrecht://wet_op_de_zorgtoeslag
+      selector:
+        type: TextQuoteSelector
+        exact: ter grootte van dat verschil
+        prefix: 'heeft de verzekerde aanspraak op een zorgtoeslag '
+        suffix: .
+    body:
+      - type: TextualBody
+        value: >-
+          Memorie van toelichting, artikelsgewijze toelichting bij artikel 2:
+          "Een verzekerde komt in aanmerking voor een zorgtoeslag indien de voor
+          hem geldende genormeerde kosten voor een zorgverzekeringsovereenkomst
+          («normpremie») minder bedragen dan de geraamde gemiddelde premiekosten
+          («standaardpremie»). De zorgtoeslag is gelijk aan het verschil tussen
+          beide kostensoorten."
+        purpose: describing
+        format: text/plain
+        language: nl
+      - type: SpecificResource
+        source: https://zoek.officielebekendmakingen.nl/kst-29762-3.html
+        purpose: linking
+    resolution: found
+    workflow: resolved
+
+  # Lid 4 is the one place where reading the original MvT actively misleads: it
+  # explains a rule that never entered into force. The nota van wijziging
+  # replaced it before enactment and called the original outcome unbalanced.
+  # The note exists so that nobody mines the 2004 memorandum for this lid
+  # without meeting the document that overruled it.
+  - type: Annotation
+    motivation: describing
+    creator: Kamerstukken II 2004/05, 29 762, nr. 18
+    target:
+      source: regelrecht://wet_op_de_zorgtoeslag
+      selector:
+        type: TextQuoteSelector
+        exact: vijftig procent
+        prefix: 'die geen verzekerde is, '
+        suffix: ' van het op grond'
+    body:
+      - type: TextualBody
+        value: >-
+          Dit lid stond niet in het wetsvoorstel. De nota van wijziging
+          verving het: "Bij nader inzien achten wij de oorspronkelijke
+          berekeningssystematiek, die erop neerkwam dat iemand met een
+          niet-verzekerde partner vrijwel nooit in aanmerking kwam voor een
+          zorgtoeslag, niet evenwichtig. Ten einde de verzekerde met een
+          niet-verzekerde partner in een gelijke positie te brengen met een
+          verzekerde wiens partner wel verzekerde is, bewerkstelligt het nieuwe
+          vierde lid van artikel 2 [...] dat een verzekerde met een
+          niet-verzekerde partner aanspraak heeft op de helft van het bedrag dat
+          hem zou toekomen indien zowel de verzekerde als zijn partner verzekerd
+          zouden zijn geweest."
+        purpose: describing
+        format: text/plain
+        language: nl
+      - type: TextualBody
+        value: >-
+          Let op bij het lezen van de oorspronkelijke memorie van toelichting:
+          het derde rekenvoorbeeld daarin kent een verzekerde met een
+          niet-verzekerde partner een zorgtoeslag van nul toe. Dat is juist de
+          uitkomst die de wetgever ongewenst noemde en voor inwerkingtreding
+          heeft gewijzigd. Het is geen wetgevingsbedoeling maar een verlaten
+          ontwerp.
+        purpose: commenting
+        format: text/plain
+        language: nl
+      - type: SpecificResource
+        source: https://zoek.officielebekendmakingen.nl/kst-29762-18.html
+        purpose: linking
+    resolution: found
+    workflow: resolved
