@@ -22,11 +22,17 @@
  * casing or double space never costs a hit. NFD splits a letter from its
  * accent and the range drops the accent; \p{Diacritic} would need a newer
  * target than this build sets.
+ *
+ * The range stays written as \u escapes. Spelled with the characters
+ * themselves it is a run of bare combining accents that renders as a smudge on
+ * the preceding bracket, invisible to review and silently destroyed by
+ * anything that normalises or trims the file — and a broken range here costs
+ * the diacritic folding without failing a build.
  */
 export function normaliseerZoekterm(tekst: string): string {
   return tekst
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/\s+/g, ' ')
     .trim();

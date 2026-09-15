@@ -72,6 +72,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: end;
+  justify-content: space-between;
   gap: var(--primitives-space-16, 1rem);
 }
 
@@ -90,16 +91,20 @@
  * The zoekfilter takes the leftover width, but stops at 420px: on a wide
  * screen the row leaves ~900px over, and an input that long reads as a field
  * for a paragraph rather than for the one or two words people type in it.
- * `margin-inline-start: auto` then parks it against the right edge, in line
- * with the matrix below and the heading above.
+ * `justify-content: space-between` on the row (above) then parks it against
+ * the right edge, in line with the matrix below and the heading above.
  *
- * Below the 260px basis the row wraps and the field runs the full measure,
- * where the whole width is genuinely needed.
+ * Deliberately not `margin-inline-start: auto`, which does the same on a
+ * shared line but is not cancelled when the row wraps: the field then kept
+ * absorbing the leftover space on its own line and floated up to 200px from
+ * the left edge, aligned with nothing (worst between 480px and 700px, where
+ * the row has already wrapped but is still wider than the 420px cap).
+ * space-between has no effect on a line holding a single item, so a wrapped
+ * field starts flush with the checkboxes above it.
  */
 .rr-roadmap .rr-controls .rr-zoek {
   flex: 1 1 260px;
   max-width: 420px;
-  margin-inline-start: auto;
 }
 
 .rr-roadmap .rr-filter {

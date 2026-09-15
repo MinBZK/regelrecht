@@ -335,11 +335,13 @@ export function zoektekst(data: WerkpakketData): string {
       getBouw(data.bouw)?.label,
       data.omvang && `omvang ${data.omvang}`,
       data.capaciteit,
-      // Both ways an RFC gets written: "RFC-013" (as the site renders it) and
-      // "rfc 13" (as people type it). A bare number is left out on purpose —
-      // "13" would match every werkpakket whose text happens to contain it.
+      // Every way an RFC gets written: "RFC-013" as the site renders it, plus
+      // the unpadded "rfc-13" and "rfc 13" people actually type. A bare number
+      // is left out on purpose — "13" would match every werkpakket whose text
+      // happens to contain it.
       ...data.rfcs.flatMap((n) => [
         `rfc-${String(n).padStart(3, '0')}`,
+        `rfc-${n}`,
         `rfc ${n}`,
       ]),
     ]
