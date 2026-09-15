@@ -73,11 +73,21 @@ def resolve(node, defs):
 
 
 def check(value, schema, defs, path, problems, depth=0):
-    if depth > 12 or not isinstance(schema, dict):
+    # The budget counts schema hops ($ref, oneOf, allOf, items, properties),
+    # not data nesting, and an operation costs roughly five or six of them. At
+    # 12 the walk stopped after about two levels of nested operations and waved
+    # the rest through, which is the one way a guard like this does real harm.
+    # 200 is far past anything the schema can express and still bounds a cycle.
+    if depth > 200 or not isinstance(schema, dict):
         return
     schema = resolve(schema, defs)
 
     # A oneOf/anyOf passes when any branch does; report nothing when one holds.
+    # This treats `oneOf` as `anyOf`: a value matching two branches is strictly
+    # invalid and passes here. Deliberate. The alternative is false positives on
+    # the schema's own unions, which overlap by construction (a bare number is
+    # both `operationValue`'s literal branch and, for a reader, several others),
+    # and this guard exists to catch authoring mistakes, not to be a validator.
     for key in ("oneOf", "anyOf"):
         branches = schema.get(key)
         if isinstance(branches, list) and branches:
@@ -91,6 +101,15 @@ def check(value, schema, defs, path, problems, depth=0):
 
     for branch in schema.get("allOf", []) or []:
         check(value, branch, defs, path, problems, depth + 1)
+
+    # `not` matters here for one reason: operationValue's literal-string branch
+    # is `string` + `not: {pattern: "^\\$"}`, so without it a malformed
+    # variable reference falls through as a plain string and passes.
+    if isinstance(schema.get("not"), dict):
+        inner = []
+        check(value, schema["not"], defs, path, inner, depth + 1)
+        if not inner:
+            problems.append(f"{path}: {value!r} matches a `not` subschema")
 
     if "type" in schema and not type_ok(value, schema["type"]):
         problems.append(f"{path}: expected type {schema['type']}, got {type(value).__name__}")
@@ -142,6 +161,11 @@ def walk(node, defs, pointer, out):
     if isinstance(node.get("examples"), list):
         out.append((pointer, node))
     for key, child in node.items():
+        # Never descend into an examples array: its contents are data, and a
+        # law snippet that happens to carry an `examples` key would otherwise
+        # be mistaken for a schema node.
+        if key == "examples":
+            continue
         walk(child, defs, f"{pointer}/{key}", out)
 
 

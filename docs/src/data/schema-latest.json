@@ -169,7 +169,7 @@
         },
         "machine_readable": {
           "$ref": "#/definitions/machineReadableSection",
-          "description": "Machine-readable interpretation of the preamble, in the same shape as an article's. A preamble rarely computes anything; it most often carries `legal_basis` and the `competent_authority` for the whole regulation."
+          "description": "Machine-readable interpretation of the preamble, in the same shape as an article's. The Rust law-model carries no preamble at all, so this is read by nothing today."
         }
       },
       "additionalProperties": false
@@ -204,7 +204,7 @@
           },
           "references": {
             "type": "array",
-            "description": "Structured references to other laws/articles for runtime resolution.",
+            "description": "Structured references to other laws and articles. Accepted by the schema, but the Rust law-model has no field for it and drops it on load, so nothing resolves these at runtime today.",
             "items": {
               "type": "object",
               "required": [
@@ -488,7 +488,7 @@
             },
             "precision": {
               "type": "integer",
-              "description": "Number of decimal places for numeric values.",
+              "description": "Number of decimal places for numeric values. Parsed as metadata and not yet enforced by the engine.",
               "minimum": 0
             },
             "min": {
@@ -1607,7 +1607,7 @@
               },
               "interface": {
                 "type": "object",
-                "description": "Interface contract that implementing regulations must follow.",
+                "description": "The interface an implementing regulation is expected to offer. Like `enables` itself, a declaration the engine does not yet check.",
                 "properties": {
                   "endpoint": {
                     "type": "string",
@@ -1677,7 +1677,7 @@
         },
         "requires": {
           "type": "array",
-          "description": "Dependencies on other articles, regelingen, or external sources.",
+          "description": "Other provisions this article depends on. The schema and the Rust law-model disagree on the shape here: the model expects a list of names, so a law written to the structure below fails to load.",
           "items": {
             "type": "object",
             "properties": {
@@ -1756,7 +1756,7 @@
               },
               "default": {
                 "type": "object",
-                "description": "Default execution logic when no implementing regulation is found. Makes the article executable standalone while still allowing refinement via implements.",
+                "description": "Default execution logic, making the article executable standalone while still allowing refinement through `implements`. It applies in two cases: no implementing regulation was found, and an implementation ran but returned null for this case.",
                 "properties": {
                   "actions": {
                     "type": "array",

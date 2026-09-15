@@ -58,7 +58,8 @@ repos:
         entry: python3 script/check-schema-examples.py
         language: system
         pass_filenames: false
-        files: ^schema/v[0-9]+\.[0-9]+\.[0-9]+/schema\.json$
+        # Also on the script itself: editing the guard should re-run it.
+        files: ^(schema/v[0-9]+\.[0-9]+\.[0-9]+/schema\.json|script/check-schema-examples\.py)$
 
       - id: validate-law-yaml
         name: Validate law YAML schema
