@@ -70,14 +70,20 @@ uit weggelaten. Eén ding zit er daarom niet in: het **receipt** van een besluit
 `packages/simulator/src/snapshot.rs` laat dat bewust uit het beeld omdat het
 wandkloktijd draagt en een beeld dat per run verschilt geen contract is.
 
-Een decretogram heeft daarom in dit tabblad een tweede uitklap, **Receipt**, en
-die is het enige in deze app dat níet uit het beeld komt: hij haalt het receipt
-van dat ene gram op bij
+Een decretogram dat langs het besluit-pad ontstond heeft daarom in dit tabblad
+een tweede uitklap, **Receipt**, en die is het enige in deze app dat níet uit het
+beeld komt: hij haalt het receipt van dat ene gram op bij
 `GET /api/cells/{cel}/chronicles/{stroom}/grams/{n}/receipt`, pas als je hem
 opendoet. Erin staan de secties van RFC-013 leesbaar, de geladen regelingen met
 hun hash, en de geaccepteerde waarden als tabel met de bron-cel en het bevoegd
 gezag dat die bron noemde. De tijdstempel staat er met het label dat zegt wat het
 is: wandkloktijd, niet de logische tijd van de wereld.
+
+Niet elk decretogram krijgt die uitklap. Een bron-cel zonder engine legt haar
+eigen vaststelling ook als decretogram vast, en daar heeft nooit een uitvoering
+achter gedraaid; de server weigert dat gram met een 404, dus hier wordt er ook
+niets aangeboden. Het beeld laat het verschil aan één veld zien — de regeling —
+en dat is waar `carriesReceipt` in `src/world/receipt.js` op kijkt.
 
 ## Geen casus in deze app
 

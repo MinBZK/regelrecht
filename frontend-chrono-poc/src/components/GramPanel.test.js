@@ -1,9 +1,10 @@
 import { mount } from '@vue/test-utils';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import GramPanel from './GramPanel.vue';
 import { receiptFixture } from '../testing/receiptFixture.js';
 import { cloneWorld, worldFixture } from '../testing/worldFixture.js';
 import { formatMoment } from '../world/format.js';
+import { carriesReceipt } from '../world/receipt.js';
 import { allGrams } from '../world/snapshot.js';
 
 // Het receipt komt van de server en niet uit het beeld; deze tests gaan over de
@@ -41,6 +42,12 @@ function choose(wrapper, index, value) {
 }
 
 describe('het grammenoverzicht', () => {
+  // Elke test telt haar eigen verzoeken: "er is nog niets opgehaald" is hier een
+  // verwachting, en die mag niet van de test ervoor afhangen.
+  beforeEach(() => {
+    fetchGramReceipt.mockClear();
+  });
+
   it('zet elk gram van elke cel op volgorde van moment', async () => {
     const wrapper = mount(GramPanel, { props: { snapshot: worldFixture } });
 
@@ -164,12 +171,12 @@ describe('het grammenoverzicht', () => {
     expect(row.find('nldd-code-viewer').exists()).toBe(false);
   });
 
-  it('geeft een decretogram een tweede uitklap voor zijn receipt, en een executogram niet', async () => {
+  it('geeft een decretogram uit het besluit-pad een tweede uitklap voor zijn receipt', async () => {
     // Het receipt staat niet in het beeld — het draagt wandkloktijd — dus de
     // uitklap is een eigen verzoek aan de server, per gram en alleen op verzoek.
     const wrapper = mount(GramPanel, { props: { snapshot: worldFixture } });
     const grams = allGrams(worldFixture);
-    const decretogram = grams.findIndex((gram) => gram.kind === 'decretogram');
+    const decretogram = grams.findIndex((gram) => carriesReceipt(gram.gram));
     const executogram = grams.findIndex((gram) => gram.kind === 'executogram');
 
     await rows(wrapper)[executogram].trigger('click');
@@ -200,6 +207,25 @@ describe('het grammenoverzicht', () => {
     );
     // En de rij eronder blijft gewoon open staan: de klik zat in de uitklap.
     expect(row.attributes('expanded')).toBe('true');
+  });
+
+  it('biedt geen receipt aan bij een decretogram waar nooit een uitvoering achter zat', async () => {
+    // Een bron-cel zonder engine legt haar eigen vaststelling ook als
+    // decretogram vast. Die draagt geen receipt, en de server weigert hem met een
+    // 404 — dus er hoort hier niets aangeboden te worden dat dat oplevert.
+    const wrapper = mount(GramPanel, { props: { snapshot: worldFixture } });
+    const grams = allGrams(worldFixture);
+    const zonder = grams.findIndex(
+      (gram) => gram.kind === 'decretogram' && !carriesReceipt(gram.gram),
+    );
+    expect(zonder, 'de fixture hoort zo’n gram te hebben').toBeGreaterThan(-1);
+
+    const row = rows(wrapper)[zonder];
+    await row.trigger('click');
+    expect(
+      row.findAll('nldd-text-cell').some((cell) => cell.attributes('text') === 'Receipt'),
+    ).toBe(false);
+    expect(fetchGramReceipt).not.toHaveBeenCalled();
   });
 
   it('laat de lijst zelf "niets gevonden" zeggen als het filter alles wegneemt', async () => {
