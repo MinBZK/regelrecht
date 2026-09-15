@@ -130,7 +130,15 @@ const { records, jaren, ensureRecords } = useSimulation();
 const { fetchHandelingen, ensureVariantDoc, handelingenFor } = useHandelingen();
 
 const schoolId = bewaardeRef('school.id', null);
-const peildatum = bewaardeRef('school.peildatum', '2025-10-01'); // eerste peildatum waarop de persona-school 05AB leerlingen in het bestand heeft
+// 1 januari 2028: de eerste peildatum waarop de varianten gelden. Stond op
+// 2025-10-01, de eerste peildatum met leerlingen in het bestand, maar daar valt
+// een variant per definitie samen met huidig recht — twee identieke kolommen,
+// wat als een fout leest in plaats van als "geldt hier nog niet".
+//
+// Geen `geldig`-controle erbij: een bewaarde keuze wint van de standaard, en
+// dat hoort zo. Wie zelf een eerdere peildatum kiest, meent dat. Alleen wie de
+// pagina eerder opende houdt 2025-10-01 tot hij de keuze zelf verzet.
+const peildatum = bewaardeRef('school.peildatum', '2028-01-01');
 const variantId = bewaardeRef('school.variant', null);
 const bestandKolom = ref('ist');
 const ist = ref(null);
