@@ -191,6 +191,82 @@ fn het_beeld_draagt_de_cellen_de_grammen_en_de_herkomst() {
     );
 }
 
+/// Wat een cel belooft, staat in het beeld: de toelichting bij een naam, haar
+/// parameters, en het zaakkenmerk-sjabloon van elk besluit.
+///
+/// Los van de fixture, want dit is wat een consument nodig heeft om een vraag te
+/// kunnen stellen. De sleutel van een kroniekfilter is het scherpste geval: dat
+/// veld bestaat nergens voordat er besloten is — het ontstaat uit het sjabloon —
+/// dus zonder deze twee dingen in het beeld moet een vrager het raden.
+#[test]
+fn het_beeld_draagt_wat_een_cel_belooft() {
+    let snapshot = snapshot();
+    let toeslagen = snapshot
+        .cells
+        .iter()
+        .find(|cell| cell.id == "toeslagen")
+        .expect("de besluitende cel hoort in het beeld te staan");
+
+    let beschikking = toeslagen
+        .lexostatussen
+        .iter()
+        .find(|definition| definition.name == "zorgtoeslagbeschikking")
+        .expect("deze cel publiceert wat ze besloten heeft");
+    assert!(
+        beschikking
+            .doc
+            .as_deref()
+            .is_some_and(|doc| !doc.is_empty()),
+        "een gepubliceerde naam zonder toelichting laat een vrager raden waar ze over gaat"
+    );
+    assert!(
+        !beschikking.inputs.is_empty(),
+        "de parameters die de cel verlangt, horen erbij te staan"
+    );
+    let key = beschikking
+        .key
+        .as_ref()
+        .expect("een kroniekfilter reduceert op een sleutel");
+    assert_eq!(key.chronicle, "beschikkingen");
+    assert_eq!(
+        key.parameter, "zaakkenmerk",
+        "het sleutelveld is de parameter die de waarde aanlevert"
+    );
+    assert!(
+        beschikking
+            .inputs
+            .iter()
+            .any(|input| input.name == key.parameter),
+        "en die parameter staat dus ook in de lijst die de cel accepteert"
+    );
+
+    assert!(
+        !toeslagen.besluiten.is_empty(),
+        "deze cel kan besluiten nemen"
+    );
+    for besluit in &toeslagen.besluiten {
+        assert!(
+            besluit.zaakkenmerk.contains('{'),
+            "het zaakkenmerk hoort als sjabloon in het beeld te staan en niet ingevuld: {}",
+            besluit.zaakkenmerk
+        );
+        assert_eq!(
+            besluit.chronicle, key.chronicle,
+            "een decretogram landt in de kroniek waarop de reductie reduceert"
+        );
+    }
+
+    let bron = snapshot
+        .cells
+        .iter()
+        .find(|cell| cell.laws.is_empty())
+        .expect("de wereld heeft een bron-cel");
+    assert!(
+        bron.besluiten.is_empty() && !bron.lexostatussen.is_empty(),
+        "een bron-cel publiceert wel en besluit niet"
+    );
+}
+
 /// De contacten in het beeld zijn dezelfde als die de invarianten-gate leest.
 ///
 /// Twee wegen naar dezelfde rij bewijsstukken: de wereld bewaart wat elk besluit

@@ -387,9 +387,21 @@ impl Cell {
         self.published.keys().map(String::as_str).collect()
     }
 
-    /// De besluiten die deze cel kan nemen, in alfabetische volgorde.
-    pub(crate) fn besluit_names(&self) -> Vec<&str> {
-        self.besluiten.keys().map(String::as_str).collect()
+    /// De gepubliceerde lexostatussen zoals de cel ze documenteert, in
+    /// alfabetische volgorde.
+    ///
+    /// De definitie en niet alleen haar naam: een consument die vraagt, hoort te
+    /// kunnen lezen waar de naam over gaat en welke parameters ze verlangt. Die
+    /// belofte staat hier al vast sinds het optuigen (zie
+    /// [`LexostatusDefinition::validate`]); wie haar alleen in het wereldbestand
+    /// laat staan, laat een vrager raden wat hij moet meegeven.
+    pub(crate) fn published_definitions(&self) -> impl Iterator<Item = &LexostatusDefinition> {
+        self.published.values()
+    }
+
+    /// De besluit-definities van deze cel, in alfabetische volgorde.
+    pub(crate) fn besluit_definitions(&self) -> impl Iterator<Item = &BesluitDefinition> {
+        self.besluiten.values()
     }
 
     /// Kent deze cel deze stroom, en kent die stroom dit veld?

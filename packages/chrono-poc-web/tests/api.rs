@@ -241,6 +241,71 @@ async fn een_verse_wereld_staat_op_de_startdatum() {
     );
 }
 
+/// Eén cel uit een beeld.
+fn cell<'a>(world: &'a Value, id: &str) -> &'a Value {
+    world["cells"]
+        .as_array()
+        .expect("cells is een lijst")
+        .iter()
+        .find(|candidate| candidate["id"] == id)
+        .unwrap_or_else(|| panic!("cel '{id}' hoort in het beeld te staan"))
+}
+
+/// Wat een cel belooft, staat in het beeld: de toelichting bij een naam, de
+/// parameters die ze verlangt, en waar een zaakkenmerk vandaan komt.
+///
+/// Dit is de reden dat het erin staat. Een consument moet precies de
+/// gedocumenteerde parameters meegeven, en één daarvan — de sleutel van de
+/// kroniek met beschikkingen — bestaat nergens voordat er besloten is: ze ontstaat
+/// uit het sjabloon van een besluit-definitie. Wie alleen het beeld heeft en niet
+/// het wereldbestand, moest dat kenmerk dus raden.
+#[tokio::test]
+async fn het_beeld_draagt_wat_een_cel_belooft() {
+    let mut browser = Browser::new().await;
+    let world = browser.world().await;
+    let toeslagen = cell(&world, "toeslagen");
+
+    let beschikking = toeslagen["lexostatussen"]
+        .as_array()
+        .expect("lexostatussen is een lijst")
+        .iter()
+        .find(|candidate| candidate["name"] == "zorgtoeslagbeschikking")
+        .expect("deze cel publiceert wat ze besloten heeft");
+    assert!(
+        beschikking["doc"]
+            .as_str()
+            .is_some_and(|doc| !doc.is_empty()),
+        "de toelichting van de definitie hoort mee te komen: {beschikking}"
+    );
+    assert_eq!(
+        beschikking["inputs"],
+        json!([{"name": "zaakkenmerk", "type": "string"}]),
+        "de parameters met hun type zijn wat de cel accepteert"
+    );
+    assert_eq!(
+        beschikking["key"],
+        json!({"chronicle": "beschikkingen", "parameter": "zaakkenmerk"}),
+        "en de sleutel zegt over welke kroniek de reductie gaat"
+    );
+
+    let besluit = toeslagen["besluiten"]
+        .as_array()
+        .expect("besluiten is een lijst")
+        .iter()
+        .find(|candidate| candidate["name"] == "zorgtoeslag_toekenning")
+        .expect("deze cel kan toekennen");
+    assert_eq!(
+        besluit["zaakkenmerk"],
+        json!("zorgtoeslag/{bsn}"),
+        "het sjabloon zegt welke vorm de sleutel krijgt"
+    );
+    assert_eq!(
+        besluit["chronicle"],
+        json!("beschikkingen"),
+        "en in welke kroniek de decretogrammen ervan landen"
+    );
+}
+
 /// Eén aanvraag is twee grammen: de aanvrager legt vast wat zij indiende, de
 /// uitvoerder wat hem geleverd is. Beide staan in het beeld, en de stap zelf
 /// vertelt in welke volgorde ze ontstonden.
