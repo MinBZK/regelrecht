@@ -51,20 +51,19 @@
       </div>
     </div>
 
-    <nldd-banner v-if="overlays && !Object.keys(overlays).length" variant="accent">
+    <nldd-banner v-if="resultaat && !heeftWijziging" variant="accent">
       De assistent heeft niets gewijzigd.
     </nldd-banner>
     <nldd-button
-      v-if="overlays && Object.keys(overlays).length"
+      v-if="heeftWijziging"
       :text="`Overnemen in ${werkversieLabel}`"
       start-icon="save"
       variant="secondary"
       @click="takeOverlays"
     ></nldd-button>
-    <p v-if="overlays && Object.keys(overlays).length" class="as-hint">
-      Zet de wijziging van de assistent als bewerking in de werkversie ({{ Object.keys(overlays).length }}
-      {{ Object.keys(overlays).length === 1 ? 'document' : 'documenten' }}); zichtbaar via Bekijk wijzigingen, terug te
-      draaien met Terugzetten, te bewaren met Bewaar als variant.
+    <p v-if="heeftWijziging" class="as-hint">
+      Zet de wijziging van de assistent als bewerking in de werkversie ({{ wijzigingLabel }}); zichtbaar via Bekijk
+      wijzigingen, terug te draaien met Terugzetten, te bewaren met Bewaar als variant.
     </p>
   </div>
 </template>
@@ -72,6 +71,7 @@
 <script setup>
 import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
 import { useAssistent } from '../../composables/useAssistent.js';
+import { useHandelingen } from '../../composables/useHandelingen.js';
 import { useLawStore } from '../../engine/lawStore.js';
 import { euroCompact } from '../../lib/format.js';
 import { b } from '../../basePad.js';
@@ -95,6 +95,7 @@ function stop() {
   feed.value.push({ type: 'tekst', tekst: 'Afgebroken.' });
 }
 const { applyOverlays, lawDocsFor, werkversie, werkversieLabel } = useLawStore();
+const { applyHandelingenYaml, ensureVariantDoc, handelingenYamlFor } = useHandelingen();
 
 // 'onbekend' (nog niet gepeild) | 'onbereikbaar' | 'geen-cli' | 'ok'
 const health = ref('onbekend');
@@ -128,7 +129,24 @@ const modus = ref('instructie');
 const prompt = ref('');
 const feed = ref([]);
 const overlays = ref(null);
+// De bewerkte handelingen.yaml, als de assistent het uitvoeringslastmodel
+// raakte. Apart van de overlays: dat zijn wetten, dit is het kostenmodel.
+const handelingenYaml = ref(null);
+// Is er een resultaat binnen? Onderscheidt "nog niets gedraaid" van "gedraaid
+// en niets gewijzigd"; zonder dat verscheen de banner ook voor de eerste run.
+const resultaat = ref(false);
 const feedEl = ref(null);
+
+const aantalDocumenten = computed(() => Object.keys(overlays.value ?? {}).length);
+const heeftWijziging = computed(() => aantalDocumenten.value > 0 || !!handelingenYaml.value);
+const wijzigingLabel = computed(() => {
+  const delen = [];
+  if (aantalDocumenten.value) {
+    delen.push(`${aantalDocumenten.value} ${aantalDocumenten.value === 1 ? 'document' : 'documenten'}`);
+  }
+  if (handelingenYaml.value) delen.push('het uitvoeringslastmodel');
+  return delen.join(' en ');
+});
 
 const placeholder = computed(() =>
   modus.value === 'doel'
@@ -154,11 +172,17 @@ function samenvatting(metrics) {
 async function submit() {
   feed.value = [];
   overlays.value = null;
+  handelingenYaml.value = null;
+  resultaat.value = false;
 
   // De assistent werkt op de werkversie: stuur die documenten mee als beginstand.
   const documenten = (await lawDocsFor(werkversie.value)).map((d) => ({ key: `${d.entry.id}@${d.entry.valid_from ?? ''}`, yaml: d.yaml }));
+  // Ook het uitvoeringslastmodel van deze kolom: een variant kan er een eigen
+  // meebrengen, en zonder dit werkt de assistent op de basis.
+  await ensureVariantDoc(werkversie.value);
+  const handelingen = handelingenYamlFor(werkversie.value);
   feed.value.push({ type: 'tekst', tekst: `Werkt op ${werkversieLabel.value}.` });
-  await run({ modus: modus.value, prompt: prompt.value, documenten }, (ev) => {
+  await run({ modus: modus.value, prompt: prompt.value, documenten, handelingen }, (ev) => {
     if (ev.type === 'tool') {
       const inputText = ev.input
         ? Object.entries(ev.input).map(([k, v]) => `${k}=${v}`).join(' ')
@@ -169,6 +193,8 @@ async function submit() {
       if (ev.metrics) emit('metrics', ev.metrics);
     } else if (ev.type === 'klaar') {
       overlays.value = ev.overlays ?? null;
+      handelingenYaml.value = ev.handelingen ?? null;
+      resultaat.value = true;
     } else {
       feed.value.push(ev);
     }
@@ -179,10 +205,17 @@ async function submit() {
 }
 
 function takeOverlays() {
-  if (!overlays.value) return;
-  applyOverlays(overlays.value);
+  if (!heeftWijziging.value) return;
+  if (aantalDocumenten.value) applyOverlays(overlays.value);
+  // Een onleesbaar model niet stil laten vallen: dan blijft de knop staan en
+  // weet de gebruiker dat er niets is overgenomen.
+  if (handelingenYaml.value && !applyHandelingenYaml(handelingenYaml.value)) {
+    feed.value.push({ type: 'fout', melding: 'Het uitvoeringslastmodel van de assistent was onleesbaar en is niet overgenomen.' });
+    return;
+  }
   feed.value.push({ type: 'tekst', tekst: `Overgenomen in ${werkversieLabel.value}.` });
   overlays.value = null;
+  handelingenYaml.value = null;
 }
 </script>
 

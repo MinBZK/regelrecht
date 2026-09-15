@@ -19,6 +19,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const CASUS = process.env.POC_CASUS ?? 'terugbetaalregimes';
 export const projectRoot =
   process.env.POC_CASUS_DIR ?? resolve(__dirname, '..', '..', 'corpus-poc', CASUS);
+// De simulatie- en patch-modules die de assistent deelt met de browser. Ze
+// horen bij de app van de casus, niet bij de assistent: elke poc heeft zijn
+// eigen sim/ en lib/. In de monorepo staat dat in frontend-poc-<casus>/src;
+// het image zet die map onder /app/assistent/app.
+export const appSrc =
+  process.env.POC_APP_SRC ?? resolve(__dirname, '..', '..', `frontend-poc-${CASUS}`, 'src');
 const pkgDir =
   process.env.POC_WASM_DIR ?? resolve(__dirname, '..', '..', 'frontend', 'public', 'wasm', 'pkg');
 const corpusDir = resolve(projectRoot, 'corpus');
@@ -126,4 +132,23 @@ export function loadDistributions() {
   const file = resolve(projectRoot, 'data', 'distributions.yaml');
   if (!existsSync(file)) return null;
   return yaml.load(readFileSync(file, 'utf-8'));
+}
+
+/** Pad naar het uitvoeringslastmodel van deze casus. */
+export function handelingenPath() {
+  return resolve(projectRoot, 'data', 'handelingen.yaml');
+}
+
+/** Het uitvoeringslastmodel van schijf, of null als deze casus er geen heeft. */
+export function loadHandelingen() {
+  const file = handelingenPath();
+  if (!existsSync(file)) return null;
+  return yaml.load(readFileSync(file, 'utf-8'));
+}
+
+/** De ruwe yaml-tekst van het uitvoeringslastmodel, of null. */
+export function readHandelingenYaml() {
+  const file = handelingenPath();
+  if (!existsSync(file)) return null;
+  return readFileSync(file, 'utf-8');
 }

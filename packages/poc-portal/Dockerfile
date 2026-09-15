@@ -197,6 +197,12 @@ COPY --from=frontend-builder /app/frontend-poc-nieuwkomersbekostiging/dist /app/
 # De beleidsassistent: één server, per casus zijn eigen MCP-tools en prompt.
 COPY packages/poc-assistent/ /app/assistent/
 COPY --from=frontend-builder /assistent/node_modules /app/assistent/node_modules
+# De simulatie- en patch-modules die de assistent met de browser deelt. Ze
+# horen bij de app van de casus (sim/, lib/), niet bij de assistent, en
+# start.sh wijst POC_APP_SRC hierheen. Alleen src/: de assistent draait geen
+# Vue, hij importeert de rekenmodules.
+COPY frontend-poc-terugbetaalregimes/src/ /app/assistent/app/terugbetaalregimes/src/
+COPY frontend-poc-nieuwkomersbekostiging/src/ /app/assistent/app/nieuwkomersbekostiging/src/
 # Het casus-corpus dat de assistent leest en bewerkt (overlays in een tmpdir).
 COPY corpus-poc/ /app/casus/
 COPY packages/poc-portal/start.sh /usr/local/bin/start-poc

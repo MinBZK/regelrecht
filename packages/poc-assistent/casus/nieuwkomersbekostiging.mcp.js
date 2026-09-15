@@ -11,20 +11,33 @@
  * vertaalt ze naar SSE. Zo blijft de bestaande engine/validatie-logica intact.
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'fs';
+import { pathToFileURL } from 'url';
 import { resolve } from 'path';
-import { simulate, evaluateLeerlingTimeline } from '../app/src/sim/simulate.js';
-import { generatePopulation } from '../app/src/sim/population.js';
-import { aggregate } from '../app/src/sim/metrics.js';
-import { patchDefinitionValue, readDefinitionValue } from '../app/src/lib/yamlPatch.js';
-import { DEFAULT_JAREN, peildataTussen, PERSONA_PEILDATA_VAN, PERSONA_PEILDATA_TOT, categorieLabel } from '../app/src/lib/nieuwkomerFacts.js';
+import { load as yamlLoad } from 'js-yaml';
 import {
+  appSrc,
   createEngine,
   corpusMetOverlays,
   loadDistributions,
   loadHandelingen,
   loadPersonas,
+  readHandelingenYaml,
   validateYaml,
-} from './engine.js';
+} from '../engine.js';
+
+// De gedeelde app-modules liggen per casus (frontend-poc-<casus>/src), dus het
+// pad is pas op runtime bekend en de import moet dynamisch. Statisch importeren
+// wees naar een map die in deze repo niet bestaat, waardoor deze hele MCP-server
+// niet laadde en elke tool onbereikbaar was.
+const mod = (rel) => import(pathToFileURL(resolve(appSrc, rel)).href);
+const { simulate, evaluateLeerlingTimeline } = await mod('sim/simulate.js');
+const { generatePopulation } = await mod('sim/population.js');
+const { aggregate } = await mod('sim/metrics.js');
+const { patchDefinitionValue, readDefinitionValue } = await mod('lib/yamlPatch.js');
+const { DEFAULT_JAREN, peildataTussen, PERSONA_PEILDATA_VAN, PERSONA_PEILDATA_TOT, categorieLabel } =
+  await mod('lib/nieuwkomerFacts.js');
+const { addHandeling, listHandelingen, listTarieven, patchHandeling, patchTarief, removeHandeling } =
+  await mod('lib/handelingenPatch.js');
 
 const SESSION_DIR = process.env.OCW_SESSION_DIR;
 const PERSONA_PEILDATA = peildataTussen(PERSONA_PEILDATA_VAN, PERSONA_PEILDATA_TOT);
@@ -64,6 +77,23 @@ function readOverlays() {
 
 function writeOverlay(key, yaml) {
   writeFileSync(resolve(overlaysDir, `${encodeURIComponent(key)}.yaml`), yaml);
+}
+
+// Het uitvoeringslastmodel is geen wet: het gaat niet door de engine en hoort
+// dus niet tussen de corpus-overlays, die het HTTP-proces als regelgeving
+// uitlevert. Eigen bestand naast overlays/, met een eigen document_key in het
+// wijziging-event zodat de UI het als aparte wijziging toont.
+const HANDELINGEN_KEY = 'data/handelingen.yaml';
+const handelingenOverlay = resolve(SESSION_DIR, 'handelingen.yaml');
+
+/** De werkversie van het uitvoeringslastmodel: overlay als die er is, anders de basis. */
+function readHandelingenWerkversie() {
+  if (existsSync(handelingenOverlay)) return readFileSync(handelingenOverlay, 'utf-8');
+  return readHandelingenYaml();
+}
+
+function writeHandelingenWerkversie(yaml) {
+  writeFileSync(handelingenOverlay, yaml);
 }
 
 /** Leg een voortgangs-event neer voor het HTTP-proces (oplopend genummerd). */
@@ -165,6 +195,66 @@ async function wijzigDefinitie({ document_key, artikel, naam, waarde, toelichtin
   return `Toegepast: ${naam} in artikel ${artikel} van ${oud} naar ${waarde} (gevalideerd).`;
 }
 
+// ---- Uitvoeringslastmodel (data/handelingen.yaml) -----------------------
+
+/**
+ * Lees het uitvoeringslastmodel: de handelingen met hun minuten en tarief, de
+ * tarieven zelf. Dit staat naast de regelgeving: een handeling is wat de wet
+ * in de praktijk aan werk kost, niet wat er in de wet staat.
+ */
+async function leesHandelingen() {
+  const tekst = readHandelingenWerkversie();
+  if (!tekst) return 'Deze casus heeft geen data/handelingen.yaml.';
+  return JSON.stringify({
+    tarieven: listTarieven(tekst),
+    handelingen: listHandelingen(tekst),
+  });
+}
+
+/**
+ * Wijzig het uitvoeringslastmodel. Eén tool met een actie, in plaats van drie
+ * losse: toevoegen, verwijderen en aanpassen delen hun doelbestand, hun
+ * validatie en hun wijziging-event, en de assistent hoeft zo maar één tool te
+ * kennen om "geen accountant in het po" uit te voeren.
+ */
+async function wijzigHandelingen({ actie, id, velden, handeling, tarief, waarde, toelichting }) {
+  const huidig = readHandelingenWerkversie();
+  if (!huidig) return 'Deze casus heeft geen data/handelingen.yaml.';
+
+  let nieuw;
+  let melding;
+  try {
+    if (actie === 'verwijder') {
+      if (!id) return 'Geef het id van de handeling die je wilt verwijderen.';
+      const r = removeHandeling(huidig, id);
+      nieuw = r.yaml;
+      melding = `Handeling ${id} verwijderd (${r.verwijderd.partij}, ${r.verwijderd.sector ?? 'po en vo'}, ${r.verwijderd.minuten} min).`;
+    } else if (actie === 'voeg_toe') {
+      const r = addHandeling(huidig, handeling ?? {});
+      nieuw = r.yaml;
+      melding = `Handeling ${r.toegevoegd.id} toegevoegd (${r.toegevoegd.minuten} min, tarief ${r.toegevoegd.tarief}).`;
+    } else if (actie === 'wijzig') {
+      if (!id) return 'Geef het id van de handeling die je wilt wijzigen.';
+      const r = patchHandeling(huidig, id, velden ?? {});
+      nieuw = r.yaml;
+      melding = `Handeling ${id} gewijzigd: ${r.veranderd.join('; ')}.`;
+    } else if (actie === 'wijzig_tarief') {
+      if (!tarief) return 'Geef de naam van het tarief.';
+      const r = patchTarief(huidig, tarief, waarde);
+      nieuw = r.yaml;
+      melding = `Tarief ${tarief} van ${r.oud} naar ${r.nieuw} eurocent per uur.`;
+    } else {
+      return 'Onbekende actie. Kies verwijder, voeg_toe, wijzig of wijzig_tarief.';
+    }
+  } catch (e) {
+    return `Wijziging NIET toegepast: ${String(e?.message ?? e)}`;
+  }
+
+  writeHandelingenWerkversie(nieuw);
+  emit({ type: 'wijziging', document_key: HANDELINGEN_KEY, toelichting: toelichting || melding });
+  return `${melding} Reken het effect door met simuleer_populatie.`;
+}
+
 async function simuleerPersonas() {
   const personas = loadPersonas();
   if (!personas.length) return 'Geen data/personas.yaml gevonden.';
@@ -250,7 +340,10 @@ async function simuleerPopulatie({ n, seed }) {
   const index = Object.fromEntries(
     Object.entries(distributions.bedragen_index_per_jaar ?? {}).map(([j, f]) => [Number(j), Number(f)]),
   );
-  const metrics = aggregate(sim, loadHandelingen(), { index });
+  // De werkversie van het uitvoeringslastmodel, niet het bronbestand: anders
+  // meet de simulatie de handelingen die de assistent zojuist wijzigde niet.
+  const werkversie = readHandelingenWerkversie();
+  const metrics = aggregate(sim, werkversie ? yamlLoad(werkversie) : loadHandelingen(), { index });
   const jaren = metrics.jaren.length || 1;
   const t = metrics.totaal;
   emit({
@@ -362,6 +455,62 @@ const TOOLS = [
       additionalProperties: false,
     },
     run: wijzigRegelgeving,
+  },
+  {
+    name: 'lees_handelingen',
+    description:
+      'Lees het uitvoeringslastmodel (data/handelingen.yaml): welke handelingen ' +
+      'de uitvoering kosten, met partij (school, duo, ocw), sector (po, vo, of ' +
+      'leeg voor allebei), aanleiding, minuten en tarief, plus de tarieven in ' +
+      'eurocent per uur. Dit staat NAAST de regelgeving: wie of wat er in de ' +
+      'praktijk aan te pas komt (een accountantscontrole, een aanvraagformulier, ' +
+      'een DUO-uitlezing) staat hier en niet in de wet. Een instructie over wie ' +
+      'er werk moet verzetten wijzig je dus hier, met wijzig_handelingen.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    run: leesHandelingen,
+  },
+  {
+    name: 'wijzig_handelingen',
+    description:
+      'Wijzig het uitvoeringslastmodel: een handeling verwijderen, toevoegen, ' +
+      'een veld aanpassen (minuten, tarief, partij, sector, aanleiding, ' +
+      'omschrijving) of een tarief wijzigen. Gebruik dit als de instructie over ' +
+      'de UITVOERING gaat -- "er hoeft in het po geen accountant aan te pas te ' +
+      'komen" verwijdert de po-handeling met tarief accountant, en raakt de ' +
+      'regelgeving niet. Lees eerst lees_handelingen voor de id\'s. Reken het ' +
+      'effect daarna door met simuleer_populatie: de uitvoeringslast bij ' +
+      'scholen en DUO verandert mee.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        actie: {
+          type: 'string',
+          enum: ['verwijder', 'voeg_toe', 'wijzig', 'wijzig_tarief'],
+          description: 'Wat je wilt doen.',
+        },
+        id: { type: 'string', description: 'Id van de handeling (bij verwijder en wijzig).' },
+        velden: {
+          type: 'object',
+          description:
+            'Bij actie=wijzig: de velden die je wilt zetten, bv. {"minuten": 45} ' +
+            'of {"sector": null} om de handeling voor po en vo te laten tellen.',
+          additionalProperties: true,
+        },
+        handeling: {
+          type: 'object',
+          description:
+            'Bij actie=voeg_toe: de nieuwe handeling met id, partij, aanleiding, ' +
+            'minuten en tarief (sector en vanaf_jaar optioneel).',
+          additionalProperties: true,
+        },
+        tarief: { type: 'string', description: 'Bij actie=wijzig_tarief: de tariefnaam.' },
+        waarde: { type: 'number', description: 'Bij actie=wijzig_tarief: eurocent per uur.' },
+        toelichting: { type: 'string', description: 'Korte omschrijving voor de gebruiker.' },
+      },
+      required: ['actie'],
+      additionalProperties: false,
+    },
+    run: wijzigHandelingen,
   },
   {
     name: 'simuleer_personas',

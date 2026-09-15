@@ -19,6 +19,7 @@ if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}${ANTHROPIC_API_KEY:-}" ]; then
     POC_CASUS="$casus" \
     POC_CASUS_DIR="/app/casus/$casus" \
     POC_WASM_DIR="/app/static/$casus/wasm/pkg" \
+    POC_APP_SRC="/app/assistent/app/$casus/src" \
     POC_VARIANT_OPSLAG=0 \
     PORT="$poort" \
       node /app/assistent/index.js &
