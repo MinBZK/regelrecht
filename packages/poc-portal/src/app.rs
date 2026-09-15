@@ -249,8 +249,21 @@ async fn toegang(
         &slug,
         time::OffsetDateTime::now_utc(),
     );
+    // `Path=/{slug}` zonder sluitende schuine streep, en dat is geen slordigheid.
+    //
+    // Een browser stuurt een cookie met `Path=/napp/` wel naar `/napp/iets`,
+    // maar niet naar `/napp` zelf: de sluitende streep maakt het pad strikter.
+    // Napp stuurt `/napp/` permanent door naar `/napp` (zie main.rs, `nest`
+    // routeert de lege rest niet), en precies op dat adres viel het cookie dan
+    // weg. De poort zag geen cookie, toonde het formulier opnieuw, en met een
+    // goed wachtwoord bleef je in een kringetje lopen -- terwijl een fout
+    // wachtwoord wél netjes "onjuist" gaf, want dat pad komt nooit bij de
+    // omleiding.
+    //
+    // `Path=/napp` dekt volgens de RFC zowel `/napp` als alles eronder, dus dit
+    // is ruimer waar het moet en niet ruimer dan de poc zelf.
     let cookie = format!(
-        "{naam}={waarde}; Path=/{slug}/; Max-Age={max_age}; HttpOnly; Secure; SameSite=Lax",
+        "{naam}={waarde}; Path=/{slug}; Max-Age={max_age}; HttpOnly; Secure; SameSite=Lax",
         naam = gate::cookie_naam(&slug),
         max_age = gate::GELDIGHEID.whole_seconds(),
     );
