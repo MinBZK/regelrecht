@@ -211,6 +211,13 @@ jobs:
           fi
           echo "All corpus schema references valid"
 
+      - name: Check schema examples validate against their own subschema
+        run: |
+          # An `examples` value is rendered as copyable YAML on
+          # /reference/schema, so an invalid one hands a law author a file that
+          # `just validate` rejects.
+          python3 script/check-schema-examples.py
+
       - name: Check schema/latest symlink
         run: |
           TARGET=$(readlink schema/latest)

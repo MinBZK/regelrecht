@@ -79,7 +79,7 @@
       "type": "string",
       "description": "CELEX number (for EU regulations and directives).",
       "examples": [
-        "32016R0679"
+        "32013R1303"
       ]
     },
     "eli": {
@@ -100,7 +100,7 @@
       "pattern": "^GM[0-9]{4}$",
       "description": "CBS municipality code (for municipal regulations).",
       "examples": [
-        "0363"
+        "GM0363"
       ]
     },
     "provincie_code": {
@@ -283,7 +283,7 @@
                 "description": "Legal character this procedure governs."
               }
             },
-            "description": "The output this procedure governs, naming the article and the output within it whose besluit runs through these stages."
+            "description": "Which decisions this procedure governs, matched on the legal character an article declares in `produces`."
           },
           "stages": {
             "type": "array",
@@ -332,7 +332,7 @@
                 }
               }
             },
-            "description": "The lifecycle stages in order, from the application to the final decision. Each stage names the Awb article that sets its term."
+            "description": "The lifecycle stages in order, from the application to the final decision. Each names itself and what it needs before it can complete."
           }
         }
       }
@@ -493,11 +493,11 @@
             },
             "min": {
               "type": "number",
-              "description": "Minimum allowed value."
+              "description": "Minimum allowed value. Parsed as metadata and not yet enforced by the engine."
             },
             "max": {
               "type": "number",
-              "description": "Maximum allowed value."
+              "description": "Maximum allowed value. Parsed as metadata and not yet enforced by the engine."
             }
           },
           "examples": [
@@ -505,8 +505,8 @@
               "unit": "eurocent"
             },
             {
-              "unit": "percentage",
-              "precision": 2
+              "unit": "ratio",
+              "precision": 4
             }
           ]
         },
@@ -564,7 +564,7 @@
       "description": "Variable reference starting with $ (e.g., $standaardpremie, $referencedate.year). Supports dot notation for property access.",
       "examples": [
         "$standaardpremie",
-        "$partner.leeftijd"
+        "$toetsingsinkomen"
       ]
     },
     "parameterField": {
@@ -1400,7 +1400,7 @@
         },
         "operation": {
           "$ref": "#/definitions/operationType",
-          "description": "The operation computing this action's value. Mutually exclusive with `value`: an action either states a literal or computes one."
+          "description": "The operation computing this action's value. When the action also carries `value`, this wins and that field is read as an operand."
         },
         "values": {
           "type": "array",
@@ -1521,10 +1521,7 @@
       "properties": {
         "endpoint": {
           "type": "string",
-          "description": "Named endpoint for this article, making it callable from other regulations.",
-          "examples": [
-            "bereken_zorgtoeslag"
-          ]
+          "description": "Named endpoint for this article. Accepted by the schema, but the Rust law-model has no field for it and drops it on load; a law calls another law by output name, not by endpoint."
         },
         "competent_authority": {
           "description": "Bevoegd gezag: the authority whose execution of this article produces a binding decision. Another body may run the same calculation and get the same number, but its result carries no legal force (RFC-009). Annotation only: the engine computes the same either way.",
@@ -1559,7 +1556,7 @@
         },
         "enables": {
           "type": "array",
-          "description": "What this article enables - e.g., authority to create lower-level regulations.",
+          "description": "What this article authorizes: the regulations that may be made under it, and the interface they must offer. Declared in the schema but not yet read by the engine.",
           "items": {
             "type": "object",
             "required": [
@@ -1777,7 +1774,7 @@
           "examples": [
             [
               {
-                "name": "standaardpremie",
+                "id": "standaardpremie",
                 "type": "amount",
                 "required": true
               }
@@ -1869,7 +1866,7 @@
                   "description": "Selects a specific AWB procedure variant. When absent, the default procedure for the legal_character is used."
                 }
               },
-              "description": "What executing this article yields in legal terms: its legal character, the kind of decision it is, and the procedure that governs it. Annotation for the reader and for portals deciding what to offer; it does not change the computed value."
+              "description": "What executing this article yields in legal terms: its legal character, the kind of decision it is, and the procedure that governs it. Not merely annotation: `legal_character` and `decision_type` select which hooks fire, and `legal_character` with `procedure_id` selects the Awb procedure, so an article's outputs and how it runs both depend on what is declared here."
             },
             "parameters": {
               "type": "array",
@@ -1948,7 +1945,7 @@
                   "legal_character"
                 ],
                 "additionalProperties": false,
-                "description": "Which outputs this hook fires for, filtered by legal character and/or decision type. A hook with no filter applies to every output of the article."
+                "description": "Which decisions of other articles this hook fires on. `legal_character` is required; adding `decision_type` or `stage` narrows it further."
               }
             },
             "additionalProperties": false

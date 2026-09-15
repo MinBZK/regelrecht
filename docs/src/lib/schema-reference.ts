@@ -1005,8 +1005,12 @@ export function operandForms(): { label: string; detail: string }[] {
  * with forty-five. Exporting them here lets the route splice them into the
  * outline at the point the component sits.
  *
- * Derived from the same functions that render the headings, so the two cannot
- * drift: a section added below appears in the outline without a second edit.
+ * Every entry is derived from the same function the component renders from, so
+ * a section added there appears here without a second edit. What is hand-kept
+ * is the ORDER, and the depth-2/3 entries whose headings the component writes
+ * out literally. DocsOutline shows depth 2-3 only, so a depth-4 entry landing
+ * in the wrong position costs nothing today; a new depth-3 section would need
+ * a line here.
  */
 export function referenceHeadings(): { depth: number; slug: string; text: string }[] {
   const out: { depth: number; slug: string; text: string }[] = [];
@@ -1031,6 +1035,14 @@ export function referenceHeadings(): { depth: number; slug: string; text: string
     for (const sub of subStructuresFor(kind.slug)) h(4, sub.slug, sub.title);
   }
   h(3, 'legal-basis', 'Legal basis');
+
+  // Everything otherSubStructures() renders, at the depth the component uses.
+  // Listed from the same function rather than by hand: the earlier version
+  // enumerated these and had already drifted ten headings behind the page,
+  // which stayed invisible only because DocsOutline drops depth 4.
+  for (const subs of Object.values(otherSubStructures())) {
+    for (const sub of subs) h(4, sub.slug, sub.title);
+  }
 
   h(2, 'operations', 'Operations');
   h(3, 'operation-value', 'Operand value');

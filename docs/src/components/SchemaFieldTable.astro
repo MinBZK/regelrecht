@@ -92,6 +92,16 @@ const { fields, label } = Astro.props;
               </nldd-text>
             )}
 
+            {/* The format a value must match. Worth showing next to the
+                example: a published `gemeente_code` example of "0363" against
+                `^GM[0-9]{4}$` shipped once, and it would have been visible
+                here. */}
+            {field.pattern && (
+              <nldd-text size="sm" color="secondary">
+                Must match <code>{field.pattern}</code>.
+              </nldd-text>
+            )}
+
             {field.examples.map((ex) => (
               <nldd-code-viewer language="yaml" variant="box-base">{ex}</nldd-code-viewer>
             ))}

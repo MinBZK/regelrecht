@@ -137,7 +137,7 @@ const others = otherSubStructures();
 
 
 {
-  (others['procedure'] ?? []).map((sub) => (
+  (others['law-file'] ?? []).map((sub) => (
     <div class="rr-schema-nested rr-schema-row" data-zoek={sub.zoek}>
       <h4 id={sub.slug}>{sub.title}</h4>
       <nldd-text size="sm" color="secondary"><code>{sub.path}</code></nldd-text>
@@ -146,9 +146,8 @@ const others = otherSubStructures();
     </div>
   ))
 }
-
 {
-  (others['law-file'] ?? []).map((sub) => (
+  (others['procedure'] ?? []).map((sub) => (
     <div class="rr-schema-nested rr-schema-row" data-zoek={sub.zoek}>
       <h4 id={sub.slug}>{sub.title}</h4>
       <nldd-text size="sm" color="secondary"><code>{sub.path}</code></nldd-text>
@@ -213,6 +212,7 @@ const others = otherSubStructures();
     </div>
   ))
 }
+
 
 
 {
@@ -352,7 +352,7 @@ const others = otherSubStructures();
       ))}
       {op.fields.length > 0 && <SchemaFieldTable fields={op.fields} label={`Operands of the ${op.title} operation`} />}
       {(others[op.slug] ?? []).map((sub) => (
-        <div class="rr-schema-nested" data-zoek={sub.zoek}>
+        <div class="rr-schema-nested rr-schema-row" data-zoek={sub.zoek}>
           <h4 id={sub.slug}>{sub.title}</h4>
           <nldd-text size="sm" color="secondary"><code>{sub.path}</code></nldd-text>
           {sub.description && <p set:html={sub.description} />}
