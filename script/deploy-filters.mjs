@@ -68,6 +68,40 @@ export const COMPONENTS = {
     crate: 'regelrecht-engine',
     paths: ['frontend-demo/', 'packages/frontend-shared/', 'corpus/demo/', NGINX_SHARED],
   },
+  // napp draait als eigen, niet-gepubliceerd component; het portaal proxyt
+  // ernaartoe. Eigen image, dus eigen filter.
+  'poc-napp': {
+    crate: 'regelrecht-poc-napp',
+    paths: [
+      'pocs/',
+      'corpus-poc/napp/',
+      'frontend-poc-napp/',
+      'packages/frontend-shared/',
+      'packages/poc-napp/Dockerfile',
+    ],
+  },
+  // Het poc-portaal bakt de statische pocs in zijn eigen image, dus het raakt
+  // ook aan hun frontends en hun casus-corpus. De crate-kant (auth, corpus,
+  // engine) volgt uit de graaf.
+  //
+  // `packages/poc-assistent/` staat er met de hand bij en moet er blijven: het
+  // is JavaScript, dus geen crate, en de graaf vindt het nooit. Het image
+  // kopieert het wel (poc-portal/Dockerfile). Zonder deze regel bouwt een
+  // wijziging aan de assistent geen image en blijft productie stil op de oude
+  // staan — precies de fout die dit script hoort uit te bannen.
+  poc: {
+    crate: 'regelrecht-poc-portal',
+    paths: [
+      'pocs/',
+      'corpus-poc/',
+      'frontend-poc-portal/',
+      'frontend-poc-terugbetaalregimes/',
+      'frontend-poc-nieuwkomersbekostiging/',
+      'packages/frontend-shared/',
+      'packages/poc-assistent/',
+      'packages/poc-portal/Dockerfile',
+    ],
+  },
 };
 
 // Raakt elk component met een Rust-image: de workspace zelf.

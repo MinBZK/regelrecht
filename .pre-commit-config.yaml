@@ -53,6 +53,14 @@ repos:
         pass_filenames: false
         types: [rust]
 
+      - id: check-schema-examples
+        name: Schema-voorbeelden valideren tegen hun eigen subschema
+        entry: python3 script/check-schema-examples.py
+        language: system
+        pass_filenames: false
+        # Also on the script itself: editing the guard should re-run it.
+        files: ^(schema/v[0-9]+\.[0-9]+\.[0-9]+/schema\.json|script/check-schema-examples\.py)$
+
       - id: validate-law-yaml
         name: Validate law YAML schema
         entry: just validate
@@ -69,7 +77,7 @@ repos:
         entry: script/check-tool-pins.sh
         language: system
         pass_filenames: false
-        files: (^frontend/Dockerfile$|^packages/(admin|pipeline)/Dockerfile$)
+        files: (^frontend/Dockerfile$|^packages/(admin|pipeline|poc-portal|poc-napp)/Dockerfile$)
 
       - id: review-gate-tests
         name: Merge-poort op de Claude-review doet wat hij belooft
@@ -139,7 +147,7 @@ repos:
         entry: just dockerfile-consistency-test
         language: system
         pass_filenames: false
-        files: ^(frontend/Dockerfile|packages/(admin|pipeline)/Dockerfile|packages/Cargo\.toml|rust-toolchain\.toml|\.github/workflows/deploy\.yml|script/dockerfile-consistency\.test\.mjs)$
+        files: ^((frontend|frontend-demo)/Dockerfile|packages/(admin|pipeline|poc-portal|poc-napp)/Dockerfile|packages/Cargo\.toml|rust-toolchain\.toml|\.github/workflows/deploy\.yml|script/dockerfile-consistency\.test\.mjs)$
 
       - id: deploy-gate-tests
         name: Deploy-poort op een groene CI doet wat hij belooft

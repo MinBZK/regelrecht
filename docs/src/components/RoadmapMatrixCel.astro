@@ -5,12 +5,20 @@
  *
  * Split out of index.astro so the (sizeable) card markup lives in one place
  * instead of being inlined once per fase column in the matrix template.
+ *
+ * Every card carries two attributes the filters read and nothing else uses:
+ * `data-categorie` for the CSS-only categorie filter, and `data-zoek` for the
+ * zoekfilter — the werkpakket's full text, built here at build time so the
+ * script does no more than an indexOf per card. That string holds text which
+ * renders only on the detail page (toelichting, onderzoeksvragen); see
+ * zoektekst() in lib/roadmap.ts for why.
  */
 import {
   GEEN_CATEGORIE,
   getPrioriteit,
   getCategorie,
   getCapability,
+  zoektekst,
   type WerkpakketData,
 } from '~/lib/roadmap';
 
@@ -65,6 +73,7 @@ const { cel, class: className, headers } = Astro.props;
                 : []),
             ].join(', ')}
             data-categorie={wp.data.categorie || GEEN_CATEGORIE}
+            data-zoek={zoektekst(wp.data)}
           >
             {/* nldd-card leaves padding to a nested container by design;
                 without one the content sits flush against the border. */}

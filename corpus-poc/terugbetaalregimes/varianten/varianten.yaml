@@ -1,0 +1,28 @@
+# Beleidsvarianten van deze casus.
+#
+# Geexporteerd uit de git-branches variant/* van de oorspronkelijke
+# PoC-repo. Elke variant is een set wetsbestanden die de basisbestanden
+# uit deze casus vervangen: `bestanden` bevat het pad relatief aan de
+# casusmap, en dat pad is tegelijk het basisbestand dat wordt vervangen
+# (varianten/<id>/<pad> hoort bij <pad>).
+varianten:
+  - id: "a1-overstap-naar-sf15-nieuw"
+    titel: "Variant a1: overstap vanuit SF15-oud leidt naar SF15-nieuw (proactieve opt-in)"
+    toelichting: ""
+    bestanden:
+      - "corpus/regulation/nl/wet/wet_studiefinanciering_2000/2025-01-01.yaml"
+  - id: "a2-automatische-overstap"
+    titel: "Variant a2: automatische overstap SF15-oud naar SF15-nieuw met opt-out"
+    toelichting: ""
+    bestanden:
+      - "corpus/regulation/nl/wet/wet_studiefinanciering_2000/2025-01-01.yaml"
+  - id: "a3-draagkrachtregels-sf15-nieuw-op-sf15-oud"
+    titel: "Variant a3: draagkrachtregels SF15-nieuw automatisch toegepast op SF15-oud"
+    toelichting: ""
+    bestanden:
+      - "corpus/regulation/nl/wet/wet_studiefinanciering_2000/2025-01-01.yaml"
+  - id: "b-aflosfase-maximeren"
+    titel: "Variant b: aflosfase gemaximeerd op 40 jaar bij partneropt-out"
+    toelichting: ""
+    bestanden:
+      - "corpus/regulation/nl/wet/wet_studiefinanciering_2000/2025-01-01.yaml"
