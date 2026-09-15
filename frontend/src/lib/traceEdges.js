@@ -96,6 +96,11 @@ export function flattenTraceSteps(root, rootLawId) {
         name: node.name,
         resolveType: node.resolve_type,
         result: node.result,
+        // The unit the law declares for this value, where it declares one
+        // (RFC-039). Absent on an intermediate result, which has no
+        // declaration to read.
+        unit: node.type_spec?.unit,
+        article: node.anchor?.article,
         message: node.message,
         durationUs: node.duration_us,
         depth,
@@ -104,10 +109,12 @@ export function flattenTraceSteps(root, rootLawId) {
       });
     }
 
-    // For cross-law refs the subtree executes in the referenced law, so we
-    // try to pin the descent lawId from the node name (`targetLaw#output`).
-    let descendLawId = currentLawId;
-    if (node.node_type === 'cross_law_reference') {
+    // Which law a step runs in is a field on the step (RFC-039): every step
+    // carries the provision the engine was in. Falling back to the
+    // `targetLaw#output` name keeps a trace recorded before RFC-039 working,
+    // and covers a step the engine could not anchor.
+    let descendLawId = node.anchor?.law_id ?? currentLawId;
+    if (!node.anchor?.law_id && node.node_type === 'cross_law_reference') {
       const hashIdx = node.name.indexOf('#');
       if (hashIdx > 0) {
         descendLawId = node.name.substring(0, hashIdx);

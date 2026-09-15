@@ -12,6 +12,15 @@ function matchStatus(name, value) {
   return _matchStatus(name, value, props.expectations);
 }
 
+/** The step's result, carrying its declared unit when the law states one.
+ *  Truncation wins over the unit: a value long enough to be cut is not one a
+ *  currency form helps with. */
+function formatResult(step) {
+  const shown = truncate(step.result);
+  if (!step.unit || shown.endsWith('…')) return shown;
+  return formatOutputValue(step.result, step.unit);
+}
+
 // No unit here (see the note above Outputs), so formatOutputValue adds
 // nothing to a number; for an unknown outcome it appends the missing facts.
 function fmt(v) {
@@ -49,7 +58,11 @@ const expectationEntries = computed(() => Object.entries(props.expectations || {
              as `geen`; only a node without a result has no row. -->
         <div v-if="step.result !== undefined" class="step-detail__row">
           <dt>Resultaat:</dt>
-          <dd class="mono emerald">{{ truncate(step.result) }}</dd>
+          <!-- With the unit the law declares, so an amount reads as euros
+               instead of a count of cents (RFC-039). Without one it falls
+               back to the plain value, which is what an intermediate result
+               has. -->
+          <dd class="mono emerald">{{ formatResult(step) }}</dd>
         </div>
         <div v-if="step.durationUs !== undefined" class="step-detail__row">
           <dt>Duur:</dt>

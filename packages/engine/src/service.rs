@@ -36,7 +36,7 @@ use crate::priority;
 use crate::resolver::{RuleResolver, SelectionReason};
 use crate::trace::{LegalAnchor, TraceBuilder, ValueSource};
 use crate::types::{
-    Connectivity, LegalStatus, MissingKind, PathNodeType, RegulatoryLayer, ResolveType,
+    Connectivity, LegalStatus, MissingKind, PathNodeType, RegulatoryLayer, ResolveType, TypeSpec,
     UntranslatableMode, Value,
 };
 use crate::uri::RegelrechtUri;
@@ -230,6 +230,14 @@ impl<'a> ResolutionContext<'a> {
     fn trace_set_source(&self, source: ValueSource) {
         if let Some(ref tb) = self.trace {
             tb.borrow_mut().set_source(source);
+        }
+    }
+
+    /// Record the declared unit and precision of the current node's result
+    /// (RFC-023, RFC-039).
+    fn trace_set_type_spec(&self, type_spec: TypeSpec) {
+        if let Some(ref tb) = self.trace {
+            tb.borrow_mut().set_type_spec(type_spec);
         }
     }
 
@@ -2189,6 +2197,14 @@ impl LawExecutionService {
                         provider: Some(data_match.source_name.clone()),
                         scope: data_match.law_scope.clone(),
                     });
+                    // The unit the law declares for this input, so a reader
+                    // sees an amount and not a bare count of cents (RFC-023,
+                    // RFC-039). Only where a declaration carries one; a value
+                    // computed mid-expression has none, and version 1 does not
+                    // infer one.
+                    if let Some(ref ts) = input.type_spec {
+                        res_ctx.trace_set_type_spec(ts.clone());
+                    }
                     res_ctx.trace_set_message(format!(
                         "Resolving from SOURCE {}: {}",
                         data_match.source_name, data_match.value

@@ -363,3 +363,48 @@ fn a_trace_is_published_as_a_versioned_document() {
     assert_eq!(parsed.trace_version, doc.trace_version);
     assert_eq!(parsed.root.node_id, doc.root.node_id);
 }
+
+/// A step whose value the law declares with a unit reports that unit, so a
+/// reader sees an amount rather than a bare count of cents (RFC-023, RFC-039).
+#[test]
+fn a_declared_value_reports_its_unit() {
+    let service = setup_zorgtoeslag_service();
+
+    let mut params = BTreeMap::new();
+    params.insert("bsn".to_string(), Value::String("999993653".to_string()));
+
+    let result = service
+        .evaluate_law_output_with_trace(
+            "wet_op_de_zorgtoeslag",
+            "hoogte_zorgtoeslag",
+            params,
+            "2025-01-01",
+        )
+        .expect("Law evaluation should succeed");
+    let root = result.trace.expect("traced evaluation produces a trace");
+
+    fn walk<'a>(
+        n: &'a regelrecht_engine::trace::PathNode,
+        out: &mut Vec<&'a regelrecht_engine::trace::PathNode>,
+    ) {
+        out.push(n);
+        for c in &n.children {
+            walk(c, out);
+        }
+    }
+    let mut nodes = Vec::new();
+    walk(&root, &mut nodes);
+
+    let with_unit: Vec<(&str, &str)> = nodes
+        .iter()
+        .filter_map(|n| Some((n.name.as_str(), n.type_spec.as_ref()?.unit.as_deref()?)))
+        .collect();
+    assert!(
+        !with_unit.is_empty(),
+        "no step reported a declared unit; zorgtoeslag has amounts in eurocent"
+    );
+    assert!(
+        with_unit.iter().any(|(_, u)| *u == "eurocent"),
+        "expected an amount in eurocent, got {with_unit:?}"
+    );
+}
