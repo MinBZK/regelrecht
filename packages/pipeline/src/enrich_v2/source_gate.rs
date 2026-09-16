@@ -640,9 +640,18 @@ pub fn rewrite(
         if path.is_empty() {
             continue;
         }
-        let carried: Vec<&str> = ["machine_readable", "references"]
+        // Every key beyond `number` and `text` is authored work, which is
+        // exactly what the carry-over keeps for a whole-article entry. A
+        // fixed list of two here meant a lid-entry could still lose its
+        // `placement`, its authored `url` or a key this gate has never seen,
+        // silently: the guard was narrower than the thing it guards.
+        let carried: Vec<String> = article
+            .as_mapping()
             .into_iter()
-            .filter(|k| article.get(*k).is_some())
+            .flat_map(|m| m.keys())
+            .filter_map(serde_yaml_ng::Value::as_str)
+            .filter(|k| !matches!(*k, "number" | "text"))
+            .map(str::to_string)
             .collect();
         if !carried.is_empty() {
             return Err(format!(
@@ -1398,6 +1407,27 @@ articles:
         assert_eq!(report.verdicts["3.2.a"], Verdict::Missing);
         assert_eq!(report.verdicts["3.2.b"], Verdict::Missing);
         assert!(!report.passes(), "a file missing a lid must not pass");
+    }
+
+    #[test]
+    fn a_lid_entry_carrying_placement_is_refused_rather_than_flattened() {
+        // The guard listed `machine_readable` and `references` by name, so a
+        // lid-entry carrying only `placement` or an authored `url` was
+        // flattened into its whole article and lost them without a word.
+        let official = parse_toestand(FRAGMENTED_XML).unwrap();
+        let corpus: serde_yaml_ng::Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '3.1'
+    text: Eerste lid.
+    placement: {hoofdstuk: {number: '1'}}
+"#,
+        )
+        .unwrap();
+        let report = verify(&corpus, &official);
+        let err = rewrite(&corpus, &official, &report)
+            .expect_err("a lid-entry carrying authored work must be refused");
+        assert!(err.contains("placement"), "got {err}");
     }
 
     #[test]
