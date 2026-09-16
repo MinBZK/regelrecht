@@ -213,26 +213,29 @@ fn een_besluit_noemt_de_uitgevoerde_regelingen_met_hun_inputs_en_uitkomsten() {
         .map(|input| input.name.as_str())
         .collect();
     assert_eq!(namen, ["bsn", "is_verzekerde", "toetsingsinkomen"]);
-    let herkomsten: Vec<&str> = executed
+    let herkomsten: Vec<String> = executed
         .inputs
         .iter()
-        .filter_map(|input| input.herkomst.as_object()?.get("herkomst")?.as_str())
+        .map(|input| input.origin.describe())
         .collect();
-    assert_eq!(
-        herkomsten,
-        ["parameter", "eigen_kroniek", "geaccepteerd"],
-        "elke input draagt haar herkomst in de woorden van het gram: {:?}",
-        executed.inputs
+    assert!(
+        herkomsten[0].starts_with("parameter ") && herkomsten[1].starts_with("eigen kroniek "),
+        "elke input draagt haar herkomst in de woorden van het gram: {herkomsten:?}"
     );
     let geaccepteerd = &executed.inputs[2];
     assert_eq!(
-        geaccepteerd
-            .herkomst
-            .as_object()
-            .and_then(|herkomst| herkomst.get("cell"))
-            .and_then(Value::as_str),
+        geaccepteerd.origin.accepted_from(),
         Some("belastingdienst"),
         "de geaccepteerde input noemt de cel die haar vaststelde: {geaccepteerd:?}"
+    );
+    // En het verslag zegt het ook: een geaccepteerd bedrag zonder die herkomst
+    // leest als iets wat deze cel zelf vaststelde (invariant I5).
+    assert!(
+        geaccepteerd
+            .describe()
+            .contains("geaccepteerd van cel 'belastingdienst'"),
+        "de regel in het verslag noemt de herkomst: {}",
+        geaccepteerd.describe()
     );
 
     // En wat eruit kwam: beide uitkomsten die dit besluit vastlegt.
@@ -304,6 +307,52 @@ fn de_uitvoering_hangt_aan_het_gram_en_aan_niets_anders() {
         })
         .and_then(|chronicle| chronicle.grams.get(plek))
         .expect("de verwijzing wijst een gram aan dat in het beeld staat");
+
+    // De uitgevoerde regelingen het eerst: dát is wat deze regel toevoegt, en
+    // een lijst die alleen in het journaal staat zou een verhaal vertellen dat
+    // in geen enkele kroniek terug te vinden is.
+    let vastgelegd = decretogram
+        .fields
+        .get("executed_regulations")
+        .map(|field| &field.value)
+        .and_then(Value::as_array)
+        .expect("het gram legt de uitgevoerde regelingen vast");
+    assert_eq!(
+        vastgelegd
+            .iter()
+            .filter_map(|regeling| {
+                let regeling = regeling.as_object()?;
+                Some((
+                    regeling.get("regulation")?.as_str()?.to_string(),
+                    regeling
+                        .get("regulation_valid_from")?
+                        .as_str()
+                        .map(str::to_string),
+                ))
+            })
+            .collect::<Vec<_>>(),
+        executed
+            .regulations
+            .iter()
+            .map(|uitgevoerd| (uitgevoerd.regulation.clone(), uitgevoerd.valid_from.clone()))
+            .collect::<Vec<_>>(),
+        "het journaal en het gram noemen dezelfde regelingen in dezelfde versie"
+    );
+    // En de regeling van het besluit noemt het gram maar op één manier: het
+    // vaste veld en de eerste uitgevoerde regeling horen niet uiteen te lopen.
+    assert_eq!(
+        decretogram
+            .fields
+            .get("regulation_valid_from")
+            .map(|field| &field.value),
+        Some(
+            &vastgelegd[0]
+                .as_object()
+                .and_then(|regeling| regeling.get("regulation_valid_from"))
+                .cloned()
+                .expect("de eerste regeling draagt haar versie")
+        ),
+    );
 
     for output in &executed.outputs {
         assert_eq!(

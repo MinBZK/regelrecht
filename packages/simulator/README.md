@@ -474,7 +474,8 @@ uitbreiding van RFC-013 stil achterlopen.
 |---|---|
 | `zaakkenmerk` | waaronder deze zaak terug te vinden is, uit het sjabloon van de definitie |
 | `op_moment` | wanneer besloten is (het gram is een gewoon executogram) |
-| `regulation` + `regulation_valid_from` | welke regeling, en **welke versie daarvan gold** |
+| `regulation` + `regulation_valid_from` | welke regeling het besluit *is*, en **welke versie daarvan gold** |
+| `executed_regulations` | álle regelingen die deze uitvoering aanriep, elk met de versie die toen gold; die van het besluit vooraan. Méér dan `regulation` alleen — een uitvoeringsregeling die een bedrag levert hoort er even goed bij — en minder dan `scope.loaded_regulations` uit het receipt, dat ook een versie noemt die niet gold en een regeling die deze uitvoering niet raakte |
 | `competent_authority` | het bevoegd gezag dat de regeling noemt (RFC-002): dat van het artikel dat de aansturende uitkomst voortbrengt, anders dat van het document; `null` als ze er geen noemt |
 | `besloten_door` | de identiteit van de cel die besloot — zie [Wie mag besluiten](#wie-mag-besluiten) |
 | `legal_character` | altijd `BESCHIKKING`: dat is wat een decretogram is (RFC-022 §1.2), en een besluit over iets anders wordt bij het optuigen geweigerd |
@@ -1895,7 +1896,8 @@ ligt, is het verschil in de stand van de zaak — en dat is een meting.
 
 Een besluitregel noemt niet alleen dát er besloten is, maar ook wat er gebeurd
 is. `executed` draagt drie dingen, alle drie uit het decretogram waar de regel
-naar wijst:
+naar wijst — het gram legt ze vast onder `executed_regulations`, `inputs` en de
+uitkomsten zelf:
 
 | veld | wat |
 |---|---|
@@ -1910,6 +1912,11 @@ een bedrag tot stand kwam. Het is ook **minder** dan `scope.loaded_regulations`
 uit het receipt: daar staat elke versie in die de cel geladen heeft, ook een
 versie die op dit moment niet gold en een regeling die deze uitvoering niet
 geraakt heeft.
+
+Eén grens: een aanroep die de engine bewust oversloeg — een verplichte parameter
+noemde niemand, dus de regeling draaide niet en de input werd een afwezigheid
+(RFC-036) — is in de herkomst van een input niet te onderscheiden van een aanroep
+die wél draaide, en staat er dus ook in.
 
 Een geaccepteerde input draagt in haar herkomst de cel en de lexostatus waarmee
 ze opgehaald is; daarmee is ze te koppelen aan de `vraag`-regel die onder dit

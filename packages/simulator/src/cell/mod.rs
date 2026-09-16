@@ -1761,8 +1761,13 @@ impl Cell {
         // Welke regelingen deze uitvoering werkelijk uitvoerde, in de versie die
         // op dit moment gold. Hier en niet bij het lezen van het gram: alleen
         // tijdens de uitvoering is bekend welke regeling welke input leverde.
-        let executed_regulations =
-            executed_regulations(&definition.regulation, &result, resolver, op_moment);
+        let executed_regulations = executed_regulations(
+            &definition.regulation,
+            result.regulation_valid_from.as_deref(),
+            &result,
+            resolver,
+            op_moment,
+        );
         // Het rechtskarakter hoort bij het artikel dat de aansturende uitkomst
         // voortbrengt: díe uitkomst *is* het besluit. Een uitkomst die erbij
         // meegaat kan uit een ander artikel komen, en dat artikel zegt niets
@@ -2318,12 +2323,23 @@ fn outputs_per_regulation(service: &LawExecutionService) -> BTreeMap<String, BTr
 /// uitvoering heeft haar eigen herkomst, en die uitvouwen zou van dit verhaal
 /// een uitdraai maken. Dezelfde grens als bij [`Cell::explain_inputs`].
 ///
-/// De versie komt van de resolver en niet uit het receipt, want dat is de
-/// selectie waarmee de engine zojuist gerekend heeft (RFC-019 §3): een tweede
-/// keuzeregel hiernaast zou een andere versie kunnen noemen dan er uitgevoerd
-/// is.
+/// De versie van de regeling van het besluit komt uit de uitkomst zelf
+/// ([`ArticleResult::regulation_valid_from`]): dat ís de versie waaronder er
+/// zojuist gerekend is, en het gram legt haar onder `regulation_valid_from` al
+/// zo vast — een tweede opzoeking ernaast zou het gram en het journaal over
+/// dezelfde uitvoering iets anders kunnen laten zeggen. Voor een aangeroepen
+/// regeling draagt de uitkomst geen versie, en dan is de resolver de enige bron:
+/// bevraagd op hetzelfde moment als waarmee de engine haar koos (RFC-019 §3).
+///
+/// **Grens.** Een aanroep die de engine bewust oversloeg — een verplichte
+/// parameter noemde niemand, dus de regeling is niet uitgevoerd en de input
+/// werd een afwezigheid (RFC-036) — draagt dezelfde herkomst als een aanroep die
+/// wél draaide, en staat er dus ook in. Dat onderscheid zit niet in
+/// [`InputProvenance`]; zolang dat zo is, leest deze lijst als "de regelingen
+/// die deze uitvoering aanriep".
 fn executed_regulations(
     regulation: &str,
+    regulation_valid_from: Option<&str>,
     result: &ArticleResult,
     resolver: &RuleResolver,
     op_moment: NaiveDate,
@@ -2341,15 +2357,22 @@ fn executed_regulations(
         })
         .collect::<BTreeSet<&str>>();
 
-    std::iter::once(regulation)
-        .chain(called.into_iter().filter(|called| *called != regulation))
-        .map(|regulation| ExecutedRegulation {
-            regulation: regulation.to_string(),
-            valid_from: resolver
-                .get_law_for_date(regulation, Some(op_moment))
-                .and_then(|law| law.valid_from.clone()),
-        })
-        .collect()
+    std::iter::once(ExecutedRegulation {
+        regulation: regulation.to_string(),
+        valid_from: regulation_valid_from.map(str::to_string),
+    })
+    .chain(
+        called
+            .into_iter()
+            .filter(|called| *called != regulation)
+            .map(|called| ExecutedRegulation {
+                regulation: called.to_string(),
+                valid_from: resolver
+                    .get_law_for_date(called, Some(op_moment))
+                    .and_then(|law| law.valid_from.clone()),
+            }),
+    )
+    .collect()
 }
 
 #[cfg(test)]

@@ -35,7 +35,7 @@
 //! opleveren, en dat is geen verschil; hem toch bevragen zou de opstelling laten
 //! rekenen voor een regel die er niet komt.
 
-use crate::cell::{ExecutedRegulation, Lexostatus, LexostatusOutcome};
+use crate::cell::{ExecutedRegulation, InputOrigin, Lexostatus, LexostatusOutcome};
 use crate::snapshot::{CrossingSnapshot, GramKind};
 use chrono::NaiveDate;
 use regelrecht_engine::Value;
@@ -168,8 +168,9 @@ impl AcceptedValue {
 ///
 /// **Geen tweede administratie.** Alles hier komt uit het decretogram dat deze
 /// regel in [`JournalEntry::grams`] aanwijst, in dezelfde woorden als het gram
-/// het opschreef (zie [`ExecutedInput::herkomst`]). Er wordt niets uitgerekend
-/// en er staat niets in wat niet in een cel ligt.
+/// het opschreef (zie [`ExecutedInput::origin`]) — ook de uitgevoerde
+/// regelingen, die het gram onder `executed_regulations` vastlegt. Er wordt
+/// niets uitgerekend en er staat niets in wat niet in een cel ligt.
 ///
 /// **Geen wandkloktijd.** Het receipt draagt een tijdstempel van de machine; wat
 /// hieruit komt hangt alleen van de kronieken en van het moment van het besluit
@@ -203,21 +204,46 @@ pub struct ExecutedInput {
     pub name: String,
     /// De waarde zoals ze meedeed.
     pub value: Value,
-    /// Waar ze vandaan kwam, precies zoals het gram het opschreef: een parameter,
-    /// een eigen kroniek, een eerder besluit, of geaccepteerd van een andere cel
-    /// — met bron, naam, moment en ondertekening.
+    /// Waar ze vandaan kwam: een parameter, een eigen kroniek, een eerder
+    /// besluit, of geaccepteerd van een andere cel — met bron, naam, moment en
+    /// ondertekening.
     ///
-    /// Doorgegeven en niet naverteld, dezelfde keuze als in het beeld van de
-    /// wereld ([`crate::snapshot::FieldOrigin::BesluitInput`]): wie dit leest,
-    /// leest wat er in de kroniek staat, en er is één vocabulaire voor herkomst
-    /// in plaats van twee.
-    pub herkomst: Value,
+    /// De herkomst zelf en niet een navertelling ervan, zodat het verslag haar
+    /// in woorden kan zeggen ([`InputOrigin::describe`]) en een lezer buiten
+    /// deze crate haar per soort kan uitvragen. Naar buiten gaat ze in precies
+    /// de vorm waarin het gram haar opschreef (`InputOrigin::as_value`), onder
+    /// dezelfde naam als in het beeld van de wereld
+    /// ([`crate::snapshot::FieldOrigin::BesluitInput`]): één vocabulaire voor
+    /// herkomst in plaats van twee.
+    #[serde(rename = "herkomst", serialize_with = "serialize_origin")]
+    pub origin: InputOrigin,
+}
+
+/// De herkomst naar buiten in de vorm van het gram, en niet in die van `serde`.
+///
+/// Een afgeleide `Serialize` op [`InputOrigin`] zou een tweede schrijfwijze
+/// opleveren naast de ene die het gram en het beeld van de wereld al gebruiken.
+fn serialize_origin<S: serde::Serializer>(
+    origin: &InputOrigin,
+    serializer: S,
+) -> std::result::Result<S::Ok, S::Error> {
+    origin.as_value().serialize(serializer)
 }
 
 impl ExecutedInput {
     /// Leesbare regel voor een verslag.
+    ///
+    /// Mét de herkomst: een bedrag zonder de plek waar het vandaan komt leest
+    /// als iets wat dit besluit zelf vaststelde, en juist bij een waarde die van
+    /// een andere organisatie geaccepteerd is, is dat het verschil dat telt
+    /// (invariant I5).
     pub fn describe(&self) -> String {
-        format!("input {} = {}", self.name, self.value)
+        format!(
+            "input {} = {} ({})",
+            self.name,
+            self.value,
+            self.origin.describe()
+        )
     }
 }
 

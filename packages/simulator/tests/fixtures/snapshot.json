@@ -1057,6 +1057,25 @@
                     "herkomst": "besluit"
                   }
                 },
+                "executed_regulations": {
+                  "value": [
+                    {
+                      "regulation": "wet_op_de_zorgtoeslag",
+                      "regulation_valid_from": "2024-01-01"
+                    },
+                    {
+                      "regulation": "algemene_wet_inkomensafhankelijke_regelingen",
+                      "regulation_valid_from": null
+                    },
+                    {
+                      "regulation": "regeling_standaardpremie",
+                      "regulation_valid_from": "2024-01-01"
+                    }
+                  ],
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                },
                 "heeft_recht_op_zorgtoeslag": {
                   "value": true,
                   "origin": {
@@ -1223,6 +1242,25 @@
                 },
                 "competent_authority": {
                   "value": "Dienst Toeslagen",
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                },
+                "executed_regulations": {
+                  "value": [
+                    {
+                      "regulation": "wet_op_de_zorgtoeslag",
+                      "regulation_valid_from": "2024-01-01"
+                    },
+                    {
+                      "regulation": "algemene_wet_inkomensafhankelijke_regelingen",
+                      "regulation_valid_from": null
+                    },
+                    {
+                      "regulation": "regeling_standaardpremie",
+                      "regulation_valid_from": "2024-01-01"
+                    }
+                  ],
                   "origin": {
                     "herkomst": "besluit"
                   }

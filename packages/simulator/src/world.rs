@@ -1992,10 +1992,11 @@ fn last_index(cell: &Cell, chronicle: &str) -> usize {
 /// Wat dit besluit uitvoerde, voor het journaal: het recht, de inputs en de
 /// uitkomsten.
 ///
-/// Uit het decretogram en nergens anders vandaan. De **herkomst** van elke input
-/// gaat mee zoals het gram haar opschrijft ([`InputOrigin::as_value`]) — niet in
-/// een tweede schrijfwijze, zodat het journaal en het beeld van de wereld
-/// dezelfde woorden gebruiken voor dezelfde herkomst.
+/// Uit het decretogram en nergens anders vandaan — ook de uitgevoerde regelingen,
+/// die het gram onder `executed_regulations` vastlegt. De **herkomst** van elke
+/// input gaat mee zoals het gram haar opschrijft ([`InputOrigin::as_value`]) —
+/// niet in een tweede schrijfwijze, zodat het journaal en het beeld van de
+/// wereld dezelfde woorden gebruiken voor dezelfde herkomst.
 ///
 /// De volgorde is die van het gram: de inputs en de uitkomsten liggen daar in
 /// een [`BTreeMap`], dus twee runs geven dezelfde lijst — een tabel die per run
@@ -2009,7 +2010,7 @@ fn execution(gram: &Decretogram) -> Execution {
             .map(|(name, input)| ExecutedInput {
                 name: name.clone(),
                 value: input.value.clone(),
-                herkomst: input.origin.as_value(),
+                origin: input.origin.clone(),
             })
             .collect(),
         outputs: gram

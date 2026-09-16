@@ -83,6 +83,15 @@ pub const BESLUIT: &str = "besluit";
 pub const REGULATION: &str = "regulation";
 /// Veld met de `valid_from` van de regelingversie die gold op `op_moment`.
 pub const REGULATION_VALID_FROM: &str = "regulation_valid_from";
+/// Veld met álle regelingen die deze uitvoering uitvoerde, met hun versie.
+///
+/// Naast [`REGULATION`] en [`REGULATION_VALID_FROM`], die alleen de regeling
+/// noemen waarop het besluit *gaat*. Wat zij aanriep staat nergens anders in het
+/// gram: het receipt draagt met `scope.loaded_regulations` wat er geladen was en
+/// met `results.output_provenance` waar elke uitkomst vandaan kwam, maar niet
+/// welke regeling welke *input* leverde. Zonder dit veld zou het journaal een
+/// verhaal vertellen dat in geen enkele kroniek terug te vinden is.
+pub const EXECUTED_REGULATIONS: &str = "executed_regulations";
 /// Veld met het bevoegd gezag dat de regeling noemt (RFC-002).
 pub const COMPETENT_AUTHORITY: &str = "competent_authority";
 /// Veld met de identiteit van de cel die besloot.
@@ -104,11 +113,12 @@ pub const CHRONICLE_SOURCES: &str = "chronicle_sources";
 pub const RECEIPT: &str = "receipt";
 
 /// De vaste velden van een decretogram, in de volgorde waarin ze hierboven staan.
-const FIXED_FIELDS: [&str; 11] = [
+const FIXED_FIELDS: [&str; 12] = [
     ZAAKKENMERK,
     BESLUIT,
     REGULATION,
     REGULATION_VALID_FROM,
+    EXECUTED_REGULATIONS,
     COMPETENT_AUTHORITY,
     BESLOTEN_DOOR,
     LEGAL_CHARACTER,
@@ -992,6 +1002,20 @@ impl ExecutedRegulation {
             None => self.regulation.clone(),
         }
     }
+
+    /// Deze regeling als vastlegbare waarde, voor in het decretogram.
+    fn as_value(&self) -> Value {
+        Value::Object(BTreeMap::from([
+            (
+                REGULATION.to_string(),
+                Value::String(self.regulation.clone()),
+            ),
+            (
+                REGULATION_VALID_FROM.to_string(),
+                optional_text(self.valid_from.as_deref()),
+            ),
+        ]))
+    }
 }
 
 /// Eén eigen kroniek die bij een uitvoering als databron klaarstond, met haar
@@ -1112,10 +1136,15 @@ pub struct Decretogram {
     ///
     /// De regeling van het besluit vooraan — díe uitvoering *is* het besluit —
     /// en daarachter elke regeling die er een input voor leverde (tier 2,
-    /// RFC-022 §4.2). Niet in het gram: het gram draagt het receipt, en daaruit
-    /// volgt deze lijst. Ze staat hier omdat een lezer van het verhaal hoort te
-    /// zien welk recht er uitgevoerd is, zonder het receipt uit te moeten
-    /// pluizen (zie [`crate::journal::Execution`]).
+    /// RFC-022 §4.2).
+    ///
+    /// Vastgelegd in het gram onder [`EXECUTED_REGULATIONS`], zoals
+    /// [`Self::chronicle_sources`] en om dezelfde reden: het is alleen tijdens
+    /// de uitvoering bekend, het hoort bij dit besluit, en het is niet uit het
+    /// receipt af te leiden — dat noemt wel elke *geladen* regeling en de
+    /// herkomst van elke *uitkomst*, maar niet welke regeling welke input
+    /// leverde. Zou het alleen in het journaal staan, dan vertelde het verhaal
+    /// iets wat in geen enkele kroniek ligt (zie [`crate::journal::Execution`]).
     pub executed_regulations: Vec<ExecutedRegulation>,
     /// De eigen kronieken die als databron klaarstonden, met hun stand op het
     /// moment van het besluit (RFC-022 §1.3).
@@ -1186,6 +1215,15 @@ impl Decretogram {
             (
                 REGULATION_VALID_FROM.to_string(),
                 optional_text(self.regulation_valid_from.as_deref()),
+            ),
+            (
+                EXECUTED_REGULATIONS.to_string(),
+                Value::Array(
+                    self.executed_regulations
+                        .iter()
+                        .map(ExecutedRegulation::as_value)
+                        .collect(),
+                ),
             ),
             (
                 COMPETENT_AUTHORITY.to_string(),
