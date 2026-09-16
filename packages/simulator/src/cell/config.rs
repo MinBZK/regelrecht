@@ -609,7 +609,7 @@ pub(crate) struct CellSurface<'a> {
     /// niet met een stille lege verzameling. Eén per versie, want een wet mag van
     /// gedachten veranderen, en een voorwaarde die alleen in de oude versie staat
     /// hoort even goed getoetst te worden.
-    pub(crate) afwijzing_blocks: BTreeMap<String, BTreeMap<String, Vec<serde_yaml_ng::Value>>>,
+    pub(crate) afwijzing_blocks: BTreeMap<String, BTreeMap<String, Vec<Value>>>,
     /// Per regeling de namen die ze als parameter of input declareert, over alle
     /// geladen versies heen. Dit is wat een besluit aan de engine mag aanleveren.
     pub(crate) regulation_inputs: BTreeMap<String, BTreeSet<String>>,
@@ -783,11 +783,7 @@ impl CellSurface<'_> {
 
     /// De `afwijzing_wanneer`-blokken die de versies van deze regeling op het
     /// artikel achter deze uitkomst declareren; leeg als geen versie er een heeft.
-    pub(crate) fn afwijzing_blocks(
-        &self,
-        regulation: &str,
-        output: &str,
-    ) -> &[serde_yaml_ng::Value] {
+    pub(crate) fn afwijzing_blocks(&self, regulation: &str, output: &str) -> &[Value] {
         self.afwijzing_blocks
             .get(regulation)
             .and_then(|outputs| outputs.get(output))

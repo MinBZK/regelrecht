@@ -2437,9 +2437,8 @@ fn types_per_output(
 /// moment landt op een oudere versie.
 fn afwijzing_blocks_per_output(
     service: &LawExecutionService,
-) -> BTreeMap<String, BTreeMap<String, Vec<serde_yaml_ng::Value>>> {
-    let mut per_regulation: BTreeMap<String, BTreeMap<String, Vec<serde_yaml_ng::Value>>> =
-        BTreeMap::new();
+) -> BTreeMap<String, BTreeMap<String, Vec<Value>>> {
+    let mut per_regulation: BTreeMap<String, BTreeMap<String, Vec<Value>>> = BTreeMap::new();
     for law in service.resolver().all_law_versions() {
         let known = per_regulation.entry(law.id.clone()).or_default();
         for article in &law.articles {

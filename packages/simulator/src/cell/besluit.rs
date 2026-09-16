@@ -282,7 +282,7 @@ pub struct BesluitDefinition {
     /// Vrij van vorm en niet getypeerd: elke poging hoort dezelfde melding te
     /// krijgen, ook een met een typfout erin.
     #[serde(default)]
-    pub afwijzing_wanneer: Option<serde_yaml_ng::Value>,
+    pub afwijzing_wanneer: Option<Value>,
     /// De verplichtingen die uit dit besluit volgen: wat er betaald moet worden,
     /// door wie, in welk ritme en vanaf wanneer.
     ///
@@ -2455,12 +2455,11 @@ fn closing_braces_match(template: &str) -> bool {
 /// hetzelfde in zien: het optuigen toetst elke geladen versie, het besluit leest
 /// de versie die op dat moment geldt. Zouden die twee het blok elk op hun eigen
 /// manier zoeken, dan kon een voorwaarde bij het optuigen langs de toets glippen.
-pub(crate) fn afwijzing_block(produces: Option<&Produces>) -> Option<&serde_yaml_ng::Value> {
-    produces?
-        .extensions
-        .as_ref()?
-        .get(CHRONOLEX)?
-        .get(AFWIJZING_WANNEER)
+pub(crate) fn afwijzing_block(produces: Option<&Produces>) -> Option<&Value> {
+    let Value::Object(namespace) = produces?.extensions.as_ref()?.get(CHRONOLEX)? else {
+        return None;
+    };
+    namespace.get(AFWIJZING_WANNEER)
 }
 
 /// De afwijzingsvoorwaarden uit zo'n blok: per uitkomst de waarde die afwijst.
@@ -2470,46 +2469,27 @@ pub(crate) fn afwijzing_block(produces: Option<&Produces>) -> Option<&serde_yaml
 /// een getal erin dat stil als "geen voorwaarde" zou eindigen, zet de weigering
 /// uit zonder dat er iets te zien is.
 pub(crate) fn afwijzing_wanneer(
-    block: &serde_yaml_ng::Value,
+    block: &Value,
 ) -> std::result::Result<BTreeMap<String, bool>, String> {
-    let serde_yaml_ng::Value::Mapping(entries) = block else {
+    let Value::Object(entries) = block else {
         return Err(format!(
             "`{AFWIJZING_WANNEER}` is een toewijzing van uitkomst naar `true` of \
              `false`, en geen {}",
-            yaml_kind(block)
+            block.type_name()
         ));
     };
     let mut conditions = BTreeMap::new();
     for (name, value) in entries {
-        let Some(name) = name.as_str() else {
-            return Err(format!(
-                "`{AFWIJZING_WANNEER}` noemt een sleutel die geen uitkomstnaam is ({})",
-                yaml_kind(name)
-            ));
-        };
         let Some(value) = value.as_bool() else {
             return Err(format!(
-                "`{AFWIJZING_WANNEER}` geeft uitkomst '{name}' de waarde {}; \
+                "`{AFWIJZING_WANNEER}` geeft uitkomst '{name}' de waarde {value} ({}); \
                  een afwijzingsvoorwaarde vergelijkt met `true` of `false`",
-                yaml_kind(value)
+                value.type_name()
             ));
         };
-        conditions.insert(name.to_string(), value);
+        conditions.insert(name.clone(), value);
     }
     Ok(conditions)
-}
-
-/// Hoe een waarde uit het blok heet, voor in een foutmelding.
-fn yaml_kind(value: &serde_yaml_ng::Value) -> String {
-    match value {
-        serde_yaml_ng::Value::Null => "niets".to_string(),
-        serde_yaml_ng::Value::Bool(value) => value.to_string(),
-        serde_yaml_ng::Value::Number(value) => format!("het getal {value}"),
-        serde_yaml_ng::Value::String(text) => format!("de tekst '{text}'"),
-        serde_yaml_ng::Value::Sequence(_) => "een lijst".to_string(),
-        serde_yaml_ng::Value::Mapping(_) => "een toewijzing".to_string(),
-        serde_yaml_ng::Value::Tagged(tagged) => format!("een getagde waarde ({})", tagged.tag),
-    }
 }
 
 /// De afwijzingsvoorwaarden die deze uitkomsten vervullen.
@@ -3237,7 +3217,7 @@ params:
     }
 
     /// Een `afwijzing_wanneer`-blok zoals een artikel het declareert.
-    fn blok(yaml: &str) -> serde_yaml_ng::Value {
+    fn blok(yaml: &str) -> Value {
         serde_yaml_ng::from_str(yaml).unwrap_or_else(|e| panic!("testblok moet parsen: {e}"))
     }
 
@@ -3383,7 +3363,7 @@ params:
         let reason =
             voorwaarden("heeft_recht_op_zorgtoeslag: 0").expect_err("een getal is geen ja-of-nee");
         assert!(
-            reason.contains("heeft_recht_op_zorgtoeslag") && reason.contains("het getal 0"),
+            reason.contains("heeft_recht_op_zorgtoeslag") && reason.contains("de waarde 0"),
             "de reden hoort te noemen wat er staat: {reason}"
         );
     }

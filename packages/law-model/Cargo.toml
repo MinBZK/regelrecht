@@ -15,10 +15,6 @@ regelrecht-shared = { path = "../shared" }
 rust_decimal.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-# Voor de vrije `extensions`-blokken in het document: ze worden uit YAML gelezen
-# en moeten ongewijzigd door dit model heen kunnen, ook als het platform de
-# namespace erin nog niet kent.
-serde_yaml_ng.workspace = true
 
 [dev-dependencies]
 rust_decimal_macros.workspace = true
