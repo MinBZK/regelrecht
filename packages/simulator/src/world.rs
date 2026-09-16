@@ -3325,7 +3325,7 @@ lexostatus_definitions:
     /// verandert, de uitvoerder niet. De verplichting blijft staan: dat er tóch
     /// geen termijnen uitkomen, is precies wat er te bewijzen valt.
     fn afwijzing_wereld() -> World {
-        let mut configs = verplichting_configs(KWARTAAL, true);
+        let mut configs = verplichting_configs(KOMT_NA, true);
         let toeslagen = configs
             .first_mut()
             .unwrap_or_else(|| panic!("de eerste cel is de besluitende"));
@@ -3340,7 +3340,7 @@ lexostatus_definitions:
         }
 
         World::from_definition(
-            &definition(&configs, "2024-01-01", &[], &no_settings()),
+            &definition(&configs, "2024-01-01", &[], &ritme("kwartaal")),
             &regulation_root(),
         )
         .unwrap_or_else(|e| panic!("de wereld moet op te tuigen zijn: {e}"))
@@ -3436,7 +3436,7 @@ lexostatus_definitions:
     /// artikel aanwijst — en niet niets.
     #[test]
     fn een_besluit_dat_niet_afwijst_draagt_het_type_van_de_regeling() {
-        let mut world = verplichting_wereld(KWARTAAL, &no_settings())
+        let mut world = verplichting_wereld(&ritme("kwartaal"))
             .unwrap_or_else(|e| panic!("de wereld moet op te tuigen zijn: {e}"));
         let gram = beslis(&mut world);
 

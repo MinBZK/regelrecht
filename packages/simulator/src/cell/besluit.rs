@@ -337,13 +337,23 @@ pub const BETALING: &str = "betaling";
 ///
 /// Eigen struct en geen losse lookup, zodat `deny_unknown_fields` geldt: een
 /// typfout in `verplichtingen` zou anders een artikel opleveren dat stil niets
-/// oplegt, en dat is aan het gram niet te zien.
+/// oplegt, en dat is aan het gram niet te zien. Daarom staat élke sleutel van de
+/// namespace hier, ook de sleutel die deze weg zelf niet gebruikt: wat er niet
+/// staat is een onbekend veld, en dan is het blok als geheel niet te lezen.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ChronolexBlock {
     /// Wat dit artikel aan verplichtingen oplegt; leeg mag.
     #[serde(default)]
     verplichtingen: Vec<ObligationDefinition>,
+    /// Wanneer het besluit op dit artikel een afwijzing is; leeg mag.
+    ///
+    /// Hier alleen om als bekende sleutel te gelden. Wat erin staat wordt
+    /// gelezen waar het thuishoort — [`afwijzing_block`] en
+    /// [`afwijzing_wanneer`], die er een eigen melding bij geven — en niet
+    /// tweemaal, want dan konden de twee lezingen uiteenlopen.
+    #[serde(default, rename = "afwijzing_wanneer")]
+    _afwijzing_wanneer: Option<serde_yaml_ng::Value>,
 }
 
 /// Eén verplichting die een besluit oplegt, zoals het **lexogram** haar declareert.

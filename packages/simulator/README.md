@@ -449,9 +449,9 @@ drie verschillen:
 - `afwijzingsgrond` noemt elke vervulde voorwaarde: de uitkomst, de waarde die
   afwees, en het **artikel** dat die uitkomst voortbrengt. Een afwijzing zonder
   haar grond is een besluit zonder motivering;
-- er zijn **geen verplichtingen**. Ook niet als de definitie er een oplegt: een
-  weigering belooft niets, dus er valt niets in te roosteren en er vervalt geen
-  termijn.
+- er zijn **geen verplichtingen**. Ook niet als het uitvoerende artikel er een
+  oplegt: een weigering belooft niets, dus er valt niets in te roosteren en er
+  vervalt geen termijn.
 
 Wijst het besluit *niet* af, dan draagt het gram het besluittype dat hetzelfde
 `produces` voor de gewone afloop noemt (`decision_type`, bijvoorbeeld
@@ -841,6 +841,10 @@ Omdat het schema aan het **artikel** hangt en niet aan de besluit-definitie,
 krijgen twee besluiten die op dezelfde uitkomst van hetzelfde artikel gaan
 hetzelfde schema. Dat is de bedoeling: een verlening en een latere vaststelling
 leggen allebei op wat dat artikel oplegt.
+
+Eén besluit legt nooit iets op, wat het artikel ook zegt: een **afwijzing**. Een
+weigering belooft niets, dus er valt niets in te roosteren — zie
+[Een weigering is ook een besluit](#een-weigering-is-ook-een-besluit).
 
 Nakomen doet de klok, niet het besluit. Op elke vervaldatum legt de **betalende**
 cel een executogram vast in haar eigen stroom `betalingen` (`intake: betaling`,
