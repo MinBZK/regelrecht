@@ -43,7 +43,7 @@ const items: ResearchItem[] = [
     md-padding-bottom="64"
     lg-padding-bottom="96"
   >
-    <div slot="left">
+    <nldd-container slot="left">
       <nldd-title size="2">
         <h1>Research</h1>
       </nldd-title>
@@ -54,11 +54,9 @@ const items: ResearchItem[] = [
           machine-executable law, written up for an academic audience.
         </p>
       </nldd-rich-text>
-    </div>
-    <div slot="right">
-      <nldd-collection layout="grid" item-width="320px">
-        {items.map((item) => <LinkCard lang="en" tinted {...item} />)}
-      </nldd-collection>
-    </div>
+    </nldd-container>
+    <nldd-collection slot="right" layout="grid" item-width="320px">
+      {items.map((item) => <LinkCard lang="en" tinted {...item} />)}
+    </nldd-collection>
   </nldd-one-third-two-thirds-section>
 </Base>
