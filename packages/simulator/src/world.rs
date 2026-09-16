@@ -3322,8 +3322,9 @@ lexostatus_definitions:
     /// verzekerd, dus artikel 2 van de Wet op de zorgtoeslag geeft geen
     /// aanspraak. Dát dit dan een afwijzing is, staat in dat artikel zelf
     /// (`produces.extensions.chronolex.afwijzing_wanneer`) en niet hier — de wet
-    /// verandert, de uitvoerder niet. De verplichting blijft staan: dat er tóch
-    /// geen termijnen uitkomen, is precies wat er te bewijzen valt.
+    /// verandert, de uitvoerder niet. Datzelfde artikel legt een verplichting
+    /// op, en het ritme staat als instelling klaar: dat er tóch geen termijnen
+    /// uitkomen, is precies wat er te bewijzen valt.
     fn afwijzing_wereld() -> World {
         let mut configs = verplichting_configs(KOMT_NA, true);
         let toeslagen = configs
@@ -3383,11 +3384,24 @@ lexostatus_definitions:
     }
 
     /// Een afwijzing belooft niets: geen schema in het gram, geen termijn die
-    /// vervalt, geen betaling in de kroniek — ook al legt de definitie een
+    /// vervalt, geen betaling in de kroniek — ook al legt artikel 2 een
     /// kwartaalverplichting op.
     #[test]
     fn een_afwijzing_legt_geen_verplichtingen_op() {
         let mut world = afwijzing_wereld();
+        // Eerst: er vált hier iets weg te laten. Zonder deze regel zou de lege
+        // lijst hieronder even goed slagen op een opstelling waarin het artikel
+        // niets oplegt, en dan bewijst ze niets.
+        assert!(
+            world
+                .cells()
+                .get("toeslagen")
+                .unwrap_or_else(|| panic!("de besluitende cel hoort te bestaan"))
+                .besluit_schema("zorgtoeslag_vaststelling")
+                .iter()
+                .any(|field| field.name.starts_with("obligations[")),
+            "het uitvoerende artikel hoort hier een verplichting op te leggen"
+        );
         let gram = beslis(&mut world);
 
         assert!(
