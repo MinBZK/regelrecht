@@ -512,9 +512,14 @@ async fn het_receipt_van_een_decretogram_is_op_te_vragen_naast_het_beeld() {
     let beschikkingen = grams(&world, "toeslagen", "beschikkingen");
     assert_eq!(beschikkingen.len(), 1, "{world}");
     assert!(
+        // De **sleutel** `"receipt"`, niet de naam: het schema van een
+        // decretogram noemt elk veld dat zo'n gram draagt, en `receipt` is er
+        // daar een van. Die staat er als waarde (`"name": "receipt"`) en niet
+        // als sleutel met een receipt erachter. Dezelfde toets als in
+        // `packages/simulator/tests/snapshot.rs`.
         !serde_json::to_string(&world)
             .expect("het beeld moet naar JSON te schrijven zijn")
-            .contains("\"receipt\""),
+            .contains("\"receipt\":"),
         "het beeld van de wereld hoort receipt-loos te blijven"
     );
 

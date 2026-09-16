@@ -29,6 +29,7 @@ mod besluit;
 mod chronicle;
 mod config;
 mod reductie;
+mod schema;
 
 pub use besluit::{
     AcceptanceRequest, BesluitDefinition, BesluitInput, ChronicleSource, Decretogram,
@@ -55,6 +56,10 @@ pub use reductie::{
     GebruiktGram, GebruikteInput, Gemist, InputHerkomst, Kroniekfilter, Reductie, ReductieVorm,
     Regel, Wetsvorm,
 };
+// Het schema van het decretogram dat een besluit kan voortbrengen: per veld het
+// type en het lexogram dat het declareert. Deel van het beeld van de wereld, dus
+// publiek — zie [`schema`] voor wat de vier herkomsten betekenen.
+pub use schema::{DecretogramField, Herkomst, LexogramRef};
 
 use crate::corpus;
 use crate::error::{Result, SimulatorError, Subject};
@@ -229,6 +234,13 @@ pub struct Cell {
     published: BTreeMap<String, LexostatusDefinition>,
     /// De besluiten die deze cel kan nemen, op naam.
     besluiten: BTreeMap<String, BesluitDefinition>,
+    /// Per besluit het schema van het decretogram dat het kan voortbrengen.
+    ///
+    /// Bij het optuigen uitgerekend en daarna onveranderlijk, net als de
+    /// definities zelf: het hangt aan de wetten die deze cel laadt en aan het
+    /// wereldbestand, en die staan vanaf dat moment vast. Een beeld van de wereld
+    /// is er daarmee een opzoeking en geen berekening — zie [`schema`].
+    besluit_schemas: BTreeMap<String, Vec<DecretogramField>>,
     /// De cel-bronnen van haar wetten (tier 3), op `(cel, uitkomst)`.
     ///
     /// Wat de cel hiermee doet is niets: ze kan geen van deze cellen bereiken.
@@ -370,6 +382,18 @@ impl Cell {
             }
         }
 
+        // Ná het valideren: een schema van een definitie die geweigerd wordt, is
+        // een beeld van iets dat niet bestaat.
+        let besluit_schemas = besluiten
+            .values()
+            .map(|definition| {
+                (
+                    definition.name.clone(),
+                    schema::decretogram_schema(definition, service.as_ref()),
+                )
+            })
+            .collect();
+
         let CellSources {
             declared: accepts_from,
             foreign: foreign_sources,
@@ -384,6 +408,7 @@ impl Cell {
             streams: surface.streams,
             published,
             besluiten,
+            besluit_schemas,
             accepts_from,
             foreign_sources,
         })
@@ -419,6 +444,12 @@ impl Cell {
     /// De besluit-definities van deze cel, in alfabetische volgorde.
     pub(crate) fn besluit_definitions(&self) -> impl Iterator<Item = &BesluitDefinition> {
         self.besluiten.values()
+    }
+
+    /// Het schema van het decretogram dat dit besluit kan voortbrengen, zoals bij
+    /// het optuigen uitgerekend; leeg als de cel dit besluit niet kent.
+    pub(crate) fn besluit_schema(&self, besluit: &str) -> &[DecretogramField] {
+        self.besluit_schemas.get(besluit).map_or(&[], Vec::as_slice)
     }
 
     /// Kent deze cel deze stroom, en kent die stroom dit veld?

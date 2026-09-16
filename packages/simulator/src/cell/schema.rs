@@ -1,0 +1,433 @@
+//! Het **schema** van het decretogram dat een besluit-definitie kan voortbrengen.
+//!
+//! Een decretogram krijgt zijn velden uit drie bronnen, en dat is precies wat
+//! RFC-022 als vraag openlaat: welk deel van een besluit volgt uit de wet?
+//!
+//! - het **lexogram**: de uitkomsten die het uitvoerende artikel declareert
+//!   (`output[]` met hun type, `produces` met het rechtskarakter,
+//!   `competent_authority` op het artikel of op het document);
+//! - het **wereldbestand**: welke uitkomsten samen één gram vormen, het
+//!   zaakkenmerk-sjabloon en de verplichtingen;
+//! - het **platform**: de omslag eromheen — wanneer, door wie, waarop gerekend
+//!   is, en het receipt.
+//!
+//! Dit schema zegt per veld welke van de drie het is. Het verandert niets aan
+//! een besluit; het maakt meetbaar wat er nu waar staat, zodat de vervolgstappen
+//! van RFC-022 — normatieve inhoud hoort in het lexogram — te zien zijn als
+//! velden die van [`Herkomst::Wereldbestand`] naar [`Herkomst::Lexogram`]
+//! verschuiven. Een veld van het wereldbestand draagt daarom [`Herkomst::gat`]:
+//! de wet zwijgt erover terwijl ze het zou moeten zeggen.
+//!
+//! **Op de nieuwste geladen versie.** Het schema wordt bij het optuigen
+//! uitgerekend en er is dan geen moment in het spel; het lexogram dat het noemt
+//! is dus de nieuwste versie die de cel geladen heeft, en de versie staat er
+//! daarom bij. Een besluit over een ouder moment landt op een oudere versie en
+//! kan een ander schema hebben — het gram zelf zegt onder welke versie het
+//! genomen is (`regulation_valid_from`), en dat blijft de bron voor wat er
+//! werkelijk gold.
+
+use crate::cell::besluit::{
+    fixed_fields, BesluitDefinition, BESCHIKKINGEN, BESLUIT, CHRONICLE_SOURCES,
+    COMPETENT_AUTHORITY, EXECUTED_REGULATIONS, INPUTS, LEGAL_CHARACTER, OBLIGATIONS, RECEIPT,
+    REGULATION_VALID_FROM, ZAAKKENMERK,
+};
+use regelrecht_engine::{
+    Article, ArticleBasedLaw, LawExecutionService, ParameterType as EngineType, RegulatoryLayer,
+};
+use serde::Serialize;
+
+/// Het veld met het moment waarop besloten is.
+///
+/// Anders dan de velden in [`fixed_fields`] staat het niet *in* de veldenlijst
+/// van het gram maar op het gram zelf ([`crate::ChronicleEvent::op_moment`]) —
+/// een decretogram is een gewoon executogram en draagt zijn moment zoals elk
+/// ander gram. Voor een lezer van het schema is dat verschil er niet: het is een
+/// waarde die elk decretogram draagt, dus ze staat erin.
+const OP_MOMENT: &str = "op_moment";
+
+/// Waar één veld van een decretogram vandaan komt.
+///
+/// Vier antwoorden, en de eerste twee zijn hetzelfde antwoord met een ander
+/// gewicht: `beleid` is een lexogram waarvan de regeling
+/// `regulatory_layer: UITVOERINGSBELEID` draagt. Dat apart te kunnen zien is het
+/// punt — een uitkomst die uit een uitvoeringsregel volgt, volgt niet uit de wet,
+/// en wie meet hoeveel van een besluit uit het recht komt, hoort die twee niet
+/// bij elkaar op te tellen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Herkomst {
+    /// Een regeling declareert dit veld.
+    Lexogram,
+    /// Een **uitvoeringsregel** declareert dit veld
+    /// (`regulatory_layer: UITVOERINGSBELEID`).
+    Beleid,
+    /// Het wereldbestand zegt het, en geen enkele regeling: een **gat**.
+    Wereldbestand,
+    /// Het platform zet het in elk decretogram.
+    Platform,
+}
+
+impl Herkomst {
+    /// Is een veld met deze herkomst een gat?
+    ///
+    /// Alleen bij [`Self::Wereldbestand`]. De reden staat in de README van deze
+    /// crate: het wereldbestand is configuratie van de opstelling, en normatieve
+    /// inhoud die daar staat, staat buiten het recht dat ze uitdraagt. Een veld
+    /// van het platform is géén gat — dat een gram zijn eigen moment en zijn
+    /// eigen receipt draagt, is geen norm die een wet had moeten stellen.
+    #[must_use]
+    pub fn gat(self) -> bool {
+        matches!(self, Self::Wereldbestand)
+    }
+
+    /// De herkomst van een veld dat door een regeling van deze laag gedeclareerd
+    /// wordt.
+    fn of_layer(layer: RegulatoryLayer) -> Self {
+        match layer {
+            RegulatoryLayer::Uitvoeringsbeleid => Self::Beleid,
+            _ => Self::Lexogram,
+        }
+    }
+}
+
+/// Het lexogram dat een veld declareert: welke regeling, welke versie, welk
+/// artikel.
+///
+/// Het artikel mag ontbreken: een `competent_authority` op documentniveau is een
+/// declaratie van de regeling als geheel (RFC-002 laat beide toe, en het corpus
+/// gebruikt beide). Dat er dan `null` staat en niet een geraden artikelnummer,
+/// is het verschil tussen "de wet zegt het hier" en "de wet zegt het ergens".
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LexogramRef {
+    /// De regeling, bij `$id`.
+    pub regulation: String,
+    /// De `valid_from` van de versie waarop dit schema staat.
+    pub valid_from: Option<String>,
+    /// Het artikel dat het veld declareert; `null` bij een declaratie op het
+    /// document.
+    pub article: Option<String>,
+    /// De laag van de regeling (`WET`, `UITVOERINGSBELEID`, …), zoals het
+    /// law-model haar noemt.
+    pub regulatory_layer: String,
+}
+
+/// Eén veld van het decretogram dat een besluit kan voortbrengen.
+///
+/// Het is een **schema** en geen waarde: hier staat wat er in zo'n gram komt te
+/// staan en waar dat vandaan komt, niet wat er in een bepaald gram stáát. Dat
+/// laatste is het gram zelf, met zijn eigen herkomst per waarde
+/// ([`crate::FieldOrigin`]) — die zegt waar een waarde vandaan kwam, deze zegt
+/// wie het veld declareert.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DecretogramField {
+    /// De veldnaam zoals ze in het gram komt te staan.
+    pub name: String,
+    /// Het type, in de woorden van de engine (`string`, `number`, `boolean`,
+    /// `date`, `amount`, `array`, `object`); afwezig als geen enkele geladen
+    /// versie het veld declareert.
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub value_type: Option<String>,
+    /// De eenheid uit het `type_spec` van de wet (`eurocent`, `ratio`, …).
+    ///
+    /// Een label en nooit een rekenregel (RFC-023), maar wel het verschil tussen
+    /// een bedrag in centen en een bedrag in euro's — dus het hoort bij het type.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unit: Option<String>,
+    /// Wie dit veld declareert.
+    pub herkomst: Herkomst,
+    /// Dekt geen enkel lexogram dit veld? Zie [`Herkomst::gat`].
+    pub gat: bool,
+    /// Het lexogram dat het veld declareert, als er een is.
+    ///
+    /// Ook bij [`Herkomst::Platform`] gevuld waar de wet de waarde levert: het
+    /// platform zet `competent_authority` en `legal_character` in élk
+    /// decretogram — dat is wat ze tot platformvelden maakt — maar het *leest* ze
+    /// uit de regeling, en welk artikel dat zegt hoort erbij te staan.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lexogram: Option<LexogramRef>,
+    /// Waarom dit veld hier staat, in één regel; alleen waar dat niet uit de
+    /// naam volgt.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub toelichting: Option<String>,
+}
+
+impl DecretogramField {
+    /// Een veld zonder lexogram: het platform of het wereldbestand zegt het.
+    ///
+    /// Of het een gat is, zegt de herkomst zelf ([`Herkomst::gat`]) en niet de
+    /// roepplek: één regel die bepaalt wat een gat is, zodat een vijfde herkomst
+    /// of een verschoven grens niet op drie plekken nagelopen hoeft te worden.
+    fn declared_by(
+        herkomst: Herkomst,
+        name: &str,
+        value_type: &str,
+        toelichting: Option<String>,
+    ) -> Self {
+        Self {
+            name: name.to_string(),
+            value_type: Some(value_type.to_string()),
+            unit: None,
+            herkomst,
+            gat: herkomst.gat(),
+            lexogram: None,
+            toelichting,
+        }
+    }
+
+    /// Een veld dat het platform in elk decretogram zet.
+    fn platform(name: &str, value_type: &str) -> Self {
+        Self::declared_by(Herkomst::Platform, name, value_type, None)
+    }
+
+    /// Een veld dat het wereldbestand zegt, en geen enkele regeling.
+    fn wereldbestand(name: &str, value_type: &str, toelichting: String) -> Self {
+        Self::declared_by(Herkomst::Wereldbestand, name, value_type, Some(toelichting))
+    }
+
+    /// Hetzelfde veld, met de plek in de wet waar het platform zijn waarde leest.
+    fn read_from(mut self, lexogram: Option<LexogramRef>, toelichting: &str) -> Self {
+        if lexogram.is_some() {
+            self.toelichting = Some(toelichting.to_string());
+        }
+        self.lexogram = lexogram;
+        self
+    }
+}
+
+/// Het type zoals de engine het noemt.
+fn type_name(value_type: EngineType) -> &'static str {
+    match value_type {
+        EngineType::String => "string",
+        EngineType::Number => "number",
+        EngineType::Boolean => "boolean",
+        EngineType::Amount => "amount",
+        EngineType::Date => "date",
+        EngineType::Array => "array",
+        EngineType::Object => "object",
+    }
+}
+
+/// De wet waarop dit schema staat, en hoe daarin iets op te zoeken is.
+///
+/// Eén plek voor de drie opzoekingen die het schema doet — welk artikel
+/// declareert deze uitkomst, wat is haar type, en waar staat het bevoegd gezag —
+/// zodat ze alle drie op dezelfde versie uitkomen. Zouden ze elk hun eigen versie
+/// kiezen, dan zou het schema een artikel uit de ene versie naast een type uit de
+/// andere zetten.
+struct Lexicon<'a> {
+    /// De regeling waarop het besluit gaat, bij `$id`.
+    regulation: &'a str,
+    /// De nieuwste geladen versie ervan; `None` als de cel haar niet laadt.
+    law: Option<&'a ArticleBasedLaw>,
+    /// De engine van de cel, voor de artikel-index op uitkomstnaam.
+    service: Option<&'a LawExecutionService>,
+}
+
+impl<'a> Lexicon<'a> {
+    /// Het lexicon van deze besluit-definitie.
+    fn new(definition: &'a BesluitDefinition, service: Option<&'a LawExecutionService>) -> Self {
+        Self {
+            regulation: &definition.regulation,
+            // `None` als moment: het schema staat op de nieuwste geladen versie.
+            // Zie de moduledocs.
+            law: service.and_then(|service| {
+                service
+                    .resolver()
+                    .get_law_for_date(&definition.regulation, None)
+            }),
+            service,
+        }
+    }
+
+    /// De laag van de regeling; `WET` als ze niet geladen is — dan is er toch
+    /// geen lexogram om naar te wijzen.
+    fn layer(&self) -> RegulatoryLayer {
+        self.law
+            .map_or(RegulatoryLayer::Wet, |law| law.regulatory_layer)
+    }
+
+    /// Een verwijzing naar deze regeling, op dit artikel (of op het document).
+    fn reference(&self, article: Option<&str>) -> LexogramRef {
+        LexogramRef {
+            regulation: self.regulation.to_string(),
+            valid_from: self.law.and_then(|law| law.valid_from.clone()),
+            article: article.map(str::to_string),
+            regulatory_layer: self.layer().as_str().to_string(),
+        }
+    }
+
+    /// Het artikel dat deze uitkomst voortbrengt.
+    ///
+    /// Langs de resolver van de engine, dezelfde weg waarlangs
+    /// [`crate::Cell::decide`] het bevoegd gezag op artikelniveau opzoekt: één
+    /// antwoord op de vraag "welk artikel produceert dit?", en niet een tweede
+    /// dat ernaast kan gaan lopen.
+    fn article_for(&self, output: &str) -> Option<&'a Article> {
+        self.service?
+            .resolver()
+            .get_article_by_output(self.regulation, output, None)
+    }
+
+    /// Het veld voor één uitkomst van het besluit: haar type, haar eenheid en het
+    /// artikel dat haar declareert.
+    fn output_field(&self, output: &str) -> DecretogramField {
+        let article = self.article_for(output);
+        let declared = article
+            .and_then(Article::get_execution_spec)
+            .and_then(|execution| execution.output.as_ref())
+            .and_then(|outputs| outputs.iter().find(|declared| declared.name == output));
+        let herkomst = Herkomst::of_layer(self.layer());
+        DecretogramField {
+            name: output.to_string(),
+            value_type: declared.map(|declared| type_name(declared.output_type).to_string()),
+            unit: declared
+                .and_then(|declared| declared.type_spec.as_ref())
+                .and_then(|spec| spec.unit.clone()),
+            herkomst,
+            gat: herkomst.gat(),
+            lexogram: Some(self.reference(article.map(|article| article.number.as_str()))),
+            toelichting: match declared {
+                Some(_) => None,
+                // Elke uitkomst van een besluit is bij het optuigen tegen de
+                // regeling gehouden (zie `check_regulation_outputs`), dus ze staat
+                // in ténminste één geladen versie. Staat ze niet in de nieuwste,
+                // dan is dat iets om te zien en niet om te verzwijgen.
+                None => Some(
+                    "geen artikel in deze versie declareert deze uitkomst; ze komt uit \
+                     een andere geladen versie"
+                        .to_string(),
+                ),
+            },
+        }
+    }
+
+    /// Waar het bevoegd gezag vandaan komt: het artikel dat de aansturende
+    /// uitkomst voortbrengt, anders het document (RFC-002-volgorde, zoals
+    /// [`crate::Cell::decide`] hem toepast); `None` als de regeling zwijgt.
+    fn authority_reference(&self, driving: &str) -> Option<LexogramRef> {
+        let article = self.article_for(driving);
+        let on_article = article
+            .and_then(|article| article.machine_readable.as_ref())
+            .and_then(|machine_readable| machine_readable.competent_authority.as_ref())
+            .is_some();
+        if on_article {
+            return Some(self.reference(article.map(|article| article.number.as_str())));
+        }
+        self.law?.competent_authority.as_ref()?;
+        Some(self.reference(None))
+    }
+
+    /// Het artikel waarvan `produces` gelezen is: dat van de aansturende
+    /// uitkomst.
+    fn produces_reference(&self, driving: &str) -> Option<LexogramRef> {
+        let article = self.article_for(driving)?;
+        article.get_execution_spec()?.produces.as_ref()?;
+        Some(self.reference(Some(&article.number)))
+    }
+}
+
+/// Het schema van het decretogram dat deze besluit-definitie kan voortbrengen.
+///
+/// De volgorde is die van het gram zelf: eerst wat het besluit vaststelt (de
+/// aansturende uitkomst, dan wat `outputs` erbij noemt), dan de verplichtingen
+/// die eruit volgen, dan de omslag die elk decretogram draagt. Vast, zodat het
+/// beeld van de wereld een contract blijft.
+pub(crate) fn decretogram_schema(
+    definition: &BesluitDefinition,
+    service: Option<&LawExecutionService>,
+) -> Vec<DecretogramField> {
+    let lexicon = Lexicon::new(definition, service);
+    let mut schema = Vec::new();
+
+    // De uitkomsten: de aansturende voorop, want díe uitkomst *is* het besluit.
+    let mut seen: Vec<&str> = Vec::new();
+    for output in std::iter::once(definition.output.as_str())
+        .chain(definition.outputs.iter().map(String::as_str))
+    {
+        if seen.contains(&output) {
+            continue;
+        }
+        seen.push(output);
+        schema.push(lexicon.output_field(output));
+    }
+
+    // Elke verplichting apart, want elke verplichting is een eigen belofte: een
+    // bedrag, een betaler en een ritme die het wereldbestand noemt en geen enkel
+    // artikel. Het bedrag zelf is een uitkomst en staat hierboven al, mét haar
+    // lexogram — dat is precies het verschil dat dit schema laat zien.
+    for (index, obligation) in definition.obligations.iter().enumerate() {
+        let vanaf = match obligation.from.as_deref() {
+            Some(from) => format!(", vanaf '{from}'"),
+            None => String::new(),
+        };
+        schema.push(DecretogramField::wereldbestand(
+            &format!("{OBLIGATIONS}[{index}]"),
+            // Een verplichting is er één, geen lijst: een bedrag, een betaler en
+            // een ritme. Wat zij in het gram wordt — een reeks termijnen — staat
+            // in `obligations` hieronder, en dát veld is de array.
+            "object",
+            format!(
+                "verplichting: bedrag {}, betaald door '{}', ritme '{}'{vanaf}; \
+                 zij levert de termijnen in '{OBLIGATIONS}'",
+                obligation.amount, obligation.payer, obligation.schedule
+            ),
+        ));
+    }
+
+    // De vaste velden, in de volgorde waarin het gram ze draagt, met het moment
+    // voorop: dat zegt wanneer dit alles gold.
+    schema.push(DecretogramField::platform(OP_MOMENT, "date"));
+    for field in fixed_fields().iter().copied() {
+        schema.push(fixed_field(field, definition, &lexicon));
+    }
+    schema
+}
+
+/// Eén vast veld van het decretogram: wat het draagt, en wie het zegt.
+fn fixed_field(
+    field: &str,
+    definition: &BesluitDefinition,
+    lexicon: &Lexicon<'_>,
+) -> DecretogramField {
+    match field {
+        ZAAKKENMERK => DecretogramField::wereldbestand(
+            field,
+            "string",
+            format!(
+                "sjabloon '{}'; waaronder de zaak in kroniek '{BESCHIKKINGEN}' terugkomt",
+                definition.zaakkenmerk
+            ),
+        ),
+        BESLUIT => DecretogramField::wereldbestand(
+            field,
+            "string",
+            format!(
+                "besluit-definitie '{}': welke uitkomsten samen één gram vormen, staat in \
+                 het wereldbestand",
+                definition.name
+            ),
+        ),
+        OBLIGATIONS => DecretogramField::wereldbestand(
+            field,
+            "array",
+            match definition.obligations.is_empty() {
+                true => "leeg: dit besluit legt geen verplichting op".to_string(),
+                false => "de termijnen die uit de verplichtingen hierboven volgen".to_string(),
+            },
+        ),
+        COMPETENT_AUTHORITY => DecretogramField::platform(field, "string").read_from(
+            lexicon.authority_reference(&definition.output),
+            "het platform schrijft het in elk gram; de regeling wijst het aan (RFC-002)",
+        ),
+        LEGAL_CHARACTER => DecretogramField::platform(field, "string").read_from(
+            lexicon.produces_reference(&definition.output),
+            "het platform schrijft het in elk gram; het artikel zegt het in `produces`",
+        ),
+        REGULATION_VALID_FROM => DecretogramField::platform(field, "date"),
+        EXECUTED_REGULATIONS | CHRONICLE_SOURCES => DecretogramField::platform(field, "array"),
+        INPUTS | RECEIPT => DecretogramField::platform(field, "object"),
+        // `regulation`, `besloten_door` en wat er ooit bij komt: tekst die het
+        // platform zelf opschrijft.
+        _ => DecretogramField::platform(field, "string"),
+    }
+}

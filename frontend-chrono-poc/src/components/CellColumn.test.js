@@ -15,6 +15,19 @@ function attrs(wrapper, selector, name) {
   return wrapper.findAll(selector).map((element) => element.attributes(name));
 }
 
+/**
+ * De lijsten die een kroniek tonen.
+ *
+ * Op hun toegankelijke naam en niet op `nldd-list` alleen: de kolom draagt ook
+ * de lijst met het decretogram-schema van de besluiten, en die gaat over de
+ * vorm van een gram en niet over wat er in een kroniek ligt.
+ */
+function chronicleLists(wrapper) {
+  return wrapper
+    .findAll('nldd-list')
+    .filter((list) => (list.attributes('accessible-label') ?? '').startsWith('Kroniek '));
+}
+
 describe('een kolom per cel', () => {
   it('zet de cel, haar regelingen, lexostatussen en besluiten in de kop', () => {
     const wrapper = mountCell('toeslagen');
@@ -39,7 +52,7 @@ describe('een kolom per cel', () => {
   it('geeft elke kroniek een eigen lijst, met haar sleutel erbij', () => {
     const wrapper = mountCell('toeslagen');
     const cell = fixtureCell('toeslagen');
-    expect(wrapper.findAll('nldd-list')).toHaveLength(cell.chronicles.length);
+    expect(chronicleLists(wrapper)).toHaveLength(cell.chronicles.length);
     for (const chronicle of cell.chronicles) {
       expect(wrapper.text()).toContain(chronicle.stream);
       expect(wrapper.text()).toContain(`sleutel: ${chronicle.key}`);
@@ -49,7 +62,7 @@ describe('een kolom per cel', () => {
   it('maakt een kroniek met besluiten een boom en een kroniek zonder een lijst', () => {
     const wrapper = mountCell('toeslagen');
     const cell = fixtureCell('toeslagen');
-    const types = wrapper.findAll('nldd-list').map((list) => list.attributes('type'));
+    const types = chronicleLists(wrapper).map((list) => list.attributes('type'));
     const expected = cell.chronicles.map((chronicle) =>
       chronicle.grams.some((gram) => gram.kind === 'decretogram') ? 'tree' : 'list',
     );

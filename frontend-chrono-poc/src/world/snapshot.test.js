@@ -7,6 +7,7 @@ import {
   clockIndex,
   competentAuthorityOf,
   decidedAlready,
+  decretogramSchema,
   decretogramRefOf,
   describeEffect,
   describeHerkomst,
@@ -653,6 +654,44 @@ describe('wat een cel publiceert', () => {
   it('valt op een cel zonder definities terug op niets', () => {
     expect(lexostatusDefinitions(null)).toStrictEqual([]);
     expect(besluitDefinitions({ id: 'a' })).toStrictEqual([]);
+  });
+
+  // Het schema zegt per veld van het decretogram wie het declareert. Dat is de
+  // meting "welk deel van een besluit volgt uit de wet", en een veld dat het
+  // wereldbestand zegt is een gat (RFC-022).
+  it('geeft per besluit het schema van het decretogram, met een label per herkomst', () => {
+    const [besluit] = besluitDefinitions(toeslagen);
+    const schema = decretogramSchema(besluit);
+    expect(schema.length).toBe(besluit.schema.length);
+
+    const uitkomst = schema.find((field) => field.name === 'hoogte_zorgtoeslag');
+    expect(uitkomst.source.label).toBe('wet');
+    expect(uitkomst.gat).toBe(false);
+    // Type én eenheid: een bedrag zonder eenheid is een getal.
+    expect(uitkomst.type).toBe('amount · eurocent');
+    // De versie hoort bij het artikel: zonder haar wijst de verwijzing naar iets
+    // dat morgen anders kan staan.
+    expect(uitkomst.lexogram).toContain('wet_op_de_zorgtoeslag');
+    expect(uitkomst.lexogram).toContain('artikel 2');
+    expect(uitkomst.lexogram).toContain('versie ');
+
+    const kenmerk = schema.find((field) => field.name === 'zaakkenmerk');
+    expect(kenmerk.gat).toBe(true);
+    expect(kenmerk.source.label).toBe('wereldbestand');
+    expect(kenmerk.toelichting).toBeTruthy();
+
+    // Een platformveld waarvan de wet de waarde levert, noemt die plek erbij.
+    const gezag = schema.find((field) => field.name === 'competent_authority');
+    expect(gezag.source.label).toBe('platform');
+    expect(gezag.lexogram).toContain('op het document');
+  });
+
+  it('blijft leesbaar bij een besluit zonder schema of met een onbekende herkomst', () => {
+    expect(decretogramSchema(undefined)).toStrictEqual([]);
+    const [veld] = decretogramSchema({ schema: [{ name: 'iets', herkomst: 'iets nieuws' }] });
+    expect(veld.source.label).toBe('onbekend');
+    expect(veld.type).toBe('onbekend');
+    expect(veld.lexogram).toBe('');
   });
 
   // De sleutel van de reductie is wat het zaakkenmerk uit het niets laat komen:
