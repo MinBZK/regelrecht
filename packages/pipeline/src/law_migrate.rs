@@ -203,7 +203,13 @@ fn rewrite_schema_line(yaml: &str) -> Result<String, String> {
         }
 
         let rest = body["$schema:".len()..].trim();
-        let is_block = matches!(rest, ">" | ">-" | ">+" | "|" | "|-" | "|+");
+        // Any block scalar, however it is spelled. YAML allows a chomping
+        // indicator and an explicit indentation indicator after `>` or `|`
+        // (`>-`, `|2`, `>-2`), so enumerating the spellings misses forms that
+        // then fall through to the inline branch, which rewrites the marker
+        // line and leaves the continuation standing: the corruption this
+        // function exists to prevent, reached through a rarer door.
+        let is_block = rest.starts_with(['>', '|']);
         if !is_block && rest.is_empty() {
             return Err(
                 "`$schema:` carries no value and no block scalar marker to rewrite".to_string(),
@@ -640,6 +646,43 @@ articles:
         assert!(m.yaml.contains(&format!("$schema: {SCHEMA_URL}")));
         assert!(!m.yaml.contains("v0.5.8"));
         assert!(m.schema_errors.is_empty(), "{:?}", m.schema_errors);
+    }
+
+    /// A block scalar may carry an explicit indentation indicator on top of
+    /// its chomping indicator (`>2`, `|-2`). Enumerating the six common
+    /// spellings let those through to the inline branch, which rewrites the
+    /// marker line and leaves the indented continuation standing: YAML then
+    /// folds the new URL and the old one into a single scalar, the schema
+    /// gate sees a document without a `$schema` it validates, and a later run
+    /// reads the old version back out of the concatenation.
+    #[test]
+    fn a_block_scalar_with_an_indentation_indicator_is_rewritten_too() {
+        for marker in [">2", ">-2", "|2", "|-2", ">+2"] {
+            let yaml = BARE_FOLDED.replace("$schema: >-", &format!("$schema: {marker}"));
+            let m = migrate(&yaml).expect("migrates");
+            assert!(
+                m.yaml.contains(&format!("$schema: {SCHEMA_URL}")),
+                "{marker}: new URL missing"
+            );
+            assert!(
+                !m.yaml.contains("v0.5.8"),
+                "{marker}: old URL survived, the scalar is now two URLs: {}",
+                m.yaml
+            );
+            assert!(
+                m.schema_errors.is_empty(),
+                "{marker}: {:?}",
+                m.schema_errors
+            );
+            let reread: serde_yaml_ng::Value =
+                serde_yaml_ng::from_str(&m.yaml).expect("migrated file parses");
+            let json = as_json(&reread).expect("as json");
+            assert_eq!(
+                regelrecht_engine::schema::detect_version(&json),
+                Some(TARGET_VERSION),
+                "{marker}: a second run must read the new version"
+            );
+        }
     }
 
     #[test]
