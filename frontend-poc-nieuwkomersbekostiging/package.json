@@ -19,7 +19,7 @@
   "dependencies": {
     "@cucumber/gherkin": "^41.0.0",
     "@cucumber/messages": "^34.0.1",
-    "@nldd/design-system": "^0.8.83",
+    "@nldd/design-system": "^0.8.88",
     "echarts": "^6.1.0",
     "js-yaml": "^4.1.0",
     "vue": "^3.5.42",

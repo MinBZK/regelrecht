@@ -7,8 +7,8 @@
     <nldd-table
       columns="80px repeat(6, minmax(110px, 1fr))"
       accessible-label="Plausibiliteit: simulatie naast factsheet en realisatie"
-      empty-text="Nog geen simulatie"
     >
+      <nldd-inline-dialog slot="empty" text="Nog geen simulatie"></nldd-inline-dialog>
       <nldd-table-row slot="header">
         <nldd-text-cell size="sm" text="Jaar"></nldd-text-cell>
         <nldd-text-cell size="sm" horizontal-alignment="right" text="po gesimuleerd" supporting-text="1 oktober"></nldd-text-cell>

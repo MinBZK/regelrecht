@@ -3023,7 +3023,7 @@ async function handleActionSave() {
                       <nldd-container padding="16" data-testid="note-detail">
                         <QuotedFragment :fragment="activeGroup" />
                         <nldd-spacer v-if="activeGroup && activeGroup.quote" size="12"></nldd-spacer>
-                        <nldd-collection layout="stack" gap="12px">
+                        <nldd-collection layout="stack" gap="12">
                           <nldd-card v-for="(note, i) in activeNotes" :key="i">
                             <nldd-container padding="10">
                               <NoteCard
@@ -3240,7 +3240,7 @@ async function handleActionSave() {
                       <p><i>Zonder verankering</i></p>
                     </nldd-rich-text>
                     <nldd-spacer size="10"></nldd-spacer>
-                    <nldd-collection layout="stack" gap="12px">
+                    <nldd-collection layout="stack" gap="12">
                       <nldd-card v-for="(note, ni) in group.notes" :key="ni">
                         <nldd-container padding="10">
                           <NoteCard

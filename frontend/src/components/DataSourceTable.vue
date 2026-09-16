@@ -126,6 +126,9 @@ function cellKey(row, rowIndex, col) {
 function cellErrorId(row, rowIndex, col) {
   return `${errorIdPrefix}-${cellKey(row, rowIndex, col)}`;
 }
+function cellControlId(row, rowIndex, col) {
+  return `${cellErrorId(row, rowIndex, col)}-control`;
+}
 function cellStore(rowIndex, col, v) {
   const key = cellKey(rows.value[rowIndex], rowIndex, col);
   if (isNullCell(v) && !nullAllowed(col)) {
@@ -216,7 +219,12 @@ const showBody = computed(() => props.drilledIn || expanded.value);
               <nldd-text-cell :text="String(row[col.name] ?? '')"></nldd-text-cell>
             </template>
             <nldd-cell v-else-if="col.type === 'boolean'" width="full" min-width="120px">
-              <nldd-dropdown size="md" :invalid="cellInvalid(row, ri, col) || undefined">
+              <nldd-dropdown
+                :id="cellControlId(row, ri, col)"
+                size="md"
+                :invalid="cellInvalid(row, ri, col) || undefined"
+                :unmet="cellInvalid(row, ri, col) ? cellErrorId(row, ri, col) : undefined"
+              >
                 <select
                   :aria-label="col.name"
                   :value="booleanCellValue(row[col.name])"
@@ -230,23 +238,28 @@ const showBody = computed(() => props.drilledIn || expanded.value);
                   <option value="">(leeg)</option>
                 </select>
               </nldd-dropdown>
-              <nldd-form-field-error-text v-if="cellInvalid(row, ri, col)" :id="cellErrorId(row, ri, col)" invalid>
-                {{ NOT_NULLABLE_MESSAGE }}
-              </nldd-form-field-error-text>
+              <nldd-validation-list v-if="cellInvalid(row, ri, col)" :for="cellControlId(row, ri, col)">
+                <nldd-validation-item :id="cellErrorId(row, ri, col)">
+                  {{ NOT_NULLABLE_MESSAGE }}
+                </nldd-validation-item>
+              </nldd-validation-list>
             </nldd-cell>
             <nldd-cell v-else width="full" min-width="120px">
               <ScenarioParameterInput
+                :id="cellControlId(row, ri, col)"
                 :type="col.type"
                 :unit="col.unit"
                 :name="col.name"
                 :value="cellDisplay(row[col.name])"
                 :invalid="cellInvalid(row, ri, col)"
-                :error-message-ids="cellErrorId(row, ri, col)"
+                :unmet="cellErrorId(row, ri, col)"
                 @update="cellStore(ri, col, $event)"
               />
-              <nldd-form-field-error-text v-if="cellInvalid(row, ri, col)" :id="cellErrorId(row, ri, col)" invalid>
-                {{ NOT_NULLABLE_MESSAGE }}
-              </nldd-form-field-error-text>
+              <nldd-validation-list v-if="cellInvalid(row, ri, col)" :for="cellControlId(row, ri, col)">
+                <nldd-validation-item :id="cellErrorId(row, ri, col)">
+                  {{ NOT_NULLABLE_MESSAGE }}
+                </nldd-validation-item>
+              </nldd-validation-list>
             </nldd-cell>
             <!-- The explicit way to state an absence, for every nullable
                  column whatever its type (a number field cannot hold null). -->

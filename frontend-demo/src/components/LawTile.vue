@@ -290,7 +290,7 @@ const statusTag = computed(() => {
         <nldd-list v-if="secondary.length" variant="simple" accessible-label="Overige uitkomsten">
           <nldd-list-item v-for="[name, value] in secondary" :key="name" size="sm" button @click="correctOutcome(name, value)">
             <nldd-text-cell size="sm" color="secondary" min-width="55%" :text="humanize(name)"></nldd-text-cell>
-            <nldd-text-cell size="sm" width="fit-content" max-width="45%" horizontal-alignment="right" :color="isUnknown(value) ? 'secondary' : 'default'" :text="formatValue(value, fieldSpec(doc, name))"></nldd-text-cell>
+            <nldd-text-cell size="sm" width="fit-content" max-width="45%" horizontal-alignment="right" :color="isUnknown(value) ? 'secondary' : 'content'" :text="formatValue(value, fieldSpec(doc, name))"></nldd-text-cell>
             <nldd-spacer-cell size="8"></nldd-spacer-cell>
             <nldd-icon-cell icon="edit" size="16" color="secondary"></nldd-icon-cell>
           </nldd-list-item>
@@ -306,7 +306,7 @@ const statusTag = computed(() => {
             <nldd-icon-cell :icon="input.claim ? 'edit' : 'question-mark-circle'" size="16" :color="input.claim ? 'accent' : 'secondary'"></nldd-icon-cell>
             <nldd-spacer-cell size="8"></nldd-spacer-cell>
             <nldd-text-cell size="sm" :text="humanize(input.name)" :supporting-text="input.claim ? 'door u opgegeven' : 'alleen u kunt dit opgeven'"></nldd-text-cell>
-            <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :color="input.claim ? 'default' : 'secondary'" :text="input.claim ? formatValue(input.claim.newValue, input.spec) : 'nog niet opgegeven'"></nldd-text-cell>
+            <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :color="input.claim ? 'content' : 'secondary'" :text="input.claim ? formatValue(input.claim.newValue, input.spec) : 'nog niet opgegeven'"></nldd-text-cell>
           </nldd-list-item>
         </nldd-list>
         <!-- Outlined, not tinted. The tinted box is the answer; giving the same

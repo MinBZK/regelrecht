@@ -195,12 +195,14 @@ watch(() => session.aanvrager, laadAanvragen);
                     :value="kvk"
                     placeholder="12345678"
                     :invalid="loginFout.includes('KVK') || undefined"
-                    error-message="kvk-fout"
+                    unmet="kvk-fout"
                     @input="kvk = $event.detail?.value ?? $event.target?.value ?? ''"
                   ></nldd-text-field>
-                  <nldd-form-field-error-text id="kvk-fout">
-                    Vul een geldig KVK-nummer in (8 cijfers).
-                  </nldd-form-field-error-text>
+                  <nldd-validation-list>
+                    <nldd-validation-item id="kvk-fout">
+                      Vul een geldig KVK-nummer in (8 cijfers).
+                    </nldd-validation-item>
+                  </nldd-validation-list>
                   <nldd-form-field-help-text>
                     Gesimuleerd: in het echt logt u hier in met uw
                     persoonlijke eHerkenning-middel; nu telt alleen het

@@ -14,9 +14,8 @@
     <nldd-table
       :columns="gridColumns"
       accessible-label="Vergelijking van kosten per kolom"
-      empty-text="Nog geen uitkomsten"
-      empty-supporting-text="Kies een populatie en klik op Doorrekenen."
     >
+      <nldd-inline-dialog slot="empty" text="Nog geen uitkomsten" supporting-text="Kies een populatie en klik op Doorrekenen."></nldd-inline-dialog>
       <nldd-table-row slot="header">
         <nldd-text-cell size="sm" text="Post" :supporting-text="periode === 'totaal' ? `totaal ${jaren[0]}–${jaren[jaren.length - 1]}` : `jaar ${periode}`"></nldd-text-cell>
         <nldd-text-cell
@@ -30,7 +29,7 @@
       </nldd-table-row>
 
       <nldd-table-row v-for="row in zichtbareRijen" :key="row.key" :class="{ 'kt-sub': row.sub, 'kt-total': row.total }">
-        <nldd-text-cell size="sm" :text="row.sub ? `— ${row.label}` : row.label" :supporting-text="row.hint" :color="row.sub ? 'secondary' : 'default'"></nldd-text-cell>
+        <nldd-text-cell size="sm" :text="row.sub ? `— ${row.label}` : row.label" :supporting-text="row.hint" :color="row.sub ? 'secondary' : 'content'"></nldd-text-cell>
         <nldd-text-cell
           v-for="col in columns"
           :key="col.key"
@@ -165,7 +164,7 @@ function cellColor(row, col) {
     if (oordelen.every((x) => x === false)) return 'critical';
     return 'warning';
   }
-  return 'default';
+  return 'content';
 }
 </script>
 

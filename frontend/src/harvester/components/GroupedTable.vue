@@ -114,7 +114,7 @@ function statusBarTitle(group) {
           <nldd-text-cell
             v-else
             :text="group[col.key] != null ? String(group[col.key]) : '—'"
-            :color="group[col.key] != null ? 'default' : 'secondary'"
+            :color="group[col.key] != null ? 'content' : 'secondary'"
             :width="col.width || 'stretch'"
             :min-width="col.minWidth"
             :horizontal-alignment="col.align"

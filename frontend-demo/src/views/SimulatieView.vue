@@ -458,8 +458,8 @@ function exportJson() {
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="start" v-if="runs.length">
               <nldd-tab-bar size="sm" @tabchange="onTab">
-                <nldd-tab-bar-item v-for="r in runs" :key="r.id" :data-run="r.id" :selected="activeTab === r.id || undefined" :text="r.label"></nldd-tab-bar-item>
-                <nldd-tab-bar-item v-if="runs.length > 1" data-run="vergelijking" :selected="activeTab === 'vergelijking' || undefined" text="Vergelijking" icon="arrow-left-right"></nldd-tab-bar-item>
+                <nldd-tab-bar-item v-for="r in runs" :key="r.id" :data-run="r.id" :current="activeTab === r.id || undefined" :text="r.label"></nldd-tab-bar-item>
+                <nldd-tab-bar-item v-if="runs.length > 1" data-run="vergelijking" :current="activeTab === 'vergelijking' || undefined" text="Vergelijking" icon="arrow-left-right"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <template v-if="activeRun">
@@ -739,7 +739,7 @@ function exportJson() {
                         <nldd-text-cell size="sm" :text="harmonizeFeatures.filter((f) => f.kind === 'boolean' && w.values[f.key]).map((f) => f.label).join(', ') || '—'" :supporting-text="`${harmonizeModel.primary.label.toLowerCase()}: ${num(w.values[harmonizeModel.primary.key])}`"></nldd-text-cell>
                         <nldd-text-cell size="sm" :text="money(w.actual)" horizontal-alignment="right"></nldd-text-cell>
                         <nldd-text-cell size="sm" :text="money(w.predicted)" horizontal-alignment="right"></nldd-text-cell>
-                        <nldd-text-cell size="sm" :color="Math.abs(w.error) > 100 ? 'critical' : 'default'" :text="money(w.error)" horizontal-alignment="right"></nldd-text-cell>
+                        <nldd-text-cell size="sm" :color="Math.abs(w.error) > 100 ? 'critical' : 'content'" :text="money(w.error)" horizontal-alignment="right"></nldd-text-cell>
                       </nldd-table-row>
                     </nldd-table>
                   </nldd-container>

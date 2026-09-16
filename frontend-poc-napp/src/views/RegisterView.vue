@@ -84,9 +84,8 @@ onMounted(async () => {
         columns="minmax(200px,1.4fr) 90px 120px 130px 160px 170px"
         sm-columns="minmax(160px,1fr) 130px"
         accessible-label="Openbaar register van subsidiebesluiten"
-        empty-text="Nog geen bekendgemaakte besluiten"
-        empty-supporting-text="Besluiten verschijnen hier zodra ze door de Napp zijn bekendgemaakt."
       >
+        <nldd-inline-dialog slot="empty" text="Nog geen bekendgemaakte besluiten" supporting-text="Besluiten verschijnen hier zodra ze door de Napp zijn bekendgemaakt."></nldd-inline-dialog>
         <nldd-table-row slot="header">
           <nldd-text-cell text="Partij"></nldd-text-cell>
           <nldd-text-cell text="Jaar" hide-below="md"></nldd-text-cell>

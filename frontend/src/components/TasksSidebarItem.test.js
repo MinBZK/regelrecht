@@ -73,8 +73,8 @@ describe('TasksSidebarItem', () => {
     expect(wrapper.find('nldd-badge').exists()).toBe(false);
   });
 
-  it('markeert het item als selected op de taken-route', async () => {
-    const wrapper = await mountItem([], [], { selected: true });
-    expect(wrapper.get('nldd-list-item').attributes('selected')).toBeDefined();
+  it('markeert het item als current op de taken-route', async () => {
+    const wrapper = await mountItem([], [], { current: true });
+    expect(wrapper.get('nldd-list-item').attributes('current')).toBeDefined();
   });
 });

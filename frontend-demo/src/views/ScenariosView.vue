@@ -291,6 +291,7 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
             <nldd-list-item v-for="f in filtered" :key="f.path" size="sm" button :selected="f.path === selectedPath || undefined" @click="select(f.path)">
               <nldd-text-cell size="sm" :text="f.title" :supporting-text="lawFor(f) ? serviceInfo(corpus, lawFor(f).service).name : f.law_path"></nldd-text-cell>
             </nldd-list-item>
+            <nldd-inline-dialog slot="empty" text="Geen scenario's gevonden" supporting-text="Pas je zoekterm aan"></nldd-inline-dialog>
           </nldd-list>
         </nldd-container>
       </nldd-page>

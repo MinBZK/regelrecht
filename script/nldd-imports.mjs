@@ -30,6 +30,10 @@ export const EXTENSIONS = new Set(['vue', 'js', 'ts', 'astro', 'mdx', 'md', 'htm
 /** De subset van EXTENSIONS waar een backtick inline-code is, geen string. */
 const MARKDOWN = new Set(['md', 'mdx']);
 
+// Sub-components whose name does not start with their parent's, so the prefix
+// rule cannot find them: nldd-validation-item ships in ./validation-list.
+const SHIPPED_WITH = new Map([['validation-item', 'validation-list']]);
+
 /** Every `./x` entry the package exposes, without the leading `./`. */
 export function packageEntries() {
   // The package does not export ./package.json, so locate it through a known
@@ -106,6 +110,11 @@ export function resolveEntries(tags, entries) {
   for (const tag of tags) {
     if (entries.has(tag)) {
       needed.add(tag);
+      continue;
+    }
+    const sibling = SHIPPED_WITH.get(tag);
+    if (sibling && entries.has(sibling)) {
+      needed.add(sibling);
       continue;
     }
     const parents = [...entries].filter((e) => tag.startsWith(`${e}-`));

@@ -2726,9 +2726,9 @@ watch(activeTrajectRef, () => {
                   <nldd-toolbar>
                     <nldd-toolbar-item slot="start">
                       <nldd-tab-bar size="md" @tabchange="onDetailTabChange">
-                        <nldd-tab-bar-item data-view="tekst" :selected="detailView === 'tekst' || undefined" text="Tekst"></nldd-tab-bar-item>
-                        <nldd-tab-bar-item data-view="machine" :selected="detailView === 'machine' || undefined" text="Machine"></nldd-tab-bar-item>
-                        <nldd-tab-bar-item data-view="yaml" :selected="detailView === 'yaml' || undefined" text="YAML"></nldd-tab-bar-item>
+                        <nldd-tab-bar-item data-view="tekst" :current="detailView === 'tekst' || undefined" text="Tekst"></nldd-tab-bar-item>
+                        <nldd-tab-bar-item data-view="machine" :current="detailView === 'machine' || undefined" text="Machine"></nldd-tab-bar-item>
+                        <nldd-tab-bar-item data-view="yaml" :current="detailView === 'yaml' || undefined" text="YAML"></nldd-tab-bar-item>
                       </nldd-tab-bar>
                     </nldd-toolbar-item>
                     <nldd-toolbar-item slot="end">

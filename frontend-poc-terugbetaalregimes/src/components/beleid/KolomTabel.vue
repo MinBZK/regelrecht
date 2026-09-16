@@ -10,9 +10,8 @@
     <nldd-table
       :columns="gridColumns"
       accessible-label="Posten per kolom"
-      empty-text="Nog geen uitkomsten"
-      empty-supporting-text="Klik op Doorrekenen om de kolommen te vullen."
     >
+      <nldd-inline-dialog slot="empty" text="Nog geen uitkomsten" supporting-text="Klik op Doorrekenen om de kolommen te vullen."></nldd-inline-dialog>
       <nldd-table-row slot="header">
         <nldd-text-cell size="sm" text="Post" supporting-text="over de hele looptijd"></nldd-text-cell>
         <nldd-text-cell
@@ -36,7 +35,7 @@
             size="sm"
             :text="rij.sub ? `— ${rij.label}` : rij.label"
             :supporting-text="rij.hint"
-            :color="rij.sub ? 'secondary' : 'default'"
+            :color="rij.sub ? 'secondary' : 'content'"
           ></nldd-text-cell>
           <nldd-text-cell
             v-for="col in columns"

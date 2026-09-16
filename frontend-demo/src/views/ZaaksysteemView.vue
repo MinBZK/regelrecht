@@ -281,7 +281,7 @@ function claimLawName(cl) {
             <nldd-list variant="box-tinted" accessible-label="Uitkomst">
               <nldd-list-item v-for="row in outputRows(selected)" :key="row.name" size="sm">
                 <nldd-text-cell size="sm" :text="humanize(row.name)"></nldd-text-cell>
-                <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :color="row.differs ? 'warning' : 'default'">
+                <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :color="row.differs ? 'warning' : 'content'">
                   <template v-if="row.differs"><s>{{ formatValue(row.claimed, row.spec) }}</s> → {{ formatValue(row.now, row.spec) }}</template>
                   <template v-else>{{ formatValue(row.now, row.spec) }}</template>
                 </nldd-text-cell>
@@ -358,7 +358,7 @@ function claimLawName(cl) {
 
             <nldd-list variant="box-tinted" accessible-label="Gebeurtenissen">
               <nldd-list-item v-for="(ev, i) in selected.events" :key="i" size="sm">
-                <nldd-timeline-track-cell :step="i === selected.events.length - 1 ? 'future' : 'past'" :child="i === 0 ? 'first' : i === selected.events.length - 1 ? 'last' : 'between'"></nldd-timeline-track-cell>
+                <nldd-timeline-track-cell :status="i === selected.events.length - 1 ? 'future' : 'past'" :position="selected.events.length === 1 ? 'only' : i === 0 ? 'first' : i === selected.events.length - 1 ? 'last' : 'between'"></nldd-timeline-track-cell>
                 <nldd-spacer-cell size="8"></nldd-spacer-cell>
                 <nldd-text-cell size="sm" :text="ev.text" :supporting-text="formatDateTime(ev.at)"></nldd-text-cell>
               </nldd-list-item>

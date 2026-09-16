@@ -3,8 +3,8 @@
     <nldd-table
       :columns="gridColumns"
       accessible-label="Peildata en bekostiging per kolom"
-      empty-text="Geen peildata"
     >
+      <nldd-inline-dialog slot="empty" text="Geen peildata"></nldd-inline-dialog>
       <nldd-table-row slot="header">
         <nldd-text-cell size="sm" text="Peildatum"></nldd-text-cell>
         <nldd-text-cell size="sm" :text="istTitel" supporting-text="telt · categorie · jaar · bedrag"></nldd-text-cell>
@@ -13,7 +13,7 @@
       </nldd-table-row>
 
       <nldd-table-row v-for="i in zichtbaar" :key="peildata[i]" :selected="peildata[i] === geselecteerd ? true : undefined">
-        <nldd-text-cell size="sm" :text="datumLabel(peildata[i])" :supporting-text="kwartaalLabel(peildata[i])" :color="ist[i]?.in_bestand ? 'default' : 'secondary'"></nldd-text-cell>
+        <nldd-text-cell size="sm" :text="datumLabel(peildata[i])" :supporting-text="kwartaalLabel(peildata[i])" :color="ist[i]?.in_bestand ? 'content' : 'secondary'"></nldd-text-cell>
         <nldd-text-cell size="sm" :color="kleur(ist[i])">
           <span class="tl-cel">
             <nldd-icon :name="ist[i]?.telt ? 'check-mark-circle' : 'dismiss-circle'" size="16"></nldd-icon>
@@ -99,7 +99,7 @@ const gridColumns = computed(() =>
 function kleur(u) {
   if (!u) return 'secondary';
   if (u.fout) return 'critical';
-  return u.telt ? 'default' : 'secondary';
+  return u.telt ? 'content' : 'secondary';
 }
 
 function uitlegNietTellend(u) {
