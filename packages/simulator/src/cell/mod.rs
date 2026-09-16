@@ -34,8 +34,8 @@ mod schema;
 pub use besluit::{
     AcceptanceRequest, Afwijzingsgrond, BesluitDefinition, BesluitInput, ChronicleSource,
     Decretogram, DecretogramInput, ExecutedRegulation, InputOrigin, ObligationDefinition,
-    ObligationDue, ObligationOrigin, Schedule, AFWIJZING, BESCHIKKING, BESCHIKKINGEN, BETALINGEN,
-    DECISION_TYPE, ZAAKKENMERK,
+    ObligationDue, ObligationOrigin, ObsoleteField, Schedule, AFWIJZING, BESCHIKKING,
+    BESCHIKKINGEN, BETALINGEN, DECISION_TYPE, ZAAKKENMERK,
 };
 pub(crate) use besluit::{DeclaredObligations, ObligationScope};
 // De vaste velden van een decretogram, voor het beeld van de wereld: dat moet een
@@ -153,23 +153,6 @@ impl Lexostatus {
     }
 }
 
-/// Wat een cel bij een besluit van buiten aangereikt krijgt, omdat ze het zelf
-/// niet houdt (RFC-022 §2): wie zij is, hoe laat het is, en wat de wereld heeft
-/// ingesteld.
-///
-/// - `identity` is de naam waaronder de cel zich uitgeeft — de bewering uit
-///   haar veiligheidscontext, die de wet straks naast haar `competent_authority`
-///   legt. Een cel houdt geen veiligheidscontext, dus de naam komt van wie die
-///   wél houdt: in deze opstelling [`crate::World`].
-/// - `op_moment` is het moment van het besluit — de klok woont in de wereld.
-/// - `settings` zijn de instellingen van het wereldbestand; een verplichting met
-///   `ritme: $betalingsritme` leest eruit.
-/// - `payers` is wie namens welk bevoegd gezag betaalt (`komt_na` in het
-///   wereldbestand). Wát een besluit oplegt staat in de wet; wie het nakomt is
-///   uitvoering, en een cel kent de andere cellen niet.
-///
-/// Vier dingen die een cel niet is, in één waarde: dat ze samen aangereikt
-/// worden en niet elk apart, is de vorm van die scheiding.
 /// Wie namens welk bevoegd gezag betalingsverplichtingen nakomt.
 ///
 /// Uitvoering en geen recht: dát er betaald moet worden staat in de regeling,
@@ -187,6 +170,23 @@ pub(crate) struct PayerBinding {
 /// De bindingen van een wereld, op genormaliseerde gezagsnaam (zie [`normalised`]).
 pub(crate) type PayerBindings = BTreeMap<String, PayerBinding>;
 
+/// Wat een cel bij een besluit van buiten aangereikt krijgt, omdat ze het zelf
+/// niet houdt (RFC-022 §2): wie zij is, hoe laat het is, wat de wereld heeft
+/// ingesteld, en wie er betaalt.
+///
+/// - `identity` is de naam waaronder de cel zich uitgeeft — de bewering uit
+///   haar veiligheidscontext, die de wet straks naast haar `competent_authority`
+///   legt. Een cel houdt geen veiligheidscontext, dus de naam komt van wie die
+///   wél houdt: in deze opstelling [`crate::World`].
+/// - `op_moment` is het moment van het besluit — de klok woont in de wereld.
+/// - `settings` zijn de instellingen van het wereldbestand; een verplichting met
+///   `ritme: $betalingsritme` leest eruit.
+/// - `payers` is wie namens welk bevoegd gezag betaalt (`komt_na` in het
+///   wereldbestand). Wát een besluit oplegt staat in de wet; wie het nakomt is
+///   uitvoering, en een cel kent de andere cellen niet.
+///
+/// Vier dingen die een cel niet is, in één waarde: dat ze samen aangereikt
+/// worden en niet elk apart, is de vorm van die scheiding.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct DecisionContext<'a> {
     /// De naam waaronder de besluitende cel zich uitgeeft.

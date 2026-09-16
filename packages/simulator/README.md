@@ -775,7 +775,7 @@ produces:
           bedrag: $hoogte_zorgtoeslag      # een uitkomst van dít artikel
           ritme: $betalingsritme           # ineens | kwartaal | maand, of $instelling
           vanaf: '{jaar}-02-01'            # optioneel; standaard het moment van het besluit
-          grondslag: Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1
+          grondslag: Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (uitbetaling)
 ```
 
 ```yaml

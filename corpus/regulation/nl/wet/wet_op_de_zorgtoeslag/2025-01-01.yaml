@@ -107,11 +107,17 @@ articles:
               # bedrag is de uitkomst van dit artikel; het ritme is beleid en
               # komt daarom uit de instellingen van de uitvoerder, niet uit de
               # wet.
+              #
+              # De grondslag zegt daarom waarop de *betaling* berust en niet
+              # waarop het ritme berust: Awir art. 24 lid 1 draagt de uitbetaling
+              # van een toegekende tegemoetkoming op. Het termijnenschema van
+              # art. 22 hoort bij een voorschot (art. 16), en dat is een ander
+              # besluit dan deze toekenning.
               verplichtingen:
                 - soort: betaling
                   bedrag: $hoogte_zorgtoeslag
                   ritme: $betalingsritme
-                  grondslag: Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1
+                  grondslag: Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (uitbetaling; het ritme is beleid)
         parameters:
           - name: bsn
             type: string

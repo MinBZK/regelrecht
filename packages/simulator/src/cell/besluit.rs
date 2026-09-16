@@ -297,7 +297,33 @@ pub struct BesluitDefinition {
     /// [`SimulatorError::ObligationsInWorldFile`] en
     /// [`ObligationDefinition`] voor de plek die ervoor in de plaats kwam.
     #[serde(default)]
-    pub obligations: Option<serde_yaml_ng::Value>,
+    pub obligations: ObsoleteField,
+}
+
+/// Een veld dat vervallen is: staat het er nog, dan hoort dat een melding te
+/// geven en geen stilte.
+///
+/// Met opzet **geen** `Option`: serde laat een `Option` op een `null` als "niet
+/// aanwezig" eindigen, en dan glipt een half omgezet wereldbestand dat de lijst
+/// leeghaalde (`obligations:` met niets erachter) langs precies de melding
+/// waarvoor het veld nog bestaat. De sleutel is de vraag, niet wat erachter
+/// staat.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ObsoleteField {
+    /// De sleutel staat er niet, en zo hoort het.
+    #[default]
+    Absent,
+    /// De sleutel staat er nog, wat er ook achter staat — ook `null`.
+    Present,
+}
+
+impl<'de> Deserialize<'de> for ObsoleteField {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        serde::de::IgnoredAny::deserialize(deserializer)?;
+        Ok(Self::Present)
+    }
 }
 
 /// De soort verplichting die de opstelling vandaag kent.
@@ -1903,7 +1929,7 @@ impl BesluitDefinition {
         // zelf opschrijft, zou zeggen dat het beleid van deze uitvoerder is wat
         // de wet voorschrijft — en twee uitvoerders van dezelfde regeling zouden
         // dan een ander schema kunnen krijgen.
-        if self.obligations.is_some() {
+        if self.obligations == ObsoleteField::Present {
             return Err(SimulatorError::ObligationsInWorldFile {
                 cell: cell.to_string(),
                 besluit: self.name.clone(),

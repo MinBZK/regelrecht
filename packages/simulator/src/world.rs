@@ -2377,6 +2377,7 @@ fn check_deadlines(deadlines: &[Deadline], cells: &BTreeMap<String, Cell>) -> Re
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cell::{BesluitDefinition, ObsoleteField};
     use crate::corpus::regulation_root;
 
     fn date(text: &str) -> NaiveDate {
@@ -3655,13 +3656,32 @@ besluit_definitions:
         );
     }
 
+    /// Een half omgezet wereldbestand haalt de lijst leeg in plaats van de
+    /// sleutel weg te halen. Dat is dezelfde fout en hoort dezelfde melding te
+    /// krijgen: de sleutel is de vraag, niet wat erachter staat.
+    #[test]
+    fn een_lege_obligations_sleutel_telt_ook_als_aanwezig() {
+        for yaml in ["obligations:\n", "obligations: []\n", "obligations: null\n"] {
+            let definition: BesluitDefinition = serde_yaml_ng::from_str(&format!(
+                "name: toekenning\nregulation: wet_op_de_zorgtoeslag\n\
+                 output: heeft_recht_op_zorgtoeslag\nzaakkenmerk: 'zorgtoeslag/{{bsn}}'\n\
+                 params:\n  - name: bsn\n    type: string\n{yaml}"
+            ))
+            .unwrap_or_else(|e| panic!("testdefinitie moet parsen: {e}\n{yaml}"));
+            assert_eq!(
+                definition.obligations,
+                ObsoleteField::Present,
+                "'{yaml}' hoort als aanwezig te tellen"
+            );
+        }
+    }
+
     /// Een besluit-definitie die zelf nog `obligations` draagt, wijst de lezer
     /// naar het lexogram.
     #[test]
     fn obligations_in_een_wereldbestand_wordt_geweigerd() {
         let mut configs = verplichting_configs(KOMT_NA, true);
-        configs[0].besluit_definitions[0].obligations =
-            Some(serde_yaml_ng::Value::Sequence(Vec::new()));
+        configs[0].besluit_definitions[0].obligations = ObsoleteField::Present;
 
         let err = World::from_definition(
             &definition(&configs, "2024-01-01", &[], &ritme("kwartaal")),
