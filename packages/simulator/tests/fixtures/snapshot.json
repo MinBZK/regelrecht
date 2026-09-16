@@ -1645,6 +1645,7 @@
             "herkomst": {
               "asked_by": "cel:toeslagen",
               "cell": "belastingdienst",
+              "competent_authority": "Belastingdienst",
               "field": "toetsingsinkomen",
               "herkomst": "geaccepteerd",
               "lexostatus": "toetsingsinkomen",
@@ -1963,6 +1964,7 @@
             "herkomst": {
               "asked_by": "cel:toeslagen",
               "cell": "belastingdienst",
+              "competent_authority": "Belastingdienst",
               "field": "toetsingsinkomen",
               "herkomst": "geaccepteerd",
               "lexostatus": "toetsingsinkomen",
