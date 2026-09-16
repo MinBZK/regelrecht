@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { cloneWorld, fixtureCell, fixtureGram, worldFixture } from '../testing/worldFixture.js';
 import {
   actionsByActor,
+  afwijzingsgrondenOf,
   allGrams,
   besluitDefinitions,
   clockIndex,
   competentAuthorityOf,
   decidedAlready,
+  decisionTypeOf,
   decretogramSchema,
   decretogramRefOf,
   describeEffect,
@@ -399,6 +401,58 @@ describe('het besluit zelf', () => {
 
   it('geeft geen verplichtingen waar er geen zijn', () => {
     expect(obligationsOf({ fields: {} })).toStrictEqual({ columns: [], rows: [] });
+  });
+
+  it('geeft het besluittype zoals het gram het draagt', () => {
+    expect(decisionTypeOf(gram)).toStrictEqual({
+      type: gram.fields.decision_type.value,
+      label: gram.fields.decision_type.value,
+      color: 'donkerblauw',
+    });
+  });
+
+  // Het onderscheid dat het platform zelf maakt: een beschikking omvat ook de
+  // afwijzing van de aanvraag, dus een weigering hoort niet als een gewone
+  // toekenning weg te vallen.
+  it('geeft een afwijzing een eigen kleur', () => {
+    const afwijzing = { fields: { decision_type: { value: 'AFWIJZING' } } };
+    expect(decisionTypeOf(afwijzing)).toStrictEqual({
+      type: 'AFWIJZING',
+      label: 'AFWIJZING',
+      color: 'oranje',
+    });
+  });
+
+  it('geeft geen besluittype voor een gram dat er geen draagt', () => {
+    expect(decisionTypeOf({ fields: {} })).toBeNull();
+    expect(decisionTypeOf({ fields: { decision_type: { value: null } } })).toBeNull();
+  });
+
+  it('geeft geen afwijzingsgrond bij een besluit dat niet afwees', () => {
+    expect(afwijzingsgrondenOf(gram)).toStrictEqual([]);
+    expect(afwijzingsgrondenOf({ fields: {} })).toStrictEqual([]);
+  });
+
+  it('geeft elke afwijzingsgrond met haar uitkomst, waarde en artikel', () => {
+    const afwijzing = {
+      fields: {
+        afwijzingsgrond: {
+          value: [{ output: 'heeft_recht_op_zorgtoeslag', value: false, article: '2' }],
+        },
+      },
+    };
+    expect(afwijzingsgrondenOf(afwijzing)).toStrictEqual([
+      { output: 'heeft_recht_op_zorgtoeslag', value: false, article: '2' },
+    ]);
+  });
+
+  it('houdt een grond zonder artikel leesbaar', () => {
+    const afwijzing = {
+      fields: { afwijzingsgrond: { value: [{ output: 'is_verzekerde', value: false, article: null }] } },
+    };
+    expect(afwijzingsgrondenOf(afwijzing)).toStrictEqual([
+      { output: 'is_verzekerde', value: false, article: null },
+    ]);
   });
 
   // De wet wijst het bevoegd gezag aan en de cel beweert wie ze is; het gram

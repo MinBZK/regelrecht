@@ -22,6 +22,15 @@ use regelrecht_engine::Value;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 
+/// De naam die een wetsbestand aan een ja-of-nee-uitkomst geeft.
+///
+/// De naam uit het schema (`type: boolean`) en niet die van een Rust-variant:
+/// een foutmelding hoort het woord te gebruiken dat in het wetsbestand staat.
+/// Wat een uitkomsttype van een regeling hier heet, komt uit
+/// [`crate::cell::output_type_name`]; dat die twee het eens zijn, is precies wat
+/// deze constante bewaakt.
+pub(crate) const BOOLEAN: &str = "boolean";
+
 /// Alles wat nodig is om één cel op te tuigen.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -585,6 +594,22 @@ pub(crate) struct CellSurface<'a> {
     /// Per regeling en per uitkomst de rechtskarakters die de geladen versies
     /// eraan geven (`None` als een versie er geen op zet).
     pub(crate) legal_characters: BTreeMap<String, BTreeMap<String, BTreeSet<Option<String>>>>,
+    /// Per regeling en per uitkomst de typen die de geladen versies haar geven,
+    /// bij de naam die een wetsbestand ervoor schrijft (`boolean`, `amount`, …).
+    ///
+    /// Alle versies, om dezelfde reden als hierboven: een besluit over een ouder
+    /// moment landt op een oudere versie, en een voorwaarde die daar op een
+    /// bedrag zou slaan, is geen ja-of-nee.
+    pub(crate) output_types: BTreeMap<String, BTreeMap<String, BTreeSet<String>>>,
+    /// Per regeling en per uitkomst het `afwijzing_wanneer`-blok dat het
+    /// voortbrengende artikel declareert, ongelezen, één per geladen versie.
+    ///
+    /// Ongelezen omdat een blok dat niet te lezen is óók een uitkomst van het
+    /// optuigen hoort te zijn — met een melding die zegt wat eraan mankeert en
+    /// niet met een stille lege verzameling. Eén per versie, want een wet mag van
+    /// gedachten veranderen, en een voorwaarde die alleen in de oude versie staat
+    /// hoort even goed getoetst te worden.
+    pub(crate) afwijzing_blocks: BTreeMap<String, BTreeMap<String, Vec<Value>>>,
     /// Per regeling de namen die ze als parameter of input declareert, over alle
     /// geladen versies heen. Dit is wat een besluit aan de engine mag aanleveren.
     pub(crate) regulation_inputs: BTreeMap<String, BTreeSet<String>>,
@@ -753,6 +778,45 @@ impl CellSurface<'_> {
                 })
                 .collect::<Vec<_>>()
                 .join(", "),
+        })
+    }
+
+    /// De `afwijzing_wanneer`-blokken die de versies van deze regeling op het
+    /// artikel achter deze uitkomst declareren; leeg als geen versie er een heeft.
+    pub(crate) fn afwijzing_blocks(&self, regulation: &str, output: &str) -> &[Value] {
+        self.afwijzing_blocks
+            .get(regulation)
+            .and_then(|outputs| outputs.get(output))
+            .map_or(&[], Vec::as_slice)
+    }
+
+    /// Is deze uitkomst onder elke geladen versie een ja-of-nee?
+    ///
+    /// De toets onder `afwijzing_wanneer`: een voorwaarde op een bedrag of een
+    /// datum zou nooit vervuld raken, en dan staat er een afwijzing in de
+    /// regeling die nooit afwijst. Dat hoort bij het optuigen te vallen.
+    pub(crate) fn check_boolean_output(
+        &self,
+        cell: &str,
+        besluit: &str,
+        regulation: &str,
+        output: &str,
+    ) -> Result<()> {
+        let found = self
+            .output_types
+            .get(regulation)
+            .and_then(|outputs| outputs.get(output))
+            .cloned()
+            .unwrap_or_default();
+        if !found.is_empty() && found.iter().all(|value_type| value_type == BOOLEAN) {
+            return Ok(());
+        }
+        Err(SimulatorError::AfwijzingsvoorwaardeNotBoolean {
+            cell: cell.to_string(),
+            besluit: besluit.to_string(),
+            regulation: regulation.to_string(),
+            output: output.to_string(),
+            found: listing(&found),
         })
     }
 

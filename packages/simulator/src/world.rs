@@ -2003,6 +2003,8 @@ fn last_index(cell: &Cell, chronicle: &str) -> usize {
 /// van volgorde wisselt is geen contract.
 fn execution(gram: &Decretogram) -> Execution {
     Execution {
+        decision_type: gram.decision_type.clone(),
+        afwijzingsgronden: gram.afwijzingsgronden.clone(),
         regulations: gram.executed_regulations.clone(),
         inputs: gram
             .inputs
@@ -3172,6 +3174,253 @@ laws: []
             world.pending_triggers(),
             1,
             "alleen de fixture van 2030 hoort nog te wachten"
+        );
+    }
+
+    /// Een wereld waarin hetzelfde besluit **afwijst**.
+    ///
+    /// Dezelfde cellen en dezelfde besluit-definitie als
+    /// [`verplichting_configs`], met één verschil: de aanvrager is niet
+    /// verzekerd, dus artikel 2 van de Wet op de zorgtoeslag geeft geen
+    /// aanspraak. Dát dit dan een afwijzing is, staat in dat artikel zelf
+    /// (`produces.extensions.chronolex.afwijzing_wanneer`) en niet hier — de wet
+    /// verandert, de uitvoerder niet. De verplichting blijft staan: dat er tóch
+    /// geen termijnen uitkomen, is precies wat er te bewijzen valt.
+    fn afwijzing_wereld() -> World {
+        let mut configs = verplichting_configs(KWARTAAL, true);
+        let toeslagen = configs
+            .first_mut()
+            .unwrap_or_else(|| panic!("de eerste cel is de besluitende"));
+        for stream in &mut toeslagen.chronicles {
+            for event in &mut stream.events {
+                if event.fields.contains_key("is_verzekerde") {
+                    event
+                        .fields
+                        .insert("is_verzekerde".to_string(), Value::Bool(false));
+                }
+            }
+        }
+
+        World::from_definition(
+            &definition(&configs, "2024-01-01", &[], &no_settings()),
+            &regulation_root(),
+        )
+        .unwrap_or_else(|e| panic!("de wereld moet op te tuigen zijn: {e}"))
+    }
+
+    /// Een besluit dat afketst is een besluit: één gram, met `AFWIJZING` erin.
+    ///
+    /// Awb 1:3 lid 2 — een beschikking omvat ook de afwijzing van de aanvraag.
+    /// Zonder deze vorm zou een weigering als "bedrag nul" moeten doorgaan, en
+    /// dan zegt het gram iets anders dan er gebeurd is.
+    #[test]
+    fn een_afwijzing_draagt_haar_type_en_haar_grond() {
+        let mut world = afwijzing_wereld();
+        let gram = beslis(&mut world);
+
+        assert_eq!(
+            gram.decision_type.as_deref(),
+            Some(crate::cell::AFWIJZING),
+            "een besluit dat afketst hoort als afwijzing vastgelegd te worden"
+        );
+        assert!(gram.is_afwijzing(), "en zichzelf ook zo te kennen");
+        assert_eq!(
+            gram.afwijzingsgronden,
+            vec![crate::cell::Afwijzingsgrond {
+                output: "heeft_recht_op_zorgtoeslag".to_string(),
+                value: false,
+                article: Some("2".to_string()),
+            }],
+            "de grond noemt de uitkomst, de waarde die afwees en het artikel erachter"
+        );
+        assert_eq!(
+            gram.legal_character,
+            crate::cell::BESCHIKKING,
+            "een weigering is even goed een beschikking"
+        );
+        assert!(
+            gram.outputs.contains_key("hoogte_zorgtoeslag"),
+            "wat de regeling wél leverde blijft in het gram staan"
+        );
+    }
+
+    /// Een afwijzing belooft niets: geen schema in het gram, geen termijn die
+    /// vervalt, geen betaling in de kroniek — ook al legt de definitie een
+    /// kwartaalverplichting op.
+    #[test]
+    fn een_afwijzing_legt_geen_verplichtingen_op() {
+        let mut world = afwijzing_wereld();
+        let gram = beslis(&mut world);
+
+        assert!(
+            gram.obligations.is_empty(),
+            "een weigering hoort geen termijnen te beloven, kreeg {:?}",
+            gram.obligations
+        );
+        assert_eq!(
+            world.pending_triggers(),
+            0,
+            "en dus ook geen vervaldatum die nog moet afgaan"
+        );
+        world
+            .advance(date("2024-12-31"))
+            .unwrap_or_else(|e| panic!("de klok moet vooruit kunnen: {e}"));
+        assert_eq!(
+            betaald(&world, "belastingdienst", "2024-12-31"),
+            None,
+            "na een jaar is er nog steeds niets betaald"
+        );
+    }
+
+    /// Het gram ligt in `beschikkingen` als elk ander besluit, dus een reductie
+    /// erover vindt het zonder iets bijzonders te doen.
+    #[test]
+    fn een_afwijzing_ligt_in_de_kroniek_als_elk_ander_besluit() {
+        let mut world = afwijzing_wereld();
+        let gram = beslis(&mut world);
+        let event = gram
+            .event()
+            .unwrap_or_else(|e| panic!("het gram moet vast te leggen zijn: {e}"));
+
+        assert_eq!(
+            event.fields.get(crate::cell::DECISION_TYPE),
+            Some(&Value::String(crate::cell::AFWIJZING.to_string())),
+            "het besluittype staat als gewoon veld in het gram"
+        );
+        assert_eq!(
+            event.intake,
+            crate::cell::Intake::EigenBesluit,
+            "en het is een eigen besluit, langs hetzelfde kanaal als een toekenning"
+        );
+    }
+
+    /// Wijst niets af, dan draagt het gram het besluittype dat het uitvoerende
+    /// artikel aanwijst — en niet niets.
+    #[test]
+    fn een_besluit_dat_niet_afwijst_draagt_het_type_van_de_regeling() {
+        let mut world = verplichting_wereld(KWARTAAL, &no_settings())
+            .unwrap_or_else(|e| panic!("de wereld moet op te tuigen zijn: {e}"));
+        let gram = beslis(&mut world);
+
+        assert_eq!(
+            gram.decision_type.as_deref(),
+            Some("TOEKENNING"),
+            "`produces.decision_type` van artikel 2 hoort in het gram te landen"
+        );
+        assert!(
+            !gram.is_afwijzing(),
+            "en zonder vervulde voorwaarde is dit geen afwijzing"
+        );
+    }
+
+    /// Een cel die de testregeling uitvoert waarin de afwijzingsvoorwaarde over
+    /// een uitkomst van een **bron**artikel gaat.
+    ///
+    /// De regeling staat in `fixtures/regulation/` en niet in het corpus: ze
+    /// bestaat om een eigenschap van de opstelling te tonen (een voorwaarde op
+    /// een uitkomst die het besluit zelf niet vastlegt), en dat is geen recht.
+    fn bronvoorwaarde_wereld() -> World {
+        let config: CellConfig = serde_yaml_ng::from_str(
+            r"
+id: toetser
+identity: Toetsdienst
+laws:
+  - test_afwijzing_uit_bron
+chronicles: []
+besluit_definitions:
+  - name: toets
+    regulation: test_afwijzing_uit_bron
+    output: komt_in_aanmerking
+    zaakkenmerk: 'toets/{bsn}'
+    params:
+      - name: bsn
+        type: string
+      - name: op_lijst
+        type: boolean
+    inputs:
+      bsn:
+        param: bsn
+      staat_op_de_uitsluitingslijst:
+        param: op_lijst
+",
+        )
+        .unwrap_or_else(|e| panic!("testconfig moet parsen: {e}"));
+
+        World::from_definition(
+            &definition(&[config], "2024-01-01", &[], &no_settings()),
+            &regulation_root(),
+        )
+        .unwrap_or_else(|e| panic!("de wereld moet op te tuigen zijn: {e}"))
+    }
+
+    /// De parameters van dat besluit: wie het is, en of hij op de lijst staat.
+    fn toetsparams(op_lijst: bool) -> BTreeMap<String, Value> {
+        BTreeMap::from([
+            ("bsn".to_string(), Value::String("999993653".to_string())),
+            ("op_lijst".to_string(), Value::Bool(op_lijst)),
+        ])
+    }
+
+    fn toets(world: &mut World, op_lijst: bool) -> Decretogram {
+        world
+            .decide(
+                "toetser",
+                "toets",
+                &toetsparams(op_lijst),
+                date("2024-01-01"),
+            )
+            .unwrap_or_else(|e| panic!("het besluit moet genomen kunnen worden: {e}"))
+            .decretogram
+    }
+
+    /// Een voorwaarde hoeft niet over een uitkomst te gaan die het besluit
+    /// *vastlegt*.
+    ///
+    /// De wet mag haar weigering aan een uitkomst van een bronartikel ophangen —
+    /// "wie is uitgesloten, krijgt niets" staat zelden in hetzelfde artikel als
+    /// het besluit. De cel vraagt die uitkomst bij de uitvoering mee op; zou ze
+    /// alleen naar de vastgelegde uitkomsten kijken, dan raakte de voorwaarde
+    /// stil nooit vervuld en lag er een toekenning waar een weigering hoorde.
+    #[test]
+    fn een_voorwaarde_op_een_uitkomst_van_een_bronartikel_wijst_af() {
+        let mut world = bronvoorwaarde_wereld();
+        let gram = toets(&mut world, true);
+
+        assert_eq!(
+            gram.decision_type.as_deref(),
+            Some(crate::cell::AFWIJZING),
+            "de voorwaarde uit artikel 2 slaat op de uitkomst van artikel 1 en is vervuld"
+        );
+        assert_eq!(
+            gram.afwijzingsgronden,
+            vec![crate::cell::Afwijzingsgrond {
+                output: "is_uitgesloten".to_string(),
+                value: true,
+                article: Some("1".to_string()),
+            }],
+            "de grond wijst naar het artikel dat de uitkomst voortbrengt"
+        );
+        assert_eq!(
+            gram.outputs.keys().collect::<Vec<_>>(),
+            vec!["komt_in_aanmerking"],
+            "wat het gram onder de uitkomsten draagt, blijft wat de definitie noemt"
+        );
+    }
+
+    /// Dezelfde regeling, dezelfde cel, voorwaarde onvervuld: een gewoon besluit.
+    #[test]
+    fn dezelfde_voorwaarde_onvervuld_laat_het_besluit_doorgaan() {
+        let mut world = bronvoorwaarde_wereld();
+        let gram = toets(&mut world, false);
+
+        assert!(
+            !gram.is_afwijzing(),
+            "wie niet uitgesloten is, wordt niet afgewezen"
+        );
+        assert_eq!(
+            gram.decision_type.as_deref(),
+            Some("TOEKENNING"),
+            "en dan draagt het gram het type dat de regeling voor de gewone afloop noemt"
         );
     }
 

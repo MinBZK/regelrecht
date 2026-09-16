@@ -667,6 +667,32 @@
               "toelichting": "het platform schrijft het in elk gram; het artikel zegt het in `produces`"
             },
             {
+              "name": "decision_type",
+              "type": "string",
+              "herkomst": "lexogram",
+              "gat": false,
+              "lexogram": {
+                "regulation": "wet_op_de_zorgtoeslag",
+                "valid_from": "2025-01-01",
+                "article": "2",
+                "regulatory_layer": "WET"
+              },
+              "toelichting": "'TOEKENNING' zolang het besluit doorgaat, of 'AFWIJZING' als een afwijzingsvoorwaarde vervuld is"
+            },
+            {
+              "name": "afwijzingsgrond",
+              "type": "array",
+              "herkomst": "lexogram",
+              "gat": false,
+              "lexogram": {
+                "regulation": "wet_op_de_zorgtoeslag",
+                "valid_from": "2025-01-01",
+                "article": "2",
+                "regulatory_layer": "WET"
+              },
+              "toelichting": "gevuld zodra een van deze voorwaarden vervuld is: heeft_recht_op_zorgtoeslag = false (artikel 2)"
+            },
+            {
               "name": "inputs",
               "type": "object",
               "herkomst": "platform",
@@ -793,6 +819,32 @@
                 "regulatory_layer": "WET"
               },
               "toelichting": "het platform schrijft het in elk gram; het artikel zegt het in `produces`"
+            },
+            {
+              "name": "decision_type",
+              "type": "string",
+              "herkomst": "lexogram",
+              "gat": false,
+              "lexogram": {
+                "regulation": "wet_op_de_zorgtoeslag",
+                "valid_from": "2025-01-01",
+                "article": "2",
+                "regulatory_layer": "WET"
+              },
+              "toelichting": "'TOEKENNING' zolang het besluit doorgaat, of 'AFWIJZING' als een afwijzingsvoorwaarde vervuld is"
+            },
+            {
+              "name": "afwijzingsgrond",
+              "type": "array",
+              "herkomst": "lexogram",
+              "gat": false,
+              "lexogram": {
+                "regulation": "wet_op_de_zorgtoeslag",
+                "valid_from": "2025-01-01",
+                "article": "2",
+                "regulatory_layer": "WET"
+              },
+              "toelichting": "gevuld zodra een van deze voorwaarden vervuld is: heeft_recht_op_zorgtoeslag = false (artikel 2)"
             },
             {
               "name": "inputs",
@@ -1249,6 +1301,12 @@
               "grondslag": "wet_op_de_zorgtoeslag (versie 2024-01-01)",
               "op_moment": "2024-04-01",
               "fields": {
+                "afwijzingsgrond": {
+                  "value": [],
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                },
                 "besloten_door": {
                   "value": "Dienst Toeslagen",
                   "origin": {
@@ -1304,6 +1362,12 @@
                 },
                 "competent_authority": {
                   "value": "Dienst Toeslagen",
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                },
+                "decision_type": {
+                  "value": "TOEKENNING",
                   "origin": {
                     "herkomst": "besluit"
                   }
@@ -1438,6 +1502,12 @@
               "grondslag": "wet_op_de_zorgtoeslag (versie 2024-01-01)",
               "op_moment": "2024-12-15",
               "fields": {
+                "afwijzingsgrond": {
+                  "value": [],
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                },
                 "besloten_door": {
                   "value": "Dienst Toeslagen",
                   "origin": {
@@ -1493,6 +1563,12 @@
                 },
                 "competent_authority": {
                   "value": "Dienst Toeslagen",
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                },
+                "decision_type": {
+                  "value": "TOEKENNING",
                   "origin": {
                     "herkomst": "besluit"
                   }
@@ -1857,6 +1933,8 @@
         }
       ],
       "executed": {
+        "decision_type": "TOEKENNING",
+        "afwijzingsgronden": [],
         "regulations": [
           {
             "regulation": "wet_op_de_zorgtoeslag",
@@ -2176,6 +2254,8 @@
         }
       ],
       "executed": {
+        "decision_type": "TOEKENNING",
+        "afwijzingsgronden": [],
         "regulations": [
           {
             "regulation": "wet_op_de_zorgtoeslag",

@@ -376,6 +376,9 @@ gebeurt, in deze volgorde:
    [Verplichtingen](#verplichtingen-wat-een-besluit-achterlaat));
 5. de uitkomst gaat als één gram de stroom `beschikkingen` in, met het schema erin.
 
+Ketst het besluit af op een voorwaarde, dan slaat stap 4 over — zie
+[Een weigering is ook een besluit](#een-weigering-is-ook-een-besluit).
+
 Die stroom is **voorbehouden**, aan drie kanten:
 
 - een configuratie die haar zelf declareert wordt geweigerd; ze wordt automatisch
@@ -390,6 +393,97 @@ Die stroom is **voorbehouden**, aan drie kanten:
   benoemde vorm waarin het wél mag.
 
 Alleen besluiten legt er iets in, en alleen een reductie haalt er iets uit.
+
+### Een weigering is ook een besluit
+
+Awb 1:3 lid 2: een beschikking omvat ook **de afwijzing van de aanvraag**. Een
+besluit dat afketst is dus geen mislukte uitvoering en geen bedrag nul — er hoort
+een gram te liggen. Wannéér dat zo is, zegt de **wet**: het artikel dat de
+aansturende uitkomst voortbrengt declareert het bij zijn `produces`.
+
+```yaml
+# in het lexogram, op het artikel dat de uitkomst voortbrengt
+produces:
+  legal_character: BESCHIKKING
+  decision_type: TOEKENNING            # het type als het besluit doorgaat
+  extensions:
+    chronolex:
+      afwijzing_wanneer:
+        heeft_recht_op_zorgtoeslag: false
+```
+
+**In het lexogram en niet in het wereldbestand.** Wanneer een besluit een
+afwijzing is, hangt aan de uitkomst die het artikel voortbrengt en geldt voor
+elke cel die dat artikel uitvoert. Zou een besluit-definitie het mogen zetten,
+dan konden twee uitvoerders dezelfde wet verschillend laten weigeren zonder dat
+er aan de wet iets te zien was. Een `afwijzing_wanneer` in een besluit-definitie
+wordt daarom bij het optuigen geweigerd, met een melding die naar het blok in de
+regeling wijst.
+
+`extensions` is in het law-model met opzet ondoorzichtig: het document draagt het
+blok ongewijzigd mee en legt het niet uit. `chronolex` is de namespace van deze
+opstelling; een wet die een namespace draagt die niemand leest, laadt gewoon. Het
+JSON-schema zet geen `additionalProperties: false` op `produces`, dus zo'n blok
+valideert zoals het staat.
+
+`afwijzing_wanneer` noemt per **boolean-uitkomst** de waarde die tot afwijzing
+leidt. Drie toetsen bij het optuigen van de cel, alle drie om te voorkomen dat de
+regel er staat zonder iets te doen: het blok moet een toewijzing van uitkomst
+naar `true`/`false` zijn, de naam moet een uitkomst zijn die de regeling kent, en
+die uitkomst moet onder elke geladen versie een ja-of-nee zijn — op een bedrag
+raakt de voorwaarde nooit vervuld. Meer dan één voorwaarde is een **of**: elke
+vervulde is op zichzelf genoeg, en ze komen alle vervulde in het gram te staan.
+
+Een voorwaarde hoeft geen uitkomst te zijn die het besluit *vastlegt*: de cel
+vraagt haar bij de uitvoering gewoon mee op, en de grond komt met haar artikel in
+`afwijzingsgrond` te staan. Wat het gram onder de uitkomsten draagt, blijft wat
+de besluit-definitie in `output` en `outputs` noemt.
+
+Is er een voorwaarde vervuld, dan legt de cel één gram vast als altijd — hetzelfde
+rechtskarakter (`BESCHIKKING`, want een weigering is er een), dezelfde vaste
+velden, het receipt, en de uitkomsten die de regeling wél leverde — met precies
+drie verschillen:
+
+- `decision_type` is `AFWIJZING`;
+- `afwijzingsgrond` noemt elke vervulde voorwaarde: de uitkomst, de waarde die
+  afwees, en het **artikel** dat die uitkomst voortbrengt. Een afwijzing zonder
+  haar grond is een besluit zonder motivering;
+- er zijn **geen verplichtingen**. Ook niet als de definitie er een oplegt: een
+  weigering belooft niets, dus er valt niets in te roosteren en er vervalt geen
+  termijn.
+
+Wijst het besluit *niet* af, dan draagt het gram het besluittype dat hetzelfde
+`produces` voor de gewone afloop noemt (`decision_type`, bijvoorbeeld
+`TOEKENNING`) — de waarde die het platform daar toch al las voor de
+BESCHIKKING-toets. Zegt de regeling er niets over, dan staat er `null`: dat is een
+gat in die regeling en geen uitnodiging om het hier in te vullen.
+
+Verder blijft alles wat over een decretogram geldt gelden. De reductie over
+`beschikkingen` vindt een afwijzing als elk ander besluit — `decision_type` is een
+gewoon veld waarover een lexostatus mag publiceren — en `from_decretogram` leest
+er een veld uit terug zoals uit elk gram: draagt het gram het veld, dan komt de
+waarde eruit, en anders faalt het volgende besluit met dezelfde melding als
+altijd. Een weigering is geen gat in de kroniek.
+
+In het [schema van het decretogram](#het-schema-van-het-decretogram-wat-komt-uit-de-wet)
+komen `decision_type` en `afwijzingsgrond` daarmee als **lexogramvelden** te
+staan, met het artikel dat ze declareert erbij.
+
+In een scenario is er één verwachting bijgekomen: `expect` mag naast de
+uitkomsten ook op `decision_type` slaan. Dat is nodig ook —
+`heeft_recht_op_zorgtoeslag: false` is evengoed de uitkomst van een besluit dat
+het platform níet als afwijzing kent, dus zonder die assertie bewijst een
+scenario over een weigering niets over de vorm van het gram.
+`scenarios/toeslagen_afwijzing.yaml` speelt het geheel af: een aanvrager zonder
+recht, een gram met `AFWIJZING`, een lege betalingsstroom ondanks een
+kwartaalverplichting in de definitie, en een volgend besluit dat die afwijzing
+gewoon terugleest. De celconfiguratie daarin is die van elk ander
+besluit-scenario — de wet is veranderd, de uitvoerder niet.
+
+Wat hier **niet** in zit: een afwijzingsgrond die niet als boolean-uitkomst in een
+regeling staat (die hoort eerst in de YAML); buiten behandeling stellen (Awb 4:5)
+en horen vóór afwijzing (Awb 4:7). En `decision_type` is hier geen open
+vocabulaire — het gram draagt wat de regeling zegt, of `AFWIJZING`.
 
 ### De vier inputvormen van een besluit
 
@@ -479,10 +573,12 @@ uitbreiding van RFC-013 stil achterlopen.
 | `competent_authority` | het bevoegd gezag dat de regeling noemt (RFC-002): dat van het artikel dat de aansturende uitkomst voortbrengt, anders dat van het document; `null` als ze er geen noemt |
 | `besloten_door` | de identiteit van de cel die besloot — zie [Wie mag besluiten](#wie-mag-besluiten) |
 | `legal_character` | altijd `BESCHIKKING`: dat is wat een decretogram is (RFC-022 §1.2), en een besluit over iets anders wordt bij het optuigen geweigerd |
+| `decision_type` | wélk besluit dit is: `AFWIJZING` zodra een afwijzingsvoorwaarde vervuld was, anders wat het uitvoerende artikel aanwijst (`produces.decision_type`), en `null` als de regeling zwijgt — zie [Een weigering is ook een besluit](#een-weigering-is-ook-een-besluit) |
+| `afwijzingsgrond` | de vervulde afwijzingsvoorwaarden: per stuk de uitkomst, de waarde die afwees en het artikel dat haar voortbrengt. Leeg bij elk besluit dat niet afwees |
 | de uitkomsten | de uitkomst die het besluit *is*, plus wat `outputs` erbij noemt |
 | `inputs` | wat de besluit-definitie zelf aanleverde, **met herkomst per waarde**: uit een eigen kroniek (met het moment van die vastlegging), uit een parameter, of geaccepteerd van een andere cel |
 | `chronicle_sources` | de eigen kronieken die als databron klaarstonden, elk met haar stand op het moment van het besluit: aantal grammen en een hash erover (RFC-022 §1.3). Wat de engine daaruit las, staat in de trace van het receipt |
-| `obligations` | het betalingsschema dat uit dit besluit volgt: per termijn een vervaldatum, een bedrag en een volgnummer |
+| `obligations` | het betalingsschema dat uit dit besluit volgt: per termijn een vervaldatum, een bedrag en een volgnummer. Leeg bij een afwijzing, ook als de definitie er een oplegt |
 | `receipt` | het volledige Execution Receipt, **met de uitvoeringstrace** (`results.trace`) |
 
 ### Het schema van het decretogram: wat komt uit de wet?
@@ -521,6 +617,17 @@ stellen. En het verzwijgt niet waar het platform zijn waarde *leest*: bij
 `competent_authority` en `legal_character` staat het lexogram erbij — het artikel
 dat de aansturende uitkomst voortbrengt, of het document als de regeling het daar
 declareert (RFC-002-volgorde, dezelfde die het besluit-pad toepast).
+
+**`decision_type` en `afwijzingsgrond` zijn lexogramvelden.** Anders dan
+`legal_character`, dat altijd `BESCHIKKING` is omdat het platform elke andere
+waarde weigert, kiest het platform niets in wát een besluit is: het artikel zegt
+met `decision_type` wat er uitkomt als het besluit doorgaat, en met
+`extensions.chronolex.afwijzing_wanneer` wanneer het een afwijzing wordt (zie
+[Een weigering is ook een besluit](#een-weigering-is-ook-een-besluit)). Beide
+velden wijzen daarom naar het artikel dat het zegt. Zwijgt de regeling erover —
+geen `decision_type` en geen afwijzingsvoorwaarde — dan draagt het gram `null`
+respectievelijk een lege lijst, en zijn het platformvelden zonder lexogram. Geen
+gat: dat een wet geen weigering kent, is geen norm die ze had moeten stellen.
 
 Het schema staat op de **nieuwste geladen versie** van de regeling; de versie
 staat er daarom bij. Een besluit over een ouder moment landt op een oudere versie
@@ -804,12 +911,16 @@ een toets of een waardebepaling wordt bij het optuigen geweigerd; dat elk gram
 elementair is en co-ontstane uitkomsten samen draagt; het `zaakkenmerk` als de
 sleutel waaronder de grammen van één zaak een kroniek vormen; het moment; en uit
 §1.3 dat de eigen kronieken die aan de uitvoering bijdroegen met inhoud en versie
-in het gram staan (`chronicle_sources`).
+in het gram staan (`chronicle_sources`). En dat een beschikking ook de **afwijzing**
+van de aanvraag omvat (Awb 1:3 lid 2): het gram draagt een `decision_type`, en een
+besluit dat afketst legt er een vast met `AFWIJZING` en zonder verplichtingen.
 
 **Niet**: de RFC-008-stages (BESLUIT, BEKENDMAKING, BEZWAAR — er is één soort gram
 en geen stage-decretogrammen, dus "de huidige stap" bestaat hier niet); `modality`
 (`is_intrekking_van`, `is_wijziging_van`); de afgeleide rechtsbeschermingsroute
-(§3.3); `decision_type` als open vocabulaire; `extensions`; en de handtekening —
+(§3.3); `decision_type` als open vocabulaire; `extensions` **op het gram zelf**
+(die op een `produces` in het lexogram wordt wél gelezen — zie
+[Een weigering is ook een besluit](#een-weigering-is-ook-een-besluit)); en de handtekening —
 het gram wordt niet ondertekend, want er is geen sleutelmateriaal (zie
 [Ondertekening is gesimuleerd](#ondertekening-is-gesimuleerd)).
 
@@ -1336,6 +1447,8 @@ cells:
           - hoogte_zorgtoeslag
         zaakkenmerk: 'zorgtoeslag/{bsn}'        # {naam} = een gedocumenteerde
                                                 # parameter; minstens één
+                                                # (wannéér dit besluit afwijst
+                                                # staat in de regeling, niet hier)
         params:                                 # de gedocumenteerde parameters
           - name: bsn
             type: string
@@ -2081,6 +2194,12 @@ weergeven. Het corpus gaat voor, dus een fixture kan nooit een echte regeling
 overschaduwen.
 
 ## Wat hier nog niet staat
+
+**Een afwijzing is de enige uitweg naast toewijzen.** Buiten behandeling stellen
+(Awb 4:5) en horen vóór afwijzing (Awb 4:7) bestaan hier niet, een grond die niet
+als boolean-uitkomst in een regeling staat kan niet afwijzen, en `decision_type`
+is geen open vocabulaire: het gram draagt wat de regeling aanwijst, of `AFWIJZING`.
+Zie [Een weigering is ook een besluit](#een-weigering-is-ook-een-besluit).
 
 **Een verplichting kent geen rente, verrekening of terugvordering.** Een termijn
 vervalt en wordt betaald; wat er gebeurt als er te laat, te veel of niet betaald

@@ -472,6 +472,78 @@ pub enum SimulatorError {
         found: String,
     },
 
+    /// Een besluit-definitie declareert zelf wanneer ze afwijst.
+    ///
+    /// Dat hoort in het lexogram: wanneer een besluit een afwijzing is, hangt aan
+    /// de uitkomst die het artikel voortbrengt en geldt voor elke cel die dat
+    /// artikel uitvoert. Zou een wereldbestand het mogen zetten, dan konden twee
+    /// uitvoerders dezelfde wet verschillend laten weigeren zonder dat er aan de
+    /// wet iets te zien was.
+    #[error(
+        "cel '{cell}': besluit '{besluit}' declareert `afwijzing_wanneer`, maar dat hoort \
+         in de regeling: zet het blok op het artikel van regeling '{regulation}' dat \
+         uitkomst '{output}' voortbrengt, onder `produces.extensions.chronolex.\
+         afwijzing_wanneer`"
+    )]
+    AfwijzingWanneerInWereldbestand {
+        /// De cel waarin de definitie staat.
+        cell: String,
+        /// De besluit-definitie.
+        besluit: String,
+        /// De regeling die het besluit uitvoert, bij `$id`.
+        regulation: String,
+        /// De aansturende uitkomst, en daarmee het artikel waar het blok hoort.
+        output: String,
+    },
+
+    /// Het `afwijzing_wanneer`-blok in een regeling heeft niet de vorm van een
+    /// voorwaarde.
+    ///
+    /// Het blok staat in een **wet**, dus wie het schrijft is niet dezelfde als
+    /// wie het leest. Een blok dat stil als "geen voorwaarde" zou eindigen, zet
+    /// de weigering uit zonder dat er iets te zien is.
+    #[error(
+        "cel '{cell}': besluit '{besluit}' voert regeling '{regulation}' uit, en het \
+         artikel achter uitkomst '{output}' declareert een \
+         `produces.extensions.chronolex.afwijzing_wanneer` die niet te lezen is: {reason}"
+    )]
+    MalformedAfwijzingWanneer {
+        /// De cel waarin de definitie staat.
+        cell: String,
+        /// De besluit-definitie.
+        besluit: String,
+        /// De regeling die het besluit uitvoert, bij `$id`.
+        regulation: String,
+        /// De aansturende uitkomst, en daarmee het artikel met het blok.
+        output: String,
+        /// Wat er aan het blok niet klopt.
+        reason: String,
+    },
+
+    /// Een `afwijzing_wanneer` noemt een uitkomst die geen ja-of-nee is.
+    ///
+    /// Een voorwaarde vergelijkt met `true` of `false`; op een bedrag of een
+    /// datum raakt ze nooit vervuld. Dan staat er een afwijzing in de regeling
+    /// die nooit afwijst, en dat hoort te blijken bij het optuigen van de cel en
+    /// niet bij de eerste aanvrager die geweigerd had moeten worden.
+    #[error(
+        "cel '{cell}': besluit '{besluit}' wijst volgens regeling '{regulation}' af bij \
+         uitkomst '{output}', maar die is geen ja-of-nee (type: {found}); een \
+         afwijzingsvoorwaarde vergelijkt met `true` of `false`"
+    )]
+    AfwijzingsvoorwaardeNotBoolean {
+        /// De cel waarin de definitie staat.
+        cell: String,
+        /// De besluit-definitie.
+        besluit: String,
+        /// De regeling die het besluit uitvoert, bij `$id`.
+        regulation: String,
+        /// De uitkomst waarop de voorwaarde slaat.
+        output: String,
+        /// De typen die de geladen versies eraan geven.
+        found: String,
+    },
+
     /// Een cel-id in de wereld is ook de `$id` van een regeling die een cel laadt.
     ///
     /// RFC-022 §4.2 maakt daar een laadfout van, onvoorwaardelijk: een vraag aan

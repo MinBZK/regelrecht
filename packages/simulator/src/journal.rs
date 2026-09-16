@@ -35,7 +35,9 @@
 //! opleveren, en dat is geen verschil; hem toch bevragen zou de opstelling laten
 //! rekenen voor een regel die er niet komt.
 
-use crate::cell::{ExecutedRegulation, InputOrigin, Lexostatus, LexostatusOutcome};
+use crate::cell::{
+    Afwijzingsgrond, ExecutedRegulation, InputOrigin, Lexostatus, LexostatusOutcome,
+};
 use crate::snapshot::{CrossingSnapshot, GramKind};
 use chrono::NaiveDate;
 use regelrecht_engine::Value;
@@ -177,6 +179,19 @@ impl AcceptedValue {
 /// af, zoals de rest van het beeld (zie [`crate::snapshot`]).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Execution {
+    /// Het besluittype van dit besluit: wat het gram onder `decision_type`
+    /// draagt, en `None` als de regeling er niets over zegt.
+    ///
+    /// In het verhaal en niet alleen in het gram, om dezelfde reden als de
+    /// geaccepteerde waarden: dat een besluit **afwees** is het verhaal van dat
+    /// besluit en geen detail van een veld. Een lezer die alleen de uitkomsten
+    /// ziet, leest een weigering als een bedrag dat toevallig nul bleef.
+    pub decision_type: Option<String>,
+    /// De afwijzingsvoorwaarden die vervuld waren; leeg bij elk ander besluit.
+    ///
+    /// De motivering van de weigering, in dezelfde woorden als het gram haar
+    /// vastlegde: welke uitkomst, welke waarde, welk artikel.
+    pub afwijzingsgronden: Vec<Afwijzingsgrond>,
     /// De regelingen die uitgevoerd zijn, met de versie die toen gold. De
     /// regeling van het besluit staat vooraan.
     pub regulations: Vec<ExecutedRegulation>,
@@ -187,6 +202,23 @@ pub struct Execution {
 }
 
 impl Execution {
+    /// Wees dit besluit af?
+    ///
+    /// Op de gronden en niet op het type, net als [`Decretogram::is_afwijzing`]:
+    /// de reden gaat voor het etiket.
+    pub fn is_afwijzing(&self) -> bool {
+        !self.afwijzingsgronden.is_empty()
+    }
+
+    /// Waarop dit besluit afketste, in één regel; leeg als het niet afwees.
+    pub fn describe_afwijzing(&self) -> String {
+        self.afwijzingsgronden
+            .iter()
+            .map(Afwijzingsgrond::describe)
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+
     /// Welke regelingen er uitgevoerd zijn, in één regel.
     pub fn describe_regulations(&self) -> String {
         self.regulations
@@ -405,6 +437,12 @@ impl JournalEntry {
         }
         if let Some(executed) = &self.executed {
             let _ = writeln!(out, "{sub}uitgevoerd: {}", executed.describe_regulations());
+            // Dát een besluit afwees, hoort in het verhaal en niet alleen in het
+            // gram: wie hieronder alleen de uitkomsten leest, ziet een weigering
+            // als een bedrag dat toevallig nul bleef.
+            if executed.is_afwijzing() {
+                let _ = writeln!(out, "{sub}afgewezen: {}", executed.describe_afwijzing());
+            }
             for input in &executed.inputs {
                 let _ = writeln!(out, "{sub}{}", input.describe());
             }

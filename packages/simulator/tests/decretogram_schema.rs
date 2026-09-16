@@ -166,6 +166,24 @@ fn het_schema_van_de_vaststelling_ligt_vast() {
                 Herkomst::Platform,
                 false
             ),
+            // Wélk besluit dit is, en waarop het zou afketsen: dat zegt de wet
+            // en niet het platform. Het rechtskarakter hierboven is altijd
+            // `BESCHIKKING` — daarop weigert het besluit-pad zelf — maar
+            // toekenning of afwijzing staat in `produces` van het artikel.
+            (
+                "decision_type",
+                Some("string"),
+                None,
+                Herkomst::Lexogram,
+                false
+            ),
+            (
+                "afwijzingsgrond",
+                Some("array"),
+                None,
+                Herkomst::Lexogram,
+                false
+            ),
             ("inputs", Some("object"), None, Herkomst::Platform, false),
             (
                 "obligations",
@@ -241,6 +259,73 @@ fn het_platform_noemt_waar_het_de_wet_leest() {
         "het rechtskarakter komt uit `produces` van het artikel dat de \
          aansturende uitkomst voortbrengt"
     );
+}
+
+/// Het besluittype en de afwijzingsgrond zijn velden van de **wet**.
+///
+/// Het rechtskarakter is een platformveld: elk decretogram draagt `BESCHIKKING`,
+/// en het besluit-pad weigert elke andere waarde. Wélk besluit het is, ligt
+/// andersom — `produces.decision_type` zegt wat het is als het doorgaat, en
+/// `produces.extensions.chronolex.afwijzing_wanneer` wanneer het een afwijzing
+/// wordt. Het platform kiest daar niets in, dus beide velden horen naar het
+/// artikel te wijzen dat ze declareert.
+#[test]
+fn het_besluittype_en_de_afwijzingsgrond_komen_uit_de_wet() {
+    let schema = schema(&publieke_wereld(), "toeslagen", "zorgtoeslag_vaststelling");
+
+    for name in ["decision_type", "afwijzingsgrond"] {
+        let field = veld(&schema, name);
+        assert_eq!(field.herkomst, Herkomst::Lexogram, "veld '{name}'");
+        assert!(
+            !field.gat,
+            "veld '{name}' is geen gat: de wet declareert het"
+        );
+        let lexogram = field
+            .lexogram
+            .as_ref()
+            .unwrap_or_else(|| panic!("veld '{name}' hoort zijn artikel te noemen"));
+        assert_eq!(lexogram.regulation, "wet_op_de_zorgtoeslag");
+        assert_eq!(
+            lexogram.article.as_deref(),
+            Some("2"),
+            "veld '{name}' hoort te wijzen naar het artikel dat de aansturende \
+             uitkomst voortbrengt"
+        );
+    }
+
+    // De toelichting noemt wat er in het gram komt te staan: het type voor de
+    // gewone afloop, en de voorwaarde waarop het een afwijzing wordt.
+    let type_toelichting = veld(&schema, "decision_type")
+        .toelichting
+        .as_deref()
+        .expect("het besluittype hoort te zeggen wat het kan worden");
+    assert!(
+        type_toelichting.contains("TOEKENNING") && type_toelichting.contains("AFWIJZING"),
+        "de toelichting hoort beide afloopmogelijkheden te noemen: {type_toelichting}"
+    );
+
+    let grond_toelichting = veld(&schema, "afwijzingsgrond")
+        .toelichting
+        .as_deref()
+        .expect("de afwijzingsgrond hoort haar voorwaarden te noemen");
+    assert!(
+        grond_toelichting.contains("heeft_recht_op_zorgtoeslag = false"),
+        "de toelichting hoort de voorwaarde uit de wet te noemen: {grond_toelichting}"
+    );
+}
+
+/// Een regeling die niet afwijst, laat het veld leeg — en dat is geen gat.
+///
+/// Dat een wet geen weigering kent, is geen norm die ze had moeten stellen. Het
+/// veld staat er wel: elk decretogram draagt het, leeg.
+#[test]
+fn een_regeling_zonder_afwijzing_laat_de_grond_aan_het_platform() {
+    let schema = schema(&beleidswereld(), "uitvoerder", "tegemoetkoming");
+
+    let grond = veld(&schema, "afwijzingsgrond");
+    assert_eq!(grond.herkomst, Herkomst::Platform);
+    assert!(!grond.gat, "geen afwijzingsgrond is geen ontbrekende norm");
+    assert_eq!(grond.lexogram, None, "er is geen artikel om naar te wijzen");
 }
 
 /// Een besluit dat verplichtingen oplegt, draagt ze elk als **gat**, en het

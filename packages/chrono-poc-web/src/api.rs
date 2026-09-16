@@ -418,6 +418,7 @@ impl EventsView {
                     zaakkenmerk: decision.decretogram.zaakkenmerk.clone(),
                     op_moment: decision.decretogram.op_moment,
                     legal_character: decision.decretogram.legal_character.clone(),
+                    decision_type: decision.decretogram.decision_type.clone(),
                     crossings: decision.crossings.len(),
                 })
                 .collect(),
@@ -453,6 +454,13 @@ pub struct DecisionView {
     /// Het rechtskarakter dat de regeling aan de uitkomst geeft: altijd
     /// `BESCHIKKING`, want dat is wat een decretogram is (RFC-022 §1.2).
     pub legal_character: String,
+    /// Het besluittype: `AFWIJZING` als het besluit afketste op een voorwaarde,
+    /// anders wat de regeling zelf aanwijst, en `null` als ze er niets over zegt.
+    ///
+    /// Naast het rechtskarakter en niet in plaats daarvan: een beschikking omvat
+    /// ook de afwijzing van de aanvraag (Awb 1:3 lid 2), dus wie alleen
+    /// `BESCHIKKING` terugkrijgt, weet nog niet of er toegekend of geweigerd is.
+    pub decision_type: Option<String>,
     /// Hoeveel contacten dit besluit over een celgrens nodig had. De contacten
     /// zelf staan in `snapshot.crossings`.
     pub crossings: usize,

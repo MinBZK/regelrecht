@@ -1,0 +1,230 @@
+---
+name: een weigering is ook een besluit
+description: >-
+  Een aanvrager zonder recht. De cel `toeslagen` voert dezelfde wet uit als in
+  elk ander besluit-scenario, maar de aansturende uitkomst komt onwaar uit de
+  engine — en dan is de uitkomst geen bedrag nul en geen omgevallen run, maar een
+  **afwijzing**. Awb 1:3 lid 2: een beschikking omvat ook de afwijzing van de
+  aanvraag, dus er hoort een gram te liggen.
+
+  Wat dat gram anders maakt dan een toekenning is precies drie dingen:
+  `decision_type` is `AFWIJZING`, er staat een `afwijzingsgrond` in met de
+  uitkomst en het artikel dat haar voortbrengt, en er zijn **geen
+  verplichtingen** — ook al legt de definitie er een op. Al het andere is
+  hetzelfde: hetzelfde rechtskarakter, dezelfde vaste velden, dezelfde
+  uitkomsten die de regeling wél leverde, hetzelfde receipt.
+
+  Wannéér een besluit afwijst, staat niet in dit bestand: het staat op het
+  artikel dat de uitkomst voortbrengt, onder
+  `produces.extensions.chronolex.afwijzing_wanneer`. Dat is de hele reden dat
+  deze celconfiguratie er precies zo uitziet als die van elk ander
+  besluit-scenario — de wet is veranderd, de uitvoerder niet.
+
+  Het tweede besluit is de tegenproef bij het eerste: een vaststelling die op de
+  afwijzing terugslaat, leest er gewoon een veld uit terug. Een weigering is geen
+  gat in de kroniek — er ligt een besluit, en een volgend besluit over dezelfde
+  zaak kan het lezen.
+
+clock:
+  start: 2024-01-01
+
+cells:
+  - id: toeslagen
+    identity: Dienst Toeslagen
+    laws:
+      - wet_op_de_zorgtoeslag
+      - algemene_wet_inkomensafhankelijke_regelingen
+      - regeling_standaardpremie
+      # Een testregeling van deze crate (`fixtures/regulation/`), met opzet niet
+      # in het corpus; zie `scenarios/toeslagen_nabetaling.yaml`.
+      - test_nabetaling
+
+    chronicles:
+      - stream: relaties
+        key: bsn
+        events:
+          - name: relatie_gewijzigd
+            intake: levering
+            recording_actor: toeslagen
+            grondslag: melding uit de basisregistratie personen
+            op_moment: 2023-01-01
+            fields:
+              bsn: '999993653'
+              partnerschap_type: GEEN
+
+      - stream: inkomensleveringen
+        key: bsn
+        events:
+          - name: inkomenslevering
+            intake: levering
+            recording_actor: toeslagen
+            grondslag: jaarlijkse inkomenslevering
+            op_moment: 2023-11-15
+            fields:
+              bsn: '999993653'
+              # Dít is het verschil met elk ander besluit-scenario: deze persoon
+              # is niet verzekerd, en artikel 2 van de Wet op de zorgtoeslag
+              # geeft dan geen aanspraak.
+              is_verzekerde: false
+              verzamelinkomen: 79547
+              buitenlands_inkomen: 0
+              vermogen: 0
+
+      # De stroom waarin de termijnen zouden landen als er iets toegekend was.
+      # Ze blijft leeg, en dat is de assertie hieronder.
+      - stream: betalingen
+        key: zaakkenmerk
+
+    besluit_definitions:
+      - name: zorgtoeslag_toekenning
+        doc: >-
+          Hetzelfde besluit als in de andere scenario's, en de definitie zegt
+          nergens dat het kan afwijzen: dát staat in de wet. Artikel 2 van de Wet
+          op de zorgtoeslag declareert onder
+          `produces.extensions.chronolex.afwijzing_wanneer` dat een besluit
+          zonder recht een afwijzing is, en elke cel die dat artikel uitvoert
+          weigert daarop.
+        regulation: wet_op_de_zorgtoeslag
+        output: heeft_recht_op_zorgtoeslag
+        outputs:
+          - hoogte_zorgtoeslag
+        zaakkenmerk: zorgtoeslag/{bsn}
+        params:
+          - name: bsn
+            type: string
+        inputs:
+          bsn:
+            param: bsn
+          is_verzekerde:
+            from_chronicle: inkomensleveringen
+            field: is_verzekerde
+        # De verplichting blijft staan, en dat is met opzet: een afwijzing legt
+        # er geen op, en dat hoort te blijken uit een definitie die er wél een
+        # noemt. Zou ze hier weggelaten zijn, dan bewees de lege lijst niets.
+        obligations:
+          - amount: $hoogte_zorgtoeslag
+            payer: toeslagen
+            schedule: kwartaal
+
+      - name: zorgtoeslag_nabetaling
+        doc: >-
+          De vaststelling. Ze leest het toegekende bedrag terug uit het gram van
+          de toekenning over dezelfde zaak — ook als dat gram een afwijzing is.
+        regulation: test_nabetaling
+        output: nog_te_betalen
+        zaakkenmerk: zorgtoeslag/{bsn}
+        params:
+          - name: bsn
+            type: string
+          # Wat er op deze zaak betaald is. Na een afwijzing niets, en dat wordt
+          # hier als opgave meegegeven in plaats van bij een tweede cel
+          # opgevraagd: waar dit scenario over gaat is het teruglezen, niet het
+          # accepteren (zie `scenarios/toeslagen_nabetaling.yaml` voor dat pad).
+          - name: betaald_bedrag
+            type: number
+        inputs:
+          bsn:
+            param: bsn
+          toegekend_bedrag:
+            from_decretogram: zorgtoeslag_toekenning
+            field: hoogte_zorgtoeslag
+          betaald_bedrag:
+            param: betaald_bedrag
+
+    lexostatus_definitions:
+      - name: zorgtoeslagbeschikking
+        doc: >-
+          Wat deze cel over deze zaak besloten heeft. Een gewoon kroniekfilter
+          over de stroom met beschikkingen: een afwijzing ligt daar als elk ander
+          besluit, en de reductie hoeft er niets bijzonders voor te doen.
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - heeft_recht_op_zorgtoeslag
+          - hoogte_zorgtoeslag
+          - legal_character
+          # Het besluittype hoort bij de uitkomsten die een consument mag zien:
+          # of er toegekend of afgewezen is, valt uit een bedrag niet af te
+          # lezen.
+          - decision_type
+        reduction:
+          chronicle: beschikkingen
+          key: zaakkenmerk
+          latest: true
+
+      - name: betaald_tot_nu_toe
+        doc: wat deze cel op deze zaak betaald heeft, opgeteld
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - bedrag
+        reduction:
+          chronicle: betalingen
+          key: zaakkenmerk
+          sum: bedrag
+
+decide:
+  - description: >-
+      De aanvraag ketst af op artikel 2: geen verzekerde, geen aanspraak. Er
+      ligt een gram, het draagt `AFWIJZING`, en het legt niets op.
+    cell: toeslagen
+    besluit: zorgtoeslag_toekenning
+    params:
+      bsn: '999993653'
+    op_moment: 2024-01-01
+    expect:
+      heeft_recht_op_zorgtoeslag: false
+      # De assertie die het verschil maakt. Zonder haar zou dit scenario
+      # evengoed slagen op een besluit dat het platform níet als afwijzing kent
+      # — `heeft_recht… = false` is ook de uitkomst daarvan.
+      decision_type: AFWIJZING
+    expect_computed:
+      - heeft_recht_op_zorgtoeslag
+      - is_verzekerde
+
+  - description: >-
+      En een volgend besluit over dezelfde zaak leest dat gram gewoon terug: een
+      afwijzing is een besluit, geen gat. Het bedrag dat eruit komt is wat de
+      regeling bij de toekenning uitrekende — de afwijzing zette dat niet op nul,
+      ze beloofde er alleen niets mee (vandaar de lege betalingsstroom hieronder).
+      Waar deze stap over gaat is het teruglezen, niet het bedrag.
+    cell: toeslagen
+    besluit: zorgtoeslag_nabetaling
+    params:
+      bsn: '999993653'
+      betaald_bedrag: 0
+    op_moment: 2024-06-01
+    expect:
+      nog_te_betalen: 197205.31187
+    expect_read_back:
+      toegekend_bedrag: zorgtoeslag_toekenning
+    expect_computed:
+      - nog_te_betalen
+
+queries:
+  - description: >-
+      De reductie over `beschikkingen` behandelt de afwijzing als elk ander
+      besluit: het laatste gram op dit moment, met zijn vaste velden erbij. Het
+      rechtskarakter blijft `BESCHIKKING` — een weigering is er een.
+    cell: toeslagen
+    lexostatus: zorgtoeslagbeschikking
+    params:
+      zaakkenmerk: zorgtoeslag/999993653
+    op_moment: 2024-01-01
+    expect:
+      heeft_recht_op_zorgtoeslag: false
+      legal_character: BESCHIKKING
+      decision_type: AFWIJZING
+
+  - description: >-
+      En er is niets te betalen. De definitie legt een kwartaalverplichting op,
+      maar een afwijzing belooft niets — dus er verviel geen termijn en er ligt
+      geen betaling.
+    cell: toeslagen
+    lexostatus: betaald_tot_nu_toe
+    params:
+      zaakkenmerk: zorgtoeslag/999993653
+    op_moment: 2024-12-31
+    expect_not_established: true
