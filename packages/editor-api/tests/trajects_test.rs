@@ -997,6 +997,128 @@ async fn update_refuses_to_move_the_central_corpus_root() {
     );
 }
 
+/// A traject whose own source is a local directory: no repo, so no
+/// `gh_path` to move. Only reachable through a hand-made row (every
+/// source `create` writes is GitHub-backed), which is exactly why the
+/// guard exists — and why it deserves a test of its own.
+async fn local_own_traject(pool: &PgPool, owner: &AccountRecord) -> Uuid {
+    let (traject_id,): (Uuid,) = sqlx::query_as(
+        "INSERT INTO trajects (name, description, scope, created_by)
+         VALUES ('Lokale bron', '', '', $1) RETURNING id",
+    )
+    .bind(owner.id)
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO traject_members (traject_id, account_id, role)
+         VALUES ($1, $2, 'owner')",
+    )
+    .bind(traject_id)
+    .bind(owner.id)
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO traject_corpus_sources
+         (traject_id, source_id, name, source_type, local_path,
+          priority, is_writable_own)
+         VALUES ($1, 'traject-own-local', 'Lokale bron', 'local'::corpus_source_type,
+                 '/corpus/regulation/nl', 0, TRUE)",
+    )
+    .bind(traject_id)
+    .execute(pool)
+    .await
+    .unwrap();
+    traject_id
+}
+
+#[tokio::test]
+async fn update_refuses_a_repo_path_on_a_non_github_own_source() {
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
+    let traject_id = local_own_traject(&db.pool, &alice).await;
+
+    let err = trajects::update(
+        State(state.clone()),
+        Extension(alice.clone()),
+        Path(traject_id),
+        Json(repo_path_req("regulation/nl")),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err.0, StatusCode::BAD_REQUEST);
+    assert!(
+        err.1.contains("geen GitHub-repo"),
+        "the message must say why there is no path to move, got {:?}",
+        err.1
+    );
+    assert_eq!(
+        stored_repo_path(&db.pool, traject_id).await,
+        None,
+        "a local source keeps its NULL gh_path"
+    );
+}
+
+#[tokio::test]
+async fn update_refuses_a_repo_path_without_an_own_source() {
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
+    // A traject without a writable-own row: nothing of this traject's to
+    // move, so the PATCH is refused instead of silently doing nothing.
+    let (traject_id,): (Uuid,) = sqlx::query_as(
+        "INSERT INTO trajects (name, description, scope, created_by)
+         VALUES ('Zonder eigen bron', '', '', $1) RETURNING id",
+    )
+    .bind(alice.id)
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO traject_members (traject_id, account_id, role)
+         VALUES ($1, $2, 'owner')",
+    )
+    .bind(traject_id)
+    .bind(alice.id)
+    .execute(&db.pool)
+    .await
+    .unwrap();
+
+    let err = trajects::update(
+        State(state.clone()),
+        Extension(alice.clone()),
+        Path(traject_id),
+        Json(repo_path_req("regulation/nl")),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err.0, StatusCode::BAD_REQUEST);
+    assert!(
+        err.1.contains("geen eigen bron"),
+        "the message must explain why, got {:?}",
+        err.1
+    );
+
+    // The metadata of a traject without an own source is still editable:
+    // the refusal is about the path, not about the whole PATCH.
+    trajects::update(
+        State(state.clone()),
+        Extension(alice.clone()),
+        Path(traject_id),
+        Json(UpdateTrajectRequest {
+            name: Some("Nieuwe naam".to_string()),
+            description: None,
+            scope: None,
+            status: None,
+            repo_path: None,
+        }),
+    )
+    .await
+    .unwrap();
+}
+
 // ---------------------------------------------------------------------------
 // `add_member` / `update_member` / `remove_member`
 // ---------------------------------------------------------------------------
