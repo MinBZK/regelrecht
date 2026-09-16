@@ -2796,8 +2796,11 @@ fn chronolex_per_output(service: &LawExecutionService) -> Result<DeclaredChronol
             };
             // Het ene parse-punt. Wat hieronder in de twee kaarten belandt, komt
             // uit deze ene lezing en nergens anders vandaan.
-            let block = ChronolexBlock::read(execution.produces.as_ref(), &origin)?;
-            let afwijzing = block.afwijzing_wanneer.clone();
+            let mut block = ChronolexBlock::read(execution.produces.as_ref(), &origin)?;
+            // Uit het blok gehaald en niet gekopieerd: de verplichtingenkaart
+            // heeft alleen `verplichtingen` nodig, en de voorwaarden gaan hier
+            // hun eigen kaart in.
+            let afwijzing = block.afwijzing_wanneer.take();
             let declared = DeclaredObligations::from_block(
                 origin,
                 declared_authority(law, Some(article))
@@ -2818,8 +2821,11 @@ fn chronolex_per_output(service: &LawExecutionService) -> Result<DeclaredChronol
                     .entry(output.name.clone())
                     .or_default()
                     .push(declared.clone());
-                if let Some(block) = afwijzing.clone() {
-                    blocks.entry(output.name.clone()).or_default().push(block);
+                if let Some(block) = afwijzing.as_ref() {
+                    blocks
+                        .entry(output.name.clone())
+                        .or_default()
+                        .push(block.clone());
                 }
             }
         }
