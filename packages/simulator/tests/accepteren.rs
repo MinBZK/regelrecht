@@ -300,10 +300,14 @@ fn een_besluit_zonder_eenduidig_zaakkenmerk_vraagt_de_bron_niets() {
     let yaml = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("{}: {e}", path.display()))
         // Twee verwijzingen, dus een scheidingsteken dat in geen waarde mag
-        // voorkomen — en hieronder komt het er wel in.
+        // voorkomen — en hieronder komt het er wel in. Twee keer dezelfde
+        // parameter, want het artikel dat dit besluit uitvoert legt een
+        // verplichting op: met twee verschillende parameters wijst het kenmerk
+        // geen schuldeiser meer aan, en dan valt de wereld al bij het optuigen om
+        // op een andere weigering dan deze test meet.
         .replace(
-            "        zaakkenmerk: zorgtoeslag/{bsn}\n        params:\n          - name: bsn\n            type: string\n",
-            "        zaakkenmerk: zorgtoeslag/{bsn}/{jaar}\n        params:\n          - name: bsn\n            type: string\n          - name: jaar\n            type: string\n",
+            "        zaakkenmerk: zorgtoeslag/{bsn}\n",
+            "        zaakkenmerk: zorgtoeslag/{bsn}/{bsn}\n",
         );
 
     let scenario = Scenario::from_yaml(&yaml).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
@@ -317,7 +321,7 @@ fn een_besluit_zonder_eenduidig_zaakkenmerk_vraagt_de_bron_niets() {
         .unwrap_or_else(|e| panic!("de klok moet vooruit kunnen: {e}"));
 
     let mut params = bsn();
-    params.insert("jaar".to_string(), Value::String("20/24".to_string()));
+    params.insert("bsn".to_string(), Value::String("99999/3653".to_string()));
 
     let err = world
         .decide(

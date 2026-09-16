@@ -46,10 +46,10 @@
 
 use crate::accept::CellBridge;
 use crate::cell::{
-    check_documented_params, check_parameter_value, check_prefill_values, normalised, Cell,
-    CellConfig, ChronicleEvent, DecisionContext, DeclaredObligations, Decretogram,
-    DocumentedParameter, InputOrigin, Intake, Lexostatus, ObligationDue, PayerBinding,
-    PayerBindings, Prefill, BESCHIKKINGEN, BETALINGEN, ZAAKKENMERK,
+    check_documented_params, check_parameter_value, check_prefill_values, Cell, CellConfig,
+    ChronicleEvent, DecisionContext, DeclaredObligations, Decretogram, DocumentedParameter,
+    InputOrigin, Intake, Lexostatus, ObligationDue, PartyBindings, Prefill, BESCHIKKINGEN,
+    BETALINGEN, ZAAKKENMERK,
 };
 use crate::error::{Result, SimulatorError, Subject};
 use crate::journal::{
@@ -659,13 +659,13 @@ pub struct World {
     /// Apart van [`Self::definition`], want [`World::update_settings`] mag ze
     /// wijzigen en de startstand hoort daar niet mee te schuiven.
     settings: BTreeMap<String, Value>,
-    /// Wie namens welk bevoegd gezag betalingsverplichtingen nakomt.
+    /// Welke cel er in deze wereld onder welke naam nakomt.
     ///
-    /// Uit `komt_na` in het wereldbestand, op genormaliseerde gezagsnaam.
+    /// Uit `komt_na` en de identiteiten in het wereldbestand.
     /// Afgeleid bij het optuigen en niet bij elk besluit opnieuw uitgerekend: de
     /// binding verandert niet tijdens een run, en een cel krijgt hem aangereikt
     /// zoals ze de instellingen aangereikt krijgt (zie [`DecisionContext`]).
-    payers: PayerBindings,
+    parties: PartyBindings,
     /// De instellingen die al door een besluit gebruikt zijn, met dat besluit.
     ///
     /// Wat hierin staat, staat vast: zie [`World::update_settings`]. Het is geen
@@ -789,8 +789,8 @@ impl World {
 
         check_cell_ids_shadow_no_regulation(configs)?;
         check_peers_exist(configs, &cells)?;
-        let payers = payer_bindings(configs)?;
-        check_obligations(configs, &cells, &payers, &definition.settings)?;
+        let parties = party_bindings(configs)?;
+        check_obligations(configs, &cells, &parties, &definition.settings)?;
         check_actions(&definition.actions, &cells)?;
         check_deadlines(&definition.deadlines, &cells)?;
         check_status_indicators(configs, &cells)?;
@@ -813,7 +813,7 @@ impl World {
             regulation_root: regulation_root.to_path_buf(),
             cells,
             settings: definition.settings.clone(),
-            payers,
+            parties,
             used_settings: BTreeMap::new(),
             clock: definition.clock.start,
             crossings: Vec::new(),
@@ -995,7 +995,7 @@ impl World {
 
         // Dezelfde toets als bij het optuigen: een ritme dat niet bestaat hoort
         // hier te vallen en niet bij het eerste besluit dat erop leunt.
-        check_obligations(&self.definition.cells, &self.cells, &self.payers, &updated)?;
+        check_obligations(&self.definition.cells, &self.cells, &self.parties, &updated)?;
         self.settings = updated;
         Ok(())
     }
@@ -1285,7 +1285,7 @@ impl World {
                 identity: identity.name(),
                 op_moment,
                 settings: &self.settings,
-                payers: &self.payers,
+                parties: &self.parties,
             },
         );
 
@@ -1428,8 +1428,7 @@ impl World {
             .cells
             .iter()
             .find(|config| config.id == cell)
-            .and_then(|config| config.identity.as_deref())
-            .unwrap_or(cell);
+            .map_or(cell, CellConfig::identity_name);
         Identity::named(cell, name)
     }
 
@@ -1633,8 +1632,13 @@ impl World {
     /// vastleggen — het zaakkenmerk voorop — en dat is precies waarop een
     /// statusindicator over deze zaak te bevragen is.
     fn settle_as_event(&mut self, due: &ObligationDue) -> Result<Vec<RecordedFact>> {
-        let touched = BTreeSet::from([due.payer.clone(), due.decided_by.clone()]);
-        let bearing = due.payment_event().fields;
+        let touched: BTreeSet<String> = due
+            .betaler
+            .iter()
+            .cloned()
+            .chain(std::iter::once(due.decided_by.clone()))
+            .collect();
+        let bearing = due.fields();
         let before = self.read_indicators(&touched, &bearing, due.vervaldatum);
 
         let facts = self.settle(due)?;
@@ -1797,22 +1801,30 @@ impl World {
     /// volgnummer is dezelfde termijn, en die wordt één keer nagekomen. Is de
     /// betaler de besluitende cel zelf, dan blijft het bij de betaling: een
     /// melding aan jezelf over wat je zelf deed is geen tweede feit.
+    ///
+    /// Kent deze wereld geen cel onder de naam van de schuldenaar, dan gebeurt er
+    /// óók niets — en dat is geen fout: de termijn is ingeroosterd, staat in het
+    /// gram en blijft open. Wat de wet oplegt hangt niet af van wie er in deze
+    /// wereld meedoet.
     fn settle(&mut self, due: &ObligationDue) -> Result<Vec<RecordedFact>> {
+        let Some(betaler) = due.betaler.clone() else {
+            return Ok(Vec::new());
+        };
         let payer = self
             .cells
-            .get_mut(&due.payer)
+            .get_mut(&betaler)
             .ok_or_else(|| SimulatorError::UnknownCell {
-                cell: due.payer.clone(),
+                cell: betaler.clone(),
             })?;
-        if !payer.pay_obligation(due)? {
+        if !payer.pay_obligation(due, &betaler)? {
             return Ok(Vec::new());
         }
         let index = last_index(payer, BETALINGEN);
         let mut facts = vec![RecordedFact {
-            cell: due.payer.clone(),
+            cell: betaler.clone(),
             chronicle: BETALINGEN.to_string(),
             index,
-            event: due.payment_event(),
+            event: due.payment_event(&betaler),
         }];
 
         let noting =
@@ -1924,23 +1936,24 @@ fn check_peers_exist(configs: &[CellConfig], cells: &BTreeMap<String, Cell>) -> 
     Ok(())
 }
 
-/// Wie namens welk bevoegd gezag betaalt, uit `komt_na` in het wereldbestand.
+/// Welke cel er onder welke naam nakomt, uit het wereldbestand.
 ///
-/// Op **genormaliseerde** naam, dezelfde vergelijking als bij het bevoegd gezag
-/// van een besluit: een hoofdletter of een spatie vooraan is een schrijfwijze en
-/// geen andere organisatie.
-fn payer_bindings(configs: &[CellConfig]) -> Result<PayerBindings> {
-    let mut bindings = PayerBindings::new();
+/// Twee wegen (zie [`PartyBindings`]): `komt_na` zegt het met zoveel woorden, en
+/// een cel die de naam van de schuldenaar zelf draagt komt haar na. Beide op
+/// **genormaliseerde** naam, dezelfde vergelijking als bij het bevoegd gezag van
+/// een besluit: een hoofdletter of een spatie vooraan is een schrijfwijze en geen
+/// andere organisatie.
+fn party_bindings(configs: &[CellConfig]) -> Result<PartyBindings> {
+    let mut bindings = PartyBindings::default();
+    for config in configs {
+        bindings.note_identity(config.identity_name(), &config.id);
+    }
     for config in configs {
         for authority in &config.komt_na {
-            let binding = PayerBinding {
-                cell: config.id.clone(),
-                authority: authority.clone(),
-            };
-            if let Some(other) = bindings.insert(normalised(authority), binding) {
+            if let Some(other) = bindings.bind(authority, &config.id) {
                 return Err(SimulatorError::DuplicatePayerBinding {
                     cell: config.id.clone(),
-                    other: other.cell,
+                    other,
                     authority: authority.clone(),
                 });
             }
@@ -1958,11 +1971,16 @@ fn payer_bindings(configs: &[CellConfig]) -> Result<PayerBindings> {
 ///
 /// - verwijst `ritme: $naam` naar een instelling die bestaat, en is die een
 ///   ritme;
-/// - is er een cel aan het bevoegd gezag gebonden die de verplichting nakomt;
-/// - houden de betalende én de besluitende cel een stroom [`BETALINGEN`] met
-///   [`ZAAKKENMERK`] als sleutel? Beide leggen op een vervaldatum vast, en een
-///   stroom die er niet is zou dat op de eerste vervaldatum laten omvallen —
+/// - houden de cellen die straks vastleggen een stroom [`BETALINGEN`] met
+///   [`ZAAKKENMERK`] als sleutel? Beide kanten leggen op een vervaldatum vast, en
+///   een stroom die er niet is zou dat op de eerste vervaldatum laten omvallen —
 ///   halverwege de tijdlijn, in plaats van hier.
+///
+/// Welke cel er nakomt, valt maar ten dele vooruit te weten: is de schuldenaar het
+/// bevoegd gezag, dan staat ze hier al vast, maar een partij uit een parameter
+/// krijgt pas bij het besluit een naam (zie
+/// [`DeclaredObligations::static_parties`]). En een naam waarvoor deze wereld geen
+/// cel kent, is **geen** fout: dan staat de termijn straks open.
 ///
 /// Over álle geladen versies van de regeling, en niet alleen de nieuwste: een
 /// besluit over een ouder moment landt op een oudere versie, en een verplichting
@@ -1970,7 +1988,7 @@ fn payer_bindings(configs: &[CellConfig]) -> Result<PayerBindings> {
 fn check_obligations(
     configs: &[CellConfig],
     cells: &BTreeMap<String, Cell>,
-    payers: &PayerBindings,
+    parties: &PartyBindings,
     settings: &BTreeMap<String, Value>,
 ) -> Result<()> {
     for config in configs {
@@ -1984,11 +2002,16 @@ fn check_obligations(
                     continue;
                 }
                 declared.check_settings(&config.id, &definition.name, settings)?;
-                let payer = deciding.payer_of(definition, declared, payers)?;
-
                 // De besluitende cel legt de melding vast dat er betaald is, dus
                 // zij heeft de stroom net zo goed nodig als de betaler.
-                for holder in [payer.as_str(), config.id.as_str()] {
+                let mut holders: Vec<String> = declared
+                    .static_parties(&config.id, definition)?
+                    .iter()
+                    .filter_map(|name| parties.cell_for(name).map(str::to_string))
+                    .collect();
+                holders.push(config.id.clone());
+                for holder in holders {
+                    let holder = holder.as_str();
                     let found = match cells.get(holder) {
                         None => {
                             return Err(SimulatorError::UnknownCell {
@@ -3629,12 +3652,12 @@ besluit_definitions:
         );
     }
 
-    /// Er moet een cel gebonden zijn aan het gezag waarvoor betaald wordt.
-    /// Zonder binding legt het besluit iets op dat niemand nakomt, en dat hoort
-    /// bij het optuigen te blijken en niet op de eerste vervaldatum.
+    /// Zonder `komt_na` komt de cel die de naam van de schuldenaar zélf draagt
+    /// haar na: het bevoegd gezag doet in deze wereld mee als cel, en dan is er
+    /// geen tweede organisatie nodig om de betaling te doen.
     #[test]
-    fn een_verplichting_zonder_gebonden_cel_faalt_bij_het_optuigen() {
-        let err = World::from_definition(
+    fn zonder_komt_na_komt_de_cel_met_die_naam_zichzelf_na() {
+        let mut world = World::from_definition(
             &definition(
                 &verplichting_configs("", true),
                 "2024-01-01",
@@ -3643,10 +3666,44 @@ besluit_definitions:
             ),
             &regulation_root(),
         )
-        .expect_err("een verplichting zonder gebonden cel hoort te falen");
-        assert!(
-            matches!(err, SimulatorError::ObligationWithoutPayer { .. }),
-            "verwachtte ObligationWithoutPayer, kreeg {err}"
+        .unwrap_or_else(|e| panic!("de wereld moet op te tuigen zijn: {e}"));
+
+        let gram = beslis(&mut world);
+        assert_eq!(
+            gram.obligations[0].schuldenaar, "Dienst Toeslagen",
+            "de schuldenaar is het bevoegd gezag dat de wet aanwijst"
+        );
+        assert_eq!(
+            gram.obligations[0].betaler.as_deref(),
+            Some("toeslagen"),
+            "en de cel die zich zo uitgeeft, komt haar na"
+        );
+    }
+
+    /// Een cel die een ándere naam nakomt, betaalt hier niets — en dat is geen
+    /// fout maar een wereld die anders is ingericht. Wie er dan wél nakomt, komt
+    /// uit de namen die de wereld verder kent.
+    #[test]
+    fn een_cel_die_een_andere_naam_nakomt_betaalt_niet() {
+        let mut configs = verplichting_configs("", true);
+        configs[1].komt_na = vec!["Minister van Financiën".to_string()];
+
+        let mut world = World::from_definition(
+            &definition(&configs, "2024-01-01", &[], &ritme("kwartaal")),
+            &regulation_root(),
+        )
+        .unwrap_or_else(|e| panic!("een andere binding hoort geen fout te zijn: {e}"));
+
+        let gram = beslis(&mut world);
+        assert_eq!(
+            betaald(&world, "belastingdienst", "2024-01-01"),
+            None,
+            "de cel die deze naam niet nakomt, betaalt niets"
+        );
+        assert_eq!(
+            gram.obligations[0].betaler.as_deref(),
+            Some("toeslagen"),
+            "wél de cel die de naam van de schuldenaar zelf draagt"
         );
     }
 

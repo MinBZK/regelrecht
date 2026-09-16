@@ -9,6 +9,7 @@ import {
   gramFields,
   gramKind,
   obligationsOf,
+  obligationValue,
   regulationOf,
 } from '../world/snapshot.js';
 
@@ -88,7 +89,7 @@ const supporting = computed(() => {
 function obligationText(row) {
   return obligations.value.columns
     .filter((column) => row?.[column] !== undefined)
-    .map((column) => `${column}: ${formatValue(row[column])}`)
+    .map((column) => `${column}: ${obligationValue(column, row[column])}`)
     .join(' · ');
 }
 </script>

@@ -30,8 +30,9 @@
 use crate::cell::besluit::{
     afwijzing_block, afwijzing_wanneer, fixed_fields, BesluitDefinition, DeclaredObligations,
     ObligationDefinition, ObligationOrigin, AFWIJZING, AFWIJZINGSGROND, BESCHIKKINGEN, BESLUIT,
-    CHRONICLE_SOURCES, COMPETENT_AUTHORITY, DECISION_TYPE, EXECUTED_REGULATIONS, INPUTS,
-    LEGAL_CHARACTER, OBLIGATIONS, RECEIPT, REGULATION_VALID_FROM, ZAAKKENMERK,
+    BEVOEGD_GEZAG_REFERENCE, CHRONICLE_SOURCES, COMPETENT_AUTHORITY, DECISION_TYPE,
+    EXECUTED_REGULATIONS, INPUTS, LEGAL_CHARACTER, OBLIGATIONS, RECEIPT, REGULATION_VALID_FROM,
+    TERUGVORDERING, ZAAKKENMERK,
 };
 use regelrecht_engine::article::Produces;
 use regelrecht_engine::{
@@ -461,15 +462,34 @@ pub(crate) fn decretogram_schema(
         schema.push(lexicon.output_field(output));
     }
 
-    // Elke verplichting apart, want elke verplichting is een eigen belofte: een
-    // bedrag, een ritme en de grondslag waarop ze berust. Ze staan in het
-    // artikel dat de beschikking voortbrengt en niet in het wereldbestand, dus
-    // ze zijn geen gat: wat het wereldbestand er nog over zegt, is wie ze nakomt
-    // (`komt_na`) en niet wat er opgelegd wordt.
+    // Elke verplichting apart, want elke verplichting is een eigen belofte: twee
+    // partijen, een bedrag, een ritme en de grondslag waarop ze berust. Ze staan
+    // in het artikel dat de beschikking voortbrengt en niet in het wereldbestand,
+    // dus ze zijn geen gat: wat het wereldbestand er nog over zegt, is wélke cel
+    // de schuldenaar nakomt (`komt_na`) en niet wat er opgelegd wordt of aan wie.
     let declared = lexicon.obligations(&definition.output);
     for (index, obligation) in declared.iter().flat_map(|found| &found.items).enumerate() {
         let vanaf = match obligation.vanaf.as_deref() {
             Some(vanaf) => format!(", vanaf '{vanaf}'"),
+            None => String::new(),
+        };
+        // De standaarden staan er met zoveel woorden bij: wie ze weglaat, hoort in
+        // het schema te kunnen lezen wat er dan geldt.
+        let schuldenaar = obligation
+            .schuldenaar
+            .clone()
+            .unwrap_or_else(|| format!("{BEVOEGD_GEZAG_REFERENCE} (standaard)"));
+        let schuldeiser = obligation.schuldeiser.clone().unwrap_or_else(|| {
+            format!(
+                "de parameter uit zaakkenmerk '{}' (standaard)",
+                definition.zaakkenmerk
+            )
+        });
+        let omkeren = match obligation.richting_bij_negatief {
+            Some(_) => format!(
+                "; een negatief bedrag keert de richting om en wordt een \
+                 '{TERUGVORDERING}'"
+            ),
             None => String::new(),
         };
         // Onbereikbaar leeg: de lus loopt over de items van dít antwoord.
@@ -483,9 +503,10 @@ pub(crate) fn decretogram_schema(
             lexicon.layer(),
             found.lexogram.clone(),
             format!(
-                "verplichting van soort '{}': bedrag {}, ritme '{}'{vanaf}, op grondslag \
-                 '{}'; zij levert de termijnen in '{OBLIGATIONS}'. Wie haar nakomt, staat \
-                 in het wereldbestand (`komt_na`)",
+                "verplichting van soort '{}': schuldenaar {schuldenaar}, schuldeiser \
+                 {schuldeiser}, bedrag {}, ritme '{}'{vanaf}, op grondslag '{}'{omkeren}; \
+                 zij levert de termijnen in '{OBLIGATIONS}'. Wélke cel de schuldenaar \
+                 nakomt, staat in het wereldbestand (`komt_na`)",
                 obligation.soort, obligation.bedrag, obligation.ritme, obligation.grondslag
             ),
         ));
@@ -628,7 +649,9 @@ fn fixed_field(
                 "array",
                 lexicon.layer(),
                 declared.lexogram.clone(),
-                "de termijnen die uit de verplichtingen hierboven volgen".to_string(),
+                "de termijnen die uit de verplichtingen hierboven volgen, elk met haar \
+                 schuldenaar, haar schuldeiser en de cel die haar nakomt"
+                    .to_string(),
             ),
             None => DecretogramField::declared_by(
                 Herkomst::Platform,

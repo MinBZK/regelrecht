@@ -784,10 +784,19 @@ export function decretogramRefOf(gram) {
 }
 
 /**
+ * De kolom waarin een termijn de cel noemt die haar nakomt.
+ *
+ * De enige naam die deze module van een verplichting kent, en alleen omdat een
+ * **afwezigheid** er iets betekent: zie [`obligationValue`].
+ */
+const OBLIGATION_PAYER = 'betaler';
+
+/**
  * De verplichtingen die uit een besluit volgen, als rijen.
  *
- * Elke verplichting draagt haar eigen namen (bedrag, vervaldatum, betaler); de
- * kolommen komen daarom uit de verplichtingen zelf en niet uit een lijst hier.
+ * Elke verplichting draagt haar eigen namen (soort, schuldenaar, schuldeiser,
+ * bedrag, vervaldatum, betaler); de kolommen komen daarom uit de verplichtingen
+ * zelf en niet uit een lijst hier.
  */
 export function obligationsOf(gram) {
   const raw = gram?.fields?.obligations?.value;
@@ -797,6 +806,23 @@ export function obligationsOf(gram) {
     for (const name of Object.keys(row ?? {})) if (!columns.includes(name)) columns.push(name);
   }
   return { columns, rows: raw };
+}
+
+/**
+ * Eén waarde uit een verplichtingsregel, als tekst.
+ *
+ * Als [`formatValue`], op één kolom na. Een verplichting noemt twee partijen met
+ * een naam uit het recht; welke **cel** de schuldenaar in deze wereld nakomt, is
+ * een andere vraag, en het antwoord mag "niemand" zijn. Dat is geen gat in het
+ * gram: de verplichting staat er, de termijn is ingeroosterd, en er is alleen
+ * niemand in deze wereld die haar nakomt. 'geen' zou dat een ontbrekende waarde
+ * noemen, en dan leest een openstaande termijn als een fout.
+ */
+export function obligationValue(column, value) {
+  if (column === OBLIGATION_PAYER && (value === null || value === undefined)) {
+    return 'openstaand — deze wereld kent geen cel voor de schuldenaar';
+  }
+  return formatValue(value);
 }
 
 /**

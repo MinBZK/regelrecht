@@ -34,8 +34,8 @@ mod schema;
 pub use besluit::{
     AcceptanceRequest, Afwijzingsgrond, BesluitDefinition, BesluitInput, ChronicleSource,
     Decretogram, DecretogramInput, ExecutedRegulation, InputOrigin, ObligationDefinition,
-    ObligationDue, ObligationOrigin, ObsoleteField, Schedule, AFWIJZING, BESCHIKKING,
-    BESCHIKKINGEN, BETALINGEN, DECISION_TYPE, ZAAKKENMERK,
+    ObligationDue, ObligationKind, ObligationOrigin, ObsoleteField, RichtingBijNegatief, Schedule,
+    AFWIJZING, BESCHIKKING, BESCHIKKINGEN, BETALINGEN, DECISION_TYPE, ZAAKKENMERK,
 };
 pub(crate) use besluit::{DeclaredObligations, ObligationScope};
 // De vaste velden van een decretogram, voor het beeld van de wereld: dat moet een
@@ -153,22 +153,69 @@ impl Lexostatus {
     }
 }
 
-/// Wie namens welk bevoegd gezag betalingsverplichtingen nakomt.
+/// Welke cel er in deze wereld onder welke **naam** nakomt.
 ///
-/// Uitvoering en geen recht: dát er betaald moet worden staat in de regeling,
+/// Uitvoering en geen recht: dát er nagekomen moet worden staat in de regeling,
 /// welk systeem de betaling doet is een inrichtingskeuze van de organisatie die
-/// haar uitvoert. Daarom bindt het **wereldbestand** dit (`komt_na` bij een
-/// cel) en niet het lexogram.
-#[derive(Debug, Clone)]
-pub(crate) struct PayerBinding {
-    /// De cel die nakomt.
-    pub(crate) cell: String,
-    /// Het gezag zoals de binding het opschrijft, voor in een melding.
-    pub(crate) authority: String,
+/// haar uitvoert. Daarom bindt het **wereldbestand** dit en niet het lexogram.
+///
+/// De naam is de schuldenaar van een verplichting: het bevoegd gezag dat de wet
+/// aanwijst, of de partij die een besluit-parameter benoemt. Twee wegen ernaartoe,
+/// en in deze volgorde:
+///
+/// 1. **`komt_na`**: een cel zegt zelf voor welke naam zij nakomt. Zo betaalt een
+///    betaalsysteem namens een bestuursorgaan dat zelf geen cel is.
+/// 2. **De identiteit van een cel**: is de schuldenaar een partij die als cel in
+///    de wereld bestaat, dan betaalt die cel zelf.
+///
+/// De eerste gaat vóór, en dat moet ook: een bestuursorgaan dat als cel besluit
+/// heeft doorgaans een ander systeem dat voor haar betaalt, en dat systeem zegt
+/// dat met `komt_na`. Zou de identiteit voorgaan, dan betaalde de besluitende cel
+/// zichzelf terwijl het wereldbestand iets anders opschrijft.
+///
+/// Kent geen van beide wegen een cel, dan is er **geen** cel — en dat is geen
+/// fout. Een terugvordering op een burger is een echte verplichting, ook in een
+/// wereld waarin die burger niet meedoet; de termijn wordt dan ingeroosterd en
+/// blijft openstaan.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct PartyBindings {
+    /// Uit `komt_na`, op genormaliseerde naam (zie [`normalised`]).
+    komt_na: BTreeMap<String, String>,
+    /// Uit `identity`, op genormaliseerde naam.
+    ///
+    /// `None` als meer dan één cel diezelfde naam draagt: dan is niet te zeggen
+    /// welke van de twee betaalt, en kiezen zou een betaling bij een willekeurige
+    /// organisatie laten landen. `komt_na` kan het alsnog zeggen.
+    identities: BTreeMap<String, Option<String>>,
 }
 
-/// De bindingen van een wereld, op genormaliseerde gezagsnaam (zie [`normalised`]).
-pub(crate) type PayerBindings = BTreeMap<String, PayerBinding>;
+impl PartyBindings {
+    /// Bind een cel aan de naam die zij met `komt_na` nakomt.
+    ///
+    /// Geeft de binding terug die er al stond: twee cellen die dezelfde naam
+    /// nakomen is een fout in het wereldbestand, en die hoort bij het optuigen te
+    /// vallen met beide cellen erbij.
+    pub(crate) fn bind(&mut self, name: &str, cell: &str) -> Option<String> {
+        self.komt_na.insert(normalised(name), cell.to_string())
+    }
+
+    /// Onthoud onder welke naam een cel zich uitgeeft.
+    pub(crate) fn note_identity(&mut self, identity: &str, cell: &str) {
+        self.identities
+            .entry(normalised(identity))
+            .and_modify(|found| *found = None)
+            .or_insert_with(|| Some(cell.to_string()));
+    }
+
+    /// De cel die onder deze naam nakomt, of `None`.
+    pub(crate) fn cell_for(&self, name: &str) -> Option<&str> {
+        let key = normalised(name);
+        if let Some(cell) = self.komt_na.get(&key) {
+            return Some(cell);
+        }
+        self.identities.get(&key)?.as_deref()
+    }
+}
 
 /// Wat een cel bij een besluit van buiten aangereikt krijgt, omdat ze het zelf
 /// niet houdt (RFC-022 §2): wie zij is, hoe laat het is, wat de wereld heeft
@@ -181,9 +228,10 @@ pub(crate) type PayerBindings = BTreeMap<String, PayerBinding>;
 /// - `op_moment` is het moment van het besluit — de klok woont in de wereld.
 /// - `settings` zijn de instellingen van het wereldbestand; een verplichting met
 ///   `ritme: $betalingsritme` leest eruit.
-/// - `payers` is wie namens welk bevoegd gezag betaalt (`komt_na` in het
-///   wereldbestand). Wát een besluit oplegt staat in de wet; wie het nakomt is
-///   uitvoering, en een cel kent de andere cellen niet.
+/// - `parties` is welke cel er onder welke naam nakomt (`komt_na` en de
+///   identiteiten in het wereldbestand). Wát een besluit oplegt en aan wie staat
+///   in de wet; wie het nakomt is uitvoering, en een cel kent de andere cellen
+///   niet.
 ///
 /// Vier dingen die een cel niet is, in één waarde: dat ze samen aangereikt
 /// worden en niet elk apart, is de vorm van die scheiding.
@@ -195,8 +243,8 @@ pub(crate) struct DecisionContext<'a> {
     pub(crate) op_moment: NaiveDate,
     /// De instellingen van de wereld.
     pub(crate) settings: &'a BTreeMap<String, Value>,
-    /// Per bevoegd gezag de cel die er betalingsverplichtingen voor nakomt.
-    pub(crate) payers: &'a PayerBindings,
+    /// Per partij de cel die er in deze wereld betalingsverplichtingen voor nakomt.
+    pub(crate) parties: &'a PartyBindings,
 }
 
 /// Wat [`Cell::decide`] heeft uitgezocht voordat de engine draait.
@@ -1338,7 +1386,7 @@ impl Cell {
             identity,
             op_moment,
             settings,
-            payers,
+            parties,
         } = context;
         let definition = self.definition(besluit)?;
 
@@ -1375,11 +1423,10 @@ impl Cell {
         // waaruit het bedrag zou komen, zou hier anders omvallen op een bedrag
         // dat de wet terecht niet gegeven heeft.
         if !declared.is_empty() && !decretogram.is_afwijzing() {
-            let payer = self.payer_of(&definition, &declared, payers)?;
             decretogram.obligations = definition.schedule_obligations(
                 ObligationScope {
                     cell: &self.id,
-                    payer: &payer,
+                    parties,
                     zaakkenmerk: &decretogram.zaakkenmerk,
                     op_moment,
                 },
@@ -1541,53 +1588,6 @@ impl Cell {
                 .and_then(|declared| competent_authority(law, declared)),
             article,
         )
-    }
-
-    /// De cel die de verplichtingen van dit besluit nakomt.
-    ///
-    /// Langs het **bevoegd gezag** en niet langs de besluitende cel: de wet wijst
-    /// een gezag aan, en welk systeem namens dat gezag betaalt is wat het
-    /// wereldbestand bindt. Hetzelfde lexogram legt daardoor overal hetzelfde
-    /// schema op, met per wereldbestand een eigen betaler eronder.
-    ///
-    /// Beide weigeringen hieronder horen bij het optuigen al gevallen te zijn
-    /// (zie `check_obligations` in de wereld); dat ze hier staan is omdat een cel
-    /// die zelf niet weet wie betaalt, niet mag gokken.
-    pub(crate) fn payer_of(
-        &self,
-        definition: &BesluitDefinition,
-        declared: &DeclaredObligations,
-        payers: &PayerBindings,
-    ) -> Result<String> {
-        let Some(authority) = declared.authority.as_deref() else {
-            return Err(SimulatorError::ObligationWithoutAuthority {
-                cell: self.id.clone(),
-                besluit: definition.name.clone(),
-                origin: declared.origin.describe(),
-            });
-        };
-        payers
-            .get(&normalised(authority))
-            .map(|binding| binding.cell.clone())
-            .ok_or_else(|| SimulatorError::ObligationWithoutPayer {
-                cell: self.id.clone(),
-                besluit: definition.name.clone(),
-                authority: authority.to_string(),
-                known: match payers.values().next() {
-                    None => String::new(),
-                    Some(_) => format!(
-                        " (wel gebonden: {})",
-                        payers
-                            .values()
-                            .map(|binding| format!(
-                                "{} → cel '{}'",
-                                binding.authority, binding.cell
-                            ))
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    ),
-                },
-            })
     }
 
     /// Wat de geladen versies van haar wetten aan dit besluit opleggen.
@@ -2138,8 +2138,8 @@ impl Cell {
     /// ander.
     ///
     /// Levert `false` als deze termijn er al lag: zie [`Self::already_settled`].
-    pub(crate) fn pay_obligation(&mut self, due: &ObligationDue) -> Result<bool> {
-        self.record_obligation(due, due.payment_event())
+    pub(crate) fn pay_obligation(&mut self, due: &ObligationDue, betaler: &str) -> Result<bool> {
+        self.record_obligation(due, due.payment_event(betaler))
     }
 
     /// Leg vast dat gemeld is dat er op een verplichting betaald is.
@@ -2901,19 +2901,16 @@ lexostatus_definitions:
     /// De cel die de verplichtingen van Dienst Toeslagen nakomt.
     ///
     /// Of die cel bestaat en of ze een betalingsstroom houdt, is een vraag van de
-    /// wereld; een cel legt alleen vast wie er moet betalen.
-    fn world_payers() -> PayerBindings {
-        PayerBindings::from([(
-            normalised("Dienst Toeslagen"),
-            PayerBinding {
-                cell: "belastingdienst".to_string(),
-                authority: "Dienst Toeslagen".to_string(),
-            },
-        )])
+    /// wereld; een cel legt alleen vast wie er moet nakomen.
+    fn world_payers() -> PartyBindings {
+        let mut bindings = PartyBindings::default();
+        bindings.bind("Dienst Toeslagen", "belastingdienst");
+        bindings
     }
 
     /// Een besluit-definitie die alleen dient om in een melding genoemd te
-    /// worden: [`Cell::payer_of`] leest er niets anders uit dan haar naam.
+    /// worden: de partijen van een verplichting lezen er niets anders uit dan
+    /// haar naam en haar zaakkenmerk.
     fn payer_definition() -> BesluitDefinition {
         serde_yaml_ng::from_str(
             r"
@@ -2946,18 +2943,14 @@ params:
         }
     }
 
-    /// De betalende cel wordt aan het bevoegd gezag gebonden, dus een regeling
-    /// die daarover zwijgt laat de verplichting bij niemand terechtkomen. Dat is
-    /// iets anders dan een besluit zónder verplichting: daar valt niets na te
-    /// komen, hier wel.
+    /// De schuldenaar is standaard het bevoegd gezag, dus een regeling die
+    /// daarover zwijgt laat de verplichting zonder partij. Dat is iets anders dan
+    /// een besluit zónder verplichting: daar valt niets na te komen, hier is er
+    /// wel iets maar niemand om het aan te hangen.
     #[test]
     fn een_verplichting_zonder_bevoegd_gezag_wordt_geweigerd() {
-        let err = toeslagen()
-            .payer_of(
-                &payer_definition(),
-                &declared_without_authority(),
-                &world_payers(),
-            )
+        let err = declared_without_authority()
+            .static_parties("toeslagen", &payer_definition())
             .expect_err("een verplichting zonder gezag hoort te falen");
         assert!(
             matches!(err, SimulatorError::ObligationWithoutAuthority { .. }),
@@ -2965,23 +2958,33 @@ params:
         );
     }
 
-    /// En een gezag dat wél aangewezen is maar dat geen enkele cel nakomt, is een
-    /// gat in het wereldbestand: de melding zegt welke `komt_na` eronder hoort.
+    /// Een partij die deze wereld niet als cel kent, is **geen** fout: de
+    /// verplichting bestaat, er is alleen niemand die haar nakomt. Een
+    /// terugvordering op een burger is precies dat geval.
     #[test]
-    fn een_gezag_dat_geen_cel_nakomt_wordt_geweigerd() {
-        let mut declared = declared_without_authority();
-        declared.authority = Some("Minister van Financiën".to_string());
+    fn een_partij_zonder_cel_levert_geen_betaler_en_geen_fout() {
+        assert_eq!(world_payers().cell_for("Minister van Financiën"), None);
+    }
 
-        let err = toeslagen()
-            .payer_of(&payer_definition(), &declared, &world_payers())
-            .expect_err("een gezag zonder gebonden cel hoort te falen");
+    /// En dat geldt voor de **schuldeiser** net zo goed. Zij komt alleen na als
+    /// de richting omkeert, dus ze hoeft geen betalingsstroom te houden — maar
+    /// een `#bevoegd_gezag` dat nergens op uitkomt is ook aan die kant een gat in
+    /// de regeling, en dat hoort bij het optuigen te blijken en niet pas bij het
+    /// eerste besluit.
+    #[test]
+    fn ook_een_schuldeiser_zonder_bevoegd_gezag_wordt_geweigerd() {
+        let mut declared = declared_without_authority();
+        // Alleen de schuldeiser noemt het gezag nog: de schuldenaar wijst naar een
+        // parameter, dus zonder deze toets zou er hier niets langskomen.
+        declared.items[0].schuldenaar = Some("$bsn".to_string());
+        declared.items[0].schuldeiser = Some(besluit::BEVOEGD_GEZAG_REFERENCE.to_string());
+
+        let err = declared
+            .static_parties("toeslagen", &payer_definition())
+            .expect_err("een schuldeiser zonder gezag hoort te falen");
         assert!(
-            matches!(err, SimulatorError::ObligationWithoutPayer { .. }),
-            "verwachtte ObligationWithoutPayer, kreeg {err}"
-        );
-        assert!(
-            err.to_string().contains("Dienst Toeslagen"),
-            "de melding hoort te zeggen wat er wél gebonden is: {err}"
+            matches!(err, SimulatorError::ObligationWithoutAuthority { .. }),
+            "verwachtte ObligationWithoutAuthority, kreeg {err}"
         );
     }
 
@@ -2989,13 +2992,42 @@ params:
     /// vooraan is een schrijfwijze en geen andere organisatie.
     #[test]
     fn de_binding_kijkt_niet_naar_hoofdletters_of_spaties() {
-        let mut declared = declared_without_authority();
-        declared.authority = Some("  dienst toeslagen ".to_string());
+        assert_eq!(
+            world_payers().cell_for("  dienst toeslagen "),
+            Some("belastingdienst")
+        );
+    }
 
-        let payer = toeslagen()
-            .payer_of(&payer_definition(), &declared, &world_payers())
-            .unwrap_or_else(|e| panic!("dezelfde naam anders geschreven hoort te binden: {e}"));
-        assert_eq!(payer, "belastingdienst");
+    /// Is de schuldenaar een partij die zelf als cel meedoet, dan betaalt die
+    /// cel — daarvoor hoeft niemand een `komt_na` op te schrijven.
+    #[test]
+    fn een_cel_die_de_naam_zelf_draagt_komt_haar_na() {
+        let mut bindings = PartyBindings::default();
+        bindings.note_identity("999993653", "aanvrager");
+        assert_eq!(bindings.cell_for("999993653"), Some("aanvrager"));
+    }
+
+    /// En `komt_na` gaat vóór: een bestuursorgaan dat zelf besluit, laat
+    /// doorgaans een ander systeem betalen, en dat systeem zegt dat zo.
+    #[test]
+    fn komt_na_gaat_voor_de_identiteit_van_een_cel() {
+        let mut bindings = PartyBindings::default();
+        bindings.note_identity("Dienst Toeslagen", "toeslagen");
+        bindings.bind("Dienst Toeslagen", "belastingdienst");
+        assert_eq!(
+            bindings.cell_for("Dienst Toeslagen"),
+            Some("belastingdienst")
+        );
+    }
+
+    /// Dragen twee cellen dezelfde naam, dan wijst de identiteit niemand aan:
+    /// kiezen zou een betaling bij een willekeurige organisatie laten landen.
+    #[test]
+    fn twee_cellen_met_dezelfde_naam_wijzen_niemand_aan() {
+        let mut bindings = PartyBindings::default();
+        bindings.note_identity("Dienst Toeslagen", "toeslagen");
+        bindings.note_identity("dienst toeslagen", "toeslagen_twee");
+        assert_eq!(bindings.cell_for("Dienst Toeslagen"), None);
     }
 
     fn moment() -> NaiveDate {
@@ -3550,7 +3582,7 @@ besluit_definitions:
                     identity: "Documentgezag",
                     op_moment: moment(),
                     settings: &world_settings(),
-                    payers: &world_payers(),
+                    parties: &world_payers(),
                 },
                 &no_accepted(),
                 None,
@@ -3572,7 +3604,7 @@ besluit_definitions:
                     identity: "Artikelgezag",
                     op_moment: moment(),
                     settings: &world_settings(),
-                    payers: &world_payers(),
+                    parties: &world_payers(),
                 },
                 &no_accepted(),
                 None,
@@ -3634,7 +3666,7 @@ besluit_definitions:
                         identity,
                         op_moment: moment(),
                         settings: &world_settings(),
-                        payers: &world_payers(),
+                        parties: &world_payers(),
                     },
                     &no_accepted(),
                     None,
@@ -3669,7 +3701,7 @@ besluit_definitions:
                     identity: IDENTITEIT,
                     op_moment: moment(),
                     settings: &world_settings(),
-                    payers: &world_payers(),
+                    parties: &world_payers(),
                 },
                 &no_accepted(),
                 None,
@@ -4096,7 +4128,7 @@ besluit_definitions:
                 identity: IDENTITEIT,
                 op_moment,
                 settings: &world_settings(),
-                payers: &world_payers(),
+                parties: &world_payers(),
             },
             &no_accepted(),
             None,
@@ -4172,7 +4204,7 @@ besluit_definitions:
                     identity: IDENTITEIT,
                     op_moment: moment(),
                     settings: &world_settings(),
-                    payers: &world_payers(),
+                    parties: &world_payers(),
                 },
                 &no_accepted(),
                 None,
@@ -4263,7 +4295,7 @@ besluit_definitions:
                     identity: IDENTITEIT,
                     op_moment: moment(),
                     settings: &world_settings(),
-                    payers: &world_payers(),
+                    parties: &world_payers(),
                 },
                 &no_accepted(),
                 None,
@@ -4313,7 +4345,7 @@ besluit_definitions:
                     identity: IDENTITEIT,
                     op_moment: moment(),
                     settings: &world_settings(),
-                    payers: &world_payers(),
+                    parties: &world_payers(),
                 },
                 &no_accepted(),
                 None,
@@ -4362,7 +4394,7 @@ besluit_definitions:
                     identity: IDENTITEIT,
                     op_moment: date("2024-01-01"),
                     settings: &world_settings(),
-                    payers: &world_payers(),
+                    parties: &world_payers(),
                 },
                 &no_accepted(),
                 None,
@@ -4397,7 +4429,7 @@ besluit_definitions:
                     identity: IDENTITEIT,
                     op_moment: moment(),
                     settings: &world_settings(),
-                    payers: &world_payers(),
+                    parties: &world_payers(),
                 },
                 &no_accepted(),
                 None,
@@ -4441,7 +4473,7 @@ besluit_definitions:
                     identity: IDENTITEIT,
                     op_moment: moment(),
                     settings: &world_settings(),
-                    payers: &world_payers(),
+                    parties: &world_payers(),
                 },
                 &no_accepted(),
                 None,
@@ -4548,7 +4580,7 @@ chronicles:
                 identity: IDENTITEIT,
                 op_moment: moment(),
                 settings: &world_settings(),
-                payers: &world_payers(),
+                parties: &world_payers(),
             },
             &no_accepted(),
             None,

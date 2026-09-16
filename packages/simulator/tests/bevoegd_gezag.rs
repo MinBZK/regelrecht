@@ -29,9 +29,18 @@ use std::path::{Path, PathBuf};
 /// náást `scenarios/negatief/`, want die gaat over de invarianten-gate en deze
 /// scenario's halen die gate niet eens — ze vallen eerder om.
 type Expected = fn(&SimulatorError) -> bool;
-const GEWEIGERD: [(&str, Expected); 1] = [("cel_is_niet_het_bevoegd_gezag.yaml", |error| {
-    matches!(error, SimulatorError::NotCompetentAuthority { .. })
-})];
+const GEWEIGERD: [(&str, Expected); 2] = [
+    ("cel_is_niet_het_bevoegd_gezag.yaml", |error| {
+        matches!(error, SimulatorError::NotCompetentAuthority { .. })
+    }),
+    // De map is van elke fixture die afbreekt en niet alleen van het bevoegd
+    // gezag; de tabel staat hier omdat de harnas hier staat. Waar deze fixture
+    // over gaat — de richting van een verplichting — wordt afgerekend in
+    // `tests/verplichtingen.rs`.
+    ("negatief_bedrag_zonder_omkeren.yaml", |error| {
+        matches!(error, SimulatorError::NegativeObligationAmount { .. })
+    }),
+];
 
 fn geweigerd_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))

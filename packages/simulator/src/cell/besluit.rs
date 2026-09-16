@@ -31,7 +31,7 @@ use crate::cell::config::{
     binding_name, check_documented_params, documents, engine_parameters, parameter_listing,
     published_outputs, CellSurface, DocumentedParameter,
 };
-use crate::cell::{ChronicleEvent, Intake};
+use crate::cell::{ChronicleEvent, Intake, PartyBindings};
 use crate::error::{Result, SimulatorError, Subject};
 use crate::values::amount;
 use chrono::{Months, NaiveDate};
@@ -217,6 +217,25 @@ pub const BESLUIT_KRONIEK: &str = "besluit_kroniek";
 /// weg te nemen (RFC-013: het besluit moet na te lopen zijn).
 pub const BESLUIT_GRAM: &str = "besluit_gram";
 
+/// Veld met de soort verplichting waaruit een termijn volgt.
+pub const SOORT: &str = "soort";
+/// Veld met de partij die de verplichting moet nakomen.
+///
+/// Een **naam uit het recht** en geen cel: de wet wijst een bevoegd gezag aan en
+/// een besluit gaat over een aanvrager, en geen van beide weet hoe iemand zijn
+/// uitvoering heeft ingericht. Welke cel er onder die naam betaalt, staat in het
+/// wereldbestand — zie [`BETALER`].
+pub const SCHULDENAAR: &str = "schuldenaar";
+/// Veld met de partij aan wie nagekomen moet worden.
+pub const SCHULDEISER: &str = "schuldeiser";
+/// Veld met de cel die de termijn namens de schuldenaar nakomt.
+///
+/// `null` als deze wereld geen cel voor de schuldenaar kent. Dat is geen fout en
+/// geen gat in het gram: de verplichting staat er, de termijn wordt ingeroosterd,
+/// en er is alleen niemand in deze wereld die haar nakomt. Zie
+/// [`ObligationDue::betaler`].
+pub const BETALER: &str = "betaler";
+
 /// De velden die elke vastlegging in [`BETALINGEN`] draagt.
 ///
 /// Bekend vóór de eerste betaling, om dezelfde reden als bij
@@ -227,6 +246,9 @@ pub(crate) fn betaling_fields() -> BTreeSet<String> {
         ZAAKKENMERK,
         BEDRAG,
         VOLGNUMMER,
+        SOORT,
+        SCHULDENAAR,
+        SCHULDEISER,
         BESLUIT,
         BESLUIT_CEL,
         BESLUIT_KRONIEK,
@@ -326,12 +348,72 @@ impl<'de> Deserialize<'de> for ObsoleteField {
     }
 }
 
-/// De soort verplichting die de opstelling vandaag kent.
+/// De enige soort verplichting die een lexogram mag declareren.
 ///
 /// Platformvocabulaire, zoals [`Schedule`]: een soort erbij is een variant
-/// erbij, en een typfout hoort niet stil als betaling te eindigen. Schuldenaar,
-/// schuldeiser en terugvordering zijn er nog niet — zie de README.
+/// erbij, en een typfout hoort niet stil als betaling te eindigen.
 pub const BETALING: &str = "betaling";
+
+/// De soort die een **omgekeerde** verplichting draagt (Awb 4:57).
+///
+/// Niet te declareren, en dat is het punt: ze ontstaat doordat het bedrag
+/// negatief uitvalt en het lexogram voor dat geval
+/// [`RichtingBijNegatief::Omkeren`] declareert. Wie haar wél mocht opschrijven,
+/// kon iemand laten terugbetalen zonder dat er ooit iets te veel betaald is.
+pub const TERUGVORDERING: &str = "terugvordering";
+
+/// De verwijzing waarmee een verplichting het bevoegd gezag als partij aanwijst.
+///
+/// Dezelfde resolutie als bij het besluit zelf: het `competent_authority` van het
+/// artikel, en anders dat van het document (RFC-002). Eén ingebouwde naam en geen
+/// vrije `#`-verwijzing — wie hier een willekeurige uitkomst mocht noemen, kon de
+/// schuldenaar van een verplichting laten afhangen van wat de engine uitrekende.
+pub const BEVOEGD_GEZAG_REFERENCE: &str = "#bevoegd_gezag";
+
+/// Welke kant een verplichting op staat, zoals het gram haar draagt.
+///
+/// Geen open vocabulaire: de twee soorten zijn elkaars spiegelbeeld, en welke van
+/// de twee het is, volgt uit het teken van het bedrag en uit wat het lexogram
+/// daarover declareert — nooit uit een woord dat iemand erbij typt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ObligationKind {
+    /// Het gewone geval: de schuldenaar betaalt wat het besluit toekent.
+    Betaling,
+    /// De omgekeerde: wat te veel betaald is, moet terug (Awb 4:57).
+    Terugvordering,
+}
+
+impl ObligationKind {
+    /// De naam waaronder deze soort in een gram staat.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Betaling => BETALING,
+            Self::Terugvordering => TERUGVORDERING,
+        }
+    }
+
+    /// Dezelfde verplichting, de andere kant op.
+    fn reversed(self) -> Self {
+        match self {
+            Self::Betaling => Self::Terugvordering,
+            Self::Terugvordering => Self::Betaling,
+        }
+    }
+}
+
+/// Wat een verplichting doet als het bedrag negatief uitvalt.
+///
+/// Eén variant, en met opzet geen `bool`: een wereldbestand dat `omkeeren` typt
+/// hoort een melding te krijgen die de vorm noemt, en niet stil bij de standaard
+/// te eindigen. De standaard is er geen: zonder declaratie is een negatief bedrag
+/// een fout bij het besluit (zie [`SimulatorError::NegativeObligationAmount`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RichtingBijNegatief {
+    /// Schuldenaar en schuldeiser wisselen, het bedrag wordt positief, en wat
+    /// eruit komt is een [`TERUGVORDERING`].
+    Omkeren,
+}
 
 /// Het blok dat een uitvoerend artikel onder [`CHRONOLEX`] kan dragen.
 ///
@@ -367,8 +449,10 @@ struct ChronolexBlock {
 /// Wat er niet in staat is even belangrijk: geen kroniekstroom (die heet
 /// [`BETALINGEN`], overal), geen bedrag met de hand (dat zou naast de
 /// wetsuitkomst gaan leven), geen vervaldata per stuk (die volgen uit het ritme)
-/// en **geen betalende cel** — welk systeem namens het bevoegd gezag betaalt, is
-/// uitvoering en staat in het wereldbestand (`komt_na`).
+/// en **geen betalende cel** — wélk systeem namens de schuldenaar betaalt, is
+/// uitvoering en staat in het wereldbestand (`komt_na`). Wat er wél in staat is
+/// de rechtsverhouding: wie schuldenaar is en wie schuldeiser, want dat is wat de
+/// wet aanwijst.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ObligationDefinition {
@@ -387,6 +471,33 @@ pub struct ObligationDefinition {
     /// is doorgaans beleid en geen wet, en beleid hoort niet in een regeling
     /// vast te staan alsof de wet het voorschrijft.
     pub ritme: String,
+    /// Wie moet nakomen: [`BEVOEGD_GEZAG_REFERENCE`] of `$parameter`.
+    ///
+    /// Weggelaten is het bevoegd gezag — het gewone geval, want een beschikking
+    /// die een bedrag toekent laat het bestuursorgaan betalen. Dat die standaard
+    /// bestaat, betekent niet dat het gram hem mag verzwijgen: hij wordt bij het
+    /// optuigen expliciet gemaakt en staat in elke termijn (zie
+    /// [`ObligationDue::schuldenaar`]).
+    #[serde(default)]
+    pub schuldenaar: Option<String>,
+    /// Aan wie nagekomen moet worden; dezelfde twee vormen als [`Self::schuldenaar`].
+    ///
+    /// Weggelaten is de parameter waarmee het zaakkenmerk de zaak identificeert:
+    /// een beschikking gaat over iemand, en dát is de partij die het geld krijgt.
+    /// Wijst het zaakkenmerk niet precies één parameter aan, dan valt er niets te
+    /// raden en moet de declaratie het zeggen.
+    #[serde(default)]
+    pub schuldeiser: Option<String>,
+    /// Wat er gebeurt als het bedrag negatief uitvalt; weggelaten is: dat is een
+    /// fout.
+    ///
+    /// Een negatieve betaling bestaat niet. Wat een vaststelling lager dan het
+    /// voorschot oplevert, is juridisch een **terugvordering** (Awb 4:57): een
+    /// verplichting de andere kant op, met de partij als schuldenaar. Dat is een
+    /// andere rechtsverhouding en geen minteken, dus de wet moet hem declareren —
+    /// zwijgt ze, dan valt het besluit om en wordt er niets vastgelegd.
+    #[serde(default)]
+    pub richting_bij_negatief: Option<RichtingBijNegatief>,
     /// Vanaf wanneer de termijnen lopen, als sjabloon met `{parameter}`.
     ///
     /// Weggelaten betekent: het moment van het besluit. Wat er staat moet een
@@ -403,6 +514,85 @@ pub struct ObligationDefinition {
     /// betaling terugleest niet alleen ziet dát er betaald moest worden maar ook
     /// waarom.
     pub grondslag: String,
+}
+
+/// Naar wie een verplichting wijst: het recht noemt een **partij**, geen cel.
+///
+/// Twee vormen en meer niet. Het bevoegd gezag dat de regeling aanwijst
+/// ([`BEVOEGD_GEZAG_REFERENCE`]), of een parameter van het besluit (`$naam`)
+/// waarvan de waarde de partij benoemt. Een kale naam mag niet: die zou één
+/// organisatie in de wet vastspijkeren, en dan legt dezelfde regeling in een
+/// andere wereld de verplichting bij iemand die er niets mee te maken heeft.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PartyRef<'a> {
+    /// Het bevoegd gezag van het artikel, en anders dat van het document.
+    Authority,
+    /// De parameter van het besluit die de partij benoemt.
+    Param(&'a str),
+}
+
+impl<'a> PartyRef<'a> {
+    /// Lees een declaratie; `None` als het geen van beide vormen is.
+    fn parse(text: &'a str) -> Option<Self> {
+        if text == BEVOEGD_GEZAG_REFERENCE {
+            return Some(Self::Authority);
+        }
+        text.strip_prefix('$')
+            .filter(|name| !name.is_empty())
+            .map(Self::Param)
+    }
+
+    /// De naam waar deze verwijzing bij dit besluit op uitkomt.
+    fn resolve(
+        self,
+        role: &str,
+        cell: &str,
+        definition: &BesluitDefinition,
+        declared: &DeclaredObligations,
+        params: &BTreeMap<String, Value>,
+    ) -> Result<String> {
+        match self {
+            // Dezelfde naam als waarop `Cell::decide` de bevoegdheid toetste: één
+            // resolutie, zodat een besluit niet onder het ene gezag genomen en
+            // onder het andere nagekomen kan worden.
+            Self::Authority => declared.authority.clone().ok_or_else(|| {
+                SimulatorError::ObligationWithoutAuthority {
+                    cell: cell.to_string(),
+                    besluit: definition.name.clone(),
+                    origin: declared.origin.describe(),
+                }
+            }),
+            Self::Param(name) => params
+                .get(name)
+                .map(ToString::to_string)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| SimulatorError::ObligationParty {
+                    cell: cell.to_string(),
+                    besluit: definition.name.clone(),
+                    origin: declared.origin.describe(),
+                    role: role.to_string(),
+                    reason: format!("'${name}' heeft bij dit besluit geen waarde"),
+                }),
+        }
+    }
+}
+
+/// De rechtsverhouding van één verplichting, met het bedrag in de richting
+/// waarin ze staat.
+///
+/// De vier samen, want ze volgen uit elkaar: draait het bedrag om, dan draaien de
+/// partijen mee en wordt het een andere soort. Wie ze los zou uitrekenen, kon een
+/// terugvordering opleveren die nog steeds naar het bestuursorgaan wijst.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ObligationRelation {
+    /// Wat voor verplichting dit geworden is.
+    soort: ObligationKind,
+    /// De partij die moet nakomen.
+    schuldenaar: String,
+    /// De partij aan wie nagekomen moet worden.
+    schuldeiser: String,
+    /// Het bedrag, altijd positief.
+    total: Decimal,
 }
 
 /// De verplichtingen van één artikel, met de plek waar ze vandaan komen.
@@ -436,8 +626,13 @@ pub(crate) struct DeclaredObligations {
 pub(crate) struct ObligationScope<'a> {
     /// De cel die besloot.
     pub(crate) cell: &'a str,
-    /// De cel die de verplichting nakomt.
-    pub(crate) payer: &'a str,
+    /// Welke cel er in deze wereld onder welke naam nakomt.
+    ///
+    /// De bindingen en niet één cel: wie er betaalt hangt aan de **schuldenaar**
+    /// van elke verplichting apart, en die staat pas vast als het bedrag er is —
+    /// een negatief bedrag draait de rollen om. Kent de wereld voor die naam geen
+    /// cel, dan wordt de termijn wel ingeroosterd en niet nagekomen.
+    pub(crate) parties: &'a PartyBindings,
     /// Het zaakkenmerk van dit besluit.
     pub(crate) zaakkenmerk: &'a str,
     /// Het moment van het besluit.
@@ -565,8 +760,23 @@ impl Schedule {
 /// waaruit ze volgt, is een bedrag zonder grondslag.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ObligationDue {
-    /// De cel die betaalt.
-    pub payer: String,
+    /// Wat voor verplichting dit is: een betaling of een terugvordering.
+    pub soort: ObligationKind,
+    /// De partij die moet nakomen, met naam.
+    ///
+    /// Een naam uit het recht — het bevoegd gezag dat de regeling aanwijst, of de
+    /// waarde van de parameter die de declaratie noemt — en niet een cel. Wie er
+    /// in déze wereld onder die naam betaalt, staat in [`Self::betaler`].
+    pub schuldenaar: String,
+    /// De partij aan wie nagekomen moet worden, met naam.
+    pub schuldeiser: String,
+    /// De cel die namens de schuldenaar nakomt, of `None`.
+    ///
+    /// `None` betekent: deze wereld kent geen cel voor die naam. Dat is geen fout
+    /// — een terugvordering op een burger is een echte verplichting, ook in een
+    /// wereld waarin die burger niet als cel meedoet. De klok roostert de termijn
+    /// dan wel in en komt haar niet na, en het beeld laat haar openstaan.
+    pub betaler: Option<String>,
     /// De cel die het besluit nam.
     pub decided_by: String,
     /// De besluit-definitie waaruit deze verplichting volgt.
@@ -624,7 +834,11 @@ pub struct ObligationDue {
 
 impl ObligationDue {
     /// De velden die beide kanten van een betaling vastleggen.
-    fn fields(&self) -> BTreeMap<String, Value> {
+    ///
+    /// Ook de twee partijen: wie er betaalde en aan wie, hoort in het feit te
+    /// staan en niet alleen in het besluit waaruit het volgt. Een som over deze
+    /// stroom gaat anders over bedragen waarvan de richting alleen elders staat.
+    pub(crate) fn fields(&self) -> BTreeMap<String, Value> {
         BTreeMap::from([
             (
                 ZAAKKENMERK.to_string(),
@@ -632,6 +846,18 @@ impl ObligationDue {
             ),
             (BEDRAG.to_string(), self.bedrag.clone()),
             (VOLGNUMMER.to_string(), Value::Int(self.volgnummer)),
+            (
+                SOORT.to_string(),
+                Value::String(self.soort.name().to_string()),
+            ),
+            (
+                SCHULDENAAR.to_string(),
+                Value::String(self.schuldenaar.clone()),
+            ),
+            (
+                SCHULDEISER.to_string(),
+                Value::String(self.schuldeiser.clone()),
+            ),
             (BESLUIT.to_string(), Value::String(self.besluit.clone())),
             (
                 BESLUIT_CEL.to_string(),
@@ -660,23 +886,30 @@ impl ObligationDue {
     /// zaak en welke termijn dat is.
     fn grondslag(&self) -> String {
         format!(
-            "{} ({}): verplichting uit besluit '{}' van cel '{}' ({}), termijn {} van {}",
+            "{} ({}): {} uit besluit '{}' van cel '{}' ({}), door {} aan {}, termijn {} van {}",
             self.grondslag,
             self.herkomst.describe(),
+            self.soort.name(),
             self.besluit,
             self.decided_by,
             self.decided_op_moment,
+            self.schuldenaar,
+            self.schuldeiser,
             self.volgnummer,
             self.termijnen
         )
     }
 
     /// Het executogram van de betalende cel: zij betaalde.
-    pub(crate) fn payment_event(&self) -> ChronicleEvent {
+    ///
+    /// De cel komt van de aanroeper en niet uit [`Self::betaler`], omdat alleen
+    /// de aanroeper weet dat er er een cel is: staat die op `None`, dan is er
+    /// niets vast te leggen en hoort er ook geen gram gemaakt te kunnen worden.
+    pub(crate) fn payment_event(&self, betaler: &str) -> ChronicleEvent {
         ChronicleEvent {
-            name: "betaling".to_string(),
+            name: self.soort.name().to_string(),
             intake: Intake::Betaling,
-            recording_actor: self.payer.clone(),
+            recording_actor: betaler.to_string(),
             grondslag: self.grondslag(),
             op_moment: self.vervaldatum,
             fields: self.fields(),
@@ -691,7 +924,7 @@ impl ObligationDue {
     /// er één staat is die twee cellen delen.
     pub(crate) fn delivery_event(&self) -> ChronicleEvent {
         ChronicleEvent {
-            name: "betaling_ontvangen_gemeld".to_string(),
+            name: format!("{}_ontvangen_gemeld", self.soort.name()),
             intake: Intake::Levering,
             recording_actor: self.decided_by.clone(),
             grondslag: self.grondslag(),
@@ -709,7 +942,19 @@ impl ObligationDue {
             ),
             (BEDRAG.to_string(), self.bedrag.clone()),
             (VOLGNUMMER.to_string(), Value::Int(self.volgnummer)),
-            ("payer".to_string(), Value::String(self.payer.clone())),
+            (
+                SOORT.to_string(),
+                Value::String(self.soort.name().to_string()),
+            ),
+            (
+                SCHULDENAAR.to_string(),
+                Value::String(self.schuldenaar.clone()),
+            ),
+            (
+                SCHULDEISER.to_string(),
+                Value::String(self.schuldeiser.clone()),
+            ),
+            (BETALER.to_string(), optional_text(self.betaler.as_deref())),
             (
                 "schedule".to_string(),
                 Value::String(self.schedule.name().to_string()),
@@ -720,14 +965,24 @@ impl ObligationDue {
     }
 
     /// Leesbare termijn voor een verslag.
+    ///
+    /// Wie aan wie, en langs welke cel dat gaat. Staat er geen cel onder de
+    /// schuldenaar, dan zegt de regel dat ook: een termijn die niemand nakomt is
+    /// iets anders dan een termijn waarover het verslag zwijgt.
     pub fn describe(&self) -> String {
+        let langs = match &self.betaler {
+            Some(cell) => format!("cel '{cell}'"),
+            None => "geen cel in deze wereld: openstaand".to_string(),
+        };
         format!(
-            "termijn {}/{} van {} op {}, te betalen door {} ({})",
+            "{} {}/{} van {} op {}, door {} aan {} ({}, {langs})",
+            self.soort.name(),
             self.volgnummer,
             self.termijnen,
             self.bedrag,
             self.vervaldatum,
-            self.payer,
+            self.schuldenaar,
+            self.schuldeiser,
             self.schedule.name()
         )
     }
@@ -742,6 +997,15 @@ const INPUT_FORMS: &str = "een input komt uit een eigen kroniek (`from_chronicle
                            (`accept_from` + `lexostatus` + `field`), of uit een eerder \
                            besluit van dezelfde cel over dezelfde zaak \
                            (`from_decretogram` + `field`)";
+
+/// De twee vormen die een partij van een verplichting kan hebben, voor
+/// foutmeldingen.
+///
+/// Eén tekst, zoals [`INPUT_FORMS`]: wie er een derde vorm probeert, hoort in
+/// dezelfde melding te lezen wat de keuze was.
+const PARTY_FORMS: &str = "een partij is `#bevoegd_gezag` of `$parameter` van het besluit, en \
+                           een naam die er letterlijk staat zou dezelfde regeling in elke \
+                           wereld bij dezelfde organisatie leggen";
 
 /// De verwijzing waarmee een `accept_from` het zaakkenmerk van het lopende
 /// besluit meegeeft.
@@ -1784,6 +2048,25 @@ impl BesluitDefinition {
         Ok(template.fill(params))
     }
 
+    /// De parameter waarmee het zaakkenmerk van dit besluit de zaak identificeert.
+    ///
+    /// Precies één **verschillende** verwijzing, of niets. `zorgtoeslag/{bsn}`
+    /// wijst een persoon aan en `{bsn}/{bsn}` nog steeds dezelfde;
+    /// `{jaar}/{bsn}` wijst een zaak aan maar geen partij, en dan valt er niet te
+    /// kiezen zonder te raden wie van de twee de schuldeiser is.
+    fn identifying_param(&self) -> Option<&str> {
+        let template = Template::parse(&self.zaakkenmerk);
+        let distinct: BTreeSet<&str> = template
+            .parts
+            .iter()
+            .map(|part| part.reference)
+            .collect::<BTreeSet<_>>();
+        match distinct.len() {
+            1 => distinct.into_iter().next(),
+            _ => None,
+        }
+    }
+
     /// Reken de verplichtingen van dit besluit uit tot termijnen.
     ///
     /// Aanroepen ná de uitvoering: het bedrag komt uit de uitkomsten waarop
@@ -1793,10 +2076,12 @@ impl BesluitDefinition {
     /// was.
     ///
     /// `declared` komt uit het **lexogram**: het artikel dat de sturende
-    /// uitkomst voortbrengt, in de versie die op `op_moment` gold. `payer` komt
-    /// uit het **wereldbestand**: de cel die namens het bevoegd gezag betaalt.
-    /// Die twee bronnen zijn de hele scheiding waar dit pad om draait — wat er
-    /// moet gebeuren staat in de wet, wie het doet in de uitvoering.
+    /// uitkomst voortbrengt, in de versie die op `op_moment` gold. Wie er
+    /// schuldenaar en schuldeiser is, staat daar ook — het is de
+    /// rechtsverhouding die het besluit schept. Welke **cel** die schuldenaar in
+    /// deze wereld is, komt uit het **wereldbestand** (`scope.parties`). Die twee
+    /// bronnen zijn de hele scheiding waar dit pad om draait: wat er moet
+    /// gebeuren staat in de wet, wie het doet in de uitvoering.
     pub(crate) fn schedule_obligations(
         &self,
         scope: ObligationScope<'_>,
@@ -1807,7 +2092,7 @@ impl BesluitDefinition {
     ) -> Result<Vec<ObligationDue>> {
         let ObligationScope {
             cell,
-            payer,
+            parties,
             zaakkenmerk,
             op_moment,
         } = scope;
@@ -1819,7 +2104,11 @@ impl BesluitDefinition {
             let schedule = obligation.schedule(cell, &self.name, settings)?;
             let start = obligation.start(cell, &self.name, params, op_moment)?;
             let total = obligation.total(cell, &self.name, outputs)?;
-            resolved.push((obligation, schedule, start, total));
+            // Ná het bedrag, want het teken bepaalt de richting: een negatief
+            // slotbedrag is geen negatieve betaling maar een verplichting de
+            // andere kant op.
+            let relation = obligation.relation(cell, self, declared, params, total)?;
+            resolved.push((obligation, schedule, start, relation));
         }
         // De termijnen van dit besluit tellen nooit zo hoog dat ze de grenzen van
         // i64 raken: het zijn er ten hoogste twaalf per verplichting.
@@ -1832,8 +2121,15 @@ impl BesluitDefinition {
         .unwrap_or(i64::MAX);
 
         let mut due = Vec::new();
-        for (obligation, schedule, start, total) in resolved {
-            for (index, bedrag) in split(total, schedule.terms()).into_iter().enumerate() {
+        for (obligation, schedule, start, relation) in resolved {
+            // Wie er in déze wereld onder de naam van de schuldenaar nakomt. Geen
+            // cel is geen fout: de wereld kent die actor niet, de termijn staat
+            // open (zie [`ObligationDue::betaler`]).
+            let betaler = parties.cell_for(&relation.schuldenaar).map(str::to_string);
+            for (index, bedrag) in split(relation.total, schedule.terms())
+                .into_iter()
+                .enumerate()
+            {
                 // `index` telt de termijnen van dit ritme en komt nooit in de
                 // buurt van de grens van u32.
                 let step = u32::try_from(index).unwrap_or(u32::MAX);
@@ -1850,7 +2146,10 @@ impl BesluitDefinition {
                     })?;
 
                 due.push(ObligationDue {
-                    payer: payer.to_string(),
+                    soort: relation.soort,
+                    schuldenaar: relation.schuldenaar.clone(),
+                    schuldeiser: relation.schuldeiser.clone(),
+                    betaler: betaler.clone(),
                     decided_by: cell.to_string(),
                     besluit: self.name.clone(),
                     zaakkenmerk: zaakkenmerk.to_string(),
@@ -2388,20 +2687,149 @@ impl DeclaredObligations {
     /// Controleer deze verplichtingen tegen het besluit dat het artikel uitvoert.
     pub(crate) fn validate(&self, cell: &str, definition: &BesluitDefinition) -> Result<()> {
         for obligation in &self.items {
-            obligation.validate(
-                cell,
-                &definition.name,
-                &self.origin,
-                definition.recorded_outputs(),
-                &self.article_outputs,
-                &definition.params,
-            )?;
+            obligation.validate(cell, definition, &self.origin, &self.article_outputs)?;
         }
         Ok(())
+    }
+
+    /// De partijen die zonder besluit al vaststaan: het bevoegd gezag.
+    ///
+    /// Voor het **optuigen** van de wereld, die wil weten of de cel die straks
+    /// nakomt een betalingsstroom houdt. Een `$parameter` staat er niet bij: die
+    /// krijgt pas bij het besluit een waarde, en over een cel die er dan misschien
+    /// is valt vooraf niets te toetsen.
+    ///
+    /// **Beide** kanten worden opgelost en niet alleen de schuldenaar: een
+    /// `#bevoegd_gezag` onder een regeling die er geen aanwijst is hier een fout,
+    /// ook als die kant de schuldeiser is. Zou alleen de schuldenaar langskomen,
+    /// dan viel zo'n verplichting pas bij het eerste besluit om — halverwege de
+    /// tijdlijn, in plaats van hier.
+    ///
+    /// Wat er in de lijst terechtkomt is iets anders dan wat er getoetst wordt:
+    /// alleen wie **schuldenaar kan worden** telt mee, want alleen die hoeft een
+    /// betalingsstroom te houden. De schuldeiser wordt dat pas als de verplichting
+    /// `richting_bij_negatief` declareert.
+    pub(crate) fn static_parties(
+        &self,
+        cell: &str,
+        definition: &BesluitDefinition,
+    ) -> Result<BTreeSet<String>> {
+        let mut names = BTreeSet::new();
+        for obligation in &self.items {
+            let (schuldenaar, schuldeiser) = obligation.parties(cell, definition, &self.origin)?;
+            let keert_om = obligation.richting_bij_negatief.is_some();
+            for (role, party, kan_nakomen) in [
+                (SCHULDENAAR, schuldenaar, true),
+                (SCHULDEISER, schuldeiser, keert_om),
+            ] {
+                if party == PartyRef::Authority {
+                    let name = party.resolve(role, cell, definition, self, &BTreeMap::new())?;
+                    if kan_nakomen {
+                        names.insert(name);
+                    }
+                }
+            }
+        }
+        Ok(names)
     }
 }
 
 impl ObligationDefinition {
+    /// De twee partijen van deze verplichting, als verwijzingen.
+    ///
+    /// Eén plek voor het optuigen én het besluit, en dus ook één plek waar de
+    /// **standaarden** staan: zou het optuigen een andere standaard invullen dan
+    /// het besluit, dan droeg een gram een schuldeiser die bij de toets nooit
+    /// langskwam.
+    ///
+    /// Standaard is de schuldenaar het bevoegd gezag — het gewone geval van een
+    /// beschikking die een bedrag toekent — en de schuldeiser de parameter waarmee
+    /// het zaakkenmerk de zaak identificeert: een beschikking gaat over iemand, en
+    /// dat is de partij die het geld krijgt. Wijst het zaakkenmerk niet precies
+    /// één parameter aan, dan valt er niets te raden en moet de wet het zeggen.
+    fn parties<'a>(
+        &'a self,
+        cell: &str,
+        definition: &'a BesluitDefinition,
+        origin: &ObligationOrigin,
+    ) -> Result<(PartyRef<'a>, PartyRef<'a>)> {
+        let unreadable = |role: &str, reference: &str| SimulatorError::ObligationParty {
+            cell: cell.to_string(),
+            besluit: definition.name.clone(),
+            origin: origin.describe(),
+            role: role.to_string(),
+            reason: format!("'{reference}' is geen verwijzing; {PARTY_FORMS}"),
+        };
+        let schuldenaar = match &self.schuldenaar {
+            None => PartyRef::Authority,
+            Some(text) => PartyRef::parse(text).ok_or_else(|| unreadable(SCHULDENAAR, text))?,
+        };
+        let schuldeiser = match &self.schuldeiser {
+            Some(text) => PartyRef::parse(text).ok_or_else(|| unreadable(SCHULDEISER, text))?,
+            None => PartyRef::Param(definition.identifying_param().ok_or_else(|| {
+                SimulatorError::ObligationParty {
+                    cell: cell.to_string(),
+                    besluit: definition.name.clone(),
+                    origin: origin.describe(),
+                    role: SCHULDEISER.to_string(),
+                    reason: format!(
+                        "de verplichting laat hem weg, en zaakkenmerk '{}' wijst niet \
+                         precies één parameter aan; declareer `{SCHULDEISER}: $parameter`",
+                        definition.zaakkenmerk
+                    ),
+                }
+            })?),
+        };
+        Ok((schuldenaar, schuldeiser))
+    }
+
+    /// De rechtsverhouding die deze verplichting op dit bedrag oplevert.
+    ///
+    /// Hier valt de beslissing over een **negatief** bedrag. Een negatieve
+    /// betaling bestaat niet: wat een vaststelling lager dan het voorschot
+    /// oplevert, is een verplichting de andere kant op (Awb 4:57), met de partij
+    /// als schuldenaar en een positief bedrag. Dat is een andere rechtsverhouding
+    /// en geen minteken, dus de wet moet hem declareren — zwijgt ze, dan valt het
+    /// besluit hier om en wordt er niets vastgelegd.
+    fn relation(
+        &self,
+        cell: &str,
+        definition: &BesluitDefinition,
+        declared: &DeclaredObligations,
+        params: &BTreeMap<String, Value>,
+        total: Decimal,
+    ) -> Result<ObligationRelation> {
+        let (schuldenaar, schuldeiser) = self.parties(cell, definition, &declared.origin)?;
+        let schuldenaar = schuldenaar.resolve(SCHULDENAAR, cell, definition, declared, params)?;
+        let schuldeiser = schuldeiser.resolve(SCHULDEISER, cell, definition, declared, params)?;
+        // `validate` heeft de soort al aan [`BETALING`] gebonden; wat er anders
+        // uit kan komen, komt uit de richting en niet uit de declaratie.
+        let soort = ObligationKind::Betaling;
+        if total >= Decimal::ZERO {
+            return Ok(ObligationRelation {
+                soort,
+                schuldenaar,
+                schuldeiser,
+                total,
+            });
+        }
+        match self.richting_bij_negatief {
+            Some(RichtingBijNegatief::Omkeren) => Ok(ObligationRelation {
+                soort: soort.reversed(),
+                schuldenaar: schuldeiser,
+                schuldeiser: schuldenaar,
+                total: -total,
+            }),
+            None => Err(SimulatorError::NegativeObligationAmount {
+                cell: cell.to_string(),
+                besluit: definition.name.clone(),
+                origin: declared.origin.describe(),
+                output: self.bedrag.clone(),
+                bedrag: total.to_string(),
+            }),
+        }
+    }
+
     /// Controleer deze verplichting tegen het besluit dat haar artikel uitvoert.
     ///
     /// Alles wat zonder de wereld te beantwoorden valt staat hier: de soort moet
@@ -2412,12 +2840,13 @@ impl ObligationDefinition {
     fn validate(
         &self,
         cell: &str,
-        besluit: &str,
+        definition: &BesluitDefinition,
         origin: &ObligationOrigin,
-        outputs: BTreeSet<&str>,
         article_outputs: &BTreeSet<String>,
-        params: &[DocumentedParameter],
     ) -> Result<()> {
+        let besluit = definition.name.as_str();
+        let outputs = definition.recorded_outputs();
+        let params = definition.params.as_slice();
         if self.soort != BETALING {
             return Err(SimulatorError::UnknownObligationKind {
                 cell: cell.to_string(),
@@ -2426,6 +2855,29 @@ impl ObligationDefinition {
                 soort: self.soort.clone(),
                 known: BETALING.to_string(),
             });
+        }
+
+        // De twee partijen: allebei te lezen, en een `$parameter` moet bij dit
+        // besluit gedocumenteerd zijn. Hier en niet pas bij het besluit, want een
+        // verplichting die naar een onbekende parameter wijst, legt iets op aan
+        // niemand.
+        let (schuldenaar, schuldeiser) = self.parties(cell, definition, origin)?;
+        for (role, party) in [(SCHULDENAAR, schuldenaar), (SCHULDEISER, schuldeiser)] {
+            if let PartyRef::Param(name) = party {
+                if !documents(params, name) {
+                    return Err(SimulatorError::ObligationParty {
+                        cell: cell.to_string(),
+                        besluit: besluit.to_string(),
+                        origin: origin.describe(),
+                        role: role.to_string(),
+                        reason: format!(
+                            "'${name}': dit besluit documenteert die parameter niet \
+                             (wel: {})",
+                            parameter_listing(params)
+                        ),
+                    });
+                }
+            }
         }
 
         // Een uitkomst van dít artikel, of een uitkomst die het besluit erbij
@@ -3739,21 +4191,92 @@ params:
         }
     }
 
+    /// Het besluit dat het artikel uitvoert: één parameter, één uitkomst.
+    fn uitvoerend_besluit() -> BesluitDefinition {
+        serde_yaml_ng::from_str(
+            r"
+name: toekenning
+regulation: wet_op_de_zorgtoeslag
+output: hoogte_zorgtoeslag
+zaakkenmerk: 'zorgtoeslag/{jaar}'
+params:
+  - name: jaar
+    type: string
+",
+        )
+        .unwrap_or_else(|e| panic!("testdefinitie moet parsen: {e}"))
+    }
+
     /// De uitkomsten en parameters van het besluit dat het artikel uitvoert.
     fn valideer(obligation: &ObligationDefinition) -> Result<()> {
-        let params = vec![DocumentedParameter {
-            name: "jaar".to_string(),
-            value_type: crate::cell::ParameterType::String,
-            prefill: None,
-        }];
         obligation.validate(
             "toeslagen",
-            "toekenning",
+            &uitvoerend_besluit(),
             &origin(),
-            BTreeSet::from(["hoogte_zorgtoeslag"]),
             &BTreeSet::from(["verzamelinkomen".to_string()]),
-            &params,
         )
+    }
+
+    /// De rechtsverhouding die deze verplichting op dit bedrag oplevert.
+    ///
+    /// Recht op de naad waar de richting valt, en met opzet zonder wereld: wat
+    /// het teken van het bedrag betekent, hangt niet af van de vorm van de input
+    /// waaruit de uitkomst kwam. Een `param`, een `from_chronicle`, een
+    /// `from_decretogram` en een `accept_from` komen alle vier als uitkomst uit
+    /// dezelfde uitvoering, en dit is het enige punt waar er daarna nog naar het
+    /// teken gekeken wordt.
+    fn verhouding(obligation: &ObligationDefinition, bedrag: &str) -> Result<ObligationRelation> {
+        let definition = uitvoerend_besluit();
+        let declared = DeclaredObligations {
+            origin: origin(),
+            authority: Some("Dienst Toeslagen".to_string()),
+            article_outputs: BTreeSet::from(["hoogte_zorgtoeslag".to_string()]),
+            items: vec![obligation.clone()],
+        };
+        let params = BTreeMap::from([("jaar".to_string(), Value::String("999993653".to_string()))]);
+        let total = Decimal::from_str_exact(bedrag)
+            .unwrap_or_else(|e| panic!("testbedrag '{bedrag}' moet leesbaar zijn: {e}"));
+        obligation.relation("toeslagen", &definition, &declared, &params, total)
+    }
+
+    /// **Een negatief bedrag zonder declaratie komt hier niet voorbij.**
+    ///
+    /// De weigering zit op de naad tussen het uitgerekende bedrag en de termijn,
+    /// en niet bij een van de inputvormen: wat de uitvoering oplevert is één
+    /// uitkomstenkaart, en of die uit een parameter, een eigen kroniek, een
+    /// eerder gram of een andere cel gevoed werd, is hier niet meer te zien. Er
+    /// is dan ook maar één plek waar een [`ObligationDue`] ontstaat, en die komt
+    /// hier langs.
+    #[test]
+    fn een_negatief_bedrag_zonder_declaratie_levert_geen_verhouding() {
+        let err = verhouding(&betaling(""), "-48602")
+            .expect_err("een negatief bedrag zonder declaratie hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::NegativeObligationAmount { .. }),
+            "verwachtte NegativeObligationAmount, kreeg {err}"
+        );
+    }
+
+    /// Met de declaratie wisselen de partijen en wordt het bedrag positief.
+    #[test]
+    fn een_negatief_bedrag_met_omkeren_draait_de_verhouding_om() {
+        let relation = verhouding(&betaling("richting_bij_negatief: omkeren\n"), "-48602")
+            .unwrap_or_else(|e| panic!("met de declaratie hoort dit te mogen: {e}"));
+        assert_eq!(relation.soort, ObligationKind::Terugvordering);
+        assert_eq!(relation.schuldenaar, "999993653");
+        assert_eq!(relation.schuldeiser, "Dienst Toeslagen");
+        assert_eq!(relation.total, Decimal::from(48602));
+    }
+
+    /// En nul is geen omkering: er valt niets terug te vorderen, dus het blijft
+    /// een betaling met de partijen zoals de wet ze aanwees.
+    #[test]
+    fn een_bedrag_van_nul_blijft_een_betaling() {
+        let relation = verhouding(&betaling("richting_bij_negatief: omkeren\n"), "0")
+            .unwrap_or_else(|e| panic!("nul hoort te mogen: {e}"));
+        assert_eq!(relation.soort, ObligationKind::Betaling);
+        assert_eq!(relation.schuldenaar, "Dienst Toeslagen");
+        assert_eq!(relation.schuldeiser, "999993653");
     }
 
     /// Een artikel zoals het in een regeling staat.

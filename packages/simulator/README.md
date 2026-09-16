@@ -13,8 +13,8 @@ en reduceert, zonder engine. Zie [Een bron-cel](#een-bron-cel).
 Een cel met eigen wetten kan ook **besluiten**: ze voert een regeling uit en legt
 de uitkomst vast als decretogram in haar eigen kroniek. Zie
 [Het besluit-pad](#het-besluit-pad). Wat zo'n besluit aan **verplichtingen**
-oplegt, staat in de regeling die het uitvoert; wie ze nakomt, in het
-wereldbestand — en de klok komt ze later na:
+oplegt en tussen wie, staat in de regeling die het uitvoert; welke cel ze nakomt,
+in het wereldbestand — en de klok komt ze later na:
 [Verplichtingen](#verplichtingen-wat-een-besluit-achterlaat).
 
 Gaat een vraag over een celgrens, dan loopt hij langs de **veiligheidscontext**
@@ -624,8 +624,10 @@ die korter hoort te worden.
 stonden op die lijst en staan er niet meer: het artikel dat de beschikking
 voortbrengt, declareert ze zelf in `produces.extensions.chronolex`, dus ze dragen
 `lexogram` met de regeling, de versie en het artikel erbij (zie
-[Verplichtingen](#verplichtingen-wat-een-besluit-achterlaat)). Wat het
-wereldbestand er nog over zegt, is wíe ze nakomt — uitvoering, en geen norm.
+[Verplichtingen](#verplichtingen-wat-een-besluit-achterlaat)). Ook de twee
+partijen staan daar: het artikel zegt wie schuldenaar is en wie schuldeiser, en het
+schema schrijft de standaarden uit voor wie ze weglaat. Wat het wereldbestand er nog
+over zegt, is wélke cel de schuldenaar nakomt — uitvoering, en geen norm.
 
 Twee dingen die het schema met opzet níet doet. Het spreekt zich niet uit over
 `platform`-velden: dat een gram zijn eigen moment, zijn eigen receipt en de stand
@@ -780,9 +782,14 @@ produces:
   extensions:
     chronolex:
       verplichtingen:
-        - soort: betaling                  # vandaag de enige soort
+        - soort: betaling                  # de enige soort die te declareren is
           bedrag: $hoogte_zorgtoeslag      # een uitkomst van dít artikel
           ritme: $betalingsritme           # ineens | kwartaal | maand, of $instelling
+          schuldenaar: '#bevoegd_gezag'    # optioneel; dit is de standaard
+          schuldeiser: $bsn                # optioneel; standaard de parameter uit
+                                           # het zaakkenmerk
+          richting_bij_negatief: omkeren   # optioneel; zonder dit is een negatief
+                                           # bedrag een fout
           vanaf: '{jaar}-02-01'            # optioneel; standaard het moment van het besluit
           grondslag: Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22
 ```
@@ -791,7 +798,7 @@ produces:
 # in het wereldbestand, bij de cel die betaalt
 - id: belastingdienst
   komt_na:
-    - Dienst Toeslagen                     # het bevoegd gezag namens wie zij nakomt
+    - Dienst Toeslagen                     # de naam namens wie zij nakomt
   chronicles:
     - stream: betalingen
       key: zaakkenmerk
@@ -832,19 +839,68 @@ bedrag toe.
   de herkomst (`lexogram`: regeling, versie en artikel), zodat wie een betaling
   terugleest niet alleen ziet dát er betaald moest worden maar ook waarom en
   waaruit.
+- **`schuldenaar` en `schuldeiser` zijn namen uit het recht, geen cellen.** Een
+  verplichting is een rechtsverhouding tussen twee partijen; wie ze zijn wijst de
+  wet aan. Twee vormen: `'#bevoegd_gezag'` — het `competent_authority` van het
+  artikel, en anders dat van het document, met dezelfde resolutie als bij het
+  besluit zelf — of `$parameter`, een gedocumenteerde parameter van het besluit
+  waarvan de waarde de partij benoemt. Een kale naam mag niet: die zou één
+  organisatie in de wet vastspijkeren, en dan legt dezelfde regeling in een andere
+  wereld de verplichting bij iemand die er niets mee te maken heeft.
+- **Laat je ze weg, dan gelden de standaarden**: schuldenaar is het bevoegd gezag
+  en schuldeiser is de parameter waarmee het zaakkenmerk de zaak identificeert —
+  een beschikking die een bedrag toekent, laat het bestuursorgaan betalen aan de
+  partij over wie de zaak gaat. Die standaard wordt bij het optuigen **expliciet
+  gemaakt** en staat in elke termijn van het gram: een gram dat de partijen
+  verzwijgt omdat ze "vanzelf spreken", laat een lezer ze later raden. Wijst het
+  zaakkenmerk niet precies één parameter aan (`{jaar}/{bsn}`), dan valt er niets
+  te leiden en weigert het optuigen de verplichting — met de melding dat
+  `schuldeiser: $parameter` eronder hoort.
 
-**Wie betaalt, komt uit het wereldbestand.** Een cel noemt met `komt_na` de
-bevoegde gezagen waarvoor zij betalingsverplichtingen nakomt — de naam zoals de
-wet het gezag aanwijst (`competent_authority`, RFC-002), niet een cel-id. Dat
-moet ook: het lexogram kan geen cel noemen — een regeling weet niet hoe iemand
-zijn uitvoering heeft ingericht — dus de enige naam die beide kanten kennen is
-die van het gezag. Hetzelfde lexogram kan daardoor in een ander wereldbestand
-een andere cel laten betalen zonder dat het recht verschilt. Binnen één wereld
-is het één cel per gezag: het optuigen weigert een verplichting waarvoor geen
-cel gebonden is, twee cellen die hetzelfde gezag nakomen, en een gebonden cel
-zonder stroom `betalingen`. De besluitende cel
-mag zichzelf nakomen; ze heeft die stroom hoe dan ook nodig, want zij legt vast dat
-het haar gemeld is.
+**Een negatief bedrag bestaat niet.** Valt het bedrag onder nul — een vaststelling
+lager dan het betaalde voorschot — dan is dat geen negatieve betaling. Juridisch is
+het een **terugvordering** (Awb 4:57): een verplichting de andere kant op, waarbij
+de partij moet betalen. Dat is een andere rechtsverhouding en geen minteken, dus de
+wet moet hem aanwijzen. Declareert de verplichting `richting_bij_negatief: omkeren`,
+dan wisselen schuldenaar en schuldeiser, wordt het bedrag positief en draagt de
+termijn `soort: terugvordering`. Zonder die declaratie valt het besluit om en wordt
+er **niets** vastgelegd, met een melding die de declaratie noemt: een gram met een
+negatieve termijn erin zou een betaling beloven die niemand kan doen, en een gram dat
+er eenmaal ligt verandert niet meer. `terugvordering` is zelf niet te declareren —
+ze ontstaat uit de richting, niet uit een woord in de wet.
+
+**Wie er feitelijk betaalt, komt uit het wereldbestand.** De wet noemt een naam; het
+wereldbestand zegt welke **cel** er onder die naam nakomt. Twee wegen, in deze
+volgorde:
+
+1. **`komt_na`**: een cel noemt de namen waarvoor zij betalingsverplichtingen
+   nakomt — de naam zoals de wet het gezag aanwijst (`competent_authority`,
+   RFC-002), niet een cel-id. Zo betaalt een betaalsysteem namens een
+   bestuursorgaan dat zelf geen cel is. Het lexogram kan die cel niet noemen — een
+   regeling weet niet hoe iemand zijn uitvoering heeft ingericht — dus de enige
+   naam die beide kanten kennen is die van de partij. Hetzelfde lexogram laat
+   daardoor in een ander wereldbestand een andere cel betalen zonder dat het recht
+   verschilt.
+2. **De identiteit van een cel**: is de schuldenaar een partij die zélf als cel
+   meedoet (haar `identity` is die naam), dan betaalt die cel. Zo komt de aanvrager
+   een terugvordering na zonder dat iemand daar een binding voor opschrijft.
+
+`komt_na` gaat vóór, en dat moet ook: een bestuursorgaan dat als cel besluit, laat
+doorgaans een ander systeem voor haar betalen, en dat systeem zegt dat zo. Twee
+cellen die dezelfde naam nakomen worden bij het optuigen geweigerd; dragen twee
+cellen dezelfde `identity`, dan wijst die weg niemand aan — kiezen zou een betaling
+bij een willekeurige organisatie laten landen.
+
+**Geen cel is geen fout.** Kent de wereld voor de schuldenaar geen cel, dan roostert
+de klok de termijn wél in en komt hem niet na: het gram draagt haar met `betaler:
+null`, en het beeld toont haar als **openstaand**. Een terugvordering op een burger
+is een echte verplichting, ook in een wereld waarin die burger niet meedoet — wat de
+wet oplegt hangt niet af van wie er in deze opstelling een systeem heeft. Wat het
+optuigen wél weigert, is een gebonden cel zonder stroom `betalingen`, voor zover ze
+vooruit te weten is: een schuldenaar die het bevoegd gezag is staat dan al vast, een
+`$parameter` krijgt pas bij het besluit een waarde. De besluitende cel mag zichzelf
+nakomen; ze heeft die stroom hoe dan ook nodig, want zij legt vast dat het haar
+gemeld is.
 
 Omdat het schema aan het **artikel** hangt en niet aan de besluit-definitie,
 krijgen twee besluiten die op dezelfde uitkomst van hetzelfde artikel gaan
@@ -863,11 +919,16 @@ weigering belooft niets, dus er valt niets in te roosteren — zie
 [Een weigering is ook een besluit](#een-weigering-is-ook-een-besluit).
 
 Nakomen doet de klok, niet het besluit. Op elke vervaldatum legt de **betalende**
-cel een executogram vast in haar eigen stroom `betalingen` (`intake: betaling`,
-met zaakkenmerk, bedrag, volgnummer en de verwijzing naar het decretogram), en de
-**besluitende** cel een levering in de hare: *betaling ontvangen gemeld*. Twee
-vastleggingen, elk in de kroniek van de cel die haar deed — beide kanten weten wat
-er gebeurde, en niemand kopieert de staat van een ander.
+cel een executogram vast in haar eigen stroom `betalingen` (`intake: betaling`, met
+zaakkenmerk, bedrag, volgnummer, de soort, de twee partijen en de verwijzing naar het
+decretogram), en de **besluitende** cel een levering in de hare: *betaling ontvangen
+gemeld*. Twee vastleggingen, elk in de kroniek van de cel die haar deed — beide
+kanten weten wat er gebeurde, en niemand kopieert de staat van een ander. Het gram
+heet naar de soort, dus een terugvordering ligt er als *terugvordering* en niet als
+een betaling met een verhaal eromheen. Dat de twee partijen in het feit zelf staan is
+het punt: een som over deze stroom gaat anders over bedragen waarvan de richting
+alleen elders staat, en `betaald_tot_nu_toe` van een cel telt precies op wat zíj
+betaalde.
 
 Die verwijzing naar het decretogram is een **adres** en niet alleen een
 omschrijving:
@@ -916,10 +977,16 @@ ze niet per verplichting opnieuw.
 Het staat als scenario in
 [`scenarios/toeslagen_verplichtingen.yaml`](scenarios/toeslagen_verplichtingen.yaml)
 (vier kwartaaltermijnen, met de vraag over een eerder moment die ná een jaar nog
-hetzelfde antwoordt) en
+hetzelfde antwoordt),
 [`scenarios/toeslagen_verplichtingen_ritmes.yaml`](scenarios/toeslagen_verplichtingen_ritmes.yaml)
 (hetzelfde bedrag `ineens` en per `maand`, elk uit een eigen artikel — het ritme
-bepaalt wanneer, niet hoeveel).
+bepaalt wanneer, niet hoeveel) en
+[`scenarios/toeslagen_terugvordering.yaml`](scenarios/toeslagen_terugvordering.yaml)
+(een vaststelling lager dan het voorschot: de aanvrager-cel betaalt terug aan het
+bevoegd gezag, en de twee sommen lopen uiteen zonder saldo). Wat er gebeurt als de
+wet over een negatief bedrag zwijgt, staat als fixture in
+[`scenarios/geweigerd/negatief_bedrag_zonder_omkeren.yaml`](scenarios/geweigerd/negatief_bedrag_zonder_omkeren.yaml)
+en wordt afgerekend in [`tests/verplichtingen.rs`](tests/verplichtingen.rs).
 
 ### Het zaakkenmerk moet bij precies één zaak horen
 
@@ -1386,7 +1453,8 @@ Vier eigenschappen, en ze hangen samen:
   generiek — een gesorteerde lijst van `(datum, trigger)` — dus een soort erbij is
   een variant erbij en geen andere klok. Er zijn er twee: een `fixture` die bij
   het passeren wordt vastgelegd, en een **vervallende verplichting** die de cel
-  die haar draagt laat betalen (zie
+  achter de schuldenaar laat betalen — of, als deze wereld die cel niet kent, blijft
+  openstaan (zie
   [Verplichtingen](#verplichtingen-wat-een-besluit-achterlaat)).
 - **Dat de wachtrij oplopend is, is een invariant en geen toestand.** Een besluit
   tijdens de run plant nieuwe vervaldata, en die gaan op datumpositie de rij in.
@@ -1522,8 +1590,9 @@ cells:
           key: zaakkenmerk
           sum: bedrag                           # in plaats van `latest`
 
-    komt_na:                                    # de bevoegde gezagen waarvoor
-      - Dienst Toeslagen                        # deze cel betalingen nakomt
+    komt_na:                                    # de namen waarvoor deze cel
+      - Dienst Toeslagen                        # betalingen nakomt; een cel komt
+                                                # haar eigen `identity` vanzelf na
 
     besluit_definitions:                        # wat de cel kan besluiten
       - name: zorgtoeslag_besluit               # een voorbeeld, geen echte
@@ -2285,21 +2354,25 @@ als boolean-uitkomst in een regeling staat kan niet afwijzen, en `decision_type`
 is geen open vocabulaire: het gram draagt wat de regeling aanwijst, of `AFWIJZING`.
 Zie [Een weigering is ook een besluit](#een-weigering-is-ook-een-besluit).
 
-**Een verplichting kent geen rente en geen terugvordering.** Een termijn vervalt
-en wordt betaald; wat er gebeurt als er te laat of niet betaald wordt, staat er
-niet. Verrekenen gebeurt wél, maar als **regel in de wet** en niet als iets dat
-het platform met een schema doet: Awir art. 19 trekt de verleende voorschotten
-van de vastgestelde tegemoetkoming af en legt alleen het slotbedrag op. Wat er
-gebeurt als dat slotbedrag negatief is — een terugvordering (art. 24, derde lid)
-— staat er nog niet: het is in deze opzet een gewoon besluit met een eigen
-verplichting, en die kant op betalen kent de opstelling nog niet. Een
-verplichting kent ook nog geen **schuldenaar en schuldeiser**: `soort` kent
-alleen `betaling`, en wie er betaald krijgt volgt uit de zaak en niet uit de
-declaratie. Een verplichting kan ook niet gewijzigd of ingetrokken worden: het
-schema staat in het gram, en een gram verandert niet — en dat is meteen waarom
-de vaststelling in de publieke wereld ná de laatste voorschottermijn staat. Een
-vaststelling zet de nog openstaande termijnen van het voorschot niet stop: die
-vervallen gewoon door, en het slotbedrag komt er dan bovenop. Wat de wereld
+**Een verplichting kent geen rente en geen verzuim.** Een termijn vervalt en wordt
+betaald; wat er gebeurt als er te laat of niet betaald wordt, staat er niet — geen
+rente, geen aanmaning, geen dwangbevel (Awb 4:97 e.v.). Verrekenen gebeurt wél, maar
+als **regel in de wet** en niet als iets dat het platform met een schema doet: Awir
+art. 19 trekt de verleende voorschotten van de vastgestelde tegemoetkoming af en legt
+alleen het slotbedrag op. Komt dat slotbedrag onder nul, dan is er een richting nodig:
+`richting_bij_negatief: omkeren` maakt er een terugvordering van (zie
+[Verplichtingen](#verplichtingen-wat-een-besluit-achterlaat)), en zonder die
+declaratie valt het besluit om. Awir art. 19 declareert haar nog niet, dus een
+vaststelling die lager uitkomt dan het voorschot loopt daar vast in plaats van terug
+te vorderen — de grondslag daarvoor (art. 24, derde lid) staat nog niet in dat blok.
+
+Twee besluiten op hetzelfde artikel leggen allebei het volle schema op: het tweede
+verrekent niet met het eerste, en een terugvordering is een eigen verplichting naast
+het voorschot en geen correctie erop. Een verplichting kan ook niet gewijzigd of
+ingetrokken worden: het schema staat in het gram, en een gram verandert niet — en dat
+is meteen waarom de vaststelling in de publieke wereld ná de laatste voorschottermijn
+staat. Een vaststelling zet de nog openstaande termijnen van het voorschot niet stop:
+die vervallen gewoon door, en het slotbedrag komt er dan bovenop. Wat de wereld
 verrekent is daarom wat er op dat moment betaald is, niet wat er verleend is.
 
 **Een voorwaarde op een actie is één gelijkheid.** `available_when` kijkt naar één
