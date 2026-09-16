@@ -536,9 +536,18 @@ geweigerd wat de naam dubbelzinnig zou maken: een definitie zonder
 zaakkenmerk-sjabloon, en een definitie die zelf een parameter `zaakkenmerk`
 documenteert.
 
-`scenarios/toeslagen_nabetaling.yaml` speelt de twee samen af: een vaststelling
-die het toegekende bedrag uit haar eigen toekenning terugleest en het betaalde
-bedrag accepteert van de cel die betaalde.
+De publieke wereld speelt de twee samen af: `zorgtoeslag_vaststelling` voert de
+**Awir** uit (art. 19, vaststelling na afloop van het berekeningsjaar), leest het
+toegekende bedrag terug uit haar eigen toekenning en accepteert van de betalende
+cel wat er als voorschot is uitbetaald. Het slotbedrag is het verschil — de
+verrekening van art. 24, tweede lid.
+
+`scenarios/toeslagen_nabetaling.yaml` doet hetzelfde over een **testregeling**
+(`fixtures/regulation/test_nabetaling`) en blijft daarvoor staan: dat scenario
+toetst de twee inputvormen zelf — teruglezen is geen eigen feit, accepteren is
+geen narekening — met een regeling die niets anders doet dan het verschil
+uitrekenen. Zo hangt die toets niet aan de inhoud van een echte wet, en de
+publieke wereld laat zien hoe de vorm er in het recht uitziet.
 
 ### Twee paden, twee engines
 
@@ -839,8 +848,15 @@ het haar gemeld is.
 
 Omdat het schema aan het **artikel** hangt en niet aan de besluit-definitie,
 krijgen twee besluiten die op dezelfde uitkomst van hetzelfde artikel gaan
-hetzelfde schema. Dat is de bedoeling: een verlening en een latere vaststelling
-leggen allebei op wat dat artikel oplegt.
+hetzelfde schema. Dat is de bedoeling — en het is meteen de reden dat een
+verlening en een vaststelling niet hetzelfde artikel horen uit te voeren. In de
+publieke wereld doen ze dat dan ook niet: de toekenning voert Wet op de
+zorgtoeslag art. 2 uit en legt het voorschot in termijnen op (Awir art. 16 jo.
+art. 22), de vaststelling voert Awir art. 19 uit en legt het slotbedrag ineens
+op, ná verrekening van wat er als voorschot betaald is (art. 24, tweede lid).
+Zouden beide op art. 2 staan, dan legde de wereld het volle bedrag twee keer op
+— niet omdat het schema aan het artikel hangt, maar omdat "vaststellen" dan
+niets anders was dan hetzelfde nog eens uitrekenen.
 
 Eén besluit legt nooit iets op, wat het artikel ook zegt: een **afwijzing**. Een
 weigering belooft niets, dus er valt niets in te roosteren — zie
@@ -1098,13 +1114,13 @@ decide:
   - cell: toeslagen
     besluit: zorgtoeslag_vaststelling
     params: { bsn: '999993653' }
-    op_moment: 2024-06-01
+    op_moment: 2025-01-15
     expect_accepted:
-      toetsingsinkomen: belastingdienst   # van die cel, en hier niet nagerekend
+      verleende_voorschotten: belastingdienst   # van die cel, niet nagerekend
     expect_read_back:
-      toegekend_bedrag: zorgtoeslag_toekenning  # uit een eigen ouder gram
+      toegekende_tegemoetkoming: zorgtoeslag_toekenning  # uit een eigen ouder gram
     expect_computed:
-      - is_verzekerde                     # eigen feit, dus eigen werk
+      - slotbedrag                              # hier uitgerekend, dus eigen werk
 ```
 
 `expect_read_back` staat naast de andere twee en niet erin: een teruggelezen
@@ -1510,8 +1526,9 @@ cells:
       - Dienst Toeslagen                        # deze cel betalingen nakomt
 
     besluit_definitions:                        # wat de cel kan besluiten
-      - name: zorgtoeslag_vaststelling
-        doc: vrije toelichting                  # optioneel
+      - name: zorgtoeslag_besluit               # een voorbeeld, geen echte
+        doc: vrije toelichting                  # definitie: het toont elke vorm
+                                                # die er is, niet één besluit
         regulation: wet_op_de_zorgtoeslag       # een eigen regeling
         output: heeft_recht_op_zorgtoeslag      # de uitkomst die het besluit ís
         outputs:                                # wat er in hetzelfde gram mee gaat
@@ -1592,7 +1609,7 @@ actions:                                        # wat een actor kan doen
     label: Beslis op de aanvraag
     decides:                                    # start het besluit-pad van een cel
       cell: toeslagen
-      besluit: zorgtoeslag_vaststelling         # het formulier is dat van dit
+      besluit: zorgtoeslag_besluit              # het formulier is dat van dit
                                                 # besluit (zijn `params`)
     available_when:                             # optioneel: pas als het verhaal
       cell: toeslagen                           # zover is
@@ -1633,7 +1650,7 @@ query_graph:                                    # het toegestane vraaggraf
 decide:                                         # besluiten, elk op een moment
   - description: vrije omschrijving             # optioneel
     cell: toeslagen                             # de cel die besluit
-    besluit: zorgtoeslag_vaststelling           # de definitie hierboven
+    besluit: zorgtoeslag_besluit                # de definitie hierboven
     params:
       bsn: '999993653'
     op_moment: 2024-06-01                       # bepaalt welke feiten de cel
@@ -2268,19 +2285,22 @@ als boolean-uitkomst in een regeling staat kan niet afwijzen, en `decision_type`
 is geen open vocabulaire: het gram draagt wat de regeling aanwijst, of `AFWIJZING`.
 Zie [Een weigering is ook een besluit](#een-weigering-is-ook-een-besluit).
 
-**Een verplichting kent geen rente, verrekening of terugvordering.** Een termijn
-vervalt en wordt betaald; wat er gebeurt als er te laat, te veel of niet betaald
-wordt, staat er niet. Twee besluiten op hetzelfde artikel leggen daarom allebei
-het volle schema op — het tweede verrekent niet met het eerste. Dat is ook waarom
-de zorgtoeslag-verplichting in het corpus op Awir art. 16 jo. art. 22 staat en
-niet op art. 24 lid 1: wat deze opstelling nadoet is het periodiek uitbetalen,
-niet de definitieve uitbetaling die een eerder voorschot verrekent. Een terugvordering
-is in deze opzet een gewoon besluit met een eigen verplichting, en dat is nog
-nergens uitgewerkt. Een verplichting kent ook nog geen **schuldenaar en
-schuldeiser**: `soort` kent alleen `betaling`, en wie er betaald krijgt volgt uit
-de zaak en niet uit de declaratie. Een verplichting kan ook
-niet gewijzigd of ingetrokken worden: het schema staat in het gram, en een gram
-verandert niet.
+**Een verplichting kent geen rente en geen terugvordering.** Een termijn vervalt
+en wordt betaald; wat er gebeurt als er te laat of niet betaald wordt, staat er
+niet. Verrekenen gebeurt wél, maar als **regel in de wet** en niet als iets dat
+het platform met een schema doet: Awir art. 19 trekt de verleende voorschotten
+van de vastgestelde tegemoetkoming af en legt alleen het slotbedrag op. Wat er
+gebeurt als dat slotbedrag negatief is — een terugvordering (art. 24, derde lid)
+— staat er nog niet: het is in deze opzet een gewoon besluit met een eigen
+verplichting, en die kant op betalen kent de opstelling nog niet. Een
+verplichting kent ook nog geen **schuldenaar en schuldeiser**: `soort` kent
+alleen `betaling`, en wie er betaald krijgt volgt uit de zaak en niet uit de
+declaratie. Een verplichting kan ook niet gewijzigd of ingetrokken worden: het
+schema staat in het gram, en een gram verandert niet — en dat is meteen waarom
+de vaststelling in de publieke wereld ná de laatste voorschottermijn staat. Een
+vaststelling zet de nog openstaande termijnen van het voorschot niet stop: die
+vervallen gewoon door, en het slotbedrag komt er dan bovenop. Wat de wereld
+verrekent is daarom wat er op dat moment betaald is, niet wat er verleend is.
 
 **Een voorwaarde op een actie is één gelijkheid.** `available_when` kijkt naar één
 veld in één kroniek van één cel. Er is geen "en", geen "of", geen "ligt er iets"

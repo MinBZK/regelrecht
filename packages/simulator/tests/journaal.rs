@@ -60,16 +60,16 @@ fn een_volledig_verhaal_levert_een_journaal_op() {
             JournalKind::Betaling,
             JournalKind::Betaling,
             JournalKind::Betaling,
+            JournalKind::Betaling,
             JournalKind::Besluit,
             JournalKind::Vraag,
             JournalKind::Betaling,
-            JournalKind::Betaling,
         ],
-        "dit verhaal is: een aanvraag, een besluit met zijn vraag, drie termijnen, \
-         een tweede besluit met zijn vraag, en dan nog twee termijnen — eerst die \
-         van het tweede besluit (ze vervalt op zijn eigen moment) en daarna de \
-         laatste van het eerste. Dat het tweede besluit ook termijnen oplegt, \
-         komt doordat het hetzelfde artikel uitvoert"
+        "dit verhaal is: een aanvraag, een besluit met zijn vraag, de vier \
+         kwartaaltermijnen van het voorschot, en dan de vaststelling met haar \
+         vraag en de ene termijn die zij oplegt. Dat het er één is en niet weer \
+         vier, komt doordat het tweede besluit een ánder artikel uitvoert: het \
+         slotbedrag komt ineens, en wat er als voorschot betaald is, is eraf"
     );
 
     // Oplopend in de tijd, en doorgenummerd vanaf 0: het journaal groeit
