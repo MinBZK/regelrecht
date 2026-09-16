@@ -132,11 +132,11 @@ describe('ScenarioParameterInput', () => {
       expect(lastUpdate(wrapper)).toBe('');
     });
 
-    it('carries the invalid state and error ids onto the text field', () => {
-      const wrapper = mountInput({ type: 'number', value: 'null', invalid: true, errorMessageIds: 'e1' });
+    it('carries the invalid state and the unmet ids onto the text field', () => {
+      const wrapper = mountInput({ type: 'number', value: 'null', invalid: true, unmet: 'e1' });
       const text = wrapper.find('nldd-text-field');
       expect(text.attributes('invalid')).toBeDefined();
-      expect(text.attributes('error-message-ids')).toBe('e1');
+      expect(text.attributes('unmet')).toBe('e1');
     });
   });
 

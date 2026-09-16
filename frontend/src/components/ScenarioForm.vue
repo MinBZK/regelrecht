@@ -97,6 +97,9 @@ function paramNullInvalid(name, value) {
 function paramErrorId(name) {
   return `${paramErrorIdPrefix}-${name}`;
 }
+function paramControlId(name) {
+  return `${paramErrorId(name)}-control`;
+}
 
 // Convert collection parameters to DataSourceTable format. A collection has
 // no key field; the element fields are not typed by the law (an `array`
@@ -388,9 +391,10 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
 // can over-mark a legitimately-blank optional param, but it never
 // mis-points at an unrelated field, which was the worse failure.
 const dateInvalid = computed(() => !calculationDate.value);
-// Unique id so the inline message can be aria-associated with the field
-// (ScenarioForm is mounted once per scenario, so a static id would clash).
+// Unique ids for the date's validation item and for the control its list
+// reads (ScenarioForm is mounted once per scenario, so a static id would clash).
 const dateErrorId = useId();
+const dateControlId = useId();
 </script>
 
 <template>
@@ -440,14 +444,17 @@ const dateErrorId = useId();
           <nldd-spacer-cell size="8"></nldd-spacer-cell>
           <nldd-cell width="full" min-width="120px">
             <ScenarioParameterInput
+              :id="dateControlId"
               type="date"
               name="Datum"
               :value="calculationDate"
               :invalid="dateInvalid"
-              :error-message-ids="dateErrorId"
+              :unmet="dateErrorId"
               @update="calculationDate = $event; emit('change')"
             />
-            <span v-if="dateInvalid" :id="dateErrorId" class="sf-error">Datum is verplicht</span>
+            <nldd-validation-list v-if="dateInvalid" :for="dateControlId">
+              <nldd-validation-item :id="dateErrorId">Een datum</nldd-validation-item>
+            </nldd-validation-list>
           </nldd-cell>
         </nldd-list-item>
         <nldd-list-item v-for="(value, name) in parameterValues" :key="name" size="md">
@@ -455,17 +462,20 @@ const dateErrorId = useId();
           <nldd-spacer-cell size="8"></nldd-spacer-cell>
           <nldd-cell width="full" min-width="120px">
             <ScenarioParameterInput
+              :id="paramControlId(name)"
               :type="paramMeta(name).type"
               :unit="paramMeta(name).unit"
               :name="name"
               :value="value"
               :invalid="(!!error && (value === '' || value == null)) || paramNullInvalid(name, value)"
-              :error-message-ids="paramNullInvalid(name, value) ? paramErrorId(name) : undefined"
+              :unmet="paramNullInvalid(name, value) ? paramErrorId(name) : undefined"
               @update="updateParameter(name, $event)"
             />
-            <nldd-form-field-error-text v-if="paramNullInvalid(name, value)" :id="paramErrorId(name)" invalid>
-              {{ NOT_NULLABLE_MESSAGE }}
-            </nldd-form-field-error-text>
+            <nldd-validation-list v-if="paramNullInvalid(name, value)" :for="paramControlId(name)">
+              <nldd-validation-item :id="paramErrorId(name)">
+                {{ NOT_NULLABLE_MESSAGE }}
+              </nldd-validation-item>
+            </nldd-validation-list>
           </nldd-cell>
           <template v-if="paramOffersAbsenceToggle(name)">
             <nldd-spacer-cell size="8"></nldd-spacer-cell>
@@ -497,25 +507,27 @@ const dateErrorId = useId();
       </nldd-list>
 
       <!-- Data sources: a row per source, drill in one level deeper -->
-      <nldd-spacer size="16"></nldd-spacer>
-      <nldd-title size="5"><h2>Bronnen</h2></nldd-title>
-      <nldd-spacer size="8"></nldd-spacer>
-      <nldd-list variant="box-tinted">
-        <nldd-list-item
-          v-for="(ds, i) in dataSources"
-          :key="ds.sourceName"
-          size="md"
-          button
-          :data-testid="`ds-row-${i}`"
-          @click="selectedSource = i"
-        >
-          <nldd-text-cell :text="sourceLabel(ds.sourceName)"></nldd-text-cell>
-          <nldd-spacer-cell size="12"></nldd-spacer-cell>
-          <nldd-text-cell horizontal-alignment="right" :text="ds.rows.length ? String(ds.rows.length) : ''"></nldd-text-cell>
-          <nldd-spacer-cell size="12"></nldd-spacer-cell>
-          <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
-        </nldd-list-item>
-      </nldd-list>
+      <template v-if="dataSources.length">
+        <nldd-spacer size="16"></nldd-spacer>
+        <nldd-title size="5"><h2>Bronnen</h2></nldd-title>
+        <nldd-spacer size="8"></nldd-spacer>
+        <nldd-list variant="box-tinted">
+          <nldd-list-item
+            v-for="(ds, i) in dataSources"
+            :key="ds.sourceName"
+            size="md"
+            button
+            :data-testid="`ds-row-${i}`"
+            @click="selectedSource = i"
+          >
+            <nldd-text-cell :text="sourceLabel(ds.sourceName)"></nldd-text-cell>
+            <nldd-spacer-cell size="12"></nldd-spacer-cell>
+            <nldd-text-cell horizontal-alignment="right" :text="ds.rows.length ? String(ds.rows.length) : ''"></nldd-text-cell>
+            <nldd-spacer-cell size="12"></nldd-spacer-cell>
+            <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
+          </nldd-list-item>
+        </nldd-list>
+      </template>
     </template>
 
     <!-- One level deeper: a single data source's table. Back to the scenario
@@ -561,13 +573,6 @@ const dateErrorId = useId();
   font-size: 12px;
   color: var(--semantics-text-color-secondary, #666);
   font-style: italic;
-  padding: 4px 0;
-}
-
-.sf-error {
-  font-size: 12px;
-  color: #c00;
-  word-break: break-word;
   padding: 4px 0;
 }
 </style>

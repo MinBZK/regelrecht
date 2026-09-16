@@ -3,11 +3,11 @@
  * Signup form, built on @nldd/design-system form components.
  *
  * NLDD controls (upgraded by the single body <script> import in Base.astro):
- *  - email + name: nldd-form-field > nldd-text-field + nldd-form-field-error-text.
- *    The form-field auto-wires the accessible label (aria-label), aria-invalid
- *    (from the field's `invalid` attribute), aria-describedby (via the field's
- *    error-message-ids), and toggles the error-text visibility. We drive
- *    `invalid` + `error-message` from the same validation as before.
+ *  - email + name: nldd-form-field > nldd-text-field + nldd-validation-list.
+ *    The form-field auto-wires the accessible label (aria-label) and aria-invalid
+ *    (from the field's `invalid` attribute). The field names its item in
+ *    `unmet`, so the list shows that item while the field is `invalid`. We drive
+ *    `invalid` and the item's text from the same validation as before.
  *  - org + role: optional nldd-form-field > nldd-text-field (no validation).
  *  - bijdragen: nldd-form-field (group label) > nldd-radio-button-group >
  *    nldd-radio-button-field. The group renders role=radiogroup with the label
@@ -102,9 +102,11 @@ const successUrl = lang === 'en' ? '/en/signup/thanks' : '/aanmelden/bedankt';
         name="email"
         data-autocomplete="email"
         required
-        error-message="rr-email-error"
+        unmet="rr-email-error"
       ></nldd-text-field>
-      <nldd-form-field-error-text id="rr-email-error"></nldd-form-field-error-text>
+      <nldd-validation-list>
+        <nldd-validation-item id="rr-email-error"></nldd-validation-item>
+      </nldd-validation-list>
     </nldd-form-field>
 
     <nldd-form-field label={s.nameLabel}>
@@ -114,9 +116,11 @@ const successUrl = lang === 'en' ? '/en/signup/thanks' : '/aanmelden/bedankt';
         name="naam"
         data-autocomplete="name"
         required
-        error-message="rr-naam-error"
+        unmet="rr-naam-error"
       ></nldd-text-field>
-      <nldd-form-field-error-text id="rr-naam-error"></nldd-form-field-error-text>
+      <nldd-validation-list>
+        <nldd-validation-item id="rr-naam-error"></nldd-validation-item>
+      </nldd-validation-list>
     </nldd-form-field>
 
     <nldd-form-field label={s.orgLabel} optional optional-label={optionalLabel}>
@@ -266,9 +270,9 @@ const successUrl = lang === 'en' ? '/en/signup/thanks' : '/aanmelden/bedankt';
       '.rr-status-box--err'
     ) as HTMLElement;
 
-    // Setting `invalid` + filling the error-text drives nldd-form-field's
-    // _syncErrorText: it toggles the error-text visible and forwards the id to
-    // the inner <input aria-describedby>. aria-invalid follows `invalid`.
+    // The field names this item in `unmet`, so filling the item and setting
+    // `invalid` is what shows it; clearing `invalid` hides it again.
+    // aria-invalid follows `invalid`.
     function setFieldError(
       field: NlddValueField,
       el: HTMLElement,

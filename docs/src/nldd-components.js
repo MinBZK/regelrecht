@@ -54,4 +54,5 @@ import '@nldd/design-system/text-field';
 import '@nldd/design-system/timeline-track-cell';
 import '@nldd/design-system/title';
 import '@nldd/design-system/top-navigation-bar';
+import '@nldd/design-system/validation-list';
 import '@nldd/design-system/window';

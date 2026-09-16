@@ -19,7 +19,7 @@
   "dependencies": {
     "@cucumber/gherkin": "^42.0.1",
     "@cucumber/messages": "^34.2.1",
-    "@nldd/design-system": "^0.8.83",
+    "@nldd/design-system": "^0.8.88",
     "@regelrecht/frontend-shared": "*",
     "@vue-flow/background": "^1.3.2",
     "@vue-flow/controls": "^1.1.3",

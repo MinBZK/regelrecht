@@ -411,8 +411,6 @@ defineExpose({ show });
         height="min(70vh, 560px)"
         :accessible-label="SEARCH_ACCESSIBLE_LABEL"
         :translations="listTranslations"
-        empty-text="Geen resultaten gevonden"
-        empty-supporting-text="Pas je zoektermen of voorkeuren aan"
         @input="onListInput"
         @keydown="onListKeydown"
       >
