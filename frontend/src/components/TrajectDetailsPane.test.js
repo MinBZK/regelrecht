@@ -161,9 +161,14 @@ describe('TrajectDetailsPane subpath', () => {
     await saveButton(w).trigger('click');
     await flush(w);
 
-    expect(w.find('nldd-form-field-error-text').text()).toContain(
+    expect(w.find('nldd-validation-item').text()).toContain(
       'repo_path moet een relatief pad zijn',
     );
     expect(subpathField(w).attributes('invalid')).toBeDefined();
+    // De foutmelding hangt via `unmet` aan het veld; zonder die verwijzing
+    // toont het ontwerpsysteem de lijst niet.
+    expect(subpathField(w).attributes('unmet')).toBe(
+      w.find('nldd-validation-item').attributes('id'),
+    );
   });
 });

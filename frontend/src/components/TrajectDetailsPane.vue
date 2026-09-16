@@ -255,15 +255,17 @@ async function confirmLeave() {
               accessible-label="Subpath"
               :value="subpathDraft"
               :invalid="subpathError ? true : undefined"
-              :error-message="subpathError ? 'subpath-error' : undefined"
+              :unmet="subpathError ? 'subpath-error' : undefined"
               @input="onSubpathInput"
             ></nldd-text-field>
             <nldd-form-field-help-text>
               Submap met regulation YAML-bestanden. Laat leeg voor repo-root.
             </nldd-form-field-help-text>
-            <nldd-form-field-error-text id="subpath-error">
-              {{ subpathError }}
-            </nldd-form-field-error-text>
+            <nldd-validation-list>
+              <nldd-validation-item id="subpath-error">
+                {{ subpathError }}
+              </nldd-validation-item>
+            </nldd-validation-list>
           </nldd-form-field>
           <nldd-spacer size="8"></nldd-spacer>
           <!-- Permanent, niet pas na een fout: het pad bepaalt alles wat de

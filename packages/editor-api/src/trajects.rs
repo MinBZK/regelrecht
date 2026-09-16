@@ -1342,7 +1342,15 @@ pub async fn update(
         .await
         .map_err(db_err_msg("commit update traject tx"))?;
 
-    if repo_path.is_some() {
+    if let Some(ref new_path) = repo_path {
+        // Worth a line in the log: this one field decides what the whole
+        // traject sees, so "the library suddenly shows nothing" is a
+        // question whose answer is this event and its timestamp.
+        tracing::info!(
+            traject = %id,
+            repo_path = new_path.as_deref().unwrap_or("<repo root>"),
+            "traject root path changed"
+        );
         // The cached `TrajectCorpus` pins the old `gh_path` in its
         // backends, so without this the sidebar would keep listing the
         // laws under the previous root for a whole TTL window. Dropping
