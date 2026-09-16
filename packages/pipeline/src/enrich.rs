@@ -166,8 +166,8 @@ pub(crate) fn plan_chunk(
         .min(articles_total);
     if entries.len() == articles_total {
         while end > start && end < articles_total {
-            let last = crate::enrich_v2::refgraph::top_article(&entries[end - 1]);
-            let next = crate::enrich_v2::refgraph::top_article(&entries[end]);
+            let last = crate::enrich_v2::refgraph::entry_group(&entries[end - 1]);
+            let next = crate::enrich_v2::refgraph::entry_group(&entries[end]);
             if last != next {
                 break;
             }
@@ -242,7 +242,7 @@ pub(crate) fn plan_layer_window(
     entries: &[String],
     index: usize,
 ) -> (Vec<String>, bool) {
-    use crate::enrich_v2::refgraph::top_article;
+    use crate::enrich_v2::refgraph::entry_group;
 
     let layers = graph.layers();
     let Some(layer) = layers.get(index) else {
@@ -250,7 +250,7 @@ pub(crate) fn plan_layer_window(
     };
     let numbers = entries
         .iter()
-        .filter(|entry| layer.iter().any(|a| a == top_article(entry)))
+        .filter(|entry| layer.iter().any(|a| a == entry_group(entry)))
         .cloned()
         .collect();
     (numbers, index + 1 >= layers.len())
@@ -273,14 +273,14 @@ pub(crate) fn split_window(
     numbers: &[String],
     concurrency: usize,
 ) -> Vec<Vec<String>> {
-    use crate::enrich_v2::refgraph::top_article;
+    use crate::enrich_v2::refgraph::entry_group;
 
     if concurrency <= 1 || numbers.len() < 2 {
         return vec![numbers.to_vec()];
     }
     let mut articles: Vec<&str> = Vec::new();
     for number in numbers {
-        let top = top_article(number);
+        let top = entry_group(number);
         if !articles.contains(&top) {
             articles.push(top);
         }
@@ -304,7 +304,7 @@ pub(crate) fn split_window(
         out[bucket].extend(
             numbers
                 .iter()
-                .filter(|n| top_article(n) == *article)
+                .filter(|n| entry_group(n) == *article)
                 .cloned(),
         );
     }
