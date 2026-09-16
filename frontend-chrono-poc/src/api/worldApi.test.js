@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { worldFixture } from '../testing/worldFixture.js';
-import { advanceTo, askLexostatus, isSnapshot, runAction, snapshotFrom, updateSettings } from './worldApi.js';
+import {
+  advanceTo,
+  askLexostatus,
+  fetchGramReceipt,
+  isSnapshot,
+  runAction,
+  snapshotFrom,
+  updateSettings,
+} from './worldApi.js';
 
 /** Eén nep-antwoord, genoeg voor apiFetch: ok, json en headers. */
 function jsonResponse(body) {
@@ -121,5 +129,24 @@ describe('de routes', () => {
     const fetchStub = stubFetch({ outcome: {} });
     await askLexostatus('cel/een', 'naam/twee', {});
     expect(fetchStub.mock.calls[0][0]).toBe('/api/cells/cel%2Feen/lexostatus/naam%2Ftwee');
+  });
+
+  it('vraagt het receipt van één gram op zijn plek in de kroniek', async () => {
+    const fetchStub = stubFetch({ gram: {}, timestamp: {} });
+    await fetchGramReceipt('toeslagen', 'beschikkingen', 0);
+    expect(fetchStub.mock.calls[0][0]).toBe(
+      '/api/cells/toeslagen/chronicles/beschikkingen/grams/0/receipt',
+    );
+    // Plek nul is een plek en geen ontbrekende waarde: de eerste vastlegging in
+    // een kroniek is juist degene die het vaakst opgevraagd wordt.
+    expect(fetchStub.mock.calls[0][0]).toContain('/grams/0/');
+  });
+
+  it('laat ook hier een naam met een schuine streep heel', async () => {
+    const fetchStub = stubFetch({ gram: {}, timestamp: {} });
+    await fetchGramReceipt('cel/een', 'stroom/twee', 3);
+    expect(fetchStub.mock.calls[0][0]).toBe(
+      '/api/cells/cel%2Feen/chronicles/stroom%2Ftwee/grams/3/receipt',
+    );
   });
 });

@@ -80,8 +80,9 @@ impl ApiError {
     /// Drie groepen, en de rest is onze schuld:
     ///
     /// * **404** — wat het pad aanwijst bestaat niet: een cel, een lexostatus,
-    ///   een actie. De simulator zet in zijn melding welke namen er wél zijn, en
-    ///   die hoort een client te zien.
+    ///   een actie, een kroniekstroom, een gram, of het receipt van een gram dat
+    ///   er geen draagt. De simulator zet in zijn melding welke namen er wél
+    ///   zijn, en die hoort een client te zien.
     /// * **409** — het bestaat, maar de wereld staat er nu niet naar, of de cel
     ///   weigert. Dit is geen verkeerd verzoek en geen defect: het verhaal is er
     ///   nog niet. Hier vallen ook de **weigeringen van een besluit** onder — een
@@ -108,9 +109,16 @@ impl ApiError {
         }
 
         let status = match error {
-            E::UnknownCell { .. } | E::UnknownLexostatus { .. } | E::UnknownAction { .. } => {
-                StatusCode::NOT_FOUND
-            }
+            E::UnknownCell { .. }
+            | E::UnknownLexostatus { .. }
+            | E::UnknownAction { .. }
+            | E::UnknownChronicle { .. }
+            | E::UnknownGram { .. }
+            // "Dit gram draagt geen receipt" is hetzelfde soort antwoord als een
+            // onbekende cel: wat het pad aanwijst, bestaat niet. Het is géén 409 —
+            // een executogram krijgt later ook geen receipt, want er is nooit een
+            // uitvoering geweest.
+            | E::GramWithoutReceipt { .. } => StatusCode::NOT_FOUND,
 
             E::ActionNotAvailable { .. }
             | E::SettingInUse { .. }

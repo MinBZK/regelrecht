@@ -1015,6 +1015,7 @@
                     "recorded_origin": {
                       "asked_by": "cel:toeslagen",
                       "cell": "belastingdienst",
+                      "competent_authority": "Belastingdienst",
                       "field": "toetsingsinkomen",
                       "herkomst": "geaccepteerd",
                       "lexostatus": "toetsingsinkomen",
@@ -1155,6 +1156,7 @@
                     "recorded_origin": {
                       "asked_by": "cel:toeslagen",
                       "cell": "belastingdienst",
+                      "competent_authority": "Belastingdienst",
                       "field": "toetsingsinkomen",
                       "herkomst": "geaccepteerd",
                       "lexostatus": "toetsingsinkomen",

@@ -29,7 +29,9 @@
 //! opnieuw. Anders zou er een schaduwboekhouding ontstaan die er precies
 //! uitziet als eigen wetenschap (RFC-022).
 
-use crate::cell::{AcceptanceRequest, AcceptedSource, Cell, DecretogramInput, InputOrigin};
+use crate::cell::{
+    AcceptanceRequest, AcceptedSource, Cell, DecretogramInput, InputOrigin, COMPETENT_AUTHORITY,
+};
 use crate::error::{Result, SimulatorError};
 use crate::security::{Identity, SecurityContext, SignedAnswer};
 use crate::transport::{CellTransport, InProcessTransport};
@@ -88,6 +90,14 @@ fn accepted_input(
 
     let origin = InputOrigin::Accepted {
         cell: answer.cell.clone(),
+        // Het gezag komt uit het antwoord zelf en niet uit een lijst hier: wie
+        // bevoegd is om dit vast te stellen, weet de bron-cel en niemand anders.
+        // Publiceert haar lexostatus er niets over, dan staat er `None` — een gat
+        // bij de bron dat een lezer hoort te zien.
+        authority: values
+            .get(COMPETENT_AUTHORITY)
+            .and_then(Value::as_str)
+            .map(str::to_string),
         lexostatus: answer.name.clone(),
         field: request.field.clone(),
         op_moment: answer.op_moment,

@@ -54,6 +54,65 @@ pub enum SimulatorError {
         published: String,
     },
 
+    /// Een lezer wees een kroniekstroom aan die de cel niet houdt.
+    ///
+    /// Naast [`SimulatorError::UnknownStream`] en niet in plaats daarvan: die
+    /// gaat over een *definitie* die naar een stroom verwijst en blijkt bij het
+    /// optuigen. Dit is een vraag van buiten naar wat er in een kroniek ligt, en
+    /// ze noemt dus geen definitie die fout zou zijn — er is er geen.
+    #[error("cel '{cell}' houdt geen kroniekstroom '{stream}' (wel: {known})")]
+    UnknownChronicle {
+        /// Cel waaraan gevraagd werd.
+        cell: String,
+        /// De gevraagde stroomnaam.
+        stream: String,
+        /// Komma-gescheiden lijst van stromen die de cel wél houdt.
+        known: String,
+    },
+
+    /// Een lezer wees een plek in een kroniek aan waar niets ligt.
+    ///
+    /// De plek is de volgorde van vastlegging, en een kroniek groeit uitsluitend
+    /// achteraan: wat er nu niet is, was er ook nooit. De melding noemt daarom
+    /// hoeveel er wél liggen, zodat een lezer ziet of hij te ver keek of naar een
+    /// stroom die nog leeg is.
+    #[error(
+        "cel '{cell}': kroniekstroom '{stream}' heeft geen gram op plek {index} \
+         (er liggen er {count})"
+    )]
+    UnknownGram {
+        /// Cel waaraan gevraagd werd.
+        cell: String,
+        /// De stroom waarin gekeken is.
+        stream: String,
+        /// De gevraagde plek, geteld vanaf nul.
+        index: usize,
+        /// Hoeveel grammen er in die stroom liggen.
+        count: usize,
+    },
+
+    /// Het receipt van een gram is opgevraagd, maar dit gram draagt er geen.
+    ///
+    /// Alleen een decretogram uit het besluit-pad draagt een RFC-013 Execution
+    /// Receipt: het *is* de uitvoering. Een executogram is een feit dat de cel
+    /// overkwam en een bron-cel kan zelf iets vaststellen zonder engine; in
+    /// beide gevallen is er nooit een uitvoering geweest, en dan is "geen
+    /// receipt" het juiste antwoord en niet een leeg receipt.
+    #[error(
+        "cel '{cell}': gram '{name}' op plek {index} van kroniekstroom '{stream}' is geen \
+         decretogram uit het besluit-pad en draagt dus geen uitvoeringsreceipt"
+    )]
+    GramWithoutReceipt {
+        /// Cel waaraan gevraagd werd.
+        cell: String,
+        /// De stroom waarin het gram ligt.
+        stream: String,
+        /// De plek van het gram in die stroom.
+        index: usize,
+        /// Hoe het gram heet.
+        name: String,
+    },
+
     /// Een statusindicator vult de parameters van haar lexostatus niet precies.
     ///
     /// Bij het optuigen en niet bij de eerste meting: een indicator die zijn
