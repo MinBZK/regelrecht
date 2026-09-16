@@ -34,6 +34,7 @@ pub mod config;
 pub mod db;
 pub mod document_convert;
 pub mod enrich;
+pub mod enrich_v2;
 pub mod error;
 pub mod feature_flags;
 pub mod harvest;

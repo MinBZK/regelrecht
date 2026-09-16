@@ -22,6 +22,17 @@ path = "src/bin/enrich_worker.rs"
 name = "regelrecht-pipeline-api"
 path = "src/bin/pipeline_api.rs"
 
+# Deterministic law checks: no database, no model, no shell.
+[[bin]]
+name = "law-check"
+path = "src/bin/law_check.rs"
+
+# Verifieert de brontekst tegen de officiele BWB-toestand. Tijdelijk: dit
+# hoort bij het harvesten en gaat daar terug naartoe.
+[[bin]]
+name = "law-source"
+path = "src/bin/law_source.rs"
+
 # Tilt een wetsbestand naar schema v0.7.0 en valideert het resultaat. Een
 # verplicht veld dat de oude vorm niet draagt wordt gemeld, niet ingevuld.
 [[bin]]
@@ -58,6 +69,7 @@ url.workspace = true
 testcontainers = { workspace = true, optional = true }
 testcontainers-modules = { workspace = true, optional = true }
 tempfile.workspace = true
+regex.workspace = true
 
 [features]
 # Exposes regelrecht_pipeline::test_utils with helpers (e.g. TestDb) used by

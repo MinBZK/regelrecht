@@ -4194,6 +4194,7 @@ dependencies = [
  "regelrecht-law-model",
  "regelrecht-pipeline",
  "regelrecht-shared",
+ "regex",
  "reqwest 0.13.2",
  "roxmltree",
  "serde",
