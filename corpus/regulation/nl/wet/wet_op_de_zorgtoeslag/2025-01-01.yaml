@@ -110,12 +110,11 @@ articles:
               #
               # De grondslag is die van een uitbetaling in termijnen: Awir art.
               # 16 jo. art. 22 (voorschot). Dát is in de Awir het mechanisme dat
-              # periodiek betaalt zodra het recht vaststaat, en dat is wat deze
-              # opstelling nadoet. De definitieve uitbetaling van art. 24 lid 1
-              # (binnen vier weken, ineens) hoort bij de verrekening met een
-              # eerder verleend voorschot, en die kent deze opstelling nog niet
-              # — zie "Wat hier nog niet staat" in de README van
-              # packages/simulator.
+              # periodiek betaalt zodra het recht vaststaat, en dat is wat dit
+              # artikel oplegt. De definitieve uitbetaling hoort bij een ander
+              # artikel: Awir art. 19 stelt na afloop van het berekeningsjaar
+              # vast en verrekent het voorschot (art. 24, tweede lid), en legt
+              # het slotbedrag ineens op.
               verplichtingen:
                 - soort: betaling
                   bedrag: $hoogte_zorgtoeslag

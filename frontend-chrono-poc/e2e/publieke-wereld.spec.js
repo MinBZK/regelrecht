@@ -399,6 +399,45 @@ test.describe('publieke wereld', () => {
     );
   });
 
+  test('V2: de vaststelling verrekent het voorschot en legt alleen het slotbedrag op', async () => {
+    const vaststelling = grams(world, 'toeslagen', 'beschikkingen')[1].fields;
+    expect(vaststelling.besluit?.value).toBe('zorgtoeslag_vaststelling');
+    // Een ánder artikel dan de toekenning, uit een andere wet: de Awir stelt
+    // vast, de Wet op de zorgtoeslag rekent de hoogte uit.
+    expect(vaststelling.regulation?.value).toBe('algemene_wet_inkomensafhankelijke_regelingen');
+
+    // Geen van beide bedragen rekent deze uitvoering na: het ene komt uit het
+    // eerdere gram, het andere van de cel die betaalde.
+    expect(JSON.stringify(vaststelling.toegekende_tegemoetkoming.origin)).toMatch(
+      /zorgtoeslag_toekenning/,
+    );
+    expect(JSON.stringify(vaststelling.verleende_voorschotten.origin)).toMatch(/belastingdienst/);
+
+    // Alle termijnen van het voorschot zijn vervallen, dus er blijft niets over.
+    // Dát is het verschil tussen vaststellen en nog een keer uitrekenen.
+    expect(vaststelling.verleende_voorschotten.value).toBe(
+      vaststelling.vastgestelde_tegemoetkoming.value,
+    );
+    expect(vaststelling.slotbedrag.value).toBe(0);
+  });
+
+  test('X2: de vaststelling stelt haar eigen vraag over de celgrens', async () => {
+    expect(world.crossings).toHaveLength(2);
+  });
+
+  test('V3: de wereld betaalt het toegekende bedrag en niet het dubbele', async () => {
+    world = await s.worldWhen(
+      (w) => grams(w, 'belastingdienst', 'betalingen').length === 5,
+      'het slotbedrag van de vaststelling is nagekomen',
+    );
+    const betaald = grams(world, 'belastingdienst', 'betalingen').reduce(
+      (som, gram) => som + gram.fields.bedrag.value,
+      0,
+    );
+    const toegekend = grams(world, 'toeslagen', 'beschikkingen')[0].fields.hoogte_zorgtoeslag.value;
+    expect(betaald).toBeCloseTo(toegekend, 2);
+  });
+
   test('I1: een instelling staat vast zodra er op besloten is', async () => {
     expect(Object.keys(world.locked_settings || {})).toContain('betalingsritme');
   });

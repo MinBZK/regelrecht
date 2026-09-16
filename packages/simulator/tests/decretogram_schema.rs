@@ -64,15 +64,15 @@ fn veld<'a>(schema: &'a [DecretogramField], name: &str) -> &'a DecretogramField 
         .unwrap_or_else(|| panic!("veld '{name}' hoort in het schema te staan"))
 }
 
-/// **De hele lijst**: elk veld van `zorgtoeslag_vaststelling`, met zijn type en
+/// **De hele lijst**: elk veld van `zorgtoeslag_toekenning`, met zijn type en
 /// zijn herkomst.
 ///
 /// De volgorde hoort erbij: eerst wat het besluit vaststelt, dan de omslag die
 /// elk decretogram draagt. Een lezer die de tabel van boven naar beneden leest,
 /// leest daarmee eerst waar het besluit over gaat.
 #[test]
-fn het_schema_van_de_vaststelling_ligt_vast() {
-    let schema = schema(&publieke_wereld(), "toeslagen", "zorgtoeslag_vaststelling");
+fn het_schema_van_de_toekenning_ligt_vast() {
+    let schema = schema(&publieke_wereld(), "toeslagen", "zorgtoeslag_toekenning");
     let gemeten: Vec<(&str, Option<&str>, Option<&str>, Herkomst, bool)> = schema
         .iter()
         .map(|field| {
@@ -219,23 +219,236 @@ fn het_schema_van_de_vaststelling_ligt_vast() {
     );
 }
 
+/// **De hele lijst**, nog een keer: elk veld van `zorgtoeslag_vaststelling`.
+///
+/// Twee besluiten over dezelfde zaak voeren hier twee verschillende artikelen
+/// van twee verschillende wetten uit — de toekenning de Wet op de zorgtoeslag,
+/// de vaststelling de Awir — en dat hoort aan het schema te zien te zijn. Drie
+/// verschillen met de lijst hierboven, en elk is een uitspraak:
+///
+/// 1. Andere uitkomsten: wat is vastgesteld, en wat er na verrekening van de
+///    voorschotten nog volgt.
+/// 2. Dezelfde `obligations[0]` uit het lexogram, maar uit een ander artikel:
+///    het slotbedrag komt ineens en niet in termijnen.
+/// 3. `afwijzingsgrond` komt van het **platform** en niet uit de wet: het
+///    artikel dat de vaststelling voortbrengt kent geen weigering. Dat is geen
+///    gat — zie `een_regeling_zonder_afwijzing_laat_de_grond_aan_het_platform`.
+#[test]
+fn het_schema_van_de_vaststelling_ligt_vast() {
+    let schema = schema(&publieke_wereld(), "toeslagen", "zorgtoeslag_vaststelling");
+    let gemeten: Vec<(&str, Option<&str>, Option<&str>, Herkomst, bool)> = schema
+        .iter()
+        .map(|field| {
+            (
+                field.name.as_str(),
+                field.value_type.as_deref(),
+                field.unit.as_deref(),
+                field.herkomst,
+                field.gat,
+            )
+        })
+        .collect();
+
+    assert_eq!(
+        gemeten,
+        [
+            (
+                "slotbedrag",
+                Some("amount"),
+                Some("eurocent"),
+                Herkomst::Lexogram,
+                false
+            ),
+            (
+                "vastgestelde_tegemoetkoming",
+                Some("amount"),
+                Some("eurocent"),
+                Herkomst::Lexogram,
+                false
+            ),
+            (
+                "obligations[0]",
+                Some("object"),
+                None,
+                Herkomst::Lexogram,
+                false
+            ),
+            ("op_moment", Some("date"), None, Herkomst::Platform, false),
+            (
+                "zaakkenmerk",
+                Some("string"),
+                None,
+                Herkomst::Wereldbestand,
+                true
+            ),
+            (
+                "besluit",
+                Some("string"),
+                None,
+                Herkomst::Wereldbestand,
+                true
+            ),
+            (
+                "regulation",
+                Some("string"),
+                None,
+                Herkomst::Platform,
+                false
+            ),
+            (
+                "regulation_valid_from",
+                Some("date"),
+                None,
+                Herkomst::Platform,
+                false
+            ),
+            (
+                "executed_regulations",
+                Some("array"),
+                None,
+                Herkomst::Platform,
+                false
+            ),
+            (
+                "competent_authority",
+                Some("string"),
+                None,
+                Herkomst::Platform,
+                false
+            ),
+            (
+                "besloten_door",
+                Some("string"),
+                None,
+                Herkomst::Platform,
+                false
+            ),
+            (
+                "legal_character",
+                Some("string"),
+                None,
+                Herkomst::Platform,
+                false
+            ),
+            (
+                "decision_type",
+                Some("string"),
+                None,
+                Herkomst::Lexogram,
+                false
+            ),
+            (
+                "afwijzingsgrond",
+                Some("array"),
+                None,
+                Herkomst::Platform,
+                false
+            ),
+            ("inputs", Some("object"), None, Herkomst::Platform, false),
+            (
+                "obligations",
+                Some("array"),
+                None,
+                Herkomst::Lexogram,
+                false
+            ),
+            (
+                "chronicle_sources",
+                Some("array"),
+                None,
+                Herkomst::Platform,
+                false
+            ),
+            ("receipt", Some("object"), None, Herkomst::Platform, false),
+        ],
+        "het schema van dit besluit is de meting 'welk deel volgt uit de wet'; \
+         wie hem verschuift, hoort dat hier te zien"
+    );
+}
+
+/// De verplichting van de vaststelling komt uit het artikel van de **Awir** dat
+/// haar voortbrengt, en wijst naar het slotbedrag.
+///
+/// Het tegenstuk van `een_verplichting_komt_uit_het_lexogram_net_als_haar_bedrag`:
+/// dezelfde vorm, een ander artikel, een ander ritme. Zou een tweede besluit over
+/// dezelfde zaak nog het schema van het eerste artikel dragen, dan stond hier
+/// `wet_op_de_zorgtoeslag`.
+#[test]
+fn de_vaststelling_legt_het_slotbedrag_op_uit_de_awir() {
+    let schema = schema(&publieke_wereld(), "toeslagen", "zorgtoeslag_vaststelling");
+
+    let verplichting = veld(&schema, "obligations[0]");
+    assert_eq!(verplichting.herkomst, Herkomst::Lexogram);
+    assert!(!verplichting.gat);
+    let lexogram = verplichting
+        .lexogram
+        .as_ref()
+        .expect("een verplichting uit het lexogram hoort haar artikel te noemen");
+    assert_eq!(
+        lexogram.regulation, "algemene_wet_inkomensafhankelijke_regelingen",
+        "de vaststelling voert de Awir uit en niet de wet die de hoogte bepaalt"
+    );
+    assert_eq!(lexogram.article.as_deref(), Some("19"));
+
+    let toelichting = verplichting
+        .toelichting
+        .as_deref()
+        .expect("een verplichting hoort te zeggen wat ze oplegt");
+    assert!(
+        toelichting.contains("slotbedrag"),
+        "de verplichting hoort naar de uitkomst te wijzen die haar bedrag levert: {toelichting}"
+    );
+    assert!(
+        toelichting.contains("Awir art. 19"),
+        "en naar de grondslag waarop ze berust: {toelichting}"
+    );
+}
+
 /// Elke uitkomst noemt het **artikel** dat haar voortbrengt, met de versie.
+///
+/// De versie is er niet altijd, en dat is een gat in het **corpus** en niet in
+/// de verwijzing: van de zorgtoeslagwet staan er twee gedateerde versies, van de
+/// Awir één die zelf geen `valid_from` noemt en daarmee voor elke datum geldt.
+/// De verwijzing draagt wat er staat, dus de meting hieronder zegt per wet wat
+/// er te verwachten is — zou een verwijzing haar versie stil laten vallen waar
+/// de wet die wél noemt, dan valt deze test.
 #[test]
 fn elke_uitkomst_noemt_haar_artikel() {
-    let schema = schema(&publieke_wereld(), "toeslagen", "zorgtoeslag_vaststelling");
-    for name in ["heeft_recht_op_zorgtoeslag", "hoogte_zorgtoeslag"] {
-        let lexogram = veld(&schema, name)
-            .lexogram
-            .as_ref()
-            .unwrap_or_else(|| panic!("uitkomst '{name}' hoort haar lexogram te noemen"));
-        assert_eq!(lexogram.regulation, "wet_op_de_zorgtoeslag");
-        assert_eq!(lexogram.article.as_deref(), Some("2"));
-        assert!(
-            lexogram.valid_from.is_some(),
-            "zonder versie is een verwijzing naar een artikel geen verwijzing: \
-             de wet verandert"
-        );
-        assert_eq!(lexogram.regulatory_layer, "WET");
+    let wereld = publieke_wereld();
+    // Twee besluiten, twee wetten, twee artikelen: de verwijzing hoort bij de
+    // uitkomst en niet bij de cel die haar vastlegt.
+    for (besluit, regulation, article, versie_bekend, uitkomsten) in [
+        (
+            "zorgtoeslag_toekenning",
+            "wet_op_de_zorgtoeslag",
+            "2",
+            true,
+            ["heeft_recht_op_zorgtoeslag", "hoogte_zorgtoeslag"],
+        ),
+        (
+            "zorgtoeslag_vaststelling",
+            "algemene_wet_inkomensafhankelijke_regelingen",
+            "19",
+            false,
+            ["vastgestelde_tegemoetkoming", "slotbedrag"],
+        ),
+    ] {
+        let velden = schema(&wereld, "toeslagen", besluit);
+        for name in uitkomsten {
+            let lexogram = veld(&velden, name)
+                .lexogram
+                .as_ref()
+                .unwrap_or_else(|| panic!("uitkomst '{name}' hoort haar lexogram te noemen"));
+            assert_eq!(lexogram.regulation, regulation);
+            assert_eq!(lexogram.article.as_deref(), Some(article));
+            assert_eq!(
+                lexogram.valid_from.is_some(),
+                versie_bekend,
+                "de verwijzing hoort de versie te dragen die de regeling noemt, \
+                 en niet meer dan dat: '{name}'"
+            );
+            assert_eq!(lexogram.regulatory_layer, "WET");
+        }
     }
 }
 
@@ -246,11 +459,14 @@ fn elke_uitkomst_noemt_haar_artikel() {
 /// artikel dat de aansturende uitkomst voortbrengt, anders het document. De
 /// zorgtoeslagwet declareert het op het document, en dan staat er `null` bij het
 /// artikel — "de wet zegt het ergens" is iets anders dan "de wet zegt het hier".
+/// De Awir declareert het wél op het artikel, en dan staat dat artikel er; beide
+/// staan hieronder, want anders meet deze test maar één helft van die volgorde.
 #[test]
 fn het_platform_noemt_waar_het_de_wet_leest() {
-    let schema = schema(&publieke_wereld(), "toeslagen", "zorgtoeslag_vaststelling");
+    let wereld = publieke_wereld();
+    let toekenning = schema(&wereld, "toeslagen", "zorgtoeslag_toekenning");
 
-    let gezag = veld(&schema, "competent_authority");
+    let gezag = veld(&toekenning, "competent_authority");
     assert_eq!(gezag.herkomst, Herkomst::Platform);
     let lexogram = gezag
         .lexogram
@@ -262,7 +478,7 @@ fn het_platform_noemt_waar_het_de_wet_leest() {
         "deze regeling declareert het gezag op het document"
     );
 
-    let karakter = veld(&schema, "legal_character");
+    let karakter = veld(&toekenning, "legal_character");
     assert_eq!(
         karakter
             .lexogram
@@ -271,6 +487,23 @@ fn het_platform_noemt_waar_het_de_wet_leest() {
         Some("2"),
         "het rechtskarakter komt uit `produces` van het artikel dat de \
          aansturende uitkomst voortbrengt"
+    );
+
+    let vaststelling = schema(&wereld, "toeslagen", "zorgtoeslag_vaststelling");
+    let gezag = veld(&vaststelling, "competent_authority");
+    let lexogram = gezag
+        .lexogram
+        .as_ref()
+        .expect("ook deze regeling wijst een bevoegd gezag aan");
+    assert_eq!(
+        lexogram.regulation,
+        "algemene_wet_inkomensafhankelijke_regelingen"
+    );
+    assert_eq!(
+        lexogram.article.as_deref(),
+        Some("19"),
+        "deze regeling declareert het gezag op het artikel, en dat gaat vóór het \
+         document"
     );
 }
 
@@ -284,7 +517,7 @@ fn het_platform_noemt_waar_het_de_wet_leest() {
 /// artikel te wijzen dat ze declareert.
 #[test]
 fn het_besluittype_en_de_afwijzingsgrond_komen_uit_de_wet() {
-    let schema = schema(&publieke_wereld(), "toeslagen", "zorgtoeslag_vaststelling");
+    let schema = schema(&publieke_wereld(), "toeslagen", "zorgtoeslag_toekenning");
 
     for name in ["decision_type", "afwijzingsgrond"] {
         let field = veld(&schema, name);

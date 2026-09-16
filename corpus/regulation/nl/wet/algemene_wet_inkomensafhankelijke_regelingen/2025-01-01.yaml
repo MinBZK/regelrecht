@@ -277,6 +277,21 @@ articles:
       Belastingdienst/Toeslagen wordt verstaan: het organisatieonderdeel van de rijksbelastingdienst dat is belast met
       het toekennen, uitbetalen en terugvorderen van tegemoetkomingen.
     url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel11
+    machine_readable:
+      # Lid 2 wijst het organisatieonderdeel aan dat toekent, uitbetaalt en
+      # terugvordert. RFC-002 legt het bevoegd gezag op het artikel; de naam
+      # staat hier één keer, en de artikelen die een beschikking voortbrengen
+      # verwijzen ernaar met `competent_authority: '#bevoegd_gezag'`.
+      #
+      # De wettekst hierboven draagt nog de naam Belastingdienst/Toeslagen.
+      # Hetzelfde onderdeel heet inmiddels Dienst Toeslagen, en zo wijst de Wet
+      # op de zorgtoeslag (art. 5) het ook aan. Een gezag wordt op naam
+      # vergeleken en niet op afkorting of oude naam, dus twee namen voor deze
+      # dienst zouden twee diensten zijn.
+      execution:
+        actions:
+          - output: bevoegd_gezag
+            value: Dienst Toeslagen
   - number: '12'
     text: >-
       Artikel 12. Uitzonderingen op de Algemene wet bestuursrecht Voor de toepassing van dit hoofdstuk blijft [titel 4.2
@@ -330,6 +345,49 @@ articles:
       voorafgaand aan de maand waarin de aanspraak ontstaat. 4. De Belastingdienst/Toeslagen kan het voorschot herzien.
       5. Een herziening van het voorschot kan leiden tot een terug te vorderen bedrag.
     url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel16
+    machine_readable:
+      # Lid 1: het voorschot is het bedrag waarop de tegemoetkoming vermoedelijk
+      # zal worden vastgesteld. Dát bedrag komt uit de inkomensafhankelijke
+      # regeling zelf (voor de zorgtoeslag: art. 2 van die wet) en niet uit deze
+      # wet — vandaar een input zonder bron, die het uitvoerende besluit
+      # aanlevert.
+      #
+      # Wat hier niet staat: lid 2 en 3 (wanneer het voorschot uiterlijk wordt
+      # verleend) en lid 4 en 5 (herziening van het voorschot, en de
+      # terugvordering die daaruit kan volgen).
+      competent_authority: '#bevoegd_gezag'
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+          extensions:
+            chronolex:
+              # Een voorschot wordt in termijnen uitbetaald (art. 22). Hoeveel
+              # termijnen dat er zijn is beleid van de uitvoerder en geen wet,
+              # dus het ritme komt uit zijn instellingen.
+              verplichtingen:
+                - soort: betaling
+                  bedrag: $voorschot
+                  ritme: $betalingsritme
+                  grondslag: Awir art. 16 jo. art. 22 (uitbetaling van het voorschot in termijnen)
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: vermoedelijke_tegemoetkoming
+            type: amount
+            source: {}
+            type_spec:
+              unit: eurocent
+        output:
+          - name: voorschot
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: voorschot
+            value: $vermoedelijke_tegemoetkoming
   - number: '17'
     text: >-
       Artikel 17. Na voorschot melding wijziging omstandigheden 1. Indien een voorschot op de tegemoetkoming is verleend
@@ -363,6 +421,73 @@ articles:
       kan worden toegekend, stelt de Belastingdienst/Toeslagen de belanghebbende hiervan schriftelijk in kennis onder het
       noemen van een redelijke termijn waarbinnen toekenning zal plaatsvinden.
     url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel19
+    machine_readable:
+      # De vaststelling na afloop van het berekeningsjaar: de dienst kent de
+      # tegemoetkoming over dat jaar toe. Dit artikel rekent de tegemoetkoming
+      # niet opnieuw uit — wat is toegekend, is toegekend — en zet er de
+      # verrekening van art. 24, tweede lid naast: wat er na aftrek van de
+      # verleende voorschotten overblijft, is het slotbedrag.
+      #
+      # Beide bedragen komen van buiten deze wet en dragen daarom geen bron: het
+      # toegekende bedrag ligt in de eerdere beschikking, de verleende
+      # voorschotten liggen bij wie ze uitbetaalde. Wie deze vaststelling
+      # uitvoert, levert ze aan.
+      #
+      # Wat hier niet staat: de termijnen van lid 1 en 2 (acht weken na de
+      # aanslag, of vóór 1 december van het volgende jaar) en de kennisgeving van
+      # lid 3. Een slotbedrag kan negatief zijn — dan is het een terugvordering
+      # (art. 24, derde lid), en de kant die dat opgaat staat nog niet in dit
+      # blok.
+      competent_authority: '#bevoegd_gezag'
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+          extensions:
+            chronolex:
+              # Het slotbedrag wordt ineens uitbetaald, binnen vier weken na
+              # dagtekening van deze beschikking (art. 24, eerste lid). Dat is
+              # wet en geen beleid, dus hier staat een ritme en geen instelling.
+              verplichtingen:
+                - soort: betaling
+                  bedrag: $slotbedrag
+                  ritme: ineens
+                  grondslag: Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening)
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: toegekende_tegemoetkoming
+            type: amount
+            source: {}
+            type_spec:
+              unit: eurocent
+          - name: verleende_voorschotten
+            type: amount
+            source: {}
+            type_spec:
+              unit: eurocent
+        output:
+          - name: vastgestelde_tegemoetkoming
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: slotbedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: vastgestelde_tegemoetkoming
+            value: $toegekende_tegemoetkoming
+          # Art. 24, tweede lid: verleende voorschotten worden verrekend met de
+          # tegemoetkoming. Wat overblijft is wat er nog uitbetaald wordt.
+          - output: slotbedrag
+            value:
+              operation: SUBTRACT
+              values:
+                - $vastgestelde_tegemoetkoming
+                - $verleende_voorschotten
   - number: '20'
     text: >-
       Artikel 20. Herziening tegemoetkoming wegens wijziging fiscale gegevens na toekenning 1. Indien na de toekenning
@@ -409,6 +534,37 @@ articles:
       de beschikking. 2. Indien voorschotten zijn verleend, worden deze verrekend met de tegemoetkoming. 3. De in het
       tweede lid bedoelde verrekening kan leiden tot een terug te vorderen bedrag.
     url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel24
+    machine_readable:
+      # Lid 1 geeft de uiterste betaaldatum: vier weken na dagtekening van de
+      # beschikking. De dagtekening komt van buiten deze wet — het is de datum
+      # van de beschikking die uitbetaald wordt — en draagt daarom geen bron.
+      #
+      # De verrekening van lid 2 staat niet hier maar in het artikel dat de
+      # vaststelling voortbrengt (art. 19): daar is het bedrag bekend waarmee
+      # verrekend wordt, en een uitkomst die twee artikelen uitrekenen zou twee
+      # antwoorden op dezelfde vraag zijn. Lid 3 (de verrekening kan tot een
+      # terugvordering leiden) staat er nog niet.
+      definitions:
+        betaaltermijn_weken:
+          value: 4
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: dagtekening_beschikking
+            type: date
+            source: {}
+        output:
+          - name: uiterste_betaaldatum
+            type: date
+        actions:
+          - output: uiterste_betaaldatum
+            value:
+              operation: DATE_ADD
+              date: $dagtekening_beschikking
+              weeks: $betaaltermijn_weken
   - number: '25'
     text: >-
       Artikel 25. Wijze van uitbetaling 1. Uitbetaling van een voorschot of een tegemoetkoming geschiedt door de

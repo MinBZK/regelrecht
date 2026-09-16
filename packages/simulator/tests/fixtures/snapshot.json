@@ -6,7 +6,7 @@
   "locked_settings": {
     "betalingsritme": {
       "cell": "toeslagen",
-      "besluit": "zorgtoeslag_vaststelling"
+      "besluit": "zorgtoeslag_toekenning"
     }
   },
   "cells": [
@@ -357,80 +357,6 @@
               "name": "betaling",
               "intake": "betaling",
               "recording_actor": "belastingdienst",
-              "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4",
-              "op_moment": "2024-12-15",
-              "fields": {
-                "bedrag": {
-                  "value": 49275,
-                  "origin": {
-                    "herkomst": "recorded",
-                    "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4"
-                  }
-                },
-                "besluit": {
-                  "value": "zorgtoeslag_vaststelling",
-                  "origin": {
-                    "herkomst": "recorded",
-                    "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4"
-                  }
-                },
-                "besluit_cel": {
-                  "value": "toeslagen",
-                  "origin": {
-                    "herkomst": "recorded",
-                    "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4"
-                  }
-                },
-                "besluit_gram": {
-                  "value": 1,
-                  "origin": {
-                    "herkomst": "recorded",
-                    "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4"
-                  }
-                },
-                "besluit_kroniek": {
-                  "value": "beschikkingen",
-                  "origin": {
-                    "herkomst": "recorded",
-                    "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4"
-                  }
-                },
-                "besluit_op_moment": {
-                  "value": "2024-12-15",
-                  "origin": {
-                    "herkomst": "recorded",
-                    "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4"
-                  }
-                },
-                "volgnummer": {
-                  "value": 1,
-                  "origin": {
-                    "herkomst": "recorded",
-                    "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4"
-                  }
-                },
-                "zaakkenmerk": {
-                  "value": "zorgtoeslag/999993653",
-                  "origin": {
-                    "herkomst": "recorded",
-                    "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4"
-                  }
-                }
-              }
-            },
-            {
-              "kind": "executogram",
-              "name": "betaling",
-              "intake": "betaling",
-              "recording_actor": "belastingdienst",
               "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4",
               "op_moment": "2025-01-01",
               "fields": {
@@ -496,6 +422,80 @@
                     "herkomst": "recorded",
                     "intake": "betaling",
                     "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "executogram",
+              "name": "betaling",
+              "intake": "betaling",
+              "recording_actor": "belastingdienst",
+              "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1",
+              "op_moment": "2025-01-15",
+              "fields": {
+                "bedrag": {
+                  "value": 0,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1"
+                  }
+                },
+                "besluit": {
+                  "value": "zorgtoeslag_vaststelling",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1"
+                  }
+                },
+                "besluit_cel": {
+                  "value": "toeslagen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1"
+                  }
+                },
+                "besluit_gram": {
+                  "value": 1,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1"
+                  }
+                },
+                "besluit_kroniek": {
+                  "value": "beschikkingen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1"
+                  }
+                },
+                "besluit_op_moment": {
+                  "value": "2025-01-15",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1"
+                  }
+                },
+                "volgnummer": {
+                  "value": 1,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1"
+                  }
+                },
+                "zaakkenmerk": {
+                  "value": "zorgtoeslag/999993653",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1"
                   }
                 }
               }
@@ -614,7 +614,7 @@
         },
         {
           "name": "zorgtoeslagbeschikking",
-          "doc": "wat deze cel over deze zaak besloten heeft, op het gevraagde moment",
+          "doc": "Wat deze cel over deze zaak besloten heeft, op het gevraagde moment. De twee besluiten over één zaak leggen niet dezelfde uitkomsten vast — de toekenning zegt of er recht is en hoe hoog, de vaststelling wat er is vastgesteld en wat er nog volgt — dus ze staan hier alle vier, en een gram draagt waar het over ging.",
           "inputs": [
             {
               "name": "zaakkenmerk",
@@ -623,7 +623,9 @@
           ],
           "outputs": [
             "heeft_recht_op_zorgtoeslag",
-            "hoogte_zorgtoeslag"
+            "hoogte_zorgtoeslag",
+            "slotbedrag",
+            "vastgestelde_tegemoetkoming"
           ],
           "key": {
             "chronicle": "beschikkingen",
@@ -807,32 +809,33 @@
         },
         {
           "name": "zorgtoeslag_vaststelling",
-          "doc": "Het tweede besluit over dezelfde zaak. Hetzelfde zaakkenmerk, dus het ligt in dezelfde kroniek van dezelfde cel — en het gaat opnieuw naar de bron voor het toetsingsinkomen, want er is nergens een kopie van het eerste antwoord.",
+          "doc": "Het tweede besluit over dezelfde zaak, en een ánder besluit: niet de zorgtoeslag nog eens uitrekenen, maar de vaststelling van de Awir (art. 19). Wat is toegekend, leest deze cel terug uit haar eigen eerdere gram; wat er op die toekenning betaald is, accepteert ze van de cel die betaalde. Het verschil is het slotbedrag, en dat is wat er nog uitbetaald wordt — de verrekening van art. 24, tweede lid.",
           "zaakkenmerk": "zorgtoeslag/{bsn}",
           "chronicle": "beschikkingen",
           "schema": [
             {
-              "name": "heeft_recht_op_zorgtoeslag",
-              "type": "boolean",
-              "herkomst": "lexogram",
-              "gat": false,
-              "lexogram": {
-                "regulation": "wet_op_de_zorgtoeslag",
-                "valid_from": "2025-01-01",
-                "article": "2",
-                "regulatory_layer": "WET"
-              }
-            },
-            {
-              "name": "hoogte_zorgtoeslag",
+              "name": "slotbedrag",
               "type": "amount",
               "unit": "eurocent",
               "herkomst": "lexogram",
               "gat": false,
               "lexogram": {
-                "regulation": "wet_op_de_zorgtoeslag",
-                "valid_from": "2025-01-01",
-                "article": "2",
+                "regulation": "algemene_wet_inkomensafhankelijke_regelingen",
+                "valid_from": null,
+                "article": "19",
+                "regulatory_layer": "WET"
+              }
+            },
+            {
+              "name": "vastgestelde_tegemoetkoming",
+              "type": "amount",
+              "unit": "eurocent",
+              "herkomst": "lexogram",
+              "gat": false,
+              "lexogram": {
+                "regulation": "algemene_wet_inkomensafhankelijke_regelingen",
+                "valid_from": null,
+                "article": "19",
                 "regulatory_layer": "WET"
               }
             },
@@ -842,12 +845,12 @@
               "herkomst": "lexogram",
               "gat": false,
               "lexogram": {
-                "regulation": "wet_op_de_zorgtoeslag",
-                "valid_from": "2025-01-01",
-                "article": "2",
+                "regulation": "algemene_wet_inkomensafhankelijke_regelingen",
+                "valid_from": null,
+                "article": "19",
                 "regulatory_layer": "WET"
               },
-              "toelichting": "verplichting van soort 'betaling': bedrag $hoogte_zorgtoeslag, ritme '$betalingsritme', op grondslag 'Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen)'; zij levert de termijnen in 'obligations'. Wie haar nakomt, staat in het wereldbestand (`komt_na`)"
+              "toelichting": "verplichting van soort 'betaling': bedrag $slotbedrag, ritme 'ineens', op grondslag 'Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening)'; zij levert de termijnen in 'obligations'. Wie haar nakomt, staat in het wereldbestand (`komt_na`)"
             },
             {
               "name": "op_moment",
@@ -893,9 +896,9 @@
               "herkomst": "platform",
               "gat": false,
               "lexogram": {
-                "regulation": "wet_op_de_zorgtoeslag",
-                "valid_from": "2025-01-01",
-                "article": null,
+                "regulation": "algemene_wet_inkomensafhankelijke_regelingen",
+                "valid_from": null,
+                "article": "19",
                 "regulatory_layer": "WET"
               },
               "toelichting": "het platform schrijft het in elk gram; de regeling wijst het aan (RFC-002)"
@@ -912,9 +915,9 @@
               "herkomst": "platform",
               "gat": false,
               "lexogram": {
-                "regulation": "wet_op_de_zorgtoeslag",
-                "valid_from": "2025-01-01",
-                "article": "2",
+                "regulation": "algemene_wet_inkomensafhankelijke_regelingen",
+                "valid_from": null,
+                "article": "19",
                 "regulatory_layer": "WET"
               },
               "toelichting": "het platform schrijft het in elk gram; het artikel zegt het in `produces`"
@@ -925,25 +928,19 @@
               "herkomst": "lexogram",
               "gat": false,
               "lexogram": {
-                "regulation": "wet_op_de_zorgtoeslag",
-                "valid_from": "2025-01-01",
-                "article": "2",
+                "regulation": "algemene_wet_inkomensafhankelijke_regelingen",
+                "valid_from": null,
+                "article": "19",
                 "regulatory_layer": "WET"
               },
-              "toelichting": "'TOEKENNING' zolang het besluit doorgaat, of 'AFWIJZING' als een afwijzingsvoorwaarde vervuld is"
+              "toelichting": "'TOEKENNING' zolang het besluit doorgaat, en deze regeling wijst niet af"
             },
             {
               "name": "afwijzingsgrond",
               "type": "array",
-              "herkomst": "lexogram",
+              "herkomst": "platform",
               "gat": false,
-              "lexogram": {
-                "regulation": "wet_op_de_zorgtoeslag",
-                "valid_from": "2025-01-01",
-                "article": "2",
-                "regulatory_layer": "WET"
-              },
-              "toelichting": "gevuld zodra een van deze voorwaarden vervuld is: heeft_recht_op_zorgtoeslag = false (artikel 2)"
+              "toelichting": "leeg: deze regeling kent geen afwijzingsgrond"
             },
             {
               "name": "inputs",
@@ -957,9 +954,9 @@
               "herkomst": "lexogram",
               "gat": false,
               "lexogram": {
-                "regulation": "wet_op_de_zorgtoeslag",
-                "valid_from": "2025-01-01",
-                "article": "2",
+                "regulation": "algemene_wet_inkomensafhankelijke_regelingen",
+                "valid_from": null,
+                "article": "19",
                 "regulatory_layer": "WET"
               },
               "toelichting": "de termijnen die uit de verplichtingen hierboven volgen"
@@ -1323,80 +1320,6 @@
               "name": "betaling_ontvangen_gemeld",
               "intake": "levering",
               "recording_actor": "toeslagen",
-              "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4",
-              "op_moment": "2024-12-15",
-              "fields": {
-                "bedrag": {
-                  "value": 49275,
-                  "origin": {
-                    "herkomst": "recorded",
-                    "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4"
-                  }
-                },
-                "besluit": {
-                  "value": "zorgtoeslag_vaststelling",
-                  "origin": {
-                    "herkomst": "recorded",
-                    "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4"
-                  }
-                },
-                "besluit_cel": {
-                  "value": "toeslagen",
-                  "origin": {
-                    "herkomst": "recorded",
-                    "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4"
-                  }
-                },
-                "besluit_gram": {
-                  "value": 1,
-                  "origin": {
-                    "herkomst": "recorded",
-                    "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4"
-                  }
-                },
-                "besluit_kroniek": {
-                  "value": "beschikkingen",
-                  "origin": {
-                    "herkomst": "recorded",
-                    "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4"
-                  }
-                },
-                "besluit_op_moment": {
-                  "value": "2024-12-15",
-                  "origin": {
-                    "herkomst": "recorded",
-                    "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4"
-                  }
-                },
-                "volgnummer": {
-                  "value": 1,
-                  "origin": {
-                    "herkomst": "recorded",
-                    "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4"
-                  }
-                },
-                "zaakkenmerk": {
-                  "value": "zorgtoeslag/999993653",
-                  "origin": {
-                    "herkomst": "recorded",
-                    "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4"
-                  }
-                }
-              }
-            },
-            {
-              "kind": "executogram",
-              "name": "betaling_ontvangen_gemeld",
-              "intake": "levering",
-              "recording_actor": "toeslagen",
               "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4",
               "op_moment": "2025-01-01",
               "fields": {
@@ -1462,6 +1385,80 @@
                     "herkomst": "recorded",
                     "intake": "levering",
                     "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "executogram",
+              "name": "betaling_ontvangen_gemeld",
+              "intake": "levering",
+              "recording_actor": "toeslagen",
+              "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1",
+              "op_moment": "2025-01-15",
+              "fields": {
+                "bedrag": {
+                  "value": 0,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1"
+                  }
+                },
+                "besluit": {
+                  "value": "zorgtoeslag_vaststelling",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1"
+                  }
+                },
+                "besluit_cel": {
+                  "value": "toeslagen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1"
+                  }
+                },
+                "besluit_gram": {
+                  "value": 1,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1"
+                  }
+                },
+                "besluit_kroniek": {
+                  "value": "beschikkingen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1"
+                  }
+                },
+                "besluit_op_moment": {
+                  "value": "2025-01-15",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1"
+                  }
+                },
+                "volgnummer": {
+                  "value": 1,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1"
+                  }
+                },
+                "zaakkenmerk": {
+                  "value": "zorgtoeslag/999993653",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1"
                   }
                 }
               }
@@ -1702,8 +1699,8 @@
               "name": "zorgtoeslag_vaststelling",
               "intake": "eigen_besluit",
               "recording_actor": "toeslagen",
-              "grondslag": "wet_op_de_zorgtoeslag (versie 2024-01-01)",
-              "op_moment": "2024-12-15",
+              "grondslag": "algemene_wet_inkomensafhankelijke_regelingen",
+              "op_moment": "2025-01-15",
               "fields": {
                 "afwijzingsgrond": {
                   "value": [],
@@ -1739,25 +1736,25 @@
                       "chronicle": "aanvragen",
                       "content_hash": "sha256:5334c0f80ccf8444015ade39117d2541f77b564b8d44c2842cf91f5740f7cafd",
                       "grams": 1,
-                      "op_moment": "2024-12-15"
+                      "op_moment": "2025-01-15"
                     },
                     {
                       "chronicle": "relaties",
                       "content_hash": "sha256:34599b9d11d0d748d4611e6c5a85ba2e05b08ac5a7b9f7b82275479ec1f8b934",
                       "grams": 1,
-                      "op_moment": "2024-12-15"
+                      "op_moment": "2025-01-15"
                     },
                     {
                       "chronicle": "inkomensleveringen",
                       "content_hash": "sha256:1bb0aa5824de2ad8d31e4c8b27ae86886a19966fca271b8a84c4e7e22fa29f9a",
                       "grams": 1,
-                      "op_moment": "2024-12-15"
+                      "op_moment": "2025-01-15"
                     },
                     {
                       "chronicle": "betalingen",
-                      "content_hash": "sha256:52932a84be3262b0a1371cb006186ecbc27b17f56c5950dbd353a72c411ac249",
-                      "grams": 3,
-                      "op_moment": "2024-12-15"
+                      "content_hash": "sha256:93a6e3c288cded2e4b9fb815b284972d921f7a7dffdebad7f9e77cd95c73c487",
+                      "grams": 4,
+                      "op_moment": "2025-01-15"
                     }
                   ],
                   "origin": {
@@ -1779,46 +1776,12 @@
                 "executed_regulations": {
                   "value": [
                     {
-                      "regulation": "wet_op_de_zorgtoeslag",
-                      "regulation_valid_from": "2024-01-01"
-                    },
-                    {
                       "regulation": "algemene_wet_inkomensafhankelijke_regelingen",
                       "regulation_valid_from": null
-                    },
-                    {
-                      "regulation": "regeling_standaardpremie",
-                      "regulation_valid_from": "2024-01-01"
                     }
                   ],
                   "origin": {
                     "herkomst": "besluit"
-                  }
-                },
-                "heeft_recht_op_zorgtoeslag": {
-                  "value": true,
-                  "origin": {
-                    "herkomst": "computed",
-                    "regulation": "wet_op_de_zorgtoeslag"
-                  }
-                },
-                "hoogte_zorgtoeslag": {
-                  "value": 197102.85,
-                  "origin": {
-                    "herkomst": "computed",
-                    "regulation": "wet_op_de_zorgtoeslag"
-                  }
-                },
-                "is_verzekerde": {
-                  "value": true,
-                  "origin": {
-                    "herkomst": "besluit_input",
-                    "recorded_origin": {
-                      "chronicle": "inkomensleveringen",
-                      "field": "is_verzekerde",
-                      "herkomst": "eigen_kroniek",
-                      "op_moment": "2023-11-15"
-                    }
                   }
                 },
                 "legal_character": {
@@ -1830,56 +1793,17 @@
                 "obligations": {
                   "value": [
                     {
-                      "bedrag": 49275,
-                      "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen)",
+                      "bedrag": 0,
+                      "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening)",
                       "lexogram": {
-                        "artikel": "2",
-                        "regulation": "wet_op_de_zorgtoeslag",
-                        "regulation_valid_from": "2024-01-01"
+                        "artikel": "19",
+                        "regulation": "algemene_wet_inkomensafhankelijke_regelingen",
+                        "regulation_valid_from": null
                       },
                       "payer": "belastingdienst",
-                      "schedule": "kwartaal",
-                      "vervaldatum": "2024-12-15",
+                      "schedule": "ineens",
+                      "vervaldatum": "2025-01-15",
                       "volgnummer": 1
-                    },
-                    {
-                      "bedrag": 49275,
-                      "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen)",
-                      "lexogram": {
-                        "artikel": "2",
-                        "regulation": "wet_op_de_zorgtoeslag",
-                        "regulation_valid_from": "2024-01-01"
-                      },
-                      "payer": "belastingdienst",
-                      "schedule": "kwartaal",
-                      "vervaldatum": "2025-03-15",
-                      "volgnummer": 2
-                    },
-                    {
-                      "bedrag": 49275,
-                      "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen)",
-                      "lexogram": {
-                        "artikel": "2",
-                        "regulation": "wet_op_de_zorgtoeslag",
-                        "regulation_valid_from": "2024-01-01"
-                      },
-                      "payer": "belastingdienst",
-                      "schedule": "kwartaal",
-                      "vervaldatum": "2025-06-15",
-                      "volgnummer": 3
-                    },
-                    {
-                      "bedrag": 49277.85,
-                      "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen)",
-                      "lexogram": {
-                        "artikel": "2",
-                        "regulation": "wet_op_de_zorgtoeslag",
-                        "regulation_valid_from": "2024-01-01"
-                      },
-                      "payer": "belastingdienst",
-                      "schedule": "kwartaal",
-                      "vervaldatum": "2025-09-15",
-                      "volgnummer": 4
                     }
                   ],
                   "origin": {
@@ -1887,29 +1811,55 @@
                   }
                 },
                 "regulation": {
-                  "value": "wet_op_de_zorgtoeslag",
+                  "value": "algemene_wet_inkomensafhankelijke_regelingen",
                   "origin": {
                     "herkomst": "besluit"
                   }
                 },
                 "regulation_valid_from": {
-                  "value": "2024-01-01",
+                  "value": null,
                   "origin": {
                     "herkomst": "besluit"
                   }
                 },
-                "toetsingsinkomen": {
-                  "value": 85000,
+                "slotbedrag": {
+                  "value": 0.0,
+                  "origin": {
+                    "herkomst": "computed",
+                    "regulation": "algemene_wet_inkomensafhankelijke_regelingen"
+                  }
+                },
+                "toegekende_tegemoetkoming": {
+                  "value": 197178.01,
+                  "origin": {
+                    "herkomst": "besluit_input",
+                    "recorded_origin": {
+                      "besluit": "zorgtoeslag_toekenning",
+                      "herkomst": "eerder_besluit",
+                      "moment": "2024-04-01",
+                      "zaakkenmerk": "zorgtoeslag/999993653"
+                    }
+                  }
+                },
+                "vastgestelde_tegemoetkoming": {
+                  "value": 197178.01,
+                  "origin": {
+                    "herkomst": "computed",
+                    "regulation": "algemene_wet_inkomensafhankelijke_regelingen"
+                  }
+                },
+                "verleende_voorschotten": {
+                  "value": 197178.01,
                   "origin": {
                     "herkomst": "besluit_input",
                     "recorded_origin": {
                       "asked_by": "cel:toeslagen",
                       "cell": "belastingdienst",
-                      "competent_authority": "Belastingdienst",
-                      "field": "toetsingsinkomen",
+                      "competent_authority": null,
+                      "field": "bedrag",
                       "herkomst": "geaccepteerd",
-                      "lexostatus": "toetsingsinkomen",
-                      "op_moment": "2024-12-15",
+                      "lexostatus": "betaald_tot_nu_toe",
+                      "op_moment": "2025-01-15",
                       "signature": "GESIMULEERDE-ONDERTEKENING door cel:toeslagen"
                     }
                   }
@@ -2056,41 +2006,74 @@
       "asked_by": "cel:toeslagen",
       "signature": "GESIMULEERDE-ONDERTEKENING door cel:toeslagen",
       "params": {
-        "bsn": "999993653"
+        "zaakkenmerk": "zorgtoeslag/999993653"
       },
       "answer": {
         "cell": "belastingdienst",
-        "name": "toetsingsinkomen",
-        "op_moment": "2024-12-15",
+        "name": "betaald_tot_nu_toe",
+        "op_moment": "2025-01-15",
         "outcome": {
           "established": {
-            "competent_authority": "Belastingdienst",
-            "toetsingsinkomen": 85000
+            "bedrag": 197178.01
           }
         },
         "reductie": {
           "vorm": {
             "soort": "kroniekfilter",
-            "chronicle": "aanslagen",
-            "key": "bsn",
-            "key_value": "999993653",
+            "chronicle": "betalingen",
+            "key": "zaakkenmerk",
+            "key_value": "zorgtoeslag/999993653",
             "where": {},
             "regel": {
-              "regel": "laatste"
+              "regel": "som",
+              "field": "bedrag"
             },
-            "op_moment": "2024-12-15"
+            "op_moment": "2025-01-15"
           },
           "grammen": [
             {
               "cell": "belastingdienst",
-              "chronicle": "aanslagen",
-              "id": "belastingdienst|aanslagen|1",
-              "kind": "decretogram",
-              "name": "aanslag_herzien",
-              "volgnummer": 1,
-              "op_moment": "2024-12-01",
+              "chronicle": "betalingen",
+              "id": "belastingdienst|betalingen|0",
+              "kind": "executogram",
+              "name": "betaling",
+              "volgnummer": 0,
+              "op_moment": "2024-04-01",
               "regulation_valid_from": null,
-              "bijdrage": null
+              "bijdrage": 49294
+            },
+            {
+              "cell": "belastingdienst",
+              "chronicle": "betalingen",
+              "id": "belastingdienst|betalingen|1",
+              "kind": "executogram",
+              "name": "betaling",
+              "volgnummer": 1,
+              "op_moment": "2024-07-01",
+              "regulation_valid_from": null,
+              "bijdrage": 49294
+            },
+            {
+              "cell": "belastingdienst",
+              "chronicle": "betalingen",
+              "id": "belastingdienst|betalingen|2",
+              "kind": "executogram",
+              "name": "betaling",
+              "volgnummer": 2,
+              "op_moment": "2024-10-01",
+              "regulation_valid_from": null,
+              "bijdrage": 49294
+            },
+            {
+              "cell": "belastingdienst",
+              "chronicle": "betalingen",
+              "id": "belastingdienst|betalingen|3",
+              "kind": "executogram",
+              "name": "betaling",
+              "volgnummer": 3,
+              "op_moment": "2025-01-01",
+              "regulation_valid_from": null,
+              "bijdrage": 49296.01
             }
           ]
         }
@@ -2469,178 +2452,12 @@
     },
     {
       "seq": 6,
-      "moment": "2024-12-15",
-      "actor": {
-        "soort": "actor",
-        "id": "toeslagen"
-      },
-      "kind": "besluit",
-      "description": "Stel de zorgtoeslag definitief vast",
-      "grams": [
-        {
-          "cell": "toeslagen",
-          "chronicle": "beschikkingen",
-          "id": "toeslagen|beschikkingen|1",
-          "kind": "decretogram",
-          "name": "zorgtoeslag_vaststelling"
-        }
-      ],
-      "changes": [
-        {
-          "cell": "toeslagen",
-          "lexostatus": "zorgtoeslagbeschikking",
-          "label": "toekenningspositie",
-          "voor": {
-            "heeft_recht_op_zorgtoeslag": true,
-            "hoogte_zorgtoeslag": 197178.01
-          },
-          "na": {
-            "heeft_recht_op_zorgtoeslag": true,
-            "hoogte_zorgtoeslag": 197102.85
-          }
-        }
-      ],
-      "accepted": [
-        {
-          "name": "toetsingsinkomen",
-          "value": 85000,
-          "cell": "belastingdienst",
-          "lexostatus": "toetsingsinkomen",
-          "op_moment": "2024-12-15"
-        }
-      ],
-      "executed": {
-        "decision_type": "TOEKENNING",
-        "afwijzingsgronden": [],
-        "regulations": [
-          {
-            "regulation": "wet_op_de_zorgtoeslag",
-            "valid_from": "2024-01-01"
-          },
-          {
-            "regulation": "algemene_wet_inkomensafhankelijke_regelingen",
-            "valid_from": null
-          },
-          {
-            "regulation": "regeling_standaardpremie",
-            "valid_from": "2024-01-01"
-          }
-        ],
-        "inputs": [
-          {
-            "name": "bsn",
-            "value": "999993653",
-            "herkomst": {
-              "herkomst": "parameter",
-              "parameter": "bsn"
-            }
-          },
-          {
-            "name": "is_verzekerde",
-            "value": true,
-            "herkomst": {
-              "chronicle": "inkomensleveringen",
-              "field": "is_verzekerde",
-              "herkomst": "eigen_kroniek",
-              "op_moment": "2023-11-15"
-            }
-          },
-          {
-            "name": "toetsingsinkomen",
-            "value": 85000,
-            "herkomst": {
-              "asked_by": "cel:toeslagen",
-              "cell": "belastingdienst",
-              "competent_authority": "Belastingdienst",
-              "field": "toetsingsinkomen",
-              "herkomst": "geaccepteerd",
-              "lexostatus": "toetsingsinkomen",
-              "op_moment": "2024-12-15",
-              "signature": "GESIMULEERDE-ONDERTEKENING door cel:toeslagen"
-            }
-          }
-        ],
-        "outputs": [
-          {
-            "name": "heeft_recht_op_zorgtoeslag",
-            "value": true
-          },
-          {
-            "name": "hoogte_zorgtoeslag",
-            "value": 197102.85
-          }
-        ]
-      },
-      "question": null,
-      "parent": null
-    },
-    {
-      "seq": 7,
-      "moment": "2024-12-15",
-      "actor": {
-        "soort": "cell",
-        "id": "toeslagen"
-      },
-      "kind": "vraag",
-      "description": "vroeg 'toetsingsinkomen' aan cel 'belastingdienst' op 2024-12-15",
-      "grams": [],
-      "changes": [],
-      "accepted": [],
-      "executed": null,
-      "question": {
-        "asked_by": "cel:toeslagen",
-        "signature": "GESIMULEERDE-ONDERTEKENING door cel:toeslagen",
-        "params": {
-          "bsn": "999993653"
-        },
-        "answer": {
-          "cell": "belastingdienst",
-          "name": "toetsingsinkomen",
-          "op_moment": "2024-12-15",
-          "outcome": {
-            "established": {
-              "competent_authority": "Belastingdienst",
-              "toetsingsinkomen": 85000
-            }
-          },
-          "reductie": {
-            "vorm": {
-              "soort": "kroniekfilter",
-              "chronicle": "aanslagen",
-              "key": "bsn",
-              "key_value": "999993653",
-              "where": {},
-              "regel": {
-                "regel": "laatste"
-              },
-              "op_moment": "2024-12-15"
-            },
-            "grammen": [
-              {
-                "cell": "belastingdienst",
-                "chronicle": "aanslagen",
-                "id": "belastingdienst|aanslagen|1",
-                "kind": "decretogram",
-                "name": "aanslag_herzien",
-                "volgnummer": 1,
-                "op_moment": "2024-12-01",
-                "regulation_valid_from": null,
-                "bijdrage": null
-              }
-            ]
-          }
-        }
-      },
-      "parent": 6
-    },
-    {
-      "seq": 8,
-      "moment": "2024-12-15",
+      "moment": "2025-01-01",
       "actor": {
         "soort": "klok"
       },
       "kind": "betaling",
-      "description": "termijn 1/4 van 49275 op 2024-12-15, te betalen door belastingdienst (kwartaal)",
+      "description": "termijn 4/4 van 49296.01000 op 2025-01-01, te betalen door belastingdienst (kwartaal)",
       "grams": [
         {
           "cell": "belastingdienst",
@@ -2666,7 +2483,7 @@
             "bedrag": 147882
           },
           "na": {
-            "bedrag": 197157
+            "bedrag": 197178.01
           }
         },
         {
@@ -2677,7 +2494,7 @@
             "bedrag": 147882
           },
           "na": {
-            "bedrag": 197157
+            "bedrag": 197178.01
           }
         }
       ],
@@ -2687,13 +2504,204 @@
       "parent": null
     },
     {
+      "seq": 7,
+      "moment": "2025-01-15",
+      "actor": {
+        "soort": "actor",
+        "id": "toeslagen"
+      },
+      "kind": "besluit",
+      "description": "Stel de zorgtoeslag definitief vast",
+      "grams": [
+        {
+          "cell": "toeslagen",
+          "chronicle": "beschikkingen",
+          "id": "toeslagen|beschikkingen|1",
+          "kind": "decretogram",
+          "name": "zorgtoeslag_vaststelling"
+        }
+      ],
+      "changes": [
+        {
+          "cell": "toeslagen",
+          "lexostatus": "zorgtoeslagbeschikking",
+          "label": "toekenningspositie",
+          "voor": {
+            "heeft_recht_op_zorgtoeslag": true,
+            "hoogte_zorgtoeslag": 197178.01
+          },
+          "na": {
+            "slotbedrag": 0.0,
+            "vastgestelde_tegemoetkoming": 197178.01
+          }
+        }
+      ],
+      "accepted": [
+        {
+          "name": "verleende_voorschotten",
+          "value": 197178.01,
+          "cell": "belastingdienst",
+          "lexostatus": "betaald_tot_nu_toe",
+          "op_moment": "2025-01-15"
+        }
+      ],
+      "executed": {
+        "decision_type": "TOEKENNING",
+        "afwijzingsgronden": [],
+        "regulations": [
+          {
+            "regulation": "algemene_wet_inkomensafhankelijke_regelingen",
+            "valid_from": null
+          }
+        ],
+        "inputs": [
+          {
+            "name": "bsn",
+            "value": "999993653",
+            "herkomst": {
+              "herkomst": "parameter",
+              "parameter": "bsn"
+            }
+          },
+          {
+            "name": "toegekende_tegemoetkoming",
+            "value": 197178.01,
+            "herkomst": {
+              "besluit": "zorgtoeslag_toekenning",
+              "herkomst": "eerder_besluit",
+              "moment": "2024-04-01",
+              "zaakkenmerk": "zorgtoeslag/999993653"
+            }
+          },
+          {
+            "name": "verleende_voorschotten",
+            "value": 197178.01,
+            "herkomst": {
+              "asked_by": "cel:toeslagen",
+              "cell": "belastingdienst",
+              "competent_authority": null,
+              "field": "bedrag",
+              "herkomst": "geaccepteerd",
+              "lexostatus": "betaald_tot_nu_toe",
+              "op_moment": "2025-01-15",
+              "signature": "GESIMULEERDE-ONDERTEKENING door cel:toeslagen"
+            }
+          }
+        ],
+        "outputs": [
+          {
+            "name": "slotbedrag",
+            "value": 0.0
+          },
+          {
+            "name": "vastgestelde_tegemoetkoming",
+            "value": 197178.01
+          }
+        ]
+      },
+      "question": null,
+      "parent": null
+    },
+    {
+      "seq": 8,
+      "moment": "2025-01-15",
+      "actor": {
+        "soort": "cell",
+        "id": "toeslagen"
+      },
+      "kind": "vraag",
+      "description": "vroeg 'betaald_tot_nu_toe' aan cel 'belastingdienst' op 2025-01-15",
+      "grams": [],
+      "changes": [],
+      "accepted": [],
+      "executed": null,
+      "question": {
+        "asked_by": "cel:toeslagen",
+        "signature": "GESIMULEERDE-ONDERTEKENING door cel:toeslagen",
+        "params": {
+          "zaakkenmerk": "zorgtoeslag/999993653"
+        },
+        "answer": {
+          "cell": "belastingdienst",
+          "name": "betaald_tot_nu_toe",
+          "op_moment": "2025-01-15",
+          "outcome": {
+            "established": {
+              "bedrag": 197178.01
+            }
+          },
+          "reductie": {
+            "vorm": {
+              "soort": "kroniekfilter",
+              "chronicle": "betalingen",
+              "key": "zaakkenmerk",
+              "key_value": "zorgtoeslag/999993653",
+              "where": {},
+              "regel": {
+                "regel": "som",
+                "field": "bedrag"
+              },
+              "op_moment": "2025-01-15"
+            },
+            "grammen": [
+              {
+                "cell": "belastingdienst",
+                "chronicle": "betalingen",
+                "id": "belastingdienst|betalingen|0",
+                "kind": "executogram",
+                "name": "betaling",
+                "volgnummer": 0,
+                "op_moment": "2024-04-01",
+                "regulation_valid_from": null,
+                "bijdrage": 49294
+              },
+              {
+                "cell": "belastingdienst",
+                "chronicle": "betalingen",
+                "id": "belastingdienst|betalingen|1",
+                "kind": "executogram",
+                "name": "betaling",
+                "volgnummer": 1,
+                "op_moment": "2024-07-01",
+                "regulation_valid_from": null,
+                "bijdrage": 49294
+              },
+              {
+                "cell": "belastingdienst",
+                "chronicle": "betalingen",
+                "id": "belastingdienst|betalingen|2",
+                "kind": "executogram",
+                "name": "betaling",
+                "volgnummer": 2,
+                "op_moment": "2024-10-01",
+                "regulation_valid_from": null,
+                "bijdrage": 49294
+              },
+              {
+                "cell": "belastingdienst",
+                "chronicle": "betalingen",
+                "id": "belastingdienst|betalingen|3",
+                "kind": "executogram",
+                "name": "betaling",
+                "volgnummer": 3,
+                "op_moment": "2025-01-01",
+                "regulation_valid_from": null,
+                "bijdrage": 49296.01
+              }
+            ]
+          }
+        }
+      },
+      "parent": 7
+    },
+    {
       "seq": 9,
-      "moment": "2025-01-01",
+      "moment": "2025-01-15",
       "actor": {
         "soort": "klok"
       },
       "kind": "betaling",
-      "description": "termijn 4/4 van 49296.01000 op 2025-01-01, te betalen door belastingdienst (kwartaal)",
+      "description": "termijn 1/1 van 0 op 2025-01-15, te betalen door belastingdienst (ineens)",
       "grams": [
         {
           "cell": "belastingdienst",
@@ -2710,30 +2718,7 @@
           "name": "betaling_ontvangen_gemeld"
         }
       ],
-      "changes": [
-        {
-          "cell": "belastingdienst",
-          "lexostatus": "betaald_tot_nu_toe",
-          "label": "betaald",
-          "voor": {
-            "bedrag": 197157
-          },
-          "na": {
-            "bedrag": 246453.01
-          }
-        },
-        {
-          "cell": "toeslagen",
-          "lexostatus": "betaald_tot_nu_toe",
-          "label": "betaald volgens de meldingen",
-          "voor": {
-            "bedrag": 197157
-          },
-          "na": {
-            "bedrag": 246453.01
-          }
-        }
-      ],
+      "changes": [],
       "accepted": [],
       "executed": null,
       "question": null,
