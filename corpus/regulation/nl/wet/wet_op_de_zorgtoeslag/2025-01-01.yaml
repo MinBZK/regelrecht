@@ -11,13 +11,23 @@ competent_authority: '#bevoegd_gezag'
 articles:
   - number: '1'
     text: >-
-      In deze wet en de daarop berustende bepalingen wordt verstaan onder:
+      1. In deze wet en de daarop berustende bepalingen wordt, tenzij anders is geregeld, verstaan onder: a. Onze Minister:
+      Onze Minister van Volksgezondheid, Welzijn en Sport; b. zorgverzekering: de schadeverzekering, bedoeld in artikel 1,
+      onder d, van de Zorgverzekeringswet; c. verzekerde: de persoon, bedoeld in artikel 1, onder f, van de
+      Zorgverzekeringswet, de persoon die een bijdrage als bedoeld in artikel 68b, vijfde lid, van de Zorgverzekeringswet
+      verschuldigd is, of de persoon, bedoeld in artikel 69 van de Zorgverzekeringswet, steeds vanaf de eerste dag van de
+      kalendermaand volgende op de maand waarin hij achttien jaar wordt, met uitzondering van de verzekerde, bedoeld in
+      artikel 24, eerste of derde lid,van die wet; d. premie: een premie als bedoeld in afdeling 3.3.1 van de
+      Zorgverzekeringswet; e. zorgtoeslag: een tegemoetkoming in een premie dan wel in een bestuursrechtelijke premie als
+      bedoeld in artikel 18d of 18e van de Zorgverzekeringswet en in het verplicht eigen risico, bedoeld in artikel 19 van
+      de Zorgverzekeringswet; f. drempelinkomen: 108% van het twaalfvoud van het voor de maand januari van het
+      berekeningsjaar geldende in artikel 8, eerste lid, onderdeel b, van de Wet minimumloon en minimumvakantiebijslag
+      bedoelde bedrag per maand; g. de standaardpremie: het op grond van artikel 4 vastgestelde bedrag; h. de normpremie: de
+      aan de hand van het drempelinkomen en het toetsingsinkomen van de verzekerde berekende premie voor een zorgverzekering
+      in het berekeningsjaar.
 
 
-      a. verzekerde: degene die ingevolge de Zorgverzekeringswet verzekerd is; b. toetsingsinkomen: het verzamelinkomen,
-      bedoeld in artikel 2.18 van de Wet inkomstenbelasting 2001; c. drempelinkomen: het bedrag, bedoeld in artikel 2,
-      tweede lid; d. normpremie: de premie, berekend overeenkomstig artikel 2; e. standaardpremie: de premie, bedoeld in
-      artikel 4.
+      2. De hoogte van de zorgtoeslag is afhankelijk van de draagkracht op basis van het inkomen en het vermogen.
     url: https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel1
   - number: 1a
     text: >-
@@ -31,8 +41,9 @@ articles:
     text: >-
       1. Indien de normpremie voor een verzekerde in het berekeningsjaar minder bedraagt dan de standaardpremie in dat
       jaar, heeft de verzekerde aanspraak op een zorgtoeslag ter grootte van dat verschil. Voor een verzekerde met een
-      toeslagpartner geldt het dubbele van de standaardpremie en worden de verzekerde en de toeslagpartner geacht
-      gezamenlijk aanspraak te maken op zorgtoeslag.
+      partner wordt daarbij
+      tweemaal de standaardpremie in aanmerking genomen; in dat geval worden de verzekerde en zijn partner voor de
+      toepassing van deze wet geacht gezamenlijk één aanspraak te hebben.
 
 
       2. De normpremie bedraagt een percentage van het drempelinkomen in het berekeningsjaar, vermeerderd met een
@@ -55,11 +66,11 @@ articles:
       5. De aanspraak op een zorgtoeslag wordt voor iedere kalendermaand afzonderlijk bepaald.
 
 
-      6. Bij ministeriële regeling kunnen nadere regels worden gesteld.
+      6. Bij regeling van Onze Minister kunnen omtrent het bepaalde in het vijfde lid nadere regels worden gesteld.
 
 
-      7. Onze Minister zendt een voornemen tot wijziging van de percentages, bedoeld in het derde lid, ten minste twee
-      weken voor de vaststelling aan beide kamers der Staten-Generaal.
+      7. De voordracht voor een krachtens het derde lid vast te stellen algemene maatregel van bestuur wordt niet
+      eerder gedaan dan twee weken nadat het ontwerp aan beide kamers der Staten-Generaal is overgelegd.
     url: https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2
     machine_readable:
       definitions:
@@ -296,10 +307,29 @@ articles:
                   value: 0
   - number: '3'
     text: >-
-      Een verzekerde heeft geen aanspraak op zorgtoeslag indien de rendementsgrondslag, bedoeld in artikel 5.2 van de Wet
-      inkomstenbelasting 2001, van de verzekerde of, ingeval de verzekerde een toeslagpartner heeft, de gezamenlijke
-      rendementsgrondslag van de verzekerde en de toeslagpartner op de peildatum meer bedraagt dan € 141.896 voor een
-      verzekerde zonder toeslagpartner, onderscheidenlijk € 179.429 voor een verzekerde met een toeslagpartner.
+      1. In afwijking van artikel 7, derde lid, van de Algemene wet inkomensafhankelijke regelingen, bestaat geen aanspraak
+      op een zorgtoeslag indien de rendementsgrondslag, bedoeld in artikel 5.3 van de Wet inkomstenbelasting 2001, van de
+      verzekerde aan het begin van het berekeningsjaar meer bedraagt dan € 141.896 of, indien de verzekerde het gehele
+      berekeningsjaar dezelfde partner heeft, de gezamenlijke rendementsgrondslag, bedoeld in artikel 5.3, van de Wet
+      inkomstenbelasting 2001, van de verzekerde en zijn partner aan het begin van het berekeningsjaar meer bedraagt dan €
+      179.429. Bij de bepaling van de rendementsgrondslag, bedoeld in de vorige zin, wordt geen rekening gehouden met de
+      vrijstelling, bedoeld in artikel 5.13 van de Wet inkomstenbelasting 2001.
+
+
+      2. Bij het begin van het kalenderjaar worden de bedragen, bedoeld in het eerste lid, bij ministeriële regeling
+      gewijzigd overeenkomstig de tabelcorrectiefactor, bedoeld in artikel 10.2 van de Wet inkomstenbelasting 2001.
+
+
+      3. Indien er aanleiding is om de bedragen, bedoeld in het eerste lid, te verhogen op een andere wijze dan op grond van
+      het tweede lid, worden de bedragen vastgesteld bij algemene maatregel van bestuur.
+
+
+      4. De overeenkomstig het tweede en derde lid aangepaste bedragen treden in de plaats van de bedragen, genoemd in het
+      eerste lid.
+
+
+      5. Indien een verhoging als bedoeld in het derde lid wordt toegepast, vindt deze verhoging plaats nadat het tweede lid
+      toepassing heeft gevonden.
     url: https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel3
     machine_readable:
       definitions:
@@ -366,7 +396,9 @@ articles:
   - number: '4'
     text: >-
       Onze Minister stelt uiterlijk 22 dagen voorafgaande aan het berekeningsjaar bij regeling de standaardpremie voor
-      het berekeningsjaar vast.
+      het berekeningsjaar vast die wordt gevormd door de geraamde gemiddelde premie voor een verzekerde voor een
+      zorgverzekering in het berekeningsjaar te vermeerderen met het geraamde gemiddelde bedrag dat een verzekerde naar
+      verwachting in dat jaar betaalt ingevolge artikel 19 van de Zorgverzekeringswet.
     url: https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel4
     machine_readable:
       open_terms:
@@ -396,7 +428,23 @@ articles:
       1. De Dienst Toeslagen is belast met de uitvoering van deze wet.
 
 
-      2. Tot en met 4. [Procedurele bepalingen over aanvraag en betaling]
+      2. In afwijking van artikel 25, eerste lid, van de Algemene wet inkomensafhankelijke regelingen betaalt de Dienst
+      Toeslagen in opdracht van het CAK, genoemd in artikel 6.1.1, eerste lid, van de Wet langdurige zorg, de zorgtoeslag of
+      het voorschot op de zorgtoeslag als tegemoetkoming in de bestuursrechtelijke premie, bedoeld in artikel 18d of 18e van
+      de Zorgverzekeringswet, aan het CAK uit.
+
+
+      3. De persoon, bedoeld in artikel 68b, vijfde lid, van de Zorgverzekeringswet, wordt geacht, zo nodig in afwijking van
+      artikel 15, eerste lid, van de Algemene wet inkomensafhankelijke regelingen, tijdig een aanvraag als bedoeld in
+      laatstgenoemd artikel te hebben gedaan voor de berekeningsjaren in de periode gelegen tussen de ingangsdatum van de
+      verzekeringsplicht voor de Zorgverzekeringswet en het moment waarop hij van het CAK een kennisgeving heeft ontvangen
+      van de verplichting om een zorgverzekering af te sluiten.
+
+
+      4. Voor de toepassing van artikel 16, eerste lid, van de Algemene wet inkomensafhankelijke regelingen wordt in het
+      geval, bedoeld in het derde lid, de aanvraag geacht te zijn gedaan op het moment waarop de Belastingdienst/Toeslagen
+      van het CAK een afschrift heeft ontvangen van de beschikking, bedoeld in artikel 68b, zesde lid, van de
+      Zorgverzekeringswet.
 
 
       5. De zorgtoeslag komt ten laste van het Rijk.
@@ -409,7 +457,9 @@ articles:
   - number: '6'
     text: >-
       Onze Minister zendt binnen vier jaar na de inwerkingtreding van deze wet, en vervolgens telkens na vier jaar, aan
-      de Staten-Generaal een verslag over de doeltreffendheid en de effecten van deze wet in de praktijk.
+      de Staten-Generaal een verslag over de doeltreffendheid en de effecten van deze wet in de praktijk, in het bijzonder
+      van de bij of
+      krachtens deze wet vastgestelde percentages ter bepaling van de normpremie.
     url: https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel6
   - number: '7'
     text: |-

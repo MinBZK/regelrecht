@@ -31,21 +31,26 @@ const SCENARIO =
 const ANNOTATIONS = 'corpus/annotations/wet_op_de_zorgtoeslag/annotations.yaml';
 
 /**
- * Article 2 lid 1, as the law states it.
+ * Article 3 lid 1, as the law states it: the capital test.
+ *
+ * One sentence, one rule, and an amount a reader recognises. Article 2 states
+ * the allowance itself, which takes three leden and a page of arithmetic to
+ * model; this panel is there to show that a statute and its executable form say
+ * the same thing, and that reads better on a rule you can hold in your head.
  *
  * The YAML holds the whole article as one block with the leden separated by
  * blank lines, so lid 1 is the first paragraph. Taking it by position rather
  * than by a regex over legal text keeps the failure loud: if the shape changes,
  * this throws at build time instead of quietly rendering the wrong lid.
  */
-function articleTwoLidOne(yaml: string): string {
-  const marker = "  - number: '2'\n    text: >-\n";
+function articleThreeLidOne(yaml: string): string {
+  const marker = "  - number: '3'\n    text: >-\n";
   const start = yaml.indexOf(marker);
-  if (start === -1) throw new Error(`${LAW}: article 2 not found in the expected shape`);
+  if (start === -1) throw new Error(`${LAW}: article 3 not found in the expected shape`);
 
   const body = yaml.slice(start + marker.length);
   const end = body.indexOf('\n    url:');
-  if (end === -1) throw new Error(`${LAW}: article 2 has no url line after its text`);
+  if (end === -1) throw new Error(`${LAW}: article 3 has no url line after its text`);
 
   const text = body
     .slice(0, end)
@@ -55,29 +60,36 @@ function articleTwoLidOne(yaml: string): string {
 
   const lidOne = text.split('\n\n')[0]?.replace(/\n/g, ' ').trim();
   if (!lidOne?.startsWith('1.')) {
-    throw new Error(`${LAW}: expected article 2 to open with lid 1, got ${lidOne?.slice(0, 40)}`);
+    throw new Error(`${LAW}: expected article 3 to open with lid 1, got ${lidOne?.slice(0, 40)}`);
   }
   return lidOne.replace(/^1\.\s*/, '');
 }
 
 /**
- * The machine-readable action that computes the amount, lifted from the law
- * file verbatim, including its `legal_basis`. Indentation is normalized so it
- * reads on its own.
+ * The machine-readable form of that same rule, lifted from the law file
+ * verbatim. Indentation is normalized so it reads on its own.
  */
 function computationYaml(yaml: string): string {
-  const start = yaml.indexOf('          - output: hoogte_zorgtoeslag\n');
-  if (start === -1) throw new Error(`${LAW}: the hoogte_zorgtoeslag action is not where expected`);
+  const start = yaml.indexOf('          - output: vermogen_onder_grens\n');
+  if (start === -1) throw new Error(`${LAW}: the vermogen_onder_grens action is not where expected`);
   const rest = yaml.slice(start);
-  const end = rest.indexOf('\n          - output: heeft_recht_op_zorgtoeslag');
-  if (end === -1) throw new Error(`${LAW}: could not find the end of the hoogte_zorgtoeslag action`);
+  const end = rest.indexOf("\n  - number: '4'");
+  if (end === -1) throw new Error(`${LAW}: could not find the end of the vermogen_onder_grens action`);
 
-  return rest
-    .slice(0, end)
-    .split('\n')
-    .map((line) => line.slice(10))
-    .join('\n')
-    .trimEnd();
+  return (
+    rest
+      .slice(0, end)
+      .split('\n')
+      .map((line) => line.slice(10))
+      // Comments in the law file are notes to whoever maintains the corpus:
+      // why a bound is modelled the way it is, which RFC governs a field, what
+      // a past bug was. A visitor reading the panel is being shown the rule,
+      // not our working notes, and an English aside about RFC-039 in the middle
+      // of a Dutch statute reads as part of the law when it is not.
+      .filter((line) => !line.trimStart().startsWith('#'))
+      .join('\n')
+      .trimEnd()
+  );
 }
 
 /**
@@ -170,7 +182,7 @@ const annotationsYaml = read(ANNOTATIONS);
 const memorandumFrom = memorandumSource(annotationsYaml);
 
 export const demo = {
-  prose: articleTwoLidOne(lawYaml),
+  prose: articleThreeLidOne(lawYaml),
   yaml: computationYaml(lawYaml),
   memorandum: memorandum(annotationsYaml),
   // Dutch in both languages: a citation is a findable address, not a
@@ -181,5 +193,5 @@ export const demo = {
   gherkin: scenario(read(SCENARIO)),
   scenarioPath: SCENARIO,
   lawPath: LAW,
-  lawUrl: 'https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2',
+  lawUrl: 'https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel3',
 };
