@@ -51,13 +51,24 @@ describe('buildGraph', () => {
   const brp = law('brp', { sources: ['geboortedatum'], outputs: ['leeftijd'] });
   const zt = law('zt', { inputs: [['leeftijd', 'brp', 'leeftijd'], ['inkomen', 'ib', 'inkomen']], outputs: ['hoogte'] });
 
-  it('draws an edge from an input to the output that supplies it, and none to an absent law', () => {
+  it('draws an edge from the supplying output to the input that reads it, and none to an absent law', () => {
     const { nodes, edges } = buildGraph([brp, zt]);
     expect(edges).toHaveLength(1);
-    expect(edges[0].source).toBe(itemId('zt', 'in', 'leeftijd'));
-    expect(edges[0].target).toBe(itemId('brp', 'out', 'leeftijd'));
+    // Mee met de layout, die de leverancier links zet: van uitvoer naar invoer.
+    expect(edges[0].source).toBe(itemId('brp', 'out', 'leeftijd'));
+    expect(edges[0].target).toBe(itemId('zt', 'in', 'leeftijd'));
     expect(nodes.filter((n) => n.type === 'law')).toHaveLength(2);
     expect(nodes.find((n) => n.id === itemId('brp', 'src', 'geboortedatum')).parentNode).toBe('brp::box::sources');
+  });
+
+  it('keeps the edges under the law frames, so no line runs across a title', () => {
+    const { nodes, edges } = buildGraph([brp, zt]);
+    // Een wetkader krijgt van vue-flow zelf z 0 (het heeft geen parent), en
+    // `<Edges>` rendert vóór `<Nodes>`. Bij gelijke z wint de latere DOM-node,
+    // dus de edge moet op 0 blijven staan en mag er niet bovenuit komen: de
+    // `zIndex: 5` die hier stond tekende de lijnen over de wetnamen heen.
+    expect(edges.every((e) => e.zIndex === 0)).toBe(true);
+    expect(nodes.filter((n) => n.type === 'law').every((n) => n.zIndex === undefined)).toBe(true);
   });
 
   it('shows the persona values on the items and dims laws outside the focus', () => {
