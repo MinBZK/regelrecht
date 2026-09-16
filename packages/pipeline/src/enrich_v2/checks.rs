@@ -1217,16 +1217,37 @@ fn is_definition_text(text: &str) -> bool {
 
 /// How many conditional constructs the model carries. Used to test whether
 /// a conditional statutory text has any branch at all.
+///
+/// A `cases` or `conditions` key counts only when the sequence under it is
+/// non-empty, and a conditional operation only when it carries a non-empty
+/// one. An empty sequence is a branch on nothing: `IF` with `cases: []`
+/// always yields its default, so a text reading "tenzij" is modelled as an
+/// unconditional grant while the gate reports nothing. That is the shape a
+/// translation takes when it wants to pass rather than to translate, which
+/// is the thing this gate exists to make visible.
 fn branch_count(mr: &Value) -> usize {
     let mut n = 0usize;
     walk(mr, &mut |key, node| {
-        if matches!(key, Some("conditions") | Some("cases")) && node.as_sequence().is_some() {
+        if matches!(key, Some("conditions") | Some("cases"))
+            && node.as_sequence().is_some_and(|seq| !seq.is_empty())
+        {
             n += 1;
         }
         if key == Some("operation") {
             if let Some(op) = node.as_str() {
                 if matches!(op, "IF" | "IF_ELSE" | "SWITCH" | "CASE") {
-                    n += 1;
+                    // The operation itself is a branch only if it branches on
+                    // something. `cases`/`conditions` sit as a sibling key of
+                    // `operation`, so the parent map is what carries them.
+                    let branches = node
+                        .as_mapping()
+                        .into_iter()
+                        .flat_map(|m| [m.get("cases"), m.get("conditions")])
+                        .flatten()
+                        .any(|v| v.as_sequence().is_some_and(|seq| !seq.is_empty()));
+                    if branches {
+                        n += 1;
+                    }
                 }
             }
         }
@@ -1238,10 +1259,30 @@ fn branch_count(mr: &Value) -> usize {
 /// field) mentions `word`. Prose in a `description` deliberately does not
 /// count: the point is that the value carries the period, not the comment.
 fn names_carry(mr: &Value, word: &str) -> bool {
+    // A declared name only carries the period if something reads it. A
+    // parameter named `peildatum` that no action mentions is a token placed
+    // to satisfy this gate: it binds nothing, changes no outcome, and leaves
+    // the model computing without the period the text gives it. Outputs are
+    // exempt from the read test, because an output is read by whoever asks
+    // for it rather than from inside this article.
+    let read = referenced_variables(mr);
     let mut found = false;
     walk(mr, &mut |key, node| {
         match key {
-            Some("parameters") | Some("input") | Some("output") => {
+            Some("parameters") | Some("input") => {
+                if let Some(seq) = node.as_sequence() {
+                    for item in seq {
+                        if item
+                            .get("name")
+                            .and_then(Value::as_str)
+                            .is_some_and(|n| n.to_lowercase().contains(word) && read.contains(n))
+                        {
+                            found = true;
+                        }
+                    }
+                }
+            }
+            Some("output") => {
                 if let Some(seq) = node.as_sequence() {
                     for item in seq {
                         if item
@@ -3494,6 +3535,100 @@ articles:
         assert!(
             !findings.iter().any(|f| f.detail.contains("no branch")),
             "a branched model must not be reported: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn coverage_is_not_satisfied_by_a_branch_on_nothing() {
+        // `IF` with an empty `cases` always yields its default, so a text
+        // reading "tenzij" comes out as an unconditional grant. Counting the
+        // key rather than what is under it let that pass: the cheapest way
+        // to satisfy the gate was to write a branch that branches on nothing.
+        let yaml = r#"
+articles:
+  - number: '1'
+    text: |-
+      1. Recht op de toeslag bestaat, tenzij het vermogen het drempelbedrag te
+      boven gaat.
+    machine_readable:
+      execution:
+        output:
+          - name: recht
+            type: boolean
+        actions:
+          - output: recht
+            value:
+              operation: IF
+              cases: []
+              default: true
+"#;
+        let doc: Value = serde_yaml_ng::from_str(yaml).unwrap();
+        let findings = coverage(&doc);
+        assert!(
+            findings.iter().any(|f| f.detail.contains("no branch")),
+            "an empty branch must be reported: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn coverage_is_not_satisfied_by_a_period_name_nothing_reads() {
+        // A parameter named after the period that no action mentions binds
+        // nothing and changes no outcome. It satisfied the gate while the
+        // model computed without the period the text gives it.
+        let yaml = r#"
+articles:
+  - number: '1'
+    text: |-
+      1. Het inkomen op de peildatum is bepalend.
+    machine_readable:
+      execution:
+        parameters:
+          - name: peildatum_dummy
+            type: date
+        output:
+          - name: recht
+            type: boolean
+        actions:
+          - output: recht
+            value: true
+"#;
+        let doc: Value = serde_yaml_ng::from_str(yaml).unwrap();
+        let findings = coverage(&doc);
+        assert!(
+            findings.iter().any(|f| f.detail.contains("peildatum")),
+            "an unread period name must not satisfy the gate: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn coverage_accepts_a_period_name_an_action_reads() {
+        // The other side of the same rule: a parameter that is actually read
+        // carries the period, and the gate must stay silent.
+        let yaml = r#"
+articles:
+  - number: '1'
+    text: |-
+      1. Het inkomen op de peildatum is bepalend.
+    machine_readable:
+      execution:
+        parameters:
+          - name: peildatum
+            type: date
+        output:
+          - name: recht
+            type: boolean
+        actions:
+          - output: recht
+            value:
+              operation: GREATER_THAN
+              subject: $peildatum
+              value: '2025-01-01'
+"#;
+        let doc: Value = serde_yaml_ng::from_str(yaml).unwrap();
+        let findings = coverage(&doc);
+        assert!(
+            !findings.iter().any(|f| f.detail.contains("peildatum")),
+            "a read period name must satisfy the gate: {findings:?}"
         );
     }
 
