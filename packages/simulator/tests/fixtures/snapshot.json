@@ -594,7 +594,7 @@
               "type": "array",
               "herkomst": "wereldbestand",
               "gat": true,
-              "toelichting": "bedrag $hoogte_zorgtoeslag, betaald door 'belastingdienst', ritme '$betalingsritme'"
+              "toelichting": "verplichting: bedrag $hoogte_zorgtoeslag, betaald door 'belastingdienst', ritme '$betalingsritme'; zij levert de termijnen in 'obligations'"
             },
             {
               "name": "op_moment",

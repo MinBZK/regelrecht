@@ -152,30 +152,36 @@ pub struct DecretogramField {
 }
 
 impl DecretogramField {
-    /// Een veld dat het platform in elk decretogram zet.
-    fn platform(name: &str, value_type: &str) -> Self {
+    /// Een veld zonder lexogram: het platform of het wereldbestand zegt het.
+    ///
+    /// Of het een gat is, zegt de herkomst zelf ([`Herkomst::gat`]) en niet de
+    /// roepplek: één regel die bepaalt wat een gat is, zodat een vijfde herkomst
+    /// of een verschoven grens niet op drie plekken nagelopen hoeft te worden.
+    fn declared_by(
+        herkomst: Herkomst,
+        name: &str,
+        value_type: &str,
+        toelichting: Option<String>,
+    ) -> Self {
         Self {
             name: name.to_string(),
             value_type: Some(value_type.to_string()),
             unit: None,
-            herkomst: Herkomst::Platform,
-            gat: false,
+            herkomst,
+            gat: herkomst.gat(),
             lexogram: None,
-            toelichting: None,
+            toelichting,
         }
+    }
+
+    /// Een veld dat het platform in elk decretogram zet.
+    fn platform(name: &str, value_type: &str) -> Self {
+        Self::declared_by(Herkomst::Platform, name, value_type, None)
     }
 
     /// Een veld dat het wereldbestand zegt, en geen enkele regeling.
     fn wereldbestand(name: &str, value_type: &str, toelichting: String) -> Self {
-        Self {
-            name: name.to_string(),
-            value_type: Some(value_type.to_string()),
-            unit: None,
-            herkomst: Herkomst::Wereldbestand,
-            gat: true,
-            lexogram: None,
-            toelichting: Some(toelichting),
-        }
+        Self::declared_by(Herkomst::Wereldbestand, name, value_type, Some(toelichting))
     }
 
     /// Hetzelfde veld, met de plek in de wet waar het platform zijn waarde leest.
@@ -270,14 +276,15 @@ impl<'a> Lexicon<'a> {
             .and_then(Article::get_execution_spec)
             .and_then(|execution| execution.output.as_ref())
             .and_then(|outputs| outputs.iter().find(|declared| declared.name == output));
+        let herkomst = Herkomst::of_layer(self.layer());
         DecretogramField {
             name: output.to_string(),
             value_type: declared.map(|declared| type_name(declared.output_type).to_string()),
             unit: declared
                 .and_then(|declared| declared.type_spec.as_ref())
                 .and_then(|spec| spec.unit.clone()),
-            herkomst: Herkomst::of_layer(self.layer()),
-            gat: false,
+            herkomst,
+            gat: herkomst.gat(),
             lexogram: Some(self.reference(article.map(|article| article.number.as_str()))),
             toelichting: match declared {
                 Some(_) => None,
@@ -357,7 +364,8 @@ pub(crate) fn decretogram_schema(
             &format!("{OBLIGATIONS}[{index}]"),
             "array",
             format!(
-                "bedrag {}, betaald door '{}', ritme '{}'{vanaf}",
+                "verplichting: bedrag {}, betaald door '{}', ritme '{}'{vanaf}; \
+                 zij levert de termijnen in '{OBLIGATIONS}'",
                 obligation.amount, obligation.payer, obligation.schedule
             ),
         ));

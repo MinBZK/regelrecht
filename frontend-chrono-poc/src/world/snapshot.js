@@ -120,11 +120,6 @@ function describeLexogram(lexogram) {
   return `${lexogram.regulation}, ${plek}${versie}`;
 }
 
-/** Hoeveel velden van dit besluit geen enkel lexogram dekt. */
-export function schemaGaps(besluit) {
-  return decretogramSchema(besluit).filter((field) => field.gat).length;
-}
-
 /**
  * De parameters van één lexostatus, met wat een vrager erover hoort te weten.
  *

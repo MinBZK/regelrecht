@@ -23,8 +23,6 @@ describe('het schema van een decretogram', () => {
       expect(namen).toContain(besluit.name);
       const gaten = besluit.schema.filter((field) => field.gat).length;
       expect(samenvattingen).toContain(`${besluit.schema.length} velden · ${gaten} gaten`);
-      // Het sjabloon blijft bij het besluit dat het invult.
-      expect(attrs(wrapper, 'nldd-tag', 'text')).toContain(besluit.zaakkenmerk);
     }
   });
 

@@ -31,7 +31,6 @@ const rows = computed(() =>
     const gaten = schema.filter((field) => field.gat).length;
     return {
       name: definition.name,
-      zaakkenmerk: definition.zaakkenmerk ?? '',
       schema,
       gaten,
       // Wat de kop zegt zonder de tabel open te doen: hoe groot het gram is, en
@@ -73,11 +72,9 @@ function toggle(name) {
         <nldd-icon-cell icon="certificate" size="16" color="secondary"></nldd-icon-cell>
         <nldd-spacer-cell size="8"></nldd-spacer-cell>
         <nldd-text-cell size="sm" min-width="120px" :text="row.name" :supporting-text="row.summary"></nldd-text-cell>
-        <!-- Het zaakkenmerk-sjabloon blijft bij het besluit dat het invult: dat
-             is de vorm die de sleutel van de kroniek met beschikkingen krijgt. -->
-        <nldd-cell v-if="row.zaakkenmerk">
-          <nldd-tag size="sm" color="donkerblauw" :text="row.zaakkenmerk"></nldd-tag>
-        </nldd-cell>
+        <!-- Het zaakkenmerk-sjabloon staat hier niet nog een keer: de kop van de
+             kolom draagt het al bij de naam van het besluit, en de rij
+             `zaakkenmerk` in de tabel hieronder zegt het sjabloon voluit. -->
         <nldd-cell v-if="row.gaten > 0">
           <nldd-tag size="sm" color="rood" icon="warning" :text="`${row.gaten}`"></nldd-tag>
         </nldd-cell>
