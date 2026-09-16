@@ -591,7 +591,7 @@
             },
             {
               "name": "obligations[0]",
-              "type": "array",
+              "type": "object",
               "herkomst": "wereldbestand",
               "gat": true,
               "toelichting": "verplichting: bedrag $hoogte_zorgtoeslag, betaald door 'belastingdienst', ritme '$betalingsritme'; zij levert de termijnen in 'obligations'"

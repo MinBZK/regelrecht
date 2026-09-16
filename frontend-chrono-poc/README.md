@@ -158,6 +158,12 @@ Een platformveld waarvan de **wet** de waarde levert (`competent_authority`,
 `legal_character`) noemt het artikel erbij: het platform schrijft het veld in elk
 gram, maar het verzint de waarde niet.
 
+Het schema beschrijft het gram zoals het besluit het **vastlegt**. De rijen van
+een decretogram in de kroniek eronder tonen hetzelfde gram zoals dit beeld het
+geeft, en dat scheelt twee dingen: het receipt gaat niet mee (het is apart op te
+vragen) en de inputs staan er los, elk met de herkomst van háár waarde, in plaats
+van bij elkaar in het veld `inputs`. Dezelfde velden dus, anders uitgeklapt.
+
 ## Een tweede besluit is een keuze, geen ongeluk
 
 Ligt er over de zaak in het formulier al een decretogram van dit besluit, dan

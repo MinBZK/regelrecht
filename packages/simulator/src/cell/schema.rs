@@ -362,7 +362,10 @@ pub(crate) fn decretogram_schema(
         };
         schema.push(DecretogramField::wereldbestand(
             &format!("{OBLIGATIONS}[{index}]"),
-            "array",
+            // Een verplichting is er één, geen lijst: een bedrag, een betaler en
+            // een ritme. Wat zij in het gram wordt — een reeks termijnen — staat
+            // in `obligations` hieronder, en dát veld is de array.
+            "object",
             format!(
                 "verplichting: bedrag {}, betaald door '{}', ritme '{}'{vanaf}; \
                  zij levert de termijnen in '{OBLIGATIONS}'",

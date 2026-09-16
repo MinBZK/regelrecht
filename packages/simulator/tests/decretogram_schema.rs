@@ -15,7 +15,10 @@
 //!    draagt `beleid` en niet `lexogram`. Wie die twee bij elkaar optelt, meet dat
 //!    er meer uit het recht komt dan er uit het recht komt.
 
-use regelrecht_simulator::{regulation_root, DecretogramField, Herkomst, World, WorldDefinition};
+use regelrecht_simulator::{
+    regulation_root, DecretogramField, FieldOrigin, GramKind, Herkomst, Scenario, World,
+    WorldDefinition,
+};
 use std::path::{Path, PathBuf};
 
 fn world_file() -> PathBuf {
@@ -252,6 +255,12 @@ fn een_verplichting_is_een_gat_en_haar_bedrag_niet() {
 
     let verplichting = veld(&schema, "obligations[0]");
     assert_eq!(verplichting.herkomst, Herkomst::Wereldbestand);
+    assert_eq!(
+        verplichting.value_type.as_deref(),
+        Some("object"),
+        "één verplichting is een bedrag, een betaler en een ritme; de reeks \
+         termijnen die eruit volgt staat in het veld 'obligations'"
+    );
     assert!(
         verplichting.gat,
         "geen enkel artikel dekt deze verplichting"
@@ -358,6 +367,76 @@ fn een_uitkomst_uit_een_uitvoeringsregel_heet_beleid() {
         veld(&schema, "hoogte_tegemoetkoming").unit.as_deref(),
         Some("eurocent"),
         "een bedrag zonder eenheid is een getal"
+    );
+}
+
+/// De belofte tegen een gram dat er werkelijk ligt: elk veld van een genomen
+/// besluit staat in het schema van dat besluit.
+///
+/// De toets hieronder houdt het schema tegen een lijst in deze test, en een lijst
+/// in een test groeit niet vanzelf mee. Deze speelt het volledige verhaal van de
+/// publieke wereld af en houdt het schema tegen de decretogrammen die daaruit
+/// komen: krijgt een gram er ooit een veld bij zonder dat het schema het noemt,
+/// dan valt deze test en niet pas de lezer van het beeld.
+///
+/// Eén kant op, en twee dingen overgeslagen, want het **beeld** toont een gram
+/// niet veld voor veld zoals het gram het draagt (zie `snapshot.rs`): het laat
+/// `receipt` en `inputs` weg, en het zet elke input los, elk met haar eigen
+/// herkomst. Het schema beschrijft het gram zelf — waarin de inputs in één veld
+/// bij elkaar zitten — dus de losse inputs horen er niet in en worden hier
+/// overgeslagen op hun herkomst.
+#[test]
+fn elk_veld_van_een_genomen_besluit_staat_in_zijn_schema() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("scenarios")
+        .join("toeslagen_volledig_verhaal.yaml");
+    let scenario = Scenario::load(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let run = scenario
+        .run(&regulation_root())
+        .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    assert!(run.passed(), "{}:\n{}", path.display(), run.report());
+
+    let mut gewogen = 0;
+    for cell in &run.snapshot.cells {
+        for chronicle in &cell.chronicles {
+            for gram in &chronicle.grams {
+                if gram.kind != GramKind::Decretogram {
+                    continue;
+                }
+                // Een cel zonder engine kan zelf een vaststelling in haar kroniek
+                // leggen; dat gram is even goed een decretogram, maar het komt
+                // niet uit een besluit-definitie en heeft dus geen schema.
+                let Some(besluit) = gram
+                    .fields
+                    .get("besluit")
+                    .and_then(|field| field.value.as_str())
+                else {
+                    continue;
+                };
+                let schema = &cell
+                    .besluiten
+                    .iter()
+                    .find(|definition| definition.name == besluit)
+                    .unwrap_or_else(|| panic!("besluit '{besluit}' hoort in het beeld te staan"))
+                    .schema;
+                let namen: Vec<&str> = schema.iter().map(|field| field.name.as_str()).collect();
+                for (veld, waarde) in &gram.fields {
+                    if matches!(waarde.origin, FieldOrigin::BesluitInput { .. }) {
+                        continue;
+                    }
+                    assert!(
+                        namen.contains(&veld.as_str()),
+                        "het gram van '{besluit}' draagt '{veld}', en het schema \
+                         belooft dat niet: {namen:?}"
+                    );
+                }
+                gewogen += 1;
+            }
+        }
+    }
+    assert!(
+        gewogen > 0,
+        "zonder een genomen besluit weegt deze toets niets"
     );
 }
 
