@@ -2054,7 +2054,7 @@
                 "items": {
                   "type": "string"
                 },
-                "description": "The values in this article that cannot be produced because of this marking: outputs, inputs or parameters by name. An empty list is a statement and not an omission: it says the article stays executable and only its explanation is incomplete. Every name listed here must be absent from the article's actions; computing a value you declared blocked is a contradiction."
+                "description": "The values in this article that cannot be produced because of this marking: outputs, inputs or parameters by name. Every name listed here must be absent from the article's actions, which the enrichment checks hold the file to: computing a value you declared blocked is a contradiction, and it is caught when the file is written rather than when someone is waiting on an answer. An empty list is a statement and not an omission: it says the marking is a flag on an article that is otherwise worked out, and that only the explanation is incomplete. It does not change execution. What the engine does with a marked article is decided by `accepted` and the untranslatable modes of RFC-012, which do not read this field; whether a marking should ever block only the values it names is an open question in RFC-031."
               },
               "legal_text_excerpt": {
                 "type": "string",

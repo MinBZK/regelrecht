@@ -410,6 +410,52 @@ fn required_parameter_for_nobody(
 
 /// The error for a `null` that reached `input` of `law` although the input is
 /// not declared nullable (RFC-036), naming where the null came from.
+/// The error for an output an executed article did not produce.
+///
+/// A void is an answer, not a defect: when the provenance records one, the
+/// caller is told the law says the output does not arise, with the words that
+/// say so. Everything else keeps reporting a missing output, which is the
+/// shape of a misspelled name or a broken binding.
+fn missing_output_error(
+    law_id: &str,
+    output_name: &str,
+    provenance: &BTreeMap<String, OutputProvenance>,
+) -> EngineError {
+    voided_output_error(law_id, output_name, provenance).unwrap_or_else(|| {
+        EngineError::OutputNotFound {
+            law_id: law_id.to_string(),
+            output: output_name.to_string(),
+        }
+    })
+}
+
+/// The void error for an output, when the provenance records one.
+fn voided_output_error(
+    law_id: &str,
+    output_name: &str,
+    provenance: &BTreeMap<String, OutputProvenance>,
+) -> Option<EngineError> {
+    match provenance.get(output_name) {
+        Some(OutputProvenance::Voided {
+            law_id: voided_by,
+            article,
+            grounds,
+        }) => Some(EngineError::OutputVoided {
+            law_id: law_id.to_string(),
+            output: output_name.to_string(),
+            voided_by: voided_by.clone(),
+            article: article.clone(),
+            // A void without a quoted ground is a law file the marking gate
+            // should have refused; say so rather than printing an empty
+            // sentence at whoever has to act on it.
+            grounds: grounds
+                .clone()
+                .unwrap_or_else(|| "no ground was quoted".to_string()),
+        }),
+        _ => None,
+    }
+}
+
 fn null_for_non_nullable(law: &ArticleBasedLaw, input: &Input, origin: String) -> EngineError {
     EngineError::NullForNonNullable {
         law_id: law.id.clone(),
@@ -843,7 +889,20 @@ impl LawExecutionService {
         }
         let mut res_ctx = ResolutionContext::new(calculation_date)?;
         res_ctx.contextual_law_id = Some(law_id.to_string());
-        self.evaluate_law_multi_internal(law_id, output_names, parameters, &mut res_ctx)
+        let result =
+            self.evaluate_law_multi_internal(law_id, output_names, parameters, &mut res_ctx)?;
+        // An output the law says does not arise is an answer, and the caller
+        // asked for exactly this one. Returning `Ok` with it quietly missing
+        // leaves a consumer to discover an absence it has no ground for; the
+        // error carries the words of the article that excluded it.
+        for name in output_names {
+            if !result.outputs.contains_key(*name) {
+                if let Some(error) = voided_output_error(law_id, name, &result.output_provenance) {
+                    return Err(error);
+                }
+            }
+        }
+        Ok(result)
     }
 
     /// Evaluate multiple outputs with tracing enabled.
@@ -1778,10 +1837,10 @@ impl LawExecutionService {
         parameters: &BTreeMap<String, Value>,
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<()> {
-        let contextual_law_id = match &res_ctx.contextual_law_id {
-            Some(id) => id.clone(),
-            None => return Ok(()), // No contextual law → no overrides apply
-        };
+        // A law overriding its own output needs no contextual law, so a
+        // standalone call is no longer a reason to stop here. The filter below
+        // still drops every override from another law when there is none.
+        let contextual_law_id = res_ctx.contextual_law_id.clone();
 
         // Check each output for overrides
         let output_names: Vec<String> = result.outputs.keys().cloned().collect();
@@ -1794,10 +1853,23 @@ impl LawExecutionService {
                 continue;
             }
 
-            // Filter: only overrides from the contextual law apply
+            // An override from another law applies only within the execution
+            // that law started: a Vreemdelingenwet exclusion on Awb 6:7 is not
+            // a Participatiewet case (RFC-007, "contextual law").
+            //
+            // An article overriding an output of its own law is a different
+            // claim. There is no other law to be protected from, and the
+            // scoping made the outcome depend on the route in: asked through
+            // the law itself the exclusion applied, asked through a third law
+            // reading that output it did not, and the amount the statute says
+            // does not arise was handed out anyway. Zorgtoeslag article 3
+            // voiding article 2 of the same law is exactly that shape, and it
+            // is the case RFC-027 works out.
             let applicable: Vec<_> = overrides
                 .iter()
-                .filter(|ovr| ovr.law_id == contextual_law_id)
+                .filter(|ovr| {
+                    ovr.law_id == law.id || Some(&ovr.law_id) == contextual_law_id.as_ref()
+                })
                 .collect();
 
             if applicable.is_empty() {
@@ -1806,8 +1878,15 @@ impl LawExecutionService {
 
             if applicable.len() > 1 {
                 return Err(EngineError::InvalidOperation(format!(
-                    "Multiple overrides from '{}' for output '{}' on '{}:{}'",
-                    contextual_law_id, output_name, law.id, article.number
+                    "Multiple overrides for output '{}' on '{}:{}' (from {})",
+                    output_name,
+                    law.id,
+                    article.number,
+                    applicable
+                        .iter()
+                        .map(|o| o.law_id.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 )));
             }
 
@@ -2731,10 +2810,11 @@ impl LawExecutionService {
                         "Internal reference: output '{}' not in result from article {}",
                         output_name, ref_article.number
                     ));
-                    return Err(EngineError::OutputNotFound {
-                        law_id: law.id.clone(),
-                        output: output_name.to_string(),
-                    });
+                    return Err(missing_output_error(
+                        &law.id,
+                        output_name,
+                        &result.output_provenance,
+                    ));
                 }
             } else {
                 // Empty source (source: {}) — resolved from DataSourceRegistry
@@ -2978,14 +3058,9 @@ impl LawExecutionService {
             Ok(r) => match r.outputs.get(output).cloned() {
                 Some(v) => v,
                 None => {
-                    res_ctx.trace_set_message(format!(
-                        "Output '{}' not found in result from {}",
-                        output, regulation
-                    ));
-                    return Err(EngineError::OutputNotFound {
-                        law_id: regulation.to_string(),
-                        output: output.to_string(),
-                    });
+                    let error = missing_output_error(regulation, output, &r.output_provenance);
+                    res_ctx.trace_set_message(error.to_string());
+                    return Err(error);
                 }
             },
             Err(e) => {
@@ -6520,6 +6595,109 @@ articles:
     // Lex specialis overrides
     // -------------------------------------------------------------------------
 
+    /// The exclusion holds however the question is asked.
+    ///
+    /// Scoping an override to the contextual law is right for a replacement:
+    /// how much you get may differ per the law invoking it (RFC-007). A void
+    /// is a different claim. "Bestaat geen aanspraak" says the entitlement
+    /// does not arise, and that does not stop being true because a different
+    /// law asked. Measured before this changed: asked through the law itself
+    /// the millionaire got nothing, asked through the granting law directly
+    /// or through a third law reading that output, the same person received
+    /// € 1.550,45 with provenance reporting `Direct`.
+    ///
+    /// This applies to an article overriding an output of its own law, which
+    /// is the shape of zorgtoeslag article 3 voiding article 2. Overrides
+    /// from another law keep their RFC-007 scoping.
+    #[test]
+    fn an_intra_law_void_holds_however_the_question_is_asked() {
+        let law = r#"
+$id: void_intra_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '2'
+    text: Bestaat aanspraak ter grootte van dat verschil.
+    machine_readable:
+      execution:
+        output:
+          - name: aanspraak
+            type: number
+        actions:
+          - output: aanspraak
+            value: 155045
+  - number: '3'
+    text: In afwijking van artikel 2 bestaat geen aanspraak indien het vermogen de grens overschrijdt.
+    machine_readable:
+      overrides:
+        - law: void_intra_law
+          article: '2'
+          output: aanspraak
+          voids: true
+          legal_text_excerpt: bestaat geen aanspraak
+"#;
+        let consumer = r#"
+$id: void_third_reader
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Leest de aanspraak uit een andere wet.
+    machine_readable:
+      execution:
+        input:
+          - name: aanspraak
+            type: number
+            source:
+              regulation: void_intra_law
+              output: aanspraak
+        output:
+          - name: doorgegeven
+            type: number
+        actions:
+          - output: doorgegeven
+            value: $aanspraak
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+        service.load_law(consumer).unwrap();
+
+        // The granting law asked directly: the route a citizen-facing service
+        // takes, and the one that used to hand out the amount.
+        match service.evaluate_law_output(
+            "void_intra_law",
+            "aanspraak",
+            BTreeMap::new(),
+            "2025-01-01",
+        ) {
+            Err(EngineError::OutputVoided { grounds, .. }) => {
+                assert_eq!(grounds, "bestaat geen aanspraak");
+            }
+            Ok(r) => panic!(
+                "asked directly, a voided entitlement yielded {:?}",
+                r.outputs
+            ),
+            Err(other) => panic!("asked directly, expected OutputVoided, got {other:?}"),
+        }
+
+        // A third law reading that output across the law boundary.
+        match service.evaluate_law_output(
+            "void_third_reader",
+            "doorgegeven",
+            BTreeMap::new(),
+            "2025-01-01",
+        ) {
+            Err(EngineError::OutputVoided { grounds, .. }) => {
+                assert_eq!(grounds, "bestaat geen aanspraak");
+            }
+            Ok(r) => panic!(
+                "read across a law boundary, a voided entitlement yielded {:?}",
+                r.outputs
+            ),
+            Err(other) => panic!("read cross-law, expected OutputVoided, got {other:?}"),
+        }
+    }
+
     #[test]
     fn a_voiding_override_removes_the_output_and_records_the_ground() {
         // The shape of Wet op de zorgtoeslag articles 2 and 3. Article 2
@@ -6598,14 +6776,17 @@ articles:
         // recognise must not travel on quietly, and before this change the
         // millionaire received € 1.550,45 without a word.
         match result {
-            Err(EngineError::OutputNotFound { output, .. }) => {
+            Err(EngineError::OutputVoided {
+                output, grounds, ..
+            }) => {
                 assert_eq!(output, "aanspraak");
+                assert_eq!(grounds, "bestaat geen aanspraak");
             }
             Ok(r) => panic!(
                 "a voided entitlement must not yield a value, got {:?}",
                 r.outputs
             ),
-            Err(other) => panic!("expected OutputNotFound, got {other:?}"),
+            Err(other) => panic!("expected OutputVoided, got {other:?}"),
         }
 
         // Without the exclusion the same chain does produce the amount, which
