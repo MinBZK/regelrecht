@@ -59,7 +59,24 @@ export const COMPONENTS = {
     crate: null,
     paths: ['frontend-lawmaking/', 'packages/frontend-shared/', NGINX_SHARED],
   },
-  docs: { crate: null, paths: ['docs/', NGINX_SHARED] },
+  // De landingspagina bakt het corpus in (de wettekst en de YAML die ze naast
+  // elkaar zet, de annotatie eronder) en draait het zorgtoeslag-scenario als
+  // WASM in de browser van de bezoeker. Daarmee hangt docs aan dezelfde dingen
+  // als de demo: de engine-crate, het gedeelde frontend-pakket waar de
+  // Gherkin-runner uit komt, en de wetten die script/landing-laws.sh meeneemt.
+  // Zonder die paden bleef productie na een corpuswijziging de oude wettekst
+  // tonen, precies de drift die landing-demo.ts zegt te voorkomen.
+  docs: {
+    crate: 'regelrecht-engine',
+    paths: [
+      'docs/',
+      'packages/frontend-shared/',
+      'corpus/regulation/',
+      'corpus/annotations/',
+      'script/landing-laws.sh',
+      NGINX_SHARED,
+    ],
+  },
   // De demo bouwt de engine als WASM (zie frontend-demo/Dockerfile), dus hij
   // hangt aan de engine-crate; daarnaast aan zijn eigen map, het gedeelde
   // frontend-pakket en het demo-corpus dat hij bundelt. Nog geen job in

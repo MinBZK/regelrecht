@@ -44,6 +44,10 @@ pub struct DataSourceMatch {
     pub source_name: String,
     /// Type of the data source (e.g., "dict", "database")
     pub source_type: String,
+    /// The law this source was registered for, when it is scoped to one.
+    /// Reported on a traced step so a reader can tell a register bound to one
+    /// law from a global one (RFC-039). `None` for a global source.
+    pub law_scope: Option<String>,
 }
 
 /// Trait for data source implementations.
@@ -408,6 +412,7 @@ impl DataSourceRegistry {
                     value,
                     source_name: source.name().to_string(),
                     source_type: source.source_type().to_string(),
+                    law_scope: source.law_scope().map(str::to_string),
                 });
             }
         }

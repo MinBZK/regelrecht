@@ -12,6 +12,7 @@ export {
   bareValue,
   tableCellValue,
   tableToRecords,
+  traceRoot,
   getOutput,
   valuesEqual,
   primitiveEqual,

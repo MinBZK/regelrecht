@@ -4,18 +4,21 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "astro dev",
+    "dev": "npm run prebuild && astro dev",
+    "prebuild": "node scripts/landing-assets.mjs",
     "build": "astro build",
     "preview": "astro preview",
     "check:rfc-coverage": "node scripts/check-rfc-coverage.mjs",
     "check:schema-version": "node scripts/check-schema-version.mjs",
     "sync:schema": "node scripts/sync-schema.mjs",
-    "a11y": "astro build && node scripts/check-rfc-coverage.mjs && node scripts/check-roadmap-rfcs.mjs && node scripts/check-mermaid-alt.mjs && node scripts/check-heading-order.mjs && node scripts/check-links.mjs && node scripts/gen-pa11yci.mjs && start-server-and-test 'astro preview --port 4173' http://localhost:4173 'pa11y-ci'",
+    "a11y": "npm run build && node scripts/check-rfc-coverage.mjs && node scripts/check-roadmap-rfcs.mjs && node scripts/check-mermaid-alt.mjs && node scripts/check-heading-order.mjs && node scripts/check-links.mjs && node scripts/gen-pa11yci.mjs && start-server-and-test 'astro preview --port 4173' http://localhost:4173 'pa11y-ci'",
     "nldd:imports": "node ../script/check-nldd-imports.mjs src src/nldd-components.js --write",
     "nldd:check": "node ../script/check-nldd-imports.mjs src src/nldd-components.js"
   },
   "dependencies": {
     "@astrojs/mdx": "^7.0.5",
+    "@cucumber/gherkin": "^42.0.1",
+    "@cucumber/messages": "^34.2.1",
     "@nldd/design-system": "^0.8.83",
     "astro": "^7.1.6",
     "astro-pagefind": "^2.0.1",

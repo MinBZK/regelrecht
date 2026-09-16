@@ -23,7 +23,7 @@ use crate::article::{Action, ActionOperation, Article, ArticleBasedLaw};
 use crate::context::RuleContext;
 use crate::error::{EngineError, Result};
 use crate::operations::{evaluate_value, execute_operation};
-use crate::trace::{PathNode, TraceBuilder};
+use crate::trace::{LegalAnchor, PathNode, TraceBuilder};
 use crate::types::{PathNodeType, Value};
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -215,6 +215,10 @@ impl<'a> ArticleEngine<'a> {
         // Attach trace builder if provided
         if let Some(ref tb) = trace {
             context.set_trace(Rc::clone(tb));
+            // This is where the engine knows both the law and the article, so
+            // it is where the provision gets attached. Every step the rules
+            // push from here carries it (RFC-039).
+            context.set_anchor(LegalAnchor::from_article(self.law, self.article));
         }
 
         // Set definitions from article
@@ -324,6 +328,13 @@ impl<'a> ArticleEngine<'a> {
             if tracing_active {
                 context.trace_push(output_name, PathNodeType::Action);
                 context.trace_set_message(format!("Computing {}", output_name));
+                // RFC-039: the anchor says which article the engine was in; this
+                // says which provision the modeller holds the action to. They
+                // agree here, and where they do not, that difference is the
+                // thing worth seeing.
+                if let Some(ref basis) = action.legal_basis {
+                    context.trace_set_legal_basis(LegalAnchor::from_provision(basis));
+                }
             }
 
             let value = match self.evaluate_action(action, context) {
@@ -339,6 +350,18 @@ impl<'a> ArticleEngine<'a> {
 
             if tracing_active {
                 context.trace_set_result(value.clone());
+                // The unit the law declares for this output (RFC-023, RFC-039).
+                // An action producing a declared output is not a value computed
+                // mid-expression: the law states its unit, so the step can
+                // report it and a reader sees an amount rather than a bare
+                // count of cents.
+                if let Some(ts) = self
+                    .article
+                    .find_output(output_name)
+                    .and_then(|o| o.type_spec.as_ref())
+                {
+                    context.trace_set_type_spec(ts.clone());
+                }
             }
 
             // An absence is a value only where the law declared it one. An
