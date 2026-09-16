@@ -257,6 +257,13 @@ cells:
             field: hoogte_zorgtoeslag
           # En over de celgrens, met het kenmerk van déze zaak: wat er als
           # voorschot is uitbetaald, weet de cel die het uitbetaalde.
+          #
+          # Art. 24, tweede lid verrekent wat er is *verleend*; wat deze wereld
+          # kan lezen is wat er op de zaak is *betaald*. Dat is hetzelfde bedrag
+          # zolang de vaststelling ná de laatste voorschottermijn valt. Valt ze
+          # eerder, dan blijven de openstaande termijnen van de toekenning
+          # gewoon vervallen — een verplichting is niet in te trekken — en
+          # betaalt de wereld het slotbedrag er bovenop.
           verleende_voorschotten:
             accept_from: belastingdienst
             lexostatus: betaald_tot_nu_toe

@@ -352,9 +352,13 @@ articles:
       # wet — vandaar een input zonder bron, die het uitvoerende besluit
       # aanlevert.
       #
-      # Wat hier niet staat: lid 2 en 3 (wanneer het voorschot uiterlijk wordt
-      # verleend) en lid 4 en 5 (herziening van het voorschot, en de
-      # terugvordering die daaruit kan volgen).
+      # Wat hier niet staat: de voorwaarde waaronder lid 1 een voorschot laat
+      # verlenen — alleen als de tegemoetkoming naar verwachting niet binnen acht
+      # weken na de aanvraag wordt toegekend. Dit blok rekent het bedrag uit; of
+      # er een voorschot verleend moet worden, toetst het niet. Evenmin staan
+      # hier lid 2 en 3 (wanneer het voorschot uiterlijk wordt verleend) en lid 4
+      # en 5 (herziening van het voorschot, en de terugvordering die daaruit kan
+      # volgen).
       competent_authority: '#bevoegd_gezag'
       execution:
         produces:
@@ -362,9 +366,13 @@ articles:
           decision_type: TOEKENNING
           extensions:
             chronolex:
-              # Een voorschot wordt in termijnen uitbetaald (art. 22). Hoeveel
-              # termijnen dat er zijn is beleid van de uitvoerder en geen wet,
-              # dus het ritme komt uit zijn instellingen.
+              # Een voorschot wordt in termijnen uitbetaald (art. 22). Hoevéél
+              # termijnen dat er zijn zegt die wet wél — twaalf, of wat er na de
+              # maand van dagtekening nog van het berekeningsjaar over is, of
+              # één bedrag — maar welk van de drie het is hangt af van de
+              # dagtekening van de voorschotbeschikking, en een `ritme` kent die
+              # voorwaarde niet. Daarom staat hier de instelling van de
+              # uitvoerder: een benadering van art. 22, niet de letter ervan.
               verplichtingen:
                 - soort: betaling
                   bedrag: $voorschot

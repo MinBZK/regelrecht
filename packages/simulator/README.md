@@ -2296,7 +2296,11 @@ verplichting, en die kant op betalen kent de opstelling nog niet. Een
 verplichting kent ook nog geen **schuldenaar en schuldeiser**: `soort` kent
 alleen `betaling`, en wie er betaald krijgt volgt uit de zaak en niet uit de
 declaratie. Een verplichting kan ook niet gewijzigd of ingetrokken worden: het
-schema staat in het gram, en een gram verandert niet.
+schema staat in het gram, en een gram verandert niet — en dat is meteen waarom
+de vaststelling in de publieke wereld ná de laatste voorschottermijn staat. Een
+vaststelling zet de nog openstaande termijnen van het voorschot niet stop: die
+vervallen gewoon door, en het slotbedrag komt er dan bovenop. Wat de wereld
+verrekent is daarom wat er op dat moment betaald is, niet wat er verleend is.
 
 **Een voorwaarde op een actie is één gelijkheid.** `available_when` kijkt naar één
 veld in één kroniek van één cel. Er is geen "en", geen "of", geen "ligt er iets"
