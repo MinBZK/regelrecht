@@ -44,7 +44,9 @@ const discussionUrl =
   title={title}
   description={description}
 >
-  <nldd-one-third-two-thirds-section
+  <nldd-sidebar-section
+    no-collapse
+    sidebar-label="On this page"
     sm-padding-bottom="32"
     md-padding-bottom="64"
     lg-padding-bottom="96"
@@ -53,40 +55,45 @@ const discussionUrl =
       <h1>{meta.title}</h1>
       <p slot="subtitle">{meta.subtitle}</p>
     </nldd-title>
-    <div slot="left">
-      <nldd-button-group>
-        <nldd-button
-          href={doiUrl}
-          text="PDF on Zenodo"
-          start-icon="external-link"
-          target="_blank"
-          rel="noopener"
-          variant="secondary"
-        ></nldd-button>
-        <nldd-button
-          href={discussionUrl}
-          text="Discussion on GitHub"
-          start-icon="comment"
-          target="_blank"
-          rel="noopener"
-          variant="secondary"
-        ></nldd-button>
-      </nldd-button-group>
-      <nldd-spacer size="8" />
-      {/*
-       * The selection affordance (Base.astro) is invisible until text is
-       * selected, so nothing on the page says it exists; this line does.
-       */}
-      <nldd-rich-text>
-        <p class="rr-paper-note">
-          Select a passage in the paper to start a discussion about it.
-        </p>
-      </nldd-rich-text>
-      <nldd-spacer size="24" sm-size="16" />
+    {/*
+      The sidebar carries what belongs to the paper as a whole: where to get
+      it, where to discuss it, and where you are in it. Blocks are separated
+      by gap alone, the way the RFC pages do it.
+    */}
+    <nldd-container slot="sidebar" padding="16" padding-top="8" gap="24">
+      <nldd-container gap="8">
+        <nldd-button-group>
+          <nldd-button
+            href={doiUrl}
+            text="PDF on Zenodo"
+            start-icon="external-link"
+            target="_blank"
+            rel="noopener"
+            variant="secondary"
+          ></nldd-button>
+          <nldd-button
+            href={discussionUrl}
+            text="Discussion on GitHub"
+            start-icon="comment"
+            target="_blank"
+            rel="noopener"
+            variant="secondary"
+          ></nldd-button>
+        </nldd-button-group>
+        {/*
+         * The selection affordance (Base.astro) is invisible until text is
+         * selected, so nothing on the page says it exists; this line does.
+         */}
+        <nldd-rich-text>
+          <p class="rr-paper-note">
+            Select a passage in the paper to start a discussion about it.
+          </p>
+        </nldd-rich-text>
+      </nldd-container>
       <DocsOutline headings={headings} />
-    </div>
-    <div slot="right" class="rr-paper">
-      <nldd-rich-text>
+    </nldd-container>
+    <div class="rr-paper">
+      <nldd-rich-text centered>
         <p class="rr-paper-byline">
           <strong>{authors}</strong><br />
           <em>{meta.affiliation}</em><br />
@@ -107,12 +114,13 @@ const discussionUrl =
          * selecting text offers "Discuss this passage", which opens a
          * prefilled issue. The value names the paper in the issue title.
          * Scoped to the paper body so a selection in the byline above (authors,
-         * emails, DOI) does not offer to discuss a passage.
+         * emails, DOI) does not offer to discuss a passage. The wrapper is one
+         * item in the rich-text grid, so research.css gives it the same rhythm.
          */}
         <div data-discuss-paper={meta.title}>
           <Fragment set:html={paperHtml} />
         </div>
       </nldd-rich-text>
     </div>
-  </nldd-one-third-two-thirds-section>
+  </nldd-sidebar-section>
 </Base>

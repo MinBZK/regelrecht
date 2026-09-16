@@ -24,6 +24,21 @@
   min-width: 0;
 }
 
+/* The wrapper scopes the discuss affordance to the paper body, which makes it
+   one item in the rich-text grid: its own children need that grid's rhythm,
+   the row gap the headings' own margins are tuned against. */
+.rr-paper [data-discuss-paper] {
+  display: grid;
+  /* A grid track and its items both size to their content unless told
+     otherwise: the landscape table and the code blocks would widen the page
+     instead of scrolling inside their own container. */
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: var(--components-rich-text-spacing-snug);
+}
+.rr-paper [data-discuss-paper] > * {
+  min-width: 0;
+}
+
 /* Floats: a <figure> carries the anchor for "Figure n"/"Table n" links, so
    the link lands on the content, not on the caption below it. */
 .rr-paper figure {
@@ -90,4 +105,7 @@
   padding-left: 1.5em;
   text-indent: -1.5em;
   margin-bottom: var(--primitives-space-8);
+  /* A bare URL in a reference has nothing to break on and runs out of the
+     column; rich-text's own safety net covers paragraphs, not these divs. */
+  overflow-wrap: anywhere;
 }
