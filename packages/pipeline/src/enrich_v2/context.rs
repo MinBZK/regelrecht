@@ -735,6 +735,8 @@ pub fn render_brief(law: &LawContext, window: &[String], cited: &[CitedArticle])
             acc
         });
 
+    let per_article = render_definitions(&mut out, law, window);
+
     for number in window {
         let Some(article) = law.articles.iter().find(|a| &a.number == number) else {
             continue;
@@ -756,24 +758,25 @@ pub fn render_brief(law: &LawContext, window: &[String], cited: &[CitedArticle])
             }
         }
 
-        let definitions = governing_definitions(law, article);
-        if definitions.is_empty() {
-            let _ = writeln!(out, "\nNo definition provision governs this article.");
-        } else {
-            let _ = writeln!(out, "\n### Definitions that bear on it");
-            for (d, verdict) in definitions {
-                let scope = d
-                    .definition_scope
-                    .map_or("scope not stated", DefinitionScope::describe);
-                let _ = writeln!(out, "\n**Article {} (scope: {scope})**", d.number);
-                if verdict == Governs::Unknown {
-                    let _ = writeln!(
-                        out,
-                        "\n*This provision bounds itself to a container. Which articles sit in \n\
-                         that container is not established here, so read its own words and judge.*"
-                    );
+        match per_article.get(number.as_str()).filter(|i| !i.is_empty()) {
+            None => {
+                let _ = writeln!(out, "\nNo definition provision governs this article.");
+            }
+            Some(items) => {
+                let _ = writeln!(
+                    out,
+                    "\nDefinitions that bear on it, from the section above:"
+                );
+                for (number, verdict) in items {
+                    let _ = match verdict {
+                        Governs::Unknown => writeln!(
+                            out,
+                            "\n- Article {number} — only if it sits in the same container as \
+                             this one, which is not established."
+                        ),
+                        _ => writeln!(out, "\n- Article {number}"),
+                    };
                 }
-                let _ = writeln!(out, "\n{}", d.text);
             }
         }
 
@@ -804,6 +807,87 @@ pub fn render_brief(law: &LawContext, window: &[String], cited: &[CitedArticle])
 
     render_citations(&mut out, cited);
     out
+}
+
+/// The definitions section, written once for the whole window.
+///
+/// Returns, per window article, the definition articles that bear on it and on
+/// what evidence, so the per-article sections can refer to them by number.
+///
+/// Once, not per article. The brief rides along on every turn of the window,
+/// and a definition article runs to kilobytes: the two begripsbepalingen of
+/// the Wet langdurige zorg are 7.8 KB together, which a window of ten
+/// articles repeated ten times into an 81 KB brief that was almost entirely
+/// the same text. The per-article sections lose nothing by naming an article
+/// number instead of restating it, because the reader has the text a screen
+/// above.
+fn render_definitions<'a>(
+    out: &mut String,
+    law: &'a LawContext,
+    window: &'a [String],
+) -> BTreeMap<&'a str, Vec<(&'a str, Governs)>> {
+    let mut per_article: BTreeMap<&str, Vec<(&str, Governs)>> = BTreeMap::new();
+    let mut order: Vec<(&AssembledArticle, Governs)> = Vec::new();
+    for number in window {
+        let Some(article) = law.articles.iter().find(|a| &a.number == number) else {
+            continue;
+        };
+        for (definition, verdict) in governing_definitions(law, article) {
+            per_article
+                .entry(article.number.as_str())
+                .or_default()
+                .push((definition.number.as_str(), verdict));
+            match order
+                .iter_mut()
+                .find(|(d, _)| d.number == definition.number)
+            {
+                // One article may govern for certain while another only might.
+                // The section states the stronger of the two and the
+                // per-article lines carry the difference.
+                Some((_, current)) if *current == Governs::Unknown => *current = verdict,
+                Some(_) => {}
+                None => order.push((definition, verdict)),
+            }
+        }
+    }
+
+    let _ = writeln!(out, "## Definitions in this law that bear on the window\n");
+    if order.is_empty() {
+        let _ = writeln!(
+            out,
+            "None: no definition provision of this law reaches any article in this window.\n"
+        );
+        return per_article;
+    }
+    let _ = writeln!(
+        out,
+        "Each provision is given once, whole. The per-article sections below name \n\
+         the ones that bear on each article rather than repeating them.\n"
+    );
+    for (definition, verdict) in order {
+        let scope = definition
+            .definition_scope
+            .map_or("scope not stated", DefinitionScope::describe);
+        let placement = match &definition.path {
+            Placement::Known(path) => path.clone(),
+            Placement::NoContainer => "no enclosing container".to_owned(),
+            Placement::Unknown => "placement not established".to_owned(),
+        };
+        let _ = writeln!(
+            out,
+            "### Article {} — scope: {scope} ({placement})\n",
+            definition.number
+        );
+        if verdict == Governs::Unknown {
+            let _ = writeln!(
+                out,
+                "*This provision bounds itself to a container. Which articles sit in that \n\
+                 container is not established here, so read its own words and judge.*\n"
+            );
+        }
+        let _ = writeln!(out, "{}\n", definition.text);
+    }
+    per_article
 }
 
 /// The cross-law section: what the window cites, and what of it is here.
@@ -1242,6 +1326,55 @@ mod tests {
         let brief = render_brief(&l, &["8".to_owned()], &[]);
         assert!(brief.contains("Placement: not established"), "{brief}");
         assert!(!brief.contains("no enclosing container"), "{brief}");
+    }
+
+    #[test]
+    fn a_shared_definition_is_written_once_for_the_whole_window() {
+        // The brief rides along on every turn, and a begripsbepaling runs to
+        // kilobytes. Measured on the Wet langdurige zorg, repeating two of
+        // them per article turned a ten-article window into 81 KB of almost
+        // entirely the same text.
+        let body = "In deze wet wordt verstaan onder: a. zorgkantoor: DISTINCTIVE-DEFINITION-BODY.";
+        let l = law(
+            vec![
+                article("8", "Hoofdstuk 3", "Artikel acht."),
+                article("9", "Hoofdstuk 3", "Artikel negen."),
+                article("10", "Hoofdstuk 3", "Artikel tien."),
+            ],
+            vec![article("1", "Hoofdstuk 1", body)],
+        );
+        let brief = render_brief(&l, &["8".to_owned(), "9".to_owned(), "10".to_owned()], &[]);
+        assert_eq!(
+            brief.matches("DISTINCTIVE-DEFINITION-BODY").count(),
+            1,
+            "definition text repeated per article:\n{brief}"
+        );
+        // And every article still knows which provision bears on it.
+        assert_eq!(brief.matches("- Article 1").count(), 3, "{brief}");
+    }
+
+    #[test]
+    fn a_window_growing_does_not_grow_the_definitions_section() {
+        let body = "In deze wet wordt verstaan onder: ".to_owned() + &"begrip. ".repeat(500);
+        let definitions = vec![article("1", "", &body)];
+        let articles: Vec<AssembledArticle> = (1..=10)
+            .map(|i| article(&format!("{}", i + 10), "", "Korte tekst."))
+            .collect();
+        let numbers: Vec<String> = articles.iter().map(|a| a.number.clone()).collect();
+        let l = law(articles, definitions);
+
+        let one = render_brief(&l, &numbers[..1], &[]).len();
+        let five = render_brief(&l, &numbers[..5], &[]).len();
+        let ten = render_brief(&l, &numbers, &[]).len();
+        // Ten articles cost ten short sections over one article, not ten
+        // copies of a 4 KB provision.
+        assert!(
+            ten - one < body.len(),
+            "brief grew by {} over nine more articles, definition is {} chars",
+            ten - one,
+            body.len()
+        );
+        assert!(five > one && ten > five, "{one} {five} {ten}");
     }
 
     #[test]
