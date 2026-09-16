@@ -352,27 +352,6 @@ impl ChronicleStore {
             .max_by_key(|(_, event)| event.op_moment)
     }
 
-    /// Álle vastleggingen die op of vóór `op_moment` aan dit filter voldoen, in
-    /// de volgorde waarin ze vastgelegd zijn.
-    ///
-    /// De basis onder [`Self::latest_recording`] en onder een som: welke
-    /// vastleggingen meedoen is dezelfde vraag, of je er daarna één uitkiest of
-    /// ze allemaal optelt. Twee filters die uit elkaar lopen zouden een som
-    /// opleveren over een andere groep dan waaruit "de laatste" komt.
-    pub(crate) fn recordings(
-        &self,
-        stream: &str,
-        key: &str,
-        key_value: &Value,
-        conditions: &BTreeMap<String, Value>,
-        op_moment: NaiveDate,
-    ) -> Vec<&ChronicleEvent> {
-        self.recordings_with_place(stream, key, key_value, conditions, op_moment)
-            .into_iter()
-            .map(|(_, event)| event)
-            .collect()
-    }
-
     /// Dezelfde vastleggingen, elk met haar plek in de stroom.
     ///
     /// Het filter zelf staat hier en niet hierboven: welke vastleggingen

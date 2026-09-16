@@ -156,7 +156,7 @@ pub use snapshot::{
 };
 pub use transport::{CellTransport, InProcessTransport};
 pub use world::{
-    ActionDefinition, ActionEffect, Availability, Clock, Deadline, DecidesAction, DecisionRecord,
-    Delivery, Events, ExpectedFact, Fixture, RecordedFact, Recording, RecordsAction, Warning,
-    World, WorldDefinition,
+    ActionDefinition, ActionEffect, Clock, Deadline, DecidesAction, DecisionRecord, Delivery,
+    Events, ExpectedFact, Fixture, RecordedFact, Recording, RecordsAction, Warning, World,
+    WorldDefinition,
 };

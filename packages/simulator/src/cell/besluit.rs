@@ -2067,6 +2067,24 @@ impl BesluitDefinition {
         }
     }
 
+    /// De parameters waarnaar het zaakkenmerk-sjabloon verwijst en die deze
+    /// vraag niet noemt, in de volgorde van het sjabloon.
+    ///
+    /// Bij het besluit zelf is dit altijd leeg — `check_params` eist elke
+    /// gedocumenteerde parameter — maar bij de droogloop van
+    /// [`crate::Cell::missing_own_fact`] niet: daar staat het formulier met zijn
+    /// voorinvulling, en een voorinvulling die nergens op uitkomt levert geen
+    /// waarde. [`Self::zaakkenmerk`] vult zo'n verwijzing met niets, en dan zou
+    /// er in een melding een lege zaak staan waar een lezer een kenmerk
+    /// verwacht. Wie dit eerst vraagt, kan zeggen wat er nog ontbreekt.
+    pub(crate) fn zaakkenmerk_gaps(&self, params: &BTreeMap<String, Value>) -> Vec<String> {
+        Template::parse(&self.zaakkenmerk)
+            .references()
+            .filter(|reference| !params.contains_key(*reference))
+            .map(str::to_string)
+            .collect()
+    }
+
     /// Reken de verplichtingen van dit besluit uit tot termijnen.
     ///
     /// Aanroepen ná de uitvoering: het bedrag komt uit de uitkomsten waarop
@@ -3134,6 +3152,11 @@ impl<'a> Template<'a> {
         out
     }
 
+    /// De parameters waarnaar dit sjabloon verwijst, in volgorde.
+    fn references(&self) -> impl Iterator<Item = &'a str> + '_ {
+        self.parts.iter().map(|part| part.reference)
+    }
+
     /// De letterlijke stukken die twee verwijzingen uit elkaar houden.
     ///
     /// De tekst vóór de eerste en die ná de laatste verwijzing tellen niet mee:
@@ -3829,6 +3852,29 @@ params:
             .map(|(name, value)| ((*name).to_string(), Value::String((*value).to_string())))
             .collect();
         definition(template).zaakkenmerk("toeslagen", &params)
+    }
+
+    /// Wat een zaakkenmerk nog mist, is te vragen zonder het in te vullen.
+    ///
+    /// De droogloop van de beschikbaarheid leunt hierop: `fill` laat een
+    /// verwijzing zonder waarde stil weg, dus zonder deze vraag zou een melding
+    /// over een eerder besluit naar zaak `'/'` verwijzen — een kenmerk dat een
+    /// lezer nergens terugvindt, in plaats van "de vraag noemt nog geen bsn".
+    #[test]
+    fn een_zaakkenmerk_noemt_de_verwijzingen_die_de_vraag_niet_invult() {
+        let params: BTreeMap<String, Value> =
+            BTreeMap::from([("bsn".to_string(), Value::String("999993653".to_string()))]);
+        assert_eq!(
+            definition("{jaar}/{bsn}").zaakkenmerk_gaps(&params),
+            vec!["jaar".to_string()],
+            "alleen wat er niet in staat, en in de volgorde van het sjabloon"
+        );
+        assert!(
+            definition("zorgtoeslag/{bsn}")
+                .zaakkenmerk_gaps(&params)
+                .is_empty(),
+            "een sjabloon waarvan elke verwijzing gevuld is, mist niets"
+        );
     }
 
     #[test]

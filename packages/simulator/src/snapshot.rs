@@ -371,6 +371,14 @@ pub(crate) struct ActionState<'a> {
     pub(crate) action: &'a ActionDefinition,
     /// Wat de actor invult, en van welk type.
     pub(crate) form: Vec<DocumentedParameter>,
+    /// De voorinvulling van dat formulier, opgelost op de stand van de klok.
+    ///
+    /// Eén keer opgelost en niet twee, want de beschikbaarheid hangt ervan af:
+    /// een besluit wordt voorgesteld op déze waarden, dus de vraag "kan het nu?"
+    /// hoort over precies het formulier te gaan dat de lezer ziet. Twee
+    /// oplossingen naast elkaar zouden een actie kunnen tonen die op andere
+    /// waarden beschikbaar heet dan waarmee ze wordt aangeboden.
+    pub(crate) prefill: BTreeMap<String, Value>,
     /// Waarom ze nu niet kan; `None` als ze kan.
     pub(crate) unavailable: Option<String>,
 }
@@ -421,11 +429,7 @@ pub(crate) fn build(view: &WorldView<'_>) -> Snapshot {
             })
             .collect(),
         cells: view.cells.values().map(cell_snapshot).collect(),
-        actions: view
-            .actions
-            .iter()
-            .map(|state| action_snapshot(state, view))
-            .collect(),
+        actions: view.actions.iter().map(action_snapshot).collect(),
         crossings: view.crossings.iter().map(crossing_snapshot).collect(),
         warnings: view.warnings.to_vec(),
         // Tot en met de klok. Een regel ná de klok kan er niet zijn — een
@@ -654,7 +658,7 @@ fn besluit_inputs(fields: &BTreeMap<String, Value>) -> BTreeMap<String, Recorded
 }
 
 /// Eén actie, met haar formulier en of ze nu kan.
-fn action_snapshot(state: &ActionState<'_>, view: &WorldView<'_>) -> ActionSnapshot {
+fn action_snapshot(state: &ActionState<'_>) -> ActionSnapshot {
     let action = state.action;
     let effect = match &action.effect {
         ActionEffect::Records(records) => ActionEffectSnapshot::Records {
@@ -677,7 +681,7 @@ fn action_snapshot(state: &ActionState<'_>, view: &WorldView<'_>) -> ActionSnaps
         label: action.label.clone(),
         doc: action.doc.clone(),
         effect,
-        prefill: prefilled(&state.form, view),
+        prefill: state.prefill.clone(),
         form: state.form.clone(),
         available: state.unavailable.is_none(),
         unavailable_reason: state.unavailable.clone(),
@@ -688,9 +692,19 @@ fn action_snapshot(state: &ActionState<'_>, view: &WorldView<'_>) -> ActionSnaps
 ///
 /// Een veld zonder waarde staat er niet in — leeg is leeg, en `null` zou in een
 /// formulier een ingevulde afwezigheid zijn.
-fn prefilled(form: &[DocumentedParameter], view: &WorldView<'_>) -> BTreeMap<String, Value> {
+///
+/// `pub(crate)` en op de klok en de cellen in plaats van op een [`WorldView`]:
+/// de wereld lost dit al op vóórdat zij het beeld bouwt, omdat de
+/// beschikbaarheid van een `decides`-actie over deze waarden gaat (zie
+/// [`crate::World::snapshot`]). Een tweede invuller ernaast zou van deze gaan
+/// afwijken.
+pub(crate) fn prefilled(
+    form: &[DocumentedParameter],
+    clock: NaiveDate,
+    cells: &BTreeMap<String, Cell>,
+) -> BTreeMap<String, Value> {
     form.iter()
-        .filter_map(|param| Some((param.name.clone(), resolve_prefill(param, view)?)))
+        .filter_map(|param| Some((param.name.clone(), resolve_prefill(param, clock, cells)?)))
         .collect()
 }
 
@@ -702,11 +716,15 @@ fn prefilled(form: &[DocumentedParameter], view: &WorldView<'_>) -> BTreeMap<Str
 /// overtypen is nooit het werk. Wie er iets anders wil, schrijft het op als
 /// `prefill`; dan wint dat, want een opgave in het wereldbestand is een keuze en
 /// dit is de afwezigheid ervan.
-fn resolve_prefill(param: &DocumentedParameter, view: &WorldView<'_>) -> Option<Value> {
-    let clock = || Value::String(view.clock.to_string());
+fn resolve_prefill(
+    param: &DocumentedParameter,
+    clock: NaiveDate,
+    cells: &BTreeMap<String, Cell>,
+) -> Option<Value> {
+    let now = || Value::String(clock.to_string());
     match param.prefill.as_ref() {
-        None => (param.value_type == ParameterType::Date).then(clock),
-        Some(Prefill::Clock) => Some(clock()),
+        None => (param.value_type == ParameterType::Date).then(now),
+        Some(Prefill::Clock) => Some(now()),
         Some(Prefill::Literal(value)) => Some(value.clone()),
         // Onbekende cel of stroom: het optuigen heeft elke verwijzing al aan een
         // cel en een kroniek gebonden, dus dit is "daar ligt nog niets".
@@ -714,10 +732,9 @@ fn resolve_prefill(param: &DocumentedParameter, view: &WorldView<'_>) -> Option<
             cell,
             chronicle,
             field,
-        }) => view
-            .cells
+        }) => cells
             .get(cell)
-            .and_then(|found| found.last_value(chronicle, field, view.clock))
+            .and_then(|found| found.last_value(chronicle, field, clock))
             .cloned(),
     }
 }

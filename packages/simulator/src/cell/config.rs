@@ -678,9 +678,9 @@ pub(crate) type ObligationsPerOutput = BTreeMap<String, BTreeMap<String, Vec<Dec
 ///
 /// Eén type, want twee plekken dragen precies deze kennis: [`CellSurface`]
 /// tijdens het optuigen, en de cel zelf daarna (zie
-/// [`crate::cell::Cell::check_stream_field`]). De wereld toetst er haar acties en
+/// [`crate::cell::Cell::check_stream`]). De wereld toetst er haar acties en
 /// termijnen tegen, en dat hoort langs dezelfde weg te gaan als de definities van
-/// de cel — anders keurt de ene een veldnaam goed die de andere afwijst.
+/// de cel — anders keurt de ene een stroom goed die de andere niet houdt.
 pub(crate) type StreamFields = BTreeMap<String, BTreeSet<String>>;
 
 /// De velden die een cel van deze stroom kent, of de fout die zegt dat ze de

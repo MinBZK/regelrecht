@@ -2193,7 +2193,7 @@
       "id": "toeslagen.vaststelling",
       "actor": "toeslagen",
       "label": "Stel de zorgtoeslag definitief vast",
-      "doc": "Kan pas als er een toekenning ligt.",
+      "doc": "Kan pas als de toekenning er ligt; de vaststelling leest die terug.",
       "effect": {
         "soort": "decides",
         "cell": "toeslagen",

@@ -18,9 +18,10 @@
 use regelrecht_simulator::invariant::{check_invariants, observed_graph, DecisionTraffic, Traffic};
 use regelrecht_simulator::observation::ObservationLog;
 use regelrecht_simulator::{
-    defined_graph, regulation_root, InvariantFailure, QueryEdge, Scenario, ScenarioRun,
+    defined_graph, regulation_root, InvariantFailure, JournalKind, QueryEdge, Scenario,
+    ScenarioRun, Value, World, WorldDefinition,
 };
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 /// Of een faalmelding de melding is waar een fixture over gaat.
@@ -452,4 +453,144 @@ fn positieve_scenarios() -> Vec<PathBuf> {
         .collect();
     files.sort();
     files
+}
+
+/// Vragen of een actie nu kan, is geen contact over een celgrens (I1).
+///
+/// Dit is de reden dat de beschikbaarheid alleen over de **eigen** feiten van
+/// een besluit gaat. Het beeld van de wereld wordt bij elke stap opgevraagd — een
+/// frontend haalt het op na elke actie en bij elke tik van de klok — dus een
+/// check die ook naar een `accept_from`-input zou kijken, zou bij elk scherm een
+/// andere organisatie laten weten dat er iets over iemand werd opgevraagd. Die
+/// vraag is er niet gesteld, dus ze hoort er ook niet te zijn.
+///
+/// Gemeten aan beide kanten van de naad, want één kant zou hier niets bewijzen:
+/// het journaal (wat de wereld zelf van het verhaal opschrijft) én het
+/// observatielog (het meetinstrument dat elk contact ziet). De wereld hieronder
+/// heeft een besluit met een `accept_from`-input dat op dit moment niet kan, dus
+/// als de check over de grens reikte, zou dat hier zichtbaar worden.
+#[test]
+fn de_beschikbaarheidscheck_levert_geen_contact_over_een_celgrens_op() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("worlds")
+        .join("publieke_wereld.yaml");
+    let definition =
+        WorldDefinition::load(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let mut world = World::from_definition(&definition, &regulation_root())
+        .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+
+    // Het beeld een paar keer opvragen: één keer zou een check kunnen missen die
+    // pas op de tweede ronde iets ophaalt, en het is ook hoe een frontend het
+    // gebruikt.
+    let beelden: Vec<_> = (0..3).map(|_| world.snapshot()).collect();
+    assert!(
+        beelden
+            .iter()
+            .any(|beeld| beeld.actions.iter().any(|actie| !actie.available)),
+        "deze meting is alleen iets waard als er een actie bij zit die nu niet kan"
+    );
+
+    let met_accept = definition.cells.iter().any(|cell| {
+        cell.besluit_definitions.iter().any(|besluit| {
+            besluit
+                .inputs
+                .values()
+                .any(|input| input.accepts_from().is_some())
+        })
+    });
+    assert!(
+        met_accept,
+        "en alleen als een van die besluiten een waarde van een andere cel accepteert"
+    );
+
+    for beeld in &beelden {
+        assert!(
+            beeld.crossings.is_empty(),
+            "het opvragen van het beeld hoort geen verkeer over een celgrens op te leveren"
+        );
+        assert!(
+            !beeld
+                .journal
+                .iter()
+                .any(|entry| entry.kind == JournalKind::Vraag),
+            "en het journaal hoort er geen vraag van op te schrijven"
+        );
+    }
+
+    let mut log = ObservationLog::new();
+    for crossing in world.crossings() {
+        log.record(crossing);
+    }
+    assert!(
+        log.is_empty(),
+        "en het meetinstrument ziet niets, want er is niets gebeurd"
+    );
+
+    // En na een echte actie nog steeds niet: de vastlegging zelf gaat ook niet
+    // over een grens, en de checks die erna volgen evenmin.
+    world
+        .act(
+            "burger.aanvraag",
+            &BTreeMap::from([
+                ("bsn".to_string(), Value::String("999993653".to_string())),
+                ("jaar".to_string(), Value::Int(2024)),
+                (
+                    "ondertekend_op".to_string(),
+                    Value::String("2024-01-01".to_string()),
+                ),
+            ]),
+        )
+        .unwrap_or_else(|e| panic!("de aanvraag moet kunnen: {e}"));
+    let na = world.snapshot();
+    assert!(
+        na.actions
+            .iter()
+            .find(|actie| actie.id == "toeslagen.toekenning")
+            .is_some_and(|actie| actie.available),
+        "met de aanvraag erbij kan de toekenning"
+    );
+    assert!(
+        na.actions
+            .iter()
+            .find(|actie| actie.id == "toeslagen.vaststelling")
+            .is_some_and(|actie| !actie.available),
+        "de vaststelling leest de toekenning terug uit de eigen kroniek (een eigen \
+         feit), dus zonder toekenning kan ze nog niet"
+    );
+    assert!(
+        na.crossings.is_empty() && world.crossings().is_empty(),
+        "en er ging nog steeds niets over een celgrens"
+    );
+
+    // Ná de toekenning ligt ook dát eigen feit er, en kan de vaststelling. De
+    // klok moet eerst voorbij de aanslag van de belastingdienst (2024-03-01),
+    // anders is er nog geen toetsingsinkomen te accepteren.
+    world
+        .advance(
+            chrono::NaiveDate::from_ymd_opt(2024, 4, 1)
+                .unwrap_or_else(|| panic!("2024-04-01 hoort een geldige datum te zijn")),
+        )
+        .unwrap_or_else(|e| panic!("de klok moet kunnen doortikken: {e}"));
+    world
+        .act(
+            "toeslagen.toekenning",
+            &BTreeMap::from([("bsn".to_string(), Value::String("999993653".to_string()))]),
+        )
+        .unwrap_or_else(|e| panic!("de toekenning moet kunnen: {e}"));
+
+    // De toekenning zelf accepteert het toetsingsinkomen van de belastingdienst,
+    // dus dát is wél een echte grensoverschrijding — het punt van deze meting is
+    // niet dat er nooit contact is, maar dat het **opvragen van het beeld** er
+    // geen bij optelt.
+    let crossings_na_besluit = world.crossings().len();
+    let na = world.snapshot();
+    assert!(
+        na.actions.iter().all(|actie| actie.available),
+        "met de toekenning erbij kan elk besluit in deze wereld"
+    );
+    assert_eq!(
+        world.crossings().len(),
+        crossings_na_besluit,
+        "het opvragen van het beeld hoort zelf geen grens over te gaan"
+    );
 }
