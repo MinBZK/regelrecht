@@ -2851,10 +2851,30 @@ pub fn binding_units(doc: &Value, corpus_root: Option<&Path>) -> Vec<Finding> {
                 }
                 Some(Ok(target)) => target,
             };
-            let Some(there) = output_unit(target, output) else {
+            let there = output_units(target, output);
+            if there.is_empty() {
                 continue;
-            };
+            }
 
+            // The producing law labels its own output two ways. Which one the
+            // binding disagrees with is then not the point, and picking one to
+            // compare against would report a clash that a reader cannot act on
+            // until this is settled.
+            if there.len() > 1 {
+                findings.push(Finding::new(
+                    "unit",
+                    Some(&article),
+                    format!(
+                        "input {name} reads {law}.{output}, which that law labels {} in \
+                         different places. A unit is a label and never a conversion, so one \
+                         output cannot carry two of them",
+                        there.join(" and ")
+                    ),
+                ));
+                continue;
+            }
+
+            let there = there[0];
             if here != there {
                 findings.push(Finding::new(
                     "unit",
@@ -3023,8 +3043,9 @@ fn unit_of(node: &Value) -> Option<&str> {
         .and_then(Value::as_str)
 }
 
-/// The unit declared on one named output of a document.
-/// Two things this must not do, both of which it did.
+/// The units a document declares on one named output.
+///
+/// Three things this must not do, all of which it did.
 ///
 /// It must not stop at the first article without a `machine_readable` section.
 /// Article 1 is a definitions article in ten of the corpus laws, so a `?` here
@@ -3035,8 +3056,20 @@ fn unit_of(node: &Value) -> Option<&str> {
 /// `output` directly under `machine_readable`. Reading the wrong level makes the
 /// unit check silent for the whole corpus, which is indistinguishable from a
 /// corpus in which every unit agrees.
-fn output_unit<'a>(doc: &'a Value, output: &str) -> Option<&'a str> {
-    let arts = doc.get("articles").and_then(Value::as_sequence)?;
+///
+/// And it must not stop at the first article that declares the name. One name
+/// is routinely declared by several articles, and a first declaration without
+/// a unit then answered "no unit" for the whole law, so a later declaration
+/// that does carry one was never compared against anything. That is the same
+/// silence the check exists to end, one level down. Every declaration is
+/// collected instead, in document order and without duplicates, which also
+/// makes a law that labels its own output two ways visible rather than
+/// resolved by position.
+fn output_units<'a>(doc: &'a Value, output: &str) -> Vec<&'a str> {
+    let mut units: Vec<&str> = Vec::new();
+    let Some(arts) = doc.get("articles").and_then(Value::as_sequence) else {
+        return units;
+    };
     for entry in arts {
         let Some(mr) = entry.get("machine_readable") else {
             continue;
@@ -3047,13 +3080,18 @@ fn output_unit<'a>(doc: &'a Value, output: &str) -> Option<&'a str> {
             .and_then(Value::as_sequence);
         if let Some(seq) = outputs {
             for item in seq {
-                if item.get("name").and_then(Value::as_str) == Some(output) {
-                    return unit_of(item);
+                if item.get("name").and_then(Value::as_str) != Some(output) {
+                    continue;
+                }
+                if let Some(unit) = unit_of(item) {
+                    if !units.contains(&unit) {
+                        units.push(unit);
+                    }
                 }
             }
         }
     }
-    None
+    units
 }
 
 /// The declared inputs of a model, by name.
@@ -4853,8 +4891,120 @@ articles:
 "#,
         )
         .expect("yaml");
-        assert_eq!(output_unit(&doc, "toetsingsinkomen"), Some("eurocent"));
-        assert_eq!(output_unit(&doc, "bestaat_niet"), None);
+        assert_eq!(output_units(&doc, "toetsingsinkomen"), vec!["eurocent"]);
+        assert!(output_units(&doc, "bestaat_niet").is_empty());
+    }
+
+    /// A name is routinely declared by more than one article. Taking the unit
+    /// of the first declaration meant a first declaration without one answered
+    /// "no unit" for the whole law, and the later declaration that did carry a
+    /// unit was never compared against the binding.
+    #[test]
+    fn a_later_declaration_carrying_a_unit_is_not_hidden_by_an_earlier_one() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let awir = dir.path().join("regulation/nl/wet/awir");
+        std::fs::create_dir_all(&awir).expect("mkdir");
+        std::fs::write(
+            awir.join("2026-01-01.yaml"),
+            r#"
+$id: awir
+articles:
+  - number: "7"
+    machine_readable:
+      execution:
+        output:
+          - name: toetsingsinkomen
+  - number: "8.1"
+    machine_readable:
+      execution:
+        output:
+          - name: toetsingsinkomen
+            type_spec:
+              unit: eurocent
+"#,
+        )
+        .expect("write");
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+$id: wet_op_de_zorgtoeslag
+articles:
+  - number: "2.2"
+    machine_readable:
+      execution:
+        input:
+          - name: toetsingsinkomen
+            type_spec:
+              unit: euro
+            source:
+              regulation: awir
+              output: toetsingsinkomen
+"#,
+        )
+        .expect("yaml");
+        let f = binding_units(&doc, Some(dir.path()));
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert_eq!(f[0].check, "unit");
+        assert!(
+            f[0].detail.contains("eurocent") && f[0].detail.contains("euro"),
+            "{:?}",
+            f[0].detail
+        );
+    }
+
+    /// A law that labels one output two ways has a defect of its own, and
+    /// which of the two the binding disagrees with is not something the
+    /// reader can act on until that is settled.
+    #[test]
+    fn a_law_that_labels_one_output_two_ways_is_reported_as_such() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let awir = dir.path().join("regulation/nl/wet/awir");
+        std::fs::create_dir_all(&awir).expect("mkdir");
+        std::fs::write(
+            awir.join("2026-01-01.yaml"),
+            r#"
+$id: awir
+articles:
+  - number: "7"
+    machine_readable:
+      execution:
+        output:
+          - name: toetsingsinkomen
+            type_spec:
+              unit: euro
+  - number: "8.1"
+    machine_readable:
+      execution:
+        output:
+          - name: toetsingsinkomen
+            type_spec:
+              unit: eurocent
+"#,
+        )
+        .expect("write");
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+$id: wet_op_de_zorgtoeslag
+articles:
+  - number: "2.2"
+    machine_readable:
+      execution:
+        input:
+          - name: toetsingsinkomen
+            type_spec:
+              unit: euro
+            source:
+              regulation: awir
+              output: toetsingsinkomen
+"#,
+        )
+        .expect("yaml");
+        let f = binding_units(&doc, Some(dir.path()));
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert!(
+            f[0].detail.contains("different places"),
+            "{:?}",
+            f[0].detail
+        );
     }
 
     #[test]
