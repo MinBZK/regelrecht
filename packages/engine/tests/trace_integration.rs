@@ -5,8 +5,8 @@
 
 mod common;
 
-use regelrecht_engine::{LawExecutionService, Value};
-use std::collections::BTreeMap;
+use regelrecht_engine::{LawExecutionService, PathNode, PathNodeType, Value};
+use std::collections::{BTreeMap, BTreeSet};
 use walkdir::WalkDir;
 
 /// Load all regulation YAML files into the service.
@@ -247,4 +247,73 @@ fn test_simple_law_trace() {
         rendered,
         expected
     );
+}
+
+/// Every computing step names the article it came from.
+///
+/// The engine records the regulation and article while it executes the article
+/// (`ArticleEngine::execute_actions_traced`), so a trace says not just what came
+/// out but which article said so. That has to be proven on a real evaluation and
+/// not only on a hand-built `TraceBuilder`: the builder can record a source that
+/// the engine never hands it, and a trace nobody annotates looks exactly like one
+/// where every article happens to be unknown.
+///
+/// A step that is not an action keeps quiet. A bare operation inside an
+/// expression belongs to the action above it and gets no article of its own,
+/// because an article number nobody recorded is a guess.
+#[test]
+fn every_action_in_a_trace_names_its_regulation_and_article() {
+    let service = setup_zorgtoeslag_service();
+
+    let mut params = BTreeMap::new();
+    params.insert("bsn".to_string(), Value::String("999993653".to_string()));
+
+    let result = service
+        .evaluate_law_output_with_trace(
+            "wet_op_de_zorgtoeslag",
+            "hoogte_zorgtoeslag",
+            params,
+            "2025-01-01",
+        )
+        .expect("Evaluation should succeed");
+    let trace = result.trace.expect("Trace should be populated");
+
+    let mut sources = BTreeSet::new();
+    let mut unannotated_actions = Vec::new();
+    let mut annotated_operations = Vec::new();
+    walk(&trace, &mut |node| match node.node_type {
+        PathNodeType::Action => match (&node.regulation, &node.article) {
+            (Some(regulation), Some(article)) => {
+                sources.insert((regulation.clone(), article.clone()));
+            }
+            _ => unannotated_actions.push(node.name.clone()),
+        },
+        PathNodeType::Operation => {
+            if node.regulation.is_some() || node.article.is_some() {
+                annotated_operations.push(node.name.clone());
+            }
+        }
+        _ => {}
+    });
+
+    assert!(
+        unannotated_actions.is_empty(),
+        "every computing step should name its regulation and article, these did not: {unannotated_actions:?}"
+    );
+    assert!(
+        annotated_operations.is_empty(),
+        "an operation belongs to the action above it and should carry no article of its own: {annotated_operations:?}"
+    );
+    assert!(
+        sources.contains(&("wet_op_de_zorgtoeslag".to_string(), "3".to_string())),
+        "the article computing the amount should be in the trace by name, found: {sources:?}"
+    );
+}
+
+/// Visit every node of a trace, parents before children.
+fn walk(node: &PathNode, visit: &mut impl FnMut(&PathNode)) {
+    visit(node);
+    for child in &node.children {
+        walk(child, visit);
+    }
 }
