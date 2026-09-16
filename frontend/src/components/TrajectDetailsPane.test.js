@@ -134,8 +134,17 @@ describe('TrajectDetailsPane subpath', () => {
   it('stuurt bij Opslaan een PATCH met repo_path en herlaadt het detail', async () => {
     const w = await mountPane(detail());
     const field = subpathField(w);
+    // Zoals het echte veld het doet: de host zet z'n eigen `value` en
+    // dispatcht een CustomEvent met diezelfde waarde in `detail`.
     field.element.value = 'regulation/nl';
-    await field.trigger('input');
+    field.element.dispatchEvent(
+      new CustomEvent('input', {
+        detail: { value: 'regulation/nl' },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+    await w.vm.$nextTick();
     apiFetchJson.mockClear();
 
     await saveButton(w).trigger('click');

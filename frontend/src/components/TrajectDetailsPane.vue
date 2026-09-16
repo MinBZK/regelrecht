@@ -78,8 +78,14 @@ watch(
 );
 
 function onSubpathInput(event) {
+  // nldd-text-field dispatcht een CustomEvent met de nieuwe waarde in
+  // event.detail.value. De host zet z'n eigen `value` vóór het dispatchen,
+  // dus event.target.value klopt ook, maar detail eerst lezen houdt het
+  // contract expliciet - zoals onYamlInput in EditorView.vue en de andere
+  // nldd-invoerhandlers. `??` laat een bewust lege waarde (veld gewist =
+  // repo-root) door.
   subpathDraft.value =
-    event.target?.value ?? event.detail?.value ?? subpathDraft.value;
+    event.detail?.value ?? event.target?.value ?? subpathDraft.value;
 }
 
 async function saveSubpath() {
