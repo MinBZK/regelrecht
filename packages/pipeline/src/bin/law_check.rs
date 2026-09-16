@@ -5,21 +5,37 @@
 //! statutory text signals that the model does not carry.
 //!
 //! ```text
-//! law-check [--corpus <root>] <file.yaml>...
+//! law-check [--corpus <root>] [--strict] <file.yaml>...
 //! ```
 //!
 //! `--corpus` enables the cross-law half of the binding check by pointing at
 //! the directory that holds `<country>/<layer>/<law>/…` (in this repo:
-//! `corpus/regulation`). Exit code is 1 when any file has schema errors, so
-//! it can gate a pipeline step.
+//! `corpus/regulation`).
+//!
+//! Exit code is 1 when any file has schema errors, so it can gate a pipeline
+//! step. `--strict` widens that to every finding: a binding into a law the
+//! corpus does not have, a unit clash, an uncovered lid. Without it those are
+//! printed and the exit code stays 0, because a finding is a question about
+//! the model rather than a broken file, and a step that fails on every one of
+//! them cannot be turned on over a corpus that still carries them. With it,
+//! the run is only green when the report is empty.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use regelrecht_pipeline::enrich_v2::checks;
 
+/// What the caller asked for, one line, so `--help` and the two usage errors
+/// cannot drift apart.
+const USAGE: &str = "usage: law-check [--corpus <root>] [--strict] <file.yaml>...";
+
+const HELP: &str = "  --corpus <root>  enable the cross-law checks against this corpus root
+  --strict         exit non-zero on any finding, not only on schema errors
+  -h, --help       print this and exit";
+
 fn main() -> ExitCode {
     let mut corpus: Option<PathBuf> = None;
+    let mut strict = false;
     let mut files: Vec<PathBuf> = Vec::new();
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -31,8 +47,9 @@ fn main() -> ExitCode {
                     return ExitCode::from(2);
                 }
             },
+            "--strict" => strict = true,
             "--help" | "-h" => {
-                println!("usage: law-check [--corpus <root>] <file.yaml>...");
+                println!("{USAGE}\n\n{HELP}");
                 return ExitCode::SUCCESS;
             }
             other if other.starts_with('-') => {
@@ -44,15 +61,15 @@ fn main() -> ExitCode {
     }
 
     if files.is_empty() {
-        eprintln!("usage: law-check [--corpus <root>] <file.yaml>...");
+        eprintln!("{USAGE}");
         return ExitCode::from(2);
     }
 
     let mut invalid = 0usize;
     for file in &files {
         match report_one(file, corpus.as_deref()) {
-            Ok(has_schema_errors) => {
-                if has_schema_errors {
+            Ok(outcome) => {
+                if outcome.red(strict) {
                     invalid += 1;
                 }
             }
@@ -70,7 +87,22 @@ fn main() -> ExitCode {
     }
 }
 
-fn report_one(path: &Path, corpus: Option<&Path>) -> std::io::Result<bool> {
+/// What one file's report means for the exit code.
+struct Outcome {
+    schema_errors: bool,
+    findings: bool,
+}
+
+impl Outcome {
+    /// Whether this file fails the run. Schema errors always do: the file
+    /// does not conform to the contract it declares. Everything else only
+    /// under `--strict`.
+    fn red(&self, strict: bool) -> bool {
+        self.schema_errors || (strict && self.findings)
+    }
+}
+
+fn report_one(path: &Path, corpus: Option<&Path>) -> std::io::Result<Outcome> {
     let yaml = std::fs::read_to_string(path)?;
     let report = checks::run(&yaml, corpus);
 
@@ -139,5 +171,8 @@ fn report_one(path: &Path, corpus: Option<&Path>) -> std::io::Result<bool> {
         }
     }
 
-    Ok(!report.schema.is_empty())
+    Ok(Outcome {
+        schema_errors: !report.schema.is_empty(),
+        findings: !report.findings.is_empty(),
+    })
 }
