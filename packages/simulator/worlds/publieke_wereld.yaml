@@ -287,6 +287,15 @@ cells:
           # Dezelfde zaak, een eerder moment: het bedrag zoals het toen is
           # vastgelegd. Geen herberekening en geen eigen feit — het gram schrijft
           # op dat het uit de toekenning komt.
+          #
+          # Hier benadert deze opstelling de wet, en dat hoort zichtbaar te
+          # staan: Awir art. 19, eerste lid knoopt de vaststelling aan de laatste
+          # aanslag, dus streng gelezen komt hier het bedrag te staan dat art. 2
+          # van de zorgtoeslagwet oplevert op het definitieve toetsingsinkomen.
+          # Is dat lager dan wat er als voorschot is verleend, dan wordt het
+          # slotbedrag negatief — een terugvordering, en die kant op betalen kent
+          # deze opstelling nog niet. Zolang dat zo is, leest de vaststelling
+          # terug wat er is toegekend.
           toegekende_tegemoetkoming:
             from_decretogram: zorgtoeslag_toekenning
             field: hoogte_zorgtoeslag

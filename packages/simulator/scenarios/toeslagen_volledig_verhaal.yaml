@@ -72,8 +72,13 @@ cells:
   # De cel die het toetsingsinkomen vaststelt, en die later de verplichtingen
   # nakomt. Twee aanslagen: de tweede corrigeert de eerste, en die correctie is te
   # zien in de stand van de zaak bij deze cel. Wat de vaststelling ermee doet, is
-  # niets — een aanslag die verandert ná de toekenning is grond voor een
-  # herziening (Awir art. 20), en die kent deze opstelling niet.
+  # niets — en dat is hier een keuze en geen regel. Leest men het eerste besluit
+  # als de toekenning, dan is een aanslag die daarna verandert grond voor een
+  # herziening (Awir art. 20), en die kent deze opstelling niet. Leest men het
+  # als de voorschotverlening die het draagt (art. 16 jo. art. 22), dan hoort de
+  # vaststelling van art. 19 op déze herziene aanslag te rusten — en dat levert
+  # een lagere tegemoetkoming dan het voorschot op, dus een terugvordering. Zie
+  # de invoer van de vaststelling verderop.
   - id: belastingdienst
     laws: []
     # Deze cel komt de betalingsverplichtingen na die Dienst Toeslagen oplegt:
@@ -252,6 +257,15 @@ cells:
           # Dezelfde zaak, een eerder moment: het bedrag zoals het toen is
           # vastgelegd. Geen herberekening en geen eigen feit — het gram schrijft
           # op dat het uit de toekenning komt.
+          #
+          # Hier benadert deze opstelling de wet, en dat hoort zichtbaar te
+          # staan: Awir art. 19, eerste lid knoopt de vaststelling aan de laatste
+          # aanslag, dus streng gelezen komt hier het bedrag te staan dat art. 2
+          # van de zorgtoeslagwet oplevert op het definitieve toetsingsinkomen.
+          # Is dat lager dan wat er als voorschot is verleend, dan wordt het
+          # slotbedrag negatief — een terugvordering, en die kant op betalen kent
+          # deze opstelling nog niet. Zolang dat zo is, leest de vaststelling
+          # terug wat er is toegekend.
           toegekende_tegemoetkoming:
             from_decretogram: zorgtoeslag_toekenning
             field: hoogte_zorgtoeslag
@@ -451,8 +465,9 @@ act:
   - description: >-
       De vaststelling, ná het berekeningsjaar en binnen acht weken na de laatste
       aanslag (Awir art. 19, eerste lid). Ze rekent de zorgtoeslag niet opnieuw
-      uit: ze stelt vast wat is toegekend en verrekent daarmee de voorschotten die
-      zijn verleend (art. 24, tweede lid). Alle vier de termijnen zijn dan
+      uit: ze stelt vast wat is toegekend — een benadering, zie de invoer — en
+      verrekent daarmee de voorschotten die zijn verleend (art. 24, tweede lid).
+      Alle vier de termijnen zijn dan
       vervallen, dus het voorschot is het toegekende bedrag en het slotbedrag is
       nul — de wereld betaalt precies wat er is toegekend en geen cent meer.
     action: toeslagen.vaststelling

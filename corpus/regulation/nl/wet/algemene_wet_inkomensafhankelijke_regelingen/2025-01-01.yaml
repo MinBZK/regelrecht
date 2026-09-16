@@ -431,15 +431,19 @@ articles:
     url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel19
     machine_readable:
       # De vaststelling na afloop van het berekeningsjaar: de dienst kent de
-      # tegemoetkoming over dat jaar toe. Dit artikel rekent de tegemoetkoming
-      # niet opnieuw uit — wat is toegekend, is toegekend — en zet er de
-      # verrekening van art. 24, tweede lid naast: wat er na aftrek van de
-      # verleende voorschotten overblijft, is het slotbedrag.
+      # tegemoetkoming over dat jaar toe, binnen acht weken na de laatste
+      # aanslag die daarvoor van belang is. Hoe hóóg die tegemoetkoming is, zegt
+      # deze wet niet — dat staat in de inkomensafhankelijke regeling zelf (voor
+      # de zorgtoeslag: art. 2 van die wet). Wat dit artikel er wél naast zet, is
+      # de verrekening van art. 24, tweede lid: wat er na aftrek van de verleende
+      # voorschotten overblijft, is het slotbedrag.
       #
-      # Beide bedragen komen van buiten deze wet en dragen daarom geen bron: het
-      # toegekende bedrag ligt in de eerdere beschikking, de verleende
-      # voorschotten liggen bij wie ze uitbetaalde. Wie deze vaststelling
-      # uitvoert, levert ze aan.
+      # Beide bedragen komen dus van buiten deze wet en dragen geen bron: wie de
+      # vaststelling uitvoert, levert ze aan. Wélk bedrag dat hoort te zijn,
+      # kiest dit artikel niet, maar het bindt het wel: lid 1 knoopt de
+      # toekenning aan de laatste aanslag. Een uitvoerder die hier het bedrag van
+      # een eerder verleend voorschot in schuift, benadert de vaststelling en
+      # voert haar niet uit.
       #
       # Wat hier niet staat: de termijnen van lid 1 en 2 (acht weken na de
       # aanslag, of vóór 1 december van het volgende jaar) en de kennisgeving van
