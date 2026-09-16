@@ -278,6 +278,16 @@ async fn settings(
 }
 
 /// `POST /api/reset` — terug naar de startstand uit het wereldbestand.
+///
+/// Terugzetten is het wereldbestand opnieuw optuigen, en dus kan hier alleen
+/// misgaan wat ook bij het starten van de sessie zou zijn misgegaan: een corpus
+/// dat niet te lezen is, een definitie die niet klopt. Dat is een eigenschap van
+/// de opstelling en niet van dit verzoek, dus het gaat als 500 naar buiten —
+/// dezelfde afweging als in [`crate::worlds::WorldRegistry`], waar een wereld die
+/// niet opkomt ook een `ApiError::internal` wordt. Langs
+/// [`ApiError::from_simulator`] zou zo'n definitiefout de status van een
+/// *weigering* kunnen lenen, en dan zou "de opstelling is stuk" er uitzien als
+/// "de cel besloot niet".
 async fn reset(
     State(state): State<AppState>,
     session: Session,
@@ -286,7 +296,9 @@ async fn reset(
     let snapshot = state
         .worlds
         .with_world(&key, |world| {
-            world.reset()?;
+            world
+                .reset()
+                .map_err(|e| ApiError::internal(e.to_string()))?;
             Ok(world.snapshot())
         })
         .await?;

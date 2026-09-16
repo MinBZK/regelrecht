@@ -117,13 +117,19 @@ klok". Een moment ná de klok is een 409 — dat zou een voorspelling zijn.
   niet stuk.
 - **Een actie die nu niet kan** is een 409 met de uitleg van de wereld erin: het
   verhaal is nog niet zover, en dat is een stand en geen vergissing.
+- **Een besluit dat de cel weigert** is óók een 409, met haar eigen reden erin: er
+  is niets vastgesteld over een input die het besluit nodig heeft (bij de cel zelf
+  of bij een ander), de cel is het bevoegd gezag niet dat de regeling aanwijst, of
+  de aansturende uitkomst is op dat moment geen beschikking. De cel legt dan niets
+  vast, en dat is precies wat ze hoort te doen.
 - **Een verstreken termijn** is een waarschuwing in het antwoord en geen fout. De
   uitvoerder mag alsnog besluiten; de wet zegt alleen wat de termijn was.
 
-Fouten zijn altijd `{"error": "…"}`. De status volgt de foutvariant van de
-simulator: 404 voor wat het pad aanwijst maar niet bestaat, 409 voor een wereld die
-er niet naar staat, 400 voor een verzoek dat niet klopt tegen wat een definitie
-belooft, 500 voor de rest. De hele afbeelding staat in `src/error.rs`.
+Fouten zijn altijd `{"error": "…"}`. De status volgt de **foutvariant** van de
+simulator en niet de tekst van de melding: 404 voor wat het pad aanwijst maar niet
+bestaat, 409 voor een wereld die er niet naar staat of een cel die weigert, 400
+voor een verzoek dat niet klopt tegen wat een definitie belooft, 500 voor de rest.
+De hele afbeelding staat in `src/error.rs`.
 
 ## Wereldbestanden
 

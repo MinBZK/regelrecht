@@ -20,12 +20,19 @@ function jsonResponse(body) {
   };
 }
 
-/** De weigering van de server, in diezelfde vorm: `{"error": "…"}` bij een 400. */
-function rejection(message) {
+/**
+ * De weigering van de server, in diezelfde vorm: `{"error": "…"}`.
+ *
+ * De status doet er voor deze app niet toe — een verzoek dat niet klopt (400) en
+ * een cel die weigert te besluiten (409) komen allebei met hun eigen uitleg, en
+ * die uitleg is wat op het scherm hoort. Hij staat hier als argument zodat een
+ * test de twee naast elkaar kan zetten.
+ */
+function rejection(message, status = 400) {
   const body = JSON.stringify({ error: message });
   return {
     ok: false,
-    status: 400,
+    status,
     headers: { get: () => 'application/json' },
     json: async () => JSON.parse(body),
     text: async () => body,
@@ -227,8 +234,44 @@ describe('de pagina', () => {
     expect(wrapper.findAll('nldd-banner').filter((item) => item.attributes('variant') === 'critical')).toHaveLength(0);
   });
 
-  // De store is er één per pagina, dus deze test maakt hem achteraf weer leeg;
-  // hij is de enige die er een fout in achterlaat.
+  // Een besluit dat de cel weigert komt als 409 terug met de reden erin. Die
+  // reden is het antwoord — waarom er geen besluit is — en hoort dus in het
+  // formulier te staan dat hem uitlokte, en niet als een kale status of een
+  // eigen verzinsel over "er ging iets mis". Deze test staat er omdat de server
+  // hier ooit een 500 van maakte: toen was er niets te lezen dat de weigering
+  // van een defect onderscheidde.
+  it('toont de reden van een geweigerd besluit bij het formulier', async () => {
+    const reden =
+      "cel 'toeslagen': besluit 'zorgtoeslag_toekenning' kon input 'toetsingsinkomen' niet "
+      + "accepteren van cel 'belastingdienst': die stelde niets vast";
+    const wrapper = await mountApp();
+    try {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (_url, init) => (init?.method === 'POST' ? rejection(reden, 409) : jsonResponse(worldFixture))),
+      );
+
+      const world = useWorld();
+      await world.act({ id: worldFixture.actions[1].id, label: 'Toekennen' }, {});
+      await flushPromises();
+
+      // Bij de kaart die het verzoek deed, en met de reden van de cel als tekst:
+      // dat is het verschil met "er ging iets mis". Dat de titel erbij staat, is
+      // de helft van de test — kwam de reden alleen in de banner bovenaan terecht
+      // ('De server kon dit niet doen'), dan las een bezoeker hem als een storing.
+      const kritiek = wrapper
+        .findAll('nldd-banner')
+        .filter((item) => item.attributes('variant') === 'critical');
+      expect(kritiek).toHaveLength(1);
+      expect(kritiek[0].attributes('text')).toBe('Deze actie is niet uitgevoerd');
+      expect(kritiek[0].attributes('supporting-text')).toBe(reden);
+    } finally {
+      useWorld().dismissError();
+    }
+  });
+
+  // De store is er één per pagina, dus elke test die er een fout in achterlaat,
+  // maakt hem achteraf weer leeg — deze en de vorige zijn de enige twee.
   it('zet een geweigerde actie bovenaan zodra haar eigen paneel niet meer in beeld is', async () => {
     const melding = "parameter 'ondertekend_op' is geen datum: '09-01-2024' (verwacht jjjj-mm-dd)";
     const wrapper = await mountApp();
