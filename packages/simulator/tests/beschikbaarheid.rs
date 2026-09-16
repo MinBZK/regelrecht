@@ -189,6 +189,12 @@ const TERUGLEZENDE_WERELD: &str = r"
 clock:
   start: 2024-01-01
 
+settings:
+  # Wet op de zorgtoeslag art. 2 legt sinds #1466 een betalingsverplichting op
+  # met `ritme: $betalingsritme` (RFC-022 §3.2); zonder deze instelling weigert
+  # het optuigen vóór de beschikbaarheidscheck er zelfs aan toekomt.
+  betalingsritme: kwartaal
+
 cells:
   - id: toeslagen
     identity: Dienst Toeslagen
@@ -225,6 +231,12 @@ cells:
               verzamelinkomen: 79547
               buitenlands_inkomen: 0
               vermogen: 0
+
+      # De besluitende cel legt zelf ook vast dat haar gemeld is dat er
+      # betaald is; de verplichting die art. 2 van wet_op_de_zorgtoeslag
+      # oplegt, vraagt die stroom net zo goed van haar als van de betaler.
+      - stream: betalingen
+        key: zaakkenmerk
 
     besluit_definitions:
       - name: zorgtoeslag_toekenning
@@ -274,6 +286,18 @@ cells:
           chronicle: beschikkingen
           key: zaakkenmerk
           latest: true
+
+  # De betalende cel: wie het bevoegd gezag van de wet nakomt staat in het
+  # wereldbestand (`komt_na`), niet in de wet. Zonder deze binding en haar
+  # eigen `betalingen`-stroom weigert het optuigen de verplichting die art. 2
+  # oplegt.
+  - id: belastingdienst
+    laws: []
+    komt_na:
+      - Dienst Toeslagen
+    chronicles:
+      - stream: betalingen
+        key: zaakkenmerk
 ";
 
 /// Eén `decides`-actie, in Rust en niet in het YAML hierboven.
