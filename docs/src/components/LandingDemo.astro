@@ -33,8 +33,6 @@ const nl = {
     { tag: 'Uitvoering', h: 'De engine rekent', p: 'Precies dat scenario, uitgevoerd op de machine-uitvoerbare wet hierboven. Wat je hieronder ziet gebeuren, gebeurt nu: de engine draait in deze browser, op jouw machine.' },
   ],
   runLabel: 'Uitvoeren',
-  running: 'Bezig met uitvoeren',
-  done: 'Klaar',
   resultLabel: 'Zorgtoeslag per jaar',
   beforeRun: 'De engine en de wetten worden opgehaald; het scenario draait hier, in je browser.',
   noScript: 'Hiervoor is JavaScript nodig: de engine draait in je eigen browser, niet op een server.',
@@ -48,7 +46,6 @@ const nl = {
   sliderLeft: 'Wettekst',
   sliderRight: 'Machineleesbaar',
   sourceLaw: 'Bron: wetten.overheid.nl',
-  sourceScenario: 'Dit scenario in de repository',
 };
 
 const en = {
@@ -62,8 +59,6 @@ const en = {
     { tag: 'Execution', h: 'The engine runs', p: 'That very scenario, executed against the machine-executable law above. What you see happening below is happening now: the engine runs in this browser, on your machine.' },
   ],
   runLabel: 'Run',
-  running: 'Running',
-  done: 'Done',
   resultLabel: 'Allowance per year',
   beforeRun: 'Fetching the engine and the laws; the scenario runs here, in your browser.',
   noScript: 'This needs JavaScript: the engine runs in your own browser, not on a server.',
@@ -77,7 +72,6 @@ const en = {
   sliderLeft: 'Statute',
   sliderRight: 'Machine-readable',
   sourceLaw: 'Source: wetten.overheid.nl',
-  sourceScenario: 'This scenario in the repository',
 };
 
 const t = lang === 'en' ? en : nl;
@@ -89,22 +83,6 @@ const t = lang === 'en' ? en : nl;
 // as though every value came from article 2. The law being consulted is the
 // half before the `#`, so that is what the row names; the plain article
 // reference is left to the steps that have no other law to name.
-// Readable names for the landing page. The trace keeps the identifiers the
-// law file uses, which is what makes a step traceable, but a visitor reading
-// `heeft_recht_op_zorgtoeslag` is reading a variable name. The identifier stays
-// underneath, so the page shows the human sentence and the thing it came from.
-// A step with no entry here falls back to its identifier with the underscores
-// opened up, which is still better than nothing and never wrong.
-const LABELS: Record<string, { nl: string; en: string }> = {
-  is_verzekerd: { nl: 'Is verzekerd voor de Zvw', en: 'Insured under the Zvw' },
-  heeft_toeslagpartner: { nl: 'Heeft een toeslagpartner', en: 'Has an allowance partner' },
-  toetsingsinkomen: { nl: 'Toetsingsinkomen', en: 'Assessment income' },
-  standaardpremie: { nl: 'Standaardpremie', en: 'Standard premium' },
-  vermogen_onder_grens: { nl: 'Vermogen onder de grens', en: 'Assets below the threshold' },
-  hoogte_zorgtoeslag: { nl: 'Hoogte van de zorgtoeslag', en: 'Amount of the allowance' },
-  heeft_recht_op_zorgtoeslag: { nl: 'Heeft recht op zorgtoeslag', en: 'Entitled to the allowance' },
-};
-
 const LAW_LABELS: Record<string, { nl: string; en: string }> = {
   zorgverzekeringswet: { nl: 'Zorgverzekeringswet', en: 'Health Insurance Act' },
   wet_op_de_zorgtoeslag: { nl: 'Wet op de zorgtoeslag', en: 'Healthcare Allowance Act' },
@@ -116,10 +94,14 @@ const LAW_LABELS: Record<string, { nl: string; en: string }> = {
 };
 
 /**
- * Short tags for the kinds of step, the same vocabulary the terminal view uses.
+ * Short tags for the kinds of step.
+ *
  * Kept in the engine's own words rather than translated: this panel is the
- * machine's account of what it did, and `xlaw` says something `kruisverwijzing`
- * does not, namely that it is the same token you would grep the trace for.
+ * machine's account of what it did, and `xlaw` says something
+ * `kruisverwijzing` does not. The keys are the serialised `node_type` values;
+ * the values are spelled out further than the engine's terminal renderer does
+ * (`resolve` where it prints `res`, `article` where it prints `art`), because
+ * a visitor here reads them once rather than scanning a column of them.
  */
 const KINDS: Record<string, string> = {
   article: 'article',
@@ -139,9 +121,6 @@ const humanise = (id: string) => id.replace(/_/g, ' ');
 // as data rather than used here: there is nothing to label until the engine has
 // run, and that happens in the visitor's browser.
 const labels = JSON.stringify({
-  outputs: Object.fromEntries(
-    Object.entries(LABELS).map(([id, v]) => [id, v[lang] ?? humanise(id)]),
-  ),
   laws: Object.fromEntries(
     Object.entries(LAW_LABELS).map(([id, v]) => [id, v[lang] ?? humanise(id)]),
   ),

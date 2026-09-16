@@ -81,6 +81,16 @@ jobs:
               - .github/workflows/ci.yml
             docs:
               - docs/**
+              # De landingspagina leest het corpus bij het bouwen en draait het
+              # zorgtoeslag-scenario in de browser. De parsers in
+              # docs/src/lib/landing-demo.ts staan op exacte posities in de
+              # YAML, dus een herformattering van de wet laat de docs-build
+              # omvallen; zonder deze paden merkt de toegankelijkheidspoort dat
+              # niet en valt het pas om bij de volgende docs-wijziging.
+              - corpus/regulation/**
+              - corpus/annotations/**
+              - packages/frontend-shared/**
+              - script/landing-laws.sh
               - .github/workflows/ci.yml
             # Wat de bouw van een Rust-image kan breken. Smaller dan `ci`: een
             # wijziging in frontend/ of bdd/ raakt deze Dockerfiles niet, en die

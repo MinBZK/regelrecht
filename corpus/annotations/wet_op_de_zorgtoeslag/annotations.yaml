@@ -225,8 +225,9 @@ annotations:
           Dat het bedrag onder het drempelinkomen vlak blijft, is de toets op
           deze bepaling: het eerste percentage gaat over het volle
           drempelinkomen en niet over het lagere inkomen. Een berekening die
-          daar het inkomen neemt, geeft bij 15.000 euro 1.471,94 in plaats van
-          de gepubliceerde 1.336.
+          daar het inkomen neemt, geeft bij 15.000 euro 1.471,94 (met de
+          standaardpremie 1.749,14 die hierboven uit de tabel volgt) in plaats
+          van de gepubliceerde 1.336.
         purpose: commenting
         format: text/plain
         language: nl

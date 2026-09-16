@@ -269,6 +269,17 @@ class ScrollyDemo extends HTMLElement {
     const beats = Array.from(this.querySelectorAll<HTMLElement>('[data-beat]'));
     if (beats.length === 0) return;
 
+    // Wired before the branches below, because the reduced-motion path returns
+    // early: it used to skip this and leave a visible "run again" button that
+    // did nothing at all, for the visitors least able to shrug that off.
+    const replay = this.querySelector<HTMLButtonElement>('[data-replay]');
+    replay?.addEventListener('click', () => {
+      this.hasRun = false;
+      void this.liveRun(lang);
+    });
+    // The button appears only once there is a live trace to replay.
+    this.setReplayHidden(true);
+
     if (reduceMotion() || !('IntersectionObserver' in window)) {
       beats.forEach((b) => b.setAttribute('data-visible', 'true'));
       // Still run: the trace is content, not decoration. `startRun` checks the
@@ -342,17 +353,6 @@ class ScrollyDemo extends HTMLElement {
       void this.liveRun(lang);
     }, 4000);
 
-    // Running again means running again: the engine executes the scenario
-    // afresh and the player walks through that new trace. Replaying the rows
-    // already on screen would look identical and mean something weaker.
-    const replay = this.querySelector<HTMLButtonElement>('[data-replay]');
-    replay?.addEventListener('click', () => {
-      this.hasRun = false;
-      void this.liveRun(lang);
-    });
-
-    // The replay button appears only once there is a live trace to replay.
-    this.setReplayHidden(true);
   }
 
   /**

@@ -1255,13 +1255,9 @@ impl LawExecutionService {
         // Clone parameters for cache storage before moving into evaluation
         let params_for_cache = parameters.clone();
 
-        // From here the engine is inside this provision, so every trace step it
-        // pushes carries it (RFC-039). Restored afterwards rather than cleared:
-        // a cross-law reference returns to the article that made it, and
-        // clearing would leave the caller's remaining steps unanchored.
-        let outer_anchor = res_ctx.enter_anchor(Some(LegalAnchor::from_article(law, article)));
-
-        // Execute with service provider (default stage BESLUIT for cross-law calls)
+        // Execute with service provider (default stage BESLUIT for cross-law
+        // calls). The anchor is entered and restored by
+        // `evaluate_article_with_service` itself, for every path into it.
         let result = self.evaluate_article_with_service(
             article,
             law,
@@ -1269,9 +1265,7 @@ impl LawExecutionService {
             Some(output_name),
             "BESLUIT",
             res_ctx,
-        );
-        res_ctx.enter_anchor(outer_anchor);
-        let result = result?;
+        )?;
 
         // --- Cache store (only on success) ---
         // Note: on a hash collision (astronomically unlikely, ~1e-18 per pair),
@@ -1638,7 +1632,39 @@ impl LawExecutionService {
     ///
     /// The `stage` parameter controls which lifecycle stage hooks fire at.
     /// For direct (non-procedure) execution, pass `"BESLUIT"` as default.
+    /// Evaluate an article, with the resolution context anchored to it.
+    ///
+    /// Five paths reach the article evaluation -- a cross-law call, a hook, an
+    /// override, an open-term implementation and an intra-law reference to
+    /// another article -- and only the cross-law one used to enter the anchor
+    /// itself. The other four left `res_ctx.anchor` on the *calling* article,
+    /// so every step pushed through the resolution context (a data-source
+    /// resolve, a nested cross-law guard, a cached node) claimed a provision
+    /// the engine was not in: `standaardpremie` is an open term of article 4
+    /// and its resolution was anchored to article 2, `vermogen` comes from the
+    /// input list of article 3 and its cross-law call said article 2 too.
+    ///
+    /// Entering it here, around the one body, means a sixth path cannot forget
+    /// it and no early return can leave the anchor behind (RFC-039).
     fn evaluate_article_with_service(
+        &self,
+        article: &Article,
+        law: &ArticleBasedLaw,
+        parameters: BTreeMap<String, Value>,
+        requested_output: Option<&str>,
+        stage: &str,
+        res_ctx: &mut ResolutionContext<'_>,
+    ) -> Result<ArticleResult> {
+        let outer_anchor = res_ctx.enter_anchor(Some(LegalAnchor::from_article(law, article)));
+        let result =
+            self.evaluate_article_body(article, law, parameters, requested_output, stage, res_ctx);
+        // Restored before the `?`: an error must not leave the caller anchored
+        // to the article that failed.
+        res_ctx.enter_anchor(outer_anchor);
+        result
+    }
+
+    fn evaluate_article_body(
         &self,
         article: &Article,
         law: &ArticleBasedLaw,
@@ -1693,10 +1719,9 @@ impl LawExecutionService {
         // Attach trace builder if available
         if let Some(ref tb) = res_ctx.trace {
             context.set_trace(Rc::clone(tb));
-            // Same provision as the resolution context is entering, set here
-            // too: the input-resolution steps this context pushes (a parameter
-            // handed to a cross-law call, say) belong to the article making the
-            // call, not to the one being called (RFC-039).
+            // The provision being executed: every step this context pushes
+            // happens inside this article, so that is what it is anchored to
+            // (RFC-039).
             context.set_anchor(LegalAnchor::from_article(law, article));
         }
 

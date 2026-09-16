@@ -95,8 +95,11 @@ test('een wijziging in packages/law-model raakt alle crate-componenten', () => {
   assert.equal(hit['harvester-worker'], true);
   assert.equal(hit['enrich-worker'], true);
 
+  // docs bouwt sinds de landingspagina de engine als WASM in een eigen stage
+  // (docs/Dockerfile), dus het hangt net als de demo aan de crate-graaf.
+  assert.equal(hit.docs, true);
+
   // De componenten zonder Rust-image blijven er buiten.
-  assert.equal(hit.docs, false);
   assert.equal(hit.grafana, false);
   assert.equal(hit.lawmaking, false);
 });
@@ -207,7 +210,9 @@ test('een workspace-brede wijziging raakt elk Rust-image', () => {
     assert.equal(hit.editor, true, path);
     assert.equal(hit.admin, true, path);
     assert.equal(hit['pipeline-api'], true, path);
-    assert.equal(hit.docs, false, path);
+    // docs compileert de engine (WASM-stage in docs/Dockerfile), dus een
+    // workspace-brede wijziging raakt ook dat image.
+    assert.equal(hit.docs, true, path);
   }
 });
 

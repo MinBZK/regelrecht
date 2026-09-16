@@ -321,6 +321,32 @@ fn every_step_is_anchored_to_the_provision_it_came_from() {
         with_article > 0,
         "at least one step should name its article number"
     );
+
+    // And it is the right article, which is the part that used to be wrong
+    // while every assertion above still passed. Four of the five paths into
+    // article evaluation left the anchor on the *calling* article, so a step
+    // taken inside article 3 or 4 reported article 2. Both cases below are
+    // steps of that kind: `standaardpremie` is an open term declared in
+    // article 4, and `rendementsgrondslag` is an input of article 3. A reader
+    // following either anchor to wetten.overheid.nl has to land where the
+    // engine actually was.
+    let article_of = |name: &str| -> Option<String> {
+        nodes
+            .iter()
+            .find(|n| n.name == name)
+            .and_then(|n| n.anchor.as_ref())
+            .and_then(|a| a.article.clone())
+    };
+    assert_eq!(
+        article_of("standaardpremie").as_deref(),
+        Some("4"),
+        "an open term declared in article 4 is resolved there, not in the article that uses it"
+    );
+    assert_eq!(
+        article_of("wet_inkomstenbelasting_2001#rendementsgrondslag").as_deref(),
+        Some("3"),
+        "the capital test is article 3; the cross-law call it makes is anchored there"
+    );
 }
 
 /// What the corpus cites travels with the step that carries it out (RFC-039),
