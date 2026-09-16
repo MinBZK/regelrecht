@@ -30,6 +30,7 @@ import {
   missedDeadlines,
   newGrams,
   obligationsOf,
+  obligationValue,
   placeholderFor,
   readLexostatus,
   regulationOf,
@@ -401,6 +402,23 @@ describe('het besluit zelf', () => {
 
   it('geeft geen verplichtingen waar er geen zijn', () => {
     expect(obligationsOf({ fields: {} })).toStrictEqual({ columns: [], rows: [] });
+  });
+
+  it('noemt bij elke termijn de twee partijen en de cel die haar nakomt', () => {
+    const [eerste] = obligationsOf(gram).rows;
+    expect(eerste.soort).toBe('betaling');
+    expect(eerste.schuldenaar).toBe(gram.fields.competent_authority.value);
+    expect(typeof eerste.schuldeiser).toBe('string');
+    expect(eerste.betaler).toBe('belastingdienst');
+  });
+
+  it('noemt een termijn zonder cel openstaand en niet "geen"', () => {
+    // Een schuldenaar die in deze wereld geen cel is — een burger bij een
+    // terugvordering — laat de termijn openstaan. Dat is geen ontbrekende
+    // waarde, dus het hoort ook niet als een gat te lezen.
+    expect(obligationValue('betaler', null)).toContain('openstaand');
+    expect(obligationValue('betaler', 'belastingdienst')).toBe('belastingdienst');
+    expect(obligationValue('bedrag', null)).toBe('geen');
   });
 
   it('geeft het besluittype zoals het gram het draagt', () => {

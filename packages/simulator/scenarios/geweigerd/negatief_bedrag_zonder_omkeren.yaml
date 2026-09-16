@@ -1,0 +1,170 @@
+---
+name: een negatief bedrag zonder declaratie laat het besluit omvallen
+description: >-
+  Dezelfde wereld als `scenarios/toeslagen_terugvordering.yaml`, met één verschil:
+  de vaststelling gaat op artikel 2 van de testregeling, en dát artikel zegt niet
+  wat een negatief bedrag betekent. Het slotbedrag komt onder nul uit, en dan hoort
+  het besluit om te vallen — met een melding die de declaratie noemt die eronder
+  had moeten staan.
+
+  Waarom dat een fixture is en geen scenario: het besluit breekt de run af, dus
+  dit bestand kan zijn eigen falen niet als verwachting dragen. Wat er omheen
+  vast te stellen valt, past in geen enkel `expect`: dat er **niets** vastligt.
+  Een negatieve termijn in een gram zou een betaling beloven die niemand kan doen,
+  en een gram dat er eenmaal ligt verandert niet meer.
+
+  Afgerekend wordt hij in `tests/verplichtingen.rs`.
+
+clock:
+  start: 2024-01-01
+
+settings:
+  betalingsritme: kwartaal
+
+cells:
+  - id: belastingdienst
+    laws: []
+    komt_na:
+      - Dienst Toeslagen
+    chronicles:
+      - stream: betalingen
+        key: zaakkenmerk
+
+    lexostatus_definitions:
+      - name: betaald_tot_nu_toe
+        doc: wat deze cel op deze zaak betaald heeft, opgeteld
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - bedrag
+        reduction:
+          chronicle: betalingen
+          key: zaakkenmerk
+          sum: bedrag
+
+  - id: toeslagen
+    identity: Dienst Toeslagen
+    laws:
+      - wet_op_de_zorgtoeslag
+      - algemene_wet_inkomensafhankelijke_regelingen
+      - regeling_standaardpremie
+      - test_terugvordering
+
+    chronicles:
+      - stream: relaties
+        key: bsn
+        events:
+          - name: relatie_gewijzigd
+            intake: levering
+            recording_actor: toeslagen
+            grondslag: melding uit de basisregistratie personen
+            op_moment: 2023-01-01
+            fields:
+              bsn: '999993653'
+              partnerschap_type: GEEN
+
+      - stream: inkomensleveringen
+        key: bsn
+        events:
+          - name: inkomenslevering
+            intake: levering
+            recording_actor: toeslagen
+            grondslag: jaarlijkse inkomenslevering
+            op_moment: 2023-11-15
+            fields:
+              bsn: '999993653'
+              is_verzekerde: true
+              verzamelinkomen: 79547
+              buitenlands_inkomen: 0
+              vermogen: 0
+
+      - stream: betalingen
+        key: zaakkenmerk
+
+    besluit_definitions:
+      - name: zorgtoeslag_toekenning
+        doc: het voorschot, in het ritme van de uitvoerder
+        regulation: wet_op_de_zorgtoeslag
+        output: heeft_recht_op_zorgtoeslag
+        outputs:
+          - hoogte_zorgtoeslag
+        zaakkenmerk: zorgtoeslag/{bsn}
+        params:
+          - name: bsn
+            type: string
+        inputs:
+          bsn:
+            param: bsn
+          is_verzekerde:
+            from_chronicle: inkomensleveringen
+            field: is_verzekerde
+
+      - name: zorgtoeslag_vaststelling
+        doc: >-
+          De vaststelling op artikel 2: hetzelfde verschil, maar zonder
+          `richting_bij_negatief`. Hier hoort het besluit op om te vallen.
+        regulation: test_terugvordering
+        output: restant
+        zaakkenmerk: zorgtoeslag/{bsn}
+        params:
+          - name: bsn
+            type: string
+          - name: definitief_bedrag
+            type: number
+        inputs:
+          bsn:
+            param: bsn
+          definitief_bedrag:
+            param: definitief_bedrag
+          betaald_bedrag:
+            accept_from: belastingdienst
+            lexostatus: betaald_tot_nu_toe
+            field: bedrag
+            params:
+              zaakkenmerk: $zaakkenmerk
+
+    lexostatus_definitions:
+      - name: zorgtoeslagbeschikking
+        doc: wat deze cel over deze zaak besloten heeft, op het gevraagde moment
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - heeft_recht_op_zorgtoeslag
+          - hoogte_zorgtoeslag
+          - restant
+        reduction:
+          chronicle: beschikkingen
+          key: zaakkenmerk
+          latest: true
+
+query_graph:
+  - doc: de vaststelling vraagt de betalende cel wat er betaald is
+    from: toeslagen
+    to: belastingdienst
+    lexostatus: betaald_tot_nu_toe
+
+decide:
+  - description: het voorschot, vier kwartaaltermijnen
+    cell: toeslagen
+    besluit: zorgtoeslag_toekenning
+    params:
+      bsn: '999993653'
+    op_moment: 2024-01-01
+    expect:
+      heeft_recht_op_zorgtoeslag: true
+      hoogte_zorgtoeslag: 197205.31187
+
+  - description: >-
+      De vaststelling die onder nul uitkomt. Deze regel wordt nooit gehaald: het
+      besluit valt om op de verplichting die niet weet wat een negatief bedrag
+      betekent.
+    cell: toeslagen
+    besluit: zorgtoeslag_vaststelling
+    params:
+      bsn: '999993653'
+      definitief_bedrag: 50000
+    op_moment: 2024-06-15
+    expect:
+      restant: -48602

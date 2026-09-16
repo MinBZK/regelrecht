@@ -1,0 +1,133 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: test_terugvordering
+name: Testregeling terugvordering
+regulatory_layer: WET
+bwb_id: BWBR9999905
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+url: https://example.com/test_terugvordering
+competent_authority: Dienst Toeslagen
+
+# Een testregeling, met opzet **niet** in het corpus: ze bestaat om een
+# eigenschap van de opstelling aan te tonen en niet om recht weer te geven. Zie
+# `test_nabetaling` voor dezelfde afweging.
+#
+# Wat ze aantoont is de **richting** van een verplichting. Een vaststelling die
+# lager uitvalt dan wat er aan voorschot betaald is, levert een negatief
+# slotbedrag op — en dat is geen negatieve betaling maar een verplichting de
+# andere kant op: de partij moet terugbetalen (Awb 4:57). Artikel 1 declareert
+# dat met `richting_bij_negatief: omkeren`; artikel 2 rekent hetzelfde uit en
+# zwijgt erover, zodat te meten is dat het besluit dan omvalt in plaats van een
+# negatieve termijn in te roosteren.
+#
+# Wat er definitief is vastgesteld, komt hier als parameter binnen. Welke wet dat
+# uitrekent is een ander verhaal en een andere regeling; waar deze regeling over
+# gaat is wat er gebeurt zodra dat bedrag lager is dan wat er al betaald is.
+articles:
+  - number: '1'
+    url: https://example.com/test_terugvordering#Artikel1
+    text: >-
+      Het definitief vastgestelde bedrag wordt verminderd met hetgeen reeds is
+      betaald. Is het verschil negatief, dan wordt hetgeen te veel is betaald
+      teruggevorderd.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+          extensions:
+            chronolex:
+              verplichtingen:
+                # Schuldenaar en schuldeiser staan hier niet: dan gelden de
+                # standaarden — het bevoegd gezag betaalt aan de partij die het
+                # zaakkenmerk identificeert. Wat er wél staat is wat een negatief
+                # bedrag betekent, want dat is een andere rechtsverhouding en die
+                # hoort de wet aan te wijzen.
+                - soort: betaling
+                  bedrag: $nog_te_betalen
+                  ritme: ineens
+                  richting_bij_negatief: omkeren
+                  grondslag: >-
+                    Testregeling terugvordering art. 1 jo. Awb 4:57 (terugvordering van
+                    hetgeen onverschuldigd is betaald)
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          # Geen `source`: deze twee komen van buiten de wet. Het besluit levert
+          # ze aan — het ene als parameter, het andere geaccepteerd van de cel die
+          # betaalde — en de wet zegt alleen wat ze met de twee doet.
+          - name: definitief_bedrag
+            type: amount
+            source: {}
+            type_spec:
+              unit: eurocent
+          - name: betaald_bedrag
+            type: amount
+            source: {}
+            type_spec:
+              unit: eurocent
+        output:
+          - name: nog_te_betalen
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: nog_te_betalen
+            value:
+              operation: SUBTRACT
+              values:
+                - $definitief_bedrag
+                - $betaald_bedrag
+
+  - number: '2'
+    url: https://example.com/test_terugvordering#Artikel2
+    text: >-
+      Het definitief vastgestelde bedrag wordt verminderd met hetgeen reeds is
+      betaald.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+          extensions:
+            chronolex:
+              verplichtingen:
+                # Dezelfde verplichting, zonder te zeggen wat een negatief bedrag
+                # betekent. Een besluit hierop dat onder nul uitkomt hoort om te
+                # vallen: een negatieve betaling bestaat niet, en wat er in plaats
+                # daarvan geldt is niet aan het platform om te verzinnen.
+                - soort: betaling
+                  bedrag: $restant
+                  ritme: ineens
+                  grondslag: Testregeling terugvordering art. 2
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: definitief_bedrag
+            type: amount
+            source: {}
+            type_spec:
+              unit: eurocent
+          - name: betaald_bedrag
+            type: amount
+            source: {}
+            type_spec:
+              unit: eurocent
+        output:
+          - name: restant
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: restant
+            value:
+              operation: SUBTRACT
+              values:
+                - $definitief_bedrag
+                - $betaald_bedrag

@@ -135,7 +135,7 @@
               "name": "betaling",
               "intake": "betaling",
               "recording_actor": "belastingdienst",
-              "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4",
+              "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 1 van 4",
               "op_moment": "2024-04-01",
               "fields": {
                 "bedrag": {
@@ -143,7 +143,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 1 van 4"
                   }
                 },
                 "besluit": {
@@ -151,7 +151,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 1 van 4"
                   }
                 },
                 "besluit_cel": {
@@ -159,7 +159,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 1 van 4"
                   }
                 },
                 "besluit_gram": {
@@ -167,7 +167,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 1 van 4"
                   }
                 },
                 "besluit_kroniek": {
@@ -175,7 +175,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 1 van 4"
                   }
                 },
                 "besluit_op_moment": {
@@ -183,7 +183,31 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 1 van 4"
+                  }
+                },
+                "schuldeiser": {
+                  "value": "999993653",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 1 van 4"
+                  }
+                },
+                "schuldenaar": {
+                  "value": "Dienst Toeslagen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 1 van 4"
+                  }
+                },
+                "soort": {
+                  "value": "betaling",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 1 van 4"
                   }
                 },
                 "volgnummer": {
@@ -191,7 +215,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 1 van 4"
                   }
                 },
                 "zaakkenmerk": {
@@ -199,7 +223,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 1 van 4"
                   }
                 }
               }
@@ -209,7 +233,7 @@
               "name": "betaling",
               "intake": "betaling",
               "recording_actor": "belastingdienst",
-              "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4",
+              "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 2 van 4",
               "op_moment": "2024-07-01",
               "fields": {
                 "bedrag": {
@@ -217,7 +241,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 2 van 4"
                   }
                 },
                 "besluit": {
@@ -225,7 +249,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 2 van 4"
                   }
                 },
                 "besluit_cel": {
@@ -233,7 +257,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 2 van 4"
                   }
                 },
                 "besluit_gram": {
@@ -241,7 +265,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 2 van 4"
                   }
                 },
                 "besluit_kroniek": {
@@ -249,7 +273,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 2 van 4"
                   }
                 },
                 "besluit_op_moment": {
@@ -257,7 +281,31 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 2 van 4"
+                  }
+                },
+                "schuldeiser": {
+                  "value": "999993653",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 2 van 4"
+                  }
+                },
+                "schuldenaar": {
+                  "value": "Dienst Toeslagen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 2 van 4"
+                  }
+                },
+                "soort": {
+                  "value": "betaling",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 2 van 4"
                   }
                 },
                 "volgnummer": {
@@ -265,7 +313,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 2 van 4"
                   }
                 },
                 "zaakkenmerk": {
@@ -273,7 +321,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 2 van 4"
                   }
                 }
               }
@@ -283,7 +331,7 @@
               "name": "betaling",
               "intake": "betaling",
               "recording_actor": "belastingdienst",
-              "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4",
+              "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 3 van 4",
               "op_moment": "2024-10-01",
               "fields": {
                 "bedrag": {
@@ -291,7 +339,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 3 van 4"
                   }
                 },
                 "besluit": {
@@ -299,7 +347,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 3 van 4"
                   }
                 },
                 "besluit_cel": {
@@ -307,7 +355,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 3 van 4"
                   }
                 },
                 "besluit_gram": {
@@ -315,7 +363,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 3 van 4"
                   }
                 },
                 "besluit_kroniek": {
@@ -323,7 +371,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 3 van 4"
                   }
                 },
                 "besluit_op_moment": {
@@ -331,7 +379,31 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 3 van 4"
+                  }
+                },
+                "schuldeiser": {
+                  "value": "999993653",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 3 van 4"
+                  }
+                },
+                "schuldenaar": {
+                  "value": "Dienst Toeslagen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 3 van 4"
+                  }
+                },
+                "soort": {
+                  "value": "betaling",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 3 van 4"
                   }
                 },
                 "volgnummer": {
@@ -339,7 +411,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 3 van 4"
                   }
                 },
                 "zaakkenmerk": {
@@ -347,7 +419,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 3 van 4"
                   }
                 }
               }
@@ -357,7 +429,7 @@
               "name": "betaling",
               "intake": "betaling",
               "recording_actor": "belastingdienst",
-              "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4",
+              "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 4 van 4",
               "op_moment": "2025-01-01",
               "fields": {
                 "bedrag": {
@@ -365,7 +437,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 4 van 4"
                   }
                 },
                 "besluit": {
@@ -373,7 +445,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 4 van 4"
                   }
                 },
                 "besluit_cel": {
@@ -381,7 +453,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 4 van 4"
                   }
                 },
                 "besluit_gram": {
@@ -389,7 +461,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 4 van 4"
                   }
                 },
                 "besluit_kroniek": {
@@ -397,7 +469,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 4 van 4"
                   }
                 },
                 "besluit_op_moment": {
@@ -405,7 +477,31 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 4 van 4"
+                  }
+                },
+                "schuldeiser": {
+                  "value": "999993653",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 4 van 4"
+                  }
+                },
+                "schuldenaar": {
+                  "value": "Dienst Toeslagen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 4 van 4"
+                  }
+                },
+                "soort": {
+                  "value": "betaling",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 4 van 4"
                   }
                 },
                 "volgnummer": {
@@ -413,7 +509,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 4 van 4"
                   }
                 },
                 "zaakkenmerk": {
@@ -421,7 +517,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 4 van 4"
                   }
                 }
               }
@@ -431,7 +527,7 @@
               "name": "betaling",
               "intake": "betaling",
               "recording_actor": "belastingdienst",
-              "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1",
+              "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): betaling uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), door Dienst Toeslagen aan 999993653, termijn 1 van 1",
               "op_moment": "2025-01-15",
               "fields": {
                 "bedrag": {
@@ -439,7 +535,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1"
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): betaling uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), door Dienst Toeslagen aan 999993653, termijn 1 van 1"
                   }
                 },
                 "besluit": {
@@ -447,7 +543,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1"
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): betaling uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), door Dienst Toeslagen aan 999993653, termijn 1 van 1"
                   }
                 },
                 "besluit_cel": {
@@ -455,7 +551,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1"
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): betaling uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), door Dienst Toeslagen aan 999993653, termijn 1 van 1"
                   }
                 },
                 "besluit_gram": {
@@ -463,7 +559,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1"
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): betaling uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), door Dienst Toeslagen aan 999993653, termijn 1 van 1"
                   }
                 },
                 "besluit_kroniek": {
@@ -471,7 +567,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1"
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): betaling uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), door Dienst Toeslagen aan 999993653, termijn 1 van 1"
                   }
                 },
                 "besluit_op_moment": {
@@ -479,7 +575,31 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1"
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): betaling uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), door Dienst Toeslagen aan 999993653, termijn 1 van 1"
+                  }
+                },
+                "schuldeiser": {
+                  "value": "999993653",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): betaling uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), door Dienst Toeslagen aan 999993653, termijn 1 van 1"
+                  }
+                },
+                "schuldenaar": {
+                  "value": "Dienst Toeslagen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): betaling uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), door Dienst Toeslagen aan 999993653, termijn 1 van 1"
+                  }
+                },
+                "soort": {
+                  "value": "betaling",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): betaling uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), door Dienst Toeslagen aan 999993653, termijn 1 van 1"
                   }
                 },
                 "volgnummer": {
@@ -487,7 +607,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1"
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): betaling uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), door Dienst Toeslagen aan 999993653, termijn 1 van 1"
                   }
                 },
                 "zaakkenmerk": {
@@ -495,7 +615,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1"
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): betaling uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), door Dienst Toeslagen aan 999993653, termijn 1 van 1"
                   }
                 }
               }
@@ -676,7 +796,7 @@
                 "article": "2",
                 "regulatory_layer": "WET"
               },
-              "toelichting": "verplichting van soort 'betaling': bedrag $hoogte_zorgtoeslag, ritme '$betalingsritme', op grondslag 'Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen)'; zij levert de termijnen in 'obligations'. Wie haar nakomt, staat in het wereldbestand (`komt_na`)"
+              "toelichting": "verplichting van soort 'betaling': schuldenaar #bevoegd_gezag (standaard), schuldeiser de parameter uit zaakkenmerk 'zorgtoeslag/{bsn}' (standaard), bedrag $hoogte_zorgtoeslag, ritme '$betalingsritme', op grondslag 'Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen)'; zij levert de termijnen in 'obligations'. Wélke cel de schuldenaar nakomt, staat in het wereldbestand (`komt_na`)"
             },
             {
               "name": "op_moment",
@@ -791,7 +911,7 @@
                 "article": "2",
                 "regulatory_layer": "WET"
               },
-              "toelichting": "de termijnen die uit de verplichtingen hierboven volgen"
+              "toelichting": "de termijnen die uit de verplichtingen hierboven volgen, elk met haar schuldenaar, haar schuldeiser en de cel die haar nakomt"
             },
             {
               "name": "chronicle_sources",
@@ -850,7 +970,7 @@
                 "article": "19",
                 "regulatory_layer": "WET"
               },
-              "toelichting": "verplichting van soort 'betaling': bedrag $slotbedrag, ritme 'ineens', op grondslag 'Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening)'; zij levert de termijnen in 'obligations'. Wie haar nakomt, staat in het wereldbestand (`komt_na`)"
+              "toelichting": "verplichting van soort 'betaling': schuldenaar #bevoegd_gezag (standaard), schuldeiser de parameter uit zaakkenmerk 'zorgtoeslag/{bsn}' (standaard), bedrag $slotbedrag, ritme 'ineens', op grondslag 'Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening)'; zij levert de termijnen in 'obligations'. Wélke cel de schuldenaar nakomt, staat in het wereldbestand (`komt_na`)"
             },
             {
               "name": "op_moment",
@@ -959,7 +1079,7 @@
                 "article": "19",
                 "regulatory_layer": "WET"
               },
-              "toelichting": "de termijnen die uit de verplichtingen hierboven volgen"
+              "toelichting": "de termijnen die uit de verplichtingen hierboven volgen, elk met haar schuldenaar, haar schuldeiser en de cel die haar nakomt"
             },
             {
               "name": "chronicle_sources",
@@ -1098,7 +1218,7 @@
               "name": "betaling_ontvangen_gemeld",
               "intake": "levering",
               "recording_actor": "toeslagen",
-              "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4",
+              "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 1 van 4",
               "op_moment": "2024-04-01",
               "fields": {
                 "bedrag": {
@@ -1106,7 +1226,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 1 van 4"
                   }
                 },
                 "besluit": {
@@ -1114,7 +1234,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 1 van 4"
                   }
                 },
                 "besluit_cel": {
@@ -1122,7 +1242,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 1 van 4"
                   }
                 },
                 "besluit_gram": {
@@ -1130,7 +1250,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 1 van 4"
                   }
                 },
                 "besluit_kroniek": {
@@ -1138,7 +1258,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 1 van 4"
                   }
                 },
                 "besluit_op_moment": {
@@ -1146,7 +1266,31 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 1 van 4"
+                  }
+                },
+                "schuldeiser": {
+                  "value": "999993653",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 1 van 4"
+                  }
+                },
+                "schuldenaar": {
+                  "value": "Dienst Toeslagen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 1 van 4"
+                  }
+                },
+                "soort": {
+                  "value": "betaling",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 1 van 4"
                   }
                 },
                 "volgnummer": {
@@ -1154,7 +1298,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 1 van 4"
                   }
                 },
                 "zaakkenmerk": {
@@ -1162,7 +1306,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 1 van 4"
                   }
                 }
               }
@@ -1172,7 +1316,7 @@
               "name": "betaling_ontvangen_gemeld",
               "intake": "levering",
               "recording_actor": "toeslagen",
-              "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4",
+              "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 2 van 4",
               "op_moment": "2024-07-01",
               "fields": {
                 "bedrag": {
@@ -1180,7 +1324,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 2 van 4"
                   }
                 },
                 "besluit": {
@@ -1188,7 +1332,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 2 van 4"
                   }
                 },
                 "besluit_cel": {
@@ -1196,7 +1340,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 2 van 4"
                   }
                 },
                 "besluit_gram": {
@@ -1204,7 +1348,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 2 van 4"
                   }
                 },
                 "besluit_kroniek": {
@@ -1212,7 +1356,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 2 van 4"
                   }
                 },
                 "besluit_op_moment": {
@@ -1220,7 +1364,31 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 2 van 4"
+                  }
+                },
+                "schuldeiser": {
+                  "value": "999993653",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 2 van 4"
+                  }
+                },
+                "schuldenaar": {
+                  "value": "Dienst Toeslagen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 2 van 4"
+                  }
+                },
+                "soort": {
+                  "value": "betaling",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 2 van 4"
                   }
                 },
                 "volgnummer": {
@@ -1228,7 +1396,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 2 van 4"
                   }
                 },
                 "zaakkenmerk": {
@@ -1236,7 +1404,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 2 van 4"
                   }
                 }
               }
@@ -1246,7 +1414,7 @@
               "name": "betaling_ontvangen_gemeld",
               "intake": "levering",
               "recording_actor": "toeslagen",
-              "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4",
+              "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 3 van 4",
               "op_moment": "2024-10-01",
               "fields": {
                 "bedrag": {
@@ -1254,7 +1422,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 3 van 4"
                   }
                 },
                 "besluit": {
@@ -1262,7 +1430,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 3 van 4"
                   }
                 },
                 "besluit_cel": {
@@ -1270,7 +1438,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 3 van 4"
                   }
                 },
                 "besluit_gram": {
@@ -1278,7 +1446,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 3 van 4"
                   }
                 },
                 "besluit_kroniek": {
@@ -1286,7 +1454,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 3 van 4"
                   }
                 },
                 "besluit_op_moment": {
@@ -1294,7 +1462,31 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 3 van 4"
+                  }
+                },
+                "schuldeiser": {
+                  "value": "999993653",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 3 van 4"
+                  }
+                },
+                "schuldenaar": {
+                  "value": "Dienst Toeslagen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 3 van 4"
+                  }
+                },
+                "soort": {
+                  "value": "betaling",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 3 van 4"
                   }
                 },
                 "volgnummer": {
@@ -1302,7 +1494,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 3 van 4"
                   }
                 },
                 "zaakkenmerk": {
@@ -1310,7 +1502,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 3 van 4"
                   }
                 }
               }
@@ -1320,7 +1512,7 @@
               "name": "betaling_ontvangen_gemeld",
               "intake": "levering",
               "recording_actor": "toeslagen",
-              "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4",
+              "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 4 van 4",
               "op_moment": "2025-01-01",
               "fields": {
                 "bedrag": {
@@ -1328,7 +1520,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 4 van 4"
                   }
                 },
                 "besluit": {
@@ -1336,7 +1528,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 4 van 4"
                   }
                 },
                 "besluit_cel": {
@@ -1344,7 +1536,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 4 van 4"
                   }
                 },
                 "besluit_gram": {
@@ -1352,7 +1544,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 4 van 4"
                   }
                 },
                 "besluit_kroniek": {
@@ -1360,7 +1552,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 4 van 4"
                   }
                 },
                 "besluit_op_moment": {
@@ -1368,7 +1560,31 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 4 van 4"
+                  }
+                },
+                "schuldeiser": {
+                  "value": "999993653",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 4 van 4"
+                  }
+                },
+                "schuldenaar": {
+                  "value": "Dienst Toeslagen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 4 van 4"
+                  }
+                },
+                "soort": {
+                  "value": "betaling",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 4 van 4"
                   }
                 },
                 "volgnummer": {
@@ -1376,7 +1592,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 4 van 4"
                   }
                 },
                 "zaakkenmerk": {
@@ -1384,7 +1600,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), door Dienst Toeslagen aan 999993653, termijn 4 van 4"
                   }
                 }
               }
@@ -1394,7 +1610,7 @@
               "name": "betaling_ontvangen_gemeld",
               "intake": "levering",
               "recording_actor": "toeslagen",
-              "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1",
+              "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): betaling uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), door Dienst Toeslagen aan 999993653, termijn 1 van 1",
               "op_moment": "2025-01-15",
               "fields": {
                 "bedrag": {
@@ -1402,7 +1618,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1"
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): betaling uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), door Dienst Toeslagen aan 999993653, termijn 1 van 1"
                   }
                 },
                 "besluit": {
@@ -1410,7 +1626,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1"
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): betaling uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), door Dienst Toeslagen aan 999993653, termijn 1 van 1"
                   }
                 },
                 "besluit_cel": {
@@ -1418,7 +1634,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1"
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): betaling uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), door Dienst Toeslagen aan 999993653, termijn 1 van 1"
                   }
                 },
                 "besluit_gram": {
@@ -1426,7 +1642,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1"
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): betaling uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), door Dienst Toeslagen aan 999993653, termijn 1 van 1"
                   }
                 },
                 "besluit_kroniek": {
@@ -1434,7 +1650,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1"
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): betaling uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), door Dienst Toeslagen aan 999993653, termijn 1 van 1"
                   }
                 },
                 "besluit_op_moment": {
@@ -1442,7 +1658,31 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1"
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): betaling uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), door Dienst Toeslagen aan 999993653, termijn 1 van 1"
+                  }
+                },
+                "schuldeiser": {
+                  "value": "999993653",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): betaling uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), door Dienst Toeslagen aan 999993653, termijn 1 van 1"
+                  }
+                },
+                "schuldenaar": {
+                  "value": "Dienst Toeslagen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): betaling uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), door Dienst Toeslagen aan 999993653, termijn 1 van 1"
+                  }
+                },
+                "soort": {
+                  "value": "betaling",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): betaling uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), door Dienst Toeslagen aan 999993653, termijn 1 van 1"
                   }
                 },
                 "volgnummer": {
@@ -1450,7 +1690,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1"
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): betaling uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), door Dienst Toeslagen aan 999993653, termijn 1 van 1"
                   }
                 },
                 "zaakkenmerk": {
@@ -1458,7 +1698,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), termijn 1 van 1"
+                    "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): betaling uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2025-01-15), door Dienst Toeslagen aan 999993653, termijn 1 van 1"
                   }
                 }
               }
@@ -1603,53 +1843,65 @@
                   "value": [
                     {
                       "bedrag": 49294,
+                      "betaler": "belastingdienst",
                       "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen)",
                       "lexogram": {
                         "artikel": "2",
                         "regulation": "wet_op_de_zorgtoeslag",
                         "regulation_valid_from": "2024-01-01"
                       },
-                      "payer": "belastingdienst",
                       "schedule": "kwartaal",
+                      "schuldeiser": "999993653",
+                      "schuldenaar": "Dienst Toeslagen",
+                      "soort": "betaling",
                       "vervaldatum": "2024-04-01",
                       "volgnummer": 1
                     },
                     {
                       "bedrag": 49294,
+                      "betaler": "belastingdienst",
                       "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen)",
                       "lexogram": {
                         "artikel": "2",
                         "regulation": "wet_op_de_zorgtoeslag",
                         "regulation_valid_from": "2024-01-01"
                       },
-                      "payer": "belastingdienst",
                       "schedule": "kwartaal",
+                      "schuldeiser": "999993653",
+                      "schuldenaar": "Dienst Toeslagen",
+                      "soort": "betaling",
                       "vervaldatum": "2024-07-01",
                       "volgnummer": 2
                     },
                     {
                       "bedrag": 49294,
+                      "betaler": "belastingdienst",
                       "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen)",
                       "lexogram": {
                         "artikel": "2",
                         "regulation": "wet_op_de_zorgtoeslag",
                         "regulation_valid_from": "2024-01-01"
                       },
-                      "payer": "belastingdienst",
                       "schedule": "kwartaal",
+                      "schuldeiser": "999993653",
+                      "schuldenaar": "Dienst Toeslagen",
+                      "soort": "betaling",
                       "vervaldatum": "2024-10-01",
                       "volgnummer": 3
                     },
                     {
                       "bedrag": 49296.01,
+                      "betaler": "belastingdienst",
                       "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen)",
                       "lexogram": {
                         "artikel": "2",
                         "regulation": "wet_op_de_zorgtoeslag",
                         "regulation_valid_from": "2024-01-01"
                       },
-                      "payer": "belastingdienst",
                       "schedule": "kwartaal",
+                      "schuldeiser": "999993653",
+                      "schuldenaar": "Dienst Toeslagen",
+                      "soort": "betaling",
                       "vervaldatum": "2025-01-01",
                       "volgnummer": 4
                     }
@@ -1752,7 +2004,7 @@
                     },
                     {
                       "chronicle": "betalingen",
-                      "content_hash": "sha256:93a6e3c288cded2e4b9fb815b284972d921f7a7dffdebad7f9e77cd95c73c487",
+                      "content_hash": "sha256:7e997b0acfdcb995ddbb8292b91d3c11d7ee7e3a1c5670d2e520510e92e37d2c",
                       "grams": 4,
                       "op_moment": "2025-01-15"
                     }
@@ -1794,14 +2046,17 @@
                   "value": [
                     {
                       "bedrag": 0,
+                      "betaler": "belastingdienst",
                       "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening)",
                       "lexogram": {
                         "artikel": "19",
                         "regulation": "algemene_wet_inkomensafhankelijke_regelingen",
                         "regulation_valid_from": null
                       },
-                      "payer": "belastingdienst",
                       "schedule": "ineens",
+                      "schuldeiser": "999993653",
+                      "schuldenaar": "Dienst Toeslagen",
+                      "soort": "betaling",
                       "vervaldatum": "2025-01-15",
                       "volgnummer": 1
                     }
@@ -2302,7 +2557,7 @@
         "soort": "klok"
       },
       "kind": "betaling",
-      "description": "termijn 1/4 van 49294 op 2024-04-01, te betalen door belastingdienst (kwartaal)",
+      "description": "betaling 1/4 van 49294 op 2024-04-01, door Dienst Toeslagen aan 999993653 (kwartaal, cel 'belastingdienst')",
       "grams": [
         {
           "cell": "belastingdienst",
@@ -2351,7 +2606,7 @@
         "soort": "klok"
       },
       "kind": "betaling",
-      "description": "termijn 2/4 van 49294 op 2024-07-01, te betalen door belastingdienst (kwartaal)",
+      "description": "betaling 2/4 van 49294 op 2024-07-01, door Dienst Toeslagen aan 999993653 (kwartaal, cel 'belastingdienst')",
       "grams": [
         {
           "cell": "belastingdienst",
@@ -2404,7 +2659,7 @@
         "soort": "klok"
       },
       "kind": "betaling",
-      "description": "termijn 3/4 van 49294 op 2024-10-01, te betalen door belastingdienst (kwartaal)",
+      "description": "betaling 3/4 van 49294 op 2024-10-01, door Dienst Toeslagen aan 999993653 (kwartaal, cel 'belastingdienst')",
       "grams": [
         {
           "cell": "belastingdienst",
@@ -2457,7 +2712,7 @@
         "soort": "klok"
       },
       "kind": "betaling",
-      "description": "termijn 4/4 van 49296.01000 op 2025-01-01, te betalen door belastingdienst (kwartaal)",
+      "description": "betaling 4/4 van 49296.01000 op 2025-01-01, door Dienst Toeslagen aan 999993653 (kwartaal, cel 'belastingdienst')",
       "grams": [
         {
           "cell": "belastingdienst",
@@ -2701,7 +2956,7 @@
         "soort": "klok"
       },
       "kind": "betaling",
-      "description": "termijn 1/1 van 0 op 2025-01-15, te betalen door belastingdienst (ineens)",
+      "description": "betaling 1/1 van 0 op 2025-01-15, door Dienst Toeslagen aan 999993653 (ineens, cel 'belastingdienst')",
       "grams": [
         {
           "cell": "belastingdienst",

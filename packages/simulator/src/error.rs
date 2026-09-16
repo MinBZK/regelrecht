@@ -884,10 +884,13 @@ pub enum SimulatorError {
     /// Een verplichting noemt een soort die de opstelling niet kent.
     ///
     /// Platformvocabulaire, net als de ritmes: een soort erbij is een variant
-    /// erbij, en een typfout hoort niet stil als betaling te eindigen.
+    /// erbij, en een typfout hoort niet stil als betaling te eindigen. Een
+    /// terugvordering staat er met opzet niet bij: die is niet te declareren maar
+    /// volgt uit de richting van de verplichting.
     #[error(
         "cel '{cell}': verplichting uit {origin}, uitgevoerd door besluit \
-         '{besluit}', is van soort '{soort}' (bekend: {known})"
+         '{besluit}', is van soort '{soort}' (te declareren: {known}; een \
+         terugvordering ontstaat uit `richting_bij_negatief: omkeren`)"
     )]
     UnknownObligationKind {
         /// Cel waarin het besluit staat dat dit artikel uitvoert.
@@ -940,38 +943,69 @@ pub enum SimulatorError {
         output: String,
     },
 
-    /// Er is geen cel gebonden aan het gezag waarvoor betaald moet worden.
+    /// Een verplichting wijst naar een partij die niet te lezen of niet in te
+    /// vullen is.
     ///
-    /// Wie betaalt is uitvoering en staat in het wereldbestand: een cel zegt met
-    /// `komt_na` namens welk bevoegd gezag zij betalingsverplichtingen nakomt.
-    /// Zonder die binding legt een besluit iets op dat niemand nakomt, en dat
-    /// hoort bij het optuigen te blijken en niet op de eerste vervaldatum.
+    /// Eén melding voor beide kanten van de rechtsverhouding, met de rol erbij:
+    /// wie een schuldenaar opschrijft die geen verwijzing is, en wie een
+    /// schuldeiser weglaat waar er niets te leiden valt, heeft hetzelfde probleem
+    /// — er staat geen partij.
     #[error(
-        "cel '{cell}': besluit '{besluit}' legt een verplichting op namens \
-         '{authority}', maar geen enkele cel komt dat gezag na; zet \
-         `komt_na: [{authority}]` bij de cel die betaalt{known}"
+        "cel '{cell}': de {role} van een verplichting van besluit '{besluit}' \
+         ({origin}): {reason}"
     )]
-    ObligationWithoutPayer {
+    ObligationParty {
         /// Cel die besluit.
         cell: String,
         /// Het besluit met de verplichting.
         besluit: String,
-        /// Het bevoegd gezag waarvoor betaald moet worden.
-        authority: String,
-        /// Wat er wél gebonden is, of leeg.
-        known: String,
+        /// Het lexogram dat de verplichting declareert.
+        origin: String,
+        /// Welke van de twee rollen het is.
+        role: String,
+        /// Wat er staat en waarom dat geen partij oplevert.
+        reason: String,
+    },
+
+    /// Een verplichting rekent een negatief bedrag uit zonder dat de wet zegt wat
+    /// dat betekent.
+    ///
+    /// Een negatieve betaling bestaat niet. Wat een vaststelling lager dan het
+    /// voorschot oplevert, is juridisch een **terugvordering** (Awb 4:57): een
+    /// verplichting de andere kant op, met de partij als schuldenaar. Dat is een
+    /// andere rechtsverhouding en geen minteken, dus de wet moet hem declareren.
+    /// Zwijgt ze, dan valt het besluit hier om en wordt er niets vastgelegd — een
+    /// gram met een negatieve termijn erin zou een betaling beloven die niemand
+    /// kan doen.
+    #[error(
+        "cel '{cell}': besluit '{besluit}' rekent op '{output}' een bedrag van \
+         {bedrag} uit, en een verplichting kan niet negatief zijn; declareer \
+         `richting_bij_negatief: omkeren` bij de verplichting in {origin} als een \
+         negatief bedrag een terugvordering hoort te worden"
+    )]
+    NegativeObligationAmount {
+        /// Cel die besloot.
+        cell: String,
+        /// Het besluit met de verplichting.
+        besluit: String,
+        /// Het lexogram dat de verplichting declareert.
+        origin: String,
+        /// De uitkomst waaruit het bedrag kwam, zoals de declaratie haar noemt.
+        output: String,
+        /// Het bedrag dat eruit kwam.
+        bedrag: String,
     },
 
     /// Een verplichting onder een regeling die geen bevoegd gezag aanwijst.
     ///
-    /// De betalende cel wordt aan het gezag gebonden, dus een regeling die
-    /// daarover zwijgt laat de verplichting bij niemand terechtkomen. Anders dan
-    /// bij een besluit zónder verplichting is dat geen gat om over te
-    /// waarschuwen: er valt niets na te komen.
+    /// De schuldenaar is standaard het bevoegd gezag, dus een regeling die
+    /// daarover zwijgt laat de verplichting zonder partij. Anders dan bij een
+    /// besluit zónder verplichting is dat geen gat om over te waarschuwen: er
+    /// staat een verplichting, en er is niemand om haar aan te hangen.
     #[error(
         "cel '{cell}': besluit '{besluit}' legt een verplichting op uit {origin}, \
-         maar die regeling wijst geen bevoegd gezag aan; dan is er niemand om de \
-         betaling aan te binden"
+         maar die regeling wijst geen bevoegd gezag aan; dan is er geen naam voor \
+         de schuldenaar"
     )]
     ObligationWithoutAuthority {
         /// Cel die besluit.
