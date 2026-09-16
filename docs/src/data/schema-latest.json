@@ -1984,7 +1984,7 @@
             "properties": {
               "law": {
                 "type": "string",
-                "description": "The `$id` of the law whose output is being replaced: lex specialis written down. The override fires only when the overriding law is the law being executed, so with no such context it does not apply. The engine does not check that the override is legally valid (RFC-007)."
+                "description": "The `$id` of the law whose output is being replaced: lex specialis written down. An override from another law fires only when that law is the one being executed, so with no such context it does not apply (RFC-007). An override on an output of its own law applies whatever the contextual law is, because an exclusion in the same law is not a claim about the asking law (RFC-041). The engine does not check that the override is legally valid."
               },
               "article": {
                 "type": "string",
@@ -2003,7 +2003,26 @@
                 "description": "The words of this article that establish the override, quoted verbatim, as `markings` already do. A closed vocabulary was considered and rejected: it would make the agent translate the statute into a category, which is the interpretive step this format exists to avoid. A quotation only has to be copied, and a check can hold it against the article's own text."
               }
             },
-            "additionalProperties": false
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "voids": {
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "voids"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "legal_text_excerpt"
+                  ]
+                }
+              }
+            ]
           },
           "examples": [
             [
