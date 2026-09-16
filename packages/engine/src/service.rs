@@ -1747,12 +1747,16 @@ impl LawExecutionService {
             // A voided output is absent from `outputs` by construction, so
             // walking those alone drops its ground: the hook fires, the law
             // says the output does not arise, and nothing downstream can say
-            // why. Carried over before the loop, and never overwritten by a
-            // hook that produced nothing for that name.
+            // why.
+            //
+            // Before the loop over the values, which overwrites this entry with
+            // `Reactive` for every name that does arrive with one. That order
+            // is what keeps a produced output's provenance correct, so asking
+            // here whether the name is absent would decide nothing — and a
+            // condition that cannot change an outcome reads as a guard while
+            // being none.
             for (name, prov) in &result.output_provenance {
-                if matches!(prov, OutputProvenance::Voided { .. })
-                    && !result.outputs.contains_key(name)
-                {
+                if matches!(prov, OutputProvenance::Voided { .. }) {
                     hook_provenance.insert(name.clone(), prov.clone());
                 }
             }
@@ -2238,14 +2242,18 @@ impl LawExecutionService {
         // reach it: they walk the values a hook produced, and this name is
         // absent from those by construction. Carrying it here is what lets a
         // receipt say the co-product was excluded, on this ground, rather than
-        // leaving it indistinguishable from one that was never computed. A
-        // name the article itself produced keeps its own provenance.
+        // leaving it indistinguishable from one that was never computed.
+        //
+        // `or_insert` and nothing more: a name that arrived with a value was
+        // given its provenance by the merge above, so the entry is taken and
+        // this leaves it alone. Testing for absence as well would read like a
+        // second guard while deciding nothing, and a condition that cannot
+        // change an outcome is a claim the code does not keep.
         for (name, prov) in post_hook_provenance
             .iter()
             .chain(pre_hook_provenance.iter())
         {
-            if matches!(prov, OutputProvenance::Voided { .. }) && !result.outputs.contains_key(name)
-            {
+            if matches!(prov, OutputProvenance::Voided { .. }) {
                 result
                     .output_provenance
                     .entry(name.clone())
@@ -7064,6 +7072,99 @@ articles:
                 result.output_provenance.keys().collect::<Vec<_>>()
             ),
         }
+
+        // The carry-over only covers names that have no value. The requested
+        // output does have one, and it keeps the provenance it earned rather
+        // than being relabelled as voided. Both halves of the condition are
+        // load-bearing: with the absence check dropped, an output that was
+        // computed normally would be reported as excluded, which is the one
+        // error worse than the silence this carry-over removes.
+        assert_eq!(result.outputs.get("bedrag"), Some(&Value::Int(100)));
+        assert!(
+            !matches!(
+                result.output_provenance.get("bedrag"),
+                Some(OutputProvenance::Voided { .. })
+            ),
+            "an output that was computed must not be reported as voided, got {:?}",
+            result.output_provenance.get("bedrag")
+        );
+    }
+
+    /// A hook whose own output is produced keeps that value and its provenance.
+    ///
+    /// The mirror of the test above, and the reason the carry-over asks two
+    /// questions rather than one. A hook co-product that the hook law does not
+    /// void arrives with a value, and nothing about the void machinery may
+    /// touch it: not its value, and not the `Reactive` provenance that says a
+    /// hook produced it.
+    #[test]
+    fn a_hook_co_product_that_is_not_voided_keeps_its_value() {
+        let triggering = r#"
+$id: hook_live_trigger_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het bestuursorgaan stelt het bedrag vast.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 100
+"#;
+        // Same shape as the voided case, minus the override.
+        let hook_law = r#"
+$id: hook_live_hook_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Bij de beschikking wordt een toeslag vastgesteld.
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: BESLUIT
+      execution:
+        output:
+          - name: toeslag
+            type: number
+        actions:
+          - output: toeslag
+            value: 42
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(triggering).unwrap();
+        service.load_law(hook_law).unwrap();
+
+        let result = service
+            .evaluate_law_output(
+                "hook_live_trigger_law",
+                "bedrag",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .expect("nothing is voided here");
+
+        assert_eq!(
+            result.outputs.get("toeslag"),
+            Some(&Value::Int(42)),
+            "the co-product arrives with its value"
+        );
+        assert!(
+            matches!(
+                result.output_provenance.get("toeslag"),
+                Some(OutputProvenance::Reactive { .. })
+            ),
+            "and says a hook produced it, got {:?}",
+            result.output_provenance.get("toeslag")
+        );
     }
 
     /// The exclusion holds however the question is asked.
