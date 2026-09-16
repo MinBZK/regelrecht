@@ -1164,6 +1164,32 @@
             "competent_authority": "Belastingdienst",
             "toetsingsinkomen": 81000
           }
+        },
+        "reductie": {
+          "vorm": {
+            "soort": "kroniekfilter",
+            "chronicle": "aanslagen",
+            "key": "bsn",
+            "key_value": "999993653",
+            "where": {},
+            "regel": {
+              "regel": "laatste"
+            },
+            "op_moment": "2024-04-01"
+          },
+          "grammen": [
+            {
+              "cell": "belastingdienst",
+              "chronicle": "aanslagen",
+              "id": "belastingdienst|aanslagen|0",
+              "kind": "decretogram",
+              "name": "aanslag_vastgesteld",
+              "volgnummer": 0,
+              "op_moment": "2024-03-01",
+              "regulation_valid_from": null,
+              "bijdrage": null
+            }
+          ]
         }
       }
     },
@@ -1182,6 +1208,32 @@
             "competent_authority": "Belastingdienst",
             "toetsingsinkomen": 85000
           }
+        },
+        "reductie": {
+          "vorm": {
+            "soort": "kroniekfilter",
+            "chronicle": "aanslagen",
+            "key": "bsn",
+            "key_value": "999993653",
+            "where": {},
+            "regel": {
+              "regel": "laatste"
+            },
+            "op_moment": "2024-12-15"
+          },
+          "grammen": [
+            {
+              "cell": "belastingdienst",
+              "chronicle": "aanslagen",
+              "id": "belastingdienst|aanslagen|1",
+              "kind": "decretogram",
+              "name": "aanslag_herzien",
+              "volgnummer": 1,
+              "op_moment": "2024-12-01",
+              "regulation_valid_from": null,
+              "bijdrage": null
+            }
+          ]
         }
       }
     }
@@ -1306,6 +1358,32 @@
               "competent_authority": "Belastingdienst",
               "toetsingsinkomen": 81000
             }
+          },
+          "reductie": {
+            "vorm": {
+              "soort": "kroniekfilter",
+              "chronicle": "aanslagen",
+              "key": "bsn",
+              "key_value": "999993653",
+              "where": {},
+              "regel": {
+                "regel": "laatste"
+              },
+              "op_moment": "2024-04-01"
+            },
+            "grammen": [
+              {
+                "cell": "belastingdienst",
+                "chronicle": "aanslagen",
+                "id": "belastingdienst|aanslagen|0",
+                "kind": "decretogram",
+                "name": "aanslag_vastgesteld",
+                "volgnummer": 0,
+                "op_moment": "2024-03-01",
+                "regulation_valid_from": null,
+                "bijdrage": null
+              }
+            ]
           }
         }
       },
@@ -1535,6 +1613,32 @@
               "competent_authority": "Belastingdienst",
               "toetsingsinkomen": 85000
             }
+          },
+          "reductie": {
+            "vorm": {
+              "soort": "kroniekfilter",
+              "chronicle": "aanslagen",
+              "key": "bsn",
+              "key_value": "999993653",
+              "where": {},
+              "regel": {
+                "regel": "laatste"
+              },
+              "op_moment": "2024-12-15"
+            },
+            "grammen": [
+              {
+                "cell": "belastingdienst",
+                "chronicle": "aanslagen",
+                "id": "belastingdienst|aanslagen|1",
+                "kind": "decretogram",
+                "name": "aanslag_herzien",
+                "volgnummer": 1,
+                "op_moment": "2024-12-01",
+                "regulation_valid_from": null,
+                "bijdrage": null
+              }
+            ]
           }
         }
       },

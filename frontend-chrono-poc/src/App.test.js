@@ -131,6 +131,71 @@ describe('de pagina', () => {
     expect(complaints).toStrictEqual([]);
   });
 
+  // De uitleg bij een antwoord wijst naar een gram, en dat gram ligt in een
+  // ander tabblad. De pagina brengt de bezoeker erheen; zonder die stap zou de
+  // verwijzing een id op het scherm zijn waar hij zelf naar moet zoeken.
+  it('brengt de bezoeker van een gelezen gram naar datzelfde gram in het grammenpaneel', async () => {
+    const gram = allGrams(worldFixture).find((row) => row.cell === 'belastingdienst');
+    const answer = {
+      cell: gram.cell,
+      name: 'toetsingsinkomen',
+      op_moment: worldFixture.clock,
+      outcome: { established: { toetsingsinkomen: 81000 } },
+      reductie: {
+        vorm: {
+          soort: 'kroniekfilter',
+          chronicle: gram.chronicle,
+          key: 'bsn',
+          key_value: '999993653',
+          where: {},
+          regel: { regel: 'laatste' },
+          op_moment: worldFixture.clock,
+        },
+        grammen: [
+          {
+            cell: gram.cell,
+            chronicle: gram.chronicle,
+            id: gram.id,
+            kind: gram.kind,
+            name: gram.name,
+            volgnummer: gram.index,
+            op_moment: gram.opMoment,
+            regulation_valid_from: null,
+            bijdrage: null,
+          },
+        ],
+      },
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url) => jsonResponse(String(url).includes('/lexostatus/') ? answer : worldFixture)),
+    );
+    const wrapper = mount(App);
+    await flushPromises();
+
+    const tabs = wrapper.findAll('nldd-tab-bar-item');
+    wrapper
+      .find('nldd-tab-bar')
+      .element.dispatchEvent(new CustomEvent('tabchange', { detail: { item: tabs[2].element } }));
+    await flushPromises();
+    await wrapper.find('form').trigger('submit');
+    await flushPromises();
+
+    // De uitleg openklappen en het gelezen gram aanwijzen.
+    const uitleg = wrapper.find('nldd-list[type="tree"] > nldd-list-item');
+    await uitleg.trigger('click');
+    await wrapper.find('nldd-list-item[slot="children"]').trigger('click');
+    await flushPromises();
+
+    const table = wrapper
+      .findAll('nldd-list')
+      .find((list) => list.attributes('accessible-label')?.startsWith('Alle grammen'));
+    expect(table).toBeDefined();
+    const row = table.findAll('nldd-list-item').find((item) => item.attributes('id') === `gram-${gram.id}`);
+    expect(row.attributes('expanded')).toBe('true');
+    expect(complaints).toStrictEqual([]);
+  });
+
   // Waar het om begonnen was: naast elkaar paste geen kolom meer heel, en het
   // verhaal was nergens te zien.
   it('zet de bediening boven, het journaal eronder en de cellen daaronder', async () => {

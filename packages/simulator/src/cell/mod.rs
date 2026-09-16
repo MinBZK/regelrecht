@@ -28,6 +28,7 @@
 mod besluit;
 mod chronicle;
 mod config;
+mod reductie;
 
 pub use besluit::{
     AcceptanceRequest, BesluitDefinition, BesluitInput, ChronicleSource, Decretogram,
@@ -48,15 +49,21 @@ pub use config::{
     AcceptedSource, Aggregate, CellConfig, DocumentedParameter, LexostatusDefinition,
     ParameterType, Prefill, Reduction,
 };
+pub use reductie::{
+    GebruiktGram, GebruikteInput, Gemist, InputHerkomst, Kroniekfilter, Reductie, ReductieVorm,
+    Regel, Wetsvorm,
+};
 
 use crate::corpus;
 use crate::error::{Result, SimulatorError, Subject};
 use crate::values::amount;
 use chronicle::ChronicleView;
 use chrono::NaiveDate;
-use config::{engine_parameters, CellSurface};
+use config::{binding_name, engine_parameters, CellSurface};
 use regelrecht_engine::article::CompetentAuthority;
-use regelrecht_engine::{ArticleBasedLaw, CellResolver, LawExecutionService, Value};
+use regelrecht_engine::{
+    ArticleBasedLaw, ArticleResult, CellResolver, InputProvenance, LawExecutionService, Value,
+};
 use rust_decimal::Decimal;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -81,6 +88,13 @@ pub struct Lexostatus {
     pub op_moment: NaiveDate,
     /// Wat de cel op dat moment vond.
     pub outcome: LexostatusOutcome,
+    /// Hoe ze daaraan kwam: welke gegevens ze las en hoe ze die reduceerde.
+    ///
+    /// Elk antwoord van [`Cell::reduce`] draagt het. `None` staat er alleen waar
+    /// een antwoord niet uit een reductie komt — een gesimuleerde peer in een
+    /// test die een antwoord nabootst zonder kroniek eronder. Een uitkomst
+    /// zonder herkomst is geen reductie, en dat hoort te zien te zijn.
+    pub reductie: Option<Reductie>,
 }
 
 /// De twee antwoorden die een reductie kan opleveren.
@@ -654,7 +668,7 @@ impl Cell {
 
         definition.check_params(&self.id, params)?;
 
-        let outcome = match &definition.reduction {
+        let (outcome, reductie) = match &definition.reduction {
             Reduction::Law {
                 regulation,
                 output,
@@ -688,6 +702,7 @@ impl Cell {
             name: definition.name.clone(),
             op_moment,
             outcome,
+            reductie: Some(reductie),
         })
     }
 
@@ -700,7 +715,7 @@ impl Cell {
         parameters: &BTreeMap<String, String>,
         params: &BTreeMap<String, Value>,
         op_moment: NaiveDate,
-    ) -> Result<LexostatusOutcome> {
+    ) -> Result<(LexostatusOutcome, Reductie)> {
         // Onbereikbaar: `validate` weigert bij het optuigen elke wetsvorm over
         // een regeling die de cel niet zelf laadt, en een cel zonder engine
         // laadt er geen enkele. De melding is hier dan ook de juiste.
@@ -716,18 +731,142 @@ impl Cell {
         let mut service = service.borrow_mut();
         self.register_own_facts(&mut service, op_moment)?;
 
+        let engine_params = engine_parameters(parameters, params);
         let result = service
             .evaluate_law_output(
                 regulation,
                 output,
-                engine_parameters(parameters, params),
+                engine_params.clone(),
                 &op_moment.format("%Y-%m-%d").to_string(),
             )
             .map_err(|error| self.explain_reach(definition, error))?;
 
-        Ok(LexostatusOutcome::Established(
-            definition.project(result.outputs),
+        let (inputs, grammen) = self.explain_inputs(&result, parameters, &engine_params, op_moment);
+        let wetsvorm = Wetsvorm {
+            regulation: regulation.to_string(),
+            regulation_valid_from: result.regulation_valid_from.clone(),
+            output: output.to_string(),
+            inputs,
+            op_moment,
+        };
+
+        Ok((
+            LexostatusOutcome::Established(definition.project(result.outputs)),
+            Reductie::wetsvorm(wetsvorm, grammen),
         ))
+    }
+
+    /// Waar elke input van deze uitvoering vandaan kwam, en welke grammen daar
+    /// achter zaten.
+    ///
+    /// De engine meldt per input welke tier van de resolutievolgorde hem
+    /// beantwoordde (RFC-022 §4.2); wat zij niet kan melden, is welk *gram* van
+    /// een kroniekstroom dat geworden is — zij ziet per onderwerp één record,
+    /// want de tijdreductie is er dan al overheen gegaan. Dat laatste weet
+    /// alleen de cel, en daarom staat het hier.
+    ///
+    /// De inputs van déze uitvoering, en niet van de regelingen die zij op haar
+    /// beurt aanriep: elke aanroep heeft haar eigen herkomst, en die uitvouwen
+    /// zou van deze uitleg een trace maken.
+    fn explain_inputs(
+        &self,
+        result: &ArticleResult,
+        bindings: &BTreeMap<String, String>,
+        engine_params: &BTreeMap<String, Value>,
+        op_moment: NaiveDate,
+    ) -> (Vec<GebruikteInput>, Vec<GebruiktGram>) {
+        let mut grammen: Vec<GebruiktGram> = Vec::new();
+        let mut inputs: Vec<GebruikteInput> = Vec::new();
+
+        for (name, provenance) in &result.input_provenance {
+            let herkomst = match provenance {
+                InputProvenance::Parameter => InputHerkomst::Parameter {
+                    // De naam waaronder de *vraag* hem kende, en niet de naam
+                    // die de regeling hem geeft: een consument herkent zijn
+                    // eigen parameter. Een binding zonder `$` is een vaste
+                    // waarde uit de definitie en dus geen parameter.
+                    parameter: bindings
+                        .get(name)
+                        .and_then(|binding| binding_name(binding))
+                        .map(str::to_string),
+                },
+                InputProvenance::DataSource { source } => {
+                    let gram =
+                        self.gram_behind(source, engine_params, op_moment)
+                            .map(|(place, event)| {
+                                let gebruikt = GebruiktGram::new(&self.id, source, place, event);
+                                let id = gebruikt.gram.id.clone();
+                                if !grammen.iter().any(|known| known.gram.id == id) {
+                                    grammen.push(gebruikt);
+                                }
+                                id
+                            });
+                    InputHerkomst::EigenKroniek {
+                        chronicle: source.clone(),
+                        gram,
+                    }
+                }
+                InputProvenance::Regulation { regulation, output } => InputHerkomst::Regeling {
+                    regulation: regulation.clone(),
+                    output: output.clone(),
+                },
+                InputProvenance::Cell { cell, output } => InputHerkomst::Cel {
+                    cell: cell.clone(),
+                    output: output.clone(),
+                },
+            };
+
+            inputs.push(GebruikteInput {
+                name: name.clone(),
+                herkomst,
+            });
+        }
+
+        // In de volgorde waarin ze in de kronieken liggen, en niet in die waarin
+        // de inputs erom vroegen: dit is een lijst grammen, en die hoort te
+        // lezen als een kroniek.
+        grammen.sort_by(|left, right| {
+            left.gram
+                .chronicle
+                .cmp(&right.gram.chronicle)
+                .then(left.volgnummer.cmp(&right.volgnummer))
+        });
+        (inputs, grammen)
+    }
+
+    /// Welk gram van deze stroom stond bij deze uitvoering voor dit onderwerp
+    /// klaar?
+    ///
+    /// Dezelfde vraag als het kroniekfilter stelt, en met opzet langs dezelfde
+    /// weg: de stroom staat als databron klaar met per sleutelwaarde de laatste
+    /// vastlegging op of vóór dit moment (zie [`Self::register_own_facts`]), en
+    /// de engine zoekt daarin op de sleutel die in haar parameters staat. Wie
+    /// dat hier anders zou uitrekenen, zou een ander gram kunnen noemen dan
+    /// waarop gerekend is.
+    ///
+    /// `None` als de cel de stroom niet houdt, als de vraag haar sleutel niet
+    /// meegaf, of als er over dit onderwerp niets lag: dan is er geen gram om
+    /// naar te wijzen, en de herkomst noemt alleen de stroom.
+    fn gram_behind(
+        &self,
+        stream: &str,
+        engine_params: &BTreeMap<String, Value>,
+        op_moment: NaiveDate,
+    ) -> Option<(usize, &ChronicleEvent)> {
+        let key = self.chronicles.key_of(stream)?;
+        // Hoofdletterongevoelig, zoals de engine haar databronnen bevraagt.
+        let key_value = engine_params
+            .iter()
+            .find(|(name, _)| name.eq_ignore_ascii_case(key))
+            .map(|(_, value)| value)?;
+        let no_conditions = BTreeMap::new();
+        self.chronicles.latest_recording_with_place(
+            stream,
+            key,
+            key_value,
+            &no_conditions,
+            op_moment,
+        )
     }
 
     /// Vertaal "onbekende regeling" naar "die naam is een cel" waar dat zo is.
@@ -851,18 +990,23 @@ impl Cell {
         definition: &LexostatusDefinition,
         query: &ChronicleQuery<'_>,
         op_moment: NaiveDate,
-    ) -> Result<LexostatusOutcome> {
-        let Some(event) = self.chronicles.latest_recording(
+    ) -> Result<(LexostatusOutcome, Reductie)> {
+        let filter = query.describe(Regel::Laatste, op_moment);
+        let Some((place, event)) = self.chronicles.latest_recording_with_place(
             query.chronicle,
             query.key,
             query.key_value,
             query.conditions,
             op_moment,
         ) else {
-            return Ok(LexostatusOutcome::NotEstablished {
-                reason: query.nothing_established(op_moment),
-            });
+            return Ok((
+                LexostatusOutcome::NotEstablished {
+                    reason: query.nothing_established(op_moment),
+                },
+                Reductie::niets_vastgesteld(filter, Vec::new(), query.missed(self, op_moment)),
+            ));
         };
+        let gelezen = vec![GebruiktGram::new(&self.id, query.chronicle, place, event)];
 
         let values: BTreeMap<String, Value> = definition
             .published_outputs()
@@ -881,12 +1025,20 @@ impl Cell {
         // zegt dan wat er aan de hand is: er was wél een vastlegging, maar niet
         // over datgene wat gevraagd werd.
         if values.is_empty() {
-            return Ok(LexostatusOutcome::NotEstablished {
-                reason: nothing_published(definition, query, event.op_moment),
-            });
+            return Ok((
+                LexostatusOutcome::NotEstablished {
+                    reason: nothing_published(definition, query, event.op_moment),
+                },
+                // Mét het gram: er is er wél een gelezen, en dat de uitkomsten
+                // er niet in stonden, is aan dat gram te zien en nergens anders.
+                Reductie::niets_vastgesteld(filter, gelezen, query.missed(self, op_moment)),
+            ));
         }
 
-        Ok(LexostatusOutcome::Established(values))
+        Ok((
+            LexostatusOutcome::Established(values),
+            Reductie::kroniekfilter(filter, gelezen),
+        ))
     }
 
     /// De som over een eigen kroniek: tel één veld op over alles wat op dit
@@ -907,8 +1059,14 @@ impl Cell {
         query: &ChronicleQuery<'_>,
         field: &str,
         op_moment: NaiveDate,
-    ) -> Result<LexostatusOutcome> {
-        let events = self.chronicles.recordings(
+    ) -> Result<(LexostatusOutcome, Reductie)> {
+        let filter = query.describe(
+            Regel::Som {
+                field: field.to_string(),
+            },
+            op_moment,
+        );
+        let events = self.chronicles.recordings_with_place(
             query.chronicle,
             query.key,
             query.key_value,
@@ -921,13 +1079,17 @@ impl Cell {
         // ander kroniekfilter. Een 0 zou "er is niets betaald" niet kunnen
         // onderscheiden van "hier is geen zaak".
         if events.is_empty() {
-            return Ok(LexostatusOutcome::NotEstablished {
-                reason: query.nothing_established(op_moment),
-            });
+            return Ok((
+                LexostatusOutcome::NotEstablished {
+                    reason: query.nothing_established(op_moment),
+                },
+                Reductie::niets_vastgesteld(filter, Vec::new(), query.missed(self, op_moment)),
+            ));
         }
 
+        let mut gelezen: Vec<GebruiktGram> = Vec::new();
         let mut total = Decimal::ZERO;
-        for event in events {
+        for (place, event) in events {
             let found = chronicle::field(&event.fields, field);
             let value = found.and_then(Value::as_decimal).ok_or_else(|| {
                 SimulatorError::SumOfNonNumber {
@@ -942,6 +1104,14 @@ impl Cell {
                 }
             })?;
             total += value;
+            // Elk meegeteld gram met wat het bijdroeg: een som waarvan alleen de
+            // uitkomst te zien is, valt niet na te rekenen, en dan is het
+            // verschil met een saldo dat ergens bijgehouden wordt alleen nog een
+            // belofte.
+            gelezen.push(
+                GebruiktGram::new(&self.id, query.chronicle, place, event)
+                    .met_bijdrage(amount(value)),
+            );
         }
 
         // Onder de gepubliceerde naam en niet onder de naam in `sum`. Het filter
@@ -956,10 +1126,13 @@ impl Cell {
             .next()
             .unwrap_or(field);
 
-        Ok(LexostatusOutcome::Established(BTreeMap::from([(
-            published.to_string(),
-            amount(total),
-        )])))
+        Ok((
+            LexostatusOutcome::Established(BTreeMap::from([(
+                published.to_string(),
+                amount(total),
+            )])),
+            Reductie::kroniekfilter(filter, gelezen),
+        ))
     }
 
     /// De waarde van het sleutelveld uit de vraag.
@@ -1744,6 +1917,29 @@ struct ChronicleQuery<'a> {
 }
 
 impl ChronicleQuery<'_> {
+    /// Dit filter zoals het in de uitleg bij het antwoord komt te staan.
+    fn describe(&self, regel: Regel, op_moment: NaiveDate) -> Kroniekfilter {
+        Kroniekfilter {
+            chronicle: self.chronicle.to_string(),
+            key: self.key.to_string(),
+            key_value: self.key_value.clone(),
+            conditions: self.conditions.clone(),
+            regel,
+            op_moment,
+        }
+    }
+
+    /// Wat er in de stroom lag en toch niet meedeed.
+    fn missed(&self, cell: &Cell, op_moment: NaiveDate) -> Gemist {
+        cell.chronicles.missed(
+            self.chronicle,
+            self.key,
+            self.key_value,
+            self.conditions,
+            op_moment,
+        )
+    }
+
     /// Waarom dit filter niets vond, zo precies dat het na te lopen is.
     fn nothing_established(&self, op_moment: NaiveDate) -> String {
         nothing_established(

@@ -110,6 +110,12 @@ gevraagd: een consument vraagt een gepubliceerde naam, hij inspecteert geen cel
 `op_moment` is gereserveerd en optioneel; afwezig betekent "op de stand van de
 klok". Een moment ná de klok is een 409 — dat zou een voorspelling zijn.
 
+Naast de uitkomst draagt het antwoord een blok `reductie`: welke gegevens de cel
+gelezen heeft en hoe ze die reduceerde, met een verwijzing naar elk gebruikt gram.
+Wat erin staat, staat in `packages/simulator/README.md` onder
+"[Hoe het antwoord tot stand kwam](../simulator/README.md#hoe-het-antwoord-tot-stand-kwam)";
+deze laag geeft het door zoals de cel het gaf.
+
 ### Wat geen fout is
 
 - **"Niets vastgesteld"** is een antwoord met een reden: HTTP 200, met

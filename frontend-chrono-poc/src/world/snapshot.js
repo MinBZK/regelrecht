@@ -12,7 +12,7 @@
  * opschrijven) valt het hier terug op iets leesbaars: een beeld hoort niet om te
  * vallen omdat één herkomst niet te lezen was.
  */
-import { formatMoment } from './format.js';
+import { formatMoment, formatValue } from './format.js';
 
 /**
  * De drie grammen van de chronolexografie, met hoe ze eruitzien.
@@ -476,24 +476,102 @@ export function obligationsOf(gram) {
  */
 export function readLexostatus(answer) {
   const outcome = answer?.outcome ?? {};
+  const shared = {
+    cell: answer?.cell ?? null,
+    name: answer?.name ?? null,
+    opMoment: answer?.op_moment ?? null,
+    reductie: readReductie(answer?.reductie),
+  };
   if (outcome.established) {
     return {
+      ...shared,
       established: true,
-      cell: answer.cell ?? null,
-      name: answer.name ?? null,
-      opMoment: answer.op_moment ?? null,
       values: Object.entries(outcome.established).map(([key, value]) => ({ name: key, value })),
       reason: null,
     };
   }
   return {
+    ...shared,
     established: false,
-    cell: answer?.cell ?? null,
-    name: answer?.name ?? null,
-    opMoment: answer?.op_moment ?? null,
     values: [],
     reason: outcome.not_established?.reason ?? 'In deze cel is hierover niets vastgesteld.',
   };
+}
+
+/**
+ * Hoe de cel aan haar antwoord kwam: de regel in één zin, en de grammen die ze
+ * las.
+ *
+ * Het contract is `Reductie` uit `packages/simulator/src/cell/reductie.rs`. Er
+ * wordt hier niets uitgerekend: de zin wordt opgeschreven uit wat het blok zegt,
+ * en elk gram blijft de verwijzing die het is — met dezelfde `id` als in het
+ * journaal, waarmee het in het tabblad Grammen terug te vinden is.
+ *
+ * `null` als een antwoord geen uitleg draagt. Dat komt niet van een reductie
+ * (die draagt er altijd een), en dan hoort er ook niets te staan in plaats van
+ * een lege uitklap die iets belooft.
+ */
+export function readReductie(reductie) {
+  const vorm = reductie?.vorm;
+  if (!vorm) return null;
+  return {
+    soort: vorm.soort ?? null,
+    zin: describeReductie(vorm),
+    grams: (reductie.grammen ?? []).map((gram) => ({
+      id: gram.id,
+      cell: gram.cell,
+      chronicle: gram.chronicle,
+      kind: gram.kind,
+      name: gram.name,
+      volgnummer: gram.volgnummer,
+      opMoment: gram.op_moment,
+      regulationValidFrom: gram.regulation_valid_from ?? null,
+      bijdrage: gram.bijdrage ?? null,
+    })),
+    inputs: (vorm.inputs ?? []).map((input) => ({
+      name: input.name,
+      gram: input.herkomst?.gram ?? null,
+      zin: describeHerkomst(input.herkomst),
+    })),
+    gemist: reductie.gemist ?? null,
+  };
+}
+
+/** De gelijkheden uit een `where`, als één stuk tekst. */
+function describeConditions(conditions) {
+  return Object.entries(conditions ?? {})
+    .map(([field, value]) => `${field} = ${formatValue(value)}`)
+    .join(' en ');
+}
+
+/** De regel van deze reductie in één zin, in de woorden van het beeld. */
+export function describeReductie(vorm) {
+  if (vorm?.soort === 'wetsvorm') {
+    const versie = vorm.regulation_valid_from ? ` (versie ${formatMoment(vorm.regulation_valid_from)})` : '';
+    return `uitkomst '${vorm.output}' van regeling '${vorm.regulation}'${versie}, berekend op ${formatMoment(vorm.op_moment)}`;
+  }
+  if (vorm?.soort !== 'kroniekfilter') return '';
+  const regel =
+    vorm.regel?.regel === 'som' ? `som over ${vorm.regel.field}` : 'laatste vastlegging';
+  const voorwaarden = describeConditions(vorm.where);
+  const erbij = voorwaarden ? `, en ${voorwaarden}` : '';
+  return `${regel} in kroniek '${vorm.chronicle}' met ${vorm.key} '${formatValue(vorm.key_value)}' op of vóór ${formatMoment(vorm.op_moment)}${erbij}`;
+}
+
+/** Waar één input van een wetsvorm vandaan kwam, als tekst. */
+export function describeHerkomst(herkomst) {
+  switch (herkomst?.herkomst) {
+    case 'parameter':
+      return herkomst.parameter ? `uit de vraag, parameter '${herkomst.parameter}'` : 'vast in de definitie';
+    case 'eigen_kroniek':
+      return `uit eigen kroniek '${herkomst.chronicle}'`;
+    case 'regeling':
+      return `berekend door regeling '${herkomst.regulation}' (${herkomst.output})`;
+    case 'cel':
+      return `van cel '${herkomst.cell}' (${herkomst.output})`;
+    default:
+      return '';
+  }
 }
 
 /** De instellingen van de wereld, met of ze al vastliggen en waardoor. */

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { fieldValue } from '../world/events.js';
 import { formatMoment } from '../world/format.js';
 import { allGrams, cells, gramKind } from '../world/snapshot.js';
@@ -23,7 +23,17 @@ import { allGrams, cells, gramKind } from '../world/snapshot.js';
 const props = defineProps({
   /** Het beeld van de wereld. */
   snapshot: { type: Object, default: null },
+  /**
+   * Het gram waar de pagina op uitkomt, of leeg.
+   *
+   * Een id zoals het beeld het geeft (`<cel>|<kroniek>|<plek>`): dat is de
+   * sleutel waarmee het journaal en de uitleg bij een lexostatus naar een gram
+   * wijzen, en het is precies de sleutel van een rij hieronder.
+   */
+  focusGram: { type: String, default: '' },
 });
+
+const emit = defineEmits(['clear-focus']);
 
 const rows = computed(() => allGrams(props.snapshot));
 
@@ -89,6 +99,37 @@ function toggle(id, event) {
 function gramJson(row) {
   return JSON.stringify(row.gram, null, 2);
 }
+
+/**
+ * Een aangewezen gram in beeld brengen: filters die het verbergen gaan eraf, de
+ * rij gaat open, en de pagina scrolt ernaartoe.
+ *
+ * De filters gaan alleen weg waar ze in de weg staan. Wie op een cel gefilterd
+ * heeft en een gram van diezelfde cel aanwijst, houdt zijn filter — het weghalen
+ * zou een keuze ongedaan maken die niets in de weg zat.
+ *
+ * De aanwijzing wordt daarna teruggemeld als verwerkt: zonder dat zou hetzelfde
+ * gram een tweede keer aanwijzen niets doen, want de waarde verandert dan niet.
+ */
+watch(
+  () => props.focusGram,
+  (id) => {
+    if (!id) return;
+    const row = rows.value.find((candidate) => candidate.id === id);
+    if (!row) {
+      emit('clear-focus');
+      return;
+    }
+    if (cellFilter.value && cellFilter.value !== row.cell) cellFilter.value = '';
+    if (kindFilter.value && kindFilter.value !== row.kind) kindFilter.value = '';
+    open.value = new Set(open.value).add(id);
+    nextTick(() => {
+      document.getElementById(`gram-${id}`)?.scrollIntoView?.({ block: 'center' });
+      emit('clear-focus');
+    });
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
@@ -148,6 +189,7 @@ function gramJson(row) {
 
       <nldd-list-item
         v-for="row in rows"
+        :id="`gram-${row.id}`"
         :key="row.id"
         size="sm"
         button

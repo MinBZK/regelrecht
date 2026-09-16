@@ -7,7 +7,9 @@ import {
   competentAuthorityOf,
   decidedAlready,
   describeEffect,
+  describeHerkomst,
   describeOrigin,
+  describeReductie,
   gramCounts,
   gramFields,
   gramKind,
@@ -446,6 +448,81 @@ describe('een antwoord van een cel', () => {
 
   it('geeft ook zonder reden een leesbaar antwoord', () => {
     expect(readLexostatus({ outcome: {} }).reason).toContain('niets vastgesteld');
+  });
+});
+
+describe('hoe een antwoord tot stand kwam', () => {
+  /** Het antwoord over een celgrens uit de fixture draagt een echte uitleg. */
+  const crossing = worldFixture.crossings[0].answer;
+
+  it('leest de uitleg mee met het antwoord, met de grammen die gelezen zijn', () => {
+    const answer = readLexostatus(crossing);
+    expect(answer.reductie.soort).toBe('kroniekfilter');
+    expect(answer.reductie.grams.length).toBeGreaterThan(0);
+
+    // Elk gram wijst naar een gram in de kroniek van de cel die antwoordde, met
+    // de sleutel waarmee het tabblad Grammen zijn rijen kent.
+    for (const gram of answer.reductie.grams) {
+      expect(gram.cell).toBe(crossing.cell);
+      expect(gram.id).toBe(`${gram.cell}|${gram.chronicle}|${gram.volgnummer}`);
+      expect(allGrams(worldFixture).some((row) => row.id === gram.id)).toBe(true);
+    }
+  });
+
+  it('schrijft de regel van een kroniekfilter als één zin', () => {
+    expect(
+      describeReductie({
+        soort: 'kroniekfilter',
+        chronicle: 'beschikkingen',
+        key: 'zaakkenmerk',
+        key_value: 'zaak/1',
+        where: {},
+        regel: { regel: 'laatste' },
+        op_moment: '2026-12-01',
+      }),
+    ).toBe("laatste vastlegging in kroniek 'beschikkingen' met zaakkenmerk 'zaak/1' op of vóór 01-12-2026");
+  });
+
+  it('noemt de som met haar veld, en de voorwaarden waaronder gefilterd is', () => {
+    const zin = describeReductie({
+      soort: 'kroniekfilter',
+      chronicle: 'betalingen',
+      key: 'zaakkenmerk',
+      key_value: 'zaak/1',
+      where: { soort: 'termijn' },
+      regel: { regel: 'som', field: 'bedrag' },
+      op_moment: '2026-12-01',
+    });
+    expect(zin).toContain('som over bedrag');
+    expect(zin).toContain('soort = termijn');
+  });
+
+  it('noemt bij een wetsvorm de regeling met de versie die gold', () => {
+    const zin = describeReductie({
+      soort: 'wetsvorm',
+      regulation: 'wet_op_de_zorgtoeslag',
+      regulation_valid_from: '2025-01-01',
+      output: 'heeft_recht_op_zorgtoeslag',
+      inputs: [],
+      op_moment: '2026-12-01',
+    });
+    expect(zin).toContain("regeling 'wet_op_de_zorgtoeslag'");
+    expect(zin).toContain('versie 01-01-2025');
+  });
+
+  it('zegt per input van een wetsvorm waar hij vandaan kwam', () => {
+    expect(describeHerkomst({ herkomst: 'parameter', parameter: 'bsn' })).toContain("'bsn'");
+    expect(describeHerkomst({ herkomst: 'eigen_kroniek', chronicle: 'relaties', gram: 'a|b|0' })).toContain(
+      "'relaties'",
+    );
+    expect(describeHerkomst({ herkomst: 'regeling', regulation: 'awir', output: 'partner' })).toContain("'awir'");
+    expect(describeHerkomst({ herkomst: 'cel', cell: 'brp', output: 'partnerschap' })).toContain("'brp'");
+    // Een herkomst die deze app niet kent, hoort het beeld niet om te gooien.
+    expect(describeHerkomst({ herkomst: 'iets-nieuws' })).toBe('');
+  });
+
+  it('houdt een antwoord zonder uitleg leesbaar', () => {
+    expect(readLexostatus({ outcome: {} }).reductie).toBeNull();
   });
 });
 

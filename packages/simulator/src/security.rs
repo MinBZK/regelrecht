@@ -252,6 +252,7 @@ mod tests {
                 name: lexostatus.to_string(),
                 op_moment,
                 outcome: LexostatusOutcome::Established(BTreeMap::new()),
+                reductie: None,
             })
         }
     }

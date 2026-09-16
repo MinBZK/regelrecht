@@ -68,6 +68,21 @@ const deadlines = computed(() => missedDeadlines(snapshot.value));
  */
 const focusMoment = ref('');
 
+/**
+ * Het gram waar het grammenpaneel op moet uitkomen, of leeg.
+ *
+ * Dezelfde afspraak als tussen de tijdlijn en het journaal: het ene paneel wijst
+ * iets aan, het andere gaat erheen, en verder kennen ze elkaar niet. Hier komt
+ * de aanwijzing uit de uitleg bij een lexostatus — "dit gram heb ik gelezen" —
+ * en die staat in een ander tabblad dan de grammen, dus het tabblad gaat mee om.
+ */
+const focusGram = ref('');
+
+function showGram(id) {
+  focusGram.value = id;
+  tab.value = 'grammen';
+}
+
 /** Zijn er regels bij gekomen door de laatste stap? */
 const hasNewEntries = computed(
   () => previousJournalLength.value !== null && journalEntries(snapshot.value).length > previousJournalLength.value,
@@ -226,8 +241,14 @@ const showResult = computed(() => Boolean(result.value) && !hasNewEntries.value)
                     v-else-if="tab === 'lexostatus'"
                     :snapshot="snapshot"
                     :ask="askLexostatus"
+                    @show-gram="showGram"
                   />
-                  <GramPanel v-else-if="tab === 'grammen'" :snapshot="snapshot" />
+                  <GramPanel
+                    v-else-if="tab === 'grammen'"
+                    :snapshot="snapshot"
+                    :focus-gram="focusGram"
+                    @clear-focus="focusGram = ''"
+                  />
                   <ObservationLog v-else :snapshot="snapshot" />
                 </nldd-container>
               </nldd-simple-section>

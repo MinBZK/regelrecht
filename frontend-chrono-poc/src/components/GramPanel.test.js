@@ -218,3 +218,41 @@ describe('het grammenoverzicht', () => {
     expect(offered.slice(1)).toHaveLength(present.size);
   });
 });
+
+describe('een aangewezen gram', () => {
+  /** Het gram waar de uitleg bij een lexostatus naar zou wijzen. */
+  const target = allGrams(worldFixture)[2];
+
+  it('klapt de rij open en meldt de aanwijzing als verwerkt', async () => {
+    const wrapper = mount(GramPanel, { props: { snapshot: worldFixture, focusGram: target.id } });
+    await wrapper.vm.$nextTick();
+
+    const row = rows(wrapper).find((candidate) => candidate.attributes('id') === `gram-${target.id}`);
+    expect(row.attributes('expanded')).toBe('true');
+    // Terugmelden hoort erbij: zonder dat zou hetzelfde gram een tweede keer
+    // aanwijzen niets doen, want de waarde verandert dan niet.
+    expect(wrapper.emitted('clear-focus')).toBeTruthy();
+  });
+
+  it('haalt alleen het filter weg dat het gram zou verbergen', async () => {
+    const other = allGrams(worldFixture).find((row) => row.cell !== target.cell);
+    const wrapper = mount(GramPanel, { props: { snapshot: worldFixture } });
+
+    // Een filter op een andere cel verbergt het aangewezen gram: dat gaat eraf.
+    choose(wrapper, 0, other.cell);
+    await wrapper.vm.$nextTick();
+    expect(visibleRows(wrapper).length).toBeLessThan(rows(wrapper).length);
+
+    await wrapper.setProps({ focusGram: target.id });
+    await wrapper.vm.$nextTick();
+    const row = rows(wrapper).find((candidate) => candidate.attributes('id') === `gram-${target.id}`);
+    expect(row.attributes('hidden')).toBeUndefined();
+  });
+
+  it('meldt een gram dat niet bestaat terug zonder iets te openen', async () => {
+    const wrapper = mount(GramPanel, { props: { snapshot: worldFixture, focusGram: 'bestaat|niet|9' } });
+    await wrapper.vm.$nextTick();
+    expect(rows(wrapper).every((row) => row.attributes('expanded') === undefined)).toBe(true);
+    expect(wrapper.emitted('clear-focus')).toBeTruthy();
+  });
+});

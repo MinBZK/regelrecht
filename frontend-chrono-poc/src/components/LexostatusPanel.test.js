@@ -8,6 +8,30 @@ const established = {
   name: 'toetsingsinkomen',
   op_moment: '2025-02-01',
   outcome: { established: { toetsingsinkomen: 81000, competent_authority: 'Belastingdienst' } },
+  reductie: {
+    vorm: {
+      soort: 'kroniekfilter',
+      chronicle: 'aanslagen',
+      key: 'bsn',
+      key_value: '999993653',
+      where: {},
+      regel: { regel: 'laatste' },
+      op_moment: '2025-02-01',
+    },
+    grammen: [
+      {
+        cell: 'belastingdienst',
+        chronicle: 'aanslagen',
+        id: 'belastingdienst|aanslagen|1',
+        kind: 'decretogram',
+        name: 'aanslag_herzien',
+        volgnummer: 1,
+        op_moment: '2024-12-01',
+        regulation_valid_from: null,
+        bijdrage: null,
+      },
+    ],
+  },
 };
 
 const nothing = {
@@ -15,6 +39,62 @@ const nothing = {
   name: 'toetsingsinkomen',
   op_moment: '2025-02-01',
   outcome: { not_established: { reason: "cel 'belastingdienst' heeft hierover niets vastgelegd" } },
+  reductie: {
+    vorm: {
+      soort: 'kroniekfilter',
+      chronicle: 'aanslagen',
+      key: 'bsn',
+      key_value: '999993653',
+      where: {},
+      regel: { regel: 'laatste' },
+      op_moment: '2025-02-01',
+    },
+    grammen: [],
+    gemist: { in_de_stroom: 2, na_het_moment: 0, andere_sleutel: 2, buiten_de_voorwaarden: 0 },
+  },
+};
+
+// Een wetsvorm: de engine rekende, en per input staat erbij waar hij vandaan
+// kwam — de een uit de vraag, de ander uit een eigen kroniek met het gram dat
+// hem droeg.
+const berekend = {
+  cell: 'toeslagen',
+  name: 'zorgtoeslag_rechtstoestand',
+  op_moment: '2025-02-01',
+  outcome: { established: { heeft_recht_op_zorgtoeslag: true } },
+  reductie: {
+    vorm: {
+      soort: 'wetsvorm',
+      regulation: 'wet_op_de_zorgtoeslag',
+      regulation_valid_from: '2025-01-01',
+      output: 'heeft_recht_op_zorgtoeslag',
+      inputs: [
+        { name: 'bsn', herkomst: { herkomst: 'parameter', parameter: 'bsn' } },
+        {
+          name: 'verzamelinkomen',
+          herkomst: {
+            herkomst: 'eigen_kroniek',
+            chronicle: 'inkomensleveringen',
+            gram: 'toeslagen|inkomensleveringen|0',
+          },
+        },
+      ],
+      op_moment: '2025-02-01',
+    },
+    grammen: [
+      {
+        cell: 'toeslagen',
+        chronicle: 'inkomensleveringen',
+        id: 'toeslagen|inkomensleveringen|0',
+        kind: 'lexogram',
+        name: 'inkomenslevering',
+        volgnummer: 0,
+        op_moment: '2024-11-15',
+        regulation_valid_from: null,
+        bijdrage: null,
+      },
+    ],
+  },
 };
 
 function mountPanel(answer) {
@@ -141,7 +221,9 @@ describe('een vraag aan een cel', () => {
     await submit(wrapper);
     expect(wrapper.text()).toContain('belastingdienst · toetsingsinkomen');
     expect(wrapper.text()).toContain('geldig op 01-02-2025');
-    const rows = wrapper.findAll('nldd-list-item');
+    // De rijen van het antwoord zelf; de uitleg eronder staat in haar eigen
+    // lijst (zie hieronder).
+    const rows = wrapper.findAll('nldd-list:not([type="tree"]) nldd-list-item');
     expect(rows).toHaveLength(2);
     const values = wrapper.findAll('nldd-text-cell').map((cell) => cell.attributes('text'));
     expect(values).toContain('Toetsingsinkomen');
@@ -158,7 +240,7 @@ describe('een vraag aan een cel', () => {
     expect(answer.attributes('variant')).toBeUndefined();
     expect(answer.attributes('icon')).toBe('info');
     expect(answer.attributes('supporting-text')).toContain('niets vastgelegd');
-    expect(wrapper.findAll('nldd-list-item')).toHaveLength(0);
+    expect(wrapper.findAll('nldd-list:not([type="tree"]) nldd-list-item')).toHaveLength(0);
   });
 
   it('laat een parameter toevoegen en weglaten', async () => {
@@ -168,5 +250,88 @@ describe('een vraag aan een cel', () => {
     expect(wrapper.findAll('nldd-text-field')).toHaveLength(4);
     await wrapper.findAll('nldd-icon-button')[0].trigger('click');
     expect(wrapper.findAll('nldd-text-field')).toHaveLength(2);
+  });
+});
+
+describe('hoe het antwoord tot stand kwam', () => {
+  /** De regel van de uitklap: de enige `nldd-list-item` die geen kind is. */
+  function disclosure(wrapper) {
+    return wrapper.find('nldd-list[type="tree"] > nldd-list-item');
+  }
+
+  /** De rijen ín de uitklap. */
+  function children(wrapper) {
+    return wrapper.findAll('nldd-list-item[slot="children"]');
+  }
+
+  it('zet de regel onder het antwoord, dichtgeklapt', async () => {
+    const { wrapper } = mountPanel(established);
+    expect(disclosure(wrapper).exists()).toBe(false);
+
+    await submit(wrapper);
+
+    const row = disclosure(wrapper);
+    expect(row.exists()).toBe(true);
+    const cell = row.find('nldd-text-cell');
+    expect(cell.attributes('text')).toBe('Zo is dit vastgesteld');
+    expect(cell.attributes('supporting-text')).toBe(
+      "laatste vastlegging in kroniek 'aanslagen' met bsn '999993653' op of vóór 01-02-2025",
+    );
+    // Dicht: de uitkomst is waar de vraag over ging.
+    expect(row.attributes('expanded')).toBeUndefined();
+    expect(children(wrapper)).toHaveLength(0);
+  });
+
+  it('toont na uitklappen het gelezen gram, en brengt de bezoeker erheen', async () => {
+    const { wrapper } = mountPanel(established);
+    await submit(wrapper);
+    await disclosure(wrapper).trigger('click');
+
+    const rows = children(wrapper);
+    expect(rows).toHaveLength(1);
+    const texts = rows[0].findAll('nldd-text-cell').map((cell) => cell.attributes('text'));
+    expect(texts).toContain('01-12-2024');
+    expect(texts).toContain('aanslag_herzien');
+
+    await rows[0].trigger('click');
+    expect(wrapper.emitted('show-gram')).toStrictEqual([['belastingdienst|aanslagen|1']]);
+  });
+
+  it('zegt bij niets vastgesteld wat er gezocht is en wat er wél lag', async () => {
+    const { wrapper } = mountPanel(nothing);
+    await submit(wrapper);
+    await disclosure(wrapper).trigger('click');
+
+    const rows = children(wrapper);
+    expect(rows).toHaveLength(1);
+    const cell = rows[0].find('nldd-text-cell');
+    expect(cell.attributes('text')).toBe('Geen gram gelezen');
+    expect(cell.attributes('supporting-text')).toContain('2 over een ander onderwerp');
+  });
+
+  // Een input die uit een eigen kroniek kwam, draagt het gram dat hem droeg.
+  // Alleen zeggen "uit kroniek X" laat de lezer zoeken naar welke vastlegging
+  // dat dan was, terwijl het antwoord het weet.
+  it('brengt de bezoeker van een input uit een kroniek naar het gram dat hem droeg', async () => {
+    const { wrapper } = mountPanel(berekend);
+    await submit(wrapper);
+    await disclosure(wrapper).trigger('click');
+
+    const rijen = children(wrapper);
+    const uitDeVraag = rijen.find((rij) => rij.find('nldd-text-cell').attributes('text') === 'Bsn');
+    expect(uitDeVraag.attributes('button')).toBeUndefined();
+
+    const uitDeKroniek = rijen.find(
+      (rij) => rij.find('nldd-text-cell').attributes('text') === 'Verzamelinkomen',
+    );
+    expect(uitDeKroniek.attributes('button')).toBe('true');
+    await uitDeKroniek.trigger('click');
+    expect(wrapper.emitted('show-gram')).toStrictEqual([['toeslagen|inkomensleveringen|0']]);
+  });
+
+  it('laat de uitklap weg als het antwoord niet zegt hoe het tot stand kwam', async () => {
+    const { wrapper } = mountPanel({ ...established, reductie: null });
+    await submit(wrapper);
+    expect(disclosure(wrapper).exists()).toBe(false);
   });
 });
