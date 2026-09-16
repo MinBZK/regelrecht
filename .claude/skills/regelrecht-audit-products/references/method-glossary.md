@@ -26,6 +26,8 @@ De gedeelde taal van alle audit- en workshop-producten. Generiek: vul de
 | **Untranslatable** | Wettekst die bewust níet in een formule zit (menselijk oordeel) |
 | **Override** | Een andere regeling vervangt jouw formule/waarde |
 | **legal_basis** | De juridische grondslag onder een regel + per-formule wettekst-quote |
+| **Traject** | De werkeenheid: één vertaling in wording, met een eigen branch, corpus, notities, taken en leden |
+| **Claim** | Een interpretatiekeuze in de vorm waarin zij telt: wat, door wie, grond, alternatief, bevoegde, termijn |
 
 ## Definities
 
@@ -75,9 +77,24 @@ Waar berust deze regel op (welke wet, welk artikel), en — per formule — de
 letterlijke wettekst-quote die de formule dekt (`legal_basis.explanation`). Dit is
 wat je voorleest tijdens een walk-through: *"De YAML zegt: '{quote}'. Klopt dat?"*
 
+### Traject — de werkeenheid
+Eén vertaling in wording. In de editor: een eigen branch, een eigen corpus-configuratie met
+één schrijfbare bron, een annotaties-sidecar, taken, één gedeelde pull request, en leden met
+een rol. In de methode: de plek waar een wet machine-leesbaar wordt en de keuzes onderweg
+worden vastgelegd en bekrachtigd. Het ritme daarvan — werkronde, uitspraak, verwerken,
+mijlpaal — staat in `regelrecht-traject`. *Niet* te verwarren met het bronnen-dossier (de map
+met brondocumenten) of het feitendossier van een zaak.
+
+### Claim — een keuze die telt
+Een interpretatiekeuze is pas een claim als zij zes vragen beantwoordt: wat, door wie, op
+welke grond, wanneer, wie moet erover spreken, vóór wanneer — mét het verworpen alternatief.
+Zij woont als stand-off notitie bij de tekst en doorloopt vier standen (voorgesteld →
+tijdelijk vastgesteld → uitgesproken → bewaakt), elk gezet door een andere actor. In een
+sessie is de agenda de lijst claims die op een uitspraak wachten. Vorm: `regelrecht-verantwoording`.
+
 ## Stelsel-lagen (voor scope-analyse)
 
-Dossiers vallen vaak in lagen. Generiek patroon:
+Trajecten vallen vaak in lagen. Generiek patroon:
 - **Laag A — grondslag**: de formele wet die delegeert (vaak niet zelf
   machine-leesbaar, alleen `legal_basis`-doel).
 - **Laag B — uitwerking**: lagere regeling(en) waar de kern-berekening leeft.

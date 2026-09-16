@@ -122,7 +122,21 @@ Additionally:
 
 This helps the user understand what additional work is needed for full execution.
 
-## Step 6: Final Report
+## Step 6: Hand over the claims, not a count
+
+Reverse validation produces two things, and only one of them used to survive: the YAML, and
+the interpretation choices made to get there. The second was a number in the report below —
+"Assumptions: N" — and a number cannot be challenged, assigned to anyone, or closed.
+
+Before reporting, make sure every assumption from step 4 is recorded as a claim in the form
+`regelrecht-verantwoording` defines, in state `voorgesteld`. Then name them individually in
+the report: each one carries who is competent to confirm it, so the next reader knows who to
+ask rather than that there were seven of something.
+
+A run that produces an executable specification and no claims is not finished — it is a run
+whose choices went undocumented. Skipping is allowed; skipping silently is not.
+
+## Step 7: Final Report
 
 Combine results from all phases into a single report:
 
@@ -143,8 +157,10 @@ Interpreted {LAW_NAME}
 
   Reverse validation:
   - Fully grounded: {N} articles
-  - Assumptions: {N} (see details above)
   - Elements removed: {N}
+  - Claims recorded (state: voorgesteld): {N}
+      - {what was assumed} → competent: {who must confirm}
+      - ...
 
   Remaining issues:
   - {description of any unresolved failures}
