@@ -2234,6 +2234,24 @@ impl LawExecutionService {
                 }
             }
         }
+        // A voided hook output has no value, so the two merges above never
+        // reach it: they walk the values a hook produced, and this name is
+        // absent from those by construction. Carrying it here is what lets a
+        // receipt say the co-product was excluded, on this ground, rather than
+        // leaving it indistinguishable from one that was never computed. A
+        // name the article itself produced keeps its own provenance.
+        for (name, prov) in post_hook_provenance
+            .iter()
+            .chain(pre_hook_provenance.iter())
+        {
+            if matches!(prov, OutputProvenance::Voided { .. }) && !result.outputs.contains_key(name)
+            {
+                result
+                    .output_provenance
+                    .entry(name.clone())
+                    .or_insert_with(|| prov.clone());
+            }
+        }
 
         // Apply lex specialis overrides
         self.apply_overrides(&mut result, article, law, &post_params, res_ctx)?;
@@ -6936,6 +6954,115 @@ articles:
             },
             Ok(r) => panic!("traced: a voided entitlement yielded {:?}", r.outputs),
             Err(other) => panic!("traced: expected a traced OutputVoided, got {other:?}"),
+        }
+    }
+
+    /// A hook's voided co-product keeps its ground on the way out.
+    ///
+    /// A hook fires inside another law's evaluation and its outputs are merged
+    /// into that law's result. The merge walks the produced values, and a
+    /// voided output is by construction not among them, so its ground was
+    /// carried over inside `fire_hooks` and then dropped again at the merge.
+    /// The caller saw a co-product that was simply absent: no value, no
+    /// provenance, nothing a receipt could point at.
+    ///
+    /// This is reachable precisely because an intra-law override now applies
+    /// whatever the contextual law is. Inside a hook the contextual law is the
+    /// triggering law, so under the old scoping the hook law's own override
+    /// never fired here at all.
+    ///
+    /// The requested output is unaffected: a hook co-product is never itself a
+    /// requestable output of the triggering law, so the top-level check does
+    /// not cover this. AWB 1:3 treats the beschikking as indivisible, which is
+    /// why the co-product has to be accounted for rather than quietly missing.
+    #[test]
+    fn a_hook_that_voids_its_own_output_still_reports_the_ground() {
+        // The triggering law produces a BESCHIKKING, which is what the hook
+        // attaches to.
+        let triggering = r#"
+$id: hook_void_trigger_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het bestuursorgaan stelt het bedrag vast.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 100
+"#;
+        // The hook law produces a co-product and voids it in the same law.
+        let hook_law = r#"
+$id: hook_void_hook_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Bij de beschikking wordt een toeslag vastgesteld.
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: BESLUIT
+      execution:
+        output:
+          - name: toeslag
+            type: number
+        actions:
+          - output: toeslag
+            value: 42
+  - number: '2'
+    text: In afwijking van artikel 1 bestaat geen aanspraak op de toeslag.
+    machine_readable:
+      overrides:
+        - law: hook_void_hook_law
+          article: '1'
+          output: toeslag
+          voids: true
+          legal_text_excerpt: bestaat geen aanspraak op de toeslag
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(triggering).unwrap();
+        service.load_law(hook_law).unwrap();
+
+        let result = service
+            .evaluate_law_output(
+                "hook_void_trigger_law",
+                "bedrag",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .expect("the requested output is not the voided one");
+
+        // The co-product carries no value, which was already true.
+        assert_eq!(
+            result.outputs.get("toeslag"),
+            None,
+            "a voided co-product must not carry a value"
+        );
+
+        // What this test is about: the ground survives the merge. Before this
+        // fix the name was absent from the provenance too, so nothing recorded
+        // that the toeslag was excluded rather than never computed.
+        match result.output_provenance.get("toeslag") {
+            Some(OutputProvenance::Voided { grounds, .. }) => {
+                assert_eq!(
+                    grounds.as_deref(),
+                    Some("bestaat geen aanspraak op de toeslag")
+                );
+            }
+            Some(other) => panic!("expected Voided provenance, got {other:?}"),
+            None => panic!(
+                "the voided co-product lost its ground: provenance holds {:?}",
+                result.output_provenance.keys().collect::<Vec<_>>()
+            ),
         }
     }
 
