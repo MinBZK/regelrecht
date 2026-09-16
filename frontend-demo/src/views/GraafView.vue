@@ -257,7 +257,12 @@ function unique(laws) {
             <nldd-icon-button icon="add" text="Inzoomen" @click="zoomIn()"></nldd-icon-button>
             <nldd-icon-button icon="remove" text="Uitzoomen" @click="zoomOut()"></nldd-icon-button>
             <nldd-button-bar-divider></nldd-button-bar-divider>
-            <nldd-icon-button icon="fit-to-view" text="Alles in beeld" @click="fitView({ padding: 0.1 })"></nldd-icon-button>
+            <!-- `refit()`, niet een kale `fitView()`: die laatste past ook de
+                 verborgen wetten in beeld en zoomde dus verder uit dan nodig.
+                 Doet nu hetzelfde als "Passend maken" in de werkbalk; die staat
+                 er voor wie de balk leest, deze voor wie in het canvas bezig is
+                 en zijn hand bij de zoomknoppen heeft. -->
+            <nldd-icon-button icon="fit-to-view" text="Alles in beeld" @click="refit()"></nldd-icon-button>
           </nldd-button-bar>
         </div>
       </nldd-page>
