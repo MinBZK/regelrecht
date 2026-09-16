@@ -254,15 +254,22 @@ test.describe('publieke wereld', () => {
     // de sleutel draagt de vorm die de besluiten van deze cel eraan geven, en
     // de zaken die er al liggen zijn te kiezen. Zonder dat alles is het veld
     // een lege regel waar alleen iemand die de wereld kent iets in krijgt.
-    await expect(s.lexostatusForm().locator('nldd-inline-dialog').first()).toHaveAttribute(
-      'supporting-text',
-      /wat deze cel over deze zaak besloten heeft/i,
-    );
+
+    // Op de toelichting van déze definitie en niet op "de eerste uitklap in het
+    // formulier": een tweede uitklap erbij zou de check stil over iets anders
+    // laten gaan.
+    await expect(
+      s.lexostatusForm().locator('nldd-inline-dialog[text="zorgtoeslagbeschikking"]'),
+    ).toHaveAttribute('supporting-text', /wat deze cel over deze zaak besloten heeft/i);
     await expect(s.lexostatusField('zaakkenmerk')).toHaveAttribute(
       'supporting-label',
       /sleutel van kroniek 'beschikkingen'.*zorgtoeslag\/\{bsn\}/,
     );
-    expect(await s.lexostatusOptions('zaakkenmerk')).toContain(`zorgtoeslag/${BSN}`);
+    // `poll` en geen kale lezing: de keuzelijst is een momentopname van de DOM,
+    // en die leest zichzelf niet opnieuw als het formulier nog hertekent.
+    await expect
+      .poll(async () => await s.lexostatusOptions('zaakkenmerk'))
+      .toContain(`zorgtoeslag/${BSN}`);
   });
 
   test('G1: het grammen-tabblad toont alle grammen', async () => {

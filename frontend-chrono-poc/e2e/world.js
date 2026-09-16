@@ -186,12 +186,18 @@ function session(context, page, pageErrors) {
   /**
    * Het formulier van het tabblad Lexostatus.
    *
-   * Het enige formulier op dat tabblad, en alles wat er staat komt uit de
-   * gekozen definitie. De keuzelijsten van de instellingen staan in dezelfde
-   * boom maar erbuiten; daarom telt alles hieronder binnen dít formulier, en
-   * niet "de eerste keuzelijst van de pagina".
+   * Alles wat er staat komt uit de gekozen definitie, en de keuzelijsten van de
+   * instellingen staan in dezelfde boom maar erbuiten; daarom telt alles
+   * hieronder binnen dít formulier en niet "de eerste keuzelijst van de pagina".
+   *
+   * Gezocht op het veld dat alleen dit formulier heeft — het moment van de vraag
+   * — en niet op "het eerste formulier van de pagina": de acties en de
+   * instellingen hebben er ook een, en welk daarvan het eerste is hangt aan het
+   * tabblad dat openstaat. Zo wacht een greep op een tabblad dat nog aan het
+   * wisselen is, in plaats van stilzwijgend een ander formulier in te vullen.
    */
-  const lexostatusForm = () => page.locator('form').first();
+  const lexostatusForm = () =>
+    page.locator('form', { has: page.locator('input[aria-label="Op moment"]') });
 
   /**
    * Het veld van één parameter, als de omringende `nldd-form-field`.
@@ -238,6 +244,11 @@ function session(context, page, pageErrors) {
       const veld = lexostatusField(param).locator('input');
       await veld.click();
       await veld.press('ControlOrMeta+a');
+      // Wissen met een echte toets, en niet door er niets overheen te typen:
+      // een lege waarde is een eigen vraag — die zonder deze parameter. Bleef
+      // de selectie staan, dan ging die vraag stilzwijgend over wat er nog
+      // stond, en een check die dat beweert zou groen zijn om het verkeerde.
+      await veld.press('Delete');
       await veld.pressSequentially(String(value));
       await page.keyboard.press('Escape');
     }
@@ -246,7 +257,10 @@ function session(context, page, pageErrors) {
       await veld.fill(moment);
       await veld.press('Tab');
     }
-    await page.getByText('Vraag stellen').first().click();
+    // De knop draagt haar tekst in een attribuut en niet als kindtekst (zie de
+    // annuleerknop in de bewijsronde), en ze hoort bij dit formulier: op de hele
+    // pagina zoeken vindt net zo goed een knop van een ander paneel.
+    await lexostatusForm().locator('nldd-button[text="Vraag stellen"]').click();
   };
 
   return {
