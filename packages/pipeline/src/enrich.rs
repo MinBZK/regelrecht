@@ -3402,16 +3402,25 @@ pub(crate) const CHUNK_NO_OUTPUT_MARKER: &str = "enrichment chunk produced no re
 /// one number. Findings and markings are recorded side by side, because a
 /// falling finding count bought by declaring more of the law unmodellable is
 /// the opposite outcome from one bought by translating it.
+///
+/// `window` is the articles this run is about, and it is passed in rather than
+/// read off `payload`. A queue payload never carries one: the worker writes
+/// `chunk_articles: None` and the windowed copy exists only inside the branch
+/// that runs the agent. Reading it from the payload therefore narrowed nothing
+/// on any real job, and handed the gate the whole law while the run had a
+/// window. `None` means the whole law, which is what a run without a window is.
 async fn run_feedback_rounds(
     gate: Gate,
     yaml_abs: &Path,
+    // The corpus checkout. Every caller passed this same path twice, once as
+    // the root the gate reads the law against and once as the path the runner
+    // works in; they are the same directory and now one parameter.
     corpus_root: &Path,
     payload: &EnrichPayload,
-    repo_path: &Path,
+    window: Option<&[String]>,
     config: &EnrichConfig,
     runner: &dyn LlmRunner,
 ) -> Result<GateFeedback> {
-    let window = payload.chunk_articles.as_deref();
     let reading = evaluate_gate(gate, yaml_abs, corpus_root, window).await?;
     let mut findings = reading.answerable;
     if !reading.outside_corpus.is_empty() {
@@ -3457,7 +3466,7 @@ async fn run_feedback_rounds(
             ..payload.clone()
         };
         runner
-            .run(&feedback_payload, yaml_abs, repo_path, config)
+            .run(&feedback_payload, yaml_abs, corpus_root, config)
             .await?;
 
         let reading = evaluate_gate(gate, yaml_abs, corpus_root, window).await?;
@@ -3714,7 +3723,9 @@ async fn run_closing_reconcile(
         yaml_abs,
         corpus_root,
         payload,
-        corpus_root,
+        // The closing pass runs once the last window has been walked, so it is
+        // about the whole law by construction.
+        None,
         config,
         runner,
     )
@@ -4358,12 +4369,27 @@ pub async fn execute_enrich_with_runner(
     // would report noise over a broken tree; the marking gate last, because
     // the round before it produces markings and this one is about where they
     // landed.
+    // What this run was about, for the gates to judge. A gate that reports on
+    // articles the run never touched blames this job for someone else's
+    // defect, which is the same reason `file_changed_this_run` guards the
+    // block below.
+    let gate_window: Option<Vec<String>> = chunk_window
+        .as_ref()
+        .map(|(_, numbers)| numbers.clone())
+        .filter(|numbers| !numbers.is_empty());
+
     let mut feedback = Vec::new();
     if file_changed_this_run {
         for gate in Gate::ALL {
             feedback.push(
                 run_feedback_rounds(
-                    gate, &yaml_abs, repo_path, payload, repo_path, config, runner,
+                    gate,
+                    &yaml_abs,
+                    repo_path,
+                    payload,
+                    gate_window.as_deref(),
+                    config,
+                    runner,
                 )
                 .await?,
             );
@@ -4407,7 +4433,7 @@ pub async fn execute_enrich_with_runner(
             &yaml_abs,
             repo_path,
             payload,
-            repo_path,
+            gate_window.as_deref(),
             config,
             runner,
         )
@@ -6219,7 +6245,7 @@ articles:
             &path,
             dir.path(),
             &payload,
-            dir.path(),
+            None,
             &config,
             &runner,
         )
@@ -6309,7 +6335,7 @@ articles:
             &path,
             dir.path(),
             &payload,
-            dir.path(),
+            None,
             &config,
             &runner,
         )
@@ -6378,7 +6404,7 @@ articles:
             &path,
             dir.path(),
             &payload,
-            dir.path(),
+            None,
             &config,
             &runner,
         )
@@ -6437,7 +6463,7 @@ articles:
             &path,
             dir.path(),
             &payload,
-            dir.path(),
+            None,
             &config,
             &runner,
         )
@@ -6471,7 +6497,7 @@ articles:
             &path,
             dir.path(),
             &payload,
-            dir.path(),
+            None,
             &config,
             &runner,
         )
@@ -6481,6 +6507,69 @@ articles:
         assert_eq!(progress.findings_initial, 0);
         assert!(progress.rounds.is_empty());
         assert_eq!(*runner.calls.lock().unwrap(), 0);
+    }
+
+    /// The window a run was given reaches the gate that judges it.
+    ///
+    /// This is about the wiring, not about `in_window`, which had a test of
+    /// its own and was never the broken part. The window used to be read off
+    /// `payload.chunk_articles`, and a queue payload never carries one: the
+    /// worker writes `None` and the windowed copy exists only inside the
+    /// branch that runs the agent. So on every real job the gate was handed
+    /// the whole law while the run was about three articles, and reported
+    /// findings the agent was under orders not to touch.
+    ///
+    /// Measured on the payload as the queue delivers it, which is the shape
+    /// that was wrong. A test that builds its own windowed payload would have
+    /// passed throughout.
+    #[tokio::test]
+    async fn the_window_a_run_was_given_reaches_the_gate() {
+        let (dir, path) = silent_law_on_disk(3).await;
+        let config = rounds_config(FeedbackRounds::uniform(0));
+        let runner = MarkingRunner {
+            calls: std::sync::Mutex::new(0),
+        };
+        // Exactly what the worker enqueues: chunk_articles is None.
+        let payload = chunk_test_payload("regulation/nl/wet/test_law/2025-01-01.yaml");
+        assert!(
+            payload.chunk_articles.is_none(),
+            "the queue payload carries no window; that is the premise"
+        );
+
+        let whole_law = run_feedback_rounds(
+            Gate::Marking,
+            &path,
+            dir.path(),
+            &payload,
+            None,
+            &config,
+            &runner,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            whole_law.findings_initial, 3,
+            "all three articles are silent"
+        );
+
+        // The same job, now told which article it is about.
+        let window = vec!["2".to_string()];
+        let windowed = run_feedback_rounds(
+            Gate::Marking,
+            &path,
+            dir.path(),
+            &payload,
+            Some(&window),
+            &config,
+            &runner,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            windowed.findings_initial, 1,
+            "only the article this run is about, got {:?}",
+            windowed.findings_initial
+        );
     }
 
     // ---- one session per window -----------------------------------------
@@ -6745,7 +6834,7 @@ articles:
             &path,
             dir.path(),
             &payload,
-            dir.path(),
+            None,
             &config,
             &runner,
         )

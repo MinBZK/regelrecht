@@ -676,21 +676,37 @@ impl CorpusClient {
         if self.config.sparse_paths.is_none() || bwb_ids.is_empty() {
             return Ok(Vec::new());
         }
-        let listing = self
-            .run_git_output(&["ls-tree", "-r", "--name-only", "HEAD"])
-            .await?;
-
-        // One law per directory, so the directory of any file naming the BWB
-        // number is the tree to add. Matching on the path keeps this cheap:
-        // the harvester names the directory after the law, and a number that
-        // appears in no path is a citation outside this corpus, which the
-        // brief already reports honestly.
+        // The number lives inside the file, as `bwb_id:`, and never in the
+        // path: the harvester names the directory after the law's title
+        // (`to_slug`), so on the real corpus not one of the paths carries a
+        // BWBR number while 32 of the files do. Matching on the path found
+        // nothing, every time, and the widening it was supposed to do never
+        // happened.
+        //
+        // `git grep` against HEAD reads the object database rather than the
+        // working tree, which is what makes this work at all here: under a
+        // sparse checkout the files this has to search are precisely the ones
+        // not on disk. One law per directory, so the directory of the file
+        // that names the number is the tree to add. A number no file declares
+        // is a citation outside this corpus, which the brief already reports
+        // honestly.
         let mut dirs: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-        for line in listing.lines() {
-            let lower = line.to_lowercase();
-            if let Some(bwb) = bwb_ids.iter().find(|b| lower.contains(&b.to_lowercase())) {
-                let _ = bwb;
-                if let Some((dir, _)) = line.rsplit_once('/') {
+        for bwb in bwb_ids {
+            let pattern = format!("bwb_id: {bwb}");
+            let hits = match self
+                .run_git_output(&["grep", "-l", "-F", &pattern, "HEAD"])
+                .await
+            {
+                Ok(hits) => hits,
+                // `git grep` exits 1 when nothing matches, which is an answer
+                // and not a failure. A law this corpus does not carry is the
+                // ordinary case.
+                Err(_) => continue,
+            };
+            for line in hits.lines() {
+                // `git grep <tree>` prefixes every path with `HEAD:`.
+                let path = line.strip_prefix("HEAD:").unwrap_or(line);
+                if let Some((dir, _)) = path.rsplit_once('/') {
                     dirs.insert(dir.to_string());
                 }
             }
@@ -1523,6 +1539,141 @@ mod tests {
         assert!(!repo_path
             .join("regulation/nl/wet/law_b/2025-01-01.yaml")
             .exists());
+    }
+
+    /// A bare repo shaped like the real corpus: the directory is named after
+    /// the law's title, and the BWB number appears only inside the file.
+    async fn setup_corpus_named_by_title(dir: &Path) -> PathBuf {
+        let bare_path = dir.join("titled.git");
+        Command::new("git")
+            .args([
+                "-c",
+                "init.templateDir=",
+                "init",
+                "--bare",
+                "--initial-branch=development",
+            ])
+            .arg(&bare_path)
+            .output()
+            .await
+            .unwrap();
+
+        let tmp_clone = dir.join("titled-clone");
+        let bare_url = format!("file://{}", bare_path.display());
+        Command::new("git")
+            .args(["-c", "init.templateDir=", "clone", &bare_url])
+            .arg(&tmp_clone)
+            .output()
+            .await
+            .unwrap();
+        for args in [
+            vec!["config", "user.name", "test"],
+            vec!["config", "user.email", "test@test.nl"],
+        ] {
+            Command::new("git")
+                .args(&args)
+                .current_dir(&tmp_clone)
+                .output()
+                .await
+                .unwrap();
+        }
+
+        for (slug, bwb) in [
+            ("wet_op_de_testtoeslag", "BWBR0000111"),
+            ("wet_op_het_andere", "BWBR0000222"),
+        ] {
+            let law_dir = tmp_clone.join("regulation/nl/wet").join(slug);
+            tokio::fs::create_dir_all(&law_dir).await.unwrap();
+            tokio::fs::write(
+                law_dir.join("2025-01-01.yaml"),
+                format!("$id: {slug}\nbwb_id: {bwb}\n"),
+            )
+            .await
+            .unwrap();
+        }
+
+        for args in [
+            vec!["add", "."],
+            vec!["commit", "-m", "corpus named by title"],
+            vec!["push", "origin", "development"],
+        ] {
+            Command::new("git")
+                .args(&args)
+                .current_dir(&tmp_clone)
+                .output()
+                .await
+                .unwrap();
+        }
+        bare_path
+    }
+
+    /// Widening finds a law whose number appears nowhere in its path.
+    ///
+    /// This used to match the BWB number against `git ls-tree` output, which
+    /// is a list of paths. The harvester names a directory after the law's
+    /// title, so on the real corpus zero of the paths carry a BWBR number
+    /// while 32 of the files declare one. The widening therefore returned an
+    /// empty list on every job, and the cited law stayed outside the checkout
+    /// exactly as before the feature existed.
+    ///
+    /// The fixture reproduces that shape: directories named `wet_op_de_*`,
+    /// numbers only inside the files.
+    #[tokio::test]
+    async fn widening_finds_a_law_whose_number_is_only_inside_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let bare_path = setup_corpus_named_by_title(dir.path()).await;
+        let bare_url = format!("file://{}", bare_path.display());
+        let repo_path = dir.path().join("sparse-corpus");
+
+        let mut config = CorpusConfig::new(&bare_url, &repo_path);
+        config.sparse_paths = Some(vec!["regulation/nl/wet/wet_op_de_testtoeslag".to_string()]);
+        let mut client = CorpusClient::new(config);
+        client.ensure_repo().await.unwrap();
+
+        let cited = repo_path.join("regulation/nl/wet/wet_op_het_andere/2025-01-01.yaml");
+        assert!(
+            !cited.exists(),
+            "the cited law starts outside the checkout; that is the premise"
+        );
+
+        let added = client
+            .widen_to_laws(&["BWBR0000222".to_string()])
+            .await
+            .unwrap();
+
+        assert_eq!(
+            added,
+            vec!["regulation/nl/wet/wet_op_het_andere".to_string()],
+            "the directory carrying that number must be added"
+        );
+        assert!(
+            cited.exists(),
+            "and the law must now be on disk for the brief to read"
+        );
+    }
+
+    /// A number this corpus does not carry widens nothing and is not an error.
+    ///
+    /// `git grep` exits 1 when it matches nothing, which is an answer rather
+    /// than a failure: a citation to a law outside this corpus is the ordinary
+    /// case, and the brief reports it honestly on its own.
+    #[tokio::test]
+    async fn widening_on_a_law_outside_the_corpus_adds_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let bare_path = setup_corpus_named_by_title(dir.path()).await;
+        let bare_url = format!("file://{}", bare_path.display());
+        let repo_path = dir.path().join("sparse-corpus");
+
+        let mut config = CorpusConfig::new(&bare_url, &repo_path);
+        config.sparse_paths = Some(vec!["regulation/nl/wet/wet_op_de_testtoeslag".to_string()]);
+        let mut client = CorpusClient::new(config);
+        client.ensure_repo().await.unwrap();
+
+        let added = client
+            .widen_to_laws(&["BWBR9999999".to_string()])
+            .await
+            .unwrap();
+        assert!(added.is_empty(), "nothing to add, and no error");
     }
 
     #[tokio::test]
