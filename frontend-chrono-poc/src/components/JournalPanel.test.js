@@ -2,6 +2,7 @@ import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 import JournalPanel from './JournalPanel.vue';
 import { cloneWorld, worldFixture } from '../testing/worldFixture.js';
+import { humanize } from '../world/format.js';
 
 // Het journaal op de fixture van de simulator zelf: het beeld dat de wereld
 // geeft, niet een verzonnen exemplaar. Verschuift het contract, dan valt deze
@@ -87,6 +88,58 @@ describe('het journaal', () => {
 
     const gramRij = children(wrapper).find((item) => texts(item).includes(besluit.grams[0].name));
     expect(texts(gramRij).some((tekst) => tekst.startsWith('zaak zorgtoeslag/'))).toBe(true);
+  });
+
+  it('zet onder een besluit welk recht er uitgevoerd is, met inputs en uitkomsten', async () => {
+    const wrapper = mountPanel();
+    const besluit = worldFixture.journal.find((entry) => entry.kind === 'besluit');
+    await rows(wrapper)[besluit.seq].trigger('click');
+    const uitklap = children(wrapper).map((item) => texts(item).join(' | '));
+
+    // Welke regelingen er gedraaid hebben, en in welke versie.
+    const uitgevoerd = uitklap.find((regel) => regel.includes('Uitgevoerd'));
+    expect(uitgevoerd).toBeTruthy();
+    for (const regeling of besluit.executed.regulations) {
+      expect(uitgevoerd).toContain(regeling.regulation);
+    }
+
+    // Waarop er gerekend is en wat eruit kwam, elk in een eigen tabel.
+    const tabellen = wrapper.findAll('nldd-table');
+    expect(tabellen).toHaveLength(2);
+    const inputs = texts(tabellen[0]).join(' | ');
+    for (const input of besluit.executed.inputs) expect(inputs).toContain(humanize(input.name));
+    // De geaccepteerde waarde hoort niet op een berekende te lijken.
+    expect(inputs).toContain('geaccepteerd van cel');
+    const uitkomsten = texts(tabellen[1]).join(' | ');
+    for (const output of besluit.executed.outputs) {
+      expect(uitkomsten).toContain(humanize(output.name));
+    }
+  });
+
+  it('brengt een geaccepteerde waarde naar de vraag-regel waarlangs ze binnenkwam', async () => {
+    const wrapper = mountPanel();
+    const besluit = worldFixture.journal.find((entry) => entry.kind === 'besluit');
+    const vraag = worldFixture.journal.find((entry) => entry.parent === besluit.seq);
+    await rows(wrapper)[besluit.seq].trigger('click');
+
+    const naarDeVraag = wrapper
+      .findAll('nldd-button')
+      .find((button) => button.attributes('text') === 'Naar de vraag');
+    expect(naarDeVraag).toBeTruthy();
+
+    // Zolang alleen het besluit openstaat, staat de uitleg van het antwoord er
+    // niet: zonder dat bewijst de klik hieronder niets.
+    const gesloten = children(wrapper).map((item) => texts(item).join(' | '));
+    expect(gesloten.some((regel) => regel.includes('Zo is dit vastgesteld'))).toBe(false);
+
+    await naarDeVraag.trigger('click');
+
+    // De vraag-regel staat open en draagt het antwoord van de andere cel, met de
+    // uitleg waarop het berust.
+    const uitklap = children(wrapper).map((item) => texts(item).join(' | '));
+    expect(uitklap.some((regel) => regel.includes('geldig op'))).toBe(true);
+    expect(vraag.question.answer.reductie).toBeTruthy();
+    expect(uitklap.some((regel) => regel.includes('Zo is dit vastgesteld'))).toBe(true);
   });
 
   it('opent het gram achter een regel, zoals de cel het in haar kroniek toont', async () => {

@@ -1524,6 +1524,7 @@
         }
       ],
       "accepted": [],
+      "executed": null,
       "question": null,
       "parent": null
     },
@@ -1566,6 +1567,65 @@
           "op_moment": "2024-04-01"
         }
       ],
+      "executed": {
+        "regulations": [
+          {
+            "regulation": "wet_op_de_zorgtoeslag",
+            "valid_from": "2024-01-01"
+          },
+          {
+            "regulation": "algemene_wet_inkomensafhankelijke_regelingen",
+            "valid_from": null
+          },
+          {
+            "regulation": "regeling_standaardpremie",
+            "valid_from": "2024-01-01"
+          }
+        ],
+        "inputs": [
+          {
+            "name": "bsn",
+            "value": "999993653",
+            "herkomst": {
+              "herkomst": "parameter",
+              "parameter": "bsn"
+            }
+          },
+          {
+            "name": "is_verzekerde",
+            "value": true,
+            "herkomst": {
+              "chronicle": "inkomensleveringen",
+              "field": "is_verzekerde",
+              "herkomst": "eigen_kroniek",
+              "op_moment": "2023-11-15"
+            }
+          },
+          {
+            "name": "toetsingsinkomen",
+            "value": 81000,
+            "herkomst": {
+              "asked_by": "cel:toeslagen",
+              "cell": "belastingdienst",
+              "field": "toetsingsinkomen",
+              "herkomst": "geaccepteerd",
+              "lexostatus": "toetsingsinkomen",
+              "op_moment": "2024-04-01",
+              "signature": "GESIMULEERDE-ONDERTEKENING door cel:toeslagen"
+            }
+          }
+        ],
+        "outputs": [
+          {
+            "name": "heeft_recht_op_zorgtoeslag",
+            "value": true
+          },
+          {
+            "name": "hoogte_zorgtoeslag",
+            "value": 197178.01
+          }
+        ]
+      },
       "question": null,
       "parent": null
     },
@@ -1581,6 +1641,7 @@
       "grams": [],
       "changes": [],
       "accepted": [],
+      "executed": null,
       "question": {
         "asked_by": "cel:toeslagen",
         "signature": "GESIMULEERDE-ONDERTEKENING door cel:toeslagen",
@@ -1672,6 +1733,7 @@
         }
       ],
       "accepted": [],
+      "executed": null,
       "question": null,
       "parent": null
     },
@@ -1724,6 +1786,7 @@
         }
       ],
       "accepted": [],
+      "executed": null,
       "question": null,
       "parent": null
     },
@@ -1776,6 +1839,7 @@
         }
       ],
       "accepted": [],
+      "executed": null,
       "question": null,
       "parent": null
     },
@@ -1821,6 +1885,65 @@
           "op_moment": "2024-12-15"
         }
       ],
+      "executed": {
+        "regulations": [
+          {
+            "regulation": "wet_op_de_zorgtoeslag",
+            "valid_from": "2024-01-01"
+          },
+          {
+            "regulation": "algemene_wet_inkomensafhankelijke_regelingen",
+            "valid_from": null
+          },
+          {
+            "regulation": "regeling_standaardpremie",
+            "valid_from": "2024-01-01"
+          }
+        ],
+        "inputs": [
+          {
+            "name": "bsn",
+            "value": "999993653",
+            "herkomst": {
+              "herkomst": "parameter",
+              "parameter": "bsn"
+            }
+          },
+          {
+            "name": "is_verzekerde",
+            "value": true,
+            "herkomst": {
+              "chronicle": "inkomensleveringen",
+              "field": "is_verzekerde",
+              "herkomst": "eigen_kroniek",
+              "op_moment": "2023-11-15"
+            }
+          },
+          {
+            "name": "toetsingsinkomen",
+            "value": 85000,
+            "herkomst": {
+              "asked_by": "cel:toeslagen",
+              "cell": "belastingdienst",
+              "field": "toetsingsinkomen",
+              "herkomst": "geaccepteerd",
+              "lexostatus": "toetsingsinkomen",
+              "op_moment": "2024-12-15",
+              "signature": "GESIMULEERDE-ONDERTEKENING door cel:toeslagen"
+            }
+          }
+        ],
+        "outputs": [
+          {
+            "name": "heeft_recht_op_zorgtoeslag",
+            "value": true
+          },
+          {
+            "name": "hoogte_zorgtoeslag",
+            "value": 197102.85
+          }
+        ]
+      },
       "question": null,
       "parent": null
     },
@@ -1836,6 +1959,7 @@
       "grams": [],
       "changes": [],
       "accepted": [],
+      "executed": null,
       "question": {
         "asked_by": "cel:toeslagen",
         "signature": "GESIMULEERDE-ONDERTEKENING door cel:toeslagen",
@@ -1931,6 +2055,7 @@
         }
       ],
       "accepted": [],
+      "executed": null,
       "question": null,
       "parent": null
     }

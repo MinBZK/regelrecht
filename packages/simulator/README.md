@@ -1883,12 +1883,39 @@ een vraag die over een celgrens ging.
 | `grams` | verwijzingen naar de grammen die erdoor ontstonden: cel, kroniek, gram-id (`<cel>|<kroniek>|<plek>`) |
 | `changes` | wat er aan de stand van de zaak veranderde, per betrokken cel |
 | `accepted` | de waarden die dit besluit van een andere cel accepteerde |
-| `question` | het contact zelf, bij een `vraag`-regel — dezelfde vorm als in `crossings` |
+| `executed` | bij een `besluit`: wat er uitgevoerd is — zie hieronder |
+| `question` | het contact zelf, bij een `vraag`-regel — dezelfde vorm als in `crossings`, mét het antwoord en de uitleg waarop het berust |
 | `parent` | de regel die deze uitlokte; een cross-cel-vraag hangt onder haar besluit |
 
 Het is **geen tweede administratie**. Een regel wijst naar grammen die in een cel
 liggen en draagt er geen kopie van. Het enige dat er staat en nergens in een gram
 ligt, is het verschil in de stand van de zaak — en dat is een meting.
+
+#### Wat een besluit uitvoerde
+
+Een besluitregel noemt niet alleen dát er besloten is, maar ook wat er gebeurd
+is. `executed` draagt drie dingen, alle drie uit het decretogram waar de regel
+naar wijst:
+
+| veld | wat |
+|---|---|
+| `regulations` | de uitgevoerde regelingen, met de `valid_from` van de versie die op het moment van het besluit gold; de regeling van het besluit vooraan |
+| `inputs` | de waarden waarop gerekend is: naam, waarde, en de herkomst zoals het gram haar opschreef (`parameter`, `eigen_kroniek`, `eerder_besluit`, `geaccepteerd`) |
+| `outputs` | de uitkomsten die het besluit vastlegde: naam en waarde |
+
+`regulations` is méér dan de regeling waarop het besluit gaat: een uitvoering kan
+er meer aanroepen — een uitvoeringsregeling die een bedrag levert, een kaderwet
+die een begrip invult (RFC-007) — en zonder die is niet te zien onder welk recht
+een bedrag tot stand kwam. Het is ook **minder** dan `scope.loaded_regulations`
+uit het receipt: daar staat elke versie in die de cel geladen heeft, ook een
+versie die op dit moment niet gold en een regeling die deze uitvoering niet
+geraakt heeft.
+
+Een geaccepteerde input draagt in haar herkomst de cel en de lexostatus waarmee
+ze opgehaald is; daarmee is ze te koppelen aan de `vraag`-regel die onder dit
+besluit hangt, en die regel draagt het antwoord zoals de andere cel het gaf, met
+de [uitleg](#hoe-het-antwoord-tot-stand-kwam) waarop het berust. De frontend
+doet precies dat.
 
 #### Statusindicatoren zijn casusdata
 

@@ -52,8 +52,8 @@ use crate::cell::{
 };
 use crate::error::{Result, SimulatorError, Subject};
 use crate::journal::{
-    changes, AcceptedValue, GramRef, IndicatorParam, JournalActor, JournalEntry, JournalKind,
-    Reading,
+    changes, AcceptedValue, ExecutedInput, ExecutedOutput, Execution, GramRef, IndicatorParam,
+    JournalActor, JournalEntry, JournalKind, Reading,
 };
 use crate::receipt::GramReceipt;
 use crate::security::{Identity, SignedAnswer};
@@ -1342,6 +1342,7 @@ impl World {
             grams: self.gram_ref(cell, BESCHIKKINGEN).into_iter().collect(),
             changes: changes(&before, &after),
             accepted: accepted_values(&decretogram),
+            executed: Some(execution(&decretogram)),
             question: None,
             parent: None,
         };
@@ -1362,6 +1363,7 @@ impl World {
                 grams: Vec::new(),
                 changes: Vec::new(),
                 accepted: Vec::new(),
+                executed: None,
                 question: Some(crossing_snapshot(crossing)),
                 parent: Some(decision),
             });
@@ -1523,6 +1525,7 @@ impl World {
                             grams: Vec::new(),
                             changes: Vec::new(),
                             accepted: Vec::new(),
+                            executed: None,
                             question: None,
                             parent: None,
                         });
@@ -1609,6 +1612,7 @@ impl World {
             grams,
             changes: changes(&before, &after),
             accepted: Vec::new(),
+            executed: None,
             question: None,
             parent: None,
         });
@@ -1643,6 +1647,7 @@ impl World {
             grams,
             changes: changes(&before, &after),
             accepted: Vec::new(),
+            executed: None,
             question: None,
             parent: None,
         });
@@ -1982,6 +1987,40 @@ fn last_index(cell: &Cell, chronicle: &str) -> usize {
     cell.stream_len(chronicle)
         .unwrap_or_default()
         .saturating_sub(1)
+}
+
+/// Wat dit besluit uitvoerde, voor het journaal: het recht, de inputs en de
+/// uitkomsten.
+///
+/// Uit het decretogram en nergens anders vandaan. De **herkomst** van elke input
+/// gaat mee zoals het gram haar opschrijft ([`InputOrigin::as_value`]) — niet in
+/// een tweede schrijfwijze, zodat het journaal en het beeld van de wereld
+/// dezelfde woorden gebruiken voor dezelfde herkomst.
+///
+/// De volgorde is die van het gram: de inputs en de uitkomsten liggen daar in
+/// een [`BTreeMap`], dus twee runs geven dezelfde lijst — een tabel die per run
+/// van volgorde wisselt is geen contract.
+fn execution(gram: &Decretogram) -> Execution {
+    Execution {
+        regulations: gram.executed_regulations.clone(),
+        inputs: gram
+            .inputs
+            .iter()
+            .map(|(name, input)| ExecutedInput {
+                name: name.clone(),
+                value: input.value.clone(),
+                herkomst: input.origin.as_value(),
+            })
+            .collect(),
+        outputs: gram
+            .outputs
+            .iter()
+            .map(|(name, value)| ExecutedOutput {
+                name: name.clone(),
+                value: value.clone(),
+            })
+            .collect(),
+    }
 }
 
 /// De waarden die dit besluit van een andere cel accepteerde, voor het journaal.

@@ -32,8 +32,8 @@ mod reductie;
 
 pub use besluit::{
     AcceptanceRequest, BesluitDefinition, BesluitInput, ChronicleSource, Decretogram,
-    DecretogramInput, InputOrigin, ObligationDefinition, ObligationDue, Schedule, BESCHIKKING,
-    BESCHIKKINGEN, BETALINGEN, ZAAKKENMERK,
+    DecretogramInput, ExecutedRegulation, InputOrigin, ObligationDefinition, ObligationDue,
+    Schedule, BESCHIKKING, BESCHIKKINGEN, BETALINGEN, ZAAKKENMERK,
 };
 // De vaste velden van een decretogram, voor het beeld van de wereld: dat moet een
 // uitkomst van een besluit van een vast veld kunnen onderscheiden om de herkomst
@@ -65,7 +65,7 @@ use config::{binding_name, engine_parameters, CellSurface};
 use regelrecht_engine::article::CompetentAuthority;
 use regelrecht_engine::{
     ArticleBasedLaw, ArticleResult, CellResolver, EngineError, InputProvenance,
-    LawExecutionService, TraceBuilder, Value,
+    LawExecutionService, RuleResolver, TraceBuilder, Value,
 };
 use rust_decimal::Decimal;
 use std::cell::RefCell;
@@ -1758,6 +1758,11 @@ impl Cell {
         );
 
         let resolver = service.resolver();
+        // Welke regelingen deze uitvoering werkelijk uitvoerde, in de versie die
+        // op dit moment gold. Hier en niet bij het lezen van het gram: alleen
+        // tijdens de uitvoering is bekend welke regeling welke input leverde.
+        let executed_regulations =
+            executed_regulations(&definition.regulation, &result, resolver, op_moment);
         // Het rechtskarakter hoort bij het artikel dat de aansturende uitkomst
         // voortbrengt: díe uitkomst *is* het besluit. Een uitkomst die erbij
         // meegaat kan uit een ander artikel komen, en dat artikel zegt niets
@@ -1796,6 +1801,7 @@ impl Cell {
             competent_authority,
             besloten_door: identity.to_string(),
             legal_character,
+            executed_regulations,
             chronicle_sources,
             outputs: definition
                 .recorded_outputs()
@@ -2297,6 +2303,53 @@ fn outputs_per_regulation(service: &LawExecutionService) -> BTreeMap<String, BTr
         }
     }
     per_regulation
+}
+
+/// De regelingen die één uitvoering werkelijk uitvoerde, met de versie die op
+/// het moment van het besluit gold.
+///
+/// Drie dingen die dit *niet* is. Het is niet de regeling van het besluit alleen:
+/// die levert zelden in haar eentje een uitkomst, en wie alleen haar noemt laat
+/// de uitvoeringsregeling waar het bedrag vandaan komt buiten het verhaal. Het
+/// is niet `scope.loaded_regulations` uit het receipt: daar staat elke versie in
+/// die de cel geladen heeft, ook een versie die op dit moment niet gold en een
+/// regeling die deze uitvoering niet geraakt heeft. En het is geen trace: wat
+/// een aangeroepen regeling op háár beurt aanriep, staat er niet in — elke
+/// uitvoering heeft haar eigen herkomst, en die uitvouwen zou van dit verhaal
+/// een uitdraai maken. Dezelfde grens als bij [`Cell::explain_inputs`].
+///
+/// De versie komt van de resolver en niet uit het receipt, want dat is de
+/// selectie waarmee de engine zojuist gerekend heeft (RFC-019 §3): een tweede
+/// keuzeregel hiernaast zou een andere versie kunnen noemen dan er uitgevoerd
+/// is.
+fn executed_regulations(
+    regulation: &str,
+    result: &ArticleResult,
+    resolver: &RuleResolver,
+    op_moment: NaiveDate,
+) -> Vec<ExecutedRegulation> {
+    // De regeling van het besluit vooraan: díe uitvoering *is* het besluit. Wat
+    // eronder hangt volgt op naam, zodat twee runs dezelfde volgorde geven.
+    let called = result
+        .input_provenance
+        .values()
+        .filter_map(|provenance| match provenance {
+            InputProvenance::Regulation { regulation, .. } => Some(regulation.as_str()),
+            InputProvenance::Parameter
+            | InputProvenance::DataSource { .. }
+            | InputProvenance::Cell { .. } => None,
+        })
+        .collect::<BTreeSet<&str>>();
+
+    std::iter::once(regulation)
+        .chain(called.into_iter().filter(|called| *called != regulation))
+        .map(|regulation| ExecutedRegulation {
+            regulation: regulation.to_string(),
+            valid_from: resolver
+                .get_law_for_date(regulation, Some(op_moment))
+                .and_then(|law| law.valid_from.clone()),
+        })
+        .collect()
 }
 
 #[cfg(test)]

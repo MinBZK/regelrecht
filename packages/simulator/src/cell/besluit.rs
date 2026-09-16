@@ -37,7 +37,7 @@ use crate::values::amount;
 use chrono::{Months, NaiveDate};
 use regelrecht_engine::{ExecutionReceipt, Value};
 use rust_decimal::Decimal;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Het rechtskarakter dat een uitkomst tot een besluit maakt.
@@ -820,7 +820,13 @@ pub enum InputOrigin {
 
 impl InputOrigin {
     /// De herkomst als vastlegbare waarde, voor in het decretogram.
-    fn as_value(&self) -> Value {
+    ///
+    /// `pub(crate)`: het journaal draagt de herkomst van elke input in precies
+    /// deze vorm (zie [`crate::journal::ExecutedInput`]), en het beeld van de
+    /// wereld geeft haar ook zo door ([`crate::snapshot::FieldOrigin`]). Eén
+    /// vocabulaire voor één ding: wie hier een tweede schrijfwijze naast zet,
+    /// laat twee lezers van hetzelfde gram verschillende woorden zien.
+    pub(crate) fn as_value(&self) -> Value {
         match self {
             Self::OwnChronicle {
                 chronicle,
@@ -956,6 +962,38 @@ impl InputOrigin {
     }
 }
 
+/// Eén regeling die bij dit besluit werkelijk uitgevoerd is, met de versie die
+/// op het moment van het besluit gold.
+///
+/// Naast [`Decretogram::regulation`] en niet in plaats ervan: die noemt de
+/// regeling waarop het besluit *gaat*, terwijl een uitvoering er meer kan
+/// aanroepen — een uitvoeringsregeling die een bedrag levert, een kaderwet die
+/// een begrip invult (RFC-007). Wie alleen de eerste noemt, vertelt het halve
+/// verhaal; wie alles noemt wat de cel geladen heeft, noemt ook recht dat deze
+/// uitvoering niet geraakt heeft.
+///
+/// **Uitgevoerd, niet geladen.** Het receipt draagt met `scope.loaded_regulations`
+/// elke versie die klaarstond, inclusief een versie die op dit moment niet gold.
+/// Wat hier staat, is per regeling de ene versie waaronder er gerekend is.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ExecutedRegulation {
+    /// De uitgevoerde regeling, bij `$id`.
+    pub regulation: String,
+    /// De `valid_from` van de versie die op het moment van het besluit gold;
+    /// `None` als die versie geen versiedatum draagt.
+    pub valid_from: Option<String>,
+}
+
+impl ExecutedRegulation {
+    /// Leesbare regel voor een verslag: de regeling met haar versie.
+    pub fn describe(&self) -> String {
+        match &self.valid_from {
+            Some(valid_from) => format!("{} {valid_from}", self.regulation),
+            None => self.regulation.clone(),
+        }
+    }
+}
+
 /// Eén eigen kroniek die bij een uitvoering als databron klaarstond, met haar
 /// stand op dat moment.
 ///
@@ -1069,6 +1107,16 @@ pub struct Decretogram {
     /// staat er vóórdat er iets betaald is, en verandert niet meer doordat er
     /// betaald wordt. Leeg als het besluit niets toekent.
     pub obligations: Vec<ObligationDue>,
+    /// De regelingen die deze uitvoering werkelijk uitvoerde, met de versie die
+    /// op `op_moment` gold.
+    ///
+    /// De regeling van het besluit vooraan — díe uitvoering *is* het besluit —
+    /// en daarachter elke regeling die er een input voor leverde (tier 2,
+    /// RFC-022 §4.2). Niet in het gram: het gram draagt het receipt, en daaruit
+    /// volgt deze lijst. Ze staat hier omdat een lezer van het verhaal hoort te
+    /// zien welk recht er uitgevoerd is, zonder het receipt uit te moeten
+    /// pluizen (zie [`crate::journal::Execution`]).
+    pub executed_regulations: Vec<ExecutedRegulation>,
     /// De eigen kronieken die als databron klaarstonden, met hun stand op het
     /// moment van het besluit (RFC-022 §1.3).
     ///

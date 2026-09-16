@@ -4,7 +4,9 @@ import {
   askingCell,
   describeAccepted,
   describeAnswer,
+  describeAnswerMoment,
   describeChange,
+  describeExecutedRegulation,
   describeStand,
   isNewEntry,
   journalActor,
@@ -13,6 +15,7 @@ import {
   journalGrams,
   journalKind,
   journalRows,
+  readExecution,
 } from './journal.js';
 
 // Het journaal zoals de simulator het geeft, gelezen zoals de weergave het nodig
@@ -132,5 +135,51 @@ describe('het journaal lezen', () => {
       describeAnswer({ answer: { outcome: { not_established: { reason: 'geen aanslag' } } } }),
     ).toBe('geen aanslag');
     expect(describeAnswer({})).toBe('niets vastgesteld');
+  });
+
+  it('zegt van wanneer het antwoord is, in de notatie van het scherm', () => {
+    expect(describeAnswerMoment(vraag.question)).toBe(
+      `geldig op ${vraag.question.answer.op_moment.split('-').reverse().join('-')}`,
+    );
+    expect(describeAnswerMoment({})).toBe('');
+  });
+
+  it('leest bij een besluit wat het uitvoerde: het recht, de inputs en de uitkomsten', () => {
+    const executed = readExecution(besluit, worldFixture.journal);
+
+    // Meer dan de regeling waarop het besluit gaat: wat zij aanriep hoort er even
+    // goed bij, want zonder dat is niet te zien onder welk recht dit tot stand kwam.
+    expect(executed.regulations.length).toBeGreaterThan(1);
+    expect(executed.zin).toContain(besluit.executed.regulations[0].regulation);
+    // De versie in de notatie van het scherm, en geen verzonnen datum waar er
+    // geen versiedatum is.
+    expect(executed.zin).toContain('01-01-2024');
+    expect(describeExecutedRegulation({ regulation: 'een_regeling' })).toBe('een_regeling');
+
+    expect(executed.inputs.map((input) => input.name)).toStrictEqual(
+      besluit.executed.inputs.map((input) => input.name),
+    );
+    expect(executed.outputs.map((output) => output.name)).toStrictEqual(
+      besluit.executed.outputs.map((output) => output.name),
+    );
+
+    // Elke input draagt haar herkomst in de woorden van het gram zelf.
+    const geaccepteerd = executed.inputs.find((input) => input.origin.kind === 'geaccepteerd');
+    expect(geaccepteerd.origin.label).toContain('belastingdienst');
+    // En wijst naar de vraag-regel waarlangs ze binnenkwam.
+    expect(geaccepteerd.question).toBe(`journaal-${vraag.seq}`);
+    // Een input die de cel zelf vaststelde heeft die weg niet: er is geen vraag.
+    const eigen = executed.inputs.find((input) => input.origin.kind !== 'geaccepteerd');
+    expect(eigen.question).toBeNull();
+  });
+
+  it('laat een regel die niets uitvoerde zonder uitvoering', () => {
+    expect(readExecution(worldFixture.journal[0], worldFixture.journal)).toBeNull();
+    expect(readExecution(vraag, worldFixture.journal)).toBeNull();
+    expect(readExecution({}, [])).toBeNull();
+
+    const rows = journalRows(worldFixture);
+    expect(rows[besluit.seq].executed).not.toBeNull();
+    expect(rows[vraag.seq].executed).toBeNull();
   });
 });
