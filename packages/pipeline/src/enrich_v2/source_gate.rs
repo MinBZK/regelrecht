@@ -627,19 +627,28 @@ pub fn rewrite(
         }
     }
 
-    let mut existing_mr: BTreeMap<String, Value> = BTreeMap::new();
-    let mut existing_url: BTreeMap<String, Value> = BTreeMap::new();
+    // Everything the entry carries beyond `number` and `text` is authored
+    // work: the translation, the `references` block the reference graph is
+    // built from, the placement, the url. The rewrite owns the text and the
+    // article set, nothing else, so every other key is carried over rather
+    // than rebuilt from a fixed list. A key this rewrite has never seen is
+    // kept for the same reason, and the schema check downstream decides
+    // whether it belongs there.
+    let mut carried: BTreeMap<String, Mapping> = BTreeMap::new();
     if let Some(seq) = corpus.get("articles").and_then(Value::as_sequence) {
         for article in seq {
             let Some(number) = article.get("number").and_then(Value::as_str) else {
                 continue;
             };
-            if let Some(mr) = article.get("machine_readable") {
-                existing_mr.insert(number.to_string(), mr.clone());
-            }
-            if let Some(url) = article.get("url") {
-                existing_url.insert(number.to_string(), url.clone());
-            }
+            let Some(map) = article.as_mapping() else {
+                continue;
+            };
+            let kept: Mapping = map
+                .iter()
+                .filter(|(k, _)| !matches!(k.as_str(), Some("number") | Some("text")))
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+            carried.insert(number.to_string(), kept);
         }
     }
 
@@ -668,18 +677,22 @@ pub fn rewrite(
         let mut map = Mapping::new();
         map.insert(Value::from("number"), Value::from(source.number.as_str()));
         map.insert(Value::from("text"), Value::from(source.text.as_str()));
-        let url = existing_url
-            .get(&source.number)
-            .cloned()
-            .unwrap_or_else(|| {
+        if let Some(kept) = carried.get(&source.number) {
+            for (key, value) in kept {
+                map.insert(key.clone(), value.clone());
+            }
+        }
+        // An article the file did not have yet, or one whose entry carried no
+        // url, gets the deep link the corpus convention builds from the law's
+        // own url.
+        if !map.contains_key(Value::from("url")) {
+            map.insert(
+                Value::from("url"),
                 Value::from(format!(
                     "{base_url}#Artikel{}",
                     source.number.replace(' ', "")
-                ))
-            });
-        map.insert(Value::from("url"), url);
-        if let Some(mr) = existing_mr.get(&source.number) {
-            map.insert(Value::from("machine_readable"), mr.clone());
+                )),
+            );
         }
         articles.push(Value::Mapping(map));
 
@@ -988,6 +1001,67 @@ articles:
             "Hoofdstuk 3 Besluiten > Afdeling 3.3 Advisering"
         );
         assert_eq!(sidecar.articles["1"].verdict, "text replaced (had drifted)");
+    }
+
+    #[test]
+    fn rewrite_keeps_every_authored_key_on_the_article() {
+        // `references` feeds the cross-law reference graph, and `placement`
+        // is authored structure. A rewrite that rebuilds the entry from a
+        // fixed list of keys drops both without saying so.
+        let official = parse_toestand(XML).unwrap();
+        let corpus: serde_yaml_ng::Value = serde_yaml_ng::from_str(
+            r#"
+bwb_id: BWBR0000001
+url: https://wetten.overheid.nl/BWBR0000001
+articles:
+  - number: '1'
+    text: iets heel anders
+    url: u
+    machine_readable: {a: 1}
+    placement: {hoofdstuk: {number: '1'}}
+    references:
+      - bwb_id: BWBR0000002
+        artikel: '8'
+"#,
+        )
+        .unwrap();
+        let report = verify(&corpus, &official);
+        let (doc, _) = rewrite(&corpus, &official, &report).unwrap();
+
+        let arts = doc.get("articles").unwrap().as_sequence().unwrap();
+        let a1 = arts
+            .iter()
+            .find(|a| a.get("number").and_then(serde_yaml_ng::Value::as_str) == Some("1"))
+            .unwrap();
+        assert_eq!(
+            a1.get("text").and_then(serde_yaml_ng::Value::as_str),
+            Some("1. Eerste lid. 2. Tweede lid.")
+        );
+        assert!(a1.get("machine_readable").is_some(), "{a1:?}");
+        assert!(a1.get("placement").is_some(), "{a1:?}");
+        let refs = a1
+            .get("references")
+            .and_then(serde_yaml_ng::Value::as_sequence)
+            .unwrap_or_else(|| panic!("references dropped: {a1:?}"));
+        assert_eq!(
+            refs[0].get("artikel").and_then(serde_yaml_ng::Value::as_str),
+            Some("8")
+        );
+        // The url the entry carried wins over the generated deep link.
+        assert_eq!(
+            a1.get("url").and_then(serde_yaml_ng::Value::as_str),
+            Some("u")
+        );
+
+        // An article the file did not have yet still gets a deep link.
+        let a39 = arts
+            .iter()
+            .find(|a| a.get("number").and_then(serde_yaml_ng::Value::as_str) == Some("3:9"))
+            .unwrap();
+        assert_eq!(
+            a39.get("url").and_then(serde_yaml_ng::Value::as_str),
+            Some("https://wetten.overheid.nl/BWBR0000001#Artikel3:9")
+        );
     }
 
     #[test]
