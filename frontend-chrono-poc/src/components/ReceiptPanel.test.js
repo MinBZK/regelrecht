@@ -169,6 +169,24 @@ describe('het receipt van een decretogram', () => {
     expect(tree().findAll('nldd-list-item')).toHaveLength(3);
   });
 
+  it('houdt de toetsaanslagen van de trace bij de trace', async () => {
+    // Dit paneel hangt in de uitklap van een rij van het grammenoverzicht, en dat
+    // overzicht is zelf een boom die zijn toetsenbord op de langskomende `keydown`
+    // uitvoert. Borrelt een pijltje uit de trace daarheen door, dan handelen ze
+    // hem allebei af en trekt het overzicht de aanwijzing uit de trace weg naar
+    // een gram — de lezer raakt bij de eerste pijl omlaag kwijt waar hij was.
+    const wrapper = await panel();
+    const buiten = vi.fn();
+    wrapper.element.addEventListener('keydown', buiten);
+
+    const tree = wrapper.findAll('nldd-list').find((list) => list.attributes('type') === 'tree');
+    tree
+      .findAll('nldd-list-item')[0]
+      .element.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+
+    expect(buiten).not.toHaveBeenCalled();
+  });
+
   it('zegt het als een receipt geen trace draagt', async () => {
     // Een besluit van vóór deze versie, of een gram dat nooit langs een engine
     // kwam: dan staat er wat er is en niet een lege boom.

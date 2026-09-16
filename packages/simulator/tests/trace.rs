@@ -22,6 +22,7 @@
 //! De wereld is het echte wereldbestand en niet een fixture: wat hier langs komt,
 //! is wat een deployment te zien krijgt.
 
+use chrono::NaiveDate;
 use regelrecht_simulator::{regulation_root, Value, World, WorldDefinition, BESCHIKKINGEN};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
@@ -323,4 +324,47 @@ fn een_betaling_wijst_naar_het_besluit_en_zijn_trace() {
             .is_some_and(|results| results.contains_key("trace")),
         "en dat besluit draagt de trace waarlangs het tot stand kwam"
     );
+}
+
+/// Een tweede besluit wijst naar zijn éigen gram.
+///
+/// De plek van het decretogram wordt ingevuld nádat het gram ligt, en in een
+/// wereld met één besluit is dat nul — precies de waarde die er ook zou staan als
+/// er helemaal niets werd ingevuld. Daarmee zou elke andere manier om aan die
+/// plek te komen even goed lijken: hem vooraf raden, of hem gewoon op nul laten.
+/// Deze wereld neemt daarom hetzelfde besluit een tweede keer, want pas vanaf het
+/// tweede gram in de kroniek zegt de plek iets.
+#[test]
+fn het_tweede_besluit_wijst_naar_zijn_eigen_gram() {
+    let mut world = met_een_toekenning();
+    let opnieuw: NaiveDate = "2024-06-01".parse().expect("een datum");
+    world
+        .advance(opnieuw)
+        .expect("de klok hoort vooruit te kunnen");
+    let tweede = world
+        .decide(
+            "toeslagen",
+            "zorgtoeslag_toekenning",
+            &BTreeMap::from([("bsn".to_string(), Value::String(BSN.to_string()))]),
+            opnieuw,
+        )
+        .expect("hetzelfde besluit hoort nog eens genomen te kunnen worden");
+
+    // Het tweede decretogram ligt op plek één, en daar wijzen zijn termijnen ook
+    // naar: dát is wat een verwijzing die op nul blijft staan fout zou maken.
+    assert!(
+        !tweede.decretogram.obligations.is_empty(),
+        "dit besluit hoort termijnen op te leggen, anders bewijst deze test niets"
+    );
+    for due in &tweede.decretogram.obligations {
+        assert_eq!(
+            due.besluit_gram, 1,
+            "een termijn hoort naar het gram te wijzen waarin ze staat"
+        );
+    }
+
+    let gram = world
+        .gram_receipt("toeslagen", BESCHIKKINGEN, 1)
+        .expect("er hoort een tweede decretogram te liggen");
+    assert_eq!(gram.gram.besluit.as_deref(), Some("zorgtoeslag_toekenning"));
 }

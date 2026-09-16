@@ -103,6 +103,25 @@ function toggleBranch(path) {
 }
 
 /**
+ * De toetsaanslagen van de trace blijven bij de trace.
+ *
+ * Dit paneel hangt in de uitklap van een rij van het grammenoverzicht, en dat
+ * overzicht is zélf een `nldd-list` van het type `tree`. Een boom voert zijn
+ * toetsenbord uit op de `keydown` die bij hem langskomt, en hij houdt die
+ * gebeurtenis niet tegen. Zonder deze regel handelt de trace een pijltje af én
+ * borrelt hetzelfde pijltje door naar het overzicht eromheen, dat de aanwijzing
+ * dan uit de trace wegtrekt naar een gram — de lezer raakt bij de eerste pijl
+ * omlaag kwijt waar hij was.
+ *
+ * `stopPropagation` en niet `stopImmediatePropagation`: de boom hiernaast — de
+ * lijst waarop deze regel staat — hoort zijn eigen toets gewoon af te handelen.
+ * Alleen de weg naar buiten gaat dicht.
+ */
+function keepKeysInTheTrace(event) {
+  event.stopPropagation();
+}
+
+/**
  * De kop van de tijdstempel-banner.
  *
  * Draagt het receipt geen wandkloktijd, dan staat dát er — een lege plek is hier
@@ -244,6 +263,7 @@ function validity(regulation) {
         type="tree"
         variant="box-tinted"
         accessible-label="De stappen waarlangs dit besluit tot stand kwam"
+        @keydown="keepKeysInTheTrace"
       >
         <TraceNode :node="trace" :open="openBranches" @toggle="toggleBranch" />
       </nldd-list>

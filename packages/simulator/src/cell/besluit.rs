@@ -375,9 +375,15 @@ pub struct ObligationDue {
     ///
     /// Wordt gezet ná het vastleggen van dat gram, in [`crate::Cell::decide`]:
     /// het is de plek waar het gram terechtkwam en niet de plek waar het naar
-    /// verwachting terecht zou komen. Tot dat moment staat er nul, en dat is
-    /// zichtbaar geen antwoord — een verplichting bestaat hier nooit los van het
-    /// besluit dat haar oplegde.
+    /// verwachting terecht zou komen.
+    ///
+    /// Tussen het inroosteren en dat vastleggen staat er nul, en nul is hier
+    /// géén "nog niet ingevuld": het is de plek van het eerste gram in de
+    /// stroom. Dat dit toch geen half antwoord kan opleveren, hangt aan twee
+    /// dingen die samen in [`crate::Cell::decide`] staan: het schema wordt daar
+    /// gemaakt én daar ingevuld, en het decretogram schrijft deze plek niet mee
+    /// in zijn eigen gram (zie `ObligationDue::as_value`). Een verplichting
+    /// bestaat hier dus nooit buiten het besluit dat haar oplegde om.
     pub besluit_gram: usize,
 }
 
