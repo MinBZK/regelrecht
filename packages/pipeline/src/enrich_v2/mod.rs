@@ -1,5 +1,5 @@
 //! The parts of the enrichment flow that need no model: the checks, the
-//! capability plan, the reference graph, the closing pass.
+//! capability plan, the closure, the reference graph, the closing pass.
 //!
 //! The design constraint that shapes everything here is what the current
 //! flow ran into: the agent is spawned without `Bash`, `WebFetch` and
@@ -18,6 +18,7 @@
 pub mod assemble;
 pub mod capabilities;
 pub mod checks;
+pub mod closure;
 pub mod context;
 pub mod reconcile;
 pub mod refgraph;
