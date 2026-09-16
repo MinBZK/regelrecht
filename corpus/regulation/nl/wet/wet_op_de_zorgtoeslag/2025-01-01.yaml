@@ -356,10 +356,11 @@ articles:
             type: string
             required: true
         input:
-          # Art. 3: "de gezamenlijke rendementsgrondslag van de verzekerde en de
-          # toeslagpartner op de peildatum"
-          # TODO #377: Bij partners moet de gezamenlijke rendementsgrondslag worden
-          # gebruikt. Geblokkeerd: zelfde engine-beperking als bij toetsingsinkomen.
+          # Art. 3 lid 1: "de gezamenlijke rendementsgrondslag [...] van de
+          # verzekerde en zijn partner aan het begin van het berekeningsjaar".
+          # TODO #377: bij partners hoort die gezamenlijke grondslag te worden
+          # gebruikt. Geblokkeerd: zelfde engine-beperking als bij het
+          # toetsingsinkomen.
           - name: vermogen
             type: amount
             source:

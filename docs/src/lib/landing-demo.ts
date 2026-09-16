@@ -66,21 +66,31 @@ function articleThreeLidOne(yaml: string): string {
 }
 
 /**
- * The machine-readable form of that same rule, lifted from the law file
- * verbatim. Indentation is normalized so it reads on its own.
+ * The machine-readable form of that same article, whole, lifted from the law
+ * file verbatim. Indentation is normalized so it reads on its own.
+ *
+ * The whole block rather than just the action that carries the rule: without
+ * the declarations around it, `$vermogen` and `$vermogensgrens_alleenstaand`
+ * arrive out of nowhere. With them, the panel shows the two things that make
+ * this an interesting comparison -- the amounts from the statute appear
+ * literally (141.896 euro as 14189600 eurocent), and the capital being tested
+ * turns out to be fetched from another law entirely.
  */
 function computationYaml(yaml: string): string {
-  const start = yaml.indexOf('          - output: vermogen_onder_grens\n');
-  if (start === -1) throw new Error(`${LAW}: the vermogen_onder_grens action is not where expected`);
-  const rest = yaml.slice(start);
+  const marker = "  - number: '3'\n";
+  const article = yaml.indexOf(marker);
+  if (article === -1) throw new Error(`${LAW}: article 3 not found in the expected shape`);
+  const start = yaml.indexOf('    machine_readable:\n', article);
+  if (start === -1) throw new Error(`${LAW}: article 3 has no machine_readable block`);
+  const rest = yaml.slice(start + '    machine_readable:\n'.length);
   const end = rest.indexOf("\n  - number: '4'");
-  if (end === -1) throw new Error(`${LAW}: could not find the end of the vermogen_onder_grens action`);
+  if (end === -1) throw new Error(`${LAW}: could not find the end of article 3`);
 
   return (
     rest
       .slice(0, end)
       .split('\n')
-      .map((line) => line.slice(10))
+      .map((line) => line.slice(6))
       // Comments in the law file are notes to whoever maintains the corpus:
       // why a bound is modelled the way it is, which RFC governs a field, what
       // a past bug was. A visitor reading the panel is being shown the rule,

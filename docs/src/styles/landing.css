@@ -130,8 +130,11 @@ html {
 /* --- The wipe between statute and machine-readable rule --- */
 .rr-wipe {
   --rr-wipe: 100%;
-  /* Overridden per instance where the content nearly fits (see LandingWipe). */
-  --rr-wipe-height: 30rem;
+  /* Overridden per instance where the content nearly fits (see LandingWipe).
+     Tall enough that the statute has room to breathe: article 3 lid 1 is one
+     long sentence with two amounts in it, and at 30rem it filled the frame to
+     within twenty pixels in English and overflowed in Dutch. */
+  --rr-wipe-height: 34rem;
   position: relative;
   border: 1px solid var(--semantics-dividers-color);
   border-radius: 8px;
