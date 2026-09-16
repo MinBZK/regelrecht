@@ -649,8 +649,8 @@ fn print_cost(mode: &str, calls: &[AgentCallRecord], total: Option<AgentUsage>) 
     }
 }
 
-/// Tenths of a cent as dollars, because that is the unit the provider reports
-/// and an integer is the only honest way to carry money through a struct.
+/// Thousandths of a cent as dollars, because that is the unit the usage
+/// record carries and an integer is the only honest way to hold money.
 fn money(millicents: u64) -> String {
     format!("${}.{:04}", millicents / 100_000, millicents % 100_000 / 10)
 }
@@ -1023,11 +1023,11 @@ articles:
         );
     }
 
-    /// The provider reports money in tenths of a cent, and an integer is the
+    /// The provider reports money in thousandths of a cent, and an integer is the
     /// only honest way to carry it. The formatting is where it can still go
     /// wrong, and a cost line that is off by a factor is worse than no line.
     #[test]
-    fn test_money_reads_tenths_of_a_cent_as_dollars() {
+    fn test_money_reads_thousandths_of_a_cent_as_dollars() {
         assert_eq!(money(0), "$0.0000");
         assert_eq!(money(123_456), "$1.2345");
         assert_eq!(money(100_000), "$1.0000");

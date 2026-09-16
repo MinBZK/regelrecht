@@ -615,19 +615,41 @@ pub fn plan_closure(
     // that did not exist yet. A law that reads another in the same ring sorts
     // after it; the name only breaks a tie between laws that do not read each
     // other, so the result stays stable.
-    tasks.sort_by(|a, b| {
-        b.depth.cmp(&a.depth).then_with(|| {
-            let a_reads_b = reads.get(&a.bwb_id).is_some_and(|t| t.contains(&b.bwb_id));
-            let b_reads_a = reads.get(&b.bwb_id).is_some_and(|t| t.contains(&a.bwb_id));
-            match (a_reads_b, b_reads_a) {
-                // A cycle: neither can come first, so the name decides and
-                // the closing pass connects what the order could not.
-                (true, true) | (false, false) => a.law_id.cmp(&b.law_id),
-                (true, false) => std::cmp::Ordering::Greater,
-                (false, true) => std::cmp::Ordering::Less,
-            }
-        })
-    });
+    // Producers before readers, over the whole plan rather than within one
+    // depth. Depth alone cannot carry this: a law reached shallowly through
+    // one article can be read through *another* article by a law that sits
+    // deeper, and then the deeper task comes first while the article it reads
+    // has not been translated. A comparison function cannot express it either,
+    // because "reads" is not a total order and sorting on it silently produces
+    // whatever the algorithm's pairwise choices happen to give.
+    //
+    // So: a topological walk over the reads graph, with depth as the tiebreak
+    // so the deepest of the currently-free tasks goes first, and the name
+    // after that so the result is stable. A cycle leaves nobody free; those
+    // tasks come out in depth-then-name order and the closing pass connects
+    // what no order could.
+    tasks.sort_by(|a, b| b.depth.cmp(&a.depth).then(a.law_id.cmp(&b.law_id)));
+    let mut ordered: Vec<Task> = Vec::with_capacity(tasks.len());
+    let mut placed: BTreeSet<String> = BTreeSet::new();
+    while !tasks.is_empty() {
+        // Free: everything it reads is either already placed or not in the
+        // plan at all (a known gap, which nothing here can produce).
+        let next = tasks.iter().position(|t| {
+            reads.get(&t.bwb_id).is_none_or(|targets| {
+                targets.iter().all(|target| {
+                    *target == t.bwb_id
+                        || placed.contains(target)
+                        || !tasks.iter().any(|other| other.bwb_id == *target)
+                })
+            })
+        });
+        // Nothing free means every remaining task sits in a cycle. Take the
+        // first in the existing order rather than looping forever.
+        let task = tasks.remove(next.unwrap_or(0));
+        placed.insert(task.bwb_id.clone());
+        ordered.push(task);
+    }
+    let tasks = ordered;
 
     Ok(Plan {
         tasks,
@@ -1153,6 +1175,116 @@ articles:
 ",
         );
         dir
+    }
+
+    fn late_article_corpus() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            &dir,
+            "regulation/nl/wet/wet_a/2026-01-01.yaml",
+            r"$id: wet_a
+regulatory_layer: WET
+bwb_id: BWBR0000001
+articles:
+  - number: '1'
+    text: Volgt uit artikel 1 van wet P en artikel 1 van wet X.
+    references:
+      - id: r1
+        bwb_id: BWBR0000002
+        artikel: '1'
+      - id: r2
+        bwb_id: BWBR0000003
+        artikel: '1'
+",
+        );
+        write(
+            &dir,
+            "regulation/nl/wet/wet_p/2026-01-01.yaml",
+            r"$id: wet_p
+regulatory_layer: WET
+bwb_id: BWBR0000002
+articles:
+  - number: '1'
+    text: Volgt uit artikel 1 van wet Q.
+    references:
+      - id: r3
+        bwb_id: BWBR0000004
+        artikel: '1'
+",
+        );
+        write(
+            &dir,
+            "regulation/nl/wet/wet_q/2026-01-01.yaml",
+            r"$id: wet_q
+regulatory_layer: WET
+bwb_id: BWBR0000004
+articles:
+  - number: '1'
+    text: Volgt uit artikel 9 van wet X.
+    references:
+      - id: r4
+        bwb_id: BWBR0000003
+        artikel: '9'
+",
+        );
+        write(
+            &dir,
+            "regulation/nl/wet/wet_x/2026-01-01.yaml",
+            r"$id: wet_x
+regulatory_layer: WET
+bwb_id: BWBR0000003
+articles:
+  - number: '1'
+    text: Het eerste artikel.
+  - number: '9'
+    text: Het negende artikel levert de waarde die wet Q leest.
+",
+        );
+        dir
+    }
+
+    /// A law reached shallowly through one article, and read through *another*
+    /// article by a law that sits deeper.
+    ///
+    /// `wet_a` cites `wet_p` and `wet_x` directly (depth 1), `wet_p` cites
+    /// `wet_q` (depth 2), and `wet_q` reads article 9 of `wet_x` — an article
+    /// nobody had taken yet on a law that was already known. `wet_x` keeps its
+    /// depth 1, correctly, and deepest-first then put `wet_q` in front of the
+    /// producer of the very article it reads. Depth cannot carry the ordering
+    /// guarantee on its own, so the plan is walked topologically over the
+    /// reads graph with depth as the tiebreak.
+    #[test]
+    fn a_law_read_through_a_later_article_is_still_planned_first() {
+        let dir = late_article_corpus();
+        let index = LawIndex::scan(dir.path()).unwrap();
+        let plan = plan_closure(
+            dir.path(),
+            "regulation/nl/wet/wet_a/2026-01-01.yaml",
+            &["1".to_string()],
+            3,
+            &index,
+            StopRules::default(),
+        )
+        .unwrap();
+        let position = |id: &str| {
+            plan.tasks
+                .iter()
+                .position(|t| t.law_id == id)
+                .unwrap_or_else(|| panic!("{id} ontbreekt: {:?}", plan.describe()))
+        };
+        assert!(
+            position("wet_x") < position("wet_q"),
+            "wet_q leest artikel 9 van wet_x, dus wet_x hoort eerst: {:?}",
+            plan.describe()
+        );
+        assert_eq!(
+            plan.tasks
+                .iter()
+                .find(|t| t.law_id == "wet_x")
+                .map(|t| t.depth),
+            Some(1),
+            "de diepte van wet_x mag niet verschoven zijn"
+        );
     }
 
     #[test]
