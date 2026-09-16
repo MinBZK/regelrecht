@@ -138,6 +138,38 @@ order, from a **worker-owned cursor**:
   independent of LLM behavior; the last chunk marks the law `enriched`.
 - Task-flow enrichments (`deliver=task`) always run whole-law (chunking off).
 
+### One session per window
+
+A window is one law and one article range: the translation pass plus the
+feedback rounds of the three gates. Every one of those calls used to be a cold
+CLI process that read the law, the context brief, the skills and the schema
+again, up to seven starts per window. `ENRICH_SESSION_REUSE` decides whether
+they share one agent session instead. It applies to the claude provider only;
+the worker picks the session id itself and passes `--session-id` on the first
+call and `--resume` after that.
+
+- `window` (default): every call in the window continues the same session.
+  Each resumed feedback prompt opens with an instruction to read the file from
+  disk before answering. A gate is meant to be a fresh look at what stands
+  there, and an agent that remembers writing it can otherwise defend its own
+  choice instead of reading the finding.
+- `repair`: the translation pass and the schema gate share a session, the
+  checks and marking gates run cold. A schema error is a fact about the file;
+  those two gates ask for judgement.
+- `off`: every call its own cold process, the behaviour before this existed.
+
+The session never crosses a window: a continuation chunk opens its own. An
+agent that kept everything it wrote would carry half a large law into the last
+chunk, which costs more than starting over.
+
+Whether reuse is cheaper has a number behind it. A resumed round pays every
+turn over the context the translation pass ended at, so it wins only if
+knowing the law already shortens the round. Every call is therefore accounted
+(`agent_calls` in the job result: step, whether it was resumed, input/output/
+cache-read tokens and cost), with the window total beside it (`usage`) and the
+mode that produced them (`session_reuse`). `enrich-once --session-reuse` runs
+the same loop locally and prints the table.
+
 ### LLM Providers
 
 The LLM provider is configurable via `LLM_PROVIDER` (default: `opencode`). Provider-specific paths and models are set via environment variables (e.g., `OPENCODE_PATH`, `OPENCODE_MODEL`).
@@ -158,6 +190,8 @@ The LLM subprocess runs with a stripped environment (allowlisted vars only) for 
 | `LLM_PROVIDER` | `opencode` | LLM provider selection |
 | `LLM_TIMEOUT_SECS` | 600 (10 min) | LLM execution timeout |
 | `ENRICH_MAX_ARTICLES_PER_RUN` | 15 | Max articles per enrich run (chunked enrichment); `0` disables chunking |
+| `ENRICH_FEEDBACK_ROUNDS` | 1 | Feedback rounds per gate; `2` or `checks=2,marking=3` |
+| `ENRICH_SESSION_REUSE` | `window` | Session sharing within one window: `window`, `repair` or `off` |
 
 ## Database Schema
 

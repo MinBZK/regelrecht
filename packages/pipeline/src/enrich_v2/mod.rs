@@ -1,5 +1,5 @@
 //! The parts of the enrichment flow that need no model: the checks, the
-//! source gate, the assembler, the reference graph and the context brief.
+//! capability plan, the reference graph, the closing pass.
 //!
 //! The design constraint that shapes everything here is what the current
 //! flow ran into: the agent is spawned without `Bash`, `WebFetch` and
@@ -9,12 +9,16 @@
 //! worker validates, the worker checks. The agent reads and writes.
 //!
 //! [`checks`] is the part that needs no model at all and runs today over any
-//! law file, through the `law-check` binary. The worker does not call into
-//! this module yet; that wiring, with the capability plan and the closing
-//! pass, follows separately.
+//! law file. [`capabilities`] is the other half of that constraint: it
+//! compares what a step needs against what the runtime grants, so an
+//! instruction the agent cannot carry out is left out of the prompt instead
+//! of being answered with an invention. `enrich.rs` drives one chain and
+//! calls into this module at some twenty places.
 
 pub mod assemble;
+pub mod capabilities;
 pub mod checks;
 pub mod context;
+pub mod reconcile;
 pub mod refgraph;
 pub mod source_gate;

@@ -4186,6 +4186,7 @@ dependencies = [
  "async-trait",
  "axum",
  "chrono",
+ "futures",
  "libc",
  "pretty_assertions",
  "regelrecht-corpus",
