@@ -408,8 +408,6 @@ fn required_parameter_for_nobody(
         })
 }
 
-/// The error for a `null` that reached `input` of `law` although the input is
-/// not declared nullable (RFC-036), naming where the null came from.
 /// The error for an output an executed article did not produce.
 ///
 /// A void is an answer, not a defect: when the provenance records one, the
@@ -456,6 +454,8 @@ fn voided_output_error(
     }
 }
 
+/// The error for a `null` that reached `input` of `law` although the input is
+/// not declared nullable (RFC-036), naming where the null came from.
 fn null_for_non_nullable(law: &ArticleBasedLaw, input: &Input, origin: String) -> EngineError {
     EngineError::NullForNonNullable {
         law_id: law.id.clone(),
