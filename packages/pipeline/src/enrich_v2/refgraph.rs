@@ -61,17 +61,32 @@ use serde_yaml_ng::Value;
 
 use super::context::referenced_articles;
 
-/// The top-level article an entry belongs to: everything before the first dot.
+/// The top-level article an entry belongs to.
 ///
-/// `3c.1` belongs to `3c`, `2.1.e.1°` to `2`. The corpus numbers a lid and an
-/// onderdeel as a dotted suffix of the article they sit in, so this is the
-/// whole rule. An entry without a dot is its own top-level article.
+/// A dot does not mean a lid. Measured over both corpora, every one of the 271
+/// dotted numbers is a whole article number in its own right: the BRP's `2.62`
+/// opens with the words "Artikel 2.62" and the Wlz's `2.1.1` has the url
+/// `#Artikel2.1.1` with its leden lettered separately. Cutting on the first dot
+/// collapsed the BRP's 141 articles onto 4 nodes and the Woo's 53 onto 9, so
+/// the graph said those articles were one and the brief went out with the wrong
+/// neighbours.
+///
+/// What is a suffix is a segment that does not start with a digit: `3c.1` is
+/// article `3c`, and `2.1.e.1°` is article `2.1` with onderdeel `e`. So the cut
+/// falls at the first segment that opens with something other than a digit, and
+/// a purely numeric number stays whole.
 #[must_use]
 pub fn top_article(number: &str) -> &str {
-    match number.find('.') {
-        Some(i) => &number[..i],
-        None => number,
+    let mut end = number.len();
+    let mut at = 0;
+    for (index, segment) in number.split('.').enumerate() {
+        if index > 0 && !segment.starts_with(|c: char| c.is_ascii_digit()) {
+            end = at - 1; // drop the dot that introduced this segment
+            break;
+        }
+        at += segment.len() + 1;
     }
+    &number[..end]
 }
 
 /// One node of the reference graph: a top-level article of a named statute.
@@ -470,11 +485,33 @@ mod tests {
     }
 
     #[test]
-    fn top_article_strips_the_lid_and_the_onderdeel() {
+    fn top_article_strips_the_onderdeel() {
         assert_eq!(top_article("3"), "3");
         assert_eq!(top_article("3c"), "3c");
-        assert_eq!(top_article("3c.1"), "3c");
-        assert_eq!(top_article("2.1.e.1°"), "2");
+        // Numeric all the way down, so it is an article number: the corpus
+        // writes `10.2a` and `2.1.1` as whole numbers and letters its leden
+        // separately.
+        assert_eq!(top_article("3c.1"), "3c.1");
+        // `e` opens a segment with a letter, so that is where the article ends
+        // and the onderdeel begins.
+        assert_eq!(top_article("2.1.e.1°"), "2.1");
+    }
+
+    /// A dotted article number is an article, not an article plus a lid.
+    ///
+    /// Cutting on the first dot put the BRP's 141 articles on 4 nodes and the
+    /// Woo's 53 on 9, which made the graph claim that articles with nothing to
+    /// do with each other were the same one. Both numbers below are real: the
+    /// BRP article opens with the words "Artikel 2.62", and the Wlz one carries
+    /// the url `#Artikel2.1.1` with its leden lettered separately.
+    #[test]
+    fn a_dotted_article_number_stays_whole() {
+        assert_eq!(top_article("2.62"), "2.62");
+        assert_eq!(top_article("2.65"), "2.65");
+        assert_eq!(top_article("2.1.1"), "2.1.1");
+        assert_eq!(top_article("10.2a"), "10.2a");
+        // Distinct articles stay distinct, which is the whole point.
+        assert_ne!(top_article("2.62"), top_article("2.65"));
     }
 
     #[test]

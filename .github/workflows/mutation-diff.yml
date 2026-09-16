@@ -104,7 +104,12 @@ jobs:
 
       - name: Draai mutatietesten op de gewijzigde regels
         if: steps.diff.outputs.has-changes == 'true'
-        working-directory: packages/engine
+        # De workspace-root, net als de stap die de diff bepaalt. Vanuit
+        # packages/engine filtert `--in-diff` tegen dat ene pakket, dus toen
+        # deze workflow pipeline aan zijn paden toevoegde bleef hij nul
+        # pipeline-mutanten draaien: 1015 stuks vielen stil weg en de job werd
+        # groen zonder er een te hebben gezien.
+        working-directory: packages
         run: |
           set +e
           # Een vaste ondergrens, geen multiplier op de baseline. De
