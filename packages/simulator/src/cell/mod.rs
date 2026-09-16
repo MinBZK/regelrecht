@@ -1900,11 +1900,17 @@ impl Cell {
         // zegt ze in het recht van toen. Het artikel bij elke grond wordt er apart
         // bij gezocht — een voorwaarde mag over een uitkomst van een ander artikel
         // gaan, en dan is dát de grondslag van de weigering.
-        let afwijzingsgronden = besluit::afwijzingsgronden(&conditions, &outputs, |output| {
-            resolver
-                .get_article_by_output(&definition.regulation, output, Some(op_moment))
-                .map(|article| article.number.clone())
-        });
+        //
+        // Getoetst tegen wat de uitvoering opleverde en niet tegen wat het gram
+        // draagt: een voorwaarde hoeft geen uitkomst te zijn die de definitie
+        // vastlegt (ze is hierboven juist daarom bij `recorded` gezet), en dan
+        // zou ze op de uitkomsten van het gram stil nooit vervuld raken.
+        let afwijzingsgronden =
+            besluit::afwijzingsgronden(&conditions, &result.outputs, |output| {
+                resolver
+                    .get_article_by_output(&definition.regulation, output, Some(op_moment))
+                    .map(|article| article.number.clone())
+            });
         // Het type van de regeling zolang er niets afketst, en anders dat van de
         // afwijzing. Andersom zou een uitvoeringsregel die "TOEKENNING" zegt een
         // weigering als toekenning laten vastleggen.

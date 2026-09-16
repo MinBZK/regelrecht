@@ -1,0 +1,81 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: test_afwijzing_uit_bron
+name: Testregeling afwijzing op een bronuitkomst
+regulatory_layer: WET
+bwb_id: BWBR9999906
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+url: https://example.com/test_afwijzing_uit_bron
+competent_authority: Toetsdienst
+
+# Een testregeling, met opzet **niet** in het corpus: ze bestaat om een
+# eigenschap van de opstelling aan te tonen en niet om recht weer te geven. Zie
+# `test_nabetaling` voor dezelfde afweging.
+#
+# Wat ze aantoont is dat een afwijzingsvoorwaarde over een uitkomst van een
+# **bron**artikel mag gaan. Artikel 2 brengt het besluit voort en declareert dat
+# het afwijst zodra `is_uitgesloten` waar is; die uitkomst komt uit artikel 1 en
+# staat niet in de `outputs` van de besluit-definitie. De cel vraagt haar bij de
+# uitvoering mee op, en de grond komt met háár artikel in het gram te staan.
+articles:
+  - number: '1'
+    url: https://example.com/test_afwijzing_uit_bron#Artikel1
+    text: >-
+      Van de regeling is uitgesloten degene die op de uitsluitingslijst staat.
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          # Geen `source`: het besluit levert deze aan. De regeling zegt alleen
+          # wat ze ermee doet.
+          - name: staat_op_de_uitsluitingslijst
+            type: boolean
+            source: {}
+        output:
+          - name: is_uitgesloten
+            type: boolean
+        actions:
+          - output: is_uitgesloten
+            value:
+              operation: EQUALS
+              subject: $staat_op_de_uitsluitingslijst
+              value: true
+
+  - number: '2'
+    url: https://example.com/test_afwijzing_uit_bron#Artikel2
+    text: >-
+      Degene die niet is uitgesloten, komt in aanmerking.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+          extensions:
+            chronolex:
+              # De voorwaarde slaat op de uitkomst van artikel 1, en niet op een
+              # uitkomst die dit besluit zelf vastlegt.
+              afwijzing_wanneer:
+                is_uitgesloten: true
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: is_uitgesloten
+            type: boolean
+            source:
+              output: is_uitgesloten
+        output:
+          - name: komt_in_aanmerking
+            type: boolean
+        actions:
+          - output: komt_in_aanmerking
+            value:
+              operation: EQUALS
+              subject: $is_uitgesloten
+              value: false

@@ -3313,6 +3313,117 @@ laws: []
         );
     }
 
+    /// Een cel die de testregeling uitvoert waarin de afwijzingsvoorwaarde over
+    /// een uitkomst van een **bron**artikel gaat.
+    ///
+    /// De regeling staat in `fixtures/regulation/` en niet in het corpus: ze
+    /// bestaat om een eigenschap van de opstelling te tonen (een voorwaarde op
+    /// een uitkomst die het besluit zelf niet vastlegt), en dat is geen recht.
+    fn bronvoorwaarde_wereld() -> World {
+        let config: CellConfig = serde_yaml_ng::from_str(
+            r"
+id: toetser
+identity: Toetsdienst
+laws:
+  - test_afwijzing_uit_bron
+chronicles: []
+besluit_definitions:
+  - name: toets
+    regulation: test_afwijzing_uit_bron
+    output: komt_in_aanmerking
+    zaakkenmerk: 'toets/{bsn}'
+    params:
+      - name: bsn
+        type: string
+      - name: op_lijst
+        type: boolean
+    inputs:
+      bsn:
+        param: bsn
+      staat_op_de_uitsluitingslijst:
+        param: op_lijst
+",
+        )
+        .unwrap_or_else(|e| panic!("testconfig moet parsen: {e}"));
+
+        World::from_definition(
+            &definition(&[config], "2024-01-01", &[], &no_settings()),
+            &regulation_root(),
+        )
+        .unwrap_or_else(|e| panic!("de wereld moet op te tuigen zijn: {e}"))
+    }
+
+    /// De parameters van dat besluit: wie het is, en of hij op de lijst staat.
+    fn toetsparams(op_lijst: bool) -> BTreeMap<String, Value> {
+        BTreeMap::from([
+            ("bsn".to_string(), Value::String("999993653".to_string())),
+            ("op_lijst".to_string(), Value::Bool(op_lijst)),
+        ])
+    }
+
+    fn toets(world: &mut World, op_lijst: bool) -> Decretogram {
+        world
+            .decide(
+                "toetser",
+                "toets",
+                &toetsparams(op_lijst),
+                date("2024-01-01"),
+            )
+            .unwrap_or_else(|e| panic!("het besluit moet genomen kunnen worden: {e}"))
+            .decretogram
+    }
+
+    /// Een voorwaarde hoeft niet over een uitkomst te gaan die het besluit
+    /// *vastlegt*.
+    ///
+    /// De wet mag haar weigering aan een uitkomst van een bronartikel ophangen —
+    /// "wie is uitgesloten, krijgt niets" staat zelden in hetzelfde artikel als
+    /// het besluit. De cel vraagt die uitkomst bij de uitvoering mee op; zou ze
+    /// alleen naar de vastgelegde uitkomsten kijken, dan raakte de voorwaarde
+    /// stil nooit vervuld en lag er een toekenning waar een weigering hoorde.
+    #[test]
+    fn een_voorwaarde_op_een_uitkomst_van_een_bronartikel_wijst_af() {
+        let mut world = bronvoorwaarde_wereld();
+        let gram = toets(&mut world, true);
+
+        assert_eq!(
+            gram.decision_type.as_deref(),
+            Some(crate::cell::AFWIJZING),
+            "de voorwaarde uit artikel 2 slaat op de uitkomst van artikel 1 en is vervuld"
+        );
+        assert_eq!(
+            gram.afwijzingsgronden,
+            vec![crate::cell::Afwijzingsgrond {
+                output: "is_uitgesloten".to_string(),
+                value: true,
+                article: Some("1".to_string()),
+            }],
+            "de grond wijst naar het artikel dat de uitkomst voortbrengt"
+        );
+        assert_eq!(
+            gram.outputs.keys().collect::<Vec<_>>(),
+            vec!["komt_in_aanmerking"],
+            "wat het gram onder de uitkomsten draagt, blijft wat de definitie noemt"
+        );
+    }
+
+    /// Dezelfde regeling, dezelfde cel, voorwaarde onvervuld: een gewoon besluit.
+    #[test]
+    fn dezelfde_voorwaarde_onvervuld_laat_het_besluit_doorgaan() {
+        let mut world = bronvoorwaarde_wereld();
+        let gram = toets(&mut world, false);
+
+        assert!(
+            !gram.is_afwijzing(),
+            "wie niet uitgesloten is, wordt niet afgewezen"
+        );
+        assert_eq!(
+            gram.decision_type.as_deref(),
+            Some("TOEKENNING"),
+            "en dan draagt het gram het type dat de regeling voor de gewone afloop noemt"
+        );
+    }
+
     /// Het ritme mag een instelling van de wereld zijn; een instelling die niet
     /// bestaat hoort bij het optuigen te vallen en niet bij het besluit dat erop
     /// leunt.
