@@ -2306,9 +2306,7 @@ async fn process_enrich_task_job(
     }
 
     let mut bounded_config = effective_config.clone();
-    if bounded_config.timeout >= job_timeout {
-        bounded_config.timeout = job_timeout.saturating_sub(Duration::from_secs(30));
-    }
+    bound_llm_timeout(&mut bounded_config, job_timeout);
     // Taak-flow verrijkt altijd de hele wet in één sessie: het resultaat wordt
     // een review-taak (blobs), niet een push naar de enrich-branch, dus er is
     // geen cursor-persistentie of continuation-lus om op te bouwen.
@@ -2479,6 +2477,35 @@ pub async fn complete_enrich_success_tx(
 ///
 /// Returns the [`JobOutcome`]: `Processed` when a job was handled, `Idle` when
 /// none was available, or `ResourceExhausted` when the job failed because the
+/// Shrink the per-call LLM timeout so a whole run fits the job budget.
+///
+/// A run is not one agent call. Translation, a feedback round per gate, the
+/// closing pass and the final schema gate together make up to
+/// [`MAX_AGENT_CALLS_PER_RUN`] of them, and the job timeout covers all of
+/// them at once. The old rule only fired when a single call exceeded the
+/// whole job, so with the defaults (600 s per call, 1200 s per job) nothing
+/// was adjusted and a law needing a third call was killed mid-round, failed,
+/// and hit the same wall on every retry.
+///
+/// The share is the budget minus a reserve for commit and cleanup, divided by
+/// the calls a run may make. Lowering the ceiling is right here: a call that
+/// would overrun the job is a call whose result is thrown away.
+fn bound_llm_timeout(config: &mut crate::enrich::EnrichConfig, job_timeout: Duration) {
+    let reserve = Duration::from_secs(30);
+    let budget = job_timeout.saturating_sub(reserve);
+    let share = budget / crate::enrich::MAX_AGENT_CALLS_PER_RUN;
+    if config.timeout > share {
+        tracing::warn!(
+            llm_timeout = ?config.timeout,
+            job_timeout = ?job_timeout,
+            calls = crate::enrich::MAX_AGENT_CALLS_PER_RUN,
+            adjusted_to = ?share,
+            "LLM timeout leaves no room for a full chain, reducing it to the per-call share"
+        );
+        config.timeout = share;
+    }
+}
+
 /// container could not spawn processes/threads (fork()/EAGAIN).
 ///
 /// Each enrichment creates a separate branch (`enrich/{provider}`)
@@ -2680,15 +2707,7 @@ async fn process_next_enrich_job(
     // if LLM_TIMEOUT_SECS > WORKER_JOB_TIMEOUT_SECS, the outer timeout would
     // drop the future while the OS subprocess keeps running.
     let mut bounded_config = effective_config.clone();
-    if bounded_config.timeout >= job_timeout {
-        bounded_config.timeout = job_timeout.saturating_sub(Duration::from_secs(30));
-        tracing::warn!(
-            llm_timeout = ?effective_config.timeout,
-            job_timeout = ?job_timeout,
-            adjusted_to = ?bounded_config.timeout,
-            "LLM timeout >= job timeout, reducing LLM timeout to leave headroom"
-        );
-    }
+    bound_llm_timeout(&mut bounded_config, job_timeout);
 
     let source_hash = enrich_corpus
         .as_ref()

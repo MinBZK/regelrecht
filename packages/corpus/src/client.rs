@@ -656,6 +656,58 @@ impl CorpusClient {
         Ok(())
     }
 
+    /// Add directory trees to an existing sparse checkout.
+    ///
+    /// The enrichment checkout materialises one law, which is what keeps the
+    /// agent's working directory small. The context brief then walks that
+    /// directory looking for the laws this one cites, finds nothing, and tells
+    /// the agent every citation is absent from the corpus — a claim that is
+    /// false and that it acts on. Which laws those are is only known after the
+    /// law file itself is readable, so they are added here rather than at
+    /// clone time.
+    ///
+    /// No-op when the checkout is not sparse, or when no law resolves.
+    ///
+    /// The directories are resolved with `git ls-tree`, which reads the commit
+    /// rather than the working tree: a sparse checkout has not materialised
+    /// the very directories that have to be found, so looking on disk would
+    /// find nothing by construction.
+    pub async fn widen_to_laws(&self, bwb_ids: &[String]) -> Result<Vec<String>> {
+        if self.config.sparse_paths.is_none() || bwb_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let listing = self
+            .run_git_output(&["ls-tree", "-r", "--name-only", "HEAD"])
+            .await?;
+
+        // One law per directory, so the directory of any file naming the BWB
+        // number is the tree to add. Matching on the path keeps this cheap:
+        // the harvester names the directory after the law, and a number that
+        // appears in no path is a citation outside this corpus, which the
+        // brief already reports honestly.
+        let mut dirs: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for line in listing.lines() {
+            let lower = line.to_lowercase();
+            if let Some(bwb) = bwb_ids.iter().find(|b| lower.contains(&b.to_lowercase())) {
+                let _ = bwb;
+                if let Some((dir, _)) = line.rsplit_once('/') {
+                    dirs.insert(dir.to_string());
+                }
+            }
+        }
+        if dirs.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let added: Vec<String> = dirs.into_iter().collect();
+        let mut args = vec!["sparse-checkout", "add"];
+        args.extend(added.iter().map(String::as_str));
+        self.run_git(&args).await?;
+        self.run_git(&["checkout"]).await?;
+        tracing::info!(added = ?added, "sparse checkout widened to the cited laws");
+        Ok(added)
+    }
+
     /// Fetch the base branch shallowly and return the git blob SHA of `path` on
     /// it. Uses `FETCH_HEAD` (the single-branch enrich clone never creates
     /// `origin/<base>`). Blob SHA is content-addressed, so it is comparable

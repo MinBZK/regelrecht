@@ -192,6 +192,17 @@ The LLM subprocess runs with a stripped environment (allowlisted vars only) for 
 | `ENRICH_MAX_ARTICLES_PER_RUN` | 15 | Max articles per enrich run (chunked enrichment); `0` disables chunking |
 | `ENRICH_FEEDBACK_ROUNDS` | 1 | Feedback rounds per gate; `2` or `checks=2,marking=3` |
 | `ENRICH_SESSION_REUSE` | `window` | Session sharing within one window: `window`, `repair` or `off` |
+| `ENRICH_STEPS` | every step | Which steps of the chain to run, e.g. `reconcile` for the closing pass alone |
+| `ENRICH_WINDOW_MODE` | `entries` | What a window is: `entries` counts entries, `layers` uses the dependency layers of RFC-033 |
+| `ENRICH_WINDOW_CONCURRENCY` | 1 | Windows run side by side, each in its own copy of the checkout and its own agent session |
+| `ENRICH_CONTEXT_BRIEF` | on | `0` withholds the context brief the worker writes beside the law |
+| `ENRICH_MAX_RSS_MB` | 3500 | Memory ceiling for the agent subprocess |
+
+`LLM_TIMEOUT_SECS` is a ceiling per agent call, and one run makes several: a
+translation pass, a feedback round per gate, the closing pass and the final
+schema gate. The worker lowers it when the job budget cannot hold that many,
+so raising `LLM_TIMEOUT_SECS` without raising `WORKER_JOB_TIMEOUT_SECS` buys
+nothing.
 
 ## Database Schema
 

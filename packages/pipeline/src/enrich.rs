@@ -1311,6 +1311,20 @@ impl Gate {
     pub const ALL: [Gate; 3] = [Gate::Schema, Gate::Checks, Gate::Marking];
 }
 
+/// The most agent calls one enrichment run can make, end to end.
+///
+/// One translation pass, one feedback round per gate, the closing pass, and
+/// the final schema gate. Used to size the per-call timeout against the job
+/// timeout: bounding one call against the whole job budget assumes a run is
+/// one call, which it stopped being when the gates gained a feedback round.
+/// With the defaults that assumption let a run ask for six times 600 s under
+/// a 1200 s ceiling, so a law needing more than two calls could never finish
+/// and went to `enrich_failed` on every retry.
+///
+/// A ceiling, not a reservation: a clean gate spends no round at all, and
+/// most runs make far fewer calls than this.
+pub const MAX_AGENT_CALLS_PER_RUN: u32 = 1 + Gate::ALL.len() as u32 + 1 + 1;
+
 /// How many feedback rounds each gate may run.
 ///
 /// One per gate rather than one number for the whole chain: the open question
@@ -2230,7 +2244,13 @@ impl EnrichConfig {
             feedback_rounds: self.feedback_rounds,
             window_mode: self.window_mode,
             window_concurrency: self.window_concurrency,
-            steps: RunSteps::all(),
+            // Carried over like every other field. Hardcoding `all()` here
+            // made `ENRICH_STEPS` dead in the worker: the enqueue path always
+            // names a provider, so this override runs on every production job
+            // and discarded whatever `from_env` had parsed. Running only the
+            // closing pass — the use the field's own doc gives as its reason
+            // for existing — did nothing.
+            steps: self.steps,
             session_reuse: self.session_reuse,
             effort: self.effort.clone(),
             provider_configs: self.provider_configs.clone(),
@@ -3083,10 +3103,56 @@ pub async fn create_enrich_corpus(
         }
     };
 
+    // The law is on disk now, so the laws it cites can be named and added to
+    // the sparse checkout. Without this the context brief walks a directory
+    // holding one law, finds none of the citations, and tells the agent they
+    // are absent from the corpus — which is false, and which the agent acts
+    // on by marking a binding it could have made. RFC-026 requirement 6 is
+    // otherwise inoperative in the only environment that runs it.
+    if let Err(e) = widen_to_cited_laws(&client, &normalized).await {
+        tracing::warn!(error = %e, "could not widen the checkout to the cited laws; the brief will report them as absent");
+    }
+
     Ok(EnrichCorpus {
         client,
         source_hash,
     })
+}
+
+/// Widen the sparse checkout to the laws this one cites.
+///
+/// Reads the `references` blocks the harvester writes and hands the BWB
+/// numbers to the corpus client, which resolves them against the commit.
+/// Best effort by design: a citation that resolves to nothing is exactly the
+/// case the brief already reports honestly as "not in this corpus".
+async fn widen_to_cited_laws(client: &CorpusClient, normalized_path: &str) -> Result<()> {
+    let body = tokio::fs::read_to_string(client.repo_path().join(normalized_path)).await?;
+    let doc: serde_yaml_ng::Value = serde_yaml_ng::from_str(&body)
+        .map_err(|e| PipelineError::Enrich(format!("cannot parse law for its citations: {e}")))?;
+    let own_bwb = doc
+        .get("bwb_id")
+        .and_then(serde_yaml_ng::Value::as_str)
+        .unwrap_or_default();
+    let numbers: Vec<String> = doc
+        .get("articles")
+        .and_then(serde_yaml_ng::Value::as_sequence)
+        .map(|articles| {
+            articles
+                .iter()
+                .filter_map(|a| a.get("number").and_then(serde_yaml_ng::Value::as_str))
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    let cited: Vec<String> =
+        crate::enrich_v2::context::window_citations(&doc, &numbers, &numbers, own_bwb)
+            .into_iter()
+            .map(|(bwb, _, _)| bwb)
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+    client.widen_to_laws(&cited).await?;
+    Ok(())
 }
 
 /// Resolve the enrichment base branch and materialize the target law from it,
@@ -3507,6 +3573,18 @@ async fn run_windows_concurrently(
             // The research belongs to the window as a whole, not to each
             // slice of it: only the first slice is allowed to do it.
             skip_mvt: Some(payload.skip_mvt.unwrap_or(false) || index > 0),
+            // Its own session, never the parent's. A session id is the
+            // provider's handle on one conversation, so handing the same one
+            // to processes running side by side is two agents writing one
+            // transcript: the second either refuses to start, adopts the
+            // first's history and sees articles it was not assigned, or both
+            // write the same session file. Sharing a session across the calls
+            // of one window is the point of the feature; sharing it across
+            // windows that run at the same time is the opposite of it.
+            session: payload
+                .session
+                .as_ref()
+                .map(|parent| std::sync::Arc::new(AgentSession::new(parent.reuse()))),
             ..payload.clone()
         };
         runs.push(async move {
@@ -3845,6 +3923,31 @@ struct GateReading {
 /// Matched in both directions because window and finding may be at different
 /// granularities: a window entry `3.2` is inside article `3`, and a finding
 /// about entry `3.2` is inside a window of `3`.
+/// The article number a schema error is about, when it is about one.
+///
+/// Validation errors are formatted `"{instance_path}: {message}"`, and the
+/// path of anything inside an article starts `/articles/{index}`. The index is
+/// a position in the sequence, so it has to be resolved against the file to
+/// become the number an agent knows the article by.
+///
+/// `None` for an error about the document as a whole, which stays in every
+/// window: a missing `$schema` is nobody's article and everybody's problem.
+fn schema_error_article(raw: &str, error: &str) -> Option<String> {
+    let index: usize = error
+        .strip_prefix("/articles/")?
+        .split(['/', ':'])
+        .next()?
+        .parse()
+        .ok()?;
+    let doc: serde_yaml_ng::Value = serde_yaml_ng::from_str(raw).ok()?;
+    doc.get("articles")?
+        .as_sequence()?
+        .get(index)?
+        .get("number")
+        .and_then(serde_yaml_ng::Value::as_str)
+        .map(str::to_string)
+}
+
 fn in_window(window: Option<&[String]>, article: Option<&str>) -> bool {
     let (Some(window), Some(article)) = (window, article) else {
         return true;
@@ -3865,7 +3968,12 @@ async fn evaluate_gate(
     let raw = tokio::fs::read_to_string(yaml_abs).await?;
     let mut reading = GateReading::default();
     match gate {
-        Gate::Schema => reading.answerable = crate::enrich_v2::checks::schema_errors(&raw),
+        Gate::Schema => {
+            reading.answerable = crate::enrich_v2::checks::schema_errors(&raw)
+                .into_iter()
+                .filter(|error| in_window(window, schema_error_article(&raw, error).as_deref()))
+                .collect();
+        }
         // The closing gate reads the whole law and never the window: the
         // whole point is that it looks at what every earlier window left.
         //
@@ -4010,6 +4118,7 @@ pub async fn execute_enrich_with_runner(
     // numbers, and the recorded-gap baseline of the chunk no-op guard.
     let law = load_law(&yaml_abs).await?;
     let (articles_before, machine_readable_before) = article_stats(&law);
+    let texts_before = article_texts(&law);
 
     // Chunk planning: the worker (not the LLM) owns the cursor, read from the
     // `.enrichment.yaml` already present on the enrich branch checkout.
@@ -4318,6 +4427,23 @@ pub async fn execute_enrich_with_runner(
             "article count changed during enrichment (before={articles_before}, after={articles_after}) — LLM modified YAML structure"
         )));
     }
+    // The words of the law are not the translator's to change. Reported with
+    // the article number and both lengths, because the usual shape is a text
+    // quietly truncated rather than rewritten, and a diff of two long strings
+    // buries that.
+    let texts_after = article_texts(&law_after);
+    if let Some((number, before)) = texts_before
+        .iter()
+        .find(|(number, before)| texts_after.get(*number) != Some(*before))
+    {
+        let after_len = texts_after.get(number).map_or(0, String::len);
+        return Err(PipelineError::Enrich(format!(
+            "the statutory text of article {number} changed during enrichment \
+             (was {} characters, now {after_len}) — a translation may add a model, \
+             never edit the law's own words",
+            before.len()
+        )));
+    }
     let newly_enriched = articles_with_machine_readable.saturating_sub(machine_readable_before);
     let articles_needing_enrichment = articles_before.saturating_sub(machine_readable_before);
     let coverage_score = if articles_needing_enrichment > 0 {
@@ -4572,6 +4698,22 @@ async fn count_article_stats(path: &Path) -> Result<(usize, usize)> {
 async fn load_law(path: &Path) -> Result<ArticleBasedLaw> {
     let content = tokio::fs::read_to_string(path).await?;
     Ok(serde_yaml_ng::from_str(&content)?)
+}
+
+/// The statutory text of every article, keyed by article number.
+///
+/// A translator may never edit the law's own words. The article count catches
+/// a deleted or added entry and says nothing about the text inside one, so an
+/// agent that shortened an article moved no counter at all: the findings did
+/// not rise, the schema stayed valid, the count held, and the file was
+/// committed with a wrong legal text under a run reporting success. Comparing
+/// this map before and after closes that, without needing the network the
+/// source gate uses.
+fn article_texts(law: &ArticleBasedLaw) -> std::collections::BTreeMap<String, String> {
+    law.articles
+        .iter()
+        .map(|article| (article.number.clone(), article.text.clone()))
+        .collect()
 }
 
 /// `(articles_total, articles_with_machine_readable)` for a parsed law.
@@ -5029,6 +5171,98 @@ related_legislation:
         // Unknown provider falls back to current provider
         let unknown_config = base_config.with_provider_override("unknown");
         assert_eq!(unknown_config.provider.name(), "opencode");
+    }
+
+    /// Two windows running side by side must not share a session id. It is
+    /// the provider's handle on one conversation, so handing the same one to
+    /// two live processes is two agents writing one transcript: the second
+    /// refuses, or adopts the first's history and sees articles it was never
+    /// assigned. Sharing a session across the calls of one window is the
+    /// feature; sharing it across concurrent windows is the opposite of it.
+    #[test]
+    fn concurrent_windows_each_get_their_own_session() {
+        let parent = std::sync::Arc::new(AgentSession::new(SessionReuse::Window));
+        let child = std::sync::Arc::new(AgentSession::new(parent.reuse()));
+        assert_ne!(parent.id(), child.id());
+        assert_eq!(child.reuse(), parent.reuse());
+    }
+
+    /// The article count catches a deleted entry and says nothing about the
+    /// text inside one. An agent that shortened an article moved no counter
+    /// at all, so the file was committed with a wrong legal text under a run
+    /// reporting success.
+    #[test]
+    fn a_shortened_article_text_is_visible_in_the_comparison() {
+        let before: std::collections::BTreeMap<String, String> = [(
+            "1".to_string(),
+            "De volledige wettekst van dit artikel.".to_string(),
+        )]
+        .into_iter()
+        .collect();
+        let after: std::collections::BTreeMap<String, String> =
+            [("1".to_string(), "De volledige".to_string())]
+                .into_iter()
+                .collect();
+        let changed = before
+            .iter()
+            .find(|(number, text)| after.get(*number) != Some(*text));
+        assert!(changed.is_some(), "a truncated text must be caught");
+        assert_eq!(changed.expect("changed").0, "1");
+    }
+
+    /// The enqueue path always names a provider, so this override runs on
+    /// every production job. Hardcoding `RunSteps::all()` here made
+    /// `ENRICH_STEPS` dead in the worker: whatever `from_env` parsed was
+    /// discarded before the run began.
+    #[test]
+    fn a_provider_override_keeps_the_steps_the_run_was_given() {
+        let mut base_config = test_config(LlmProvider::OpenCode {
+            path: "opencode".into(),
+            model: None,
+        });
+        base_config.steps = RunSteps {
+            window: false,
+            reconcile: true,
+        };
+        let overridden = base_config.with_provider_override("claude");
+        assert_eq!(
+            overridden.steps, base_config.steps,
+            "the steps must survive a provider override"
+        );
+    }
+
+    /// A schema error names its article through the instance path, and a
+    /// windowed run may only be asked about its own articles. Handing an
+    /// agent an error about article 40 while it holds a window of [1, 2] is
+    /// an instruction to break the rule the chunking rests on, and refusing
+    /// hard-fails the job: a pre-existing defect elsewhere in the law would
+    /// block every window of that law forever.
+    #[test]
+    fn a_schema_error_outside_the_window_is_not_handed_back() {
+        let raw = r#"
+articles:
+  - number: '1'
+    text: eerste
+  - number: '40'
+    text: veertigste
+"#;
+        assert_eq!(
+            schema_error_article(raw, "/articles/1/machine_readable: iets mis"),
+            Some("40".to_string())
+        );
+        assert_eq!(
+            schema_error_article(raw, "/articles/0/machine_readable: iets mis"),
+            Some("1".to_string())
+        );
+        // An error about the document as a whole belongs to every window.
+        assert_eq!(
+            schema_error_article(raw, "$schema: missing or unknown schema version"),
+            None
+        );
+        let window = vec!["1".to_string()];
+        assert!(in_window(Some(&window), Some("1")));
+        assert!(!in_window(Some(&window), Some("40")));
+        assert!(in_window(Some(&window), None));
     }
 
     #[test]
