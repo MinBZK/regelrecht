@@ -1,0 +1,56 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: test_chronolex_geen_mapping
+name: Testregeling met een chronolex-namespace die geen mapping is
+regulatory_layer: WET
+bwb_id: BWBR9999908
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+url: https://example.com/test_chronolex_geen_mapping
+competent_authority: Dienst Toeslagen
+
+# Een testregeling, met opzet **niet** in het corpus: ze bestaat om een
+# eigenschap van de opstelling aan te tonen en niet om recht weer te geven.
+#
+# Wat ze aantoont: de namespace staat er, maar er staat een lijst onder in plaats
+# van een blok met sleutels. Het schema laat dat toe — `extensions` is er
+# ondoorzichtig, per namespace — dus de opstelling is de enige die het kan
+# weigeren. Zou ze de namespace stil overslaan omdat hij niet de verwachte vorm
+# heeft, dan is het verschil tussen "dit artikel zegt niets" en "dit artikel zegt
+# iets onleesbaars" nergens meer aan te zien.
+articles:
+  - number: '1'
+    url: https://example.com/test_chronolex_geen_mapping#Artikel1
+    text: >-
+      De betrokkene heeft recht op een tegemoetkoming, die in één termijn wordt betaald.
+    machine_readable:
+      definitions:
+        toegekend_bedrag:
+          value: 120000
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+          extensions:
+            chronolex:
+              - soort: betaling
+                bedrag: $hoogte_tegemoetkoming
+                ritme: ineens
+                grondslag: Testregeling zonder mapping art. 1
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        output:
+          - name: tegemoetkoming_toegekend
+            type: boolean
+          - name: hoogte_tegemoetkoming
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: tegemoetkoming_toegekend
+            value: true
+          - output: hoogte_tegemoetkoming
+            value: $toegekend_bedrag

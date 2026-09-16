@@ -31,11 +31,11 @@ use crate::cell::config::{
     binding_name, check_documented_params, documents, engine_parameters, parameter_listing,
     published_outputs, CellSurface, DocumentedParameter,
 };
+use crate::cell::extensions::{afwijzing_wanneer, ChronolexBlock};
 use crate::cell::{ChronicleEvent, Intake, PartyBindings};
 use crate::error::{Result, SimulatorError, Subject};
 use crate::values::amount;
 use chrono::{Months, NaiveDate};
-use regelrecht_engine::article::Produces;
 use regelrecht_engine::{Article, ExecutionReceipt, Value};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -61,23 +61,6 @@ pub const BESCHIKKING: &str = "BESCHIKKING";
 /// `produces.decision_type` in het schema, zodat het gram hetzelfde woord draagt
 /// als de regeling die de afwijzing zelf aanwijst.
 pub const AFWIJZING: &str = "AFWIJZING";
-
-/// De namespace waarin de chronolexografie haar aanvullingen op `produces` legt.
-///
-/// `produces.extensions` is in het law-model met opzet ondoorzichtig: het
-/// document draagt het blok ongewijzigd mee en legt het niet uit. Wie een
-/// namespace leest, bezit hem — en dit is de onze.
-pub const CHRONOLEX: &str = "chronolex";
-
-/// De sleutel waaronder een artikel declareert wanneer zijn besluit afwijst.
-///
-/// In het **lexogram** en niet in het wereldbestand. Wanneer een besluit een
-/// afwijzing is, is werking van de wet: het hangt aan de uitkomst die het
-/// artikel voortbrengt, en het geldt voor elke cel die dat artikel uitvoert.
-/// Zou het in een besluit-definitie staan, dan kon twee uitvoerders dezelfde wet
-/// verschillend laten weigeren zonder dat er aan de wet iets te zien was — zie
-/// [`SimulatorError::AfwijzingWanneerInWereldbestand`].
-pub const AFWIJZING_WANNEER: &str = "afwijzing_wanneer";
 
 /// De kroniekstroom waarin een cel haar eigen decretogrammen legt.
 ///
@@ -304,7 +287,8 @@ pub struct BesluitDefinition {
     /// melding die de weg wijst ([`SimulatorError::AfwijzingWanneerInWereldbestand`]).
     /// Zonder het veld zou `deny_unknown_fields` er "onbekend veld" van maken,
     /// en dat vertelt niet waar de regel dan wél hoort: op het uitvoerende
-    /// artikel, onder [`AFWIJZING_WANNEER`] in de namespace [`CHRONOLEX`] van
+    /// artikel, onder [`AFWIJZING_WANNEER`](crate::cell::extensions::AFWIJZING_WANNEER)
+    /// in de namespace [`CHRONOLEX`](crate::cell::extensions::CHRONOLEX) van
     /// `produces.extensions`.
     ///
     /// Vrij van vorm en niet getypeerd: elke poging hoort dezelfde melding te
@@ -413,29 +397,6 @@ pub enum RichtingBijNegatief {
     /// Schuldenaar en schuldeiser wisselen, het bedrag wordt positief, en wat
     /// eruit komt is een [`TERUGVORDERING`].
     Omkeren,
-}
-
-/// Het blok dat een uitvoerend artikel onder [`CHRONOLEX`] kan dragen.
-///
-/// Eigen struct en geen losse lookup, zodat `deny_unknown_fields` geldt: een
-/// typfout in `verplichtingen` zou anders een artikel opleveren dat stil niets
-/// oplegt, en dat is aan het gram niet te zien. Daarom staat élke sleutel van de
-/// namespace hier, ook de sleutel die deze weg zelf niet gebruikt: wat er niet
-/// staat is een onbekend veld, en dan is het blok als geheel niet te lezen.
-#[derive(Debug, Clone, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ChronolexBlock {
-    /// Wat dit artikel aan verplichtingen oplegt; leeg mag.
-    #[serde(default)]
-    verplichtingen: Vec<ObligationDefinition>,
-    /// Wanneer het besluit op dit artikel een afwijzing is; leeg mag.
-    ///
-    /// Hier alleen om als bekende sleutel te gelden. Wat erin staat wordt
-    /// gelezen waar het thuishoort — [`afwijzing_block`] en
-    /// [`afwijzing_wanneer`], die er een eigen melding bij geven — en niet
-    /// tweemaal, want dan konden de twee lezingen uiteenlopen.
-    #[serde(default, rename = "afwijzing_wanneer")]
-    _afwijzing_wanneer: Option<serde_yaml_ng::Value>,
 }
 
 /// Eén verplichting die een besluit oplegt, zoals het **lexogram** haar declareert.
@@ -2595,7 +2556,8 @@ impl BesluitDefinition {
 }
 
 impl DeclaredObligations {
-    /// Lees wat één artikel onder [`CHRONOLEX`] declareert.
+    /// Lees wat één artikel onder
+    /// [`CHRONOLEX`](crate::cell::extensions::CHRONOLEX) declareert.
     ///
     /// Een artikel zonder blok legt niets op, en dat is geen fout: niet elke
     /// beschikking kent een bedrag toe. Een blok dat er wél staat maar niet
@@ -2606,24 +2568,28 @@ impl DeclaredObligations {
         authority: Option<String>,
         article: &Article,
     ) -> Result<Self> {
-        let block = article
-            .get_execution_spec()
-            .and_then(|execution| execution.produces.as_ref())
-            .and_then(|produces| produces.extensions.as_ref())
-            .and_then(|extensions| extensions.get(CHRONOLEX));
-        let block: ChronolexBlock = match block {
-            None => ChronolexBlock::default(),
-            // Via serde en niet met de hand uit elkaar gehaald: het blok is
-            // gewone YAML, en `deny_unknown_fields` op de weg erheen is wat een
-            // typfout tegenhoudt in plaats van hem stil te laten verdwijnen.
-            Some(value) => serde_yaml_ng::to_value(value)
-                .and_then(serde_yaml_ng::from_value)
-                .map_err(|source| SimulatorError::MalformedChronolexBlock {
-                    origin: origin.describe(),
-                    reason: source.to_string(),
-                })?,
-        };
-        Ok(Self {
+        let block = ChronolexBlock::read(
+            article
+                .get_execution_spec()
+                .and_then(|execution| execution.produces.as_ref()),
+            &origin,
+        )?;
+        Ok(Self::from_block(origin, authority, article, block))
+    }
+
+    /// Hetzelfde, uit een blok dat al gelezen is.
+    ///
+    /// Voor de aanroeper die het blok óók voor iets anders nodig heeft (het
+    /// optuigen leest er ook de afwijzingsvoorwaarden uit): die hoort het niet
+    /// tweemaal te lezen, want twee lezingen van hetzelfde blok kunnen uiteen
+    /// gaan lopen.
+    pub(crate) fn from_block(
+        origin: ObligationOrigin,
+        authority: Option<String>,
+        article: &Article,
+        block: ChronolexBlock,
+    ) -> Self {
+        Self {
             origin,
             authority,
             article_outputs: article
@@ -2632,7 +2598,7 @@ impl DeclaredObligations {
                 .map(str::to_string)
                 .collect(),
             items: block.verplichtingen,
-        })
+        }
     }
 
     /// Een regeling die op dit moment niets oplegt.
@@ -3228,50 +3194,6 @@ fn closing_braces_match(template: &str) -> bool {
         rest = remainder;
     }
     true
-}
-
-/// Het `afwijzing_wanneer`-blok van dit `produces`, ongelezen.
-///
-/// `None` als het artikel geen `produces` heeft, geen [`CHRONOLEX`]-namespace of
-/// daarin geen [`AFWIJZING_WANNEER`]. Ongelezen, want twee plekken moeten er
-/// hetzelfde in zien: het optuigen toetst elke geladen versie, het besluit leest
-/// de versie die op dat moment geldt. Zouden die twee het blok elk op hun eigen
-/// manier zoeken, dan kon een voorwaarde bij het optuigen langs de toets glippen.
-pub(crate) fn afwijzing_block(produces: Option<&Produces>) -> Option<&Value> {
-    let Value::Object(namespace) = produces?.extensions.as_ref()?.get(CHRONOLEX)? else {
-        return None;
-    };
-    namespace.get(AFWIJZING_WANNEER)
-}
-
-/// De afwijzingsvoorwaarden uit zo'n blok: per uitkomst de waarde die afwijst.
-///
-/// Streng, en met een reden die een lezer verder helpt. Het blok staat in een
-/// **wet**, dus wie het schrijft is niet dezelfde als wie het leest; een blok met
-/// een getal erin dat stil als "geen voorwaarde" zou eindigen, zet de weigering
-/// uit zonder dat er iets te zien is.
-pub(crate) fn afwijzing_wanneer(
-    block: &Value,
-) -> std::result::Result<BTreeMap<String, bool>, String> {
-    let Value::Object(entries) = block else {
-        return Err(format!(
-            "`{AFWIJZING_WANNEER}` is een toewijzing van uitkomst naar `true` of \
-             `false`, en geen {}",
-            block.type_name()
-        ));
-    };
-    let mut conditions = BTreeMap::new();
-    for (name, value) in entries {
-        let Some(value) = value.as_bool() else {
-            return Err(format!(
-                "`{AFWIJZING_WANNEER}` geeft uitkomst '{name}' de waarde {value} ({}); \
-                 een afwijzingsvoorwaarde vergelijkt met `true` of `false`",
-                value.type_name()
-            ));
-        };
-        conditions.insert(name.clone(), value);
-    }
-    Ok(conditions)
 }
 
 /// De afwijzingsvoorwaarden die deze uitkomsten vervullen.
@@ -4042,11 +3964,6 @@ params:
         surface
     }
 
-    /// De voorwaarden uit het blok, of de reden waarom het niet te lezen was.
-    fn voorwaarden(yaml: &str) -> std::result::Result<BTreeMap<String, bool>, String> {
-        afwijzing_wanneer(&blok(yaml))
-    }
-
     #[test]
     fn een_afwijzingsvoorwaarde_op_een_bekende_boolean_mag() {
         let laws = vec!["wet_op_de_zorgtoeslag".to_string()];
@@ -4148,29 +4065,6 @@ params:
         assert!(
             err.to_string().contains("produces.extensions.chronolex"),
             "de melding hoort de weg te wijzen naar het blok in de regeling: {err}"
-        );
-    }
-
-    #[test]
-    fn een_blok_leest_als_uitkomst_naar_ja_of_nee() {
-        assert_eq!(
-            voorwaarden("heeft_recht_op_zorgtoeslag: false\nis_verzekerde: true")
-                .unwrap_or_else(|e| panic!("een gewoon blok moet te lezen zijn: {e}")),
-            BTreeMap::from([
-                ("heeft_recht_op_zorgtoeslag".to_string(), false),
-                ("is_verzekerde".to_string(), true),
-            ]),
-            "meer dan één voorwaarde is een of, en ze staan er alle twee"
-        );
-    }
-
-    #[test]
-    fn een_blok_met_iets_anders_dan_ja_of_nee_is_niet_te_lezen() {
-        let reason =
-            voorwaarden("heeft_recht_op_zorgtoeslag: 0").expect_err("een getal is geen ja-of-nee");
-        assert!(
-            reason.contains("heeft_recht_op_zorgtoeslag") && reason.contains("de waarde 0"),
-            "de reden hoort te noemen wat er staat: {reason}"
         );
     }
 

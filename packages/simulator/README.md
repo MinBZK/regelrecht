@@ -395,6 +395,54 @@ Die stroom is **voorbehouden**, aan drie kanten:
 
 Alleen besluiten legt er iets in, en alleen een reductie haalt er iets uit.
 
+### Het `chronolex`-blok
+
+Twee van de stappen hierboven leunen op iets wat het **uitvoerende artikel** zegt
+en waar het schema van de wet niets over vastlegt: wanneer het besluit een
+afwijzing is, en wat het oplegt. Beide staan onder `produces.extensions`, in de
+namespace `chronolex`:
+
+```yaml
+produces:
+  legal_character: BESCHIKKING
+  decision_type: TOEKENNING
+  extensions:
+    chronolex:
+      afwijzing_wanneer: {...}     # wanneer dit besluit een afwijzing is
+      verplichtingen: [...]        # wat dit besluit achterlaat
+```
+
+`extensions` is per namespace ondoorzichtig — RFC-022 §3.2 wijst het aan als de
+haak waar een platform zijn eigen aanvullingen legt, en het law-model draagt het
+blok ongewijzigd mee zonder het uit te leggen. Wie een namespace leest, bezit
+hem: `chronolex` is die van deze opstelling, en een andere namespace
+(`blauwe_knop`, of wat er nog komt) blijft hier **ongelezen en ongemoeid**. Een
+wet die er een draagt, laadt gewoon.
+
+Binnen `chronolex` is de sleutellijst **gesloten**, en dat is de enige plek waar
+dat kan. Het JSON-schema zet geen `additionalProperties: false` op `produces`,
+dus `verplichtignen` met een typfout valideert zoals het staat; de opstelling is
+de enige lezer en dus de enige die het kan weigeren. Twee dingen worden daarom
+geweigerd bij het **optuigen van de cel**, met een melding die regeling, versie,
+artikel en de bekende sleutels noemt:
+
+- een `chronolex`-waarde die geen blok met sleutels is (een lijst, een getal);
+- een sleutel die niet in de lijst hierboven staat.
+
+Bij het optuigen en niet bij de eerste aanvrager, omdat er tussen die twee
+momenten niets meer te zien is: een artikel dat niets oplegt en een artikel met
+een typfout leveren allebei een beschikking zonder verplichting, en een
+regeling die denkt te weigeren wijst dan stil niemand af. Eén lezer voor het hele
+blok (`src/cell/extensions.rs`) houdt dat vast: het optuigen, het schema van het
+decretogram en het besluit zelf lezen alle drie door diezelfde struct, zodat er
+geen pad is waarop het blok wél gelezen wordt en de strengheid niet.
+
+De twee sleutels staan hieronder: `afwijzing_wanneer` in
+[Een weigering is ook een besluit](#een-weigering-is-ook-een-besluit),
+`verplichtingen` in
+[Verplichtingen](#verplichtingen-wat-een-besluit-achterlaat). Een sleutel erbij
+is één regel in de struct — en daarmee meteen bekend bij alle drie de lezers.
+
 ### Een weigering is ook een besluit
 
 Awb 1:3 lid 2: een beschikking omvat ook **de afwijzing van de aanvraag**. Een
@@ -421,11 +469,10 @@ er aan de wet iets te zien was. Een `afwijzing_wanneer` in een besluit-definitie
 wordt daarom bij het optuigen geweigerd, met een melding die naar het blok in de
 regeling wijst.
 
-`extensions` is in het law-model met opzet ondoorzichtig: het document draagt het
-blok ongewijzigd mee en legt het niet uit. `chronolex` is de namespace van deze
-opstelling; een wet die een namespace draagt die niemand leest, laadt gewoon. Het
-JSON-schema zet geen `additionalProperties: false` op `produces`, dus zo'n blok
-valideert zoals het staat.
+De namespace waarin dat staat en wat ze verder kent, staat in
+[Het `chronolex`-blok](#het-chronolex-blok): de sleutellijst is gesloten, dus een
+typfout in `afwijzing_wanneer` weigert bij het optuigen in plaats van de
+weigering stil uit te zetten.
 
 `afwijzing_wanneer` noemt per **boolean-uitkomst** de waarde die tot afwijzing
 leidt. Drie toetsen bij het optuigen van de cel, alle drie om te voorkomen dat de
@@ -771,8 +818,9 @@ falen, maar waaróp.
 Een beschikking die een bedrag toekent, laat iets achter dat later moet gebeuren.
 Wát dat is, staat in het **lexogram**: in het artikel dat de beschikking
 voortbrengt, onder `produces.extensions.chronolex` — de namespaced haak die
-RFC-022 §3.2 daarvoor aanwijst. Wíe het nakomt, staat in het **wereldbestand**.
-Die scheiding is de hele paragraaf.
+RFC-022 §3.2 daarvoor aanwijst, met de gesloten sleutellijst uit
+[Het `chronolex`-blok](#het-chronolex-blok). Wíe het nakomt, staat in het
+**wereldbestand**. Die scheiding is de hele paragraaf.
 
 ```yaml
 # in de regeling, op het artikel dat de sturende uitkomst voortbrengt

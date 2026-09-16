@@ -28,6 +28,7 @@
 mod besluit;
 mod chronicle;
 mod config;
+mod extensions;
 mod reductie;
 mod schema;
 
@@ -69,6 +70,7 @@ use crate::values::amount;
 use chronicle::ChronicleView;
 use chrono::NaiveDate;
 use config::{binding_name, engine_parameters, CellSurface, ObligationsPerOutput};
+use extensions::ChronolexBlock;
 use regelrecht_engine::article::CompetentAuthority;
 use regelrecht_engine::{
     Article, ArticleBasedLaw, ArticleResult, CellResolver, EngineError, InputProvenance,
@@ -429,12 +431,16 @@ impl Cell {
             fields.extend(besluit::betaling_fields());
         }
 
-        // Wat de wetten van deze cel aan verplichtingen opleggen. Vóór de
-        // surface, want elke besluit-definitie wordt eraan getoetst.
-        let obligations = match besluit_service.as_ref() {
-            None => ObligationsPerOutput::new(),
-            Some(service) => obligations_per_output(service)?,
+        // Wat de wetten van deze cel onder `chronolex` declareren. Vóór de
+        // surface, want elke besluit-definitie wordt eraan getoetst — en over de
+        // engine die er is zodra de cel wetten laadt, niet over die van het
+        // besluit-pad: een blok dat niet te lezen is, is een fout in de wet, ook
+        // in een cel die er (nog) geen besluit op neemt.
+        let chronolex = match service.as_ref() {
+            None => DeclaredChronolex::empty(),
+            Some(service) => chronolex_per_output(service)?,
         };
+        let obligations = chronolex.obligations;
 
         let surface = CellSurface {
             laws: &config.laws,
@@ -448,10 +454,7 @@ impl Cell {
                 .map(legal_characters_per_output)
                 .unwrap_or_default(),
             output_types: service.as_ref().map(types_per_output).unwrap_or_default(),
-            afwijzing_blocks: service
-                .as_ref()
-                .map(afwijzing_blocks_per_output)
-                .unwrap_or_default(),
+            afwijzing_blocks: chronolex.afwijzing_blocks,
             regulation_inputs: service
                 .as_ref()
                 .map(inputs_per_regulation)
@@ -2014,15 +2017,29 @@ impl Cell {
         // zegt, zegt ze in het recht van toen.
         let (legal_character, declared_decision_type, conditions) = {
             let resolver = service.resolver();
-            let produces = resolver
-                .get_article_by_output(&definition.regulation, &definition.output, Some(op_moment))
+            let article = resolver.get_article_by_output(
+                &definition.regulation,
+                &definition.output,
+                Some(op_moment),
+            );
+            let produces = article
                 .and_then(regelrecht_engine::Article::get_execution_spec)
                 .and_then(|execution| execution.produces.as_ref());
             // Onbereikbaar fout: het optuigen heeft dit blok voor elke geladen
-            // versie al gelezen. Stil doorgaan zou hier van een weigering een
+            // versie al gelezen — met deze lezer, zodat de twee niet uiteen
+            // kunnen lopen. Stil doorgaan zou hier van een weigering een
             // toekenning maken, en dat mag nooit aan een aanname hangen.
-            let conditions = besluit::afwijzing_block(produces)
-                .map(besluit::afwijzing_wanneer)
+            let origin = ObligationOrigin {
+                regulation: definition.regulation.clone(),
+                valid_from: resolver
+                    .get_law_for_date(&definition.regulation, Some(op_moment))
+                    .and_then(|law| law.valid_from.clone()),
+                article: article.map_or_else(String::new, |article| article.number.clone()),
+            };
+            let conditions = ChronolexBlock::read(produces, &origin)?
+                .afwijzing_wanneer
+                .as_ref()
+                .map(extensions::afwijzing_wanneer)
                 .transpose()
                 .map_err(|reason| SimulatorError::MalformedAfwijzingWanneer {
                     cell: self.id.clone(),
@@ -2674,37 +2691,6 @@ fn types_per_output(
     per_regulation
 }
 
-/// Per regeling en per uitkomst de `afwijzing_wanneer`-blokken die het
-/// voortbrengende artikel declareert, over alle geladen versies heen.
-///
-/// Ongelezen doorgegeven: het optuigen leest ze en weigert wat niet te lezen is
-/// (zie [`besluit::afwijzing_wanneer`]). Alle versies tellen mee, om dezelfde
-/// reden als bij [`legal_characters_per_output`] — een besluit over een ouder
-/// moment landt op een oudere versie.
-fn afwijzing_blocks_per_output(
-    service: &LawExecutionService,
-) -> BTreeMap<String, BTreeMap<String, Vec<Value>>> {
-    let mut per_regulation: BTreeMap<String, BTreeMap<String, Vec<Value>>> = BTreeMap::new();
-    for law in service.resolver().all_law_versions() {
-        let known = per_regulation.entry(law.id.clone()).or_default();
-        for article in &law.articles {
-            let Some(execution) = article.get_execution_spec() else {
-                continue;
-            };
-            let Some(block) = besluit::afwijzing_block(execution.produces.as_ref()) else {
-                continue;
-            };
-            for output in execution.output.iter().flatten() {
-                known
-                    .entry(output.name.clone())
-                    .or_default()
-                    .push(block.clone());
-            }
-        }
-    }
-    per_regulation
-}
-
 /// De naam die een wetsbestand aan het type van een uitkomst geeft.
 ///
 /// De naam uit het schema en niet die van de Rust-variant: wat in een
@@ -2745,51 +2731,100 @@ fn declared_authority<'a>(
         .or(law.competent_authority.as_ref())
 }
 
-/// Per regeling en per uitkomst wat de geladen versies eraan opleggen.
+/// Wat de geladen versies onder `chronolex` declareren, per regeling en per
+/// uitkomst.
 ///
-/// Alleen de artikelen die een `chronolex`-blok dragen: de rest legt niets op,
-/// en een ingang zonder inhoud zou de kaart laten groeien met het corpus in
-/// plaats van met wat de wereld gebruikt.
+/// Twee kaarten uit **één** lezing, en dat is de hele reden dat ze samen in één
+/// functie staan: de verplichtingen en de afwijzingsvoorwaarden komen uit
+/// hetzelfde blok, en zouden ze elk hun eigen weg naar `produces.extensions`
+/// zoeken, dan kan er één zijn die een blok ziet dat de ander overslaat. Dan
+/// glipt een regeling die denkt te weigeren langs de plek die dat had moeten
+/// weigeren.
+///
+/// Alleen de artikelen die het blok dragen: de rest declareert niets, en een
+/// ingang zonder inhoud zou de kaart laten groeien met het corpus in plaats van
+/// met wat de wereld gebruikt. Alle versies tellen mee, om dezelfde reden als
+/// bij [`legal_characters_per_output`] — een besluit over een ouder moment landt
+/// op een oudere versie, en wat daar staat hoort net zo goed te kloppen.
+struct DeclaredChronolex {
+    /// Per regeling en per uitkomst wat de versies eraan opleggen.
+    obligations: ObligationsPerOutput,
+    /// Per regeling en per uitkomst het `afwijzing_wanneer`-blok, ongelezen.
+    ///
+    /// Ongelezen omdat de melding erover de cel en het besluit noemt, en die
+    /// weet deze kaart niet: het uitpakken gebeurt bij het optuigen van de
+    /// besluit-definitie (zie `BesluitDefinition::validate`).
+    afwijzing_blocks: BTreeMap<String, BTreeMap<String, Vec<Value>>>,
+}
+
+impl DeclaredChronolex {
+    /// Een cel zonder wetten: er valt niets te lezen.
+    fn empty() -> Self {
+        Self {
+            obligations: ObligationsPerOutput::new(),
+            afwijzing_blocks: BTreeMap::new(),
+        }
+    }
+}
+
+/// Lees het `chronolex`-blok van elk artikel van elke geladen versie.
+///
+/// Hier valt de weigering op een blok dat niet te lezen is: bij het **optuigen**
+/// van de cel, en niet bij de eerste aanvrager. Het blok staat in een wet, dus
+/// wie het schrijft is niet dezelfde als wie het leest, en een typfout die stil
+/// eindigt levert een regeling op die denkt te verplichten of te weigeren en
+/// niets doet.
 ///
 /// Een gezag dat niet op te lossen is (een `#`-verwijzing die nergens op
 /// uitkomt) telt hier als "geen gezag". De weigering daarvoor staat bij het
 /// besluit zelf ([`Cell::competent_authority`]), met het gezag in de melding;
 /// hier zou ze de wereld laten omvallen op een artikel dat niemand uitvoert.
-fn obligations_per_output(service: &LawExecutionService) -> Result<ObligationsPerOutput> {
-    let mut per_regulation = ObligationsPerOutput::new();
+fn chronolex_per_output(service: &LawExecutionService) -> Result<DeclaredChronolex> {
+    let mut declared_chronolex = DeclaredChronolex::empty();
     for law in service.resolver().all_law_versions() {
         for article in &law.articles {
             let Some(execution) = article.get_execution_spec() else {
                 continue;
             };
-            let declares = execution
-                .produces
-                .as_ref()
-                .and_then(|produces| produces.extensions.as_ref())
-                .is_some_and(|extensions| extensions.contains_key(besluit::CHRONOLEX));
-            if !declares {
+            if !ChronolexBlock::declared_in(execution.produces.as_ref()) {
                 continue;
             }
-            let declared = DeclaredObligations::from_article(
-                ObligationOrigin {
-                    regulation: law.id.clone(),
-                    valid_from: law.valid_from.clone(),
-                    article: article.number.clone(),
-                },
+            let origin = ObligationOrigin {
+                regulation: law.id.clone(),
+                valid_from: law.valid_from.clone(),
+                article: article.number.clone(),
+            };
+            // Het ene parse-punt. Wat hieronder in de twee kaarten belandt, komt
+            // uit deze ene lezing en nergens anders vandaan.
+            let block = ChronolexBlock::read(execution.produces.as_ref(), &origin)?;
+            let afwijzing = block.afwijzing_wanneer.clone();
+            let declared = DeclaredObligations::from_block(
+                origin,
                 declared_authority(law, Some(article))
                     .and_then(|declared| competent_authority(law, declared)),
                 article,
-            )?;
-            let known = per_regulation.entry(law.id.clone()).or_default();
+                block,
+            );
+            let obligations = declared_chronolex
+                .obligations
+                .entry(law.id.clone())
+                .or_default();
+            let blocks = declared_chronolex
+                .afwijzing_blocks
+                .entry(law.id.clone())
+                .or_default();
             for output in execution.output.iter().flatten() {
-                known
+                obligations
                     .entry(output.name.clone())
                     .or_default()
                     .push(declared.clone());
+                if let Some(block) = afwijzing.clone() {
+                    blocks.entry(output.name.clone()).or_default().push(block);
+                }
             }
         }
     }
-    Ok(per_regulation)
+    Ok(declared_chronolex)
 }
 
 /// De uitkomstnamen per regeling, over alle geladen versies heen.
