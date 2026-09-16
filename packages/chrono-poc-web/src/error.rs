@@ -8,9 +8,12 @@
 //! hier doorkomt, en die zou door hertalen alleen maar armer worden.
 //!
 //! De **status** komt uit de foutvariant van de simulator en niet uit de plek
-//! waar hij vandaan kwam. Een onbekende cel is een 404 of hij opgevraagd wordt
-//! via `/api/cells/...` of langs een actie; een wereld die bij het optuigen
-//! omvalt is een 500, ook al deed de aanroeper niets fout. Zie
+//! waar hij vandaan kwam, en ook niet uit de tekst van de melding: een variant
+//! die van groep wisselt is een keuze, een melding die anders geschreven wordt
+//! niet. Een onbekende cel is een 404 of hij opgevraagd wordt via
+//! `/api/cells/...` of langs een actie; een cel die weigert te besluiten is een
+//! 409, want zij doet precies wat ze hoort te doen; een wereld die bij het
+//! optuigen omvalt is een 500, ook al deed de aanroeper niets fout. Zie
 //! [`ApiError::from_simulator`] voor de hele afbeelding.
 
 use axum::http::StatusCode;
@@ -79,8 +82,14 @@ impl ApiError {
     /// * **404** — wat het pad aanwijst bestaat niet: een cel, een lexostatus,
     ///   een actie. De simulator zet in zijn melding welke namen er wél zijn, en
     ///   die hoort een client te zien.
-    /// * **409** — het bestaat, maar de wereld staat er nu niet naar. Dit is
-    ///   geen verkeerd verzoek en geen defect: het verhaal is er nog niet.
+    /// * **409** — het bestaat, maar de wereld staat er nu niet naar, of de cel
+    ///   weigert. Dit is geen verkeerd verzoek en geen defect: het verhaal is er
+    ///   nog niet. Hier vallen ook de **weigeringen van een besluit** onder — een
+    ///   input waarover niets vastgesteld is (bij de cel zelf of bij een ander),
+    ///   een cel die het bevoegd gezag niet is, een uitkomst die op dit moment
+    ///   geen beschikking is. De cel legt dan niets vast; wat de aanroeper
+    ///   terugkrijgt is de reden waarom er geen besluit is, en die hoort door te
+    ///   komen zoals de cel hem schreef.
     /// * **400** — het verzoek klopt niet tegen wat de definitie belooft: een
     ///   parameter of instelling te veel, te weinig, of van het verkeerde type.
     ///   Ook een engine-fout die over een aangeleverde waarde gaat hoort hier:
@@ -106,7 +115,11 @@ impl ApiError {
             E::ActionNotAvailable { .. }
             | E::SettingInUse { .. }
             | E::ClockRunsBackwards { .. }
-            | E::MomentAfterClock { .. } => StatusCode::CONFLICT,
+            | E::MomentAfterClock { .. }
+            | E::BesluitInputMissing { .. }
+            | E::AcceptedInputMissing { .. }
+            | E::NotCompetentAuthority { .. }
+            | E::BesluitNotABeschikking { .. } => StatusCode::CONFLICT,
 
             E::MissingParameter { .. }
             | E::UndocumentedParameter { .. }
@@ -321,6 +334,103 @@ mod tests {
             ApiError::from_simulator(&gebroken_wereld).status(),
             StatusCode::INTERNAL_SERVER_ERROR
         );
+    }
+
+    /// Een cel die weigert te besluiten, doet haar werk: er ligt geen feit, zij
+    /// is het bevoegd gezag niet, of de uitkomst is op dit moment geen
+    /// beschikking. Dat is geen serverfout — een 500 zou het onderscheid met een
+    /// echt defect wegnemen, terwijl er juist niets kapot is en er niets is
+    /// vastgelegd. De reden van de cel hoort er ongeschonden bij te staan, want
+    /// dat is het hele antwoord.
+    #[test]
+    fn een_weigering_van_de_cel_is_een_conflict() {
+        let weigeringen = [
+            (
+                SimulatorError::BesluitInputMissing {
+                    cell: "toeslagen".to_string(),
+                    besluit: "zorgtoeslag_toekenning".to_string(),
+                    input: "aanvraag".to_string(),
+                    reason: "kroniekstroom 'aanvragen' heeft op of vóór 2024-01-01 niets"
+                        .to_string(),
+                },
+                "kroniekstroom 'aanvragen' heeft op of vóór 2024-01-01 niets",
+            ),
+            (
+                SimulatorError::AcceptedInputMissing {
+                    cell: "toeslagen".to_string(),
+                    besluit: "zorgtoeslag_toekenning".to_string(),
+                    input: "toetsingsinkomen".to_string(),
+                    peer: "belastingdienst".to_string(),
+                    reason: "die stelde op 2024-01-01 niets vast".to_string(),
+                },
+                "die stelde op 2024-01-01 niets vast",
+            ),
+            (
+                SimulatorError::NotCompetentAuthority {
+                    cell: "toeslagen".to_string(),
+                    besluit: "zorgtoeslag_toekenning".to_string(),
+                    identity: "gemeente".to_string(),
+                    regulation: "wet_op_de_zorgtoeslag".to_string(),
+                    authority: "Dienst Toeslagen".to_string(),
+                },
+                "Dienst Toeslagen",
+            ),
+            (
+                SimulatorError::BesluitNotABeschikking {
+                    cell: "toeslagen".to_string(),
+                    besluit: "zorgtoeslag_toekenning".to_string(),
+                    regulation: "wet_op_de_zorgtoeslag".to_string(),
+                    output: "hoogte_toeslag".to_string(),
+                    found: "geen `legal_character`".to_string(),
+                },
+                "geen `legal_character`",
+            ),
+        ];
+
+        for (weigering, uitleg) in weigeringen {
+            let tekst = weigering.to_string();
+            let fout = ApiError::from_simulator(&weigering);
+            assert_eq!(
+                fout.status(),
+                StatusCode::CONFLICT,
+                "een weigering is geen serverfout: {tekst}"
+            );
+            assert!(
+                fout.message().contains(uitleg),
+                "de reden van de cel hoort door te komen, kreeg {}",
+                fout.message()
+            );
+        }
+    }
+
+    /// En de grens eronder: wat de wereld niet kan léveren blijft onze schuld.
+    /// Een corpus dat niet te lezen is en een regeling die niet klopt, zijn
+    /// eigenschappen van de opstelling waarmee dit proces gestart is en niet van
+    /// het verzoek dat het net binnenkreeg — die horen een 500 te blijven, ook
+    /// nu de weigeringen ernaast een 409 zijn.
+    #[test]
+    fn een_defect_blijft_een_serverfout() {
+        let defecten = [
+            SimulatorError::RegulationNotFound {
+                regulation: "wet_op_de_zorgtoeslag".to_string(),
+                root: std::path::PathBuf::from("/corpus"),
+            },
+            SimulatorError::CompetentAuthorityUnresolvable {
+                cell: "toeslagen".to_string(),
+                besluit: "zorgtoeslag_toekenning".to_string(),
+                regulation: "wet_op_de_zorgtoeslag".to_string(),
+                reference: "bevoegd_gezag".to_string(),
+            },
+        ];
+
+        for defect in defecten {
+            let tekst = defect.to_string();
+            assert_eq!(
+                ApiError::from_simulator(&defect).status(),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "dit is een defect en geen weigering: {tekst}"
+            );
+        }
     }
 
     /// Een actie-id draagt de actor al, dus de melding hoort hem één keer te

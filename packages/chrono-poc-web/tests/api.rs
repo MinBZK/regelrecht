@@ -289,6 +289,53 @@ async fn een_actie_die_nu_niet_kan_is_een_conflict() {
     assert!(error.contains("toeslagen.toekenning"), "{error}");
 }
 
+/// Een besluit dat de cel **weigert** is geen serverfout. De aanvraag ligt er,
+/// dus de actie kan; wat er niet ligt is het toetsingsinkomen dat het besluit
+/// bij een andere cel moet ophalen. De cel rekent dan niet door met een gat en
+/// legt niets vast — en dat is precies wat er hoort te gebeuren, dus komt het
+/// terug als 409 met haar eigen reden erin.
+///
+/// De 500 die dit ooit was, maakte de weigering niet te onderscheiden van een
+/// kapotte server: een frontend kon er niets anders van maken dan "er ging iets
+/// mis", terwijl het antwoord juist te lezen valt.
+#[tokio::test]
+async fn een_besluit_dat_de_cel_weigert_is_een_conflict() {
+    let mut browser = Browser::new().await;
+
+    let (status, step) = browser
+        .post("/api/actions/burger.aanvraag", aanvraag())
+        .await;
+    assert_eq!(status, StatusCode::OK, "{step}");
+    assert!(
+        available(&step["snapshot"], "toeslagen.toekenning"),
+        "de actie hoort te kunnen: het gaat hier om de weigering van het besluit \
+         zelf en niet om een dichte poort: {step}"
+    );
+
+    // De klok staat nog op de startdag: de cel die het toetsingsinkomen
+    // vaststelt, heeft dat dan nog niet gedaan.
+    let (status, body) = browser
+        .post(
+            "/api/actions/toeslagen.toekenning",
+            json!({ "bsn": "999993653" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    let error = body["error"].as_str().expect("een fout heeft een melding");
+    assert!(
+        error.contains("niets vast"),
+        "de reden van de cel hoort door te komen: {error}"
+    );
+
+    // En er is niets vastgelegd: een besluit dat niet genomen is, laat geen gram
+    // achter.
+    let world = browser.world().await;
+    assert!(
+        grams(&world, "toeslagen", "beschikkingen").is_empty(),
+        "een weigering legt niets vast: {world}"
+    );
+}
+
 /// De klok doet het werk: een termijn die verstrijkt zonder dat het feit er ligt,
 /// levert een waarschuwing op — geen fout, want de uitvoerder mag alsnog
 /// besluiten en de wet zegt alleen wat de termijn was.
