@@ -120,12 +120,9 @@ test.describe('publieke wereld', () => {
     expect(grams(await s.world(), 'toeslagen', 'beschikkingen')).toHaveLength(0);
   });
 
-  // Deze staat nog open: een besluit dat de wereld weigert komt er vandaag als
-  // 500 uit, en een 500 zegt "dit programma is stuk" terwijl er niets stuk is —
-  // de wereld staat er alleen niet naar. `fixme` en niet `skip`: de bewering
-  // hoort te gelden, en zodra de foutafbeelding van de simulator die weigering
-  // als 4xx doorgeeft, is dit woord weghalen het hele werk.
-  test.fixme('N2: zo’n weigering is een 4xx en geen 500', async () => {
+  // Een besluit dat de wereld weigert is geen kapot programma: de wereld staat
+  // er alleen niet naar. Dat hoort de status ook te zeggen — 4xx en geen 500.
+  test('N2: zo’n weigering is een 4xx en geen 500', async () => {
     expect(earlyDecision.status).toBeGreaterThanOrEqual(400);
     expect(earlyDecision.status).toBeLessThan(500);
   });
@@ -230,27 +227,17 @@ test.describe('publieke wereld', () => {
 
   test('M1: een lexostatus op een eerder moment heeft niets vastgesteld', async () => {
     await s.tab('Lexostatus');
-    // Binnen het formulier: de keuzelijsten van de instellingen staan in
-    // dezelfde boom, en buiten dat formulier geteld schuift `nth(0)` mee met wat
-    // er elders op het scherm bij komt.
-    const keuze = page.locator('form select');
-    await keuze.nth(0).selectOption('toeslagen');
-    await page.waitForTimeout(200);
-    await keuze.nth(1).selectOption('zorgtoeslagbeschikking');
-    await page.locator('input[aria-label="Naam van de parameter"]').fill('zaakkenmerk');
-    await page.locator('input[aria-label="Waarde van de parameter"]').fill(`zorgtoeslag/${BSN}`);
-    const moment = page.locator('input[aria-label="Op moment"]');
-    await moment.fill('01-02-2024');
-    await moment.press('Tab');
-    await page.getByText('Vraag stellen').first().click();
+    await s.askLexostatus({
+      cell: 'toeslagen',
+      name: 'zorgtoeslagbeschikking',
+      params: { zaakkenmerk: `zorgtoeslag/${BSN}` },
+      moment: '01-02-2024',
+    });
     await expect.poll(async () => /Niets vastgesteld/i.test(await s.textAll())).toBe(true);
   });
 
   test('M2: op het besluitmoment is het wel vastgesteld', async () => {
-    const moment = page.locator('input[aria-label="Op moment"]');
-    await moment.fill('01-03-2024');
-    await moment.press('Tab');
-    await page.getByText('Vraag stellen').first().click();
+    await s.askLexostatus({ moment: '01-03-2024' });
     await expect.poll(async () => await s.body()).toMatch(/vastgesteld, geldig op 01-03-2024/i);
   });
 
@@ -260,6 +247,29 @@ test.describe('publieke wereld', () => {
       `/api/cells/toeslagen/lexostatus/zorgtoeslagbeschikking?zaakkenmerk=zorgtoeslag/${BSN}&op_moment=2024-04-01`,
     );
     expect(antwoord.status, antwoord.text.slice(0, 120)).toBeGreaterThanOrEqual(400);
+  });
+
+  test('M4: het formulier legt uit waar het zaakkenmerk vandaan komt', async () => {
+    // Het formulier komt uit de definitie: wat de vraag betekent staat erbij,
+    // de sleutel draagt de vorm die de besluiten van deze cel eraan geven, en
+    // de zaken die er al liggen zijn te kiezen. Zonder dat alles is het veld
+    // een lege regel waar alleen iemand die de wereld kent iets in krijgt.
+
+    // Op de toelichting van déze definitie en niet op "de eerste uitklap in het
+    // formulier": een tweede uitklap erbij zou de check stil over iets anders
+    // laten gaan.
+    await expect(
+      s.lexostatusForm().locator('nldd-inline-dialog[text="zorgtoeslagbeschikking"]'),
+    ).toHaveAttribute('supporting-text', /wat deze cel over deze zaak besloten heeft/i);
+    await expect(s.lexostatusField('zaakkenmerk')).toHaveAttribute(
+      'supporting-label',
+      /sleutel van kroniek 'beschikkingen'.*zorgtoeslag\/\{bsn\}/,
+    );
+    // `poll` en geen kale lezing: de keuzelijst is een momentopname van de DOM,
+    // en die leest zichzelf niet opnieuw als het formulier nog hertekent.
+    await expect
+      .poll(async () => await s.lexostatusOptions('zaakkenmerk'))
+      .toContain(`zorgtoeslag/${BSN}`);
   });
 
   test('G1: het grammen-tabblad toont alle grammen', async () => {
