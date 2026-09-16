@@ -1,10 +1,10 @@
-//! Lift a law file to schema v0.6.0.
+//! Lift a law file to schema v0.7.0.
 //!
 //! Two jobs, and they are deliberately unequal in ambition.
 //!
 //! A **bare harvested law** carries no model at all, so the only thing that
-//! stands between it and v0.6.0 is the `$schema` line. Measured rather than
-//! assumed: between v0.3.1 and v0.6.0 nothing a harvest writes was removed or
+//! stands between it and v0.7.0 is the `$schema` line. Measured rather than
+//! assumed: between v0.3.1 and v0.7.0 nothing a harvest writes was removed or
 //! tightened — the top-level and per-article shapes only gained fields
 //! (`procedure`, `valid_to`, `waterschap_code`, `placement`) and the
 //! `regulatory_layer` enum only grew. So the bump is a one-line rewrite, and
@@ -12,7 +12,7 @@
 //! its folded block scalars instead of being reformatted by a round-trip
 //! through the YAML serializer.
 //!
-//! An **enriched law** written against the pre-consolidation v0.6.0 carries
+//! An **enriched law** written against the pre-consolidation v0.7.0 carries
 //! `untranslatables`, `norm_gaps` and `enables`, which that version no longer
 //! has. Those are converted, and the conversion is deliberately narrow: it
 //! moves what has a counterpart and it *refuses* to invent what does not.
@@ -43,16 +43,16 @@
 //! | `kind`, `blocks`, `searched`, `legal_text_excerpt` | — (dropped) |
 //!
 //! `enables` is dropped whole: the contract that consolidated the four flag
-//! fields into two removed it, and there is nothing in v0.6.0 that holds it.
+//! fields into two removed it, and there is nothing in v0.7.0 that holds it.
 
 use serde_yaml_ng::{Mapping, Value};
 
 /// `$schema` URL a migrated file declares.
 pub const SCHEMA_URL: &str =
-    "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json";
+    "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json";
 
 /// The schema version this module migrates to.
-pub const TARGET_VERSION: &str = "v0.6.0";
+pub const TARGET_VERSION: &str = "v0.7.0";
 
 /// A place where the conversion could not proceed without inventing a value.
 ///
@@ -96,9 +96,9 @@ pub struct Migration {
     pub structural_changes: bool,
     /// Required fields of the new shape with no source in the old one.
     pub blockers: Vec<Blocker>,
-    /// Old fields with no counterpart in v0.6.0.
+    /// Old fields with no counterpart in v0.7.0.
     pub dropped: Vec<Dropped>,
-    /// Schema errors of the *migrated* file, against v0.6.0.
+    /// Schema errors of the *migrated* file, against v0.7.0.
     pub schema_errors: Vec<String>,
 }
 
@@ -110,7 +110,7 @@ impl Migration {
     }
 }
 
-/// Migrate one law file to v0.6.0.
+/// Migrate one law file to v0.7.0.
 ///
 /// `Err` is reserved for a file this module cannot read at all — unparseable
 /// YAML, or a document that is not a mapping. Everything else, including a
@@ -276,7 +276,7 @@ fn migrate_article(
         }
     }
 
-    // Fields v0.6.0 removed outright. `structural_choices` was never written
+    // Fields v0.7.0 removed outright. `structural_choices` was never written
     // by anything, only read; `enables` and `legal_basis_for` were.
     for field in ["enables", "legal_basis_for", "structural_choices"] {
         if let Some(old) = mr.remove(field) {
@@ -471,13 +471,13 @@ articles:
 "#;
 
     #[test]
-    fn a_bare_v0_3_1_law_reaches_v0_6_0_and_validates() {
+    fn a_bare_v0_3_1_law_reaches_v0_7_0_and_validates() {
         let m = migrate(BARE).expect("migrates");
         assert_eq!(m.from_version.as_deref(), Some("v0.3.1"));
         assert!(m.yaml.contains(SCHEMA_URL));
         assert!(
             m.schema_errors.is_empty(),
-            "expected a valid v0.6.0 file, got {:?}",
+            "expected a valid v0.7.0 file, got {:?}",
             m.schema_errors
         );
         assert!(m.is_clean());
@@ -514,7 +514,7 @@ articles:
     fn enriched(machine_readable: &str) -> String {
         format!(
             r#"---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
 $id: test_law
 regulatory_layer: WET
 publication_date: '2025-01-01'
@@ -584,7 +584,7 @@ articles:
         assert!(!m.yaml.contains("reason:"));
         assert!(
             !m.schema_errors.is_empty(),
-            "a marking without a reason must fail v0.6.0"
+            "a marking without a reason must fail v0.7.0"
         );
     }
 
@@ -622,7 +622,7 @@ articles:
         // The claim is left out rather than guessed at, so the file says so.
         assert!(
             !m.schema_errors.is_empty(),
-            "a marking without target must fail v0.6.0"
+            "a marking without target must fail v0.7.0"
         );
         assert!(!m.is_clean());
     }
@@ -663,7 +663,7 @@ articles:
         assert_eq!(missing, vec!["id", "type"]);
         assert!(
             !m.schema_errors.is_empty(),
-            "an open term without id and type must fail v0.6.0"
+            "an open term without id and type must fail v0.7.0"
         );
         let gone: Vec<&str> = m.dropped.iter().map(|d| d.field).collect();
         assert_eq!(

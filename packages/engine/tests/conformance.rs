@@ -42,13 +42,13 @@ const KNOWN_GAPS: &[&str] = &[
     // Measured 2026-08-03. Both are leniency the model needs and the engine
     // does not inherit.
     //
-    // `resolved_by` is required by schema v0.6.0 and optional on the model,
+    // `resolved_by` is required by schema v0.7.0 and optional on the model,
     // which must also read the files written before the field existed
     // (`service.rs`, `marking_reason`, states the same reason where it uses
     // it). Tightening the model here would move the behaviour of `load_law`,
     // which is the last thing standing between a written law and the commit.
     "marking_without_resolved_by.yaml",
-    // `output` is required by schema v0.6.0 and optional on the model for the
+    // `output` is required by schema v0.7.0 and optional on the model for the
     // same reason. The engine refuses such an action at execution time rather
     // than skipping it, so the leniency stops at the model boundary; see
     // `engine.rs`, `execute_actions_traced`.
@@ -72,7 +72,7 @@ const KNOWN_GAPS: &[&str] = &[
     //
     // -- Required fields the model does not enforce. Metadata-completeness
     // errors the schema gate catches as long as the file passes CI; the model
-    // stays lenient because it must also read pre-v0.6.0 files.
+    // stays lenient because it must also read pre-v0.7.0 files.
     "input_without_source.yaml", // schema requires `source` on inputs (`source: {}` = registry lookup, so absence is a real difference); model Option — resolution skips the sourceless input (`resolve_inputs_with_service`) and evaluation fails hard with "Variable not found", which does not name the missing `source` as the cause
     "wet_without_bwb_id.yaml", // schema's per-layer conditional requireds (WET→bwb_id etc.); model has all identifiers as Option
     "document_without_articles.yaml", // schema requires `articles`; model defaults to an empty list
@@ -82,7 +82,17 @@ const KNOWN_GAPS: &[&str] = &[
     // -- Compat and migration leniency, deliberate on the model side.
     "comparison_alias_not_equals.yaml", // NOT_EQUALS (with IS_NULL/NOT_NULL/NOT_IN/SWITCH) is a compat alias outside the schema enum; kept for pre-canonicalization files (`value.rs`, operation deserializer)
     "inline_round_without_precision.yaml", // schema's allOf requires `precision` on inline ROUND/CEIL/FLOOR; model Option — the engine refuses the action at execution ("ROUND requires 'precision' at action level"), so nothing is ever rounded at a guessed precision
-    "untranslatables_on_v0_6_0.yaml", // v0.6.0 dropped the old channel for `markings`; the model still parses it (it must read v0.5.x) and the engine honours the flag — flag-keeping, the safe side of wrong (see `Marking` rustdoc)
+    "untranslatables_on_v0_7_0.yaml", // v0.7.0 dropped the old channel for `markings`; the model still parses it (it must read v0.5.x) and the engine honours the flag — flag-keeping, the safe side of wrong (see `Marking` rustdoc)
+    // Measured 2026-09-04, alongside RFC-016. A FOREACH written with the field
+    // names of an earlier RFC draft (`subject`/`value`/`where`) is rejected by
+    // the schema, and the `Foreach` variant rejects it too — but `ActionValue`
+    // is `#[serde(untagged)]`, so the failed operation falls through to
+    // `Literal` and the action ends up holding a plain object instead of an
+    // error. Same root cause as `unknown_field_in_article.yaml`: the model has
+    // no `deny_unknown_fields` and untagged enums swallow the mismatch. Fixing
+    // it means tightening `ActionValue`, which is a change for every operation,
+    // not for this one.
+    "foreach_draft_field_names.yaml",
 ];
 
 /// Corpus laws whose re-serialized model is not value-stable, with the measured

@@ -84,6 +84,38 @@ pub const EDITOR_CSP: &str = "default-src 'self'; \
      base-uri 'none'; \
      form-action 'self'";
 
+/// CSP for the PoC portal, which serves several demo frontends from one origin.
+///
+/// One directive differs from [`EDITOR_CSP`], and it is a real difference
+/// rather than a copy that drifted: `worker-src 'self' blob:`.
+///
+/// The OCW PoCs run their population simulation in a module worker
+/// (`usePopulation.js`: `new Worker(new URL('../sim/simWorker.js', …), { type:
+/// 'module' })`), and that worker instantiates the WASM engine itself the same
+/// way the main thread does — fetch the wasm-bindgen glue, wrap it in a Blob,
+/// import the blob URL. The editor never starts a worker, which is why
+/// `EDITOR_CSP` deliberately pins `worker-src` to `'self'` and keeps the
+/// `blob:` allowance confined to the one import that needs it. Here the worker
+/// is the thing that needs it, so the allowance has to extend to `worker-src`
+/// as well. Narrowing this back to `'self'` breaks the beleidsview's
+/// simulation, silently, in the browser only.
+///
+/// Everything else matches: `'wasm-unsafe-eval'` and not `'unsafe-eval'`, and
+/// `style-src 'unsafe-inline'` for the NDD components, which build a `<style>`
+/// element and assign its `textContent`.
+pub const POC_CSP: &str = "default-src 'self'; \
+     script-src 'self' 'wasm-unsafe-eval' blob:; \
+     worker-src 'self' blob:; \
+     style-src 'self' 'unsafe-inline'; \
+     img-src 'self' data:; \
+     font-src 'self'; \
+     connect-src 'self'; \
+     object-src 'none'; \
+     frame-src 'none'; \
+     frame-ancestors 'none'; \
+     base-uri 'none'; \
+     form-action 'self'";
+
 type SecurityHeadersFuture = Pin<Box<dyn Future<Output = Response> + Send>>;
 
 /// Middleware that stamps the security headers onto every response, with
@@ -218,7 +250,7 @@ mod tests {
     /// caught rather than skipped.
     #[test]
     fn no_policy_grants_eval_or_inline_script() {
-        for csp in [API_CSP, EDITOR_CSP] {
+        for csp in [API_CSP, EDITOR_CSP, POC_CSP] {
             assert!(!csp.contains("'unsafe-eval'"), "{csp}");
             let governing = directive(csp, "script-src")
                 .or_else(|| directive(csp, "default-src"))
@@ -232,7 +264,7 @@ mod tests {
     /// with a value that permits everything.
     #[test]
     fn every_policy_closes_the_non_inheriting_directives() {
-        for csp in [API_CSP, EDITOR_CSP] {
+        for csp in [API_CSP, EDITOR_CSP, POC_CSP] {
             for name in ["frame-ancestors", "base-uri"] {
                 assert_eq!(
                     directive(csp, name),
@@ -246,5 +278,24 @@ mod tests {
                 "{form_action}"
             );
         }
+    }
+
+    /// The PoC portal's one deliberate widening over the editor's policy.
+    ///
+    /// Pinned in both directions. Narrowing `worker-src` back to `'self'`
+    /// looks like a tightening and breaks the OCW beleidsview's simulation in
+    /// the browser only — no test, no log, just a worker that never starts.
+    /// Widening the editor's would hand a `blob:` worker to a policy that has
+    /// no use for one.
+    #[test]
+    fn only_the_poc_policy_allows_a_blob_worker() {
+        assert_eq!(
+            directive(POC_CSP, "worker-src"),
+            Some("worker-src 'self' blob:")
+        );
+        assert_eq!(
+            directive(EDITOR_CSP, "worker-src"),
+            Some("worker-src 'self'")
+        );
     }
 }

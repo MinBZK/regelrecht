@@ -368,6 +368,109 @@ async fn test_dismiss_open_tasks_for_traject_scopes_and_dedupes() {
     assert_eq!(status, TaskStatus::Approved);
 }
 
+#[tokio::test]
+async fn test_list_tasks_for_job_returns_every_part_of_one_enrichment() {
+    let db = TestDb::new().await;
+    let (account_id, traject_id) = seed_account_and_traject(&db).await;
+    let job = job_queue::create_job(&db.pool, CreateJobRequest::new(JobType::Enrich, "wet_a"))
+        .await
+        .unwrap();
+    let other_job =
+        job_queue::create_job(&db.pool, CreateJobRequest::new(JobType::Enrich, "wet_b"))
+            .await
+            .unwrap();
+    let article_1 = seed_open_task(&db, account_id, traject_id, Some(job.id)).await;
+    let article_2 = seed_open_task(&db, account_id, traject_id, Some(job.id)).await;
+    let elsewhere = seed_open_task(&db, account_id, traject_id, Some(other_job.id)).await;
+
+    // Een afgehandeld onderdeel komt mee: wie de verrijking verwerkt moet
+    // kunnen zien dat een zusje buiten hem om al dichtging.
+    tasks::resolve_task(&db.pool, article_2.id, account_id, TaskStatus::Rejected)
+        .await
+        .unwrap()
+        .expect("assignee mag resolven");
+
+    let parts = tasks::list_tasks_for_job_and_account(&db.pool, job.id, account_id)
+        .await
+        .unwrap();
+    let ids: Vec<uuid::Uuid> = parts.iter().map(|t| t.id).collect();
+    assert_eq!(ids, vec![article_1.id, article_2.id]);
+    assert!(!ids.contains(&elsewhere.id), "andere job hoort er niet bij");
+    assert_eq!(parts[1].status, TaskStatus::Rejected);
+
+    // Andermans account ziet niets, ook niet van een job die bestaat.
+    assert!(
+        tasks::list_tasks_for_job_and_account(&db.pool, job.id, uuid::Uuid::new_v4())
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn test_resolve_tasks_closes_a_whole_enrichment_and_counts_what_it_closed() {
+    let db = TestDb::new().await;
+    let (account_id, traject_id) = seed_account_and_traject(&db).await;
+    let job = job_queue::create_job(&db.pool, CreateJobRequest::new(JobType::Enrich, "wet_a"))
+        .await
+        .unwrap();
+    let article_1 = seed_open_task(&db, account_id, traject_id, Some(job.id)).await;
+    let article_2 = seed_open_task(&db, account_id, traject_id, Some(job.id)).await;
+    let article_3 = seed_open_task(&db, account_id, traject_id, Some(job.id)).await;
+
+    let approved = tasks::resolve_tasks(
+        &db.pool,
+        &[article_1.id, article_2.id],
+        account_id,
+        TaskStatus::Approved,
+    )
+    .await
+    .unwrap();
+    assert_eq!(approved, 2);
+
+    // Al dicht, of van een ander account: die tellen niet mee, en dat is
+    // precies het signaal waarop de aanroeper de hele verwerking terugrolt.
+    let again = tasks::resolve_tasks(
+        &db.pool,
+        &[article_1.id, article_3.id],
+        account_id,
+        TaskStatus::Rejected,
+    )
+    .await
+    .unwrap();
+    assert_eq!(again, 1);
+    assert_eq!(
+        tasks::resolve_tasks(&db.pool, &[], account_id, TaskStatus::Rejected)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        tasks::resolve_tasks(
+            &db.pool,
+            &[article_1.id],
+            uuid::Uuid::new_v4(),
+            TaskStatus::Rejected
+        )
+        .await
+        .unwrap(),
+        0
+    );
+
+    let parts = tasks::list_tasks_for_job_and_account(&db.pool, job.id, account_id)
+        .await
+        .unwrap();
+    let statuses: Vec<TaskStatus> = parts.iter().map(|t| t.status).collect();
+    assert_eq!(
+        statuses,
+        vec![
+            TaskStatus::Approved,
+            TaskStatus::Approved,
+            TaskStatus::Rejected
+        ]
+    );
+}
+
 /// Open `job_review`-taak met de minimale velden die deze test nodig heeft.
 async fn seed_open_task(
     db: &TestDb,

@@ -27,7 +27,7 @@ path = "src/bin/pipeline_api.rs"
 name = "law-check"
 path = "src/bin/law_check.rs"
 
-# Tilt een wetsbestand naar schema v0.6.0 en valideert het resultaat. Een
+# Tilt een wetsbestand naar schema v0.7.0 en valideert het resultaat. Een
 # verplicht veld dat de oude vorm niet draagt wordt gemeld, niet ingevuld.
 [[bin]]
 name = "law-migrate"

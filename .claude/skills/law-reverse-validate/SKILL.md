@@ -171,7 +171,8 @@ re-run `just validate`, and report it.
 Verify none of these appear: `when`/`then`/`else` on `IF` (must be
 `cases`/`default`), `SUBTRACT_DATE` (must be `AGE` or `DATE_DIFF`), `CONCAT`
 (must be `ADD`), `NOT_EQUALS`, `IS_NULL`, `NOT_NULL`, `NOT_IN` (must be `NOT`
-around the positive operation), `FOREACH`, `SWITCH`.
+around the positive operation), `SWITCH`. `FOREACH` was removed at v0.5.0 and
+restored at v0.5.7 (RFC-016); do not flag it, and do not flag `type: array` inputs.
 
 ## Report
 

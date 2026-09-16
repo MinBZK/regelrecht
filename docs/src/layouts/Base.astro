@@ -1025,11 +1025,26 @@ const legalLinks = [
       document.addEventListener('astro:page-load', reanchor);
     </script>
 
-    <!-- Select lines in a doc/RFC, jump to GitHub edit at that source range.
-         Pure chrome, no hydration: one floating nldd-button wired to the
-         current text selection. Active only on pages whose content wrapper
-         carries data-edit-base (doc + RFC templates); the source line numbers
-         come from rehype-source-lines (data-line / data-line-end). -->
+    <!-- Selection affordance on prose pages. One floating nldd-button, wired
+         to the current text selection; pure chrome, no hydration.
+
+         Two modes, decided by the content wrapper's attributes:
+
+         - data-edit-base (doc + RFC templates): jump to the GitHub edit view
+           at the selected source range. Line numbers come from
+           rehype-source-lines (data-line / data-line-end).
+         - data-discuss-paper (research papers): open a prefilled "Discuss a
+           paper" issue quoting the selection. Papers are frozen published
+           artifacts, so there is nothing to edit: the reader's response is an
+           argument, and the issue form is where it goes. The location comes
+           from the nearest heading anchor, not from source lines, because the
+           paper HTML is generated (pandoc) and its line numbers point into a
+           build artifact rather than the paper's LaTeX source.
+
+           GitHub resolves ?template= against the DEFAULT BRANCH, so the link
+           only finds the form once .github/ISSUE_TEMPLATE/paper-feedback.yml
+           is on main; on a preview deployment of the branch that adds it, the
+           button lands on the blank issue form instead. -->
     <script>
       // Bound once for the document lifetime: the global listeners
       // (selectionchange, scroll, keydown) survive ClientRouter swaps, and the
@@ -1064,32 +1079,118 @@ const legalLinks = [
           wrap.hidden = true;
         };
 
+        // GitHub prefill values travel in the query string, so a long
+        // selection is truncated: an over-long URL is dropped or mangled by
+        // some browsers, and the anchor link below carries the exact location
+        // regardless. The reader can paste more into the form itself.
+        const MAX_QUOTE = 600;
+
+        // Last heading that precedes the selection start, whose id is the
+        // anchor the issue links back to. The generated paper HTML gives every
+        // heading a stable id (pandoc's sec: prefixes), so this is a reliable
+        // location without any source-line provenance.
+        const nearestHeading = (content, range) => {
+          const headings = Array.from(
+            content.querySelectorAll('h2[id], h3[id], h4[id]')
+          );
+          // An element startContainer addresses a position *between* its
+          // children (startOffset indexes childNodes), so compare from the
+          // child actually at that offset. Without this, a range whose start
+          // is the wrapper itself (what select-all produces) makes every
+          // heading a descendant of `node`, which is CONTAINED_BY and never
+          // FOLLOWING, and the anchor is lost.
+          let node = range.startContainer;
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            node = node.childNodes[range.startOffset] ?? node.lastChild ?? node;
+          }
+          let best = null;
+          for (const h of headings) {
+            // A selection that starts on (or inside) a heading belongs to that
+            // heading's own section. compareDocumentPosition(h) is 0 against
+            // itself and never FOLLOWING, so without this the passage would be
+            // filed under the *previous* section.
+            if (h === node || h.contains(node)) return h;
+            // compareDocumentPosition: heading precedes the selection start.
+            const rel = h.compareDocumentPosition(node);
+            if (rel & Node.DOCUMENT_POSITION_FOLLOWING) best = h;
+          }
+          // A selection starting before the first heading (select-all begins
+          // at the generator comment that opens the pandoc output) has no
+          // preceding heading; the first one is still the right anchor.
+          return best ?? headings[0] ?? null;
+        };
+
         const update = () => {
           // Content wrapper is re-resolved every time: it lives in the swapped
           // <body>, so it changes on each ClientRouter navigation.
-          const content = document.querySelector('[data-edit-base]');
-          const editBase = content && content.getAttribute('data-edit-base');
-          if (!content || !editBase) return hide();
+          const content = document.querySelector(
+            '[data-edit-base], [data-discuss-paper]'
+          );
+          if (!content) return hide();
+          const editBase = content.getAttribute('data-edit-base');
+          const paper = content.getAttribute('data-discuss-paper');
+          if (!editBase && !paper) return hide();
 
           const sel = window.getSelection();
           if (!sel || sel.isCollapsed || sel.rangeCount === 0) return hide();
           const range = sel.getRangeAt(0);
           if (!content.contains(range.commonAncestorContainer)) return hide();
 
-          // Every data-line element the selection touches; min start / max end
-          // gives the source range even across multiple blocks.
-          let min = Infinity;
-          let max = -Infinity;
-          content.querySelectorAll('[data-line]').forEach((el) => {
-            if (!range.intersectsNode(el)) return;
-            const a = Number(el.getAttribute('data-line'));
-            const b = Number(el.getAttribute('data-line-end')) || a;
-            if (a && a < min) min = a;
-            if (b && b > max) max = b;
-          });
-          if (min === Infinity || max === -Infinity) return hide();
+          if (paper) {
+            const text = sel.toString().trim();
+            if (!text) return hide();
+            const heading = nearestHeading(content, range);
+            const section = heading
+              ? heading.textContent.trim()
+              : '';
+            const anchor = heading
+              ? `${location.origin}${location.pathname}#${heading.id}`
+              : `${location.origin}${location.pathname}`;
+            const quote =
+              text.length > MAX_QUOTE ? `${text.slice(0, MAX_QUOTE)}…` : text;
+            // Blockquoted so the passage reads as a quotation in the issue.
+            const quoted = quote.replace(/^/gm, '> ');
+            const where = section ? `${paper} — ${section}` : paper;
+            const params = new URLSearchParams({
+              template: 'paper-feedback.yml',
+              title: `paper: ${section || paper}`,
+              // Issue-form fields, addressed by field id. GitHub applies these
+              // only when the template above resolves.
+              paper: where,
+              passage: quoted,
+              source: anchor,
+              // Same content as a plain body, for when it does not: an
+              // unresolved ?template= (the form not yet on the default branch,
+              // renamed, or removed) silently falls back to the blank issue
+              // form, which ignores field ids and would drop the passage
+              // entirely. The blank form honours `body`; the issue form
+              // ignores it. Sending both means the quote survives either way.
+              body: `${quoted}\n\n— ${where}\n${anchor}\n\n`,
+            });
+            btn.setAttribute('text', 'Discuss this passage');
+            btn.setAttribute('start-icon', 'comment');
+            btn.setAttribute(
+              'href',
+              `https://github.com/MinBZK/regelrecht/issues/new?${params}`
+            );
+          } else {
+            // Every data-line element the selection touches; min start / max
+            // end gives the source range even across multiple blocks.
+            let min = Infinity;
+            let max = -Infinity;
+            content.querySelectorAll('[data-line]').forEach((el) => {
+              if (!range.intersectsNode(el)) return;
+              const a = Number(el.getAttribute('data-line'));
+              const b = Number(el.getAttribute('data-line-end')) || a;
+              if (a && a < min) min = a;
+              if (b && b > max) max = b;
+            });
+            if (min === Infinity || max === -Infinity) return hide();
+            btn.setAttribute('text', 'Edit these lines on GitHub');
+            btn.setAttribute('start-icon', 'pencil');
+            btn.setAttribute('href', `${editBase}#L${min}-L${max}`);
+          }
 
-          btn.setAttribute('href', `${editBase}#L${min}-L${max}`);
           const rect = range.getBoundingClientRect();
           if (!rect.width && !rect.height) return hide();
           // Anchor just above the selection start, clamped into the viewport.

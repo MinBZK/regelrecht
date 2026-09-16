@@ -33,8 +33,10 @@ corpus/regulation/nl/
 
 ### Header Metadata
 
+The `$schema` line pins the exact schema version the file was written against, by immutable git tag. The current version and the full URL to copy are on the [Schema Reference](/reference/schema#current-version).
+
 ```yaml
-$schema: https://raw.githubusercontent.com/.../refs/tags/schema-v0.5.2/schema/v0.5.2/schema.json
+$schema: https://raw.githubusercontent.com/.../refs/tags/schema-vX.Y.Z/schema/vX.Y.Z/schema.json
 $id: wet_op_de_zorgtoeslag
 regulatory_layer: WET
 publication_date: '2025-01-01'
@@ -123,11 +125,17 @@ The logic of a law is written with operations:
 | **Rounding** | `ROUND`, `CEIL`, `FLOOR` | `value:` + `precision:` (a single operand, rounded to N decimals; see below) |
 | **Comparison** | `EQUALS`, `GREATER_THAN`, `LESS_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN_OR_EQUAL` | `subject:`, `value:` (operands may be numbers or ISO dates, see [RFC-021](/rfcs/rfc-021)) |
 | **Logical** | `AND`, `OR`, `NOT` | `AND`/`OR`: `conditions: [...]`; `NOT`: `value:` (wraps a single operation) |
-| **Collection** | `IN`, `LIST` | `IN`: `subject:` + `value:` or `values: [...]`; `LIST`: `items: [...]` |
+| **Collection** | `IN`, `LIST`, `FOREACH` | `IN`: `subject:` + `value:` or `values: [...]`; `LIST`: `items: [...]`; `FOREACH`: `collection:` + `body:`, optional `as:`, `filter:` and `combine:` (see [RFC-016](/rfcs/rfc-016)) |
 | **Conditional** | `IF` (alias `SWITCH`) | `cases: [{when:, then:}]`, `default:` |
 | **Date** | `AGE`, `DATE_ADD`, `DATE`, `DAY_OF_WEEK`, `DATE_DIFF`, `DATE_PART`, `START_OF` | `AGE`: `date_of_birth:`, `reference_date:`; `DATE_ADD`: `date:` + `years:`/`months:`/`days:`; `DATE`: `year:`, `month:`, `day:`; `DAY_OF_WEEK`: `date:`; `DATE_DIFF`: `from:`, `to:`, `in:` (days/months/years); `DATE_PART`: `date:`, `in:` (year/month/day); `START_OF`: `date:`, `in:` (year/month) |
 
-These 25 operations make up the schema. The engine also accepts the compat aliases `NOT_EQUALS`, `IS_NULL`, `NOT_NULL`, and `NOT_IN` for backward compatibility, but they are outside the schema, so prefer wrapping the positive operation in `NOT`. See [RFC-004: Uniform Operation Syntax](/rfcs/rfc-004) for the full specification.
+These 26 operations make up the schema. The engine also accepts the compat aliases `NOT_EQUALS`, `IS_NULL`, `NOT_NULL`, and `NOT_IN` for backward compatibility, but they are outside the schema, so prefer wrapping the positive operation in `NOT`. See [RFC-004: Uniform Operation Syntax](/rfcs/rfc-004) for the full specification.
+
+The set is short on purpose. An operation earns its place when a real law needs it, not when an engine could plausibly offer it: `ROUND` because a law rounds to whole euros, `DATE_DIFF` because a deadline is measured in days, `FOREACH` because a norm counts medebewoners. What an engine *can* do is close to unbounded, and every operation added on that basis is a promise the schema, the editor, the conformance suite and every other engine have to keep. A law that cannot be expressed is the signal to extend the language; the absence of an operation someone imagined a use for is not.
+
+### Absent and unknown values
+
+A register does not hold a value for everyone, and the engine keeps two cases apart ([RFC-036](/rfcs/rfc-036)). An **absent** value, `null`, is a fact: the register says there is none (no partner, no rent). A field may hold it only when its declaration says so (`nullable: true`, schema v0.5.8); a law tests it with `EQUALS … null` and may branch on it, but calculating, ordering or deciding on it is an error, because a legal text never treats "geen" as an amount or a verdict without saying so. `just validate` checks this before the law runs ([RFC-037](/rfcs/rfc-037)): a `null` test on a non-nullable field, a `null` reaching a sum without an absence test, or an `IF` without `default` on a non-nullable output is refused. An **unknown** value is a fact nobody has yet: a `source: {}` input no data source could supply, or an optional parameter the caller did not pass. A law cannot write an unknown; it propagates through every operation (a definite `false` still decides an `AND`, a definite `true` an `OR`) and reaches the output carrying the names of the missing facts, so the portal can ask for them. In a data table an empty cell is unknown and the word `null` is absence; the assertions read `is absent` and `is unknown`. Note that this is the reverse of what `null` means in SQL, where it stands for the unknown: the RFC explains why the literal was kept for absence.
 
 ### Rounding and precision
 

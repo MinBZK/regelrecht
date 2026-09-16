@@ -56,8 +56,13 @@ const onLoginTriggerPointerdown = inject('onLoginTriggerPointerdown', () => {});
 // traject. Buiten een traject voert de knop de actie dus niet uit maar brengt
 // hij je ergens heen. Dat verschil zit in de tekst en in de vorm van het label:
 // gebiedende wijs waar het nu gebeurt, heel werkwoord waar je heen gaat.
+//
+// Het label noemt de wet en niet het artikel, want dat is wat de actie doet: de
+// aanvraag kent alleen een wet en levert een voorstel per gewijzigd artikel op.
+// Wie bij artikel 5 op deze knop drukte, kreeg taken terug voor artikel 3, 7 en
+// 12 zonder dat de knop dat ergens had gezegd.
 const actsHere = computed(() => !props.needs);
-const enrichLabel = computed(() => (actsHere.value ? 'Genereer een voorstel' : 'Voorstel genereren'));
+const enrichLabel = computed(() => (actsHere.value ? 'Verrijk deze wet' : 'Deze wet verrijken'));
 const IN_EEN_TRAJECT = 'Een voorstel komt in een traject te staan, want daar leg je wijzigingen vast.';
 const emptyText = computed(() => {
   if (props.needs === 'login') return `${IN_EEN_TRAJECT} Log in en kies een traject om dit artikel daar te openen.`;

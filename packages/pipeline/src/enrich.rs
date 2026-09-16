@@ -1730,7 +1730,7 @@ pub struct EnrichResult {
     /// stored results deserializable.
     #[serde(default)]
     pub untranslatables: Vec<CapturedUntranslatable>,
-    /// Markings captured from the enriched YAML (schema v0.6.0), the channel
+    /// Markings captured from the enriched YAML (schema v0.7.0), the channel
     /// that replaced `untranslatables`. These ride in `jobs.result` and are
     /// deliberately NOT mirrored into the `untranslatables` table: that table
     /// belongs to the v1 pipeline, its `reason` column is `NOT NULL` and a
@@ -1797,7 +1797,7 @@ pub struct CapturedUntranslatable {
 }
 
 /// A single marking captured from an enriched article, flattened for
-/// reporting. The counterpart of [`CapturedUntranslatable`] for schema v0.6.0
+/// reporting. The counterpart of [`CapturedUntranslatable`] for schema v0.7.0
 /// and later; see [`EnrichResult::markings`] for why it is not written to the
 /// `untranslatables` table.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2443,7 +2443,7 @@ fn build_prompt(
 
 /// The names a law file may use to record what its model does not do.
 ///
-/// Schema v0.6.0 folded four fields into two and set
+/// Schema v0.7.0 folded four fields into two and set
 /// `additionalProperties: false`, so the old names are now rejected by the
 /// schema gate and the new names are rejected by every schema before it. The
 /// feedback prompt therefore cannot name one set of fields for every file: a
@@ -2453,7 +2453,7 @@ fn build_prompt(
 /// the file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Vocabulary {
-    /// Schema v0.6.0 and later: `markings` and `open_terms`.
+    /// Schema v0.7.0 and later: `markings` and `open_terms`.
     Markings,
     /// Schema v0.5.6 and earlier: `untranslatables` and `norm_gaps`. Laws on
     /// these versions stay in the corpus and are re-enriched, so the wording
@@ -2491,7 +2491,7 @@ fn vocabulary_of_yaml(raw: &str) -> Vocabulary {
     }
 }
 
-/// Whether a `vMAJOR.MINOR.PATCH` schema version is v0.6.0 or later, the point
+/// Whether a `vMAJOR.MINOR.PATCH` schema version is v0.7.0 or later, the point
 /// at which `markings` replaced `untranslatables` and `norm_gaps`.
 fn schema_has_markings(version: &str) -> bool {
     let mut parts = version.trim_start_matches('v').split('.');
@@ -4314,7 +4314,7 @@ pub async fn execute_enrich_with_runner(
     let envelope = read_enrichment_result_envelope(&yaml_abs).await;
 
     // Capture what the agent flagged in the enriched YAML: untranslatables
-    // (RFC-012, schema v0.5.x) and the markings that replaced them in v0.6.0.
+    // (RFC-012, schema v0.5.x) and the markings that replaced them in v0.7.0.
     let untranslatables = collect_untranslatables_from(&law_after);
     let markings = collect_markings_from(&law_after);
 
@@ -4582,7 +4582,7 @@ async fn collect_untranslatables(path: &Path) -> Result<Vec<CapturedUntranslatab
 /// the window masquerade as progress for a window that was never reviewed.
 ///
 /// The second figure counts both channels a law may use to record what its
-/// model does not do: `markings` from schema v0.6.0 and the `untranslatables`
+/// model does not do: `markings` from schema v0.7.0 and the `untranslatables`
 /// they replaced. Counting only the old one made the guard blind to the
 /// commonest legitimate outcome of a window of definition provisions —
 /// already-modelled articles that this run only flagged — and failed a window
@@ -4608,7 +4608,7 @@ fn window_progress_stats(law: &ArticleBasedLaw, numbers: &[String]) -> (usize, u
 }
 
 /// Flatten the untranslatables of an already-parsed law. See
-/// [`collect_untranslatables`]. The v0.6.0 channel has its own collector,
+/// [`collect_untranslatables`]. The v0.7.0 channel has its own collector,
 /// [`collect_markings_from`]: the two are deliberately not merged, because
 /// only this one is mirrored into the `untranslatables` table.
 fn collect_untranslatables_from(law: &ArticleBasedLaw) -> Vec<CapturedUntranslatable> {
@@ -4635,7 +4635,7 @@ fn collect_untranslatables_from(law: &ArticleBasedLaw) -> Vec<CapturedUntranslat
 }
 
 /// Flatten the markings of an already-parsed law, with the owning article
-/// number attached. The v0.6.0 counterpart of [`collect_untranslatables_from`].
+/// number attached. The v0.7.0 counterpart of [`collect_untranslatables_from`].
 fn collect_markings_from(law: &ArticleBasedLaw) -> Vec<CapturedMarking> {
     let mut out = Vec::new();
     for article in &law.articles {
@@ -5230,7 +5230,7 @@ related_legislation:
         // canonical top-level fields ($id/regulatory_layer/publication_date) and
         // articles with number+text, so the fixture mirrors a real harvested law.
         let yaml = r#"---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
 $id: test_law
 regulatory_layer: WET
 publication_date: '2025-01-01'
@@ -5267,7 +5267,7 @@ articles:
         // flatten every entry, attach the owning article number, and preserve the
         // optional fields + accepted flag.
         let yaml = r#"---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
 $id: test_law
 regulatory_layer: WET
 publication_date: '2025-01-01'
@@ -5335,12 +5335,12 @@ articles:
 
     #[tokio::test]
     async fn test_collect_untranslatables_none() {
-        // A law that records its gap the v0.6.0 way: the untranslatables
+        // A law that records its gap the v0.7.0 way: the untranslatables
         // collector must find nothing and the marking collector everything.
         // The two channels are separate on purpose — the one the worker
         // mirrors into the v1 table may not silently absorb the other.
         let yaml = r#"---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
 $id: test_law
 regulatory_layer: WET
 publication_date: '2025-01-01'
@@ -5381,7 +5381,7 @@ articles:
     /// `standaardpremie` as a bare input because entry 2, which produces it,
     /// had no model yet when entry 1 was written.
     pub(super) const TOO_EARLY_LAW: &str = r"---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
 $id: test_law
 regulatory_layer: WET
 publication_date: '2025-01-01'
@@ -5629,7 +5629,7 @@ articles:
     }
 
     /// Answers every feedback round by writing a marking without
-    /// `resolved_by`: schema v0.6.0 requires the field and the law model does
+    /// `resolved_by`: schema v0.7.0 requires the field and the law model does
     /// not, so this is exactly the edit that used to reach the commit.
     struct SchemaBreakingRunner;
 
@@ -5790,7 +5790,7 @@ articles:
     fn silent_law(articles: usize) -> String {
         let mut yaml = String::from(
             "---\n\
-             $schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json\n\
+             $schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json\n\
              $id: test_law\n\
              regulatory_layer: WET\n\
              publication_date: '2025-01-01'\n\
@@ -6637,7 +6637,7 @@ articles:
         // as un-enriched; no corpus file uses the bare/null form, so the typed
         // count matches the previous `contains_key` behavior in practice.
         let yaml = r#"---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
 $id: test_law
 regulatory_layer: WET
 publication_date: '2025-01-01'
@@ -6666,7 +6666,7 @@ articles:
     }
 
     const MINIMAL_LAW: &str = r#"---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
 $id: test_law
 regulatory_layer: WET
 publication_date: '2025-01-01'
@@ -6960,7 +6960,7 @@ articles:
         tokio::fs::create_dir_all(&law_dir).await.unwrap();
 
         let yaml_content = r#"---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
 $id: test_law
 regulatory_layer: WET
 publication_date: '2025-01-01'
@@ -7116,7 +7116,7 @@ articles:
         let law_dir = dir.path().join("regulation/nl/wet/test_law");
         tokio::fs::create_dir_all(&law_dir).await.unwrap();
 
-        let yaml_content = "---\n$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json\n$id: test_law\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Article one.\n";
+        let yaml_content = "---\n$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json\n$id: test_law\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Article one.\n";
         let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
         tokio::fs::write(dir.path().join(yaml_path), yaml_content)
             .await
@@ -7174,7 +7174,7 @@ articles:
         let law_dir = dir.path().join("regulation/nl/wet/test_law");
         tokio::fs::create_dir_all(&law_dir).await.unwrap();
 
-        let yaml_content = "---\n$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json\n$id: test_law\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Article one.\n";
+        let yaml_content = "---\n$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json\n$id: test_law\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Article one.\n";
         let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
         tokio::fs::write(dir.path().join(yaml_path), yaml_content)
             .await
@@ -7828,7 +7828,7 @@ articles:
     fn schema_version_decides_which_names_exist() {
         assert!(!schema_has_markings("v0.5.6"));
         assert!(!schema_has_markings("v0.4.0"));
-        assert!(schema_has_markings("v0.6.0"));
+        assert!(schema_has_markings("v0.7.0"));
         assert!(schema_has_markings("v0.6.1"));
         assert!(schema_has_markings("v1.0.0"));
         // Unparseable is read as current: sending an agent back to fields the
@@ -7841,11 +7841,11 @@ articles:
         assert_eq!(
             vocabulary_of_yaml(four_article_law()),
             Vocabulary::Markings,
-            "the fixture declares v0.6.0"
+            "the fixture declares v0.7.0"
         );
         assert_eq!(
             vocabulary_of_yaml(&four_article_law().replace(
-                "schema-v0.6.0/schema/v0.6.0/schema.json",
+                "schema-v0.7.0/schema/v0.7.0/schema.json",
                 "schema-v0.5.6/schema/v0.5.6/schema.json"
             )),
             Vocabulary::Legacy
@@ -7858,14 +7858,14 @@ articles:
 
     #[test]
     fn feedback_prompt_never_prescribes_a_field_the_schema_forbids() {
-        // The deadlock this guards against: a v0.6.0 law fails a gate, the
+        // The deadlock this guards against: a v0.7.0 law fails a gate, the
         // prompt tells the agent to write `norm_gaps`, and the schema gate
         // rejects exactly what the prompt asked for — every round, forever.
         for gate in [Gate::Schema, Gate::Checks, Gate::Marking] {
             let prompt = build_feedback_prompt("law.yaml", &feedback(gate), Vocabulary::Markings);
             assert!(
                 !prompt.contains("norm_gap") && !prompt.contains("untranslatable"),
-                "{gate:?} prompt names a field v0.6.0 dropped: {prompt}"
+                "{gate:?} prompt names a field v0.7.0 dropped: {prompt}"
             );
         }
     }
@@ -7910,7 +7910,7 @@ articles:
 
     #[test]
     fn feedback_prompt_keeps_the_old_names_for_laws_on_the_old_schema() {
-        // v0.5.x laws stay in the corpus and are re-enriched. Naming v0.6.0
+        // v0.5.x laws stay in the corpus and are re-enriched. Naming v0.7.0
         // fields to them is the same deadlock in the other direction.
         let marking =
             build_feedback_prompt("law.yaml", &feedback(Gate::Marking), Vocabulary::Legacy);
@@ -8063,7 +8063,7 @@ chunk_report:
 
     fn four_article_law() -> &'static str {
         r#"---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
 $id: test_law
 regulatory_layer: WET
 publication_date: '2025-01-01'

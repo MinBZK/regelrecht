@@ -1,17 +1,4 @@
-/**
- * ExecutionContext - holds state for a single scenario execution.
- */
-export class ExecutionContext {
-  constructor() {
-    /** @type {string|null} */
-    this.calculationDate = null;
-    /** @type {Record<string, any>} */
-    this.parameters = {};
-    /** @type {any} */
-    this.result = null;
-    /** @type {Error|null} */
-    this.error = null;
-    /** @type {boolean} */
-    this.executed = false;
-  }
-}
+// Moved to @regelrecht/frontend-shared (packages/frontend-shared/src/gherkin/).
+// This shim keeps the editor's imports and tests working; new code imports
+// from '@regelrecht/frontend-shared/gherkin'.
+export * from '@regelrecht/frontend-shared/gherkin/context.js';

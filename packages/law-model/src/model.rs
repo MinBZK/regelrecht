@@ -145,12 +145,26 @@ pub struct Parameter {
     pub param_type: ParameterType,
     #[serde(default)]
     pub required: Option<bool>,
+    /// Whether `null` (absence) is a legitimate value of this field (RFC-036).
+    /// Defaults to false: the engine refuses a `null` that reaches a field not
+    /// declared nullable, and the static type check refuses a law that tests a
+    /// non-nullable field for absence. Unknown (a fact nobody has) is not
+    /// governed by this flag.
+    #[serde(default)]
+    pub nullable: Option<bool>,
     #[serde(default)]
     pub description: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temporal: Option<Temporal>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub legal_basis: Option<FieldLegalBasis>,
+}
+
+impl Parameter {
+    /// Whether the caller may pass `null` for this parameter (RFC-036).
+    pub fn is_nullable(&self) -> bool {
+        self.nullable.unwrap_or(false)
+    }
 }
 
 /// Input definition in execution spec
@@ -163,12 +177,27 @@ pub struct Input {
     pub source: Option<Source>,
     #[serde(default)]
     pub type_spec: Option<TypeSpec>,
+    /// Whether `null` (absence) is a legitimate value of this field (RFC-036).
+    /// Defaults to false: the engine refuses a `null` that reaches a field not
+    /// declared nullable, and the static type check refuses a law that tests a
+    /// non-nullable field for absence. Unknown (a fact nobody has) is not
+    /// governed by this flag.
+    #[serde(default)]
+    pub nullable: Option<bool>,
     #[serde(default)]
     pub description: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temporal: Option<Temporal>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub legal_basis: Option<FieldLegalBasis>,
+}
+
+impl Input {
+    /// Whether a data source or another law may deliver `null` for this input
+    /// (RFC-036).
+    pub fn is_nullable(&self) -> bool {
+        self.nullable.unwrap_or(false)
+    }
 }
 
 /// Output definition in execution spec
@@ -179,12 +208,26 @@ pub struct Output {
     pub output_type: ParameterType,
     #[serde(default)]
     pub type_spec: Option<TypeSpec>,
+    /// Whether `null` (absence) is a legitimate value of this field (RFC-036).
+    /// Defaults to false: the engine refuses a `null` that reaches a field not
+    /// declared nullable, and the static type check refuses a law that tests a
+    /// non-nullable field for absence. Unknown (a fact nobody has) is not
+    /// governed by this flag.
+    #[serde(default)]
+    pub nullable: Option<bool>,
     #[serde(default)]
     pub description: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temporal: Option<Temporal>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub legal_basis: Option<FieldLegalBasis>,
+}
+
+impl Output {
+    /// Whether this output may evaluate to `null` (RFC-036).
+    pub fn is_nullable(&self) -> bool {
+        self.nullable.unwrap_or(false)
+    }
 }
 
 /// Produces specification for execution.
@@ -333,6 +376,31 @@ pub enum ActionOperation {
     },
     #[serde(rename = "LIST")]
     List { items: Vec<ActionValue> },
+    /// Iterate over a collection, evaluating `body` per element (RFC-016).
+    ///
+    /// The only operation that *defines* a variable rather than reading one:
+    /// `as_name` is bound in a child scope that covers `filter` and `body`.
+    /// `collection` is evaluated in the scope where the FOREACH itself appears,
+    /// which is what lets a nested FOREACH reach an outer binding.
+    ///
+    /// The field names match the schema exactly. Earlier drafts of RFC-016 used
+    /// `subject`/`value`/`where`, and accepting those as aliases was considered,
+    /// but no law was ever written with them: FOREACH was a schema-less
+    /// `otherOperation` fallback in v0.2.0-v0.4.0 with no fixed field names. An
+    /// alias the schema rejects would only make the model accept documents
+    /// `just validate` refuses, which is the soundness gap the conformance suite
+    /// exists to prevent.
+    #[serde(rename = "FOREACH")]
+    Foreach {
+        collection: ActionValue,
+        #[serde(default = "default_foreach_as", rename = "as")]
+        as_name: String,
+        body: ActionValue,
+        #[serde(default)]
+        filter: Option<ActionValue>,
+        #[serde(default)]
+        combine: Option<CombineOp>,
+    },
 
     // Date
     #[serde(rename = "AGE")]
@@ -390,6 +458,28 @@ pub enum ActionOperation {
     },
 }
 
+/// Aggregation applied to the per-element results of a FOREACH (RFC-016).
+///
+/// A typed enum rather than a string, so an unknown `combine` is rejected when
+/// the law is loaded instead of surfacing as a runtime error mid-evaluation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum CombineOp {
+    Add,
+    Or,
+    And,
+    Min,
+    Max,
+}
+
+/// Default name for the FOREACH element binding when `as` is omitted.
+///
+/// Neutral and language-independent, so it does not collide with the Dutch
+/// domain names laws use for their own variables.
+fn default_foreach_as() -> String {
+    "item".to_string()
+}
+
 impl ActionOperation {
     /// Get the operation name as a static uppercase string (for tracing).
     pub fn operation_name(&self) -> &'static str {
@@ -418,6 +508,7 @@ impl ActionOperation {
             ActionOperation::In { .. } => "IN",
             ActionOperation::NotIn { .. } => "NOT_IN",
             ActionOperation::List { .. } => "LIST",
+            ActionOperation::Foreach { .. } => "FOREACH",
             ActionOperation::Age { .. } => "AGE",
             ActionOperation::DateAdd { .. } => "DATE_ADD",
             ActionOperation::Date { .. } => "DATE",
@@ -765,7 +856,7 @@ impl MarkingResolution {
     }
 }
 
-/// A construct in an article that the format itself cannot express (schema v0.6.0).
+/// A construct in an article that the format itself cannot express (schema v0.7.0).
 ///
 /// A marking is a flag on an article that is otherwise worked out: it names the
 /// one thing that does not fit and leaves everything that does fit standing. It
@@ -775,7 +866,7 @@ impl MarkingResolution {
 /// The engine acts on markings, and it acts on them the way it acts on an
 /// [`UntranslatableEntry`]. The four RFC-012 modes read both channels: an
 /// unaccepted marking stops execution, an accepted one runs the partial logic.
-/// That has to be so, because the laws migrated to v0.6.0 carry markings where
+/// That has to be so, because the laws migrated to v0.7.0 carry markings where
 /// they used to carry untranslatables, and reading only the old channel would
 /// let a flagged article execute as if nothing were flagged. See
 /// `flagged_constructs` in the engine's service layer.
@@ -806,7 +897,7 @@ pub struct Marking {
     pub accepted: bool,
 }
 
-/// A top-level document property an article establishes (schema v0.6.0).
+/// A top-level document property an article establishes (schema v0.7.0).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DeclaredProperty {
@@ -818,7 +909,7 @@ pub enum DeclaredProperty {
     LegalBasis,
 }
 
-/// Declaration that this article fixes a document property (schema v0.6.0).
+/// Declaration that this article fixes a document property (schema v0.7.0).
 ///
 /// A citation title, a commencement date or a scope in time is not a
 /// calculation, and it is not nothing either: it fixes a value the rest of the
@@ -845,7 +936,7 @@ pub struct PlacementContainer {
 }
 
 /// Where an article sits in the document: the containers that enclose it
-/// (schema v0.6.0).
+/// (schema v0.7.0).
 ///
 /// The opschrift is condensed legal classification written by the legislator and
 /// decides questions the article text alone cannot answer. Absent for an article
@@ -889,7 +980,7 @@ pub struct ArticleReference {
 
 /// A legal construct that cannot be expressed with the engine's current operation set (RFC-012)
 ///
-/// Superseded by [`Marking`] in schema v0.6.0. It stays on the model because the
+/// Superseded by [`Marking`] in schema v0.7.0. It stays on the model because the
 /// model is one struct for every version in
 /// `regelrecht_engine::config::SUPPORTED_SCHEMAS`, and every law in the corpus
 /// is still on v0.5.x; dropping the field would silently discard what those
@@ -939,13 +1030,13 @@ pub struct MachineReadable {
     #[serde(default)]
     pub overrides: Option<Vec<OverrideDeclaration>>,
     /// Legal constructs that cannot be expressed with the current operation set (RFC-012).
-    /// Superseded by [`MachineReadable::markings`] in schema v0.6.0.
+    /// Superseded by [`MachineReadable::markings`] in schema v0.7.0.
     #[serde(default)]
     pub untranslatables: Option<Vec<UntranslatableEntry>>,
-    /// Constructs that the format itself cannot express (schema v0.6.0)
+    /// Constructs that the format itself cannot express (schema v0.7.0)
     #[serde(default)]
     pub markings: Option<Vec<Marking>>,
-    /// Document properties this article establishes (schema v0.6.0)
+    /// Document properties this article establishes (schema v0.7.0)
     #[serde(default)]
     pub declares: Option<Vec<Declaration>>,
 }
@@ -959,7 +1050,7 @@ pub struct Article {
     #[serde(default, alias = "ref")]
     pub url: Option<String>,
     /// The containers that enclose this article, each with its number and
-    /// opschrift (schema v0.6.0)
+    /// opschrift (schema v0.7.0)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub placement: Option<Placement>,
     #[serde(default)]
@@ -1030,6 +1121,30 @@ impl Article {
             .unwrap_or(&[])
     }
 
+    /// Get parameters from this article's execution spec.
+    pub fn get_parameters(&self) -> &[Parameter] {
+        self.get_execution_spec()
+            .and_then(|exec| exec.parameters.as_deref())
+            .unwrap_or(&[])
+    }
+
+    /// Get outputs from this article's execution spec.
+    pub fn get_outputs(&self) -> &[Output] {
+        self.get_execution_spec()
+            .and_then(|exec| exec.output.as_deref())
+            .unwrap_or(&[])
+    }
+
+    /// The declaration of the output named `name`, if this article declares it.
+    pub fn find_output(&self, name: &str) -> Option<&Output> {
+        self.get_outputs().iter().find(|o| o.name == name)
+    }
+
+    /// The declaration of the parameter named `name`, if this article declares it.
+    pub fn find_parameter(&self, name: &str) -> Option<&Parameter> {
+        self.get_parameters().iter().find(|p| p.name == name)
+    }
+
     /// Get open terms declared by this article.
     pub fn get_open_terms(&self) -> Option<&Vec<OpenTerm>> {
         self.machine_readable
@@ -1058,7 +1173,7 @@ impl Article {
             .and_then(|mr| mr.overrides.as_ref())
     }
 
-    /// Get the markings declared by this article (schema v0.6.0).
+    /// Get the markings declared by this article (schema v0.7.0).
     ///
     /// The engine reads these beside `untranslatables`: a marking drives the
     /// four RFC-012 modes exactly as an untranslatable entry does.
@@ -1068,7 +1183,7 @@ impl Article {
             .and_then(|mr| mr.markings.as_ref())
     }
 
-    /// Get the document properties this article declares (schema v0.6.0).
+    /// Get the document properties this article declares (schema v0.7.0).
     pub fn get_declares(&self) -> Option<&Vec<Declaration>> {
         self.machine_readable
             .as_ref()

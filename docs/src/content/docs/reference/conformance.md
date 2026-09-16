@@ -14,7 +14,7 @@ If you came here expecting test cases you can run against your own engine, there
 
 ## What is enforced today
 
-A manifest is checked in per schema version, up to `conformance/v0.6.0/manifest.json`. Each declares a set of conformance levels and, per level, the operations that level is responsible for. The v0.5.4 manifest added `DATE_DIFF` to the temporal level alongside the [date operations](../concepts/temporal-and-dates) it belongs with, and v0.6.0 added `DATE_PART` and `START_OF` there ([RFC-032](/rfcs/rfc-032)).
+Six manifests are checked in: `conformance/v0.5.0/`, `v0.5.4/`, `v0.5.5/`, `v0.5.6/`, `v0.5.7/` and `v0.5.8/`, each with a `manifest.json`. Each declares a set of conformance levels and, per level, the operations that level is responsible for. The v0.5.4 manifest added `DATE_DIFF` to the temporal level alongside the [date operations](../concepts/temporal-and-dates) it belongs with, and v0.5.7 added `FOREACH` to the core level alongside the other [collection operations](../concepts/collections). The v0.5.8 manifest is identical to v0.5.7: that version changes no operation, only the description of `required` on execution parameters ([RFC-036](/rfcs/rfc-036)).
 
 What runs in CI is **operation coverage of the manifests themselves**, nothing more. `packages/engine/tests/conformance_coverage.rs` checks their `operations` lists against the engine's own operation list in three integration tests:
 
@@ -36,7 +36,7 @@ The manifest groups work into conformance levels, from a minimal core outward:
 
 | Level | Covers |
 |-------|--------|
-| `core` | Arithmetic, comparison, logical, conditional, and collection operations, plus variable resolution |
+| `core` | Arithmetic, comparison, logical, conditional, and collection operations (`IN`, `LIST`, `FOREACH`), plus variable resolution |
 | `cross_law` | Resolving a `source` reference into another law |
 | `ioc` | Open terms filled by `implements` regulations |
 | `temporal` | Date operations: `AGE`, `DATE_ADD`, `DATE`, `DAY_OF_WEEK`, `DATE_DIFF`, `DATE_PART`, `START_OF` |

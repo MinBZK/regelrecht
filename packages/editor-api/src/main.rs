@@ -22,6 +22,7 @@ mod config;
 mod corpus_handlers;
 mod credentials;
 mod crypto;
+mod enrich_review;
 mod favorites;
 mod feature_flags;
 mod github_oauth;
@@ -309,6 +310,7 @@ async fn main() {
     let tasks_reader_routes = Router::new()
         .route("/api/tasks", get(tasks_api::list))
         .route("/api/tasks/{task_id}", get(tasks_api::detail))
+        .route("/api/tasks/jobs/{job_id}", get(enrich_review::job_tasks))
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
             accounts::account_middleware,
@@ -322,6 +324,10 @@ async fn main() {
         .route(
             "/api/tasks/{task_id}/resolve",
             axum::routing::post(tasks_api::resolve),
+        )
+        .route(
+            "/api/tasks/jobs/{job_id}/apply",
+            axum::routing::post(enrich_review::apply),
         )
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),

@@ -64,6 +64,8 @@ const canAddValue = computed(() => {
   if (op === 'AGE') return false;
   // DATE_DIFF has a fixed shape (from + to + in) - no add slot.
   if (op === 'DATE_DIFF') return false;
+  // FOREACH has a fixed shape (collection + as + body, optional filter/combine).
+  if (op === 'FOREACH') return false;
   // Comparison ops always have exactly subject + value (or just subject for
   // NOT_NULL); operationValues pushes both unconditionally, so addValue() has
   // nothing to do. Hide the button to avoid a no-op click.
@@ -87,6 +89,8 @@ function canRemoveValue(val) {
   // AGE has two fixed structural slots - neither can be deleted.
   if (op === 'AGE' && (val._kind === 'date_of_birth' || val._kind === 'reference_date')) return false;
   if (op === 'DATE_DIFF' && (val._kind === 'from' || val._kind === 'to' || val._kind === 'in')) return false;
+  // FOREACH: collection, as and body are required; filter and combine are optional.
+  if (op === 'FOREACH' && (val._kind === 'collection' || val._kind === 'as' || val._kind === 'body')) return false;
   // IF and SWITCH share the cases[]/default schema and both need a default branch
   if ((op === 'IF' || op === 'SWITCH') && val._kind === 'default') return false;
   // IF must keep its single case; SWITCH must keep at least one case.
@@ -133,6 +137,24 @@ const operationValues = computed(() => {
       { _label: 'Tot', _value: node.to ?? '', _kind: 'to' },
       { _label: 'Eenheid', _value: node.in ?? '', _kind: 'in' },
     ];
+  }
+
+  // FOREACH: the collection, the binding name, the body, and two optional
+  // slots (RFC-016). `as` is an identifier and `combine` an enum from a fixed
+  // list; neither is ever a nested operation.
+  if (node.operation === 'FOREACH') {
+    const vals = [
+      { _label: 'Verzameling', _value: node.collection ?? '', _kind: 'collection' },
+      { _label: 'Naam per element', _value: node.as ?? '', _kind: 'as' },
+    ];
+    if (node.filter !== undefined) {
+      vals.push({ _label: 'Filter', _value: node.filter, _kind: 'filter' });
+    }
+    vals.push({ _label: 'Per element', _value: node.body ?? '', _kind: 'body' });
+    if (node.combine !== undefined) {
+      vals.push({ _label: 'Samenvoegen', _value: node.combine, _kind: 'combine' });
+    }
+    return vals;
   }
 
   // IF and SWITCH share the same cases[]/default schema. The only difference
@@ -360,6 +382,38 @@ function changeOperationType(newType) {
     delete node.else;
     delete node.date_of_birth;
     delete node.reference_date;
+  } else if (newType === 'FOREACH') {
+    // FOREACH needs a collection, a binding and a body (RFC-016). Seed `as`
+    // with the schema default so the node validates without further input;
+    // `filter` and `combine` stay absent until the author adds them.
+    if (node.collection === undefined) node.collection = '';
+    if (node.as === undefined) node.as = 'item';
+    if (node.body === undefined) node.body = '';
+    delete node.subject;
+    delete node.value;
+    delete node.values;
+    delete node.conditions;
+    delete node.cases;
+    delete node.default;
+    delete node.when;
+    delete node.then;
+    delete node.else;
+    delete node.from;
+    delete node.to;
+    delete node.in;
+    delete node.date_of_birth;
+    delete node.reference_date;
+  }
+
+  // Switching to anything else drops the FOREACH-only fields, so a leftover
+  // `as` or `combine` cannot ride along into a node whose schema forbids it
+  // (every operation is additionalProperties: false).
+  if (newType !== 'FOREACH') {
+    delete node.collection;
+    delete node.as;
+    delete node.body;
+    delete node.filter;
+    delete node.combine;
   }
 }
 
@@ -373,6 +427,11 @@ function applyValueMutation(val, newVal) {
   else if (val._kind === 'from') node.from = newVal;
   else if (val._kind === 'to') node.to = newVal;
   else if (val._kind === 'in') node.in = newVal;
+  else if (val._kind === 'collection') node.collection = newVal;
+  else if (val._kind === 'as') node.as = newVal;
+  else if (val._kind === 'body') node.body = newVal;
+  else if (val._kind === 'filter') node.filter = newVal;
+  else if (val._kind === 'combine') node.combine = newVal;
   else if (val._kind === 'values' && val._index !== undefined) node.values[val._index] = newVal;
   else if (val._kind === 'conditions' && val._index !== undefined) node.conditions[val._index] = newVal;
   else if (val._kind === 'default') node.default = newVal;
@@ -412,7 +471,11 @@ function canChangeValueKind(val) {
     && val._kind !== 'date_of_birth'
     && val._kind !== 'reference_date'
     // The DATE_DIFF unit is an enum or variable, never a nested operation.
-    && val._kind !== 'in';
+    && val._kind !== 'in'
+    // The FOREACH binding is an identifier and its combine an enum from a
+    // fixed list; neither can hold a nested operation.
+    && val._kind !== 'as'
+    && val._kind !== 'combine';
 }
 
 // The actions menu only contains the Type group and Verwijder. When neither

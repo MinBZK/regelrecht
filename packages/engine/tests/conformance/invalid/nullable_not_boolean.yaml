@@ -1,0 +1,30 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: test_conformance_nullable_not_boolean
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2026-09-09'
+valid_from: '2026-09-09'
+bwb_id: BWBR0099997
+name: Testregeling nullable als tekst
+url: https://example.invalid/law
+articles:
+  - number: '1'
+    text: De nullable-vlag is een boolean, geen tekst (RFC-036).
+    url: https://example.invalid/law/artikel/1
+    machine_readable:
+      execution:
+        input:
+          - name: huur
+            type: amount
+            nullable: ja
+            source: {}
+        output:
+          - name: heeft_huur
+            type: boolean
+        actions:
+          - output: heeft_huur
+            operation: NOT
+            value:
+              operation: EQUALS
+              subject: $huur
+              value: null

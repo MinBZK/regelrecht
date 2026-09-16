@@ -1059,7 +1059,7 @@ mod tests {
         let law = dir.path().join("2026-01-01.yaml");
         std::fs::write(
             &law,
-            r#"$schema: https://regelrecht.rijks.app/schema/v0.6.0/schema.json
+            r#"$schema: https://regelrecht.rijks.app/schema/v0.7.0/schema.json
 articles:
   - number: "1.1.a"
     text: "In deze wet wordt verstaan onder: a. toeslag: een tegemoetkoming."

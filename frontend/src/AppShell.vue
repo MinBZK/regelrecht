@@ -103,19 +103,32 @@ function openSupport() {
   nextTick(() => supportSheet.value?.show?.());
 }
 
-// Rejecting a proposal resolves the review task and throws the seeded edit
-// away, so it asks first. Owned here because the Verwerp button lives in the
-// changes bar; EditorView keeps the actual reject logic.
+// Rejecting a proposal throws the seeded edit away, so it asks first. Owned
+// here because the Verwerp button lives in the changes bar; EditorView keeps
+// the actual reject logic.
 const rejectConfirm = ref(null);
 function confirmReject() {
   rejectConfirm.value?.hide();
   editorActions.value?.reject?.();
 }
 
+// "Rond af, neem de rest niet over" sluit de hele verrijking af zonder de
+// resterende onderdelen te bekijken - destructiever dan één verwerping, dus
+// die vraagt het ook eerst.
+const rejectRestConfirm = ref(null);
+function confirmRejectRest() {
+  rejectRestConfirm.value?.hide();
+  editorActions.value?.rejectRest?.();
+}
+
 // In review mode the bar decides on a proposal, not on your own edits, so the
-// labels say so. Outside review "Opslaan" stays what it always was.
+// labels say so. Outside review "Opslaan" stays what it always was. Het
+// oordeel gaat over één onderdeel van de verrijking en schrijft nog niets weg,
+// dus "Neem over" en niet "Sla op" - er wordt pas geschreven als alle
+// onderdelen beoordeeld zijn.
 const inReview = computed(() => !!editorChanges.value?.review);
-const saveLabel = computed(() => (inReview.value ? 'Sla voorstel op' : 'Opslaan'));
+const saveLabel = computed(() => (inReview.value ? 'Neem voorstel over' : 'Opslaan'));
+const canRejectRest = computed(() => !!editorChanges.value?.reviewCanRejectRest);
 
 // Not dismissible: the notice explains what Verwerp and Opslaan below it refer
 // to, so hiding it would leave two decision buttons without their subject. It
@@ -626,6 +639,12 @@ function onTabDismiss(e) {
                       destructive
                       @select="editorActions?.discard?.()"
                     ></nldd-menu-item>
+                    <nldd-menu-item
+                      v-if="canRejectRest"
+                      text="Rond af, neem de rest niet over"
+                      destructive
+                      @select="rejectRestConfirm?.show()"
+                    ></nldd-menu-item>
                   </nldd-menu>
                 </nldd-icon-button>
               </nldd-button-bar>
@@ -648,6 +667,13 @@ function onTabDismiss(e) {
                 text="Maak alle wijzigingen ongedaan"
                 destructive
                 @select="editorActions?.discard?.()"
+              ></nldd-menu-item>
+              <nldd-menu-item
+                v-if="canRejectRest"
+                slot="overflow"
+                text="Rond af, neem de rest niet over"
+                destructive
+                @select="rejectRestConfirm?.show()"
               ></nldd-menu-item>
             </nldd-toolbar-item>
             <!-- Review-modus zet de beslissing hier. Twee losse toolbar-items,
@@ -847,6 +873,27 @@ function onTabDismiss(e) {
       variant="destructive"
       text="Verwerp voorstel"
       @click="confirmReject"
+    ></nldd-button>
+  </nldd-modal-dialog>
+
+  <nldd-modal-dialog
+    ref="rejectRestConfirm"
+    variant="alert"
+    icon="exclamation-triangle"
+    text="Verrijking afronden?"
+    supporting-text="Wat je al hebt overgenomen wordt weggeschreven; alle onderdelen die je nog niet hebt beoordeeld worden niet overgenomen en gaan verloren."
+  >
+    <nldd-button
+      slot="actions"
+      variant="primary"
+      text="Verder beoordelen"
+      @click="rejectRestConfirm?.hide()"
+    ></nldd-button>
+    <nldd-button
+      slot="actions"
+      variant="destructive"
+      text="Rond af"
+      @click="confirmRejectRest"
     ></nldd-button>
   </nldd-modal-dialog>
 </template>

@@ -1,0 +1,598 @@
+---
+# Demo configuration: the two presenter profiles and what each of them shows.
+# Ported from the POC's web/demo_profiles.py, web/feature_flags.py and
+# web/config/dashboard_outputs.json. Laws are addressed by `law_path`, the
+# directory of the law file under corpus/demo/regulation/nl (the POC's law
+# identifier), combined with the executing service.
+
+default_profile: merijn
+
+profiles:
+  merijn:
+    name: Merijn
+    type: burger
+    bsn: '999100001'
+    kvk: null
+    default_law: {law_path: zorgtoeslagwet, service: TOESLAGEN}
+    default_feature: zorgtoeslagwet
+    # Graaf: the laws that tell this persona's story (detentie -> verzekerd -> zorgtoeslag)
+    graph_laws: [penitentiaire_beginselenwet, zvw, zorgtoeslagwet]
+    zaaksysteem_service: TOESLAGEN
+    portal_tab_label: Mijn overheid
+    portal_heading: Waar heb ik recht op? Wat zijn mijn plichten?
+    portal_subtitle: >-
+      Bekijk hier uw toeslagen, uitkeringen, aangiften, en andere regelingen van de overheid.
+    # Merijn is het startprofiel (`default_profile`), dus dit is wat iemand
+    # ziet die de demo opent. Alles staat daarom uit: het verhaal begint bij
+    # een burger met toeslagen, en wie een feature wil tonen zet hem tijdens de
+    # demo aan via Features in het menu. De vlaggen stonden hier eerder aan
+    # omdat de features net gebouwd waren, wat geen reden is om ze aan een
+    # presentator op te dringen.
+    # Claudia (ondernemer) houdt haar eigen vlaggen, dus de features blijven
+    # vindbaar zonder dat je iets hoeft om te zetten.
+    feature_flags:
+      DELEGATION: false
+      AUTO_APPROVE_CLAIMS: false
+      CHANGE_WIZARD: false
+      HARMONIZE: false
+    sidebar_laws: null
+    disabled_laws:
+      BELASTINGDIENST: [zorgverzekeringswet/bijdrage, zvw, zvw/werkgeversbijdrage]
+      GEMEENTE_ROTTERDAM:
+        - alcoholwet/vergunning/gemeenten
+        - >-
+          algemene_plaatselijke_verordening/exploitatievergunning/gemeenten
+        - algemene_plaatselijke_verordening/terrassen
+        - >-
+          algemene_plaatselijke_verordening/ontheffingspas_geluid/gemeenten
+        - verordening_precariobelasting/gemeenten
+      KVK: [handelsregisterwet/jaarrekening]
+      NVWA: [warenwet/haccp, warenwet/meldplicht]
+      PENSIOENFONDS: [pensioenwet]
+      RVO:
+        - omgevingswet/werkgebonden_personenmobiliteit
+        - omgevingswet/energiebesparing/informatieplicht
+      SVB:
+        - algemene_kinderbijslagwet
+        - algemene_nabestaandenwet
+        - algemene_ouderdomswet/leeftijdsbepaling
+        - algemene_ouderdomswet_gegevens
+        - participatiewet/aio
+      TOESLAGEN: [wet_kinderopvang]
+  claudia:
+    name: Claudia
+    type: ondernemer
+    bsn: '999999990'
+    kvk: '85234567'
+    default_law:
+      law_path: verordening_precariobelasting/gemeenten
+      service: GEMEENTE_ROTTERDAM
+    default_feature: verordening_precariobelasting
+    # Graaf: the horeca chain in Rotterdam
+    graph_laws:
+      - alcoholwet/vergunning/rotterdam
+      - alcoholwet/vergunning
+      - algemene_plaatselijke_verordening/terrassen
+      - verordening_precariobelasting
+      - algemene_plaatselijke_verordening/exploitatievergunning
+      - wet_bag
+      - handelsregisterwet
+      - handelsregisterwet/bedrijfsgegevens
+    zaaksysteem_service: GEMEENTE_ROTTERDAM
+    portal_tab_label: Mijn onderneming
+    portal_heading: Welke regelingen passen bij mijn bedrijf?
+    portal_subtitle: >-
+      Bekijk beschikbare subsidies, rapportageverplichtingen, vergunningen, wetten en andere
+      ondernemersregelingen.
+    feature_flags: {DELEGATION: true, AUTO_APPROVE_CLAIMS: true}
+    sidebar_laws: [verordening_precariobelasting/gemeenten]
+    disabled_laws:
+      BELASTINGDIENST: [zorgverzekeringswet/bijdrage, zvw, zvw/werkgeversbijdrage]
+      DUO: [wet_studiefinanciering]
+      GEMEENTE_AMSTERDAM: [participatiewet/bijstand/gemeenten]
+      KIESRAAD: [kieswet]
+      PENSIOENFONDS: [pensioenwet]
+      RVO: [omgevingswet/werkgebonden_personenmobiliteit]
+      SVB:
+        - algemene_kinderbijslagwet
+        - algemene_nabestaandenwet
+        - algemene_ouderdomswet/leeftijdsbepaling
+        - algemene_ouderdomswet_gegevens
+        - participatiewet/aio
+      SZW:
+        - participatiewet/bijstand
+        - besluit_bijstandverlening_zelfstandigen
+      TOESLAGEN:
+        - zorgtoeslagwet
+        - wet_op_de_huurtoeslag
+        - wet_op_het_kindgebonden_budget
+        - wet_kinderopvang
+      UWV:
+        - werkloosheidswet
+        - ziektewet
+        - uwv_toetsingsinkomen
+        - uwv_werkgegevens
+        - wet_werk_en_inkomen_naar_arbeidsvermogen
+        - wet_structuur_uitvoeringsorganisatie_werk_en_inkomen
+        - wet_inkomstenbelasting
+
+# Laws that never appear on a portal: infrastructure, procedural or helper
+# laws that other laws consume (the POC's FeatureFlags.LAW_DEFAULTS).
+hidden_laws:
+  LBB: [wet_bibob]
+  SVH: [alcoholwet/register_sociale_hygiene]
+  VWS: [alcoholwet/vergunning, zorgtoeslagwet/regelingen]
+  ACICT: [wet_adviescollege_ict_toetsing]
+  ANVS:
+    - besluit_basisveiligheidsnormen_stralingsbescherming
+    - besluit_kerninstallaties
+    - kernenergiewet
+  AWB: [algemene_wet_bestuursrecht/artikel_1_1_bestuursorgaan]
+  RVO: [omgevingswet/werkgebonden_personenmobiliteit/gegevens]
+  RvIG: [wet_brp, wet_brp/laa]
+  BELASTINGDIENST: [wet_brp/terugmelding, belastingdienst_vermogen]
+  CJIB: [wet_brp/terugmelding]
+  TOESLAGEN: [wet_brp/terugmelding]
+  JenV: [awb/bezwaar, awb/beroep]
+  UWV:
+    - wet_werk_en_inkomen_naar_arbeidsvermogen
+    - ziektewet
+    - uwv_werkgegevens
+    - uwv_toetsingsinkomen
+    - wet_structuur_uitvoeringsorganisatie_werk_en_inkomen
+  RVZ: [zvw]
+  NATIONAAL_ARCHIEF: [archiefwet]
+  KVK: [handelsregisterwet/bedrijfsgegevens]
+  SVB:
+    - algemene_ouderdomswet_gegevens
+    - algemene_ouderdomswet/leeftijdsbepaling
+  CBS: [wet_op_het_centraal_bureau_voor_de_statistiek]
+
+# Primary output per law for ranking tiles on the portal (largest impact first).
+# Laws not listed fall back to their largest absolute numeric output.
+dashboard_outputs:
+  BELASTINGDIENST/wet_inkomstenbelasting: totale_belastingschuld
+  TOESLAGEN/zorgtoeslagwet: hoogte_toeslag
+  TOESLAGEN/wet_op_het_kindgebonden_budget: kindgebonden_budget_jaar
+  TOESLAGEN/wet_op_de_huurtoeslag: subsidiebedrag
+  TOESLAGEN/wet_kinderopvang: jaarbedrag
+  SVB/algemene_ouderdomswet: pensioenbedrag
+  SVB/algemene_kinderbijslagwet: ontvangt_kinderbijslag
+  SVB/algemene_nabestaandenwet: netto_uitkering
+  SVB/participatiewet/aio: aio_aanvulling
+  SZW/participatiewet/bijstand: basisbedrag
+  SZW/besluit_bijstandverlening_zelfstandigen: algemene_bijstand_bedrag
+  GEMEENTE_AMSTERDAM/participatiewet/bijstand/gemeenten: uitkeringsbedrag
+  DUO/wet_studiefinanciering: studiefinanciering
+  UWV/werkloosheidswet: ww_uitkering_per_maand
+  UWV/ziektewet: hoogte_ziekengeld
+  UWV/wet_werk_en_inkomen_naar_arbeidsvermogen: hoogte_uitkering
+  BELASTINGDIENST/zorgverzekeringswet/bijdrage: verschuldigde_bijdrage
+  PENSIOENFONDS/pensioenwet: maandelijks_pensioen
+  KIESRAAD/kieswet: heeft_stemrecht
+  GEMEENTE_ROTTERDAM/verordening_precariobelasting/gemeenten: belasting_per_jaar
+  GEMEENTE_ROTTERDAM/algemene_plaatselijke_verordening/terrassen: heeft_recht_op_terrasvergunning
+  GEMEENTE_ROTTERDAM/alcoholwet/vergunning/gemeenten: heeft_recht_op_vergunning
+  NVWA/warenwet/haccp: heeft_haccp_verplichting
+  RVO/omgevingswet/energiebesparing/informatieplicht: heeft_informatieplicht
+  NVWA/warenwet/meldplicht: heeft_meldplicht
+  IND/vreemdelingenwet: heeft_verblijfsrecht
+  DOUANE/wet_op_de_accijns/accijnsplicht_alcohol: verschuldigde_accijns
+
+# Wat een tegel onder de uitkomst laat zien.
+#
+# Een burger stelt drie vragen: krijg ik het, hoeveel is het, en moet ik nog
+# iets doen. Alles daarbuiten is verantwoording, en die hoort een klik verder
+# (Berekening, Gebruikte gegevens, Wettekst) waar hij ook te corrigeren is.
+#
+# Standaard toonde de tegel élke andere uitvoerwaarde van de wet, tot zes toe.
+# Daarmee kwam de rekenkeuken op straat: "Uitzondering caribisch nederland van
+# toepassing: Nee" bij iemand die in Nederland woont, "Woonlandfactor" en "Alo
+# kop bedrag" onder het kindgebonden budget. Dat zijn stappen in de redenering,
+# geen antwoorden op een vraag die iemand heeft.
+#
+# `tile_details` zegt per wet welke waarden er wél toe doen voor de burger. Een
+# lege lijst betekent: alleen de uitkomst, verder niets. Een wet die hier niet
+# in staat houdt de oude weergave, dus dit kan wet voor wet groeien.
+tile_details:
+  # De uitspraak is het hele antwoord; het uitzonderingsvinkje is een tussenstap.
+  KIESRAAD/kieswet: []
+  # Het bedrag is het antwoord. Waar het uit is opgebouwd staat in de berekening.
+  TOESLAGEN/wet_op_het_kindgebonden_budget: []
+  TOESLAGEN/zorgtoeslagwet: []
+  TOESLAGEN/wet_op_de_huurtoeslag:
+    # Wat de burger zelf betaalt naast de toeslag: dat verandert wat hij doet.
+    - basishuur
+  SZW/besluit_bijstandverlening_zelfstandigen:
+    # Bedrijfskapitaal is een tweede recht, geen tussenstap.
+    - bedrijfskapitaal
+  BELASTINGDIENST/wet_inkomstenbelasting: []
+  # Het maandbedrag is het antwoord; dagloon en opbouwpercentage zijn de weg
+  # ernaartoe en staan in de berekening.
+  UWV/werkloosheidswet: []
+  UWV/ziektewet: []
+  UWV/wet_werk_en_inkomen_naar_arbeidsvermogen: []
+  SVB/algemene_ouderdomswet: []
+  SVB/algemene_nabestaandenwet: []
+  SVB/participatiewet/aio: []
+  SZW/participatiewet/bijstand: []
+  GEMEENTE_AMSTERDAM/participatiewet/bijstand/gemeenten: []
+  DUO/wet_studiefinanciering: []
+  PENSIOENFONDS/pensioenwet: []
+  BELASTINGDIENST/zorgverzekeringswet/bijdrage: []
+  TOESLAGEN/wet_kinderopvang: []
+  GEMEENTE_ROTTERDAM/verordening_precariobelasting/gemeenten: []
+  SVB/algemene_kinderbijslagwet: []
+  IND/vreemdelingenwet: []
+  DOUANE/wet_op_de_accijns/accijnsplicht_alcohol:
+    # Het bedrag is het antwoord; het tarief en de categorie zijn de weg
+    # ernaartoe en staan in de berekening. Of er een vergunning voor een
+    # accijnsgoederenplaats nodig is, is een tweede vraag met eigen gevolgen
+    # (art. 5 verbiedt produceren zonder), dus die blijft op de tegel staan.
+    - agp_vergunning_vereist
+    - voldoet_aan_vergunningsplicht
+
+# Hoe een tegel haar uitkomst vertelt. Zonder dit zegt elke tegel hetzelfde:
+# "U voldoet aan de voorwaarden", het bedrag, en de veldnaam eronder. Dat is
+# een label, geen antwoord. De POC schreef per wet een zin om het bedrag heen
+# ("Uw huurtoeslag is waarschijnlijk € 302,96 per jaar"), en dat leest als iets
+# wat tegen déze burger gaat.
+#
+# Per wet: `lead` staat boven de uitkomst, `unit` erachter, en `none` vervangt
+# het geheel als de wet niets toekent. Een wet die hier niet in staat houdt de
+# algemene weergave, dus dit kan wet voor wet groeien.
+#
+#   lead:  de aanhef, zonder punt; eindigt waar het bedrag begint
+#   unit:  wat er ná het bedrag staat ("per jaar", "dit jaar", "per maand")
+#   none:  hele zin voor wie er geen recht op heeft
+#   yes/no: voor een ja/nee-wet, in plaats van lead/unit
+outcome_phrasing:
+  TOESLAGEN/zorgtoeslagwet:
+    lead: Uw zorgtoeslag is waarschijnlijk
+    unit: dit jaar
+    none: U krijgt waarschijnlijk geen zorgtoeslag.
+  TOESLAGEN/wet_op_de_huurtoeslag:
+    lead: Uw huurtoeslag is waarschijnlijk
+    unit: per jaar
+    none: U krijgt waarschijnlijk geen huurtoeslag.
+  TOESLAGEN/wet_op_het_kindgebonden_budget:
+    lead: Uw kindgebonden budget is waarschijnlijk
+    unit: per jaar
+    none: U krijgt waarschijnlijk geen kindgebonden budget.
+  TOESLAGEN/wet_kinderopvang:
+    lead: Uw kinderopvangtoeslag is waarschijnlijk
+    unit: per jaar
+    none: U krijgt waarschijnlijk geen kinderopvangtoeslag.
+  BELASTINGDIENST/wet_inkomstenbelasting:
+    lead: Uw verschuldigde inkomstenbelasting is waarschijnlijk
+    unit: dit jaar
+    none: U bent waarschijnlijk geen inkomstenbelasting verschuldigd.
+  SVB/algemene_ouderdomswet:
+    lead: Uw AOW-pensioen is waarschijnlijk
+    unit: per jaar
+    none: U heeft nog geen recht op AOW.
+  SVB/algemene_nabestaandenwet:
+    lead: Uw nabestaandenuitkering is waarschijnlijk
+    unit: per maand
+    none: U heeft waarschijnlijk geen recht op een nabestaandenuitkering.
+  SVB/participatiewet/aio:
+    lead: Uw AIO-aanvulling is waarschijnlijk
+    unit: per maand
+    none: U heeft waarschijnlijk geen recht op een AIO-aanvulling.
+  SZW/participatiewet/bijstand:
+    lead: Uw bijstandsuitkering is waarschijnlijk
+    unit: per maand
+    none: U heeft waarschijnlijk geen recht op bijstand.
+  GEMEENTE_AMSTERDAM/participatiewet/bijstand/gemeenten:
+    lead: Uw bijstandsuitkering is waarschijnlijk
+    unit: per maand
+    none: U heeft waarschijnlijk geen recht op bijstand.
+  SZW/besluit_bijstandverlening_zelfstandigen:
+    lead: Uw Bbz-bijstand is waarschijnlijk
+    unit: per maand
+    none: U heeft waarschijnlijk geen recht op Bbz-bijstand.
+  UWV/werkloosheidswet:
+    lead: Uw WW-uitkering is waarschijnlijk
+    unit: per maand
+    none: U heeft waarschijnlijk geen recht op WW.
+  UWV/ziektewet:
+    lead: Uw ziekengeld is waarschijnlijk
+    unit: per dag
+    none: U heeft waarschijnlijk geen recht op ziekengeld.
+  UWV/wet_werk_en_inkomen_naar_arbeidsvermogen:
+    lead: Uw WIA-uitkering is waarschijnlijk
+    unit: per maand
+    none: U heeft waarschijnlijk geen recht op een WIA-uitkering.
+  DUO/wet_studiefinanciering:
+    lead: Uw studiefinanciering is waarschijnlijk
+    unit: per maand
+    none: U heeft waarschijnlijk geen recht op studiefinanciering.
+  PENSIOENFONDS/pensioenwet:
+    lead: Uw pensioen is waarschijnlijk
+    unit: per maand
+    none: U bouwt hier nog geen pensioen op.
+  BELASTINGDIENST/zorgverzekeringswet/bijdrage:
+    lead: Uw bijdrage Zvw is waarschijnlijk
+    unit: dit jaar
+    none: U bent waarschijnlijk geen bijdrage Zvw verschuldigd.
+  GEMEENTE_ROTTERDAM/verordening_precariobelasting/gemeenten:
+    lead: Uw precariobelasting is waarschijnlijk
+    unit: per jaar
+    none: U bent waarschijnlijk geen precariobelasting verschuldigd.
+  DOUANE/wet_op_de_accijns/accijnsplicht_alcohol:
+    lead: Over deze partij bent u waarschijnlijk
+    unit: aan accijns verschuldigd
+    none: Over deze partij bent u waarschijnlijk geen accijns verschuldigd.
+  # Ja/nee-wetten: geen bedrag, wel een uitspraak. `date_input` zet de datum
+  # waar de uitspraak over gaat in de aanhef.
+  KIESRAAD/kieswet:
+    lead: Voor de verkiezingen van {date} heeft u
+    # Zonder datum valt de hele bijzin weg, niet alleen de plaatshouder.
+    lead_no_date: Voor de verkiezingen heeft u
+    date_input: verkiezingsdatum
+    'yes': STEMRECHT
+    'no': GEEN stemrecht
+  SVB/algemene_kinderbijslagwet:
+    lead: U heeft
+    'yes': RECHT OP KINDERBIJSLAG
+    'no': GEEN recht op kinderbijslag
+  IND/vreemdelingenwet:
+    lead: U heeft
+    'yes': VERBLIJFSRECHT
+    'no': GEEN verblijfsrecht
+  GEMEENTE_ROTTERDAM/algemene_plaatselijke_verordening/terrassen:
+    lead: Voor een terras heeft u
+    'yes': RECHT OP EEN VERGUNNING
+    'no': GEEN recht op een vergunning
+  GEMEENTE_ROTTERDAM/alcoholwet/vergunning/gemeenten:
+    lead: Voor alcoholverkoop heeft u
+    'yes': RECHT OP EEN VERGUNNING
+    'no': GEEN recht op een vergunning
+  NVWA/warenwet/haccp:
+    lead: Voor voedselveiligheid heeft u
+    'yes': EEN HACCP-VERPLICHTING
+    'no': GEEN HACCP-verplichting
+  NVWA/warenwet/meldplicht:
+    lead: Bij een voedselveiligheidsincident heeft u
+    'yes': EEN MELDPLICHT
+    'no': GEEN meldplicht
+  RVO/omgevingswet/energiebesparing/informatieplicht:
+    lead: Voor energiebesparing heeft u
+    'yes': EEN INFORMATIEPLICHT
+    'no': GEEN informatieplicht
+
+# Which YAML paths the law viewer opens by default for a law, so the audience
+# sees the branch that matters (the POC's DEMO_COLLAPSE_CONFIG, trimmed to the
+# laws on the default tabs). Paths are dotted, arrays by index or by the value
+# of `output`/`name`.
+# Simulatie: what adds up to a citizen's disposable income per month (the
+# POC's "besteedbaar inkomen"). A law states its amount per month or per
+# year; the law itself does not declare that, so it is configured here. Taxes
+# are subtracted, benefits added, and only when the law's conditions are met.
+simulation:
+  disposable_income:
+    - law: wet_inkomstenbelasting
+      output: totale_belastingschuld
+      period: year
+      kind: tax
+      label: Inkomstenbelasting
+    - law: zorgverzekeringswet/bijdrage
+      output: verschuldigde_bijdrage
+      period: year
+      kind: tax
+      label: Bijdrage Zvw
+    - law: zorgtoeslagwet
+      output: hoogte_toeslag
+      period: year
+      kind: benefit
+      label: Zorgtoeslag
+    - law: wet_op_de_huurtoeslag
+      output: subsidiebedrag
+      period: month
+      kind: benefit
+      label: Huurtoeslag
+    - law: wet_op_het_kindgebonden_budget
+      output: kindgebonden_budget_jaar
+      period: year
+      kind: benefit
+      label: Kindgebonden budget
+    - law: wet_kinderopvang
+      output: jaarbedrag
+      period: year
+      kind: benefit
+      label: Kinderopvangtoeslag
+    - law: algemene_ouderdomswet
+      output: pensioenbedrag
+      period: month
+      kind: benefit
+      label: AOW
+    - law: algemene_nabestaandenwet
+      output: netto_uitkering
+      period: month
+      kind: benefit
+      label: Anw
+    - law: participatiewet/aio
+      output: aio_aanvulling
+      period: month
+      kind: benefit
+      label: AIO
+    - law: participatiewet/bijstand/amsterdam
+      output: uitkeringsbedrag
+      period: month
+      kind: benefit
+      label: Bijstand
+    - law: participatiewet/bijstand/amsterdam
+      output: woonkostentoeslag
+      period: month
+      kind: benefit
+      label: Woonkostentoeslag
+    - law: besluit_bijstandverlening_zelfstandigen
+      output: algemene_bijstand_bedrag
+      period: month
+      kind: benefit
+      label: Bbz
+    - law: werkloosheidswet
+      output: ww_uitkering_per_maand
+      period: month
+      kind: benefit
+      label: WW
+
+# What the Wetten tab shows unfolded per law, prepared for the story (the
+# POC's DEMO_COLLAPSE_CONFIG). A path opens itself and everything above it;
+# siblings stay folded, so the audience lands on the right lines instead of
+# scrolling. `*` matches any article number; list items are addressed by their
+# `name`/`output` or, without one, by their index.
+expanded_paths:
+  zorgtoeslagwet:
+    # the insured-status input and where it comes from
+    - articles.*.machine_readable.execution.input.is_verzekerde.source
+    - articles.*.machine_readable.execution.output
+    # the two requirements: age and insured
+    - articles.*.machine_readable.execution.actions.voldoet_aan_voorwaarden.value.conditions.0
+    - articles.*.machine_readable.execution.actions.voldoet_aan_voorwaarden.value.conditions.1
+    # the calculation for a partner: joint income against the threshold
+    - articles.*.machine_readable.execution.actions.hoogte_toeslag.value.default.value.cases.1.when
+    - articles.*.machine_readable.execution.actions.hoogte_toeslag.value.default.value.cases.1.then.cases.0.when.subject.values
+    - articles.*.machine_readable.execution.actions.hoogte_toeslag.value.default.value.cases.1.then.default.values.1.values.0.values.1.values.0.values
+  zvw:
+    - articles.*.machine_readable.execution.input.is_gedetineerd.source
+    - articles.*.machine_readable.execution.output
+    - articles.*.machine_readable.execution.actions.is_verzekerde.value.conditions.0.conditions
+    - articles.*.machine_readable.execution.actions.is_verzekerde.value.conditions.1.value
+  penitentiaire_beginselenwet:
+    - articles.*.machine_readable.execution.input
+    - articles.*.machine_readable.execution.output
+    - articles.*.machine_readable.execution.actions.is_gedetineerd.value.conditions.0.values
+    - articles.*.machine_readable.execution.actions.is_gedetineerd.value.conditions.1.values
+  verordening_precariobelasting:
+    - articles.*.machine_readable.execution.input
+    - articles.*.machine_readable.execution.output
+    - articles.*.machine_readable.execution.actions
+  alcoholwet/vergunning/rotterdam:
+    - articles.*.machine_readable.execution.output
+  alcoholwet/vergunning:
+    - articles.*.machine_readable.execution.output
+  algemene_plaatselijke_verordening/terrassen:
+    - articles.*.machine_readable.execution.input
+    - articles.*.machine_readable.execution.output
+  algemene_plaatselijke_verordening/exploitatievergunning:
+    - articles.*.machine_readable.execution.output
+
+# The presentation slides (Presentatie tab). A slide without `route` covers the
+# screen (title, statement, closing); a slide with `route` puts the deck on the
+# left and opens that tab, optionally switching the persona (`profile`) and
+# pulsing a part of the screen (`highlight`, a CSS selector). `**text**` is bold.
+slides:
+  - kind: title
+    title: RegelRecht
+    subtitle: van wet naar digitale werking
+    footer: Nederlandse Digitale Dienst
+  - kind: statement
+    overline: Huidige situatie
+    lines:
+      - Iedere organisatie
+      - heeft een **eigen interpretatie** van de wet
+      - die landt in **eigen software**
+  - kind: statement
+    overline: Het gevolg
+    lines:
+      - Geen overzicht
+      - Onvoorspelbaar
+      - Onbeheersbaar
+  - kind: statement
+    overline: Wat als
+    lines:
+      - We **beginnen met de wet**
+      - Deze **machine-uitvoerbaar** maken
+      - '**Openbaar** publiceren'
+  - kind: section
+    title: Demo RegelRecht
+    lines:
+      - Compleet verhaal, geen eindproduct
+      - We maken beleid door te doen
+  - kind: demo
+    overline: De wet
+    title: De wet, machine-leesbaar
+    lead: De wettekst en de uitvoerbare regel staan naast elkaar, per artikel.
+    bullets:
+      - 'Elk artikel heeft een **machine_readable**-deel: welke gegevens erin gaan, wat eruit komt en hoe.'
+      - Een verwijzing naar een andere wet is expliciet, geen kopie van een bedrag.
+      - Dezelfde YAML draait in de editor, in dit portaal en in de simulatie.
+    route: /wetten
+    highlight: .yaml-tree
+  - kind: demo
+    overline: Samenhang
+    title: Wetten hangen samen
+    lead: Of iemand verzekerd is, hangt af van detentie; of iemand zorgtoeslag krijgt, hangt af van verzekerd zijn.
+    bullets:
+      - 'Per wet: welke gegevens uit registers, welke uit andere wetten, wat eruit komt.'
+      - Elke lijn is een echte verwijzing uit de wet, met de waarde voor deze persoon erbij.
+      - Wijzigt een wet, dan zie je meteen wie dat raakt.
+    route: /graaf
+  - kind: demo
+    overline: Toetsen
+    title: De wet getoetst, in gewone taal
+    lead: Scenario's beschrijven een persoon en wat de wet voor die persoon moet opleveren.
+    bullets:
+      - Gegeven een 17-jarige, dan geen zorgtoeslag. Gegeven een alleenstaande met laag inkomen, dan wel.
+      - Dezelfde scenario's draaien hier in de browser en in de bouwstraat.
+      - Wie de wet wijzigt, ziet welk scenario omvalt.
+    route: /scenarios
+  - kind: demo
+    overline: Beleid
+    title: Wat doet het met vijftigduizend mensen?
+    lead: Een gegenereerde bevolking door alle regelingen, met de echte wetten.
+    bullets:
+      - Wie voldoet aan de voorwaarden, voor hoeveel, uitgesplitst naar leeftijd, inkomen, huishouden.
+      - Draai aan een drempel in de wet en zie het verschil, voor de wet ingaat.
+      - 'Ook voor ondernemers: vergunningen, meldplichten, precario.'
+    route: /simulatie
+  - kind: demo
+    overline: De burger
+    title: Eén burger, Merijn
+    lead: ZZP'er in de thuiszorg, alleenstaande ouder met twee jonge kinderen.
+    bullets:
+      - Alles waar hij recht op heeft, live berekend door de wet zelf.
+      - Elk gegeven is herleidbaar naar het register dat het leverde.
+      - Klopt een gegeven niet? Hij corrigeert het, een behandelaar beoordeelt.
+    route: /portaal
+    profile: merijn
+    highlight: nldd-card
+  - kind: demo
+    overline: Aanvragen
+    title: Alleen vragen wat de overheid niet weet
+    lead: De wet rekent met wat er al is en vraagt pas iets als ze vastloopt.
+    bullets:
+      - De huurtoeslag kent de huur niet. Dat is de enige vraag, op dat moment.
+      - Na elk antwoord rekent de wet opnieuw.
+      - Controleren, verklaren, indienen. Zonder formulier van tien pagina's.
+    route: /portaal
+    highlight: nldd-button[text="Gegevens aanvullen"]
+  - kind: demo
+    overline: De behandelaar
+    title: Hetzelfde recht, andere kant van de balie
+    lead: De aanvraag komt binnen met de berekening die de burger zag.
+    bullets:
+      - De engine rekent het opnieuw na met de geregistreerde gegevens.
+      - Correcties van de burger staan klaar ter beoordeling.
+      - Toekennen of afwijzen, met motivering; bezwaar komt via het portaal terug.
+    route: /zaaksysteem
+  - kind: demo
+    overline: De ondernemer
+    title: Een ondernemer, Claudia
+    lead: Eigenaar van koffiezaak Noon in Rotterdam-West, met een terras.
+    bullets:
+      - 'Dezelfde engine, andere wetten: APV, Alcoholwet, Warenwet, precario.'
+      - De terrasvergunning vraagt om locatie en oppervlakte; de precariobelasting rekent er meteen mee.
+      - Gemeente, NVWA en RVO in één overzicht, zonder dat zij iets aan elkaar hoeven te vragen.
+    route: /portaal
+    profile: claudia
+  - kind: closing
+    overline: Demo RegelRecht
+    title: Van wet naar digitale werking
+    lines:
+      - Compleet verhaal, **geen eindproduct**
+      - We maken beleid **door te doen**
+    link:
+      href: https://regelrecht.rijks.app
+      label: regelrecht.rijks.app

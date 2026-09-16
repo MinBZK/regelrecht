@@ -1,0 +1,13 @@
+{
+  "name": "poc-assistent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Beleidsassistent voor de OCW-pocs: draait de Claude Code CLI headless met de regelrecht-MCP-tools van één casus",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  }
+}

@@ -2,9 +2,9 @@
 # A marking without `resolved_by` names no change that would lift it, so the
 # backlog of missing operations cannot be read off the corpus. The schema
 # requires the field; the model has it as an `Option` because it must also read
-# files written before v0.6.0 added it. That leniency is deliberate and
+# files written before v0.7.0 added it. That leniency is deliberate and
 # documented in `KNOWN_GAPS`.
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
 $id: test_conformance_marking_no_resolved_by
 regulatory_layer: WET
 publication_date: '2025-01-01'

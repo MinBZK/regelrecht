@@ -1,0 +1,586 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.6/schema/v0.5.6/schema.json
+$id: regeling_aanvullende_bekostiging_eerste_opvang_nieuwkomers_vo
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2026-06-06'
+valid_from: '2026-01-01'
+# valid_to bewust weggelaten: art. 9 laat de regeling op 1 januari 2027 vervallen,
+# maar voor de vergelijking 2025-2028 rekenen we door met de bedragen van 2026
+# (aanname: er komt een opvolger met dezelfde systematiek; zie README).
+bwb_id: BWBR0038995
+url: https://wetten.overheid.nl/BWBR0038995/2026-06-06
+name: Regeling aanvullende bekostiging eerste opvang nieuwkomers vo
+competent_authority:
+  name: Minister van Onderwijs, Cultuur en Wetenschap
+legal_basis:
+  - law_id: wet_voortgezet_onderwijs_2020
+    article: '5.9'
+    description: Artikel 8 (omhangbepaling) berust mede op artikel 5.9, eerste lid
+# Kalenderjaarregeling 2026: bedragen na de indexatie van Stcrt. 2026, 20028
+# (terugwerkend tot en met 1 januari 2026), categorie-indeling op basis van
+# de eerste inschrijfdatum (Uitvoeringsbesluit WVO 2020, artikel 1.1, zoals
+# gewijzigd bij Stb. 2025, 188). Peildata 1 januari, 1 april, 1 juli en 1
+# oktober; de rekendatum ($referencedate) is de peildatum.
+#
+# Modelbeslissing over de verdeling van de rekenregels over de artikelen:
+# de engine voert alle acties van een artikel uit en lost alle inputs
+# vooraf op, dus een artikel kan niet tegelijk op leerlingniveau (parameter
+# bsn) en op schoolniveau (parameter school_id) werken. Daarom:
+#   - artikel 1  (leerling): nieuwkomer en categorie
+#   - artikel 3  (niveauvrij): ambtshalve / op aanvraag, drempel van 10
+#   - artikel 4  (niveauvrij): de normbedragen en de peildata
+#   - artikel 5  (school): voorbereidingskosten (voorwaarden en aanvraag)
+#   - artikel 6  (leerling): vaststelling van het kwartaalbedrag per
+#                nieuwkomer op basis van categorie (art. 1) en tarief (art. 4)
+articles:
+  # ---------------------------------------------------------------- 1
+  - number: '1'
+    text: >-
+      In deze regeling wordt verstaan onder: bevoegd gezag: bevoegd gezag,
+      bedoeld in artikel 1.1 van de Wet voortgezet onderwijs 2020 of artikel
+      1.1.1 van de Wet educatie en beroepsonderwijs; BRP: basisregistratie
+      personen, bedoeld in artikel 1.2 van de Wet basisregistratie personen;
+      DUO: Dienst Uitvoering Onderwijs; eerste inschrijfdatum: eerste
+      inschrijfdatum van een nieuwkomer bij een school als bedoeld in
+      artikel 1 van de Wet op het primair onderwijs, artikel 1.1 van de Wet
+      voorgezet onderwijs 2020, of artikel 1 van de Wet op de
+      expertisecentra; eerste opvang: het verzorgen van voortgezet onderwijs
+      voor en het bieden van onderwijsvoorzieningen aan nieuwkomers;
+      indicatie nieuwkomersbekostiging: de indicatie waarmee de instelling
+      aangeeft of de inschrijving voor nieuwkomersbekostiging in aanmerking
+      mag komen als bedoeld in paragraaf 2 van Bijlage 2, onderdeel 22, van
+      de Regeling register onderwijsdeelnemers; minister: Minister van
+      Onderwijs, Cultuur en Wetenschap; nieuwkomer: nieuwkomer als bedoeld
+      in artikel 1.1 van het Uitvoeringsbesluit WVO 2020, met dien verstande
+      dat daarbij onder teldatum een van de peildata, genoemd in artikel 4,
+      vierde lid, wordt verstaan; nieuwkomer eerste categorie: nieuwkomer
+      die op 1 oktober 2024 nog geen eerste inschrijfdatum had; nieuwkomer
+      tweede categorie: nieuwkomer die op 1 oktober 2024 reeds een eerste
+      inschrijfdatum had, waarbij de eerste inschrijfdatum op de peildatum
+      niet langer dan twee jaar geleden is; persoonsgebonden nummer:
+      burgerservicenummer als bedoeld in artikel 1, onderdeel b, van de Wet
+      algemene bepalingen burgerservicenummer of onderwijsnummer als bedoeld
+      in artikel 1.1 van de Wet voortgezet onderwijs 2020; register
+      onderwijsdeelnemers: register onderwijsdeelnemers, bedoeld in artikel
+      4 van de Wet register onderwijsdeelnemers; school: school voor
+      voortgezet onderwijs, bedoeld in artikel 1.1 van de Wet voortgezet
+      onderwijs 2020; schoolplan: schoolplan, bedoeld in de artikelen 2.88
+      tot en met 2.91 van de Wet voortgezet onderwijs 2020.
+    url: https://wetten.overheid.nl/BWBR0038995/2026-06-06#Artikel1
+    machine_readable:
+      definitions:
+        # De regeling noemt de referentiedatum "1 oktober 2024" letterlijk:
+        # het is een kalenderjaarregeling (peildata in 2026) en de datum
+        # ligt twee jaar voor het bekostigingsjaar. Gemodelleerd als
+        # 1 oktober van het jaar van de peildatum minus twee, zodat de
+        # regel voor elke peildatum in het bekostigingsjaar dezelfde
+        # uitkomst geeft als de letterlijke tekst.
+        referentiejaar_terug:
+          value: 2
+          type: number
+          description: >-
+            "op 1 oktober 2024": twee kalenderjaren voor het bekostigingsjaar
+            2026
+        referentiemaand:
+          value: 10
+          type: number
+          description: '"op 1 oktober 2024": oktober'
+        referentiedag:
+          value: 1
+          type: number
+          description: '"op 1 oktober 2024": de eerste'
+        maximale_termijn_tweede_categorie_jaren:
+          value: 2
+          type: number
+          description: >-
+            Tweede categorie: eerste inschrijfdatum op de peildatum niet
+            langer dan twee jaar geleden
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+            description: Persoonsgebonden nummer van de leerling
+        input:
+          - name: is_nieuwkomer
+            type: boolean
+            source:
+              regulation: uitvoeringsbesluit_wvo_2020
+              output: is_nieuwkomer
+              parameters:
+                bsn: $bsn
+            description: >-
+              Nieuwkomer als bedoeld in artikel 1.1 van het Uitvoeringsbesluit
+              WVO 2020, met de peildatum als teldatum
+          - name: eerste_inschrijfdatum
+            type: date
+            source:
+              description: >-
+                Eerste inschrijfdatum bij een school als bedoeld in artikel 1
+                WPO, artikel 1.1 WVO 2020 of artikel 1 WEC (register
+                onderwijsdeelnemers)
+        output:
+          - name: is_nieuwkomer
+            type: boolean
+            description: Nieuwkomer op de peildatum
+          - name: referentiedatum_categorie
+            type: date
+            description: >-
+              De datum "1 oktober 2024" waarop wordt getoetst of de
+              nieuwkomer al een eerste inschrijfdatum had
+          - name: jaren_sinds_eerste_inschrijving
+            type: number
+            description: Gehele jaren tussen de eerste inschrijfdatum en de peildatum
+          - name: categorie_nieuwkomer_vo
+            type: string
+            description: >-
+              EERSTE (nieuwkomer eerste categorie), TWEEDE (nieuwkomer tweede
+              categorie) of GEEN
+        actions:
+          - output: is_nieuwkomer
+            value: $is_nieuwkomer
+          - output: referentiedatum_categorie
+            value:
+              operation: DATE
+              year:
+                operation: SUBTRACT
+                values:
+                  - $referencedate.year
+                  - $referentiejaar_terug
+              month: $referentiemaand
+              day: $referentiedag
+          - output: jaren_sinds_eerste_inschrijving
+            value:
+              operation: DATE_DIFF
+              from: $eerste_inschrijfdatum
+              to: $referencedate.iso
+              in: years
+          - output: categorie_nieuwkomer_vo
+            value:
+              operation: IF
+              cases:
+                # eerste categorie: op 1 oktober 2024 nog geen eerste
+                # inschrijfdatum, dus de eerste inschrijving ligt na die datum
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: EQUALS
+                        subject: $is_nieuwkomer
+                        value: true
+                      - operation: GREATER_THAN
+                        subject: $eerste_inschrijfdatum
+                        value: $referentiedatum_categorie
+                  then: EERSTE
+                # tweede categorie: op 1 oktober 2024 al een eerste
+                # inschrijfdatum, die op de peildatum niet langer dan twee
+                # jaar geleden is
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: EQUALS
+                        subject: $is_nieuwkomer
+                        value: true
+                      - operation: LESS_THAN_OR_EQUAL
+                        subject: $eerste_inschrijfdatum
+                        value: $referentiedatum_categorie
+                      - operation: LESS_THAN_OR_EQUAL
+                        subject: $jaren_sinds_eerste_inschrijving
+                        value: $maximale_termijn_tweede_categorie_jaren
+                  then: TWEEDE
+              default: GEEN
+
+  # ---------------------------------------------------------------- 3
+  - number: '3'
+    text: >-
+      1. De minister verstrekt ambtshalve aanvullende bekostiging voor de
+      kosten van de eerste opvang.
+
+      2. De minister kan het bevoegd gezag eenmalig op aanvraag aanvullende
+      bekostiging verstrekken voor de kosten van de voorbereidende en
+      coördinerende werkzaamheden die samenhangen met de opstart van de
+      eerste opvang, indien deze eerste opvang betrekking heeft op ten
+      minste 10 nieuwkomers op de peildatum.
+    url: https://wetten.overheid.nl/BWBR0038995/2026-06-06#Artikel3
+    machine_readable:
+      implements:
+        - law: wet_voortgezet_onderwijs_2020
+          article: '5.9'
+          open_term: aanvullende_bekostiging_eerste_opvang_nieuwkomers_vo
+          gelet_op: Gelet op artikel 5.9, eerste lid, van de Wet voortgezet onderwijs 2020
+      definitions:
+        minimum_aantal_nieuwkomers_voorbereidingskosten:
+          value: 10
+          type: number
+          description: >-
+            Tweede lid: eerste opvang die betrekking heeft op ten minste 10
+            nieuwkomers op de peildatum
+      execution:
+        output:
+          - name: aanvraag_vereist
+            type: boolean
+            description: >-
+              Eerste lid: de aanvullende bekostiging voor de eerste opvang
+              wordt ambtshalve verstrekt, zonder aanvraag
+          - name: aanvraag_vereist_voorbereidingskosten
+            type: boolean
+            description: >-
+              Tweede lid: de bekostiging voor de voorbereidende en
+              coördinerende werkzaamheden wordt eenmalig op aanvraag verstrekt
+          - name: minimum_aantal_nieuwkomers_voorbereidingskosten
+            type: number
+            description: >-
+              Tweede lid: drempel van ten minste 10 nieuwkomers op de peildatum
+        actions:
+          - output: aanvraag_vereist
+            value: false
+          - output: aanvraag_vereist_voorbereidingskosten
+            value: true
+          - output: minimum_aantal_nieuwkomers_voorbereidingskosten
+            value: $minimum_aantal_nieuwkomers_voorbereidingskosten
+
+  # ---------------------------------------------------------------- 4
+  - number: '4'
+    text: >-
+      1. De aanvullende bekostiging, bedoeld in artikel 3, eerste lid, wordt
+      per school berekend op basis van het aantal nieuwkomers dat op de
+      betreffende peildatum, bedoeld in het vierde lid, op de school staat
+      ingeschreven.
+
+      2. De aanvullende bekostiging, bedoeld in artikel 3, eerste lid,
+      bedraagt: a. € 3.909,08 per kwartaal per nieuwkomer eerste categorie;
+      b. € 1.426,33 per kwartaal per nieuwkomer tweede categorie.
+
+      3. De aanvullende bekostiging, bedoeld in artikel 3, tweede lid,
+      bedraagt € 21.843,34 per school.
+
+      4. De peildata zijn 1 januari, 1 april, 1 juli en 1 oktober van het
+      kalenderjaar 2026.
+
+      5. De Minister stelt voor iedere peildatum het aantal te bekostigen
+      nieuwkomers vast, bedoeld in het eerste lid, op basis van de eerste
+      inschrijfdatum en indicatie nieuwkomersbekostiging. Het
+      persoonsgebonden nummer van een nieuwkomer en de opname daarvan in het
+      in het register onderwijsdeelnemers is leidend.
+
+      6. Indien het bevoegd gezag bij het inschrijven van een leerling
+      gebruik maakt van een onderwijsnummer als bedoeld in als bedoeld in
+      artikel 1.1 van de Wet voortgezet onderwijs 2020, overlegt het bevoegd
+      gezag een bewijsstuk waaruit blijkt dat het om een nieuwkomer gaat aan
+      een accountant.
+
+      7. Onder het bewijsstuk als bedoeld in het zesde lid wordt in elk
+      geval verstaan, mits daaruit blijkt dat de leerling niet de
+      Nederlandse nationaliteit heeft en dat de leerling in Nederland woont:
+      a. een door de ouder of verzorger ondertekend inschrijfformulier, met
+      daarop de naam en de nationaliteit van de leerling en een adres in
+      Nederland; b. een e-mail van het Centraal Orgaan opvang asielzoekers
+      naar aanleiding van de inschrijving van een leerling op een school.
+    url: https://wetten.overheid.nl/BWBR0038995/2026-06-06#Artikel4
+    machine_readable:
+      definitions:
+        bedrag_kwartaal_eerste_categorie:
+          value: 390908
+          type: amount
+          type_spec:
+            unit: eurocent
+          description: >-
+            Tweede lid, onderdeel a: € 3.909,08 per kwartaal per nieuwkomer
+            eerste categorie
+        bedrag_kwartaal_tweede_categorie:
+          value: 142633
+          type: amount
+          type_spec:
+            unit: eurocent
+          description: >-
+            Tweede lid, onderdeel b: € 1.426,33 per kwartaal per nieuwkomer
+            tweede categorie
+        bedrag_voorbereidingskosten:
+          value: 2184334
+          type: amount
+          type_spec:
+            unit: eurocent
+          description: 'Derde lid: € 21.843,34 per school'
+        kalenderjaar:
+          value: 2026
+          type: number
+          description: 'Vierde lid: peildata in het kalenderjaar 2026'
+        peildatum_dag:
+          value: 1
+          type: number
+          description: 'Vierde lid: de eerste van de maand'
+      execution:
+        output:
+          - name: bedrag_kwartaal_eerste_categorie
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Tarief per kwartaal per nieuwkomer eerste categorie
+          - name: bedrag_kwartaal_tweede_categorie
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Tarief per kwartaal per nieuwkomer tweede categorie
+          - name: bedrag_voorbereidingskosten
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Eenmalig bedrag per school voor de voorbereidingskosten
+          - name: is_peildatum
+            type: boolean
+            description: >-
+              Vierde lid: de rekendatum is 1 januari, 1 april, 1 juli of 1
+              oktober van het kalenderjaar 2026
+        actions:
+          - output: bedrag_kwartaal_eerste_categorie
+            value: $bedrag_kwartaal_eerste_categorie
+          - output: bedrag_kwartaal_tweede_categorie
+            value: $bedrag_kwartaal_tweede_categorie
+          - output: bedrag_voorbereidingskosten
+            value: $bedrag_voorbereidingskosten
+          - output: is_peildatum
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $referencedate.year
+                  value: $kalenderjaar
+                - operation: IN
+                  subject: $referencedate.month
+                  values: [1, 4, 7, 10]
+                - operation: EQUALS
+                  subject: $referencedate.day
+                  value: $peildatum_dag
+
+  # ---------------------------------------------------------------- 5
+  - number: '5'
+    text: >-
+      1. DUO hanteert voor de voorlopige telling en de daarop gebaseerde
+      bekostiging, bedoeld in artikel 3, eerste lid, de registratie in het
+      register onderwijsdeelnemers op respectievelijk 16 januari, 16 april,
+      16 juli en 16 oktober 2026 van het aantal nieuwkomers dat op
+      respectievelijk de peildata 1 januari, 1 april, 1 juli en 1 oktober
+      2026 als schoolgaand stond ingeschreven.
+
+      2. DUO hanteert voor de definitieve telling en de daarop gebaseerde
+      bekostiging, het door de accountant gevalideerde aantal nieuwkomers
+      dat op respectievelijk de peildata 1 januari, 1 april, 1 juli en 1
+      oktober 2026 als schoolgaand stond ingeschreven en is opgenomen in het
+      register onderwijsdeelnemers.
+
+      3. Om in aanmerking te komen voor de aanvullende bekostiging, bedoeld
+      in artikel 3, tweede lid, mag het bevoegd gezag voor een school niet
+      eerder aanvullende bekostiging hebben ontvangen voor de organisatie
+      van eerste opvang. De school dient te beschikken over een verklaring
+      van de gemeente, waaruit blijkt dat de school nog niet eerder
+      aanvullende bekostiging heeft ontvangen van de gemeente voor de
+      organisatie van eerste opvang. De school bewaart deze verklaring in
+      haar administratie.
+
+      4. Voor het indienen van een aanvraag als bedoeld in artikel 3, tweede
+      lid, wordt gebruikgemaakt van het daarvoor beschikbaar gestelde
+      formulier op www.duo.nl. Aanvragen die op de peildata 1 januari, 1
+      april, 1 juli en 1 oktober 2026 niet uiterlijk op respectievelijk 15
+      januari, 15 april, 15 juli en 15 oktober 2026 door DUO zijn ontvangen,
+      worden afgewezen.
+    url: https://wetten.overheid.nl/BWBR0038995/2026-06-06#Artikel5
+    machine_readable:
+      definitions:
+        dagen_tot_uiterste_ontvangstdatum:
+          value: 14
+          type: number
+          description: >-
+            Vierde lid: uiterlijk op de 15e van de maand van de peildatum
+            (1 januari, 1 april, 1 juli, 1 oktober), dus veertien dagen na de
+            peildatum
+      execution:
+        parameters:
+          - name: school_id
+            type: string
+            required: true
+            description: Sleutel van de school (BRIN)
+        input:
+          - name: aantal_nieuwkomers_peildatum
+            type: number
+            source:
+              description: >-
+                Aantal nieuwkomers dat op de peildatum als schoolgaand op de
+                school staat ingeschreven (databron scholen)
+          - name: eerste_keer_eerste_opvang
+            type: boolean
+            source:
+              description: >-
+                Derde lid: het bevoegd gezag heeft voor deze school niet
+                eerder aanvullende bekostiging ontvangen voor de organisatie
+                van eerste opvang (verklaring van de gemeente; databron
+                scholen)
+          - name: minimum_aantal_nieuwkomers_voorbereidingskosten
+            type: number
+            source:
+              output: minimum_aantal_nieuwkomers_voorbereidingskosten
+            description: 'Artikel 3, tweede lid: ten minste 10 nieuwkomers op de peildatum'
+          - name: bedrag_voorbereidingskosten
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              output: bedrag_voorbereidingskosten
+            description: 'Artikel 4, derde lid: € 21.843,34 per school'
+        output:
+          - name: voldoet_aan_drempel_voorbereidingskosten
+            type: boolean
+            description: >-
+              De eerste opvang heeft op de peildatum betrekking op ten minste
+              10 nieuwkomers (artikel 3, tweede lid)
+          - name: niet_eerder_eerste_opvang_bekostigd
+            type: boolean
+            description: >-
+              Derde lid: niet eerder aanvullende bekostiging ontvangen voor
+              de organisatie van eerste opvang
+          - name: voorbereidingskosten
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: >-
+              Eenmalige aanvullende bekostiging voor de voorbereidende en
+              coördinerende werkzaamheden (artikel 3, tweede lid) waarvoor de
+              school op deze peildatum in aanmerking komt; 0 als niet aan de
+              voorwaarden is voldaan
+          - name: uiterste_ontvangstdatum_aanvraag_voorbereidingskosten
+            type: date
+            description: >-
+              Vierde lid: de datum waarop DUO de aanvraag uiterlijk moet
+              hebben ontvangen (15e van de maand van de peildatum)
+        actions:
+          - output: voldoet_aan_drempel_voorbereidingskosten
+            value:
+              operation: GREATER_THAN_OR_EQUAL
+              subject: $aantal_nieuwkomers_peildatum
+              value: $minimum_aantal_nieuwkomers_voorbereidingskosten
+          - output: niet_eerder_eerste_opvang_bekostigd
+            value:
+              operation: EQUALS
+              subject: $eerste_keer_eerste_opvang
+              value: true
+          - output: voorbereidingskosten
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: EQUALS
+                        subject: $voldoet_aan_drempel_voorbereidingskosten
+                        value: true
+                      - operation: EQUALS
+                        subject: $niet_eerder_eerste_opvang_bekostigd
+                        value: true
+                  then: $bedrag_voorbereidingskosten
+              default: 0
+          - output: uiterste_ontvangstdatum_aanvraag_voorbereidingskosten
+            value:
+              operation: DATE_ADD
+              date: $referencedate.iso
+              days: $dagen_tot_uiterste_ontvangstdatum
+
+  # ---------------------------------------------------------------- 6
+  - number: '6'
+    text: >-
+      1. De aanvullende bekostiging, bedoeld in artikel 3 eerste lid, wordt
+      vastgesteld in de maand, volgend op de betreffende peildatum en als
+      bedrag ineens betaald.
+
+      2. De aanvullende bekostiging wordt verstrekt als tegemoetkoming in de
+      uitgaven die zijn verbonden aan het in de regeling omschreven doel en
+      kan ook worden besteed aan andere activiteiten waarvoor bekostiging
+      wordt verstrekt.
+
+      3. Indien van toepassing wordt de aanvullende bekostiging, bedoeld in
+      artikel 3 eerste lid, gewijzigd vastgesteld op basis van het door de
+      accountant gevalideerde aantal nieuwkomers in het voorafgaande
+      kalenderjaar als bedoeld in artikel 5, tweede lid (nieuw), of op grond
+      van prijsbijstellingen.
+
+      4. De verantwoording van de subsidie geschiedt in de jaarverslaggeving
+      overeenkomstig de Regeling jaarverslaggeving onderwijs.
+    url: https://wetten.overheid.nl/BWBR0038995/2026-06-06#Artikel6
+    machine_readable:
+      definitions:
+        maanden_tot_vaststelling:
+          value: 1
+          type: number
+          description: 'Eerste lid: vastgesteld in de maand volgend op de peildatum'
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+            description: Persoonsgebonden nummer van de leerling
+        input:
+          - name: categorie_nieuwkomer_vo
+            type: string
+            source:
+              output: categorie_nieuwkomer_vo
+            description: 'Artikel 1: nieuwkomer eerste of tweede categorie, of geen'
+          - name: bedrag_kwartaal_eerste_categorie
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              output: bedrag_kwartaal_eerste_categorie
+            description: Artikel 4, tweede lid, onderdeel a
+          - name: bedrag_kwartaal_tweede_categorie
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              output: bedrag_kwartaal_tweede_categorie
+            description: Artikel 4, tweede lid, onderdeel b
+        output:
+          - name: bedrag_kwartaal
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: >-
+              De op deze peildatum vast te stellen aanvullende bekostiging
+              (artikel 3, eerste lid) voor deze leerling: het tarief van
+              artikel 4, tweede lid, voor de categorie van artikel 1; 0 als
+              de leerling geen nieuwkomer is
+          - name: vaststelling_vanaf
+            type: date
+            description: >-
+              Eerste lid: de vaststelling vindt plaats in de maand volgend op
+              de peildatum (eerste dag van die maand)
+          - name: betaling_ineens
+            type: boolean
+            description: 'Eerste lid: als bedrag ineens betaald'
+        actions:
+          - output: bedrag_kwartaal
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $categorie_nieuwkomer_vo
+                    value: EERSTE
+                  then: $bedrag_kwartaal_eerste_categorie
+                - when:
+                    operation: EQUALS
+                    subject: $categorie_nieuwkomer_vo
+                    value: TWEEDE
+                  then: $bedrag_kwartaal_tweede_categorie
+              default: 0
+          - output: vaststelling_vanaf
+            value:
+              operation: DATE_ADD
+              date: $referencedate.iso
+              months: $maanden_tot_vaststelling
+          - output: betaling_ineens
+            value: true
+
+  # ---------------------------------------------------------------- 9
+  - number: '9'
+    text: >-
+      1. Deze regeling treedt in werking met ingang van 1 januari 2017.
+
+      2. Deze regeling vervalt met ingang van 1 januari 2027.
+    url: https://wetten.overheid.nl/BWBR0038995/2026-06-06#Artikel9

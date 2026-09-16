@@ -186,6 +186,7 @@ impl PathNode {
                 ResolveType::ResolvedInput => "resolved_input",
                 ResolveType::DataSource => "data_source",
                 ResolveType::OpenTerm => "open_term",
+                ResolveType::OpenTermSilent => "open_term_silent",
                 ResolveType::Hook => "hook",
                 ResolveType::Override => "override",
             };
@@ -344,11 +345,20 @@ impl PathNode {
                 self.render_single_children(lines, cols, has_result);
                 if let Some(ref result) = self.result {
                     let pfx = Self::prefix(cols);
-                    if result.to_bool() {
-                        lines.push(format!("{}└──Requirement met", pfx));
-                    } else {
-                        lines.push(format!("{}└──Requirement NOT met", pfx));
-                    }
+                    // A requirement that could not be decided is neither met
+                    // nor not met: an unknown names the facts it lacks and an
+                    // untranslatable names the construct (RFC-036, RFC-012).
+                    let verdict = match result {
+                        Value::Unknown(missing) => {
+                            format!("Requirement unknown (missing: {})", missing_names(missing))
+                        }
+                        Value::Untranslatable { article, .. } => {
+                            format!("Requirement untranslatable (art. {})", article)
+                        }
+                        _ if result.to_bool() => "Requirement met".to_string(),
+                        _ => "Requirement NOT met".to_string(),
+                    };
+                    lines.push(format!("{}└──{}", pfx, verdict));
                 }
                 cols.pop();
             }
@@ -573,7 +583,17 @@ fn format_value_compact(value: &Value) -> String {
         Value::Untranslatable { article, .. } => {
             format!("UNTRANSLATABLE(art. {})", article)
         }
+        Value::Unknown(missing) => format!("UNKNOWN({})", missing_names(missing)),
     }
+}
+
+/// The names of the facts an Unknown misses, comma-separated (RFC-036).
+fn missing_names(missing: &[crate::types::MissingFact]) -> String {
+    missing
+        .iter()
+        .map(|m| m.name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// Format a Value for box-drawing trace output.
@@ -614,6 +634,7 @@ fn format_value_display(value: &Value) -> String {
         Value::Untranslatable { article, construct } => {
             format!("UNTRANSLATABLE(art. {}: {})", article, construct)
         }
+        Value::Unknown(missing) => format!("UNKNOWN({})", missing_names(missing)),
     }
 }
 
@@ -630,6 +651,7 @@ fn resolve_type_name(rt: &ResolveType) -> &'static str {
         ResolveType::ResolvedInput => "RESOLVED_INPUT",
         ResolveType::DataSource => "DATA_SOURCE",
         ResolveType::OpenTerm => "OPEN_TERM",
+        ResolveType::OpenTermSilent => "OPEN_TERM_SILENT",
         ResolveType::Hook => "HOOK",
         ResolveType::Override => "OVERRIDE",
     }
@@ -816,6 +838,28 @@ impl TraceBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::{MissingFact, MissingKind};
+
+    fn missing(name: &str) -> MissingFact {
+        MissingFact {
+            law: "wet_x".to_string(),
+            name: name.to_string(),
+            kind: MissingKind::NoData,
+        }
+    }
+
+    #[test]
+    fn an_unknown_names_its_missing_facts_in_both_trace_forms() {
+        // RFC-036: the trace says which facts are missing, in order, and
+        // nothing else; a reader must be able to tell "unknown for lack of
+        // huur" from "unknown for lack of partner_bsn".
+        let one = Value::Unknown(vec![missing("huur")]);
+        let two = Value::Unknown(vec![missing("huur"), missing("partner_bsn")]);
+        assert_eq!(format_value_compact(&one), "UNKNOWN(huur)");
+        assert_eq!(format_value_compact(&two), "UNKNOWN(huur, partner_bsn)");
+        assert_eq!(format_value_display(&two), "UNKNOWN(huur, partner_bsn)");
+        assert_eq!(missing_names(&[]), "");
+    }
 
     #[test]
     fn test_path_node_creation() {
@@ -1447,6 +1491,82 @@ mod tests {
             rendered.contains("Result: my_output = 42"),
             "Action result should show 'Result: name = value' in:\n{}",
             rendered
+        );
+    }
+
+    /// Render one Requirement node carrying `result` and return its verdict
+    /// line, the line the four tests below all turn on.
+    fn requirement_verdict(result: Value) -> String {
+        let requirement = PathNode::new(PathNodeType::Requirement, "req")
+            .with_result(result)
+            .with_child(PathNode::new(PathNodeType::Resolve, "a").with_result(Value::Int(1)));
+        let rendered = requirement.render_box_drawing();
+        // The verdict is the node's last line: the header ("Requirements") and
+        // the children come first.
+        rendered
+            .lines()
+            .next_back()
+            .unwrap_or_else(|| panic!("nothing rendered for:\n{rendered}"))
+            .to_string()
+    }
+
+    #[test]
+    fn an_undecidable_requirement_names_the_facts_it_lacks() {
+        // RFC-036: an Unknown is falsy, so without its own arm the requirement
+        // would read "NOT met" — a decision the engine never made. The verdict
+        // must name which facts are missing, so a reader can go get them.
+        let verdict = requirement_verdict(Value::Unknown(vec![
+            missing("huur"),
+            missing("partner_bsn"),
+        ]));
+        assert!(
+            verdict.ends_with("Requirement unknown (missing: huur, partner_bsn)"),
+            "got {verdict}"
+        );
+    }
+
+    #[test]
+    fn an_untranslatable_requirement_names_the_article_it_comes_from() {
+        // RFC-012: an Untranslatable is falsy too, and would likewise be
+        // rendered as "NOT met". The verdict names the article whose construct
+        // could not be translated, so the open norm is traceable.
+        let verdict = requirement_verdict(Value::Untranslatable {
+            article: "5".to_string(),
+            construct: "naar redelijkheid".to_string(),
+        });
+        assert!(
+            verdict.ends_with("Requirement untranslatable (art. 5)"),
+            "got {verdict}"
+        );
+    }
+
+    #[test]
+    fn a_met_requirement_is_distinguished_from_a_failed_one() {
+        // The guard on the verdict: a truthy result reads "met", a falsy one
+        // "NOT met". Both directions are asserted, because a guard stuck on
+        // either constant renders every requirement the same way.
+        assert!(
+            requirement_verdict(Value::Bool(true)).ends_with("Requirement met"),
+            "a true requirement is met"
+        );
+        assert!(
+            requirement_verdict(Value::Bool(false)).ends_with("Requirement NOT met"),
+            "a false requirement is not met"
+        );
+    }
+
+    #[test]
+    fn a_non_boolean_requirement_result_is_judged_on_truthiness() {
+        // Requirements are not always Bool: an empty list or a zero is falsy,
+        // a non-empty one truthy, and the verdict follows to_bool rather than
+        // the variant.
+        assert!(
+            requirement_verdict(Value::Int(1)).ends_with("Requirement met"),
+            "a non-zero number is truthy"
+        );
+        assert!(
+            requirement_verdict(Value::Array(vec![])).ends_with("Requirement NOT met"),
+            "an empty array is falsy"
         );
     }
 }

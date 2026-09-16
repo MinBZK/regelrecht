@@ -17,9 +17,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `packages/grafana/` - Grafana monitoring with provisioned dashboards
 - `frontend/` - Law editor (Vue/Vite + editor-api backend)
 - `frontend-lawmaking/` - Law-making process visualization (Vue/Vite)
+- `frontend-demo/` - The RegelRecht demo (Vue/Vite + the engine as WASM in the browser, no backend): presentation, law browser, dependency graph, scenario runner, population simulation, citizen/entrepreneur portal and case system, over the demo corpus in `corpus/demo/`. Successor of the separate poc-machine-law repository; deployed at `demo.regelrecht.rijks.app`
 - `docs/` - Astro site serving both the landing page (regelrecht.rijks.app) and the docs (docs.regelrecht.rijks.app)
 - `corpus/regulation/` - Dutch legal regulations in machine-readable YAML format
-- `bdd/` - Canonical, engine-agnostic BDD feature language. `bdd/grammar.yaml` is the single source of truth for the law-agnostic Gherkin vocabulary; step bindings for every engine are code-generated from it (Rust via `packages/engine/build.rs`, editor JS via `bdd/codegen/gen-js.mjs` → `frontend/src/gherkin/grammar.generated.js`). Never hand-edit a generated file — change `grammar.yaml` and run `just bdd-codegen`. Two buckets share the language: **bucket A** = law-validation scenarios next to the live laws (`corpus/regulation/**/scenarios/*.feature`, run against the real corpus — a failure means a law changed or the scenario is stale, a human decides; `@wip`-tagged scenarios are skipped); **bucket B** = engine-conformance suite (`bdd/conformance/*.feature`, `@tier:`-tagged) proving an engine speaks the whole language against synthetic `test_*` laws. `just bdd` runs both buckets; `BDD_BUCKET=conformance|corpus` narrows it to one. CI runs and blocks on bucket B (job **BDD conformance**, hung on the `Test` gate); bucket A stays out, because a failure there is a human's call.
+- `corpus/demo/` - The demo corpus: 80 laws migrated from the POC (`regulation/nl/`, schema v0.5.8, `source: {}` for external data), their scenarios (`**/scenarios/*.feature`, canonical grammar, run with `just bdd-demo`), `bindings.yaml` (which register table/column feeds which `source: {}` input; the demo materialises persona data from it), `profiles.yaml` (fictitious personas), `demo-config.yaml` and `services.yaml`. `tools/` holds the one-off migration and conversion scripts
+- `bdd/` - Canonical, engine-agnostic BDD feature language. `bdd/grammar.yaml` is the single source of truth for the law-agnostic Gherkin vocabulary; step bindings for every engine are code-generated from it (Rust via `packages/engine/build.rs`, editor/demo JS via `bdd/codegen/gen-js.mjs` → `packages/frontend-shared/src/gherkin/grammar.generated.js`, re-exported by `frontend/src/gherkin/`). Never hand-edit a generated file — change `grammar.yaml` and run `just bdd-codegen`. Two buckets share the language: **bucket A** = law-validation scenarios next to the live laws (`corpus/regulation/**/scenarios/*.feature`, run against the real corpus — a failure means a law changed or the scenario is stale, a human decides; `@wip`-tagged scenarios are skipped); **bucket B** = engine-conformance suite (`bdd/conformance/*.feature`, `@tier:`-tagged) proving an engine speaks the whole language against synthetic `test_*` laws. `just bdd` runs both buckets; `BDD_BUCKET=conformance|corpus` narrows it to one. CI runs and blocks on bucket B (job **BDD conformance**, hung on the `Test` gate); bucket A stays out, because a failure there is a human's call. Bucket A follows `REGULATION_PATH`, the variable the engine loads its laws from, so the same bucket runs over another corpus: `just bdd-demo` points it at `corpus/demo/regulation` (the migrated POC laws with their synthetic persona data). That run is fully in-repo, so CI blocks on it too (job **BDD demo**). The engine and its test harness know nothing demo-specific.
 
 ## Development Setup
 
@@ -82,7 +84,7 @@ merge). The format is **Conventional Commits**: `type(scope): subject`, where
 - **Allowed types**: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`,
   `test`, `chore`, `build`, `ci`.
 - **Allowed scopes** (optional): `engine`, `admin`, `pipeline`, `harvester`,
-  `editor`, `corpus`, `github`, `frontend`, `lawmaking`, `docs`, `grafana`,
+  `editor`, `corpus`, `github`, `frontend`, `lawmaking`, `demo`, `docs`, `grafana`,
   `ci`, `schema`, `deps`, `dev`. An unlisted scope fails the lint.
 - **The subject MUST start with a lowercase letter** (`subjectPattern:
   ^[a-z].*$`). This is the easiest rule to trip on: `docs: RFC-…` fails because
@@ -143,7 +145,13 @@ See `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml` for a worki
 
 ## Frontend / UI Components
 
-**All user interface MUST be built with components from the MinBZK design system: https://github.com/MinBZK/storybook** (the NDD `ndd-*` web components). Do not hand-roll custom UI elements when a design-system component exists. For the required component hierarchy, nesting rules, and layout patterns, use the `storybook-component-hierarchy` skill.
+**All user interface MUST be built with components from the MinBZK design system: https://github.com/MinBZK/storybook** (the NLDD `nldd-*` web components, from `@nldd/design-system`). Do not hand-roll custom UI elements when a design-system component exists. For the required component hierarchy, nesting rules, and layout patterns, use the `storybook-component-hierarchy` skill.
+
+The element prefix is `nldd-`, with two l's. Older prose (including parts of
+the `storybook-component-hierarchy` skill) still writes `ndd-`; that is stale.
+Check an attribute against the package's own `.d.ts` before using it — a web
+component with an attribute it does not know renders nothing and reports
+nothing, so a guessed attribute fails silently and only in the browser.
 
 ### Icon names
 
@@ -159,6 +167,66 @@ Do **not** silently improvise. Follow these steps in order:
 ### Reporting additional CSS
 
 If you needed **any additional CSS styling** on top of the design-system components (overrides, custom spacing, layout hacks, etc.), you **must report this explicitly** to the user — list exactly what custom CSS you added and why. Custom styling on top of the design system is a signal that may need a design-system change, so it must never be hidden.
+
+## Proof-of-concepts
+
+`poc.regelrecht.rijks.app` is één ZAD-component (`poc`) met de pocs erachter,
+elk achter een eigen wachtwoord. Dat het één component is, volgt uit de
+platformkant: de productie-deployment publiceert op `component.subdomain`, dus
+élk component krijgt zijn eigen hostnaam en drie componenten kunnen die ene
+hostnaam niet op paden delen. De routering gebeurt daarom binnen één container,
+in `packages/poc-portal`.
+
+```
+pocs/registry.yaml          het register — de enige bron
+corpus-poc/<slug>/          casus-regelgeving, data, varianten
+frontend-poc-<slug>/        de app
+```
+
+Een poc toevoegen of zijn status wijzigen: gebruik de **`poc-add`**-skill. Die
+kent de subpad-aanpassingen die een losse app nodig heeft en de plekken in de
+deploy die met de hand bij moeten.
+
+Drie dingen om te weten voordat je hier iets aanraakt:
+
+- **`corpus-poc/` is geen geldend recht.** Het zijn casus-corpora en
+  reconstructies van wetsvoorstellen, met een eigen schrijfstijl uit de losse
+  PoC-repo's. Ze gaan niet door `just validate`, staan buiten yamllint, en de
+  harvester heeft er niets mee te maken. Behandel ze niet als het corpus.
+- **Elke poc draagt een `status` en een `voorbehoud`**, allebei verplicht en
+  zonder default. Ze staan op drie plekken (kaart, inlogscherm, en een strook
+  binnen de poc zelf), omdat die drie verschillende mensen bereiken: een
+  doorgestuurde diepe link slaat het overzicht over, en een screenshot uit een
+  poc reist zonder omringende tekst. Een uitgerekend bedrag ziet er even
+  stellig uit, of het model nu doorgelopen is met juristen of niet.
+- **Wachtwoorden staan alleen in ZAD** (`zad env add -c poc POC_PW_<SLUG>`),
+  nooit in de repo. Het portaal weigert te starten als er één ontbreekt; een
+  poc in het register zonder wachtwoord zou anders voor iedereen open staan.
+
+De beleidsassistent in de OCW-pocs draait op de Claude Code CLI met Anne's
+eigen abonnementstoken (`CLAUDE_CODE_OAUTH_TOKEN`, uit `claude setup-token`).
+De tool-sandbox is smal (alleen de regelrecht-MCP-tools, geen bestandssysteem),
+maar wie het wachtwoord heeft kan het abonnement laten werken. Dat is een
+bewuste afweging, geen omissie.
+
+## Published papers are frozen
+
+`docs/src/research/` holds published work: `rules-as-executed.html` and its
+generated companions. **Never edit these to match the current state of the
+code.** A paper is a claim someone made at a moment in time, and the record of
+what was true then is the whole point of citing it. A paper that silently tracks
+the codebase cannot be cited at all.
+
+This comes up because the code moves past the paper. RFC-016 added collection
+operations to an engine the paper describes as having none ("There is no
+aggregation over collections: no `SUM`, no `COUNT`, no iteration"). That
+sentence stays. It was accurate when written, and the reader who follows a
+citation to it needs to find what the author wrote, not a retrofit.
+
+If the divergence matters, say so somewhere that is not the paper: the RFC that
+supersedes it, a docs page, or release notes. If a paper genuinely needs to
+change, that is an erratum or a new version, and it is the author's call, not a
+side effect of a code change.
 
 ## RFC Process
 
@@ -451,7 +519,10 @@ de job staat in het workflowbestand dat de PR meebrengt.
 | enrichworker | `regelrecht-enrich-worker` | (no web UI) |
 | pipeline-api | `regelrecht-pipeline-api` | (internal) |
 | lawmaking | `regelrecht-lawmaking` | `lawmaking.regelrecht.rijks.app` |
+| demo | `regelrecht-demo` | `demo.regelrecht.rijks.app` |
 | docs | `regelrecht-docs` | `docs.regelrecht.rijks.app` + `regelrecht.rijks.app` (landing) |
+| poc | `regelrecht-poc` | `poc.regelrecht.rijks.app` (portaal + de statische pocs) |
+| napp | `regelrecht-poc-napp` | (geen eigen adres; alleen via het portaal op `/napp/`) |
 | grafana | `regelrecht-grafana` | `grafana.regelrecht.rijks.app` |
 
 ### How It Works

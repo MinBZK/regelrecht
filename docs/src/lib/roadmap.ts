@@ -12,6 +12,7 @@
  * render, so a value can never render as a tag the schema would have rejected.
  */
 import { z } from 'astro:content';
+import { normaliseerZoekterm } from '~/lib/roadmap-zoek';
 import configJson from '~/data/roadmap-config.json';
 import paperHeadings from '~/research/rules-as-executed.headings.json';
 import { getRfcs } from '~/lib/rfcs';
@@ -27,6 +28,19 @@ export interface Discipline {
   id: string;
   naam: string;
   ondertitel: string;
+}
+
+/**
+ * A swimlane: the matrix's real grouping on the vertical axis. Disciplines
+ * are the rows the matrix draws; a swimlane says which of them belong
+ * together and in which order, top to bottom. One discipline belongs to
+ * exactly one swimlane — enforced at load time, see the check below
+ * `disciplines`.
+ */
+export interface Swimlane {
+  id: string;
+  naam: string;
+  disciplineIds: string[];
 }
 
 /** A werkpakket's frontmatter, mirroring the zod schema in content.config.ts. */
@@ -84,7 +98,7 @@ export const getOnderzoek = (id: string) =>
 export const getBouw = (id: string) => BOUW_STANDEN.find((s) => s.id === id);
 
 export const CATEGORIEEN = [
-  { id: 'lat', label: 'Lat' },
+  { id: 'bar', label: 'Bar' },
   { id: 'pivot', label: 'Pivot' },
   { id: 'bet', label: 'Bet' },
 ] as const;
@@ -112,7 +126,7 @@ type NonEmpty = [string, ...string[]];
 
 /**
  * The value `data-categorie` carries for a werkpakket without a categorie.
- * Six of the nineteen have none, so the filter needs a way to show them:
+ * Twenty of the forty-nine have none, so the filter needs a way to show them:
  * without one, checking any box hides them with no control to bring them
  * back. Shared by the page and the stylesheet's selectors.
  */
@@ -191,6 +205,15 @@ const configSchema = z.object({
       }),
     )
     .min(1),
+  swimlanes: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        naam: z.string().min(1),
+        disciplineIds: z.array(z.string().min(1)).min(1),
+      }),
+    )
+    .min(1),
 });
 
 const config = configSchema.parse(configJson);
@@ -199,10 +222,57 @@ export const fases: Fase[] = [...config.fases].sort(
   (a, b) => a.volgnummer - b.volgnummer,
 );
 export const disciplines: Discipline[] = config.disciplines;
+export const swimlanes: Swimlane[] = config.swimlanes;
 
 export const getFase = (id: string) => fases.find((f) => f.id === id);
 export const getDiscipline = (id: string) =>
   disciplines.find((d) => d.id === id);
+
+/**
+ * Fail the build when swimlanes and disciplines disagree about which rows
+ * exist: a disciplineId a swimlane points at but that isn't in
+ * `disciplines`, a discipline in two swimlanes at once (it would render
+ * twice), or a discipline in none (it would silently not render at all,
+ * the same failure mode `assertReferencesResolve` guards against for
+ * werkpakketten). This runs at import time, like the zod parse above,
+ * because roadmap-config.json is static — there is no per-request state
+ * that could still make it valid.
+ */
+function assertSwimlanesMatchDisciplines(): void {
+  const disciplineIds = new Set(disciplines.map((d) => d.id));
+  const gezien = new Set<string>();
+  const problems: string[] = [];
+
+  for (const lane of swimlanes) {
+    for (const id of lane.disciplineIds) {
+      if (!disciplineIds.has(id)) {
+        problems.push(
+          `swimlane "${lane.id}" verwijst naar onbekende disciplineId "${id}"`,
+        );
+        continue;
+      }
+      if (gezien.has(id)) {
+        problems.push(`disciplineId "${id}" zit in meer dan één swimlane`);
+        continue;
+      }
+      gezien.add(id);
+    }
+  }
+
+  for (const id of disciplineIds) {
+    if (!gezien.has(id)) {
+      problems.push(`discipline "${id}" zit in geen enkele swimlane`);
+    }
+  }
+
+  if (problems.length) {
+    throw new Error(
+      `roadmap-config.json: swimlanes en disciplines komen niet overeen:\n  ${problems.join('\n  ')}`,
+    );
+  }
+}
+
+assertSwimlanesMatchDisciplines();
 
 /** Placeholder wording for fields the roadmap has not filled in yet. */
 export const NIET_BEPAALD = 'Nog niet bepaald';
@@ -223,6 +293,61 @@ export function werkpakkettenInCel<T extends { data: WerkpakketData }>(
       (w) => w.data.faseId === faseId && w.data.disciplineId === disciplineId,
     )
     .sort((a, b) => a.data.volgorde - b.data.volgorde);
+}
+
+/**
+ * Everything of a werkpakket that the zoekfilter on /roadmap matches against,
+ * as one lowercased string.
+ *
+ * Full text in the literal sense: the toelichting and the onderzoeksvragen are
+ * in here too, and those render only on the detail page. Searching the card's
+ * visible words alone would mean a term you read in a toelichting finds
+ * nothing, which is the case where a search earns its place — 34 of the 49
+ * werkpakketten have a toelichting and 32 have onderzoeksvragen.
+ *
+ * The labels go in next to the ids (`hoog`, not just `Hoog`), because someone
+ * types what the tag says, not what the frontmatter stores. Fase and discipline
+ * come from the matrix axes, so "garantie" finds that column's cards even
+ * though the word is nowhere on them.
+ *
+ * Normalised through the same function the typed query goes through — it lives
+ * in lib/roadmap-zoek.ts precisely so both sides can import it — so a search
+ * for "verifieren" matches the capability "Verifiëren en simuleren".
+ */
+export function zoektekst(data: WerkpakketData): string {
+  const vragen = data.onderzoeksvragen.map((v) =>
+    typeof v === 'string' ? v : v.vraag,
+  );
+
+  return normaliseerZoekterm(
+    [
+      data.titel,
+      data.toelichting,
+      ...vragen,
+      getFase(data.faseId)?.naam,
+      getFase(data.faseId)?.ondertitel,
+      getDiscipline(data.disciplineId)?.naam,
+      getDiscipline(data.disciplineId)?.ondertitel,
+      getPrioriteit(data.prioriteit)?.label,
+      getCategorie(data.categorie)?.label,
+      getCapability(data.capability)?.label,
+      getOnderzoek(data.onderzoek)?.label,
+      getBouw(data.bouw)?.label,
+      data.omvang && `omvang ${data.omvang}`,
+      data.capaciteit,
+      // Every way an RFC gets written: "RFC-013" as the site renders it, plus
+      // the unpadded "rfc-13" and "rfc 13" people actually type. A bare number
+      // is left out on purpose — "13" would match every werkpakket whose text
+      // happens to contain it.
+      ...data.rfcs.flatMap((n) => [
+        `rfc-${String(n).padStart(3, '0')}`,
+        `rfc-${n}`,
+        `rfc ${n}`,
+      ]),
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
 }
 
 /**

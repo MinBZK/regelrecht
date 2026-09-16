@@ -297,7 +297,7 @@ async fn main() -> ExitCode {
     // The agent reads its instructions from `.claude/skills/` under the corpus
     // root. Nothing put them there: `ensure_skills` is called from the worker
     // and never from here, so every experiment run so far handed the agent the
-    // prompt and nothing else. It wrote `untranslatables` into a v0.6.0 file
+    // prompt and nothing else. It wrote `untranslatables` into a v0.7.0 file
     // because that is what it knew, and the schema gate had to repair what an
     // instruction would have prevented.
     //
@@ -862,7 +862,7 @@ articles:
         write(
             &dir,
             "regulation/nl/wet/wet_stuk/2026-01-01.yaml",
-            r"$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
+            r"$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
 $id: wet_stuk
 regulatory_layer: WET
 bwb_id: BWBR0000009

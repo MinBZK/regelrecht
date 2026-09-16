@@ -27,6 +27,7 @@
         "IF",
         "IN",
         "LIST",
+        "FOREACH",
         "MAX",
         "MIN",
         "ROUND",
@@ -57,9 +58,7 @@
         "DATE_ADD",
         "DATE",
         "DAY_OF_WEEK",
-        "DATE_DIFF",
-        "DATE_PART",
-        "START_OF"
+        "DATE_DIFF"
       ]
     },
     "advanced": {

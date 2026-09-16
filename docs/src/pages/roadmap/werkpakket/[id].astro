@@ -145,7 +145,12 @@ const kerngegevens = [
     <nldd-title slot="header" size="1">
       <h1>{wp.titel}</h1>
       <p slot="subtitle">
-        {[fase?.naam, discipline?.naam].filter(Boolean).join(' · ')}
+        {[
+          fase && (fase.ondertitel ? `${fase.naam} · ${fase.ondertitel}` : fase.naam),
+          discipline?.naam,
+        ]
+          .filter(Boolean)
+          .join(' · ')}
       </p>
     </nldd-title>
 

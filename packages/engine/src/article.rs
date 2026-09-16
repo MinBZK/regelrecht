@@ -21,12 +21,12 @@ use std::path::Path;
 /// Re-export the canonical document model at the historical `article` path.
 pub use regelrecht_law_model::{
     Action, ActionOperation, ActionValue, Article, ArticleBasedLaw, ArticleReference,
-    ArticleRequirement, AuthorityType, Case, CompetentAuthority, Declaration, DeclaredProperty,
-    Definition, Execution, FieldLegalBasis, HookDeclaration, HookFilter, HookPoint,
-    ImplementsDeclaration, Input, LegalBasis, MachineReadable, Marking, MarkingResolution,
-    OpenTerm, OpenTermDefault, Output, OverrideDeclaration, Parameter, Placement,
-    PlacementContainer, Preamble, ProcedureAppliesTo, ProcedureDefinition, Produces, ResolveSpec,
-    Source, Stage, StageRequirement, Temporal, TypeSpec, UntranslatableEntry,
+    ArticleRequirement, AuthorityType, Case, CombineOp, CompetentAuthority, Declaration,
+    DeclaredProperty, Definition, Execution, FieldLegalBasis, HookDeclaration, HookFilter,
+    HookPoint, ImplementsDeclaration, Input, LegalBasis, MachineReadable, Marking,
+    MarkingResolution, OpenTerm, OpenTermDefault, Output, OverrideDeclaration, Parameter,
+    Placement, PlacementContainer, Preamble, ProcedureAppliesTo, ProcedureDefinition, Produces,
+    ResolveSpec, Source, Stage, StageRequirement, Temporal, TypeSpec, UntranslatableEntry,
 };
 
 /// Engine-side loading of an [`ArticleBasedLaw`] from YAML, with the security
@@ -253,6 +253,16 @@ fn reject_literal_operations(law: &ArticleBasedLaw) -> Result<()> {
                     .try_for_each(|v| walk_action_value(v, where_))
             }
             Op::List { items } => items.iter().try_for_each(|v| walk_action_value(v, where_)),
+            Op::Foreach {
+                collection,
+                body,
+                filter,
+                ..
+            } => {
+                walk_action_value(collection, where_)?;
+                walk_action_value(body, where_)?;
+                filter.iter().try_for_each(|v| walk_action_value(v, where_))
+            }
             Op::Age {
                 date_of_birth,
                 reference_date,
@@ -1646,16 +1656,16 @@ articles:
         }
     }
 
-    // Schema v0.6.0: markings, declares and placement.
+    // Schema v0.7.0: markings, declares and placement.
     //
     // The engine reads these and does not act on them. What execution should do
     // with a marked article is a separate decision; until it is taken, parsing
-    // is what keeps a v0.6.0 law from silently losing what it declares.
-    mod v0_6_0 {
+    // is what keeps a v0.7.0 law from silently losing what it declares.
+    mod v0_7_0 {
         use super::*;
 
         const LAW_V0_6_0: &str = r#"
-$schema: https://example.org/schema/v0.6.0/schema.json
+$schema: https://example.org/schema/v0.7.0/schema.json
 $id: test_markings
 regulatory_layer: WET
 publication_date: '2025-01-01'

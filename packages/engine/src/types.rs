@@ -10,13 +10,15 @@
 use serde::{Deserialize, Serialize};
 
 /// Re-export the canonical document-model value types from the law-model crate.
-pub use regelrecht_law_model::{Operation, ParameterType, RegulatoryLayer, Value};
+pub use regelrecht_law_model::{
+    MissingFact, MissingKind, Operation, ParameterType, RegulatoryLayer, Value,
+};
 
 /// How the engine handles an article that flags a construct (RFC-012).
 ///
 /// Controls runtime behavior when an article declares a construct that cannot
 /// be faithfully expressed. Both channels count: `untranslatables` on schema
-/// v0.5.x and `markings` from v0.6.0 onwards.
+/// v0.5.x and `markings` from v0.7.0 onwards.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum UntranslatableMode {
@@ -115,6 +117,10 @@ pub enum ResolveType {
     DataSource,
     /// Value resolved via open term implementation (IoC)
     OpenTerm,
+    /// The delegating law's default for an open term, taken because the
+    /// implementing regulation returned null for this case (RFC-036: the
+    /// implementation is silent, no deviation was granted)
+    OpenTermSilent,
     /// Value resolved via lifecycle hook (RFC-007)
     Hook,
     /// Value resolved via lex specialis override (RFC-007)

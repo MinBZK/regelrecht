@@ -78,6 +78,28 @@ pub trait DataSource: Send + Sync {
 
     /// Get all available fields in this data source.
     fn fields(&self) -> Vec<&str>;
+
+    /// The law this source is bound to, if any.
+    ///
+    /// A source without a scope answers for every law. A scoped source is
+    /// consulted only while the inputs of that one law are being resolved, so
+    /// a raw register value (say a `personen.geboortedatum` column materialised
+    /// for `wet_brp`) can never shadow a cross-law input of the same name in a
+    /// law that expects the *computed* value from another law. The default is
+    /// unscoped, which keeps every existing source behaving as before.
+    fn law_scope(&self) -> Option<&str> {
+        None
+    }
+
+    /// The criteria this source builds its record key from (lowercase field
+    /// names); `None` means every criterion it is given.
+    ///
+    /// The registry uses this to tell a lookup that *cannot* be made (the key
+    /// is `null` or unknown, see [`DataSourceRegistry::blocked_lookup_for_law`])
+    /// apart from one that found no record.
+    fn key_fields(&self) -> Option<&[String]> {
+        None
+    }
 }
 
 /// Dictionary-based data source with key-based lookup.
@@ -107,6 +129,9 @@ pub struct DictDataSource {
     /// lookup key. This is needed for `from_records()`, which stores records by a
     /// single key field, while `get()` would otherwise build a key from ALL criteria.
     key_fields: Option<Vec<String>>,
+    /// Law this source answers for; `None` answers for every law. See
+    /// [`DataSource::law_scope`].
+    law_scope: Option<String>,
 }
 
 impl DictDataSource {
@@ -146,7 +171,14 @@ impl DictDataSource {
             data: normalized_data,
             field_index,
             key_fields: None,
+            law_scope: None,
         }
+    }
+
+    /// Bind this source to one law (see [`DataSource::law_scope`]).
+    pub fn with_law_scope(mut self, law_id: impl Into<String>) -> Self {
+        self.law_scope = Some(law_id.into());
+        self
     }
 
     /// Create a dictionary data source from a flat list of records.
@@ -170,14 +202,15 @@ impl DictDataSource {
         let mut data = BTreeMap::new();
 
         for record in records {
-            // Find the key field (case-insensitive)
+            // Find the key field (case-insensitive). A record whose key is
+            // null or unknown is about nobody and can never be looked up, so
+            // it is left out rather than filed under the word "null".
             let key_value = record
                 .iter()
                 .find(|(k, _)| k.to_lowercase() == key_field_lower)
                 .map(|(_, v)| v.clone());
 
-            if let Some(key_val) = key_value {
-                let key = value_to_key(&key_val);
+            if let Some(key) = key_value.as_ref().and_then(value_to_key) {
                 data.insert(key, record);
             }
         }
@@ -242,6 +275,8 @@ impl DataSource for DictDataSource {
         // When key_fields is set (e.g. from_records), filter criteria to only
         // the key fields before building the lookup key. Otherwise a caller
         // passing extra criteria would produce a key that doesn't match any record.
+        // A key that cannot be built (a null or unknown criterion, RFC-036)
+        // matches nothing: there is nobody to look up.
         let key = match &self.key_fields {
             Some(fields) => {
                 let filtered: BTreeMap<String, Value> = criteria
@@ -249,9 +284,9 @@ impl DataSource for DictDataSource {
                     .filter(|(k, _)| fields.contains(&k.to_lowercase()))
                     .map(|(k, v)| (k.clone(), v.clone()))
                     .collect();
-                build_lookup_key(&filtered)
+                build_lookup_key(&filtered)?
             }
-            None => build_lookup_key(criteria),
+            None => build_lookup_key(criteria)?,
         };
 
         // Look up record
@@ -263,6 +298,14 @@ impl DataSource for DictDataSource {
 
     fn fields(&self) -> Vec<&str> {
         self.field_index.iter().map(|s| s.as_str()).collect()
+    }
+
+    fn law_scope(&self) -> Option<&str> {
+        self.law_scope.as_deref()
+    }
+
+    fn key_fields(&self) -> Option<&[String]> {
+        self.key_fields.as_deref()
     }
 }
 
@@ -286,12 +329,13 @@ impl DataSourceRegistry {
 
     /// Add a data source to the registry.
     ///
-    /// Sources are automatically sorted by priority (highest first).
+    /// Sources are sorted by priority (highest first); at equal priority a
+    /// source bound to a law goes before an unscoped one, so the more specific
+    /// source wins for its law regardless of registration order.
     pub fn add_source(&mut self, source: Box<dyn DataSource>) {
         self.sources.push(source);
-        // Sort by priority descending
         self.sources
-            .sort_by_key(|b| std::cmp::Reverse(b.priority()));
+            .sort_by_key(|b| (std::cmp::Reverse(b.priority()), b.law_scope().is_none()));
     }
 
     /// Remove a data source by name.
@@ -325,12 +369,36 @@ impl DataSourceRegistry {
     ///
     /// # Returns
     /// A `DataSourceMatch` if the value was found, None otherwise.
+    ///
+    /// Only unscoped sources take part; use [`Self::resolve_for_law`] while
+    /// resolving the inputs of a specific law.
     pub fn resolve(
         &self,
         field: &str,
         criteria: &BTreeMap<String, Value>,
     ) -> Option<DataSourceMatch> {
+        self.resolve_for_law(field, criteria, None)
+    }
+
+    /// Resolve a value for an input of `law_id`.
+    ///
+    /// Unscoped sources always take part. A source bound to a law (see
+    /// [`DataSource::law_scope`]) takes part only when that law is the one
+    /// being resolved. Priority decides between eligible sources; at equal
+    /// priority the one bound to this law wins over an unscoped one.
+    pub fn resolve_for_law(
+        &self,
+        field: &str,
+        criteria: &BTreeMap<String, Value>,
+        law_id: Option<&str>,
+    ) -> Option<DataSourceMatch> {
         for source in &self.sources {
+            if let Some(scope) = source.law_scope() {
+                if law_id != Some(scope) {
+                    continue;
+                }
+            }
+
             if !source.has_field(field) {
                 continue;
             }
@@ -342,6 +410,61 @@ impl DataSourceRegistry {
                     source_type: source.source_type().to_string(),
                 });
             }
+        }
+        None
+    }
+
+    /// Whether the sources that could answer for `field` are blocked from
+    /// looking it up because a criterion they key on is `null` or unknown
+    /// (RFC-036), and what the input is then.
+    ///
+    /// A register cannot be asked about nobody. An unknown key (`partner_bsn`
+    /// nobody has delivered) makes the input unknown for the same facts, so
+    /// the outcome names the partner and not the birth year; the union over
+    /// every unknown key is returned. A `null` key (there is no partner) makes
+    /// the input `null`: the fact is absent, as the caller stated. Unknown
+    /// wins over null when both occur, and a field no eligible source has at
+    /// all is not blocked: that is the ordinary "no data" case.
+    ///
+    /// Eligibility is the same as in [`Self::resolve_for_law`]: scope and
+    /// `has_field`. Each source contributes the criteria it keys on
+    /// ([`DataSource::key_fields`]); a source without declared key fields keys
+    /// on every criterion.
+    pub fn blocked_lookup_for_law(
+        &self,
+        field: &str,
+        criteria: &BTreeMap<String, Value>,
+        law_id: Option<&str>,
+    ) -> Option<Value> {
+        let mut unknown_keys: Vec<&Value> = Vec::new();
+        let mut null_key = false;
+        for source in &self.sources {
+            if let Some(scope) = source.law_scope() {
+                if law_id != Some(scope) {
+                    continue;
+                }
+            }
+            if !source.has_field(field) {
+                continue;
+            }
+            let keyed = criteria.iter().filter(|(name, _)| {
+                source
+                    .key_fields()
+                    .is_none_or(|fields| fields.contains(&name.to_lowercase()))
+            });
+            for (_, value) in keyed {
+                if value.is_unknown() {
+                    unknown_keys.push(value);
+                } else if value.is_null() {
+                    null_key = true;
+                }
+            }
+        }
+        if let Some(unknown) = Value::merge_unknown(unknown_keys) {
+            return Some(unknown);
+        }
+        if null_key {
+            return Some(Value::Null);
         }
         None
     }
@@ -385,8 +508,11 @@ impl std::fmt::Debug for DataSourceRegistry {
 
 /// Build a lookup key from criteria values.
 ///
-/// Sorts criteria by key name and joins values with underscore.
-fn build_lookup_key(criteria: &BTreeMap<String, Value>) -> String {
+/// Sorts criteria by key name and joins values with underscore. `None` when
+/// a criterion is `null` or unknown: no key names nobody (RFC-036), and a
+/// record literally keyed `"null"` or `"unknown"` must never match such a
+/// criterion.
+fn build_lookup_key(criteria: &BTreeMap<String, Value>) -> Option<String> {
     let mut pairs: Vec<_> = criteria
         .iter()
         .map(|(k, v)| (k.to_lowercase(), v))
@@ -396,20 +522,20 @@ fn build_lookup_key(criteria: &BTreeMap<String, Value>) -> String {
     pairs
         .iter()
         .map(|(_, v)| value_to_key(v))
-        .collect::<Vec<_>>()
-        .join("_")
+        .collect::<Option<Vec<_>>>()
+        .map(|parts| parts.join("_"))
 }
 
-/// Convert a Value to a string key.
-fn value_to_key(value: &Value) -> String {
+/// Convert a Value to a string key; `None` for a value that names nobody.
+fn value_to_key(value: &Value) -> Option<String> {
     match value {
-        Value::String(s) => s.clone(),
-        Value::Int(i) => i.to_string(),
-        Value::Decimal(d) => d.to_string(),
-        Value::Bool(b) => b.to_string(),
-        Value::Null => "null".to_string(),
-        Value::Array(_) | Value::Object(_) => "complex".to_string(),
-        Value::Untranslatable { .. } => "untranslatable".to_string(),
+        Value::String(s) => Some(s.clone()),
+        Value::Int(i) => Some(i.to_string()),
+        Value::Decimal(d) => Some(d.to_string()),
+        Value::Bool(b) => Some(b.to_string()),
+        Value::Array(_) | Value::Object(_) => Some("complex".to_string()),
+        Value::Untranslatable { .. } => Some("untranslatable".to_string()),
+        Value::Null | Value::Unknown(_) => None,
     }
 }
 
@@ -741,7 +867,7 @@ mod tests {
         criteria.insert("BSN".to_string(), Value::String("123".to_string()));
 
         let key = build_lookup_key(&criteria);
-        assert_eq!(key, "123");
+        assert_eq!(key.as_deref(), Some("123"));
     }
 
     #[test]
@@ -752,7 +878,7 @@ mod tests {
 
         let key = build_lookup_key(&criteria);
         // Keys are sorted alphabetically
-        assert_eq!(key, "123_2025");
+        assert_eq!(key.as_deref(), Some("123_2025"));
     }
 
     #[test]
@@ -775,11 +901,133 @@ mod tests {
 
     #[test]
     fn test_value_to_key() {
-        assert_eq!(value_to_key(&Value::String("test".to_string())), "test");
-        assert_eq!(value_to_key(&Value::Int(42)), "42");
-        assert_eq!(value_to_key(&Value::from(3.14)), "3.14");
-        assert_eq!(value_to_key(&Value::Bool(true)), "true");
-        assert_eq!(value_to_key(&Value::Null), "null");
+        assert_eq!(
+            value_to_key(&Value::String("test".to_string())).as_deref(),
+            Some("test")
+        );
+        assert_eq!(value_to_key(&Value::Int(42)).as_deref(), Some("42"));
+        assert_eq!(value_to_key(&Value::from(3.14)).as_deref(), Some("3.14"));
+        assert_eq!(value_to_key(&Value::Bool(true)).as_deref(), Some("true"));
+        // Nobody: no key (RFC-036).
+        assert_eq!(value_to_key(&Value::Null), None);
+        assert_eq!(value_to_key(&unknown("partner_bsn")), None);
+    }
+
+    /// An Unknown for one missing fact of a test law (RFC-036).
+    fn unknown(name: &str) -> Value {
+        Value::unknown("testwet", name, crate::types::MissingKind::NoData)
+    }
+
+    #[test]
+    fn test_no_lookup_key_from_a_null_or_unknown_criterion() {
+        // Review finding: a record literally keyed "null" or "unknown" used to
+        // match a criterion that was null or Unknown. A key that names nobody
+        // is no key at all, and a lookup with it finds nothing.
+        let mut criteria = BTreeMap::new();
+        criteria.insert("bsn".to_string(), Value::Null);
+        assert_eq!(build_lookup_key(&criteria), None);
+        criteria.insert("bsn".to_string(), unknown("partner_bsn"));
+        assert_eq!(build_lookup_key(&criteria), None);
+        criteria.insert("bsn".to_string(), Value::String("1".to_string()));
+        criteria.insert("year".to_string(), Value::Null);
+        assert_eq!(build_lookup_key(&criteria), None);
+
+        let mut data = BTreeMap::new();
+        for key in ["null", "unknown"] {
+            let mut record = BTreeMap::new();
+            record.insert("geboortejaar".to_string(), Value::Int(1980));
+            data.insert(key.to_string(), record);
+        }
+        let source = DictDataSource::new("bron", 10, data);
+        let mut criteria = BTreeMap::new();
+        criteria.insert("bsn".to_string(), Value::Null);
+        assert_eq!(source.get("geboortejaar", &criteria), None);
+        criteria.insert("bsn".to_string(), unknown("partner_bsn"));
+        assert_eq!(source.get("geboortejaar", &criteria), None);
+        // The literal string still reaches the record: that is a real key.
+        criteria.insert("bsn".to_string(), Value::String("null".to_string()));
+        assert_eq!(
+            source.get("geboortejaar", &criteria),
+            Some(Value::Int(1980))
+        );
+    }
+
+    #[test]
+    fn test_from_records_leaves_out_a_record_keyed_on_nobody() {
+        let mut nobody = BTreeMap::new();
+        nobody.insert("bsn".to_string(), Value::Null);
+        nobody.insert("geboortejaar".to_string(), Value::Int(1970));
+        let mut somebody = BTreeMap::new();
+        somebody.insert("bsn".to_string(), Value::String("2".to_string()));
+        somebody.insert("geboortejaar".to_string(), Value::Int(1980));
+        let source =
+            DictDataSource::from_records("bron", 10, "bsn", vec![nobody, somebody]).unwrap();
+        assert_eq!(source.record_count(), 1);
+    }
+
+    #[test]
+    fn test_blocked_lookup_names_the_unknown_key_or_the_absence() {
+        let mut registry = DataSourceRegistry::new();
+        let mut record = BTreeMap::new();
+        record.insert("bsn".to_string(), Value::String("2".to_string()));
+        record.insert("geboortejaar".to_string(), Value::Int(1980));
+        registry.add_source(Box::new(
+            DictDataSource::from_records("bron", 10, "bsn", vec![record]).unwrap(),
+        ));
+
+        // An unknown key: the input is unknown for the key's own facts, not
+        // for the field that could not be looked up.
+        let mut criteria = BTreeMap::new();
+        criteria.insert("bsn".to_string(), unknown("partner_bsn"));
+        criteria.insert("aanvraag_bedrag".to_string(), Value::Null);
+        let blocked = registry
+            .blocked_lookup_for_law("geboortejaar", &criteria, None)
+            .unwrap();
+        assert_eq!(
+            blocked.missing_facts(),
+            unknown("partner_bsn").missing_facts()
+        );
+        assert!(registry.resolve("geboortejaar", &criteria).is_none());
+
+        // A null key: nobody to look up, the input is absent. A null in a
+        // criterion the source does not key on (aanvraag_bedrag) is irrelevant.
+        criteria.insert("bsn".to_string(), Value::Null);
+        assert_eq!(
+            registry.blocked_lookup_for_law("geboortejaar", &criteria, None),
+            Some(Value::Null)
+        );
+        criteria.insert("bsn".to_string(), Value::String("2".to_string()));
+        assert_eq!(
+            registry.blocked_lookup_for_law("geboortejaar", &criteria, None),
+            None
+        );
+
+        // A field no source has is not blocked, whatever the key: that is the
+        // ordinary no-data case.
+        criteria.insert("bsn".to_string(), Value::Null);
+        assert_eq!(
+            registry.blocked_lookup_for_law("inkomen", &criteria, None),
+            None
+        );
+        // Scope counts as for resolution: a source bound to another law does
+        // not block this one.
+        let mut registry = DataSourceRegistry::new();
+        let mut record = BTreeMap::new();
+        record.insert("bsn".to_string(), Value::String("2".to_string()));
+        record.insert("geboortejaar".to_string(), Value::Int(1980));
+        registry.add_source(Box::new(
+            DictDataSource::from_records("bron", 10, "bsn", vec![record])
+                .unwrap()
+                .with_law_scope("wet_b"),
+        ));
+        assert_eq!(
+            registry.blocked_lookup_for_law("geboortejaar", &criteria, Some("wet_a")),
+            None
+        );
+        assert_eq!(
+            registry.blocked_lookup_for_law("geboortejaar", &criteria, Some("wet_b")),
+            Some(Value::Null)
+        );
     }
 
     #[test]
@@ -819,5 +1067,161 @@ mod tests {
             source.get("income", &criteria_single),
             Some(Value::Int(40000))
         );
+    }
+
+    /// A source that leaves `law_scope` to the trait: it must stay unscoped.
+    struct Unscoped;
+    impl DataSource for Unscoped {
+        fn name(&self) -> &str {
+            "unscoped"
+        }
+        fn priority(&self) -> i32 {
+            1
+        }
+        fn source_type(&self) -> &str {
+            "test"
+        }
+        fn has_field(&self, field: &str) -> bool {
+            field == "x"
+        }
+        fn get(&self, field: &str, _criteria: &BTreeMap<String, Value>) -> Option<Value> {
+            (field == "x").then_some(Value::Int(1))
+        }
+        fn fields(&self) -> Vec<&str> {
+            vec!["x"]
+        }
+    }
+
+    #[test]
+    fn test_default_law_scope_is_none_and_answers_every_law() {
+        assert_eq!(Unscoped.law_scope(), None);
+        let mut registry = DataSourceRegistry::new();
+        registry.add_source(Box::new(Unscoped));
+        let criteria = BTreeMap::new();
+        assert_eq!(
+            registry
+                .resolve_for_law("x", &criteria, Some("any_law"))
+                .map(|m| m.value),
+            Some(Value::Int(1))
+        );
+        assert_eq!(
+            registry.resolve("x", &criteria).map(|m| m.value),
+            Some(Value::Int(1))
+        );
+        // A dict source without a scope also stays unscoped; with one, it reports it.
+        let plain = DictDataSource::from_records("plain", 10, "bsn", vec![]).unwrap();
+        assert_eq!(plain.law_scope(), None);
+        assert_eq!(plain.with_law_scope("wet_a").law_scope(), Some("wet_a"));
+    }
+
+    #[test]
+    fn test_default_key_fields_is_none_and_keys_on_every_criterion() {
+        // A source that does not say which criteria it keys on keys on all of
+        // them. That is what makes a lookup blocked: with `bsn` unknown, a
+        // source that reads any criterion cannot be asked about anybody, so
+        // the input inherits the unknown instead of reading as "no data"
+        // (RFC-036). A default that named a fixed field, or none at all,
+        // would let the unknown key slip past unnoticed.
+        assert!(Unscoped.key_fields().is_none());
+        let mut registry = DataSourceRegistry::new();
+        registry.add_source(Box::new(Unscoped));
+        let mut criteria = BTreeMap::new();
+        criteria.insert(
+            "bsn".to_string(),
+            Value::unknown("wet_a", "partner_bsn", crate::types::MissingKind::NoData),
+        );
+        let blocked = registry
+            .blocked_lookup_for_law("x", &criteria, Some("wet_a"))
+            .expect("an unknown criterion blocks the lookup");
+        assert_eq!(blocked.missing_facts()[0].name, "partner_bsn");
+        // The same holds for an absent key: asked about nobody, the input is
+        // absent rather than missing.
+        let mut null_criteria = BTreeMap::new();
+        null_criteria.insert("bsn".to_string(), Value::Null);
+        assert_eq!(
+            registry.blocked_lookup_for_law("x", &null_criteria, Some("wet_a")),
+            Some(Value::Null)
+        );
+        // A source that declares its key fields is only blocked by those.
+        let record = BTreeMap::from([
+            ("bsn".to_string(), Value::String("123".to_string())),
+            ("x".to_string(), Value::Int(1)),
+        ]);
+        let mut keyed = DataSourceRegistry::new();
+        keyed.add_source(Box::new(
+            DictDataSource::from_records("keyed", 10, "bsn", vec![record]).unwrap(),
+        ));
+        let mut other_key = BTreeMap::new();
+        other_key.insert("bsn".to_string(), Value::String("123".to_string()));
+        other_key.insert(
+            "jaar".to_string(),
+            Value::unknown("wet_a", "jaar", crate::types::MissingKind::NoData),
+        );
+        assert_eq!(
+            keyed.blocked_lookup_for_law("x", &other_key, None),
+            None,
+            "a criterion the source does not key on cannot block its lookup"
+        );
+    }
+
+    #[test]
+    fn test_scoped_source_answers_only_for_its_law() {
+        let mut registry = DataSourceRegistry::new();
+        let mut record = BTreeMap::new();
+        record.insert("bsn".to_string(), Value::String("123".to_string()));
+        record.insert("inkomen".to_string(), Value::Int(1000));
+        let scoped = DictDataSource::from_records("register", 10, "bsn", vec![record.clone()])
+            .unwrap()
+            .with_law_scope("wet_a");
+        registry.add_source(Box::new(scoped));
+
+        let mut criteria = BTreeMap::new();
+        criteria.insert("bsn".to_string(), Value::String("123".to_string()));
+
+        // The bound law sees the value.
+        let hit = registry.resolve_for_law("inkomen", &criteria, Some("wet_a"));
+        assert_eq!(hit.map(|m| m.value), Some(Value::Int(1000)));
+        // Another law does not: its same-named input stays free for cross-law
+        // resolution.
+        assert!(registry
+            .resolve_for_law("inkomen", &criteria, Some("wet_b"))
+            .is_none());
+        // Nor does an unscoped lookup.
+        assert!(registry.resolve("inkomen", &criteria).is_none());
+
+        // At equal priority the source bound to the law wins, whichever was
+        // registered first.
+        let mut generic_record = BTreeMap::new();
+        generic_record.insert("bsn".to_string(), Value::String("123".to_string()));
+        generic_record.insert("inkomen".to_string(), Value::Int(5));
+        let mut tie = DataSourceRegistry::new();
+        tie.add_source(Box::new(
+            DictDataSource::from_records("generic", 10, "bsn", vec![generic_record.clone()])
+                .unwrap(),
+        ));
+        tie.add_source(Box::new(
+            DictDataSource::from_records("bound", 10, "bsn", vec![record.clone()])
+                .unwrap()
+                .with_law_scope("wet_a"),
+        ));
+        assert_eq!(
+            tie.resolve_for_law("inkomen", &criteria, Some("wet_a"))
+                .map(|m| m.source_name),
+            Some("bound".to_string())
+        );
+        assert_eq!(
+            tie.resolve_for_law("inkomen", &criteria, Some("wet_b"))
+                .map(|m| m.source_name),
+            Some("generic".to_string())
+        );
+
+        // An unscoped source answers for every law, at the same priority rules.
+        let open = DictDataSource::from_records("open", 5, "bsn", vec![record]).unwrap();
+        registry.add_source(Box::new(open));
+        let hit = registry.resolve_for_law("inkomen", &criteria, Some("wet_b"));
+        assert_eq!(hit.map(|m| m.source_name), Some("open".to_string()));
+        // For wet_a the scoped source still wins on priority (10 > 5).
+        let hit = registry.resolve_for_law("inkomen", &criteria, Some("wet_a"));
+        assert_eq!(hit.map(|m| m.source_name), Some("register".to_string()));
     }
 }

@@ -21,15 +21,23 @@ const pathname = '/rfcs/' + entry.id.replace(/\.md$/, '');
 
 // RFC metadata from frontmatter. Author(s) and date render as an nldd-identity
 // under the title; status and implementation render as side-by-side nldd-tags
-// (colour via the shared rfcStatusColor so it cannot drift from the index),
-// with the cross-references as a rich-text line beneath. No bespoke CSS — the
-// tag row reuses the index's nldd-container wrap layout, and it sits outside
-// the content rich-text so the wrap flow isn't flattened by prose typography.
+// (colour via the shared rfcStatusColor so it cannot drift from the index).
+// No bespoke CSS — the tag row reuses the index's nldd-container wrap layout,
+// and it sits outside the content rich-text so the wrap flow isn't flattened
+// by prose typography.
 const { status, implementation, date, authors } = entry.data;
 // Forward (Depends on) and reverse (Required by) links, resolved against the
 // real RFC set in rfcs.ts so back-references cannot drift from the forward ones.
+// They are navigation, not prose, so they live in the sidebar next to the
+// outline, as navigation lists in the same overline + title shape the RFC
+// index uses. The short title keeps a row to one or two lines; the full title
+// travels along as the row's tooltip when the two differ.
 const rfcNum = parseInt(entry.id.match(/rfc-(\d+)/)?.[1] ?? '', 10);
 const relations = rfcRelations().get(rfcNum) ?? { dependsOn: [], requiredBy: [] };
+const relationGroups = [
+  { label: 'Depends on', items: relations.dependsOn },
+  { label: 'Required by', items: relations.requiredBy },
+].filter((g) => g.items.length > 0);
 // Edit-link base for this page (whole-file sidebar link + the per-selection
 // line-range affordance both build off it).
 const editBase = entry.filePath
@@ -75,41 +83,35 @@ const title = pageTitle + ' · RegelRecht';
         </>
       )}
     </div>
-    <nldd-container slot="sidebar" padding="16" padding-top="8">
+    {/*
+      Sections (outline, relation groups, edit link) are separated by gap
+      alone: every list row already carries its own rule, so a divider here
+      would double it.
+    */}
+    <nldd-container slot="sidebar" padding="16" padding-top="8" gap="24">
       <DocsOutline headings={headings} />
-      <nldd-spacer size="16" />
+      {relationGroups.map((group) => (
+        // The group label pattern (xs, medium, secondary) is the one the
+        // roadmap's werkpakket sidebar uses for its "Kerngegevens" labels.
+        <nldd-container gap="4">
+          <nldd-text size="xs" weight="medium" color="secondary">
+            {group.label}
+          </nldd-text>
+          <nldd-list type="navigation" variant="simple" aria-label={group.label}>
+            {group.items.map((r) => (
+              <nldd-list-item
+                href={r.link}
+                title={r.shortTitle !== r.title ? r.title : undefined}
+              >
+                <nldd-text-cell overline={r.id} text={r.shortTitle} />
+              </nldd-list-item>
+            ))}
+          </nldd-list>
+        </nldd-container>
+      ))}
       <EditLink filePath={entry.filePath} />
     </nldd-container>
     <div>
-      {(relations.dependsOn.length > 0 || relations.requiredBy.length > 0) && (
-        <>
-          <nldd-rich-text centered>
-            <dl>
-              {relations.dependsOn.length > 0 && (
-                <>
-                  <dt>Depends on</dt>
-                  <dd>
-                    {relations.dependsOn.map((r, i) => (
-                      <span>{i > 0 ? ', ' : ''}<a href={r.link}>{r.id}</a> ({r.title})</span>
-                    ))}
-                  </dd>
-                </>
-              )}
-              {relations.requiredBy.length > 0 && (
-                <>
-                  <dt>Required by</dt>
-                  <dd>
-                    {relations.requiredBy.map((r, i) => (
-                      <span>{i > 0 ? ', ' : ''}<a href={r.link}>{r.id}</a> ({r.title})</span>
-                    ))}
-                  </dd>
-                </>
-              )}
-            </dl>
-          </nldd-rich-text>
-          <nldd-spacer size="16" />
-        </>
-      )}
       <nldd-rich-text data-edit-base={editBase} centered>
         <Content />
       </nldd-rich-text>

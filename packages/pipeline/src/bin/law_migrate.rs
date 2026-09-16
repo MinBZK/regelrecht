@@ -1,7 +1,7 @@
-//! Lift law files to schema v0.6.0.
+//! Lift law files to schema v0.7.0.
 //!
 //! No database, no git, no model, no shell: it reads the YAML, converts what
-//! the new schema has a place for, and validates the result against v0.6.0.
+//! the new schema has a place for, and validates the result against v0.7.0.
 //!
 //! ```text
 //! law-migrate [--write] <file.yaml>...
