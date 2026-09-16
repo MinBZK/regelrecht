@@ -23,7 +23,7 @@
 //! zien er dan hetzelfde uit, en dat verschil is precies wat een lezer van het
 //! gram nooit meer terugvindt.
 
-use crate::cell::besluit::{ObligationDefinition, ObligationOrigin};
+use crate::cell::besluit::{ObligationDefinition, ObligationOrigin, Vervanging};
 use crate::error::{Result, SimulatorError};
 use regelrecht_engine::article::Produces;
 use regelrecht_engine::Value;
@@ -46,12 +46,25 @@ pub const VERPLICHTINGEN: &str = "verplichtingen";
 /// zie [`SimulatorError::AfwijzingWanneerInWereldbestand`].
 pub const AFWIJZING_WANNEER: &str = "afwijzing_wanneer";
 
+/// De sleutel waaronder een artikel declareert dat zijn beschikking in de plaats
+/// komt van wat er over dezelfde zaak nog openstond.
+///
+/// Ook dit staat in het **lexogram**: of een vaststelling het voorschot vervangt,
+/// is recht (Awir art. 19 jo. art. 24, tweede lid) en geen keuze van de
+/// uitvoerder. Zonder deze sleutel blijft staan wat er staat — een verplichting
+/// is niet in te trekken.
+pub const VERVANGT_OPENSTAANDE_TERMIJNEN: &str = "vervangt_openstaande_termijnen";
+
 /// De sleutels die de namespace kent, op alfabet.
 ///
 /// Voor in de melding: wie een blok schrijft dat geweigerd wordt, hoort te lezen
 /// wat er dan wél mag staan. Eén lijst naast [`ChronolexBlock`], zodat een
 /// sleutel erbij ook in de melding terechtkomt.
-pub const KNOWN_KEYS: [&str; 2] = [AFWIJZING_WANNEER, VERPLICHTINGEN];
+pub const KNOWN_KEYS: [&str; 3] = [
+    AFWIJZING_WANNEER,
+    VERPLICHTINGEN,
+    VERVANGT_OPENSTAANDE_TERMIJNEN,
+];
 
 /// Het blok dat een uitvoerend artikel onder [`CHRONOLEX`] kan dragen.
 ///
@@ -76,6 +89,14 @@ pub(crate) struct ChronolexBlock {
     /// anders — zie [`present`].
     #[serde(default, deserialize_with = "present")]
     pub(crate) afwijzing_wanneer: Option<Value>,
+    /// Dat een beschikking op dit artikel in de plaats komt van wat er over
+    /// dezelfde zaak nog openstond; weggelaten mag.
+    ///
+    /// Getypeerd en niet ongelezen bewaard, anders dan
+    /// [`Self::afwijzing_wanneer`]: er staat één sleutel in met één betekenis,
+    /// dus er valt niets uit te pakken waar een eigen reden bij hoort.
+    #[serde(default)]
+    pub(crate) vervangt_openstaande_termijnen: Option<Vervanging>,
 }
 
 /// Lees een sleutel die er staat, ook als er niets achter staat.

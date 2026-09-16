@@ -36,8 +36,9 @@ pub use besluit::{
     AcceptanceRequest, Afwijzingsgrond, Bekendmaking, BesluitDefinition, BesluitInput,
     ChronicleSource, Decretogram, DecretogramInput, ExecutedRegulation, HookHerkomst, InputOrigin,
     ObligationDefinition, ObligationDue, ObligationKind, ObligationOrigin, ObsoleteField,
-    RichtingBijNegatief, Schedule, WachtendeVerplichting, AFWIJZING, BESCHIKKING, BESCHIKKINGEN,
-    BETALINGEN, DECISION_TYPE, STAGE, STAGE_BEKENDMAKING, STAGE_BESLUIT, ZAAKKENMERK,
+    RichtingBijNegatief, Schedule, Vervanging, WachtendeVerplichting, AFWIJZING, BESCHIKKING,
+    BESCHIKKINGEN, BETALINGEN, DECISION_TYPE, STAGE, STAGE_BEKENDMAKING, STAGE_BESLUIT,
+    ZAAKKENMERK,
 };
 pub(crate) use besluit::{BesluitGram, DeclaredObligations, ObligationScope};
 // De vaste velden van een decretogram, voor het beeld van de wereld: dat moet een
@@ -2049,6 +2050,32 @@ impl Cell {
         )
     }
 
+    /// Wat het artikel van dit besluit zegt over de termijnen die over dezelfde
+    /// zaak nog openstaan.
+    ///
+    /// `None` is: het zegt er niets over, en dan blijft staan wat er staat — een
+    /// verplichting is niet in te trekken. Staat er wél iets, dan komt deze
+    /// beschikking in de plaats van de vorige en vervallen de termijnen die nog
+    /// niet nagekomen waren (zie [`Vervanging`]).
+    ///
+    /// De cel leest het en handelt er niet naar: zij kent geen klok en geen
+    /// wachtrij. Wat er met een ingeroosterde termijn gebeurt, is aan de wereld
+    /// waarin die termijn vervalt.
+    ///
+    /// Op `op_moment` en langs dezelfde weg als [`Self::declared_obligations`]:
+    /// het staat in hetzelfde blok van hetzelfde artikel, dus het hoort uit
+    /// dezelfde versie te komen als de verplichtingen waarover het gaat.
+    pub(crate) fn vervanging(
+        &self,
+        besluit: &str,
+        op_moment: NaiveDate,
+    ) -> Result<Option<Vervanging>> {
+        let definition = self.definition(besluit)?;
+        Ok(self
+            .declared_obligations(&definition, op_moment)?
+            .vervanging)
+    }
+
     /// Wat de geladen versies van haar wetten aan dit besluit opleggen.
     ///
     /// Voor het **optuigen** van de wereld: die toetst of er een cel aan het
@@ -3575,6 +3602,7 @@ params:
                 "soort: betaling\nbedrag: $komt_in_aanmerking\nritme: ineens\ngrondslag: art. 1\n",
             )
             .unwrap_or_else(|e| panic!("testverplichting moet parsen: {e}"))],
+            vervanging: None,
         }
     }
 

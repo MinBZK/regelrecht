@@ -6,7 +6,7 @@ description: >-
   formulier daarbij hoort en wanneer een actie überhaupt kan, staat in `actions`
   van dit bestand. Een andere casus is een ander wereldbestand.
 
-  Vier dingen die dit scenario moet vastpinnen:
+  Vijf dingen die dit scenario moet vastpinnen:
 
   1. **Een aanvraag is twee grammen.** De burger legt in haar eigen kroniek vast
      wat zij indiende; `toeslagen` legt in de zijne vast wat hem geleverd is.
@@ -16,10 +16,11 @@ description: >-
      uit de inputs van het besluit zelf, dat een eigen feit over de aanvrager
      nodig heeft dat er vóór de aanvraag niet is.
   3. **Geen schaduwboekhouding.** Het tweede besluit rekent op twee bedragen die
-     het zelf niet vaststelt, en het houdt van geen van beide een eigen kopie: wat
-     er is toegekend leest het terug uit het gram van de toekenning, wat er is
-     uitbetaald vraagt het aan de cel die uitbetaalde. Het toetsingsinkomen van de
-     toekenning gaat langs dezelfde weg — naar de bron, niet naar een aantekening.
+     het zelf niet vaststelt, en het houdt van geen van beide een eigen kopie: het
+     definitieve toetsingsinkomen vraagt het aan de cel die het vaststelde, het
+     verleende voorschot leest het terug uit het gram van de toekenning. Het
+     toetsingsinkomen van de toekenning gaat langs dezelfde weg — naar de bron,
+     niet naar een aantekening.
   4. **De tijd doet het werk.** Niemand betaalt iets; de klok laat de termijnen
      vervallen en dan legt de betalende cel vast dat zij betaalde. Wát er betaald
      moet worden staat in het lexogram van de wet die wordt uitgevoerd, en de twee
@@ -27,6 +28,13 @@ description: >-
      voorschot in termijnen (Awir art. 16 jo. art. 22), de vaststelling het
      slotbedrag ineens na verrekening van dat voorschot (Awir art. 19 jo. art.
      24). Wie het nakomt komt uit het wereldbestand (`komt_na`).
+  5. **Een vaststelling is een herberekening.** De vaststelling neemt niet over
+     wat er is toegekend, maar rekent de zorgtoeslag opnieuw uit op het inkomen
+     van de láátste aanslag (Awir art. 19, eerste lid). Dat inkomen is hoger dan
+     dat van de voorlopige aanslag, dus de tegemoetkoming valt lager uit dan het
+     voorschot en het slotbedrag komt onder nul. Wat daaruit volgt is geen
+     negatieve betaling maar een **terugvordering**: de aanvrager betaalt terug
+     aan Dienst Toeslagen (Awir art. 24, derde lid jo. art. 26).
 
 clock:
   start: 2024-01-01
@@ -39,8 +47,13 @@ settings:
 
 cells:
   # De aanvrager. Een bron-cel: geen wetten, geen engine. Wat zij houdt is haar
-  # eigen journaal van wat zij indiende.
+  # eigen journaal van wat zij indiende — en, aan het eind van dit verhaal, van
+  # wat zij terugbetaalde.
   - id: burger
+    # De naam waaronder deze cel zich uitgeeft. Zij komt geen gezag na: ze ís de
+    # partij, en dit is de naam die een omgekeerde verplichting als schuldenaar
+    # aanwijst (zie de vaststelling). Daarom staat er geen `komt_na` onder.
+    identity: '999993653'
     laws: []
     chronicles:
       - stream: aanvragen
@@ -60,6 +73,11 @@ cells:
               - name: ondertekend_op
                 type: date
 
+      # Wat zij betaalde. Leeg opgetuigd: er komt pas iets in als er een termijn
+      # vervalt waarvan zíj de schuldenaar is.
+      - stream: betalingen
+        key: zaakkenmerk
+
     lexostatus_definitions:
       - name: ingediende_aanvraag
         doc: wat deze aanvrager zelf indiende, en wanneer
@@ -73,6 +91,36 @@ cells:
           key: bsn
           latest: true
 
+      - name: betaald_tot_nu_toe
+        doc: wat deze cel op deze zaak betaald heeft, opgeteld
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - bedrag
+        reduction:
+          chronicle: betalingen
+          key: zaakkenmerk
+          sum: bedrag
+
+      - name: laatste_betaling
+        doc: >-
+          De laatste termijn die deze cel betaalde, met de soort en de twee
+          partijen erbij — zodat te lezen is dat het feit zelf zegt wie aan wie
+          betaalde, en niet alleen het besluit waaruit het volgt.
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - bedrag
+          - soort
+          - schuldenaar
+          - schuldeiser
+        reduction:
+          chronicle: betalingen
+          key: zaakkenmerk
+          latest: true
+
     # De stand van de zaak bij deze cel: welke reducties het journaal vóór en ná
     # elke gebeurtenis meet, om er een "was → is" van te maken. Casusdata — het
     # platform weet alleen dát er indicatoren zijn, niet welke. `$veld` wijst een
@@ -83,17 +131,17 @@ cells:
         label: ingediende aanvraag
         params:
           bsn: $bsn
+      - lexostatus: betaald_tot_nu_toe
+        label: terugbetaald
+        params:
+          zaakkenmerk: $zaakkenmerk
 
-  # De cel die het toetsingsinkomen vaststelt, en die later de verplichtingen
-  # nakomt. Twee aanslagen: de tweede corrigeert de eerste, en die correctie is te
-  # zien in de stand van de zaak bij deze cel. Wat de vaststelling ermee doet, is
-  # niets — en dat is hier een keuze en geen regel. Leest men het eerste besluit
-  # als de toekenning, dan is een aanslag die daarna verandert grond voor een
-  # herziening (Awir art. 20), en die kent deze opstelling niet. Leest men het
-  # als de voorschotverlening die het draagt (art. 16 jo. art. 22), dan hoort de
-  # vaststelling van art. 19 op déze herziene aanslag te rusten — en dat levert
-  # een lagere tegemoetkoming dan het voorschot op, dus een terugvordering. Zie
-  # de invoer van de vaststelling verderop.
+  # De cel die het toetsingsinkomen vaststelt, en die de betalingsverplichtingen
+  # van Dienst Toeslagen nakomt. Twee aanslagen: de tweede corrigeert de eerste,
+  # en dát verschil is waar dit verhaal om draait. Het eerste besluit is de
+  # voorschotverlening (Awir art. 16 jo. art. 22) en rust op de eerste aanslag;
+  # de vaststelling van art. 19 rust op de laatste, en dat levert een lagere
+  # tegemoetkoming dan het voorschot op — dus een terugvordering.
   - id: belastingdienst
     laws: []
     # Deze cel komt de betalingsverplichtingen na die Dienst Toeslagen oplegt:
@@ -309,12 +357,13 @@ cells:
 
       - name: zorgtoeslag_vaststelling
         doc: >-
-          Het tweede besluit over dezelfde zaak, en een ánder besluit: niet de
-          zorgtoeslag nog eens uitrekenen, maar de vaststelling van de Awir (art.
-          19). Wat is toegekend, leest deze cel terug uit haar eigen eerdere gram;
-          wat er op die toekenning betaald is, accepteert ze van de cel die
-          betaalde. Het verschil is het slotbedrag, en dat is wat er nog
-          uitbetaald wordt — de verrekening van art. 24, tweede lid.
+          Het tweede besluit over dezelfde zaak, en een ánder besluit: de
+          vaststelling van de Awir (art. 19). Ze rekent de zorgtoeslag wél
+          opnieuw uit, maar op het definitieve toetsingsinkomen — dát is wat lid
+          1 aan de laatste aanslag knoopt — en het artikel haalt die berekening
+          zelf bij de zorgtoeslagwet. Wat er als voorschot is verleend, leest
+          deze cel terug uit haar eigen eerdere gram. Het verschil is het
+          slotbedrag: de verrekening van art. 24, tweede lid.
         regulation: algemene_wet_inkomensafhankelijke_regelingen
         output: slotbedrag
         outputs:
@@ -329,36 +378,30 @@ cells:
         inputs:
           bsn:
             param: bsn
-          # Dezelfde zaak, een eerder moment: het bedrag zoals het toen is
-          # vastgelegd. Geen herberekening en geen eigen feit — het gram schrijft
-          # op dat het uit de toekenning komt.
+          # Het **definitieve** toetsingsinkomen: de laatste aanslag, van de cel
+          # die haar vaststelde. Awir art. 19, eerste lid knoopt de vaststelling
+          # daaraan, en het artikel rekent er de zorgtoeslag mee uit — dus deze
+          # cel levert hier hetzelfde feit aan als bij de toekenning, alleen
+          # later — en de aanslag is inmiddels herzien. Niet nagerekend
+          # (invariant I5).
+          toetsingsinkomen:
+            accept_from: belastingdienst
+            lexostatus: toetsingsinkomen
+            field: toetsingsinkomen
+            params:
+              bsn: $bsn
+          # Dezelfde zaak, een eerder moment: wat er als voorschot is *verleend*,
+          # zoals het toen is vastgelegd. Geen herberekening en geen eigen feit —
+          # het gram schrijft op dat het uit de toekenning komt.
           #
-          # Hier benadert deze opstelling de wet, en dat hoort zichtbaar te
-          # staan: Awir art. 19, eerste lid knoopt de vaststelling aan de laatste
-          # aanslag, dus streng gelezen komt hier het bedrag te staan dat art. 2
-          # van de zorgtoeslagwet oplevert op het definitieve toetsingsinkomen.
-          # Is dat lager dan wat er als voorschot is verleend, dan wordt het
-          # slotbedrag negatief — een terugvordering, en die kant op betalen kent
-          # deze opstelling nog niet. Zolang dat zo is, leest de vaststelling
-          # terug wat er is toegekend.
-          toegekende_tegemoetkoming:
+          # Art. 24, tweede lid verrekent wat er is verleend en niet wat er tot
+          # nu toe van betaald is, en die twee lopen uiteen zodra de vaststelling
+          # vóór de laatste voorschottermijn valt. Dat mag hier: de termijnen die
+          # dan nog openstaan, vervallen door deze vaststelling zelf (Awir art.
+          # 19 jo. art. 24, tweede lid, gedeclareerd in het lexogram).
+          verleende_voorschotten:
             from_decretogram: zorgtoeslag_toekenning
             field: hoogte_zorgtoeslag
-          # En over de celgrens, met het kenmerk van déze zaak: wat er als
-          # voorschot is uitbetaald, weet de cel die het uitbetaalde.
-          #
-          # Art. 24, tweede lid verrekent wat er is *verleend*; wat deze wereld
-          # kan lezen is wat er op de zaak is *betaald*. Dat is hetzelfde bedrag
-          # zolang de vaststelling ná de laatste voorschottermijn valt. Valt ze
-          # eerder, dan blijven de openstaande termijnen van de toekenning
-          # gewoon vervallen — een verplichting is niet in te trekken — en
-          # betaalt de wereld het slotbedrag er bovenop.
-          verleende_voorschotten:
-            accept_from: belastingdienst
-            lexostatus: betaald_tot_nu_toe
-            field: bedrag
-            params:
-              zaakkenmerk: $zaakkenmerk
 
     lexostatus_definitions:
       - name: ontvangen_aanvraag
@@ -494,22 +537,15 @@ deadlines:
       name: aanvraag_ontvangen
 
 query_graph:
-  # Twee takken naar dezelfde cel, elk met een eigen vraag: de toekenning vraagt
-  # het toetsingsinkomen, de vaststelling wat er betaald is. Een graf zegt wie wie
-  # waarover mag bevragen en niet hoe vaak. Wat er verder gebeurt — de aanvraag,
-  # de levering, het teruglezen van het eigen gram — blijft binnen een cel, en
-  # hoort hier dus niet te staan.
+  # Eén tak, en beide besluiten gebruiken hem: de toekenning vraagt het
+  # toetsingsinkomen van de voorlopige aanslag, de vaststelling dat van de
+  # laatste. Een graf zegt wie wie waarover mag bevragen en niet hoe vaak. Wat er
+  # verder gebeurt — de aanvraag, de levering, het teruglezen van het eigen gram
+  # — blijft binnen een cel, en hoort hier dus niet te staan.
   - doc: het toetsingsinkomen wordt geaccepteerd, niet nagerekend (I5)
     from: toeslagen
     to: belastingdienst
     lexostatus: toetsingsinkomen
-
-  - doc: >-
-      wat er als voorschot is uitbetaald, weet de cel die uitbetaalde; de
-      vaststelling accepteert dat en telt het niet zelf op
-    from: toeslagen
-    to: belastingdienst
-    lexostatus: betaald_tot_nu_toe
 
 act:
   - description: >-
@@ -525,11 +561,12 @@ act:
   - description: >-
       De uitvoerder beslist. Het toetsingsinkomen komt van de belastingdienst
       (81000, de aanslag van maart) en wordt hier niet nagerekend; de
-      verplichting die eruit volgt kent vier kwartaaltermijnen.
+      verplichting die eruit volgt kent vier kwartaaltermijnen, van maart tot en
+      met december.
     action: toeslagen.toekenning
     values:
       bsn: '999993653'
-    op_moment: 2024-04-01
+    op_moment: 2024-03-01
     expect:
       heeft_recht_op_zorgtoeslag: true
       hoogte_zorgtoeslag: 197178.01
@@ -541,30 +578,34 @@ act:
       - hoogte_zorgtoeslag
 
   - description: >-
-      De vaststelling, ná het berekeningsjaar en binnen acht weken na de laatste
-      aanslag (Awir art. 19, eerste lid). Ze rekent de zorgtoeslag niet opnieuw
-      uit: ze stelt vast wat is toegekend — een benadering, zie de invoer — en
-      verrekent daarmee de voorschotten die zijn verleend (art. 24, tweede lid).
-      Alle vier de termijnen zijn dan
-      vervallen, dus het voorschot is het toegekende bedrag en het slotbedrag is
-      nul — de wereld betaalt precies wat er is toegekend en geen cent meer.
+      De vaststelling, binnen acht weken na de laatste aanslag (Awir art. 19,
+      eerste lid) en ná de laatste voorschottermijn. Ze stelt niet vast wat is
+      toegekend: ze rekent de zorgtoeslag opnieuw uit op het inkomen van díe
+      aanslag (85000 in plaats van 81000), en dat levert € 1.971,03 op in plaats
+      van de € 1.971,78 die als voorschot is verleend. Het slotbedrag is het
+      verschil (art. 24, tweede lid) en komt dus onder nul: € 0,75 terug in
+      plaats van bij.
     action: toeslagen.vaststelling
     values:
       bsn: '999993653'
-    op_moment: 2025-01-15
+    op_moment: 2024-12-15
     expect:
-      vastgestelde_tegemoetkoming: 197178.01
-      slotbedrag: 0
+      vastgestelde_tegemoetkoming: 197102.85
+      slotbedrag: -75.16
     expect_accepted:
-      # Wat de betalende cel vaststelde, wordt hier niet nagerekend (invariant I5).
-      verleende_voorschotten: belastingdienst
+      # Wat de cel van de aanslag vaststelde, wordt hier niet nagerekend
+      # (invariant I5) — ook niet nu de uitkomst ervan wél herrekend wordt.
+      toetsingsinkomen: belastingdienst
     expect_read_back:
       # Uit een eerder besluit van deze cel zelf, en uit dát besluit: het bedrag
       # komt uit het gram zoals het toen is vastgelegd.
-      toegekende_tegemoetkoming: zorgtoeslag_toekenning
+      verleende_voorschotten: zorgtoeslag_toekenning
     expect_computed:
       # Het tegenbewijs: dít is wat deze uitvoering zelf uitrekende. Zonder zo'n
-      # uitkomst zeggen de twee regels hierboven niets.
+      # uitkomst zeggen de twee regels hierboven niets. De vastgestelde
+      # tegemoetkoming staat erbij, want juist die is hier gerekend en niet
+      # overgeschreven.
+      - vastgestelde_tegemoetkoming
       - slotbedrag
 
 queries:
@@ -601,8 +642,8 @@ queries:
     expect_not_established: true
 
   - description: >-
-      Halverwege het jaar zijn er twee kwartaaltermijnen verstreken (april en
-      juli). De betalende cel telt dat op over haar eigen betalingen; niemand
+      Halverwege het jaar zijn er twee kwartaaltermijnen verstreken (maart en
+      juni). De betalende cel telt dat op over haar eigen betalingen; niemand
       houdt een saldo bij.
     cell: belastingdienst
     lexostatus: betaald_tot_nu_toe
@@ -613,19 +654,44 @@ queries:
       bedrag: 98588
 
   - description: >-
-      Na het jaar zijn alle vier de termijnen van de toekenning verstreken
-      (197178,01 — inclusief de rest die op de laatste termijn landde) en is het
-      slotbedrag van de vaststelling vervallen. Dat slotbedrag is nul, want het
-      voorschot dekte de hele tegemoetkoming: wat er in totaal betaald is, is
-      precies wat er is toegekend. Zou de vaststelling hetzelfde artikel uitleggen
-      als de toekenning, dan stond hier het dubbele.
-    cell: toeslagen
+      Aan het eind van het jaar zijn alle vier de termijnen van het voorschot
+      verstreken: 197178,01 — inclusief de rest die op de laatste termijn landde,
+      en precies het bedrag dat is verleend. De terugvordering staat hier niet
+      bij: die betaalde de aanvrager en niet deze cel, en elke cel telt alleen op
+      wat zíj betaalde.
+    cell: belastingdienst
     lexostatus: betaald_tot_nu_toe
     params:
       zaakkenmerk: zorgtoeslag/999993653
     op_moment: 2025-02-01
     expect:
       bedrag: 197178.01
+
+  - description: >-
+      De kernassertie van dit verhaal: de aanvrager betaalt € 0,75 terug. Haar
+      cel komt de verplichting na omdat de omkering háár als schuldenaar
+      aanwijst, en het bedrag is positief — een verplichting kent geen minteken,
+      alleen een richting.
+    cell: burger
+    lexostatus: laatste_betaling
+    params:
+      zaakkenmerk: zorgtoeslag/999993653
+    op_moment: 2024-12-15
+    expect:
+      soort: terugvordering
+      schuldenaar: '999993653'
+      schuldeiser: Dienst Toeslagen
+      bedrag: 75.16
+
+  - description: >-
+      Vóór de vaststelling had zij niets terugbetaald: dezelfde som over dezelfde
+      kroniek, een dag eerder gesteld.
+    cell: burger
+    lexostatus: betaald_tot_nu_toe
+    params:
+      zaakkenmerk: zorgtoeslag/999993653
+    op_moment: 2024-12-14
+    expect_not_established: true
 
   - description: >-
       De zaak terugvragen levert het laatste besluit over dat zaakkenmerk: de
@@ -636,8 +702,8 @@ queries:
       zaakkenmerk: zorgtoeslag/999993653
     op_moment: 2025-02-01
     expect:
-      vastgestelde_tegemoetkoming: 197178.01
-      slotbedrag: 0
+      vastgestelde_tegemoetkoming: 197102.85
+      slotbedrag: -75.16
 
   - description: >-
       En de toekenning is niet verdwenen: de vraag over het moment vóór de
