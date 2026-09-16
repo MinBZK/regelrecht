@@ -20,6 +20,8 @@ articles:
             type: date
           - name: BEDRAG
             type: amount
+          - name: BEDRAGEN
+            type: array
         output:
           - name: uitkomst
             type: boolean
@@ -92,6 +94,17 @@ articles:
               operation: START_OF
               date: $PEILDATUM
               in: month
+          - output: totaal
+            value:
+              operation: FOREACH
+              collection: $BEDRAGEN
+              as: bedrag
+              filter:
+                operation: GREATER_THAN
+                subject: $bedrag
+                value: 0
+              body: $bedrag
+              combine: ADD
           - output: reeks
             value:
               operation: LIST
