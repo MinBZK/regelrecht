@@ -24,14 +24,6 @@
   margin-inline: auto;
 }
 
-/* Figure/table captions: smaller and muted, like the paper's caption font. */
-[data-discuss-paper] .rr-caption {
-  font-size: 0.875rem;
-  /* One token, not a light-dark() pair: the primitives are themselves
-     light-dark() pairs that flip with the scheme. */
-  color: var(--primitives-color-neutral-700);
-}
-
 /* Wide content scrolls inside its own container, never the page. */
 [data-discuss-paper] .rr-table-scroll {
   overflow-x: auto;
