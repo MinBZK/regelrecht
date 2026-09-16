@@ -124,6 +124,14 @@ lijkt (invariant I5). Een uitgeklapt decretogram zegt daarom per veld:
 
 Plus de wetsversie waaronder besloten is en de verplichtingen die eruit volgen.
 
+Naast het gram-soort draagt een besluit een tweede label: het **besluittype**. Een
+beschikking omvat ook de afwijzing van de aanvraag, dus zonder dat label zou een
+weigering in de lijst niet van een toekenning te onderscheiden zijn — aan het
+bedrag is het verschil niet te zien, want de regeling rekent er ook bij een
+afwijzing nog een uit. Wijst het besluit af, dan staat achter de uitklap waaróp
+het afketste: per grond de uitkomst, de waarde die afwees en het artikel dat haar
+voortbrengt.
+
 En één ding dat er juist níet staat: declareert de regeling geen bevoegd gezag
 (`competent_authority: null`), dan meldt het uitgeklapte gram dat er **niet te
 toetsen viel wie mocht besluiten**. Dat hoort bij het gram waar het over gaat en
