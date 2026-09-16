@@ -33,6 +33,12 @@ export default defineConfig({
     pagefind({ indexConfig: { forceLanguage: 'en' } }),
   ],
   markdown: {
+    // Setting markdown.remarkPlugins / rehypePlugins (below) routes Markdown
+    // through the `unified` processor from `@astrojs/markdown-remark`. Since
+    // Astro 7.2 — Sätteri is the default Markdown processor — Astro no longer
+    // installs that package itself, so docs/package.json depends on it
+    // explicitly. Do not drop it again as "a peer of astro/mdx anyway": the
+    // build hard-errors on this config without it.
     // No Shiki: rehype-nldd-code-viewer turns every fenced block into <nldd-code-viewer>,
     // which owns styling + (Prism) highlighting. Disabling Shiki also leaves
     // ```mermaid blocks as real <pre><code class="language-mermaid"> for
