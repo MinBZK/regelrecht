@@ -465,6 +465,10 @@ er een veld uit terug zoals uit elk gram: draagt het gram het veld, dan komt de
 waarde eruit, en anders faalt het volgende besluit met dezelfde melding als
 altijd. Een weigering is geen gat in de kroniek.
 
+In het [schema van het decretogram](#het-schema-van-het-decretogram-wat-komt-uit-de-wet)
+komen `decision_type` en `afwijzingsgrond` daarmee als **lexogramvelden** te
+staan, met het artikel dat ze declareert erbij.
+
 In een scenario is er één verwachting bijgekomen: `expect` mag naast de
 uitkomsten ook op `decision_type` slaan. Dat is nodig ook —
 `heeft_recht_op_zorgtoeslag: false` is evengoed de uitkomst van een besluit dat
@@ -613,6 +617,17 @@ stellen. En het verzwijgt niet waar het platform zijn waarde *leest*: bij
 `competent_authority` en `legal_character` staat het lexogram erbij — het artikel
 dat de aansturende uitkomst voortbrengt, of het document als de regeling het daar
 declareert (RFC-002-volgorde, dezelfde die het besluit-pad toepast).
+
+**`decision_type` en `afwijzingsgrond` zijn lexogramvelden.** Anders dan
+`legal_character`, dat altijd `BESCHIKKING` is omdat het platform elke andere
+waarde weigert, kiest het platform niets in wát een besluit is: het artikel zegt
+met `decision_type` wat er uitkomt als het besluit doorgaat, en met
+`extensions.chronolex.afwijzing_wanneer` wanneer het een afwijzing wordt (zie
+[Een weigering is ook een besluit](#een-weigering-is-ook-een-besluit)). Beide
+velden wijzen daarom naar het artikel dat het zegt. Zwijgt de regeling erover —
+geen `decision_type` en geen afwijzingsvoorwaarde — dan draagt het gram `null`
+respectievelijk een lege lijst, en zijn het platformvelden zonder lexogram. Geen
+gat: dat een wet geen weigering kent, is geen norm die ze had moeten stellen.
 
 Het schema staat op de **nieuwste geladen versie** van de regeling; de versie
 staat er daarom bij. Een besluit over een ouder moment landt op een oudere versie

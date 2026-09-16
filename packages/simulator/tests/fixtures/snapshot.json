@@ -667,6 +667,32 @@
               "toelichting": "het platform schrijft het in elk gram; het artikel zegt het in `produces`"
             },
             {
+              "name": "decision_type",
+              "type": "string",
+              "herkomst": "lexogram",
+              "gat": false,
+              "lexogram": {
+                "regulation": "wet_op_de_zorgtoeslag",
+                "valid_from": "2025-01-01",
+                "article": "2",
+                "regulatory_layer": "WET"
+              },
+              "toelichting": "'TOEKENNING' zolang het besluit doorgaat, of 'AFWIJZING' als een afwijzingsvoorwaarde vervuld is"
+            },
+            {
+              "name": "afwijzingsgrond",
+              "type": "array",
+              "herkomst": "lexogram",
+              "gat": false,
+              "lexogram": {
+                "regulation": "wet_op_de_zorgtoeslag",
+                "valid_from": "2025-01-01",
+                "article": "2",
+                "regulatory_layer": "WET"
+              },
+              "toelichting": "gevuld zodra een van deze voorwaarden vervuld is: heeft_recht_op_zorgtoeslag = false (artikel 2)"
+            },
+            {
               "name": "inputs",
               "type": "object",
               "herkomst": "platform",
@@ -793,6 +819,32 @@
                 "regulatory_layer": "WET"
               },
               "toelichting": "het platform schrijft het in elk gram; het artikel zegt het in `produces`"
+            },
+            {
+              "name": "decision_type",
+              "type": "string",
+              "herkomst": "lexogram",
+              "gat": false,
+              "lexogram": {
+                "regulation": "wet_op_de_zorgtoeslag",
+                "valid_from": "2025-01-01",
+                "article": "2",
+                "regulatory_layer": "WET"
+              },
+              "toelichting": "'TOEKENNING' zolang het besluit doorgaat, of 'AFWIJZING' als een afwijzingsvoorwaarde vervuld is"
+            },
+            {
+              "name": "afwijzingsgrond",
+              "type": "array",
+              "herkomst": "lexogram",
+              "gat": false,
+              "lexogram": {
+                "regulation": "wet_op_de_zorgtoeslag",
+                "valid_from": "2025-01-01",
+                "article": "2",
+                "regulatory_layer": "WET"
+              },
+              "toelichting": "gevuld zodra een van deze voorwaarden vervuld is: heeft_recht_op_zorgtoeslag = false (artikel 2)"
             },
             {
               "name": "inputs",

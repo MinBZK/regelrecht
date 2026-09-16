@@ -27,14 +27,17 @@
 //! werkelijk gold.
 
 use crate::cell::besluit::{
-    fixed_fields, BesluitDefinition, BESCHIKKINGEN, BESLUIT, CHRONICLE_SOURCES,
-    COMPETENT_AUTHORITY, EXECUTED_REGULATIONS, INPUTS, LEGAL_CHARACTER, OBLIGATIONS, RECEIPT,
-    REGULATION_VALID_FROM, ZAAKKENMERK,
+    afwijzing_block, afwijzing_wanneer, fixed_fields, BesluitDefinition, AFWIJZING,
+    AFWIJZINGSGROND, BESCHIKKINGEN, BESLUIT, CHRONICLE_SOURCES, COMPETENT_AUTHORITY, DECISION_TYPE,
+    EXECUTED_REGULATIONS, INPUTS, LEGAL_CHARACTER, OBLIGATIONS, RECEIPT, REGULATION_VALID_FROM,
+    ZAAKKENMERK,
 };
+use regelrecht_engine::article::Produces;
 use regelrecht_engine::{
     Article, ArticleBasedLaw, LawExecutionService, ParameterType as EngineType, RegulatoryLayer,
 };
 use serde::Serialize;
+use std::collections::BTreeMap;
 
 /// Het veld met het moment waarop besloten is.
 ///
@@ -324,6 +327,46 @@ impl<'a> Lexicon<'a> {
         article.get_execution_spec()?.produces.as_ref()?;
         Some(self.reference(Some(&article.number)))
     }
+
+    /// Het `produces` van het artikel achter de aansturende uitkomst.
+    fn produces(&self, driving: &str) -> Option<&'a Produces> {
+        self.article_for(driving)?
+            .get_execution_spec()?
+            .produces
+            .as_ref()
+    }
+
+    /// De afwijzingsvoorwaarden die dat artikel declareert.
+    ///
+    /// Leeg als er geen blok staat — of als het niet te lezen is, en dat laatste
+    /// kan hier niet: het schema wordt ná `validate` uitgerekend, en dáár valt een
+    /// blok dat niet te lezen is.
+    fn afwijzing_wanneer(&self, driving: &str) -> BTreeMap<String, bool> {
+        afwijzing_block(self.produces(driving))
+            .map(afwijzing_wanneer)
+            .and_then(std::result::Result::ok)
+            .unwrap_or_default()
+    }
+
+    /// Een veld dat een regeling zelf declareert, bij het artikel dat het zegt.
+    fn declared(
+        &self,
+        name: &str,
+        value_type: &str,
+        article: Option<&str>,
+        toelichting: String,
+    ) -> DecretogramField {
+        let herkomst = Herkomst::of_layer(self.layer());
+        DecretogramField {
+            name: name.to_string(),
+            value_type: Some(value_type.to_string()),
+            unit: None,
+            herkomst,
+            gat: herkomst.gat(),
+            lexogram: Some(self.reference(article)),
+            toelichting: Some(toelichting),
+        }
+    }
 }
 
 /// Het schema van het decretogram dat deze besluit-definitie kan voortbrengen.
@@ -383,6 +426,98 @@ pub(crate) fn decretogram_schema(
     schema
 }
 
+/// Het veld met het besluittype: wélk besluit dit is.
+///
+/// Anders dan [`LEGAL_CHARACTER`] een veld van de **wet** en niet van het
+/// platform. Het rechtskarakter is altijd `BESCHIKKING` — dat is wat een
+/// decretogram tot een decretogram maakt, en het platform weigert elke andere
+/// waarde — maar wát dit besluit is, zegt het artikel: `decision_type` voor de
+/// gewone afloop, en [`AFWIJZING`] zodra een voorwaarde uit zijn
+/// `afwijzing_wanneer` vervuld is. Het platform kiest daar niets in.
+///
+/// Zegt het artikel geen van beide, dan draagt het gram `null` en is er niets uit
+/// de wet gelezen: dan is het een platformveld dat leeg blijft.
+fn decision_type_field(definition: &BesluitDefinition, lexicon: &Lexicon<'_>) -> DecretogramField {
+    let driving = definition.output.as_str();
+    let produces = lexicon.produces(driving);
+    let declared = produces.and_then(|produces| produces.decision_type.as_deref());
+    let conditions = lexicon.afwijzing_wanneer(driving);
+    if declared.is_none() && conditions.is_empty() {
+        return DecretogramField::platform(DECISION_TYPE, "string");
+    }
+
+    let gewoon = match declared {
+        Some(declared) => format!("'{declared}'"),
+        None => "leeg".to_string(),
+    };
+    let afwijzing = match conditions.is_empty() {
+        true => ", en deze regeling wijst niet af".to_string(),
+        false => format!(", of '{AFWIJZING}' als een afwijzingsvoorwaarde vervuld is"),
+    };
+    lexicon.declared(
+        DECISION_TYPE,
+        "string",
+        lexicon
+            .article_for(driving)
+            .map(|article| article.number.as_str()),
+        format!("{gewoon} zolang het besluit doorgaat{afwijzing}"),
+    )
+}
+
+/// Het veld met de vervulde afwijzingsvoorwaarden.
+///
+/// Wat erin kan komen te staan, staat helemaal in de wet: welke uitkomst op welke
+/// waarde tot een weigering leidt, declareert het artikel in
+/// `produces.extensions.chronolex.afwijzing_wanneer`. Het lexogram wijst naar het
+/// artikel dat de afwijzende uitkomst voortbrengt — dát is de grondslag van de
+/// weigering — en bij meer dan één voorwaarde naar het artikel waarop het blok
+/// staat, met de andere in de toelichting.
+///
+/// Wijst de regeling niet af, dan blijft het veld leeg en is er niets uit de wet
+/// gelezen: een platformveld, en geen gat — dat een regeling geen weigering kent,
+/// is geen norm die ze had moeten stellen.
+fn afwijzingsgrond_field(
+    definition: &BesluitDefinition,
+    lexicon: &Lexicon<'_>,
+) -> DecretogramField {
+    let driving = definition.output.as_str();
+    let conditions = lexicon.afwijzing_wanneer(driving);
+    let Some(first) = conditions.keys().next() else {
+        let mut field = DecretogramField::platform(AFWIJZINGSGROND, "array");
+        field.toelichting = Some("leeg: deze regeling kent geen afwijzingsgrond".to_string());
+        return field;
+    };
+
+    let genoemd = conditions
+        .iter()
+        .map(|(output, waarde)| {
+            let article = match lexicon.article_for(output) {
+                Some(article) => format!(" (artikel {})", article.number),
+                None => String::new(),
+            };
+            format!("{output} = {waarde}{article}")
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    // Eén voorwaarde: het artikel dat háár voortbrengt is de grondslag. Meer dan
+    // één: die kunnen uit verschillende artikelen komen, en dan is het artikel
+    // waarop het blok staat het enige dat ze alle noemt.
+    let article = match conditions.len() {
+        1 => lexicon
+            .article_for(first)
+            .map(|article| article.number.to_string()),
+        _ => lexicon
+            .article_for(driving)
+            .map(|article| article.number.to_string()),
+    };
+    lexicon.declared(
+        AFWIJZINGSGROND,
+        "array",
+        article.as_deref(),
+        format!("gevuld zodra een van deze voorwaarden vervuld is: {genoemd}"),
+    )
+}
+
 /// Eén vast veld van het decretogram: wat het draagt, en wie het zegt.
 fn fixed_field(
     field: &str,
@@ -423,6 +558,8 @@ fn fixed_field(
             lexicon.produces_reference(&definition.output),
             "het platform schrijft het in elk gram; het artikel zegt het in `produces`",
         ),
+        DECISION_TYPE => decision_type_field(definition, lexicon),
+        AFWIJZINGSGROND => afwijzingsgrond_field(definition, lexicon),
         REGULATION_VALID_FROM => DecretogramField::platform(field, "date"),
         EXECUTED_REGULATIONS | CHRONICLE_SOURCES => DecretogramField::platform(field, "array"),
         INPUTS | RECEIPT => DecretogramField::platform(field, "object"),
