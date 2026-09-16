@@ -38,6 +38,10 @@ cells:
   # vaststelling hieronder van haar accepteert.
   - id: belastingdienst
     laws: []
+    # Deze cel komt de betalingsverplichtingen na die Dienst Toeslagen oplegt:
+    # het lexogram zegt dát er betaald moet worden, dit zegt wie dat doet.
+    komt_na:
+      - Dienst Toeslagen
     chronicles:
       - stream: betalingen
         key: zaakkenmerk
@@ -124,10 +128,6 @@ cells:
           is_verzekerde:
             from_chronicle: inkomensleveringen
             field: is_verzekerde
-        obligations:
-          - amount: $hoogte_zorgtoeslag
-            payer: belastingdienst
-            schedule: $betalingsritme
 
       - name: zorgtoeslag_nabetaling
         doc: >-

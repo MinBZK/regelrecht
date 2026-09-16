@@ -4,10 +4,11 @@
 //! RFC-022 als vraag openlaat: welk deel van een besluit volgt uit de wet?
 //!
 //! - het **lexogram**: de uitkomsten die het uitvoerende artikel declareert
-//!   (`output[]` met hun type, `produces` met het rechtskarakter,
-//!   `competent_authority` op het artikel of op het document);
-//! - het **wereldbestand**: welke uitkomsten samen één gram vormen, het
-//!   zaakkenmerk-sjabloon en de verplichtingen;
+//!   (`output[]` met hun type, `produces` met het rechtskarakter en de
+//!   verplichtingen die het oplegt, `competent_authority` op het artikel of op
+//!   het document);
+//! - het **wereldbestand**: welke uitkomsten samen één gram vormen en het
+//!   zaakkenmerk-sjabloon;
 //! - het **platform**: de omslag eromheen — wanneer, door wie, waarop gerekend
 //!   is, en het receipt.
 //!
@@ -27,10 +28,10 @@
 //! werkelijk gold.
 
 use crate::cell::besluit::{
-    afwijzing_block, afwijzing_wanneer, fixed_fields, BesluitDefinition, AFWIJZING,
-    AFWIJZINGSGROND, BESCHIKKINGEN, BESLUIT, CHRONICLE_SOURCES, COMPETENT_AUTHORITY, DECISION_TYPE,
-    EXECUTED_REGULATIONS, INPUTS, LEGAL_CHARACTER, OBLIGATIONS, RECEIPT, REGULATION_VALID_FROM,
-    ZAAKKENMERK,
+    afwijzing_block, afwijzing_wanneer, fixed_fields, BesluitDefinition, DeclaredObligations,
+    ObligationDefinition, ObligationOrigin, AFWIJZING, AFWIJZINGSGROND, BESCHIKKINGEN, BESLUIT,
+    CHRONICLE_SOURCES, COMPETENT_AUTHORITY, DECISION_TYPE, EXECUTED_REGULATIONS, INPUTS,
+    LEGAL_CHARACTER, OBLIGATIONS, RECEIPT, REGULATION_VALID_FROM, ZAAKKENMERK,
 };
 use regelrecht_engine::article::Produces;
 use regelrecht_engine::{
@@ -185,6 +186,30 @@ impl DecretogramField {
     /// Een veld dat het wereldbestand zegt, en geen enkele regeling.
     fn wereldbestand(name: &str, value_type: &str, toelichting: String) -> Self {
         Self::declared_by(Herkomst::Wereldbestand, name, value_type, Some(toelichting))
+    }
+
+    /// Een veld dat een regeling declareert, met de plek waar ze dat doet.
+    ///
+    /// Anders dan [`Self::read_from`], dat een platformveld de plek meegeeft
+    /// waar het zijn waarde leest: hier is de regeling de declarant, en de
+    /// herkomst volgt daarom uit haar laag ([`Herkomst::of_layer`]).
+    fn from_lexogram(
+        name: &str,
+        value_type: &str,
+        layer: RegulatoryLayer,
+        lexogram: LexogramRef,
+        toelichting: String,
+    ) -> Self {
+        let herkomst = Herkomst::of_layer(layer);
+        Self {
+            name: name.to_string(),
+            value_type: Some(value_type.to_string()),
+            unit: None,
+            herkomst,
+            gat: herkomst.gat(),
+            lexogram: Some(lexogram),
+            toelichting: Some(toelichting),
+        }
     }
 
     /// Hetzelfde veld, met de plek in de wet waar het platform zijn waarde leest.
@@ -367,6 +392,48 @@ impl<'a> Lexicon<'a> {
             toelichting: Some(toelichting),
         }
     }
+
+    /// Wat het uitvoerende artikel aan verplichtingen oplegt, met de plek waar
+    /// het dat zegt.
+    ///
+    /// Dezelfde opzoeking als bij `produces`, want het staat er ook: een
+    /// verplichting hangt aan het artikel dat de beschikking voortbrengt
+    /// (`produces.extensions.chronolex`). Een blok dat niet te lezen is komt
+    /// hier niet langs — [`crate::Cell::from_config`] leest elk blok van elke
+    /// geladen versie voordat er een schema wordt uitgerekend, en weigert de cel
+    /// als er één niet klopt.
+    fn obligations(&self, driving: &str) -> Option<Declared> {
+        let article = self.article_for(driving)?;
+        let declared = DeclaredObligations::from_article(
+            ObligationOrigin {
+                regulation: self.regulation.to_string(),
+                valid_from: self.law.and_then(|law| law.valid_from.clone()),
+                article: article.number.clone(),
+            },
+            None,
+            article,
+        )
+        .ok()?;
+        if declared.is_empty() {
+            return None;
+        }
+        Some(Declared {
+            lexogram: self.reference(Some(&article.number)),
+            items: declared.items,
+        })
+    }
+}
+
+/// De verplichtingen van het uitvoerende artikel, met de plek waar ze staan.
+///
+/// De twee samen, omdat ze samen één antwoord zijn: welke verplichtingen er
+/// zijn en welk artikel ze declareert. Los doorgegeven kon een schema de
+/// verplichting van het ene artikel naast de vindplaats van het andere zetten.
+struct Declared {
+    /// Het artikel dat de verplichtingen declareert.
+    lexogram: LexogramRef,
+    /// Wat het oplegt, in de volgorde van het artikel.
+    items: Vec<ObligationDefinition>,
 }
 
 /// Het schema van het decretogram dat deze besluit-definitie kan voortbrengen.
@@ -395,24 +462,31 @@ pub(crate) fn decretogram_schema(
     }
 
     // Elke verplichting apart, want elke verplichting is een eigen belofte: een
-    // bedrag, een betaler en een ritme die het wereldbestand noemt en geen enkel
-    // artikel. Het bedrag zelf is een uitkomst en staat hierboven al, mét haar
-    // lexogram — dat is precies het verschil dat dit schema laat zien.
-    for (index, obligation) in definition.obligations.iter().enumerate() {
-        let vanaf = match obligation.from.as_deref() {
-            Some(from) => format!(", vanaf '{from}'"),
+    // bedrag, een ritme en de grondslag waarop ze berust. Ze staan in het
+    // artikel dat de beschikking voortbrengt en niet in het wereldbestand, dus
+    // ze zijn geen gat: wat het wereldbestand er nog over zegt, is wie ze nakomt
+    // (`komt_na`) en niet wat er opgelegd wordt.
+    let declared = lexicon.obligations(&definition.output);
+    for (index, obligation) in declared.iter().flat_map(|found| &found.items).enumerate() {
+        let vanaf = match obligation.vanaf.as_deref() {
+            Some(vanaf) => format!(", vanaf '{vanaf}'"),
             None => String::new(),
         };
-        schema.push(DecretogramField::wereldbestand(
+        // Onbereikbaar leeg: de lus loopt over de items van dít antwoord.
+        let Some(found) = &declared else { break };
+        schema.push(DecretogramField::from_lexogram(
             &format!("{OBLIGATIONS}[{index}]"),
-            // Een verplichting is er één, geen lijst: een bedrag, een betaler en
+            // Een verplichting is er één, geen lijst: een soort, een bedrag en
             // een ritme. Wat zij in het gram wordt — een reeks termijnen — staat
             // in `obligations` hieronder, en dát veld is de array.
             "object",
+            lexicon.layer(),
+            found.lexogram.clone(),
             format!(
-                "verplichting: bedrag {}, betaald door '{}', ritme '{}'{vanaf}; \
-                 zij levert de termijnen in '{OBLIGATIONS}'",
-                obligation.amount, obligation.payer, obligation.schedule
+                "verplichting van soort '{}': bedrag {}, ritme '{}'{vanaf}, op grondslag \
+                 '{}'; zij levert de termijnen in '{OBLIGATIONS}'. Wie haar nakomt, staat \
+                 in het wereldbestand (`komt_na`)",
+                obligation.soort, obligation.bedrag, obligation.ritme, obligation.grondslag
             ),
         ));
     }
@@ -421,7 +495,7 @@ pub(crate) fn decretogram_schema(
     // voorop: dat zegt wanneer dit alles gold.
     schema.push(DecretogramField::platform(OP_MOMENT, "date"));
     for field in fixed_fields().iter().copied() {
-        schema.push(fixed_field(field, definition, &lexicon));
+        schema.push(fixed_field(field, definition, &lexicon, declared.as_ref()));
     }
     schema
 }
@@ -523,6 +597,7 @@ fn fixed_field(
     field: &str,
     definition: &BesluitDefinition,
     lexicon: &Lexicon<'_>,
+    declared: Option<&Declared>,
 ) -> DecretogramField {
     match field {
         ZAAKKENMERK => DecretogramField::wereldbestand(
@@ -542,14 +617,29 @@ fn fixed_field(
                 definition.name
             ),
         ),
-        OBLIGATIONS => DecretogramField::wereldbestand(
-            field,
-            "array",
-            match definition.obligations.is_empty() {
-                true => "leeg: dit besluit legt geen verplichting op".to_string(),
-                false => "de termijnen die uit de verplichtingen hierboven volgen".to_string(),
-            },
-        ),
+        // De termijnen volgen uit wat het artikel oplegt, dus dit veld volgt de
+        // verplichtingen hierboven: geen gat meer, maar een lexogram. Legt het
+        // artikel niets op, dan blijft er een leeg veld over dat het platform in
+        // elk gram zet — er is dan geen artikel om naar te wijzen, en een leeg
+        // vak is ook geen gat in de wet.
+        OBLIGATIONS => match declared {
+            Some(declared) => DecretogramField::from_lexogram(
+                field,
+                "array",
+                lexicon.layer(),
+                declared.lexogram.clone(),
+                "de termijnen die uit de verplichtingen hierboven volgen".to_string(),
+            ),
+            None => DecretogramField::declared_by(
+                Herkomst::Platform,
+                field,
+                "array",
+                Some(
+                    "leeg: het artikel dat dit besluit uitvoert legt geen verplichting op"
+                        .to_string(),
+                ),
+            ),
+        },
         COMPETENT_AUTHORITY => DecretogramField::platform(field, "string").read_from(
             lexicon.authority_reference(&definition.output),
             "het platform schrijft het in elk gram; de regeling wijst het aan (RFC-002)",

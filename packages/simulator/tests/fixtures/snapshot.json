@@ -6,7 +6,7 @@
   "locked_settings": {
     "betalingsritme": {
       "cell": "toeslagen",
-      "besluit": "zorgtoeslag_toekenning"
+      "besluit": "zorgtoeslag_vaststelling"
     }
   },
   "cells": [
@@ -135,7 +135,7 @@
               "name": "betaling",
               "intake": "betaling",
               "recording_actor": "belastingdienst",
-              "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4",
+              "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4",
               "op_moment": "2024-04-01",
               "fields": {
                 "bedrag": {
@@ -143,7 +143,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
                   }
                 },
                 "besluit": {
@@ -151,7 +151,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
                   }
                 },
                 "besluit_cel": {
@@ -159,7 +159,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
                   }
                 },
                 "besluit_gram": {
@@ -167,7 +167,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
                   }
                 },
                 "besluit_kroniek": {
@@ -175,7 +175,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
                   }
                 },
                 "besluit_op_moment": {
@@ -183,7 +183,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
                   }
                 },
                 "volgnummer": {
@@ -191,7 +191,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
                   }
                 },
                 "zaakkenmerk": {
@@ -199,7 +199,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
                   }
                 }
               }
@@ -209,7 +209,7 @@
               "name": "betaling",
               "intake": "betaling",
               "recording_actor": "belastingdienst",
-              "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4",
+              "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4",
               "op_moment": "2024-07-01",
               "fields": {
                 "bedrag": {
@@ -217,7 +217,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
                   }
                 },
                 "besluit": {
@@ -225,7 +225,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
                   }
                 },
                 "besluit_cel": {
@@ -233,7 +233,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
                   }
                 },
                 "besluit_gram": {
@@ -241,7 +241,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
                   }
                 },
                 "besluit_kroniek": {
@@ -249,7 +249,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
                   }
                 },
                 "besluit_op_moment": {
@@ -257,7 +257,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
                   }
                 },
                 "volgnummer": {
@@ -265,7 +265,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
                   }
                 },
                 "zaakkenmerk": {
@@ -273,7 +273,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
                   }
                 }
               }
@@ -283,7 +283,7 @@
               "name": "betaling",
               "intake": "betaling",
               "recording_actor": "belastingdienst",
-              "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4",
+              "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4",
               "op_moment": "2024-10-01",
               "fields": {
                 "bedrag": {
@@ -291,7 +291,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
                   }
                 },
                 "besluit": {
@@ -299,7 +299,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
                   }
                 },
                 "besluit_cel": {
@@ -307,7 +307,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
                   }
                 },
                 "besluit_gram": {
@@ -315,7 +315,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
                   }
                 },
                 "besluit_kroniek": {
@@ -323,7 +323,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
                   }
                 },
                 "besluit_op_moment": {
@@ -331,7 +331,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
                   }
                 },
                 "volgnummer": {
@@ -339,7 +339,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
                   }
                 },
                 "zaakkenmerk": {
@@ -347,7 +347,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
                   }
                 }
               }
@@ -357,23 +357,23 @@
               "name": "betaling",
               "intake": "betaling",
               "recording_actor": "belastingdienst",
-              "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4",
-              "op_moment": "2025-01-01",
+              "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4",
+              "op_moment": "2024-12-15",
               "fields": {
                 "bedrag": {
-                  "value": 49296.01,
+                  "value": 49275,
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4"
                   }
                 },
                 "besluit": {
-                  "value": "zorgtoeslag_toekenning",
+                  "value": "zorgtoeslag_vaststelling",
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4"
                   }
                 },
                 "besluit_cel": {
@@ -381,15 +381,15 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4"
                   }
                 },
                 "besluit_gram": {
-                  "value": 0,
+                  "value": 1,
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4"
                   }
                 },
                 "besluit_kroniek": {
@@ -397,23 +397,23 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4"
                   }
                 },
                 "besluit_op_moment": {
-                  "value": "2024-04-01",
+                  "value": "2024-12-15",
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4"
                   }
                 },
                 "volgnummer": {
-                  "value": 4,
+                  "value": 1,
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4"
                   }
                 },
                 "zaakkenmerk": {
@@ -421,7 +421,81 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "executogram",
+              "name": "betaling",
+              "intake": "betaling",
+              "recording_actor": "belastingdienst",
+              "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4",
+              "op_moment": "2025-01-01",
+              "fields": {
+                "bedrag": {
+                  "value": 49296.01,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                  }
+                },
+                "besluit": {
+                  "value": "zorgtoeslag_toekenning",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                  }
+                },
+                "besluit_cel": {
+                  "value": "toeslagen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                  }
+                },
+                "besluit_gram": {
+                  "value": 0,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                  }
+                },
+                "besluit_kroniek": {
+                  "value": "beschikkingen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                  }
+                },
+                "besluit_op_moment": {
+                  "value": "2024-04-01",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                  }
+                },
+                "volgnummer": {
+                  "value": 4,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                  }
+                },
+                "zaakkenmerk": {
+                  "value": "zorgtoeslag/999993653",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
                   }
                 }
               }
@@ -996,7 +1070,7 @@
               "name": "betaling_ontvangen_gemeld",
               "intake": "levering",
               "recording_actor": "toeslagen",
-              "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4",
+              "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4",
               "op_moment": "2024-04-01",
               "fields": {
                 "bedrag": {
@@ -1004,7 +1078,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
                   }
                 },
                 "besluit": {
@@ -1012,7 +1086,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
                   }
                 },
                 "besluit_cel": {
@@ -1020,7 +1094,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
                   }
                 },
                 "besluit_gram": {
@@ -1028,7 +1102,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
                   }
                 },
                 "besluit_kroniek": {
@@ -1036,7 +1110,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
                   }
                 },
                 "besluit_op_moment": {
@@ -1044,7 +1118,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
                   }
                 },
                 "volgnummer": {
@@ -1052,7 +1126,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
                   }
                 },
                 "zaakkenmerk": {
@@ -1060,7 +1134,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
                   }
                 }
               }
@@ -1070,7 +1144,7 @@
               "name": "betaling_ontvangen_gemeld",
               "intake": "levering",
               "recording_actor": "toeslagen",
-              "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4",
+              "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4",
               "op_moment": "2024-07-01",
               "fields": {
                 "bedrag": {
@@ -1078,7 +1152,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
                   }
                 },
                 "besluit": {
@@ -1086,7 +1160,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
                   }
                 },
                 "besluit_cel": {
@@ -1094,7 +1168,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
                   }
                 },
                 "besluit_gram": {
@@ -1102,7 +1176,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
                   }
                 },
                 "besluit_kroniek": {
@@ -1110,7 +1184,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
                   }
                 },
                 "besluit_op_moment": {
@@ -1118,7 +1192,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
                   }
                 },
                 "volgnummer": {
@@ -1126,7 +1200,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
                   }
                 },
                 "zaakkenmerk": {
@@ -1134,7 +1208,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
                   }
                 }
               }
@@ -1144,7 +1218,7 @@
               "name": "betaling_ontvangen_gemeld",
               "intake": "levering",
               "recording_actor": "toeslagen",
-              "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4",
+              "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4",
               "op_moment": "2024-10-01",
               "fields": {
                 "bedrag": {
@@ -1152,7 +1226,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
                   }
                 },
                 "besluit": {
@@ -1160,7 +1234,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
                   }
                 },
                 "besluit_cel": {
@@ -1168,7 +1242,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
                   }
                 },
                 "besluit_gram": {
@@ -1176,7 +1250,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
                   }
                 },
                 "besluit_kroniek": {
@@ -1184,7 +1258,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
                   }
                 },
                 "besluit_op_moment": {
@@ -1192,7 +1266,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
                   }
                 },
                 "volgnummer": {
@@ -1200,7 +1274,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
                   }
                 },
                 "zaakkenmerk": {
@@ -1208,7 +1282,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
                   }
                 }
               }
@@ -1218,23 +1292,23 @@
               "name": "betaling_ontvangen_gemeld",
               "intake": "levering",
               "recording_actor": "toeslagen",
-              "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4",
-              "op_moment": "2025-01-01",
+              "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4",
+              "op_moment": "2024-12-15",
               "fields": {
                 "bedrag": {
-                  "value": 49296.01,
+                  "value": 49275,
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4"
                   }
                 },
                 "besluit": {
-                  "value": "zorgtoeslag_toekenning",
+                  "value": "zorgtoeslag_vaststelling",
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4"
                   }
                 },
                 "besluit_cel": {
@@ -1242,15 +1316,15 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4"
                   }
                 },
                 "besluit_gram": {
-                  "value": 0,
+                  "value": 1,
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4"
                   }
                 },
                 "besluit_kroniek": {
@@ -1258,23 +1332,23 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4"
                   }
                 },
                 "besluit_op_moment": {
-                  "value": "2024-04-01",
+                  "value": "2024-12-15",
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4"
                   }
                 },
                 "volgnummer": {
-                  "value": 4,
+                  "value": 1,
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4"
                   }
                 },
                 "zaakkenmerk": {
@@ -1282,7 +1356,81 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
-                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), termijn 1 van 4"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "executogram",
+              "name": "betaling_ontvangen_gemeld",
+              "intake": "levering",
+              "recording_actor": "toeslagen",
+              "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4",
+              "op_moment": "2025-01-01",
+              "fields": {
+                "bedrag": {
+                  "value": 49296.01,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                  }
+                },
+                "besluit": {
+                  "value": "zorgtoeslag_toekenning",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                  }
+                },
+                "besluit_cel": {
+                  "value": "toeslagen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                  }
+                },
+                "besluit_gram": {
+                  "value": 0,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                  }
+                },
+                "besluit_kroniek": {
+                  "value": "beschikkingen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                  }
+                },
+                "besluit_op_moment": {
+                  "value": "2024-04-01",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                  }
+                },
+                "volgnummer": {
+                  "value": 4,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                  }
+                },
+                "zaakkenmerk": {
+                  "value": "zorgtoeslag/999993653",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
                   }
                 }
               }
@@ -1427,6 +1575,12 @@
                   "value": [
                     {
                       "bedrag": 49294,
+                      "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1",
+                      "lexogram": {
+                        "artikel": "2",
+                        "regulation": "wet_op_de_zorgtoeslag",
+                        "regulation_valid_from": "2024-01-01"
+                      },
                       "payer": "belastingdienst",
                       "schedule": "kwartaal",
                       "vervaldatum": "2024-04-01",
@@ -1434,6 +1588,12 @@
                     },
                     {
                       "bedrag": 49294,
+                      "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1",
+                      "lexogram": {
+                        "artikel": "2",
+                        "regulation": "wet_op_de_zorgtoeslag",
+                        "regulation_valid_from": "2024-01-01"
+                      },
                       "payer": "belastingdienst",
                       "schedule": "kwartaal",
                       "vervaldatum": "2024-07-01",
@@ -1441,6 +1601,12 @@
                     },
                     {
                       "bedrag": 49294,
+                      "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1",
+                      "lexogram": {
+                        "artikel": "2",
+                        "regulation": "wet_op_de_zorgtoeslag",
+                        "regulation_valid_from": "2024-01-01"
+                      },
                       "payer": "belastingdienst",
                       "schedule": "kwartaal",
                       "vervaldatum": "2024-10-01",
@@ -1448,6 +1614,12 @@
                     },
                     {
                       "bedrag": 49296.01,
+                      "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1",
+                      "lexogram": {
+                        "artikel": "2",
+                        "regulation": "wet_op_de_zorgtoeslag",
+                        "regulation_valid_from": "2024-01-01"
+                      },
                       "payer": "belastingdienst",
                       "schedule": "kwartaal",
                       "vervaldatum": "2025-01-01",
@@ -1552,7 +1724,7 @@
                     },
                     {
                       "chronicle": "betalingen",
-                      "content_hash": "sha256:9407b1452de5aa07cc860b9279dd8d711a3b0970dcee8ffd9bad88f2c95914cf",
+                      "content_hash": "sha256:4488f1f65518ecf440de59a9b3a3ca0027ffa58a560dc8bfa05ab1ff6af0e257",
                       "grams": 3,
                       "op_moment": "2024-12-15"
                     }
@@ -1625,7 +1797,60 @@
                   }
                 },
                 "obligations": {
-                  "value": [],
+                  "value": [
+                    {
+                      "bedrag": 49275,
+                      "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1",
+                      "lexogram": {
+                        "artikel": "2",
+                        "regulation": "wet_op_de_zorgtoeslag",
+                        "regulation_valid_from": "2024-01-01"
+                      },
+                      "payer": "belastingdienst",
+                      "schedule": "kwartaal",
+                      "vervaldatum": "2024-12-15",
+                      "volgnummer": 1
+                    },
+                    {
+                      "bedrag": 49275,
+                      "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1",
+                      "lexogram": {
+                        "artikel": "2",
+                        "regulation": "wet_op_de_zorgtoeslag",
+                        "regulation_valid_from": "2024-01-01"
+                      },
+                      "payer": "belastingdienst",
+                      "schedule": "kwartaal",
+                      "vervaldatum": "2025-03-15",
+                      "volgnummer": 2
+                    },
+                    {
+                      "bedrag": 49275,
+                      "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1",
+                      "lexogram": {
+                        "artikel": "2",
+                        "regulation": "wet_op_de_zorgtoeslag",
+                        "regulation_valid_from": "2024-01-01"
+                      },
+                      "payer": "belastingdienst",
+                      "schedule": "kwartaal",
+                      "vervaldatum": "2025-06-15",
+                      "volgnummer": 3
+                    },
+                    {
+                      "bedrag": 49277.85,
+                      "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1",
+                      "lexogram": {
+                        "artikel": "2",
+                        "regulation": "wet_op_de_zorgtoeslag",
+                        "regulation_valid_from": "2024-01-01"
+                      },
+                      "payer": "belastingdienst",
+                      "schedule": "kwartaal",
+                      "vervaldatum": "2025-09-15",
+                      "volgnummer": 4
+                    }
+                  ],
                   "origin": {
                     "herkomst": "besluit"
                   }
@@ -2379,12 +2604,12 @@
     },
     {
       "seq": 8,
-      "moment": "2025-01-01",
+      "moment": "2024-12-15",
       "actor": {
         "soort": "klok"
       },
       "kind": "betaling",
-      "description": "termijn 4/4 van 49296.01000 op 2025-01-01, te betalen door belastingdienst (kwartaal)",
+      "description": "termijn 1/4 van 49275 op 2024-12-15, te betalen door belastingdienst (kwartaal)",
       "grams": [
         {
           "cell": "belastingdienst",
@@ -2410,7 +2635,7 @@
             "bedrag": 147882
           },
           "na": {
-            "bedrag": 197178.01
+            "bedrag": 197157
           }
         },
         {
@@ -2421,7 +2646,60 @@
             "bedrag": 147882
           },
           "na": {
-            "bedrag": 197178.01
+            "bedrag": 197157
+          }
+        }
+      ],
+      "accepted": [],
+      "executed": null,
+      "question": null,
+      "parent": null
+    },
+    {
+      "seq": 9,
+      "moment": "2025-01-01",
+      "actor": {
+        "soort": "klok"
+      },
+      "kind": "betaling",
+      "description": "termijn 4/4 van 49296.01000 op 2025-01-01, te betalen door belastingdienst (kwartaal)",
+      "grams": [
+        {
+          "cell": "belastingdienst",
+          "chronicle": "betalingen",
+          "id": "belastingdienst|betalingen|4",
+          "kind": "executogram",
+          "name": "betaling"
+        },
+        {
+          "cell": "toeslagen",
+          "chronicle": "betalingen",
+          "id": "toeslagen|betalingen|4",
+          "kind": "executogram",
+          "name": "betaling_ontvangen_gemeld"
+        }
+      ],
+      "changes": [
+        {
+          "cell": "belastingdienst",
+          "lexostatus": "betaald_tot_nu_toe",
+          "label": "betaald",
+          "voor": {
+            "bedrag": 197157
+          },
+          "na": {
+            "bedrag": 246453.01
+          }
+        },
+        {
+          "cell": "toeslagen",
+          "lexostatus": "betaald_tot_nu_toe",
+          "label": "betaald volgens de meldingen",
+          "voor": {
+            "bedrag": 197157
+          },
+          "na": {
+            "bedrag": 246453.01
           }
         }
       ],

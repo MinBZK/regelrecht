@@ -19,8 +19,10 @@ description: >-
      bron en komt daardoor op een ánder bedrag uit — had `toeslagen` het eerste
      antwoord ergens bewaard, dan zou hier hetzelfde bedrag staan.
   4. **De tijd doet het werk.** Niemand betaalt iets; de klok laat de termijnen
-     van de toekenning vervallen en dan legt de betalende cel vast dat zij
-     betaalde.
+     vervallen en dan legt de betalende cel vast dat zij betaalde. Wát er betaald
+     moet worden staat in het lexogram van de wet die wordt uitgevoerd, dus beide
+     besluiten op dat artikel brengen hetzelfde schema voort; wie het nakomt komt
+     uit het wereldbestand (`komt_na`).
 
 clock:
   start: 2024-01-01
@@ -69,6 +71,13 @@ cells:
   # wat het tweede besluit zichtbaar maakt.
   - id: belastingdienst
     laws: []
+    # Deze cel komt de betalingsverplichtingen na die Dienst Toeslagen oplegt:
+    # de wet zegt dát er betaald moet worden, dit zegt wie dat doet (Awir art.
+    # 25). De binding loopt langs het bevoegd gezag en niet langs een cel-id,
+    # zodat een tweede uitvoerder van dezelfde regeling een eigen betaler kan
+    # hebben zonder dat het recht verschilt.
+    komt_na:
+      - Dienst Toeslagen
     chronicles:
       - stream: aanslagen
         key: bsn
@@ -212,10 +221,6 @@ cells:
             field: toetsingsinkomen
             params:
               bsn: $bsn
-        obligations:
-          - amount: $hoogte_zorgtoeslag
-            payer: belastingdienst
-            schedule: $betalingsritme
 
       - name: zorgtoeslag_vaststelling
         doc: >-
@@ -470,16 +475,19 @@ queries:
       bedrag: 98588
 
   - description: >-
-      Na het jaar zijn alle vier de termijnen verstreken, en dan is er precies het
-      toegekende bedrag van de eerste beschikking betaald — inclusief de rest die
-      op de laatste termijn landde.
+      Na het jaar zijn alle vier de termijnen van de toekenning verstreken
+      (197178,01 — inclusief de rest die op de laatste termijn landde), en van de
+      vaststelling is de eerste termijn al vervallen: die legt hetzelfde artikel
+      uit, dus ze krijgt hetzelfde schema. Wat er van een teveel of te weinig
+      betaald bedrag moet gebeuren, is een verrekening, en die kent deze
+      opstelling nog niet.
     cell: toeslagen
     lexostatus: betaald_tot_nu_toe
     params:
       zaakkenmerk: zorgtoeslag/999993653
     op_moment: 2025-02-01
     expect:
-      bedrag: 197178.01
+      bedrag: 246453.01
 
   - description: >-
       De zaak terugvragen levert het laatste besluit over dat zaakkenmerk: de

@@ -13,7 +13,7 @@
 //! allebei hetzelfde soort ding, dus ze horen op dezelfde manier afgekeurd te
 //! worden.
 
-use crate::cell::besluit::{BesluitDefinition, GramFields};
+use crate::cell::besluit::{BesluitDefinition, DeclaredObligations, GramFields};
 use crate::cell::chronicle::ChronicleStream;
 use crate::error::{Result, SimulatorError, Subject};
 use crate::journal::StatusIndicator;
@@ -65,6 +65,21 @@ pub struct CellConfig {
     /// De lexostatussen die de cel naar buiten publiceert.
     #[serde(default)]
     pub lexostatus_definitions: Vec<LexostatusDefinition>,
+    /// De bevoegde gezagen waarvoor deze cel betalingsverplichtingen nakomt.
+    ///
+    /// *Komt na* in de zin van nakomen, niet van volgen. Wat een besluit oplegt
+    /// staat in het lexogram van de regeling die het uitvoert; welk systeem die
+    /// betaling feitelijk doet, is uitvoering — en dus casusdata. Hier staat
+    /// daarom de naam van het **bevoegd gezag** zoals de wet die noemt
+    /// (`competent_authority`, RFC-002), en niet de naam van een cel: de
+    /// binding loopt langs het gezag, zodat een tweede uitvoerder van dezelfde
+    /// regeling haar eigen betaler kan hebben zonder dat het recht verschilt.
+    ///
+    /// Eén cel per gezag: twee cellen die hetzelfde gezag nakomen, laten een
+    /// betaling bij een willekeurige van de twee landen. Het optuigen weigert
+    /// dat, net als een verplichting waarvoor geen cel gebonden is.
+    #[serde(default)]
+    pub komt_na: Vec<String>,
     /// De besluiten die de cel kan nemen.
     ///
     /// Niet gepubliceerd: een besluit wordt niet door een consument opgevraagd
@@ -625,7 +640,22 @@ pub(crate) struct CellSurface<'a> {
     /// twee keer? Alle drie de antwoorden staan vast zodra de definities er zijn,
     /// dus een typfout hoort hier te vallen en niet pas bij de eerste zaak.
     pub(crate) besluit_fields: BTreeMap<String, GramFields>,
+    /// Per regeling en per uitkomst de verplichtingen die de geladen versies
+    /// eraan hangen: één declaratie per versie die zo'n blok draagt.
+    ///
+    /// Over álle versies, om dezelfde reden als bij [`Self::legal_characters`]:
+    /// een besluit over een ouder moment landt op een oudere versie, en een
+    /// verplichting die alleen daar staat hoort net zo goed te kloppen.
+    pub(crate) obligations: ObligationsPerOutput,
 }
+
+/// Per regeling en per uitkomst wat de geladen versies eraan opleggen.
+///
+/// Uitsluitend voor het **optuigen**. Bij het besluit zelf wordt de declaratie
+/// opnieuw opgezocht, op de versie die op dat moment gold: welke versie dat is,
+/// weet de resolver, en dat hier nog eens naspelen zou twee antwoorden op
+/// dezelfde vraag mogelijk maken.
+pub(crate) type ObligationsPerOutput = BTreeMap<String, BTreeMap<String, Vec<DeclaredObligations>>>;
 
 /// Per kroniekstroom de veldnamen die een cel van die stroom kent.
 ///
@@ -847,6 +877,14 @@ impl CellSurface<'_> {
         field: &str,
     ) -> Result<()> {
         check_stream_field(&self.streams, cell, subject, name, stream, field)
+    }
+
+    /// Wat de geladen versies aan deze uitkomst van deze regeling opleggen.
+    pub(crate) fn obligations_of(&self, regulation: &str, output: &str) -> &[DeclaredObligations] {
+        self.obligations
+            .get(regulation)
+            .and_then(|outputs| outputs.get(output))
+            .map_or(&[], Vec::as_slice)
     }
 }
 

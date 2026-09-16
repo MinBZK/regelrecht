@@ -13,7 +13,8 @@ en reduceert, zonder engine. Zie [Een bron-cel](#een-bron-cel).
 Een cel met eigen wetten kan ook **besluiten**: ze voert een regeling uit en legt
 de uitkomst vast als decretogram in haar eigen kroniek. Zie
 [Het besluit-pad](#het-besluit-pad). Wat zo'n besluit aan **verplichtingen**
-achterlaat, komt de klok later nakomen:
+oplegt, staat in de regeling die het uitvoert; wie ze nakomt, in het
+wereldbestand — en de klok komt ze later na:
 [Verplichtingen](#verplichtingen-wat-een-besluit-achterlaat).
 
 Gaat een vraag over een celgrens, dan loopt hij langs de **veiligheidscontext**
@@ -371,9 +372,9 @@ gebeurt, in deze volgorde:
    waren, en uit de parameters van het besluit;
 3. de **besluit-engine** voert de regeling uit op dat moment, dus op de wetsversie
    die toen gold;
-4. de verplichtingen worden uitgerekend tot een schema van termijnen, op de
-   uitkomsten waarop besloten is (zie
-   [Verplichtingen](#verplichtingen-wat-een-besluit-achterlaat));
+4. de verplichtingen die het uitgevoerde artikel declareert, worden uitgerekend
+   tot een schema van termijnen, op de uitkomsten die de uitvoering opleverde
+   (zie [Verplichtingen](#verplichtingen-wat-een-besluit-achterlaat));
 5. de uitkomst gaat als één gram de stroom `beschikkingen` in, met het schema erin.
 
 Ketst het besluit af op een voorwaarde, dan slaat stap 4 over — zie
@@ -578,7 +579,7 @@ uitbreiding van RFC-013 stil achterlopen.
 | de uitkomsten | de uitkomst die het besluit *is*, plus wat `outputs` erbij noemt |
 | `inputs` | wat de besluit-definitie zelf aanleverde, **met herkomst per waarde**: uit een eigen kroniek (met het moment van die vastlegging), uit een parameter, of geaccepteerd van een andere cel |
 | `chronicle_sources` | de eigen kronieken die als databron klaarstonden, elk met haar stand op het moment van het besluit: aantal grammen en een hash erover (RFC-022 §1.3). Wat de engine daaruit las, staat in de trace van het receipt |
-| `obligations` | het betalingsschema dat uit dit besluit volgt: per termijn een vervaldatum, een bedrag en een volgnummer. Leeg bij een afwijzing, ook als de definitie er een oplegt |
+| `obligations` | het betalingsschema dat uit dit besluit volgt: per termijn een vervaldatum, een bedrag, een volgnummer, de betalende cel, de `grondslag` uit het lexogram en de herkomst (`lexogram`: regeling, versie, artikel). Leeg bij een afwijzing, ook als het lexogram er een oplegt |
 | `receipt` | het volledige Execution Receipt, **met de uitvoeringstrace** (`results.trace`) |
 
 ### Het schema van het decretogram: wat komt uit de wet?
@@ -750,34 +751,86 @@ falen, maar waaróp.
 ### Verplichtingen: wat een besluit achterlaat
 
 Een beschikking die een bedrag toekent, laat iets achter dat later moet gebeuren.
-Dat hoort bij het gram (RFC-022 §1.2), dus het schema wordt bij het besluit
-uitgerekend en er in vastgelegd:
+Wát dat is, staat in het **lexogram**: in het artikel dat de beschikking
+voortbrengt, onder `produces.extensions.chronolex` — de namespaced haak die
+RFC-022 §3.2 daarvoor aanwijst. Wíe het nakomt, staat in het **wereldbestand**.
+Die scheiding is de hele paragraaf.
 
 ```yaml
-obligations:
-  - amount: $hoogte_zorgtoeslag      # een uitkomst van dít besluit
-    payer: belastingdienst           # de cel die de verplichting draagt
-    schedule: $betalingsritme        # ineens | kwartaal | maand, of een instelling
-    from: '{jaar}-02-01'             # optioneel; standaard het moment van het besluit
+# in de regeling, op het artikel dat de sturende uitkomst voortbrengt
+produces:
+  legal_character: BESCHIKKING
+  decision_type: TOEKENNING
+  extensions:
+    chronolex:
+      verplichtingen:
+        - soort: betaling                  # vandaag de enige soort
+          bedrag: $hoogte_zorgtoeslag      # een uitkomst van dít artikel
+          ritme: $betalingsritme           # ineens | kwartaal | maand, of $instelling
+          vanaf: '{jaar}-02-01'            # optioneel; standaard het moment van het besluit
+          grondslag: Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1
 ```
 
-- **`amount` is een uitkomst, geen bedrag.** Wat betaald moet worden komt uit de
-  wet die het besluit uitvoert. Een letterlijk bedrag zou naast die uitkomst gaan
-  leven, en dan zegt het gram twee dingen over hetzelfde geld.
+```yaml
+# in het wereldbestand, bij de cel die betaalt
+- id: belastingdienst
+  komt_na:
+    - Dienst Toeslagen                     # het bevoegd gezag namens wie zij nakomt
+  chronicles:
+    - stream: betalingen
+      key: zaakkenmerk
+```
+
+**Waarom in de wet en niet in het wereldbestand.** Dát er 80% voorschot betaald
+wordt en dat het slotbedrag ineens komt, schrijft het recht voor (Wpp art. 60 lid
+2, Awb 4:86 lid 2). Zou dat in de besluit-definitie van één uitvoerder staan, dan
+konden twee uitvoerders van dezelfde regeling een ander betalingsschema hanteren
+zonder dat de wet verschilt — en dan zou het wereldbestand normatieve inhoud
+dragen. Een besluit-definitie die nog zelf `obligations` draagt, wordt daarom bij
+het optuigen geweigerd, met een melding die naar het blok hierboven wijst. Een
+BESCHIKKING-artikel **zonder** blok is geen fout: niet elke beschikking kent een
+bedrag toe.
+
+- **`bedrag` is een uitkomst, geen bedrag.** Wat betaald moet worden komt uit de
+  wet zelf: een uitkomst van dít artikel, of een uitkomst die het uitvoerende
+  besluit erbij vastlegt (`outputs`). Een letterlijk bedrag zou naast die uitkomst
+  gaan leven, en dan zegt het gram twee dingen over hetzelfde geld. Wat het besluit
+  zelf niet publiceert, gaat wél als gevraagde uitkomst mee de uitvoering in.
 - **Een ritme beschrijft één jaar**: `ineens` één termijn, `kwartaal` vier,
   `maand` twaalf. Elke termijn krijgt hetzelfde bedrag in hele eenheden en het
   restant gaat naar de laatste, dus de som van de termijnen is exact het
   toegekende bedrag. Dat is de eigenschap waarop "betaald tot nu toe" rust.
 - **Het ritme mag een instelling zijn.** Een betalingsritme is doorgaans beleid en
-  geen wet; `schedule: $betalingsritme` leest uit `settings` van het
-  wereldbestand, zodat de besluit-definitie niet beweert dat de wet per kwartaal
-  betaalt. Een instelling die niet bestaat of geen ritme noemt, sneuvelt bij het
-  optuigen van de wereld.
-- **`from` is een sjabloon over de gedocumenteerde parameters**, net als het
-  zaakkenmerk, en wat het oplevert moet een datum zijn. Het mag niet vóór het
-  besluit liggen: een termijn in het verleden zou bij het nakomen een betaling op
-  een moment vastleggen dat al geweest is, en dan verandert het beeld van toen
-  alsnog.
+  geen wet; `ritme: $betalingsritme` leest uit `settings` van het wereldbestand,
+  zodat de regeling niet beweert dat de wet per kwartaal betaalt. Een instelling
+  die niet bestaat of geen ritme noemt, sneuvelt bij het optuigen van de wereld —
+  en zodra een besluit haar gebruikt heeft, staat ze vast (zie
+  [Instellingen komen vast te staan](#instellingen-komen-vast-te-staan)).
+- **`vanaf` is een sjabloon over de gedocumenteerde parameters** van het besluit
+  dat het artikel uitvoert, net als het zaakkenmerk, en wat het oplevert moet een
+  datum zijn. Het mag niet vóór het besluit liggen: een termijn in het verleden zou
+  bij het nakomen een betaling op een moment vastleggen dat al geweest is, en dan
+  verandert het beeld van toen alsnog.
+- **`grondslag` is verplicht en vrije tekst.** Een verplichting zonder grondslag is
+  een bedrag zonder wet. Ze reist mee tot in elke termijn van het gram, samen met
+  de herkomst (`lexogram`: regeling, versie en artikel), zodat wie een betaling
+  terugleest niet alleen ziet dát er betaald moest worden maar ook waarom en
+  waaruit.
+
+**Wie betaalt, komt uit het wereldbestand.** Een cel noemt met `komt_na` de
+bevoegde gezagen waarvoor zij betalingsverplichtingen nakomt — de naam zoals de
+wet het gezag aanwijst (`competent_authority`, RFC-002), niet een cel-id. De
+binding loopt dus langs het gezag, en dan kan een tweede uitvoerder van dezelfde
+regeling haar eigen betaler hebben zonder dat het recht verschilt. Het optuigen
+weigert een verplichting waarvoor geen cel gebonden is, twee cellen die hetzelfde
+gezag nakomen, en een gebonden cel zonder stroom `betalingen`. De besluitende cel
+mag zichzelf nakomen; ze heeft die stroom hoe dan ook nodig, want zij legt vast dat
+het haar gemeld is.
+
+Omdat het schema aan het **artikel** hangt en niet aan de besluit-definitie,
+krijgen twee besluiten die op dezelfde uitkomst van hetzelfde artikel gaan
+hetzelfde schema. Dat is de bedoeling: een verlening en een latere vaststelling
+leggen allebei op wat dat artikel oplegt.
 
 Nakomen doet de klok, niet het besluit. Op elke vervaldatum legt de **betalende**
 cel een executogram vast in haar eigen stroom `betalingen` (`intake: betaling`,
@@ -835,7 +888,8 @@ Het staat als scenario in
 (vier kwartaaltermijnen, met de vraag over een eerder moment die ná een jaar nog
 hetzelfde antwoordt) en
 [`scenarios/toeslagen_verplichtingen_ritmes.yaml`](scenarios/toeslagen_verplichtingen_ritmes.yaml)
-(hetzelfde bedrag `ineens` en per `maand` — het ritme bepaalt wanneer, niet hoeveel).
+(hetzelfde bedrag `ineens` en per `maand`, elk uit een eigen artikel — het ritme
+bepaalt wanneer, niet hoeveel).
 
 ### Het zaakkenmerk moet bij precies één zaak horen
 
@@ -1344,7 +1398,7 @@ is de kern van de opzet:
 | sleutel | wat |
 |---|---|
 | `clock` | waar de logische klok begint; verplicht |
-| `cells` | de organisaties, elk met `identity`, `laws`, `chronicles`, `lexostatus_definitions`, `besluit_definitions` (met `obligations`) en `accepts_from` |
+| `cells` | de organisaties, elk met `identity`, `laws`, `komt_na`, `chronicles`, `lexostatus_definitions`, `besluit_definitions` en `accepts_from` |
 | `settings` | casusdata die geen wet is, bijvoorbeeld een betalingsritme |
 | `fixtures` | de startstand: vastleggingen met een moment |
 | `actions` | wat een actor op de tijdlijn kan doen |
@@ -1438,6 +1492,9 @@ cells:
           key: zaakkenmerk
           sum: bedrag                           # in plaats van `latest`
 
+    komt_na:                                    # de bevoegde gezagen waarvoor
+      - Dienst Toeslagen                        # deze cel betalingen nakomt
+
     besluit_definitions:                        # wat de cel kan besluiten
       - name: zorgtoeslag_vaststelling
         doc: vrije toelichting                  # optioneel
@@ -1470,13 +1527,9 @@ cells:
           toegekend_bedrag:                     # uit een eerder besluit van deze
             from_decretogram: zorgtoeslag_toekenning  # cel over dezelfde zaak
             field: hoogte_zorgtoeslag           # een uitkomst of input van dat gram
-        obligations:                            # wat er betaald moet worden
-          - amount: $hoogte_zorgtoeslag         # een uitkomst van dit besluit
-            payer: belastingdienst              # de cel die de verplichting draagt
-            schedule: $betalingsritme           # ineens | kwartaal | maand, of
-                                                # een $instelling
-            from: '{jaar}-02-01'                # optioneel; standaard het moment
-                                                # van het besluit
+                                                # wat er betaald moet worden staat
+                                                # in het lexogram van de regeling,
+                                                # niet hier; zie Verplichtingen
 
     accepts_from:                               # wat de wétten bij een cel halen
       - cell: brp                               # het cel-id uit source.regulation
@@ -2203,8 +2256,12 @@ Zie [Een weigering is ook een besluit](#een-weigering-is-ook-een-besluit).
 
 **Een verplichting kent geen rente, verrekening of terugvordering.** Een termijn
 vervalt en wordt betaald; wat er gebeurt als er te laat, te veel of niet betaald
-wordt, staat er niet. Een terugvordering is in deze opzet een gewoon besluit met
-een eigen verplichting, en dat is nog nergens uitgewerkt. Een verplichting kan ook
+wordt, staat er niet. Twee besluiten op hetzelfde artikel leggen daarom allebei
+het volle schema op — het tweede verrekent niet met het eerste. Een terugvordering
+is in deze opzet een gewoon besluit met een eigen verplichting, en dat is nog
+nergens uitgewerkt. Een verplichting kent ook nog geen **schuldenaar en
+schuldeiser**: `soort` kent alleen `betaling`, en wie er betaald krijgt volgt uit
+de zaak en niet uit de declaratie. Een verplichting kan ook
 niet gewijzigd of ingetrokken worden: het schema staat in het gram, en een gram
 verandert niet.
 

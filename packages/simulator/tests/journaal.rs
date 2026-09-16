@@ -63,9 +63,12 @@ fn een_volledig_verhaal_levert_een_journaal_op() {
             JournalKind::Besluit,
             JournalKind::Vraag,
             JournalKind::Betaling,
+            JournalKind::Betaling,
         ],
         "dit verhaal is: een aanvraag, een besluit met zijn vraag, drie termijnen, \
-         een tweede besluit met zijn vraag, en de laatste termijn"
+         een tweede besluit met zijn vraag, de laatste termijn van het eerste \
+         besluit en de eerste van het tweede — dat voert hetzelfde artikel uit, \
+         dus het legt hetzelfde schema op"
     );
 
     // Oplopend in de tijd, en doorgenummerd vanaf 0: het journaal groeit

@@ -20,11 +20,23 @@ description: >-
 clock:
   start: 2024-01-01
 
+settings:
+  # Artikel 2 van de Wet op de zorgtoeslag legt een betalingsverplichting op en
+  # laat het ritme aan het beleid van de uitvoerder (`ritme: $betalingsritme`).
+  betalingsritme: kwartaal
+
 cells:
   - id: belastingdienst
     laws: []
+    # Deze cel komt de betalingsverplichtingen na die Dienst Toeslagen oplegt.
+    # Dat er hier nooit betaald wordt, komt doordat het besluit geweigerd wordt
+    # — maar de wereld moet wel op te tuigen zijn.
+    komt_na:
+      - Dienst Toeslagen
 
     chronicles:
+      - stream: betalingen
+        key: zaakkenmerk
       - stream: aanslagen
         key: bsn
         events:
@@ -63,6 +75,10 @@ cells:
       - regeling_standaardpremie
 
     chronicles:
+      # De besluitende cel houdt zelf ook een betalingsstroom: zij legt vast dat
+      # haar gemeld is dat er betaald is.
+      - stream: betalingen
+        key: zaakkenmerk
       - stream: relaties
         key: bsn
         events:

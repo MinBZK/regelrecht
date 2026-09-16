@@ -864,18 +864,140 @@ pub enum SimulatorError {
     /// letterlijk bedrag of een parameter zou naast die uitkomst gaan leven, en
     /// dan zegt het gram twee dingen over hetzelfde geld.
     #[error(
-        "cel '{cell}': verplichting van besluit '{besluit}' noemt bedrag '{amount}'; \
-         dat moet een uitkomst van dit besluit zijn, als $naam (uitkomsten: {outputs})"
+        "cel '{cell}': verplichting uit {origin} noemt bedrag '{amount}'; dat moet \
+         als $naam verwijzen naar een uitkomst van dat artikel of naar een \
+         uitkomst die besluit '{besluit}' erbij vastlegt (uitkomsten: {outputs})"
     )]
     ObligationAmount {
+        /// Cel waarin het besluit staat dat dit artikel uitvoert.
+        cell: String,
+        /// Het besluit dat het artikel uitvoert.
+        besluit: String,
+        /// Het lexogram dat de verplichting declareert.
+        origin: String,
+        /// Wat er als bedrag stond.
+        amount: String,
+        /// Komma-gescheiden lijst van de uitkomsten die er wél zijn.
+        outputs: String,
+    },
+
+    /// Een verplichting noemt een soort die de opstelling niet kent.
+    ///
+    /// Platformvocabulaire, net als de ritmes: een soort erbij is een variant
+    /// erbij, en een typfout hoort niet stil als betaling te eindigen.
+    #[error(
+        "cel '{cell}': verplichting uit {origin}, uitgevoerd door besluit \
+         '{besluit}', is van soort '{soort}' (bekend: {known})"
+    )]
+    UnknownObligationKind {
+        /// Cel waarin het besluit staat dat dit artikel uitvoert.
+        cell: String,
+        /// Het besluit dat het artikel uitvoert.
+        besluit: String,
+        /// Het lexogram dat de verplichting declareert.
+        origin: String,
+        /// De onbekende soort.
+        soort: String,
+        /// Komma-gescheiden lijst van de soorten die er wél zijn.
+        known: String,
+    },
+
+    /// Het `chronolex`-blok van een artikel is niet te lezen.
+    ///
+    /// Een blok dat er staat maar niet klopt, is een fout in de **wet** en niet
+    /// in een wereldbestand. Stil overslaan zou een regeling laten zwijgen waar
+    /// ze spreekt, en dan zou een besluit zonder verplichting niets bijzonders
+    /// lijken.
+    #[error("{origin}: het `extensions.chronolex`-blok is niet te lezen: {reason}")]
+    MalformedChronolexBlock {
+        /// Het lexogram met het blok.
+        origin: String,
+        /// Wat er mis is.
+        reason: String,
+    },
+
+    /// Een besluit-definitie draagt nog zelf `obligations`.
+    ///
+    /// Wat een besluit oplegt is normatief: het staat in de regeling die het
+    /// uitvoert en niet in het wereldbestand van één uitvoerder. Zou het hier
+    /// mogen blijven staan, dan konden twee uitvoerders van dezelfde regeling
+    /// een ander betalingsschema hanteren zonder dat de wet verschilt.
+    #[error(
+        "cel '{cell}': besluit-definitie '{besluit}' draagt `obligations`; \
+         verplichtingen staan in het lexogram, in het artikel van regeling \
+         '{regulation}' dat uitkomst '{output}' voortbrengt, onder \
+         `produces.extensions.chronolex.verplichtingen` — het wereldbestand \
+         zegt alleen nog welke cel ze nakomt (`komt_na`)"
+    )]
+    ObligationsInWorldFile {
         /// Cel waarin de definitie staat.
+        cell: String,
+        /// Het besluit met het vervallen veld.
+        besluit: String,
+        /// De regeling die het besluit uitvoert.
+        regulation: String,
+        /// De uitkomst die het besluit aanstuurt.
+        output: String,
+    },
+
+    /// Er is geen cel gebonden aan het gezag waarvoor betaald moet worden.
+    ///
+    /// Wie betaalt is uitvoering en staat in het wereldbestand: een cel zegt met
+    /// `komt_na` namens welk bevoegd gezag zij betalingsverplichtingen nakomt.
+    /// Zonder die binding legt een besluit iets op dat niemand nakomt, en dat
+    /// hoort bij het optuigen te blijken en niet op de eerste vervaldatum.
+    #[error(
+        "cel '{cell}': besluit '{besluit}' legt een verplichting op namens \
+         '{authority}', maar geen enkele cel komt dat gezag na; zet \
+         `komt_na: [{authority}]` bij de cel die betaalt{known}"
+    )]
+    ObligationWithoutPayer {
+        /// Cel die besluit.
         cell: String,
         /// Het besluit met de verplichting.
         besluit: String,
-        /// Wat er als bedrag stond.
-        amount: String,
-        /// Komma-gescheiden lijst van de uitkomsten die het besluit vastlegt.
-        outputs: String,
+        /// Het bevoegd gezag waarvoor betaald moet worden.
+        authority: String,
+        /// Wat er wél gebonden is, of leeg.
+        known: String,
+    },
+
+    /// Een verplichting onder een regeling die geen bevoegd gezag aanwijst.
+    ///
+    /// De betalende cel wordt aan het gezag gebonden, dus een regeling die
+    /// daarover zwijgt laat de verplichting bij niemand terechtkomen. Anders dan
+    /// bij een besluit zónder verplichting is dat geen gat om over te
+    /// waarschuwen: er valt niets na te komen.
+    #[error(
+        "cel '{cell}': besluit '{besluit}' legt een verplichting op uit {origin}, \
+         maar die regeling wijst geen bevoegd gezag aan; dan is er niemand om de \
+         betaling aan te binden"
+    )]
+    ObligationWithoutAuthority {
+        /// Cel die besluit.
+        cell: String,
+        /// Het besluit met de verplichting.
+        besluit: String,
+        /// Het lexogram dat de verplichting declareert.
+        origin: String,
+    },
+
+    /// Twee cellen komen hetzelfde bevoegd gezag na.
+    ///
+    /// Dan is niet te zeggen welke van de twee betaalt, en een keuze die het
+    /// platform maakt zou een betaling bij een willekeurige organisatie laten
+    /// landen.
+    #[error(
+        "cellen '{cell}' en '{other}' komen allebei '{authority}' na; per gezag \
+         kan één cel de betalingsverplichtingen nakomen"
+    )]
+    DuplicatePayerBinding {
+        /// De cel die het gezag als tweede noemt.
+        cell: String,
+        /// De cel die het al noemde.
+        other: String,
+        /// Het gezag dat ze allebei noemen.
+        authority: String,
     },
 
     /// De uitkomst waarnaar een verplichting verwijst is geen bedrag.
