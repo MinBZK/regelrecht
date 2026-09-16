@@ -312,7 +312,7 @@ harvester-test:
 [doc("Run pipeline unit tests (src/ plus the CLI suite, no Docker)")]
 pipeline-test:
     cd packages/pipeline && {{ci_flags}} cargo test --lib
-    cd packages/pipeline && {{ci_flags}} cargo test --test law_source_cli
+    cd packages/pipeline && {{ci_flags}} cargo test --test law_source_cli --test law_check_cli
 
 # Run pipeline integration tests (requires Docker for testcontainers)
 pipeline-integration-test:

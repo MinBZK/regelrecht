@@ -621,6 +621,20 @@ const CITATION_SIGNALS: &[&str] = &[
     "ecli:",
 ];
 
+/// Whether two paths name the same file on disk.
+///
+/// Compares the canonical paths, so a relative and an absolute spelling of
+/// the law, or a path through a symlinked directory, still resolve to one
+/// file. Falls back to comparing the paths as given when either cannot be
+/// canonicalised, which is the honest answer for a path that no longer
+/// exists.
+fn same_file(a: &Path, b: &Path) -> bool {
+    match (a.canonicalize(), b.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
+    }
+}
+
 /// Whether anything the agent wrote beside the law names a source it cannot
 /// have read.
 ///
@@ -632,7 +646,17 @@ const CITATION_SIGNALS: &[&str] = &[
 ///
 /// `provided` is every text the agent was given, so a reference that occurs
 /// there is one it read rather than recalled.
-pub fn citations_in_companion_files(dir: &Path, provided: &str) -> Vec<Finding> {
+///
+/// `law` is the file under enrichment, excluded because `marking_discipline`
+/// already covers it and knows which article a finding belongs to. It is
+/// excluded by identity rather than by extension: skipping every `.yaml`
+/// left a companion YAML unscanned while a companion `.yml` beside it was
+/// read, and the agent chooses that extension, not this check.
+pub fn citations_in_companion_files(
+    dir: &Path,
+    law: Option<&Path>,
+    provided: &str,
+) -> Vec<Finding> {
     let provided_lower = provided.to_lowercase();
     let mut findings = Vec::new();
 
@@ -647,13 +671,13 @@ pub fn citations_in_companion_files(dir: &Path, provided: &str) -> Vec<Finding> 
                 stack.push(path);
                 continue;
             }
-            // The law itself is covered by `marking_discipline`, which knows
-            // its structure and can say which article a finding belongs to.
             let name = path
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or_default();
-            if name.ends_with(".yaml") && !name.starts_with('.') {
+            // The law itself is covered by `marking_discipline`, which knows
+            // its structure and can say which article a finding belongs to.
+            if law.is_some_and(|law| same_file(law, &path)) {
                 continue;
             }
             // The context brief is written by the worker, not the agent, and
@@ -3248,12 +3272,15 @@ impl Report {
 /// Run every deterministic check over one law file.
 ///
 /// `companion_dir`, when given, is the directory the agent worked in: every
-/// non-law file under it is checked for citations too, because an agent
-/// writes more than the law and a check that only reads the law misses it.
+/// file under it beside the law itself is checked for citations too, because
+/// an agent writes more than the law and a check that only reads the law
+/// misses it. `law_path` names the law so it can be excluded by identity
+/// rather than by extension.
 pub fn run_with_companions(
     yaml: &str,
     corpus_root: Option<&Path>,
     companion_dir: Option<&Path>,
+    law_path: Option<&Path>,
 ) -> Report {
     let mut report = run(yaml, corpus_root);
     if let Some(dir) = companion_dir {
@@ -3262,7 +3289,7 @@ pub fn run_with_companions(
             .unwrap_or_default();
         report
             .findings
-            .extend(citations_in_companion_files(dir, &statutory_text));
+            .extend(citations_in_companion_files(dir, law_path, &statutory_text));
     }
     report
 }
@@ -4893,6 +4920,94 @@ articles:
         .expect("yaml");
         assert_eq!(output_units(&doc, "toetsingsinkomen"), vec!["eurocent"]);
         assert!(output_units(&doc, "bestaat_niet").is_empty());
+    }
+
+    /// The check excluded the law by extension, so a companion `.yaml` went
+    /// unscanned while a companion `.yml` beside it was read — a distinction
+    /// the agent makes, not this check.
+    #[test]
+    fn a_companion_yaml_is_scanned_just_like_a_companion_yml() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("bindings.yaml"),
+            "note: zie Kamerstukken II 2023/24, 36000, nr. 3\n",
+        )
+        .expect("write");
+        std::fs::write(
+            dir.path().join("services.yml"),
+            "note: zie ECLI:NL:HR:2024:1\n",
+        )
+        .expect("write");
+
+        let f = citations_in_companion_files(dir.path(), None, "de wettekst noemt niets hiervan");
+        let details: Vec<&str> = f.iter().map(|f| f.detail.as_str()).collect();
+        assert_eq!(f.len(), 2, "{details:?}");
+        assert!(
+            details.iter().any(|d| d.starts_with("bindings.yaml")),
+            "{details:?}"
+        );
+        assert!(
+            details.iter().any(|d| d.starts_with("services.yml")),
+            "{details:?}"
+        );
+        assert!(f.iter().all(|f| f.check == "citation"), "{details:?}");
+    }
+
+    /// The law is `marking_discipline`'s business, which can name the article
+    /// a finding belongs to. Reporting it here too would say it twice.
+    #[test]
+    fn the_law_file_is_not_a_companion_of_itself() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let law = dir.path().join("2026-01-01.yaml");
+        std::fs::write(&law, "note: zie Kamerstukken II 2023/24, 36000, nr. 3\n").expect("write");
+
+        assert!(
+            citations_in_companion_files(dir.path(), Some(&law), "niets").is_empty(),
+            "the law under enrichment is not its own companion"
+        );
+        // A relative spelling of the same file is the same file.
+        assert!(citations_in_companion_files(
+            dir.path(),
+            Some(&dir.path().join(".").join("2026-01-01.yaml")),
+            "niets"
+        )
+        .is_empty());
+        // Without the law named, nothing is excluded.
+        assert_eq!(
+            citations_in_companion_files(dir.path(), None, "niets").len(),
+            1
+        );
+    }
+
+    /// A citation the agent was given is one it read, whatever file it wrote
+    /// it into.
+    #[test]
+    fn a_companion_citation_that_occurs_in_the_provided_text_is_silent() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("scenarios.feature"),
+            "# zie Kamerstukken II 2023/24, 36000, nr. 3\n",
+        )
+        .expect("write");
+        assert!(citations_in_companion_files(
+            dir.path(),
+            None,
+            "De toelichting bij deze wet staat in Kamerstukken II 2023/24, 36000, nr. 3."
+        )
+        .is_empty());
+    }
+
+    /// The brief is the worker's own text. Scanning it would report the
+    /// worker's work as an unsupported claim by the agent.
+    #[test]
+    fn the_context_brief_is_not_scanned() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join(super::super::context::CONTEXT_BRIEF),
+            "zie Kamerstukken II 2023/24, 36000, nr. 3\n",
+        )
+        .expect("write");
+        assert!(citations_in_companion_files(dir.path(), None, "niets").is_empty());
     }
 
     /// A name is routinely declared by more than one article. Taking the unit
