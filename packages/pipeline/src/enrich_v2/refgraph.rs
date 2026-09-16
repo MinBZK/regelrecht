@@ -89,6 +89,25 @@ pub fn top_article(number: &str) -> &str {
     &number[..end]
 }
 
+/// The entry an aanhef and its leden share, for keeping a window whole.
+///
+/// A different question from [`top_article`], and the two are easy to confuse.
+/// This one groups the entries the enricher writes, where a lid is a dotted
+/// suffix of the entry it belongs to (`1`, `1.1`, `1.2`), so the cut falls at
+/// the first dot. `top_article` reads article numbers as the corpus writes
+/// them, where `2.62` is a whole article of the BRP and cutting it would merge
+/// articles that have nothing to do with each other.
+///
+/// They shared one function until that difference bit: fixing the corpus side
+/// silently changed how windows were cut.
+#[must_use]
+pub fn entry_group(number: &str) -> &str {
+    match number.find('.') {
+        Some(i) => &number[..i],
+        None => number,
+    }
+}
+
 /// One node of the reference graph: a top-level article of a named statute.
 ///
 /// The statute is part of the identity because a reference block gives it. A
