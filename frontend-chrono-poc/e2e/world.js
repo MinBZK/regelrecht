@@ -183,6 +183,72 @@ function session(context, page, pageErrors) {
     return await world();
   };
 
+  /**
+   * Het formulier van het tabblad Lexostatus.
+   *
+   * Het enige formulier op dat tabblad, en alles wat er staat komt uit de
+   * gekozen definitie. De keuzelijsten van de instellingen staan in dezelfde
+   * boom maar erbuiten; daarom telt alles hieronder binnen dít formulier, en
+   * niet "de eerste keuzelijst van de pagina".
+   */
+  const lexostatusForm = () => page.locator('form').first();
+
+  /**
+   * Het veld van één parameter, als de omringende `nldd-form-field`.
+   *
+   * Op het label van het invoerelement en niet op dat van het veld: het label
+   * van een `nldd-form-field` staat als eigenschap en niet als attribuut, en
+   * daar is geen selector op te leggen. Het invoerelement draagt zijn label wel
+   * als attribuut, en dat is er één per parameter.
+   */
+  const lexostatusField = (param) =>
+    lexostatusForm().locator('nldd-form-field', {
+      has: page.locator(`[accessible-label="Waarde van ${param}"]`),
+    });
+
+  /** Wat het veld van deze parameter aan bekende waarden aanbiedt. */
+  const lexostatusOptions = async (param) =>
+    await lexostatusField(param)
+      .locator('nldd-menu-item')
+      .evaluateAll((items) => items.map((item) => item.getAttribute('text')));
+
+  /**
+   * Stel de vraag van het tabblad Lexostatus.
+   *
+   * Wat je weglaat blijft staan zoals het stond: dezelfde vraag op een ander
+   * moment is één sleutel verzetten, niet het formulier opnieuw invullen.
+   *
+   * De parameters gaan er met echte toetsaanslagen in. Het veld van een sleutel
+   * is een `nldd-combo-box`, en die werkt zijn waarde bij op wat er in zijn
+   * eigen invoerveld gebeurt; `fill` zet die waarde er in één keer neer en het
+   * component ziet er niets van. Na het typen staat de keuzelijst open, over de
+   * knop heen — Escape doet hem dicht zonder de getypte waarde aan te raken.
+   */
+  const askLexostatus = async ({ cell, name, params, moment } = {}) => {
+    const keuze = lexostatusForm().locator('select');
+    if (cell) {
+      await keuze.nth(0).selectOption(cell);
+      await page.waitForTimeout(200);
+    }
+    if (name) {
+      await keuze.nth(1).selectOption(name);
+      await page.waitForTimeout(200);
+    }
+    for (const [param, value] of Object.entries(params || {})) {
+      const veld = lexostatusField(param).locator('input');
+      await veld.click();
+      await veld.press('ControlOrMeta+a');
+      await veld.pressSequentially(String(value));
+      await page.keyboard.press('Escape');
+    }
+    if (moment) {
+      const veld = lexostatusForm().locator('input[aria-label="Op moment"]');
+      await veld.fill(moment);
+      await veld.press('Tab');
+    }
+    await page.getByText('Vraag stellen').first().click();
+  };
+
   return {
     context,
     page,
@@ -196,6 +262,10 @@ function session(context, page, pageErrors) {
     textAll,
     advance,
     fillByLabel,
+    lexostatusForm,
+    lexostatusField,
+    lexostatusOptions,
+    askLexostatus,
     close: async () => await context.close(),
   };
 }
