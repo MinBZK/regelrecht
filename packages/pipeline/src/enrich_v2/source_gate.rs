@@ -394,6 +394,26 @@ fn normalize_for_comparison(s: &str) -> String {
     LIDNR.replace_all(&tightened, "${1}${2}. ").into_owned()
 }
 
+/// The article number as a string, whatever YAML made of it.
+///
+/// `number: 1` is a number to the parser and `number: '1'` a string, and the
+/// law means the same thing by both. Reading it with `as_str` alone silently
+/// skips the numeric spelling, which in the rewrite meant an entry escaped
+/// both the flatten guard and the carry-over: its translation was dropped
+/// without a word. One reading, used everywhere an entry is identified.
+fn article_number(article: &serde_yaml_ng::Value) -> Option<String> {
+    match article.get("number") {
+        Some(serde_yaml_ng::Value::String(s)) => Some(s.clone()),
+        Some(serde_yaml_ng::Value::Null) | None => None,
+        Some(other) => Some(
+            serde_yaml_ng::to_string(other)
+                .unwrap_or_default()
+                .trim()
+                .to_string(),
+        ),
+    }
+}
+
 /// Compare a corpus law document against the official articles.
 pub fn verify(corpus: &serde_yaml_ng::Value, official: &[SourceArticle]) -> GateReport {
     let mut report = GateReport::default();
@@ -413,13 +433,8 @@ pub fn verify(corpus: &serde_yaml_ng::Value, official: &[SourceArticle]) -> Gate
 
     let mut seen = std::collections::BTreeSet::new();
     for article in articles {
-        let number = match article.get("number") {
-            Some(serde_yaml_ng::Value::String(s)) => s.clone(),
-            Some(other) => serde_yaml_ng::to_string(other)
-                .unwrap_or_default()
-                .trim()
-                .to_string(),
-            None => continue,
+        let Some(number) = article_number(article) else {
+            continue;
         };
         seen.insert(number.clone());
         let corpus_text = normalize_for_comparison(
@@ -464,16 +479,31 @@ pub fn verify(corpus: &serde_yaml_ng::Value, official: &[SourceArticle]) -> Gate
     }
 
     for a in official {
-        // An article is present when the file has it whole or has any of
-        // its parts; a fragmented corpus never carries the article number
-        // by itself.
-        let covered = seen.iter().any(|s: &String| {
-            s == &a.number
-                || s.strip_prefix(&a.number)
+        // An article is present when the file carries it whole. A fragmented
+        // corpus never carries the article number by itself, and then every
+        // fragment the toestand has must be there: walking the *found* set
+        // let a deleted lid pass, because a sibling that survived covered the
+        // article for it. Deletion is exactly the drift this gate exists to
+        // catch, so the walk goes over the expected set instead.
+        if seen.iter().any(|s: &String| s == &a.number) {
+            continue;
+        }
+        let fragments: Vec<&String> = seen
+            .iter()
+            .filter(|s| {
+                s.strip_prefix(&a.number)
                     .is_some_and(|r| r.starts_with('.'))
-        });
-        if !covered {
+            })
+            .collect();
+        if fragments.is_empty() {
             report.verdicts.insert(a.number.clone(), Verdict::Missing);
+            continue;
+        }
+        for part in a.parts.keys() {
+            let address = format!("{}.{}", a.number, part);
+            if !fragments.contains(&&address) {
+                report.verdicts.insert(address, Verdict::Missing);
+            }
         }
     }
 
@@ -601,10 +631,10 @@ pub fn rewrite(
     let official_by_number: BTreeMap<&str, &SourceArticle> =
         official.iter().map(|a| (a.number.as_str(), a)).collect();
     for article in corpus_articles {
-        let Some(number) = article.get("number").and_then(Value::as_str) else {
+        let Some(number) = article_number(article) else {
             continue;
         };
-        let Some((source, path)) = resolve(&official_by_number, number) else {
+        let Some((source, path)) = resolve(&official_by_number, &number) else {
             continue;
         };
         if path.is_empty() {
@@ -637,7 +667,7 @@ pub fn rewrite(
     let mut carried: BTreeMap<String, Mapping> = BTreeMap::new();
     if let Some(seq) = corpus.get("articles").and_then(Value::as_sequence) {
         for article in seq {
-            let Some(number) = article.get("number").and_then(Value::as_str) else {
+            let Some(number) = article_number(article) else {
                 continue;
             };
             let Some(map) = article.as_mapping() else {
@@ -648,7 +678,7 @@ pub fn rewrite(
                 .filter(|(k, _)| !matches!(k.as_str(), Some("number") | Some("text")))
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect();
-            carried.insert(number.to_string(), kept);
+            carried.insert(number, kept);
         }
     }
 
@@ -1345,6 +1375,61 @@ articles:
         let report = verify(&corpus, &official);
         assert!(!report.verdicts.contains_key("3"), "{:?}", report.verdicts);
         assert_eq!(report.verdicts["5.2"], Verdict::Missing);
+    }
+
+    #[test]
+    fn a_fragment_the_toestand_has_and_the_file_lost_is_missing() {
+        // Walking the found set let this pass: article 3 counted as covered
+        // because lid 1 survived, and the deleted lid 2 with its two items
+        // was never looked for. A lid that disappears from a file is the
+        // drift a text gate exists to catch, so each expected fragment is
+        // now checked by its own address.
+        let official = parse_toestand(FRAGMENTED_XML).unwrap();
+        let corpus: serde_yaml_ng::Value =
+            serde_yaml_ng::from_str("articles:\n  - number: '3.1'\n    text: Eerste lid.\n")
+                .unwrap();
+        let report = verify(&corpus, &official);
+        assert_eq!(
+            report.verdicts["3.2"],
+            Verdict::Missing,
+            "{:?}",
+            report.verdicts
+        );
+        assert_eq!(report.verdicts["3.2.a"], Verdict::Missing);
+        assert_eq!(report.verdicts["3.2.b"], Verdict::Missing);
+        assert!(!report.passes(), "a file missing a lid must not pass");
+    }
+
+    #[test]
+    fn an_unquoted_article_number_keeps_its_translation() {
+        // `number: 1` is a YAML number, `number: '1'` a string, and the law
+        // means the same by both. Reading it with `as_str` alone made the
+        // entry invisible to the carry-over, so the rewrite replaced it with
+        // a bare article and the translation was gone without a word. The
+        // same slip made it invisible to the flatten guard.
+        let official = parse_toestand(XML).unwrap();
+        let corpus: serde_yaml_ng::Value = serde_yaml_ng::from_str(
+            r#"
+bwb_id: BWBR0000001
+url: https://wetten.overheid.nl/BWBR0000001
+articles:
+  - number: 1
+    text: oude tekst
+    machine_readable: {a: 1}
+"#,
+        )
+        .unwrap();
+        let report = verify(&corpus, &official);
+        let (doc, _) = rewrite(&corpus, &official, &report).unwrap();
+        let arts = doc.get("articles").unwrap().as_sequence().unwrap();
+        let a1 = arts
+            .iter()
+            .find(|a| a.get("number").and_then(serde_yaml_ng::Value::as_str) == Some("1"))
+            .expect("article 1");
+        assert!(
+            a1.get("machine_readable").is_some(),
+            "the translation must survive an unquoted number: {a1:?}"
+        );
     }
 
     #[test]
