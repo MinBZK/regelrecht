@@ -14,6 +14,7 @@
 //! De store is bewust *niet* publiek bereikbaar vanaf een cel: zie
 //! [`crate::cell::Cell`].
 
+use super::config::{DocumentedParameter, Mismatch, ParameterType};
 use super::reductie::Gemist;
 use crate::error::{Result, SimulatorError};
 use crate::values::equivalent;
@@ -41,6 +42,88 @@ pub enum Intake {
     Betaling,
     /// De cel nam zelf een besluit en legde dat vast.
     EigenBesluit,
+}
+
+/// Het gebeurtenisschema van een stroom: wat een gebeurtenis van deze naam
+/// vastlegt.
+///
+/// Het typeschema van een executogram is generiek en compile-time — het geldt
+/// voor elke vastlegging van deze naam, niet voor één casus — en hoort dus
+/// **data** te zijn en geen Rust. RFC-022 §1.3 vraagt per gebeurtenis drie
+/// dingen: welke velden ze draagt en van welk type, op welke grondslag ze
+/// vastgelegd wordt, en langs welk kanaal ze binnenkomt. Die drie staan hier.
+///
+/// Wat dat oplevert: een typfout in een fixture valt bij het optuigen en niet
+/// pas als de tijdlijn erlangs komt, een tweede soort gebeurtenis kan erbij
+/// zonder dat er Rust aan te pas komt, en een lezer van het beeld ziet wat een
+/// stroom draagt voordat er één gram in ligt.
+///
+/// Een stroom die geen schema declareert wordt niet getoetst. Dat is met opzet:
+/// een kroniek van een organisatie die er nooit een schreef, is nog steeds een
+/// kroniek, en de toets hoort erbij te komen doordat iemand hem opschrijft.
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct GebeurtenisSchema {
+    /// De naam waaronder deze gebeurtenis in de stroom vastgelegd wordt.
+    pub name: String,
+    /// Het kanaal waarlangs een gebeurtenis van deze naam binnenkomt.
+    ///
+    /// Declaratie en geen toets: het gram draagt zijn kanaal zelf, en dat is wat
+    /// er in de kroniek staat. Wat het hier toevoegt is dat een lezer van het
+    /// schema ziet waarlangs dit soort feit een cel bereikt, ook als de stroom
+    /// nog leeg is.
+    pub intake: Intake,
+    /// De grondslag die een gram van deze naam draagt als het er zelf geen
+    /// noemt.
+    ///
+    /// De grondslag is een eigenschap van het *soort* vastlegging en niet van
+    /// één gram: dat een betaling op Awb 4:89 berust, geldt voor elke betaling.
+    /// Ze hier één keer opschrijven is dus geen gemak maar de juiste plek; een
+    /// gram dat er zelf een draagt, houdt de zijne (zie
+    /// [`GebeurtenisSchema::grondslag_voor`]).
+    #[serde(default)]
+    pub grondslag: String,
+    /// De velden die een gram van deze naam draagt, elk met zijn type.
+    ///
+    /// Een **ondergrens** en geen opsomming: wat hier staat moet erin, en een
+    /// gram mag meer dragen. Een besluit schrijft zijn eigen uitkomsten in het
+    /// gram en die zijn per regeling anders; zou het schema die ook moeten
+    /// noemen, dan stond de wet twee keer opgeschreven.
+    #[serde(default)]
+    pub fields: Vec<SchemaVeld>,
+}
+
+/// Eén veld van een gebeurtenisschema: de naam en het type.
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct SchemaVeld {
+    /// De veldnaam, zoals ze in het gram staat.
+    pub name: String,
+    /// Het type van de waarde.
+    ///
+    /// Dezelfde typen als die van een gedocumenteerde parameter
+    /// ([`ParameterType`]) en met opzet dezelfde: een veld dat via het formulier
+    /// van een actie in een kroniek belandt, gaat door beide toetsen, en twee
+    /// typestelsels zouden daar tegen elkaar in kunnen gaan.
+    #[serde(rename = "type")]
+    pub value_type: ParameterType,
+}
+
+impl GebeurtenisSchema {
+    /// De grondslag die een gram van deze naam draagt.
+    ///
+    /// Het gram gaat voor: een vastlegging die haar eigen grondslag noemt, weet
+    /// beter dan het schema waarop juist zíj berustte. Noemt ze er geen, dan is
+    /// de grondslag van het schema wat er in de kroniek komt te staan — niet als
+    /// weergave, maar als veld van het gram, want een grondslag die alleen bij
+    /// het tonen wordt aangevuld staat nergens vast.
+    fn grondslag_voor(&self, event: &ChronicleEvent) -> Option<String> {
+        if event.grondslag.is_empty() && !self.grondslag.is_empty() {
+            Some(self.grondslag.clone())
+        } else {
+            None
+        }
+    }
 }
 
 /// Eén vastlegging in een kroniekstroom: één executogram.
@@ -87,6 +170,14 @@ pub struct ChronicleStream {
     pub stream: String,
     /// Het veld waarop vastleggingen gegroepeerd worden (bijvoorbeeld `bsn`).
     pub key: String,
+    /// Het schema van de stroom: per gebeurtenisnaam wat ze vastlegt.
+    ///
+    /// Leeg is toegestaan en betekent *ongetoetst*: dan draagt de stroom wat
+    /// erin gelegd wordt. Staat er wél een schema, dan wordt elke vastlegging
+    /// eraan gehouden — bij het optuigen als ze uit het wereldbestand komt, bij
+    /// het vastleggen als ze tijdens de run ontstaat.
+    #[serde(default)]
+    pub gebeurtenissen: Vec<GebeurtenisSchema>,
     /// De vastleggingen, in willekeurige volgorde; de store ordent zelf.
     #[serde(default)]
     pub events: Vec<ChronicleEvent>,
@@ -115,6 +206,8 @@ pub(crate) struct ChronicleView<'a> {
     pub(crate) stream: &'a str,
     /// Het sleutelveld van de stroom.
     pub(crate) key: &'a str,
+    /// Het gebeurtenisschema van de stroom; leeg als ze er geen declareert.
+    pub(crate) gebeurtenissen: &'a [GebeurtenisSchema],
     /// De vastleggingen, in de volgorde waarin ze vastgelegd zijn.
     pub(crate) events: &'a [ChronicleEvent],
 }
@@ -155,16 +248,17 @@ impl ChronicleStore {
     /// niet vast te stellen over welk onderwerp het feit gaat. Faalt ook op twee
     /// stromen met dezelfde naam: die naam is tevens de naam van de databron in
     /// de engine, en daar zou de tweede de eerste stil schaduwen.
-    pub(crate) fn from_streams(cell: &str, streams: Vec<ChronicleStream>) -> Result<Self> {
-        let mut seen: BTreeSet<&str> = BTreeSet::new();
-        for stream in &streams {
-            if !seen.insert(stream.stream.as_str()) {
+    pub(crate) fn from_streams(cell: &str, mut streams: Vec<ChronicleStream>) -> Result<Self> {
+        let mut seen: BTreeSet<String> = BTreeSet::new();
+        for stream in &mut streams {
+            if !seen.insert(stream.stream.clone()) {
                 return Err(SimulatorError::DuplicateStream {
                     cell: cell.to_string(),
                     stream: stream.stream.clone(),
                 });
             }
-            for event in &stream.events {
+            for event in &mut stream.events {
+                apply_schema(cell, &stream.stream, &stream.gebeurtenissen, event)?;
                 check_event(cell, &stream.stream, &stream.key, event)?;
             }
         }
@@ -182,6 +276,14 @@ impl ChronicleStore {
             .iter()
             .map(|stream| {
                 let mut fields: BTreeSet<String> = BTreeSet::from([stream.key.clone()]);
+                // Wat het schema declareert telt mee vóórdat er één gram ligt —
+                // dat is nu juist waarvoor het er staat. Zonder deze regel zou
+                // een som over `bedrag` als typfout geweigerd worden zolang er
+                // nog niets betaald is, en dat is precies het moment waarop een
+                // wereld opgetuigd wordt.
+                for gebeurtenis in &stream.gebeurtenissen {
+                    fields.extend(gebeurtenis.fields.iter().map(|veld| veld.name.clone()));
+                }
                 for event in &stream.events {
                     fields.extend(event.fields.keys().cloned());
                 }
@@ -196,6 +298,70 @@ impl ChronicleStore {
             .iter()
             .map(|stream| (stream.stream.clone(), stream.key.clone()))
             .collect()
+    }
+
+    /// Het gebeurtenisschema van één stroom; leeg als ze er geen declareert of
+    /// als de cel haar niet houdt.
+    pub(crate) fn schema_of(&self, stream: &str) -> &[GebeurtenisSchema] {
+        self.streams
+            .iter()
+            .find(|candidate| candidate.stream == stream)
+            .map_or(&[], |found| &found.gebeurtenissen)
+    }
+
+    /// Kan het formulier van een actie een gram van deze naam opleveren?
+    ///
+    /// Dezelfde drie bezwaren als bij een vastlegging — onbekende naam,
+    /// ontbrekend veld, verkeerd type — maar één stap eerder: een actie noemt
+    /// haar formulier in het wereldbestand, dus wat eruit komt staat bij het
+    /// optuigen al vast. De toets hoort dan ook daar te vallen, en niet pas bij
+    /// de eerste druk op de knop.
+    ///
+    /// De tekst gaat in de weigering van de actie zelf (zie
+    /// [`SimulatorError::ActionRecording`]), want die weet welke actie het was.
+    pub(crate) fn check_form(
+        &self,
+        stream: &str,
+        name: &str,
+        form: &[DocumentedParameter],
+    ) -> std::result::Result<(), String> {
+        let schema = self.schema_of(stream);
+        if schema.is_empty() {
+            return Ok(());
+        }
+        let Some(gebeurtenis) = schema.iter().find(|candidate| candidate.name == name) else {
+            return Err(format!(
+                "het schema van die stroom kent geen gebeurtenis '{name}' (wel: {})",
+                schema
+                    .iter()
+                    .map(|candidate| candidate.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        };
+        for veld in &gebeurtenis.fields {
+            let Some(field) = form
+                .iter()
+                .find(|candidate| candidate.name.eq_ignore_ascii_case(&veld.name))
+            else {
+                return Err(format!(
+                    "gebeurtenis '{name}' draagt volgens het schema veld '{}' ({}), en dat \
+                     veld staat niet in het formulier",
+                    veld.name,
+                    veld.value_type.label()
+                ));
+            };
+            if field.value_type != veld.value_type {
+                return Err(format!(
+                    "veld '{}' is in het formulier {}, en het schema van gebeurtenis \
+                     '{name}' declareert {}",
+                    veld.name,
+                    field.value_type.label(),
+                    veld.value_type.label()
+                ));
+            }
+        }
+        Ok(())
     }
 
     /// De namen van de stromen die deze cel houdt, voor een foutmelding.
@@ -216,6 +382,7 @@ impl ChronicleStore {
             .map(|stream| ChronicleView {
                 stream: &stream.stream,
                 key: &stream.key,
+                gebeurtenissen: &stream.gebeurtenissen,
                 events: &stream.events,
             })
             .collect()
@@ -450,6 +617,7 @@ impl ChronicleStore {
             return Err(self.unknown_stream(cell, stream));
         };
         let target = &self.streams[index];
+        check_schema(cell, &target.stream, &target.gebeurtenissen, event)?;
         check_event(cell, &target.stream, &target.key, event)?;
         Ok(index)
     }
@@ -481,7 +649,20 @@ impl ChronicleStore {
     ///
     /// Achteraan, en niet op datumpositie: bij een gelijk moment beslist de
     /// volgorde van vastlegging, en [`Self::reduce_to`] sorteert stabiel.
-    pub(crate) fn record(&mut self, cell: &str, stream: &str, event: ChronicleEvent) -> Result<()> {
+    pub(crate) fn record(
+        &mut self,
+        cell: &str,
+        stream: &str,
+        mut event: ChronicleEvent,
+    ) -> Result<()> {
+        if let Some(index) = self.index_of(stream) {
+            apply_schema(
+                cell,
+                stream,
+                &self.streams[index].gebeurtenissen,
+                &mut event,
+            )?;
+        }
         let index = self.checked_index(cell, stream, &event)?;
         self.streams[index].events.push(event);
         Ok(())
@@ -612,6 +793,154 @@ pub(crate) fn field<'a>(fields: &'a BTreeMap<String, Value>, name: &str) -> Opti
         .map(|(_, value)| value)
 }
 
+/// Wat een vereist schema vraagt en een gedeclareerd schema niet dekt.
+///
+/// Voor de toets bij het optuigen dat een cel die een verplichting nakomt daar
+/// ook een stroom voor houdt die het bijhoudt (zie
+/// [`SimulatorError::ObligationStream`]). Een opsomming en geen ja-of-nee, want
+/// wie dit leest moet weten wát hij nog moet opschrijven — "het schema klopt
+/// niet" laat hem zoeken in een stroom waarin niets fout lijkt.
+///
+/// Een gebeurtenis die helemaal ontbreekt, staat er als naam; een veld dat
+/// ontbreekt of een ander type draagt, als `gebeurtenis.veld`. Een gedeclareerd
+/// schema mag méér dragen dan gevraagd: het vereiste is een ondergrens.
+pub(crate) fn uncovered(
+    declared: &[GebeurtenisSchema],
+    required: &[GebeurtenisSchema],
+) -> Vec<String> {
+    let mut missing = Vec::new();
+    for gevraagd in required {
+        let Some(gebeurtenis) = declared
+            .iter()
+            .find(|candidate| candidate.name == gevraagd.name)
+        else {
+            missing.push(gevraagd.name.clone());
+            continue;
+        };
+        for veld in &gevraagd.fields {
+            let found = gebeurtenis
+                .fields
+                .iter()
+                .find(|candidate| candidate.name.eq_ignore_ascii_case(&veld.name));
+            match found {
+                Some(declared_veld) if declared_veld.value_type == veld.value_type => {}
+                Some(declared_veld) => missing.push(format!(
+                    "{}.{} ({}, gedeclareerd als {})",
+                    gevraagd.name,
+                    veld.name,
+                    veld.value_type.label(),
+                    declared_veld.value_type.label()
+                )),
+                None => missing.push(format!(
+                    "{}.{} ({})",
+                    gevraagd.name,
+                    veld.name,
+                    veld.value_type.label()
+                )),
+            }
+        }
+    }
+    missing
+}
+
+/// Vul aan wat het schema van deze gebeurtenis voorschrijft, en toets de rest.
+///
+/// Eén plek voor beide, want ze horen bij elkaar: de grondslag van het schema
+/// hoort in het gram te staan vóórdat er iets mee gebeurt, en wat daarna
+/// getoetst wordt is het gram zoals het in de kroniek komt te liggen en niet een
+/// halve versie ervan.
+fn apply_schema(
+    cell: &str,
+    stream: &str,
+    schema: &[GebeurtenisSchema],
+    event: &mut ChronicleEvent,
+) -> Result<()> {
+    if let Some(grondslag) = schema
+        .iter()
+        .find(|gebeurtenis| gebeurtenis.name == event.name)
+        .and_then(|gebeurtenis| gebeurtenis.grondslag_voor(event))
+    {
+        event.grondslag = grondslag;
+    }
+    check_schema(cell, stream, schema, event)
+}
+
+/// Houdt deze vastlegging zich aan het schema van haar stroom?
+///
+/// Drie bezwaren, en ze zeggen alle drie iets anders: de stroom kent deze
+/// gebeurtenis niet, het gram mist een veld dat de gebeurtenis declareert, of
+/// een veld draagt een waarde van een ander type. Een stroom zonder schema
+/// wordt niet getoetst — zie [`GebeurtenisSchema`].
+///
+/// Wat er **niet** in staat, is een bezwaar tegen een veld dat het schema niet
+/// noemt: het schema is een ondergrens. Een besluit legt zijn eigen uitkomsten
+/// in het gram, en die volgen uit de regeling die het uitvoerde; zou het schema
+/// ze ook moeten opsommen, dan stond de wet twee keer opgeschreven. Een typfout
+/// in een veldnaam valt daarmee nog steeds: het gedeclareerde veld ontbreekt
+/// dan.
+///
+/// `null` komt door elke typetoets heen. Dat is geen gat in de toets maar de
+/// betekenis van `null` in dit stelsel (RFC-036): een bron die zegt dat er geen
+/// partner is, doet een uitspraak over het veld en laat het niet leeg. Een veld
+/// dat er helemaal niet staat, wordt wél geweigerd — dat is het verschil.
+fn check_schema(
+    cell: &str,
+    stream: &str,
+    schema: &[GebeurtenisSchema],
+    event: &ChronicleEvent,
+) -> Result<()> {
+    if schema.is_empty() {
+        return Ok(());
+    }
+    let Some(gebeurtenis) = schema.iter().find(|candidate| candidate.name == event.name) else {
+        return Err(SimulatorError::UnknownGebeurtenis {
+            cell: cell.to_string(),
+            stream: stream.to_string(),
+            name: event.name.clone(),
+            known: schema
+                .iter()
+                .map(|candidate| candidate.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", "),
+        });
+    };
+    for veld in &gebeurtenis.fields {
+        let Some(value) = field(&event.fields, &veld.name) else {
+            return Err(SimulatorError::GebeurtenisVeldOntbreekt {
+                cell: cell.to_string(),
+                stream: stream.to_string(),
+                name: event.name.clone(),
+                field: veld.name.clone(),
+                expected: veld.value_type.label(),
+            });
+        };
+        if matches!(value, Value::Null) {
+            continue;
+        }
+        match veld.value_type.bind(value) {
+            Ok(()) => {}
+            Err(Mismatch::Type) => {
+                return Err(SimulatorError::GebeurtenisVeldType {
+                    stream: stream.to_string(),
+                    name: event.name.clone(),
+                    field: veld.name.clone(),
+                    expected: veld.value_type.label(),
+                    actual: value.type_name(),
+                })
+            }
+            Err(Mismatch::Date) => {
+                return Err(SimulatorError::GebeurtenisVeldDatum {
+                    stream: stream.to_string(),
+                    name: event.name.clone(),
+                    field: veld.name.clone(),
+                    value: value.to_string(),
+                })
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Mag deze vastlegging in deze stroom van deze cel?
 ///
 /// Twee dingen moeten kloppen, en bij het vastleggen net zo goed als bij het
@@ -684,6 +1013,7 @@ mod tests {
             vec![ChronicleStream {
                 stream: "relatie".to_string(),
                 key: "bsn".to_string(),
+                gebeurtenissen: Vec::new(),
                 events,
             }],
         )
@@ -813,6 +1143,7 @@ mod tests {
             vec![ChronicleStream {
                 stream: "relatie".to_string(),
                 key: "BSN".to_string(),
+                gebeurtenissen: Vec::new(),
                 events: vec![eerste],
             }],
         )
@@ -858,6 +1189,7 @@ mod tests {
             vec![ChronicleStream {
                 stream: "relatie".to_string(),
                 key: "bsn".to_string(),
+                gebeurtenissen: Vec::new(),
                 events: vec![event("2024-01-01", &[("partnerschap_type", Value::Null)])],
             }],
         )
@@ -873,6 +1205,7 @@ mod tests {
         let stream = |events| ChronicleStream {
             stream: "relatie".to_string(),
             key: "bsn".to_string(),
+            gebeurtenissen: Vec::new(),
             events,
         };
         let err = ChronicleStore::from_streams(
@@ -904,6 +1237,7 @@ mod tests {
             vec![ChronicleStream {
                 stream: "relatie".to_string(),
                 key: "bsn".to_string(),
+                gebeurtenissen: Vec::new(),
                 events: vec![foreign],
             }],
         )
@@ -1109,6 +1443,266 @@ mod tests {
             found.op_moment,
             date("2023-03-01"),
             "de latere vastlegging kent het veld niet en doet dus niet mee"
+        );
+    }
+    /// Het schema van de teststroom: één gebeurtenis met twee velden.
+    fn schema() -> Vec<GebeurtenisSchema> {
+        vec![GebeurtenisSchema {
+            name: "relatie_gewijzigd".to_string(),
+            intake: Intake::Levering,
+            grondslag: "eigen registratie".to_string(),
+            fields: vec![
+                SchemaVeld {
+                    name: "bsn".to_string(),
+                    value_type: ParameterType::String,
+                },
+                SchemaVeld {
+                    name: "partnerschap_type".to_string(),
+                    value_type: ParameterType::String,
+                },
+            ],
+        }]
+    }
+
+    /// Dezelfde stroom, nu mét schema.
+    fn store_met_schema(events: Vec<ChronicleEvent>) -> Result<ChronicleStore> {
+        ChronicleStore::from_streams(
+            "toeslagen",
+            vec![ChronicleStream {
+                stream: "relatie".to_string(),
+                key: "bsn".to_string(),
+                gebeurtenissen: schema(),
+                events,
+            }],
+        )
+    }
+
+    /// Een gram met een eigen naam en eigen velden, op naam van de teststore.
+    fn named(name: &str, fields: &[(&str, Value)]) -> ChronicleEvent {
+        ChronicleEvent {
+            name: name.to_string(),
+            ..event("2023-03-01", fields)
+        }
+    }
+
+    #[test]
+    fn een_stroom_zonder_schema_toetst_niets() {
+        // De toets komt erbij doordat iemand een schema opschrijft, en niet
+        // doordat het platform er een verzint: een kroniek van een organisatie
+        // die er nooit een schreef, is nog steeds een kroniek.
+        let store = store(vec![named(
+            "iets_heel_anders",
+            &[("bsn", Value::String("1".to_string()))],
+        )]);
+        assert_eq!(store.len_of("relatie"), Some(1));
+    }
+
+    #[test]
+    fn een_gebeurtenis_buiten_het_schema_wordt_geweigerd() {
+        let error = store_met_schema(vec![named(
+            "relatie_verwijderd",
+            &[("bsn", Value::String("1".to_string()))],
+        )])
+        .expect_err("een naam die het schema niet kent hoort geweigerd te worden");
+        assert!(
+            matches!(error, SimulatorError::UnknownGebeurtenis { .. }),
+            "verwachtte UnknownGebeurtenis, kreeg {error}"
+        );
+    }
+
+    #[test]
+    fn een_ontbrekend_veld_uit_het_schema_wordt_geweigerd() {
+        // En dit is tevens wat een typfout in een veldnaam tegenhoudt: het
+        // gedeclareerde veld ontbreekt dan, ook al staat er een veld te veel.
+        let error = store_met_schema(vec![named(
+            "relatie_gewijzigd",
+            &[
+                ("bsn", Value::String("1".to_string())),
+                ("partnerschaps_type", Value::String("GEEN".to_string())),
+            ],
+        )])
+        .expect_err("een gram dat een gedeclareerd veld mist hoort geweigerd te worden");
+        match &error {
+            SimulatorError::GebeurtenisVeldOntbreekt { field, .. } => {
+                assert_eq!(field, "partnerschap_type");
+            }
+            other => panic!("verwachtte GebeurtenisVeldOntbreekt, kreeg {other}"),
+        }
+    }
+
+    #[test]
+    fn een_veld_van_het_verkeerde_type_wordt_geweigerd() {
+        let error = store_met_schema(vec![named(
+            "relatie_gewijzigd",
+            &[
+                ("bsn", Value::String("1".to_string())),
+                ("partnerschap_type", Value::Int(3)),
+            ],
+        )])
+        .expect_err("een waarde van een ander type hoort geweigerd te worden");
+        assert!(
+            matches!(error, SimulatorError::GebeurtenisVeldType { .. }),
+            "verwachtte GebeurtenisVeldType, kreeg {error}"
+        );
+    }
+
+    #[test]
+    fn null_komt_door_elke_typetoets_heen() {
+        // `null` is een uitspraak over het veld en geen ontbrekend feit
+        // (RFC-036): de bron zegt dat er geen partner is. Een veld dat er
+        // helemáál niet staat, wordt wél geweigerd — dat is het verschil.
+        let store = store_met_schema(vec![named(
+            "relatie_gewijzigd",
+            &[
+                ("bsn", Value::String("1".to_string())),
+                ("partnerschap_type", Value::Null),
+            ],
+        )])
+        .unwrap_or_else(|e| panic!("null hoort door de typetoets te komen: {e}"));
+        assert_eq!(store.len_of("relatie"), Some(1));
+    }
+
+    #[test]
+    fn een_gram_zonder_grondslag_krijgt_die_van_het_schema() {
+        let store = store_met_schema(vec![named(
+            "relatie_gewijzigd",
+            &[
+                ("bsn", Value::String("1".to_string())),
+                ("partnerschap_type", Value::String("GEEN".to_string())),
+            ],
+        )])
+        .unwrap_or_else(|e| panic!("teststore moet op te bouwen zijn: {e}"));
+        let gram = store
+            .last_recording("relatie")
+            .unwrap_or_else(|| panic!("er hoort een gram te liggen"));
+        assert_eq!(
+            gram.grondslag, "eigen registratie",
+            "de grondslag van het schema hoort in het gram te staan"
+        );
+    }
+
+    #[test]
+    fn een_eigen_grondslag_gaat_voor_die_van_het_schema() {
+        // Een vastlegging die haar eigen grondslag noemt, weet beter dan het
+        // schema waarop juist zíj berustte.
+        let mut gram = named(
+            "relatie_gewijzigd",
+            &[
+                ("bsn", Value::String("1".to_string())),
+                ("partnerschap_type", Value::String("GEEN".to_string())),
+            ],
+        );
+        gram.grondslag = "rechterlijke uitspraak".to_string();
+        let store = store_met_schema(vec![gram])
+            .unwrap_or_else(|e| panic!("teststore moet op te bouwen zijn: {e}"));
+        assert_eq!(
+            store
+                .last_recording("relatie")
+                .map(|found| found.grondslag.as_str()),
+            Some("rechterlijke uitspraak")
+        );
+    }
+
+    #[test]
+    fn het_schema_telt_mee_als_gedeclareerd_veld_van_een_lege_stroom() {
+        // Waarvoor het schema er ook is: een reductie over een stroom die nog
+        // leeg is, hoort niet als typfout geweigerd te worden.
+        let store = store_met_schema(Vec::new())
+            .unwrap_or_else(|e| panic!("teststore moet op te bouwen zijn: {e}"));
+        let declared = store.declared_fields();
+        let fields = declared
+            .get("relatie")
+            .unwrap_or_else(|| panic!("de stroom hoort erin te staan"));
+        assert!(
+            fields.contains("partnerschap_type"),
+            "een gedeclareerd veld hoort mee te tellen voordat er een gram ligt, kreeg {fields:?}"
+        );
+    }
+
+    #[test]
+    fn een_formulier_wordt_aan_hetzelfde_schema_gehouden() {
+        let store = store_met_schema(Vec::new())
+            .unwrap_or_else(|e| panic!("teststore moet op te bouwen zijn: {e}"));
+        let veld = |name: &str, value_type| DocumentedParameter {
+            name: name.to_string(),
+            value_type,
+            prefill: None,
+        };
+        assert!(store
+            .check_form(
+                "relatie",
+                "relatie_gewijzigd",
+                &[
+                    veld("bsn", ParameterType::String),
+                    veld("partnerschap_type", ParameterType::String),
+                ],
+            )
+            .is_ok());
+        assert!(
+            store
+                .check_form(
+                    "relatie",
+                    "relatie_gewijzigd",
+                    &[veld("bsn", ParameterType::String)],
+                )
+                .is_err(),
+            "een formulier zonder gedeclareerd veld hoort geweigerd te worden"
+        );
+        assert!(
+            store
+                .check_form(
+                    "relatie",
+                    "relatie_gewijzigd",
+                    &[
+                        veld("bsn", ParameterType::String),
+                        veld("partnerschap_type", ParameterType::Number),
+                    ],
+                )
+                .is_err(),
+            "een formulierveld van een ander type dan het schema hoort geweigerd te worden"
+        );
+        assert!(
+            store
+                .check_form(
+                    "relatie",
+                    "relatie_verwijderd",
+                    &[veld("bsn", ParameterType::String)]
+                )
+                .is_err(),
+            "een naam die het schema niet kent hoort geweigerd te worden"
+        );
+    }
+
+    #[test]
+    fn uncovered_noemt_wat_er_ontbreekt() {
+        let vereist = vec![GebeurtenisSchema {
+            name: "relatie_gewijzigd".to_string(),
+            intake: Intake::Levering,
+            grondslag: String::new(),
+            fields: vec![
+                SchemaVeld {
+                    name: "bsn".to_string(),
+                    value_type: ParameterType::String,
+                },
+                SchemaVeld {
+                    name: "bedrag".to_string(),
+                    value_type: ParameterType::Amount,
+                },
+            ],
+        }];
+        assert!(
+            uncovered(&schema(), &vereist)
+                .iter()
+                .any(|melding| melding.contains("bedrag")),
+            "wie dit leest moet weten wát hij nog moet opschrijven"
+        );
+        assert!(
+            uncovered(&[], &vereist).contains(&"relatie_gewijzigd".to_string()),
+            "een stroom zonder schema dekt niets, en dan is de naam zelf het bezwaar"
+        );
+        assert!(
+            uncovered(&schema(), &[]).is_empty(),
+            "een gedeclareerd schema mag méér dragen dan gevraagd"
         );
     }
 }

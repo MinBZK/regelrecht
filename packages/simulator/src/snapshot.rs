@@ -27,8 +27,8 @@
 
 use crate::cell::{
     fixed_fields, BesluitDefinition, Cell, ChronicleEvent, DecretogramField, DocumentedParameter,
-    Intake, Lexostatus, LexostatusDefinition, ParameterType, Prefill, Reduction, BESCHIKKINGEN,
-    INPUTS, RECEIPT, REGULATION,
+    GebeurtenisSchema, Intake, Lexostatus, LexostatusDefinition, ParameterType, Prefill, Reduction,
+    BESCHIKKINGEN, INPUTS, RECEIPT, REGULATION,
 };
 use crate::journal::JournalEntry;
 use crate::security::SignedAnswer;
@@ -187,6 +187,14 @@ pub struct ChronicleSnapshot {
     pub stream: String,
     /// Het veld waarop de stroom groepeert.
     pub key: String,
+    /// Het gebeurtenisschema van de stroom: per gebeurtenisnaam wat ze draagt.
+    ///
+    /// Leeg als de stroom er geen declareert. Het staat naast de grammen en niet
+    /// erin: het schema geldt vóórdat er één gram ligt, en dat is precies wat een
+    /// lezer van een lege kroniek nodig heeft — welke kolommen er komen te staan,
+    /// en van welk type. Uit het eerste gram valt dat niet af te leiden, want dat
+    /// er nog geen is, is hier het normale geval.
+    pub gebeurtenissen: Vec<GebeurtenisSchema>,
     /// De grammen, in de volgorde waarin ze vastgelegd zijn.
     pub grams: Vec<GramSnapshot>,
 }
@@ -464,6 +472,7 @@ fn cell_snapshot(cell: &Cell) -> CellSnapshot {
             .map(|view| ChronicleSnapshot {
                 stream: view.stream.to_string(),
                 key: view.key.to_string(),
+                gebeurtenissen: view.gebeurtenissen.to_vec(),
                 grams: view.events.iter().map(gram_snapshot).collect(),
             })
             .collect(),

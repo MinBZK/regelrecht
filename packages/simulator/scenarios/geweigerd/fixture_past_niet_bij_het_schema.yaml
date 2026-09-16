@@ -1,0 +1,73 @@
+---
+name: een fixture met een verkeerd type wordt bij het optuigen geweigerd
+description: >-
+  Een kroniekstroom met een gebeurtenisschema belooft wat er in haar terechtkomt:
+  per gebeurtenisnaam de velden en hun type. Deze wereld breekt die belofte —
+  de startstand levert `is_verzekerde` als tekst aan waar het schema `boolean`
+  declareert — en ze hoort dus bij het **optuigen** te stranden en niet
+  halverwege de tijdlijn.
+
+  Dat de datum van de fixture jaren voor de klok uit ligt, mag daarvoor niet
+  uitmaken: een typfout in een startstand hoort niet af te hangen van hoe ver ze
+  weg ligt. Dit bestand draait daarom niet in `tests/scenarios.rs` maar in
+  `tests/gebeurtenisschema.rs`, dat het op zijn weigering afrekent.
+
+clock:
+  start: 2024-01-01
+
+cells:
+  - id: toeslagen
+    laws: []
+
+    chronicles:
+      - stream: inkomensleveringen
+        key: bsn
+        gebeurtenissen:
+          - name: inkomenslevering
+            intake: levering
+            grondslag: jaarlijkse inkomenslevering
+            fields:
+              - name: bsn
+                type: string
+              - name: is_verzekerde
+                type: boolean
+
+    lexostatus_definitions:
+      - name: verzekering
+        doc: wat deze cel over de verzekering van deze persoon geleverd kreeg
+        inputs:
+          - name: bsn
+            type: string
+        outputs:
+          - is_verzekerde
+        reduction:
+          chronicle: inkomensleveringen
+          key: bsn
+          latest: true
+
+fixtures:
+  - at: 2030-01-01
+    record:
+      cell: toeslagen
+      chronicle: inkomensleveringen
+      name: inkomenslevering
+      intake: levering
+      fields:
+        bsn: '999993653'
+        # Het bezwaar: tekst waar het schema `boolean` declareert. Zonder schema
+        # zou dit stil in de kroniek belanden en pas opvallen als een regeling
+        # er iets mee probeerde.
+        is_verzekerde: verzekerd
+
+queries:
+  - description: >-
+      Deze vraag wordt nooit gesteld — de wereld komt niet voorbij het optuigen.
+      Ze staat er omdat een scenario zonder vragen niets bewijst, en omdat dit
+      bestand daarmee hetzelfde leest als elk ander.
+    cell: toeslagen
+    lexostatus: verzekering
+    params:
+      bsn: '999993653'
+    op_moment: 2030-06-01
+    expect:
+      is_verzekerde: true

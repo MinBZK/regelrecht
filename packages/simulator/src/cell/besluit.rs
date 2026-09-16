@@ -27,12 +27,13 @@
 //! vervallen en dan legt de cel die de verplichting draagt een betaling vast.
 //! Zie [`ObligationDue`].
 
+use crate::cell::chronicle::{GebeurtenisSchema, SchemaVeld};
 use crate::cell::config::{
     binding_name, check_documented_params, documents, engine_parameters, parameter_listing,
     published_outputs, CellSurface, DocumentedParameter,
 };
 use crate::cell::extensions::{afwijzing_wanneer, ChronolexBlock};
-use crate::cell::{ChronicleEvent, Intake, PartyBindings};
+use crate::cell::{ChronicleEvent, Intake, ParameterType, PartyBindings};
 use crate::error::{Result, SimulatorError, Subject};
 use crate::values::amount;
 use chrono::{Months, NaiveDate};
@@ -219,28 +220,60 @@ pub const SCHULDEISER: &str = "schuldeiser";
 /// [`ObligationDue::betaler`].
 pub const BETALER: &str = "betaler";
 
-/// De velden die elke vastlegging in [`BETALINGEN`] draagt.
+/// Het ingebouwde gebeurtenisschema van de stroom [`BETALINGEN`].
 ///
-/// Bekend vóór de eerste betaling, om dezelfde reden als bij
-/// [`declared_fields`]: een lexostatus die over deze stroom sommeert wordt bij
-/// het optuigen getoetst, en dan is de stroom nog leeg.
-pub(crate) fn betaling_fields() -> BTreeSet<String> {
-    [
-        ZAAKKENMERK,
-        BEDRAG,
-        VOLGNUMMER,
-        SOORT,
-        SCHULDENAAR,
-        SCHULDEISER,
-        BESLUIT,
-        BESLUIT_CEL,
-        BESLUIT_KRONIEK,
-        BESLUIT_GRAM,
-        BESLUIT_OP_MOMENT,
+/// Het platform declareert wat een nagekomen verplichting vastlegt, en het
+/// declareert het als **schema** en niet als lijst veldnamen in Rust: dat een
+/// betaling een zaakkenmerk, een bedrag, een termijnnummer, het besluit waaruit
+/// ze volgt en twee partijen draagt, is het typeschema van een executogram —
+/// generiek, compile-time, en dus data (RFC-022 §1.3).
+///
+/// Wat een wereldbestand ermee moet: een cel die deze verplichting nakomt, en de
+/// cel die haar oplegde, houden een stroom [`BETALINGEN`] waarvan het schema
+/// hieraan voldoet (zie [`crate::SimulatorError::ObligationStream`]). Het
+/// wereldbestand schrijft het dus zelf op, en het platform toetst het — in
+/// plaats van dat alleen Rust weet wat er in die stroom hoort.
+///
+/// Een **ondergrens**: het gram draagt meer dan dit (de verwijzing naar het gram
+/// van het besluit, bijvoorbeeld), en een wereld die daarover wil reduceren
+/// declareert die velden erbij. Wat hier staat is wat elke betaling hoe dan ook
+/// draagt en waar dus over te rekenen valt.
+pub(crate) fn nakoming_schema(soort: ObligationKind) -> Vec<GebeurtenisSchema> {
+    let velden = || {
+        [
+            (ZAAKKENMERK, ParameterType::String),
+            (BEDRAG, ParameterType::Amount),
+            (VOLGNUMMER, ParameterType::Number),
+            (BESLUIT, ParameterType::String),
+            (SCHULDENAAR, ParameterType::String),
+            (SCHULDEISER, ParameterType::String),
+        ]
+        .into_iter()
+        .map(|(name, value_type)| SchemaVeld {
+            name: name.to_string(),
+            value_type,
+        })
+        .collect::<Vec<_>>()
+    };
+    vec![
+        GebeurtenisSchema {
+            name: soort.gedaan(),
+            intake: Intake::Betaling,
+            // Leeg, en niet de grondslag uit het lexogram: welke wet, welk
+            // artikel en welke termijn het is, verschilt per gram, en dat schrijft
+            // [`ObligationDue::grondslag`] er dan ook per gram bij. Een schema dat
+            // hier iets algemeens zou zeggen, zou dat overschrijven noch aanvullen
+            // — zie [`GebeurtenisSchema::grondslag`].
+            grondslag: String::new(),
+            fields: velden(),
+        },
+        GebeurtenisSchema {
+            name: soort.gemeld(),
+            intake: Intake::Levering,
+            grondslag: String::new(),
+            fields: velden(),
+        },
     ]
-    .iter()
-    .map(|field| (*field).to_string())
-    .collect()
 }
 
 /// Eén besluit dat een cel kan nemen.
@@ -346,6 +379,17 @@ pub const BETALING: &str = "betaling";
 /// kon iemand laten terugbetalen zonder dat er ooit iets te veel betaald is.
 pub const TERUGVORDERING: &str = "terugvordering";
 
+/// Het achtervoegsel van het gram waarin de nakomende cel haar nakoming legt.
+///
+/// Twee gebeurtenissen per soort verplichting en niet één, want het zijn twee
+/// verschillende feiten in twee verschillende kronieken: de betaler betaalde, en
+/// de besluitende cel kreeg gemeld dát er betaald is. Een naam die dat verschil
+/// niet maakt, laat een som over één stroom over beide kanten lopen.
+const GEDAAN: &str = "_gedaan";
+
+/// Het achtervoegsel van het gram waarin de besluitende cel de melding legt.
+const GEMELD: &str = "_gemeld";
+
 /// De verwijzing waarmee een verplichting het bevoegd gezag als partij aanwijst.
 ///
 /// Dezelfde resolutie als bij het besluit zelf: het `competent_authority` van het
@@ -374,6 +418,17 @@ impl ObligationKind {
             Self::Betaling => BETALING,
             Self::Terugvordering => TERUGVORDERING,
         }
+    }
+
+    /// De naam van het gram waarmee de nakomende cel vastlegt dát ze nakwam.
+    pub fn gedaan(self) -> String {
+        format!("{}{GEDAAN}", self.name())
+    }
+
+    /// De naam van het gram waarmee de besluitende cel vastlegt dat het haar
+    /// gemeld is.
+    pub fn gemeld(self) -> String {
+        format!("{}{GEMELD}", self.name())
     }
 
     /// Dezelfde verplichting, de andere kant op.
@@ -868,7 +923,7 @@ impl ObligationDue {
     /// niets vast te leggen en hoort er ook geen gram gemaakt te kunnen worden.
     pub(crate) fn payment_event(&self, betaler: &str) -> ChronicleEvent {
         ChronicleEvent {
-            name: self.soort.name().to_string(),
+            name: self.soort.gedaan(),
             intake: Intake::Betaling,
             recording_actor: betaler.to_string(),
             grondslag: self.grondslag(),
@@ -885,7 +940,7 @@ impl ObligationDue {
     /// er één staat is die twee cellen delen.
     pub(crate) fn delivery_event(&self) -> ChronicleEvent {
         ChronicleEvent {
-            name: format!("{}_ontvangen_gemeld", self.soort.name()),
+            name: self.soort.gemeld(),
             intake: Intake::Levering,
             recording_actor: self.decided_by.clone(),
             grondslag: self.grondslag(),

@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import BesluitSchema from './BesluitSchema.vue';
 import GramRow from './GramRow.vue';
+import StreamSchema from './StreamSchema.vue';
 import {
   besluitDefinitions,
   chronicles,
@@ -37,6 +38,7 @@ const streams = computed(() =>
     return {
       stream: chronicle.stream,
       key: chronicle.key,
+      chronicle,
       entries,
       // Een kroniek met een besluit erin is een boom: die rijen klappen uit naar
       // de herkomst van elke waarde. Een kroniek van alleen vastleggingen klapt
@@ -112,6 +114,9 @@ function isNew(stream, index) {
           <span>{{ stream.stream }}</span>
           <span slot="subtitle">sleutel: {{ stream.key }}</span>
         </nldd-title>
+        <!-- Het schema staat bóven de grammen: het geldt vóórdat er één gram
+             ligt, en een lege kroniek hoort te kunnen zeggen wat erin komt. -->
+        <StreamSchema :chronicle="stream.chronicle" :cell="cell.id" />
         <nldd-list
           :type="stream.type"
           variant="box-base"

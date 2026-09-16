@@ -356,7 +356,7 @@ test.describe('publieke wereld', () => {
     await s.tab('Grammen');
     const rij = page
       .locator('nldd-list > nldd-list-item')
-      .filter({ has: page.locator('nldd-text-cell[text="betaling"]') })
+      .filter({ has: page.locator('nldd-text-cell[text="betaling_gedaan"]') })
       .first();
     await rij.click();
 

@@ -44,12 +44,18 @@ pub(crate) use besluit::{DeclaredObligations, ObligationScope};
 // van elke waarde te kunnen noemen. `pub(crate)`, want het is geen contract naar
 // buiten — wat een gram draagt, staat in [`Decretogram`].
 pub(crate) use besluit::{
-    fixed_fields, recorded_input, BESLUIT, COMPETENT_AUTHORITY, INPUTS, RECEIPT, REGULATION,
+    fixed_fields, nakoming_schema, recorded_input, BESLUIT, COMPETENT_AUTHORITY, INPUTS, RECEIPT,
+    REGULATION,
 };
 // Het formulier van een actie wordt tegen dezelfde toets gehouden als de
 // parameters van een lexostatus of een besluit: precies wat gedocumenteerd is,
 // niets erbij en niets van het verkeerde type.
-pub use chronicle::{ChronicleEvent, ChronicleStore, ChronicleStream, Intake};
+pub use chronicle::{
+    ChronicleEvent, ChronicleStore, ChronicleStream, GebeurtenisSchema, Intake, SchemaVeld,
+};
+// De toets dat een stroom het ingebouwde schema van een betaling bijhoudt: de
+// wereld stelt hem, want alleen zij weet welke cel welke verplichting nakomt.
+pub(crate) use chronicle::uncovered;
 pub(crate) use config::{check_documented_params, check_parameter_value, check_prefill_values};
 pub use config::{
     AcceptedSource, Aggregate, CellConfig, DocumentedParameter, LexostatusDefinition,
@@ -393,6 +399,12 @@ impl Cell {
             streams.push(ChronicleStream {
                 stream: BESCHIKKINGEN.to_string(),
                 key: besluit::ZAAKKENMERK.to_string(),
+                // Geen schema: wélke velden een decretogram draagt, hangt aan de
+                // uitkomsten van de regeling die het besluit uitvoert, en die
+                // staan in het lexogram. Wat er vast in staat, staat als schema
+                // bij het besluit (zie [`crate::BesluitDefinitionSnapshot`]) —
+                // dáár hoort het, want het geldt per besluit en niet per stroom.
+                gebeurtenissen: Vec::new(),
                 events: Vec::new(),
             });
         }
@@ -423,14 +435,6 @@ impl Cell {
                 .or_default()
                 .extend(besluit::declared_fields(&config.besluit_definitions));
         }
-        // De betalingsstroom declareert de cel zelf, maar wát er in komt bepaalt
-        // het platform (zie [`BETALINGEN`]). Zonder deze regel zou een som over
-        // `bedrag` als typfout geweigerd worden zolang er nog niets betaald is —
-        // en dat is precies het moment waarop een wereld opgetuigd wordt.
-        if let Some(fields) = declared.get_mut(BETALINGEN) {
-            fields.extend(besluit::betaling_fields());
-        }
-
         // Wat de wetten van deze cel onder `chronolex` declareren. Vóór de
         // surface, want elke besluit-definitie wordt eraan getoetst — en over de
         // engine die er is zodra de cel wetten laadt, niet over die van het
@@ -620,7 +624,8 @@ impl Cell {
     pub(crate) fn check_recordable(
         &self,
         stream: &str,
-        fields: &BTreeSet<String>,
+        name: &str,
+        form: &[DocumentedParameter],
     ) -> std::result::Result<(), String> {
         if stream == BESCHIKKINGEN {
             return Err(format!(
@@ -634,18 +639,31 @@ impl Cell {
                 self.chronicles.stream_names().join(", ")
             ));
         };
-        if !fields.iter().any(|field| field.eq_ignore_ascii_case(key)) {
+        if !form
+            .iter()
+            .any(|field| field.name.eq_ignore_ascii_case(key))
+        {
             return Err(format!(
                 "die stroom groepeert op veld '{key}', en dat veld staat niet in het \
                  formulier (wel: {})",
-                fields
-                    .iter()
-                    .map(String::as_str)
-                    .collect::<Vec<_>>()
-                    .join(", ")
+                config::parameter_listing(form)
             ));
         }
-        Ok(())
+        // En het schema van de stroom, als ze er een declareert: wat een actie
+        // vastlegt staat bij het optuigen al vast, dus een gram dat straks niet
+        // door de toets zou komen hoort hier te stranden en niet bij de eerste
+        // druk op de knop.
+        self.chronicles.check_form(stream, name, form)
+    }
+
+    /// Het gebeurtenisschema van één stroom van deze cel; leeg als ze er geen
+    /// declareert.
+    ///
+    /// Voor de wereld, die toetst of de stroom waarin straks betaald wordt het
+    /// ingebouwde schema van een betaling bijhoudt — en voor het beeld, dat het
+    /// schema bij de stroom toont.
+    pub(crate) fn stream_schema(&self, stream: &str) -> &[GebeurtenisSchema] {
+        self.chronicles.schema_of(stream)
     }
 
     /// De kronieken zoals ze erbij liggen, geleend voor het beeld van de wereld.

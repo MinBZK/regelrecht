@@ -29,7 +29,7 @@ use std::path::{Path, PathBuf};
 /// náást `scenarios/negatief/`, want die gaat over de invarianten-gate en deze
 /// scenario's halen die gate niet eens — ze vallen eerder om.
 type Expected = fn(&SimulatorError) -> bool;
-const GEWEIGERD: [(&str, Expected); 2] = [
+const GEWEIGERD: [(&str, Expected); 3] = [
     ("cel_is_niet_het_bevoegd_gezag.yaml", |error| {
         matches!(error, SimulatorError::NotCompetentAuthority { .. })
     }),
@@ -39,6 +39,11 @@ const GEWEIGERD: [(&str, Expected); 2] = [
     // `tests/verplichtingen.rs`.
     ("negatief_bedrag_zonder_omkeren.yaml", |error| {
         matches!(error, SimulatorError::NegativeObligationAmount { .. })
+    }),
+    // En deze gaat over het gebeurtenisschema van een stroom; waar hij precies
+    // op afrekent, staat in `tests/gebeurtenisschema.rs`.
+    ("fixture_past_niet_bij_het_schema.yaml", |error| {
+        matches!(error, SimulatorError::GebeurtenisVeldType { .. })
     }),
 ];
 

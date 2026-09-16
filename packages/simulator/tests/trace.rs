@@ -266,7 +266,7 @@ fn een_betaling_wijst_naar_het_besluit_en_zijn_trace() {
                 .iter()
                 .flat_map(move |kroniek| kroniek.grams.iter().map(move |gram| (cel, kroniek, gram)))
         })
-        .find(|(_, kroniek, gram)| kroniek.stream == "betalingen" && gram.name == "betaling")
+        .find(|(_, kroniek, gram)| kroniek.stream == "betalingen" && gram.name == "betaling_gedaan")
         .map(|(_, _, gram)| gram)
         .expect("na drie maanden is er ten minste één termijn betaald");
 

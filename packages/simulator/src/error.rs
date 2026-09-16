@@ -1304,6 +1304,92 @@ pub enum SimulatorError {
         found: String,
     },
 
+    /// Een vastlegging noemt een gebeurtenis die het schema van haar stroom niet
+    /// kent.
+    ///
+    /// Een stroom die een schema declareert, zegt daarmee wélke gebeurtenissen
+    /// erin thuishoren. Een naam die er niet in staat is een typfout of een feit
+    /// dat in een andere stroom hoort; beide zouden anders stil in de kroniek
+    /// belanden, en dan is er niets meer dat over die vastlegging iets belooft.
+    #[error(
+        "cel '{cell}', kroniekstroom '{stream}': het schema van die stroom kent geen \
+         gebeurtenis '{name}' (wel: {known})"
+    )]
+    UnknownGebeurtenis {
+        /// De cel die de stroom houdt.
+        cell: String,
+        /// De stroom met het schema.
+        stream: String,
+        /// De naam die de vastlegging noemt.
+        name: String,
+        /// Komma-gescheiden lijst van de gedeclareerde gebeurtenissen.
+        known: String,
+    },
+
+    /// Een vastlegging mist een veld dat haar gebeurtenisschema declareert.
+    #[error(
+        "cel '{cell}', kroniekstroom '{stream}': gebeurtenis '{name}' mist veld \
+         '{field}' ({expected}), dat het schema van die gebeurtenis declareert"
+    )]
+    GebeurtenisVeldOntbreekt {
+        /// De cel die de stroom houdt.
+        cell: String,
+        /// De stroom met het schema.
+        stream: String,
+        /// De gebeurtenis waarvan het schema geldt.
+        name: String,
+        /// Het veld dat ontbreekt.
+        field: String,
+        /// Het gedeclareerde type van dat veld.
+        expected: &'static str,
+    },
+
+    /// Een veld van een vastlegging is van een ander soort dan het schema
+    /// declareert.
+    ///
+    /// Los van [`Self::GebeurtenisVeldDatum`], en om dezelfde reden als bij een
+    /// parameter (zie [`Self::ParameterType`] en [`Self::ParameterDate`]): "dit
+    /// is een getal en er hoorde tekst te staan" is iets anders dan "dit is
+    /// tekst, maar geen datum". Eén melding voor beide zou bij een datum altijd
+    /// "verwacht date, kreeg string" opleveren, en dat is waar voor wie
+    /// `01-12-2026` schreef — en nutteloos.
+    ///
+    /// Zonder het cel-id, net als [`Self::ChronicleEventWithoutKey`]: de stroom,
+    /// de gebeurtenis en het veld wijzen de plek aan, en wie een wereldbestand
+    /// leest heeft aan die drie genoeg om de regel te vinden.
+    #[error(
+        "kroniekstroom '{stream}': veld '{field}' van gebeurtenis '{name}' is \
+         {actual}, en het schema declareert {expected}"
+    )]
+    GebeurtenisVeldType {
+        /// De stroom met het schema.
+        stream: String,
+        /// De gebeurtenis waarvan het schema geldt.
+        name: String,
+        /// Het veld met de waarde die niet past.
+        field: String,
+        /// Het gedeclareerde type.
+        expected: &'static str,
+        /// Het soort waarde dat er staat.
+        actual: &'static str,
+    },
+
+    /// Een veld dat een datum hoort te zijn, staat niet in ISO-notatie.
+    #[error(
+        "kroniekstroom '{stream}': veld '{field}' van gebeurtenis '{name}' is \
+         gedeclareerd als date, en '{value}' staat niet in de notatie jjjj-mm-dd"
+    )]
+    GebeurtenisVeldDatum {
+        /// De stroom met het schema.
+        stream: String,
+        /// De gebeurtenis waarvan het schema geldt.
+        name: String,
+        /// Het veld met de waarde die niet past.
+        field: String,
+        /// De waarde zoals ze er staat.
+        value: String,
+    },
+
     /// Een kroniekgebeurtenis mist het sleutelveld van haar stroom.
     #[error("kroniekstroom '{stream}': gebeurtenis van {op_moment} mist sleutelveld '{key}'")]
     ChronicleEventWithoutKey {

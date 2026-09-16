@@ -37,6 +37,31 @@ cells:
     chronicles:
       - stream: betalingen
         key: zaakkenmerk
+        # Het gebeurtenisschema van deze stroom: welke gebeurtenissen erin
+        # thuishoren, op welke grondslag ze berusten en welke velden ze dragen.
+        # Wat het platform van een betalingsstroom verlangt, staat hier als data;
+        # het optuigen toetst of het er staat, en elke vastlegging of het klopt.
+        gebeurtenissen: &betalingsschema
+          - name: betaling_gedaan
+            intake: betaling
+            grondslag: Algemene wet bestuursrecht, art. 4:89
+            fields: &betalingsvelden
+              - name: zaakkenmerk
+                type: string
+              - name: bedrag
+                type: amount
+              - name: volgnummer
+                type: number
+              - name: besluit
+                type: string
+              - name: schuldenaar
+                type: string
+              - name: schuldeiser
+                type: string
+          - name: betaling_gemeld
+            intake: levering
+            grondslag: Algemene wet bestuursrecht, art. 4:89
+            fields: *betalingsvelden
       - stream: aanslagen
         key: bsn
         events:
@@ -79,6 +104,7 @@ cells:
       # haar gemeld is dat er betaald is.
       - stream: betalingen
         key: zaakkenmerk
+        gebeurtenissen: *betalingsschema
       - stream: relaties
         key: bsn
         events:
