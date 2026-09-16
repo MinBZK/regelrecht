@@ -436,7 +436,7 @@ pub struct AgentUsage {
     /// billed above the plain input rate where a cache read is billed well
     /// below it, so the two must never be added together.
     pub cache_write_tokens: u64,
-    /// Cost in tenths of a cent, so the figure stays an integer. The provider
+    /// Cost in thousandths of a cent, so the figure stays an integer. The provider
     /// reports dollars as a float and money in a float is a bug waiting.
     pub cost_millicents: u64,
 }
@@ -8030,7 +8030,7 @@ articles:
         assert_eq!(u.input_tokens, 1200);
         assert_eq!(u.output_tokens, 34567);
         assert_eq!(u.cache_read_tokens, 980_000);
-        // Money as an integer: 1.2345 dollar is 123450 tenths of a cent.
+        // Money as an integer: 1.2345 dollar is 123450 thousandths of a cent.
         assert_eq!(u.cost_millicents, 123_450);
     }
 
