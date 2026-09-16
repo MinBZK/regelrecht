@@ -775,7 +775,7 @@ produces:
           bedrag: $hoogte_zorgtoeslag      # een uitkomst van dít artikel
           ritme: $betalingsritme           # ineens | kwartaal | maand, of $instelling
           vanaf: '{jaar}-02-01'            # optioneel; standaard het moment van het besluit
-          grondslag: Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (uitbetaling)
+          grondslag: Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22
 ```
 
 ```yaml
@@ -2267,7 +2267,10 @@ Zie [Een weigering is ook een besluit](#een-weigering-is-ook-een-besluit).
 **Een verplichting kent geen rente, verrekening of terugvordering.** Een termijn
 vervalt en wordt betaald; wat er gebeurt als er te laat, te veel of niet betaald
 wordt, staat er niet. Twee besluiten op hetzelfde artikel leggen daarom allebei
-het volle schema op — het tweede verrekent niet met het eerste. Een terugvordering
+het volle schema op — het tweede verrekent niet met het eerste. Dat is ook waarom
+de zorgtoeslag-verplichting in het corpus op Awir art. 16 jo. art. 22 staat en
+niet op art. 24 lid 1: wat deze opstelling nadoet is het periodiek uitbetalen,
+niet de definitieve uitbetaling die een eerder voorschot verrekent. Een terugvordering
 is in deze opzet een gewoon besluit met een eigen verplichting, en dat is nog
 nergens uitgewerkt. Een verplichting kent ook nog geen **schuldenaar en
 schuldeiser**: `soort` kent alleen `betaling`, en wie er betaald krijgt volgt uit

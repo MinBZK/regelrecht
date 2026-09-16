@@ -108,16 +108,19 @@ articles:
               # komt daarom uit de instellingen van de uitvoerder, niet uit de
               # wet.
               #
-              # De grondslag zegt daarom waarop de *betaling* berust en niet
-              # waarop het ritme berust: Awir art. 24 lid 1 draagt de uitbetaling
-              # van een toegekende tegemoetkoming op. Het termijnenschema van
-              # art. 22 hoort bij een voorschot (art. 16), en dat is een ander
-              # besluit dan deze toekenning.
+              # De grondslag is die van een uitbetaling in termijnen: Awir art.
+              # 16 jo. art. 22 (voorschot). Dát is in de Awir het mechanisme dat
+              # periodiek betaalt zodra het recht vaststaat, en dat is wat deze
+              # opstelling nadoet. De definitieve uitbetaling van art. 24 lid 1
+              # (binnen vier weken, ineens) hoort bij de verrekening met een
+              # eerder verleend voorschot, en die kent deze opstelling nog niet
+              # — zie "Wat hier nog niet staat" in de README van
+              # packages/simulator.
               verplichtingen:
                 - soort: betaling
                   bedrag: $hoogte_zorgtoeslag
                   ritme: $betalingsritme
-                  grondslag: Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1 (uitbetaling; het ritme is beleid)
+                  grondslag: Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen)
         parameters:
           - name: bsn
             type: string
