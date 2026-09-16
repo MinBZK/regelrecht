@@ -34,9 +34,10 @@ mod schema;
 pub use besluit::{
     AcceptanceRequest, Afwijzingsgrond, BesluitDefinition, BesluitInput, ChronicleSource,
     Decretogram, DecretogramInput, ExecutedRegulation, InputOrigin, ObligationDefinition,
-    ObligationDue, Schedule, AFWIJZING, BESCHIKKING, BESCHIKKINGEN, BETALINGEN, DECISION_TYPE,
-    ZAAKKENMERK,
+    ObligationDue, ObligationOrigin, ObsoleteField, Schedule, AFWIJZING, BESCHIKKING,
+    BESCHIKKINGEN, BETALINGEN, DECISION_TYPE, ZAAKKENMERK,
 };
+pub(crate) use besluit::{DeclaredObligations, ObligationScope};
 // De vaste velden van een decretogram, voor het beeld van de wereld: dat moet een
 // uitkomst van een besluit van een vast veld kunnen onderscheiden om de herkomst
 // van elke waarde te kunnen noemen. `pub(crate)`, want het is geen contract naar
@@ -67,10 +68,10 @@ use crate::error::{Result, SimulatorError, Subject};
 use crate::values::amount;
 use chronicle::ChronicleView;
 use chrono::NaiveDate;
-use config::{binding_name, engine_parameters, CellSurface};
+use config::{binding_name, engine_parameters, CellSurface, ObligationsPerOutput};
 use regelrecht_engine::article::CompetentAuthority;
 use regelrecht_engine::{
-    ArticleBasedLaw, ArticleResult, CellResolver, EngineError, InputProvenance,
+    Article, ArticleBasedLaw, ArticleResult, CellResolver, EngineError, InputProvenance,
     LawExecutionService, RuleResolver, TraceBuilder, Value,
 };
 use rust_decimal::Decimal;
@@ -152,9 +153,26 @@ impl Lexostatus {
     }
 }
 
+/// Wie namens welk bevoegd gezag betalingsverplichtingen nakomt.
+///
+/// Uitvoering en geen recht: dát er betaald moet worden staat in de regeling,
+/// welk systeem de betaling doet is een inrichtingskeuze van de organisatie die
+/// haar uitvoert. Daarom bindt het **wereldbestand** dit (`komt_na` bij een
+/// cel) en niet het lexogram.
+#[derive(Debug, Clone)]
+pub(crate) struct PayerBinding {
+    /// De cel die nakomt.
+    pub(crate) cell: String,
+    /// Het gezag zoals de binding het opschrijft, voor in een melding.
+    pub(crate) authority: String,
+}
+
+/// De bindingen van een wereld, op genormaliseerde gezagsnaam (zie [`normalised`]).
+pub(crate) type PayerBindings = BTreeMap<String, PayerBinding>;
+
 /// Wat een cel bij een besluit van buiten aangereikt krijgt, omdat ze het zelf
-/// niet houdt (RFC-022 §2): wie zij is, hoe laat het is, en wat de wereld heeft
-/// ingesteld.
+/// niet houdt (RFC-022 §2): wie zij is, hoe laat het is, wat de wereld heeft
+/// ingesteld, en wie er betaalt.
 ///
 /// - `identity` is de naam waaronder de cel zich uitgeeft — de bewering uit
 ///   haar veiligheidscontext, die de wet straks naast haar `competent_authority`
@@ -162,9 +180,12 @@ impl Lexostatus {
 ///   wél houdt: in deze opstelling [`crate::World`].
 /// - `op_moment` is het moment van het besluit — de klok woont in de wereld.
 /// - `settings` zijn de instellingen van het wereldbestand; een verplichting met
-///   `schedule: $betalingsritme` leest eruit.
+///   `ritme: $betalingsritme` leest eruit.
+/// - `payers` is wie namens welk bevoegd gezag betaalt (`komt_na` in het
+///   wereldbestand). Wát een besluit oplegt staat in de wet; wie het nakomt is
+///   uitvoering, en een cel kent de andere cellen niet.
 ///
-/// Drie dingen die een cel niet is, in één waarde: dat ze samen aangereikt
+/// Vier dingen die een cel niet is, in één waarde: dat ze samen aangereikt
 /// worden en niet elk apart, is de vorm van die scheiding.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct DecisionContext<'a> {
@@ -174,6 +195,26 @@ pub(crate) struct DecisionContext<'a> {
     pub(crate) op_moment: NaiveDate,
     /// De instellingen van de wereld.
     pub(crate) settings: &'a BTreeMap<String, Value>,
+    /// Per bevoegd gezag de cel die er betalingsverplichtingen voor nakomt.
+    pub(crate) payers: &'a PayerBindings,
+}
+
+/// Wat [`Cell::decide`] heeft uitgezocht voordat de engine draait.
+///
+/// De volgorde van `decide` is de reden dat dit een waarde is: het zaakkenmerk,
+/// het bevoegd gezag en wat het lexogram oplegt staan vast vóór de uitvoering —
+/// een besluit dat om zijn kenmerk of om het gezag toch niet genomen kan worden,
+/// hoort geen engine te laten draaien en geen andere cel iets te vragen. Ze
+/// samen doorgeven houdt die volgorde zichtbaar.
+struct DecisionDraft<'a> {
+    /// Het zaakkenmerk van dit besluit.
+    zaakkenmerk: String,
+    /// Wat de besluit-definitie zelf aanleverde, met herkomst.
+    inputs: BTreeMap<String, DecretogramInput>,
+    /// Het bevoegd gezag dat de regeling aanwijst, al opgelost.
+    authority: Option<String>,
+    /// Wat het lexogram op dit moment oplegt.
+    declared: &'a DeclaredObligations,
 }
 
 /// Eén chronolexocel.
@@ -242,6 +283,14 @@ pub struct Cell {
     /// wereldbestand, en die staan vanaf dat moment vast. Een beeld van de wereld
     /// is er daarmee een opzoeking en geen berekening — zie [`schema`].
     besluit_schemas: BTreeMap<String, Vec<DecretogramField>>,
+    /// Wat de geladen versies van haar wetten aan verplichtingen opleggen.
+    ///
+    /// Bewaard om dezelfde reden als [`Self::streams`]: de wereld moet er bij het
+    /// optuigen tegenaan kunnen toetsen — is er een cel aan dit gezag gebonden,
+    /// houdt die een betalingsstroom — en dat hoort langs dezelfde weg te gaan
+    /// als de toetsen van de cel zelf. Bij het besluit wordt de declaratie
+    /// opnieuw opgezocht, op de versie die dán geldt.
+    obligations: ObligationsPerOutput,
     /// De cel-bronnen van haar wetten (tier 3), op `(cel, uitkomst)`.
     ///
     /// Wat de cel hiermee doet is niets: ze kan geen van deze cellen bereiken.
@@ -332,8 +381,16 @@ impl Cell {
             fields.extend(besluit::betaling_fields());
         }
 
+        // Wat de wetten van deze cel aan verplichtingen opleggen. Vóór de
+        // surface, want elke besluit-definitie wordt eraan getoetst.
+        let obligations = match besluit_service.as_ref() {
+            None => ObligationsPerOutput::new(),
+            Some(service) => obligations_per_output(service)?,
+        };
+
         let surface = CellSurface {
             laws: &config.laws,
+            obligations: obligations.clone(),
             outputs: service
                 .as_ref()
                 .map(outputs_per_regulation)
@@ -415,6 +472,7 @@ impl Cell {
             published,
             besluiten,
             besluit_schemas,
+            obligations,
             accepts_from,
             foreign_sources,
         })
@@ -1280,6 +1338,7 @@ impl Cell {
             identity,
             op_moment,
             settings,
+            payers,
         } = context;
         let definition = self.definition(besluit)?;
 
@@ -1294,35 +1353,42 @@ impl Cell {
         let authority = self.competent_authority(&definition, op_moment)?;
         self.check_competent_authority(&definition, identity, authority.as_deref())?;
 
+        // Wát dit besluit oplegt, staat in het lexogram en hangt niet aan de
+        // uitkomst: het is hier al bekend, en dat moet ook — de bedragen waarover
+        // het gaat, moeten mee de uitvoering in als gevraagde uitkomst.
+        let declared = self.declared_obligations(&definition, op_moment)?;
         let inputs = self.collect_inputs(&definition, params, accepted, &zaakkenmerk, op_moment)?;
-        let mut decretogram = self.execute(
-            &definition,
-            context,
+        let draft = DecisionDraft {
             zaakkenmerk,
             inputs,
-            resolver,
             authority,
-        )?;
-        // Ná de uitvoering, want het bedrag komt uit de uitkomst waarop besloten
-        // is; vóór het vastleggen, want het schema hoort ín het gram.
+            declared: &declared,
+        };
+        let (mut decretogram, computed) = self.execute(&definition, context, draft, resolver)?;
+        // Ná de uitvoering, want het bedrag komt uit wat er zojuist uitgerekend
+        // is; vóór het vastleggen, want het schema hoort ín het gram. Wie de
+        // verplichting nakomt, komt uit de wereld.
         //
         // Een afwijzing legt niets op. Niet "een schema met bedrag nul", en niet
         // "een schema dat we daarna weggooien": een weigering belooft niets, dus
         // er valt niets uit te rekenen. Een besluit dat afwijst op de uitkomst
         // waaruit het bedrag zou komen, zou hier anders omvallen op een bedrag
         // dat de wet terecht niet gegeven heeft.
-        decretogram.obligations = if decretogram.is_afwijzing() {
-            Vec::new()
-        } else {
-            definition.schedule_obligations(
-                &self.id,
-                &decretogram.zaakkenmerk,
-                &decretogram.outputs,
+        if !declared.is_empty() && !decretogram.is_afwijzing() {
+            let payer = self.payer_of(&definition, &declared, payers)?;
+            decretogram.obligations = definition.schedule_obligations(
+                ObligationScope {
+                    cell: &self.id,
+                    payer: &payer,
+                    zaakkenmerk: &decretogram.zaakkenmerk,
+                    op_moment,
+                },
+                &declared,
+                &computed,
                 params,
                 settings,
-                op_moment,
-            )?
-        };
+            )?;
+        }
 
         let event = decretogram.event()?;
         self.record_own(BESCHIKKINGEN, event)?;
@@ -1409,12 +1475,12 @@ impl Cell {
         let Some(law) = resolver.get_law_for_date(&definition.regulation, Some(op_moment)) else {
             return Ok(None);
         };
-        let declared = resolver
-            .get_article_by_output(&definition.regulation, &definition.output, Some(op_moment))
-            .and_then(|article| article.machine_readable.as_ref())
-            .and_then(|machine_readable| machine_readable.competent_authority.as_ref())
-            .or(law.competent_authority.as_ref());
-        let Some(declared) = declared else {
+        let article = resolver.get_article_by_output(
+            &definition.regulation,
+            &definition.output,
+            Some(op_moment),
+        );
+        let Some(declared) = declared_authority(law, article) else {
             return Ok(None);
         };
         match competent_authority(law, declared) {
@@ -1431,6 +1497,113 @@ impl Cell {
                 },
             }),
         }
+    }
+
+    /// Wat het **lexogram** dit besluit oplegt, in de versie die op dit moment
+    /// gold.
+    ///
+    /// Het artikel dat de sturende uitkomst voortbrengt is de plek: díe uitkomst
+    /// *is* het besluit, en hetzelfde artikel zegt ook wie het mag nemen
+    /// (RFC-002). Dezelfde opzoeking als bij [`Self::competent_authority`], op
+    /// dezelfde versie — anders kon een gram een verplichting dragen uit een
+    /// andere versie dan die waaronder besloten is.
+    ///
+    /// Een artikel zonder blok legt niets op, en dat is geen fout: een
+    /// beschikking zonder bedrag is een gewone beschikking.
+    fn declared_obligations(
+        &self,
+        definition: &BesluitDefinition,
+        op_moment: NaiveDate,
+    ) -> Result<DeclaredObligations> {
+        let none = || DeclaredObligations::none(&definition.regulation);
+        let Some(service) = self.besluit_service.as_ref() else {
+            return Ok(none());
+        };
+        let service = service.borrow();
+        let resolver = service.resolver();
+        let Some(law) = resolver.get_law_for_date(&definition.regulation, Some(op_moment)) else {
+            return Ok(none());
+        };
+        let Some(article) = resolver.get_article_by_output(
+            &definition.regulation,
+            &definition.output,
+            Some(op_moment),
+        ) else {
+            return Ok(none());
+        };
+        DeclaredObligations::from_article(
+            ObligationOrigin {
+                regulation: law.id.clone(),
+                valid_from: law.valid_from.clone(),
+                article: article.number.clone(),
+            },
+            declared_authority(law, Some(article))
+                .and_then(|declared| competent_authority(law, declared)),
+            article,
+        )
+    }
+
+    /// De cel die de verplichtingen van dit besluit nakomt.
+    ///
+    /// Langs het **bevoegd gezag** en niet langs de besluitende cel: de wet wijst
+    /// een gezag aan, en welk systeem namens dat gezag betaalt is wat het
+    /// wereldbestand bindt. Hetzelfde lexogram legt daardoor overal hetzelfde
+    /// schema op, met per wereldbestand een eigen betaler eronder.
+    ///
+    /// Beide weigeringen hieronder horen bij het optuigen al gevallen te zijn
+    /// (zie `check_obligations` in de wereld); dat ze hier staan is omdat een cel
+    /// die zelf niet weet wie betaalt, niet mag gokken.
+    pub(crate) fn payer_of(
+        &self,
+        definition: &BesluitDefinition,
+        declared: &DeclaredObligations,
+        payers: &PayerBindings,
+    ) -> Result<String> {
+        let Some(authority) = declared.authority.as_deref() else {
+            return Err(SimulatorError::ObligationWithoutAuthority {
+                cell: self.id.clone(),
+                besluit: definition.name.clone(),
+                origin: declared.origin.describe(),
+            });
+        };
+        payers
+            .get(&normalised(authority))
+            .map(|binding| binding.cell.clone())
+            .ok_or_else(|| SimulatorError::ObligationWithoutPayer {
+                cell: self.id.clone(),
+                besluit: definition.name.clone(),
+                authority: authority.to_string(),
+                known: match payers.values().next() {
+                    None => String::new(),
+                    Some(_) => format!(
+                        " (wel gebonden: {})",
+                        payers
+                            .values()
+                            .map(|binding| format!(
+                                "{} → cel '{}'",
+                                binding.authority, binding.cell
+                            ))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                },
+            })
+    }
+
+    /// Wat de geladen versies van haar wetten aan dit besluit opleggen.
+    ///
+    /// Voor het **optuigen** van de wereld: die toetst of er een cel aan het
+    /// gezag gebonden is en of beide kanten een betalingsstroom houden. Alle
+    /// versies, want een besluit over een ouder moment landt op een oudere
+    /// versie.
+    pub(crate) fn obligation_declarations(
+        &self,
+        definition: &BesluitDefinition,
+    ) -> &[DeclaredObligations] {
+        self.obligations
+            .get(&definition.regulation)
+            .and_then(|outputs| outputs.get(&definition.output))
+            .map_or(&[], Vec::as_slice)
     }
 
     /// Is deze cel het bevoegd gezag van de regeling die ze wil uitvoeren?
@@ -1730,16 +1903,20 @@ impl Cell {
         &self,
         definition: &BesluitDefinition,
         context: DecisionContext<'_>,
-        zaakkenmerk: String,
-        inputs: BTreeMap<String, DecretogramInput>,
+        draft: DecisionDraft<'_>,
         resolver: Option<Rc<dyn CellResolver>>,
-        competent_authority: Option<String>,
-    ) -> Result<Decretogram> {
+    ) -> Result<(Decretogram, BTreeMap<String, Value>)> {
         let DecisionContext {
             identity,
             op_moment,
             ..
         } = context;
+        let DecisionDraft {
+            zaakkenmerk,
+            inputs,
+            authority: competent_authority,
+            declared,
+        } = draft;
         // Onbereikbaar: `validate` weigert een besluit over een regeling die de
         // cel niet zelf laadt, en een cel zonder engine laadt er geen enkele.
         let Some(service) = &self.besluit_service else {
@@ -1831,16 +2008,20 @@ impl Cell {
         };
 
         // De uitkomsten die het gram draagt, plus de uitkomsten waarop de wet
-        // haar afwijzing laat afhangen. Die tweede hoeft de definitie niet vast
-        // te leggen — de grond komt als `afwijzingsgrond` in het gram, met haar
-        // artikel erbij — maar uitgerekend moet ze worden, anders zou de
-        // voorwaarde op een ontbrekende waarde stil nooit vervuld raken.
-        let recorded: BTreeSet<&str> = definition
+        // haar afwijzing laat afhangen, plus de bedragen waarover de
+        // verplichtingen van dit artikel gaan. Die laatste twee hoeft de
+        // definitie niet vast te leggen — de grond komt als `afwijzingsgrond` in
+        // het gram en het bedrag als uitgerekend *schema* — maar uitgerekend
+        // moeten ze worden: anders raakt de voorwaarde op een ontbrekende waarde
+        // stil nooit vervuld, en hangt het bedrag af van wat de uitvoering
+        // toevallig ook uitrekende.
+        let requested_outputs: BTreeSet<&str> = definition
             .recorded_outputs()
             .into_iter()
             .chain(conditions.keys().map(String::as_str))
+            .chain(declared.amounts())
             .collect();
-        let recorded: Vec<&str> = recorded.into_iter().collect();
+        let recorded: Vec<&str> = requested_outputs.into_iter().collect();
         // Mét trace, en dat is het verschil met een reductie: het decretogram
         // draagt het RFC-013 receipt van deze uitvoering, en zonder de trace
         // staat er wel wát er uitkwam maar niet langs welke artikelen. Dan is
@@ -1920,27 +2101,33 @@ impl Cell {
             Some(besluit::AFWIJZING.to_string())
         };
 
-        Ok(Decretogram {
-            cell: self.id.clone(),
-            besluit: definition.name.clone(),
-            zaakkenmerk,
-            op_moment,
-            regulation: definition.regulation.clone(),
-            regulation_valid_from: result.regulation_valid_from.clone(),
-            competent_authority,
-            besloten_door: identity.to_string(),
-            legal_character,
-            decision_type,
-            afwijzingsgronden,
-            executed_regulations,
-            chronicle_sources,
-            outputs,
-            inputs,
-            // Het schema komt er in `decide` bij: het hangt aan de uitkomsten
-            // hierboven, en die zijn hier net pas bekend.
-            obligations: Vec::new(),
-            receipt,
-        })
+        Ok((
+            Decretogram {
+                cell: self.id.clone(),
+                besluit: definition.name.clone(),
+                zaakkenmerk,
+                op_moment,
+                regulation: definition.regulation.clone(),
+                regulation_valid_from: result.regulation_valid_from.clone(),
+                competent_authority,
+                besloten_door: identity.to_string(),
+                legal_character,
+                decision_type,
+                afwijzingsgronden,
+                executed_regulations,
+                chronicle_sources,
+                outputs,
+                inputs,
+                // Het schema komt er in `decide` bij: het hangt aan de uitkomsten
+                // hierboven, en die zijn hier net pas bekend.
+                obligations: Vec::new(),
+                receipt,
+            },
+            // Álles wat de uitvoering opleverde, en niet alleen wat het gram
+            // vastlegt: het bedrag van een verplichting mag een uitkomst van het
+            // artikel zijn die dit besluit niet publiceert.
+            result.outputs,
+        ))
     }
 
     /// Kom één vervallen verplichting na: leg de betaling vast.
@@ -2098,7 +2285,7 @@ fn resolve_reference(law: &ArticleBasedLaw, reference: &str) -> Option<String> {
 /// verschil in maakt — een afkorting, een oude naam, een afdeling erbij — blijft
 /// verschil: dat is een vraag over wie er bevoegd is, en die hoort in de wet of
 /// in het wereldbestand beantwoord te worden en niet hier geraden.
-fn normalised(name: &str) -> String {
+pub(crate) fn normalised(name: &str) -> String {
     name.trim().to_lowercase()
 }
 
@@ -2484,6 +2671,74 @@ fn output_type_name(value_type: regelrecht_engine::ParameterType) -> &'static st
     }
 }
 
+/// Het bevoegd gezag dat een versie voor dit artikel declareert (RFC-002).
+///
+/// Het **artikel** gaat voor het document: één wet kan nul tot veel bevoegde
+/// gezagen kennen, en het artikel dat de uitkomst voortbrengt zegt wie daarover
+/// mag besluiten. Het documentniveau is de terugvaloptie — het schema laat het
+/// toe en het corpus gebruikt het.
+///
+/// Eén plek voor die voorrangsregel, want twee vragen leunen erop: wie mag
+/// besluiten, en namens wie moet er betaald worden. Zouden ze uiteenlopen, dan
+/// kon een besluit onder het ene gezag genomen worden en onder het andere
+/// betaald.
+fn declared_authority<'a>(
+    law: &'a ArticleBasedLaw,
+    article: Option<&'a Article>,
+) -> Option<&'a CompetentAuthority> {
+    article
+        .and_then(|article| article.machine_readable.as_ref())
+        .and_then(|machine_readable| machine_readable.competent_authority.as_ref())
+        .or(law.competent_authority.as_ref())
+}
+
+/// Per regeling en per uitkomst wat de geladen versies eraan opleggen.
+///
+/// Alleen de artikelen die een `chronolex`-blok dragen: de rest legt niets op,
+/// en een ingang zonder inhoud zou de kaart laten groeien met het corpus in
+/// plaats van met wat de wereld gebruikt.
+///
+/// Een gezag dat niet op te lossen is (een `#`-verwijzing die nergens op
+/// uitkomt) telt hier als "geen gezag". De weigering daarvoor staat bij het
+/// besluit zelf ([`Cell::competent_authority`]), met het gezag in de melding;
+/// hier zou ze de wereld laten omvallen op een artikel dat niemand uitvoert.
+fn obligations_per_output(service: &LawExecutionService) -> Result<ObligationsPerOutput> {
+    let mut per_regulation = ObligationsPerOutput::new();
+    for law in service.resolver().all_law_versions() {
+        for article in &law.articles {
+            let Some(execution) = article.get_execution_spec() else {
+                continue;
+            };
+            let declares = execution
+                .produces
+                .as_ref()
+                .and_then(|produces| produces.extensions.as_ref())
+                .is_some_and(|extensions| extensions.contains_key(besluit::CHRONOLEX));
+            if !declares {
+                continue;
+            }
+            let declared = DeclaredObligations::from_article(
+                ObligationOrigin {
+                    regulation: law.id.clone(),
+                    valid_from: law.valid_from.clone(),
+                    article: article.number.clone(),
+                },
+                declared_authority(law, Some(article))
+                    .and_then(|declared| competent_authority(law, declared)),
+                article,
+            )?;
+            let known = per_regulation.entry(law.id.clone()).or_default();
+            for output in execution.output.iter().flatten() {
+                known
+                    .entry(output.name.clone())
+                    .or_default()
+                    .push(declared.clone());
+            }
+        }
+    }
+    Ok(per_regulation)
+}
+
 /// De uitkomstnamen per regeling, over alle geladen versies heen.
 ///
 /// De engine indexeert uitkomsten alleen voor de nieuwste geladen versie,
@@ -2630,10 +2885,117 @@ lexostatus_definitions:
         BTreeMap::from([("bsn".to_string(), Value::String("999993653".to_string()))])
     }
 
-    /// Een wereld zonder instellingen: geen van de besluiten hieronder legt een
-    /// verplichting op, dus er is niets om naar te verwijzen.
-    fn no_settings() -> BTreeMap<String, Value> {
-        BTreeMap::new()
+    /// De instellingen van de wereld waarin de besluiten hieronder vallen.
+    ///
+    /// `wet_op_de_zorgtoeslag` legt in haar lexogram een betalingsverplichting
+    /// op met `ritme: $betalingsritme`, dus zonder deze instelling kan er op die
+    /// wet geen besluit genomen worden. Voor de besluiten op een testregeling
+    /// zonder verplichting doet ze niets.
+    fn world_settings() -> BTreeMap<String, Value> {
+        BTreeMap::from([(
+            "betalingsritme".to_string(),
+            Value::String("kwartaal".to_string()),
+        )])
+    }
+
+    /// De cel die de verplichtingen van Dienst Toeslagen nakomt.
+    ///
+    /// Of die cel bestaat en of ze een betalingsstroom houdt, is een vraag van de
+    /// wereld; een cel legt alleen vast wie er moet betalen.
+    fn world_payers() -> PayerBindings {
+        PayerBindings::from([(
+            normalised("Dienst Toeslagen"),
+            PayerBinding {
+                cell: "belastingdienst".to_string(),
+                authority: "Dienst Toeslagen".to_string(),
+            },
+        )])
+    }
+
+    /// Een besluit-definitie die alleen dient om in een melding genoemd te
+    /// worden: [`Cell::payer_of`] leest er niets anders uit dan haar naam.
+    fn payer_definition() -> BesluitDefinition {
+        serde_yaml_ng::from_str(
+            r"
+name: toekenning
+regulation: test_zonder_bevoegd_gezag
+output: komt_in_aanmerking
+zaakkenmerk: 'toekenning/{bsn}'
+params:
+  - name: bsn
+    type: string
+",
+        )
+        .unwrap_or_else(|e| panic!("testdefinitie moet parsen: {e}"))
+    }
+
+    /// Eén verplichting uit een lexogram dat geen bevoegd gezag aanwijst.
+    fn declared_without_authority() -> DeclaredObligations {
+        DeclaredObligations {
+            origin: ObligationOrigin {
+                regulation: "test_zonder_bevoegd_gezag".to_string(),
+                valid_from: Some("2024-01-01".to_string()),
+                article: "1".to_string(),
+            },
+            authority: None,
+            article_outputs: BTreeSet::from(["komt_in_aanmerking".to_string()]),
+            items: vec![serde_yaml_ng::from_str(
+                "soort: betaling\nbedrag: $komt_in_aanmerking\nritme: ineens\ngrondslag: art. 1\n",
+            )
+            .unwrap_or_else(|e| panic!("testverplichting moet parsen: {e}"))],
+        }
+    }
+
+    /// De betalende cel wordt aan het bevoegd gezag gebonden, dus een regeling
+    /// die daarover zwijgt laat de verplichting bij niemand terechtkomen. Dat is
+    /// iets anders dan een besluit zónder verplichting: daar valt niets na te
+    /// komen, hier wel.
+    #[test]
+    fn een_verplichting_zonder_bevoegd_gezag_wordt_geweigerd() {
+        let err = toeslagen()
+            .payer_of(
+                &payer_definition(),
+                &declared_without_authority(),
+                &world_payers(),
+            )
+            .expect_err("een verplichting zonder gezag hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::ObligationWithoutAuthority { .. }),
+            "verwachtte ObligationWithoutAuthority, kreeg {err}"
+        );
+    }
+
+    /// En een gezag dat wél aangewezen is maar dat geen enkele cel nakomt, is een
+    /// gat in het wereldbestand: de melding zegt welke `komt_na` eronder hoort.
+    #[test]
+    fn een_gezag_dat_geen_cel_nakomt_wordt_geweigerd() {
+        let mut declared = declared_without_authority();
+        declared.authority = Some("Minister van Financiën".to_string());
+
+        let err = toeslagen()
+            .payer_of(&payer_definition(), &declared, &world_payers())
+            .expect_err("een gezag zonder gebonden cel hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::ObligationWithoutPayer { .. }),
+            "verwachtte ObligationWithoutPayer, kreeg {err}"
+        );
+        assert!(
+            err.to_string().contains("Dienst Toeslagen"),
+            "de melding hoort te zeggen wat er wél gebonden is: {err}"
+        );
+    }
+
+    /// De binding gaat over genormaliseerde tekst: een hoofdletter of een spatie
+    /// vooraan is een schrijfwijze en geen andere organisatie.
+    #[test]
+    fn de_binding_kijkt_niet_naar_hoofdletters_of_spaties() {
+        let mut declared = declared_without_authority();
+        declared.authority = Some("  dienst toeslagen ".to_string());
+
+        let payer = toeslagen()
+            .payer_of(&payer_definition(), &declared, &world_payers())
+            .unwrap_or_else(|e| panic!("dezelfde naam anders geschreven hoort te binden: {e}"));
+        assert_eq!(payer, "belastingdienst");
     }
 
     fn moment() -> NaiveDate {
@@ -3187,7 +3549,8 @@ besluit_definitions:
                 DecisionContext {
                     identity: "Documentgezag",
                     op_moment: moment(),
-                    settings: &no_settings(),
+                    settings: &world_settings(),
+                    payers: &world_payers(),
                 },
                 &no_accepted(),
                 None,
@@ -3208,7 +3571,8 @@ besluit_definitions:
                 DecisionContext {
                     identity: "Artikelgezag",
                     op_moment: moment(),
-                    settings: &no_settings(),
+                    settings: &world_settings(),
+                    payers: &world_payers(),
                 },
                 &no_accepted(),
                 None,
@@ -3269,7 +3633,8 @@ besluit_definitions:
                     DecisionContext {
                         identity,
                         op_moment: moment(),
-                        settings: &no_settings(),
+                        settings: &world_settings(),
+                        payers: &world_payers(),
                     },
                     &no_accepted(),
                     None,
@@ -3303,7 +3668,8 @@ besluit_definitions:
                 DecisionContext {
                     identity: IDENTITEIT,
                     op_moment: moment(),
-                    settings: &no_settings(),
+                    settings: &world_settings(),
+                    payers: &world_payers(),
                 },
                 &no_accepted(),
                 None,
@@ -3729,7 +4095,8 @@ besluit_definitions:
             DecisionContext {
                 identity: IDENTITEIT,
                 op_moment,
-                settings: &no_settings(),
+                settings: &world_settings(),
+                payers: &world_payers(),
             },
             &no_accepted(),
             None,
@@ -3804,7 +4171,8 @@ besluit_definitions:
                 DecisionContext {
                     identity: IDENTITEIT,
                     op_moment: moment(),
-                    settings: &no_settings(),
+                    settings: &world_settings(),
+                    payers: &world_payers(),
                 },
                 &no_accepted(),
                 None,
@@ -3894,7 +4262,8 @@ besluit_definitions:
                 DecisionContext {
                     identity: IDENTITEIT,
                     op_moment: moment(),
-                    settings: &no_settings(),
+                    settings: &world_settings(),
+                    payers: &world_payers(),
                 },
                 &no_accepted(),
                 None,
@@ -3943,7 +4312,8 @@ besluit_definitions:
                 DecisionContext {
                     identity: IDENTITEIT,
                     op_moment: moment(),
-                    settings: &no_settings(),
+                    settings: &world_settings(),
+                    payers: &world_payers(),
                 },
                 &no_accepted(),
                 None,
@@ -3991,7 +4361,8 @@ besluit_definitions:
                 DecisionContext {
                     identity: IDENTITEIT,
                     op_moment: date("2024-01-01"),
-                    settings: &no_settings(),
+                    settings: &world_settings(),
+                    payers: &world_payers(),
                 },
                 &no_accepted(),
                 None,
@@ -4025,7 +4396,8 @@ besluit_definitions:
                 DecisionContext {
                     identity: IDENTITEIT,
                     op_moment: moment(),
-                    settings: &no_settings(),
+                    settings: &world_settings(),
+                    payers: &world_payers(),
                 },
                 &no_accepted(),
                 None,
@@ -4068,7 +4440,8 @@ besluit_definitions:
                 DecisionContext {
                     identity: IDENTITEIT,
                     op_moment: moment(),
-                    settings: &no_settings(),
+                    settings: &world_settings(),
+                    payers: &world_payers(),
                 },
                 &no_accepted(),
                 None,
@@ -4174,7 +4547,8 @@ chronicles:
             DecisionContext {
                 identity: IDENTITEIT,
                 op_moment: moment(),
-                settings: &no_settings(),
+                settings: &world_settings(),
+                payers: &world_payers(),
             },
             &no_accepted(),
             None,

@@ -18,18 +18,33 @@ clock:
   # nemen de klok mee.
   start: 2024-01-01
 
+settings:
+  # Artikel 2 van de Wet op de zorgtoeslag legt een betalingsverplichting op en
+  # laat het ritme aan het beleid van de uitvoerder (`ritme: $betalingsritme`).
+  betalingsritme: kwartaal
+
 cells:
   - id: toeslagen
     # De naam waaronder deze cel zich uitgeeft. Het is een bewering: de
     # regeling die ze uitvoert wijst dit gezag aan, en een besluit door een cel
     # die iets anders beweert wordt geweigerd.
     identity: Dienst Toeslagen
+    # Deze wereld heeft één cel, dus zij komt de verplichting na die haar eigen
+    # besluit oplegt. Dat mag: de binding loopt langs het bevoegd gezag, en dat
+    # is hier zijzelf.
+    komt_na:
+      - Dienst Toeslagen
     laws:
       - wet_op_de_zorgtoeslag
       - algemene_wet_inkomensafhankelijke_regelingen
       - regeling_standaardpremie
 
     chronicles:
+      # De stroom waarin betalingen landen: beide kanten van een verplichting
+      # leggen vast, en hier zijn beide kanten dezelfde cel.
+      - stream: betalingen
+        key: zaakkenmerk
+
       # Wat de cel over deze persoon vastlegde. Er staat géén stroom
       # `beschikkingen` bij: die hoort bij het besluit-pad en wordt automatisch
       # aangemaakt zodra een cel besluit-definities heeft.

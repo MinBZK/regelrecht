@@ -1,0 +1,180 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: test_betalingsritmes
+name: Testregeling betalingsritmes
+regulatory_layer: WET
+bwb_id: BWBR9999904
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+url: https://example.com/test_betalingsritmes
+competent_authority: Dienst Toeslagen
+
+# Een testregeling, met opzet **niet** in het corpus: ze bestaat om een
+# eigenschap van de opstelling aan te tonen en niet om recht weer te geven. Zie
+# `test_nabetaling` voor dezelfde afweging.
+#
+# Wat ze aantoont is dat het **ritme** van een betalingsverplichting in het
+# lexogram staat, en dat een regeling het op twee manieren kan zeggen: letterlijk
+# (artikel 1 betaalt nu eenmaal ineens) of als verwijzing naar een instelling van
+# de uitvoerder (artikel 2 laat het ritme aan het beleid). Twee artikelen en niet
+# twee regelingen, omdat een verplichting aan het **artikel** hangt dat de
+# beschikking voortbrengt — net als het bevoegd gezag (RFC-002).
+#
+# Beide artikelen kennen hetzelfde bedrag toe, zodat te zien is dat het ritme
+# bepaalt wannéér er betaald wordt en niet hoevéél.
+articles:
+  - number: '1'
+    url: https://example.com/test_betalingsritmes#Artikel1
+    text: >-
+      Het toegekende bedrag wordt in één termijn betaald, op de dag van de beschikking.
+    machine_readable:
+      definitions:
+        toegekend_bedrag:
+          value: 120000
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+          extensions:
+            chronolex:
+              verplichtingen:
+                # Het ritme staat hier letterlijk: deze beschikking betaalt in
+                # één keer, wat de uitvoerder ook als standaardritme heeft
+                # ingesteld.
+                - soort: betaling
+                  bedrag: $bedrag_ineens
+                  ritme: ineens
+                  grondslag: Testregeling betalingsritmes art. 1
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        output:
+          - name: bedrag_ineens
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: bedrag_ineens
+            value: $toegekend_bedrag
+
+  - number: '2'
+    url: https://example.com/test_betalingsritmes#Artikel2
+    text: >-
+      Het toegekende bedrag wordt betaald in het ritme dat het bestuursorgaan hanteert, met ingang van 1 februari van
+      het jaar waarop de beschikking ziet.
+    machine_readable:
+      definitions:
+        toegekend_bedrag:
+          value: 120000
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+          extensions:
+            chronolex:
+              verplichtingen:
+                # Hier laat de wet het ritme aan het beleid van de uitvoerder:
+                # `$betalingsritme` leest uit `settings` van het wereldbestand.
+                # En `vanaf` is een sjabloon over de parameters van het besluit
+                # dat dit artikel uitvoert — wat het oplevert moet een datum zijn
+                # die niet vóór dat besluit ligt.
+                - soort: betaling
+                  bedrag: $bedrag_maandelijks
+                  ritme: $betalingsritme
+                  vanaf: '{jaar}-02-01'
+                  grondslag: Testregeling betalingsritmes art. 2
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        output:
+          - name: bedrag_maandelijks
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: bedrag_maandelijks
+            value: $toegekend_bedrag
+
+  - number: '3'
+    url: https://example.com/test_betalingsritmes#Artikel3
+    text: >-
+      Het toegekende bedrag wordt in vier termijnen betaald. Daarnaast wordt een vergoeding ter hoogte van dat bedrag
+      ineens betaald.
+    machine_readable:
+      definitions:
+        toegekend_bedrag:
+          value: 120000
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+          extensions:
+            chronolex:
+              verplichtingen:
+                # Eén artikel kan meer dan één verplichting opleggen. De
+                # volgnummers lopen dan binnen één gram door over beide, anders
+                # zou de eerste termijn van de tweede voor die van de eerste
+                # doorgaan en stil wegvallen.
+                - soort: betaling
+                  bedrag: $bedrag_tweemaal
+                  ritme: kwartaal
+                  grondslag: Testregeling betalingsritmes art. 3, eerste zin
+                - soort: betaling
+                  bedrag: $bedrag_tweemaal
+                  ritme: ineens
+                  grondslag: Testregeling betalingsritmes art. 3, tweede zin
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        output:
+          - name: bedrag_tweemaal
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: bedrag_tweemaal
+            value: $toegekend_bedrag
+
+  - number: '4'
+    url: https://example.com/test_betalingsritmes#Artikel4
+    text: >-
+      Bij de toekenning wordt een vergoeding ineens betaald. De beschikking vermeldt die vergoeding niet.
+    machine_readable:
+      definitions:
+        toegekend_bedrag:
+          value: 120000
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+          extensions:
+            chronolex:
+              verplichtingen:
+                # Het bedrag is een uitkomst van dít artikel die de beschikking
+                # zelf niet vastlegt. Ze gaat wél als gevraagde uitkomst mee de
+                # uitvoering in, anders zou het bedrag afhangen van wat de
+                # uitvoering toevallig ook uitrekende.
+                - soort: betaling
+                  bedrag: $vergoeding_apart
+                  ritme: ineens
+                  grondslag: Testregeling betalingsritmes art. 4
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        output:
+          - name: recht_apart
+            type: boolean
+          - name: vergoeding_apart
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: recht_apart
+            value: true
+          - output: vergoeding_apart
+            value: $toegekend_bedrag

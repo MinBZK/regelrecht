@@ -111,6 +111,13 @@ cells:
   # wat een tweede besluit zichtbaar maakt.
   - id: belastingdienst
     laws: []
+    # Deze cel komt de betalingsverplichtingen na die Dienst Toeslagen oplegt:
+    # de wet zegt dát er betaald moet worden, dit zegt wie dat doet (Awir art.
+    # 25). De binding loopt langs het bevoegd gezag en niet langs een cel-id:
+    # de wet kent geen cellen, dus de enige naam die beide kanten kennen is die
+    # van het gezag.
+    komt_na:
+      - Dienst Toeslagen
     chronicles:
       - stream: aanslagen
         key: bsn
@@ -254,10 +261,6 @@ cells:
             field: toetsingsinkomen
             params:
               bsn: $bsn
-        obligations:
-          - amount: $hoogte_zorgtoeslag
-            payer: belastingdienst
-            schedule: $betalingsritme
 
       - name: zorgtoeslag_vaststelling
         doc: >-

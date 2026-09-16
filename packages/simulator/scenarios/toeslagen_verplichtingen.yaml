@@ -89,13 +89,6 @@ cells:
           is_verzekerde:
             from_chronicle: inkomensleveringen
             field: is_verzekerde
-        obligations:
-          # Het bedrag komt uit de wet, niet uit dit bestand: `$hoogte_zorgtoeslag`
-          # is de uitkomst waarop besloten is. Een letterlijk bedrag zou ernaast
-          # gaan leven, en dan zegt het gram twee dingen over hetzelfde geld.
-          - amount: $hoogte_zorgtoeslag
-            payer: belastingdienst
-            schedule: $betalingsritme
 
     lexostatus_definitions:
       - name: betaald_tot_nu_toe
@@ -117,6 +110,10 @@ cells:
     # Een bron-cel: geen wetten, geen engine. Ze legt vast en reduceert, en dat
     # is genoeg om een verplichting na te komen.
     laws: []
+    # Deze cel komt de betalingsverplichtingen na die Dienst Toeslagen oplegt:
+    # het lexogram zegt dát er betaald moet worden, dit zegt wie dat doet.
+    komt_na:
+      - Dienst Toeslagen
     chronicles:
       - stream: betalingen
         key: zaakkenmerk

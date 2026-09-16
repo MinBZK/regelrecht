@@ -10,8 +10,8 @@ description: >-
   Wat dat gram anders maakt dan een toekenning is precies drie dingen:
   `decision_type` is `AFWIJZING`, er staat een `afwijzingsgrond` in met de
   uitkomst en het artikel dat haar voortbrengt, en er zijn **geen
-  verplichtingen** — ook al legt de definitie er een op. Al het andere is
-  hetzelfde: hetzelfde rechtskarakter, dezelfde vaste velden, dezelfde
+  verplichtingen** — ook al legt het uitvoerende artikel er een op. Al het
+  andere is hetzelfde: hetzelfde rechtskarakter, dezelfde vaste velden, dezelfde
   uitkomsten die de regeling wél leverde, hetzelfde receipt.
 
   Wannéér een besluit afwijst, staat niet in dit bestand: het staat op het
@@ -28,9 +28,21 @@ description: >-
 clock:
   start: 2024-01-01
 
+settings:
+  # Artikel 2 van de Wet op de zorgtoeslag legt een betalingsverplichting op en
+  # laat het ritme aan het beleid van de uitvoerder (`ritme: $betalingsritme`).
+  # Ze staat hier zodat de verplichting er is — en daarmee de lege
+  # betalingsstroom hieronder iets bewijst.
+  betalingsritme: kwartaal
+
 cells:
   - id: toeslagen
     identity: Dienst Toeslagen
+    # Deze wereld heeft één cel, dus zij komt de verplichting na die haar eigen
+    # besluit oplegt. Dat mag: de binding loopt langs het bevoegd gezag, en dat
+    # is hier zijzelf.
+    komt_na:
+      - Dienst Toeslagen
     laws:
       - wet_op_de_zorgtoeslag
       - algemene_wet_inkomensafhankelijke_regelingen
@@ -84,6 +96,12 @@ cells:
           `produces.extensions.chronolex.afwijzing_wanneer` dat een besluit
           zonder recht een afwijzing is, en elke cel die dat artikel uitvoert
           weigert daarop.
+
+          Wat dit besluit oplegt staat evenmin hier: hetzelfde artikel declareert
+          onder `produces.extensions.chronolex.verplichtingen` een betaling in
+          het ritme van de instelling. Dat de verplichting er is, is met opzet —
+          een afwijzing legt er geen op, en dat bewijst een lege betalingsstroom
+          alleen als de wet er wél een oplegt.
         regulation: wet_op_de_zorgtoeslag
         output: heeft_recht_op_zorgtoeslag
         outputs:
@@ -98,13 +116,6 @@ cells:
           is_verzekerde:
             from_chronicle: inkomensleveringen
             field: is_verzekerde
-        # De verplichting blijft staan, en dat is met opzet: een afwijzing legt
-        # er geen op, en dat hoort te blijken uit een definitie die er wél een
-        # noemt. Zou ze hier weggelaten zijn, dan bewees de lege lijst niets.
-        obligations:
-          - amount: $hoogte_zorgtoeslag
-            payer: toeslagen
-            schedule: kwartaal
 
       - name: zorgtoeslag_nabetaling
         doc: >-
@@ -219,7 +230,7 @@ queries:
       decision_type: AFWIJZING
 
   - description: >-
-      En er is niets te betalen. De definitie legt een kwartaalverplichting op,
+      En er is niets te betalen. Artikel 2 legt een kwartaalverplichting op,
       maar een afwijzing belooft niets — dus er verviel geen termijn en er ligt
       geen betaling.
     cell: toeslagen

@@ -94,6 +94,8 @@ articles:
           legal_character: BESCHIKKING
           decision_type: TOEKENNING
           extensions:
+            # De chronolexografie-namespace (RFC-022 §3.2) op wat dit artikel
+            # voortbrengt.
             chronolex:
               # Wanneer dit besluit geen toekenning maar een afwijzing is. Een
               # beschikking omvat ook de afwijzing van de aanvraag (Awb 1:3 lid
@@ -101,6 +103,24 @@ articles:
               # niet van de uitvoerder.
               afwijzing_wanneer:
                 heeft_recht_op_zorgtoeslag: false
+              # Wat deze beschikking aan betalingsverplichtingen oplegt. Het
+              # bedrag is de uitkomst van dit artikel; het ritme is beleid en
+              # komt daarom uit de instellingen van de uitvoerder, niet uit de
+              # wet.
+              #
+              # De grondslag is die van een uitbetaling in termijnen: Awir art.
+              # 16 jo. art. 22 (voorschot). Dát is in de Awir het mechanisme dat
+              # periodiek betaalt zodra het recht vaststaat, en dat is wat deze
+              # opstelling nadoet. De definitieve uitbetaling van art. 24 lid 1
+              # (binnen vier weken, ineens) hoort bij de verrekening met een
+              # eerder verleend voorschot, en die kent deze opstelling nog niet
+              # — zie "Wat hier nog niet staat" in de README van
+              # packages/simulator.
+              verplichtingen:
+                - soort: betaling
+                  bedrag: $hoogte_zorgtoeslag
+                  ritme: $betalingsritme
+                  grondslag: Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen)
         parameters:
           - name: bsn
             type: string
