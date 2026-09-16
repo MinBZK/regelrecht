@@ -114,12 +114,14 @@ cells:
     );
 }
 
-/// **Een andere namespace blijft ongelezen en ongemoeid.**
+/// **De tegenproef: een wet met een blok dat wél klopt, tuigt gewoon op.**
 ///
-/// `chronolex` is de namespace van deze opstelling; wat een wet onder een andere
-/// namespace zet, is niet aan haar. De publieke wereld tuigt gewoon op, en dat
-/// is de tegenproef bij de twee weigeringen hierboven: streng is de namespace,
-/// niet `extensions` als geheel.
+/// Zonder deze regel zou een lezer van de twee weigeringen hierboven niet weten
+/// of de strengheid iets weigert of álles. Dat een andere namespace ongelezen en
+/// ongemoeid blijft, staat waar de lezer zelf staat
+/// (`cell::extensions::tests::een_andere_namespace_blijft_ongemoeid`) en in het
+/// scenario over de betalingsritmes, waarvan de testregeling een `blauwe_knop`
+/// draagt die niemand leest.
 #[test]
 fn de_publieke_wereld_tuigt_gewoon_op() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

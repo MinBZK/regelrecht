@@ -64,14 +64,34 @@ pub(crate) struct ChronolexBlock {
     /// Wat dit artikel aan verplichtingen oplegt; leeg mag.
     #[serde(default)]
     pub(crate) verplichtingen: Vec<ObligationDefinition>,
-    /// Wanneer het besluit op dit artikel een afwijzing is; leeg mag.
+    /// Wanneer het besluit op dit artikel een afwijzing is.
     ///
     /// Ongelezen bewaard: het optuigen toetst elke geladen versie en het besluit
     /// leest de versie die op dat moment gold, en die twee moeten er hetzelfde
     /// in zien. Wat erin staat wordt uitgepakt door [`afwijzing_wanneer`], op
     /// één plek, met een reden die een lezer verder helpt.
-    #[serde(default)]
+    ///
+    /// `None` betekent: de sleutel staat er niet, en dan declareert het artikel
+    /// geen afwijzing. Een sleutel die er wél staat maar leeg blijft, is iets
+    /// anders — zie [`present`].
+    #[serde(default, deserialize_with = "present")]
     pub(crate) afwijzing_wanneer: Option<Value>,
+}
+
+/// Lees een sleutel die er staat, ook als er niets achter staat.
+///
+/// `Option<Value>` zou `afwijzing_wanneer:` zonder waarde als `None` lezen — als
+/// "de sleutel staat er niet" — en dan zou een artikel dat zegt af te wijzen
+/// zonder te zeggen wanneer, stil nooit afwijzen. Dat is precies het stille
+/// overslaan dat deze module opheft: een lege sleutel is een blok dat niet af
+/// is, en die hoort te vallen waar hij uitgepakt wordt
+/// ([`afwijzing_wanneer`]), met de reden erbij. Deze lezer wordt alleen
+/// aangeroepen als de sleutel er staat, dus een blok zonder de sleutel blijft
+/// `None` via `serde(default)`.
+fn present<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<Option<Value>, D::Error> {
+    Value::deserialize(deserializer).map(Some)
 }
 
 impl ChronolexBlock {
@@ -166,6 +186,7 @@ pub(crate) fn afwijzing_wanneer(
 mod tests {
     use super::*;
     use regelrecht_engine::Article;
+    use std::collections::BTreeSet;
 
     fn origin() -> ObligationOrigin {
         ObligationOrigin {
@@ -238,6 +259,50 @@ mod tests {
                 "de melding hoort '{deel}' te noemen, kreeg: {melding}"
             );
         }
+    }
+
+    /// Een sleutel die er staat maar leeg blijft, is geen sleutel die er niet staat.
+    ///
+    /// `afwijzing_wanneer:` zonder waarde is een artikel dat zegt af te wijzen
+    /// zonder te zeggen wanneer. Zou het als "geen sleutel" gelezen worden, dan
+    /// wees het stil nooit iemand af — en dat is precies het stille overslaan
+    /// dat deze module opheft. Het valt waar het blok uitgepakt wordt, met de
+    /// reden erbij.
+    #[test]
+    fn een_lege_afwijzing_wanneer_is_geen_ontbrekende() {
+        let block = lees("      extensions:\n        chronolex:\n          afwijzing_wanneer:\n")
+            .unwrap_or_else(|e| panic!("het blok zelf is te lezen: {e}"));
+        let value = block
+            .afwijzing_wanneer
+            .as_ref()
+            .unwrap_or_else(|| panic!("een sleutel die er staat, hoort er te staan"));
+        let reason = afwijzing_wanneer(value).expect_err("een lege voorwaarde hoort te falen");
+        assert!(
+            reason.contains("geen null"),
+            "de reden hoort te zeggen wat er staat: {reason}"
+        );
+    }
+
+    /// De sleutels in de melding zijn die van de struct, en blijven dat.
+    ///
+    /// [`KNOWN_KEYS`] staat naast [`ChronolexBlock`] en niet erin: een veld erbij
+    /// in de struct zonder een regel erbij in de lijst zou een melding opleveren
+    /// die liegt over wat er dan wél mag staan. Serde noemt zelf wat ze verwacht;
+    /// hier worden die twee tegen elkaar gehouden.
+    #[test]
+    fn de_sleutels_in_de_melding_zijn_die_van_de_struct() {
+        let err = lees("      extensions:\n        chronolex:\n          onbekend: 1\n")
+            .expect_err("een onbekende sleutel hoort te falen");
+        let melding = err.to_string();
+        let (_, verwacht) = melding
+            .split_once("expected ")
+            .unwrap_or_else(|| panic!("serde hoort te noemen wat ze verwacht: {melding}"));
+        let uit_de_struct: BTreeSet<&str> = verwacht.split('`').skip(1).step_by(2).collect();
+        assert_eq!(
+            uit_de_struct,
+            KNOWN_KEYS.iter().copied().collect::<BTreeSet<&str>>(),
+            "de lijst naast de struct hoort die van de struct te zijn: {melding}"
+        );
     }
 
     /// Een namespace die geen mapping is, krijgt zijn eigen reden.
