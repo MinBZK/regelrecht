@@ -398,12 +398,12 @@ actions:
   - id: toeslagen.vaststelling
     actor: toeslagen
     label: Stel de zorgtoeslag definitief vast
-    # Dit besluit leest dezelfde eigen feiten als de toekenning en leest het
-    # eerste besluit niet terug, dus het kan zodra de aanvraag er ligt. Dat het
-    # in dit verhaal ná de toekenning komt, is een keuze van de behandelaar en
-    # geen voorwaarde — en dat is precies wat er eerder met de hand bijgeschreven
-    # stond terwijl de definitie het niet zei.
-    doc: Kan zodra er een aanvraag ligt; in dit verhaal volgt zij op de toekenning.
+    # Dit besluit leest de toekenning terug uit de eigen kroniek
+    # (`from_decretogram`), en dat is een eigen feit: zonder toekenning is er
+    # nog geen gram om uit te lezen, dus kan dit besluit niet. Geen voorwaarde
+    # in dit bestand — het volgt uit wat de eigen inputs opleveren, precies
+    # zoals bij de toekenning hierboven.
+    doc: Kan pas als de toekenning er ligt; de vaststelling leest die terug.
     decides:
       cell: toeslagen
       besluit: zorgtoeslag_vaststelling

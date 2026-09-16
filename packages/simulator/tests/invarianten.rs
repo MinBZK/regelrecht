@@ -543,11 +543,54 @@ fn de_beschikbaarheidscheck_levert_geen_contact_over_een_celgrens_op() {
         .unwrap_or_else(|e| panic!("de aanvraag moet kunnen: {e}"));
     let na = world.snapshot();
     assert!(
-        na.actions.iter().all(|actie| actie.available),
-        "met de aanvraag erbij kan elk besluit in deze wereld"
+        na.actions
+            .iter()
+            .find(|actie| actie.id == "toeslagen.toekenning")
+            .is_some_and(|actie| actie.available),
+        "met de aanvraag erbij kan de toekenning"
+    );
+    assert!(
+        na.actions
+            .iter()
+            .find(|actie| actie.id == "toeslagen.vaststelling")
+            .is_some_and(|actie| !actie.available),
+        "de vaststelling leest de toekenning terug uit de eigen kroniek (een eigen \
+         feit), dus zonder toekenning kan ze nog niet"
     );
     assert!(
         na.crossings.is_empty() && world.crossings().is_empty(),
         "en er ging nog steeds niets over een celgrens"
+    );
+
+    // Ná de toekenning ligt ook dát eigen feit er, en kan de vaststelling. De
+    // klok moet eerst voorbij de aanslag van de belastingdienst (2024-03-01),
+    // anders is er nog geen toetsingsinkomen te accepteren.
+    world
+        .advance(
+            chrono::NaiveDate::from_ymd_opt(2024, 4, 1)
+                .unwrap_or_else(|| panic!("2024-04-01 hoort een geldige datum te zijn")),
+        )
+        .unwrap_or_else(|e| panic!("de klok moet kunnen doortikken: {e}"));
+    world
+        .act(
+            "toeslagen.toekenning",
+            &BTreeMap::from([("bsn".to_string(), Value::String("999993653".to_string()))]),
+        )
+        .unwrap_or_else(|e| panic!("de toekenning moet kunnen: {e}"));
+
+    // De toekenning zelf accepteert het toetsingsinkomen van de belastingdienst,
+    // dus dát is wél een echte grensoverschrijding — het punt van deze meting is
+    // niet dat er nooit contact is, maar dat het **opvragen van het beeld** er
+    // geen bij optelt.
+    let crossings_na_besluit = world.crossings().len();
+    let na = world.snapshot();
+    assert!(
+        na.actions.iter().all(|actie| actie.available),
+        "met de toekenning erbij kan elk besluit in deze wereld"
+    );
+    assert_eq!(
+        world.crossings().len(),
+        crossings_na_besluit,
+        "het opvragen van het beeld hoort zelf geen grens over te gaan"
     );
 }
