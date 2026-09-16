@@ -343,6 +343,10 @@ impl Cell {
                 .map(legal_characters_per_output)
                 .unwrap_or_default(),
             output_types: service.as_ref().map(types_per_output).unwrap_or_default(),
+            afwijzing_blocks: service
+                .as_ref()
+                .map(afwijzing_blocks_per_output)
+                .unwrap_or_default(),
             regulation_inputs: service
                 .as_ref()
                 .map(inputs_per_regulation)
@@ -1771,7 +1775,72 @@ impl Cell {
             .map(|(name, input)| (name.clone(), input.value.clone()))
             .collect();
         let calculation_date = op_moment.format("%Y-%m-%d").to_string();
-        let recorded: Vec<&str> = definition.recorded_outputs().into_iter().collect();
+
+        // Wat het uitvoerende artikel over dít besluit zegt, gelezen vóór de
+        // uitvoering: het rechtskarakter, het besluittype en de voorwaarden
+        // waaronder dit besluit een afwijzing is. Vóór en niet erna, want de
+        // voorwaarden bepalen mede wát er uitgerekend moet worden — zie
+        // `requested` hieronder. Uit de versie die op dit moment gold: wat de wet
+        // zegt, zegt ze in het recht van toen.
+        let (legal_character, declared_decision_type, conditions) = {
+            let resolver = service.resolver();
+            let produces = resolver
+                .get_article_by_output(&definition.regulation, &definition.output, Some(op_moment))
+                .and_then(regelrecht_engine::Article::get_execution_spec)
+                .and_then(|execution| execution.produces.as_ref());
+            // Onbereikbaar fout: het optuigen heeft dit blok voor elke geladen
+            // versie al gelezen. Stil doorgaan zou hier van een weigering een
+            // toekenning maken, en dat mag nooit aan een aanname hangen.
+            let conditions = besluit::afwijzing_block(produces)
+                .map(besluit::afwijzing_wanneer)
+                .transpose()
+                .map_err(|reason| SimulatorError::MalformedAfwijzingWanneer {
+                    cell: self.id.clone(),
+                    besluit: definition.name.clone(),
+                    regulation: definition.regulation.clone(),
+                    output: definition.output.clone(),
+                    reason,
+                })?
+                .unwrap_or_default();
+            (
+                produces.and_then(|produces| produces.legal_character.clone()),
+                produces.and_then(|produces| produces.decision_type.clone()),
+                conditions,
+            )
+        };
+        // En het moet een beschikking zijn: een decretogram ís een uitkomst met
+        // `legal_character: BESCHIKKING` (RFC-022 §1.2). Het optuigen heeft dat
+        // voor elke geladen versie al getoetst; hier nog eens, op de versie die op
+        // dit moment geldt, zodat een gram nooit iets anders draagt dan wat het is.
+        //
+        // Het rechtskarakter hoort bij het artikel dat de aansturende uitkomst
+        // voortbrengt: díe uitkomst *is* het besluit. Een uitkomst die erbij
+        // meegaat kan uit een ander artikel komen, en dat artikel zegt niets over
+        // het karakter van dit besluit.
+        let legal_character = match legal_character {
+            Some(character) if character == BESCHIKKING => character,
+            other => {
+                return Err(SimulatorError::BesluitNotABeschikking {
+                    cell: self.id.clone(),
+                    besluit: definition.name.clone(),
+                    regulation: definition.regulation.clone(),
+                    output: definition.output.clone(),
+                    found: other.unwrap_or_else(|| "geen `legal_character`".to_string()),
+                })
+            }
+        };
+
+        // De uitkomsten die het gram draagt, plus de uitkomsten waarop de wet
+        // haar afwijzing laat afhangen. Die tweede hoeft de definitie niet vast
+        // te leggen — de grond komt als `afwijzingsgrond` in het gram, met haar
+        // artikel erbij — maar uitgerekend moet ze worden, anders zou de
+        // voorwaarde op een ontbrekende waarde stil nooit vervuld raken.
+        let recorded: BTreeSet<&str> = definition
+            .recorded_outputs()
+            .into_iter()
+            .chain(conditions.keys().map(String::as_str))
+            .collect();
+        let recorded: Vec<&str> = recorded.into_iter().collect();
         // Mét trace, en dat is het verschil met een reductie: het decretogram
         // draagt het RFC-013 receipt van deze uitvoering, en zonder de trace
         // staat er wel wát er uitkwam maar niet langs welke artikelen. Dan is
@@ -1811,34 +1880,6 @@ impl Cell {
             resolver,
             op_moment,
         );
-        // Het rechtskarakter hoort bij het artikel dat de aansturende uitkomst
-        // voortbrengt: díe uitkomst *is* het besluit. Een uitkomst die erbij
-        // meegaat kan uit een ander artikel komen, en dat artikel zegt niets
-        // over het karakter van dit besluit.
-        //
-        // En het moet een beschikking zijn: een decretogram ís een uitkomst met
-        // `legal_character: BESCHIKKING` (RFC-022 §1.2). Het optuigen heeft dat
-        // voor elke geladen versie al getoetst; hier nog eens, op de versie die
-        // op dit moment geldt, zodat een gram nooit iets anders draagt dan wat
-        // het is.
-        let produces = resolver
-            .get_article_by_output(&definition.regulation, &definition.output, Some(op_moment))
-            .and_then(regelrecht_engine::Article::get_execution_spec)
-            .and_then(|execution| execution.produces.as_ref());
-        let legal_character = produces.and_then(|produces| produces.legal_character.clone());
-        let legal_character = match legal_character {
-            Some(character) if character == BESCHIKKING => character,
-            other => {
-                return Err(SimulatorError::BesluitNotABeschikking {
-                    cell: self.id.clone(),
-                    besluit: definition.name.clone(),
-                    regulation: definition.regulation.clone(),
-                    output: definition.output.clone(),
-                    found: other.unwrap_or_else(|| "geen `legal_character`".to_string()),
-                })
-            }
-        };
-
         let outputs: BTreeMap<String, Value> = definition
             .recorded_outputs()
             .into_iter()
@@ -1849,13 +1890,17 @@ impl Cell {
                     .map(|value| (name.to_string(), value.clone()))
             })
             .collect();
-        // Ketste het besluit af op een voorwaarde? Dan is het een **afwijzing**:
-        // hetzelfde gram, hetzelfde rechtskarakter, maar een ander besluittype en
-        // straks geen verplichtingen (Awb 1:3 lid 2 — een beschikking omvat ook
-        // de afwijzing van de aanvraag). Het artikel bij elke grond komt van
-        // dezelfde resolver op hetzelfde moment als het rechtskarakter hierboven:
-        // wat de wet zegt, zegt ze in de versie die op dit moment gold.
-        let afwijzingsgronden = definition.afwijzingsgronden(&outputs, |output| {
+        // Ketste het besluit af op een voorwaarde die de **wet** noemt? Dan is het
+        // een afwijzing: hetzelfde gram, hetzelfde rechtskarakter, maar een ander
+        // besluittype en straks geen verplichtingen (Awb 1:3 lid 2 — een
+        // beschikking omvat ook de afwijzing van de aanvraag).
+        //
+        // De voorwaarden komen van hetzelfde `produces` als het rechtskarakter
+        // hierboven, en dus uit de versie die op dit moment gold: wat de wet zegt,
+        // zegt ze in het recht van toen. Het artikel bij elke grond wordt er apart
+        // bij gezocht — een voorwaarde mag over een uitkomst van een ander artikel
+        // gaan, en dan is dát de grondslag van de weigering.
+        let afwijzingsgronden = besluit::afwijzingsgronden(&conditions, &outputs, |output| {
             resolver
                 .get_article_by_output(&definition.regulation, output, Some(op_moment))
                 .map(|article| article.number.clone())
@@ -1864,7 +1909,7 @@ impl Cell {
         // afwijzing. Andersom zou een uitvoeringsregel die "TOEKENNING" zegt een
         // weigering als toekenning laten vastleggen.
         let decision_type = if afwijzingsgronden.is_empty() {
-            produces.and_then(|produces| produces.decision_type.clone())
+            declared_decision_type
         } else {
             Some(besluit::AFWIJZING.to_string())
         };
@@ -2377,6 +2422,38 @@ fn types_per_output(
                     .entry(output.name.clone())
                     .or_default()
                     .insert(output_type_name(output.output_type).to_string());
+            }
+        }
+    }
+    per_regulation
+}
+
+/// Per regeling en per uitkomst de `afwijzing_wanneer`-blokken die het
+/// voortbrengende artikel declareert, over alle geladen versies heen.
+///
+/// Ongelezen doorgegeven: het optuigen leest ze en weigert wat niet te lezen is
+/// (zie [`besluit::afwijzing_wanneer`]). Alle versies tellen mee, om dezelfde
+/// reden als bij [`legal_characters_per_output`] — een besluit over een ouder
+/// moment landt op een oudere versie.
+fn afwijzing_blocks_per_output(
+    service: &LawExecutionService,
+) -> BTreeMap<String, BTreeMap<String, Vec<serde_yaml_ng::Value>>> {
+    let mut per_regulation: BTreeMap<String, BTreeMap<String, Vec<serde_yaml_ng::Value>>> =
+        BTreeMap::new();
+    for law in service.resolver().all_law_versions() {
+        let known = per_regulation.entry(law.id.clone()).or_default();
+        for article in &law.articles {
+            let Some(execution) = article.get_execution_spec() else {
+                continue;
+            };
+            let Some(block) = besluit::afwijzing_block(execution.produces.as_ref()) else {
+                continue;
+            };
+            for output in execution.output.iter().flatten() {
+                known
+                    .entry(output.name.clone())
+                    .or_default()
+                    .push(block.clone());
             }
         }
     }

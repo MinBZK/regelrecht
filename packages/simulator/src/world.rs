@@ -3179,11 +3179,13 @@ laws: []
 
     /// Een wereld waarin hetzelfde besluit **afwijst**.
     ///
-    /// Dezelfde cellen als [`verplichting_configs`], met twee verschillen: de
-    /// aanvrager is niet verzekerd, dus artikel 2 geeft geen aanspraak, en de
-    /// besluit-definitie zegt dat ze daarop afwijst. De verplichting blijft
-    /// staan — dat er tóch geen termijnen uitkomen, is precies wat er te
-    /// bewijzen valt.
+    /// Dezelfde cellen en dezelfde besluit-definitie als
+    /// [`verplichting_configs`], met één verschil: de aanvrager is niet
+    /// verzekerd, dus artikel 2 van de Wet op de zorgtoeslag geeft geen
+    /// aanspraak. Dát dit dan een afwijzing is, staat in dat artikel zelf
+    /// (`produces.extensions.chronolex.afwijzing_wanneer`) en niet hier — de wet
+    /// verandert, de uitvoerder niet. De verplichting blijft staan: dat er tóch
+    /// geen termijnen uitkomen, is precies wat er te bewijzen valt.
     fn afwijzing_wereld() -> World {
         let mut configs = verplichting_configs(KWARTAAL, true);
         let toeslagen = configs
@@ -3197,10 +3199,6 @@ laws: []
                         .insert("is_verzekerde".to_string(), Value::Bool(false));
                 }
             }
-        }
-        for definition in &mut toeslagen.besluit_definitions {
-            definition.afwijzing_wanneer =
-                BTreeMap::from([("heeft_recht_op_zorgtoeslag".to_string(), false)]);
         }
 
         World::from_definition(

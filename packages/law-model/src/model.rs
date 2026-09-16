@@ -164,6 +164,16 @@ pub struct Produces {
     /// When absent, the default procedure for the legal_character is used.
     #[serde(default)]
     pub procedure_id: Option<String>,
+    /// Platform-specific additions to what this article produces, per namespace.
+    ///
+    /// Deliberately opaque: the document model carries the block through
+    /// unchanged and does not interpret it. A namespace is owned by the platform
+    /// that reads it (`chronolex` by the chronolexography setup), so a new one
+    /// costs no change here — and a law that carries a namespace nobody reads
+    /// still loads. The JSON schema puts no `additionalProperties: false` on
+    /// `produces`, so such a block validates as it stands.
+    #[serde(default)]
+    pub extensions: Option<BTreeMap<String, serde_yaml_ng::Value>>,
 }
 
 /// A single case in an IF operation (cases/default syntax)

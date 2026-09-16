@@ -601,6 +601,15 @@ pub(crate) struct CellSurface<'a> {
     /// moment landt op een oudere versie, en een voorwaarde die daar op een
     /// bedrag zou slaan, is geen ja-of-nee.
     pub(crate) output_types: BTreeMap<String, BTreeMap<String, BTreeSet<String>>>,
+    /// Per regeling en per uitkomst het `afwijzing_wanneer`-blok dat het
+    /// voortbrengende artikel declareert, ongelezen, één per geladen versie.
+    ///
+    /// Ongelezen omdat een blok dat niet te lezen is óók een uitkomst van het
+    /// optuigen hoort te zijn — met een melding die zegt wat eraan mankeert en
+    /// niet met een stille lege verzameling. Eén per versie, want een wet mag van
+    /// gedachten veranderen, en een voorwaarde die alleen in de oude versie staat
+    /// hoort even goed getoetst te worden.
+    pub(crate) afwijzing_blocks: BTreeMap<String, BTreeMap<String, Vec<serde_yaml_ng::Value>>>,
     /// Per regeling de namen die ze als parameter of input declareert, over alle
     /// geladen versies heen. Dit is wat een besluit aan de engine mag aanleveren.
     pub(crate) regulation_inputs: BTreeMap<String, BTreeSet<String>>,
@@ -772,11 +781,24 @@ impl CellSurface<'_> {
         })
     }
 
+    /// De `afwijzing_wanneer`-blokken die de versies van deze regeling op het
+    /// artikel achter deze uitkomst declareren; leeg als geen versie er een heeft.
+    pub(crate) fn afwijzing_blocks(
+        &self,
+        regulation: &str,
+        output: &str,
+    ) -> &[serde_yaml_ng::Value] {
+        self.afwijzing_blocks
+            .get(regulation)
+            .and_then(|outputs| outputs.get(output))
+            .map_or(&[], Vec::as_slice)
+    }
+
     /// Is deze uitkomst onder elke geladen versie een ja-of-nee?
     ///
     /// De toets onder `afwijzing_wanneer`: een voorwaarde op een bedrag of een
-    /// datum zou nooit vervuld raken, en dan staat er een afwijzing in het
-    /// wereldbestand die nooit afwijst. Dat hoort bij het optuigen te vallen.
+    /// datum zou nooit vervuld raken, en dan staat er een afwijzing in de
+    /// regeling die nooit afwijst. Dat hoort bij het optuigen te vallen.
     pub(crate) fn check_boolean_output(
         &self,
         cell: &str,

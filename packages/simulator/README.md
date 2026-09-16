@@ -398,24 +398,46 @@ Alleen besluiten legt er iets in, en alleen een reductie haalt er iets uit.
 
 Awb 1:3 lid 2: een beschikking omvat ook **de afwijzing van de aanvraag**. Een
 besluit dat afketst is dus geen mislukte uitvoering en geen bedrag nul — er hoort
-een gram te liggen. Een besluit-definitie zegt wanneer dat zo is:
+een gram te liggen. Wannéér dat zo is, zegt de **wet**: het artikel dat de
+aansturende uitkomst voortbrengt declareert het bij zijn `produces`.
 
 ```yaml
-besluit_definitions:
-  - name: zorgtoeslag_toekenning
-    output: heeft_recht_op_zorgtoeslag
-    afwijzing_wanneer:
-      heeft_recht_op_zorgtoeslag: false
+# in het lexogram, op het artikel dat de uitkomst voortbrengt
+produces:
+  legal_character: BESCHIKKING
+  decision_type: TOEKENNING            # het type als het besluit doorgaat
+  extensions:
+    chronolex:
+      afwijzing_wanneer:
+        heeft_recht_op_zorgtoeslag: false
 ```
 
-`afwijzing_wanneer` noemt per **boolean-uitkomst van dit besluit** de waarde die
-tot afwijzing leidt. Twee toetsen bij het optuigen, en allebei om te voorkomen
-dat de regel er staat zonder iets te doen: de naam moet een uitkomst zijn die dit
-besluit vastlegt (`output` of `outputs`) — anders zou de grond in geen enkel gram
-terug te vinden zijn — en die uitkomst moet onder elke geladen versie een
-ja-of-nee zijn, want op een bedrag raakt de voorwaarde nooit vervuld. Meer dan
-één voorwaarde is een **of**: elke vervulde is op zichzelf genoeg, en ze komen
-alle vervulde in het gram te staan.
+**In het lexogram en niet in het wereldbestand.** Wanneer een besluit een
+afwijzing is, hangt aan de uitkomst die het artikel voortbrengt en geldt voor
+elke cel die dat artikel uitvoert. Zou een besluit-definitie het mogen zetten,
+dan konden twee uitvoerders dezelfde wet verschillend laten weigeren zonder dat
+er aan de wet iets te zien was. Een `afwijzing_wanneer` in een besluit-definitie
+wordt daarom bij het optuigen geweigerd, met een melding die naar het blok in de
+regeling wijst.
+
+`extensions` is in het law-model met opzet ondoorzichtig: het document draagt het
+blok ongewijzigd mee en legt het niet uit. `chronolex` is de namespace van deze
+opstelling; een wet die een namespace draagt die niemand leest, laadt gewoon. Het
+JSON-schema zet geen `additionalProperties: false` op `produces`, dus zo'n blok
+valideert zoals het staat.
+
+`afwijzing_wanneer` noemt per **boolean-uitkomst** de waarde die tot afwijzing
+leidt. Drie toetsen bij het optuigen van de cel, alle drie om te voorkomen dat de
+regel er staat zonder iets te doen: het blok moet een toewijzing van uitkomst
+naar `true`/`false` zijn, de naam moet een uitkomst zijn die de regeling kent, en
+die uitkomst moet onder elke geladen versie een ja-of-nee zijn — op een bedrag
+raakt de voorwaarde nooit vervuld. Meer dan één voorwaarde is een **of**: elke
+vervulde is op zichzelf genoeg, en ze komen alle vervulde in het gram te staan.
+
+Een voorwaarde hoeft geen uitkomst te zijn die het besluit *vastlegt*: de cel
+vraagt haar bij de uitvoering gewoon mee op, en de grond komt met haar artikel in
+`afwijzingsgrond` te staan. Wat het gram onder de uitkomsten draagt, blijft wat
+de besluit-definitie in `output` en `outputs` noemt.
 
 Is er een voorwaarde vervuld, dan legt de cel één gram vast als altijd — hetzelfde
 rechtskarakter (`BESCHIKKING`, want een weigering is er een), dezelfde vaste
@@ -430,8 +452,8 @@ drie verschillen:
   weigering belooft niets, dus er valt niets in te roosteren en er vervalt geen
   termijn.
 
-Wijst het besluit *niet* af, dan draagt het gram het besluittype dat het
-uitvoerende artikel zelf aanwijst (`produces.decision_type`, bijvoorbeeld
+Wijst het besluit *niet* af, dan draagt het gram het besluittype dat hetzelfde
+`produces` voor de gewone afloop noemt (`decision_type`, bijvoorbeeld
 `TOEKENNING`) — de waarde die het platform daar toch al las voor de
 BESCHIKKING-toets. Zegt de regeling er niets over, dan staat er `null`: dat is een
 gat in die regeling en geen uitnodiging om het hier in te vullen.
@@ -451,11 +473,13 @@ scenario over een weigering niets over de vorm van het gram.
 `scenarios/toeslagen_afwijzing.yaml` speelt het geheel af: een aanvrager zonder
 recht, een gram met `AFWIJZING`, een lege betalingsstroom ondanks een
 kwartaalverplichting in de definitie, en een volgend besluit dat die afwijzing
-gewoon terugleest.
+gewoon terugleest. De celconfiguratie daarin is die van elk ander
+besluit-scenario — de wet is veranderd, de uitvoerder niet.
 
-Wat hier **niet** in zit: buiten behandeling stellen (Awb 4:5) en horen vóór
-afwijzing (Awb 4:7). En `decision_type` is hier geen open vocabulaire — het gram
-draagt wat de regeling zegt, of `AFWIJZING`.
+Wat hier **niet** in zit: een afwijzingsgrond die niet als boolean-uitkomst in een
+regeling staat (die hoort eerst in de YAML); buiten behandeling stellen (Awb 4:5)
+en horen vóór afwijzing (Awb 4:7). En `decision_type` is hier geen open
+vocabulaire — het gram draagt wat de regeling zegt, of `AFWIJZING`.
 
 ### De vier inputvormen van een besluit
 
@@ -879,7 +903,9 @@ besluit dat afketst legt er een vast met `AFWIJZING` en zonder verplichtingen.
 **Niet**: de RFC-008-stages (BESLUIT, BEKENDMAKING, BEZWAAR — er is één soort gram
 en geen stage-decretogrammen, dus "de huidige stap" bestaat hier niet); `modality`
 (`is_intrekking_van`, `is_wijziging_van`); de afgeleide rechtsbeschermingsroute
-(§3.3); `decision_type` als open vocabulaire; `extensions`; en de handtekening —
+(§3.3); `decision_type` als open vocabulaire; `extensions` **op het gram zelf**
+(die op een `produces` in het lexogram wordt wél gelezen — zie
+[Een weigering is ook een besluit](#een-weigering-is-ook-een-besluit)); en de handtekening —
 het gram wordt niet ondertekend, want er is geen sleutelmateriaal (zie
 [Ondertekening is gesimuleerd](#ondertekening-is-gesimuleerd)).
 
@@ -1303,7 +1329,7 @@ is de kern van de opzet:
 | sleutel | wat |
 |---|---|
 | `clock` | waar de logische klok begint; verplicht |
-| `cells` | de organisaties, elk met `identity`, `laws`, `chronicles`, `lexostatus_definitions`, `besluit_definitions` (met `afwijzing_wanneer` en `obligations`) en `accepts_from` |
+| `cells` | de organisaties, elk met `identity`, `laws`, `chronicles`, `lexostatus_definitions`, `besluit_definitions` (met `obligations`) en `accepts_from` |
 | `settings` | casusdata die geen wet is, bijvoorbeeld een betalingsritme |
 | `fixtures` | de startstand: vastleggingen met een moment |
 | `actions` | wat een actor op de tijdlijn kan doen |
@@ -1406,10 +1432,8 @@ cells:
           - hoogte_zorgtoeslag
         zaakkenmerk: 'zorgtoeslag/{bsn}'        # {naam} = een gedocumenteerde
                                                 # parameter; minstens één
-        afwijzing_wanneer:                      # optioneel: wanneer dit besluit
-          heeft_recht_op_zorgtoeslag: false     # afwijst — een ja-of-nee-uitkomst
-                                                # van dit besluit, met de waarde
-                                                # die tot afwijzing leidt
+                                                # (wannéér dit besluit afwijst
+                                                # staat in de regeling, niet hier)
         params:                                 # de gedocumenteerde parameters
           - name: bsn
             type: string
@@ -2157,7 +2181,8 @@ overschaduwen.
 ## Wat hier nog niet staat
 
 **Een afwijzing is de enige uitweg naast toewijzen.** Buiten behandeling stellen
-(Awb 4:5) en horen vóór afwijzing (Awb 4:7) bestaan hier niet, en `decision_type`
+(Awb 4:5) en horen vóór afwijzing (Awb 4:7) bestaan hier niet, een grond die niet
+als boolean-uitkomst in een regeling staat kan niet afwijzen, en `decision_type`
 is geen open vocabulaire: het gram draagt wat de regeling aanwijst, of `AFWIJZING`.
 Zie [Een weigering is ook een besluit](#een-weigering-is-ook-een-besluit).
 

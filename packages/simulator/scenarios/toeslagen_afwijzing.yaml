@@ -14,6 +14,12 @@ description: >-
   hetzelfde: hetzelfde rechtskarakter, dezelfde vaste velden, dezelfde
   uitkomsten die de regeling wél leverde, hetzelfde receipt.
 
+  Wannéér een besluit afwijst, staat niet in dit bestand: het staat op het
+  artikel dat de uitkomst voortbrengt, onder
+  `produces.extensions.chronolex.afwijzing_wanneer`. Dat is de hele reden dat
+  deze celconfiguratie er precies zo uitziet als die van elk ander
+  besluit-scenario — de wet is veranderd, de uitvoerder niet.
+
   Het tweede besluit is de tegenproef bij het eerste: een vaststelling die op de
   afwijzing terugslaat, leest er gewoon een veld uit terug. Een weigering is geen
   gat in de kroniek — er ligt een besluit, en een volgend besluit over dezelfde
@@ -72,17 +78,17 @@ cells:
     besluit_definitions:
       - name: zorgtoeslag_toekenning
         doc: >-
-          Hetzelfde besluit als in de andere scenario's, met één regel erbij: is
-          er geen recht, dan wijst dit besluit af. De voorwaarde staat in de
-          besluit-definitie en niet in de wet — de wet zegt of er recht is, de
-          uitvoerder zegt wat hij bij "nee" vastlegt.
+          Hetzelfde besluit als in de andere scenario's, en de definitie zegt
+          nergens dat het kan afwijzen: dát staat in de wet. Artikel 2 van de Wet
+          op de zorgtoeslag declareert onder
+          `produces.extensions.chronolex.afwijzing_wanneer` dat een besluit
+          zonder recht een afwijzing is, en elke cel die dat artikel uitvoert
+          weigert daarop.
         regulation: wet_op_de_zorgtoeslag
         output: heeft_recht_op_zorgtoeslag
         outputs:
           - hoogte_zorgtoeslag
         zaakkenmerk: zorgtoeslag/{bsn}
-        afwijzing_wanneer:
-          heeft_recht_op_zorgtoeslag: false
         params:
           - name: bsn
             type: string
