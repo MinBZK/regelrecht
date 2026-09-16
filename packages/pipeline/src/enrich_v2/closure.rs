@@ -441,6 +441,11 @@ pub fn plan_closure(
     law_depth.insert(start_bwb.clone(), 0);
     let mut taken: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut gaps: BTreeMap<(GapKind, String), usize> = BTreeMap::new();
+    // Which law reads which, over every ring. Depth alone does not order two
+    // laws that sit in the same ring: a reader and its producer can both be
+    // one jump from the start, and sorting those by name put the reader
+    // first, which is the one thing the plan promises never to do.
+    let mut reads: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
 
     // The articles this ring came in through, as (law, article). An entry
     // point is an article the closure was pointed at; a definition article is
@@ -493,6 +498,10 @@ pub fn plan_closure(
                     if target.bwb_id == bwb {
                         internal.push(target.article.clone());
                     } else {
+                        reads
+                            .entry(bwb.clone())
+                            .or_default()
+                            .insert(target.bwb_id.clone());
                         crossings.push((target.bwb_id.clone(), target.article.clone()));
                     }
                 }
@@ -599,7 +608,26 @@ pub fn plan_closure(
             entries,
         });
     }
-    tasks.sort_by(|a, b| b.depth.cmp(&a.depth).then(a.law_id.cmp(&b.law_id)));
+    // Deepest first, so a producer is translated before its reader. Within one
+    // depth that key decides nothing, and the alphabetical fallback it used to
+    // fall through to is not an order at all: where `aaa` reads `mmm` and both
+    // sit at depth 1, `aaa` came first and was translated against a producer
+    // that did not exist yet. A law that reads another in the same ring sorts
+    // after it; the name only breaks a tie between laws that do not read each
+    // other, so the result stays stable.
+    tasks.sort_by(|a, b| {
+        b.depth.cmp(&a.depth).then_with(|| {
+            let a_reads_b = reads.get(&a.bwb_id).is_some_and(|t| t.contains(&b.bwb_id));
+            let b_reads_a = reads.get(&b.bwb_id).is_some_and(|t| t.contains(&a.bwb_id));
+            match (a_reads_b, b_reads_a) {
+                // A cycle: neither can come first, so the name decides and
+                // the closing pass connects what the order could not.
+                (true, true) | (false, false) => a.law_id.cmp(&b.law_id),
+                (true, false) => std::cmp::Ordering::Greater,
+                (false, true) => std::cmp::Ordering::Less,
+            }
+        })
+    });
 
     Ok(Plan {
         tasks,
@@ -1070,6 +1098,90 @@ articles:
 ",
         );
         dir
+    }
+
+    /// Two laws one jump out, where one reads the other. Depth cannot order
+    /// them and the alphabetical fallback put the reader first: `aaa_leest`
+    /// was planned before `mmm_levert`, whose output it binds to, which is
+    /// exactly what "deepest first, producer before reader" promises does not
+    /// happen. The name still decides between laws that do not read each
+    /// other, so the order stays stable.
+    fn tie_corpus() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            &dir,
+            "regulation/nl/wet/wortel/2026-01-01.yaml",
+            r"$id: wortel
+regulatory_layer: WET
+bwb_id: BWBR0000001
+articles:
+  - number: '1'
+    text: Volgt uit artikel 1 van aaa en artikel 1 van mmm.
+    references:
+      - id: ref1
+        bwb_id: BWBR0000002
+        artikel: '1'
+      - id: ref2
+        bwb_id: BWBR0000003
+        artikel: '1'
+",
+        );
+        write(
+            &dir,
+            "regulation/nl/wet/aaa_leest/2026-01-01.yaml",
+            r"$id: aaa_leest
+regulatory_layer: WET
+bwb_id: BWBR0000002
+articles:
+  - number: '1'
+    text: Het bedrag is dat van artikel 1 van mmm.
+    references:
+      - id: ref3
+        bwb_id: BWBR0000003
+        artikel: '1'
+",
+        );
+        write(
+            &dir,
+            "regulation/nl/wet/mmm_levert/2026-01-01.yaml",
+            r"$id: mmm_levert
+regulatory_layer: WET
+bwb_id: BWBR0000003
+articles:
+  - number: '1'
+    text: Het bedrag bedraagt honderd euro.
+",
+        );
+        dir
+    }
+
+    #[test]
+    fn within_one_depth_a_producer_still_comes_before_its_reader() {
+        let dir = tie_corpus();
+        let index = LawIndex::scan(dir.path()).unwrap();
+        let plan = plan_closure(
+            dir.path(),
+            "regulation/nl/wet/wortel/2026-01-01.yaml",
+            &["1".to_string()],
+            2,
+            &index,
+            StopRules::default(),
+        )
+        .unwrap();
+
+        let position = |id: &str| {
+            plan.tasks
+                .iter()
+                .position(|t| t.law_id == id)
+                .unwrap_or_else(|| panic!("{id} ontbreekt in het plan: {:?}", plan.describe()))
+        };
+        let depth_of = |id: &str| plan.tasks.iter().find(|t| t.law_id == id).map(|t| t.depth);
+        assert_eq!(depth_of("aaa_leest"), depth_of("mmm_levert"));
+        assert!(
+            position("mmm_levert") < position("aaa_leest"),
+            "de producent hoort voor zijn lezer, ook op gelijke diepte: {:?}",
+            plan.describe()
+        );
     }
 
     #[test]
