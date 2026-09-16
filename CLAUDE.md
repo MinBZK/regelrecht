@@ -279,15 +279,17 @@ stays put is the body: the claim the author made.
 
 What else needs no supersede: updating a reference when another document is
 renamed, and *adding* a note about what a later RFC did with the old decision.
-RFC-007 carries such a note pointing at [RFC-041](/rfcs/rfc-041), which amends
-its contextual-law rule for voids, and its own text is untouched.
+An RFC that is amended on one point, rather than replaced, keeps its status and
+gains a pointer; its own text stays as it was.
 
 What does need one: replacing the title, the central concept, or the field
-definitions. RFC-012 is the worked example. Schema v0.7.0 renames its channel from
-`untranslatables` to `markings`, and the first attempt rewrote RFC-012 to match.
-It now stands unchanged on `Superseded`, and [RFC-031](/rfcs/rfc-031) carries the
-new design, because a law file on schema v0.5.x still carries `untranslatables`
-and the engine still reads it.
+definitions. The case that produced this rule: schema v0.7.0 renames the channel
+RFC-012 describes from `untranslatables` to `markings`, and the first attempt
+rewrote RFC-012 to match. That would have made every existing citation to it
+point at a document about a different field, while a law file on schema v0.5.x
+still carries `untranslatables` and the engine still reads it. The RFC keeps its
+text and goes to `Superseded` instead, and the RFC introducing the new channel
+carries the new design.
 
 ## Code Reviews
 
