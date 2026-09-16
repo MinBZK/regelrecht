@@ -1044,7 +1044,9 @@ articles:
             .and_then(serde_yaml_ng::Value::as_sequence)
             .unwrap_or_else(|| panic!("references dropped: {a1:?}"));
         assert_eq!(
-            refs[0].get("artikel").and_then(serde_yaml_ng::Value::as_str),
+            refs[0]
+                .get("artikel")
+                .and_then(serde_yaml_ng::Value::as_str),
             Some("8")
         );
         // The url the entry carried wins over the generated deep link.

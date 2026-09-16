@@ -2765,14 +2765,16 @@ pub fn override_targets(doc: &Value, corpus_root: Option<&Path>) -> Vec<Finding>
                     findings.push(Finding::new(
                         "override",
                         Some(&article),
-                        "voids an output without quoting the words of this article that                          establish it",
+                        "voids an output without quoting the words of this article \
+                         that establish it",
                     ));
                 } else if !normalised(own_text).contains(&normalised(quote)) {
                     findings.push(Finding::new(
                         "override",
                         Some(&article),
                         format!(
-                            "voids an output on the ground {quote:?}, which does not appear                              in this article's own text"
+                            "voids an output on the ground {quote:?}, which does not \
+                             appear in this article's own text"
                         ),
                     ));
                 }
