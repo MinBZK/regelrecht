@@ -287,6 +287,14 @@ pub enum GapKind {
     Delegated,
     /// The reference names a law, chapter or afdeling but no article.
     NoArticle,
+    /// The reference names an article the target law does not have.
+    ///
+    /// Distinct from [`GapKind::NoArticle`], which is a limit of the reference
+    /// extraction: the text named no article at all. This one is a wrong
+    /// citation or a stale harvest, and those have different owners. It used to
+    /// be dropped silently, so a renumbering after a wijzigingswet left no
+    /// trace anywhere.
+    ArticleNotInLaw,
     /// The depth ran out here.
     BeyondDepth,
 }
@@ -462,13 +470,21 @@ pub fn plan_closure(
         }
     }
 
+    // Articles waiting to be walked, bucketed by the depth they sit at. A
+    // single ring advanced by one does not hold: an article that surfaces late
+    // on an already-known law re-enters at that law's own, shallower depth.
+    let mut pending: BTreeMap<usize, Vec<(String, String)>> = BTreeMap::new();
+
     let mut here = 0usize;
     while !ring.is_empty() {
         // Every outward edge this ring produces, charged after the ring is
         // walked out. Collected rather than followed on sight, because
         // following one would put a law of ring `here + 1` in front of the
         // articles of ring `here` that have not run yet.
-        let mut crossings: Vec<(String, String)> = Vec::new();
+        // `(source law, target law, target article)`. The source travels with
+        // the edge because the jump is charged against the depth of the law it
+        // leaves from, not against the ring it happened to be collected in.
+        let mut crossings: Vec<(String, String, String)> = Vec::new();
 
         // The free walk inside the laws of this ring, to closure.
         let mut queue: VecDeque<(String, String, bool)> = ring
@@ -498,11 +514,14 @@ pub fn plan_closure(
                     if target.bwb_id == bwb {
                         internal.push(target.article.clone());
                     } else {
-                        reads
-                            .entry(bwb.clone())
-                            .or_default()
-                            .insert(target.bwb_id.clone());
-                        crossings.push((target.bwb_id.clone(), target.article.clone()));
+                        // `reads` is written once the edge is known to lead
+                        // somewhere real; a citation to an article that does
+                        // not exist must not create an ordering constraint.
+                        crossings.push((
+                            bwb.clone(),
+                            target.bwb_id.clone(),
+                            target.article.clone(),
+                        ));
                     }
                 }
             }
@@ -522,10 +541,17 @@ pub fn plan_closure(
             }
         }
 
-        // Charge the ring's outward edges, all at the same depth.
-        let there = here + 1;
-        let mut next_ring: Vec<(String, String)> = Vec::new();
-        for (target_law, target_article) in crossings {
+        // Charge every outward edge against the depth of the law it leaves
+        // from. Charging them all at `here + 1` was wrong for an article that
+        // surfaces late: a new article on a law already known at a shallow
+        // depth was collected on a deep ring, and its own edges were then
+        // billed for every jump that ring had cost. The error equals the
+        // distance between the two and is unbounded, so a law read straight
+        // from the root could be reported as a BeyondDepth gap.
+        for (source_law, target_law, target_article) in crossings {
+            let from_depth = law_depth.get(&source_law).copied().unwrap_or(here);
+            let there = from_depth + 1;
+
             let Some(entry) = index.get(&target_law) else {
                 *gaps
                     .entry((GapKind::OutsideCorpus, target_law.clone()))
@@ -538,47 +564,72 @@ pub fn plan_closure(
                     .or_default() += 1;
                 continue;
             }
-            // A law already reached sits at `here` or less, never deeper: the
-            // rings arrive in order. Its articles are still worth taking, but
-            // it costs no new jump and its depth does not move.
-            let known = law_depth.get(&target_law).copied();
-            if known.is_none() && there > depth {
-                *gaps
-                    .entry((GapKind::BeyondDepth, target_law.clone()))
-                    .or_default() += 1;
-                continue;
-            }
-            if known.is_none() {
-                law_depth.insert(target_law.clone(), there);
-            }
+
             if !laws.contains_key(&target_law) {
                 let Some(doc) = read_law(&root.join(&entry.path)) else {
                     *gaps
                         .entry((GapKind::OutsideCorpus, target_law.clone()))
                         .or_default() += 1;
-                    law_depth.remove(&target_law);
                     continue;
                 };
                 laws.insert(target_law.clone(), Graph::scan(&doc));
                 docs.insert(target_law.clone(), doc);
             }
+
+            // An article the target law does not have used to vanish here
+            // without a word. Checked before anything is recorded about the
+            // law, so a bogus citation neither writes a depth nor a read edge.
             let exists = laws
                 .get(&target_law)
                 .is_some_and(|g| g.articles.contains(&target_article));
             if !exists {
+                *gaps
+                    .entry((GapKind::ArticleNotInLaw, target_law.clone()))
+                    .or_default() += 1;
                 continue;
             }
+
+            // A shorter route found later wins: the depth only ever falls.
+            let known = law_depth.get(&target_law).copied();
+            if known.is_none_or(|settled| there < settled) {
+                if there > depth {
+                    if known.is_none() {
+                        *gaps
+                            .entry((GapKind::BeyondDepth, target_law.clone()))
+                            .or_default() += 1;
+                        continue;
+                    }
+                } else {
+                    law_depth.insert(target_law.clone(), there);
+                }
+            } else if known.is_some_and(|settled| settled > depth) {
+                continue;
+            }
+
+            reads
+                .entry(source_law.clone())
+                .or_default()
+                .insert(target_law.clone());
+
             if taken
                 .entry(target_law.clone())
                 .or_default()
                 .insert(target_article.clone())
             {
-                next_ring.push((target_law, target_article));
+                pending
+                    .entry(law_depth.get(&target_law).copied().unwrap_or(there))
+                    .or_default()
+                    .push((target_law, target_article));
             }
         }
 
-        ring = next_ring;
-        here = there;
+        // The next ring is the shallowest bucket with work left, which is not
+        // always `here + 1`: a late article re-enters at its own law's depth.
+        let Some(next_depth) = pending.keys().copied().next() else {
+            break;
+        };
+        ring = pending.remove(&next_depth).unwrap_or_default();
+        here = next_depth;
     }
 
     // Deepest first, so a producer is translated before its reader.
@@ -1284,6 +1335,186 @@ articles:
                 .map(|t| t.depth),
             Some(1),
             "de diepte van wet_x mag niet verschoven zijn"
+        );
+    }
+
+    /// A corpus where the root itself gains an article on a deep ring.
+    ///
+    /// `wortel` art 1 reads `wet_m`, which reads `wet_n`, which points back at
+    /// `wortel` art 50. That article reads `wet_z`, so `wet_z` sits one jump
+    /// from the root: the article it is read from belongs to the root.
+    fn late_root_article_corpus() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            &dir,
+            "regulation/nl/wet/wortel/2026-01-01.yaml",
+            r"$id: wortel
+regulatory_layer: WET
+bwb_id: BWBR0000001
+articles:
+  - number: '1'
+    text: Volgt uit artikel 1 van wet M.
+    references:
+      - id: r1
+        bwb_id: BWBR0000002
+        artikel: '1'
+  - number: '50'
+    text: Volgt uit artikel 1 van wet Z.
+    references:
+      - id: r2
+        bwb_id: BWBR0000004
+        artikel: '1'
+",
+        );
+        write(
+            &dir,
+            "regulation/nl/wet/wet_m/2026-01-01.yaml",
+            r"$id: wet_m
+regulatory_layer: WET
+bwb_id: BWBR0000002
+articles:
+  - number: '1'
+    text: Volgt uit artikel 1 van wet N.
+    references:
+      - id: r3
+        bwb_id: BWBR0000003
+        artikel: '1'
+",
+        );
+        write(
+            &dir,
+            "regulation/nl/wet/wet_n/2026-01-01.yaml",
+            r"$id: wet_n
+regulatory_layer: WET
+bwb_id: BWBR0000003
+articles:
+  - number: '1'
+    text: Volgt uit artikel 50 van de wortel.
+    references:
+      - id: r4
+        bwb_id: BWBR0000001
+        artikel: '50'
+",
+        );
+        write(
+            &dir,
+            "regulation/nl/wet/wet_z/2026-01-01.yaml",
+            r"$id: wet_z
+regulatory_layer: WET
+bwb_id: BWBR0000004
+articles:
+  - number: '1'
+    text: Sluitstuk.
+",
+        );
+        dir
+    }
+
+    /// An edge is charged against the law it leaves from, not the ring it was
+    /// collected in.
+    ///
+    /// Every outward edge of a ring used to be billed at `here + 1`. An article
+    /// that surfaces late on an already-known law is collected on a deep ring,
+    /// so its own edges were charged for jumps that article never made. Here
+    /// `wet_z` is read straight from an article of the root, one jump away, and
+    /// it was reported as a `BeyondDepth` gap at depth 2 and 3 while the plan
+    /// listed the root at depth 0 with that very article in it.
+    #[test]
+    fn an_edge_costs_what_its_own_law_is_deep() {
+        let dir = late_root_article_corpus();
+        let index = LawIndex::scan(dir.path()).unwrap();
+        // From depth 2 on, because the route that surfaces article 50 runs
+        // through wet_n at depth 2. At depth 1 that article is never seen at
+        // all, which is the limit doing its job rather than the bug.
+        for depth in 2..=4 {
+            let plan = plan_closure(
+                dir.path(),
+                "regulation/nl/wet/wortel/2026-01-01.yaml",
+                &["1".to_string()],
+                depth,
+                &index,
+                StopRules::default(),
+            )
+            .unwrap();
+            let z = plan.tasks.iter().find(|t| t.law_id == "wet_z");
+            assert_eq!(
+                z.map(|t| t.depth),
+                Some(1),
+                "wet_z ligt op één sprong van de wortel, bij --depth {depth}: {:?}",
+                plan.describe()
+            );
+            assert!(
+                !plan
+                    .gaps
+                    .iter()
+                    .any(|g| g.kind == GapKind::BeyondDepth && g.bwb_id == "BWBR0000004"),
+                "en is dus geen BeyondDepth-gat bij --depth {depth}: {:?}",
+                plan.describe()
+            );
+        }
+    }
+
+    /// A citation to an article the target law does not have leaves a gap.
+    ///
+    /// It used to be a bare `continue`: no task, no gap, no trace. A wrong
+    /// article number is what a renumbering after a wijzigingswet or a slip in
+    /// the harvest looks like, so it is exactly the kind of thing an
+    /// enrichment run exists to surface.
+    #[test]
+    fn a_citation_to_an_article_that_does_not_exist_is_a_known_gap() {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            &dir,
+            "regulation/nl/wet/wet_a/2026-01-01.yaml",
+            r"$id: wet_a
+regulatory_layer: WET
+bwb_id: BWBR0000001
+articles:
+  - number: '1'
+    text: Volgt uit artikel 99 van wet B.
+    references:
+      - id: r1
+        bwb_id: BWBR0000002
+        artikel: '99'
+",
+        );
+        write(
+            &dir,
+            "regulation/nl/wet/wet_b/2026-01-01.yaml",
+            r"$id: wet_b
+regulatory_layer: WET
+bwb_id: BWBR0000002
+articles:
+  - number: '1'
+    text: Eerste.
+  - number: '2'
+    text: Tweede.
+",
+        );
+        let index = LawIndex::scan(dir.path()).unwrap();
+        let plan = plan_closure(
+            dir.path(),
+            "regulation/nl/wet/wet_a/2026-01-01.yaml",
+            &["1".to_string()],
+            2,
+            &index,
+            StopRules::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            plan.gaps
+                .iter()
+                .filter(|g| g.kind == GapKind::ArticleNotInLaw)
+                .map(|g| g.bwb_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["BWBR0000002"],
+            "artikel 99 bestaat niet in wet_b: {:?}",
+            plan.describe()
+        );
+        assert!(
+            !plan.tasks.iter().any(|t| t.law_id == "wet_b"),
+            "en levert geen taak op: {:?}",
+            plan.describe()
         );
     }
 
