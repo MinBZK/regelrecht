@@ -159,8 +159,13 @@ van het besluit telt ze. Dat is de meting waar dit scherm voor bestaat:
 normatieve inhoud hoort in het lexogram (RFC-022), dus elk gat is iets dat de wet
 zou moeten zeggen en nu in een configuratiebestand staat. Wie er een dichtzet,
 hoort dat getal te zien zakken. De reden per gat staat erbij — het
-zaakkenmerk-sjabloon, de verplichting met haar bedrag en ritme — zodat er niet
-alleen een getal staat.
+zaakkenmerk-sjabloon, de besluit-definitie die de uitkomsten bij elkaar zet —
+zodat er niet alleen een getal staat.
+
+Zo'n dichtgezet gat is te zien bij de **verplichtingen**: die stonden hier tot
+voor kort als gat en dragen nu `wet`, met het artikel dat ze declareert
+(`produces.extensions.chronolex`). Wat het wereldbestand er nog over zegt, is wie
+ze nakomt, en dat is uitvoering en geen norm.
 
 Een platformveld waarvan de **wet** de waarde levert (`competent_authority`,
 `legal_character`) noemt het artikel erbij: het platform schrijft het veld in elk

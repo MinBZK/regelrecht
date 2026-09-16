@@ -603,13 +603,20 @@ van de wet) en een `herkomst`:
 
 **Waarom `wereldbestand` een gat is.** RFC-022 zegt dat normatieve inhoud in het
 **lexogram** hoort: de wet zegt wat er vastgesteld wordt, en de uitvoering voert
-uit. Wat in `besluit_definitions` staat — welke uitkomsten samen één gram vormen,
-het zaakkenmerk-sjabloon, de verplichtingen die uit het besluit volgen — is
-normatief én staat in de configuratie van deze opstelling. Een andere organisatie
-die dezelfde wet uitvoert, zou het opnieuw moeten verzinnen en zou er iets anders
-van kunnen maken, zonder dat één regeling verandert. Dat is precies wat het
-lexogram hoort te voorkomen, dus die velden dragen `gat: true` — niet als
-foutmelding, maar als **meting**: het is de lijst die korter hoort te worden.
+uit. Wat in `besluit_definitions` staat — welke uitkomsten samen één gram vormen
+en het zaakkenmerk-sjabloon — is normatief én staat in de configuratie van deze
+opstelling. Een andere organisatie die dezelfde wet uitvoert, zou het opnieuw
+moeten verzinnen en zou er iets anders van kunnen maken, zonder dat één regeling
+verandert. Dat is precies wat het lexogram hoort te voorkomen, dus die velden
+dragen `gat: true` — niet als foutmelding, maar als **meting**: het is de lijst
+die korter hoort te worden.
+
+**En zo wordt hij korter.** De verplichtingen (`obligations[0]`, `obligations`)
+stonden op die lijst en staan er niet meer: het artikel dat de beschikking
+voortbrengt, declareert ze zelf in `produces.extensions.chronolex`, dus ze dragen
+`lexogram` met de regeling, de versie en het artikel erbij (zie
+[Verplichtingen](#verplichtingen-wat-een-besluit-achterlaat)). Wat het
+wereldbestand er nog over zegt, is wíe ze nakomt — uitvoering, en geen norm.
 
 Twee dingen die het schema met opzet níet doet. Het spreekt zich niet uit over
 `platform`-velden: dat een gram zijn eigen moment, zijn eigen receipt en de stand

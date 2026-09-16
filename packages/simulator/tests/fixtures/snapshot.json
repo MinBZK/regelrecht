@@ -666,9 +666,15 @@
             {
               "name": "obligations[0]",
               "type": "object",
-              "herkomst": "wereldbestand",
-              "gat": true,
-              "toelichting": "verplichting: bedrag $hoogte_zorgtoeslag, betaald door 'belastingdienst', ritme '$betalingsritme'; zij levert de termijnen in 'obligations'"
+              "herkomst": "lexogram",
+              "gat": false,
+              "lexogram": {
+                "regulation": "wet_op_de_zorgtoeslag",
+                "valid_from": "2025-01-01",
+                "article": "2",
+                "regulatory_layer": "WET"
+              },
+              "toelichting": "verplichting van soort 'betaling': bedrag $hoogte_zorgtoeslag, ritme '$betalingsritme', op grondslag 'Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1'; zij levert de termijnen in 'obligations'. Wie haar nakomt, staat in het wereldbestand (`komt_na`)"
             },
             {
               "name": "op_moment",
@@ -775,8 +781,14 @@
             {
               "name": "obligations",
               "type": "array",
-              "herkomst": "wereldbestand",
-              "gat": true,
+              "herkomst": "lexogram",
+              "gat": false,
+              "lexogram": {
+                "regulation": "wet_op_de_zorgtoeslag",
+                "valid_from": "2025-01-01",
+                "article": "2",
+                "regulatory_layer": "WET"
+              },
               "toelichting": "de termijnen die uit de verplichtingen hierboven volgen"
             },
             {
@@ -823,6 +835,19 @@
                 "article": "2",
                 "regulatory_layer": "WET"
               }
+            },
+            {
+              "name": "obligations[0]",
+              "type": "object",
+              "herkomst": "lexogram",
+              "gat": false,
+              "lexogram": {
+                "regulation": "wet_op_de_zorgtoeslag",
+                "valid_from": "2025-01-01",
+                "article": "2",
+                "regulatory_layer": "WET"
+              },
+              "toelichting": "verplichting van soort 'betaling': bedrag $hoogte_zorgtoeslag, ritme '$betalingsritme', op grondslag 'Wet op de zorgtoeslag art. 2 jo. Awir art. 24 lid 1'; zij levert de termijnen in 'obligations'. Wie haar nakomt, staat in het wereldbestand (`komt_na`)"
             },
             {
               "name": "op_moment",
@@ -929,9 +954,15 @@
             {
               "name": "obligations",
               "type": "array",
-              "herkomst": "wereldbestand",
-              "gat": true,
-              "toelichting": "leeg: dit besluit legt geen verplichting op"
+              "herkomst": "lexogram",
+              "gat": false,
+              "lexogram": {
+                "regulation": "wet_op_de_zorgtoeslag",
+                "valid_from": "2025-01-01",
+                "article": "2",
+                "regulatory_layer": "WET"
+              },
+              "toelichting": "de termijnen die uit de verplichtingen hierboven volgen"
             },
             {
               "name": "chronicle_sources",

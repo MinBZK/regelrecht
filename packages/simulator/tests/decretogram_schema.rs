@@ -105,10 +105,21 @@ fn het_schema_van_de_vaststelling_ligt_vast() {
                 Herkomst::Lexogram,
                 false
             ),
-            // De omslag. Drie velden erin komen niet uit een regeling: het
-            // kenmerk waaronder de zaak loopt, de naam van de besluit-definitie
-            // (en daarmee welke uitkomsten samen één gram vormen) en de
-            // verplichtingen. Dat zijn de gaten.
+            // Wat de beschikking oplegt: het artikel dat haar voortbrengt,
+            // declareert in `produces.extensions.chronolex` dat er betaald moet
+            // worden. Geen gat dus — wat het wereldbestand er nog over zegt, is
+            // wie het nakomt (`komt_na`) en niet wat er opgelegd wordt.
+            (
+                "obligations[0]",
+                Some("object"),
+                None,
+                Herkomst::Lexogram,
+                false
+            ),
+            // De omslag. Twee velden erin komen niet uit een regeling: het
+            // kenmerk waaronder de zaak loopt en de naam van de besluit-definitie
+            // (en daarmee welke uitkomsten samen één gram vormen). Dat zijn de
+            // gaten.
             ("op_moment", Some("date"), None, Herkomst::Platform, false),
             (
                 "zaakkenmerk",
@@ -185,12 +196,14 @@ fn het_schema_van_de_vaststelling_ligt_vast() {
                 false
             ),
             ("inputs", Some("object"), None, Herkomst::Platform, false),
+            // De termijnen volgen uit de verplichting hierboven, dus dit veld
+            // wijst naar hetzelfde artikel.
             (
                 "obligations",
                 Some("array"),
                 None,
-                Herkomst::Wereldbestand,
-                true
+                Herkomst::Lexogram,
+                false
             ),
             (
                 "chronicle_sources",
@@ -328,40 +341,72 @@ fn een_regeling_zonder_afwijzing_laat_de_grond_aan_het_platform() {
     assert_eq!(grond.lexogram, None, "er is geen artikel om naar te wijzen");
 }
 
-/// Een besluit dat verplichtingen oplegt, draagt ze elk als **gat**, en het
-/// bedrag waarnaar ze wijzen draagt zijn eigen lexogram.
+/// Een besluit dat verplichtingen oplegt, draagt ze elk als **lexogram**, en ze
+/// noemen het artikel dat ze declareert — hetzelfde artikel dat het bedrag
+/// levert waarnaar ze wijzen.
 ///
-/// Dat verschil is de hele reden dat de verplichting apart in het schema staat:
-/// *hoeveel* er betaald moet worden zegt de wet, *dat* er betaald moet worden en
-/// in welk ritme zegt het wereldbestand.
+/// Dat was eerder anders: *dat* er betaald moest worden en in welk ritme stond in
+/// het wereldbestand, en de verplichting was daarmee een gat. Ze staat nu in
+/// `produces.extensions.chronolex` van het uitvoerende artikel, en dat is precies
+/// het soort verschuiving dat dit schema meetbaar maakt. Wat er over de
+/// verplichting in het wereldbestand overblijft, is wie haar nakomt — en dat is
+/// uitvoering en geen norm.
 #[test]
-fn een_verplichting_is_een_gat_en_haar_bedrag_niet() {
+fn een_verplichting_komt_uit_het_lexogram_net_als_haar_bedrag() {
     let schema = schema(&publieke_wereld(), "toeslagen", "zorgtoeslag_toekenning");
 
     let verplichting = veld(&schema, "obligations[0]");
-    assert_eq!(verplichting.herkomst, Herkomst::Wereldbestand);
+    assert_eq!(verplichting.herkomst, Herkomst::Lexogram);
     assert_eq!(
         verplichting.value_type.as_deref(),
         Some("object"),
-        "één verplichting is een bedrag, een betaler en een ritme; de reeks \
+        "één verplichting is een soort, een bedrag en een ritme; de reeks \
          termijnen die eruit volgt staat in het veld 'obligations'"
     );
     assert!(
-        verplichting.gat,
-        "geen enkel artikel dekt deze verplichting"
+        !verplichting.gat,
+        "het artikel dat de beschikking voortbrengt, declareert haar"
     );
+    let lexogram = verplichting
+        .lexogram
+        .as_ref()
+        .expect("een verplichting uit het lexogram hoort haar artikel te noemen");
+    assert_eq!(lexogram.regulation, "wet_op_de_zorgtoeslag");
+    assert_eq!(
+        lexogram.article.as_deref(),
+        Some("2"),
+        "hetzelfde artikel dat de aansturende uitkomst voortbrengt"
+    );
+
     let toelichting = verplichting
         .toelichting
         .as_deref()
-        .expect("een gat hoort te zeggen wat het wereldbestand dan wél zegt");
+        .expect("een verplichting hoort te zeggen wat ze oplegt");
     assert!(
         toelichting.contains("hoogte_zorgtoeslag"),
         "de verplichting hoort naar de uitkomst te wijzen die haar bedrag levert: {toelichting}"
+    );
+    assert!(
+        toelichting.contains("Wet op de zorgtoeslag art. 2"),
+        "en naar de grondslag waarop ze berust: {toelichting}"
     );
 
     let bedrag = veld(&schema, "hoogte_zorgtoeslag");
     assert_eq!(bedrag.herkomst, Herkomst::Lexogram);
     assert!(!bedrag.gat);
+
+    // De termijnen volgen uit de verplichting, dus het veld dat ze draagt wijst
+    // naar hetzelfde artikel.
+    let termijnen = veld(&schema, "obligations");
+    assert_eq!(termijnen.herkomst, Herkomst::Lexogram);
+    assert!(!termijnen.gat);
+    assert_eq!(
+        termijnen
+            .lexogram
+            .as_ref()
+            .and_then(|lexogram| lexogram.article.as_deref()),
+        Some("2")
+    );
 }
 
 /// De wereld van de tweede meting: één cel die een **uitvoeringsregel**
