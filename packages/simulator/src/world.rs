@@ -659,13 +659,13 @@ pub struct World {
     /// Apart van [`Self::definition`], want [`World::update_settings`] mag ze
     /// wijzigen en de startstand hoort daar niet mee te schuiven.
     settings: BTreeMap<String, Value>,
-    /// Wie namens welk bevoegd gezag betalingsverplichtingen nakomt.
+    /// Welke cel er in deze wereld onder welke naam nakomt.
     ///
     /// Uit `komt_na` en de identiteiten in het wereldbestand.
     /// Afgeleid bij het optuigen en niet bij elk besluit opnieuw uitgerekend: de
     /// binding verandert niet tijdens een run, en een cel krijgt hem aangereikt
     /// zoals ze de instellingen aangereikt krijgt (zie [`DecisionContext`]).
-    payers: PartyBindings,
+    parties: PartyBindings,
     /// De instellingen die al door een besluit gebruikt zijn, met dat besluit.
     ///
     /// Wat hierin staat, staat vast: zie [`World::update_settings`]. Het is geen
@@ -789,8 +789,8 @@ impl World {
 
         check_cell_ids_shadow_no_regulation(configs)?;
         check_peers_exist(configs, &cells)?;
-        let payers = party_bindings(configs)?;
-        check_obligations(configs, &cells, &payers, &definition.settings)?;
+        let parties = party_bindings(configs)?;
+        check_obligations(configs, &cells, &parties, &definition.settings)?;
         check_actions(&definition.actions, &cells)?;
         check_deadlines(&definition.deadlines, &cells)?;
         check_status_indicators(configs, &cells)?;
@@ -813,7 +813,7 @@ impl World {
             regulation_root: regulation_root.to_path_buf(),
             cells,
             settings: definition.settings.clone(),
-            payers,
+            parties,
             used_settings: BTreeMap::new(),
             clock: definition.clock.start,
             crossings: Vec::new(),
@@ -995,7 +995,7 @@ impl World {
 
         // Dezelfde toets als bij het optuigen: een ritme dat niet bestaat hoort
         // hier te vallen en niet bij het eerste besluit dat erop leunt.
-        check_obligations(&self.definition.cells, &self.cells, &self.payers, &updated)?;
+        check_obligations(&self.definition.cells, &self.cells, &self.parties, &updated)?;
         self.settings = updated;
         Ok(())
     }
@@ -1285,7 +1285,7 @@ impl World {
                 identity: identity.name(),
                 op_moment,
                 settings: &self.settings,
-                parties: &self.payers,
+                parties: &self.parties,
             },
         );
 
@@ -1428,8 +1428,7 @@ impl World {
             .cells
             .iter()
             .find(|config| config.id == cell)
-            .and_then(|config| config.identity.as_deref())
-            .unwrap_or(cell);
+            .map_or(cell, CellConfig::identity_name);
         Identity::named(cell, name)
     }
 
@@ -1947,7 +1946,7 @@ fn check_peers_exist(configs: &[CellConfig], cells: &BTreeMap<String, Cell>) -> 
 fn party_bindings(configs: &[CellConfig]) -> Result<PartyBindings> {
     let mut bindings = PartyBindings::default();
     for config in configs {
-        bindings.note_identity(config.identity.as_deref().unwrap_or(&config.id), &config.id);
+        bindings.note_identity(config.identity_name(), &config.id);
     }
     for config in configs {
         for authority in &config.komt_na {
@@ -1989,7 +1988,7 @@ fn party_bindings(configs: &[CellConfig]) -> Result<PartyBindings> {
 fn check_obligations(
     configs: &[CellConfig],
     cells: &BTreeMap<String, Cell>,
-    payers: &PartyBindings,
+    parties: &PartyBindings,
     settings: &BTreeMap<String, Value>,
 ) -> Result<()> {
     for config in configs {
@@ -2008,7 +2007,7 @@ fn check_obligations(
                 let mut holders: Vec<String> = declared
                     .static_parties(&config.id, definition)?
                     .iter()
-                    .filter_map(|name| payers.cell_for(name).map(str::to_string))
+                    .filter_map(|name| parties.cell_for(name).map(str::to_string))
                     .collect();
                 holders.push(config.id.clone());
                 for holder in holders {

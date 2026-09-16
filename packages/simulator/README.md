@@ -2364,7 +2364,7 @@ alleen het slotbedrag op. Komt dat slotbedrag onder nul, dan is er een richting 
 [Verplichtingen](#verplichtingen-wat-een-besluit-achterlaat)), en zonder die
 declaratie valt het besluit om. Awir art. 19 declareert haar nog niet, dus een
 vaststelling die lager uitkomt dan het voorschot loopt daar vast in plaats van terug
-te vorderen — de grondslag daarvoor is art. 26, en die staat nog niet in het corpus.
+te vorderen — de grondslag daarvoor (art. 24, derde lid) staat nog niet in dat blok.
 
 Twee besluiten op hetzelfde artikel leggen allebei het volle schema op: het tweede
 verrekent niet met het eerste, en een terugvordering is een eigen verplichting naast

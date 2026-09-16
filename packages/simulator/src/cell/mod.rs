@@ -2966,6 +2966,28 @@ params:
         assert_eq!(world_payers().cell_for("Minister van Financiën"), None);
     }
 
+    /// En dat geldt voor de **schuldeiser** net zo goed. Zij komt alleen na als
+    /// de richting omkeert, dus ze hoeft geen betalingsstroom te houden — maar
+    /// een `#bevoegd_gezag` dat nergens op uitkomt is ook aan die kant een gat in
+    /// de regeling, en dat hoort bij het optuigen te blijken en niet pas bij het
+    /// eerste besluit.
+    #[test]
+    fn ook_een_schuldeiser_zonder_bevoegd_gezag_wordt_geweigerd() {
+        let mut declared = declared_without_authority();
+        // Alleen de schuldeiser noemt het gezag nog: de schuldenaar wijst naar een
+        // parameter, dus zonder deze toets zou er hier niets langskomen.
+        declared.items[0].schuldenaar = Some("$bsn".to_string());
+        declared.items[0].schuldeiser = Some(besluit::BEVOEGD_GEZAG_REFERENCE.to_string());
+
+        let err = declared
+            .static_parties("toeslagen", &payer_definition())
+            .expect_err("een schuldeiser zonder gezag hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::ObligationWithoutAuthority { .. }),
+            "verwachtte ObligationWithoutAuthority, kreeg {err}"
+        );
+    }
+
     /// De binding gaat over genormaliseerde tekst: een hoofdletter of een spatie
     /// vooraan is een schrijfwijze en geen andere organisatie.
     #[test]

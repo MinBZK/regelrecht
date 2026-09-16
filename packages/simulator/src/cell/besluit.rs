@@ -2699,8 +2699,16 @@ impl DeclaredObligations {
     /// krijgt pas bij het besluit een waarde, en over een cel die er dan misschien
     /// is valt vooraf niets te toetsen.
     ///
-    /// De schuldeiser telt mee zodra de verplichting `richting_bij_negatief`
-    /// declareert: dan kan ook zíj de nakomende partij worden.
+    /// **Beide** kanten worden opgelost en niet alleen de schuldenaar: een
+    /// `#bevoegd_gezag` onder een regeling die er geen aanwijst is hier een fout,
+    /// ook als die kant de schuldeiser is. Zou alleen de schuldenaar langskomen,
+    /// dan viel zo'n verplichting pas bij het eerste besluit om — halverwege de
+    /// tijdlijn, in plaats van hier.
+    ///
+    /// Wat er in de lijst terechtkomt is iets anders dan wat er getoetst wordt:
+    /// alleen wie **schuldenaar kan worden** telt mee, want alleen die hoeft een
+    /// betalingsstroom te houden. De schuldeiser wordt dat pas als de verplichting
+    /// `richting_bij_negatief` declareert.
     pub(crate) fn static_parties(
         &self,
         cell: &str,
@@ -2709,13 +2717,16 @@ impl DeclaredObligations {
         let mut names = BTreeSet::new();
         for obligation in &self.items {
             let (schuldenaar, schuldeiser) = obligation.parties(cell, definition, &self.origin)?;
-            let mut roles = vec![(SCHULDENAAR, schuldenaar)];
-            if obligation.richting_bij_negatief.is_some() {
-                roles.push((SCHULDEISER, schuldeiser));
-            }
-            for (role, party) in roles {
+            let keert_om = obligation.richting_bij_negatief.is_some();
+            for (role, party, kan_nakomen) in [
+                (SCHULDENAAR, schuldenaar, true),
+                (SCHULDEISER, schuldeiser, keert_om),
+            ] {
                 if party == PartyRef::Authority {
-                    names.insert(party.resolve(role, cell, definition, self, &BTreeMap::new())?);
+                    let name = party.resolve(role, cell, definition, self, &BTreeMap::new())?;
+                    if kan_nakomen {
+                        names.insert(name);
+                    }
                 }
             }
         }
@@ -4204,6 +4215,68 @@ params:
             &origin(),
             &BTreeSet::from(["verzamelinkomen".to_string()]),
         )
+    }
+
+    /// De rechtsverhouding die deze verplichting op dit bedrag oplevert.
+    ///
+    /// Recht op de naad waar de richting valt, en met opzet zonder wereld: wat
+    /// het teken van het bedrag betekent, hangt niet af van de vorm van de input
+    /// waaruit de uitkomst kwam. Een `param`, een `from_chronicle`, een
+    /// `from_decretogram` en een `accept_from` komen alle vier als uitkomst uit
+    /// dezelfde uitvoering, en dit is het enige punt waar er daarna nog naar het
+    /// teken gekeken wordt.
+    fn verhouding(obligation: &ObligationDefinition, bedrag: &str) -> Result<ObligationRelation> {
+        let definition = uitvoerend_besluit();
+        let declared = DeclaredObligations {
+            origin: origin(),
+            authority: Some("Dienst Toeslagen".to_string()),
+            article_outputs: BTreeSet::from(["hoogte_zorgtoeslag".to_string()]),
+            items: vec![obligation.clone()],
+        };
+        let params = BTreeMap::from([("jaar".to_string(), Value::String("999993653".to_string()))]);
+        let total = Decimal::from_str_exact(bedrag)
+            .unwrap_or_else(|e| panic!("testbedrag '{bedrag}' moet leesbaar zijn: {e}"));
+        obligation.relation("toeslagen", &definition, &declared, &params, total)
+    }
+
+    /// **Een negatief bedrag zonder declaratie komt hier niet voorbij.**
+    ///
+    /// De weigering zit op de naad tussen het uitgerekende bedrag en de termijn,
+    /// en niet bij een van de inputvormen: wat de uitvoering oplevert is één
+    /// uitkomstenkaart, en of die uit een parameter, een eigen kroniek, een
+    /// eerder gram of een andere cel gevoed werd, is hier niet meer te zien. Er
+    /// is dan ook maar één plek waar een [`ObligationDue`] ontstaat, en die komt
+    /// hier langs.
+    #[test]
+    fn een_negatief_bedrag_zonder_declaratie_levert_geen_verhouding() {
+        let err = verhouding(&betaling(""), "-48602")
+            .expect_err("een negatief bedrag zonder declaratie hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::NegativeObligationAmount { .. }),
+            "verwachtte NegativeObligationAmount, kreeg {err}"
+        );
+    }
+
+    /// Met de declaratie wisselen de partijen en wordt het bedrag positief.
+    #[test]
+    fn een_negatief_bedrag_met_omkeren_draait_de_verhouding_om() {
+        let relation = verhouding(&betaling("richting_bij_negatief: omkeren\n"), "-48602")
+            .unwrap_or_else(|e| panic!("met de declaratie hoort dit te mogen: {e}"));
+        assert_eq!(relation.soort, ObligationKind::Terugvordering);
+        assert_eq!(relation.schuldenaar, "999993653");
+        assert_eq!(relation.schuldeiser, "Dienst Toeslagen");
+        assert_eq!(relation.total, Decimal::from(48602));
+    }
+
+    /// En nul is geen omkering: er valt niets terug te vorderen, dus het blijft
+    /// een betaling met de partijen zoals de wet ze aanwees.
+    #[test]
+    fn een_bedrag_van_nul_blijft_een_betaling() {
+        let relation = verhouding(&betaling("richting_bij_negatief: omkeren\n"), "0")
+            .unwrap_or_else(|e| panic!("nul hoort te mogen: {e}"));
+        assert_eq!(relation.soort, ObligationKind::Betaling);
+        assert_eq!(relation.schuldenaar, "Dienst Toeslagen");
+        assert_eq!(relation.schuldeiser, "999993653");
     }
 
     /// Een artikel zoals het in een regeling staat.

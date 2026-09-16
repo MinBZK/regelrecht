@@ -65,21 +65,23 @@ pub struct CellConfig {
     /// De lexostatussen die de cel naar buiten publiceert.
     #[serde(default)]
     pub lexostatus_definitions: Vec<LexostatusDefinition>,
-    /// De bevoegde gezagen waarvoor deze cel betalingsverplichtingen nakomt.
+    /// De namen waarvoor deze cel betalingsverplichtingen nakomt.
     ///
     /// *Komt na* in de zin van nakomen, niet van volgen. Wat een besluit oplegt
-    /// staat in het lexogram van de regeling die het uitvoert; welk systeem die
-    /// betaling feitelijk doet, is uitvoering — en dus casusdata. Hier staat
-    /// daarom de naam van het **bevoegd gezag** zoals de wet die noemt
-    /// (`competent_authority`, RFC-002), en niet de naam van een cel: een
-    /// regeling kent geen cellen, dus de enige naam die beide kanten kennen is
-    /// die van het gezag. Hetzelfde lexogram kan daardoor in een ander
-    /// wereldbestand een andere cel laten betalen, zonder dat het recht
-    /// verschilt.
+    /// en tussen wie staat in het lexogram van de regeling die het uitvoert;
+    /// welk systeem die betaling feitelijk doet, is uitvoering — en dus
+    /// casusdata. Hier staat daarom de naam van de **partij** zoals de wet die
+    /// aanwijst — doorgaans een bevoegd gezag (`competent_authority`, RFC-002) —
+    /// en niet de naam van een cel: een regeling kent geen cellen, dus de enige
+    /// naam die beide kanten kennen is die van de partij. Hetzelfde lexogram kan
+    /// daardoor in een ander wereldbestand een andere cel laten betalen, zonder
+    /// dat het recht verschilt.
     ///
-    /// Eén cel per gezag: twee cellen die hetzelfde gezag nakomen, laten een
-    /// betaling bij een willekeurige van de twee landen. Het optuigen weigert
-    /// dat, net als een verplichting waarvoor geen cel gebonden is.
+    /// Eén cel per naam: twee cellen die dezelfde naam nakomen, laten een
+    /// betaling bij een willekeurige van de twee landen, en dat weigert het
+    /// optuigen. Een naam waarvoor géén cel gebonden is, is geen fout: dan komt
+    /// de cel die die naam zelf draagt ([`Self::identity`]) haar na, en kent de
+    /// wereld ook die niet, dan blijft de termijn openstaan.
     #[serde(default)]
     pub komt_na: Vec<String>,
     /// De besluiten die de cel kan nemen.
@@ -117,6 +119,19 @@ pub struct CellConfig {
     /// meting geen celgrens-verkeer is.
     #[serde(default)]
     pub status_indicators: Vec<StatusIndicator>,
+}
+
+impl CellConfig {
+    /// De naam waaronder deze cel zich uitgeeft, met de standaard ingevuld.
+    ///
+    /// Eén plek voor "standaard het cel-id", want er wordt op twee manieren naar
+    /// gekeken: het is de naam die een besluit ondertekent
+    /// ([`crate::World::identity_of`]) én de naam waaronder een cel een
+    /// verplichting nakomt (zie `PartyBindings`). Zouden die twee uiteenlopen,
+    /// dan tekende een cel onder de ene naam en betaalde ze onder de andere.
+    pub(crate) fn identity_name(&self) -> &str {
+        self.identity.as_deref().unwrap_or(&self.id)
+    }
 }
 
 /// Eén afspraak over een cel-bron van de wetten van deze cel (tier 3).
