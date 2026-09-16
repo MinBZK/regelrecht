@@ -21,7 +21,16 @@
 //! Zorgverzekeringswet, met de stopregels hieronder aan. De meting is gedaan
 //! toen de Awb en de Awir nog als "kaderwet" naast de diepte stonden; zonder
 //! die uitzondering, die inmiddels geschrapt is, komt diepte 3 op 5 396 in
-//! plaats van 5 274 artikelen uit, ruim twee procent meer:
+//! plaats van 5 274 artikelen uit, ruim twee procent meer.
+//!
+//! **Elk getal hieronder is een ondergrens.** De meting is gedaan met een
+//! planner die takken afkapte die binnen de diepte lagen: een wet waarvan de
+//! diepte later daalde had zijn uitgaande kanten al op het oude, hogere getal
+//! afgerekend, en wat daar wegviel kwam als `BeyondDepth`-gat terug in plaats
+//! van als werk. Hoeveel er per diepte bij komt is niet opnieuw gemeten; dat
+//! de werkelijke sluiting groter is dan de tabel, staat vast. De conclusies
+//! eronder hangen aan de ordegrootte en niet aan de precieze getallen, en die
+//! kant op bewegen ze niet:
 //!
 //! | diepte | wetten | artikelen | entries |
 //! |-------:|-------:|----------:|--------:|
@@ -407,70 +416,107 @@ pub fn plan_closure(
         }
     }
 
-    // Depth per law: breadth-first, so a law reached straight from the start
-    // keeps depth 1 even when a longer path also arrives there.
+    // Depth per law, and the traversal that fixes it: a strict breadth-first
+    // walk over laws, one whole ring at a time.
+    //
+    // The ring is the unit because the two kinds of step cost different
+    // things. A step inside a law is free, a step to another law costs a
+    // point, and a single queue holding both mixes them: a free step taken now
+    // and a paid step taken now come back out in the order they went in,
+    // which is arrival order and not distance. That is what a flat FIFO got
+    // wrong. It charged an article's outward edges against whatever depth its
+    // law happened to carry at the moment that article was dequeued, and a law
+    // whose depth dropped later — because a shorter route to it turned up
+    // further down the queue — had already spent the higher number. Its
+    // children were then refused as `BeyondDepth` while the plan reported the
+    // parent as being inside the depth: a law within `--depth` vanished from
+    // the plan and came back as a known gap.
+    //
+    // Here the depth of every law in ring `d` is settled before any article of
+    // ring `d` is looked at, so no edge is ever charged at a depth that is
+    // later revised. Within a ring the free steps run to closure first, and
+    // only then are the outward edges of the whole ring charged together to
+    // form ring `d + 1`.
     let mut law_depth: BTreeMap<String, usize> = BTreeMap::new();
     law_depth.insert(start_bwb.clone(), 0);
     let mut taken: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut gaps: BTreeMap<(GapKind, String), usize> = BTreeMap::new();
 
-    // The queue holds (law, article, is_entry_point). An entry point is an
-    // article the closure came in through; a definition article is a leaf only
-    // when it was walked into, never when it was asked for by name.
-    let mut queue: VecDeque<(String, String, bool)> = VecDeque::new();
+    // The articles this ring came in through, as (law, article). An entry
+    // point is an article the closure was pointed at; a definition article is
+    // a leaf only when it was walked into, never when it was asked for by
+    // name.
+    let mut ring: Vec<(String, String)> = Vec::new();
     for article in start_articles {
-        queue.push_back((start_bwb.clone(), article.clone(), true));
-        taken
+        if taken
             .entry(start_bwb.clone())
             .or_default()
-            .insert(article.clone());
+            .insert(article.clone())
+        {
+            ring.push((start_bwb.clone(), article.clone()));
+        }
     }
 
-    while let Some((bwb, article, entry_point)) = queue.pop_front() {
-        let Some(graph) = laws.get(&bwb) else {
-            continue;
-        };
-        let here = law_depth.get(&bwb).copied().unwrap_or(0);
+    let mut here = 0usize;
+    while !ring.is_empty() {
+        // Every outward edge this ring produces, charged after the ring is
+        // walked out. Collected rather than followed on sight, because
+        // following one would put a law of ring `here + 1` in front of the
+        // articles of ring `here` that have not run yet.
+        let mut crossings: Vec<(String, String)> = Vec::new();
 
-        if rules.definitions_are_leaves
-            && !entry_point
-            && docs
-                .get(&bwb)
-                .is_some_and(|doc| is_definition_article(doc, &article))
-        {
-            continue;
-        }
+        // The free walk inside the laws of this ring, to closure.
+        let mut queue: VecDeque<(String, String, bool)> = ring
+            .iter()
+            .map(|(l, a)| (l.clone(), a.clone(), true))
+            .collect();
+        while let Some((bwb, article, entry_point)) = queue.pop_front() {
+            let Some(graph) = laws.get(&bwb) else {
+                continue;
+            };
 
-        let mut internal: Vec<String> = Vec::new();
-        let mut outward: Vec<(String, String)> = Vec::new();
-        for (from, targets) in &graph.depends_on {
-            if from.article != article || from.bwb_id != bwb {
+            if rules.definitions_are_leaves
+                && !entry_point
+                && docs
+                    .get(&bwb)
+                    .is_some_and(|doc| is_definition_article(doc, &article))
+            {
                 continue;
             }
-            for target in targets {
-                if target.bwb_id == bwb {
-                    internal.push(target.article.clone());
-                } else {
-                    outward.push((target.bwb_id.clone(), target.article.clone()));
+
+            let mut internal: Vec<String> = Vec::new();
+            for (from, targets) in &graph.depends_on {
+                if from.article != article || from.bwb_id != bwb {
+                    continue;
+                }
+                for target in targets {
+                    if target.bwb_id == bwb {
+                        internal.push(target.article.clone());
+                    } else {
+                        crossings.push((target.bwb_id.clone(), target.article.clone()));
+                    }
+                }
+            }
+            for (from, target_law) in &graph.outward_law_only {
+                if *from == article {
+                    *gaps
+                        .entry((GapKind::NoArticle, target_law.clone()))
+                        .or_default() += 1;
+                }
+            }
+
+            // Free inside the law.
+            for target in internal {
+                if taken.entry(bwb.clone()).or_default().insert(target.clone()) {
+                    queue.push_back((bwb.clone(), target, false));
                 }
             }
         }
-        for (from, target_law) in &graph.outward_law_only {
-            if *from == article {
-                *gaps
-                    .entry((GapKind::NoArticle, target_law.clone()))
-                    .or_default() += 1;
-            }
-        }
 
-        // Free inside the law.
-        for target in internal {
-            if taken.entry(bwb.clone()).or_default().insert(target.clone()) {
-                queue.push_back((bwb.clone(), target, false));
-            }
-        }
-
-        for (target_law, target_article) in outward {
+        // Charge the ring's outward edges, all at the same depth.
+        let there = here + 1;
+        let mut next_ring: Vec<(String, String)> = Vec::new();
+        for (target_law, target_article) in crossings {
             let Some(entry) = index.get(&target_law) else {
                 *gaps
                     .entry((GapKind::OutsideCorpus, target_law.clone()))
@@ -483,15 +529,17 @@ pub fn plan_closure(
                     .or_default() += 1;
                 continue;
             }
-            let there = here + 1;
-            if there > depth {
+            // A law already reached sits at `here` or less, never deeper: the
+            // rings arrive in order. Its articles are still worth taking, but
+            // it costs no new jump and its depth does not move.
+            let known = law_depth.get(&target_law).copied();
+            if known.is_none() && there > depth {
                 *gaps
                     .entry((GapKind::BeyondDepth, target_law.clone()))
                     .or_default() += 1;
                 continue;
             }
-            let known = law_depth.get(&target_law).copied();
-            if known.is_none_or(|d| there < d) {
+            if known.is_none() {
                 law_depth.insert(target_law.clone(), there);
             }
             if !laws.contains_key(&target_law) {
@@ -499,6 +547,7 @@ pub fn plan_closure(
                     *gaps
                         .entry((GapKind::OutsideCorpus, target_law.clone()))
                         .or_default() += 1;
+                    law_depth.remove(&target_law);
                     continue;
                 };
                 laws.insert(target_law.clone(), Graph::scan(&doc));
@@ -515,9 +564,12 @@ pub fn plan_closure(
                 .or_default()
                 .insert(target_article.clone())
             {
-                queue.push_back((target_law, target_article, true));
+                next_ring.push((target_law, target_article));
             }
         }
+
+        ring = next_ring;
+        here = there;
     }
 
     // Deepest first, so a producer is translated before its reader.
@@ -931,6 +983,146 @@ articles:
         )
         .unwrap_err();
         assert!(error.contains("no article 99"), "{error}");
+    }
+
+    /// A law within the depth must not have its children refused as if it lay
+    /// outside it.
+    ///
+    /// The corpus below is the shape that broke: wet_a walks a free chain of
+    /// its own articles (1 → 2 → 3 → 3a → 4), and the long route to wet_d leaves
+    /// from article 2 while the short one leaves from article 4. A flat queue
+    /// mixing free steps and law jumps dequeues wet_b before it ever reaches
+    /// article 4, so wet_d is first recorded at depth 2 and its edge to wet_e
+    /// is charged at 3 and refused. Article 4 then lowers wet_d to 1, too late
+    /// for the edge that was already dropped, and `taken` blocks a requeue.
+    ///
+    /// The plan that came out said wet_d sits at depth 1 and reported wet_e as
+    /// beyond a depth of 2, which cannot both be true. At `--depth 2` wet_e is
+    /// two jumps out and belongs in the plan.
+    fn overtaking_corpus() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            &dir,
+            "regulation/nl/wet/wet_a/2026-01-01.yaml",
+            r"$id: wet_a
+regulatory_layer: WET
+bwb_id: BWBR0000001
+articles:
+  - number: '1'
+    text: De aanspraak volgt uit artikel 2.
+  - number: '2'
+    text: De hoogte volgt uit artikel 3 en uit artikel 5 van wet B.
+    references:
+      - id: ref1
+        bwb_id: BWBR0000002
+        artikel: '5'
+  - number: '3'
+    text: Het tarief volgt uit artikel 3a.
+  - number: '3a'
+    text: De maatstaf volgt uit artikel 4.
+  - number: '4'
+    text: De grondslag is die van artikel 1 van wet D.
+    references:
+      - id: ref2
+        bwb_id: BWBR0000004
+        artikel: '1'
+",
+        );
+        write(
+            &dir,
+            "regulation/nl/wet/wet_b/2026-01-01.yaml",
+            r"$id: wet_b
+regulatory_layer: WET
+bwb_id: BWBR0000002
+articles:
+  - number: '5'
+    text: Het bedrag is dat van artikel 1 van wet D.
+    references:
+      - id: ref1
+        bwb_id: BWBR0000004
+        artikel: '1'
+",
+        );
+        write(
+            &dir,
+            "regulation/nl/wet/wet_d/2026-01-01.yaml",
+            r"$id: wet_d
+regulatory_layer: WET
+bwb_id: BWBR0000004
+articles:
+  - number: '1'
+    text: Het percentage is dat van artikel 7 van wet E.
+    references:
+      - id: ref1
+        bwb_id: BWBR0000005
+        artikel: '7'
+",
+        );
+        write(
+            &dir,
+            "regulation/nl/wet/wet_e/2026-01-01.yaml",
+            r"$id: wet_e
+regulatory_layer: WET
+bwb_id: BWBR0000005
+articles:
+  - number: '7'
+    text: Het percentage is tien.
+",
+        );
+        dir
+    }
+
+    #[test]
+    fn a_shorter_route_found_later_does_not_cut_a_branch_inside_the_depth() {
+        let dir = overtaking_corpus();
+        let index = LawIndex::scan(dir.path()).unwrap();
+        let plan = plan_closure(
+            dir.path(),
+            "regulation/nl/wet/wet_a/2026-01-01.yaml",
+            &["1".to_string()],
+            2,
+            &index,
+            StopRules::default(),
+        )
+        .unwrap();
+
+        let depth_of = |id: &str| plan.tasks.iter().find(|t| t.law_id == id).map(|t| t.depth);
+        assert_eq!(depth_of("wet_a"), Some(0));
+        assert_eq!(depth_of("wet_b"), Some(1));
+        assert_eq!(
+            depth_of("wet_d"),
+            Some(1),
+            "wet_a artikel 4 haalt wet_d rechtstreeks"
+        );
+        assert_eq!(
+            depth_of("wet_e"),
+            Some(2),
+            "wet_d staat op diepte 1, dus zijn kind past binnen diepte 2: {:?}",
+            plan.describe()
+        );
+        assert!(
+            !plan
+                .gaps
+                .iter()
+                .any(|g| g.kind == GapKind::BeyondDepth && g.bwb_id == "BWBR0000005"),
+            "een wet die in het plan staat is geen bekend gat: {:?}",
+            plan.gaps
+        );
+
+        // Deepest first survives the fix: wet_e before wet_d before wet_a.
+        let order: Vec<&str> = plan.tasks.iter().map(|t| t.law_id.as_str()).collect();
+        let position = |id: &str| order.iter().position(|l| *l == id).unwrap();
+        assert!(position("wet_e") < position("wet_d"));
+        assert!(position("wet_d") < position("wet_a"));
+
+        // The limit counts the plan the run will actually walk. On the broken
+        // planner wet_e was missing, so five articles read as four and a limit
+        // of four let the run through.
+        assert_eq!(plan.articles(), 8, "{:?}", plan.describe());
+        assert!(
+            plan.refuse_above(7).is_some(),
+            "de grens telt de artikelen die het plan nu wél heeft"
+        );
     }
 
     #[test]
