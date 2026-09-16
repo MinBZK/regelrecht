@@ -472,6 +472,51 @@ pub enum SimulatorError {
         found: String,
     },
 
+    /// Een `afwijzing_wanneer` noemt een uitkomst die het besluit niet vastlegt.
+    ///
+    /// De grond van een afwijzing hoort in het gram terug te vinden te zijn, en
+    /// het gram draagt alleen de uitkomsten die de definitie vastlegt (`output`
+    /// plus `outputs`). Een voorwaarde over iets anders zou een weigering
+    /// opleveren waarvan de motivering nergens staat.
+    #[error(
+        "cel '{cell}': besluit '{besluit}' wijst af bij uitkomst '{output}', maar legt \
+         die niet vast (wel: {known}); een afwijzingsgrond hoort in het gram te staan"
+    )]
+    UnknownAfwijzingsvoorwaarde {
+        /// De cel waarin de definitie staat.
+        cell: String,
+        /// De besluit-definitie.
+        besluit: String,
+        /// De uitkomst uit `afwijzing_wanneer` die het besluit niet vastlegt.
+        output: String,
+        /// Komma-gescheiden lijst van uitkomsten die het besluit wél vastlegt.
+        known: String,
+    },
+
+    /// Een `afwijzing_wanneer` noemt een uitkomst die geen ja-of-nee is.
+    ///
+    /// Een voorwaarde vergelijkt met `true` of `false`; op een bedrag of een
+    /// datum raakt ze nooit vervuld. Dan staat er een afwijzing in het
+    /// wereldbestand die nooit afwijst, en dat hoort te blijken bij het optuigen
+    /// en niet bij de eerste aanvrager die geweigerd had moeten worden.
+    #[error(
+        "cel '{cell}': besluit '{besluit}' wijst af bij uitkomst '{output}' van regeling \
+         '{regulation}', maar die is geen ja-of-nee (type: {found}); een \
+         afwijzingsvoorwaarde vergelijkt met `true` of `false`"
+    )]
+    AfwijzingsvoorwaardeNotBoolean {
+        /// De cel waarin de definitie staat.
+        cell: String,
+        /// De besluit-definitie.
+        besluit: String,
+        /// De regeling die het besluit uitvoert, bij `$id`.
+        regulation: String,
+        /// De uitkomst waarop de voorwaarde slaat.
+        output: String,
+        /// De typen die de geladen versies eraan geven.
+        found: String,
+    },
+
     /// Een cel-id in de wereld is ook de `$id` van een regeling die een cel laadt.
     ///
     /// RFC-022 §4.2 maakt daar een laadfout van, onvoorwaardelijk: een vraag aan

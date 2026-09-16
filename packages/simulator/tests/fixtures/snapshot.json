@@ -1249,6 +1249,12 @@
               "grondslag": "wet_op_de_zorgtoeslag (versie 2024-01-01)",
               "op_moment": "2024-04-01",
               "fields": {
+                "afwijzingsgrond": {
+                  "value": [],
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                },
                 "besloten_door": {
                   "value": "Dienst Toeslagen",
                   "origin": {
@@ -1304,6 +1310,12 @@
                 },
                 "competent_authority": {
                   "value": "Dienst Toeslagen",
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                },
+                "decision_type": {
+                  "value": "TOEKENNING",
                   "origin": {
                     "herkomst": "besluit"
                   }
@@ -1438,6 +1450,12 @@
               "grondslag": "wet_op_de_zorgtoeslag (versie 2024-01-01)",
               "op_moment": "2024-12-15",
               "fields": {
+                "afwijzingsgrond": {
+                  "value": [],
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                },
                 "besloten_door": {
                   "value": "Dienst Toeslagen",
                   "origin": {
@@ -1493,6 +1511,12 @@
                 },
                 "competent_authority": {
                   "value": "Dienst Toeslagen",
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                },
+                "decision_type": {
+                  "value": "TOEKENNING",
                   "origin": {
                     "herkomst": "besluit"
                   }
@@ -1857,6 +1881,8 @@
         }
       ],
       "executed": {
+        "decision_type": "TOEKENNING",
+        "afwijzingsgronden": [],
         "regulations": [
           {
             "regulation": "wet_op_de_zorgtoeslag",
@@ -2176,6 +2202,8 @@
         }
       ],
       "executed": {
+        "decision_type": "TOEKENNING",
+        "afwijzingsgronden": [],
         "regulations": [
           {
             "regulation": "wet_op_de_zorgtoeslag",

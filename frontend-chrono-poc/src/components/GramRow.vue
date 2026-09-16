@@ -2,7 +2,9 @@
 import { computed, ref } from 'vue';
 import { formatMissing, formatMoment, formatValue, humanize } from '../world/format.js';
 import {
+  afwijzingsgrondenOf,
   competentAuthorityOf,
+  decisionTypeOf,
   describeOrigin,
   gramFields,
   gramKind,
@@ -43,6 +45,13 @@ const expandable = computed(() => props.gram.kind === 'decretogram');
 const status = computed(() => (props.clock && props.gram.op_moment > props.clock ? 'future' : 'past'));
 const regulation = computed(() => regulationOf(props.gram));
 const obligations = computed(() => obligationsOf(props.gram));
+// Het soort gram zegt dát dit een besluit is; het type zegt wélk besluit. Een
+// beschikking omvat ook de afwijzing van de aanvraag, dus zonder dit tweede
+// label zou een weigering in de lijst niet van een toekenning te onderscheiden
+// zijn — en al helemaal niet aan een bedrag, want de regeling rekent er nog
+// steeds een uit.
+const decisionType = computed(() => decisionTypeOf(props.gram));
+const afwijzingsgronden = computed(() => afwijzingsgrondenOf(props.gram));
 
 // De wet bepaalt wie het bevoegd gezag is. Zegt ze er niets over, dan viel er
 // niet te toetsen wie mocht besluiten, en dat hoort bij het gram te staan waar
@@ -98,6 +107,9 @@ function obligationText(row) {
     <nldd-cell>
       <nldd-tag size="sm" :color="kind.color" :text="kind.label"></nldd-tag>
     </nldd-cell>
+    <nldd-cell v-if="decisionType">
+      <nldd-tag size="sm" :color="decisionType.color" :text="decisionType.label"></nldd-tag>
+    </nldd-cell>
     <nldd-cell v-if="isNew">
       <nldd-tag size="sm" color="accent" icon="new" text="nieuw"></nldd-tag>
     </nldd-cell>
@@ -135,6 +147,25 @@ function obligationText(row) {
         size="sm"
         text="Regeling declareert geen bevoegd gezag"
         supporting-text="er viel niet te toetsen wie mocht besluiten"
+      ></nldd-text-cell>
+    </nldd-list-item>
+
+    <!-- Waarop het besluit afketste. Een afwijzing zonder haar grond is een
+         besluit zonder motivering; wat hier staat komt uit het gram zelf, met de
+         uitkomst, de waarde die afwees en het artikel erachter. -->
+    <nldd-list-item
+      v-for="(grond, index) in expandable ? afwijzingsgronden : []"
+      :key="`afwijzingsgrond-${index}`"
+      slot="children"
+      size="sm"
+    >
+      <nldd-spacer-cell size="20"></nldd-spacer-cell>
+      <nldd-icon-cell icon="warning" size="16" color="warning"></nldd-icon-cell>
+      <nldd-spacer-cell size="8"></nldd-spacer-cell>
+      <nldd-text-cell
+        size="sm"
+        :text="`Afwijzingsgrond: ${humanize(grond.output)}`"
+        :supporting-text="`${formatValue(grond.value)}${grond.article ? ` · artikel ${grond.article}` : ''}`"
       ></nldd-text-cell>
     </nldd-list-item>
 

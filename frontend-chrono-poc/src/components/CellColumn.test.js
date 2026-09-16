@@ -204,6 +204,39 @@ describe('de herkomst in een decretogram', () => {
     expect(attrs(zonder, 'nldd-text-cell', 'text')).toContain('Regeling declareert geen bevoegd gezag');
   });
 
+  // Het soort gram zegt dát er besloten is, het type zegt wát er besloten is.
+  // Een beschikking omvat ook de afwijzing van de aanvraag, dus zonder dit tweede
+  // label zou een weigering in de lijst op een toekenning lijken — en aan het
+  // bedrag is het verschil niet te zien: de regeling rekent er ook bij een
+  // afwijzing nog een uit.
+  it('zet het besluittype als tag naast het gram-soort', () => {
+    const tags = attrs(mountCell('toeslagen'), 'nldd-tag', 'text');
+    expect(tags).toContain('Decretogram');
+    expect(tags).toContain('TOEKENNING');
+    expect(tags).not.toContain('AFWIJZING');
+  });
+
+  it('toont een afwijzing als zodanig, met haar grond achter de uitklap', async () => {
+    const cell = structuredClone(fixtureCell('toeslagen'));
+    for (const chronicle of cell.chronicles) {
+      for (const gram of chronicle.grams) {
+        if (gram.kind !== 'decretogram') continue;
+        gram.fields.decision_type.value = 'AFWIJZING';
+        gram.fields.afwijzingsgrond.value = [
+          { output: 'heeft_recht_op_zorgtoeslag', value: false, article: '2' },
+        ];
+      }
+    }
+    const wrapper = mount(CellColumn, { props: { cell, clock } });
+    expect(attrs(wrapper, 'nldd-tag', 'text')).toContain('AFWIJZING');
+
+    await decisionRow(wrapper).trigger('click');
+    const texts = attrs(wrapper, 'nldd-text-cell', 'text');
+    expect(texts).toContain('Afwijzingsgrond: Heeft recht op zorgtoeslag');
+    const supporting = attrs(wrapper, 'nldd-text-cell', 'supporting-text').filter(Boolean);
+    expect(supporting).toContain('nee · artikel 2');
+  });
+
   it('klapt weer dicht', async () => {
     const wrapper = mountCell('toeslagen');
     const row = decisionRow(wrapper);

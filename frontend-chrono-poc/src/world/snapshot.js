@@ -30,6 +30,16 @@ export const GRAM_KINDS = {
 const UNKNOWN_KIND = { label: 'Gram', color: 'neutral', icon: 'file' };
 
 /**
+ * Het besluittype van een besluit dat op een voorwaarde afketste.
+ *
+ * Platformvocabulaire en geen casusnaam: het staat zo in het schema
+ * (`produces.decision_type`) en de simulator schrijft precies dit woord in het
+ * gram. Het staat hier omdat een afwijzing er anders uitziet dan een toekenning
+ * — een weigering hoort niet als een gewoon besluit weg te vallen.
+ */
+const AFWIJZING = 'AFWIJZING';
+
+/**
  * Het veld waaronder een zaak terug te vinden is.
  *
  * Een platformnaam en geen casusnaam: elk decretogram draagt hem, en elke
@@ -41,6 +51,41 @@ const ZAAKKENMERK = 'zaakkenmerk';
 /** Hoe dit gram eruitziet; een onbekend soort blijft leesbaar. */
 export function gramKind(kind) {
   return GRAM_KINDS[kind] ?? UNKNOWN_KIND;
+}
+
+/**
+ * Het besluittype van een gram, als iets om te tonen.
+ *
+ * `null` als het gram er geen draagt: een executogram is geen besluit, en een
+ * decretogram onder een regeling die `produces.decision_type` weglaat draagt
+ * `null` — dan valt er niets te tonen en hoort er geen leeg label te staan.
+ *
+ * De **naam komt uit het beeld** en niet uit een lijst hier: welke besluittypen
+ * er zijn, is aan de regeling. Alleen de afwijzing krijgt een eigen kleur, want
+ * dat is het ene onderscheid dat het platform zelf maakt.
+ */
+export function decisionTypeOf(gram) {
+  const value = gram?.fields?.decision_type?.value;
+  if (value === null || value === undefined || value === '') return null;
+  const type = String(value);
+  return { type, label: type, color: type === AFWIJZING ? 'oranje' : 'donkerblauw' };
+}
+
+/**
+ * Waarop een besluit afketste, als rijen.
+ *
+ * Elke grond noemt de uitkomst, de waarde die tot afwijzing leidde en het
+ * artikel dat de uitkomst voortbrengt. Leeg bij elk besluit dat niet afwees —
+ * en dat is het gewone geval, dus een lege lijst is geen ontbrekend veld.
+ */
+export function afwijzingsgrondenOf(gram) {
+  const raw = gram?.fields?.afwijzingsgrond?.value;
+  if (!Array.isArray(raw)) return [];
+  return raw.map((row) => ({
+    output: row?.output === undefined || row?.output === null ? null : String(row.output),
+    value: row?.value,
+    article: row?.article === undefined || row?.article === null ? null : String(row.article),
+  }));
 }
 
 /** De cellen uit het beeld, in de volgorde waarin het beeld ze geeft. */

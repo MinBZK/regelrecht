@@ -146,7 +146,8 @@ pub struct Act {
     ///
     /// Mag leeg blijven, net als bij een [`Decision`]: een actie legt iets vast,
     /// dus ze bewijst ook zonder verwachting dat de vragen erna iets te vinden
-    /// hebben.
+    /// hebben. `decision_type` mag hier net zo goed staan als bij een
+    /// [`Decision`].
     #[serde(default)]
     pub expect: BTreeMap<String, Value>,
     /// Waarden die het besluit van deze actie **geaccepteerd** moet hebben, op
@@ -219,6 +220,11 @@ pub struct Decision {
     /// Mag leeg blijven, anders dan bij een vraag: een besluit legt iets vast,
     /// dus het bewijst ook zonder verwachting iets — namelijk dat de vragen
     /// erna iets te vinden hebben.
+    ///
+    /// Naast de uitkomsten van de regeling mag hier `decision_type` staan: of een
+    /// besluit toewijst of **afwijst**, is niet uit een uitkomst af te lezen —
+    /// `heeft_recht… = false` is ook de uitkomst van een besluit dat het platform
+    /// niet als afwijzing kent. Zie [`Decretogram::assertable`].
     #[serde(default)]
     pub expect: BTreeMap<String, Value>,
     /// Waarden die dit besluit van een andere cel moet hebben **geaccepteerd**,
@@ -949,7 +955,7 @@ impl Scenario {
             let mut failures = Vec::new();
             for record in &events.decisions {
                 let gram = &record.decretogram;
-                failures.extend(check_values(&step.expect, &gram.outputs));
+                failures.extend(check_values(&step.expect, &gram.assertable()));
                 failures.extend(check_provenance(gram));
                 failures.extend(check_origins(
                     &step.expect_accepted,
@@ -989,7 +995,7 @@ impl Scenario {
             )?;
             let decretogram = record.decretogram;
 
-            let mut failures = check_values(&decision.expect, &decretogram.outputs);
+            let mut failures = check_values(&decision.expect, &decretogram.assertable());
             // De gate draait bij élk besluit, ook als het scenario er niets over
             // zegt: een invariant die je moet aanzetten, is een invariant die
             // iemand vergeet.

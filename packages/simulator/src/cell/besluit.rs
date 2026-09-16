@@ -51,6 +51,16 @@ use std::collections::{BTreeMap, BTreeSet};
 /// iets anders draagt dan deze waarde.
 pub const BESCHIKKING: &str = "BESCHIKKING";
 
+/// Het besluittype van een besluit dat op een voorwaarde afketst.
+///
+/// Awb 1:3 lid 2: een beschikking omvat ook de **afwijzing** van de aanvraag.
+/// Een besluit dat afketst is dus geen mislukte uitvoering en geen bedrag nul,
+/// maar een decretogram als elk ander — met dit type, met de uitkomsten die de
+/// regeling wél leverde, en zonder verplichtingen. Uit het vocabulaire van
+/// `produces.decision_type` in het schema, zodat het gram hetzelfde woord draagt
+/// als een regeling die de afwijzing zelf zou aanwijzen.
+pub const AFWIJZING: &str = "AFWIJZING";
+
 /// De kroniekstroom waarin een cel haar eigen decretogrammen legt.
 ///
 /// Eén vaste naam per cel, automatisch aanwezig zodra de cel besluit-definities
@@ -103,6 +113,25 @@ pub const COMPETENT_AUTHORITY: &str = "competent_authority";
 pub const BESLOTEN_DOOR: &str = "besloten_door";
 /// Veld met het rechtskarakter dat de regeling aan deze uitkomst geeft.
 pub const LEGAL_CHARACTER: &str = "legal_character";
+/// Veld met het besluittype van dit gram.
+///
+/// Naast [`LEGAL_CHARACTER`] en niet in plaats daarvan: het rechtskarakter zegt
+/// dát dit een beschikking is, dit zegt wélke. Een verlening en een weigering
+/// zijn allebei een beschikking (Awb 1:3 lid 2), en zonder dit veld zou een
+/// lezer het verschil uit een bedrag moeten afleiden — precies de verwarring
+/// waar "een weigering is geen bedrag" over gaat.
+///
+/// `null` als de regeling er niets over zegt: dat is een gat in die regeling en
+/// geen uitnodiging om het hier in te vullen. Bij een afwijzing staat er altijd
+/// [`AFWIJZING`], want dan is het niet de regeling maar de besluit-definitie die
+/// het type aanwijst.
+pub const DECISION_TYPE: &str = "decision_type";
+/// Veld met de afwijzingsvoorwaarden die vervuld waren.
+///
+/// Leeg bij elk besluit dat niet afketste, en dan is dat ook wat er staat: een
+/// lege lijst. Net als [`OBLIGATIONS`] altijd aanwezig — een veld dat er soms
+/// niet is, laat een reductie erover afwisselend wel en niet iets vinden.
+pub const AFWIJZINGSGROND: &str = "afwijzingsgrond";
 /// Veld met de inputs van het besluit, elk met hun herkomst.
 pub const INPUTS: &str = "inputs";
 /// Veld met het uitgerekende betalingsschema van dit besluit.
@@ -113,7 +142,7 @@ pub const CHRONICLE_SOURCES: &str = "chronicle_sources";
 pub const RECEIPT: &str = "receipt";
 
 /// De vaste velden van een decretogram, in de volgorde waarin ze hierboven staan.
-const FIXED_FIELDS: [&str; 12] = [
+const FIXED_FIELDS: [&str; 14] = [
     ZAAKKENMERK,
     BESLUIT,
     REGULATION,
@@ -122,6 +151,8 @@ const FIXED_FIELDS: [&str; 12] = [
     COMPETENT_AUTHORITY,
     BESLOTEN_DOOR,
     LEGAL_CHARACTER,
+    DECISION_TYPE,
+    AFWIJZINGSGROND,
     INPUTS,
     OBLIGATIONS,
     CHRONICLE_SOURCES,
@@ -220,12 +251,37 @@ pub struct BesluitDefinition {
     /// (`accept_from`).
     #[serde(default)]
     pub inputs: BTreeMap<String, BesluitInput>,
+    /// Wanneer dit besluit een **afwijzing** is: per boolean-uitkomst van de
+    /// regeling de waarde die tot afwijzing leidt.
+    ///
+    /// ```yaml
+    /// afwijzing_wanneer:
+    ///   heeft_recht_op_zorgtoeslag: false
+    /// ```
+    ///
+    /// Leeg is het gewone geval: dan kan dit besluit alleen toewijzen, en draagt
+    /// het gram het besluittype dat de regeling zelf aanwijst.
+    ///
+    /// De namen komen uit [`Self::output`] en [`Self::outputs`], en ze moeten
+    /// boolean zijn — allebei getoetst bij het optuigen. Een uitkomst die het
+    /// besluit niet vastlegt, zou een afwijzing opleveren waarvan de grond niet
+    /// in het gram terug te vinden is; een uitkomst die geen ja-of-nee is, zou
+    /// nooit vervuld raken en de voorwaarde stil uitzetten.
+    ///
+    /// Meer dan één voorwaarde is een **of**: elke vervulde voorwaarde is op
+    /// zichzelf genoeg, en ze komen alle vervulde samen in het gram te staan.
+    /// Wat de wet zelf als samengestelde toets formuleert, hoort een uitkomst
+    /// van die wet te zijn en niet een lijstje hier.
+    #[serde(default)]
+    pub afwijzing_wanneer: BTreeMap<String, bool>,
     /// De verplichtingen die uit dit besluit volgen: wat er betaald moet worden,
     /// door wie, in welk ritme en vanaf wanneer.
     ///
     /// Leeg is het gewone geval: niet elk besluit kent iets toe. Wat hier staat
     /// wordt bij het besluit uitgerekend tot een schema van termijnen en gaat
-    /// mee in het decretogram; het nakomen gebeurt op de klok.
+    /// mee in het decretogram; het nakomen gebeurt op de klok. Een besluit dat
+    /// afwijst legt er geen op: een weigering belooft niets (zie
+    /// [`Self::afwijzing_wanneer`]).
     #[serde(default)]
     pub obligations: Vec<ObligationDefinition>,
 }
@@ -1065,6 +1121,51 @@ impl ChronicleSource {
     }
 }
 
+/// Eén vervulde afwijzingsvoorwaarde: waarop dit besluit afketste.
+///
+/// De grond staat in het gram en niet alleen in een melding ernaast: een
+/// afwijzing die niet zegt waaróp ze afketste, is een besluit zonder motivering,
+/// en dan is er over het gram niets terug te vragen. Het **artikel** hoort
+/// erbij om dezelfde reden als bij het bevoegd gezag (RFC-002): een uitkomst is
+/// een naam, een artikel is een grondslag.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Afwijzingsgrond {
+    /// De uitkomst van de regeling die de voorwaarde vervulde.
+    pub output: String,
+    /// De waarde die tot afwijzing leidt, en die deze uitkomst ook had.
+    ///
+    /// In het gram en niet weggelaten als "vanzelfsprekend onwaar": een
+    /// voorwaarde mag ook op `true` staan — "is uitgesloten van de regeling" —
+    /// en dan zegt een gram dat de waarde verzwijgt het omgekeerde van wat er
+    /// gebeurd is.
+    pub value: bool,
+    /// Het artikel dat deze uitkomst voortbrengt, in de versie die op het moment
+    /// van het besluit gold; `None` als er geen artikel bij te vinden was.
+    pub article: Option<String>,
+}
+
+impl Afwijzingsgrond {
+    /// Deze grond als vastlegbare waarde, voor in het decretogram.
+    fn as_value(&self) -> Value {
+        Value::Object(BTreeMap::from([
+            ("output".to_string(), Value::String(self.output.clone())),
+            ("value".to_string(), Value::Bool(self.value)),
+            (
+                "article".to_string(),
+                optional_text(self.article.as_deref()),
+            ),
+        ]))
+    }
+
+    /// Leesbare grond voor een verslag.
+    pub fn describe(&self) -> String {
+        match &self.article {
+            Some(article) => format!("{} is {} (artikel {article})", self.output, self.value),
+            None => format!("{} is {}", self.output, self.value),
+        }
+    }
+}
+
 /// Eén input van een besluit: de waarde waarop besloten is, met haar herkomst.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DecretogramInput {
@@ -1120,8 +1221,29 @@ pub struct Decretogram {
     /// is zodat het gram zélf zegt wat het is en een lezer het niet uit een
     /// afwezige weigering hoeft af te leiden.
     pub legal_character: String,
+    /// Het besluittype van dit gram.
+    ///
+    /// [`AFWIJZING`] zodra een afwijzingsvoorwaarde vervuld was; anders wat het
+    /// artikel dat de aansturende uitkomst voortbrengt in `produces.decision_type`
+    /// aanwijst, en `None` als het daar niets over zegt.
+    ///
+    /// Anders dan [`Self::legal_character`] staat hier dus niet altijd hetzelfde:
+    /// een beschikking omvat volgens Awb 1:3 lid 2 ook de afwijzing van de
+    /// aanvraag, en dit veld is het enige dat de twee uit elkaar houdt.
+    pub decision_type: Option<String>,
+    /// De afwijzingsvoorwaarden die vervuld waren; leeg bij elk ander besluit.
+    ///
+    /// Is deze lijst niet leeg, dan is [`Self::decision_type`] [`AFWIJZING`] en
+    /// is [`Self::obligations`] leeg. Die drie horen bij elkaar en worden op één
+    /// plek gezet ([`crate::Cell::decide`]), zodat er geen gram kan bestaan dat
+    /// afwijst en tegelijk iets belooft.
+    pub afwijzingsgronden: Vec<Afwijzingsgrond>,
     /// De uitkomsten van het besluit: de aansturende uitkomst plus wat de
     /// definitie erbij noemt. Alle samen in één gram.
+    ///
+    /// Ook bij een afwijzing: wat de regeling wél geleverd heeft, hoort in het
+    /// gram. Een weigering die haar eigen uitkomsten weglaat, is niet na te
+    /// lopen.
     pub outputs: BTreeMap<String, Value>,
     /// De inputs waarop besloten is, met hun herkomst.
     pub inputs: BTreeMap<String, DecretogramInput>,
@@ -1159,6 +1281,36 @@ pub struct Decretogram {
 }
 
 impl Decretogram {
+    /// Is dit besluit een afwijzing?
+    ///
+    /// Op de gronden en niet op [`Self::decision_type`]: het type is wat er in
+    /// het gram komt te staan, de gronden zijn waarom. Zouden de twee ooit
+    /// uiteen kunnen lopen, dan hoort de vraag "wijst dit besluit af?" bij de
+    /// reden te liggen en niet bij het etiket.
+    pub fn is_afwijzing(&self) -> bool {
+        !self.afwijzingsgronden.is_empty()
+    }
+
+    /// De waarden waarop een scenario dit besluit mag afrekenen.
+    ///
+    /// De uitkomsten van de regeling, plus het besluittype onder zijn eigen
+    /// naam. Dat laatste hoort erbij omdat een afwijzing zich juist níet in een
+    /// uitkomst laat aflezen: `heeft_recht… = false` is ook de uitkomst van een
+    /// besluit dat het platform niet als afwijzing kent, en dan bewijst een
+    /// verwachting over die uitkomst niets over de vorm van het gram.
+    ///
+    /// Alleen dit ene vaste veld erbij en niet alle: de rest — het receipt, de
+    /// inputs, de verplichtingen — heeft eigen verwachtingen die meer zeggen dan
+    /// een gelijkheidstoets op een waarde.
+    pub fn assertable(&self) -> BTreeMap<String, Value> {
+        let mut values = self.outputs.clone();
+        values.insert(
+            DECISION_TYPE.to_string(),
+            optional_text(self.decision_type.as_deref()),
+        );
+        values
+    }
+
     /// Elke waarde in dit gram die van een andere cel **geaccepteerd** is, op
     /// naam, met de cel die haar vaststelde.
     ///
@@ -1236,6 +1388,19 @@ impl Decretogram {
             (
                 LEGAL_CHARACTER.to_string(),
                 Value::String(self.legal_character.clone()),
+            ),
+            (
+                DECISION_TYPE.to_string(),
+                optional_text(self.decision_type.as_deref()),
+            ),
+            (
+                AFWIJZINGSGROND.to_string(),
+                Value::Array(
+                    self.afwijzingsgronden
+                        .iter()
+                        .map(Afwijzingsgrond::as_value)
+                        .collect(),
+                ),
             ),
             (
                 INPUTS.to_string(),
@@ -1573,6 +1738,7 @@ impl BesluitDefinition {
         // zijn — onder elke geladen versie, want een besluit over een ouder
         // moment landt op een oudere versie (RFC-022 §1.2).
         surface.check_beschikking(cell, &self.name, &self.regulation, &self.output)?;
+        self.validate_afwijzing_wanneer(cell, surface)?;
 
         // De uitkomsten komen in hetzelfde gram als de vaste velden. Een
         // uitkomst die zo heet, zou er een overschrijven — het gram zou dan
@@ -1618,6 +1784,62 @@ impl BesluitDefinition {
         }
 
         self.validate_zaakkenmerk(cell)
+    }
+
+    /// De afwijzingsvoorwaarden: bestaan ze, en zijn ze ja-of-nee?
+    ///
+    /// Bij het optuigen en niet bij het eerste besluit. Een naam die geen
+    /// vastgelegde uitkomst is, zou een grond opleveren die in geen enkel gram
+    /// terug te vinden is; een uitkomst die geen boolean is, zou nooit aan haar
+    /// voorwaarde voldoen en de afwijzing stil uitzetten — en dan ligt er een
+    /// toekenning waar een weigering hoorde.
+    fn validate_afwijzing_wanneer(&self, cell: &str, surface: &CellSurface<'_>) -> Result<()> {
+        if self.afwijzing_wanneer.is_empty() {
+            return Ok(());
+        }
+        let recorded = self.recorded_outputs();
+        for output in self.afwijzing_wanneer.keys() {
+            if !recorded.contains(output.as_str()) {
+                return Err(SimulatorError::UnknownAfwijzingsvoorwaarde {
+                    cell: cell.to_string(),
+                    besluit: self.name.clone(),
+                    output: output.clone(),
+                    known: recorded.iter().copied().collect::<Vec<_>>().join(", "),
+                });
+            }
+            surface.check_boolean_output(cell, &self.name, &self.regulation, output)?;
+        }
+        Ok(())
+    }
+
+    /// De afwijzingsvoorwaarden die deze uitkomsten vervullen.
+    ///
+    /// Leeg is het gewone geval: geen voorwaarde gedeclareerd, of geen ervan
+    /// vervuld. Een uitkomst die de uitvoering niet opleverde — of die geen
+    /// ja-of-nee bleek — vervult niets: bij het optuigen is vastgesteld dát ze
+    /// boolean is, dus wat hier binnenkomt is een uitvoering die haar niet gaf,
+    /// en een afwijzing op een ontbrekend feit is precies het gat waarmee een
+    /// besluit niet hoort te rekenen.
+    ///
+    /// `article_of` zoekt het artikel dat een uitkomst voortbrengt op; de
+    /// definitie kent geen resolver, en de versie waarin gezocht moet worden
+    /// hangt aan het moment van het besluit.
+    pub(crate) fn afwijzingsgronden(
+        &self,
+        outputs: &BTreeMap<String, Value>,
+        article_of: impl Fn(&str) -> Option<String>,
+    ) -> Vec<Afwijzingsgrond> {
+        self.afwijzing_wanneer
+            .iter()
+            .filter(|(output, expected)| {
+                outputs.get(*output).and_then(Value::as_bool) == Some(**expected)
+            })
+            .map(|(output, expected)| Afwijzingsgrond {
+                output: output.clone(),
+                value: *expected,
+                article: article_of(output),
+            })
+            .collect()
     }
 
     /// Eén input: is de stroom er een om feiten uit te lezen, bestaat ze, kent
@@ -2862,6 +3084,15 @@ params:
     /// heet, en die bestaat in het corpus niet. Dat ze er niet is, is geen reden
     /// om de weigering ongetest te laten — ze is er morgen misschien wel.
     fn surface_met_uitkomst<'a>(laws: &'a [String], output: &str) -> CellSurface<'a> {
+        surface_met_type(laws, output, "boolean")
+    }
+
+    /// Hetzelfde oppervlak, met het type dat de regeling aan die uitkomst geeft.
+    ///
+    /// Apart, want `afwijzing_wanneer` toetst juist op dat type: een oppervlak
+    /// dat alles als ja-of-nee doorgeeft, zou de weigering hieronder nooit
+    /// kunnen laten vallen.
+    fn surface_met_type<'a>(laws: &'a [String], output: &str, value_type: &str) -> CellSurface<'a> {
         CellSurface {
             laws,
             outputs: BTreeMap::from([(
@@ -2874,6 +3105,10 @@ params:
                     output.to_string(),
                     BTreeSet::from([Some(BESCHIKKING.to_string())]),
                 )]),
+            )]),
+            output_types: BTreeMap::from([(
+                "wet_op_de_zorgtoeslag".to_string(),
+                BTreeMap::from([(output.to_string(), BTreeSet::from([value_type.to_string()]))]),
             )]),
             regulation_inputs: BTreeMap::new(),
             streams: BTreeMap::new(),
@@ -2897,6 +3132,100 @@ params:
         assert!(
             matches!(err, SimulatorError::ReservedDecretogramField { .. }),
             "verwachtte ReservedDecretogramField, kreeg {err}"
+        );
+    }
+
+    /// Een besluit dat afwijst zodra de aansturende uitkomst onwaar is.
+    fn afwijzende_definitie(voorwaarde: &str) -> BesluitDefinition {
+        let mut definition = definition("zorgtoeslag/{bsn}");
+        definition.afwijzing_wanneer = BTreeMap::from([(voorwaarde.to_string(), false)]);
+        definition
+    }
+
+    #[test]
+    fn een_afwijzingsvoorwaarde_op_een_vastgelegde_boolean_mag() {
+        let laws = vec!["wet_op_de_zorgtoeslag".to_string()];
+        afwijzende_definitie("heeft_recht_op_zorgtoeslag")
+            .validate(
+                "toeslagen",
+                &surface_met_uitkomst(&laws, "heeft_recht_op_zorgtoeslag"),
+            )
+            .unwrap_or_else(|e| {
+                panic!("een voorwaarde op een vastgelegde ja-of-nee moet mogen: {e}")
+            });
+    }
+
+    #[test]
+    fn een_afwijzingsvoorwaarde_op_een_onbekende_uitkomst_wordt_geweigerd() {
+        let laws = vec!["wet_op_de_zorgtoeslag".to_string()];
+        let err = afwijzende_definitie("is_landelijke_partij")
+            .validate(
+                "toeslagen",
+                &surface_met_uitkomst(&laws, "heeft_recht_op_zorgtoeslag"),
+            )
+            .expect_err("een grond die niet in het gram komt hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::UnknownAfwijzingsvoorwaarde { .. }),
+            "verwachtte UnknownAfwijzingsvoorwaarde, kreeg {err}"
+        );
+    }
+
+    #[test]
+    fn een_afwijzingsvoorwaarde_op_een_niet_boolean_uitkomst_wordt_geweigerd() {
+        let laws = vec!["wet_op_de_zorgtoeslag".to_string()];
+        let err = afwijzende_definitie("heeft_recht_op_zorgtoeslag")
+            .validate(
+                "toeslagen",
+                &surface_met_type(&laws, "heeft_recht_op_zorgtoeslag", "amount"),
+            )
+            .expect_err("een voorwaarde op een bedrag raakt nooit vervuld en hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::AfwijzingsvoorwaardeNotBoolean { .. }),
+            "verwachtte AfwijzingsvoorwaardeNotBoolean, kreeg {err}"
+        );
+    }
+
+    #[test]
+    fn een_vervulde_voorwaarde_levert_een_grond_met_haar_artikel() {
+        let outputs =
+            BTreeMap::from([("heeft_recht_op_zorgtoeslag".to_string(), Value::Bool(false))]);
+        let gronden = afwijzende_definitie("heeft_recht_op_zorgtoeslag")
+            .afwijzingsgronden(&outputs, |_| Some("2".to_string()));
+        assert_eq!(
+            gronden,
+            vec![Afwijzingsgrond {
+                output: "heeft_recht_op_zorgtoeslag".to_string(),
+                value: false,
+                article: Some("2".to_string()),
+            }],
+            "de grond noemt de uitkomst, de waarde die afwijst en het artikel erachter"
+        );
+    }
+
+    #[test]
+    fn een_onvervulde_voorwaarde_levert_geen_grond() {
+        let outputs =
+            BTreeMap::from([("heeft_recht_op_zorgtoeslag".to_string(), Value::Bool(true))]);
+        assert!(
+            afwijzende_definitie("heeft_recht_op_zorgtoeslag")
+                .afwijzingsgronden(&outputs, |_| None)
+                .is_empty(),
+            "wie recht heeft, wordt niet afgewezen"
+        );
+    }
+
+    /// Een uitkomst die de uitvoering niet gaf, wijst niets af.
+    ///
+    /// Anders zou een besluit op een gat rekenen: "de uitkomst ontbreekt" is
+    /// iets anders dan "de uitkomst is onwaar", en van die twee mag alleen de
+    /// tweede tot een weigering leiden.
+    #[test]
+    fn een_ontbrekende_uitkomst_wijst_niets_af() {
+        assert!(
+            afwijzende_definitie("heeft_recht_op_zorgtoeslag")
+                .afwijzingsgronden(&BTreeMap::new(), |_| None)
+                .is_empty(),
+            "een ontbrekende uitkomst is geen vervulde voorwaarde"
         );
     }
 
