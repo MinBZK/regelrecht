@@ -453,7 +453,7 @@ const dateControlId = useId();
               @update="calculationDate = $event; emit('change')"
             />
             <nldd-validation-list v-if="dateInvalid" :for="dateControlId">
-              <nldd-validation-item :id="dateErrorId">Een datum</nldd-validation-item>
+              <nldd-validation-item :id="dateErrorId">Datum is verplicht</nldd-validation-item>
             </nldd-validation-list>
           </nldd-cell>
         </nldd-list-item>

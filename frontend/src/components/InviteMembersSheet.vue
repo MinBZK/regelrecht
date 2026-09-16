@@ -100,7 +100,7 @@ async function submitInvite() {
   if (pending) raw.push(pending);
   const emails = [...new Set(raw.map((e) => e.trim()).filter(Boolean))];
   if (emails.length === 0) {
-    inviteError.value = 'Minimaal één e-mailadres';
+    inviteError.value = 'Voer minstens één e-mailadres in';
     await nextTick();
     inviteInputRef.value?.focus?.();
     return;

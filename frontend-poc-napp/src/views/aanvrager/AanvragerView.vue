@@ -200,7 +200,7 @@ watch(() => session.aanvrager, laadAanvragen);
                   ></nldd-text-field>
                   <nldd-validation-list>
                     <nldd-validation-item id="kvk-fout">
-                      Een KVK-nummer van 8 cijfers
+                      Vul een geldig KVK-nummer in (8 cijfers).
                     </nldd-validation-item>
                   </nldd-validation-list>
                   <nldd-form-field-help-text>

@@ -134,13 +134,13 @@ function onSheetClose() {
               />
               <nldd-validation-list>
                 <nldd-validation-item id="harvest-law-id-required">
-                  A law ID
+                  Law ID is required.
                 </nldd-validation-item>
                 <nldd-validation-item id="harvest-law-id-format">
-                  A BWB ID (e.g. BWBR0018451) or CVDR ID (e.g. CVDR681386)
+                  Expected a BWB ID (e.g. BWBR0018451) or CVDR ID (e.g. CVDR681386).
                 </nldd-validation-item>
                 <nldd-validation-item id="harvest-law-id-conflict">
-                  A harvest job for this law is already pending or processing
+                  A harvest job for this law is already pending or processing.
                 </nldd-validation-item>
                 <nldd-validation-item id="harvest-network-error">
                   Failed to submit harvest job: {{ networkError }}

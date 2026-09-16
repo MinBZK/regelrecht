@@ -74,15 +74,15 @@ export function useDocumentsManager(trajectRef, reservedPaths = () => []) {
   }
   // Lightweight client-side validation mirroring the backend rules.
   function validatePath(value) {
-    if (!value) return 'Een naam';
-    if (value.startsWith('/')) return "Een naam die niet met '/' begint";
-    if (value.includes('\\')) return 'Een naam zonder backslashes';
+    if (!value) return 'Geef een naam op.';
+    if (value.startsWith('/')) return "Naam mag niet beginnen met '/'.";
+    if (value.includes('\\')) return 'Naam mag geen backslashes bevatten.';
     const segments = value.split('/');
     for (const seg of segments) {
-      if (!seg) return 'Een naam zonder lege segmenten';
-      if (seg.startsWith('.')) return "Een naam zonder verborgen segmenten ('.')";
+      if (!seg) return 'Naam bevat lege segmenten.';
+      if (seg.startsWith('.')) return "Naam mag geen verborgen segmenten ('.') bevatten.";
       if (!/^[a-z0-9._-]+$/.test(seg)) {
-        return "Alleen kleine letters, cijfers en '._-'";
+        return "Gebruik alleen kleine letters, cijfers en '._-'.";
       }
     }
     return null;
@@ -189,7 +189,7 @@ export function useDocumentsManager(trajectRef, reservedPaths = () => []) {
     // Sanitize to a valid path as the user types instead of rejecting invalid
     // input: lowercase everything and turn any space or other disallowed
     // character into '-'. '/' is kept as a folder separator. This keeps the name
-    // always valid, so the "Alleen kleine letters…" error never appears.
+    // always valid, so the "Gebruik alleen kleine letters…" error never appears.
     titleDraft.value = raw.toLowerCase().replace(/[^a-z0-9._/-]+/g, '-');
     // Editing the name clears any stale validation notice (e.g. a duplicate-name
     // error from a prior save attempt).
@@ -205,7 +205,7 @@ export function useDocumentsManager(trajectRef, reservedPaths = () => []) {
     const err = validatePath(finalPath);
     if (err) { titleError.value = err; return false; }
     if (finalPath !== currentPath.value && isTaken(finalPath)) {
-      titleError.value = 'Een document met deze naam bestaat al';
+      titleError.value = 'Een document met deze naam bestaat al.';
       return false;
     }
     return true;
@@ -249,7 +249,7 @@ export function useDocumentsManager(trajectRef, reservedPaths = () => []) {
     // waarschuwing. Sluitend te maken met `If-None-Match: *` zodra de backend
     // dat ondersteunt (zie useTrajectDocuments.saveCurrent).
     if (isTaken(finalPath)) {
-      titleError.value = 'Een document met deze naam bestaat al';
+      titleError.value = 'Een document met deze naam bestaat al.';
       return false;
     }
     const oldPath = currentPath.value;

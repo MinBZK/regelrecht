@@ -76,7 +76,7 @@ describe('useDocumentsManager', () => {
   });
 
   it('typing the name clears a stale title error', () => {
-    m.titleError.value = 'Een document met deze naam bestaat al';
+    m.titleError.value = 'Een document met deze naam bestaat al.';
     m.onTitleInput({ target: { value: 'nieuwe-naam' } });
     expect(m.titleError.value).toBe(null);
   });
@@ -104,7 +104,7 @@ describe('useDocumentsManager', () => {
     mr.titleDraft.value = 'untitled-2';
     const ok = await mr.handleSave();
     expect(ok).toBe(false);
-    expect(mr.titleError.value).toBe('Een document met deze naam bestaat al');
+    expect(mr.titleError.value).toBe('Een document met deze naam bestaat al.');
     expect(h.api.saveCurrent).not.toHaveBeenCalled();
   });
 
@@ -178,7 +178,7 @@ describe('useDocumentsManager', () => {
     expect(m.titleError.value).toBe(null);
     m.titleDraft.value = 'bestaat';
     expect(m.validateRename()).toBe(false);
-    expect(m.titleError.value).toBe('Een document met deze naam bestaat al');
+    expect(m.titleError.value).toBe('Een document met deze naam bestaat al.');
     m.titleDraft.value = 'Bad Name';
     expect(m.validateRename()).toBe(false);
     expect(m.titleError.value).toBeTruthy();
