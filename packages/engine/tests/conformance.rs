@@ -35,30 +35,33 @@ const KNOWN_GAPS: &[&str] = &[
     "missing_required_url.yaml", // schema requires top-level `url`; model treats it as optional
     "unknown_field_in_article.yaml", // article is additionalProperties:false; serde silently drops the field
     "wrong_type_publication_date.yaml", // schema wants a date string; model coerces the YAML integer
-    // Measured 2026-09-04, alongside RFC-016. A FOREACH written with the field
-    // names of an earlier RFC draft (`subject`/`value`/`where`) is rejected by
-    // the schema, and the `Foreach` variant rejects it too — but `ActionValue`
-    // is `#[serde(untagged)]`, so the failed operation falls through to
-    // `Literal` and the action ends up holding a plain object instead of an
-    // error. Same root cause as `unknown_field_in_article.yaml`: the model has
-    // no `deny_unknown_fields` and untagged enums swallow the mismatch. Fixing
-    // it means tightening `ActionValue`, which is a change for every operation,
-    // not for this one.
-    "foreach_draft_field_names.yaml",
+    // `foreach_draft_field_names.yaml` (measured 2026-09-04 alongside RFC-016)
+    // is no longer a gap: a FOREACH written with the field names of an earlier
+    // RFC draft used to fall through `ActionValue`'s untagged enum into
+    // `Literal`; the loader now refuses an operation-shaped mapping that parsed
+    // as a literal (`article.rs`, `reject_literal_operations`), so the model
+    // rejects it like the schema does.
+    //
+    // Measured 2026-08-03. Leniency the model needs and the engine does not
+    // inherit: `output` is required by the schema and optional on the model,
+    // which must also read files written before the field was required. The
+    // engine refuses such an action at execution time rather than skipping it,
+    // so the leniency stops at the model boundary; see `engine.rs`,
+    // `execute_actions_traced`.
+    "action_without_output.yaml",
 ];
 
 /// Corpus laws whose re-serialized model is not value-stable, with the measured
 /// cause. Same discipline as `KNOWN_GAPS`: an unlisted drift fails the suite and
 /// a listed law that no longer drifts fails it too, so the check reports a set
-/// instead of a count. Measured 2026-08-07.
+/// instead of a count. Remeasured 2026-08-07 on this branch: `articles[].references`
+/// and `source.description` now exist on the model, so the two entries that were
+/// listed for dropped fields are gone and only a numeric-formatting drift remains.
 const KNOWN_VALUE_DRIFT: &[&str] = &[
-    // `articles[].references` (31 entries here) survives the schema and is
-    // dropped by the model: `law-model` has no field for it, so serde discards
-    // it on load and cannot write it back.
+    // `37.0` in the source, `37` after the round trip: the model holds numbers as
+    // `Decimal`, which does not carry the written trailing zero. The value is
+    // equal, the spelling is not, and no field is lost.
     "corpus/regulation/nl/ministeriele_regeling/subsidieregeling_bekostiging_plafond_energietarieven_kleinverbruikers_2023/2022-12-15.yaml",
-    // `machine_readable.execution.input[].source.description` — same shape:
-    // `Source` in `law-model` carries only regulation/output/parameters.
-    "corpus/regulation/nl/wet/kieswet/2025-01-01.yaml",
 ];
 
 /// First path at which two JSON values differ, as a `/`-separated pointer, with

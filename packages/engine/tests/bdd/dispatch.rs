@@ -360,7 +360,9 @@ impl RegelrechtWorld {
                 number: row[number_at].trim().to_string(),
                 text: row[text_at].trim().to_string(),
                 url: None,
+                placement: None,
                 machine_readable: None,
+                references: None,
             });
         }
     }

@@ -1,0 +1,28 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
+$id: test_conformance_action_without_output
+regulatory_layer: WET
+bwb_id: BWBR9999904
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.invalid/law
+articles:
+  - number: '1'
+    text: >-
+      De actie berekent een bedrag en noemt geen naam om het onder op te
+      bergen. Het schema eist `output`; het model heeft het veld als `Option`,
+      omdat het ook bestanden moet lezen die van vóór dat veld zijn. De
+      uitvoering weigert de actie sinds de berekening anders zonder fout en
+      zonder spoor in de trace zou verdwijnen, met de aangekondigde uitvoer
+      afwezig in het resultaat.
+    url: https://example.invalid/law/artikel/1
+    machine_readable:
+      execution:
+        parameters:
+          - name: grondslag
+            type: amount
+        output:
+          - name: bedrag
+            type: amount
+        actions:
+          - value: $grondslag
