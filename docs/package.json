@@ -15,10 +15,10 @@
     "nldd:imports": "node ../script/check-nldd-imports.mjs src src/nldd-components.js --write",
     "nldd:check": "node ../script/check-nldd-imports.mjs src src/nldd-components.js"
   },
-  "//@astrojs/markdown-remark": "Needed by astro.config.mjs (markdown.remarkPlugins/rehypePlugins): since astro 7.2 Sätteri is the default Markdown processor and astro no longer installs this package itself. Pinned exactly so astro and @astrojs/mdx keep resolving one version; bump it together with astro.",
+  "//@astrojs/markdown-remark": "Needed by astro.config.mjs (markdown.remarkPlugins/rehypePlugins): since astro 7.2 Sätteri is the default Markdown processor, so neither astro nor @astrojs/mdx installs this package itself — both only declare it as an optional peer (^7.3.0). Pinned exactly so the tree keeps one copy of it; bump it together with astro.",
   "dependencies": {
     "@astrojs/markdown-remark": "7.3.1",
-    "@astrojs/mdx": "^7.0.5",
+    "@astrojs/mdx": "^8.0.1",
     "@cucumber/gherkin": "^42.0.1",
     "@cucumber/messages": "^34.2.1",
     "@nldd/design-system": "^0.8.88",
