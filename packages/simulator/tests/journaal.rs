@@ -576,3 +576,34 @@ fn het_beeld_en_het_verslag_lezen_hetzelfde_journaal() {
         );
     }
 }
+
+/// Een besluit dat afwees, zegt dat ook in het verhaal.
+///
+/// Het gram draagt `decision_type` en zijn grond, maar wie het journaal leest
+/// ziet alleen de uitkomsten — en `heeft_recht_op_zorgtoeslag = false` met een
+/// bedrag ernaast leest als een toekenning die toevallig niets werd. De regel
+/// eronder zegt waaróp het besluit afketste, met het artikel erbij.
+#[test]
+fn een_afwijzing_staat_als_zodanig_in_het_verslag() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("scenarios")
+        .join("toeslagen_afwijzing.yaml");
+    let scenario = Scenario::load(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let run = scenario
+        .run(&regulation_root())
+        .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    assert!(run.passed(), "{}:\n{}", path.display(), run.report());
+
+    let besluit = eerste_besluit(&run);
+    let executed = besluit
+        .executed
+        .as_ref()
+        .expect("een besluit uit het besluit-pad draagt zijn uitvoering");
+    assert!(executed.is_afwijzing(), "dit besluit ketste af");
+
+    let verslag = journal::describe(&run.journal);
+    assert!(
+        verslag.contains("afgewezen: heeft_recht_op_zorgtoeslag is false (artikel 2)"),
+        "het verhaal hoort te zeggen waarop het besluit afketste:\n{verslag}"
+    );
+}

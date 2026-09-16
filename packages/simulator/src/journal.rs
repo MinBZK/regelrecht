@@ -437,6 +437,12 @@ impl JournalEntry {
         }
         if let Some(executed) = &self.executed {
             let _ = writeln!(out, "{sub}uitgevoerd: {}", executed.describe_regulations());
+            // Dát een besluit afwees, hoort in het verhaal en niet alleen in het
+            // gram: wie hieronder alleen de uitkomsten leest, ziet een weigering
+            // als een bedrag dat toevallig nul bleef.
+            if executed.is_afwijzing() {
+                let _ = writeln!(out, "{sub}afgewezen: {}", executed.describe_afwijzing());
+            }
             for input in &executed.inputs {
                 let _ = writeln!(out, "{sub}{}", input.describe());
             }
