@@ -179,29 +179,74 @@ fn as_json(value: &Value) -> Option<serde_json::Value> {
 
 /// Replace the `$schema` value in place, leaving every other byte alone.
 ///
-/// Only handles the inline form (`$schema: <url>` on one line), which is what
-/// the harvester writes. A folded or missing declaration falls through to an
-/// error rather than a silent no-op, because a bump that did not happen is
-/// the failure mode this whole module exists to prevent.
+/// Two shapes occur in practice and both are handled: the inline form
+/// (`$schema: <url>` on one line), which is what the harvester writes, and
+/// the block form (`$schema: >-` and friends), whose value sits on the
+/// indented lines below the marker. The block form is rewritten to the
+/// inline form, marker and continuation together — replacing only the marker
+/// line would leave the old URL behind as a second line of the same scalar,
+/// and YAML would fold the two into one string carrying both URLs.
+///
+/// Anything else — no declaration at all, or a value this function cannot
+/// delimit — falls through to an error rather than a silent no-op, because a
+/// bump that did not happen is the failure mode this whole module exists to
+/// prevent.
 fn rewrite_schema_line(yaml: &str) -> Result<String, String> {
     let mut out = String::with_capacity(yaml.len() + SCHEMA_URL.len());
     let mut replaced = false;
-    for line in yaml.split_inclusive('\n') {
+    let mut lines = yaml.split_inclusive('\n').peekable();
+    while let Some(line) = lines.next() {
         let body = line.trim_end_matches(['\n', '\r']);
-        if !replaced && body.starts_with("$schema:") && !body.trim_end().ends_with(':') {
-            let newline = &line[body.len()..];
-            out.push_str("$schema: ");
-            out.push_str(SCHEMA_URL);
-            out.push_str(newline);
-            replaced = true;
-        } else {
+        if replaced || !body.starts_with("$schema:") {
             out.push_str(line);
+            continue;
+        }
+
+        let rest = body["$schema:".len()..].trim();
+        let is_block = matches!(rest, ">" | ">-" | ">+" | "|" | "|-" | "|+");
+        if !is_block && rest.is_empty() {
+            return Err(
+                "`$schema:` carries no value and no block scalar marker to rewrite".to_string(),
+            );
+        }
+        if !is_block && rest.starts_with(['&', '*', '!']) {
+            return Err(format!(
+                "`$schema:` is written as `{rest}`, which is neither an inline value nor a block scalar"
+            ));
+        }
+
+        let newline = &line[body.len()..];
+        out.push_str("$schema: ");
+        out.push_str(SCHEMA_URL);
+        out.push_str(newline);
+        replaced = true;
+
+        if is_block {
+            // Drop the scalar's continuation. A block scalar at the top level
+            // runs until the first line that is neither indented nor empty,
+            // so an empty line only ends it when nothing indented follows.
+            let mut pending_blanks = String::new();
+            while let Some(next) = lines.peek() {
+                let next_body = next.trim_end_matches(['\n', '\r']);
+                if next_body.trim().is_empty() {
+                    pending_blanks.push_str(next);
+                    lines.next();
+                } else if next_body.starts_with([' ', '\t']) {
+                    pending_blanks.clear();
+                    lines.next();
+                } else {
+                    break;
+                }
+            }
+            // Blank lines that turned out to sit after the scalar rather than
+            // inside it are not ours to remove.
+            out.push_str(&pending_blanks);
         }
     }
     if replaced {
         Ok(out)
     } else {
-        Err("no inline `$schema:` line to rewrite".to_string())
+        Err("no `$schema:` line to rewrite".to_string())
     }
 }
 
@@ -505,6 +550,105 @@ articles:
     #[test]
     fn a_file_without_an_inline_schema_line_is_refused() {
         let err = migrate("articles: []\n").expect_err("no $schema to rewrite");
+        assert!(err.contains("$schema"), "got {err}");
+    }
+
+    /// The shape 94 corpus files are in: the URL sits on the indented line
+    /// below a folded-block marker instead of on the key's own line.
+    const BARE_FOLDED: &str = r#"---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: test_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+bwb_id: BWBR0000001
+url: https://example.org/law
+articles:
+  - number: '1'
+    text: >-
+      De eerste zin.
+
+
+      De tweede zin.
+    url: https://example.org/law#Artikel1
+"#;
+
+    #[test]
+    fn a_folded_schema_scalar_becomes_one_inline_line() {
+        let m = migrate(BARE_FOLDED).expect("migrates");
+        assert_eq!(m.from_version.as_deref(), Some("v0.5.8"));
+
+        let schema_lines: Vec<&str> = m
+            .yaml
+            .lines()
+            .filter(|l| l.starts_with("$schema"))
+            .collect();
+        assert_eq!(
+            schema_lines,
+            vec![format!("$schema: {SCHEMA_URL}").as_str()],
+            "expected exactly one inline $schema line"
+        );
+        assert!(
+            !m.yaml.contains("v0.5.8"),
+            "the old URL must be gone, not folded in beside the new one"
+        );
+    }
+
+    #[test]
+    fn a_folded_schema_rewrite_touches_nothing_else() {
+        let m = migrate(BARE_FOLDED).expect("migrates");
+        assert!(!m.structural_changes);
+        // Skip `---`, the marker line and its continuation.
+        let before: Vec<&str> = BARE_FOLDED.lines().skip(3).collect();
+        let after: Vec<&str> = m.yaml.lines().skip(2).collect();
+        assert_eq!(
+            before, after,
+            "the folded block scalar of the statutory text must survive untouched"
+        );
+    }
+
+    #[test]
+    fn a_migrated_folded_law_validates_and_reports_the_new_version() {
+        let m = migrate(BARE_FOLDED).expect("migrates");
+        assert!(
+            m.schema_errors.is_empty(),
+            "expected a valid v0.7.0 file, got {:?}",
+            m.schema_errors
+        );
+        assert!(m.is_clean());
+
+        let doc: Value = serde_yaml_ng::from_str(&m.yaml).expect("migrated file parses");
+        let json = as_json(&doc).expect("converts to JSON");
+        assert_eq!(
+            regelrecht_engine::schema::detect_version(&json),
+            Some(TARGET_VERSION),
+            "a second run must see v0.7.0, not the old version"
+        );
+    }
+
+    #[test]
+    fn migrating_a_folded_law_twice_is_the_same_as_migrating_once() {
+        let once = migrate(BARE_FOLDED).expect("migrates");
+        let twice = migrate(&once.yaml).expect("migrates");
+        assert_eq!(once.yaml, twice.yaml);
+    }
+
+    #[test]
+    fn a_literal_block_schema_scalar_is_rewritten_too() {
+        let yaml = BARE_FOLDED.replace("$schema: >-", "$schema: |-");
+        let m = migrate(&yaml).expect("migrates");
+        assert!(m.yaml.contains(&format!("$schema: {SCHEMA_URL}")));
+        assert!(!m.yaml.contains("v0.5.8"));
+        assert!(m.schema_errors.is_empty(), "{:?}", m.schema_errors);
+    }
+
+    #[test]
+    fn a_schema_key_that_is_neither_inline_nor_folded_is_refused() {
+        let yaml = BARE_FOLDED.replace(
+            "$schema: >-\n  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json\n",
+            "$schema:\n",
+        );
+        let err = migrate(&yaml).expect_err("an empty $schema is not rewritable");
         assert!(err.contains("$schema"), "got {err}");
     }
 
