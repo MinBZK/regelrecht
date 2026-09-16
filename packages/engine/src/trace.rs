@@ -50,6 +50,23 @@ pub struct PathNode {
     /// Name or identifier for this step (e.g., variable name, operation type)
     pub name: String,
 
+    /// The regulation whose text this step comes from, by `$id`.
+    ///
+    /// Set where the engine knows it — an action belongs to an article of a
+    /// loaded law — and left empty where it does not: a bare operation inside an
+    /// expression has no law of its own beyond the action that holds it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub regulation: Option<String>,
+
+    /// The article of that regulation, by its number.
+    ///
+    /// This is what turns a trace into something a lawyer can check: not just
+    /// that a value came out, but which article said so. Recorded from the
+    /// article the engine was executing, not derived afterwards from the output
+    /// name — a reconstruction can disagree with what actually ran.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub article: Option<String>,
+
     /// The result value produced by this step, if any
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<Value>,
@@ -77,6 +94,8 @@ impl PathNode {
         Self {
             node_type,
             name: name.into(),
+            regulation: None,
+            article: None,
             result: None,
             resolve_type: None,
             children: Vec::new(),
@@ -775,6 +794,21 @@ impl TraceBuilder {
         self.stack.last().and_then(|s| s.node.message.as_deref())
     }
 
+    /// Record which regulation and article the current node comes from.
+    ///
+    /// Called by the executing engine, which knows both; nothing here derives
+    /// them from the node's name.
+    pub fn set_source(&mut self, regulation: &str, article: &str) {
+        if !self.enabled {
+            return;
+        }
+
+        if let Some(current) = self.stack.last_mut() {
+            current.node.regulation = Some(regulation.to_string());
+            current.node.article = Some(article.to_string());
+        }
+    }
+
     /// Set the resolve type for the current node.
     pub fn set_resolve_type(&mut self, resolve_type: ResolveType) {
         if !self.enabled {
@@ -881,6 +915,42 @@ mod tests {
 
         assert_eq!(node.result, Some(Value::Int(42)));
         assert_eq!(node.children.len(), 2);
+    }
+
+    /// A node says which regulation and which article it came from, and a node
+    /// that was never told stays silent about it.
+    ///
+    /// The article is what turns a trace into something a lawyer can check, so
+    /// it has to come from the engine that executed the article — never from a
+    /// guess about the node's name. A node without one therefore carries
+    /// nothing rather than an invented number.
+    #[test]
+    fn a_node_records_the_article_it_came_from() {
+        let mut builder = TraceBuilder::new();
+        builder.push("hoogte", PathNodeType::Action);
+        builder.set_source("wet_op_de_zorgtoeslag", "3");
+        builder.push("ADD", PathNodeType::Operation);
+        builder.pop();
+        let node = builder.pop().expect("a root node");
+
+        assert_eq!(node.regulation.as_deref(), Some("wet_op_de_zorgtoeslag"));
+        assert_eq!(node.article.as_deref(), Some("3"));
+        assert!(node.children[0].regulation.is_none());
+        assert!(node.children[0].article.is_none());
+
+        // Absent means absent on the wire too: a reader of the JSON sees no key
+        // rather than a null that looks like an answer.
+        let json = serde_json::to_string(&node.children[0]).expect("a node serialises");
+        assert!(!json.contains("article"), "{json}");
+    }
+
+    /// A disabled builder records nothing, including the source.
+    #[test]
+    fn a_disabled_builder_records_no_source() {
+        let mut builder = TraceBuilder::disabled();
+        builder.push("hoogte", PathNodeType::Action);
+        builder.set_source("wet_op_de_zorgtoeslag", "3");
+        assert!(builder.pop().is_none());
     }
 
     #[test]

@@ -627,6 +627,42 @@ export function regulationOf(gram) {
 }
 
 /**
+ * Het besluit waaruit een executogram over een betaling volgt.
+ *
+ * Een betaling — en de melding ervan bij de cel die besloot — draagt de
+ * verwijzing naar het decretogram als losse velden: de cel, haar kroniek, de
+ * plek van het gram daarin, en het termijnnummer. Hier komen die samen tot het
+ * id waarmee het beeld een gram aanwijst (`<cel>|<kroniek>|<plek>`), zodat een
+ * lezer van de betaling bij het besluit — en dus bij de uitvoeringstrace in zijn
+ * receipt — kan komen zonder de kroniek van de besluitende cel af te lopen.
+ *
+ * `null` als het gram geen betaling is of de verwijzing niet compleet draagt.
+ * Half tonen zou een link opleveren die soms nergens op uitkomt, en dat is
+ * erger dan geen link.
+ */
+export function decretogramRefOf(gram) {
+  const fields = gram?.fields;
+  const text = (name) => {
+    const value = fields?.[name]?.value;
+    return value === null || value === undefined || value === '' ? null : String(value);
+  };
+  const cell = text('besluit_cel');
+  const chronicle = text('besluit_kroniek');
+  const place = text('besluit_gram');
+  if (!cell || !chronicle || place === null || !/^\d+$/.test(place)) return null;
+  const volgnummer = text('volgnummer');
+  return {
+    id: `${cell}|${chronicle}|${place}`,
+    cell,
+    chronicle,
+    index: Number(place),
+    besluit: text('besluit'),
+    opMoment: text('besluit_op_moment'),
+    volgnummer: volgnummer === null ? null : Number(volgnummer),
+  };
+}
+
+/**
  * De verplichtingen die uit een besluit volgen, als rijen.
  *
  * Elke verplichting draagt haar eigen namen (bedrag, vervaldatum, betaler); de

@@ -64,7 +64,8 @@ use chrono::NaiveDate;
 use config::{binding_name, engine_parameters, CellSurface};
 use regelrecht_engine::article::CompetentAuthority;
 use regelrecht_engine::{
-    ArticleBasedLaw, ArticleResult, CellResolver, InputProvenance, LawExecutionService, Value,
+    ArticleBasedLaw, ArticleResult, CellResolver, EngineError, InputProvenance,
+    LawExecutionService, TraceBuilder, Value,
 };
 use rust_decimal::Decimal;
 use std::cell::RefCell;
@@ -1278,6 +1279,16 @@ impl Cell {
 
         let event = decretogram.event()?;
         self.record_own(BESCHIKKINGEN, event)?;
+        // Nú pas: de termijnen wijzen naar het gram waarin ze staan, en dat gram
+        // heeft zijn plek pas zodra het ligt. Een verwachte plek zou een
+        // verwijzing zijn die klopt zolang er niets tussenkomt, en dat is geen
+        // verwijzing.
+        //
+        // Onbereikbaar dat de stroom hierna leeg is: er is net iets in vastgelegd.
+        let plek = self.last_gram(BESCHIKKINGEN).map_or(0, |(plek, _)| plek);
+        for due in &mut decretogram.obligations {
+            due.besluit_gram = plek;
+        }
 
         Ok(decretogram)
     }
@@ -1718,14 +1729,25 @@ impl Cell {
             .collect();
         let calculation_date = op_moment.format("%Y-%m-%d").to_string();
         let recorded: Vec<&str> = definition.recorded_outputs().into_iter().collect();
+        // Mét trace, en dat is het verschil met een reductie: het decretogram
+        // draagt het RFC-013 receipt van deze uitvoering, en zonder de trace
+        // staat er wel wát er uitkwam maar niet langs welke artikelen. Dan is
+        // het besluit na te rekenen maar niet na te lopen.
+        //
+        // `new_untimed` en niet `new`: een getimede trace zet op elke node hoe
+        // lang die stap duurde, en dat is per run anders. Dat mag niet in een
+        // gram — een hash over hetzelfde besluit met dezelfde invoer hoort
+        // tweemaal hetzelfde te zijn — en het is voor reproduceerbaarheid ook
+        // niets waard. Het scheelt bovendien twee `Instant::now()` per node.
         let result = service
-            .evaluate_law(
+            .evaluate_law_with_trace_builder(
                 &definition.regulation,
                 &recorded,
                 engine_params.clone(),
                 &calculation_date,
+                TraceBuilder::new_untimed(),
             )
-            .map_err(|error| self.explain_undeclared_source(definition, error))?;
+            .map_err(|error| self.explain_undeclared_source(definition, untraced(error)))?;
 
         let requested: Vec<String> = recorded.iter().map(|name| (*name).to_string()).collect();
         let receipt = service.build_receipt_with_outputs(
@@ -1881,6 +1903,24 @@ impl Cell {
     pub(crate) fn stream_key(&self, stream: &str) -> Option<&str> {
         self.chronicles.key_of(stream)
     }
+}
+
+/// De eigenlijke fout uit een uitvoering met trace.
+///
+/// Mislukt een getraceerde uitvoering, dan levert de engine de fout verpakt in
+/// `EngineError::TracedError`, met de halve trace erbij. Dat is bruikbaar voor
+/// wie de trace wil zien, maar het verstopt de fout voor wie erop wil kijken —
+/// en dat doen [`Cell::explain_undeclared_source`] en de weigeringen die eraan
+/// hangen wél. Hier gaat de verpakking eraf, zodat het aanzetten van de trace
+/// geen enkele foutmelding verandert.
+///
+/// In een lus, want een geneste uitvoering kan er nog een laag omheen zetten.
+fn untraced(error: EngineError) -> EngineError {
+    let mut error = error;
+    while let EngineError::TracedError { source, .. } = error {
+        error = *source;
+    }
+    error
 }
 
 /// Het bevoegd gezag zoals een regelingversie het declareert (RFC-002), tot een

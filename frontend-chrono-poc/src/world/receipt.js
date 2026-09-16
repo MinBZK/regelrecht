@@ -12,6 +12,11 @@
  * die deze module niet bij naam kent: RFC-013 mag morgen iets toevoegen, en dan
  * hoort dat hier vanzelf te verschijnen in plaats van stil te ontbreken. Wat deze
  * module doet is ordenen en benoemen, niet selecteren.
+ *
+ * Twee delen van het receipt krijgen daarbij een eigen vorm in plaats van regels,
+ * omdat ze als regels onleesbaar worden: de geladen regelingen (een tabel) en de
+ * **uitvoeringstrace** (een boom). Ze verdwijnen daarmee niet uit beeld — ze
+ * staan er anders.
  */
 import { humanize } from './format.js';
 import { regulationOf } from './snapshot.js';
@@ -60,6 +65,16 @@ const OWN_VIEW = ['accepted_values', 'timestamp'];
 const LOADED_REGULATIONS = 'loaded_regulations';
 
 /**
+ * De boom binnen `results` die als boom getoond wordt in plaats van als regels.
+ *
+ * Uitgevouwen tot regels zou de trace tientallen regels opleveren met namen als
+ * `trace · children · 3 · children · 1 · result`, en dan is precies de vorm weg
+ * die haar leesbaar maakt: welke stap zat in welke stap. Daarom een eigen
+ * weergave, net als bij de geladen regelingen.
+ */
+const TRACE = 'trace';
+
+/**
  * Draagt dit gram een uitvoeringsreceipt om op te vragen?
  *
  * Twee eisen, en de tweede is de echte. Een decretogram is een besluit dat de cel
@@ -96,9 +111,111 @@ export function receiptSections(receipt) {
       key,
       label: SECTION_LABELS[key] ?? humanize(key),
       note: SECTION_NOTES[key] ?? '',
-      rows: rows(omit(receipt[key], key === 'scope' ? [LOADED_REGULATIONS] : [])),
+      rows: rows(omit(receipt[key], OWN_TABLE[key] ?? [])),
     }))
     .filter((section) => section.rows.length > 0);
+}
+
+/**
+ * Wat er per sectie een eigen weergave heeft en dus niet nog eens als regels in
+ * die sectie hoort te verschijnen.
+ */
+const OWN_TABLE = { scope: [LOADED_REGULATIONS], results: [TRACE] };
+
+/**
+ * Hoe elke soort stap uit de trace heet en eruitziet.
+ *
+ * De namen van de engine zijn Engels en technisch (`cross_law_reference`); wat
+ * een lezer nodig heeft, is wat er gebeurde. De soorten komen van
+ * `PathNodeType` in de engine; een soort die deze lijst niet kent, blijft
+ * leesbaar in plaats van weg te vallen.
+ */
+export const TRACE_STEPS = {
+  article: { label: 'Uitvoering', icon: 'document', color: 'donkerblauw' },
+  action: { label: 'Artikel rekent', icon: 'code-block', color: 'lintblauw' },
+  operation: { label: 'Bewerking', icon: 'code', color: 'neutral' },
+  resolve: { label: 'Waarde', icon: 'magnifier', color: 'hemelblauw' },
+  requirement: { label: 'Voorwaarde', icon: 'checklist', color: 'groen' },
+  cross_law_reference: { label: 'Andere regeling', icon: 'hyperlink', color: 'paars' },
+  cached: { label: 'Al berekend', icon: 'database', color: 'neutral' },
+  open_term_resolution: { label: 'Open norm', icon: 'hyperlink', color: 'violet' },
+  hook_resolution: { label: 'Hook', icon: 'hyperlink', color: 'oranje' },
+  override_resolution: { label: 'Afwijking', icon: 'hyperlink', color: 'oranje' },
+  unknown: { label: 'Stap', icon: 'code', color: 'neutral' },
+};
+
+/**
+ * Waar een waarde vandaan kwam, in gewone woorden.
+ *
+ * De engine schrijft deze namen in hoofdletters (`DATA_SOURCE`); die horen niet
+ * op een scherm. Een naam die hier niet in staat, komt er ongewijzigd in: beter
+ * een technische naam dan een stilte.
+ */
+const RESOLVE_SOURCES = {
+  URI: 'een verwijzing',
+  PARAMETER: 'een parameter van de uitvoering',
+  DEFINITION: 'een definitie in het artikel',
+  OUTPUT: 'een eerdere uitkomst',
+  INPUT: 'een input van het artikel',
+  LOCAL: 'de lopende herhaling',
+  CONTEXT: 'de context van de uitvoering',
+  RESOLVED_INPUT: 'een al opgeloste input',
+  DATA_SOURCE: 'een databron',
+  OPEN_TERM: 'de regeling die de open norm invult',
+  OPEN_TERM_SILENT: 'de terugval van de delegerende wet',
+  CELL: 'een andere cel',
+  HOOK: 'een hook',
+  OVERRIDE: 'een afwijkende regeling',
+};
+
+/** Waar deze waarde vandaan kwam, in gewone woorden. */
+export function resolveSource(resolveType) {
+  if (!resolveType) return null;
+  return RESOLVE_SOURCES[resolveType] ?? resolveType;
+}
+
+/**
+ * De uitvoeringstrace uit het receipt, als boom.
+ *
+ * Elke node krijgt hier een stabiel pad als sleutel (`0`, `0.2`, `0.2.1`): de
+ * weergave moet per node kunnen onthouden of hij open staat, en een node heeft
+ * verder niets unieks — twee zusjes kunnen dezelfde naam en dezelfde uitkomst
+ * hebben.
+ *
+ * Wat een node zegt, blijft van de engine: naam, soort, de regeling en het
+ * artikel waar de stap vandaan komt, hoe de waarde opgelost is, de uitkomst en
+ * de vrije toelichting. Er wordt niets weggelaten en niets bijverzonnen — een
+ * trace is bewijsmateriaal, en een weergave die er iets aan toevoegt is dat niet
+ * meer.
+ *
+ * `null` als het receipt er geen draagt: een besluit van vóór deze versie, of
+ * een gram dat nooit langs een engine kwam.
+ */
+export function receiptTrace(receipt) {
+  const root = receipt?.results?.[TRACE];
+  return isNode(root) ? traceNode(root, '0') : null;
+}
+
+/** Is dit iets dat als trace-node te lezen valt? */
+function isNode(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** Eén node van de trace, met haar kinderen. */
+function traceNode(node, path) {
+  const children = Array.isArray(node.children) ? node.children.filter(isNode) : [];
+  return {
+    path,
+    name: node.name ?? '',
+    nodeType: node.node_type ?? '',
+    regulation: node.regulation ?? null,
+    article: node.article ?? null,
+    resolveType: node.resolve_type ?? null,
+    result: node.result,
+    hasResult: Object.hasOwn(node, 'result'),
+    message: node.message ?? null,
+    children: children.map((child, index) => traceNode(child, `${path}.${index}`)),
+  };
 }
 
 /**

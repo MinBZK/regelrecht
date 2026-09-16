@@ -5,7 +5,7 @@ import { receiptFixture } from '../testing/receiptFixture.js';
 import { cloneWorld, worldFixture } from '../testing/worldFixture.js';
 import { formatMoment } from '../world/format.js';
 import { carriesReceipt } from '../world/receipt.js';
-import { allGrams } from '../world/snapshot.js';
+import { allGrams, decretogramRefOf } from '../world/snapshot.js';
 
 // Het receipt komt van de server en niet uit het beeld; deze tests gaan over de
 // uitklap die erom vraagt, niet over het verkeer.
@@ -236,6 +236,48 @@ describe('het grammenoverzicht', () => {
       row.findAll('nldd-text-cell').some((cell) => cell.attributes('text') === 'Receipt'),
     ).toBe(false);
     expect(fetchGramReceipt).not.toHaveBeenCalled();
+  });
+
+  it('brengt een betaling naar het besluit waaruit ze volgt', async () => {
+    // De verwijzing staat in het gram; hier is ze een rij die je erheen brengt,
+    // zodat een lezer bij het besluit — en dus bij de trace in zijn receipt —
+    // komt zonder de kroniek van de besluitende cel af te lopen.
+    const wrapper = mount(GramPanel, { props: { snapshot: worldFixture } });
+    const grams = allGrams(worldFixture);
+    const betaling = grams.findIndex((row) => decretogramRefOf(row.gram));
+    expect(betaling, 'de fixture hoort een betaling te hebben').toBeGreaterThan(-1);
+    const ref = decretogramRefOf(grams[betaling].gram);
+    const besluit = grams.findIndex((row) => row.id === ref.id);
+
+    const row = rows(wrapper)[betaling];
+    await row.trigger('click');
+    const link = row
+      .findAll('nldd-list-item')
+      .find((item) =>
+        item.findAll('nldd-text-cell').some((cell) => cell.attributes('text') === 'Naar het besluit'),
+      );
+    expect(link).toBeDefined();
+    expect(
+      link.findAll('nldd-text-cell').some((cell) => /termijn \d/.test(cell.attributes('supporting-text') ?? '')),
+    ).toBe(true);
+
+    // De rij van het besluit staat nog dicht, en gaat door de klik open.
+    expect(rows(wrapper)[besluit].attributes('expanded')).toBeUndefined();
+    await link.trigger('click');
+    expect(rows(wrapper)[besluit].attributes('expanded')).toBe('true');
+    // En de betaling blijft open staan: de klik zat in haar uitklap.
+    expect(rows(wrapper)[betaling].attributes('expanded')).toBe('true');
+  });
+
+  it('biedt de weg terug niet aan bij een gram dat geen besluit noemt', async () => {
+    const wrapper = mount(GramPanel, { props: { snapshot: worldFixture } });
+    const index = allGrams(worldFixture).findIndex((row) => !decretogramRefOf(row.gram));
+    const row = rows(wrapper)[index];
+
+    await row.trigger('click');
+    expect(
+      row.findAll('nldd-text-cell').some((cell) => cell.attributes('text') === 'Naar het besluit'),
+    ).toBe(false);
   });
 
   it('laat de lijst zelf "niets gevonden" zeggen als het filter alles wegneemt', async () => {

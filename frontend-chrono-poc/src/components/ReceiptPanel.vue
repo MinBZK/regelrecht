@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
+import TraceNode from './TraceNode.vue';
 import { fetchGramReceipt } from '../api/worldApi.js';
 import { formatMoment, formatValue, humanize } from '../world/format.js';
 import {
@@ -7,6 +8,7 @@ import {
   loadedRegulations,
   receiptSections,
   receiptTimestamp,
+  receiptTrace,
 } from '../world/receipt.js';
 
 // Het uitvoeringsreceipt van één decretogram, leesbaar.
@@ -19,11 +21,14 @@ import {
 // beeld blijft receipt-loos.
 //
 // De secties komen van de server en worden hier niet uitgedund (zie
-// `world/receipt.js`). Twee krijgen een eigen tabel, omdat ze in een opsomming
+// `world/receipt.js`). Drie krijgen een eigen weergave, omdat ze in een opsomming
 // zouden verdwijnen terwijl ze het bewijs dragen: de **geladen regelingen** met
-// hun hash (zonder die is de uitvoering niet te reproduceren) en de
+// hun hash (zonder die is de uitvoering niet te reproduceren), de
 // **geaccepteerde waarden** met hun bron-cel en het bevoegd gezag van die bron
-// (invariant I5 — geaccepteerd hoort niet op berekend te lijken).
+// (invariant I5 — geaccepteerd hoort niet op berekend te lijken), en de
+// **uitvoeringstrace**: de stappen waarlangs het besluit tot stand kwam, met per
+// stap de regeling en het artikel. Die laatste is een boom, en uitgevouwen tot
+// regels zou precies de vorm wegvallen die haar leesbaar maakt.
 
 const props = defineProps({
   /** De cel in wiens kroniek het gram ligt. */
@@ -37,6 +42,16 @@ const props = defineProps({
 const receipt = ref(null);
 const error = ref(null);
 const loading = ref(false);
+
+/**
+ * De takken van de uitvoeringstrace die uitgeklapt staan, op hun pad.
+ *
+ * Alleen de wortel bij het binnenkomen: een trace van honderden stappen in één
+ * keer is geen uitleg maar een muur. Wie een stap opendoet, kiest zelf hoe diep
+ * hij kijkt.
+ */
+const ROOT = '0';
+const openBranches = ref(new Set([ROOT]));
 
 /**
  * Haal het receipt op.
@@ -56,6 +71,10 @@ async function load(cell, chronicle, index) {
     const answer = await fetchGramReceipt(cell, chronicle, index);
     if (ticket !== latest) return;
     receipt.value = answer;
+    // Een ander receipt is een andere trace: de paden van de ene zeggen niets
+    // over de andere, en een tak die "nog open stond" zou hier een willekeurige
+    // tak zijn.
+    openBranches.value = new Set([ROOT]);
   } catch (e) {
     if (ticket !== latest) return;
     receipt.value = null;
@@ -75,6 +94,13 @@ const sections = computed(() => receiptSections(receipt.value));
 const regulations = computed(() => loadedRegulations(receipt.value));
 const accepted = computed(() => acceptedValues(receipt.value));
 const timestamp = computed(() => receiptTimestamp(receipt.value));
+const trace = computed(() => receiptTrace(receipt.value));
+
+function toggleBranch(path) {
+  const next = new Set(openBranches.value);
+  if (!next.delete(path)) next.add(path);
+  openBranches.value = next;
+}
 
 /**
  * De kop van de tijdstempel-banner.
@@ -205,6 +231,28 @@ function validity(regulation) {
           ></nldd-text-cell>
         </nldd-table-row>
       </nldd-table>
+
+      <!-- De trace: langs welke artikelen dit besluit tot stand kwam. Zonder
+           haar staat er wel wát eruit kwam, maar niet waaróp — en dan is het
+           besluit na te rekenen maar niet na te lopen (RFC-013). -->
+      <nldd-title size="6">
+        <span>Uitvoeringstrace</span>
+        <span slot="subtitle">de stappen van de uitvoering, met per stap de regeling en het artikel</span>
+      </nldd-title>
+      <nldd-list
+        v-if="trace"
+        type="tree"
+        variant="box-tinted"
+        accessible-label="De stappen waarlangs dit besluit tot stand kwam"
+      >
+        <TraceNode :node="trace" :open="openBranches" @toggle="toggleBranch" />
+      </nldd-list>
+      <nldd-inline-dialog
+        v-else
+        icon="info"
+        text="Geen uitvoeringstrace"
+        supporting-text="Dit receipt draagt er geen; het besluit is dan wel na te rekenen, maar niet stap voor stap na te lopen."
+      ></nldd-inline-dialog>
 
       <template v-for="section in sections" :key="section.key">
         <nldd-title size="6">

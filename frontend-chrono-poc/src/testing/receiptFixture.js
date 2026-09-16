@@ -45,6 +45,57 @@ export const receiptFixture = {
     },
     outputs: { heeft_recht_op_zorgtoeslag: true, hoogte_zorgtoeslag: 197178.01 },
     requested_outputs: ['heeft_recht_op_zorgtoeslag', 'hoogte_zorgtoeslag'],
+    // De uitvoeringstrace, ingekort tot de vormen die een weergave moet aankunnen:
+    // een wortel over de hele uitvoering, een sprong naar een andere regeling, een
+    // artikel dat rekent (mét regeling en artikelnummer), een bewerking eronder en
+    // een waarde die ergens vandaan opgelost is. Geen looptijden: de engine schrijft
+    // ze voor een gram niet mee, want ze verschillen per run.
+    trace: {
+      node_type: 'article',
+      name: 'wet_op_de_zorgtoeslag (heeft_recht_op_zorgtoeslag, hoogte_zorgtoeslag)',
+      message:
+        'wet_op_de_zorgtoeslag (2024-03-01 {bsn: 999993653} heeft_recht_op_zorgtoeslag, hoogte_zorgtoeslag)',
+      result: { heeft_recht_op_zorgtoeslag: true, hoogte_zorgtoeslag: 197178.01 },
+      children: [
+        {
+          node_type: 'cross_law_reference',
+          name: 'algemene_wet_inkomensafhankelijke_regelingen#heeft_toeslagpartner',
+          children: [
+            {
+              node_type: 'action',
+              name: 'heeft_toeslagpartner',
+              regulation: 'algemene_wet_inkomensafhankelijke_regelingen',
+              article: '3',
+              message: 'Computing heeft_toeslagpartner',
+              result: false,
+            },
+          ],
+        },
+        {
+          node_type: 'action',
+          name: 'hoogte_zorgtoeslag',
+          regulation: 'wet_op_de_zorgtoeslag',
+          article: '3',
+          message: 'Computing hoogte_zorgtoeslag',
+          result: 197178.01,
+          children: [
+            {
+              node_type: 'operation',
+              name: 'SUBTRACT',
+              result: 197178.01,
+              children: [
+                {
+                  node_type: 'resolve',
+                  name: 'toetsingsinkomen',
+                  resolve_type: 'PARAMETER',
+                  result: 81000,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
   },
   scope: {
     loaded_regulations: [

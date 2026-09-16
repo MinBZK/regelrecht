@@ -268,6 +268,14 @@ impl RuleContext {
         }
     }
 
+    /// Record the regulation and article the current trace node comes from.
+    /// No-op if trace is None.
+    pub fn trace_set_source(&self, regulation: &str, article: &str) {
+        if let Some(ref trace) = self.trace {
+            trace.borrow_mut().set_source(regulation, article);
+        }
+    }
+
     /// Set the result on the current trace node. No-op if trace is None.
     pub fn trace_set_result(&self, result: Value) {
         if let Some(ref trace) = self.trace {

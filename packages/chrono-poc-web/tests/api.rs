@@ -560,6 +560,26 @@ async fn het_receipt_van_een_decretogram_is_op_te_vragen_naast_het_beeld() {
         "elke geladen regeling draagt haar hash: {receipt}"
     );
 
+    // De uitvoeringstrace komt mee, op de plek die RFC-013 ervoor heeft. Zonder
+    // haar staat er wel wát eruit kwam, maar niet langs welke artikelen — en dat
+    // is waar een lezer een besluit op naslaat. Looptijden horen er juist níet
+    // in: die verschillen per run, en een gram dat per run verschilt is geen
+    // gram.
+    let trace = &receipt["results"]["trace"];
+    assert!(
+        trace.is_object(),
+        "de route hoort de uitvoeringstrace mee te leveren: {receipt}"
+    );
+    let stappen = serde_json::to_string(trace).expect("een trace is naar JSON te schrijven");
+    assert!(
+        stappen.contains("\"article\""),
+        "een rekenstap hoort het artikel te noemen waar ze vandaan komt: {trace}"
+    );
+    assert!(
+        !stappen.contains("duration_us"),
+        "een looptijd verschilt per run en hoort niet in een gram: {trace}"
+    );
+
     // De geaccepteerde waarde noemt de bron-cel én het bevoegd gezag dat die cel
     // erbij noemde. Het adres alleen zou niet zeggen wiens vaststelling dit is.
     let accepted = receipt["accepted_values"]
