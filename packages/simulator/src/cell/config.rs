@@ -71,9 +71,11 @@ pub struct CellConfig {
     /// staat in het lexogram van de regeling die het uitvoert; welk systeem die
     /// betaling feitelijk doet, is uitvoering — en dus casusdata. Hier staat
     /// daarom de naam van het **bevoegd gezag** zoals de wet die noemt
-    /// (`competent_authority`, RFC-002), en niet de naam van een cel: de
-    /// binding loopt langs het gezag, zodat een tweede uitvoerder van dezelfde
-    /// regeling haar eigen betaler kan hebben zonder dat het recht verschilt.
+    /// (`competent_authority`, RFC-002), en niet de naam van een cel: een
+    /// regeling kent geen cellen, dus de enige naam die beide kanten kennen is
+    /// die van het gezag. Hetzelfde lexogram kan daardoor in een ander
+    /// wereldbestand een andere cel laten betalen, zonder dat het recht
+    /// verschilt.
     ///
     /// Eén cel per gezag: twee cellen die hetzelfde gezag nakomen, laten een
     /// betaling bij een willekeurige van de twee landen. Het optuigen weigert

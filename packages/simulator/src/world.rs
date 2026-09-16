@@ -3055,6 +3055,32 @@ lexostatus_definitions:
         )
     }
 
+    /// Het bedrag van een verplichting mag een uitkomst van het artikel zijn die
+    /// de beschikking zelf niet vastlegt: de verplichting staat in dat artikel,
+    /// dus ze mag naar elke uitkomst ervan wijzen. Die uitkomst gaat als
+    /// gevraagde uitkomst mee de uitvoering in — zonder dat zou het bedrag
+    /// afhangen van wat de uitvoering toevallig ook uitrekende.
+    #[test]
+    fn een_bedrag_dat_het_besluit_niet_vastlegt_wordt_toch_uitgerekend() {
+        let mut world = ritme_wereld("recht_apart", "", &no_settings())
+            .unwrap_or_else(|e| panic!("de wereld moet op te tuigen zijn: {e}"));
+        let gram = beslis(&mut world);
+
+        assert_eq!(gram.obligations.len(), 1, "artikel 4 betaalt ineens");
+        assert_eq!(gram.obligations[0].bedrag, Value::Int(120_000));
+        assert!(
+            !gram.outputs.contains_key("vergoeding_apart"),
+            "het gram legt alleen vast wat het besluit publiceert, en dat is \
+             hier alleen de sturende uitkomst: {:?}",
+            gram.outputs.keys().collect::<Vec<_>>()
+        );
+        assert_eq!(
+            betaald(&world, "belastingdienst", "2024-01-01"),
+            Some(Value::Int(120_000)),
+            "de termijn vervalt op het moment van het besluit"
+        );
+    }
+
     /// Wat er op `op_moment` betaald is volgens deze cel; `None` is "niets
     /// vastgesteld".
     fn betaald(world: &World, cell: &str, op_moment: &str) -> Option<Value> {

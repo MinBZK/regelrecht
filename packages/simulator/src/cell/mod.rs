@@ -1547,8 +1547,8 @@ impl Cell {
     ///
     /// Langs het **bevoegd gezag** en niet langs de besluitende cel: de wet wijst
     /// een gezag aan, en welk systeem namens dat gezag betaalt is wat het
-    /// wereldbestand bindt. Zo krijgt een tweede uitvoerder van dezelfde
-    /// regeling hetzelfde schema, met haar eigen betaler eronder.
+    /// wereldbestand bindt. Hetzelfde lexogram legt daardoor overal hetzelfde
+    /// schema op, met per wereldbestand een eigen betaler eronder.
     ///
     /// Beide weigeringen hieronder horen bij het optuigen al gevallen te zijn
     /// (zie `check_obligations` in de wereld); dat ze hier staan is omdat een cel
@@ -2910,6 +2910,92 @@ lexostatus_definitions:
                 authority: "Dienst Toeslagen".to_string(),
             },
         )])
+    }
+
+    /// Een besluit-definitie die alleen dient om in een melding genoemd te
+    /// worden: [`Cell::payer_of`] leest er niets anders uit dan haar naam.
+    fn payer_definition() -> BesluitDefinition {
+        serde_yaml_ng::from_str(
+            r"
+name: toekenning
+regulation: test_zonder_bevoegd_gezag
+output: komt_in_aanmerking
+zaakkenmerk: 'toekenning/{bsn}'
+params:
+  - name: bsn
+    type: string
+",
+        )
+        .unwrap_or_else(|e| panic!("testdefinitie moet parsen: {e}"))
+    }
+
+    /// Eén verplichting uit een lexogram dat geen bevoegd gezag aanwijst.
+    fn declared_without_authority() -> DeclaredObligations {
+        DeclaredObligations {
+            origin: ObligationOrigin {
+                regulation: "test_zonder_bevoegd_gezag".to_string(),
+                valid_from: Some("2024-01-01".to_string()),
+                article: "1".to_string(),
+            },
+            authority: None,
+            article_outputs: BTreeSet::from(["komt_in_aanmerking".to_string()]),
+            items: vec![serde_yaml_ng::from_str(
+                "soort: betaling\nbedrag: $komt_in_aanmerking\nritme: ineens\ngrondslag: art. 1\n",
+            )
+            .unwrap_or_else(|e| panic!("testverplichting moet parsen: {e}"))],
+        }
+    }
+
+    /// De betalende cel wordt aan het bevoegd gezag gebonden, dus een regeling
+    /// die daarover zwijgt laat de verplichting bij niemand terechtkomen. Dat is
+    /// iets anders dan een besluit zónder verplichting: daar valt niets na te
+    /// komen, hier wel.
+    #[test]
+    fn een_verplichting_zonder_bevoegd_gezag_wordt_geweigerd() {
+        let err = toeslagen()
+            .payer_of(
+                &payer_definition(),
+                &declared_without_authority(),
+                &world_payers(),
+            )
+            .expect_err("een verplichting zonder gezag hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::ObligationWithoutAuthority { .. }),
+            "verwachtte ObligationWithoutAuthority, kreeg {err}"
+        );
+    }
+
+    /// En een gezag dat wél aangewezen is maar dat geen enkele cel nakomt, is een
+    /// gat in het wereldbestand: de melding zegt welke `komt_na` eronder hoort.
+    #[test]
+    fn een_gezag_dat_geen_cel_nakomt_wordt_geweigerd() {
+        let mut declared = declared_without_authority();
+        declared.authority = Some("Minister van Financiën".to_string());
+
+        let err = toeslagen()
+            .payer_of(&payer_definition(), &declared, &world_payers())
+            .expect_err("een gezag zonder gebonden cel hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::ObligationWithoutPayer { .. }),
+            "verwachtte ObligationWithoutPayer, kreeg {err}"
+        );
+        assert!(
+            err.to_string().contains("Dienst Toeslagen"),
+            "de melding hoort te zeggen wat er wél gebonden is: {err}"
+        );
+    }
+
+    /// De binding gaat over genormaliseerde tekst: een hoofdletter of een spatie
+    /// vooraan is een schrijfwijze en geen andere organisatie.
+    #[test]
+    fn de_binding_kijkt_niet_naar_hoofdletters_of_spaties() {
+        let mut declared = declared_without_authority();
+        declared.authority = Some("  dienst toeslagen ".to_string());
+
+        let payer = toeslagen()
+            .payer_of(&payer_definition(), &declared, &world_payers())
+            .unwrap_or_else(|e| panic!("dezelfde naam anders geschreven hoort te binden: {e}"));
+        assert_eq!(payer, "belastingdienst");
     }
 
     fn moment() -> NaiveDate {

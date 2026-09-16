@@ -20,6 +20,11 @@ export function formatMoment(iso) {
  *
  * Onbekend (RFC-036) is niet leeg: het is een feit dat bestaat en dat niemand
  * heeft aangeleverd, en dat hoort niet op een afwezigheid te lijken.
+ *
+ * Een samengestelde waarde komt er in woorden uit en niet als JSON. Een gram
+ * draagt ze wel degelijk — de herkomst van een verplichting is een waarde met
+ * velden — en `{"artikel":"2",...}` op het scherm is de ruwe vorm en niet wat
+ * er staat. De namen komen uit de waarde zelf, zoals overal in dit beeld.
  */
 export function formatValue(value) {
   if (isUnknown(value)) return 'nog niet bekend';
@@ -29,7 +34,13 @@ export function formatValue(value) {
   if (typeof value === 'number') return String(value);
   if (typeof value === 'string') return value;
   if (Array.isArray(value)) return `${value.length} ${value.length === 1 ? 'item' : 'items'}`;
-  return JSON.stringify(value);
+  const entries = Object.entries(value);
+  // Een leeg object is geen afwezigheid — dat is `null` — dus het krijgt niet
+  // dezelfde tekst; er valt alleen niets uit te schrijven.
+  if (entries.length === 0) return '{}';
+  // Komma's binnenin: de aanroepers zetten hun eigen velden met ' · ' achter
+  // elkaar, en dan is te zien wat bij welk veld hoort.
+  return entries.map(([name, nested]) => `${name}: ${formatValue(nested)}`).join(', ');
 }
 
 /**

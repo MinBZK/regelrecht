@@ -39,6 +39,14 @@ describe('waarden', () => {
     expect(formatValue([1, 2, 3])).toBe('3 items');
     expect(formatValue([1])).toBe('1 item');
   });
+
+  it('schrijft een samengestelde waarde uit in plaats van als JSON', () => {
+    expect(
+      formatValue({ regulation: 'wet_op_de_zorgtoeslag', regulation_valid_from: '2024-01-01', artikel: '2' }),
+    ).toBe('regulation: wet_op_de_zorgtoeslag, regulation_valid_from: 2024-01-01, artikel: 2');
+    expect(formatValue({ bron: { cel: 'toeslagen' } })).toBe('bron: cel: toeslagen');
+    expect(formatValue({})).toBe('{}');
+  });
 });
 
 describe('namen', () => {

@@ -819,11 +819,14 @@ bedrag toe.
 
 **Wie betaalt, komt uit het wereldbestand.** Een cel noemt met `komt_na` de
 bevoegde gezagen waarvoor zij betalingsverplichtingen nakomt — de naam zoals de
-wet het gezag aanwijst (`competent_authority`, RFC-002), niet een cel-id. De
-binding loopt dus langs het gezag, en dan kan een tweede uitvoerder van dezelfde
-regeling haar eigen betaler hebben zonder dat het recht verschilt. Het optuigen
-weigert een verplichting waarvoor geen cel gebonden is, twee cellen die hetzelfde
-gezag nakomen, en een gebonden cel zonder stroom `betalingen`. De besluitende cel
+wet het gezag aanwijst (`competent_authority`, RFC-002), niet een cel-id. Dat
+moet ook: het lexogram kan geen cel noemen — een regeling weet niet hoe iemand
+zijn uitvoering heeft ingericht — dus de enige naam die beide kanten kennen is
+die van het gezag. Hetzelfde lexogram kan daardoor in een ander wereldbestand
+een andere cel laten betalen zonder dat het recht verschilt. Binnen één wereld
+is het één cel per gezag: het optuigen weigert een verplichting waarvoor geen
+cel gebonden is, twee cellen die hetzelfde gezag nakomen, en een gebonden cel
+zonder stroom `betalingen`. De besluitende cel
 mag zichzelf nakomen; ze heeft die stroom hoe dan ook nodig, want zij legt vast dat
 het haar gemeld is.
 

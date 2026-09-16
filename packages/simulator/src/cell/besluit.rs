@@ -3720,6 +3720,47 @@ params:
         )
     }
 
+    /// Een artikel zoals het in een regeling staat.
+    fn artikel(block: &str) -> Article {
+        serde_yaml_ng::from_str(&format!(
+            "number: '2'\nurl: https://example.com/wet#Artikel2\ntext: tekst\n\
+             machine_readable:\n  execution:\n    produces:\n      \
+             legal_character: BESCHIKKING\n{block}"
+        ))
+        .unwrap_or_else(|e| panic!("testartikel moet parsen: {e}"))
+    }
+
+    /// Een artikel zonder blok legt niets op, en dat is geen fout: niet elke
+    /// beschikking kent een bedrag toe.
+    #[test]
+    fn een_artikel_zonder_blok_legt_niets_op() {
+        let declared = DeclaredObligations::from_article(origin(), None, &artikel(""))
+            .unwrap_or_else(|e| panic!("een artikel zonder blok hoort te mogen: {e}"));
+        assert!(declared.is_empty(), "er valt niets na te komen");
+    }
+
+    /// Een blok dat er wél staat maar niet klopt, is een fout in de **wet**. Stil
+    /// overslaan zou een regeling laten zwijgen waar ze spreekt, en dan zou een
+    /// besluit zonder verplichting niets bijzonders lijken.
+    #[test]
+    fn een_chronolex_blok_dat_niet_klopt_wordt_geweigerd() {
+        for block in [
+            // Een typfout in de sleutel: `deny_unknown_fields` op het blok.
+            "      extensions:\n        chronolex:\n          verplichtignen: []\n",
+            // Een verplichting zonder grondslag: die is verplicht.
+            "      extensions:\n        chronolex:\n          verplichtingen:\n            - soort: betaling\n              bedrag: $bedrag\n              ritme: ineens\n",
+            // Het blok is geen mapping.
+            "      extensions:\n        chronolex: []\n",
+        ] {
+            let err = DeclaredObligations::from_article(origin(), None, &artikel(block))
+                .expect_err("een blok dat niet klopt hoort te falen");
+            assert!(
+                matches!(err, SimulatorError::MalformedChronolexBlock { .. }),
+                "verwachtte MalformedChronolexBlock, kreeg {err}"
+            );
+        }
+    }
+
     /// De som van de termijnen is exact het bedrag waarover besloten is.
     ///
     /// Dat is de eigenschap waarop "betaald tot nu toe" rust: wie de rest laat
