@@ -4135,6 +4135,26 @@ pub async fn execute_enrich_with_runner(
             }
         }
     };
+    // A run that walks no window moves no cursor.
+    //
+    // `--steps reconcile` skips the translation and runs only the closing pass,
+    // and the cursor the branches above computed is the cursor of the window
+    // that would have been walked. Writing it would push the ordinary walk past
+    // articles no agent has seen — the same thing a targeted run must not do,
+    // and for the same reason (RFC-026, "De cursor blijft staan"). The walk
+    // still ends in a fixed number of runs: the cursor advances only when a
+    // window is walked.
+    //
+    // The stored cursor carries over under the rule `plan_chunk` applies: one
+    // recorded for another path, or past the end of this document, is not this
+    // law's progress and resets to the beginning.
+    let next_cursor = if config.steps.window {
+        next_cursor
+    } else if stored_cursor_path == normalized_path && stored_cursor <= articles_before {
+        stored_cursor
+    } else {
+        0
+    };
     // Window-scoped baseline for the chunk no-op guard: progress is measured
     // inside the assigned window only.
     let window_stats_before = chunk_window
@@ -6913,6 +6933,88 @@ articles:
         // It fails on producing nothing, not on the pre-existing schema state.
         let err = format!("{result:?}");
         assert!(!err.contains("schema error"), "{err}");
+    }
+
+    /// A run that walks no window must not move the cursor.
+    ///
+    /// `--steps reconcile` runs only the closing pass: no translation, no
+    /// agent over a window, nothing an article has been read for. The cursor
+    /// the chunk planner computes is the cursor of the window that *would*
+    /// have been walked, and writing it pushes the ordinary walk past articles
+    /// no agent has seen — the same defect a targeted run is explicitly
+    /// protected against (RFC-026, "De cursor blijft staan").
+    ///
+    /// Asserted on the sidecar rather than on the returned result, because the
+    /// sidecar is what the next run reads.
+    #[tokio::test]
+    async fn a_reconcile_only_run_leaves_the_cursor_where_it_was() {
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let rel = "nl/wet/test_law/2025-01-01.yaml";
+        let mut body = String::from(
+            "---\n\
+             $schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json\n\
+             $id: test_law\n\
+             regulatory_layer: WET\n\
+             publication_date: '2025-01-01'\n\
+             bwb_id: BWBR0000001\n\
+             url: https://wetten.overheid.nl/BWBR0000001/2025-01-01\n\
+             valid_from: '2025-01-01'\n\
+             articles:\n",
+        );
+        for n in 1..=6 {
+            body.push_str(&format!("  - number: '{n}'\n    text: Artikel {n}.\n"));
+        }
+        tokio::fs::write(law_dir.join("2025-01-01.yaml"), &body)
+            .await
+            .unwrap();
+
+        // What the ordinary walk had reached: two of six articles. Written as
+        // the three fields the cursor reader looks for, which is all a sidecar
+        // has to carry to stand in for a previous run.
+        tokio::fs::write(
+            law_dir.join(".enrichment.yaml"),
+            format!(
+                "enrich_cursor: 2\nenrich_cursor_path: {rel}\nenrich_cursor_mode: {}\n",
+                WindowMode::default().label()
+            ),
+        )
+        .await
+        .unwrap();
+
+        let payload = EnrichPayload {
+            pass: Pass::Translate,
+            law_id: "BWBR0000001".into(),
+            yaml_path: rel.into(),
+            ..Default::default()
+        };
+        let mut config = EnrichConfig::for_test(LlmProvider::Claude {
+            path: "claude".into(),
+            model: None,
+        });
+        // Chunking on, so the planner has a window to compute a cursor from,
+        // and the window step off, so no window is walked.
+        config.max_articles_per_run = 3;
+        config.steps = RunSteps {
+            window: false,
+            reconcile: true,
+        };
+
+        let outcome =
+            execute_enrich_with_runner(&payload, dir.path(), &config, "", &NoopLlmRunner).await;
+        eprintln!("OUTCOME: {outcome:?}");
+        eprintln!(
+            "SIDECAR: {:?}",
+            std::fs::read_to_string(law_dir.join(".enrichment.yaml"))
+        );
+
+        let (cursor, path, _) = read_stored_cursor(dir.path(), rel).await;
+        assert_eq!(
+            (cursor, path.as_str()),
+            (2, rel),
+            "de reconcile-run vertaalde geen venster, dus de wandeling schuift niet op"
+        );
     }
 
     /// Fake LLM runner that simulates enrichment by adding `machine_readable`
