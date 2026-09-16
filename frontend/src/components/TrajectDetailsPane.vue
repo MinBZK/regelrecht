@@ -86,6 +86,10 @@ function onSubpathInput(event) {
   // repo-root) door.
   subpathDraft.value =
     event.detail?.value ?? event.target?.value ?? subpathDraft.value;
+  // De melding van de vorige poging gaat weg zodra de gebruiker begint te
+  // corrigeren - anders staat een afgekeurd pad nog rood onder een veld
+  // waar inmiddels iets anders staat (zelfde afspraak als InviteMembersSheet).
+  if (subpathError.value) subpathError.value = null;
 }
 
 async function saveSubpath() {
