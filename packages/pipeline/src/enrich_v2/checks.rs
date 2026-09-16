@@ -256,9 +256,54 @@ pub fn split_leden(text: &str) -> Vec<(u32, String)> {
     out
 }
 
+/// The longest ascending run of `candidates`, allowing one vervallen lid.
+///
+/// Leden are numbered consecutively, and nothing else in a statutory text is.
+/// Without this rule every `N. ` after whitespace counted, so an article's own
+/// heading ("Artikel 14. Bezwaar 1. …"), a citation ("Zie artikel 30. …") and a
+/// chapter list all became leden: 177 of the 301 multi-lid articles in the
+/// corpus came out with a sequence that no statute could have, and 194 of the
+/// 337 coverage findings that name a lid count named a wrong one.
+///
+/// The run does not have to start at 1, because an article whose first lid is
+/// unnumbered is common: the chapeau is lid 1 and the text marks 2 onward. Any
+/// ascending run is therefore accepted and the longest one wins, which drops
+/// exactly the markers that interrupt it.
+///
+/// One number may be skipped, because a lid that has been repealed leaves its
+/// number empty and the ones after it keep theirs. Two in a row is where the
+/// gap stops looking like a numbering; on this corpus that threshold recovers
+/// the same 173 articles as any wider one.
+const MAX_LID_GAP: u32 = 2;
+
+fn ascending_run(candidates: &[(u32, usize, usize)]) -> Vec<(u32, usize, usize)> {
+    let mut best: Vec<(u32, usize, usize)> = Vec::new();
+    for (start, first) in candidates.iter().enumerate() {
+        let mut kept = vec![*first];
+        for candidate in &candidates[start + 1..] {
+            let last = kept[kept.len() - 1].0;
+            if candidate.0 > last && candidate.0 - last <= MAX_LID_GAP {
+                kept.push(*candidate);
+            }
+        }
+        if kept.len() > best.len() {
+            best = kept;
+        }
+    }
+    // A single mark is not a numbering: one stray "30." in a citation would
+    // otherwise split the article in two on a lid that does not exist.
+    if best.len() < 2 {
+        Vec::new()
+    } else {
+        best
+    }
+}
+
 /// `(lid number, byte offset of the marker, byte offset of its body)`. A
 /// marker only counts at the start of the text or after whitespace, so
 /// `artikel 2.18` never matches, and the number is capped at two digits.
+///
+/// What survives is the ascending run; see [`ascending_run`] for why.
 fn lid_marks(text: &str) -> Vec<(u32, usize, usize)> {
     let bytes = text.as_bytes();
     let mut marks = Vec::new();
@@ -302,7 +347,7 @@ fn lid_marks(text: &str) -> Vec<(u32, usize, usize)> {
             i += 1;
         }
     }
-    marks
+    ascending_run(&marks)
 }
 
 fn normalize_ws(s: &str) -> String {
@@ -3502,6 +3547,47 @@ mod tests {
         assert_eq!(leden[2].0, 4);
         // "artikel 2.18" must not start a new lid.
         assert!(leden[1].1.contains("2.18"));
+    }
+
+    /// Only a consecutive numbering counts as leden.
+    ///
+    /// Every `N. ` after whitespace used to open a lid, so an article heading,
+    /// a citation and a chapter list all became one. Over the corpus that put
+    /// 43 multi-lid articles on a sequence no statute could carry, and the
+    /// coverage findings reported those counts as fact. The cases below are
+    /// real: AWIR article 7 came out as ten leden where it has six.
+    #[test]
+    fn only_a_consecutive_numbering_is_a_lid() {
+        // An article heading before the first lid.
+        let heading = "Artikel 14. Bezwaar 1. De belanghebbende kan bezwaar maken. 2. De termijn bedraagt zes weken.";
+        let leden = split_leden(heading);
+        assert_eq!(leden.len(), 2, "{leden:?}");
+        assert_eq!(leden[0].0, 1);
+        assert_eq!(leden[1].0, 2);
+
+        // A citation that ends in a number, mid-lid.
+        let citation = "1. Zie artikel 30. Dat artikel geldt hier. 2. Het tweede lid.";
+        let leden = split_leden(citation);
+        assert_eq!(leden.len(), 2, "{leden:?}");
+        assert_eq!(leden[1].0, 2);
+
+        // A chapter list. The run 1,2 beats the stray 7.
+        let chapters = "1. Zie de hoofdstukken 4 , 6 en 7. Die gelden. 2. Het tweede lid.";
+        let leden = split_leden(chapters);
+        assert_eq!(leden.len(), 2, "{leden:?}");
+
+        // Nothing consecutive at all: one lid, not three.
+        let stray = "Artikel 12. Zie artikel 30. En ook artikel 32.";
+        assert_eq!(split_leden(stray).len(), 1);
+    }
+
+    /// A repealed lid leaves a gap, and the ones after it keep their numbers.
+    #[test]
+    fn a_gap_from_a_repealed_lid_does_not_end_the_numbering() {
+        let text = "1. Het eerste lid. 2. Het tweede lid. 4. Het vierde lid.";
+        let leden = split_leden(text);
+        assert_eq!(leden.len(), 3, "{leden:?}");
+        assert_eq!(leden[2].0, 4);
     }
 
     #[test]
