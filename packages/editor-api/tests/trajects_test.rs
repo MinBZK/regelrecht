@@ -697,6 +697,7 @@ async fn update_rejects_contributor_and_accepts_owner() {
         description: None,
         scope: None,
         status: None,
+        repo_path: None,
     };
 
     // contributor → 403
@@ -709,11 +710,12 @@ async fn update_rejects_contributor_and_accepts_owner() {
             description: None,
             scope: None,
             status: None,
+            repo_path: None,
         }),
     )
     .await
     .unwrap_err();
-    assert_eq!(err, StatusCode::FORBIDDEN);
+    assert_eq!(err.0, StatusCode::FORBIDDEN);
 
     // owner → 204
     let ok = trajects::update(
@@ -750,11 +752,249 @@ async fn update_validates_status_enum() {
             description: None,
             scope: None,
             status: Some("klaar".to_string()),
+            repo_path: None,
         }),
     )
     .await
     .unwrap_err();
-    assert_eq!(err, StatusCode::BAD_REQUEST);
+    assert_eq!(err.0, StatusCode::BAD_REQUEST);
+}
+
+// ---------------------------------------------------------------------------
+// `update` — root path (`gh_path`) of the traject's own source
+// ---------------------------------------------------------------------------
+
+/// A traject whose writable-own source is a GitHub repo of the traject
+/// owner's own choosing, inserted directly: going through `create` would
+/// need a GitHub pre-flight (token + branch minting) that says nothing
+/// about the behaviour under test. Fictional repo coordinates — this is a
+/// public repository.
+async fn own_repo_traject(pool: &PgPool, owner: &AccountRecord, repo_path: Option<&str>) -> Uuid {
+    let (traject_id,): (Uuid,) = sqlx::query_as(
+        "INSERT INTO trajects (name, description, scope, created_by)
+         VALUES ('Eigen repo', '', '', $1) RETURNING id",
+    )
+    .bind(owner.id)
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO traject_members (traject_id, account_id, role)
+         VALUES ($1, $2, 'owner')",
+    )
+    .bind(traject_id)
+    .bind(owner.id)
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO traject_corpus_sources
+         (traject_id, source_id, name, source_type,
+          gh_owner, gh_repo, gh_branch, gh_base_branch, gh_path,
+          priority, auth_ref, is_writable_own)
+         VALUES ($1, 'traject-own-test', 'Eigen repo', 'github'::corpus_source_type,
+                 'example-org', 'regelrecht-corpus-example', 'traject/voorbeeld', 'main', $2,
+                 0, 'example-org-regelrecht-corpus-example', TRUE)",
+    )
+    .bind(traject_id)
+    .bind(repo_path)
+    .execute(pool)
+    .await
+    .unwrap();
+    traject_id
+}
+
+async fn stored_repo_path(pool: &PgPool, traject_id: Uuid) -> Option<String> {
+    let (path,): (Option<String>,) = sqlx::query_as(
+        "SELECT gh_path FROM traject_corpus_sources
+         WHERE traject_id = $1 AND is_writable_own",
+    )
+    .bind(traject_id)
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    path
+}
+
+fn repo_path_req(repo_path: &str) -> UpdateTrajectRequest {
+    UpdateTrajectRequest {
+        name: None,
+        description: None,
+        scope: None,
+        status: None,
+        repo_path: Some(repo_path.to_string()),
+    }
+}
+
+#[tokio::test]
+async fn update_sets_own_repo_path_and_reports_it_back() {
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
+    let traject_id = own_repo_traject(&db.pool, &alice, None).await;
+
+    let ok = trajects::update(
+        State(state.clone()),
+        Extension(alice.clone()),
+        Path(traject_id),
+        Json(repo_path_req("regulation/nl")),
+    )
+    .await
+    .unwrap();
+    assert_eq!(ok, StatusCode::NO_CONTENT);
+    assert_eq!(
+        stored_repo_path(&db.pool, traject_id).await.as_deref(),
+        Some("regulation/nl")
+    );
+
+    // The detail endpoint is where the settings pane reads the value back.
+    let Json(detail) = trajects::get(
+        State(state.clone()),
+        Extension(alice.clone()),
+        Path(traject_id),
+    )
+    .await
+    .unwrap();
+    let own = detail.sources.iter().find(|s| s.is_writable_own).unwrap();
+    assert_eq!(own.gh_path.as_deref(), Some("regulation/nl"));
+
+    // Omitting the field leaves the path alone (COALESCE semantics, same
+    // as the metadata fields).
+    trajects::update(
+        State(state.clone()),
+        Extension(alice.clone()),
+        Path(traject_id),
+        Json(UpdateTrajectRequest {
+            name: Some("Andere naam".to_string()),
+            description: None,
+            scope: None,
+            status: None,
+            repo_path: None,
+        }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        stored_repo_path(&db.pool, traject_id).await.as_deref(),
+        Some("regulation/nl"),
+        "a PATCH without repo_path must not touch the path"
+    );
+}
+
+#[tokio::test]
+async fn update_stores_blank_repo_path_as_null() {
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
+    let traject_id = own_repo_traject(&db.pool, &alice, Some("regulation/nl")).await;
+
+    // Whitespace-only means "back to repo root". Stored as NULL, not "",
+    // so the row never carries two spellings of the same thing.
+    for blank in ["", "   "] {
+        trajects::update(
+            State(state.clone()),
+            Extension(alice.clone()),
+            Path(traject_id),
+            Json(repo_path_req(blank)),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            stored_repo_path(&db.pool, traject_id).await,
+            None,
+            "expected NULL for {blank:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn update_rejects_invalid_repo_path() {
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
+    let traject_id = own_repo_traject(&db.pool, &alice, Some("regulation/nl")).await;
+
+    for bad in ["../etc", "/etc", "regulation/../..", "met spatie"] {
+        let err = trajects::update(
+            State(state.clone()),
+            Extension(alice.clone()),
+            Path(traject_id),
+            Json(repo_path_req(bad)),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST, "expected 400 for {bad:?}");
+        assert!(
+            err.1.contains("relatief pad"),
+            "the UI shows this verbatim, got {:?}",
+            err.1
+        );
+    }
+    assert_eq!(
+        stored_repo_path(&db.pool, traject_id).await.as_deref(),
+        Some("regulation/nl"),
+        "a rejected path must leave the stored one untouched"
+    );
+}
+
+#[tokio::test]
+async fn update_repo_path_is_owner_only() {
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
+    let bob = seed_account(&db.pool, "bob@test.local", "Bob").await;
+    let traject_id = own_repo_traject(&db.pool, &alice, None).await;
+    sqlx::query(
+        "INSERT INTO traject_members (traject_id, account_id, role)
+         VALUES ($1, $2, 'contributor')",
+    )
+    .bind(traject_id)
+    .bind(bob.id)
+    .execute(&db.pool)
+    .await
+    .unwrap();
+
+    let err = trajects::update(
+        State(state.clone()),
+        Extension(bob),
+        Path(traject_id),
+        Json(repo_path_req("elders")),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err.0, StatusCode::FORBIDDEN);
+    assert_eq!(stored_repo_path(&db.pool, traject_id).await, None);
+}
+
+#[tokio::test]
+async fn update_refuses_to_move_the_central_corpus_root() {
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
+    // `create_traject` takes the default writable source: the central
+    // corpus, shared by every traject that skips the repo fields. Its
+    // layout is not one traject's to move.
+    let traject_id = create_traject(&state, &alice, "Tarief").await;
+
+    let err = trajects::update(
+        State(state.clone()),
+        Extension(alice.clone()),
+        Path(traject_id),
+        Json(repo_path_req("ergens/anders")),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err.0, StatusCode::BAD_REQUEST);
+    assert!(
+        err.1.contains("centrale corpus"),
+        "the message must explain why, got {:?}",
+        err.1
+    );
+    assert_eq!(
+        stored_repo_path(&db.pool, traject_id).await.as_deref(),
+        Some("regulation/nl"),
+        "the central path stays put"
+    );
 }
 
 // ---------------------------------------------------------------------------

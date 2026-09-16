@@ -76,6 +76,21 @@ export async function createTraject(payload) {
   return created;
 }
 
+// Owner-only partial update (backend: PATCH /api/trajects/:id → 204). Send only
+// the fields that change; anything omitted keeps its current value. The backend
+// answers a refused change (400/403) with a Dutch explanation in the body, so
+// that body is the message the caller shows.
+export async function updateTraject(trajectId, patch) {
+  await apiFetch(`/api/trajects/${encodeURIComponent(trajectId)}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(patch),
+    errorMessage: (status, body) => body || `Opslaan mislukt: ${status}`,
+  });
+  // The traject list carries name and status, which this endpoint can change.
+  await refreshTrajects();
+}
+
 // Owner-only hard delete (backend: DELETE /api/trajects/:id → 204). The
 // upstream branch on GitHub is deliberately left untouched by the backend.
 export async function deleteTraject(trajectId) {

@@ -8,8 +8,13 @@ import {
   useTrajectDetail,
   writableSource,
   branchTreeUrl,
+  isCentralSource,
 } from '../composables/useTrajectDetail.js';
-import { deleteTraject, leaveTraject } from '../composables/useTrajects.js';
+import {
+  deleteTraject,
+  leaveTraject,
+  updateTraject,
+} from '../composables/useTrajects.js';
 import { paneChromeVisible } from '../constants.js';
 
 const router = useRouter();
@@ -41,6 +46,57 @@ const subpath = computed(() => {
   const p = source.value.gh_path;
   return p && p.trim() ? p : 'repo-root';
 });
+
+// --- Root-pad (subpath) wijzigen (owner van een traject met eigen repo) ---
+//
+// Alleen de eigenaar mag het pad verzetten, en alleen op een eigen GitHub-repo:
+// het centrale corpus deelt zijn indeling met elk traject dat erop schrijft, dus
+// daar weigert de backend de wijziging. Wie hem niet mag wijzigen, ziet de
+// huidige waarde gewoon als tekst.
+const canEditSubpath = computed(
+  () =>
+    detail.value?.role === 'owner' &&
+    !!source.value &&
+    source.value.source_type === 'github' &&
+    !isCentralSource(source.value),
+);
+
+const subpathDraft = ref('');
+const subpathSaving = ref(false);
+const subpathError = ref(null);
+
+// Het veld volgt de geladen bron: bij openen, bij wisselen van traject en na de
+// herlaad die op een geslaagde opslag volgt. Leeg veld = repo-root, dezelfde
+// afspraak als bij het aanmaken van een traject.
+watch(
+  source,
+  (s) => {
+    subpathDraft.value = s?.gh_path || '';
+    subpathError.value = null;
+  },
+  { immediate: true },
+);
+
+function onSubpathInput(event) {
+  subpathDraft.value =
+    event.target?.value ?? event.detail?.value ?? subpathDraft.value;
+}
+
+async function saveSubpath() {
+  if (subpathSaving.value || !props.trajectId) return;
+  subpathSaving.value = true;
+  subpathError.value = null;
+  try {
+    await updateTraject(props.trajectId, { repo_path: subpathDraft.value });
+    // Herladen in plaats van de waarde lokaal bijwerken: de backend normaliseert
+    // (leeg/spaties wordt repo-root), dus dit toont wat er echt is opgeslagen.
+    reload();
+  } catch (e) {
+    subpathError.value = e.message || 'Opslaan mislukt';
+  } finally {
+    subpathSaving.value = false;
+  }
+}
 
 function orDash(v) {
   return v && String(v).trim() ? v : '—';
@@ -188,9 +244,44 @@ async function confirmLeave() {
         <nldd-text-cell :text="source?.gh_base_branch || 'onbekend'"></nldd-text-cell>
       </nldd-list-item>
       <nldd-list-item size="md">
-        <nldd-text-cell text="Subpath" max-width="180px"></nldd-text-cell>
+        <nldd-text-cell text="Subpath" max-width="180px" vertical-alignment="top"></nldd-text-cell>
         <nldd-spacer-cell size="8"></nldd-spacer-cell>
-        <nldd-text-cell :text="subpath"></nldd-text-cell>
+        <nldd-text-cell v-if="!canEditSubpath" :text="subpath"></nldd-text-cell>
+        <nldd-cell v-else width="full" vertical-alignment="top">
+          <nldd-form-field>
+            <nldd-text-field
+              size="md"
+              name="repo_path"
+              accessible-label="Subpath"
+              :value="subpathDraft"
+              :invalid="subpathError ? true : undefined"
+              :error-message="subpathError ? 'subpath-error' : undefined"
+              @input="onSubpathInput"
+            ></nldd-text-field>
+            <nldd-form-field-help-text>
+              Submap met regulation YAML-bestanden. Laat leeg voor repo-root.
+            </nldd-form-field-help-text>
+            <nldd-form-field-error-text id="subpath-error">
+              {{ subpathError }}
+            </nldd-form-field-error-text>
+          </nldd-form-field>
+          <nldd-spacer size="8"></nldd-spacer>
+          <!-- Permanent, niet pas na een fout: het pad bepaalt alles wat de
+               editor op deze repo leest en schrijft, dus dit is wat je moet
+               weten vóór je opslaat. -->
+          <nldd-banner
+            variant="warning"
+            text="Let op: alles buiten deze map ziet de editor niet meer als regulation. Dat geldt ook voor annotaties en documenten van dit traject."
+          ></nldd-banner>
+          <nldd-spacer size="8"></nldd-spacer>
+          <nldd-button
+            variant="secondary"
+            size="md"
+            :text="subpathSaving ? 'Bezig…' : 'Opslaan'"
+            :disabled="subpathSaving || undefined"
+            @click="saveSubpath"
+          ></nldd-button>
+        </nldd-cell>
       </nldd-list-item>
     </nldd-list>
 
