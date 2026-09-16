@@ -51,6 +51,9 @@ router.afterEach(refreshScrollMode);
 const presentation = usePresentation();
 presentation.init({ router, demo });
 watch(corpus, (c) => presentation.init({ slides: c?.config?.slides ?? [] }), { immediate: true });
+// De modus staat in de store (en dus in localStorage); het dek houdt er zijn
+// eigen ref voor, zodat de store niet om de presentatiemodule heen cirkelt.
+watch(() => state.presentationMode, (m) => presentation.setMode(m), { immediate: true });
 function onGlobalKey(e) {
   if (e.key === 'P' && e.shiftKey && !e.target?.closest?.('input, textarea, select, [contenteditable]')) {
     e.preventDefault();

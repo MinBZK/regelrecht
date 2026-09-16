@@ -14,6 +14,12 @@ import { computed, nextTick, ref } from 'vue';
 const active = ref(false);
 const index = ref(0);
 const slidesRef = ref([]);
+/**
+ * 'zaal' of 'zelfstandig'. Een eigen ref en geen greep in de store, want de
+ * store haalt zelf het corpus op en zou dan om deze module heen cirkelen. App
+ * houdt hem gelijk aan `state.presentationMode`.
+ */
+const mode = ref('zaal');
 
 let router = null;
 let demo = null;
@@ -23,11 +29,46 @@ const current = computed(() => slidesRef.value[index.value] ?? null);
 const total = computed(() => slidesRef.value.length);
 /** Full-screen slides: title, statement, closing, or anything without a route. */
 const isFull = computed(() => !current.value?.route);
+/**
+ * Staat het dek in beeld?
+ *
+ * In de zaal wel op een dia die het scherm dekt (het verhaal), niet op een dia
+ * die de demo opent: daar is het scherm van de demo en zou een rail ernaast
+ * juist verkleinen wat het publiek moet zien. Zelfstandig staat het dek er
+ * altijd, want dan is er niemand die het verhaal vertelt.
+ *
+ * De presentatie blijft in beide gevallen actief: alleen het renderen stopt,
+ * zodat pijltjes en spatie blijven bladeren en `stop()` de toetsen niet
+ * loskoppelt.
+ */
+const visible = computed(() => (mode.value === 'zaal' ? isFull.value : true));
 
 function init({ router: r, demo: d, slides }) {
   if (r) router = r;
   if (d) demo = d;
   if (slides) slidesRef.value = slides;
+}
+
+/**
+ * De klasse op <html> die de body naast het dek schuift, of juist niet.
+ * De body krijgt geen ruimte ingeruimd als het dek het scherm dekt én niet als
+ * het er helemaal niet staat; alleen de rail schuift op.
+ */
+function applyLayout(slide = current.value) {
+  // In de zaal schuift de body nooit op: het dek dekt het scherm of het staat
+  // er niet. Zelfstandig schuift hij alleen voor een dia met een route, want
+  // dan krimpt het dek tot de rail ernaast.
+  const full = mode.value === 'zaal' || !slide?.route;
+  document.documentElement.classList.toggle('rr-presenting-full', full);
+  // Staat het dek er niet, dan neemt het ook de persona niet meer voor zijn
+  // rekening, en moet de balk zijn eigen knoppen terugkrijgen.
+  const hidden = mode.value === 'zaal' && !!slide?.route;
+  document.documentElement.classList.toggle('rr-deck-hidden', hidden);
+}
+
+function setMode(m) {
+  mode.value = m === 'zelfstandig' ? 'zelfstandig' : 'zaal';
+  if (active.value) applyLayout();
 }
 
 /** Pulse-highlight what the presenter points at; failures never break the talk. */
@@ -44,7 +85,7 @@ function highlight(selector) {
 async function runSlide(i) {
   const s = slidesRef.value[i];
   if (!s) return;
-  document.documentElement.classList.toggle('rr-presenting-full', !s.route);
+  applyLayout(s);
   // The persona is a function of the slide index: the most recent `profile`
   // at or before this slide, so prev/next/goto agree.
   if (demo) {
@@ -83,6 +124,11 @@ function prev() {
 
 function onKey(e) {
   if (e.target?.closest?.('input, textarea, select, [contenteditable]')) return;
+  // Spatie bedient ook de knop die focus heeft. Zonder dek in beeld (zaalmodus)
+  // klikt de presentator in de demo zelf, en dan zou één spatie tegelijk de
+  // knop indrukken én een dia verder springen. De pijltjes blijven wel werken,
+  // want die doen op een knop niets.
+  if (e.key === ' ' && e.target?.closest?.('button, [role="button"], a[href], summary')) return;
   switch (e.key) {
     case 'ArrowRight':
     case ' ':
@@ -125,7 +171,7 @@ function start(i = 0) {
 
 function stop() {
   active.value = false;
-  document.documentElement.classList.remove('rr-presenting', 'rr-presenting-full');
+  document.documentElement.classList.remove('rr-presenting', 'rr-presenting-full', 'rr-deck-hidden');
   if (listening) {
     window.removeEventListener('keydown', onKey);
     listening = false;
@@ -133,5 +179,8 @@ function stop() {
 }
 
 export function usePresentation() {
-  return { active, index, current, total, isFull, slides: slidesRef, init, start, stop, next, prev, goTo };
+  // `mode` zelf gaat er niet uit: de bron daarvan is `state.presentationMode`
+  // in de store, en twee plekken om dezelfde waarde te lezen lopen uiteen.
+  // Wie wil weten wat het dek doet, leest `visible`.
+  return { active, index, current, total, isFull, visible, setMode, slides: slidesRef, init, start, stop, next, prev, goTo };
 }
