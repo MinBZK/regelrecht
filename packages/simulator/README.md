@@ -485,6 +485,48 @@ uitbreiding van RFC-013 stil achterlopen.
 | `obligations` | het betalingsschema dat uit dit besluit volgt: per termijn een vervaldatum, een bedrag en een volgnummer |
 | `receipt` | het volledige Execution Receipt, **met de uitvoeringstrace** (`results.trace`) |
 
+### Het schema van het decretogram: wat komt uit de wet?
+
+Bij het optuigen rekent elke besluit-definitie uit **welke velden** het gram dat
+ze voortbrengt zal dragen, en wie elk veld declareert. Dat schema staat in het
+beeld van de wereld (`cells[].besluiten[].schema`) en in de frontend, en het
+bestaat vóórdat er één besluit genomen is: het is de vorm van het gram en geen
+samenvatting van wat er al ligt.
+
+Per veld staan er een `name`, een `type` (de engine-typen — `string`, `number`,
+`boolean`, `date`, `amount`, `object`, `array` — met de `unit` uit het `type_spec`
+van de wet) en een `herkomst`:
+
+| herkomst | wat het zegt | `gat` |
+|---|---|---|
+| `lexogram` | een regeling declareert dit veld; met `regulation`, `valid_from` en `article` | nee |
+| `beleid` | hetzelfde, maar de regeling draagt `regulatory_layer: UITVOERINGSBELEID` | nee |
+| `wereldbestand` | het wereldbestand zegt het, en geen enkele regeling | **ja** |
+| `platform` | elk decretogram draagt het, ongeacht welke wet er draait | nee |
+
+**Waarom `wereldbestand` een gat is.** RFC-022 zegt dat normatieve inhoud in het
+**lexogram** hoort: de wet zegt wat er vastgesteld wordt, en de uitvoering voert
+uit. Wat in `besluit_definitions` staat — welke uitkomsten samen één gram vormen,
+het zaakkenmerk-sjabloon, de verplichtingen die uit het besluit volgen — is
+normatief én staat in de configuratie van deze opstelling. Een andere organisatie
+die dezelfde wet uitvoert, zou het opnieuw moeten verzinnen en zou er iets anders
+van kunnen maken, zonder dat één regeling verandert. Dat is precies wat het
+lexogram hoort te voorkomen, dus die velden dragen `gat: true` — niet als
+foutmelding, maar als **meting**: het is de lijst die korter hoort te worden.
+
+Twee dingen die het schema met opzet níet doet. Het spreekt zich niet uit over
+`platform`-velden: dat een gram zijn eigen moment, zijn eigen receipt en de stand
+van de kronieken waarop het leunde draagt, is geen norm die een wet had moeten
+stellen. En het verzwijgt niet waar het platform zijn waarde *leest*: bij
+`competent_authority` en `legal_character` staat het lexogram erbij — het artikel
+dat de aansturende uitkomst voortbrengt, of het document als de regeling het daar
+declareert (RFC-002-volgorde, dezelfde die het besluit-pad toepast).
+
+Het schema staat op de **nieuwste geladen versie** van de regeling; de versie
+staat er daarom bij. Een besluit over een ouder moment landt op een oudere versie
+en kan een ander schema hebben — wat er werkelijk gold, zegt het gram zelf met
+`regulation_valid_from`.
+
 ### De trace zit in het gram
 
 Het besluit-pad voert uit **met trace**, en die trace gaat ongewijzigd mee in het
@@ -1777,6 +1819,7 @@ is het vastgepinde voorbeeld):
 | `cells` | per cel haar `laws`, wat ze publiceert, wat ze kan besluiten, en haar kronieken |
 | `cells[].lexostatussen` | per gepubliceerde naam haar `doc`, de parameters met hun type, de uitkomsten, en — bij een kroniekfilter — de `key`: de stroom en het sleutelveld waarop gereduceerd wordt |
 | `cells[].besluiten` | per besluit zijn `doc`, het **zaakkenmerk-sjabloon** en de kroniek waarin de decretogrammen landen |
+| `cells[].besluiten[].schema` | het [schema van het decretogram](#het-schema-van-het-decretogram-wat-komt-uit-de-wet): per veld het type en wie het declareert, met `gat: true` waar geen enkel lexogram het dekt |
 | `cells[].chronicles[].grams` | elk gram met zijn soort (`lexogram`/`decretogram`/`executogram`), moment, kanaal, grondslag en velden |
 | `…grams[].fields[].origin` | de herkomst per waarde |
 | `actions` | elke actie met haar formulier, en of ze nu kan |

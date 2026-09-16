@@ -1,0 +1,56 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: test_uitvoeringsregel
+name: Testuitvoeringsregel tegemoetkoming
+regulatory_layer: UITVOERINGSBELEID
+bwb_id: BWBR9999905
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+url: https://example.com/test_uitvoeringsregel
+competent_authority: Uitvoerder
+
+# Een testregeling, met opzet **niet** in het corpus: ze bestaat om een
+# eigenschap van de opstelling aan te tonen en niet om recht weer te geven. Zie
+# `test_nabetaling` voor dezelfde afweging.
+#
+# Wat ze aantoont is het verschil tussen een wet en een **uitvoeringsregel**. Ze
+# draagt `regulatory_layer: UITVOERINGSBELEID` en verder alles wat een gewone
+# regeling ook heeft: een artikel dat een beschikking voortbrengt, met twee
+# uitkomsten en hun type. In het schema van het decretogram komen die uitkomsten
+# daarom niet als `lexogram` te staan maar als `beleid` — wat de uitvoering zelf
+# heeft opgeschreven, volgt niet uit de wet, en wie meet hoeveel van een besluit
+# uit het recht komt, hoort die twee niet bij elkaar op te tellen.
+articles:
+  - number: '1'
+    url: https://example.com/test_uitvoeringsregel#Artikel1
+    text: >-
+      De uitvoerder kent een tegemoetkoming toe aan degene die in aanmerking
+      komt, ter hoogte van het in deze regel genoemde bedrag.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          # Geen `source`: het besluit levert deze aan uit de eigen kroniek van
+          # de cel. De regel zegt alleen wat ze ermee doet.
+          - name: komt_in_aanmerking
+            type: boolean
+            source: {}
+        output:
+          - name: tegemoetkoming_toegekend
+            type: boolean
+          - name: hoogte_tegemoetkoming
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: tegemoetkoming_toegekend
+            value: $komt_in_aanmerking
+          - output: hoogte_tegemoetkoming
+            value: 12000

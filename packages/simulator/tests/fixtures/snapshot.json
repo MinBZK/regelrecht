@@ -562,13 +562,264 @@
           "name": "zorgtoeslag_toekenning",
           "doc": "Het eerste besluit over de zaak: recht en hoogte, met een betalingsverplichting eraan. Het toetsingsinkomen wordt geaccepteerd van de cel die het vaststelde en hier niet nagerekend (invariant I5).",
           "zaakkenmerk": "zorgtoeslag/{bsn}",
-          "chronicle": "beschikkingen"
+          "chronicle": "beschikkingen",
+          "schema": [
+            {
+              "name": "heeft_recht_op_zorgtoeslag",
+              "type": "boolean",
+              "herkomst": "lexogram",
+              "gat": false,
+              "lexogram": {
+                "regulation": "wet_op_de_zorgtoeslag",
+                "valid_from": "2025-01-01",
+                "article": "2",
+                "regulatory_layer": "WET"
+              }
+            },
+            {
+              "name": "hoogte_zorgtoeslag",
+              "type": "amount",
+              "unit": "eurocent",
+              "herkomst": "lexogram",
+              "gat": false,
+              "lexogram": {
+                "regulation": "wet_op_de_zorgtoeslag",
+                "valid_from": "2025-01-01",
+                "article": "2",
+                "regulatory_layer": "WET"
+              }
+            },
+            {
+              "name": "obligations[0]",
+              "type": "array",
+              "herkomst": "wereldbestand",
+              "gat": true,
+              "toelichting": "bedrag $hoogte_zorgtoeslag, betaald door 'belastingdienst', ritme '$betalingsritme'"
+            },
+            {
+              "name": "op_moment",
+              "type": "date",
+              "herkomst": "platform",
+              "gat": false
+            },
+            {
+              "name": "zaakkenmerk",
+              "type": "string",
+              "herkomst": "wereldbestand",
+              "gat": true,
+              "toelichting": "sjabloon 'zorgtoeslag/{bsn}'; waaronder de zaak in kroniek 'beschikkingen' terugkomt"
+            },
+            {
+              "name": "besluit",
+              "type": "string",
+              "herkomst": "wereldbestand",
+              "gat": true,
+              "toelichting": "besluit-definitie 'zorgtoeslag_toekenning': welke uitkomsten samen één gram vormen, staat in het wereldbestand"
+            },
+            {
+              "name": "regulation",
+              "type": "string",
+              "herkomst": "platform",
+              "gat": false
+            },
+            {
+              "name": "regulation_valid_from",
+              "type": "date",
+              "herkomst": "platform",
+              "gat": false
+            },
+            {
+              "name": "executed_regulations",
+              "type": "array",
+              "herkomst": "platform",
+              "gat": false
+            },
+            {
+              "name": "competent_authority",
+              "type": "string",
+              "herkomst": "platform",
+              "gat": false,
+              "lexogram": {
+                "regulation": "wet_op_de_zorgtoeslag",
+                "valid_from": "2025-01-01",
+                "article": null,
+                "regulatory_layer": "WET"
+              },
+              "toelichting": "het platform schrijft het in elk gram; de regeling wijst het aan (RFC-002)"
+            },
+            {
+              "name": "besloten_door",
+              "type": "string",
+              "herkomst": "platform",
+              "gat": false
+            },
+            {
+              "name": "legal_character",
+              "type": "string",
+              "herkomst": "platform",
+              "gat": false,
+              "lexogram": {
+                "regulation": "wet_op_de_zorgtoeslag",
+                "valid_from": "2025-01-01",
+                "article": "2",
+                "regulatory_layer": "WET"
+              },
+              "toelichting": "het platform schrijft het in elk gram; het artikel zegt het in `produces`"
+            },
+            {
+              "name": "inputs",
+              "type": "object",
+              "herkomst": "platform",
+              "gat": false
+            },
+            {
+              "name": "obligations",
+              "type": "array",
+              "herkomst": "wereldbestand",
+              "gat": true,
+              "toelichting": "de termijnen die uit de verplichtingen hierboven volgen"
+            },
+            {
+              "name": "chronicle_sources",
+              "type": "array",
+              "herkomst": "platform",
+              "gat": false
+            },
+            {
+              "name": "receipt",
+              "type": "object",
+              "herkomst": "platform",
+              "gat": false
+            }
+          ]
         },
         {
           "name": "zorgtoeslag_vaststelling",
           "doc": "Het tweede besluit over dezelfde zaak. Hetzelfde zaakkenmerk, dus het ligt in dezelfde kroniek van dezelfde cel — en het gaat opnieuw naar de bron voor het toetsingsinkomen, want er is nergens een kopie van het eerste antwoord.",
           "zaakkenmerk": "zorgtoeslag/{bsn}",
-          "chronicle": "beschikkingen"
+          "chronicle": "beschikkingen",
+          "schema": [
+            {
+              "name": "heeft_recht_op_zorgtoeslag",
+              "type": "boolean",
+              "herkomst": "lexogram",
+              "gat": false,
+              "lexogram": {
+                "regulation": "wet_op_de_zorgtoeslag",
+                "valid_from": "2025-01-01",
+                "article": "2",
+                "regulatory_layer": "WET"
+              }
+            },
+            {
+              "name": "hoogte_zorgtoeslag",
+              "type": "amount",
+              "unit": "eurocent",
+              "herkomst": "lexogram",
+              "gat": false,
+              "lexogram": {
+                "regulation": "wet_op_de_zorgtoeslag",
+                "valid_from": "2025-01-01",
+                "article": "2",
+                "regulatory_layer": "WET"
+              }
+            },
+            {
+              "name": "op_moment",
+              "type": "date",
+              "herkomst": "platform",
+              "gat": false
+            },
+            {
+              "name": "zaakkenmerk",
+              "type": "string",
+              "herkomst": "wereldbestand",
+              "gat": true,
+              "toelichting": "sjabloon 'zorgtoeslag/{bsn}'; waaronder de zaak in kroniek 'beschikkingen' terugkomt"
+            },
+            {
+              "name": "besluit",
+              "type": "string",
+              "herkomst": "wereldbestand",
+              "gat": true,
+              "toelichting": "besluit-definitie 'zorgtoeslag_vaststelling': welke uitkomsten samen één gram vormen, staat in het wereldbestand"
+            },
+            {
+              "name": "regulation",
+              "type": "string",
+              "herkomst": "platform",
+              "gat": false
+            },
+            {
+              "name": "regulation_valid_from",
+              "type": "date",
+              "herkomst": "platform",
+              "gat": false
+            },
+            {
+              "name": "executed_regulations",
+              "type": "array",
+              "herkomst": "platform",
+              "gat": false
+            },
+            {
+              "name": "competent_authority",
+              "type": "string",
+              "herkomst": "platform",
+              "gat": false,
+              "lexogram": {
+                "regulation": "wet_op_de_zorgtoeslag",
+                "valid_from": "2025-01-01",
+                "article": null,
+                "regulatory_layer": "WET"
+              },
+              "toelichting": "het platform schrijft het in elk gram; de regeling wijst het aan (RFC-002)"
+            },
+            {
+              "name": "besloten_door",
+              "type": "string",
+              "herkomst": "platform",
+              "gat": false
+            },
+            {
+              "name": "legal_character",
+              "type": "string",
+              "herkomst": "platform",
+              "gat": false,
+              "lexogram": {
+                "regulation": "wet_op_de_zorgtoeslag",
+                "valid_from": "2025-01-01",
+                "article": "2",
+                "regulatory_layer": "WET"
+              },
+              "toelichting": "het platform schrijft het in elk gram; het artikel zegt het in `produces`"
+            },
+            {
+              "name": "inputs",
+              "type": "object",
+              "herkomst": "platform",
+              "gat": false
+            },
+            {
+              "name": "obligations",
+              "type": "array",
+              "herkomst": "wereldbestand",
+              "gat": true,
+              "toelichting": "leeg: dit besluit legt geen verplichting op"
+            },
+            {
+              "name": "chronicle_sources",
+              "type": "array",
+              "herkomst": "platform",
+              "gat": false
+            },
+            {
+              "name": "receipt",
+              "type": "object",
+              "herkomst": "platform",
+              "gat": false
+            }
+          ]
         }
       ],
       "chronicles": [

@@ -317,11 +317,14 @@ fn het_beeld_en_de_gate_zien_dezelfde_contacten() {
 /// Het receipt gaat niet mee, en dat is te zien aan de JSON zelf.
 ///
 /// Via de tekst en niet via een veld, want het receipt is een geneste structuur:
-/// wie hem ooit alsnog meestuurt, zet er `"receipt"` in, waar dan ook.
+/// wie hem ooit alsnog meestuurt, zet er een sleutel `"receipt"` in, waar dan
+/// ook. De **naam** mag er wel staan: het schema van een decretogram noemt elk
+/// veld dat zo'n gram draagt, en `receipt` is er daar een van — die staat er als
+/// waarde (`"name": "receipt"`) en niet als sleutel met een receipt erachter.
 #[test]
 fn het_beeld_draagt_geen_receipt() {
     assert!(
-        !rendered().contains("\"receipt\""),
+        !rendered().contains("\"receipt\":"),
         "het receipt draagt wandkloktijd en hoort niet in het contract"
     );
 }

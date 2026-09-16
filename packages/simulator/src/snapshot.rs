@@ -26,9 +26,9 @@
 //! is — staat er wel, per veld.
 
 use crate::cell::{
-    fixed_fields, BesluitDefinition, Cell, ChronicleEvent, DocumentedParameter, Intake, Lexostatus,
-    LexostatusDefinition, ParameterType, Prefill, Reduction, BESCHIKKINGEN, INPUTS, RECEIPT,
-    REGULATION,
+    fixed_fields, BesluitDefinition, Cell, ChronicleEvent, DecretogramField, DocumentedParameter,
+    Intake, Lexostatus, LexostatusDefinition, ParameterType, Prefill, Reduction, BESCHIKKINGEN,
+    INPUTS, RECEIPT, REGULATION,
 };
 use crate::journal::JournalEntry;
 use crate::security::SignedAnswer;
@@ -169,6 +169,15 @@ pub struct BesluitDefinitionSnapshot {
     /// wil weten welke vorm de sleutel van een kroniek heeft, koppelt haar aan de
     /// besluiten die erin leggen — en hoort die naam niet zelf te hoeven kennen.
     pub chronicle: String,
+    /// Het **schema** van het decretogram dat dit besluit kan voortbrengen: per
+    /// veld het type en wie het declareert.
+    ///
+    /// Wat dit toevoegt aan het gram ernaast: een gram laat zien wat er in één
+    /// besluit stond, dit laat zien waar elk veld vandaan hoort te komen — ook
+    /// voordat er één besluit genomen is. Zo is te meten welk deel van een
+    /// decretogram uit de wet volgt en welk deel uit het wereldbestand, en dat
+    /// laatste is een gat (zie [`crate::Herkomst::gat`]).
+    pub schema: Vec<DecretogramField>,
 }
 
 /// Eén kroniekstroom met haar grammen.
@@ -441,7 +450,10 @@ fn cell_snapshot(cell: &Cell) -> CellSnapshot {
             .published_definitions()
             .map(lexostatus_snapshot)
             .collect(),
-        besluiten: cell.besluit_definitions().map(besluit_snapshot).collect(),
+        besluiten: cell
+            .besluit_definitions()
+            .map(|definition| besluit_snapshot(cell, definition))
+            .collect(),
         chronicles: cell
             .inspect()
             .into_iter()
@@ -478,12 +490,15 @@ fn lexostatus_snapshot(definition: &LexostatusDefinition) -> LexostatusDefinitio
 }
 
 /// Eén besluit, zoals de cel het documenteert.
-fn besluit_snapshot(definition: &BesluitDefinition) -> BesluitDefinitionSnapshot {
+fn besluit_snapshot(cell: &Cell, definition: &BesluitDefinition) -> BesluitDefinitionSnapshot {
     BesluitDefinitionSnapshot {
         name: definition.name.clone(),
         doc: definition.doc.clone(),
         zaakkenmerk: definition.zaakkenmerk.clone(),
         chronicle: BESCHIKKINGEN.to_string(),
+        // Uit de cel en niet hier uitgerekend: het schema hangt aan de wetten die
+        // zij geladen heeft, en die kent alleen zij.
+        schema: cell.besluit_schema(&definition.name).to_vec(),
     }
 }
 

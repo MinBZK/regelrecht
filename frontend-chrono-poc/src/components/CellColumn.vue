@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue';
+import BesluitSchema from './BesluitSchema.vue';
 import GramRow from './GramRow.vue';
 import {
   besluitDefinitions,
@@ -11,6 +12,11 @@ import {
 
 // Eén kolom per cel: wat deze cel laadt, wat ze publiceert, waarover ze kan
 // besluiten, en per kroniek de grammen in tijdsvolgorde.
+//
+// Bij de besluiten hoort het **schema** van het decretogram dat eruit komt: per
+// veld wie het declareert, en daarmee welk deel van een besluit uit de wet volgt
+// (zie `BesluitSchema.vue`). Dat staat hier en niet in een eigen tabblad, omdat
+// het over déze cel gaat: het hangt aan de wetten die zij laadt.
 //
 // Een cel zonder wetten is een bron-cel: ze legt vast en reduceert, en besluit
 // niet. Dat staat er, omdat het te zien hoort te zijn — het is de toets dat een
@@ -99,6 +105,8 @@ function isNew(stream, index) {
     </nldd-container>
 
     <nldd-container layout="stack" gap="16" padding="16" padding-top="8">
+      <BesluitSchema :cell="cell" />
+
       <nldd-container v-for="stream in streams" :key="stream.stream" layout="stack" gap="4">
         <nldd-title size="6">
           <span>{{ stream.stream }}</span>

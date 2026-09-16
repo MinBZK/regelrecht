@@ -83,6 +83,31 @@ test.describe('publieke wereld', () => {
     ).toBe(true);
   });
 
+  // Het schema van een decretogram staat er vóórdat er iets gebeurd is: het is
+  // de vorm die een besluit kan voortbrengen en geen samenvatting van wat er
+  // ligt. Dat het hier in de browser gecontroleerd wordt en niet alleen in een
+  // component-test, is omdat een ontwerpsysteem-component met een attribuut dat
+  // het niet kent stil niets rendert — en dat blijkt pas hier.
+  test('L4: het decretogram-schema van een besluit staat in de kolom van de cel', async () => {
+    const lijst = page.locator('nldd-list[accessible-label="Decretogram-schema van cel toeslagen"]');
+    await expect(lijst).toHaveCount(1);
+
+    const rij = lijst
+      .locator('nldd-list-item')
+      .filter({ has: page.locator('nldd-text-cell[text="zorgtoeslag_toekenning"]') })
+      .first();
+    await rij.click();
+
+    const tabel = page.locator('nldd-table[accessible-label*="zorgtoeslag_toekenning"]');
+    await expect(tabel).toBeVisible();
+    // Een veld dat de wet declareert, met het artikel erbij…
+    await expect(
+      tabel.locator('nldd-text-cell[supporting-text*="wet_op_de_zorgtoeslag, artikel 2"]').first(),
+    ).toBeVisible();
+    // …en een gat: normatieve inhoud die in het wereldbestand staat.
+    await expect(tabel.locator('nldd-tag[text="gat"]').first()).toBeVisible();
+  });
+
   test('F1: de aanvraag is voorgevuld uit het wereldbestand', async () => {
     world = await s.world();
     const aanvraag = world.actions.find((a) => a.id === 'burger.aanvraag');

@@ -70,6 +70,62 @@ export function besluitDefinitions(cell) {
 }
 
 /**
+ * De vier herkomsten die een veld van een decretogram kan hebben.
+ *
+ * Uit `packages/simulator/src/cell/schema.rs`; deze app verzint er geen vijfde
+ * bij. Het **gat** is de reden dat dit schema bestaat: normatieve inhoud die in
+ * het wereldbestand staat in plaats van in de wet (RFC-022), en die hoort er
+ * anders uit te zien dan een veld dat de wet wél declareert.
+ */
+export const FIELD_SOURCES = {
+  lexogram: { label: 'wet', color: 'paars', icon: 'book' },
+  beleid: { label: 'beleid', color: 'oranje', icon: 'book' },
+  wereldbestand: { label: 'wereldbestand', color: 'rood', icon: 'warning' },
+  platform: { label: 'platform', color: 'neutral', icon: 'server' },
+};
+
+const UNKNOWN_SOURCE = { label: 'onbekend', color: 'neutral', icon: 'question' };
+
+/**
+ * Het schema van het decretogram dat een besluit kan voortbrengen, klaar om te
+ * tonen.
+ *
+ * Per veld: de naam, het type met zijn eenheid, het herkomst-label en — als een
+ * regeling het veld declareert — welk artikel van welke versie dat is. Wat deze
+ * functie *niet* doet, is een herkomst afleiden: het beeld zegt het, en een veld
+ * waarvan het beeld niets zegt, blijft leesbaar in plaats van te verdwijnen.
+ */
+export function decretogramSchema(besluit) {
+  return (Array.isArray(besluit?.schema) ? besluit.schema : []).map((field) => ({
+    name: field.name,
+    type: [field.type ?? 'onbekend', field.unit].filter(Boolean).join(' · '),
+    gat: Boolean(field.gat),
+    source: FIELD_SOURCES[field.herkomst] ?? UNKNOWN_SOURCE,
+    lexogram: describeLexogram(field.lexogram),
+    toelichting: field.toelichting ?? '',
+  }));
+}
+
+/**
+ * Het artikel waar een veld vandaan komt, als één regel; leeg als geen regeling
+ * het declareert.
+ *
+ * De **versie** hoort erbij: een verwijzing naar een artikel zonder de versie
+ * waarin het zo luidt, wijst naar iets dat morgen anders kan staan.
+ */
+function describeLexogram(lexogram) {
+  if (!lexogram) return '';
+  const plek = lexogram.article ? `artikel ${lexogram.article}` : 'op het document';
+  const versie = lexogram.valid_from ? ` (versie ${formatMoment(lexogram.valid_from)})` : '';
+  return `${lexogram.regulation}, ${plek}${versie}`;
+}
+
+/** Hoeveel velden van dit besluit geen enkel lexogram dekt. */
+export function schemaGaps(besluit) {
+  return decretogramSchema(besluit).filter((field) => field.gat).length;
+}
+
+/**
  * De parameters van één lexostatus, met wat een vrager erover hoort te weten.
  *
  * Een parameter is meestal een waarde die de vrager al heeft (een BSN). Maar de

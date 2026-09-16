@@ -9,7 +9,9 @@ wereld aanbiedt, en die het woord van geen enkele casus kent.
   klok —, alle grammen op een rij, en het observatielog;
 - **daaronder** het [journaal](#het-journaal-is-de-hoofdweergave): één verhaal in
   tijdsvolgorde van wie wat deed en wat dat veranderde;
-- **daaronder** een kolom per cel, met per kroniek de grammen in tijdsvolgorde,
+- **daaronder** een kolom per cel, met het
+  [decretogram-schema](#welk-deel-van-een-besluit-volgt-uit-de-wet) van elk
+  besluit dat de cel kan nemen en per kroniek de grammen in tijdsvolgorde,
   gekleurd per soort (lexogram, decretogram, executogram); een decretogram klapt
   uit en toont per waarde waar ze vandaan komt;
 - **onderaan** de tijdlijn: waar de klok staat, elk moment waarop iets ligt als
@@ -128,6 +130,33 @@ toetsen viel wie mocht besluiten**. Dat hoort bij het gram waar het over gaat en
 niet in de lijst verstreken termijnen elders op de pagina: een besluit waarvan de
 wet niemand aanwees, is iets anders dan een gemiste termijn. Wees er niet te snel
 overheen — het is de afwezigheid van een toets, niet de uitkomst ervan.
+
+## Welk deel van een besluit volgt uit de wet?
+
+Bij de besluiten van een cel staat het **schema** van het decretogram dat eruit
+komt: per veld het type en wie het veld declareert. Het staat er vóórdat er één
+besluit genomen is — het is de vorm van het gram en geen samenvatting van wat er
+al ligt — en het komt kant-en-klaar uit het beeld
+(`cells[].besluiten[].schema`); deze app leidt geen herkomst af.
+
+| label | wat het zegt |
+|---|---|
+| wet | een regeling declareert het veld; het artikel en de versie staan erbij |
+| beleid | hetzelfde, maar het is een uitvoeringsregel (`UITVOERINGSBELEID`) en geen wet |
+| wereldbestand | de configuratie van de wereld zegt het, en geen enkele regeling |
+| platform | elk decretogram draagt het, ongeacht welke wet er draait |
+
+De rijen met **wereldbestand** dragen daarnaast een eigen label `gat`, en de kop
+van het besluit telt ze. Dat is de meting waar dit scherm voor bestaat:
+normatieve inhoud hoort in het lexogram (RFC-022), dus elk gat is iets dat de wet
+zou moeten zeggen en nu in een configuratiebestand staat. Wie er een dichtzet,
+hoort dat getal te zien zakken. De reden per gat staat erbij — het
+zaakkenmerk-sjabloon, de verplichting met haar bedrag en ritme — zodat er niet
+alleen een getal staat.
+
+Een platformveld waarvan de **wet** de waarde levert (`competent_authority`,
+`legal_character`) noemt het artikel erbij: het platform schrijft het veld in elk
+gram, maar het verzint de waarde niet.
 
 ## Een tweede besluit is een keuze, geen ongeluk
 
