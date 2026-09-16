@@ -22,6 +22,41 @@ use serde_yaml_ng::Value;
 
 use super::source_gate::ContextSidecar;
 
+/// Where an article sits in the document, or why that is not known.
+///
+/// Three states rather than a string, because "no enclosing container" and
+/// "nobody established where this sits" are opposite facts that a plain
+/// `String` collapses into the same empty value. The source gate writes the
+/// sidecar that carries placement; the enrich path runs without it, and a
+/// brief that renders an unknown placement as law-wide scope tells the agent
+/// that a definition governs an article nobody has checked it governs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Placement {
+    /// The document says this article sits inside these containers.
+    Known(String),
+    /// The document says nothing encloses this article, which is normal for a
+    /// short law.
+    NoContainer,
+    /// Nobody established where it sits: the sidecar is absent.
+    Unknown,
+}
+
+impl Placement {
+    /// Whether the two placements are known to describe the same container or
+    /// one enclosing the other, with `self` the wider of the two.
+    ///
+    /// `Unknown` on either side answers nothing: an unknown placement cannot
+    /// establish containment and must not be read as failing to either.
+    pub fn encloses(&self, inner: &Self) -> Option<bool> {
+        match (self, inner) {
+            (Self::Unknown, _) | (_, Self::Unknown) => None,
+            (Self::NoContainer, _) => Some(true),
+            (Self::Known(_), Self::NoContainer) => Some(false),
+            (Self::Known(outer), Self::Known(inner)) => Some(inner.starts_with(outer.as_str())),
+        }
+    }
+}
+
 /// One article, put back together from however many corpus entries carry it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AssembledArticle {
@@ -33,10 +68,58 @@ pub struct AssembledArticle {
     /// with the path it came from so the reader can address a lid.
     pub text: String,
     /// Where the article sits, e.g. "Hoofdstuk 3 Besluiten > Afdeling 3.3
-    /// Advisering". Empty when no container encloses it.
-    pub path: String,
+    /// Advisering", or why that is not known.
+    pub path: Placement,
+    /// How far this article's definitions reach, when it is one.
+    pub definition_scope: Option<DefinitionScope>,
     /// Whether any fragment already carries a translation.
     pub has_model: bool,
+}
+
+/// How far a begripsbepaling reaches, as the provision itself says.
+///
+/// A definition article announces its own scope: "in deze wet" reaches the
+/// whole statute, "in deze afdeling" reaches one afdeling, "voor de toepassing
+/// van dit artikel" reaches nothing outside itself. Placement alone cannot
+/// tell these apart, and reading every begripsbepaling as law-wide is how
+/// article 2.62 of the Wet basisregistratie personen, which says "in deze
+/// afdeling", ends up presented as governing article 1.1.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DefinitionScope {
+    /// "in deze wet" — every article of this statute.
+    WholeLaw,
+    /// "in dit hoofdstuk" — the chapter this article sits in.
+    Chapter,
+    /// "in deze afdeling" — the division this article sits in.
+    Division,
+    /// "in deze paragraaf" — the paragraph this article sits in.
+    Paragraph,
+    /// "voor de toepassing van dit artikel" — nothing but this article.
+    ArticleOnly,
+}
+
+impl DefinitionScope {
+    /// The container level this scope is bounded by, as it appears in a
+    /// placement path, or `None` when the scope needs no container.
+    pub fn container_prefix(self) -> Option<&'static str> {
+        match self {
+            Self::WholeLaw | Self::ArticleOnly => None,
+            Self::Chapter => Some("Hoofdstuk"),
+            Self::Division => Some("Afdeling"),
+            Self::Paragraph => Some("Paragraaf"),
+        }
+    }
+
+    /// What the brief calls this scope.
+    pub fn describe(self) -> &'static str {
+        match self {
+            Self::WholeLaw => "whole law",
+            Self::Chapter => "this chapter",
+            Self::Division => "this division",
+            Self::Paragraph => "this paragraph",
+            Self::ArticleOnly => "this article only",
+        }
+    }
 }
 
 /// Everything the agent gets for one law.
@@ -171,20 +254,27 @@ pub fn assemble(
             })
             .collect::<Vec<_>>()
             .join("\n\n");
+        let definition_scope = definition_scope(&text);
         articles.push(AssembledArticle {
             number: number.clone(),
             fragments: parts.iter().map(|f| f.entry.clone()).collect(),
+            path: match sidecar {
+                None => Placement::Unknown,
+                Some(s) => match s.articles.get(number) {
+                    None => Placement::Unknown,
+                    Some(a) if a.path.is_empty() => Placement::NoContainer,
+                    Some(a) => Placement::Known(a.path.clone()),
+                },
+            },
             text,
-            path: sidecar
-                .and_then(|s| s.articles.get(number).map(|a| a.path.clone()))
-                .unwrap_or_default(),
+            definition_scope,
             has_model: parts.iter().any(|f| f.has_model),
         });
     }
 
     let definitions = articles
         .iter()
-        .filter(|a| is_definition_article(&a.text))
+        .filter(|a| a.definition_scope.is_some())
         .cloned()
         .collect();
 
@@ -209,14 +299,69 @@ pub fn assemble(
     }
 }
 
-/// A definition provision announces itself in fixed words. Recognising it
-/// matters because its scope ("in deze wet", "in dit hoofdstuk", "in deze
-/// afdeling") bounds every term it defines.
-fn is_definition_article(text: &str) -> bool {
+/// How far a definition provision reaches, or `None` when it is not one.
+///
+/// A begripsbepaling announces itself in fixed words, and in the same breath
+/// it announces its own reach: "in deze wet", "in dit hoofdstuk", "in deze
+/// afdeling", "voor de toepassing van dit artikel". Keeping which one it was
+/// is the whole point — a scope thrown away can only be guessed back as the
+/// widest one, and the widest one is wrong in exactly the cases that matter.
+///
+/// The narrowest phrase present wins. An article that says "in deze wet" in
+/// its first lid and "voor de toepassing van dit artikel" in its fourth is
+/// still law-wide for the terms in the first, so widest-wins would be the
+/// defensible reading there; but the reverse combination is far more common in
+/// the corpus, and a definition offered too narrowly costs the agent a lookup
+/// while one offered too widely costs it a wrong rule.
+fn definition_scope(text: &str) -> Option<DefinitionScope> {
     let lower = text.to_lowercase();
-    lower.contains("wordt verstaan onder")
+    // Without one of these the article is not a begripsbepaling at all, and a
+    // scope phrase on its own ("in deze afdeling geldt een termijn van ...")
+    // is an ordinary rule.
+    let declares = lower.contains("wordt verstaan onder")
         || lower.contains("wordt in deze")
-        || lower.contains("verstaan onder:")
+        || lower.contains("verstaan onder:");
+    if !declares {
+        return None;
+    }
+    // Narrowest first.
+    for (needles, scope) in [
+        (
+            ["voor de toepassing van dit artikel", "in dit artikel"].as_slice(),
+            DefinitionScope::ArticleOnly,
+        ),
+        (
+            ["in deze paragraaf", "voor de toepassing van deze paragraaf"].as_slice(),
+            DefinitionScope::Paragraph,
+        ),
+        (
+            ["in deze afdeling", "voor de toepassing van deze afdeling"].as_slice(),
+            DefinitionScope::Division,
+        ),
+        (
+            ["in dit hoofdstuk", "voor de toepassing van dit hoofdstuk"].as_slice(),
+            DefinitionScope::Chapter,
+        ),
+        (
+            [
+                "in deze wet",
+                "voor de toepassing van deze wet",
+                "in dit besluit",
+                "in deze regeling",
+            ]
+            .as_slice(),
+            DefinitionScope::WholeLaw,
+        ),
+    ] {
+        if needles.iter().any(|n| lower.contains(n)) {
+            return Some(scope);
+        }
+    }
+    // It defines something and says nothing about how far that reaches. The
+    // article is the only container the text itself establishes, so that is
+    // what it gets: presenting it law-wide would be an assertion the provision
+    // never made.
+    Some(DefinitionScope::ArticleOnly)
 }
 
 #[cfg(test)]
@@ -307,6 +452,61 @@ articles:
         // that it completes "degene die:".
         assert!(a3.text.contains("mede verstaan onder partner degene die:"));
         assert!(a3.text.contains("[2.a] uit wiens relatie"));
+    }
+
+    #[test]
+    fn a_definition_keeps_the_scope_its_own_words_state() {
+        // Thrown away, this can only be guessed back as the widest scope, and
+        // the widest one is wrong in exactly the cases that matter.
+        for (text, want) in [
+            ("In deze wet wordt verstaan onder: a. toeslag: ...", DefinitionScope::WholeLaw),
+            ("In dit hoofdstuk wordt verstaan onder: b. peildatum: ...", DefinitionScope::Chapter),
+            (
+                "In deze afdeling en de daarop berustende bepalingen wordt verstaan onder een aangewezen bestuursorgaan: ...",
+                DefinitionScope::Division,
+            ),
+            ("In deze paragraaf wordt verstaan onder: c. termijn: ...", DefinitionScope::Paragraph),
+            (
+                "Voor de toepassing van dit artikel wordt verstaan onder: d. jaar: ...",
+                DefinitionScope::ArticleOnly,
+            ),
+            // States no scope at all, so it claims nothing beyond itself.
+            ("Hieronder wordt verstaan onder kind: een eigen kind.", DefinitionScope::ArticleOnly),
+        ] {
+            assert_eq!(definition_scope(text), Some(want), "{text}");
+        }
+        assert_eq!(
+            definition_scope("De toeslag bedraagt het standaardbedrag."),
+            None
+        );
+        // A scope phrase without a definition is an ordinary rule.
+        assert_eq!(
+            definition_scope("In deze afdeling geldt een termijn van zes weken."),
+            None
+        );
+    }
+
+    #[test]
+    fn placement_says_whether_anybody_looked() {
+        let doc: Value = serde_yaml_ng::from_str(
+            "$id: test_wet\narticles:\n  - number: '1'\n    text: De tekst.\n",
+        )
+        .unwrap();
+        // No sidecar: nobody established where article 1 sits.
+        assert_eq!(
+            assemble(&doc, &known(), None).articles[0].path,
+            Placement::Unknown
+        );
+
+        let sidecar: ContextSidecar = serde_yaml_ng::from_str(
+            "bwb_id: BWBR0000000\nvalid_from: '2026-01-01'\narticles:\n  '1':\n    verdict: verified\n",
+        )
+        .unwrap();
+        // Sidecar present and silent about containers: none enclose it.
+        assert_eq!(
+            assemble(&doc, &known(), Some(&sidecar)).articles[0].path,
+            Placement::NoContainer
+        );
     }
 
     #[test]

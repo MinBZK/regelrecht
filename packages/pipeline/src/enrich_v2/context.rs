@@ -47,7 +47,7 @@ use std::path::{Path, PathBuf};
 
 use serde_yaml_ng::Value;
 
-use super::assemble::{split_number, AssembledArticle, LawContext};
+use super::assemble::{split_number, AssembledArticle, DefinitionScope, LawContext, Placement};
 
 /// File the worker writes beside the law for the agent to read.
 ///
@@ -611,21 +611,103 @@ pub fn resolve_citations(
     out
 }
 
-/// Definition articles that govern an article, by container.
+/// Whether a definition provision governs an article, and on what evidence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Governs {
+    /// It governs the article, and the document establishes that it does.
+    Yes,
+    /// It does not govern the article.
+    No,
+    /// It would govern the article if the two sit in the same container, and
+    /// nobody has established where either of them sits.
+    Unknown,
+}
+
+/// Whether one definition provision governs one article.
 ///
-/// A definition provision applies to whatever encloses it: one in hoofdstuk 1
-/// reaches everything below, one at the head of an afdeling reaches that
-/// afdeling. The path is a prefix chain, so a definition governs an article
-/// when its own path is a prefix of the article's, and a definition with no
-/// path governs the whole law.
+/// Two independent facts decide this, and the older version used only the
+/// second. The first is what the provision says about itself: "in deze wet"
+/// reaches everything, "in deze afdeling" reaches one afdeling, "voor de
+/// toepassing van dit artikel" reaches nothing else at all. The second is
+/// where the two articles sit, which bounds every scope narrower than the
+/// whole law.
+///
+/// Placement comes from the source gate's sidecar and the enrich path runs
+/// without it, so the common case is that the second fact is simply not
+/// available. That is `Unknown`, not `Yes`: a container-scoped definition
+/// whose container nobody knows may well govern this article, and may equally
+/// well be the begripsbepaling of a different afdeling.
+#[must_use]
+pub fn governs(definition: &AssembledArticle, article: &AssembledArticle) -> Governs {
+    if definition.number == article.number {
+        // An article's own definitions are already in front of the agent.
+        return Governs::No;
+    }
+    let Some(scope) = definition.definition_scope else {
+        return Governs::No;
+    };
+    match scope {
+        DefinitionScope::WholeLaw => Governs::Yes,
+        DefinitionScope::ArticleOnly => Governs::No,
+        _ => match definition.path.encloses(&article.path) {
+            None => Governs::Unknown,
+            Some(false) => Governs::No,
+            // Sharing a prefix is necessary but not sufficient: a definition
+            // for "deze afdeling" placed in a hoofdstuk that holds several
+            // afdelingen encloses articles in all of them. Require the level
+            // the scope names to be present and identical on both sides.
+            Some(true) => {
+                if same_container_at(&definition.path, &article.path, scope) {
+                    Governs::Yes
+                } else {
+                    Governs::No
+                }
+            }
+        },
+    }
+}
+
+/// Whether two placements name the same container at the level a scope bounds.
+///
+/// The path is "Hoofdstuk 3 Toeslagen > Afdeling 3.1 Recht", so the level is
+/// found by its leading word. A scope that names a level neither placement
+/// carries governs nothing it can prove: the provision claims an afdeling and
+/// the document knows of none.
+fn same_container_at(definition: &Placement, article: &Placement, scope: DefinitionScope) -> bool {
+    let Some(prefix) = scope.container_prefix() else {
+        return true;
+    };
+    let segment = |p: &Placement| -> Option<String> {
+        let Placement::Known(path) = p else {
+            return None;
+        };
+        path.split(" > ")
+            .find(|s| s.starts_with(prefix))
+            .map(str::to_owned)
+    };
+    match (segment(definition), segment(article)) {
+        (Some(a), Some(b)) => a == b,
+        _ => false,
+    }
+}
+
+/// Definition articles that bear on an article, with what is known about each.
+///
+/// Returns the ones that govern and the ones that might, because the brief has
+/// to distinguish them: an agent told that a definition governs an article is
+/// being told a fact, and an agent told that placement is unavailable is being
+/// told to read the provision's own words and decide.
 #[must_use]
 pub fn governing_definitions<'a>(
     law: &'a LawContext,
     article: &AssembledArticle,
-) -> Vec<&'a AssembledArticle> {
+) -> Vec<(&'a AssembledArticle, Governs)> {
     law.definitions
         .iter()
-        .filter(|d| d.path.is_empty() || article.path.starts_with(d.path.as_str()))
+        .filter_map(|d| match governs(d, article) {
+            Governs::No => None,
+            verdict => Some((d, verdict)),
+        })
         .collect()
 }
 
@@ -658,24 +740,40 @@ pub fn render_brief(law: &LawContext, window: &[String], cited: &[CitedArticle])
             continue;
         };
         let _ = writeln!(out, "## Article {number}");
-        if article.path.is_empty() {
-            let _ = writeln!(out, "\nPlacement: no enclosing container.");
-        } else {
-            let _ = writeln!(out, "\nPlacement: {}", article.path);
+        match &article.path {
+            Placement::NoContainer => {
+                let _ = writeln!(out, "\nPlacement: no enclosing container.");
+            }
+            Placement::Known(path) => {
+                let _ = writeln!(out, "\nPlacement: {path}");
+            }
+            Placement::Unknown => {
+                let _ = writeln!(
+                    out,
+                    "\nPlacement: not established. Nobody has recorded which containers \n\
+                     enclose this article, so this is not a claim that none do."
+                );
+            }
         }
 
         let definitions = governing_definitions(law, article);
         if definitions.is_empty() {
             let _ = writeln!(out, "\nNo definition provision governs this article.");
         } else {
-            let _ = writeln!(out, "\n### Definitions that govern it");
-            for d in definitions {
-                let scope = if d.path.is_empty() {
-                    "whole law".to_owned()
-                } else {
-                    d.path.clone()
-                };
-                let _ = writeln!(out, "\n**Article {} ({scope})**\n\n{}", d.number, d.text);
+            let _ = writeln!(out, "\n### Definitions that bear on it");
+            for (d, verdict) in definitions {
+                let scope = d
+                    .definition_scope
+                    .map_or("scope not stated", DefinitionScope::describe);
+                let _ = writeln!(out, "\n**Article {} (scope: {scope})**", d.number);
+                if verdict == Governs::Unknown {
+                    let _ = writeln!(
+                        out,
+                        "\n*This provision bounds itself to a container. Which articles sit in \n\
+                         that container is not established here, so read its own words and judge.*"
+                    );
+                }
+                let _ = writeln!(out, "\n{}", d.text);
             }
         }
 
@@ -856,14 +954,28 @@ pub fn write_brief(
 mod tests {
     use super::*;
 
+    /// An article with placement established: the path, or no container.
     fn article(number: &str, path: &str, text: &str) -> AssembledArticle {
-        AssembledArticle {
-            number: number.to_owned(),
-            fragments: vec![number.to_owned()],
-            text: text.to_owned(),
-            path: path.to_owned(),
-            has_model: false,
-        }
+        let mut a = unplaced(number, text);
+        a.path = if path.is_empty() {
+            Placement::NoContainer
+        } else {
+            Placement::Known(path.to_owned())
+        };
+        a
+    }
+
+    /// An article nobody has established the placement of, which is what the
+    /// enrich path sees whenever the source gate has not run.
+    fn unplaced(number: &str, text: &str) -> AssembledArticle {
+        // The scope comes out of the text by the same route production uses,
+        // so a test cannot assert a scope the words do not carry.
+        let doc: Value = serde_yaml_ng::from_str(&format!(
+            "articles:\n  - number: {number:?}\n    text: {text:?}\n"
+        ))
+        .expect("parse");
+        let assembled = super::super::assemble::assemble(&doc, &[number.to_owned()], None);
+        assembled.articles.into_iter().next().expect("one article")
     }
 
     fn law(articles: Vec<AssembledArticle>, definitions: Vec<AssembledArticle>) -> LawContext {
@@ -1031,11 +1143,105 @@ mod tests {
         );
         let governing: Vec<&str> = governing_definitions(&l, &l.articles[0])
             .iter()
-            .map(|d| d.number.as_str())
+            .map(|(d, _)| d.number.as_str())
             .collect();
         // The law-wide one and the enclosing chapter's, never the sibling
         // chapter's.
         assert_eq!(governing, vec!["1", "7"]);
+    }
+
+    #[test]
+    fn a_division_scoped_definition_does_not_govern_the_whole_law() {
+        // Measured on the Wet basisregistratie personen: article 1.1 says "in
+        // deze wet" and article 2.62 says "in deze afdeling", and the brief
+        // presented 2.62 to 1.1 as governing the whole law.
+        let l = law(
+            vec![article(
+                "1.1",
+                "Hoofdstuk 1 Algemeen",
+                "De minister houdt een register bij.",
+            )],
+            vec![
+                article(
+                    "1.1",
+                    "Hoofdstuk 1 Algemeen",
+                    "In deze wet wordt verstaan onder: a. ingeschrevene: ...",
+                ),
+                article(
+                    "2.62",
+                    "Hoofdstuk 2 Basisregistratie > Afdeling 3 Aangewezen bestuursorganen",
+                    "In deze afdeling wordt verstaan onder een aangewezen bestuursorgaan: ...",
+                ),
+            ],
+        );
+        let governing: Vec<&str> = governing_definitions(&l, &l.articles[0])
+            .iter()
+            .map(|(d, _)| d.number.as_str())
+            .collect();
+        assert!(
+            !governing.contains(&"2.62"),
+            "a definition for one afdeling was offered to an article outside it"
+        );
+    }
+
+    #[test]
+    fn an_article_scoped_definition_governs_nothing_but_itself() {
+        let l = law(
+            vec![article("8", "", "De toeslag bedraagt X.")],
+            vec![article(
+                "7",
+                "",
+                "Voor de toepassing van dit artikel wordt verstaan onder: a. jaar: ...",
+            )],
+        );
+        assert!(governing_definitions(&l, &l.articles[0]).is_empty());
+    }
+
+    #[test]
+    fn a_definition_that_states_no_scope_is_not_read_as_law_wide() {
+        // "wordt verstaan onder" with no scope phrase claims nothing beyond
+        // the article it stands in, and reading it law-wide is an assertion
+        // the provision never made.
+        let l = law(
+            vec![article("8", "", "De toeslag bedraagt X.")],
+            vec![article(
+                "7",
+                "",
+                "Onder kind wordt verstaan: een eigen kind.",
+            )],
+        );
+        assert!(governing_definitions(&l, &l.articles[0]).is_empty());
+    }
+
+    #[test]
+    fn unknown_placement_is_neither_governing_nor_absent() {
+        // The enrich path runs without the source gate's sidecar, so this is
+        // the common case rather than an edge one. A container-scoped
+        // definition whose container nobody knows may govern this article and
+        // may equally be the begripsbepaling of another afdeling.
+        let definition = unplaced(
+            "2.62",
+            "In deze afdeling wordt verstaan onder: a. orgaan: ...",
+        );
+        let target = unplaced("1.1", "De minister houdt een register bij.");
+        assert_eq!(definition.path, Placement::Unknown);
+        assert_eq!(governs(&definition, &target), Governs::Unknown);
+
+        let l = law(vec![target], vec![definition]);
+        let brief = render_brief(&l, &["1.1".to_owned()], &[]);
+        assert!(
+            !brief.contains("whole law"),
+            "an unknown scope was presented as law-wide:\n{brief}"
+        );
+        assert!(brief.contains("not established"), "{brief}");
+    }
+
+    #[test]
+    fn placement_not_established_does_not_read_as_no_container() {
+        let l = law(vec![unplaced("8", "De toeslag bedraagt X.")], vec![]);
+        let brief = render_brief(&l, &["8".to_owned()], &[]);
+        assert!(brief.contains("Placement: not established"), "{brief}");
+        assert!(!brief.contains("no enclosing container"), "{brief}");
     }
 
     #[test]
