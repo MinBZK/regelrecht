@@ -179,5 +179,20 @@ describe('TrajectDetailsPane subpath', () => {
     expect(subpathField(w).attributes('unmet')).toBe(
       w.find('nldd-validation-item').attributes('id'),
     );
+
+    // Zodra de gebruiker het pad corrigeert verdwijnt de melding, samen met
+    // de invalid-markering op het veld.
+    const field = subpathField(w);
+    field.element.value = 'regulation/nl';
+    field.element.dispatchEvent(
+      new CustomEvent('input', {
+        detail: { value: 'regulation/nl' },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+    await w.vm.$nextTick();
+    expect(subpathField(w).attributes('invalid')).toBeUndefined();
+    expect(w.find('nldd-validation-item').text()).toBe('');
   });
 });
