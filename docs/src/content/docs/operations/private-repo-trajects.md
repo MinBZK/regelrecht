@@ -103,6 +103,14 @@ Before anything is stored, the editor runs a **preflight check** against the Git
 
 It then creates the traject branch on GitHub. If any of these steps fails you get a specific error (see [error messages](#error-messages-and-what-they-mean) below), no row is written to the database, and you can retry straight after fixing the cause. If the database write fails after the branch was created, the branch stays behind on GitHub; the editor logs it but does not remove it.
 
+## Changing the subpath later
+
+If the regulation moves to a different place in the repository over time, for example because working folders were added next to the corpus, the traject owner changes the subpath under **Instellingen → Algemeen → Subpath**. Leaving it empty means the repository root.
+
+The subpath is the root of everything the editor reads and writes on this repository: laws, scenarios, annotations (`annotations/<law>/annotations.yaml`) and documents (`documents/<traject-ref>/`). After a change the editor looks for them under the new path. Existing annotations and documents do not move along by themselves; you move them yourself on the traject branch. Whatever lies outside the subpath is left alone by the editor; it just no longer counts as regulation.
+
+Only the traject owner can do this, and only on an own repository: trajects that write to the central corpus keep the fixed path `regulation/nl`.
+
 ## How commit attribution works
 
 Every save in a traject produces a commit on the traject branch. Who it is attributed to depends on the token:
