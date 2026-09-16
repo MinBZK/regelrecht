@@ -3892,6 +3892,7 @@ async fn evaluate_gate(
                 &raw,
                 Some(corpus_root),
                 yaml_abs.parent(),
+                Some(yaml_abs),
             )
             .findings
             {
