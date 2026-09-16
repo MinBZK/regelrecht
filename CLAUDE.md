@@ -272,12 +272,18 @@ is the same reason the published papers are frozen: a document that quietly
 tracks the code cannot be cited, and a reader who follows a reference has to
 find what the author wrote.
 
-What needs no supersede: updating a reference when another document is renamed,
-*adding* a note about what a later RFC did with the old decision, and correcting
-`implementation`, which describes the build state rather than the design.
+The frontmatter is not the design. `status` moving to `Superseded` or
+`Rejected`, and `implementation` tracking what is built, are records *about* the
+document and are expected to change; that is what those fields are for. What
+stays put is the body: the claim the author made.
 
-What does: replacing the title, the central concept, or the field definitions.
-RFC-012 is the worked example. Schema v0.7.0 renames its channel from
+What else needs no supersede: updating a reference when another document is
+renamed, and *adding* a note about what a later RFC did with the old decision.
+RFC-007 carries such a note pointing at [RFC-041](/rfcs/rfc-041), which amends
+its contextual-law rule for voids, and its own text is untouched.
+
+What does need one: replacing the title, the central concept, or the field
+definitions. RFC-012 is the worked example. Schema v0.7.0 renames its channel from
 `untranslatables` to `markings`, and the first attempt rewrote RFC-012 to match.
 It now stands unchanged on `Superseded`, and [RFC-031](/rfcs/rfc-031) carries the
 new design, because a law file on schema v0.5.x still carries `untranslatables`
