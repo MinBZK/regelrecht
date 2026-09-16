@@ -903,7 +903,14 @@ pub struct Marking {
     pub resolved_by: Option<String>,
     /// The values in this article that cannot be produced because of this
     /// marking. An empty list is a statement and not an omission: it says the
-    /// article stays executable and only its explanation is incomplete.
+    /// marking is a flag on an article that is otherwise worked out, and that
+    /// only the explanation is incomplete.
+    ///
+    /// Read by nobody here. The engine decides what a marked article does from
+    /// `accepted` and the modes of RFC-012, which do not consult this field;
+    /// the rule that a named value is absent from the article's actions is
+    /// enforced by the enrichment gate when the file is written. The schema is
+    /// the canonical statement of both.
     pub target: Vec<String>,
     /// The words from this article's own legal text that the marking hangs on.
     pub legal_text_excerpt: String,
