@@ -129,6 +129,90 @@ describe('het receipt van een decretogram', () => {
     expect(wrapper.find('nldd-table').exists()).toBe(false);
   });
 
+  it('zet de uitvoeringstrace als boom neer, met de wortel al open', async () => {
+    const wrapper = await panel();
+    const tree = wrapper.findAll('nldd-list').find((list) => list.attributes('type') === 'tree');
+    expect(tree).toBeDefined();
+
+    const rows = tree.findAll('nldd-list-item');
+    // De wortel staat open, dus haar directe stappen staan eronder; wat daar weer
+    // onder hangt, staat er niet: dicht is dicht.
+    expect(rows).toHaveLength(3);
+    expect(rows[0].attributes('expanded')).toBe('true');
+    expect(rows.slice(1).every((row) => row.attributes('slot') === 'children')).toBe(true);
+  });
+
+  it('noemt per stap van de trace de regeling en het artikel', async () => {
+    const wrapper = await panel();
+    const tree = wrapper.findAll('nldd-list').find((list) => list.attributes('type') === 'tree');
+    const supporting = tree
+      .findAll('nldd-text-cell')
+      .map((cell) => cell.attributes('supporting-text') ?? '');
+    expect(supporting.some((text) => text.includes('wet_op_de_zorgtoeslag, artikel 3'))).toBe(true);
+
+    // En de soort stap in gewone woorden, niet de naam die de engine eraan geeft.
+    const tags = tree.findAll('nldd-tag').map((tag) => tag.attributes('text'));
+    expect(tags).toContain('Uitvoering');
+    expect(tags).toContain('Artikel rekent');
+  });
+
+  it('klapt een tak open en weer dicht', async () => {
+    const wrapper = await panel();
+    const tree = () => wrapper.findAll('nldd-list').find((list) => list.attributes('type') === 'tree');
+    const rekenend = tree().findAll('nldd-list-item')[2];
+
+    await rekenend.trigger('click');
+    // De bewerking eronder komt erbij; de wortel blijft staan waar hij stond.
+    expect(tree().findAll('nldd-list-item')).toHaveLength(4);
+
+    await tree().findAll('nldd-list-item')[2].trigger('click');
+    expect(tree().findAll('nldd-list-item')).toHaveLength(3);
+  });
+
+  it('houdt de toetsaanslagen van de trace bij de trace', async () => {
+    // Dit paneel hangt in de uitklap van een rij van het grammenoverzicht, en dat
+    // overzicht is zelf een boom die zijn toetsenbord op de langskomende `keydown`
+    // uitvoert. Borrelt een pijltje uit de trace daarheen door, dan handelen ze
+    // hem allebei af en trekt het overzicht de aanwijzing uit de trace weg naar
+    // een gram — de lezer raakt bij de eerste pijl omlaag kwijt waar hij was.
+    const wrapper = await panel();
+    const buiten = vi.fn();
+    wrapper.element.addEventListener('keydown', buiten);
+
+    const tree = wrapper.findAll('nldd-list').find((list) => list.attributes('type') === 'tree');
+    tree
+      .findAll('nldd-list-item')[0]
+      .element.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+
+    expect(buiten).not.toHaveBeenCalled();
+  });
+
+  it('zegt het als een receipt geen trace draagt', async () => {
+    // Een besluit van vóór deze versie, of een gram dat nooit langs een engine
+    // kwam: dan staat er wat er is en niet een lege boom.
+    const receipt = cloneReceipt();
+    delete receipt.results.trace;
+    const wrapper = await panel(receipt);
+    expect(wrapper.findAll('nldd-list').some((list) => list.attributes('type') === 'tree')).toBe(
+      false,
+    );
+    expect(
+      wrapper.findAll('nldd-inline-dialog').some((dialog) => dialog.attributes('text') === 'Geen uitvoeringstrace'),
+    ).toBe(true);
+  });
+
+  it('doet de trace dicht als het paneel een ander gram aanwijst', async () => {
+    // De paden van de ene trace zeggen niets over de andere: een tak die "nog
+    // open stond" zou in een ander besluit een willekeurige tak zijn.
+    const wrapper = await panel();
+    const tree = () => wrapper.findAll('nldd-list').find((list) => list.attributes('type') === 'tree');
+    await tree().findAll('nldd-list-item')[2].trigger('click');
+    expect(tree().findAll('nldd-list-item')).toHaveLength(4);
+
+    await wrapper.setProps({ index: 1 });
+    await vi.waitFor(() => expect(tree().findAll('nldd-list-item')).toHaveLength(3));
+  });
+
   it('haalt opnieuw op als het paneel een ander gram aanwijst', async () => {
     const wrapper = await panel();
     await wrapper.setProps({ index: 1 });

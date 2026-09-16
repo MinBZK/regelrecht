@@ -135,6 +135,22 @@ pub const VOLGNUMMER: &str = "volgnummer";
 pub const BESLUIT_CEL: &str = "besluit_cel";
 /// Veld met het moment van dat besluit.
 pub const BESLUIT_OP_MOMENT: &str = "besluit_op_moment";
+/// Veld met de kroniekstroom waarin het decretogram van dat besluit ligt.
+///
+/// Altijd [`BESCHIKKINGEN`] — een decretogram ligt nergens anders — en toch als
+/// veld, want samen met [`BESLUIT_CEL`] en [`BESLUIT_GRAM`] vormt het de
+/// volledige verwijzing `<cel>|<kroniek>|<plek>` waarmee het beeld van de wereld
+/// een gram aanwijst. Twee van de drie opschrijven en de derde laten raden, zou
+/// de verwijzing afhankelijk maken van een afspraak buiten het gram.
+pub const BESLUIT_KRONIEK: &str = "besluit_kroniek";
+/// Veld met de plek van dat decretogram in die stroom, geteld vanaf nul.
+///
+/// Hiermee komt een lezer van de betaling bij het besluit zelf — en dus bij het
+/// receipt en de uitvoeringstrace daarin. Zonder deze plek staat er wel *welk*
+/// besluit het was, maar moet een lezer de kroniek van de besluitende cel
+/// aflopen om het te vinden, en dat is precies het werk dat een verwijzing hoort
+/// weg te nemen (RFC-013: het besluit moet na te lopen zijn).
+pub const BESLUIT_GRAM: &str = "besluit_gram";
 
 /// De velden die elke vastlegging in [`BETALINGEN`] draagt.
 ///
@@ -148,6 +164,8 @@ pub(crate) fn betaling_fields() -> BTreeSet<String> {
         VOLGNUMMER,
         BESLUIT,
         BESLUIT_CEL,
+        BESLUIT_KRONIEK,
+        BESLUIT_GRAM,
         BESLUIT_OP_MOMENT,
     ]
     .iter()
@@ -349,6 +367,24 @@ pub struct ObligationDue {
     /// en niet uit [`Self::schedule`] af te leiden: een besluit mag meer dan één
     /// verplichting opleggen, elk met een eigen ritme.
     pub termijnen: i64,
+    /// De plek van het decretogram in [`BESCHIKKINGEN`] van [`Self::decided_by`].
+    ///
+    /// Samen met die cel en die stroom is dit de verwijzing waarmee het beeld
+    /// van de wereld een gram aanwijst, en dus de weg van een betaling terug naar
+    /// het besluit en zijn uitvoeringstrace.
+    ///
+    /// Wordt gezet ná het vastleggen van dat gram, in [`crate::Cell::decide`]:
+    /// het is de plek waar het gram terechtkwam en niet de plek waar het naar
+    /// verwachting terecht zou komen.
+    ///
+    /// Tussen het inroosteren en dat vastleggen staat er nul, en nul is hier
+    /// géén "nog niet ingevuld": het is de plek van het eerste gram in de
+    /// stroom. Dat dit toch geen half antwoord kan opleveren, hangt aan twee
+    /// dingen die samen in [`crate::Cell::decide`] staan: het schema wordt daar
+    /// gemaakt én daar ingevuld, en het decretogram schrijft deze plek niet mee
+    /// in zijn eigen gram (zie `ObligationDue::as_value`). Een verplichting
+    /// bestaat hier dus nooit buiten het besluit dat haar oplegde om.
+    pub besluit_gram: usize,
 }
 
 impl ObligationDue {
@@ -365,6 +401,14 @@ impl ObligationDue {
             (
                 BESLUIT_CEL.to_string(),
                 Value::String(self.decided_by.clone()),
+            ),
+            (
+                BESLUIT_KRONIEK.to_string(),
+                Value::String(BESCHIKKINGEN.to_string()),
+            ),
+            (
+                BESLUIT_GRAM.to_string(),
+                Value::Int(i64::try_from(self.besluit_gram).unwrap_or(i64::MAX)),
             ),
             (
                 BESLUIT_OP_MOMENT.to_string(),
@@ -1374,6 +1418,10 @@ impl BesluitDefinition {
                     // zie [`ObligationDue::volgnummer`].
                     volgnummer: i64::try_from(due.len() + 1).unwrap_or(i64::MAX),
                     termijnen,
+                    // De plek van het gram is hier nog niet bekend: het besluit
+                    // is nog niet vastgelegd, en deze termijnen gaan er juist in
+                    // mee. `Cell::decide` vult hem in zodra het gram ligt.
+                    besluit_gram: 0,
                 });
             }
         }

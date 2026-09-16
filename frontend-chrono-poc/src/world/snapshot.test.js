@@ -7,6 +7,7 @@ import {
   clockIndex,
   competentAuthorityOf,
   decidedAlready,
+  decretogramRefOf,
   describeEffect,
   describeHerkomst,
   describeOrigin,
@@ -415,6 +416,41 @@ describe('het besluit zelf', () => {
     const zonder = { fields: { competent_authority: { value: null }, besloten_door: { value: 'uitvoerder' } } };
     expect(competentAuthorityOf(zonder)).toStrictEqual({ authority: null, decidedBy: 'uitvoerder' });
     expect(competentAuthorityOf({ fields: {} })).toBeNull();
+  });
+});
+
+describe('de weg van een betaling terug naar het besluit', () => {
+  /** Het eerste executogram over een betaling uit de fixture. */
+  const betaling = allGrams(worldFixture).find((row) => row.gram.fields?.besluit_gram).gram;
+
+  it('maakt van de losse velden het id waarmee het beeld een gram aanwijst', () => {
+    const ref = decretogramRefOf(betaling);
+    expect(ref.id).toBe(`${ref.cell}|${ref.chronicle}|${ref.index}`);
+    expect(gramByRef(worldFixture, ref)).not.toBeNull();
+    expect(gramByRef(worldFixture, ref).kind).toBe('decretogram');
+  });
+
+  it('draagt het besluit, het moment en het termijnnummer erbij', () => {
+    const ref = decretogramRefOf(betaling);
+    expect(ref.besluit).toBe(String(betaling.fields.besluit.value));
+    expect(ref.opMoment).toBe(String(betaling.fields.besluit_op_moment.value));
+    expect(ref.volgnummer).toBe(Number(betaling.fields.volgnummer.value));
+  });
+
+  it('geeft niets voor een gram dat geen betaling is', () => {
+    expect(decretogramRefOf({ fields: {} })).toBeNull();
+  });
+
+  it('geeft niets voor een halve verwijzing', () => {
+    // Half tonen zou een link opleveren die soms nergens op uitkomt, en dat is
+    // erger dan geen link.
+    const half = structuredClone(betaling);
+    delete half.fields.besluit_kroniek;
+    expect(decretogramRefOf(half)).toBeNull();
+
+    const slordig = structuredClone(betaling);
+    slordig.fields.besluit_gram.value = ' 1 ';
+    expect(decretogramRefOf(slordig)).toBeNull();
   });
 });
 

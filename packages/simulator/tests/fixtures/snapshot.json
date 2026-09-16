@@ -162,6 +162,22 @@
                     "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
                   }
                 },
+                "besluit_gram": {
+                  "value": 0,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                  }
+                },
+                "besluit_kroniek": {
+                  "value": "beschikkingen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                  }
+                },
                 "besluit_op_moment": {
                   "value": "2024-04-01",
                   "origin": {
@@ -214,6 +230,22 @@
                 },
                 "besluit_cel": {
                   "value": "toeslagen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                  }
+                },
+                "besluit_gram": {
+                  "value": 0,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                  }
+                },
+                "besluit_kroniek": {
+                  "value": "beschikkingen",
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
@@ -278,6 +310,22 @@
                     "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
                   }
                 },
+                "besluit_gram": {
+                  "value": 0,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                  }
+                },
+                "besluit_kroniek": {
+                  "value": "beschikkingen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                  }
+                },
                 "besluit_op_moment": {
                   "value": "2024-04-01",
                   "origin": {
@@ -330,6 +378,22 @@
                 },
                 "besluit_cel": {
                   "value": "toeslagen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                  }
+                },
+                "besluit_gram": {
+                  "value": 0,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                  }
+                },
+                "besluit_kroniek": {
+                  "value": "beschikkingen",
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "betaling",
@@ -656,6 +720,22 @@
                     "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
                   }
                 },
+                "besluit_gram": {
+                  "value": 0,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                  }
+                },
+                "besluit_kroniek": {
+                  "value": "beschikkingen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                  }
+                },
                 "besluit_op_moment": {
                   "value": "2024-04-01",
                   "origin": {
@@ -708,6 +788,22 @@
                 },
                 "besluit_cel": {
                   "value": "toeslagen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                  }
+                },
+                "besluit_gram": {
+                  "value": 0,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                  }
+                },
+                "besluit_kroniek": {
+                  "value": "beschikkingen",
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
@@ -772,6 +868,22 @@
                     "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
                   }
                 },
+                "besluit_gram": {
+                  "value": 0,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                  }
+                },
+                "besluit_kroniek": {
+                  "value": "beschikkingen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                  }
+                },
                 "besluit_op_moment": {
                   "value": "2024-04-01",
                   "origin": {
@@ -824,6 +936,22 @@
                 },
                 "besluit_cel": {
                   "value": "toeslagen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                  }
+                },
+                "besluit_gram": {
+                  "value": 0,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                  }
+                },
+                "besluit_kroniek": {
+                  "value": "beschikkingen",
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "levering",
@@ -1084,7 +1212,7 @@
                     },
                     {
                       "chronicle": "betalingen",
-                      "content_hash": "sha256:4ad1bd73cab8e5f6feda16393bea0a4f5dedd7fa7feb53c9fda512c0df416f34",
+                      "content_hash": "sha256:9407b1452de5aa07cc860b9279dd8d711a3b0970dcee8ffd9bad88f2c95914cf",
                       "grams": 3,
                       "op_moment": "2024-12-15"
                     }

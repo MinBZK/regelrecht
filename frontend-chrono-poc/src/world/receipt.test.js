@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { cloneReceipt, receiptFixture } from '../testing/receiptFixture.js';
-import { acceptedValues, loadedRegulations, receiptSections, receiptTimestamp } from './receipt.js';
+import {
+  acceptedValues,
+  loadedRegulations,
+  receiptSections,
+  receiptTimestamp,
+  receiptTrace,
+  resolveSource,
+} from './receipt.js';
 
 // Het receipt lezen: ordenen en benoemen, nooit selecteren.
 
@@ -108,6 +115,59 @@ describe('het uitvoeringsreceipt lezen', () => {
     expect(loadedRegulations(null)).toStrictEqual([]);
     expect(acceptedValues(null)).toStrictEqual([]);
     expect(receiptTimestamp(null)).toBeNull();
+    expect(receiptTrace(null)).toBeNull();
+  });
+
+  it('haalt de trace uit `results` en laat haar daar niet nog eens staan', () => {
+    // Uitgevouwen tot regels zou de boom tientallen regels opleveren met namen als
+    // `trace · children · 1 · children · 0 · result`, en dan is precies de vorm weg
+    // die haar leesbaar maakt.
+    const results = receiptSections(receiptFixture).find((section) => section.key === 'results');
+    expect(results.rows.every((row) => !row.name.startsWith('trace'))).toBe(true);
+    expect(results.rows.some((row) => row.name.startsWith('outputs'))).toBe(true);
+  });
+
+  it('geeft de trace als boom, met per stap de regeling en het artikel', () => {
+    const trace = receiptTrace(receiptFixture);
+    expect(trace.nodeType).toBe('article');
+    expect(trace.name).toContain('wet_op_de_zorgtoeslag');
+
+    // De sleutel is het pad in de boom: twee zusjes kunnen dezelfde naam en
+    // dezelfde uitkomst hebben, dus de plek is het enige wat ze onderscheidt.
+    expect(trace.path).toBe('0');
+    expect(trace.children.map((child) => child.path)).toStrictEqual(['0.0', '0.1']);
+
+    const rekenend = trace.children[1];
+    expect(rekenend.nodeType).toBe('action');
+    expect(rekenend.regulation).toBe('wet_op_de_zorgtoeslag');
+    expect(rekenend.article).toBe('3');
+    expect(rekenend.result).toBe(197178.01);
+    expect(rekenend.hasResult).toBe(true);
+
+    // En de stap eronder heeft geen eigen artikel: die hoort bij het artikel
+    // erboven, en er wordt er geen bij verzonnen.
+    const bewerking = rekenend.children[0];
+    expect(bewerking.nodeType).toBe('operation');
+    expect(bewerking.article).toBeNull();
+  });
+
+  it('houdt een stap zonder uitkomst apart van een stap die niets opleverde', () => {
+    const receipt = cloneReceipt();
+    receipt.results.trace.children[0].result = null;
+    delete receipt.results.trace.children[1].result;
+
+    const trace = receiptTrace(receipt);
+    expect(trace.children[0].hasResult).toBe(true);
+    expect(trace.children[0].result).toBeNull();
+    expect(trace.children[1].hasResult).toBe(false);
+  });
+
+  it('zegt in gewone woorden waar een waarde vandaan kwam', () => {
+    expect(resolveSource('DATA_SOURCE')).toBe('een databron');
+    expect(resolveSource(null)).toBeNull();
+    // Een soort die deze lijst niet kent, blijft leesbaar in plaats van weg te
+    // vallen: beter een technische naam dan een stilte.
+    expect(resolveSource('IETS_NIEUWS')).toBe('IETS_NIEUWS');
   });
 
   it('zet het gram met zijn moment in de logische tijd als eerste sectie', () => {

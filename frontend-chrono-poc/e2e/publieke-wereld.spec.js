@@ -284,6 +284,31 @@ test.describe('publieke wereld', () => {
     expect([Number(zichtbaar[1]), Number(zichtbaar[2])]).toEqual([totaal, totaal]);
   });
 
+  test('T1: het receipt van het besluit toont de uitvoeringstrace met haar artikelen', async () => {
+    // De trace zit in het gram en komt via de receipt-route mee; hier gaat het
+    // om wat een lezer in de browser krijgt: een boom met per stap de regeling
+    // en het artikel waar ze vandaan komt.
+    const rij = page
+      .locator('nldd-list > nldd-list-item')
+      .filter({ has: page.locator('nldd-text-cell[text="zorgtoeslag_toekenning"]') })
+      .first();
+    await rij.click();
+
+    const receipt = rij
+      .locator('nldd-list-item[slot="children"]')
+      .filter({ has: page.locator('nldd-text-cell[text="Receipt"]') })
+      .first();
+    await receipt.click();
+
+    const boom = rij.locator('nldd-list[type="tree"]').first();
+    await expect(boom).toBeVisible();
+    // De wortel staat open, dus de stappen eronder staan er; één ervan noemt het
+    // artikel dat de hoogte uitrekent.
+    await expect(
+      boom.locator('nldd-text-cell[supporting-text*="wet_op_de_zorgtoeslag, artikel"]').first(),
+    ).toBeVisible();
+  });
+
   test('B1: de vier kwartaaltermijnen staan als executogram bij de betaler', async () => {
     await s.tab('Acties');
     await s.advance('31-12-2024');
@@ -298,6 +323,40 @@ test.describe('publieke wereld', () => {
 
   test('B2: de ontvangst is gemeld bij de besluitende cel', async () => {
     expect(grams(world, 'toeslagen', 'betalingen')).toHaveLength(4);
+  });
+
+  test('T2: een betaling wijst terug naar het besluit waaruit ze volgt', async () => {
+    // De verwijzing staat in het gram (cel, kroniek, plek, termijn); in het
+    // scherm is ze de weg terug naar het besluit en dus naar zijn trace.
+    await s.tab('Grammen');
+    const rij = page
+      .locator('nldd-list > nldd-list-item')
+      .filter({ has: page.locator('nldd-text-cell[text="betaling"]') })
+      .first();
+    await rij.click();
+
+    const terug = rij
+      .locator('nldd-list-item[slot="children"]')
+      .filter({ has: page.locator('nldd-text-cell[text="Naar het besluit"]') })
+      .first();
+    await expect(terug).toBeVisible();
+    await expect(terug.locator('nldd-text-cell[text="Naar het besluit"]')).toHaveAttribute(
+      'supporting-text',
+      /termijn \d/,
+    );
+
+    await terug.click();
+    // De rij van het besluit gaat daardoor open: haar uitklap — met de weg naar
+    // het receipt en dus naar de trace — staat er.
+    const besluit = page
+      .locator('nldd-list > nldd-list-item')
+      .filter({ has: page.locator('nldd-text-cell[text="zorgtoeslag_toekenning"]') })
+      .first();
+    await expect(besluit.locator('nldd-text-cell[text="Receipt"]').first()).toBeVisible();
+
+    // En terug naar het tabblad waar deze check hem vond: de ronde is één
+    // verhaal, en de volgende stap vult een actieformulier in.
+    await s.tab('Acties');
   });
 
   test('J5: elke termijn krijgt een journaalregel met statusverandering', async () => {

@@ -3,7 +3,7 @@ import { computed, nextTick, ref, watch } from 'vue';
 import ReceiptPanel from './ReceiptPanel.vue';
 import { fieldValue } from '../world/events.js';
 import { formatMoment } from '../world/format.js';
-import { allGrams, cells, gramKind } from '../world/snapshot.js';
+import { allGrams, cells, decretogramRefOf, gramKind } from '../world/snapshot.js';
 import { carriesReceipt } from '../world/receipt.js';
 
 // Alle grammen van alle cellen in één chronologisch overzicht: moment, cel,
@@ -29,6 +29,12 @@ import { carriesReceipt } from '../world/receipt.js';
 // **Receipt**, die het bij de server opvraagt voor dat ene gram (zie
 // `ReceiptPanel`). Op verzoek en per gram: zo blijft het beeld receipt-loos en is
 // het receipt toch na te kijken.
+//
+// Andersom geldt hetzelfde. Een executogram over een **betaling** noemt het
+// decretogram waaruit ze volgt — cel, kroniek, plek en termijnnummer — en die
+// verwijzing staat hier als rij die je erheen brengt. Zo komt een lezer van de
+// betaling bij het besluit en bij de trace in zijn receipt, zonder de kroniek
+// van de besluitende cel af te lopen.
 
 const props = defineProps({
   /** Het beeld van de wereld. */
@@ -121,22 +127,26 @@ function gramJson(row) {
  * De aanwijzing wordt daarna teruggemeld als verwerkt: zonder dat zou hetzelfde
  * gram een tweede keer aanwijzen niets doen, want de waarde verandert dan niet.
  */
+function focusOn(id, done) {
+  const row = rows.value.find((candidate) => candidate.id === id);
+  if (!row) {
+    done?.();
+    return;
+  }
+  if (cellFilter.value && cellFilter.value !== row.cell) cellFilter.value = '';
+  if (kindFilter.value && kindFilter.value !== row.kind) kindFilter.value = '';
+  open.value = new Set(open.value).add(id);
+  nextTick(() => {
+    document.getElementById(`gram-${id}`)?.scrollIntoView?.({ block: 'center' });
+    done?.();
+  });
+}
+
 watch(
   () => props.focusGram,
   (id) => {
     if (!id) return;
-    const row = rows.value.find((candidate) => candidate.id === id);
-    if (!row) {
-      emit('clear-focus');
-      return;
-    }
-    if (cellFilter.value && cellFilter.value !== row.cell) cellFilter.value = '';
-    if (kindFilter.value && kindFilter.value !== row.kind) kindFilter.value = '';
-    open.value = new Set(open.value).add(id);
-    nextTick(() => {
-      document.getElementById(`gram-${id}`)?.scrollIntoView?.({ block: 'center' });
-      emit('clear-focus');
-    });
+    focusOn(id, () => emit('clear-focus'));
   },
   { immediate: true },
 );
@@ -160,6 +170,21 @@ function toggleReceipt(id) {
   const next = new Set(receiptOpen.value);
   if (!next.delete(id)) next.add(id);
   receiptOpen.value = next;
+}
+
+// Het besluit waaruit een betaling volgt, als het gram ernaar verwijst. Een
+// executogram over een betaling draagt de cel, de kroniek, de plek van het
+// decretogram en het termijnnummer; daarmee is de weg terug naar het besluit —
+// en naar de uitvoeringstrace in zijn receipt — één klik in plaats van een
+// zoektocht door de kroniek van de besluitende cel.
+const decidedBy = (row) => decretogramRefOf(row.gram);
+
+/** Hoe die verwijzing leest: welk besluit, van wanneer, en welke termijn. */
+function describeDecision(ref) {
+  const parts = [`besluit '${ref.besluit ?? '?'}' van cel '${ref.cell}'`];
+  if (ref.opMoment) parts.push(`van ${formatMoment(ref.opMoment)}`);
+  if (ref.volgnummer !== null) parts.push(`termijn ${ref.volgnummer}`);
+  return parts.join(' · ');
 }
 </script>
 
@@ -273,6 +298,30 @@ function toggleReceipt(id) {
               <nldd-code-viewer language="json" variant="simple" wrap>{{ gramJson(row) }}</nldd-code-viewer>
             </nldd-container>
           </nldd-cell>
+        </nldd-list-item>
+
+        <!-- De weg terug van een betaling naar het besluit dat haar opdroeg. Een
+             eigen rij en geen regel in de JSON: de verwijzing staat daar wel,
+             maar dan moet een lezer hem met de hand narekenen tot een plek in een
+             kroniek. Hier brengt hij je erheen, en daarmee bij de trace in het
+             receipt van dat besluit. -->
+        <nldd-list-item
+          v-if="isOpen(row.id) && decidedBy(row)"
+          slot="children"
+          size="sm"
+          button
+          @click="focusOn(decidedBy(row).id)"
+        >
+          <nldd-spacer-cell size="20"></nldd-spacer-cell>
+          <nldd-icon-cell icon="certificate" size="16" color="secondary"></nldd-icon-cell>
+          <nldd-spacer-cell size="8"></nldd-spacer-cell>
+          <nldd-text-cell
+            size="sm"
+            text="Naar het besluit"
+            :supporting-text="describeDecision(decidedBy(row))"
+          ></nldd-text-cell>
+          <nldd-spacer-cell size="8"></nldd-spacer-cell>
+          <nldd-icon-cell icon="arrow-right" size="16" color="secondary"></nldd-icon-cell>
         </nldd-list-item>
 
         <!-- De tweede uitklap: het receipt van dit besluit. Een eigen knop en

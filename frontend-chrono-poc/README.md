@@ -79,6 +79,19 @@ hun hash, en de geaccepteerde waarden als tabel met de bron-cel en het bevoegd
 gezag dat die bron noemde. De tijdstempel staat er met het label dat zegt wat het
 is: wandkloktijd, niet de logische tijd van de wereld.
 
+En de **uitvoeringstrace**: de stappen waarlangs het besluit tot stand kwam, als
+inklapbare boom, per stap met de soort stap, de regeling en het artikel waar ze
+vandaan komt, en de uitkomst. Alleen de wortel staat open bij het binnenkomen —
+een trace van honderden stappen in één keer is geen uitleg maar een muur — en wie
+een tak opendoet, kiest zelf hoe diep hij kijkt. De boom is een `nldd-list`
+van het type `tree`: elke tak legt zijn stappen in zijn eigen `slot="children"`,
+zodat de structuur die je ziet ook de structuur is die hulptechnologie voorleest.
+
+Andersom loopt er ook een weg. Een executogram over een **betaling** noemt het
+decretogram waaruit ze volgt — cel, kroniek, plek en termijnnummer — en die
+verwijzing staat in de uitklap als rij *Naar het besluit* die je erheen brengt:
+naar het gram, en daarmee naar de trace in zijn receipt.
+
 Niet elk decretogram krijgt die uitklap. Een bron-cel zonder engine legt haar
 eigen vaststelling ook als decretogram vast, en daar heeft nooit een uitvoering
 achter gedraaid; de server weigert dat gram met een 404, dus hier wordt er ook

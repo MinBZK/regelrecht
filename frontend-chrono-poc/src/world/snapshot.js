@@ -183,6 +183,30 @@ export function describeZaak(gram) {
 }
 
 /**
+ * Het id waarmee het beeld één gram aanwijst: `<cel>|<kroniek>|<plek>`.
+ *
+ * Eén plek voor die vorm, want hij wordt op drie manieren gebruikt — het beeld
+ * bouwt hem per rij, een betaling draagt hem als losse velden, en [`gramByRef`]
+ * leest hem weer uit elkaar. Drie kopieën van dezelfde afspraak zouden alle drie
+ * apart moeten meeverhuizen als de vorm ooit verandert.
+ */
+export function gramId(cell, chronicle, index) {
+  return `${cell}|${chronicle}|${index}`;
+}
+
+/**
+ * Is dit een plek zoals een gram-id haar draagt?
+ *
+ * Op de tekst getoetst en niet op wat `Number` ervan maakt: `Number('')` is 0 en
+ * `Number(' 1 ')` is 1, dus een lege of slordige plek zou anders stil een gram
+ * áánwijzen — een verwijzing die klopt lijkt te zijn terwijl ze het niet is.
+ * Niets teruggeven is hier het eerlijke antwoord.
+ */
+function isPlace(position) {
+  return /^\d+$/.test(position);
+}
+
+/**
  * Het gram waar een verwijzing naar wijst, uit de kroniek waarin het ligt.
  *
  * Het id is `<cel>|<kroniek>|<plek>`, en die plek is de index in precies de
@@ -193,12 +217,7 @@ export function gramByRef(snapshot, ref) {
   const parts = String(ref?.id ?? '').split('|');
   if (parts.length !== 3) return null;
   const [cellId, stream, position] = parts;
-  // Een plek is een rij cijfers, en dat wordt hier op de tekst getoetst en niet
-  // op wat `Number` ervan maakt: `Number('')` is 0 en `Number(' 1 ')` is 1, dus
-  // een id met een lege of slordige plek zou anders stil een gram áánwijzen —
-  // een verwijzing die klopt lijkt te zijn terwijl ze het niet is. Niets
-  // teruggeven is hier het eerlijke antwoord.
-  if (!/^\d+$/.test(position)) return null;
+  if (!isPlace(position)) return null;
   const index = Number(position);
   const cell = cells(snapshot).find((candidate) => candidate.id === cellId);
   const chronicle = chronicles(cell).find((candidate) => candidate.stream === stream);
@@ -627,6 +646,42 @@ export function regulationOf(gram) {
 }
 
 /**
+ * Het besluit waaruit een executogram over een betaling volgt.
+ *
+ * Een betaling — en de melding ervan bij de cel die besloot — draagt de
+ * verwijzing naar het decretogram als losse velden: de cel, haar kroniek, de
+ * plek van het gram daarin, en het termijnnummer. Hier komen die samen tot het
+ * id waarmee het beeld een gram aanwijst (`<cel>|<kroniek>|<plek>`), zodat een
+ * lezer van de betaling bij het besluit — en dus bij de uitvoeringstrace in zijn
+ * receipt — kan komen zonder de kroniek van de besluitende cel af te lopen.
+ *
+ * `null` als het gram geen betaling is of de verwijzing niet compleet draagt.
+ * Half tonen zou een link opleveren die soms nergens op uitkomt, en dat is
+ * erger dan geen link.
+ */
+export function decretogramRefOf(gram) {
+  const fields = gram?.fields;
+  const text = (name) => {
+    const value = fields?.[name]?.value;
+    return value === null || value === undefined || value === '' ? null : String(value);
+  };
+  const cell = text('besluit_cel');
+  const chronicle = text('besluit_kroniek');
+  const place = text('besluit_gram');
+  if (!cell || !chronicle || place === null || !isPlace(place)) return null;
+  const volgnummer = text('volgnummer');
+  return {
+    id: gramId(cell, chronicle, place),
+    cell,
+    chronicle,
+    index: Number(place),
+    besluit: text('besluit'),
+    opMoment: text('besluit_op_moment'),
+    volgnummer: volgnummer === null ? null : Number(volgnummer),
+  };
+}
+
+/**
  * De verplichtingen die uit een besluit volgen, als rijen.
  *
  * Elke verplichting draagt haar eigen namen (bedrag, vervaldatum, betaler); de
@@ -801,7 +856,7 @@ export function allGrams(snapshot) {
     for (const chronicle of chronicles(cell)) {
       (chronicle.grams ?? []).forEach((gram, index) => {
         rows.push({
-          id: `${cell.id}|${chronicle.stream}|${index}`,
+          id: gramId(cell.id, chronicle.stream, index),
           cell: cell.id,
           chronicle: chronicle.stream,
           index,

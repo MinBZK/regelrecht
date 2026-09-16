@@ -482,7 +482,43 @@ uitbreiding van RFC-013 stil achterlopen.
 | `inputs` | wat de besluit-definitie zelf aanleverde, **met herkomst per waarde**: uit een eigen kroniek (met het moment van die vastlegging), uit een parameter, of geaccepteerd van een andere cel |
 | `chronicle_sources` | de eigen kronieken die als databron klaarstonden, elk met haar stand op het moment van het besluit: aantal grammen en een hash erover (RFC-022 §1.3). Wat de engine daaruit las, staat in de trace van het receipt |
 | `obligations` | het betalingsschema dat uit dit besluit volgt: per termijn een vervaldatum, een bedrag en een volgnummer |
-| `receipt` | het volledige Execution Receipt |
+| `receipt` | het volledige Execution Receipt, **met de uitvoeringstrace** (`results.trace`) |
+
+### De trace zit in het gram
+
+Het besluit-pad voert uit **met trace**, en die trace gaat ongewijzigd mee in het
+receipt. Dat is het verschil met een reductie: zonder haar staat er wel wát er
+uitkwam, maar niet langs welke artikelen, en dan is een besluit na te rekenen maar
+niet na te lopen (RFC-013).
+
+Twee eigenschappen maken haar bruikbaar als bewijs:
+
+- **Elke rekenstap noemt haar regeling en haar artikel.** De engine schrijft ze op
+  terwijl ze het artikel uitvoert (`PathNode::regulation` / `PathNode::article`);
+  ze worden niet achteraf uit de naam van een uitkomst afgeleid, want zo'n
+  reconstructie kan afwijken van wat er werkelijk liep.
+- **Er staan geen looptijden in.** De engine kán per node meeschrijven hoe lang
+  die stap duurde; het besluit-pad zet dat uit (`TraceBuilder::new_untimed`). Een
+  looptijd verschilt per run, dus hij zou het gram per run anders maken en de hash
+  eroverheen waardeloos. De wandkloktijd van de uitvoering staat één keer in het
+  receipt, gelabeld als wat ze is; verder draagt de trace geen tijd. Twee
+  uitvoeringen met dezelfde invoer leveren daardoor dezelfde trace, tot op de
+  hash — en dat staat vast in
+  [`tests/trace.rs`](tests/trace.rs).
+
+**Waarom in het gram en niet ernaast.** Een trace is groot genoeg om de vraag te
+stellen, dus ze is gemeten. De zorgtoeslag-toekenning van de publieke wereld komt
+als JSON uit op ruim **13 kB** gram plus receipt, waarvan de trace ruim 8 kB. Het
+zwaarste besluit dat deze opstelling nu draait — één dat drie regelingen aanraakt
+— komt uit op ongeveer **37 kB**, waarvan de trace ruim 23 kB.
+
+Dat is ruim onder de grens (zo'n 200 kB per gram) waarboven het de moeite waard
+wordt de trace apart in de kroniek te leggen met alleen een hash in het gram.
+Zolang dat zo is, wint het gram: een besluit dat zijn eigen onderbouwing draagt,
+kan er niet van gescheiden raken, en er is geen tweede plek die mee moet
+verhuizen. Groeit een casus daar overheen, dan is de scheiding alsnog te maken —
+het gram draagt dan de hash, en waar de trace dan ligt hoort in dit stuk te komen
+staan.
 
 De herkomst per input is geen versiering. Zonder haar staat er wel een waarde in
 het gram, maar niet van wanneer ze was of wie haar leverde — en dan is
@@ -599,6 +635,29 @@ met zaakkenmerk, bedrag, volgnummer en de verwijzing naar het decretogram), en d
 **besluitende** cel een levering in de hare: *betaling ontvangen gemeld*. Twee
 vastleggingen, elk in de kroniek van de cel die haar deed — beide kanten weten wat
 er gebeurde, en niemand kopieert de staat van een ander.
+
+Die verwijzing naar het decretogram is een **adres** en niet alleen een
+omschrijving:
+
+| veld | wat |
+|---|---|
+| `besluit` | de besluit-definitie die het gram voortbracht |
+| `besluit_cel` | de cel in wiens kroniek dat gram ligt |
+| `besluit_kroniek` | haar stroom — altijd `beschikkingen`, en toch opgeschreven |
+| `besluit_gram` | de plek van dat gram in die stroom, geteld vanaf nul |
+| `besluit_op_moment` | het moment van dat besluit |
+| `volgnummer` | welke termijn van het schema dit is |
+
+Cel, kroniek en plek samen zijn precies de verwijzing waarmee het beeld van de
+wereld een gram aanwijst (`<cel>|<kroniek>|<plek>`, zie
+[Het journaal](#het-journaal-wie-deed-wat-en-wat-veranderde-er)). Daarmee komt
+een lezer van de betaling bij het besluit — en dus bij de **uitvoeringstrace** in
+zijn receipt — zonder de kroniek van de besluitende cel af te lopen. Twee van de
+drie opschrijven en de derde laten raden zou die verwijzing laten leunen op een
+afspraak buiten het gram.
+
+De plek wordt ingevuld **nadat** het decretogram vastligt: het is de plek waar het
+gram terechtkwam en niet de plek waar het naar verwachting terecht zou komen.
 
 `betalingen` is een naam van het platform, zoals `intake` platformvocabulaire is:
 beide cellen declareren een stroom met die naam en `zaakkenmerk` als sleutel, en
@@ -1788,6 +1847,11 @@ ruwe veld niet heeft (`src/receipt.rs`):
 | `gram` | van welk gram dit het receipt is: cel, kroniek, plek, naam, besluit, zaakkenmerk en het moment in de *logische* tijd |
 | `accepted_values` | de vereniging van beide acceptatiewegen (`accept_from` en een cel-bron van de wet), per waarde met de bron-cel, het **bevoegd gezag dat die bron noemde**, de lexostatus, het moment, het zaakkenmerk en de ondertekening |
 | `timestamp` | de wandkloktijd, met erbij dat het dát is en geen moment in de logische tijd van de wereld |
+
+De **uitvoeringstrace** komt mee in `results.trace`, precies zoals het gram haar
+draagt (zie [De trace zit in het gram](#de-trace-zit-in-het-gram)). Het
+Grammen-tabblad van de frontend zet haar neer als inklapbare boom, per stap met
+de regeling, het artikel, de bewerking en de uitkomst.
 
 Elke andere sectie gaat ongewijzigd door, dus een RFC-013 die morgen een sectie
 toevoegt staat hier morgen in beeld. Wijst de vraag naar een gram dat geen
