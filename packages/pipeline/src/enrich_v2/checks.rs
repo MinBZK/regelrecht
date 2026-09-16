@@ -1037,8 +1037,17 @@ fn marking_targets(marking: &Value) -> Vec<&str> {
 /// The markings one model carries. Empty when the model has none, which is
 /// the ordinary case: a marking is the exception a translation records, not
 /// something every article has.
+///
+/// Reads `untranslatables` when `markings` is absent. That is the same channel
+/// under the name schema v0.5.x gives it, and most of the corpus is on v0.5.x.
+/// Counting only the new name made every counter here blind on the vocabulary
+/// the corpus actually uses: a gate that cleared because the agent declared
+/// more of the law unmodellable read as zero markings both before and after,
+/// which is the trade these counters exist to expose. A file carries one name
+/// or the other, never both, so preferring `markings` cannot double-count.
 fn markings(mr: &Value) -> &[Value] {
     mr.get("markings")
+        .or_else(|| mr.get("untranslatables"))
         .and_then(Value::as_sequence)
         .map(Vec::as_slice)
         .unwrap_or(&[])
@@ -2256,6 +2265,12 @@ pub fn every_article_accounted(doc: &Value) -> Vec<Finding> {
         let has_logic = mr.is_some_and(carries_logic);
         if has_logic
             || carries("markings")
+            // The v0.5.x spelling of a marking. The corpus is mostly on that
+            // schema, and the feedback prompt correctly steers an agent there
+            // when the file declares it, so a gate that counts only the new
+            // name asks for one field and refuses the other: the round ends
+            // at `NoDecrease` after a wasted call, every time, for good.
+            || carries("untranslatables")
             || carries("open_terms")
             || carries("declares")
             || carries("overrides")
@@ -5850,6 +5865,53 @@ articles:
         .expect("yaml");
         assert!(definition_reach_is_flagged(&doc).is_empty());
         assert_eq!(every_article_accounted(&doc).len(), 1);
+    }
+
+    /// Most of the corpus is on schema v0.5.x, where a marking is spelled
+    /// `untranslatables`. A gate counting only the new name reported those
+    /// articles as unaccounted, while the feedback prompt correctly steered
+    /// the agent to the field the gate refused to count: the round ended at
+    /// `NoDecrease` after a wasted call, permanently.
+    #[test]
+    fn an_untranslatable_accounts_for_its_article_like_a_marking_does() {
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '1'
+    text: Onze Minister kan in bijzondere gevallen afwijken van het tweede lid.
+    machine_readable:
+      untranslatables:
+        - construct: afwijkingsbevoegdheid in bijzondere gevallen
+          reason: De motor kent geen discretionaire bevoegdheid als constructie.
+"#,
+        )
+        .expect("yaml");
+        assert!(
+            every_article_accounted(&doc).is_empty(),
+            "an untranslatable is a marking under its v0.5.x name: {:?}",
+            every_article_accounted(&doc)
+        );
+    }
+
+    /// The counters read the same channel, so a gate that clears because the
+    /// agent declared more of the law unmodellable stays visible on a v0.5.x
+    /// file. Counting only `markings` made that trade read as zero on both
+    /// sides, which is the measurement these counters exist to provide.
+    #[test]
+    fn the_tally_counts_an_untranslatable_as_a_marking() {
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '1'
+    text: Onze Minister kan in bijzondere gevallen afwijken.
+    machine_readable:
+      untranslatables:
+        - construct: afwijkingsbevoegdheid
+          reason: De motor kent geen discretionaire bevoegdheid.
+"#,
+        )
+        .expect("yaml");
+        assert_eq!(tally(&doc).markings, 1);
     }
 
     #[test]
