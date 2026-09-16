@@ -32,7 +32,12 @@
 //! law is free, crossing to another costs a point, and a law reached straight
 //! from the start costs one point however long the route that also finds it.
 //! The plan is printed before anything runs and the laws are enriched deepest
-//! first, so a producer is translated before the law that reads it.
+//! first, so a producer is translated before the law that reads it. A law that
+//! fails does not stop the walk: the run carries on, names every failure at the
+//! end and exits non-zero. Stopping on the first one is worst precisely because
+//! the order is deepest-first — the first law to fail is the deepest producer,
+//! and everything still waiting is shallower, so one failure would cost the
+//! whole plan behind it.
 //!
 //! What that costs is measured and it is not small. From `--article 69` of the
 //! Zorgverzekeringswet: depth 0 is 53 articles, depth 1 is 624 across 21 laws,
@@ -369,6 +374,7 @@ async fn main() -> ExitCode {
     // single law the caller named, which is every run that existed before
     // `--depth`.
     if let Some(plan) = &plan {
+        let mut failures: Vec<String> = Vec::new();
         for (number, task) in plan.tasks.iter().enumerate() {
             println!(
                 "\n=== [{}/{}] diepte {} — {} ({} artikelen, {} entries)",
@@ -406,13 +412,22 @@ async fn main() -> ExitCode {
                     // after it do not depend on this one being finished — they
                     // are shallower, so they read it rather than feed it.
                     // Loud, and the run reports a failure at the end.
+                    //
+                    // The code used to return here, which is the opposite of
+                    // what the comment promises and worst exactly where the
+                    // plan is deepest-first: the first producer that fails
+                    // aborts before any shallower law has been touched, so one
+                    // failure costs every law behind it.
                     eprintln!("  enrichment failed for {}: {e}", task.law_id);
-                    return ExitCode::FAILURE;
+                    failures.push(format!("{}: {e}", task.law_id));
                 }
             }
         }
         println!("\n=== plan afgelopen: {} wetten", plan.tasks.len());
-        return ExitCode::SUCCESS;
+        for line in plan_failure_report(&failures, plan.tasks.len()) {
+            eprintln!("{line}");
+        }
+        return plan_verdict(&failures);
     }
 
     let outcome =
@@ -456,6 +471,33 @@ async fn main() -> ExitCode {
     );
 
     verdict(after.map(|c| c.0))
+}
+
+/// What a walked plan reports when laws failed, and nothing when none did.
+///
+/// At the end and by name, because the walk runs on. A run that translated
+/// nine laws and failed on the tenth has done nine laws' worth of work, and
+/// the line that says which one failed has scrolled far past by then.
+fn plan_failure_report(failures: &[String], laws: usize) -> Vec<String> {
+    if failures.is_empty() {
+        return Vec::new();
+    }
+    let mut lines = vec![format!("\n=== {} of {laws} laws failed:", failures.len())];
+    lines.extend(failures.iter().map(|failure| format!("  {failure}")));
+    lines
+}
+
+/// The exit code of a walked plan: any law that failed fails the run.
+///
+/// Separate from the walk so it can be held to the rule the walk's own comment
+/// states. The walk carries on past a failure, and the exit code is the only
+/// thing left that still says one happened.
+fn plan_verdict(failures: &[String]) -> ExitCode {
+    if failures.is_empty() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    }
 }
 
 /// The verdict of a finished run: the schema errors that are left over.
@@ -911,6 +953,41 @@ articles:
             "# reference\n",
         );
         assert_eq!(skills_present(dir.path()), Ok(()));
+    }
+
+    /// A plan walks on past a law that failed, and says so at the end.
+    ///
+    /// The walk is deepest-first, so the first law to fail is the deepest
+    /// producer and everything after it is shallower. Returning on that first
+    /// failure — which is what the code did, against what its own comment
+    /// promised — threw away every law behind it, including laws that do not
+    /// depend on the failed one at all.
+    #[test]
+    fn test_a_failed_law_does_not_take_the_rest_of_the_plan_with_it() {
+        let failures = vec!["wet_d: de agent gaf niets terug".to_string()];
+        let report = plan_failure_report(&failures, 4).join("\n");
+
+        assert!(
+            report.contains("1 of 4 laws failed"),
+            "the run names how much of the plan failed: {report}"
+        );
+        assert!(
+            report.contains("wet_d: de agent gaf niets terug"),
+            "and which law it was, with the reason: {report}"
+        );
+        assert_eq!(
+            plan_verdict(&failures),
+            ExitCode::FAILURE,
+            "carrying on is not the same as succeeding"
+        );
+    }
+
+    /// And a plan in which nothing failed says nothing and exits clean. A
+    /// failure report over an empty list reads as a failure that happened.
+    #[test]
+    fn test_a_plan_without_failures_reports_none() {
+        assert!(plan_failure_report(&[], 4).is_empty());
+        assert_eq!(plan_verdict(&[]), ExitCode::SUCCESS);
     }
 
     /// One schema error left is a failed run, and none is a finished one.
