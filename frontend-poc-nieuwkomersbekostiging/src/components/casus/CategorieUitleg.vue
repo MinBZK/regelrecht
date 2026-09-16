@@ -1,7 +1,7 @@
 <template>
   <nldd-list variant="box">
     <nldd-list-item v-for="stap in stappen" :key="stap.label">
-      <nldd-icon-cell :icon="stap.icon" :color="stap.color ?? 'default'"></nldd-icon-cell>
+      <nldd-icon-cell :icon="stap.icon" :color="stap.color ?? 'content'"></nldd-icon-cell>
       <nldd-text-cell :text="stap.label" :supporting-text="stap.uitleg"></nldd-text-cell>
       <nldd-text-cell width="fit-content" horizontal-alignment="right">
         <nldd-tag v-if="stap.tag" size="sm" :color="stap.tagColor ?? 'neutral'" :text="stap.tag"></nldd-tag>
@@ -68,7 +68,7 @@ const stappen = computed(() => {
       waarde: u?.aftrek_kwartalen != null
         ? `${u.aftrek_maanden ?? '?'} maanden → ${u.aftrek_kwartalen} kwartaal${u.aftrek_kwartalen === 1 ? '' : 'en'} aftrek`
         : '—',
-      color: voorVierde ? 'warning' : 'default',
+      color: voorVierde ? 'warning' : 'content',
     });
     out.push({
       icon: 'timer',

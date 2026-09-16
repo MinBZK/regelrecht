@@ -6,7 +6,7 @@
         :key="t"
         :text="`${TABBLAD_LABELS[t]} (${perTabblad[t].length})`"
         :data-tab="t"
-        :selected="tab === t ? true : undefined"
+        :current="tab === t ? true : undefined"
       ></nldd-tab-bar-item>
     </nldd-tab-bar>
     <p class="bs-uitleg">{{ uitleg }}</p>
@@ -14,9 +14,8 @@
     <nldd-table
       columns="minmax(150px, 1.2fr) 110px 90px minmax(150px, 1fr) 120px minmax(130px, 1fr) 110px"
       accessible-label="Leerlingen in het Bestand Nieuwkomers"
-      empty-text="Geen leerlingen op dit tabblad"
-      empty-supporting-text="Het bestand toont leerlingen tot twee jaar na de eerste inschrijving."
     >
+      <nldd-inline-dialog slot="empty" text="Geen leerlingen op dit tabblad" supporting-text="Het bestand toont leerlingen tot twee jaar na de eerste inschrijving."></nldd-inline-dialog>
       <nldd-table-row slot="header">
         <nldd-text-cell size="sm" text="Leerling"></nldd-text-cell>
         <nldd-text-cell size="sm" text="Geboren"></nldd-text-cell>
