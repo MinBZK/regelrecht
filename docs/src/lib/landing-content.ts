@@ -130,7 +130,6 @@ export interface LandingContent {
     pageTitle: string
     metaDescription: string
     noscript: string
-    legend: string
     radioYes: string
     radioNo: string
     emailLabel: string
@@ -599,7 +598,6 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       metaDescription: 'Laat je gegevens achter als je updates wilt ontvangen of wilt meedenken over de juridische validatie van RegelRecht.',
       noscript:
         'Dit formulier heeft JavaScript nodig. Stuur in plaats daarvan een e-mail naar regelrecht@minbzk.nl.',
-      legend: 'Wil je meedenken over de juridische validatie?',
       radioYes: 'Ja, ik wil meedenken en updates ontvangen',
       radioNo: 'Nee, alleen updates ontvangen',
       emailLabel: 'E-mailadres',
@@ -1063,7 +1061,6 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       metaDescription: 'Leave your details to receive updates, or to help think about the legal validation of RegelRecht.',
       noscript:
         'This form needs JavaScript. Please send an email to regelrecht@minbzk.nl instead.',
-      legend: 'Want to help think about the legal validation?',
       radioYes: 'Yes, I want to help think along and receive updates',
       radioNo: 'No, only receive updates',
       emailLabel: 'Email address',

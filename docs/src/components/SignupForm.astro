@@ -9,9 +9,11 @@
  *    `unmet`, so the list shows that item while the field is `invalid`. We drive
  *    `invalid` and the item's text from the same validation as before.
  *  - org + role: optional nldd-form-field > nldd-text-field (no validation).
- *  - bijdragen: nldd-form-field (group label) > nldd-radio-button-group >
- *    nldd-radio-button-field. The group renders role=radiogroup with the label
- *    forwarded as aria-label.
+ *  - bijdragen: nldd-form-field (no label) > nldd-radio-button-group >
+ *    nldd-radio-button-field. The page title above the form already asks the
+ *    question and both answers are full sentences, so the group carries no
+ *    visible label of its own: it renders role=radiogroup and is named by that
+ *    title through accessible-labeled-by.
  *
  * The <form> is wrapped in <nldd-form> in user-provided-form mode: nldd-form
  * is a shadow-less plain element that renders a real light-DOM <form>, and when
@@ -88,8 +90,12 @@ const successUrl = lang === 'en' ? '/en/signup/thanks' : '/aanmelden/bedankt';
       />
     </div>
 
-    <nldd-form-field label={s.legend}>
-      <nldd-radio-button-group name="bijdragen" data-field="bijdragen">
+    <nldd-form-field>
+      <nldd-radio-button-group
+        name="bijdragen"
+        data-field="bijdragen"
+        accessible-labeled-by="rr-signup-title"
+      >
         <nldd-radio-button-field value="Ja" label={s.radioYes} checked />
         <nldd-radio-button-field value="Nee" label={s.radioNo} />
       </nldd-radio-button-group>
