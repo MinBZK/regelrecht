@@ -282,18 +282,36 @@ const successUrl = lang === 'en' ? '/en/signup/thanks' : '/aanmelden/bedankt';
       field.invalid = Boolean(msg);
     }
 
-    function validate(): boolean {
-      let emailMsg = '';
-      let naamMsg = '';
+    function emailError(): string {
       const email = emailField.value.trim();
-      const naam = naamField.value.trim();
-      if (!email) emailMsg = labels.emailEmpty;
-      else if (!EMAIL_RE.test(email)) emailMsg = labels.emailInvalid;
-      if (!naam) naamMsg = labels.name;
+      if (!email) return labels.emailEmpty;
+      if (!EMAIL_RE.test(email)) return labels.emailInvalid;
+      return '';
+    }
+
+    function naamError(): string {
+      return naamField.value.trim() ? '' : labels.name;
+    }
+
+    function validate(): boolean {
+      const emailMsg = emailError();
+      const naamMsg = naamError();
       setFieldError(emailField, emailErr, emailMsg);
       setFieldError(naamField, naamErr, naamMsg);
       return !emailMsg && !naamMsg;
     }
+
+    // From the first submit on, a field's mark follows its value both ways, the
+    // way nldd-form does it for native constraints: fix the value and the
+    // message goes, break it again and it comes back. Before that first submit,
+    // typing says nothing.
+    let judged = false;
+    emailField.addEventListener('input', () => {
+      if (judged) setFieldError(emailField, emailErr, emailError());
+    });
+    naamField.addEventListener('input', () => {
+      if (judged) setFieldError(naamField, naamErr, naamError());
+    });
 
     // Success navigates to a dedicated page; this only drives the in-form busy
     // state. The error case is handled inline (errorBox) so the user keeps their
@@ -317,6 +335,7 @@ const successUrl = lang === 'en' ? '/en/signup/thanks' : '/aanmelden/bedankt';
       e.preventDefault();
       if (honeypot.value) return;
 
+      judged = true;
       if (!validate()) {
         if (emailField.invalid) {
           emailField.focus();
