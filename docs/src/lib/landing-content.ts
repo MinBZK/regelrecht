@@ -40,6 +40,7 @@ export interface LandingContent {
     signup: string
     docs: string
     research: string
+    roadmap: string
   }
   hero: { title: string; intro: string }
   whatIsIt: { title: string; lede: string; cards: { h: string; p: string }[] }
@@ -97,6 +98,16 @@ export interface LandingContent {
       href: string
       linkLabel: string
     }[]
+  }
+  // The roadmap teaser. `fases` carries only the prose per fase; the names,
+  // subtitles and counts come from the roadmap's own config and content, so
+  // the landing page cannot drift from the page it links to.
+  roadmap: {
+    title: string
+    lede: string
+    werkpakkettenLabel: (n: number) => string
+    ctaLabel: string
+    fases: Record<string, string>
   }
   faq: { title: string; items: { q: string; a: string; link?: NavLink }[] }
   jobs: {
@@ -179,6 +190,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       signup: 'Aanmelden',
       docs: 'Documentatie',
       research: 'Onderzoek',
+      roadmap: 'Roadmap',
     },
     hero: {
       title: 'Van wet naar digitale werking',
@@ -480,6 +492,29 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         },
       ],
     },
+    roadmap: {
+      title: 'Waar dit heen gaat',
+      lede: 'Het werk is verdeeld over vijf fases, van het vastleggen van de basis tot het borgen ervan in de staande praktijk. Elk werkpakket benoemt wat er moet gebeuren, wie eraan werkt en welke vragen nog open staan. De eerste fases zijn uitgewerkt; de latere staan er wel, maar zijn nog niet in werkpakketten verdeeld.',
+      // A fase with nothing in it yet is a real state of the roadmap, not an
+      // omission: the later fases are named but not broken down. Saying that
+      // beats printing "0 werkpakketten", which reads as an empty plan.
+      werkpakkettenLabel: (n) =>
+        n === 0
+          ? 'Nog niet uitgewerkt'
+          : n === 1
+            ? '1 werkpakket'
+            : `${n} werkpakketten`,
+      ctaLabel: 'Bekijk de roadmap',
+      fases: {
+        wat: 'Vastleggen wat machine-leesbare wetgeving is, en wat ze moet kunnen.',
+        'wat-fase-2':
+          'Uitzoeken waar de aanpak houdt en waar ze breekt, met onderzoek per rechtsgebied.',
+        hoe: 'De gereedschappen bouwen waarmee juristen en uitvoerders het werk zelf kunnen doen.',
+        waar: 'Beleggen waar dit thuishoort: bij welke organisaties, onder welke afspraken.',
+        garantie:
+          'Zorgen dat het blijft kloppen als wetten veranderen en mensen wisselen.',
+      },
+    },
     faq: {
       title: 'Veelgestelde vragen',
       // Item order is tuned so the two-column masonry layout (see
@@ -644,6 +679,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       signup: 'Sign up',
       docs: 'Documentation',
       research: 'Research',
+      roadmap: 'Roadmap',
     },
     hero: {
       title: 'From statute to digital execution',
@@ -944,6 +980,26 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           linkLabel: 'PDF',
         },
       ],
+    },
+    roadmap: {
+      title: 'Where this is going',
+      lede: 'The work is split across five phases, from setting down the basics to embedding them in everyday practice. Each work package states what needs to happen, who is working on it and which questions are still open. The early phases are worked out; the later ones are named but not yet broken down. The roadmap itself is in Dutch.',
+      werkpakkettenLabel: (n) =>
+        n === 0
+          ? 'Not yet broken down'
+          : n === 1
+            ? '1 work package'
+            : `${n} work packages`,
+      ctaLabel: 'View the roadmap (Dutch)',
+      fases: {
+        wat: 'Setting down what machine-readable legislation is, and what it has to be able to do.',
+        'wat-fase-2':
+          'Working out where the approach holds and where it breaks, with research per area of law.',
+        hoe: 'Building the tools that let lawyers and implementing bodies do the work themselves.',
+        waar: 'Establishing where this belongs: which organisations, under which agreements.',
+        garantie:
+          'Making sure it keeps holding up as laws change and people move on.',
+      },
     },
     faq: {
       title: 'Frequently asked questions',
