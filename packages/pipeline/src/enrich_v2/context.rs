@@ -304,6 +304,15 @@ pub enum CitedBody {
     NotInCorpus,
     /// The corpus has it, but the brief's budget was already spent.
     OverBudget,
+    /// The corpus has a file for it that could not be read or understood.
+    ///
+    /// Distinct from `NotInCorpus` because the responses differ: an absent law
+    /// is absent and looking is wasted, while a file that would not parse is a
+    /// defect in the corpus that someone has to fix. Before this variant the
+    /// three failure arms skipped the citation entirely, so the law appeared
+    /// neither in the brief nor under "Cited but not reproduced", under a
+    /// heading that promises the list is exhaustive.
+    Unreadable(String),
 }
 
 /// `(bwb_id, artikel)` for every reference the window's entries carry.
@@ -576,23 +585,49 @@ pub fn resolve_citations(
             continue;
         };
         if !parsed.contains_key(bwb) {
-            let Ok(raw) = std::fs::read_to_string(path) else {
-                continue;
-            };
-            let Ok(doc) = serde_yaml_ng::from_str::<Value>(&raw) else {
-                continue;
-            };
-            let law_id = doc
-                .get("$id")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_owned();
-            parsed.insert(bwb, (law_id, doc));
+            match std::fs::read_to_string(path)
+                .map_err(|e| format!("cannot be read: {e}"))
+                .and_then(|raw| {
+                    serde_yaml_ng::from_str::<Value>(&raw)
+                        .map_err(|e| format!("is not valid YAML: {e}"))
+                }) {
+                Ok(doc) => {
+                    let law_id = doc
+                        .get("$id")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_owned();
+                    parsed.insert(bwb, (law_id, doc));
+                }
+                Err(reason) => {
+                    out.push(CitedArticle {
+                        bwb_id: bwb.clone(),
+                        law_id: String::new(),
+                        artikel: artikel.clone(),
+                        cited_by,
+                        body: CitedBody::Unreadable(reason),
+                    });
+                    continue;
+                }
+            }
         }
         let Some((law_id, target)) = parsed.get(bwb) else {
+            // The parse above either inserted this key or pushed an entry and
+            // continued, so this arm is unreachable. Saying so beats a silent
+            // skip, which is the failure this whole variant exists to close.
+            out.push(CitedArticle {
+                bwb_id: bwb.clone(),
+                law_id: String::new(),
+                artikel: artikel.clone(),
+                cited_by,
+                body: CitedBody::Unreadable("could not be loaded".to_owned()),
+            });
             continue;
         };
         let body = match cited_text(target, artikel) {
+            // The law is here and the article is not: a gap in the text, not a
+            // defect in the file, and the same advice applies as for a law the
+            // corpus does not have at all.
             None => CitedBody::NotInCorpus,
             Some((text, dropped)) if text.len() <= budget => {
                 budget -= text.len();
@@ -945,6 +980,11 @@ fn render_citations(out: &mut String, cited: &[CitedArticle]) {
             CitedBody::OverBudget => omitted.push(format!(
                 "- {law}, article {}: in the corpus, left out because this section's \
                  budget was spent.",
+                item.artikel
+            )),
+            CitedBody::Unreadable(reason) => omitted.push(format!(
+                "- {law}, article {}: in this corpus, but it {reason}. Nothing to look \
+                 for and nothing to fetch; this is a defect in the corpus.",
                 item.artikel
             )),
         }
@@ -1662,6 +1702,48 @@ articles:
         let brief = render_brief(&l, &["8".to_owned()], &[]);
         assert!(brief.contains("Nothing here"));
         assert!(brief.contains("statutory text"));
+    }
+
+    #[test]
+    fn a_cited_law_that_does_not_parse_is_named_rather_than_dropped() {
+        // Three arms used to `continue` the outer loop on a read or parse
+        // failure, so the law appeared neither in the brief nor under "Cited
+        // but not reproduced" — under a heading that promises the list is
+        // exhaustive.
+        let dir = citing_corpus(&["2026-01-01"]);
+        let broken = dir
+            .path()
+            .join("regulation/nl/wet/andere_wet/2026-01-01.yaml");
+        std::fs::write(
+            &broken,
+            "$id: andere_wet\nbwb_id: BWBR0000002\narticles: [ unclosed\n",
+        )
+        .expect("write broken law");
+
+        let doc = law_doc(&dir);
+        let known = vec!["8".to_owned(), "9".to_owned()];
+        let cited = resolve_citations(&doc, &known, &["8".to_owned()], dir.path());
+
+        // Both citations into the broken law are still accounted for.
+        let broken: Vec<&CitedArticle> =
+            cited.iter().filter(|c| c.bwb_id == "BWBR0000002").collect();
+        assert_eq!(broken.len(), 2, "citations vanished: {cited:?}");
+        for item in &broken {
+            assert!(
+                matches!(item.body, CitedBody::Unreadable(_)),
+                "expected Unreadable, got {:?}",
+                item.body
+            );
+        }
+
+        let l = law(vec![article("8", "", "tekst")], vec![]);
+        let brief = render_brief(&l, &["8".to_owned()], &cited);
+        assert!(brief.contains("Cited but not reproduced"), "{brief}");
+        assert!(
+            brief.contains("BWBR0000002, article 1: in this corpus, but it is not valid YAML"),
+            "{brief}"
+        );
+        assert!(brief.contains("defect in the corpus"), "{brief}");
     }
 
     #[test]
