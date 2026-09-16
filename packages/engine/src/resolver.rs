@@ -25,8 +25,7 @@ use crate::article::{
 use crate::config;
 use crate::error::{EngineError, Result};
 use crate::priority::{self, Candidate};
-use crate::types::RegulatoryLayer;
-use crate::types::Value;
+use crate::types::{RegulatoryLayer, Value};
 use chrono::NaiveDate;
 use std::collections::{BTreeSet, HashMap, HashSet};
 
@@ -619,7 +618,7 @@ impl RuleResolver {
     /// motiveringsplicht or a bezwaartermijn that quietly does not happen.
     ///
     /// Reading it as "applies to every legal character" is the other tempting
-    /// option, and it is guesswork: schema v0.6.0 makes `legal_character`
+    /// option, and it is guesswork: schema v0.7.0 makes `legal_character`
     /// required on `applies_to`, so nothing in the corpus says what an absent
     /// one would mean. The model is more permissive than the schema, which is
     /// exactly why this check exists here. Like the unknown `delegation_type`
@@ -912,9 +911,9 @@ impl RuleResolver {
     /// reason `compare_law_priority` errors on an unresolvable collision rather
     /// than guessing.
     ///
-    /// Since v0.6.0 the schema declares `delegation_type` as an enum of the
+    /// Since v0.7.0 the schema declares `delegation_type` as an enum of the
     /// thirteen layers, so a typo is caught when the file is written. That does
-    /// not make this check dead: the schema binds only v0.6.0 files, older
+    /// not make this check dead: the schema binds only v0.7.0 files, older
     /// versions arrive unvalidated, and the engine loads YAML without running
     /// the schema over it. The error stays as a safety net that a
     /// schema-conformant corpus never trips.

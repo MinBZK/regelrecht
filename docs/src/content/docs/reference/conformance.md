@@ -39,7 +39,7 @@ The manifest groups work into conformance levels, from a minimal core outward:
 | `core` | Arithmetic, comparison, logical, conditional, and collection operations (`IN`, `LIST`, `FOREACH`), plus variable resolution |
 | `cross_law` | Resolving a `source` reference into another law |
 | `ioc` | Open terms filled by `implements` regulations |
-| `temporal` | Date operations: `AGE`, `DATE_ADD`, `DATE`, `DAY_OF_WEEK`, `DATE_DIFF` |
+| `temporal` | Date operations: `AGE`, `DATE_ADD`, `DATE`, `DAY_OF_WEEK`, `DATE_DIFF`, `DATE_PART`, `START_OF` |
 | `advanced` | Hooks, overrides, untranslatables, data sources, and Awb procedures |
 
 Once the cases exist, an engine could claim a level by passing every test in it, which gives a precise vocabulary for partial support: an engine might be core-and-cross-law conformant without yet handling the advanced level. The `test_files` entries in the manifests are the planned filenames; those files are not written yet, and there is no runner that executes them against an engine.

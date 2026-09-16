@@ -451,6 +451,24 @@ pub enum ActionOperation {
         #[serde(rename = "in")]
         unit: ActionValue,
     },
+    #[serde(rename = "DATE_PART")]
+    DatePart {
+        date: ActionValue,
+        /// Calendar component to read: "year", "month" or "day".
+        ///
+        /// A plain `String` and not an `ActionValue`: the component to read is
+        /// never itself the outcome of a computation, so the schema fixes it to
+        /// an enum and the model does not widen that to a variable reference.
+        #[serde(rename = "in")]
+        part: String,
+    },
+    #[serde(rename = "START_OF")]
+    StartOf {
+        date: ActionValue,
+        /// Calendar unit to truncate to: "year" or "month".
+        #[serde(rename = "in")]
+        unit: String,
+    },
 }
 
 /// Aggregation applied to the per-element results of a FOREACH (RFC-016).
@@ -509,6 +527,8 @@ impl ActionOperation {
             ActionOperation::Date { .. } => "DATE",
             ActionOperation::DayOfWeek { .. } => "DAY_OF_WEEK",
             ActionOperation::DateDiff { .. } => "DATE_DIFF",
+            ActionOperation::DatePart { .. } => "DATE_PART",
+            ActionOperation::StartOf { .. } => "START_OF",
         }
     }
 }
@@ -763,6 +783,20 @@ pub struct OverrideDeclaration {
     pub article: String,
     /// The specific output being replaced
     pub output: String,
+    /// The overridden output does not arise at all, rather than taking another
+    /// value.
+    ///
+    /// "Bestaat geen aanspraak" is not an entitlement of zero. With an
+    /// entitlement of zero there is a decision carrying legal remedies and a
+    /// ground for recovery; with no entitlement there is neither. An engine
+    /// reads this flag and needs no knowledge of administrative law to act on
+    /// it, which is why the ground sits in a quotation beside it rather than in
+    /// a vocabulary the engine would have to interpret.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub voids: bool,
+    /// The words of this article that establish the override, verbatim.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub legal_text_excerpt: Option<String>,
 }
 
 /// A required input for a procedure stage
@@ -817,8 +851,10 @@ pub struct ProcedureDefinition {
 #[serde(rename_all = "lowercase")]
 pub enum MarkingResolution {
     /// The operation does not exist and must be built (statutory rounding,
-    /// extracting the year from a date).
-    Engine,
+    /// extracting the year from a date). Building one reaches past the engine:
+    /// schema, model, evaluation, the BDD grammar and the frontend all carry
+    /// it, so the value names what has to be added rather than where it runs.
+    Operation,
     /// The operation set is not the problem; the format has no shape for this
     /// construct (quantification over persons, a rule about a set rather than a
     /// value, a legal fiction).
@@ -829,27 +865,37 @@ impl MarkingResolution {
     /// The value as it is written in YAML.
     pub fn as_str(&self) -> &'static str {
         match self {
-            MarkingResolution::Engine => "engine",
+            MarkingResolution::Operation => "operation",
             MarkingResolution::Model => "model",
         }
     }
 }
 
-/// A construct in an article that the format itself cannot express (schema v0.6.0).
+/// A construct in an article that the format itself cannot express (schema v0.7.0).
 ///
 /// A marking is a flag on an article that is otherwise worked out: it names the
 /// one thing that does not fit and leaves everything that does fit standing. It
 /// is the opposite of an [`OpenTerm`], which says the language expresses this
 /// fine and the content is filled elsewhere.
 ///
-/// The engine parses markings but does not act on them: what execution should do
-/// with a marked article is a separate decision. Until it is taken, the RFC-012
-/// taint machinery keeps running off [`UntranslatableEntry`], which markings
-/// replace from v0.6.0 onwards.
+/// The engine acts on markings, and it acts on them the way it acts on an
+/// [`UntranslatableEntry`]. The four RFC-012 modes read both channels: an
+/// unaccepted marking stops execution, an accepted one runs the partial logic.
+/// That has to be so, because the laws migrated to v0.7.0 carry markings where
+/// they used to carry untranslatables, and reading only the old channel would
+/// let a flagged article execute as if nothing were flagged. See
+/// `flagged_constructs` in the engine's service layer.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Marking {
     /// The construct that cannot be expressed, in the words the article uses.
     pub about: String,
+    /// Why the construct does not fit, in terms of what the format does have.
+    ///
+    /// The diagnosis, and the half that cannot be recovered from the other
+    /// fields: `resolved_by` follows from it and not the other way round.
+    /// Without it a marking states a wish, and a gap someone examined reads
+    /// the same as one nobody did.
+    pub reason: String,
     /// Whether resolving this needs a new engine operation or a new model shape.
     pub resolution: MarkingResolution,
     /// The change that would resolve it, named concretely enough to become work.
@@ -866,7 +912,7 @@ pub struct Marking {
     pub accepted: bool,
 }
 
-/// A top-level document property an article establishes (schema v0.6.0).
+/// A top-level document property an article establishes (schema v0.7.0).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DeclaredProperty {
@@ -878,7 +924,7 @@ pub enum DeclaredProperty {
     LegalBasis,
 }
 
-/// Declaration that this article fixes a document property (schema v0.6.0).
+/// Declaration that this article fixes a document property (schema v0.7.0).
 ///
 /// A citation title, a commencement date or a scope in time is not a
 /// calculation, and it is not nothing either: it fixes a value the rest of the
@@ -905,7 +951,7 @@ pub struct PlacementContainer {
 }
 
 /// Where an article sits in the document: the containers that enclose it
-/// (schema v0.6.0).
+/// (schema v0.7.0).
 ///
 /// The opschrift is condensed legal classification written by the legislator and
 /// decides questions the article text alone cannot answer. Absent for an article
@@ -949,7 +995,7 @@ pub struct ArticleReference {
 
 /// A legal construct that cannot be expressed with the engine's current operation set (RFC-012)
 ///
-/// Superseded by [`Marking`] in schema v0.6.0. It stays on the model because the
+/// Superseded by [`Marking`] in schema v0.7.0. It stays on the model because the
 /// model is one struct for every version in
 /// `regelrecht_engine::config::SUPPORTED_SCHEMAS`, and every law in the corpus
 /// is still on v0.5.x; dropping the field would silently discard what those
@@ -999,13 +1045,13 @@ pub struct MachineReadable {
     #[serde(default)]
     pub overrides: Option<Vec<OverrideDeclaration>>,
     /// Legal constructs that cannot be expressed with the current operation set (RFC-012).
-    /// Superseded by [`MachineReadable::markings`] in schema v0.6.0.
+    /// Superseded by [`MachineReadable::markings`] in schema v0.7.0.
     #[serde(default)]
     pub untranslatables: Option<Vec<UntranslatableEntry>>,
-    /// Constructs that the format itself cannot express (schema v0.6.0)
+    /// Constructs that the format itself cannot express (schema v0.7.0)
     #[serde(default)]
     pub markings: Option<Vec<Marking>>,
-    /// Document properties this article establishes (schema v0.6.0)
+    /// Document properties this article establishes (schema v0.7.0)
     #[serde(default)]
     pub declares: Option<Vec<Declaration>>,
 }
@@ -1019,7 +1065,7 @@ pub struct Article {
     #[serde(default, alias = "ref")]
     pub url: Option<String>,
     /// The containers that enclose this article, each with its number and
-    /// opschrift (schema v0.6.0)
+    /// opschrift (schema v0.7.0)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub placement: Option<Placement>,
     #[serde(default)]
@@ -1142,16 +1188,17 @@ impl Article {
             .and_then(|mr| mr.overrides.as_ref())
     }
 
-    /// Get the markings declared by this article (schema v0.6.0).
+    /// Get the markings declared by this article (schema v0.7.0).
     ///
-    /// Read-only: the engine parses markings but does not yet act on them.
+    /// The engine reads these beside `untranslatables`: a marking drives the
+    /// four RFC-012 modes exactly as an untranslatable entry does.
     pub fn get_markings(&self) -> Option<&Vec<Marking>> {
         self.machine_readable
             .as_ref()
             .and_then(|mr| mr.markings.as_ref())
     }
 
-    /// Get the document properties this article declares (schema v0.6.0).
+    /// Get the document properties this article declares (schema v0.7.0).
     pub fn get_declares(&self) -> Option<&Vec<Declaration>> {
         self.machine_readable
             .as_ref()
