@@ -116,6 +116,28 @@ Wat erin staat, staat in `packages/simulator/README.md` onder
 "[Hoe het antwoord tot stand kwam](../simulator/README.md#hoe-het-antwoord-tot-stand-kwam)";
 deze laag geeft het door zoals de cel het gaf.
 
+### Het zaakkenmerk
+
+Eén parameter vraagt meer uitleg dan de andere: het **zaakkenmerk**. Een BSN weet
+de vrager; een zaakkenmerk niet, want het bestaat nergens voordat er een besluit
+genomen is. Het ontstaat uit een **sjabloon** bij de besluit-definitie
+(`zaakkenmerk: '{partij}/{jaar}'`), wordt bij het besluit ingevuld uit de
+parameters, en komt als vast veld in het decretogram te staan. De kroniek met
+beschikkingen groepeert erop, en een lexostatus over die kroniek vraagt het
+daarom als sleutel. Zie [`packages/simulator/README.md`](../simulator/README.md)
+— "Wat een decretogram draagt", de ingebouwde verwijzing `$zaakkenmerk` bij de
+vier inputvormen, en "Het zaakkenmerk moet bij precies één zaak horen" voor de
+twee regels die bewaken dat twee zaken er nooit één worden.
+
+Omdat het nergens vandaan lijkt te komen, draagt `GET /api/world` het mee: per
+lexostatus-definitie haar `doc`, haar parameters met hun type en — bij een
+kroniekfilter — de `key` (de stroom en het sleutelveld), en per besluit-definitie
+het zaakkenmerk-**sjabloon** met de kroniek waarin haar decretogrammen landen.
+Daarmee kan een client uitleggen wat er in dat veld hoort, welke vorm het heeft,
+en welke kenmerken er nu in die kroniek liggen — alles uit hetzelfde beeld, zonder
+het wereldbestand ernaast te leggen. De frontend doet dat in het tabblad
+Lexostatus.
+
 ### Wat geen fout is
 
 - **"Niets vastgesteld"** is een antwoord met een reden: HTTP 200, met

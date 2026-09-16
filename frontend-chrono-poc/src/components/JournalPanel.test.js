@@ -80,6 +80,15 @@ describe('het journaal', () => {
     expect(uitklap.some((regel) => regel.includes(besluit.changes[0].label))).toBe(true);
   });
 
+  it('zet de zaak vooraan bij een gram dat er een draagt', async () => {
+    const wrapper = mountPanel();
+    const besluit = worldFixture.journal.find((entry) => entry.kind === 'besluit');
+    await rows(wrapper)[besluit.seq].trigger('click');
+
+    const gramRij = children(wrapper).find((item) => texts(item).includes(besluit.grams[0].name));
+    expect(texts(gramRij).some((tekst) => tekst.startsWith('zaak zorgtoeslag/'))).toBe(true);
+  });
+
   it('opent het gram achter een regel, zoals de cel het in haar kroniek toont', async () => {
     const wrapper = mountPanel();
     const besluit = worldFixture.journal.find((entry) => entry.kind === 'besluit');

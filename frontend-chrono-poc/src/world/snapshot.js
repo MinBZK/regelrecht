@@ -29,6 +29,15 @@ export const GRAM_KINDS = {
 
 const UNKNOWN_KIND = { label: 'Gram', color: 'neutral', icon: 'file' };
 
+/**
+ * Het veld waaronder een zaak terug te vinden is.
+ *
+ * Een platformnaam en geen casusnaam: elk decretogram draagt hem, en elke
+ * betaling over dezelfde zaak ook (zie `packages/simulator/README.md`, "Wat een
+ * decretogram draagt").
+ */
+const ZAAKKENMERK = 'zaakkenmerk';
+
 /** Hoe dit gram eruitziet; een onbekend soort blijft leesbaar. */
 export function gramKind(kind) {
   return GRAM_KINDS[kind] ?? UNKNOWN_KIND;
@@ -42,6 +51,158 @@ export function cells(snapshot) {
 /** De kronieken van een cel, elk met zijn grammen. */
 export function chronicles(cell) {
   return Array.isArray(cell?.chronicles) ? cell.chronicles : [];
+}
+
+/**
+ * De lexostatussen die een cel publiceert, zoals zij ze documenteert.
+ *
+ * Elk item draagt `name`, `doc`, de `inputs` met hun type, de `outputs` en — bij
+ * een kroniekfilter — de `key`: de stroom en het sleutelveld waarop gereduceerd
+ * wordt. Deze app verzint er niets bij; het staat allemaal in het beeld.
+ */
+export function lexostatusDefinitions(cell) {
+  return Array.isArray(cell?.lexostatussen) ? cell.lexostatussen : [];
+}
+
+/** De besluiten die een cel kan nemen, met hun zaakkenmerk-sjabloon. */
+export function besluitDefinitions(cell) {
+  return Array.isArray(cell?.besluiten) ? cell.besluiten : [];
+}
+
+/**
+ * De parameters van één lexostatus, met wat een vrager erover hoort te weten.
+ *
+ * Een parameter is meestal een waarde die de vrager al heeft (een BSN). Maar de
+ * **sleutel** van een kroniekfilter is iets anders: dat is waaronder deze cel
+ * haar vastleggingen groepeert, en bij een kroniek met beschikkingen is dat het
+ * zaakkenmerk — een samengestelde waarde die uit het sjabloon van een besluit
+ * ontstaat. Wie dat niet weet, typt daar wat en krijgt "niets vastgesteld"
+ * terug: een geldig antwoord op een vraag over een zaak die niet bestaat.
+ *
+ * Daarom komt er bij zo'n parameter drie dingen bij: de kroniek waarvan ze de
+ * sleutel is, de **vorm** die de besluiten van deze cel eraan geven, en de
+ * waarden die er nu in die kroniek onder liggen.
+ */
+export function lexostatusParams(cell, definition) {
+  const key = definition?.key ?? null;
+  return (definition?.inputs ?? []).map((input) => {
+    const isKey = Boolean(key) && key.parameter === input.name;
+    return {
+      name: input.name,
+      type: input.type,
+      chronicle: isKey ? key.chronicle : null,
+      patterns: isKey ? zaakkenmerkPatterns(cell, key.chronicle) : [],
+      known: isKey ? knownKeys(cell, key.chronicle, key.parameter) : [],
+    };
+  });
+}
+
+/**
+ * Wat er onder het label van zo'n parameter staat.
+ *
+ * Bij een sleutel de kroniek en de vorm, zodat te lezen is waar de waarde
+ * vandaan komt; anders het woord dat de wereld voor het type gebruikt.
+ */
+export function describeParam(param) {
+  if (!param?.chronicle) return String(param?.type ?? '');
+  const vorm = param.patterns.length > 0 ? `, vorm ${param.patterns.map((text) => `'${text}'`).join(' of ')}` : '';
+  return `sleutel van kroniek '${param.chronicle}'${vorm}`;
+}
+
+/**
+ * Het voorbeeld dat als geestschrift in het invoerveld staat; leeg als er geen
+ * eenduidig voorbeeld te geven is.
+ *
+ * Een placeholder staat op de plek waar de invuller zo zelf iets neerzet, dus
+ * het hoort één **welgevormde** waarde te zijn. Bij precies één vorm is dat die
+ * vorm. Zijn er meer — twee besluiten met elk een eigen sjabloon in dezelfde
+ * kroniek — dan is er geen voorbeeld dat de andere niet tegenspreekt: er één
+ * uitkiezen laat de vorm stelliger lijken dan ze is, en ze aaneenrijgen zet een
+ * tekst in het veld die zelf geen geldige waarde is. Dan blijft het veld leeg en
+ * doet [`describeParam`] het werk: die somt ze alle op in het label erboven, en
+ * dat is de plek voor een opsomming.
+ */
+export function placeholderFor(param) {
+  const patterns = param?.patterns ?? [];
+  return patterns.length === 1 ? patterns[0] : '';
+}
+
+/**
+ * De zaakkenmerk-sjablonen van de besluiten die in deze kroniek leggen.
+ *
+ * Uit de besluiten van deze cel en niet uit een lijst hier: welke vorm een
+ * zaakkenmerk heeft, staat in het wereldbestand. Een kroniek waarin geen besluit
+ * van deze cel legt — de betalingen, die het kenmerk van een ander dragen —
+ * levert niets op, en dan staat er ook geen vorm bij.
+ */
+function zaakkenmerkPatterns(cell, chronicle) {
+  const seen = [];
+  for (const besluit of besluitDefinitions(cell)) {
+    if (besluit.chronicle !== chronicle) continue;
+    if (besluit.zaakkenmerk && !seen.includes(besluit.zaakkenmerk)) seen.push(besluit.zaakkenmerk);
+  }
+  return seen;
+}
+
+/**
+ * De waarden die nu in deze kroniek onder dit veld liggen.
+ *
+ * Wat de cel al heeft vastgelegd, dus: geen lijst die deze app bijhoudt, maar
+ * een doorsnede van het beeld dat er toch al is. Een gram dat ná de klok ligt
+ * telt gewoon mee — dat de vraag erover "niets vastgesteld" oplevert, is een
+ * antwoord over het gekozen moment en geen reden om de waarde te verzwijgen.
+ */
+function knownKeys(cell, chronicle, field) {
+  const stream = chronicles(cell).find((candidate) => candidate.stream === chronicle);
+  const seen = [];
+  for (const gram of stream?.grams ?? []) {
+    const value = gram?.fields?.[field]?.value;
+    if (value === null || value === undefined || value === '') continue;
+    const text = String(value);
+    if (!seen.includes(text)) seen.push(text);
+  }
+  return seen.sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Het zaakkenmerk dat een gram draagt; `null` als het er geen heeft.
+ *
+ * Uit het veld en niet uit de soort van het gram: een besluit draagt het als
+ * vast veld, en een betaling die over diezelfde zaak gaat draagt het ook. Dat
+ * beide het dragen, is precies hoe ze bij elkaar te vinden zijn.
+ */
+export function zaakkenmerkOf(gram) {
+  const value = gram?.fields?.[ZAAKKENMERK]?.value;
+  return value === null || value === undefined || value === '' ? null : String(value);
+}
+
+/** De zaak van een gram als regel; leeg als het gram er geen draagt. */
+export function describeZaak(gram) {
+  const kenmerk = zaakkenmerkOf(gram);
+  return kenmerk ? `zaak ${kenmerk}` : '';
+}
+
+/**
+ * Het gram waar een verwijzing naar wijst, uit de kroniek waarin het ligt.
+ *
+ * Het id is `<cel>|<kroniek>|<plek>`, en die plek is de index in precies de
+ * lijst die het beeld geeft: een kroniek groeit achteraan en wijzigt nooit. Een
+ * verwijzing draagt daarom geen kopie van het gram, en dit is de weg terug.
+ */
+export function gramByRef(snapshot, ref) {
+  const parts = String(ref?.id ?? '').split('|');
+  if (parts.length !== 3) return null;
+  const [cellId, stream, position] = parts;
+  // Een plek is een rij cijfers, en dat wordt hier op de tekst getoetst en niet
+  // op wat `Number` ervan maakt: `Number('')` is 0 en `Number(' 1 ')` is 1, dus
+  // een id met een lege of slordige plek zou anders stil een gram áánwijzen —
+  // een verwijzing die klopt lijkt te zijn terwijl ze het niet is. Niets
+  // teruggeven is hier het eerlijke antwoord.
+  if (!/^\d+$/.test(position)) return null;
+  const index = Number(position);
+  const cell = cells(snapshot).find((candidate) => candidate.id === cellId);
+  const chronicle = chronicles(cell).find((candidate) => candidate.stream === stream);
+  return (chronicle?.grams ?? [])[index] ?? null;
 }
 
 /**
@@ -248,12 +409,16 @@ export function isPrefilled(action, name, value) {
  * iets over gezegd werd. Daarom geeft deze functie terug wat er al ligt, zodat
  * de kaart het kan tonen en om bevestiging kan vragen.
  *
- * "Dezelfde zaak" leest deze app niet uit het zaakkenmerk-sjabloon — dat staat
- * in het wereldbestand en niet in het beeld — maar uit de parameters van het
- * besluit: een decretogram legt elke parameter vast onder haar eigen naam, dus
- * het gram waarvan alle parameters overeenkomen met wat er in het formulier
- * staat, gaat over dezelfde zaak. Het **zaakkenmerk** van dat gram komt mee,
- * want dat is waaronder de zaak terug te vinden is.
+ * "Dezelfde zaak" leest deze app uit de parameters van het besluit en niet uit
+ * het zaakkenmerk-sjabloon. Dat sjabloon staat wel in het beeld — het is te zien
+ * bij de sleutel van een kroniek — maar het **invullen** ervan is werk van de
+ * cel, met een weigering eraan vast voor een waarde waarin een scheidingsteken
+ * voorkomt. Een tweede plek die het kenmerk samenstelt zou daarvan af kunnen
+ * wijken en dan een zaak aanwijzen die de cel niet bedoelt. Een decretogram legt
+ * elke parameter vast onder haar eigen naam, dus het gram waarvan alle parameters
+ * overeenkomen met wat er in het formulier staat, gaat over dezelfde zaak. Het
+ * **zaakkenmerk** van dat gram komt mee, want dat is waaronder de zaak terug te
+ * vinden is.
  *
  * `null` zolang er niets te melden is: geen besluit-actie, een formulier dat nog
  * niet ingevuld is, of geen gram dat erbij past. Grammen ná de klok tellen niet
@@ -286,7 +451,7 @@ export function decidedAlready(snapshot, action, values) {
   const latest = matches.reduce((a, b) => (String(a.op_moment) > String(b.op_moment) ? a : b));
   return {
     opMoment: latest.op_moment,
-    zaakkenmerk: latest.fields?.zaakkenmerk?.value ?? null,
+    zaakkenmerk: zaakkenmerkOf(latest),
     count: matches.length,
   };
 }
@@ -311,12 +476,17 @@ export function describeEffect(effect) {
 /**
  * De velden van een gram, met hun herkomst, op naam gesorteerd.
  *
- * De vaste velden van een besluit (zaakkenmerk, regeling, bevoegd gezag) staan
- * vooraan: dat is waaraan een lezer het gram herkent. Daarna komt de rest.
+ * Het **zaakkenmerk** staat vooraan, daarna de overige vaste velden van een
+ * besluit (regeling, bevoegd gezag), daarna de rest. Het kenmerk voorop omdat
+ * het zegt waar dit gram bij hoort: elke andere waarde erin gaat over die ene
+ * zaak, en wie van onder naar boven leest weet pas aan het eind welke.
  */
 export function gramFields(gram) {
   const entries = Object.entries(gram?.fields ?? {});
-  const rank = (field) => (field.origin?.herkomst === 'besluit' ? 0 : 1);
+  const rank = (field) => {
+    if (field.name === ZAAKKENMERK) return 0;
+    return field.origin?.herkomst === 'besluit' ? 1 : 2;
+  };
   return entries
     .map(([name, field]) => ({ name, value: field?.value, origin: field?.origin ?? null }))
     .sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
@@ -636,6 +806,7 @@ export function allGrams(snapshot) {
           intake: gram.intake ?? '',
           grondslag: gram.grondslag ?? '',
           opMoment: gram.op_moment,
+          zaak: describeZaak(gram),
           gram,
         });
       });

@@ -2,7 +2,15 @@
 import { computed, ref, watch } from 'vue';
 import { formatMoment, formatValue, humanize } from '../world/format.js';
 import { fieldValue } from '../world/events.js';
-import { cells, gramKind, readLexostatus } from '../world/snapshot.js';
+import {
+  cells,
+  describeParam,
+  gramKind,
+  lexostatusDefinitions,
+  lexostatusParams,
+  placeholderFor,
+  readLexostatus,
+} from '../world/snapshot.js';
 
 // Een cel een vraag stellen: wat stelt u onder deze naam vast, op dit moment?
 //
@@ -10,8 +18,19 @@ import { cells, gramKind, readLexostatus } from '../world/snapshot.js';
 // vastgesteld" is een gewoon antwoord en geen fout — het staat hier dus als
 // antwoord, met de reden die de cel gaf, en niet als melding dat er iets stuk is.
 //
-// Welke parameters een lexostatus vraagt staat niet in het beeld; de bezoeker
-// geeft ze daarom zelf op, met naam en waarde, zoals de cel ze documenteert.
+// Het **formulier komt uit de definitie** en niet uit deze code: welke parameters
+// een lexostatus verlangt en van welk type staat in het beeld, want de cel
+// accepteert precies dat en niets anders. De toelichting van de definitie staat
+// erboven, zodat te lezen is waar de naam over gaat voordat iemand iets invult.
+//
+// Eén parameter verdient meer dan haar naam: de **sleutel** van een
+// kroniekfilter. Dat is waaronder de cel haar vastleggingen groepeert, en bij
+// een kroniek met beschikkingen is dat het zaakkenmerk — een samengestelde
+// waarde die uit het sjabloon van een besluit ontstaat en die nergens te zien
+// was. Bij zo'n veld staat dus de kroniek en de vorm, en het biedt de waarden
+// aan die er nu in die kroniek liggen. Vrije invoer blijft: een vraag over een
+// zaak die er nog niet is, is een geldige vraag met "niets vastgesteld" als
+// antwoord, en dat is precies wat deze opstelling wil laten zien.
 //
 // Het **moment** is wat deze vraag tot tijdreizen maakt: niet "wat weet deze cel
 // nu", maar "wat wist deze cel op T". Het veld volgt de klok zolang de bezoeker
@@ -38,11 +57,14 @@ const props = defineProps({
 const emit = defineEmits(['show-gram']);
 
 /** Alleen cellen die iets publiceren zijn te bevragen. */
-const publishers = computed(() => cells(props.snapshot).filter((cell) => (cell.lexostatussen ?? []).length > 0));
+const publishers = computed(() =>
+  cells(props.snapshot).filter((cell) => lexostatusDefinitions(cell).length > 0),
+);
 
 const cellId = ref('');
 const name = ref('');
-const params = ref([{ name: '', value: '' }]);
+/** Wat de bezoeker per parameter invulde, op naam. */
+const values = ref({});
 /** Het laatste antwoord, uitgesplitst; `null` zolang er niets gevraagd is. */
 const answer = ref(null);
 const asking = ref(false);
@@ -83,12 +105,16 @@ watch(
   { immediate: true },
 );
 
-const names = computed(() => publishers.value.find((cell) => cell.id === cellId.value)?.lexostatussen ?? []);
+/** De gekozen cel, zoals het beeld haar geeft. */
+const cell = computed(() => publishers.value.find((candidate) => candidate.id === cellId.value) ?? null);
+
+/** De definities die deze cel publiceert. */
+const definitions = computed(() => lexostatusDefinitions(cell.value));
 
 watch(
-  names,
+  definitions,
   (list) => {
-    if (!list.includes(name.value)) name.value = list[0] ?? '';
+    if (!list.some((definition) => definition.name === name.value)) name.value = list[0]?.name ?? '';
   },
   { immediate: true },
 );
@@ -128,17 +154,24 @@ const missed = computed(() => {
   ].join(' · ');
 });
 
-function addParam() {
-  params.value = [...params.value, { name: '', value: '' }];
-}
+/** De gekozen definitie: haar toelichting, haar parameters, haar uitkomsten. */
+const definition = computed(() => definitions.value.find((candidate) => candidate.name === name.value) ?? null);
 
-function removeParam(index) {
-  params.value = params.value.filter((_, position) => position !== index);
-}
+/** De parameters van die definitie, met wat er per veld bij hoort te staan. */
+const params = computed(() => lexostatusParams(cell.value, definition.value));
 
-function setParam(index, key, event) {
-  const raw = fieldValue(event, params.value[index][key]);
-  params.value = params.value.map((param, position) => (position === index ? { ...param, [key]: raw } : param));
+// Een andere naam is een ander formulier: wat er voor de vorige vraag ingevuld
+// stond, hoort dan niet stil mee te gaan. Een parameter die in beide voorkomt
+// blijft wel staan — dezelfde zaak twee keer intypen is geen werk dat iemand
+// bedoeld heeft.
+watch(params, (list) => {
+  const kept = {};
+  for (const param of list) if (param.name in values.value) kept[param.name] = values.value[param.name];
+  values.value = kept;
+});
+
+function setParam(param, event) {
+  values.value = { ...values.value, [param.name]: fieldValue(event, values.value[param.name] ?? '') };
 }
 
 /** Ligt het gekozen moment ná de klok? Dan valt er niets te vragen. */
@@ -151,8 +184,13 @@ async function submit() {
   answer.value = null;
   explanationOpen.value = false;
   try {
+    // Een leeg veld gaat niet mee: dan weigert de cel de vraag met "parameter
+    // ontbreekt", en dat is de melding die erbij hoort — niet een lege tekst die
+    // nergens op slaat.
     const given = Object.fromEntries(
-      params.value.filter((param) => param.name).map((param) => [param.name, param.value]),
+      params.value
+        .map((param) => [param.name, values.value[param.name] ?? ''])
+        .filter(([, value]) => value !== ''),
     );
     const payload = await props.ask(cellId.value, name.value, given, moment.value || null);
     answer.value = payload ? readLexostatus(payload) : null;
@@ -174,8 +212,8 @@ async function submit() {
         <nldd-form-field label="Cel">
           <nldd-dropdown @change="cellId = fieldValue($event, cellId)">
             <select>
-              <option v-for="cell in publishers" :key="cell.id" :value="cell.id" :selected="cell.id === cellId">
-                {{ cell.id }}
+              <option v-for="option in publishers" :key="option.id" :value="option.id" :selected="option.id === cellId">
+                {{ option.id }}
               </option>
             </select>
           </nldd-dropdown>
@@ -184,12 +222,27 @@ async function submit() {
         <nldd-form-field label="Lexostatus">
           <nldd-dropdown @change="name = fieldValue($event, name)">
             <select>
-              <option v-for="option in names" :key="option" :value="option" :selected="option === name">
-                {{ option }}
+              <option
+                v-for="option in definitions"
+                :key="option.name"
+                :value="option.name"
+                :selected="option.name === name"
+              >
+                {{ option.name }}
               </option>
             </select>
           </nldd-dropdown>
         </nldd-form-field>
+
+        <!-- Waar deze naam over gaat, in de woorden van het wereldbestand. Wat
+             de cel erover zegt en niet wat deze app ervan maakt. -->
+        <nldd-inline-dialog
+          v-if="definition?.doc"
+          horizontal-alignment="left"
+          icon="info"
+          :text="definition.name"
+          :supporting-text="definition.doc"
+        ></nldd-inline-dialog>
 
         <!-- Het moment van de vraag. Hetzelfde datumveld als "Spoel vooruit
              tot" op de tijdlijn: Nederlandse notatie in beeld, ISO op de draad. -->
@@ -209,31 +262,56 @@ async function submit() {
           </nldd-form-field-error-text>
         </nldd-form-field>
 
+        <!-- Eén veld per gedocumenteerde parameter: de cel accepteert precies
+             deze namen, dus ze hoeven niet geraden te worden. -->
         <nldd-form-field
-          v-for="(param, index) in params"
-          :key="`param-${index}`"
-          label="Parameter"
-          supporting-label="naam en waarde, zoals de cel ze documenteert"
+          v-for="param in params"
+          :key="param.name"
+          :label="param.name"
+          :supporting-label="describeParam(param)"
         >
-          <nldd-container layout="row" gap="8" vertical-alignment="center">
-            <nldd-text-field
-              :value="param.name"
-              accessible-label="Naam van de parameter"
-              @input="setParam(index, 'name', $event)"
-            ></nldd-text-field>
-            <nldd-text-field
-              :value="param.value"
-              accessible-label="Waarde van de parameter"
-              @input="setParam(index, 'value', $event)"
-            ></nldd-text-field>
-            <nldd-icon-button
-              size="sm"
-              icon="remove"
-              text="Parameter weglaten"
-              :disabled="params.length === 1 || undefined"
-              @click="removeParam(index)"
-            ></nldd-icon-button>
-          </nldd-container>
+          <!-- De sleutel van een kroniek waarin al iets ligt: de bekende
+               waarden als keuze, met vrije invoer erbij (`allow-custom`). Een
+               vraag over een zaak die er nog niet is, is een geldige vraag. -->
+          <nldd-combo-box
+            v-if="param.known.length > 0"
+            width="full"
+            allow-custom
+            :value="values[param.name] ?? ''"
+            :accessible-label="`Waarde van ${param.name}`"
+            :placeholder="placeholderFor(param)"
+            @change="setParam(param, $event)"
+            @input="setParam(param, $event)"
+          >
+            <nldd-menu>
+              <nldd-menu-item
+                v-for="option in param.known"
+                :key="option"
+                :text="option"
+                :value="option"
+              ></nldd-menu-item>
+            </nldd-menu>
+          </nldd-combo-box>
+          <!-- Een datum krijgt het datumveld, net als "Spoel vooruit tot" en de
+               formulieren van de acties: Nederlandse notatie in beeld, ISO op de
+               draad. Een getal of een ja/nee gaat als tekst mee en wordt door de
+               server omgezet naar het type dat de definitie documenteert; komt
+               het daar niet doorheen, dan zegt de cel zelf wat er mis is. -->
+          <nldd-date-field
+            v-else-if="param.type === 'date'"
+            width="full"
+            :value="values[param.name] ?? ''"
+            :accessible-label="`Waarde van ${param.name}`"
+            @input="setParam(param, $event)"
+            @change="setParam(param, $event)"
+          ></nldd-date-field>
+          <nldd-text-field
+            v-else
+            :value="values[param.name] ?? ''"
+            :accessible-label="`Waarde van ${param.name}`"
+            :placeholder="placeholderFor(param)"
+            @input="setParam(param, $event)"
+          ></nldd-text-field>
         </nldd-form-field>
 
         <nldd-form-actions>
@@ -246,7 +324,6 @@ async function submit() {
               :disabled="!cellId || !name || momentAfterClock || undefined"
               :loading="asking || undefined"
             ></nldd-button>
-            <nldd-button variant="secondary" start-icon="add" text="Parameter" @click="addParam"></nldd-button>
           </nldd-button-group>
         </nldd-form-actions>
       </form>

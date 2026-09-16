@@ -14,8 +14,41 @@
       "id": "belastingdienst",
       "laws": [],
       "lexostatussen": [
-        "betaald_tot_nu_toe",
-        "toetsingsinkomen"
+        {
+          "name": "betaald_tot_nu_toe",
+          "doc": "wat deze cel op deze zaak betaald heeft, opgeteld",
+          "inputs": [
+            {
+              "name": "zaakkenmerk",
+              "type": "string"
+            }
+          ],
+          "outputs": [
+            "bedrag"
+          ],
+          "key": {
+            "chronicle": "betalingen",
+            "parameter": "zaakkenmerk"
+          }
+        },
+        {
+          "name": "toetsingsinkomen",
+          "doc": "Het vastgestelde toetsingsinkomen op het gevraagde moment, met het bevoegd gezag erbij. Een consument die hierop leunt, hoort te kunnen zien wiens vaststelling dit is.",
+          "inputs": [
+            {
+              "name": "bsn",
+              "type": "string"
+            }
+          ],
+          "outputs": [
+            "competent_authority",
+            "toetsingsinkomen"
+          ],
+          "key": {
+            "chronicle": "aanslagen",
+            "parameter": "bsn"
+          }
+        }
       ],
       "besluiten": [],
       "chronicles": [
@@ -337,7 +370,23 @@
       "id": "burger",
       "laws": [],
       "lexostatussen": [
-        "ingediende_aanvraag"
+        {
+          "name": "ingediende_aanvraag",
+          "doc": "wat deze aanvrager zelf indiende, en wanneer",
+          "inputs": [
+            {
+              "name": "bsn",
+              "type": "string"
+            }
+          ],
+          "outputs": [
+            "jaar"
+          ],
+          "key": {
+            "chronicle": "aanvragen",
+            "parameter": "bsn"
+          }
+        }
       ],
       "besluiten": [],
       "chronicles": [
@@ -391,13 +440,72 @@
         "regeling_standaardpremie"
       ],
       "lexostatussen": [
-        "betaald_tot_nu_toe",
-        "ontvangen_aanvraag",
-        "zorgtoeslagbeschikking"
+        {
+          "name": "betaald_tot_nu_toe",
+          "doc": "Wat er op deze zaak betaald is, voor zover deze cel dat weet: een som over haar eigen meldingen, en dus een reductie — geen saldo dat naast de kroniek wordt bijgehouden.",
+          "inputs": [
+            {
+              "name": "zaakkenmerk",
+              "type": "string"
+            }
+          ],
+          "outputs": [
+            "bedrag"
+          ],
+          "key": {
+            "chronicle": "betalingen",
+            "parameter": "zaakkenmerk"
+          }
+        },
+        {
+          "name": "ontvangen_aanvraag",
+          "doc": "wat deze cel over deze persoon geleverd kreeg",
+          "inputs": [
+            {
+              "name": "bsn",
+              "type": "string"
+            }
+          ],
+          "outputs": [
+            "jaar"
+          ],
+          "key": {
+            "chronicle": "aanvragen",
+            "parameter": "bsn"
+          }
+        },
+        {
+          "name": "zorgtoeslagbeschikking",
+          "doc": "wat deze cel over deze zaak besloten heeft, op het gevraagde moment",
+          "inputs": [
+            {
+              "name": "zaakkenmerk",
+              "type": "string"
+            }
+          ],
+          "outputs": [
+            "heeft_recht_op_zorgtoeslag",
+            "hoogte_zorgtoeslag"
+          ],
+          "key": {
+            "chronicle": "beschikkingen",
+            "parameter": "zaakkenmerk"
+          }
+        }
       ],
       "besluiten": [
-        "zorgtoeslag_toekenning",
-        "zorgtoeslag_vaststelling"
+        {
+          "name": "zorgtoeslag_toekenning",
+          "doc": "Het eerste besluit over de zaak: recht en hoogte, met een betalingsverplichting eraan. Het toetsingsinkomen wordt geaccepteerd van de cel die het vaststelde en hier niet nagerekend (invariant I5).",
+          "zaakkenmerk": "zorgtoeslag/{bsn}",
+          "chronicle": "beschikkingen"
+        },
+        {
+          "name": "zorgtoeslag_vaststelling",
+          "doc": "Het tweede besluit over dezelfde zaak. Hetzelfde zaakkenmerk, dus het ligt in dezelfde kroniek van dezelfde cel — en het gaat opnieuw naar de bron voor het toetsingsinkomen, want er is nergens een kopie van het eerste antwoord.",
+          "zaakkenmerk": "zorgtoeslag/{bsn}",
+          "chronicle": "beschikkingen"
+        }
       ],
       "chronicles": [
         {
