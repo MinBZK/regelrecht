@@ -10,8 +10,8 @@
  * wereld gemeten, op de kronieken zelf; deze app zou dat niet kunnen en hoort het
  * ook niet te proberen.
  */
-import { formatValue } from './format.js';
-import { cells, describeZaak, gramByRef } from './snapshot.js';
+import { formatMoment, formatValue } from './format.js';
+import { cells, describeRecordedOrigin, describeZaak, gramByRef } from './snapshot.js';
 
 /**
  * De soorten gebeurtenis, met hoe ze eruitzien.
@@ -120,7 +120,8 @@ export function isNewEntry(previousLength, entry) {
  * keuze als in het grammenpaneel.
  */
 export function journalRows(snapshot, { previousLength = null, actor = '', cell = '', moment = '' } = {}) {
-  return journalEntries(snapshot).map((entry) => {
+  const entries = journalEntries(snapshot);
+  return entries.map((entry) => {
     const who = journalActor(entry);
     const inCells = journalCells(entry);
     const matches =
@@ -138,6 +139,8 @@ export function journalRows(snapshot, { previousLength = null, actor = '', cell 
       // Een vraag hangt onder het besluit dat haar uitlokte; los gelezen is ze een
       // vraag zonder aanleiding.
       indented: entry.parent !== null && entry.parent !== undefined,
+      // Wat dit besluit uitvoerde; `null` bij elke regel die niets uitvoerde.
+      executed: readExecution(entry, entries),
       matches,
     };
   });
@@ -153,6 +156,73 @@ export function journalRows(snapshot, { previousLength = null, actor = '', cell 
  */
 export function journalGrams(snapshot, entry) {
   return (entry?.grams ?? []).map((ref) => ({ ...ref, zaak: describeZaak(gramByRef(snapshot, ref)) }));
+}
+
+/**
+ * Wat een besluit uitvoerde: welk recht, waarop, en wat eruit kwam.
+ *
+ * Het contract is `Execution` uit `packages/simulator/src/journal.rs`. Er wordt
+ * hier niets uitgerekend en niets opgezocht in een kroniek: de regel draagt dit
+ * al, en wat deze functie toevoegt is de notatie van het scherm plus de weg naar
+ * de vraag-regel waarlangs een geaccepteerde waarde binnenkwam.
+ *
+ * `null` voor een regel zonder uitvoering — een vastlegging, een betaling, een
+ * vraag. Een leeg blok zou beloven dat er een regeling gedraaid heeft.
+ */
+export function readExecution(entry, entries = []) {
+  const executed = entry?.executed;
+  if (!executed) return null;
+  const regulations = (executed.regulations ?? []).map((uitgevoerd) => ({
+    regulation: uitgevoerd.regulation,
+    validFrom: uitgevoerd.valid_from ?? null,
+    zin: describeExecutedRegulation(uitgevoerd),
+  }));
+  return {
+    regulations,
+    zin: regulations.map((uitgevoerd) => uitgevoerd.zin).join(', '),
+    inputs: (executed.inputs ?? []).map((input) => ({
+      name: input.name,
+      value: input.value,
+      // Dezelfde woorden als in het gram zelf: één herkomst, één vocabulaire.
+      origin: describeRecordedOrigin(input.herkomst),
+      question: questionRow(entry, entries, input.herkomst),
+    })),
+    outputs: (executed.outputs ?? []).map((output) => ({
+      name: output.name,
+      value: output.value,
+    })),
+  };
+}
+
+/** Eén uitgevoerde regeling in woorden: de regeling met de versie die gold. */
+export function describeExecutedRegulation(uitgevoerd) {
+  const regulation = uitgevoerd?.regulation ?? '';
+  // Een regeling zonder versiedatum staat er kaal. Een verzonnen datum erbij
+  // zou beweren dat er een versie gekozen is die er niet is.
+  return uitgevoerd?.valid_from ? `${regulation} ${formatMoment(uitgevoerd.valid_from)}` : regulation;
+}
+
+/**
+ * De vraag-regel waarlangs een geaccepteerde waarde binnenkwam; `null` als er
+ * geen is.
+ *
+ * Alleen onder dit besluit gezocht, en op de cel plus de lexostatus die de
+ * herkomst noemt: een andere vraag aan dezelfde cel hoort in een andere regel,
+ * en een besluit dat twee keer hetzelfde vroeg zou anders naar de vraag van een
+ * ander besluit wijzen. Een waarde die de *wet* zelf bij een cel haalde (tier 3)
+ * draagt die namen niet en krijgt dus geen weg — er is dan geen vraag-regel om
+ * heen te gaan.
+ */
+export function questionRow(entry, entries, herkomst) {
+  if (herkomst?.herkomst !== 'geaccepteerd') return null;
+  const found = (entries ?? []).find(
+    (candidate) =>
+      candidate.parent === entry.seq &&
+      candidate.kind === 'vraag' &&
+      candidate.question?.answer?.cell === herkomst.cell &&
+      candidate.question?.answer?.name === herkomst.lexostatus,
+  );
+  return found ? `journaal-${found.seq}` : null;
 }
 
 /** De cellen om op te filteren: uit het beeld, ook als er nog niets gebeurde. */
@@ -207,4 +277,16 @@ export function describeAnswer(question) {
   const outcome = question?.answer?.outcome ?? {};
   if (outcome.established) return describeStand(outcome.established);
   return outcome.not_established?.reason ?? 'niets vastgesteld';
+}
+
+/**
+ * Van wanneer het antwoord is: het moment waarop het geldt.
+ *
+ * Los van de waarde en niet eraan geplakt, want het is iets anders: de waarde is
+ * wat de andere cel vaststelde, het moment is waarop die vaststelling gold. Een
+ * antwoord zonder moment is niet na te lopen.
+ */
+export function describeAnswerMoment(question) {
+  const moment = question?.answer?.op_moment;
+  return moment ? `geldig op ${formatMoment(moment)}` : '';
 }

@@ -552,8 +552,14 @@ export function describeOrigin(origin) {
   }
 }
 
-/** De herkomst van een besluit-input, zoals het gram haar opschreef. */
-function describeRecordedOrigin(recorded) {
+/**
+ * De herkomst van een besluit-input, zoals het gram haar opschreef.
+ *
+ * Geëxporteerd omdat het journaal dezelfde herkomst toont bij de inputs van een
+ * besluit (`Execution` uit `packages/simulator/src/journal.rs`): het gram en het
+ * verhaal horen over dezelfde waarde niet verschillende woorden te gebruiken.
+ */
+export function describeRecordedOrigin(recorded) {
   switch (recorded?.herkomst) {
     case 'geaccepteerd':
       return {

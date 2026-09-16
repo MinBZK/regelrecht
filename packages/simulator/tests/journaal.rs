@@ -9,8 +9,9 @@
 //! celgrens op, en de invarianten-gate blijft er groen onder.
 
 use regelrecht_simulator::observation::ObservationLog;
+use regelrecht_simulator::Value;
 use regelrecht_simulator::{
-    journal, regulation_root, JournalActor, JournalKind, Scenario, ScenarioRun,
+    journal, regulation_root, JournalActor, JournalEntry, JournalKind, Scenario, ScenarioRun,
 };
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -34,6 +35,14 @@ fn run() -> ScenarioRun {
         .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
     assert!(run.passed(), "{}:\n{}", path.display(), run.report());
     run
+}
+
+/// De eerste besluitregel van dit verhaal.
+fn eerste_besluit(run: &ScenarioRun) -> &JournalEntry {
+    run.journal
+        .iter()
+        .find(|entry| entry.kind == JournalKind::Besluit)
+        .expect("dit verhaal neemt besluiten")
 }
 
 /// Het verhaal staat erin, in de volgorde waarin het gebeurde.
@@ -149,6 +158,271 @@ fn een_besluit_draagt_wat_het_accepteerde_en_wat_het_veranderde() {
         .as_ref()
         .expect("een vraag-regel draagt het contact zoals het beeld het geeft");
     assert_eq!(question.answer.cell, "belastingdienst");
+}
+
+/// Het besluit vertelt wát het uitvoerde: het recht, de inputs en de uitkomsten.
+///
+/// Dit is waar het om begonnen was. De regel noemde de actie, het gram en de
+/// geaccepteerde waarden; wat er níet in stond, was welke regelingen er gedraaid
+/// hebben, waarop ze rekenden en wat eruit kwam. Het journaal is de
+/// hoofdweergave, dus daar hoort het verhaal van de uitvoering te staan.
+#[test]
+fn een_besluit_noemt_de_uitgevoerde_regelingen_met_hun_inputs_en_uitkomsten() {
+    let run = run();
+    let executed = eerste_besluit(&run)
+        .executed
+        .as_ref()
+        .expect("een besluit uit het besluit-pad draagt zijn uitvoering");
+
+    // Meer dan de regeling waarop het besluit gaat: die haalde haar
+    // standaardpremie bij een uitvoeringsregeling en haar partnerbegrip bij de
+    // kaderwet, en zonder die twee is niet te zien onder welk recht dit bedrag
+    // tot stand kwam.
+    assert_eq!(
+        executed
+            .regulations
+            .iter()
+            .map(|uitgevoerd| uitgevoerd.regulation.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "wet_op_de_zorgtoeslag",
+            "algemene_wet_inkomensafhankelijke_regelingen",
+            "regeling_standaardpremie",
+        ],
+        "de regeling van het besluit vooraan, daarachter wat zij aanriep"
+    );
+    assert_eq!(
+        executed.regulations[0].valid_from.as_deref(),
+        Some("2024-01-01"),
+        "de versie die op het moment van het besluit gold, en niet de nieuwste: {:?}",
+        executed.regulations[0]
+    );
+    assert_eq!(
+        executed.describe_regulations(),
+        "wet_op_de_zorgtoeslag 2024-01-01, algemene_wet_inkomensafhankelijke_regelingen, \
+         regeling_standaardpremie 2024-01-01",
+        "een regeling zonder versiedatum staat er kaal en niet met een verzonnen datum"
+    );
+
+    // De inputs, elk met de herkomst zoals het gram haar opschreef. De
+    // geaccepteerde waarde is de scherpe: die hoort niet op een berekende te
+    // lijken (invariant I5).
+    let namen: Vec<&str> = executed
+        .inputs
+        .iter()
+        .map(|input| input.name.as_str())
+        .collect();
+    assert_eq!(namen, ["bsn", "is_verzekerde", "toetsingsinkomen"]);
+    let herkomsten: Vec<String> = executed
+        .inputs
+        .iter()
+        .map(|input| input.origin.describe())
+        .collect();
+    assert!(
+        herkomsten[0].starts_with("parameter ") && herkomsten[1].starts_with("eigen kroniek "),
+        "elke input draagt haar herkomst in de woorden van het gram: {herkomsten:?}"
+    );
+    let geaccepteerd = &executed.inputs[2];
+    assert_eq!(
+        geaccepteerd.origin.accepted_from(),
+        Some("belastingdienst"),
+        "de geaccepteerde input noemt de cel die haar vaststelde: {geaccepteerd:?}"
+    );
+    // En het verslag zegt het ook: een geaccepteerd bedrag zonder die herkomst
+    // leest als iets wat deze cel zelf vaststelde (invariant I5).
+    assert!(
+        geaccepteerd
+            .describe()
+            .contains("geaccepteerd van cel 'belastingdienst'"),
+        "de regel in het verslag noemt de herkomst: {}",
+        geaccepteerd.describe()
+    );
+
+    // En wat eruit kwam: beide uitkomsten die dit besluit vastlegt.
+    assert_eq!(
+        executed
+            .outputs
+            .iter()
+            .map(|output| output.name.as_str())
+            .collect::<Vec<_>>(),
+        ["heeft_recht_op_zorgtoeslag", "hoogte_zorgtoeslag"],
+    );
+    assert!(
+        executed
+            .outputs
+            .iter()
+            .any(|output| output.value != Value::Null),
+        "de uitkomsten dragen hun waarde: {:?}",
+        executed.outputs
+    );
+}
+
+/// De uitvoering staat alleen bij een besluit, en komt uit het gram.
+///
+/// Twee beweringen in één, want ze houden elkaar overeind: een vastlegging voert
+/// niets uit (en een lege uitvoering zou beweren dat er een regeling gedraaid
+/// heeft die niets deed), en wat er bij een besluit staat, staat ook in het
+/// decretogram waarnaar de regel wijst. Er is geen tweede administratie.
+#[test]
+fn de_uitvoering_hangt_aan_het_gram_en_aan_niets_anders() {
+    let run = run();
+    for entry in &run.journal {
+        assert_eq!(
+            entry.executed.is_some(),
+            entry.kind == JournalKind::Besluit,
+            "regel {} ({:?}) hoort {} uitvoering te dragen",
+            entry.seq,
+            entry.kind,
+            if entry.kind == JournalKind::Besluit {
+                "een"
+            } else {
+                "geen"
+            }
+        );
+    }
+
+    let besluit = eerste_besluit(&run);
+    let executed = besluit.executed.as_ref().expect("een besluit voert uit");
+    // Het gram waar deze regel naar wijst, opgezocht langs de verwijzing die ze
+    // draagt: `<cel>|<kroniek>|<plek>`.
+    let verwijzing = besluit
+        .grams
+        .first()
+        .expect("een besluit legt een gram vast");
+    let plek: usize = verwijzing
+        .id
+        .rsplit('|')
+        .next()
+        .and_then(|plek| plek.parse().ok())
+        .expect("de verwijzing eindigt op de plek in de kroniek");
+    let decretogram = run
+        .snapshot
+        .cells
+        .iter()
+        .find(|cell| cell.id == verwijzing.cell)
+        .and_then(|cell| {
+            cell.chronicles
+                .iter()
+                .find(|chronicle| chronicle.stream == verwijzing.chronicle)
+        })
+        .and_then(|chronicle| chronicle.grams.get(plek))
+        .expect("de verwijzing wijst een gram aan dat in het beeld staat");
+
+    // De uitgevoerde regelingen het eerst: dát is wat deze regel toevoegt, en
+    // een lijst die alleen in het journaal staat zou een verhaal vertellen dat
+    // in geen enkele kroniek terug te vinden is.
+    let vastgelegd = decretogram
+        .fields
+        .get("executed_regulations")
+        .map(|field| &field.value)
+        .and_then(Value::as_array)
+        .expect("het gram legt de uitgevoerde regelingen vast");
+    assert_eq!(
+        vastgelegd
+            .iter()
+            .filter_map(|regeling| {
+                let regeling = regeling.as_object()?;
+                Some((
+                    regeling.get("regulation")?.as_str()?.to_string(),
+                    regeling
+                        .get("regulation_valid_from")?
+                        .as_str()
+                        .map(str::to_string),
+                ))
+            })
+            .collect::<Vec<_>>(),
+        executed
+            .regulations
+            .iter()
+            .map(|uitgevoerd| (uitgevoerd.regulation.clone(), uitgevoerd.valid_from.clone()))
+            .collect::<Vec<_>>(),
+        "het journaal en het gram noemen dezelfde regelingen in dezelfde versie"
+    );
+    // En de regeling van het besluit noemt het gram maar op één manier: het
+    // vaste veld en de eerste uitgevoerde regeling horen niet uiteen te lopen.
+    assert_eq!(
+        decretogram
+            .fields
+            .get("regulation_valid_from")
+            .map(|field| &field.value),
+        Some(
+            &vastgelegd[0]
+                .as_object()
+                .and_then(|regeling| regeling.get("regulation_valid_from"))
+                .cloned()
+                .expect("de eerste regeling draagt haar versie")
+        ),
+    );
+
+    for output in &executed.outputs {
+        assert_eq!(
+            decretogram
+                .fields
+                .get(&output.name)
+                .map(|field| &field.value),
+            Some(&output.value),
+            "uitkomst '{}' hoort in het gram te staan met dezelfde waarde",
+            output.name
+        );
+    }
+    for input in &executed.inputs {
+        assert_eq!(
+            decretogram
+                .fields
+                .get(&input.name)
+                .map(|field| &field.value),
+            Some(&input.value),
+            "input '{}' hoort in het gram te staan met dezelfde waarde",
+            input.name
+        );
+    }
+}
+
+/// De vraag over de celgrens draagt het antwoord dat de andere cel gaf.
+///
+/// Een vraag zonder antwoord is een half verhaal: wie de regel leest, hoort te
+/// zien wat eruit kwam en waarop dat berust, zonder het observatielog ernaast te
+/// leggen — dat staat buiten de opstelling.
+#[test]
+fn een_vraag_draagt_het_antwoord_met_zijn_uitleg() {
+    let run = run();
+    let besluit = eerste_besluit(&run);
+    let vraag = &run.journal[besluit.seq + 1];
+    assert_eq!(vraag.kind, JournalKind::Vraag);
+
+    let question = vraag
+        .question
+        .as_ref()
+        .expect("een vraag draagt haar contact");
+    let answer = &question.answer;
+    assert_eq!(answer.cell, "belastingdienst");
+    assert_eq!(
+        answer
+            .values()
+            .and_then(|values| values.get("toetsingsinkomen")),
+        Some(&Value::Int(81000)),
+        "het antwoord draagt de waarde zoals de andere cel haar gaf: {answer:?}"
+    );
+    assert_eq!(
+        answer.op_moment, vraag.moment,
+        "en het moment waarop het geldt"
+    );
+
+    let reductie = answer
+        .reductie
+        .as_ref()
+        .expect("een antwoord uit een reductie draagt zijn uitleg");
+    assert!(
+        reductie.genoemde_cellen().all(|cell| cell == answer.cell),
+        "de uitleg gaat over de bevraagde cel en over geen andere: {reductie:?}"
+    );
+
+    // En het verslag schrijft het op, onder de vraag.
+    let verslag = vraag.describe(8);
+    assert!(
+        verslag.contains("antwoord: toetsingsinkomen van belastingdienst"),
+        "de vraag-regel hoort haar antwoord te noemen:\n{verslag}"
+    );
 }
 
 /// Een termijn die vervalt is een gebeurtenis van de klok, en geen actie.

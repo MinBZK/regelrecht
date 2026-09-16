@@ -37,7 +37,7 @@ use crate::values::amount;
 use chrono::{Months, NaiveDate};
 use regelrecht_engine::{ExecutionReceipt, Value};
 use rust_decimal::Decimal;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Het rechtskarakter dat een uitkomst tot een besluit maakt.
@@ -83,6 +83,15 @@ pub const BESLUIT: &str = "besluit";
 pub const REGULATION: &str = "regulation";
 /// Veld met de `valid_from` van de regelingversie die gold op `op_moment`.
 pub const REGULATION_VALID_FROM: &str = "regulation_valid_from";
+/// Veld met álle regelingen die deze uitvoering uitvoerde, met hun versie.
+///
+/// Naast [`REGULATION`] en [`REGULATION_VALID_FROM`], die alleen de regeling
+/// noemen waarop het besluit *gaat*. Wat zij aanriep staat nergens anders in het
+/// gram: het receipt draagt met `scope.loaded_regulations` wat er geladen was en
+/// met `results.output_provenance` waar elke uitkomst vandaan kwam, maar niet
+/// welke regeling welke *input* leverde. Zonder dit veld zou het journaal een
+/// verhaal vertellen dat in geen enkele kroniek terug te vinden is.
+pub const EXECUTED_REGULATIONS: &str = "executed_regulations";
 /// Veld met het bevoegd gezag dat de regeling noemt (RFC-002).
 pub const COMPETENT_AUTHORITY: &str = "competent_authority";
 /// Veld met de identiteit van de cel die besloot.
@@ -104,11 +113,12 @@ pub const CHRONICLE_SOURCES: &str = "chronicle_sources";
 pub const RECEIPT: &str = "receipt";
 
 /// De vaste velden van een decretogram, in de volgorde waarin ze hierboven staan.
-const FIXED_FIELDS: [&str; 11] = [
+const FIXED_FIELDS: [&str; 12] = [
     ZAAKKENMERK,
     BESLUIT,
     REGULATION,
     REGULATION_VALID_FROM,
+    EXECUTED_REGULATIONS,
     COMPETENT_AUTHORITY,
     BESLOTEN_DOOR,
     LEGAL_CHARACTER,
@@ -820,7 +830,13 @@ pub enum InputOrigin {
 
 impl InputOrigin {
     /// De herkomst als vastlegbare waarde, voor in het decretogram.
-    fn as_value(&self) -> Value {
+    ///
+    /// `pub(crate)`: het journaal draagt de herkomst van elke input in precies
+    /// deze vorm (zie [`crate::journal::ExecutedInput`]), en het beeld van de
+    /// wereld geeft haar ook zo door ([`crate::snapshot::FieldOrigin`]). Eén
+    /// vocabulaire voor één ding: wie hier een tweede schrijfwijze naast zet,
+    /// laat twee lezers van hetzelfde gram verschillende woorden zien.
+    pub(crate) fn as_value(&self) -> Value {
         match self {
             Self::OwnChronicle {
                 chronicle,
@@ -956,6 +972,52 @@ impl InputOrigin {
     }
 }
 
+/// Eén regeling die bij dit besluit werkelijk uitgevoerd is, met de versie die
+/// op het moment van het besluit gold.
+///
+/// Naast [`Decretogram::regulation`] en niet in plaats ervan: die noemt de
+/// regeling waarop het besluit *gaat*, terwijl een uitvoering er meer kan
+/// aanroepen — een uitvoeringsregeling die een bedrag levert, een kaderwet die
+/// een begrip invult (RFC-007). Wie alleen de eerste noemt, vertelt het halve
+/// verhaal; wie alles noemt wat de cel geladen heeft, noemt ook recht dat deze
+/// uitvoering niet geraakt heeft.
+///
+/// **Uitgevoerd, niet geladen.** Het receipt draagt met `scope.loaded_regulations`
+/// elke versie die klaarstond, inclusief een versie die op dit moment niet gold.
+/// Wat hier staat, is per regeling de ene versie waaronder er gerekend is.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ExecutedRegulation {
+    /// De uitgevoerde regeling, bij `$id`.
+    pub regulation: String,
+    /// De `valid_from` van de versie die op het moment van het besluit gold;
+    /// `None` als die versie geen versiedatum draagt.
+    pub valid_from: Option<String>,
+}
+
+impl ExecutedRegulation {
+    /// Leesbare regel voor een verslag: de regeling met haar versie.
+    pub fn describe(&self) -> String {
+        match &self.valid_from {
+            Some(valid_from) => format!("{} {valid_from}", self.regulation),
+            None => self.regulation.clone(),
+        }
+    }
+
+    /// Deze regeling als vastlegbare waarde, voor in het decretogram.
+    fn as_value(&self) -> Value {
+        Value::Object(BTreeMap::from([
+            (
+                REGULATION.to_string(),
+                Value::String(self.regulation.clone()),
+            ),
+            (
+                REGULATION_VALID_FROM.to_string(),
+                optional_text(self.valid_from.as_deref()),
+            ),
+        ]))
+    }
+}
+
 /// Eén eigen kroniek die bij een uitvoering als databron klaarstond, met haar
 /// stand op dat moment.
 ///
@@ -1069,6 +1131,21 @@ pub struct Decretogram {
     /// staat er vóórdat er iets betaald is, en verandert niet meer doordat er
     /// betaald wordt. Leeg als het besluit niets toekent.
     pub obligations: Vec<ObligationDue>,
+    /// De regelingen die deze uitvoering werkelijk uitvoerde, met de versie die
+    /// op `op_moment` gold.
+    ///
+    /// De regeling van het besluit vooraan — díe uitvoering *is* het besluit —
+    /// en daarachter elke regeling die er een input voor leverde (tier 2,
+    /// RFC-022 §4.2).
+    ///
+    /// Vastgelegd in het gram onder [`EXECUTED_REGULATIONS`], zoals
+    /// [`Self::chronicle_sources`] en om dezelfde reden: het is alleen tijdens
+    /// de uitvoering bekend, het hoort bij dit besluit, en het is niet uit het
+    /// receipt af te leiden — dat noemt wel elke *geladen* regeling en de
+    /// herkomst van elke *uitkomst*, maar niet welke regeling welke input
+    /// leverde. Zou het alleen in het journaal staan, dan vertelde het verhaal
+    /// iets wat in geen enkele kroniek ligt (zie [`crate::journal::Execution`]).
+    pub executed_regulations: Vec<ExecutedRegulation>,
     /// De eigen kronieken die als databron klaarstonden, met hun stand op het
     /// moment van het besluit (RFC-022 §1.3).
     ///
@@ -1138,6 +1215,15 @@ impl Decretogram {
             (
                 REGULATION_VALID_FROM.to_string(),
                 optional_text(self.regulation_valid_from.as_deref()),
+            ),
+            (
+                EXECUTED_REGULATIONS.to_string(),
+                Value::Array(
+                    self.executed_regulations
+                        .iter()
+                        .map(ExecutedRegulation::as_value)
+                        .collect(),
+                ),
             ),
             (
                 COMPETENT_AUTHORITY.to_string(),

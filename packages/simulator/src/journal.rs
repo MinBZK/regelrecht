@@ -35,7 +35,7 @@
 //! opleveren, en dat is geen verschil; hem toch bevragen zou de opstelling laten
 //! rekenen voor een regel die er niet komt.
 
-use crate::cell::{Lexostatus, LexostatusOutcome};
+use crate::cell::{ExecutedRegulation, InputOrigin, Lexostatus, LexostatusOutcome};
 use crate::snapshot::{CrossingSnapshot, GramKind};
 use chrono::NaiveDate;
 use regelrecht_engine::Value;
@@ -157,6 +157,112 @@ impl AcceptedValue {
     }
 }
 
+/// Wat een besluit uitvoerde: welk recht, waarop, en wat eruit kwam.
+///
+/// De journaalregel van een besluit noemde tot nu toe wat het besluit *is* — de
+/// actie, het gram, de geaccepteerde waarden — en niet wat er gebeurd is: welke
+/// regelingen er uitgevoerd zijn, op welke gegevens, en wat ze opleverden. Dat
+/// staat wel in het gram, maar dan moet een lezer eerst het gram opzoeken en
+/// vervolgens zijn velden uit elkaar halen. Het journaal is de hoofdweergave, en
+/// het verhaal van een besluit is de uitvoering ervan.
+///
+/// **Geen tweede administratie.** Alles hier komt uit het decretogram dat deze
+/// regel in [`JournalEntry::grams`] aanwijst, in dezelfde woorden als het gram
+/// het opschreef (zie [`ExecutedInput::origin`]) — ook de uitgevoerde
+/// regelingen, die het gram onder `executed_regulations` vastlegt. Er wordt
+/// niets uitgerekend en er staat niets in wat niet in een cel ligt.
+///
+/// **Geen wandkloktijd.** Het receipt draagt een tijdstempel van de machine; wat
+/// hieruit komt hangt alleen van de kronieken en van het moment van het besluit
+/// af, zoals de rest van het beeld (zie [`crate::snapshot`]).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Execution {
+    /// De regelingen die uitgevoerd zijn, met de versie die toen gold. De
+    /// regeling van het besluit staat vooraan.
+    pub regulations: Vec<ExecutedRegulation>,
+    /// De inputs waarop besloten is, elk met haar herkomst.
+    pub inputs: Vec<ExecutedInput>,
+    /// De uitkomsten die het besluit vastlegde.
+    pub outputs: Vec<ExecutedOutput>,
+}
+
+impl Execution {
+    /// Welke regelingen er uitgevoerd zijn, in één regel.
+    pub fn describe_regulations(&self) -> String {
+        self.regulations
+            .iter()
+            .map(ExecutedRegulation::describe)
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
+/// Eén input waarop een besluit rekende, met haar herkomst.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ExecutedInput {
+    /// De naam waaronder het besluit haar gebruikte.
+    pub name: String,
+    /// De waarde zoals ze meedeed.
+    pub value: Value,
+    /// Waar ze vandaan kwam: een parameter, een eigen kroniek, een eerder
+    /// besluit, of geaccepteerd van een andere cel — met bron, naam, moment en
+    /// ondertekening.
+    ///
+    /// De herkomst zelf en niet een navertelling ervan, zodat het verslag haar
+    /// in woorden kan zeggen ([`InputOrigin::describe`]) en een lezer buiten
+    /// deze crate haar per soort kan uitvragen. Naar buiten gaat ze in precies
+    /// de vorm waarin het gram haar opschreef (`InputOrigin::as_value`), onder
+    /// dezelfde naam als in het beeld van de wereld
+    /// ([`crate::snapshot::FieldOrigin::BesluitInput`]): één vocabulaire voor
+    /// herkomst in plaats van twee.
+    #[serde(rename = "herkomst", serialize_with = "serialize_origin")]
+    pub origin: InputOrigin,
+}
+
+/// De herkomst naar buiten in de vorm van het gram, en niet in die van `serde`.
+///
+/// Een afgeleide `Serialize` op [`InputOrigin`] zou een tweede schrijfwijze
+/// opleveren naast de ene die het gram en het beeld van de wereld al gebruiken.
+fn serialize_origin<S: serde::Serializer>(
+    origin: &InputOrigin,
+    serializer: S,
+) -> std::result::Result<S::Ok, S::Error> {
+    origin.as_value().serialize(serializer)
+}
+
+impl ExecutedInput {
+    /// Leesbare regel voor een verslag.
+    ///
+    /// Mét de herkomst: een bedrag zonder de plek waar het vandaan komt leest
+    /// als iets wat dit besluit zelf vaststelde, en juist bij een waarde die van
+    /// een andere organisatie geaccepteerd is, is dat het verschil dat telt
+    /// (invariant I5).
+    pub fn describe(&self) -> String {
+        format!(
+            "input {} = {} ({})",
+            self.name,
+            self.value,
+            self.origin.describe()
+        )
+    }
+}
+
+/// Eén uitkomst die een besluit vastlegde.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ExecutedOutput {
+    /// De naam van de uitkomst, zoals de regeling haar noemt.
+    pub name: String,
+    /// De waarde waarop de uitvoering uitkwam.
+    pub value: Value,
+}
+
+impl ExecutedOutput {
+    /// Leesbare regel voor een verslag.
+    pub fn describe(&self) -> String {
+        format!("uitkomst {} = {}", self.name, self.value)
+    }
+}
+
 /// Wat een gebeurtenis aan de stand van de zaak veranderde, bij één cel.
 ///
 /// `voor` en `na` zijn twee reducties over dezelfde indicator op hetzelfde
@@ -216,6 +322,24 @@ fn describe_values(values: Option<&BTreeMap<String, Value>>) -> String {
         .join("; ")
 }
 
+/// Het antwoord van een andere cel in woorden: wat zij gaf, en van wanneer.
+///
+/// Hoort bij de vraag-regel: die noemde tot nu toe alleen wát er gevraagd is, en
+/// een vraag zonder antwoord is een half verhaal. Wáárop dat antwoord berust
+/// staat in de uitleg die het antwoord zelf draagt ([`Lexostatus::reductie`]);
+/// die wordt hier niet uitgeschreven — het verslag zou er een uitdraai van
+/// worden, en het beeld draagt haar voor wie haar wil nalopen.
+fn describe_answer(answer: &Lexostatus) -> String {
+    let stand = match &answer.outcome {
+        LexostatusOutcome::Established(values) => describe_values(Some(values)),
+        LexostatusOutcome::NotEstablished { .. } => "niets vastgesteld".to_string(),
+    };
+    format!(
+        "{} van {} op {}: {stand}",
+        answer.name, answer.cell, answer.op_moment
+    )
+}
+
 /// Eén regel in het journaal: één gebeurtenis, in de volgorde van ontstaan.
 #[derive(Debug, Clone, Serialize)]
 pub struct JournalEntry {
@@ -235,11 +359,24 @@ pub struct JournalEntry {
     pub changes: Vec<StatusChange>,
     /// De waarden die dit besluit van een andere cel accepteerde.
     pub accepted: Vec<AcceptedValue>,
+    /// Wat dit besluit uitvoerde; alleen bij [`JournalKind::Besluit`].
+    ///
+    /// `None` bij elke andere soort regel. Een vastlegging, een betaling of een
+    /// vraag voert niets uit, en een lege [`Execution`] zou beweren dat er een
+    /// regeling gedraaid heeft die niets deed.
+    pub executed: Option<Execution>,
     /// De vraag die over een celgrens ging; alleen bij [`JournalKind::Vraag`].
     ///
     /// Dezelfde vorm als in het beeld van de wereld ([`CrossingSnapshot`]) en
     /// niet een tweede: het is hetzelfde contact, en twee vormen zouden uiteen
     /// gaan lopen.
+    ///
+    /// Het contact draagt het **antwoord** zoals de bevraagde cel het gaf —
+    /// waarde en moment — met de uitleg waarop het berust
+    /// ([`Lexostatus::reductie`]). Dat het antwoord hier staat en niet alleen de
+    /// vraag, is wat deze regel leesbaar maakt zonder het observatielog ernaast
+    /// te leggen: dat log staat buiten de opstelling, en het verhaal hoort in
+    /// het verhaal.
     pub question: Option<CrossingSnapshot>,
     /// De regel die deze uitlokte; `None` als deze op zichzelf staat.
     ///
@@ -266,8 +403,20 @@ impl JournalEntry {
         for gram in &self.grams {
             let _ = writeln!(out, "{sub}gram: {}", gram.describe());
         }
+        if let Some(executed) = &self.executed {
+            let _ = writeln!(out, "{sub}uitgevoerd: {}", executed.describe_regulations());
+            for input in &executed.inputs {
+                let _ = writeln!(out, "{sub}{}", input.describe());
+            }
+            for output in &executed.outputs {
+                let _ = writeln!(out, "{sub}{}", output.describe());
+            }
+        }
         for accepted in &self.accepted {
             let _ = writeln!(out, "{sub}{}", accepted.describe());
+        }
+        if let Some(question) = &self.question {
+            let _ = writeln!(out, "{sub}antwoord: {}", describe_answer(&question.answer));
         }
         for change in &self.changes {
             let _ = writeln!(out, "{sub}{}", change.describe());

@@ -1,17 +1,18 @@
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import GramRow from './GramRow.vue';
 import { fieldValue } from '../world/events.js';
-import { formatMoment, formatValue } from '../world/format.js';
+import { formatMoment, formatValue, humanize } from '../world/format.js';
 import {
   askingCell,
   describeAccepted,
   describeAnswer,
+  describeAnswerMoment,
   describeChange,
   journalCellOptions,
   journalRows,
 } from '../world/journal.js';
-import { gramByRef, gramKind } from '../world/snapshot.js';
+import { gramByRef, gramKind, readReductie } from '../world/snapshot.js';
 
 // Het journaal: wie deed wat, en wat veranderde er daardoor aan de stand van de
 // zaak. Eén regel per gebeurtenis, in de volgorde waarin ze ontstond.
@@ -32,6 +33,13 @@ import { gramByRef, gramKind } from '../world/snapshot.js';
 // weergave ernaast. Bij een gram met een zaakkenmerk staat dat kenmerk vooraan:
 // zo is te zien welke zaak deze gebeurtenis raakte, en waar het kenmerk vandaan
 // komt dat een reductie straks als sleutel vraagt.
+//
+// Bij een **besluit** staat daar het verhaal van de uitvoering bij: welke
+// regelingen er gedraaid hebben en in welke versie, waarop ze rekenden en wat
+// eruit kwam. Een waarde die het besluit van een andere cel accepteerde wijst
+// naar de vraag-regel eronder waarlangs ze binnenkwam — dat contact is een regel
+// van dit journaal en geen voetnoot. En die vraag-regel draagt zelf het
+// antwoord, met de uitleg waarop het berust.
 
 const props = defineProps({
   /** Het beeld van de wereld. */
@@ -133,6 +141,29 @@ function questionParams(question) {
     .map(([name, value]) => `${name}: ${formatValue(value)}`)
     .join(' · ');
 }
+
+/**
+ * Hoe de bevraagde cel aan haar antwoord kwam; `null` als het antwoord het niet
+ * zegt.
+ *
+ * Dezelfde uitleg als bij "Lexostatus vragen", uit dezelfde lezer: het is
+ * hetzelfde antwoord, en twee lezingen ervan zouden uiteen gaan lopen.
+ */
+function answerExplanation(question) {
+  return readReductie(question?.answer?.reductie);
+}
+
+/**
+ * Naar de regel waarlangs een geaccepteerde waarde binnenkwam.
+ *
+ * De regel gaat open en komt in beeld. Openen en niet alleen scrollen: wie hier
+ * klikt wil het antwoord zien, en dat staat in de uitklap.
+ */
+function goToRow(id) {
+  if (!id) return;
+  open.value = new Set(open.value).add(id);
+  nextTick(() => document.getElementById(id)?.scrollIntoView?.({ block: 'center' }));
+}
 </script>
 
 <template>
@@ -195,6 +226,7 @@ function questionParams(question) {
 
       <nldd-list-item
         v-for="row in rows"
+        :id="row.id"
         :key="row.id"
         size="sm"
         button
@@ -252,6 +284,85 @@ function questionParams(question) {
           ></nldd-text-cell>
           <nldd-spacer-cell size="8"></nldd-spacer-cell>
           <nldd-icon-cell icon="chevron-right" size="16" color="secondary"></nldd-icon-cell>
+        </nldd-list-item>
+
+        <!-- Wat dit besluit uitvoerde: welk recht draaide er, in welke versie.
+             Meer dan de regeling waarop het besluit gaat — een uitvoeringsregel
+             die het bedrag levert hoort er even goed bij, want zonder haar is
+             niet te zien onder welk recht dit bedrag tot stand kwam. -->
+        <nldd-list-item v-if="isOpen(row.id) && row.executed" slot="children" size="sm">
+          <nldd-spacer-cell size="20"></nldd-spacer-cell>
+          <nldd-icon-cell icon="book" size="16" color="secondary"></nldd-icon-cell>
+          <nldd-spacer-cell size="8"></nldd-spacer-cell>
+          <nldd-text-cell
+            size="sm"
+            min-width="200px"
+            text="Uitgevoerd"
+            :supporting-text="row.executed.zin"
+          ></nldd-text-cell>
+        </nldd-list-item>
+
+        <!-- Waarop er gerekend is, en wat eruit kwam. Twee tabellen en niet één:
+             een input en een uitkomst zijn niet hetzelfde soort ding, en een
+             herkomstkolom die bij de helft van de rijen leeg blijft, leest als
+             een gat. -->
+        <nldd-list-item v-if="isOpen(row.id) && row.executed" slot="children" size="sm">
+          <nldd-spacer-cell size="20"></nldd-spacer-cell>
+          <nldd-cell width="full" vertical-alignment="top">
+            <nldd-container layout="stack" gap="16">
+              <nldd-table
+                columns="minmax(160px, 1fr) minmax(100px, 200px) minmax(200px, 1fr) fit-content(180px)"
+                background="base"
+                accessible-label="Waarop dit besluit rekende"
+                empty-text="Dit besluit kreeg geen inputs mee"
+              >
+                <nldd-table-row slot="header">
+                  <nldd-text-cell size="sm" text="Input"></nldd-text-cell>
+                  <nldd-text-cell size="sm" text="Waarde"></nldd-text-cell>
+                  <nldd-text-cell size="sm" text="Herkomst"></nldd-text-cell>
+                  <nldd-text-cell size="sm" text="Vraag"></nldd-text-cell>
+                </nldd-table-row>
+                <nldd-table-row v-for="input in row.executed.inputs" :key="`input-${input.name}`">
+                  <nldd-text-cell size="sm" :text="humanize(input.name)"></nldd-text-cell>
+                  <nldd-text-cell size="sm" :text="formatValue(input.value)"></nldd-text-cell>
+                  <nldd-text-cell
+                    size="sm"
+                    :text="input.origin.label"
+                    :supporting-text="input.origin.details.map((pair) => `${pair.term}: ${pair.value}`).join(' · ')"
+                  ></nldd-text-cell>
+                  <!-- Alleen waar er een vraag-regel ís: een waarde die de wet
+                       zelf bij een cel haalde noemt geen lexostatus, en dan is er
+                       niets om heen te gaan. -->
+                  <nldd-cell>
+                    <nldd-button
+                      v-if="input.question"
+                      size="xs"
+                      variant="neutral-transparent"
+                      start-icon="question"
+                      text="Naar de vraag"
+                      @click="goToRow(input.question)"
+                    ></nldd-button>
+                  </nldd-cell>
+                </nldd-table-row>
+              </nldd-table>
+
+              <nldd-table
+                columns="minmax(160px, 1fr) minmax(100px, 1fr)"
+                background="base"
+                accessible-label="Wat dit besluit vaststelde"
+                empty-text="Dit besluit legde geen uitkomst vast"
+              >
+                <nldd-table-row slot="header">
+                  <nldd-text-cell size="sm" text="Uitkomst"></nldd-text-cell>
+                  <nldd-text-cell size="sm" text="Waarde"></nldd-text-cell>
+                </nldd-table-row>
+                <nldd-table-row v-for="output in row.executed.outputs" :key="`uitkomst-${output.name}`">
+                  <nldd-text-cell size="sm" :text="humanize(output.name)"></nldd-text-cell>
+                  <nldd-text-cell size="sm" :text="formatValue(output.value)"></nldd-text-cell>
+                </nldd-table-row>
+              </nldd-table>
+            </nldd-container>
+          </nldd-cell>
         </nldd-list-item>
 
         <!-- Wat dit besluit van een ander accepteerde in plaats van na te rekenen.
@@ -315,7 +426,52 @@ function questionParams(question) {
             max-width="55%"
             horizontal-alignment="right"
             :text="describeAnswer(row.entry.question)"
+            :supporting-text="describeAnswerMoment(row.entry.question)"
           ></nldd-text-cell>
+        </nldd-list-item>
+
+        <!-- Waarop dat antwoord berust: de uitleg die de bevraagde cel meegaf.
+             Staat die er niet, dan staat hier niets — een lege regel zou een
+             uitleg beloven die het antwoord niet draagt. -->
+        <nldd-list-item
+          v-if="isOpen(row.id) && answerExplanation(row.entry.question)"
+          slot="children"
+          size="sm"
+        >
+          <nldd-spacer-cell size="20"></nldd-spacer-cell>
+          <nldd-icon-cell icon="search" size="16" color="secondary"></nldd-icon-cell>
+          <nldd-spacer-cell size="8"></nldd-spacer-cell>
+          <nldd-text-cell
+            size="sm"
+            min-width="200px"
+            text="Zo is dit vastgesteld"
+            :supporting-text="answerExplanation(row.entry.question).zin"
+          ></nldd-text-cell>
+        </nldd-list-item>
+
+        <!-- En de grammen die de cel daarvoor las. Knoppen, zoals de grammen van
+             de regel zelf: ze openen het gram zoals het in zijn eigen kroniek
+             staat. -->
+        <nldd-list-item
+          v-for="gram in isOpen(row.id) ? (answerExplanation(row.entry.question)?.grams ?? []) : []"
+          :key="`gelezen-${gram.id}`"
+          slot="children"
+          size="sm"
+          button
+          @click="showGram(row, gram)"
+        >
+          <nldd-spacer-cell size="20"></nldd-spacer-cell>
+          <nldd-icon-cell :icon="gramKind(gram.kind).icon" size="16" color="secondary"></nldd-icon-cell>
+          <nldd-spacer-cell size="8"></nldd-spacer-cell>
+          <nldd-text-cell size="sm" width="104px" :text="formatMoment(gram.opMoment)"></nldd-text-cell>
+          <nldd-text-cell
+            size="sm"
+            min-width="160px"
+            :text="gram.name"
+            :supporting-text="`gelezen uit ${gram.cell} · ${gram.chronicle}`"
+          ></nldd-text-cell>
+          <nldd-spacer-cell size="8"></nldd-spacer-cell>
+          <nldd-icon-cell icon="chevron-right" size="16" color="secondary"></nldd-icon-cell>
         </nldd-list-item>
       </nldd-list-item>
 

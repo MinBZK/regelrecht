@@ -117,10 +117,10 @@ pub mod world;
 pub use cell::{
     AcceptanceRequest, AcceptedSource, Aggregate, BesluitDefinition, BesluitInput, Cell,
     CellConfig, ChronicleEvent, ChronicleStore, ChronicleStream, Decretogram, DecretogramInput,
-    DocumentedParameter, GebruiktGram, GebruikteInput, Gemist, InputHerkomst, InputOrigin, Intake,
-    Kroniekfilter, Lexostatus, LexostatusDefinition, LexostatusOutcome, ObligationDefinition,
-    ObligationDue, ParameterType, Prefill, Reductie, ReductieVorm, Reduction, Regel, Schedule,
-    Wetsvorm, BESCHIKKINGEN, BETALINGEN,
+    DocumentedParameter, ExecutedRegulation, GebruiktGram, GebruikteInput, Gemist, InputHerkomst,
+    InputOrigin, Intake, Kroniekfilter, Lexostatus, LexostatusDefinition, LexostatusOutcome,
+    ObligationDefinition, ObligationDue, ParameterType, Prefill, Reductie, ReductieVorm, Reduction,
+    Regel, Schedule, Wetsvorm, BESCHIKKINGEN, BETALINGEN,
 };
 pub use corpus::regulation_root;
 // De waarde waarin deze crate praat. Ze komt uit de engine en blijft dat, maar
@@ -133,8 +133,8 @@ pub use invariant::{
     InvariantFailure, QueryEdge, Traffic,
 };
 pub use journal::{
-    AcceptedValue, GramRef, IndicatorParam, JournalActor, JournalEntry, JournalKind, StatusChange,
-    StatusIndicator,
+    AcceptedValue, ExecutedInput, ExecutedOutput, Execution, GramRef, IndicatorParam, JournalActor,
+    JournalEntry, JournalKind, StatusChange, StatusIndicator,
 };
 pub use regelrecht_engine::Value;
 // Om dezelfde reden: `SimulatorError::Engine` draagt hem, dus wie de fouten van
