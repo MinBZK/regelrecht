@@ -139,7 +139,8 @@ npm run nldd:check -w frontend-chrono-poc     # in sync? (ook een CI-stap)
 just dev-chrono-poc     # Vite op 0.0.0.0:7250, /api + /health naar de server (8000)
 just build-chrono-poc   # de bundel in dist/, die de server statisch uitdeelt
 just chrono-poc         # bundel + de server die hem serveert
-just chrono-poc-check   # tests, ontwerpsysteem-imports en bundel
+just chrono-poc-e2e     # de bewijsronde in een echte browser (e2e/)
+just chrono-poc-check   # tests, ontwerpsysteem-imports, bundel en bewijsronde
 ```
 
 `API_PORT` verzet de proxy naar een andere serverpoort, `VITE_PORT` de
@@ -153,6 +154,14 @@ snapshot-fixture van de simulator zelf
 `src/testing/worldFixture.js`) en niet op een kopie ernaast: het beeld is het
 contract tussen de wereld en deze app, en twee exemplaren zouden stil uit elkaar
 lopen.
+
+Daarnaast staat in [`e2e/`](e2e) de bewijsronde door de publieke wereld: de
+echte server, een echte Chromium, en veertig beweringen onder de check-id's
+waaronder die ronde eerder met de hand liep. Die suite draait op een gebouwde
+bundel en heeft dus iets anders te zeggen dan de vitest-tests hierboven: niet of
+een component het juiste tekent bij een gegeven beeld, maar of de opstelling als
+geheel doet wat ze belooft. Zie
+[`packages/chrono-poc-web/README.md`](../packages/chrono-poc-web/README.md#de-bewijsronde-in-de-browser).
 
 ## Wat de app van de server verwacht
 

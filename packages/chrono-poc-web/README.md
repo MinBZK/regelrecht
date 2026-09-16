@@ -123,13 +123,19 @@ deze laag geeft het door zoals de cel het gaf.
   niet stuk.
 - **Een actie die nu niet kan** is een 409 met de uitleg van de wereld erin: het
   verhaal is nog niet zover, en dat is een stand en geen vergissing.
+- **Een besluit dat de cel weigert** is óók een 409, met haar eigen reden erin: er
+  is niets vastgesteld over een input die het besluit nodig heeft (bij de cel zelf
+  of bij een ander), de cel is het bevoegd gezag niet dat de regeling aanwijst, of
+  de aansturende uitkomst is op dat moment geen beschikking. De cel legt dan niets
+  vast, en dat is precies wat ze hoort te doen.
 - **Een verstreken termijn** is een waarschuwing in het antwoord en geen fout. De
   uitvoerder mag alsnog besluiten; de wet zegt alleen wat de termijn was.
 
-Fouten zijn altijd `{"error": "…"}`. De status volgt de foutvariant van de
-simulator: 404 voor wat het pad aanwijst maar niet bestaat, 409 voor een wereld die
-er niet naar staat, 400 voor een verzoek dat niet klopt tegen wat een definitie
-belooft, 500 voor de rest. De hele afbeelding staat in `src/error.rs`.
+Fouten zijn altijd `{"error": "…"}`. De status volgt de **foutvariant** van de
+simulator en niet de tekst van de melding: 404 voor wat het pad aanwijst maar niet
+bestaat, 409 voor een wereld die er niet naar staat of een cel die weigert, 400
+voor een verzoek dat niet klopt tegen wat een definitie belooft, 500 voor de rest.
+De hele afbeelding staat in `src/error.rs`.
 
 ## Wereldbestanden
 
@@ -152,6 +158,51 @@ corpus, met de login uit: het beeld, een actie, de klok vooruit, een besluit dat
 een waarde over een celgrens accepteert, instellingen, terugzetten, en twee sessies
 die twee werelden zijn. Een wereldbestand dat onleesbaar wordt, wordt hier rood en
 niet in een container.
+
+### De bewijsronde in de browser
+
+Wat de HTTP-tests niet zien is de opstelling zoals een mens haar bespeelt: de
+bundel, de webcomponenten van het ontwerpsysteem, en het verhaal van aanvraag
+tot vaststelling in één sessie. Daarvoor staat er een Playwright-suite in
+[`frontend-chrono-poc/e2e/`](../../frontend-chrono-poc/e2e):
+
+```bash
+just chrono-poc-e2e            # bundel + server + veertig checks in Chromium
+just chrono-poc-e2e --headed   # of --ui / --debug; alles achter het recept gaat door
+```
+
+Het recept bouwt eerst de bundel en de binary; daarna start
+`playwright.config.js` deze server zelf, op een vrije poort uit 7180-7300, met
+`CHRONO_POC_WORLD_SOURCE=local:packages/simulator/worlds/publieke_wereld.yaml`
+en zonder login. De testnamen zijn de check-id's van de ronde die eerder met de
+hand liep (`L1`…`E6`), zodat een rode regel in CI dezelfde naam draagt als het
+bewijs: lay-out, prefill, journaal, de velden van een decretogram, cross-law
+binnen de cel, een lexostatus op een moment, de weigerflows en de
+executogrammen van de vier termijnen.
+
+Elke bewering die tekst uit een nldd-component leest, gaat langs de
+`textAll`-helper in `e2e/world.js`: die componenten dragen hun label in een
+attribuut of achter een shadow root, en `innerText` van de pagina ziet daar
+niets van.
+
+De suite draait bij elke PR (baan *E2E chronolexografie*). Eén check staat als
+`fixme` geparkeerd: een besluit dat de wereld weigert komt er vandaag als 500
+uit in plaats van als 4xx. Dat is een openstaande fout en geen keuze — zodra de
+foutafbeelding dat rechttrekt, is het woord `fixme` weghalen het hele werk.
+
+**Een ander doel, dezelfde suite.** Drie omgevingsvariabelen verzetten waar er
+tegenaan gedraaid wordt, zonder een tweede suite te onderhouden:
+
+| variabele | wat |
+|---|---|
+| `E2E_WORLD` | een ander wereldbestand (pad vanaf de repo-root of absoluut). De checks over de casus van de publieke wereld horen dan niet te slagen; wat meereist is de vorm van de opstelling |
+| `E2E_BASE` | een opstelling die al draait — een deployment, of een server die je zelf startte. Er wordt dan niets gestart |
+| `E2E_COOKIE` | de sessiecookie (`naam=waarde`) voor zo'n opstelling achter de login |
+
+Een wereld met een **privécorpus** blijft daarmee buiten deze repo: die start je
+zelf (`CHRONO_POC_CORPUS_SOURCE=github:…` plus het token) en wijst je met
+`E2E_BASE` aan. In de repo staat alleen de publieke wereld, en in CI draait
+alleen die.
 
 `tests/github_source.rs` doet hetzelfde voor het pad dat lokaal nooit aan bod komt:
 een wiremock-GitHub in plaats van de echte (via de `GITHUB_API_BASE`-naad van
