@@ -405,6 +405,26 @@ describe('de herkomst van een waarde', () => {
     ]);
   });
 
+  it('noemt een waarde die een stage uit het besluit las, met de laag en het gram', () => {
+    // Een literal: de vorm die het gram van een bekendmaking opschrijft bij een
+    // input die een hook uit het besluit zelf las.
+    for (const [herkomst, woord] of [
+      ['besluit_uitkomst', 'uitkomst'],
+      ['besluit_input', 'input'],
+    ]) {
+      const origin = describeOrigin({
+        herkomst: 'besluit_input',
+        recorded_origin: { herkomst, besluit: 'toekenning', besluit_gram: 0, field: 'later_tijdstip' },
+      });
+      expect(origin.kind).toBe(herkomst);
+      expect(origin.label).toBe(`${woord} van het besluit 'toekenning'`);
+      expect(origin.details).toStrictEqual([
+        { term: 'veld', value: 'later_tijdstip' },
+        { term: 'gram', value: '0' },
+      ]);
+    }
+  });
+
   it('blijft leesbaar als de herkomst niet in het gram staat', () => {
     expect(describeOrigin(undefined).label).toBe('herkomst niet vastgelegd');
     expect(describeOrigin({ herkomst: 'besluit_input', recorded_origin: null }).label).toContain('niet te lezen');

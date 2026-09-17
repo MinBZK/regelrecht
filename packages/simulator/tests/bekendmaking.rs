@@ -740,3 +740,175 @@ fn een_vervaldatum_van_voor_de_bekendmaking_wordt_op_die_dag_ingehaald() {
         "en draagt de dag die de wet noemde"
     );
 }
+
+/// De herkomst van één input van een gram, als object.
+fn herkomst<'a>(gram: &'a GramSnapshot, naam: &str) -> &'a BTreeMap<String, Value> {
+    let field = gram
+        .fields
+        .get(naam)
+        .unwrap_or_else(|| panic!("het gram hoort input '{naam}' te dragen"));
+    let FieldOrigin::BesluitInput { recorded_origin } = &field.origin else {
+        panic!("'{naam}' hoort een input te zijn, kreeg {:?}", field.origin);
+    };
+    let Value::Object(origin) = recorded_origin else {
+        panic!("de herkomst van '{naam}' is een object");
+    };
+    origin
+}
+
+/// **Een hook bij de bekendmaking leest wat het besluit vastlegde, en het gram
+/// zegt waar elke waarde vandaan kwam.**
+///
+/// De hook rekent op drie waarden: de dag uit het formulier, een uitkomst van
+/// het besluit en een input van het besluit. Het stage-gram draagt ze alle drie
+/// als input, elk met haar herkomst, en die van het besluit met de plek van zijn
+/// gram. Wat het besluit verder draagt maar geen hook las, staat er niet nog
+/// eens in. Een expliciete `null` uit het besluit gaat mee als waarde.
+#[test]
+fn een_hook_bij_de_bekendmaking_leest_uitkomsten_en_inputs_van_het_besluit() {
+    let run = run("bekendmaking_besluitcontext.yaml");
+    let grams = beschikkingen(&run);
+    assert_eq!(grams.len(), 4, "twee besluiten en hun bekendmakingen");
+
+    for (plek, bekendmaking, later, uiterlijk) in [
+        (
+            0,
+            grams[1],
+            Value::String("2024-07-15".to_string()),
+            "2024-07-15",
+        ),
+        (2, grams[3], Value::Null, "2024-05-07"),
+    ] {
+        assert_eq!(veld(bekendmaking, "stage"), "BEKENDMAKING");
+        assert_eq!(veld(bekendmaking, "uiterlijk_uitgevoerd_op"), uiterlijk);
+
+        let formulier = herkomst(bekendmaking, "datum_bekendmaking");
+        assert_eq!(
+            formulier.get("herkomst").and_then(Value::as_str),
+            Some("parameter")
+        );
+
+        for (naam, soort, waarde_in_gram) in [
+            ("later_tijdstip_in_besluit", "besluit_uitkomst", later),
+            ("uitvoeringstermijn_weken", "besluit_input", Value::Int(8)),
+        ] {
+            assert_eq!(
+                waarde(bekendmaking, naam),
+                &waarde_in_gram,
+                "'{naam}' gaat mee zoals het besluit haar vastlegde"
+            );
+            let origin = herkomst(bekendmaking, naam);
+            assert_eq!(origin.get("herkomst").and_then(Value::as_str), Some(soort));
+            assert_eq!(
+                origin.get("besluit").and_then(Value::as_str),
+                Some("toekenning")
+            );
+            assert_eq!(origin.get("besluit_gram"), Some(&Value::Int(plek)));
+            assert_eq!(origin.get("field").and_then(Value::as_str), Some(naam));
+        }
+
+        // Wat het besluit draagt maar geen hook las, staat in het besluit-gram
+        // en niet nog eens hier.
+        for naam in ["vermeldt_later_tijdstip", "aanvraag_ontvangen_op", "bsn"] {
+            assert!(
+                !bekendmaking.fields.contains_key(naam),
+                "'{naam}' las geen hook, en hoort niet in het stage-gram"
+            );
+        }
+    }
+}
+
+/// **Wat het besluit niet draagt, blijft onbekend.**
+///
+/// Dezelfde wereld, maar het besluit legt geen termijn vast: zijn definitie
+/// vraagt er niet om, en de regeling kan zonder. Dan krijgt de hook die parameter
+/// niet, en is ze onbekend (RFC-036) — ook als het besluit wél zegt dat er geen
+/// later tijdstip is.
+#[test]
+fn een_input_die_het_besluit_niet_vastlegt_blijft_onbekend() {
+    let path = scenario_path("bekendmaking_besluitcontext.yaml");
+    let text = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("kan {} niet lezen: {e}", path.display()));
+    let zonder = [
+        (
+            "          - name: uitvoeringstermijn_weken\n            type: number\n",
+            "",
+        ),
+        (
+            "          uitvoeringstermijn_weken:\n            param: uitvoeringstermijn_weken\n",
+            "",
+        ),
+    ]
+    .into_iter()
+    .fold(text, |text, (oud, nieuw)| {
+        assert_eq!(
+            text.matches(oud).count(),
+            1,
+            "het scenario hoort '{oud}' precies één keer te bevatten"
+        );
+        text.replace(oud, nieuw)
+    });
+    let scenario = Scenario::from_yaml(&zonder)
+        .unwrap_or_else(|e| panic!("het ingekorte scenario hoort te lezen: {e}"));
+    let mut world = scenario
+        .world(&regulation_root())
+        .unwrap_or_else(|e| panic!("het ingekorte scenario hoort op te tuigen: {e}"));
+
+    world
+        .advance("2024-03-01".parse().expect("testdatum"))
+        .expect("de klok moet vooruit kunnen");
+    world
+        .act(
+            "uitvoerder.toekenning",
+            &BTreeMap::from([
+                ("bsn".to_string(), Value::String("999993653".to_string())),
+                (
+                    "aanvraag_ontvangen_op".to_string(),
+                    Value::String("2024-01-15".to_string()),
+                ),
+                ("vermeldt_later_tijdstip".to_string(), Value::Bool(false)),
+            ]),
+        )
+        .expect("het besluit hoort door te gaan");
+    world
+        .advance("2024-03-04".parse().expect("testdatum"))
+        .expect("de klok moet vooruit kunnen");
+    world
+        .act(
+            "uitvoerder.bekendmaking",
+            &BTreeMap::from([
+                (
+                    "datum_bekendmaking".to_string(),
+                    Value::String("2024-03-04".to_string()),
+                ),
+                (
+                    "toegezonden_aan_belanghebbende".to_string(),
+                    Value::Bool(true),
+                ),
+            ]),
+        )
+        .expect("de bekendmaking hoort door te gaan");
+    let bekendmaking = laatste_bekendmaking(&world);
+
+    let Value::Unknown(missing) = waarde(&bekendmaking, "uiterlijk_uitgevoerd_op") else {
+        panic!(
+            "zonder termijn hoort de datum onbekend te zijn, kreeg {}",
+            waarde(&bekendmaking, "uiterlijk_uitgevoerd_op")
+        );
+    };
+    assert!(
+        missing
+            .iter()
+            .any(|fact| fact.name == "uitvoeringstermijn_weken"),
+        "het onbekende hoort de ontbrekende parameter te noemen: {missing:?}"
+    );
+    assert!(
+        !bekendmaking.fields.contains_key("uitvoeringstermijn_weken"),
+        "wat het besluit niet draagt, staat ook niet als input in het stage-gram"
+    );
+    // De `null` van het besluit ging wél mee.
+    assert_eq!(
+        waarde(&bekendmaking, "later_tijdstip_in_besluit"),
+        &Value::Null
+    );
+}

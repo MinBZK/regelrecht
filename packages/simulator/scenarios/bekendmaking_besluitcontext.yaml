@@ -1,0 +1,161 @@
+---
+name: een hook bij de bekendmaking leest wat het besluit vastlegde
+description: >-
+  Een hook op de stage BEKENDMAKING (`test_hook_besluitcontext`) rekent een
+  uiterlijke uitvoeringsdatum uit. De dag van de bekendmaking is een feit van de
+  bekendmaking en staat in haar formulier. Of de beschikking een later tijdstip
+  vermeldt en welke termijn er geldt, zijn feiten van het **besluit**: de eerste
+  een uitkomst van zijn gram, de tweede een input. De hook krijgt ze alle drie,
+  elk van de plek waar het hoort.
+
+  Twee zaken. Bij de eerste vermeldt het besluit een later tijdstip, en dat is de
+  datum. Bij de tweede zegt het besluit met zoveel woorden dat er geen later
+  tijdstip is (`null`), en dan geldt de termijn vanaf de bekendmaking. Die `null`
+  is een waarde en geen onbekend feit: anders leverde de hook niets op.
+
+clock:
+  start: 2024-01-01
+
+cells:
+  - id: uitvoerder
+    identity: Uitvoerder
+    laws:
+      - test_besluitcontext
+      - test_awb_procedure
+      - test_hook_besluitcontext
+
+    besluit_definitions:
+      - name: toekenning
+        doc: de toekenning, met wat het besluit over het tijdstip zegt
+        regulation: test_besluitcontext
+        output: voorziening_toegekend
+        outputs:
+          - later_tijdstip_in_besluit
+        zaakkenmerk: voorziening/{bsn}
+        params:
+          - name: bsn
+            type: string
+          - name: aanvraag_ontvangen_op
+            type: date
+          - name: vermeldt_later_tijdstip
+            type: boolean
+          - name: uitvoeringstermijn_weken
+            type: number
+        inputs:
+          bsn:
+            param: bsn
+          aanvraag_ontvangen_op:
+            param: aanvraag_ontvangen_op
+          vermeldt_later_tijdstip:
+            param: vermeldt_later_tijdstip
+          uitvoeringstermijn_weken:
+            param: uitvoeringstermijn_weken
+
+    lexostatus_definitions:
+      - name: beschikking
+        doc: het besluit zoals het vastligt
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - voorziening_toegekend
+          - later_tijdstip_in_besluit
+        reduction:
+          chronicle: beschikkingen
+          key: zaakkenmerk
+          latest: true
+          where:
+            stage: BESLUIT
+
+      - name: bekendmaking
+        doc: wat er bij de bekendmaking is komen vast te staan
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - uiterlijk_uitgevoerd_op
+        reduction:
+          chronicle: beschikkingen
+          key: zaakkenmerk
+          latest: true
+          where:
+            stage: BEKENDMAKING
+
+actions:
+  - id: uitvoerder.toekenning
+    actor: uitvoerder
+    label: Ken de voorziening toe
+    decides:
+      cell: uitvoerder
+      besluit: toekenning
+
+  - id: uitvoerder.bekendmaking
+    actor: uitvoerder
+    label: Maak de toekenning bekend
+    publishes:
+      cell: uitvoerder
+      besluit: toekenning
+
+act:
+  - description: een besluit dat een later tijdstip vermeldt
+    action: uitvoerder.toekenning
+    values:
+      bsn: '999993653'
+      aanvraag_ontvangen_op: '2024-01-15'
+      vermeldt_later_tijdstip: true
+      uitvoeringstermijn_weken: 8
+    op_moment: 2024-03-01
+    expect:
+      voorziening_toegekend: true
+      later_tijdstip_in_besluit: '2024-07-15'
+
+  - description: en zijn bekendmaking
+    action: uitvoerder.bekendmaking
+    values:
+      datum_bekendmaking: '2024-03-04'
+      toegezonden_aan_belanghebbende: true
+    op_moment: 2024-03-04
+
+  - description: een besluit dat zegt dat er geen later tijdstip is
+    action: uitvoerder.toekenning
+    values:
+      bsn: '999990019'
+      aanvraag_ontvangen_op: '2024-01-15'
+      vermeldt_later_tijdstip: false
+      uitvoeringstermijn_weken: 8
+    op_moment: 2024-03-11
+    expect:
+      voorziening_toegekend: true
+      later_tijdstip_in_besluit: null
+
+  - description: en zijn bekendmaking
+    action: uitvoerder.bekendmaking
+    values:
+      datum_bekendmaking: '2024-03-12'
+      toegezonden_aan_belanghebbende: true
+    op_moment: 2024-03-12
+
+queries:
+  - description: >-
+      Het besluit vermeldt een later tijdstip, en dat is de dag waarop uiterlijk
+      uitgevoerd wordt — een uitkomst van het besluit, gelezen door de hook bij
+      de bekendmaking.
+    cell: uitvoerder
+    lexostatus: bekendmaking
+    params:
+      zaakkenmerk: voorziening/999993653
+    op_moment: 2024-03-04
+    expect:
+      uiterlijk_uitgevoerd_op: '2024-07-15'
+
+  - description: >-
+      Het besluit zegt dat er geen later tijdstip is. Die `null` is een waarde,
+      dus de hook rekent de termijn uit het besluit (acht weken) vanaf de dag
+      van de bekendmaking.
+    cell: uitvoerder
+    lexostatus: bekendmaking
+    params:
+      zaakkenmerk: voorziening/999990019
+    op_moment: 2024-03-12
+    expect:
+      uiterlijk_uitgevoerd_op: '2024-05-07'
