@@ -1,0 +1,237 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.6/schema/v0.5.6/schema.json
+$id: duo_werkinstructie_bestand_nieuwkomers
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://duo.nl/zakelijk/primair-onderwijs/bekostiging-en-subsidies/aanvullende-bekostiging/eerste-opvang-asielzoekers-vreemdelingen.jsp
+name: >-
+  Werkinstructie Bestand Nieuwkomers en aanvraag eerste opvang (DUO)
+competent_authority:
+  name: Dienst Uitvoering Onderwijs
+legal_basis:
+  - law_id: regeling_bekostiging_wpo_en_wec
+    article: '34'
+    description: >-
+      Aanvullende bekostiging eerste opvang asielzoekers en overige
+      vreemdelingen in het basisonderwijs (aanvraag, peildata, telling)
+articles:
+  # GEEN WET. Dit document vat de uitvoeringspraktijk van DUO samen rond
+  # de aanvraag van de aanvullende bekostiging voor de eerste opvang in het
+  # basisonderwijs: het Bestand Nieuwkomers in Mijn DUO, de deadlines per
+  # peildatum, de kwartaalafronding van de vierde-verjaardag-aftrek en de
+  # twee aanvraagformulieren. Bronnen: de DUO-pagina's "Eerste opvang
+  # asielzoekers en overige vreemdelingen" en "Asielzoekers na 1e jaar"
+  # (duo.nl, geraadpleegd september 2026) en de visual nieuwkomersbekostiging
+  # van OCW/DUO op Rijksoverheid.nl. De tekst is een samenvatting in eigen
+  # woorden, geen wettekst; de indeling in tabbladen en de daarbij gebruikte
+  # verblijfstitelcodes volgen de signalenlijst en de beslisboom van DUO
+  # (pdf's op de DUO-pagina) en het datamodel van deze casus.
+  # ---------------------------------------------------------------- 1
+  - number: '1'
+    url: https://duo.nl/zakelijk/primair-onderwijs/bekostiging-en-subsidies/aanvullende-bekostiging/eerste-opvang-asielzoekers-vreemdelingen.jsp
+    text: >-
+      Werkinstructie-onderdeel 1, Bestand Nieuwkomers. DUO stelt op de
+      achtste dag van de maand van elke peildatum (1 januari, 1 april, 1
+      juli en 1 oktober) per bestuur het Bestand Nieuwkomers beschikbaar in
+      Mijn DUO (Bestanden downloaden en versturen). Het bestand blijft acht
+      weken staan en is het hulpmiddel bij het invullen van het
+      aanvraagformulier. Per school bevat het de leerlingen die op de
+      peildatum als nieuwkomer in aanmerking kunnen komen, met de eerste
+      inschrijfdatum volgens het register onderwijsdeelnemers en de actuele
+      verblijfstitel. Het bestand is verdeeld in drie tabbladen: tabblad 1
+      bevat leerlingen bij wie uit de verblijfstitel eenduidig blijkt of het
+      om een asielzoeker of een overige vreemdeling gaat; tabblad 2 bevat
+      leerlingen met een verblijfstitelcode waaruit dat niet eenduidig
+      blijkt (codes 21, 33, 34 en 98) of zonder bekende verblijfstitelcode,
+      waarbij het bestuur zelf de categorie bepaalt; tabblad 3 bevat
+      leerlingen die op een onderwijsnummer zijn ingeschreven en van wie DUO
+      weinig gegevens heeft, waarbij het bestuur alle voorwaarden zelf
+      beoordeelt.
+    machine_readable:
+      definitions:
+        tabblad_eenduidig:
+          value: 1
+          type: number
+          description: 'Tabblad 1: categorie volgt eenduidig uit de verblijfstitel'
+        tabblad_ambigu:
+          value: 2
+          type: number
+          description: 'Tabblad 2: verblijfstitel niet eenduidig, bestuur bepaalt de categorie'
+        tabblad_onderwijsnummer:
+          value: 3
+          type: number
+          description: 'Tabblad 3: ingeschreven op onderwijsnummer, bestuur beoordeelt alles'
+        ambigue_verblijfstitelcodes:
+          value: [21, 33, 34, 98]
+          type: array
+          description: >-
+            Verblijfstitelcodes waaruit niet eenduidig blijkt of de leerling
+            asielzoeker of overige vreemdeling is (signalenlijst DUO;
+            datamodel casus, artikel 34, tiende en elfde lid, Regeling
+            bekostiging WPO en WEC)
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+            description: Sleutel van de leerling (bsn of onderwijsnummer-achtige sleutel)
+        input:
+          - name: heeft_bsn
+            type: boolean
+            source:
+              description: >-
+                Of de leerling met een burgerservicenummer is ingeschreven;
+                false betekent inschrijving op onderwijsnummer
+          - name: verblijfstitel_code
+            type: number
+            nullable: true
+            source:
+              description: >-
+                BRP-verblijfstitelcode zoals opgenomen in het register
+                onderwijsdeelnemers; null als onbekend
+        output:
+          - name: tabblad
+            type: number
+            description: >-
+              Tabblad van het Bestand Nieuwkomers waarin de leerling staat
+              (1 eenduidig, 2 ambigu, 3 onderwijsnummer)
+        actions:
+          - output: tabblad
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $heeft_bsn
+                    value: false
+                  then: $tabblad_onderwijsnummer
+                - when:
+                    operation: EQUALS
+                    subject: $verblijfstitel_code
+                    value: null
+                  then: $tabblad_ambigu
+                - when:
+                    operation: IN
+                    subject: $verblijfstitel_code
+                    value: $ambigue_verblijfstitelcodes
+                  then: $tabblad_ambigu
+              default: $tabblad_eenduidig
+
+  # ---------------------------------------------------------------- 2
+  - number: '2'
+    url: https://duo.nl/zakelijk/primair-onderwijs/bekostiging-en-subsidies/aanvullende-bekostiging/eerste-opvang-asielzoekers-vreemdelingen.jsp
+    text: >-
+      Werkinstructie-onderdeel 2, deadlines. Een aanvraag voor een
+      peildatum kan pas vanaf die peildatum worden ingediend en moet
+      uiterlijk op de door DUO gepubliceerde deadline zijn ontvangen;
+      aanvragen die voor de peildatum of na de deadline binnenkomen, worden
+      afgewezen. DUO stelt de deadlines jaarlijks vast en publiceert ze op
+      duo.nl. Voor 2026 gelden: peildatum 1 januari, bestand 8 januari,
+      deadline 30 januari; peildatum 1 april, bestand 8 april, deadline 29
+      april; peildatum 1 juli, bestand 8 juli, deadline 26 augustus
+      (zomervakantie); peildatum 1 oktober, bestand 8 oktober, deadline 29
+      oktober. Als rekenregel hanteert deze werkinstructie vier weken na de
+      peildatum, en acht weken na de peildatum van 1 juli; de gepubliceerde
+      datum voor 1 januari 2026 ligt een dag later dan die regel. Het
+      bestuur ontvangt de beschikking uiterlijk zestien weken na ontvangst
+      van de aanvraag.
+    machine_readable:
+      definitions:
+        termijn_weken_regulier:
+          value: 4
+          type: number
+          description: Aanvraagtermijn van vier weken na de peildatum
+        termijn_weken_zomer:
+          value: 8
+          type: number
+          description: Aanvraagtermijn van acht weken na de peildatum van 1 juli (zomervakantie)
+        zomerpeildatum_maand:
+          value: 7
+          type: number
+          description: De peildatum van 1 juli valt in maand 7
+        dagen_tot_bestand_beschikbaar:
+          value: 7
+          type: number
+          description: >-
+            Het Bestand Nieuwkomers staat op de achtste van de maand van de
+            peildatum klaar ("8 dagen na de peildatum" in de woorden van
+            DUO), dus zeven dagen na de peildatum van de eerste
+        beschikkingstermijn_weken:
+          value: 16
+          type: number
+          description: Beschikking uiterlijk zestien weken na ontvangst van de aanvraag
+      execution:
+        output:
+          - name: bestand_beschikbaar_op
+            type: date
+            description: Datum waarop het Bestand Nieuwkomers in Mijn DUO staat
+          - name: aanvraagdeadline
+            type: date
+            description: >-
+              Uiterste ontvangstdatum van de aanvraag voor de peildatum
+              (rekendatum)
+          - name: beschikkingstermijn_weken
+            type: number
+            description: Termijn waarbinnen het bestuur de beschikking ontvangt
+        actions:
+          - output: bestand_beschikbaar_op
+            value:
+              operation: DATE_ADD
+              date: $referencedate.iso
+              days: $dagen_tot_bestand_beschikbaar
+          - output: aanvraagdeadline
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $referencedate.month
+                    value: $zomerpeildatum_maand
+                  then:
+                    operation: DATE_ADD
+                    date: $referencedate.iso
+                    weeks: $termijn_weken_zomer
+              default:
+                operation: DATE_ADD
+                date: $referencedate.iso
+                weeks: $termijn_weken_regulier
+          - output: beschikkingstermijn_weken
+            value: $beschikkingstermijn_weken
+
+  # ---------------------------------------------------------------- 3
+  - number: '3'
+    url: https://duo.nl/zakelijk/primair-onderwijs/bekostiging-en-subsidies/aanvullende-bekostiging/eerste-opvang-asielzoekers-vreemdelingen.jsp
+    text: >-
+      Werkinstructie-onderdeel 3, kwartaalafronding van de
+      vierde-verjaardag-aftrek. Leerlingen die jonger dan vier jaar waren
+      toen zij in Nederland kwamen wonen, krijgen niet de volle twaalf
+      maanden bekostiging: de periode in Nederland voor de vierde
+      verjaardag wordt op de bekostigingsperiode in mindering gebracht
+      (artikel 34, vierde lid, Regeling bekostiging WPO en WEC). Omdat
+      peildata steeds voor drie maanden (een kwartaal) gelden, rekent DUO
+      die periode om naar hele kwartalen en rondt daarbij altijd naar
+      beneden af: zeven maanden voor de vierde verjaardag zijn twee
+      kwartalen (zes maanden) aftrek, zes en een halve maand eveneens twee
+      kwartalen. Het Bestand Nieuwkomers houdt hiermee al rekening. De
+      rekenregel zelf (aftrek in kwartalen = aantal maanden gedeeld door
+      drie, naar beneden afgerond) staat in de modellering van artikel 34
+      van de Regeling bekostiging WPO en WEC.
+
+  # ---------------------------------------------------------------- 4
+  - number: '4'
+    url: https://duo.nl/zakelijk/primair-onderwijs/bekostiging-en-subsidies/aanvullende-bekostiging/asielzoekers-vreemdelingen-na-eerste-jaar.jsp
+    text: >-
+      Werkinstructie-onderdeel 4, twee formulieren. Het bestuur vraagt de
+      bekostiging aan in Mijn DUO met twee afzonderlijke formulieren. Met
+      het formulier "Aanvullende bekostiging - Asielzoekers en overige
+      vreemdelingen 1e opvang" geeft het bestuur per school het aantal
+      eerstejaars nieuwkomers op, uitgesplitst naar asielzoekers en overige
+      vreemdelingen (artikel 34). Met het formulier "Asielzoekers na 1e
+      jaar" geeft het bestuur het aantal tweedejaars asielzoekers op
+      (artikel 35); overige vreemdelingen komen na het eerste jaar niet
+      meer in aanmerking. Beide aanvragen volgen dezelfde peildata en
+      deadlines. Na indiening ontvangt het bestuur direct per e-mail een
+      bevestiging met referentienummer; dat geldt als bewijs van de
+      aanvraag. Bewijsstukken over de verblijfsstatus hoeven niet in de
+      leerlingenadministratie te worden bewaard.

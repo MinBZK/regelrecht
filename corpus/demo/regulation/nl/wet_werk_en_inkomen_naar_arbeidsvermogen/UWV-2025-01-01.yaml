@@ -8,7 +8,6 @@ valid_from: '2025-01-01'
 name: WIA uitkering status
 bwb_id: BWBR0019057
 url: https://wetten.overheid.nl/BWBR0019057/2025-01-01
-service: UWV
 uuid: 4c8e1f6a-9d2b-4e3a-8b5c-1d9f8e2a6c4b
 articles:
   - number: '54'

@@ -27,7 +27,12 @@ function saveName(e) {
 
 <template>
   <Teleport to="body">
-    <div v-if="p.active.value && p.current.value" class="deck" :class="{ full: p.isFull.value }" role="region" aria-label="Presentatie">
+    <div v-if="p.active.value && p.current.value && p.visible.value" class="deck" :class="{ full: p.isFull.value }" role="region" aria-label="Presentatie">
+      <!-- Het podium: de tekstkolom van de dia. Op het hele scherm is dat een
+           gecentreerde kolom van hooguit 1600px, in de rail de hele kolom. In
+           beide gevallen is dit de container waar de typografie zich op meet,
+           zodat één ladder voor allebei volstaat. -->
+      <div class="stage">
       <div class="content">
         <div class="content-main">
           <!-- Title slide -->
@@ -73,25 +78,68 @@ function saveName(e) {
           <p class="note">{{ p.current.value.note }}</p>
         </div>
       </div>
+      </div>
 
       <div class="footer">
-        <div class="footer-row">
+        <!-- De tellerregel en de toetsenregel staan links onder elkaar; de
+             knoppen staan daar rechts naast, gecentreerd over allebei. Eerder
+             stonden ze op de tellerregel, waardoor ze hoog naast een lege regel
+             hingen terwijl de toetsen eronder de breedte vulden. -->
+        <div class="footer-text">
           <span class="counter" :aria-label="`Dia ${p.index.value + 1} van ${p.total.value}`">{{ counter }}</span>
-          <div class="nav">
-            <button type="button" class="round" aria-label="Vorige dia" :disabled="p.index.value === 0" @click="p.prev()">
-              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
-            </button>
-            <button v-if="isLast" type="button" class="pill" @click="p.stop()">Sluiten</button>
-            <button v-else type="button" class="round" aria-label="Volgende dia" @click="p.next()">
-              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
-            </button>
+          <!-- De toetsen als echte toetsen: nldd-keyboard-shortcut rendert een
+               <kbd> per toets, met de OS-detectie en de semantiek erbij. Dit
+               waren drie <span>'s met een eigen tekstkleur. `color="inherit"`
+               is er voor een gevuld vlak zoals dit dek. -->
+          <div class="hints">
+            <!-- Elke pijl apart, niet `←+→`: dat zet er een plusteken tussen en
+                 leest als 'allebei tegelijk', terwijl het hier om de een of de
+                 ander gaat. -->
+            <span class="hint">
+              <nldd-keyboard-shortcut size="sm" color="inherit" keys="←" always-visible></nldd-keyboard-shortcut>
+              <nldd-keyboard-shortcut size="sm" color="inherit" keys="→" always-visible></nldd-keyboard-shortcut>
+              of
+              <nldd-keyboard-shortcut size="sm" color="inherit" keys="Space" always-visible></nldd-keyboard-shortcut>
+              bladeren
+            </span>
+            <span class="hint">
+              <nldd-keyboard-shortcut size="sm" color="inherit" keys="Esc" always-visible></nldd-keyboard-shortcut>
+              sluit
+            </span>
+            <span class="hint">
+              <nldd-keyboard-shortcut size="sm" color="inherit" keys="F" always-visible></nldd-keyboard-shortcut>
+              volledig scherm
+            </span>
           </div>
         </div>
-        <div class="hints">
-          <span>pijltjes of spatie</span>
-          <span>Esc sluit</span>
-          <span>f volledig scherm</span>
-        </div>
+        <!-- Knoppen uit het design system in plaats van eigen <button>'s met
+             ingetekende chevrons. De `inherit`-varianten zijn hier precies voor
+             gemaakt: ze leiden hun kleur af van `currentColor`, dus ze kloppen
+             op het donkerblauwe vlak zonder eigen kleurregels. -->
+        <nldd-button-bar>
+          <nldd-icon-button
+            variant="inherit-tinted"
+            icon="back"
+            text="Vorige dia"
+            tooltip-timing="never"
+            :disabled="p.index.value === 0 || undefined"
+            @click="p.prev()"
+          ></nldd-icon-button>
+          <nldd-button
+            v-if="isLast"
+            variant="inherit-tinted"
+            text="Sluiten"
+            @click="p.stop()"
+          ></nldd-button>
+          <nldd-icon-button
+            v-else
+            variant="inherit-tinted"
+            icon="forward"
+            text="Volgende dia"
+            tooltip-timing="never"
+            @click="p.next()"
+          ></nldd-icon-button>
+        </nldd-button-bar>
       </div>
       <div class="progress" aria-hidden="true"><div class="progress-fill" :style="{ width: progress }"></div></div>
     </div>
@@ -99,43 +147,132 @@ function saveName(e) {
 </template>
 
 <style scoped>
-/* Custom CSS on purpose: the design system has no presentation component. The
- * palette is the Rijkshuisstijl (donkerblauw #154273, lintblauw #01689b), the
- * type is RijksoverheidSerif for titles and RijksSans for the rest. */
+/* Custom CSS on purpose: the design system has no presentation component. De
+ * kleuren komen wél uit het design system, als tokens en niet als hex. Dat is
+ * niet alleen netter: de hexen die hier stonden bestónden niet in het palet
+ * (#154273 zat er 5 naast lintblauw-750, #ffb612 zelfs 19 naast donkergeel-200),
+ * en een vaste hex negeert `light-dark()`, waar het hele palet op gebouwd is.
+ * De typografie blijft RijksoverheidSerif voor titels en RijksSans voor de rest.
+ *
+ * Het dek is altijd donkerblauw met witte tekst, ook als de bezoeker in donkere
+ * modus kijkt: een presentatie heeft één verschijning, en op een beamer is dat
+ * die. Daarom `color-scheme: light` op het dek — niet omdat het licht is, maar
+ * omdat de kleurschalen omkeren: `lintblauw-750` is donkerblauw in lichte modus
+ * (L 0.39) en juist lichtblauw in donkere (L 0.76), en `donkergeel-200` gaat van
+ * helder geel naar donkerbruin. De lichte kant van de schaal is hier de goede,
+ * in beide modi. */
 .deck {
-  /* Size the type against the deck's own box, not the viewport: the deck is a
-     40vw rail on a demo slide and the whole screen on an intro, so a viewport
-     unit would be wrong in one of the two. `container-type: size` makes 1cqmin
-     one percent of the deck's shorter side, and every size below is a multiple
-     of it, so a short window shrinks the text instead of pushing it past the
-     bottom edge. */
-  container-type: size;
-  --slide-unit: 1cqmin;
+  /* De maat volgt de BREEDTE van het vlak waarin de tekst staat (`1cqw`), niet
+     de kortste zijde. Met `cqmin` won op elk normaal venster de hoogte, en die
+     zegt niets over hoe groot een letter mag zijn: op een breed scherm stond de
+     titel op 26px in een vlak van 720px, met de rest van de dia leeg. Een dia
+     vult zijn regel; de hoogte begrenst, maar is geen maatstaf. */
+  container-type: inline-size;
+  /* Twee rollen, twee schalen. Op het hele scherm is de dia het beeld en mag
+     de titel de regel vullen; in de rail is hij een bijschrift naast de demo,
+     en daar is diezelfde maat schreeuwerig. `--scale` is de enige knop: de
+     rail zet hem lager, de rest van de typografie hieronder is één ladder. */
+  /* De rail is geen verkleinde dia maar een leespaneel naast de demo. Eén
+     procent van een kolom van 630px is 6,3px, en de dia-ladder maakte daar
+     titels van 28px en opsommingen van 13px van: kleiner dan de tekst van de
+     demo ernaast. De ondergrens tilt de hele ladder in één keer op, zodat de
+     verhoudingen blijven kloppen en alleen het formaat leesbaar wordt. */
+  --scale: 1;
+  --slide-floor: 11px;
   position: fixed;
   inset: 0 auto 0 0;
   width: 36vw;
   z-index: 80;
   display: flex;
   flex-direction: column;
-  padding: 3rem 2.75rem 1.5rem;
+  /* Onder ruimer dan eerst (1.5rem): de bedieningsregel bestaat nu uit echte
+     keycaps in plaats van platte tekst, en die zijn hoger. Ze stonden daardoor
+     tegen de voortgangsbalk aan geplakt. */
+  padding: 3rem 2.75rem 3rem;
   box-sizing: border-box;
-  color: #fff;
-  background: linear-gradient(160deg, #154273 0%, #1a4f86 100%);
-  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.25);
+  color-scheme: light;
+  /* De inkt van het dek: één token, en elke doorzichtige variant eruit afgeleid
+     met `color-mix`. Zo staat de kleur één keer in het bestand in plaats van
+     twintig keer als `rgba(255, 255, 255, …)`, en volgt een wijziging in het
+     palet vanzelf. */
+  /* `coolgray-0`, niet `neutral-0`: de neutrale schaal van dit design system
+     heet coolgray. `neutral-*` bestaat niet, en zo'n naam faalt stil — de tekst
+     leek wit omdat een ongeldige `color` de geërfde waarde laat staan. */
+  --ink: var(--primitives-color-coolgray-0);
+  --ink-96: color-mix(in srgb, var(--ink) 96%, transparent);
+  --ink-85: color-mix(in srgb, var(--ink) 85%, transparent);
+  --ink-72: color-mix(in srgb, var(--ink) 72%, transparent);
+  --ink-55: color-mix(in srgb, var(--ink) 55%, transparent);
+  --ink-35: color-mix(in srgb, var(--ink) 35%, transparent);
+  --ink-18: color-mix(in srgb, var(--ink) 18%, transparent);
+  color: var(--ink);
+  background: linear-gradient(
+    160deg,
+    var(--primitives-color-lintblauw-750) 0%,
+    var(--primitives-color-lintblauw-700) 100%
+  );
+  box-shadow: 4px 0 24px rgb(0 0 0 / 0.25);
   font-family: 'RijksSans', system-ui, sans-serif;
   transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1), padding 0.5s cubic-bezier(0.22, 1, 0.36, 1);
 }
+/* Een dia op het hele scherm is geen vlak met marges eromheen maar een
+   gecentreerde tekstkolom met een begrensde regellengte. Zonder die grens
+   bepaalde het vensterformaat de regel: op 2000px bleef er na de marges 1680px
+   over voor een regel van 26px, en de dia was vooral leeg blauw. */
 .deck.full {
   width: 100vw;
-  padding: clamp(1.25rem, calc(4 * var(--slide-unit, 1vw)), 4rem) clamp(3rem, 9vw, 10rem) clamp(0.75rem, calc(2 * var(--slide-unit, 1vw)), 2rem);
+  /* Onderin ruimte voor de bedieningsregel: die bestaat uit keycaps en die
+     stonden anders tegen de voortgangsbalk aan. */
+  padding: 2vh 0 1.5rem;
+  /* De deck zelf meet niets meer: het podium binnenin is de container. */
+  container-type: normal;
+}
+.deck.full .stage {
+  /* Het podium vult de vrije ruimte; het dwingt géén 16:9 af. Dat deed het
+     eerder wel, en dan bepaalde de vorm van het vlak of de tekst paste: de
+     titeldia is hoger dan 16:9 bij deze lettergrootte, en "Nederlandse
+     Digitale Dienst" werd er onderaan afgesneden.
+     De maat komt nu van de breedte (`--slide-measure`), begrensd op een
+     leesbare regellengte, en de hoogte is vrij. Zo bepaalt de inhoud de
+     hoogte en de regellengte de typografie, in plaats van andersom. */
+  --scale: 1;
+  --slide-floor: 0px;
+  container-type: inline-size;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: min(100%, 1600px);
+  margin: 0 auto;
+  padding: 3vh clamp(2rem, 5vw, 6rem);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+/* De voettekst en de voortgangsbalk horen bij de deck, niet bij de dia: ze
+   staan naast het verhaal en mogen het podium niet uit verhouding duwen. */
+.deck.full .footer {
+  padding-inline: clamp(1.5rem, 4vw, 4rem);
+}
+
+/* In de rail is het podium gewoon de kolom: geen 16:9, want daar staat de dia
+   naast de demo en is hij een bijschrift, geen beeld. */
+.stage {
+  /* `--slide-unit` staat hier en niet op de deck: `1cqw` moet zich meten aan
+     het podium, en `--scale` moet de waarde van dít element zijn. Op de deck
+     werd de rail-schaal van 0.62 ook op een volledige dia toegepast. */
+  --slide-unit: max(var(--slide-floor, 0px), calc(1cqw * var(--scale)));
+  container-type: inline-size;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 /* A slide never scrolls. Scrolling hides the bottom of an argument behind a
  * gesture nobody makes while presenting, and on a projector the speaker cannot
- * see that there is more. The type shrinks with the slide instead: every size
- * below scales on the smaller of width and height (`min(1vw, …)`-style through
- * `--slide-unit`), so a short window makes the text smaller rather than taller
- * than the slide. `clamp()` keeps a floor, so it never becomes unreadable. */
+ * see that there is more. De typografie schaalt in plaats daarvan mee met de
+ * breedte van het podium (`--slide-unit`, een percentage daarvan), met een
+ * ondergrens in de rail zodat het bijschrift daar niet kleiner wordt dan de
+ * tekst van de demo ernaast. */
 .content {
   flex: 1 1 auto;
   display: flex;
@@ -148,36 +285,44 @@ function saveName(e) {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: clamp(0.5rem, calc(1.4 * var(--slide-unit, 1vw)), 1.4rem);
+  gap: max(0.5rem, calc(1.6 * var(--slide-unit)));
 }
 .content-foot {
   flex: 0 0 auto;
   padding-top: 1.25rem;
   margin-top: 1.5rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  border-top: 1px solid var(--ink-18);
 }
 
+/* Eén typografische ladder, in stappen van `--slide-unit` (een percentage van
+   de podiumbreedte maal `--scale`). Geen `clamp()`-plafonds meer: die kapten
+   op een beamer juist af wat daar goed was, en de vloer is overbodig zolang de
+   dia een podium met vaste verhoudingen is dat zelf niet kleiner wordt dan het
+   venster. Alleen een ondergrens blijft, voor een heel smal venster. */
 .overline {
-  font-size: clamp(0.7rem, calc(1.5 * var(--slide-unit, 1vw)), 1.6rem);
+  font-size: max(0.72rem, calc(1.6 * var(--slide-unit)));
   font-weight: 600;
   letter-spacing: 0.02em;
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--ink-72);
 }
 .title {
   font-family: 'RijksoverheidSerif', Georgia, serif;
   font-weight: 700;
-  font-size: clamp(1.15rem, calc(4.2 * var(--slide-unit, 1vw)), 5.4rem);
-  line-height: 1.08;
+  font-size: max(1.2rem, calc(5.2 * var(--slide-unit)));
+  line-height: 1.06;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
   margin: 0;
-  color: #fff;
+  color: var(--ink);
 }
 .title-hero {
-  font-size: clamp(1.5rem, calc(7 * var(--slide-unit, 1vw)), 9rem);
+  font-size: max(1.6rem, calc(8.5 * var(--slide-unit)));
 }
 .statement {
-  font-size: clamp(1.05rem, calc(3.8 * var(--slide-unit, 1vw)), 5rem);
-  line-height: 1.2;
+  font-size: max(1.1rem, calc(5.2 * var(--slide-unit)));
+  line-height: 1.18;
   font-weight: 400;
+  letter-spacing: -0.01em;
 }
 /* One authored line per block; a line that still has to wrap balances its
  * halves instead of leaving one word behind. */
@@ -189,35 +334,37 @@ function saveName(e) {
   font-weight: 700;
 }
 .lead {
-  font-size: clamp(0.8rem, calc(2 * var(--slide-unit, 1vw)), 2.3rem);
+  font-size: max(0.85rem, calc(2.6 * var(--slide-unit)));
   line-height: 1.4;
   margin: 0;
   font-weight: 500;
+  text-wrap: pretty;
 }
 .lead-hero {
   font-family: 'RijksoverheidSerif', Georgia, serif;
   font-style: italic;
   font-weight: 400;
-  font-size: clamp(0.9rem, calc(3 * var(--slide-unit, 1vw)), 3.6rem);
-  color: rgba(255, 255, 255, 0.9);
+  font-size: max(1rem, calc(3.6 * var(--slide-unit)));
+  color: color-mix(in srgb, var(--ink) 90%, transparent);
 }
 .bullets {
-  font-size: clamp(0.75rem, calc(1.75 * var(--slide-unit, 1vw)), 2rem);
+  font-size: max(0.8rem, calc(2.2 * var(--slide-unit)));
   line-height: 1.45;
   margin: 0;
-  padding-left: 1.3rem;
+  padding-left: 1.3em;
   display: flex;
   flex-direction: column;
-  gap: clamp(0.3rem, calc(0.9 * var(--slide-unit, 1vw)), 0.9rem);
-  color: rgba(255, 255, 255, 0.96);
+  gap: calc(0.9 * var(--slide-unit));
+  color: var(--ink-96);
+  text-wrap: pretty;
 }
 .bullets li::marker {
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--ink-72);
 }
 .bullets-plain {
   list-style: none;
   padding-left: 0;
-  font-size: clamp(0.85rem, calc(2.4 * var(--slide-unit, 1vw)), 2.8rem);
+  font-size: max(0.9rem, calc(3 * var(--slide-unit)));
 }
 .bullets :deep(strong) {
   font-weight: 700;
@@ -226,100 +373,77 @@ function saveName(e) {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  margin-top: 0.6rem;
-  font-size: clamp(1rem, 1.5vw, 1.7rem);
-  color: rgba(255, 255, 255, 0.85);
+  margin-top: calc(1.5 * var(--slide-unit));
+  font-size: max(0.9rem, calc(1.9 * var(--slide-unit)));
+  color: var(--ink-85);
 }
 .presenter {
   font: inherit;
   font-weight: 600;
-  color: #fff;
+  color: var(--ink);
   background: transparent;
   border: 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.35);
+  border-bottom: 1px solid var(--ink-35);
   padding: 0.1rem 0;
   width: min(24ch, 100%);
   outline: none;
 }
 .presenter::placeholder {
-  color: rgba(255, 255, 255, 0.5);
+  color: color-mix(in srgb, var(--ink) 50%, transparent);
 }
 .presenter:focus {
-  border-bottom-color: #fff;
+  border-bottom-color: var(--ink);
 }
 .slide-link {
   align-self: flex-start;
-  margin-top: 0.8rem;
-  font-size: clamp(1.2rem, 1.6vw, 1.5rem);
+  margin-top: calc(1.5 * var(--slide-unit));
+  font-size: max(0.95rem, calc(2 * var(--slide-unit)));
   font-weight: 600;
-  color: #fff;
+  color: var(--ink);
   text-decoration: underline;
   text-underline-offset: 4px;
 }
 .note {
   margin: 0;
-  font-size: clamp(0.95rem, 1.3vw, 1.3rem);
-  color: rgba(255, 255, 255, 0.8);
+  font-size: max(0.85rem, calc(1.6 * var(--slide-unit)));
+  color: color-mix(in srgb, var(--ink) 80%, transparent);
   line-height: 1.45;
 }
 
 .footer {
   flex: 0 0 auto;
   display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-  padding-top: 1rem;
-}
-.footer-row {
-  display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 1rem;
+  padding-top: 1rem;
+}
+/* Teller en toetsenregel onder elkaar; de knoppen ernaast zijn over die twee
+   regels heen gecentreerd (`align-items: center` op de footer). */
+.footer-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
 }
 .counter {
   font-size: 0.95rem;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.75);
+  color: var(--ink-72);
   font-variant-numeric: tabular-nums;
-}
-.nav {
-  display: flex;
-  gap: 0.5rem;
-}
-.round,
-.pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 2.6rem;
-  border-radius: 999px;
-  border: 1.5px solid rgba(255, 255, 255, 0.55);
-  background: transparent;
-  color: #fff;
-  cursor: pointer;
-  font: inherit;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-.round {
-  width: 2.6rem;
-}
-.pill {
-  padding: 0 1.2rem;
-  font-weight: 600;
-}
-.round:hover,
-.pill:hover {
-  background: rgba(255, 255, 255, 0.14);
-  border-color: #fff;
-}
-.round:disabled {
-  opacity: 0.35;
-  cursor: default;
 }
 .hints {
   display: flex;
-  gap: 1rem;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
   font-size: 0.8rem;
-  color: rgba(255, 255, 255, 0.5);
+  color: color-mix(in srgb, var(--ink) 70%, transparent);
+}
+/* De toetsen staan op de regel van hun uitleg, met de tekst ertussen. */
+.hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
 }
 .progress {
   position: absolute;
@@ -327,11 +451,11 @@ function saveName(e) {
   right: 0;
   bottom: 0;
   height: 3px;
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--ink-18);
 }
 .progress-fill {
   height: 100%;
-  background: #ffb612;
+  background: var(--primitives-color-donkergeel-200);
   transition: width 0.3s ease;
 }
 @media (max-width: 1024px) {

@@ -19,7 +19,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `packages/grafana/` - Grafana monitoring with provisioned dashboards
 - `frontend/` - Law editor (Vue/Vite + editor-api backend)
 - `frontend-lawmaking/` - Law-making process visualization (Vue/Vite)
-- `frontend-demo/` - The RegelRecht demo (Vue/Vite + the engine as WASM in the browser, no backend): presentation, law browser, dependency graph, scenario runner, population simulation, citizen/entrepreneur portal and case system, over the demo corpus in `corpus/demo/`. Successor of the separate poc-machine-law repository; target domain `demo.regelrecht.rijks.app` (wired into deploy.yml; the ZAD component still has to be created)
+- `frontend-demo/` - The RegelRecht demo (Vue/Vite + the engine as WASM in the browser, no backend): presentation, law browser, dependency graph, scenario runner, population simulation, citizen/entrepreneur portal and case system, over the demo corpus in `corpus/demo/`. Successor of the separate poc-machine-law repository; deployed at `demo.regelrecht.rijks.app`
 - `frontend-chrono-poc/` - De frontend van de chronolexografie-testopstelling (Vue/Vite op de wereld-API van `packages/simulator`): het **journaal** als hoofdweergave (wie deed wat, welke grammen kwamen eruit, wat veranderde er aan de stand van de zaak), daaronder een kolom per cel met haar kronieken, de grammen gekleurd per soort, per waarde in een decretogram de herkomst, een tijdlijn met de klok en "spoel vooruit tot" waarvan een punt naar de regels van die dag springt, de acties uit het wereldbestand, de instellingen en het observatielog als gelabeld meetinstrument. Casus-onwetend: elke naam op het scherm komt uit het beeld dat de server geeft
 - `docs/` - Astro site serving both the landing page (regelrecht.rijks.app) and the docs (docs.regelrecht.rijks.app)
 - `corpus/regulation/` - Dutch legal regulations in machine-readable YAML format
@@ -149,7 +149,13 @@ See `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml` for a worki
 
 ## Frontend / UI Components
 
-**All user interface MUST be built with components from the MinBZK design system: https://github.com/MinBZK/storybook** (the NDD `ndd-*` web components). Do not hand-roll custom UI elements when a design-system component exists. For the required component hierarchy, nesting rules, and layout patterns, use the `storybook-component-hierarchy` skill.
+**All user interface MUST be built with components from the MinBZK design system: https://github.com/MinBZK/storybook** (the NLDD `nldd-*` web components, from `@nldd/design-system`). Do not hand-roll custom UI elements when a design-system component exists. For the required component hierarchy, nesting rules, and layout patterns, use the `storybook-component-hierarchy` skill.
+
+The element prefix is `nldd-`, with two l's. Older prose (including parts of
+the `storybook-component-hierarchy` skill) still writes `ndd-`; that is stale.
+Check an attribute against the package's own `.d.ts` before using it — a web
+component with an attribute it does not know renders nothing and reports
+nothing, so a guessed attribute fails silently and only in the browser.
 
 ### Icon names
 
@@ -165,6 +171,47 @@ Do **not** silently improvise. Follow these steps in order:
 ### Reporting additional CSS
 
 If you needed **any additional CSS styling** on top of the design-system components (overrides, custom spacing, layout hacks, etc.), you **must report this explicitly** to the user — list exactly what custom CSS you added and why. Custom styling on top of the design system is a signal that may need a design-system change, so it must never be hidden.
+
+## Proof-of-concepts
+
+`poc.regelrecht.rijks.app` is één ZAD-component (`poc`) met de pocs erachter,
+elk achter een eigen wachtwoord. Dat het één component is, volgt uit de
+platformkant: de productie-deployment publiceert op `component.subdomain`, dus
+élk component krijgt zijn eigen hostnaam en drie componenten kunnen die ene
+hostnaam niet op paden delen. De routering gebeurt daarom binnen één container,
+in `packages/poc-portal`.
+
+```
+pocs/registry.yaml          het register — de enige bron
+corpus-poc/<slug>/          casus-regelgeving, data, varianten
+frontend-poc-<slug>/        de app
+```
+
+Een poc toevoegen of zijn status wijzigen: gebruik de **`poc-add`**-skill. Die
+kent de subpad-aanpassingen die een losse app nodig heeft en de plekken in de
+deploy die met de hand bij moeten.
+
+Drie dingen om te weten voordat je hier iets aanraakt:
+
+- **`corpus-poc/` is geen geldend recht.** Het zijn casus-corpora en
+  reconstructies van wetsvoorstellen, met een eigen schrijfstijl uit de losse
+  PoC-repo's. Ze gaan niet door `just validate`, staan buiten yamllint, en de
+  harvester heeft er niets mee te maken. Behandel ze niet als het corpus.
+- **Elke poc draagt een `status` en een `voorbehoud`**, allebei verplicht en
+  zonder default. Ze staan op drie plekken (kaart, inlogscherm, en een strook
+  binnen de poc zelf), omdat die drie verschillende mensen bereiken: een
+  doorgestuurde diepe link slaat het overzicht over, en een screenshot uit een
+  poc reist zonder omringende tekst. Een uitgerekend bedrag ziet er even
+  stellig uit, of het model nu doorgelopen is met juristen of niet.
+- **Wachtwoorden staan alleen in ZAD** (`zad env add -c poc POC_PW_<SLUG>`),
+  nooit in de repo. Het portaal weigert te starten als er één ontbreekt; een
+  poc in het register zonder wachtwoord zou anders voor iedereen open staan.
+
+De beleidsassistent in de OCW-pocs draait op de Claude Code CLI met Anne's
+eigen abonnementstoken (`CLAUDE_CODE_OAUTH_TOKEN`, uit `claude setup-token`).
+De tool-sandbox is smal (alleen de regelrecht-MCP-tools, geen bestandssysteem),
+maar wie het wachtwoord heeft kan het abonnement laten werken. Dat is een
+bewuste afweging, geen omissie.
 
 ## Published papers are frozen
 
@@ -484,8 +531,10 @@ de job staat in het workflowbestand dat de PR meebrengt.
 | pipeline-api | `regelrecht-pipeline-api` | (internal) |
 | chrono-poc | `regelrecht-chrono-poc` | `chrono-poc.regelrecht.rijks.app` |
 | lawmaking | `regelrecht-lawmaking` | `lawmaking.regelrecht.rijks.app` |
-| demo | `regelrecht-demo` | `demo.regelrecht.rijks.app` (ZAD component still to be created) |
+| demo | `regelrecht-demo` | `demo.regelrecht.rijks.app` |
 | docs | `regelrecht-docs` | `docs.regelrecht.rijks.app` + `regelrecht.rijks.app` (landing) |
+| poc | `regelrecht-poc` | `poc.regelrecht.rijks.app` (portaal + de statische pocs) |
+| napp | `regelrecht-poc-napp` | (geen eigen adres; alleen via het portaal op `/napp/`) |
 | grafana | `regelrecht-grafana` | `grafana.regelrecht.rijks.app` |
 
 ### How It Works

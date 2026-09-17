@@ -28,6 +28,13 @@ scenario-runner, simulatie, burger-/ondernemersportaal en zaaksysteem. Opvolger 
   niet als `null` meegegeven: `null` zou "er is geen" betekenen.
 - **Toestand** (profiel, aanvragen, correcties) in `src/store/demoStore.js`, bewaard in
   `localStorage`; "Demo resetten" in het menu wist het.
+- **Home** (`src/views/HomeView.vue`): de landingspagina op `/`. Wie de demo opent zonder
+  te weten wat het is, leest daar in een paar regels wat er te zien valt, start de
+  presentatie, en vindt de weg naar regelrecht.rijks.app, de documentatie en het onderzoek.
+  De QR-code ernaast wijst naar de pagina zelf (`window.location.origin`, dus ook goed op
+  een preview-deploy of een laptop in de zaal), zodat iemand meekijkt op zijn telefoon.
+  In de tabbalk draagt Home alleen zijn icoon; de presentatie staat sindsdien op
+  `/presentatie` en start niet meer vanzelf bij binnenkomst.
 - **Presentatie** (`src/presentation/`): de dia's uit `demo-config.yaml` (`slides:`) als
   overlay; een dia met `route` opent dat tabblad, wisselt zo nodig van persona (`profile`)
   en wijst een deel van het scherm aan (`highlight`). Shift+P opent het dek overal.
@@ -99,12 +106,13 @@ design system geen component heeft:
 
 | Selector | Waarom |
 |---|---|
-| `src/presentation/*` (deck, scoped CSS en `presentation.css`) | De presentatie: een Rijkshuisstijl-blauw dek (donkerblauw #154273, RijksoverheidSerif voor titels, RijksSans voor tekst) dat voluit staat bij intro en afsluiting en als linker rail de demo rechts aanstuurt (`html.rr-presenting body { padding-left }`, puls `.rr-present-pulse`). Naar het voorbeeld van Begane Grond. Het design system heeft geen presentatiecomponent; de serif-fonts staan in `public/fonts` (Rijkshuisstijl-licentie). |
+| `src/presentation/*` (deck, scoped CSS en `presentation.css`) | De presentatie: een Rijkshuisstijl-blauw dek (`lintblauw-750` → `-700`, RijksoverheidSerif voor titels, RijksSans voor tekst; alle kleuren als token, met `color-scheme: light` omdat de palet-schalen tussen licht en donker omkeren en een presentatie één verschijning heeft) dat voluit staat bij intro en afsluiting en als linker rail de demo rechts aanstuurt (`html.rr-presenting body { padding-left }`, puls `.rr-present-pulse`). Naar het voorbeeld van Begane Grond. Het design system heeft geen presentatiecomponent; de serif-fonts staan in `public/fonts` (Rijkshuisstijl-licentie). |
 | `.org-logo` | Organisatielogo in een blokje met padding (40px/24px). `nldd-avatar` snijdt een afbeelding bij (`object-fit: cover`), wat een woordmerk afsnijdt; `nldd-image` vult altijd de volle breedte. Organisaties zonder logo krijgen wél een `nldd-avatar` met initialen. |
 | `.yaml-tree*` | Opvouwbare YAML-boom met kruiswet-links; `nldd-code-viewer` highlight wel YAML maar vouwt niet en kent geen links. |
 | `.gherkin*` | Gherkin-weergave met slaag/faal-markering per stap (de datatabellen zijn `nldd-table`); de viewer kent Gherkin als taal maar geen stapstatus. |
 | `.trace` | Monospace box-drawing-trace. |
-| `.graph-canvas`, `.graph-law*`, `.graph-box*`, `.graph-item*`, `.graph-dim` | vue-flow heeft een expliciete hoogte nodig; de knopen tekenen het POC-beeld (wet als kader met vakken voor bronnen, invoer en uitvoer, met de waarde voor de persona) en dimmen wat buiten de selectie valt. Een graafcanvas bestaat niet in het design system (zelfde uitzondering als de editor). |
+| `.qr-frame` en `svg.qr` (`views/HomeView.vue`, `components/QrCode.vue`) | De QR-code op de landingspagina. Het design system heeft geen QR-component, en een QR-code is geen stijlkeuze maar een tekening met een vaste betekenis: de modules moeten donker op licht staan, óók in donkere modus, dus de code tekent zijn eigen witte vlak in plaats van de ondergrond te erven. Het kadertje eromheen zet alleen een maximale maat en een radius. |
+| `.graph-canvas`, `.graph-law*`, `.graph-box*`, `.graph-item*`, `.graph-dim`, `.graph-zoom` | vue-flow heeft een expliciete hoogte nodig; de knopen tekenen het POC-beeld (wet als kader met vakken voor bronnen, invoer en uitvoer, met de waarde voor de persona) en dimmen wat buiten de selectie valt. Een graafcanvas bestaat niet in het design system (zelfde uitzondering als de editor). De vlakken komen uit de oppervlakte-tokens, de organisatiekleur zit alleen in rand en label. `.graph-zoom` plaatst alleen de knopgroep over het canvas; de knoppen zelf zijn `nldd-icon-button`, want de zoomknoppen van vue-flow brachten hun eigen stylesheet en vormgeving mee. |
 
 Eén afwijking buiten CSS: `App.vue` roept na elke routewissel `_evaluateScrollMode()` van
 `nldd-app-view` aan. Het design system leidt bij het koppelen af of het document of elk

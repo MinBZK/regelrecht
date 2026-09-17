@@ -8,7 +8,11 @@ use std::collections::HashSet;
 /// A flattened trace node for rendering.
 struct FlatNode {
     depth: usize,
-    path: Vec<usize>,
+    /// The step's own address, as the engine assigns it (RFC-039). This view
+    /// used to compute an index chain of its own for want of one on the step;
+    /// it is the same address, so the collapse state it keys on now means the
+    /// same thing to anything else reading the trace.
+    node_id: String,
     name: String,
     node_type: PathNodeType,
     resolve_type: Option<ResolveType>,
@@ -22,7 +26,7 @@ struct FlatNode {
 pub struct TraceView {
     trace: Option<PathNode>,
     flat_nodes: Vec<FlatNode>,
-    collapsed: HashSet<Vec<usize>>,
+    collapsed: HashSet<String>,
     selected: usize,
     scroll_offset: usize,
     last_viewport_height: Cell<usize>,
@@ -194,11 +198,11 @@ impl TraceView {
     fn toggle_collapse(&mut self) {
         if let Some(node) = self.flat_nodes.get(self.selected) {
             if node.has_children {
-                let path = node.path.clone();
-                if self.collapsed.contains(&path) {
-                    self.collapsed.remove(&path);
+                let id = node.node_id.clone();
+                if self.collapsed.contains(&id) {
+                    self.collapsed.remove(&id);
                 } else {
-                    self.collapsed.insert(path);
+                    self.collapsed.insert(id);
                 }
                 self.rebuild_flat();
             }
@@ -206,12 +210,12 @@ impl TraceView {
     }
 
     fn collapse_all(&mut self) {
-        // Collect paths of all nodes with children at depth 0 and 1
+        // Collect the ids of every node that has children
         if let Some(ref trace) = self.trace {
-            let mut paths_to_collapse = Vec::new();
-            collect_parent_paths(trace, &[], &mut paths_to_collapse);
-            for path in paths_to_collapse {
-                self.collapsed.insert(path);
+            let mut ids_to_collapse = Vec::new();
+            collect_parent_ids(trace, &mut ids_to_collapse);
+            for id in ids_to_collapse {
+                self.collapsed.insert(id);
             }
             self.rebuild_flat();
         }
@@ -220,7 +224,7 @@ impl TraceView {
     fn rebuild_flat(&mut self) {
         self.flat_nodes.clear();
         if let Some(ref trace) = self.trace {
-            flatten_node(trace, 0, &[], &self.collapsed, &mut self.flat_nodes);
+            flatten_node(trace, 0, &self.collapsed, &mut self.flat_nodes);
         }
         // Clamp selection
         if self.selected >= self.flat_nodes.len() && !self.flat_nodes.is_empty() {
@@ -242,16 +246,17 @@ impl TraceView {
 fn flatten_node(
     node: &PathNode,
     depth: usize,
-    path: &[usize],
-    collapsed: &HashSet<Vec<usize>>,
+    collapsed: &HashSet<String>,
     out: &mut Vec<FlatNode>,
 ) {
-    let current_path = path.to_vec();
-    let is_collapsed = collapsed.contains(&current_path);
+    // A step the engine did not address falls back to its name, so a trace
+    // recorded before RFC-039 still collapses and expands.
+    let node_id = node.node_id.clone().unwrap_or_else(|| node.name.clone());
+    let is_collapsed = collapsed.contains(&node_id);
 
     out.push(FlatNode {
         depth,
-        path: current_path.clone(),
+        node_id,
         name: node.name.clone(),
         node_type: node.node_type.clone(),
         resolve_type: node.resolve_type.clone(),
@@ -263,22 +268,18 @@ fn flatten_node(
     });
 
     if !is_collapsed {
-        for (i, child) in node.children.iter().enumerate() {
-            let mut child_path = current_path.clone();
-            child_path.push(i);
-            flatten_node(child, depth + 1, &child_path, collapsed, out);
+        for child in &node.children {
+            flatten_node(child, depth + 1, collapsed, out);
         }
     }
 }
 
-fn collect_parent_paths(node: &PathNode, path: &[usize], out: &mut Vec<Vec<usize>>) {
+fn collect_parent_ids(node: &PathNode, out: &mut Vec<String>) {
     if !node.children.is_empty() {
-        out.push(path.to_vec());
+        out.push(node.node_id.clone().unwrap_or_else(|| node.name.clone()));
     }
-    for (i, child) in node.children.iter().enumerate() {
-        let mut child_path = path.to_vec();
-        child_path.push(i);
-        collect_parent_paths(child, &child_path, out);
+    for child in &node.children {
+        collect_parent_ids(child, out);
     }
 }
 

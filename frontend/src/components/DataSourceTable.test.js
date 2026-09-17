@@ -114,7 +114,7 @@ describe('DataSourceTable nullability', () => {
       props: { title: 'box', keyField: 'bsn', fields, modelValue: rows, defaultExpanded: true, drilledIn: true },
     });
   const optionValues = (w) => w.findAll('option').map((o) => o.attributes('value'));
-  const errorTexts = (w) => w.findAll('nldd-form-field-error-text').map((e) => e.text());
+  const errorTexts = (w) => w.findAll('nldd-validation-item').map((e) => e.text());
 
   it('offers the null option in a boolean column only when the field is nullable', () => {
     const nullable = mountWith(nullableFields, [{ _id: 1, bsn: '1', verdragsinschrijving: 'true', land_verblijf: 'NL' }]);
@@ -141,9 +141,11 @@ describe('DataSourceTable nullability', () => {
     await w.setProps({ modelValue: w.emitted('update:modelValue').at(-1)[0] });
     const field = spiFor(w, 'land_verblijf');
     expect(field.props('invalid')).toBe(true);
-    expect(field.props('errorMessageIds')).toBeTruthy();
+    expect(field.props('unmet')).toBeTruthy();
     expect(errorTexts(w)).toEqual(['Dit gegeven kan niet afwezig zijn (niet nullable)']);
-    expect(w.find('nldd-form-field-error-text').attributes('id')).toBe(field.props('errorMessageIds'));
+    expect(w.find('nldd-validation-item').attributes('id')).toBe(field.props('unmet'));
+    const listControl = w.find(`[id="${w.find('nldd-validation-list').attributes('for')}"]`);
+    expect(listControl.attributes('unmet')).toBe(field.props('unmet'));
 
     // Typing on clears the refusal.
     field.vm.$emit('update', 'nul');

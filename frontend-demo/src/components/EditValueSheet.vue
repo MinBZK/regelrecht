@@ -26,7 +26,7 @@ const props = defineProps({
   caseId: { type: String, default: null },
 });
 const emit = defineEmits(['close', 'submitted']);
-const { corpus, submitClaim, profile } = useDemo();
+const { corpus, submitClaim, profile, features } = useDemo();
 
 // The hardship clauses the POC offered (web/templates/partials/edit_form.html).
 const HARDSHIP_CLAUSES = [
@@ -207,7 +207,11 @@ function submit() {
     input: props.node.name,
     keyField: props.node.keyField ?? 'bsn',
     keyValue: props.node.keyValue ?? props.bsn ?? profile.value?.bsn,
-    oldValue: props.node.value,
+    // Alleen de waarde meegeven als ze van het register komt. Bij een gegeven
+    // dat al gecorrigeerd is, toont de rij de gecorrigeerde waarde, en die als
+    // "oud" vastleggen zou de correctie ervóór wegpoetsen. `null` laat de store
+    // opzoeken wat er zonder correcties staat.
+    oldValue: props.node.corrected ? null : props.node.value,
     newValue: value,
     reason: reason.value.trim(),
     evidence: evidence.value,
@@ -271,6 +275,7 @@ function submit() {
                     <nldd-icon-button size="xs" variant="neutral-transparent" icon="trash" accessible-label="Rij verwijderen" @click="removeRow(i)"></nldd-icon-button>
                   </nldd-cell>
                 </nldd-table-row>
+                <nldd-inline-dialog slot="empty" text="Nog geen rijen"></nldd-inline-dialog>
               </nldd-table>
               <nldd-button size="sm" variant="secondary" start-icon="plus" text="Rij toevoegen" @click="addRow"></nldd-button>
             </template>
@@ -292,6 +297,7 @@ function submit() {
                   <nldd-spacer-cell size="8"></nldd-spacer-cell>
                   <nldd-cell><nldd-icon-button size="xs" variant="neutral-transparent" icon="trash" accessible-label="Waarde verwijderen" @click="removeListItem(i)"></nldd-icon-button></nldd-cell>
                 </nldd-list-item>
+                <nldd-inline-dialog slot="empty" text="Nog geen waarden"></nldd-inline-dialog>
               </nldd-list>
               <nldd-button size="sm" variant="secondary" start-icon="plus" text="Waarde toevoegen" @click="addListItem"></nldd-button>
             </template>
@@ -324,7 +330,7 @@ function submit() {
           </nldd-form-field>
           <nldd-form-field :label="selfDeclared ? 'Toelichting' : 'Waarom klopt het geregistreerde gegeven niet?'" :optional="selfDeclared || undefined">
             <nldd-multi-line-text-field :value="reason" rows="3" :placeholder="caseworker ? 'Bijvoorbeeld: bewijsstuk van de burger ontvangen en gecontroleerd.' : 'Bijvoorbeeld: mijn inkomen is dit jaar lager door minder opdrachten.'" @input="reason = $event.detail?.value ?? $event.target.value"></nldd-multi-line-text-field>
-            <nldd-form-field-help-text>{{ caseworker ? 'De correctie geldt direct en komt in het dossier van de zaak; de burger ziet haar op het portaal.' : hardship ? 'Een beroep op een hardheidsclausule beoordeelt een behandelaar altijd; uw aanvraag rekent ondertussen met wat u opgeeft.' : selfDeclared || profile?.feature_flags?.AUTO_APPROVE_CLAIMS ? 'Uw opgave wordt direct gebruikt in de berekening.' : 'Uw aanvraag rekent meteen met wat u opgeeft; een behandelaar beoordeelt de correctie voordat de uitkomst vaststaat.' }}</nldd-form-field-help-text>
+            <nldd-form-field-help-text>{{ caseworker ? 'De correctie geldt direct en komt in het dossier van de zaak; de burger ziet haar op het portaal.' : hardship ? 'Een beroep op een hardheidsclausule beoordeelt een behandelaar altijd; uw aanvraag rekent ondertussen met wat u opgeeft.' : selfDeclared || features.AUTO_APPROVE_CLAIMS ? 'Uw opgave wordt direct gebruikt in de berekening.' : 'Uw aanvraag rekent meteen met wat u opgeeft; een behandelaar beoordeelt de correctie voordat de uitkomst vaststaat.' }}</nldd-form-field-help-text>
           </nldd-form-field>
           <nldd-form-field label="Beroep op een hardheidsclausule" optional>
             <nldd-dropdown width="full">

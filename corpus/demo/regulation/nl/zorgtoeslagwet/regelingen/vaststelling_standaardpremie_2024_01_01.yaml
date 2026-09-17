@@ -9,7 +9,6 @@ valid_from: '2024-01-01'
 name: Vaststellen standaardpremie
 bwb_id: BWBR0049005
 url: https://wetten.overheid.nl/BWBR0049005/2024-01-01
-service: VWS
 uuid: ce827aca-e943-4588-bc49-457650f68b04
 articles:
   - number: '1'

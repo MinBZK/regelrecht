@@ -8,7 +8,6 @@ valid_from: '2020-01-01'
 name: Bepalen toetsingsinkomen
 bwb_id: BWBR0011353
 url: https://wetten.overheid.nl/BWBR0011353/2020-01-01
-service: UWV
 uuid: 06c43099-444f-415d-a98a-cb686954ed24
 articles:
   - number: '2.11'
@@ -18,8 +17,8 @@ articles:
     machine_readable:
       execution:
         produces:
-          legal_character: BESCHIKKING
-          decision_type: TOEKENNING
+          legal_character: INFORMATIEF
+          decision_type: GEEN_BESLUIT
         parameters:
           - name: bsn
             type: string

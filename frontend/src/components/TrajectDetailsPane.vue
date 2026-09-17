@@ -262,6 +262,7 @@ async function confirmLeave() {
     <nldd-modal-dialog
       ref="deleteModalEl"
       variant="alert"
+      horizontal-alignment="center"
       :text="`Traject ${detail?.name || ''} verwijderen?`"
       supporting-text="Het traject wordt definitief verwijderd, inclusief leden en uitnodigingen. De traject-branch op GitHub blijft bestaan. Dit kan niet ongedaan worden gemaakt."
       @close="cancelDelete"
@@ -282,6 +283,7 @@ async function confirmLeave() {
     <nldd-modal-dialog
       ref="leaveModalEl"
       variant="alert"
+      horizontal-alignment="center"
       :text="`Traject ${detail?.name || ''} verlaten?`"
       supporting-text="Je verlaat dit traject definitief en verliest meteen je toegang. Wil je later weer bijdragen, dan moet een beheerder je opnieuw uitnodigen."
       @close="cancelLeave"

@@ -8,7 +8,6 @@ valid_from: '2025-01-01'
 name: Bepalen recht op bijstand landelijk
 bwb_id: BWBR0015703
 url: https://wetten.overheid.nl/BWBR0015703/2025-01-01
-service: SZW
 uuid: c00f6a8b-b387-45d0-ab15-6f5aa34b7287
 articles:
   - number: '11'

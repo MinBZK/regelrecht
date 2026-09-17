@@ -35,9 +35,9 @@ use crate::error::{EngineError, Result};
 use crate::operations::ValueResolver;
 use crate::priority;
 use crate::resolver::{RuleResolver, SelectionReason};
-use crate::trace::TraceBuilder;
+use crate::trace::{LegalAnchor, TraceBuilder, ValueSource};
 use crate::types::{
-    Connectivity, LegalStatus, MissingKind, PathNodeType, RegulatoryLayer, ResolveType,
+    Connectivity, LegalStatus, MissingKind, PathNodeType, RegulatoryLayer, ResolveType, TypeSpec,
     UntranslatableMode, Value,
 };
 use crate::uri::RegelrechtUri;
@@ -112,6 +112,12 @@ struct ResolutionContext<'a> {
     /// leans on it however deep the call that accepted it, and no receipt that
     /// leaves it out can be read back (RFC-013).
     accepted_values: Vec<AcceptedCellValue>,
+    /// Where the engine is right now: the innermost provision being evaluated
+    /// (RFC-039). Every trace step pushed while this is set inherits it as its
+    /// `anchor`, so a step can name its article without each push site having
+    /// to know one. Independent of `legal_basis`, which is what the law
+    /// document cites rather than where the engine was.
+    anchor: Option<LegalAnchor>,
 }
 
 /// Parse the calculation date, rejecting malformed input: an unparseable date
@@ -154,6 +160,7 @@ impl<'a> ResolutionContext<'a> {
             cache: HashMap::new(),
             contextual_law_id: None,
             accepted_values: Vec::new(),
+            anchor: None,
         })
     }
 
@@ -223,10 +230,26 @@ impl<'a> ResolutionContext<'a> {
         self.visited.contains(key)
     }
 
+    /// Enter a provision, returning the previous one so the caller can restore
+    /// it. Cross-law evaluation nests, so this is a stack discipline rather
+    /// than an assignment (RFC-039).
+    fn enter_anchor(&mut self, anchor: Option<LegalAnchor>) -> Option<LegalAnchor> {
+        std::mem::replace(&mut self.anchor, anchor)
+    }
+
     /// Push a new trace node. No-op if tracing is disabled.
+    ///
+    /// Every step pushed here inherits the provision the engine is currently
+    /// in as its `anchor` (RFC-039), which is why no push site has to know an
+    /// article: a bare arithmetic step inside an article carries that article
+    /// just as a resolve does.
     fn trace_push(&self, name: impl Into<String>, node_type: PathNodeType) {
         if let Some(ref tb) = self.trace {
-            tb.borrow_mut().push(name, node_type);
+            let mut tb = tb.borrow_mut();
+            tb.push(name, node_type);
+            if let Some(ref anchor) = self.anchor {
+                tb.set_anchor(anchor.clone());
+            }
         }
     }
 
@@ -248,6 +271,21 @@ impl<'a> ResolutionContext<'a> {
     fn trace_set_resolve_type(&self, rt: ResolveType) {
         if let Some(ref tb) = self.trace {
             tb.borrow_mut().set_resolve_type(rt);
+        }
+    }
+
+    /// Record where the current node's value came from (RFC-039).
+    fn trace_set_source(&self, source: ValueSource) {
+        if let Some(ref tb) = self.trace {
+            tb.borrow_mut().set_source(source);
+        }
+    }
+
+    /// Record the declared unit and precision of the current node's result
+    /// (RFC-023, RFC-039).
+    fn trace_set_type_spec(&self, type_spec: TypeSpec) {
+        if let Some(ref tb) = self.trace {
+            tb.borrow_mut().set_type_spec(type_spec);
         }
     }
 
@@ -1495,7 +1533,9 @@ impl LawExecutionService {
         // Clone parameters for cache storage before moving into evaluation
         let params_for_cache = parameters.clone();
 
-        // Execute with service provider (default stage BESLUIT for cross-law calls)
+        // Execute with service provider (default stage BESLUIT for cross-law
+        // calls). The anchor is entered and restored by
+        // `evaluate_article_with_service` itself, for every path into it.
         let result = self.evaluate_article_with_service(
             article,
             law,
@@ -1872,7 +1912,39 @@ impl LawExecutionService {
     ///
     /// The `stage` parameter controls which lifecycle stage hooks fire at.
     /// For direct (non-procedure) execution, pass `"BESLUIT"` as default.
+    /// Evaluate an article, with the resolution context anchored to it.
+    ///
+    /// Five paths reach the article evaluation -- a cross-law call, a hook, an
+    /// override, an open-term implementation and an intra-law reference to
+    /// another article -- and only the cross-law one used to enter the anchor
+    /// itself. The other four left `res_ctx.anchor` on the *calling* article,
+    /// so every step pushed through the resolution context (a data-source
+    /// resolve, a nested cross-law guard, a cached node) claimed a provision
+    /// the engine was not in: `standaardpremie` is an open term of article 4
+    /// and its resolution was anchored to article 2, `vermogen` comes from the
+    /// input list of article 3 and its cross-law call said article 2 too.
+    ///
+    /// Entering it here, around the one body, means a sixth path cannot forget
+    /// it and no early return can leave the anchor behind (RFC-039).
     fn evaluate_article_with_service(
+        &self,
+        article: &Article,
+        law: &ArticleBasedLaw,
+        parameters: BTreeMap<String, Value>,
+        requested_output: Option<&str>,
+        stage: &str,
+        res_ctx: &mut ResolutionContext<'_>,
+    ) -> Result<ArticleResult> {
+        let outer_anchor = res_ctx.enter_anchor(Some(LegalAnchor::from_article(law, article)));
+        let result =
+            self.evaluate_article_body(article, law, parameters, requested_output, stage, res_ctx);
+        // Restored before the `?`: an error must not leave the caller anchored
+        // to the article that failed.
+        res_ctx.enter_anchor(outer_anchor);
+        result
+    }
+
+    fn evaluate_article_body(
         &self,
         article: &Article,
         law: &ArticleBasedLaw,
@@ -1927,6 +1999,10 @@ impl LawExecutionService {
         // Attach trace builder if available
         if let Some(ref tb) = res_ctx.trace {
             context.set_trace(Rc::clone(tb));
+            // The provision being executed: every step this context pushes
+            // happens inside this article, so that is what it is anchored to
+            // (RFC-039).
+            context.set_anchor(LegalAnchor::from_article(law, article));
         }
 
         // Set definitions from article
@@ -2426,6 +2502,24 @@ impl LawExecutionService {
                     let _guard = res_ctx.trace_guard(&input.name, PathNodeType::Resolve);
                     res_ctx.trace_set_resolve_type(ResolveType::DataSource);
                     res_ctx.trace_set_result(data_match.value.clone());
+                    // Which organization supplied this fact, in a field
+                    // (RFC-039). The message below says the same thing for a
+                    // person reading a terminal; it used to be the only place
+                    // it was said, so consumers matched a regular expression
+                    // against it.
+                    res_ctx.trace_set_source(ValueSource {
+                        kind: ResolveType::DataSource,
+                        provider: Some(data_match.source_name.clone()),
+                        scope: data_match.law_scope.clone(),
+                    });
+                    // The unit the law declares for this input, so a reader
+                    // sees an amount and not a bare count of cents (RFC-023,
+                    // RFC-039). Only where a declaration carries one; a value
+                    // computed mid-expression has none, and version 1 does not
+                    // infer one.
+                    if let Some(ref ts) = input.type_spec {
+                        res_ctx.trace_set_type_spec(ts.clone());
+                    }
                     res_ctx.trace_set_message(format!(
                         "Resolving from SOURCE {}: {}",
                         data_match.source_name, data_match.value

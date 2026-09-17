@@ -9,7 +9,9 @@ import { definitionKind, overridableDefinitions } from '../simulation/lawParamet
 import { runSimulation, simulationLaws } from '../simulation/runner.js';
 import { BUSINESS_DIMENSIONS, CITIZEN_DIMENSIONS, breakdown, flattenResults, toCsv } from '../simulation/stats.js';
 import { disposableIncomeBreakdown, summariseDisposableIncome } from '../simulation/income.js';
+import { describeModel, featuresFor, taxLawIds, trainBracketModel, trainingData } from '../simulation/harmonize.js';
 import { useDemo } from '../store/demoStore.js';
+import { useNarrow } from '../useNarrow.js';
 
 // Simulatie: a synthetic population of citizens or businesses, every portal
 // law evaluated for each of them by the same engine the portal uses, and the
@@ -18,7 +20,7 @@ import { useDemo } from '../store/demoStore.js';
 // goes up?"), and runs sit side by side for comparison.
 
 const demo = useDemo();
-const { corpus, engine, ready, state } = demo;
+const { corpus, engine, ready, state, profile, features } = demo;
 
 const kind = ref('burgers');
 const citizenParams = reactive(JSON.parse(JSON.stringify(CITIZEN_DEFAULTS)));
@@ -89,6 +91,9 @@ watch(activeRun, () => {
 
 async function run() {
   if (!ready.value || running.value) return;
+  // Op een smal scherm bedekt de sheet het hoofdpaneel, dus de voortgang en de
+  // uitkomst zouden erachter verdwijnen.
+  splitView.value?.hidePrimarySidebarSheet?.();
   running.value = true;
   runError.value = null;
   signal.cancelled = false;
@@ -134,7 +139,84 @@ function onTab(e) {
   if (id) activeTab.value = id;
 }
 
+// ---- harmonisatie -------------------------------------------------------------
+// Uit de uitkomsten van deze run één vereenvoudigde regeling afleiden die de
+// gekozen wetten benadert, en laten zien hoe dicht die komt. Achter een vlag
+// per profiel (de POC's FEATURE_HARMONIZE).
+const harmonizeEnabled = computed(() => features.value.HARMONIZE);
+/** De wetten die samengenomen worden; standaard alles met een bedrag. */
+const harmonizeLaws = ref([]);
+const harmonizePrimary = ref('inkomen');
+const harmonizeBrackets = ref(5);
+const harmonizeModel = shallowRef(null);
+const harmonizeError = ref('');
+
+/** Alleen wetten die geld opleveren zijn te harmoniseren. */
+const harmonizableLaws = computed(() => {
+  const run = activeRun.value;
+  if (!run) return [];
+  return run.laws.filter((law) => run.summary[law.id]?.withAmount > 0);
+});
+const harmonizeFeatures = computed(() => featuresFor(activeRun.value?.kind ?? 'burgers'));
+const harmonizeNumericFeatures = computed(() => harmonizeFeatures.value.filter((f) => f.kind === 'number'));
+
+// Een nieuwe run betekent een nieuw model; de oude uitkomst hoort niet bij
+// deze cijfers.
+watch(activeRun, (run) => {
+  harmonizeModel.value = null;
+  harmonizeError.value = '';
+  harmonizeLaws.value = harmonizableLaws.value.map((l) => l.id);
+  const numeric = harmonizeNumericFeatures.value;
+  if (!numeric.some((f) => f.key === harmonizePrimary.value)) harmonizePrimary.value = numeric[0]?.key ?? 'inkomen';
+  if (run?.kind === 'ondernemers' && harmonizePrimary.value === 'inkomen') harmonizePrimary.value = numeric[0]?.key ?? 'oppervlakte';
+});
+
+function toggleHarmonizeLaw(id) {
+  harmonizeLaws.value = harmonizeLaws.value.includes(id)
+    ? harmonizeLaws.value.filter((x) => x !== id)
+    : [...harmonizeLaws.value, id];
+}
+
+function harmonize() {
+  harmonizeError.value = '';
+  harmonizeModel.value = null;
+  try {
+    if (!harmonizeLaws.value.length) throw new Error('Kies ten minste één regeling om te harmoniseren.');
+    // Een belasting telt negatief mee: wat de burger overhoudt is het saldo.
+    const data = trainingData(activeRun.value, harmonizeLaws.value, taxLawIds(corpus.value));
+    harmonizeModel.value = trainBracketModel(data, {
+      primary: harmonizePrimary.value,
+      brackets: Number(harmonizeBrackets.value) || 5,
+    });
+  } catch (e) {
+    harmonizeError.value = String(e?.message ?? e);
+  }
+}
+
+const harmonizeTable = computed(() => (harmonizeModel.value ? describeModel(harmonizeModel.value, money) : []));
+/**
+ * Hoeveel de vereenvoudiging gemiddeld scheelt, als aandeel van het bedrag.
+ *
+ * Tegen de absolute waarde van het gemiddelde: zit er een belasting in de som,
+ * dan is het saldo negatief (men betaalt per saldo), en een percentage van een
+ * negatief getal leest als een fout die het niet is.
+ */
+const harmonizeRelativeError = computed(() => {
+  const m = harmonizeModel.value?.metrics;
+  if (!m?.meanAmount) return null;
+  return (m.mae / Math.abs(m.meanAmount)) * 100;
+});
+/** Betaalt de gemiddelde persoon per saldo, in plaats van te ontvangen? */
+const harmonizeNetCost = computed(() => (harmonizeModel.value?.metrics?.meanAmount ?? 0) < 0);
+
 // ---- inspector ----------------------------------------------------------------
+// De instellingen staan op een smal scherm in een sheet; na het starten van
+// een run moet die dicht, anders bedekt hij de uitkomst waar het om gaat.
+// Op een breed scherm blijft het paneel gewoon staan (zie de split view in de
+// template), dus daar is de knop overbodig.
+const splitView = ref(null);
+const narrow = useNarrow();
+
 const inspector = ref(null); // { type: 'params', lawId } | { type: 'law', lawId }
 function editParameters(law) {
   inspector.value = { type: 'params', lawId: law.id };
@@ -290,20 +372,33 @@ function exportJson() {
 </script>
 
 <template>
-  <nldd-navigation-split-view>
-    <nldd-split-view-pane slot="sidebar" has-content>
-      <nldd-page sticky-header>
-        <nldd-container slot="header" padding="8">
-          <nldd-toolbar size="sm">
-            <nldd-toolbar-title slot="start" text="Simulatie" :supporting-text="`${lawSet.runnable.length} regelingen`"></nldd-toolbar-title>
-          </nldd-toolbar>
-        </nldd-container>
-        <nldd-container padding="12" gap="12">
+  <!-- Alleen op een smal scherm wordt het zijpaneel een sheet. Daar viel het
+       anders helemaal weg en was er geen enkele manier meer om een simulatie
+       te starten. Op een breed scherm blijft het staan, anders dan bij Wetten
+       en Scenario's: tijdens een demo stel je hier voortdurend parameters bij,
+       en dat zou telkens een extra klik kosten. -->
+  <nldd-navigation-split-view
+    ref="splitView"
+    :primary-sidebar-as-sheet="narrow || undefined"
+    primary-sidebar-accessible-label="Simulatie-instellingen"
+  >
+    <nldd-split-view-pane slot="sidebar" has-content background="tinted">
+      <!-- Kop, keuze en zoekveld horen in de header, zoals Wetten het doet: de
+           burger/ondernemer-keuze is de hoofdknop van dit paneel, want alles
+           eronder gaat over de gekozen soort.
+           `sticky-header` staat er bewust niet op. Een plakkende header zweeft
+           over de scroll-container (gemeten: 61px, en precies evenveel bij
+           Wetten), wat daar onzichtbaar blijft omdat een lijst begint waar hier
+           meteen een invoerveld staat. -->
+      <nldd-page background="inherit">
+        <nldd-container slot="header" padding="12" gap="8">
+          <nldd-top-title-bar text="Simulatie" :supporting-text="`${lawSet.runnable.length} regelingen`"></nldd-top-title-bar>
           <nldd-segmented-control width="full" :value="kind" @change="kind = $event.detail?.value ?? kind">
             <nldd-segmented-control-item value="burgers" text="Burgers" icon="person"></nldd-segmented-control-item>
             <nldd-segmented-control-item value="ondernemers" text="Ondernemers" icon="business-suitcase"></nldd-segmented-control-item>
           </nldd-segmented-control>
-
+        </nldd-container>
+        <nldd-container padding="12" gap="12">
           <nldd-form-field :label="kind === 'ondernemers' ? 'Aantal bedrijven' : 'Aantal personen'">
             <nldd-number-field :value="params.count" min="1" max="2000" step="10" width="full" @change="params.count = numberFrom($event) ?? params.count"></nldd-number-field>
           </nldd-form-field>
@@ -351,12 +446,20 @@ function exportJson() {
 
     <nldd-split-view-pane slot="main" has-content>
       <nldd-page sticky-header>
-        <nldd-container v-if="runs.length" slot="header" padding="8">
+        <!-- De koptekst staat er altijd, ook zonder run: hij draagt de knop
+             naar de instellingen, en die is op een smal scherm de enige
+             ingang naar het zijpaneel. Stond hij achter `runs.length`, dan
+             was er zonder simulatie geen enkele manier om er een te
+             starten. -->
+        <nldd-container slot="header" padding="8">
           <nldd-toolbar size="sm">
-            <nldd-toolbar-item slot="start">
+            <nldd-toolbar-item slot="start" v-if="narrow">
+              <nldd-button size="sm" variant="neutral-tinted" start-icon="settings" text="Instellingen" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
+            </nldd-toolbar-item>
+            <nldd-toolbar-item slot="start" v-if="runs.length">
               <nldd-tab-bar size="sm" @tabchange="onTab">
-                <nldd-tab-bar-item v-for="r in runs" :key="r.id" :data-run="r.id" :selected="activeTab === r.id || undefined" :text="r.label"></nldd-tab-bar-item>
-                <nldd-tab-bar-item v-if="runs.length > 1" data-run="vergelijking" :selected="activeTab === 'vergelijking' || undefined" text="Vergelijking" icon="arrow-left-right"></nldd-tab-bar-item>
+                <nldd-tab-bar-item v-for="r in runs" :key="r.id" :data-run="r.id" :current="activeTab === r.id || undefined" :text="r.label"></nldd-tab-bar-item>
+                <nldd-tab-bar-item v-if="runs.length > 1" data-run="vergelijking" :current="activeTab === 'vergelijking' || undefined" text="Vergelijking" icon="arrow-left-right"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <template v-if="activeRun">
@@ -365,6 +468,7 @@ function exportJson() {
                   <nldd-segmented-control-item value="overzicht" text="Overzicht"></nldd-segmented-control-item>
                   <nldd-segmented-control-item value="uitsplitsing" text="Uitsplitsing"></nldd-segmented-control-item>
                   <nldd-segmented-control-item value="populatie" text="Populatie"></nldd-segmented-control-item>
+                  <nldd-segmented-control-item v-if="harmonizeEnabled" value="harmonisatie" text="Harmonisatie"></nldd-segmented-control-item>
                 </nldd-segmented-control>
               </nldd-toolbar-item>
               <nldd-toolbar-item slot="end">
@@ -381,8 +485,15 @@ function exportJson() {
           </nldd-toolbar>
         </nldd-container>
 
+        <!-- Harmonisatie rekent op de uitkomsten van een run, dus zonder run is
+             er niets te harmoniseren. Dat hier zeggen, want anders lijkt de
+             feature niet te werken terwijl de vlag aan staat. -->
         <nldd-simple-section v-if="!runs.length" height="60vh">
-          <nldd-inline-dialog icon="chart-x-y-axis-line" text="Nog geen simulatie" supporting-text="Kies links een populatie en druk op Simuleren. Elke persoon of elk bedrijf wordt door de engine door alle regelingen gehaald."></nldd-inline-dialog>
+          <nldd-inline-dialog
+            icon="chart-x-y-axis-line"
+            text="Nog geen simulatie"
+            :supporting-text="`${narrow ? 'Kies onder Instellingen' : 'Kies links'} een populatie en druk op Simuleren. Elke persoon of elk bedrijf wordt door de engine door alle regelingen gehaald.${harmonizeEnabled ? ' Daarna verschijnt rechtsboven ook Harmonisatie, dat op die uitkomsten rekent.' : ''}`"
+          ></nldd-inline-dialog>
         </nldd-simple-section>
 
         <!-- One run -->
@@ -515,7 +626,7 @@ function exportJson() {
             </nldd-container>
           </nldd-simple-section>
 
-          <nldd-simple-section v-else width="full">
+          <nldd-simple-section v-else-if="mainView === 'populatie'" width="full">
             <nldd-card accessible-label="Populatie">
               <nldd-container slot="header" padding="12" layout="row" gap="12" vertical-alignment="center"><nldd-title-cell size="5" text="Populatie" :supporting-text="`${Math.min(activeRun.results.length, 200)} van ${activeRun.results.length} getoond · laatste kolom: regelingen waaraan wordt voldaan`"></nldd-title-cell></nldd-container>
               <nldd-container padding-inline="12" padding-bottom="12">
@@ -531,6 +642,110 @@ function exportJson() {
               </nldd-table>
               </nldd-container>
             </nldd-card>
+          </nldd-simple-section>
+
+          <!-- Harmonisatie: uit de uitkomsten van deze run één vereenvoudigde
+               regeling afleiden, en laten zien hoe dicht die komt. Het verschil
+               is het interessante deel: waar de staffel de wet niet kan volgen,
+               zit de regel die niemand meer uitlegt. -->
+          <nldd-simple-section v-else-if="mainView === 'harmonisatie'" width="full">
+            <nldd-container gap="16">
+              <nldd-card accessible-label="Harmonisatie instellen">
+                <nldd-container slot="header" padding="12" layout="row" gap="12" vertical-alignment="center"><nldd-title-cell size="5" text="Harmonisatie" supporting-text="Vervang de gekozen regelingen door één staffel en kijk hoe dicht die bij de wet blijft."></nldd-title-cell></nldd-container>
+                <nldd-container padding-inline="12" padding-bottom="12" gap="12">
+                  <nldd-form-field label="Regelingen die samen één regeling worden">
+                    <nldd-container layout="wrap" gap="8">
+                      <!-- checkbox-field, niet checkbox: die laatste is alleen
+                           het vinkje en toont zijn label niet. -->
+                      <nldd-checkbox-field
+                        v-for="law in harmonizableLaws"
+                        :key="law.id"
+                        :label="law.name"
+                        :checked="harmonizeLaws.includes(law.id) || undefined"
+                        @change="toggleHarmonizeLaw(law.id)"
+                      ></nldd-checkbox-field>
+                    </nldd-container>
+                    <nldd-form-field-help-text v-if="!harmonizableLaws.length">Deze run heeft geen regelingen met een bedrag; harmoniseren heeft dan niets om op te rekenen.</nldd-form-field-help-text>
+                  </nldd-form-field>
+                  <nldd-container layout="row" gap="12" layout-wrap>
+                    <nldd-form-field label="Staffelen op">
+                      <nldd-dropdown>
+                        <select :value="harmonizePrimary" @change="harmonizePrimary = $event.target.value">
+                          <option v-for="f in harmonizeNumericFeatures" :key="f.key" :value="f.key">{{ f.label }}</option>
+                        </select>
+                      </nldd-dropdown>
+                    </nldd-form-field>
+                    <nldd-form-field label="Aantal treden">
+                      <nldd-number-field :value="String(harmonizeBrackets)" hide-spin-buttons min="2" max="10" @change="harmonizeBrackets = $event.detail?.value ?? harmonizeBrackets"></nldd-number-field>
+                    </nldd-form-field>
+                  </nldd-container>
+                  <nldd-banner v-if="harmonizeError" variant="critical" :text="harmonizeError"></nldd-banner>
+                  <nldd-form-actions>
+                    <nldd-button variant="primary" start-icon="play" text="Harmoniseer" :disabled="!harmonizableLaws.length || undefined" @click="harmonize"></nldd-button>
+                  </nldd-form-actions>
+                </nldd-container>
+              </nldd-card>
+
+              <template v-if="harmonizeModel">
+                <nldd-card accessible-label="Hoe dicht komt de vereenvoudiging">
+                  <nldd-container slot="header" padding="12" layout="row" gap="12" vertical-alignment="center"><nldd-title-cell size="5" text="Hoe dicht komt het" supporting-text="Eén staffel naast de bestaande regelingen, over dezelfde populatie."></nldd-title-cell></nldd-container>
+                  <nldd-container padding-inline="12" padding-bottom="12">
+                    <nldd-list variant="box-tinted" accessible-label="Maten">
+                      <nldd-list-item size="md">
+                        <nldd-text-cell text="Gemiddeld verschil per persoon" supporting-text="Waar het model naast de wet zit, in euro's — de eerlijkste maat."></nldd-text-cell>
+                        <nldd-text-cell width="fit-content" horizontal-alignment="right" :text="money(harmonizeModel.metrics.mae)"></nldd-text-cell>
+                      </nldd-list-item>
+                      <nldd-list-item v-if="harmonizeRelativeError !== null" size="md">
+                        <nldd-text-cell text="Als aandeel van het bedrag" :supporting-text="harmonizeNetCost ? `Per saldo betaalt men gemiddeld ${money(-harmonizeModel.metrics.meanAmount)}; een belasting telt negatief mee.` : `Gemiddeld kent de wet ${money(harmonizeModel.metrics.meanAmount)} toe.`"></nldd-text-cell>
+                        <nldd-text-cell width="fit-content" horizontal-alignment="right" :text="`${num(harmonizeRelativeError, 1)}%`"></nldd-text-cell>
+                      </nldd-list-item>
+                      <nldd-list-item size="md">
+                        <nldd-text-cell text="Verklaarde spreiding (R²)" supporting-text="1,00 betekent dat de staffel de wet volledig volgt."></nldd-text-cell>
+                        <nldd-text-cell width="fit-content" horizontal-alignment="right" :text="num(harmonizeModel.metrics.r2, 3)"></nldd-text-cell>
+                      </nldd-list-item>
+                    </nldd-list>
+                  </nldd-container>
+                </nldd-card>
+
+                <nldd-card v-for="(group, gi) in harmonizeTable" :key="gi" accessible-label="Staffel">
+                  <nldd-container slot="header" padding="12" layout="row" gap="12" vertical-alignment="center"><nldd-title-cell size="5" :text="group.group" :supporting-text="`${group.count} van de ${activeRun.results.length} · het bedrag loopt rechtlijnig tussen de treden, dus zonder sprongen`"></nldd-title-cell></nldd-container>
+                  <nldd-container padding-inline="12" padding-bottom="12">
+                    <nldd-table columns="2fr 1fr 1fr" accessible-label="Staffeltabel">
+                      <nldd-table-row slot="header">
+                        <nldd-text-cell size="sm" :text="harmonizeModel.primary.label"></nldd-text-cell>
+                        <nldd-text-cell size="sm" text="Vanaf" horizontal-alignment="right"></nldd-text-cell>
+                        <nldd-text-cell size="sm" text="Tot" horizontal-alignment="right"></nldd-text-cell>
+                      </nldd-table-row>
+                      <nldd-table-row v-for="(step, si) in group.steps" :key="si">
+                        <nldd-text-cell size="sm" :text="step.range"></nldd-text-cell>
+                        <nldd-text-cell size="sm" :text="step.from" horizontal-alignment="right"></nldd-text-cell>
+                        <nldd-text-cell size="sm" :text="step.to" horizontal-alignment="right"></nldd-text-cell>
+                      </nldd-table-row>
+                    </nldd-table>
+                  </nldd-container>
+                </nldd-card>
+
+                <nldd-card accessible-label="Waar de staffel de wet niet volgt">
+                  <nldd-container slot="header" padding="12" layout="row" gap="12" vertical-alignment="center"><nldd-title-cell size="5" text="Waar het misgaat" supporting-text="De vijf personen waar de vereenvoudiging er het verst naast zit. Daar zit de regel die een staffel niet kan vangen."></nldd-title-cell></nldd-container>
+                  <nldd-container padding-inline="12" padding-bottom="12">
+                    <nldd-table columns="2fr 1fr 1fr 1fr" accessible-label="Grootste afwijkingen">
+                      <nldd-table-row slot="header">
+                        <nldd-text-cell size="sm" text="Persoon"></nldd-text-cell>
+                        <nldd-text-cell size="sm" text="Volgens de wet" horizontal-alignment="right"></nldd-text-cell>
+                        <nldd-text-cell size="sm" text="Volgens de staffel" horizontal-alignment="right"></nldd-text-cell>
+                        <nldd-text-cell size="sm" text="Verschil" horizontal-alignment="right"></nldd-text-cell>
+                      </nldd-table-row>
+                      <nldd-table-row v-for="(w, wi) in harmonizeModel.metrics.worst" :key="wi">
+                        <nldd-text-cell size="sm" :text="harmonizeFeatures.filter((f) => f.kind === 'boolean' && w.values[f.key]).map((f) => f.label).join(', ') || '—'" :supporting-text="`${harmonizeModel.primary.label.toLowerCase()}: ${num(w.values[harmonizeModel.primary.key])}`"></nldd-text-cell>
+                        <nldd-text-cell size="sm" :text="money(w.actual)" horizontal-alignment="right"></nldd-text-cell>
+                        <nldd-text-cell size="sm" :text="money(w.predicted)" horizontal-alignment="right"></nldd-text-cell>
+                        <nldd-text-cell size="sm" :color="Math.abs(w.error) > 100 ? 'critical' : 'content'" :text="money(w.error)" horizontal-alignment="right"></nldd-text-cell>
+                      </nldd-table-row>
+                    </nldd-table>
+                  </nldd-container>
+                </nldd-card>
+              </template>
+            </nldd-container>
           </nldd-simple-section>
         </template>
 

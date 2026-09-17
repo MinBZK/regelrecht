@@ -62,8 +62,8 @@ use crate::annotation::{self, law_id_from_source, TextQuoteSelector};
 use crate::config;
 use crate::engine::OutputProvenance;
 use crate::error::EngineError;
-use crate::service::LawExecutionService;
-use crate::trace::{PathNode, TraceBuilder};
+use crate::service::{ExecutionOutcome, LawExecutionService, StageState};
+use crate::trace::{TraceBuilder, TraceDocument};
 use crate::types::{RegulatoryLayer, Value};
 
 /// Does this annotation note target a law other than `law_id`?
@@ -201,6 +201,31 @@ struct WasmExecuteResult {
     regulation_valid_from: Option<String>,
 }
 
+/// Serializable result for executeStage().
+///
+/// Two shapes in one object, told apart by `complete`. A finished lifecycle
+/// carries the outputs of the whole run; a yielded one carries what is computed
+/// so far, the state to hand back on the next call, and what it is waiting for.
+/// The caller persists `state` verbatim — it is the engine's, not the caller's,
+/// and RFC-008 puts the keeping of it outside the engine.
+#[derive(Serialize)]
+struct WasmStageResult {
+    /// True when every stage is done; false when the lifecycle is waiting.
+    complete: bool,
+    outputs: BTreeMap<String, Value>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    output_provenance: BTreeMap<String, OutputProvenance>,
+    /// The decision state to pass back in to advance. Absent when complete.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    state: Option<StageState>,
+    /// What the lifecycle needs before it can go on. Empty when complete.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pending_inputs: Vec<String>,
+    /// Where the decision is now, e.g. "BEKENDMAKING". Absent when complete.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    current_stage: Option<String>,
+}
+
 /// Serializable result for executeWithTrace()
 #[derive(Serialize)]
 struct WasmExecuteResultWithTrace {
@@ -213,7 +238,7 @@ struct WasmExecuteResultWithTrace {
     #[serde(skip_serializing_if = "Option::is_none")]
     law_uuid: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    trace: Option<PathNode>,
+    trace: Option<TraceDocument>,
     #[serde(skip_serializing_if = "Option::is_none")]
     trace_text: Option<String>,
     engine_version: String,
@@ -332,6 +357,80 @@ impl WasmEngine {
         })
     }
 
+    /// Execute one step of a decision's lifecycle (RFC-007, RFC-008).
+    ///
+    /// Where `execute()` computes an article and stops, this walks the
+    /// AWB-defined procedure the article's `produces` puts it in: it fires the
+    /// hooks belonging to each stage, and stops at the first stage whose inputs
+    /// it does not have. A law that is in no procedure simply computes and
+    /// completes, so this is safe to call for anything.
+    ///
+    /// The engine keeps no state. `state` is null on the first call and
+    /// afterwards whatever the previous call returned; the caller persists it
+    /// between the moments of the lifecycle, which can be days apart (a besluit
+    /// is taken, a bekendmaking follows later). That division is the point of
+    /// RFC-008: the engine stays a pure function per stage, the orchestration
+    /// layer owns the decision record.
+    ///
+    /// # Returns
+    /// * `Ok(JsValue)` — `{complete, outputs, state?, pending_inputs?, current_stage?}`
+    /// * `Err(JsValue)` — error message if execution fails
+    #[wasm_bindgen(js_name = executeStage)]
+    pub fn execute_stage(
+        &self,
+        law_id: &str,
+        output_name: &str,
+        state: JsValue,
+        parameters: JsValue,
+        calculation_date: &str,
+    ) -> Result<JsValue, JsValue> {
+        let params = parse_parameters(parameters)?;
+        // Null and undefined both mean "this decision has no history yet".
+        let state: Option<StageState> = if state.is_null() || state.is_undefined() {
+            None
+        } else {
+            Some(
+                serde_wasm_bindgen::from_value(strip_undefined_deep(state)?)
+                    .map_err(|e| wasm_error(&format!("Failed to parse state: {}", e)))?,
+            )
+        };
+
+        let outcome = self
+            .service
+            .execute_stage(law_id, output_name, state, params, calculation_date)
+            .map_err(engine_error_to_wasm)?;
+
+        let wasm_result = match outcome {
+            ExecutionOutcome::Complete(result) => WasmStageResult {
+                complete: true,
+                outputs: result.outputs,
+                output_provenance: result.output_provenance,
+                state: None,
+                pending_inputs: Vec::new(),
+                current_stage: None,
+            },
+            ExecutionOutcome::Yielded {
+                state,
+                outputs,
+                pending_inputs,
+            } => WasmStageResult {
+                complete: false,
+                outputs,
+                output_provenance: BTreeMap::new(),
+                current_stage: Some(state.current_stage.clone()),
+                state: Some(state),
+                pending_inputs,
+            },
+        };
+
+        wasm_result.serialize(&js_serializer()).map_err(|e| {
+            wasm_error(&format!(
+                "Failed to serialize stage result for law '{}': {}",
+                law_id, e
+            ))
+        })
+    }
+
     /// Execute a law output with tracing enabled.
     ///
     /// Same as `execute()` but includes a full execution trace tree in the
@@ -369,7 +468,7 @@ impl WasmEngine {
                     article_number: result.article_number,
                     law_id: result.law_id,
                     law_uuid: result.law_uuid,
-                    trace: result.trace,
+                    trace: result.trace.map(TraceDocument::new),
                     trace_text,
                     engine_version: result.engine_version,
                     schema_version: result.schema_version,
@@ -394,14 +493,14 @@ impl WasmEngine {
                 struct TracedErrorResult {
                     error: String,
                     #[serde(skip_serializing_if = "Option::is_none")]
-                    trace: Option<PathNode>,
+                    trace: Option<TraceDocument>,
                     #[serde(skip_serializing_if = "Option::is_none")]
                     trace_text: Option<String>,
                 }
 
                 let err_result = TracedErrorResult {
                     error: source.to_string(),
-                    trace: trace_node,
+                    trace: trace_node.map(TraceDocument::new),
                     trace_text,
                 };
 
@@ -493,7 +592,7 @@ impl WasmEngine {
                     article_number: result.article_number,
                     law_id: result.law_id,
                     law_uuid: result.law_uuid,
-                    trace: result.trace,
+                    trace: result.trace.map(TraceDocument::new),
                     trace_text,
                     engine_version: result.engine_version,
                     schema_version: result.schema_version,
@@ -516,14 +615,14 @@ impl WasmEngine {
                 struct TracedErrorResult {
                     error: String,
                     #[serde(skip_serializing_if = "Option::is_none")]
-                    trace: Option<PathNode>,
+                    trace: Option<TraceDocument>,
                     #[serde(skip_serializing_if = "Option::is_none")]
                     trace_text: Option<String>,
                 }
 
                 let err_result = TracedErrorResult {
                     error: source.to_string(),
-                    trace: trace_node,
+                    trace: trace_node.map(TraceDocument::new),
                     trace_text,
                 };
 

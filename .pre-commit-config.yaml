@@ -53,6 +53,14 @@ repos:
         pass_filenames: false
         types: [rust]
 
+      - id: check-schema-examples
+        name: Schema-voorbeelden valideren tegen hun eigen subschema
+        entry: python3 script/check-schema-examples.py
+        language: system
+        pass_filenames: false
+        # Also on the script itself: editing the guard should re-run it.
+        files: ^(schema/v[0-9]+\.[0-9]+\.[0-9]+/schema\.json|script/check-schema-examples\.py)$
+
       - id: validate-law-yaml
         name: Validate law YAML schema
         entry: just validate
@@ -73,7 +81,7 @@ repos:
         entry: script/check-tool-pins.sh
         language: system
         pass_filenames: false
-        files: (^frontend/Dockerfile$|^packages/(admin|chrono-poc-web|pipeline)/Dockerfile$)
+        files: (^frontend/Dockerfile$|^packages/(admin|chrono-poc-web|pipeline|poc-portal|poc-napp)/Dockerfile$)
 
       - id: review-gate-tests
         name: Merge-poort op de Claude-review doet wat hij belooft
@@ -110,6 +118,34 @@ repos:
         pass_filenames: false
         files: ^script/(check-)?nldd-imports(\.test)?\.mjs$
 
+      - id: nldd-slots
+        name: Elke slot-toewijzing bestaat in het ontwerpsysteem
+        entry: just nldd-slots
+        language: system
+        pass_filenames: false
+        files: ^(frontend|frontend-demo|frontend-lawmaking)/src/.*\.(vue|html|js|ts)$
+
+      - id: nldd-slots-tests
+        name: Slot-guard doet wat hij belooft
+        entry: just nldd-slots-test
+        language: system
+        pass_filenames: false
+        files: ^script/(check-)?nldd-slots(\.test)?\.mjs$
+
+      - id: awb-parity
+        name: De Awb zegt in beide corpora hetzelfde
+        entry: just awb-parity-test
+        language: system
+        pass_filenames: false
+        files: ^(corpus/(regulation/nl/wet|demo/regulation/nl)/algemene_wet_bestuursrecht/.*\.yaml|script/awb-parity\.test\.mjs)$
+
+      - id: service-map
+        name: services.yaml dekt elke demowet
+        entry: just service-map-check
+        language: system
+        pass_filenames: false
+        files: ^(corpus/demo/(services\.yaml|regulation/.*\.yaml)|frontend-demo/scripts/check-service-map\.mjs)$
+
       - id: dockerfile-consistency
         name: Rust-Dockerfiles blijven bij de cargo-workspace
         entry: just dockerfile-consistency-test
@@ -117,8 +153,8 @@ repos:
         pass_filenames: false
         # Elke Dockerfile uit de DOCKERFILES-lijst van de test hoort hier te
         # staan, anders knipt hij mee zonder dat het commit dat hem wijzigt de
-        # toets langsgaat. frontend-demo/Dockerfile stond er niet in.
-        files: ^(frontend/Dockerfile|frontend-demo/Dockerfile|packages/(admin|chrono-poc-web|pipeline)/Dockerfile|packages/Cargo\.toml|rust-toolchain\.toml|\.github/workflows/deploy\.yml|script/dockerfile-consistency\.test\.mjs)$
+        # toets langsgaat.
+        files: ^((frontend|frontend-demo)/Dockerfile|packages/(admin|chrono-poc-web|pipeline|poc-portal|poc-napp)/Dockerfile|packages/Cargo\.toml|rust-toolchain\.toml|\.github/workflows/deploy\.yml|script/dockerfile-consistency\.test\.mjs)$
 
       - id: deploy-gate-tests
         name: Deploy-poort op een groene CI doet wat hij belooft

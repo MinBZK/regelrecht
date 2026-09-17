@@ -8,7 +8,6 @@ valid_from: '2024-01-01'
 name: Archiefwet - Openbaarheid archiefbescheiden
 bwb_id: BWBR0007376
 url: https://wetten.overheid.nl/BWBR0007376/2024-01-01
-service: NATIONAAL_ARCHIEF
 uuid: 3fc7f637-fe3e-44c8-a735-98f11584c2c9
 articles:
   - number: '15'

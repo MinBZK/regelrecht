@@ -3,22 +3,23 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "predev": "node ../bdd/codegen/gen-js.mjs && node scripts/copy-demo-corpus.mjs",
+    "predev": "node ../bdd/codegen/gen-js.mjs && node scripts/check-service-map.mjs && node scripts/copy-demo-corpus.mjs",
     "dev": "vite",
-    "prebuild": "node scripts/copy-demo-corpus.mjs",
+    "prebuild": "node scripts/check-service-map.mjs && node scripts/copy-demo-corpus.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "pretest": "node ../bdd/codegen/gen-js.mjs",
     "test": "vitest run"
   },
   "dependencies": {
-    "@nldd/design-system": "^0.8.83",
+    "@nldd/design-system": "^0.8.88",
     "@regelrecht/frontend-shared": "*",
     "@vue-flow/background": "^1.3.2",
     "@vue-flow/controls": "^1.1.3",
     "@vue-flow/core": "^1.48.2",
     "echarts": "^6.1.0",
     "js-yaml": "^5.4.1",
+    "qrcode-generator": "^2.0.4",
     "vue": "^3.5.42",
     "vue-echarts": "^8.3.0",
     "vue-router": "^5.3.1"

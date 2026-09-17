@@ -34,8 +34,8 @@ use crate::article::{ActionValue, CombineOp, Definition};
 use crate::config;
 use crate::error::{EngineError, Result};
 use crate::operations::ValueResolver;
-use crate::trace::TraceBuilder;
-use crate::types::{MissingKind, PathNodeType, ResolveType, Value};
+use crate::trace::{LegalAnchor, TraceBuilder};
+use crate::types::{MissingKind, PathNodeType, ResolveType, TypeSpec, Value};
 use chrono::{Datelike, NaiveDate};
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -85,6 +85,12 @@ pub struct RuleContext {
     /// did not pass. A reference to one resolves to an Unknown for lack of that
     /// parameter, not to a `VariableNotFound` (RFC-036).
     unpassed_optional: Rc<BTreeSet<String>>,
+
+    /// The provision whose rules this context executes (RFC-039). Every trace
+    /// step pushed from here inherits it, which is what gives an arithmetic
+    /// step an article: the operation evaluator knows no law, but the context
+    /// it resolves against does.
+    anchor: Option<LegalAnchor>,
 }
 
 impl RuleContext {
@@ -110,6 +116,7 @@ impl RuleContext {
             trace: None,
             law_id: Rc::from(""),
             unpassed_optional: Rc::new(BTreeSet::new()),
+            anchor: None,
         })
     }
 
@@ -237,6 +244,13 @@ impl RuleContext {
             trace: self.trace.clone(), // Share the same trace builder
             law_id: Rc::clone(&self.law_id),
             unpassed_optional: Rc::clone(&self.unpassed_optional),
+            // A child context evaluates inside the same article as its parent:
+            // `create_child` is what a FOREACH body runs in, and that body is
+            // no less anchored than the operation containing it. Resetting this
+            // to `None` dropped the anchor from every trace step inside a loop
+            // (participatiewet uses FOREACH in the live corpus), because
+            // `trace_push` only stamps one when the context carries it.
+            anchor: self.anchor.clone(),
         }
     }
 
@@ -254,10 +268,23 @@ impl RuleContext {
         self.trace.as_ref()
     }
 
+    /// The provision whose rules this context executes (RFC-039).
+    pub fn set_anchor(&mut self, anchor: LegalAnchor) {
+        self.anchor = Some(anchor);
+    }
+
     /// Push a new node onto the trace stack. No-op if trace is None.
+    ///
+    /// Stamps the provision this context is executing (RFC-039), so a bare
+    /// `ADD` inside an article names that article without the operation
+    /// evaluator having to know one.
     pub fn trace_push(&self, name: &str, node_type: PathNodeType) {
         if let Some(ref trace) = self.trace {
-            trace.borrow_mut().push(name, node_type);
+            let mut tb = trace.borrow_mut();
+            tb.push(name, node_type);
+            if let Some(ref anchor) = self.anchor {
+                tb.set_anchor(anchor.clone());
+            }
         }
     }
 
@@ -287,6 +314,22 @@ impl RuleContext {
     pub fn trace_set_resolve_type(&self, rt: ResolveType) {
         if let Some(ref trace) = self.trace {
             trace.borrow_mut().set_resolve_type(rt);
+        }
+    }
+
+    /// Record the unit and precision the law declares for the current step's
+    /// value (RFC-023). No-op if trace is None.
+    pub fn trace_set_type_spec(&self, type_spec: TypeSpec) {
+        if let Some(ref trace) = self.trace {
+            trace.borrow_mut().set_type_spec(type_spec);
+        }
+    }
+
+    /// Record what the corpus cites as the basis of the current step (RFC-039).
+    /// No-op if trace is None.
+    pub fn trace_set_legal_basis(&self, legal_basis: LegalAnchor) {
+        if let Some(ref trace) = self.trace {
+            trace.borrow_mut().set_legal_basis(legal_basis);
         }
     }
 

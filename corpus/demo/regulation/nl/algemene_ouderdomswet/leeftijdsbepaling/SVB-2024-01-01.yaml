@@ -8,7 +8,6 @@ valid_from: '2024-01-01'
 name: Bepalen AOW-leeftijd 2025
 bwb_id: BWBR0002221
 url: https://wetten.overheid.nl/BWBR0002221/2024-01-01
-service: SVB
 uuid: 47fa262a-b8f7-43bf-a5dd-5f9b2d2c1228
 articles:
   - number: 7a
@@ -105,8 +104,8 @@ articles:
         aankondigingsperiode_jaren: 5
       execution:
         produces:
-          legal_character: BESCHIKKING
-          decision_type: TOEKENNING
+          legal_character: INFORMATIEF
+          decision_type: GEEN_BESLUIT
         parameters:
           - name: geboortedatum
             type: date

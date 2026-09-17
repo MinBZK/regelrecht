@@ -7,7 +7,9 @@ import { fieldSpec, formatMissing, formatValue, humanize, isUnknown, verdictOf }
 import { lineageFromTrace, leafValues } from '../data/lineage.js';
 import { askedInputsFor, claimKeyFor, evaluationParamsFor, nextQuestions } from '../data/askedInputs.js';
 import { dateInputFor, phraseOutcome, phrasingFor } from '../data/outcomePhrasing.js';
+import { driftSentence } from '../data/caseDrift.js';
 import { useDemo } from '../store/demoStore.js';
+import { objectionOpen, statusOf } from '../data/lifecycle.js';
 
 // One regeling on the portal: the outcome of the law for this persona, the
 // values it used (expandable, each correctable), the application button and
@@ -19,7 +21,7 @@ const props = defineProps({
 const emit = defineEmits(['edit-value', 'evaluated', 'apply']);
 const router = useRouter();
 const demo = useDemo();
-const { corpus, dataVersion, profile, personaParams, findCase } = demo;
+const { corpus, dataVersion, profile, personaParams, findCase, caseDrift, canSubmitClaims, activeDelegation } = demo;
 
 const evaluation = ref(null);
 const showData = ref(false);
@@ -114,6 +116,16 @@ const lineage = computed(() => {
 const valueCount = computed(() => leafValues(lineage.value).length);
 
 const currentCase = computed(() => findCase(props.law));
+/**
+ * Een lopende aanvraag die niet meer klopt met wat de wet nu zegt.
+ *
+ * De burger heeft ergens een gegeven gewijzigd — misschien bij een hele
+ * andere regeling — en deze wet rekent daar al mee, terwijl de aanvraag nog
+ * op het oude bedrag staat. Dat hoort hij te zien op de plek waar dat besluit
+ * staat, niet pas als het geld anders binnenkomt.
+ */
+const drift = computed(() => caseDrift(props.law, evaluation.value));
+const driftText = computed(() => driftSentence(drift.value, doc.value));
 
 // The questions this regeling has for the citizen (see askedInputs.js): the
 // inputs no register holds and the application-form parameters. Until
@@ -176,9 +188,13 @@ const produces = computed(() => {
   }
   return null;
 });
-const canApply = computed(() => evaluation.value?.ok && verdict.value === true && !currentCase.value && produces.value?.legal_character === 'BESCHIKKING');
+// Een machtiging zonder het recht om aanvragen in te dienen mag alleen kijken:
+// dan verdwijnen de knoppen, niet alleen hun werking.
+const canApply = computed(() => canSubmitClaims.value && evaluation.value?.ok && verdict.value === true && !currentCase.value && produces.value?.legal_character === 'BESCHIKKING');
 /** A decided-and-rejected case the citizen has not objected to yet (Awb art. 6:5). */
-const canObject = computed(() => currentCase.value?.status === 'DECIDED' && currentCase.value?.approved === false && !currentCase.value?.objection);
+// Bezwaar pas als de termijn loopt: die begint de dag ná de bekendmaking
+// (Awb 6:8), dus een besluit dat nog niet is verstuurd geeft nog geen knop.
+const canObject = computed(() => canSubmitClaims.value && currentCase.value?.approved === false && objectionOpen(currentCase.value));
 
 // The application stays in the portal (a sheet); the case system is the
 // caseworker's world.
@@ -195,8 +211,11 @@ watch(showTrace, async (open) => {
 const statusTag = computed(() => {
   const c = currentCase.value;
   if (!c) return null;
-  if (c.status === 'DECIDED') return c.approved ? { color: 'success', text: 'Toegekend', icon: 'checked' } : { color: 'critical', text: 'Afgewezen', icon: 'dismiss-circle' };
-  if (c.status === 'IN_REVIEW') return { color: 'warning', text: 'In behandeling', icon: 'clock' };
+  // Uit de fase en niet uit het opgeslagen veld: die twee horen hetzelfde te
+  // zeggen, en als er ooit één achterloopt is de fase de bron (zie lifecycle.js).
+  const status = statusOf(c);
+  if (status === 'DECIDED') return c.approved ? { color: 'success', text: 'Toegekend', icon: 'checked' } : { color: 'critical', text: 'Afgewezen', icon: 'dismiss-circle' };
+  if (status === 'IN_REVIEW') return { color: 'warning', text: 'In behandeling', icon: 'clock' };
   return { color: 'neutral', text: 'Ingediend', icon: 'paper-plane' };
 });
 </script>
@@ -220,6 +239,24 @@ const statusTag = computed(() => {
         <nldd-inline-dialog variant="alert" text="Kon deze regeling niet berekenen" :supporting-text="evaluation.error"></nldd-inline-dialog>
       </template>
       <template v-else>
+        <!-- Wat er al lag klopt niet meer met wat de wet nu zegt. Geen
+             herberekening die iets besluit: alleen de constatering, met de
+             weg terug ernaast (de knop "Wijzigen" in de voettekst). Het
+             besluit zelf blijft staan tot de burger zijn aanvraag wijzigt of
+             een behandelaar ernaar kijkt. Boven de uitkomst en niet in plaats
+             daarvan: het nieuwe bedrag is juist wat hij moet zien.
+
+             Een banner en geen inline-dialog: die laatste is de lege-staat, met
+             het icoon bóven de tekst en alles gecentreerd. Dat leest als een
+             andere soort mededeling dan de rest van de tegel, terwijl dit er
+             juist naast hoort te staan. De aanvraag gebruikt dezelfde banner,
+             dus beide kanten zien hetzelfde. -->
+        <nldd-banner
+          v-if="drift"
+          variant="warning"
+          text="Uw aanvraag klopt niet meer"
+          :supporting-text="driftText"
+        ></nldd-banner>
         <nldd-inline-dialog v-if="verdict === 'unknown'" icon="info" text="Nog niet te bepalen" :supporting-text="`De wet kan met de bekende gegevens geen uitkomst geven; ${verdictMissing}.`"></nldd-inline-dialog>
         <nldd-list v-else variant="box-tinted" accessible-label="Uitkomst">
           <nldd-list-item size="md" :button="primary ? true : undefined" @click="primary && correctOutcome(primary.name, primary.value)">
@@ -253,7 +290,7 @@ const statusTag = computed(() => {
         <nldd-list v-if="secondary.length" variant="simple" accessible-label="Overige uitkomsten">
           <nldd-list-item v-for="[name, value] in secondary" :key="name" size="sm" button @click="correctOutcome(name, value)">
             <nldd-text-cell size="sm" color="secondary" min-width="55%" :text="humanize(name)"></nldd-text-cell>
-            <nldd-text-cell size="sm" width="fit-content" max-width="45%" horizontal-alignment="right" :color="isUnknown(value) ? 'secondary' : 'default'" :text="formatValue(value, fieldSpec(doc, name))"></nldd-text-cell>
+            <nldd-text-cell size="sm" width="fit-content" max-width="45%" horizontal-alignment="right" :color="isUnknown(value) ? 'secondary' : 'content'" :text="formatValue(value, fieldSpec(doc, name))"></nldd-text-cell>
             <nldd-spacer-cell size="8"></nldd-spacer-cell>
             <nldd-icon-cell icon="edit" size="16" color="secondary"></nldd-icon-cell>
           </nldd-list-item>
@@ -269,7 +306,7 @@ const statusTag = computed(() => {
             <nldd-icon-cell :icon="input.claim ? 'edit' : 'question-mark-circle'" size="16" :color="input.claim ? 'accent' : 'secondary'"></nldd-icon-cell>
             <nldd-spacer-cell size="8"></nldd-spacer-cell>
             <nldd-text-cell size="sm" :text="humanize(input.name)" :supporting-text="input.claim ? 'door u opgegeven' : 'alleen u kunt dit opgeven'"></nldd-text-cell>
-            <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :color="input.claim ? 'default' : 'secondary'" :text="input.claim ? formatValue(input.claim.newValue, input.spec) : 'nog niet opgegeven'"></nldd-text-cell>
+            <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :color="input.claim ? 'content' : 'secondary'" :text="input.claim ? formatValue(input.claim.newValue, input.spec) : 'nog niet opgegeven'"></nldd-text-cell>
           </nldd-list-item>
         </nldd-list>
         <!-- Outlined, not tinted. The tinted box is the answer; giving the same
@@ -313,8 +350,9 @@ const statusTag = computed(() => {
            one onto a second line. "Mijn aanvraag" needed 336px and "Bezwaar
            maken" 347px, so both wrapped; "Aanvraag" and "Bezwaar" fit. -->
       <nldd-button v-if="canObject" variant="primary" size="sm" start-icon="flag" text="Bezwaar" @click="apply"></nldd-button>
+      <nldd-button v-else-if="drift" variant="primary" size="sm" start-icon="edit" text="Wijzigen" @click="apply"></nldd-button>
       <nldd-button v-else-if="currentCase" variant="secondary" size="sm" start-icon="file-text" text="Aanvraag" @click="apply"></nldd-button>
-      <nldd-button v-else-if="evaluation && missingInputs.length && produces?.legal_character === 'BESCHIKKING'" variant="primary" size="sm" start-icon="edit" text="Aanvullen" @click="apply"></nldd-button>
+      <nldd-button v-else-if="canSubmitClaims && evaluation && missingInputs.length && produces?.legal_character === 'BESCHIKKING'" variant="primary" size="sm" start-icon="edit" text="Aanvullen" @click="apply"></nldd-button>
       <nldd-button v-else-if="canApply" variant="primary" size="sm" start-icon="paper-plane" text="Aanvragen" @click="apply"></nldd-button>
       <nldd-button v-if="evaluation?.ok" variant="neutral-transparent" size="sm" start-icon="list" text="Berekening" @click="showTrace = true"></nldd-button>
       <nldd-button variant="neutral-transparent" size="sm" start-icon="book" text="Wettekst" @click="router.push(`/wetten/${encodeURIComponent(law.id)}`)"></nldd-button>

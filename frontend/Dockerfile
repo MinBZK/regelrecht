@@ -52,7 +52,7 @@ RUN set -eu; \
 # When adding a new workspace member that this image does NOT build, add it
 # to this exclusion list as well; otherwise chef will fail to find its source.
 RUN grep -qE '^members = \[$' Cargo.toml && \
-    sed -i '/"admin"/d; /"arch-extract"/d; /"auth"/d; /"chrono-poc-web"/d; /"corpus"/d; /"editor-api"/d; /"github"/d; /"harvester"/d; /"pipeline"/d; /"simulator"/d; /"tui"/d' Cargo.toml
+    sed -i '/"admin"/d; /"arch-extract"/d; /"auth"/d; /"chrono-poc-web"/d; /"corpus"/d; /"editor-api"/d; /"github"/d; /"harvester"/d; /"pipeline"/d; /"poc-napp"/d; /"poc-portal"/d; /"simulator"/d; /"tui"/d' Cargo.toml
 COPY packages/engine/ engine/
 COPY packages/law-model/ law-model/
 COPY packages/shared/ shared/
@@ -69,6 +69,7 @@ COPY packages/frontend-shared/package.json packages/frontend-shared/
 COPY frontend/package.json frontend/
 COPY frontend-lawmaking/package.json frontend-lawmaking/
 COPY frontend-demo/package.json frontend-demo/
+COPY frontend-poc-portal/package.json frontend-poc-portal/
 # --ignore-scripts: een gekaapte release mag zijn install-hooks hier niet
 # draaien; de build eronder heeft ze niet nodig.
 RUN npm ci --ignore-scripts
@@ -116,7 +117,7 @@ COPY packages/Cargo.lock packages/Cargo.toml ./
 # When adding a new workspace member that this image does NOT build, add it
 # to this exclusion list as well; otherwise chef will fail to find its source.
 RUN grep -qE '^members = \[$' Cargo.toml && \
-    sed -i '/"admin"/d; /"arch-extract"/d; /"chrono-poc-web"/d; /"simulator"/d; /"tui"/d' Cargo.toml
+    sed -i '/"admin"/d; /"arch-extract"/d; /"chrono-poc-web"/d; /"poc-napp"/d; /"poc-portal"/d; /"simulator"/d; /"tui"/d' Cargo.toml
 COPY packages/auth/ auth/
 COPY packages/editor-api/ editor-api/
 COPY packages/corpus/ corpus/

@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
-# De cargo-chef-pin (versie + beide checksums) staat in elk van de Dockerfiles
-# hieronder.
+# De cargo-chef-pin (versie + beide checksums) staat in elke Dockerfile die
+# cargo-chef gebruikt. Een die er niet in staat, drijft stil weg: de twee
+# poc-images stonden er niet in en hadden daardoor een andere rust-digest dan
+# frontend, onder dezelfde tag.
 # Uiteenlopen is stil: de build die de verkeerde pin heeft faalt pas als iemand
 # dat image toevallig koud bouwt, en dan met een checksum-fout zonder oorzaak.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-files=(frontend/Dockerfile packages/admin/Dockerfile packages/chrono-poc-web/Dockerfile packages/pipeline/Dockerfile)
+files=(frontend/Dockerfile packages/admin/Dockerfile packages/chrono-poc-web/Dockerfile
+       packages/pipeline/Dockerfile packages/poc-portal/Dockerfile packages/poc-napp/Dockerfile)
 reference=""
 status=0
 

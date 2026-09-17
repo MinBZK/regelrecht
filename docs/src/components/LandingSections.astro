@@ -11,6 +11,7 @@ import { Image, type ImageMetadata } from 'astro:assets';
 import { content } from '~/lib/landing-content';
 import SignupForm from './SignupForm.astro';
 import LinkCard from './LinkCard.astro';
+import LandingDemo from './LandingDemo.astro';
 
 interface Props {
   lang: 'nl' | 'en';
@@ -75,7 +76,7 @@ function exampleImage(key: string): ImageMetadata {
         <nldd-box>
           <nldd-container sm-padding="16" md-padding="24" lg-padding="32">
             <nldd-title size="2">
-              <h1>{t.signup.pageTitle}</h1>
+              <h1 id="rr-signup-title">{t.signup.pageTitle}</h1>
             </nldd-title>
             <nldd-spacer size="24" />
             <SignupForm lang={lang} />
@@ -157,6 +158,8 @@ function exampleImage(key: string): ImageMetadata {
             ))}
           </nldd-collection>
         </nldd-simple-section>
+
+        <LandingDemo lang={lang} />
 
         {showJobs && (
           <nldd-simple-section
@@ -318,7 +321,7 @@ function exampleImage(key: string): ImageMetadata {
             {t.howItWorks.steps.map((step, i, arr) => (
               <nldd-list-item>
                 <nldd-timeline-track-cell
-                  variant="step"
+                  size="md"
                   text={String(i + 1)}
                   position={
                     i === 0 ? 'first' : i === arr.length - 1 ? 'last' : 'between'
@@ -436,6 +439,11 @@ function exampleImage(key: string): ImageMetadata {
                       <li>{b}</li>
                     ))}
                   </ul>
+                  {ex.link && (
+                    <p>
+                      <a href={ex.link.href}>{ex.link.label}</a>
+                    </p>
+                  )}
                 </nldd-rich-text>
               </nldd-container>
             </>

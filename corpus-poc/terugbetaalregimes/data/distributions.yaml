@@ -1,0 +1,136 @@
+# Verdelingsparameters voor de synthetische debiteurenpopulatie.
+#
+# BRONNEN / STATUS
+# ----------------
+# Deels geankerd op openbare CBS/DUO-cijfers (bron-URL per blok), deels
+# AANNAME waar publieke microdata ontbreekt (expliciet gemarkeerd). Te
+# vervangen door DUO/OCW-microdata (CBS-remote-access of DUO-cijfermatig
+# jaarverslag) zodra beschikbaar. De generator in app/src/sim/population.js
+# consumeert exact deze structuur; houd de sleutels stabiel bij vervanging.
+#
+# Alle bedragen in eurocent, inkomens per jaar (bruto).
+
+basisjaar: 2026
+
+cohorten:
+  # Bron: Stand van DUO 2023 + Stand van de Uitvoering OCW 2026.
+  # CBS 1-1-2025: 1.132.900 oud-studenten in aflosfase (afgerond op 1 mln
+  # aflossende debiteuren voor de demo).
+  totaal_debiteuren: 1000000
+  # Aandeel per terugbetaalregime (som = 1,0). Het regime zelf wordt in de wet
+  # afgeleid uit eerste_studiefinanciering + onderwijssoort; deze verdeling
+  # stuurt alleen welke cohort-parameters een record trekt.
+  # SF15_OUD ~280-300k (Stand van de Uitvoering OCW 2026).
+  regime_verdeling:
+    SF15_OUD: 0.28
+    SF15_NIEUW: 0.34
+    SF15_LLLK: 0.03
+    SF35: 0.35
+
+# STUDIESCHULD
+# Bron: CBS 1-1-2025 (cbs.nl/nl-nl/nieuws/2025/39/opnieuw-minder-mensen-met-
+# studieschuld): gemiddeld 18.800 euro, sterk rechts-scheef, mediaan ~11-12k.
+# Onderwijssoort-split per regime is NIET publiek -> AANNAME (het mbo-aandeel
+# stuurt de 12.32-cohortroutering, dus relevant voor SF15_NIEUW en SF35).
+regimes:
+  SF15_OUD:
+    # Pre-2009-cohort: nu grofweg 38-60 jaar oud.
+    leeftijd: { min: 38, max: 60 }
+    eerste_studiefinanciering: '2004-09-01'
+    onderwijssoort: { mbo: 0.20, hbo: 0.45, wo: 0.35 } # AANNAME
+    # Stand van DUO: ~1/3 van SF15-oud vroeg ooit een draagkrachtmeting aan.
+    draagkrachtmeting_prior: 0.35
+    # Ouder cohort, deels afgelost: lager restant (p50 ~8.000 euro).
+    schuld_percentielen:
+      - { p: 0.1, value: 250000 }
+      - { p: 0.25, value: 500000 }
+      - { p: 0.5, value: 800000 }
+      - { p: 0.75, value: 1800000 }
+      - { p: 0.9, value: 3200000 }
+      - { p: 1.0, value: 6000000 }
+
+  SF15_NIEUW:
+    # Ho vanaf 2015 / mbo vanaf 2023: nu grofweg 28-45 jaar.
+    leeftijd: { min: 28, max: 45 }
+    eerste_studiefinanciering: '2016-09-01'
+    onderwijssoort: { mbo: 0.25, hbo: 0.40, wo: 0.35 } # AANNAME
+    draagkrachtmeting_prior: 0.90
+    schuld_percentielen:
+      - { p: 0.1, value: 250000 }
+      - { p: 0.25, value: 600000 }
+      - { p: 0.5, value: 1150000 }
+      - { p: 0.75, value: 2400000 }
+      - { p: 0.9, value: 4200000 }
+      - { p: 1.0, value: 8000000 }
+
+  SF15_LLLK:
+    # Levenlanglerenkrediet: omscholers, breed leeftijdsbereik.
+    leeftijd: { min: 30, max: 55 }
+    eerste_studiefinanciering: '2019-09-01'
+    onderwijssoort: { mbo: 0.30, hbo: 0.50, wo: 0.20 } # AANNAME
+    draagkrachtmeting_prior: 0.90
+    schuld_percentielen:
+      - { p: 0.1, value: 150000 }
+      - { p: 0.25, value: 400000 }
+      - { p: 0.5, value: 900000 }
+      - { p: 0.75, value: 1600000 }
+      - { p: 0.9, value: 2500000 }
+      - { p: 1.0, value: 4000000 }
+
+  SF35:
+    # Studievoorschot-cohort vanaf 2018: nu grofweg 24-35 jaar, hoogste
+    # schulden (CBS: piek gemiddelde 24.600 euro bij 25-30 jaar).
+    leeftijd: { min: 24, max: 35 }
+    eerste_studiefinanciering: '2019-09-01'
+    onderwijssoort: { mbo: 0.20, hbo: 0.45, wo: 0.35 } # AANNAME
+    draagkrachtmeting_prior: 0.90
+    schuld_percentielen:
+      - { p: 0.1, value: 400000 }
+      - { p: 0.25, value: 1000000 }
+      - { p: 0.5, value: 2000000 }
+      - { p: 0.75, value: 3500000 }
+      - { p: 0.9, value: 5000000 }
+      - { p: 1.0, value: 9000000 }
+
+# INKOMEN werkenden, bruto per jaar (eurocent).
+# Bron: CBS 2021/2022 (longreads.cbs.nl/nederland-in-cijfers-2023/wat-is-het-
+# inkomen-van-werkenden). p50 is hard; de overige percentielen zijn AANNAME
+# rond dat mediaanpunt. De generator kiest de band op leeftijd (<35, 35-45,
+# 45-55).
+inkomen:
+  percentielen_25_35:
+    - { p: 0.1, value: 1800000 }
+    - { p: 0.25, value: 3000000 }
+    - { p: 0.5, value: 4000000 }
+    - { p: 0.75, value: 5500000 }
+    - { p: 0.9, value: 7000000 }
+    - { p: 1.0, value: 9000000 }
+  percentielen_35_45:
+    - { p: 0.1, value: 2200000 }
+    - { p: 0.25, value: 3500000 }
+    - { p: 0.5, value: 4700000 }
+    - { p: 0.75, value: 6500000 }
+    - { p: 0.9, value: 8500000 }
+    - { p: 1.0, value: 11000000 }
+  percentielen_45_55:
+    - { p: 0.1, value: 2200000 }
+    - { p: 0.25, value: 3500000 }
+    - { p: 0.5, value: 4800000 }
+    - { p: 0.75, value: 6800000 }
+    - { p: 0.9, value: 9000000 }
+    - { p: 1.0, value: 12000000 }
+  groei_per_jaar: 0.02
+
+# HUISHOUDENS 25-55 jaar.
+# AANNAME o.b.v. CBS-tabel 71486ned (landelijke huishoudensverdeling).
+huishoudtypen:
+  alleenstaand: 0.22
+  alleenstaand_met_kind: 0.08
+  paar: 0.25
+  paar_met_kind: 0.45
+
+gedrag:
+  # Kans dat een SF15-oud-debiteur met partner het partnerinkomen niet laat
+  # meetellen. Stand van de Uitvoering: ~12.500 opt-outs; niet publiek
+  # herleidbaar tot een aandeel -> AANNAME ~0,09 van de SF15-oud-paren.
+  partner_opt_out_prior: 0.09
