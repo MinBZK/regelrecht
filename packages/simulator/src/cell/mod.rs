@@ -36,9 +36,9 @@ pub use besluit::{
     AcceptanceRequest, Afwijzingsgrond, Bekendmaking, BesluitDefinition, BesluitInput,
     ChronicleSource, Decretogram, DecretogramInput, ExecutedRegulation, HookHerkomst, InputOrigin,
     ObligationDefinition, ObligationDue, ObligationKind, ObligationOrigin, ObsoleteField,
-    RichtingBijNegatief, Schedule, Vervanging, WachtendeVerplichting, AFWIJZING, BESCHIKKING,
-    BESCHIKKINGEN, BETALINGEN, DECISION_TYPE, STAGE, STAGE_BEKENDMAKING, STAGE_BESLUIT,
-    ZAAKKENMERK,
+    RichtingBijNegatief, Schedule, TermijnenVervallen, Vervanging, WachtendeVerplichting,
+    AFWIJZING, BESCHIKKING, BESCHIKKINGEN, BETALINGEN, DECISION_TYPE, STAGE, STAGE_BEKENDMAKING,
+    STAGE_BESLUIT, ZAAKKENMERK,
 };
 pub(crate) use besluit::{BesluitGram, DeclaredObligations, ObligationScope};
 // De vaste velden van een decretogram, voor het beeld van de wereld: dat moet een
@@ -1560,21 +1560,13 @@ impl Cell {
     /// elkaar te houden, dus beslist de volgorde van vastleggen.
     pub(crate) fn bekendmaking_stand(&self, besluit: &str) -> BekendmakingStand {
         let grams = self.stream_view(BESCHIKKINGEN).unwrap_or_default();
-        let veld = |event: &ChronicleEvent, name: &str| {
-            event
-                .fields
-                .get(name)
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string()
-        };
         let Some((plek, laatste)) = grams.iter().enumerate().rfind(|(_, event)| {
-            veld(event, besluit::BESLUIT) == besluit
-                && veld(event, besluit::STAGE) == besluit::STAGE_BESLUIT
+            gram_tekst(event, besluit::BESLUIT) == besluit
+                && gram_tekst(event, besluit::STAGE) == besluit::STAGE_BESLUIT
         }) else {
             return BekendmakingStand::GeenBesluit;
         };
-        let zaakkenmerk = veld(laatste, besluit::ZAAKKENMERK);
+        let zaakkenmerk = gram_tekst(laatste, besluit::ZAAKKENMERK).to_string();
         // Naar dít gram en niet naar deze zaak: over één zaak worden meer
         // besluiten genomen, en dat een eerder besluit bekendgemaakt is, zegt
         // niets over het besluit dat er nu ligt. De verwijzing staat in het gram
@@ -1583,8 +1575,8 @@ impl Cell {
         // laten.
         let naar_dit_gram = Value::Int(i64::try_from(plek).unwrap_or(i64::MAX));
         let bekend = grams.iter().find(|event| {
-            veld(event, besluit::BESLUIT) == besluit
-                && veld(event, besluit::STAGE) == besluit::STAGE_BEKENDMAKING
+            gram_tekst(event, besluit::BESLUIT) == besluit
+                && gram_tekst(event, besluit::STAGE) == besluit::STAGE_BEKENDMAKING
                 && event.fields.get(besluit::BESLUIT_GRAM) == Some(&naar_dit_gram)
         });
         match bekend {
@@ -1599,6 +1591,45 @@ impl Cell {
                 besluit_op_moment: laatste.op_moment,
             },
         }
+    }
+
+    /// Is er over dezelfde zaak ná dit besluit-gram een besluit genomen dat in
+    /// de plaats van dit besluit kwam?
+    ///
+    /// Dezelfde droogloop over de eigen kroniek als [`Self::bekendmaking_stand`]
+    /// en om dezelfde reden afgeleid in plaats van gedeclareerd: welk besluit er
+    /// over een zaak nog meer ligt, staat in [`BESCHIKKINGEN`] en niet in het
+    /// wereldbestand. Er gaat niets over een celgrens (invariant I1) — het
+    /// besluit dat vervangt is een besluit van deze cel, want alleen zij beslist
+    /// over haar eigen zaken.
+    ///
+    /// **Ná dit gram en niet vanaf de zaak**: dat er ooit over deze zaak een
+    /// vervangende beschikking genomen is, zegt niets over het besluit dat hier
+    /// bekendgemaakt wordt — een besluit dat ná die vervanging genomen is, staat
+    /// er zelf gewoon. Het eerste dat volgt telt: wat daarna nog kwam, vervangt
+    /// niet meer wat al niet meer stond.
+    ///
+    /// Of een besluit vervangt, staat in het lexogram van het artikel dat het
+    /// voortbrengt, op het moment van dát besluit (zie [`Self::vervanging`]).
+    fn vervangen_na(&self, plek: usize, zaakkenmerk: &str) -> Result<Option<TermijnenVervallen>> {
+        let grams = self.stream_view(BESCHIKKINGEN).unwrap_or_default();
+        for event in grams.iter().skip(plek + 1) {
+            if gram_tekst(event, besluit::STAGE) != besluit::STAGE_BESLUIT
+                || gram_tekst(event, besluit::ZAAKKENMERK) != zaakkenmerk
+            {
+                continue;
+            }
+            let naam = gram_tekst(event, besluit::BESLUIT);
+            let Some(vervanging) = self.vervanging(naam, event.op_moment)? else {
+                continue;
+            };
+            return Ok(Some(TermijnenVervallen {
+                besluit: naam.to_string(),
+                op_moment: event.op_moment,
+                grondslag: vervanging.grondslag,
+            }));
+        }
+        Ok(None)
     }
 
     /// Maak het laatste besluit van deze cel bekend, en leg dat vast.
@@ -1703,11 +1734,24 @@ impl Cell {
             besluit_op_moment,
         )?;
 
+        // Valt er nog iets te beloven? Een verplichting met `vanaf: bekendmaking`
+        // gaat pas op dit moment werken (Awb 3:40), dus dit is de plek waar
+        // blijkt dat ze dat niet meer doet: ligt er over dezelfde zaak inmiddels
+        // een beschikking die in de plaats van deze kwam, dan wordt er niets
+        // ingeroosterd. Bij het besluit kon dat niet blijken — daar staat de
+        // belofte in een gram en niet in een wachtrij, en een gram verandert
+        // niet.
+        let termijnen_vervallen_door = if wachtend.is_empty() {
+            None
+        } else {
+            self.vervangen_na(plek, &zaakkenmerk)?
+        };
+
         // De termijnen die op deze bekendmaking wachtten. De eerste vervaldag is
         // de uiterste betaaldatum die de wet zojuist uitrekende — niet een dag
         // die deze opstelling bedacht.
         let mut obligations = Vec::new();
-        if !wachtend.is_empty() {
+        if !wachtend.is_empty() && termijnen_vervallen_door.is_none() {
             let uiterste = uitkomst
                 .outputs
                 .get(besluit::UITERSTE_BETAALDATUM)
@@ -1747,6 +1791,7 @@ impl Cell {
             outputs: uitkomst.outputs,
             hooks: uitkomst.hooks,
             obligations,
+            termijnen_vervallen_door,
             receipt: uitkomst.receipt,
         };
 
@@ -2820,6 +2865,19 @@ impl Cell {
     pub(crate) fn stream_key(&self, stream: &str) -> Option<&str> {
         self.chronicles.key_of(stream)
     }
+}
+
+/// Eén tekstveld van een gram, of leeg als het gram het niet draagt.
+///
+/// Voor de dagelijkse vragen over de eigen stroom [`BESCHIKKINGEN`]: welke stage,
+/// welk besluit, welke zaak. Leeg in plaats van `None`, want de aanroeper
+/// vergelijkt: een gram zonder dat veld is een gram dat het gevraagde niet is.
+fn gram_tekst<'a>(event: &'a ChronicleEvent, name: &str) -> &'a str {
+    event
+        .fields
+        .get(name)
+        .and_then(Value::as_str)
+        .unwrap_or_default()
 }
 
 /// De eigenlijke fout uit een uitvoering met trace.

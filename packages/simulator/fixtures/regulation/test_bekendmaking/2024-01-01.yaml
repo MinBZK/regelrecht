@@ -69,3 +69,40 @@ articles:
             value: $is_verzekerde
           - output: hoogte_tegemoetkoming
             value: 42000
+
+  - number: '2'
+    url: https://example.com/test_bekendmaking#Artikel2
+    text: >-
+      De uitvoerder trekt de tegemoetkoming in. De intrekking komt in de plaats
+      van de toekenning; wat daaruit nog niet is betaald, wordt niet meer
+      betaald.
+    machine_readable:
+      # Het tweede artikel bestaat voor één combinatie: een beschikking die
+      # vervangen wordt vóórdat zij bekendgemaakt is. De toekenning van artikel 1
+      # laat haar termijn op de bekendmaking wachten, en dit artikel neemt wat er
+      # over dezelfde zaak nog openstond weg — dus bij die bekendmaking is er
+      # niets meer te beloven (Awb 3:40).
+      #
+      # Het legt zelf niets op: een intrekking neemt weg en geeft niet.
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          # Geen `decision_type`: het vocabulaire van het schema kent geen
+          # intrekking, en er een ander type op plakken zou het gram iets laten
+          # zeggen wat er niet staat.
+          extensions:
+            chronolex:
+              vervangt_openstaande_termijnen:
+                grondslag: >-
+                  Testregeling tegemoetkoming met bekendmaking art. 2 (de
+                  intrekking komt in de plaats van de toekenning)
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        output:
+          - name: wordt_ingetrokken
+            type: boolean
+        actions:
+          - output: wordt_ingetrokken
+            value: true

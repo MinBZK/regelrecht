@@ -1,0 +1,236 @@
+---
+name: een vervangen besluit roostert bij zijn bekendmaking niets meer in
+description: >-
+  Twee mechanismen komen hier samen. Een verplichting met `vanaf: bekendmaking`
+  wacht in het gram van haar besluit en staat niet in de wachtrij; een besluit
+  dat `vervangt_openstaande_termijnen` declareert ruimt de wachtrij op. Wie die
+  twee naast elkaar zet, ziet dat de vervanging die wachtende belofte niet
+  tegenkomt — en dat die dus bij de bekendmaking alsnog zou gaan lopen.
+
+  Dat gebeurt niet, en de reden staat in de wet die het besluit laat werken: een
+  besluit werkt pas als het bekendgemaakt is (Awb 3:40), dus de bekendmaking is
+  het moment waarop blijkt of er nog iets te beloven valt. Ligt er over dezelfde
+  zaak dan een beschikking die in de plaats van deze kwam, dan is dat niet zo.
+
+  Het verhaal: de toekenning op T1 (haar betaaltermijn wacht op de
+  bekendmaking), de intrekking op T2 (art. 2 komt in de plaats van art. 1), de
+  bekendmaking van de toekenning op T3. Daarna loopt de klok een jaar door en
+  wordt er niets betaald.
+
+clock:
+  start: 2024-01-01
+
+cells:
+  - id: uitvoerder
+    identity: Uitvoerder
+    laws:
+      - test_bekendmaking
+      # De algemene wet, als gewone wet geladen: zij declareert de procedure en
+      # de hooks van de stage BEKENDMAKING.
+      - test_awb_procedure
+
+    komt_na:
+      - Uitvoerder
+
+    chronicles:
+      - stream: inkomensleveringen
+        key: bsn
+        events:
+          - name: inkomenslevering
+            intake: levering
+            recording_actor: uitvoerder
+            grondslag: jaarlijkse inkomenslevering
+            op_moment: 2023-11-15
+            fields:
+              bsn: '999993653'
+              is_verzekerde: true
+      - stream: betalingen
+        key: zaakkenmerk
+        gebeurtenissen:
+          - name: betaling_gedaan
+            intake: betaling
+            grondslag: Algemene wet bestuursrecht, art. 4:89
+            fields: &betalingsvelden
+              - name: zaakkenmerk
+                type: string
+              - name: bedrag
+                type: amount
+              - name: volgnummer
+                type: number
+              - name: besluit
+                type: string
+              - name: schuldenaar
+                type: string
+              - name: schuldeiser
+                type: string
+          - name: betaling_gemeld
+            intake: levering
+            grondslag: Algemene wet bestuursrecht, art. 4:89
+            fields: *betalingsvelden
+
+    besluit_definitions:
+      - name: toekenning
+        doc: >-
+          De toekenning. Haar betaaltermijn hangt aan de bekendmaking, dus het
+          besluit belooft het bedrag zonder er een vervaldag bij te kunnen
+          zetten.
+        regulation: test_bekendmaking
+        output: komt_in_aanmerking
+        outputs:
+          - hoogte_tegemoetkoming
+        zaakkenmerk: tegemoetkoming/{bsn}
+        params:
+          - name: bsn
+            type: string
+            prefill: $last:uitvoerder.inkomensleveringen.bsn
+        inputs:
+          bsn:
+            param: bsn
+          is_verzekerde:
+            from_chronicle: inkomensleveringen
+            field: is_verzekerde
+
+      - name: intrekking
+        doc: >-
+          De intrekking, op dezelfde zaak. Art. 2 zegt dat zij in de plaats komt
+          van de toekenning; zelf legt ze niets op.
+        regulation: test_bekendmaking
+        output: wordt_ingetrokken
+        zaakkenmerk: tegemoetkoming/{bsn}
+        params:
+          - name: bsn
+            type: string
+            prefill: $last:uitvoerder.inkomensleveringen.bsn
+        inputs:
+          bsn:
+            param: bsn
+
+    lexostatus_definitions:
+      - name: beschikking
+        doc: het besluit zoals het vastligt, en niets van wat erna kwam
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - besluit
+          - stage
+        reduction:
+          chronicle: beschikkingen
+          key: zaakkenmerk
+          latest: true
+          where:
+            stage: BESLUIT
+
+      - name: bekendmaking
+        doc: de bekendmaking, met wat er door haar wel en niet gaat lopen
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - stage
+          - bekendmaking_datum
+          - uiterste_betaaldatum
+          - termijnen_vervallen_door
+        reduction:
+          chronicle: beschikkingen
+          key: zaakkenmerk
+          latest: true
+          where:
+            stage: BEKENDMAKING
+
+      - name: betaald_tot_nu_toe
+        doc: wat er op deze zaak betaald is
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - bedrag
+        reduction:
+          chronicle: betalingen
+          key: zaakkenmerk
+          sum: bedrag
+
+actions:
+  - id: uitvoerder.toekenning
+    actor: uitvoerder
+    label: Beslis op de aanvraag
+    decides:
+      cell: uitvoerder
+      besluit: toekenning
+
+  - id: uitvoerder.intrekking
+    actor: uitvoerder
+    label: Trek de tegemoetkoming in
+    decides:
+      cell: uitvoerder
+      besluit: intrekking
+
+  - id: uitvoerder.bekendmaking
+    actor: uitvoerder
+    label: Maak de toekenning bekend
+    publishes:
+      cell: uitvoerder
+      besluit: toekenning
+
+act:
+  - description: de toekenning, op T1
+    action: uitvoerder.toekenning
+    values:
+      bsn: '999993653'
+    op_moment: 2024-03-01
+    expect:
+      komt_in_aanmerking: true
+
+  - description: >-
+      de intrekking, op T2. Er staat niets in de wachtrij om te laten vervallen
+      — de termijn van de toekenning wacht nog op haar bekendmaking — dus dit
+      besluit doet op dit moment niets zichtbaars.
+    action: uitvoerder.intrekking
+    values:
+      bsn: '999993653'
+    op_moment: 2024-04-01
+    expect:
+      wordt_ingetrokken: true
+
+  - description: >-
+      de bekendmaking van de toekenning, op T3. Hier zou de termijn gaan lopen,
+      en hier blijkt dat er niets meer te beloven is.
+    action: uitvoerder.bekendmaking
+    op_moment: 2024-04-15
+
+queries:
+  - description: >-
+      Het laatste besluit op deze zaak is de intrekking. Dat is wat de
+      bekendmaking van de toekenning tegenkomt.
+    cell: uitvoerder
+    lexostatus: beschikking
+    params:
+      zaakkenmerk: tegemoetkoming/999993653
+    op_moment: 2024-04-15
+    expect:
+      besluit: intrekking
+      stage: BESLUIT
+
+  - description: >-
+      De bekendmaking ligt er en de wet rekende haar uiterste betaaldatum
+      gewoon uit — de hooks van de stage draaien, want het besluit is en blijft
+      bekendgemaakt. Wat er niet is, is een termijn die erop afgaat.
+    cell: uitvoerder
+    lexostatus: bekendmaking
+    params:
+      zaakkenmerk: tegemoetkoming/999993653
+    op_moment: 2024-04-15
+    expect:
+      stage: BEKENDMAKING
+      bekendmaking_datum: '2024-04-15'
+      uiterste_betaaldatum: '2024-05-27'
+
+  - description: >-
+      Een jaar later is er niets betaald. Dat is de proef: de uiterste
+      betaaldatum kwam en ging, en er stond geen termijn op te wachten.
+    cell: uitvoerder
+    lexostatus: betaald_tot_nu_toe
+    params:
+      zaakkenmerk: tegemoetkoming/999993653
+    op_moment: 2025-04-15
+    expect_not_established: true

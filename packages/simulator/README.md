@@ -1085,12 +1085,13 @@ Zonder die declaratie gebeurt er niets, en dat is het verschil tussen een regel 
 het recht en een regel van het platform: "een tweede besluit wist het eerste uit"
 zou een uitvoerder nooit mogen aannemen.
 
-Wat er níét onder valt, zijn verplichtingen die nog op de **bekendmaking** wachten
-(`vanaf: bekendmaking`). Die staan in het gram van hun eigen besluit en niet in de
-wachtrij, en een gram verandert niet — dus een beschikking die vervangen wordt
-vóórdat ze bekendgemaakt is, roostert bij haar bekendmaking alsnog in. Dat is de
-plek waar het hoort te worden opgelost, want daar gaat de belofte werken (Awb
-3:40). In het corpus komt die combinatie nog niet voor.
+Wat er hier níét onder valt, zijn verplichtingen die nog op de **bekendmaking**
+wachten (`vanaf: bekendmaking`). Die staan in het gram van hun eigen besluit en
+niet in de wachtrij, en een gram verandert niet — dus dit besluit komt ze niet
+tegen. Ze worden een tak verderop opgevangen: bij de **bekendmaking** van dat
+eerdere besluit, want dáár gaat zo'n belofte werken (Awb 3:40) en dáár is dus te
+zien dat er niets meer te beloven valt. Zie [De bekendmaking: een tweede gram op
+dezelfde zaak](#de-bekendmaking-een-tweede-gram-op-dezelfde-zaak).
 
 In de publieke wereld draagt alleen Awir art. 19 die declaratie: de tegemoetkoming
 staat dan vast en het voorschot wordt ermee verrekend, dus de termijnen van dat
@@ -1203,6 +1204,26 @@ lexostatus_definitions:
       where:
         stage: BEKENDMAKING            # het gram van déze stage
 ```
+
+**Een besluit dat inmiddels vervangen is, roostert niets meer in.** Een
+verplichting met `vanaf: bekendmaking` wacht in het gram van haar eigen besluit
+en niet in de wachtrij, dus het besluit dat haar vervangt komt haar daar niet
+tegen (zie [Verplichtingen](#verplichtingen-wat-een-besluit-achterlaat)). Hier
+komt ze wel voorbij, en hier hoort de toets dan ook: een besluit gaat pas werken
+als het bekendgemaakt is (Awb 3:40), dus dit is het moment waarop blijkt of er
+nog iets te beloven valt. Ligt er over dezelfde zaak ná dit besluit een gram
+waarvan het artikel `vervangt_openstaande_termijnen` declareert, dan gaat er
+niets lopen. Het gram van de bekendmaking zegt dat met zoveel woorden
+(`termijnen_vervallen_door`: welk besluit, op welk moment, op welke grondslag) en
+het journaal schrijft er een regel over — een bekendmaking met een leeg
+`obligations` is anders niet te onderscheiden van een besluit dat niets beloofde.
+
+Wat de bekendmaking verder doet, verandert er niet door: de hooks vuren, de
+uiterste betaaldatum en de bezwaartermijn komen gewoon in het gram. Het besluit
+ís bekendgemaakt — er gaat alleen niets meer van lopen. Het scenario staat in
+[`scenarios/bekendmaking_na_vervanging.yaml`](scenarios/bekendmaking_na_vervanging.yaml),
+met de tegenproef zonder dat vervangende besluit in
+[`tests/bekendmaking.rs`](tests/bekendmaking.rs).
 
 **Hetzelfde besluit twee keer bekendmaken wordt geweigerd**, en niet als
 voorzichtigheid: twee bekendmakingen van één besluit zouden twee verschillende

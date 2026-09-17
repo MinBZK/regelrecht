@@ -14,6 +14,7 @@
 use regelrecht_simulator::{
     regulation_root, GramKind, GramSnapshot, Scenario, ScenarioRun, Value, BESCHIKKINGEN,
 };
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 fn scenario_path(name: &str) -> PathBuf {
@@ -231,4 +232,149 @@ fn de_bekendmaking_roostert_de_wachtende_termijn_in() {
         termijn.get("betaler").and_then(Value::as_str),
         Some("uitvoerder")
     );
+}
+
+/// **Een besluit dat vervangen is voordat het bekendgemaakt werd, roostert
+/// niets meer in.**
+///
+/// De twee mechanismen komen hier samen: de belofte wacht in het gram van haar
+/// eigen besluit (`wacht_op_bekendmaking`) en niet in de wachtrij, dus het
+/// vervangende besluit komt haar bij zijn eigen afhandeling niet tegen. Ze gaat
+/// pas werken bij de bekendmaking (Awb 3:40), en dáár blijkt dat er over
+/// dezelfde zaak een beschikking ligt die in de plaats van deze kwam. Het gram
+/// zegt welke en wanneer, en het journaal zegt het in woorden — anders is een
+/// bekendmaking zonder termijnen niet te onderscheiden van een besluit dat
+/// niets beloofde.
+#[test]
+fn een_vervangen_besluit_roostert_bij_zijn_bekendmaking_niets_meer_in() {
+    let run = run("bekendmaking_na_vervanging.yaml");
+    let grams = beschikkingen(&run);
+    assert_eq!(
+        grams.len(),
+        3,
+        "de toekenning, de intrekking en de bekendmaking van de toekenning"
+    );
+    let bekendmaking = grams[2];
+    assert_eq!(veld(bekendmaking, "stage"), "BEKENDMAKING");
+
+    let Value::Array(obligations) = waarde(bekendmaking, "obligations") else {
+        panic!("de bekendmaking draagt haar schema, ook als het leeg is");
+    };
+    assert!(
+        obligations.is_empty(),
+        "er valt niets meer te beloven, dus er wordt niets ingeroosterd"
+    );
+
+    let Value::Object(vervallen) = waarde(bekendmaking, "termijnen_vervallen_door") else {
+        panic!("de bekendmaking hoort te zeggen waardoor er niets gaat lopen");
+    };
+    assert_eq!(
+        vervallen.get("besluit").and_then(Value::as_str),
+        Some("intrekking")
+    );
+    assert_eq!(
+        vervallen.get("op_moment").and_then(Value::as_str),
+        Some("2024-04-01"),
+        "het moment van het besluit dat ervoor in de plaats kwam"
+    );
+    assert!(
+        vervallen
+            .get("grondslag")
+            .and_then(Value::as_str)
+            .is_some_and(|grondslag| grondslag.contains("art. 2")),
+        "de grondslag komt uit het lexogram van het vervangende artikel"
+    );
+
+    let regels: Vec<&str> = run
+        .journal
+        .iter()
+        .map(|entry| entry.description.as_str())
+        .filter(|description| description.contains("worden niet ingeroosterd"))
+        .collect();
+    assert_eq!(
+        regels.len(),
+        1,
+        "één regel, bij de bekendmaking: {regels:?}"
+    );
+    for deel in [
+        "besluit 'toekenning'",
+        "tegemoetkoming/999993653",
+        "besluit 'intrekking' van 2024-04-01",
+        "art. 2",
+    ] {
+        assert!(
+            regels[0].contains(deel),
+            "de journaalregel hoort '{deel}' te noemen, kreeg: {}",
+            regels[0]
+        );
+    }
+}
+
+/// **De tegenproef: zonder dat vervangende besluit gaat de termijn gewoon lopen.**
+///
+/// Dezelfde wereld en dezelfde twee handelingen, alleen de intrekking ertussenuit.
+/// Dat ene verschil is wat de bekendmaking van een belofte een termijn maakt —
+/// zou de bekendmaking hier ook niets inroosteren, dan zat de fout niet in de
+/// vervanging maar in de bekendmaking zelf.
+#[test]
+fn zonder_vervangend_besluit_roostert_diezelfde_bekendmaking_wel_in() {
+    let path = scenario_path("bekendmaking_na_vervanging.yaml");
+    let scenario = Scenario::load(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let mut world = scenario
+        .world(&regulation_root())
+        .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+
+    let dag = |text: &str| {
+        text.parse::<chrono::NaiveDate>()
+            .unwrap_or_else(|e| panic!("testdatum '{text}' moet leesbaar zijn: {e}"))
+    };
+    let bsn = BTreeMap::from([("bsn".to_string(), Value::String("999993653".to_string()))]);
+    world
+        .advance(dag("2024-03-01"))
+        .unwrap_or_else(|e| panic!("de klok moet vooruit kunnen: {e}"));
+    world
+        .act("uitvoerder.toekenning", &bsn)
+        .unwrap_or_else(|e| panic!("de toekenning moet kunnen: {e}"));
+    world
+        .advance(dag("2024-04-15"))
+        .unwrap_or_else(|e| panic!("de klok moet vooruit kunnen: {e}"));
+    world
+        .act("uitvoerder.bekendmaking", &BTreeMap::new())
+        .unwrap_or_else(|e| panic!("de bekendmaking moet kunnen: {e}"));
+
+    let snapshot = world.snapshot();
+    let grams: Vec<&GramSnapshot> = snapshot
+        .cells
+        .iter()
+        .filter(|cell| cell.id == "uitvoerder")
+        .flat_map(|cell| &cell.chronicles)
+        .filter(|chronicle| chronicle.stream == BESCHIKKINGEN)
+        .flat_map(|chronicle| &chronicle.grams)
+        .collect();
+    assert_eq!(grams.len(), 2, "de toekenning en haar bekendmaking");
+    let bekendmaking = grams[1];
+    assert_eq!(
+        waarde(bekendmaking, "termijnen_vervallen_door"),
+        &Value::Null,
+        "er is niets vervangen, dus het gram zwijgt erover"
+    );
+    let Value::Array(obligations) = waarde(bekendmaking, "obligations") else {
+        panic!("de bekendmaking draagt haar schema");
+    };
+    assert_eq!(obligations.len(), 1, "het ritme is `ineens`");
+
+    // En de klok komt hem na: op de uiterste betaaldatum wordt er betaald.
+    world
+        .advance(dag("2024-06-01"))
+        .unwrap_or_else(|e| panic!("de klok moet vooruit kunnen: {e}"));
+    let betalingen = world
+        .snapshot()
+        .cells
+        .iter()
+        .filter(|cell| cell.id == "uitvoerder")
+        .flat_map(|cell| &cell.chronicles)
+        .filter(|chronicle| chronicle.stream == "betalingen")
+        .map(|chronicle| chronicle.grams.len())
+        .sum::<usize>();
+    assert_eq!(betalingen, 1, "de termijn van de toekenning is nagekomen");
 }
