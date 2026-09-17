@@ -192,6 +192,16 @@ pub const WACHT_OP_BEKENDMAKING: &str = "wacht_op_bekendmaking";
 /// speelde — zoals [`WACHT_OP_BEKENDMAKING`] leeg is bij een besluit dat niets
 /// liet wachten.
 pub const TERMIJNEN_VERVALLEN_DOOR: &str = "termijnen_vervallen_door";
+/// Veld met de verplichtingen waarvan het bedrag op precies nul uitkwam.
+///
+/// Een verplichting van nul is geen termijn van nul. Er valt niets te betalen,
+/// dus er hoort geen vervaldag en geen executogram bij — een betaling van nul
+/// euro is een vastlegging van iets dat niet gebeurde. Weglaten kan evenmin: het
+/// artikel legde haar wél op, en een gram dat erover zwijgt is niet te
+/// onderscheiden van een besluit waarop de verplichting niet van toepassing was.
+/// Ze staat hier dus met `bedrag: 0`, haar partijen en haar grondslag, en zonder
+/// termijnen. Leeg bij elk besluit waarvan geen verplichting op nul uitviel.
+pub const NIETS_TE_BETALEN: &str = "niets_te_betalen";
 /// Veld met de inputs van het besluit, elk met hun herkomst.
 pub const INPUTS: &str = "inputs";
 /// Veld met het uitgerekende betalingsschema van dit besluit.
@@ -215,11 +225,12 @@ pub const RECEIPT: &str = "receipt";
 /// Van de stage BESLUIT: dit is wat een gram draagt waarin een besluit staat.
 /// Wat de **bekendmaking** ervan draagt, staat in [`BEKENDMAKING_FIELDS`] — een
 /// eigen gram met een eigen omslag, en niet een tweede lijst voor hetzelfde gram.
-const FIXED_FIELDS: [&str; 16] = [
+const FIXED_FIELDS: [&str; 17] = [
     ZAAKKENMERK,
     BESLUIT,
     STAGE,
     WACHT_OP_BEKENDMAKING,
+    NIETS_TE_BETALEN,
     REGULATION,
     REGULATION_VALID_FROM,
     EXECUTED_REGULATIONS,
@@ -531,7 +542,7 @@ impl ObligationKind {
     /// De tegenhanger van [`Self::name`], en op dezelfde twee namen: een gram dat
     /// een derde naam draagt is niet te lezen, en dat hoort te blijken in plaats
     /// van als betaling door te gaan.
-    fn from_name(name: &str) -> Option<Self> {
+    pub(crate) fn from_name(name: &str) -> Option<Self> {
         match name {
             BETALING => Some(Self::Betaling),
             TERUGVORDERING => Some(Self::Terugvordering),
@@ -1179,6 +1190,89 @@ impl WachtendeVerplichting {
             self.schedule.name()
         )
     }
+}
+
+/// Een verplichting waarvan het bedrag op precies nul uitkwam: niets te betalen.
+///
+/// Wat er van een verplichting overblijft zonder termijnen: de soort, de
+/// partijen, het ritme dat ze gehad zou hebben en de grondslag. Geen betaler en
+/// geen volgnummer — er valt niets na te komen, dus er is geen cel die iets doet
+/// en geen termijn om te nummeren. Zie [`NIETS_TE_BETALEN`] voor waarom ze in het
+/// gram staat in plaats van eruit weg te vallen.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NietsTeBetalen {
+    /// Wat voor verplichting dit is. Nul keert niets om, dus altijd de soort
+    /// die het lexogram declareert.
+    pub soort: ObligationKind,
+    /// De partij die had moeten nakomen, met naam.
+    pub schuldenaar: String,
+    /// De partij aan wie nagekomen had moeten worden, met naam.
+    pub schuldeiser: String,
+    /// Het ritme waarin ze vervallen was, als er iets te betalen was geweest.
+    pub schedule: Schedule,
+    /// Waarop deze verplichting berust, in de woorden van het lexogram.
+    pub grondslag: String,
+    /// Het artikel dat haar declareert, met de versie die toen gold.
+    pub herkomst: ObligationOrigin,
+}
+
+impl NietsTeBetalen {
+    /// Als vastlegbare waarde, voor in het decretogram.
+    ///
+    /// Met het bedrag erbij, ook al staat dat vast: `bedrag: 0` is wat een
+    /// lezer van het gram zoekt, en een veld dat er alleen bij andere
+    /// verplichtingen staat laat hem raden.
+    fn as_value(&self) -> Value {
+        Value::Object(BTreeMap::from([
+            (
+                SOORT.to_string(),
+                Value::String(self.soort.name().to_string()),
+            ),
+            (
+                SCHULDENAAR.to_string(),
+                Value::String(self.schuldenaar.clone()),
+            ),
+            (
+                SCHULDEISER.to_string(),
+                Value::String(self.schuldeiser.clone()),
+            ),
+            (BEDRAG.to_string(), amount(Decimal::ZERO)),
+            (
+                "schedule".to_string(),
+                Value::String(self.schedule.name().to_string()),
+            ),
+            (GRONDSLAG.to_string(), Value::String(self.grondslag.clone())),
+            (LEXOGRAM.to_string(), self.herkomst.as_value()),
+        ]))
+    }
+
+    /// Leesbare regel voor het journaal en een verslag.
+    pub fn describe(&self) -> String {
+        format!(
+            "niets te betalen: {} door {} aan {} is op 0 vastgesteld, dus er wordt geen \
+             termijn ingeroosterd (grondslag '{}', {})",
+            self.soort.name(),
+            self.schuldenaar,
+            self.schuldeiser,
+            self.grondslag,
+            self.herkomst.describe()
+        )
+    }
+}
+
+/// Wat een besluit uit zijn verplichtingen inroostert, in drie delen.
+///
+/// Samen en niet als losse lijsten, want ze komen uit één schema: de volgnummers
+/// en het aantal termijnen lopen over de eerste twee heen, en wat op nul uitviel
+/// telt daar juist niet in mee.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Verplichtingenschema {
+    /// De termijnen met een vervaldag.
+    pub(crate) termijnen: Vec<ObligationDue>,
+    /// De verplichtingen die op de bekendmaking wachten.
+    pub(crate) wachtend: Vec<WachtendeVerplichting>,
+    /// De verplichtingen waarvan het bedrag op nul uitkwam.
+    pub(crate) niets_te_betalen: Vec<NietsTeBetalen>,
 }
 
 /// Het besluit waar een bekendmaking bij hoort, zoals het in de kroniek ligt.
@@ -2178,6 +2272,9 @@ pub struct Decretogram {
     /// en niet alleen in het beeld, want anders zou het uit de kroniek niet te
     /// zien zijn dat er nog iets openstaat.
     pub wacht_op_bekendmaking: Vec<WachtendeVerplichting>,
+    /// De verplichtingen waarvan het bedrag op nul uitkwam; zie
+    /// [`NIETS_TE_BETALEN`].
+    pub niets_te_betalen: Vec<NietsTeBetalen>,
     /// De regelingen die deze uitvoering werkelijk uitvoerde, met de versie die
     /// op `op_moment` gold.
     ///
@@ -2359,6 +2456,15 @@ impl Decretogram {
                     self.wacht_op_bekendmaking
                         .iter()
                         .map(WachtendeVerplichting::as_value)
+                        .collect(),
+                ),
+            ),
+            (
+                NIETS_TE_BETALEN.to_string(),
+                Value::Array(
+                    self.niets_te_betalen
+                        .iter()
+                        .map(NietsTeBetalen::as_value)
                         .collect(),
                 ),
             ),
@@ -2879,7 +2985,7 @@ impl BesluitDefinition {
         outputs: &BTreeMap<String, Value>,
         params: &BTreeMap<String, Value>,
         settings: &BTreeMap<String, Value>,
-    ) -> Result<(Vec<ObligationDue>, Vec<WachtendeVerplichting>)> {
+    ) -> Result<Verplichtingenschema> {
         let ObligationScope {
             cell,
             parties,
@@ -2890,6 +2996,7 @@ impl BesluitDefinition {
         // termijnen van het hele schema staat in elke termijn, en dat is pas
         // bekend als alle ritmes eruit zijn.
         let mut resolved = Vec::with_capacity(declared.items.len());
+        let mut niets_te_betalen = Vec::new();
         for obligation in &declared.items {
             let schedule = obligation.schedule(cell, &self.name, settings)?;
             let start = obligation.start(cell, &self.name, params, op_moment)?;
@@ -2898,6 +3005,21 @@ impl BesluitDefinition {
             // slotbedrag is geen negatieve betaling maar een verplichting de
             // andere kant op.
             let relation = obligation.relation(cell, self, declared, params, total)?;
+            // Precies nul is niets te betalen, en dat is geen termijn van nul:
+            // een executogram van nul euro legt iets vast dat niet gebeurde. Ze
+            // telt ook niet mee in het schema — geen volgnummer, en niet in "van
+            // zoveel" — maar ze staat wél in het gram (zie [`NIETS_TE_BETALEN`]).
+            if relation.total.is_zero() {
+                niets_te_betalen.push(NietsTeBetalen {
+                    soort: relation.soort,
+                    schuldenaar: relation.schuldenaar,
+                    schuldeiser: relation.schuldeiser,
+                    schedule,
+                    grondslag: obligation.grondslag.clone(),
+                    herkomst: declared.origin.clone(),
+                });
+                continue;
+            }
             resolved.push((obligation, schedule, start, relation));
         }
         // De termijnen van dit besluit tellen nooit zo hoog dat ze de grenzen van
@@ -2991,7 +3113,11 @@ impl BesluitDefinition {
                 });
             }
         }
-        Ok((due, wachtend))
+        Ok(Verplichtingenschema {
+            termijnen: due,
+            wachtend,
+            niets_te_betalen,
+        })
     }
 
     /// Controleer de definitie tegen de cel waarin ze staat.

@@ -411,7 +411,7 @@ test.describe('publieke wereld', () => {
       .first()
       .locator('nldd-text-cell')
       .evaluateAll((cells) => cells.map((cell) => cell.getAttribute('text')));
-    expect(kop).toEqual(['Bedrag', 'Besluit', 'Status', 'Vervaldatum', 'Volgnummer']);
+    expect(kop).toEqual(['Bedrag', 'Besluit', 'Soort', 'Status', 'Vervaldatum', 'Volgnummer']);
     // Vier nagekomen termijnen, dus vier keer dezelfde stand en geen enkele die
     // te laat is. De cellen dragen hun tekst in een attribuut (zoals overal in
     // het ontwerpsysteem), dus dit leest het attribuut en niet de bladzijde.

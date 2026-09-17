@@ -1237,9 +1237,9 @@ impl LexostatusDefinition {
         let driving = match &self.reduction {
             Reduction::Law { output, .. } => Some(output.as_str()),
             Reduction::Chronicle { .. } => None,
-            // De openstaandvorm publiceert wat ze ís: de drie bedragen en de
+            // De openstaandvorm publiceert wat ze ís: de bedragen per richting en de
             // lijst met termijnen. Niet uit te breiden en niet in te perken —
-            // er is geen stroom en geen regeling waaruit een vierde naam zou
+            // er is geen stroom en geen regeling waaruit een achtste naam zou
             // kunnen komen.
             Reduction::Openstaand { .. } => return openstaand::OUTPUTS.iter().copied().collect(),
         };

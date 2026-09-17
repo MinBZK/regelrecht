@@ -242,6 +242,18 @@ cells:
           key: zaakkenmerk
           latest: true
 
+      - name: openstaande_termijnen
+        doc: >-
+          Wat er van deze zaak nog openstaat, per richting: de betalingen die
+          deze cel oplegde en de terugvordering die eruit volgde, elk met wat er
+          van die kant op ligt.
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        reduction:
+          openstaand: true
+          key: zaakkenmerk
+
 # Eén tak, en die hoort bij de vaststelling: de toekenning rekent op eigen feiten
 # en vraagt niemand iets. De aanvrager wordt nergens iets gevraagd — zij betaalt,
 # en dat is geen vraag over een celgrens maar een termijn die vervalt.
@@ -341,6 +353,45 @@ queries:
     op_moment: 2024-06-15
     expect:
       nog_te_betalen: -48602
+
+  - description: >-
+      Openstaand houdt de twee richtingen uit elkaar. Twee voorschottermijnen van
+      € 493,01 liepen van Dienst Toeslagen naar de aanvrager, de terugvordering
+      van € 486,02 de andere kant op. Bij elkaar opgeteld zou dat € 1.472,04
+      "verwacht" noemen, een bedrag dat niemand verschuldigd is; met een minteken
+      verrekend zou het een saldo zijn. Per soort staat er wat er die kant op
+      verwacht werd en wat er ligt — en elke termijn zegt van welke soort ze is.
+    cell: toeslagen
+    lexostatus: openstaande_termijnen
+    params:
+      zaakkenmerk: zorgtoeslag/999993653
+    op_moment: 2024-06-15
+    expect:
+      betaling_verwacht: 98602
+      betaling_betaald: 98602
+      betaling_openstaand: 0
+      terugvordering_verwacht: 48602
+      terugvordering_betaald: 48602
+      terugvordering_openstaand: 0
+      termijnen:
+        - besluit: zorgtoeslag_toekenning
+          volgnummer: 1
+          soort: betaling
+          vervaldatum: '2024-01-01'
+          bedrag: 49301
+          status: betaald
+        - besluit: zorgtoeslag_toekenning
+          volgnummer: 2
+          soort: betaling
+          vervaldatum: '2024-04-01'
+          bedrag: 49301
+          status: betaald
+        - besluit: zorgtoeslag_vaststelling
+          volgnummer: 1
+          soort: terugvordering
+          vervaldatum: '2024-06-15'
+          bedrag: 48602
+          status: betaald
 
   - description: >-
       En over het moment vóór de vaststelling staat er nog de toekenning: het

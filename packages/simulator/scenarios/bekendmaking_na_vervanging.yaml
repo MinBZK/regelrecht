@@ -255,12 +255,13 @@ queries:
       zaakkenmerk: tegemoetkoming/999993653
     op_moment: 2024-03-15
     expect:
-      verwacht: 0
-      betaald: 0
-      openstaand: 0
+      betaling_verwacht: 0
+      betaling_betaald: 0
+      betaling_openstaand: 0
       termijnen:
         - besluit: toekenning
           volgnummer: 1
+          soort: betaling
           vervaldatum: null
           bedrag: 42000
           status: wacht_op_bekendmaking
@@ -275,12 +276,13 @@ queries:
       zaakkenmerk: tegemoetkoming/999993653
     op_moment: 2024-04-10
     expect:
-      verwacht: 0
-      betaald: 0
-      openstaand: 0
+      betaling_verwacht: 0
+      betaling_betaald: 0
+      betaling_openstaand: 0
       termijnen:
         - besluit: toekenning
           volgnummer: 1
+          soort: betaling
           vervaldatum: null
           bedrag: 42000
           status: vervallen
@@ -294,12 +296,13 @@ queries:
       zaakkenmerk: tegemoetkoming/999993653
     op_moment: 2025-04-15
     expect:
-      verwacht: 0
-      betaald: 0
-      openstaand: 0
+      betaling_verwacht: 0
+      betaling_betaald: 0
+      betaling_openstaand: 0
       termijnen:
         - besluit: toekenning
           volgnummer: 1
+          soort: betaling
           vervaldatum: null
           bedrag: 42000
           status: vervallen

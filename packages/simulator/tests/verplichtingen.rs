@@ -10,7 +10,9 @@
 //! De positieve gevallen staan in `scenarios/toeslagen_terugvordering.yaml`,
 //! want daar horen ze: een besluit dat slaagt, draagt zijn eigen verwachting.
 
-use regelrecht_simulator::{regulation_root, ObligationKind, Scenario, SimulatorError};
+use regelrecht_simulator::{
+    regulation_root, JournalKind, ObligationKind, Scenario, SimulatorError, Value,
+};
 use std::path::{Path, PathBuf};
 
 fn scenario_path(dir: &str, name: &str) -> PathBuf {
@@ -139,5 +141,95 @@ fn een_schuldenaar_zonder_cel_laat_de_termijn_openstaan() {
             .flat_map(|cell| &cell.chronicles)
             .all(|chronicle| chronicle.grams.is_empty()),
         "en dan legt die cel ook niets vast"
+    );
+}
+
+/// **Een verplichting van nul levert geen termijn en geen betaling.**
+///
+/// Een vaststelling die precies uitkomt op wat er al betaald is, laat een
+/// slotbedrag van nul over. Dat is geen betaling van nul euro: er valt niets te
+/// betalen, dus er hoort geen vervaldag en geen executogram bij. Maar het artikel
+/// legde de verplichting wél op, dus het gram noemt haar — met `bedrag: 0` en
+/// zonder termijnen — en het journaal zegt dat er niets te betalen is.
+#[test]
+fn een_verplichting_van_nul_levert_geen_termijn_op() {
+    let path = scenario_path("", "toeslagen_terugvordering.yaml");
+    let yaml = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+        // Definitief precies wat er in twee voorschottermijnen betaald is.
+        .replace("definitief_bedrag: 50000", "definitief_bedrag: 98602")
+        .replace(
+            "nog_te_betalen: -48602\n    expect_accepted",
+            "nog_te_betalen: 0\n    expect_accepted",
+        );
+    let mut scenario =
+        Scenario::from_yaml(&yaml).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    // De vragen van het bestand gaan over de terugvordering die er nu niet is;
+    // wat deze test meet, staat in het gram en het journaal.
+    scenario.queries.clear();
+
+    let run = scenario
+        .run(&regulation_root())
+        .unwrap_or_else(|e| panic!("een slotbedrag van nul hoort geen fout te zijn: {e}"));
+    assert!(run.passed(), "{}:\n{}", path.display(), run.report());
+
+    let vaststelling = &run.decisions[1].decretogram;
+    assert!(
+        vaststelling.obligations.is_empty(),
+        "nul levert geen termijn: {:?}",
+        vaststelling.obligations
+    );
+    let [niets] = vaststelling.niets_te_betalen.as_slice() else {
+        panic!(
+            "het gram hoort de verplichting te noemen: {:?}",
+            vaststelling.niets_te_betalen
+        );
+    };
+    assert_eq!(niets.soort, ObligationKind::Betaling, "nul keert niets om");
+
+    // In het gram zoals het in de kroniek ligt: met bedrag nul.
+    let gram = run
+        .snapshot
+        .cells
+        .iter()
+        .filter(|cell| cell.id == "toeslagen")
+        .flat_map(|cell| &cell.chronicles)
+        .filter(|chronicle| chronicle.stream == "beschikkingen")
+        .flat_map(|chronicle| &chronicle.grams)
+        .find(|gram| gram.name == "zorgtoeslag_vaststelling")
+        .unwrap_or_else(|| panic!("de vaststelling hoort in de kroniek te liggen"));
+    let Some(Value::Array(genoemd)) = gram.fields.get("niets_te_betalen").map(|f| &f.value) else {
+        panic!("het gram hoort 'niets_te_betalen' als lijst te dragen");
+    };
+    let [Value::Object(velden)] = genoemd.as_slice() else {
+        panic!("één verplichting zonder termijnen, kreeg {genoemd:?}");
+    };
+    assert_eq!(velden.get("bedrag"), Some(&Value::Int(0)));
+
+    // Geen executogram van nul, bij geen enkele cel.
+    let nul = run
+        .snapshot
+        .cells
+        .iter()
+        .flat_map(|cell| &cell.chronicles)
+        .filter(|chronicle| chronicle.stream == "betalingen")
+        .flat_map(|chronicle| &chronicle.grams)
+        .filter(|gram| {
+            gram.fields
+                .get("bedrag")
+                .and_then(|field| field.value.as_decimal())
+                .is_some_and(|bedrag| bedrag.is_zero())
+        })
+        .count();
+    assert_eq!(nul, 0, "een betaling van nul is een vastlegging van niets");
+
+    // En het journaal zegt het, onder het besluit.
+    assert!(
+        run.snapshot.journal.iter().any(|entry| {
+            entry.kind == JournalKind::Termijn
+                && entry.parent.is_some()
+                && entry.description.contains("niets te betalen")
+        }),
+        "het journaal hoort te zeggen dat er niets te betalen is"
     );
 }

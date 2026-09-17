@@ -185,9 +185,9 @@ fn een_opengebleven_termijn_wordt_niet_stil_alsnog_betaald() {
     let laat = antwoord(&run, "2024-06-01");
 
     assert_eq!(standen(&laat), ["1:betaald", "2:te_laat"]);
-    assert_eq!(waarde(&laat, "verwacht"), Value::Int(60000));
-    assert_eq!(waarde(&laat, "betaald"), Value::Int(30000));
-    assert_eq!(waarde(&laat, "openstaand"), Value::Int(30000));
+    assert_eq!(waarde(&laat, "betaling_verwacht"), Value::Int(60000));
+    assert_eq!(waarde(&laat, "betaling_betaald"), Value::Int(30000));
+    assert_eq!(waarde(&laat, "betaling_openstaand"), Value::Int(30000));
 
     // De klok stond aan het eind van de run op 2024-06-01 en is dus langs de
     // tweede vervaldatum gekomen. Er ligt één betaling, niet twee.
@@ -206,7 +206,7 @@ fn het_antwoord_over_een_eerder_moment_verandert_niet_mee() {
     let vroeg = antwoord(&run, "2024-04-30");
 
     assert_eq!(standen(&vroeg), ["1:betaald"]);
-    assert_eq!(waarde(&vroeg, "openstaand"), Value::Int(0));
+    assert_eq!(waarde(&vroeg, "betaling_openstaand"), Value::Int(0));
 }
 
 /// Zonder decretogram over de zaak is er niets vastgesteld, met wat er wél lag.
@@ -249,8 +249,8 @@ fn wat_op_de_bekendmaking_wacht_heeft_geen_vervaldag() {
     // Geen vervaldag, dus niets verwacht en niets te laat — ook niet negen
     // maanden later. Een nul die hier wél zou meetellen, zou een termijn
     // opleveren die te laat is op een dag die de wet nooit genoemd heeft.
-    assert_eq!(waarde(&answer, "verwacht"), Value::Int(0));
-    assert_eq!(waarde(&answer, "openstaand"), Value::Int(0));
+    assert_eq!(waarde(&answer, "betaling_verwacht"), Value::Int(0));
+    assert_eq!(waarde(&answer, "betaling_openstaand"), Value::Int(0));
 }
 
 /// Zodra de bekendmaking er is, staan de termijnen in háár gram.
@@ -269,12 +269,12 @@ fn de_bekendmaking_geeft_de_wachtende_verplichting_haar_termijnen() {
     // moment: dan staat ze niet in de lijst en is er niets verwacht.
     let bekend = antwoord(&run, "2024-04-15");
     assert!(standen(&bekend).is_empty());
-    assert_eq!(waarde(&bekend, "verwacht"), Value::Int(0));
+    assert_eq!(waarde(&bekend, "betaling_verwacht"), Value::Int(0));
 
     // En na de uiterste betaaldatum is ze vervallen en nagekomen.
     let later = antwoord(&run, "2024-06-01");
     assert_eq!(standen(&later), ["1:betaald"]);
-    assert_eq!(waarde(&later, "verwacht"), Value::Int(42000));
+    assert_eq!(waarde(&later, "betaling_verwacht"), Value::Int(42000));
 
     // Twee grammen gelezen in `beschikkingen`: het besluit en zijn bekendmaking.
     // Alleen de tweede droeg de termijn, en dat is aan de bijdragen te zien.
@@ -358,10 +358,10 @@ fn een_termijn_die_door_een_vaststelling_vervalt_telt_niet_mee() {
 
     // En ze telt niet mee: wat er verwacht werd is wat er betaald is, dus er
     // staat niets open. Een `te_laat` zou hier 49296,01 als schuld opvoeren.
-    assert_eq!(waarde(&answer, "openstaand"), Value::Int(0));
+    assert_eq!(waarde(&answer, "betaling_openstaand"), Value::Int(0));
     assert_eq!(
-        waarde(&answer, "verwacht"),
-        waarde(&answer, "betaald"),
+        waarde(&answer, "betaling_verwacht"),
+        waarde(&answer, "betaling_betaald"),
         "standen: {:?}",
         standen(&answer)
     );
@@ -553,8 +553,11 @@ fn een_betaalde_termijn_vervalt_niet_door_een_latere_vaststelling() {
         "standen: {:?}",
         standen(&answer)
     );
-    assert_eq!(waarde(&answer, "openstaand"), Value::Int(0));
-    assert_eq!(waarde(&answer, "verwacht"), waarde(&answer, "betaald"));
+    assert_eq!(waarde(&answer, "betaling_openstaand"), Value::Int(0));
+    assert_eq!(
+        waarde(&answer, "betaling_verwacht"),
+        waarde(&answer, "betaling_betaald")
+    );
 
     // En de uitleg telt op tot hetzelfde: de betalingen dragen samen precies
     // `betaald` bij, ook die van de termijn die zonder betaling vervallen was.
@@ -569,7 +572,7 @@ fn een_betaalde_termijn_vervalt_niet_door_een_latere_vaststelling() {
         .filter_map(Value::as_decimal)
         .sum::<rust_decimal::Decimal>();
     assert_eq!(
-        waarde(&answer, "betaald").as_decimal(),
+        waarde(&answer, "betaling_betaald").as_decimal(),
         Some(som),
         "bijdragen: {bijdragen:?}"
     );
@@ -594,7 +597,15 @@ fn een_wachtende_verplichting_vervalt_door_een_intrekking_voor_de_bekendmaking()
     for moment in ["2024-04-10", "2025-04-15"] {
         let answer = antwoord(&run, moment);
         assert_eq!(standen(&answer), ["1:vervallen"], "op {moment}");
-        assert_eq!(waarde(&answer, "verwacht"), Value::Int(0), "op {moment}");
-        assert_eq!(waarde(&answer, "openstaand"), Value::Int(0), "op {moment}");
+        assert_eq!(
+            waarde(&answer, "betaling_verwacht"),
+            Value::Int(0),
+            "op {moment}"
+        );
+        assert_eq!(
+            waarde(&answer, "betaling_openstaand"),
+            Value::Int(0),
+            "op {moment}"
+        );
     }
 }

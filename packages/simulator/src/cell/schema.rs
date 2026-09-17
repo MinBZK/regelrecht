@@ -30,9 +30,9 @@
 use crate::cell::besluit::{
     fixed_fields, BesluitDefinition, DeclaredObligations, ObligationDefinition, ObligationOrigin,
     AFWIJZING, AFWIJZINGSGROND, BESCHIKKINGEN, BESLUIT, BEVOEGD_GEZAG_REFERENCE, CHRONICLE_SOURCES,
-    COMPETENT_AUTHORITY, DECISION_TYPE, EXECUTED_REGULATIONS, INPUTS, LEGAL_CHARACTER, OBLIGATIONS,
-    RECEIPT, REGULATION_VALID_FROM, STAGE, STAGE_BESLUIT, TERUGVORDERING, VANAF_BEKENDMAKING,
-    WACHT_OP_BEKENDMAKING, ZAAKKENMERK,
+    COMPETENT_AUTHORITY, DECISION_TYPE, EXECUTED_REGULATIONS, INPUTS, LEGAL_CHARACTER,
+    NIETS_TE_BETALEN, OBLIGATIONS, RECEIPT, REGULATION_VALID_FROM, STAGE, STAGE_BESLUIT,
+    TERUGVORDERING, VANAF_BEKENDMAKING, WACHT_OP_BEKENDMAKING, ZAAKKENMERK,
 };
 use crate::cell::extensions::{afwijzing_wanneer, ChronolexBlock};
 use regelrecht_engine::article::Produces;
@@ -724,6 +724,30 @@ fn fixed_field(
                 ),
             }
         }
+        // Wat er van een verplichting overblijft als haar bedrag op nul uitkwam.
+        // Volgt de verplichtingen hierboven, net als [`OBLIGATIONS`]: elke
+        // verplichting kan op nul uitkomen, dus zodra het artikel er een oplegt
+        // wijst dit veld naar dat artikel.
+        NIETS_TE_BETALEN => match declared {
+            Some(declared) => DecretogramField::from_lexogram(
+                field,
+                "array",
+                lexicon.layer(),
+                declared.lexogram.clone(),
+                "de verplichtingen hierboven waarvan het bedrag op nul uitkwam: met \
+                 `bedrag: 0` en zonder termijnen, want er valt niets te betalen"
+                    .to_string(),
+            ),
+            None => DecretogramField::declared_by(
+                Herkomst::Platform,
+                field,
+                "array",
+                Some(
+                    "leeg: het artikel dat dit besluit uitvoert legt geen verplichting op"
+                        .to_string(),
+                ),
+            ),
+        },
         COMPETENT_AUTHORITY => DecretogramField::platform(field, "string").read_from(
             lexicon.authority_reference(&definition.output),
             "het platform schrijft het in elk gram; de regeling wijst het aan (RFC-002)",

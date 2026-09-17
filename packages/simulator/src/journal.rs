@@ -96,7 +96,9 @@ pub enum JournalKind {
     /// is hier het nieuws. Een regel zonder grammen onder de soort "betaling"
     /// zou eruitzien als een betaling waarvan de vastlegging zoek is.
     NietNagekomen,
-    /// Een termijn verstreek zonder dat het feit er lag.
+    /// Iets over een termijn dat geen betaling is: ze verstreek zonder dat het
+    /// feit er lag, ze verviel door een later besluit, of er valt niets te
+    /// betalen omdat de verplichting op nul uitkwam.
     Termijn,
     /// Een vraag die over een celgrens ging.
     Vraag,

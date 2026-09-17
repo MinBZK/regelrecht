@@ -144,6 +144,13 @@ fn het_schema_van_de_toekenning_ligt_vast() {
                 false
             ),
             (
+                "niets_te_betalen",
+                Some("array"),
+                None,
+                Herkomst::Lexogram,
+                false
+            ),
+            (
                 "regulation",
                 Some("string"),
                 None,
@@ -302,6 +309,13 @@ fn het_schema_van_de_vaststelling_ligt_vast() {
                 Some("array"),
                 None,
                 Herkomst::Platform,
+                false
+            ),
+            (
+                "niets_te_betalen",
+                Some("array"),
+                None,
+                Herkomst::Lexogram,
                 false
             ),
             (

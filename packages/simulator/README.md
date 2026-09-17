@@ -285,15 +285,42 @@ De vorm leest, in deze volgorde:
    klok een termijn als nagekomen herkent) wat er in de eigen `betalingen`-stroom op
    ligt.
 
-`outputs` staat er niet: deze vorm publiceert altijd dezelfde vier, en ze horen bij
-elkaar — zonder de lijst is het bedrag niet na te rekenen.
+`outputs` staat er niet: deze vorm publiceert altijd dezelfde zeven, en ze horen bij
+elkaar — zonder de lijst is geen bedrag na te rekenen.
 
 | uitkomst | wat het is |
 |---|---|
-| `verwacht` | de som van de termijnen die op dit moment vervallen waren |
-| `betaald` | wat daarvan in de eigen betalingenstroom ligt, per termijn ten hoogste het termijnbedrag |
-| `openstaand` | het verschil tussen die twee |
-| `termijnen` | de termijnen zelf: `besluit`, `volgnummer`, `vervaldatum`, `bedrag`, `status` |
+| `betaling_verwacht` | de som van de termijnen van soort `betaling` die op dit moment vervallen waren |
+| `betaling_betaald` | wat daarvan in de eigen betalingenstroom ligt, per termijn ten hoogste het termijnbedrag |
+| `betaling_openstaand` | het verschil tussen die twee |
+| `terugvordering_verwacht` | hetzelfde voor de termijnen van soort `terugvordering` |
+| `terugvordering_betaald` | wat daarvan terugbetaald in de eigen betalingenstroom ligt |
+| `terugvordering_openstaand` | het verschil tussen die twee |
+| `termijnen` | de termijnen zelf: `besluit`, `volgnummer`, `soort`, `vervaldatum`, `bedrag`, `status` |
+
+**Per richting, niet netto.** Een terugvordering loopt de andere kant op dan het
+voorschot waar ze uit volgt (zie [Verplichtingen](#verplichtingen-wat-een-besluit-achterlaat)):
+de partij betaalt aan het bestuursorgaan. De twee bij elkaar optellen noemt een
+bedrag dat niemand verschuldigd is — een voorschot van 103 en een terugvordering
+van 23 zijn samen geen 126 "verwacht". Netto rekenen, met de terugvordering als
+negatief bedrag, was de andere mogelijkheid, en die is hier bewust niet gekozen:
+
+- een verrekening van de twee richtingen is een **saldo**, en precies dat houdt
+  deze reductie niet bij. Of een terugvordering met een lopend voorschot verrekend
+  mag worden, is een rechtsvraag en geen rekenregel van het platform;
+- een verplichting kent in deze opstelling geen minteken maar een richting (zie
+  *Een negatief bedrag bestaat niet*). Een reductie die het minteken terugbrengt,
+  maakt ongedaan wat het gram juist uit elkaar hield;
+- per richting blijft elk bedrag te lezen zonder teken: `betaling_openstaand` is
+  wat er nog betaald moet worden, `terugvordering_openstaand` wat er nog
+  terugbetaald moet worden. Welke kant een termijn op loopt, staat erbij in haar
+  `soort`.
+
+Beide richtingen staan er altijd, ook over een zaak zonder terugvordering (dan op
+nul): een uitkomst die er alleen soms is, laat niet zien of er niets teruggevorderd
+wordt of dat het antwoord half binnenkwam. De bijdragen in de uitleg tellen op tot
+beide `…_betaald` samen — elke betaling hoort bij één termijn, en elke termijn bij
+één richting.
 
 De `status` van een termijn:
 
@@ -731,6 +758,7 @@ uitbreiding van RFC-013 stil achterlopen.
 | `chronicle_sources` | de eigen kronieken die als databron klaarstonden, elk met haar stand op het moment van het besluit: aantal grammen en een hash erover (RFC-022 §1.3). Wat de engine daaruit las, staat in de trace van het receipt |
 | `obligations` | het betalingsschema dat uit dit besluit volgt: per termijn een vervaldatum, een bedrag, een volgnummer, de betalende cel, de `grondslag` uit het lexogram en de herkomst (`lexogram`: regeling, versie, artikel). Een ingehaalde termijn draagt er de dag uit het schema bij als `oorspronkelijke_vervaldatum` — zie [Verplichtingen](#verplichtingen-wat-een-besluit-achterlaat). Leeg bij een afwijzing, ook als het lexogram er een oplegt |
 | `wacht_op_bekendmaking` | de verplichtingen die het lexogram met `vanaf: bekendmaking` oplegt: bedrag, partijen, ritme, grondslag en volgnummer staan er, de vervaldatum niet — die volgt uit de bekendmaking. Leeg bij elk besluit waarvan de termijnen meteen vervielen |
+| `niets_te_betalen` | de verplichtingen waarvan het bedrag op precies nul uitkwam: soort, partijen, ritme, grondslag en `bedrag: 0`, zonder termijnen. Leeg bij elk besluit waarvan geen verplichting op nul uitviel |
 | `receipt` | het volledige Execution Receipt, **met de uitvoeringstrace** (`results.trace`) |
 
 ### Het schema van het decretogram: wat komt uit de wet?
@@ -1055,6 +1083,18 @@ negatieve termijn erin zou een betaling beloven die niemand kan doen, en een gra
 er eenmaal ligt verandert niet meer. `terugvordering` is zelf niet te declareren —
 ze ontstaat uit de richting, niet uit een woord in de wet.
 
+**Nul is niets te betalen.** Komt het bedrag op precies nul uit — een vaststelling
+die gelijk is aan het betaalde voorschot — dan is dat geen betaling van nul euro en
+ook geen omkering. Er wordt geen termijn ingeroosterd, er komt geen vervaldag en er
+wordt geen executogram vastgelegd: een betaling van nul legt iets vast dat niet
+gebeurde. Weggelaten wordt de verplichting evenmin, want het artikel legde haar wél
+op. Het gram noemt haar onder `niets_te_betalen`, met `bedrag: 0`, haar soort, de
+partijen, het ritme en de grondslag, en zonder termijnen; ze telt niet mee in het
+aantal termijnen van het schema en krijgt geen volgnummer. Het journaal zet onder
+het besluit een regel dat er niets te betalen is — zonder die regel zag een lezer een
+besluit waarna niets gebeurt, en dat is niet te onderscheiden van een besluit dat
+niets oplegde. [`tests/verplichtingen.rs`](tests/verplichtingen.rs) legt het vast.
+
 **Wie er feitelijk betaalt, komt uit het wereldbestand.** De wet noemt een naam; het
 wereldbestand zegt welke **cel** er onder die naam nakomt. Twee wegen, in deze
 volgorde:
@@ -1272,8 +1312,9 @@ hetzelfde antwoordt),
 bepaalt wanneer, niet hoeveel) en
 [`scenarios/toeslagen_terugvordering.yaml`](scenarios/toeslagen_terugvordering.yaml)
 (een vaststelling lager dan het voorschot: de aanvrager-cel betaalt terug aan het
-bevoegd gezag, en de twee sommen lopen uiteen zonder saldo). Wat er gebeurt als de
-wet over een negatief bedrag zwijgt, staat als fixture in
+bevoegd gezag, de twee sommen lopen uiteen zonder saldo, en `openstaand` houdt de
+twee richtingen uit elkaar). Wat er gebeurt als de wet over een negatief bedrag
+zwijgt, staat als fixture in
 [`scenarios/geweigerd/negatief_bedrag_zonder_omkeren.yaml`](scenarios/geweigerd/negatief_bedrag_zonder_omkeren.yaml)
 en wordt afgerekend in [`tests/verplichtingen.rs`](tests/verplichtingen.rs).
 
@@ -2019,8 +2060,8 @@ cells:
           - name: zaakkenmerk
             type: string
         reduction:                              # geen `outputs`: de vorm
-          openstaand: true                      # publiceert verwacht, betaald,
-          key: zaakkenmerk                      # openstaand en termijnen
+          openstaand: true                      # publiceert per richting verwacht,
+          key: zaakkenmerk                      # betaald en openstaand, en termijnen
 
     komt_na:                                    # de namen waarvoor deze cel
       - Dienst Toeslagen                        # betalingen nakomt; een cel komt
