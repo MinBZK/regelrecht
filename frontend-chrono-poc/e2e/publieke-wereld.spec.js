@@ -390,6 +390,36 @@ test.describe('publieke wereld', () => {
     for (const entry of betalingen) expect(hasDelta(entry), JSON.stringify(entry)).toBe(true);
   });
 
+  test('M5: openstaand toont de termijnen als tabel, en er staat niets open', async () => {
+    // Na vier nagekomen termijnen is er niets open. Dat is het saaie antwoord,
+    // en juist daarom het bewijs: de bedragen komen uit de termijnen eronder,
+    // en die staan er allemaal, elk met haar stand.
+    await s.tab('Lexostatus');
+    await s.askLexostatus({
+      cell: 'toeslagen',
+      name: 'openstaande_termijnen',
+      params: { zaakkenmerk: `zorgtoeslag/${BSN}` },
+      moment: '31-12-2024',
+    });
+
+    const tabel = page.locator('nldd-table').first();
+    await expect(tabel).toBeVisible();
+    // De kop plus vier termijnen.
+    await expect(tabel.locator('nldd-table-row')).toHaveCount(5);
+    const kop = await tabel
+      .locator('nldd-table-row')
+      .first()
+      .locator('nldd-text-cell')
+      .evaluateAll((cells) => cells.map((cell) => cell.getAttribute('text')));
+    expect(kop).toEqual(['Bedrag', 'Besluit', 'Status', 'Vervaldatum', 'Volgnummer']);
+    // Vier nagekomen termijnen, dus vier keer dezelfde stand en geen enkele die
+    // te laat is. De cellen dragen hun tekst in een attribuut (zoals overal in
+    // het ontwerpsysteem), dus dit leest het attribuut en niet de bladzijde.
+    await expect(tabel.locator('nldd-text-cell[text="betaald"]')).toHaveCount(4);
+    await expect(tabel.locator('nldd-text-cell[text="te_laat"]')).toHaveCount(0);
+    await s.tab('Acties');
+  });
+
   test('V1: de vaststelling legt een tweede decretogram vast', async () => {
     await s.fillByLabel(s.actionForm(VASTSTELLING), 'Bsn', BSN);
     await s.actionForm(VASTSTELLING).locator('button[type=submit]').click();

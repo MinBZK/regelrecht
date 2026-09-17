@@ -946,6 +946,9 @@ export function describeReductie(vorm) {
     const versie = vorm.regulation_valid_from ? ` (versie ${formatMoment(vorm.regulation_valid_from)})` : '';
     return `uitkomst '${vorm.output}' van regeling '${vorm.regulation}'${versie}, berekend op ${formatMoment(vorm.op_moment)}`;
   }
+  if (vorm?.soort === 'openstaand') {
+    return `verplichtingen uit kroniek '${vorm.beschikkingen}' min de betalingen in kroniek '${vorm.betalingen}', met ${vorm.key} '${formatValue(vorm.key_value)}' op of vóór ${formatMoment(vorm.op_moment)}`;
+  }
   if (vorm?.soort !== 'kroniekfilter') return '';
   const regel =
     vorm.regel?.regel === 'som' ? `som over ${vorm.regel.field}` : 'laatste vastlegging';

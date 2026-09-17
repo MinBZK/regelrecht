@@ -505,6 +505,14 @@ fn lexostatus_snapshot(definition: &LexostatusDefinition) -> LexostatusDefinitio
                 chronicle: chronicle.clone(),
                 parameter: key.clone(),
             }),
+            // De openstaandvorm leest er twee, en dan is de stroom met de
+            // besluiten de plek waar een vrager de zaak opzoekt: een zaak
+            // bestaat pas als er over besloten is, en een betaling die er niet
+            // bij hoort ligt er niet.
+            Reduction::Openstaand { key } => Some(ChronicleKeySnapshot {
+                chronicle: BESCHIKKINGEN.to_string(),
+                parameter: key.clone(),
+            }),
         },
     }
 }

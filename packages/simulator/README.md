@@ -184,7 +184,7 @@ meegeleverde scenario publiceert die uitkomst dus expliciet. Een naam in
 `outputs` die de regeling niet kent, wordt geweigerd bij het optuigen van de
 cel, net als een reductie over een vreemde regeling.
 
-### Twee reductievormen
+### Drie reductievormen
 
 ```yaml
 reduction:                        # wetsvorm: laat een eigen regeling rekenen
@@ -204,11 +204,15 @@ reduction:                        # de som over een eigen kroniek
   chronicle: betalingen
   key: zaakkenmerk
   sum: bedrag                     # in plaats van `latest`, nooit samen
+
+reduction:                        # openstaandvorm: opgelegd min betaald
+  openstaand: true                # de twee stromen liggen vast, dus geen
+  key: zaakkenmerk                # `chronicle`; `outputs` hoort hier niet
 ```
 
 De configuratie kiest door te noemen wat ze bedoelt; er is geen `kind`-veld dat
-herhaalt wat er al staat. Beide vormen in één reductie, of geen van beide, is een
-fout die zegt welke twee vormen er zijn.
+herhaalt wat er al staat. Twee vormen in één reductie, of geen van alle, is een
+fout die zegt welke vormen er zijn.
 
 Het **kroniekfilter** levert per sleutelwaarde de laatste vastlegging op of vóór
 `op_moment`. Drie dingen om te weten:
@@ -258,7 +262,77 @@ Dat dit een reductie is en geen teller, is het hele punt: "betaald tot nu toe" o
 een moment in het verleden blijft exact hetzelfde antwoord geven nadat er meer
 betaald is. Een saldo dat naast de kroniek wordt bijgehouden kan dat niet.
 
-Beide vormen leggen naast hun uitkomst vast **hoe** ze eraan kwamen; zie
+#### `openstaand`: verwacht min gebeurd
+
+De derde vorm is de enige die **twee** eigen kronieken leest: `beschikkingen` (wat
+deze cel oplegde) en `betalingen` (wat er op die verplichtingen ligt). Beide zijn
+van dezelfde cel, dus dit blijft een reductie binnen de cel — het is alleen de
+eerste die twee eigen stromen combineert. Wat ze oplevert, is het verschil tussen
+**verwacht** (het decretogram) en **gebeurd** (het executogram), en dat verschil
+is een lexostatus als elke andere.
+
+De vorm leest, in deze volgorde:
+
+1. per **besluitnaam en per stage** het laatste gram over deze zaak op of vóór
+   `op_moment` — een tweede gram van hetzelfde besluit in dezelfde stage is een
+   herziening en vervangt wat er stond, dus alle termijnen van beide meetellen zou
+   verdubbelen. Per stage en niet per besluit, want het besluit-gram zegt wat er
+   opgelegd is en het bekendmakingsgram wat daarvan is gaan lopen (zie
+   [De bekendmaking](#de-bekendmaking-een-tweede-gram-op-dezelfde-zaak));
+2. daaruit de termijnen met een **vervaldatum op of vóór** dat moment; een termijn
+   die later vervalt is nog niets verwacht;
+3. per termijn (besluit + volgnummer, dezelfde sleutel waarmee de klok ze nakomt)
+   wat er in de eigen `betalingen`-stroom op ligt.
+
+`outputs` staat er niet: deze vorm publiceert altijd dezelfde vier, en ze horen bij
+elkaar — zonder de lijst is het bedrag niet na te rekenen.
+
+| uitkomst | wat het is |
+|---|---|
+| `verwacht` | de som van de termijnen die op dit moment vervallen waren |
+| `betaald` | wat daarvan in de eigen betalingenstroom ligt, per termijn ten hoogste het termijnbedrag |
+| `openstaand` | het verschil tussen die twee |
+| `termijnen` | de termijnen zelf: `besluit`, `volgnummer`, `vervaldatum`, `bedrag`, `status` |
+
+De `status` van een termijn:
+
+| `status` | wanneer |
+|---|---|
+| `betaald` | er ligt genoeg op deze termijn |
+| `open` | ze vervalt op het gevraagde moment zelf, en is dus nog niet te laat |
+| `te_laat` | haar vervaldag is gepasseerd en er ligt niet genoeg |
+| `wacht_op_bekendmaking` | ze heeft nog geen vervaldag: het besluit is niet bekendgemaakt |
+| `vervallen` | een later besluit over dezelfde zaak kwam ervoor in de plaats |
+
+Die verzameling is met opzet **open**: er komen statussen bij zodra de wereld meer
+met termijnen kan, en wie dit leest hoort een onbekende status te kunnen
+tegenkomen in plaats van aan te nemen dat het er vijf zijn.
+
+Een termijn die door een vervangende beschikking verviel
+(`vervangt_openstaande_termijnen`), telt **niet** mee in de bedragen: er hoeft niet
+meer op betaald te worden. Dat staat in geen enkel gram — een gram verandert niet —
+maar het volgt wél uit de grammen, en zo leidt deze reductie het ook af: een later
+besluit over dezelfde zaak dat het declareert, en een termijn die op dát moment nog
+moest komen. Precies wat de wereld op dat moment deed; zie
+[Een vervangende beschikking](#een-vervangende-beschikking-wat-nog-openstond-vervalt).
+Wat er al betaald was, blijft `betaald`: wat betaald is, is betaald, en wat daarmee
+moet gebeuren is de verrekening in dat besluit en geen terugdraaiing.
+
+Een verplichting met `vanaf: bekendmaking` staat vóór de bekendmaking als één
+regel in de lijst — met haar hele bedrag, zonder `vervaldatum`, met de stand die
+zegt waarop ze wacht — en telt **niet** mee in de bedragen: er is geen dag waarop
+ze had moeten gebeuren, dus er valt niets te verwachten en niets te missen. Eén
+regel per wachtende verplichting en niet per termijn: hoevéél termijnen het er
+worden staat vast, wannéér ze vervallen niet. Zodra de bekendmaking er is, staan
+haar termijnen in het gram van die stage en verdwijnt de wachtende regel.
+
+Geen decretogram over deze zaak is **niets vastgesteld** en niet nul, om dezelfde
+reden als bij de som: "er staat niets open" en "hier is geen zaak" zijn twee
+antwoorden. En net als de som is dit een reductie en geen saldo — wat er op een
+moment in het verleden openstond, blijft exact hetzelfde antwoord geven nadat er
+meer betaald is.
+
+Alle drie de vormen leggen naast hun uitkomst vast **hoe** ze eraan kwamen; zie
 [Hoe het antwoord tot stand kwam](#hoe-het-antwoord-tot-stand-kwam).
 
 ### Hoe het antwoord tot stand kwam
@@ -309,11 +383,15 @@ Wat er per vorm in staat:
   de cel zelf laadt. De grammen staan er net zo goed bij: welk gram van een
   kroniekstroom de engine te zien kreeg, weet zij niet — zij ziet per onderwerp
   één record, want de tijdreductie is er dan al overheen gegaan.
-- **niets vastgesteld** is geen derde vorm maar hetzelfde kroniekfilter zonder
-  één gram, met `gemist` erbij: hoeveel grammen er in die stroom lagen, en
-  hoeveel daarvan afvielen op het moment, op de sleutel of op de voorwaarden.
-  Zonder die telling is "hier ligt niets over deze zaak" niet te onderscheiden
-  van "hier ligt niets".
+- **openstaand**: allebei de stromen die ze las, de sleutel met de waarde uit de
+  vraag, en elk gelezen gram met zijn `bijdrage` — bij een decretogram wat eruit
+  verwacht werd, bij een betaling wat ze daarvan dekte. Welke van de twee het is,
+  volgt uit de stroom waarin het gram ligt. Een betaling die bij geen enkele
+  vervallen termijn hoort staat er niet in: die is niet gelezen.
+- **niets vastgesteld** is geen vierde vorm maar dezelfde vorm zonder één gram,
+  met `gemist` erbij: hoeveel grammen er in die stroom lagen, en hoeveel daarvan
+  afvielen op het moment, op de sleutel of op de voorwaarden. Zonder die telling
+  is "hier ligt niets over deze zaak" niet te onderscheiden van "hier ligt niets".
 
 Elk gram is een **verwijzing** en geen kopie — dezelfde `id` waarmee het
 journaal naar een gram wijst (`<cel>|<kroniek>|<plek>`), terug te vinden in het
@@ -328,7 +406,8 @@ het antwoord zelf.
 
 ### "Niets vastgesteld" is een antwoord
 
-Dit is het antwoord van een kroniekfilter dat niets aantreft; de wetsvorm levert
+Dit is het antwoord van een kroniekfilter dat niets aantreft, en van een
+openstaandvorm die over deze zaak geen enkel besluit vindt; de wetsvorm levert
 altijd de uitkomst die de engine berekent. Was er op `op_moment` geen feit, dan is
 dat geen fout en geen lege map die op een antwoord lijkt, maar een eigen variant
 met een reden:
@@ -913,6 +992,10 @@ bedrag toe.
   verzonnen om toch maar iets te kunnen inroosteren. Levert de stage die datum
   niet, dan valt de bekendmaking om met de melding dat de wet haar hoort te
   geven. Zie [De bekendmaking](#de-bekendmaking-een-tweede-gram-op-dezelfde-zaak).
+  Wat er ondertussen op die bekendmaking wacht, is wél te zien:
+  [`openstaand`](#openstaand-verwacht-min-gebeurd) zet zo'n verplichting in haar
+  lijst met de stand `wacht_op_bekendmaking`, zodat "er staat niets open" niet
+  hetzelfde antwoord wordt als "hier loopt niets".
 - **`grondslag` is verplicht en vrije tekst.** Een verplichting zonder grondslag is
   een bedrag zonder wet. Ze reist mee tot in elke termijn van het gram, samen met
   de herkomst (`lexogram`: regeling, versie en artikel), zodat wie een betaling
@@ -1039,6 +1122,37 @@ zijn receipt — zonder de kroniek van de besluitende cel af te lopen. Twee van 
 drie opschrijven en de derde laten raden zou die verwijzing laten leunen op een
 afspraak buiten het gram.
 
+#### Een termijn die niet nagekomen wordt
+
+De klok komt elke termijn na, en dan bestaat "niet betaald" niet — en dan is *wat
+staat er nog open* een vraag met altijd hetzelfde antwoord. `betalingen_opgeschort`
+op een cel zegt vanaf wanneer zij de termijnen die vervallen **niet** nakomt:
+
+```yaml
+- id: belastingdienst
+  komt_na:
+    - Dienst Toeslagen
+  betalingen_opgeschort: 2024-03-01   # of `true`: vanaf het begin
+```
+
+Op zo'n vervaldatum legt de klok niets vast en schrijft ze één journaalregel
+*termijn niet nagekomen* (`kind: niet_nagekomen`), zonder gram en zonder verschil
+in de stand van de zaak: er ís niets vastgelegd, dus er verandert niets. Dat de
+termijn nu openstaat, volgt uit het decretogram dat er al ligt en uit de dag die
+verstreek.
+
+Het is **casusdata en geen kwijtschelding**. Wat de wet oplegt verandert er niet
+door: de termijn is ingeroosterd, staat in het decretogram en blijft staan, en
+[`openstaand`](#openstaand-verwacht-min-gebeurd) telt haar mee. En ze wordt ook niet
+stil later alsnog voldaan — een vervallen termijn gaat één keer af, en die ene keer
+is hier voorbij. `scenarios/toeslagen_openstaande_termijnen.yaml` speelt dat af:
+vier kwartaaltermijnen, de eerste nagekomen en de tweede niet.
+
+Dit is iets anders dan de termijn zonder cel hierboven. Die blijft open omdat deze
+wereld niemand kent die haar zou doen; deze blijft open omdat de cel die haar zou
+doen, het niet doet. Twee redenen, twee verhalen — en alleen de tweede is een
+gebeurtenis om over te schrijven.
+
 De plek wordt ingevuld **nadat** het decretogram vastligt: het is de plek waar het
 gram terechtkwam en niet de plek waar het naar verwachting terecht zou komen.
 
@@ -1063,8 +1177,10 @@ van het eerste doorgaan en stil wegvallen. Om dezelfde reden lopen de volgnummer
 binnen één gram dóór over álle verplichtingen die het besluit oplegt, en beginnen
 ze niet per verplichting opnieuw.
 
-**Een beschikking kan een eerdere vervangen.** Een verplichting is niet in te
-trekken: haar schema staat in een gram, en een gram verandert niet. Een tweede
+#### Een vervangende beschikking: wat nog openstond, vervalt
+
+Een verplichting is niet in te trekken: haar schema staat in een gram, en een gram
+verandert niet. Een tweede
 besluit over dezelfde zaak laat de termijnen van het eerste dus gewoon vervallen —
 tenzij het artikel dat het tweede besluit voortbrengt zegt dat deze beschikking in
 de plaats komt van de vorige:
@@ -1084,6 +1200,12 @@ is, is betaald, en wat daarmee moet gebeuren is de verrekening in het besluit ze
 Zonder die declaratie gebeurt er niets, en dat is het verschil tussen een regel uit
 het recht en een regel van het platform: "een tweede besluit wist het eerste uit"
 zou een uitvoerder nooit mogen aannemen.
+
+Dat een termijn zo verviel, is nergens vastgelegd — er is niets gebeurd wat een gram
+zou kunnen dragen. Het is wél **af te leiden** uit wat er ligt, en
+[`openstaand`](#openstaand-verwacht-min-gebeurd) doet dat: een later besluit over
+dezelfde zaak dat dit declareert, plus een termijn die op dát moment nog moest
+komen. Zo staat ze in de lijst met de stand `vervallen` in plaats van als schuld.
 
 Wat er hier níét onder valt, zijn verplichtingen die nog op de **bekendmaking**
 wachten (`vanaf: bekendmaking`). Die staan in het gram van hun eigen besluit en
@@ -1309,6 +1431,7 @@ lexostatus, en dat verschil is het lezen waard:
 |---|---|
 | `chronicle: beschikkingen` | het **vastgelegde besluit** van toen, met de `regulation_valid_from` van toen; geen engine in zicht |
 | `regulation: …` + `output: …` | de **rechtstoestand nu**, opnieuw berekend op de wetsversie die op `op_moment` gold |
+| `openstaand: true` | wat er van dat besluit op dat moment **nog openstond**: zijn vervallen termijnen min de betalingen die erop liggen |
 
 Allebei zijn ze geldig en allebei zijn ze nodig: de tweede vorm is het lexogram
 (*wat zegt het recht over deze feiten*), de eerste het decretogram (*wat is er
@@ -1859,9 +1982,22 @@ cells:
           key: zaakkenmerk
           sum: bedrag                           # in plaats van `latest`
 
+      - name: openstaande_termijnen             # opgelegd min betaald
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        reduction:                              # geen `outputs`: de vorm
+          openstaand: true                      # publiceert verwacht, betaald,
+          key: zaakkenmerk                      # openstaand en termijnen
+
     komt_na:                                    # de namen waarvoor deze cel
       - Dienst Toeslagen                        # betalingen nakomt; een cel komt
                                                 # haar eigen `identity` vanzelf na
+
+    betalingen_opgeschort: 2024-03-01           # vanaf wanneer deze cel haar
+                                                # termijnen niet nakomt; `true`
+                                                # is vanaf het begin, weglaten
+                                                # is het gewone geval
 
     besluit_definitions:                        # wat de cel kan besluiten
       - name: zorgtoeslag_besluit               # een voorbeeld, geen echte
@@ -2567,7 +2703,7 @@ een vraag die over een celgrens ging.
 | `seq` | de plek in het journaal, vanaf 0 — waarnaar `parent` verwijst |
 | `moment` | het moment in de logische tijd |
 | `actor` | `actor` (een actie), `cell` (een cel die zelf besloot of vroeg) of `klok` |
-| `kind` | `vastlegging`, `besluit`, `betaling`, `termijn` of `vraag` |
+| `kind` | `vastlegging`, `besluit`, `betaling`, `niet_nagekomen`, `termijn` of `vraag` |
 | `description` | korte omschrijving, in de woorden van het wereldbestand |
 | `grams` | verwijzingen naar de grammen die erdoor ontstonden: cel, kroniek, gram-id (`<cel>|<kroniek>|<plek>`) |
 | `changes` | wat er aan de stand van de zaak veranderde, per betrokken cel |
@@ -2733,11 +2869,14 @@ als boolean-uitkomst in een regeling staat kan niet afwijzen, en `decision_type`
 is geen open vocabulaire: het gram draagt wat de regeling aanwijst, of `AFWIJZING`.
 Zie [Een weigering is ook een besluit](#een-weigering-is-ook-een-besluit).
 
-**Een verplichting kent geen rente en geen verzuim.** Een termijn vervalt en wordt
-betaald; wat er gebeurt als er te laat of niet betaald wordt, staat er niet — geen
-rente (Awir art. 27), geen aanmaning, geen dwangbevel (Awb 4:97 e.v.). Verrekenen
-gebeurt wél, maar als **regel in de wet** en niet als iets dat het platform met een
-schema doet: Awir art. 19 trekt het uitbetaalde voorschot van de vastgestelde
+**Een verplichting kent geen rente en geen verzuim.** Een termijn die niet nagekomen
+wordt, blijft openstaan en verder gebeurt er niets — geen rente (Awir art. 27), geen
+aanmaning, geen dwangbevel (Awb 4:97 e.v.). Dát ze openstaat is wel te zien: de
+wereld kan een cel haar termijnen laten laten liggen (zie [Een termijn die niet
+nagekomen wordt](#een-termijn-die-niet-nagekomen-wordt)) en
+[`openstaand`](#openstaand-verwacht-min-gebeurd) telt haar mee. Verrekenen gebeurt
+wél, maar als **regel in de wet** en niet als iets dat het platform met een schema
+doet: Awir art. 19 trekt het uitbetaalde voorschot van de vastgestelde
 tegemoetkoming af en legt alleen het slotbedrag op, met
 `richting_bij_negatief: omkeren` voor het geval dat onder nul uitkomt.
 

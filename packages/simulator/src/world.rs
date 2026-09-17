@@ -1896,6 +1896,32 @@ impl World {
     /// vastleggen — het zaakkenmerk voorop — en dat is precies waarop een
     /// statusindicator over deze zaak te bevragen is.
     fn settle_as_event(&mut self, due: &ObligationDue) -> Result<Vec<RecordedFact>> {
+        // Komt de betalende cel op deze dag niet na, dan blijft het bij een
+        // regel in het journaal. De trigger is hier al van de lijst af, dus de
+        // termijn wordt ook niet stil later alsnog voldaan — wat openblijft,
+        // blijft open tot er een besluit over komt.
+        if self.opgeschort(due) {
+            self.write_journal(JournalEntry {
+                seq: 0,
+                moment: due.vervaldatum,
+                actor: JournalActor::Klok,
+                kind: JournalKind::NietNagekomen,
+                description: format!("termijn niet nagekomen: {}", due.describe()),
+                // Geen grammen en geen verschillen: er is niets vastgelegd, en
+                // daarom verandert er ook niets aan de stand van de zaak. Dat de
+                // termijn nu openstaat, volgt uit het decretogram dat er al ligt
+                // en uit de dag die verstreek — niet uit een feit dat hier
+                // ontstond.
+                grams: Vec::new(),
+                changes: Vec::new(),
+                accepted: Vec::new(),
+                executed: None,
+                question: None,
+                parent: None,
+            });
+            return Ok(Vec::new());
+        }
+
         let touched: BTreeSet<String> = due
             .betaler
             .iter()
@@ -1928,6 +1954,24 @@ impl World {
             parent: None,
         });
         Ok(facts)
+    }
+
+    /// Komt de cel die deze termijn zou nakomen, haar op deze dag niet na?
+    ///
+    /// Alleen over de **betalende** cel: wie er niet betaalt, is wie er moest
+    /// betalen. Kent deze wereld geen cel onder de naam van de schuldenaar, dan
+    /// is er niets op te schorten — dan blijft de termijn al open, en dat is een
+    /// ander verhaal met een eigen reden (zie [`Self::settle`]).
+    fn opgeschort(&self, due: &ObligationDue) -> bool {
+        let Some(betaler) = due.betaler.as_deref() else {
+            return false;
+        };
+        self.definition
+            .cells
+            .iter()
+            .find(|config| config.id == betaler)
+            .and_then(|config| config.betalingen_opgeschort)
+            .is_some_and(|opschorting| opschorting.geldt_op(due.vervaldatum))
     }
 
     /// Zet één regel in het journaal en geef haar plek terug.

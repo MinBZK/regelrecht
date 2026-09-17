@@ -90,6 +90,12 @@ pub enum JournalKind {
     Bekendmaking,
     /// Een termijn van een verplichting verviel en werd nagekomen.
     Betaling,
+    /// Een termijn verviel en werd **niet** nagekomen.
+    ///
+    /// Een eigen soort en geen betaling-zonder-gram: dat er niets vastgelegd is,
+    /// is hier het nieuws. Een regel zonder grammen onder de soort "betaling"
+    /// zou eruitzien als een betaling waarvan de vastlegging zoek is.
+    NietNagekomen,
     /// Een termijn verstreek zonder dat het feit er lag.
     Termijn,
     /// Een vraag die over een celgrens ging.

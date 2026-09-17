@@ -15,6 +15,7 @@
 
 use crate::cell::besluit::{BesluitDefinition, DeclaredObligations, GramFields};
 use crate::cell::chronicle::ChronicleStream;
+use crate::cell::openstaand;
 use crate::error::{Result, SimulatorError, Subject};
 use crate::journal::StatusIndicator;
 use chrono::NaiveDate;
@@ -108,6 +109,22 @@ pub struct CellConfig {
     /// tussen twee organisaties en geen eigenschap van het recht.
     #[serde(default)]
     pub accepts_from: Vec<AcceptedSource>,
+    /// Vanaf wanneer deze cel de termijnen die vervallen **niet** nakomt.
+    ///
+    /// Casusdata, en de tegenhanger van [`Self::komt_na`]: dat zegt welke
+    /// verplichtingen deze cel nakomt, dit zegt wanneer ze dat niet doet. Zonder
+    /// deze mogelijkheid komt de klok elke termijn na en bestaat "niet betaald"
+    /// niet in de opstelling — en dan is "wat staat er nog open" een vraag met
+    /// altijd hetzelfde antwoord.
+    ///
+    /// Het is **geen kwijtschelding**. De termijn is ingeroosterd, staat in het
+    /// decretogram en blijft staan; er wordt alleen geen executogram van gemaakt.
+    /// Wat er dan van overblijft, is precies wat een reductie erover zegt (zie
+    /// [`crate::cell::openstaand`]).
+    ///
+    /// Afwezig is het gewone geval: dan komt deze cel elke termijn na.
+    #[serde(default)]
+    pub betalingen_opgeschort: Option<Opschorting>,
     /// De lexostatussen die samen "de stand van de zaak" van deze cel vormen.
     ///
     /// Casusdata, en met opzet een eigen lijst naast
@@ -269,6 +286,64 @@ pub enum Prefill {
     },
     /// Een waarde die letterlijk in het wereldbestand staat.
     Literal(Value),
+}
+
+/// Vanaf wanneer een cel haar termijnen niet meer nakomt.
+///
+/// Twee schrijfwijzen, één betekenis: `true` schort alles op, een datum schort op
+/// vanaf die dag. De tweede is wat een wereld nodig heeft om het verschil te
+/// laten zien — een eerste termijn die nagekomen wordt en een tweede die dat niet
+/// wordt, is een ander verhaal dan een cel die nooit betaalt.
+///
+/// `false` is geen derde vorm en wordt geweigerd, net als `latest: false` bij een
+/// kroniekfilter: wie niet opschort, schrijft het veld niet op. Een `false` die
+/// stil hetzelfde doet als afwezigheid, laat een lezer denken dat er iets staat.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(try_from = "Value")]
+pub enum Opschorting {
+    /// Vanaf het begin van de wereld: deze cel komt geen enkele termijn na.
+    Altijd,
+    /// Vanaf deze dag; termijnen die eerder vervielen zijn gewoon nagekomen.
+    Vanaf(NaiveDate),
+}
+
+impl Opschorting {
+    /// Geldt de opschorting op deze dag?
+    ///
+    /// Op de dag zelf al: een cel die vanaf 1 februari niet meer betaalt, betaalt
+    /// de termijn van 1 februari niet.
+    #[must_use]
+    pub fn geldt_op(self, at: NaiveDate) -> bool {
+        match self {
+            Self::Altijd => true,
+            Self::Vanaf(vanaf) => at >= vanaf,
+        }
+    }
+}
+
+impl TryFrom<Value> for Opschorting {
+    type Error = String;
+
+    fn try_from(value: Value) -> std::result::Result<Self, Self::Error> {
+        match &value {
+            Value::Bool(true) => Ok(Self::Altijd),
+            Value::String(text) => NaiveDate::parse_from_str(text, ISO_DATE)
+                .ok()
+                .filter(|parsed| parsed.format(ISO_DATE).to_string() == *text)
+                .map(Self::Vanaf)
+                .ok_or_else(|| opschorting_error(&value)),
+            _ => Err(opschorting_error(&value)),
+        }
+    }
+}
+
+/// Wat een onleesbare opschorting een lezer vertelt.
+fn opschorting_error(value: &Value) -> String {
+    format!(
+        "`betalingen_opgeschort: {value}` is geen opschorting; schrijf `true` (deze cel \
+         komt geen enkele termijn na) of een datum `jjjj-mm-dd` (vanaf die dag niet meer), \
+         of laat het veld weg"
+    )
 }
 
 /// Hoe de klok als voorinvulling opgeschreven wordt.
@@ -441,12 +516,15 @@ impl ParameterType {
 
 /// De chronolexoreductie: hoe de cel over haar eigen feiten reduceert.
 ///
-/// Twee vormen, en de configuratie kiest door te noemen wat ze bedoelt:
+/// Drie vormen, en de configuratie kiest door te noemen wat ze bedoelt:
 ///
 /// - de **wetsvorm** (`regulation` + `output`) laat een eigen regeling over de
 ///   eigen feiten rekenen;
 /// - het **kroniekfilter** (`chronicle` + `key`) leest rechtstreeks uit een
-///   eigen kroniek, zonder engine.
+///   eigen kroniek, zonder engine;
+/// - de **openstaandvorm** (`openstaand: true` + `key`) legt twee eigen
+///   kronieken naast elkaar: wat de eigen decretogrammen opleggen, min wat er in
+///   de eigen betalingenstroom op ligt.
 ///
 /// Dat de tweede vorm bestaat is geen gemak maar de toets op het contract: een
 /// organisatie die niet op RegelRecht draait is evengoed een cel, en haar
@@ -456,6 +534,11 @@ impl ParameterType {
 /// Het kroniekfilter kent twee manieren om met de gevonden vastleggingen om te
 /// gaan: `latest: true` neemt er één, `sum: <veld>` telt ze op. Zie
 /// [`Aggregate`].
+///
+/// De derde vorm is de enige die méér dan één stroom leest, en blijft daarmee
+/// binnen de cel: beide stromen zijn van haarzelf (RFC-022 §4.1). Wat ze
+/// oplevert is het verschil tussen **verwacht** en **gebeurd** — zie
+/// [`crate::cell::openstaand`].
 #[derive(Debug, Clone, Deserialize)]
 #[serde(try_from = "ReductionFields")]
 pub enum Reduction {
@@ -493,6 +576,17 @@ pub enum Reduction {
         conditions: BTreeMap<String, Value>,
         /// Wat het filter met de gevonden vastleggingen doet.
         aggregate: Aggregate,
+    },
+    /// Wat er van de eigen verplichtingen op deze zaak nog openstaat.
+    ///
+    /// Twee vaste stromen — [`crate::BESCHIKKINGEN`] en [`crate::BETALINGEN`] —
+    /// en daarom geen `chronicle`: de vorm zegt welke twee ze leest, want ze
+    /// betekenen hier iets bepaalds. Een `chronicle` die dat vrij zou laten, zou
+    /// twee willekeurige stromen van elkaar aftrekken.
+    Openstaand {
+        /// Het veld waarop beide stromen de zaak aanwijzen. Tevens de naam van
+        /// de gedocumenteerde parameter die de waarde aanlevert.
+        key: String,
     },
 }
 
@@ -543,6 +637,8 @@ struct ReductionFields {
     latest: Option<bool>,
     /// Het veld waarover gesommeerd wordt; zie [`Aggregate::Sum`].
     sum: Option<String>,
+    /// Alleen `true` heeft betekenis; zie [`Reduction::Openstaand`].
+    openstaand: Option<bool>,
     /// Zie [`Reduction::Chronicle::conditions`].
     #[serde(rename = "where")]
     conditions: Option<BTreeMap<String, Value>>,
@@ -552,6 +648,18 @@ impl TryFrom<ReductionFields> for Reduction {
     type Error = String;
 
     fn try_from(fields: ReductionFields) -> std::result::Result<Self, Self::Error> {
+        match fields.openstaand {
+            Some(true) => return openstaand_form(fields),
+            Some(false) => {
+                return Err(
+                    "`openstaand: false` is geen reductie; laat het veld weg als de \
+                     reductie een wetsvorm (`regulation` + `output`) of een kroniekfilter \
+                     (`chronicle` + `key`) is"
+                        .to_string(),
+                )
+            }
+            None => {}
+        }
         match (fields.regulation, fields.chronicle) {
             (Some(regulation), Some(chronicle)) => Err(format!(
                 "reductie noemt zowel regeling '{regulation}' als kroniekstroom '{chronicle}'; \
@@ -627,6 +735,47 @@ impl TryFrom<ReductionFields> for Reduction {
             ),
         }
     }
+}
+
+/// De openstaandvorm uit het YAML-oppervlak: `openstaand: true` plus een `key`.
+///
+/// Alles wat bij een andere vorm hoort wordt hier geweigerd en niet genegeerd.
+/// Een `sum: bedrag` naast `openstaand: true` is geen verfijning maar een tweede
+/// reductie, en die hoort bij het optuigen te stranden in plaats van stil weg te
+/// vallen.
+fn openstaand_form(fields: ReductionFields) -> std::result::Result<Reduction, String> {
+    let andere: Vec<&str> = [
+        fields.regulation.as_ref().map(|_| "regulation"),
+        fields.output.as_ref().map(|_| "output"),
+        fields.parameters.as_ref().map(|_| "parameters"),
+        fields.chronicle.as_ref().map(|_| "chronicle"),
+        fields.latest.as_ref().map(|_| "latest"),
+        fields.sum.as_ref().map(|_| "sum"),
+        fields.conditions.as_ref().map(|_| "where"),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    if !andere.is_empty() {
+        return Err(format!(
+            "reductie `openstaand: true` noemt ook {}; de openstaandvorm leest de eigen \
+             stroom '{}' en de eigen stroom '{}' en kent verder alleen `key`",
+            andere.join(", "),
+            crate::cell::BESCHIKKINGEN,
+            crate::cell::BETALINGEN
+        ));
+    }
+    let key = fields.key.ok_or_else(|| {
+        format!(
+            "reductie `openstaand: true` mist `key`: zonder sleutelveld weet de vorm \
+             niet over welke zaak de vraag gaat (in '{}' en '{}' is dat doorgaans \
+             `{}`)",
+            crate::cell::BESCHIKKINGEN,
+            crate::cell::BETALINGEN,
+            crate::cell::ZAAKKENMERK
+        )
+    })?;
+    Ok(Reduction::Openstaand { key })
 }
 
 /// Wat een cel te bieden heeft, zoals ze bij het optuigen blijkt te zijn.
@@ -1088,6 +1237,11 @@ impl LexostatusDefinition {
         let driving = match &self.reduction {
             Reduction::Law { output, .. } => Some(output.as_str()),
             Reduction::Chronicle { .. } => None,
+            // De openstaandvorm publiceert wat ze ís: de drie bedragen en de
+            // lijst met termijnen. Niet uit te breiden en niet in te perken —
+            // er is geen stroom en geen regeling waaruit een vierde naam zou
+            // kunnen komen.
+            Reduction::Openstaand { .. } => return openstaand::OUTPUTS.iter().copied().collect(),
         };
         published_outputs(driving, &self.outputs)
     }
@@ -1129,7 +1283,38 @@ impl LexostatusDefinition {
                 conditions,
                 aggregate,
             } => self.validate_chronicle(cell, surface, chronicle, key, conditions, aggregate),
+            Reduction::Openstaand { key } => self.validate_openstaand(cell, surface, key),
         }
+    }
+
+    /// De openstaandvorm: beide vaste stromen bestaan, kennen de sleutel, en de
+    /// consument kan die sleutel meegeven.
+    ///
+    /// Geen `outputs`-toets zoals bij een kroniekfilter: wat deze vorm
+    /// publiceert, staat vast (zie [`Self::published_outputs`]). Een definitie
+    /// die er tóch iets bij noemt, belooft een uitkomst die nooit komt, en dat
+    /// hoort hier te stranden.
+    fn validate_openstaand(&self, cell: &str, surface: &CellSurface<'_>, key: &str) -> Result<()> {
+        if !self.outputs.is_empty() {
+            return Err(SimulatorError::OpenstaandWithOutputs {
+                cell: cell.to_string(),
+                lexostatus: self.name.clone(),
+                outputs: self.outputs.join(", "),
+                published: openstaand::OUTPUTS.join(", "),
+            });
+        }
+        for stream in [crate::cell::BESCHIKKINGEN, crate::cell::BETALINGEN] {
+            surface.check_stream_field(cell, Subject::Lexostatus, &self.name, stream, key)?;
+        }
+        if !self.documents(key) {
+            return Err(SimulatorError::ChronicleKeyWithoutParameter {
+                cell: cell.to_string(),
+                lexostatus: self.name.clone(),
+                key: key.to_string(),
+                documented: self.documented_parameters(),
+            });
+        }
+        Ok(())
     }
 
     /// De wetsvorm: eigen regeling, bestaande uitkomsten, bestaande parameters.

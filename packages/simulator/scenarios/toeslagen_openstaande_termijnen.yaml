@@ -1,0 +1,228 @@
+---
+name: een termijn die niet nagekomen wordt
+description: >-
+  Naast **verwacht** (het decretogram) en **gebeurd** (het executogram) staat het
+  verschil: wat er van deze zaak nog openstaat. Dat verschil is geen saldo maar
+  een reductie — `openstaand: true` legt de twee eigen kronieken van de cel naast
+  elkaar en trekt per termijn af wat erop ligt.
+
+  Om dat te kunnen laten zien moet er iets níet gebeuren. De klok komt elke
+  termijn na, dus zonder `betalingen_opgeschort` staat er nooit iets open en geeft
+  deze vraag altijd nul. Hier stopt de betalende cel per 1 maart: de termijn van
+  1 februari is nagekomen, die van 1 mei niet, en de klok schrijft er een regel
+  `termijn niet nagekomen` over in het journaal in plaats van een executogram.
+
+  De twee vragen onderaan staan er om te laten zien dat dit een reductie is en
+  geen teller: dezelfde vraag over een eerder moment geeft nog steeds nul
+  openstaand, ook nadat de tweede termijn al gepasseerd is. Wat er toen openstond,
+  blijft wat er toen openstond.
+
+clock:
+  start: 2024-01-01
+
+cells:
+  - id: toeslagen
+    # De naam waaronder deze cel zich uitgeeft; de regeling wijst dit gezag aan.
+    identity: Dienst Toeslagen
+    laws:
+      - test_openstaande_termijnen
+
+    chronicles:
+      # De besluitende cel houdt zelf ook een betalingsstroom: zij legt vast dat
+      # haar gemeld is dat er betaald is. Dát is waarvan `openstaand` aftrekt —
+      # wat een ander vastlegde, weet zij niet.
+      - stream: betalingen
+        key: zaakkenmerk
+        gebeurtenissen: &betalingsschema
+          - name: betaling_gedaan
+            intake: betaling
+            grondslag: Algemene wet bestuursrecht, art. 4:89
+            fields: &betalingsvelden
+              - name: zaakkenmerk
+                type: string
+              - name: bedrag
+                type: amount
+              - name: volgnummer
+                type: number
+              - name: besluit
+                type: string
+              - name: schuldenaar
+                type: string
+              - name: schuldeiser
+                type: string
+          - name: betaling_gemeld
+            intake: levering
+            grondslag: Algemene wet bestuursrecht, art. 4:89
+            fields: *betalingsvelden
+
+    besluit_definitions:
+      - name: toekenning_per_kwartaal
+        doc: >-
+          Vier kwartaaltermijnen, vanaf de dag van het besluit. Het ritme staat in
+          artikel 1 van de regeling en niet hier.
+        regulation: test_openstaande_termijnen
+        output: toegekende_termijnen
+        zaakkenmerk: kwartaal/{bsn}
+        params:
+          - name: bsn
+            type: string
+        inputs:
+          bsn:
+            param: bsn
+
+    lexostatus_definitions:
+      - name: openstaande_termijnen
+        doc: >-
+          Wat er van deze zaak nog openstaat: de termijnen die deze cel oplegde en
+          die inmiddels vervielen, min wat er in haar eigen betalingenstroom op
+          ligt. Geen `outputs` — de vorm publiceert `verwacht`, `betaald`,
+          `openstaand` en `termijnen`, en die horen bij elkaar.
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        reduction:
+          openstaand: true
+          key: zaakkenmerk
+
+      - name: betaald_tot_nu_toe
+        doc: >-
+          De som over dezelfde stroom, ernaast: wat er in totaal binnenkwam. Dat
+          is niet hetzelfde antwoord als `openstaand` — een som weet niet wat er
+          verwacht werd.
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - bedrag
+        reduction:
+          chronicle: betalingen
+          key: zaakkenmerk
+          sum: bedrag
+
+    status_indicators:
+      - lexostatus: openstaande_termijnen
+        label: openstaand
+        params:
+          zaakkenmerk: $zaakkenmerk
+
+  - id: belastingdienst
+    laws: []
+    # Deze cel komt de betalingsverplichtingen na die Dienst Toeslagen oplegt.
+    komt_na:
+      - Dienst Toeslagen
+    # ... tot 1 maart. Vanaf die dag legt de klok bij een vervaldatum geen
+    # executogram meer vast maar een journaalregel. Casusdata: wat de wet oplegt
+    # verandert er niet door, alleen wat er in deze wereld van terechtkomt.
+    betalingen_opgeschort: 2024-03-01
+    chronicles:
+      - stream: betalingen
+        key: zaakkenmerk
+        gebeurtenissen: *betalingsschema
+
+    lexostatus_definitions:
+      - name: betaald_tot_nu_toe
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - bedrag
+        reduction:
+          chronicle: betalingen
+          key: zaakkenmerk
+          sum: bedrag
+
+decide:
+  - description: vier kwartaaltermijnen van 30000, vanaf de dag van het besluit
+    cell: toeslagen
+    besluit: toekenning_per_kwartaal
+    params:
+      bsn: '999993653'
+    op_moment: 2024-02-01
+    expect:
+      toegekende_termijnen: 120000
+
+queries:
+  - description: >-
+      Op de dag van de eerste termijn is er één termijn vervallen en is die
+      betaald: niets openstaand.
+    cell: toeslagen
+    lexostatus: openstaande_termijnen
+    params:
+      zaakkenmerk: kwartaal/999993653
+    op_moment: 2024-02-01
+    expect:
+      verwacht: 30000
+      betaald: 30000
+      openstaand: 0
+      termijnen:
+        - besluit: toekenning_per_kwartaal
+          volgnummer: 1
+          vervaldatum: '2024-02-01'
+          bedrag: 30000
+          status: betaald
+
+  - description: >-
+      Ná de tweede vervaldatum: die termijn is verstreken zonder betaling en staat
+      te laat. Er was 60000 verwacht en 30000 kwam er binnen.
+    cell: toeslagen
+    lexostatus: openstaande_termijnen
+    params:
+      zaakkenmerk: kwartaal/999993653
+    op_moment: 2024-06-01
+    expect:
+      verwacht: 60000
+      betaald: 30000
+      openstaand: 30000
+      termijnen:
+        - besluit: toekenning_per_kwartaal
+          volgnummer: 1
+          vervaldatum: '2024-02-01'
+          bedrag: 30000
+          status: betaald
+        - besluit: toekenning_per_kwartaal
+          volgnummer: 2
+          vervaldatum: '2024-05-01'
+          bedrag: 30000
+          status: te_laat
+
+  - description: >-
+      Dezelfde vraag over een moment vóór die vervaldatum, gesteld nádat de
+      termijn gepasseerd is: nul openstaand, en de derde en vierde termijn staan
+      er niet in. Wat er toen openstond, verandert niet door wat er later gebeurde.
+    cell: toeslagen
+    lexostatus: openstaande_termijnen
+    params:
+      zaakkenmerk: kwartaal/999993653
+    op_moment: 2024-04-30
+    expect:
+      verwacht: 30000
+      betaald: 30000
+      openstaand: 0
+      termijnen:
+        - besluit: toekenning_per_kwartaal
+          volgnummer: 1
+          vervaldatum: '2024-02-01'
+          bedrag: 30000
+          status: betaald
+
+  - description: >-
+      De som over dezelfde stroom weet alleen wat er binnenkwam, niet wat er
+      verwacht werd. Twee antwoorden over één zaak, en ze zeggen iets anders.
+    cell: toeslagen
+    lexostatus: betaald_tot_nu_toe
+    params:
+      zaakkenmerk: kwartaal/999993653
+    op_moment: 2024-06-01
+    expect:
+      bedrag: 30000
+
+  - description: >-
+      Over een zaak waarover deze cel niets besloot, is er niets vastgesteld — en
+      dus niet nul. "Er staat niets open" en "hier is geen zaak" zijn twee
+      antwoorden.
+    cell: toeslagen
+    lexostatus: openstaande_termijnen
+    params:
+      zaakkenmerk: kwartaal/999999999
+    op_moment: 2024-06-01
+    expect_not_established: true

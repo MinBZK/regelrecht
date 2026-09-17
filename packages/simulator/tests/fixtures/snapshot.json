@@ -1082,6 +1082,26 @@
           }
         },
         {
+          "name": "openstaande_termijnen",
+          "doc": "Wat er van deze zaak nog openstaat: de termijnen die deze cel bij beschikking oplegde en die inmiddels vervielen, min wat er in haar eigen betalingenstroom op ligt. Naast wat er verwacht werd en wat er gebeurde, dus ook het verschil — en nog steeds een reductie over twee eigen kronieken, geen saldo dat ernaast wordt bijgehouden.",
+          "inputs": [
+            {
+              "name": "zaakkenmerk",
+              "type": "string"
+            }
+          ],
+          "outputs": [
+            "betaald",
+            "openstaand",
+            "termijnen",
+            "verwacht"
+          ],
+          "key": {
+            "chronicle": "beschikkingen",
+            "parameter": "zaakkenmerk"
+          }
+        },
+        {
           "name": "zorgtoeslagbeschikking",
           "doc": "Wat deze cel over deze zaak besloten heeft, op het gevraagde moment. De twee besluiten over één zaak leggen niet dezelfde uitkomsten vast — de toekenning zegt of er recht is en hoe hoog, de vaststelling wat er is vastgesteld en wat er nog volgt — dus ze staan hier alle vier, en een gram draagt waar het over ging.",
           "inputs": [

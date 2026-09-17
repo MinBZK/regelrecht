@@ -24,6 +24,10 @@ export const JOURNAL_KINDS = {
   vastlegging: { label: 'Vastlegging', color: 'groen', icon: 'file-text' },
   besluit: { label: 'Besluit', color: 'donkerblauw', icon: 'certificate' },
   betaling: { label: 'Betaling', color: 'oranje', icon: 'euro-sign' },
+  // Een eigen kleur naast de betaling: het gaat over hetzelfde — een termijn die
+  // vervalt — maar het nieuws is dat er níets vastgelegd is, en dat hoort niet
+  // op een betaling te lijken.
+  niet_nagekomen: { label: 'Termijn niet nagekomen', color: 'rood', icon: 'warning' },
   termijn: { label: 'Termijn', color: 'warning', icon: 'warning' },
   vraag: { label: 'Vraag over de celgrens', color: 'hemelblauw', icon: 'question' },
 };

@@ -506,6 +506,20 @@ cells:
           key: zaakkenmerk
           latest: true
 
+      - name: openstaande_termijnen
+        doc: >-
+          Wat er van deze zaak nog openstaat: de termijnen die deze cel bij
+          beschikking oplegde en die inmiddels vervielen, min wat er in haar
+          eigen betalingenstroom op ligt. Naast wat er verwacht werd en wat er
+          gebeurde, dus ook het verschil — en nog steeds een reductie over twee
+          eigen kronieken, geen saldo dat ernaast wordt bijgehouden.
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        reduction:
+          openstaand: true
+          key: zaakkenmerk
+
       - name: betaald_tot_nu_toe
         doc: >-
           Wat er op deze zaak betaald is, voor zover deze cel dat weet: een som
