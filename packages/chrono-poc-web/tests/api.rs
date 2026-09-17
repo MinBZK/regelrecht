@@ -487,6 +487,18 @@ async fn een_besluit_accepteert_een_waarde_over_een_celgrens() {
         json!(true),
         "{answer}"
     );
+    // Met het besluittype erbij: zonder dat kan een consument een afwijzing niet
+    // van een toekenning onderscheiden.
+    assert_eq!(
+        answer["outcome"]["established"]["decision_type"],
+        json!("TOEKENNING"),
+        "{answer}"
+    );
+    assert_eq!(
+        answer["outcome"]["established"]["afwijzingsgrond"],
+        json!([]),
+        "{answer}"
+    );
 }
 
 /// Het receipt van een decretogram is op verzoek op te vragen, terwijl het beeld
@@ -836,11 +848,11 @@ async fn reset_begint_opnieuw_uit_het_wereldbestand() {
         grams(&world, "burger", "aanvragen").is_empty(),
         "de aanvraag hoort weg te zijn: {world}"
     );
-    // Drie: de aanslag en de herziening van de eerste aanvrager, en de aanslag
-    // van de tweede aanvrager in het portaal.
+    // Vier: de aanslag en de herziening van de eerste aanvrager, en de aanslag
+    // van de tweede en de derde aanvrager in het portaal.
     assert_eq!(
         grams(&world, "belastingdienst", "aanslagen").len(),
-        3,
+        4,
         "de startstand uit het wereldbestand hoort er weer te staan: {world}"
     );
 }
@@ -1084,7 +1096,7 @@ async fn het_portaal_noemt_de_personas_en_hun_vragen() {
     let personas = portaal["personas"]
         .as_array()
         .expect("personas is een lijst");
-    assert_eq!(personas.len(), 2, "{portaal}");
+    assert_eq!(personas.len(), 3, "{portaal}");
     let b = personas
         .iter()
         .find(|persona| persona["id"] == "aanvrager-b")

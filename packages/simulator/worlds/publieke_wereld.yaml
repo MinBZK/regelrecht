@@ -267,6 +267,19 @@ cells:
               toetsingsinkomen: 2800000
               competent_authority: Belastingdienst
 
+          # De aanslag van de derde aanvrager in het portaal: een gewoon
+          # inkomen, want waarop haar aanvraag afketst is iets anders (zie de
+          # inkomenslevering bij `toeslagen`).
+          - name: aanslag_vastgesteld
+            intake: eigen_besluit
+            recording_actor: belastingdienst
+            grondslag: Wet inkomstenbelasting 2001, hoofdstuk 2
+            op_moment: 2024-03-01
+            fields:
+              bsn: '999990032'
+              toetsingsinkomen: 2800000
+              competent_authority: Belastingdienst
+
           - name: aanslag_herzien
             intake: eigen_besluit
             recording_actor: belastingdienst
@@ -386,6 +399,15 @@ cells:
             fields:
               bsn: '999990019'
               partnerschap_type: GEEN
+          # En voor de derde, om dezelfde reden.
+          - name: relatie_gewijzigd
+            intake: levering
+            recording_actor: toeslagen
+            grondslag: melding uit de basisregistratie personen
+            op_moment: 2023-01-01
+            fields:
+              bsn: '999990032'
+              partnerschap_type: GEEN
 
       - stream: inkomensleveringen
         key: bsn
@@ -420,6 +442,19 @@ cells:
             fields:
               bsn: '999990019'
               is_verzekerde: true
+              vermogen: 0
+          # De derde aanvrager is niet verzekerd, en artikel 2 van de Wet op de
+          # zorgtoeslag geeft dan geen aanspraak: het besluit over haar is een
+          # afwijzing. Dat het een afwijzing wordt, staat in de wet
+          # (`afwijzing_wanneer`) en niet hier; hier staat alleen het feit.
+          - name: inkomenslevering
+            intake: levering
+            recording_actor: toeslagen
+            grondslag: jaarlijkse inkomenslevering
+            op_moment: 2023-11-15
+            fields:
+              bsn: '999990032'
+              is_verzekerde: false
               vermogen: 0
 
       # De besluitende cel houdt zelf ook een betalingsstroom: zij legt vast dat
@@ -529,7 +564,9 @@ cells:
           twee besluiten over één zaak leggen niet dezelfde uitkomsten vast — de
           toekenning zegt of er recht is en hoe hoog, de vaststelling wat er is
           vastgesteld en wat er nog volgt — dus ze staan hier alle vier, en een
-          gram draagt waar het over ging.
+          gram draagt waar het over ging. Met het besluittype en de
+          afwijzingsgrond erbij: zonder die twee leest een afwijzing hier als
+          een toekenning met een bedrag.
         inputs:
           - name: zaakkenmerk
             type: string
@@ -538,6 +575,8 @@ cells:
           - hoogte_zorgtoeslag
           - vastgestelde_tegemoetkoming
           - slotbedrag
+          - decision_type
+          - afwijzingsgrond
         reduction:
           chronicle: beschikkingen
           key: zaakkenmerk
@@ -692,6 +731,14 @@ portaal:
       label: Aanvrager B (fictief)
       values:
         bsn: '999990019'
+        jaar: 2024
+    # Een derde aanvrager, zonder recht: niet verzekerd. Over haar aanvraag
+    # kan besloten worden, en dat besluit is een afwijzing — zo is ook die op
+    # inzicht te zien.
+    - id: aanvrager-c
+      label: Aanvrager C (fictief)
+      values:
+        bsn: '999990032'
         jaar: 2024
   inzicht:
     - label: Beschikking zorgtoeslag

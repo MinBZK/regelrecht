@@ -109,7 +109,17 @@ export function decisionTypeOf(gram) {
  * en dat is het gewone geval, dus een lege lijst is geen ontbrekend veld.
  */
 export function afwijzingsgrondenOf(gram) {
-  const raw = gram?.fields?.afwijzingsgrond?.value;
+  return readAfwijzingsgronden(gram?.fields?.afwijzingsgrond?.value);
+}
+
+/**
+ * De afwijzingsgronden uit de ruwe waarde van het veld `afwijzingsgrond`.
+ *
+ * Los van het gram, want een lexostatus die het veld publiceert geeft dezelfde
+ * lijst als kale waarde terug. De vorm is `Afwijzingsgrond` uit
+ * `packages/simulator/src/cell/besluit.rs`: `output`, `value` en `article`.
+ */
+function readAfwijzingsgronden(raw) {
   if (!Array.isArray(raw)) return [];
   return raw.map((row) => ({
     output: row?.output === undefined || row?.output === null ? null : String(row.output),
@@ -894,6 +904,71 @@ export function readLexostatus(answer) {
     established: false,
     values: [],
     reason: outcome.not_established?.reason ?? 'In deze cel is hierover niets vastgesteld.',
+  };
+}
+
+/**
+ * De namen die een besluit van deze cel als **uitkomst** vastlegt: wat de
+ * regeling uitrekende, en niet wat het gram over het besluit zelf zegt.
+ *
+ * Uit het beeld (`besluiten[].outputs`) en niet uit een lijst hier: welke velden
+ * een decretogram vast draagt, weet het platform, en een kopie van die namen
+ * loopt stil achter zodra er een bij komt. Wat geen uitkomst is, is dan vanzelf
+ * een vast veld — ook een dat deze app nog nooit zag.
+ *
+ * Noemt het antwoord zijn besluit (`besluit`) en kent de cel dat, dan de
+ * uitkomsten van dát besluit. Anders die van alle besluiten van de cel samen:
+ * een uitkomstnaam kan niet ook een vast veld zijn (het optuigen weigert dat),
+ * dus de vereniging maakt van geen enkel vast veld een uitkomst.
+ */
+function besluitOutputs(cell, answeredBesluit) {
+  const definitions = besluitDefinitions(cell);
+  const answered = definitions.filter((definition) => definition.name === answeredBesluit);
+  const chosen = answered.length > 0 ? answered : definitions;
+  return new Set(chosen.flatMap((definition) => (Array.isArray(definition.outputs) ? definition.outputs : [])));
+}
+
+/**
+ * Een antwoord dat een afwijzing publiceert, uitgesplitst voor de weergave.
+ *
+ * `null` als het antwoord geen `decision_type` publiceert, of een ander type dan
+ * `AFWIJZING`: dan is er niets uit te splitsen en blijft het antwoord zoals het
+ * is. Anders drie delen:
+ *
+ * - `gronden`: waarop het besluit afketste, zoals het gram ze draagt;
+ * - `berekend`: de uitkomsten die de regeling wél uitrekende — een afwijzing
+ *   zet die niet op nul, ze belooft er alleen niets mee. De uitkomst die een
+ *   grond noemt, staat al bij die grond en niet nog eens hier;
+ * - `vast`: de rest, de vaste velden van het gram (`besluit`,
+ *   `competent_authority`, ...), die over het besluit gaan en niet over een
+ *   bedrag. Zonder `afwijzingsgrond`, want die staat al bovenaan.
+ *
+ * Wat een uitkomst is, zegt `cell` uit het beeld (zie `besluitOutputs`). Zonder
+ * cel is er niets als uitkomst te herkennen, en staat alles als gewone regel:
+ * liever een bedrag tussen de vaste velden dan een vast veld als "berekend".
+ *
+ * Elk deel heeft de vorm van `readLexostatus`, zodat dezelfde weergave het kan
+ * tonen.
+ */
+export function readAfwijzing(answer, cell) {
+  const values = answer?.established ? answer.values ?? [] : [];
+  const valueOf = (name) => values.find((value) => value.name === name)?.value;
+  if (valueOf('decision_type') !== AFWIJZING) return null;
+  const gronden = readAfwijzingsgronden(valueOf('afwijzingsgrond'));
+  const genoemd = new Set(gronden.map((grond) => grond.output));
+  const uitkomsten = besluitOutputs(cell, valueOf('besluit'));
+  return {
+    gronden,
+    berekend: {
+      ...answer,
+      values: values.filter((value) => uitkomsten.has(value.name) && !genoemd.has(value.name)),
+    },
+    vast: {
+      ...answer,
+      values: values.filter(
+        (value) => !uitkomsten.has(value.name) && !genoemd.has(value.name) && value.name !== 'afwijzingsgrond',
+      ),
+    },
   };
 }
 

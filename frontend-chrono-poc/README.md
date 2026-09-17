@@ -43,6 +43,20 @@ Een aanvrager kiezen is een mock-login: `PUT /api/persona`, bij de sessie op de
 server, dus een wissel op de ene pagina geldt ook op de andere. De app vult zelf
 niets in; de voorinvulling met de gegevens van de aanvrager staat al in het beeld.
 
+**Een afwijzing leest als afwijzing.** Publiceert een vraag `decision_type` en
+is dat `AFWIJZING`, dan staat bovenaan de kaart een melding "Afgewezen"
+(`nldd-banner`) met per afwijzingsgrond de uitkomst, de afwijzende waarde en het
+artikel, uit het veld `afwijzingsgrond`. Daaronder staan de overige uitkomsten
+onder "Berekend, niet toegekend": het gram draagt wat de regeling uitrekende,
+maar een afwijzing belooft er niets mee. De vaste velden van het decretogram
+(`besluit`, `competent_authority`, `besloten_door`, ...) blijven gewone regels.
+Wat een uitkomst is, zegt het beeld (`besluiten[].outputs` van de cel); deze app
+houdt geen lijst met vaste veldnamen bij, dus een nieuw vast veld wordt vanzelf
+een gewone regel. Bij een ander besluittype, of zonder, blijft de kaart één
+lijst. Dit hangt aan platformvelden van elk decretogram en vraagt niets van het
+wereldbestand; in de publieke wereld is het te zien bij Aanvrager C, die niet
+verzekerd is.
+
 **Waarom in het wereldbestand.** Wie er aanvraagt en wat het portaal vraagt is
 inrichting van de opstelling en geen recht, en deze app kent geen casus: het
 label van het portaal, de aanvragers en de vragen komen allemaal uit

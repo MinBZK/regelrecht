@@ -40,6 +40,37 @@ const beschikking = {
   reductie: null,
 };
 
+/**
+ * Een afgewezen beschikking zoals de lexostatus haar geeft als ze
+ * `decision_type` en `afwijzingsgrond` publiceert: de grond in de vorm van
+ * `Afwijzingsgrond` uit `packages/simulator/src/cell/besluit.rs`, en de bedragen
+ * die de regeling toch uitrekende.
+ */
+const afwijzing = {
+  ...beschikking,
+  outcome: {
+    established: {
+      afwijzingsgrond: [{ output: 'heeft_recht_op_zorgtoeslag', value: false, article: '2' }],
+      besloten_door: 'toeslagen',
+      besluit: 'zorgtoeslag_toekenning',
+      competent_authority: 'Dienst Toeslagen',
+      decision_type: 'AFWIJZING',
+      heeft_recht_op_zorgtoeslag: false,
+      hoogte_zorgtoeslag: 1234,
+    },
+  },
+};
+
+/** De teksten van de uitkomstregels in een deel van de kaart. */
+function rowTexts(wrapper) {
+  return wrapper.findAll('nldd-list-item').map((item) =>
+    item
+      .findAll('nldd-text-cell')
+      .map((cell) => cell.attributes('text'))
+      .join(' = '),
+  );
+}
+
 async function mountInzicht(options) {
   const server = fakeServer(options);
   const wrapper = mount(App);
@@ -88,6 +119,94 @@ describe('inzicht in je aanvraag', () => {
     expect(leeg.attributes('text')).toBe('Nog niets bekend');
     expect(leeg.attributes('supporting-text')).toContain("cel 'belastingdienst'");
     expect(wrapper.findAll('nldd-banner').filter((item) => item.attributes('variant') === 'critical')).toHaveLength(0);
+    expect(complaints).toStrictEqual([]);
+  });
+
+  it('toont een afgewezen besluit als afwijzing, met de grond bovenaan en de bedragen als berekend, niet toegekend', async () => {
+    const { wrapper } = await mountInzicht({
+      persona: 'aanvrager-a',
+      answers: { zorgtoeslagbeschikking: afwijzing },
+    });
+    const card = wrapper.findAll('nldd-card')[0];
+
+    // Bovenaan: de melding, met per grond de uitkomst, de afwijzende waarde en
+    // het artikel.
+    const banner = card.find('nldd-banner');
+    expect(banner.exists()).toBe(true);
+    expect(banner.attributes('variant')).toBe('warning');
+    expect(banner.attributes('text')).toBe('Afgewezen');
+    const grond = banner.find('nldd-list-item nldd-text-cell');
+    expect(grond.attributes('text')).toBe('Heeft recht op zorgtoeslag');
+    expect(grond.attributes('supporting-text')).toBe('waarde: nee · artikel 2');
+
+    // Daarna het kopje, en daaronder alleen wat de regeling uitrekende. De
+    // uitkomst die de grond noemt, staat niet nog eens als bedrag.
+    const children = card.findAll('nldd-banner, nldd-title, nldd-list[variant="box-tinted"]');
+    const volgorde = children.map((child) => child.element.tagName.toLowerCase());
+    expect(volgorde).toStrictEqual(['nldd-title', 'nldd-banner', 'nldd-title', 'nldd-list', 'nldd-list']);
+    const kopje = children[2];
+    expect(kopje.find('h3').text()).toBe('Berekend, niet toegekend');
+    expect(rowTexts(children[3])).toStrictEqual(['Hoogte zorgtoeslag = 1234']);
+
+    // De vaste velden van het gram blijven gewone regels; de grond staat niet
+    // nog eens als tabel.
+    expect(rowTexts(children[4])).toStrictEqual([
+      'Besloten door = toeslagen',
+      'Besluit = zorgtoeslag_toekenning',
+      'Competent authority = Dienst Toeslagen',
+      'Decision type = AFWIJZING',
+    ]);
+    expect(card.find('nldd-table').exists()).toBe(false);
+    expect(complaints).toStrictEqual([]);
+  });
+
+  it('haalt wat een uitkomst is uit het beeld, zodat een onbekend vast veld een gewone regel blijft', async () => {
+    // Geen `besluit` in het antwoord: dan tellen de uitkomsten van alle
+    // besluiten van de cel. En een vast veld dat deze app niet kent — zoals
+    // een platform er een bij kan zetten — staat niet als "berekend".
+    const { besluit: _besluit, ...zonderBesluit } = afwijzing.outcome.established;
+    const answer = {
+      ...afwijzing,
+      outcome: {
+        established: { ...zonderBesluit, slotbedrag: 99, veld_dat_deze_app_niet_kent: 'x' },
+      },
+    };
+    const { wrapper } = await mountInzicht({ persona: 'aanvrager-a', answers: { zorgtoeslagbeschikking: answer } });
+    const card = wrapper.findAll('nldd-card')[0];
+    const lists = card.findAll('nldd-list[variant="box-tinted"]');
+    expect(rowTexts(lists[0])).toStrictEqual(['Hoogte zorgtoeslag = 1234', 'Slotbedrag = 99']);
+    expect(rowTexts(lists[1])).toStrictEqual([
+      'Besloten door = toeslagen',
+      'Competent authority = Dienst Toeslagen',
+      'Decision type = AFWIJZING',
+      'Veld dat deze app niet kent = x',
+    ]);
+    expect(complaints).toStrictEqual([]);
+  });
+
+  it('laat een besluit van een ander type, of zonder type, een gewone lijst', async () => {
+    const toekenning = {
+      ...afwijzing,
+      outcome: {
+        established: {
+          ...afwijzing.outcome.established,
+          afwijzingsgrond: [],
+          decision_type: 'TOEKENNING',
+          heeft_recht_op_zorgtoeslag: true,
+        },
+      },
+    };
+    for (const answer of [toekenning, beschikking]) {
+      const { wrapper } = await mountInzicht({ persona: 'aanvrager-a', answers: { zorgtoeslagbeschikking: answer } });
+      const card = wrapper.findAll('nldd-card')[0];
+      expect(card.find('nldd-banner').exists()).toBe(false);
+      expect(card.text()).not.toContain('Berekend, niet toegekend');
+      const waarden = card.findAll('nldd-text-cell').map((cell) => cell.attributes('text'));
+      expect(waarden).toContain('Hoogte zorgtoeslag');
+      expect(waarden).toContain('Heeft recht op zorgtoeslag');
+      mounted.unmount();
+      mounted = null;
+    }
     expect(complaints).toStrictEqual([]);
   });
 
