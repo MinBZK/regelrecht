@@ -75,7 +75,7 @@ cells:
         doc: >-
           Wat er van deze zaak nog openstaat: de termijnen die deze cel oplegde en
           die inmiddels vervielen, min wat er in haar eigen betalingenstroom op
-          ligt. Geen `outputs` — de vorm publiceert `verwacht`, `betaald`,
+          ligt. Geen `outputs` — de vorm publiceert per richting `verwacht`, `betaald`,
           `openstaand` en `termijnen`, en die horen bij elkaar.
         inputs:
           - name: zaakkenmerk
@@ -144,19 +144,20 @@ decide:
 queries:
   - description: >-
       Op de dag van de eerste termijn is er één termijn vervallen en is die
-      betaald: niets openstaand.
+      betaling_betaald: niets openstaand.
     cell: toeslagen
     lexostatus: openstaande_termijnen
     params:
       zaakkenmerk: kwartaal/999993653
     op_moment: 2024-02-01
     expect:
-      verwacht: 30000
-      betaald: 30000
-      openstaand: 0
+      betaling_verwacht: 30000
+      betaling_betaald: 30000
+      betaling_openstaand: 0
       termijnen:
         - besluit: toekenning_per_kwartaal
           volgnummer: 1
+          soort: betaling
           vervaldatum: '2024-02-01'
           bedrag: 30000
           status: betaald
@@ -170,17 +171,19 @@ queries:
       zaakkenmerk: kwartaal/999993653
     op_moment: 2024-06-01
     expect:
-      verwacht: 60000
-      betaald: 30000
-      openstaand: 30000
+      betaling_verwacht: 60000
+      betaling_betaald: 30000
+      betaling_openstaand: 30000
       termijnen:
         - besluit: toekenning_per_kwartaal
           volgnummer: 1
+          soort: betaling
           vervaldatum: '2024-02-01'
           bedrag: 30000
           status: betaald
         - besluit: toekenning_per_kwartaal
           volgnummer: 2
+          soort: betaling
           vervaldatum: '2024-05-01'
           bedrag: 30000
           status: te_laat
@@ -195,12 +198,13 @@ queries:
       zaakkenmerk: kwartaal/999993653
     op_moment: 2024-04-30
     expect:
-      verwacht: 30000
-      betaald: 30000
-      openstaand: 0
+      betaling_verwacht: 30000
+      betaling_betaald: 30000
+      betaling_openstaand: 0
       termijnen:
         - besluit: toekenning_per_kwartaal
           volgnummer: 1
+          soort: betaling
           vervaldatum: '2024-02-01'
           bedrag: 30000
           status: betaald

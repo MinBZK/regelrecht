@@ -103,7 +103,8 @@ const berekend = {
   },
 };
 
-// De openstaandvorm: drie bedragen en de termijnen waar ze uit bestaan. Twee
+// De openstaandvorm: drie bedragen per richting en de termijnen waar ze uit
+// bestaan, elk met haar soort. Twee
 // stromen gelezen, elk gram met wat het bijdroeg.
 const openstaand = {
   cell: 'toeslagen',
@@ -113,15 +114,32 @@ const openstaand = {
   // komen uit een geordende map en niet uit een lijst die de cel opschrijft.
   outcome: {
     established: {
-      betaald: 30000,
-      openstaand: 30000,
+      betaling_betaald: 30000,
+      betaling_openstaand: 30000,
+      betaling_verwacht: 60000,
       // Ook de velden van een regel komen op naam: het beeld is JSON uit een
       // geordende map, en de kolommen volgen die volgorde.
       termijnen: [
-        { bedrag: 30000, besluit: 'toekenning', status: 'betaald', vervaldatum: '2024-11-01', volgnummer: 1 },
-        { bedrag: 30000, besluit: 'toekenning', status: 'te_laat', vervaldatum: '2025-01-01', volgnummer: 2 },
+        {
+          bedrag: 30000,
+          besluit: 'toekenning',
+          soort: 'betaling',
+          status: 'betaald',
+          vervaldatum: '2024-11-01',
+          volgnummer: 1,
+        },
+        {
+          bedrag: 30000,
+          besluit: 'toekenning',
+          soort: 'betaling',
+          status: 'te_laat',
+          vervaldatum: '2025-01-01',
+          volgnummer: 2,
+        },
       ],
-      verwacht: 60000,
+      terugvordering_betaald: 0,
+      terugvordering_openstaand: 0,
+      terugvordering_verwacht: 0,
     },
   },
   reductie: {
@@ -495,6 +513,7 @@ describe('een uitkomst die uit regels bestaat', () => {
     expect(rows[0].findAll('nldd-text-cell').map((cell) => cell.attributes('text'))).toStrictEqual([
       'Bedrag',
       'Besluit',
+      'Soort',
       'Status',
       'Vervaldatum',
       'Volgnummer',
@@ -502,6 +521,7 @@ describe('een uitkomst die uit regels bestaat', () => {
     expect(rows[2].findAll('nldd-text-cell').map((cell) => cell.attributes('text'))).toStrictEqual([
       '30000',
       'toekenning',
+      'betaling',
       'te_laat',
       '2025-01-01',
       '2',
@@ -512,15 +532,22 @@ describe('een uitkomst die uit regels bestaat', () => {
     const { wrapper } = mountPanel(openstaand);
     await submit(wrapper);
     const rows = wrapper.findAll('nldd-list:not([type="tree"]) nldd-list-item');
-    expect(rows).toHaveLength(3);
+    expect(rows).toHaveLength(6);
     const labels = rows.map((row) => row.find('nldd-text-cell').attributes('text'));
-    expect(labels).toStrictEqual(['Betaald', 'Openstaand', 'Verwacht']);
+    expect(labels).toStrictEqual([
+      'Betaling betaald',
+      'Betaling openstaand',
+      'Betaling verwacht',
+      'Terugvordering betaald',
+      'Terugvordering openstaand',
+      'Terugvordering verwacht',
+    ]);
   });
 
   it('zegt bij een lege lijst dat er geen regels zijn in plaats van een lege tabel', async () => {
     const leeg = {
       ...openstaand,
-      outcome: { established: { verwacht: 0, betaald: 0, openstaand: 0, termijnen: [] } },
+      outcome: { established: { ...openstaand.outcome.established, termijnen: [] } },
     };
     const { wrapper } = mountPanel(leeg);
     await submit(wrapper);

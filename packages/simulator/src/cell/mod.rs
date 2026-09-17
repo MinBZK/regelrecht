@@ -36,10 +36,10 @@ mod schema;
 pub use besluit::{
     AcceptanceRequest, Afwijzingsgrond, Bekendmaking, BesluitDefinition, BesluitInput,
     ChronicleSource, Decretogram, DecretogramInput, ExecutedRegulation, HookHerkomst, InputOrigin,
-    ObligationDefinition, ObligationDue, ObligationKind, ObligationOrigin, ObsoleteField,
-    RichtingBijNegatief, Schedule, TermijnenVervallen, Vervanging, WachtendeVerplichting,
-    AFWIJZING, BESCHIKKING, BESCHIKKINGEN, BETALINGEN, DECISION_TYPE, STAGE, STAGE_BEKENDMAKING,
-    STAGE_BESLUIT, ZAAKKENMERK,
+    NietsTeBetalen, ObligationDefinition, ObligationDue, ObligationKind, ObligationOrigin,
+    ObsoleteField, RichtingBijNegatief, Schedule, TermijnenVervallen, Vervanging,
+    WachtendeVerplichting, AFWIJZING, BESCHIKKING, BESCHIKKINGEN, BETALINGEN, DECISION_TYPE, STAGE,
+    STAGE_BEKENDMAKING, STAGE_BESLUIT, ZAAKKENMERK,
 };
 pub(crate) use besluit::{BesluitGram, DeclaredObligations, ObligationScope};
 // Eén sjabloonlezer voor het zaakkenmerk én voor de vragen van het portaal: een
@@ -1525,7 +1525,7 @@ impl Cell {
         // waaruit het bedrag zou komen, zou hier anders omvallen op een bedrag
         // dat de wet terecht niet gegeven heeft.
         if !declared.is_empty() && !decretogram.is_afwijzing() {
-            let (due, wachtend) = definition.schedule_obligations(
+            let schema = definition.schedule_obligations(
                 ObligationScope {
                     cell: &self.id,
                     parties,
@@ -1537,8 +1537,9 @@ impl Cell {
                 params,
                 settings,
             )?;
-            decretogram.obligations = due;
-            decretogram.wacht_op_bekendmaking = wachtend;
+            decretogram.obligations = schema.termijnen;
+            decretogram.wacht_op_bekendmaking = schema.wachtend;
+            decretogram.niets_te_betalen = schema.niets_te_betalen;
         }
 
         let event = decretogram.event()?;
@@ -2783,6 +2784,7 @@ impl Cell {
                 // beide helften — wat nu vervalt en wat op de bekendmaking wacht.
                 obligations: Vec::new(),
                 wacht_op_bekendmaking: Vec::new(),
+                niets_te_betalen: Vec::new(),
                 receipt,
             },
             // Álles wat de uitvoering opleverde, en niet alleen wat het gram

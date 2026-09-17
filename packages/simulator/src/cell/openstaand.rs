@@ -38,10 +38,19 @@
 //! bekendmaking er niet is, staat wat erop wacht in de lijst met haar eigen
 //! stand. Weglaten zou een zaak waarover wel degelijk iets besloten is, laten
 //! zien als een zaak waarover niets loopt.
+//!
+//! **Per richting, niet netto.** Een verplichting heeft een soort — een
+//! `betaling` of, als het bedrag onder nul uitviel en de wet dat omkeert, een
+//! `terugvordering` (Awb 4:57) — en die twee lopen de andere kant op. Ze bij
+//! elkaar optellen levert een bedrag op dat geen van beide partijen verschuldigd
+//! is; ze met een minteken verrekenen maakt er een saldo van, en een saldo is
+//! precies wat deze reductie niet bijhoudt. De drie bedragen staan er daarom per
+//! soort, en elke termijn in de lijst zegt van welke soort ze is.
 
 use super::besluit::{
-    wachtende_verplichtingen, BEDRAG, BESCHIKKINGEN, BESLUIT, BESLUIT_CEL, BETALINGEN, OBLIGATIONS,
-    STAGE, STAGE_BEKENDMAKING, STAGE_BESLUIT, TERMIJNEN_VERVALLEN_DOOR, VOLGNUMMER, ZAAKKENMERK,
+    wachtende_verplichtingen, ObligationKind, BEDRAG, BESCHIKKINGEN, BESLUIT, BESLUIT_CEL,
+    BETALINGEN, OBLIGATIONS, SOORT, STAGE, STAGE_BEKENDMAKING, STAGE_BESLUIT,
+    TERMIJNEN_VERVALLEN_DOOR, VOLGNUMMER, ZAAKKENMERK,
 };
 use super::chronicle::{self, ChronicleEvent};
 use super::reductie::{GebruiktGram, Openstaandvorm, Reductie};
@@ -57,22 +66,60 @@ use std::fmt::Write as _;
 /// Het veld van een termijn met de dag waarop ze vervalt.
 const VERVALDATUM: &str = "vervaldatum";
 
-/// Uitkomst met het bedrag dat op dit moment verwacht werd.
-pub(crate) const VERWACHT: &str = "verwacht";
-/// Uitkomst met het bedrag dat daarvan in de eigen stroom ligt.
-pub(crate) const BETAALD: &str = "betaald";
-/// Uitkomst met het verschil tussen die twee.
-pub(crate) const OPENSTAAND: &str = "openstaand";
-/// Uitkomst met de termijnen waarover het gaat, elk met haar stand.
+/// Uitkomst met de termijnen waarover het gaat, elk met haar soort en stand.
 pub(crate) const TERMIJNEN: &str = "termijnen";
+
+/// De drie bedragen van één richting, onder hun gepubliceerde namen.
+///
+/// Voluit geschreven en niet uit de soort samengesteld: [`OUTPUTS`] moet vast
+/// staan vóórdat er één vraag gesteld is, en een naam die pas bij het antwoord
+/// ontstaat, kan het optuigen niet toetsen.
+struct Richting {
+    /// De soort verplichting waarover deze bedragen gaan.
+    soort: ObligationKind,
+    /// Wat er op dit moment van die soort verwacht werd.
+    verwacht: &'static str,
+    /// Wat daarvan in de eigen stroom ligt.
+    betaald: &'static str,
+    /// Het verschil tussen die twee.
+    openstaand: &'static str,
+}
+
+/// Beide richtingen, altijd allebei.
+///
+/// Ook over een zaak zonder terugvordering: een uitkomst die er alleen soms is,
+/// laat een lezer niet zien of er niets teruggevorderd wordt of dat hij het
+/// antwoord maar half kreeg.
+const RICHTINGEN: [Richting; 2] = [
+    Richting {
+        soort: ObligationKind::Betaling,
+        verwacht: "betaling_verwacht",
+        betaald: "betaling_betaald",
+        openstaand: "betaling_openstaand",
+    },
+    Richting {
+        soort: ObligationKind::Terugvordering,
+        verwacht: "terugvordering_verwacht",
+        betaald: "terugvordering_betaald",
+        openstaand: "terugvordering_openstaand",
+    },
+];
 
 /// Wat deze vorm publiceert; vast, want de vorm maakt ze zelf.
 ///
-/// De drie bedragen en de lijst eronder horen bij elkaar: `verwacht` min
-/// `betaald` is `openstaand`, en `termijnen` laat zien waaruit die drie bestaan.
-/// Een definitie die er één van zou mogen weglaten, zou een bedrag naar buiten
-/// geven dat niet na te rekenen is.
-pub(crate) const OUTPUTS: [&str; 4] = [VERWACHT, BETAALD, OPENSTAAND, TERMIJNEN];
+/// De bedragen en de lijst eronder horen bij elkaar: per richting is `verwacht`
+/// min `betaald` gelijk aan `openstaand`, en `termijnen` laat zien waaruit die
+/// bestaan. Een definitie die er één van zou mogen weglaten, zou een bedrag naar
+/// buiten geven dat niet na te rekenen is.
+pub(crate) const OUTPUTS: [&str; 7] = [
+    RICHTINGEN[0].verwacht,
+    RICHTINGEN[0].betaald,
+    RICHTINGEN[0].openstaand,
+    RICHTINGEN[1].verwacht,
+    RICHTINGEN[1].betaald,
+    RICHTINGEN[1].openstaand,
+    TERMIJNEN,
+];
 
 /// De stand van één termijn op het gevraagde moment.
 ///
@@ -122,6 +169,8 @@ impl Status {
 struct Termijn {
     /// De besluit-definitie waaruit ze volgt.
     besluit: String,
+    /// Welke kant ze op loopt: een betaling of een terugvordering.
+    soort: ObligationKind,
     /// Haar volgnummer binnen het schema van dat besluit.
     volgnummer: Value,
     /// De dag waarop ze vervalt; `None` zolang ze op de bekendmaking wacht.
@@ -237,6 +286,10 @@ impl Termijn {
         Value::Object(BTreeMap::from([
             (BESLUIT.to_string(), Value::String(self.besluit.clone())),
             (VOLGNUMMER.to_string(), self.volgnummer.clone()),
+            (
+                SOORT.to_string(),
+                Value::String(self.soort.name().to_string()),
+            ),
             (
                 VERVALDATUM.to_string(),
                 // Uitdrukkelijk leeg en niet weggelaten: dat er geen vervaldag is,
@@ -373,6 +426,7 @@ pub(crate) fn reduce(
                 for wachtend in wachtende_verplichtingen(&gram.fields).unwrap_or_default() {
                     termijnen.push(Termijn {
                         besluit: besluit.clone(),
+                        soort: wachtend.soort,
                         volgnummer: Value::Int(wachtend.eerste_volgnummer),
                         vervaldatum: None,
                         bedrag: wachtend.bedrag,
@@ -407,7 +461,8 @@ pub(crate) fn reduce(
     }
 
     // Wat de betalingen bijdroegen, alleen bij termijnen die meetellen: zo telt
-    // de uitleg op tot hetzelfde `betaald` als het antwoord.
+    // de uitleg op tot hetzelfde `betaald` als het antwoord — beide richtingen
+    // samen, want elke betaling hoort bij één termijn en die bij één richting.
     let mut gelezen_betalingen: BTreeMap<usize, Decimal> = BTreeMap::new();
     for termijn in termijnen.iter().filter(|termijn| termijn.verwacht()) {
         for (plek, gedekt) in &termijn.gedekt_door {
@@ -449,30 +504,36 @@ pub(crate) fn reduce(
         (wacht, vervaldatum, besluit.to_string(), volgnummer)
     });
 
-    let verwacht: Decimal = termijnen.iter().map(Termijn::verwacht_bedrag).sum();
-    // Nooit meer dan verwacht: wat er bovenop een termijn ligt, is geen
-    // vermindering van wat er nog openstaat. Zonder deze grens zou een dubbele
-    // betaling op de ene termijn de andere stil laten verdwijnen.
-    let betaald: Decimal = termijnen
-        .iter()
-        .filter(|termijn| termijn.verwacht())
-        .map(|termijn| termijn.betaald.min(termijn.bedrag))
-        .sum();
-
-    let waarden = BTreeMap::from([
-        (VERWACHT.to_string(), amount(verwacht)),
-        (BETAALD.to_string(), amount(betaald)),
-        (OPENSTAAND.to_string(), amount(verwacht - betaald)),
-        (
-            TERMIJNEN.to_string(),
-            Value::Array(
-                termijnen
-                    .iter()
-                    .map(|termijn| termijn.as_value(op_moment))
-                    .collect(),
-            ),
+    let mut waarden = BTreeMap::from([(
+        TERMIJNEN.to_string(),
+        Value::Array(
+            termijnen
+                .iter()
+                .map(|termijn| termijn.as_value(op_moment))
+                .collect(),
         ),
-    ]);
+    )]);
+    // Per richting, en nooit over de twee heen: een terugvordering loopt de
+    // andere kant op, en haar bij de betalingen optellen zou een bedrag noemen
+    // dat niemand verschuldigd is.
+    for richting in &RICHTINGEN {
+        let van_deze_kant = || {
+            termijnen
+                .iter()
+                .filter(|termijn| termijn.soort == richting.soort)
+        };
+        let verwacht: Decimal = van_deze_kant().map(Termijn::verwacht_bedrag).sum();
+        // Nooit meer dan verwacht: wat er bovenop een termijn ligt, is geen
+        // vermindering van wat er nog openstaat. Zonder deze grens zou een
+        // dubbele betaling op de ene termijn de andere stil laten verdwijnen.
+        let betaald: Decimal = van_deze_kant()
+            .filter(|termijn| termijn.verwacht())
+            .map(|termijn| termijn.betaald.min(termijn.bedrag))
+            .sum();
+        waarden.insert(richting.verwacht.to_string(), amount(verwacht));
+        waarden.insert(richting.betaald.to_string(), amount(betaald));
+        waarden.insert(richting.openstaand.to_string(), amount(verwacht - betaald));
+    }
 
     Ok((
         LexostatusOutcome::Established(waarden),
@@ -582,7 +643,9 @@ fn obligations(gram: &ChronicleEvent) -> &[Value] {
 /// Eén termijn uit een decretogram, als ze op dit moment vervallen is.
 ///
 /// `None` voor een termijn die pas later vervalt — die is nog niets verwacht — en
-/// voor een termijn waaruit geen datum of geen bedrag te lezen is. Dat laatste is
+/// voor een termijn waaruit geen datum, geen bedrag of geen soort te lezen is.
+/// Geen soort is geen betaling: zonder soort is niet te zeggen welke kant de
+/// termijn op loopt, en raden zou haar bij de verkeerde richting kunnen tellen. Dat laatste is
 /// hier geen fout: het decretogram schrijft deze velden zelf (zie
 /// `ObligationDue::as_value`), dus een gram zonder is er een uit een startstand,
 /// en een reductie is niet de plek om dat te beoordelen.
@@ -597,8 +660,12 @@ fn lees_termijn(besluit: &str, due: &Value, plek: usize, op_moment: NaiveDate) -
         return None;
     }
     let bedrag = chronicle::field(velden, BEDRAG).and_then(Value::as_decimal)?;
+    let soort = chronicle::field(velden, SOORT)
+        .and_then(Value::as_str)
+        .and_then(ObligationKind::from_name)?;
     Some(Termijn {
         besluit: besluit.to_string(),
+        soort,
         volgnummer: chronicle::field(velden, VOLGNUMMER)
             .cloned()
             .unwrap_or(Value::Null),
@@ -653,6 +720,7 @@ mod tests {
         let bedrag = Decimal::from(300);
         let mut termijn = Termijn {
             besluit: "voorschot".to_string(),
+            soort: ObligationKind::Betaling,
             volgnummer: Value::Int(4),
             vervaldatum: NaiveDate::from_ymd_opt(2025, 1, 1),
             bedrag,

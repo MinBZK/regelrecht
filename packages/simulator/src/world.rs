@@ -1490,6 +1490,32 @@ impl World {
             parent: None,
         };
         let decision = self.write_journal(entry);
+        // Een verplichting die op nul uitkwam, levert geen termijn en dus later
+        // ook geen journaalregel op. Zonder deze regel zou een lezer alleen een
+        // besluit zien waarna niets gebeurt, en dat is niet te onderscheiden van
+        // een besluit dat niets oplegde.
+        for niets in &decretogram.niets_te_betalen {
+            self.write_journal(JournalEntry {
+                seq: 0,
+                moment: op_moment,
+                actor: JournalActor::Cell {
+                    id: decretogram.cell.clone(),
+                },
+                kind: JournalKind::Termijn,
+                description: format!(
+                    "besluit '{}' (zaak '{}'): {}",
+                    decretogram.besluit,
+                    decretogram.zaakkenmerk,
+                    niets.describe()
+                ),
+                grams: Vec::new(),
+                changes: Vec::new(),
+                accepted: Vec::new(),
+                executed: None,
+                question: None,
+                parent: Some(decision),
+            });
+        }
         for crossing in &crossings {
             let answer = &crossing.answer;
             self.write_journal(JournalEntry {

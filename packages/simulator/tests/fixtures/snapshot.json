@@ -1091,10 +1091,13 @@
             }
           ],
           "outputs": [
-            "betaald",
-            "openstaand",
+            "betaling_betaald",
+            "betaling_openstaand",
+            "betaling_verwacht",
             "termijnen",
-            "verwacht"
+            "terugvordering_betaald",
+            "terugvordering_openstaand",
+            "terugvordering_verwacht"
           ],
           "key": {
             "chronicle": "beschikkingen",
@@ -1200,6 +1203,19 @@
               "herkomst": "platform",
               "gat": false,
               "toelichting": "leeg: geen verplichting van dit artikel wacht op de bekendmaking (`vanaf: bekendmaking`)"
+            },
+            {
+              "name": "niets_te_betalen",
+              "type": "array",
+              "herkomst": "lexogram",
+              "gat": false,
+              "lexogram": {
+                "regulation": "wet_op_de_zorgtoeslag",
+                "valid_from": "2025-01-01",
+                "article": "2",
+                "regulatory_layer": "WET"
+              },
+              "toelichting": "de verplichtingen hierboven waarvan het bedrag op nul uitkwam: met `bedrag: 0` en zonder termijnen, want er valt niets te betalen"
             },
             {
               "name": "regulation",
@@ -1388,6 +1404,19 @@
               "herkomst": "platform",
               "gat": false,
               "toelichting": "leeg: geen verplichting van dit artikel wacht op de bekendmaking (`vanaf: bekendmaking`)"
+            },
+            {
+              "name": "niets_te_betalen",
+              "type": "array",
+              "herkomst": "lexogram",
+              "gat": false,
+              "lexogram": {
+                "regulation": "algemene_wet_inkomensafhankelijke_regelingen",
+                "valid_from": null,
+                "article": "19",
+                "regulatory_layer": "WET"
+              },
+              "toelichting": "de verplichtingen hierboven waarvan het bedrag op nul uitkwam: met `bedrag: 0` en zonder termijnen, want er valt niets te betalen"
             },
             {
               "name": "regulation",
@@ -2438,6 +2467,12 @@
                     "herkomst": "besluit"
                   }
                 },
+                "niets_te_betalen": {
+                  "value": [],
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                },
                 "obligations": {
                   "value": [
                     {
@@ -2653,6 +2688,12 @@
                 },
                 "legal_character": {
                   "value": "BESCHIKKING",
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                },
+                "niets_te_betalen": {
+                  "value": [],
                   "origin": {
                     "herkomst": "besluit"
                   }
