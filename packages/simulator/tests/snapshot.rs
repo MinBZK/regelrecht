@@ -150,12 +150,12 @@ fn het_beeld_draagt_de_cellen_de_grammen_en_de_herkomst() {
         "elk gram hoort zijn velden te dragen"
     );
 
-    // Het observatielog-materiaal: twee besluiten die elk één waarde accepteren,
-    // is precies twee contacten over een celgrens.
+    // Het observatielog-materiaal: de toekenning accepteert één waarde en de
+    // vaststelling twee, en dat is precies drie contacten over een celgrens.
     assert_eq!(
         snapshot.crossings.len(),
-        2,
-        "twee geaccepteerde waarden horen twee contacten te zijn"
+        3,
+        "drie geaccepteerde waarden horen drie contacten te zijn"
     );
     assert!(
         snapshot

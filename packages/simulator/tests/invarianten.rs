@@ -553,9 +553,10 @@ fn de_beschikbaarheidscheck_levert_geen_contact_over_een_celgrens_op() {
         na.actions
             .iter()
             .find(|actie| actie.id == "toeslagen.vaststelling")
-            .is_some_and(|actie| !actie.available),
-        "de vaststelling leest de toekenning terug uit de eigen kroniek (een eigen \
-         feit), dus zonder toekenning kan ze nog niet"
+            .is_some_and(|actie| actie.available),
+        "en de vaststelling heet mogelijk terwijl ze het niet is: zij heeft geen \
+         enkel eigen feit, en beschikbaarheid kijkt niet over een celgrens — dat \
+         is precies de prijs die deze meting bewaakt"
     );
     assert!(
         na.crossings.is_empty() && world.crossings().is_empty(),

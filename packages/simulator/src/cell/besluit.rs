@@ -552,6 +552,31 @@ pub enum RichtingBijNegatief {
     Omkeren,
 }
 
+/// Dat een beschikking in de plaats komt van wat er over dezelfde zaak nog
+/// openstond.
+///
+/// Een verplichting is niet in te trekken: haar schema staat in een gram, en een
+/// gram verandert niet. Een tweede beschikking over dezelfde zaak laat de
+/// termijnen van de eerste dus gewoon vervallen — tenzij de wet zegt dat deze
+/// beschikking de vorige **vervangt**. Dat is wat dit declareert, en daarom staat
+/// het in het lexogram en niet in een wereldbestand: of een vaststelling het
+/// voorschot vervangt, is recht (Awir art. 19 jo. art. 24, tweede lid) en geen
+/// keuze van de uitvoerder.
+///
+/// Wat er vervalt, is wat op het moment van dit besluit nog niet verstreken wás.
+/// Termijnen die al verstreken zijn, blijven staan: wat betaald is, is betaald, en
+/// wat ermee moet gebeuren is een verrekening en geen terugdraaiing.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Vervanging {
+    /// Waarop het vervangen berust, in vrije tekst.
+    ///
+    /// Verplicht, en om dezelfde reden als bij een verplichting: een termijn die
+    /// vervalt zonder grondslag is een belofte die zonder wet verdwijnt. Ze komt
+    /// in het journaal te staan bij elke termijn die erdoor vervalt.
+    pub grondslag: String,
+}
+
 /// Eén verplichting die een besluit oplegt, zoals het **lexogram** haar declareert.
 ///
 /// Ze staat in het artikel dat het besluit uitvoert (`produces.extensions.
@@ -729,6 +754,10 @@ pub(crate) struct DeclaredObligations {
     pub(crate) article_outputs: BTreeSet<String>,
     /// De verplichtingen zelf, in de volgorde van het artikel.
     pub(crate) items: Vec<ObligationDefinition>,
+    /// Of een beschikking op dit artikel in de plaats komt van wat er over
+    /// dezelfde zaak nog openstond; `None` is: het artikel zegt er niets over,
+    /// en dan blijft staan wat er staat.
+    pub(crate) vervanging: Option<Vervanging>,
 }
 
 /// Van wie, voor wie en wanneer een besluit zijn verplichtingen inroostert.
@@ -3294,6 +3323,7 @@ impl DeclaredObligations {
                 .map(str::to_string)
                 .collect(),
             items: block.verplichtingen,
+            vervanging: block.vervangt_openstaande_termijnen,
         }
     }
 
@@ -3312,6 +3342,7 @@ impl DeclaredObligations {
             authority: None,
             article_outputs: BTreeSet::new(),
             items: Vec::new(),
+            vervanging: None,
         }
     }
 
@@ -4908,6 +4939,7 @@ params:
             authority: Some("Dienst Toeslagen".to_string()),
             article_outputs: BTreeSet::from(["hoogte_zorgtoeslag".to_string()]),
             items: vec![obligation.clone()],
+            vervanging: None,
         };
         let params = BTreeMap::from([("jaar".to_string(), Value::String("999993653".to_string()))]);
         let total = Decimal::from_str_exact(bedrag)

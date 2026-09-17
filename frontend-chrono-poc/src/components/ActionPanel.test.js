@@ -159,7 +159,7 @@ describe('het actiepaneel', () => {
   });
 
   // De kaart van een besluit dat er al ligt. In de fixture besloot cel
-  // 'toeslagen' op 01-04-2024 over deze zaak; wie hetzelfde besluit opnieuw
+  // 'toeslagen' op 01-03-2024 over deze zaak; wie hetzelfde besluit opnieuw
   // aanroept legt een tweede decretogram, en dat hoort niet per ongeluk te
   // gebeuren.
   describe('een besluit waarover al besloten is', () => {
@@ -174,7 +174,7 @@ describe('het actiepaneel', () => {
 
     it('zegt "al besloten op" in plaats van "kan nu"', async () => {
       const { card } = await decisionCard('999993653');
-      expect(card.find('nldd-tag').attributes('text')).toBe('al besloten op 01-04-2024');
+      expect(card.find('nldd-tag').attributes('text')).toBe('al besloten op 01-03-2024');
     });
 
     // "Al besloten op …" komt in de plaats van "kan nu", nooit in de plaats van
@@ -191,7 +191,7 @@ describe('het actiepaneel', () => {
       await fill(wrapper, card.find('nldd-text-field'), '999993653');
 
       expect(card.findAll('nldd-tag').map((tag) => tag.attributes('text'))).toStrictEqual([
-        'al besloten op 01-04-2024',
+        'al besloten op 01-03-2024',
         'kan nu niet',
       ]);
     });
@@ -210,7 +210,7 @@ describe('het actiepaneel', () => {
       const dialog = card.find('nldd-inline-dialog');
       expect(dialog.attributes('text')).toBe('Er ligt al een besluit');
       expect(dialog.attributes('supporting-text')).toContain('zorgtoeslag/999993653');
-      expect(dialog.attributes('supporting-text')).toContain('01-04-2024');
+      expect(dialog.attributes('supporting-text')).toContain('01-03-2024');
 
       // Een tweede besluit is legitiem, dus de weg ernaartoe blijft open.
       const confirm = dialog.findAll('nldd-button').find((button) => button.attributes('text') === 'Toch besluiten');
