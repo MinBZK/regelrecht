@@ -784,7 +784,10 @@ export function assertReferencesResolve(
     kleur.set(id, 'bezig');
     pad.push(id);
     for (const volgende of afhankelijkheden.get(id) ?? []) {
-      if (ids.has(volgende)) loop(volgende);
+      // Een zelfverwijzing is hierboven al gemeld, en met zijn eigen naam.
+      // Hem hier nog eens als kring van één melden ("lopen rond: X → X") maakt
+      // van één fout twee regels, waarvan de tweede minder zegt dan de eerste.
+      if (volgende !== id && ids.has(volgende)) loop(volgende);
     }
     pad.pop();
     kleur.set(id, 'klaar');
