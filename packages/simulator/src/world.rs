@@ -1638,6 +1638,18 @@ impl World {
     /// De grammen blijven ook staan: het voorschot beloofde vier termijnen en dat
     /// blijft het gram zeggen. Dát ze niet meer nagekomen worden, staat in het
     /// journaal, met de grondslag waarop dat berust.
+    ///
+    /// **Wat hier niet onder valt: verplichtingen die nog op de bekendmaking
+    /// wachten.** Die staan niet in de wachtrij maar in het gram van hun eigen
+    /// besluit (`wacht_op_bekendmaking`), en een gram verandert niet. Wordt een
+    /// beschikking vervangen vóórdat ze bekendgemaakt is, dan roostert haar
+    /// bekendmaking die termijnen alsnog in. Dat hoort daar ook thuis — de
+    /// bekendmaking is het moment waarop zo'n belofte gaat werken (Awb 3:40), dus
+    /// zij is de plek die moet zien dat er niets meer te laten werken valt. In
+    /// het corpus komt de combinatie nog niet voor: geen enkel artikel dat
+    /// `vervangt_openstaande_termijnen` declareert, staat naast een verplichting
+    /// met `vanaf: bekendmaking`. Zodra dat wel zo is, hoort dit gat gedicht te
+    /// worden bij [`Self::publish_and_settle`] en niet hier.
     fn laat_openstaande_termijnen_vervallen(
         &mut self,
         decretogram: &Decretogram,

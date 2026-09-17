@@ -1085,6 +1085,13 @@ Zonder die declaratie gebeurt er niets, en dat is het verschil tussen een regel 
 het recht en een regel van het platform: "een tweede besluit wist het eerste uit"
 zou een uitvoerder nooit mogen aannemen.
 
+Wat er níét onder valt, zijn verplichtingen die nog op de **bekendmaking** wachten
+(`vanaf: bekendmaking`). Die staan in het gram van hun eigen besluit en niet in de
+wachtrij, en een gram verandert niet — dus een beschikking die vervangen wordt
+vóórdat ze bekendgemaakt is, roostert bij haar bekendmaking alsnog in. Dat is de
+plek waar het hoort te worden opgelost, want daar gaat de belofte werken (Awb
+3:40). In het corpus komt die combinatie nog niet voor.
+
 In de publieke wereld draagt alleen Awir art. 19 die declaratie: de tegemoetkoming
 staat dan vast en het voorschot wordt ermee verrekend, dus de termijnen van dat
 voorschot die nog liepen worden niet meer uitbetaald.
