@@ -178,6 +178,17 @@ pub const STAGE_UITKOMSTEN: &str = "stage_uitkomsten";
 /// het artikel en de input die er niet was. Altijd aanwezig, en leeg als elke
 /// hook draaide — net als [`AFWIJZINGSGROND`].
 pub const HOOK_NIET_UITGEVOERD: &str = "hook_niet_uitgevoerd";
+/// Veld met de uitkomsten die de **eigen regeling** voor deze stage declareert
+/// maar bij deze uitvoering niet opleverde.
+///
+/// De tegenhanger van [`STAGE_UITKOMSTEN`] voor wat er niet kwam: een uitkomst
+/// onder `stage_uitkomsten` die er niet is, geen waarde kreeg (`null`) of op een
+/// ontbrekend feit bleef steken. Zonder dit veld is "niet gedeclareerd" in het
+/// gram niet te onderscheiden van "gedeclareerd maar niet geleverd". Per stuk de
+/// uitkomst, het artikel met regeling en versie, en de reden als de engine die
+/// geeft. Altijd aanwezig, en leeg als elke gedeclareerde uitkomst er kwam —
+/// net als [`HOOK_NIET_UITGEVOERD`].
+pub const STAGE_UITKOMST_NIET_GELEVERD: &str = "stage_uitkomst_niet_geleverd";
 /// Veld met de termijnen die op de bekendmaking wachten.
 ///
 /// Wat het besluit oplegde maar nog niet kon inroosteren: het bedrag, de
@@ -265,12 +276,13 @@ const FIXED_FIELDS: [&str; 18] = [
 /// `requires` van de stage, als inputs), waar het besluit ligt waar ze bij hoort,
 /// en waar elk veld vandaan komt dat de wet er bij deze stage aan hangt. De dag
 /// van de bekendmaking is het `op_moment` van het gram zelf.
-const BEKENDMAKING_FIELDS: [&str; 9] = [
+const BEKENDMAKING_FIELDS: [&str; 10] = [
     STAGE,
     BEKENDGEMAAKT_DOOR,
     INPUTS,
     HOOKS,
     STAGE_UITKOMSTEN,
+    STAGE_UITKOMST_NIET_GELEVERD,
     HOOK_NIET_UITGEVOERD,
     BESLUIT_OP_MOMENT,
     BESLUIT_GRAM,
@@ -2781,6 +2793,47 @@ impl StageUitkomstHerkomst {
     }
 }
 
+/// Een uitkomst die de **eigen regeling** voor een stage declareert, en die de
+/// uitvoering van die stage niet opleverde.
+///
+/// De tegenhanger van [`StageUitkomstHerkomst`] voor wat er níet kwam. Een
+/// vervaldatum die op zo'n uitkomst leunt valt hard om; elke andere uitkomst
+/// staat hier, zodat het gram laat zien dat ze gedeclareerd was en ontbrak.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StageUitkomstNietGeleverd {
+    /// De naam van de uitkomst.
+    pub uitkomst: String,
+    /// De regeling, de versie en het artikel die haar hadden moeten voortbrengen.
+    pub lexogram: ObligationOrigin,
+    /// Waarom ze er niet is, als de engine dat zegt: geen waarde (`null`), of de
+    /// feiten die ontbraken.
+    pub reden: Option<String>,
+}
+
+impl StageUitkomstNietGeleverd {
+    /// Als vastlegbare waarde, voor in het gram.
+    fn as_value(&self) -> Value {
+        Value::Object(BTreeMap::from([
+            ("uitkomst".to_string(), Value::String(self.uitkomst.clone())),
+            (LEXOGRAM.to_string(), self.lexogram.as_value()),
+            ("reden".to_string(), optional_text(self.reden.as_deref())),
+        ]))
+    }
+
+    /// Leesbare regel voor een verslag en voor het journaal.
+    pub fn describe(&self) -> String {
+        let reden = self
+            .reden
+            .as_deref()
+            .map_or_else(String::new, |reden| format!(": {reden}"));
+        format!(
+            "stage-uitkomst '{}' uit {} niet geleverd{reden}",
+            self.uitkomst,
+            self.lexogram.describe(),
+        )
+    }
+}
+
 /// Een hook die vuurde maar niet draaide, omdat een input die hij nodig heeft er
 /// bij dit besluit niet is.
 ///
@@ -2874,6 +2927,9 @@ pub struct Bekendmaking {
     pub inputs: BTreeMap<String, DecretogramInput>,
     /// Waar elke uitkomst van de eigen regeling bij deze stage vandaan komt.
     pub stage_uitkomsten: Vec<StageUitkomstHerkomst>,
+    /// De uitkomsten die de eigen regeling voor deze stage declareert maar die
+    /// de uitvoering niet opleverde.
+    pub stage_uitkomst_niet_geleverd: Vec<StageUitkomstNietGeleverd>,
     /// De hooks die op deze stage vuurden maar niet konden draaien.
     pub hooks_niet_uitgevoerd: Vec<HookNietUitgevoerd>,
     /// De besluit-definitie waarvan dit de bekendmaking is.
@@ -2982,6 +3038,15 @@ impl Bekendmaking {
                     self.stage_uitkomsten
                         .iter()
                         .map(StageUitkomstHerkomst::as_value)
+                        .collect(),
+                ),
+            ),
+            (
+                STAGE_UITKOMST_NIET_GELEVERD.to_string(),
+                Value::Array(
+                    self.stage_uitkomst_niet_geleverd
+                        .iter()
+                        .map(StageUitkomstNietGeleverd::as_value)
                         .collect(),
                 ),
             ),

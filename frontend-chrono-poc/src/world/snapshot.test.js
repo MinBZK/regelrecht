@@ -24,6 +24,7 @@ import {
   gramsInTimeOrder,
   initialForm,
   stageOf,
+  stageUitkomstenNietGeleverdOf,
   isNewGram,
   isPrefilled,
   lexostatusDefinitions,
@@ -493,6 +494,36 @@ describe('het besluit zelf', () => {
     expect(afwijzingsgrondenOf(afwijzing)).toStrictEqual([
       { output: 'heeft_recht_op_zorgtoeslag', value: false, article: '2' },
     ]);
+  });
+
+  it('geeft geen niet-geleverde stage-uitkomst bij een gram zonder dat veld', () => {
+    expect(stageUitkomstenNietGeleverdOf(gram)).toStrictEqual([]);
+    expect(stageUitkomstenNietGeleverdOf({ fields: { stage_uitkomst_niet_geleverd: { value: [] } } })).toStrictEqual([]);
+  });
+
+  // Gedeclareerd maar niet geleverd hoort te onderscheiden te zijn van niet
+  // gedeclareerd: de rij noemt de uitkomst, het artikel met versie en de reden.
+  it('geeft elke niet-geleverde stage-uitkomst met artikel en reden', () => {
+    const bekendmaking = {
+      fields: {
+        stage_uitkomst_niet_geleverd: {
+          value: [
+            {
+              uitkomst: 'nakoming_gemeld_uiterlijk_op',
+              lexogram: { regulation: 'test_regeling', regulation_valid_from: '2024-01-01', artikel: '2' },
+              reden: 'de regeling gaf geen waarde (null)',
+            },
+            { uitkomst: 'zonder_reden', lexogram: null, reden: null },
+          ],
+        },
+      },
+    };
+    const [eerste, tweede] = stageUitkomstenNietGeleverdOf(bekendmaking);
+    expect(eerste.uitkomst).toBe('nakoming_gemeld_uiterlijk_op');
+    expect(eerste.lexogram).toContain('test_regeling, artikel 2');
+    expect(eerste.lexogram).toContain('versie');
+    expect(eerste.reden).toBe('de regeling gaf geen waarde (null)');
+    expect(tweede).toStrictEqual({ uitkomst: 'zonder_reden', lexogram: '', reden: null });
   });
 
   it('houdt een grond zonder artikel leesbaar', () => {

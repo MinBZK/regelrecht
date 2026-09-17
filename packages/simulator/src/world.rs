@@ -47,10 +47,10 @@
 use crate::accept::CellBridge;
 use crate::cell::{
     check_documented_params, check_parameter_value, check_prefill_values, Bekendmaking,
-    BekendmakingStand, Cell, CellConfig, ChronicleEvent, DecisionContext, Decretogram,
-    DocumentedParameter, HookNietUitgevoerd, InputOrigin, Intake, Lexostatus, ObligationDue,
-    PartyBindings, Prefill, BESCHIKKINGEN, BETALINGEN, STAGE_BEKENDMAKING, STAGE_BESLUIT,
-    ZAAKKENMERK,
+    BekendmakingStand, Cell, CellConfig, ChronicleEvent, DecisionContext,
+    Decretogram, DocumentedParameter, HookNietUitgevoerd, InputOrigin, Intake, Lexostatus,
+    ObligationDue, PartyBindings, Prefill, StageUitkomstNietGeleverd, BESCHIKKINGEN, BETALINGEN,
+    STAGE_BEKENDMAKING, STAGE_BESLUIT, ZAAKKENMERK,
 };
 use crate::cell::{nakoming_schema, uncovered};
 use crate::error::{Result, SimulatorError, Subject};
@@ -1565,9 +1565,13 @@ impl World {
                 parent: Some(decision),
             });
         }
-        self.journal_hooks_niet_uitgevoerd(
+        self.journal_gaten(
             cell,
-            &decretogram.hooks_niet_uitgevoerd,
+            JournalKind::HookNietUitgevoerd,
+            decretogram
+                .hooks_niet_uitgevoerd
+                .iter()
+                .map(HookNietUitgevoerd::describe),
             op_moment,
             decision,
         );
@@ -1698,9 +1702,23 @@ impl World {
             parent: None,
         };
         let publication = self.write_journal(entry);
-        self.journal_hooks_niet_uitgevoerd(
+        self.journal_gaten(
             cell,
-            &bekendmaking.hooks_niet_uitgevoerd,
+            JournalKind::StageUitkomstNietGeleverd,
+            bekendmaking
+                .stage_uitkomst_niet_geleverd
+                .iter()
+                .map(StageUitkomstNietGeleverd::describe),
+            self.clock,
+            publication,
+        );
+        self.journal_gaten(
+            cell,
+            JournalKind::HookNietUitgevoerd,
+            bekendmaking
+                .hooks_niet_uitgevoerd
+                .iter()
+                .map(HookNietUitgevoerd::describe),
             self.clock,
             publication,
         );
@@ -1743,30 +1761,32 @@ impl World {
         Ok((bekendmaking, events))
     }
 
-    /// Eén journaalregel per hook die op een gram vuurde maar niet draaide.
+    /// Eén journaalregel per gat in een gram: een hook die vuurde maar niet
+    /// draaide, of een gedeclareerde stage-uitkomst die niet kwam.
     ///
     /// Onder de regel van het besluit of de bekendmaking waar het gram bij hoort:
     /// het gat hoort bij die gebeurtenis, en los gelezen is "hook niet
     /// uitgevoerd" een melding zonder aanleiding. Het gram zegt het ook
-    /// (`hook_niet_uitgevoerd`); het journaal vertelt het, zodat een lezer van
-    /// het verhaal niet in een gram hoeft te zoeken om te zien dat een artikel
-    /// van de wet hier niet toegepast is.
-    fn journal_hooks_niet_uitgevoerd(
+    /// (`hook_niet_uitgevoerd`, `stage_uitkomst_niet_geleverd`); het journaal
+    /// vertelt het, zodat een lezer van het verhaal niet in een gram hoeft te
+    /// zoeken om te zien dat de wet hier iets niet gaf.
+    fn journal_gaten(
         &mut self,
         cell: &str,
-        hooks: &[HookNietUitgevoerd],
+        kind: JournalKind,
+        gaten: impl IntoIterator<Item = String>,
         moment: NaiveDate,
         parent: usize,
     ) {
-        for hook in hooks {
+        for description in gaten {
             self.write_journal(JournalEntry {
                 seq: 0,
                 moment,
                 actor: JournalActor::Cell {
                     id: cell.to_string(),
                 },
-                kind: JournalKind::HookNietUitgevoerd,
-                description: hook.describe(),
+                kind,
+                description,
                 grams: Vec::new(),
                 changes: Vec::new(),
                 accepted: Vec::new(),

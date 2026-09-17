@@ -1,0 +1,141 @@
+---
+name: een gedeclareerde stage-uitkomst die niet ontstaat, valt niet stil weg
+description: >-
+  Het artikel van de vergunning declareert twee uitkomsten voor de
+  bekendmaking: de dag vanaf wanneer de vergunning geldt (art. 3), en de dag
+  waarop de houder uiterlijk meldt dat hij aan de voorschriften voldoet
+  (art. 2). Die tweede bestaat alleen bij een vergunning onder voorschriften.
+
+  Twee zaken. Bij de vergunning met voorschriften komen beide uitkomsten in het
+  gram van de bekendmaking. Bij die zonder voorschriften geeft de regeling voor
+  de melding geen waarde: de uitkomst staat dan niet als waarde in het gram,
+  maar wel onder `stage_uitkomst_niet_geleverd` — met het artikel en de reden —
+  en het journaal zegt het bij de bekendmaking. Zo is "gedeclareerd maar niet
+  geleverd" te onderscheiden van "niet gedeclareerd".
+
+clock:
+  start: 2024-01-01
+
+cells:
+  - id: uitvoerder
+    identity: Uitvoerder
+    laws:
+      - test_stage_uitkomst_niet_geleverd
+      - test_awb_procedure
+
+    besluit_definitions:
+      - name: verlening
+        doc: de verlening van de vergunning, met of zonder voorschriften
+        regulation: test_stage_uitkomst_niet_geleverd
+        output: vergunning_verleend
+        zaakkenmerk: vergunning/{bsn}
+        params:
+          - name: bsn
+            type: string
+          - name: met_voorschriften
+            type: boolean
+        inputs:
+          bsn:
+            param: bsn
+          met_voorschriften:
+            param: met_voorschriften
+
+    lexostatus_definitions:
+      - name: bekendmaking
+        doc: wat er bij de bekendmaking van de verlening vast kwam te staan
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - vergunning_geldig_vanaf
+          - nakoming_gemeld_uiterlijk_op
+        reduction:
+          chronicle: beschikkingen
+          key: zaakkenmerk
+          latest: true
+          where:
+            stage: BEKENDMAKING
+
+      - name: melding
+        doc: de dag waarop de houder uiterlijk de nakoming meldt
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - nakoming_gemeld_uiterlijk_op
+        reduction:
+          chronicle: beschikkingen
+          key: zaakkenmerk
+          latest: true
+          where:
+            stage: BEKENDMAKING
+
+actions:
+  - id: uitvoerder.verlening
+    actor: uitvoerder
+    label: Verleen de vergunning
+    decides:
+      cell: uitvoerder
+      besluit: verlening
+
+  - id: uitvoerder.bekendmaking
+    actor: uitvoerder
+    label: Maak de verlening bekend
+    publishes:
+      cell: uitvoerder
+      besluit: verlening
+
+act:
+  - description: de verlening onder voorschriften
+    action: uitvoerder.verlening
+    values:
+      bsn: '999993653'
+      met_voorschriften: true
+    op_moment: 2024-03-01
+    expect:
+      vergunning_verleend: true
+
+  - description: en haar bekendmaking
+    action: uitvoerder.bekendmaking
+    values:
+      datum_bekendmaking: '2024-03-04'
+      toegezonden_aan_belanghebbende: true
+    op_moment: 2024-03-04
+
+  - description: de verlening zonder voorschriften, over een andere zaak
+    action: uitvoerder.verlening
+    values:
+      bsn: '999992788'
+      met_voorschriften: false
+    op_moment: 2024-03-05
+    expect:
+      vergunning_verleend: true
+
+  - description: en haar bekendmaking
+    action: uitvoerder.bekendmaking
+    values:
+      datum_bekendmaking: '2024-03-06'
+      toegezonden_aan_belanghebbende: true
+    op_moment: 2024-03-06
+
+queries:
+  - description: >-
+      Onder voorschriften leverde de bekendmaking beide uitkomsten.
+    cell: uitvoerder
+    lexostatus: bekendmaking
+    params:
+      zaakkenmerk: vergunning/999993653
+    op_moment: 2024-03-04
+    expect:
+      vergunning_geldig_vanaf: '2024-03-04'
+      nakoming_gemeld_uiterlijk_op: '2024-04-01'
+
+  - description: >-
+      Zonder voorschriften staat de melding er niet als waarde: de regeling gaf
+      er geen. Dat ze gedeclareerd was, zegt het gram zelf.
+    cell: uitvoerder
+    lexostatus: melding
+    params:
+      zaakkenmerk: vergunning/999992788
+    op_moment: 2024-03-06
+    expect_not_established: true

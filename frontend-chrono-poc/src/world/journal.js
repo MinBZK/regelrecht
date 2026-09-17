@@ -32,6 +32,9 @@ export const JOURNAL_KINDS = {
   // Het gram ligt er gewoon; het nieuws is dat een artikel van de wet er níet op
   // toegepast is, omdat een input ontbrak.
   hook_niet_uitgevoerd: { label: 'Hook niet uitgevoerd', color: 'warning', icon: 'warning' },
+  // De bekendmaking ligt er gewoon; het nieuws is dat een uitkomst die de eigen
+  // regeling voor die stage declareert, er níet in kwam.
+  stage_uitkomst_niet_geleverd: { label: 'Stage-uitkomst niet geleverd', color: 'warning', icon: 'warning' },
   vraag: { label: 'Vraag over de celgrens', color: 'hemelblauw', icon: 'question' },
 };
 

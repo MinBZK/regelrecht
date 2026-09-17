@@ -1,0 +1,103 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: test_stage_uitkomst_niet_geleverd
+name: Testregeling vergunning met een stage-uitkomst die niet altijd ontstaat
+regulatory_layer: WET
+bwb_id: BWBR9999922
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+url: https://example.com/test_stage_uitkomst_niet_geleverd
+competent_authority: Uitvoerder
+
+# Een testregeling, met opzet **niet** in het corpus: ze bestaat om een
+# eigenschap van de opstelling aan te tonen en niet om recht weer te geven.
+#
+# Wat ze aantoont is een uitkomst onder `stage_uitkomsten` die de regeling bij de
+# bekendmaking **niet altijd** oplevert. Artikel 1 declareert er twee voor de
+# bekendmaking. De ene (art. 3) ontstaat altijd; de andere (art. 2) alleen als
+# de vergunning onder voorschriften verleend is. Zonder voorschriften geeft de
+# regeling er geen waarde voor, en dat hoort in het gram te staan en niet stil
+# weg te vallen.
+articles:
+  - number: '1'
+    url: https://example.com/test_stage_uitkomst_niet_geleverd#Artikel1
+    text: >-
+      De uitvoerder verleent de vergunning, al dan niet onder voorschriften.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+          extensions:
+            chronolex:
+              stage_uitkomsten:
+                BEKENDMAKING:
+                  - vergunning_geldig_vanaf
+                  - nakoming_gemeld_uiterlijk_op
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: met_voorschriften
+            type: boolean
+            required: true
+        output:
+          - name: vergunning_verleend
+            type: boolean
+        actions:
+          - output: vergunning_verleend
+            value: true
+
+  - number: '2'
+    url: https://example.com/test_stage_uitkomst_niet_geleverd#Artikel2
+    text: >-
+      Is de vergunning onder voorschriften verleend, dan meldt de houder
+      uiterlijk vier weken na de bekendmaking dat hij aan de voorschriften
+      voldoet.
+    machine_readable:
+      execution:
+        parameters:
+          - name: met_voorschriften
+            type: boolean
+            required: true
+          # De dag van de bekendmaking, onder de naam die de procedure van de
+          # algemene wet ervoor gebruikt.
+          - name: datum_bekendmaking
+            type: date
+            required: true
+        output:
+          # Zonder voorschriften valt er niets te melden: dan is er geen dag.
+          - name: nakoming_gemeld_uiterlijk_op
+            type: date
+            nullable: true
+        actions:
+          - output: nakoming_gemeld_uiterlijk_op
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $met_voorschriften
+                    value: true
+                  then:
+                    operation: DATE_ADD
+                    date: $datum_bekendmaking
+                    weeks: 4
+
+  - number: '3'
+    url: https://example.com/test_stage_uitkomst_niet_geleverd#Artikel3
+    text: >-
+      De vergunning geldt vanaf de dag waarop zij is bekendgemaakt.
+    machine_readable:
+      execution:
+        parameters:
+          - name: datum_bekendmaking
+            type: date
+            required: true
+        output:
+          - name: vergunning_geldig_vanaf
+            type: date
+        actions:
+          - output: vergunning_geldig_vanaf
+            value: $datum_bekendmaking

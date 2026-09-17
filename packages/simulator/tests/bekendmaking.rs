@@ -714,6 +714,99 @@ fn een_hook_zonder_input_staat_in_het_gram_en_in_het_journaal() {
     assert_eq!(run.warnings.len(), 2, "het optuigen waarschuwde voor beide");
 }
 
+/// **Een gedeclareerde stage-uitkomst die niet ontstaat, staat in het gram en in
+/// het journaal.**
+///
+/// Twee verleningen onder hetzelfde artikel, dat twee uitkomsten voor de
+/// bekendmaking declareert. Met voorschriften komen ze er allebei; zonder geeft
+/// de regeling voor de melding geen waarde. Dan staat die uitkomst niet als
+/// waarde in het gram en niet onder `stage_uitkomsten`, maar wel onder
+/// `stage_uitkomst_niet_geleverd` — met het artikel en de reden — en er hangt
+/// een journaalregel onder de bekendmaking.
+#[test]
+fn een_stage_uitkomst_die_niet_ontstaat_valt_niet_stil_weg() {
+    let run = run("bekendmaking_stage_uitkomst_niet_geleverd.yaml");
+    let grams = beschikkingen(&run);
+    let bekendmakingen: Vec<&GramSnapshot> = grams
+        .iter()
+        .copied()
+        .filter(|gram| veld(gram, "stage") == "BEKENDMAKING")
+        .collect();
+    assert_eq!(bekendmakingen.len(), 2);
+    let (met, zonder) = (bekendmakingen[0], bekendmakingen[1]);
+
+    // Met voorschriften: alles geleverd, en het veld staat er leeg.
+    assert_eq!(veld(met, "nakoming_gemeld_uiterlijk_op"), "2024-04-01");
+    assert_eq!(objecten(met, "stage_uitkomsten").len(), 2);
+    assert!(objecten(met, "stage_uitkomst_niet_geleverd").is_empty());
+
+    // Zonder: de uitkomst die er wél kwam, staat er gewoon.
+    assert_eq!(veld(zonder, "vergunning_geldig_vanaf"), "2024-03-06");
+    let geleverd = objecten(zonder, "stage_uitkomsten");
+    assert_eq!(geleverd.len(), 1);
+    assert_eq!(
+        geleverd[0].get("veld").and_then(Value::as_str),
+        Some("vergunning_geldig_vanaf")
+    );
+
+    // De andere staat er niet als waarde, maar wel als gat.
+    assert!(!zonder.fields.contains_key("nakoming_gemeld_uiterlijk_op"));
+    let niet = objecten(zonder, "stage_uitkomst_niet_geleverd");
+    assert_eq!(niet.len(), 1, "precies één uitkomst kwam niet");
+    assert_eq!(
+        niet[0].get("uitkomst").and_then(Value::as_str),
+        Some("nakoming_gemeld_uiterlijk_op")
+    );
+    let Some(Value::Object(lexogram)) = niet[0].get("lexogram") else {
+        panic!("de uitkomst hoort haar artikel te noemen");
+    };
+    assert_eq!(
+        lexogram.get("regulation").and_then(Value::as_str),
+        Some("test_stage_uitkomst_niet_geleverd")
+    );
+    assert_eq!(
+        lexogram
+            .get("regulation_valid_from")
+            .and_then(Value::as_str),
+        Some("2024-01-01")
+    );
+    assert_eq!(lexogram.get("artikel").and_then(Value::as_str), Some("2"));
+    assert!(
+        niet[0]
+            .get("reden")
+            .and_then(Value::as_str)
+            .is_some_and(|reden| reden.contains("null")),
+        "de engine gaf geen waarde, en dat is de reden"
+    );
+
+    // Een vast veld van de bekendmaking, en dus geen uitkomst van de regeling.
+    assert!(matches!(
+        zonder.fields["stage_uitkomst_niet_geleverd"].origin,
+        FieldOrigin::Besluit
+    ));
+
+    let regels: Vec<_> = run
+        .journal
+        .iter()
+        .filter(|entry| entry.kind == regelrecht_simulator::JournalKind::StageUitkomstNietGeleverd)
+        .collect();
+    assert_eq!(regels.len(), 1, "één regel, bij de bekendmaking zonder");
+    let ouder = regels[0]
+        .parent
+        .expect("de regel hangt onder de bekendmaking");
+    assert!(run
+        .journal
+        .iter()
+        .any(|entry| entry.seq == ouder
+            && entry.kind == regelrecht_simulator::JournalKind::Bekendmaking));
+    assert!(regels[0]
+        .description
+        .contains("nakoming_gemeld_uiterlijk_op"));
+    assert!(regels[0]
+        .description
+        .contains("test_stage_uitkomst_niet_geleverd artikel 2"));
+}
+
 /// **Een vervaldag uit de eigen regeling die al voorbij is, wordt ingehaald.**
 ///
 /// De verplichting noemt haar vervaldatum zelf, en die kan achter de

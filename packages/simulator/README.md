@@ -1367,7 +1367,7 @@ elkaar houdt:
 |---|---|---|
 | `stage` | `BESLUIT` | `BEKENDMAKING` |
 | `op_moment` | de dag van het besluit | de dag van de bekendmaking |
-| draagt | de uitkomsten, de inputs met hun herkomst, het receipt, het schema van de verplichtingen, de hooks die niet draaiden | wat er bij de bekendmaking ingevuld is (als inputs), de uitkomsten van de hooks op die stage en van de eigen regeling met hun artikel, de hooks die niet draaiden, en de termijnen die nu pas gaan lopen |
+| draagt | de uitkomsten, de inputs met hun herkomst, het receipt, het schema van de verplichtingen, de hooks die niet draaiden | wat er bij de bekendmaking ingevuld is (als inputs), de uitkomsten van de hooks op die stage en van de eigen regeling met hun artikel, de gedeclareerde uitkomsten die niet kwamen, de hooks die niet draaiden, en de termijnen die nu pas gaan lopen |
 | ontstaat door | `Cell::decide` | `Cell::bekendmaken` |
 
 **Geen veld dat erbij komt, maar een gram dat erbij komt.** Het besluit-gram
@@ -1467,7 +1467,11 @@ uitkomsten, **onder het recht van het besluitmoment**, met de inputs uit het
 BESLUIT-gram plus de stage-parameters. Het stage-gram draagt ze naast de
 hook-uitkomsten, met hun herkomst onder `stage_uitkomsten` (regeling, versie en
 artikel), en het receipt van het gram dekt beide uitvoeringen: die van de eigen
-regeling hangt als tak onder de trace van de stage.
+regeling hangt als tak onder de trace van de stage. Een gedeclareerde uitkomst die
+de uitvoering niet oplevert (geen waarde, of een feit dat ontbrak) staat niet als
+waarde in het gram maar onder `stage_uitkomst_niet_geleverd` — uitkomst, regeling,
+versie, artikel en de reden als de engine die geeft — met een journaalregel
+(`kind: stage_uitkomst_niet_geleverd`) onder de bekendmaking.
 
 Bij het optuigen wordt geweigerd wat hier stil verkeerd zou gaan: een andere
 stage dan BEKENDMAKING (het platform voert na het besluit geen andere uit), een
@@ -1629,6 +1633,10 @@ De scenario's:
   een verlening en een vaststelling van hetzelfde soort, waarvan alleen de
   bekendmaking van de verlening een uitkomst van de eigen regeling draagt — en
   een verplichting die die uitkomst als vervaldatum neemt;
+- [`scenarios/bekendmaking_stage_uitkomst_niet_geleverd.yaml`](scenarios/bekendmaking_stage_uitkomst_niet_geleverd.yaml):
+  twee verleningen onder een artikel dat twee stage-uitkomsten declareert,
+  waarvan er één alleen onder een voorwaarde ontstaat — en bij de andere zaak in
+  het gram onder `stage_uitkomst_niet_geleverd` staat;
 - [`scenarios/bekendmaking_inhalen.yaml`](scenarios/bekendmaking_inhalen.yaml):
   een stage-uitkomst op een input van het besluit, als vervaldatum die bij een
   late bekendmaking al voorbij is — en dus op de dag van de bekendmaking wordt
@@ -3048,7 +3056,7 @@ een vraag die over een celgrens ging.
 | `seq` | de plek in het journaal, vanaf 0 — waarnaar `parent` verwijst |
 | `moment` | het moment in de logische tijd |
 | `actor` | `actor` (een actie), `cell` (een cel die zelf besloot of vroeg) of `klok` |
-| `kind` | `vastlegging`, `besluit`, `bekendmaking`, `betaling`, `niet_nagekomen`, `termijn`, `hook_niet_uitgevoerd` of `vraag` |
+| `kind` | `vastlegging`, `besluit`, `bekendmaking`, `betaling`, `niet_nagekomen`, `termijn`, `hook_niet_uitgevoerd`, `stage_uitkomst_niet_geleverd` of `vraag` |
 | `description` | korte omschrijving, in de woorden van het wereldbestand |
 | `grams` | verwijzingen naar de grammen die erdoor ontstonden: cel, kroniek, gram-id (`<cel>|<kroniek>|<plek>`) |
 | `changes` | wat er aan de stand van de zaak veranderde, per betrokken cel |

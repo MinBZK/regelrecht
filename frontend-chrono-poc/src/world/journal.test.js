@@ -49,6 +49,7 @@ describe('het journaal lezen', () => {
     expect(journalKind('besluit').color).toBe('donkerblauw');
     expect(journalKind('betaling').icon).toBe('euro-sign');
     expect(journalKind('iets-nieuws').label).toBe('Gebeurtenis');
+    expect(journalKind('stage_uitkomst_niet_geleverd').label).toBe('Stage-uitkomst niet geleverd');
   });
 
   it('noemt bij een vraag beide kanten van de grens', () => {
