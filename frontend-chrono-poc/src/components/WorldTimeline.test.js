@@ -30,7 +30,7 @@ describe('de tijdlijn onderaan', () => {
     const labels = mountTimeline()
       .findAll('nldd-step-indicator-item')
       .map((point) => point.attributes('text'));
-    expect(labels).toContain('01-03-2024 · aanslag_vastgesteld');
+    expect(labels).toContain('15-11-2023 · inkomenslevering');
     expect(labels.some((label) => label.endsWith('grammen'))).toBe(true);
     expect(labels).toContain('01-02-2025 · klok');
   });

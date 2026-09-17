@@ -29,8 +29,13 @@ settings:
 
 cells:
   # De aanvrager. Een bron-cel: geen wetten, geen engine. Wat zij houdt is haar
-  # eigen journaal van wat zij indiende.
+  # eigen journaal van wat zij indiende — en van wat zij terugbetaalde.
   - id: burger
+    # De naam waaronder deze cel zich uitgeeft. Zij komt geen gezag na: ze ís de
+    # partij, en dit is de naam die een omgekeerde verplichting als schuldenaar
+    # aanwijst. Valt het slotbedrag van de vaststelling onder nul, dan is dit de
+    # cel die terugbetaalt.
+    identity: '999993653'
     laws: []
     chronicles:
       - stream: aanvragen
@@ -50,6 +55,58 @@ cells:
               - name: ondertekend_op
                 type: date
 
+      # Wat zij betaalde. Leeg opgetuigd: er komt pas iets in als er een termijn
+      # vervalt waarvan zíj de schuldenaar is.
+      - stream: betalingen
+        key: zaakkenmerk
+        # Het gebeurtenisschema van een betalingsstroom: welke gebeurtenissen
+        # erin thuishoren, op welke grondslag ze berusten en welke velden ze
+        # dragen. Wat het platform van zo'n stroom verlangt, staat hier als
+        # data; het optuigen toetst of het er staat, en elke vastlegging of het
+        # klopt. De andere cellen in deze wereld delen dit schema.
+        #
+        # Vier gebeurtenissen en niet twee: de vaststelling van Awir art. 19
+        # draagt `richting_bij_negatief: omkeren`, dus uit diezelfde
+        # verplichting kan ook een terugvordering komen — met de partijen
+        # omgekeerd en een eigen naam, want een betaling terug is geen betaling
+        # met een minteken. Elke cel die zo'n verplichting nakomt of er de
+        # melding van vastlegt, heeft alle vier de namen nodig.
+        gebeurtenissen: &betalingsschema
+          - name: betaling_gedaan
+            intake: betaling
+            grondslag: Algemene wet bestuursrecht, art. 4:89
+            fields: &betalingsvelden
+              - name: zaakkenmerk
+                type: string
+              - name: bedrag
+                type: amount
+              - name: volgnummer
+                type: number
+              # Wat voor termijn het was. Het staat ook in de naam van de
+              # gebeurtenis, en hier nog eens als veld: een reductie leest velden
+              # en geen namen, en wie terugleest hoort uit het feit zelf te zien
+              # dat dit een terugvordering was en geen betaling.
+              - name: soort
+                type: string
+              - name: besluit
+                type: string
+              - name: schuldenaar
+                type: string
+              - name: schuldeiser
+                type: string
+          - name: betaling_gemeld
+            intake: levering
+            grondslag: Algemene wet bestuursrecht, art. 4:89
+            fields: *betalingsvelden
+          - name: terugvordering_gedaan
+            intake: betaling
+            grondslag: Algemene wet inkomensafhankelijke regelingen, art. 26
+            fields: *betalingsvelden
+          - name: terugvordering_gemeld
+            intake: levering
+            grondslag: Algemene wet inkomensafhankelijke regelingen, art. 26
+            fields: *betalingsvelden
+
     lexostatus_definitions:
       - name: ingediende_aanvraag
         doc: wat deze aanvrager zelf indiende, en wanneer
@@ -63,6 +120,36 @@ cells:
           key: bsn
           latest: true
 
+      - name: betaald_tot_nu_toe
+        doc: wat deze cel op deze zaak betaald heeft, opgeteld
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - bedrag
+        reduction:
+          chronicle: betalingen
+          key: zaakkenmerk
+          sum: bedrag
+
+      - name: laatste_betaling
+        doc: >-
+          De laatste termijn die deze cel betaalde, met de soort en de twee
+          partijen erbij — zodat te lezen is dat het feit zelf zegt wie aan wie
+          betaalde, en niet alleen het besluit waaruit het volgt.
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - bedrag
+          - soort
+          - schuldenaar
+          - schuldeiser
+        reduction:
+          chronicle: betalingen
+          key: zaakkenmerk
+          latest: true
+
     # De stand van de zaak bij deze cel: welke reducties het journaal vóór en ná
     # elke gebeurtenis meet, om er een "was → is" van te maken. Casusdata — het
     # platform weet alleen dát er indicatoren zijn, niet welke. `$veld` wijst een
@@ -73,6 +160,10 @@ cells:
         label: ingediende aanvraag
         params:
           bsn: $bsn
+      - lexostatus: betaald_tot_nu_toe
+        label: terugbetaald
+        params:
+          zaakkenmerk: $zaakkenmerk
 
   # Het register. Ook een bron-cel: ze legt vast en reduceert, en heeft geen
   # engine nodig om een gepubliceerde lexostatus te kunnen geven. Ze staat hier
@@ -134,9 +225,10 @@ cells:
         params:
           bsn: $bsn
 
-  # De cel die het toetsingsinkomen vaststelt, en die later de verplichtingen
-  # nakomt. Twee aanslagen: de tweede corrigeert de eerste, en dat verschil is
-  # wat een tweede besluit zichtbaar maakt.
+  # De cel die het toetsingsinkomen vaststelt, en die de betalingsverplichtingen
+  # van Dienst Toeslagen nakomt. Twee aanslagen: de tweede corrigeert de eerste,
+  # en dat verschil is wat de vaststelling zichtbaar maakt — zij rekent op de
+  # laatste aanslag en komt daarmee lager uit dan het voorschot.
   - id: belastingdienst
     laws: []
     # Deze cel komt de betalingsverplichtingen na die Dienst Toeslagen oplegt:
@@ -172,31 +264,10 @@ cells:
 
       - stream: betalingen
         key: zaakkenmerk
-        # Het gebeurtenisschema van deze stroom: welke gebeurtenissen erin
-        # thuishoren, op welke grondslag ze berusten en welke velden ze dragen.
-        # Wat het platform van een betalingsstroom verlangt, staat hier als data;
-        # het optuigen toetst of het er staat, en elke vastlegging of het klopt.
-        gebeurtenissen: &betalingsschema
-          - name: betaling_gedaan
-            intake: betaling
-            grondslag: Algemene wet bestuursrecht, art. 4:89
-            fields: &betalingsvelden
-              - name: zaakkenmerk
-                type: string
-              - name: bedrag
-                type: amount
-              - name: volgnummer
-                type: number
-              - name: besluit
-                type: string
-              - name: schuldenaar
-                type: string
-              - name: schuldeiser
-                type: string
-          - name: betaling_gemeld
-            intake: levering
-            grondslag: Algemene wet bestuursrecht, art. 4:89
-            fields: *betalingsvelden
+        # Hetzelfde schema als bij de aanvrager hierboven: wat er in een
+        # betalingsstroom thuishoort, hangt aan de verplichting en niet aan de
+        # cel die haar nakomt.
+        gebeurtenissen: *betalingsschema
 
     lexostatus_definitions:
       - name: toetsingsinkomen
@@ -352,12 +423,13 @@ cells:
 
       - name: zorgtoeslag_vaststelling
         doc: >-
-          Het tweede besluit over dezelfde zaak, en een ánder besluit: niet de
-          zorgtoeslag nog eens uitrekenen, maar de vaststelling van de Awir (art.
-          19). Wat is toegekend, leest deze cel terug uit haar eigen eerdere gram;
-          wat er op die toekenning betaald is, accepteert ze van de cel die
-          betaalde. Het verschil is het slotbedrag, en dat is wat er nog
-          uitbetaald wordt — de verrekening van art. 24, tweede lid.
+          Het tweede besluit over dezelfde zaak, en een ánder besluit: de
+          vaststelling van de Awir (art. 19). Ze rekent de zorgtoeslag wél
+          opnieuw uit, maar op het definitieve toetsingsinkomen — dát is wat lid
+          1 aan de laatste aanslag knoopt — en het artikel haalt die berekening
+          zelf bij de zorgtoeslagwet. Wat er van het voorschot is uitbetaald,
+          vraagt ze aan de cel die uitbetaalde. Het verschil is het slotbedrag:
+          de verrekening van art. 24, tweede lid.
         regulation: algemene_wet_inkomensafhankelijke_regelingen
         output: slotbedrag
         outputs:
@@ -372,31 +444,29 @@ cells:
         inputs:
           bsn:
             param: bsn
-          # Dezelfde zaak, een eerder moment: het bedrag zoals het toen is
-          # vastgelegd. Geen herberekening en geen eigen feit — het gram schrijft
-          # op dat het uit de toekenning komt.
-          #
-          # Hier benadert deze opstelling de wet, en dat hoort zichtbaar te
-          # staan: Awir art. 19, eerste lid knoopt de vaststelling aan de laatste
-          # aanslag, dus streng gelezen komt hier het bedrag te staan dat art. 2
-          # van de zorgtoeslagwet oplevert op het definitieve toetsingsinkomen.
-          # Is dat lager dan wat er als voorschot is verleend, dan wordt het
-          # slotbedrag negatief — een terugvordering, en die kant op betalen kent
-          # deze opstelling nog niet. Zolang dat zo is, leest de vaststelling
-          # terug wat er is toegekend.
-          toegekende_tegemoetkoming:
-            from_decretogram: zorgtoeslag_toekenning
-            field: hoogte_zorgtoeslag
+          # Het **definitieve** toetsingsinkomen: de laatste aanslag, van de cel
+          # die haar vaststelde. Awir art. 19, eerste lid knoopt de vaststelling
+          # daaraan, en het artikel rekent er de zorgtoeslag mee uit — dus deze
+          # cel levert hier hetzelfde feit aan als bij de toekenning, alleen
+          # later, en de aanslag is inmiddels herzien. Niet nagerekend
+          # (invariant I5).
+          toetsingsinkomen:
+            accept_from: belastingdienst
+            lexostatus: toetsingsinkomen
+            field: toetsingsinkomen
+            params:
+              bsn: $bsn
           # En over de celgrens, met het kenmerk van déze zaak: wat er als
-          # voorschot is uitbetaald, weet de cel die het uitbetaalde.
+          # voorschot is uitbetaald, weet de cel die het uitbetaalde. Niet
+          # nagerekend en niet als eigen saldo bijgehouden (invariant I5).
           #
-          # Art. 24, tweede lid verrekent wat er is *verleend*; wat deze wereld
-          # kan lezen is wat er op de zaak is *betaald*. Dat is hetzelfde bedrag
-          # zolang de vaststelling ná de laatste voorschottermijn valt. Valt ze
-          # eerder, dan blijven de openstaande termijnen van de toekenning
-          # gewoon vervallen — een verplichting is niet in te trekken — en
-          # betaalt de wereld het slotbedrag er bovenop.
-          verleende_voorschotten:
+          # Art. 24, tweede lid verrekent wat er is *verleend*, en dat is op dit
+          # moment hetzelfde bedrag: deze vaststelling vervangt het voorschot,
+          # dus de termijnen die nog openstonden vervallen erdoor (gedeclareerd
+          # in het lexogram van art. 19) en van de verlening blijft over wat er
+          # is uitbetaald. Daardoor klopt de som op elk moment — ook als de
+          # vaststelling vóór de laatste voorschottermijn valt.
+          uitbetaalde_voorschotten:
             accept_from: belastingdienst
             lexostatus: betaald_tot_nu_toe
             field: bedrag
@@ -519,12 +589,16 @@ actions:
   - id: toeslagen.vaststelling
     actor: toeslagen
     label: Stel de zorgtoeslag definitief vast
-    # Dit besluit leest de toekenning terug uit de eigen kroniek
-    # (`from_decretogram`), en dat is een eigen feit: zonder toekenning is er
-    # nog geen gram om uit te lezen, dus kan dit besluit niet. Geen voorwaarde
-    # in dit bestand — het volgt uit wat de eigen inputs opleveren, precies
-    # zoals bij de toekenning hierboven.
-    doc: Kan pas als de toekenning er ligt; de vaststelling leest die terug.
+    # Ook hier geen voorwaarde in dit bestand. Maar anders dan bij de toekenning
+    # zegt het beeld hier niets zinnigs: dit besluit heeft géén eigen feit — het
+    # inkomen en het uitbetaalde voorschot komen allebei van een andere cel — en
+    # beschikbaarheid kijkt met opzet niet over een celgrens (invariant I1, zie
+    # de README). De actie heet dus altijd mogelijk, ook voordat er iets te
+    # verrekenen valt; wie haar dan neemt, krijgt van de bevraagde cel te horen
+    # dat zij niets vaststelde.
+    doc: >-
+      Kan pas echt als het voorschot loopt; dat blijkt bij het besluit en niet
+      aan de knop.
     decides:
       cell: toeslagen
       besluit: zorgtoeslag_vaststelling

@@ -397,10 +397,11 @@ Alleen besluiten legt er iets in, en alleen een reductie haalt er iets uit.
 
 ### Het `chronolex`-blok
 
-Twee van de stappen hierboven leunen op iets wat het **uitvoerende artikel** zegt
-en waar het schema van de wet niets over vastlegt: wanneer het besluit een
-afwijzing is, en wat het oplegt. Beide staan onder `produces.extensions`, in de
-namespace `chronolex`:
+Een paar van de stappen hierboven leunen op iets wat het **uitvoerende artikel**
+zegt en waar het schema van de wet niets over vastlegt: wanneer het besluit een
+afwijzing is, wat het oplegt, en wat het van een eerdere beschikking over
+dezelfde zaak overneemt. Ze staan onder `produces.extensions`, in de namespace
+`chronolex`:
 
 ```yaml
 produces:
@@ -408,8 +409,11 @@ produces:
   decision_type: TOEKENNING
   extensions:
     chronolex:
-      afwijzing_wanneer: {...}     # wanneer dit besluit een afwijzing is
-      verplichtingen: [...]        # wat dit besluit achterlaat
+      afwijzing_wanneer: {...}              # wanneer dit besluit een afwijzing is
+      verplichtingen: [...]                 # wat dit besluit achterlaat
+      vervangt_openstaande_termijnen: {...} # wat dit besluit van een eerdere
+                                            # beschikking over dezelfde zaak
+                                            # laat vervallen
 ```
 
 `extensions` is per namespace ondoorzichtig — RFC-022 §3.2 wijst het aan als de
@@ -437,9 +441,9 @@ blok (`src/cell/extensions.rs`) houdt dat vast: het optuigen, het schema van het
 decretogram en het besluit zelf lezen alle drie door diezelfde struct, zodat er
 geen pad is waarop het blok wél gelezen wordt en de strengheid niet.
 
-De twee sleutels staan hieronder: `afwijzing_wanneer` in
+De sleutels staan hieronder: `afwijzing_wanneer` in
 [Een weigering is ook een besluit](#een-weigering-is-ook-een-besluit),
-`verplichtingen` in
+`verplichtingen` en `vervangt_openstaande_termijnen` in
 [Verplichtingen](#verplichtingen-wat-een-besluit-achterlaat). Een sleutel erbij
 is één regel in de struct — en daarmee meteen bekend bij alle drie de lezers.
 
@@ -584,10 +588,10 @@ zaakkenmerk-sjabloon, en een definitie die zelf een parameter `zaakkenmerk`
 documenteert.
 
 De publieke wereld speelt de twee samen af: `zorgtoeslag_vaststelling` voert de
-**Awir** uit (art. 19, vaststelling na afloop van het berekeningsjaar), leest het
-toegekende bedrag terug uit haar eigen toekenning en accepteert van de betalende
-cel wat er als voorschot is uitbetaald. Het slotbedrag is het verschil — de
-verrekening van art. 24, tweede lid.
+**Awir** uit (art. 19) en accepteert twee dingen van de cel die ze weet: het
+definitieve toetsingsinkomen van de laatste aanslag, en wat er op deze zaak aan
+voorschot is uitbetaald. Het slotbedrag is het verschil tussen de herberekende
+tegemoetkoming en dat voorschot — de verrekening van art. 24, tweede lid.
 
 `scenarios/toeslagen_nabetaling.yaml` doet hetzelfde over een **testregeling**
 (`fixtures/regulation/test_nabetaling`) en blijft daarvoor staan: dat scenario
@@ -984,10 +988,20 @@ verlening en een vaststelling niet hetzelfde artikel horen uit te voeren. In de
 publieke wereld doen ze dat dan ook niet: de toekenning voert Wet op de
 zorgtoeslag art. 2 uit en legt het voorschot in termijnen op (Awir art. 16 jo.
 art. 22), de vaststelling voert Awir art. 19 uit en legt het slotbedrag ineens
-op, ná verrekening van wat er als voorschot betaald is (art. 24, tweede lid).
+op, ná verrekening van het voorschot (art. 24, tweede lid).
 Zouden beide op art. 2 staan, dan legde de wereld het volle bedrag twee keer op
 — niet omdat het schema aan het artikel hangt, maar omdat "vaststellen" dan
 niets anders was dan hetzelfde nog eens uitrekenen.
+
+Dat onderscheid zit niet in de uitkomst maar in de invoer: art. 19 rekent art. 2
+van de zorgtoeslagwet opnieuw uit, maar op het **definitieve** toetsingsinkomen —
+lid 1 knoopt de vaststelling aan de laatste aanslag. Valt die hoger uit dan de
+voorlopige, dan is de tegemoetkoming lager dan het voorschot en komt het
+slotbedrag onder nul: een terugvordering (art. 24, derde lid jo. art. 26). Dat
+art. 19 daarvoor de Wet op de zorgtoeslag bij naam noemt, is de zwakke plek van
+dat blok en staat er als zodanig bij: de Awir geldt voor inkomensafhankelijke
+regelingen en kent er geen enkele bij naam, dus wélke regeling er vastgesteld
+wordt hoort bij de zaak te staan en niet in de wet.
 
 Eén besluit legt nooit iets op, wat het artikel ook zegt: een **afwijzing**. Een
 weigering belooft niets, dus er valt niets in te roosteren — zie
@@ -1048,6 +1062,51 @@ zaak en volgnummer alléén zou de eerste termijn van het tweede besluit voor di
 van het eerste doorgaan en stil wegvallen. Om dezelfde reden lopen de volgnummers
 binnen één gram dóór over álle verplichtingen die het besluit oplegt, en beginnen
 ze niet per verplichting opnieuw.
+
+**Een beschikking kan een eerdere vervangen.** Een verplichting is niet in te
+trekken: haar schema staat in een gram, en een gram verandert niet. Een tweede
+besluit over dezelfde zaak laat de termijnen van het eerste dus gewoon vervallen —
+tenzij het artikel dat het tweede besluit voortbrengt zegt dat deze beschikking in
+de plaats komt van de vorige:
+
+```yaml
+extensions:
+  chronolex:
+    vervangt_openstaande_termijnen:
+      grondslag: Awir art. 19 jo. art. 24, tweede lid (de vaststelling vervangt het voorschot)
+```
+
+Staat dat er, dan verdwijnen bij dit besluit de termijnen van dezelfde zaak bij
+dezelfde cel waarvan de vervaldatum nog niet geweest is, met een journaalregel per
+termijn en de grondslag erbij. Ze verdwijnen niet uit het gram waarin ze beloofd
+zijn — dat blijft zeggen wat het zei — en verstreken termijnen blijven staan: wat betaald
+is, is betaald, en wat daarmee moet gebeuren is de verrekening in het besluit zelf.
+Zonder die declaratie gebeurt er niets, en dat is het verschil tussen een regel uit
+het recht en een regel van het platform: "een tweede besluit wist het eerste uit"
+zou een uitvoerder nooit mogen aannemen.
+
+Wat er níét onder valt, zijn verplichtingen die nog op de **bekendmaking** wachten
+(`vanaf: bekendmaking`). Die staan in het gram van hun eigen besluit en niet in de
+wachtrij, en een gram verandert niet — dus een beschikking die vervangen wordt
+vóórdat ze bekendgemaakt is, roostert bij haar bekendmaking alsnog in. Dat is de
+plek waar het hoort te worden opgelost, want daar gaat de belofte werken (Awb
+3:40). In het corpus komt die combinatie nog niet voor.
+
+In de publieke wereld draagt alleen Awir art. 19 die declaratie: de tegemoetkoming
+staat dan vast en het voorschot wordt ermee verrekend, dus de termijnen van dat
+voorschot die nog liepen worden niet meer uitbetaald.
+
+Dat het vervallen en de verrekening bij elkaar horen, bepaalt wat art. 19 verrekent.
+Art. 24, tweede lid zegt dat de *verleende* voorschotten verrekend worden, maar een
+termijn die door deze beschikking zelf vervalt, wordt nooit uitbetaald — het hele
+verleende bedrag verrekenen zou geld aftrekken dat niemand ontvangen heeft, en de
+belanghebbende minder overlaten dan wat er is vastgesteld. Wat er van de verlening
+overeind staat op het moment van de vaststelling, is wat er is uitbetaald; dát is
+wat art. 19 als `uitbetaalde_voorschotten` verrekent. Daardoor klopt de som op elk
+moment, en niet alleen als de vaststelling ná de laatste voorschottermijn valt.
+[`tests/vervanging.rs`](tests/vervanging.rs) legt beide kanten vast: mét declaratie
+houdt de aanvrager precies de vastgestelde tegemoetkoming over, zónder declaratie
+blijven de termijnen staan.
 
 Het staat als scenario in
 [`scenarios/toeslagen_verplichtingen.yaml`](scenarios/toeslagen_verplichtingen.yaml)
@@ -1368,15 +1427,15 @@ als gate:
 ```yaml
 decide:
   - cell: toeslagen
-    besluit: zorgtoeslag_vaststelling
+    besluit: zorgtoeslag_nabetaling
     params: { bsn: '999993653' }
-    op_moment: 2025-01-15
+    op_moment: 2024-06-15
     expect_accepted:
-      verleende_voorschotten: belastingdienst   # van die cel, niet nagerekend
+      betaald_bedrag: belastingdienst          # van die cel, niet nagerekend
     expect_read_back:
-      toegekende_tegemoetkoming: zorgtoeslag_toekenning  # uit een eigen ouder gram
+      toegekend_bedrag: zorgtoeslag_toekenning # uit een eigen ouder gram
     expect_computed:
-      - slotbedrag                              # hier uitgerekend, dus eigen werk
+      - nog_te_betalen                         # hier uitgerekend, dus eigen werk
 ```
 
 `expect_read_back` staat naast de andere twee en niet erin: een teruggelezen
@@ -2655,28 +2714,41 @@ Zie [Een weigering is ook een besluit](#een-weigering-is-ook-een-besluit).
 
 **Een verplichting kent geen rente en geen verzuim.** Een termijn vervalt en wordt
 betaald; wat er gebeurt als er te laat of niet betaald wordt, staat er niet — geen
-rente, geen aanmaning, geen dwangbevel (Awb 4:97 e.v.). Verrekenen gebeurt wél, maar
-als **regel in de wet** en niet als iets dat het platform met een schema doet: Awir
-art. 19 trekt de verleende voorschotten van de vastgestelde tegemoetkoming af en legt
-alleen het slotbedrag op. Komt dat slotbedrag onder nul, dan is er een richting nodig:
-`richting_bij_negatief: omkeren` maakt er een terugvordering van (zie
-[Verplichtingen](#verplichtingen-wat-een-besluit-achterlaat)), en zonder die
-declaratie valt het besluit om. Awir art. 19 declareert haar nog niet, dus een
-vaststelling die lager uitkomt dan het voorschot loopt daar vast in plaats van terug
-te vorderen — de grondslag daarvoor (art. 24, derde lid) staat nog niet in dat blok.
+rente (Awir art. 27), geen aanmaning, geen dwangbevel (Awb 4:97 e.v.). Verrekenen
+gebeurt wél, maar als **regel in de wet** en niet als iets dat het platform met een
+schema doet: Awir art. 19 trekt het uitbetaalde voorschot van de vastgestelde
+tegemoetkoming af en legt alleen het slotbedrag op, met
+`richting_bij_negatief: omkeren` voor het geval dat onder nul uitkomt.
 
 Twee besluiten op hetzelfde artikel leggen allebei het volle schema op: het tweede
 verrekent niet met het eerste, en een terugvordering is een eigen verplichting naast
 het voorschot en geen correctie erop. Een verplichting kan ook niet gewijzigd of
-ingetrokken worden: het schema staat in het gram, en een gram verandert niet — en dat
-is meteen waarom de vaststelling in de publieke wereld ná de laatste voorschottermijn
-staat. Een vaststelling zet de nog openstaande termijnen van het voorschot niet stop:
-die vervallen gewoon door, en het slotbedrag komt er dan bovenop. Wat de wereld
-verrekent is daarom wat er op dat moment betaald is, niet wat er verleend is.
+ingetrokken worden: het schema staat in het gram, en een gram verandert niet. Wat een
+artikel wél kan zeggen, is dat zijn beschikking de vorige **vervangt** — dan vervallen
+de termijnen die nog niet verstreken waren (zie
+[Verplichtingen](#verplichtingen-wat-een-besluit-achterlaat)). Herzien (art. 16, vierde
+lid; art. 20 en 21) is daarmee nog niet gedekt: een herziene voorschotbeschikking zou
+niet alleen de openstaande termijnen vervangen maar ook een eigen verrekening dragen,
+en dat artikel is niet uitgewerkt.
+
+**De versie van een regeling volgt het moment van het besluit.** Wie op 15 januari
+2025 de tegemoetkoming over 2024 vaststelt, rekent met de regeling zoals die in 2025
+geldt en niet met die van het berekeningsjaar. Voor de zorgtoeslag scheelt dat de
+standaardpremie en de percentages, dus een vaststelling een maand later levert een
+ander bedrag op. De publieke wereld ontwijkt dat — daar valt de vaststelling binnen
+het berekeningsjaar, na de laatste aanslag — maar dat is een keuze van die wereld en
+geen oplossing: "welk recht geldt voor dit jaar" is iets anders dan "welk recht geldt
+vandaag", en de engine kent vandaag alleen het tweede. Zolang dat zo is, staat de
+vaststelling van de publieke wereld eerder dan art. 19 haar in werkelijkheid zou
+zetten (lid 1 gaat over een aanslag over het berekeningsjaar, en die volgt er
+normaal op).
 
 **Beschikbaarheid kijkt alleen naar de eigen feiten van een besluit.** Een besluit
 dat alles van een ander accepteert, heet dus altijd mogelijk, ook als die ander nog
-niets heeft vastgesteld — dat blijkt pas bij het besluit zelf. Dat is geen
+niets heeft vastgesteld — dat blijkt pas bij het besluit zelf. `zorgtoeslag_vaststelling`
+in de publieke wereld is zo'n besluit: het inkomen en het uitbetaalde voorschot komen
+allebei van de belastingdienst-cel, dus de actie heet mogelijk vanaf het eerste beeld
+en valt om zolang er niets te verrekenen is. Dat is geen
 omissie maar de prijs van invariant I1: een check die het wél zou weten, zou een
 vraag over een celgrens moeten stellen bij elk beeld van de wereld. Wie een actie
 op zo'n feit wil laten wachten, laat het als levering in de eigen kroniek van de

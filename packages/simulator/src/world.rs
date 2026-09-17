@@ -1446,6 +1446,12 @@ impl World {
             });
         }
 
+        // Eerst eruit wat dit besluit vervangt, dan erin wat het oplegt. Zegt het
+        // artikel dat deze beschikking in de plaats komt van wat er over dezelfde
+        // zaak nog openstond, dan vervallen die termijnen hier — vóór het
+        // inroosteren, zodat een besluit nooit zijn eigen schema wegneemt.
+        self.laat_openstaande_termijnen_vervallen(&decretogram, decision)?;
+
         // De verplichtingen uit dit besluit worden triggers. Een termijn die nu
         // al vervalt — en de eerste termijn valt op het moment van het besluit,
         // tenzij `from` anders zegt — gaat meteen af: de klok staat er al, dus
@@ -1611,6 +1617,94 @@ impl World {
         let shared: Rc<CellBridge> = Rc::clone(bridge);
         let resolver: Rc<dyn CellResolver> = shared;
         deciding.decide(besluit, params, context, &accepted, Some(resolver))
+    }
+
+    /// Laat de termijnen vervallen die over dezelfde zaak nog openstonden.
+    ///
+    /// Alleen als het artikel dat dit besluit voortbrengt dat declareert
+    /// (`vervangt_openstaande_termijnen`, zie [`Vervanging`]). Zonder die
+    /// declaratie gebeurt er niets: een verplichting is niet in te trekken, haar
+    /// schema staat in een gram, en een gram verandert niet doordat er een tweede
+    /// besluit over dezelfde zaak komt.
+    ///
+    /// Wat vervalt, is wat nog in de wachtrij stond: termijnen van dezelfde zaak,
+    /// bij dezelfde besluitende cel, waarvan de vervaldatum nog niet geweest is.
+    /// Verstreken termijnen blijven staan — wat betaald is, is betaald, en wat
+    /// daarmee moet gebeuren is de verrekening in het besluit zelf en geen
+    /// terugdraaiing. Een termijn die wél verviel maar niet nagekomen kon worden
+    /// (de schuldenaar heeft in deze wereld geen cel) staat niet meer in de
+    /// wachtrij en valt hier dus ook niet onder: die is al gebeurd.
+    ///
+    /// De grammen blijven ook staan: het voorschot beloofde vier termijnen en dat
+    /// blijft het gram zeggen. Dát ze niet meer nagekomen worden, staat in het
+    /// journaal, met de grondslag waarop dat berust.
+    ///
+    /// **Wat hier niet onder valt: verplichtingen die nog op de bekendmaking
+    /// wachten.** Die staan niet in de wachtrij maar in het gram van hun eigen
+    /// besluit (`wacht_op_bekendmaking`), en een gram verandert niet. Wordt een
+    /// beschikking vervangen vóórdat ze bekendgemaakt is, dan roostert haar
+    /// bekendmaking die termijnen alsnog in. Dat hoort daar ook thuis — de
+    /// bekendmaking is het moment waarop zo'n belofte gaat werken (Awb 3:40), dus
+    /// zij is de plek die moet zien dat er niets meer te laten werken valt. In
+    /// het corpus komt de combinatie nog niet voor: geen enkel artikel dat
+    /// `vervangt_openstaande_termijnen` declareert, staat naast een verplichting
+    /// met `vanaf: bekendmaking`. Zodra dat wel zo is, hoort dit gat gedicht te
+    /// worden bij [`Self::publish_and_settle`] en niet hier.
+    fn laat_openstaande_termijnen_vervallen(
+        &mut self,
+        decretogram: &Decretogram,
+        decision: usize,
+    ) -> Result<()> {
+        let cell =
+            self.cells
+                .get(&decretogram.cell)
+                .ok_or_else(|| SimulatorError::UnknownCell {
+                    cell: decretogram.cell.clone(),
+                })?;
+        let Some(vervanging) = cell.vervanging(&decretogram.besluit, decretogram.op_moment)? else {
+            return Ok(());
+        };
+
+        let mut vervallen = Vec::new();
+        self.pending.retain(|(_, trigger)| {
+            let Trigger::Obligation(due) = trigger else {
+                return true;
+            };
+            if due.decided_by != decretogram.cell || due.zaakkenmerk != decretogram.zaakkenmerk {
+                return true;
+            }
+            vervallen.push(due.clone());
+            false
+        });
+
+        for due in vervallen {
+            self.write_journal(JournalEntry {
+                seq: 0,
+                moment: decretogram.op_moment,
+                actor: JournalActor::Cell {
+                    id: decretogram.cell.clone(),
+                },
+                kind: JournalKind::Termijn,
+                description: format!(
+                    "termijn {} van {} van besluit '{}' (zaak '{}', zou vervallen op {}) \
+                     vervallen door besluit '{}', op grondslag '{}'",
+                    due.volgnummer,
+                    due.termijnen,
+                    due.besluit,
+                    due.zaakkenmerk,
+                    due.vervaldatum,
+                    decretogram.besluit,
+                    vervanging.grondslag,
+                ),
+                grams: Vec::new(),
+                changes: Vec::new(),
+                accepted: Vec::new(),
+                executed: None,
+                question: None,
+                parent: Some(decision),
+            });
+        }
+        Ok(())
     }
 
     /// Zet een trigger op zijn datumpositie in de wachtrij.

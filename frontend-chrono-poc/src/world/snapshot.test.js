@@ -288,7 +288,7 @@ describe('een besluit dat er al ligt', () => {
   it('vindt het gram van dezelfde zaak, met zijn zaakkenmerk en moment', () => {
     const decided = decidedAlready(worldFixture, decides, { bsn: '999993653' });
     expect(decided).toStrictEqual({
-      opMoment: '2024-04-01',
+      opMoment: '2024-03-01',
       zaakkenmerk: 'zorgtoeslag/999993653',
       count: 1,
     });

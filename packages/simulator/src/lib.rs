@@ -121,8 +121,8 @@ pub use cell::{
     GebruikteInput, Gemist, Herkomst, InputHerkomst, InputOrigin, Intake, Kroniekfilter,
     LexogramRef, Lexostatus, LexostatusDefinition, LexostatusOutcome, ObligationDefinition,
     ObligationDue, ObligationKind, ObsoleteField, ParameterType, Prefill, Reductie, ReductieVorm,
-    Reduction, Regel, RichtingBijNegatief, Schedule, Wetsvorm, AFWIJZING, BESCHIKKINGEN,
-    BETALINGEN, DECISION_TYPE,
+    Reduction, Regel, RichtingBijNegatief, Schedule, Vervanging, Wetsvorm, AFWIJZING,
+    BESCHIKKINGEN, BETALINGEN, DECISION_TYPE,
 };
 pub use corpus::regulation_root;
 // De waarde waarin deze crate praat. Ze komt uit de engine en blijft dat, maar
