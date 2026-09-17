@@ -58,6 +58,21 @@ for slug in referentie-casus-i referentie-casus-ii effect-over-tijd \
     printf -- '---\nid: %s\n---\n' "$slug" >"$wp_dir/$slug.md"
 done
 
+# Een corpus zoals het op schijf staat: corpus/regulation/<land>/<soort>/<wet>/
+# met per wet een of meer versiebestanden. De wet met een `url` levert een link
+# op, de wet met alleen een `bwb_id` een opgebouwde, en de derde geen van beide
+# — dat zijn de drie paden in de linkopbouw.
+corpus_dir="$tmp/corpus"
+mkdir -p "$corpus_dir/nl/wet/wet_op_de_zorgtoeslag" \
+    "$corpus_dir/nl/wet/algemene_wet_bestuursrecht" \
+    "$corpus_dir/nl/wet/wet_zonder_bron"
+printf -- '---\n$id: wet_op_de_zorgtoeslag\nbwb_id: BWBR0018451\nurl: https://wetten.overheid.nl/BWBR0018451/2025-01-01\n' \
+    >"$corpus_dir/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml"
+printf -- '---\n$id: algemene_wet_bestuursrecht\nbwb_id: BWBR0005537\n' \
+    >"$corpus_dir/nl/wet/algemene_wet_bestuursrecht/2024-01-01.yaml"
+printf -- '---\n$id: wet_zonder_bron\n' \
+    >"$corpus_dir/nl/wet/wet_zonder_bron/2024-01-01.yaml"
+
 pr_json() { # $1 = auteur, $2 = body, $3 = head repo (leeg = zelfde repo)
     jq -n --arg u "$1" --arg b "$2" --arg r "${3:-o/r}" \
         '{user: {login: $u}, body: $b, head: {repo: {full_name: $r}}}'
@@ -80,11 +95,15 @@ check() {
     : >"$tmp/outputs"
 
     local out status
+    : >"$tmp/summary"
     out="$(PATH="$tmp:$PATH" FIXTURES="$tmp" \
-        REPO=o/r PR_NUMBER=42 WERKPAKKETTEN_DIR="$wp_dir" \
-        GITHUB_OUTPUT="$tmp/outputs" \
+        REPO=o/r PR_NUMBER=42 WERKPAKKETTEN_DIR="$wp_dir" CORPUS_DIR="$corpus_dir" \
+        GITHUB_OUTPUT="$tmp/outputs" GITHUB_STEP_SUMMARY="$tmp/summary" \
         bash "$gate" 2>&1)"
     status=$?
+    # De wet-links komen in de samenvatting, niet in de melding, dus die telt
+    # mee als uitvoer waar een test een patroon in kan zoeken.
+    out="${out}$(cat "$tmp/summary")"
 
     if [ "$status" -ne "$want" ]; then
         echo "FAIL: $name — exit $status, verwacht $want"
@@ -92,13 +111,15 @@ check() {
         fail=$((fail + 1))
         return
     fi
-    if [ -n "$needle" ] && ! grep -qF "$needle" <<<"$out"; then
+    # `--` ervoor: een patroon dat met een streepje begint (een markdown-lijst)
+    # zou grep anders als optie lezen.
+    if [ -n "$needle" ] && ! grep -qF -- "$needle" <<<"$out"; then
         echo "FAIL: $name — '$needle' niet in de uitvoer"
         sed 's/^/    /' <<<"$out"
         fail=$((fail + 1))
         return
     fi
-    if [ -n "$out_needle" ] && ! grep -qxF "$out_needle" "$tmp/outputs"; then
+    if [ -n "$out_needle" ] && ! grep -qxF -- "$out_needle" "$tmp/outputs"; then
         echo "FAIL: $name — '$out_needle' niet in \$GITHUB_OUTPUT"
         sed 's/^/    /' "$tmp/outputs"
         fail=$((fail + 1))
@@ -191,6 +212,42 @@ check "een regel met alleen een komma blokkeert" 1 \
 check "een slug die alleen in de PR-head bestaat telt mee" 0 \
     "$(pr_json anne 'Werkpakket: nieuw-werkpakket')" "$voegt_toe" \
     'draagt bij aan' 'werkpakketten=nieuw-werkpakket'
+
+# --- de optionele Wet-regel ---
+
+check "een wet uit het corpus komt er als link bij" 0 \
+    "$(pr_json anne 'Werkpakket: referentie-casus-i
+Wet: wet_op_de_zorgtoeslag')" "$geen_bestanden" \
+    '[wet_op_de_zorgtoeslag](https://wetten.overheid.nl/BWBR0018451/2025-01-01)' \
+    'wetten=wet_op_de_zorgtoeslag'
+
+check "een wet zonder url krijgt een link uit het bwb-nummer" 0 \
+    "$(pr_json anne 'Werkpakket: referentie-casus-i
+Wet: algemene_wet_bestuursrecht')" "$geen_bestanden" \
+    '[algemene_wet_bestuursrecht](https://wetten.overheid.nl/BWBR0005537)'
+
+check "een wet zonder url en zonder bwb-nummer komt zonder link" 0 \
+    "$(pr_json anne 'Werkpakket: referentie-casus-i
+Wet: wet_zonder_bron')" "$geen_bestanden" \
+    '- wet_zonder_bron'
+
+check "twee wetten mogen" 0 \
+    "$(pr_json anne 'Werkpakket: referentie-casus-i
+Wet: wet_op_de_zorgtoeslag, algemene_wet_bestuursrecht')" "$geen_bestanden" \
+    'draagt bij aan' 'wetten=wet_op_de_zorgtoeslag,algemene_wet_bestuursrecht'
+
+check "een onbekende wet blokkeert" 1 \
+    "$(pr_json anne 'Werkpakket: referentie-casus-i
+Wet: wet_op_de_zonnebloem')" "$geen_bestanden" \
+    'niet in het corpus staat'
+
+check "geen Wet-regel is in orde, hij is optioneel" 0 \
+    "$(pr_json anne 'Werkpakket: referentie-casus-i')" "$geen_bestanden" \
+    'draagt bij aan'
+
+check "de Wet-regel wordt niet met de Werkpakket-regel verward" 0 \
+    "$(pr_json anne 'Werkpakket: referentie-casus-i')" "$geen_bestanden" \
+    'draagt bij aan' 'werkpakketten=referentie-casus-i'
 
 # --- uitzonderingen ---
 

@@ -124,6 +124,22 @@ Put it on its own line at the end of the body, in trailer form. That is what
 makes it greppable, survives being copied into a merge commit, and lets a later
 script total up commits and PRs per werkpakket without this gate changing.
 
+**When the PR touches a law from the corpus, add a `Wet:` line under it**, with
+the law's `$id` (the directory name under `corpus/regulation/`):
+
+```
+Werkpakket: referentie-casus-i
+Wet: wet_op_de_zorgtoeslag
+```
+
+This line is optional, because most PRs touch no law and requiring it would
+produce the same empty box as a reasonless `geen`. Present, it has to resolve:
+the gate rejects an id that is not in the corpus, and renders each one as a link
+to the law on wetten.overheid.nl in the check's summary. The URL comes from the
+law file's own `url` (falling back to `bwb_id`), so it cannot drift from the
+corpus. Do not write the link yourself, and never invent a BWB number: name the
+`$id` and let the gate resolve it.
+
 Which werkpakket a change belongs to is a judgement, so make it deliberately:
 match the work to the roadmap rather than reaching for the nearest-sounding
 slug. If nothing fits, `geen` with an honest reason is the correct answer, not a

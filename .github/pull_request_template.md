@@ -18,6 +18,14 @@ Hieronder: het werkpakket van de roadmap waaraan deze PR bijdraagt. De check
 De slugs staan in docs/src/content/roadmap/werkpakketten/ en op /roadmap.
 Meerdere mag, kommagescheiden. Hoort dit werk bij geen enkel werkpakket, schrijf
 dan `Werkpakket: geen — <reden>` en zeg waarom.
+
+Raakt deze PR een wet uit het corpus, zet die er dan onder met het `$id` van de
+wet (de mapnaam in corpus/regulation/), bijvoorbeeld:
+
+    Wet: wet_op_de_zorgtoeslag
+
+Die regel is optioneel; staat hij er, dan komt de wet als link in de
+samenvatting van de check te staan. Laat hem weg als deze PR geen wet raakt.
 -->
 
 Werkpakket:

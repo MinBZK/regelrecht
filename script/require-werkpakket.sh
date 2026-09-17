@@ -13,6 +13,19 @@
 #     Werkpakket: referentie-casus-i, effect-over-tijd
 #     Werkpakket: geen — losse typefout in de docs
 #
+# Raakt de PR een wet uit het corpus, dan mag daar een `Wet:`-regel bij:
+#
+#     Wet: wet_op_de_zorgtoeslag
+#     Wet: wet_op_de_zorgtoeslag, algemene_wet_bestuursrecht
+#
+# Die regel is optioneel — de meeste PR's raken geen wet, en hem verplichten zou
+# net zo'n leeg vakje opleveren als een `geen` zonder reden. Staat hij er, dan
+# moet hij kloppen: de waarde is het `$id` van een wet in corpus/regulation, en
+# de poort zet er in de samenvatting een link bij naar wetten.overheid.nl.
+# Daarmee is een genoemde wet aanklikbaar in plaats van een string die je zelf
+# moet opzoeken, en is een typefout meteen zichtbaar in plaats van pas als
+# iemand de wet probeert te vinden.
+#
 # Trailer-vormig met opzet, en niet "ergens een slug in de tekst". Een trailer
 # staat op zijn eigen regel, is met één grep te vinden, overleeft het kopiëren
 # van een PR-body naar een merge-commit, en laat zich later uit `git log`
@@ -49,6 +62,9 @@ set -uo pipefail
 # tegen wat er op main staat plus wat deze PR toevoegt; zie hieronder.
 WERKPAKKETTEN_DIR="${WERKPAKKETTEN_DIR:-docs/src/content/roadmap/werkpakketten}"
 
+# Het corpus, om een genoemde wet aan te toetsen en er een link van te maken.
+CORPUS_DIR="${CORPUS_DIR:-corpus/regulation}"
+
 GITHUB_OUTPUT="${GITHUB_OUTPUT:-/dev/null}"
 GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}"
 
@@ -57,11 +73,21 @@ readonly TITEL='Werkpakket genoemd'
 summary() { printf '%s\n' "$1" >>"$GITHUB_STEP_SUMMARY"; }
 output() { printf '%s=%s\n' "$1" "$2" >>"$GITHUB_OUTPUT"; }
 
+# Regels die `green` onder de melding zet: de wetten die de PR noemt, als
+# markdown-link. Gevuld door lees_wetten, hieronder.
+wet_regels=''
+
 green() {
     echo "::notice title=${TITEL}::$1"
     summary "### Werkpakket: in orde"
     summary ""
     summary "$1"
+    if [ -n "$wet_regels" ]; then
+        summary ""
+        summary "**Wetten die deze pull request raakt**"
+        summary ""
+        printf '%s\n' "$wet_regels" >>"$GITHUB_STEP_SUMMARY"
+    fi
     exit 0
 }
 
@@ -138,6 +164,75 @@ geldig=$(printf '%s\n%s\n' "$geldig" "$toegevoegd" | grep -v '^$' | sort -u)
 if [ -z "$geldig" ]; then
     unreadable "Er zijn geen werkpakketten gevonden in ${WERKPAKKETTEN_DIR}, dus de genoemde slug valt nergens aan te toetsen."
 fi
+
+# De optionele `Wet:`-regel. Hij wordt vóór het werkpakket gelezen, zodat een
+# foute wet ook gemeld wordt op een PR die verder in orde is: anders zou de
+# poort bij het eerste groene pad al weg zijn.
+#
+# Elke waarde is het `$id` van een wet, en dat is ook de naam van de map waarin
+# zijn versies staan. Daarom volstaat de mapnaam om te toetsen en hoeft de poort
+# geen yaml te lezen.
+lees_wetten() {
+    local regel waarde ruw id onbekend=() gevonden=()
+    regel=$(printf '%s' "$body" | tr -d '\r' |
+        grep -iE '^[[:space:]]*Wet[[:space:]]*:' | tail -1)
+    [ -n "$regel" ] || return 0
+
+    waarde=$(sed -E 's/^[[:space:]]*[Ww]et[[:space:]]*:[[:space:]]*//' <<<"$regel")
+
+    if [ ! -d "$CORPUS_DIR" ]; then
+        unreadable "De regel \`${regel}\` noemt een wet, maar het corpus (${CORPUS_DIR}) is er niet, dus die wet valt nergens aan te toetsen."
+    fi
+
+    local -a genoemd=()
+    IFS=',' read -ra genoemd <<<"$waarde"
+    for ruw in ${genoemd[@]+"${genoemd[@]}"}; do
+        id=$(printf '%s' "$ruw" | tr -d '[:space:]')
+        id=${id//\`/}
+        [ -n "$id" ] || continue
+        # -maxdepth 3: corpus/regulation/<land>/<soort>/<wet>/
+        if [ -n "$(find "$CORPUS_DIR" -mindepth 1 -maxdepth 4 -type d -name "$id" -print -quit)" ]; then
+            gevonden+=("$id")
+        else
+            onbekend+=("$id")
+        fi
+    done
+
+    if [ ${#onbekend[@]} -gt 0 ]; then
+        local lijst
+        lijst=$(printf '`%s`, ' "${onbekend[@]}" | sed 's/, $//')
+        blocked "Deze pull request noemt een wet die niet in het corpus staat: ${lijst}. Gebruik het \`\$id\` van de wet, zoals de mapnaam in ${CORPUS_DIR}/ hem geeft (bijvoorbeeld \`wet_op_de_zorgtoeslag\`)."
+    fi
+
+    [ ${#gevonden[@]} -gt 0 ] || return 0
+
+    # De link komt uit de wet zelf: `url` wijst naar de geldende tekst op
+    # wetten.overheid.nl. Staat hij er niet, dan valt de poort terug op het
+    # BWB-nummer, en anders op de naam alleen. Een verzonnen URL is erger dan
+    # geen: een link die naar de verkeerde wet wijst wordt geloofd.
+    local id bestand url bwb
+    for id in "${gevonden[@]}"; do
+        bestand=$(find "$CORPUS_DIR" -type d -name "$id" -exec sh -c \
+            'ls "$1"/*.yaml 2>/dev/null | sort | tail -1' _ {} \; | tail -1)
+        url=''
+        if [ -n "$bestand" ] && [ -f "$bestand" ]; then
+            url=$(sed -nE 's/^url:[[:space:]]*//p' "$bestand" | head -1 | tr -d '"'"'")
+            if [ -z "$url" ]; then
+                bwb=$(sed -nE 's/^bwb_id:[[:space:]]*//p' "$bestand" | head -1 | tr -d '"'"'")
+                [ -n "$bwb" ] && url="https://wetten.overheid.nl/${bwb}"
+            fi
+        fi
+        if [ -n "$url" ]; then
+            wet_regels="${wet_regels}- [${id}](${url})"$'\n'
+        else
+            wet_regels="${wet_regels}- ${id}"$'\n'
+        fi
+    done
+
+    output 'wetten' "$(printf '%s,' "${gevonden[@]}" | sed 's/,$//')"
+}
+
+lees_wetten
 
 # De trailer, op zijn eigen regel. De laatste telt als er meerdere staan: een
 # body wordt van boven naar beneden bijgewerkt, dus onderaan staat de nieuwste.
