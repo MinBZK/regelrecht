@@ -70,6 +70,8 @@ testcontainers = { workspace = true, optional = true }
 testcontainers-modules = { workspace = true, optional = true }
 tempfile.workspace = true
 regex.workspace = true
+# `try_join_all` voor de vensters die één run naast elkaar loopt (enrich).
+futures = "0.3"
 
 [features]
 # Exposes regelrecht_pipeline::test_utils with helpers (e.g. TestDb) used by
