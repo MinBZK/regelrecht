@@ -1824,6 +1824,107 @@ pub enum SimulatorError {
         reason: String,
     },
 
+    /// De bekendmaking van een besluit kan niet: er ligt geen besluit dat erop
+    /// wacht.
+    ///
+    /// Afgeleid en niet gedeclareerd: of er bekendgemaakt kan worden, staat in de
+    /// eigen kronieken van de cel — er ligt een gram van de stage BESLUIT en
+    /// (nog) geen van de stage BEKENDMAKING. De reden noemt daarom het gram dat
+    /// ontbreekt of het gram dat er al ligt, en niet een voorwaarde die iemand
+    /// had moeten opschrijven.
+    #[error("cel '{cell}' kan besluit '{besluit}' niet bekendmaken: {reason}")]
+    BekendmakingNietMogelijk {
+        /// De cel die zou bekendmaken.
+        cell: String,
+        /// De besluit-definitie waarvan de bekendmaking gevraagd werd.
+        besluit: String,
+        /// Wat er aan de hand is: welk gram ontbreekt, of welk gram er al ligt.
+        reason: String,
+    },
+
+    /// De regeling van dit besluit kent de stage BEKENDMAKING niet.
+    ///
+    /// Bekendmaken is een stap in een **procedure** (RFC-008), en welke stappen
+    /// een beschikking kent, zegt de algemene wet en niet deze opstelling. Kent
+    /// geen enkele geladen regeling zo'n procedure, dan valt er niets uit te
+    /// voeren — en dan is een gram vastleggen alsof er wél een stage gedraaid is,
+    /// precies de stilte die dit pad moet voorkomen.
+    #[error(
+        "cel '{cell}' kan besluit '{besluit}' niet bekendmaken: geen enkele geladen regeling \
+         declareert voor rechtskarakter '{legal_character}' een procedure met een stage \
+         '{stage}' ({reason})"
+    )]
+    GeenBekendmakingStage {
+        /// De cel die zou bekendmaken.
+        cell: String,
+        /// De besluit-definitie waarvan de bekendmaking gevraagd werd.
+        besluit: String,
+        /// Het rechtskarakter waarvoor een procedure gezocht is.
+        legal_character: String,
+        /// De stage die ontbreekt.
+        stage: String,
+        /// Wat er wél gevonden is.
+        reason: String,
+    },
+
+    /// De stage BEKENDMAKING kon niet draaien: er ontbreekt invoer.
+    ///
+    /// De procedure zegt wat een stage nodig heeft (`requires`), en de engine
+    /// levert geen halve uitkomst maar de vraag om precies die invoer. Wat het
+    /// platform zelf aanreikt — de dag van de bekendmaking, het bevoegd gezag en
+    /// de inputs van het besluit — staat in de melding niet, want dat is er al.
+    #[error(
+        "de bekendmaking van besluit '{besluit}' van cel '{cell}' kan niet draaien: de stage \
+         wacht op {missing}"
+    )]
+    BekendmakingWachtOpInvoer {
+        /// De cel die zou bekendmaken.
+        cell: String,
+        /// De besluit-definitie waarvan de bekendmaking gevraagd werd.
+        besluit: String,
+        /// De invoer waarop de stage wacht.
+        missing: String,
+    },
+
+    /// Een verplichting wacht op de bekendmaking, maar die levert geen uiterste
+    /// betaaldatum.
+    ///
+    /// `vanaf: bekendmaking` zegt dat de wet de vervaldag aan de bekendmaking
+    /// hangt; wélke dag dat is, hoort dan óók uit de wet te komen (Awb 4:87). Is
+    /// er geen hook die haar uitrekent, dan zou het platform zelf een termijn
+    /// moeten verzinnen, en dat is precies wat het niet doet.
+    #[error(
+        "de bekendmaking van besluit '{besluit}' van cel '{cell}' levert geen '{veld}', \
+         terwijl er een verplichting op de bekendmaking wacht ({found})"
+    )]
+    BekendmakingZonderBetaaldatum {
+        /// De cel die bekendmaakte.
+        cell: String,
+        /// De besluit-definitie waarvan de bekendmaking gevraagd werd.
+        besluit: String,
+        /// De naam waaronder het platform de datum zoekt.
+        veld: String,
+        /// Wat de stage wél opleverde.
+        found: String,
+    },
+
+    /// Het decretogram draagt een wachtende verplichting die niet te lezen is.
+    ///
+    /// Onbereikbaar zolang alleen deze crate in [`crate::BESCHIKKINGEN`] schrijft:
+    /// wat het besluit erin zette, leest de bekendmaking er weer uit. Het staat er
+    /// omdat de helft inroosteren erger zou zijn dan niets: een termijn zonder
+    /// bedrag of zonder partij is een belofte die niemand kan nakomen.
+    #[error(
+        "het besluit '{besluit}' van cel '{cell}' draagt een wachtende verplichting die niet \
+         te lezen is"
+    )]
+    OnleesbareWachtendeVerplichting {
+        /// De cel die besloot.
+        cell: String,
+        /// De besluit-definitie.
+        besluit: String,
+    },
+
     /// Een actie legt vast in een stroom die dat niet kan dragen.
     ///
     /// Blijkt bij het optuigen en niet bij de eerste aanroep: een actie noemt haar

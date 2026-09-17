@@ -29,9 +29,10 @@
 
 use crate::cell::besluit::{
     fixed_fields, BesluitDefinition, DeclaredObligations, ObligationDefinition, ObligationOrigin,
-    AFWIJZING, AFWIJZINGSGROND, BESCHIKKINGEN, BESLUIT, BEVOEGD_GEZAG_REFERENCE,
-    CHRONICLE_SOURCES, COMPETENT_AUTHORITY, DECISION_TYPE, EXECUTED_REGULATIONS, INPUTS,
-    LEGAL_CHARACTER, OBLIGATIONS, RECEIPT, REGULATION_VALID_FROM, TERUGVORDERING, ZAAKKENMERK,
+    AFWIJZING, AFWIJZINGSGROND, BESCHIKKINGEN, BESLUIT, BEVOEGD_GEZAG_REFERENCE, CHRONICLE_SOURCES,
+    COMPETENT_AUTHORITY, DECISION_TYPE, EXECUTED_REGULATIONS, INPUTS, LEGAL_CHARACTER, OBLIGATIONS,
+    RECEIPT, REGULATION_VALID_FROM, STAGE, STAGE_BESLUIT, TERUGVORDERING, VANAF_BEKENDMAKING,
+    WACHT_OP_BEKENDMAKING, ZAAKKENMERK,
 };
 use crate::cell::extensions::{afwijzing_wanneer, ChronolexBlock};
 use regelrecht_engine::article::Produces;
@@ -431,6 +432,10 @@ impl<'a> Lexicon<'a> {
         }
         Some(Declared {
             lexogram: self.reference(Some(&article.number)),
+            waits_for_bekendmaking: declared
+                .items
+                .iter()
+                .any(|item| item.vanaf.as_deref() == Some(VANAF_BEKENDMAKING)),
             items: declared.items,
         })
     }
@@ -446,6 +451,12 @@ struct Declared {
     lexogram: LexogramRef,
     /// Wat het oplegt, in de volgorde van het artikel.
     items: Vec<ObligationDefinition>,
+    /// Wacht er een van die verplichtingen op de bekendmaking?
+    ///
+    /// Bepaalt of het gram een gevulde [`WACHT_OP_BEKENDMAKING`] kan dragen, en
+    /// dus of dat veld naar het lexogram wijst of leeg blijft. Uit de declaratie
+    /// en niet uit een gram: het schema bestaat vóór het eerste besluit.
+    waits_for_bekendmaking: bool,
 }
 
 /// Het schema van het decretogram dat deze besluit-definitie kan voortbrengen.
@@ -674,6 +685,45 @@ fn fixed_field(
                 ),
             ),
         },
+        // De stage waarin dit gram ontstond. Wélke stages er zijn, zegt de
+        // algemene wet met haar procedure (RFC-008); dát elk gram er een draagt,
+        // is van het platform — en in dit gram staat er altijd de eerste, want
+        // een decretogram *is* het besluit.
+        STAGE => DecretogramField::declared_by(
+            Herkomst::Platform,
+            field,
+            "string",
+            Some(format!(
+                "'{STAGE_BESLUIT}': elke stage van de procedure legt een eigen gram op \
+                 hetzelfde zaakkenmerk"
+            )),
+        ),
+        // Wat dit besluit oplegde maar nog niet kon inroosteren. Volgt de
+        // verplichtingen hierboven, net als [`OBLIGATIONS`]: legt het artikel
+        // niets op dat op de bekendmaking wacht, dan blijft er een leeg veld over.
+        WACHT_OP_BEKENDMAKING => {
+            match declared.filter(|declared| declared.waits_for_bekendmaking) {
+                Some(declared) => DecretogramField::from_lexogram(
+                    field,
+                    "array",
+                    lexicon.layer(),
+                    declared.lexogram.clone(),
+                    format!(
+                        "de verplichtingen met `vanaf: {VANAF_BEKENDMAKING}`: bedrag en partijen \
+                     staan vast, de vervaldatum volgt uit de bekendmaking"
+                    ),
+                ),
+                None => DecretogramField::declared_by(
+                    Herkomst::Platform,
+                    field,
+                    "array",
+                    Some(format!(
+                        "leeg: geen verplichting van dit artikel wacht op de bekendmaking \
+                     (`vanaf: {VANAF_BEKENDMAKING}`)"
+                    )),
+                ),
+            }
+        }
         COMPETENT_AUTHORITY => DecretogramField::platform(field, "string").read_from(
             lexicon.authority_reference(&definition.output),
             "het platform schrijft het in elk gram; de regeling wijst het aan (RFC-002)",

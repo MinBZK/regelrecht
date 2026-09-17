@@ -23,6 +23,7 @@ import {
   gramKind,
   gramsInTimeOrder,
   initialForm,
+  stageOf,
   isNewGram,
   isPrefilled,
   lexostatusDefinitions,
@@ -250,6 +251,33 @@ describe('de acties', () => {
 
     const decides = worldFixture.actions.find((action) => action.effect.soort === 'decides');
     expect(describeEffect(decides.effect)).toContain(`besluit '${decides.effect.besluit}'`);
+
+    // De derde vorm: bekendmaken. De fixture kent haar niet — de publieke wereld
+    // heeft geen bekendmaking-actie — dus hier staat de vorm zoals het beeld haar
+    // geeft, met dezelfde velden als een `decides`.
+    expect(describeEffect({ soort: 'publishes', cell: 'uitvoerder', besluit: 'toekenning' })).toBe(
+      "laat cel 'uitvoerder' het besluit 'toekenning' bekendmaken",
+    );
+  });
+});
+
+describe('de stage van een gram', () => {
+  it('leest de stap van de procedure uit het gram', () => {
+    const { gram } = fixtureGram('toeslagen', 'decretogram');
+    expect(stageOf(gram)).toStrictEqual({ stage: 'BESLUIT', label: 'Besluit', color: 'donkerblauw' });
+  });
+
+  it('laat een gram zonder stage met rust', () => {
+    const { gram } = fixtureGram('burger', 'executogram');
+    expect(stageOf(gram)).toBeNull();
+    expect(stageOf(undefined)).toBeNull();
+  });
+
+  it('houdt een stage die deze app niet kent leesbaar', () => {
+    // Welke stages er zijn, zegt de procedure in de wet. Een stage die hier niet
+    // in een lijst staat, hoort niet als lege plek te eindigen.
+    const stage = stageOf({ fields: { stage: { value: 'BEZWAAR' } } });
+    expect(stage).toStrictEqual({ stage: 'BEZWAAR', label: 'BEZWAAR', color: 'neutral' });
   });
 });
 

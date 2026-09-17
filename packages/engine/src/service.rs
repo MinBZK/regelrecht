@@ -1159,6 +1159,79 @@ impl LawExecutionService {
         )
     }
 
+    /// Execute a single lifecycle stage with a caller-provided trace builder.
+    ///
+    /// The traced twin of [`execute_stage`](Self::execute_stage), for a caller
+    /// that records the stage as evidence rather than just reading its outcome:
+    /// without a trace the result states *what* a stage produced but not along
+    /// which articles it got there (RFC-013). The trace ends up on the returned
+    /// [`ArticleResult`] of a completed run, exactly as with
+    /// [`evaluate_law_with_trace_builder`](Self::evaluate_law_with_trace_builder);
+    /// a yield carries none, because nothing was executed to trace.
+    pub fn execute_stage_with_trace_builder(
+        &self,
+        law_id: &str,
+        output_name: &str,
+        state: Option<StageState>,
+        parameters: BTreeMap<String, Value>,
+        calculation_date: &str,
+        trace_builder: TraceBuilder,
+    ) -> Result<ExecutionOutcome> {
+        let stage_label = state
+            .as_ref()
+            .map_or_else(|| "initial".to_string(), |s| s.current_stage.clone());
+        let trace = Rc::new(RefCell::new(trace_builder));
+        {
+            let mut tb = trace.borrow_mut();
+            tb.push(
+                format!("{law_id} ({output_name}) stage {stage_label}"),
+                PathNodeType::Article,
+            );
+            let mut sorted_params: Vec<_> = parameters
+                .iter()
+                .map(|(k, v)| format!("{k}: {v}"))
+                .collect();
+            sorted_params.sort();
+            tb.set_message(format!(
+                "{law_id} stage {stage_label} ({calculation_date} {{{}}} {output_name})",
+                sorted_params.join(", "),
+            ));
+        }
+
+        let outcome = self.execute_stage_internal(
+            law_id,
+            output_name,
+            state,
+            parameters,
+            calculation_date,
+            Some(Rc::clone(&trace)),
+        );
+
+        match outcome {
+            Ok(ExecutionOutcome::Complete(mut result)) => {
+                let mut tb = trace.borrow_mut();
+                if let Some(value) = result.outputs.get(output_name) {
+                    tb.set_result(value.clone());
+                }
+                result.trace = tb.pop();
+                Ok(ExecutionOutcome::Complete(result))
+            }
+            Ok(yielded) => {
+                trace.borrow_mut().pop();
+                Ok(yielded)
+            }
+            Err(e) => {
+                let mut tb = trace.borrow_mut();
+                tb.set_message(format!("Stage execution failed: {e}"));
+                let partial_trace = tb.pop();
+                Err(EngineError::TracedError {
+                    source: Box::new(e),
+                    trace: partial_trace.map(Box::new),
+                })
+            }
+        }
+    }
+
     /// Internal stage execution with optional tracing.
     fn execute_stage_internal(
         &self,
@@ -6802,6 +6875,72 @@ articles:
                 );
             }
             other => panic!("Expected a yield awaiting bekendmaking_datum, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_execute_stage_with_trace_builder_carries_the_trace_of_the_stage() {
+        // A caller that records a stage as evidence needs the trace: without it
+        // the result says what the stage produced but not along which articles
+        // (RFC-013). A completed run carries it; a yield does not, because
+        // nothing ran.
+        let law = make_stage_law(
+            "stage_law_traced",
+            &[("BESLUIT", &[]), ("BEKENDMAKING", &["bekendmaking_datum"])],
+            &["toekenning"],
+        );
+        let mut service = LawExecutionService::new();
+        service.load_law(&law).unwrap();
+
+        let yielded = service
+            .execute_stage_with_trace_builder(
+                "stage_law_traced",
+                "toekenning",
+                None,
+                stage_params(&[]),
+                "2025-01-01",
+                TraceBuilder::new_untimed(),
+            )
+            .unwrap();
+        match yielded {
+            ExecutionOutcome::Yielded {
+                state,
+                pending_inputs,
+                ..
+            } => {
+                assert_eq!(state.current_stage, "BEKENDMAKING");
+                assert_eq!(pending_inputs, vec!["bekendmaking_datum".to_string()]);
+            }
+            other => panic!("Expected a yield awaiting bekendmaking_datum, got: {other:?}"),
+        }
+
+        let completed = service
+            .execute_stage_with_trace_builder(
+                "stage_law_traced",
+                "toekenning",
+                None,
+                stage_params(&[("bekendmaking_datum", "2025-02-01")]),
+                "2025-01-01",
+                TraceBuilder::new_untimed(),
+            )
+            .unwrap();
+        match completed {
+            ExecutionOutcome::Complete(result) => {
+                assert_eq!(result.outputs.get("toekenning"), Some(&Value::Int(100)));
+                let trace = result
+                    .trace
+                    .expect("a completed stage carries the trace of what ran");
+                assert!(
+                    trace.name.contains("stage_law_traced"),
+                    "the root node names the law that ran, got: {}",
+                    trace.name
+                );
+                assert!(
+                    trace.duration_us.is_none(),
+                    "an untimed trace carries no wall clock, so two runs hash the same"
+                );
+            }
+            other => panic!("Expected the procedure to complete, got: {other:?}"),
         }
     }
 

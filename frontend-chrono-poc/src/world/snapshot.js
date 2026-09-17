@@ -48,9 +48,39 @@ const AFWIJZING = 'AFWIJZING';
  */
 const ZAAKKENMERK = 'zaakkenmerk';
 
+/**
+ * De stage van de procedure waarin een besluit staat (RFC-008).
+ *
+ * Platformvocabulaire, zoals de soorten gram: de simulator schrijft deze woorden
+ * in het veld `stage`. Ze staan hier omdat de bekendmaking van een besluit een
+ * **eigen gram** is op dezelfde zaak — zonder dit label zouden er in een kroniek
+ * twee decretogrammen naast elkaar staan die alleen aan hun velden uit elkaar te
+ * houden zijn.
+ */
+export const STAGES = {
+  BESLUIT: { label: 'Besluit', color: 'donkerblauw' },
+  BEKENDMAKING: { label: 'Bekendmaking', color: 'hemelblauw' },
+};
+
 /** Hoe dit gram eruitziet; een onbekend soort blijft leesbaar. */
 export function gramKind(kind) {
   return GRAM_KINDS[kind] ?? UNKNOWN_KIND;
+}
+
+/**
+ * De stage van een gram, als iets om te tonen.
+ *
+ * `null` als het gram er geen draagt: een executogram hoort bij geen enkele
+ * procedure, en dan valt er niets te tonen. Een stage die deze app niet kent,
+ * blijft leesbaar met haar eigen naam — welke stages er zijn, zegt de wet en
+ * niet deze lijst.
+ */
+export function stageOf(gram) {
+  const value = gram?.fields?.stage?.value;
+  if (value === null || value === undefined || value === '') return null;
+  const stage = String(value);
+  const known = STAGES[stage];
+  return { stage, label: known?.label ?? stage, color: known?.color ?? 'neutral' };
 }
 
 /**
@@ -590,6 +620,9 @@ export function describeEffect(effect) {
   }
   if (effect?.soort === 'decides') {
     return `laat cel '${effect.cell}' het besluit '${effect.besluit}' nemen`;
+  }
+  if (effect?.soort === 'publishes') {
+    return `laat cel '${effect.cell}' het besluit '${effect.besluit}' bekendmaken`;
   }
   return '';
 }

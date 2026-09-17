@@ -1,0 +1,168 @@
+---
+name: zonder bekendmaking gaat er geen termijn lopen
+description: >-
+  Het tegenscenario van `bekendmaking.yaml`, en het bewijst de andere helft: een
+  besluit dat niet bekendgemaakt is, werkt niet (Awb 3:40). De verplichting die
+  de wet oplegt staat wél in het gram — met bedrag, partijen en grondslag — maar
+  zonder vervaldatum, want die volgt uit een dag die er nog niet is.
+
+  De klok loopt hier negen maanden door zonder dat er iets gebeurt. Dat is de
+  proef: er wordt niet betaald, en er wordt ook geen datum verzonnen om toch
+  maar iets in te kunnen roosteren.
+
+clock:
+  start: 2024-01-01
+
+cells:
+  - id: uitvoerder
+    identity: Uitvoerder
+    laws:
+      - test_bekendmaking
+      - test_awb_procedure
+
+    komt_na:
+      - Uitvoerder
+
+    chronicles:
+      - stream: inkomensleveringen
+        key: bsn
+        events:
+          - name: inkomenslevering
+            intake: levering
+            recording_actor: uitvoerder
+            grondslag: jaarlijkse inkomenslevering
+            op_moment: 2023-11-15
+            fields:
+              bsn: '999993653'
+              is_verzekerde: true
+      - stream: betalingen
+        key: zaakkenmerk
+        # Het gebeurtenisschema van deze stroom: welke gebeurtenissen erin
+        # thuishoren, op welke grondslag ze berusten en welke velden ze dragen.
+        # Wat het platform van een betalingsstroom verlangt, staat hier als data;
+        # het optuigen toetst of het er staat, en elke vastlegging of het klopt.
+        gebeurtenissen:
+          - name: betaling_gedaan
+            intake: betaling
+            grondslag: Algemene wet bestuursrecht, art. 4:89
+            fields: &betalingsvelden
+              - name: zaakkenmerk
+                type: string
+              - name: bedrag
+                type: amount
+              - name: volgnummer
+                type: number
+              - name: besluit
+                type: string
+              - name: schuldenaar
+                type: string
+              - name: schuldeiser
+                type: string
+          - name: betaling_gemeld
+            intake: levering
+            grondslag: Algemene wet bestuursrecht, art. 4:89
+            fields: *betalingsvelden
+
+    besluit_definitions:
+      - name: toekenning
+        regulation: test_bekendmaking
+        output: komt_in_aanmerking
+        outputs:
+          - hoogte_tegemoetkoming
+        zaakkenmerk: tegemoetkoming/{bsn}
+        params:
+          - name: bsn
+            type: string
+            # Wat de wereld al weet hoeft een formulier niet te vragen — en het
+            # is ook wat de beschikbaarheid van de actie op uitrekent: zonder
+            # persoon valt er geen feit in de eigen kroniek te vinden.
+            prefill: $last:uitvoerder.inkomensleveringen.bsn
+        inputs:
+          bsn:
+            param: bsn
+          is_verzekerde:
+            from_chronicle: inkomensleveringen
+            field: is_verzekerde
+
+    lexostatus_definitions:
+      - name: beschikking
+        doc: het besluit zoals het vastligt
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - komt_in_aanmerking
+          - stage
+        reduction:
+          chronicle: beschikkingen
+          key: zaakkenmerk
+          latest: true
+          where:
+            stage: BESLUIT
+
+      - name: bekendmaking
+        doc: de bekendmaking, als die er is
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - stage
+          - uiterste_betaaldatum
+        reduction:
+          chronicle: beschikkingen
+          key: zaakkenmerk
+          latest: true
+          where:
+            stage: BEKENDMAKING
+
+      - name: betaald_tot_nu_toe
+        doc: wat er op deze zaak betaald is
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - bedrag
+        reduction:
+          chronicle: betalingen
+          key: zaakkenmerk
+          sum: bedrag
+
+decide:
+  - description: het besluit wordt genomen, en daarna gebeurt er niets meer
+    cell: uitvoerder
+    besluit: toekenning
+    params:
+      bsn: '999993653'
+    op_moment: 2024-03-01
+    expect:
+      komt_in_aanmerking: true
+
+queries:
+  - description: het besluit ligt er
+    cell: uitvoerder
+    lexostatus: beschikking
+    params:
+      zaakkenmerk: tegemoetkoming/999993653
+    op_moment: 2024-03-01
+    expect:
+      komt_in_aanmerking: true
+      stage: BESLUIT
+
+  - description: >-
+      Negen maanden later is er nog steeds geen bekendmaking — en dus ook geen
+      uiterste betaaldatum. Dat de klok hier langsgekomen is, is het punt: een
+      termijn die op een gebeurtenis wacht, gaat niet vanzelf lopen.
+    cell: uitvoerder
+    lexostatus: bekendmaking
+    params:
+      zaakkenmerk: tegemoetkoming/999993653
+    op_moment: 2024-12-01
+    expect_not_established: true
+
+  - description: en er is niets betaald
+    cell: uitvoerder
+    lexostatus: betaald_tot_nu_toe
+    params:
+      zaakkenmerk: tegemoetkoming/999993653
+    op_moment: 2024-12-01
+    expect_not_established: true

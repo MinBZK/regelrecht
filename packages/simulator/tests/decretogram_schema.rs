@@ -135,6 +135,14 @@ fn het_schema_van_de_toekenning_ligt_vast() {
                 Herkomst::Wereldbestand,
                 true
             ),
+            ("stage", Some("string"), None, Herkomst::Platform, false),
+            (
+                "wacht_op_bekendmaking",
+                Some("array"),
+                None,
+                Herkomst::Platform,
+                false
+            ),
             (
                 "regulation",
                 Some("string"),
@@ -287,6 +295,14 @@ fn het_schema_van_de_vaststelling_ligt_vast() {
                 None,
                 Herkomst::Wereldbestand,
                 true
+            ),
+            ("stage", Some("string"), None, Herkomst::Platform, false),
+            (
+                "wacht_op_bekendmaking",
+                Some("array"),
+                None,
+                Herkomst::Platform,
+                false
             ),
             (
                 "regulation",

@@ -1,0 +1,173 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: test_awb_procedure
+name: Testregeling algemene bepalingen over besluiten
+regulatory_layer: WET
+bwb_id: BWBR9999906
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+url: https://example.com/test_awb_procedure
+
+# Een testregeling, met opzet **niet** in het corpus: ze bestaat om een
+# eigenschap van de opstelling aan te tonen en niet om recht weer te geven. Zie
+# `test_uitvoeringsregel` voor dezelfde afweging.
+#
+# Wat ze aantoont is de **stage-machinerie** van RFC-008. Ze declareert een
+# procedure voor elke BESCHIKKING — twee stages, BESLUIT en BEKENDMAKING — en
+# drie artikelen die als **hook** op de stage BEKENDMAKING vuren. De uitvoerende
+# regeling weet daar niets van: zij brengt een beschikking voort, en wat er bij
+# de bekendmaking van een beschikking hoort te gelden, staat hier.
+#
+# Dat is de hele reden dat deze velden niet in de uitvoerende regeling staan. Een
+# uiterste betaaldatum die in elke uitvoeringsregeling wordt overgeschreven, gaat
+# per regeling uiteenlopen zonder dat er aan het recht iets verandert; hier staat
+# ze één keer, en elke beschikking erft haar.
+procedure:
+  - id: test_beschikking
+    default: true
+    applies_to:
+      legal_character: BESCHIKKING
+    stages:
+      # Twee stages en niet meer: de aanvraag en de behandeling gaan in deze
+      # opstelling vooraf aan het besluit-pad (een actie legt de aanvraag vast),
+      # en BEZWAAR valt buiten wat hier gebouwd is. Wat er staat, is wat het
+      # platform ook werkelijk uitvoert.
+      - name: BESLUIT
+        description: Het bestuursorgaan neemt het besluit (Awb 1:3)
+      - name: BEKENDMAKING
+        description: Het besluit wordt bekendgemaakt (Awb 3:41)
+        requires:
+          # De dag van de bekendmaking komt van buiten: zij is een gebeurtenis
+          # en geen uitkomst van een berekening. Zonder haar levert de stage geen
+          # uitkomst maar een vraag om deze datum.
+          - name: bekendmaking_datum
+            type: date
+
+articles:
+  - number: '6:7'
+    url: https://example.com/test_awb_procedure#Artikel6_7
+    text: >-
+      De termijn voor het indienen van een bezwaarschrift bedraagt zes weken.
+    machine_readable:
+      # Eén artikel zegt hoe lang de termijn is, en de artikelen die haar
+      # toepassen halen de weken hier op: zo staat "zes weken" één keer in de wet
+      # en niet drie keer. Het vuurt zelf ook als hook, want de
+      # rechtsmiddelenclausule van art. 3:45 vermeldt de termijn — dan hoort ze
+      # in het gram van de bekendmaking te staan.
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: BEKENDMAKING
+      execution:
+        output:
+          - name: bezwaar_termijn_weken
+            type: number
+        actions:
+          - output: bezwaar_termijn_weken
+            value: 6
+
+  - number: '3:45'
+    url: https://example.com/test_awb_procedure#Artikel3_45
+    text: >-
+      Indien tegen een besluit bezwaar kan worden gemaakt, wordt daarvan bij de
+      bekendmaking melding gemaakt, onder vermelding van het bestuursorgaan bij
+      wie het bezwaarschrift moet worden ingediend en van de termijn.
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: BEKENDMAKING
+      execution:
+        parameters:
+          # Het bevoegd gezag van het besluit dat bekendgemaakt wordt. De
+          # rechtsmiddelenclausule noemt het orgaan bij wie bezwaar gemaakt moet
+          # worden; welk orgaan dat is, weet deze regeling niet — het besluit
+          # draagt het, en de stage geeft het door.
+          - name: competent_authority
+            type: string
+            required: true
+        output:
+          - name: bezwaar_bij
+            type: string
+        actions:
+          - output: bezwaar_bij
+            value: $competent_authority
+
+  - number: '6:8'
+    url: https://example.com/test_awb_procedure#Artikel6_8
+    text: >-
+      De termijn voor het indienen van een bezwaarschrift vangt aan met ingang
+      van de dag na die waarop het besluit op de voorgeschreven wijze is
+      bekendgemaakt.
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: BEKENDMAKING
+      execution:
+        parameters:
+          - name: bekendmaking_datum
+            type: date
+            required: true
+        input:
+          - name: bezwaar_termijn_weken
+            type: number
+            source:
+              regulation: test_awb_procedure
+              output: bezwaar_termijn_weken
+        output:
+          - name: bezwaartermijn_startdatum
+            type: date
+          - name: bezwaartermijn_einddatum
+            type: date
+        actions:
+          # "met ingang van de dag na die waarop het besluit is bekendgemaakt":
+          # de dag van de bekendmaking zelf telt niet mee.
+          - output: bezwaartermijn_startdatum
+            value:
+              operation: DATE_ADD
+              date: $bekendmaking_datum
+              days: 1
+          # De einddatum wordt vanaf de bekendmaking gerekend en niet vanaf de
+          # startdatum: die startdatum is dag 1 van de termijn, dus zes weken ná
+          # de startdatum zou er één dag naast zitten.
+          - output: bezwaartermijn_einddatum
+            value:
+              operation: DATE_ADD
+              date: $bekendmaking_datum
+              weeks: $bezwaar_termijn_weken
+
+  # Zonder aanhalingstekens: '4:87' is geen sexagesimaal getal, dus YAML leest
+  # het als tekst — en de lint wil geen aanhalingstekens die niets doen.
+  - number: 4:87
+    url: https://example.com/test_awb_procedure#Artikel4_87
+    text: >-
+      De betaling geschiedt binnen zes weken nadat de beschikking tot betaling
+      op de voorgeschreven wijze is bekendgemaakt.
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: BEKENDMAKING
+      execution:
+        parameters:
+          - name: bekendmaking_datum
+            type: date
+            required: true
+        output:
+          - name: uiterste_betaaldatum
+            type: date
+        actions:
+          # Zes weken ná de bekendmaking, en dus niet ná het besluit: dat verschil
+          # is precies waarom deze datum uit de wet komt en niet uit de
+          # uitvoerende regeling.
+          - output: uiterste_betaaldatum
+            value:
+              operation: DATE_ADD
+              date: $bekendmaking_datum
+              weeks: 6

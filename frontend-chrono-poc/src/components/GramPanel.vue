@@ -3,7 +3,7 @@ import { computed, nextTick, ref, watch } from 'vue';
 import ReceiptPanel from './ReceiptPanel.vue';
 import { fieldValue } from '../world/events.js';
 import { formatMoment } from '../world/format.js';
-import { allGrams, cells, decretogramRefOf, gramKind } from '../world/snapshot.js';
+import { allGrams, cells, decretogramRefOf, gramKind, stageOf } from '../world/snapshot.js';
 import { carriesReceipt } from '../world/receipt.js';
 
 // Alle grammen van alle cellen in één chronologisch overzicht: moment, cel,
@@ -264,6 +264,14 @@ function describeDecision(ref) {
         <nldd-text-cell size="sm" width="150px" hide-below="md" :text="row.chronicle"></nldd-text-cell>
         <nldd-cell width="132px">
           <nldd-tag size="sm" :color="gramKind(row.kind).color" :text="gramKind(row.kind).label"></nldd-tag>
+        </nldd-cell>
+        <!-- De stap van de procedure waarin dit gram ontstond (RFC-008). Over één
+             zaak liggen er meer: het besluit en zijn bekendmaking zijn allebei een
+             decretogram, en zonder dit label zou de lijst twee keer hetzelfde
+             lijken te tonen. Een gram dat bij geen procedure hoort — elk
+             executogram — draagt hier niets. -->
+        <nldd-cell width="120px" hide-below="md">
+          <nldd-tag v-if="stageOf(row.gram)" size="sm" :color="stageOf(row.gram).color" :text="stageOf(row.gram).label"></nldd-tag>
         </nldd-cell>
         <!-- Bij een besluit staat de zaak onder de naam: dat kenmerk is waaronder
              de zaak terug te vinden is, en het zegt waar dit gram bij hoort. Een
