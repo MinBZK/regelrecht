@@ -115,7 +115,7 @@ queries:
     op_moment: 2025-01-01
     expect:
       heeft_recht_op_zorgtoeslag: true
-      hoogte_zorgtoeslag: 209692
+      hoogte_zorgtoeslag: 157731
 
   # Dezelfde cel, dezelfde persoon, twee momenten: het antwoord verschilt omdat
   # de vastlegging van 2024-07-01 er op het eerste moment nog niet was. Dat

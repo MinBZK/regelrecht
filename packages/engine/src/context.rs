@@ -297,9 +297,9 @@ impl RuleContext {
 
     /// Record the regulation and article the current trace node comes from.
     /// No-op if trace is None.
-    pub fn trace_set_source(&self, regulation: &str, article: &str) {
+    pub fn trace_set_provision(&self, regulation: &str, article: &str) {
         if let Some(ref trace) = self.trace {
-            trace.borrow_mut().set_source(regulation, article);
+            trace.borrow_mut().set_provision(regulation, article);
         }
     }
 

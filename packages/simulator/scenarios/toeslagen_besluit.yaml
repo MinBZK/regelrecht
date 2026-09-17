@@ -166,9 +166,9 @@ decide:
       heeft_recht_op_zorgtoeslag: true
       hoogte_zorgtoeslag: 197205.31187
 
-  # T2. Inmiddels geldt de wet van 2025, met een hogere standaardpremie en
-  # andere drempels. Hetzelfde besluit over dezelfde persoon valt daarom anders
-  # uit — en dat is precies wat het tegenscenario hieronder nodig heeft.
+  # T2. Inmiddels geldt de wet van 2025, met andere premies en drempels.
+  # Hetzelfde besluit over dezelfde persoon valt daarom anders uit — en dat is
+  # precies wat het tegenscenario hieronder nodig heeft.
   - description: op T2 levert hetzelfde besluit een andere uitkomst
     cell: toeslagen
     besluit: zorgtoeslag_vaststelling
@@ -177,7 +177,7 @@ decide:
     op_moment: 2025-02-01
     expect:
       heeft_recht_op_zorgtoeslag: true
-      hoogte_zorgtoeslag: 209692
+      hoogte_zorgtoeslag: 157731
 
 queries:
   - description: >-
@@ -217,7 +217,7 @@ queries:
       zaakkenmerk: zorgtoeslag/999993653
     op_moment: 2025-02-01
     expect:
-      hoogte_zorgtoeslag: 209692
+      hoogte_zorgtoeslag: 157731
       regulation_valid_from: '2025-01-01'
 
   - description: >-

@@ -383,7 +383,7 @@ impl<'a> ArticleEngine<'a> {
                 // Which article is doing this, in its own words. A trace that
                 // only says what came out is a calculation; one that says which
                 // article said so is a decision someone can check.
-                context.trace_set_source(&self.law.id, &self.article.number);
+                context.trace_set_provision(&self.law.id, &self.article.number);
                 context.trace_set_message(format!("Computing {}", output_name));
                 // RFC-039: the anchor says which article the engine was in; this
                 // says which provision the modeller holds the action to. They

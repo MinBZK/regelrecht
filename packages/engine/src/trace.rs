@@ -1144,8 +1144,10 @@ impl TraceBuilder {
     /// Record which regulation and article the current node comes from.
     ///
     /// Called by the executing engine, which knows both; nothing here derives
-    /// them from the node's name.
-    pub fn set_source(&mut self, regulation: &str, article: &str) {
+    /// them from the node's name. Distinct from [`Self::set_source`], which
+    /// records where a *value* came from (RFC-039) rather than which provision
+    /// the engine was executing.
+    pub fn set_provision(&mut self, regulation: &str, article: &str) {
         if !self.enabled {
             return;
         }
@@ -1366,7 +1368,7 @@ mod tests {
     fn a_node_records_the_article_it_came_from() {
         let mut builder = TraceBuilder::new();
         builder.push("hoogte", PathNodeType::Action);
-        builder.set_source("wet_op_de_zorgtoeslag", "3");
+        builder.set_provision("wet_op_de_zorgtoeslag", "3");
         builder.push("ADD", PathNodeType::Operation);
         builder.pop();
         let node = builder.pop().expect("a root node");
@@ -1387,7 +1389,7 @@ mod tests {
     fn a_disabled_builder_records_no_source() {
         let mut builder = TraceBuilder::disabled();
         builder.push("hoogte", PathNodeType::Action);
-        builder.set_source("wet_op_de_zorgtoeslag", "3");
+        builder.set_provision("wet_op_de_zorgtoeslag", "3");
         assert!(builder.pop().is_none());
     }
 
