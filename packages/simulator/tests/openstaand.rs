@@ -493,3 +493,288 @@ fn een_onleesbare_opschorting_wordt_geweigerd() {
         "is geen opschorting; schrijf `true`",
     );
 }
+
+/// Een vervanging die met terugwerkende kracht genomen wordt, laat een termijn
+/// die de klok al nakwam niet alsnog vervallen.
+///
+/// De klok staat al voorbij de vierde voorschottermijn als de vaststelling op
+/// een eerder moment genomen wordt. Die termijn stond toen niet meer in de
+/// wachtrij — ze ís betaald — en dus hoort ze als `betaald` in de lijst te
+/// staan, met haar betaling meegeteld, en niet als `vervallen`.
+#[test]
+fn een_betaalde_termijn_vervalt_niet_door_een_latere_vaststelling() {
+    let pad = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("worlds")
+        .join("publieke_wereld.yaml");
+    let definition =
+        WorldDefinition::load(&pad).unwrap_or_else(|e| panic!("{}: {e}", pad.display()));
+    let mut world = World::from_definition(&definition, &regulation_root())
+        .unwrap_or_else(|e| panic!("{}: {e}", pad.display()));
+    let bsn = BTreeMap::from([("bsn".to_string(), Value::String(BSN.to_string()))]);
+    let zaak = BTreeMap::from([(
+        "zaakkenmerk".to_string(),
+        Value::String(format!("zorgtoeslag/{BSN}")),
+    )]);
+
+    world
+        .advance(dag("2024-04-01"))
+        .unwrap_or_else(|e| panic!("de klok moet vooruit kunnen: {e}"));
+    world
+        .decide(
+            "toeslagen",
+            "zorgtoeslag_toekenning",
+            &bsn,
+            dag("2024-04-01"),
+        )
+        .unwrap_or_else(|e| panic!("de toekenning moet kunnen: {e}"));
+    world
+        .advance(dag("2025-02-01"))
+        .unwrap_or_else(|e| panic!("de klok moet vooruit kunnen: {e}"));
+    world
+        .decide(
+            "toeslagen",
+            "zorgtoeslag_vaststelling",
+            &bsn,
+            dag("2024-12-15"),
+        )
+        .unwrap_or_else(|e| panic!("de vaststelling moet kunnen: {e}"));
+
+    let answer = world
+        .reduce(
+            "toeslagen",
+            "openstaande_termijnen",
+            &zaak,
+            dag("2025-02-01"),
+        )
+        .unwrap_or_else(|e| panic!("de vraag hoort beantwoord te worden: {e}"));
+
+    assert!(
+        standen(&answer).iter().any(|stand| stand == "4:betaald"),
+        "standen: {:?}",
+        standen(&answer)
+    );
+    assert_eq!(waarde(&answer, "openstaand"), Value::Int(0));
+    assert_eq!(waarde(&answer, "verwacht"), waarde(&answer, "betaald"));
+
+    // En de uitleg telt op tot hetzelfde: de betalingen dragen samen precies
+    // `betaald` bij, ook die van de termijn die zonder betaling vervallen was.
+    let bijdragen: Vec<Value> = uitleg(&answer)
+        .grammen
+        .iter()
+        .filter(|gram| gram.gram.chronicle == BETALINGEN)
+        .filter_map(|gram| gram.bijdrage.clone())
+        .collect();
+    let som = bijdragen
+        .iter()
+        .filter_map(Value::as_decimal)
+        .sum::<rust_decimal::Decimal>();
+    assert_eq!(
+        waarde(&answer, "betaald").as_decimal(),
+        Some(som),
+        "bijdragen: {bijdragen:?}"
+    );
+}
+
+/// Een verplichting die op de bekendmaking wachtte, vervalt door een besluit dat
+/// vóór die bekendmaking in de plaats kwam — en blijft vervallen nadat de
+/// bekendmaking er alsnog is.
+///
+/// Een besluit werkt pas door zijn bekendmaking (Awb 3:40). Ligt er over dezelfde
+/// zaak dan al een besluit dat in de plaats van dit besluit kwam, dan gaat er
+/// niets meer lopen, en is er niets dat nog op de bekendmaking wacht. Zonder dat
+/// zou de lijst een belofte blijven tonen die nooit meer wordt ingelost — of haar
+/// na de bekendmaking stil laten verdwijnen.
+#[test]
+fn een_wachtende_verplichting_vervalt_door_een_intrekking_voor_de_bekendmaking() {
+    let run = run_yaml(WACHTEND_EN_INGETROKKEN);
+
+    let voor_de_intrekking = antwoord(&run, "2024-03-15");
+    assert_eq!(standen(&voor_de_intrekking), ["1:wacht_op_bekendmaking"]);
+
+    for moment in ["2024-04-10", "2024-06-01"] {
+        let answer = antwoord(&run, moment);
+        assert_eq!(standen(&answer), ["1:vervallen"], "op {moment}");
+        assert_eq!(waarde(&answer, "verwacht"), Value::Int(0), "op {moment}");
+        assert_eq!(waarde(&answer, "openstaand"), Value::Int(0), "op {moment}");
+        let termijn = &termijnen(&answer)[0];
+        assert_eq!(veld(termijn, "vervaldatum"), "null", "op {moment}");
+    }
+}
+
+fn run_yaml(yaml: &str) -> ScenarioRun {
+    let scenario = Scenario::from_yaml(yaml).unwrap_or_else(|e| panic!("scenario: {e}"));
+    let run = scenario
+        .run(&regulation_root())
+        .unwrap_or_else(|e| panic!("scenario: {e}"));
+    assert!(run.passed(), "{}", run.report());
+    run
+}
+
+/// Een toekenning die op haar bekendmaking wacht, een intrekking die ervoor in
+/// de plaats komt, en daarna alsnog de bekendmaking van de toekenning.
+const WACHTEND_EN_INGETROKKEN: &str = r"
+name: een wachtende verplichting vervalt door een intrekking
+clock:
+  start: 2024-01-01
+
+cells:
+  - id: uitvoerder
+    identity: Uitvoerder
+    laws:
+      - test_bekendmaking
+      - test_intrekking
+      - test_awb_procedure
+    komt_na:
+      - Uitvoerder
+    chronicles:
+      - stream: inkomensleveringen
+        key: bsn
+        events:
+          - name: inkomenslevering
+            intake: levering
+            recording_actor: uitvoerder
+            grondslag: jaarlijkse inkomenslevering
+            op_moment: 2023-11-15
+            fields:
+              bsn: '999993653'
+              is_verzekerde: true
+      - stream: betalingen
+        key: zaakkenmerk
+        gebeurtenissen:
+          - name: betaling_gedaan
+            intake: betaling
+            grondslag: Algemene wet bestuursrecht, art. 4:89
+            fields: &betalingsvelden
+              - name: zaakkenmerk
+                type: string
+              - name: bedrag
+                type: amount
+              - name: volgnummer
+                type: number
+              - name: besluit
+                type: string
+              - name: schuldenaar
+                type: string
+              - name: schuldeiser
+                type: string
+          - name: betaling_gemeld
+            intake: levering
+            grondslag: Algemene wet bestuursrecht, art. 4:89
+            fields: *betalingsvelden
+    besluit_definitions:
+      - name: toekenning
+        regulation: test_bekendmaking
+        output: komt_in_aanmerking
+        outputs:
+          - hoogte_tegemoetkoming
+        zaakkenmerk: tegemoetkoming/{bsn}
+        params:
+          - name: bsn
+            type: string
+        inputs:
+          bsn:
+            param: bsn
+          is_verzekerde:
+            from_chronicle: inkomensleveringen
+            field: is_verzekerde
+      - name: intrekking
+        regulation: test_intrekking
+        output: wordt_ingetrokken
+        zaakkenmerk: tegemoetkoming/{bsn}
+        params:
+          - name: bsn
+            type: string
+        inputs:
+          bsn:
+            param: bsn
+    lexostatus_definitions:
+      - name: openstaande_termijnen
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        reduction:
+          openstaand: true
+          key: zaakkenmerk
+
+actions:
+  - id: uitvoerder.toekenning
+    actor: uitvoerder
+    label: Beslis op de aanvraag
+    decides:
+      cell: uitvoerder
+      besluit: toekenning
+  - id: uitvoerder.intrekking
+    actor: uitvoerder
+    label: Trek de tegemoetkoming in
+    decides:
+      cell: uitvoerder
+      besluit: intrekking
+  - id: uitvoerder.bekendmaking
+    actor: uitvoerder
+    label: Maak de toekenning bekend
+    publishes:
+      cell: uitvoerder
+      besluit: toekenning
+
+act:
+  - description: de toekenning
+    action: uitvoerder.toekenning
+    values:
+      bsn: '999993653'
+    op_moment: 2024-03-01
+  - description: de intrekking, vóór de bekendmaking
+    action: uitvoerder.intrekking
+    values:
+      bsn: '999993653'
+    op_moment: 2024-04-01
+  - description: de bekendmaking van de toekenning, na de intrekking
+    action: uitvoerder.bekendmaking
+    op_moment: 2024-04-15
+
+queries:
+  - description: vóór de intrekking wacht de verplichting nog
+    cell: uitvoerder
+    lexostatus: openstaande_termijnen
+    params:
+      zaakkenmerk: tegemoetkoming/999993653
+    op_moment: 2024-03-15
+    expect:
+      verwacht: 0
+      openstaand: 0
+      termijnen:
+        - besluit: toekenning
+          volgnummer: 1
+          vervaldatum: null
+          bedrag: 42000
+          status: wacht_op_bekendmaking
+  - description: na de intrekking is ze vervallen
+    cell: uitvoerder
+    lexostatus: openstaande_termijnen
+    params:
+      zaakkenmerk: tegemoetkoming/999993653
+    op_moment: 2024-04-10
+    expect:
+      verwacht: 0
+      openstaand: 0
+      termijnen:
+        - besluit: toekenning
+          volgnummer: 1
+          vervaldatum: null
+          bedrag: 42000
+          status: vervallen
+  - description: en na de bekendmaking blijft ze dat
+    cell: uitvoerder
+    lexostatus: openstaande_termijnen
+    params:
+      zaakkenmerk: tegemoetkoming/999993653
+    op_moment: 2024-06-01
+    expect:
+      verwacht: 0
+      openstaand: 0
+      termijnen:
+        - besluit: toekenning
+          volgnummer: 1
+          vervaldatum: null
+          bedrag: 42000
+          status: vervallen
+";

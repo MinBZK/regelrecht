@@ -1962,16 +1962,26 @@ impl World {
     /// betalen. Kent deze wereld geen cel onder de naam van de schuldenaar, dan
     /// is er niets op te schorten — dan blijft de termijn al open, en dat is een
     /// ander verhaal met een eigen reden (zie [`Self::settle`]).
+    ///
+    /// Ligt de betaling er bij die cel al — een startstand die haar meebracht —
+    /// dan is er niets niet nagekomen: betaald is betaald, en een journaalregel
+    /// die het tegendeel beweert zou naast een gram staan dat haar weerspreekt.
     fn opgeschort(&self, due: &ObligationDue) -> bool {
         let Some(betaler) = due.betaler.as_deref() else {
             return false;
         };
-        self.definition
+        let geldt = self
+            .definition
             .cells
             .iter()
             .find(|config| config.id == betaler)
             .and_then(|config| config.betalingen_opgeschort)
-            .is_some_and(|opschorting| opschorting.geldt_op(due.vervaldatum))
+            .is_some_and(|opschorting| opschorting.geldt_op(due.vervaldatum));
+        geldt
+            && !self
+                .cells
+                .get(betaler)
+                .is_some_and(|cell| cell.already_settled(due))
     }
 
     /// Zet één regel in het journaal en geef haar plek terug.

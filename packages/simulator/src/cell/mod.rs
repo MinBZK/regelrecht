@@ -2844,7 +2844,7 @@ impl Cell {
     /// ook niet op een latere dag. Een herzieningsbesluit dat een eerder schema
     /// vervángt, is iets anders — dat vraagt om intrekken, en intrekken bestaat
     /// hier nog niet.
-    fn already_settled(&self, due: &ObligationDue) -> bool {
+    pub(crate) fn already_settled(&self, due: &ObligationDue) -> bool {
         self.chronicles
             .latest_recording(
                 BETALINGEN,

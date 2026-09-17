@@ -1,0 +1,51 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: test_intrekking
+name: Testregeling intrekking tegemoetkoming
+regulatory_layer: WET
+bwb_id: BWBR9999910
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+url: https://example.com/test_intrekking
+competent_authority: Uitvoerder
+
+# Een testregeling, met opzet **niet** in het corpus: ze bestaat om een
+# eigenschap van de opstelling aan te tonen en niet om recht weer te geven.
+#
+# Wat ze aantoont is een beschikking die in de plaats komt van een eerdere
+# beschikking over dezelfde zaak vóórdat die bekendgemaakt is. De toekenning uit
+# `test_bekendmaking` laat haar betaaltermijn op de bekendmaking wachten; dit
+# artikel neemt wat er over die zaak nog openstond weg. Wat er op de
+# bekendmaking wachtte, gaat dan nooit meer lopen (Awb 3:40).
+articles:
+  - number: '1'
+    url: https://example.com/test_intrekking#Artikel1
+    text: >-
+      De uitvoerder trekt de tegemoetkoming in. De intrekking komt in de plaats
+      van de toekenning; wat daaruit nog niet is betaald, wordt niet meer
+      betaald.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          # Geen `decision_type`: het vocabulaire van het schema kent geen
+          # intrekking, en er een ander type op plakken zou het gram iets laten
+          # zeggen wat er niet staat. Zelf legt ze niets op: een intrekking
+          # neemt weg en geeft niet.
+          extensions:
+            chronolex:
+              vervangt_openstaande_termijnen:
+                grondslag: >-
+                  Testregeling intrekking tegemoetkoming art. 1 (de intrekking
+                  komt in de plaats van de toekenning)
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        output:
+          - name: wordt_ingetrokken
+            type: boolean
+        actions:
+          - output: wordt_ingetrokken
+            value: true

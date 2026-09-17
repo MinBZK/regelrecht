@@ -281,8 +281,9 @@ De vorm leest, in deze volgorde:
    [De bekendmaking](#de-bekendmaking-een-tweede-gram-op-dezelfde-zaak));
 2. daaruit de termijnen met een **vervaldatum op of vóór** dat moment; een termijn
    die later vervalt is nog niets verwacht;
-3. per termijn (besluit + volgnummer, dezelfde sleutel waarmee de klok ze nakomt)
-   wat er in de eigen `betalingen`-stroom op ligt.
+3. per termijn (besluit, besluitende cel en volgnummer: dezelfde sleutel waarmee de
+   klok een termijn als nagekomen herkent) wat er in de eigen `betalingen`-stroom op
+   ligt.
 
 `outputs` staat er niet: deze vorm publiceert altijd dezelfde vier, en ze horen bij
 elkaar — zonder de lijst is het bedrag niet na te rekenen.
@@ -315,8 +316,10 @@ maar het volgt wél uit de grammen, en zo leidt deze reductie het ook af: een la
 besluit over dezelfde zaak dat het declareert, en een termijn die op dát moment nog
 moest komen. Precies wat de wereld op dat moment deed; zie
 [Een vervangende beschikking](#een-vervangende-beschikking-wat-nog-openstond-vervalt).
-Wat er al betaald was, blijft `betaald`: wat betaald is, is betaald, en wat daarmee
-moet gebeuren is de verrekening in dat besluit en geen terugdraaiing.
+Wat er al betaald was, blijft `betaald` en telt mee — ook een termijn die de klok
+al nakwam voordat een vervangend besluit met terugwerkende kracht werd genomen: wat
+betaald is, is betaald, en wat daarmee moet gebeuren is de verrekening in dat besluit
+en geen terugdraaiing.
 
 Een verplichting met `vanaf: bekendmaking` staat vóór de bekendmaking als één
 regel in de lijst — met haar hele bedrag, zonder `vervaldatum`, met de stand die
@@ -1134,6 +1137,14 @@ op een cel zegt vanaf wanneer zij de termijnen die vervallen **niet** nakomt:
     - Dienst Toeslagen
   betalingen_opgeschort: 2024-03-01   # of `true`: vanaf het begin
 ```
+
+Twee schrijfwijzen: `true` schort elke termijn op, een datum `jjjj-mm-dd` schort op
+vanaf die dag, **die dag zelf meegerekend** — een termijn die op 1 maart vervalt
+wordt bij `2024-03-01` dus niet nagekomen, een termijn van 29 februari wel.
+`false` of een andere waarde wordt bij het optuigen geweigerd; wie niet opschort,
+laat het veld weg. Het veld staat op de cel die de termijn **nakomt** (via
+`komt_na`, of omdat ze de naam van de schuldenaar zelf draagt), niet op de cel die
+besloot.
 
 Op zo'n vervaldatum legt de klok niets vast en schrijft ze één journaalregel
 *termijn niet nagekomen* (`kind: niet_nagekomen`), zonder gram en zonder verschil

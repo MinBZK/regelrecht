@@ -119,7 +119,7 @@ const openstaand = {
       // geordende map, en de kolommen volgen die volgorde.
       termijnen: [
         { bedrag: 30000, besluit: 'toekenning', status: 'betaald', vervaldatum: '2024-11-01', volgnummer: 1 },
-        { bedrag: 30000, besluit: 'toekenning', status: 'te_laat', vervaldatum: '2025-02-01', volgnummer: 2 },
+        { bedrag: 30000, besluit: 'toekenning', status: 'te_laat', vervaldatum: '2025-01-01', volgnummer: 2 },
       ],
       verwacht: 60000,
     },
@@ -500,7 +500,7 @@ describe('een uitkomst die uit regels bestaat', () => {
       '30000',
       'toekenning',
       'te_laat',
-      '2025-02-01',
+      '2025-01-01',
       '2',
     ]);
   });
