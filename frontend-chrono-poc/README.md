@@ -50,8 +50,12 @@ artikel, uit het veld `afwijzingsgrond`. Daaronder staan de overige uitkomsten
 onder "Berekend, niet toegekend": het gram draagt wat de regeling uitrekende,
 maar een afwijzing belooft er niets mee. De vaste velden van het decretogram
 (`besluit`, `competent_authority`, `besloten_door`, ...) blijven gewone regels.
-Bij een ander besluittype, of zonder, blijft de kaart één lijst. Dit hangt aan
-platformvelden van elk decretogram en vraagt niets van het wereldbestand.
+Wat een uitkomst is, zegt het beeld (`besluiten[].outputs` van de cel); deze app
+houdt geen lijst met vaste veldnamen bij, dus een nieuw vast veld wordt vanzelf
+een gewone regel. Bij een ander besluittype, of zonder, blijft de kaart één
+lijst. Dit hangt aan platformvelden van elk decretogram en vraagt niets van het
+wereldbestand; in de publieke wereld is het te zien bij Aanvrager C, die niet
+verzekerd is.
 
 **Waarom in het wereldbestand.** Wie er aanvraagt en wat het portaal vraagt is
 inrichting van de opstelling en geen recht, en deze app kent geen casus: het

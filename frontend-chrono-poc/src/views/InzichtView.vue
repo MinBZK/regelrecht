@@ -1,10 +1,10 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { askLexostatus } from '../api/worldApi.js';
 import LexostatusValues from '../components/LexostatusValues.vue';
 import PersonaPicker from '../components/PersonaPicker.vue';
 import { formatMoment, formatValue, humanize } from '../world/format.js';
-import { readAfwijzing, readLexostatus } from '../world/snapshot.js';
+import { cells, readAfwijzing, readLexostatus } from '../world/snapshot.js';
 import { useWorld } from '../world/useWorld.js';
 
 // Inzicht in je aanvraag: wat de cellen over deze aanvrager publiceren.
@@ -52,10 +52,24 @@ async function askAll() {
       }
     }),
   );
-  if (current === round) {
-    answers.value = results.map((result) => ({ ...result, afwijzing: readAfwijzing(result.answer) }));
-  }
+  if (current === round) answers.value = results;
 }
+
+/**
+ * Per vraag de afwijzing, uitgesplitst; `null` waar het antwoord geen afwijzing
+ * is.
+ *
+ * Bij de weergave en niet bij het vragen uitgerekend: wat een uitkomst is en wat
+ * een vast veld, zegt de cel in het beeld, en dat hoort mee te bewegen met het
+ * beeld dat er nu ligt.
+ */
+const afwijzingen = computed(() => {
+  const vragen = persona.value?.inzicht ?? [];
+  return answers.value.map((result, index) => {
+    const cell = cells(snapshot.value).find((candidate) => candidate.id === vragen[index]?.cell);
+    return readAfwijzing(result.answer, cell);
+  });
+});
 
 /** Een afwijzingsgrond als regel eronder: de afwijzende waarde en het artikel. */
 function grondDetail(grond) {
@@ -133,24 +147,24 @@ watch([() => persona.value?.id, snapshot], askAll, { immediate: true });
                 <!-- Een afwijzing: eerst de afwijzing en waarop ze afketste,
                      dan wat er wél uitgerekend is, en de vaste velden van het
                      gram als gewone regels. -->
-                <template v-else-if="answers[index].afwijzing">
+                <template v-else-if="afwijzingen[index]">
                   <nldd-banner
                     variant="warning"
                     text="Afgewezen"
                     heading-level="3"
                     :supporting-text="
-                      answers[index].afwijzing.gronden.length > 0
+                      afwijzingen[index].gronden.length > 0
                         ? 'op grond van'
                         : 'het besluit noemt geen afwijzingsgrond'
                     "
                   >
                     <nldd-list
-                      v-if="answers[index].afwijzing.gronden.length > 0"
+                      v-if="afwijzingen[index].gronden.length > 0"
                       variant="simple"
                       accessible-label="Afwijzingsgronden"
                     >
                       <nldd-list-item
-                        v-for="(grond, position) in answers[index].afwijzing.gronden"
+                        v-for="(grond, position) in afwijzingen[index].gronden"
                         :key="`${grond.output}-${position}`"
                         size="sm"
                       >
@@ -162,16 +176,16 @@ watch([() => persona.value?.id, snapshot], askAll, { immediate: true });
                       </nldd-list-item>
                     </nldd-list>
                   </nldd-banner>
-                  <template v-if="answers[index].afwijzing.berekend.values.length > 0">
+                  <template v-if="afwijzingen[index].berekend.values.length > 0">
                     <nldd-title size="6">
                       <h3>Berekend, niet toegekend</h3>
                       <span slot="subtitle">wat de regeling uitrekende; een afwijzing belooft er niets mee</span>
                     </nldd-title>
-                    <LexostatusValues :answer="answers[index].afwijzing.berekend" />
+                    <LexostatusValues :answer="afwijzingen[index].berekend" />
                   </template>
                   <LexostatusValues
-                    v-if="answers[index].afwijzing.vast.values.length > 0"
-                    :answer="answers[index].afwijzing.vast"
+                    v-if="afwijzingen[index].vast.values.length > 0"
+                    :answer="afwijzingen[index].vast"
                   />
                 </template>
                 <LexostatusValues

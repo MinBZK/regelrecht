@@ -1131,6 +1131,10 @@
           "doc": "Het eerste besluit over de zaak: recht en hoogte, met een betalingsverplichting eraan. Het toetsingsinkomen wordt geaccepteerd van de cel die het vaststelde en hier niet nagerekend (invariant I5).",
           "zaakkenmerk": "zorgtoeslag/{bsn}",
           "chronicle": "beschikkingen",
+          "outputs": [
+            "heeft_recht_op_zorgtoeslag",
+            "hoogte_zorgtoeslag"
+          ],
           "schema": [
             {
               "name": "heeft_recht_op_zorgtoeslag",
@@ -1345,6 +1349,10 @@
           "doc": "Het tweede besluit over dezelfde zaak, en een ánder besluit: de vaststelling van de Awir (art. 19). Ze rekent de zorgtoeslag wél opnieuw uit, maar op het definitieve toetsingsinkomen — dát is wat lid 1 aan de laatste aanslag knoopt — en het artikel haalt die berekening zelf bij de zorgtoeslagwet. Wat er van het voorschot is uitbetaald, vraagt ze aan de cel die uitbetaalde. Het verschil is het slotbedrag: de verrekening van art. 24, tweede lid.",
           "zaakkenmerk": "zorgtoeslag/{bsn}",
           "chronicle": "beschikkingen",
+          "outputs": [
+            "slotbedrag",
+            "vastgestelde_tegemoetkoming"
+          ],
           "schema": [
             {
               "name": "slotbedrag",

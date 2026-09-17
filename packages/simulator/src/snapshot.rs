@@ -176,6 +176,17 @@ pub struct BesluitDefinitionSnapshot {
     /// wil weten welke vorm de sleutel van een kroniek heeft, koppelt haar aan de
     /// besluiten die erin leggen — en hoort die naam niet zelf te hoeven kennen.
     pub chronicle: String,
+    /// De uitkomsten die dit besluit vastlegt: wat de regeling uitrekende, op
+    /// naam.
+    ///
+    /// Alles wat een gram van dit besluit verder draagt, is een vast veld van het
+    /// gram zelf. Dat onderscheid staat hier en niet in een lijst bij de
+    /// consument: een weergave die een uitkomst anders toont dan een vast veld —
+    /// een afwijzing die haar bedragen als "berekend, niet toegekend" toont —
+    /// hoort niet te kunnen achterlopen op wat een decretogram draagt. Het
+    /// [`Self::schema`] noemt dezelfde namen, maar niet als uitkomst: een
+    /// herkomst zegt wie een veld declareert, niet of het een uitkomst is.
+    pub outputs: Vec<String>,
     /// Het **schema** van het decretogram dat dit besluit kan voortbrengen: per
     /// veld het type en wie het declareert.
     ///
@@ -534,6 +545,11 @@ fn besluit_snapshot(cell: &Cell, definition: &BesluitDefinition) -> BesluitDefin
         doc: definition.doc.clone(),
         zaakkenmerk: definition.zaakkenmerk.clone(),
         chronicle: BESCHIKKINGEN.to_string(),
+        outputs: definition
+            .recorded_outputs()
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
         // Uit de cel en niet hier uitgerekend: het schema hangt aan de wetten die
         // zij geladen heeft, en die kent alleen zij.
         schema: cell.besluit_schema(&definition.name).to_vec(),

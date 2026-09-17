@@ -160,6 +160,30 @@ describe('inzicht in je aanvraag', () => {
     expect(complaints).toStrictEqual([]);
   });
 
+  it('haalt wat een uitkomst is uit het beeld, zodat een onbekend vast veld een gewone regel blijft', async () => {
+    // Geen `besluit` in het antwoord: dan tellen de uitkomsten van alle
+    // besluiten van de cel. En een vast veld dat deze app niet kent — zoals
+    // een platform er een bij kan zetten — staat niet als "berekend".
+    const { besluit: _besluit, ...zonderBesluit } = afwijzing.outcome.established;
+    const answer = {
+      ...afwijzing,
+      outcome: {
+        established: { ...zonderBesluit, slotbedrag: 99, veld_dat_deze_app_niet_kent: 'x' },
+      },
+    };
+    const { wrapper } = await mountInzicht({ persona: 'aanvrager-a', answers: { zorgtoeslagbeschikking: answer } });
+    const card = wrapper.findAll('nldd-card')[0];
+    const lists = card.findAll('nldd-list[variant="box-tinted"]');
+    expect(rowTexts(lists[0])).toStrictEqual(['Hoogte zorgtoeslag = 1234', 'Slotbedrag = 99']);
+    expect(rowTexts(lists[1])).toStrictEqual([
+      'Besloten door = toeslagen',
+      'Competent authority = Dienst Toeslagen',
+      'Decision type = AFWIJZING',
+      'Veld dat deze app niet kent = x',
+    ]);
+    expect(complaints).toStrictEqual([]);
+  });
+
   it('laat een besluit van een ander type, of zonder type, een gewone lijst', async () => {
     const toekenning = {
       ...afwijzing,

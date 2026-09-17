@@ -908,39 +908,25 @@ export function readLexostatus(answer) {
 }
 
 /**
- * De vaste velden van een decretogram: wat elk gram draagt, naast de uitkomsten
- * van het besluit.
+ * De namen die een besluit van deze cel als **uitkomst** vastlegt: wat de
+ * regeling uitrekende, en niet wat het gram over het besluit zelf zegt.
  *
- * Platformvocabulaire, zoals `AFWIJZING`: de namen van `FIXED_FIELDS` en
- * `BEKENDMAKING_FIELDS` uit `packages/simulator/src/cell/besluit.rs`, en geen
- * casusnamen. Ze staan hier omdat een lexostatus ze mag publiceren naast de
- * uitkomsten, en een afwijzing die twee uit elkaar moet houden: wat de regeling
- * uitrekende, en wat het gram over het besluit zelf zegt.
+ * Uit het beeld (`besluiten[].outputs`) en niet uit een lijst hier: welke velden
+ * een decretogram vast draagt, weet het platform, en een kopie van die namen
+ * loopt stil achter zodra er een bij komt. Wat geen uitkomst is, is dan vanzelf
+ * een vast veld — ook een dat deze app nog nooit zag.
+ *
+ * Noemt het antwoord zijn besluit (`besluit`) en kent de cel dat, dan de
+ * uitkomsten van dát besluit. Anders die van alle besluiten van de cel samen:
+ * een uitkomstnaam kan niet ook een vast veld zijn (het optuigen weigert dat),
+ * dus de vereniging maakt van geen enkel vast veld een uitkomst.
  */
-const DECRETOGRAM_FIELDS = new Set([
-  'zaakkenmerk',
-  'besluit',
-  'stage',
-  'wacht_op_bekendmaking',
-  'regulation',
-  'regulation_valid_from',
-  'executed_regulations',
-  'competent_authority',
-  'besloten_door',
-  'legal_character',
-  'decision_type',
-  'afwijzingsgrond',
-  'inputs',
-  'obligations',
-  'chronicle_sources',
-  'receipt',
-  'bekendmaking_datum',
-  'bekendgemaakt_door',
-  'hooks',
-  'besluit_op_moment',
-  'besluit_gram',
-  'termijnen_vervallen_door',
-]);
+function besluitOutputs(cell, answeredBesluit) {
+  const definitions = besluitDefinitions(cell);
+  const answered = definitions.filter((definition) => definition.name === answeredBesluit);
+  const chosen = answered.length > 0 ? answered : definitions;
+  return new Set(chosen.flatMap((definition) => (Array.isArray(definition.outputs) ? definition.outputs : [])));
+}
 
 /**
  * Een antwoord dat een afwijzing publiceert, uitgesplitst voor de weergave.
@@ -953,28 +939,35 @@ const DECRETOGRAM_FIELDS = new Set([
  * - `berekend`: de uitkomsten die de regeling wél uitrekende — een afwijzing
  *   zet die niet op nul, ze belooft er alleen niets mee. De uitkomst die een
  *   grond noemt, staat al bij die grond en niet nog eens hier;
- * - `vast`: de vaste velden van het gram (`besluit`, `competent_authority`,
- *   ...), die over het besluit gaan en niet over een bedrag. Zonder
- *   `afwijzingsgrond`, want die staat al bovenaan.
+ * - `vast`: de rest, de vaste velden van het gram (`besluit`,
+ *   `competent_authority`, ...), die over het besluit gaan en niet over een
+ *   bedrag. Zonder `afwijzingsgrond`, want die staat al bovenaan.
+ *
+ * Wat een uitkomst is, zegt `cell` uit het beeld (zie `besluitOutputs`). Zonder
+ * cel is er niets als uitkomst te herkennen, en staat alles als gewone regel:
+ * liever een bedrag tussen de vaste velden dan een vast veld als "berekend".
  *
  * Elk deel heeft de vorm van `readLexostatus`, zodat dezelfde weergave het kan
  * tonen.
  */
-export function readAfwijzing(answer) {
+export function readAfwijzing(answer, cell) {
   const values = answer?.established ? answer.values ?? [] : [];
-  const type = values.find((value) => value.name === 'decision_type')?.value;
-  if (type !== AFWIJZING) return null;
-  const gronden = readAfwijzingsgronden(values.find((value) => value.name === 'afwijzingsgrond')?.value);
+  const valueOf = (name) => values.find((value) => value.name === name)?.value;
+  if (valueOf('decision_type') !== AFWIJZING) return null;
+  const gronden = readAfwijzingsgronden(valueOf('afwijzingsgrond'));
   const genoemd = new Set(gronden.map((grond) => grond.output));
+  const uitkomsten = besluitOutputs(cell, valueOf('besluit'));
   return {
     gronden,
     berekend: {
       ...answer,
-      values: values.filter((value) => !DECRETOGRAM_FIELDS.has(value.name) && !genoemd.has(value.name)),
+      values: values.filter((value) => uitkomsten.has(value.name) && !genoemd.has(value.name)),
     },
     vast: {
       ...answer,
-      values: values.filter((value) => DECRETOGRAM_FIELDS.has(value.name) && value.name !== 'afwijzingsgrond'),
+      values: values.filter(
+        (value) => !uitkomsten.has(value.name) && !genoemd.has(value.name) && value.name !== 'afwijzingsgrond',
+      ),
     },
   };
 }
