@@ -109,7 +109,17 @@ export function decisionTypeOf(gram) {
  * en dat is het gewone geval, dus een lege lijst is geen ontbrekend veld.
  */
 export function afwijzingsgrondenOf(gram) {
-  const raw = gram?.fields?.afwijzingsgrond?.value;
+  return readAfwijzingsgronden(gram?.fields?.afwijzingsgrond?.value);
+}
+
+/**
+ * De afwijzingsgronden uit de ruwe waarde van het veld `afwijzingsgrond`.
+ *
+ * Los van het gram, want een lexostatus die het veld publiceert geeft dezelfde
+ * lijst als kale waarde terug. De vorm is `Afwijzingsgrond` uit
+ * `packages/simulator/src/cell/besluit.rs`: `output`, `value` en `article`.
+ */
+function readAfwijzingsgronden(raw) {
   if (!Array.isArray(raw)) return [];
   return raw.map((row) => ({
     output: row?.output === undefined || row?.output === null ? null : String(row.output),
@@ -894,6 +904,78 @@ export function readLexostatus(answer) {
     established: false,
     values: [],
     reason: outcome.not_established?.reason ?? 'In deze cel is hierover niets vastgesteld.',
+  };
+}
+
+/**
+ * De vaste velden van een decretogram: wat elk gram draagt, naast de uitkomsten
+ * van het besluit.
+ *
+ * Platformvocabulaire, zoals `AFWIJZING`: de namen van `FIXED_FIELDS` en
+ * `BEKENDMAKING_FIELDS` uit `packages/simulator/src/cell/besluit.rs`, en geen
+ * casusnamen. Ze staan hier omdat een lexostatus ze mag publiceren naast de
+ * uitkomsten, en een afwijzing die twee uit elkaar moet houden: wat de regeling
+ * uitrekende, en wat het gram over het besluit zelf zegt.
+ */
+const DECRETOGRAM_FIELDS = new Set([
+  'zaakkenmerk',
+  'besluit',
+  'stage',
+  'wacht_op_bekendmaking',
+  'regulation',
+  'regulation_valid_from',
+  'executed_regulations',
+  'competent_authority',
+  'besloten_door',
+  'legal_character',
+  'decision_type',
+  'afwijzingsgrond',
+  'inputs',
+  'obligations',
+  'chronicle_sources',
+  'receipt',
+  'bekendmaking_datum',
+  'bekendgemaakt_door',
+  'hooks',
+  'besluit_op_moment',
+  'besluit_gram',
+  'termijnen_vervallen_door',
+]);
+
+/**
+ * Een antwoord dat een afwijzing publiceert, uitgesplitst voor de weergave.
+ *
+ * `null` als het antwoord geen `decision_type` publiceert, of een ander type dan
+ * `AFWIJZING`: dan is er niets uit te splitsen en blijft het antwoord zoals het
+ * is. Anders drie delen:
+ *
+ * - `gronden`: waarop het besluit afketste, zoals het gram ze draagt;
+ * - `berekend`: de uitkomsten die de regeling wél uitrekende — een afwijzing
+ *   zet die niet op nul, ze belooft er alleen niets mee. De uitkomst die een
+ *   grond noemt, staat al bij die grond en niet nog eens hier;
+ * - `vast`: de vaste velden van het gram (`besluit`, `competent_authority`,
+ *   ...), die over het besluit gaan en niet over een bedrag. Zonder
+ *   `afwijzingsgrond`, want die staat al bovenaan.
+ *
+ * Elk deel heeft de vorm van `readLexostatus`, zodat dezelfde weergave het kan
+ * tonen.
+ */
+export function readAfwijzing(answer) {
+  const values = answer?.established ? answer.values ?? [] : [];
+  const type = values.find((value) => value.name === 'decision_type')?.value;
+  if (type !== AFWIJZING) return null;
+  const gronden = readAfwijzingsgronden(values.find((value) => value.name === 'afwijzingsgrond')?.value);
+  const genoemd = new Set(gronden.map((grond) => grond.output));
+  return {
+    gronden,
+    berekend: {
+      ...answer,
+      values: values.filter((value) => !DECRETOGRAM_FIELDS.has(value.name) && !genoemd.has(value.name)),
+    },
+    vast: {
+      ...answer,
+      values: values.filter((value) => DECRETOGRAM_FIELDS.has(value.name) && value.name !== 'afwijzingsgrond'),
+    },
   };
 }
 

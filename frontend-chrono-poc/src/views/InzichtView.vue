@@ -3,8 +3,8 @@ import { ref, watch } from 'vue';
 import { askLexostatus } from '../api/worldApi.js';
 import LexostatusValues from '../components/LexostatusValues.vue';
 import PersonaPicker from '../components/PersonaPicker.vue';
-import { formatMoment } from '../world/format.js';
-import { readLexostatus } from '../world/snapshot.js';
+import { formatMoment, formatValue, humanize } from '../world/format.js';
+import { readAfwijzing, readLexostatus } from '../world/snapshot.js';
 import { useWorld } from '../world/useWorld.js';
 
 // Inzicht in je aanvraag: wat de cellen over deze aanvrager publiceren.
@@ -19,6 +19,13 @@ import { useWorld } from '../world/useWorld.js';
 // De vragen gaan opnieuw zodra het beeld verandert — een aanvraag, een besluit,
 // de klok die doorloopt — want dan kan het antwoord anders zijn. Welk beeld dat
 // is, maakt niet uit: dezelfde store als op de andere pagina's.
+//
+// Een antwoord dat `decision_type` publiceert, en dat `AFWIJZING` is, leest als
+// afwijzing: bovenaan de melding met haar gronden, daaronder wat de regeling wél
+// uitrekende als "berekend, niet toegekend", en de vaste velden van het gram als
+// gewone regels. Het gram draagt die bedragen bewust — het is wat de uitvoering
+// opleverde — maar in één platte lijst lezen ze als een toekenning. Dit is
+// platformvocabulaire en geen casus: elk decretogram draagt deze velden.
 
 const { snapshot, portaal, persona, busy, error, actionError, choosePersona, dismissError } = useWorld();
 
@@ -45,7 +52,16 @@ async function askAll() {
       }
     }),
   );
-  if (current === round) answers.value = results;
+  if (current === round) {
+    answers.value = results.map((result) => ({ ...result, afwijzing: readAfwijzing(result.answer) }));
+  }
+}
+
+/** Een afwijzingsgrond als regel eronder: de afwijzende waarde en het artikel. */
+function grondDetail(grond) {
+  return [`waarde: ${formatValue(grond.value)}`, grond.article ? `artikel ${grond.article}` : 'geen artikel bekend'].join(
+    ' · ',
+  );
 }
 
 watch([() => persona.value?.id, snapshot], askAll, { immediate: true });
@@ -114,6 +130,50 @@ watch([() => persona.value?.id, snapshot], askAll, { immediate: true });
                   text="Deze vraag kon niet gesteld worden"
                   :supporting-text="answers[index].error"
                 ></nldd-banner>
+                <!-- Een afwijzing: eerst de afwijzing en waarop ze afketste,
+                     dan wat er wél uitgerekend is, en de vaste velden van het
+                     gram als gewone regels. -->
+                <template v-else-if="answers[index].afwijzing">
+                  <nldd-banner
+                    variant="warning"
+                    text="Afgewezen"
+                    heading-level="3"
+                    :supporting-text="
+                      answers[index].afwijzing.gronden.length > 0
+                        ? 'op grond van'
+                        : 'het besluit noemt geen afwijzingsgrond'
+                    "
+                  >
+                    <nldd-list
+                      v-if="answers[index].afwijzing.gronden.length > 0"
+                      variant="simple"
+                      accessible-label="Afwijzingsgronden"
+                    >
+                      <nldd-list-item
+                        v-for="(grond, position) in answers[index].afwijzing.gronden"
+                        :key="`${grond.output}-${position}`"
+                        size="sm"
+                      >
+                        <nldd-text-cell
+                          size="sm"
+                          :text="humanize(grond.output)"
+                          :supporting-text="grondDetail(grond)"
+                        ></nldd-text-cell>
+                      </nldd-list-item>
+                    </nldd-list>
+                  </nldd-banner>
+                  <template v-if="answers[index].afwijzing.berekend.values.length > 0">
+                    <nldd-title size="6">
+                      <h3>Berekend, niet toegekend</h3>
+                      <span slot="subtitle">wat de regeling uitrekende; een afwijzing belooft er niets mee</span>
+                    </nldd-title>
+                    <LexostatusValues :answer="answers[index].afwijzing.berekend" />
+                  </template>
+                  <LexostatusValues
+                    v-if="answers[index].afwijzing.vast.values.length > 0"
+                    :answer="answers[index].afwijzing.vast"
+                  />
+                </template>
                 <LexostatusValues
                   v-else-if="answers[index].answer.established"
                   :answer="answers[index].answer"
