@@ -28,12 +28,12 @@
 //! werkelijk gold.
 
 use crate::cell::besluit::{
-    afwijzing_block, afwijzing_wanneer, fixed_fields, BesluitDefinition, DeclaredObligations,
-    ObligationDefinition, ObligationOrigin, AFWIJZING, AFWIJZINGSGROND, BESCHIKKINGEN, BESLUIT,
-    BEVOEGD_GEZAG_REFERENCE, CHRONICLE_SOURCES, COMPETENT_AUTHORITY, DECISION_TYPE,
-    EXECUTED_REGULATIONS, INPUTS, LEGAL_CHARACTER, OBLIGATIONS, RECEIPT, REGULATION_VALID_FROM,
-    TERUGVORDERING, ZAAKKENMERK,
+    fixed_fields, BesluitDefinition, DeclaredObligations, ObligationDefinition, ObligationOrigin,
+    AFWIJZING, AFWIJZINGSGROND, BESCHIKKINGEN, BESLUIT, BEVOEGD_GEZAG_REFERENCE,
+    CHRONICLE_SOURCES, COMPETENT_AUTHORITY, DECISION_TYPE, EXECUTED_REGULATIONS, INPUTS,
+    LEGAL_CHARACTER, OBLIGATIONS, RECEIPT, REGULATION_VALID_FROM, TERUGVORDERING, ZAAKKENMERK,
 };
+use crate::cell::extensions::{afwijzing_wanneer, ChronolexBlock};
 use regelrecht_engine::article::Produces;
 use regelrecht_engine::{
     Article, ArticleBasedLaw, LawExecutionService, ParameterType as EngineType, RegulatoryLayer,
@@ -368,10 +368,29 @@ impl<'a> Lexicon<'a> {
     /// kan hier niet: het schema wordt ná `validate` uitgerekend, en dáár valt een
     /// blok dat niet te lezen is.
     fn afwijzing_wanneer(&self, driving: &str) -> BTreeMap<String, bool> {
-        afwijzing_block(self.produces(driving))
+        ChronolexBlock::read(self.produces(driving), &self.origin(driving))
+            .ok()
+            .and_then(|block| block.afwijzing_wanneer)
+            .as_ref()
             .map(afwijzing_wanneer)
             .and_then(std::result::Result::ok)
             .unwrap_or_default()
+    }
+
+    /// Waar een `chronolex`-blok van deze uitkomst staat: regeling, versie en
+    /// artikel.
+    ///
+    /// Alleen voor de melding als het blok niet te lezen is; hier komt die
+    /// melding niet naar buiten (zie [`Self::afwijzing_wanneer`]), maar de lezer
+    /// vraagt erom en er is er maar één.
+    fn origin(&self, driving: &str) -> ObligationOrigin {
+        ObligationOrigin {
+            regulation: self.regulation.to_string(),
+            valid_from: self.law.and_then(|law| law.valid_from.clone()),
+            article: self
+                .article_for(driving)
+                .map_or_else(String::new, |article| article.number.clone()),
+        }
     }
 
     /// Een veld dat een regeling zelf declareert, bij het artikel dat het zegt.
@@ -405,16 +424,8 @@ impl<'a> Lexicon<'a> {
     /// als er één niet klopt.
     fn obligations(&self, driving: &str) -> Option<Declared> {
         let article = self.article_for(driving)?;
-        let declared = DeclaredObligations::from_article(
-            ObligationOrigin {
-                regulation: self.regulation.to_string(),
-                valid_from: self.law.and_then(|law| law.valid_from.clone()),
-                article: article.number.clone(),
-            },
-            None,
-            article,
-        )
-        .ok()?;
+        let declared =
+            DeclaredObligations::from_article(self.origin(driving), None, article).ok()?;
         if declared.is_empty() {
             return None;
         }

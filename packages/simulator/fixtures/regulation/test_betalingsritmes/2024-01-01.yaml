@@ -37,6 +37,13 @@ articles:
           legal_character: BESCHIKKING
           decision_type: TOEKENNING
           extensions:
+            # Een namespace die deze opstelling niet leest, en die daarom ook
+            # niets hoeft te kloppen: `extensions` is per namespace ondoorzichtig
+            # (RFC-022 §3.2), en alleen `chronolex` is van ons. Ze staat hier
+            # zodat het scenario aantoont dat een wet die er een draagt gewoon
+            # optuigt — streng is de namespace en niet `extensions` als geheel.
+            blauwe_knop:
+              wat_dan_ook: 3
             chronolex:
               verplichtingen:
                 # Het ritme staat hier letterlijk: deze beschikking betaalt in

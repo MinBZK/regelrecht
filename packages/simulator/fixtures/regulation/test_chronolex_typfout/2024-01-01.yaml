@@ -1,0 +1,57 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: test_chronolex_typfout
+name: Testregeling met een typfout in het chronolex-blok
+regulatory_layer: WET
+bwb_id: BWBR9999907
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+url: https://example.com/test_chronolex_typfout
+competent_authority: Dienst Toeslagen
+
+# Een testregeling, met opzet **niet** in het corpus: ze bestaat om een
+# eigenschap van de opstelling aan te tonen en niet om recht weer te geven.
+#
+# Wat ze aantoont: het artikel schrijft `verplichtignen` waar `verplichtingen`
+# hoort te staan. Het JSON-schema zet geen `additionalProperties: false` op
+# `produces`, dus dit bestand valideert zoals het staat — de opstelling is de
+# enige die deze sleutel leest, en dus de enige die hem kan weigeren. Zou ze dat
+# stil overslaan, dan lag hier een regeling die denkt te betalen en niets
+# oplegt, en dat is aan het gram niet te zien.
+articles:
+  - number: '1'
+    url: https://example.com/test_chronolex_typfout#Artikel1
+    text: >-
+      De betrokkene heeft recht op een tegemoetkoming, die in één termijn wordt betaald.
+    machine_readable:
+      definitions:
+        toegekend_bedrag:
+          value: 120000
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+          extensions:
+            chronolex:
+              verplichtignen:
+                - soort: betaling
+                  bedrag: $hoogte_tegemoetkoming
+                  ritme: ineens
+                  grondslag: Testregeling met een typfout art. 1
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        output:
+          - name: tegemoetkoming_toegekend
+            type: boolean
+          - name: hoogte_tegemoetkoming
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: tegemoetkoming_toegekend
+            value: true
+          - output: hoogte_tegemoetkoming
+            value: $toegekend_bedrag

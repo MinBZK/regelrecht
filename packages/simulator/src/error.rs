@@ -911,12 +911,22 @@ pub enum SimulatorError {
     /// in een wereldbestand. Stil overslaan zou een regeling laten zwijgen waar
     /// ze spreekt, en dan zou een besluit zonder verplichting niets bijzonders
     /// lijken.
-    #[error("{origin}: het `extensions.chronolex`-blok is niet te lezen: {reason}")]
+    ///
+    /// De bekende sleutels staan in de melding: de namespace is gesloten, dus
+    /// wie hem geweigerd ziet worden hoort te lezen wat er dan wél in mag. Welke
+    /// andere namespaces een `extensions` draagt, doet er niet toe — die blijven
+    /// ongelezen (RFC-022 §3.2).
+    #[error(
+        "{origin}: het `extensions.chronolex`-blok is niet te lezen: {reason}; de \
+         sleutels die dit blok kent zijn: {known}"
+    )]
     MalformedChronolexBlock {
-        /// Het lexogram met het blok.
+        /// Het lexogram met het blok: regeling, artikel en versie.
         origin: String,
         /// Wat er mis is.
         reason: String,
+        /// Komma-gescheiden lijst van de sleutels die de namespace kent.
+        known: String,
     },
 
     /// Een besluit-definitie draagt nog zelf `obligations`.
