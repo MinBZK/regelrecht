@@ -62,7 +62,7 @@
 //! gedicht, en dat is de kant die in de praktijk misgaat: een gram dat zegt te
 //! hebben geaccepteerd zonder dat er een contact bij staat, valt op (I2).
 
-use crate::cell::{BesluitInput, CellConfig, Decretogram};
+use crate::cell::{BesluitInput, CellConfig, Decretogram, InputOrigin};
 use crate::security::SignedAnswer;
 use chrono::NaiveDate;
 use serde::Deserialize;
@@ -331,7 +331,7 @@ impl InvariantFailure {
             } => format!(
                 "{invariant}: het decretogram van zaak '{zaakkenmerk}' noemt waarde \
                  '{value}' geaccepteerd van cel '{peer}', maar er is geen contact met die \
-                 cel vastgelegd ({observed})"
+                 cel vastgelegd waaruit ze gelezen kan zijn ({observed})"
             ),
         }
     }
@@ -500,11 +500,19 @@ fn check_synthesis(traffic: &Traffic<'_>) -> Vec<InvariantFailure> {
 ///
 /// Twee kanten van dezelfde naad:
 ///
-/// - een contact zonder geaccepteerde waarde van die cel is combineren zonder
-///   dat het gram het laat zien (I4);
-/// - een geaccepteerde waarde zonder contact met die cel betekent dat het
-///   contact nergens is vastgelegd, of dat de waarde ergens anders vandaan
-///   kwam. Beide zijn een gat in wat de opstelling meet (I2).
+/// - een contact zonder geaccepteerde waarde die eruit leest, is combineren
+///   zonder dat het gram het laat zien (I4);
+/// - een geaccepteerde waarde zonder het contact waaruit ze gelezen zou zijn,
+///   betekent dat het contact nergens is vastgelegd, of dat de waarde ergens
+///   anders vandaan kwam. Beide zijn een gat in wat de opstelling meet (I2).
+///
+/// Een `accept_from`-input verwijst met zijn contactnummer naar precies één
+/// contact van dit besluit, en daar wordt ze aan gehouden: dat contact bestaat,
+/// en het ging naar de cel en de lexostatus die de input noemt, op haar moment.
+/// Zo blijft de toets per waarde kloppen ook als meerdere inputs uit één
+/// antwoord lezen. Een waarde die de wet via een cel-bron haalde (tier 3) draagt
+/// zo'n nummer niet — het receipt noemt alleen de cel — en wordt aan een contact
+/// met die cel gehouden.
 fn check_visibility(
     traffic: &Traffic<'_>,
     observed: &BTreeSet<QueryEdge>,
@@ -513,15 +521,43 @@ fn check_visibility(
     for decision in &traffic.decisions {
         let gram = decision.decretogram;
         let accepted = gram.accepted_values();
-        let peers: BTreeSet<&str> = accepted.values().copied().collect();
+        // Per input: de cel, de lexostatus, het moment en het contact waarnaar
+        // ze verwijst.
+        let referenced: BTreeMap<&str, (&str, &str, NaiveDate, usize)> = gram
+            .inputs
+            .iter()
+            .filter_map(|(name, input)| match &input.origin {
+                InputOrigin::Accepted {
+                    cell,
+                    lexostatus,
+                    op_moment,
+                    contact,
+                    ..
+                } => Some((
+                    name.as_str(),
+                    (cell.as_str(), lexostatus.as_str(), *op_moment, *contact),
+                )),
+                _ => None,
+            })
+            .collect();
+        // Wat zonder contactnummer geaccepteerd is: de cel-bronnen van de wet.
+        let unnumbered: BTreeSet<&str> = accepted
+            .iter()
+            .filter(|(name, _)| !referenced.contains_key(*name))
+            .map(|(_, cell)| *cell)
+            .collect();
         let asked: BTreeSet<&str> = decision
             .crossings
             .iter()
             .map(|signed| signed.answer.cell.as_str())
             .collect();
 
-        for signed in decision.crossings {
-            if peers.contains(signed.answer.cell.as_str()) {
+        for (index, signed) in decision.crossings.iter().enumerate() {
+            let number = index + 1;
+            let read = referenced
+                .values()
+                .any(|(_, _, _, contact)| *contact == number);
+            if read || unnumbered.contains(signed.answer.cell.as_str()) {
                 continue;
             }
             failures.push(InvariantFailure::CrossingNotInDecretogram {
@@ -544,7 +580,18 @@ fn check_visibility(
         }
 
         for (value, peer) in &accepted {
-            if asked.contains(peer) {
+            let has_crossing = match referenced.get(value) {
+                Some((cell, lexostatus, op_moment, contact)) => contact
+                    .checked_sub(1)
+                    .and_then(|index| decision.crossings.get(index))
+                    .is_some_and(|signed| {
+                        signed.answer.cell == *cell
+                            && signed.answer.name == *lexostatus
+                            && signed.answer.op_moment == *op_moment
+                    }),
+                None => asked.contains(peer),
+            };
+            if has_crossing {
                 continue;
             }
             failures.push(InvariantFailure::AcceptedWithoutCrossing {

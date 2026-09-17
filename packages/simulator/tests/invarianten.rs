@@ -344,6 +344,42 @@ fn een_geaccepteerde_waarde_zonder_contact_faalt_op_i2() {
     );
 }
 
+/// Een geaccepteerde waarde hoort bij het contact waarnaar ze verwijst (I2).
+///
+/// Meerdere inputs kunnen uit één antwoord lezen, en dan is "er was een contact
+/// met die cel" te grof: het contact waarnaar het gram verwijst, moet de vraag
+/// zijn waaruit de waarde komt. Hier ging er wél een vraag naar dezelfde cel,
+/// maar over een andere lexostatus — en dat hoort op te vallen.
+#[test]
+fn een_waarde_die_naar_een_ander_contact_verwijst_faalt_op_i2() {
+    let path = scenario_path("toeslagen_accepteert_toetsingsinkomen.yaml");
+    let run = run(&path);
+    let accepterend = &run.decisions[0];
+
+    let mut ander = accepterend.crossings.clone();
+    for signed in &mut ander {
+        signed.answer.name = "betaald_tot_nu_toe".to_string();
+    }
+    let verkeerd_verwezen = Traffic {
+        decisions: vec![DecisionTraffic {
+            decretogram: &accepterend.decretogram,
+            crossings: &ander,
+        }],
+        probes: Vec::new(),
+    };
+    let failures = check_invariants(&[], &[], &verkeerd_verwezen);
+
+    let melding = failures
+        .iter()
+        .find(|failure| matches!(failure, InvariantFailure::AcceptedWithoutCrossing { .. }))
+        .map(InvariantFailure::describe)
+        .unwrap_or_else(|| panic!("verwachtte een I2-melding, kreeg {failures:?}"));
+    assert!(
+        melding.starts_with("I2") && melding.contains("toetsingsinkomen"),
+        "de melding hoort de waarde te noemen, kreeg: {melding}"
+    );
+}
+
 /// Een contact dat het decretogram niet laat zien, valt op (I4).
 ///
 /// De andere kant van dezelfde naad, en ook deze is in de opstelling onmogelijk:

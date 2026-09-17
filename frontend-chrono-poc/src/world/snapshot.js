@@ -711,6 +711,9 @@ export function describeRecordedOrigin(recorded) {
           ['op moment', recorded.op_moment],
           ['gevraagd door', recorded.asked_by],
           ['ondertekend', recorded.signature],
+          // Welke vraag van dit besluit het antwoord leverde. Lezen meerdere
+          // inputs uit één antwoord, dan staat hier bij elk hetzelfde nummer.
+          ['contact', recorded.contact],
         ]),
       };
     case 'eigen_kroniek':
