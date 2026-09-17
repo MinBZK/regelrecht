@@ -1495,6 +1495,14 @@ impl World {
     /// Dat is niet uit zuinigheid zo, maar omdat het anders een tweede besluit
     /// zou zijn — en dan kon het beeld van de zaak veranderen door haar bekend
     /// te maken.
+    ///
+    /// Er gaat ook niets lopen als de cel vaststelt dat dit besluit inmiddels
+    /// vervangen is ([`Cell::bekendmaken`]): een belofte die pas hier gaat werken
+    /// (Awb 3:40), valt niet meer te doen als er over dezelfde zaak een besluit
+    /// ligt dat ervoor in de plaats kwam. Het gram van de bekendmaking zegt dat,
+    /// en het journaal ook — zie
+    /// [`Self::laat_openstaande_termijnen_vervallen`] voor de andere helft:
+    /// termijnen die al wél ingeroosterd stonden.
     fn publish_and_settle(
         &mut self,
         cell: &str,
@@ -1540,7 +1548,35 @@ impl World {
             question: None,
             parent: None,
         };
-        self.write_journal(entry);
+        let publication = self.write_journal(entry);
+
+        // Ging er iets níet lopen? Dan hoort dat er te staan, en onder de
+        // bekendmaking: het is de bekendmaking die het uitwijst. Zonder deze
+        // regel zou een lezer alleen een bekendmaking zonder termijnen zien, en
+        // dat is niet te onderscheiden van een besluit dat niets beloofde.
+        if let Some(vervallen) = &bekendmaking.termijnen_vervallen_door {
+            self.write_journal(JournalEntry {
+                seq: 0,
+                moment: self.clock,
+                actor: JournalActor::Cell {
+                    id: bekendmaking.cell.clone(),
+                },
+                kind: JournalKind::Termijn,
+                description: format!(
+                    "de verplichtingen die op de bekendmaking van besluit '{}' wachtten \
+                     (zaak '{}') worden niet ingeroosterd: {}",
+                    bekendmaking.besluit,
+                    bekendmaking.zaakkenmerk,
+                    vervallen.describe(),
+                ),
+                grams: Vec::new(),
+                changes: Vec::new(),
+                accepted: Vec::new(),
+                executed: None,
+                question: None,
+                parent: Some(publication),
+            });
+        }
 
         // Wat op deze bekendmaking wachtte, gaat nu lopen. Dezelfde weg als bij
         // een besluit: de termijn wordt een trigger, en een termijn die nu al
@@ -1642,14 +1678,13 @@ impl World {
     /// **Wat hier niet onder valt: verplichtingen die nog op de bekendmaking
     /// wachten.** Die staan niet in de wachtrij maar in het gram van hun eigen
     /// besluit (`wacht_op_bekendmaking`), en een gram verandert niet. Wordt een
-    /// beschikking vervangen vóórdat ze bekendgemaakt is, dan roostert haar
-    /// bekendmaking die termijnen alsnog in. Dat hoort daar ook thuis — de
-    /// bekendmaking is het moment waarop zo'n belofte gaat werken (Awb 3:40), dus
-    /// zij is de plek die moet zien dat er niets meer te laten werken valt. In
-    /// het corpus komt de combinatie nog niet voor: geen enkel artikel dat
-    /// `vervangt_openstaande_termijnen` declareert, staat naast een verplichting
-    /// met `vanaf: bekendmaking`. Zodra dat wel zo is, hoort dit gat gedicht te
-    /// worden bij [`Self::publish_and_settle`] en niet hier.
+    /// beschikking vervangen vóórdat ze bekendgemaakt is, dan blijkt dat bij haar
+    /// **bekendmaking**: daar wordt gekeken of er over dezelfde zaak inmiddels
+    /// een vervangend besluit ligt, en dan gaat er niets lopen (zie
+    /// [`Cell::bekendmaken`] en [`Self::publish_and_settle`]). Dat hoort daar ook
+    /// thuis — de bekendmaking is het moment waarop zo'n belofte gaat werken
+    /// (Awb 3:40), dus zij is de plek die moet zien dat er niets meer te laten
+    /// werken valt.
     fn laat_openstaande_termijnen_vervallen(
         &mut self,
         decretogram: &Decretogram,
