@@ -61,6 +61,9 @@ rfcs:
   - 24
   - 36
   - 37
+  - 38
+  - 40
+  - 41
 samenhangIds:
   - specificaties-ii-enrichment-overhaul-landen
   - specificaties-iii-gaten-vinden-met-de-enricher
