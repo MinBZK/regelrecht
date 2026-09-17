@@ -263,6 +263,34 @@ as "unknown":
   Independent of `status` (code can land ahead of acceptance). Ground the value
   in the actual codebase, not the RFC's aspirations.
 
+### An accepted RFC is not rewritten
+
+Once an RFC is accepted it records what was decided then, so a change of design
+gets a **new RFC** and the old one goes to `status: Superseded` with a line
+pointing at its replacement. The text underneath stays as it was written. This
+is the same reason the published papers are frozen: a document that quietly
+tracks the code cannot be cited, and a reader who follows a reference has to
+find what the author wrote.
+
+The frontmatter is not the design. `status` moving to `Superseded` or
+`Rejected`, and `implementation` tracking what is built, are records *about* the
+document and are expected to change; that is what those fields are for. What
+stays put is the body: the claim the author made.
+
+What else needs no supersede: updating a reference when another document is
+renamed, and *adding* a note about what a later RFC did with the old decision.
+An RFC that is amended on one point, rather than replaced, keeps its status and
+gains a pointer; its own text stays as it was.
+
+What does need one: replacing the title, the central concept, or the field
+definitions. The case that produced this rule: schema v0.7.0 renames the channel
+RFC-012 describes from `untranslatables` to `markings`, and the first attempt
+rewrote RFC-012 to match. That would have made every existing citation to it
+point at a document about a different field, while a law file on schema v0.5.x
+still carries `untranslatables` and the engine still reads it. The RFC keeps its
+text and goes to `Superseded` instead, and the RFC introducing the new channel
+carries the new design.
+
 ## Code Reviews
 
 After completing significant code changes, proactively use the `code-reviewer` skill to review changes before committing.

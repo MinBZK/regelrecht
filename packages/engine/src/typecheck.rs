@@ -1091,6 +1091,16 @@ impl<'l, 'f> ArticleChecker<'l, 'f> {
                 self.check_expr(unit, facts, OPERAND);
                 Info::present(Some(Ty::Number), "the DATE_DIFF")
             }
+            // RFC-032: DATE_PART reads one calendar component as a number,
+            // START_OF truncates a date and stays a date.
+            ActionOperation::DatePart { date, .. } => {
+                self.operand(date, facts, name);
+                Info::present(Some(Ty::Number), "the DATE_PART")
+            }
+            ActionOperation::StartOf { date, .. } => {
+                self.operand(date, facts, name);
+                Info::present(Some(Ty::Date), "the START_OF")
+            }
         }
     }
 

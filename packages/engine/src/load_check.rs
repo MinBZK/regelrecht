@@ -140,7 +140,9 @@ fn operation_contains_unknown(op: &ActionOperation) -> bool {
                     .any(|part| part.as_ref().is_some_and(action_value_contains_unknown))
         }
         ActionOperation::Date { year, month, day } => any(&[year, month, day]),
-        ActionOperation::DayOfWeek { date } => any(&[date]),
+        ActionOperation::DayOfWeek { date }
+        | ActionOperation::DatePart { date, .. }
+        | ActionOperation::StartOf { date, .. } => any(&[date]),
         ActionOperation::DateDiff { from, to, unit } => any(&[from, to, unit]),
     }
 }
