@@ -29,7 +29,7 @@ export const portaalFixture = {
   label: 'Aanvraagportaal',
   personas: [
     { id: 'aanvrager-a', label: 'Aanvrager A (fictief)', values: { bsn: '999993653', jaar: 2024 }, inzicht: vragen('999993653') },
-    { id: 'aanvrager-b', label: 'Aanvrager B (fictief)', values: { bsn: '999990019', jaar: 2025 }, inzicht: vragen('999990019') },
+    { id: 'aanvrager-b', label: 'Aanvrager B (fictief)', values: { bsn: '999990019', jaar: 2024 }, inzicht: vragen('999990019') },
   ],
   inzicht: vragen('{bsn}'),
 };

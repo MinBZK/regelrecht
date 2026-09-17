@@ -252,6 +252,21 @@ cells:
               toetsingsinkomen: 81000
               competent_authority: Belastingdienst
 
+          # De aanslag van de tweede aanvrager in het portaal (zie onderaan).
+          # Een ander inkomen dan hierboven, zodat haar beschikking een ander
+          # bedrag laat zien; en één aanslag, geen herziening — haar verhaal
+          # hoeft niet het hele verhaal te zijn, alleen tot een besluit te
+          # kunnen komen.
+          - name: aanslag_vastgesteld
+            intake: eigen_besluit
+            recording_actor: belastingdienst
+            grondslag: Wet inkomstenbelasting 2001, hoofdstuk 2
+            op_moment: 2024-03-01
+            fields:
+              bsn: '999990019'
+              toetsingsinkomen: 2800000
+              competent_authority: Belastingdienst
+
           - name: aanslag_herzien
             intake: eigen_besluit
             recording_actor: belastingdienst
@@ -360,6 +375,17 @@ cells:
             fields:
               bsn: '999993653'
               partnerschap_type: GEEN
+          # En voor de tweede aanvrager in het portaal: de zorgtoeslagwet vraagt
+          # naar het partnerschap, dus zonder deze melding valt er over haar
+          # niets te berekenen.
+          - name: relatie_gewijzigd
+            intake: levering
+            recording_actor: toeslagen
+            grondslag: melding uit de basisregistratie personen
+            op_moment: 2023-01-01
+            fields:
+              bsn: '999990019'
+              partnerschap_type: GEEN
 
       - stream: inkomensleveringen
         key: bsn
@@ -382,6 +408,17 @@ cells:
             op_moment: 2023-11-15
             fields:
               bsn: '999993653'
+              is_verzekerde: true
+              vermogen: 0
+          # Dezelfde levering voor de tweede aanvrager in het portaal: zonder
+          # dit feit kan deze cel over haar niet besluiten.
+          - name: inkomenslevering
+            intake: levering
+            recording_actor: toeslagen
+            grondslag: jaarlijkse inkomenslevering
+            op_moment: 2023-11-15
+            fields:
+              bsn: '999990019'
               is_verzekerde: true
               vermogen: 0
 
@@ -637,24 +674,25 @@ portaal:
   actor: burger
   label: Aanvraagportaal
   personas:
-    # De aanvrager over wie deze wereld de feiten draagt: het register, de
-    # aanslagen en de inkomenslevering gaan over dit bsn. Met haar is het hele
-    # verhaal te spelen, tot en met de vaststelling.
+    # De aanvrager over wie deze wereld het hele verhaal draagt: het
+    # register, twee aanslagen (de tweede herziet de eerste) en de
+    # inkomenslevering gaan over dit bsn. Met haar is alles te spelen, tot en
+    # met de vaststelling.
     - id: aanvrager-a
       label: Aanvrager A (fictief)
       values:
         bsn: '999993653'
         jaar: 2024
-    # Een tweede aanvrager, met een ander bsn en een ander jaar. Over haar
-    # ligt in deze wereld verder niets: haar aanvraag komt aan, maar een
-    # besluit erop kan niet, want Toeslagen heeft over haar geen
-    # inkomenslevering. Dat is geen fout maar het punt: wat een cel niet weet,
-    # stelt zij niet vast — en haar inzicht blijft "nog niets bekend".
+    # Een tweede aanvrager: een ander bsn, hetzelfde berekeningsjaar (dan
+    # gelden dezelfde wetsversies en past de klok) en een ander inkomen. Voor
+    # haar liggen een aanslag, een relatiemelding en een inkomenslevering in
+    # de startstand, dus over haar aanvraag kan besloten worden, en haar
+    # beschikking toont een ander bedrag dan die van A.
     - id: aanvrager-b
       label: Aanvrager B (fictief)
       values:
         bsn: '999990019'
-        jaar: 2025
+        jaar: 2024
   inzicht:
     - label: Beschikking zorgtoeslag
       cell: toeslagen

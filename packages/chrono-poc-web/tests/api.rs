@@ -836,9 +836,11 @@ async fn reset_begint_opnieuw_uit_het_wereldbestand() {
         grams(&world, "burger", "aanvragen").is_empty(),
         "de aanvraag hoort weg te zijn: {world}"
     );
+    // Drie: de aanslag en de herziening van de eerste aanvrager, en de aanslag
+    // van de tweede aanvrager in het portaal.
     assert_eq!(
         grams(&world, "belastingdienst", "aanslagen").len(),
-        2,
+        3,
         "de startstand uit het wereldbestand hoort er weer te staan: {world}"
     );
 }
@@ -1125,7 +1127,7 @@ async fn een_persona_kiezen_vult_de_formulieren_en_legt_niets_vast() {
     assert_eq!(world["persona"], json!("aanvrager-b"));
     let aanvraag = prefill(&world, "burger.aanvraag");
     assert_eq!(aanvraag["bsn"], json!("999990019"));
-    assert_eq!(aanvraag["jaar"], json!(2025));
+    assert_eq!(aanvraag["jaar"], json!(2024));
     assert_eq!(
         aanvraag["ondertekend_op"],
         prefill(&voor, "burger.aanvraag")["ondertekend_op"],

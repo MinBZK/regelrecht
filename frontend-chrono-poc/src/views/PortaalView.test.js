@@ -86,7 +86,26 @@ describe('het aanvraagportaal', () => {
 
     const bsn = cards[0].find('nldd-text-field');
     expect(bsn.attributes('value')).toBe('999990019');
-    expect(cards[0].find('nldd-number-field').attributes('value')).toBe('2025');
+    expect(cards[0].find('nldd-number-field').attributes('value')).toBe('2024');
+    expect(complaints).toStrictEqual([]);
+  });
+
+  it('laat wat er voor de ene aanvrager getypt is niet staan onder de volgende', async () => {
+    const { wrapper, server } = await mountPortaal({ persona: 'aanvrager-a' });
+    // Zelf getypt volgt de voorinvulling niet meer (zie ActionCard)…
+    wrapper
+      .find('nldd-card nldd-text-field')
+      .element.dispatchEvent(new CustomEvent('input', { detail: { value: '123456782' } }));
+    await flushPromises();
+    expect(wrapper.find('nldd-card nldd-text-field').attributes('value')).toBe('123456782');
+
+    // …maar wie wisselt, is iemand anders, en krijgt haar eigen formulier.
+    await choose(wrapper, 'aanvrager-b');
+    expect(wrapper.find('nldd-card nldd-text-field').attributes('value')).toBe('999990019');
+    await wrapper.find('nldd-card form').trigger('submit');
+    await flushPromises();
+    const post = server.requests.find((request) => request.method === 'POST');
+    expect(post.body).toMatchObject({ bsn: '999990019' });
     expect(complaints).toStrictEqual([]);
   });
 

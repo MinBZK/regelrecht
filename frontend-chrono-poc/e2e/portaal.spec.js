@@ -12,6 +12,8 @@ import { grams, openSession } from './world.js';
 
 const AANVRAGER = 'Aanvrager A (fictief)';
 const BSN = '999993653';
+const TWEEDE = 'Aanvrager B (fictief)';
+const TWEEDE_BSN = '999990019';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -19,6 +21,8 @@ test.describe('aanvraagportaal', () => {
   /** @type {Awaited<ReturnType<typeof openSession>>} */
   let s;
   let page;
+  /** Wat de kaart met de beschikking van de eerste aanvrager toonde. */
+  let beschikkingA = '';
 
   test.beforeAll(async ({ browser }) => {
     s = await openSession(browser, '/#/portaal');
@@ -104,8 +108,41 @@ test.describe('aanvraagportaal', () => {
     await expect
       .poll(async () => await cardText('Beschikking zorgtoeslag'), { timeout: 20_000 })
       .toMatch(/Hoogte zorgtoeslag/);
-    expect(await cardText('Beschikking zorgtoeslag')).not.toMatch(/Nog niets bekend/);
+    beschikkingA = await cardText('Beschikking zorgtoeslag');
+    expect(beschikkingA).not.toMatch(/Nog niets bekend/);
     // En de keuze is blijven staan, over de pagina's heen.
     await expect(persona()).toHaveValue('aanvrager-a');
+  });
+
+  test('P6: een tweede aanvrager heeft haar eigen inzicht, en na een besluit haar eigen beschikking', async () => {
+    // Wisselen op inzicht: over haar is nog niets besloten.
+    await persona().selectOption({ label: TWEEDE });
+    await expect.poll(async () => await cardText('Beschikking zorgtoeslag')).toMatch(/Nog niets bekend/);
+
+    // De wissel geldt ook op het portaal: haar gegevens in het formulier.
+    await page.getByRole('link', { name: 'Aanvraagportaal', exact: true }).click();
+    await expect(page).toHaveURL(/#\/portaal$/);
+    await expect(persona()).toHaveValue('aanvrager-b');
+    await expect(page.locator('nldd-card input[aria-label="Bsn"]')).toHaveValue(TWEEDE_BSN);
+    await page.locator('nldd-card form button[type=submit]').first().click();
+    await s.worldWhen((w) => grams(w, 'burger', 'aanvragen').length === 2, 'haar aanvraag landt bij de burger');
+
+    // Het besluit, weer achter de schermen: de uitvoerder beslist op de
+    // aanvraag die het laatst binnenkwam, en dat is de hare.
+    await page.goto('/#/wereld');
+    await page.waitForTimeout(800);
+    await expect(s.actionForm('toeslagen.toekenning').locator('input[aria-label="Bsn"]')).toHaveValue(TWEEDE_BSN);
+    await s.actionForm('toeslagen.toekenning').locator('button[type=submit]').click();
+    await s.worldWhen((w) => grams(w, 'toeslagen', 'beschikkingen').length === 2, 'het besluit over haar is genomen');
+
+    await page.getByRole('link', { name: 'Inzicht in je aanvraag', exact: true }).click();
+    await expect(page).toHaveURL(/#\/inzicht$/);
+    await expect(persona()).toHaveValue('aanvrager-b');
+    await expect
+      .poll(async () => await cardText('Beschikking zorgtoeslag'), { timeout: 20_000 })
+      .toMatch(/Hoogte zorgtoeslag/);
+    // Een ander inkomen, een ander bedrag: dit is haar beschikking en niet die
+    // van de eerste aanvrager.
+    expect(await cardText('Beschikking zorgtoeslag')).not.toBe(beschikkingA);
   });
 });

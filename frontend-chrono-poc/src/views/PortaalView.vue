@@ -106,9 +106,12 @@ function errorOf(action) {
               ></nldd-button>
             </nldd-banner>
 
+            <!-- Per aanvrager een eigen kaart: wat de vorige in een veld typte,
+                 volgt de voorinvulling niet meer (zie ActionCard), en hoort na
+                 een wissel niet onder de naam van de volgende te blijven staan. -->
             <ActionCard
               v-for="action in actions"
-              :key="action.id"
+              :key="`${persona.id}:${action.id}`"
               :action="action"
               :snapshot="snapshot"
               :busy="busy"

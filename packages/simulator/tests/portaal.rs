@@ -253,15 +253,23 @@ fn zonder_portaal_is_er_niets_te_kiezen() {
 /// en de formulieren van een andere actor merken er niets van.
 #[test]
 fn de_waarde_van_de_persona_wint_van_de_voorinvulling_en_laat_de_rest_staan() {
-    let mut world = publieke_wereld();
+    // Een eigen persona met een ander jaar dan de letterlijke opgave (2024): de
+    // aanvragers van de publieke wereld delen dat jaar met het formulier, en dan
+    // is niet te zien wie er wint.
+    let block = portaal("burger", WAARDEN, INZICHT).replace(
+        "  inzicht:",
+        "    - id: b\n      label: Aanvrager B\n      values:\n        bsn: '999990019'\n        jaar: 2025\n  inzicht:",
+    );
+    let mut world = World::from_definition(&met_portaal(Some(&block)), &regulation_root())
+        .unwrap_or_else(|e| panic!("dit portaal hoort op te tuigen: {e}"));
     let voor = action(&world, "burger.aanvraag");
     let uitvoerder_voor = action(&world, "toeslagen.toekenning");
     assert_eq!(voor.prefill.get("jaar"), Some(&Value::Int(2024)));
 
     world
-        .choose_persona(Some("aanvrager-b"))
-        .unwrap_or_else(|e| panic!("aanvrager-b hoort te kiezen te zijn: {e}"));
-    assert_eq!(world.snapshot().persona.as_deref(), Some("aanvrager-b"));
+        .choose_persona(Some("b"))
+        .unwrap_or_else(|e| panic!("persona b hoort te kiezen te zijn: {e}"));
+    assert_eq!(world.snapshot().persona.as_deref(), Some("b"));
 
     let na = action(&world, "burger.aanvraag");
     assert_eq!(
@@ -289,7 +297,7 @@ fn de_waarde_van_de_persona_wint_van_de_voorinvulling_en_laat_de_rest_staan() {
 
     // Wisselen, en weer terug naar niemand.
     world
-        .choose_persona(Some("aanvrager-a"))
+        .choose_persona(Some("a"))
         .unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(
         action(&world, "burger.aanvraag").prefill.get("jaar"),
@@ -325,8 +333,66 @@ fn opnieuw_beginnen_laat_de_keuze_staan() {
     world.reset().unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(world.snapshot().persona.as_deref(), Some("aanvrager-b"));
     assert_eq!(
-        action(&world, "burger.aanvraag").prefill.get("jaar"),
-        Some(&Value::Int(2025))
+        action(&world, "burger.aanvraag").prefill.get("bsn"),
+        Some(&Value::String("999990019".to_string()))
+    );
+}
+
+/// Beide aanvragers van de publieke wereld komen tot een beschikking, elk met
+/// een eigen bedrag.
+///
+/// Een tweede persona over wie niet besloten kan worden, bewijst op het
+/// portaal niets: haar inzicht blijft leeg. Daarom draagt de startstand voor
+/// elk van beide wat de toekenning nodig heeft, en toetst dit dat die startstand
+/// er is — met de voorinvulling van het portaal, zoals een bezoeker het doet.
+#[test]
+fn over_beide_aanvragers_van_de_publieke_wereld_kan_besloten_worden() {
+    let mut world = publieke_wereld();
+    world
+        .advance(
+            chrono::NaiveDate::from_ymd_opt(2024, 3, 1)
+                .unwrap_or_else(|| panic!("2024-03-01 hoort een geldige datum te zijn")),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+
+    let mut bedragen = Vec::new();
+    for (persona, bsn) in [("aanvrager-a", "999993653"), ("aanvrager-b", "999990019")] {
+        world
+            .choose_persona(Some(persona))
+            .unwrap_or_else(|e| panic!("{e}"));
+        let aanvraag = action(&world, "burger.aanvraag").prefill;
+        world
+            .act("burger.aanvraag", &aanvraag)
+            .unwrap_or_else(|e| panic!("{persona}: de aanvraag hoort te kunnen: {e}"));
+
+        let toekenning = action(&world, "toeslagen.toekenning");
+        assert_eq!(
+            toekenning.prefill.get("bsn"),
+            Some(&Value::String(bsn.to_string())),
+            "{persona}: de uitvoerder beslist op de aanvraag die net binnenkwam"
+        );
+        world
+            .act("toeslagen.toekenning", &toekenning.prefill)
+            .unwrap_or_else(|e| panic!("{persona}: de toekenning hoort te kunnen: {e}"));
+
+        let params = [(
+            "zaakkenmerk".to_string(),
+            Value::String(format!("zorgtoeslag/{bsn}")),
+        )]
+        .into_iter()
+        .collect();
+        let beschikking = world
+            .reduce("toeslagen", "zorgtoeslagbeschikking", &params, world.now())
+            .unwrap_or_else(|e| panic!("{persona}: {e}"));
+        let hoogte = beschikking
+            .values()
+            .and_then(|values| values.get("hoogte_zorgtoeslag").cloned())
+            .unwrap_or_else(|| panic!("{persona}: hoort een beschikking met een hoogte te hebben"));
+        bedragen.push(hoogte);
+    }
+    assert_ne!(
+        bedragen[0], bedragen[1],
+        "een ander inkomen hoort een ander bedrag op te leveren"
     );
 }
 
