@@ -138,6 +138,18 @@ cells:
           where:
             stage: BEKENDMAKING
 
+      - name: openstaande_termijnen
+        doc: >-
+          Wat er van deze zaak nog openstaat. De verplichting die op de
+          bekendmaking wachtte, staat er zonder vervaldag — eerst wachtend, en
+          vanaf de intrekking vervallen, ook nadat de bekendmaking er alsnog is.
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        reduction:
+          openstaand: true
+          key: zaakkenmerk
+
       - name: betaald_tot_nu_toe
         doc: wat er op deze zaak betaald is
         inputs:
@@ -234,3 +246,60 @@ queries:
       zaakkenmerk: tegemoetkoming/999993653
     op_moment: 2025-04-15
     expect_not_established: true
+
+  - description: >-
+      Vóór de intrekking wacht de verplichting op de bekendmaking.
+    cell: uitvoerder
+    lexostatus: openstaande_termijnen
+    params:
+      zaakkenmerk: tegemoetkoming/999993653
+    op_moment: 2024-03-15
+    expect:
+      verwacht: 0
+      betaald: 0
+      openstaand: 0
+      termijnen:
+        - besluit: toekenning
+          volgnummer: 1
+          vervaldatum: null
+          bedrag: 42000
+          status: wacht_op_bekendmaking
+
+  - description: >-
+      Na de intrekking en vóór de bekendmaking is ze vervallen: wat op een
+      bekendmaking wachtte, gaat door een besluit dat ervoor in de plaats kwam
+      nooit meer lopen.
+    cell: uitvoerder
+    lexostatus: openstaande_termijnen
+    params:
+      zaakkenmerk: tegemoetkoming/999993653
+    op_moment: 2024-04-10
+    expect:
+      verwacht: 0
+      betaald: 0
+      openstaand: 0
+      termijnen:
+        - besluit: toekenning
+          volgnummer: 1
+          vervaldatum: null
+          bedrag: 42000
+          status: vervallen
+
+  - description: >-
+      En dat blijft ze nadat de bekendmaking er alsnog is: die roosterde niets
+      in en zegt waardoor. De verplichting verdwijnt niet stil uit de lijst.
+    cell: uitvoerder
+    lexostatus: openstaande_termijnen
+    params:
+      zaakkenmerk: tegemoetkoming/999993653
+    op_moment: 2025-04-15
+    expect:
+      verwacht: 0
+      betaald: 0
+      openstaand: 0
+      termijnen:
+        - besluit: toekenning
+          volgnummer: 1
+          vervaldatum: null
+          bedrag: 42000
+          status: vervallen

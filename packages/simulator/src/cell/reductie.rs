@@ -38,22 +38,27 @@ use std::collections::BTreeMap;
 
 /// Hoe de cel aan dit antwoord kwam.
 ///
-/// Twee vormen, precies de twee die een cel kent (zie [`super::Reduction`]), en
-/// in beide gevallen de grammen die ze ervoor gelezen heeft. "Niets vastgesteld"
-/// is geen derde vorm: dat is hetzelfde kroniekfilter met geen enkel gram, plus
+/// Drie vormen, precies de drie die een cel kent (zie [`super::Reduction`]), en
+/// in alle gevallen de grammen die ze ervoor gelezen heeft. "Niets vastgesteld"
+/// is geen vierde vorm: dat is dezelfde vorm met geen enkel gram, plus
 /// [`Self::gemist`] — wat er wél lag en waarom het niet meedeed.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Reductie {
     /// Wat de cel gedaan heeft om tot dit antwoord te komen.
     pub vorm: ReductieVorm,
-    /// De grammen die ze daarbij gelezen heeft, in de volgorde waarin ze in de
-    /// kroniek liggen.
+    /// De grammen die ze daarbij gelezen heeft, per stroom in de volgorde
+    /// waarin ze in de kroniek liggen.
     ///
-    /// Leeg is een uitspraak en geen gat: bij een kroniekfilter dat niets vond,
-    /// is dit precies wat er te zeggen valt — er is niets gelezen.
+    /// Eén stroom bij elke vorm behalve [`ReductieVorm::Openstaand`]; die leest
+    /// er twee, en dan staan ze achter elkaar. Welke stroom een gram droeg,
+    /// staat op het gram zelf ([`GramRef::chronicle`]), dus een tweede lijst
+    /// ernaast zou niets toevoegen.
+    ///
+    /// Leeg is een uitspraak en geen gat: bij een reductie die niets vond, is
+    /// dit precies wat er te zeggen valt — er is niets gelezen.
     pub grammen: Vec<GebruiktGram>,
-    /// Wat er in de stroom lag en tóch niet meedeed; alleen bij een
-    /// kroniekfilter dat niets vaststelde.
+    /// Wat er in de stroom lag en tóch niet meedeed; alleen bij een reductie
+    /// die niets vaststelde.
     ///
     /// Zonder dit zou "niets vastgesteld" niet te onderscheiden zijn van "hier
     /// ligt helemaal niets": een stroom vol grammen over een ander onderwerp
@@ -63,34 +68,28 @@ pub struct Reductie {
 }
 
 impl Reductie {
-    /// Een kroniekfilter dat een antwoord opleverde.
-    pub(crate) fn kroniekfilter(filter: Kroniekfilter, grammen: Vec<GebruiktGram>) -> Self {
+    /// Een reductie die een antwoord opleverde, in welke vorm ook.
+    ///
+    /// Eén ingang voor alle vormen: welke het was, zegt de vorm zelf, en een
+    /// constructor per vorm zou dat onderscheid een tweede keer opschrijven.
+    pub(crate) fn vastgesteld(vorm: impl Into<ReductieVorm>, grammen: Vec<GebruiktGram>) -> Self {
         Self {
-            vorm: ReductieVorm::Kroniekfilter(filter),
+            vorm: vorm.into(),
             grammen,
             gemist: None,
         }
     }
 
-    /// Een kroniekfilter dat niets vaststelde, met wat er wél lag.
+    /// Een reductie die niets vaststelde, met wat er wél lag.
     pub(crate) fn niets_vastgesteld(
-        filter: Kroniekfilter,
+        vorm: impl Into<ReductieVorm>,
         grammen: Vec<GebruiktGram>,
         gemist: Gemist,
     ) -> Self {
         Self {
-            vorm: ReductieVorm::Kroniekfilter(filter),
+            vorm: vorm.into(),
             grammen,
             gemist: Some(gemist),
-        }
-    }
-
-    /// Een wetsvorm: de eigen engine rekende over de eigen feiten.
-    pub(crate) fn wetsvorm(wetsvorm: Wetsvorm, grammen: Vec<GebruiktGram>) -> Self {
-        Self {
-            vorm: ReductieVorm::Wetsvorm(wetsvorm),
-            grammen,
-            gemist: None,
         }
     }
 
@@ -108,7 +107,7 @@ impl Reductie {
     pub fn genoemde_cellen(&self) -> impl Iterator<Item = &str> {
         let uit_de_inputs = match &self.vorm {
             ReductieVorm::Wetsvorm(wetsvorm) => Some(wetsvorm.inputs.iter()),
-            ReductieVorm::Kroniekfilter(_) => None,
+            ReductieVorm::Kroniekfilter(_) | ReductieVorm::Openstaand(_) => None,
         };
         self.grammen
             .iter()
@@ -127,7 +126,7 @@ impl Reductie {
     }
 }
 
-/// De twee reductievormen, zoals ze in het antwoord verschijnen.
+/// De drie reductievormen, zoals ze in het antwoord verschijnen.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "soort", rename_all = "snake_case")]
 pub enum ReductieVorm {
@@ -135,6 +134,62 @@ pub enum ReductieVorm {
     Kroniekfilter(Kroniekfilter),
     /// Een eigen regeling die over de eigen feiten rekende.
     Wetsvorm(Wetsvorm),
+    /// Twee eigen kronieken naast elkaar: wat er opgelegd is, min wat er betaald
+    /// is.
+    Openstaand(Openstaandvorm),
+}
+
+impl From<Kroniekfilter> for ReductieVorm {
+    fn from(filter: Kroniekfilter) -> Self {
+        Self::Kroniekfilter(filter)
+    }
+}
+
+impl From<Wetsvorm> for ReductieVorm {
+    fn from(wetsvorm: Wetsvorm) -> Self {
+        Self::Wetsvorm(wetsvorm)
+    }
+}
+
+impl From<Openstaandvorm> for ReductieVorm {
+    fn from(vorm: Openstaandvorm) -> Self {
+        Self::Openstaand(vorm)
+    }
+}
+
+/// Waar de openstaandvorm naar gekeken heeft: twee eigen stromen, één zaak.
+///
+/// De enige vorm die méér dan één kroniek leest, en daarom de enige die er twee
+/// noemt. Ze blijven allebei van deze cel — een reductie komt niet buiten haar
+/// grens (RFC-022 §4.1) — maar wat de cel over deze zaak *verwachtte* en wat
+/// haar *gebeurde* staan niet in dezelfde stroom, en het verschil tussen die
+/// twee is precies het antwoord.
+///
+/// Geen `regel` en geen `where`: wat er met de gevonden grammen gebeurt, ligt in
+/// deze vorm vast — per besluitnaam het laatste decretogram, en daarvan de
+/// termijnen die op of vóór het moment vervielen. Een filter dat daaraan zou
+/// kunnen draaien, zou van deze vorm een tweede kroniekfilter maken.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Openstaandvorm {
+    /// De stroom met de eigen decretogrammen: wat deze cel oplegde.
+    ///
+    /// Elk gram uit deze stroom in [`Reductie::grammen`] draagt als
+    /// [`GebruiktGram::bijdrage`] wat eruit **verwacht** werd op dit moment: de
+    /// termijnen die het oplegt en die op of vóór het moment vervielen.
+    pub beschikkingen: String,
+    /// De stroom met de eigen betalingen: wat er op die verplichtingen ligt.
+    ///
+    /// Elk gram uit deze stroom draagt als bijdrage wat het aan **betaald**
+    /// bijdroeg. Een betaling die bij geen enkele vervallen termijn hoort, staat
+    /// er niet in — ze is niet gelezen.
+    pub betalingen: String,
+    /// Het veld waarop beide stromen de zaak aanwijzen.
+    pub key: String,
+    /// De waarde die de vraag voor dat veld meegaf: de zaak.
+    pub key_value: Value,
+    /// Het moment waarop gevraagd is: latere grammen en latere vervaldata
+    /// bestaan voor dit antwoord niet.
+    pub op_moment: NaiveDate,
 }
 
 /// Waar het kroniekfilter naar gezocht heeft, en met welke regel.
@@ -306,8 +361,11 @@ pub struct GebruiktGram {
     /// `None` bij elk ander gram, en ook bij een decretogram van een cel zonder
     /// engine: die legt vast wat zij vaststelde, zonder uitvoering eronder.
     pub regulation_valid_from: Option<String>,
-    /// Bij een som: wat dit gram aan het totaal bijdroeg. `None` bij elke andere
-    /// regel.
+    /// Wat dit gram aan het totaal bijdroeg; `None` waar er niet opgeteld is.
+    ///
+    /// Bij een som het gesommeerde veld, bij [`ReductieVorm::Openstaand`] het
+    /// bedrag dat dit gram aan het verwachte of het betaalde toevoegde — welke
+    /// van de twee, volgt uit de stroom waarin het ligt.
     pub bijdrage: Option<Value>,
 }
 

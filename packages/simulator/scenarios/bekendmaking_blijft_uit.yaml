@@ -115,6 +115,19 @@ cells:
           where:
             stage: BEKENDMAKING
 
+      - name: openstaande_termijnen
+        doc: >-
+          Wat er van deze zaak nog openstaat. Zolang het besluit niet
+          bekendgemaakt is, heeft de verplichting geen vervaldag: ze staat in de
+          lijst met de stand `wacht_op_bekendmaking` en telt niet mee in de
+          bedragen — opgelegd, en toch nog niets verwacht (Awb 3:40).
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        reduction:
+          openstaand: true
+          key: zaakkenmerk
+
       - name: betaald_tot_nu_toe
         doc: wat er op deze zaak betaald is
         inputs:
@@ -166,3 +179,24 @@ queries:
       zaakkenmerk: tegemoetkoming/999993653
     op_moment: 2024-12-01
     expect_not_established: true
+
+  - description: >-
+      En toch is er iets: negen maanden later staat de verplichting er nog
+      steeds, zonder vervaldag. "Niets openstaand" is hier geen lege zaak maar
+      een zaak die op een gebeurtenis wacht, en dat verschil hoort te zien te
+      zijn.
+    cell: uitvoerder
+    lexostatus: openstaande_termijnen
+    params:
+      zaakkenmerk: tegemoetkoming/999993653
+    op_moment: 2024-12-01
+    expect:
+      verwacht: 0
+      betaald: 0
+      openstaand: 0
+      termijnen:
+        - besluit: toekenning
+          volgnummer: 1
+          vervaldatum: null
+          bedrag: 42000
+          status: wacht_op_bekendmaking

@@ -137,6 +137,19 @@ cells:
           where:
             stage: BEKENDMAKING
 
+      - name: openstaande_termijnen
+        doc: >-
+          Wat er van deze zaak nog openstaat. Zolang het besluit niet
+          bekendgemaakt is, heeft de verplichting geen vervaldag: ze staat in de
+          lijst met de stand `wacht_op_bekendmaking` en telt niet mee in de
+          bedragen — opgelegd, en toch nog niets verwacht (Awb 3:40).
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        reduction:
+          openstaand: true
+          key: zaakkenmerk
+
       - name: betaald_tot_nu_toe
         doc: wat er op deze zaak betaald is
         inputs:
@@ -249,3 +262,56 @@ queries:
     op_moment: 2024-06-01
     expect:
       bedrag: 42000
+
+  - description: >-
+      Vóór de bekendmaking is er niets verwacht en niets te laat: de verplichting
+      staat in de lijst zonder vervaldag, met de stand die zegt waaróp ze wacht.
+    cell: uitvoerder
+    lexostatus: openstaande_termijnen
+    params:
+      zaakkenmerk: tegemoetkoming/999993653
+    op_moment: 2024-03-15
+    expect:
+      verwacht: 0
+      betaald: 0
+      openstaand: 0
+      termijnen:
+        - besluit: toekenning
+          volgnummer: 1
+          vervaldatum: null
+          bedrag: 42000
+          status: wacht_op_bekendmaking
+
+  - description: >-
+      Op de dag van de bekendmaking heeft diezelfde verplichting een vervaldag —
+      de uiterste betaaldatum uit de wet — en die ligt nog in de toekomst. Dus
+      nog steeds niets verwacht, en nu om een andere reden.
+    cell: uitvoerder
+    lexostatus: openstaande_termijnen
+    params:
+      zaakkenmerk: tegemoetkoming/999993653
+    op_moment: 2024-04-15
+    expect:
+      verwacht: 0
+      betaald: 0
+      openstaand: 0
+      termijnen: []
+
+  - description: >-
+      Ná de uiterste betaaldatum is de termijn vervallen en nagekomen: verwacht
+      en betaald lopen gelijk op, en er staat niets open.
+    cell: uitvoerder
+    lexostatus: openstaande_termijnen
+    params:
+      zaakkenmerk: tegemoetkoming/999993653
+    op_moment: 2024-06-01
+    expect:
+      verwacht: 42000
+      betaald: 42000
+      openstaand: 0
+      termijnen:
+        - besluit: toekenning
+          volgnummer: 1
+          vervaldatum: '2024-05-27'
+          bedrag: 42000
+          status: betaald

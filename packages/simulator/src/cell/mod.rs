@@ -29,6 +29,7 @@ mod besluit;
 mod chronicle;
 mod config;
 mod extensions;
+pub(crate) mod openstaand;
 mod reductie;
 mod schema;
 
@@ -60,12 +61,12 @@ pub use chronicle::{
 pub(crate) use chronicle::uncovered;
 pub(crate) use config::{check_documented_params, check_parameter_value, check_prefill_values};
 pub use config::{
-    AcceptedSource, Aggregate, CellConfig, DocumentedParameter, LexostatusDefinition,
+    AcceptedSource, Aggregate, CellConfig, DocumentedParameter, LexostatusDefinition, Opschorting,
     ParameterType, Prefill, Reduction,
 };
 pub use reductie::{
-    GebruiktGram, GebruikteInput, Gemist, InputHerkomst, Kroniekfilter, Reductie, ReductieVorm,
-    Regel, Wetsvorm,
+    GebruiktGram, GebruikteInput, Gemist, InputHerkomst, Kroniekfilter, Openstaandvorm, Reductie,
+    ReductieVorm, Regel, Wetsvorm,
 };
 // Het schema van het decretogram dat een besluit kan voortbrengen: per veld het
 // type en het lexogram dat het declareert. Deel van het beeld van de wereld, dus
@@ -963,6 +964,16 @@ impl Cell {
                     }
                 }
             }
+            // De openstaandvorm kent geen `where` en geen aggregatie: wat ze met
+            // de grammen doet, ligt in de vorm vast. Ze krijgt daarom de sleutel
+            // en niet een [`ChronicleQuery`] — dat type draagt precies de twee
+            // dingen die hier niet bestaan.
+            Reduction::Openstaand { key } => openstaand::reduce(
+                self,
+                key,
+                self.key_value(definition, key, params)?,
+                op_moment,
+            )?,
         };
 
         Ok(Lexostatus {
@@ -1020,7 +1031,7 @@ impl Cell {
 
         Ok((
             LexostatusOutcome::Established(definition.project(result.outputs)),
-            Reductie::wetsvorm(wetsvorm, grammen),
+            Reductie::vastgesteld(wetsvorm, grammen),
         ))
     }
 
@@ -1305,7 +1316,7 @@ impl Cell {
 
         Ok((
             LexostatusOutcome::Established(values),
-            Reductie::kroniekfilter(filter, gelezen),
+            Reductie::vastgesteld(filter, gelezen),
         ))
     }
 
@@ -1399,7 +1410,7 @@ impl Cell {
                 published.to_string(),
                 amount(total),
             )])),
-            Reductie::kroniekfilter(filter, gelezen),
+            Reductie::vastgesteld(filter, gelezen),
         ))
     }
 
@@ -2833,7 +2844,7 @@ impl Cell {
     /// ook niet op een latere dag. Een herzieningsbesluit dat een eerder schema
     /// vervángt, is iets anders — dat vraagt om intrekken, en intrekken bestaat
     /// hier nog niet.
-    fn already_settled(&self, due: &ObligationDue) -> bool {
+    pub(crate) fn already_settled(&self, due: &ObligationDue) -> bool {
         self.chronicles
             .latest_recording(
                 BETALINGEN,
