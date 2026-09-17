@@ -167,11 +167,20 @@ if ! bestanden=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}/files" --paginate --jq
     unreadable "De bestandslijst van pull request ${PR_NUMBER} is niet op te halen, dus een werkpakket dat deze PR zelf toevoegt zou ten onrechte als onbekend gelden. Draai deze job opnieuw. Foutmelding: $(tr '\n' ' ' <"$gh_stderr")"
 fi
 
-# Op de mapnaam en niet op het volledige pad: de API geeft paden relatief aan
-# de repo terug, terwijl WERKPAKKETTEN_DIR ook een absoluut pad kan zijn (in de
-# tests is het dat). De mapnaam is wat beide gemeen hebben.
-map=$(basename "$WERKPAKKETTEN_DIR")
-toegevoegd=$(grep -E "(^|/)${map}/[^/]+\.md$" <<<"$bestanden" |
+# Verankerd aan het echte pad, en niet aan de mapnaam alleen.
+#
+# Op `(^|/)werkpakketten/` zou een bestand op een wíllekeurig pad dat toevallig
+# zo'n map heeft — `ergens/anders/werkpakketten/verzonnen-slug.md` — een slug
+# geldig maken zonder dat de roadmap wordt aangeraakt. Dat holt de redenering
+# hierboven uit: die leunt erop dat een verzonnen slug een werkpakket aan de
+# roadmap toevoegt en dus door `assertReferencesResolve` heen moet, en dat geldt
+# alleen voor bestanden die de docs-build ook echt leest.
+#
+# Apart van WERKPAKKETTEN_DIR, want dat is in de tests een absoluut tijdelijk
+# pad terwijl de API repo-relatieve paden teruggeeft. Deze variabele beschrijft
+# wat de API zegt.
+WERKPAKKETTEN_PAD="${WERKPAKKETTEN_PAD:-docs/src/content/roadmap/werkpakketten}"
+toegevoegd=$(grep -E "^${WERKPAKKETTEN_PAD}/[^/]+\.md$" <<<"$bestanden" |
     sed -E 's#.*/##; s#\.md$##' | sort -u)
 geldig=$(printf '%s\n%s\n' "$geldig" "$toegevoegd" | grep -v '^$' | sort -u)
 

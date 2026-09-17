@@ -274,6 +274,15 @@ check "een slug die alleen in de PR-head bestaat telt mee" 0 \
     "$(pr_json anne 'Werkpakket: nieuw-werkpakket')" "$voegt_toe" \
     'draagt bij aan' 'werkpakketten=nieuw-werkpakket'
 
+# Alleen een bestand op het échte pad telt. Anders zou een map die toevallig
+# `werkpakketten` heet, waar dan ook in de boom, een slug geldig maken zonder
+# dat de roadmap wordt aangeraakt — en dan draait assertReferencesResolve er
+# nooit overheen.
+check "een werkpakketten-map op een ander pad maakt geen slug geldig" 1 \
+    "$(pr_json anne 'Werkpakket: verzonnen-slug')" \
+    '[{"filename": "ergens/anders/werkpakketten/verzonnen-slug.md"}]' \
+    'niet bestaat'
+
 # --- de optionele Wet-regel ---
 
 check "een wet uit het corpus komt er als link bij" 0 \
@@ -342,9 +351,24 @@ check "geen Wet-regel is in orde, hij is optioneel" 0 \
     "$(pr_json anne 'Werkpakket: referentie-casus-i')" "$geen_bestanden" \
     'draagt bij aan'
 
+# Beide regels in één body, en beide uitkomsten geasserteerd: `Wet:` mag niet
+# meelezen op `Werkpakket:` en andersom. Met maar één van de twee regels in de
+# fixture kon deze test niet falen om de reden die zijn naam noemt.
 check "de Wet-regel wordt niet met de Werkpakket-regel verward" 0 \
-    "$(pr_json anne 'Werkpakket: referentie-casus-i')" "$geen_bestanden" \
+    "$(pr_json anne 'Werkpakket: referentie-casus-i
+Wet: wet_op_de_zorgtoeslag')" "$geen_bestanden" \
     'draagt bij aan' 'werkpakketten=referentie-casus-i'
+
+check "en de wet komt uit de Wet-regel, niet uit de Werkpakket-regel" 0 \
+    "$(pr_json anne 'Werkpakket: referentie-casus-i
+Wet: wet_op_de_zorgtoeslag')" "$geen_bestanden" \
+    'draagt bij aan' 'wetten=wet_op_de_zorgtoeslag'
+
+# De omgekeerde kant: alleen een `Wet:`-regel is geen werkpakket. Leest de
+# werkpakket-grep mee op `Wet:`, dan zou deze groen worden.
+check "een body met alleen een Wet-regel noemt geen werkpakket" 1 \
+    "$(pr_json anne 'Wet: wet_op_de_zorgtoeslag')" "$geen_bestanden" \
+    'noemt geen werkpakket'
 
 # --- uitzonderingen ---
 

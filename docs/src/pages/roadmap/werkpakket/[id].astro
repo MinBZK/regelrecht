@@ -112,11 +112,22 @@ const pathname = `/roadmap/werkpakket/${wp.id}`;
  * enforces, so GitHub's own search over PR bodies is the index — no label per
  * werkpakket to create, apply and keep aligned with a rename.
  *
- * The phrase is quoted so GitHub matches it as one string; unquoted it would
- * match every PR containing the word "werkpakket".
+ * Two forms, because the line has two lives. The author writes the bare slug;
+ * script/linkify-werkpakket.sh then rewrites it to a markdown link, and the
+ * literal `Werkpakket: <slug>` is gone from the body after that. Searching only
+ * the bare form would find the PRs the bot did NOT touch (forks, Dependabot) and
+ * miss the team's own — an empty page that reads as "no work yet" rather than
+ * "wrong query". Searching only the link form would miss those same exceptions.
+ *
+ * The URL form keeps the closing paren so `referentie-casus-i` does not also
+ * match `referentie-casus-ii`. Both phrases are quoted so GitHub matches them
+ * whole; unquoted they would match every PR containing the word "werkpakket".
+ *
+ * This query tracks linkify's output format: change the shape the bot writes and
+ * this has to change with it.
  */
 const prZoekUrl = `https://github.com/MinBZK/regelrecht/pulls?q=${encodeURIComponent(
-  `is:pr "Werkpakket: ${wp.id}"`,
+  `is:pr "werkpakket/${wp.id})" OR "Werkpakket: ${wp.id}"`,
 )}`;
 
 // The RFCs whose design work belongs here. Their implementation state comes
