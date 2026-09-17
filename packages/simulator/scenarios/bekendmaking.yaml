@@ -1,0 +1,251 @@
+---
+name: een besluit en zijn bekendmaking zijn twee grammen
+description: >-
+  RFC-008 kent een beschikking meer dan één stap: het besluit wordt genomen en
+  daarna bekendgemaakt. Elke stap is een eigen elementair gram op hetzelfde
+  zaakkenmerk (RFC-022 §1.2), en dat is precies wat hier te zien is — een gram
+  met `stage: BESLUIT` op T1 en een gram met `stage: BEKENDMAKING` op T2.
+
+  Wat de bekendmaking toevoegt komt uit de **wet** en niet uit de uitvoerende
+  regeling: de uiterste betaaldatum (art. 4:87), de bezwaartermijn (6:8) en de
+  rechtsmiddelenclausule (3:45) staan in `test_awb_procedure` en vuren als hook
+  op de stage BEKENDMAKING. De uitvoerende regeling weet er niets van; ze zegt
+  alleen dat haar betaaltermijn `vanaf: bekendmaking` loopt.
+
+  De vraag tussen T1 en T2 is de proef op de som: op dat moment ligt het besluit
+  er wél en de bekendmaking niet, en de reductie zegt dat ook — geen half
+  antwoord en geen vooruitgeschoven datum.
+
+clock:
+  start: 2024-01-01
+
+cells:
+  - id: uitvoerder
+    identity: Uitvoerder
+    laws:
+      - test_bekendmaking
+      # De algemene wet, als gewone wet geladen: zij declareert de procedure en
+      # de hooks. Dat een cel haar erbij laadt, is alles wat er nodig is.
+      - test_awb_procedure
+
+    komt_na:
+      - Uitvoerder
+
+    chronicles:
+      - stream: inkomensleveringen
+        key: bsn
+        events:
+          - name: inkomenslevering
+            intake: levering
+            recording_actor: uitvoerder
+            grondslag: jaarlijkse inkomenslevering
+            op_moment: 2023-11-15
+            fields:
+              bsn: '999993653'
+              is_verzekerde: true
+      - stream: betalingen
+        key: zaakkenmerk
+        # Het gebeurtenisschema van deze stroom: welke gebeurtenissen erin
+        # thuishoren, op welke grondslag ze berusten en welke velden ze dragen.
+        # Wat het platform van een betalingsstroom verlangt, staat hier als data;
+        # het optuigen toetst of het er staat, en elke vastlegging of het klopt.
+        gebeurtenissen:
+          - name: betaling_gedaan
+            intake: betaling
+            grondslag: Algemene wet bestuursrecht, art. 4:89
+            fields: &betalingsvelden
+              - name: zaakkenmerk
+                type: string
+              - name: bedrag
+                type: amount
+              - name: volgnummer
+                type: number
+              - name: besluit
+                type: string
+              - name: schuldenaar
+                type: string
+              - name: schuldeiser
+                type: string
+          - name: betaling_gemeld
+            intake: levering
+            grondslag: Algemene wet bestuursrecht, art. 4:89
+            fields: *betalingsvelden
+
+    besluit_definitions:
+      - name: toekenning
+        doc: >-
+          De toekenning zelf. Wat er betaald moet worden staat in het lexogram
+          van de regeling, en wannéér hangt daar aan de bekendmaking.
+        regulation: test_bekendmaking
+        output: komt_in_aanmerking
+        outputs:
+          - hoogte_tegemoetkoming
+        zaakkenmerk: tegemoetkoming/{bsn}
+        params:
+          - name: bsn
+            type: string
+            # Wat de wereld al weet hoeft een formulier niet te vragen — en het
+            # is ook wat de beschikbaarheid van de actie op uitrekent: zonder
+            # persoon valt er geen feit in de eigen kroniek te vinden.
+            prefill: $last:uitvoerder.inkomensleveringen.bsn
+        inputs:
+          bsn:
+            param: bsn
+          is_verzekerde:
+            from_chronicle: inkomensleveringen
+            field: is_verzekerde
+
+    lexostatus_definitions:
+      - name: beschikking
+        doc: het besluit zoals het vastligt, en niets van wat erna kwam
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - komt_in_aanmerking
+          - hoogte_tegemoetkoming
+          - stage
+        reduction:
+          chronicle: beschikkingen
+          key: zaakkenmerk
+          latest: true
+          # Over één zaak liggen meer grammen van hetzelfde besluit: elke stage
+          # legt er een. Zonder dit filter zou "wat is er besloten" het laatste
+          # gram opleveren, en dat is de bekendmaking.
+          where:
+            stage: BESLUIT
+
+      - name: bekendmaking
+        doc: >-
+          Wat er bij de bekendmaking is komen vast te staan. Dit zijn de velden
+          van de algemene wet, niet van de uitvoerende regeling.
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - stage
+          - bekendmaking_datum
+          - uiterste_betaaldatum
+          - bezwaartermijn_startdatum
+          - bezwaartermijn_einddatum
+          - bezwaar_bij
+          - bezwaar_termijn_weken
+        reduction:
+          chronicle: beschikkingen
+          key: zaakkenmerk
+          latest: true
+          where:
+            stage: BEKENDMAKING
+
+      - name: betaald_tot_nu_toe
+        doc: wat er op deze zaak betaald is
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - bedrag
+        reduction:
+          chronicle: betalingen
+          key: zaakkenmerk
+          sum: bedrag
+
+actions:
+  - id: uitvoerder.toekenning
+    actor: uitvoerder
+    label: Beslis op de aanvraag
+    decides:
+      cell: uitvoerder
+      besluit: toekenning
+
+  - id: uitvoerder.bekendmaking
+    actor: uitvoerder
+    label: Maak het besluit bekend
+    doc: >-
+      Geen formulier: wat er bekendgemaakt wordt is het besluit dat er ligt, en
+      wanneer het gebeurt is de stand van de klok. Of de actie kan, wordt
+      afgeleid uit de kroniek van de cel — er ligt een besluit-gram zonder
+      bekendmaking-gram — en staat dus niet als voorwaarde in dit bestand.
+    publishes:
+      cell: uitvoerder
+      besluit: toekenning
+
+act:
+  - description: het besluit, op T1
+    action: uitvoerder.toekenning
+    values:
+      bsn: '999993653'
+    op_moment: 2024-03-01
+    expect:
+      komt_in_aanmerking: true
+
+  - description: >-
+      de bekendmaking, zes weken later. Hier pas gaan de termijnen lopen, en
+      hier pas staat vast wanneer er uiterlijk betaald moet zijn.
+    action: uitvoerder.bekendmaking
+    op_moment: 2024-04-15
+
+queries:
+  - description: >-
+      Tussen T1 en T2 ligt het besluit er. De reductie filtert op de stage, dus
+      ze levert het besluit-gram — ook nadat er later een bekendmaking bijkwam.
+    cell: uitvoerder
+    lexostatus: beschikking
+    params:
+      zaakkenmerk: tegemoetkoming/999993653
+    op_moment: 2024-03-15
+    expect:
+      komt_in_aanmerking: true
+      hoogte_tegemoetkoming: 42000
+      stage: BESLUIT
+
+  - description: >-
+      En op datzelfde moment is er geen bekendmaking. Dat is de kern van de
+      stage: wat er bij de bekendmaking komt vast te staan, bestaat vóór die
+      dag niet — ook niet als de wet die het uitrekent er allang is.
+    cell: uitvoerder
+    lexostatus: bekendmaking
+    params:
+      zaakkenmerk: tegemoetkoming/999993653
+    op_moment: 2024-03-15
+    expect_not_established: true
+
+  - description: >-
+      Op T2 ligt de bekendmaking er, met de velden die de algemene wet erbij
+      geeft: zes weken na de bekendmaking is de uiterste betaaldatum (4:87), de
+      bezwaartermijn loopt vanaf de dag erna en eindigt zes weken na de
+      bekendmaking (6:8), en de clausule noemt het bevoegd gezag (3:45).
+    cell: uitvoerder
+    lexostatus: bekendmaking
+    params:
+      zaakkenmerk: tegemoetkoming/999993653
+    op_moment: 2024-04-15
+    expect:
+      stage: BEKENDMAKING
+      bekendmaking_datum: '2024-04-15'
+      uiterste_betaaldatum: '2024-05-27'
+      bezwaartermijn_startdatum: '2024-04-16'
+      bezwaartermijn_einddatum: '2024-05-27'
+      bezwaar_bij: Uitvoerder
+      bezwaar_termijn_weken: 6
+
+  - description: >-
+      Op de dag van de bekendmaking is er nog niets betaald: de termijn vervalt
+      pas op de uiterste betaaldatum.
+    cell: uitvoerder
+    lexostatus: betaald_tot_nu_toe
+    params:
+      zaakkenmerk: tegemoetkoming/999993653
+    op_moment: 2024-04-15
+    expect_not_established: true
+
+  - description: >-
+      Ná die datum is er betaald, en op de dag die uit de bekendmaking volgde.
+      Dat is wat `vanaf: bekendmaking` betekent: de klok komt de termijn na, en
+      de datum komt uit de wet.
+    cell: uitvoerder
+    lexostatus: betaald_tot_nu_toe
+    params:
+      zaakkenmerk: tegemoetkoming/999993653
+    op_moment: 2024-06-01
+    expect:
+      bedrag: 42000

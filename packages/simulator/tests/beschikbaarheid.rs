@@ -19,8 +19,8 @@
 //! `tests/invarianten.rs` voor de meting die dat afdwingt.
 
 use regelrecht_simulator::{
-    regulation_root, ActionDefinition, ActionEffect, ActionSnapshot, DecidesAction, Value, World,
-    WorldDefinition,
+    regulation_root, ActionDefinition, ActionEffect, ActionSnapshot, DecidesAction, Scenario,
+    Value, World, WorldDefinition,
 };
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -380,5 +380,74 @@ fn een_besluit_dat_terugleest_kan_pas_als_dat_eerdere_besluit_er_ligt() {
         na.available && na.unavailable_reason.is_none(),
         "met het eerste gram in de kroniek kan de vaststelling: {:?}",
         na.unavailable_reason
+    );
+}
+
+/// De wereld van het bekendmakingsscenario, als wereld en niet als run.
+///
+/// Het scenariobestand draagt beide helften — de wereld en de stappen — en deze
+/// meting gaat over de eerste: welke actie kan wanneer. Dat bestand en geen
+/// kopie ernaast, om dezelfde reden als bij de publieke wereld hierboven.
+fn bekendmakingswereld() -> World {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("scenarios")
+        .join("bekendmaking.yaml");
+    let scenario = Scenario::load(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    World::from_definition(&scenario.definition(), &regulation_root())
+        .unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+}
+
+/// Bekendmaken kan pas als er een besluit ligt, en daarna niet nog een keer.
+///
+/// Langs dezelfde lijn als een `decides`-actie: er staat geen voorwaarde in het
+/// wereldbestand. Wat er gebeurt is een droogloop over de **eigen** kroniek
+/// `beschikkingen` — ligt er een gram van de stage BESLUIT waarvoor er nog geen
+/// gram van de stage BEKENDMAKING is? — en die vraag beantwoordt de cel bij
+/// zichzelf. Geen contact over een celgrens (invariant I1).
+#[test]
+fn bekendmaken_kan_pas_als_er_een_besluit_ligt() {
+    let mut world = bekendmakingswereld();
+
+    let reden = reason(&world, "uitvoerder.bekendmaking");
+    assert!(
+        reden.contains("beschikkingen") && reden.contains("BESLUIT"),
+        "de reden hoort het gram te noemen dat ontbreekt, kreeg: {reden}"
+    );
+
+    world
+        .act(
+            "uitvoerder.toekenning",
+            &BTreeMap::from([("bsn".to_string(), text("999993653"))]),
+        )
+        .unwrap_or_else(|e| panic!("het besluit moet genomen kunnen worden: {e}"));
+
+    let na_besluit = action(&world, "uitvoerder.bekendmaking");
+    assert!(
+        na_besluit.available && na_besluit.unavailable_reason.is_none(),
+        "met een besluit in de kroniek kan de bekendmaking: {:?}",
+        na_besluit.unavailable_reason
+    );
+    assert!(
+        na_besluit.form.is_empty(),
+        "een bekendmaking vraagt niets: wat er bekendgemaakt wordt ligt er al"
+    );
+
+    world
+        .act("uitvoerder.bekendmaking", &BTreeMap::new())
+        .unwrap_or_else(|e| panic!("de bekendmaking moet kunnen: {e}"));
+
+    // En daarna niet nog eens: hetzelfde besluit twee keer bekendmaken zou twee
+    // verschillende uiterste betaaldata op één zaak opleveren.
+    let nogmaals = reason(&world, "uitvoerder.bekendmaking");
+    assert!(
+        nogmaals.contains("BEKENDMAKING") && nogmaals.contains("tegemoetkoming/999993653"),
+        "de reden hoort het gram te noemen dat er al ligt, kreeg: {nogmaals}"
+    );
+    let error = world
+        .act("uitvoerder.bekendmaking", &BTreeMap::new())
+        .expect_err("twee keer bekendmaken hoort geweigerd te worden");
+    assert!(
+        error.to_string().contains("al bekendgemaakt"),
+        "de weigering hoort te zeggen wat er aan de hand is, kreeg: {error}"
     );
 }

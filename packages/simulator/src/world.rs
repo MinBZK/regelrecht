@@ -46,10 +46,10 @@
 
 use crate::accept::CellBridge;
 use crate::cell::{
-    check_documented_params, check_parameter_value, check_prefill_values, Cell, CellConfig,
-    ChronicleEvent, DecisionContext, DeclaredObligations, Decretogram, DocumentedParameter,
-    InputOrigin, Intake, Lexostatus, ObligationDue, PartyBindings, Prefill, BESCHIKKINGEN,
-    BETALINGEN, ZAAKKENMERK,
+    check_documented_params, check_parameter_value, check_prefill_values, Bekendmaking, Cell,
+    CellConfig, ChronicleEvent, DecisionContext, DeclaredObligations, Decretogram,
+    DocumentedParameter, InputOrigin, Intake, Lexostatus, ObligationDue, PartyBindings, Prefill,
+    BESCHIKKINGEN, BETALINGEN, ZAAKKENMERK,
 };
 use crate::cell::{nakoming_schema, uncovered};
 use crate::error::{Result, SimulatorError, Subject};
@@ -178,6 +178,13 @@ pub enum ActionEffect {
     /// gedocumenteerde parameters die de besluit-definitie al noemt. Een tweede
     /// lijst ernaast zou ervan gaan afwijken.
     Decides(DecidesAction),
+    /// De actor maakt het laatste besluit van een cel bekend.
+    ///
+    /// De derde vorm, en niet een besluit met een ander etiket: er wordt niets
+    /// vastgesteld. Wat er gebeurt, is dat het besluit dat er al ligt in de
+    /// volgende **stage** van zijn procedure komt (RFC-008), met een eigen
+    /// elementair gram op hetzelfde zaakkenmerk (RFC-022 §1.2).
+    Publishes(PublishesAction),
 }
 
 /// Het YAML-oppervlak van een actie: alle velden van beide vormen, los.
@@ -204,26 +211,34 @@ struct ActionFields {
     /// Zie [`ActionEffect::Decides`].
     #[serde(default)]
     decides: Option<DecidesAction>,
+    /// Zie [`ActionEffect::Publishes`].
+    #[serde(default)]
+    publishes: Option<PublishesAction>,
 }
 
 impl TryFrom<ActionFields> for ActionDefinition {
     type Error = String;
 
     fn try_from(fields: ActionFields) -> std::result::Result<Self, Self::Error> {
-        let effect = match (fields.records, fields.decides) {
-            (Some(_), Some(_)) => {
+        let genoemd = usize::from(fields.records.is_some())
+            + usize::from(fields.decides.is_some())
+            + usize::from(fields.publishes.is_some());
+        if genoemd > 1 {
+            return Err(format!(
+                "actie '{}' noemt meer dan één uitwerking; een actie legt een feit vast \
+                 (`records`), start een besluit (`decides`) óf maakt een besluit bekend \
+                 (`publishes`)",
+                fields.id
+            ));
+        }
+        let effect = match (fields.records, fields.decides, fields.publishes) {
+            (Some(records), _, _) => ActionEffect::Records(records),
+            (_, Some(decides), _) => ActionEffect::Decides(decides),
+            (_, _, Some(publishes)) => ActionEffect::Publishes(publishes),
+            (None, None, None) => {
                 return Err(format!(
-                    "actie '{}' noemt zowel `records` als `decides`; een actie legt een \
-                     feit vast (`records`) óf start een besluit (`decides`)",
-                    fields.id
-                ))
-            }
-            (Some(records), None) => ActionEffect::Records(records),
-            (None, Some(decides)) => ActionEffect::Decides(decides),
-            (None, None) => {
-                return Err(format!(
-                    "actie '{}' noemt geen `records` en geen `decides`, en werkt dus niets \
-                     uit",
+                    "actie '{}' noemt geen `records`, geen `decides` en geen `publishes`, en \
+                     werkt dus niets uit",
                     fields.id
                 ))
             }
@@ -301,6 +316,26 @@ pub struct DecidesAction {
     /// De cel die besluit.
     pub cell: String,
     /// De besluit-definitie die uitgevoerd wordt.
+    pub besluit: String,
+}
+
+/// Een actie die een besluit van een cel bekendmaakt.
+///
+/// Geen formulier: wat er bekendgemaakt wordt is het laatste besluit van deze
+/// definitie dat nog niet bekendgemaakt is, en wannéér dat gebeurt is de stand
+/// van de klok. Een datum in het formulier zou een tweede tijdas openen naast de
+/// klok, en een zaakkenmerk in het formulier zou een bekendmaking van een zaak
+/// mogelijk maken waarover niets besloten is.
+///
+/// Of ze nu kan, wordt net als bij een `decides`-actie **afgeleid** en niet
+/// gedeclareerd: het volgt uit de kronieken van de cel zelf (zie
+/// [`crate::Cell::bekendmaking_stand`]).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublishesAction {
+    /// De cel die bekendmaakt; dezelfde die besloot.
+    pub cell: String,
+    /// De besluit-definitie waarvan het laatste gram bekendgemaakt wordt.
     pub besluit: String,
 }
 
@@ -464,6 +499,8 @@ pub struct Events {
     pub recordings: Vec<RecordedFact>,
     /// De besluiten die genomen zijn, met wat er voor elk over een celgrens ging.
     pub decisions: Vec<DecisionRecord>,
+    /// De bekendmakingen die vastgelegd zijn.
+    pub bekendmakingen: Vec<Bekendmaking>,
     /// De termijnen die onderweg verstreken zonder dat het feit er lag.
     pub warnings: Vec<Warning>,
 }
@@ -471,7 +508,10 @@ pub struct Events {
 impl Events {
     /// Gebeurde er niets?
     pub fn is_empty(&self) -> bool {
-        self.recordings.is_empty() && self.decisions.is_empty() && self.warnings.is_empty()
+        self.recordings.is_empty()
+            && self.decisions.is_empty()
+            && self.bekendmakingen.is_empty()
+            && self.warnings.is_empty()
     }
 
     /// Leesbaar verslag van deze stap, één regel per gebeurtenis.
@@ -491,6 +531,9 @@ impl Events {
                 "        {} besluit '{}' op {} -> zaakkenmerk '{}'",
                 gram.cell, gram.besluit, gram.op_moment, gram.zaakkenmerk
             );
+        }
+        for bekendmaking in &self.bekendmakingen {
+            let _ = writeln!(out, "        {}", bekendmaking.describe());
         }
         for warning in &self.warnings {
             let _ = writeln!(out, "        waarschuwing: {}", warning.describe());
@@ -914,6 +957,16 @@ impl World {
                 events.decisions.push(record);
                 Ok(events)
             }
+            ActionEffect::Publishes(publishes) => {
+                let (bekendmaking, mut events) = self.publish_and_settle(
+                    &publishes.cell,
+                    &publishes.besluit,
+                    actor,
+                    action.label.clone(),
+                )?;
+                events.bekendmakingen.push(bekendmaking);
+                Ok(events)
+            }
         }
     }
 
@@ -1079,6 +1132,9 @@ impl World {
                 .cell(&decides.cell)?
                 .besluit_definition(&decides.besluit)?
                 .params),
+            // Een bekendmaking vraagt niets: wat er bekendgemaakt wordt ligt al
+            // in de kroniek, en wanneer het gebeurt is de stand van de klok.
+            ActionEffect::Publishes(_) => Ok(Vec::new()),
         }
     }
 
@@ -1096,6 +1152,12 @@ impl World {
     /// Een `records`-actie kan altijd. Zij *is* het feit; wachten tot er iets
     /// ligt zou betekenen dat een actor niet kan vastleggen wat hem overkwam.
     ///
+    /// Een **bekendmaking** wordt langs dezelfde lijn afgeleid, maar uit een
+    /// andere kroniek: er ligt een gram van de stage BESLUIT waarvoor nog geen
+    /// gram van de stage BEKENDMAKING bestaat (zie
+    /// [`Cell::bekendmaking_stand`]). Ook daar is er niets te declareren dat met
+    /// de kroniek uit de pas zou kunnen lopen.
+    ///
     /// Geen contact over een celgrens, en dat is een eis en geen gevolg: het
     /// beeld van de wereld wordt bij elke stap opgevraagd, dus een check die
     /// over een grens reikt zou verkeer opleveren dat niemand vroeg (invariant
@@ -1106,6 +1168,16 @@ impl World {
         action: &ActionDefinition,
         prefill: &BTreeMap<String, Value>,
     ) -> Option<String> {
+        if let ActionEffect::Publishes(publishes) = &action.effect {
+            // Onbereikbaar leeg: het optuigen heeft de cel en het besluit al
+            // gevonden.
+            let cell = self.cells.get(&publishes.cell)?;
+            let stand = cell.bekendmaking_stand(&publishes.besluit);
+            if stand.kan_nu() {
+                return None;
+            }
+            return Some(stand.describe());
+        }
         let ActionEffect::Decides(decides) = &action.effect else {
             return None;
         };
@@ -1401,6 +1473,77 @@ impl World {
             },
             events,
         ))
+    }
+
+    /// Maak het laatste besluit van een cel bekend, en kom na wat daardoor gaat
+    /// lopen.
+    ///
+    /// De tegenhanger van [`Self::decide_and_settle`], en met opzet veel korter:
+    /// er wordt niets vastgesteld en er gaat niets over een celgrens. De cel
+    /// voert de volgende **stage** van haar procedure uit op wat er in haar eigen
+    /// gram staat (RFC-008), en wat daar als termijn uit komt gaat de klok
+    /// daarna na — precies zoals bij een besluit, want het is dezelfde soort
+    /// verplichting.
+    ///
+    /// Er is geen brug en geen resolver: een bekendmaking vraagt niemand iets.
+    /// Dat is niet uit zuinigheid zo, maar omdat het anders een tweede besluit
+    /// zou zijn — en dan kon het beeld van de zaak veranderen door haar bekend
+    /// te maken.
+    fn publish_and_settle(
+        &mut self,
+        cell: &str,
+        besluit: &str,
+        actor: JournalActor,
+        description: String,
+    ) -> Result<(Bekendmaking, Events)> {
+        if !self.cells.contains_key(cell) {
+            return Err(SimulatorError::UnknownCell {
+                cell: cell.to_string(),
+            });
+        }
+
+        // Hoe de zaak ervoor stond, vóórdat het gram er ligt; zie
+        // [`Self::decide_and_settle`].
+        let touched = BTreeSet::from([cell.to_string()]);
+        let bearing = self.decision_bearing(cell, besluit, &BTreeMap::new());
+        let before = self.read_indicators(&touched, &bearing, self.clock);
+
+        let identity = self.identity_of(cell);
+        let clock = self.clock;
+        // Onbereikbaar leeg: het bestaan van de cel is hierboven vastgesteld.
+        let bekendmaking = match self.cells.get_mut(cell) {
+            Some(found) => found.bekendmaken(besluit, identity.name(), clock)?,
+            None => {
+                return Err(SimulatorError::UnknownCell {
+                    cell: cell.to_string(),
+                })
+            }
+        };
+
+        let after = self.read_indicators(&touched, &bearing, self.clock);
+        let entry = JournalEntry {
+            seq: 0,
+            moment: self.clock,
+            actor,
+            kind: JournalKind::Bekendmaking,
+            description,
+            grams: self.gram_ref(cell, BESCHIKKINGEN).into_iter().collect(),
+            changes: changes(&before, &after),
+            accepted: Vec::new(),
+            executed: None,
+            question: None,
+            parent: None,
+        };
+        self.write_journal(entry);
+
+        // Wat op deze bekendmaking wachtte, gaat nu lopen. Dezelfde weg als bij
+        // een besluit: de termijn wordt een trigger, en een termijn die nu al
+        // vervalt gaat meteen af.
+        for due in &bekendmaking.obligations {
+            self.plan(due.vervaldatum, Trigger::Obligation(due.clone()));
+        }
+        let events = self.fire_due(self.clock)?;
+        Ok((bekendmaking, events))
     }
 
     /// De identiteit van een cel: haar veiligheidscontext, zoals het wereldbestand
@@ -2311,6 +2454,17 @@ fn check_actions(actions: &[ActionDefinition], cells: &BTreeMap<String, Cell>) -
                     })?
                     .besluit_definition(&decides.besluit)?;
                 check_prefill(&decides.cell, &action.id, &definition.params, cells)?;
+            }
+            // Een bekendmaking heeft geen formulier en dus geen voorinvulling;
+            // wat er wél getoetst wordt is dat de cel bestaat en dat zij dit
+            // besluit kent — anders zou de actie pas bij de eerste klik omvallen.
+            ActionEffect::Publishes(publishes) => {
+                cells
+                    .get(&publishes.cell)
+                    .ok_or_else(|| SimulatorError::UnknownCell {
+                        cell: publishes.cell.clone(),
+                    })?
+                    .besluit_definition(&publishes.besluit)?;
             }
         }
     }

@@ -11,6 +11,7 @@ import {
   obligationsOf,
   obligationValue,
   regulationOf,
+  stageOf,
 } from '../world/snapshot.js';
 
 // Eén gram in een kroniek: wat er gebeurde, wanneer, langs welk kanaal, en — als
@@ -52,6 +53,10 @@ const obligations = computed(() => obligationsOf(props.gram));
 // zijn — en al helemaal niet aan een bedrag, want de regeling rekent er nog
 // steeds een uit.
 const decisionType = computed(() => decisionTypeOf(props.gram));
+// De stap van de procedure waarin dit gram ontstond. Over één zaak liggen meer
+// decretogrammen — het besluit en zijn bekendmaking — en die zijn zonder dit
+// label alleen aan hun velden uit elkaar te houden.
+const stage = computed(() => stageOf(props.gram));
 const afwijzingsgronden = computed(() => afwijzingsgrondenOf(props.gram));
 
 // De wet bepaalt wie het bevoegd gezag is. Zegt ze er niets over, dan viel er
@@ -107,6 +112,9 @@ function obligationText(row) {
     <nldd-text-cell size="sm" min-width="120px" :text="gram.name" :supporting-text="supporting"></nldd-text-cell>
     <nldd-cell>
       <nldd-tag size="sm" :color="kind.color" :text="kind.label"></nldd-tag>
+    </nldd-cell>
+    <nldd-cell v-if="stage">
+      <nldd-tag size="sm" :color="stage.color" :text="stage.label"></nldd-tag>
     </nldd-cell>
     <nldd-cell v-if="decisionType">
       <nldd-tag size="sm" :color="decisionType.color" :text="decisionType.label"></nldd-tag>

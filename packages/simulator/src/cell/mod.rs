@@ -33,19 +33,20 @@ mod reductie;
 mod schema;
 
 pub use besluit::{
-    AcceptanceRequest, Afwijzingsgrond, BesluitDefinition, BesluitInput, ChronicleSource,
-    Decretogram, DecretogramInput, ExecutedRegulation, InputOrigin, ObligationDefinition,
-    ObligationDue, ObligationKind, ObligationOrigin, ObsoleteField, RichtingBijNegatief, Schedule,
-    AFWIJZING, BESCHIKKING, BESCHIKKINGEN, BETALINGEN, DECISION_TYPE, ZAAKKENMERK,
+    AcceptanceRequest, Afwijzingsgrond, Bekendmaking, BesluitDefinition, BesluitInput,
+    ChronicleSource, Decretogram, DecretogramInput, ExecutedRegulation, HookHerkomst, InputOrigin,
+    ObligationDefinition, ObligationDue, ObligationKind, ObligationOrigin, ObsoleteField,
+    RichtingBijNegatief, Schedule, WachtendeVerplichting, AFWIJZING, BESCHIKKING, BESCHIKKINGEN,
+    BETALINGEN, DECISION_TYPE, STAGE, STAGE_BEKENDMAKING, STAGE_BESLUIT, ZAAKKENMERK,
 };
-pub(crate) use besluit::{DeclaredObligations, ObligationScope};
+pub(crate) use besluit::{BesluitGram, DeclaredObligations, ObligationScope};
 // De vaste velden van een decretogram, voor het beeld van de wereld: dat moet een
 // uitkomst van een besluit van een vast veld kunnen onderscheiden om de herkomst
 // van elke waarde te kunnen noemen. `pub(crate)`, want het is geen contract naar
 // buiten — wat een gram draagt, staat in [`Decretogram`].
 pub(crate) use besluit::{
-    fixed_fields, nakoming_schema, recorded_input, BESLUIT, COMPETENT_AUTHORITY, INPUTS, RECEIPT,
-    REGULATION,
+    beschikkingen_fields, nakoming_schema, recorded_input, BESLUIT, COMPETENT_AUTHORITY, INPUTS,
+    RECEIPT, REGULATION,
 };
 // Het formulier van een actie wordt tegen dezelfde toets gehouden als de
 // parameters van een lexostatus of een besluit: precies wat gedocumenteerd is,
@@ -79,8 +80,9 @@ use config::{binding_name, engine_parameters, CellSurface, ObligationsPerOutput}
 use extensions::ChronolexBlock;
 use regelrecht_engine::article::CompetentAuthority;
 use regelrecht_engine::{
-    Article, ArticleBasedLaw, ArticleResult, CellResolver, EngineError, InputProvenance,
-    LawExecutionService, RuleResolver, TraceBuilder, Value,
+    Article, ArticleBasedLaw, ArticleResult, CellResolver, EngineError, ExecutionOutcome,
+    InputProvenance, LawExecutionService, OutputProvenance, RuleResolver, StageState, TraceBuilder,
+    Value,
 };
 use rust_decimal::Decimal;
 use std::cell::RefCell;
@@ -88,6 +90,98 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::path::Path;
 use std::rc::Rc;
+
+/// Hoe het met de bekendmaking van één besluit staat.
+///
+/// Drie standen, en ze zijn alle drie **afgeleid** uit de kroniek van de cel: er
+/// ligt nog geen besluit, er ligt er een dat nog bekendgemaakt moet worden, of
+/// het is al gebeurd. Dat is wat "kan deze actie nu?" hier betekent — geen
+/// voorwaarde die in het wereldbestand opgeschreven staat, maar een stand van
+/// zaken die uit de grammen zelf volgt.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum BekendmakingStand {
+    /// Er ligt geen gram van de stage BESLUIT: er valt niets bekend te maken.
+    GeenBesluit,
+    /// Er ligt al een gram van de stage BEKENDMAKING over deze zaak.
+    AlBekendgemaakt {
+        /// De zaak die al bekendgemaakt is.
+        zaakkenmerk: String,
+        /// Wanneer dat gebeurde.
+        op_moment: NaiveDate,
+    },
+    /// Er ligt een besluit dat nog bekendgemaakt kan worden.
+    TeDoen {
+        /// De zaak waar het om gaat.
+        zaakkenmerk: String,
+        /// De plek van het besluit-gram in [`BESCHIKKINGEN`].
+        plek: usize,
+        /// Het moment van dat besluit.
+        besluit_op_moment: NaiveDate,
+    },
+}
+
+impl BekendmakingStand {
+    /// Kan er nu bekendgemaakt worden?
+    pub(crate) fn kan_nu(&self) -> bool {
+        matches!(self, Self::TeDoen { .. })
+    }
+
+    /// Waarom het nu niet kan, in woorden — met het gram dat ontbreekt of het
+    /// gram dat er al ligt.
+    ///
+    /// Een lege tekst als het wél kan: wie deze reden toont, toont haar alleen
+    /// bij een weigering.
+    pub(crate) fn describe(&self) -> String {
+        match self {
+            Self::GeenBesluit => {
+                "er ligt in 'beschikkingen' geen gram van de stage BESLUIT over dit besluit"
+                    .to_string()
+            }
+            Self::AlBekendgemaakt {
+                zaakkenmerk,
+                op_moment,
+            } => format!(
+                "zaak '{zaakkenmerk}' is op {op_moment} al bekendgemaakt: er ligt een gram \
+                 van de stage BEKENDMAKING"
+            ),
+            Self::TeDoen { .. } => String::new(),
+        }
+    }
+}
+
+/// Wat één uitgevoerde stage opleverde.
+///
+/// De uitkomsten van de hooks die op die stage vuurden, met hun herkomst, en het
+/// receipt van de uitvoering. De vier bij elkaar, want ze komen uit dezelfde
+/// uitvoering: wie ze los doorgeeft, kan een uitkomst met de herkomst van een
+/// andere naar buiten brengen.
+struct StageUitkomst {
+    /// Wat de hooks opleverden.
+    outputs: BTreeMap<String, Value>,
+    /// Waar elke uitkomst vandaan komt.
+    hooks: Vec<HookHerkomst>,
+    /// De `valid_from` van de regelingversie die gold.
+    regulation_valid_from: Option<String>,
+    /// Het receipt van de stage-uitvoering.
+    receipt: regelrecht_engine::receipt::ExecutionReceipt,
+}
+
+impl StageUitkomst {
+    /// Wat deze stage opleverde, als leesbare opsomming voor een melding.
+    fn listing(&self) -> String {
+        if self.outputs.is_empty() {
+            return "de stage leverde geen enkele uitkomst".to_string();
+        }
+        format!(
+            "de stage leverde: {}",
+            self.outputs
+                .keys()
+                .map(String::as_str)
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    }
+}
 
 /// Het antwoord van een cel: de rechtstoestand vanuit een gevraagd perspectief,
 /// op de feiten die in die cel bekend zijn.
@@ -430,10 +524,14 @@ impl Cell {
                 .extend(fields.iter().cloned());
         }
         if !config.besluit_definitions.is_empty() {
-            declared
-                .entry(BESCHIKKINGEN.to_string())
-                .or_default()
-                .extend(besluit::declared_fields(&config.besluit_definitions));
+            let fields = declared.entry(BESCHIKKINGEN.to_string()).or_default();
+            fields.extend(besluit::declared_fields(&config.besluit_definitions));
+            // En wat de volgende stage erbij legt. Het gram van een bekendmaking
+            // ligt in dezelfde stroom en draagt wat de algemene wet er bij die
+            // stage aan hangt; een reductie mag daar dus over publiceren.
+            if let Some(service) = besluit_service.as_ref() {
+                fields.extend(stage_hook_outputs(service));
+            }
         }
         // Wat de wetten van deze cel onder `chronolex` declareren. Vóór de
         // surface, want elke besluit-definitie wordt eraan getoetst — en over de
@@ -1408,7 +1506,7 @@ impl Cell {
         // waaruit het bedrag zou komen, zou hier anders omvallen op een bedrag
         // dat de wet terecht niet gegeven heeft.
         if !declared.is_empty() && !decretogram.is_afwijzing() {
-            decretogram.obligations = definition.schedule_obligations(
+            let (due, wachtend) = definition.schedule_obligations(
                 ObligationScope {
                     cell: &self.id,
                     parties,
@@ -1420,6 +1518,8 @@ impl Cell {
                 params,
                 settings,
             )?;
+            decretogram.obligations = due;
+            decretogram.wacht_op_bekendmaking = wachtend;
         }
 
         let event = decretogram.event()?;
@@ -1436,6 +1536,368 @@ impl Cell {
         }
 
         Ok(decretogram)
+    }
+
+    /// Hoe het met de bekendmaking van dit besluit staat, uit de eigen kroniek.
+    ///
+    /// **Afgeleid, niet gedeclareerd.** Of er bekendgemaakt kan worden, is geen
+    /// voorwaarde die iemand in het wereldbestand opschrijft maar een stand van
+    /// zaken die in [`BESCHIKKINGEN`] te lezen is: ligt er een gram van de stage
+    /// [`STAGE_BESLUIT`] waarvoor nog geen gram van de stage
+    /// [`STAGE_BEKENDMAKING`] bestaat? Een droogloop over de eigen kronieken,
+    /// dus — er komt geen cel aan de kroniek van een ander en er gaat niets over
+    /// een celgrens (invariant I1).
+    ///
+    /// Het **laatste** besluit-gram en niet het eerste: over één zaak worden
+    /// meer besluiten genomen, en wat er bekendgemaakt wordt is het besluit dat
+    /// er nu ligt. De volgorde is die van de kroniek, zoals overal in deze
+    /// opstelling — twee besluiten op dezelfde dag zijn op de tijdas niet uit
+    /// elkaar te houden, dus beslist de volgorde van vastleggen.
+    pub(crate) fn bekendmaking_stand(&self, besluit: &str) -> BekendmakingStand {
+        let grams = self.stream_view(BESCHIKKINGEN).unwrap_or_default();
+        let veld = |event: &ChronicleEvent, name: &str| {
+            event
+                .fields
+                .get(name)
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string()
+        };
+        let Some((plek, laatste)) = grams.iter().enumerate().rfind(|(_, event)| {
+            veld(event, besluit::BESLUIT) == besluit
+                && veld(event, besluit::STAGE) == besluit::STAGE_BESLUIT
+        }) else {
+            return BekendmakingStand::GeenBesluit;
+        };
+        let zaakkenmerk = veld(laatste, besluit::ZAAKKENMERK);
+        let bekend = grams.iter().find(|event| {
+            veld(event, besluit::BESLUIT) == besluit
+                && veld(event, besluit::STAGE) == besluit::STAGE_BEKENDMAKING
+                && veld(event, besluit::ZAAKKENMERK) == zaakkenmerk
+        });
+        match bekend {
+            Some(event) => BekendmakingStand::AlBekendgemaakt {
+                zaakkenmerk,
+                op_moment: event.op_moment,
+            },
+            None => BekendmakingStand::TeDoen {
+                zaakkenmerk,
+                plek,
+                besluit_op_moment: laatste.op_moment,
+            },
+        }
+    }
+
+    /// Maak het laatste besluit van deze cel bekend, en leg dat vast.
+    ///
+    /// Dit is de tweede stage van de procedure die de algemene wet voor een
+    /// beschikking declareert (RFC-008): hetzelfde zaakkenmerk, hetzelfde
+    /// besluit, een eigen elementair gram (RFC-022 §1.2). Er wordt **niets
+    /// opnieuw vastgesteld** — het besluit is genomen en een kroniek wijzigt
+    /// niet — maar er komt wel iets bij: wat de wet aan de bekendmaking hangt.
+    /// De uiterste betaaldatum (Awb 4:87), de bezwaartermijn (6:7 jo. 6:8) en de
+    /// rechtsmiddelenclausule (3:45) komen uit de **hooks** die op die stage
+    /// vuren, en niet uit de uitvoerende regeling.
+    ///
+    /// De stage draait op de inputs die in het gram staan en op het moment van
+    /// het **besluit**: onder het recht van toen, op de feiten van toen. Dat is
+    /// geen detail maar de reden dat dit geen tweede besluit is — zou de stage
+    /// op vandaag rekenen, dan kon een bekendmaking een ander bedrag opleveren
+    /// dan het besluit dat ze bekendmaakt. Wat er wél van vandaag is, is de dag
+    /// van de bekendmaking zelf, en die gaat als parameter mee.
+    ///
+    /// Geen enkele vraag gaat hier over een celgrens: de stage krijgt geen
+    /// cel-resolver, want wat er van een ander geaccepteerd is, staat al in het
+    /// gram.
+    pub(crate) fn bekendmaken(
+        &mut self,
+        besluit: &str,
+        identity: &str,
+        op_moment: NaiveDate,
+    ) -> Result<Bekendmaking> {
+        let definition = self.definition(besluit)?;
+        let stand = self.bekendmaking_stand(besluit);
+        let BekendmakingStand::TeDoen {
+            zaakkenmerk,
+            plek,
+            besluit_op_moment,
+        } = stand
+        else {
+            return Err(SimulatorError::BekendmakingNietMogelijk {
+                cell: self.id.clone(),
+                besluit: besluit.to_string(),
+                reason: stand.describe(),
+            });
+        };
+
+        // Wat het gram draagt, eerst eruit: de uitvoering hieronder leunt erop,
+        // en het gram zelf blijft waar het is.
+        let Some(gram) = self.gram(BESCHIKKINGEN, plek) else {
+            return Err(SimulatorError::BekendmakingNietMogelijk {
+                cell: self.id.clone(),
+                besluit: besluit.to_string(),
+                reason: format!("het gram op plek {plek} is er niet meer"),
+            });
+        };
+        let outputs_van_besluit: BTreeMap<String, Value> = definition
+            .recorded_outputs()
+            .into_iter()
+            .filter_map(|name| {
+                gram.fields
+                    .get(name)
+                    .map(|value| (name.to_string(), value.clone()))
+            })
+            .collect();
+        let mut stage_params: BTreeMap<String, Value> = besluit::recorded_inputs(&gram.fields);
+        let competent_authority = gram
+            .fields
+            .get(besluit::COMPETENT_AUTHORITY)
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let decision_type = gram
+            .fields
+            .get(besluit::DECISION_TYPE)
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let wachtend = besluit::wachtende_verplichtingen(&gram.fields).ok_or_else(|| {
+            SimulatorError::OnleesbareWachtendeVerplichting {
+                cell: self.id.clone(),
+                besluit: besluit.to_string(),
+            }
+        })?;
+
+        // Wat het platform bij deze stage aanreikt, naast de inputs van het
+        // besluit: de dag van de bekendmaking — die is een gebeurtenis en geen
+        // uitkomst — en het bevoegd gezag, dat een rechtsmiddelenclausule nodig
+        // heeft om te kunnen zeggen bij wie bezwaar gemaakt moet worden. Een
+        // hook die ze niet declareert, krijgt ze ook niet: de engine geeft elk
+        // hook-artikel alleen wat het zelf noemt.
+        stage_params.insert(
+            besluit::BEKENDMAKING_DATUM.to_string(),
+            Value::String(op_moment.to_string()),
+        );
+        if let Some(authority) = &competent_authority {
+            stage_params.insert(
+                besluit::COMPETENT_AUTHORITY.to_string(),
+                Value::String(authority.clone()),
+            );
+        }
+
+        let uitkomst = self.run_stage(
+            &definition,
+            &outputs_van_besluit,
+            stage_params,
+            besluit_op_moment,
+        )?;
+
+        // De termijnen die op deze bekendmaking wachtten. De eerste vervaldag is
+        // de uiterste betaaldatum die de wet zojuist uitrekende — niet een dag
+        // die deze opstelling bedacht.
+        let mut obligations = Vec::new();
+        if !wachtend.is_empty() {
+            let uiterste = uitkomst
+                .outputs
+                .get(besluit::UITERSTE_BETAALDATUM)
+                .and_then(Value::as_str)
+                .and_then(|text| NaiveDate::parse_from_str(text, "%Y-%m-%d").ok())
+                .ok_or_else(|| SimulatorError::BekendmakingZonderBetaaldatum {
+                    cell: self.id.clone(),
+                    besluit: besluit.to_string(),
+                    veld: besluit::UITERSTE_BETAALDATUM.to_string(),
+                    found: uitkomst.listing(),
+                })?;
+            let zaak = BesluitGram {
+                cell: &self.id,
+                besluit: &definition.name,
+                zaakkenmerk: &zaakkenmerk,
+                op_moment: besluit_op_moment,
+                plek,
+            };
+            for verplichting in &wachtend {
+                obligations.extend(verplichting.termijnen_vanaf(uiterste, &zaak)?);
+            }
+        }
+
+        let bekendmaking = Bekendmaking {
+            cell: self.id.clone(),
+            besluit: definition.name.clone(),
+            zaakkenmerk,
+            op_moment,
+            besluit_op_moment,
+            besluit_gram: plek,
+            regulation: definition.regulation.clone(),
+            regulation_valid_from: uitkomst.regulation_valid_from,
+            competent_authority,
+            bekendgemaakt_door: identity.to_string(),
+            legal_character: BESCHIKKING.to_string(),
+            decision_type,
+            outputs: uitkomst.outputs,
+            hooks: uitkomst.hooks,
+            obligations,
+            receipt: uitkomst.receipt,
+        };
+
+        let event = bekendmaking.event()?;
+        self.record_own(BESCHIKKINGEN, event)?;
+        Ok(bekendmaking)
+    }
+
+    /// Voer één stage van de procedure uit die bij dit besluit hoort.
+    ///
+    /// De engine doet het werk: zij indexeert de hooks per stage en weet welke
+    /// artikelen er vuren (RFC-008). Wat deze cel aanlevert is de stand waarin
+    /// het besluit verkeert — de uitkomsten die het opleverde en de parameters
+    /// waarop het rekende — als [`StageState`], plus wat er bij deze stage bij
+    /// komt.
+    ///
+    /// Mét trace, om dezelfde reden als bij een besluit: zonder haar staat er wel
+    /// wát er uitkwam, maar niet langs welke artikelen (RFC-013). `new_untimed`,
+    /// zodat twee bekendmakingen met dezelfde invoer hetzelfde gram opleveren.
+    fn run_stage(
+        &self,
+        definition: &BesluitDefinition,
+        outputs_van_besluit: &BTreeMap<String, Value>,
+        parameters: BTreeMap<String, Value>,
+        besluit_op_moment: NaiveDate,
+    ) -> Result<StageUitkomst> {
+        // Onbereikbaar: `validate` weigert een besluit over een regeling die de
+        // cel niet zelf laadt, en een cel zonder engine laadt er geen enkele.
+        let Some(service) = &self.besluit_service else {
+            return Err(SimulatorError::ForeignRegulation {
+                cell: self.id.clone(),
+                subject: Subject::Besluit,
+                name: definition.name.clone(),
+                regulation: definition.regulation.clone(),
+            });
+        };
+        let mut service = service.borrow_mut();
+        // De eigen kronieken zoals ze op het moment van het besluit waren: wat de
+        // regeling zelf uit een databron haalt, hoort bij de bekendmaking niet
+        // opeens nieuwer te zijn dan bij het besluit.
+        self.register_own_facts(&mut service, besluit_op_moment)?;
+
+        // Kent de wet deze stage? De procedure staat in de algemene wet en niet
+        // hier; vindt de engine haar niet, dan is er niets uit te voeren.
+        let procedure_id = {
+            let resolver = service.resolver();
+            let produces = resolver
+                .get_article_by_output(
+                    &definition.regulation,
+                    &definition.output,
+                    Some(besluit_op_moment),
+                )
+                .and_then(regelrecht_engine::Article::get_execution_spec)
+                .and_then(|execution| execution.produces.as_ref());
+            let procedure = resolver
+                .find_procedure(
+                    BESCHIKKING,
+                    produces.and_then(|p| p.procedure_id.as_deref()),
+                )
+                .ok_or_else(|| SimulatorError::GeenBekendmakingStage {
+                    cell: self.id.clone(),
+                    besluit: definition.name.clone(),
+                    legal_character: BESCHIKKING.to_string(),
+                    stage: besluit::STAGE_BEKENDMAKING.to_string(),
+                    reason: "geen procedure gevonden".to_string(),
+                })?;
+            if !procedure
+                .stages
+                .iter()
+                .any(|stage| stage.name == besluit::STAGE_BEKENDMAKING)
+            {
+                return Err(SimulatorError::GeenBekendmakingStage {
+                    cell: self.id.clone(),
+                    besluit: definition.name.clone(),
+                    legal_character: BESCHIKKING.to_string(),
+                    stage: besluit::STAGE_BEKENDMAKING.to_string(),
+                    reason: format!(
+                        "procedure '{}' kent de stages {}",
+                        procedure.id,
+                        procedure
+                            .stages
+                            .iter()
+                            .map(|stage| stage.name.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                });
+            }
+            procedure.id.clone()
+        };
+
+        let state = StageState {
+            procedure_id,
+            contextual_law: definition.regulation.clone(),
+            current_stage: besluit::STAGE_BEKENDMAKING.to_string(),
+            accumulated_outputs: outputs_van_besluit.clone(),
+            parameters: parameters.clone(),
+            accepted_values: Vec::new(),
+        };
+        let calculation_date = besluit_op_moment.format("%Y-%m-%d").to_string();
+        let outcome = service
+            .execute_stage_with_trace_builder(
+                &definition.regulation,
+                &definition.output,
+                Some(state),
+                parameters.clone(),
+                &calculation_date,
+                TraceBuilder::new_untimed(),
+            )
+            .map_err(|error| self.explain_undeclared_source(definition, untraced(error)))?;
+
+        let result = match outcome {
+            ExecutionOutcome::Complete(result) => *result,
+            ExecutionOutcome::Yielded { pending_inputs, .. } => {
+                return Err(SimulatorError::BekendmakingWachtOpInvoer {
+                    cell: self.id.clone(),
+                    besluit: definition.name.clone(),
+                    missing: pending_inputs.join(", "),
+                })
+            }
+        };
+
+        // Alleen wat de **hooks** op deze stage opleverden. De uitkomsten van het
+        // besluit staan al in zijn eigen gram, en een stage-gram dat ze nog eens
+        // draagt zou twee keer hetzelfde zeggen — en bij de eerste afwijking niet
+        // meer te lezen zijn als wat het is.
+        let mut outputs = BTreeMap::new();
+        let mut hooks = Vec::new();
+        let resolver = service.resolver();
+        for (name, provenance) in &result.output_provenance {
+            let OutputProvenance::Reactive {
+                law_id,
+                article,
+                hook_point,
+            } = provenance
+            else {
+                continue;
+            };
+            let Some(value) = result.outputs.get(name) else {
+                continue;
+            };
+            outputs.insert(name.clone(), value.clone());
+            hooks.push(HookHerkomst {
+                veld: name.clone(),
+                lexogram: ObligationOrigin {
+                    regulation: law_id.clone(),
+                    valid_from: resolver
+                        .get_law_for_date(law_id, Some(besluit_op_moment))
+                        .and_then(|law| law.valid_from.clone()),
+                    article: article.clone(),
+                },
+                hook_point: hook_point.clone(),
+            });
+        }
+
+        let requested: Vec<String> = outputs.keys().cloned().collect();
+        let receipt =
+            service.build_receipt_with_outputs(&result, &parameters, &calculation_date, &requested);
+        Ok(StageUitkomst {
+            outputs,
+            hooks,
+            regulation_valid_from: result.regulation_valid_from.clone(),
+            receipt,
+        })
     }
 
     /// Wat dit besluit bij een andere cel moet ophalen voordat het kan rekenen.
@@ -1832,10 +2294,21 @@ impl Cell {
         // [`Decretogram::event`]), en die staat óók als veld in het gram. Op het
         // veld filteren en niet op de naam: dat is de weg die elke andere
         // reductie over deze stroom ook gaat.
-        let conditions = BTreeMap::from([(
-            besluit::BESLUIT.to_string(),
-            Value::String(earlier.to_string()),
-        )]);
+        let conditions = BTreeMap::from([
+            (
+                besluit::BESLUIT.to_string(),
+                Value::String(earlier.to_string()),
+            ),
+            // En van dát besluit de **stage BESLUIT**: over dezelfde zaak liggen
+            // meer grammen van hetzelfde besluit — de bekendmaking is er ook een
+            // (RFC-008) — en wie terugleest, leest het besluit terug en niet de
+            // stage die erna kwam. Zonder dit filter zou een vaststelling na een
+            // bekendmaking stil op het verkeerde gram landen.
+            (
+                besluit::STAGE.to_string(),
+                Value::String(besluit::STAGE_BESLUIT.to_string()),
+            ),
+        ]);
         let event = self
             .chronicles
             .latest_recording(
@@ -2207,8 +2680,10 @@ impl Cell {
                 outputs,
                 inputs,
                 // Het schema komt er in `decide` bij: het hangt aan de uitkomsten
-                // hierboven, en die zijn hier net pas bekend.
+                // hierboven, en die zijn hier net pas bekend. Dat geldt voor
+                // beide helften — wat nu vervalt en wat op de bekendmaking wacht.
                 obligations: Vec::new(),
+                wacht_op_bekendmaking: Vec::new(),
                 receipt,
             },
             // Álles wat de uitvoering opleverde, en niet alleen wat het gram
@@ -2857,6 +3332,42 @@ fn chronolex_per_output(service: &LawExecutionService) -> Result<DeclaredChronol
 /// terwijl een cel elke versie laadt en een vraag over een ouder moment op een
 /// oudere versie landt. Voor de vraag "kent deze regeling deze uitkomst?" telt
 /// daarom elke versie mee.
+/// De uitkomsten die de hooks op de stage BEKENDMAKING kunnen opleveren.
+///
+/// Bekend vóór de eerste bekendmaking, om dezelfde reden als bij
+/// [`besluit::declared_fields`]: een lexostatus die over `beschikkingen`
+/// reduceert wordt bij het optuigen getoetst, en dan is er nog geen enkel gram.
+/// Zonder deze lijst zou een vraag naar de uiterste betaaldatum als typfout
+/// geweigerd worden — terwijl in de wet gewoon te lezen staat dat die uitkomst
+/// er bij die stage uit komt.
+///
+/// Uit de **wet** en niet uit een lijst hier: welk artikel op welke stage vuurt,
+/// staat in het lexogram (RFC-007/RFC-008). Over alle geladen versies, want een
+/// besluit over een ouder moment landt op een oudere versie van de algemene wet.
+fn stage_hook_outputs(service: &LawExecutionService) -> BTreeSet<String> {
+    let mut outputs = BTreeSet::new();
+    for law in service.resolver().all_law_versions() {
+        for article in &law.articles {
+            let fires = article.get_hooks().is_some_and(|hooks| {
+                hooks.iter().any(|hook| {
+                    hook.applies_to.legal_character.as_deref() == Some(BESCHIKKING)
+                        && hook.applies_to.stage.as_deref() == Some(besluit::STAGE_BEKENDMAKING)
+                })
+            });
+            if !fires {
+                continue;
+            }
+            let Some(execution) = article.get_execution_spec() else {
+                continue;
+            };
+            for output in execution.output.iter().flatten() {
+                outputs.insert(output.name.clone());
+            }
+        }
+    }
+    outputs
+}
+
 fn outputs_per_regulation(service: &LawExecutionService) -> BTreeMap<String, BTreeSet<String>> {
     let mut per_regulation: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for law in service.resolver().all_law_versions() {
