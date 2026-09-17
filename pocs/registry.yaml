@@ -1,0 +1,140 @@
+---
+# Het register van proof-of-concepts achter poc.regelrecht.rijks.app.
+#
+# Dit bestand is de enige bron. Hieruit volgen de kaarten op de
+# overzichtspagina, de naam van de wachtwoord-env-var per poc, welke paden het
+# portaal serveert of doorstuurt, en welke paden het poc-image raken
+# (script/deploy-filters.mjs). Voeg een poc toe met de skill `/poc-add`, niet
+# met de hand: die loopt ook de bedrading langs die hier niet in staat.
+#
+# Wat hier publiek is en wat niet
+#
+# De overzichtspagina en het inlogscherm zijn allebei zonder wachtwoord te
+# lezen — het inlogscherm door een slug te raden. Alles wat op die twee komt,
+# geeft de casus dus weg aan wie er langsloopt. Daarom staat er per poc een
+# publieke helft en een interne helft, en niet één tekst die op beide plekken
+# dienst doet.
+#
+# Publiek (`titel`, `samenvatting`): wat voor soort verkenning dit is en waar
+# hij toe dient. Géén interne stukken en géén uitkomsten, maar wél met wie er
+# verkend wordt en waar het ongeveer over gaat: iemand die met een doorgestuurde
+# link op de kaartenpagina landt, moet zijn eigen verkenning kunnen herkennen.
+# Dat is een afweging van OCW en ons samen (Irene Bruggemann, september 2026),
+# niet iets om per poc opnieuw los te laten — hou je aan wat er bij een
+# bestaande poc staat, en overleg met de eigenaar van het dossier voordat je
+# meer prijsgeeft dan dat.
+#
+# Intern (`titel_intern`, `samenvatting_intern`, `tags`, `status`,
+# `voorbehoud`): het echte onderwerp — het dossier bij naam, de stukken, hoe
+# ver het is. Alleen zichtbaar achter het wachtwoord.
+#
+# Velden:
+#   slug         het pad onder poc.regelrecht.rijks.app, ook de sleutel van de
+#                env-var met het wachtwoord: slug -> POC_PW_<SLUG in hoofdletters,
+#                streepje wordt liggend streepje>. Alleen [a-z0-9-].
+#                Publiek zichtbaar in de URL, dus net zo terughoudend als
+#                `titel` en `samenvatting`.
+#   titel        PUBLIEK. De kop op de kaart en het inlogscherm.
+#   samenvatting PUBLIEK. Een of twee zinnen; wat voor verkenning is dit.
+#   titel_intern de kop binnen de poc. Optioneel; zonder deze valt hij terug op
+#                `titel`.
+#   samenvatting_intern
+#                het echte onderwerp, achter het wachtwoord. Optioneel.
+#   soort        `statisch` (uit dit image geserveerd) of `proxy` (doorgestuurd
+#                naar een ander ZAD-component).
+#   bron         bij `statisch`: de npm-workspace die de dist bouwt.
+#   upstream     bij `proxy`: de ZAD-componentnaam, bereikt op
+#                http://{deployment}-{upstream}:8000
+#   corpus       de mappen met casus-regelgeving die dit image meeneemt.
+#   assistent    true als de beleidsassistent voor deze casus aanstaat.
+#   tags         INTERN. Korte labels: departement, uitvoerder, het beleidsveld.
+#                Samen wijzen ze het dossier aan, ook waar de publieke helft
+#                dat bewust niet doet.
+#   status       hoe af deze uitwerking is; verplicht. Zie hieronder.
+#   voorbehoud   één of twee zinnen: waarom dit nog niet klopt, of waar het
+#                overheen loopt. Verplicht, en in eigen woorden — een lege
+#                huisregel leest iedereen heen.
+#
+# De status is er omdat een bezoeker anders niet kan zien of hij naar een
+# schets kijkt of naar iets dat met juristen is doorgelopen. Een uitgerekend
+# bedrag ziet er in beide gevallen even stellig uit. Hij staat op elke plek
+# waar een uitkomst te zien is, en dat is de publieke kaart niet: daar valt
+# niets te geloven wat een waarschuwing nodig heeft. Toegestane waarden:
+#
+#   verkenning      een eerste uitwerking; niet nagelopen door iemand van het
+#                   beleidsterrein. Neem geen enkele uitkomst voor waar aan.
+#   in-ontwikkeling gedeeltelijk nagelopen; delen kloppen, andere niet, en
+#                   welke dat zijn staat niet vast.
+#   gevalideerd     met uitvoerings- of beleidsexperts doorgelopen. Nog steeds
+#                   een demo op fictieve gegevens, geen besluit.
+
+pocs:
+  - slug: terugbetaalregimes
+    titel: RegelRecht en OCW/DUO I
+    samenvatting: >-
+      Regelingen voor terugbetalers: een verkenning om te bepalen of de
+      verschillende terugbetaalregelingen die nu bestaan vereenvoudigd en/of
+      verminderd kunnen worden en wat de impact daarvan is op terugbetalers
+      zelf, de kosten voor OCW en de uitvoeringslast bij DUO.
+    titel_intern: Terugbetaalregimes studieschuld
+    samenvatting_intern: >-
+      De vier terugbetaalregimes voor studieschulden (SF15-oud, SF15-nieuw,
+      SF15-LLLK en SF35), met een burgerview, de scenario's en een
+      beleidsmakersview die varianten naast elkaar doorrekent.
+    soort: statisch
+    bron: poc-terugbetaalregimes
+    corpus:
+      - corpus-poc/terugbetaalregimes
+    assistent: true
+    tags: [OCW, DUO, studiefinanciering]
+    status: in-ontwikkeling
+    voorbehoud: >-
+      De regimes zijn uitgewerkt voor een sessie met OCW en DUO en op die
+      onderdelen nagelopen; daarbuiten is de uitwerking niet getoetst.
+      Bedragen en uitkomsten zijn illustratief en gelden voor niemand.
+
+  - slug: nieuwkomersbekostiging
+    titel: RegelRecht en OCW/DUO II
+    samenvatting: >-
+      Nieuwkomers bekostiging: zou de regeling zoals die wordt uitgevoerd in het
+      voortgezet onderwijs ook kunnen worden uitgevoerd in het primair
+      onderwijs? En wat is de verwachte impact daarvan op scholen, DUO en OCW?
+    titel_intern: Aanvullende bekostiging nieuwkomers
+    samenvatting_intern: >-
+      Aanvullende bekostiging voor nieuwkomers in het po en vo (maatregel 1 uit
+      de DUO-knelpuntenbrief 2025), met varianten, een populatiesimulatie en een
+      uitvoeringslastmodel.
+    soort: statisch
+    bron: poc-nieuwkomersbekostiging
+    corpus:
+      - corpus-poc/nieuwkomersbekostiging
+    assistent: true
+    tags: [OCW, DUO, bekostiging]
+    status: verkenning
+    voorbehoud: >-
+      Een verkenning van maatregel 1 uit de knelpuntenbrief, inclusief
+      varianten die niet bestaan en niet zijn voorgesteld. De
+      populatiesimulatie en het uitvoeringslastmodel draaien op synthetische
+      gegevens en aannames, niet op cijfers van DUO of scholen.
+
+  - slug: napp
+    titel: Een uitvoeringsketen uit de regelgeving
+    samenvatting: >-
+      Een verkenning van een subsidieproces van aanvraag tot bezwaar, om te zien
+      of een uitvoeringsketen rechtstreeks uit de regelgeving kan draaien.
+    titel_intern: Nederlandse autoriteit politieke partijen (Napp)
+    samenvatting_intern: >-
+      Het subsidieproces uit het wetsvoorstel Wet op de politieke partijen,
+      end-to-end uitgevoerd door de engine: aanvragen, besluiten,
+      betaalopdrachten, bezwaar en een openbaar register.
+    soort: proxy
+    upstream: napp
+    corpus:
+      - corpus-poc/napp
+    assistent: false
+    tags: [BZK, Wpp, subsidie, AWB]
+    status: verkenning
+    voorbehoud: >-
+      De Napp bestaat niet en de Wet op de politieke partijen is een
+      wetsvoorstel; de wettekst hier is een uitvoerbare reconstructie, geen
+      geldend recht. Partijen, aanvragen en besluiten zijn verzonnen.

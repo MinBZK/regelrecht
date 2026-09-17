@@ -55,7 +55,11 @@ body {
  * status marks and the cross-law links inside YAML are demo-specific. */
 .yaml-tree {
   font-family: var(--primitives-font-family-monospace, monospace);
-  font-size: 0.875rem;
+  /* Bewust groter dan de 0.875rem die hier stond: een presentator loopt hier
+   * op een zaalscherm doorheen en benoemt invoer, uitvoer en voorwaarden. Op
+   * 14px was dat vanaf een paar meter niet te volgen, en inzoomen met de
+   * browser vergrootte ook de dia ernaast. */
+  font-size: 1.125rem;
   line-height: 1.5;
   /* A long token (the $schema URL, a juriconnect id) must wrap inside the box
    * instead of running out of it. */
@@ -63,8 +67,10 @@ body {
   min-width: 0;
 }
 
+/* In `em`, niet `rem`: de inspringing moet met de letter meeschalen. In `rem`
+ * volgt hij de rootfont, en kruipt de boom bij een grotere letter dicht. */
 .yaml-tree .yaml-node {
-  padding-left: 1.25rem;
+  padding-left: 1.25em;
 }
 
 .yaml-tree .yaml-key {
@@ -316,9 +322,11 @@ body {
   border: 0;
 }
 
+/* Donkerder en dikker dan de lintblauw-500 op 1.5 die hier stond: van een paar
+ * meter afstand was niet te zien waar een lijn heen liep. */
 .graph-canvas .vue-flow__edge-path {
-  stroke: var(--primitives-color-lintblauw-500);
-  stroke-width: 1.5;
+  stroke: var(--primitives-color-lintblauw-700);
+  stroke-width: 2;
 }
 
 
@@ -337,66 +345,71 @@ body {
  *    wetkader werd een lichtroze vlak met onleesbare titel.
  * 2. Daarna `x-25` kaal. Dat is in donkere modus juist bijna zwart (L 0.16),
  *    dus donkerder dan de canvas (L 0.23) waarop het ligt. Het kader zakte weg
- *    terwijl de rijen erboven zweefden: de nesting las binnenstebuiten. */
+ *    terwijl de rijen erboven zweefden: de nesting las binnenstebuiten.
+ *
+ * De trap staat een stap zwaarder dan eerst (kader -700, vak -500, label -800,
+ * was -500/-300/-800): op een zaalscherm was van een afstand niet te zien waar
+ * je naar keek. De verhouding tussen de drie blijft dezelfde, dus de nesting
+ * leest nog steeds van buiten naar binnen. */
 .graph-c0 .graph-law {
-  border-color: var(--primitives-color-lintblauw-500);
+  border-color: var(--primitives-color-lintblauw-700);
 }
 .graph-c0 .graph-box {
-  border-color: var(--primitives-color-lintblauw-300);
+  border-color: var(--primitives-color-lintblauw-500);
 }
 .graph-c0 .graph-box__label {
   color: var(--primitives-color-lintblauw-800);
 }
 .graph-c1 .graph-law {
-  border-color: var(--primitives-color-oranje-500);
+  border-color: var(--primitives-color-oranje-700);
 }
 .graph-c1 .graph-box {
-  border-color: var(--primitives-color-oranje-300);
+  border-color: var(--primitives-color-oranje-500);
 }
 .graph-c1 .graph-box__label {
   color: var(--primitives-color-oranje-800);
 }
 .graph-c2 .graph-law {
-  border-color: var(--primitives-color-groen-500);
+  border-color: var(--primitives-color-groen-700);
 }
 .graph-c2 .graph-box {
-  border-color: var(--primitives-color-groen-300);
+  border-color: var(--primitives-color-groen-500);
 }
 .graph-c2 .graph-box__label {
   color: var(--primitives-color-groen-800);
 }
 .graph-c3 .graph-law {
-  border-color: var(--primitives-color-paars-500);
+  border-color: var(--primitives-color-paars-700);
 }
 .graph-c3 .graph-box {
-  border-color: var(--primitives-color-paars-300);
+  border-color: var(--primitives-color-paars-500);
 }
 .graph-c3 .graph-box__label {
   color: var(--primitives-color-paars-800);
 }
 .graph-c4 .graph-law {
-  border-color: var(--primitives-color-robijnrood-500);
+  border-color: var(--primitives-color-robijnrood-700);
 }
 .graph-c4 .graph-box {
-  border-color: var(--primitives-color-robijnrood-300);
+  border-color: var(--primitives-color-robijnrood-500);
 }
 .graph-c4 .graph-box__label {
   color: var(--primitives-color-robijnrood-800);
 }
 .graph-c5 .graph-law {
-  border-color: var(--primitives-color-donkergeel-500);
+  border-color: var(--primitives-color-donkergeel-700);
 }
 .graph-c5 .graph-box {
-  border-color: var(--primitives-color-donkergeel-300);
+  border-color: var(--primitives-color-donkergeel-500);
 }
 .graph-c5 .graph-box__label {
   color: var(--primitives-color-donkergeel-800);
 }
 .graph-c6 .graph-law {
-  border-color: var(--primitives-color-mintgroen-500);
+  border-color: var(--primitives-color-mintgroen-700);
 }
 .graph-c6 .graph-box {
-  border-color: var(--primitives-color-mintgroen-300);
+  border-color: var(--primitives-color-mintgroen-500);
 }
 .graph-c6 .graph-box__label {
   color: var(--primitives-color-mintgroen-800);

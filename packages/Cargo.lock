@@ -2569,6 +2569,7 @@ version = "0.30.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2e99fb7a497b1e3339bc746195567ed8d3e24945ecd636e3619d20b9de9e9149"
 dependencies = [
+ "cc",
  "pkg-config",
  "vcpkg",
 ]
@@ -4175,6 +4176,7 @@ dependencies = [
  "rust_decimal_macros",
  "serde",
  "serde_json",
+ "serde_yaml_ng",
 ]
 
 [[package]]
@@ -4184,6 +4186,7 @@ dependencies = [
  "async-trait",
  "axum",
  "chrono",
+ "futures",
  "libc",
  "pretty_assertions",
  "regelrecht-corpus",
@@ -4192,6 +4195,7 @@ dependencies = [
  "regelrecht-law-model",
  "regelrecht-pipeline",
  "regelrecht-shared",
+ "regex",
  "reqwest 0.13.2",
  "roxmltree",
  "serde",
@@ -4208,8 +4212,61 @@ dependencies = [
  "tokio-util",
  "tower-http 0.7.1",
  "tracing",
+ "tracing-subscriber",
  "url",
  "uuid",
+]
+
+[[package]]
+name = "regelrecht-poc-napp"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "chrono",
+ "cucumber",
+ "regelrecht-auth",
+ "regelrecht-engine",
+ "reqwest 0.12.28",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "serde_yaml_ng",
+ "sqlx",
+ "time",
+ "tokio",
+ "tower-http 0.7.1",
+ "tower-sessions",
+ "tower-sessions-memory-store",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
+name = "regelrecht-poc-portal"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "base64 0.23.1",
+ "futures-util",
+ "hmac",
+ "http-body-util",
+ "pretty_assertions",
+ "regelrecht-auth",
+ "regelrecht-corpus",
+ "regelrecht-shared",
+ "reqwest 0.13.2",
+ "serde",
+ "serde_yaml_ng",
+ "sha2",
+ "subtle",
+ "thiserror 2.0.20",
+ "time",
+ "tokio",
+ "tower",
+ "tower-http 0.7.1",
+ "tracing",
 ]
 
 [[package]]
@@ -4335,12 +4392,14 @@ dependencies = [
  "sync_wrapper",
  "tokio",
  "tokio-rustls",
+ "tokio-util",
  "tower",
  "tower-http 0.6.11",
  "tower-service",
  "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
+ "wasm-streams",
  "web-sys",
 ]
 
@@ -6374,6 +6433,19 @@ dependencies = [
  "indexmap 2.13.0",
  "wasm-encoder",
  "wasmparser",
+]
+
+[[package]]
+name = "wasm-streams"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9d1ec4f6517c9e11ae630e200b2b65d193279042e28edd4a2cda233e46670bbb"
+dependencies = [
+ "futures-util",
+ "js-sys",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]

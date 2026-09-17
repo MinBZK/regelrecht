@@ -275,6 +275,7 @@ function submit() {
                     <nldd-icon-button size="xs" variant="neutral-transparent" icon="trash" accessible-label="Rij verwijderen" @click="removeRow(i)"></nldd-icon-button>
                   </nldd-cell>
                 </nldd-table-row>
+                <nldd-inline-dialog slot="empty" text="Nog geen rijen"></nldd-inline-dialog>
               </nldd-table>
               <nldd-button size="sm" variant="secondary" start-icon="plus" text="Rij toevoegen" @click="addRow"></nldd-button>
             </template>
@@ -296,6 +297,7 @@ function submit() {
                   <nldd-spacer-cell size="8"></nldd-spacer-cell>
                   <nldd-cell><nldd-icon-button size="xs" variant="neutral-transparent" icon="trash" accessible-label="Waarde verwijderen" @click="removeListItem(i)"></nldd-icon-button></nldd-cell>
                 </nldd-list-item>
+                <nldd-inline-dialog slot="empty" text="Nog geen waarden"></nldd-inline-dialog>
               </nldd-list>
               <nldd-button size="sm" variant="secondary" start-icon="plus" text="Waarde toevoegen" @click="addListItem"></nldd-button>
             </template>

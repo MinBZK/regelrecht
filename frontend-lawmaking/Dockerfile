@@ -7,6 +7,7 @@ COPY packages/frontend-shared/package.json packages/frontend-shared/
 COPY frontend/package.json frontend/
 COPY frontend-lawmaking/package.json frontend-lawmaking/
 COPY frontend-demo/package.json frontend-demo/
+COPY frontend-poc-portal/package.json frontend-poc-portal/
 # --ignore-scripts: een gekaapte release mag zijn install-hooks hier niet
 # draaien; de build eronder heeft ze niet nodig.
 RUN npm ci --ignore-scripts

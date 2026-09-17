@@ -1,11 +1,17 @@
 ---
 /*
- * /roadmap/werkpakket/<uuid> — one werkpakket.
+ * /roadmap/werkpakket/<slug> — one werkpakket.
  *
- * Keyed on the frontmatter `id`, not on the filename slug: samenhangIds point
- * at that value, so keying on it makes the cross-links correct by construction.
- * The UUID stays in the URL because a title-derived slug would have to be kept
- * in sync with those references and would break on every rename.
+ * Keyed on the frontmatter `id`, not on the filename: samenhangIds point at
+ * that value, so keying on it makes the cross-links correct by construction.
+ * (The two are equal — assertReferencesResolve enforces it — but the id is the
+ * identity and the filename follows it, not the other way round.)
+ *
+ * That id is a slug, and used to be a UUID. A slug survives here where a
+ * *title-derived* slug could not: it is chosen once and then fixed, so editing
+ * a titel does not move the URL or break the samenhangIds pointing at it.
+ * What it buys is a readable reference — in the URL, in the content directory,
+ * and in a pull request that says which werkpakket it contributes to.
  *
  * Built entirely from design-system components: nldd-sidebar-section for the
  * document layout (it collapses the sidebar into a sheet on narrow screens by
@@ -99,6 +105,31 @@ const editBase = entry.filePath
 
 const pathname = `/roadmap/werkpakket/${wp.id}`;
 
+/*
+ * The pull requests that carry this werkpakket's slug.
+ *
+ * Every PR body ends with a `Werkpakket: <slug>` line, which the merge gate
+ * enforces, so GitHub's own search over PR bodies is the index — no label per
+ * werkpakket to create, apply and keep aligned with a rename.
+ *
+ * Two forms, because the line has two lives. The author writes the bare slug;
+ * script/linkify-werkpakket.sh then rewrites it to a markdown link, and the
+ * literal `Werkpakket: <slug>` is gone from the body after that. Searching only
+ * the bare form would find the PRs the bot did NOT touch (forks, Dependabot) and
+ * miss the team's own — an empty page that reads as "no work yet" rather than
+ * "wrong query". Searching only the link form would miss those same exceptions.
+ *
+ * The URL form keeps the closing paren so `referentie-casus-i` does not also
+ * match `referentie-casus-ii`. Both phrases are quoted so GitHub matches them
+ * whole; unquoted they would match every PR containing the word "werkpakket".
+ *
+ * This query tracks linkify's output format: change the shape the bot writes and
+ * this has to change with it.
+ */
+const prZoekUrl = `https://github.com/MinBZK/regelrecht/pulls?q=${encodeURIComponent(
+  `is:pr "werkpakket/${wp.id})" OR "Werkpakket: ${wp.id}"`,
+)}`;
+
 // The RFCs whose design work belongs here. Their implementation state comes
 // from the RFC itself, so it cannot drift from what was actually decided.
 const rfcs = rfcVerwijzingen(wp.rfcs);
@@ -176,7 +207,7 @@ const kerngegevens = [
               ) : (
                 <nldd-text
                   size="sm"
-                  color={veld.value ? 'default' : 'secondary'}
+                  color={veld.value ? 'content' : 'secondary'}
                 >
                   {veld.value || veld.leeg || NIET_BEPAALD}
                 </nldd-text>
@@ -189,6 +220,23 @@ const kerngegevens = [
       <nldd-divider />
 
       <EditLink filePath={entry.filePath} text="Bewerk op GitHub" />
+
+      {/* Het werk dat bij dit werkpakket hoort, op GitHub.
+
+          Dit leunt op de `Werkpakket: <slug>`-regel die elke pull request
+          draagt (script/require-werkpakket.sh bewaakt hem) en op het feit dat
+          de zoekfunctie van GitHub de body van een PR indexeert. Daarom zijn er
+          geen labels per werkpakket nodig: die zouden een tweede waarheid zijn
+          die bij elke hernoeming uit de pas loopt met de regel in de body.
+
+          De zoekopdracht staat tussen aanhalingstekens, anders zoekt GitHub op
+          de losse woorden en komt elke PR terug die "werkpakket" noemt. */}
+      <nldd-link
+        size="sm"
+        href={prZoekUrl}
+        target="_blank"
+        text="Pull requests op GitHub"
+      />
     </nldd-container>
 
     <nldd-container gap="32" data-edit-base={editBase}>

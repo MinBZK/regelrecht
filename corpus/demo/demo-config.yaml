@@ -438,10 +438,13 @@ simulation:
       label: WW
 
 # What the Wetten tab shows unfolded per law, prepared for the story (the
-# POC's DEMO_COLLAPSE_CONFIG). A path opens itself and everything above it;
-# siblings stay folded, so the audience lands on the right lines instead of
-# scrolling. `*` matches any article number; list items are addressed by their
-# `name`/`output` or, without one, by their index.
+# POC's DEMO_COLLAPSE_CONFIG). A path opens the way down to itself and itself;
+# what hangs below it stays folded, and so do its siblings. The article is the
+# one node the presenter opens by hand, so a single click reveals the right
+# lines instead of scrolling. Keep a path as deep as the line you want to land
+# on: one that stops at a block (`…execution.actions`) opens that block, not
+# the calculation inside it. `*` matches any article number; list items are
+# addressed by their `name`/`output` or, without one, by their index.
 expanded_paths:
   zorgtoeslagwet:
     # the insured-status input and where it comes from

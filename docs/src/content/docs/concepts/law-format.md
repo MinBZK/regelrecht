@@ -33,8 +33,10 @@ corpus/regulation/nl/
 
 ### Header Metadata
 
+The `$schema` line pins the exact schema version the file was written against, by immutable git tag. The current version and the full URL to copy are on the [Schema Reference](/reference/schema#current-version).
+
 ```yaml
-$schema: https://raw.githubusercontent.com/.../refs/tags/schema-v0.5.2/schema/v0.5.2/schema.json
+$schema: https://raw.githubusercontent.com/.../refs/tags/schema-vX.Y.Z/schema/vX.Y.Z/schema.json
 $id: wet_op_de_zorgtoeslag
 regulatory_layer: WET
 publication_date: '2025-01-01'
@@ -125,7 +127,7 @@ The logic of a law is written with operations:
 | **Logical** | `AND`, `OR`, `NOT` | `AND`/`OR`: `conditions: [...]`; `NOT`: `value:` (wraps a single operation) |
 | **Collection** | `IN`, `LIST`, `FOREACH` | `IN`: `subject:` + `value:` or `values: [...]`; `LIST`: `items: [...]`; `FOREACH`: `collection:` + `body:`, optional `as:`, `filter:` and `combine:` (see [RFC-016](/rfcs/rfc-016)) |
 | **Conditional** | `IF` (alias `SWITCH`) | `cases: [{when:, then:}]`, `default:` |
-| **Date** | `AGE`, `DATE_ADD`, `DATE`, `DAY_OF_WEEK`, `DATE_DIFF` | `AGE`: `date_of_birth:`, `reference_date:`; `DATE_ADD`: `date:` + `years:`/`months:`/`days:`; `DATE`: `year:`, `month:`, `day:`; `DAY_OF_WEEK`: `date:`; `DATE_DIFF`: `from:`, `to:`, `in:` (days/months/years) |
+| **Date** | `AGE`, `DATE_ADD`, `DATE`, `DAY_OF_WEEK`, `DATE_DIFF`, `DATE_PART`, `START_OF` | `AGE`: `date_of_birth:`, `reference_date:`; `DATE_ADD`: `date:` + `years:`/`months:`/`days:`; `DATE`: `year:`, `month:`, `day:`; `DAY_OF_WEEK`: `date:`; `DATE_DIFF`: `from:`, `to:`, `in:` (days/months/years); `DATE_PART`: `date:`, `in:` (year/month/day); `START_OF`: `date:`, `in:` (year/month) |
 
 These 26 operations make up the schema. The engine also accepts the compat aliases `NOT_EQUALS`, `IS_NULL`, `NOT_NULL`, and `NOT_IN` for backward compatibility, but they are outside the schema, so prefer wrapping the positive operation in `NOT`. See [RFC-004: Uniform Operation Syntax](/rfcs/rfc-004) for the full specification.
 

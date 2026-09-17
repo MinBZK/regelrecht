@@ -35,7 +35,7 @@ const mountForm = (parameters, externalFieldTypeMap = null) =>
 
 const inputFor = (w, name) =>
   w.findAllComponents(ScenarioParameterInput).find((c) => c.props('name') === name);
-const errorTexts = (w) => w.findAll('nldd-form-field-error-text').map((e) => e.text());
+const errorTexts = (w) => w.findAll('nldd-validation-item').map((e) => e.text());
 const values = (w) => w.vm.getFormValues().parameterValues;
 
 describe('ScenarioForm parameter nullability', () => {
@@ -56,9 +56,11 @@ describe('ScenarioForm parameter nullability', () => {
     expect(values(w).inkomen).toBe('');
     const field = inputFor(w, 'inkomen');
     expect(field.props('invalid')).toBe(true);
-    expect(field.props('errorMessageIds')).toBeTruthy();
+    expect(field.props('unmet')).toBeTruthy();
     expect(errorTexts(w)).toEqual([NOT_NULLABLE_MESSAGE]);
-    expect(w.find('nldd-form-field-error-text').attributes('id')).toBe(field.props('errorMessageIds'));
+    expect(w.find('nldd-validation-item').attributes('id')).toBe(field.props('unmet'));
+    const listControl = w.find(`[id="${w.find('nldd-validation-list').attributes('for')}"]`);
+    expect(listControl.attributes('unmet')).toBe(field.props('unmet'));
 
     // Typing on clears the refusal.
     field.vm.$emit('update', '600');

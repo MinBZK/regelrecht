@@ -16,7 +16,38 @@ pub enum CompetentAuthority {
     /// Simple string reference (e.g., "#bevoegd_gezag")
     String(String),
     /// Structured authority with name field
-    Structured { name: String },
+    Structured {
+        name: String,
+        /// `INSTANCE` (a named organisation, the schema default) or `CATEGORY`
+        /// (must be resolved per context)
+        #[serde(default, rename = "type", skip_serializing_if = "Option::is_none")]
+        authority_type: Option<AuthorityType>,
+    },
+}
+
+/// Whether a competent authority names one organisation or a category of them
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AuthorityType {
+    /// A specific organisation (schema default)
+    #[serde(rename = "INSTANCE")]
+    Instance,
+    /// A category that must be resolved per context
+    #[serde(rename = "CATEGORY")]
+    Category,
+}
+
+/// How a field's value relates to time
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Temporal {
+    /// `period` or `point_in_time`
+    #[serde(rename = "type")]
+    pub temporal_type: String,
+    /// Granularity of the period (`year`, `month`, `continuous`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub period_type: Option<String>,
+    /// Reference date for point-in-time values (a `$`-prefixed variable)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference: Option<String>,
 }
 
 /// Legal basis reference to another law
@@ -26,6 +57,46 @@ pub struct LegalBasis {
     pub article: String,
     #[serde(default)]
     pub description: Option<String>,
+}
+
+/// A citation of the provision an element carries out, in the shape the schema
+/// gives `legal_basis` on a field or an action.
+///
+/// Deliberately not [`LegalBasis`]: that one addresses a whole law from the
+/// document header with `law_id`/`article`, while this one cites a provision
+/// down to the lid and carries the wording that ties it to the text. The two
+/// name different things and the schema spells them differently, so folding
+/// them together would mean one of the two lying about its field names.
+///
+/// Every field is optional: a citation that names only an article is still a
+/// citation, and the schema demands none of them.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct ProvisionReference {
+    /// Name of the law, as the law writes it ("Wet op de zorgtoeslag").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub law: Option<String>,
+    /// BWB identification number (`BWBR` + 7 digits).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bwb_id: Option<String>,
+    /// Article number, as a string: article numbers are not integers ("1a").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub article: Option<String>,
+    /// Lid number within the article.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paragraph: Option<String>,
+    /// Sentence number, for a reference finer than a lid.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sentence: Option<String>,
+    /// Link to the provision on wetten.overheid.nl.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    /// Juriconnect BWB 1.3 reference.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub juriconnect: Option<String>,
+    /// How this element relates to the words of the provision, in Dutch. This
+    /// is the part a reader of a trace actually reads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub explanation: Option<String>,
 }
 
 /// Type specification for input/output/definition fields.
@@ -41,10 +112,16 @@ pub struct TypeSpec {
     #[serde(default)]
     pub precision: Option<i64>,
     /// Minimum allowed value (issue #444). Parsed metadata, not yet enforced.
-    #[serde(default)]
+    ///
+    /// Serialized as a JSON number, because that is what the schema types it
+    /// as; `Decimal`'s default is a string, which makes the re-serialized
+    /// document schema-invalid. A bound beyond f64 precision is out of range
+    /// for what these fields describe.
+    #[serde(default, with = "rust_decimal::serde::float_option")]
     pub min: Option<rust_decimal::Decimal>,
     /// Maximum allowed value (issue #444). Parsed metadata, not yet enforced.
-    #[serde(default)]
+    /// Serialized as a JSON number; see [`TypeSpec::min`].
+    #[serde(default, with = "rust_decimal::serde::float_option")]
     pub max: Option<rust_decimal::Decimal>,
 }
 
@@ -65,6 +142,12 @@ pub struct Source {
     /// Parameters to pass to the source execution
     #[serde(default)]
     pub parameters: Option<BTreeMap<String, String>>,
+    /// Endpoint to call on the delegated regulation
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub endpoint: Option<String>,
+    /// Human-readable description or legal reference for this data source
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }
 
 /// Parameter definition in execution spec
@@ -84,6 +167,10 @@ pub struct Parameter {
     pub nullable: Option<bool>,
     #[serde(default)]
     pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temporal: Option<Temporal>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub legal_basis: Option<ProvisionReference>,
 }
 
 impl Parameter {
@@ -112,6 +199,10 @@ pub struct Input {
     pub nullable: Option<bool>,
     #[serde(default)]
     pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temporal: Option<Temporal>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub legal_basis: Option<ProvisionReference>,
 }
 
 impl Input {
@@ -139,6 +230,10 @@ pub struct Output {
     pub nullable: Option<bool>,
     #[serde(default)]
     pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temporal: Option<Temporal>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub legal_basis: Option<ProvisionReference>,
 }
 
 impl Output {
@@ -356,6 +451,24 @@ pub enum ActionOperation {
         #[serde(rename = "in")]
         unit: ActionValue,
     },
+    #[serde(rename = "DATE_PART")]
+    DatePart {
+        date: ActionValue,
+        /// Calendar component to read: "year", "month" or "day".
+        ///
+        /// A plain `String` and not an `ActionValue`: the component to read is
+        /// never itself the outcome of a computation, so the schema fixes it to
+        /// an enum and the model does not widen that to a variable reference.
+        #[serde(rename = "in")]
+        part: String,
+    },
+    #[serde(rename = "START_OF")]
+    StartOf {
+        date: ActionValue,
+        /// Calendar unit to truncate to: "year" or "month".
+        #[serde(rename = "in")]
+        unit: String,
+    },
 }
 
 /// Aggregation applied to the per-element results of a FOREACH (RFC-016).
@@ -414,6 +527,8 @@ impl ActionOperation {
             ActionOperation::Date { .. } => "DATE",
             ActionOperation::DayOfWeek { .. } => "DAY_OF_WEEK",
             ActionOperation::DateDiff { .. } => "DATE_DIFF",
+            ActionOperation::DatePart { .. } => "DATE_PART",
+            ActionOperation::StartOf { .. } => "START_OF",
         }
     }
 }
@@ -440,6 +555,30 @@ pub struct Action {
     /// Decimal places for rounding operations (ROUND/CEIL/FLOOR; RFC-024)
     #[serde(default)]
     pub precision: Option<i64>,
+    /// Delegation resolution: take the value from an implementing regulation.
+    /// Parsed but not yet executed by the engine.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolve: Option<ResolveSpec>,
+    /// The provision this action carries out (RFC-039). Read onto the action's
+    /// trace step, so a result can cite the sentence it follows from rather
+    /// than only the article it was reached through.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub legal_basis: Option<ProvisionReference>,
+}
+
+/// Delegation resolution on an action: which implementing regulation supplies
+/// the value.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct ResolveSpec {
+    /// Regulatory layer to search for an implementation
+    #[serde(default, rename = "type", skip_serializing_if = "Option::is_none")]
+    pub resolve_type: Option<String>,
+    /// Output field to retrieve from the implementation
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
+    /// Matching criteria for selecting the right implementation
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub r#match: Option<BTreeMap<String, Value>>,
 }
 
 /// Execution specification within machine_readable section
@@ -530,6 +669,12 @@ pub struct OpenTerm {
     /// Expected regulatory layer of the implementation
     #[serde(default)]
     pub delegation_type: Option<String>,
+    /// The regulation the article itself names as the one that fills this term
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_source: Option<String>,
+    /// The authority that decides this term per individual case (Awb 3:46)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decided_per_case_by: Option<String>,
     /// Legal basis text
     #[serde(default)]
     pub legal_basis: Option<String>,
@@ -540,6 +685,31 @@ pub struct OpenTerm {
 
 fn default_true() -> bool {
     true
+}
+
+/// A dependency of an article on another article, law, ministerial regulation
+/// or royal decree.
+///
+/// Every field is optional in the schema (`machineReadableSection.requires`),
+/// so an entry only names the dimensions it needs: an intra-law dependency
+/// carries just `article`, a cross-law dependency `law` + `values`.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct ArticleRequirement {
+    /// Article number within this law
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub article: Option<String>,
+    /// Name of the external law depended on
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub law: Option<String>,
+    /// Name of the ministerial regulation depended on
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub regeling: Option<String>,
+    /// Name of the royal decree depended on
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub koninklijk_besluit: Option<String>,
+    /// Values/outputs required from the dependency
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub values: Option<Vec<String>>,
 }
 
 /// Declares that this article fills an open term from a higher-level law.
@@ -606,6 +776,7 @@ pub struct HookDeclaration {
 /// Used for "in afwijking van artikel X" patterns where one law unilaterally
 /// replaces another law's output value.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "OverrideDeclarationFields")]
 pub struct OverrideDeclaration {
     /// The $id of the law being overridden
     pub law: String,
@@ -613,6 +784,65 @@ pub struct OverrideDeclaration {
     pub article: String,
     /// The specific output being replaced
     pub output: String,
+    /// The overridden output does not arise at all, rather than taking another
+    /// value.
+    ///
+    /// "Bestaat geen aanspraak" is not an entitlement of zero. With an
+    /// entitlement of zero there is a decision carrying legal remedies and a
+    /// ground for recovery; with no entitlement there is neither. An engine
+    /// reads this flag and needs no knowledge of administrative law to act on
+    /// it, which is why the ground sits in a quotation beside it rather than in
+    /// a vocabulary the engine would have to interpret.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub voids: bool,
+    /// The words of this article that establish the override, verbatim.
+    ///
+    /// Required when `voids` is set, optional otherwise: see
+    /// [`OverrideDeclarationFields`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub legal_text_excerpt: Option<String>,
+}
+
+/// The wire shape of an [`OverrideDeclaration`], before the one rule the field
+/// types cannot carry.
+///
+/// A void without a ground is the shape that must not be expressible. Voiding
+/// says the entitlement does not arise at all, and the only thing a person
+/// gets back for that is the words that exclude them. A replacement needs no
+/// quotation, so the field stays optional and the requirement is conditional,
+/// which no field type expresses. The schema states it as a conditional, and
+/// the model has to reject the same file or the two disagree about what a
+/// valid law is.
+#[derive(Deserialize)]
+struct OverrideDeclarationFields {
+    law: String,
+    article: String,
+    output: String,
+    #[serde(default)]
+    voids: bool,
+    #[serde(default)]
+    legal_text_excerpt: Option<String>,
+}
+
+impl TryFrom<OverrideDeclarationFields> for OverrideDeclaration {
+    type Error = String;
+
+    fn try_from(fields: OverrideDeclarationFields) -> Result<Self, Self::Error> {
+        if fields.voids && fields.legal_text_excerpt.is_none() {
+            return Err(format!(
+                "override on {}:{} voids `{}` without `legal_text_excerpt`: \
+                 a void must quote the words that exclude the entitlement",
+                fields.law, fields.article, fields.output
+            ));
+        }
+        Ok(Self {
+            law: fields.law,
+            article: fields.article,
+            output: fields.output,
+            voids: fields.voids,
+            legal_text_excerpt: fields.legal_text_excerpt,
+        })
+    }
 }
 
 /// A required input for a procedure stage
@@ -662,7 +892,167 @@ pub struct ProcedureDefinition {
     pub stages: Vec<Stage>,
 }
 
+/// What has to change before a marked article can be translated in full.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MarkingResolution {
+    /// The operation does not exist and must be built (statutory rounding,
+    /// extracting the year from a date). Building one reaches past the engine:
+    /// schema, model, evaluation, the BDD grammar and the frontend all carry
+    /// it, so the value names what has to be added rather than where it runs.
+    Operation,
+    /// The operation set is not the problem; the format has no shape for this
+    /// construct (quantification over persons, a rule about a set rather than a
+    /// value, a legal fiction).
+    Model,
+}
+
+impl MarkingResolution {
+    /// The value as it is written in YAML.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            MarkingResolution::Operation => "operation",
+            MarkingResolution::Model => "model",
+        }
+    }
+}
+
+/// A construct in an article that the format itself cannot express (schema v0.7.0).
+///
+/// A marking is a flag on an article that is otherwise worked out: it names the
+/// one thing that does not fit and leaves everything that does fit standing. It
+/// is the opposite of an [`OpenTerm`], which says the language expresses this
+/// fine and the content is filled elsewhere.
+///
+/// The engine acts on markings, and it acts on them the way it acts on an
+/// [`UntranslatableEntry`]. The four RFC-012 modes read both channels: an
+/// unaccepted marking stops execution, an accepted one runs the partial logic.
+/// That has to be so, because the laws migrated to v0.7.0 carry markings where
+/// they used to carry untranslatables, and reading only the old channel would
+/// let a flagged article execute as if nothing were flagged. See
+/// `flagged_constructs` in the engine's service layer.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Marking {
+    /// The construct that cannot be expressed, in the words the article uses.
+    pub about: String,
+    /// Why the construct does not fit, in terms of what the format does have.
+    ///
+    /// The diagnosis, and the half that cannot be recovered from the other
+    /// fields: `resolved_by` follows from it and not the other way round.
+    /// Without it a marking states a wish, and a gap someone examined reads
+    /// the same as one nobody did.
+    pub reason: String,
+    /// Whether resolving this needs a new engine operation or a new model shape.
+    pub resolution: MarkingResolution,
+    /// The change that would resolve it, named concretely enough to become work.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_by: Option<String>,
+    /// The values in this article that cannot be produced because of this
+    /// marking. An empty list is a statement and not an omission: it says the
+    /// marking is a flag on an article that is otherwise worked out, and that
+    /// only the explanation is incomplete.
+    ///
+    /// Read by nobody here. The engine decides what a marked article does from
+    /// `accepted` and the modes of RFC-012, which do not consult this field;
+    /// the rule that a named value is absent from the article's actions is
+    /// enforced by the enrichment gate when the file is written. The schema is
+    /// the canonical statement of both.
+    pub target: Vec<String>,
+    /// The words from this article's own legal text that the marking hangs on.
+    pub legal_text_excerpt: String,
+    /// Whether a human has reviewed and acknowledged this gap.
+    #[serde(default)]
+    pub accepted: bool,
+}
+
+/// A top-level document property an article establishes (schema v0.7.0).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeclaredProperty {
+    Name,
+    OfficieleTitel,
+    ValidFrom,
+    ValidTo,
+    RegulatoryLayer,
+    LegalBasis,
+}
+
+/// Declaration that this article fixes a document property (schema v0.7.0).
+///
+/// A citation title, a commencement date or a scope in time is not a
+/// calculation, and it is not nothing either: it fixes a value the rest of the
+/// corpus and every trace depend on.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Declaration {
+    /// The document property this article fixes.
+    pub property: DeclaredProperty,
+    /// The value the article gives it, verbatim from the text.
+    pub value: Value,
+    /// Where the article limits the property in time beyond the value itself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub applies_from: Option<String>,
+}
+
+/// One container in an article's [`Placement`]: its number and its opschrift.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlacementContainer {
+    /// Number of this container as the law gives it (e.g. "3.3").
+    pub number: String,
+    /// Opschrift of this container (e.g. "Advisering").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub heading: Option<String>,
+}
+
+/// Where an article sits in the document: the containers that enclose it
+/// (schema v0.7.0).
+///
+/// The opschrift is condensed legal classification written by the legislator and
+/// decides questions the article text alone cannot answer. Absent for an article
+/// that no container encloses, which is normal in a short law.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Placement {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub boek: Option<PlacementContainer>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deel: Option<PlacementContainer>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hoofdstuk: Option<PlacementContainer>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub titeldeel: Option<PlacementContainer>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub afdeling: Option<PlacementContainer>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paragraaf: Option<PlacementContainer>,
+}
+
+/// Structured reference to another law/article for runtime resolution.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArticleReference {
+    /// Reference ID used in markdown links (e.g. "ref1").
+    pub id: String,
+    /// BWB identifier of the referenced law.
+    pub bwb_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artikel: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lid: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub onderdeel: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hoofdstuk: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paragraaf: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub afdeling: Option<String>,
+}
+
 /// A legal construct that cannot be expressed with the engine's current operation set (RFC-012)
+///
+/// Superseded by [`Marking`] in schema v0.7.0. It stays on the model because the
+/// model is one struct for every version in
+/// `regelrecht_engine::config::SUPPORTED_SCHEMAS`, and every law in the corpus
+/// is still on v0.5.x; dropping the field would silently discard what those
+/// laws declare and disable the RFC-012 taint modes that run off it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UntranslatableEntry {
     /// The legal construct that cannot be translated
@@ -683,12 +1073,16 @@ pub struct UntranslatableEntry {
 /// Machine-readable section of an article
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct MachineReadable {
+    /// Named endpoint for this article, making it callable from other regulations
+    #[serde(default)]
+    pub endpoint: Option<String>,
     #[serde(default)]
     pub definitions: Option<HashMap<String, Definition>>,
     #[serde(default)]
     pub execution: Option<Execution>,
+    /// Dependencies on other articles, regelingen or external sources
     #[serde(default)]
-    pub requires: Option<Vec<String>>,
+    pub requires: Option<Vec<ArticleRequirement>>,
     #[serde(default)]
     pub competent_authority: Option<CompetentAuthority>,
     /// Open terms that can or must be filled by implementing regulations
@@ -703,9 +1097,16 @@ pub struct MachineReadable {
     /// Override declarations: this article replaces another article's output (RFC-007)
     #[serde(default)]
     pub overrides: Option<Vec<OverrideDeclaration>>,
-    /// Legal constructs that cannot be expressed with the current operation set (RFC-012)
+    /// Legal constructs that cannot be expressed with the current operation set (RFC-012).
+    /// Superseded by [`MachineReadable::markings`] in schema v0.7.0.
     #[serde(default)]
     pub untranslatables: Option<Vec<UntranslatableEntry>>,
+    /// Constructs that the format itself cannot express (schema v0.7.0)
+    #[serde(default)]
+    pub markings: Option<Vec<Marking>>,
+    /// Document properties this article establishes (schema v0.7.0)
+    #[serde(default)]
+    pub declares: Option<Vec<Declaration>>,
 }
 
 /// Represents a single article in a law
@@ -716,8 +1117,15 @@ pub struct Article {
     /// URL to the official source (also supports 'ref' for backward compatibility)
     #[serde(default, alias = "ref")]
     pub url: Option<String>,
+    /// The containers that enclose this article, each with its number and
+    /// opschrift (schema v0.7.0)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub placement: Option<Placement>,
     #[serde(default)]
     pub machine_readable: Option<MachineReadable>,
+    /// Structured references to other laws/articles for runtime resolution
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub references: Option<Vec<ArticleReference>>,
 }
 
 impl Article {
@@ -733,6 +1141,14 @@ impl Article {
         self.machine_readable
             .as_ref()
             .and_then(|mr| mr.definitions.as_ref())
+    }
+
+    /// Get the declared dependencies of this article
+    pub fn get_requires(&self) -> &[ArticleRequirement] {
+        self.machine_readable
+            .as_ref()
+            .and_then(|mr| mr.requires.as_deref())
+            .unwrap_or_default()
     }
 
     /// Get all output names from this article - these are the public endpoints
@@ -825,11 +1241,41 @@ impl Article {
             .and_then(|mr| mr.overrides.as_ref())
     }
 
+    /// Get the markings declared by this article (schema v0.7.0).
+    ///
+    /// The engine reads these beside `untranslatables`: a marking drives the
+    /// four RFC-012 modes exactly as an untranslatable entry does.
+    pub fn get_markings(&self) -> Option<&Vec<Marking>> {
+        self.machine_readable
+            .as_ref()
+            .and_then(|mr| mr.markings.as_ref())
+    }
+
+    /// Get the document properties this article declares (schema v0.7.0).
+    pub fn get_declares(&self) -> Option<&Vec<Declaration>> {
+        self.machine_readable
+            .as_ref()
+            .and_then(|mr| mr.declares.as_ref())
+    }
+
     /// Get the produces specification from this article.
     pub fn get_produces(&self) -> Option<&Produces> {
         self.get_execution_spec()
             .and_then(|exec| exec.produces.as_ref())
     }
+}
+
+/// Aanhef of a law: the text that precedes article 1.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Preamble {
+    /// Preamble text in markdown, as published
+    pub text: String,
+    /// URL to the preamble in the official publication
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    /// The schema allows the aanhef its own machine-readable section
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub machine_readable: Option<MachineReadable>,
 }
 
 /// Represents an article-based law document
@@ -838,8 +1284,13 @@ pub struct ArticleBasedLaw {
     /// JSON Schema URL
     #[serde(rename = "$schema", default)]
     pub schema: Option<String>,
-    /// Law identifier (slug for referencing)
-    #[serde(rename = "$id")]
+    /// Law identifier (slug for referencing).
+    ///
+    /// The schema does not list `$id` as required, so a schema-valid document
+    /// may omit it and the model must still load it (completeness). An empty
+    /// id means "unnamed law": it can be executed directly but nothing can
+    /// reference it.
+    #[serde(rename = "$id", default)]
     pub id: String,
     /// Unique UUID
     #[serde(default)]
@@ -875,9 +1326,30 @@ pub struct ArticleBasedLaw {
     /// Municipality code for gemeentelijke verordeningen
     #[serde(default)]
     pub gemeente_code: Option<String>,
+    /// CBS province code for provinciale verordeningen
+    #[serde(default)]
+    pub provincie_code: Option<String>,
     /// Water board code for waterschapsverordeningen
     #[serde(default)]
     pub waterschap_code: Option<String>,
+    /// CELEX number, required by the schema for `EU_VERORDENING`/`EU_RICHTLIJN`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub celex_nummer: Option<String>,
+    /// European Legislation Identifier
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eli: Option<String>,
+    /// Tractatenblad identifier, required by the schema for `VERDRAG`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tractatenblad_id: Option<String>,
+    /// UN Treaty Series number
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unts_nummer: Option<String>,
+    /// Staatscourant identifier
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stcrt_id: Option<String>,
+    /// Issuing organisation
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub organisation: Option<String>,
     /// Official title for local regulations
     #[serde(default)]
     pub officiele_titel: Option<String>,
@@ -890,6 +1362,10 @@ pub struct ArticleBasedLaw {
     /// AWB-defined procedure lifecycles (RFC-008)
     #[serde(default)]
     pub procedure: Option<Vec<ProcedureDefinition>>,
+    /// Aanhef preceding article 1. Carries the "Gelet op"-chain, and the schema
+    /// allows it a `machine_readable` section of its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preamble: Option<Preamble>,
     /// Articles in the law
     #[serde(default)]
     pub articles: Vec<Article>,

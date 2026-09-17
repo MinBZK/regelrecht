@@ -44,6 +44,12 @@ function defaultState() {
     cases: [],
     claims: [],
     presenterName: '',
+    // 'zaal' of 'zelfstandig'. Zaal is de standaard: daar staat een presentator
+    // voor een publiek en is het scherm van de demo. De dia's met een route
+    // tonen dan géén rail ernaast, want die verkleint precies het beeld waar
+    // het publiek naar kijkt. Zelfstandig is voor wie zonder presentator
+    // doorklikt; dan is de rail juist het verhaal dat ontbreekt.
+    presentationMode: 'zaal',
     // Namens wie er gehandeld wordt: null is voor zichzelf. Bewaard als
     // sleutel (`BUSINESS:85234567`), niet als het hele object, want de
     // machtiging zelf komt uit de wet en wordt bij het laden opnieuw bepaald.

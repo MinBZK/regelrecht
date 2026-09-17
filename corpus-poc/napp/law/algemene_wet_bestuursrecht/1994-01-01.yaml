@@ -1,0 +1,457 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.2/schema/v0.5.2/schema.json
+$id: algemene_wet_bestuursrecht
+regulatory_layer: WET
+publication_date: '2026-01-01'
+valid_from: '1994-01-01'
+name: Algemene wet bestuursrecht
+bwb_id: BWBR0005537
+url: https://wetten.overheid.nl/BWBR0005537/2024-01-01
+
+procedure:
+  - id: beschikking
+    default: true
+    applies_to:
+      legal_character: BESCHIKKING
+    stages:
+      - name: AANVRAAG
+        description: Belanghebbende dient aanvraag in (AWB 4:1)
+        requires:
+          - name: aanvraag_datum
+            type: date
+
+      - name: BEHANDELING
+        description: Bestuursorgaan onderzoekt de aanvraag (AWB 3:2)
+        requires:
+          - name: beslistermijn_start
+            type: date
+
+      - name: BESLUIT
+        description: Bestuursorgaan neemt besluit (AWB 1:3)
+        requires:
+          - name: besluit_datum
+            type: date
+
+      - name: BEKENDMAKING
+        description: Besluit wordt bekendgemaakt (AWB 3:41)
+        requires:
+          - name: bekendmaking_datum
+            type: date
+
+      - name: BEZWAAR
+        description: Bezwaarperiode (AWB 6:4 e.v.)
+
+  # De bezwaarprocedure: de lifecycle van een bezwaarschrift tegen een
+  # beschikking. HERSTEL is voorwaardelijk (alleen bij vormgebreken,
+  # art. 6:6) en mag worden overgeslagen.
+  - id: bezwaar
+    applies_to:
+      legal_character: BESCHIKKING
+    stages:
+      - name: BEZWAARSCHRIFT
+        description: Het bezwaarschrift is ontvangen (AWB 6:4)
+      - name: HERSTEL
+        description: Gelegenheid tot herstel van vormgebreken (AWB 6:6)
+      - name: BEHANDELING
+        description: Behandeling en horen (AWB 7:2/7:3)
+      - name: BESLISSING
+        description: Beslissing op bezwaar na heroverweging (AWB 7:11)
+
+articles:
+  - number: '3:46'
+    text: |-
+      Een besluit dient te berusten op een deugdelijke motivering.
+    url: https://wetten.overheid.nl/BWBR0005537/2024-01-01#Artikel3:46
+    machine_readable:
+      hooks:
+        - hook_point: pre_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: BESLUIT
+      execution:
+        output:
+          - name: motivering_vereist
+            type: boolean
+        actions:
+          - output: motivering_vereist
+            value: true
+
+  - number: '4:13'
+    text: |-
+      1. Een beschikking dient te worden gegeven binnen de bij wettelijk
+      voorschrift bepaalde termijn of, bij het ontbreken van zulk een
+      termijn, binnen een redelijke termijn na ontvangst van de aanvraag.
+      2. De in het eerste lid bedoelde redelijke termijn is in ieder geval
+      verstreken wanneer het bestuursorgaan binnen acht weken na ontvangst
+      van de aanvraag geen beschikking heeft gegeven, noch een mededeling
+      als bedoeld in artikel 4:14, derde lid, heeft gedaan.
+    url: https://wetten.overheid.nl/BWBR0005537/2024-01-01#Artikel4:13
+    machine_readable:
+      execution:
+        parameters:
+          - name: aanvraag_datum
+            type: date
+            required: true
+            description: Datum van ontvangst van de aanvraag
+        output:
+          - name: beslistermijn_einddatum
+            type: date
+        actions:
+          # Redelijke termijn: acht weken na ontvangst van de aanvraag.
+          - output: beslistermijn_einddatum
+            value:
+              operation: DATE_ADD
+              date: $aanvraag_datum
+              weeks: 8
+
+  - number: '6:7'
+    text: |-
+      De termijn voor het indienen van een bezwaar- of
+      beroepschrift bedraagt zes weken.
+    url: https://wetten.overheid.nl/BWBR0005537/2024-01-01#Artikel6:7
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: BESLUIT
+      execution:
+        output:
+          - name: bezwaartermijn_weken
+            type: number
+        actions:
+          - output: bezwaartermijn_weken
+            value: 6
+
+  - number: '6:8'
+    text: |-
+      1. De termijn vangt aan met ingang van de dag na die
+      waarop het besluit op de voorgeschreven wijze is
+      bekendgemaakt.
+    url: https://wetten.overheid.nl/BWBR0005537/2024-01-01#Artikel6:8
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: BEKENDMAKING
+      execution:
+        parameters:
+          - name: bekendmaking_datum
+            type: date
+            required: true
+            description: Datum waarop het besluit is bekendgemaakt
+        input:
+          - name: bezwaartermijn_weken
+            type: number
+            source:
+              regulation: algemene_wet_bestuursrecht
+              output: bezwaartermijn_weken
+        output:
+          - name: bezwaartermijn_startdatum
+            type: date
+          - name: bezwaartermijn_einddatum
+            type: date
+        actions:
+          # "met ingang van de dag na die waarop het besluit is bekendgemaakt"
+          # startdatum = bekendmaking + 1 dag (dies a quo: bekendmakingsdatum telt niet mee)
+          - output: bezwaartermijn_startdatum
+            value:
+              operation: DATE_ADD
+              date: $bekendmaking_datum
+              days: 1
+          # einddatum = bekendmaking + termijn (NIET startdatum + termijn).
+          # De startdatum is dag 1 van de termijn (inclusief), dus 6 weken
+          # = 42 dagen gerekend vanaf startdatum = dag 42 = bekendmaking + 42.
+          # startdatum + 6 weken zou dag 43 geven — één dag te veel.
+          - output: bezwaartermijn_einddatum
+            value:
+              operation: DATE_ADD
+              date: $bekendmaking_datum
+              weeks: $bezwaartermijn_weken
+
+  # ------------------------------------------------------------------
+  # Artikel 4:87 — Betalingstermijn bestuursrechtelijke geldschulden
+  # Het voorschot op de subsidie is een geldschuld uit een beschikking;
+  # de betaling moet binnen zes weken na de bekendmaking plaatsvinden.
+  # ------------------------------------------------------------------
+  - number: '4:87'
+    text: |-
+      Betaling geschiedt binnen zes weken nadat de beschikking op de
+      voorgeschreven wijze is bekendgemaakt, tenzij de beschikking een
+      later tijdstip vermeldt.
+    url: https://wetten.overheid.nl/BWBR0005537/#Hoofdstuk4_Titeldeel4.4_Afdeling4.4.1_Artikel4:87
+    machine_readable:
+      execution:
+        parameters:
+          - name: bekendmaking_datum
+            type: date
+            required: true
+            description: Datum waarop de beschikking is bekendgemaakt
+        output:
+          - name: betaaltermijn_einddatum
+            type: date
+        actions:
+          - output: betaaltermijn_einddatum
+            value:
+              operation: DATE_ADD
+              date: $bekendmaking_datum
+              weeks: 6
+
+  # ------------------------------------------------------------------
+  # Artikel 6:5 — Vereisten aan het bezwaarschrift
+  # ------------------------------------------------------------------
+  - number: '6:5'
+    text: |-
+      Het bezwaarschrift wordt ondertekend en bevat ten minste: de naam en
+      het adres van de indiener, de dagtekening, een omschrijving van het
+      besluit waartegen het bezwaar is gericht en de gronden van het
+      bezwaar.
+    url: https://wetten.overheid.nl/BWBR0005537/#Hoofdstuk6_Afdeling6.2_Artikel6:5
+    machine_readable:
+      execution:
+        parameters:
+          - name: naam_en_adres_vermeld
+            type: boolean
+            required: true
+          - name: dagtekening_vermeld
+            type: boolean
+            required: true
+          - name: besluit_omschreven
+            type: boolean
+            required: true
+          - name: gronden_vermeld
+            type: boolean
+            required: true
+          - name: ondertekend
+            type: boolean
+            required: true
+        output:
+          - name: voldoet_aan_bezwaarschriftvereisten
+            type: boolean
+          - name: ontbreekt_naam_en_adres
+            type: boolean
+          - name: ontbreekt_dagtekening
+            type: boolean
+          - name: ontbreekt_besluitomschrijving
+            type: boolean
+          - name: ontbreken_gronden
+            type: boolean
+          - name: ontbreekt_ondertekening
+            type: boolean
+        actions:
+          - output: ontbreekt_naam_en_adres
+            value:
+              operation: EQUALS
+              subject: $naam_en_adres_vermeld
+              value: false
+          - output: ontbreekt_dagtekening
+            value:
+              operation: EQUALS
+              subject: $dagtekening_vermeld
+              value: false
+          - output: ontbreekt_besluitomschrijving
+            value:
+              operation: EQUALS
+              subject: $besluit_omschreven
+              value: false
+          - output: ontbreken_gronden
+            value:
+              operation: EQUALS
+              subject: $gronden_vermeld
+              value: false
+          - output: ontbreekt_ondertekening
+            value:
+              operation: EQUALS
+              subject: $ondertekend
+              value: false
+          - output: voldoet_aan_bezwaarschriftvereisten
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $naam_en_adres_vermeld
+                  value: true
+                - operation: EQUALS
+                  subject: $dagtekening_vermeld
+                  value: true
+                - operation: EQUALS
+                  subject: $besluit_omschreven
+                  value: true
+                - operation: EQUALS
+                  subject: $gronden_vermeld
+                  value: true
+                - operation: EQUALS
+                  subject: $ondertekend
+                  value: true
+
+  # ------------------------------------------------------------------
+  # Artikel 6:6 — Verzuimherstel
+  # Niet-ontvankelijkverklaring wegens een vormgebrek kan pas nadat de
+  # indiener gelegenheid tot herstel heeft gehad en die niet heeft benut.
+  # ------------------------------------------------------------------
+  - number: '6:6'
+    text: |-
+      Indien niet is voldaan aan artikel 6:5 kan het bezwaar
+      niet-ontvankelijk worden verklaard, mits de indiener de gelegenheid
+      heeft gehad het verzuim te herstellen binnen een hem daartoe gestelde
+      termijn.
+    url: https://wetten.overheid.nl/BWBR0005537/#Hoofdstuk6_Afdeling6.2_Artikel6:6
+    machine_readable:
+      execution:
+        parameters:
+          - name: herstelgelegenheid_geboden
+            type: boolean
+            required: true
+          - name: binnen_hersteltermijn_aangevuld
+            type: boolean
+            required: true
+        input:
+          - name: voldoet_aan_bezwaarschriftvereisten
+            type: boolean
+            source:
+              output: voldoet_aan_bezwaarschriftvereisten
+        output:
+          - name: herstel_vereist
+            type: boolean
+          - name: mag_niet_ontvankelijk_wegens_verzuim
+            type: boolean
+        actions:
+          - output: herstel_vereist
+            value:
+              operation: EQUALS
+              subject: $voldoet_aan_bezwaarschriftvereisten
+              value: false
+          - output: mag_niet_ontvankelijk_wegens_verzuim
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $voldoet_aan_bezwaarschriftvereisten
+                  value: false
+                - operation: EQUALS
+                  subject: $herstelgelegenheid_geboden
+                  value: true
+                - operation: EQUALS
+                  subject: $binnen_hersteltermijn_aangevuld
+                  value: false
+
+  # ------------------------------------------------------------------
+  # Artikel 6:9 — Tijdigheid (ontvangst- en verzendtheorie)
+  # De datumvergelijkingen zelf zijn orchestratie (de engine vergelijkt
+  # geen datums); de regel welke combinatie tijdig is staat hier.
+  # ------------------------------------------------------------------
+  - number: '6:9'
+    text: |-
+      Een bezwaarschrift is tijdig ingediend indien het voor het einde van
+      de termijn is ontvangen. Bij verzending per post is het tijdig
+      ingediend indien het voor het einde van de termijn ter post is
+      bezorgd, mits het niet later dan een week na afloop van de termijn
+      is ontvangen.
+    url: https://wetten.overheid.nl/BWBR0005537/#Hoofdstuk6_Afdeling6.2_Artikel6:9
+    machine_readable:
+      execution:
+        parameters:
+          - name: ontvangen_voor_einde_termijn
+            type: boolean
+            required: true
+          - name: ter_post_bezorgd_voor_einde_termijn
+            type: boolean
+            required: true
+          - name: ontvangen_binnen_week_na_termijn
+            type: boolean
+            required: true
+        output:
+          - name: bezwaar_tijdig
+            type: boolean
+        actions:
+          - output: bezwaar_tijdig
+            value:
+              operation: OR
+              conditions:
+                - operation: EQUALS
+                  subject: $ontvangen_voor_einde_termijn
+                  value: true
+                - operation: AND
+                  conditions:
+                    - operation: EQUALS
+                      subject: $ter_post_bezorgd_voor_einde_termijn
+                      value: true
+                    - operation: EQUALS
+                      subject: $ontvangen_binnen_week_na_termijn
+                      value: true
+
+  # ------------------------------------------------------------------
+  # Artikel 7:3 — Afzien van het horen
+  # ------------------------------------------------------------------
+  - number: '7:3'
+    text: |-
+      Van het horen van een belanghebbende kan worden afgezien indien het
+      bezwaar kennelijk niet-ontvankelijk is, het bezwaar kennelijk
+      ongegrond is, de belanghebbende heeft verklaard geen gebruik te
+      willen maken van het recht te worden gehoord, of aan het bezwaar
+      volledig tegemoet wordt gekomen.
+    url: https://wetten.overheid.nl/BWBR0005537/#Hoofdstuk7_Afdeling7.2_Artikel7:3
+    machine_readable:
+      execution:
+        parameters:
+          - name: kennelijk_niet_ontvankelijk
+            type: boolean
+            required: true
+          - name: kennelijk_ongegrond
+            type: boolean
+            required: true
+          - name: indiener_ziet_af_van_horen
+            type: boolean
+            required: true
+          - name: volledig_tegemoetgekomen
+            type: boolean
+            required: true
+        output:
+          - name: mag_afzien_van_horen
+            type: boolean
+        actions:
+          - output: mag_afzien_van_horen
+            value:
+              operation: OR
+              conditions:
+                - operation: EQUALS
+                  subject: $kennelijk_niet_ontvankelijk
+                  value: true
+                - operation: EQUALS
+                  subject: $kennelijk_ongegrond
+                  value: true
+                - operation: EQUALS
+                  subject: $indiener_ziet_af_van_horen
+                  value: true
+                - operation: EQUALS
+                  subject: $volledig_tegemoetgekomen
+                  value: true
+
+  # ------------------------------------------------------------------
+  # Artikel 7:10 — Beslistermijn op het bezwaar
+  # Zes weken, gerekend vanaf de dag na afloop van de bezwaartermijn
+  # (geen bezwaarcommissie; verdaging buiten dit model).
+  # ------------------------------------------------------------------
+  - number: '7:10'
+    text: |-
+      Het bestuursorgaan beslist binnen zes weken, gerekend vanaf de dag
+      na die waarop de termijn voor het indienen van het bezwaarschrift is
+      verstreken.
+    url: https://wetten.overheid.nl/BWBR0005537/#Hoofdstuk7_Afdeling7.2_Artikel7:10
+    machine_readable:
+      execution:
+        parameters:
+          - name: bezwaartermijn_verstreken_op
+            type: date
+            required: true
+            description: De einddatum van de bezwaartermijn (AWB 6:7/6:8)
+        output:
+          - name: beslistermijn_bezwaar_einddatum
+            type: date
+        actions:
+          - output: beslistermijn_bezwaar_einddatum
+            value:
+              operation: DATE_ADD
+              date: $bezwaartermijn_verstreken_op
+              weeks: 6

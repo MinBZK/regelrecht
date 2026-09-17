@@ -1,0 +1,25 @@
+{
+  "name": "poc-napp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "PoC: drie portalen van de Nederlandse autoriteit politieke partijen — publiek register, subsidieportaal en beoordelingsomgeving",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "nldd:imports": "node ../script/check-nldd-imports.mjs src src/nldd-components.js --write",
+    "nldd:check": "node ../script/check-nldd-imports.mjs src src/nldd-components.js"
+  },
+  "dependencies": {
+    "@cucumber/gherkin": "^41.0.0",
+    "@cucumber/messages": "^34.0.1",
+    "@nldd/design-system": "^0.8.88",
+    "vue": "^3.5.42",
+    "vue-router": "^5.1.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.7",
+    "vite": "^8.2.2"
+  }
+}

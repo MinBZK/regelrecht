@@ -27,7 +27,7 @@ function saveName(e) {
 
 <template>
   <Teleport to="body">
-    <div v-if="p.active.value && p.current.value" class="deck" :class="{ full: p.isFull.value }" role="region" aria-label="Presentatie">
+    <div v-if="p.active.value && p.current.value && p.visible.value" class="deck" :class="{ full: p.isFull.value }" role="region" aria-label="Presentatie">
       <!-- Het podium: de tekstkolom van de dia. Op het hele scherm is dat een
            gecentreerde kolom van hooguit 1600px, in de rail de hele kolom. In
            beide gevallen is dit de container waar de typografie zich op meet,

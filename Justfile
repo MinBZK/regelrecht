@@ -35,6 +35,16 @@ wasm-build:
     wasm-bindgen --target web --out-dir frontend/public/wasm/pkg packages/target/wasm32-unknown-unknown/release/regelrecht_engine.wasm
     # The demo runs the same engine in the browser; keep the two copies identical.
     mkdir -p frontend-demo/public/wasm/pkg && cp frontend/public/wasm/pkg/* frontend-demo/public/wasm/pkg/
+    # The landing page runs the zorgtoeslag scenario in the visitor's browser
+    # when the panel scrolls into view, so the amount it shows is computed there
+    # and then rather than asserted. Same artifact again: one engine, three
+    # places.
+    mkdir -p docs/public/wasm/pkg && cp frontend/public/wasm/pkg/* docs/public/wasm/pkg/
+
+# Copy the laws, the scenario and the canonical-grammar runner into the docs
+# project, so the landing page can run the scenario in the visitor's browser.
+landing-laws:
+    ./script/landing-laws.sh
 
 # --- Quality checks ---
 
@@ -296,11 +306,14 @@ github-test:
 harvester-test:
     cd packages/harvester && {{ci_flags}} cargo test
 
-# Run the pipeline unit tests in `src/`. The container-backed suites live in
-# `tests/` and run via `pipeline-integration-test`, not here.
-[doc("Run pipeline unit tests (src/ only, no Docker)")]
+# Run pipeline unit tests. Five of these are container-backed and carry
+# #[ignore]; add `-- --ignored` to run those instead. The two CLI test
+# suites run the built binaries against temp directories and need no
+# Docker either, so they belong in this recipe, not only in the db-leg.
+[doc("Run pipeline unit tests (the container-backed ones are #[ignore]d)")]
 pipeline-test:
     cd packages/pipeline && {{ci_flags}} cargo test --lib
+    cd packages/pipeline && {{ci_flags}} cargo test --test law_source_cli --test law_check_cli --test enrich_once_cli
 
 # Run pipeline integration tests (requires Docker for testcontainers)
 pipeline-integration-test:
@@ -830,6 +843,78 @@ docs-preview:
 # Run the accessibility gate (build + mermaid-alt + heading-order + pa11y-ci htmlcs+axe, WCAG 2.1 AA)
 docs-a11y:
     cd docs && npm run a11y
+
+# --- PoC-portaal ---
+
+# Bouw de assets van het portaal (het ontwerpsysteem voor zijn eigen twee pagina's)
+poc-assets:
+    npm run build -w poc-portal-assets
+
+# Bouw elke statische poc met zijn eigen basis, en zet alles klaar in .poc-static/
+#
+# De WASM-engine komt uit `just wasm-build`; copy-assets.js van elke poc stopt
+# met een duidelijke melding als die er niet is.
+poc-build: wasm-build poc-assets
+    #!/usr/bin/env bash
+    set -euo pipefail
+    rm -rf .poc-static
+    mkdir -p .poc-static/_assets
+    cp -R frontend-poc-portal/dist/. .poc-static/_assets/
+    POC_BASE=/terugbetaalregimes/ npm run build -w poc-terugbetaalregimes
+    mkdir -p .poc-static/terugbetaalregimes
+    cp -R frontend-poc-terugbetaalregimes/dist/. .poc-static/terugbetaalregimes/
+    POC_BASE=/nieuwkomersbekostiging/ npm run build -w poc-nieuwkomersbekostiging
+    mkdir -p .poc-static/nieuwkomersbekostiging
+    cp -R frontend-poc-nieuwkomersbekostiging/dist/. .poc-static/nieuwkomersbekostiging/
+
+# Start het poc-portaal op http://localhost:8611
+#
+# De wachtwoorden zijn hier bewust hardcoded en flauw: dit recept draait alleen
+# lokaal, en een ontwikkelaar die ze moet opzoeken gebruikt het niet. In ZAD
+# komen ze uit `zad env`; het portaal weigert te starten als er één ontbreekt.
+#
+# De statische pocs worden verwacht in .poc-static/<slug>/. Zolang die er niet
+# zijn toont het overzicht ze wel en geeft de poc zelf een 404 achter de poort —
+# de poort werkt dus los van de vraag of er al een poc gebouwd is.
+poc: poc-build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "poc-portaal → http://localhost:8611"
+    echo "wachtwoorden: terugbetaalregimes/nieuwkomersbekostiging/napp = 'demo'"
+    POC_COOKIE_SECRET=lokale-ontwikkelsleutel-niet-geheim-0123 \
+    POC_PW_TERUGBETAALREGIMES=demo \
+    POC_PW_NIEUWKOMERSBEKOSTIGING=demo \
+    POC_PW_NAPP=demo \
+    POC_STATIC_DIR="$(pwd)/.poc-static" \
+    POC_PORT=8611 \
+    cargo run --manifest-path packages/Cargo.toml --package regelrecht-poc-portal
+
+# Start de beleidsassistent van één casus, naast `just poc` in een tweede terminal
+#
+# In het image doet start.sh dit met een poort per casus; lokaal is één casus
+# tegelijk genoeg. Het portaal proxyt /<casus>/api hiernaartoe zodra
+# POC_ASSISTENT_<CASUS> gezet is, dus `just poc` moet die variabele kennen:
+#
+#     POC_ASSISTENT_TERUGBETAALREGIMES=http://127.0.0.1:3600 just poc
+#
+# Vereist een ingelogde Claude CLI (`claude setup-token`) of ANTHROPIC_API_KEY;
+# zonder allebei weigert de assistent te starten.
+
+# Start de beleidsassistent van één casus (naast `just poc`)
+poc-assistent casus="terugbetaalregimes" poort="3600":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}${ANTHROPIC_API_KEY:-}" ]; then
+      echo "geen CLAUDE_CODE_OAUTH_TOKEN of ANTHROPIC_API_KEY; draai eerst \`claude setup-token\`" >&2
+      exit 1
+    fi
+    echo "beleidsassistent {{casus}} → http://127.0.0.1:{{poort}}"
+    POC_CASUS={{casus}} \
+    POC_CASUS_DIR="$(pwd)/corpus-poc/{{casus}}" \
+    POC_WASM_DIR="$(pwd)/.poc-static/{{casus}}/wasm/pkg" \
+    POC_VARIANT_OPSLAG=0 \
+    PORT={{poort}} \
+    node packages/poc-assistent/index.js
 
 # --- Architecture model ---
 
