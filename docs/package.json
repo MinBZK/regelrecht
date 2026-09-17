@@ -20,7 +20,7 @@
     "@cucumber/gherkin": "^42.0.1",
     "@cucumber/messages": "^34.2.1",
     "@nldd/design-system": "^0.8.88",
-    "astro": "^7.1.6",
+    "astro": "^7.3.2",
     "astro-pagefind": "^2.0.1",
     "rehype-mermaid": "^3",
     "rehype-stringify": "^10.0.1",
@@ -31,7 +31,7 @@
   },
   "devDependencies": {
     "pa11y-ci": "^4.1.1",
-    "playwright": "^1.62",
+    "playwright": "^1.63",
     "start-server-and-test": "^3",
     "typescript": "^7.0"
   },
