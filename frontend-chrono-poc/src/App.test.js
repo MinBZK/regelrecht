@@ -104,7 +104,7 @@ describe('de pagina', () => {
       'Grammen',
       'Observatielog',
     ]);
-    expect(tabs[0].attributes('selected')).toBe('true');
+    expect(tabs[0].attributes('current')).toBe('true');
 
     // De tab-bar meldt de keuze; de pagina wisselt van paneel.
     wrapper.find('nldd-tab-bar').element.dispatchEvent(

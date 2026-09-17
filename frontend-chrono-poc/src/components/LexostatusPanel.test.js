@@ -284,7 +284,10 @@ describe('een vraag aan een cel', () => {
     await fill(wrapper, wrapper.find('nldd-date-field'), '2030-01-01');
 
     expect(wrapper.find('nldd-date-field').attributes('invalid')).toBe('true');
-    expect(wrapper.find('nldd-form-field-error-text').text()).toContain('01-02-2025');
+    expect(wrapper.find('nldd-validation-item').text()).toContain('01-02-2025');
+    expect(wrapper.find('nldd-date-field').attributes('unmet')).toBe(
+      wrapper.find('nldd-validation-item').attributes('id'),
+    );
     expect(wrapper.find('nldd-button').attributes('disabled')).toBe('true');
 
     await submit(wrapper);

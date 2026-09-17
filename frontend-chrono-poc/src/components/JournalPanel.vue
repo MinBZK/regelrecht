@@ -314,8 +314,8 @@ function goToRow(id) {
                 columns="minmax(160px, 1fr) minmax(100px, 200px) minmax(200px, 1fr) fit-content(180px)"
                 background="base"
                 accessible-label="Waarop dit besluit rekende"
-                empty-text="Dit besluit kreeg geen inputs mee"
               >
+                <nldd-inline-dialog slot="empty" text="Dit besluit kreeg geen inputs mee"></nldd-inline-dialog>
                 <nldd-table-row slot="header">
                   <nldd-text-cell size="sm" text="Input"></nldd-text-cell>
                   <nldd-text-cell size="sm" text="Waarde"></nldd-text-cell>
@@ -350,8 +350,8 @@ function goToRow(id) {
                 columns="minmax(160px, 1fr) minmax(100px, 1fr)"
                 background="base"
                 accessible-label="Wat dit besluit vaststelde"
-                empty-text="Dit besluit legde geen uitkomst vast"
               >
+                <nldd-inline-dialog slot="empty" text="Dit besluit legde geen uitkomst vast"></nldd-inline-dialog>
                 <nldd-table-row slot="header">
                   <nldd-text-cell size="sm" text="Uitkomst"></nldd-text-cell>
                   <nldd-text-cell size="sm" text="Waarde"></nldd-text-cell>

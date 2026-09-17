@@ -49,9 +49,8 @@ const rows = computed(() =>
     <nldd-table
       columns="minmax(180px, 1fr) 120px minmax(200px, 1fr) minmax(200px, 1fr)"
       accessible-label="Contacten over een celgrens"
-      empty-text="Nog geen contact over een celgrens"
-      empty-supporting-text="Zolang geen cel iets bij een ander opvraagt, blijft dit log leeg."
     >
+      <nldd-inline-dialog slot="empty" text="Nog geen contact over een celgrens" supporting-text="Zolang geen cel iets bij een ander opvraagt, blijft dit log leeg."></nldd-inline-dialog>
       <nldd-table-row slot="header">
         <nldd-text-cell size="sm" text="Bevraagde cel"></nldd-text-cell>
         <nldd-text-cell size="sm" text="Moment"></nldd-text-cell>
@@ -66,7 +65,7 @@ const rows = computed(() =>
           :text="row.askedBy"
           :supporting-text="[row.params, row.signature].filter(Boolean).join(' · ')"
         ></nldd-text-cell>
-        <nldd-text-cell size="sm" :color="row.established ? 'default' : 'secondary'" :text="row.answer"></nldd-text-cell>
+        <nldd-text-cell size="sm" :color="row.established ? 'content' : 'secondary'" :text="row.answer"></nldd-text-cell>
       </nldd-table-row>
     </nldd-table>
   </nldd-container>

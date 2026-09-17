@@ -300,7 +300,7 @@ function run() {
                 :value="values[field.name] ?? undefined"
                 width="full"
                 :invalid="isMissing(field) || undefined"
-                :error-message="isMissing(field) ? errorId(field) : undefined"
+                :unmet="isMissing(field) ? errorId(field) : undefined"
                 @input="setValue(field, $event)"
                 @change="setValue(field, $event)"
               ></nldd-number-field>
@@ -309,7 +309,7 @@ function run() {
                 :value="values[field.name] ?? ''"
                 width="full"
                 :invalid="isMissing(field) || undefined"
-                :error-message="isMissing(field) ? errorId(field) : undefined"
+                :unmet="isMissing(field) ? errorId(field) : undefined"
                 @input="setValue(field, $event)"
                 @change="setValue(field, $event)"
               ></nldd-date-field>
@@ -317,13 +317,15 @@ function run() {
                 v-else
                 :value="values[field.name] ?? ''"
                 :invalid="isMissing(field) || undefined"
-                :error-message="isMissing(field) ? errorId(field) : undefined"
+                :unmet="isMissing(field) ? errorId(field) : undefined"
                 @input="setValue(field, $event)"
                 @change="setValue(field, $event)"
               ></nldd-text-field>
-              <nldd-form-field-error-text v-if="isMissing(field)" :id="errorId(field)">
-                Vul {{ humanize(field.name).toLowerCase() }} in; de cel accepteert alleen een {{ typeName(field) }}.
-              </nldd-form-field-error-text>
+              <nldd-validation-list v-if="isMissing(field)">
+                <nldd-validation-item :id="errorId(field)">
+                  Vul {{ humanize(field.name).toLowerCase() }} in; de cel accepteert alleen een {{ typeName(field) }}.
+                </nldd-validation-item>
+              </nldd-validation-list>
             </nldd-form-field>
           </template>
 

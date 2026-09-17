@@ -35,10 +35,12 @@ describe('het observatielog', () => {
   });
 
   it('geeft een vastgesteld antwoord met zijn waarden', () => {
-    const texts = mountLog()
-      .findAll('nldd-text-cell')
-      .map((cell) => cell.attributes('text'));
-    expect(texts.some((text) => text?.includes('toetsingsinkomen: 81000'))).toBe(true);
+    const cells = mountLog().findAll('nldd-text-cell');
+    const answer = cells.find((cell) => cell.attributes('text')?.includes('toetsingsinkomen: 81000'));
+    expect(answer).toBeDefined();
+    // De gewone tekstkleur heet in het ontwerpsysteem 'content'; een kleur die
+    // het niet kent valt stil terug en ziet er dan toevallig goed uit.
+    expect(answer.attributes('color')).toBe('content');
   });
 
   it('geeft "niets vastgesteld" als antwoord en niet als fout', () => {
@@ -69,6 +71,6 @@ describe('het observatielog', () => {
     snapshot.crossings = [];
     const wrapper = mountLog(snapshot);
     expect(wrapper.findAll('nldd-table-row')).toHaveLength(1);
-    expect(wrapper.find('nldd-table').attributes('empty-text')).toContain('Nog geen contact');
+    expect(wrapper.find('nldd-inline-dialog[slot="empty"]').attributes('text')).toContain('Nog geen contact');
   });
 });

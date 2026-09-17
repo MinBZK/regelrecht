@@ -121,9 +121,8 @@ function isNew(stream, index) {
           :type="stream.type"
           variant="box-base"
           :accessible-label="`Kroniek ${stream.stream} van cel ${cell.id}`"
-          empty-text="Nog niets vastgelegd"
-          empty-supporting-text="Deze kroniek is leeg tot er iets gebeurt."
         >
+          <nldd-inline-dialog slot="empty" text="Nog niets vastgelegd" supporting-text="Deze kroniek is leeg tot er iets gebeurt."></nldd-inline-dialog>
           <GramRow
             v-for="(entry, order) in stream.entries"
             :key="`${stream.stream}-${entry.index}`"

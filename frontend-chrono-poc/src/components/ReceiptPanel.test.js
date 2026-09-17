@@ -103,7 +103,7 @@ describe('het receipt van een decretogram', () => {
     receipt.accepted_values = [];
     const wrapper = await panel(receipt);
     expect(tableRows(wrapper, 0)).toHaveLength(0);
-    expect(wrapper.findAll('nldd-table')[0].attributes('empty-text')).toBe(
+    expect(wrapper.findAll('nldd-table')[0].find('nldd-inline-dialog[slot="empty"]').attributes('text')).toBe(
       'Geen geaccepteerde waarden',
     );
   });

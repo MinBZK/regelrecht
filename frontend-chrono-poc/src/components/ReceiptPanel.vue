@@ -193,9 +193,8 @@ function validity(regulation) {
       <nldd-table
         columns="minmax(160px, 1fr) 120px minmax(200px, 1fr) minmax(160px, 1fr)"
         accessible-label="Waarden die dit besluit van een andere cel accepteerde"
-        empty-text="Geen geaccepteerde waarden"
-        empty-supporting-text="Dit besluit rekende alles zelf uit."
       >
+        <nldd-inline-dialog slot="empty" text="Geen geaccepteerde waarden" supporting-text="Dit besluit rekende alles zelf uit."></nldd-inline-dialog>
         <nldd-table-row slot="header">
           <nldd-text-cell size="sm" text="Waarde"></nldd-text-cell>
           <nldd-text-cell size="sm" text="Uitkomst"></nldd-text-cell>
@@ -232,9 +231,8 @@ function validity(regulation) {
       <nldd-table
         columns="minmax(260px, 1fr) 160px minmax(240px, 2fr)"
         accessible-label="De regelingen die tijdens de uitvoering geladen waren"
-        empty-text="Geen geladen regelingen"
-        empty-supporting-text="Dit receipt noemt geen regelingen."
       >
+        <nldd-inline-dialog slot="empty" text="Geen geladen regelingen" supporting-text="Dit receipt noemt geen regelingen."></nldd-inline-dialog>
         <nldd-table-row slot="header">
           <nldd-text-cell size="sm" text="Regeling"></nldd-text-cell>
           <nldd-text-cell size="sm" text="Versie"></nldd-text-cell>

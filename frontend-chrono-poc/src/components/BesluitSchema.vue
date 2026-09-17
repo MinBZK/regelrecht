@@ -58,9 +58,8 @@ function toggle(name) {
       type="tree"
       variant="box-base"
       :accessible-label="`Decretogram-schema van cel ${cell.id}`"
-      empty-text="Geen besluiten"
-      empty-supporting-text="Deze cel kan niets besluiten."
     >
+      <nldd-inline-dialog slot="empty" text="Geen besluiten" supporting-text="Deze cel kan niets besluiten."></nldd-inline-dialog>
       <nldd-list-item
         v-for="row in rows"
         :key="`schema-${row.name}`"
@@ -88,8 +87,8 @@ function toggle(name) {
               columns="minmax(160px, 1fr) fit-content(140px) minmax(180px, 1fr)"
               background="base"
               :accessible-label="`Schema van decretogram ${row.name}`"
-              empty-text="Dit besluit kent geen velden"
             >
+              <nldd-inline-dialog slot="empty" text="Dit besluit kent geen velden"></nldd-inline-dialog>
               <nldd-table-row slot="header">
                 <nldd-text-cell size="sm" text="Veld"></nldd-text-cell>
                 <nldd-text-cell size="sm" text="Type"></nldd-text-cell>

@@ -77,8 +77,8 @@ function toggle(name) {
             columns="minmax(160px, 1fr) fit-content(140px)"
             background="base"
             :accessible-label="`Velden van gebeurtenis ${row.name}`"
-            empty-text="Deze gebeurtenis declareert geen velden"
           >
+            <nldd-inline-dialog slot="empty" text="Deze gebeurtenis declareert geen velden"></nldd-inline-dialog>
             <nldd-table-row slot="header">
               <nldd-text-cell size="sm" text="Veld"></nldd-text-cell>
               <nldd-text-cell size="sm" text="Type"></nldd-text-cell>

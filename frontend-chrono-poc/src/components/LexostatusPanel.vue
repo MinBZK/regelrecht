@@ -254,12 +254,15 @@ async function submit() {
             :value="moment"
             :max="clock || undefined"
             :invalid="momentAfterClock || undefined"
+            :unmet="momentAfterClock ? 'lexostatus-moment-na-klok' : undefined"
             @input="chosen = fieldValue($event, moment)"
             @change="chosen = fieldValue($event, moment)"
           ></nldd-date-field>
-          <nldd-form-field-error-text v-if="momentAfterClock">
-            De klok staat op {{ formatMoment(clock) }}; over een moment daarna heeft nog niets vastgelegd.
-          </nldd-form-field-error-text>
+          <nldd-validation-list v-if="momentAfterClock">
+            <nldd-validation-item id="lexostatus-moment-na-klok">
+              De klok staat op {{ formatMoment(clock) }}; over een moment daarna heeft nog niets vastgelegd.
+            </nldd-validation-item>
+          </nldd-validation-list>
         </nldd-form-field>
 
         <!-- Eén veld per gedocumenteerde parameter: de cel accepteert precies

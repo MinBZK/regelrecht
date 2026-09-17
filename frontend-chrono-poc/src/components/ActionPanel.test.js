@@ -144,18 +144,18 @@ describe('het actiepaneel', () => {
     await card.find('form').trigger('submit');
 
     expect(wrapper.emitted('run')).toBeUndefined();
-    expect(card.findAll('nldd-form-field-error-text')).toHaveLength(3);
+    expect(card.findAll('nldd-validation-item')).toHaveLength(3);
     expect(card.find('nldd-text-field').attributes('invalid')).toBe('true');
     expect(card.find('nldd-date-field').attributes('invalid')).toBe('true');
-    expect(card.find('nldd-text-field').attributes('error-message')).toBe(
-      card.find('nldd-form-field-error-text').attributes('id'),
+    expect(card.find('nldd-text-field').attributes('unmet')).toBe(
+      card.find('nldd-validation-item').attributes('id'),
     );
 
     // Zodra er iets staat, is de melding weg.
     await fill(wrapper, card.find('nldd-text-field'), '999993653');
-    expect(card.findAll('nldd-form-field-error-text')).toHaveLength(2);
+    expect(card.findAll('nldd-validation-item')).toHaveLength(2);
     await fill(wrapper, card.find('nldd-date-field'), '2024-01-09');
-    expect(card.findAll('nldd-form-field-error-text')).toHaveLength(1);
+    expect(card.findAll('nldd-validation-item')).toHaveLength(1);
   });
 
   // De kaart van een besluit dat er al ligt. In de fixture besloot cel

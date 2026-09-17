@@ -217,7 +217,7 @@ const showResult = computed(() => Boolean(result.value) && !hasNewEntries.value)
                       :key="item.key"
                       :data-tab-key="item.key"
                       :text="item.text"
-                      :selected="tab === item.key || undefined"
+                      :current="tab === item.key || undefined"
                     >
                       <nldd-icon slot="icon" :name="item.icon"></nldd-icon>
                     </nldd-tab-bar-item>

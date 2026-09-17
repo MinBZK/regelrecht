@@ -14,7 +14,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@nldd/design-system": "^0.8.83",
+    "@nldd/design-system": "^0.8.88",
     "@regelrecht/frontend-shared": "*",
     "vue": "^3.5.42"
   },
