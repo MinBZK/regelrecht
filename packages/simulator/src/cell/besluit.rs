@@ -2771,6 +2771,30 @@ impl DeclaredObligations {
         }
         Ok(names)
     }
+
+    /// De soorten nakoming die uit deze verplichtingen kunnen ontstaan.
+    ///
+    /// Altijd [`ObligationKind::Betaling`] — dat is de enige soort die een
+    /// artikel mag declareren — en daarnáást de omgekeerde soort zodra één
+    /// verplichting `richting_bij_negatief` draagt: dan kan het bedrag onder nul
+    /// uitvallen en is wat er vastgelegd wordt een terugvordering, met een eigen
+    /// naam in de kroniek (zie [`ObligationKind::gedaan`]).
+    ///
+    /// Voor het **optuigen**, om dezelfde reden als waarom het de stroom zelf
+    /// vraagt: een stroom waarvan het schema die naam niet kent, zou de eerste
+    /// omkering pas op de vervaldatum laten stranden — halverwege de tijdlijn,
+    /// in plaats van hier.
+    pub(crate) fn soorten(&self) -> Vec<ObligationKind> {
+        let mut soorten = vec![ObligationKind::Betaling];
+        if self
+            .items
+            .iter()
+            .any(|obligation| obligation.richting_bij_negatief.is_some())
+        {
+            soorten.push(ObligationKind::Betaling.reversed());
+        }
+        soorten
+    }
 }
 
 impl ObligationDefinition {

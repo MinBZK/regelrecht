@@ -48,8 +48,8 @@ use crate::accept::CellBridge;
 use crate::cell::{
     check_documented_params, check_parameter_value, check_prefill_values, Cell, CellConfig,
     ChronicleEvent, DecisionContext, DeclaredObligations, Decretogram, DocumentedParameter,
-    InputOrigin, Intake, Lexostatus, ObligationDue, ObligationKind, PartyBindings, Prefill,
-    BESCHIKKINGEN, BETALINGEN, ZAAKKENMERK,
+    InputOrigin, Intake, Lexostatus, ObligationDue, PartyBindings, Prefill, BESCHIKKINGEN,
+    BETALINGEN, ZAAKKENMERK,
 };
 use crate::cell::{nakoming_schema, uncovered};
 use crate::error::{Result, SimulatorError, Subject};
@@ -1964,9 +1964,13 @@ fn party_bindings(configs: &[CellConfig]) -> Result<PartyBindings> {
 /// - verwijst `ritme: $naam` naar een instelling die bestaat, en is die een
 ///   ritme;
 /// - houden de cellen die straks vastleggen een stroom [`BETALINGEN`] met
-///   [`ZAAKKENMERK`] als sleutel? Beide kanten leggen op een vervaldatum vast, en
-///   een stroom die er niet is zou dat op de eerste vervaldatum laten omvallen —
-///   halverwege de tijdlijn, in plaats van hier.
+///   [`ZAAKKENMERK`] als sleutel, en dekt het schema van die stroom wat er
+///   vastgelegd gaat worden? Beide kanten leggen op een vervaldatum vast, en een
+///   stroom die er niet is — of die de naam van het gram niet kent — zou dat op
+///   de eerste vervaldatum laten omvallen, halverwege de tijdlijn in plaats van
+///   hier. Het schema wordt gevraagd voor elke soort die uit de verplichting kan
+///   ontstaan: declareert het artikel `richting_bij_negatief`, dan hoort de
+///   terugvordering er net zo goed in te staan.
 ///
 /// Welke cel er nakomt, valt maar ten dele vooruit te weten: is de schuldenaar het
 /// bevoegd gezag, dan staat ze hier al vast, maar een partij uit een parameter
@@ -1994,6 +1998,15 @@ fn check_obligations(
                     continue;
                 }
                 declared.check_settings(&config.id, &definition.name, settings)?;
+                // Het schema dat elke nakomende stroom hier moet dekken. Eén per
+                // soort die uit deze verplichtingen kan ontstaan: een artikel dat
+                // omkeren declareert, legt straks ook terugvorderingen in
+                // diezelfde stroom, en die dragen een eigen naam.
+                let required: Vec<_> = declared
+                    .soorten()
+                    .into_iter()
+                    .flat_map(nakoming_schema)
+                    .collect();
                 // De besluitende cel legt de melding vast dat er betaald is, dus
                 // zij heeft de stroom net zo goed nodig als de betaler.
                 let mut holders: Vec<String> = declared
@@ -2009,7 +2022,6 @@ fn check_obligations(
                             cell: holder.to_string(),
                         });
                     };
-                    let required = nakoming_schema(ObligationKind::Betaling);
                     let reason = match held.stream_key(BETALINGEN) {
                         None => "die cel houdt geen stroom met die naam".to_string(),
                         Some(key) if key != ZAAKKENMERK => {
@@ -2037,7 +2049,7 @@ fn check_obligations(
                                 .iter()
                                 .map(|gebeurtenis| gebeurtenis.name.as_str())
                                 .collect::<Vec<_>>()
-                                .join(" en ")
+                                .join(", ")
                         ),
                         found: reason,
                     });

@@ -1970,6 +1970,10 @@ zaakkenmerk, bedrag, volgnummer, besluit, schuldenaar en schuldeiser — en een
 cel die een verplichting nakomt of oplegt moet een stroom houden waarvan het
 schema dat dekt. Doet ze dat niet, dan weigert het optuigen met een melding die
 de ontbrekende velden noemt; anders zou dat pas op de eerste vervaldatum blijken.
+Declareert het artikel `richting_bij_negatief: omkeren`, dan kan er ook een
+verplichting de andere kant op uit komen: dan vraagt het optuigen er
+`terugvordering_gedaan` en `terugvordering_gemeld` bij, want die namen belanden in
+dezelfde stroom en zouden anders pas bij de eerste omkering stranden.
 
 Waar deze declaraties uiteindelijk wonen — in het wereldbestand of in eigen
 bestanden naast de regelingen — is een later besluit over de plek van de

@@ -169,6 +169,18 @@ function typeName(field) {
   return field.type === 'date' ? 'datum' : field.type;
 }
 
+/**
+ * Is dit een veld waarin een getal hoort?
+ *
+ * `amount` net zo goed als `number`: het verschil tussen de twee zit in wát er
+ * staat en niet in hoe het ingevuld wordt — een bedrag is een getal. Dezelfde
+ * gelijkstelling als die van de server bij het lezen van een ingevulde waarde,
+ * zodat een bedrag hier niet als tekst de deur uit gaat.
+ */
+function isNumeric(field) {
+  return field.type === 'number' || field.type === 'amount';
+}
+
 /** Leeg is niet ingevuld; `false` bij een ja/nee-veld is wél een antwoord. */
 function isEmpty(field) {
   const value = values.value[field.name];
@@ -180,7 +192,7 @@ function setValue(field, event) {
   const raw = fieldValue(event, values.value[field.name]);
   values.value = {
     ...values.value,
-    [field.name]: field.type === 'number' ? (raw === '' || raw === null ? null : Number(raw)) : raw,
+    [field.name]: isNumeric(field) ? (raw === '' || raw === null ? null : Number(raw)) : raw,
   };
   markTyped(field);
   missing.value = missing.value.filter((name) => name !== field.name);
@@ -284,7 +296,7 @@ function run() {
                 Voorgevuld met wat de wereld al weet; pas het aan als het anders is.
               </nldd-form-field-help-text>
               <nldd-number-field
-                v-if="field.type === 'number'"
+                v-if="isNumeric(field)"
                 :value="values[field.name] ?? undefined"
                 width="full"
                 :invalid="isMissing(field) || undefined"

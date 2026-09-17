@@ -142,3 +142,32 @@ fn een_gram_zonder_eigen_grondslag_krijgt_die_van_het_schema() {
         "een gram zonder eigen grondslag hoort die van zijn schema te dragen"
     );
 }
+
+/// **Een betalingsstroom die de terugvordering niet kent, haalt het optuigen
+/// niet.**
+///
+/// Een artikel dat `richting_bij_negatief: omkeren` declareert, kan een
+/// verplichting de andere kant op voortbrengen, en die wordt onder een eigen naam
+/// in dezelfde stroom vastgelegd. Kent het schema die naam niet, dan zou de
+/// eerste terugvordering halverwege de tijdlijn stranden — en dan hing het van
+/// het slotbedrag van één casus af of een ontbrekend schema ooit boven water
+/// kwam. Het hoort hier te vallen, met de ontbrekende namen in de melding.
+#[test]
+fn een_stroom_zonder_schema_voor_de_terugvordering_strandt_bij_het_optuigen() {
+    let path = scenario_path("geweigerd", "terugvordering_zonder_schema.yaml");
+    let scenario = Scenario::load(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let error = scenario
+        .run(&regulation_root())
+        .expect_err("een stroom die de omgekeerde soort niet kent hoort geweigerd te worden");
+    assert!(
+        matches!(error, SimulatorError::ObligationStream { .. }),
+        "verwachtte ObligationStream, kreeg {error}"
+    );
+    let melding = error.to_string();
+    for deel in ["terugvordering_gedaan", "terugvordering_gemeld"] {
+        assert!(
+            melding.contains(deel),
+            "de melding hoort '{deel}' te noemen, kreeg: {melding}"
+        );
+    }
+}

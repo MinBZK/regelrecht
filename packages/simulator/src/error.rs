@@ -1304,6 +1304,25 @@ pub enum SimulatorError {
         found: String,
     },
 
+    /// Het schema van een stroom noemt dezelfde gebeurtenis twee keer.
+    ///
+    /// Om dezelfde reden als bij [`Self::DuplicateStream`]: elke toets zoekt de
+    /// eerste gebeurtenis die bij de naam past, dus de tweede declaratie doet
+    /// stil niets. Wie twee vormen van hetzelfde feit bedoelt, geeft ze twee
+    /// namen; wie hem per ongeluk twee keer opschreef, hoort dat te horen.
+    #[error(
+        "cel '{cell}', kroniekstroom '{stream}': het schema noemt gebeurtenis \
+         '{name}' twee keer"
+    )]
+    DuplicateGebeurtenis {
+        /// De cel die de stroom houdt.
+        cell: String,
+        /// De stroom met het schema.
+        stream: String,
+        /// De naam die dubbel staat.
+        name: String,
+    },
+
     /// Een vastlegging noemt een gebeurtenis die het schema van haar stroom niet
     /// kent.
     ///

@@ -247,7 +247,10 @@ impl ChronicleStore {
     /// Faalt als een vastlegging het sleutelveld van haar stroom mist: dan valt
     /// niet vast te stellen over welk onderwerp het feit gaat. Faalt ook op twee
     /// stromen met dezelfde naam: die naam is tevens de naam van de databron in
-    /// de engine, en daar zou de tweede de eerste stil schaduwen.
+    /// de engine, en daar zou de tweede de eerste stil schaduwen. En om dezelfde
+    /// reden op twee gebeurtenissen met dezelfde naam binnen één schema: elke
+    /// toets zoekt de eerste die past, dus de tweede declaratie zou niets doen
+    /// zonder dat iets dat zegt.
     pub(crate) fn from_streams(cell: &str, mut streams: Vec<ChronicleStream>) -> Result<Self> {
         let mut seen: BTreeSet<String> = BTreeSet::new();
         for stream in &mut streams {
@@ -256,6 +259,16 @@ impl ChronicleStore {
                     cell: cell.to_string(),
                     stream: stream.stream.clone(),
                 });
+            }
+            let mut namen: BTreeSet<&str> = BTreeSet::new();
+            for gebeurtenis in &stream.gebeurtenissen {
+                if !namen.insert(gebeurtenis.name.as_str()) {
+                    return Err(SimulatorError::DuplicateGebeurtenis {
+                        cell: cell.to_string(),
+                        stream: stream.stream.clone(),
+                        name: gebeurtenis.name.clone(),
+                    });
+                }
             }
             for event in &mut stream.events {
                 apply_schema(cell, &stream.stream, &stream.gebeurtenissen, event)?;
