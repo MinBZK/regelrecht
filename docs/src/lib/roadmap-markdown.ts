@@ -2,10 +2,16 @@
  * Markdown for the roadmap's prose fields (toelichting, vision, mission).
  *
  * These are short strings inside YAML/JSON, not page content, so they do not
- * go through Astro's markdown pipeline: that one autolinks "RFC-008", turns
- * fenced blocks into <nldd-code-viewer> and boots a headless Chromium for
- * mermaid — all wrong for a paragraph of prose in a frontmatter field. This is
- * the same unified stack, minus everything page-specific.
+ * go through Astro's markdown pipeline: that one turns fenced blocks into
+ * <nldd-code-viewer> and boots a headless Chromium for mermaid, both wrong for
+ * a paragraph of prose in a frontmatter field. This is the same unified stack,
+ * minus everything page-specific.
+ *
+ * The autolinkers are the exception and are wired in below: a toelichting that
+ * mentions an RFC or an issue wants that link as much as any page does. An
+ * earlier version of this comment listed the RFC autolink alongside mermaid as
+ * a reason to avoid the pipeline, which had it backwards — it is the browser
+ * and the code-viewer that do not belong here, not the link.
  *
  * The app rendered these client-side with marked + DOMPurify. Build-time
  * rendering makes both unnecessary: the input is repo-committed and reviewed
@@ -25,6 +31,8 @@ import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
 import remarkRehype from 'remark-rehype';
 import rehypeStringify from 'rehype-stringify';
+import { rehypeRfcLinks } from './rehype-rfc-links.ts';
+import { rehypeIssueLinks } from './rehype-issue-links.ts';
 import type { Root, Element, ElementContent } from 'hast';
 
 /**
@@ -206,8 +214,26 @@ function rehypeFieldSourceLines(map: LineMap) {
   };
 }
 
+/*
+ * The shared stack, including the two autolinkers.
+ *
+ * They sit here and not per-call because both render paths below go through
+ * this, and a toelichting that mentions an RFC deserves the same link as a
+ * docs page does. Before this, "RFC-022 leunt op RFC-008, RFC-009 en RFC-013"
+ * rendered as four pieces of dead text, while the same werkpakket's sidebar
+ * (built from the structured `rfcs:` field) did carry a link.
+ *
+ * rehypeRfcLinks is called without a VFile here: there is no source path for a
+ * frontmatter field, so it finds no self-reference and links every mention,
+ * which is what a toelichting wants.
+ */
 const base = () =>
-  unified().use(remarkParse).use(remarkGfm).use(remarkRehype);
+  unified()
+    .use(remarkParse)
+    .use(remarkGfm)
+    .use(remarkRehype)
+    .use(rehypeRfcLinks)
+    .use(rehypeIssueLinks);
 
 const plain = base().use(rehypeStringify);
 
