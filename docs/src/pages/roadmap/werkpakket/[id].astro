@@ -1,11 +1,17 @@
 ---
 /*
- * /roadmap/werkpakket/<uuid> — one werkpakket.
+ * /roadmap/werkpakket/<slug> — one werkpakket.
  *
- * Keyed on the frontmatter `id`, not on the filename slug: samenhangIds point
- * at that value, so keying on it makes the cross-links correct by construction.
- * The UUID stays in the URL because a title-derived slug would have to be kept
- * in sync with those references and would break on every rename.
+ * Keyed on the frontmatter `id`, not on the filename: samenhangIds point at
+ * that value, so keying on it makes the cross-links correct by construction.
+ * (The two are equal — assertReferencesResolve enforces it — but the id is the
+ * identity and the filename follows it, not the other way round.)
+ *
+ * That id is a slug, and used to be a UUID. A slug survives here where a
+ * *title-derived* slug could not: it is chosen once and then fixed, so editing
+ * a titel does not move the URL or break the samenhangIds pointing at it.
+ * What it buys is a readable reference — in the URL, in the content directory,
+ * and in a pull request that says which werkpakket it contributes to.
  *
  * Built entirely from design-system components: nldd-sidebar-section for the
  * document layout (it collapses the sidebar into a sheet on narrow screens by

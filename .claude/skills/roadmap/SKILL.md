@@ -18,7 +18,7 @@ redenering erachter in de commits van PR #1317.
 ## Waar de inhoud staat
 
 ```
-docs/src/content/roadmap/werkpakketten/<uuid>.md   één bestand per werkpakket
+docs/src/content/roadmap/werkpakketten/<slug>.md   één bestand per werkpakket
 docs/src/data/roadmap-config.json                  de fases, disciplines en swimlanes
 ```
 
@@ -33,41 +33,51 @@ matrix toont dan twee kaarten die naar dezelfde pagina wijzen. De build vangt
 het (`id "…" wordt door meer dan één bestand gebruikt`), maar je hebt dan al
 gewerkt aan het verkeerde bestand.
 
-### De UUID moet gegenereerd worden
+### Het id is een slug, en die kies je
 
-**Schrijf nooit zelf een UUID op.** Een verzonnen UUID ziet er goed uit en komt
-door het schema — dat toetst alleen de vorm — maar hij is niet uniform
-getrokken. Een taalmodel dat er een "bedenkt" grijpt terug op patronen uit zijn
-invoer en herhaalt cijferreeksen; de kans op een botsing met een bestaand id is
-dan niet meer verwaarloosbaar. En een botsing is precies de fout die twee
-kaarten naar dezelfde pagina laat wijzen. Laat een generator het doen:
+Het `id` is een slug: kleine letters, cijfers, koppeltekens ertussen. Hij is
+afgeleid van de titel, maar hij ís de titel niet — je kiest hem één keer en
+daarna blijft hij staan.
+
+`Referentie casus I` → `referentie-casus-i`
+`Aansluiten op bronnen (chronolexografie)` → `aansluiten-op-bronnen-chronolexografie`
+
+Een paar regels, en waarom:
+
+- **Kleine letters, altijd.** Het schema weigert hoofdletters. De controle op
+  bestandsnaam-is-id vergelijkt letterlijk, en op macOS is het bestandssysteem
+  hoofdletter-ongevoelig: een hoofdletter lijkt lokaal in orde terwijl git de
+  afwijkende schrijfwijze vastlegt en de build bij een ander valt.
+- **Romeinse cijfers in een reeks blijven romeins.** `specificaties-i-…`,
+  `specificaties-ii-…`. Dat houdt de reeks op volgorde in `ls` en leest als de
+  titel.
+- **Kort waar de titel lang is.** `Hoe omgaan met partijen als Raad van State,
+  Sociaal-Cultureel Planbureau, CPB, etcetera?` werd `omgang-met-adviesorganen`.
+  Een slug die de hele titel uitschrijft is geen verwijzing meer maar een zin.
+- **Leesbaar boven volledig.** De slug wordt gelezen in een URL, in een lijst
+  `samenhangIds`, en in de `Werkpakket:`-regel van een pull request. Dat is
+  waar hij zijn werk doet.
+
+**Verander een slug niet als de titel verandert.** De slug is een verwijzing:
+er wijzen `samenhangIds` naar, er staan pull requests mee, en er is een URL van.
+Een titel bijwerken is redactie; een slug bijwerken is een hernoeming die je
+overal moet nalopen. Alleen doen als de slug echt niet meer klopt, en dan met
+dezelfde zorg als het verwijderen van een werkpakket (zie onder).
+
+Kies een slug die nog niet bestaat:
 
 ```bash
-node -e "console.log(require('node:crypto').randomUUID())"
+ls docs/src/content/roadmap/werkpakketten/
 ```
 
-Node is de veilige keuze omdat de docs-build er toch al op draait, en het geeft
-op elk platform hetzelfde resultaat: kleine letters, versie 4. Alternatieven,
-als je die liever hebt:
-
-| Waar | Commando |
-|---|---|
-| Overal met Python | `python3 -c "import uuid; print(uuid.uuid4())"` |
-| macOS, Linux met util-linux | `uuidgen \| tr 'A-Z' 'a-z'` |
-| Windows PowerShell | `[guid]::NewGuid().ToString()` |
-
-**Kleine letters, altijd.** `uuidgen` geeft op macOS hoofdletters terug, vandaar
-de `tr` erachter; PowerShell geeft al kleine letters. Het schema accepteert
-hoofdletters wel, maar de controle op bestandsnaam-is-id vergelijkt letterlijk,
-en op macOS is het bestandssysteem hoofdletter-ongevoelig: lokaal lijkt dan
-alles in orde terwijl git de afwijkende schrijfwijze vastlegt en de build bij
-een ander valt. Alle negentien bestaande ids zijn kleine letters; houd dat zo.
+De build valt op een dubbele (`id "…" wordt door meer dan één bestand
+gebruikt`), maar dan heb je al aan het verkeerde bestand gewerkt.
 
 Het bestand bevat alleen frontmatter, geen body:
 
 ```yaml
 ---
-id: <de uuid van hierboven>
+id: <de slug van hierboven>
 titel: Korte titel van het werkpakket
 faseId: wat
 disciplineId: recht
@@ -109,8 +119,9 @@ build vallen met de naam van het werkpakket erbij.
 `capability` — `basis`, `ontwikkelen`, `simuleren`, `publiceren`, `analyseren`,
 `implementeren`, `verifieren`, of `''`.
 
-**Lege strings zijn normaal, geen tekortkoming.** Vijftien van de negentien
-werkpakketten hebben geen prioriteit, zes geen categorie. De roadmap groeit door
+**Lege strings zijn normaal, geen tekortkoming.** Negenentwintig van de
+negenenveertig werkpakketten hebben geen prioriteit, negentien geen categorie.
+De roadmap groeit door
 eerst een titel en een plek vast te leggen en de rest later in te vullen. Vul
 niets in om het vakje te vullen; een verzonnen prioriteit is slechter dan een
 lege.
@@ -138,7 +149,7 @@ Dit veld is verplicht en heeft met opzet geen default: een ontbrekend veld zou
 het werkpakket stilzwijgend bovenaan zetten. Gebruik stappen van 1000, dan kun
 je er later tussen schuiven zonder alles te hernummeren.
 
-`samenhangIds` — UUID's van andere werkpakketten. De build controleert of ze
+`samenhangIds` — slugs van andere werkpakketten. De build controleert of ze
 bestaan. Dit is eenrichtingsverkeer: zet je A → B, dan verschijnt B niet
 automatisch bij A. Zet 'm er handmatig bij als de relatie wederzijds is.
 
@@ -239,18 +250,23 @@ Het bestand weggooien is niet genoeg: andere werkpakketten kunnen er via
 daarop, en noemt elk bestand dat opgeruimd moet worden:
 
 ```
-werkpakket 8faa572b-… (Controle en herstel): samenhangId "413459cd-…" bestaat niet
-werkpakket 992fa816-… (Discretionaire ruimte): samenhangId "413459cd-…" bestaat niet
+werkpakket controle-en-herstel (Controle en herstel): samenhangId "juridische-status-van-een-specificatie" bestaat niet
+werkpakket discretionaire-ruimte (Discretionaire ruimte): samenhangId "juridische-status-van-een-specificatie" bestaat niet
 ```
 
 Kijk dus eerst wie er naar verwijst, dan weet je vooraf wat je aanpast:
 
 ```bash
-grep -l '<uuid>' docs/src/content/roadmap/werkpakketten/*.md
+grep -l '<slug>' docs/src/content/roadmap/werkpakketten/*.md
 ```
 
 Het bestand zelf staat ook in die uitkomst, want zijn eigen `id` staat erin;
 de rest zijn de verwijzers.
+
+Een slug die al in een pull request of een commit is genoemd, leeft ook buiten
+de repo voort. Verwijderen mag, maar die verwijzingen wijzen daarna nergens
+heen; dat is een reden te meer om een slug niet lichtvaardig te hergebruiken
+voor een ánder werkpakket.
 
 De app die hier ooit stond ruimde die verwijzingen zelf op bij het verwijderen;
 dat deed een server die er niet meer is. Nu doet de build het niet voor je, hij
