@@ -345,6 +345,30 @@ Wil je weten waar de roadmap onaf is, kijk dan zelf:
 grep -L 'prioriteit: [a-z]' docs/src/content/roadmap/werkpakketten/*.md
 ```
 
+## Het werk dat bij een werkpakket hoort
+
+Elke pull request draagt onderaan zijn omschrijving een regel met de slug van
+het werkpakket waaraan hij bijdraagt:
+
+```
+Werkpakket: referentie-casus-i
+Werkpakket: geen — losse typefout in de docs
+```
+
+De check `Werkpakket genoemd` blokkeert zonder die regel
+(`script/require-werkpakket.sh`). De detailpagina van een werkpakket linkt
+terug: "Pull requests op GitHub" zoekt op precies die regel.
+
+**Er zijn geen labels per werkpakket, met opzet.** De zoekfunctie van GitHub
+indexeert de body van een pull request, dus de regel is zelf al de index.
+Negenenveertig labels zouden aangemaakt, toegepast en bij elke hernoeming
+bijgewerkt moeten worden — een tweede waarheid die uit de pas loopt met de
+regel die er toch al staat.
+
+Dat de regel een trailer is, op zijn eigen regel onderaan, is waarom dit later
+ook uit `git log` te oogsten is. Dat is de bedoeling: commits en PR's per
+werkpakket kunnen optellen zonder dat er aan de poort iets verandert.
+
 ## Twee dingen om te weten
 
 **De pagina staat bewust nergens gelinkt.** Niet in de navigatie, niet op de
