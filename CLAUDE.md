@@ -94,6 +94,44 @@ merge). The format is **Conventional Commits**: `type(scope): subject`, where
 Per the global convention these subjects are written in **Dutch** (PR
 descriptions too), while code identifiers stay English.
 
+### Every pull request names its werkpakket
+
+**Every PR body ends with a `Werkpakket:` line naming the werkpakket from the
+roadmap that the work contributes to.** The check **`Werkpakket genoemd`**
+(`.github/workflows/werkpakket-gate.yml`) blocks the merge without it. Write the
+line whenever you open a PR; it is not optional and not something to ask about.
+
+```
+Werkpakket: referentie-casus-i
+Werkpakket: referentie-casus-i, effect-over-tijd
+Werkpakket: geen — losse typefout in de docs
+```
+
+- **The slug is the werkpakket's `id`**, which is also its filename and its URL.
+  The full list is `ls docs/src/content/roadmap/werkpakketten/`, rendered at
+  `/roadmap`. Never invent one: an unknown slug fails the check, which then
+  suggests the nearest matches.
+- **Several werkpakketten** on one line, comma-separated.
+- **`geen` needs a reason.** `Werkpakket: geen` on its own fails. Work that
+  genuinely belongs to no werkpakket says why: `geen — losse typefout in de
+  docs`. Without the reason it is a box that fills itself, and then the check
+  measures whether someone can paste a line rather than whether they asked the
+  question.
+- **Exempt**, decided from the API and not from the workflow: Dependabot PRs and
+  fork PRs.
+
+Put it on its own line at the end of the body, in trailer form. That is what
+makes it greppable, survives being copied into a merge commit, and lets a later
+script total up commits and PRs per werkpakket without this gate changing.
+
+Which werkpakket a change belongs to is a judgement, so make it deliberately:
+match the work to the roadmap rather than reaching for the nearest-sounding
+slug. If nothing fits, `geen` with an honest reason is the correct answer, not a
+failure. The logic lives in `script/require-werkpakket.sh`, with
+`script/require-werkpakket.test.sh` next to it (a `gh` stub) covering every path
+that decides green or red; both run as a pre-commit hook. Content changes to the
+roadmap itself go through the `roadmap` skill.
+
 ### Test Data
 
 **Never use real secret or private information in tests.** This is a public

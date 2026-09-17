@@ -100,6 +100,13 @@ repos:
         pass_filenames: false
         files: ^(script/require-security-approval(\.test)?\.sh|\.github/workflows/(security-update-gate|claude-dependabot)\.yml)$
 
+      - id: werkpakket-gate-tests
+        name: Merge-poort op een genoemd werkpakket doet wat hij belooft
+        entry: script/require-werkpakket.test.sh
+        language: system
+        pass_filenames: false
+        files: ^(script/require-werkpakket(\.test)?\.sh|\.github/workflows/werkpakket-gate\.yml)$
+
       - id: ci-gate-tests
         name: Test-poort in ci.yml blokkeert op een gevallen voorganger
         entry: just ci-gate-test
