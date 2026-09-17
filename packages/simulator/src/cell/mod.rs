@@ -2304,17 +2304,20 @@ impl Cell {
                     article,
                 };
                 // Gedeclareerd maar niet geleverd: dat hoort in het gram te
-                // staan en niet stil weg te vallen. Een uitkomst zonder waarde
-                // komt er niet als waarde in — een lezer van de stroom ziet dan
-                // "niet vastgesteld", zoals bij een uitkomst die er niet is —
-                // maar wel hier, met de reden als de engine die geeft.
+                // staan en niet stil weg te vallen. Niet geleverd is een
+                // uitkomst die niet terugkwam of onbekend bleef (RFC-036: een
+                // feit dat de engine niet heeft). Een `null` is wél geleverd:
+                // afwezigheid is een waarde — de regeling zei "er is er geen" —
+                // en staat dus gewoon als waarde in het gram. Een onbekende
+                // komt er niet als waarde in, maar wel hier, met de feiten die
+                // ontbraken.
                 let value = match own.outputs.get(name) {
-                    Some(value) if !value.is_null() && !value.is_unknown() => value,
+                    Some(value) if !value.contains_unknown() => value,
                     value => {
                         stage_uitkomst_niet_geleverd.push(StageUitkomstNietGeleverd {
                             uitkomst: name.clone(),
                             lexogram,
-                            reden: value.map(niet_geleverd_reden),
+                            reden: value.and_then(niet_geleverd_reden),
                         });
                         continue;
                     }
@@ -3395,21 +3398,21 @@ fn executing_article<'a>(
 /// Waarom een gedeclareerde stage-uitkomst er niet is, uit de waarde die de
 /// engine ervoor gaf.
 ///
-/// Alleen wat de engine zelf zegt: geen waarde (`null`, RFC-036), of de feiten
-/// die niemand aanleverde. Een uitkomst die helemaal niet terugkwam, heeft geen
+/// Alleen wat de engine zelf zegt: de feiten die niemand aanleverde, ook als de
+/// onbekende in een lijst of record zit (RFC-036). Een `null` komt hier niet: dat
+/// is een geleverde waarde. Een uitkomst die helemaal niet terugkwam, heeft geen
 /// waarde om uit te lezen en krijgt hier dus ook geen reden.
-fn niet_geleverd_reden(value: &Value) -> String {
-    match value.missing_facts() {
-        [] => "de regeling gaf geen waarde (null)".to_string(),
-        missing => format!(
-            "onbekend, want deze feiten ontbraken: {}",
-            missing
-                .iter()
-                .map(|fact| format!("{} ({})", fact.name, fact.law))
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
-    }
+fn niet_geleverd_reden(value: &Value) -> Option<String> {
+    let merged = Value::merge_unknown_deep([value])?;
+    Some(format!(
+        "onbekend, want deze feiten ontbraken: {}",
+        merged
+            .missing_facts()
+            .iter()
+            .map(|fact| format!("{} ({})", fact.name, fact.law))
+            .collect::<Vec<_>>()
+            .join(", ")
+    ))
 }
 
 /// De hooks die de engine oversloeg, met de versie van hun regeling erbij.
@@ -4125,22 +4128,25 @@ mod tests {
         serde_yaml_ng::from_str(yaml).unwrap_or_else(|e| panic!("testconfig moet parsen: {e}"))
     }
 
-    /// De reden bij een stage-uitkomst die niet kwam, is wat de engine zegt:
-    /// geen waarde, of de feiten die niemand aanleverde — met hun regeling.
+    /// De reden bij een stage-uitkomst die niet kwam, is wat de engine zegt: de
+    /// feiten die niemand aanleverde, met hun regeling.
     #[test]
     fn de_reden_van_een_niet_geleverde_uitkomst_komt_uit_de_engine() {
-        assert_eq!(
-            niet_geleverd_reden(&Value::Null),
-            "de regeling gaf geen waarde (null)"
-        );
+        // `null` is afwezigheid, een geleverde waarde (RFC-036): geen reden.
+        assert_eq!(niet_geleverd_reden(&Value::Null), None);
         let onbekend = Value::unknown(
             "test_regeling",
             "datum_ontvangst",
             regelrecht_engine::MissingKind::NoData,
         );
         assert_eq!(
-            niet_geleverd_reden(&onbekend),
-            "onbekend, want deze feiten ontbraken: datum_ontvangst (test_regeling)"
+            niet_geleverd_reden(&onbekend).as_deref(),
+            Some("onbekend, want deze feiten ontbraken: datum_ontvangst (test_regeling)")
+        );
+        // Een onbekende in een lijst telt even zwaar als een losse.
+        assert_eq!(
+            niet_geleverd_reden(&Value::Array(vec![Value::Int(1), onbekend])).as_deref(),
+            Some("onbekend, want deze feiten ontbraken: datum_ontvangst (test_regeling)")
         );
     }
 

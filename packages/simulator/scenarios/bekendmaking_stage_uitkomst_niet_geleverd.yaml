@@ -1,17 +1,24 @@
 ---
 name: een gedeclareerde stage-uitkomst die niet ontstaat, valt niet stil weg
 description: >-
-  Het artikel van de vergunning declareert twee uitkomsten voor de
-  bekendmaking: de dag vanaf wanneer de vergunning geldt (art. 3), en de dag
+  Het artikel van de vergunning declareert drie uitkomsten voor de
+  bekendmaking: de dag vanaf wanneer de vergunning geldt (art. 3), de dag
   waarop de houder uiterlijk meldt dat hij aan de voorschriften voldoet
-  (art. 2). Die tweede bestaat alleen bij een vergunning onder voorschriften.
+  (art. 2), en de dag waarop de uitvoerder uiterlijk controleert (art. 4). De
+  laatste twee bestaan alleen bij een vergunning onder voorschriften, en de
+  controle leunt dan op een verzoek van de houder dat bij de bekendmaking
+  niemand aanlevert.
 
-  Twee zaken. Bij de vergunning met voorschriften komen beide uitkomsten in het
-  gram van de bekendmaking. Bij die zonder voorschriften geeft de regeling voor
-  de melding geen waarde: de uitkomst staat dan niet als waarde in het gram,
-  maar wel onder `stage_uitkomst_niet_geleverd` — met het artikel en de reden —
+  Twee zaken. Bij de vergunning met voorschriften komen de geldigheid en de
+  melding in het gram van de bekendmaking; de controle blijft onbekend. Die
+  staat dan niet als waarde in het gram, maar wel onder
+  `stage_uitkomst_niet_geleverd` — met het artikel en de feiten die ontbraken —
   en het journaal zegt het bij de bekendmaking. Zo is "gedeclareerd maar niet
   geleverd" te onderscheiden van "niet gedeclareerd".
+
+  Bij de vergunning zonder voorschriften zegt de regeling voor de melding en de
+  controle "er is er geen" (`null`). Dat is afwezigheid, een waarde (RFC-036):
+  beide staan als `null` in het gram, en niets is niet geleverd.
 
 clock:
   start: 2024-01-01
@@ -56,13 +63,13 @@ cells:
           where:
             stage: BEKENDMAKING
 
-      - name: melding
-        doc: de dag waarop de houder uiterlijk de nakoming meldt
+      - name: controle
+        doc: de dag waarop de uitvoerder uiterlijk de naleving controleert
         inputs:
           - name: zaakkenmerk
             type: string
         outputs:
-          - nakoming_gemeld_uiterlijk_op
+          - eerste_controle_uiterlijk_op
         reduction:
           chronicle: beschikkingen
           key: zaakkenmerk
@@ -120,7 +127,7 @@ act:
 
 queries:
   - description: >-
-      Onder voorschriften leverde de bekendmaking beide uitkomsten.
+      Onder voorschriften leverde de bekendmaking de geldigheid en de melding.
     cell: uitvoerder
     lexostatus: bekendmaking
     params:
@@ -131,11 +138,33 @@ queries:
       nakoming_gemeld_uiterlijk_op: '2024-04-01'
 
   - description: >-
-      Zonder voorschriften staat de melding er niet als waarde: de regeling gaf
-      er geen. Dat ze gedeclareerd was, zegt het gram zelf.
+      Maar de controle bleef onbekend: die staat er niet als waarde. Dat ze
+      gedeclareerd was en niet kwam, zegt het gram zelf.
     cell: uitvoerder
-    lexostatus: melding
+    lexostatus: controle
+    params:
+      zaakkenmerk: vergunning/999993653
+    op_moment: 2024-03-04
+    expect_not_established: true
+
+  - description: >-
+      Zonder voorschriften zei de regeling "er is geen dag": dat is een waarde,
+      en die staat in het gram.
+    cell: uitvoerder
+    lexostatus: bekendmaking
     params:
       zaakkenmerk: vergunning/999992788
     op_moment: 2024-03-06
-    expect_not_established: true
+    expect:
+      vergunning_geldig_vanaf: '2024-03-06'
+      nakoming_gemeld_uiterlijk_op: null
+
+  - description: >-
+      Ook voor de controle: geen dag, en dus niets dat niet geleverd is.
+    cell: uitvoerder
+    lexostatus: controle
+    params:
+      zaakkenmerk: vergunning/999992788
+    op_moment: 2024-03-06
+    expect:
+      eerste_controle_uiterlijk_op: null

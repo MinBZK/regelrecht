@@ -182,8 +182,9 @@ pub const HOOK_NIET_UITGEVOERD: &str = "hook_niet_uitgevoerd";
 /// maar bij deze uitvoering niet opleverde.
 ///
 /// De tegenhanger van [`STAGE_UITKOMSTEN`] voor wat er niet kwam: een uitkomst
-/// onder `stage_uitkomsten` die er niet is, geen waarde kreeg (`null`) of op een
-/// ontbrekend feit bleef steken. Zonder dit veld is "niet gedeclareerd" in het
+/// onder `stage_uitkomsten` die er niet is of onbekend bleef, omdat een feit
+/// ontbrak (RFC-036). Een `null` is wél geleverd: afwezigheid is een waarde, en
+/// staat als waarde in het gram. Zonder dit veld is "niet gedeclareerd" in het
 /// gram niet te onderscheiden van "gedeclareerd maar niet geleverd". Per stuk de
 /// uitkomst, het artikel met regeling en versie, en de reden als de engine die
 /// geeft. Altijd aanwezig, en leeg als elke gedeclareerde uitkomst er kwam —
@@ -2805,8 +2806,7 @@ pub struct StageUitkomstNietGeleverd {
     pub uitkomst: String,
     /// De regeling, de versie en het artikel die haar hadden moeten voortbrengen.
     pub lexogram: ObligationOrigin,
-    /// Waarom ze er niet is, als de engine dat zegt: geen waarde (`null`), of de
-    /// feiten die ontbraken.
+    /// Waarom ze er niet is, als de engine dat zegt: de feiten die ontbraken.
     pub reden: Option<String>,
 }
 

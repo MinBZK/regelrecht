@@ -288,7 +288,7 @@ describe('de herkomst in een decretogram', () => {
             {
               uitkomst: 'nakoming_gemeld_uiterlijk_op',
               lexogram: { regulation: 'test_regeling', regulation_valid_from: null, artikel: '2' },
-              reden: 'de regeling gaf geen waarde (null)',
+              reden: 'onbekend, want deze feiten ontbraken: datum_controleverzoek (test_regeling)',
             },
           ],
           origin: { herkomst: 'besluit' },
@@ -301,7 +301,7 @@ describe('de herkomst in een decretogram', () => {
       'Stage-uitkomst niet geleverd: Nakoming gemeld uiterlijk op',
     );
     const supporting = attrs(wrapper, 'nldd-text-cell', 'supporting-text').filter(Boolean);
-    expect(supporting).toContain('test_regeling, artikel 2 · de regeling gaf geen waarde (null)');
+    expect(supporting).toContain('test_regeling, artikel 2 · onbekend, want deze feiten ontbraken: datum_controleverzoek (test_regeling)');
   });
 
   it('klapt weer dicht', async () => {

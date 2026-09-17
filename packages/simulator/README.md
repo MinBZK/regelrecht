@@ -1468,10 +1468,13 @@ BESLUIT-gram plus de stage-parameters. Het stage-gram draagt ze naast de
 hook-uitkomsten, met hun herkomst onder `stage_uitkomsten` (regeling, versie en
 artikel), en het receipt van het gram dekt beide uitvoeringen: die van de eigen
 regeling hangt als tak onder de trace van de stage. Een gedeclareerde uitkomst die
-de uitvoering niet oplevert (geen waarde, of een feit dat ontbrak) staat niet als
-waarde in het gram maar onder `stage_uitkomst_niet_geleverd` — uitkomst, regeling,
-versie, artikel en de reden als de engine die geeft — met een journaalregel
-(`kind: stage_uitkomst_niet_geleverd`) onder de bekendmaking.
+de uitvoering niet oplevert (ze kwam niet terug, of bleef onbekend omdat een feit
+ontbrak) staat niet als waarde in het gram maar onder
+`stage_uitkomst_niet_geleverd` — uitkomst, regeling, versie, artikel en de reden
+als de engine die geeft — met een journaalregel
+(`kind: stage_uitkomst_niet_geleverd`) onder de bekendmaking; een uitkomst die
+`null` is, is wél geleverd (afwezigheid is een waarde, RFC-036) en staat als
+waarde in het gram.
 
 Bij het optuigen wordt geweigerd wat hier stil verkeerd zou gaan: een andere
 stage dan BEKENDMAKING (het platform voert na het besluit geen andere uit), een
@@ -1634,9 +1637,10 @@ De scenario's:
   bekendmaking van de verlening een uitkomst van de eigen regeling draagt — en
   een verplichting die die uitkomst als vervaldatum neemt;
 - [`scenarios/bekendmaking_stage_uitkomst_niet_geleverd.yaml`](scenarios/bekendmaking_stage_uitkomst_niet_geleverd.yaml):
-  twee verleningen onder een artikel dat twee stage-uitkomsten declareert,
-  waarvan er één alleen onder een voorwaarde ontstaat — en bij de andere zaak in
-  het gram onder `stage_uitkomst_niet_geleverd` staat;
+  twee verleningen onder een artikel dat drie stage-uitkomsten declareert: bij
+  de ene zaak blijft er één onbekend en staat ze in het gram onder
+  `stage_uitkomst_niet_geleverd`, bij de andere zijn er twee `null` en staan ze
+  gewoon als waarde in het gram;
 - [`scenarios/bekendmaking_inhalen.yaml`](scenarios/bekendmaking_inhalen.yaml):
   een stage-uitkomst op een input van het besluit, als vervaldatum die bij een
   late bekendmaking al voorbij is — en dus op de dag van de bekendmaking wordt

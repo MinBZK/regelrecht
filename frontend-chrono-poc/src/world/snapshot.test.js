@@ -511,7 +511,7 @@ describe('het besluit zelf', () => {
             {
               uitkomst: 'nakoming_gemeld_uiterlijk_op',
               lexogram: { regulation: 'test_regeling', regulation_valid_from: '2024-01-01', artikel: '2' },
-              reden: 'de regeling gaf geen waarde (null)',
+              reden: 'onbekend, want deze feiten ontbraken: datum_controleverzoek (test_regeling)',
             },
             { uitkomst: 'zonder_reden', lexogram: null, reden: null },
           ],
@@ -522,7 +522,7 @@ describe('het besluit zelf', () => {
     expect(eerste.uitkomst).toBe('nakoming_gemeld_uiterlijk_op');
     expect(eerste.lexogram).toContain('test_regeling, artikel 2');
     expect(eerste.lexogram).toContain('versie');
-    expect(eerste.reden).toBe('de regeling gaf geen waarde (null)');
+    expect(eerste.reden).toBe('onbekend, want deze feiten ontbraken: datum_controleverzoek (test_regeling)');
     expect(tweede).toStrictEqual({ uitkomst: 'zonder_reden', lexogram: '', reden: null });
   });
 
