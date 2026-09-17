@@ -19,6 +19,9 @@ De slugs staan in docs/src/content/roadmap/werkpakketten/ en op /roadmap.
 Meerdere mag, kommagescheiden. Hoort dit werk bij geen enkel werkpakket, schrijf
 dan `Werkpakket: geen — <reden>` en zeg waarom.
 
+Schrijf de kale slug; zodra de check groen is maakt hij er zelf een link naar de
+roadmap van.
+
 Raakt deze PR een wet uit het corpus, zet die er dan onder met het `$id` van de
 wet (de mapnaam in corpus/regulation/), bijvoorbeeld:
 

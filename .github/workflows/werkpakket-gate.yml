@@ -80,3 +80,63 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: script/require-werkpakket.sh
+
+  # Aparte job, want deze heeft schrijfrechten op de pull request nodig en de
+  # poort hierboven niet. Die scheiding houdt de poort zelf lezend.
+  #
+  # Alleen als de poort groen is: een body herschrijven van een PR die de check
+  # niet haalt zou een slug vastleggen die nergens heen wijst. Fork-PR's vallen
+  # af omdat `GITHUB_TOKEN` daar leesrechten heeft, en Dependabot omdat daar
+  # niets te linken valt.
+  werkpakket-link:
+    name: Werkpakket-link in de omschrijving
+    needs: werkpakket-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository
+      && github.event.pull_request.user.login != 'dependabot[bot]'
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 1
+
+      # Van de base-branch, om dezelfde reden als de poort: dit script mag de
+      # body van een pull request bewerken, dus de versie uit die pull request
+      # draaien zou betekenen dat de PR bepaalt wat er met zijn eigen body
+      # gebeurt. Staat het er niet, dan voert deze PR de stap in en valt er niets
+      # te herschrijven.
+      - name: Take the script from the base branch
+        id: base
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          SCRIPT: script/linkify-werkpakket.sh
+        run: |
+          set -uo pipefail
+          git fetch --depth=1 origin "$BASE_SHA" || {
+            echo "::notice title=Werkpakket-link::base-commit ${BASE_SHA} is niet op te halen; de slug blijft zoals hij is."
+            echo "skip=true" >>"$GITHUB_OUTPUT"
+            exit 0
+          }
+          if ! git cat-file -e "${BASE_SHA}:${SCRIPT}" 2>/dev/null; then
+            echo "::notice title=Werkpakket-link::${SCRIPT} staat nog niet op de base-branch; deze pull request voert hem zelf in."
+            echo "skip=true" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git checkout "$BASE_SHA" -- "$SCRIPT" || {
+            echo "::notice title=Werkpakket-link::${SCRIPT} is niet uit ${BASE_SHA} te checkouten."
+            echo "skip=true" >>"$GITHUB_OUTPUT"
+          }
+
+      - name: Link the werkpakket slug to the roadmap
+        if: steps.base.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: script/linkify-werkpakket.sh

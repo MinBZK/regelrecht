@@ -161,6 +161,22 @@ check "backticks om de slug geven niets" 0 \
     "$(pr_json anne 'Werkpakket: `controle-en-herstel`')" "$geen_bestanden" \
     'draagt bij aan' 'werkpakketten=controle-en-herstel'
 
+# linkify-werkpakket.sh schrijft de kale slug om naar deze vorm. Leest de poort
+# hem niet, dan maakt die herschrijving de volgende run rood op een PR die niets
+# verkeerd doet.
+check "een markdown-link telt als zijn slug" 0 \
+    "$(pr_json anne 'Werkpakket: [referentie-casus-i](https://regelrecht.rijks.app/roadmap/werkpakket/referentie-casus-i)')" \
+    "$geen_bestanden" 'draagt bij aan' 'werkpakketten=referentie-casus-i'
+
+check "twee markdown-links tellen als twee slugs" 0 \
+    "$(pr_json anne 'Werkpakket: [referentie-casus-i](https://x/a), [effect-over-tijd](https://x/b)')" \
+    "$geen_bestanden" 'draagt bij aan' 'werkpakketten=referentie-casus-i,effect-over-tijd'
+
+check "een wet als markdown-link telt als de wet" 0 \
+    "$(pr_json anne 'Werkpakket: referentie-casus-i
+Wet: [wet_op_de_zorgtoeslag](https://wetten.overheid.nl/BWBR0018451)')" \
+    "$geen_bestanden" 'draagt bij aan' 'wetten=wet_op_de_zorgtoeslag'
+
 check "de laatste regel telt als er meerdere staan" 0 \
     "$(pr_json anne 'Werkpakket: referentie-casus-i
 

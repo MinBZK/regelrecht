@@ -212,6 +212,10 @@ lees_wetten() {
     [ -n "$regel" ] || return 0
 
     waarde=$(sed -E 's/^[[:space:]]*[Ww]et[[:space:]]*:[[:space:]]*//' <<<"$regel")
+    # Net als bij het werkpakket: een met de hand geschreven markdown-link telt
+    # als zijn linktekst, zodat `Wet: [wet_op_de_zorgtoeslag](https://…)` niet
+    # als onbekende wet blokkeert.
+    waarde=$(sed -E 's/\[([^]]*)\]\([^)]*\)/\1/g' <<<"$waarde")
 
     if [ ! -d "$CORPUS_DIR" ]; then
         unreadable "De regel \`${regel}\` noemt een wet, maar het corpus (${CORPUS_DIR}) is er niet, dus die wet valt nergens aan te toetsen."
@@ -297,6 +301,15 @@ if [ -z "$regel" ]; then
 fi
 
 waarde=$(sed -E 's/^[[:space:]]*[Ww]erkpakket[[:space:]]*:[[:space:]]*//' <<<"$regel")
+
+# Een markdown-link telt als zijn linktekst: `[slug](url)` wordt `slug`.
+#
+# Dat moet, want script/linkify-werkpakket.sh schrijft de kale slug in de body
+# om naar precies die vorm. Zonder deze regel zou die herschrijving de volgende
+# run van de poort rood maken op een PR die niets verkeerd doet — de poort zou
+# dan haar eigen bot afkeuren. Het accepteert meteen de met de hand geschreven
+# linkvorm.
+waarde=$(sed -E 's/\[([^]]*)\]\([^)]*\)/\1/g' <<<"$waarde")
 
 # `geen` met een reden erachter. Het scheidingsteken mag een kort of lang
 # streepje zijn of een dubbele punt: wie de regel met de hand typt moet niet op
