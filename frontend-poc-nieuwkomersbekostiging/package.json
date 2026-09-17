@@ -30,6 +30,6 @@
     "@vitejs/plugin-vue": "^6.0.7",
     "happy-dom": "^20.12.0",
     "vite": "^8.2.2",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.0"
   }
 }
