@@ -159,6 +159,14 @@ COPY .claude/skills/law-generate/   /opt/skills/.claude/skills/law-generate/
 COPY .claude/skills/law-mvt-research/ /opt/skills/.claude/skills/law-mvt-research/
 COPY .claude/skills/law-reverse-validate/ /opt/skills/.claude/skills/law-reverse-validate/
 
+# The schema the agent writes against. `link_schema` in enrich.rs looks for
+# `<SKILLS_DIR>/schema` and symlinks it into each checkout; without it the
+# function takes its "the agent will work without the contract" branch on
+# every production run, and an agent that goes looking, finds nothing and
+# invents fields the schema forbids. The builder stage has its own copy at
+# /schema for `include_str!`; that one does not survive into this image.
+COPY schema/ /opt/skills/schema/
+
 USER app
 EXPOSE 8000
 
