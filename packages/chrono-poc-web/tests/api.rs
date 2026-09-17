@@ -1057,3 +1057,122 @@ async fn een_datum_in_de_nederlandse_notatie_is_een_verzoekfout() {
         .await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
 }
+
+/// Het voorgevulde formulier van één actie, uit een beeld.
+fn prefill(world: &Value, action: &str) -> Value {
+    world["actions"]
+        .as_array()
+        .expect("actions is een lijst")
+        .iter()
+        .find(|candidate| candidate["id"] == action)
+        .unwrap_or_else(|| panic!("actie '{action}' hoort in het beeld te staan"))["prefill"]
+        .clone()
+}
+
+/// `GET /api/portaal` geeft het portaal uit het wereldbestand: de actor, het
+/// label, de persona's met hun ingevulde vragen, en de vragen zelf als sjabloon.
+#[tokio::test]
+async fn het_portaal_noemt_de_personas_en_hun_vragen() {
+    let mut browser = Browser::new().await;
+    let (status, portaal) = browser.get("/api/portaal").await;
+    assert_eq!(status, StatusCode::OK, "{portaal}");
+    assert_eq!(portaal["actor"], json!("burger"));
+    assert_eq!(portaal["label"], json!("Aanvraagportaal"));
+
+    let personas = portaal["personas"]
+        .as_array()
+        .expect("personas is een lijst");
+    assert_eq!(personas.len(), 2, "{portaal}");
+    let b = personas
+        .iter()
+        .find(|persona| persona["id"] == "aanvrager-b")
+        .unwrap_or_else(|| panic!("aanvrager-b hoort in het portaal te staan: {portaal}"));
+    assert_eq!(b["values"]["bsn"], json!("999990019"));
+    let vragen = b["inzicht"].as_array().expect("inzicht is een lijst");
+    assert!(
+        vragen.iter().any(|vraag| vraag["cell"] == "toeslagen"
+            && vraag["lexostatus"] == "zorgtoeslagbeschikking"
+            && vraag["params"]["zaakkenmerk"] == "zorgtoeslag/999990019"),
+        "de vraag hoort voor haar ingevuld te zijn: {portaal}"
+    );
+    assert!(
+        portaal["inzicht"]
+            .as_array()
+            .expect("inzicht is een lijst")
+            .iter()
+            .any(|regel| regel["params"]["zaakkenmerk"] == "zorgtoeslag/{bsn}"),
+        "en het sjabloon zelf staat erbij: {portaal}"
+    );
+
+    // Opvragen raakt geen wereld: het portaal is configuratie.
+    let world = browser.world().await;
+    assert_eq!(world["persona"], Value::Null);
+    assert!(world["journal"].as_array().expect("journal").is_empty());
+}
+
+/// `PUT /api/persona` kiest per sessie, het beeld noemt de keuze, de
+/// formulieren van de aanvrager dragen haar waarden, `reset` laat haar staan en
+/// `{id: null}` kiest niemand.
+#[tokio::test]
+async fn een_persona_kiezen_vult_de_formulieren_en_legt_niets_vast() {
+    let mut browser = Browser::new().await;
+    let voor = browser.world().await;
+
+    let (status, world) = browser
+        .put("/api/persona", json!({ "id": "aanvrager-b" }))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{world}");
+    assert_eq!(world["persona"], json!("aanvrager-b"));
+    let aanvraag = prefill(&world, "burger.aanvraag");
+    assert_eq!(aanvraag["bsn"], json!("999990019"));
+    assert_eq!(aanvraag["jaar"], json!(2025));
+    assert_eq!(
+        aanvraag["ondertekend_op"],
+        prefill(&voor, "burger.aanvraag")["ondertekend_op"],
+        "wat zij niet noemt, houdt de gewone voorinvulling"
+    );
+    assert_eq!(
+        world["journal"], voor["journal"],
+        "kiezen is geen gebeurtenis"
+    );
+    assert_eq!(world["crossings"], voor["crossings"]);
+
+    // Een tweede sessie ziet er niets van.
+    let mut ander = browser.tweede();
+    assert_eq!(ander.world().await["persona"], Value::Null);
+
+    // Opnieuw beginnen laat de keuze staan.
+    let (status, world) = browser.post("/api/reset", json!({})).await;
+    assert_eq!(status, StatusCode::OK, "{world}");
+    assert_eq!(world["persona"], json!("aanvrager-b"));
+
+    // Een onbekende persona is een 404 met de namen die er wél zijn, en de
+    // keuze blijft staan.
+    let (status, fout) = browser
+        .put("/api/persona", json!({ "id": "aanvrager-z" }))
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{fout}");
+    assert!(
+        fout["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("aanvrager-a"),
+        "{fout}"
+    );
+    assert_eq!(browser.world().await["persona"], json!("aanvrager-b"));
+
+    // Een body die niet klopt, is een 400.
+    let (status, fout) = browser
+        .put("/api/persona", json!({ "persona": "aanvrager-a" }))
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{fout}");
+
+    // Niemand kiezen.
+    let (status, world) = browser.put("/api/persona", json!({ "id": null })).await;
+    assert_eq!(status, StatusCode::OK, "{world}");
+    assert_eq!(world["persona"], Value::Null);
+    assert_eq!(
+        prefill(&world, "burger.aanvraag"),
+        prefill(&voor, "burger.aanvraag")
+    );
+}

@@ -57,6 +57,7 @@ use crate::journal::{
     changes, AcceptedValue, ExecutedInput, ExecutedOutput, Execution, GramRef, IndicatorParam,
     JournalActor, JournalEntry, JournalKind, Reading,
 };
+use crate::portaal::{Persona, PortaalDefinition};
 use crate::receipt::GramReceipt;
 use crate::security::{Identity, SignedAnswer};
 use crate::snapshot::{
@@ -610,6 +611,11 @@ pub struct WorldDefinition {
     /// De termijnen die waarschuwen als een feit ontbreekt.
     #[serde(default)]
     pub deadlines: Vec<Deadline>,
+    /// De blik van één aanvrager: haar acties, fictieve aanvragers om uit te
+    /// kiezen en wat haar pagina aan de cellen vraagt. Optioneel; zonder
+    /// portaal is er alleen de wereld zelf. Zie [`crate::portaal`].
+    #[serde(default)]
+    pub portaal: Option<PortaalDefinition>,
 }
 
 impl WorldDefinition {
@@ -689,6 +695,13 @@ pub struct World {
     /// gram ligt — het **verschil** in de stand van de zaak, gemeten vóór en ná
     /// de gebeurtenis. Zie [`crate::journal`].
     journal: Vec<JournalEntry>,
+    /// De persona die in het portaal gekozen is; `None` zolang er niemand
+    /// gekozen is.
+    ///
+    /// Een stand van wie er kijkt en geen gebeurtenis in de wereld: kiezen legt
+    /// niets vast, en [`World::reset`] laat de keuze staan — wie opnieuw begint,
+    /// begint opnieuw als dezelfde aanvrager.
+    persona: Option<String>,
     /// Wat er nog moet gebeuren, oplopend op datum. Bij een gelijke datum
     /// beslist de volgorde waarin de triggers zijn opgegeven; de sortering is
     /// stabiel, dus dat is een vastgelegde eigenschap en geen toeval.
@@ -792,6 +805,15 @@ impl World {
         check_actions(&definition.actions, &cells)?;
         check_deadlines(&definition.deadlines, &cells)?;
         check_status_indicators(configs, &cells)?;
+        if let Some(portaal) = &definition.portaal {
+            let forms = definition
+                .actions
+                .iter()
+                .filter(|action| action.actor == portaal.actor)
+                .map(|action| action_form(action, &cells))
+                .collect::<Result<Vec<_>>>()?;
+            portaal.check(&forms, configs, &cells)?;
+        }
 
         let mut pending: Vec<(NaiveDate, Trigger)> = fixtures
             .iter()
@@ -817,6 +839,7 @@ impl World {
             crossings: Vec::new(),
             warnings: Vec::new(),
             journal: Vec::new(),
+            persona: None,
             pending: pending.into(),
         };
         world.fire_due(definition.clock.start)?;
@@ -830,9 +853,44 @@ impl World {
     /// kroniek groeit en wijzigt nooit, dus "terug" bestaat niet — wat wél bestaat
     /// is opnieuw beginnen. Ook de instellingen gaan terug naar wat het bestand
     /// zegt; wie ze wijzigde, wijzigde de wereld en niet het bestand.
+    ///
+    /// De gekozen persona blijft staan: zij is geen stand van de wereld maar van
+    /// wie ernaar kijkt.
     pub fn reset(&mut self) -> Result<()> {
+        let persona = self.persona.take();
         *self = Self::from_definition(&self.definition.clone(), &self.regulation_root)?;
+        self.persona = persona;
         Ok(())
+    }
+
+    /// Kies een persona uit het portaal, of niemand (`None`).
+    ///
+    /// Een mock-login en geen gebeurtenis: er komt geen gram, geen journaalregel
+    /// en geen contact over een celgrens van. Wat er verandert, is het beeld:
+    /// in de formulieren van de acties van de portaal-actor winnen haar waarden
+    /// van de gewone voorinvulling (zie [`crate::snapshot::prefilled`]).
+    ///
+    /// Een onbekende persona, of een persona in een wereld zonder portaal, wordt
+    /// geweigerd en laat de vorige keuze staan. Niemand kiezen kan altijd.
+    pub fn choose_persona(&mut self, persona: Option<&str>) -> Result<()> {
+        let Some(id) = persona else {
+            self.persona = None;
+            return Ok(());
+        };
+        let portaal = self
+            .definition
+            .portaal
+            .as_ref()
+            .ok_or(SimulatorError::NoPortaal)?;
+        portaal.persona(id)?;
+        self.persona = Some(id.to_string());
+        Ok(())
+    }
+
+    /// De gekozen persona, of `None`.
+    pub fn persona(&self) -> Option<&Persona> {
+        let id = self.persona.as_deref()?;
+        self.definition.portaal.as_ref()?.persona(id).ok()
     }
 
     /// Waar de logische klok staat.
@@ -1026,6 +1084,7 @@ impl World {
             crossings: &self.crossings,
             warnings: &self.warnings,
             journal: &self.journal,
+            persona: self.persona.as_deref(),
         })
     }
 
@@ -1107,7 +1166,7 @@ impl World {
                 // Onbereikbaar leeg: het optuigen heeft elke actie aan haar cel en
                 // haar besluit gebonden, dus het formulier is er.
                 let form = self.form(action).unwrap_or_default();
-                let prefill = prefilled(&form, self.clock, &self.cells);
+                let prefill = prefilled(&form, self.clock, &self.cells, self.chosen_values(action));
                 let unavailable = self.unavailable(action, &prefill);
                 ActionState {
                     action,
@@ -1126,15 +1185,22 @@ impl World {
     /// tweede vorm heeft geen eigen lijst, en dat is met opzet: het besluit zegt al
     /// wat het nodig heeft, en twee lijsten zouden gaan afwijken.
     fn form(&self, action: &ActionDefinition) -> Result<Vec<DocumentedParameter>> {
-        match &action.effect {
-            ActionEffect::Records(records) => Ok(records.fields.clone()),
-            ActionEffect::Decides(decides) => Ok(self
-                .cell(&decides.cell)?
-                .besluit_definition(&decides.besluit)?
-                .params),
-            // Een bekendmaking vraagt niets: wat er bekendgemaakt wordt ligt al
-            // in de kroniek, en wanneer het gebeurt is de stand van de klok.
-            ActionEffect::Publishes(_) => Ok(Vec::new()),
+        action_form(action, &self.cells)
+    }
+
+    /// De waarden van de gekozen persona, als deze actie van de portaal-actor
+    /// is; anders niets.
+    ///
+    /// Alleen de acties van die actor: een persona is een aanvrager, en wat de
+    /// uitvoerder invult, weet zij niet.
+    fn chosen_values(&self, action: &ActionDefinition) -> &BTreeMap<String, Value> {
+        static NONE: BTreeMap<String, Value> = BTreeMap::new();
+        let Some(portaal) = &self.definition.portaal else {
+            return &NONE;
+        };
+        match self.persona() {
+            Some(persona) if action.actor == portaal.actor => &persona.values,
+            _ => &NONE,
         }
     }
 
@@ -2726,6 +2792,29 @@ fn check_recordable(
         })
 }
 
+/// Het formulier van een actie: wat de actor invult, en van welk type.
+///
+/// Los van [`World`], omdat het optuigen het al nodig heeft voordat er een
+/// wereld is: het portaal wordt getoetst tegen de formulieren van zijn actor.
+fn action_form(
+    action: &ActionDefinition,
+    cells: &BTreeMap<String, Cell>,
+) -> Result<Vec<DocumentedParameter>> {
+    match &action.effect {
+        ActionEffect::Records(records) => Ok(records.fields.clone()),
+        ActionEffect::Decides(decides) => Ok(cells
+            .get(&decides.cell)
+            .ok_or_else(|| SimulatorError::UnknownCell {
+                cell: decides.cell.clone(),
+            })?
+            .besluit_definition(&decides.besluit)?
+            .params),
+        // Een bekendmaking vraagt niets: wat er bekendgemaakt wordt ligt al
+        // in de kroniek, en wanneer het gebeurt is de stand van de klok.
+        ActionEffect::Publishes(_) => Ok(Vec::new()),
+    }
+}
+
 /// Toets de termijnen tegen de wereld waarin ze staan.
 ///
 /// Een termijn die naar een cel of een stroom wijst die er niet is, waarschuwt
@@ -2775,6 +2864,7 @@ mod tests {
             fixtures: fixtures.to_vec(),
             actions: Vec::new(),
             deadlines: Vec::new(),
+            portaal: None,
         }
     }
 

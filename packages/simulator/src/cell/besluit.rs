@@ -3961,7 +3961,7 @@ struct TemplatePart<'a> {
 /// Eén parser voor het optuigen én het invullen: zouden die uit elkaar lopen,
 /// dan zou een sjabloon dat bij het optuigen goedgekeurd is bij het besluit
 /// iets anders opleveren dan de toets veronderstelde.
-struct Template<'a> {
+pub(crate) struct Template<'a> {
     /// De letterlijke tekst vóór de eerste verwijzing.
     leading: &'a str,
     /// De verwijzingen, in volgorde.
@@ -3974,7 +3974,7 @@ impl<'a> Template<'a> {
     /// Een accolade die niet sluit levert geen verwijzing op; dat geval wordt bij
     /// het optuigen apart geweigerd ([`closing_braces_match`]), zodat het hier
     /// niet stil als letterlijke tekst hoeft te eindigen.
-    fn parse(template: &'a str) -> Self {
+    pub(crate) fn parse(template: &'a str) -> Self {
         let (leading, mut rest) = match template.split_once('{') {
             Some((leading, rest)) => (leading, rest),
             None => {
@@ -4002,7 +4002,7 @@ impl<'a> Template<'a> {
     /// verplichting: twee sjablonen met dezelfde vorm horen niet op twee manieren
     /// ingevuld te worden. Een verwijzing zonder waarde levert niets op — dat
     /// geval is bij het optuigen al geweigerd, hier zou het een lege plek zijn.
-    fn fill(&self, params: &BTreeMap<String, Value>) -> String {
+    pub(crate) fn fill(&self, params: &BTreeMap<String, Value>) -> String {
         let mut out = String::from(self.leading);
         for part in &self.parts {
             if let Some(value) = params.get(part.reference) {
@@ -4014,7 +4014,7 @@ impl<'a> Template<'a> {
     }
 
     /// De parameters waarnaar dit sjabloon verwijst, in volgorde.
-    fn references(&self) -> impl Iterator<Item = &'a str> + '_ {
+    pub(crate) fn references(&self) -> impl Iterator<Item = &'a str> + '_ {
         self.parts.iter().map(|part| part.reference)
     }
 
@@ -4080,7 +4080,7 @@ impl<'a> Template<'a> {
 /// Apart van [`Template::parse`], omdat de parser een niet-sluitende accolade
 /// overslaat: die twee moeten het eens zijn over wat een verwijzing is, en de
 /// weigering hoort bij het optuigen te vallen.
-fn closing_braces_match(template: &str) -> bool {
+pub(crate) fn closing_braces_match(template: &str) -> bool {
     let mut rest = template;
     while let Some((_, after)) = rest.split_once('{') {
         let Some((_, remainder)) = after.split_once('}') else {

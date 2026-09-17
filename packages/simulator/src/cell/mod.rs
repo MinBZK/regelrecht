@@ -42,6 +42,9 @@ pub use besluit::{
     STAGE_BESLUIT, ZAAKKENMERK,
 };
 pub(crate) use besluit::{BesluitGram, DeclaredObligations, ObligationScope};
+// Eén sjabloonlezer voor het zaakkenmerk én voor de vragen van het portaal: een
+// `{veld}` hoort op beide plekken hetzelfde te betekenen.
+pub(crate) use besluit::{closing_braces_match, Template};
 // De vaste velden van een decretogram, voor het beeld van de wereld: dat moet een
 // uitkomst van een besluit van een vast veld kunnen onderscheiden om de herkomst
 // van elke waarde te kunnen noemen. `pub(crate)`, want het is geen contract naar

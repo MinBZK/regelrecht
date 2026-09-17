@@ -624,3 +624,50 @@ deadlines:
       cell: toeslagen
       chronicle: aanvragen
       name: aanvraag_ontvangen
+
+# De blik van de aanvrager: twee pagina's naast "Achter de schermen". Op het
+# aanvraagportaal staan alleen de acties van `actor`, met de formulieren
+# ingevuld voor de gekozen persona; "inzicht in je aanvraag" stelt de vragen
+# hieronder, elk aan één cel, en zet de antwoorden pas in de weergave naast
+# elkaar (RFC-022 §4.1: combineren doet de consument, nooit een cel).
+#
+# Dit is inrichting van de opstelling en geen recht, en daarom staat het hier
+# en niet in een regeling. Kiezen is een mock-login: er wordt niets vastgelegd.
+portaal:
+  actor: burger
+  label: Aanvraagportaal
+  personas:
+    # De aanvrager over wie deze wereld de feiten draagt: het register, de
+    # aanslagen en de inkomenslevering gaan over dit bsn. Met haar is het hele
+    # verhaal te spelen, tot en met de vaststelling.
+    - id: aanvrager-a
+      label: Aanvrager A (fictief)
+      values:
+        bsn: '999993653'
+        jaar: 2024
+    # Een tweede aanvrager, met een ander bsn en een ander jaar. Over haar
+    # ligt in deze wereld verder niets: haar aanvraag komt aan, maar een
+    # besluit erop kan niet, want Toeslagen heeft over haar geen
+    # inkomenslevering. Dat is geen fout maar het punt: wat een cel niet weet,
+    # stelt zij niet vast — en haar inzicht blijft "nog niets bekend".
+    - id: aanvrager-b
+      label: Aanvrager B (fictief)
+      values:
+        bsn: '999990019'
+        jaar: 2025
+  inzicht:
+    - label: Beschikking zorgtoeslag
+      cell: toeslagen
+      lexostatus: zorgtoeslagbeschikking
+      params:
+        zaakkenmerk: zorgtoeslag/{bsn}
+    - label: Uitbetaald
+      cell: belastingdienst
+      lexostatus: betaald_tot_nu_toe
+      params:
+        zaakkenmerk: zorgtoeslag/{bsn}
+    - label: Openstaande termijnen
+      cell: toeslagen
+      lexostatus: openstaande_termijnen
+      params:
+        zaakkenmerk: zorgtoeslag/{bsn}

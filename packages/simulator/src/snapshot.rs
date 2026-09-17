@@ -78,6 +78,13 @@ pub struct Snapshot {
     /// wijst naar grammen die in een cel liggen, en het verschil dat ze draagt
     /// is een meting over precies die grammen (zie [`crate::journal`]).
     pub journal: Vec<JournalEntry>,
+    /// Het id van de persona die in het portaal gekozen is; `None` zolang er
+    /// niemand gekozen is, en altijd in een wereld zonder portaal.
+    ///
+    /// Staat er een, dan dragen de formulieren van de portaal-actor haar
+    /// waarden in [`ActionSnapshot::prefill`]. Het is een stand van wie er
+    /// kijkt en geen feit: er ligt niets van in een cel.
+    pub persona: Option<String>,
 }
 
 /// Een instelling die vast staat, en waardoor.
@@ -419,6 +426,8 @@ pub(crate) struct WorldView<'a> {
     pub(crate) warnings: &'a [Warning],
     /// Het journaal van deze wereld, in volgorde van ontstaan.
     pub(crate) journal: &'a [JournalEntry],
+    /// De gekozen persona, bij id.
+    pub(crate) persona: Option<&'a str>,
 }
 
 /// Bouw het beeld van de wereld.
@@ -457,6 +466,7 @@ pub(crate) fn build(view: &WorldView<'_>) -> Snapshot {
             .filter(|entry| entry.moment <= view.clock)
             .cloned()
             .collect(),
+        persona: view.persona.map(str::to_string),
     }
 }
 
@@ -721,6 +731,13 @@ fn action_snapshot(state: &ActionState<'_>) -> ActionSnapshot {
 /// Een veld zonder waarde staat er niet in — leeg is leeg, en `null` zou in een
 /// formulier een ingevulde afwezigheid zijn.
 ///
+/// `chosen` zijn de waarden van een gekozen persona (zie
+/// [`crate::World::choose_persona`]). Wat zij noemt, wint van de opgave in het
+/// wereldbestand: wie als een bepaalde aanvrager inlogt, hoort haar gegevens te
+/// zien en niet die van het voorbeeld. Wat zij niet noemt, houdt de gewone
+/// voorinvulling. Eén invuller voor beide, zodat de beschikbaarheid van een
+/// actie over precies het formulier gaat dat de lezer ziet.
+///
 /// `pub(crate)` en op de klok en de cellen in plaats van op een [`WorldView`]:
 /// de wereld lost dit al op vóórdat zij het beeld bouwt, omdat de
 /// beschikbaarheid van een `decides`-actie over deze waarden gaat (zie
@@ -730,9 +747,16 @@ pub(crate) fn prefilled(
     form: &[DocumentedParameter],
     clock: NaiveDate,
     cells: &BTreeMap<String, Cell>,
+    chosen: &BTreeMap<String, Value>,
 ) -> BTreeMap<String, Value> {
     form.iter()
-        .filter_map(|param| Some((param.name.clone(), resolve_prefill(param, clock, cells)?)))
+        .filter_map(|param| {
+            let value = match chosen.get(&param.name) {
+                Some(value) => value.clone(),
+                None => resolve_prefill(param, clock, cells)?,
+            };
+            Some((param.name.clone(), value))
+        })
         .collect()
 }
 
