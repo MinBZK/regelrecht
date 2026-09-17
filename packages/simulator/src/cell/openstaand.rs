@@ -41,11 +41,11 @@
 
 use super::besluit::{
     wachtende_verplichtingen, BEDRAG, BESCHIKKINGEN, BESLUIT, BESLUIT_CEL, BETALINGEN, OBLIGATIONS,
-    STAGE, STAGE_BEKENDMAKING, STAGE_BESLUIT, VOLGNUMMER,
+    STAGE, STAGE_BEKENDMAKING, STAGE_BESLUIT, TERMIJNEN_VERVALLEN_DOOR, VOLGNUMMER, ZAAKKENMERK,
 };
 use super::chronicle::{self, ChronicleEvent};
 use super::reductie::{GebruiktGram, Openstaandvorm, Reductie};
-use super::{Cell, LexostatusOutcome};
+use super::{gram_tekst, Cell, LexostatusOutcome};
 use crate::error::Result;
 use crate::values::amount;
 use chrono::NaiveDate;
@@ -139,9 +139,8 @@ struct Termijn {
     gedekt_door: Vec<(usize, Decimal)>,
     /// De plek van het gram waaruit ze komt.
     ///
-    /// Nodig om te kunnen zien of een later besluit haar liet vervallen: dat
-    /// hangt aan de volgorde waarin de grammen in de kroniek liggen, en niet aan
-    /// wat er in de termijn zelf staat.
+    /// Nodig voor de uitleg: elk gelezen decretogram draagt als bijdrage de
+    /// termijnen die eruit komen en meetellen.
     uit_gram: usize,
     /// Kwam er een later besluit over dezelfde zaak voor in de plaats?
     vervallen: bool,
@@ -259,7 +258,6 @@ pub(crate) fn reduce(
     let beschikkingen =
         cell.chronicles
             .recordings_with_place(BESCHIKKINGEN, key, key_value, &geen, op_moment);
-    let vervangingen = vervangingen(cell, &beschikkingen)?;
     let laatste = laatste_per_besluit(beschikkingen);
     if laatste.iter().all(|zaak| zaak.besluit.is_none()) {
         return Ok((
@@ -290,43 +288,63 @@ pub(crate) fn reduce(
             continue;
         };
         let besluit = &zaak.naam;
+        // Het eerste besluit over deze zaak ná een gram dat in de plaats kwam
+        // van wat dat gram beloofde — dezelfde regel waarmee de bekendmaking
+        // besluit of er nog iets gaat lopen — en dan alleen als het op het
+        // gevraagde moment al genomen was: een antwoord over het verleden hoort
+        // niet te veranderen door wat er later besloten werd.
+        let zaakkenmerk = gram_tekst(gram, ZAAKKENMERK);
+        let vervangen_op = |na: usize| -> Result<Option<NaiveDate>> {
+            Ok(cell
+                .vervangen_na(na, zaakkenmerk)?
+                .map(|vervanger| vervanger.op_moment)
+                .filter(|moment| *moment <= op_moment))
+        };
+        let na_het_besluit = vervangen_op(plek)?;
+
         // Wat het besluit meteen inroosterde. Bij een verplichting met
         // `vanaf: bekendmaking` is deze lijst leeg en staat alles nog te wachten.
         uit_de_beschikkingen.push((plek, gram));
-        neem_termijnen(gram, besluit, plek, op_moment, &mut termijnen);
-
-        // Kwam er, nadat dit besluit genomen was en vóórdat het bekendgemaakt
-        // werd, een besluit over dezelfde zaak dat in de plaats van dit besluit
-        // kwam? Dan gaat wat er op de bekendmaking wachtte nooit lopen: een
-        // besluit werkt pas door zijn bekendmaking (Awb 3:40), en op dat moment
-        // valt er niets meer te beloven. Zonder de bekendmaking geldt hetzelfde
-        // — een latere bekendmaking verandert daar niets aan.
-        let bekendmaking_plek = zaak.bekendmaking.map(|(plek, _)| plek);
-        let vervangen_voor_bekendmaking = vervangingen.iter().any(|(vervanger, _)| {
-            *vervanger > plek && bekendmaking_plek.is_none_or(|bekend| *vervanger < bekend)
-        });
+        neem_termijnen(
+            gram,
+            besluit,
+            plek,
+            op_moment,
+            na_het_besluit,
+            &mut termijnen,
+        );
 
         match zaak.bekendmaking {
             // De bekendmaking heeft de wachtende verplichtingen hun vervaldata
             // gegeven; die staan in háár gram, en het besluit-gram zegt er nog
             // steeds dat ze wachtten. Een gram verandert niet, dus wat er waar
             // ligt is hier de enige manier om te weten of het nog wacht.
-            Some((plek, gram)) if !vervangen_voor_bekendmaking => {
-                uit_de_beschikkingen.push((plek, gram));
-                neem_termijnen(gram, besluit, plek, op_moment, &mut termijnen);
+            Some((bekend, bekendmaking)) if !vervangen_voor_bekendmaking(bekendmaking) => {
+                uit_de_beschikkingen.push((bekend, bekendmaking));
+                let na_de_bekendmaking = vervangen_op(bekend)?;
+                neem_termijnen(
+                    bekendmaking,
+                    besluit,
+                    bekend,
+                    op_moment,
+                    na_de_bekendmaking,
+                    &mut termijnen,
+                );
             }
-            // Nog niet bekendgemaakt, of bekendgemaakt nadat het al vervangen
-            // was: wat erop wachtte, staat als zodanig in de lijst — in het
-            // tweede geval als vervallen (zie [`vervalt`]). Wat een bekendmaking
-            // van een vervangen besluit tóch inroosterde, doet niet mee: het
-            // hoort er niet te zijn. Eén regel per wachtende verplichting en niet
-            // per termijn — hoevéél termijnen het er worden staat vast, wannéér
-            // ze vervallen niet, en vier regels zonder vervaldag zeggen vier keer
-            // hetzelfde.
+            // Nog niet bekendgemaakt, of bekendgemaakt terwijl het al vervangen
+            // was: wat erop wachtte, staat als zodanig in de lijst. Vervallen als
+            // de bekendmaking dat zegt, of — zonder bekendmaking — als er al een
+            // besluit in de plaats van dit besluit kwam: een besluit werkt pas
+            // door zijn bekendmaking (Awb 3:40), dus wat erop wachtte gaat dan
+            // nooit meer lopen, en een latere bekendmaking verandert daar niets
+            // aan. Eén regel per wachtende verplichting en niet per termijn —
+            // hoevéél termijnen het er worden staat vast, wannéér ze vervallen
+            // niet, en vier regels zonder vervaldag zeggen vier keer hetzelfde.
             bekendmaking => {
-                if let Some((plek, gram)) = bekendmaking {
-                    uit_de_beschikkingen.push((plek, gram));
+                if let Some(gelezen) = bekendmaking {
+                    uit_de_beschikkingen.push(gelezen);
                 }
+                let vervallen = bekendmaking.is_some() || na_het_besluit.is_some();
                 for wachtend in wachtende_verplichtingen(&gram.fields).unwrap_or_default() {
                     termijnen.push(Termijn {
                         besluit: besluit.clone(),
@@ -336,7 +354,7 @@ pub(crate) fn reduce(
                         betaald: Decimal::ZERO,
                         gedekt_door: Vec::new(),
                         uit_gram: plek,
-                        vervallen: false,
+                        vervallen,
                     });
                 }
             }
@@ -363,13 +381,6 @@ pub(crate) fn reduce(
             termijn.gedekt_door.push((*plek, bedrag.min(ruimte)));
             termijn.betaald += bedrag;
         }
-    }
-
-    // Wat een later besluit liet vervallen, vóór er iets geteld wordt: een
-    // vervallen termijn is geen verwachting meer, dus er komt geen bedrag uit —
-    // tenzij ze toch betaald is.
-    for termijn in &mut termijnen {
-        termijn.vervallen = vervalt(termijn, &vervangingen);
     }
 
     // Wat de betalingen bijdroegen, alleen bij termijnen die meetellen: zo telt
@@ -476,7 +487,7 @@ struct Zaak<'a> {
 fn laatste_per_besluit(grammen: Vec<(usize, &ChronicleEvent)>) -> Vec<Zaak<'_>> {
     let mut per_besluit: BTreeMap<String, Zaak<'_>> = BTreeMap::new();
     for (plek, gram) in grammen {
-        let besluit = tekst(gram, BESLUIT);
+        let besluit = gram_tekst(gram, BESLUIT).to_string();
         let zaak = per_besluit.entry(besluit.clone()).or_insert_with(|| Zaak {
             naam: besluit,
             besluit: None,
@@ -485,7 +496,7 @@ fn laatste_per_besluit(grammen: Vec<(usize, &ChronicleEvent)>) -> Vec<Zaak<'_>> 
         // Een gram zonder stage bestaat niet meer sinds de bekendmaking een eigen
         // gram is; staat er toch een andere waarde, dan hoort ze niet bij een van
         // de twee stages die deze reductie leest en doet ze niet mee.
-        let plek_voor_stage = match tekst(gram, STAGE).as_str() {
+        let plek_voor_stage = match gram_tekst(gram, STAGE) {
             STAGE_BESLUIT => &mut zaak.besluit,
             STAGE_BEKENDMAKING => &mut zaak.bekendmaking,
             _ => continue,
@@ -500,78 +511,41 @@ fn laatste_per_besluit(grammen: Vec<(usize, &ChronicleEvent)>) -> Vec<Zaak<'_>> 
     gekozen
 }
 
-/// Eén veld van een gram als tekst; leeg als het er niet staat.
-fn tekst(gram: &ChronicleEvent, field: &str) -> String {
-    chronicle::field(&gram.fields, field)
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string()
-}
-
 /// Neem de termijnen uit dit gram over die op dit moment vervallen waren.
+///
+/// `vervangen_op` is het moment waarop een later besluit in de plaats kwam van
+/// wat dit gram beloofde, als dat er is. Een termijn waarvan de vervaldag toen
+/// nog moest komen, is vervallen — precies wat de wereld deed toen dat besluit
+/// genomen werd (zie `World::decide`): ze stond nog in de wachtrij en ging eruit.
+/// Een termijn die toen al verstreken was, stond daar niet meer: wat betaald is,
+/// is betaald, en wat niet nagekomen is, is niet nagekomen.
 fn neem_termijnen(
     gram: &ChronicleEvent,
     besluit: &str,
     plek: usize,
     op_moment: NaiveDate,
+    vervangen_op: Option<NaiveDate>,
     termijnen: &mut Vec<Termijn>,
 ) {
     for due in obligations(gram) {
-        if let Some(termijn) = lees_termijn(besluit, due, plek, op_moment) {
+        if let Some(mut termijn) = lees_termijn(besluit, due, plek, op_moment) {
+            termijn.vervallen = vervangen_op
+                .zip(termijn.vervaldatum)
+                .is_some_and(|(moment, vervaldatum)| moment < vervaldatum);
             termijnen.push(termijn);
         }
     }
 }
 
-/// De besluiten over deze zaak die openstaande termijnen lieten vervallen, met
-/// hun plek in de kroniek en het moment waarop ze genomen zijn.
+/// Zegt deze bekendmaking dat er niets meer ging lopen?
 ///
-/// Uit het **lexogram** en niet uit het gram: `vervangt_openstaande_termijnen`
-/// staat in het artikel dat het besluit voortbrengt, en het gram schrijft niet op
-/// wat er door dat besluit ophield te gebeuren — een gram zegt wat er gebeurde.
-/// De cel leest haar eigen wet in de versie die op het besluitmoment gold, langs
-/// dezelfde weg als het besluit zelf.
-fn vervangingen(
-    cell: &Cell,
-    grammen: &[(usize, &ChronicleEvent)],
-) -> Result<Vec<(usize, NaiveDate)>> {
-    let mut gevonden = Vec::new();
-    for (plek, gram) in grammen {
-        // Alleen de stage van het besluit: een bekendmaking neemt geen besluit en
-        // laat dus ook niets vervallen.
-        if tekst(gram, STAGE) != STAGE_BESLUIT {
-            continue;
-        }
-        if cell
-            .vervanging(&tekst(gram, BESLUIT), gram.op_moment)?
-            .is_some()
-        {
-            gevonden.push((*plek, gram.op_moment));
-        }
-    }
-    Ok(gevonden)
-}
-
-/// Liet een later besluit deze termijn vervallen?
-///
-/// Twee voorwaarden, en ze zijn samen precies wat de wereld deed toen dat besluit
-/// genomen werd (zie `World::decide`): het gram van dat besluit ligt ná het gram
-/// waar deze termijn uit komt — eerder kon ze nog niet ingeroosterd zijn — en
-/// haar vervaldag lag toen nog in de toekomst. Een termijn die toen al verstreken
-/// was, stond niet meer in de wachtrij: wat betaald is, is betaald, en wat niet
-/// nagekomen is, is niet nagekomen.
-///
-/// Een verplichting die nog op de bekendmaking wachtte, heeft geen vervaldag om
-/// te vergelijken, en heeft er ook geen nodig: elk vervangend besluit ná het
-/// gram van haar besluit laat haar vervallen, want haar belofte zou pas bij de
-/// bekendmaking gaan werken, en dan ligt dat besluit er al.
-fn vervalt(termijn: &Termijn, vervangingen: &[(usize, NaiveDate)]) -> bool {
-    vervangingen.iter().any(|(plek, moment)| {
-        *plek > termijn.uit_gram
-            && termijn
-                .vervaldatum
-                .is_none_or(|vervaldatum| *moment < vervaldatum)
-    })
+/// Een bekendmaking van een besluit dat al vervangen was, roostert niets in en
+/// schrijft op waardoor ([`TERMIJNEN_VERVALLEN_DOOR`]). Wat er op haar wachtte,
+/// is dan vervallen en niet ingeroosterd — en dat staat in háár gram, dus hier
+/// hoeft niets opnieuw afgeleid te worden.
+fn vervangen_voor_bekendmaking(bekendmaking: &ChronicleEvent) -> bool {
+    chronicle::field(&bekendmaking.fields, TERMIJNEN_VERVALLEN_DOOR)
+        .is_some_and(|door| !matches!(door, Value::Null))
 }
 
 /// De termijnen die een decretogram oplegt, ongelezen.

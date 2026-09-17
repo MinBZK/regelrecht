@@ -329,6 +329,12 @@ regel per wachtende verplichting en niet per termijn: hoevéél termijnen het er
 worden staat vast, wannéér ze vervallen niet. Zodra de bekendmaking er is, staan
 haar termijnen in het gram van die stage en verdwijnt de wachtende regel.
 
+Kwam er vóór de bekendmaking een besluit over dezelfde zaak dat in de plaats van dit
+besluit kwam, dan staat die regel er als `vervallen`: wat op de bekendmaking
+wachtte, gaat nooit meer lopen. Dat blijft zo nadat de bekendmaking er alsnog is —
+die roostert dan niets in en zegt waardoor (`termijnen_vervallen_door`), en de
+regel verdwijnt dus niet stil uit de lijst.
+
 Geen decretogram over deze zaak is **niets vastgesteld** en niet nul, om dezelfde
 reden als bij de som: "er staat niets open" en "hier is geen zaak" zijn twee
 antwoorden. En net als de som is dit een reductie en geen saldo — wat er op een
