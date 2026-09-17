@@ -1,0 +1,170 @@
+---
+name: termijnen van vóór het besluit worden op de besluitdag ingehaald
+description: >-
+  Een verplichting per kwartaal vanaf 1 januari, bij een besluit dat pas op 15
+  januari genomen wordt. De eerste termijn had op 1 januari moeten vervallen, maar
+  vóór het besluit kan er niet betaald worden. Het besluit valt daardoor niet om:
+  een te laat besluit blijft een besluit. De eerste termijn vervalt op 15 januari
+  — een inhaalbetaling — en de andere drie op hun eigen dag: 1 april, 1 juli en 1
+  oktober. Volgnummers en bedragen blijven wat ze waren.
+
+  Het gram draagt bij de ingehaalde termijn de dag uit het schema als
+  `oorspronkelijke_vervaldatum`, en het journaal zegt bij de betaling "ingehaald
+  (oorspronkelijk 2024-01-01)". `openstaand` ziet een gewone termijn met de
+  nieuwe vervaldatum.
+
+clock:
+  start: 2024-01-01
+
+cells:
+  - id: toeslagen
+    identity: Dienst Toeslagen
+    laws:
+      - test_inhaaltermijnen
+
+    chronicles:
+      - stream: betalingen
+        key: zaakkenmerk
+        gebeurtenissen: &betalingsschema
+          - name: betaling_gedaan
+            intake: betaling
+            grondslag: Algemene wet bestuursrecht, art. 4:89
+            fields: &betalingsvelden
+              - name: zaakkenmerk
+                type: string
+              - name: bedrag
+                type: amount
+              - name: volgnummer
+                type: number
+              - name: besluit
+                type: string
+              - name: schuldenaar
+                type: string
+              - name: schuldeiser
+                type: string
+          - name: betaling_gemeld
+            intake: levering
+            grondslag: Algemene wet bestuursrecht, art. 4:89
+            fields: *betalingsvelden
+
+    besluit_definitions:
+      - name: verlening
+        doc: >-
+          Vier kwartaaltermijnen vanaf 1 januari van het subsidiejaar. Het
+          sjabloon staat in artikel 1 van de regeling en verwijst naar de
+          parameters van dít besluit.
+        regulation: test_inhaaltermijnen
+        output: subsidie
+        zaakkenmerk: subsidie/{bsn}
+        params:
+          - name: bsn
+            type: string
+          - name: subsidiejaar
+            type: string
+        inputs:
+          bsn:
+            param: bsn
+
+    lexostatus_definitions:
+      - name: openstaande_termijnen
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        reduction:
+          openstaand: true
+          key: zaakkenmerk
+
+  - id: belastingdienst
+    laws: []
+    komt_na:
+      - Dienst Toeslagen
+    chronicles:
+      - stream: betalingen
+        key: zaakkenmerk
+        gebeurtenissen: *betalingsschema
+
+    lexostatus_definitions:
+      - name: betaald_tot_nu_toe
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - bedrag
+        reduction:
+          chronicle: betalingen
+          key: zaakkenmerk
+          sum: bedrag
+
+decide:
+  - description: >-
+      De verlening op 15 januari, met een schema dat op 1 januari begint. Geen
+      weigering: de eerste termijn wordt vandaag ingehaald.
+    cell: toeslagen
+    besluit: verlening
+    params:
+      bsn: '999993653'
+      subsidiejaar: '2024'
+    op_moment: 2024-01-15
+    expect:
+      subsidie: 120000
+
+queries:
+  - description: >-
+      Op de dag van het besluit is de ingehaalde eerste termijn betaald.
+    cell: belastingdienst
+    lexostatus: betaald_tot_nu_toe
+    params:
+      zaakkenmerk: subsidie/999993653
+    op_moment: 2024-01-15
+    expect:
+      bedrag: 30000
+
+  - description: >-
+      `openstaand` ziet een gewone termijn die op de dag van het besluit
+      vervalt en betaald is.
+    cell: toeslagen
+    lexostatus: openstaande_termijnen
+    params:
+      zaakkenmerk: subsidie/999993653
+    op_moment: 2024-01-15
+    expect:
+      verwacht: 30000
+      betaald: 30000
+      openstaand: 0
+      termijnen:
+        - besluit: verlening
+          volgnummer: 1
+          vervaldatum: '2024-01-15'
+          bedrag: 30000
+          status: betaald
+
+  - description: >-
+      De dag vóór 1 april ligt er nog steeds alleen de eerste termijn: de tweede
+      schuift niet mee naar voren.
+    cell: belastingdienst
+    lexostatus: betaald_tot_nu_toe
+    params:
+      zaakkenmerk: subsidie/999993653
+    op_moment: 2024-03-31
+    expect:
+      bedrag: 30000
+
+  - description: De tweede termijn vervalt op haar eigen dag, 1 april.
+    cell: belastingdienst
+    lexostatus: betaald_tot_nu_toe
+    params:
+      zaakkenmerk: subsidie/999993653
+    op_moment: 2024-04-01
+    expect:
+      bedrag: 60000
+
+  - description: >-
+      Op 1 oktober zijn alle vier termijnen betaald: het hele bedrag, niet meer
+      en niet minder.
+    cell: belastingdienst
+    lexostatus: betaald_tot_nu_toe
+    params:
+      zaakkenmerk: subsidie/999993653
+    op_moment: 2024-10-01
+    expect:
+      bedrag: 120000

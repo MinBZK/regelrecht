@@ -16,8 +16,9 @@ description: >-
 
   Verder laat dit scenario `vanaf` zien: de maandelijkse verplichting begint niet
   bij het besluit maar op een datum die uit een parameter van dat besluit volgt.
-  Zolang die datum niet vóór het besluit ligt, mag dat — een verplichting kan
-  niet vervallen vóór het besluit waaruit ze volgt.
+  Ligt die datum vóór het besluit, dan worden de termijnen die al vervallen
+  hadden moeten zijn op de dag van het besluit ingehaald (zie
+  `inhaaltermijnen.yaml`).
 
 clock:
   start: 2024-01-01

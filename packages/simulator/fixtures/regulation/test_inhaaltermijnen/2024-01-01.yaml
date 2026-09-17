@@ -1,0 +1,57 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: test_inhaaltermijnen
+name: Testregeling inhaaltermijnen
+regulatory_layer: WET
+bwb_id: BWBR9999910
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+url: https://example.com/test_inhaaltermijnen
+competent_authority: Dienst Toeslagen
+
+# Een testregeling, met opzet **niet** in het corpus: ze bestaat om een
+# eigenschap van de opstelling aan te tonen en niet om recht weer te geven. Zie
+# `test_betalingsritmes` voor dezelfde afweging.
+#
+# Wat ze aantoont is het **inhalen** van termijnen. Het schema begint op 1 januari
+# van het subsidiejaar, ongeacht wanneer er besloten wordt. Valt het besluit later,
+# dan is dat een te laat besluit en geen ongeldig besluit: de termijnen die al
+# vervallen hadden moeten zijn, vervallen op de dag van het besluit, want eerder
+# betalen kan niet (Awb 4:86, 4:87).
+articles:
+  - number: '1'
+    url: https://example.com/test_inhaaltermijnen#Artikel1
+    text: >-
+      De subsidie wordt in vier gelijke termijnen per kwartaal betaald, te beginnen op 1 januari van het subsidiejaar.
+    machine_readable:
+      definitions:
+        subsidiebedrag:
+          value: 120000
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+          extensions:
+            chronolex:
+              verplichtingen:
+                # `vanaf` is een sjabloon over de parameters van het besluit dat
+                # dit artikel uitvoert. Het mag vóór dat besluit uitkomen: wat er
+                # dan al vervallen was, wordt op de dag van het besluit ingehaald.
+                - soort: betaling
+                  bedrag: $subsidie
+                  ritme: kwartaal
+                  vanaf: '{subsidiejaar}-01-01'
+                  grondslag: Testregeling inhaaltermijnen art. 1
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        output:
+          - name: subsidie
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: subsidie
+            value: $subsidiebedrag

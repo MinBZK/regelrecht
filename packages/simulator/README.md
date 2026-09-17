@@ -729,7 +729,7 @@ uitbreiding van RFC-013 stil achterlopen.
 | de uitkomsten | de uitkomst die het besluit *is*, plus wat `outputs` erbij noemt |
 | `inputs` | wat de besluit-definitie zelf aanleverde, **met herkomst per waarde**: uit een eigen kroniek (met het moment van die vastlegging), uit een parameter, of geaccepteerd van een andere cel |
 | `chronicle_sources` | de eigen kronieken die als databron klaarstonden, elk met haar stand op het moment van het besluit: aantal grammen en een hash erover (RFC-022 §1.3). Wat de engine daaruit las, staat in de trace van het receipt |
-| `obligations` | het betalingsschema dat uit dit besluit volgt: per termijn een vervaldatum, een bedrag, een volgnummer, de betalende cel, de `grondslag` uit het lexogram en de herkomst (`lexogram`: regeling, versie, artikel). Leeg bij een afwijzing, ook als het lexogram er een oplegt |
+| `obligations` | het betalingsschema dat uit dit besluit volgt: per termijn een vervaldatum, een bedrag, een volgnummer, de betalende cel, de `grondslag` uit het lexogram en de herkomst (`lexogram`: regeling, versie, artikel). Een ingehaalde termijn draagt er de dag uit het schema bij als `oorspronkelijke_vervaldatum` — zie [Verplichtingen](#verplichtingen-wat-een-besluit-achterlaat). Leeg bij een afwijzing, ook als het lexogram er een oplegt |
 | `wacht_op_bekendmaking` | de verplichtingen die het lexogram met `vanaf: bekendmaking` oplegt: bedrag, partijen, ritme, grondslag en volgnummer staan er, de vervaldatum niet — die volgt uit de bekendmaking. Leeg bij elk besluit waarvan de termijnen meteen vervielen |
 | `receipt` | het volledige Execution Receipt, **met de uitvoeringstrace** (`results.trace`) |
 
@@ -989,9 +989,23 @@ bedrag toe.
   [Instellingen komen vast te staan](#instellingen-komen-vast-te-staan)).
 - **`vanaf` is een sjabloon over de gedocumenteerde parameters** van het besluit
   dat het artikel uitvoert, net als het zaakkenmerk, en wat het oplevert moet een
-  datum zijn. Het mag niet vóór het besluit liggen: een termijn in het verleden zou
-  bij het nakomen een betaling op een moment vastleggen dat al geweest is, en dan
-  verandert het beeld van toen alsnog.
+  datum zijn — een sjabloon dat geen datum oplevert laat het besluit omvallen.
+- **Een termijn die vóór het besluit zou vervallen, wordt ingehaald.** Een
+  `vanaf: '{subsidiejaar}-01-01'` bij een besluit dat pas op 15 januari genomen
+  wordt, is een te laat besluit en geen ongeldig besluit: te laat beslissen is
+  geen afwijzing, en betalen kan niet vóór het besluit er is (Awb 4:86, 4:87).
+  Elke termijn waarvan de dag uit het schema vóór het besluit ligt, vervalt
+  daarom op de dag van het besluit — een **inhaalbetaling**. Volgorde,
+  volgnummers en bedragen blijven wat ze waren; alleen de vervaldatum schuift, en
+  het gram draagt bij zo'n termijn de dag uit het schema als
+  `oorspronkelijke_vervaldatum`. Het journaal zegt bij de betaling *ingehaald
+  (oorspronkelijk …)*, en [`openstaand`](#openstaand-verwacht-min-gebeurd)
+  behandelt haar als een gewone termijn met die nieuwe vervaldatum. Een
+  vervaldatum in het verleden laten staan zou de klok een betaling laten
+  vastleggen op een moment dat al geweest is, en dan verandert het beeld van
+  toen alsnog. Bij `vanaf: bekendmaking` geldt hetzelfde met de dag van de
+  bekendmaking in plaats van die van het besluit. Zie
+  `scenarios/inhaaltermijnen.yaml`.
 - **`vanaf: bekendmaking` is geen datum maar een gebeurtenis.** Een besluit dat
   niet bekendgemaakt is, werkt niet (Awb 3:40), dus er valt niets in te
   roosteren. De verplichting komt dan met bedrag en partijen in het besluit te

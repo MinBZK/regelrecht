@@ -85,8 +85,9 @@ articles:
                 # Hier laat de wet het ritme aan het beleid van de uitvoerder:
                 # `$betalingsritme` leest uit `settings` van het wereldbestand.
                 # En `vanaf` is een sjabloon over de parameters van het besluit
-                # dat dit artikel uitvoert — wat het oplevert moet een datum zijn
-                # die niet vóór dat besluit ligt.
+                # dat dit artikel uitvoert — wat het oplevert moet een datum zijn.
+                # Ligt die vóór het besluit, dan wordt wat al vervallen was op de
+                # dag van het besluit ingehaald.
                 - soort: betaling
                   bedrag: $bedrag_maandelijks
                   ritme: $betalingsritme

@@ -1136,27 +1136,6 @@ pub enum SimulatorError {
         reason: String,
     },
 
-    /// Een verplichting zou vervallen vóór het besluit dat haar schept.
-    ///
-    /// Een termijn met een datum in het verleden zou bij het nakomen een
-    /// vastlegging op dat eerdere moment opleveren, en dan verandert het beeld van
-    /// toen doordat de wereld verder loopt — precies wat een kroniek niet doet.
-    #[error(
-        "cel '{cell}': verplichting van besluit '{besluit}' vervalt op {from}, \
-         vóór het besluit van {op_moment}; een verplichting kan niet vervallen \
-         vóór het besluit waaruit ze volgt"
-    )]
-    ObligationBeforeDecision {
-        /// Cel die besluit.
-        cell: String,
-        /// Het besluit met de verplichting.
-        besluit: String,
-        /// De uitgerekende startdatum.
-        from: String,
-        /// Het moment van het besluit.
-        op_moment: String,
-    },
-
     /// Een cel die een verplichting moet dragen houdt geen betalingsstroom.
     ///
     /// Beide kanten van een verplichting leggen vast: de betalende cel dat ze

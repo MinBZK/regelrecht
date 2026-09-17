@@ -1760,7 +1760,8 @@ impl Cell {
 
         // De termijnen die op deze bekendmaking wachtten. De eerste vervaldag is
         // de uiterste betaaldatum die de wet zojuist uitrekende — niet een dag
-        // die deze opstelling bedacht.
+        // die deze opstelling bedacht. Wat vóór vandaag zou vervallen, wordt
+        // vandaag ingehaald: vóór de bekendmaking werkt het besluit niet.
         let mut obligations = Vec::new();
         if !wachtend.is_empty() && termijnen_vervallen_door.is_none() {
             let uiterste = uitkomst
@@ -1782,7 +1783,7 @@ impl Cell {
                 plek,
             };
             for verplichting in &wachtend {
-                obligations.extend(verplichting.termijnen_vanaf(uiterste, &zaak)?);
+                obligations.extend(verplichting.termijnen_vanaf(uiterste, op_moment, &zaak)?);
             }
         }
 
