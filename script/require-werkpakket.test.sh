@@ -137,6 +137,10 @@ check "een genoemd werkpakket laat de PR door" 0 \
 Werkpakket: referentie-casus-i')" "$geen_bestanden" \
     'draagt bij aan' 'werkpakketten=referentie-casus-i'
 
+check "het werkpakket komt als link naar de roadmap in de samenvatting" 0 \
+    "$(pr_json anne 'Werkpakket: referentie-casus-i')" "$geen_bestanden" \
+    '[referentie-casus-i](https://regelrecht.rijks.app/roadmap/werkpakket/referentie-casus-i)'
+
 check "twee werkpakketten mogen" 0 \
     "$(pr_json anne 'Werkpakket: referentie-casus-i, effect-over-tijd')" "$geen_bestanden" \
     'draagt bij aan' 'werkpakketten=referentie-casus-i,effect-over-tijd'
@@ -239,6 +243,19 @@ Wet: wet_op_de_zorgtoeslag, algemene_wet_bestuursrecht')" "$geen_bestanden" \
 check "een onbekende wet blokkeert" 1 \
     "$(pr_json anne 'Werkpakket: referentie-casus-i
 Wet: wet_op_de_zonnebloem')" "$geen_bestanden" \
+    'niet in het corpus staat'
+
+# `find -name` neemt een glob. Zonder vormtoets zou `*` de eerste de beste wet
+# matchen en een link met het label `*` opleveren: de poort zou dan iets
+# bevestigen wat niet waar is.
+check "een glob als wet blokkeert in plaats van de eerste wet te pakken" 1 \
+    "$(pr_json anne 'Werkpakket: referentie-casus-i
+Wet: *')" "$geen_bestanden" \
+    'niet in het corpus staat'
+
+check "een wet met een pad erin blokkeert" 1 \
+    "$(pr_json anne 'Werkpakket: referentie-casus-i
+Wet: ../../etc')" "$geen_bestanden" \
     'niet in het corpus staat'
 
 check "geen Wet-regel is in orde, hij is optioneel" 0 \

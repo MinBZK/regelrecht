@@ -73,15 +73,29 @@ readonly TITEL='Werkpakket genoemd'
 summary() { printf '%s\n' "$1" >>"$GITHUB_STEP_SUMMARY"; }
 output() { printf '%s=%s\n' "$1" "$2" >>"$GITHUB_OUTPUT"; }
 
-# Regels die `green` onder de melding zet: de wetten die de PR noemt, als
-# markdown-link. Gevuld door lees_wetten, hieronder.
-wet_regels=''
+# De roadmap, waar een werkpakket zijn eigen pagina heeft. De slug ís het
+# laatste deel van die URL, dus een genoemd werkpakket is aanklikbaar te maken
+# zonder dat daar iets voor opgezocht hoeft te worden.
+ROADMAP_URL="${ROADMAP_URL:-https://regelrecht.rijks.app/roadmap/werkpakket}"
 
+# Regels die `green` onder de melding zet, als markdown-link. Gevuld door
+# lees_wetten en door het pad dat de werkpakketten vaststelt.
+wet_regels=''
+werkpakket_regels=''
+
+# De annotatie blijft platte tekst: GitHub rendert geen markdown in een
+# ::notice::. De links horen daarom in de samenvatting, waar dat wel kan.
 green() {
     echo "::notice title=${TITEL}::$1"
     summary "### Werkpakket: in orde"
     summary ""
     summary "$1"
+    if [ -n "$werkpakket_regels" ]; then
+        summary ""
+        summary "**Werkpakketten op de roadmap**"
+        summary ""
+        printf '%s\n' "$werkpakket_regels" >>"$GITHUB_STEP_SUMMARY"
+    fi
     if [ -n "$wet_regels" ]; then
         summary ""
         summary "**Wetten die deze pull request raakt**"
@@ -190,7 +204,16 @@ lees_wetten() {
         id=$(printf '%s' "$ruw" | tr -d '[:space:]')
         id=${id//\`/}
         [ -n "$id" ] || continue
-        # -maxdepth 3: corpus/regulation/<land>/<soort>/<wet>/
+        # Eerst de vorm, dan pas zoeken. `find -name` neemt een glob, dus een
+        # `*` zou anders de eerste de beste wet matchen en er een link met het
+        # label `*` van maken: de poort zou dan iets bevestigen wat niet waar
+        # is. Een `$id` is per schema kleine letters, cijfers en liggende
+        # streepjes, dus alles daarbuiten is geen wet maar een patroon.
+        if ! printf '%s' "$id" | grep -qE '^[a-z0-9_]+$'; then
+            onbekend+=("$id")
+            continue
+        fi
+        # -maxdepth 4: corpus/regulation/<land>/<soort>/<wet>/
         if [ -n "$(find "$CORPUS_DIR" -mindepth 1 -maxdepth 4 -type d -name "$id" -print -quit)" ]; then
             gevonden+=("$id")
         else
@@ -296,6 +319,10 @@ fi
 if [ ${#gevonden[@]} -eq 0 ]; then
     blocked "De regel \`${regel}\` noemt geen werkpakket. Zet er een slug achter, of \`geen — <reden>\`."
 fi
+
+for slug in "${gevonden[@]}"; do
+    werkpakket_regels="${werkpakket_regels}- [${slug}](${ROADMAP_URL}/${slug})"$'\n'
+done
 
 output 'werkpakketten' "$(printf '%s,' "${gevonden[@]}" | sed 's/,$//')"
 output 'reden' ''

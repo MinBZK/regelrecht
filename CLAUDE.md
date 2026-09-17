@@ -124,6 +124,11 @@ Put it on its own line at the end of the body, in trailer form. That is what
 makes it greppable, survives being copied into a merge commit, and lets a later
 script total up commits and PRs per werkpakket without this gate changing.
 
+The check's summary renders each slug as a link to its page on the roadmap
+(`https://regelrecht.rijks.app/roadmap/werkpakket/<slug>`), and that page links
+back to the pull requests carrying the slug. Write the bare slug; the gate builds
+the link. Do not paste a URL into the trailer.
+
 **When the PR touches a law from the corpus, add a `Wet:` line under it**, with
 the law's `$id` (the directory name under `corpus/regulation/`):
 
