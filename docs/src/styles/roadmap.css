@@ -174,9 +174,27 @@
  * would beat the categorie filter too, stranding cards visible that the
  * checkboxes had hidden.
  */
-.rr-roadmap .rr-wp-card--geen-treffer {
+.rr-roadmap .rr-wp-card--geen-treffer,
+.rr-roadmap .rr-wp-card--geen-belegging {
   display: none !important;
 }
+
+/*
+ * Het beleggingsfilter deelt de bovenstaande regel, en dat is de hele reden
+ * dat het in JavaScript zit en niet in CSS.
+ *
+ * Het categoriefilter verbergt alles en toont daarna terug met een
+ * `:has(#id)`-regel die op specificiteit wint. Een tweede groep kan die truc
+ * niet herhalen: twee groepen moeten elkaar dóórsnijden, en een tweede
+ * toon-terug-regel haalt kaarten terug die de eerste groep net verborgen had.
+ * Omdraaien naar verbergen-op-niet-match lost dat op, maar breekt dan OR
+ * binnen een groep — met 'bar' en 'pivot' allebei aangevinkt verbergt elke
+ * regel wat de andere toont en blijft er niets over.
+ *
+ * Door hier dezelfde `!important`-regel te delen als het zoekfilter staan
+ * beide buiten de specificiteitswedstrijd, en overleeft een kaart alleen als
+ * geen van de drie filters hem verbergt.
+ */
 
 /*
  * The field's width comes from the row it sits in (.rr-controls above): it

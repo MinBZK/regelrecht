@@ -51,6 +51,9 @@ onderzoeksvragen:
   - Welke elementen van de referentiecasus zijn herbruikbaar en abstraheerbaar
     voor "Referentie casus II"?
 bouw: deels
+belegging:
+  stand: opgepakt
+  sinds: '2026-09-17'
 rfcs:
   - 6
 samenhangIds: []

@@ -60,6 +60,7 @@ export interface WerkpakketData {
   samenhangIds: string[];
   onderzoek: string;
   bouw: string;
+  belegging: { stand: string; sinds?: string };
   rfcs: number[];
 }
 
@@ -93,9 +94,41 @@ export const BOUW_STANDEN = [
   { id: 'wel', label: 'Gebouwd', tagColor: 'success' },
 ] as const;
 
+/*
+ * A third axis, and deliberately not a third progress field.
+ *
+ * `onderzoek` and `bouw` say how far the work is. This says whether it is
+ * belegd: whether anyone has put their hand up for it. Those are independent —
+ * a werkpakket can be half built by someone who has since moved on, and a
+ * werkpakket nobody has touched can be firmly claimed.
+ *
+ * `klaar` is a stand here rather than something derived from `onderzoek:
+ * beantwoord` plus `bouw: wel`. A verkenning finishes without anything being
+ * built, and would never reach the derived version of "done"; saying so is a
+ * judgement about the werkpakket as a whole, which is a person's to make.
+ *
+ * '' is not 'vrij'. '' is the default and means nothing has been said —
+ * where all forty-nine start. 'vrij' is an editorial act: someone read the
+ * werkpakket and decided it is ready to be picked up. A roadmap where
+ * everything says 'vrij' because that is the default invites nobody.
+ *
+ * The colours deliberately leave the neutral/warning/success ladder that
+ * `onderzoek` and `bouw` share: those two are progress, this is ownership, and
+ * three tags climbing one ladder with three meanings makes a card unreadable.
+ * `info` reads as an invitation, `warning` as "someone is on it", and
+ * `success` is reserved so green on a card means one thing only: done.
+ */
+export const BELEGGING_STANDEN = [
+  { id: 'vrij', label: 'Vrij', tagColor: 'info' },
+  { id: 'opgepakt', label: 'Opgepakt', tagColor: 'warning' },
+  { id: 'klaar', label: 'Klaar', tagColor: 'success' },
+] as const;
+
 export const getOnderzoek = (id: string) =>
   ONDERZOEK_STANDEN.find((s) => s.id === id);
 export const getBouw = (id: string) => BOUW_STANDEN.find((s) => s.id === id);
+export const getBelegging = (id: string) =>
+  BELEGGING_STANDEN.find((s) => s.id === id);
 
 export const CATEGORIEEN = [
   { id: 'bar', label: 'Bar' },
@@ -132,6 +165,19 @@ type NonEmpty = [string, ...string[]];
  */
 export const GEEN_CATEGORIE = 'geen';
 
+/**
+ * The value `data-belegging` carries for a werkpakket nobody has said
+ * anything about. That is the normal state — all forty-nine start there — so
+ * the filter needs a way to show them, the same way `GEEN_CATEGORIE` does.
+ */
+export const GEEN_BELEGGING = 'geen';
+
+/** The belegging filter's checkboxes: every stand, plus the ones without one. */
+export const BELEGGING_FILTER_OPTIES = [
+  ...BELEGGING_STANDEN.map((s) => ({ id: s.id, label: s.label })),
+  { id: GEEN_BELEGGING, label: 'Niet bepaald' },
+];
+
 /** The filter's checkboxes: every categorie, plus the ones without one. */
 export const FILTER_OPTIES = [
   ...CATEGORIEEN.map((c) => ({ id: c.id, label: c.label })),
@@ -162,10 +208,25 @@ export function assertFilterRules(css: string): void {
         'anders blijven die kaarten verborgen zodra er gefilterd wordt.',
     );
   }
+
+  /*
+   * The belegging filter hides through the script, so it needs one rule
+   * rather than one per option — but its absence fails the same silent way:
+   * every checkbox would toggle a class that styles nothing, and the filter
+   * would look wired up while changing nothing on screen.
+   */
+  if (!css.includes('.rr-wp-card--geen-belegging')) {
+    throw new Error(
+      'roadmap.css mist de verberg-regel voor het beleggingsfilter. Voeg ' +
+        '`.rr-wp-card--geen-belegging` toe aan de `display: none !important`-' +
+        'regel naast `.rr-wp-card--geen-treffer`, anders doen die vinkjes niets.',
+    );
+  }
 }
 
 export const ONDERZOEK_IDS = ONDERZOEK_STANDEN.map((s) => s.id) as NonEmpty;
 export const BOUW_IDS = BOUW_STANDEN.map((s) => s.id) as NonEmpty;
+export const BELEGGING_IDS = BELEGGING_STANDEN.map((s) => s.id) as NonEmpty;
 export const PRIORITEIT_IDS = PRIORITEITEN.map((p) => p.id) as NonEmpty;
 export const OMVANG_IDS = [...OMVANGEN] as NonEmpty;
 export const CATEGORIE_IDS = CATEGORIEEN.map((c) => c.id) as NonEmpty;
@@ -333,6 +394,7 @@ export function zoektekst(data: WerkpakketData): string {
       getCapability(data.capability)?.label,
       getOnderzoek(data.onderzoek)?.label,
       getBouw(data.bouw)?.label,
+      getBelegging(data.belegging.stand)?.label,
       data.omvang && `omvang ${data.omvang}`,
       data.capaciteit,
       // Every way an RFC gets written: "RFC-013" as the site renders it, plus
@@ -494,6 +556,80 @@ export function assertRfcReferences(
       `Verwijzingen naar RFC's kloppen niet:\n  ${problems.join('\n  ')}`,
     );
   }
+}
+
+/**
+ * Fail the build on a belegging that contradicts the rest of the werkpakket.
+ *
+ * The schema in content.config.ts already enforces what holds inside the
+ * object itself (a date under 'opgepakt' and 'klaar', neither outside them).
+ * What it cannot see from there is the sibling fields, and two combinations
+ * are contradictions rather than incompleteness:
+ *
+ * - 'vrij' on a werkpakket whose question is answered and whose build is
+ *   done. The card would invite someone to pick up work that is finished.
+ * - a `sinds` in the future. That is a typo (2062 for 2026), and sindsTekst()
+ *   would render it as a negative age.
+ *
+ * Staleness is deliberately not checked here; see check-roadmap-belegging.mjs
+ * for why that reports rather than blocks.
+ */
+export function assertBelegging(
+  werkpakketten: { data: WerkpakketData }[],
+  nu = new Date(),
+): void {
+  const vandaag = nu.toISOString().slice(0, 10);
+  const problems: string[] = [];
+
+  for (const { data } of werkpakketten) {
+    const { stand, sinds } = data.belegging;
+
+    if (
+      stand === 'vrij' &&
+      data.onderzoek === 'beantwoord' &&
+      data.bouw === 'wel'
+    ) {
+      problems.push(
+        `werkpakket ${data.id} (${data.titel}): belegging.stand is 'vrij' ` +
+          'terwijl onderzoek beantwoord en bouw wel is; de kaart zou ' +
+          'uitnodigen tot werk dat af is',
+      );
+    }
+
+    if (sinds && sinds > vandaag) {
+      problems.push(
+        `werkpakket ${data.id} (${data.titel}): belegging.sinds (${sinds}) ` +
+          `ligt na vandaag (${vandaag})`,
+      );
+    }
+  }
+
+  if (problems.length) {
+    throw new Error(`De belegging klopt niet:\n  ${problems.join('\n  ')}`);
+  }
+}
+
+/**
+ * How long ago, in words.
+ *
+ * A frontmatter field cannot expire, so the page is what has to make its age
+ * visible: `sinds 2024-03-11` reads as metadata, `sinds 18 maanden` reads as a
+ * question. Computed at build time, which is accurate enough — the site
+ * rebuilds on every merge.
+ *
+ * Months, not days: the unit of this roadmap is a quarter, and "sinds 3 dagen"
+ * is noise. Anything under a month is "deze maand" rather than "0 maanden".
+ */
+export function sindsTekst(isoDatum: string, nu = new Date()): string {
+  const toen = new Date(`${isoDatum}T00:00:00Z`);
+  const maanden =
+    (nu.getUTCFullYear() - toen.getUTCFullYear()) * 12 +
+    (nu.getUTCMonth() - toen.getUTCMonth()) -
+    (nu.getUTCDate() < toen.getUTCDate() ? 1 : 0);
+
+  if (maanden < 1) return 'deze maand';
+  if (maanden === 1) return '1 maand';
+  return `${maanden} maanden`;
 }
 
 /**

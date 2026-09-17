@@ -15,9 +15,11 @@
  */
 import {
   GEEN_CATEGORIE,
+  GEEN_BELEGGING,
   getPrioriteit,
   getCategorie,
   getCapability,
+  getBelegging,
   zoektekst,
   type WerkpakketData,
 } from '~/lib/roadmap';
@@ -39,7 +41,20 @@ const { cel, class: className, headers } = Astro.props;
         const prioriteit = getPrioriteit(wp.data.prioriteit);
         const categorie = getCategorie(wp.data.categorie);
         const capability = getCapability(wp.data.capability);
+        const belegging = getBelegging(wp.data.belegging.stand);
         const tags = [
+          /* Alleen 'opgepakt' en 'klaar' krijgen een tag, niet 'vrij' en niet
+             de lege stand. Die twee zijn de stilzwijgende meerderheid, en
+             vijfenveertig kaarten met een tag die zegt dat er niets aan de
+             hand is, is ruis — bovendien is vier tags hier het plafond (zie
+             de opmerking bij de RFC-teller hieronder). */
+          belegging &&
+            belegging.id !== 'vrij' && {
+              color: belegging.tagColor,
+              text: belegging.label,
+              icon: belegging.id === 'klaar' ? 'done' : 'user',
+              label: belegging.label,
+            },
           prioriteit && {
             color: prioriteit.tagColor,
             text: prioriteit.label,
@@ -65,6 +80,7 @@ const { cel, class: className, headers } = Astro.props;
           <nldd-card
             class="rr-wp-card"
             href={`/roadmap/werkpakket/${wp.data.id}`}
+            background={belegging?.id === 'opgepakt' ? 'tinted' : undefined}
             accessible-label={[
               wp.data.titel,
               ...tags.map((t: any) => t.label),
@@ -73,6 +89,7 @@ const { cel, class: className, headers } = Astro.props;
                 : []),
             ].join(', ')}
             data-categorie={wp.data.categorie || GEEN_CATEGORIE}
+            data-belegging={wp.data.belegging.stand || GEEN_BELEGGING}
             data-zoek={zoektekst(wp.data)}
           >
             {/* nldd-card leaves padding to a nested container by design;
@@ -87,6 +104,7 @@ const { cel, class: className, headers } = Astro.props;
                     <nldd-tag
                       color={tag.color}
                       text={tag.text}
+                      icon={tag.icon}
                       accessible-label={tag.label}
                       size="sm"
                     />

@@ -94,6 +94,9 @@ onderzoeksvragen:
     draaien zonder dat de burger die vordering dubbel ziet?
 onderzoek: loopt
 bouw: niet
+belegging:
+  stand: opgepakt
+  sinds: '2026-09-17'
 rfcs:
   - 2
   - 7
