@@ -72,6 +72,14 @@ printf -- '---\n$id: algemene_wet_bestuursrecht\nbwb_id: BWBR0005537\n' \
     >"$corpus_dir/nl/wet/algemene_wet_bestuursrecht/2024-01-01.yaml"
 printf -- '---\n$id: wet_zonder_bron\n' \
     >"$corpus_dir/nl/wet/wet_zonder_bron/2024-01-01.yaml"
+# Mappen die géén wet zijn, maar in het echte corpus wel bestaan: de soortmap
+# (`wet`), een gemeente, en de scenario's naast een wet. Op "de map bestaat"
+# zouden die alle drie als wet doorgaan.
+mkdir -p "$corpus_dir/nl/wet/wet_op_de_zorgtoeslag/scenarios" \
+    "$corpus_dir/nl/gemeentelijke_verordening/amsterdam/apv_erfgrens"
+printf -- '---\n$id: apv_erfgrens\nbwb_id: CVDR0001\n' \
+    >"$corpus_dir/nl/gemeentelijke_verordening/amsterdam/apv_erfgrens/2024-01-01.yaml"
+: >"$corpus_dir/nl/wet/wet_op_de_zorgtoeslag/scenarios/een.feature"
 
 pr_json() { # $1 = auteur, $2 = body, $3 = head repo (leeg = zelfde repo)
     jq -n --arg u "$1" --arg b "$2" --arg r "${3:-o/r}" \
@@ -187,6 +195,12 @@ check "geen met alleen een streepje blokkeert" 1 \
     "$(pr_json anne 'Werkpakket: geen —   ')" "$geen_bestanden" \
     'zonder reden'
 
+# `geen` moet een woord op zichzelf zijn. Zonder die eis leest de poort een
+# echte slug die met "geen-" begint als ontheffing, en toetst hem nooit.
+check "een slug die met geen- begint is geen ontheffing" 1 \
+    "$(pr_json anne 'Werkpakket: geen-werkpakket-bestaat')" "$geen_bestanden" \
+    'niet bestaat'
+
 # --- wat er mis kan gaan ---
 
 check "een PR zonder de regel blokkeert" 1 \
@@ -257,6 +271,29 @@ check "een wet met een pad erin blokkeert" 1 \
     "$(pr_json anne 'Werkpakket: referentie-casus-i
 Wet: ../../etc')" "$geen_bestanden" \
     'niet in het corpus staat'
+
+# Een wet is een map mét versiebestanden. Deze drie mappen bestaan wel maar zijn
+# geen wet; op "de map bestaat" zouden ze groen geven en als geraakte wet in de
+# samenvatting belanden.
+check "de soortmap is geen wet" 1 \
+    "$(pr_json anne 'Werkpakket: referentie-casus-i
+Wet: wet')" "$geen_bestanden" \
+    'niet in het corpus staat'
+
+check "een scenariomap naast een wet is geen wet" 1 \
+    "$(pr_json anne 'Werkpakket: referentie-casus-i
+Wet: scenarios')" "$geen_bestanden" \
+    'niet in het corpus staat'
+
+check "een gemeentemap is geen wet" 1 \
+    "$(pr_json anne 'Werkpakket: referentie-casus-i
+Wet: amsterdam')" "$geen_bestanden" \
+    'niet in het corpus staat'
+
+check "een gemeentelijke verordening is wel een wet" 0 \
+    "$(pr_json anne 'Werkpakket: referentie-casus-i
+Wet: apv_erfgrens')" "$geen_bestanden" \
+    '[apv_erfgrens](https://wetten.overheid.nl/CVDR0001)'
 
 check "geen Wet-regel is in orde, hij is optioneel" 0 \
     "$(pr_json anne 'Werkpakket: referentie-casus-i')" "$geen_bestanden" \

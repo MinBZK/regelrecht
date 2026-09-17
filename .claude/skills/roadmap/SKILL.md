@@ -371,11 +371,15 @@ werkpakket kunnen optellen zonder dat er aan de poort iets verandert.
 
 ## Twee dingen om te weten
 
-**De pagina staat bewust nergens gelinkt.** Niet in de navigatie, niet op de
-landingspagina, en hij is uitgesloten van de zoekindex. Hij is wel gewoon
-publiek bereikbaar, op zowel `regelrecht.rijks.app` als
-`docs.regelrecht.rijks.app`. Wil je hem gaan linken, dan is dat het moment om
-de inhoud publicatierijp te maken: er staan nu werktitels en lege velden in.
+**De pagina wordt sinds #1465 vanaf de homepage gelinkt**, met een eigen sectie
+en een verwijzing in de voettekst; hij is nog wel uitgesloten van de zoekindex.
+Hij staat daarmee in de etalage: wat je erin zet wordt gelezen door iemand die
+niet weet hoe het werk ervoor staat. Er staan nog werktitels en lege velden in,
+en dat is op zichzelf in orde (zie hierboven), maar een werktitel die je niet
+uitgelegd wilt hebben hoort er niet meer in.
+
+Dat hij gelinkt is, telt ook voor de slugs: een URL die van de homepage af te
+bereiken is, is een URL die iemand deelt. Hernoem er dus niet lichtvaardig een.
 
 **Er is geen ondersteuning voor meerdere papers.** Het veld heet `paper` en het
 anker wordt getoetst aan dat ene paper. Komt er een tweede, dan is dat een

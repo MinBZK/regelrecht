@@ -186,8 +186,27 @@ fi
 # Elke waarde is het `$id` van een wet, en dat is ook de naam van de map waarin
 # zijn versies staan. Daarom volstaat de mapnaam om te toetsen en hoeft de poort
 # geen yaml te lezen.
+# Het nieuwste versiebestand van een wet, of niets als `$id` geen wet aanwijst.
+#
+# -maxdepth 4: corpus/regulation/<land>/<soort>/<wet>/, en een gemeentelijke
+# verordening zit precies op die diepte.
+wet_bestand() {
+    local dir
+    for dir in $(find "$CORPUS_DIR" -mindepth 1 -maxdepth 4 -type d -name "$1"); do
+        # Het hoogste versienummer is de laatste versie; `sort | tail -1` op
+        # datumnamen (2025-01-01.yaml) geeft die.
+        local nieuwste
+        nieuwste=$(ls "$dir"/*.yaml 2>/dev/null | sort | tail -1)
+        if [ -n "$nieuwste" ]; then
+            printf '%s' "$nieuwste"
+            return 0
+        fi
+    done
+    return 1
+}
+
 lees_wetten() {
-    local regel waarde ruw id onbekend=() gevonden=()
+    local regel waarde ruw id bestand onbekend=() gevonden=() bestanden_per_id=()
     regel=$(printf '%s' "$body" | tr -d '\r' |
         grep -iE '^[[:space:]]*Wet[[:space:]]*:' | tail -1)
     [ -n "$regel" ] || return 0
@@ -205,7 +224,7 @@ lees_wetten() {
         id=${id//\`/}
         [ -n "$id" ] || continue
         # Eerst de vorm, dan pas zoeken. `find -name` neemt een glob, dus een
-        # `*` zou anders de eerste de beste wet matchen en er een link met het
+        # `*` zou anders de eerste de beste map matchen en er een link met het
         # label `*` van maken: de poort zou dan iets bevestigen wat niet waar
         # is. Een `$id` is per schema kleine letters, cijfers en liggende
         # streepjes, dus alles daarbuiten is geen wet maar een patroon.
@@ -213,9 +232,16 @@ lees_wetten() {
             onbekend+=("$id")
             continue
         fi
-        # -maxdepth 4: corpus/regulation/<land>/<soort>/<wet>/
-        if [ -n "$(find "$CORPUS_DIR" -mindepth 1 -maxdepth 4 -type d -name "$id" -print -quit)" ]; then
+        # Een wet is een map met versiebestanden erin, niet zomaar een map.
+        # `corpus/regulation/nl/wet/` en `…/<wet>/scenarios/` bestaan ook, en op
+        # "bestaat de map" zou `Wet: scenarios` groen geven en in de
+        # samenvatting belanden als een wet die deze PR raakt. Dat is precies de
+        # valse bevestiging die deze regel hoort te voorkomen. Het bestand is
+        # meteen wat de link levert, dus het wordt hier één keer opgezocht.
+        bestand=$(wet_bestand "$id")
+        if [ -n "$bestand" ]; then
             gevonden+=("$id")
+            bestanden_per_id+=("${id}=${bestand}")
         else
             onbekend+=("$id")
         fi
@@ -233,10 +259,14 @@ lees_wetten() {
     # wetten.overheid.nl. Staat hij er niet, dan valt de poort terug op het
     # BWB-nummer, en anders op de naam alleen. Een verzonnen URL is erger dan
     # geen: een link die naar de verkeerde wet wijst wordt geloofd.
-    local id bestand url bwb
+    local url bwb paar
     for id in "${gevonden[@]}"; do
-        bestand=$(find "$CORPUS_DIR" -type d -name "$id" -exec sh -c \
-            'ls "$1"/*.yaml 2>/dev/null | sort | tail -1' _ {} \; | tail -1)
+        # Het bestand is bij het toetsen al gevonden; hier alleen weer opzoeken
+        # in plaats van de schijf nog eens af te lopen.
+        bestand=''
+        for paar in "${bestanden_per_id[@]}"; do
+            [ "${paar%%=*}" = "$id" ] && bestand="${paar#*=}" && break
+        done
         url=''
         if [ -n "$bestand" ] && [ -f "$bestand" ]; then
             url=$(sed -nE 's/^url:[[:space:]]*//p' "$bestand" | head -1 | tr -d '"'"'")
@@ -271,8 +301,13 @@ waarde=$(sed -E 's/^[[:space:]]*[Ww]erkpakket[[:space:]]*:[[:space:]]*//' <<<"$r
 # `geen` met een reden erachter. Het scheidingsteken mag een kort of lang
 # streepje zijn of een dubbele punt: wie de regel met de hand typt moet niet op
 # een teken struikelen dat zijn toetsenbord niet makkelijk geeft.
-if grep -qiE '^geen([[:space:]]*$|[[:space:]]*[-—:])' <<<"$waarde"; then
-    reden=$(sed -E 's/^[Gg]een[[:space:]]*[-—:]?[[:space:]]*//' <<<"$waarde")
+# `geen` moet een woord op zichzelf zijn. Met `[[:space:]]*` voor het streepje
+# zou `geen-werkpakket-bestaat` ook matchen: een echte slug die met "geen-"
+# begint werd dan stilzwijgend als ontheffing gelezen en nooit aan de roadmap
+# getoetst. Een streepje telt daarom alleen als er een spatie voor staat; een
+# dubbele punt mag er wel direct tegenaan, want die komt in een slug niet voor.
+if grep -qiE '^geen([[:space:]]*$|[[:space:]]+[-—:]|[[:space:]]*:)' <<<"$waarde"; then
+    reden=$(sed -E 's/^[Gg]een([[:space:]]+[-—:]|[[:space:]]*:)?[[:space:]]*//' <<<"$waarde")
     if [ -z "${reden//[[:space:]]/}" ]; then
         blocked "Deze pull request zegt \`Werkpakket: geen\` zonder reden. Schrijf op waarom dit werk bij geen enkel werkpakket hoort, bijvoorbeeld \`Werkpakket: geen — losse typefout in de docs\`. De reden is waar het om gaat: zonder is het een vakje dat zichzelf invult."
     fi
@@ -309,7 +344,12 @@ if [ ${#onbekend[@]} -gt 0 ]; then
     suggesties=''
     for slug in "${onbekend[@]}"; do
         kop=${slug%%-*}
-        dichtbij=$(grep -F "$kop" <<<"$geldig" | head -3 | tr '\n' '@' | sed 's/@$//; s/@/, /g')
+        # Een lege kop (de slug begon met een streepje) zou met `grep -F ""`
+        # élke slug matchen en drie willekeurige suggesties opleveren. `--`
+        # ervoor, want een kop die met een streepje begint leest grep als optie.
+        dichtbij=''
+        [ -n "$kop" ] && dichtbij=$(grep -F -- "$kop" <<<"$geldig" | head -3 |
+            tr '\n' '@' | sed 's/@$//; s/@/, /g')
         [ -n "$dichtbij" ] && suggesties="${suggesties} Bedoelde je bij \`${slug}\`: ${dichtbij}?"
     done
     lijst=$(printf '`%s`, ' "${onbekend[@]}" | sed 's/, $//')
