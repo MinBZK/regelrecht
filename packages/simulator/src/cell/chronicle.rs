@@ -271,7 +271,8 @@ impl ChronicleStore {
                 }
             }
             for event in &mut stream.events {
-                apply_schema(cell, &stream.stream, &stream.gebeurtenissen, event)?;
+                apply_grondslag(&stream.gebeurtenissen, event);
+                check_schema(cell, &stream.stream, &stream.gebeurtenissen, event)?;
                 check_event(cell, &stream.stream, &stream.key, event)?;
             }
         }
@@ -668,13 +669,11 @@ impl ChronicleStore {
         stream: &str,
         mut event: ChronicleEvent,
     ) -> Result<()> {
+        // Eerst aanvullen, dan toetsen: de grondslag van het schema hoort in het
+        // gram te staan voordat [`Self::checked_index`] ernaar kijkt. Die toets
+        // blijft de enige, ook hier.
         if let Some(index) = self.index_of(stream) {
-            apply_schema(
-                cell,
-                stream,
-                &self.streams[index].gebeurtenissen,
-                &mut event,
-            )?;
+            apply_grondslag(&self.streams[index].gebeurtenissen, &mut event);
         }
         let index = self.checked_index(cell, stream, &event)?;
         self.streams[index].events.push(event);
@@ -856,18 +855,14 @@ pub(crate) fn uncovered(
     missing
 }
 
-/// Vul aan wat het schema van deze gebeurtenis voorschrijft, en toets de rest.
+/// Vul de grondslag aan die het schema van deze gebeurtenis voorschrijft.
 ///
-/// Eén plek voor beide, want ze horen bij elkaar: de grondslag van het schema
-/// hoort in het gram te staan vóórdat er iets mee gebeurt, en wat daarna
-/// getoetst wordt is het gram zoals het in de kroniek komt te liggen en niet een
-/// halve versie ervan.
-fn apply_schema(
-    cell: &str,
-    stream: &str,
-    schema: &[GebeurtenisSchema],
-    event: &mut ChronicleEvent,
-) -> Result<()> {
+/// Vóór elke toets, en niet erna: wat getoetst en weggeschreven wordt is het
+/// gram zoals het in de kroniek komt te liggen, en niet een halve versie ervan.
+/// De toets zelf staat bewust niet hier — die heeft één plek
+/// ([`ChronicleStore::checked_index`]), zodat het optuigen en het vastleggen
+/// niet uit elkaar kunnen lopen.
+fn apply_grondslag(schema: &[GebeurtenisSchema], event: &mut ChronicleEvent) {
     if let Some(grondslag) = schema
         .iter()
         .find(|gebeurtenis| gebeurtenis.name == event.name)
@@ -875,7 +870,6 @@ fn apply_schema(
     {
         event.grondslag = grondslag;
     }
-    check_schema(cell, stream, schema, event)
 }
 
 /// Houdt deze vastlegging zich aan het schema van haar stroom?
