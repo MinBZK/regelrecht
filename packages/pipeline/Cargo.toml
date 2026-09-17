@@ -39,6 +39,12 @@ path = "src/bin/law_source.rs"
 name = "law-migrate"
 path = "src/bin/law_migrate.rs"
 
+# Draait de echte enrichment-lus tegen een map op schijf, zonder database
+# en zonder git, zodat elke wijziging aan de worker lokaal te beproeven is.
+[[bin]]
+name = "enrich-once"
+path = "src/bin/enrich_once.rs"
+
 [dependencies]
 regelrecht-corpus = { path = "../corpus" }
 # `validate` voor de JSON-schema-validatie van gegenereerde basis-wet-YAML
@@ -72,6 +78,7 @@ tempfile.workspace = true
 regex.workspace = true
 # `try_join_all` voor de vensters die één run naast elkaar loopt (enrich).
 futures = "0.3"
+tracing-subscriber.workspace = true
 
 [features]
 # Exposes regelrecht_pipeline::test_utils with helpers (e.g. TestDb) used by
