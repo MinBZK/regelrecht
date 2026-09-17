@@ -30,7 +30,7 @@ use crate::cell::{AcceptedCellValue, CellResolver};
 use crate::config;
 use crate::context::RuleContext;
 use crate::data_source::{DataSource, DataSourceRegistry, DictDataSource};
-use crate::engine::{ArticleEngine, ArticleResult, InputProvenance, OutputProvenance};
+use crate::engine::{ArticleEngine, ArticleResult, InputProvenance, OutputProvenance, SkippedHook};
 use crate::error::{EngineError, Result};
 use crate::operations::ValueResolver;
 use crate::priority;
@@ -112,6 +112,10 @@ struct ResolutionContext<'a> {
     /// leans on it however deep the call that accepted it, and no receipt that
     /// leaves it out can be read back (RFC-013).
     accepted_values: Vec<AcceptedCellValue>,
+    /// Every hook skipped for a missing input during this execution, wherever
+    /// it fired. Collected here for the same reason as `accepted_values`: it
+    /// is a fact about the execution, not about the article that fired it.
+    skipped_hooks: Vec<SkippedHook>,
     /// Where the engine is right now: the innermost provision being evaluated
     /// (RFC-039). Every trace step pushed while this is set inherits it as its
     /// `anchor`, so a step can name its article without each push site having
@@ -125,6 +129,24 @@ struct ResolutionContext<'a> {
 fn parse_calculation_date(calculation_date: &str) -> Result<NaiveDate> {
     NaiveDate::parse_from_str(calculation_date, "%Y-%m-%d")
         .map_err(|e| EngineError::InvalidDate(format!("{calculation_date}: {e}")))
+}
+
+/// The input an error says is missing, if that is what the error is about.
+///
+/// For [`LawExecutionService::set_skip_hooks_with_missing_inputs`]: only an
+/// input the hook cannot have makes a hook skippable — one that does not exist
+/// (`VariableNotFound`), or a required parameter that names nobody because it
+/// arrived as null or unknown (`MissingParameter`). Any other failure is a
+/// failure of the hook itself. A traced error is looked through, so the same
+/// failure reads the same with and without a trace.
+fn missing_input(error: &EngineError) -> Option<String> {
+    match error {
+        EngineError::VariableNotFound(name) | EngineError::MissingParameter { name, .. } => {
+            Some(name.clone())
+        }
+        EngineError::TracedError { source, .. } => missing_input(source),
+        _ => None,
+    }
 }
 
 /// Map a failed version selection to an honest engine error (RFC-019 §3):
@@ -160,6 +182,7 @@ impl<'a> ResolutionContext<'a> {
             cache: HashMap::new(),
             contextual_law_id: None,
             accepted_values: Vec::new(),
+            skipped_hooks: Vec::new(),
             anchor: None,
         })
     }
@@ -192,13 +215,15 @@ impl<'a> ResolutionContext<'a> {
         }
     }
 
-    /// Hand the execution's accepted values to a result on its way out.
+    /// Hand the execution's accepted values and skipped hooks to a result on
+    /// its way out.
     ///
     /// Called wherever an [`ArticleResult`] is produced. Nested calls run to
     /// completion before the result that contains them is finished, so the
     /// outermost call is the last to assign and its result carries them all.
     fn attach_accepted(&self, result: &mut ArticleResult) {
         result.accepted_values = self.accepted_values.clone();
+        result.skipped_hooks = self.skipped_hooks.clone();
     }
 
     /// Create a new resolution context with trace builder.
@@ -663,6 +688,10 @@ pub struct LawExecutionService {
     /// The cell tier of source resolution (RFC-022 §4.2), absent unless a
     /// caller granted it with [`Self::set_cell_resolver`].
     cells: Option<CellRegistration>,
+    /// Whether a hook that fails for a missing input is skipped and reported
+    /// instead of failing the execution; see
+    /// [`Self::set_skip_hooks_with_missing_inputs`].
+    skip_hooks_with_missing_inputs: bool,
 }
 
 /// A registered [`CellResolver`] together with the cell ids it answers for.
@@ -709,6 +738,7 @@ impl LawExecutionService {
             source_info: HashMap::new(),
             untranslatable_mode: UntranslatableMode::default(),
             cells: None,
+            skip_hooks_with_missing_inputs: false,
         }
     }
 
@@ -772,6 +802,21 @@ impl LawExecutionService {
     /// Set the untranslatable handling mode (RFC-012).
     pub fn set_untranslatable_mode(&mut self, mode: UntranslatableMode) {
         self.untranslatable_mode = mode;
+    }
+
+    /// Skip a hook whose execution fails for a missing input, instead of
+    /// failing the whole execution (RFC-008).
+    ///
+    /// Off by default: a hook that fires must succeed, because a missing
+    /// variable usually means the law cannot be applied. A caller that fires
+    /// general-law hooks on decisions that do not all carry the facts those
+    /// hooks read — a hook matches on legal character, decision type and
+    /// stage, not on the inputs of the article it fires on — can turn this on
+    /// to keep the decision and record the gap instead. Every skipped hook
+    /// lands in [`ArticleResult::skipped_hooks`] and in the trace; any other
+    /// hook error still fails the execution.
+    pub fn set_skip_hooks_with_missing_inputs(&mut self, skip: bool) {
+        self.skip_hooks_with_missing_inputs = skip;
     }
 
     /// Load a law from YAML string.
@@ -1542,6 +1587,7 @@ impl LawExecutionService {
                     resolved_inputs: BTreeMap::new(),
                     input_provenance: BTreeMap::new(),
                     accepted_values: res_ctx.accepted_values.clone(),
+                    skipped_hooks: res_ctx.skipped_hooks.clone(),
                     article_number: String::new(),
                     law_id: law_id.to_string(),
                     law_uuid: None,
@@ -1753,8 +1799,43 @@ impl LawExecutionService {
             res_ctx.leave(&hook_key);
 
             // If a hook fires (stage matches), it must succeed.
-            // A missing variable means the law cannot be applied — that's an error.
-            let result = hook_result?;
+            // A missing variable means the law cannot be applied — that's an
+            // error, unless the caller asked to record such a hook as skipped.
+            let result = match hook_result {
+                Ok(result) => result,
+                Err(error) if self.skip_hooks_with_missing_inputs => {
+                    let Some(missing_input) = missing_input(&error) else {
+                        return Err(error);
+                    };
+                    tracing::debug!(
+                        hook_law_id = %hook_law_id,
+                        hook_article = %hook_article_number,
+                        missing_input = %missing_input,
+                        "Skipping hook: missing input"
+                    );
+                    res_ctx.trace_set_message(format!(
+                        "Hook {:?} on {} stage {} → {}:{} not executed: input '{}' does not exist",
+                        hook_point,
+                        legal_character,
+                        stage,
+                        hook_law_id,
+                        hook_article_number,
+                        missing_input
+                    ));
+                    let skipped = SkippedHook {
+                        law_id: hook_law.id.clone(),
+                        article: hook_article.number.to_string(),
+                        hook_point: hook_point_str.to_string(),
+                        stage: stage.to_string(),
+                        missing_input,
+                    };
+                    if !res_ctx.skipped_hooks.contains(&skipped) {
+                        res_ctx.skipped_hooks.push(skipped);
+                    }
+                    continue;
+                }
+                Err(error) => return Err(error),
+            };
 
             for (name, value) in result.outputs {
                 let prov = OutputProvenance::Reactive {
@@ -6666,6 +6747,118 @@ articles:
             yaml.push_str("            value: $bedrag\n");
         }
         yaml
+    }
+
+    /// A decision law and a general law whose hook on that decision reads a
+    /// fact the decision does not carry.
+    fn hook_without_its_input() -> LawExecutionService {
+        let decision = r"
+$id: hook_skip_besluit
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Neemt een beschikking
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+        parameters:
+          - name: bedrag
+            type: number
+            required: true
+        output:
+          - name: toekenning
+            type: number
+        actions:
+          - output: toekenning
+            value: $bedrag
+";
+        let general = r"
+$id: hook_skip_algemeen
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '2'
+    text: Vuurt op elke beschikking en leest een eigen feit
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: BESLUIT
+      execution:
+        parameters:
+          - name: eigen_feit
+            type: boolean
+            required: true
+        output:
+          - name: gemotiveerd
+            type: boolean
+        actions:
+          - output: gemotiveerd
+            value: $eigen_feit
+";
+        let mut service = LawExecutionService::new();
+        service.load_law(decision).unwrap();
+        service.load_law(general).unwrap();
+        service
+    }
+
+    #[test]
+    fn test_a_hook_without_its_input_fails_the_decision_by_default() {
+        let service = hook_without_its_input();
+        let result = service.evaluate_law(
+            "hook_skip_besluit",
+            &["toekenning"],
+            stage_params(&[]),
+            "2025-01-01",
+        );
+        assert!(
+            result.is_err(),
+            "without the opt-in a hook that fires must succeed"
+        );
+    }
+
+    #[test]
+    fn test_a_hook_without_its_input_is_skipped_and_reported_when_asked() {
+        let mut service = hook_without_its_input();
+        service.set_skip_hooks_with_missing_inputs(true);
+        let result = service
+            .evaluate_law_with_trace(
+                "hook_skip_besluit",
+                &["toekenning"],
+                stage_params(&[]),
+                "2025-01-01",
+            )
+            .unwrap();
+        assert_eq!(result.outputs.get("toekenning"), Some(&Value::Int(100)));
+        assert!(
+            !result.outputs.contains_key("gemotiveerd"),
+            "a skipped hook produces nothing"
+        );
+        assert_eq!(
+            result.skipped_hooks,
+            vec![SkippedHook {
+                law_id: "hook_skip_algemeen".to_string(),
+                article: "2".to_string(),
+                hook_point: "post_actions".to_string(),
+                stage: "BESLUIT".to_string(),
+                missing_input: "eigen_feit".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn test_a_hook_with_its_input_runs_when_skipping_is_allowed() {
+        let mut service = hook_without_its_input();
+        service.set_skip_hooks_with_missing_inputs(true);
+        let mut params = stage_params(&[]);
+        params.insert("eigen_feit".to_string(), Value::Bool(true));
+        let result = service
+            .evaluate_law("hook_skip_besluit", &["toekenning"], params, "2025-01-01")
+            .unwrap();
+        assert!(result.skipped_hooks.is_empty());
     }
 
     fn stage_params(pairs: &[(&str, &str)]) -> BTreeMap<String, Value> {

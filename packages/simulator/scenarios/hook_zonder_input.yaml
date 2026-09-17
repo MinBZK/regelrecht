@@ -1,0 +1,126 @@
+---
+name: een hook zonder zijn input laat het besluit niet omvallen
+description: >-
+  Een algemene wet (`test_hook_zonder_input`) biedt twee artikelen als hook aan:
+  één op de stage BESLUIT en één op de stage BEKENDMAKING. Allebei lezen ze een
+  feit dat dit besluit niet draagt. Een hook vuurt op rechtskarakter en stage,
+  niet op de inputs van het artikel waarop hij vuurt — dus dat gebeurt, en het
+  hoort het besluit niet te breken.
+
+  Het besluit en de bekendmaking gaan door. Het gram van elk noemt de hook die
+  niet draaide onder `hook_niet_uitgevoerd`, het journaal zegt het ook, en het
+  optuigen waarschuwt al vooraf: een corpusfout blijft zichtbaar.
+
+clock:
+  start: 2024-01-01
+
+cells:
+  - id: uitvoerder
+    identity: Uitvoerder
+    laws:
+      - test_stage_uitkomsten
+      - test_awb_procedure
+      - test_hook_zonder_input
+
+    besluit_definitions:
+      - name: vaststelling
+        doc: een besluit dat het feit van de algemene eisen niet aanlevert
+        regulation: test_stage_uitkomsten
+        output: subsidie_vastgesteld
+        zaakkenmerk: subsidie/{bsn}
+        params:
+          - name: bsn
+            type: string
+        inputs:
+          bsn:
+            param: bsn
+
+    lexostatus_definitions:
+      - name: beschikking
+        doc: het besluit zoals het vastligt
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - subsidie_vastgesteld
+        reduction:
+          chronicle: beschikkingen
+          key: zaakkenmerk
+          latest: true
+          where:
+            stage: BESLUIT
+
+      - name: bekendmaking
+        doc: de bekendmaking, met wat de hooks die wél draaiden gaven
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - uiterste_betaaldatum_4_87
+        reduction:
+          chronicle: beschikkingen
+          key: zaakkenmerk
+          latest: true
+          where:
+            stage: BEKENDMAKING
+
+actions:
+  - id: uitvoerder.vaststelling
+    actor: uitvoerder
+    label: Stel de subsidie vast
+    decides:
+      cell: uitvoerder
+      besluit: vaststelling
+
+  - id: uitvoerder.bekendmaking
+    actor: uitvoerder
+    label: Maak de vaststelling bekend
+    publishes:
+      cell: uitvoerder
+      besluit: vaststelling
+
+# Het optuigen ziet beide gaten al: een verplichte parameter van een hook die er
+# bij dit besluit op die stage niet is.
+expect_warnings:
+  - >-
+    hook 'test_hook_zonder_input' artikel 1 vuurt bij besluit 'vaststelling' op
+    stage BESLUIT zonder input 'motivering_gegeven'
+  - >-
+    hook 'test_hook_zonder_input' artikel 2 vuurt bij besluit 'vaststelling' op
+    stage BEKENDMAKING zonder input 'adres_opgegeven'
+
+act:
+  - description: het besluit gaat door, ook al draait één hook niet
+    action: uitvoerder.vaststelling
+    values:
+      bsn: '999993653'
+    op_moment: 2024-03-01
+    expect:
+      subsidie_vastgesteld: true
+
+  - description: en de bekendmaking ook
+    action: uitvoerder.bekendmaking
+    values:
+      datum_bekendmaking: '2024-03-04'
+      toegezonden_aan_belanghebbende: true
+    op_moment: 2024-03-04
+
+queries:
+  - description: het besluit ligt er
+    cell: uitvoerder
+    lexostatus: beschikking
+    params:
+      zaakkenmerk: subsidie/999993653
+    op_moment: 2024-03-01
+    expect:
+      subsidie_vastgesteld: true
+
+  - description: >-
+      de bekendmaking ligt er, met de uitkomst van de hook die wél kon draaien
+    cell: uitvoerder
+    lexostatus: bekendmaking
+    params:
+      zaakkenmerk: subsidie/999993653
+    op_moment: 2024-03-04
+    expect:
+      uiterste_betaaldatum_4_87: '2024-04-15'

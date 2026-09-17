@@ -137,6 +137,8 @@ impl ApiError {
             | E::UndocumentedParameter { .. }
             | E::ParameterType { .. }
             | E::ParameterDate { .. }
+            // De dag van de bekendmaking is een veld dat de invuller verstuurt.
+            | E::BekendmakingDatumNietDeKlok { .. }
             | E::UnknownWorldSetting { .. } => StatusCode::BAD_REQUEST,
 
             _ => StatusCode::INTERNAL_SERVER_ERROR,

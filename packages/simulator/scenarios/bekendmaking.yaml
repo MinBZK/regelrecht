@@ -7,10 +7,14 @@ description: >-
   met `stage: BESLUIT` op T1 en een gram met `stage: BEKENDMAKING` op T2.
 
   Wat de bekendmaking toevoegt komt uit de **wet** en niet uit de uitvoerende
-  regeling: de uiterste betaaldatum (art. 4:87), de bezwaartermijn (6:8) en de
-  rechtsmiddelenclausule (3:45) staan in `test_awb_procedure` en vuren als hook
-  op de stage BEKENDMAKING. De uitvoerende regeling weet er niets van; ze zegt
-  alleen dat haar betaaltermijn `vanaf: bekendmaking` loopt.
+  regeling: de uiterste betaaldatum (art. 4:87), de bezwaartermijn (6:8), de
+  toets op de wijze van bekendmaken (3:41) en de rechtsmiddelenclausule (3:45)
+  staan in `test_awb_procedure` en vuren als hook op de stage BEKENDMAKING. De
+  uitvoerende regeling weet er niets van; ze zegt alleen dat haar betaaltermijn
+  `vanaf: bekendmaking` loopt, en onder welke uitkomst de wet de vervaldag geeft.
+
+  Het formulier van de bekendmaking komt ook uit die wet: de `requires` van de
+  stage BEKENDMAKING in haar procedure.
 
   De vraag tussen T1 en T2 is de proef op de som: op dat moment ligt het besluit
   er wél en de bekendmaking niet, en de reductie zegt dat ook — geen half
@@ -124,8 +128,8 @@ cells:
             type: string
         outputs:
           - stage
-          - bekendmaking_datum
-          - uiterste_betaaldatum
+          - op_voorgeschreven_wijze_bekendgemaakt
+          - uiterste_betaaldatum_4_87
           - bezwaartermijn_startdatum
           - bezwaartermijn_einddatum
           - bezwaar_bij
@@ -174,10 +178,12 @@ actions:
     actor: uitvoerder
     label: Maak het besluit bekend
     doc: >-
-      Geen formulier: wat er bekendgemaakt wordt is het besluit dat er ligt, en
-      wanneer het gebeurt is de stand van de klok. Of de actie kan, wordt
-      afgeleid uit de kroniek van de cel — er ligt een besluit-gram zonder
-      bekendmaking-gram — en staat dus niet als voorwaarde in dit bestand.
+      Het formulier staat niet hier: het zijn de `requires` van de stage
+      BEKENDMAKING in de procedure van de algemene wet. Wat er bekendgemaakt
+      wordt is het besluit dat er ligt, en de dag is de stand van de klok. Of de
+      actie kan, wordt afgeleid uit de kroniek van de cel — er ligt een
+      besluit-gram zonder bekendmaking-gram — en staat dus niet als voorwaarde
+      in dit bestand.
     publishes:
       cell: uitvoerder
       besluit: toekenning
@@ -195,6 +201,9 @@ act:
       de bekendmaking, zes weken later. Hier pas gaan de termijnen lopen, en
       hier pas staat vast wanneer er uiterlijk betaald moet zijn.
     action: uitvoerder.bekendmaking
+    values:
+      datum_bekendmaking: '2024-04-15'
+      toegezonden_aan_belanghebbende: true
     op_moment: 2024-04-15
 
 queries:
@@ -226,7 +235,8 @@ queries:
       Op T2 ligt de bekendmaking er, met de velden die de algemene wet erbij
       geeft: zes weken na de bekendmaking is de uiterste betaaldatum (4:87), de
       bezwaartermijn loopt vanaf de dag erna en eindigt zes weken na de
-      bekendmaking (6:8), en de clausule noemt het bevoegd gezag (3:45).
+      bekendmaking (6:8), de bekendmaking gebeurde op de voorgeschreven wijze
+      (3:41) en de clausule noemt het bevoegd gezag (3:45).
     cell: uitvoerder
     lexostatus: bekendmaking
     params:
@@ -234,8 +244,8 @@ queries:
     op_moment: 2024-04-15
     expect:
       stage: BEKENDMAKING
-      bekendmaking_datum: '2024-04-15'
-      uiterste_betaaldatum: '2024-05-27'
+      op_voorgeschreven_wijze_bekendgemaakt: true
+      uiterste_betaaldatum_4_87: '2024-05-27'
       bezwaartermijn_startdatum: '2024-04-16'
       bezwaartermijn_einddatum: '2024-05-27'
       bezwaar_bij: Uitvoerder

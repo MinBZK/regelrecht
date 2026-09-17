@@ -527,6 +527,8 @@ produces:
     chronolex:
       afwijzing_wanneer: {...}              # wanneer dit besluit een afwijzing is
       verplichtingen: [...]                 # wat dit besluit achterlaat
+      stage_uitkomsten: {...}               # welke uitkomsten van deze regeling
+                                            # pas bij de bekendmaking vaststaan
       vervangt_openstaande_termijnen: {...} # wat dit besluit van een eerdere
                                             # beschikking over dezelfde zaak
                                             # laat vervallen
@@ -560,7 +562,8 @@ geen pad is waarop het blok wél gelezen wordt en de strengheid niet.
 De sleutels staan hieronder: `afwijzing_wanneer` in
 [Een weigering is ook een besluit](#een-weigering-is-ook-een-besluit),
 `verplichtingen` en `vervangt_openstaande_termijnen` in
-[Verplichtingen](#verplichtingen-wat-een-besluit-achterlaat). Een sleutel erbij
+[Verplichtingen](#verplichtingen-wat-een-besluit-achterlaat), `stage_uitkomsten`
+in [De bekendmaking](#wat-de-bekendmaking-toevoegt-de-algemene-wet-en-de-eigen-regeling). Een sleutel erbij
 is één regel in de struct — en daarmee meteen bekend bij alle drie de lezers.
 
 ### Een weigering is ook een besluit
@@ -753,6 +756,7 @@ uitbreiding van RFC-013 stil achterlopen.
 | `legal_character` | altijd `BESCHIKKING`: dat is wat een decretogram is (RFC-022 §1.2), en een besluit over iets anders wordt bij het optuigen geweigerd |
 | `decision_type` | wélk besluit dit is: `AFWIJZING` zodra een afwijzingsvoorwaarde vervuld was, anders wat het uitvoerende artikel aanwijst (`produces.decision_type`), en `null` als de regeling zwijgt — zie [Een weigering is ook een besluit](#een-weigering-is-ook-een-besluit) |
 | `afwijzingsgrond` | de vervulde afwijzingsvoorwaarden: per stuk de uitkomst, de waarde die afwees en het artikel dat haar voortbrengt. Leeg bij elk besluit dat niet afwees |
+| `hook_niet_uitgevoerd` | de hooks die op dit besluit vuurden maar niet draaiden omdat een input er niet was: per stuk het artikel (regeling, versie, artikelnummer), het hook-punt en de ontbrekende input. Leeg als elke hook draaide — zie [Een hook zonder zijn input](#een-hook-zonder-zijn-input) |
 | de uitkomsten | de uitkomst die het besluit *is*, plus wat `outputs` erbij noemt |
 | `inputs` | wat de besluit-definitie zelf aanleverde, **met herkomst per waarde**: uit een eigen kroniek (met het moment van die vastlegging), uit een parameter, of geaccepteerd van een andere cel |
 | `chronicle_sources` | de eigen kronieken die als databron klaarstonden, elk met haar stand op het moment van het besluit: aantal grammen en een hash erover (RFC-022 §1.3). Wat de engine daaruit las, staat in de trace van het receipt |
@@ -1038,8 +1042,9 @@ bedrag toe.
   niet bekendgemaakt is, werkt niet (Awb 3:40), dus er valt niets in te
   roosteren. De verplichting komt dan met bedrag en partijen in het besluit te
   staan onder `wacht_op_bekendmaking`, en het schema ontstaat pas bij de
-  bekendmaking — met als eerste vervaldag de **uiterste betaaldatum** die de
-  algemene wet daar uitrekent (Awb 4:87), onder de naam `uiterste_betaaldatum`.
+  bekendmaking — met als eerste vervaldag de uitkomst die de verplichting zelf
+  als `vervaldatum` noemt, onder de naam die de wet eraan geeft (bijvoorbeeld de
+  uiterste betaaldatum van Awb 4:87). Het platform kent daar geen vaste naam voor.
   Zolang die bekendmaking uitblijft komt de klok niets na, en er wordt geen dag
   verzonnen om toch maar iets te kunnen inroosteren. Levert de stage die datum
   niet, dan valt de bekendmaking om met de melding dat de wet haar hoort te
@@ -1324,7 +1329,7 @@ Een besluit nemen is niet hetzelfde als een besluit laten werken. Awb 3:40: een
 besluit treedt niet in werking voordat het is **bekendgemaakt**. RFC-008 maakt
 daar een **stage** van — een beschikking doorloopt een procedure, en BESLUIT en
 BEKENDMAKING zijn twee stappen daarin — en RFC-022 §1.2 zegt wat dat in een
-kroniek betekent: elke stage legt haar **eigen elementaire gram** op hetzelfde
+kroniek betekent: elke stage legt haar **eigen elementair gram** op hetzelfde
 zaakkenmerk.
 
 Zo staat het hier ook. Na de bekendmaking liggen er in `beschikkingen` twee
@@ -1334,7 +1339,8 @@ elkaar houdt:
 | | het besluit | de bekendmaking |
 |---|---|---|
 | `stage` | `BESLUIT` | `BEKENDMAKING` |
-| draagt | de uitkomsten, de inputs met hun herkomst, het receipt, het schema van de verplichtingen | de dag van de bekendmaking, de uitkomsten van de hooks op die stage met hun artikel, en de termijnen die nu pas gaan lopen |
+| `op_moment` | de dag van het besluit | de dag van de bekendmaking |
+| draagt | de uitkomsten, de inputs met hun herkomst, het receipt, het schema van de verplichtingen, de hooks die niet draaiden | wat er bij de bekendmaking ingevuld is (als inputs), de uitkomsten van de hooks op die stage en van de eigen regeling met hun artikel, de hooks die niet draaiden, en de termijnen die nu pas gaan lopen |
 | ontstaat door | `Cell::decide` | `Cell::bekendmaken` |
 
 **Geen veld dat erbij komt, maar een gram dat erbij komt.** Het besluit-gram
@@ -1343,36 +1349,182 @@ Wie op een moment tussen de twee vraagt, ziet daarom het besluit wél en de
 bekendmaking niet — en dat is precies wat een reductie hoort te zeggen over een
 besluit dat nog niet werkt.
 
-**Wat de bekendmaking toevoegt, komt uit de algemene wet.** De uiterste
-betaaldatum (Awb 4:87), de bezwaartermijn (6:7 jo. 6:8) en de
-rechtsmiddelenclausule (3:45) hangen aan de bekendmaking en niet aan de
-uitvoerende regeling. Ze komen hier dan ook niet uit die regeling: het zijn
-**hooks** — artikelen die zich met `hooks.applies_to` op een rechtskarakter en een
-stage aanbieden (RFC-007/RFC-008) — en de engine vuurt ze af als ze de stage
-uitvoert. De uitvoerende regeling weet er niets van, en dat is de winst: zou elke
-uitvoeringsregeling haar eigen uiterste betaaldatum uitrekenen, dan zouden die
-per regeling uiteen gaan lopen zonder dat er aan het recht iets verandert.
+**De regel die hier alles bepaalt: de wet staat in de YAML.** Het platform kent
+voor de bekendmaking geen vaste namen. Hoe de dag van de bekendmaking heet, welke
+feiten erbij horen, welke uitkomst een betaaltermijn laat ingaan en wat de eigen
+regeling pas op die dag vaststelt: dat zegt de wet, en de opstelling leest het
+daar. Een wet omnoemen zodat ze op het platform past, zou de werking van die wet
+vertekenen.
 
-In het gram staat per uitkomst wélk artikel haar voortbracht (`hooks`, met
-regeling, versie en artikelnummer). Een uiterste betaaldatum zonder die herkomst
-is niet te onderscheiden van een datum die de uitvoerder zelf bedacht.
+#### Het formulier komt uit de procedure
+
+Een `publishes`-actie heeft geen eigen lijst velden. Haar formulier is wat de
+stage BEKENDMAKING in `requires` vraagt, in de procedure die voor het besluit
+geldt — gevonden zoals de engine haar vindt, op het rechtskarakter en het
+eventuele `procedure_id` van het artikel dat de aansturende uitkomst voortbrengt,
+in de versie die op het moment van het besluit gold:
+
+```yaml
+# in de algemene wet
+procedure:
+  - id: beschikking
+    default: true
+    applies_to:
+      legal_character: BESCHIKKING
+    stages:
+      - name: BESLUIT
+      - name: BEKENDMAKING
+        requires:
+          - name: datum_bekendmaking               # het eerste datumveld: de dag
+            type: date
+          - name: toegezonden_aan_belanghebbende   # een feit over de wijze van
+            type: boolean                          # bekendmaken (Awb 3:41)
+```
+
+De feiten over de wijze van bekendmaken horen bij de bekendmaking zelf, niet bij
+het besluit dat bekendgemaakt wordt. Wat de wet erop toetst (was het besluit op
+de voorgeschreven wijze bekendgemaakt?) is een uitkomst van de wet en geen
+eigenschap van het gram: een stage-gram bestaat niet vanzelf "correct".
+
+Vier regels, en ze staan alle vier vast:
+
+- **Het eerste `requires`-veld van type `date` is de dag van de bekendmaking.** De
+  keuze voor "het eerste datumveld" en niet voor een markering is bewust: het
+  schema van `requires` hoeft er niet voor te veranderen, en een procedure die bij
+  de bekendmaking een tweede datum vraagt, zet de dag van de bekendmaking
+  vooraan. Die dag is het `op_moment` van het gram, en dus de stand van de klok:
+  een andere dag invullen wordt geweigerd, met het veld en de klok in de melding.
+  Vraagt de procedure geen datum, dan tuigt de wereld niet op — er is dan geen
+  naam om de dag onder aan de wet te geven.
+- **Een datumveld krijgt standaard de klok**, net als in elk ander formulier
+  (zie [Voorinvulling](#voorinvulling-wat-de-wereld-al-weet)).
+- **Een ontbrekend veld weigert de actie**, met een melding die het veld noemt, en
+  er wordt niets vastgelegd. Een veld van type `array` of `object` kan een
+  formulier niet invullen en wordt bij het optuigen geweigerd.
+- **De waarden gaan als stage-parameters de engine in** (`StageState`), en komen
+  in het gram als `inputs` met herkomst `parameter` — dezelfde vorm als de
+  parameters van een besluit, en in het beeld dus per waarde met die herkomst.
+
+#### Wat de bekendmaking toevoegt: de algemene wet en de eigen regeling
+
+De uiterste betaaldatum (Awb 4:87), de bezwaartermijn (6:7 jo. 6:8), de toets op
+de wijze van bekendmaken (3:41) en de rechtsmiddelenclausule (3:45) hangen aan de
+bekendmaking van **elke** beschikking. Ze komen daarom niet uit de uitvoerende
+regeling: het zijn **hooks** — artikelen die zich met `hooks.applies_to` op een
+rechtskarakter en een stage aanbieden (RFC-007/RFC-008) — en de engine vuurt ze af
+als ze de stage uitvoert. Zou elke uitvoeringsregeling haar eigen uiterste
+betaaldatum uitrekenen, dan gingen die per regeling uiteen lopen zonder dat er aan
+het recht iets verandert.
+
+Maar niet alles wat van de bekendmaking afhangt, is algemeen. Dat een voorschot
+uiterlijk twee weken na de bekendmaking van de **verlening** betaald wordt, of dat
+er op die dag tijdig beslist is, is werking van één regeling en van één besluit.
+Een hook kan dat niet zeggen: hij vuurt op elke beschikking van hetzelfde soort,
+en een verlening en een vaststelling zijn allebei `TOEKENNING`. Dat staat daarom
+op het artikel van het besluit zelf:
+
+```yaml
+# in de uitvoerende regeling, op het artikel van de verlening
+produces:
+  legal_character: BESCHIKKING
+  decision_type: TOEKENNING
+  extensions:
+    chronolex:
+      stage_uitkomsten:
+        BEKENDMAKING:
+          - voorschot_uiterlijk_op    # een uitkomst van deze regeling
+```
+
+Bij de bekendmaking voert de engine de regeling van het besluit uit op die
+uitkomsten, **onder het recht van het besluitmoment**, met de inputs uit het
+BESLUIT-gram plus de stage-parameters. Het stage-gram draagt ze naast de
+hook-uitkomsten, met hun herkomst onder `stage_uitkomsten` (regeling, versie en
+artikel), en het receipt van het gram dekt beide uitvoeringen: die van de eigen
+regeling hangt als tak onder de trace van de stage.
+
+Bij het optuigen wordt geweigerd wat hier stil verkeerd zou gaan: een andere
+stage dan BEKENDMAKING (het platform voert na het besluit geen andere uit), een
+uitkomst die de regeling niet kent, een uitkomst die het besluit al vastlegt (een
+uitkomst in het BESLUIT-gram wordt niet herberekend en niet overschreven), een
+uitkomst die ook een hook op die stage levert (dan had ze twee herkomsten) en een
+naam die een vast veld van `beschikkingen` is.
+
+In het gram staat per uitkomst wélk artikel haar voortbracht: `hooks` voor de
+algemene wet (met regeling, versie, artikelnummer en hook-punt) en
+`stage_uitkomsten` voor de eigen regeling. Een uiterste betaaldatum zonder die
+herkomst is niet te onderscheiden van een datum die de uitvoerder zelf bedacht.
 
 **De stage rekent niet opnieuw.** Wat de engine uitvoert, doet ze op de inputs
 zoals ze in het besluit-gram staan en op het **moment van het besluit** — onder
-het recht van toen, op de feiten van toen. Wat er van vandaag is, is de dag van de
-bekendmaking, en die gaat als parameter mee (`bekendmaking_datum`, naast
-`competent_authority` uit het gram). Zou de stage op vandaag rekenen, dan kon een
+het recht van toen, op de feiten van toen. Wat er van vandaag is, is het
+formulier van de bekendmaking, en dat gaat als parameters mee, naast
+`competent_authority` uit het gram. Zou de stage op vandaag rekenen, dan kon een
 bekendmaking een ander bedrag opleveren dan het besluit dat ze bekendmaakt.
 
 Om diezelfde reden gaat er bij een bekendmaking **niets over een celgrens**: wat
 er van een ander geaccepteerd is, staat al in het gram. Er is geen brug, geen
 resolver en geen vraag.
 
+#### Een verplichting noemt zelf haar vervaldatum
+
+Een verplichting met `vanaf: bekendmaking` wacht op een dag die de wet pas bij de
+bekendmaking geeft. Wélke uitkomst dat is, zegt de verplichting zelf:
+
+```yaml
+verplichtingen:
+  - soort: betaling
+    bedrag: $hoogte_tegemoetkoming
+    ritme: ineens
+    vanaf: bekendmaking
+    vervaldatum: uiterste_betaaldatum_4_87   # de naam die de wet eraan geeft
+    grondslag: ...
+```
+
+Die uitkomst mag van een hook op de stage BEKENDMAKING komen of uit de eigen
+`stage_uitkomsten` van het artikel. Het optuigen weigert `vanaf: bekendmaking`
+zonder `vervaldatum` (met de uitkomsten die de stage wél kan leveren in de
+melding), een `vervaldatum` die de bekendmaking niet oplevert, en een
+`vervaldatum` zonder `vanaf: bekendmaking`. De naam reist mee in het besluit-gram
+(`wacht_op_bekendmaking[].vervaldatum_uit`): wat het besluit beloofde, staat in
+het besluit, ook waaraan de dag straks ontleend wordt. Levert de stage die
+uitkomst toch niet, of geen datum, dan valt de bekendmaking om met de naam in de
+melding — er wordt geen dag verzonnen.
+
+#### Een hook zonder zijn input
+
+Een hook biedt zich aan op rechtskarakter, besluittype en stage, en weet niet
+welke feiten het besluit waarop hij vuurt draagt. Een algemene wet kan dus een
+artikel aanbieden dat een feit leest dat alleen sommige besluiten hebben. Zou dat
+het besluit laten omvallen, dan breekt één artikel elke beschikking van een
+soort.
+
+Het besluit gaat daarom door, bij de stage BESLUIT en bij de stage BEKENDMAKING.
+De engine slaat de hook over (`set_skip_hooks_with_missing_inputs`, alleen op het
+besluit-pad aangezet; zonder die keuze moet een hook die vuurt slagen), en het
+gram noemt hem onder `hook_niet_uitgevoerd`: het artikel met regeling en versie,
+het hook-punt en de input die er niet was. Het veld staat in elk gram, leeg als
+elke hook draaide. Het journaal schrijft er een regel over (`kind:
+hook_niet_uitgevoerd`) onder het besluit of de bekendmaking.
+
+En omdat zo'n gat nu stil zou kunnen blijven, **waarschuwt het optuigen** al
+(`soort: hook_zonder_input`): voor elk besluit op de stage BESLUIT, en voor elk
+besluit dat een actie bekendmaakt ook op de stage BEKENDMAKING, elke hook die
+vuurt en een verplichte parameter vraagt die daar niet te krijgen is. Dat is een
+droge toets op wat vooruit vaststaat — de inputs van het besluit, de parameters,
+inputs en uitkomsten van het uitvoerende artikel, en bij de bekendmaking de
+uitkomsten van het besluit, het bevoegd gezag en de `requires` van de stage. Wat
+een hook dieper in de wet leest, blijkt pas bij de uitvoering, en staat dan in het
+gram en het journaal.
+
+#### Wat er verder geldt
+
 `from_decretogram` leest standaard het gram van de stage `BESLUIT` terug: een
 vaststelling die naar de verlening terugkijkt, kijkt naar het besluit en niet naar
 de stage die erna kwam. Een reductie over `beschikkingen` kan met `where:` op
-`stage` filteren en zo allebei de vragen stellen — *wat is er besloten* en *is het
-bekendgemaakt, en wat geldt er sindsdien*.
+`stage` (en `besluit`) filteren en zo allebei de vragen stellen — *wat is er
+besloten* en *is het bekendgemaakt, en wat geldt er sindsdien*. De inputs van het
+formulier staan een laag dieper in het gram en zijn geen uitkomst om over te
+publiceren; de dag van de bekendmaking is het moment van het gram.
 
 ```yaml
 # in het wereldbestand, bij de cel die besloot
@@ -1382,7 +1534,8 @@ actions:
     label: Maak het besluit bekend
     publishes:
       cell: uitvoerder                 # de cel die besloot
-      besluit: toekenning              # de besluit-definitie
+      besluit: toekenning              # de besluit-definitie; het formulier
+                                       # komt uit de procedure
 
 lexostatus_definitions:
   - name: bekendmaking
@@ -1390,7 +1543,7 @@ lexostatus_definitions:
       - name: zaakkenmerk
         type: string
     outputs:
-      - uiterste_betaaldatum           # uit de wet, langs de hook
+      - uiterste_betaaldatum_4_87      # uit de wet, langs de hook
       - bezwaartermijn_einddatum
     reduction:
       chronicle: beschikkingen
@@ -1438,12 +1591,26 @@ nergens. De procedure van de testregeling
 `fixtures/regulation/test_awb_procedure` kent daarom precies twee stages: wat er
 staat, is wat het platform ook werkelijk uitvoert.
 
-Het scenario staat in
-[`scenarios/bekendmaking.yaml`](scenarios/bekendmaking.yaml) (een besluit op T1,
-een bekendmaking op T2, en een vraag ertussenin die het besluit wél ziet en de
-bekendmaking niet), met
-[`scenarios/bekendmaking_blijft_uit.yaml`](scenarios/bekendmaking_blijft_uit.yaml)
-als tegenscenario. De vorm van het gram wordt afgerekend in
+De scenario's:
+
+- [`scenarios/bekendmaking.yaml`](scenarios/bekendmaking.yaml): een besluit op
+  T1, een bekendmaking op T2 met het formulier uit de procedure, en een vraag
+  ertussenin die het besluit wél ziet en de bekendmaking niet;
+  [`scenarios/bekendmaking_blijft_uit.yaml`](scenarios/bekendmaking_blijft_uit.yaml)
+  is het tegenscenario;
+- [`scenarios/bekendmaking_stage_uitkomsten.yaml`](scenarios/bekendmaking_stage_uitkomsten.yaml):
+  een verlening en een vaststelling van hetzelfde soort, waarvan alleen de
+  bekendmaking van de verlening een uitkomst van de eigen regeling draagt — en
+  een verplichting die die uitkomst als vervaldatum neemt;
+- [`scenarios/bekendmaking_inhalen.yaml`](scenarios/bekendmaking_inhalen.yaml):
+  een stage-uitkomst op een input van het besluit, als vervaldatum die bij een
+  late bekendmaking al voorbij is — en dus op de dag van de bekendmaking wordt
+  ingehaald;
+- [`scenarios/hook_zonder_input.yaml`](scenarios/hook_zonder_input.yaml): een
+  hook op elke stage die zijn input mist, een besluit en een bekendmaking die
+  gewoon doorgaan, en de waarschuwingen van het optuigen.
+
+De vorm van de grammen, het formulier en zijn weigeringen worden afgerekend in
 [`tests/bekendmaking.rs`](tests/bekendmaking.rs).
 
 ### Het zaakkenmerk moet bij precies één zaak horen
@@ -1977,7 +2144,7 @@ opleveren:
 | `queries` | een consument bevraagt een cel |
 | `query_via_transport` | een cel bevraagt een andere cel (een sonde) |
 | `query_graph` | het toegestane vraaggraf: welke cel welke andere mag bevragen |
-| `expect_warnings` | de waarschuwingen die deze run moet melden: gemiste termijnen, en regelingen zonder bevoegd gezag |
+| `expect_warnings` | de waarschuwingen die deze run moet melden: gemiste termijnen, regelingen zonder bevoegd gezag, en hooks zonder hun input |
 
 Elke stap draagt zijn eigen verwachting. De assertie hoort bij het bestand, niet
 bij Rust: een nieuw testgeval is een nieuw bestand.
@@ -2165,8 +2332,9 @@ actions:                                        # wat een actor kan doen
     actor: toeslagen
     label: Maak het besluit bekend
     publishes:                                  # de volgende stage van de
-      cell: toeslagen                           # procedure (RFC-008); geen
-      besluit: zorgtoeslag_besluit              # formulier, en of ze nu kan
+      cell: toeslagen                           # procedure (RFC-008); het
+      besluit: zorgtoeslag_besluit              # formulier komt uit die
+                                                # procedure, en of ze nu kan
                                                 # volgt uit de kronieken
 
 deadlines:                                      # termijnen die waarschuwen
@@ -2456,10 +2624,10 @@ Drie vormen, en precies één per actie:
   het besluit**: de `params` die de besluit-definitie al documenteert. Een tweede
   lijst in de actie zou daarvan gaan afwijken.
 - **`publishes`** maakt het laatste besluit van een cel **bekend**: de volgende
-  stage van de procedure die de algemene wet voor een beschikking declareert. Zij
-  heeft geen formulier — wat er bekendgemaakt wordt ligt al in de kroniek, en
-  wannéér het gebeurt is de stand van de klok. Zie
-  [De bekendmaking](#de-bekendmaking-een-tweede-gram-op-dezelfde-zaak).
+  stage van de procedure die de algemene wet voor een beschikking declareert. Haar
+  formulier is wat die stage in `requires` vraagt; wát er bekendgemaakt wordt ligt
+  al in de kroniek, en wannéér het gebeurt is de stand van de klok. Zie
+  [Het formulier komt uit de procedure](#het-formulier-komt-uit-de-procedure).
 
 Elk veld van zo'n formulier mag voorgevuld staan met wat de wereld al weet; zie
 [Voorinvulling](#voorinvulling-wat-de-wereld-al-weet).
@@ -2617,6 +2785,7 @@ van ze op hun veldnamen te moeten herkennen:
 |---|---|---|
 | `gemiste_termijn` | een termijn verstreek zonder dat het feit er lag | het `label` uit het wereldbestand |
 | `geen_bevoegd_gezag` | er is besloten onder een regeling die geen bevoegd gezag declareert (zie [Wie mag besluiten](#wie-mag-besluiten)) | `regeling '<$id>' declareert geen bevoegd gezag` |
+| `hook_zonder_input` | bij het optuigen: een hook vuurt bij een besluit op een verplichte parameter die er daar niet is (zie [Een hook zonder zijn input](#een-hook-zonder-zijn-input)) | `hook '<$id>' artikel <nr> vuurt bij besluit '<besluit>' op stage <STAGE> zonder input '<naam>'` |
 
 ### Portaal en inzicht
 
@@ -2836,7 +3005,7 @@ een vraag die over een celgrens ging.
 | `seq` | de plek in het journaal, vanaf 0 — waarnaar `parent` verwijst |
 | `moment` | het moment in de logische tijd |
 | `actor` | `actor` (een actie), `cell` (een cel die zelf besloot of vroeg) of `klok` |
-| `kind` | `vastlegging`, `besluit`, `betaling`, `niet_nagekomen`, `termijn` of `vraag` |
+| `kind` | `vastlegging`, `besluit`, `bekendmaking`, `betaling`, `niet_nagekomen`, `termijn`, `hook_niet_uitgevoerd` of `vraag` |
 | `description` | korte omschrijving, in de woorden van het wereldbestand |
 | `grams` | verwijzingen naar de grammen die erdoor ontstonden: cel, kroniek, gram-id (`<cel>|<kroniek>|<plek>`) |
 | `changes` | wat er aan de stand van de zaak veranderde, per betrokken cel |
@@ -3061,7 +3230,7 @@ getal, een booleaanse waarde of een datum die er letterlijk in staat, wordt een
 tekst — en het JSON-schema staat er ook niets anders toe. Een artikel dat een
 ander artikel "zes weken" wil aanreiken, kan dat dus niet langs die weg. De
 testregeling hierboven rekent daarom op wat de **stage** binnenkrijgt
-(`bekendmaking_datum`, `competent_authority`) en op een eigen uitkomst voor het
+(`datum_bekendmaking`, `competent_authority`) en op een eigen uitkomst voor het
 aantal weken (art. 6:7), die de andere artikelen als gewone input ophalen.
 Getypeerde `source.parameters` zouden een wijziging van het schema vragen, en
 dat is een eigen beslissing.

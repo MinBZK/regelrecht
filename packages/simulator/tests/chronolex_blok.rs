@@ -132,3 +132,76 @@ fn de_publieke_wereld_tuigt_gewoon_op() {
     World::from_definition(&definition, &regulation_root())
         .unwrap_or_else(|e| panic!("de publieke wereld hoort op te tuigen: {e}"));
 }
+
+/// **Een stage-uitkomst die het besluit al vastlegt, weigert bij het optuigen.**
+///
+/// Wat in het gram van het besluit staat, wordt bij een latere stage niet
+/// opnieuw uitgerekend en niet overschreven. Een besluit-definitie die de
+/// uitkomst die het artikel pas bij de bekendmaking laat vaststaan zelf al
+/// vastlegt, zou precies dat doen.
+#[test]
+fn een_stage_uitkomst_in_het_besluit_weigert_bij_het_optuigen() {
+    let error = optuigen(
+        r"
+clock:
+  start: 2024-01-01
+
+cells:
+  - id: uitvoerder
+    identity: Uitvoerder
+    laws:
+      - test_stage_uitkomsten
+      - test_awb_procedure
+    komt_na:
+      - Uitvoerder
+    chronicles:
+      - stream: betalingen
+        key: zaakkenmerk
+        gebeurtenissen:
+          - name: betaling_gedaan
+            intake: betaling
+            grondslag: art. 4:89
+            fields: &velden
+              - name: zaakkenmerk
+                type: string
+              - name: bedrag
+                type: amount
+              - name: volgnummer
+                type: number
+              - name: besluit
+                type: string
+              - name: schuldenaar
+                type: string
+              - name: schuldeiser
+                type: string
+          - name: betaling_gemeld
+            intake: levering
+            grondslag: art. 4:89
+            fields: *velden
+    besluit_definitions:
+      - name: verlening
+        doc: een verlening die de stage-uitkomst al in haar eigen gram zet
+        regulation: test_stage_uitkomsten
+        output: subsidie_verleend
+        outputs:
+          - hoogte_voorschot
+          - voorschot_uiterlijk_op
+        zaakkenmerk: subsidie/{bsn}
+        params:
+          - name: bsn
+            type: string
+          - name: datum_bekendmaking
+            type: date
+        inputs:
+          bsn:
+            param: bsn
+          datum_bekendmaking:
+            param: datum_bekendmaking
+",
+    );
+    assert!(
+        matches!(error, SimulatorError::StageUitkomst { .. }),
+        "verwachtte StageUitkomst, kreeg {error}"
+    );
+    assert!(error.to_string().contains("voorschot_uiterlijk_op"));
+}

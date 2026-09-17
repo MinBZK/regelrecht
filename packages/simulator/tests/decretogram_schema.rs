@@ -210,6 +210,13 @@ fn het_schema_van_de_toekenning_ligt_vast() {
                 Herkomst::Lexogram,
                 false
             ),
+            (
+                "hook_niet_uitgevoerd",
+                Some("array"),
+                None,
+                Herkomst::Platform,
+                false
+            ),
             ("inputs", Some("object"), None, Herkomst::Platform, false),
             // De termijnen volgen uit de verplichting hierboven, dus dit veld
             // wijst naar hetzelfde artikel.
@@ -369,6 +376,13 @@ fn het_schema_van_de_vaststelling_ligt_vast() {
             ),
             (
                 "afwijzingsgrond",
+                Some("array"),
+                None,
+                Herkomst::Platform,
+                false
+            ),
+            (
+                "hook_niet_uitgevoerd",
                 Some("array"),
                 None,
                 Herkomst::Platform,

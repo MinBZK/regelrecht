@@ -100,6 +100,12 @@ pub enum JournalKind {
     /// feit er lag, ze verviel door een later besluit, of er valt niets te
     /// betalen omdat de verplichting op nul uitkwam.
     Termijn,
+    /// Een hook vuurde op een besluit of een bekendmaking maar draaide niet,
+    /// omdat een input die hij nodig heeft er niet was.
+    ///
+    /// Een eigen soort: het gram ligt er gewoon, en het nieuws is dat een artikel
+    /// van de wet er níet op toegepast is.
+    HookNietUitgevoerd,
     /// Een vraag die over een celgrens ging.
     Vraag,
 }

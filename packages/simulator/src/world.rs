@@ -46,10 +46,11 @@
 
 use crate::accept::CellBridge;
 use crate::cell::{
-    check_documented_params, check_parameter_value, check_prefill_values, Bekendmaking, Cell,
-    CellConfig, ChronicleEvent, DecisionContext, DeclaredObligations, Decretogram,
-    DocumentedParameter, InputOrigin, Intake, Lexostatus, ObligationDue, PartyBindings, Prefill,
-    BESCHIKKINGEN, BETALINGEN, ZAAKKENMERK,
+    check_documented_params, check_parameter_value, check_prefill_values, Bekendmaking,
+    BekendmakingStand, Cell, CellConfig, ChronicleEvent, DecisionContext, DeclaredObligations,
+    Decretogram, DocumentedParameter, HookNietUitgevoerd, InputOrigin, Intake, Lexostatus,
+    ObligationDue, PartyBindings, Prefill, BESCHIKKINGEN, BETALINGEN, STAGE_BEKENDMAKING,
+    STAGE_BESLUIT, ZAAKKENMERK,
 };
 use crate::cell::{nakoming_schema, uncovered};
 use crate::error::{Result, SimulatorError, Subject};
@@ -322,11 +323,13 @@ pub struct DecidesAction {
 
 /// Een actie die een besluit van een cel bekendmaakt.
 ///
-/// Geen formulier: wat er bekendgemaakt wordt is het laatste besluit van deze
-/// definitie dat nog niet bekendgemaakt is, en wannéér dat gebeurt is de stand
-/// van de klok. Een datum in het formulier zou een tweede tijdas openen naast de
-/// klok, en een zaakkenmerk in het formulier zou een bekendmaking van een zaak
-/// mogelijk maken waarover niets besloten is.
+/// Wat er bekendgemaakt wordt is het laatste besluit van deze definitie dat nog
+/// niet bekendgemaakt is, en wannéér dat gebeurt is de stand van de klok. Het
+/// **formulier** staat niet hier maar in de wet: het zijn de `requires` van de
+/// stage BEKENDMAKING in de procedure die voor het besluit geldt (zie
+/// [`crate::Cell::bekendmaking_procedure`]). Een zaakkenmerk staat er niet in —
+/// dat zou een bekendmaking van een zaak mogelijk maken waarover niets besloten
+/// is — en het datumveld dat de dag van de bekendmaking draagt, is de klok.
 ///
 /// Of ze nu kan, wordt net als bij een `decides`-actie **afgeleid** en niet
 /// gedeclareerd: het volgt uit de kronieken van de cel zelf (zie
@@ -396,6 +399,28 @@ pub enum Warning {
         /// De naam van het gram dat ontbrak.
         name: String,
     },
+    /// Een hook vuurt bij een besluit op een verplichte parameter die daar niet
+    /// bestaat.
+    ///
+    /// Bij het optuigen, en geen weigering: zo'n hook laat het besluit niet
+    /// omvallen maar staat in het gram onder `hook_niet_uitgevoerd`. Dat het
+    /// vooraf te zien is, houdt een corpusfout zichtbaar.
+    HookZonderInput {
+        /// Het moment van het optuigen.
+        at: NaiveDate,
+        /// De cel met het besluit.
+        cell: String,
+        /// De besluit-definitie waarop de hook vuurt.
+        besluit: String,
+        /// De stage waarop hij vuurt.
+        stage: String,
+        /// De regeling van de hook, bij `$id`.
+        regulation: String,
+        /// Het artikel van de hook.
+        article: String,
+        /// De verplichte parameter die er niet is.
+        input: String,
+    },
     /// Er is besloten onder een regeling die geen bevoegd gezag declareert.
     ///
     /// Het besluit gaat door — de opstelling blokkeren op een gat in een
@@ -425,6 +450,17 @@ impl Warning {
     pub fn label(&self) -> String {
         match self {
             Self::GemisteTermijn { label, .. } => label.clone(),
+            Self::HookZonderInput {
+                besluit,
+                stage,
+                regulation,
+                article,
+                input,
+                ..
+            } => format!(
+                "hook '{regulation}' artikel {article} vuurt bij besluit '{besluit}' op stage \
+                 {stage} zonder input '{input}'"
+            ),
             Self::GeenBevoegdGezag { regulation, .. } => {
                 format!("regeling '{regulation}' declareert geen bevoegd gezag")
             }
@@ -443,6 +479,11 @@ impl Warning {
             } => format!(
                 "{label} ({at}): cel '{cell}' had op dat moment geen '{name}' in kroniek \
                  '{chronicle}'"
+            ),
+            Self::HookZonderInput { at, cell, .. } => format!(
+                "{} ({at}): cel '{cell}' zal die hook niet kunnen uitvoeren; het besluit gaat \
+                 door en het gram noemt hem onder `hook_niet_uitgevoerd`",
+                self.label()
             ),
             // De regeling staat al in het label hierboven; haar er nog eens bij
             // zetten zou dezelfde naam twee keer in één regel zetten.
@@ -802,7 +843,7 @@ impl World {
         check_peers_exist(configs, &cells)?;
         let parties = party_bindings(configs)?;
         check_obligations(configs, &cells, &parties, &definition.settings)?;
-        check_actions(&definition.actions, &cells)?;
+        check_actions(&definition.actions, &cells, definition.clock.start)?;
         check_deadlines(&definition.deadlines, &cells)?;
         check_status_indicators(configs, &cells)?;
         if let Some(portaal) = &definition.portaal {
@@ -810,7 +851,7 @@ impl World {
                 .actions
                 .iter()
                 .filter(|action| action.actor == portaal.actor)
-                .map(|action| action_form(action, &cells))
+                .map(|action| action_form(action, &cells, definition.clock.start))
                 .collect::<Result<Vec<_>>>()?;
             portaal.check(&forms, configs, &cells)?;
         }
@@ -828,6 +869,7 @@ impl World {
             .collect();
         pending.sort_by_key(|(at, _)| *at);
 
+        let warnings = hooks_zonder_input(&definition.actions, &cells, definition.clock.start);
         let mut world = Self {
             definition: definition.clone(),
             regulation_root: regulation_root.to_path_buf(),
@@ -837,7 +879,7 @@ impl World {
             used_settings: BTreeMap::new(),
             clock: definition.clock.start,
             crossings: Vec::new(),
-            warnings: Vec::new(),
+            warnings,
             journal: Vec::new(),
             persona: None,
             pending: pending.into(),
@@ -937,7 +979,8 @@ impl World {
     ///
     /// `form_values` wordt tegen het formulier van de actie gehouden: precies de
     /// velden die ze documenteert, van het type dat ze noemt. Bij een actie die
-    /// een besluit start, is dat formulier dat van het besluit zelf.
+    /// een besluit start, is dat formulier dat van het besluit zelf; bij een
+    /// bekendmaking dat van de stage in de procedure.
     ///
     /// Kan de actie nu niet, dan is dat een leesbare weigering en geen stilte: er
     /// staat in welk feit er nog niet vastligt. Dat wordt gewogen op de waarden
@@ -1019,6 +1062,7 @@ impl World {
                 let (bekendmaking, mut events) = self.publish_and_settle(
                     &publishes.cell,
                     &publishes.besluit,
+                    form_values,
                     actor,
                     action.label.clone(),
                 )?;
@@ -1181,11 +1225,13 @@ impl World {
     /// Het formulier van een actie: wat de actor invult, en van welk type.
     ///
     /// Bij een `records`-actie is dat wat de actie zelf noemt; bij een
-    /// `decides`-actie zijn het de gedocumenteerde parameters van het besluit. Die
-    /// tweede vorm heeft geen eigen lijst, en dat is met opzet: het besluit zegt al
-    /// wat het nodig heeft, en twee lijsten zouden gaan afwijken.
+    /// `decides`-actie zijn het de gedocumenteerde parameters van het besluit, en
+    /// bij een `publishes`-actie de `requires` van de stage BEKENDMAKING in de
+    /// procedure van dat besluit. Die laatste twee hebben geen eigen lijst, en dat
+    /// is met opzet: het besluit en de wet zeggen al wat ze nodig hebben, en twee
+    /// lijsten zouden gaan afwijken.
     fn form(&self, action: &ActionDefinition) -> Result<Vec<DocumentedParameter>> {
-        action_form(action, &self.cells)
+        action_form(action, &self.cells, self.clock)
     }
 
     /// De waarden van de gekozen persona, als deze actie van de portaal-actor
@@ -1516,6 +1562,12 @@ impl World {
                 parent: Some(decision),
             });
         }
+        self.journal_hooks_niet_uitgevoerd(
+            cell,
+            &decretogram.hooks_niet_uitgevoerd,
+            op_moment,
+            decision,
+        );
         for crossing in &crossings {
             let answer = &crossing.answer;
             self.write_journal(JournalEntry {
@@ -1600,6 +1652,7 @@ impl World {
         &mut self,
         cell: &str,
         besluit: &str,
+        form_values: &BTreeMap<String, Value>,
         actor: JournalActor,
         description: String,
     ) -> Result<(Bekendmaking, Events)> {
@@ -1619,7 +1672,7 @@ impl World {
         let clock = self.clock;
         // Onbereikbaar leeg: het bestaan van de cel is hierboven vastgesteld.
         let bekendmaking = match self.cells.get_mut(cell) {
-            Some(found) => found.bekendmaken(besluit, identity.name(), clock)?,
+            Some(found) => found.bekendmaken(besluit, identity.name(), clock, form_values)?,
             None => {
                 return Err(SimulatorError::UnknownCell {
                     cell: cell.to_string(),
@@ -1642,6 +1695,12 @@ impl World {
             parent: None,
         };
         let publication = self.write_journal(entry);
+        self.journal_hooks_niet_uitgevoerd(
+            cell,
+            &bekendmaking.hooks_niet_uitgevoerd,
+            self.clock,
+            publication,
+        );
 
         // Ging er iets níet lopen? Dan hoort dat er te staan, en onder de
         // bekendmaking: het is de bekendmaking die het uitwijst. Zonder deze
@@ -1679,6 +1738,40 @@ impl World {
         }
         let events = self.fire_due(self.clock)?;
         Ok((bekendmaking, events))
+    }
+
+    /// Eén journaalregel per hook die op een gram vuurde maar niet draaide.
+    ///
+    /// Onder de regel van het besluit of de bekendmaking waar het gram bij hoort:
+    /// het gat hoort bij die gebeurtenis, en los gelezen is "hook niet
+    /// uitgevoerd" een melding zonder aanleiding. Het gram zegt het ook
+    /// (`hook_niet_uitgevoerd`); het journaal vertelt het, zodat een lezer van
+    /// het verhaal niet in een gram hoeft te zoeken om te zien dat een artikel
+    /// van de wet hier niet toegepast is.
+    fn journal_hooks_niet_uitgevoerd(
+        &mut self,
+        cell: &str,
+        hooks: &[HookNietUitgevoerd],
+        moment: NaiveDate,
+        parent: usize,
+    ) {
+        for hook in hooks {
+            self.write_journal(JournalEntry {
+                seq: 0,
+                moment,
+                actor: JournalActor::Cell {
+                    id: cell.to_string(),
+                },
+                kind: JournalKind::HookNietUitgevoerd,
+                description: hook.describe(),
+                grams: Vec::new(),
+                changes: Vec::new(),
+                accepted: Vec::new(),
+                executed: None,
+                question: None,
+                parent: Some(parent),
+            });
+        }
     }
 
     /// De identiteit van een cel: haar veiligheidscontext, zoals het wereldbestand
@@ -2670,13 +2763,64 @@ fn recordings_of(
     vec![own, delivered]
 }
 
+/// De optuigtoets op hooks: welke hook vuurt bij een besluit van deze wereld op
+/// een verplichte parameter die er daar niet is?
+///
+/// Een waarschuwing en geen weigering. Zo'n hook laat het besluit niet omvallen
+/// — het gram noemt hem onder `hook_niet_uitgevoerd` — maar een corpusfout hoort
+/// zichtbaar te zijn vóórdat iemand een besluit neemt. De stage BESLUIT voor elk
+/// besluit, de stage BEKENDMAKING voor elk besluit dat een actie bekendmaakt:
+/// een stage die in deze wereld nooit draait, levert ook geen gat op.
+fn hooks_zonder_input(
+    actions: &[ActionDefinition],
+    cells: &BTreeMap<String, Cell>,
+    at: NaiveDate,
+) -> Vec<Warning> {
+    let published: BTreeSet<(&str, &str)> = actions
+        .iter()
+        .filter_map(|action| match &action.effect {
+            ActionEffect::Publishes(publishes) => {
+                Some((publishes.cell.as_str(), publishes.besluit.as_str()))
+            }
+            _ => None,
+        })
+        .collect();
+    let mut warnings = Vec::new();
+    for (id, cell) in cells {
+        for definition in cell.besluit_definitions() {
+            let mut stages = vec![STAGE_BESLUIT];
+            if published.contains(&(id.as_str(), definition.name.as_str())) {
+                stages.push(STAGE_BEKENDMAKING);
+            }
+            for stage in stages {
+                for gap in cell.hooks_zonder_input(&definition.name, stage) {
+                    warnings.push(Warning::HookZonderInput {
+                        at,
+                        cell: id.clone(),
+                        besluit: definition.name.clone(),
+                        stage: stage.to_string(),
+                        regulation: gap.regulation,
+                        article: gap.article,
+                        input: gap.input,
+                    });
+                }
+            }
+        }
+    }
+    warnings
+}
+
 /// Toets de acties tegen de wereld waarin ze staan.
 ///
 /// Alles wat een actie belooft, blijkt hier en niet bij de eerste aanroep: bestaat
 /// de actor, bestaat de cel, kan de stroom het gram dragen, bestaat het besluit,
 /// en gaat de voorwaarde over een veld dat bestaat. Een wereldbestand met een
 /// typfout in een actie hoort niet te laden.
-fn check_actions(actions: &[ActionDefinition], cells: &BTreeMap<String, Cell>) -> Result<()> {
+fn check_actions(
+    actions: &[ActionDefinition],
+    cells: &BTreeMap<String, Cell>,
+    start: NaiveDate,
+) -> Result<()> {
     let mut seen: BTreeSet<&str> = BTreeSet::new();
     for action in actions {
         if !seen.insert(action.id.as_str()) {
@@ -2731,16 +2875,12 @@ fn check_actions(actions: &[ActionDefinition], cells: &BTreeMap<String, Cell>) -
                     .besluit_definition(&decides.besluit)?;
                 check_prefill(&decides.cell, &action.id, &definition.params, cells)?;
             }
-            // Een bekendmaking heeft geen formulier en dus geen voorinvulling;
-            // wat er wél getoetst wordt is dat de cel bestaat en dat zij dit
-            // besluit kent — anders zou de actie pas bij de eerste klik omvallen.
-            ActionEffect::Publishes(publishes) => {
-                cells
-                    .get(&publishes.cell)
-                    .ok_or_else(|| SimulatorError::UnknownCell {
-                        cell: publishes.cell.clone(),
-                    })?
-                    .besluit_definition(&publishes.besluit)?;
+            // Een bekendmaking heeft het formulier dat de procedure bij die stage
+            // vraagt; getoetst wordt dat de cel bestaat, dat zij dit besluit
+            // kent, en dat de procedure de stage met een datumveld kent —
+            // anders zou de actie pas bij de eerste klik omvallen.
+            ActionEffect::Publishes(_) => {
+                action_form(action, cells, start)?;
             }
         }
     }
@@ -2822,22 +2962,37 @@ fn check_recordable(
 ///
 /// Los van [`World`], omdat het optuigen het al nodig heeft voordat er een
 /// wereld is: het portaal wordt getoetst tegen de formulieren van zijn actor.
+///
+/// `clock` is de stand van de klok: een bekendmaking vraagt wat de procedure bij
+/// die stage vraagt, uit het recht van het besluit dat bekendgemaakt gaat worden;
+/// ligt er (nog) geen, dan uit het recht van nu — de actie kan dan toch niet.
 fn action_form(
     action: &ActionDefinition,
     cells: &BTreeMap<String, Cell>,
+    clock: NaiveDate,
 ) -> Result<Vec<DocumentedParameter>> {
+    let cell = |id: &str| {
+        cells.get(id).ok_or_else(|| SimulatorError::UnknownCell {
+            cell: id.to_string(),
+        })
+    };
     match &action.effect {
         ActionEffect::Records(records) => Ok(records.fields.clone()),
-        ActionEffect::Decides(decides) => Ok(cells
-            .get(&decides.cell)
-            .ok_or_else(|| SimulatorError::UnknownCell {
-                cell: decides.cell.clone(),
-            })?
+        ActionEffect::Decides(decides) => Ok(cell(&decides.cell)?
             .besluit_definition(&decides.besluit)?
             .params),
-        // Een bekendmaking vraagt niets: wat er bekendgemaakt wordt ligt al
-        // in de kroniek, en wanneer het gebeurt is de stand van de klok.
-        ActionEffect::Publishes(_) => Ok(Vec::new()),
+        ActionEffect::Publishes(publishes) => {
+            let cell = cell(&publishes.cell)?;
+            let moment = match cell.bekendmaking_stand(&publishes.besluit) {
+                BekendmakingStand::TeDoen {
+                    besluit_op_moment, ..
+                } => besluit_op_moment,
+                _ => clock,
+            };
+            Ok(cell
+                .bekendmaking_procedure(&publishes.besluit, moment)?
+                .form)
+        }
     }
 }
 

@@ -44,6 +44,10 @@ articles:
                   # bekendmaking: zolang het besluit niet bekendgemaakt is, is er
                   # niets na te komen (Awb 3:40 jo. 4:87).
                   vanaf: bekendmaking
+                  # Welke uitkomst van de bekendmaking de vervaldag levert, zegt
+                  # de verplichting zelf, onder de naam die de algemene wet
+                  # ervoor gebruikt.
+                  vervaldatum: uiterste_betaaldatum_4_87
                   grondslag: >-
                     Testregeling tegemoetkoming met bekendmaking art. 1 jo.
                     Testregeling algemene bepalingen art. 4:87

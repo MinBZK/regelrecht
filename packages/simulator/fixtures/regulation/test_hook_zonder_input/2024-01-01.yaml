@@ -1,0 +1,64 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: test_hook_zonder_input
+name: Testregeling algemene eisen met feiten die niet elk besluit draagt
+regulatory_layer: WET
+bwb_id: BWBR9999921
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+url: https://example.com/test_hook_zonder_input
+
+# Een testregeling, met opzet **niet** in het corpus: ze bestaat om een
+# eigenschap van de opstelling aan te tonen en niet om recht weer te geven.
+#
+# Wat ze aantoont is een **hook die niet kan draaien**. Een hook biedt zich aan
+# op rechtskarakter en stage, en weet niet welke feiten het besluit waarop hij
+# vuurt draagt. Beide artikelen hieronder lezen een feit dat de besluiten in de
+# scenario's niet aanleveren; het besluit hoort daar niet op om te vallen, maar
+# het gram hoort te zeggen welk artikel niet toegepast is.
+articles:
+  - number: '1'
+    url: https://example.com/test_hook_zonder_input#Artikel1
+    text: >-
+      Een besluit berust op een deugdelijke motivering.
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: BESLUIT
+      execution:
+        parameters:
+          - name: motivering_gegeven
+            type: boolean
+            required: true
+        output:
+          - name: motivering_in_orde
+            type: boolean
+        actions:
+          - output: motivering_in_orde
+            value: $motivering_gegeven
+
+  - number: '2'
+    url: https://example.com/test_hook_zonder_input#Artikel2
+    text: >-
+      Een besluit wordt bekendgemaakt op het adres dat de belanghebbende heeft
+      opgegeven.
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: BEKENDMAKING
+      execution:
+        parameters:
+          - name: adres_opgegeven
+            type: boolean
+            required: true
+        output:
+          - name: op_opgegeven_adres
+            type: boolean
+        actions:
+          - output: op_opgegeven_adres
+            value: $adres_opgegeven
