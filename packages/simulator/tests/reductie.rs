@@ -245,7 +245,9 @@ fn uitleg(answer: &Lexostatus) -> &Reductie {
 fn filter(reductie: &Reductie) -> &Kroniekfilter {
     match &reductie.vorm {
         ReductieVorm::Kroniekfilter(filter) => filter,
-        ReductieVorm::Wetsvorm(_) => panic!("verwachtte een kroniekfilter"),
+        ReductieVorm::Wetsvorm(_) | ReductieVorm::Openstaand(_) => {
+            panic!("verwachtte een kroniekfilter")
+        }
     }
 }
 
@@ -253,7 +255,9 @@ fn filter(reductie: &Reductie) -> &Kroniekfilter {
 fn wetsvorm(reductie: &Reductie) -> &Wetsvorm {
     match &reductie.vorm {
         ReductieVorm::Wetsvorm(wetsvorm) => wetsvorm,
-        ReductieVorm::Kroniekfilter(_) => panic!("verwachtte een wetsvorm"),
+        ReductieVorm::Kroniekfilter(_) | ReductieVorm::Openstaand(_) => {
+            panic!("verwachtte een wetsvorm")
+        }
     }
 }
 

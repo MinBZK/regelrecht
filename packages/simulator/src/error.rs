@@ -325,6 +325,27 @@ pub enum SimulatorError {
         stream: String,
     },
 
+    /// De openstaandvorm noemt `outputs`, terwijl ze haar eigen uitkomsten maakt.
+    ///
+    /// Anders dan bij een kroniekfilter is er hier niets te kiezen: de drie
+    /// bedragen en de termijnenlijst zijn wat deze vorm oplevert, en ze horen bij
+    /// elkaar — zonder de lijst is het bedrag niet na te rekenen. Wat een
+    /// definitie er zelf bij zou noemen, zou nooit in het antwoord komen.
+    #[error(
+        "cel '{cell}': '{lexostatus}' is een openstaandvorm en publiceert altijd \
+         {published}; laat `outputs` weg in plaats van {outputs} te beloven"
+    )]
+    OpenstaandWithOutputs {
+        /// Cel waarin de definitie staat.
+        cell: String,
+        /// De lexostatus met de overbodige `outputs`.
+        lexostatus: String,
+        /// Wat de definitie noemde.
+        outputs: String,
+        /// Wat de vorm werkelijk publiceert.
+        published: String,
+    },
+
     /// Een som publiceert iets anders dan het veld waarover ze sommeert.
     ///
     /// Een som levert precies één waarde op: het totaal van dat ene veld. Een

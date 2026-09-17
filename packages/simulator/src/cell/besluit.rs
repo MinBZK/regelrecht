@@ -181,6 +181,17 @@ pub const UITERSTE_BETAALDATUM: &str = "uiterste_betaaldatum";
 /// uit de bekendmaking. Leeg bij elk besluit waarvan de termijnen meteen
 /// vervielen, zoals [`OBLIGATIONS`] leeg is bij een besluit dat niets oplegt.
 pub const WACHT_OP_BEKENDMAKING: &str = "wacht_op_bekendmaking";
+/// Veld waarmee een bekendmaking zegt dat er niets meer in te roosteren viel.
+///
+/// Een beschikking die vervangen wordt vóórdat ze bekendgemaakt is, heeft bij
+/// haar bekendmaking niets meer te beloven: de belofte zou pas op dat moment
+/// gaan werken (Awb 3:40), en over dezelfde zaak ligt inmiddels een besluit dat
+/// in de plaats van dit besluit kwam (zie [`Vervanging`]). Het gram draagt dan
+/// welk besluit dat was, op welk moment en op welke grondslag, en
+/// [`OBLIGATIONS`] blijft leeg. `null` bij elke bekendmaking waarbij dat niet
+/// speelde — zoals [`WACHT_OP_BEKENDMAKING`] leeg is bij een besluit dat niets
+/// liet wachten.
+pub const TERMIJNEN_VERVALLEN_DOOR: &str = "termijnen_vervallen_door";
 /// Veld met de inputs van het besluit, elk met hun herkomst.
 pub const INPUTS: &str = "inputs";
 /// Veld met het uitgerekende betalingsschema van dit besluit.
@@ -221,13 +232,14 @@ const FIXED_FIELDS: [&str; 16] = [
 /// draagt in plaats daarvan de dag waarop ze plaatsvond, wie haar deed, waar het
 /// besluit ligt waar ze bij hoort, en waar elk veld vandaan komt dat de wet er
 /// bij deze stage aan hangt.
-const BEKENDMAKING_FIELDS: [&str; 6] = [
+const BEKENDMAKING_FIELDS: [&str; 7] = [
     STAGE,
     BEKENDMAKING_DATUM,
     BEKENDGEMAAKT_DOOR,
     HOOKS,
     BESLUIT_OP_MOMENT,
     BESLUIT_GRAM,
+    TERMIJNEN_VERVALLEN_DOOR,
 ];
 
 /// De vaste velden van een decretogram, in de volgorde waarin ze hierboven staan.
@@ -575,6 +587,52 @@ pub struct Vervanging {
     /// vervalt zonder grondslag is een belofte die zonder wet verdwijnt. Ze komt
     /// in het journaal te staan bij elke termijn die erdoor vervalt.
     pub grondslag: String,
+}
+
+/// Het besluit dat in de plaats kwam van een beschikking die nog bekendgemaakt
+/// moest worden.
+///
+/// De andere kant van [`Vervanging`], en een ander moment: bij een besluit
+/// vervalt wat er ingeroosterd stond, hier gaat wat er nog wachtte niet meer
+/// lopen. Een verplichting met `vanaf: bekendmaking` staat niet in de wachtrij
+/// maar in het gram van haar eigen besluit ([`WACHT_OP_BEKENDMAKING`]), dus de
+/// vervanging komt er niet bij — ze gaat pas werken bij de bekendmaking (Awb
+/// 3:40), en dáár valt te zien dat er niets meer te beloven is.
+///
+/// Wat hier staat, komt in het gram van de bekendmaking te staan
+/// ([`TERMIJNEN_VERVALLEN_DOOR`]) en in het journaal: welk besluit ervoor in de
+/// plaats kwam, wanneer, en op welke grondslag het dat mocht.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TermijnenVervallen {
+    /// Het besluit dat in de plaats kwam.
+    pub besluit: String,
+    /// Het moment waarop dat besluit genomen is.
+    pub op_moment: NaiveDate,
+    /// De grondslag waarop dat besluit de openstaande termijnen vervangt, uit
+    /// het lexogram van het artikel dat het voortbracht.
+    pub grondslag: String,
+}
+
+impl TermijnenVervallen {
+    /// Als vastlegbare waarde, voor in het gram van de bekendmaking.
+    pub(crate) fn as_value(&self) -> Value {
+        Value::Object(BTreeMap::from([
+            (BESLUIT.to_string(), Value::String(self.besluit.clone())),
+            (
+                "op_moment".to_string(),
+                Value::String(self.op_moment.to_string()),
+            ),
+            (GRONDSLAG.to_string(), Value::String(self.grondslag.clone())),
+        ]))
+    }
+
+    /// Leesbare regel voor het journaal: waarom er niets gaat lopen.
+    pub(crate) fn describe(&self) -> String {
+        format!(
+            "besluit '{}' van {} kwam ervoor in de plaats, op grondslag '{}'",
+            self.besluit, self.op_moment, self.grondslag
+        )
+    }
 }
 
 /// Eén verplichting die een besluit oplegt, zoals het **lexogram** haar declareert.
@@ -2406,8 +2464,17 @@ pub struct Bekendmaking {
     pub hooks: Vec<HookHerkomst>,
     /// De termijnen die door deze bekendmaking gaan lopen.
     ///
-    /// Leeg als het besluit niets op de bekendmaking liet wachten.
+    /// Leeg als het besluit niets op de bekendmaking liet wachten, en ook als er
+    /// wél iets wachtte maar dit besluit inmiddels vervangen is — dan staat in
+    /// [`Self::termijnen_vervallen_door`] waardoor.
     pub obligations: Vec<ObligationDue>,
+    /// Het besluit dat in de plaats van dit besluit kwam voordat het
+    /// bekendgemaakt werd, als dat er is.
+    ///
+    /// `None` is het gewone geval: er is niets vervangen, en wat er wachtte gaat
+    /// gewoon lopen. Staat er wél iets, dan is [`Self::obligations`] leeg — zie
+    /// [`TermijnenVervallen`].
+    pub termijnen_vervallen_door: Option<TermijnenVervallen>,
     /// Het receipt van de stage-uitvoering.
     pub receipt: ExecutionReceipt,
 }
@@ -2478,6 +2545,12 @@ impl Bekendmaking {
                         .map(ObligationDue::as_value)
                         .collect(),
                 ),
+            ),
+            (
+                TERMIJNEN_VERVALLEN_DOOR.to_string(),
+                self.termijnen_vervallen_door
+                    .as_ref()
+                    .map_or(Value::Null, TermijnenVervallen::as_value),
             ),
             (RECEIPT.to_string(), self.receipt_value()?),
         ]);

@@ -1,0 +1,54 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: test_openstaande_termijnen
+name: Testregeling openstaande termijnen
+regulatory_layer: WET
+bwb_id: BWBR9999909
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+url: https://example.com/test_openstaande_termijnen
+competent_authority: Dienst Toeslagen
+
+# Een testregeling, met opzet **niet** in het corpus: ze bestaat om een
+# eigenschap van de opstelling aan te tonen en niet om recht weer te geven. Zie
+# `test_betalingsritmes` voor dezelfde afweging.
+#
+# Wat ze aantoont is het verschil tussen **verwacht** en **gebeurd**. Eén artikel,
+# één verplichting, vier kwartaaltermijnen — genoeg om een wereld te laten zien
+# waarin de ene termijn nagekomen wordt en de volgende niet. Dat er niet betaald
+# wordt, staat niet hier: wat de wet oplegt hangt niet af van wie er in deze
+# wereld betaalt (zie `betalingen_opgeschort` in het wereldbestand).
+articles:
+  - number: '1'
+    url: https://example.com/test_openstaande_termijnen#Artikel1
+    text: >-
+      Het toegekende bedrag wordt in vier gelijke termijnen per kwartaal betaald, te beginnen op de dag van de
+      beschikking.
+    machine_readable:
+      definitions:
+        toegekend_bedrag:
+          value: 120000
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+          extensions:
+            chronolex:
+              verplichtingen:
+                - soort: betaling
+                  bedrag: $toegekende_termijnen
+                  ritme: kwartaal
+                  grondslag: Testregeling openstaande termijnen art. 1
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        output:
+          - name: toegekende_termijnen
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: toegekende_termijnen
+            value: $toegekend_bedrag

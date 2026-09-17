@@ -103,6 +103,63 @@ const berekend = {
   },
 };
 
+// De openstaandvorm: drie bedragen en de termijnen waar ze uit bestaan. Twee
+// stromen gelezen, elk gram met wat het bijdroeg.
+const openstaand = {
+  cell: 'toeslagen',
+  name: 'openstaande_termijnen',
+  op_moment: '2025-02-01',
+  // Op naam gesorteerd, zoals de server ze geeft: de uitkomsten van een antwoord
+  // komen uit een geordende map en niet uit een lijst die de cel opschrijft.
+  outcome: {
+    established: {
+      betaald: 30000,
+      openstaand: 30000,
+      // Ook de velden van een regel komen op naam: het beeld is JSON uit een
+      // geordende map, en de kolommen volgen die volgorde.
+      termijnen: [
+        { bedrag: 30000, besluit: 'toekenning', status: 'betaald', vervaldatum: '2024-11-01', volgnummer: 1 },
+        { bedrag: 30000, besluit: 'toekenning', status: 'te_laat', vervaldatum: '2025-01-01', volgnummer: 2 },
+      ],
+      verwacht: 60000,
+    },
+  },
+  reductie: {
+    vorm: {
+      soort: 'openstaand',
+      beschikkingen: 'beschikkingen',
+      betalingen: 'betalingen',
+      key: 'zaakkenmerk',
+      key_value: 'zorgtoeslag/999993653',
+      op_moment: '2025-02-01',
+    },
+    grammen: [
+      {
+        cell: 'toeslagen',
+        chronicle: 'beschikkingen',
+        id: 'toeslagen|beschikkingen|0',
+        kind: 'decretogram',
+        name: 'toekenning',
+        volgnummer: 0,
+        op_moment: '2024-11-01',
+        regulation_valid_from: '2024-01-01',
+        bijdrage: 60000,
+      },
+      {
+        cell: 'toeslagen',
+        chronicle: 'betalingen',
+        id: 'toeslagen|betalingen|0',
+        kind: 'executogram',
+        name: 'betaling_gemeld',
+        volgnummer: 0,
+        op_moment: '2024-11-01',
+        regulation_valid_from: null,
+        bijdrage: 30000,
+      },
+    ],
+  },
+};
+
 function mountPanel(answer) {
   const ask = vi.fn(async () => answer);
   return { wrapper: mount(LexostatusPanel, { props: { snapshot: worldFixture, ask } }), ask };
@@ -414,5 +471,77 @@ describe('hoe het antwoord tot stand kwam', () => {
     const { wrapper } = mountPanel({ ...established, reductie: null });
     await submit(wrapper);
     expect(disclosure(wrapper).exists()).toBe(false);
+  });
+});
+
+// Een uitkomst die uit regels bestaat, is geen waarde op één regel. De bedragen
+// van de openstaandvorm zijn de optelling van haar termijnen, en zonder die
+// termijnen is de optelling niet na te lopen.
+describe('een uitkomst die uit regels bestaat', () => {
+  /** De regel van de uitklap: de enige `nldd-list-item` die geen kind is. */
+  const uitklap = (wrapper) => wrapper.find('nldd-list[type="tree"] > nldd-list-item');
+  /** Wat eronder hangt zodra ze open staat. */
+  const onder = (wrapper) => wrapper.findAll('nldd-list-item[slot="children"]');
+
+  it('zet de regels in een tabel, met de kolommen die de cel meegeeft', async () => {
+    const { wrapper } = mountPanel(openstaand);
+    await submit(wrapper);
+
+    const table = wrapper.find('nldd-table');
+    expect(table.exists()).toBe(true);
+    const rows = table.findAll('nldd-table-row');
+    // De kop plus twee termijnen.
+    expect(rows).toHaveLength(3);
+    expect(rows[0].findAll('nldd-text-cell').map((cell) => cell.attributes('text'))).toStrictEqual([
+      'Bedrag',
+      'Besluit',
+      'Status',
+      'Vervaldatum',
+      'Volgnummer',
+    ]);
+    expect(rows[2].findAll('nldd-text-cell').map((cell) => cell.attributes('text'))).toStrictEqual([
+      '30000',
+      'toekenning',
+      'te_laat',
+      '2025-01-01',
+      '2',
+    ]);
+  });
+
+  it('houdt de losse bedragen in de lijst erboven', async () => {
+    const { wrapper } = mountPanel(openstaand);
+    await submit(wrapper);
+    const rows = wrapper.findAll('nldd-list:not([type="tree"]) nldd-list-item');
+    expect(rows).toHaveLength(3);
+    const labels = rows.map((row) => row.find('nldd-text-cell').attributes('text'));
+    expect(labels).toStrictEqual(['Betaald', 'Openstaand', 'Verwacht']);
+  });
+
+  it('zegt bij een lege lijst dat er geen regels zijn in plaats van een lege tabel', async () => {
+    const leeg = {
+      ...openstaand,
+      outcome: { established: { verwacht: 0, betaald: 0, openstaand: 0, termijnen: [] } },
+    };
+    const { wrapper } = mountPanel(leeg);
+    await submit(wrapper);
+
+    expect(wrapper.find('nldd-table').exists()).toBe(false);
+    const melding = wrapper.findAll('nldd-inline-dialog').find((dialog) => dialog.attributes('text') === 'Geen regels');
+    expect(melding.attributes('supporting-text')).toContain('termijnen');
+  });
+
+  it('noemt in de uitleg beide stromen en elk gram met zijn bijdrage', async () => {
+    const { wrapper } = mountPanel(openstaand);
+    await submit(wrapper);
+    expect(uitklap(wrapper).find('nldd-text-cell').attributes('supporting-text')).toBe(
+      "verplichtingen uit kroniek 'beschikkingen' min de betalingen in kroniek 'betalingen', " +
+        "met zaakkenmerk 'zorgtoeslag/999993653' op of vóór 01-02-2025",
+    );
+
+    await uitklap(wrapper).trigger('click');
+    const rijen = onder(wrapper);
+    expect(rijen).toHaveLength(2);
+    const bijdragen = rijen.map((rij) => rij.findAll('nldd-text-cell').at(-1).attributes('text'));
+    expect(bijdragen).toStrictEqual(['60000', '30000']);
   });
 });
