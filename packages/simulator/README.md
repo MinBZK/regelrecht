@@ -729,7 +729,7 @@ uitbreiding van RFC-013 stil achterlopen.
 | de uitkomsten | de uitkomst die het besluit *is*, plus wat `outputs` erbij noemt |
 | `inputs` | wat de besluit-definitie zelf aanleverde, **met herkomst per waarde**: uit een eigen kroniek (met het moment van die vastlegging), uit een parameter, of geaccepteerd van een andere cel |
 | `chronicle_sources` | de eigen kronieken die als databron klaarstonden, elk met haar stand op het moment van het besluit: aantal grammen en een hash erover (RFC-022 §1.3). Wat de engine daaruit las, staat in de trace van het receipt |
-| `obligations` | het betalingsschema dat uit dit besluit volgt: per termijn een vervaldatum, een bedrag, een volgnummer, de betalende cel, de `grondslag` uit het lexogram en de herkomst (`lexogram`: regeling, versie, artikel). Leeg bij een afwijzing, ook als het lexogram er een oplegt |
+| `obligations` | het betalingsschema dat uit dit besluit volgt: per termijn een vervaldatum, een bedrag, een volgnummer, de betalende cel, de `grondslag` uit het lexogram en de herkomst (`lexogram`: regeling, versie, artikel). Een ingehaalde termijn draagt er de dag uit het schema bij als `oorspronkelijke_vervaldatum` — zie [Verplichtingen](#verplichtingen-wat-een-besluit-achterlaat). Leeg bij een afwijzing, ook als het lexogram er een oplegt |
 | `wacht_op_bekendmaking` | de verplichtingen die het lexogram met `vanaf: bekendmaking` oplegt: bedrag, partijen, ritme, grondslag en volgnummer staan er, de vervaldatum niet — die volgt uit de bekendmaking. Leeg bij elk besluit waarvan de termijnen meteen vervielen |
 | `receipt` | het volledige Execution Receipt, **met de uitvoeringstrace** (`results.trace`) |
 
