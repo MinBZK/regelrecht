@@ -174,15 +174,6 @@ pub const HOOKS: &str = "hooks";
 /// platform haar zoekt, zodat twee regelingen er niet elk een eigen naam voor
 /// verzinnen.
 pub const UITERSTE_BETAALDATUM: &str = "uiterste_betaaldatum";
-/// Veld van een ingehaalde termijn met de dag waarop ze volgens het schema had
-/// moeten vervallen.
-///
-/// Alleen bij een termijn die **ingehaald** wordt: haar dag lag vóór het moment
-/// waarop er betaald kón worden — het besluit, of bij `vanaf: bekendmaking` de
-/// bekendmaking — en ze vervalt daarom op die dag (zie [`inhalen`]). Een termijn
-/// die op haar eigen dag vervalt, draagt het veld niet: dan zou elk gram een
-/// tweede datum dragen die niets zegt.
-pub const OORSPRONKELIJKE_VERVALDATUM: &str = "oorspronkelijke_vervaldatum";
 /// Veld met de termijnen die op de bekendmaking wachten.
 ///
 /// Wat het besluit oplegde maar nog niet kon inroosteren: het bedrag, de
@@ -205,6 +196,15 @@ pub const TERMIJNEN_VERVALLEN_DOOR: &str = "termijnen_vervallen_door";
 pub const INPUTS: &str = "inputs";
 /// Veld met het uitgerekende betalingsschema van dit besluit.
 pub const OBLIGATIONS: &str = "obligations";
+/// Veld van een ingehaalde termijn met de dag waarop ze volgens het schema had
+/// moeten vervallen.
+///
+/// Alleen bij een termijn die **ingehaald** wordt: haar dag lag vóór het moment
+/// waarop er betaald kón worden — het besluit, of bij `vanaf: bekendmaking` de
+/// bekendmaking — en ze vervalt daarom op die dag (zie [`inhalen`]). Een termijn
+/// die op haar eigen dag vervalt, draagt het veld niet: dan zou elk gram een
+/// tweede datum dragen die niets zegt.
+pub const OORSPRONKELIJKE_VERVALDATUM: &str = "oorspronkelijke_vervaldatum";
 /// Veld met de eigen kronieken waarop de uitvoering leunde, met hun stand.
 pub const CHRONICLE_SOURCES: &str = "chronicle_sources";
 /// Veld met het volledige RFC-013 Execution Receipt.
