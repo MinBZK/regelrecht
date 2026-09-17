@@ -395,7 +395,14 @@ check "een onleesbare bestandslijst blokkeert" 1 \
 out="$(PATH="$tmp:$PATH" FIXTURES="$tmp" REPO=o/r PR_NUMBER=42 \
     WERKPAKKETTEN_DIR="$tmp/bestaat-niet" GITHUB_OUTPUT=/dev/null \
     bash "$gate" 2>&1)"
-if [ $? -eq 1 ] && grep -qF 'is er niet' <<<"$out"; then
+# De status op een eigen regel, net als in `check()` hierboven. `$?` ná een
+# toewijzing is de status van de toewijzing; dat draagt de exitcode hier wel
+# door, maar één regel ertussen (een echo, een debug-sed) maakt die helft stil
+# tot een no-op. Wat dan overblijft is de grep, en die slaagt óók op een poort
+# die de melding drukt en vervolgens 0 teruggeeft — precies wat deze test hoort
+# te vangen.
+status=$?
+if [ "$status" -eq 1 ] && grep -qF 'is er niet' <<<"$out"; then
     echo "ok: een ontbrekende werkpakketten-map blokkeert"
     pass=$((pass + 1))
 else
