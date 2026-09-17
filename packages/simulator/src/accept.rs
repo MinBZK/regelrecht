@@ -51,11 +51,16 @@ use std::collections::BTreeMap;
 /// is geen defect maar een leesbare weigering: welke input van welke cel
 /// ontbrak, en wat de bron-cel als reden gaf. Er wordt dan niets vastgelegd — een
 /// besluit dat met een gat verder rekent, is erger dan geen besluit.
+///
+/// `contact` is het volgnummer van dat bewijsstuk onder de contacten van dit
+/// besluit (vanaf 1). Het komt als verwijzing in de herkomst: lezen meerdere
+/// inputs uit één antwoord, dan staat bij elk van hen hetzelfde nummer.
 fn accepted_input(
     cell: &str,
     besluit: &str,
     request: &AcceptanceRequest,
     signed: &SignedAnswer,
+    contact: usize,
 ) -> Result<DecretogramInput> {
     let answer = &signed.answer;
     let op_moment = answer.op_moment;
@@ -103,9 +108,33 @@ fn accepted_input(
         op_moment: answer.op_moment,
         asked_by: signed.asked_by.to_string(),
         signature: signed.signature.to_string(),
+        contact,
     };
 
     Ok(DecretogramInput { value, origin })
+}
+
+/// De verzoeken van één besluit, gebundeld per vraag die over de grens gaat.
+///
+/// Twee verzoeken stellen dezelfde vraag als ze bij dezelfde cel dezelfde
+/// lexostatus met dezelfde parameters opvragen; het veld doet er niet toe. De
+/// volgorde is die van het eerste verzoek per vraag, zodat de contacten in de
+/// volgorde van de definitie blijven staan. Nooit leeg per bundel.
+fn same_questions(requests: &[AcceptanceRequest]) -> Vec<Vec<&AcceptanceRequest>> {
+    let mut groups: Vec<Vec<&AcceptanceRequest>> = Vec::new();
+    for request in requests {
+        let same = groups.iter_mut().find(|group| {
+            let first = group[0];
+            first.cell == request.cell
+                && first.lexostatus == request.lexostatus
+                && first.params == request.params
+        });
+        match same {
+            Some(group) => group.push(request),
+            None => groups.push(vec![request]),
+        }
+    }
+    groups
 }
 
 /// De cel-tier van de besluit-engine: een [`CellResolver`] die een
@@ -168,11 +197,19 @@ impl CellBridge {
     fn ask(&self, request: &AcceptanceRequest, op_moment: NaiveDate) -> Result<DecretogramInput> {
         let peers = self.peers.borrow();
         let transport = InProcessTransport::over(&peers);
-        let accepted = self.ask_over(&transport, request, op_moment);
-        accepted.map(|(input, _)| input)
+        let (signed, contact) = self.cross(&transport, request, op_moment)?;
+        accepted_input(
+            self.identity.cell(),
+            &self.besluit,
+            request,
+            &signed,
+            contact,
+        )
     }
 
-    /// Dezelfde vraag, met het transport van de aanroeper.
+    /// Zet één vraag over de grens, met het transport van de aanroeper, en geef
+    /// het bewijsstuk terug met zijn volgnummer onder de contacten van dit
+    /// besluit.
     ///
     /// Apart, zodat het vastleggen van het contact op één plek staat: wat er over
     /// de grens ging, komt in [`Self::crossings`] of het komt nergens, en dan is
@@ -184,23 +221,26 @@ impl CellBridge {
     /// Zou het bewijsstuk pas bij een bruikbare waarde opgeschreven worden, dan
     /// zou precies het geval dat het besluit doet omvallen in het vraaggraf
     /// onzichtbaar blijven — en dat is de gevaarlijke kant op.
-    fn ask_over(
+    ///
+    /// Alleen de vraag telt hier — cel, lexostatus, parameters, moment — en niet
+    /// het veld: welke uitkomst eruit gelezen wordt, is iets van de vrager en
+    /// gaat niet over de grens.
+    fn cross(
         &self,
         transport: &dyn CellTransport,
-        request: &AcceptanceRequest,
+        question: &AcceptanceRequest,
         op_moment: NaiveDate,
-    ) -> Result<(DecretogramInput, SignedAnswer)> {
+    ) -> Result<(SignedAnswer, usize)> {
         let context = SecurityContext::new(self.identity.clone(), transport);
         let signed = context.query(
-            &request.cell,
-            &request.lexostatus,
-            &request.params,
+            &question.cell,
+            &question.lexostatus,
+            &question.params,
             op_moment,
         )?;
-        self.crossings.borrow_mut().push(signed.clone());
-
-        let input = accepted_input(self.identity.cell(), &self.besluit, request, &signed)?;
-        Ok((input, signed))
+        let mut crossings = self.crossings.borrow_mut();
+        crossings.push(signed.clone());
+        Ok((signed, crossings.len()))
     }
 
     /// Willig elk verzoek van een besluit-definitie in (`accept_from`).
@@ -208,6 +248,20 @@ impl CellBridge {
     /// Dezelfde weg als de tier-3-vragen hierboven, dus hetzelfde log en dezelfde
     /// herkomst. Falen doet het geheel: een besluit met één ontbrekende input
     /// wordt niet genomen.
+    ///
+    /// **Eén vraag per antwoord, niet per input.** Lezen meerdere inputs uit
+    /// dezelfde lexostatus van dezelfde cel, met dezelfde parameters — het moment
+    /// is voor één besluit altijd hetzelfde — dan gaat die vraag één keer over de
+    /// grens, en lezen ze alle hun eigen veld uit dat ene antwoord. Elke vraag is
+    /// bij de bron een gelogde verwerking; dezelfde vraag drie keer stellen
+    /// vertelt de bron niets nieuws en het vraaggraf ook niet. Wat per input
+    /// blijft, is de herkomst in het gram: elk veld noemt zijn eigen cel,
+    /// lexostatus, veld en moment, en verwijst met hetzelfde contactnummer naar
+    /// het gedeelde antwoord.
+    ///
+    /// Groeperen gebeurt binnen dit ene besluit en nergens daarbuiten: een
+    /// volgend besluit krijgt een verse brug en vraagt opnieuw bij de bron.
+    /// Onthouden tussen besluiten zou een schaduwboekhouding zijn.
     pub(crate) fn accept_all(
         &self,
         requests: &[AcceptanceRequest],
@@ -216,9 +270,18 @@ impl CellBridge {
         let peers = self.peers.borrow();
         let transport = InProcessTransport::over(&peers);
         let mut accepted = BTreeMap::new();
-        for request in requests {
-            let (input, _) = self.ask_over(&transport, request, op_moment)?;
-            accepted.insert(request.input.clone(), input);
+        for group in same_questions(requests) {
+            let (signed, contact) = self.cross(&transport, group[0], op_moment)?;
+            for request in group {
+                let input = accepted_input(
+                    self.identity.cell(),
+                    &self.besluit,
+                    request,
+                    &signed,
+                    contact,
+                )?;
+                accepted.insert(request.input.clone(), input);
+            }
         }
         Ok(accepted)
     }
@@ -313,6 +376,17 @@ chronicles:
         fields:
           bsn: '999993653'
           partnerschap_type: HUWELIJK
+          partner_bsn: '999990019'
+          ingangsdatum: '2023-03-01'
+      - name: relatie_gewijzigd
+        intake: levering
+        recording_actor: brp
+        op_moment: 2023-04-01
+        fields:
+          bsn: '999990019'
+          partnerschap_type: HUWELIJK
+          partner_bsn: '999993653'
+          ingangsdatum: '2023-03-01'
 lexostatus_definitions:
   - name: partnerschap
     inputs:
@@ -320,6 +394,18 @@ lexostatus_definitions:
         type: string
     outputs:
       - partnerschap_type
+    reduction:
+      chronicle: relaties
+      key: bsn
+      latest: true
+  - name: relatie
+    inputs:
+      - name: bsn
+        type: string
+    outputs:
+      - partnerschap_type
+      - partner_bsn
+      - ingangsdatum
     reduction:
       chronicle: relaties
       key: bsn
@@ -415,6 +501,143 @@ lexostatus_definitions:
         assert!(
             crossing.answer.not_established().is_some(),
             "en het bewijsstuk hoort te dragen wat de peer antwoordde"
+        );
+    }
+
+    /// Een `accept_from`-verzoek zoals een besluit-definitie het opstelt.
+    fn request(input: &str, lexostatus: &str, field: &str, bsn: &str) -> AcceptanceRequest {
+        AcceptanceRequest {
+            input: input.to_string(),
+            cell: "brp".to_string(),
+            lexostatus: lexostatus.to_string(),
+            field: field.to_string(),
+            params: BTreeMap::from([("bsn".to_string(), Value::String(bsn.to_string()))]),
+        }
+    }
+
+    fn moment() -> NaiveDate {
+        NaiveDate::from_ymd_opt(2024, 1, 1).expect("geldige datum")
+    }
+
+    /// Het contactnummer en het veld van een geaccepteerde input.
+    fn contact_of(input: &DecretogramInput) -> (usize, &str) {
+        match &input.origin {
+            InputOrigin::Accepted { contact, field, .. } => (*contact, field.as_str()),
+            other => panic!("verwachtte een geaccepteerde herkomst, kreeg {other:?}"),
+        }
+    }
+
+    #[test]
+    fn drie_inputs_uit_een_lexostatus_zijn_een_vraag() {
+        let bridge = bridge();
+        let accepted = bridge
+            .accept_all(
+                &[
+                    request("type", "relatie", "partnerschap_type", "999993653"),
+                    request("partner", "relatie", "partner_bsn", "999993653"),
+                    request("sinds", "relatie", "ingangsdatum", "999993653"),
+                ],
+                moment(),
+            )
+            .expect("de lexostatus publiceert alle drie de velden");
+
+        assert_eq!(
+            bridge.crossings().len(),
+            1,
+            "dezelfde vraag hoort één keer over de grens te gaan"
+        );
+        // Elk veld leest uit dat ene antwoord, en houdt zijn eigen herkomst.
+        assert_eq!(contact_of(&accepted["type"]), (1, "partnerschap_type"));
+        assert_eq!(contact_of(&accepted["partner"]), (1, "partner_bsn"));
+        assert_eq!(contact_of(&accepted["sinds"]), (1, "ingangsdatum"));
+        assert_eq!(
+            accepted["partner"].value,
+            Value::String("999990019".to_string())
+        );
+        assert_eq!(
+            accepted["type"].value,
+            Value::String("HUWELIJK".to_string())
+        );
+    }
+
+    #[test]
+    fn twee_lexostatussen_zijn_twee_vragen() {
+        let bridge = bridge();
+        let accepted = bridge
+            .accept_all(
+                &[
+                    request("type", "partnerschap", "partnerschap_type", "999993653"),
+                    request("partner", "relatie", "partner_bsn", "999993653"),
+                    request("sinds", "relatie", "ingangsdatum", "999993653"),
+                ],
+                moment(),
+            )
+            .expect("beide lexostatussen publiceren wat gevraagd wordt");
+
+        let names: Vec<String> = bridge
+            .crossings()
+            .iter()
+            .map(|signed| signed.answer.name.clone())
+            .collect();
+        assert_eq!(
+            names,
+            ["partnerschap", "relatie"],
+            "één vraag per lexostatus"
+        );
+        assert_eq!(contact_of(&accepted["type"]).0, 1);
+        assert_eq!(contact_of(&accepted["partner"]).0, 2);
+        assert_eq!(contact_of(&accepted["sinds"]).0, 2);
+    }
+
+    #[test]
+    fn andere_parameters_zijn_een_aparte_vraag() {
+        let bridge = bridge();
+        let accepted = bridge
+            .accept_all(
+                &[
+                    request("eigen", "relatie", "partner_bsn", "999993653"),
+                    request("partner", "relatie", "partner_bsn", "999990019"),
+                ],
+                moment(),
+            )
+            .expect("beide personen staan bij de bron");
+
+        assert_eq!(
+            bridge.crossings().len(),
+            2,
+            "een vraag over een andere persoon is een andere vraag"
+        );
+        assert_eq!(contact_of(&accepted["eigen"]).0, 1);
+        assert_eq!(contact_of(&accepted["partner"]).0, 2);
+        assert_eq!(
+            accepted["partner"].value,
+            Value::String("999993653".to_string())
+        );
+    }
+
+    #[test]
+    fn een_volgend_besluit_vraagt_opnieuw() {
+        // Groeperen gaat niet over besluiten heen: een verse brug weet niets van
+        // wat een vorige vroeg.
+        let requests = [request("type", "relatie", "partnerschap_type", "999993653")];
+        let eerste = bridge();
+        eerste
+            .accept_all(&requests, moment())
+            .expect("de vraag hoort te slagen");
+        let tweede = CellBridge::new(
+            Identity::for_cell("toeslagen"),
+            "toekenning",
+            [source()],
+            eerste.release(),
+        );
+        tweede
+            .accept_all(&requests, moment())
+            .expect("de vraag hoort te slagen");
+        assert_eq!(eerste.crossings().len(), 1);
+        assert_eq!(
+            tweede.crossings().len(),
+            1,
+            "het tweede besluit vraagt zelf"
         );
     }
 

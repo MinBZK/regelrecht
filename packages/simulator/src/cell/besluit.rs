@@ -1911,6 +1911,17 @@ pub enum InputOrigin {
         asked_by: String,
         /// De (gesimuleerde) ondertekening van die vraag.
         signature: String,
+        /// Het contact waaruit de waarde gelezen is: het volgnummer (vanaf 1)
+        /// onder de vragen die dit besluit over een celgrens stelde, in de
+        /// volgorde waarin ze gesteld zijn.
+        ///
+        /// Een verwijzing en geen kopie. Lezen meerdere inputs uit dezelfde
+        /// lexostatus met dezelfde parameters, dan is er één vraag gesteld en
+        /// dragen ze alle hetzelfde nummer; hun eigen herkomst (cel, lexostatus,
+        /// veld, moment) houden ze gewoon. Zo is aan het gram te zien welke
+        /// waarden uit één antwoord komen, en kan de gate elke geaccepteerde
+        /// waarde aan haar contact houden (I2).
+        contact: usize,
     },
     /// Teruggelezen uit een **eerder besluit** van dezelfde cel over dezelfde
     /// zaak.
@@ -1972,6 +1983,7 @@ impl InputOrigin {
                 op_moment,
                 asked_by,
                 signature,
+                contact,
             } => Value::Object(BTreeMap::from([
                 (
                     "herkomst".to_string(),
@@ -1990,6 +2002,10 @@ impl InputOrigin {
                 ),
                 ("asked_by".to_string(), Value::String(asked_by.clone())),
                 ("signature".to_string(), Value::String(signature.clone())),
+                (
+                    "contact".to_string(),
+                    Value::Int(i64::try_from(*contact).unwrap_or(i64::MAX)),
+                ),
             ])),
             Self::EarlierDecretogram {
                 besluit,
@@ -2053,6 +2069,7 @@ impl InputOrigin {
                 op_moment,
                 asked_by,
                 signature,
+                contact,
             } => {
                 // Het gezag erbij zodra de bron het noemt, en anders niets: een
                 // verslag hoort niet "bevoegd gezag: onbekend" te zeggen over een
@@ -2063,7 +2080,7 @@ impl InputOrigin {
                 };
                 format!(
                     "geaccepteerd van cel '{cell}'{gezag} ({lexostatus}.{field} op \
-                     {op_moment}), gevraagd door {asked_by} [{signature}]"
+                     {op_moment}), gevraagd door {asked_by} [{signature}], contact {contact}"
                 )
             }
             Self::EarlierDecretogram {

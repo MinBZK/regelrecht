@@ -353,6 +353,9 @@ describe('de herkomst van een waarde', () => {
     expect(terms).toContain('lexostatus');
     expect(terms).toContain('op moment');
     expect(terms).toContain('ondertekend');
+    // En naar welke vraag van het besluit ze verwijst: uit één antwoord kunnen
+    // meerdere waarden komen.
+    expect(origin.details).toContainEqual({ term: 'contact', value: '1' });
   });
 
   it('houdt geaccepteerd en berekend uit elkaar', () => {

@@ -6,7 +6,7 @@
 //! Alle drie zijn eigenschappen van de opstelling en niet van een wereld.
 
 use regelrecht_engine::Value;
-use regelrecht_simulator::{regulation_root, Scenario, SimulatorError};
+use regelrecht_simulator::{regulation_root, InputOrigin, JournalKind, Scenario, SimulatorError};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -449,4 +449,94 @@ fn een_verkeerde_teruglees_verwachting_wordt_rood() {
         "het verslag hoort te zeggen wat er over de herkomst mis is:\n{}",
         run.report()
     );
+}
+
+/// **Twee inputs uit één antwoord zijn één vraag over de grens.**
+///
+/// Het accepteer-scenario, met één input erbij die uit dezelfde lexostatus bij
+/// dezelfde cel leest, met dezelfde parameters — alleen een ander veld. Dan
+/// verandert er voor de bron niets: ze krijgt één vraag, en het besluit leest
+/// beide velden uit dat ene antwoord. Wat per input blijft, is de herkomst in het
+/// gram, met hetzelfde contactnummer; de invarianten-gate houdt elk veld aan dat
+/// contact (I2), en het contact aan de velden die eruit lezen (I4).
+#[test]
+fn inputs_uit_dezelfde_lexostatus_delen_een_vraag() {
+    let path = accepteren();
+    let text = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("kan {} niet lezen: {e}", path.display()));
+    // De bron publiceert naast het toetsingsinkomen ook het vermogen, onder
+    // dezelfde naam — en het besluit accepteert beide.
+    let aangevuld = [
+        (
+            "              toetsingsinkomen: 81000\n",
+            "              toetsingsinkomen: 81000\n              vermogen: 0\n",
+        ),
+        (
+            "          - toetsingsinkomen\n          - competent_authority\n",
+            "          - toetsingsinkomen\n          - competent_authority\n          - vermogen\n",
+        ),
+        (
+            "            field: toetsingsinkomen\n            params:\n              bsn: $bsn\n",
+            concat!(
+                "            field: toetsingsinkomen\n",
+                "            params:\n",
+                "              bsn: $bsn\n",
+                "          vermogen:\n",
+                "            accept_from: belastingdienst\n",
+                "            lexostatus: toetsingsinkomen\n",
+                "            field: vermogen\n",
+                "            params:\n",
+                "              bsn: $bsn\n",
+            ),
+        ),
+    ]
+    .into_iter()
+    .fold(text, |text, (oud, nieuw)| {
+        assert_eq!(
+            text.matches(oud).count(),
+            1,
+            "het scenario hoort '{oud}' precies één keer te bevatten"
+        );
+        text.replace(oud, nieuw)
+    });
+    let scenario = Scenario::from_yaml(&aangevuld)
+        .unwrap_or_else(|e| panic!("het aangevulde scenario hoort te lezen: {e}"));
+    let run = scenario
+        .run(&regulation_root())
+        .unwrap_or_else(|e| panic!("het aangevulde scenario hoort te draaien: {e}"));
+    assert!(run.passed(), "{}", run.report());
+
+    let besluit = &run.decisions[0];
+    assert_eq!(
+        besluit.crossings.len(),
+        1,
+        "twee velden uit één lexostatus horen één vraag te zijn"
+    );
+    let gram = &besluit.decretogram;
+    for naam in ["toetsingsinkomen", "vermogen"] {
+        match &gram.inputs[naam].origin {
+            InputOrigin::Accepted {
+                cell,
+                lexostatus,
+                field,
+                contact,
+                ..
+            } => {
+                assert_eq!(
+                    (cell.as_str(), lexostatus.as_str(), field.as_str(), *contact),
+                    ("belastingdienst", "toetsingsinkomen", naam, 1),
+                    "'{naam}' houdt zijn eigen herkomst en verwijst naar het ene contact"
+                );
+            }
+            other => panic!("'{naam}' hoort geaccepteerd te zijn, kreeg {other:?}"),
+        }
+    }
+
+    // En het journaal toont die ene vraag, onder het besluit.
+    let vragen = run
+        .journal
+        .iter()
+        .filter(|entry| entry.kind == JournalKind::Vraag)
+        .count();
+    assert_eq!(vragen, 1, "één vraag-regel per gestelde vraag");
 }

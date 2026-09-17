@@ -344,6 +344,123 @@ fn een_geaccepteerde_waarde_zonder_contact_faalt_op_i2() {
     );
 }
 
+/// Een geaccepteerde waarde hoort bij het contact waarnaar ze verwijst (I2).
+///
+/// Meerdere inputs kunnen uit één antwoord lezen, en dan is "er was een contact
+/// met die cel" te grof: het contact waarnaar het gram verwijst, moet de vraag
+/// zijn waaruit de waarde komt. Hier ging er wél een vraag naar dezelfde cel,
+/// maar over een andere lexostatus — en dat hoort op te vallen.
+#[test]
+fn een_waarde_die_naar_een_ander_contact_verwijst_faalt_op_i2() {
+    let path = scenario_path("toeslagen_accepteert_toetsingsinkomen.yaml");
+    let run = run(&path);
+    let accepterend = &run.decisions[0];
+
+    let mut ander = accepterend.crossings.clone();
+    for signed in &mut ander {
+        signed.answer.name = "betaald_tot_nu_toe".to_string();
+    }
+    let verkeerd_verwezen = Traffic {
+        decisions: vec![DecisionTraffic {
+            decretogram: &accepterend.decretogram,
+            crossings: &ander,
+        }],
+        probes: Vec::new(),
+    };
+    let failures = check_invariants(&[], &[], &verkeerd_verwezen);
+
+    let melding = failures
+        .iter()
+        .find(|failure| matches!(failure, InvariantFailure::AcceptedWithoutCrossing { .. }))
+        .map(InvariantFailure::describe)
+        .unwrap_or_else(|| panic!("verwachtte een I2-melding, kreeg {failures:?}"));
+    assert!(
+        melding.starts_with("I2") && melding.contains("toetsingsinkomen"),
+        "de melding hoort de waarde te noemen, kreeg: {melding}"
+    );
+}
+
+/// Een waarde hoort bij haar contact óp haar moment (I2).
+///
+/// Dezelfde cel en dezelfde lexostatus, maar een antwoord dat voor een ander
+/// moment geldt, is niet de vraag waaruit de waarde komt.
+#[test]
+fn een_waarde_waarvan_het_contact_een_ander_moment_noemt_faalt_op_i2() {
+    let path = scenario_path("toeslagen_accepteert_toetsingsinkomen.yaml");
+    let run = run(&path);
+    let accepterend = &run.decisions[0];
+
+    let mut verschoven = accepterend.crossings.clone();
+    for signed in &mut verschoven {
+        signed.answer.op_moment = signed
+            .answer
+            .op_moment
+            .pred_opt()
+            .expect("een moment met een dag ervoor");
+    }
+    let traffic = Traffic {
+        decisions: vec![DecisionTraffic {
+            decretogram: &accepterend.decretogram,
+            crossings: &verschoven,
+        }],
+        probes: Vec::new(),
+    };
+    let failures = check_invariants(&[], &[], &traffic);
+
+    assert!(
+        failures.iter().any(|failure| matches!(
+            failure,
+            InvariantFailure::AcceptedWithoutCrossing { value, .. } if value == "toetsingsinkomen"
+        )),
+        "verwachtte een I2-melding over 'toetsingsinkomen', kreeg {failures:?}"
+    );
+}
+
+/// Elk contact wordt gelezen, niet alleen elke cel (I4).
+///
+/// Wie dezelfde vraag twee keer stelt terwijl het gram maar uit één antwoord
+/// leest, heeft een contact dat het gram niet laat zien — ook al komt er wél
+/// een waarde van die cel. Met groeperen per vraag hoort dat nooit te gebeuren,
+/// en de gate hoort het te zien als het toch gebeurt.
+#[test]
+fn een_tweede_contact_waaruit_niets_gelezen_wordt_faalt_op_i4() {
+    let path = scenario_path("toeslagen_accepteert_toetsingsinkomen.yaml");
+    let run = run(&path);
+    let accepterend = &run.decisions[0];
+    assert_eq!(
+        accepterend.crossings.len(),
+        1,
+        "het accepterende besluit stelt één vraag"
+    );
+
+    let mut dubbel = accepterend.crossings.clone();
+    dubbel.push(dubbel[0].clone());
+    let traffic = Traffic {
+        decisions: vec![DecisionTraffic {
+            decretogram: &accepterend.decretogram,
+            crossings: &dubbel,
+        }],
+        probes: Vec::new(),
+    };
+    let failures = check_invariants(&[], &[], &traffic);
+
+    let vier: Vec<_> = failures
+        .iter()
+        .filter(|failure| matches!(failure, InvariantFailure::CrossingNotInDecretogram { .. }))
+        .collect();
+    assert_eq!(
+        vier.len(),
+        1,
+        "precies het ongelezen tweede contact hoort op te vallen, kreeg {failures:?}"
+    );
+    assert!(
+        !failures
+            .iter()
+            .any(|failure| matches!(failure, InvariantFailure::AcceptedWithoutCrossing { .. })),
+        "de waarde zelf heeft haar contact, kreeg {failures:?}"
+    );
+}
+
 /// Een contact dat het decretogram niet laat zien, valt op (I4).
 ///
 /// De andere kant van dezelfde naad, en ook deze is in de opstelling onmogelijk:

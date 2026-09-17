@@ -1791,6 +1791,21 @@ Wat er met de waarde gebeurt, en vooral wat er níet met haar gebeurt:
   staat dan wél als contact vast: ze is gesteld en de peer heeft haar gezien, dus
   ze hoort in het vraaggraf — juist dít geval.
 
+**Eén vraag per antwoord, niet per input.** Lezen meerdere `accept_from`-inputs
+van één besluit uit dezelfde lexostatus bij dezelfde cel, met dezelfde parameters
+(en dus op hetzelfde moment), dan gaat die vraag één keer over de grens: één
+bewijsstuk van de veiligheidscontext, één contact in het observatielog en één
+`vraag`-regel in het journaal, en elk veld leest uit dat ene antwoord. In een echt
+transport is elke vraag een gelogde verwerking bij de bron, en dezelfde vraag
+drie keer stellen vertelt niemand iets nieuws. Wat per input blijft, is de herkomst
+in het gram — cel, lexostatus, veld, moment — met een `contact`-nummer dat naar het
+gedeelde antwoord verwijst (het volgnummer onder de vragen van dat besluit). Daar
+houdt de gate elke geaccepteerde waarde aan (I2), en elk contact aan de waarden die
+eruit lezen (I4). Een ander veld is dus geen nieuwe vraag, andere parameters of een
+andere lexostatus wél. Groeperen gebeurt alleen binnen één besluit: een volgend
+besluit vraagt opnieuw bij de bron, want onthouden tussen besluiten zou precies
+de schaduwboekhouding zijn die hierboven is uitgesloten.
+
 Het zaakkenmerk wordt met opzet ingevuld en gecontroleerd *vóór* de eerste vraag:
 een besluit dat om zijn eigen kenmerk niet genomen kan worden, hoort een andere
 organisatie niet te laten zien dat er iets over iemand werd opgevraagd.
