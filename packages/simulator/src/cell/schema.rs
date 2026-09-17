@@ -28,8 +28,8 @@
 //! werkelijk gold.
 
 use crate::cell::besluit::{
-    fixed_fields, BesluitDefinition, DeclaredObligations, ObligationDefinition, ObligationOrigin,
-    AFWIJZING, AFWIJZINGSGROND, BESCHIKKINGEN, BESLUIT, BEVOEGD_GEZAG_REFERENCE, CHRONICLE_SOURCES,
+    fixed_fields, BesluitDefinition, DeclaredObligations, ObligationOrigin, ScheduleRef, AFWIJZING,
+    AFWIJZINGSGROND, BESCHIKKINGEN, BESLUIT, BEVOEGD_GEZAG_REFERENCE, CHRONICLE_SOURCES,
     COMPETENT_AUTHORITY, DECISION_TYPE, EXECUTED_REGULATIONS, HOOK_NIET_UITGEVOERD, INPUTS,
     LEGAL_CHARACTER, NIETS_TE_BETALEN, OBLIGATIONS, RECEIPT, REGULATION_VALID_FROM, STAGE,
     STAGE_BESLUIT, TERUGVORDERING, VANAF_BEKENDMAKING, WACHT_OP_BEKENDMAKING, ZAAKKENMERK,
@@ -436,7 +436,7 @@ impl<'a> Lexicon<'a> {
                 .items
                 .iter()
                 .any(|item| item.vanaf.as_deref() == Some(VANAF_BEKENDMAKING)),
-            items: declared.items,
+            declared,
         })
     }
 }
@@ -449,8 +449,10 @@ impl<'a> Lexicon<'a> {
 struct Declared {
     /// Het artikel dat de verplichtingen declareert.
     lexogram: LexogramRef,
-    /// Wat het oplegt, in de volgorde van het artikel.
-    items: Vec<ObligationDefinition>,
+    /// Wat het oplegt, in de volgorde van het artikel, met de uitkomsten van dat
+    /// artikel erbij: een ritme `$naam` is eerst een uitkomst, en welke dat zijn
+    /// hoort het schema op dezelfde manier op te zoeken als het besluit.
+    declared: DeclaredObligations,
     /// Wacht er een van die verplichtingen op de bekendmaking?
     ///
     /// Bepaalt of het gram een gevulde [`WACHT_OP_BEKENDMAKING`] kan dragen, en
@@ -490,7 +492,11 @@ pub(crate) fn decretogram_schema(
     // dus ze zijn geen gat: wat het wereldbestand er nog over zegt, is wélke cel
     // de schuldenaar nakomt (`komt_na`) en niet wat er opgelegd wordt of aan wie.
     let declared = lexicon.obligations(&definition.output);
-    for (index, obligation) in declared.iter().flat_map(|found| &found.items).enumerate() {
+    for (index, obligation) in declared
+        .iter()
+        .flat_map(|found| &found.declared.items)
+        .enumerate()
+    {
         let vanaf = match obligation.vanaf.as_deref() {
             Some(vanaf) => format!(", vanaf '{vanaf}'"),
             None => String::new(),
@@ -532,6 +538,13 @@ pub(crate) fn decretogram_schema(
                 obligation.soort, obligation.bedrag, obligation.ritme, obligation.grondslag
             ),
         ));
+        schema.push(schedule_field(
+            &format!("{OBLIGATIONS}[{index}].ritme"),
+            definition,
+            &lexicon,
+            found,
+            found.declared.schedule_ref(definition, obligation),
+        ));
     }
 
     // De vaste velden, in de volgorde waarin het gram ze draagt, met het moment
@@ -541,6 +554,65 @@ pub(crate) fn decretogram_schema(
         schema.push(fixed_field(field, definition, &lexicon, declared.as_ref()));
     }
     schema
+}
+
+/// Het veld met het ritme van één verplichting: wie zegt het?
+///
+/// Een eigen veld naast de verplichting, omdat het antwoord kan verschillen. Een
+/// letterlijk ritme staat in het artikel dat de verplichting declareert; een
+/// ritme uit een uitkomst staat in het artikel dat die uitkomst voortbrengt, en
+/// dat hoeft niet hetzelfde artikel te zijn. Een ritme uit een instelling staat
+/// in het wereldbestand, en dat is een **gat**: de wet zegt wélk ritme niet,
+/// terwijl het gram het wel draagt.
+///
+/// Dezelfde voorrang als het besluit ([`DeclaredObligations::schedule_ref`]): een
+/// uitkomst gaat voor een instelling. Dat het schema de instellingen niet kent,
+/// maakt niet uit — een naam die op beide plekken bestaat, weigert het optuigen.
+fn schedule_field(
+    name: &str,
+    definition: &BesluitDefinition,
+    lexicon: &Lexicon<'_>,
+    found: &Declared,
+    reference: ScheduleRef<'_>,
+) -> DecretogramField {
+    match reference {
+        ScheduleRef::Literal(ritme) => DecretogramField::from_lexogram(
+            name,
+            "string",
+            lexicon.layer(),
+            found.lexogram.clone(),
+            format!("'{ritme}': het artikel dat de verplichting declareert, zegt het letterlijk"),
+        ),
+        ScheduleRef::Output(output) => {
+            // Een uitkomst van het declarerende artikel wijst naar dat artikel;
+            // een uitkomst uit `outputs` naar het artikel dat haar voortbrengt.
+            let article = if found.declared.article_outputs.contains(output) {
+                found.lexogram.article.clone()
+            } else {
+                lexicon
+                    .article_for(output)
+                    .map(|article| article.number.clone())
+            };
+            lexicon.declared(
+                name,
+                "string",
+                article.as_deref(),
+                format!(
+                    "uitkomst '{output}' van besluit '{}': het ritme volgt uit wat de \
+                     regeling bij dit besluit uitrekent",
+                    definition.name
+                ),
+            )
+        }
+        ScheduleRef::Setting(setting) => DecretogramField::wereldbestand(
+            name,
+            "string",
+            format!(
+                "instelling '{setting}' uit `settings` van het wereldbestand: de regeling \
+                 zegt niet in welk ritme er betaald wordt"
+            ),
+        ),
+    }
 }
 
 /// Het veld met het besluittype: wélk besluit dit is.

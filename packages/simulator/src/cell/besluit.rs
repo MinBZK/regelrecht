@@ -219,6 +219,13 @@ pub const OBLIGATIONS: &str = "obligations";
 /// die op haar eigen dag vervalt, draagt het veld niet: dan zou elk gram een
 /// tweede datum dragen die niets zegt.
 pub const OORSPRONKELIJKE_VERVALDATUM: &str = "oorspronkelijke_vervaldatum";
+/// Veld van een termijn met de plek waar haar **ritme** vandaan kwam.
+///
+/// Naast [`LEXOGRAM`], dat zegt welk artikel de verplichting declareert: het
+/// ritme kan uit hetzelfde artikel komen, uit een uitkomst van een ander artikel,
+/// of uit een instelling van het wereldbestand — en dat laatste is geen recht.
+/// Zie [`ScheduleOrigin`].
+pub const RITME_HERKOMST: &str = "ritme_herkomst";
 /// Veld met de eigen kronieken waarop de uitvoering leunde, met hun stand.
 pub const CHRONICLE_SOURCES: &str = "chronicle_sources";
 /// Veld met het volledige RFC-013 Execution Receipt.
@@ -689,12 +696,15 @@ pub struct ObligationDefinition {
     /// uit de wet zelf. Een bedrag dat er los naast staat zou naast de uitkomst
     /// gaan leven, en dan zegt het gram twee dingen over hetzelfde geld.
     pub bedrag: String,
-    /// Het ritme: `ineens`, `kwartaal` of `maand`, of `$instelling` — een
-    /// verwijzing naar `settings` in het wereldbestand.
+    /// Het ritme: `ineens`, `kwartaal` of `maand`, of `$naam`.
     ///
-    /// Dat een ritme een instelling mag zijn, is geen gemak: een betalingsritme
-    /// is doorgaans beleid en geen wet, en beleid hoort niet in een regeling
-    /// vast te staan alsof de wet het voorschrijft.
+    /// Een `$naam` is eerst een **uitkomst**: van het artikel dat de verplichting
+    /// declareert, of van `outputs` van de besluit-definitie. Dan volgt het ritme
+    /// uit het besluit zelf, en staat het dus in het recht — een regeling die
+    /// "tot een drempel ineens, daarboven per kwartaal" zegt, rekent dat uit.
+    /// Pas als er geen uitkomst zo heet, is het een verwijzing naar `settings` in
+    /// het wereldbestand. Heet er op beide plekken iets zo, dan weigert het
+    /// optuigen.
     pub ritme: String,
     /// Wie moet nakomen: [`BEVOEGD_GEZAG_REFERENCE`] of `$parameter`.
     ///
@@ -880,6 +890,13 @@ pub(crate) struct ObligationScope<'a> {
     pub(crate) zaakkenmerk: &'a str,
     /// Het moment van het besluit.
     pub(crate) op_moment: NaiveDate,
+    /// Per uitkomst waaruit een ritme komt, het artikel dat haar voortbrengt in
+    /// de versie die op dit moment gold.
+    ///
+    /// Van de aanroeper, want alleen die heeft de engine: het ritme kan uit een
+    /// uitkomst van een ander artikel komen dan het artikel dat de verplichting
+    /// declareert, en dan hoort het gram dát artikel te noemen.
+    pub(crate) output_articles: &'a BTreeMap<String, String>,
 }
 
 /// Waar een verplichting vandaan komt: het artikel dat haar declareert.
@@ -944,6 +961,124 @@ impl ObligationOrigin {
         }
     }
 }
+
+/// Waar het ritme van een verplichting naar wijst, zoals de declaratie het zegt.
+///
+/// Drie vormen, en de volgorde waarin `$naam` wordt opgezocht is de hele regel:
+/// eerst een uitkomst, dan een instelling. Eén plek die dat beslist, want vier
+/// lezers stellen dezelfde vraag — het optuigen (bestaat de naam, en niet op twee
+/// plekken), het besluit (welk ritme), het schema van het decretogram (wie
+/// declareert dit) en de wereld (welke instelling komt vast te staan) — en ze
+/// horen niet elk een eigen antwoord te geven.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ScheduleRef<'a> {
+    /// Het ritme staat letterlijk in het artikel.
+    Literal(&'a str),
+    /// Het ritme is een uitkomst van het besluit.
+    Output(&'a str),
+    /// Het ritme is een instelling van het wereldbestand.
+    Setting(&'a str),
+}
+
+/// Waar het ritme van een verplichting in een gram vandaan kwam.
+///
+/// Twee antwoorden, dezelfde twee die het schema van het decretogram geeft
+/// ([`crate::Herkomst`]): het recht, of het wereldbestand. Een letterlijk ritme
+/// en een ritme uit een uitkomst zijn allebei recht — het eerste staat in het
+/// artikel dat de verplichting declareert, het tweede in het artikel dat de
+/// uitkomst voortbrengt, en dat hoeft niet hetzelfde artikel te zijn. Een
+/// instelling is geen recht, en wie een gram terugleest hoort dat verschil te
+/// zien zonder de besluit-definitie erbij te pakken.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ScheduleOrigin {
+    /// Het lexogram zegt het: regeling, versie en artikel.
+    Lexogram {
+        /// Het artikel dat het ritme noemt of uitrekent.
+        herkomst: ObligationOrigin,
+        /// De uitkomst die het ritme leverde; `None` bij een letterlijk ritme.
+        uitkomst: Option<String>,
+    },
+    /// Een instelling van het wereldbestand zegt het.
+    Wereldbestand {
+        /// De naam van de instelling.
+        instelling: String,
+    },
+}
+
+impl ScheduleOrigin {
+    /// De herkomst als vastlegbare waarde, voor in het decretogram.
+    ///
+    /// Met hetzelfde etiket (`herkomst`) als de herkomst van een input
+    /// ([`InputOrigin::as_value`]), en met de velden van [`ObligationOrigin`] voor
+    /// het artikel: één vocabulaire voor wie een gram leest.
+    fn as_value(&self) -> Value {
+        match self {
+            Self::Lexogram { herkomst, uitkomst } => {
+                let Value::Object(mut fields) = herkomst.as_value() else {
+                    // Onbereikbaar: [`ObligationOrigin::as_value`] levert een object.
+                    return Value::Null;
+                };
+                fields.insert(HERKOMST.to_string(), Value::String(LEXOGRAM.to_string()));
+                if let Some(uitkomst) = uitkomst {
+                    fields.insert(UITKOMST.to_string(), Value::String(uitkomst.clone()));
+                }
+                Value::Object(fields)
+            }
+            Self::Wereldbestand { instelling } => Value::Object(BTreeMap::from([
+                (
+                    HERKOMST.to_string(),
+                    Value::String(WERELDBESTAND.to_string()),
+                ),
+                (INSTELLING.to_string(), Value::String(instelling.clone())),
+            ])),
+        }
+    }
+
+    /// Lees een herkomst terug uit het gram waarin ze staat; `None` als ze niet
+    /// te lezen is.
+    fn from_value(value: &Value) -> Option<Self> {
+        let Value::Object(fields) = value else {
+            return None;
+        };
+        let text = |name: &str| fields.get(name).and_then(Value::as_str).map(str::to_string);
+        match text(HERKOMST)?.as_str() {
+            LEXOGRAM => Some(Self::Lexogram {
+                herkomst: ObligationOrigin::from_value(value)?,
+                uitkomst: text(UITKOMST),
+            }),
+            WERELDBESTAND => Some(Self::Wereldbestand {
+                instelling: text(INSTELLING)?,
+            }),
+            _ => None,
+        }
+    }
+
+    /// Leesbare herkomst voor een verslag.
+    pub fn describe(&self) -> String {
+        match self {
+            Self::Lexogram {
+                herkomst,
+                uitkomst: Some(uitkomst),
+            } => format!("uitkomst '{uitkomst}' van {}", herkomst.describe()),
+            Self::Lexogram {
+                herkomst,
+                uitkomst: None,
+            } => herkomst.describe(),
+            Self::Wereldbestand { instelling } => {
+                format!("instelling '{instelling}' van het wereldbestand")
+            }
+        }
+    }
+}
+
+/// Het etiket van een herkomst, zoals een input het ook draagt.
+const HERKOMST: &str = "herkomst";
+/// De herkomst van een ritme dat uit het wereldbestand komt.
+const WERELDBESTAND: &str = "wereldbestand";
+/// Het veld met de uitkomst die een ritme leverde.
+const UITKOMST: &str = "uitkomst";
+/// Het veld met de instelling die een ritme leverde.
+const INSTELLING: &str = "instelling";
 
 /// Het ritme waarin een verplichting vervalt.
 ///
@@ -1062,6 +1197,8 @@ pub struct WachtendeVerplichting {
     pub bedrag: Decimal,
     /// Het ritme waarin ze straks vervalt.
     pub schedule: Schedule,
+    /// Waar dat ritme vandaan kwam.
+    pub ritme_herkomst: ScheduleOrigin,
     /// Het volgnummer van haar eerste termijn binnen het schema van dit besluit.
     ///
     /// Vastgesteld bij het besluit en niet bij de bekendmaking: de volgnummers
@@ -1110,6 +1247,7 @@ impl WachtendeVerplichting {
                 "schedule".to_string(),
                 Value::String(self.schedule.name().to_string()),
             ),
+            (RITME_HERKOMST.to_string(), self.ritme_herkomst.as_value()),
             (VOLGNUMMER.to_string(), Value::Int(self.eerste_volgnummer)),
             ("termijnen".to_string(), Value::Int(self.termijnen)),
             (GRONDSLAG.to_string(), Value::String(self.grondslag.clone())),
@@ -1141,6 +1279,7 @@ impl WachtendeVerplichting {
             betaler: text(BETALER),
             bedrag: fields.get(BEDRAG).and_then(Value::as_decimal)?,
             schedule: Schedule::from_name(fields.get("schedule").and_then(Value::as_str)?)?,
+            ritme_herkomst: ScheduleOrigin::from_value(fields.get(RITME_HERKOMST)?)?,
             eerste_volgnummer: fields.get(VOLGNUMMER).and_then(Value::as_int)?,
             termijnen: fields.get("termijnen").and_then(Value::as_int)?,
             grondslag: text(GRONDSLAG)?,
@@ -1195,6 +1334,7 @@ impl WachtendeVerplichting {
                 zaakkenmerk: zaak.zaakkenmerk.to_string(),
                 decided_op_moment: zaak.op_moment,
                 schedule: self.schedule,
+                ritme_herkomst: self.ritme_herkomst.clone(),
                 vervaldatum,
                 oorspronkelijke_vervaldatum,
                 bedrag: amount(bedrag),
@@ -1246,6 +1386,8 @@ pub struct NietsTeBetalen {
     pub schuldeiser: String,
     /// Het ritme waarin ze vervallen was, als er iets te betalen was geweest.
     pub schedule: Schedule,
+    /// Waar dat ritme vandaan kwam, zoals bij elke termijn.
+    pub ritme_herkomst: ScheduleOrigin,
     /// Waarop deze verplichting berust, in de woorden van het lexogram.
     pub grondslag: String,
     /// Het artikel dat haar declareert, met de versie die toen gold.
@@ -1277,6 +1419,7 @@ impl NietsTeBetalen {
                 "schedule".to_string(),
                 Value::String(self.schedule.name().to_string()),
             ),
+            (RITME_HERKOMST.to_string(), self.ritme_herkomst.as_value()),
             (GRONDSLAG.to_string(), Value::String(self.grondslag.clone())),
             (LEXOGRAM.to_string(), self.herkomst.as_value()),
         ]))
@@ -1364,6 +1507,9 @@ pub struct ObligationDue {
     pub decided_op_moment: NaiveDate,
     /// Het ritme waarin deze termijn valt.
     pub schedule: Schedule,
+    /// Waar dat ritme vandaan kwam: het lexogram, of een instelling van het
+    /// wereldbestand.
+    pub ritme_herkomst: ScheduleOrigin,
     /// De dag waarop deze termijn vervalt.
     ///
     /// Nooit vóór het moment waarop er betaald kan worden: bij een ingehaalde
@@ -1549,6 +1695,7 @@ impl ObligationDue {
                 "schedule".to_string(),
                 Value::String(self.schedule.name().to_string()),
             ),
+            (RITME_HERKOMST.to_string(), self.ritme_herkomst.as_value()),
             (GRONDSLAG.to_string(), Value::String(self.grondslag.clone())),
             (LEXOGRAM.to_string(), self.herkomst.as_value()),
         ]);
@@ -1958,7 +2105,7 @@ impl InputOrigin {
                 recorded_op_moment,
             } => Value::Object(BTreeMap::from([
                 (
-                    "herkomst".to_string(),
+                    HERKOMST.to_string(),
                     Value::String("eigen_kroniek".to_string()),
                 ),
                 ("chronicle".to_string(), Value::String(chronicle.clone())),
@@ -1969,10 +2116,7 @@ impl InputOrigin {
                 ),
             ])),
             Self::Parameter { parameter } => Value::Object(BTreeMap::from([
-                (
-                    "herkomst".to_string(),
-                    Value::String("parameter".to_string()),
-                ),
+                (HERKOMST.to_string(), Value::String("parameter".to_string())),
                 ("parameter".to_string(), Value::String(parameter.clone())),
             ])),
             Self::Accepted {
@@ -1986,7 +2130,7 @@ impl InputOrigin {
                 contact,
             } => Value::Object(BTreeMap::from([
                 (
-                    "herkomst".to_string(),
+                    HERKOMST.to_string(),
                     Value::String("geaccepteerd".to_string()),
                 ),
                 ("cell".to_string(), Value::String(cell.clone())),
@@ -2013,7 +2157,7 @@ impl InputOrigin {
                 moment,
             } => Value::Object(BTreeMap::from([
                 (
-                    "herkomst".to_string(),
+                    HERKOMST.to_string(),
                     Value::String("eerder_besluit".to_string()),
                 ),
                 (BESLUIT.to_string(), Value::String(besluit.clone())),
@@ -3157,6 +3301,7 @@ impl BesluitDefinition {
             parties,
             zaakkenmerk,
             op_moment,
+            output_articles,
         } = scope;
         // Eerst elke verplichting oplossen, dan pas termijnen maken: het aantal
         // termijnen van het hele schema staat in elke termijn, en dat is pas
@@ -3164,7 +3309,16 @@ impl BesluitDefinition {
         let mut resolved = Vec::with_capacity(declared.items.len());
         let mut niets_te_betalen = Vec::new();
         for obligation in &declared.items {
-            let schedule = obligation.schedule(cell, &self.name, settings)?;
+            let (schedule, ritme_herkomst) = obligation.schedule(
+                cell,
+                self,
+                declared,
+                ScheduleSources {
+                    outputs,
+                    settings,
+                    output_articles,
+                },
+            )?;
             let start = obligation.start(cell, &self.name, params, op_moment)?;
             let total = obligation.total(cell, &self.name, outputs)?;
             // Ná het bedrag, want het teken bepaalt de richting: een negatief
@@ -3181,19 +3335,20 @@ impl BesluitDefinition {
                     schuldenaar: relation.schuldenaar,
                     schuldeiser: relation.schuldeiser,
                     schedule,
+                    ritme_herkomst,
                     grondslag: obligation.grondslag.clone(),
                     herkomst: declared.origin.clone(),
                 });
                 continue;
             }
-            resolved.push((obligation, schedule, start, relation));
+            resolved.push((obligation, schedule, ritme_herkomst, start, relation));
         }
         // De termijnen van dit besluit tellen nooit zo hoog dat ze de grenzen van
         // i64 raken: het zijn er ten hoogste twaalf per verplichting.
         let termijnen = i64::try_from(
             resolved
                 .iter()
-                .map(|(_, schedule, _, _)| schedule.terms() as usize)
+                .map(|(_, schedule, _, _, _)| schedule.terms() as usize)
                 .sum::<usize>(),
         )
         .unwrap_or(i64::MAX);
@@ -3205,7 +3360,7 @@ impl BesluitDefinition {
         // hoort niet opnieuw bij 1 te beginnen. Daarom telt deze teller ook de
         // termijnen die hier nog geen dag krijgen.
         let mut volgnummer: i64 = 0;
-        for (obligation, schedule, start, relation) in resolved {
+        for (obligation, schedule, ritme_herkomst, start, relation) in resolved {
             // Wie er in déze wereld onder de naam van de schuldenaar nakomt. Geen
             // cel is geen fout: de wereld kent die actor niet, de termijn staat
             // open (zie [`ObligationDue::betaler`]).
@@ -3232,6 +3387,7 @@ impl BesluitDefinition {
                         betaler: betaler.clone(),
                         bedrag: relation.total,
                         schedule,
+                        ritme_herkomst: ritme_herkomst.clone(),
                         eerste_volgnummer: volgnummer + 1,
                         termijnen,
                         grondslag: obligation.grondslag.clone(),
@@ -3274,6 +3430,7 @@ impl BesluitDefinition {
                     zaakkenmerk: zaakkenmerk.to_string(),
                     decided_op_moment: op_moment,
                     schedule,
+                    ritme_herkomst: ritme_herkomst.clone(),
                     vervaldatum,
                     oorspronkelijke_vervaldatum,
                     bedrag: amount(bedrag),
@@ -3701,6 +3858,22 @@ impl BesluitDefinition {
     }
 }
 
+/// Waaruit een ritme opgelost kan worden: wat de uitvoering opleverde, en wat de
+/// wereld heeft ingesteld.
+///
+/// Samen en niet los, want het zijn twee mappen van naam naar waarde en de
+/// voorrang tussen die twee is precies wat er niet verwisseld mag worden.
+#[derive(Debug, Clone, Copy)]
+struct ScheduleSources<'a> {
+    /// Alles wat de uitvoering van het besluit opleverde.
+    outputs: &'a BTreeMap<String, Value>,
+    /// De instellingen van de wereld.
+    settings: &'a BTreeMap<String, Value>,
+    /// Per uitkomst het artikel dat haar voortbrengt (zie
+    /// [`ObligationScope::output_articles`]).
+    output_articles: &'a BTreeMap<String, String>,
+}
+
 impl DeclaredObligations {
     /// Lees wat één artikel onder
     /// [`CHRONOLEX`](crate::cell::extensions::CHRONOLEX) declareert.
@@ -3803,35 +3976,112 @@ impl DeclaredObligations {
             .map(|obligation| obligation.bedrag.trim_start_matches('$'))
     }
 
+    /// Is `name` een uitkomst waarop een verplichting van dit besluit mag
+    /// leunen: een uitkomst van dít artikel, of een die het besluit vastlegt?
+    ///
+    /// Dezelfde twee plekken als voor het bedrag (zie
+    /// [`ObligationDefinition::validate`]): wat de wet bij dit besluit uitrekent.
+    fn is_output(&self, definition: &BesluitDefinition, name: &str) -> bool {
+        self.article_outputs.contains(name) || definition.recorded_outputs().contains(name)
+    }
+
+    /// Waar het ritme van deze verplichting naar wijst, bij dit besluit.
+    pub(crate) fn schedule_ref<'a>(
+        &self,
+        definition: &BesluitDefinition,
+        obligation: &'a ObligationDefinition,
+    ) -> ScheduleRef<'a> {
+        match obligation.ritme.strip_prefix('$') {
+            None => ScheduleRef::Literal(&obligation.ritme),
+            Some(name) if self.is_output(definition, name) => ScheduleRef::Output(name),
+            Some(name) => ScheduleRef::Setting(name),
+        }
+    }
+
+    /// De uitkomsten waaruit een ritme komt.
+    ///
+    /// Ze moeten mee de uitvoering in als gevraagde uitkomst, om dezelfde reden
+    /// als [`Self::amounts`]: een ritme mag een uitkomst van het artikel zijn die
+    /// het besluit zelf niet publiceert.
+    pub(crate) fn schedule_outputs<'a>(
+        &'a self,
+        definition: &'a BesluitDefinition,
+    ) -> impl Iterator<Item = &'a str> + 'a {
+        self.items.iter().filter_map(move |obligation| {
+            match self.schedule_ref(definition, obligation) {
+                ScheduleRef::Output(name) => Some(name),
+                ScheduleRef::Literal(_) | ScheduleRef::Setting(_) => None,
+            }
+        })
+    }
+
     /// De instellingen van het wereldbestand waarop deze verplichtingen leunen.
     ///
-    /// Vandaag is dat alleen het ritme (`ritme: $naam`). Wat het oplevert, is wat
-    /// vast komt te staan zodra er op besloten is: het gram legt vast waarop
-    /// besloten is, dus een instelling die er daarna onder vandaan geschoven
-    /// wordt, laat het gram iets anders zeggen dan er gebeurd is (zie
-    /// [`crate::World::update_settings`]).
-    pub(crate) fn settings_used(&self) -> BTreeSet<&str> {
+    /// Vandaag is dat alleen het ritme (`ritme: $naam`), en alleen als er geen
+    /// uitkomst zo heet: een ritme uit een uitkomst staat in het gram en zet
+    /// niets vast. Wat het oplevert, is wat vast komt te staan zodra er op
+    /// besloten is: het gram legt vast waarop besloten is, dus een instelling die
+    /// er daarna onder vandaan geschoven wordt, laat het gram iets anders zeggen
+    /// dan er gebeurd is (zie [`crate::World::update_settings`]).
+    pub(crate) fn settings_used<'a>(&'a self, definition: &BesluitDefinition) -> BTreeSet<&'a str> {
         self.items
             .iter()
-            .filter_map(|obligation| obligation.ritme.strip_prefix('$'))
+            .filter_map(
+                |obligation| match self.schedule_ref(definition, obligation) {
+                    ScheduleRef::Setting(name) => Some(name),
+                    ScheduleRef::Literal(_) | ScheduleRef::Output(_) => None,
+                },
+            )
             .collect()
     }
 
     /// Controleer deze verplichtingen tegen de instellingen van de wereld.
     ///
     /// Apart van [`Self::validate`], omdat het antwoord niet in de cel staat: een
-    /// `ritme: $betalingsritme` verwijst naar het wereldbestand, en een cel kent
-    /// dat niet. De wereld roept dit aan bij het optuigen, zodat een instelling
-    /// die niet bestaat of geen ritme is meteen blijkt en niet pas bij het
-    /// besluit dat erop leunt.
+    /// `ritme: $betalingsritme` kan naar het wereldbestand verwijzen, en een cel
+    /// kent dat niet. De wereld roept dit aan bij het optuigen, zodat een
+    /// instelling die niet bestaat of geen ritme is meteen blijkt en niet pas bij
+    /// het besluit dat erop leunt — en zodat een naam die zowel een uitkomst als
+    /// een instelling is, geweigerd wordt voordat de instelling stil niets doet.
+    ///
+    /// Een ritme uit een uitkomst valt hier niet na te kijken: welke waarde ze
+    /// heeft, blijkt pas bij het besluit.
     pub(crate) fn check_settings(
         &self,
         cell: &str,
-        besluit: &str,
+        definition: &BesluitDefinition,
         settings: &BTreeMap<String, Value>,
     ) -> Result<()> {
         for obligation in &self.items {
-            obligation.schedule(cell, besluit, settings)?;
+            match self.schedule_ref(definition, obligation) {
+                ScheduleRef::Output(name) if settings.contains_key(name) => {
+                    let output_origin = if self.article_outputs.contains(name) {
+                        self.origin.describe()
+                    } else {
+                        format!("besluit '{}' (`outputs`)", definition.name)
+                    };
+                    return Err(SimulatorError::AmbiguousScheduleReference {
+                        cell: cell.to_string(),
+                        besluit: definition.name.clone(),
+                        origin: self.origin.describe(),
+                        name: name.to_string(),
+                        output_origin,
+                    });
+                }
+                ScheduleRef::Output(_) => {}
+                ScheduleRef::Literal(_) | ScheduleRef::Setting(_) => {
+                    obligation.schedule(
+                        cell,
+                        definition,
+                        self,
+                        ScheduleSources {
+                            outputs: &BTreeMap::new(),
+                            settings,
+                            output_articles: &BTreeMap::new(),
+                        },
+                    )?;
+                }
+            }
         }
         Ok(())
     }
@@ -4086,8 +4336,9 @@ impl ObligationDefinition {
             return Err(amount_error());
         }
 
-        // Een `$instelling` valt hier niet na te kijken; een letterlijk ritme
-        // wel, en dan hoort een typfout hier te vallen en niet bij het besluit.
+        // Een `$naam` valt hier niet na te kijken — een uitkomst heeft pas bij
+        // het besluit een waarde, een instelling staat in de wereld; een
+        // letterlijk ritme wel, en dan hoort een typfout hier te vallen en niet bij het besluit.
         if !self.ritme.starts_with('$') && Schedule::from_name(&self.ritme).is_none() {
             return Err(SimulatorError::UnknownSchedule {
                 cell: cell.to_string(),
@@ -4174,36 +4425,112 @@ impl ObligationDefinition {
         Ok(())
     }
 
-    /// Het ritme van deze verplichting, met de instellingen van de wereld erbij.
+    /// Het ritme van deze verplichting, met waar het vandaan kwam.
+    ///
+    /// Langs [`DeclaredObligations::schedule_ref`]: een uitkomst van het besluit
+    /// gaat voor een instelling. Een uitkomst die geen ritme is, laat het besluit
+    /// omvallen — er wordt dan niets vastgelegd, want dit gebeurt vóór het gram.
     fn schedule(
         &self,
         cell: &str,
-        besluit: &str,
-        settings: &BTreeMap<String, Value>,
-    ) -> Result<Schedule> {
-        let name = match self.ritme.strip_prefix('$') {
-            None => self.ritme.clone(),
-            Some(setting) => settings
-                .get(setting)
-                .ok_or_else(|| SimulatorError::UnknownSetting {
-                    cell: cell.to_string(),
-                    besluit: besluit.to_string(),
-                    setting: setting.to_string(),
-                    known: settings
-                        .keys()
-                        .map(String::as_str)
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                })?
-                .to_string(),
-        };
-
-        Schedule::from_name(&name).ok_or_else(|| SimulatorError::UnknownSchedule {
+        definition: &BesluitDefinition,
+        declared: &DeclaredObligations,
+        sources: ScheduleSources<'_>,
+    ) -> Result<(Schedule, ScheduleOrigin)> {
+        let besluit = definition.name.as_str();
+        let unknown = |schedule: String| SimulatorError::UnknownSchedule {
             cell: cell.to_string(),
             besluit: besluit.to_string(),
-            schedule: name,
+            schedule,
             known: Schedule::listing(),
-        })
+        };
+        match declared.schedule_ref(definition, self) {
+            ScheduleRef::Literal(name) => {
+                let schedule =
+                    Schedule::from_name(name).ok_or_else(|| unknown(name.to_string()))?;
+                Ok((
+                    schedule,
+                    ScheduleOrigin::Lexogram {
+                        herkomst: declared.origin.clone(),
+                        uitkomst: None,
+                    },
+                ))
+            }
+            ScheduleRef::Output(name) => {
+                let found = sources.outputs.get(name);
+                let schedule = found
+                    .and_then(Value::as_str)
+                    .and_then(Schedule::from_name)
+                    .ok_or_else(|| SimulatorError::ScheduleOutputValue {
+                        cell: cell.to_string(),
+                        besluit: besluit.to_string(),
+                        output: name.to_string(),
+                        found: found.map_or_else(
+                            || "niet uitgerekend door deze uitvoering".to_string(),
+                            |value| format!("'{value}' ({})", value.type_name()),
+                        ),
+                        known: Schedule::listing(),
+                    })?;
+                // Het artikel dat de uitkomst voortbrengt, in dezelfde versie als
+                // de verplichting: het is dezelfde regeling op hetzelfde moment.
+                // Een uitkomst van dít artikel wijst naar dít artikel, ook zonder
+                // opzoeking.
+                let article = if declared.article_outputs.contains(name) {
+                    declared.origin.article.clone()
+                } else {
+                    sources
+                        .output_articles
+                        .get(name)
+                        .cloned()
+                        // Onbereikbaar leeg: elke uitkomst van het besluit is bij
+                        // het optuigen aan de regeling gehouden, en de aanroeper
+                        // zocht haar artikel op in de versie die nu geldt.
+                        .unwrap_or_default()
+                };
+                Ok((
+                    schedule,
+                    ScheduleOrigin::Lexogram {
+                        herkomst: ObligationOrigin {
+                            article,
+                            ..declared.origin.clone()
+                        },
+                        uitkomst: Some(name.to_string()),
+                    },
+                ))
+            }
+            ScheduleRef::Setting(setting) => {
+                let value = sources.settings.get(setting).ok_or_else(|| {
+                    SimulatorError::UnknownSetting {
+                        cell: cell.to_string(),
+                        besluit: besluit.to_string(),
+                        setting: setting.to_string(),
+                        outputs: declared
+                            .article_outputs
+                            .iter()
+                            .map(String::as_str)
+                            .chain(definition.recorded_outputs())
+                            .collect::<BTreeSet<_>>()
+                            .into_iter()
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                        known: sources
+                            .settings
+                            .keys()
+                            .map(String::as_str)
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                    }
+                })?;
+                let name = value.to_string();
+                let schedule = Schedule::from_name(&name).ok_or_else(|| unknown(name))?;
+                Ok((
+                    schedule,
+                    ScheduleOrigin::Wereldbestand {
+                        instelling: setting.to_string(),
+                    },
+                ))
+            }
+        }
     }
 
     /// De dag waarop de eerste termijn vervalt.
@@ -5512,6 +5839,7 @@ params:
                     parties: &parties,
                     zaakkenmerk: "zorgtoeslag/2025",
                     op_moment,
+                    output_articles: &BTreeMap::new(),
                 },
                 &declared,
                 &BTreeMap::from([("hoogte_zorgtoeslag".to_string(), Value::Int(0))]),
@@ -5792,6 +6120,14 @@ params:
             betaler: Some("uitvoerder".to_string()),
             bedrag: Decimal::from(42000),
             schedule: Schedule::Kwartaal,
+            ritme_herkomst: ScheduleOrigin::Lexogram {
+                herkomst: ObligationOrigin {
+                    regulation: "test_bekendmaking".to_string(),
+                    valid_from: Some("2024-01-01".to_string()),
+                    article: "3".to_string(),
+                },
+                uitkomst: Some("betaalritme".to_string()),
+            },
             eerste_volgnummer: 2,
             termijnen: 5,
             grondslag: "art. 1 jo. art. 4:87".to_string(),
@@ -5819,6 +6155,9 @@ params:
             betaler: None,
             bedrag: Decimal::from(400),
             schedule: Schedule::Kwartaal,
+            ritme_herkomst: ScheduleOrigin::Wereldbestand {
+                instelling: "betalingsritme".to_string(),
+            },
             eerste_volgnummer: 2,
             termijnen: 5,
             grondslag: "art. 1".to_string(),
@@ -5857,6 +6196,14 @@ params:
             termijnen.iter().all(|due| due.besluit_gram == 3),
             "elke termijn hoort naar het besluit-gram te wijzen en niet naar de bekendmaking"
         );
+        // Het ritme lag vast bij het besluit, met zijn herkomst: de bekendmaking
+        // geeft de dag en laat die herkomst staan.
+        assert!(
+            termijnen
+                .iter()
+                .all(|due| due.ritme_herkomst == wachtend.ritme_herkomst),
+            "elke termijn hoort de herkomst van het ritme uit het besluit te dragen"
+        );
     }
 
     /// Een termijn die vóór de bekendmaking zou vervallen, wordt op de dag van
@@ -5871,6 +6218,9 @@ params:
             betaler: None,
             bedrag: Decimal::from(400),
             schedule: Schedule::Kwartaal,
+            ritme_herkomst: ScheduleOrigin::Wereldbestand {
+                instelling: "betalingsritme".to_string(),
+            },
             eerste_volgnummer: 1,
             termijnen: 4,
             grondslag: "art. 1".to_string(),

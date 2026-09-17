@@ -127,8 +127,8 @@ pub use cell::{
     LexogramRef, Lexostatus, LexostatusDefinition, LexostatusOutcome, NietsTeBetalen,
     ObligationDefinition, ObligationDue, ObligationKind, ObsoleteField, Openstaandvorm,
     Opschorting, ParameterType, Prefill, Reductie, ReductieVorm, Reduction, Regel,
-    RichtingBijNegatief, Schedule, TermijnenVervallen, Vervanging, Wetsvorm, AFWIJZING,
-    BESCHIKKINGEN, BETALINGEN, DECISION_TYPE,
+    RichtingBijNegatief, Schedule, ScheduleOrigin, TermijnenVervallen, Vervanging, Wetsvorm,
+    AFWIJZING, BESCHIKKINGEN, BETALINGEN, DECISION_TYPE,
 };
 pub use corpus::regulation_root;
 // De waarde waarin deze crate praat. Ze komt uit de engine en blijft dat, maar

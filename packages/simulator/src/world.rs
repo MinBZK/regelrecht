@@ -47,10 +47,10 @@
 use crate::accept::CellBridge;
 use crate::cell::{
     check_documented_params, check_parameter_value, check_prefill_values, Bekendmaking,
-    BekendmakingStand, Cell, CellConfig, ChronicleEvent, DecisionContext, DeclaredObligations,
-    Decretogram, DocumentedParameter, HookNietUitgevoerd, InputOrigin, Intake, Lexostatus,
-    ObligationDue, PartyBindings, Prefill, BESCHIKKINGEN, BETALINGEN, STAGE_BEKENDMAKING,
-    STAGE_BESLUIT, ZAAKKENMERK,
+    BekendmakingStand, Cell, CellConfig, ChronicleEvent, DecisionContext, Decretogram,
+    DocumentedParameter, HookNietUitgevoerd, InputOrigin, Intake, Lexostatus, ObligationDue,
+    PartyBindings, Prefill, BESCHIKKINGEN, BETALINGEN, STAGE_BEKENDMAKING, STAGE_BESLUIT,
+    ZAAKKENMERK,
 };
 use crate::cell::{nakoming_schema, uncovered};
 use crate::error::{Result, SimulatorError, Subject};
@@ -598,7 +598,10 @@ enum Trigger {
     /// ontstaat tíjdens de run, op het moment dat een besluit de verplichting
     /// oplegt. Dat is meteen de reden dat [`World::pending`] gesorteerd moet
     /// blijven bij het bijzetten.
-    Obligation(ObligationDue),
+    ///
+    /// In een doos, omdat een termijn veel groter is dan de andere varianten en
+    /// de wachtrij er per stuk één van draagt.
+    Obligation(Box<ObligationDue>),
     /// Een termijn verstrijkt; ontbreekt het feit, dan komt er een waarschuwing.
     ///
     /// De plaats in het wereldbestand, want een waarschuwing hoort te vallen op
@@ -1608,7 +1611,7 @@ impl World {
         // besluitende cel stond tot dat herstel nog niet terug, en de rest zat
         // nog in de brug.
         for due in &decretogram.obligations {
-            self.plan(due.vervaldatum, Trigger::Obligation(due.clone()));
+            self.plan(due.vervaldatum, Trigger::Obligation(Box::new(due.clone())));
         }
         let mut events = self.fire_due(self.clock)?;
         // Vooraan: de waarschuwing hoort bij het besluit, en dat ging vooraf aan
@@ -1734,7 +1737,7 @@ impl World {
         // een besluit: de termijn wordt een trigger, en een termijn die nu al
         // vervalt gaat meteen af.
         for due in &bekendmaking.obligations {
-            self.plan(due.vervaldatum, Trigger::Obligation(due.clone()));
+            self.plan(due.vervaldatum, Trigger::Obligation(Box::new(due.clone())));
         }
         let events = self.fire_due(self.clock)?;
         Ok((bekendmaking, events))
@@ -1797,10 +1800,11 @@ impl World {
 
     /// De instellingen waarop dit besluit leunde, uit het wereldbestand.
     ///
-    /// Uit de declaratie en niet uit het gram: het gram draagt het uitgerekende
-    /// schema, en daaruit is niet meer te zien of het ritme uit een instelling
-    /// kwam of letterlijk in het lexogram stond. Een besluit dat de cel niet kent
-    /// kwam hier nooit, dus een leeg antwoord is hier geen stilte.
+    /// Uit de declaratie, langs dezelfde voorrang als het besluit: een ritme uit
+    /// een uitkomst staat in het gram en zet geen instelling vast. Een naam die
+    /// zowel uitkomst als instelling is, komt hier niet: die weigert het
+    /// optuigen. Een besluit dat de cel niet kent kwam hier nooit, dus een leeg
+    /// antwoord is hier geen stilte.
     ///
     /// Over alle geladen versies, en niet alleen die van dit moment: een
     /// instelling die een ándere versie van dezelfde regeling gebruikt, hoort
@@ -1813,9 +1817,14 @@ impl World {
         deciding
             .besluit_definitions()
             .filter(|definition| definition.name == besluit)
-            .flat_map(|definition| deciding.obligation_declarations(definition))
-            .flat_map(DeclaredObligations::settings_used)
-            .map(str::to_string)
+            .flat_map(|definition| {
+                deciding
+                    .obligation_declarations(definition)
+                    .iter()
+                    .flat_map(|declared| declared.settings_used(definition))
+                    .map(str::to_string)
+                    .collect::<Vec<_>>()
+            })
             .collect()
     }
 
@@ -1894,7 +1903,7 @@ impl World {
             if due.decided_by != decretogram.cell || due.zaakkenmerk != decretogram.zaakkenmerk {
                 return true;
             }
-            vervallen.push(due.clone());
+            vervallen.push(ObligationDue::clone(due));
             false
         });
 
@@ -2487,7 +2496,7 @@ fn party_bindings(configs: &[CellConfig]) -> Result<PartyBindings> {
 /// Welke cel er nakomt, valt maar ten dele vooruit te weten: is de schuldenaar het
 /// bevoegd gezag, dan staat ze hier al vast, maar een partij uit een parameter
 /// krijgt pas bij het besluit een naam (zie
-/// [`DeclaredObligations::static_parties`]). En een naam waarvoor deze wereld geen
+/// [`crate::cell::DeclaredObligations::static_parties`]). En een naam waarvoor deze wereld geen
 /// cel kent, is **geen** fout: dan staat de termijn straks open.
 ///
 /// Over álle geladen versies van de regeling, en niet alleen de nieuwste: een
@@ -2509,7 +2518,7 @@ fn check_obligations(
                 if declared.is_empty() {
                     continue;
                 }
-                declared.check_settings(&config.id, &definition.name, settings)?;
+                declared.check_settings(&config.id, definition, settings)?;
                 // Het schema dat elke nakomende stroom hier moet dekken. Eén per
                 // soort die uit deze verplichtingen kan ontstaan: een artikel dat
                 // omkeren declareert, legt straks ook terugvorderingen in
@@ -4264,11 +4273,22 @@ besluit_definitions:
     fn een_ritme_uit_de_instellingen_wordt_gelezen_en_een_onbekende_geweigerd() {
         let mut world = verplichting_wereld(&ritme("maand"))
             .unwrap_or_else(|e| panic!("een ritme uit de instellingen moet werken: {e}"));
+        let gram = beslis(&mut world);
         assert_eq!(
-            beslis(&mut world).obligations.len(),
+            gram.obligations.len(),
             12,
             "de instelling zegt 'maand', dus twaalf termijnen"
         );
+        // En het gram zegt dat het ritme uit het wereldbestand kwam, niet uit
+        // de wet: wie het terugleest, hoort dat verschil te zien.
+        for termijn in &gram.obligations {
+            assert_eq!(
+                termijn.ritme_herkomst,
+                crate::cell::ScheduleOrigin::Wereldbestand {
+                    instelling: "betalingsritme".to_string()
+                }
+            );
+        }
 
         let err = verplichting_wereld(&no_settings())
             .expect_err("een instelling die niet bestaat hoort te falen");

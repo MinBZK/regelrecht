@@ -1105,21 +1105,78 @@ pub enum SimulatorError {
         known: String,
     },
 
-    /// Een verplichting verwijst naar een instelling die het wereldbestand niet
-    /// heeft.
+    /// Een verplichting verwijst met `ritme: $naam` naar iets dat er niet is: geen
+    /// uitkomst van het besluit, en geen instelling van het wereldbestand.
+    ///
+    /// Een uitkomst gaat voor, dus de melding noemt die eerst: wie hier een
+    /// typfout maakte, kan beide lijsten naast de naam leggen.
     #[error(
-        "cel '{cell}': verplichting van besluit '{besluit}' verwijst naar instelling \
-         '{setting}', maar die staat niet in `settings` van het wereldbestand \
-         (wel: {known})"
+        "cel '{cell}': verplichting van besluit '{besluit}' verwijst naar ritme \
+         '${setting}', maar dat is geen uitkomst van het uitvoerende artikel of van \
+         `outputs` van het besluit (wel: {outputs}) en ook geen instelling in \
+         `settings` van het wereldbestand (wel: {known})"
     )]
     UnknownSetting {
         /// Cel waarin de definitie staat.
         cell: String,
         /// Het besluit met de verplichting.
         besluit: String,
-        /// De instelling waarnaar verwezen wordt.
+        /// De naam waarnaar verwezen wordt.
         setting: String,
+        /// Komma-gescheiden lijst van de uitkomsten die het besluit kent.
+        outputs: String,
         /// Komma-gescheiden lijst van de instellingen die er wél zijn.
+        known: String,
+    },
+
+    /// `ritme: $naam` is zowel een uitkomst van het besluit als een instelling
+    /// van het wereldbestand.
+    ///
+    /// De uitkomst zou voorgaan, en dan staat er een instelling in het
+    /// wereldbestand die stil niets doet: wie haar wijzigt, verwacht een ander
+    /// ritme en krijgt het niet. Daarom geen voorrang maar een weigering, bij het
+    /// optuigen.
+    #[error(
+        "cel '{cell}': verplichting van besluit '{besluit}' ({origin}) verwijst naar \
+         ritme '${name}', en die naam is zowel een uitkomst van {output_origin} als \
+         een instelling in `settings` van het wereldbestand; hernoem een van beide, \
+         want een uitkomst gaat voor en de instelling zou stil niets doen"
+    )]
+    AmbiguousScheduleReference {
+        /// Cel waarin de definitie staat.
+        cell: String,
+        /// Het besluit met de verplichting.
+        besluit: String,
+        /// Regeling, versie en artikel van de verplichting.
+        origin: String,
+        /// De naam die op beide plekken bestaat.
+        name: String,
+        /// Waar de uitkomst staat: het uitvoerende artikel, of `outputs` van het
+        /// besluit.
+        output_origin: String,
+    },
+
+    /// Het ritme van een verplichting komt uit een uitkomst, en die uitkomst is
+    /// geen ritme.
+    ///
+    /// Bij het besluit, niet bij het optuigen: welke waarde de uitkomst heeft,
+    /// blijkt pas als de engine gedraaid heeft. Het besluit valt om en er wordt
+    /// niets vastgelegd — een schema in een ritme dat niet bestaat, zou stil
+    /// "ineens" of niets worden.
+    #[error(
+        "cel '{cell}': besluit '{besluit}' kan geen betalingsschema maken, want het \
+         ritme komt uit uitkomst '{output}' en die is {found} (toegestaan: {known})"
+    )]
+    ScheduleOutputValue {
+        /// Cel die besloot.
+        cell: String,
+        /// Het besluit met de verplichting.
+        besluit: String,
+        /// De uitkomst die het ritme moest leveren.
+        output: String,
+        /// Wat er in plaats van een ritme stond.
+        found: String,
+        /// Komma-gescheiden lijst van de ritmes die wél bestaan.
         known: String,
     },
 

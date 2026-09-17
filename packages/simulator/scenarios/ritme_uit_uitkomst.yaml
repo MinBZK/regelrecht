@@ -1,0 +1,202 @@
+---
+name: het ritme volgt uit het besluit
+description: >-
+  Het ritme van een betalingsverplichting als **uitkomst** van het besluit, en
+  niet als instelling van het wereldbestand. Artikel 1 van de testregeling zegt:
+  tot en met een drempelbedrag ineens, daarboven per kwartaal. Het rekent dat
+  uit als uitkomst `betaalritme`, en de verplichting leest die uitkomst met
+  `ritme: $betaalritme`. Deze wereld heeft daarom geen `settings`: er is geen
+  knop voor het ritme, want de wet zegt het.
+
+  Twee verleningen, één onder en één boven de drempel. Onder de drempel is op de
+  dag van het besluit alles betaald; erboven een kwart, en na drie kwartalen de
+  rest. Een derde besluit (artikel 2) leest het ritme uit een uitkomst van een
+  ánder artikel, die het besluit met `outputs` vastlegt.
+
+  Wat een scenariobestand niet kan dragen — de herkomst van het ritme in het gram,
+  een naam die zowel uitkomst als instelling is, en een uitkomst die geen ritme
+  is — staat in `tests/ritme_uit_uitkomst.rs`.
+
+clock:
+  start: 2024-01-01
+
+cells:
+  - id: verstrekker
+    identity: Subsidieverstrekker
+    laws:
+      - test_ritme_uit_uitkomst
+
+    chronicles:
+      - stream: betalingen
+        key: zaakkenmerk
+        gebeurtenissen: &betalingsschema
+          - name: betaling_gedaan
+            intake: betaling
+            grondslag: Algemene wet bestuursrecht, art. 4:89
+            fields: &betalingsvelden
+              - name: zaakkenmerk
+                type: string
+              - name: bedrag
+                type: amount
+              - name: volgnummer
+                type: number
+              - name: besluit
+                type: string
+              - name: schuldenaar
+                type: string
+              - name: schuldeiser
+                type: string
+          - name: betaling_gemeld
+            intake: levering
+            grondslag: Algemene wet bestuursrecht, art. 4:89
+            fields: *betalingsvelden
+
+    besluit_definitions:
+      - name: verlening
+        doc: >-
+          Het ritme staat niet hier en niet in `settings`: artikel 1 rekent het
+          uit, op het bedrag van dít besluit.
+        regulation: test_ritme_uit_uitkomst
+        output: subsidie
+        zaakkenmerk: verlening/{bsn}
+        params: &verleningsparameters
+          - name: bsn
+            type: string
+          - name: subsidiebedrag
+            type: number
+        inputs: &verleningsinputs
+          bsn:
+            param: bsn
+          subsidiebedrag:
+            param: subsidiebedrag
+
+      - name: vergoeding
+        doc: >-
+          Artikel 2 betaalt in het ritme dat artikel 1 uitrekent. Die uitkomst
+          legt het besluit vast met `outputs`, en daarmee mag de verplichting
+          ernaar wijzen.
+        regulation: test_ritme_uit_uitkomst
+        output: vergoeding
+        outputs:
+          - betaalritme
+        zaakkenmerk: vergoeding/{bsn}
+        params: *verleningsparameters
+        inputs: *verleningsinputs
+
+      - name: tegemoetkoming
+        doc: >-
+          Artikel 3 rekent een ritme uit dat de opstelling niet kent. Dit besluit
+          staat hier alleen om te laten omvallen, in `tests/ritme_uit_uitkomst.rs`.
+        regulation: test_ritme_uit_uitkomst
+        output: tegemoetkoming
+        zaakkenmerk: tegemoetkoming/{bsn}
+        params: *verleningsparameters
+        inputs: *verleningsinputs
+
+    lexostatus_definitions:
+      - name: betaald_tot_nu_toe
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - bedrag
+        reduction:
+          chronicle: betalingen
+          key: zaakkenmerk
+          sum: bedrag
+
+  - id: betaalkantoor
+    laws: []
+    komt_na:
+      - Subsidieverstrekker
+    chronicles:
+      - stream: betalingen
+        key: zaakkenmerk
+        gebeurtenissen: *betalingsschema
+
+    lexostatus_definitions:
+      - name: betaald_tot_nu_toe
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - bedrag
+        reduction:
+          chronicle: betalingen
+          key: zaakkenmerk
+          sum: bedrag
+
+decide:
+  - description: onder de drempel - artikel 1 zegt ineens
+    cell: verstrekker
+    besluit: verlening
+    params:
+      bsn: '999993653'
+      subsidiebedrag: 2000000
+    op_moment: 2024-01-01
+    expect:
+      subsidie: 2000000
+
+  - description: boven de drempel - artikel 1 zegt per kwartaal
+    cell: verstrekker
+    besluit: verlening
+    params:
+      bsn: '999990019'
+      subsidiebedrag: 4000000
+    op_moment: 2024-01-01
+    expect:
+      subsidie: 4000000
+
+  - description: >-
+      een vergoeding boven de drempel, in het ritme dat artikel 1 uitrekent
+    cell: verstrekker
+    besluit: vergoeding
+    params:
+      bsn: '999990019'
+      subsidiebedrag: 4000000
+    op_moment: 2024-01-01
+    expect:
+      vergoeding: 4000000
+      betaalritme: kwartaal
+
+queries:
+  - description: >-
+      Onder de drempel is op de dag van het besluit het hele bedrag betaald.
+    cell: betaalkantoor
+    lexostatus: betaald_tot_nu_toe
+    params:
+      zaakkenmerk: verlening/999993653
+    op_moment: 2024-01-01
+    expect:
+      bedrag: 2000000
+
+  - description: >-
+      Boven de drempel is op de dag van het besluit één kwart betaald.
+    cell: betaalkantoor
+    lexostatus: betaald_tot_nu_toe
+    params:
+      zaakkenmerk: verlening/999990019
+    op_moment: 2024-01-01
+    expect:
+      bedrag: 1000000
+
+  - description: >-
+      De vergoeding volgt hetzelfde ritme: ook daar één kwart.
+    cell: betaalkantoor
+    lexostatus: betaald_tot_nu_toe
+    params:
+      zaakkenmerk: vergoeding/999990019
+    op_moment: 2024-01-01
+    expect:
+      bedrag: 1000000
+
+  - description: >-
+      Op 1 oktober zijn alle vier kwartaaltermijnen betaald: het hele bedrag,
+      net als onder de drempel, alleen later.
+    cell: verstrekker
+    lexostatus: betaald_tot_nu_toe
+    params:
+      zaakkenmerk: verlening/999990019
+    op_moment: 2024-10-01
+    expect:
+      bedrag: 4000000
