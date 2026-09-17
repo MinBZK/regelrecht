@@ -45,9 +45,16 @@ const { cel, class: className, headers } = Astro.props;
         const tags = [
           /* Alleen 'opgepakt' en 'klaar' krijgen een tag, niet 'vrij' en niet
              de lege stand. Die twee zijn de stilzwijgende meerderheid, en
-             vijfenveertig kaarten met een tag die zegt dat er niets aan de
-             hand is, is ruis — bovendien is vier tags hier het plafond (zie
-             de opmerking bij de RFC-teller hieronder). */
+             zesenveertig kaarten met een tag die zegt dat er niets aan de
+             hand is, is ruis.
+
+             Dit maakt van vier tags er vijf op de kaarten die alle vier de
+             andere velden ingevuld hebben — vandaag precies één
+             (`aansluiten-op-bronnen-chronolexografie`). Dat is bewust: het
+             plafond waar de RFC-teller hieronder over spreekt gaat over
+             metadata die met de titel concurreert, en deze tag staat vóór de
+             andere omdat hij zegt of er iemand op zit. Loopt dit op, dan is
+             de vraag welke van de vijf weg mag, niet deze. */
           belegging &&
             belegging.id !== 'vrij' && {
               color: belegging.tagColor,
@@ -109,8 +116,8 @@ const { cel, class: className, headers } = Astro.props;
                       size="sm"
                     />
                   ))}
-                  {/* Not a tag: the card already carries up to four, and a
-                      fifth would make the title compete with its own
+                  {/* Not a tag: the card already carries up to five, and one
+                      more would make the title compete with its own
                       metadata. This is a quiet count of the design behind
                       the werkpakket — the detail page names them. */}
                   {wp.data.rfcs.length > 0 && (
