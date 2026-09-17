@@ -1384,9 +1384,9 @@ mod tests {
         assert!(!json.contains("article"), "{json}");
     }
 
-    /// A disabled builder records nothing, including the source.
+    /// A disabled builder records nothing, including the provision.
     #[test]
-    fn a_disabled_builder_records_no_source() {
+    fn a_disabled_builder_records_no_provision() {
         let mut builder = TraceBuilder::disabled();
         builder.push("hoogte", PathNodeType::Action);
         builder.set_provision("wet_op_de_zorgtoeslag", "3");
