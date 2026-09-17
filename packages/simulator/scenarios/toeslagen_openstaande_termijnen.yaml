@@ -75,8 +75,9 @@ cells:
         doc: >-
           Wat er van deze zaak nog openstaat: de termijnen die deze cel oplegde en
           die inmiddels vervielen, min wat er in haar eigen betalingenstroom op
-          ligt. Geen `outputs` — de vorm publiceert per richting `verwacht`, `betaald`,
-          `openstaand` en `termijnen`, en die horen bij elkaar.
+          ligt. Geen `outputs` — de vorm publiceert per richting (`betaling_…`,
+          `terugvordering_…`) `verwacht`, `betaald` en `openstaand`, plus
+          `termijnen`, en die horen bij elkaar.
         inputs:
           - name: zaakkenmerk
             type: string
@@ -144,7 +145,7 @@ decide:
 queries:
   - description: >-
       Op de dag van de eerste termijn is er één termijn vervallen en is die
-      betaling_betaald: niets openstaand.
+      betaald: niets openstaand.
     cell: toeslagen
     lexostatus: openstaande_termijnen
     params:

@@ -1312,9 +1312,9 @@ hetzelfde antwoordt),
 bepaalt wanneer, niet hoeveel) en
 [`scenarios/toeslagen_terugvordering.yaml`](scenarios/toeslagen_terugvordering.yaml)
 (een vaststelling lager dan het voorschot: de aanvrager-cel betaalt terug aan het
-bevoegd gezag, de twee sommen lopen uiteen zonder saldo, en `openstaand` houdt de twee
-richtingen uit elkaar). Wat er gebeurt als de
-wet over een negatief bedrag zwijgt, staat als fixture in
+bevoegd gezag, de twee sommen lopen uiteen zonder saldo, en `openstaand` houdt de
+twee richtingen uit elkaar). Wat er gebeurt als de wet over een negatief bedrag
+zwijgt, staat als fixture in
 [`scenarios/geweigerd/negatief_bedrag_zonder_omkeren.yaml`](scenarios/geweigerd/negatief_bedrag_zonder_omkeren.yaml)
 en wordt afgerekend in [`tests/verplichtingen.rs`](tests/verplichtingen.rs).
 

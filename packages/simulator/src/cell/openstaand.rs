@@ -644,11 +644,11 @@ fn obligations(gram: &ChronicleEvent) -> &[Value] {
 ///
 /// `None` voor een termijn die pas later vervalt — die is nog niets verwacht — en
 /// voor een termijn waaruit geen datum, geen bedrag of geen soort te lezen is.
-/// Geen soort is geen betaling: zonder soort is niet te zeggen welke kant de
-/// termijn op loopt, en raden zou haar bij de verkeerde richting kunnen tellen. Dat laatste is
-/// hier geen fout: het decretogram schrijft deze velden zelf (zie
+/// Dat laatste is hier geen fout: het decretogram schrijft deze velden zelf (zie
 /// `ObligationDue::as_value`), dus een gram zonder is er een uit een startstand,
-/// en een reductie is niet de plek om dat te beoordelen.
+/// en een reductie is niet de plek om dat te beoordelen. Een ontbrekende soort
+/// wordt daarbij niet als betaling gelezen: zonder soort is niet te zeggen welke
+/// kant de termijn op loopt, en raden zou haar bij de verkeerde richting tellen.
 fn lees_termijn(besluit: &str, due: &Value, plek: usize, op_moment: NaiveDate) -> Option<Termijn> {
     let Value::Object(velden) = due else {
         return None;
