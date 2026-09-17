@@ -989,9 +989,23 @@ bedrag toe.
   [Instellingen komen vast te staan](#instellingen-komen-vast-te-staan)).
 - **`vanaf` is een sjabloon over de gedocumenteerde parameters** van het besluit
   dat het artikel uitvoert, net als het zaakkenmerk, en wat het oplevert moet een
-  datum zijn. Het mag niet vóór het besluit liggen: een termijn in het verleden zou
-  bij het nakomen een betaling op een moment vastleggen dat al geweest is, en dan
-  verandert het beeld van toen alsnog.
+  datum zijn — een sjabloon dat geen datum oplevert laat het besluit omvallen.
+- **Een termijn die vóór het besluit zou vervallen, wordt ingehaald.** Een
+  `vanaf: '{subsidiejaar}-01-01'` bij een besluit dat pas op 15 januari genomen
+  wordt, is een te laat besluit en geen ongeldig besluit: te laat beslissen is
+  geen afwijzing, en betalen kan niet vóór het besluit er is (Awb 4:86, 4:87).
+  Elke termijn waarvan de dag uit het schema vóór het besluit ligt, vervalt
+  daarom op de dag van het besluit — een **inhaalbetaling**. Volgorde,
+  volgnummers en bedragen blijven wat ze waren; alleen de vervaldatum schuift, en
+  het gram draagt bij zo'n termijn de dag uit het schema als
+  `oorspronkelijke_vervaldatum`. Het journaal zegt bij de betaling *ingehaald
+  (oorspronkelijk …)*, en [`openstaand`](#openstaand-verwacht-min-gebeurd)
+  behandelt haar als een gewone termijn met die nieuwe vervaldatum. Een
+  vervaldatum in het verleden laten staan zou de klok een betaling laten
+  vastleggen op een moment dat al geweest is, en dan verandert het beeld van
+  toen alsnog. Bij `vanaf: bekendmaking` geldt hetzelfde met de dag van de
+  bekendmaking in plaats van die van het besluit. Zie
+  `scenarios/inhaaltermijnen.yaml`.
 - **`vanaf: bekendmaking` is geen datum maar een gebeurtenis.** Een besluit dat
   niet bekendgemaakt is, werkt niet (Awb 3:40), dus er valt niets in te
   roosteren. De verplichting komt dan met bedrag en partijen in het besluit te

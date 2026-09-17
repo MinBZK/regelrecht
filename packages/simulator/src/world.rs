@@ -1453,9 +1453,10 @@ impl World {
         self.laat_openstaande_termijnen_vervallen(&decretogram, decision)?;
 
         // De verplichtingen uit dit besluit worden triggers. Een termijn die nu
-        // al vervalt — en de eerste termijn valt op het moment van het besluit,
-        // tenzij `from` anders zegt — gaat meteen af: de klok staat er al, dus
-        // wachten zou hem tot de volgende `advance` laten liggen en dan pas met
+        // al vervalt — de eerste termijn valt op het moment van het besluit
+        // tenzij `from` anders zegt, en wat vóór het besluit zou vallen wordt op
+        // die dag ingehaald — gaat meteen af: de klok staat er al, dus wachten
+        // zou hem tot de volgende `advance` laten liggen en dan pas met
         // terugwerkende kracht laten vastleggen.
         //
         // Dit moet ná het herstel van `self.cells` hierboven: `settle` zoekt
@@ -4151,10 +4152,11 @@ besluit_definitions:
         );
     }
 
-    /// Een `vanaf` vóór het besluit zou een betaling op een moment vastleggen dat
-    /// al geweest is, en dan verandert het beeld van toen alsnog.
+    /// Een `vanaf` vóór het besluit laat het besluit niet omvallen: de termijnen
+    /// die al vervallen hadden moeten zijn, worden op de dag van het besluit
+    /// ingehaald, met de dag uit het schema erbij.
     #[test]
-    fn een_verplichting_die_voor_het_besluit_vervalt_wordt_geweigerd() {
+    fn een_verplichting_die_voor_het_besluit_vervalt_wordt_ingehaald() {
         let mut world = ritme_wereld(
             "bedrag_maandelijks",
             "      - name: jaar\n        type: string",
@@ -4166,17 +4168,35 @@ besluit_definitions:
             ("bsn".to_string(), Value::String("999993653".to_string())),
             ("jaar".to_string(), Value::String("2023".to_string())),
         ]);
-        let err = world
+        let gram = world
             .decide(
                 "toeslagen",
                 "zorgtoeslag_vaststelling",
                 &params,
                 date("2024-01-01"),
             )
-            .expect_err("een termijn vóór het besluit hoort te falen");
+            .unwrap_or_else(|e| panic!("een te laat besluit blijft een besluit: {e}"))
+            .decretogram;
+
+        assert_eq!(gram.obligations.len(), 12, "maand kent twaalf termijnen");
         assert!(
-            matches!(err, SimulatorError::ObligationBeforeDecision { .. }),
-            "verwachtte ObligationBeforeDecision, kreeg {err}"
+            gram.obligations
+                .iter()
+                .all(|due| due.vervaldatum == date("2024-01-01")),
+            "elke termijn vervalt op de dag van het besluit"
+        );
+        assert_eq!(
+            gram.obligations[0].oorspronkelijke_vervaldatum,
+            Some(date("2023-02-01"))
+        );
+        assert_eq!(
+            gram.obligations[11].oorspronkelijke_vervaldatum, None,
+            "de laatste termijn viel al op de dag van het besluit"
+        );
+        assert_eq!(
+            betaald(&world, "belastingdienst", "2024-01-01"),
+            Some(Value::Int(120_000)),
+            "alles wat al vervallen was, is op de dag van het besluit betaald"
         );
     }
 

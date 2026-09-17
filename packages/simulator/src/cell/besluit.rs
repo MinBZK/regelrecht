@@ -174,6 +174,15 @@ pub const HOOKS: &str = "hooks";
 /// platform haar zoekt, zodat twee regelingen er niet elk een eigen naam voor
 /// verzinnen.
 pub const UITERSTE_BETAALDATUM: &str = "uiterste_betaaldatum";
+/// Veld van een ingehaalde termijn met de dag waarop ze volgens het schema had
+/// moeten vervallen.
+///
+/// Alleen bij een termijn die **ingehaald** wordt: haar dag lag vóór het moment
+/// waarop er betaald kón worden — het besluit, of bij `vanaf: bekendmaking` de
+/// bekendmaking — en ze vervalt daarom op die dag (zie [`inhalen`]). Een termijn
+/// die op haar eigen dag vervalt, draagt het veld niet: dan zou elk gram een
+/// tweede datum dragen die niets zegt.
+pub const OORSPRONKELIJKE_VERVALDATUM: &str = "oorspronkelijke_vervaldatum";
 /// Veld met de termijnen die op de bekendmaking wachten.
 ///
 /// Wat het besluit oplegde maar nog niet kon inroosteren: het bedrag, de
@@ -698,8 +707,9 @@ pub struct ObligationDefinition {
     /// Vanaf wanneer de termijnen lopen, als sjabloon met `{parameter}`.
     ///
     /// Weggelaten betekent: het moment van het besluit. Wat er staat moet een
-    /// datum opleveren (`JJJJ-MM-DD`) die niet vóór het besluit ligt — een
-    /// verplichting kan niet vervallen vóór het besluit dat haar schept. De
+    /// datum opleveren (`JJJJ-MM-DD`). Ligt die vóór het besluit, dan worden de
+    /// termijnen die al vervallen hadden moeten zijn op de dag van het besluit
+    /// ingehaald — betalen kan niet vóór het besluit waaruit het volgt. De
     /// verwijzingen zijn die van het besluit dat het artikel uitvoert, en dus
     /// van de cel die het neemt.
     #[serde(default)]
@@ -1098,9 +1108,14 @@ impl WachtendeVerplichting {
     /// inroostert ([`BesluitDefinition::schedule_obligations`]): het bedrag gaat
     /// in hele eenheden over de termijnen en het restant naar de laatste, en de
     /// volgnummers sluiten aan op het schema dat het besluit al had.
+    ///
+    /// `bekendmaking` is de dag van de bekendmaking: een termijn die daarvóór zou
+    /// vervallen, wordt op die dag ingehaald (zie [`inhalen`]). Vóór de
+    /// bekendmaking werkt het besluit niet, dus eerder betalen kan niet.
     pub(crate) fn termijnen_vanaf(
         &self,
         start: NaiveDate,
+        bekendmaking: NaiveDate,
         zaak: &BesluitGram<'_>,
     ) -> Result<Vec<ObligationDue>> {
         let mut due = Vec::new();
@@ -1122,6 +1137,7 @@ impl WachtendeVerplichting {
                         step * self.schedule.step_months()
                     ),
                 })?;
+            let (vervaldatum, oorspronkelijke_vervaldatum) = inhalen(vervaldatum, bekendmaking);
             due.push(ObligationDue {
                 soort: self.soort,
                 schuldenaar: self.schuldenaar.clone(),
@@ -1133,6 +1149,7 @@ impl WachtendeVerplichting {
                 decided_op_moment: zaak.op_moment,
                 schedule: self.schedule,
                 vervaldatum,
+                oorspronkelijke_vervaldatum,
                 bedrag: amount(bedrag),
                 grondslag: self.grondslag.clone(),
                 herkomst: self.herkomst.clone(),
@@ -1218,7 +1235,18 @@ pub struct ObligationDue {
     /// Het ritme waarin deze termijn valt.
     pub schedule: Schedule,
     /// De dag waarop deze termijn vervalt.
+    ///
+    /// Nooit vóór het moment waarop er betaald kan worden: bij een ingehaalde
+    /// termijn is dit die dag, en staat de dag uit het schema in
+    /// [`Self::oorspronkelijke_vervaldatum`].
     pub vervaldatum: NaiveDate,
+    /// De dag uit het schema, als die vóór het besluit (of de bekendmaking) lag
+    /// en de termijn daarom ingehaald wordt; anders `None`.
+    ///
+    /// Een te laat besluit blijft een besluit: wat er al betaald had moeten
+    /// zijn, wordt op de dag dat het kan in één keer ingehaald, en niet
+    /// weggelaten of met terugwerkende kracht vastgelegd.
+    pub oorspronkelijke_vervaldatum: Option<NaiveDate>,
     /// Het bedrag van deze termijn.
     pub bedrag: Value,
     /// Het volgnummer binnen het schema van dít besluit, vanaf 1.
@@ -1364,8 +1392,10 @@ impl ObligationDue {
     }
 
     /// Deze termijn als vastlegbare waarde, voor in het decretogram.
+    ///
+    /// Een ingehaalde termijn draagt er [`OORSPRONKELIJKE_VERVALDATUM`] bij.
     fn as_value(&self) -> Value {
-        Value::Object(BTreeMap::from([
+        let mut fields = BTreeMap::from([
             (
                 "vervaldatum".to_string(),
                 Value::String(self.vervaldatum.to_string()),
@@ -1391,7 +1421,14 @@ impl ObligationDue {
             ),
             (GRONDSLAG.to_string(), Value::String(self.grondslag.clone())),
             (LEXOGRAM.to_string(), self.herkomst.as_value()),
-        ]))
+        ]);
+        if let Some(oorspronkelijk) = self.oorspronkelijke_vervaldatum {
+            fields.insert(
+                OORSPRONKELIJKE_VERVALDATUM.to_string(),
+                Value::String(oorspronkelijk.to_string()),
+            );
+        }
+        Value::Object(fields)
     }
 
     /// Leesbare termijn voor een verslag.
@@ -1404,8 +1441,12 @@ impl ObligationDue {
             Some(cell) => format!("cel '{cell}'"),
             None => "geen cel in deze wereld: openstaand".to_string(),
         };
+        let ingehaald = self
+            .oorspronkelijke_vervaldatum
+            .map(|oorspronkelijk| format!(", ingehaald (oorspronkelijk {oorspronkelijk})"))
+            .unwrap_or_default();
         format!(
-            "{} {}/{} van {} op {}, door {} aan {} ({}, {langs})",
+            "{} {}/{} van {} op {}{ingehaald}, door {} aan {} ({}, {langs})",
             self.soort.name(),
             self.volgnummer,
             self.termijnen,
@@ -2919,6 +2960,9 @@ impl BesluitDefinition {
                             step * schedule.step_months()
                         ),
                     })?;
+                // Vóór het besluit kan er niet betaald worden: wat er dan al
+                // vervallen had moeten zijn, wordt vandaag ingehaald.
+                let (vervaldatum, oorspronkelijke_vervaldatum) = inhalen(vervaldatum, op_moment);
 
                 volgnummer += 1;
                 due.push(ObligationDue {
@@ -2932,6 +2976,7 @@ impl BesluitDefinition {
                     decided_op_moment: op_moment,
                     schedule,
                     vervaldatum,
+                    oorspronkelijke_vervaldatum,
                     bedrag: amount(bedrag),
                     grondslag: obligation.grondslag.clone(),
                     herkomst: declared.origin.clone(),
@@ -3801,9 +3846,12 @@ impl ObligationDefinition {
     /// De dag waarop de eerste termijn vervalt.
     ///
     /// Zonder `from` is dat het moment van het besluit. Met `from` is het wat
-    /// het sjabloon oplevert — en dat mag niet vóór het besluit liggen: een
-    /// termijn in het verleden zou bij het vastleggen het beeld van een eerder
-    /// moment veranderen, en dat is precies wat een kroniek niet doet.
+    /// het sjabloon oplevert, en dat mag vóór het besluit liggen: een besluit dat
+    /// later genomen wordt dan het schema begint, is een te laat besluit en geen
+    /// ongeldig besluit. De termijnen die daardoor al vervallen hadden moeten
+    /// zijn, worden op de dag van het besluit ingehaald ([`inhalen`]) — niet hier,
+    /// want de dag uit het schema hoort bij elke termijn in het gram te blijven
+    /// staan. Wat `from` oplevert moet wél een datum zijn.
     ///
     /// Eén woord levert geen datum op maar een **gebeurtenis**:
     /// [`VANAF_BEKENDMAKING`]. Dan is er bij het besluit nog niets in te
@@ -3829,15 +3877,6 @@ impl ObligationDefinition {
             template: from.clone(),
             reason: format!("ingevuld levert dat '{filled}' op, en dat is geen datum (JJJJ-MM-DD)"),
         })?;
-
-        if start < op_moment {
-            return Err(SimulatorError::ObligationBeforeDecision {
-                cell: cell.to_string(),
-                besluit: besluit.to_string(),
-                from: start.to_string(),
-                op_moment: op_moment.to_string(),
-            });
-        }
         Ok(ObligationStart::Op(start))
     }
 
@@ -3864,6 +3903,25 @@ impl ObligationDefinition {
                     |value| format!("{} ({})", value, value.type_name()),
                 ),
             })
+    }
+}
+
+/// Haal een termijn in die vóór `inhaaldag` zou vervallen.
+///
+/// Een betaling kan er niet eerder zijn dan het besluit waaruit ze volgt, en
+/// niet eerder dan de bekendmaking als de verplichting daarop wacht (Awb 4:86,
+/// 4:87). Ligt de dag uit het schema daarvoor, dan vervalt de termijn op
+/// `inhaaldag` en geeft deze functie de oorspronkelijke dag erbij terug; anders
+/// blijft de dag staan en is dat tweede deel `None`. Volgorde, volgnummer en
+/// bedrag gaan hier niet doorheen en blijven dus wat ze waren.
+///
+/// Zo valt een te laat besluit niet om, en legt de klok ook niets vast op een
+/// moment dat al geweest is: de inhaalbetaling ligt op de dag dat ze kon.
+fn inhalen(vervaldatum: NaiveDate, inhaaldag: NaiveDate) -> (NaiveDate, Option<NaiveDate>) {
+    if vervaldatum < inhaaldag {
+        (inhaaldag, Some(vervaldatum))
+    } else {
+        (vervaldatum, None)
     }
 }
 
@@ -5325,7 +5383,11 @@ params:
             plek: 3,
         };
         let termijnen = wachtend
-            .termijnen_vanaf(parse_date("2024-05-27").unwrap_or_default(), &zaak)
+            .termijnen_vanaf(
+                parse_date("2024-05-27").unwrap_or_default(),
+                parse_date("2024-05-01").unwrap_or_default(),
+                &zaak,
+            )
             .unwrap_or_else(|e| panic!("de termijnen horen uit te rekenen te zijn: {e}"));
         let dagen: Vec<String> = termijnen
             .iter()
@@ -5340,6 +5402,86 @@ params:
         assert!(
             termijnen.iter().all(|due| due.besluit_gram == 3),
             "elke termijn hoort naar het besluit-gram te wijzen en niet naar de bekendmaking"
+        );
+    }
+
+    /// Een termijn die vóór de bekendmaking zou vervallen, wordt op de dag van
+    /// de bekendmaking ingehaald; de rest van het schema blijft staan, met
+    /// dezelfde volgnummers en bedragen.
+    #[test]
+    fn een_termijn_voor_de_bekendmaking_wordt_op_die_dag_ingehaald() {
+        let wachtend = WachtendeVerplichting {
+            soort: ObligationKind::Betaling,
+            schuldenaar: "Uitvoerder".to_string(),
+            schuldeiser: "999993653".to_string(),
+            betaler: None,
+            bedrag: Decimal::from(400),
+            schedule: Schedule::Kwartaal,
+            eerste_volgnummer: 1,
+            termijnen: 4,
+            grondslag: "art. 1".to_string(),
+            herkomst: ObligationOrigin {
+                regulation: "test_bekendmaking".to_string(),
+                valid_from: None,
+                article: "1".to_string(),
+            },
+        };
+        let zaak = BesluitGram {
+            cell: "uitvoerder",
+            besluit: "toekenning",
+            zaakkenmerk: "tegemoetkoming/999993653",
+            op_moment: parse_date("2024-01-01").unwrap_or_default(),
+            plek: 0,
+        };
+        let termijnen = wachtend
+            .termijnen_vanaf(
+                parse_date("2024-01-01").unwrap_or_default(),
+                parse_date("2024-05-15").unwrap_or_default(),
+                &zaak,
+            )
+            .unwrap_or_else(|e| panic!("de termijnen horen uit te rekenen te zijn: {e}"));
+        let dagen: Vec<(String, Option<String>)> = termijnen
+            .iter()
+            .map(|due| {
+                (
+                    due.vervaldatum.to_string(),
+                    due.oorspronkelijke_vervaldatum.map(|dag| dag.to_string()),
+                )
+            })
+            .collect();
+        assert_eq!(
+            dagen,
+            vec![
+                ("2024-05-15".to_string(), Some("2024-01-01".to_string())),
+                ("2024-05-15".to_string(), Some("2024-04-01".to_string())),
+                ("2024-07-01".to_string(), None),
+                ("2024-10-01".to_string(), None),
+            ]
+        );
+        let nummers: Vec<i64> = termijnen.iter().map(|due| due.volgnummer).collect();
+        assert_eq!(nummers, vec![1, 2, 3, 4]);
+        assert!(
+            termijnen[0]
+                .describe()
+                .contains("ingehaald (oorspronkelijk 2024-01-01)"),
+            "de regel hoort te zeggen dat de termijn ingehaald wordt: {}",
+            termijnen[0].describe()
+        );
+        let Value::Object(velden) = termijnen[0].as_value() else {
+            panic!("een termijn is een object");
+        };
+        assert_eq!(
+            velden
+                .get(OORSPRONKELIJKE_VERVALDATUM)
+                .and_then(Value::as_str),
+            Some("2024-01-01")
+        );
+        let Value::Object(velden) = termijnen[2].as_value() else {
+            panic!("een termijn is een object");
+        };
+        assert!(
+            !velden.contains_key(OORSPRONKELIJKE_VERVALDATUM),
+            "een termijn op haar eigen dag draagt geen oorspronkelijke vervaldatum"
         );
     }
 
