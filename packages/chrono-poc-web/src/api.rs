@@ -9,6 +9,12 @@
 //! wijzigen
 //! (`PUT /api/settings`) of opnieuw beginnen (`POST /api/reset`).
 //!
+//! Heeft het wereldbestand een portaal, dan komt er de blik van een aanvrager
+//! bij: `GET /api/portaal` geeft de persona's en de vragen van het inzicht, en
+//! `PUT /api/persona` kiest er een voor deze sessie. Dat kiezen is een
+//! mock-login en geen gebeurtenis in de wereld; het inzicht zelf stelt zijn
+//! vragen langs de gewone lexostatus-route, één cel per vraag.
+//!
 //! **Veldnamen Engels, meldingen Nederlands.** De vorm van het antwoord is het
 //! contract dat [`regelrecht_simulator::Snapshot`] al vastlegt, en dat is Engels;
 //! elke fout die een mens leest komt uit de simulator, en die praat Nederlands.
@@ -28,8 +34,8 @@ use axum::routing::{get, post, put, MethodRouter};
 use axum::{Json, Router};
 use chrono::NaiveDate;
 use regelrecht_simulator::{
-    Events, GramReceipt, Lexostatus, ParameterType, Snapshot, Value, Warning, World,
-    WorldDefinition,
+    Events, GramReceipt, Lexostatus, ParameterType, PortaalSnapshot, Snapshot, Value, Warning,
+    World, WorldDefinition,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -74,6 +80,8 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/api/settings", put(settings))
         .route("/api/reset", post(reset))
+        .route("/api/portaal", get(portaal))
+        .route("/api/persona", put(persona))
         .route_layer(axum_middleware::from_fn_with_state(
             state.clone(),
             regelrecht_auth::require_role::<AppState>(role),
@@ -338,6 +346,58 @@ async fn reset(
             world
                 .reset()
                 .map_err(|e| ApiError::internal(e.to_string()))?;
+            Ok(world.snapshot())
+        })
+        .await?;
+    Ok(Json(snapshot))
+}
+
+/// `GET /api/portaal` — het portaal uit het wereldbestand, of `null` als het er
+/// geen heeft.
+///
+/// `null` en geen 404: een wereld zonder portaal is niet stuk, zij heeft alleen
+/// geen pagina's voor een aanvrager. Een frontend leest hier af of die pagina's
+/// er zijn.
+///
+/// Uit het wereldbestand en niet uit de wereld van de sessie: het portaal is
+/// configuratie, bij elke sessie hetzelfde. Welke persona er gekozen is, staat
+/// in het beeld van de wereld (`persona`).
+async fn portaal(State(state): State<AppState>) -> Json<Option<PortaalSnapshot>> {
+    Json(
+        state
+            .worlds
+            .definition()
+            .portaal
+            .as_ref()
+            .map(regelrecht_simulator::PortaalDefinition::snapshot),
+    )
+}
+
+/// De body van `PUT /api/persona`.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PersonaRequest {
+    /// De persona die gekozen wordt, of `null` voor niemand.
+    pub id: Option<String>,
+}
+
+/// `PUT /api/persona` — kies een persona uit het portaal voor deze sessie, en
+/// krijg het beeld terug waarin de formulieren van de aanvrager haar waarden
+/// dragen.
+///
+/// Bij de wereld van de sessie, dus per sessie, en [`reset`] laat haar staan.
+/// Er wordt niets vastgelegd: geen gram, geen journaalregel, geen contact over
+/// een celgrens.
+async fn persona(
+    State(state): State<AppState>,
+    session: Session,
+    JsonBody(body): JsonBody<PersonaRequest>,
+) -> Result<Json<Snapshot>, ApiError> {
+    let key = world_key(&session).await?;
+    let snapshot = state
+        .worlds
+        .with_world(&key, move |world| {
+            world.choose_persona(body.id.as_deref())?;
             Ok(world.snapshot())
         })
         .await?;

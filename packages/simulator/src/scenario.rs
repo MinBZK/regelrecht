@@ -852,6 +852,9 @@ impl Scenario {
             fixtures: self.fixtures.clone(),
             actions: self.actions.clone(),
             deadlines: self.deadlines.clone(),
+            // Een portaal is een blik voor een mens die de wereld bespeelt, en
+            // een scenario is een run: daar kiest niemand een aanvrager.
+            portaal: None,
         }
     }
 
@@ -1657,6 +1660,7 @@ query_via_transport:
             crossings: Vec::new(),
             warnings: Vec::new(),
             journal: Vec::new(),
+            persona: None,
         }
     }
 

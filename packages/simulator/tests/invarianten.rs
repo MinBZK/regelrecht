@@ -595,3 +595,124 @@ fn de_beschikbaarheidscheck_levert_geen_contact_over_een_celgrens_op() {
         "het opvragen van het beeld hoort zelf geen grens over te gaan"
     );
 }
+
+/// Een persona kiezen, wisselen en haar inzicht bevragen legt niets vast en gaat
+/// niet over een celgrens.
+///
+/// Het portaal is de blik van één aanvrager op de wereld, en die blik hoort de
+/// wereld niet te veranderen. Kiezen is een mock-login: geen gram, geen
+/// journaalregel. Het inzicht stelt zijn vragen elk aan één cel, langs de
+/// publieke ingang, en combineert pas in de weergave (RFC-022 §4.1) — dus ook
+/// daar hoort het meetinstrument niets te zien en het journaal niets op te
+/// schrijven.
+///
+/// Gemeten ná een aanvraag en een besluit, zodat er iets te zien is: een vraag
+/// die "niets vastgesteld" oplevert, zou ook zonder dit gedrag geen spoor
+/// achterlaten.
+#[test]
+fn het_portaal_kiezen_en_bevragen_legt_niets_vast() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("worlds")
+        .join("publieke_wereld.yaml");
+    let definition =
+        WorldDefinition::load(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let portaal = definition
+        .portaal
+        .as_ref()
+        .unwrap_or_else(|| panic!("{} hoort een portaal te dragen", path.display()))
+        .snapshot();
+    let mut world = World::from_definition(&definition, &regulation_root())
+        .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+
+    world
+        .choose_persona(Some("aanvrager-a"))
+        .unwrap_or_else(|e| panic!("{e}"));
+    let prefill = world
+        .snapshot()
+        .actions
+        .into_iter()
+        .find(|actie| actie.id == "burger.aanvraag")
+        .map(|actie| actie.prefill)
+        .unwrap_or_else(|| panic!("de wereld hoort de aanvraag te kennen"));
+    world
+        .act("burger.aanvraag", &prefill)
+        .unwrap_or_else(|e| panic!("de aanvraag met de persona moet kunnen: {e}"));
+    world
+        .advance(
+            chrono::NaiveDate::from_ymd_opt(2024, 4, 1)
+                .unwrap_or_else(|| panic!("2024-04-01 hoort een geldige datum te zijn")),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+    world
+        .act(
+            "toeslagen.toekenning",
+            &BTreeMap::from([("bsn".to_string(), Value::String("999993653".to_string()))]),
+        )
+        .unwrap_or_else(|e| panic!("de toekenning moet kunnen: {e}"));
+
+    let grammen = |world: &World| -> usize {
+        world
+            .snapshot()
+            .cells
+            .iter()
+            .flat_map(|cell| cell.chronicles.iter())
+            .map(|chronicle| chronicle.grams.len())
+            .sum()
+    };
+    let journaal_voor = world.journal().len();
+    let contacten_voor = world.crossings().len();
+    let grammen_voor = grammen(&world);
+
+    let mut vastgesteld = 0;
+    for persona in ["aanvrager-b", "aanvrager-a"] {
+        world
+            .choose_persona(Some(persona))
+            .unwrap_or_else(|e| panic!("{e}"));
+        let vragen = &portaal
+            .personas
+            .iter()
+            .find(|candidate| candidate.id == persona)
+            .unwrap_or_else(|| panic!("het portaal hoort persona '{persona}' te kennen"))
+            .inzicht;
+        assert!(!vragen.is_empty(), "zonder vraag bewijst dit niets");
+        for vraag in vragen {
+            // Alle inputs van deze vragen zijn tekst; de route zet een
+            // queryparameter om naar het gedocumenteerde type, en hier staat
+            // die omzetting niet tussen.
+            let params = vraag
+                .params
+                .iter()
+                .map(|(name, value)| (name.clone(), Value::String(value.clone())))
+                .collect();
+            let antwoord = world
+                .reduce(&vraag.cell, &vraag.lexostatus, &params, world.now())
+                .unwrap_or_else(|e| panic!("inzicht '{}': {e}", vraag.label));
+            if antwoord.values().is_some() {
+                vastgesteld += 1;
+            }
+        }
+    }
+    world.choose_persona(None).unwrap_or_else(|e| panic!("{e}"));
+
+    assert!(
+        vastgesteld > 0,
+        "minstens één vraag hoort iets vastgesteld te vinden, anders meet dit niets"
+    );
+    assert_eq!(
+        world.journal().len(),
+        journaal_voor,
+        "kiezen en bevragen hoort geen journaalregel op te leveren"
+    );
+    assert_eq!(
+        world.crossings().len(),
+        contacten_voor,
+        "en geen contact over een celgrens"
+    );
+    assert_eq!(grammen(&world), grammen_voor, "en geen gram");
+
+    let mut log = ObservationLog::new();
+    for crossing in &world.crossings()[contacten_voor..] {
+        log.record(crossing);
+    }
+    assert!(log.is_empty(), "het meetinstrument ziet er niets van");
+}

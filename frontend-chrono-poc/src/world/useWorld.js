@@ -46,9 +46,29 @@ export function createWorld(api = worldApi) {
   const actionError = ref(null);
   /** Wat de laatste wijziging opleverde. */
   const result = ref(null);
+  /**
+   * Het portaal uit het wereldbestand: `undefined` zolang het niet opgehaald is,
+   * `null` als de wereld er geen heeft.
+   *
+   * Twee soorten leeg, en dat verschil telt: zolang het niet bekend is, weet de
+   * pagina nog niet of er naast de wereld een aanvraagportaal staat.
+   */
+  const portaal = shallowRef(undefined);
 
   const ready = computed(() => snapshot.value !== null);
   const clock = computed(() => snapshot.value?.clock ?? null);
+
+  /**
+   * De gekozen persona uit het portaal, of `null`.
+   *
+   * Het id komt uit het beeld (de keuze hoort bij de sessie, op de server), de
+   * rest uit het portaal: haar label en haar ingevulde vragen.
+   */
+  const persona = computed(() => {
+    const id = snapshot.value?.persona;
+    if (!id || !portaal.value) return null;
+    return portaal.value.personas.find((candidate) => candidate.id === id) ?? null;
+  });
 
   /**
    * Eén plek waar een fout binnenkomt, en daarmee de plek die `actionError`
@@ -77,6 +97,42 @@ export function createWorld(api = worldApi) {
       return fail(cause);
     } finally {
       loading.value = false;
+    }
+  }
+
+  /**
+   * Het portaal ophalen. Mislukt dat, dan is er geen portaal: de wereld zelf
+   * blijft te bespelen, en de fout staat bovenaan.
+   */
+  async function loadPortaal() {
+    try {
+      portaal.value = await api.fetchPortaal();
+    } catch (cause) {
+      portaal.value = null;
+      fail(cause);
+    }
+    return portaal.value;
+  }
+
+  /**
+   * Een persona kiezen, of niemand (`null`).
+   *
+   * Geen stap in de wereld: er komt niets bij, dus er is ook niets nieuw en geen
+   * verslag. Het beeld wordt wel overgenomen, want de formulieren van de
+   * aanvrager dragen daarna haar waarden.
+   */
+  async function choosePersona(id) {
+    busy.value = true;
+    error.value = null;
+    actionError.value = null;
+    try {
+      const next = snapshotFrom(await api.choosePersona(id)) ?? (await api.fetchWorld());
+      snapshot.value = next;
+      return next;
+    } catch (cause) {
+      return fail(cause);
+    } finally {
+      busy.value = false;
     }
   }
 
@@ -164,7 +220,11 @@ export function createWorld(api = worldApi) {
     result,
     ready,
     clock,
+    portaal,
+    persona,
     load,
+    loadPortaal,
+    choosePersona,
     act,
     advance,
     saveSettings,

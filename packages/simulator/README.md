@@ -2577,9 +2577,68 @@ van ze op hun veldnamen te moeten herkennen:
 | `gemiste_termijn` | een termijn verstreek zonder dat het feit er lag | het `label` uit het wereldbestand |
 | `geen_bevoegd_gezag` | er is besloten onder een regeling die geen bevoegd gezag declareert (zie [Wie mag besluiten](#wie-mag-besluiten)) | `regeling '<$id>' declareert geen bevoegd gezag` |
 
+### Portaal en inzicht
+
+Een wereldbestand kan een optioneel blok `portaal` dragen: de wereld gezien door
+één aanvrager. Zonder dat blok verandert er niets.
+
+```yaml
+portaal:
+  actor: burger                     # de cel namens wie het portaal werkt
+  label: Aanvraagportaal            # de titel van de pagina
+  personas:                         # fictieve aanvragers om uit te kiezen
+    - id: aanvrager-a
+      label: Aanvrager A (fictief)
+      values:                       # veldnaam → waarde, voor de formulieren van de actor
+        bsn: '999993653'
+        jaar: 2024
+  inzicht:                          # wat "inzicht in je aanvraag" vraagt
+    - label: Beschikking zorgtoeslag
+      cell: toeslagen
+      lexostatus: zorgtoeslagbeschikking
+      params:
+        zaakkenmerk: zorgtoeslag/{bsn}   # sjabloon over de waarden van de persona
+```
+
+Een persona kiezen (`World::choose_persona`) is een **mock-login** zonder
+authenticatie. Het verandert het beeld en verder niets: in de formulieren van de
+acties van `actor` wint haar waarde van de `prefill` van dat veld, en een veld dat
+zij niet noemt houdt zijn gewone voorinvulling. Dat gebeurt in dezelfde invuller
+als de rest van de voorinvulling (`prefilled` in `snapshot.rs`), zodat de
+beschikbaarheid van een actie over precies het formulier gaat dat de lezer ziet.
+De keuze staat in het beeld (`persona`), hoort bij de wereld van de sessie en
+blijft staan bij `reset`: zij is geen stand van de wereld maar van wie ernaar
+kijkt. Er komt geen gram van, geen journaalregel en geen contact over een
+celgrens (`tests/invarianten.rs`).
+
+`inzicht` levert **vragen** en geen antwoorden. Per persona staan ze ingevuld
+klaar (`PortaalDefinition::snapshot`); wie ze stelt, stelt ze elk aan één cel
+langs `World::reduce`, dezelfde publieke ingang als elke andere consument.
+
+Bij het optuigen wordt geweigerd: een `actor` die geen cel is, twee persona's met
+hetzelfde id, een persona-veld dat in geen enkel formulier van een actie van de
+actor voorkomt, een waarde die de typetoets van dat veld niet haalt, een
+`inzicht`-regel naar een onbekende cel of lexostatus, parameters die niet exact de
+gedocumenteerde inputs zijn, een accolade die niet sluit, en een `{veld}` dat een
+persona niet noemt. Elk daarvan zou anders stil niets doen: een waarde die nergens
+invult, of een kaart die alleen een fout toont (`tests/portaal.rs`).
+
+**Waarom in het wereldbestand.** Wie er aanvraagt en welke vragen een portaal
+stelt, is inrichting van de opstelling en geen recht. In een regeling zou een bsn
+of een partijnaam de casus in de wet leggen; in Rust zou een andere casus een
+andere build worden. Hier is een ander portaal een ander bestand, en het platform
+kent geen enkele naam van een aanvrager.
+
+**Waarom inzicht bij de consument combineert.** Een cel publiceert over haar
+eigen feiten, en geen cel kent het totaalbeeld (RFC-022 §2). Een pagina die de
+beschikking van de ene cel naast de betalingen van de andere zet, doet wat
+RFC-022 §4.1 een consument toestaat: apart vragen, en pas in de weergave
+samenvoegen. Deed de wereld of een cel dat, dan ontstond precies het
+totaalbeeld waarvan deze opstelling laat zien dat het nergens hoort te bestaan.
+
 ### De wereld besturen
 
-Vijf ingangen, en samen zijn ze wat een web-laag nodig heeft:
+De ingangen die samen zijn wat een web-laag nodig heeft:
 
 | aanroep | wat |
 |---|---|
@@ -2588,6 +2647,7 @@ Vijf ingangen, en samen zijn ze wat een web-laag nodig heeft:
 | `World::advance(tot)` | zet de klok vooruit en laat de triggers onderweg afgaan |
 | `World::update_settings(wijzigingen)` | wijzig de instellingen |
 | `World::reset()` | terug naar de startstand |
+| `World::choose_persona(id)` | kies een aanvrager uit het portaal, of niemand (zie [Portaal en inzicht](#portaal-en-inzicht)) |
 | `World::snapshot()` | het beeld van alles wat er staat |
 
 `act` en `advance` leveren `Events`: welke grammen erbij kwamen, welke besluiten

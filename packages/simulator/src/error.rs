@@ -24,6 +24,8 @@ pub enum Subject {
     Actie,
     /// Een termijn die waarschuwt als een feit ontbreekt.
     Termijn,
+    /// Een fictieve aanvrager in het portaal.
+    Persona,
 }
 
 impl fmt::Display for Subject {
@@ -33,6 +35,7 @@ impl fmt::Display for Subject {
             Self::Besluit => "besluit",
             Self::Actie => "actie",
             Self::Termijn => "termijn",
+            Self::Persona => "persona",
         })
     }
 }
@@ -1810,6 +1813,131 @@ pub enum SimulatorError {
     DuplicateAction {
         /// Het dubbele actie-id.
         action: String,
+    },
+
+    /// Het portaal is voor een cel die deze wereld niet kent.
+    ///
+    /// Bij het optuigen, want anders staat er een pagina zonder één actie en
+    /// zegt niemand waarom.
+    #[error("portaal '{label}': actor '{actor}' is geen cel in deze wereld (wel: {known})")]
+    PortaalUnknownActor {
+        /// Het label van het portaal.
+        label: String,
+        /// De actor die niet bestaat.
+        actor: String,
+        /// Komma-gescheiden lijst van de cellen die er wél zijn.
+        known: String,
+    },
+
+    /// Twee persona's in het portaal met hetzelfde id.
+    ///
+    /// Een persona wordt op haar id gekozen; de tweede zou onbereikbaar zijn.
+    #[error("het portaal declareert persona '{persona}' twee keer")]
+    DuplicatePersona {
+        /// Het dubbele id.
+        persona: String,
+    },
+
+    /// Een persona noemt een veld dat in geen enkel formulier van de actor
+    /// voorkomt.
+    ///
+    /// Zo'n waarde vult nooit iets in, en dat zou niemand merken: het formulier
+    /// houdt dan gewoon zijn eigen voorinvulling.
+    #[error(
+        "persona '{persona}' noemt veld '{field}', maar geen enkele actie van actor \
+         '{actor}' heeft een veld met die naam (wel: {known})"
+    )]
+    PersonaFieldNotInForm {
+        /// De persona.
+        persona: String,
+        /// Het veld dat nergens voorkomt.
+        field: String,
+        /// De actor van het portaal.
+        actor: String,
+        /// Komma-gescheiden lijst van de velden die er wél zijn.
+        known: String,
+    },
+
+    /// De persona die gekozen wordt, staat niet in het portaal.
+    #[error("het portaal kent geen persona '{persona}' (wel: {known})")]
+    UnknownPersona {
+        /// De gevraagde persona.
+        persona: String,
+        /// Komma-gescheiden lijst van de persona's die er wél zijn.
+        known: String,
+    },
+
+    /// Er wordt een persona gekozen in een wereld zonder portaal.
+    #[error("deze wereld heeft geen portaal, en dus geen persona om te kiezen")]
+    NoPortaal,
+
+    /// Een regel van het inzicht vraagt een cel die deze wereld niet kent.
+    #[error("inzicht '{label}': de wereld kent geen cel '{cell}' (wel: {known})")]
+    InzichtUnknownCell {
+        /// Het label van de regel.
+        label: String,
+        /// De cel die niet bestaat.
+        cell: String,
+        /// Komma-gescheiden lijst van de cellen die er wél zijn.
+        known: String,
+    },
+
+    /// Een regel van het inzicht vult andere parameters dan de lexostatus
+    /// documenteert.
+    ///
+    /// Precies dezelfde namen, niet meer en niet minder: de cel weigert elke
+    /// andere vraag, en dan zou de kaart op het scherm altijd een fout tonen.
+    #[error(
+        "inzicht '{label}': lexostatus '{cell}.{lexostatus}' vraagt [{expected}], maar de \
+         regel vult [{given}]"
+    )]
+    InzichtParams {
+        /// Het label van de regel.
+        label: String,
+        /// De bevraagde cel.
+        cell: String,
+        /// De bevraagde lexostatus.
+        lexostatus: String,
+        /// Komma-gescheiden lijst van wat de regel vult.
+        given: String,
+        /// Komma-gescheiden lijst van wat de lexostatus vraagt.
+        expected: String,
+    },
+
+    /// Een sjabloon in een regel van het inzicht heeft een accolade die niet
+    /// sluit.
+    #[error(
+        "inzicht '{label}': parameter '{parameter}' heeft sjabloon '{template}' met een \
+         accolade die niet sluit; een verwijzing schrijf je als {{veld}}"
+    )]
+    InzichtMalformedTemplate {
+        /// Het label van de regel.
+        label: String,
+        /// De parameter met het kapotte sjabloon.
+        parameter: String,
+        /// Het sjabloon zoals het in het wereldbestand staat.
+        template: String,
+    },
+
+    /// Een sjabloon in een regel van het inzicht verwijst naar een veld dat een
+    /// persona niet noemt.
+    ///
+    /// Per persona, want het inzicht wordt per persona ingevuld: een verwijzing
+    /// die bij de ene wel en bij de andere niet uitkomt, levert bij die andere
+    /// een vraag over een zaak die niet bestaat.
+    #[error(
+        "inzicht '{label}': parameter '{parameter}' verwijst naar {{{reference}}}, maar \
+         persona '{persona}' noemt geen veld '{reference}'"
+    )]
+    InzichtUnknownReference {
+        /// Het label van de regel.
+        label: String,
+        /// De parameter met het sjabloon.
+        parameter: String,
+        /// Het veld waarnaar verwezen wordt.
+        reference: String,
+        /// De persona die het veld niet noemt.
+        persona: String,
     },
 
     /// Een actie kan op dit moment niet: het verhaal is nog niet zover.

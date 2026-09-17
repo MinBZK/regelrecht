@@ -1,7 +1,10 @@
 # frontend-chrono-poc
 
-De frontend van de chronolexografie-testopstelling: één pagina die tekent wat de
-wereld aanbiedt, en die het woord van geen enkele casus kent.
+De frontend van de chronolexografie-testopstelling: een app die tekent wat de
+wereld aanbiedt, en die het woord van geen enkele casus kent. Draagt het
+wereldbestand een `portaal`, dan zijn er drie pagina's (zie
+[Portaal en inzicht](#portaal-en-inzicht)); de pagina hieronder heet dan
+"Achter de schermen". Zonder portaal is zij de enige.
 
 - **bovenaan** de bediening, over de volle breedte: de acties die de wereld nu
   aanbiedt (gegroepeerd per actor, met het formulier uit de actie zelf), de
@@ -23,6 +26,33 @@ heel. De bediening is smal van zichzelf en kan de volle breedte hebben zonder er
 iets mee te doen; de cellen krijgen de rest. Past het rijtje kolommen niet naast
 elkaar, dan schuift het **binnen zijn eigen paneel** opzij (`nldd-collection`
 met `layout="horizontal-scroll"` en een vaste `item-width`) en nooit de pagina.
+
+## Portaal en inzicht
+
+Met een `portaal` in het wereldbestand krijgt de werkbalk een navigatie
+(`nldd-tab-bar navigation`, één link per pagina, zoals `frontend-demo` die doet)
+tussen drie pagina's op een eigen hash-adres:
+
+| adres | pagina |
+|---|---|
+| `#/portaal` | het **aanvraagportaal**: "Aanvragen als" (`nldd-dropdown`) en daaronder alleen de acties van de portaal-actor, met formulieren die de server voor die aanvrager invulde; na indienen een bevestiging met een link naar inzicht |
+| `#/inzicht` | **inzicht in je aanvraag**: dezelfde keuzelijst en één kaart per vraag uit het portaal, met de uitkomsten van die ene cel en het moment; "niets vastgesteld" staat er als "nog niets bekend" |
+| `#/wereld` | **achter de schermen**: de weergave hieronder, ongewijzigd |
+
+Een aanvrager kiezen is een mock-login: `PUT /api/persona`, bij de sessie op de
+server, dus een wissel op de ene pagina geldt ook op de andere. De app vult zelf
+niets in; de voorinvulling met de gegevens van de aanvrager staat al in het beeld.
+
+**Waarom in het wereldbestand.** Wie er aanvraagt en wat het portaal vraagt is
+inrichting van de opstelling en geen recht, en deze app kent geen casus: het
+label van het portaal, de aanvragers en de vragen komen allemaal uit
+`GET /api/portaal`.
+
+**Waarom inzicht combineren bij de consument is.** Elke kaart stelt haar vraag
+aan één cel, langs dezelfde lexostatus-route als het tabblad Lexostatus. Pas op
+deze pagina komen de antwoorden naast elkaar te staan, en er wordt niets van
+vastgelegd: dat is wat RFC-022 §4.1 een consument toestaat, en wat geen cel mag.
+Het totaalbeeld bestaat daarmee alleen op het scherm van wie kijkt.
 
 ## Het journaal is de hoofdweergave
 
@@ -263,7 +293,8 @@ snapshot-fixture van de simulator zelf
 contract tussen de wereld en deze app, en twee exemplaren zouden stil uit elkaar
 lopen.
 
-Daarnaast staat in [`e2e/`](e2e) de bewijsronde door de publieke wereld: de
+Daarnaast staat in [`e2e/`](e2e) de bewijsronde door de publieke wereld (en in
+`e2e/portaal.spec.js` die door het aanvraagportaal): de
 echte server, een echte Chromium, en veertig beweringen onder de check-id's
 waaronder die ronde eerder met de hand liep. Die suite draait op een gebouwde
 bundel en heeft dus iets anders te zeggen dan de vitest-tests hierboven: niet of
@@ -281,6 +312,8 @@ geheel doet wat ze belooft. Zie
 | `PUT /api/settings` | instellingen wijzigen |
 | `POST /api/reset` | terug naar de startstand |
 | `GET /api/cells/{cel}/lexostatus/{naam}` | een reductie opvragen, met `op_moment` het moment van de vraag; "niets vastgesteld" is een gewoon antwoord met status 200 |
+| `GET /api/portaal` | het portaal uit het wereldbestand, of `null`; bepaalt of er pagina's naast de wereld zijn |
+| `PUT /api/persona` | `{ "id": "…" }` of `{ "id": null }`; antwoord is het beeld, met `persona` |
 
 Een antwoord op een wijziging mag het nieuwe beeld zelf zijn of het onder
 `snapshot` / `world` dragen; draagt het er geen, dan haalt de app het beeld

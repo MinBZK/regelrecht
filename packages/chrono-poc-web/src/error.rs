@@ -118,7 +118,11 @@ impl ApiError {
             // onbekende cel: wat het pad aanwijst, bestaat niet. Het is géén 409 —
             // een executogram krijgt later ook geen receipt, want er is nooit een
             // uitvoering geweest.
-            | E::GramWithoutReceipt { .. } => StatusCode::NOT_FOUND,
+            | E::GramWithoutReceipt { .. }
+            // Een persona die het portaal niet kent, of een wereld zonder
+            // portaal: wat er gekozen wordt, bestaat niet.
+            | E::UnknownPersona { .. }
+            | E::NoPortaal => StatusCode::NOT_FOUND,
 
             E::ActionNotAvailable { .. }
             | E::SettingInUse { .. }

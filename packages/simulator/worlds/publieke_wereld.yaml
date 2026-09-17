@@ -252,6 +252,21 @@ cells:
               toetsingsinkomen: 81000
               competent_authority: Belastingdienst
 
+          # De aanslag van de tweede aanvrager in het portaal (zie onderaan).
+          # Een ander inkomen dan hierboven, zodat haar beschikking een ander
+          # bedrag laat zien; en één aanslag, geen herziening — haar verhaal
+          # hoeft niet het hele verhaal te zijn, alleen tot een besluit te
+          # kunnen komen.
+          - name: aanslag_vastgesteld
+            intake: eigen_besluit
+            recording_actor: belastingdienst
+            grondslag: Wet inkomstenbelasting 2001, hoofdstuk 2
+            op_moment: 2024-03-01
+            fields:
+              bsn: '999990019'
+              toetsingsinkomen: 2800000
+              competent_authority: Belastingdienst
+
           - name: aanslag_herzien
             intake: eigen_besluit
             recording_actor: belastingdienst
@@ -360,6 +375,17 @@ cells:
             fields:
               bsn: '999993653'
               partnerschap_type: GEEN
+          # En voor de tweede aanvrager in het portaal: de zorgtoeslagwet vraagt
+          # naar het partnerschap, dus zonder deze melding valt er over haar
+          # niets te berekenen.
+          - name: relatie_gewijzigd
+            intake: levering
+            recording_actor: toeslagen
+            grondslag: melding uit de basisregistratie personen
+            op_moment: 2023-01-01
+            fields:
+              bsn: '999990019'
+              partnerschap_type: GEEN
 
       - stream: inkomensleveringen
         key: bsn
@@ -382,6 +408,17 @@ cells:
             op_moment: 2023-11-15
             fields:
               bsn: '999993653'
+              is_verzekerde: true
+              vermogen: 0
+          # Dezelfde levering voor de tweede aanvrager in het portaal: zonder
+          # dit feit kan deze cel over haar niet besluiten.
+          - name: inkomenslevering
+            intake: levering
+            recording_actor: toeslagen
+            grondslag: jaarlijkse inkomenslevering
+            op_moment: 2023-11-15
+            fields:
+              bsn: '999990019'
               is_verzekerde: true
               vermogen: 0
 
@@ -624,3 +661,51 @@ deadlines:
       cell: toeslagen
       chronicle: aanvragen
       name: aanvraag_ontvangen
+
+# De blik van de aanvrager: twee pagina's naast "Achter de schermen". Op het
+# aanvraagportaal staan alleen de acties van `actor`, met de formulieren
+# ingevuld voor de gekozen persona; "inzicht in je aanvraag" stelt de vragen
+# hieronder, elk aan één cel, en zet de antwoorden pas in de weergave naast
+# elkaar (RFC-022 §4.1: combineren doet de consument, nooit een cel).
+#
+# Dit is inrichting van de opstelling en geen recht, en daarom staat het hier
+# en niet in een regeling. Kiezen is een mock-login: er wordt niets vastgelegd.
+portaal:
+  actor: burger
+  label: Aanvraagportaal
+  personas:
+    # De aanvrager over wie deze wereld het hele verhaal draagt: het
+    # register, twee aanslagen (de tweede herziet de eerste) en de
+    # inkomenslevering gaan over dit bsn. Met haar is alles te spelen, tot en
+    # met de vaststelling.
+    - id: aanvrager-a
+      label: Aanvrager A (fictief)
+      values:
+        bsn: '999993653'
+        jaar: 2024
+    # Een tweede aanvrager: een ander bsn, hetzelfde berekeningsjaar (dan
+    # gelden dezelfde wetsversies en past de klok) en een ander inkomen. Voor
+    # haar liggen een aanslag, een relatiemelding en een inkomenslevering in
+    # de startstand, dus over haar aanvraag kan besloten worden, en haar
+    # beschikking toont een ander bedrag dan die van A.
+    - id: aanvrager-b
+      label: Aanvrager B (fictief)
+      values:
+        bsn: '999990019'
+        jaar: 2024
+  inzicht:
+    - label: Beschikking zorgtoeslag
+      cell: toeslagen
+      lexostatus: zorgtoeslagbeschikking
+      params:
+        zaakkenmerk: zorgtoeslag/{bsn}
+    - label: Uitbetaald
+      cell: belastingdienst
+      lexostatus: betaald_tot_nu_toe
+      params:
+        zaakkenmerk: zorgtoeslag/{bsn}
+    - label: Openstaande termijnen
+      cell: toeslagen
+      lexostatus: openstaande_termijnen
+      params:
+        zaakkenmerk: zorgtoeslag/{bsn}

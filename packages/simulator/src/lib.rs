@@ -60,6 +60,10 @@
 //! elk label komt uit het wereldbestand. [`World::reset`] begint opnieuw uit
 //! datzelfde bestand.
 //!
+//! Een wereldbestand kan een **portaal** dragen: de blik van één aanvrager, met
+//! fictieve aanvragers om uit te kiezen en de vragen die haar pagina aan de
+//! cellen stelt. Kiezen is een stand en geen gebeurtenis; zie [`portaal`].
+//!
 //! Wat het beeld met opzet **niet** draagt, is het uitvoeringsreceipt van een
 //! besluit: dat bevat wandkloktijd, en een contract dat per run verschilt is geen
 //! contract. Het gram draagt het wél — een decretogram *is* het RFC-013 Execution
@@ -106,6 +110,7 @@ pub mod journal;
 // geen re-export hieronder — wie hem gebruikt, noemt hem bij zijn volle naam, en
 // geen ander bestand in `src/` mag dat doen.
 pub mod observation;
+pub mod portaal;
 pub mod receipt;
 pub mod scenario;
 pub mod security;
@@ -142,6 +147,9 @@ pub use regelrecht_engine::Value;
 // Om dezelfde reden: `SimulatorError::Engine` draagt hem, dus wie de fouten van
 // deze crate uitpakt — bijvoorbeeld om er een HTTP-status bij te kiezen — heeft
 // hem nodig zonder de engine als eigen dependency op te voeren.
+pub use portaal::{
+    InzichtRegel, InzichtVraag, Persona, PersonaSnapshot, PortaalDefinition, PortaalSnapshot,
+};
 pub use receipt::{GramReceipt, ReceiptAcceptedValue, ReceiptGram, ReceiptTimestamp};
 pub use regelrecht_engine::EngineError;
 pub use scenario::{

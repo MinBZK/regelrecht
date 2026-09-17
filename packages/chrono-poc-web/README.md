@@ -84,6 +84,8 @@ de simulator, en die praat Nederlands.
 | `GET /api/cells/{cel}/chronicles/{stroom}/grams/{n}/receipt` | het RFC-013 uitvoeringsreceipt van één decretogram, alleen lezen. `n` is de plek in de kroniek, geteld vanaf nul |
 | `PUT /api/settings` | wijzig instellingen die nog niet vast staan |
 | `POST /api/reset` | terug naar de startstand uit het wereldbestand |
+| `GET /api/portaal` | het `portaal` uit het wereldbestand — actor, label, persona's met hun ingevulde vragen, en de vragen als sjabloon — of `null` als er geen is |
+| `PUT /api/persona` | `{"id": "aanvrager-a"}` of `{"id": null}`: kies een persona voor deze sessie. Legt niets vast; antwoord is het beeld, met `persona` en de voorinvulling van de aanvrager. `reset` laat de keuze staan |
 
 Alles onder `/api/` staat achter de rol uit `CHRONO_POC_REQUIRED_ROLE`. De
 frontend komt uit `STATIC_DIR` met een SPA-fallback, zoals editor-api dat doet.

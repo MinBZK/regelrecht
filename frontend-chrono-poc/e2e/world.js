@@ -57,8 +57,12 @@ export function hasDelta(entry) {
  *
  * De cookie die de server uitdeelt hangt aan de context; twee contexten zijn
  * twee werelden die elkaar niet raken (zie `packages/chrono-poc-web`).
+ *
+ * Standaard op "Achter de schermen" (`#/wereld`): daar staan de cellen, de
+ * bediening en de tijdlijn waar de meeste checks over gaan. Een wereld zonder
+ * portaal toont die pagina op elk adres, dus dit werkt voor elk wereldbestand.
  */
-export async function openSession(browser) {
+export async function openSession(browser, path = '/#/wereld') {
   const context = await browser.newContext({
     baseURL: baseUrl(),
     viewport: { width: 1500, height: 1000 },
@@ -66,7 +70,7 @@ export async function openSession(browser) {
   const page = await context.newPage();
   const pageErrors = [];
   page.on('pageerror', (e) => pageErrors.push(e.message));
-  await page.goto('/', { waitUntil: 'networkidle' });
+  await page.goto(path, { waitUntil: 'networkidle' });
   await page.waitForTimeout(800);
   return session(context, page, pageErrors);
 }
