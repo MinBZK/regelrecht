@@ -653,7 +653,6 @@ const pathname = '/roadmap';
      */
     const zichtbaar = (kaart: HTMLElement) => kaart.offsetHeight > 0;
 
-    let plekken = new Map<string, Plek>();
     let buren = new Map<string, Set<string>>();
 
     /** Een pijl: `van` moet af zijn voordat `naar` kan beginnen. */
@@ -668,7 +667,6 @@ const pathname = '/roadmap';
       }
       table!.style.removeProperty('--rr-fase-kolommen');
       svg!.replaceChildren();
-      plekken = new Map();
       buren = new Map();
       pijlen = [];
       if (!aan()) return;
@@ -757,7 +755,6 @@ const pathname = '/roadmap';
           bezetteRijen[rij].add(kolom);
           const plek = { kolom, rij };
           hier.set(id, plek);
-          plekken.set(id, plek);
           kaart.style.gridColumn = String(kolom + 1);
           kaart.style.gridRow = String(rij + 1);
         }
