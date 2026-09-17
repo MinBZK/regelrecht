@@ -850,7 +850,22 @@ produces:
   chronicles:
     - stream: betalingen
       key: zaakkenmerk
+      gebeurtenissen:                      # het schema dat het platform vraagt
+        - name: betaling_gedaan            # wat zíj vastlegt: zij betaalde
+          intake: betaling
+          fields: [...]                    # zie De executogram-vorm
+        - name: betaling_gemeld            # bij de besluitende cel: het is gemeld
+          intake: levering
+          fields: [...]
 ```
+
+Beide kanten van een nagekomen verplichting leggen vast, elk in haar eigen
+kroniek: de betaler dat zij betaalde (`betaling_gedaan`), de besluitende cel dat
+het haar gemeld is (`betaling_gemeld`). Twee grammen en niet één gedeelde staat.
+Het schema van die stroom is niet vrij: het platform declareert welke velden die
+twee dragen, en het optuigen weigert een cel die ze niet dekt — zie [Het
+gebeurtenisschema van een
+stroom](#het-gebeurtenisschema-van-een-stroom).
 
 **Waarom in de wet en niet in het wereldbestand.** Dát er 80% voorschot betaald
 wordt en dat het slotbedrag ineens komt, schrijft het recht voor (Wpp art. 60 lid
@@ -1889,6 +1904,81 @@ Aansluiten op een breder vocabulaire is later een hernoeming, geen herontwerp.
 `recording_actor` moet de cel zijn die de stroom houdt; een vastlegging op naam
 van een ander wordt geweigerd bij het optuigen. Zie [Wat een cel
 is](#wat-een-cel-is): een kroniek is het eigen journaal van de cel.
+
+### Het gebeurtenisschema van een stroom
+
+Een kroniekstroom kan naast `stream` en `key` een lijst `gebeurtenissen` dragen:
+per gebeurtenisnaam de velden met hun type, het kanaal en de grondslag.
+
+```yaml
+- stream: betalingen
+  key: zaakkenmerk
+  gebeurtenissen:
+    - name: betaling_gedaan
+      intake: betaling
+      grondslag: Algemene wet bestuursrecht, art. 4:89
+      fields:
+        - name: zaakkenmerk
+          type: string
+        - name: bedrag
+          type: amount
+```
+
+Dit is het typeschema van een executogram, en dat is **generiek en
+compile-time**: het geldt voor elke vastlegging van die naam, niet voor één
+casus. Het hoort dus data te zijn en geen Rust — anders weet alleen de code wat
+een betaling draagt, kan er geen tweede soort bij zonder een nieuwe versie, en
+valt een typfout in een fixture pas op als de tijdlijn erlangs komt.
+
+De typen zijn die van een gedocumenteerde parameter — `string`, `number`,
+`boolean`, `date` — met `amount` erbij voor een bedrag. Eén stelsel voor beide,
+want een veld dat via het formulier van een actie in een kroniek belandt gaat
+door allebei de toetsen.
+
+Wat het schema afdwingt:
+
+- **onbekende naam** — een gebeurtenis die er niet in staat, hoort in een andere
+  stroom of is een typfout;
+- **ontbrekend veld** — wat gedeclareerd is, moet erin staan; hiermee valt ook
+  een typfout in een veldnaam, want dan ontbreekt het gedeclareerde veld;
+- **verkeerd type** — met één uitzondering: `null` komt overal doorheen. Dat is
+  een uitspraak over het veld en geen ontbrekend feit (RFC-036) — het register
+  zegt dat er geen partner is.
+
+Een veld dat het schema *niet* noemt, is geen bezwaar: het schema is een
+**ondergrens**. Een besluit legt zijn eigen uitkomsten in het gram, en die volgen
+uit de regeling die het uitvoert; zou het schema ze ook moeten opsommen, dan
+stond de wet twee keer opgeschreven.
+
+De toets valt zo vroeg mogelijk: bij een `fixture` en bij het formulier van een
+`action` bij het **optuigen** (beide staan dan al in het bestand), en bij een
+levering op het moment van **vastleggen**. En `grondslag` op een gebeurtenis is
+de default voor grammen van die naam: een gram dat er zelf geen draagt, krijgt
+die van het schema — als veld in de kroniek, niet als weergave. Dat een aanvraag
+op Awir art. 15 berust, geldt voor elke aanvraag, en dan hoort het één keer
+opgeschreven te staan.
+
+Een stroom **zonder** `gebeurtenissen` blijft toegestaan en wordt niet getoetst:
+een kroniek van een organisatie die er nooit een schema bij schreef, is nog
+steeds een kroniek, en de toets hoort erbij te komen doordat iemand hem
+opschrijft.
+
+Eén stroom is de uitzondering. `betalingen` is platformvocabulaire (zie [Verplichtingen: wat een besluit
+achterlaat](#verplichtingen-wat-een-besluit-achterlaat)): het
+platform declareert zelf wat `betaling_gedaan` en `betaling_gemeld` dragen —
+zaakkenmerk, bedrag, volgnummer, besluit, schuldenaar en schuldeiser — en een
+cel die een verplichting nakomt of oplegt moet een stroom houden waarvan het
+schema dat dekt. Doet ze dat niet, dan weigert het optuigen met een melding die
+de ontbrekende velden noemt; anders zou dat pas op de eerste vervaldatum blijken.
+Declareert het artikel `richting_bij_negatief: omkeren`, dan kan er ook een
+verplichting de andere kant op uit komen: dan vraagt het optuigen er
+`terugvordering_gedaan` en `terugvordering_gemeld` bij, want die namen belanden in
+dezelfde stroom en zouden anders pas bij de eerste omkering stranden.
+
+Waar deze declaraties uiteindelijk wonen — in het wereldbestand of in eigen
+bestanden naast de regelingen — is een later besluit over de plek van de
+declaraties. Vandaag staan ze in het wereldbestand; verplaatsen is dan een
+verhuizing en geen herontwerp.
 
 In een `fixture` staat `recording_actor` niet, want dat is `record.cell`, en `at`
 geeft het moment. Die twee kunnen niet uiteenlopen en hoeven dus niet twee keer

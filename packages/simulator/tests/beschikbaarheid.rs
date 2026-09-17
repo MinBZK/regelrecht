@@ -237,6 +237,25 @@ cells:
       # oplegt, vraagt die stroom net zo goed van haar als van de betaler.
       - stream: betalingen
         key: zaakkenmerk
+        gebeurtenissen: &betalingsschema
+          - name: betaling_gedaan
+            intake: betaling
+            fields: &betalingsvelden
+              - name: zaakkenmerk
+                type: string
+              - name: bedrag
+                type: amount
+              - name: volgnummer
+                type: number
+              - name: besluit
+                type: string
+              - name: schuldenaar
+                type: string
+              - name: schuldeiser
+                type: string
+          - name: betaling_gemeld
+            intake: levering
+            fields: *betalingsvelden
 
     besluit_definitions:
       - name: zorgtoeslag_toekenning
@@ -298,6 +317,7 @@ cells:
     chronicles:
       - stream: betalingen
         key: zaakkenmerk
+        gebeurtenissen: *betalingsschema
 ";
 
 /// Eén `decides`-actie, in Rust en niet in het YAML hierboven.

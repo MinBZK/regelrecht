@@ -582,7 +582,10 @@ fn coerce(
         // Altijd tekst, ook als het een getal lijkt: een BSN met een nul vooraan
         // is geen getal, en een BSN zonder nul vooraan is dat ook niet.
         ParameterType::String => Ok(Value::String(raw.to_string())),
-        ParameterType::Number => serde_json::from_str::<Value>(raw)
+        // Een bedrag leest als een getal: het verschil tussen de twee zit in wat
+        // het betekent en niet in hoe het op de draad staat, en een tweede lezer
+        // ernaast zou van '1.50' hier iets anders kunnen maken dan daar.
+        ParameterType::Number | ParameterType::Amount => serde_json::from_str::<Value>(raw)
             .ok()
             .filter(|value| matches!(value, Value::Int(_) | Value::Decimal(_)))
             .ok_or_else(|| wrong("een getal")),

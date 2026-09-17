@@ -490,9 +490,15 @@ export function initialForm(action, typed = {}) {
   return values;
 }
 
-/** Hoe een leeg veld van dit type eruitziet. */
+/**
+ * Hoe een leeg veld van dit type eruitziet.
+ *
+ * `amount` telt hier als getal: een bedrag is er een, en een leeg bedrag is dus
+ * niets en geen lege tekst — anders zou een niet-ingevuld bedrag als `''` de
+ * deur uit gaan.
+ */
 function emptyValue(type) {
-  if (type === 'number') return null;
+  if (type === 'number' || type === 'amount') return null;
   if (type === 'boolean') return false;
   return '';
 }

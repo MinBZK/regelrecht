@@ -45,6 +45,20 @@ cells:
     chronicles:
       - stream: aanvragen
         key: bsn
+        # Wat deze cel in deze stroom vastlegt, en van welk type. Het formulier
+        # van de actie wordt er bij het optuigen aan gehouden, en elke
+        # vastlegging bij het vastleggen.
+        gebeurtenissen:
+          - name: aanvraag_ingediend
+            intake: aanvraag
+            grondslag: Algemene wet inkomensafhankelijke regelingen, art. 15
+            fields:
+              - name: bsn
+                type: string
+              - name: jaar
+                type: number
+              - name: ondertekend_op
+                type: date
 
     lexostatus_definitions:
       - name: ingediende_aanvraag
@@ -115,6 +129,31 @@ cells:
 
       - stream: betalingen
         key: zaakkenmerk
+        # Het gebeurtenisschema van deze stroom: welke gebeurtenissen erin
+        # thuishoren, op welke grondslag ze berusten en welke velden ze dragen.
+        # Wat het platform van een betalingsstroom verlangt, staat hier als data;
+        # het optuigen toetst of het er staat, en elke vastlegging of het klopt.
+        gebeurtenissen: &betalingsschema
+          - name: betaling_gedaan
+            intake: betaling
+            grondslag: Algemene wet bestuursrecht, art. 4:89
+            fields: &betalingsvelden
+              - name: zaakkenmerk
+                type: string
+              - name: bedrag
+                type: amount
+              - name: volgnummer
+                type: number
+              - name: besluit
+                type: string
+              - name: schuldenaar
+                type: string
+              - name: schuldeiser
+                type: string
+          - name: betaling_gemeld
+            intake: levering
+            grondslag: Algemene wet bestuursrecht, art. 4:89
+            fields: *betalingsvelden
 
     lexostatus_definitions:
       - name: toetsingsinkomen
@@ -172,9 +211,32 @@ cells:
       # erin komt, komt van een actie.
       - stream: aanvragen
         key: bsn
+        # Dezelfde velden, een andere naam en een ander kanaal: wat de
+        # aanvrager indiende, is bij deze cel een aanvraag die binnenkwam. Twee
+        # grammen in twee kronieken, elk met een eigen schema.
+        gebeurtenissen:
+          - name: aanvraag_ontvangen
+            intake: aanvraag
+            grondslag: Algemene wet inkomensafhankelijke regelingen, art. 15
+            fields:
+              - name: bsn
+                type: string
+              - name: jaar
+                type: number
+              - name: ondertekend_op
+                type: date
 
       - stream: relaties
         key: bsn
+        gebeurtenissen:
+          - name: relatie_gewijzigd
+            intake: levering
+            grondslag: melding uit de basisregistratie personen
+            fields:
+              - name: bsn
+                type: string
+              - name: partnerschap_type
+                type: string
         events:
           - name: relatie_gewijzigd
             intake: levering
@@ -187,6 +249,17 @@ cells:
 
       - stream: inkomensleveringen
         key: bsn
+        gebeurtenissen:
+          - name: inkomenslevering
+            intake: levering
+            grondslag: jaarlijkse inkomenslevering
+            fields:
+              - name: bsn
+                type: string
+              - name: is_verzekerde
+                type: boolean
+              - name: vermogen
+                type: amount
         events:
           - name: inkomenslevering
             intake: levering
@@ -202,6 +275,7 @@ cells:
       # haar gemeld is dat er betaald is.
       - stream: betalingen
         key: zaakkenmerk
+        gebeurtenissen: *betalingsschema
 
     besluit_definitions:
       - name: zorgtoeslag_toekenning
@@ -360,7 +434,10 @@ actions:
       chronicle: aanvragen
       name: aanvraag_ingediend
       intake: aanvraag
-      grondslag: Awir art. 15
+      # Geen `grondslag` hier: die staat in het schema van de stroom waarin dit
+      # gram landt. Dat een aanvraag op Awir art. 15 berust, geldt voor elke
+      # aanvraag en niet voor deze ene — en dan hoort het één keer opgeschreven
+      # te staan, op de plek die over het soort gaat.
       fields:
         # Voorgevuld: dit verhaal gaat over deze persoon en dit jaar, en dat
         # hoort een invuller niet elke keer over te typen. Het blijft een

@@ -51,6 +51,7 @@ use crate::cell::{
     InputOrigin, Intake, Lexostatus, ObligationDue, PartyBindings, Prefill, BESCHIKKINGEN,
     BETALINGEN, ZAAKKENMERK,
 };
+use crate::cell::{nakoming_schema, uncovered};
 use crate::error::{Result, SimulatorError, Subject};
 use crate::journal::{
     changes, AcceptedValue, ExecutedInput, ExecutedOutput, Execution, GramRef, IndicatorParam,
@@ -1963,9 +1964,13 @@ fn party_bindings(configs: &[CellConfig]) -> Result<PartyBindings> {
 /// - verwijst `ritme: $naam` naar een instelling die bestaat, en is die een
 ///   ritme;
 /// - houden de cellen die straks vastleggen een stroom [`BETALINGEN`] met
-///   [`ZAAKKENMERK`] als sleutel? Beide kanten leggen op een vervaldatum vast, en
-///   een stroom die er niet is zou dat op de eerste vervaldatum laten omvallen —
-///   halverwege de tijdlijn, in plaats van hier.
+///   [`ZAAKKENMERK`] als sleutel, en dekt het schema van die stroom wat er
+///   vastgelegd gaat worden? Beide kanten leggen op een vervaldatum vast, en een
+///   stroom die er niet is — of die de naam van het gram niet kent — zou dat op
+///   de eerste vervaldatum laten omvallen, halverwege de tijdlijn in plaats van
+///   hier. Het schema wordt gevraagd voor elke soort die uit de verplichting kan
+///   ontstaan: declareert het artikel `richting_bij_negatief`, dan hoort de
+///   terugvordering er net zo goed in te staan.
 ///
 /// Welke cel er nakomt, valt maar ten dele vooruit te weten: is de schuldenaar het
 /// bevoegd gezag, dan staat ze hier al vast, maar een partij uit een parameter
@@ -1993,6 +1998,15 @@ fn check_obligations(
                     continue;
                 }
                 declared.check_settings(&config.id, &definition.name, settings)?;
+                // Het schema dat elke nakomende stroom hier moet dekken. Eén per
+                // soort die uit deze verplichtingen kan ontstaan: een artikel dat
+                // omkeren declareert, legt straks ook terugvorderingen in
+                // diezelfde stroom, en die dragen een eigen naam.
+                let required: Vec<_> = declared
+                    .soorten()
+                    .into_iter()
+                    .flat_map(nakoming_schema)
+                    .collect();
                 // De besluitende cel legt de melding vast dat er betaald is, dus
                 // zij heeft de stroom net zo goed nodig als de betaler.
                 let mut holders: Vec<String> = declared
@@ -2003,25 +2017,39 @@ fn check_obligations(
                 holders.push(config.id.clone());
                 for holder in holders {
                     let holder = holder.as_str();
-                    let found = match cells.get(holder) {
-                        None => {
-                            return Err(SimulatorError::UnknownCell {
-                                cell: holder.to_string(),
-                            })
-                        }
-                        Some(cell) => cell.stream_key(BETALINGEN),
+                    let Some(held) = cells.get(holder) else {
+                        return Err(SimulatorError::UnknownCell {
+                            cell: holder.to_string(),
+                        });
                     };
-                    let reason = match found {
-                        Some(key) if key == ZAAKKENMERK => continue,
-                        Some(key) => format!("die stroom heeft sleutel '{key}'"),
+                    let reason = match held.stream_key(BETALINGEN) {
                         None => "die cel houdt geen stroom met die naam".to_string(),
+                        Some(key) if key != ZAAKKENMERK => {
+                            format!("die stroom heeft sleutel '{key}'")
+                        }
+                        Some(_) => {
+                            let missing = uncovered(held.stream_schema(BETALINGEN), &required);
+                            if missing.is_empty() {
+                                continue;
+                            }
+                            format!(
+                                "het schema van die stroom dekt niet: {}",
+                                missing.join(", ")
+                            )
+                        }
                     };
                     return Err(SimulatorError::ObligationStream {
                         cell: config.id.clone(),
                         besluit: definition.name.clone(),
                         holder: holder.to_string(),
                         expected: format!(
-                            "een kroniekstroom '{BETALINGEN}' met sleutel '{ZAAKKENMERK}'"
+                            "een kroniekstroom '{BETALINGEN}' met sleutel '{ZAAKKENMERK}' \
+                             en een gebeurtenisschema voor {}",
+                            required
+                                .iter()
+                                .map(|gebeurtenis| gebeurtenis.name.as_str())
+                                .collect::<Vec<_>>()
+                                .join(", ")
                         ),
                         found: reason,
                     });
@@ -2245,16 +2273,12 @@ fn check_actions(actions: &[ActionDefinition], cells: &BTreeMap<String, Cell>) -
 
         match &action.effect {
             ActionEffect::Records(records) => {
-                let fields: BTreeSet<String> = records
-                    .fields
-                    .iter()
-                    .map(|field| field.name.clone())
-                    .collect();
                 check_recordable(
                     &action.id,
                     &records.cell,
                     &records.chronicle,
-                    &fields,
+                    &records.name,
+                    &records.fields,
                     cells,
                 )?;
                 check_prefill(&records.cell, &action.id, &records.fields, cells)?;
@@ -2265,11 +2289,16 @@ fn check_actions(actions: &[ActionDefinition], cells: &BTreeMap<String, Cell>) -
                             cell: delivery.cell.clone(),
                         });
                     }
+                    // Onder de naam waaronder het gram bij de ontvanger landt, en
+                    // niet onder die van de actor: een levering mag anders heten,
+                    // en dan is het het schema van die andere naam waar ze aan
+                    // moet voldoen.
                     check_recordable(
                         &action.id,
                         &delivery.cell,
                         &delivery.chronicle,
-                        &fields,
+                        delivery.name.as_deref().unwrap_or(&records.name),
+                        &records.fields,
                         cells,
                     )?;
                 }
@@ -2341,7 +2370,8 @@ fn check_recordable(
     action: &str,
     cell: &str,
     chronicle: &str,
-    fields: &BTreeSet<String>,
+    name: &str,
+    form: &[DocumentedParameter],
     cells: &BTreeMap<String, Cell>,
 ) -> Result<()> {
     cells
@@ -2349,7 +2379,7 @@ fn check_recordable(
         .ok_or_else(|| SimulatorError::UnknownCell {
             cell: cell.to_string(),
         })?
-        .check_recordable(chronicle, fields)
+        .check_recordable(chronicle, name, form)
         .map_err(|reason| SimulatorError::ActionRecording {
             action: action.to_string(),
             cell: cell.to_string(),
@@ -2859,6 +2889,44 @@ lexostatus_definitions:
         );
     }
 
+    /// Het gebeurtenisschema dat het platform van een betalingsstroom vraagt.
+    ///
+    /// Eén keer opgeschreven en overal ingeplakt, want elke wereld hieronder met
+    /// een verplichting heeft hem nodig en hij hoort in al die werelden hetzelfde
+    /// te zijn — dat is nu juist wat de toets bij het optuigen bewaakt.
+    const BETALINGSSCHEMA: &str = "    gebeurtenissen:
+      - name: betaling_gedaan
+        intake: betaling
+        fields:
+          - name: zaakkenmerk
+            type: string
+          - name: bedrag
+            type: amount
+          - name: volgnummer
+            type: number
+          - name: besluit
+            type: string
+          - name: schuldenaar
+            type: string
+          - name: schuldeiser
+            type: string
+      - name: betaling_gemeld
+        intake: levering
+        fields:
+          - name: zaakkenmerk
+            type: string
+          - name: bedrag
+            type: amount
+          - name: volgnummer
+            type: number
+          - name: besluit
+            type: string
+          - name: schuldenaar
+            type: string
+          - name: schuldeiser
+            type: string
+";
+
     /// Een wereld waarin één besluit een verplichting oplegt.
     ///
     /// `schedule` wordt letterlijk ingeplakt, zodat elke test hieronder alleen
@@ -2869,10 +2937,11 @@ lexostatus_definitions:
         // dan mee weg, anders struikelt de cel over haar eigen definitie voordat
         // de wereld aan de verplichting toekomt.
         let betaler_streams = if betaler_houdt_betalingen {
-            "chronicles:
+            &format!(
+                "chronicles:
   - stream: betalingen
     key: zaakkenmerk
-lexostatus_definitions:
+{BETALINGSSCHEMA}lexostatus_definitions:
   - name: betaald
     inputs:
       - name: zaakkenmerk
@@ -2884,6 +2953,7 @@ lexostatus_definitions:
       key: zaakkenmerk
       sum: bedrag
 "
+            )
         } else {
             "chronicles: []\n"
         };
@@ -2917,7 +2987,7 @@ chronicles:
           vermogen: 0
   - stream: betalingen
     key: zaakkenmerk
-besluit_definitions:
+{BETALINGSSCHEMA}besluit_definitions:
   - name: zorgtoeslag_vaststelling
     regulation: wet_op_de_zorgtoeslag
     output: heeft_recht_op_zorgtoeslag
@@ -2996,7 +3066,7 @@ laws:
 chronicles:
   - stream: betalingen
     key: zaakkenmerk
-besluit_definitions:
+{BETALINGSSCHEMA}besluit_definitions:
   - name: zorgtoeslag_vaststelling
     regulation: test_betalingsritmes
     output: {output}
@@ -3021,7 +3091,7 @@ lexostatus_definitions:
       sum: bedrag
 "
             )),
-            parse(
+            parse(&format!(
                 r"
 id: belastingdienst
 laws: []
@@ -3030,7 +3100,7 @@ komt_na:
 chronicles:
   - stream: betalingen
     key: zaakkenmerk
-lexostatus_definitions:
+{BETALINGSSCHEMA}lexostatus_definitions:
   - name: betaald
     inputs:
       - name: zaakkenmerk
@@ -3041,8 +3111,8 @@ lexostatus_definitions:
       chronicle: betalingen
       key: zaakkenmerk
       sum: bedrag
-",
-            ),
+"
+            )),
         ]
     }
 

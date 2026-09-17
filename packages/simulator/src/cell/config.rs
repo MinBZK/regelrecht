@@ -327,7 +327,13 @@ fn prefill_error(text: &str) -> String {
     )
 }
 
-/// De typen die een lexostatus-parameter kan hebben.
+/// De typen die een gedocumenteerde waarde kan hebben.
+///
+/// Voor de parameters van een lexostatus, de velden van een actieformulier én de
+/// velden van een gebeurtenisschema (zie [`crate::cell::GebeurtenisSchema`]):
+/// het zijn dezelfde typen, en met opzet. Een veld dat via het formulier van een
+/// actie in een kroniek belandt, gaat door beide toetsen, en twee typestelsels
+/// zouden daar tegen elkaar in kunnen gaan.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ParameterType {
@@ -335,6 +341,15 @@ pub enum ParameterType {
     String,
     /// Geheel of decimaal getal.
     Number,
+    /// Een bedrag in euro's.
+    ///
+    /// Op de draad niet te onderscheiden van [`Self::Number`], en dat is hier
+    /// ook niet wat het toevoegt: het zegt wát er staat. De wetmodellen kennen
+    /// het type al (`amount` in `law-model`), en een
+    /// kroniek die een bedrag vastlegt hoort dat net zo te kunnen zeggen — een
+    /// volgnummer en een uitkering zijn allebei getallen en verder niets
+    /// hetzelfde.
+    Amount,
     /// Waar of niet waar.
     Boolean,
     /// Een kalenderdag, in ISO-notatie (`jjjj-mm-dd`).
@@ -379,10 +394,11 @@ const ISO_DATE: &str = "%Y-%m-%d";
 
 impl ParameterType {
     /// De naam zoals die in foutmeldingen verschijnt.
-    fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             Self::String => "string",
             Self::Number => "number",
+            Self::Amount => "amount",
             Self::Boolean => "boolean",
             Self::Date => "date",
         }
@@ -396,7 +412,7 @@ impl ParameterType {
     pub(crate) fn bind(self, value: &Value) -> std::result::Result<(), Mismatch> {
         let ok = match self {
             Self::String => matches!(value, Value::String(_)),
-            Self::Number => matches!(value, Value::Int(_) | Value::Decimal(_)),
+            Self::Number | Self::Amount => matches!(value, Value::Int(_) | Value::Decimal(_)),
             Self::Boolean => matches!(value, Value::Bool(_)),
             Self::Date => {
                 let Value::String(text) = value else {

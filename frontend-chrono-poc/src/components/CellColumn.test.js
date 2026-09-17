@@ -75,7 +75,12 @@ describe('een kolom per cel', () => {
     const wrapper = mountCell('belastingdienst');
     const cell = fixtureCell('belastingdienst');
     const total = cell.chronicles.reduce((sum, chronicle) => sum + chronicle.grams.length, 0);
-    expect(wrapper.findAll('nldd-list-item:not([slot="children"])')).toHaveLength(total);
+    // Binnen de kroniek-lijsten geteld: boven de grammen staat het schema van
+    // de stroom, en dat is geen gram.
+    const gramRows = chronicleLists(wrapper).flatMap((list) =>
+      list.findAll('nldd-list-item:not([slot="children"])'),
+    );
+    expect(gramRows).toHaveLength(total);
 
     const texts = attrs(wrapper, 'nldd-text-cell', 'text');
     for (const chronicle of cell.chronicles) {
@@ -89,6 +94,31 @@ describe('een kolom per cel', () => {
     expect(supporting.some((text) => text?.includes('01-03-2024'))).toBe(true);
   });
 
+
+  // Het schema van een stroom geldt vóórdat er één gram in ligt: een lege
+  // betalingsstroom hoort te kunnen zeggen welke velden erin komen en van welk
+  // type. Uit het eerste gram valt dat niet af te leiden — er is er geen.
+  it('toont het gebeurtenisschema bij de stroom die er een declareert', () => {
+    const wrapper = mountCell('belastingdienst');
+    const chronicle = fixtureCell('belastingdienst').chronicles.find(
+      (candidate) => (candidate.gebeurtenissen ?? []).length > 0,
+    );
+    expect(chronicle, 'de fixture hoort een stroom met een schema te dragen').toBeTruthy();
+    const labels = attrs(wrapper, 'nldd-list', 'accessible-label');
+    expect(labels).toContain(`Gebeurtenisschema van kroniek ${chronicle.stream} van cel belastingdienst`);
+    const texts = attrs(wrapper, 'nldd-text-cell', 'text');
+    for (const gebeurtenis of chronicle.gebeurtenissen) expect(texts).toContain(gebeurtenis.name);
+  });
+
+  it('toont geen schema bij een stroom die er geen declareert', () => {
+    const wrapper = mountCell('belastingdienst');
+    const zonder = fixtureCell('belastingdienst').chronicles.find(
+      (candidate) => (candidate.gebeurtenissen ?? []).length === 0,
+    );
+    expect(zonder, 'de fixture hoort een stroom zonder schema te dragen').toBeTruthy();
+    const labels = attrs(wrapper, 'nldd-list', 'accessible-label');
+    expect(labels).not.toContain(`Gebeurtenisschema van kroniek ${zonder.stream} van cel belastingdienst`);
+  });
   // `status` en `position` zijn de namen van de tijdlijn-cel zelf. Onder een
   // andere naam blijft het attribuut op het element staan en doet het niets: de
   // lijn zou dan overal 'past' en overal 'between' tekenen zonder dat iets faalt.
@@ -132,9 +162,18 @@ describe('een kolom per cel', () => {
 });
 
 describe('de herkomst in een decretogram', () => {
-  /** De rij van het eerste besluit in deze cel. */
+  /**
+   * De rij van het eerste besluit in deze cel.
+   *
+   * Binnen de kroniek-lijsten gezocht: de kolom draagt ook lijsten die over de
+   * *vorm* van een gram gaan (het decretogram-schema van de besluiten, het
+   * gebeurtenisschema van een stroom), en die klappen net zo goed uit. Een rij
+   * die uitklapt is hier alleen bewijs als ze een gram is.
+   */
   function decisionRow(wrapper) {
-    return wrapper.findAll('nldd-list-item').find((row) => row.attributes('button') !== undefined);
+    return chronicleLists(wrapper)
+      .flatMap((list) => list.findAll('nldd-list-item'))
+      .find((row) => row.attributes('button') !== undefined);
   }
 
   it('laat een decretogram uitklappen en een executogram niet', () => {

@@ -1,19 +1,18 @@
 ---
-name: een negatief bedrag zonder declaratie laat het besluit omvallen
+name: een stroom zonder schema voor de terugvordering wordt bij het optuigen geweigerd
 description: >-
   Dezelfde wereld als `scenarios/toeslagen_terugvordering.yaml`, met één verschil:
-  de vaststelling gaat op artikel 2 van de testregeling, en dát artikel zegt niet
-  wat een negatief bedrag betekent. Het slotbedrag komt onder nul uit, en dan hoort
-  het besluit om te vallen — met een melding die de declaratie noemt die eronder
-  had moeten staan.
+  het schema van de betalingsstroom kent alleen `betaling_gedaan` en
+  `betaling_gemeld`. De vaststelling gaat op artikel 1 van de testregeling, en dát
+  artikel declareert `richting_bij_negatief: omkeren` — dus kan er een
+  terugvordering uit komen, en die draagt een eigen naam in de kroniek.
 
-  Waarom dat een fixture is en geen scenario: het besluit breekt de run af, dus
-  dit bestand kan zijn eigen falen niet als verwachting dragen. Wat er omheen
-  vast te stellen valt, past in geen enkel `expect`: dat er **niets** vastligt.
-  Een negatieve termijn in een gram zou een betaling beloven die niemand kan doen,
-  en een gram dat er eenmaal ligt verandert niet meer.
+  Zo'n stroom hoort bij het **optuigen** geweigerd te worden en niet pas als het
+  slotbedrag onder nul uitkomt: dan zou het van de casus afhangen of een
+  ontbrekend schema ooit boven water kwam, en strandde de run halverwege de
+  tijdlijn. De melding noemt de namen die ontbreken.
 
-  Afgerekend wordt hij in `tests/verplichtingen.rs`.
+  Afgerekend wordt hij in `tests/gebeurtenisschema.rs`.
 
 clock:
   start: 2024-01-01
@@ -128,10 +127,11 @@ cells:
 
       - name: zorgtoeslag_vaststelling
         doc: >-
-          De vaststelling op artikel 2: hetzelfde verschil, maar zonder
-          `richting_bij_negatief`. Hier hoort het besluit op om te vallen.
+          De vaststelling op artikel 1: die declareert `richting_bij_negatief:
+          omkeren`, dus kan deze wereld een terugvordering voortbrengen — en dan
+          hoort het schema van de betalingsstroom die naam te kennen.
         regulation: test_terugvordering
-        output: restant
+        output: nog_te_betalen
         zaakkenmerk: zorgtoeslag/{bsn}
         params:
           - name: bsn
@@ -159,7 +159,7 @@ cells:
         outputs:
           - heeft_recht_op_zorgtoeslag
           - hoogte_zorgtoeslag
-          - restant
+          - nog_te_betalen
         reduction:
           chronicle: beschikkingen
           key: zaakkenmerk
@@ -183,9 +183,10 @@ decide:
       hoogte_zorgtoeslag: 197205.31187
 
   - description: >-
-      De vaststelling die onder nul uitkomt. Deze regel wordt nooit gehaald: het
-      besluit valt om op de verplichting die niet weet wat een negatief bedrag
-      betekent.
+      De vaststelling die onder nul uitkomt. Deze regel wordt nooit gehaald: de
+      wereld komt niet voorbij het optuigen. Ze staat er omdat een scenario
+      zonder besluiten niets voorstelt, en omdat dit bestand daarmee hetzelfde
+      leest als het scenario waarvan het afstamt.
     cell: toeslagen
     besluit: zorgtoeslag_vaststelling
     params:
@@ -193,4 +194,4 @@ decide:
       definitief_bedrag: 50000
     op_moment: 2024-06-15
     expect:
-      restant: -48602
+      nog_te_betalen: -48602
