@@ -86,6 +86,8 @@ pub enum JournalKind {
     Vastlegging,
     /// Een cel nam een besluit.
     Besluit,
+    /// Een cel maakte een besluit bekend: de volgende stage van de procedure.
+    Bekendmaking,
     /// Een termijn van een verplichting verviel en werd nagekomen.
     Betaling,
     /// Een termijn verstreek zonder dat het feit er lag.

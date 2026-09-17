@@ -905,6 +905,20 @@
               "toelichting": "besluit-definitie 'zorgtoeslag_toekenning': welke uitkomsten samen één gram vormen, staat in het wereldbestand"
             },
             {
+              "name": "stage",
+              "type": "string",
+              "herkomst": "platform",
+              "gat": false,
+              "toelichting": "'BESLUIT': elke stage van de procedure legt een eigen gram op hetzelfde zaakkenmerk"
+            },
+            {
+              "name": "wacht_op_bekendmaking",
+              "type": "array",
+              "herkomst": "platform",
+              "gat": false,
+              "toelichting": "leeg: geen verplichting van dit artikel wacht op de bekendmaking (`vanaf: bekendmaking`)"
+            },
+            {
               "name": "regulation",
               "type": "string",
               "herkomst": "platform",
@@ -1077,6 +1091,20 @@
               "herkomst": "wereldbestand",
               "gat": true,
               "toelichting": "besluit-definitie 'zorgtoeslag_vaststelling': welke uitkomsten samen één gram vormen, staat in het wereldbestand"
+            },
+            {
+              "name": "stage",
+              "type": "string",
+              "herkomst": "platform",
+              "gat": false,
+              "toelichting": "'BESLUIT': elke stage van de procedure legt een eigen gram op hetzelfde zaakkenmerk"
+            },
+            {
+              "name": "wacht_op_bekendmaking",
+              "type": "array",
+              "herkomst": "platform",
+              "gat": false,
+              "toelichting": "leeg: geen verplichting van dit artikel wacht op de bekendmaking (`vanaf: bekendmaking`)"
             },
             {
               "name": "regulation",
@@ -2132,6 +2160,12 @@
                     "herkomst": "besluit"
                   }
                 },
+                "stage": {
+                  "value": "BESLUIT",
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                },
                 "toetsingsinkomen": {
                   "value": 81000,
                   "origin": {
@@ -2146,6 +2180,12 @@
                       "op_moment": "2024-04-01",
                       "signature": "GESIMULEERDE-ONDERTEKENING door cel:toeslagen"
                     }
+                  }
+                },
+                "wacht_op_bekendmaking": {
+                  "value": [],
+                  "origin": {
+                    "herkomst": "besluit"
                   }
                 },
                 "zaakkenmerk": {
@@ -2294,6 +2334,12 @@
                     "regulation": "algemene_wet_inkomensafhankelijke_regelingen"
                   }
                 },
+                "stage": {
+                  "value": "BESLUIT",
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                },
                 "toegekende_tegemoetkoming": {
                   "value": 197178.01,
                   "origin": {
@@ -2327,6 +2373,12 @@
                       "op_moment": "2025-01-15",
                       "signature": "GESIMULEERDE-ONDERTEKENING door cel:toeslagen"
                     }
+                  }
+                },
+                "wacht_op_bekendmaking": {
+                  "value": [],
+                  "origin": {
+                    "herkomst": "besluit"
                   }
                 },
                 "zaakkenmerk": {

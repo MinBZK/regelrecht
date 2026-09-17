@@ -1,0 +1,71 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: test_bekendmaking
+name: Testregeling tegemoetkoming met bekendmaking
+regulatory_layer: WET
+bwb_id: BWBR9999907
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+url: https://example.com/test_bekendmaking
+competent_authority: Uitvoerder
+
+# Een testregeling, met opzet **niet** in het corpus: ze bestaat om een
+# eigenschap van de opstelling aan te tonen en niet om recht weer te geven.
+#
+# Wat ze aantoont is een beschikking waarvan de **betaaltermijn aan de
+# bekendmaking hangt**. Ze kent een bedrag toe en legt daarvoor een verplichting
+# op met `vanaf: bekendmaking`: het besluit belooft het bedrag, maar wanneer het
+# betaald moet zijn volgt pas uit de bekendmaking — en die datum komt niet uit
+# deze regeling maar uit `test_awb_procedure` (art. 4:87), langs de hook op de
+# stage BEKENDMAKING.
+#
+# Hier staat dus met opzet géén eigen rekenregel voor de uiterste betaaldatum.
+# Zo'n regel zou het antwoord van de algemene wet overschrijven met een kopie die
+# per uitvoeringsregeling uiteen kan lopen.
+articles:
+  - number: '1'
+    url: https://example.com/test_bekendmaking#Artikel1
+    text: >-
+      De uitvoerder kent aan de verzekerde een tegemoetkoming toe. Het bedrag
+      wordt ineens betaald.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+          extensions:
+            chronolex:
+              verplichtingen:
+                - soort: betaling
+                  bedrag: $hoogte_tegemoetkoming
+                  ritme: ineens
+                  # De termijn loopt niet vanaf het besluit maar vanaf de
+                  # bekendmaking: zolang het besluit niet bekendgemaakt is, is er
+                  # niets na te komen (Awb 3:40 jo. 4:87).
+                  vanaf: bekendmaking
+                  grondslag: >-
+                    Testregeling tegemoetkoming met bekendmaking art. 1 jo.
+                    Testregeling algemene bepalingen art. 4:87
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          # Geen `source`: het besluit levert deze aan uit de eigen kroniek van
+          # de cel. De regeling zegt alleen wat ze ermee doet.
+          - name: is_verzekerde
+            type: boolean
+            source: {}
+        output:
+          - name: komt_in_aanmerking
+            type: boolean
+          - name: hoogte_tegemoetkoming
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: komt_in_aanmerking
+            value: $is_verzekerde
+          - output: hoogte_tegemoetkoming
+            value: 42000

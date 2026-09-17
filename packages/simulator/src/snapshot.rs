@@ -26,9 +26,9 @@
 //! is — staat er wel, per veld.
 
 use crate::cell::{
-    fixed_fields, BesluitDefinition, Cell, ChronicleEvent, DecretogramField, DocumentedParameter,
-    GebeurtenisSchema, Intake, Lexostatus, LexostatusDefinition, ParameterType, Prefill, Reduction,
-    BESCHIKKINGEN, INPUTS, RECEIPT, REGULATION,
+    beschikkingen_fields, BesluitDefinition, Cell, ChronicleEvent, DecretogramField,
+    DocumentedParameter, GebeurtenisSchema, Intake, Lexostatus, LexostatusDefinition,
+    ParameterType, Prefill, Reduction, BESCHIKKINGEN, INPUTS, RECEIPT, REGULATION,
 };
 use crate::journal::JournalEntry;
 use crate::security::SignedAnswer;
@@ -353,6 +353,13 @@ pub enum ActionEffectSnapshot {
         /// De besluit-definitie.
         besluit: String,
     },
+    /// De actor maakt het laatste besluit van een cel bekend.
+    Publishes {
+        /// De cel die bekendmaakt.
+        cell: String,
+        /// De besluit-definitie waarvan het besluit bekendgemaakt wordt.
+        besluit: String,
+    },
 }
 
 /// Eén contact over een celgrens, zoals het meetinstrument het ziet.
@@ -576,7 +583,7 @@ fn gram_snapshot(event: &ChronicleEvent) -> GramSnapshot {
         .map(|(name, value)| {
             let origin = match from_besluit_path {
                 false => recorded(),
-                true if fixed_fields().contains(&name.as_str()) => FieldOrigin::Besluit,
+                true if beschikkingen_fields().contains(&name.as_str()) => FieldOrigin::Besluit,
                 true => FieldOrigin::Computed {
                     regulation: regulation.clone(),
                 },
@@ -682,6 +689,10 @@ fn action_snapshot(state: &ActionState<'_>) -> ActionSnapshot {
         ActionEffect::Decides(decides) => ActionEffectSnapshot::Decides {
             cell: decides.cell.clone(),
             besluit: decides.besluit.clone(),
+        },
+        ActionEffect::Publishes(publishes) => ActionEffectSnapshot::Publishes {
+            cell: publishes.cell.clone(),
+            besluit: publishes.besluit.clone(),
         },
     };
     ActionSnapshot {
