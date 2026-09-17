@@ -75,6 +75,30 @@ pub enum InputProvenance {
     Cell { cell: String, output: String },
 }
 
+/// A hook that matched but was not executed, because an input it needs does
+/// not exist in the execution it fired on (RFC-008).
+///
+/// Only produced when the caller opted in with
+/// [`LawExecutionService::set_skip_hooks_with_missing_inputs`](crate::LawExecutionService::set_skip_hooks_with_missing_inputs).
+/// A hook indexes on legal character, decision type and stage, not on what the
+/// decision it fires on actually carries, so a general law can offer an article
+/// to every decision of a kind while only some of them supply its facts. Such a
+/// caller would rather record the gap than lose the decision; without the
+/// opt-in a hook that fires must succeed.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct SkippedHook {
+    /// The `$id` of the law whose article did not run.
+    pub law_id: String,
+    /// The article number of the hook.
+    pub article: String,
+    /// `pre_actions` or `post_actions`.
+    pub hook_point: String,
+    /// The lifecycle stage the hook matched on.
+    pub stage: String,
+    /// The input that did not exist, as the engine reported it.
+    pub missing_input: String,
+}
+
 /// Result of article execution
 #[derive(Debug, Clone)]
 pub struct ArticleResult {
@@ -104,6 +128,11 @@ pub struct ArticleResult {
     /// [`StageState`](crate::StageState). Empty for an article evaluated by
     /// [`ArticleEngine`] alone, which resolves no sources.
     pub accepted_values: Vec<AcceptedCellValue>,
+    /// Every hook that matched during the execution this result concludes but
+    /// was skipped for a missing input (see [`SkippedHook`]). Like
+    /// `accepted_values` a fact about the whole execution. Always empty unless
+    /// the service was told to skip such hooks instead of failing.
+    pub skipped_hooks: Vec<SkippedHook>,
     /// Article number that was executed
     pub article_number: String,
     /// Law ID containing the article
@@ -305,6 +334,7 @@ impl<'a> ArticleEngine<'a> {
             // Filled in by the service layer, which is where sources resolve.
             input_provenance: BTreeMap::new(),
             accepted_values: Vec::new(),
+            skipped_hooks: Vec::new(),
             article_number: self.article.number.clone(),
             law_id: self.law.id.clone(),
             law_uuid: self.law.uuid.clone(),

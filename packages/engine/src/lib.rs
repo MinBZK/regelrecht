@@ -75,7 +75,7 @@ pub use config::{
 };
 pub use context::RuleContext;
 pub use data_source::{DataSource, DataSourceMatch, DataSourceRegistry, DictDataSource};
-pub use engine::{ArticleEngine, ArticleResult, InputProvenance, OutputProvenance};
+pub use engine::{ArticleEngine, ArticleResult, InputProvenance, OutputProvenance, SkippedHook};
 pub use error::{EngineError, ExternalError, Result};
 pub use operations::{evaluate_value, execute_operation, ValueResolver};
 pub use receipt::{AcceptedValue, ExecutionReceipt};
