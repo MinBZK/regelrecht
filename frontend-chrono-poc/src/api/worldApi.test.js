@@ -1,9 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { portaalFixture } from '../testing/portaalFixture.js';
 import { worldFixture } from '../testing/worldFixture.js';
 import {
   advanceTo,
   askLexostatus,
+  choosePersona,
   fetchGramReceipt,
+  fetchPortaal,
+  isPortaal,
   isSnapshot,
   runAction,
   snapshotFrom,
@@ -148,5 +152,31 @@ describe('de routes', () => {
     expect(fetchStub.mock.calls[0][0]).toBe(
       '/api/cells/cel%2Feen/chronicles/stroom%2Ftwee/grams/3/receipt',
     );
+  });
+});
+
+describe('het portaal', () => {
+  it('herkent een portaal, en neemt al het andere als geen portaal', async () => {
+    expect(isPortaal(portaalFixture)).toBe(true);
+    expect(isPortaal(worldFixture)).toBe(false);
+    expect(isPortaal(null)).toBe(false);
+
+    const fetchStub = stubFetch(portaalFixture);
+    expect(await fetchPortaal()).toBe(portaalFixture);
+    expect(fetchStub).toHaveBeenCalledWith('/api/portaal', expect.anything());
+
+    stubFetch(null);
+    expect(await fetchPortaal()).toBeNull();
+  });
+
+  it('kiest een persona met PUT, en niemand met null', async () => {
+    const fetchStub = stubFetch();
+    await choosePersona('aanvrager-a');
+    await choosePersona('');
+    const [[url, init], [, leeg]] = fetchStub.mock.calls;
+    expect(url).toBe('/api/persona');
+    expect(init.method).toBe('PUT');
+    expect(JSON.parse(init.body)).toStrictEqual({ id: 'aanvrager-a' });
+    expect(JSON.parse(leeg.body)).toStrictEqual({ id: null });
   });
 });

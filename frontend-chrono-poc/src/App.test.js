@@ -1,6 +1,8 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App.vue';
+import { fakeServer } from './testing/fakeServer.js';
+import { portaalFixture } from './testing/portaalFixture.js';
 import { cloneWorld, worldFixture } from './testing/worldFixture.js';
 import { allGrams } from './world/snapshot.js';
 import { useWorld } from './world/useWorld.js';
@@ -42,6 +44,8 @@ function rejection(message, status = 400) {
 let complaints;
 
 beforeEach(() => {
+  // Zonder adres: de pagina die een wereld zonder portaal toont.
+  window.location.hash = '';
   complaints = [];
   for (const channel of ['warn', 'error']) {
     vi.spyOn(console, channel).mockImplementation((...args) => complaints.push(args.join(' ')));
@@ -373,5 +377,86 @@ describe('de pagina', () => {
     } finally {
       useWorld().dismissError();
     }
+  });
+});
+
+describe("de pagina's", () => {
+  let wrapper = null;
+
+  beforeEach(() => {
+    const world = useWorld();
+    world.snapshot.value = null;
+    world.portaal.value = undefined;
+    world.result.value = null;
+    world.dismissError();
+  });
+
+  afterEach(() => {
+    wrapper?.unmount();
+    wrapper = null;
+  });
+
+  async function mountWith(options, hash = '') {
+    window.location.hash = hash;
+    const server = fakeServer(options);
+    wrapper = mount(App);
+    await flushPromises();
+    return server;
+  }
+
+  /** De navigatie tussen de pagina's, als die er is. */
+  function navigation() {
+    return wrapper.findAll('nldd-tab-bar').find((bar) => bar.attributes('navigation') !== undefined);
+  }
+
+  function goTo(hash) {
+    window.location.hash = hash;
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    return flushPromises();
+  }
+
+  it('heeft zonder portaal geen navigatie en alleen de wereld', async () => {
+    await mountWith({ portaal: null }, '#/portaal');
+    expect(navigation()).toBeUndefined();
+    expect(wrapper.find('nldd-stacked-split-view').exists()).toBe(true);
+    expect(complaints).toStrictEqual([]);
+  });
+
+  it('opent met een portaal op het portaal, met een link per pagina', async () => {
+    await mountWith({});
+    const items = navigation().findAll('nldd-tab-bar-item');
+    expect(items.map((item) => item.attributes('text'))).toStrictEqual([
+      portaalFixture.label,
+      'Inzicht in je aanvraag',
+      'Achter de schermen',
+    ]);
+    expect(items.map((item) => item.attributes('href'))).toStrictEqual(['#/portaal', '#/inzicht', '#/wereld']);
+    expect(items.map((item) => item.attributes('current'))).toStrictEqual(['true', undefined, undefined]);
+    expect(wrapper.find('nldd-stacked-split-view').exists()).toBe(false);
+    expect(complaints).toStrictEqual([]);
+  });
+
+  it('volgt het adres: elke pagina op haar eigen hash', async () => {
+    await mountWith({}, '#/wereld');
+    // Achter de schermen staat de wereld zoals ze er zonder portaal stond: de
+    // bediening, het journaal, de cellen en de tijdlijn.
+    expect(wrapper.find('nldd-stacked-split-view').exists()).toBe(true);
+    expect(wrapper.findAll('nldd-split-view-pane').map((pane) => pane.attributes('slot'))).toContain('timeline-bar');
+
+    await goTo('#/inzicht');
+    expect(wrapper.find('h1').text()).toBe('Inzicht in je aanvraag');
+    expect(wrapper.find('nldd-stacked-split-view').exists()).toBe(false);
+    expect(
+      wrapper.findAll('nldd-split-view-pane').map((pane) => pane.attributes('slot')),
+      'de tijdlijn hoort bij de wereld en niet bij de aanvrager',
+    ).not.toContain('timeline-bar');
+
+    await goTo('#/portaal');
+    expect(wrapper.find('h1').text()).toBe(portaalFixture.label);
+    const current = navigation()
+      .findAll('nldd-tab-bar-item')
+      .filter((item) => item.attributes('current') === 'true');
+    expect(current.map((item) => item.attributes('href'))).toStrictEqual(['#/portaal']);
+    expect(complaints).toStrictEqual([]);
   });
 });

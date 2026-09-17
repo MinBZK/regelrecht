@@ -152,3 +152,45 @@ export function askLexostatus(cell, name, params = {}, opMoment = null) {
   const path = `/api/cells/${encodeURIComponent(cell)}/lexostatus/${encodeURIComponent(name)}`;
   return request(`${path}${suffix}`);
 }
+
+/**
+ * Lijkt dit op een portaal? Een actor, een label en een lijst persona's.
+ *
+ * Een wereld zonder portaal antwoordt `null`; alles wat hier niet op lijkt telt
+ * ook als geen portaal, zodat een onverwacht antwoord geen pagina's oplevert die
+ * nergens op slaan.
+ */
+export function isPortaal(value) {
+  return (
+    value !== null
+    && typeof value === 'object'
+    && typeof value.actor === 'string'
+    && typeof value.label === 'string'
+    && Array.isArray(value.personas)
+  );
+}
+
+/**
+ * Het portaal uit het wereldbestand, of `null` als de wereld er geen heeft.
+ *
+ * Configuratie en geen stand: bij elke sessie hetzelfde. Welke persona er
+ * gekozen is, staat in het beeld (`snapshot.persona`).
+ */
+export async function fetchPortaal() {
+  const payload = await request('/api/portaal');
+  return isPortaal(payload) ? payload : null;
+}
+
+/**
+ * Kies een persona voor deze sessie, of niemand (`null`). Het antwoord is het
+ * beeld, met de formulieren van de aanvrager ingevuld met haar waarden.
+ *
+ * Een mock-login: er wordt niets vastgelegd.
+ */
+export function choosePersona(id) {
+  return request('/api/persona', {
+    method: 'PUT',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ id: id || null }),
+  });
+}
