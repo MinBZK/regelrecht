@@ -310,49 +310,53 @@ fn een_vervangen_besluit_roostert_bij_zijn_bekendmaking_niets_meer_in() {
     }
 }
 
-/// **De tegenproef: zonder dat vervangende besluit gaat de termijn gewoon lopen.**
+/// Speel de wereld van `bekendmaking_na_vervanging.yaml` af met andere handelingen.
 ///
-/// Dezelfde wereld en dezelfde twee handelingen, alleen de intrekking ertussenuit.
-/// Dat ene verschil is wat de bekendmaking van een belofte een termijn maakt —
-/// zou de bekendmaking hier ook niets inroosteren, dan zat de fout niet in de
-/// vervanging maar in de bekendmaking zelf.
-#[test]
-fn zonder_vervangend_besluit_roostert_diezelfde_bekendmaking_wel_in() {
+/// Elke stap is een dag, een actie en de bsn waarop ze gaat (leeg voor de
+/// bekendmaking, die geen formulier heeft). Het scenariobestand legt één
+/// volgorde vast; de tegenproeven hieronder schuiven met die volgorde en met
+/// de zaak, en houden verder alles gelijk.
+fn speel(stappen: &[(&str, &str, Option<&str>)]) -> regelrecht_simulator::World {
     let path = scenario_path("bekendmaking_na_vervanging.yaml");
     let scenario = Scenario::load(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
     let mut world = scenario
         .world(&regulation_root())
         .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    for (dag, actie, bsn) in stappen {
+        let dag = dag
+            .parse::<chrono::NaiveDate>()
+            .unwrap_or_else(|e| panic!("testdatum '{dag}' moet leesbaar zijn: {e}"));
+        world
+            .advance(dag)
+            .unwrap_or_else(|e| panic!("de klok moet vooruit kunnen: {e}"));
+        let form: BTreeMap<String, Value> = bsn
+            .iter()
+            .map(|bsn| ("bsn".to_string(), Value::String((*bsn).to_string())))
+            .collect();
+        world
+            .act(actie, &form)
+            .unwrap_or_else(|e| panic!("'{actie}' moet kunnen op {dag}: {e}"));
+    }
+    world
+}
 
-    let dag = |text: &str| {
-        text.parse::<chrono::NaiveDate>()
-            .unwrap_or_else(|e| panic!("testdatum '{text}' moet leesbaar zijn: {e}"))
-    };
-    let bsn = BTreeMap::from([("bsn".to_string(), Value::String("999993653".to_string()))]);
+/// Het gram van de laatste bekendmaking in `beschikkingen`, uit het beeld.
+fn laatste_bekendmaking(world: &regelrecht_simulator::World) -> GramSnapshot {
     world
-        .advance(dag("2024-03-01"))
-        .unwrap_or_else(|e| panic!("de klok moet vooruit kunnen: {e}"));
-    world
-        .act("uitvoerder.toekenning", &bsn)
-        .unwrap_or_else(|e| panic!("de toekenning moet kunnen: {e}"));
-    world
-        .advance(dag("2024-04-15"))
-        .unwrap_or_else(|e| panic!("de klok moet vooruit kunnen: {e}"));
-    world
-        .act("uitvoerder.bekendmaking", &BTreeMap::new())
-        .unwrap_or_else(|e| panic!("de bekendmaking moet kunnen: {e}"));
-
-    let snapshot = world.snapshot();
-    let grams: Vec<&GramSnapshot> = snapshot
+        .snapshot()
         .cells
         .iter()
         .filter(|cell| cell.id == "uitvoerder")
         .flat_map(|cell| &cell.chronicles)
         .filter(|chronicle| chronicle.stream == BESCHIKKINGEN)
         .flat_map(|chronicle| &chronicle.grams)
-        .collect();
-    assert_eq!(grams.len(), 2, "de toekenning en haar bekendmaking");
-    let bekendmaking = grams[1];
+        .rfind(|gram| veld(gram, "stage") == "BEKENDMAKING")
+        .cloned()
+        .unwrap_or_else(|| panic!("er hoort een bekendmaking te liggen"))
+}
+
+/// Zegt het gram van deze bekendmaking dat er gewoon iets is gaan lopen?
+fn roostert_in(bekendmaking: &GramSnapshot) {
     assert_eq!(
         waarde(bekendmaking, "termijnen_vervallen_door"),
         &Value::Null,
@@ -362,10 +366,31 @@ fn zonder_vervangend_besluit_roostert_diezelfde_bekendmaking_wel_in() {
         panic!("de bekendmaking draagt haar schema");
     };
     assert_eq!(obligations.len(), 1, "het ritme is `ineens`");
+}
+
+const BSN: &str = "999993653";
+
+/// **De tegenproef: zonder dat vervangende besluit gaat de termijn gewoon lopen.**
+///
+/// Dezelfde wereld en dezelfde twee handelingen, alleen de intrekking ertussenuit.
+/// Dat ene verschil is wat de bekendmaking van een belofte een termijn maakt —
+/// zou de bekendmaking hier ook niets inroosteren, dan zat de fout niet in de
+/// vervanging maar in de bekendmaking zelf.
+#[test]
+fn zonder_vervangend_besluit_roostert_diezelfde_bekendmaking_wel_in() {
+    let mut world = speel(&[
+        ("2024-03-01", "uitvoerder.toekenning", Some(BSN)),
+        ("2024-04-15", "uitvoerder.bekendmaking", None),
+    ]);
+    roostert_in(&laatste_bekendmaking(&world));
 
     // En de klok komt hem na: op de uiterste betaaldatum wordt er betaald.
     world
-        .advance(dag("2024-06-01"))
+        .advance(
+            "2024-06-01"
+                .parse()
+                .unwrap_or_else(|e| panic!("testdatum moet leesbaar zijn: {e}")),
+        )
         .unwrap_or_else(|e| panic!("de klok moet vooruit kunnen: {e}"));
     let betalingen = world
         .snapshot()
@@ -377,4 +402,29 @@ fn zonder_vervangend_besluit_roostert_diezelfde_bekendmaking_wel_in() {
         .map(|chronicle| chronicle.grams.len())
         .sum::<usize>();
     assert_eq!(betalingen, 1, "de termijn van de toekenning is nagekomen");
+}
+
+/// **Ná het besluit, en niet ergens op de zaak.** Een intrekking die vóór de
+/// toekenning ligt, kwam niet in de plaats van die toekenning: de toekenning
+/// staat er daarna zelf, en haar bekendmaking roostert gewoon in.
+#[test]
+fn een_vervanging_van_voor_het_besluit_houdt_de_bekendmaking_niet_tegen() {
+    let world = speel(&[
+        ("2024-02-01", "uitvoerder.intrekking", Some(BSN)),
+        ("2024-03-01", "uitvoerder.toekenning", Some(BSN)),
+        ("2024-04-15", "uitvoerder.bekendmaking", None),
+    ]);
+    roostert_in(&laatste_bekendmaking(&world));
+}
+
+/// **Dezelfde zaak, en niet de hele kroniek.** Een intrekking over een andere zaak
+/// zegt niets over deze toekenning, ook al ligt ze ertussen in dezelfde kroniek.
+#[test]
+fn een_vervanging_op_een_andere_zaak_houdt_de_bekendmaking_niet_tegen() {
+    let world = speel(&[
+        ("2024-03-01", "uitvoerder.toekenning", Some(BSN)),
+        ("2024-04-01", "uitvoerder.intrekking", Some("123456782")),
+        ("2024-04-15", "uitvoerder.bekendmaking", None),
+    ]);
+    roostert_in(&laatste_bekendmaking(&world));
 }
