@@ -319,7 +319,8 @@ moest komen. Precies wat de wereld op dat moment deed; zie
 Wat er al betaald was, blijft `betaald` en telt mee — ook een termijn die de klok
 al nakwam voordat een vervangend besluit met terugwerkende kracht werd genomen: wat
 betaald is, is betaald, en wat daarmee moet gebeuren is de verrekening in dat besluit
-en geen terugdraaiing.
+en geen terugdraaiing. Lag er op een vervallen termijn maar een deel, dan telt dat deel aan
+beide kanten mee en staat de rest niet open; de stand blijft `vervallen`.
 
 Een verplichting met `vanaf: bekendmaking` staat vóór de bekendmaking als één
 regel in de lijst — met haar hele bedrag, zonder `vervaldatum`, met de stand die

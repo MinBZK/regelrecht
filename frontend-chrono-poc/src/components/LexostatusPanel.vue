@@ -162,6 +162,11 @@ const missed = computed(() => {
  * tekst tonen zou de uitkomst onleesbaar maken. Wat een lijst van iets ánders is
  * (getallen, teksten) blijft een gewone waarde: daar valt geen tabel van te
  * maken, want er zijn geen kolommen.
+ *
+ * Een lege lijst telt als lijst met regels. Aan een lege lijst is niet te zien
+ * wat ze had kunnen dragen, en "er zijn geen regels" is voor elke lege lijst
+ * waar — een lege termijnenlijst is juist het antwoord dat er niets vervallen
+ * is, en hoort niet als "0 items" tussen de bedragen te verdwijnen.
  */
 function isRowList(value) {
   return (

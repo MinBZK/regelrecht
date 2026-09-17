@@ -150,13 +150,38 @@ impl Termijn {
     /// Telt deze regel mee in de bedragen van het antwoord?
     ///
     /// Alleen met een vervaldag, en alleen als ze niet vervallen is — of wél
-    /// vervallen maar toch betaald. Wat nog op een bekendmaking wacht is
+    /// vervallen maar er toch iets op ligt. Wat nog op een bekendmaking wacht is
     /// opgelegd maar niet verwacht: er is geen dag waarop ze had moeten gebeuren,
     /// dus er valt niets te verwachten en niets te missen. Wat vervallen is,
-    /// hoeft niemand meer te betalen; ligt het er toch, dan is het betaald en
-    /// telt het aan beide kanten mee (zie [`Self::status`]).
+    /// hoeft niemand meer te betalen; ligt er toch iets op, dan is dat betaald
+    /// en telt het mee (zie [`Self::verwacht_bedrag`]).
     fn verwacht(&self) -> bool {
-        self.vervaldatum.is_some() && (!self.vervallen || self.volledig_betaald())
+        self.vervaldatum.is_some() && (!self.vervallen || self.betaald > Decimal::ZERO)
+    }
+
+    /// Wat deze regel aan het verwachte bedrag bijdraagt.
+    ///
+    /// Het termijnbedrag, behalve bij een vervallen termijn: daar alleen wat er
+    /// al op lag. Wat betaald is, is betaald — ook een deel — maar de rest hoeft
+    /// niemand meer te betalen, dus die staat ook niet open.
+    fn verwacht_bedrag(&self) -> Decimal {
+        if !self.verwacht() {
+            return Decimal::ZERO;
+        }
+        if self.vervallen {
+            return self.betaald.min(self.bedrag);
+        }
+        self.bedrag
+    }
+
+    /// Reken een betaling op deze plek aan deze termijn toe.
+    ///
+    /// Ze dekt ten hoogste wat er nog niet lag: wat erbovenop komt, telt in
+    /// `betaald` (de termijn ís dan betaald) maar niet als bijdrage.
+    fn reken_toe(&mut self, plek: usize, bedrag: Decimal) {
+        let ruimte = (self.bedrag - self.betaald).max(Decimal::ZERO);
+        self.gedekt_door.push((plek, bedrag.min(ruimte)));
+        self.betaald += bedrag;
     }
 
     /// Ligt er genoeg op deze termijn?
@@ -377,9 +402,7 @@ pub(crate) fn reduce(
             else {
                 continue;
             };
-            let ruimte = (termijn.bedrag - termijn.betaald).max(Decimal::ZERO);
-            termijn.gedekt_door.push((*plek, bedrag.min(ruimte)));
-            termijn.betaald += bedrag;
+            termijn.reken_toe(*plek, bedrag);
         }
     }
 
@@ -400,8 +423,8 @@ pub(crate) fn reduce(
     for (plek, gram) in uit_de_beschikkingen {
         let bijdrage: Decimal = termijnen
             .iter()
-            .filter(|termijn| termijn.uit_gram == plek && termijn.verwacht())
-            .map(|termijn| termijn.bedrag)
+            .filter(|termijn| termijn.uit_gram == plek)
+            .map(Termijn::verwacht_bedrag)
             .sum();
         gelezen.push(
             GebruiktGram::new(&cell.id, BESCHIKKINGEN, plek, gram).met_bijdrage(amount(bijdrage)),
@@ -426,11 +449,7 @@ pub(crate) fn reduce(
         (wacht, vervaldatum, besluit.to_string(), volgnummer)
     });
 
-    let verwacht: Decimal = termijnen
-        .iter()
-        .filter(|termijn| termijn.verwacht())
-        .map(|termijn| termijn.bedrag)
-        .sum();
+    let verwacht: Decimal = termijnen.iter().map(Termijn::verwacht_bedrag).sum();
     // Nooit meer dan verwacht: wat er bovenop een termijn ligt, is geen
     // vermindering van wat er nog openstaat. Zonder deze grens zou een dubbele
     // betaling op de ene termijn de andere stil laten verdwijnen.
@@ -623,4 +642,49 @@ fn niets_opgelegd(key: &str, key_value: &Value, op_moment: NaiveDate) -> String 
         "; zonder besluit is er over deze zaak niets opgelegd en staat er dus niets open"
     );
     reason
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Een vervallen termijn van 300 met deze betalingen erop.
+    fn vervallen_termijn(betalingen: &[Decimal]) -> Termijn {
+        let bedrag = Decimal::from(300);
+        let mut termijn = Termijn {
+            besluit: "voorschot".to_string(),
+            volgnummer: Value::Int(4),
+            vervaldatum: NaiveDate::from_ymd_opt(2025, 1, 1),
+            bedrag,
+            betaald: Decimal::ZERO,
+            gedekt_door: Vec::new(),
+            uit_gram: 0,
+            vervallen: true,
+        };
+        for (plek, betaling) in betalingen.iter().enumerate() {
+            termijn.reken_toe(plek, *betaling);
+        }
+        termijn
+    }
+
+    /// Wat er op een vervallen termijn ligt, telt mee — ook een deel ervan —
+    /// en de rest staat niet open.
+    #[test]
+    fn een_deelbetaling_op_een_vervallen_termijn_telt_mee_zonder_rest() {
+        let op_moment = NaiveDate::from_ymd_opt(2025, 2, 1).unwrap_or_default();
+
+        let deels = vervallen_termijn(&[Decimal::from(100)]);
+        assert!(deels.verwacht(), "de betaling hoort in de uitleg te staan");
+        assert_eq!(deels.verwacht_bedrag(), Decimal::from(100));
+        assert_eq!(deels.status(op_moment), Status::Vervallen);
+
+        let geheel = vervallen_termijn(&[Decimal::from(300)]);
+        assert_eq!(geheel.verwacht_bedrag(), Decimal::from(300));
+        assert_eq!(geheel.status(op_moment), Status::Betaald);
+
+        let niets = vervallen_termijn(&[]);
+        assert!(!niets.verwacht());
+        assert_eq!(niets.verwacht_bedrag(), Decimal::ZERO);
+        assert_eq!(niets.status(op_moment), Status::Vervallen);
+    }
 }
