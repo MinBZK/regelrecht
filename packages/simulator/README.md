@@ -1602,6 +1602,10 @@ De scenario's:
   een verlening en een vaststelling van hetzelfde soort, waarvan alleen de
   bekendmaking van de verlening een uitkomst van de eigen regeling draagt — en
   een verplichting die die uitkomst als vervaldatum neemt;
+- [`scenarios/bekendmaking_inhalen.yaml`](scenarios/bekendmaking_inhalen.yaml):
+  een stage-uitkomst op een input van het besluit, als vervaldatum die bij een
+  late bekendmaking al voorbij is — en dus op de dag van de bekendmaking wordt
+  ingehaald;
 - [`scenarios/hook_zonder_input.yaml`](scenarios/hook_zonder_input.yaml): een
   hook op elke stage die zijn input mist, een besluit en een bekendmaking die
   gewoon doorgaan, en de waarschuwingen van het optuigen.

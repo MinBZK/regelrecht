@@ -110,3 +110,73 @@ articles:
               operation: DATE_ADD
               date: $datum_bekendmaking
               weeks: 2
+
+  - number: '4'
+    url: https://example.com/test_stage_uitkomsten#Artikel4
+    text: >-
+      De uitvoerder verleent een aanvullende subsidie. Die wordt betaald
+      uiterlijk vier weken na ontvangst van de aanvraag.
+    machine_readable:
+      # De vervaldag hangt hier niet aan de dag van de bekendmaking maar aan een
+      # feit van het besluit zelf (art. 5). Wordt het besluit laat bekendgemaakt,
+      # dan ligt die dag al achter de bekendmaking, en dan wordt de termijn op de
+      # dag van de bekendmaking ingehaald: vóór die dag werkt het besluit niet.
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+          extensions:
+            chronolex:
+              stage_uitkomsten:
+                BEKENDMAKING:
+                  - aanvulling_uiterlijk_op
+              verplichtingen:
+                - soort: betaling
+                  bedrag: $hoogte_aanvulling
+                  ritme: ineens
+                  vanaf: bekendmaking
+                  vervaldatum: aanvulling_uiterlijk_op
+                  grondslag: >-
+                    Testregeling subsidie art. 4 jo. art. 5
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: aanvraag_ontvangen_op
+            type: date
+            required: true
+        output:
+          - name: aanvulling_verleend
+            type: boolean
+          - name: hoogte_aanvulling
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: aanvulling_verleend
+            value: true
+          - output: hoogte_aanvulling
+            value: 20000
+
+  - number: '5'
+    url: https://example.com/test_stage_uitkomsten#Artikel5
+    text: >-
+      De aanvullende subsidie wordt betaald uiterlijk vier weken na ontvangst
+      van de aanvraag.
+    machine_readable:
+      execution:
+        parameters:
+          # Een input van het besluit: de stage rekent op wat het besluit-gram
+          # draagt, niet alleen op het formulier van de bekendmaking.
+          - name: aanvraag_ontvangen_op
+            type: date
+            required: true
+        output:
+          - name: aanvulling_uiterlijk_op
+            type: date
+        actions:
+          - output: aanvulling_uiterlijk_op
+            value:
+              operation: DATE_ADD
+              date: $aanvraag_ontvangen_op
+              weeks: 4

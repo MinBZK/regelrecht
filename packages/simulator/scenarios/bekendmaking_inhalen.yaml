@@ -1,0 +1,151 @@
+---
+name: een vervaldag uit de eigen regeling die al voorbij is, wordt bij de bekendmaking ingehaald
+description: >-
+  De aanvullende subsidie wordt betaald uiterlijk vier weken na ontvangst van de
+  aanvraag (art. 5). Dat is een uitkomst van de eigen regeling voor de stage
+  BEKENDMAKING, uitgerekend op een input van het besluit, en de verplichting
+  noemt haar als `vervaldatum`.
+
+  Het besluit wordt laat bekendgemaakt: de dag uit art. 5 ligt dan al achter de
+  bekendmaking. Vóór de bekendmaking werkt het besluit niet (Awb 3:40), dus de
+  termijn vervalt op de dag van de bekendmaking — een inhaalbetaling — en het
+  gram draagt de dag uit de wet als `oorspronkelijke_vervaldatum`.
+
+clock:
+  start: 2024-01-01
+
+cells:
+  - id: uitvoerder
+    identity: Uitvoerder
+    laws:
+      - test_stage_uitkomsten
+      - test_awb_procedure
+
+    komt_na:
+      - Uitvoerder
+
+    chronicles:
+      - stream: betalingen
+        key: zaakkenmerk
+        gebeurtenissen:
+          - name: betaling_gedaan
+            intake: betaling
+            grondslag: Algemene wet bestuursrecht, art. 4:89
+            fields: &betalingsvelden
+              - name: zaakkenmerk
+                type: string
+              - name: bedrag
+                type: amount
+              - name: volgnummer
+                type: number
+              - name: besluit
+                type: string
+              - name: schuldenaar
+                type: string
+              - name: schuldeiser
+                type: string
+          - name: betaling_gemeld
+            intake: levering
+            grondslag: Algemene wet bestuursrecht, art. 4:89
+            fields: *betalingsvelden
+
+    besluit_definitions:
+      - name: aanvulling
+        doc: de aanvullende subsidie, met een vervaldag uit de ontvangst van de aanvraag
+        regulation: test_stage_uitkomsten
+        output: aanvulling_verleend
+        outputs:
+          - hoogte_aanvulling
+        zaakkenmerk: aanvulling/{bsn}
+        params:
+          - name: bsn
+            type: string
+          - name: aanvraag_ontvangen_op
+            type: date
+        inputs:
+          bsn:
+            param: bsn
+          aanvraag_ontvangen_op:
+            param: aanvraag_ontvangen_op
+
+    lexostatus_definitions:
+      - name: bekendmaking
+        doc: wat er bij de bekendmaking vast kwam te staan
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - aanvulling_uiterlijk_op
+        reduction:
+          chronicle: beschikkingen
+          key: zaakkenmerk
+          latest: true
+          where:
+            stage: BEKENDMAKING
+
+      - name: betaald_tot_nu_toe
+        doc: wat er op deze zaak betaald is
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - bedrag
+        reduction:
+          chronicle: betalingen
+          key: zaakkenmerk
+          sum: bedrag
+
+actions:
+  - id: uitvoerder.aanvulling
+    actor: uitvoerder
+    label: Verleen de aanvulling
+    decides:
+      cell: uitvoerder
+      besluit: aanvulling
+
+  - id: uitvoerder.bekendmaking
+    actor: uitvoerder
+    label: Maak de aanvulling bekend
+    publishes:
+      cell: uitvoerder
+      besluit: aanvulling
+
+act:
+  - description: het besluit, een maand na ontvangst van de aanvraag
+    action: uitvoerder.aanvulling
+    values:
+      bsn: '999993653'
+      aanvraag_ontvangen_op: '2024-02-01'
+    op_moment: 2024-03-01
+    expect:
+      aanvulling_verleend: true
+
+  - description: de bekendmaking, ruim na de dag uit art. 5
+    action: uitvoerder.bekendmaking
+    values:
+      datum_bekendmaking: '2024-04-15'
+      toegezonden_aan_belanghebbende: true
+    op_moment: 2024-04-15
+
+queries:
+  - description: >-
+      De regeling rekende de dag uit op de input van het besluit: vier weken na
+      ontvangst van de aanvraag.
+    cell: uitvoerder
+    lexostatus: bekendmaking
+    params:
+      zaakkenmerk: aanvulling/999993653
+    op_moment: 2024-04-15
+    expect:
+      aanvulling_uiterlijk_op: '2024-02-29'
+
+  - description: >-
+      Op de dag van de bekendmaking is de termijn ingehaald en betaald — niet op
+      de dag uit de wet, want toen werkte het besluit nog niet.
+    cell: uitvoerder
+    lexostatus: betaald_tot_nu_toe
+    params:
+      zaakkenmerk: aanvulling/999993653
+    op_moment: 2024-04-15
+    expect:
+      bedrag: 20000

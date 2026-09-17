@@ -713,3 +713,30 @@ fn een_hook_zonder_input_staat_in_het_gram_en_in_het_journaal() {
     }
     assert_eq!(run.warnings.len(), 2, "het optuigen waarschuwde voor beide");
 }
+
+/// **Een vervaldag uit de eigen regeling die al voorbij is, wordt ingehaald.**
+///
+/// De verplichting noemt haar vervaldatum zelf, en die kan achter de
+/// bekendmaking liggen. Dan vervalt de termijn op de dag van de bekendmaking, en
+/// draagt het gram de dag uit de wet als `oorspronkelijke_vervaldatum`.
+#[test]
+fn een_vervaldatum_van_voor_de_bekendmaking_wordt_op_die_dag_ingehaald() {
+    let run = run("bekendmaking_inhalen.yaml");
+    let grams = beschikkingen(&run);
+    let bekendmaking = grams[1];
+    assert_eq!(veld(bekendmaking, "aanvulling_uiterlijk_op"), "2024-02-29");
+    let termijnen = objecten(bekendmaking, "obligations");
+    assert_eq!(termijnen.len(), 1, "het ritme is `ineens`");
+    assert_eq!(
+        termijnen[0].get("vervaldatum").and_then(Value::as_str),
+        Some("2024-04-15"),
+        "de termijn vervalt op de dag van de bekendmaking"
+    );
+    assert_eq!(
+        termijnen[0]
+            .get("oorspronkelijke_vervaldatum")
+            .and_then(Value::as_str),
+        Some("2024-02-29"),
+        "en draagt de dag die de wet noemde"
+    );
+}
