@@ -237,8 +237,10 @@ pub enum InvariantFailure {
         /// Wat het gram wél als geaccepteerd opschrijft.
         accepted: String,
     },
-    /// Een gram noemt een waarde geaccepteerd zonder dat er een contact met die
-    /// cel is vastgelegd (I2).
+    /// Een gram noemt een waarde geaccepteerd zonder dat het contact waaruit ze
+    /// gelezen zou zijn is vastgelegd (I2): bij een `accept_from`-input het
+    /// contact waarnaar ze verwijst, bij een cel-bron van de wet een contact met
+    /// die cel.
     AcceptedWithoutCrossing {
         /// De waarde die geaccepteerd zou zijn.
         value: String,
