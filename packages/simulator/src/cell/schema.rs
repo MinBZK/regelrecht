@@ -30,9 +30,9 @@
 use crate::cell::besluit::{
     fixed_fields, BesluitDefinition, DeclaredObligations, ObligationDefinition, ObligationOrigin,
     AFWIJZING, AFWIJZINGSGROND, BESCHIKKINGEN, BESLUIT, BEVOEGD_GEZAG_REFERENCE, CHRONICLE_SOURCES,
-    COMPETENT_AUTHORITY, DECISION_TYPE, EXECUTED_REGULATIONS, INPUTS, LEGAL_CHARACTER,
-    NIETS_TE_BETALEN, OBLIGATIONS, RECEIPT, REGULATION_VALID_FROM, STAGE, STAGE_BESLUIT,
-    TERUGVORDERING, VANAF_BEKENDMAKING, WACHT_OP_BEKENDMAKING, ZAAKKENMERK,
+    COMPETENT_AUTHORITY, DECISION_TYPE, EXECUTED_REGULATIONS, HOOK_NIET_UITGEVOERD, INPUTS,
+    LEGAL_CHARACTER, NIETS_TE_BETALEN, OBLIGATIONS, RECEIPT, REGULATION_VALID_FROM, STAGE,
+    STAGE_BESLUIT, TERUGVORDERING, VANAF_BEKENDMAKING, WACHT_OP_BEKENDMAKING, ZAAKKENMERK,
 };
 use crate::cell::extensions::{afwijzing_wanneer, ChronolexBlock};
 use regelrecht_engine::article::Produces;
@@ -760,6 +760,19 @@ fn fixed_field(
         AFWIJZINGSGROND => afwijzingsgrond_field(definition, lexicon),
         REGULATION_VALID_FROM => DecretogramField::platform(field, "date"),
         EXECUTED_REGULATIONS | CHRONICLE_SOURCES => DecretogramField::platform(field, "array"),
+        // Welke hooks er vuren, zegt de wet; dát een hook die niet kon draaien in
+        // het gram genoemd wordt in plaats van het besluit te laten omvallen, is
+        // van het platform.
+        HOOK_NIET_UITGEVOERD => DecretogramField::declared_by(
+            Herkomst::Platform,
+            field,
+            "array",
+            Some(
+                "de hooks die op dit besluit vuurden maar niet draaiden, elk met artikel en \
+                 ontbrekende input; leeg als elke hook draaide"
+                    .to_string(),
+            ),
+        ),
         INPUTS | RECEIPT => DecretogramField::platform(field, "object"),
         // `regulation`, `besloten_door` en wat er ooit bij komt: tekst die het
         // platform zelf opschrijft.

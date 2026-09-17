@@ -1294,6 +1294,13 @@
               "toelichting": "gevuld zodra een van deze voorwaarden vervuld is: heeft_recht_op_zorgtoeslag = false (artikel 2)"
             },
             {
+              "name": "hook_niet_uitgevoerd",
+              "type": "array",
+              "herkomst": "platform",
+              "gat": false,
+              "toelichting": "de hooks die op dit besluit vuurden maar niet draaiden, elk met artikel en ontbrekende input; leeg als elke hook draaide"
+            },
+            {
               "name": "inputs",
               "type": "object",
               "herkomst": "platform",
@@ -1487,6 +1494,13 @@
               "herkomst": "platform",
               "gat": false,
               "toelichting": "leeg: deze regeling kent geen afwijzingsgrond"
+            },
+            {
+              "name": "hook_niet_uitgevoerd",
+              "type": "array",
+              "herkomst": "platform",
+              "gat": false,
+              "toelichting": "de hooks die op dit besluit vuurden maar niet draaiden, elk met artikel en ontbrekende input; leeg als elke hook draaide"
             },
             {
               "name": "inputs",
@@ -2449,6 +2463,12 @@
                     "regulation": "wet_op_de_zorgtoeslag"
                   }
                 },
+                "hook_niet_uitgevoerd": {
+                  "value": [],
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                },
                 "is_verzekerde": {
                   "value": true,
                   "origin": {
@@ -2682,6 +2702,12 @@
                       "regulation_valid_from": "2024-01-01"
                     }
                   ],
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                },
+                "hook_niet_uitgevoerd": {
+                  "value": [],
                   "origin": {
                     "herkomst": "besluit"
                   }

@@ -15,7 +15,7 @@ url: https://example.com/test_awb_procedure
 #
 # Wat ze aantoont is de **stage-machinerie** van RFC-008. Ze declareert een
 # procedure voor elke BESCHIKKING — twee stages, BESLUIT en BEKENDMAKING — en
-# drie artikelen die als **hook** op de stage BEKENDMAKING vuren. De uitvoerende
+# vier artikelen die als **hook** op de stage BEKENDMAKING vuren. De uitvoerende
 # regeling weet daar niets van: zij brengt een beschikking voort, en wat er bij
 # de bekendmaking van een beschikking hoort te gelden, staat hier.
 #
@@ -37,14 +37,48 @@ procedure:
         description: Het bestuursorgaan neemt het besluit (Awb 1:3)
       - name: BEKENDMAKING
         description: Het besluit wordt bekendgemaakt (Awb 3:41)
+        # Wat de stage vraagt, is het formulier van de bekendmaking: de feiten
+        # over de wijze van bekendmaken horen bij de bekendmaking zelf, en niet
+        # bij het besluit dat bekendgemaakt wordt.
         requires:
           # De dag van de bekendmaking komt van buiten: zij is een gebeurtenis
-          # en geen uitkomst van een berekening. Zonder haar levert de stage geen
-          # uitkomst maar een vraag om deze datum.
-          - name: bekendmaking_datum
+          # en geen uitkomst van een berekening. Het eerste datumveld is de dag
+          # van de bekendmaking; de naam kiest deze wet, niet het platform.
+          - name: datum_bekendmaking
             type: date
+          # Of het besluit is toegezonden of uitgereikt aan de belanghebbende
+          # (art. 3:41): een feit over de wijze van bekendmaken.
+          - name: toegezonden_aan_belanghebbende
+            type: boolean
 
 articles:
+  - number: '3:41'
+    url: https://example.com/test_awb_procedure#Artikel3_41
+    text: >-
+      De bekendmaking van besluiten die tot een of meer belanghebbenden zijn
+      gericht, geschiedt door toezending of uitreiking aan hen.
+    machine_readable:
+      # Of de bekendmaking op de voorgeschreven wijze gebeurde, is een toets van
+      # de wet en geen eigenschap van het gram: de stage bestaat niet vanzelf
+      # "correct". Het feit waarop de toets rust, komt uit het formulier van de
+      # bekendmaking.
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: BEKENDMAKING
+      execution:
+        parameters:
+          - name: toegezonden_aan_belanghebbende
+            type: boolean
+            required: true
+        output:
+          - name: op_voorgeschreven_wijze_bekendgemaakt
+            type: boolean
+        actions:
+          - output: op_voorgeschreven_wijze_bekendgemaakt
+            value: $toegezonden_aan_belanghebbende
+
   - number: '6:7'
     url: https://example.com/test_awb_procedure#Artikel6_7
     text: >-
@@ -110,7 +144,7 @@ articles:
             stage: BEKENDMAKING
       execution:
         parameters:
-          - name: bekendmaking_datum
+          - name: datum_bekendmaking
             type: date
             required: true
         input:
@@ -130,7 +164,7 @@ articles:
           - output: bezwaartermijn_startdatum
             value:
               operation: DATE_ADD
-              date: $bekendmaking_datum
+              date: $datum_bekendmaking
               days: 1
           # De einddatum wordt vanaf de bekendmaking gerekend en niet vanaf de
           # startdatum: die startdatum is dag 1 van de termijn, dus zes weken ná
@@ -138,7 +172,7 @@ articles:
           - output: bezwaartermijn_einddatum
             value:
               operation: DATE_ADD
-              date: $bekendmaking_datum
+              date: $datum_bekendmaking
               weeks: $bezwaar_termijn_weken
 
   # Zonder aanhalingstekens: '4:87' is geen sexagesimaal getal, dus YAML leest
@@ -156,18 +190,20 @@ articles:
             stage: BEKENDMAKING
       execution:
         parameters:
-          - name: bekendmaking_datum
+          - name: datum_bekendmaking
             type: date
             required: true
         output:
-          - name: uiterste_betaaldatum
+          # Een eigen naam van deze wet. Een verplichting die hier haar
+          # vervaldag uit haalt, noemt die naam zelf (`vervaldatum`).
+          - name: uiterste_betaaldatum_4_87
             type: date
         actions:
           # Zes weken ná de bekendmaking, en dus niet ná het besluit: dat verschil
           # is precies waarom deze datum uit de wet komt en niet uit de
           # uitvoerende regeling.
-          - output: uiterste_betaaldatum
+          - output: uiterste_betaaldatum_4_87
             value:
               operation: DATE_ADD
-              date: $bekendmaking_datum
+              date: $datum_bekendmaking
               weeks: 6

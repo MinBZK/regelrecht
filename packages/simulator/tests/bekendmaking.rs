@@ -12,7 +12,8 @@
 //! belofte zonder datum in het besluit ligt.
 
 use regelrecht_simulator::{
-    regulation_root, GramKind, GramSnapshot, Scenario, ScenarioRun, Value, BESCHIKKINGEN,
+    regulation_root, FieldOrigin, GramKind, GramSnapshot, Scenario, ScenarioRun, Value,
+    BESCHIKKINGEN,
 };
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -95,7 +96,48 @@ fn het_besluit_en_de_bekendmaking_zijn_twee_grammen_op_een_zaak() {
     // plek zijn de verwijzing waarmee het beeld een gram aanwijst.
     assert_eq!(veld(bekendmaking, "besluit_gram"), "0");
     assert_eq!(veld(bekendmaking, "besluit_op_moment"), "2024-03-01");
-    assert_eq!(veld(bekendmaking, "bekendmaking_datum"), "2024-04-15");
+    // De dag van de bekendmaking is het moment van haar gram.
+    assert_eq!(bekendmaking.op_moment.to_string(), "2024-04-15");
+}
+
+/// **Het formulier van de bekendmaking komt uit de procedure.**
+///
+/// Wat er bij de bekendmaking ingevuld werd — de `requires` van de stage in de
+/// procedure van de algemene wet — staat in het gram als input met herkomst
+/// `parameter`, net als een parameter van een besluit. Het datumveld draagt de
+/// dag van de bekendmaking onder de naam die de wet koos, en het andere veld
+/// is het feit waarop art. 3:41 zijn toets doet.
+#[test]
+fn de_bekendmaking_draagt_haar_formulier_als_inputs() {
+    let run = run("bekendmaking.yaml");
+    let grams = beschikkingen(&run);
+    let bekendmaking = grams[1];
+    for (naam, waarde) in [
+        ("datum_bekendmaking", "2024-04-15"),
+        ("toegezonden_aan_belanghebbende", "true"),
+    ] {
+        let field = bekendmaking
+            .fields
+            .get(naam)
+            .unwrap_or_else(|| panic!("het gram hoort input '{naam}' te dragen"));
+        assert_eq!(field.value.to_string(), waarde);
+        let FieldOrigin::BesluitInput { recorded_origin } = &field.origin else {
+            panic!("'{naam}' hoort een input te zijn, kreeg {:?}", field.origin);
+        };
+        let Value::Object(origin) = recorded_origin else {
+            panic!("de herkomst is een object");
+        };
+        assert_eq!(
+            origin.get("herkomst").and_then(Value::as_str),
+            Some("parameter"),
+            "'{naam}' is ingevuld bij de bekendmaking"
+        );
+    }
+    // En de toets die erop leunt, kwam uit de wet.
+    assert_eq!(
+        veld(bekendmaking, "op_voorgeschreven_wijze_bekendgemaakt"),
+        "true"
+    );
 }
 
 /// **Wat de bekendmaking toevoegt, komt uit de wet — en zegt uit welke.**
@@ -111,7 +153,10 @@ fn de_bekendmaking_draagt_de_uitkomsten_van_de_hooks_met_hun_artikel() {
     let grams = beschikkingen(&run);
     let bekendmaking = grams[1];
 
-    assert_eq!(veld(bekendmaking, "uiterste_betaaldatum"), "2024-05-27");
+    assert_eq!(
+        veld(bekendmaking, "uiterste_betaaldatum_4_87"),
+        "2024-05-27"
+    );
     assert_eq!(veld(bekendmaking, "bezwaartermijn_einddatum"), "2024-05-27");
     assert_eq!(veld(bekendmaking, "bezwaar_bij"), "Uitvoerder");
     assert_eq!(veld(bekendmaking, "bezwaar_termijn_weken"), "6");
@@ -141,7 +186,7 @@ fn de_bekendmaking_draagt_de_uitkomsten_van_de_hooks_met_hun_artikel() {
             .unwrap_or_else(|| panic!("veld '{veld_naam}' hoort een herkomst te hebben"))
     };
     assert_eq!(
-        herkomst("uiterste_betaaldatum"),
+        herkomst("uiterste_betaaldatum_4_87"),
         "test_awb_procedure artikel 4:87"
     );
     assert_eq!(
@@ -313,7 +358,8 @@ fn een_vervangen_besluit_roostert_bij_zijn_bekendmaking_niets_meer_in() {
 /// Speel de wereld van `bekendmaking_na_vervanging.yaml` af met andere handelingen.
 ///
 /// Elke stap is een dag, een actie en de bsn waarop ze gaat (leeg voor de
-/// bekendmaking, die geen formulier heeft). Het scenariobestand legt één
+/// bekendmaking, die het formulier van haar procedure krijgt: de dag en het
+/// feit dat het besluit is toegezonden). Het scenariobestand legt één
 /// volgorde vast; de tegenproeven hieronder schuiven met die volgorde en met
 /// de zaak, en houden verder alles gelijk.
 fn speel(stappen: &[(&str, &str, Option<&str>)]) -> regelrecht_simulator::World {
@@ -329,10 +375,19 @@ fn speel(stappen: &[(&str, &str, Option<&str>)]) -> regelrecht_simulator::World 
         world
             .advance(dag)
             .unwrap_or_else(|e| panic!("de klok moet vooruit kunnen: {e}"));
-        let form: BTreeMap<String, Value> = bsn
-            .iter()
-            .map(|bsn| ("bsn".to_string(), Value::String((*bsn).to_string())))
-            .collect();
+        let form: BTreeMap<String, Value> = match bsn {
+            Some(bsn) => BTreeMap::from([("bsn".to_string(), Value::String((*bsn).to_string()))]),
+            None => BTreeMap::from([
+                (
+                    "datum_bekendmaking".to_string(),
+                    Value::String(dag.to_string()),
+                ),
+                (
+                    "toegezonden_aan_belanghebbende".to_string(),
+                    Value::Bool(true),
+                ),
+            ]),
+        };
         world
             .act(actie, &form)
             .unwrap_or_else(|e| panic!("'{actie}' moet kunnen op {dag}: {e}"));
@@ -427,4 +482,234 @@ fn een_vervanging_op_een_andere_zaak_houdt_de_bekendmaking_niet_tegen() {
         ("2024-04-15", "uitvoerder.bekendmaking", None),
     ]);
     roostert_in(&laatste_bekendmaking(&world));
+}
+
+/// Speel het bekendmakingsscenario tot en met het besluit, en geef de wereld.
+fn na_het_besluit() -> regelrecht_simulator::World {
+    let path = scenario_path("bekendmaking.yaml");
+    let scenario = Scenario::load(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let mut world = scenario
+        .world(&regulation_root())
+        .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    for (dag, actie, form) in [
+        (
+            "2024-03-01",
+            "uitvoerder.toekenning",
+            BTreeMap::from([("bsn".to_string(), Value::String(BSN.to_string()))]),
+        ),
+        ("2024-04-15", "", BTreeMap::new()),
+    ] {
+        world
+            .advance(
+                dag.parse()
+                    .unwrap_or_else(|e| panic!("testdatum '{dag}' moet leesbaar zijn: {e}")),
+            )
+            .unwrap_or_else(|e| panic!("de klok moet vooruit kunnen: {e}"));
+        if !actie.is_empty() {
+            world
+                .act(actie, &form)
+                .unwrap_or_else(|e| panic!("'{actie}' moet kunnen: {e}"));
+        }
+    }
+    world
+}
+
+/// **Een ontbrekend veld van het formulier weigert de bekendmaking, en noemt het.**
+///
+/// Het formulier is wat de procedure vraagt. Een bekendmaking zonder het feit
+/// waarop art. 3:41 zijn toets doet, zou een gram opleveren waarin die toets
+/// stil ontbreekt; dus gaat ze niet door, en de melding zegt welk veld er mist.
+#[test]
+fn een_bekendmaking_zonder_verplicht_veld_wordt_geweigerd() {
+    let mut world = na_het_besluit();
+    let error = world
+        .act(
+            "uitvoerder.bekendmaking",
+            &BTreeMap::from([(
+                "datum_bekendmaking".to_string(),
+                Value::String("2024-04-15".to_string()),
+            )]),
+        )
+        .expect_err("zonder het feit over de toezending hoort dit te falen");
+    assert!(
+        error.to_string().contains("toegezonden_aan_belanghebbende"),
+        "de weigering hoort het veld te noemen, kreeg: {error}"
+    );
+    assert_eq!(
+        beschikkingen_van(&world).len(),
+        1,
+        "er is niets vastgelegd: alleen het besluit ligt er"
+    );
+}
+
+/// **De dag van de bekendmaking is de klok.**
+///
+/// Het datumveld dat de procedure vraagt, draagt het moment van het gram. Een
+/// andere dag zou het gram laten zeggen dat het op een ander moment gebeurde
+/// dan waarop het vastgelegd werd.
+#[test]
+fn een_bekendmaking_op_een_andere_dag_dan_de_klok_wordt_geweigerd() {
+    let mut world = na_het_besluit();
+    let error = world
+        .act(
+            "uitvoerder.bekendmaking",
+            &BTreeMap::from([
+                (
+                    "datum_bekendmaking".to_string(),
+                    Value::String("2024-04-01".to_string()),
+                ),
+                (
+                    "toegezonden_aan_belanghebbende".to_string(),
+                    Value::Bool(true),
+                ),
+            ]),
+        )
+        .expect_err("een dag die niet de klok is, hoort te falen");
+    let melding = error.to_string();
+    assert!(
+        melding.contains("datum_bekendmaking") && melding.contains("2024-04-15"),
+        "de weigering hoort het veld en de klok te noemen, kreeg: {melding}"
+    );
+}
+
+/// De grammen in `beschikkingen` van de uitvoerende cel van een wereld.
+fn beschikkingen_van(world: &regelrecht_simulator::World) -> Vec<GramSnapshot> {
+    world
+        .snapshot()
+        .cells
+        .iter()
+        .filter(|cell| cell.id == "uitvoerder")
+        .flat_map(|cell| &cell.chronicles)
+        .filter(|chronicle| chronicle.stream == BESCHIKKINGEN)
+        .flat_map(|chronicle| chronicle.grams.clone())
+        .collect()
+}
+
+/// De objecten in een lijstveld van een gram.
+fn objecten<'a>(
+    gram: &'a GramSnapshot,
+    name: &str,
+) -> Vec<&'a std::collections::BTreeMap<String, Value>> {
+    let Value::Array(items) = waarde(gram, name) else {
+        panic!("'{name}' hoort een lijst te zijn");
+    };
+    items
+        .iter()
+        .map(|item| {
+            let Value::Object(fields) = item else {
+                panic!("een regel in '{name}' is een object");
+            };
+            fields
+        })
+        .collect()
+}
+
+/// **Een uitkomst van de eigen regeling komt bij het ene besluit wel en bij het
+/// andere van hetzelfde soort niet in het stage-gram.**
+///
+/// Verlening en vaststelling zijn allebei TOEKENNING, dus een hook zou op beide
+/// vuren. `stage_uitkomsten` staat op het artikel van de verlening, en daarom
+/// draagt alleen háár bekendmaking `voorschot_uiterlijk_op` — met het artikel van
+/// de regeling dat haar uitrekende, en niet als hook.
+#[test]
+fn een_stage_uitkomst_hoort_bij_het_besluit_van_het_eigen_artikel() {
+    let run = run("bekendmaking_stage_uitkomsten.yaml");
+    let grams = beschikkingen(&run);
+    let bekendmakingen: Vec<&GramSnapshot> = grams
+        .iter()
+        .copied()
+        .filter(|gram| veld(gram, "stage") == "BEKENDMAKING")
+        .collect();
+    assert_eq!(bekendmakingen.len(), 2);
+    let (verlening, vaststelling) = (bekendmakingen[0], bekendmakingen[1]);
+    assert_eq!(veld(verlening, "besluit"), "verlening");
+    assert_eq!(veld(vaststelling, "besluit"), "vaststelling");
+
+    assert_eq!(veld(verlening, "voorschot_uiterlijk_op"), "2024-04-29");
+    let herkomst = objecten(verlening, "stage_uitkomsten");
+    assert_eq!(herkomst.len(), 1);
+    assert_eq!(
+        herkomst[0].get("veld").and_then(Value::as_str),
+        Some("voorschot_uiterlijk_op")
+    );
+    let Some(Value::Object(lexogram)) = herkomst[0].get("lexogram") else {
+        panic!("een stage-uitkomst hoort haar lexogram te dragen");
+    };
+    assert_eq!(
+        lexogram.get("regulation").and_then(Value::as_str),
+        Some("test_stage_uitkomsten")
+    );
+    assert_eq!(lexogram.get("artikel").and_then(Value::as_str), Some("3"));
+    assert!(
+        objecten(verlening, "hooks")
+            .iter()
+            .all(|hook| hook.get("veld").and_then(Value::as_str) != Some("voorschot_uiterlijk_op")),
+        "een uitkomst van de eigen regeling is geen hook"
+    );
+
+    assert!(
+        !vaststelling.fields.contains_key("voorschot_uiterlijk_op"),
+        "de vaststelling declareert geen stage-uitkomst"
+    );
+    assert!(objecten(vaststelling, "stage_uitkomsten").is_empty());
+    // De hooks van de algemene wet vuurden er wel.
+    assert_eq!(
+        veld(vaststelling, "uiterste_betaaldatum_4_87"),
+        "2024-10-22"
+    );
+
+    // En het besluit-gram van de verlening is niet aangeraakt: de uitkomst
+    // staat in het gram van de stage en niet in dat van het besluit.
+    assert!(!grams[0].fields.contains_key("voorschot_uiterlijk_op"));
+}
+
+/// **Een hook zonder zijn input laat het besluit staan en zegt dat hij niet
+/// draaide.**
+///
+/// In het gram van het besluit en in dat van de bekendmaking, elk met het artikel
+/// en de input die er niet was; in het journaal als regel onder de gebeurtenis;
+/// en bij het optuigen al als waarschuwing.
+#[test]
+fn een_hook_zonder_input_staat_in_het_gram_en_in_het_journaal() {
+    let run = run("hook_zonder_input.yaml");
+    let grams = beschikkingen(&run);
+    assert_eq!(grams.len(), 2, "het besluit en de bekendmaking liggen er");
+
+    for (gram, artikel, input) in [
+        (grams[0], "1", "motivering_gegeven"),
+        (grams[1], "2", "adres_opgegeven"),
+    ] {
+        let niet = objecten(gram, "hook_niet_uitgevoerd");
+        assert_eq!(niet.len(), 1, "precies één hook draaide niet");
+        assert_eq!(
+            niet[0].get("ontbrekende_input").and_then(Value::as_str),
+            Some(input)
+        );
+        let Some(Value::Object(lexogram)) = niet[0].get("lexogram") else {
+            panic!("de hook hoort zijn artikel te noemen");
+        };
+        assert_eq!(
+            lexogram.get("regulation").and_then(Value::as_str),
+            Some("test_hook_zonder_input")
+        );
+        assert_eq!(
+            lexogram.get("artikel").and_then(Value::as_str),
+            Some(artikel)
+        );
+    }
+
+    let regels: Vec<_> = run
+        .journal
+        .iter()
+        .filter(|entry| entry.kind == regelrecht_simulator::JournalKind::HookNietUitgevoerd)
+        .collect();
+    assert_eq!(regels.len(), 2, "één regel per hook die niet draaide");
+    for regel in regels {
+        assert!(
+            regel.parent.is_some(),
+            "de regel hangt onder het besluit of de bekendmaking"
+        );
+        assert!(regel.description.contains("test_hook_zonder_input"));
+    }
+    assert_eq!(run.warnings.len(), 2, "het optuigen waarschuwde voor beide");
 }

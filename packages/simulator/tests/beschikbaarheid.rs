@@ -397,6 +397,17 @@ fn bekendmakingswereld() -> World {
         .unwrap_or_else(|e| panic!("{}: {e}", path.display()))
 }
 
+/// Het formulier van de bekendmaking zoals een invuller het verstuurt: wat het
+/// beeld voorvult, plus het feit over de wijze van bekendmaken.
+fn bekendmaking_formulier(world: &World) -> BTreeMap<String, Value> {
+    let mut form = action(world, "uitvoerder.bekendmaking").prefill;
+    form.insert(
+        "toegezonden_aan_belanghebbende".to_string(),
+        Value::Bool(true),
+    );
+    form
+}
+
 /// Bekendmaken kan pas als er een besluit ligt, en daarna niet nog een keer.
 ///
 /// Langs dezelfde lijn als een `decides`-actie: er staat geen voorwaarde in het
@@ -427,13 +438,26 @@ fn bekendmaken_kan_pas_als_er_een_besluit_ligt() {
         "met een besluit in de kroniek kan de bekendmaking: {:?}",
         na_besluit.unavailable_reason
     );
-    assert!(
-        na_besluit.form.is_empty(),
-        "een bekendmaking vraagt niets: wat er bekendgemaakt wordt ligt er al"
+    // Het formulier is wat de procedure bij de stage BEKENDMAKING vraagt, en
+    // het datumveld staat al op de klok.
+    let velden: Vec<&str> = na_besluit
+        .form
+        .iter()
+        .map(|field| field.name.as_str())
+        .collect();
+    assert_eq!(
+        velden,
+        ["datum_bekendmaking", "toegezonden_aan_belanghebbende"],
+        "een bekendmaking vraagt de `requires` van haar stage"
+    );
+    assert_eq!(
+        na_besluit.prefill.get("datum_bekendmaking"),
+        Some(&text(&world.now().to_string())),
+        "een datumveld krijgt de klok"
     );
 
     world
-        .act("uitvoerder.bekendmaking", &BTreeMap::new())
+        .act("uitvoerder.bekendmaking", &bekendmaking_formulier(&world))
         .unwrap_or_else(|e| panic!("de bekendmaking moet kunnen: {e}"));
 
     // En daarna niet nog eens: hetzelfde besluit twee keer bekendmaken zou twee
@@ -444,7 +468,7 @@ fn bekendmaken_kan_pas_als_er_een_besluit_ligt() {
         "de reden hoort het gram te noemen dat er al ligt, kreeg: {nogmaals}"
     );
     let error = world
-        .act("uitvoerder.bekendmaking", &BTreeMap::new())
+        .act("uitvoerder.bekendmaking", &bekendmaking_formulier(&world))
         .expect_err("twee keer bekendmaken hoort geweigerd te worden");
     assert!(
         error.to_string().contains("al bekendgemaakt"),
@@ -466,7 +490,7 @@ fn een_tweede_besluit_over_dezelfde_zaak_kan_opnieuw_bekendgemaakt_worden() {
         .act("uitvoerder.toekenning", &formulier)
         .unwrap_or_else(|e| panic!("het eerste besluit moet kunnen: {e}"));
     world
-        .act("uitvoerder.bekendmaking", &BTreeMap::new())
+        .act("uitvoerder.bekendmaking", &bekendmaking_formulier(&world))
         .unwrap_or_else(|e| panic!("de eerste bekendmaking moet kunnen: {e}"));
 
     let later = "2024-07-01"
@@ -488,7 +512,7 @@ fn een_tweede_besluit_over_dezelfde_zaak_kan_opnieuw_bekendgemaakt_worden() {
         na.unavailable_reason
     );
     world
-        .act("uitvoerder.bekendmaking", &BTreeMap::new())
+        .act("uitvoerder.bekendmaking", &bekendmaking_formulier(&world))
         .unwrap_or_else(|e| panic!("de tweede bekendmaking moet kunnen: {e}"));
 
     // En dan is ook die er, en kan het niet nog eens: de weigering noemt het

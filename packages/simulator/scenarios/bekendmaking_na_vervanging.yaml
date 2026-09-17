@@ -128,8 +128,7 @@ cells:
             type: string
         outputs:
           - stage
-          - bekendmaking_datum
-          - uiterste_betaaldatum
+          - uiterste_betaaldatum_4_87
           - termijnen_vervallen_door
         reduction:
           chronicle: beschikkingen
@@ -208,6 +207,9 @@ act:
       de bekendmaking van de toekenning, op T3. Hier zou de termijn gaan lopen,
       en hier blijkt dat er niets meer te beloven is.
     action: uitvoerder.bekendmaking
+    values:
+      datum_bekendmaking: '2024-04-15'
+      toegezonden_aan_belanghebbende: true
     op_moment: 2024-04-15
 
 queries:
@@ -234,8 +236,7 @@ queries:
     op_moment: 2024-04-15
     expect:
       stage: BEKENDMAKING
-      bekendmaking_datum: '2024-04-15'
-      uiterste_betaaldatum: '2024-05-27'
+      uiterste_betaaldatum_4_87: '2024-05-27'
 
   - description: >-
       Een jaar later is er niets betaald. Dat is de proef: de uiterste

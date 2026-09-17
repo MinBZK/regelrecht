@@ -1,0 +1,249 @@
+---
+name: een uitkomst van de eigen regeling die pas bij de bekendmaking vaststaat
+description: >-
+  Twee beschikkingen van hetzelfde soort over dezelfde zaak: de verlening en de
+  vaststelling van een subsidie, allebei TOEKENNING. Bij de verlening hangt het
+  uiterste moment van het voorschot aan de dag waarop zij bekendgemaakt is
+  (art. 3). Dat is werking van déze regeling en van dít besluit, dus het staat
+  op het artikel van de verlening onder `stage_uitkomsten` — een hook in de
+  algemene wet zou op allebei vuren.
+
+  Bij de bekendmaking van de verlening voert de engine de regeling uit onder
+  het recht van het besluitmoment, op de inputs van het besluit plus het
+  formulier van de bekendmaking, en het gram krijgt `voorschot_uiterlijk_op`
+  met het artikel erbij. De verplichting van de verlening noemt die uitkomst
+  zelf als haar vervaldatum. Bij de bekendmaking van de vaststelling komt die
+  uitkomst er niet in; wat de algemene wet er als hook aan hangt, wel.
+
+clock:
+  start: 2024-01-01
+
+cells:
+  - id: uitvoerder
+    identity: Uitvoerder
+    laws:
+      - test_stage_uitkomsten
+      - test_awb_procedure
+
+    komt_na:
+      - Uitvoerder
+
+    chronicles:
+      - stream: betalingen
+        key: zaakkenmerk
+        gebeurtenissen:
+          - name: betaling_gedaan
+            intake: betaling
+            grondslag: Algemene wet bestuursrecht, art. 4:89
+            fields: &betalingsvelden
+              - name: zaakkenmerk
+                type: string
+              - name: bedrag
+                type: amount
+              - name: volgnummer
+                type: number
+              - name: besluit
+                type: string
+              - name: schuldenaar
+                type: string
+              - name: schuldeiser
+                type: string
+          - name: betaling_gemeld
+            intake: levering
+            grondslag: Algemene wet bestuursrecht, art. 4:89
+            fields: *betalingsvelden
+
+    besluit_definitions:
+      - name: verlening
+        doc: de verlening, met een voorschot dat aan haar bekendmaking hangt
+        regulation: test_stage_uitkomsten
+        output: subsidie_verleend
+        outputs:
+          - hoogte_voorschot
+        zaakkenmerk: subsidie/{bsn}
+        params:
+          - name: bsn
+            type: string
+        inputs:
+          bsn:
+            param: bsn
+
+      - name: vaststelling
+        doc: de vaststelling, van hetzelfde soort en zonder stage-uitkomst
+        regulation: test_stage_uitkomsten
+        output: subsidie_vastgesteld
+        zaakkenmerk: subsidie/{bsn}
+        params:
+          - name: bsn
+            type: string
+        inputs:
+          bsn:
+            param: bsn
+
+    lexostatus_definitions:
+      - name: bekendmaking_verlening
+        doc: wat er bij de bekendmaking van de verlening vast kwam te staan
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - voorschot_uiterlijk_op
+          - uiterste_betaaldatum_4_87
+        reduction:
+          chronicle: beschikkingen
+          key: zaakkenmerk
+          latest: true
+          where:
+            stage: BEKENDMAKING
+            besluit: verlening
+
+      - name: voorschot_bij_vaststelling
+        doc: >-
+          De uitkomst van de verlening, gevraagd bij de bekendmaking van de
+          vaststelling: daar staat ze niet.
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - voorschot_uiterlijk_op
+        reduction:
+          chronicle: beschikkingen
+          key: zaakkenmerk
+          latest: true
+          where:
+            stage: BEKENDMAKING
+            besluit: vaststelling
+
+      - name: bekendmaking_vaststelling
+        doc: wat de algemene wet bij de bekendmaking van de vaststelling gaf
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - uiterste_betaaldatum_4_87
+        reduction:
+          chronicle: beschikkingen
+          key: zaakkenmerk
+          latest: true
+          where:
+            stage: BEKENDMAKING
+            besluit: vaststelling
+
+      - name: betaald_tot_nu_toe
+        doc: wat er op deze zaak betaald is
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - bedrag
+        reduction:
+          chronicle: betalingen
+          key: zaakkenmerk
+          sum: bedrag
+
+actions:
+  - id: uitvoerder.verlening
+    actor: uitvoerder
+    label: Verleen de subsidie
+    decides:
+      cell: uitvoerder
+      besluit: verlening
+
+  - id: uitvoerder.vaststelling
+    actor: uitvoerder
+    label: Stel de subsidie vast
+    decides:
+      cell: uitvoerder
+      besluit: vaststelling
+
+  - id: uitvoerder.bekendmaking_verlening
+    actor: uitvoerder
+    label: Maak de verlening bekend
+    publishes:
+      cell: uitvoerder
+      besluit: verlening
+
+  - id: uitvoerder.bekendmaking_vaststelling
+    actor: uitvoerder
+    label: Maak de vaststelling bekend
+    publishes:
+      cell: uitvoerder
+      besluit: vaststelling
+
+act:
+  - description: de verlening
+    action: uitvoerder.verlening
+    values:
+      bsn: '999993653'
+    op_moment: 2024-03-01
+    expect:
+      subsidie_verleend: true
+
+  - description: de bekendmaking van de verlening
+    action: uitvoerder.bekendmaking_verlening
+    values:
+      datum_bekendmaking: '2024-04-15'
+      toegezonden_aan_belanghebbende: true
+    op_moment: 2024-04-15
+
+  - description: de vaststelling, over dezelfde zaak
+    action: uitvoerder.vaststelling
+    values:
+      bsn: '999993653'
+    op_moment: 2024-09-02
+    expect:
+      subsidie_vastgesteld: true
+
+  - description: de bekendmaking van de vaststelling
+    action: uitvoerder.bekendmaking_vaststelling
+    values:
+      datum_bekendmaking: '2024-09-10'
+      toegezonden_aan_belanghebbende: true
+    op_moment: 2024-09-10
+
+queries:
+  - description: >-
+      Bij de bekendmaking van de verlening rekende de regeling het uiterste
+      moment van het voorschot uit, twee weken na die dag (art. 3), naast de
+      uiterste betaaldatum die de algemene wet geeft (4:87).
+    cell: uitvoerder
+    lexostatus: bekendmaking_verlening
+    params:
+      zaakkenmerk: subsidie/999993653
+    op_moment: 2024-04-15
+    expect:
+      voorschot_uiterlijk_op: '2024-04-29'
+      uiterste_betaaldatum_4_87: '2024-05-27'
+
+  - description: >-
+      De verplichting nam die uitkomst als vervaldag: op 29 april is het
+      voorschot betaald, en niet pas op de uiterste betaaldatum van de algemene
+      wet.
+    cell: uitvoerder
+    lexostatus: betaald_tot_nu_toe
+    params:
+      zaakkenmerk: subsidie/999993653
+    op_moment: 2024-05-01
+    expect:
+      bedrag: 30000
+
+  - description: >-
+      De bekendmaking van de vaststelling ligt er, met wat de algemene wet er
+      als hook aan hangt.
+    cell: uitvoerder
+    lexostatus: bekendmaking_vaststelling
+    params:
+      zaakkenmerk: subsidie/999993653
+    op_moment: 2024-09-10
+    expect:
+      uiterste_betaaldatum_4_87: '2024-10-22'
+
+  - description: >-
+      Maar de uitkomst die alleen bij de verlening hoort, staat er niet in:
+      hetzelfde soort beschikking, en toch geen stage-uitkomst.
+    cell: uitvoerder
+    lexostatus: voorschot_bij_vaststelling
+    params:
+      zaakkenmerk: subsidie/999993653
+    op_moment: 2024-09-10
+    expect_not_established: true

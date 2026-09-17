@@ -107,7 +107,7 @@ cells:
             type: string
         outputs:
           - stage
-          - uiterste_betaaldatum
+          - uiterste_betaaldatum_4_87
         reduction:
           chronicle: beschikkingen
           key: zaakkenmerk

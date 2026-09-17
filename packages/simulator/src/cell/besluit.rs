@@ -29,8 +29,8 @@
 
 use crate::cell::chronicle::{GebeurtenisSchema, SchemaVeld};
 use crate::cell::config::{
-    binding_name, check_documented_params, documents, engine_parameters, parameter_listing,
-    published_outputs, CellSurface, DocumentedParameter,
+    binding_name, check_documented_params, documents, engine_parameters, listing,
+    parameter_listing, published_outputs, CellSurface, DocumentedParameter,
 };
 use crate::cell::extensions::{afwijzing_wanneer, ChronolexBlock};
 use crate::cell::{ChronicleEvent, Intake, ParameterType, PartyBindings};
@@ -151,11 +151,6 @@ pub const STAGE: &str = "stage";
 pub const STAGE_BESLUIT: &str = "BESLUIT";
 /// De stage waarin het besluit bekendgemaakt wordt (Awb 3:40 jo. 3:41).
 pub const STAGE_BEKENDMAKING: &str = "BEKENDMAKING";
-/// Veld met de dag waarop het besluit bekendgemaakt is.
-///
-/// De naam waaronder de stage haar ook aan de engine aanreikt: een hook die
-/// vanaf de bekendmaking rekent, declareert deze parameter (Awb 4:87, 6:8).
-pub const BEKENDMAKING_DATUM: &str = "bekendmaking_datum";
 /// Veld met de identiteit van de cel die bekendmaakte.
 pub const BEKENDGEMAAKT_DOOR: &str = "bekendgemaakt_door";
 /// Veld met de herkomst van elke uitkomst die de hooks op deze stage leverden.
@@ -166,14 +161,23 @@ pub const BEKENDGEMAAKT_DOOR: &str = "bekendgemaakt_door";
 /// verschil tussen "de Awb zegt het" en "de uitvoerder heeft het bedacht" niet
 /// meer te zien.
 pub const HOOKS: &str = "hooks";
-/// Veld met de uiterste betaaldatum die de bekendmaking oplevert.
+/// Veld met de herkomst van elke uitkomst die de **eigen regeling** van het
+/// besluit bij deze stage oplevert.
 ///
-/// Platformvocabulaire zoals [`BETALINGEN`]: een verplichting met
-/// `vanaf: bekendmaking` pakt haar eerste vervaldatum onder deze naam op. Wélke
-/// wet die datum uitrekent staat in het lexogram — hier staat alleen waar het
-/// platform haar zoekt, zodat twee regelingen er niet elk een eigen naam voor
-/// verzinnen.
-pub const UITERSTE_BETAALDATUM: &str = "uiterste_betaaldatum";
+/// De tegenhanger van [`HOOKS`] voor wat het uitvoerende artikel zelf aan een
+/// latere stage hangt (`stage_uitkomsten` in het `chronolex`-blok): per uitkomst
+/// de regeling, de versie en het artikel. Apart van de hooks, want het is iets
+/// anders — een hook is de algemene wet die op elke beschikking van een soort
+/// vuurt, dit is de regeling van dít besluit.
+pub const STAGE_UITKOMSTEN: &str = "stage_uitkomsten";
+/// Veld met de hooks die op dit gram vuurden maar niet konden draaien.
+///
+/// Een hook vuurt op rechtskarakter, besluittype en stage, en niet op wat het
+/// besluit waarop hij vuurt aan feiten draagt. Ontbreekt een input die hij
+/// nodig heeft, dan valt het besluit daar niet op om: het gram noemt per hook
+/// het artikel en de input die er niet was. Altijd aanwezig, en leeg als elke
+/// hook draaide — net als [`AFWIJZINGSGROND`].
+pub const HOOK_NIET_UITGEVOERD: &str = "hook_niet_uitgevoerd";
 /// Veld met de termijnen die op de bekendmaking wachten.
 ///
 /// Wat het besluit oplegde maar nog niet kon inroosteren: het bedrag, de
@@ -225,7 +229,7 @@ pub const RECEIPT: &str = "receipt";
 /// Van de stage BESLUIT: dit is wat een gram draagt waarin een besluit staat.
 /// Wat de **bekendmaking** ervan draagt, staat in [`BEKENDMAKING_FIELDS`] — een
 /// eigen gram met een eigen omslag, en niet een tweede lijst voor hetzelfde gram.
-const FIXED_FIELDS: [&str; 17] = [
+const FIXED_FIELDS: [&str; 18] = [
     ZAAKKENMERK,
     BESLUIT,
     STAGE,
@@ -239,6 +243,7 @@ const FIXED_FIELDS: [&str; 17] = [
     LEGAL_CHARACTER,
     DECISION_TYPE,
     AFWIJZINGSGROND,
+    HOOK_NIET_UITGEVOERD,
     INPUTS,
     OBLIGATIONS,
     CHRONICLE_SOURCES,
@@ -249,14 +254,17 @@ const FIXED_FIELDS: [&str; 17] = [
 ///
 /// Apart van [`FIXED_FIELDS`] omdat het een ander gram is: een bekendmaking legt
 /// niets vast over de uitkomsten van het besluit — die staan in het besluit — en
-/// draagt in plaats daarvan de dag waarop ze plaatsvond, wie haar deed, waar het
-/// besluit ligt waar ze bij hoort, en waar elk veld vandaan komt dat de wet er
-/// bij deze stage aan hangt.
-const BEKENDMAKING_FIELDS: [&str; 7] = [
+/// draagt in plaats daarvan wie haar deed, wat er bij haar werd ingevuld (de
+/// `requires` van de stage, als inputs), waar het besluit ligt waar ze bij hoort,
+/// en waar elk veld vandaan komt dat de wet er bij deze stage aan hangt. De dag
+/// van de bekendmaking is het `op_moment` van het gram zelf.
+const BEKENDMAKING_FIELDS: [&str; 9] = [
     STAGE,
-    BEKENDMAKING_DATUM,
     BEKENDGEMAAKT_DOOR,
+    INPUTS,
     HOOKS,
+    STAGE_UITKOMSTEN,
+    HOOK_NIET_UITGEVOERD,
     BESLUIT_OP_MOMENT,
     BESLUIT_GRAM,
     TERMIJNEN_VERVALLEN_DOOR,
@@ -277,7 +285,7 @@ pub(crate) fn fixed_fields() -> &'static [&'static str] {
 /// Voor de twee vragen die over de **stroom** gaan en niet over één gram: wat mag
 /// een reductie erover publiceren, en welke naam is bezet voor een uitkomst van
 /// een besluit. Zou die tweede alleen de velden van het besluit kennen, dan kon
-/// een uitkomst `bekendmaking_datum` heten en in dezelfde stroom twee dingen
+/// een uitkomst `stage_uitkomsten` heten en in dezelfde stroom twee dingen
 /// betekenen.
 pub(crate) fn beschikkingen_fields() -> BTreeSet<&'static str> {
     FIXED_FIELDS
@@ -725,6 +733,15 @@ pub struct ObligationDefinition {
     /// van de cel die het neemt.
     #[serde(default)]
     pub vanaf: Option<String>,
+    /// Welke uitkomst van de bekendmaking de eerste vervaldag levert.
+    ///
+    /// Hoort bij `vanaf: bekendmaking` en alleen daar: dan staat de dag bij het
+    /// besluit nog niet vast, en de wet rekent hem bij de bekendmaking uit — in
+    /// een hook (de algemene wet) of in een `stage_uitkomsten` van de eigen
+    /// regeling. Welke uitkomst dat is, noemt de verplichting zelf, onder de
+    /// naam die de wet eraan geeft; het platform kent er geen vaste naam voor.
+    #[serde(default)]
+    pub vervaldatum: Option<String>,
     /// Waarop deze verplichting berust, in vrije tekst.
     ///
     /// Verplicht: een verplichting zonder grondslag is een bedrag zonder wet.
@@ -831,6 +848,10 @@ pub(crate) struct DeclaredObligations {
     pub(crate) authority: Option<String>,
     /// De uitkomsten die dit artikel voortbrengt, voor de toets op `bedrag`.
     pub(crate) article_outputs: BTreeSet<String>,
+    /// De uitkomsten die de stage BEKENDMAKING bij een besluit op dit artikel
+    /// kan opleveren: die van de hooks op die stage en die van de eigen
+    /// `stage_uitkomsten`. Voor de toets op `vervaldatum`.
+    pub(crate) stage_outputs: BTreeSet<String>,
     /// De verplichtingen zelf, in de volgorde van het artikel.
     pub(crate) items: Vec<ObligationDefinition>,
     /// Of een beschikking op dit artikel in de plaats komt van wat er over
@@ -1055,7 +1076,17 @@ pub struct WachtendeVerplichting {
     pub grondslag: String,
     /// Het artikel dat haar declareert, met de versie die toen gold.
     pub herkomst: ObligationOrigin,
+    /// De uitkomst van de bekendmaking die de eerste vervaldag levert, zoals
+    /// de verplichting haar noemt (`vervaldatum`).
+    ///
+    /// In het gram en niet opnieuw uit de wet gelezen bij de bekendmaking: wat
+    /// het besluit beloofde, staat in het besluit, ook waaraan de dag straks
+    /// ontleend wordt.
+    pub vervaldatum_uit: String,
 }
+
+/// Veld van een wachtende verplichting met de uitkomst die haar vervaldag levert.
+pub const VERVALDATUM_UIT: &str = "vervaldatum_uit";
 
 impl WachtendeVerplichting {
     /// De wachtende verplichting als vastlegbare waarde, voor in het decretogram.
@@ -1083,6 +1114,10 @@ impl WachtendeVerplichting {
             ("termijnen".to_string(), Value::Int(self.termijnen)),
             (GRONDSLAG.to_string(), Value::String(self.grondslag.clone())),
             (LEXOGRAM.to_string(), self.herkomst.as_value()),
+            (
+                VERVALDATUM_UIT.to_string(),
+                Value::String(self.vervaldatum_uit.clone()),
+            ),
         ]))
     }
 
@@ -1110,6 +1145,7 @@ impl WachtendeVerplichting {
             termijnen: fields.get("termijnen").and_then(Value::as_int)?,
             grondslag: text(GRONDSLAG)?,
             herkomst: ObligationOrigin::from_value(fields.get(LEXOGRAM)?)?,
+            vervaldatum_uit: text(VERVALDATUM_UIT)?,
         })
     }
 
@@ -2298,6 +2334,9 @@ pub struct Decretogram {
     /// het receipt. Zonder deze lijst is niet te zeggen op welke stand van welke
     /// kroniek de uitvoering leunde, en dan is het besluit niet te reproduceren.
     pub chronicle_sources: Vec<ChronicleSource>,
+    /// De hooks die op dit besluit vuurden maar niet konden draaien, omdat een
+    /// input die ze nodig hebben er bij dit besluit niet is.
+    pub hooks_niet_uitgevoerd: Vec<HookNietUitgevoerd>,
     /// Het volledige receipt van de uitvoering.
     pub receipt: ExecutionReceipt,
 }
@@ -2424,22 +2463,10 @@ impl Decretogram {
                         .collect(),
                 ),
             ),
+            (INPUTS.to_string(), inputs_value(&self.inputs)),
             (
-                INPUTS.to_string(),
-                Value::Object(
-                    self.inputs
-                        .iter()
-                        .map(|(name, input)| {
-                            (
-                                name.clone(),
-                                Value::Object(BTreeMap::from([
-                                    ("value".to_string(), input.value.clone()),
-                                    ("origin".to_string(), input.origin.as_value()),
-                                ])),
-                            )
-                        })
-                        .collect(),
-                ),
+                HOOK_NIET_UITGEVOERD.to_string(),
+                hooks_niet_uitgevoerd_value(&self.hooks_niet_uitgevoerd),
             ),
             (
                 OBLIGATIONS.to_string(),
@@ -2565,6 +2592,105 @@ impl HookHerkomst {
     }
 }
 
+/// Waar één uitkomst van de **eigen regeling** bij een stage vandaan komt.
+///
+/// De tegenhanger van [`HookHerkomst`] voor `stage_uitkomsten`: geen hook-punt,
+/// want het artikel vuurde niet op de beschikking — het hoort bij de regeling
+/// van het besluit zelf, en zegt dat deze uitkomst pas bij deze stage vaststaat.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StageUitkomstHerkomst {
+    /// De naam van de uitkomst.
+    pub veld: String,
+    /// De regeling, de versie en het artikel die haar voortbrachten.
+    pub lexogram: ObligationOrigin,
+}
+
+impl StageUitkomstHerkomst {
+    /// De herkomst als vastlegbare waarde, voor in het gram.
+    fn as_value(&self) -> Value {
+        Value::Object(BTreeMap::from([
+            ("veld".to_string(), Value::String(self.veld.clone())),
+            (LEXOGRAM.to_string(), self.lexogram.as_value()),
+        ]))
+    }
+
+    /// Leesbare herkomst voor een verslag.
+    pub fn describe(&self) -> String {
+        format!("{} uit {}", self.veld, self.lexogram.describe())
+    }
+}
+
+/// Een hook die vuurde maar niet draaide, omdat een input die hij nodig heeft er
+/// bij dit besluit niet is.
+///
+/// Een hook biedt zich aan op rechtskarakter, besluittype en stage, en weet niet
+/// welke feiten het besluit waarop hij vuurt draagt. Zou hij het besluit laten
+/// omvallen, dan kon een algemene wet elke beschikking van een soort breken
+/// omdat één artikel ervan een feit leest dat alleen sommige besluiten hebben.
+/// Het besluit gaat dus door, en het gram zegt welk artikel níet toegepast is en
+/// waarom — een vereiste zonder toets hoort zichtbaar te blijven.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HookNietUitgevoerd {
+    /// De regeling, de versie en het artikel van de hook.
+    pub lexogram: ObligationOrigin,
+    /// Het punt in de uitvoering waarop hij vuurde.
+    pub hook_point: String,
+    /// De input die er niet was.
+    pub ontbrekende_input: String,
+}
+
+impl HookNietUitgevoerd {
+    /// Als vastlegbare waarde, voor in het gram.
+    fn as_value(&self) -> Value {
+        Value::Object(BTreeMap::from([
+            (LEXOGRAM.to_string(), self.lexogram.as_value()),
+            (
+                "hook_point".to_string(),
+                Value::String(self.hook_point.clone()),
+            ),
+            (
+                "ontbrekende_input".to_string(),
+                Value::String(self.ontbrekende_input.clone()),
+            ),
+        ]))
+    }
+
+    /// Leesbare regel voor een verslag en voor het journaal.
+    pub fn describe(&self) -> String {
+        format!(
+            "{} niet uitgevoerd: input '{}' bestaat bij dit besluit niet",
+            self.lexogram.describe(),
+            self.ontbrekende_input
+        )
+    }
+}
+
+/// De inputs van een gram, elk met hun herkomst, als vastlegbare waarde.
+///
+/// Eén vorm voor het besluit en de bekendmaking: [`recorded_input`] leest haar
+/// terug, en het beeld van de wereld pakt haar uit per waarde.
+fn inputs_value(inputs: &BTreeMap<String, DecretogramInput>) -> Value {
+    Value::Object(
+        inputs
+            .iter()
+            .map(|(name, input)| {
+                (
+                    name.clone(),
+                    Value::Object(BTreeMap::from([
+                        ("value".to_string(), input.value.clone()),
+                        ("origin".to_string(), input.origin.as_value()),
+                    ])),
+                )
+            })
+            .collect(),
+    )
+}
+
+/// De hooks die niet draaiden, als vastlegbare waarde.
+fn hooks_niet_uitgevoerd_value(hooks: &[HookNietUitgevoerd]) -> Value {
+    Value::Array(hooks.iter().map(HookNietUitgevoerd::as_value).collect())
+}
+
 /// De **bekendmaking** van een besluit: het stage-decretogram van RFC-008.
 ///
 /// Elke stage van een procedure levert een eigen elementair gram op hetzelfde
@@ -2582,11 +2708,19 @@ impl HookHerkomst {
 pub struct Bekendmaking {
     /// De cel die bekendmaakte; dezelfde die besloot.
     pub cell: String,
+    /// Wat er bij de bekendmaking ingevuld is: de `requires` van de stage uit de
+    /// procedure, elk als parameter.
+    pub inputs: BTreeMap<String, DecretogramInput>,
+    /// Waar elke uitkomst van de eigen regeling bij deze stage vandaan komt.
+    pub stage_uitkomsten: Vec<StageUitkomstHerkomst>,
+    /// De hooks die op deze stage vuurden maar niet konden draaien.
+    pub hooks_niet_uitgevoerd: Vec<HookNietUitgevoerd>,
     /// De besluit-definitie waarvan dit de bekendmaking is.
     pub besluit: String,
     /// De zaak waar het om gaat; hetzelfde kenmerk als het besluit.
     pub zaakkenmerk: String,
-    /// De dag van de bekendmaking: de stand van de klok.
+    /// De dag van de bekendmaking: de stand van de klok, en de waarde van het
+    /// datumveld dat de procedure voor deze stage vraagt.
     pub op_moment: NaiveDate,
     /// Het moment van het besluit dat bekendgemaakt wordt.
     pub besluit_op_moment: NaiveDate,
@@ -2605,9 +2739,9 @@ pub struct Bekendmaking {
     pub legal_character: String,
     /// Het besluittype van het besluit dat bekendgemaakt wordt.
     pub decision_type: Option<String>,
-    /// Wat de hooks op deze stage opleverden.
+    /// Wat de hooks en de eigen regeling op deze stage opleverden.
     pub outputs: BTreeMap<String, Value>,
-    /// Waar elke uitkomst vandaan komt.
+    /// Waar elke uitkomst van een hook vandaan komt.
     pub hooks: Vec<HookHerkomst>,
     /// De termijnen die door deze bekendmaking gaan lopen.
     ///
@@ -2644,10 +2778,7 @@ impl Bekendmaking {
                 STAGE.to_string(),
                 Value::String(STAGE_BEKENDMAKING.to_string()),
             ),
-            (
-                BEKENDMAKING_DATUM.to_string(),
-                Value::String(self.op_moment.to_string()),
-            ),
+            (INPUTS.to_string(), inputs_value(&self.inputs)),
             (
                 BESLUIT_OP_MOMENT.to_string(),
                 Value::String(self.besluit_op_moment.to_string()),
@@ -2685,6 +2816,19 @@ impl Bekendmaking {
                 Value::Array(self.hooks.iter().map(HookHerkomst::as_value).collect()),
             ),
             (
+                STAGE_UITKOMSTEN.to_string(),
+                Value::Array(
+                    self.stage_uitkomsten
+                        .iter()
+                        .map(StageUitkomstHerkomst::as_value)
+                        .collect(),
+                ),
+            ),
+            (
+                HOOK_NIET_UITGEVOERD.to_string(),
+                hooks_niet_uitgevoerd_value(&self.hooks_niet_uitgevoerd),
+            ),
+            (
                 OBLIGATIONS.to_string(),
                 Value::Array(
                     self.obligations
@@ -2718,6 +2862,11 @@ impl Bekendmaking {
                 self.hooks
                     .iter()
                     .map(HookHerkomst::describe)
+                    .chain(
+                        self.stage_uitkomsten
+                            .iter()
+                            .map(StageUitkomstHerkomst::describe)
+                    )
                     .collect::<Vec<_>>()
                     .join("; ")
             ),
@@ -3048,7 +3197,18 @@ impl BesluitDefinition {
                 ObligationStart::Op(day) => day,
                 // Wacht op de bekendmaking: alles ligt vast behalve de dag.
                 ObligationStart::Bekendmaking => {
+                    // Onbereikbaar leeg: het optuigen weigert `vanaf:
+                    // bekendmaking` zonder `vervaldatum`, voor elke versie.
+                    let vervaldatum_uit = obligation.vervaldatum.clone().ok_or_else(|| {
+                        SimulatorError::ObligationVervaldatum {
+                            cell: cell.to_string(),
+                            besluit: self.name.clone(),
+                            origin: declared.origin.describe(),
+                            reason: format!("`vanaf: {VANAF_BEKENDMAKING}` zonder `vervaldatum`"),
+                        }
+                    })?;
                     wachtend.push(WachtendeVerplichting {
+                        vervaldatum_uit,
                         soort: relation.soort,
                         schuldenaar: relation.schuldenaar.clone(),
                         schuldeiser: relation.schuldeiser.clone(),
@@ -3543,7 +3703,15 @@ impl DeclaredObligations {
                 .and_then(|execution| execution.produces.as_ref()),
             &origin,
         )?;
-        Ok(Self::from_block(origin, authority, article, block))
+        // Zonder de uitkomsten van de hooks: die dienen alleen de toets op
+        // `vervaldatum`, en die heeft het optuigen voor elke versie al gedaan.
+        Ok(Self::from_block(
+            origin,
+            authority,
+            article,
+            block,
+            &BTreeSet::new(),
+        ))
     }
 
     /// Hetzelfde, uit een blok dat al gelezen is.
@@ -3557,6 +3725,7 @@ impl DeclaredObligations {
         authority: Option<String>,
         article: &Article,
         block: ChronolexBlock,
+        hook_outputs: &BTreeSet<String>,
     ) -> Self {
         Self {
             origin,
@@ -3565,6 +3734,16 @@ impl DeclaredObligations {
                 .get_output_names()
                 .into_iter()
                 .map(str::to_string)
+                .collect(),
+            stage_outputs: hook_outputs
+                .iter()
+                .cloned()
+                .chain(
+                    block
+                        .stage_uitkomsten_voor(STAGE_BEKENDMAKING)
+                        .iter()
+                        .cloned(),
+                )
                 .collect(),
             items: block.verplichtingen,
             vervanging: block.vervangt_openstaande_termijnen,
@@ -3585,6 +3764,7 @@ impl DeclaredObligations {
             },
             authority: None,
             article_outputs: BTreeSet::new(),
+            stage_outputs: BTreeSet::new(),
             items: Vec::new(),
             vervanging: None,
         }
@@ -3642,7 +3822,13 @@ impl DeclaredObligations {
     /// Controleer deze verplichtingen tegen het besluit dat het artikel uitvoert.
     pub(crate) fn validate(&self, cell: &str, definition: &BesluitDefinition) -> Result<()> {
         for obligation in &self.items {
-            obligation.validate(cell, definition, &self.origin, &self.article_outputs)?;
+            obligation.validate(
+                cell,
+                definition,
+                &self.origin,
+                &self.article_outputs,
+                &self.stage_outputs,
+            )?;
         }
         Ok(())
     }
@@ -3822,6 +4008,7 @@ impl ObligationDefinition {
         definition: &BesluitDefinition,
         origin: &ObligationOrigin,
         article_outputs: &BTreeSet<String>,
+        stage_outputs: &BTreeSet<String>,
     ) -> Result<()> {
         let besluit = definition.name.as_str();
         let outputs = definition.recorded_outputs();
@@ -3893,15 +4080,48 @@ impl ObligationDefinition {
             });
         }
 
+        let vervaldatum_error = |reason: String| SimulatorError::ObligationVervaldatum {
+            cell: cell.to_string(),
+            besluit: besluit.to_string(),
+            origin: origin.describe(),
+            reason,
+        };
+        let from_bekendmaking = self.vanaf.as_deref() == Some(VANAF_BEKENDMAKING);
+        match (&self.vervaldatum, from_bekendmaking) {
+            // De gebeurtenis en niet een datum: er valt geen sjabloon in te
+            // vullen en geen dag uit te rekenen, want de dag van de bekendmaking
+            // staat bij het besluit nog niet vast. Wélke uitkomst van de
+            // bekendmaking haar levert, moet de verplichting dan zelf zeggen —
+            // en die uitkomst moet er bij die stage ook uit kunnen komen.
+            (None, true) => {
+                return Err(vervaldatum_error(format!(
+                    "`vanaf: {VANAF_BEKENDMAKING}` hoort te noemen welke uitkomst van de \
+                     bekendmaking de vervaldag levert (`vervaldatum: <uitkomst>`); de stage kan \
+                     leveren: {}",
+                    listing(stage_outputs)
+                )))
+            }
+            (Some(output), true) => {
+                if !stage_outputs.contains(output) {
+                    return Err(vervaldatum_error(format!(
+                        "'{output}' is geen uitkomst die de bekendmaking van dit besluit oplevert \
+                         (wel: {})",
+                        listing(stage_outputs)
+                    )));
+                }
+                return Ok(());
+            }
+            (Some(output), false) => {
+                return Err(vervaldatum_error(format!(
+                    "`vervaldatum: {output}` hoort bij `vanaf: {VANAF_BEKENDMAKING}`; zonder die \
+                     gebeurtenis volgt de vervaldag uit `vanaf` en het ritme"
+                )))
+            }
+            (None, false) => {}
+        }
         let Some(from) = &self.vanaf else {
             return Ok(());
         };
-        // De gebeurtenis en niet een datum: er valt geen sjabloon in te vullen
-        // en geen dag uit te rekenen, want de dag van de bekendmaking staat bij
-        // het besluit nog niet vast.
-        if from == VANAF_BEKENDMAKING {
-            return Ok(());
-        }
         if !closing_braces_match(from) {
             return Err(SimulatorError::MalformedObligationDate {
                 cell: cell.to_string(),
@@ -5178,6 +5398,7 @@ params:
             &uitvoerend_besluit(),
             &origin(),
             &BTreeSet::from(["verzamelinkomen".to_string()]),
+            &BTreeSet::from(["uiterste_betaaldatum_4_87".to_string()]),
         )
     }
 
@@ -5195,6 +5416,7 @@ params:
             origin: origin(),
             authority: Some("Dienst Toeslagen".to_string()),
             article_outputs: BTreeSet::from(["hoogte_zorgtoeslag".to_string()]),
+            stage_outputs: BTreeSet::new(),
             items: vec![obligation.clone()],
             vervanging: None,
         };
@@ -5439,7 +5661,7 @@ params:
     /// verwijzingen anders een datum had moeten zijn.
     #[test]
     fn een_vanaf_bekendmaking_levert_de_gebeurtenis_op() {
-        let obligation = betaling("vanaf: bekendmaking\n");
+        let obligation = betaling("vanaf: bekendmaking\nvervaldatum: uiterste_betaaldatum_4_87\n");
         valideer(&obligation)
             .unwrap_or_else(|e| panic!("de bekendmaking hoort een geldige `vanaf` te zijn: {e}"));
 
@@ -5452,6 +5674,42 @@ params:
             )
             .unwrap_or_else(|e| panic!("dit hoort geen fout te zijn: {e}"));
         assert_eq!(start, ObligationStart::Bekendmaking);
+    }
+
+    /// `vanaf: bekendmaking` zonder te zeggen welke uitkomst de vervaldag levert,
+    /// valt bij het optuigen: het platform kent daar geen vaste naam voor.
+    #[test]
+    fn een_vanaf_bekendmaking_zonder_vervaldatum_wordt_geweigerd() {
+        let err = valideer(&betaling("vanaf: bekendmaking\n"))
+            .expect_err("zonder `vervaldatum` hoort dit te falen");
+        assert!(
+            matches!(err, SimulatorError::ObligationVervaldatum { .. })
+                && err.to_string().contains("uiterste_betaaldatum_4_87"),
+            "de melding hoort te noemen wat de stage wél levert, kreeg: {err}"
+        );
+    }
+
+    /// Een `vervaldatum` die de bekendmaking niet oplevert, valt ook: anders
+    /// valt de bekendmaking pas om bij de eerste zaak.
+    #[test]
+    fn een_vervaldatum_die_de_bekendmaking_niet_levert_wordt_geweigerd() {
+        let err = valideer(&betaling(
+            "vanaf: bekendmaking\nvervaldatum: uiterste_betaaldatum\n",
+        ))
+        .expect_err("een onbekende uitkomst hoort te falen");
+        assert!(
+            err.to_string().contains("'uiterste_betaaldatum'"),
+            "de melding hoort de naam te noemen, kreeg: {err}"
+        );
+    }
+
+    /// En een `vervaldatum` zonder `vanaf: bekendmaking` zou stil genegeerd
+    /// worden.
+    #[test]
+    fn een_vervaldatum_zonder_bekendmaking_wordt_geweigerd() {
+        let err = valideer(&betaling("vervaldatum: uiterste_betaaldatum_4_87\n"))
+            .expect_err("een vervaldatum zonder de gebeurtenis hoort te falen");
+        assert!(matches!(err, SimulatorError::ObligationVervaldatum { .. }));
     }
 
     /// Een wachtende verplichting reist door het gram heen: wat erin gaat, komt
@@ -5474,6 +5732,7 @@ params:
                 valid_from: Some("2024-01-01".to_string()),
                 article: "1".to_string(),
             },
+            vervaldatum_uit: "uiterste_betaaldatum_4_87".to_string(),
         };
         let teruggelezen = WachtendeVerplichting::from_value(&wachtend.as_value())
             .unwrap_or_else(|| panic!("wat het gram draagt, hoort leesbaar te zijn"));
@@ -5500,6 +5759,7 @@ params:
                 valid_from: None,
                 article: "1".to_string(),
             },
+            vervaldatum_uit: "uiterste_betaaldatum_4_87".to_string(),
         };
         let zaak = BesluitGram {
             cell: "uitvoerder",
@@ -5551,6 +5811,7 @@ params:
                 valid_from: None,
                 article: "1".to_string(),
             },
+            vervaldatum_uit: "uiterste_betaaldatum_4_87".to_string(),
         };
         let zaak = BesluitGram {
             cell: "uitvoerder",

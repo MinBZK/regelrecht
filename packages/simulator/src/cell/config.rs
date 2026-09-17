@@ -1210,7 +1210,7 @@ pub(crate) fn documents(documented: &[DocumentedParameter], name: &str) -> bool 
 }
 
 /// Komma-gescheiden opsomming voor een foutmelding.
-fn listing<'a>(names: impl IntoIterator<Item = &'a String>) -> String {
+pub(crate) fn listing<'a>(names: impl IntoIterator<Item = &'a String>) -> String {
     names
         .into_iter()
         .map(String::as_str)

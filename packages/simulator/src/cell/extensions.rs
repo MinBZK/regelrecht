@@ -55,13 +55,25 @@ pub const AFWIJZING_WANNEER: &str = "afwijzing_wanneer";
 /// is niet in te trekken.
 pub const VERVANGT_OPENSTAANDE_TERMIJNEN: &str = "vervangt_openstaande_termijnen";
 
+/// De sleutel waaronder een artikel declareert welke uitkomsten van zijn eigen
+/// regeling pas bij een latere stage van de procedure vaststaan.
+///
+/// Per stage een lijst uitkomstnamen: `{ BEKENDMAKING: [besluit_tijdig] }`. Ook
+/// dit staat in het **lexogram**: dat een uitkomst van de bekendmaking afhangt
+/// (bijvoorbeeld "tijdig beslist" gemeten op de dag van bekendmaking), is werking
+/// van die regeling, en een hook kan het niet zeggen — een hook vuurt op elke
+/// beschikking van hetzelfde soort, en dit hoort alleen bij het besluit dat dit
+/// artikel voortbrengt.
+pub const STAGE_UITKOMSTEN: &str = "stage_uitkomsten";
+
 /// De sleutels die de namespace kent, op alfabet.
 ///
 /// Voor in de melding: wie een blok schrijft dat geweigerd wordt, hoort te lezen
 /// wat er dan wél mag staan. Eén lijst naast [`ChronolexBlock`], zodat een
 /// sleutel erbij ook in de melding terechtkomt.
-pub const KNOWN_KEYS: [&str; 3] = [
+pub const KNOWN_KEYS: [&str; 4] = [
     AFWIJZING_WANNEER,
+    STAGE_UITKOMSTEN,
     VERPLICHTINGEN,
     VERVANGT_OPENSTAANDE_TERMIJNEN,
 ];
@@ -100,6 +112,16 @@ pub(crate) struct ChronolexBlock {
     /// wél staat maar leeg blijft, is iets anders — zie [`vervanging`].
     #[serde(default, deserialize_with = "vervanging")]
     pub(crate) vervangt_openstaande_termijnen: Option<Vervanging>,
+    /// Per stage de uitkomsten van deze regeling die bij die stage in het gram
+    /// komen; leeg mag.
+    ///
+    /// Alleen stages ná het besluit hebben betekenis — wat bij het besluit
+    /// vaststaat, is een gewone uitkomst van het besluit — en van die stages
+    /// voert het platform er nu één uit ([`crate::cell::besluit::STAGE_BEKENDMAKING`]).
+    /// Een andere stage wordt bij het optuigen geweigerd, zie
+    /// [`Self::check_stage_uitkomsten`].
+    #[serde(default)]
+    pub(crate) stage_uitkomsten: BTreeMap<String, Vec<String>>,
 }
 
 /// Lees een sleutel die er staat, ook als er niets achter staat.
@@ -174,6 +196,50 @@ impl ChronolexBlock {
         serde_yaml_ng::to_value(block)
             .and_then(serde_yaml_ng::from_value)
             .map_err(|source| malformed(origin, source.to_string()))
+    }
+
+    /// De uitkomsten die dit blok voor één stage declareert.
+    pub(crate) fn stage_uitkomsten_voor(&self, stage: &str) -> &[String] {
+        self.stage_uitkomsten.get(stage).map_or(&[], Vec::as_slice)
+    }
+
+    /// Toets `stage_uitkomsten` tegen de stages die het platform uitvoert en de
+    /// uitkomsten die deze versie van de regeling kent.
+    ///
+    /// Bij het optuigen, om dezelfde reden als de gesloten sleutellijst: een
+    /// stage met een typfout of een uitkomst die de regeling niet kent, levert
+    /// anders een bekendmaking op die stil niets extra's draagt — en dan zegt de
+    /// wet iets wat het gram nooit laat zien.
+    pub(crate) fn check_stage_uitkomsten(
+        &self,
+        origin: &ObligationOrigin,
+        regulation_outputs: &std::collections::BTreeSet<String>,
+    ) -> Result<()> {
+        use crate::cell::besluit::STAGE_BEKENDMAKING;
+        for (stage, outputs) in &self.stage_uitkomsten {
+            if stage != STAGE_BEKENDMAKING {
+                return Err(malformed(
+                    origin,
+                    format!(
+                        "`{STAGE_UITKOMSTEN}` noemt stage '{stage}'; het platform voert na het \
+                         besluit alleen de stage {STAGE_BEKENDMAKING} uit, en een uitkomst van \
+                         een stage die nooit draait, komt nooit in een gram"
+                    ),
+                ));
+            }
+            for output in outputs {
+                if !regulation_outputs.contains(output) {
+                    return Err(malformed(
+                        origin,
+                        format!(
+                            "`{STAGE_UITKOMSTEN}.{stage}` noemt '{output}', en die uitkomst kent \
+                             deze versie van de regeling niet"
+                        ),
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Draagt dit `produces` de namespace, wat er ook in staat?
@@ -271,6 +337,48 @@ mod tests {
         let block = lees("").unwrap_or_else(|e| panic!("een artikel zonder blok mag: {e}"));
         assert!(block.verplichtingen.is_empty());
         assert!(block.afwijzing_wanneer.is_none());
+    }
+
+    fn stage_blok(stage: &str, output: &str) -> Result<ChronolexBlock> {
+        lees(&format!(
+            "      extensions:\n        chronolex:\n          stage_uitkomsten:\n            \
+             {stage}:\n              - {output}\n"
+        ))
+    }
+
+    /// `stage_uitkomsten` leest per stage, en de toets laat een bekende uitkomst
+    /// op de stage BEKENDMAKING door.
+    #[test]
+    fn een_stage_uitkomst_leest_en_klopt() {
+        let block = stage_blok("BEKENDMAKING", "tijdig")
+            .unwrap_or_else(|e| panic!("een stage-uitkomst hoort te lezen: {e}"));
+        assert_eq!(block.stage_uitkomsten_voor("BEKENDMAKING"), ["tijdig"]);
+        block
+            .check_stage_uitkomsten(&origin(), &BTreeSet::from(["tijdig".to_string()]))
+            .unwrap_or_else(|e| panic!("een bekende uitkomst hoort door te komen: {e}"));
+    }
+
+    /// Een stage die het platform niet uitvoert, levert nooit een gram op: dat
+    /// valt bij het optuigen, en niet stil.
+    #[test]
+    fn een_stage_uitkomst_op_een_andere_stage_wordt_geweigerd() {
+        let block = stage_blok("BEZWAAR", "tijdig")
+            .unwrap_or_else(|e| panic!("het blok zelf is leesbaar: {e}"));
+        let err = block
+            .check_stage_uitkomsten(&origin(), &BTreeSet::from(["tijdig".to_string()]))
+            .expect_err("een stage na de bekendmaking hoort geweigerd te worden");
+        assert!(err.to_string().contains("BEZWAAR"), "kreeg: {err}");
+    }
+
+    /// Een uitkomst die de regeling niet kent, is een typfout.
+    #[test]
+    fn een_onbekende_stage_uitkomst_wordt_geweigerd() {
+        let block = stage_blok("BEKENDMAKING", "tijdg")
+            .unwrap_or_else(|e| panic!("het blok zelf is leesbaar: {e}"));
+        let err = block
+            .check_stage_uitkomsten(&origin(), &BTreeSet::from(["tijdig".to_string()]))
+            .expect_err("een onbekende uitkomst hoort geweigerd te worden");
+        assert!(err.to_string().contains("'tijdg'"), "kreeg: {err}");
     }
 
     /// Beide sleutels komen uit dezelfde lezing, getypeerd.

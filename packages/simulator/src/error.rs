@@ -2014,26 +2014,126 @@ pub enum SimulatorError {
         missing: String,
     },
 
-    /// Een verplichting wacht op de bekendmaking, maar die levert geen uiterste
-    /// betaaldatum.
+    /// Een verplichting wacht op de bekendmaking, maar die levert de uitkomst
+    /// niet die haar vervaldag hoort te geven.
     ///
     /// `vanaf: bekendmaking` zegt dat de wet de vervaldag aan de bekendmaking
-    /// hangt; wélke dag dat is, hoort dan óók uit de wet te komen (Awb 4:87). Is
-    /// er geen hook die haar uitrekent, dan zou het platform zelf een termijn
-    /// moeten verzinnen, en dat is precies wat het niet doet.
+    /// hangt, en `vervaldatum` noemt de uitkomst die hem levert; wélke dag dat
+    /// is, hoort dan óók uit de wet te komen. Levert de stage die uitkomst niet
+    /// (of geen datum), dan zou het platform zelf een termijn moeten verzinnen,
+    /// en dat is precies wat het niet doet.
     #[error(
-        "de bekendmaking van besluit '{besluit}' van cel '{cell}' levert geen '{veld}', \
-         terwijl er een verplichting op de bekendmaking wacht ({found})"
+        "de bekendmaking van besluit '{besluit}' van cel '{cell}' levert geen datum onder \
+         '{veld}', terwijl er een verplichting op de bekendmaking wacht die daar haar \
+         vervaldag uit haalt ({found})"
     )]
     BekendmakingZonderBetaaldatum {
         /// De cel die bekendmaakte.
         cell: String,
         /// De besluit-definitie waarvan de bekendmaking gevraagd werd.
         besluit: String,
-        /// De naam waaronder het platform de datum zoekt.
+        /// De uitkomst die de verplichting als vervaldatum noemt.
         veld: String,
         /// Wat de stage wél opleverde.
         found: String,
+    },
+
+    /// De procedure vraagt bij de bekendmaking geen datum.
+    ///
+    /// De dag van de bekendmaking is het `op_moment` van haar gram, en de
+    /// procedure zegt onder welke naam die dag de stage in gaat: het eerste
+    /// `requires`-veld van type `date`. Noemt ze er geen, dan is er geen naam om
+    /// de dag onder aan te reiken, en een vaste naam van het platform zou de wet
+    /// laten passen op de opstelling in plaats van andersom.
+    #[error(
+        "cel '{cell}', besluit '{besluit}': de stage BEKENDMAKING van procedure '{procedure}' \
+         vraagt geen veld van type `date` in `requires`, dus er is geen naam waaronder de dag \
+         van de bekendmaking aan de wet gegeven kan worden"
+    )]
+    BekendmakingZonderDatumveld {
+        /// De cel die bekendmaakt.
+        cell: String,
+        /// De besluit-definitie.
+        besluit: String,
+        /// De procedure die voor het besluit geldt.
+        procedure: String,
+    },
+
+    /// Het datumveld van de bekendmaking noemt een andere dag dan de klok.
+    ///
+    /// De dag van de bekendmaking is het `op_moment` van haar gram. Een andere
+    /// dag invullen zou het gram iets laten zeggen wat het niet is: vroeger
+    /// zou het beeld van een moment dat al voorbij is achteraf veranderen,
+    /// later zou een gebeurtenis vastleggen die nog niet plaatsvond.
+    #[error(
+        "cel '{cell}', besluit '{besluit}': het veld '{veld}' is de dag van de bekendmaking en \
+         hoort de stand van de klok te zijn ({clock}), niet '{value}'"
+    )]
+    BekendmakingDatumNietDeKlok {
+        /// De cel die bekendmaakt.
+        cell: String,
+        /// De besluit-definitie.
+        besluit: String,
+        /// Het datumveld uit `requires`.
+        veld: String,
+        /// Wat er ingevuld werd.
+        value: String,
+        /// De stand van de klok.
+        clock: String,
+    },
+
+    /// Een `requires`-veld van de bekendmaking heeft een type dat geen
+    /// formulierveld kan zijn.
+    #[error(
+        "cel '{cell}', besluit '{besluit}': de stage BEKENDMAKING vraagt '{veld}' van type \
+         '{type_name}', en dat kan een formulier niet invullen (wel: string, number, amount, \
+         boolean, date)"
+    )]
+    BekendmakingVeldType {
+        /// De cel die bekendmaakt.
+        cell: String,
+        /// De besluit-definitie.
+        besluit: String,
+        /// Het veld uit `requires`.
+        veld: String,
+        /// Het type dat de procedure noemt.
+        type_name: String,
+    },
+
+    /// Een verplichting noemt haar vervaldatum niet, of niet zoals het hoort.
+    ///
+    /// `vanaf: bekendmaking` zonder `vervaldatum`, een `vervaldatum` die de
+    /// bekendmaking niet kan opleveren, of een `vervaldatum` zonder `vanaf:
+    /// bekendmaking`: alle drie een verplichting waarvan de eerste vervaldag
+    /// stil zou wegvallen of stil genegeerd zou worden.
+    #[error("cel '{cell}', besluit '{besluit}', verplichting in {origin}: {reason}")]
+    ObligationVervaldatum {
+        /// De cel met de besluit-definitie.
+        cell: String,
+        /// De besluit-definitie.
+        besluit: String,
+        /// Regeling, versie en artikel van de verplichting.
+        origin: String,
+        /// Wat eraan mankeert.
+        reason: String,
+    },
+
+    /// Een `stage_uitkomsten`-uitkomst botst met wat het besluit of de hooks al
+    /// leveren.
+    ///
+    /// Een uitkomst in het gram van het besluit wordt bij een latere stage niet
+    /// herberekend en niet overschreven; een uitkomst die een hook ook levert,
+    /// zou in het stage-gram twee herkomsten hebben.
+    #[error("cel '{cell}', besluit '{besluit}': stage-uitkomst '{output}' {reason}")]
+    StageUitkomst {
+        /// De cel met de besluit-definitie.
+        cell: String,
+        /// De besluit-definitie.
+        besluit: String,
+        /// De uitkomst uit `stage_uitkomsten`.
+        output: String,
+        /// Waarmee ze botst.
+        reason: String,
     },
 
     /// Het decretogram draagt een wachtende verplichting die niet te lezen is.

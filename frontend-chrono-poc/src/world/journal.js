@@ -29,6 +29,9 @@ export const JOURNAL_KINDS = {
   // op een betaling te lijken.
   niet_nagekomen: { label: 'Termijn niet nagekomen', color: 'rood', icon: 'warning' },
   termijn: { label: 'Termijn', color: 'warning', icon: 'warning' },
+  // Het gram ligt er gewoon; het nieuws is dat een artikel van de wet er níet op
+  // toegepast is, omdat een input ontbrak.
+  hook_niet_uitgevoerd: { label: 'Hook niet uitgevoerd', color: 'warning', icon: 'warning' },
   vraag: { label: 'Vraag over de celgrens', color: 'hemelblauw', icon: 'question' },
 };
 
