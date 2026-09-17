@@ -1367,7 +1367,7 @@ elkaar houdt:
 |---|---|---|
 | `stage` | `BESLUIT` | `BEKENDMAKING` |
 | `op_moment` | de dag van het besluit | de dag van de bekendmaking |
-| draagt | de uitkomsten, de inputs met hun herkomst, het receipt, het schema van de verplichtingen, de hooks die niet draaiden | wat er bij de bekendmaking ingevuld is (als inputs), de uitkomsten van de hooks op die stage en van de eigen regeling met hun artikel, de gedeclareerde uitkomsten die niet kwamen, de hooks die niet draaiden, en de termijnen die nu pas gaan lopen |
+| draagt | de uitkomsten, de inputs met hun herkomst, het receipt, het schema van de verplichtingen, de hooks die niet draaiden | wat er bij de bekendmaking ingevuld is en wat een hook uit het besluit las (als inputs), de uitkomsten van de hooks op die stage en van de eigen regeling met hun artikel, de gedeclareerde uitkomsten die niet kwamen, de hooks die niet draaiden, en de termijnen die nu pas gaan lopen |
 | ontstaat door | `Cell::decide` | `Cell::bekendmaken` |
 
 **Geen veld dat erbij komt, maar een gram dat erbij komt.** Het besluit-gram
@@ -1463,8 +1463,8 @@ produces:
 ```
 
 Bij de bekendmaking voert de engine de regeling van het besluit uit op die
-uitkomsten, **onder het recht van het besluitmoment**, met de inputs uit het
-BESLUIT-gram plus de stage-parameters. Het stage-gram draagt ze naast de
+uitkomsten, **onder het recht van het besluitmoment**, met dezelfde parameters als
+de hooks (zie [Wat een hook bij de bekendmaking leest](#wat-een-hook-bij-de-bekendmaking-leest)). Het stage-gram draagt ze naast de
 hook-uitkomsten, met hun herkomst onder `stage_uitkomsten` (regeling, versie en
 artikel), en het receipt van het gram dekt beide uitvoeringen: die van de eigen
 regeling hangt als tak onder de trace van de stage. Een gedeclareerde uitkomst die
@@ -1487,6 +1487,60 @@ In het gram staat per uitkomst wélk artikel haar voortbracht: `hooks` voor de
 algemene wet (met regeling, versie, artikelnummer en hook-punt) en
 `stage_uitkomsten` voor de eigen regeling. Een uiterste betaaldatum zonder die
 herkomst is niet te onderscheiden van een datum die de uitvoerder zelf bedacht.
+
+#### Wat een hook bij de bekendmaking leest
+
+Niet elk feit dat een hook bij de bekendmaking nodig heeft, is een feit van de
+bekendmaking. De dag waarop en de wijze waarop er bekendgemaakt werd, staan in
+het formulier. Maar of de beschikking zelf een later tijdstip vermeldt, of welke
+termijn er voor dit besluit geldt, zegt het **besluit**, en dat staat in zijn
+gram. Zo'n feit in het formulier van de bekendmaking zetten, legt het op de
+verkeerde plek — en een formulier kan een `null` ("er is geen later tijdstip")
+niet eens invullen.
+
+Een hook op de stage BEKENDMAKING krijgt daarom als parameters (RFC-008,
+`StageState`):
+
+1. de velden van het **formulier** van de stage;
+2. de **uitkomsten** van het BESLUIT-gram over hetzelfde besluit;
+3. de **inputs** van dat gram.
+
+Elk met de waarde zoals ze vastligt, **ook een expliciete `null`**: wat het
+besluit met zoveel woorden leeg liet, is een waarde en geen onbekend feit. Bij een
+naamsbotsing wint het formulier, daarna de uitkomst, daarna de input — wat er bij
+deze stage vastgesteld werd gaat voor wat het besluit zei, en wat het besluit
+besloot gaat voor waarop het besloot. Daarnaast krijgt de stage het
+`competent_authority` uit het gram. Zoals altijd krijgt een hook alleen wat hij
+zelf als parameter declareert.
+
+Wat in geen van de drie staat, blijft wat het was: een optionele parameter die
+niet meegegeven is, is **onbekend** (RFC-036), en een verplichte laat de hook niet
+draaien (`hook_niet_uitgevoerd`). Een uitkomst die het besluit-gram niet draagt
+— omdat de besluit-definitie haar niet onder `outputs` noemt — gaat dus niet mee.
+Wil een hook haar lezen, dan hoort ze in het gram.
+
+Het stage-gram zegt per waarde waar ze vandaan kwam. Onder `inputs` staat het hele
+formulier met herkomst `parameter`, en uit het besluit precies wat een hook die op
+deze stage iets opleverde als parameter declareert:
+
+| `herkomst` | waarvandaan | verwijzing |
+|---|---|---|
+| `parameter` | het formulier van de stage | `parameter` |
+| `besluit_uitkomst` | een uitkomst van het BESLUIT-gram | `besluit`, `besluit_gram` (de plek in `beschikkingen`), `field` |
+| `besluit_input` | een input van het BESLUIT-gram | `besluit`, `besluit_gram`, `field` |
+
+De rest van het besluit staat niet nog eens in het stage-gram: dat staat al in het
+gram van het besluit, en de herkomst van een input daar (een eigen kroniek, een
+geaccepteerde waarde) wordt hier niet overgeschreven maar aangewezen. Een
+`besluit_*`-herkomst is dus ook nooit een geaccepteerde waarde, en telt voor de
+invarianten niet als contact over een celgrens.
+
+Eén kanttekening bij de volgorde: een hook met `hook_point: post_actions` krijgt
+van de engine ook de uitkomsten die het uitvoerende artikel bij de stage opnieuw
+uitrekent, en die gaan daar vóór de parameters. Omdat de stage op de inputs en het
+moment van het besluit rekent, zijn dat dezelfde waarden als in het gram; alleen
+een formulierveld met de naam van zo'n uitkomst zou er daar door overschreven
+worden.
 
 **De stage rekent niet opnieuw.** Wat de engine uitvoert, doet ze op de inputs
 zoals ze in het besluit-gram staan en op het **moment van het besluit** — onder
@@ -1645,6 +1699,10 @@ De scenario's:
   een stage-uitkomst op een input van het besluit, als vervaldatum die bij een
   late bekendmaking al voorbij is — en dus op de dag van de bekendmaking wordt
   ingehaald;
+- [`scenarios/bekendmaking_besluitcontext.yaml`](scenarios/bekendmaking_besluitcontext.yaml):
+  een hook op de bekendmaking die een uitkomst en een input van het besluit
+  leest — een later tijdstip dat het besluit vermeldt, en bij een tweede zaak een
+  expliciete `null` die de termijn vanaf de bekendmaking laat gelden;
 - [`scenarios/hook_zonder_input.yaml`](scenarios/hook_zonder_input.yaml): een
   hook op elke stage die zijn input mist, een besluit en een bekendmaking die
   gewoon doorgaan, en de waarschuwingen van het optuigen.

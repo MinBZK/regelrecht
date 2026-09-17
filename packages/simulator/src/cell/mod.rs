@@ -2018,7 +2018,7 @@ impl Cell {
                     .map(|value| (name.to_string(), value.clone()))
             })
             .collect();
-        let mut stage_params: BTreeMap<String, Value> = besluit::recorded_inputs(&gram.fields);
+        let inputs_van_besluit = besluit::recorded_inputs(&gram.fields);
         let competent_authority = gram
             .fields
             .get(besluit::COMPETENT_AUTHORITY)
@@ -2036,30 +2036,24 @@ impl Cell {
             }
         })?;
 
-        // Wat er bij deze stage bij komt, naast de inputs van het besluit: het
-        // formulier van de procedure, en het bevoegd gezag, dat een
-        // rechtsmiddelenclausule nodig heeft om te kunnen zeggen bij wie bezwaar
-        // gemaakt moet worden. Een hook die ze niet declareert, krijgt ze ook
-        // niet: de engine geeft elk hook-artikel alleen wat het zelf noemt.
-        let inputs: BTreeMap<String, DecretogramInput> = form_values
-            .iter()
-            .map(|(name, value)| {
-                (
-                    name.clone(),
-                    DecretogramInput {
-                        value: value.clone(),
-                        origin: InputOrigin::Parameter {
-                            parameter: name.clone(),
-                        },
-                    },
-                )
-            })
-            .collect();
-        stage_params.extend(
-            form_values
-                .iter()
-                .map(|(name, value)| (name.clone(), value.clone())),
+        // Wat een hook op deze stage kan lezen: het formulier van de procedure,
+        // de uitkomsten van het besluit en zijn inputs, in die volgorde van
+        // voorrang (zie [`besluit::stage_context`]). Daarnaast het bevoegd
+        // gezag, dat een rechtsmiddelenclausule nodig heeft om te kunnen zeggen
+        // bij wie bezwaar gemaakt moet worden. Een hook die iets niet
+        // declareert, krijgt het ook niet: de engine geeft elk hook-artikel
+        // alleen wat het zelf noemt.
+        let context = besluit::stage_context(
+            &definition.name,
+            plek,
+            form_values,
+            &outputs_van_besluit,
+            &inputs_van_besluit,
         );
+        let mut stage_params: BTreeMap<String, Value> = context
+            .iter()
+            .map(|(name, input)| (name.clone(), input.value.clone()))
+            .collect();
         if let Some(authority) = &competent_authority {
             stage_params.insert(
                 besluit::COMPETENT_AUTHORITY.to_string(),
@@ -2074,6 +2068,18 @@ impl Cell {
             besluit_op_moment,
             procedure.procedure_id,
         )?;
+
+        // Wat het gram als inputs draagt: het hele formulier, en uit het besluit
+        // wat een hook die hier iets opleverde als parameter declareert. De rest
+        // van het besluit staat al in zijn eigen gram; het hier nog eens
+        // opschrijven zou twee keer hetzelfde zeggen.
+        let gelezen = self.hook_parameters(&uitkomst.hooks, besluit_op_moment);
+        let inputs: BTreeMap<String, DecretogramInput> = context
+            .into_iter()
+            .filter(|(name, input)| {
+                matches!(input.origin, InputOrigin::Parameter { .. }) || gelezen.contains(name)
+            })
+            .collect();
 
         // Valt er nog iets te beloven? Een verplichting met `vanaf: bekendmaking`
         // gaat pas op dit moment werken (Awb 3:40), dus dit is de plek waar
@@ -2146,6 +2152,34 @@ impl Cell {
         let event = bekendmaking.event()?;
         self.record_own(BESCHIKKINGEN, event)?;
         Ok(bekendmaking)
+    }
+
+    /// De parameters die de hooks achter deze uitkomsten declareren.
+    ///
+    /// Uit de versie van hun regeling die op het moment van het besluit gold:
+    /// dezelfde die de engine bij de stage uitvoerde.
+    fn hook_parameters(&self, hooks: &[HookHerkomst], moment: NaiveDate) -> BTreeSet<String> {
+        let Some(service) = self.besluit_service.as_ref() else {
+            return BTreeSet::new();
+        };
+        let service = service.borrow();
+        let resolver = service.resolver();
+        hooks
+            .iter()
+            .map(|hook| (&hook.lexogram.regulation, &hook.lexogram.article))
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .filter_map(|(regulation, article)| {
+                resolver
+                    .get_law_for_date(regulation, Some(moment))?
+                    .find_article_by_number(article)?
+                    .get_execution_spec()?
+                    .parameters
+                    .as_ref()
+            })
+            .flatten()
+            .map(|parameter| parameter.name.clone())
+            .collect()
     }
 
     /// Voer één stage van de procedure uit die bij dit besluit hoort.

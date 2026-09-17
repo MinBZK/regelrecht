@@ -1,0 +1,72 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: test_besluitcontext
+name: Testregeling toekenning die zelf een later tijdstip kan vermelden
+regulatory_layer: WET
+bwb_id: BWBR9999922
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+url: https://example.com/test_besluitcontext
+competent_authority: Uitvoerder
+
+# Een testregeling, met opzet **niet** in het corpus: ze bestaat om een
+# eigenschap van de opstelling aan te tonen en niet om recht weer te geven.
+#
+# Wat ze aantoont is een feit van het **besluit** dat een hook pas bij de
+# bekendmaking nodig heeft. Of de beschikking een later tijdstip vermeldt, is een
+# uitspraak van het besluit, en hoort dus in zijn gram en niet in het formulier
+# van de bekendmaking. Vermeldt ze er geen, dan zegt het besluit dat met zoveel
+# woorden: de uitkomst is `null`, en dat is een waarde en geen onbekend feit.
+articles:
+  - number: '1'
+    url: https://example.com/test_besluitcontext#Artikel1
+    text: >-
+      De uitvoerder kent de voorziening toe. De beschikking kan vermelden dat zij
+      op een later tijdstip uitgevoerd wordt.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: aanvraag_ontvangen_op
+            type: date
+            required: true
+          - name: vermeldt_later_tijdstip
+            type: boolean
+            required: true
+          # Een input van het besluit die de regeling zelf niet gebruikt: de
+          # termijn die voor deze voorziening geldt. Wie haar leest, is de hook
+          # bij de bekendmaking. Optioneel, zodat een besluit zonder termijn ook
+          # genomen kan worden.
+          - name: uitvoeringstermijn_weken
+            type: number
+            required: false
+        output:
+          - name: voorziening_toegekend
+            type: boolean
+          # Leeg-mogelijk: "de beschikking vermeldt geen later tijdstip" is een
+          # uitspraak, en die staat als null in het gram.
+          - name: later_tijdstip_in_besluit
+            type: date
+            nullable: true
+        actions:
+          - output: voorziening_toegekend
+            value: true
+          - output: later_tijdstip_in_besluit
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $vermeldt_later_tijdstip
+                    value: true
+                  then:
+                    operation: DATE_ADD
+                    date: $aanvraag_ontvangen_op
+                    weeks: 26
+              default: null
