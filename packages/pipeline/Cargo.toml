@@ -22,6 +22,12 @@ path = "src/bin/enrich_worker.rs"
 name = "regelrecht-pipeline-api"
 path = "src/bin/pipeline_api.rs"
 
+# Tilt een wetsbestand naar schema v0.7.0 en valideert het resultaat. Een
+# verplicht veld dat de oude vorm niet draagt wordt gemeld, niet ingevuld.
+[[bin]]
+name = "law-migrate"
+path = "src/bin/law_migrate.rs"
+
 [dependencies]
 regelrecht-corpus = { path = "../corpus" }
 # `validate` voor de JSON-schema-validatie van gegenereerde basis-wet-YAML

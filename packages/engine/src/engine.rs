@@ -44,6 +44,18 @@ pub enum OutputProvenance {
     },
     /// Produced by a lex specialis override (RFC-007).
     Override { law_id: String, article: String },
+    /// Removed by an override stating the output does not arise at all.
+    ///
+    /// The output is absent from `outputs` and present here, so a consumer can
+    /// tell "the law says this entitlement does not exist" from "nobody asked
+    /// for it". Without that distinction the absence is silence, and silence
+    /// is what this design spends most of its effort removing.
+    Voided {
+        law_id: String,
+        article: String,
+        /// The words of the overriding article that establish it, verbatim.
+        grounds: Option<String>,
+    },
 }
 
 /// Result of article execution
@@ -350,7 +362,7 @@ impl<'a> ArticleEngine<'a> {
             let Some(output_name) = &action.output else {
                 return Err(EngineError::InvalidOperation(
                     "action without `output`: the computation has no name to be stored under, \
-                     so its result would be dropped in silence (schema v0.6.0 requires the field)"
+                     so its result would be dropped in silence (schema v0.7.0 requires the field)"
                         .to_string(),
                 ));
             };
@@ -638,7 +650,9 @@ pub(crate) fn action_to_operation(
         | Operation::DateAdd
         | Operation::Date
         | Operation::DayOfWeek
-        | Operation::DateDiff => Err(EngineError::InvalidOperation(format!(
+        | Operation::DateDiff
+        | Operation::DatePart
+        | Operation::StartOf => Err(EngineError::InvalidOperation(format!(
             "{} must be nested inside 'value', not used directly at action level",
             operation.name()
         ))),
@@ -853,7 +867,7 @@ articles:
 
     /// An action without `output` is a computation with nowhere to land, and
     /// it used to be skipped: no error, no trace node, and the declared value
-    /// simply missing from `outputs`. Schema v0.6.0 requires the field; the
+    /// simply missing from `outputs`. Schema v0.7.0 requires the field; the
     /// model has it optional because it must read older files, and the
     /// execution may not read that leniency as permission.
     #[test]

@@ -289,7 +289,9 @@ fn reject_literal_operations(law: &ArticleBasedLaw) -> Result<()> {
                 walk_action_value(month, where_)?;
                 walk_action_value(day, where_)
             }
-            Op::DayOfWeek { date } => walk_action_value(date, where_),
+            Op::DayOfWeek { date } | Op::DatePart { date, .. } | Op::StartOf { date, .. } => {
+                walk_action_value(date, where_)
+            }
             Op::DateDiff { from, to, unit } => {
                 walk_action_value(from, where_)?;
                 walk_action_value(to, where_)?;
@@ -786,6 +788,14 @@ articles:
                     format!(
                         "value: {{operation: DATE_DIFF, from: {BROKEN}, to: '2025-01-01', in: days}}"
                     ),
+                ),
+                (
+                    "DATE_PART date",
+                    format!("value: {{operation: DATE_PART, date: {BROKEN}, in: year}}"),
+                ),
+                (
+                    "START_OF date",
+                    format!("value: {{operation: START_OF, date: {BROKEN}, in: year}}"),
                 ),
                 (
                     "double nesting",
@@ -1647,16 +1657,16 @@ articles:
         }
     }
 
-    // Schema v0.6.0: markings, declares and placement.
+    // Schema v0.7.0: markings, declares and placement.
     //
     // The engine reads these and does not act on them. What execution should do
     // with a marked article is a separate decision; until it is taken, parsing
-    // is what keeps a v0.6.0 law from silently losing what it declares.
-    mod v0_6_0 {
+    // is what keeps a v0.7.0 law from silently losing what it declares.
+    mod v0_7_0 {
         use super::*;
 
         const LAW_V0_6_0: &str = r#"
-$schema: https://example.org/schema/v0.6.0/schema.json
+$schema: https://example.org/schema/v0.7.0/schema.json
 $id: test_markings
 regulatory_layer: WET
 publication_date: '2025-01-01'
@@ -1680,11 +1690,13 @@ articles:
           applies_from: '2026-01-01'
       markings:
         - about: het kalenderjaar waarop de tegemoetkoming betrekking heeft
-          resolution: engine
+          reason: de motor leest het jaardeel niet uit een datum
+          resolution: operation
           resolved_by: "Een YEAR-bewerking die het jaardeel van een datum oplevert"
           target: [berekeningsjaar]
           legal_text_excerpt: "het berekeningsjaar waarop de tegemoetkoming betrekking heeft"
         - about: kwantificatie over de leden van het huishouden
+          reason: het model kent alleen regels over een waarde, niet over een verzameling
           resolution: model
           target: []
           legal_text_excerpt: "de leden van het huishouden"
@@ -1697,7 +1709,7 @@ articles:
             let markings = law.articles[0].get_markings().unwrap();
 
             assert_eq!(markings.len(), 2);
-            assert_eq!(markings[0].resolution, MarkingResolution::Engine);
+            assert_eq!(markings[0].resolution, MarkingResolution::Operation);
             assert_eq!(markings[0].target, vec!["berekeningsjaar".to_string()]);
             assert!(markings[0].resolved_by.is_some());
             assert!(!markings[0].accepted);
