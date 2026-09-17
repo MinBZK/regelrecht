@@ -2092,6 +2092,14 @@ die van het schema — als veld in de kroniek, niet als weergave. Dat een aanvra
 op Awir art. 15 berust, geldt voor elke aanvraag, en dan hoort het één keer
 opgeschreven te staan.
 
+Eén gram per **stage**, en dus één naam per stage: een besluit legt een gram met
+de naam van de besluit-definitie, zijn bekendmaking een gram met
+`<besluit>_bekendmaking` (zie
+[De bekendmaking](#de-bekendmaking-een-tweede-gram-op-dezelfde-zaak)). Draagt
+`beschikkingen` in een wereldbestand een schema, dan horen ze er allebei in te
+staan; anders weigert de bekendmaking met de melding dat de stroom die
+gebeurtenis niet kent.
+
 Een stroom **zonder** `gebeurtenissen` blijft toegestaan en wordt niet getoetst:
 een kroniek van een organisatie die er nooit een schema bij schreef, is nog
 steeds een kroniek, en de toets hoort erbij te komen doordat iemand hem
