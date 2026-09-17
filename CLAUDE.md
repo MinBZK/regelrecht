@@ -94,6 +94,79 @@ merge). The format is **Conventional Commits**: `type(scope): subject`, where
 Per the global convention these subjects are written in **Dutch** (PR
 descriptions too), while code identifiers stay English.
 
+### Every pull request names its werkpakket
+
+**Every PR body ends with a `Werkpakket:` line naming the werkpakket from the
+roadmap that the work contributes to.** The check **`Werkpakket genoemd`**
+(`.github/workflows/werkpakket-gate.yml`) blocks the merge without it. Write the
+line whenever you open a PR; it is not optional and not something to ask about.
+
+```
+Werkpakket: referentie-casus-i
+Werkpakket: referentie-casus-i, effect-over-tijd
+Werkpakket: geen — losse typefout in de docs
+```
+
+- **The slug is the werkpakket's `id`**, which is also its filename and its URL.
+  The full list is `ls docs/src/content/roadmap/werkpakketten/`, rendered at
+  `/roadmap`. Never invent one: an unknown slug fails the check, which then
+  suggests the nearest matches.
+- **Several werkpakketten** on one line, comma-separated.
+- **`geen` needs a reason.** `Werkpakket: geen` on its own fails. Work that
+  genuinely belongs to no werkpakket says why: `geen — losse typefout in de
+  docs`. Without the reason it is a box that fills itself, and then the check
+  measures whether someone can paste a line rather than whether they asked the
+  question.
+- **Exempt**, decided from the API and not from the workflow: Dependabot PRs and
+  fork PRs.
+
+Put it on its own line at the end of the body, in trailer form. That is what
+makes it greppable, survives being copied into a merge commit, and lets a later
+script total up commits and PRs per werkpakket without this gate changing.
+
+**Write the bare slug.** After the gate passes, `script/linkify-werkpakket.sh`
+rewrites the line in the PR body into a markdown link to the roadmap, so the
+reference is clickable where people actually read it:
+
+```
+Werkpakket: [referentie-casus-i](https://regelrecht.rijks.app/roadmap/werkpakket/referentie-casus-i)
+```
+
+Do not write that link yourself and do not paste a URL into the trailer; the bot
+builds it. The gate reads both forms (it strips the markdown before matching), so
+the rewrite cannot turn the next run red, and a line that is already a link is
+left alone. The werkpakket page links back to the PRs carrying its slug, so the
+reference works in both directions.
+
+Commit messages are not checked and carry no trailer requirement. Note that this
+repo squash-merges and the squash body is assembled from the individual commit
+messages, not the PR body, so a `Werkpakket:` line only reaches `git log` if you
+put it in a commit message. Do that when it is useful, not as a rule.
+
+**When the PR touches a law from the corpus, add a `Wet:` line under it**, with
+the law's `$id` (the directory name under `corpus/regulation/`):
+
+```
+Werkpakket: referentie-casus-i
+Wet: wet_op_de_zorgtoeslag
+```
+
+This line is optional, because most PRs touch no law and requiring it would
+produce the same empty box as a reasonless `geen`. Present, it has to resolve:
+the gate rejects an id that is not in the corpus, and renders each one as a link
+to the law on wetten.overheid.nl in the check's summary. The URL comes from the
+law file's own `url` (falling back to `bwb_id`), so it cannot drift from the
+corpus. Do not write the link yourself, and never invent a BWB number: name the
+`$id` and let the gate resolve it.
+
+Which werkpakket a change belongs to is a judgement, so make it deliberately:
+match the work to the roadmap rather than reaching for the nearest-sounding
+slug. If nothing fits, `geen` with an honest reason is the correct answer, not a
+failure. The logic lives in `script/require-werkpakket.sh`, with
+`script/require-werkpakket.test.sh` next to it (a `gh` stub) covering every path
+that decides green or red; both run as a pre-commit hook. Content changes to the
+roadmap itself go through the `roadmap` skill.
+
 ### Test Data
 
 **Never use real secret or private information in tests.** This is a public

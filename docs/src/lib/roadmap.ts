@@ -589,7 +589,8 @@ export function assertReferencesResolve(
     }
     seen.add(data.id);
     // The filename is the werkpakket's id; keeping the two equal is what makes
-    // the content directory navigable.
+    // the content directory navigable — with slugs that is the whole point of
+    // it, since `ls` then reads as a list of werkpakketten.
     if (bestandsnaam !== undefined && bestandsnaam !== data.id) {
       problems.push(
         `bestand "${bestandsnaam}.md" bevat id "${data.id}"; die horen gelijk te zijn`,

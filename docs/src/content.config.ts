@@ -68,13 +68,35 @@ const rfcs = defineCollection({
  * src/data/roadmap-config.json, which a per-entry schema cannot see. That
  * check, and the samenhangIds one, live in assertReferencesResolve().
  */
+
+/*
+ * A werkpakket id is a slug: lowercase, digits, single hyphens between parts.
+ *
+ * It replaced a UUID. The id is the filename, the URL and what samenhangIds
+ * point at, and a UUID made all three unreadable — a list of three
+ * samenhangIds carried no information about the relation it recorded. The slug
+ * is derived from the titel once and then stays put; it is deliberately not
+ * kept in sync with the titel, because a reference that moves when a title is
+ * edited is exactly what makes a derived slug unusable as an identity.
+ *
+ * The pattern rejects uppercase rather than tolerating it. The filename must
+ * equal the id (assertReferencesResolve), that comparison is literal, and
+ * macOS is case-insensitive: a capital would look right locally and fail the
+ * build elsewhere.
+ */
+const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+const slug = () =>
+  z
+    .string()
+    .regex(SLUG, 'moet een slug zijn: kleine letters, cijfers en koppeltekens');
+
 const werkpakketten = defineCollection({
   loader: glob({
     pattern: '*.md',
     base: 'src/content/roadmap/werkpakketten',
   }),
   schema: z.object({
-    id: z.string().uuid(),
+    id: slug(),
     titel: z.string(),
     faseId: z.string(),
     disciplineId: z.string(),
@@ -105,7 +127,7 @@ const werkpakketten = defineCollection({
         ]),
       )
       .default([]),
-    samenhangIds: z.array(z.string().uuid()).default([]),
+    samenhangIds: z.array(slug()).default([]),
     // Two axes that genuinely diverge, so two fields rather than one.
     // A question can be answered without anything being built (onderzoek
     // 'beantwoord', bouw 'niet'), and a thing can be built while the question

@@ -1,0 +1,142 @@
+---
+name: Werkpakket Gate
+
+# Elke pull request noemt het werkpakket waaraan hij bijdraagt, als een regel
+# `Werkpakket: <slug>` onderaan de omschrijving. De roadmap op /roadmap zegt wat
+# er te doen is; zonder deze regel staat er nergens wat er van dat werk
+# daadwerkelijk gedaan wordt.
+#
+# `edited` staat erbij omdat de regel in de body staat: wie hem na een rode
+# check toevoegt, moet een nieuwe run krijgen. Zonder die trigger blijft de
+# check rood staan op de laatste `synchronize`-run, hoe vaak de body ook wordt
+# bijgewerkt — en dan is de enige uitweg een lege commit, wat de poort tot een
+# pesterij maakt.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions: {}
+
+jobs:
+  # Geen `if:` — deze job draait op elke PR en rapporteert altijd, ook op forks
+  # en op drafts, want een verplichte check die soms niet rapporteert blokkeert
+  # zo'n PR voor altijd. Wat buiten de eis valt (Dependabot, een fork) bepaalt
+  # het script uit de API, niet deze workflow: alles wat hier in een env-blok
+  # staat is geschreven door de auteur van de PR die beoordeeld wordt.
+  werkpakket-gate:
+    name: Werkpakket genoemd
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 1
+
+      # Dezelfde reden als bij de review- en security-poort: een PR die het
+      # script naar `exit 0` verandert zou anders per definitie groen zijn.
+      #
+      # De werkpakketten zelf komen wél uit de checkout van de PR. Dat is geen
+      # gat: een verzonnen slug toevoegen om hier langs te komen betekent een
+      # werkpakket aan de roadmap toevoegen, en dat staat zichtbaar in de diff.
+      # Het is bovendien nodig, want een PR die een nieuw werkpakket toevoegt en
+      # er meteen aan werkt moet zichzelf kunnen noemen.
+      - name: Take the gate script from the base branch
+        id: base
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GATE: script/require-werkpakket.sh
+        run: |
+          set -uo pipefail
+          fail() {
+            echo "::error title=Werkpakket genoemd::$1"
+            exit 1
+          }
+          git fetch --depth=1 origin "$BASE_SHA" ||
+            fail "base-commit ${BASE_SHA} is niet op te halen, dus de versie van de poort is niet vast te stellen. Draai deze job opnieuw."
+          # Staat het script niet op de base-branch, dan is dit de pull request
+          # die de poort invoert (of een die haar weghaalt): er is dan op main
+          # nog niets wat deze check beschermt. Dat is het enige geval waarin
+          # niet-draaien juist is; overslaan bij een leesfout zou de bypass zijn
+          # die de rest van deze stap dichtzet.
+          if ! git cat-file -e "${BASE_SHA}:${GATE}" 2>/dev/null; then
+            echo "bootstrap=true" >>"$GITHUB_OUTPUT"
+            echo "::notice title=Werkpakket genoemd::${GATE} staat nog niet op de base-branch (${BASE_SHA}); deze pull request voert de poort zelf in. Er valt hier niets te bewaken."
+            exit 0
+          fi
+          git checkout "$BASE_SHA" -- "$GATE" ||
+            fail "${GATE} is niet uit ${BASE_SHA} te checkouten, dus de poort zou de versie uit deze PR draaien. Draai deze job opnieuw."
+          echo "Poort draait de versie van ${BASE_SHA}."
+
+      - name: Require a werkpakket reference in the pull request body
+        if: steps.base.outputs.bootstrap != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: script/require-werkpakket.sh
+
+  # Aparte job, want deze heeft schrijfrechten op de pull request nodig en de
+  # poort hierboven niet. Die scheiding houdt de poort zelf lezend.
+  #
+  # Alleen als de poort groen is: een body herschrijven van een PR die de check
+  # niet haalt zou een slug vastleggen die nergens heen wijst. Fork-PR's vallen
+  # af omdat `GITHUB_TOKEN` daar leesrechten heeft, en Dependabot omdat daar
+  # niets te linken valt.
+  werkpakket-link:
+    name: Werkpakket-link in de omschrijving
+    needs: werkpakket-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository
+      && github.event.pull_request.user.login != 'dependabot[bot]'
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 1
+
+      # Van de base-branch, om dezelfde reden als de poort: dit script mag de
+      # body van een pull request bewerken, dus de versie uit die pull request
+      # draaien zou betekenen dat de PR bepaalt wat er met zijn eigen body
+      # gebeurt. Staat het er niet, dan voert deze PR de stap in en valt er niets
+      # te herschrijven.
+      - name: Take the script from the base branch
+        id: base
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          SCRIPT: script/linkify-werkpakket.sh
+        run: |
+          set -uo pipefail
+          git fetch --depth=1 origin "$BASE_SHA" || {
+            echo "::notice title=Werkpakket-link::base-commit ${BASE_SHA} is niet op te halen; de slug blijft zoals hij is."
+            echo "skip=true" >>"$GITHUB_OUTPUT"
+            exit 0
+          }
+          if ! git cat-file -e "${BASE_SHA}:${SCRIPT}" 2>/dev/null; then
+            echo "::notice title=Werkpakket-link::${SCRIPT} staat nog niet op de base-branch; deze pull request voert hem zelf in."
+            echo "skip=true" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git checkout "$BASE_SHA" -- "$SCRIPT" || {
+            echo "::notice title=Werkpakket-link::${SCRIPT} is niet uit ${BASE_SHA} te checkouten."
+            echo "skip=true" >>"$GITHUB_OUTPUT"
+          }
+
+      - name: Link the werkpakket slug to the roadmap
+        if: steps.base.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: script/linkify-werkpakket.sh
