@@ -306,11 +306,13 @@ github-test:
 harvester-test:
     cd packages/harvester && {{ci_flags}} cargo test
 
-# Run the pipeline unit tests in `src/`. The container-backed suites live in
-# `tests/` and run via `pipeline-integration-test`, not here.
-[doc("Run pipeline unit tests (src/ only, no Docker)")]
+# Run pipeline unit tests. The container-backed suites in `tests/` run via
+# `pipeline-integration-test`, not here. The CLI test suite runs the built
+# binary against temp directories and needs no Docker either.
+[doc("Run pipeline unit tests (src/ plus the CLI suite, no Docker)")]
 pipeline-test:
     cd packages/pipeline && {{ci_flags}} cargo test --lib
+    cd packages/pipeline && {{ci_flags}} cargo test --test law_source_cli --test law_check_cli
 
 # Run pipeline integration tests (requires Docker for testcontainers)
 pipeline-integration-test:
