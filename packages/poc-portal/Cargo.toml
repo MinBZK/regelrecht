@@ -35,7 +35,7 @@ subtle.workspace = true
 # digest 0.11 / sha2 0.11 while this workspace is on sha2 0.10 (digest 0.10).
 # Taking 0.13 would compile a second digest generation that our Sha256 cannot
 # feed. 0.12.1 is already in the tree via hkdf.
-hmac = "0.12"
+hmac = "0.13"
 base64.workspace = true
 time.workspace = true
 # Reverse proxy to the `napp` component, in-cluster. 0.13 (not the 0.12 that
