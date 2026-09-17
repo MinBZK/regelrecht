@@ -640,7 +640,6 @@ fn a_declared_value_reports_its_unit() {
     }
 }
 
-
 /// Every computing step names the article it came from.
 ///
 /// The engine records the regulation and article while it executes the article
