@@ -2763,12 +2763,6 @@ fn recordings_of(
     vec![own, delivered]
 }
 
-/// Toets de acties tegen de wereld waarin ze staan.
-///
-/// Alles wat een actie belooft, blijkt hier en niet bij de eerste aanroep: bestaat
-/// de actor, bestaat de cel, kan de stroom het gram dragen, bestaat het besluit,
-/// en gaat de voorwaarde over een veld dat bestaat. Een wereldbestand met een
-/// typfout in een actie hoort niet te laden.
 /// De optuigtoets op hooks: welke hook vuurt bij een besluit van deze wereld op
 /// een verplichte parameter die er daar niet is?
 ///
@@ -2816,6 +2810,12 @@ fn hooks_zonder_input(
     warnings
 }
 
+/// Toets de acties tegen de wereld waarin ze staan.
+///
+/// Alles wat een actie belooft, blijkt hier en niet bij de eerste aanroep: bestaat
+/// de actor, bestaat de cel, kan de stroom het gram dragen, bestaat het besluit,
+/// en gaat de voorwaarde over een veld dat bestaat. Een wereldbestand met een
+/// typfout in een actie hoort niet te laden.
 fn check_actions(
     actions: &[ActionDefinition],
     cells: &BTreeMap<String, Cell>,

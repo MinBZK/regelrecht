@@ -5466,6 +5466,57 @@ params:
         assert_eq!(relation.schuldeiser, "999993653");
     }
 
+    /// **Een verplichting van nul die op de bekendmaking wacht, wacht nergens op.**
+    ///
+    /// Nul is niets te betalen, ook als de dag pas bij de bekendmaking vast zou
+    /// staan: er komt geen wachtende termijn in het gram — die zou de
+    /// bekendmaking later alsnog een termijn van nul laten inroosteren — maar de
+    /// verplichting staat onder `niets_te_betalen`.
+    #[test]
+    fn een_wachtende_verplichting_van_nul_is_niets_te_betalen() {
+        let obligation = betaling("vanaf: bekendmaking\nvervaldatum: uiterste_betaaldatum_4_87\n");
+        valideer(&obligation)
+            .unwrap_or_else(|e| panic!("de verplichting zelf hoort geldig te zijn: {e}"));
+        let declared = DeclaredObligations {
+            origin: origin(),
+            authority: Some("Dienst Toeslagen".to_string()),
+            article_outputs: BTreeSet::from(["hoogte_zorgtoeslag".to_string()]),
+            stage_outputs: BTreeSet::from(["uiterste_betaaldatum_4_87".to_string()]),
+            items: vec![obligation],
+            vervanging: None,
+        };
+        let parties = PartyBindings::default();
+        let op_moment =
+            NaiveDate::from_ymd_opt(2025, 1, 1).unwrap_or_else(|| panic!("een geldige testdatum"));
+        let schema = uitvoerend_besluit()
+            .schedule_obligations(
+                ObligationScope {
+                    cell: "toeslagen",
+                    parties: &parties,
+                    zaakkenmerk: "zorgtoeslag/2025",
+                    op_moment,
+                },
+                &declared,
+                &BTreeMap::from([("hoogte_zorgtoeslag".to_string(), Value::Int(0))]),
+                &BTreeMap::from([("jaar".to_string(), Value::String("999993653".to_string()))]),
+                &BTreeMap::new(),
+            )
+            .unwrap_or_else(|e| panic!("nul hoort geen fout te zijn: {e}"));
+        assert!(schema.termijnen.is_empty(), "{:?}", schema.termijnen);
+        assert!(
+            schema.wachtend.is_empty(),
+            "nul hoort niet op de bekendmaking te wachten: {:?}",
+            schema.wachtend
+        );
+        let [niets] = schema.niets_te_betalen.as_slice() else {
+            panic!(
+                "de verplichting hoort onder niets_te_betalen te staan: {:?}",
+                schema.niets_te_betalen
+            );
+        };
+        assert_eq!(niets.soort, ObligationKind::Betaling);
+    }
+
     /// Een artikel zoals het in een regeling staat.
     fn artikel(block: &str) -> Article {
         serde_yaml_ng::from_str(&format!(

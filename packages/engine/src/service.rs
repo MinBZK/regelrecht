@@ -131,13 +131,14 @@ fn parse_calculation_date(calculation_date: &str) -> Result<NaiveDate> {
         .map_err(|e| EngineError::InvalidDate(format!("{calculation_date}: {e}")))
 }
 
-/// Map a failed version selection to an honest engine error (RFC-019 §3):
-/// the message states the data fact for the reference date, never a verdict.
 /// The input an error says is missing, if that is what the error is about.
 ///
 /// For [`LawExecutionService::set_skip_hooks_with_missing_inputs`]: only an
-/// input that does not exist makes a hook skippable. A traced error is looked
-/// through, so the same failure reads the same with and without a trace.
+/// input the hook cannot have makes a hook skippable — one that does not exist
+/// (`VariableNotFound`), or a required parameter that names nobody because it
+/// arrived as null or unknown (`MissingParameter`). Any other failure is a
+/// failure of the hook itself. A traced error is looked through, so the same
+/// failure reads the same with and without a trace.
 fn missing_input(error: &EngineError) -> Option<String> {
     match error {
         EngineError::VariableNotFound(name) | EngineError::MissingParameter { name, .. } => {
@@ -148,6 +149,8 @@ fn missing_input(error: &EngineError) -> Option<String> {
     }
 }
 
+/// Map a failed version selection to an honest engine error (RFC-019 §3):
+/// the message states the data fact for the reference date, never a verdict.
 fn selection_error(law_id: &str, calculation_date: &str, reason: SelectionReason) -> EngineError {
     match reason {
         SelectionReason::NotFound => EngineError::LawNotFound(law_id.to_string()),
