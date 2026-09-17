@@ -55,6 +55,7 @@
         {
           "stream": "aanslagen",
           "key": "bsn",
+          "gebeurtenissen": [],
           "grams": [
             {
               "kind": "decretogram",
@@ -129,10 +130,152 @@
         {
           "stream": "betalingen",
           "key": "zaakkenmerk",
+          "gebeurtenissen": [
+            {
+              "name": "betaling_gedaan",
+              "intake": "betaling",
+              "grondslag": "Algemene wet bestuursrecht, art. 4:89",
+              "fields": [
+                {
+                  "name": "zaakkenmerk",
+                  "type": "string"
+                },
+                {
+                  "name": "bedrag",
+                  "type": "amount"
+                },
+                {
+                  "name": "volgnummer",
+                  "type": "number"
+                },
+                {
+                  "name": "soort",
+                  "type": "string"
+                },
+                {
+                  "name": "besluit",
+                  "type": "string"
+                },
+                {
+                  "name": "schuldenaar",
+                  "type": "string"
+                },
+                {
+                  "name": "schuldeiser",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "betaling_gemeld",
+              "intake": "levering",
+              "grondslag": "Algemene wet bestuursrecht, art. 4:89",
+              "fields": [
+                {
+                  "name": "zaakkenmerk",
+                  "type": "string"
+                },
+                {
+                  "name": "bedrag",
+                  "type": "amount"
+                },
+                {
+                  "name": "volgnummer",
+                  "type": "number"
+                },
+                {
+                  "name": "soort",
+                  "type": "string"
+                },
+                {
+                  "name": "besluit",
+                  "type": "string"
+                },
+                {
+                  "name": "schuldenaar",
+                  "type": "string"
+                },
+                {
+                  "name": "schuldeiser",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "terugvordering_gedaan",
+              "intake": "betaling",
+              "grondslag": "Algemene wet inkomensafhankelijke regelingen, art. 26",
+              "fields": [
+                {
+                  "name": "zaakkenmerk",
+                  "type": "string"
+                },
+                {
+                  "name": "bedrag",
+                  "type": "amount"
+                },
+                {
+                  "name": "volgnummer",
+                  "type": "number"
+                },
+                {
+                  "name": "soort",
+                  "type": "string"
+                },
+                {
+                  "name": "besluit",
+                  "type": "string"
+                },
+                {
+                  "name": "schuldenaar",
+                  "type": "string"
+                },
+                {
+                  "name": "schuldeiser",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "terugvordering_gemeld",
+              "intake": "levering",
+              "grondslag": "Algemene wet inkomensafhankelijke regelingen, art. 26",
+              "fields": [
+                {
+                  "name": "zaakkenmerk",
+                  "type": "string"
+                },
+                {
+                  "name": "bedrag",
+                  "type": "amount"
+                },
+                {
+                  "name": "volgnummer",
+                  "type": "number"
+                },
+                {
+                  "name": "soort",
+                  "type": "string"
+                },
+                {
+                  "name": "besluit",
+                  "type": "string"
+                },
+                {
+                  "name": "schuldenaar",
+                  "type": "string"
+                },
+                {
+                  "name": "schuldeiser",
+                  "type": "string"
+                }
+              ]
+            }
+          ],
           "grams": [
             {
               "kind": "executogram",
-              "name": "betaling",
+              "name": "betaling_gedaan",
               "intake": "betaling",
               "recording_actor": "belastingdienst",
               "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-03-01), door Dienst Toeslagen aan 999993653, termijn 1 van 4",
@@ -230,7 +373,7 @@
             },
             {
               "kind": "executogram",
-              "name": "betaling",
+              "name": "betaling_gedaan",
               "intake": "betaling",
               "recording_actor": "belastingdienst",
               "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-03-01), door Dienst Toeslagen aan 999993653, termijn 2 van 4",
@@ -328,7 +471,7 @@
             },
             {
               "kind": "executogram",
-              "name": "betaling",
+              "name": "betaling_gedaan",
               "intake": "betaling",
               "recording_actor": "belastingdienst",
               "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-03-01), door Dienst Toeslagen aan 999993653, termijn 3 van 4",
@@ -426,7 +569,7 @@
             },
             {
               "kind": "executogram",
-              "name": "betaling",
+              "name": "betaling_gedaan",
               "intake": "betaling",
               "recording_actor": "belastingdienst",
               "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-03-01), door Dienst Toeslagen aan 999993653, termijn 4 van 4",
@@ -590,13 +733,34 @@
         {
           "stream": "aanvragen",
           "key": "bsn",
+          "gebeurtenissen": [
+            {
+              "name": "aanvraag_ingediend",
+              "intake": "aanvraag",
+              "grondslag": "Algemene wet inkomensafhankelijke regelingen, art. 15",
+              "fields": [
+                {
+                  "name": "bsn",
+                  "type": "string"
+                },
+                {
+                  "name": "jaar",
+                  "type": "number"
+                },
+                {
+                  "name": "ondertekend_op",
+                  "type": "date"
+                }
+              ]
+            }
+          ],
           "grams": [
             {
               "kind": "executogram",
               "name": "aanvraag_ingediend",
               "intake": "aanvraag",
               "recording_actor": "burger",
-              "grondslag": "Awir art. 15",
+              "grondslag": "Algemene wet inkomensafhankelijke regelingen, art. 15",
               "op_moment": "2024-01-10",
               "fields": {
                 "bsn": {
@@ -604,7 +768,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "aanvraag",
-                    "grondslag": "Awir art. 15"
+                    "grondslag": "Algemene wet inkomensafhankelijke regelingen, art. 15"
                   }
                 },
                 "jaar": {
@@ -612,7 +776,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "aanvraag",
-                    "grondslag": "Awir art. 15"
+                    "grondslag": "Algemene wet inkomensafhankelijke regelingen, art. 15"
                   }
                 },
                 "ondertekend_op": {
@@ -620,7 +784,7 @@
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "aanvraag",
-                    "grondslag": "Awir art. 15"
+                    "grondslag": "Algemene wet inkomensafhankelijke regelingen, art. 15"
                   }
                 }
               }
@@ -630,10 +794,152 @@
         {
           "stream": "betalingen",
           "key": "zaakkenmerk",
+          "gebeurtenissen": [
+            {
+              "name": "betaling_gedaan",
+              "intake": "betaling",
+              "grondslag": "Algemene wet bestuursrecht, art. 4:89",
+              "fields": [
+                {
+                  "name": "zaakkenmerk",
+                  "type": "string"
+                },
+                {
+                  "name": "bedrag",
+                  "type": "amount"
+                },
+                {
+                  "name": "volgnummer",
+                  "type": "number"
+                },
+                {
+                  "name": "soort",
+                  "type": "string"
+                },
+                {
+                  "name": "besluit",
+                  "type": "string"
+                },
+                {
+                  "name": "schuldenaar",
+                  "type": "string"
+                },
+                {
+                  "name": "schuldeiser",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "betaling_gemeld",
+              "intake": "levering",
+              "grondslag": "Algemene wet bestuursrecht, art. 4:89",
+              "fields": [
+                {
+                  "name": "zaakkenmerk",
+                  "type": "string"
+                },
+                {
+                  "name": "bedrag",
+                  "type": "amount"
+                },
+                {
+                  "name": "volgnummer",
+                  "type": "number"
+                },
+                {
+                  "name": "soort",
+                  "type": "string"
+                },
+                {
+                  "name": "besluit",
+                  "type": "string"
+                },
+                {
+                  "name": "schuldenaar",
+                  "type": "string"
+                },
+                {
+                  "name": "schuldeiser",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "terugvordering_gedaan",
+              "intake": "betaling",
+              "grondslag": "Algemene wet inkomensafhankelijke regelingen, art. 26",
+              "fields": [
+                {
+                  "name": "zaakkenmerk",
+                  "type": "string"
+                },
+                {
+                  "name": "bedrag",
+                  "type": "amount"
+                },
+                {
+                  "name": "volgnummer",
+                  "type": "number"
+                },
+                {
+                  "name": "soort",
+                  "type": "string"
+                },
+                {
+                  "name": "besluit",
+                  "type": "string"
+                },
+                {
+                  "name": "schuldenaar",
+                  "type": "string"
+                },
+                {
+                  "name": "schuldeiser",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "terugvordering_gemeld",
+              "intake": "levering",
+              "grondslag": "Algemene wet inkomensafhankelijke regelingen, art. 26",
+              "fields": [
+                {
+                  "name": "zaakkenmerk",
+                  "type": "string"
+                },
+                {
+                  "name": "bedrag",
+                  "type": "amount"
+                },
+                {
+                  "name": "volgnummer",
+                  "type": "number"
+                },
+                {
+                  "name": "soort",
+                  "type": "string"
+                },
+                {
+                  "name": "besluit",
+                  "type": "string"
+                },
+                {
+                  "name": "schuldenaar",
+                  "type": "string"
+                },
+                {
+                  "name": "schuldeiser",
+                  "type": "string"
+                }
+              ]
+            }
+          ],
           "grams": [
             {
               "kind": "executogram",
-              "name": "terugvordering",
+              "name": "terugvordering_gedaan",
               "intake": "betaling",
               "recording_actor": "burger",
               "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening); bij een negatief slotbedrag art. 24, derde lid jo. art. 26 (de belanghebbende is de terugvordering in zijn geheel verschuldigd) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): terugvordering uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), door 999993653 aan Dienst Toeslagen, termijn 1 van 1",
@@ -1143,6 +1449,27 @@
         {
           "stream": "aanvragen",
           "key": "bsn",
+          "gebeurtenissen": [
+            {
+              "name": "aanvraag_ontvangen",
+              "intake": "aanvraag",
+              "grondslag": "Algemene wet inkomensafhankelijke regelingen, art. 15",
+              "fields": [
+                {
+                  "name": "bsn",
+                  "type": "string"
+                },
+                {
+                  "name": "jaar",
+                  "type": "number"
+                },
+                {
+                  "name": "ondertekend_op",
+                  "type": "date"
+                }
+              ]
+            }
+          ],
           "grams": [
             {
               "kind": "executogram",
@@ -1183,6 +1510,23 @@
         {
           "stream": "relaties",
           "key": "bsn",
+          "gebeurtenissen": [
+            {
+              "name": "relatie_gewijzigd",
+              "intake": "levering",
+              "grondslag": "melding uit de basisregistratie personen",
+              "fields": [
+                {
+                  "name": "bsn",
+                  "type": "string"
+                },
+                {
+                  "name": "partnerschap_type",
+                  "type": "string"
+                }
+              ]
+            }
+          ],
           "grams": [
             {
               "kind": "executogram",
@@ -1215,6 +1559,27 @@
         {
           "stream": "inkomensleveringen",
           "key": "bsn",
+          "gebeurtenissen": [
+            {
+              "name": "inkomenslevering",
+              "intake": "levering",
+              "grondslag": "jaarlijkse inkomenslevering",
+              "fields": [
+                {
+                  "name": "bsn",
+                  "type": "string"
+                },
+                {
+                  "name": "is_verzekerde",
+                  "type": "boolean"
+                },
+                {
+                  "name": "vermogen",
+                  "type": "amount"
+                }
+              ]
+            }
+          ],
           "grams": [
             {
               "kind": "executogram",
@@ -1255,10 +1620,152 @@
         {
           "stream": "betalingen",
           "key": "zaakkenmerk",
+          "gebeurtenissen": [
+            {
+              "name": "betaling_gedaan",
+              "intake": "betaling",
+              "grondslag": "Algemene wet bestuursrecht, art. 4:89",
+              "fields": [
+                {
+                  "name": "zaakkenmerk",
+                  "type": "string"
+                },
+                {
+                  "name": "bedrag",
+                  "type": "amount"
+                },
+                {
+                  "name": "volgnummer",
+                  "type": "number"
+                },
+                {
+                  "name": "soort",
+                  "type": "string"
+                },
+                {
+                  "name": "besluit",
+                  "type": "string"
+                },
+                {
+                  "name": "schuldenaar",
+                  "type": "string"
+                },
+                {
+                  "name": "schuldeiser",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "betaling_gemeld",
+              "intake": "levering",
+              "grondslag": "Algemene wet bestuursrecht, art. 4:89",
+              "fields": [
+                {
+                  "name": "zaakkenmerk",
+                  "type": "string"
+                },
+                {
+                  "name": "bedrag",
+                  "type": "amount"
+                },
+                {
+                  "name": "volgnummer",
+                  "type": "number"
+                },
+                {
+                  "name": "soort",
+                  "type": "string"
+                },
+                {
+                  "name": "besluit",
+                  "type": "string"
+                },
+                {
+                  "name": "schuldenaar",
+                  "type": "string"
+                },
+                {
+                  "name": "schuldeiser",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "terugvordering_gedaan",
+              "intake": "betaling",
+              "grondslag": "Algemene wet inkomensafhankelijke regelingen, art. 26",
+              "fields": [
+                {
+                  "name": "zaakkenmerk",
+                  "type": "string"
+                },
+                {
+                  "name": "bedrag",
+                  "type": "amount"
+                },
+                {
+                  "name": "volgnummer",
+                  "type": "number"
+                },
+                {
+                  "name": "soort",
+                  "type": "string"
+                },
+                {
+                  "name": "besluit",
+                  "type": "string"
+                },
+                {
+                  "name": "schuldenaar",
+                  "type": "string"
+                },
+                {
+                  "name": "schuldeiser",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "terugvordering_gemeld",
+              "intake": "levering",
+              "grondslag": "Algemene wet inkomensafhankelijke regelingen, art. 26",
+              "fields": [
+                {
+                  "name": "zaakkenmerk",
+                  "type": "string"
+                },
+                {
+                  "name": "bedrag",
+                  "type": "amount"
+                },
+                {
+                  "name": "volgnummer",
+                  "type": "number"
+                },
+                {
+                  "name": "soort",
+                  "type": "string"
+                },
+                {
+                  "name": "besluit",
+                  "type": "string"
+                },
+                {
+                  "name": "schuldenaar",
+                  "type": "string"
+                },
+                {
+                  "name": "schuldeiser",
+                  "type": "string"
+                }
+              ]
+            }
+          ],
           "grams": [
             {
               "kind": "executogram",
-              "name": "betaling_ontvangen_gemeld",
+              "name": "betaling_gemeld",
               "intake": "levering",
               "recording_actor": "toeslagen",
               "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-03-01), door Dienst Toeslagen aan 999993653, termijn 1 van 4",
@@ -1356,7 +1863,7 @@
             },
             {
               "kind": "executogram",
-              "name": "betaling_ontvangen_gemeld",
+              "name": "betaling_gemeld",
               "intake": "levering",
               "recording_actor": "toeslagen",
               "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-03-01), door Dienst Toeslagen aan 999993653, termijn 2 van 4",
@@ -1454,7 +1961,7 @@
             },
             {
               "kind": "executogram",
-              "name": "betaling_ontvangen_gemeld",
+              "name": "betaling_gemeld",
               "intake": "levering",
               "recording_actor": "toeslagen",
               "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-03-01), door Dienst Toeslagen aan 999993653, termijn 3 van 4",
@@ -1552,7 +2059,7 @@
             },
             {
               "kind": "executogram",
-              "name": "betaling_ontvangen_gemeld",
+              "name": "betaling_gemeld",
               "intake": "levering",
               "recording_actor": "toeslagen",
               "grondslag": "Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen) (wet_op_de_zorgtoeslag artikel 2, versie 2024-01-01): betaling uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-03-01), door Dienst Toeslagen aan 999993653, termijn 4 van 4",
@@ -1650,7 +2157,7 @@
             },
             {
               "kind": "executogram",
-              "name": "terugvordering_ontvangen_gemeld",
+              "name": "terugvordering_gemeld",
               "intake": "levering",
               "recording_actor": "toeslagen",
               "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening); bij een negatief slotbedrag art. 24, derde lid jo. art. 26 (de belanghebbende is de terugvordering in zijn geheel verschuldigd) (algemene_wet_inkomensafhankelijke_regelingen artikel 19): terugvordering uit besluit 'zorgtoeslag_vaststelling' van cel 'toeslagen' (2024-12-15), door 999993653 aan Dienst Toeslagen, termijn 1 van 1",
@@ -1751,6 +2258,7 @@
         {
           "stream": "beschikkingen",
           "key": "zaakkenmerk",
+          "gebeurtenissen": [],
           "grams": [
             {
               "kind": "decretogram",
@@ -2047,7 +2555,7 @@
                     },
                     {
                       "chronicle": "betalingen",
-                      "content_hash": "sha256:95f933ea402de3aaca5383685443af81dcc067b11c30f8dfaa1fad4ec9ee19ec",
+                      "content_hash": "sha256:33adae5002521484e50fb1e97e27b706f64cb47b0b64a4209724f7a04652dbd6",
                       "grams": 4,
                       "op_moment": "2024-12-15"
                     }
@@ -2386,7 +2894,7 @@
               "chronicle": "betalingen",
               "id": "belastingdienst|betalingen|0",
               "kind": "executogram",
-              "name": "betaling",
+              "name": "betaling_gedaan",
               "volgnummer": 0,
               "op_moment": "2024-03-01",
               "regulation_valid_from": null,
@@ -2397,7 +2905,7 @@
               "chronicle": "betalingen",
               "id": "belastingdienst|betalingen|1",
               "kind": "executogram",
-              "name": "betaling",
+              "name": "betaling_gedaan",
               "volgnummer": 1,
               "op_moment": "2024-06-01",
               "regulation_valid_from": null,
@@ -2408,7 +2916,7 @@
               "chronicle": "betalingen",
               "id": "belastingdienst|betalingen|2",
               "kind": "executogram",
-              "name": "betaling",
+              "name": "betaling_gedaan",
               "volgnummer": 2,
               "op_moment": "2024-09-01",
               "regulation_valid_from": null,
@@ -2419,7 +2927,7 @@
               "chronicle": "betalingen",
               "id": "belastingdienst|betalingen|3",
               "kind": "executogram",
-              "name": "betaling",
+              "name": "betaling_gedaan",
               "volgnummer": 3,
               "op_moment": "2024-12-01",
               "regulation_valid_from": null,
@@ -2659,14 +3167,14 @@
           "chronicle": "betalingen",
           "id": "belastingdienst|betalingen|0",
           "kind": "executogram",
-          "name": "betaling"
+          "name": "betaling_gedaan"
         },
         {
           "cell": "toeslagen",
           "chronicle": "betalingen",
           "id": "toeslagen|betalingen|0",
           "kind": "executogram",
-          "name": "betaling_ontvangen_gemeld"
+          "name": "betaling_gemeld"
         }
       ],
       "changes": [
@@ -2708,14 +3216,14 @@
           "chronicle": "betalingen",
           "id": "belastingdienst|betalingen|1",
           "kind": "executogram",
-          "name": "betaling"
+          "name": "betaling_gedaan"
         },
         {
           "cell": "toeslagen",
           "chronicle": "betalingen",
           "id": "toeslagen|betalingen|1",
           "kind": "executogram",
-          "name": "betaling_ontvangen_gemeld"
+          "name": "betaling_gemeld"
         }
       ],
       "changes": [
@@ -2761,14 +3269,14 @@
           "chronicle": "betalingen",
           "id": "belastingdienst|betalingen|2",
           "kind": "executogram",
-          "name": "betaling"
+          "name": "betaling_gedaan"
         },
         {
           "cell": "toeslagen",
           "chronicle": "betalingen",
           "id": "toeslagen|betalingen|2",
           "kind": "executogram",
-          "name": "betaling_ontvangen_gemeld"
+          "name": "betaling_gemeld"
         }
       ],
       "changes": [
@@ -2814,14 +3322,14 @@
           "chronicle": "betalingen",
           "id": "belastingdienst|betalingen|3",
           "kind": "executogram",
-          "name": "betaling"
+          "name": "betaling_gedaan"
         },
         {
           "cell": "toeslagen",
           "chronicle": "betalingen",
           "id": "toeslagen|betalingen|3",
           "kind": "executogram",
-          "name": "betaling_ontvangen_gemeld"
+          "name": "betaling_gemeld"
         }
       ],
       "changes": [
@@ -3073,7 +3581,7 @@
                 "chronicle": "betalingen",
                 "id": "belastingdienst|betalingen|0",
                 "kind": "executogram",
-                "name": "betaling",
+                "name": "betaling_gedaan",
                 "volgnummer": 0,
                 "op_moment": "2024-03-01",
                 "regulation_valid_from": null,
@@ -3084,7 +3592,7 @@
                 "chronicle": "betalingen",
                 "id": "belastingdienst|betalingen|1",
                 "kind": "executogram",
-                "name": "betaling",
+                "name": "betaling_gedaan",
                 "volgnummer": 1,
                 "op_moment": "2024-06-01",
                 "regulation_valid_from": null,
@@ -3095,7 +3603,7 @@
                 "chronicle": "betalingen",
                 "id": "belastingdienst|betalingen|2",
                 "kind": "executogram",
-                "name": "betaling",
+                "name": "betaling_gedaan",
                 "volgnummer": 2,
                 "op_moment": "2024-09-01",
                 "regulation_valid_from": null,
@@ -3106,7 +3614,7 @@
                 "chronicle": "betalingen",
                 "id": "belastingdienst|betalingen|3",
                 "kind": "executogram",
-                "name": "betaling",
+                "name": "betaling_gedaan",
                 "volgnummer": 3,
                 "op_moment": "2024-12-01",
                 "regulation_valid_from": null,
@@ -3132,14 +3640,14 @@
           "chronicle": "betalingen",
           "id": "burger|betalingen|0",
           "kind": "executogram",
-          "name": "terugvordering"
+          "name": "terugvordering_gedaan"
         },
         {
           "cell": "toeslagen",
           "chronicle": "betalingen",
           "id": "toeslagen|betalingen|4",
           "kind": "executogram",
-          "name": "terugvordering_ontvangen_gemeld"
+          "name": "terugvordering_gemeld"
         }
       ],
       "changes": [
