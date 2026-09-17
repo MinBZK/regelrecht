@@ -404,6 +404,26 @@ jobs:
   deploy-production:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Twee main-runs deployen onafhankelijk naar hetzelfde ZAD-deployment, en
+    # zonder wachtrij wint niet de nieuwste commit maar degene die toevallig als
+    # laatste aankomt. Op 17 september 2026 bouwde de run van #1448 het
+    # docs-image met rfc-026 tot en met rfc-033 en rolde dat om 11:44:12 uit;
+    # de run van #1457, van een oudere commit, deployde om 11:46:06 zijn eigen
+    # docs-image daaroverheen. De RFC's stonden daarna niet op de site, terwijl
+    # beide runs deden wat ze moesten doen.
+    #
+    # `cancel-in-progress: false`, want een deploy die halverwege wordt afgekapt
+    # laat het deployment in een onbekende toestand achter; te laat is beter dan
+    # half. Wachtenden worden wél opgeruimd: GitHub houdt alleen de nieuwste
+    # wachtende run vast en annuleert de rest. Dat is hier de gewenste uitkomst,
+    # want die nieuwste draagt de laatste staat van main. Zo'n geannuleerde run
+    # kleurt rood zonder dat er iets mis is met de deploy; hij was ingehaald.
+    #
+    # De groep heeft een vaste naam en geen `github.ref`: deze job draait alleen
+    # op main, en juist álle main-runs horen in dezelfde wachtrij.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
     needs: [build, build-admin, build-harvester-worker, build-enrich-worker, build-pipeline-api, build-grafana, build-lawmaking, build-docs, build-demo, build-poc, build-poc-napp]
     if: >-
       always() &&
