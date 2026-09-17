@@ -33,7 +33,10 @@ use crate::engine::{ArticleEngine, ArticleResult, OutputProvenance};
 use crate::error::{EngineError, Result};
 use crate::operations::ValueResolver;
 use crate::priority;
-use crate::resolver::{RuleResolver, SelectionReason};
+use crate::resolver::{
+    DeclarationKind, DeclarationNotInForce, DeclarationsFromOtherVersion, DelegationRefusal,
+    ProcedureMiss, RuleResolver, SelectionReason,
+};
 use crate::trace::{LegalAnchor, TraceBuilder, ValueSource};
 use crate::types::{
     Connectivity, LegalStatus, MissingKind, PathNodeType, RegulatoryLayer, ResolveType, TypeSpec,
@@ -108,6 +111,17 @@ struct ResolutionContext<'a> {
     /// to know one. Independent of `legal_basis`, which is what the law
     /// document cites rather than where the engine was.
     anchor: Option<LegalAnchor>,
+    /// Implementations refused by the delegation gate during this execution.
+    /// Collected independently of tracing so the refusal reaches the receipt
+    /// even when no trace was requested.
+    delegation_refusals: Vec<DelegationRefusal>,
+    /// Laws whose declarations were answered from another version than the one
+    /// in force, recorded once per execution.
+    declaration_version_notes: Vec<DeclarationsFromOtherVersion>,
+    /// Hooks, overrides and implementations skipped during this execution
+    /// because their law had no version in force on the reference date.
+    /// Collected independently of tracing so the skip reaches the receipt.
+    declarations_not_in_force: Vec<DeclarationNotInForce>,
 }
 
 /// Parse the calculation date, rejecting malformed input: an unparseable date
@@ -131,6 +145,20 @@ fn selection_error(law_id: &str, calculation_date: &str, reason: SelectionReason
             reference_date: calculation_date.to_string(),
             valid_to: valid_to.format("%Y-%m-%d").to_string(),
         },
+        // Also a data fact, not a verdict: the file does not say when this
+        // version commenced, so the engine cannot say it was in force.
+        SelectionReason::UndeterminedStart(reference) => EngineError::ResolutionError(format!(
+            "law '{law_id}': its valid_from is the internal reference '{reference}', so whether \
+             it was in force on {calculation_date} cannot be determined from the regulation"
+        )),
+        // A different fact, and it must read differently: the file carries
+        // something that is neither a date nor a reference, so there is nothing
+        // to resolve elsewhere and nothing to harvest. Saying "cannot be
+        // determined" here would dress corruption up as a known gap.
+        SelectionReason::UnreadableStart(raw) => EngineError::ResolutionError(format!(
+            "law '{law_id}': its valid_from is '{raw}', which is neither a date nor an internal \
+             reference, so this version cannot be placed in time at all"
+        )),
     }
 }
 
@@ -150,6 +178,9 @@ impl<'a> ResolutionContext<'a> {
             cache: HashMap::new(),
             contextual_law_id: None,
             anchor: None,
+            delegation_refusals: Vec::new(),
+            declaration_version_notes: Vec::new(),
+            declarations_not_in_force: Vec::new(),
         })
     }
 
@@ -239,6 +270,36 @@ impl<'a> ResolutionContext<'a> {
         if let Some(ref tb) = self.trace {
             tb.borrow_mut().set_type_spec(type_spec);
         }
+    }
+
+    /// Record a hook, override or implementation that the indexes offered but
+    /// that has no version in force on the reference date.
+    ///
+    /// It is skipped either way — a regulation that is not in force does not
+    /// apply — but the skip leaves no mark on the outcome, so it is stated
+    /// three times over: in the log, as a node in the trace under the kind it
+    /// belongs to, and on the result, which carries it to the receipt even when
+    /// no trace was requested.
+    fn note_not_in_force(&mut self, note: DeclarationNotInForce) {
+        tracing::warn!(
+            kind = note.kind.as_str(),
+            law_id = %note.law_id,
+            article = %note.article,
+            subject = %note.subject,
+            reason = %note.reason,
+            "Declaration not applied: no version in force on the reference date"
+        );
+        let node_type = match note.kind {
+            DeclarationKind::Hook => PathNodeType::HookResolution,
+            DeclarationKind::Override => PathNodeType::OverrideResolution,
+            DeclarationKind::Implementation => PathNodeType::OpenTermResolution,
+        };
+        let message = note.message();
+        {
+            let _guard = self.trace_guard(format!("{}:{}", note.law_id, note.article), node_type);
+            self.trace_set_message(message);
+        }
+        self.declarations_not_in_force.push(note);
     }
 
     /// Push a trace node and return a guard that auto-pops on drop.
@@ -660,6 +721,9 @@ impl LawExecutionService {
                 outputs: result.outputs.clone(),
                 output_provenance: result.output_provenance.clone(),
                 trace: result.trace.clone(),
+                delegation_refusals: result.delegation_refusals.clone(),
+                declaration_version_notes: result.declaration_version_notes.clone(),
+                declarations_not_in_force: result.declarations_not_in_force.clone(),
             },
             accepted_values: Vec::new(),
             timestamp: chrono::Utc::now().to_rfc3339(),
@@ -859,7 +923,18 @@ impl LawExecutionService {
     ) -> Result<ArticleResult> {
         let mut res_ctx = ResolutionContext::with_trace(calculation_date, trace)?;
         res_ctx.contextual_law_id = Some(law_id.to_string());
-        self.evaluate_law_output_internal(law_id, output_name, parameters, &mut res_ctx)
+        let mut result =
+            self.evaluate_law_output_internal(law_id, output_name, parameters, &mut res_ctx)?;
+        result
+            .delegation_refusals
+            .clone_from(&res_ctx.delegation_refusals);
+        result
+            .declaration_version_notes
+            .clone_from(&res_ctx.declaration_version_notes);
+        result
+            .declarations_not_in_force
+            .clone_from(&res_ctx.declarations_not_in_force);
+        Ok(result)
     }
 
     /// Execute a single lifecycle stage of a procedure-aware law (RFC-008).
@@ -925,9 +1000,35 @@ impl LawExecutionService {
         let legal_character = produces.and_then(|p| p.legal_character.as_deref());
         let procedure_id = produces.and_then(|p| p.procedure_id.as_deref());
 
-        // Look up procedure definition
-        let procedure =
-            legal_character.and_then(|lc| self.resolver.find_procedure(lc, procedure_id));
+        // Look up the procedure definition. An article that produces nothing
+        // with a legal character has no lifecycle to begin with; beyond that,
+        // only "this legal character has no procedure in the corpus" may fall
+        // through to single-stage execution. A procedure that was asked for by
+        // name and not found must not: dropping it would drop the stages it
+        // imposes — the hearing, the notification, the objection period — and
+        // the decision would look complete while the person it is about never
+        // got what the procedure owes them.
+        let procedure = match legal_character {
+            None => None,
+            Some(lc) => match self.resolver.find_procedure_reported(lc, procedure_id) {
+                Ok(def) => Some(def),
+                Err(ProcedureMiss::NoneForCharacter) => None,
+                Err(ProcedureMiss::NamedNotFound(id)) => {
+                    return Err(EngineError::ResolutionError(format!(
+                        "{law_id} article {} asks for procedure '{id}' for legal character \
+                         '{lc}', which no loaded law defines. Executing without it would drop \
+                         the stages that procedure imposes.",
+                        article.number
+                    )));
+                }
+                Err(ProcedureMiss::DefaultDangling(id)) => {
+                    return Err(EngineError::ResolutionError(format!(
+                        "legal character '{lc}' has '{id}' registered as its default procedure, \
+                         but no definition of '{id}' is loaded"
+                    )));
+                }
+            },
+        };
 
         // If no procedure, fall through to normal single-stage execution
         let Some(procedure) = procedure else {
@@ -1014,6 +1115,7 @@ impl LawExecutionService {
             ResolutionContext::new(calculation_date)?
         };
         res_ctx.contextual_law_id = Some(stage_state.contextual_law.clone());
+        self.note_declaration_versions(&mut res_ctx);
 
         // Execute the article with stage-aware hook firing.
         let result = self.evaluate_article_with_service(
@@ -1070,7 +1172,47 @@ impl LawExecutionService {
         // All stages complete
         let mut final_result = result;
         final_result.outputs = stage_state.accumulated_outputs;
+        final_result
+            .delegation_refusals
+            .clone_from(&res_ctx.delegation_refusals);
+        final_result
+            .declaration_version_notes
+            .clone_from(&res_ctx.declaration_version_notes);
+        final_result
+            .declarations_not_in_force
+            .clone_from(&res_ctx.declarations_not_in_force);
         Ok(ExecutionOutcome::Complete(Box::new(final_result)))
+    }
+
+    /// Record, once per execution, which laws had their hooks, overrides and
+    /// procedures answered from a version other than the one in force.
+    ///
+    /// The three indexes carry only the newest version of each law and their
+    /// lookups take no reference date. For a calculation on an older date that
+    /// makes "no hook, no override, no procedure" an answer about the wrong
+    /// version. The engine cannot silently pass that off as a finding, so it
+    /// says so: loudly in the log, in the trace, and on the receipt. Whoever
+    /// reads a decision that hinges on an absent motiveringsplicht can see that
+    /// its absence was not established.
+    fn note_declaration_versions(&self, res_ctx: &mut ResolutionContext<'_>) {
+        if !res_ctx.declaration_version_notes.is_empty() {
+            return; // already recorded for this execution
+        }
+        let notes = self
+            .resolver
+            .declarations_from_another_version(res_ctx.reference_date());
+        for note in &notes {
+            tracing::warn!(
+                law_id = %note.law_id,
+                indexed_version = ?note.indexed_version,
+                in_force_version = ?note.in_force_version,
+                "Hooks, overrides and procedures answered from a version that is not in force"
+            );
+            let message = note.message();
+            let _guard = res_ctx.trace_guard(&note.law_id, PathNodeType::CrossLawReference);
+            res_ctx.trace_set_message(message);
+        }
+        res_ctx.declaration_version_notes = notes;
     }
 
     /// Internal method for multi-output evaluation.
@@ -1090,6 +1232,8 @@ impl LawExecutionService {
             .resolver
             .get_law_for_date_reported(law_id, res_ctx.reference_date())
             .map_err(|reason| selection_error(law_id, res_ctx.calculation_date, reason))?;
+
+        self.note_declaration_versions(res_ctx);
 
         // Group outputs by their producing article number to avoid redundant evaluations
         let mut article_to_outputs: BTreeMap<String, Vec<&str>> = BTreeMap::new();
@@ -1153,6 +1297,18 @@ impl LawExecutionService {
         // causally-entailed outputs (hooks, overrides). A beschikking is legally
         // indivisible per AWB 1:3 — its consequences cannot be stripped.
 
+        // Every refusal seen anywhere in this execution chain, not just in the
+        // article that happened to be merged first.
+        result
+            .delegation_refusals
+            .clone_from(&res_ctx.delegation_refusals);
+        result
+            .declaration_version_notes
+            .clone_from(&res_ctx.declaration_version_notes);
+        result
+            .declarations_not_in_force
+            .clone_from(&res_ctx.declarations_not_in_force);
+
         Ok(result)
     }
 
@@ -1199,6 +1355,11 @@ impl LawExecutionService {
                     schema_version: None,
                     regulation_hash: None,
                     regulation_valid_from: None,
+                    // Filled in by the outermost call from the resolution
+                    // context, which outlives this cached partial result.
+                    delegation_refusals: Vec::new(),
+                    declaration_version_notes: Vec::new(),
+                    declarations_not_in_force: Vec::new(),
                 });
             }
         }
@@ -1357,9 +1518,29 @@ impl LawExecutionService {
 
             // Look up the hook article
             let ref_date = res_ctx.reference_date();
-            let Some(hook_law) = self.resolver.get_law_for_date(hook_law_id, ref_date) else {
-                tracing::warn!(hook_law_id = %hook_law_id, "Hook law not found");
-                continue;
+            // A hook that does not fire leaves nothing behind: the decision
+            // simply comes out without its motivering, its bekendmaking or its
+            // bezwaartermijn, and nothing in the outcome says one was owed.
+            // "Hook law not found" was moreover untrue for the common case —
+            // the law is loaded, it is this date it has no version for — so the
+            // reason travels along, to the trace and to the receipt.
+            let hook_law = match self
+                .resolver
+                .get_law_for_date_reported(hook_law_id, ref_date)
+            {
+                Ok(law) => law,
+                Err(reason) => {
+                    res_ctx.note_not_in_force(DeclarationNotInForce {
+                        kind: DeclarationKind::Hook,
+                        law_id: hook_law_id.clone(),
+                        article: hook_article_number.clone(),
+                        subject: format!(
+                            "hook point {hook_point_str} on {legal_character} at stage {stage}"
+                        ),
+                        reason: reason.describe(),
+                    });
+                    continue;
+                }
             };
             let Some(hook_article) = hook_law.find_article_by_number(hook_article_number) else {
                 tracing::warn!(
@@ -1572,8 +1753,32 @@ impl LawExecutionService {
 
             // Look up overriding article
             let ref_date = res_ctx.reference_date();
-            let Some(ovr_law) = self.resolver.get_law_for_date(ovr_law_id, ref_date) else {
-                continue;
+            // The overrides index is built from the newest version of each law,
+            // so it offers a lex specialis that may not be in force on this
+            // date. Skipping it is right, staying silent about it is not: the
+            // output then carries the general rule's value and neither the
+            // provenance nor the trace mentions that a special rule addresses
+            // exactly this output. Same ground as the `voids` branch below,
+            // where an absence with a ground stays distinguishable from an
+            // absence nobody asked about.
+            let ovr_law = match self
+                .resolver
+                .get_law_for_date_reported(ovr_law_id, ref_date)
+            {
+                Ok(law) => law,
+                Err(reason) => {
+                    res_ctx.note_not_in_force(DeclarationNotInForce {
+                        kind: DeclarationKind::Override,
+                        law_id: ovr_law_id.clone(),
+                        article: ovr_article_number.clone(),
+                        subject: format!(
+                            "output '{}' of {} article {}",
+                            output_name, law.id, article.number
+                        ),
+                        reason: reason.describe(),
+                    });
+                    continue;
+                }
             };
             let Some(ovr_article) = ovr_law.find_article_by_number(ovr_article_number) else {
                 continue;
@@ -1918,14 +2123,14 @@ impl LawExecutionService {
                 .iter()
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect();
-            let implementations = match self.resolver.find_implementations(
+            let lookup = match self.resolver.find_implementations(
                 &law.id,
                 &article.number,
-                &term.id,
+                term,
                 res_ctx.reference_date(),
                 &scope,
             ) {
-                Ok(impls) => impls,
+                Ok(lookup) => lookup,
                 Err(e) => {
                     res_ctx.trace_set_message(format!(
                         "Open term '{}': implementation lookup failed: {}",
@@ -1936,6 +2141,46 @@ impl LawExecutionService {
                 }
             };
 
+            // A regulation that arrogates a term the law delegates elsewhere is
+            // skipped, so a competent regulation lower in the ranking can still
+            // win. But it is a defect in the corpus, not a property of this
+            // case, so it is recorded: it stands in the trace under this open
+            // term and travels to the receipt even when tracing is off. Without
+            // that record a citizen would read "no implementation found, using
+            // default" and never learn that a filling was offered and refused.
+            for refusal in &lookup.refusals {
+                tracing::warn!(
+                    law_id = %refusal.declaring_law,
+                    article = %refusal.declaring_article,
+                    open_term = %refusal.open_term,
+                    required_layer = %refusal.required_layer,
+                    refused_law = %refusal.refused_law,
+                    refused_layer = %refusal.refused_layer,
+                    "Implementation refused: regulatory_layer is not the delegated layer"
+                );
+                let message = refusal.message();
+                {
+                    let _refusal_guard =
+                        res_ctx.trace_guard(&refusal.refused_law, PathNodeType::OpenTermResolution);
+                    res_ctx.trace_set_message(message);
+                }
+            }
+            res_ctx
+                .delegation_refusals
+                .extend(lookup.refusals.iter().cloned());
+
+            // A regulation that fills this term but is not in force on this
+            // date is no candidate either. Without a record the branches below
+            // report "no implementation, using the default" or "resolved as
+            // null" — the same sentences they print when nobody ever wrote one.
+            for note in lookup.not_in_force {
+                res_ctx.note_not_in_force(note);
+            }
+
+            // Every candidate that survives `find_implementations` is competent:
+            // the resolver drops implementations whose regulatory_layer is not
+            // the layer the open term delegates to, before priority ranking.
+            //
             // Whether an implementation filled the term for this case, and
             // which implementations were silent for it (null). The candidates
             // come winner first (priority resolution); the first one that
@@ -1944,24 +2189,7 @@ impl LawExecutionService {
             // whatever their order.
             let mut filled = false;
             let mut silent: Vec<String> = Vec::new();
-            for (impl_law, impl_article) in &implementations {
-                // Validate that the implementing regulation's layer matches the
-                // delegation_type declared on the open term (if specified).
-                if let Some(ref expected_type) = term.delegation_type {
-                    let actual_layer = impl_law.regulatory_layer.as_str();
-                    if actual_layer != expected_type {
-                        res_ctx.trace_set_message(format!(
-                            "Open term '{}': implementation {} has regulatory_layer {} but delegation_type requires {}",
-                            term.id, impl_law.id, actual_layer, expected_type
-                        ));
-                        res_ctx.leave(&ot_key);
-                        return Err(EngineError::ResolutionError(format!(
-                            "Implementation {} for open term '{}' has regulatory_layer {} but delegation_type requires {}",
-                            impl_law.id, term.id, actual_layer, expected_type
-                        )));
-                    }
-                }
-
+            for (impl_law, impl_article) in &lookup.implementations {
                 tracing::debug!(
                     open_term = %term.id,
                     implementing_law = %impl_law.id,
@@ -2045,8 +2273,8 @@ impl LawExecutionService {
                         number: format!("default:{}", term.id),
                         text: String::new(),
                         url: None,
+                        placement: None,
                         machine_readable: Some(MachineReadable {
-                            definitions: None,
                             execution: Some(Execution {
                                 produces: None,
                                 parameters: None,
@@ -2054,14 +2282,9 @@ impl LawExecutionService {
                                 output: None,
                                 actions: Some(actions.clone()),
                             }),
-                            requires: None,
-                            competent_authority: None,
-                            open_terms: None,
-                            implements: None,
-                            hooks: None,
-                            overrides: None,
-                            untranslatables: None,
+                            ..Default::default()
                         }),
+                        references: None,
                     };
 
                     let engine = ArticleEngine::new(&synthetic_article, law);
@@ -2090,11 +2313,28 @@ impl LawExecutionService {
                         }
                     };
 
-                    let default_value = default_result
-                        .outputs
-                        .get(&term.id)
-                        .cloned()
-                        .unwrap_or(Value::Null);
+                    // The default must produce the term it is the default for.
+                    // Reading a missing output as null let two different things
+                    // arrive as the same value: a default that says "null" and
+                    // a default that produced nothing at all — an action whose
+                    // `output` names something else, or none. Downstream null
+                    // is a signal in its own right ("no municipal verordening,
+                    // fall back to the statutory distance"), so the second case
+                    // handed the citizen the general rule under a trace saying
+                    // the default had been applied. The implementation branch
+                    // above refuses the same miss; so does this one.
+                    let Some(default_value) = default_result.outputs.get(&term.id).cloned() else {
+                        res_ctx.trace_set_message(format!(
+                            "Open term '{}': default produced no output named '{}'",
+                            term.id, term.id
+                        ));
+                        res_ctx.leave(&ot_key);
+                        return Err(EngineError::InvalidOperation(format!(
+                            "Default for open term '{}' on {}#{} did not produce output named \
+                             '{}', so there is no default value to apply",
+                            term.id, law.id, article.number, term.id
+                        )));
+                    };
 
                     res_ctx.trace_set_result(default_value.clone());
                     if silent.is_empty() {
@@ -5039,6 +5279,58 @@ articles:
         );
     }
 
+    /// End to end: a beleidsregel that declares it fills a term the law reserves
+    /// for a ministeriële regeling leaves that term unresolved. The execution
+    /// fails on the required open term, not on the beleidsregel's value —
+    /// nobody the law authorised has spoken.
+    #[test]
+    fn test_ioc_unauthorised_layer_leaves_required_open_term_unresolved() {
+        let mut service = LawExecutionService::new();
+        service.load_law(make_law_with_open_term()).unwrap();
+        service
+            .load_law(
+                r#"
+$id: beleidsregel_sp_ioc
+regulatory_layer: BELEIDSREGEL
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: De standaardpremie bedraagt 2500
+    machine_readable:
+      implements:
+        - law: zorgtoeslag_ioc
+          article: '4'
+          open_term: standaardpremie
+      execution:
+        output:
+          - name: standaardpremie
+            type: number
+        actions:
+          - output: standaardpremie
+            value: 2500
+"#,
+            )
+            .unwrap();
+
+        let result = service.evaluate_law_output(
+            "zorgtoeslag_ioc",
+            "standaardpremie",
+            BTreeMap::new(),
+            "2025-01-01",
+        );
+
+        match result {
+            Err(EngineError::ResolutionError(msg)) => {
+                assert!(
+                    msg.contains("standaardpremie") && msg.contains("no implementation"),
+                    "expected an unresolved-open-term error, got: {msg}"
+                );
+            }
+            other => panic!("expected ResolutionError, got: {other:?}"),
+        }
+    }
+
     #[test]
     fn test_ioc_unknown_implementation_output_does_not_take_the_default() {
         // The default of an open term stands in for an absent deviation (no
@@ -5490,6 +5782,118 @@ articles:
         assert_eq!(
             result.outputs.get("redelijk_percentage"),
             Some(&Value::Int(6))
+        );
+    }
+
+    /// The law reserves the term for a ministeriële regeling and carries last
+    /// year's amount as a default. A beleidsregel offers this year's amount and
+    /// is refused. The default runs — but the refusal is on the receipt and in
+    /// the trace, so someone contesting the decision can read that a filling
+    /// was offered and why it did not count. Before, the beleidsregel vanished
+    /// without a word and the trace said only "using default".
+    #[test]
+    fn test_ioc_refused_layer_is_recorded_while_the_default_runs() {
+        let law_yaml = r#"
+$id: wet_met_default
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '4'
+    text: De standaardpremie wordt vastgesteld bij ministeriele regeling
+    machine_readable:
+      open_terms:
+        - id: standaardpremie
+          type: amount
+          required: true
+          delegated_to: minister
+          delegation_type: MINISTERIELE_REGELING
+          default:
+            actions:
+              - output: standaardpremie
+                value: 1889
+      execution:
+        output:
+          - name: standaardpremie
+            type: number
+        actions:
+          - output: standaardpremie
+            value: "$standaardpremie"
+"#;
+        let beleidsregel_yaml = r#"
+$id: beleidsregel_met_default
+regulatory_layer: BELEIDSREGEL
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: De standaardpremie bedraagt 1928
+    machine_readable:
+      implements:
+        - law: wet_met_default
+          article: '4'
+          open_term: standaardpremie
+      execution:
+        output:
+          - name: standaardpremie
+            type: number
+        actions:
+          - output: standaardpremie
+            value: 1928
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(law_yaml).unwrap();
+        service.load_law(beleidsregel_yaml).unwrap();
+
+        // Without a trace: the refusal still travels on the result, and from
+        // there onto the receipt.
+        let result = service
+            .evaluate_law_output(
+                "wet_met_default",
+                "standaardpremie",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("standaardpremie"),
+            Some(&Value::Int(1889)),
+            "the default runs: no authorised regulation filled the term"
+        );
+        assert!(result.trace.is_none(), "this run asked for no trace");
+        assert_eq!(result.delegation_refusals.len(), 1);
+        let refusal = &result.delegation_refusals[0];
+        assert_eq!(refusal.refused_law, "beleidsregel_met_default");
+        assert_eq!(refusal.refused_layer, "BELEIDSREGEL");
+        assert_eq!(refusal.required_layer, "MINISTERIELE_REGELING");
+        assert_eq!(refusal.open_term, "standaardpremie");
+
+        let receipt =
+            service.build_receipt_with_outputs(&result, &BTreeMap::new(), "2025-01-01", &[]);
+        assert_eq!(
+            receipt.results.delegation_refusals, result.delegation_refusals,
+            "the receipt carries the refusal even without a trace"
+        );
+
+        // With a trace: the refusal is a node under the open term, next to the
+        // default that ran in its place.
+        let traced = service
+            .evaluate_law_output_with_trace(
+                "wet_met_default",
+                "standaardpremie",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+        assert_eq!(traced.delegation_refusals.len(), 1);
+        let rendered = traced
+            .trace
+            .as_ref()
+            .expect("a traced run has a trace")
+            .render_box_drawing();
+        assert!(
+            rendered.contains("beleidsregel_met_default")
+                && rendered.contains("may not fill open term 'standaardpremie'"),
+            "the refusal must be readable in the trace:\n{rendered}"
         );
     }
 
@@ -6371,6 +6775,668 @@ articles:
             }
             other => panic!("Expected a yield awaiting bekendmaking_datum, got: {other:?}"),
         }
+    }
+
+    /// An article that names a procedure no loaded law defines must not be
+    /// executed as if it had none. Falling through would run the article once
+    /// and return a decision that looks complete, while every stage the
+    /// procedure imposes — the hearing, the notification, the objection period
+    /// — silently did not happen. Those are the rights of the person the
+    /// decision is about, so this is a refusal, not a warning.
+    #[test]
+    fn test_a_named_procedure_that_no_law_defines_stops_execution() {
+        // The law defines `test_procedure`; the article asks for another one.
+        let law = make_stage_law(
+            "stage_law_named",
+            &[("AANVRAAG", &[]), ("BESLUIT", &[])],
+            &["toekenning"],
+        )
+        .replace(
+            "        produces:\n          legal_character: TEST_BESCHIKKING\n",
+            "        produces:\n          legal_character: TEST_BESCHIKKING\n          \
+             procedure_id: uitgebreide_procedure\n",
+        );
+        let mut service = LawExecutionService::new();
+        service.load_law(&law).unwrap();
+
+        let outcome = service.execute_stage(
+            "stage_law_named",
+            "toekenning",
+            None,
+            stage_params(&[]),
+            "2025-01-01",
+        );
+
+        match outcome {
+            Err(EngineError::ResolutionError(msg)) => {
+                assert!(
+                    msg.contains("uitgebreide_procedure") && msg.contains("TEST_BESCHIKKING"),
+                    "the error must name the procedure that was asked for: {msg}"
+                );
+            }
+            other => panic!("expected a refusal, got: {other:?}"),
+        }
+
+        // The contrast: load a law that does define that procedure, and the
+        // same article runs it. The refusal was about the missing definition,
+        // not about naming a procedure at all.
+        service
+            .load_law(
+                r#"
+$id: uitgebreide_procedurewet
+regulatory_layer: WET
+publication_date: '2025-01-01'
+procedure:
+  - id: uitgebreide_procedure
+    applies_to:
+      legal_character: TEST_BESCHIKKING
+    stages:
+      - name: ZIENSWIJZE
+        requires:
+          - name: zienswijze_datum
+            type: string
+      - name: BESLUIT
+articles: []
+"#,
+            )
+            .unwrap();
+
+        let outcome = service
+            .execute_stage(
+                "stage_law_named",
+                "toekenning",
+                None,
+                stage_params(&[]),
+                "2025-01-01",
+            )
+            .expect("with the procedure defined, the article runs it");
+        match outcome {
+            ExecutionOutcome::Yielded {
+                state,
+                pending_inputs,
+                ..
+            } => {
+                assert_eq!(state.procedure_id, "uitgebreide_procedure");
+                assert_eq!(state.current_stage, "ZIENSWIJZE");
+                assert_eq!(pending_inputs, vec!["zienswijze_datum".to_string()]);
+            }
+            other => panic!("expected the procedure's first stage to yield, got: {other:?}"),
+        }
+    }
+
+    /// A legal character with no procedure anywhere is an ordinary fact, not a
+    /// defect: the article runs in one go. This is the answer the refusal above
+    /// must stay distinguishable from.
+    #[test]
+    fn test_a_legal_character_without_any_procedure_still_executes() {
+        let law = make_stage_law("stage_law_none", &[("BESLUIT", &[])], &["toekenning"]);
+        // Strip the procedure block: the article still produces a legal
+        // character, but nothing in the corpus gives it a lifecycle.
+        let without_procedure = law
+            .lines()
+            .skip_while(|line| !line.starts_with("articles:"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let yaml = format!(
+            "$id: stage_law_none\nregulatory_layer: WET\npublication_date: '2025-01-01'\n{without_procedure}\n"
+        );
+
+        let mut service = LawExecutionService::new();
+        service.load_law(&yaml).unwrap();
+
+        let outcome = service
+            .execute_stage(
+                "stage_law_none",
+                "toekenning",
+                None,
+                stage_params(&[]),
+                "2025-01-01",
+            )
+            .expect("an article without a procedure executes in one go");
+
+        match outcome {
+            ExecutionOutcome::Complete(result) => {
+                assert_eq!(result.outputs.get("toekenning"), Some(&Value::Int(100)));
+            }
+            other => panic!("expected a completed execution, got: {other:?}"),
+        }
+    }
+
+    /// When the version in force on the calculation date is not the version the
+    /// hooks/overrides/procedure indexes were built from, the execution says so
+    /// — in the trace and on the receipt. Without that, "no motiveringsplicht"
+    /// reads as a finding while it is an answer about another version.
+    #[test]
+    fn test_declarations_from_another_version_reach_the_receipt() {
+        let mut service = LawExecutionService::new();
+        service
+            .load_law(
+                r#"
+$id: wet_versies
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+articles:
+  - number: '1'
+    text: Oude versie met een hook
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: BESLUIT
+      execution:
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 1
+"#,
+            )
+            .unwrap();
+        service
+            .load_law(
+                r#"
+$id: wet_versies
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: Nieuwe versie zonder hook
+    machine_readable:
+      execution:
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 2
+"#,
+            )
+            .unwrap();
+
+        // On a date the indexed version covers, nothing is noted.
+        let current = service
+            .evaluate_law_output("wet_versies", "bedrag", BTreeMap::new(), "2025-06-01")
+            .unwrap();
+        assert!(current.declaration_version_notes.is_empty());
+
+        // On a date the older version covers, the answer is flagged.
+        let historic = service
+            .evaluate_law_output("wet_versies", "bedrag", BTreeMap::new(), "2024-06-01")
+            .unwrap();
+        assert_eq!(historic.outputs.get("bedrag"), Some(&Value::Int(1)));
+        assert_eq!(historic.declaration_version_notes.len(), 1);
+        let note = &historic.declaration_version_notes[0];
+        assert_eq!(note.law_id, "wet_versies");
+        assert_eq!(note.indexed_version.as_deref(), Some("2025-01-01"));
+        assert_eq!(note.in_force_version.as_deref(), Some("2024-01-01"));
+
+        let receipt =
+            service.build_receipt_with_outputs(&historic, &BTreeMap::new(), "2024-06-01", &[]);
+        assert_eq!(
+            receipt.results.declaration_version_notes, historic.declaration_version_notes,
+            "the note belongs on the receipt, not only in the log"
+        );
+
+        let traced = service
+            .evaluate_law_output_with_trace("wet_versies", "bedrag", BTreeMap::new(), "2024-06-01")
+            .unwrap();
+        let rendered = traced
+            .trace
+            .as_ref()
+            .expect("a traced run has a trace")
+            .render_box_drawing();
+        assert!(
+            rendered.contains("wet_versies") && rendered.contains("not established"),
+            "the trace must carry the note:\n{rendered}"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Declarations that exist but are not in force on the reference date
+    // -------------------------------------------------------------------------
+
+    /// A lex specialis that only commences next year is offered by the
+    /// overrides index today. It is rightly not applied — but before, it was
+    /// not applied *and* not mentioned: the citizen got the general rule's
+    /// amount on a receipt in which no special rule ever existed.
+    #[test]
+    fn test_an_override_not_in_force_is_recorded_while_the_general_rule_runs() {
+        let kaderwet = r#"
+$id: kaderwet_bedrag
+regulatory_layer: WET
+publication_date: '2020-01-01'
+valid_from: '2020-01-01'
+procedure:
+  - id: beschikking_procedure
+    default: true
+    applies_to:
+      legal_character: TEST_BESCHIKKING
+    stages:
+      - name: BESLUIT
+articles:
+  - number: '1'
+    text: Het bedrag bedraagt 100
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TEST_BESCHIKKING
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 100
+"#;
+        let bijzondere = r#"
+$id: bijzondere_regeling
+regulatory_layer: WET
+publication_date: '2026-01-01'
+valid_from: '2027-01-01'
+articles:
+  - number: '1'
+    text: In afwijking van artikel 1 van de kaderwet bedraagt het bedrag 250
+    machine_readable:
+      overrides:
+        - law: kaderwet_bedrag
+          article: '1'
+          output: bedrag
+      execution:
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 250
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(kaderwet).unwrap();
+        service.load_law(bijzondere).unwrap();
+
+        // A procedure resumed on a date the special rule does not yet cover:
+        // the caller carries the contextual law in the state it persisted.
+        let state = |stage: &str| StageState {
+            procedure_id: "beschikking_procedure".to_string(),
+            contextual_law: "bijzondere_regeling".to_string(),
+            current_stage: stage.to_string(),
+            accumulated_outputs: BTreeMap::new(),
+            parameters: BTreeMap::new(),
+        };
+
+        let outcome = service
+            .execute_stage(
+                "kaderwet_bedrag",
+                "bedrag",
+                Some(state("BESLUIT")),
+                BTreeMap::new(),
+                "2026-06-01",
+            )
+            .expect("the general rule is in force and executes");
+        let result = match outcome {
+            ExecutionOutcome::Complete(result) => result,
+            other => panic!("expected a completed execution, got: {other:?}"),
+        };
+        assert_eq!(
+            result.outputs.get("bedrag"),
+            Some(&Value::Int(100)),
+            "the special rule is not in force, so the general rule stands"
+        );
+        assert_eq!(
+            result.declarations_not_in_force.len(),
+            1,
+            "the skipped lex specialis must leave a mark"
+        );
+        let note = &result.declarations_not_in_force[0];
+        assert_eq!(note.kind, DeclarationKind::Override);
+        assert_eq!(note.law_id, "bijzondere_regeling");
+        assert_eq!(note.article, "1");
+        assert!(
+            note.subject.contains("output 'bedrag'") && note.subject.contains("kaderwet_bedrag"),
+            "the note must name what would have been overridden: {}",
+            note.subject
+        );
+        assert!(
+            note.reason.contains("in force yet"),
+            "the note must state the data fact, not a verdict: {}",
+            note.reason
+        );
+
+        let receipt =
+            service.build_receipt_with_outputs(&result, &BTreeMap::new(), "2026-06-01", &[]);
+        assert_eq!(
+            receipt.results.declarations_not_in_force, result.declarations_not_in_force,
+            "the receipt carries the skip even without a trace"
+        );
+
+        // With a trace the same skip is a node next to the output it addresses.
+        // `execute_stage_internal` takes the builder as it is, so the test
+        // holds a root node of its own to read the tree back.
+        let trace = Rc::new(RefCell::new(TraceBuilder::new()));
+        trace
+            .borrow_mut()
+            .push("test harness".to_string(), PathNodeType::Article);
+        service
+            .execute_stage_internal(
+                "kaderwet_bedrag",
+                "bedrag",
+                Some(state("BESLUIT")),
+                BTreeMap::new(),
+                "2026-06-01",
+                Some(Rc::clone(&trace)),
+            )
+            .unwrap();
+        let rendered = trace
+            .borrow_mut()
+            .pop()
+            .expect("a traced run has a trace")
+            .render_box_drawing();
+        assert!(
+            rendered.contains("bijzondere_regeling") && rendered.contains("Not applied"),
+            "the trace must carry the skipped override:\n{rendered}"
+        );
+
+        // Once it commences, the same call applies it — which shows the note
+        // above marks a date and not a broken binding.
+        let later = service
+            .execute_stage(
+                "kaderwet_bedrag",
+                "bedrag",
+                Some(state("BESLUIT")),
+                BTreeMap::new(),
+                "2027-06-01",
+            )
+            .unwrap();
+        match later {
+            ExecutionOutcome::Complete(result) => {
+                assert_eq!(result.outputs.get("bedrag"), Some(&Value::Int(250)));
+                assert!(result.declarations_not_in_force.is_empty());
+            }
+            other => panic!("expected a completed execution, got: {other:?}"),
+        }
+    }
+
+    /// The motiveringsplicht commences next year. Today the beschikking comes
+    /// out without a motivering, and the engine used to log "Hook law not
+    /// found" — untrue, the law is loaded — and say nothing anywhere else.
+    #[test]
+    fn test_a_hook_not_in_force_is_recorded_instead_of_silently_skipped() {
+        let besluit = r#"
+$id: wet_beschikking
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het bestuursorgaan stelt het bedrag vast
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TEST_BESCHIKKING
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 100
+"#;
+        let motivering = r#"
+$id: wet_motiveringsplicht
+regulatory_layer: WET
+publication_date: '2025-06-01'
+valid_from: '2026-01-01'
+articles:
+  - number: '3'
+    text: Een beschikking wordt gemotiveerd
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: TEST_BESCHIKKING
+            stage: BESLUIT
+      execution:
+        output:
+          - name: motivering
+            type: string
+        actions:
+          - output: motivering
+            value: "gemotiveerd"
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(besluit).unwrap();
+        service.load_law(motivering).unwrap();
+
+        let before = service
+            .evaluate_law_output("wet_beschikking", "bedrag", BTreeMap::new(), "2025-06-01")
+            .unwrap();
+        assert!(
+            !before.outputs.contains_key("motivering"),
+            "the duty to state reasons does not yet exist on this date"
+        );
+        assert_eq!(before.declarations_not_in_force.len(), 1);
+        let note = &before.declarations_not_in_force[0];
+        assert_eq!(note.kind, DeclarationKind::Hook);
+        assert_eq!(note.law_id, "wet_motiveringsplicht");
+        assert_eq!(note.article, "3");
+        assert!(
+            note.subject.contains("post_actions") && note.subject.contains("TEST_BESCHIKKING"),
+            "the note must name the hook point it would have fired at: {}",
+            note.subject
+        );
+        assert!(
+            note.reason.contains("in force yet"),
+            "'not found' was untrue: the law is loaded, this date is not covered: {}",
+            note.reason
+        );
+
+        let receipt =
+            service.build_receipt_with_outputs(&before, &BTreeMap::new(), "2025-06-01", &[]);
+        assert_eq!(
+            receipt.results.declarations_not_in_force, before.declarations_not_in_force,
+            "a beschikking without its motivering must say so on the receipt"
+        );
+
+        // Once the duty commences the hook fires, so the note marks a date.
+        let after = service
+            .evaluate_law_output("wet_beschikking", "bedrag", BTreeMap::new(), "2026-06-01")
+            .unwrap();
+        assert_eq!(
+            after.outputs.get("motivering"),
+            Some(&Value::String("gemotiveerd".to_string()))
+        );
+        assert!(after.declarations_not_in_force.is_empty());
+    }
+
+    /// A ministeriële regeling fills the open term from 2026. A calculation over
+    /// 2025 finds no candidate and falls through to null — the same answer it
+    /// gives when nobody ever wrote one. The regeling now stands in the record.
+    #[test]
+    fn test_an_implementation_not_in_force_is_recorded_before_falling_through() {
+        let wet = r#"
+$id: wet_met_open_term
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '2'
+    text: Bij ministeriele regeling kan een afwijkende afstand worden vastgesteld
+    machine_readable:
+      open_terms:
+        - id: afwijkende_afstand
+          type: number
+          required: false
+          delegated_to: minister
+          delegation_type: MINISTERIELE_REGELING
+      execution:
+        output:
+          - name: afstand
+            type: number
+        actions:
+          - output: afstand
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: NOT_NULL
+                    subject: $afwijkende_afstand
+                  then: $afwijkende_afstand
+              default: 200
+"#;
+        let regeling = r#"
+$id: regeling_afstand
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2025-12-01'
+valid_from: '2026-01-01'
+articles:
+  - number: '1'
+    text: De afwijkende afstand bedraagt 50
+    machine_readable:
+      implements:
+        - law: wet_met_open_term
+          article: '2'
+          open_term: afwijkende_afstand
+      execution:
+        output:
+          - name: afwijkende_afstand
+            type: number
+        actions:
+          - output: afwijkende_afstand
+            value: 50
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(wet).unwrap();
+        service.load_law(regeling).unwrap();
+
+        let before = service
+            .evaluate_law_output(
+                "wet_met_open_term",
+                "afstand",
+                BTreeMap::new(),
+                "2025-06-01",
+            )
+            .unwrap();
+        assert_eq!(
+            before.outputs.get("afstand"),
+            Some(&Value::Int(200)),
+            "the statutory distance stands while the regeling is not in force"
+        );
+        assert_eq!(before.declarations_not_in_force.len(), 1);
+        let note = &before.declarations_not_in_force[0];
+        assert_eq!(note.kind, DeclarationKind::Implementation);
+        assert_eq!(note.law_id, "regeling_afstand");
+        assert!(
+            note.subject.contains("open term 'afwijkende_afstand'"),
+            "the note must name the term it would have filled: {}",
+            note.subject
+        );
+        assert!(note.reason.contains("in force yet"), "{}", note.reason);
+
+        let receipt =
+            service.build_receipt_with_outputs(&before, &BTreeMap::new(), "2025-06-01", &[]);
+        assert_eq!(
+            receipt.results.declarations_not_in_force,
+            before.declarations_not_in_force
+        );
+
+        let traced = service
+            .evaluate_law_output_with_trace(
+                "wet_met_open_term",
+                "afstand",
+                BTreeMap::new(),
+                "2025-06-01",
+            )
+            .unwrap();
+        let rendered = traced
+            .trace
+            .as_ref()
+            .expect("a traced run has a trace")
+            .render_box_drawing();
+        assert!(
+            rendered.contains("regeling_afstand") && rendered.contains("Not applied"),
+            "the trace must show that a filling exists but not on this date:\n{rendered}"
+        );
+
+        let after = service
+            .evaluate_law_output(
+                "wet_met_open_term",
+                "afstand",
+                BTreeMap::new(),
+                "2026-06-01",
+            )
+            .unwrap();
+        assert_eq!(after.outputs.get("afstand"), Some(&Value::Int(50)));
+        assert!(after.declarations_not_in_force.is_empty());
+    }
+
+    /// A default whose actions never produce the term itself yielded null under
+    /// the message "using default value". Null is a signal downstream ("no
+    /// verordening, fall back to the statutory rule"), so the citizen got the
+    /// general rule while the default was supposed to apply.
+    #[test]
+    fn test_a_default_that_produces_nothing_is_not_reported_as_a_default_value() {
+        let yaml = r#"
+$id: wet_met_lege_default
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: De standaardpremie wordt bij ministeriele regeling vastgesteld
+    machine_readable:
+      open_terms:
+        - id: standaardpremie
+          type: amount
+          required: false
+          delegated_to: minister
+          delegation_type: MINISTERIELE_REGELING
+          default:
+            actions:
+              - output: standaardpremie_basis
+                value: 1889
+      execution:
+        output:
+          - name: standaardpremie
+            type: number
+        actions:
+          - output: standaardpremie
+            value: $standaardpremie
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(yaml).unwrap();
+
+        let error = service
+            .evaluate_law_output(
+                "wet_met_lege_default",
+                "standaardpremie",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .expect_err("a default that produces nothing must not pass for a default value");
+        let message = error.to_string();
+        assert!(
+            message.contains("standaardpremie") && message.contains("did not produce output"),
+            "the error must name the term the default failed to produce: {message}"
+        );
+
+        // A default that does produce the term still applies, including when
+        // the value it produces is null: that is a default, not a miss.
+        let with_value = yaml.replace("standaardpremie_basis", "standaardpremie");
+        let mut service = LawExecutionService::new();
+        service.load_law(&with_value).unwrap();
+        let result = service
+            .evaluate_law_output(
+                "wet_met_lege_default",
+                "standaardpremie",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("standaardpremie"),
+            Some(&Value::Int(1889))
+        );
     }
 
     // -------------------------------------------------------------------------
