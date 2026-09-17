@@ -1984,7 +1984,7 @@
             "properties": {
               "law": {
                 "type": "string",
-                "description": "The `$id` of the law whose output is being replaced: lex specialis written down. The override fires only when the overriding law is the law being executed, so with no such context it does not apply. The engine does not check that the override is legally valid (RFC-007)."
+                "description": "The `$id` of the law whose output is being replaced: lex specialis written down. An override from another law fires only when that law is the one being executed, so with no such context it does not apply (RFC-007). An override on an output of its own law applies whatever the contextual law is, because an exclusion in the same law is not a claim about the asking law (RFC-041). The engine does not check that the override is legally valid."
               },
               "article": {
                 "type": "string",
@@ -2003,7 +2003,26 @@
                 "description": "The words of this article that establish the override, quoted verbatim, as `markings` already do. A closed vocabulary was considered and rejected: it would make the agent translate the statute into a category, which is the interpretive step this format exists to avoid. A quotation only has to be copied, and a check can hold it against the article's own text."
               }
             },
-            "additionalProperties": false
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "voids": {
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "voids"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "legal_text_excerpt"
+                  ]
+                }
+              }
+            ]
           },
           "examples": [
             [
@@ -2054,7 +2073,7 @@
                 "items": {
                   "type": "string"
                 },
-                "description": "The values in this article that cannot be produced because of this marking: outputs, inputs or parameters by name. An empty list is a statement and not an omission: it says the article stays executable and only its explanation is incomplete. Every name listed here must be absent from the article's actions; computing a value you declared blocked is a contradiction."
+                "description": "The values in this article that cannot be produced because of this marking: outputs, inputs or parameters by name. Every name listed here must be absent from the article's actions, which the enrichment checks hold the file to: computing a value you declared blocked is a contradiction, and it is caught when the file is written rather than when someone is waiting on an answer. An empty list is a statement and not an omission: it says the marking is a flag on an article that is otherwise worked out, and that only the explanation is incomplete. It does not change execution. What the engine does with a marked article is decided by `accepted` and the untranslatable modes of RFC-012, which do not read this field; whether a marking should ever block only the values it names is an open question in RFC-031."
               },
               "legal_text_excerpt": {
                 "type": "string",

@@ -776,6 +776,7 @@ pub struct HookDeclaration {
 /// Used for "in afwijking van artikel X" patterns where one law unilaterally
 /// replaces another law's output value.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "OverrideDeclarationFields")]
 pub struct OverrideDeclaration {
     /// The $id of the law being overridden
     pub law: String,
@@ -795,8 +796,53 @@ pub struct OverrideDeclaration {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub voids: bool,
     /// The words of this article that establish the override, verbatim.
+    ///
+    /// Required when `voids` is set, optional otherwise: see
+    /// [`OverrideDeclarationFields`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub legal_text_excerpt: Option<String>,
+}
+
+/// The wire shape of an [`OverrideDeclaration`], before the one rule the field
+/// types cannot carry.
+///
+/// A void without a ground is the shape that must not be expressible. Voiding
+/// says the entitlement does not arise at all, and the only thing a person
+/// gets back for that is the words that exclude them. A replacement needs no
+/// quotation, so the field stays optional and the requirement is conditional,
+/// which no field type expresses. The schema states it as a conditional, and
+/// the model has to reject the same file or the two disagree about what a
+/// valid law is.
+#[derive(Deserialize)]
+struct OverrideDeclarationFields {
+    law: String,
+    article: String,
+    output: String,
+    #[serde(default)]
+    voids: bool,
+    #[serde(default)]
+    legal_text_excerpt: Option<String>,
+}
+
+impl TryFrom<OverrideDeclarationFields> for OverrideDeclaration {
+    type Error = String;
+
+    fn try_from(fields: OverrideDeclarationFields) -> Result<Self, Self::Error> {
+        if fields.voids && fields.legal_text_excerpt.is_none() {
+            return Err(format!(
+                "override on {}:{} voids `{}` without `legal_text_excerpt`: \
+                 a void must quote the words that exclude the entitlement",
+                fields.law, fields.article, fields.output
+            ));
+        }
+        Ok(Self {
+            law: fields.law,
+            article: fields.article,
+            output: fields.output,
+            voids: fields.voids,
+            legal_text_excerpt: fields.legal_text_excerpt,
+        })
+    }
 }
 
 /// A required input for a procedure stage
@@ -903,7 +949,14 @@ pub struct Marking {
     pub resolved_by: Option<String>,
     /// The values in this article that cannot be produced because of this
     /// marking. An empty list is a statement and not an omission: it says the
-    /// article stays executable and only its explanation is incomplete.
+    /// marking is a flag on an article that is otherwise worked out, and that
+    /// only the explanation is incomplete.
+    ///
+    /// Read by nobody here. The engine decides what a marked article does from
+    /// `accepted` and the modes of RFC-012, which do not consult this field;
+    /// the rule that a named value is absent from the article's actions is
+    /// enforced by the enrichment gate when the file is written. The schema is
+    /// the canonical statement of both.
     pub target: Vec<String>,
     /// The words from this article's own legal text that the marking hangs on.
     pub legal_text_excerpt: String,

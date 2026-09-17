@@ -408,6 +408,52 @@ fn required_parameter_for_nobody(
         })
 }
 
+/// The error for an output an executed article did not produce.
+///
+/// A void is an answer, not a defect: when the provenance records one, the
+/// caller is told the law says the output does not arise, with the words that
+/// say so. Everything else keeps reporting a missing output, which is the
+/// shape of a misspelled name or a broken binding.
+fn missing_output_error(
+    law_id: &str,
+    output_name: &str,
+    provenance: &BTreeMap<String, OutputProvenance>,
+) -> EngineError {
+    voided_output_error(law_id, output_name, provenance).unwrap_or_else(|| {
+        EngineError::OutputNotFound {
+            law_id: law_id.to_string(),
+            output: output_name.to_string(),
+        }
+    })
+}
+
+/// The void error for an output, when the provenance records one.
+fn voided_output_error(
+    law_id: &str,
+    output_name: &str,
+    provenance: &BTreeMap<String, OutputProvenance>,
+) -> Option<EngineError> {
+    match provenance.get(output_name) {
+        Some(OutputProvenance::Voided {
+            law_id: voided_by,
+            article,
+            grounds,
+        }) => Some(EngineError::OutputVoided {
+            law_id: law_id.to_string(),
+            output: output_name.to_string(),
+            voided_by: voided_by.clone(),
+            article: article.clone(),
+            // A void without a quoted ground is a law file the marking gate
+            // should have refused; say so rather than printing an empty
+            // sentence at whoever has to act on it.
+            grounds: grounds
+                .clone()
+                .unwrap_or_else(|| "no ground was quoted".to_string()),
+        }),
+        _ => None,
+    }
+}
+
 /// The error for a `null` that reached `input` of `law` although the input is
 /// not declared nullable (RFC-036), naming where the null came from.
 fn null_for_non_nullable(law: &ArticleBasedLaw, input: &Input, origin: String) -> EngineError {
@@ -843,7 +889,20 @@ impl LawExecutionService {
         }
         let mut res_ctx = ResolutionContext::new(calculation_date)?;
         res_ctx.contextual_law_id = Some(law_id.to_string());
-        self.evaluate_law_multi_internal(law_id, output_names, parameters, &mut res_ctx)
+        let result =
+            self.evaluate_law_multi_internal(law_id, output_names, parameters, &mut res_ctx)?;
+        // An output the law says does not arise is an answer, and the caller
+        // asked for exactly this one. Returning `Ok` with it quietly missing
+        // leaves a consumer to discover an absence it has no ground for; the
+        // error carries the words of the article that excluded it.
+        for name in output_names {
+            if !result.outputs.contains_key(*name) {
+                if let Some(error) = voided_output_error(law_id, name, &result.output_provenance) {
+                    return Err(error);
+                }
+            }
+        }
+        Ok(result)
     }
 
     /// Evaluate multiple outputs with tracing enabled.
@@ -914,6 +973,19 @@ impl LawExecutionService {
 
         match result {
             Ok(mut result) => {
+                // A requested output the law says does not arise is an error
+                // here too. This is the path the editor, the demo, the TUI and
+                // the BDD harness take, so leaving it out would keep exactly
+                // the silence this error exists to remove, on the route humans
+                // actually use: a green run with an empty result panel and no
+                // ground. The trace is finished first, so the failure carries
+                // the path that produced it.
+                let voided = output_names.iter().find_map(|name| {
+                    (!result.outputs.contains_key(*name))
+                        .then(|| voided_output_error(law_id, name, &result.output_provenance))
+                        .flatten()
+                });
+
                 // Set the result on the top-level article node
                 let mut tb = trace.borrow_mut();
                 if output_names.len() == 1 {
@@ -924,6 +996,14 @@ impl LawExecutionService {
                     // Multiple outputs: set result as object
                     let obj: BTreeMap<String, Value> = result.outputs.clone();
                     tb.set_result(Value::Object(obj));
+                }
+                if let Some(error) = voided {
+                    tb.set_message(error.to_string());
+                    let partial_trace = tb.pop();
+                    return Err(EngineError::TracedError {
+                        source: Box::new(error),
+                        trace: partial_trace.map(Box::new),
+                    });
                 }
                 result.trace = tb.pop();
                 Ok(result)
@@ -1664,6 +1744,23 @@ impl LawExecutionService {
             // A missing variable means the law cannot be applied — that's an error.
             let result = hook_result?;
 
+            // A voided output is absent from `outputs` by construction, so
+            // walking those alone drops its ground: the hook fires, the law
+            // says the output does not arise, and nothing downstream can say
+            // why.
+            //
+            // Before the loop over the values, which overwrites this entry with
+            // `Reactive` for every name that does arrive with one. That order
+            // is what keeps a produced output's provenance correct, so asking
+            // here whether the name is absent would decide nothing — and a
+            // condition that cannot change an outcome reads as a guard while
+            // being none.
+            for (name, prov) in &result.output_provenance {
+                if matches!(prov, OutputProvenance::Voided { .. }) {
+                    hook_provenance.insert(name.clone(), prov.clone());
+                }
+            }
+
             for (name, value) in result.outputs {
                 let prov = OutputProvenance::Reactive {
                     law_id: hook_law.id.clone(),
@@ -1778,10 +1875,10 @@ impl LawExecutionService {
         parameters: &BTreeMap<String, Value>,
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<()> {
-        let contextual_law_id = match &res_ctx.contextual_law_id {
-            Some(id) => id.clone(),
-            None => return Ok(()), // No contextual law → no overrides apply
-        };
+        // A law overriding its own output needs no contextual law, so a
+        // standalone call is no longer a reason to stop here. The filter below
+        // still drops every override from another law when there is none.
+        let contextual_law_id = res_ctx.contextual_law_id.clone();
 
         // Check each output for overrides
         let output_names: Vec<String> = result.outputs.keys().cloned().collect();
@@ -1794,10 +1891,24 @@ impl LawExecutionService {
                 continue;
             }
 
-            // Filter: only overrides from the contextual law apply
+            // An override from another law applies only within the execution
+            // that law started: a Vreemdelingenwet exclusion on Awb 6:7 is not
+            // a Participatiewet case (RFC-007, "contextual law").
+            //
+            // An article overriding an output of its own law is a different
+            // claim. There is no other law to be protected from, and the
+            // scoping made the outcome depend on the route in: asked through
+            // the law itself the exclusion applied, asked through a third law
+            // reading that output it did not, and the amount the statute says
+            // does not arise was handed out anyway. Zorgtoeslag article 3
+            // voiding article 2 of the same law is exactly that shape, and it
+            // is the case RFC-027 works out, and RFC-041 records the
+            // amendment to RFC-007's contextual-law rule that this is.
             let applicable: Vec<_> = overrides
                 .iter()
-                .filter(|ovr| ovr.law_id == contextual_law_id)
+                .filter(|ovr| {
+                    ovr.law_id == law.id || Some(&ovr.law_id) == contextual_law_id.as_ref()
+                })
                 .collect();
 
             if applicable.is_empty() {
@@ -1806,8 +1917,15 @@ impl LawExecutionService {
 
             if applicable.len() > 1 {
                 return Err(EngineError::InvalidOperation(format!(
-                    "Multiple overrides from '{}' for output '{}' on '{}:{}'",
-                    contextual_law_id, output_name, law.id, article.number
+                    "Multiple overrides for output '{}' on '{}:{}' (from {})",
+                    output_name,
+                    law.id,
+                    article.number,
+                    applicable
+                        .iter()
+                        .map(|o| o.law_id.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 )));
             }
 
@@ -2120,6 +2238,28 @@ impl LawExecutionService {
                 }
             }
         }
+        // A voided hook output has no value, so the two merges above never
+        // reach it: they walk the values a hook produced, and this name is
+        // absent from those by construction. Carrying it here is what lets a
+        // receipt say the co-product was excluded, on this ground, rather than
+        // leaving it indistinguishable from one that was never computed.
+        //
+        // `or_insert` and nothing more: a name that arrived with a value was
+        // given its provenance by the merge above, so the entry is taken and
+        // this leaves it alone. Testing for absence as well would read like a
+        // second guard while deciding nothing, and a condition that cannot
+        // change an outcome is a claim the code does not keep.
+        for (name, prov) in post_hook_provenance
+            .iter()
+            .chain(pre_hook_provenance.iter())
+        {
+            if matches!(prov, OutputProvenance::Voided { .. }) {
+                result
+                    .output_provenance
+                    .entry(name.clone())
+                    .or_insert_with(|| prov.clone());
+            }
+        }
 
         // Apply lex specialis overrides
         self.apply_overrides(&mut result, article, law, &post_params, res_ctx)?;
@@ -2341,6 +2481,19 @@ impl LawExecutionService {
                         break;
                     }
                 } else {
+                    // An implementation that voids the very term it implements
+                    // did produce an answer: the law says the value does not
+                    // arise. Reporting that as "produced no matching output"
+                    // is the misdiagnosis `OutputVoided` exists to prevent,
+                    // and it would send a reader looking for a modelling
+                    // defect in a regulation that is correct.
+                    if let Some(error) =
+                        voided_output_error(&impl_law.id, &term.id, &result.output_provenance)
+                    {
+                        res_ctx.trace_set_message(error.to_string());
+                        res_ctx.leave(&ot_key);
+                        return Err(error);
+                    }
                     // Implementation executed but didn't produce the expected output
                     res_ctx.trace_set_message(format!(
                         "Open term '{}': implementation {} article {} produced no matching output",
@@ -2731,10 +2884,11 @@ impl LawExecutionService {
                         "Internal reference: output '{}' not in result from article {}",
                         output_name, ref_article.number
                     ));
-                    return Err(EngineError::OutputNotFound {
-                        law_id: law.id.clone(),
-                        output: output_name.to_string(),
-                    });
+                    return Err(missing_output_error(
+                        &law.id,
+                        output_name,
+                        &result.output_provenance,
+                    ));
                 }
             } else {
                 // Empty source (source: {}) — resolved from DataSourceRegistry
@@ -2978,14 +3132,9 @@ impl LawExecutionService {
             Ok(r) => match r.outputs.get(output).cloned() {
                 Some(v) => v,
                 None => {
-                    res_ctx.trace_set_message(format!(
-                        "Output '{}' not found in result from {}",
-                        output, regulation
-                    ));
-                    return Err(EngineError::OutputNotFound {
-                        law_id: regulation.to_string(),
-                        output: output.to_string(),
-                    });
+                    let error = missing_output_error(regulation, output, &r.output_provenance);
+                    res_ctx.trace_set_message(error.to_string());
+                    return Err(error);
                 }
             },
             Err(e) => {
@@ -6520,6 +6669,607 @@ articles:
     // Lex specialis overrides
     // -------------------------------------------------------------------------
 
+    /// A regulation that voids the very term it implements gave the caller
+    /// "did not produce output named 'x'", which reads as a defect in a
+    /// regulation that is correct: it did answer, and the answer is that the
+    /// value does not arise.
+    #[test]
+    fn an_implementation_that_voids_its_own_term_says_so() {
+        let delegating = r#"
+$id: void_term_delegating
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het tarief wordt bij ministeriele regeling vastgesteld.
+    machine_readable:
+      open_terms:
+        - id: tarief
+          type: number
+          required: true
+          delegated_to: Onze Minister
+      execution:
+        output:
+          - name: uitkomst
+            type: number
+        actions:
+          - output: uitkomst
+            value: $tarief
+"#;
+        let implementation = r#"
+$id: void_term_regeling
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het tarief bedraagt honderd euro.
+    machine_readable:
+      implements:
+        - law: void_term_delegating
+          article: '1'
+          open_term: tarief
+      execution:
+        output:
+          - name: tarief
+            type: number
+        actions:
+          - output: tarief
+            value: 10000
+  - number: '2'
+    text: In afwijking van artikel 1 bestaat geen tarief voor deze categorie.
+    machine_readable:
+      overrides:
+        - law: void_term_regeling
+          article: '1'
+          output: tarief
+          voids: true
+          legal_text_excerpt: bestaat geen tarief
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(delegating).unwrap();
+        service.load_law(implementation).unwrap();
+
+        match service.evaluate_law_output(
+            "void_term_delegating",
+            "uitkomst",
+            BTreeMap::new(),
+            "2025-01-01",
+        ) {
+            Err(EngineError::OutputVoided { grounds, .. }) => {
+                assert_eq!(grounds, "bestaat geen tarief");
+            }
+            Err(EngineError::InvalidOperation(message)) => {
+                panic!("a voided term must not read as a missing output: {message}")
+            }
+            Ok(r) => panic!("expected the void to surface, got {:?}", r.outputs),
+            Err(other) => panic!("expected OutputVoided, got {other:?}"),
+        }
+    }
+
+    /// An override from another law stays scoped to the execution that law
+    /// started. Widening the rule for an intra-law void must not widen this:
+    /// a Vreemdelingenwet exclusion on an Awb term is still not a
+    /// Participatiewet case (RFC-007, amended by RFC-041).
+    #[test]
+    fn a_void_from_another_law_still_needs_its_context() {
+        let granting = r#"
+$id: void_scope_granting
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '2'
+    text: Bestaat aanspraak ter grootte van dat verschil.
+    machine_readable:
+      execution:
+        output:
+          - name: aanspraak
+            type: number
+        actions:
+          - output: aanspraak
+            value: 155045
+"#;
+        let excluder = r#"
+$id: void_scope_excluder
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: In afwijking daarvan bestaat geen aanspraak.
+    machine_readable:
+      overrides:
+        - law: void_scope_granting
+          article: '2'
+          output: aanspraak
+          voids: true
+          legal_text_excerpt: bestaat geen aanspraak
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(granting).unwrap();
+        service.load_law(excluder).unwrap();
+
+        // Asked outside the excluding law's execution, the general rule holds.
+        let value = service
+            .evaluate_law_output(
+                "void_scope_granting",
+                "aanspraak",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .expect("a cross-law void outside its context does not apply")
+            .outputs
+            .get("aanspraak")
+            .cloned();
+        assert_eq!(value, Some(Value::from(155045)));
+    }
+
+    /// Two overrides on one output are a contradiction, and since an intra-law
+    /// override is no longer filtered out by context, the pair can now meet.
+    /// One law saying the entitlement does not arise while another says it is
+    /// a different amount cannot be settled by declaration order: that would
+    /// pay out on a ground nobody wrote. The error names both laws.
+    #[test]
+    fn an_intra_law_void_and_a_contextual_replacement_are_a_contradiction() {
+        let granting = r#"
+$id: void_clash_granting
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '2'
+    text: Bestaat aanspraak ter grootte van dat verschil.
+    machine_readable:
+      execution:
+        output:
+          - name: aanspraak
+            type: number
+        actions:
+          - output: aanspraak
+            value: 155045
+  - number: '3'
+    text: In afwijking van artikel 2 bestaat geen aanspraak.
+    machine_readable:
+      overrides:
+        - law: void_clash_granting
+          article: '2'
+          output: aanspraak
+          voids: true
+          legal_text_excerpt: bestaat geen aanspraak
+"#;
+        let other = r#"
+$id: void_clash_other
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: In afwijking daarvan bedraagt de aanspraak de helft.
+    machine_readable:
+      overrides:
+        - law: void_clash_granting
+          article: '2'
+          output: aanspraak
+      execution:
+        output:
+          - name: aanspraak
+            type: number
+        actions:
+          - output: aanspraak
+            value: 77522
+  - number: '2'
+    text: Leest de aanspraak uit de andere wet.
+    machine_readable:
+      execution:
+        input:
+          - name: aanspraak
+            type: number
+            source:
+              regulation: void_clash_granting
+              output: aanspraak
+        output:
+          - name: doorgegeven
+            type: number
+        actions:
+          - output: doorgegeven
+            value: $aanspraak
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(granting).unwrap();
+        service.load_law(other).unwrap();
+
+        // Asked through the other law, so its replacement is in context, while
+        // the granting law's own void applies regardless of route. Both reach
+        // the same output, which is the pair that could not meet before.
+        let result = service.evaluate_law_output(
+            "void_clash_other",
+            "doorgegeven",
+            BTreeMap::new(),
+            "2025-01-01",
+        );
+        match result {
+            Err(EngineError::InvalidOperation(message)) => {
+                assert!(
+                    message.contains("void_clash_granting") && message.contains("void_clash_other"),
+                    "the error must name both laws, got: {message}"
+                );
+            }
+            Ok(r) => panic!(
+                "two overrides on one output must not silently pick one, got {:?}",
+                r.outputs
+            ),
+            Err(other) => panic!("expected InvalidOperation, got {other:?}"),
+        }
+    }
+
+    /// The traced entry point must answer the same as the untraced one.
+    ///
+    /// It is the path the editor's scenario runner, the demo, the TUI and the
+    /// BDD harness take, so a void that only surfaces without a trace leaves
+    /// the silence this error exists to remove exactly where a human looks: a
+    /// green run with an empty result panel and no ground.
+    #[test]
+    fn a_traced_run_reports_a_void_like_an_untraced_one() {
+        let law = r#"
+$id: void_traced_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '2'
+    text: Bestaat aanspraak ter grootte van dat verschil.
+    machine_readable:
+      execution:
+        output:
+          - name: aanspraak
+            type: number
+        actions:
+          - output: aanspraak
+            value: 155045
+  - number: '3'
+    text: In afwijking van artikel 2 bestaat geen aanspraak indien het vermogen de grens overschrijdt.
+    machine_readable:
+      overrides:
+        - law: void_traced_law
+          article: '2'
+          output: aanspraak
+          voids: true
+          legal_text_excerpt: bestaat geen aanspraak
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+
+        let untraced = service.evaluate_law_output(
+            "void_traced_law",
+            "aanspraak",
+            BTreeMap::new(),
+            "2025-01-01",
+        );
+        assert!(
+            matches!(untraced, Err(EngineError::OutputVoided { .. })),
+            "untraced: expected OutputVoided, got {untraced:?}"
+        );
+
+        let traced = service.evaluate_law_output_with_trace(
+            "void_traced_law",
+            "aanspraak",
+            BTreeMap::new(),
+            "2025-01-01",
+        );
+        match traced {
+            // The traced path wraps its errors to carry the path that produced
+            // them, so the void sits inside.
+            Err(EngineError::TracedError { source, .. }) => match *source {
+                EngineError::OutputVoided { grounds, .. } => {
+                    assert_eq!(grounds, "bestaat geen aanspraak");
+                }
+                other => panic!("traced: expected OutputVoided inside, got {other:?}"),
+            },
+            Ok(r) => panic!("traced: a voided entitlement yielded {:?}", r.outputs),
+            Err(other) => panic!("traced: expected a traced OutputVoided, got {other:?}"),
+        }
+    }
+
+    /// A hook's voided co-product keeps its ground on the way out.
+    ///
+    /// A hook fires inside another law's evaluation and its outputs are merged
+    /// into that law's result. The merge walks the produced values, and a
+    /// voided output is by construction not among them, so its ground was
+    /// carried over inside `fire_hooks` and then dropped again at the merge.
+    /// The caller saw a co-product that was simply absent: no value, no
+    /// provenance, nothing a receipt could point at.
+    ///
+    /// This is reachable precisely because an intra-law override now applies
+    /// whatever the contextual law is. Inside a hook the contextual law is the
+    /// triggering law, so under the old scoping the hook law's own override
+    /// never fired here at all.
+    ///
+    /// The requested output is unaffected: a hook co-product is never itself a
+    /// requestable output of the triggering law, so the top-level check does
+    /// not cover this. AWB 1:3 treats the beschikking as indivisible, which is
+    /// why the co-product has to be accounted for rather than quietly missing.
+    #[test]
+    fn a_hook_that_voids_its_own_output_still_reports_the_ground() {
+        // The triggering law produces a BESCHIKKING, which is what the hook
+        // attaches to.
+        let triggering = r#"
+$id: hook_void_trigger_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het bestuursorgaan stelt het bedrag vast.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 100
+"#;
+        // The hook law produces a co-product and voids it in the same law.
+        let hook_law = r#"
+$id: hook_void_hook_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Bij de beschikking wordt een toeslag vastgesteld.
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: BESLUIT
+      execution:
+        output:
+          - name: toeslag
+            type: number
+        actions:
+          - output: toeslag
+            value: 42
+  - number: '2'
+    text: In afwijking van artikel 1 bestaat geen aanspraak op de toeslag.
+    machine_readable:
+      overrides:
+        - law: hook_void_hook_law
+          article: '1'
+          output: toeslag
+          voids: true
+          legal_text_excerpt: bestaat geen aanspraak op de toeslag
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(triggering).unwrap();
+        service.load_law(hook_law).unwrap();
+
+        let result = service
+            .evaluate_law_output(
+                "hook_void_trigger_law",
+                "bedrag",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .expect("the requested output is not the voided one");
+
+        // The co-product carries no value, which was already true.
+        assert_eq!(
+            result.outputs.get("toeslag"),
+            None,
+            "a voided co-product must not carry a value"
+        );
+
+        // What this test is about: the ground survives the merge. Before this
+        // fix the name was absent from the provenance too, so nothing recorded
+        // that the toeslag was excluded rather than never computed.
+        match result.output_provenance.get("toeslag") {
+            Some(OutputProvenance::Voided { grounds, .. }) => {
+                assert_eq!(
+                    grounds.as_deref(),
+                    Some("bestaat geen aanspraak op de toeslag")
+                );
+            }
+            Some(other) => panic!("expected Voided provenance, got {other:?}"),
+            None => panic!(
+                "the voided co-product lost its ground: provenance holds {:?}",
+                result.output_provenance.keys().collect::<Vec<_>>()
+            ),
+        }
+
+        // The carry-over only covers names that have no value. The requested
+        // output does have one, and it keeps the provenance it earned rather
+        // than being relabelled as voided. Both halves of the condition are
+        // load-bearing: with the absence check dropped, an output that was
+        // computed normally would be reported as excluded, which is the one
+        // error worse than the silence this carry-over removes.
+        assert_eq!(result.outputs.get("bedrag"), Some(&Value::Int(100)));
+        assert!(
+            !matches!(
+                result.output_provenance.get("bedrag"),
+                Some(OutputProvenance::Voided { .. })
+            ),
+            "an output that was computed must not be reported as voided, got {:?}",
+            result.output_provenance.get("bedrag")
+        );
+    }
+
+    /// A hook whose own output is produced keeps that value and its provenance.
+    ///
+    /// The mirror of the test above, and the reason the carry-over asks two
+    /// questions rather than one. A hook co-product that the hook law does not
+    /// void arrives with a value, and nothing about the void machinery may
+    /// touch it: not its value, and not the `Reactive` provenance that says a
+    /// hook produced it.
+    #[test]
+    fn a_hook_co_product_that_is_not_voided_keeps_its_value() {
+        let triggering = r#"
+$id: hook_live_trigger_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het bestuursorgaan stelt het bedrag vast.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 100
+"#;
+        // Same shape as the voided case, minus the override.
+        let hook_law = r#"
+$id: hook_live_hook_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Bij de beschikking wordt een toeslag vastgesteld.
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: BESLUIT
+      execution:
+        output:
+          - name: toeslag
+            type: number
+        actions:
+          - output: toeslag
+            value: 42
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(triggering).unwrap();
+        service.load_law(hook_law).unwrap();
+
+        let result = service
+            .evaluate_law_output(
+                "hook_live_trigger_law",
+                "bedrag",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .expect("nothing is voided here");
+
+        assert_eq!(
+            result.outputs.get("toeslag"),
+            Some(&Value::Int(42)),
+            "the co-product arrives with its value"
+        );
+        assert!(
+            matches!(
+                result.output_provenance.get("toeslag"),
+                Some(OutputProvenance::Reactive { .. })
+            ),
+            "and says a hook produced it, got {:?}",
+            result.output_provenance.get("toeslag")
+        );
+    }
+
+    /// The exclusion holds however the question is asked.
+    ///
+    /// Scoping an override to the contextual law is right for a replacement:
+    /// how much you get may differ per the law invoking it (RFC-007). A void
+    /// is a different claim. "Bestaat geen aanspraak" says the entitlement
+    /// does not arise, and that does not stop being true because a different
+    /// law asked. Measured before this changed: asked through the law itself
+    /// the millionaire got nothing, asked through the granting law directly
+    /// or through a third law reading that output, the same person received
+    /// € 1.550,45 with provenance reporting `Direct`.
+    ///
+    /// This applies to an article overriding an output of its own law, which
+    /// is the shape of zorgtoeslag article 3 voiding article 2. Overrides
+    /// from another law keep their RFC-007 scoping.
+    #[test]
+    fn an_intra_law_void_holds_however_the_question_is_asked() {
+        let law = r#"
+$id: void_intra_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '2'
+    text: Bestaat aanspraak ter grootte van dat verschil.
+    machine_readable:
+      execution:
+        output:
+          - name: aanspraak
+            type: number
+        actions:
+          - output: aanspraak
+            value: 155045
+  - number: '3'
+    text: In afwijking van artikel 2 bestaat geen aanspraak indien het vermogen de grens overschrijdt.
+    machine_readable:
+      overrides:
+        - law: void_intra_law
+          article: '2'
+          output: aanspraak
+          voids: true
+          legal_text_excerpt: bestaat geen aanspraak
+"#;
+        let consumer = r#"
+$id: void_third_reader
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Leest de aanspraak uit een andere wet.
+    machine_readable:
+      execution:
+        input:
+          - name: aanspraak
+            type: number
+            source:
+              regulation: void_intra_law
+              output: aanspraak
+        output:
+          - name: doorgegeven
+            type: number
+        actions:
+          - output: doorgegeven
+            value: $aanspraak
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+        service.load_law(consumer).unwrap();
+
+        // The granting law asked directly: the route a citizen-facing service
+        // takes, and the one that used to hand out the amount.
+        match service.evaluate_law_output(
+            "void_intra_law",
+            "aanspraak",
+            BTreeMap::new(),
+            "2025-01-01",
+        ) {
+            Err(EngineError::OutputVoided { grounds, .. }) => {
+                assert_eq!(grounds, "bestaat geen aanspraak");
+            }
+            Ok(r) => panic!(
+                "asked directly, a voided entitlement yielded {:?}",
+                r.outputs
+            ),
+            Err(other) => panic!("asked directly, expected OutputVoided, got {other:?}"),
+        }
+
+        // A third law reading that output across the law boundary.
+        match service.evaluate_law_output(
+            "void_third_reader",
+            "doorgegeven",
+            BTreeMap::new(),
+            "2025-01-01",
+        ) {
+            Err(EngineError::OutputVoided { grounds, .. }) => {
+                assert_eq!(grounds, "bestaat geen aanspraak");
+            }
+            Ok(r) => panic!(
+                "read across a law boundary, a voided entitlement yielded {:?}",
+                r.outputs
+            ),
+            Err(other) => panic!("read cross-law, expected OutputVoided, got {other:?}"),
+        }
+    }
+
     #[test]
     fn a_voiding_override_removes_the_output_and_records_the_ground() {
         // The shape of Wet op de zorgtoeslag articles 2 and 3. Article 2
@@ -6598,14 +7348,17 @@ articles:
         // recognise must not travel on quietly, and before this change the
         // millionaire received € 1.550,45 without a word.
         match result {
-            Err(EngineError::OutputNotFound { output, .. }) => {
+            Err(EngineError::OutputVoided {
+                output, grounds, ..
+            }) => {
                 assert_eq!(output, "aanspraak");
+                assert_eq!(grounds, "bestaat geen aanspraak");
             }
             Ok(r) => panic!(
                 "a voided entitlement must not yield a value, got {:?}",
                 r.outputs
             ),
-            Err(other) => panic!("expected OutputNotFound, got {other:?}"),
+            Err(other) => panic!("expected OutputVoided, got {other:?}"),
         }
 
         // Without the exclusion the same chain does produce the amount, which
