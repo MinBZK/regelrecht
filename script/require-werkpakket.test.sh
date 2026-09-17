@@ -177,6 +177,33 @@ check "een wet als markdown-link telt als de wet" 0 \
 Wet: [wet_op_de_zorgtoeslag](https://wetten.overheid.nl/BWBR0018451)')" \
     "$geen_bestanden" 'draagt bij aan' 'wetten=wet_op_de_zorgtoeslag'
 
+# Een pull request die de vorm van de regel documenteert zet die voorbeelden in
+# een codeblok. Zonder fence-besef overstemt het laatste voorbeeld de echte
+# trailer en blokkeert de poort op een regel die de auteur niet zo bedoelde.
+check "een voorbeeld in een codeblok onder de trailer telt niet" 0 \
+    "$(pr_json anne 'Werkpakket: referentie-casus-i
+
+Zo ziet de regel eruit:
+
+```
+Werkpakket: voorbeeld-slug
+```')" "$geen_bestanden" \
+    'draagt bij aan' 'werkpakketten=referentie-casus-i'
+
+check "een ingesprongen voorbeeld telt ook niet" 0 \
+    "$(pr_json anne 'Werkpakket: referentie-casus-i
+
+    Werkpakket: voorbeeld-slug')" "$geen_bestanden" \
+    'draagt bij aan' 'werkpakketten=referentie-casus-i'
+
+check "een wet in een codeblok telt niet" 0 \
+    "$(pr_json anne 'Werkpakket: referentie-casus-i
+
+```
+Wet: verzonnen_wet
+```')" "$geen_bestanden" \
+    'draagt bij aan'
+
 check "de laatste regel telt als er meerdere staan" 0 \
     "$(pr_json anne 'Werkpakket: referentie-casus-i
 

@@ -82,6 +82,35 @@ check "twee slugs worden twee links" \
     'Werkpakket: referentie-casus-i, effect-over-tijd' \
     "Werkpakket: [referentie-casus-i](${url}/referentie-casus-i), [effect-over-tijd](${url}/effect-over-tijd)"
 
+# De poort vergelijkt in kleine letters en laat `Referentie-Casus-I` door.
+# Schrijft deze stap die hoofdletters de URL in, dan staat er een link in de
+# body die 404't, en geen enkele latere run merkt dat.
+check "een slug met hoofdletters krijgt een kleine-letter-URL" \
+    'Werkpakket: Referentie-Casus-I' \
+    "Werkpakket: [referentie-casus-i](${url}/referentie-casus-i)"
+
+# Alleen de regel die de poort ook leest. Elk voorbeeld herschrijven zou
+# documentatie in de omschrijving verminken.
+check "een voorbeeld in een codeblok wordt niet herschreven" \
+    'Werkpakket: referentie-casus-i
+
+```
+Werkpakket: voorbeeld-slug
+```' \
+    "Werkpakket: [referentie-casus-i](${url}/referentie-casus-i)"
+
+check "het voorbeeld in het codeblok blijft kaal staan" \
+    'Werkpakket: referentie-casus-i
+
+```
+Werkpakket: voorbeeld-slug
+```' \
+    'Werkpakket: voorbeeld-slug'
+
+check "een slug die met geen- begint krijgt wel een link" \
+    'Werkpakket: geen-losse-slug' \
+    "Werkpakket: [geen-losse-slug](${url}/geen-losse-slug)"
+
 check "een regel die al een link is blijft ongemoeid" \
     "Werkpakket: [referentie-casus-i](${url}/referentie-casus-i)" \
     ''

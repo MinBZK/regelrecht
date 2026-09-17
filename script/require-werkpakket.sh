@@ -186,6 +186,29 @@ fi
 # Elke waarde is het `$id` van een wet, en dat is ook de naam van de map waarin
 # zijn versies staan. Daarom volstaat de mapnaam om te toetsen en hoeft de poort
 # geen yaml te lezen.
+# De laatste `<Naam>:`-regel in de body die géén voorbeeld is.
+#
+# Een codeblok telt niet mee. Een pull request die de vorm van deze regel
+# documenteert — de template, een stuk CLAUDE.md, een uitleg aan een collega —
+# zet die voorbeelden in een ``` -blok, en zonder deze regel zou het laatste
+# voorbeeld de echte trailer overstemmen. De poort blokkeerde dan op een regel
+# die de auteur niet als trailer bedoeld had, met een slug uit de documentatie
+# in de foutmelding. Vier spaties inspringen is dezelfde markdown-afspraak.
+#
+# script/linkify-werkpakket.sh kiest zijn regel op precies dezelfde manier;
+# lopen die twee uiteen, dan herschrijft de bot een andere regel dan de poort
+# leest. \r eraf, want GitHub levert de body met CRLF aan.
+trailer() {
+    printf '%s' "$body" | tr -d '\r' | awk -v naam="$1" '
+        BEGIN { patroon = "^[[:space:]]*" tolower(naam) "[[:space:]]*:" }
+        /^[[:space:]]*```/ { in_fence = !in_fence; next }
+        in_fence { next }
+        /^    / { next }
+        tolower($0) ~ patroon { laatste = $0 }
+        END { if (laatste != "") print laatste }
+    '
+}
+
 # Het nieuwste versiebestand van een wet, of niets als `$id` geen wet aanwijst.
 #
 # -maxdepth 4: corpus/regulation/<land>/<soort>/<wet>/, en een gemeentelijke
@@ -207,8 +230,7 @@ wet_bestand() {
 
 lees_wetten() {
     local regel waarde ruw id bestand onbekend=() gevonden=() bestanden_per_id=()
-    regel=$(printf '%s' "$body" | tr -d '\r' |
-        grep -iE '^[[:space:]]*Wet[[:space:]]*:' | tail -1)
+    regel=$(trailer 'Wet')
     [ -n "$regel" ] || return 0
 
     waarde=$(sed -E 's/^[[:space:]]*[Ww]et[[:space:]]*:[[:space:]]*//' <<<"$regel")
@@ -293,8 +315,7 @@ lees_wetten
 
 # De trailer, op zijn eigen regel. De laatste telt als er meerdere staan: een
 # body wordt van boven naar beneden bijgewerkt, dus onderaan staat de nieuwste.
-# \r eraf, want GitHub levert de body met CRLF aan.
-regel=$(printf '%s' "$body" | tr -d '\r' | grep -iE '^[[:space:]]*Werkpakket[[:space:]]*:' | tail -1)
+regel=$(trailer 'Werkpakket')
 
 if [ -z "$regel" ]; then
     blocked "Deze pull request noemt geen werkpakket. Zet onderaan de omschrijving een regel \`Werkpakket: <slug>\` met het werkpakket waaraan hij bijdraagt, of \`Werkpakket: geen — <reden>\` als het werk bij geen enkel werkpakket hoort. De slugs staan in ${WERKPAKKETTEN_DIR}/ en op /roadmap."

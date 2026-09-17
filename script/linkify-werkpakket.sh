@@ -38,44 +38,76 @@ if ! body=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.body // ""' 2>"$gh_
     afgebroken "De body van pull request ${PR_NUMBER} is niet op te halen; de slug blijft zoals hij is. Foutmelding: $(tr '\n' ' ' <"$gh_stderr")"
 fi
 
-# Alleen de kale vorm. Een regel die al een `[` draagt is al eens omgezet, of
-# met de hand als link geschreven; daar blijft deze stap vanaf, anders zou een
-# tweede run er `[[slug](url)](url)` van maken.
+# Alleen de kale vorm, en alleen op de regel die de poort óók leest.
+#
+# Twee dingen moeten gelijk lopen met script/require-werkpakket.sh, anders
+# schrijft deze stap iets de body in dat de poort niet bedoelde:
+#
+#   1. De poort neemt de láátste `Werkpakket:`-regel buiten een codeblok. Elke
+#      regel herschrijven zou een voorbeeld in een codeblok ("zo ziet de regel
+#      eruit") omzetten in een link en daarmee documentatie in de omschrijving
+#      verminken.
+#   2. De poort vergelijkt in kleine letters. Zonder dezelfde vouw zou
+#      `Werkpakket: Referentie-Casus-I` groen worden en hier een URL opleveren
+#      die 404't, want de pagina bestaat alleen op het kleine pad. De volgende
+#      run merkt dat niet, want die vouwt de linktekst weer om. Een verzonnen
+#      URL is erger dan geen: een kapotte link wordt geloofd tot iemand hem
+#      aanklikt.
+#
+# De regel wordt daarom eerst gezocht (welke regelnummer), en pas in de tweede
+# pas herschreven.
 nieuw=$(printf '%s' "$body" | awk -v url="$ROADMAP_URL" '
-BEGIN { FS = "" }
+function is_kaal(r) {
+    return (r ~ /^[[:space:]]*[Ww]erkpakket[[:space:]]*:/ && r !~ /\[/)
+}
+# Een regel telt niet als hij binnen ``` staat of vier spaties is ingesprongen;
+# dat is markdown voor "dit is een voorbeeld, geen instructie".
+{ regels[NR] = $0 }
 {
-    regel = $0
-    # \r bewaren: GitHub levert de body met CRLF en die hoort er weer in.
-    cr = ""
-    if (regel ~ /\r$/) { cr = "\r"; sub(/\r$/, "", regel) }
+    r = $0
+    sub(/\r$/, "", r)
+    if (r ~ /^[[:space:]]*```/) { in_fence = !in_fence; next }
+    if (in_fence) next
+    if (r ~ /^    /) next
+    if (is_kaal(r)) doel = NR
+}
+END {
+    for (i = 1; i <= NR; i++) {
+        regel = regels[i]
+        # \r bewaren: GitHub levert de body met CRLF en die hoort er weer in.
+        cr = ""
+        if (regel ~ /\r$/) { cr = "\r"; sub(/\r$/, "", regel) }
 
-    if (regel ~ /^[[:space:]]*[Ww]erkpakket[[:space:]]*:/ && regel !~ /\[/) {
+        if (i != doel) { print regel cr; continue }
+
         kop = regel
         sub(/:.*/, ":", kop)
         waarde = regel
         sub(/^[[:space:]]*[Ww]erkpakket[[:space:]]*:[[:space:]]*/, "", waarde)
 
         # `geen — reden` blijft staan: dat is geen slug en heeft geen pagina.
-        if (tolower(waarde) ~ /^geen([[:space:]]|$)/) {
+        # Alleen "geen" als heel woord, net als de poort: een slug die met
+        # "geen-" begint is een gewone slug en krijgt wél een link.
+        kleine = tolower(waarde)
+        if (kleine == "geen" || kleine ~ /^geen[^a-z0-9_-]/) {
             print regel cr
-            next
+            continue
         }
 
         n = split(waarde, delen, ",")
         uit = ""
-        for (i = 1; i <= n; i++) {
-            slug = delen[i]
+        for (j = 1; j <= n; j++) {
+            slug = delen[j]
             gsub(/^[[:space:]]+|[[:space:]]+$/, "", slug)
             gsub(/`/, "", slug)
+            slug = tolower(slug)
             if (slug == "") continue
             if (uit != "") uit = uit ", "
             uit = uit "[" slug "](" url "/" slug ")"
         }
-        if (uit == "") { print regel cr; next }
+        if (uit == "") { print regel cr; continue }
         print kop " " uit cr
-        next
     }
-    print regel cr
 }')
 
 if [ "$nieuw" = "$body" ]; then
