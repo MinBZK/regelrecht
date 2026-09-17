@@ -128,12 +128,13 @@ queries:
       zaakkenmerk: subsidie/999993653
     op_moment: 2024-01-15
     expect:
-      verwacht: 30000
-      betaald: 30000
-      openstaand: 0
+      betaling_verwacht: 30000
+      betaling_betaald: 30000
+      betaling_openstaand: 0
       termijnen:
         - besluit: verlening
           volgnummer: 1
+          soort: betaling
           vervaldatum: '2024-01-15'
           bedrag: 30000
           status: betaald
