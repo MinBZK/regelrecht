@@ -90,11 +90,11 @@ fn thema_knop() -> &'static str {
 
 /// One card on the public index.
 ///
-/// Carries the public title and summary and nothing else. The subject tags name
-/// the department that owns the dossier and the status says how far along it is;
-/// both belong to the case, so both wait behind the password. The status is not
-/// softened away by leaving it out here — every page that shows an actual
-/// outcome still carries it, and those are all behind the gate.
+/// Carries the public title and summary and nothing else. The status stays off
+/// the card because the card shows no outcome: there is nothing here to take
+/// for true that would need the warning. It is not softened away by being left
+/// out — every page that does show an outcome carries it, and those all sit
+/// behind the gate.
 fn kaart(poc: &Poc) -> String {
     format!(
         r#"        <nldd-card accessible-label="{titel}">
@@ -115,10 +115,43 @@ fn kaart(poc: &Poc) -> String {
     )
 }
 
+/// De demo, als eerste kaart tussen de verkenningen.
+///
+/// De enige kaart die niet uit het register komt, en dat kan ook niet: de demo
+/// is geen poc — geen casus-corpus, geen wachtwoord, een eigen ZAD-component op
+/// een eigen adres. Ze staat hier omdat dit de plek is waar iemand kijkt die
+/// wil zien wat regelrecht doet, en de demo is daar het antwoord op zonder dat
+/// je haar eerst iets hoeft te sturen.
+///
+/// Dezelfde kaartvorm als `kaart`, zodat de rij één geheel is, maar zonder het
+/// slot: dat verschil is de hele boodschap. Wie geen wachtwoord heeft, kan hier
+/// wél naar binnen. Het `external-link`-icoon zegt er meteen bij dat dit de
+/// enige kaart is die van dit adres af leidt, en staat achter het label: een
+/// pijl zegt waar de knop je heen brengt, en dat hoort achter de tekst.
+fn demo_kaart() -> &'static str {
+    r#"        <nldd-card accessible-label="De demo">
+          <nldd-container padding="20" padding-bottom="12">
+            <nldd-title size="3"><h3>De demo</h3></nldd-title>
+            <nldd-spacer size="12"></nldd-spacer>
+            <nldd-rich-text><p>Tachtig wetten die samen rekenen op fictieve
+            personen: toeslagen, bijstand, studiefinanciering. Te bekijken
+            zonder wachtwoord.</p></nldd-rich-text>
+          </nldd-container>
+          <nldd-container slot="footer" padding="20" padding-top="0">
+            <nldd-button variant="secondary" width="full"
+              href="https://demo.regelrecht.rijks.app" target="_blank"
+              end-icon="external-link" text="Openen"
+              accessible-label="Open de demo"></nldd-button>
+          </nldd-container>
+        </nldd-card>"#
+}
+
 /// The index: every PoC in the register as a card.
 ///
-/// Public on purpose. A list of titles gives nothing away, and it is exactly
-/// the page you send someone before you send them a password.
+/// Public on purpose: this is the page you send someone before you send them a
+/// password, so they can recognise their own verkenning among the others. What
+/// each card is allowed to give away is a call the dossier's owner makes, and
+/// it is written down per PoC in the register rather than decided here.
 pub fn index(registry: &Registry) -> String {
     let kaarten = registry
         .pocs
@@ -126,6 +159,7 @@ pub fn index(registry: &Registry) -> String {
         .map(kaart)
         .collect::<Vec<_>>()
         .join("\n");
+    let demo_kaart = demo_kaart();
 
     // De hero draagt zijn eigen contentkleur, dus `color="inherit"` op de titel
     // en de tekst houdt het contrast in licht én donker zonder een eigen
@@ -150,10 +184,10 @@ pub fn index(registry: &Registry) -> String {
 
   <nldd-simple-section sm-padding-block="32" md-padding-block="48">
     <nldd-title slot="header" size="3">
-      <h2>De omgevingen</h2>
-      <span slot="subtitle">Elk achter een eigen wachtwoord, want het zijn verkenningen en geen productiesystemen.</span>
+      <h2>Beleidsverkenningen</h2>
     </nldd-title>
     <nldd-collection layout="grid" item-width="320px">
+{demo_kaart}
 {kaarten}
     </nldd-collection>
   </nldd-simple-section>
@@ -161,7 +195,6 @@ pub fn index(registry: &Registry) -> String {
   <nldd-simple-section background="tinted" sm-padding-block="32" md-padding-block="48">
     <nldd-title slot="header" size="3">
       <h2>Verder lezen</h2>
-      <span slot="subtitle">Het werk waar deze verkenningen uit voortkomen.</span>
     </nldd-title>
     <nldd-collection layout="grid" item-width="240px">
       <nldd-card href="https://regelrecht.rijks.app" target="_blank" accessible-label="regelrecht.rijks.app">
@@ -189,16 +222,6 @@ pub fn index(registry: &Registry) -> String {
           <nldd-title size="5"><h3>Onderzoek</h3></nldd-title>
           <nldd-rich-text size="sm" spacing="tight">
             <p>Het position paper Rules as Executed en het onderzoek eromheen.</p>
-          </nldd-rich-text>
-        </nldd-container>
-      </nldd-card>
-      <nldd-card href="https://demo.regelrecht.rijks.app" target="_blank" accessible-label="De demo">
-        <nldd-container padding="16" gap="8">
-          <nldd-icon name="media-play" size="24"></nldd-icon>
-          <nldd-title size="5"><h3>De demo</h3></nldd-title>
-          <nldd-rich-text size="sm" spacing="tight">
-            <p>Tachtig wetten die samen rekenen, op fictieve personen, zonder
-            wachtwoord.</p>
           </nldd-rich-text>
         </nldd-container>
       </nldd-card>
@@ -363,6 +386,37 @@ mod tests {
         }
     }
 
+    /// The demo leads the list, and it is the one card without a lock.
+    ///
+    /// It is the only card not built from the register, so nothing else checks
+    /// that it is there at all. Its place is the point: someone who has no
+    /// password should reach something rather than three locked doors, and that
+    /// only works if the demo comes first and does not look shut.
+    #[test]
+    fn the_demo_leads_the_list_and_is_the_one_card_without_a_lock() {
+        let r = registry();
+        let html = index(&r);
+
+        let demo = html
+            .find("https://demo.regelrecht.rijks.app")
+            .expect("the demo is on the index");
+        for poc in &r.pocs {
+            let kaart = html
+                .find(&format!(r#"href="/{}/""#, poc.slug))
+                .expect("every poc is on the index");
+            assert!(demo < kaart, "the demo comes before {}", poc.slug);
+        }
+
+        // Every locked card carries `start-icon="lock"`; the demo must not, or
+        // the one thing that is open reads as shut.
+        let staart = &html[demo..];
+        let einde = staart.find("</nldd-card>").expect("the demo card closes");
+        assert!(
+            !staart[..einde].contains(r#"start-icon="lock""#),
+            "the demo card must not carry a lock"
+        );
+    }
+
     #[test]
     fn the_index_does_not_leak_a_password_or_env_name() {
         let html = index(&registry());
@@ -375,11 +429,13 @@ mod tests {
     /// Neither public page may carry anything the register marks as internal.
     ///
     /// Both are readable without a password — the login screen by guessing a
-    /// slug — so a `titel_intern` or `voorbehoud` that reaches either one names
-    /// the dossier to whoever walks past. That is how this shipped the first
-    /// time: the login screen carried the internal summary and the full
-    /// voorbehoud, which between them named the department, the internal
-    /// document and the bill.
+    /// slug. What a public half may say is the dossier owner's call and differs
+    /// per PoC, so this does not judge the public text; it holds the line that
+    /// the fields marked internal stay internal. A `titel_intern` or
+    /// `voorbehoud` on either page names the internal document, the bill, or
+    /// how far from finished the thing is, to whoever walks past. That is how
+    /// this shipped the first time: the login screen carried the internal
+    /// summary and the full voorbehoud.
     ///
     /// Checked against the real register rather than a fixture, because the
     /// thing worth protecting is the text that is actually published.
