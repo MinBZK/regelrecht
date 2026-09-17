@@ -242,6 +242,50 @@ fn een_naam_die_uitkomst_en_instelling_is_wordt_bij_het_optuigen_geweigerd() {
     }
 }
 
+/// **Ook een uitkomst uit `outputs` van het besluit botst met een instelling.**
+///
+/// De uitkomst staat dan niet in het artikel dat de verplichting declareert, maar
+/// in wat het besluit vastlegt. De melding noemt die plek: het besluit en zijn
+/// `outputs`, naast de instelling van het wereldbestand.
+#[test]
+fn een_uitkomst_uit_outputs_die_ook_instelling_is_wordt_geweigerd() {
+    let mut definition = scenario().definition();
+    // Alleen de vergoeding: haar ritme is een uitkomst van een ánder artikel, die
+    // het besluit met `outputs` vastlegt. De andere besluiten zouden eerder op
+    // dezelfde naam weigeren, uit hun eigen artikel.
+    for cell in &mut definition.cells {
+        cell.besluit_definitions
+            .retain(|besluit| besluit.name == "vergoeding");
+    }
+    definition.settings.insert(
+        "betaalritme".to_string(),
+        Value::String("maand".to_string()),
+    );
+    let error = World::from_definition(&definition, &regulation_root())
+        .err()
+        .unwrap_or_else(|| panic!("een dubbele naam hoort geweigerd te worden"));
+
+    assert!(
+        matches!(
+            &error,
+            SimulatorError::AmbiguousScheduleReference { besluit, name, .. }
+                if besluit == "vergoeding" && name == "betaalritme"
+        ),
+        "verwachtte AmbiguousScheduleReference over 'betaalritme' bij de vergoeding, kreeg {error}"
+    );
+    let melding = error.to_string();
+    for deel in [
+        "$betaalritme",
+        "besluit 'vergoeding' (`outputs`)",
+        "`settings` van het wereldbestand",
+    ] {
+        assert!(
+            melding.contains(deel),
+            "de melding hoort '{deel}' te noemen, kreeg: {melding}"
+        );
+    }
+}
+
 /// **Een uitkomst die geen ritme is, laat het besluit omvallen, en er ligt
 /// niets.**
 ///
