@@ -932,13 +932,35 @@ const pathname = '/roadmap';
     for (const optie of document.querySelectorAll('.rr-filter__option')) {
       optie.addEventListener('change', indeelStraks);
     }
-    // Het zoek- en het beleggingsfilter zijn een eigen script dat kaarten een
-    // klasse geeft; hier kijken we naar het gevolg in plaats van naar de
-    // invoer, zodat ze niet aan elkaar vastzitten.
-    new MutationObserver(indeelStraks).observe(table, {
+    /*
+     * Het zoek- en het beleggingsfilter zijn een eigen script dat kaarten een
+     * klasse geeft; hier kijken we naar het gevolg in plaats van naar de
+     * invoer, zodat ze niet aan elkaar vastzitten.
+     *
+     * Alleen naar de twee klassen die een kaart verbergen, en niet naar elke
+     * klasse die er langskomt. `accent()` zet bij hover `--in-keten` op de
+     * kaarten van de keten, en die kaarten staan in deze tabel: een observer
+     * op alles hertekent dan de SVG één frame na de hover, met
+     * `replaceChildren()`, en wist zo precies de `--actief` die er net op
+     * gezet was. De kaarten bleven wel oplichten, want die klassen raakt
+     * indeel() niet aan — de pijl ertussen viel als enige weg.
+     */
+    const VERBERGERS = ['rr-wp-card--geen-treffer', 'rr-wp-card--geen-belegging'];
+    new MutationObserver((mutaties) => {
+      for (const mutatie of mutaties) {
+        const el = mutatie.target as HTMLElement;
+        const was = mutatie.oldValue ?? '';
+        const nu = el.className ?? '';
+        if (VERBERGERS.some((k) => was.includes(k) !== nu.includes(k))) {
+          indeelStraks();
+          return;
+        }
+      }
+    }).observe(table, {
       subtree: true,
       attributes: true,
       attributeFilter: ['class'],
+      attributeOldValue: true,
     });
     new ResizeObserver(indeelStraks).observe(table);
 

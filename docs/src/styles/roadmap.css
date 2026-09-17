@@ -404,12 +404,18 @@
  * De SVG ligt onder de kaarten, zodat een pijl er nooit overheen loopt, en
  * vangt geen muis, zodat hij nooit een klik inslikt die voor de kaart eronder
  * bedoeld was. Uit staat hij er wel, maar leeg.
+ *
+ * Wél boven de randen van de cellen: de haarlijn tussen twee fasekolommen is
+ * een border op de cel, en die tekent over alles wat eronder ligt. Een pijl
+ * die zo'n kolomgrens oversteekt — en dat doet elke pijl tussen twee fases —
+ * werd daar doorgesneden. Vandaar een eigen laag tussen de celranden en de
+ * kaarten in, in plaats van de gedeelde laag 0.
  */
 .rr-roadmap .rr-afhankelijk {
   position: absolute;
   inset-block-start: 0;
   inset-inline-start: 0;
-  z-index: 0;
+  z-index: 1;
   overflow: visible;
   pointer-events: none;
 }
@@ -431,18 +437,32 @@
  * De cel draagt de rest van de pijlruimte als inline padding: twee daarvan
  * plus het gat van het grid maken samen één pijlruimte over een kolomgrens,
  * dezelfde afstand die twee kaarten binnen een cel hebben.
+ *
+ * En de cel laat de pijlen door. Zijn achtergrond is even dekkend als die van
+ * een kaart, maar hij dekt de hele cel af: de SVG ligt eronder, dus zonder
+ * deze regel verdwijnt elke pijl die over cel-ruimte loopt, en blijft alleen
+ * het stukje over dat toevallig tussen twee fasekolommen valt. De kaart zelf
+ * houdt zijn achtergrond (zie hieronder) — die mág dekken, de ruimte ernaast
+ * is juist waar de pijlen doorheen moeten.
  */
 .rr-roadmap:has(#rr-afhankelijkheden[checked]) .rr-matrix__cell {
   padding-inline: calc(
     (var(--rr-pijl-ruimte) - var(--rr-matrix-gat)) / 2
   );
+  background: transparent;
 }
 
 /*
  * Ondoorzichtig met opzet: de pijlen lopen achter de kaarten langs, en door
  * een doorschijnende kaart zou een lijn dwars over de titel lopen.
+ *
+ * De z-index hoort bij die achtergrond: de SVG ligt een laag hoger dan de
+ * celranden (zie .rr-afhankelijk), dus zonder eigen laag zou hij ook boven de
+ * kaarten uitkomen en was de dekkende achtergrond voor niets.
  */
 .rr-roadmap .rr-wp-card {
+  position: relative;
+  z-index: 2;
   background: var(--semantics-surfaces-base-background-color);
   border-radius: var(--semantics-surfaces-corner-radius, 8px);
 }
