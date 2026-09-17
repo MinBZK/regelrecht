@@ -95,7 +95,10 @@ pub(crate) struct ChronolexBlock {
     /// Getypeerd en niet ongelezen bewaard, anders dan
     /// [`Self::afwijzing_wanneer`]: er staat één sleutel in met één betekenis,
     /// dus er valt niets uit te pakken waar een eigen reden bij hoort.
-    #[serde(default)]
+    ///
+    /// `None` betekent ook hier: de sleutel staat er niet. Een sleutel die er
+    /// wél staat maar leeg blijft, is iets anders — zie [`vervanging`].
+    #[serde(default, deserialize_with = "vervanging")]
     pub(crate) vervangt_openstaande_termijnen: Option<Vervanging>,
 }
 
@@ -113,6 +116,33 @@ fn present<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
 ) -> std::result::Result<Option<Value>, D::Error> {
     Value::deserialize(deserializer).map(Some)
+}
+
+/// Lees een vervanging die er staat, en weiger er een die leeg blijft.
+///
+/// Om dezelfde reden als bij [`present`]: `Option<Vervanging>` zou
+/// `vervangt_openstaande_termijnen:` zonder waarde als `None` lezen — als "de
+/// sleutel staat er niet" — en dan zou een artikel dat zegt het voorschot te
+/// vervangen, stil niets vervangen. Dat is het stille overslaan dat deze module
+/// opheft, en het gaat hier over termijnen die wél of niet uitbetaald worden.
+///
+/// Anders dan bij `afwijzing_wanneer` valt het hier meteen: er is één sleutel met
+/// één betekenis, dus er is geen later moment waarop het blok uitgepakt wordt en
+/// een eigen reden zou kunnen krijgen. De reden staat daarom in deze melding.
+fn vervanging<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<Option<Vervanging>, D::Error> {
+    let raw = serde_yaml_ng::Value::deserialize(deserializer)?;
+    if raw.is_null() {
+        return Err(serde::de::Error::custom(format!(
+            "`{VERVANGT_OPENSTAANDE_TERMIJNEN}` staat er zonder te zeggen waarop \
+             het vervallen berust; een termijn die zonder grondslag vervalt, is \
+             een belofte die zonder wet verdwijnt"
+        )));
+    }
+    serde_yaml_ng::from_value(raw)
+        .map(Some)
+        .map_err(serde::de::Error::custom)
 }
 
 impl ChronolexBlock {
@@ -280,6 +310,50 @@ mod tests {
                 "de melding hoort '{deel}' te noemen, kreeg: {melding}"
             );
         }
+    }
+
+    /// Een vervanging zonder grondslag is geen vervanging die er niet staat.
+    ///
+    /// `vervangt_openstaande_termijnen:` zonder waarde is een artikel dat zegt
+    /// het voorschot te vervangen zonder te zeggen waarop dat berust. Zou het
+    /// als "geen sleutel" gelezen worden, dan liepen de openstaande termijnen
+    /// stil door naast het slotbedrag.
+    #[test]
+    fn een_lege_vervanging_wordt_geweigerd() {
+        let err = lees(
+            "      extensions:\n        chronolex:\n          \
+             vervangt_openstaande_termijnen:\n",
+        )
+        .expect_err("een vervanging zonder grondslag hoort te falen");
+        let melding = err.to_string();
+        for deel in [
+            "test_regeling",
+            "artikel 2",
+            VERVANGT_OPENSTAANDE_TERMIJNEN,
+            "grondslag",
+        ] {
+            assert!(
+                melding.contains(deel),
+                "de melding hoort '{deel}' te noemen, kreeg: {melding}"
+            );
+        }
+    }
+
+    /// En een vervanging mét grondslag komt gewoon door, uit dezelfde lezing.
+    #[test]
+    fn een_vervanging_met_grondslag_leest() {
+        let block = lees(
+            "      extensions:\n        chronolex:\n          \
+             vervangt_openstaande_termijnen:\n            grondslag: art. 19\n",
+        )
+        .unwrap_or_else(|e| panic!("een vervanging met grondslag hoort te lezen: {e}"));
+        assert_eq!(
+            block
+                .vervangt_openstaande_termijnen
+                .as_ref()
+                .map(|vervanging| vervanging.grondslag.as_str()),
+            Some("art. 19")
+        );
     }
 
     /// Een sleutel die er staat maar leeg blijft, is geen sleutel die er niet staat.

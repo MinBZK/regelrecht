@@ -407,11 +407,11 @@ test.describe('publieke wereld', () => {
     expect(vaststelling.regulation?.value).toBe('algemene_wet_inkomensafhankelijke_regelingen');
 
     // Geen van beide invoerwaarden stelt deze uitvoering zelf vast: het inkomen
-    // komt van de cel die de aanslag vaststelde, het verleende voorschot uit het
-    // eigen eerdere gram.
+    // komt van de cel die de aanslag vaststelde, het uitbetaalde voorschot van
+    // de cel die uitbetaalde.
     expect(JSON.stringify(vaststelling.toetsingsinkomen.origin)).toMatch(/belastingdienst/);
-    expect(JSON.stringify(vaststelling.verleende_voorschotten.origin)).toMatch(
-      /zorgtoeslag_toekenning/,
+    expect(JSON.stringify(vaststelling.uitbetaalde_voorschotten.origin)).toMatch(
+      /belastingdienst/,
     );
 
     // De herziene aanslag is hoger dan de voorlopige, dus de vastgestelde
@@ -420,13 +420,15 @@ test.describe('publieke wereld', () => {
     // toegekend.
     expect(vaststelling.toetsingsinkomen.value).toBe(85000);
     expect(vaststelling.vastgestelde_tegemoetkoming.value).toBeLessThan(
-      vaststelling.verleende_voorschotten.value,
+      vaststelling.uitbetaalde_voorschotten.value,
     );
     expect(vaststelling.slotbedrag.value).toBeCloseTo(-75.16, 2);
   });
 
-  test('X2: de vaststelling stelt haar eigen vraag over de celgrens', async () => {
-    expect(world.crossings).toHaveLength(2);
+  test('X2: de vaststelling stelt haar eigen vragen over de celgrens', async () => {
+    // Drie: de toekenning vroeg het toetsingsinkomen, de vaststelling vroeg het
+    // opnieuw (de aanslag is inmiddels herzien) én vroeg wat er betaald is.
+    expect(world.crossings).toHaveLength(3);
   });
 
   test('V3: een negatief slotbedrag wordt een terugvordering door de aanvrager', async () => {
@@ -443,12 +445,17 @@ test.describe('publieke wereld', () => {
     expect(terug.bedrag.value).toBeCloseTo(75.16, 2);
 
     // En de betalende cel telt alleen op wat zíj betaalde: de vier
-    // voorschottermijnen, samen precies het verleende bedrag.
+    // voorschottermijnen, samen precies het verleende bedrag. Wat de aanvrager
+    // netto overhoudt is dat bedrag min de terugvordering — de vastgestelde
+    // tegemoetkoming, tot op de cent.
     const voorschot = grams(world, 'belastingdienst', 'betalingen');
     expect(voorschot).toHaveLength(4);
     const betaald = voorschot.reduce((som, gram) => som + gram.fields.bedrag.value, 0);
     const verleend = grams(world, 'toeslagen', 'beschikkingen')[0].fields.hoogte_zorgtoeslag.value;
     expect(betaald).toBeCloseTo(verleend, 2);
+    const vastgesteld =
+      grams(world, 'toeslagen', 'beschikkingen')[1].fields.vastgestelde_tegemoetkoming.value;
+    expect(betaald - terug.bedrag.value).toBeCloseTo(vastgesteld, 2);
   });
 
   test('I1: een instelling staat vast zodra er op besloten is', async () => {

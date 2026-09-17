@@ -972,7 +972,7 @@
         },
         {
           "name": "zorgtoeslag_vaststelling",
-          "doc": "Het tweede besluit over dezelfde zaak, en een ánder besluit: de vaststelling van de Awir (art. 19). Ze rekent de zorgtoeslag wél opnieuw uit, maar op het definitieve toetsingsinkomen — dát is wat lid 1 aan de laatste aanslag knoopt — en het artikel haalt die berekening zelf bij de zorgtoeslagwet. Wat er als voorschot is verleend, leest deze cel terug uit haar eigen eerdere gram. Het verschil is het slotbedrag: de verrekening van art. 24, tweede lid.",
+          "doc": "Het tweede besluit over dezelfde zaak, en een ánder besluit: de vaststelling van de Awir (art. 19). Ze rekent de zorgtoeslag wél opnieuw uit, maar op het definitieve toetsingsinkomen — dát is wat lid 1 aan de laatste aanslag knoopt — en het artikel haalt die berekening zelf bij de zorgtoeslagwet. Wat er van het voorschot is uitbetaald, vraagt ze aan de cel die uitbetaalde. Het verschil is het slotbedrag: de verrekening van art. 24, tweede lid.",
           "zaakkenmerk": "zorgtoeslag/{bsn}",
           "chronicle": "beschikkingen",
           "schema": [
@@ -2147,23 +2147,27 @@
                     }
                   }
                 },
+                "uitbetaalde_voorschotten": {
+                  "value": 197178.01,
+                  "origin": {
+                    "herkomst": "besluit_input",
+                    "recorded_origin": {
+                      "asked_by": "cel:toeslagen",
+                      "cell": "belastingdienst",
+                      "competent_authority": null,
+                      "field": "bedrag",
+                      "herkomst": "geaccepteerd",
+                      "lexostatus": "betaald_tot_nu_toe",
+                      "op_moment": "2024-12-15",
+                      "signature": "GESIMULEERDE-ONDERTEKENING door cel:toeslagen"
+                    }
+                  }
+                },
                 "vastgestelde_tegemoetkoming": {
                   "value": 197102.85,
                   "origin": {
                     "herkomst": "computed",
                     "regulation": "algemene_wet_inkomensafhankelijke_regelingen"
-                  }
-                },
-                "verleende_voorschotten": {
-                  "value": 197178.01,
-                  "origin": {
-                    "herkomst": "besluit_input",
-                    "recorded_origin": {
-                      "besluit": "zorgtoeslag_toekenning",
-                      "herkomst": "eerder_besluit",
-                      "moment": "2024-03-01",
-                      "zaakkenmerk": "zorgtoeslag/999993653"
-                    }
                   }
                 },
                 "zaakkenmerk": {
@@ -2240,7 +2244,7 @@
       "id": "toeslagen.vaststelling",
       "actor": "toeslagen",
       "label": "Stel de zorgtoeslag definitief vast",
-      "doc": "Kan pas als de toekenning er ligt; de vaststelling leest die terug.",
+      "doc": "Kan pas echt als het voorschot loopt; dat blijkt bij het besluit en niet aan de knop.",
       "effect": {
         "soort": "decides",
         "cell": "toeslagen",
@@ -2343,6 +2347,83 @@
               "op_moment": "2024-12-01",
               "regulation_valid_from": null,
               "bijdrage": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "asked_by": "cel:toeslagen",
+      "signature": "GESIMULEERDE-ONDERTEKENING door cel:toeslagen",
+      "params": {
+        "zaakkenmerk": "zorgtoeslag/999993653"
+      },
+      "answer": {
+        "cell": "belastingdienst",
+        "name": "betaald_tot_nu_toe",
+        "op_moment": "2024-12-15",
+        "outcome": {
+          "established": {
+            "bedrag": 197178.01
+          }
+        },
+        "reductie": {
+          "vorm": {
+            "soort": "kroniekfilter",
+            "chronicle": "betalingen",
+            "key": "zaakkenmerk",
+            "key_value": "zorgtoeslag/999993653",
+            "where": {},
+            "regel": {
+              "regel": "som",
+              "field": "bedrag"
+            },
+            "op_moment": "2024-12-15"
+          },
+          "grammen": [
+            {
+              "cell": "belastingdienst",
+              "chronicle": "betalingen",
+              "id": "belastingdienst|betalingen|0",
+              "kind": "executogram",
+              "name": "betaling",
+              "volgnummer": 0,
+              "op_moment": "2024-03-01",
+              "regulation_valid_from": null,
+              "bijdrage": 49294
+            },
+            {
+              "cell": "belastingdienst",
+              "chronicle": "betalingen",
+              "id": "belastingdienst|betalingen|1",
+              "kind": "executogram",
+              "name": "betaling",
+              "volgnummer": 1,
+              "op_moment": "2024-06-01",
+              "regulation_valid_from": null,
+              "bijdrage": 49294
+            },
+            {
+              "cell": "belastingdienst",
+              "chronicle": "betalingen",
+              "id": "belastingdienst|betalingen|2",
+              "kind": "executogram",
+              "name": "betaling",
+              "volgnummer": 2,
+              "op_moment": "2024-09-01",
+              "regulation_valid_from": null,
+              "bijdrage": 49294
+            },
+            {
+              "cell": "belastingdienst",
+              "chronicle": "betalingen",
+              "id": "belastingdienst|betalingen|3",
+              "kind": "executogram",
+              "name": "betaling",
+              "volgnummer": 3,
+              "op_moment": "2024-12-01",
+              "regulation_valid_from": null,
+              "bijdrage": 49296.01
             }
           ]
         }
@@ -2812,6 +2893,13 @@
           "cell": "belastingdienst",
           "lexostatus": "toetsingsinkomen",
           "op_moment": "2024-12-15"
+        },
+        {
+          "name": "uitbetaalde_voorschotten",
+          "value": 197178.01,
+          "cell": "belastingdienst",
+          "lexostatus": "betaald_tot_nu_toe",
+          "op_moment": "2024-12-15"
         }
       ],
       "executed": {
@@ -2851,13 +2939,17 @@
             }
           },
           {
-            "name": "verleende_voorschotten",
+            "name": "uitbetaalde_voorschotten",
             "value": 197178.01,
             "herkomst": {
-              "besluit": "zorgtoeslag_toekenning",
-              "herkomst": "eerder_besluit",
-              "moment": "2024-03-01",
-              "zaakkenmerk": "zorgtoeslag/999993653"
+              "asked_by": "cel:toeslagen",
+              "cell": "belastingdienst",
+              "competent_authority": null,
+              "field": "bedrag",
+              "herkomst": "geaccepteerd",
+              "lexostatus": "betaald_tot_nu_toe",
+              "op_moment": "2024-12-15",
+              "signature": "GESIMULEERDE-ONDERTEKENING door cel:toeslagen"
             }
           }
         ],
@@ -2936,6 +3028,98 @@
     },
     {
       "seq": 9,
+      "moment": "2024-12-15",
+      "actor": {
+        "soort": "cell",
+        "id": "toeslagen"
+      },
+      "kind": "vraag",
+      "description": "vroeg 'betaald_tot_nu_toe' aan cel 'belastingdienst' op 2024-12-15",
+      "grams": [],
+      "changes": [],
+      "accepted": [],
+      "executed": null,
+      "question": {
+        "asked_by": "cel:toeslagen",
+        "signature": "GESIMULEERDE-ONDERTEKENING door cel:toeslagen",
+        "params": {
+          "zaakkenmerk": "zorgtoeslag/999993653"
+        },
+        "answer": {
+          "cell": "belastingdienst",
+          "name": "betaald_tot_nu_toe",
+          "op_moment": "2024-12-15",
+          "outcome": {
+            "established": {
+              "bedrag": 197178.01
+            }
+          },
+          "reductie": {
+            "vorm": {
+              "soort": "kroniekfilter",
+              "chronicle": "betalingen",
+              "key": "zaakkenmerk",
+              "key_value": "zorgtoeslag/999993653",
+              "where": {},
+              "regel": {
+                "regel": "som",
+                "field": "bedrag"
+              },
+              "op_moment": "2024-12-15"
+            },
+            "grammen": [
+              {
+                "cell": "belastingdienst",
+                "chronicle": "betalingen",
+                "id": "belastingdienst|betalingen|0",
+                "kind": "executogram",
+                "name": "betaling",
+                "volgnummer": 0,
+                "op_moment": "2024-03-01",
+                "regulation_valid_from": null,
+                "bijdrage": 49294
+              },
+              {
+                "cell": "belastingdienst",
+                "chronicle": "betalingen",
+                "id": "belastingdienst|betalingen|1",
+                "kind": "executogram",
+                "name": "betaling",
+                "volgnummer": 1,
+                "op_moment": "2024-06-01",
+                "regulation_valid_from": null,
+                "bijdrage": 49294
+              },
+              {
+                "cell": "belastingdienst",
+                "chronicle": "betalingen",
+                "id": "belastingdienst|betalingen|2",
+                "kind": "executogram",
+                "name": "betaling",
+                "volgnummer": 2,
+                "op_moment": "2024-09-01",
+                "regulation_valid_from": null,
+                "bijdrage": 49294
+              },
+              {
+                "cell": "belastingdienst",
+                "chronicle": "betalingen",
+                "id": "belastingdienst|betalingen|3",
+                "kind": "executogram",
+                "name": "betaling",
+                "volgnummer": 3,
+                "op_moment": "2024-12-01",
+                "regulation_valid_from": null,
+                "bijdrage": 49296.01
+              }
+            ]
+          }
+        }
+      },
+      "parent": 7
+    },
+    {
+      "seq": 10,
       "moment": "2024-12-15",
       "actor": {
         "soort": "klok"

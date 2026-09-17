@@ -1628,9 +1628,12 @@ impl World {
     /// besluit over dezelfde zaak komt.
     ///
     /// Wat vervalt, is wat nog in de wachtrij stond: termijnen van dezelfde zaak,
-    /// bij dezelfde besluitende cel, die nog niet nagekomen zijn. Betaalde
-    /// termijnen blijven staan — wat betaald is, is betaald, en wat daarmee moet
-    /// gebeuren is de verrekening in het besluit zelf en geen terugdraaiing.
+    /// bij dezelfde besluitende cel, waarvan de vervaldatum nog niet geweest is.
+    /// Verstreken termijnen blijven staan — wat betaald is, is betaald, en wat
+    /// daarmee moet gebeuren is de verrekening in het besluit zelf en geen
+    /// terugdraaiing. Een termijn die wél verviel maar niet nagekomen kon worden
+    /// (de schuldenaar heeft in deze wereld geen cel) staat niet meer in de
+    /// wachtrij en valt hier dus ook niet onder: die is al gebeurd.
     ///
     /// De grammen blijven ook staan: het voorschot beloofde vier termijnen en dat
     /// blijft het gram zeggen. Dát ze niet meer nagekomen worden, staat in het

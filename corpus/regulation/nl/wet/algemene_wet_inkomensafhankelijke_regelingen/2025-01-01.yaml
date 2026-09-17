@@ -444,7 +444,10 @@ articles:
       # Wat dit artikel er naast zet, is de verrekening van art. 24, tweede lid:
       # wat er na aftrek van de verleende voorschotten overblijft, is het
       # slotbedrag. Dát bedrag komt van buiten deze wet en draagt geen bron —
-      # welke voorschotten er verleend zijn, weet de uitvoerder en niet de wet.
+      # welke voorschotten er zijn uitbetaald, weet de uitvoerder en niet de wet.
+      # Uitbetaald en niet verleend: deze beschikking vervangt de
+      # voorschotbeschikking (hieronder), dus van de verlening staat op dit
+      # moment alleen nog overeind wat er daadwerkelijk is uitbetaald.
       #
       # De aangeroepen regeling is hier bij naam de Wet op de zorgtoeslag, en dat
       # is de zwakke plek van dit blok: deze wet geldt voor *inkomensafhankelijke
@@ -470,14 +473,17 @@ articles:
               # zouden de resterende termijnen van de voorschotbeschikking
               # gewoon doorlopen naast het slotbedrag, en dan betaalde de
               # uitvoering twee keer.
+              #
+              # Dit en de verrekening hieronder horen bij elkaar: wat hier
+              # vervalt, is precies wat daar niet verrekend wordt.
               vervangt_openstaande_termijnen:
                 grondslag: Awir art. 19 jo. art. 24, tweede lid (de vaststelling vervangt het voorschot)
               # Het slotbedrag wordt ineens uitbetaald, binnen vier weken na
               # dagtekening van deze beschikking (art. 24, eerste lid). Dat is
               # wet en geen beleid, dus hier staat een ritme en geen instelling.
               #
-              # Het kan negatief uitvallen: is er meer aan voorschot verleend dan
-              # er is vastgesteld, dan is het verschil een terugvordering en geen
+              # Het kan negatief uitvallen: is er meer aan voorschot uitbetaald
+              # dan er is vastgesteld, dan is het verschil een terugvordering en geen
               # betaling met een minteken. Art. 24, derde lid zegt dát de
               # verrekening daartoe kan leiden, art. 26 wie het dan verschuldigd
               # is — de belanghebbende, in zijn geheel. Dat is de omgekeerde
@@ -519,10 +525,15 @@ articles:
                 toetsingsinkomen: $toetsingsinkomen
             type_spec:
               unit: eurocent
-          # Wat er als voorschot is *verleend* — niet wat er tot nu toe van
-          # uitbetaald is. Art. 24, tweede lid verrekent de verlening, en de
-          # termijnen die daarvan nog openstonden vervallen hierboven.
-          - name: verleende_voorschotten
+          # Wat er op deze zaak aan voorschot is *uitbetaald*. Art. 24, tweede
+          # lid verrekent wat er is verleend, en dat is hier hetzelfde bedrag:
+          # deze beschikking vervangt de voorschotbeschikking, dus de termijnen
+          # die nog openstonden vervallen erdoor (hierboven) en van de verlening
+          # blijft over wat er is uitbetaald. Zou hier het hele verleende bedrag
+          # staan, dan verrekende de vaststelling termijnen die zij zelf laat
+          # vervallen — geld dat niemand ooit ontving — en hield de
+          # belanghebbende minder over dan wat er is vastgesteld.
+          - name: uitbetaalde_voorschotten
             type: amount
             source: {}
             type_spec:
@@ -539,7 +550,7 @@ articles:
         actions:
           - output: vastgestelde_tegemoetkoming
             value: $berekende_tegemoetkoming
-          # Art. 24, tweede lid: verleende voorschotten worden verrekend met de
+          # Art. 24, tweede lid: de voorschotten worden verrekend met de
           # tegemoetkoming. Wat overblijft is wat er nog uitbetaald wordt — of,
           # onder nul, wat er terugkomt.
           - output: slotbedrag
@@ -547,7 +558,7 @@ articles:
               operation: SUBTRACT
               values:
                 - $vastgestelde_tegemoetkoming
-                - $verleende_voorschotten
+                - $uitbetaalde_voorschotten
   - number: '20'
     text: >-
       Artikel 20. Herziening tegemoetkoming wegens wijziging fiscale gegevens na toekenning 1. Indien na de toekenning

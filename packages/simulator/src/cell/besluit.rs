@@ -563,8 +563,8 @@ pub enum RichtingBijNegatief {
 /// voorschot vervangt, is recht (Awir art. 19 jo. art. 24, tweede lid) en geen
 /// keuze van de uitvoerder.
 ///
-/// Wat er vervalt, is wat op het moment van dit besluit nog niet vervallen wás.
-/// Termijnen die al nagekomen zijn, blijven staan: wat betaald is, is betaald, en
+/// Wat er vervalt, is wat op het moment van dit besluit nog niet verstreken wás.
+/// Termijnen die al verstreken zijn, blijven staan: wat betaald is, is betaald, en
 /// wat ermee moet gebeuren is een verrekening en geen terugdraaiing.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]

@@ -588,9 +588,9 @@ zaakkenmerk-sjabloon, en een definitie die zelf een parameter `zaakkenmerk`
 documenteert.
 
 De publieke wereld speelt de twee samen af: `zorgtoeslag_vaststelling` voert de
-**Awir** uit (art. 19), accepteert het definitieve toetsingsinkomen van de cel die
-de aanslag vaststelde, en leest uit haar eigen toekenning terug wat er als
-voorschot is *verleend*. Het slotbedrag is het verschil tussen de herberekende
+**Awir** uit (art. 19) en accepteert twee dingen van de cel die ze weet: het
+definitieve toetsingsinkomen van de laatste aanslag, en wat er op deze zaak aan
+voorschot is uitbetaald. Het slotbedrag is het verschil tussen de herberekende
 tegemoetkoming en dat voorschot — de verrekening van art. 24, tweede lid.
 
 `scenarios/toeslagen_nabetaling.yaml` doet hetzelfde over een **testregeling**
@@ -988,7 +988,7 @@ verlening en een vaststelling niet hetzelfde artikel horen uit te voeren. In de
 publieke wereld doen ze dat dan ook niet: de toekenning voert Wet op de
 zorgtoeslag art. 2 uit en legt het voorschot in termijnen op (Awir art. 16 jo.
 art. 22), de vaststelling voert Awir art. 19 uit en legt het slotbedrag ineens
-op, ná verrekening van wat er als voorschot is verleend (art. 24, tweede lid).
+op, ná verrekening van het voorschot (art. 24, tweede lid).
 Zouden beide op art. 2 staan, dan legde de wereld het volle bedrag twee keer op
 — niet omdat het schema aan het artikel hangt, maar omdat "vaststellen" dan
 niets anders was dan hetzelfde nog eens uitrekenen.
@@ -1077,23 +1077,29 @@ extensions:
 ```
 
 Staat dat er, dan verdwijnen bij dit besluit de termijnen van dezelfde zaak bij
-dezelfde cel die nog niet nagekomen zijn, met een journaalregel per termijn en de
-grondslag erbij. Ze verdwijnen niet uit het gram waarin ze beloofd zijn — dat
-blijft zeggen wat het zei — en al nagekomen termijnen blijven staan: wat betaald
+dezelfde cel waarvan de vervaldatum nog niet geweest is, met een journaalregel per
+termijn en de grondslag erbij. Ze verdwijnen niet uit het gram waarin ze beloofd
+zijn — dat blijft zeggen wat het zei — en verstreken termijnen blijven staan: wat betaald
 is, is betaald, en wat daarmee moet gebeuren is de verrekening in het besluit zelf.
 Zonder die declaratie gebeurt er niets, en dat is het verschil tussen een regel uit
 het recht en een regel van het platform: "een tweede besluit wist het eerste uit"
 zou een uitvoerder nooit mogen aannemen.
 
 In de publieke wereld draagt alleen Awir art. 19 die declaratie: de tegemoetkoming
-staat dan vast en de verleende voorschotten worden ermee verrekend, dus de
-termijnen van het voorschot die nog liepen worden niet meer uitbetaald. Wat die
-twee alleen samen laten kloppen, is dat de vaststelling ná de laatste
-voorschottermijn valt — en dat is ook het gewone geval, want art. 19 knoopt haar
-aan de laatste aanslag. Valt ze eerder, dan verrekent ze het hele *verleende*
-voorschot terwijl een deel daarvan nooit is uitbetaald, en houdt de aanvrager
-minder over dan wat er is vastgesteld. Dat is de keerzijde van art. 24, tweede lid
-naar de letter; [`tests/vervanging.rs`](tests/vervanging.rs) legt beide kanten vast.
+staat dan vast en het voorschot wordt ermee verrekend, dus de termijnen van dat
+voorschot die nog liepen worden niet meer uitbetaald.
+
+Dat het vervallen en de verrekening bij elkaar horen, bepaalt wat art. 19 verrekent.
+Art. 24, tweede lid zegt dat de *verleende* voorschotten verrekend worden, maar een
+termijn die door deze beschikking zelf vervalt, wordt nooit uitbetaald — het hele
+verleende bedrag verrekenen zou geld aftrekken dat niemand ontvangen heeft, en de
+belanghebbende minder overlaten dan wat er is vastgesteld. Wat er van de verlening
+overeind staat op het moment van de vaststelling, is wat er is uitbetaald; dát is
+wat art. 19 als `uitbetaalde_voorschotten` verrekent. Daardoor klopt de som op elk
+moment, en niet alleen als de vaststelling ná de laatste voorschottermijn valt.
+[`tests/vervanging.rs`](tests/vervanging.rs) legt beide kanten vast: mét declaratie
+houdt de aanvrager precies de vastgestelde tegemoetkoming over, zónder declaratie
+blijven de termijnen staan.
 
 Het staat als scenario in
 [`scenarios/toeslagen_verplichtingen.yaml`](scenarios/toeslagen_verplichtingen.yaml)
@@ -1414,15 +1420,15 @@ als gate:
 ```yaml
 decide:
   - cell: toeslagen
-    besluit: zorgtoeslag_vaststelling
+    besluit: zorgtoeslag_nabetaling
     params: { bsn: '999993653' }
-    op_moment: 2024-12-15
+    op_moment: 2024-06-15
     expect_accepted:
-      toetsingsinkomen: belastingdienst        # van die cel, niet nagerekend
+      betaald_bedrag: belastingdienst          # van die cel, niet nagerekend
     expect_read_back:
-      verleende_voorschotten: zorgtoeslag_toekenning  # uit een eigen ouder gram
+      toegekend_bedrag: zorgtoeslag_toekenning # uit een eigen ouder gram
     expect_computed:
-      - slotbedrag                              # hier uitgerekend, dus eigen werk
+      - nog_te_betalen                         # hier uitgerekend, dus eigen werk
 ```
 
 `expect_read_back` staat naast de andere twee en niet erin: een teruggelezen
@@ -2703,7 +2709,7 @@ Zie [Een weigering is ook een besluit](#een-weigering-is-ook-een-besluit).
 betaald; wat er gebeurt als er te laat of niet betaald wordt, staat er niet — geen
 rente (Awir art. 27), geen aanmaning, geen dwangbevel (Awb 4:97 e.v.). Verrekenen
 gebeurt wél, maar als **regel in de wet** en niet als iets dat het platform met een
-schema doet: Awir art. 19 trekt de verleende voorschotten van de vastgestelde
+schema doet: Awir art. 19 trekt het uitbetaalde voorschot van de vastgestelde
 tegemoetkoming af en legt alleen het slotbedrag op, met
 `richting_bij_negatief: omkeren` voor het geval dat onder nul uitkomt.
 
@@ -2712,7 +2718,7 @@ verrekent niet met het eerste, en een terugvordering is een eigen verplichting n
 het voorschot en geen correctie erop. Een verplichting kan ook niet gewijzigd of
 ingetrokken worden: het schema staat in het gram, en een gram verandert niet. Wat een
 artikel wél kan zeggen, is dat zijn beschikking de vorige **vervangt** — dan vervallen
-de termijnen die nog niet nagekomen waren (zie
+de termijnen die nog niet verstreken waren (zie
 [Verplichtingen](#verplichtingen-wat-een-besluit-achterlaat)). Herzien (art. 16, vierde
 lid; art. 20 en 21) is daarmee nog niet gedekt: een herziene voorschotbeschikking zou
 niet alleen de openstaande termijnen vervangen maar ook een eigen verrekening dragen,
@@ -2725,11 +2731,17 @@ standaardpremie en de percentages, dus een vaststelling een maand later levert e
 ander bedrag op. De publieke wereld ontwijkt dat — daar valt de vaststelling binnen
 het berekeningsjaar, na de laatste aanslag — maar dat is een keuze van die wereld en
 geen oplossing: "welk recht geldt voor dit jaar" is iets anders dan "welk recht geldt
-vandaag", en de engine kent vandaag alleen het tweede.
+vandaag", en de engine kent vandaag alleen het tweede. Zolang dat zo is, staat de
+vaststelling van de publieke wereld eerder dan art. 19 haar in werkelijkheid zou
+zetten (lid 1 gaat over een aanslag over het berekeningsjaar, en die volgt er
+normaal op).
 
 **Beschikbaarheid kijkt alleen naar de eigen feiten van een besluit.** Een besluit
 dat alles van een ander accepteert, heet dus altijd mogelijk, ook als die ander nog
-niets heeft vastgesteld — dat blijkt pas bij het besluit zelf. Dat is geen
+niets heeft vastgesteld — dat blijkt pas bij het besluit zelf. `zorgtoeslag_vaststelling`
+in de publieke wereld is zo'n besluit: het inkomen en het uitbetaalde voorschot komen
+allebei van de belastingdienst-cel, dus de actie heet mogelijk vanaf het eerste beeld
+en valt om zolang er niets te verrekenen is. Dat is geen
 omissie maar de prijs van invariant I1: een check die het wél zou weten, zou een
 vraag over een celgrens moeten stellen bij elk beeld van de wereld. Wie een actie
 op zo'n feit wil laten wachten, laat het als levering in de eigen kroniek van de

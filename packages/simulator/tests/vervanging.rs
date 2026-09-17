@@ -15,12 +15,15 @@
 //!
 //! Wat de publieke wereld zelf doet, staat in
 //! `scenarios/toeslagen_volledig_verhaal.yaml`: daar valt de vaststelling ná de
-//! laatste voorschottermijn, en dan is er niets meer om te laten vervallen. Dat
-//! is ook het gewone geval — art. 19 knoopt de vaststelling aan de laatste
-//! aanslag, en die komt ná het berekeningsjaar. De vaststelling hieronder valt
-//! er met opzet vóór.
+//! laatste voorschottermijn, en dan is er niets meer om te laten vervallen. De
+//! vaststelling hieronder valt er met opzet vóór — precies het geval waarin het
+//! vervallen iets doet, en waarin te zien is dat de verrekening erop aansluit:
+//! art. 19 verrekent wat er van het voorschot is **uitbetaald**, dus wat de
+//! aanvrager netto overhoudt is de vastgestelde tegemoetkoming, ongeacht wanneer
+//! de vaststelling valt.
 
 use regelrecht_simulator::{regulation_root, JournalKind, Value, World, WorldDefinition};
+use rust_decimal::Decimal;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -64,6 +67,30 @@ fn grams(world: &World, cell: &str, chronicle: &str) -> usize {
         .map_or(0, |stream| stream.grams.len())
 }
 
+/// Wat één cel op de zaak betaalde, opgeteld over haar eigen betalingen.
+///
+/// Dezelfde som die `betaald_tot_nu_toe` maakt, maar dan uit het beeld van de
+/// wereld: de test rekent niets voor, ze telt op wat er in de kroniek ligt.
+fn betaald(world: &World, cell: &str) -> Decimal {
+    world
+        .snapshot()
+        .cells
+        .iter()
+        .find(|snapshot| snapshot.id == cell)
+        .unwrap_or_else(|| panic!("cel '{cell}' hoort in het beeld te staan"))
+        .chronicles
+        .iter()
+        .find(|stream| stream.stream == "betalingen")
+        .map_or(Decimal::ZERO, |stream| {
+            stream
+                .grams
+                .iter()
+                .filter_map(|gram| gram.fields.get("bedrag"))
+                .filter_map(|field| field.value.as_decimal())
+                .sum()
+        })
+}
+
 /// De journaalregels over een termijn die verviel zonder nagekomen te worden.
 fn vervallen(world: &World) -> Vec<&str> {
     world
@@ -100,12 +127,11 @@ fn wereld_met_toekenning() -> World {
 /// tegemoetkoming staat vast en het verleende voorschot is ermee verrekend — en
 /// het journaal zegt waarom, met de grondslag uit het lexogram erbij.
 ///
-/// Wat dit *niet* oplost: de vaststelling verrekent het hele verleende voorschot
-/// terwijl de laatste termijn daarvan nooit is uitbetaald, dus de aanvrager houdt
-/// hier minder over dan wat er is vastgesteld. Dat is de keerzijde van art. 24,
-/// tweede lid naar de letter (verrekenen wat er is *verleend*), en het valt
-/// samen met het geval dat de wet niet kent: een vaststelling vóór de laatste
-/// voorschottermijn. Zie de README.
+/// En de som klopt: art. 19 verrekent wat er van het voorschot is *uitbetaald*,
+/// dus het slotbedrag vult aan tot precies de vastgestelde tegemoetkoming. Zou de
+/// vaststelling het hele *verleende* voorschot verrekenen, dan trok ze de vierde
+/// termijn af die ze hierboven zelf laat vervallen, en hield de aanvrager minder
+/// over dan wat er is vastgesteld. Zie de README.
 #[test]
 fn een_vaststelling_laat_de_openstaande_voorschottermijnen_vervallen() {
     let mut world = wereld_met_toekenning();
@@ -155,15 +181,42 @@ fn een_vaststelling_laat_de_openstaande_voorschottermijnen_vervallen() {
         .unwrap_or_else(|e| panic!("de klok moet vooruit kunnen: {e}"));
     assert_eq!(
         grams(&world, "belastingdienst", "betalingen"),
-        3,
-        "de vierde termijn wordt niet meer nagekomen; het slotbedrag is een \
-         terugvordering en die betaalt de aanvrager"
+        4,
+        "drie voorschottermijnen en het slotbedrag; de vierde termijn van het \
+         voorschot wordt niet meer nagekomen"
     );
     assert_eq!(
         grams(&world, "burger", "betalingen"),
-        1,
-        "de terugvordering staat bij de cel die haar betaalde"
+        0,
+        "hier is niets terug te vorderen: het slotbedrag vult juist aan"
     );
+
+    // De kern van deze opstelling: wat de aanvrager netto overhoudt, is precies
+    // wat er is vastgesteld — ook nu de vaststelling vóór de laatste
+    // voorschottermijn viel.
+    let vastgesteld = vastgestelde_tegemoetkoming(&world);
+    assert_eq!(
+        betaald(&world, "belastingdienst") - betaald(&world, "burger"),
+        vastgesteld,
+        "uitbetaald voorschot plus slotbedrag is de vastgestelde tegemoetkoming"
+    );
+}
+
+/// Wat de vaststelling in haar gram vastlegde als vastgestelde tegemoetkoming.
+fn vastgestelde_tegemoetkoming(world: &World) -> Decimal {
+    world
+        .snapshot()
+        .cells
+        .iter()
+        .find(|snapshot| snapshot.id == "toeslagen")
+        .unwrap_or_else(|| panic!("de besluitende cel hoort in het beeld te staan"))
+        .chronicles
+        .iter()
+        .find(|stream| stream.stream == "beschikkingen")
+        .and_then(|stream| stream.grams.last())
+        .and_then(|gram| gram.fields.get("vastgestelde_tegemoetkoming"))
+        .and_then(|field| field.value.as_decimal())
+        .unwrap_or_else(|| panic!("de vaststelling hoort een bedrag vast te leggen"))
 }
 
 /// **Zonder die declaratie blijft staan wat er staat.**

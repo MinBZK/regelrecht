@@ -401,9 +401,9 @@ cells:
           vaststelling van de Awir (art. 19). Ze rekent de zorgtoeslag wél
           opnieuw uit, maar op het definitieve toetsingsinkomen — dát is wat lid
           1 aan de laatste aanslag knoopt — en het artikel haalt die berekening
-          zelf bij de zorgtoeslagwet. Wat er als voorschot is verleend, leest
-          deze cel terug uit haar eigen eerdere gram. Het verschil is het
-          slotbedrag: de verrekening van art. 24, tweede lid.
+          zelf bij de zorgtoeslagwet. Wat er van het voorschot is uitbetaald,
+          vraagt ze aan de cel die uitbetaalde. Het verschil is het slotbedrag:
+          de verrekening van art. 24, tweede lid.
         regulation: algemene_wet_inkomensafhankelijke_regelingen
         output: slotbedrag
         outputs:
@@ -430,18 +430,22 @@ cells:
             field: toetsingsinkomen
             params:
               bsn: $bsn
-          # Dezelfde zaak, een eerder moment: wat er als voorschot is *verleend*,
-          # zoals het toen is vastgelegd. Geen herberekening en geen eigen feit —
-          # het gram schrijft op dat het uit de toekenning komt.
+          # En over de celgrens, met het kenmerk van déze zaak: wat er als
+          # voorschot is uitbetaald, weet de cel die het uitbetaalde. Niet
+          # nagerekend en niet als eigen saldo bijgehouden (invariant I5).
           #
-          # Art. 24, tweede lid verrekent wat er is verleend en niet wat er tot
-          # nu toe van betaald is. Die twee lopen uiteen zodra de vaststelling
-          # vóór de laatste voorschottermijn valt; de termijnen die dan nog
-          # openstaan, vervallen door deze vaststelling zelf (Awir art. 19 jo.
-          # art. 24, tweede lid, gedeclareerd in het lexogram).
-          verleende_voorschotten:
-            from_decretogram: zorgtoeslag_toekenning
-            field: hoogte_zorgtoeslag
+          # Art. 24, tweede lid verrekent wat er is *verleend*, en dat is op dit
+          # moment hetzelfde bedrag: deze vaststelling vervangt het voorschot,
+          # dus de termijnen die nog openstonden vervallen erdoor (gedeclareerd
+          # in het lexogram van art. 19) en van de verlening blijft over wat er
+          # is uitbetaald. Daardoor klopt de som op elk moment — ook als de
+          # vaststelling vóór de laatste voorschottermijn valt.
+          uitbetaalde_voorschotten:
+            accept_from: belastingdienst
+            lexostatus: betaald_tot_nu_toe
+            field: bedrag
+            params:
+              zaakkenmerk: $zaakkenmerk
 
     lexostatus_definitions:
       - name: ontvangen_aanvraag
@@ -559,12 +563,16 @@ actions:
   - id: toeslagen.vaststelling
     actor: toeslagen
     label: Stel de zorgtoeslag definitief vast
-    # Dit besluit leest de toekenning terug uit de eigen kroniek
-    # (`from_decretogram`), en dat is een eigen feit: zonder toekenning is er
-    # nog geen gram om uit te lezen, dus kan dit besluit niet. Geen voorwaarde
-    # in dit bestand — het volgt uit wat de eigen inputs opleveren, precies
-    # zoals bij de toekenning hierboven.
-    doc: Kan pas als de toekenning er ligt; de vaststelling leest die terug.
+    # Ook hier geen voorwaarde in dit bestand. Maar anders dan bij de toekenning
+    # zegt het beeld hier niets zinnigs: dit besluit heeft géén eigen feit — het
+    # inkomen en het uitbetaalde voorschot komen allebei van een andere cel — en
+    # beschikbaarheid kijkt met opzet niet over een celgrens (invariant I1, zie
+    # de README). De actie heet dus altijd mogelijk, ook voordat er iets te
+    # verrekenen valt; wie haar dan neemt, krijgt van de bevraagde cel te horen
+    # dat zij niets vaststelde.
+    doc: >-
+      Kan pas echt als het voorschot loopt; dat blijkt bij het besluit en niet
+      aan de knop.
     decides:
       cell: toeslagen
       besluit: zorgtoeslag_vaststelling

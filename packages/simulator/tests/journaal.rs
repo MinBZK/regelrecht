@@ -63,11 +63,12 @@ fn een_volledig_verhaal_levert_een_journaal_op() {
             JournalKind::Betaling,
             JournalKind::Besluit,
             JournalKind::Vraag,
+            JournalKind::Vraag,
             JournalKind::Betaling,
         ],
         "dit verhaal is: een aanvraag, een besluit met zijn vraag, de vier \
          kwartaaltermijnen van het voorschot, en dan de vaststelling met haar \
-         vraag en de ene termijn die zij oplegt. Dat het er één is en niet weer \
+         twee vragen en de ene termijn die zij oplegt. Dat het er één is en niet weer \
          vier, komt doordat het tweede besluit een ánder artikel uitvoert: het \
          slotbedrag komt ineens, en wat er als voorschot betaald is, is eraf"
     );
@@ -497,9 +498,9 @@ fn de_metingen_van_het_journaal_zijn_geen_contact_over_een_celgrens() {
     );
     assert_eq!(
         run.crossings().len(),
-        2,
-        "twee besluiten die elk één waarde accepteren, is twee contacten — en de \
-         metingen komen daar niet bij: {}",
+        3,
+        "de toekenning accepteert één waarde en de vaststelling twee, dus drie \
+         contacten — en de metingen komen daar niet bij: {}",
         run.report()
     );
     assert_eq!(
@@ -514,7 +515,7 @@ fn de_metingen_van_het_journaal_zijn_geen_contact_over_een_celgrens() {
     for contact in run.crossings() {
         log.record(contact);
     }
-    assert_eq!(log.len(), 2);
+    assert_eq!(log.len(), 3);
     assert!(
         run.invariant_failures.is_empty(),
         "de invarianten-gate hoort groen te blijven: {:?}",

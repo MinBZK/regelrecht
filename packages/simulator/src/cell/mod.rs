@@ -2056,7 +2056,7 @@ impl Cell {
     /// `None` is: het zegt er niets over, en dan blijft staan wat er staat — een
     /// verplichting is niet in te trekken. Staat er wél iets, dan komt deze
     /// beschikking in de plaats van de vorige en vervallen de termijnen die nog
-    /// niet nagekomen waren (zie [`Vervanging`]).
+    /// niet verstreken waren (zie [`Vervanging`]).
     ///
     /// De cel leest het en handelt er niet naar: zij kent geen klok en geen
     /// wachtrij. Wat er met een ingeroosterde termijn gebeurt, is aan de wereld
