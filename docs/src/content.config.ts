@@ -3,6 +3,7 @@ import { glob } from 'astro/loaders';
 import {
   ONDERZOEK_IDS,
   BOUW_IDS,
+  BELEGGING_IDS,
   PRIORITEIT_IDS,
   OMVANG_IDS,
   CATEGORIE_IDS,
@@ -139,6 +140,60 @@ const werkpakketten = defineCollection({
     // done", and the pages render an unset field as "niet bepaald".
     onderzoek: z.enum(ONDERZOEK_IDS).or(z.literal('')).default(''),
     bouw: z.enum(BOUW_IDS).or(z.literal('')).default(''),
+    /*
+     * Of het werkpakket belegd is: of iemand het heeft opgepakt.
+     *
+     * Een derde as naast `onderzoek` en `bouw`, en met opzet geen vierde
+     * voortgangsveld — dit zegt of er iemand op zit, niet hoe ver het is.
+     * Zie BELEGGING_STANDEN in lib/roadmap.ts voor de standen en het
+     * verschil tussen '' (niets gezegd) en 'vrij' (op te pakken).
+     *
+     * Eén object in plaats van losse velden: het is één feit, in één
+     * bewerking geschreven, en alleen zo is te controleren dat een datum
+     * zonder stand niets betekent.
+     *
+     * Het hele object mag ontbreken; dat is de minste-bewering-waarde en
+     * waar alle negenenveertig werkpakketten beginnen. `sinds` is een
+     * string en geen z.date(), om dezelfde reden als de datum van een RFC:
+     * geen tijdzoneverschuiving in de build.
+     *
+     * Er staat met opzet geen naam in, en geen lijst met issues of pull
+     * requests. De roadmap is publiek en vanaf de homepage gelinkt, en wie
+     * eraan werkt blijkt al uit de pull requests: die dragen een
+     * `Werkpakket: <slug>`-regel, en de werkpakketpagina zoekt daarop. Die
+     * index onderhoudt zichzelf; een lijst hier zou een tweede waarheid zijn
+     * die veroudert zodra iemand vergeet hem bij te werken.
+     */
+    belegging: z
+      .object({
+        stand: z.enum(BELEGGING_IDS).or(z.literal('')).default(''),
+        sinds: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/, "moet 'JJJJ-MM-DD' zijn")
+          .optional(),
+      })
+      .default({ stand: '' })
+      .superRefine((b, ctx) => {
+        // Zonder datum is niet te zien of dit vorige week of vorig jaar is
+        // opgepakt, en dat is precies wat een verjaarde claim zichtbaar maakt.
+        if ((b.stand === 'opgepakt' || b.stand === 'klaar') && !b.sinds) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['sinds'],
+            message: `belegging.stand '${b.stand}' vereist een \`sinds\`.`,
+          });
+        }
+        // Gegevens bij een stand die ze nergens rendert zouden stil zijn.
+        if (b.stand !== 'opgepakt' && b.stand !== 'klaar' && b.sinds) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['stand'],
+            message:
+              '`sinds` ingevuld terwijl `stand` niet ' +
+              "'opgepakt' of 'klaar' is; die datum rendert dan nergens.",
+          });
+        }
+      }),
     // RFC numbers whose design work belongs to this werkpakket, e.g. [13, 21].
     // The RFC keeps its own `implementation` field; this is a pointer, not a
     // copy of it. assertRfcReferences() checks each number exists.

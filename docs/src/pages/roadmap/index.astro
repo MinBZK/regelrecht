@@ -29,6 +29,7 @@ import {
   swimlanes,
   getDiscipline,
   FILTER_OPTIES,
+  BELEGGING_FILTER_OPTIES,
   werkpakkettenInCel,
   assertReferencesResolve,
   assertFilterRules,
@@ -177,6 +178,43 @@ const pathname = '/roadmap';
                 <nldd-checkbox-field
                   class="rr-filter__option"
                   id={`rr-cat-${optie.id}`}
+                  label={optie.label}
+                />
+              ))
+            }
+          </fieldset>
+
+          {/*
+            The belegging filter: is anyone on this werkpakket.
+
+            A checkbox group like the categorie filter, but it cannot work the
+            same way. That one hides everything and shows matches back with a
+            `:has(#id)` rule that wins on specificity; a second group cannot
+            repeat the trick, because two groups have to *intersect* and a
+            second show-back rule would return cards the first group just
+            hid. Inverting to hide-on-non-match fixes that but breaks OR
+            within a group: with both 'bar' and 'pivot' checked, each rule
+            hides what the other shows and nothing is left.
+
+            So this one goes through the script instead, on the contract the
+            zoekfilter already established: mark non-matching cards with a
+            class, hide that class with !important so the rule sits outside
+            the specificity contest altogether. All three controls then
+            compose — a card survives only when none of them hides it.
+
+            Nothing checked means no filter, exactly like the categorie group.
+          */}
+          <fieldset class="rr-filter rr-filter--belegging">
+            <legend class="rr-filter__legend">
+              <nldd-text size="sm" weight="medium" color="secondary">
+                Filter op belegging
+              </nldd-text>
+            </legend>
+            {
+              BELEGGING_FILTER_OPTIES.map((optie) => (
+                <nldd-checkbox-field
+                  class="rr-filter__belegging-option"
+                  id={`rr-bel-${optie.id}`}
                   label={optie.label}
                 />
               ))
@@ -404,6 +442,33 @@ const pathname = '/roadmap';
       gepland = requestAnimationFrame(() => hertel(raw));
     };
 
+    /*
+     * Which belegging-standen are checked. Nothing checked is no filter, the
+     * same reading the categorie group has: a filter nobody set narrows
+     * nothing.
+     *
+     * Read from the attribute, not the property. nldd-checkbox-field reflects
+     * `checked` to the attribute one microtask after dispatching `change`, and
+     * the categorie filter's :has() rules already depend on that reflection;
+     * reading the same source here keeps the two groups measuring one truth.
+     * The callers run inside rAF, by which point the reflection has happened.
+     */
+    const gekozenBelegging = () =>
+      new Set(
+        Array.from(
+          document.querySelectorAll('.rr-filter__belegging-option[checked]'),
+        ).map((el) => el.id.replace('rr-bel-', '')),
+      );
+
+    const filterBelegging = () => {
+      const gekozen = gekozenBelegging();
+      for (const card of cards) {
+        const stand = card.dataset.belegging ?? '';
+        const match = gekozen.size === 0 || gekozen.has(stand);
+        card.classList.toggle('rr-wp-card--geen-belegging', !match);
+      }
+    };
+
     const filter = (raw: string) => {
       const terms = normaliseerZoekterm(raw).split(' ').filter(Boolean);
 
@@ -439,6 +504,23 @@ const pathname = '/roadmap';
     // unaffected — so this recounts rather than re-running the whole filter.
     for (const optie of document.querySelectorAll('.rr-filter__option')) {
       optie.addEventListener('change', () => hertelStraks(fieldValue(field)));
+    }
+
+    /*
+     * The belegging checkboxes do change which cards match, so unlike the
+     * categorie group these re-run their own pass before recounting. Both go
+     * through rAF: `checked` is still only a property when `change` fires, and
+     * gekozenBelegging() reads the reflected attribute.
+     */
+    for (const optie of document.querySelectorAll(
+      '.rr-filter__belegging-option',
+    )) {
+      optie.addEventListener('change', () => {
+        requestAnimationFrame(() => {
+          filterBelegging();
+          hertelStraks(fieldValue(field));
+        });
+      });
     }
   }
 

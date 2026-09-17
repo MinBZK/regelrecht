@@ -39,6 +39,9 @@ import {
   rfcVerwijzingen,
   getOnderzoek,
   getBouw,
+  getBelegging,
+  sindsTekst,
+  assertBelegging,
   NIET_BEPAALD,
   NIET_GESPECIFICEERD,
 } from '~/lib/roadmap';
@@ -54,6 +57,9 @@ export async function getStaticPaths() {
   assertPaperSections(werkpakketten);
   // Fails the build on a werkpakket pointing at an RFC that does not exist.
   assertRfcReferences(werkpakketten);
+  // Fails the build on a belegging that contradicts onderzoek/bouw, or that
+  // claims a date in the future.
+  assertBelegging(werkpakketten);
   return werkpakketten.map((entry) => ({
     params: { id: entry.data.id },
     props: { entry, all: werkpakketten },
@@ -134,8 +140,22 @@ const prZoekUrl = `https://github.com/MinBZK/regelrecht/pulls?q=${encodeURICompo
 // from the RFC itself, so it cannot drift from what was actually decided.
 const rfcs = rfcVerwijzingen(wp.rfcs);
 
+const belegging = getBelegging(wp.belegging.stand);
+
 // The metadata pairs, so the sidebar is one loop instead of five near-copies.
 const kerngegevens = [
+  // Bovenaan, want of er iemand op zit is het eerste wat je wilt weten als je
+  // op een werkpakket landt. `onder` is de ouderdom: een kale datum leest als
+  // metadata, "sinds 3 maanden" leest als een vraag.
+  {
+    label: 'Belegging',
+    tag: belegging,
+    value: '',
+    onder: wp.belegging.sinds
+      ? `sinds ${sindsTekst(wp.belegging.sinds)}`
+      : undefined,
+    leeg: NIET_BEPAALD,
+  },
   { label: 'Onderzoek', tag: getOnderzoek(wp.onderzoek), value: '' },
   { label: 'Bouw', tag: getBouw(wp.bouw), value: '' },
   { label: 'Prioriteit', tag: prioriteit, value: '' },
@@ -211,6 +231,11 @@ const kerngegevens = [
                 >
                   {veld.value || veld.leeg || NIET_BEPAALD}
                 </nldd-text>
+              )}
+              {/* Een stille tweede regel onder de tag. Alleen de belegging
+                  gebruikt hem, voor de ouderdom van de claim. */}
+              {veld.onder && (
+                <nldd-text size="xs" color="secondary">{veld.onder}</nldd-text>
               )}
             </nldd-container>
           ))

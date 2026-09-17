@@ -94,6 +94,8 @@ toelichting: |-
 volgorde: 1000
 onderzoek: ''
 bouw: ''
+belegging:
+  stand: ''
 rfcs: []
 onderzoeksvragen: []
 samenhangIds: []
@@ -143,6 +145,39 @@ Dat zijn twee assen en met opzet geen één. Een vraag kan beantwoord zijn zonde
 dat er iets gebouwd is, en er kan iets staan terwijl de vraag erachter nog open
 is. Eén gecombineerde status zou in de helft van de gevallen een verkeerd beeld
 geven. Beide mogen leeg blijven; de pagina toont dan "Nog niet bepaald".
+
+`belegging.stand` — `vrij`, `opgepakt`, `klaar`, of `''`. Plus
+`belegging.sinds` (`'JJJJ-MM-DD'`, verplicht bij `opgepakt` en `klaar`).
+
+Dit is een derde as naast `onderzoek` en `bouw`, en met opzet geen vierde
+voortgangsveld: het zegt of er iemand op zit, niet hoe ver het is. `klaar` is
+hier een eigen stand en geen afleiding uit `onderzoek: beantwoord` +
+`bouw: wel` — een verkenning is klaar zonder dat er ooit iets gebouwd wordt.
+
+**`''` en `vrij` zijn niet hetzelfde, en dat verschil draagt het veld.** `''`
+is de standaard: er is niets over gezegd, en daar beginnen alle
+negenenveertig. `vrij` is een redactionele daad: je hebt het werkpakket
+gelezen en vastgesteld dat het op te pakken is. Een roadmap waar alles op
+`vrij` staat omdat dat de standaard is, nodigt niemand uit; een roadmap waar
+er zes op `vrij` staan, is een oproep. Zet `vrij` dus niet om het vakje te
+vullen — dezelfde regel als bij prioriteit.
+
+**Er staat geen naam in, met opzet.** De roadmap is publiek en vanaf de
+homepage gelinkt. Wie eraan werkt blijkt uit de pull requests, die via de
+`Werkpakket:`-regel al aan het werkpakket hangen. Zet er dus geen `wie:` bij:
+dat zou een persoonsnaam van een collega op een publieke pagina zetten, en het
+veld gaat over óf het werk belegd is, niet over wie.
+
+**En geen lijst met issues of pull requests**, om dezelfde reden als waarom er
+geen labels per werkpakket zijn: de `Werkpakket:`-regel ís de index, en de
+werkpakketpagina zoekt erop. Een lijst hier zou met de hand bijgehouden moeten
+worden en verouderen zodra iemand dat vergeet.
+
+```yaml
+belegging:
+  stand: opgepakt
+  sinds: '2026-09-17'
+```
 
 `volgorde` — een getal dat de plek binnen één matrixcel bepaalt, laag eerst.
 Dit veld is verplicht en heeft met opzet geen default: een ontbrekend veld zou
@@ -237,6 +272,41 @@ die daarop blokkeert zet de roadmap in de weg van het werk dat hij beschrijft.
 Niet elke RFC hoort trouwens bij een werkpakket — RFC-000 gaat over het
 RFC-proces zelf.
 
+## Een werkpakket oppakken
+
+Eén pull request, één bestand, twee regels:
+
+```yaml
+belegging:
+  stand: opgepakt
+  sinds: '2026-09-17'
+```
+
+De datum is de dag dat je het oppakt, niet de dag dat je klaar denkt te zijn.
+De kaart op de matrix krijgt een tint en een tag; de detailpagina toont de
+ouderdom ("sinds 3 maanden"), en dat is met opzet: een veld in de frontmatter
+verloopt niet, dus de pagina moet laten zien hoe oud een claim is.
+
+**Loslaten is dezelfde bewerking omgekeerd**, en een normale handeling, geen
+falen. Zet `stand` terug op `vrij` (of `''`) en haal `sinds` weg. Doe dat ook
+als je het werkpakket overdraagt: de belegging zegt dat het belegd is, niet
+door wie, dus een overdracht verandert er niets aan — alleen een werkpakket dat
+weer vrijkomt.
+
+Een werkpakket dat af is krijgt `stand: klaar` (met de datum waarop het af
+was). Dat is een uitspraak over het werkpakket als geheel, en niet hetzelfde
+als `onderzoek: beantwoord` plus `bouw: wel` — een verkenning is klaar zonder
+dat er ooit iets gebouwd is.
+
+Welke werkpakketten al te lang op `opgepakt` staan:
+
+```bash
+cd docs && node scripts/check-roadmap-belegging.mjs
+```
+
+Dat meldt en blokkeert nooit, net als `check-roadmap-rfcs.mjs`; het draait mee
+in `just docs-a11y`.
+
 ## Een werkpakket verplaatsen
 
 Binnen een cel: pas `volgorde` aan. Naar een andere cel: pas `faseId` of
@@ -325,6 +395,9 @@ aan zodra je `/roadmap` echt opvraagt. Vertrouw op `docs-build`.
 - twee bestanden met hetzelfde `id`, of een bestandsnaam die niet het `id` is
 - een `paper:`-anker dat niet in het paper staat
 - een RFC-nummer in `rfcs` dat niet bestaat
+- een `belegging` die niet klopt: `opgepakt` of `klaar` zonder `sinds`, een
+  `sinds` bij een stand die hem nergens toont, een datum in de toekomst, of
+  `vrij` op een werkpakket dat al beantwoord én gebouwd is
 - een ontbrekende of foute waarde volgens het zod-schema
 
 Raak je ook de pagina's aan, draai dan `just docs-a11y` (duurt ~10 minuten en
@@ -338,6 +411,13 @@ werk, niet een defect. Een poort die daarover klaagt zou bij elke commit
 afgaan en daarmee genegeerd worden — en hij zou het toevoegen van een
 half-uitgewerkt werkpakket blokkeren, wat juist de manier is waarop deze
 roadmap groeit.
+
+Dat geldt ook voor de belegging: de build controleert niet of er überhaupt een
+werkpakket op `vrij` staat, of iemand nog echt aan een opgepakt werkpakket
+werkt, of dat er pull requests aan hangen. Dat laatste zou een API-call in de
+build betekenen, en een netwerkhapering tot een rode build maken. Voor de vraag
+of een claim nog klopt is er `check-roadmap-belegging.mjs`, die meldt en niet
+blokkeert.
 
 Wil je weten waar de roadmap onaf is, kijk dan zelf:
 
