@@ -6196,6 +6196,14 @@ params:
             termijnen.iter().all(|due| due.besluit_gram == 3),
             "elke termijn hoort naar het besluit-gram te wijzen en niet naar de bekendmaking"
         );
+        // Het ritme lag vast bij het besluit, met zijn herkomst: de bekendmaking
+        // geeft de dag en laat die herkomst staan.
+        assert!(
+            termijnen
+                .iter()
+                .all(|due| due.ritme_herkomst == wachtend.ritme_herkomst),
+            "elke termijn hoort de herkomst van het ritme uit het besluit te dragen"
+        );
     }
 
     /// Een termijn die vóór de bekendmaking zou vervallen, wordt op de dag van
