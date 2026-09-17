@@ -12,6 +12,7 @@ import {
   obligationValue,
   regulationOf,
   stageOf,
+  stageUitkomstenNietGeleverdOf,
 } from '../world/snapshot.js';
 
 // Eén gram in een kroniek: wat er gebeurde, wanneer, langs welk kanaal, en — als
@@ -58,6 +59,7 @@ const decisionType = computed(() => decisionTypeOf(props.gram));
 // label alleen aan hun velden uit elkaar te houden.
 const stage = computed(() => stageOf(props.gram));
 const afwijzingsgronden = computed(() => afwijzingsgrondenOf(props.gram));
+const nietGeleverd = computed(() => stageUitkomstenNietGeleverdOf(props.gram));
 
 // De wet bepaalt wie het bevoegd gezag is. Zegt ze er niets over, dan viel er
 // niet te toetsen wie mocht besluiten, en dat hoort bij het gram te staan waar
@@ -175,6 +177,25 @@ function obligationText(row) {
         size="sm"
         :text="`Afwijzingsgrond: ${humanize(grond.output)}`"
         :supporting-text="`${formatValue(grond.value)}${grond.article ? ` · artikel ${grond.article}` : ''}`"
+      ></nldd-text-cell>
+    </nldd-list-item>
+
+    <!-- Wat de eigen regeling voor deze stage declareerde en niet opleverde. De
+         waarde staat hieronder dan niet tussen de velden; zonder deze rij zou
+         een lezer niet zien dat ze er had moeten staan. -->
+    <nldd-list-item
+      v-for="(gat, index) in expandable ? nietGeleverd : []"
+      :key="`niet-geleverd-${index}`"
+      slot="children"
+      size="sm"
+    >
+      <nldd-spacer-cell size="20"></nldd-spacer-cell>
+      <nldd-icon-cell icon="warning" size="16" color="warning"></nldd-icon-cell>
+      <nldd-spacer-cell size="8"></nldd-spacer-cell>
+      <nldd-text-cell
+        size="sm"
+        :text="`Stage-uitkomst niet geleverd: ${humanize(gat.uitkomst)}`"
+        :supporting-text="[gat.lexogram, gat.reden].filter(Boolean).join(' · ')"
       ></nldd-text-cell>
     </nldd-list-item>
 

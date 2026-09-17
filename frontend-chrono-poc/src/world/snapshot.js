@@ -128,6 +128,34 @@ function readAfwijzingsgronden(raw) {
   }));
 }
 
+/**
+ * De uitkomsten die de eigen regeling voor deze stage declareerde en die niet
+ * kwamen, als rijen.
+ *
+ * Elke rij noemt de uitkomst, het artikel met regeling en versie, en de reden
+ * als de engine die gaf. Leeg bij een gram waarin elke gedeclareerde uitkomst er
+ * kwam, en bij elk gram dat geen bekendmaking is — het veld staat er dan niet.
+ * Zonder deze rijen is een uitkomst die niet gedeclareerd was in beeld niet te
+ * onderscheiden van een die gedeclareerd was en ontbrak.
+ */
+export function stageUitkomstenNietGeleverdOf(gram) {
+  const raw = gram?.fields?.stage_uitkomst_niet_geleverd?.value;
+  if (!Array.isArray(raw)) return [];
+  return raw.map((row) => ({
+    uitkomst: row?.uitkomst === undefined || row?.uitkomst === null ? null : String(row.uitkomst),
+    lexogram: describeLexogram(
+      row?.lexogram
+        ? {
+            regulation: row.lexogram.regulation,
+            article: row.lexogram.artikel,
+            valid_from: row.lexogram.regulation_valid_from,
+          }
+        : null,
+    ),
+    reden: row?.reden === undefined || row?.reden === null ? null : String(row.reden),
+  }));
+}
+
 /** De cellen uit het beeld, in de volgorde waarin het beeld ze geeft. */
 export function cells(snapshot) {
   return Array.isArray(snapshot?.cells) ? snapshot.cells : [];

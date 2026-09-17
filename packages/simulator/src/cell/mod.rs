@@ -38,9 +38,9 @@ pub use besluit::{
     ChronicleSource, Decretogram, DecretogramInput, ExecutedRegulation, HookHerkomst,
     HookNietUitgevoerd, InputOrigin, NietsTeBetalen, ObligationDefinition, ObligationDue,
     ObligationKind, ObligationOrigin, ObsoleteField, RichtingBijNegatief, Schedule, ScheduleOrigin,
-    StageUitkomstHerkomst, TermijnenVervallen, Vervanging, WachtendeVerplichting, AFWIJZING,
-    BESCHIKKING, BESCHIKKINGEN, BETALINGEN, DECISION_TYPE, STAGE, STAGE_BEKENDMAKING,
-    STAGE_BESLUIT, ZAAKKENMERK,
+    StageUitkomstHerkomst, StageUitkomstNietGeleverd, TermijnenVervallen, Vervanging,
+    WachtendeVerplichting, AFWIJZING, BESCHIKKING, BESCHIKKINGEN, BETALINGEN, DECISION_TYPE, STAGE,
+    STAGE_BEKENDMAKING, STAGE_BESLUIT, ZAAKKENMERK,
 };
 pub(crate) use besluit::{BesluitGram, DeclaredObligations, ObligationScope};
 // Eén sjabloonlezer voor het zaakkenmerk én voor de vragen van het portaal: een
@@ -197,6 +197,8 @@ struct StageUitkomst {
     hooks: Vec<HookHerkomst>,
     /// Waar elke uitkomst van de eigen regeling vandaan komt.
     stage_uitkomsten: Vec<StageUitkomstHerkomst>,
+    /// De uitkomsten die de eigen regeling declareert en die niet kwamen.
+    stage_uitkomst_niet_geleverd: Vec<StageUitkomstNietGeleverd>,
     /// De hooks die vuurden maar niet konden draaien.
     hooks_niet_uitgevoerd: Vec<HookNietUitgevoerd>,
     /// De `valid_from` van de regelingversie die gold.
@@ -2121,6 +2123,7 @@ impl Cell {
             cell: self.id.clone(),
             inputs,
             stage_uitkomsten: uitkomst.stage_uitkomsten,
+            stage_uitkomst_niet_geleverd: uitkomst.stage_uitkomst_niet_geleverd,
             hooks_niet_uitgevoerd: uitkomst.hooks_niet_uitgevoerd,
             besluit: definition.name.clone(),
             zaakkenmerk,
@@ -2266,6 +2269,7 @@ impl Cell {
             .stage_uitkomsten_voor(besluit::STAGE_BEKENDMAKING)
             .to_vec();
         let mut stage_uitkomsten = Vec::new();
+        let mut stage_uitkomst_niet_geleverd = Vec::new();
         if !eigen.is_empty() {
             let requested: Vec<&str> = eigen.iter().map(String::as_str).collect();
             let own = service
@@ -2279,10 +2283,6 @@ impl Cell {
                 .map_err(|error| self.explain_undeclared_source(definition, untraced(error)))?;
             let resolver = service.resolver();
             for name in &eigen {
-                let Some(value) = own.outputs.get(name) else {
-                    continue;
-                };
-                outputs.insert(name.clone(), value.clone());
                 let article = match own.output_provenance.get(name) {
                     Some(
                         OutputProvenance::Direct { article, .. }
@@ -2298,13 +2298,34 @@ impl Cell {
                         .map(|article| article.number.clone())
                         .unwrap_or_default(),
                 };
+                let lexogram = ObligationOrigin {
+                    regulation: definition.regulation.clone(),
+                    valid_from: own.regulation_valid_from.clone(),
+                    article,
+                };
+                // Gedeclareerd maar niet geleverd: dat hoort in het gram te
+                // staan en niet stil weg te vallen. Niet geleverd is een
+                // uitkomst die niet terugkwam of onbekend bleef (RFC-036: een
+                // feit dat de engine niet heeft). Een `null` is wél geleverd:
+                // afwezigheid is een waarde — de regeling zei "er is er geen" —
+                // en staat dus gewoon als waarde in het gram. Een onbekende
+                // komt er niet als waarde in, maar wel hier, met de feiten die
+                // ontbraken.
+                let value = match own.outputs.get(name) {
+                    Some(value) if !value.contains_unknown() => value,
+                    value => {
+                        stage_uitkomst_niet_geleverd.push(StageUitkomstNietGeleverd {
+                            uitkomst: name.clone(),
+                            lexogram,
+                            reden: value.and_then(niet_geleverd_reden),
+                        });
+                        continue;
+                    }
+                };
+                outputs.insert(name.clone(), value.clone());
                 stage_uitkomsten.push(StageUitkomstHerkomst {
                     veld: name.clone(),
-                    lexogram: ObligationOrigin {
-                        regulation: definition.regulation.clone(),
-                        valid_from: own.regulation_valid_from.clone(),
-                        article,
-                    },
+                    lexogram,
                 });
                 if let Some(provenance) = own.output_provenance.get(name) {
                     result
@@ -2331,6 +2352,7 @@ impl Cell {
             outputs,
             hooks,
             stage_uitkomsten,
+            stage_uitkomst_niet_geleverd,
             hooks_niet_uitgevoerd,
             regulation_valid_from: result.regulation_valid_from.clone(),
             receipt,
@@ -3373,6 +3395,26 @@ fn executing_article<'a>(
     (article, origin, produces)
 }
 
+/// Waarom een gedeclareerde stage-uitkomst er niet is, uit de waarde die de
+/// engine ervoor gaf.
+///
+/// Alleen wat de engine zelf zegt: de feiten die niemand aanleverde, ook als de
+/// onbekende in een lijst of record zit (RFC-036). Een `null` komt hier niet: dat
+/// is een geleverde waarde. Een uitkomst die helemaal niet terugkwam, heeft geen
+/// waarde om uit te lezen en krijgt hier dus ook geen reden.
+fn niet_geleverd_reden(value: &Value) -> Option<String> {
+    let merged = Value::merge_unknown_deep([value])?;
+    Some(format!(
+        "onbekend, want deze feiten ontbraken: {}",
+        merged
+            .missing_facts()
+            .iter()
+            .map(|fact| format!("{} ({})", fact.name, fact.law))
+            .collect::<Vec<_>>()
+            .join(", ")
+    ))
+}
+
 /// De hooks die de engine oversloeg, met de versie van hun regeling erbij.
 fn hooks_niet_uitgevoerd(
     resolver: &RuleResolver,
@@ -4084,6 +4126,28 @@ mod tests {
 
     fn config(yaml: &str) -> CellConfig {
         serde_yaml_ng::from_str(yaml).unwrap_or_else(|e| panic!("testconfig moet parsen: {e}"))
+    }
+
+    /// De reden bij een stage-uitkomst die niet kwam, is wat de engine zegt: de
+    /// feiten die niemand aanleverde, met hun regeling.
+    #[test]
+    fn de_reden_van_een_niet_geleverde_uitkomst_komt_uit_de_engine() {
+        // `null` is afwezigheid, een geleverde waarde (RFC-036): geen reden.
+        assert_eq!(niet_geleverd_reden(&Value::Null), None);
+        let onbekend = Value::unknown(
+            "test_regeling",
+            "datum_ontvangst",
+            regelrecht_engine::MissingKind::NoData,
+        );
+        assert_eq!(
+            niet_geleverd_reden(&onbekend).as_deref(),
+            Some("onbekend, want deze feiten ontbraken: datum_ontvangst (test_regeling)")
+        );
+        // Een onbekende in een lijst telt even zwaar als een losse.
+        assert_eq!(
+            niet_geleverd_reden(&Value::Array(vec![Value::Int(1), onbekend])).as_deref(),
+            Some("onbekend, want deze feiten ontbraken: datum_ontvangst (test_regeling)")
+        );
     }
 
     /// Geen fixtures: deze tests tuigen een cel rechtstreeks op, buiten een

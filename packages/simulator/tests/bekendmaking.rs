@@ -652,6 +652,10 @@ fn een_stage_uitkomst_hoort_bij_het_besluit_van_het_eigen_artikel() {
         "de vaststelling declareert geen stage-uitkomst"
     );
     assert!(objecten(vaststelling, "stage_uitkomsten").is_empty());
+    // Het veld van de gaten staat er altijd, ook leeg: bij een bekendmaking die
+    // alles leverde, en bij een die niets declareerde.
+    assert!(objecten(verlening, "stage_uitkomst_niet_geleverd").is_empty());
+    assert!(objecten(vaststelling, "stage_uitkomst_niet_geleverd").is_empty());
     // De hooks van de algemene wet vuurden er wel.
     assert_eq!(
         veld(vaststelling, "uiterste_betaaldatum_4_87"),
@@ -712,6 +716,254 @@ fn een_hook_zonder_input_staat_in_het_gram_en_in_het_journaal() {
         assert!(regel.description.contains("test_hook_zonder_input"));
     }
     assert_eq!(run.warnings.len(), 2, "het optuigen waarschuwde voor beide");
+}
+
+/// **Een gedeclareerde stage-uitkomst die niet ontstaat, staat in het gram en in
+/// het journaal; een die `null` is, is gewoon geleverd.**
+///
+/// Twee verleningen onder hetzelfde artikel, dat drie uitkomsten voor de
+/// bekendmaking declareert. Met voorschriften blijft de controle onbekend: die
+/// staat niet als waarde in het gram en niet onder `stage_uitkomsten`, maar wel
+/// onder `stage_uitkomst_niet_geleverd` — met het artikel en de feiten die
+/// ontbraken — en er hangt een journaalregel onder de bekendmaking. Zonder
+/// voorschriften zegt de regeling "er is geen dag": `null` is afwezigheid, een
+/// waarde (RFC-036), en staat als waarde in het gram.
+#[test]
+fn een_stage_uitkomst_die_niet_ontstaat_valt_niet_stil_weg() {
+    let run = run("bekendmaking_stage_uitkomst_niet_geleverd.yaml");
+    let grams = beschikkingen(&run);
+    let bekendmakingen: Vec<&GramSnapshot> = grams
+        .iter()
+        .copied()
+        .filter(|gram| veld(gram, "stage") == "BEKENDMAKING")
+        .collect();
+    assert_eq!(bekendmakingen.len(), 2);
+    let (met, zonder) = (bekendmakingen[0], bekendmakingen[1]);
+    let velden = |gram: &GramSnapshot| -> Vec<String> {
+        objecten(gram, "stage_uitkomsten")
+            .iter()
+            .filter_map(|herkomst| herkomst.get("veld").and_then(Value::as_str))
+            .map(str::to_string)
+            .collect()
+    };
+
+    // Met voorschriften: wat er kwam, staat er gewoon.
+    assert_eq!(veld(met, "vergunning_geldig_vanaf"), "2024-03-04");
+    assert_eq!(veld(met, "nakoming_gemeld_uiterlijk_op"), "2024-04-01");
+    assert_eq!(
+        velden(met),
+        ["vergunning_geldig_vanaf", "nakoming_gemeld_uiterlijk_op"]
+    );
+
+    // De controle staat er niet als waarde, maar wel als gat.
+    assert!(!met.fields.contains_key("eerste_controle_uiterlijk_op"));
+    let niet = objecten(met, "stage_uitkomst_niet_geleverd");
+    assert_eq!(niet.len(), 1, "precies één uitkomst kwam niet");
+    assert_eq!(
+        niet[0].get("uitkomst").and_then(Value::as_str),
+        Some("eerste_controle_uiterlijk_op")
+    );
+    let Some(Value::Object(lexogram)) = niet[0].get("lexogram") else {
+        panic!("de uitkomst hoort haar artikel te noemen");
+    };
+    assert_eq!(
+        lexogram.get("regulation").and_then(Value::as_str),
+        Some("test_stage_uitkomst_niet_geleverd")
+    );
+    assert_eq!(
+        lexogram
+            .get("regulation_valid_from")
+            .and_then(Value::as_str),
+        Some("2024-01-01")
+    );
+    assert_eq!(lexogram.get("artikel").and_then(Value::as_str), Some("4"));
+    assert_eq!(
+        niet[0].get("reden").and_then(Value::as_str),
+        Some(
+            "onbekend, want deze feiten ontbraken: datum_controleverzoek \
+             (test_stage_uitkomst_niet_geleverd)"
+        ),
+        "de engine miste een feit, en dat is de reden"
+    );
+
+    // Een vast veld van de bekendmaking, en dus geen uitkomst van de regeling.
+    assert!(matches!(
+        met.fields["stage_uitkomst_niet_geleverd"].origin,
+        FieldOrigin::Besluit
+    ));
+
+    // Zonder voorschriften: `null` is een geleverde waarde. Beide uitkomsten
+    // staan als `null` in het gram, met hun herkomst, en het veld van de gaten
+    // staat er — leeg.
+    assert_eq!(veld(zonder, "vergunning_geldig_vanaf"), "2024-03-06");
+    assert_eq!(waarde(zonder, "nakoming_gemeld_uiterlijk_op"), &Value::Null);
+    assert_eq!(waarde(zonder, "eerste_controle_uiterlijk_op"), &Value::Null);
+    assert_eq!(
+        velden(zonder),
+        [
+            "vergunning_geldig_vanaf",
+            "nakoming_gemeld_uiterlijk_op",
+            "eerste_controle_uiterlijk_op"
+        ]
+    );
+    assert!(objecten(zonder, "stage_uitkomst_niet_geleverd").is_empty());
+
+    let regels: Vec<_> = run
+        .journal
+        .iter()
+        .filter(|entry| entry.kind == regelrecht_simulator::JournalKind::StageUitkomstNietGeleverd)
+        .collect();
+    assert_eq!(
+        regels.len(),
+        1,
+        "één regel, bij de bekendmaking met voorschriften"
+    );
+    let ouder = regels[0]
+        .parent
+        .expect("de regel hangt onder de bekendmaking");
+    assert!(run.journal.iter().any(|entry| entry.seq == ouder
+        && entry.kind == regelrecht_simulator::JournalKind::Bekendmaking
+        && entry.moment.to_string() == "2024-03-04"));
+    assert!(regels[0]
+        .description
+        .contains("eerste_controle_uiterlijk_op"));
+    assert!(regels[0]
+        .description
+        .contains("test_stage_uitkomst_niet_geleverd artikel 4"));
+}
+
+/// **Een vervaldag die op een niet-geleverde uitkomst leunt, valt hard om.**
+///
+/// Een gat in het gram is goed genoeg voor een uitkomst die alleen gelezen
+/// wordt, maar niet voor een termijn die erop ingeroosterd moet worden. Of de
+/// uitkomst onbekend bleef of `null` was: de bekendmaking wordt geweigerd, met
+/// de uitkomst in de melding, en er wordt niets vastgelegd.
+#[test]
+fn een_vervaldag_op_een_niet_geleverde_uitkomst_weigert_de_bekendmaking() {
+    let yaml = r#"
+name: een vervaldag die op een niet-geleverde uitkomst leunt
+clock:
+  start: 2024-01-01
+cells:
+  - id: uitvoerder
+    identity: Uitvoerder
+    laws:
+      - test_stage_uitkomst_niet_geleverd
+      - test_awb_procedure
+    komt_na:
+      - Uitvoerder
+    chronicles:
+      - stream: betalingen
+        key: zaakkenmerk
+        gebeurtenissen:
+          - name: betaling_gedaan
+            intake: betaling
+            grondslag: Algemene wet bestuursrecht, art. 4:89
+            fields: &betalingsvelden
+              - name: zaakkenmerk
+                type: string
+              - name: bedrag
+                type: amount
+              - name: volgnummer
+                type: number
+              - name: besluit
+                type: string
+              - name: schuldenaar
+                type: string
+              - name: schuldeiser
+                type: string
+          - name: betaling_gemeld
+            intake: levering
+            grondslag: Algemene wet bestuursrecht, art. 4:89
+            fields: *betalingsvelden
+    besluit_definitions:
+      - name: vergoeding
+        doc: een vergoeding die op de dag van de controle vervalt
+        regulation: test_stage_uitkomst_niet_geleverd
+        output: vergoeding_toegekend
+        outputs:
+          - hoogte_vergoeding
+        zaakkenmerk: vergoeding/{bsn}
+        params:
+          - name: bsn
+            type: string
+          - name: met_voorschriften
+            type: boolean
+        inputs:
+          bsn:
+            param: bsn
+          met_voorschriften:
+            param: met_voorschriften
+actions:
+  - id: uitvoerder.vergoeding
+    actor: uitvoerder
+    label: Ken de vergoeding toe
+    decides:
+      cell: uitvoerder
+      besluit: vergoeding
+  - id: uitvoerder.bekendmaking
+    actor: uitvoerder
+    label: Maak de vergoeding bekend
+    publishes:
+      cell: uitvoerder
+      besluit: vergoeding
+act: []
+"#;
+    // Met voorschriften blijft de uitkomst onbekend; zonder is ze `null`.
+    for met_voorschriften in [true, false] {
+        let scenario =
+            Scenario::from_yaml(yaml).unwrap_or_else(|e| panic!("testscenario moet laden: {e}"));
+        let mut world = scenario
+            .world(&regulation_root())
+            .unwrap_or_else(|e| panic!("testwereld moet op te tuigen zijn: {e}"));
+        world
+            .advance("2024-03-01".parse().expect("testdatum"))
+            .unwrap_or_else(|e| panic!("de klok moet vooruit kunnen: {e}"));
+        world
+            .act(
+                "uitvoerder.vergoeding",
+                &BTreeMap::from([
+                    ("bsn".to_string(), Value::String(BSN.to_string())),
+                    (
+                        "met_voorschriften".to_string(),
+                        Value::Bool(met_voorschriften),
+                    ),
+                ]),
+            )
+            .unwrap_or_else(|e| panic!("het besluit moet kunnen: {e}"));
+        world
+            .advance("2024-03-04".parse().expect("testdatum"))
+            .unwrap_or_else(|e| panic!("de klok moet vooruit kunnen: {e}"));
+        let error = world
+            .act(
+                "uitvoerder.bekendmaking",
+                &BTreeMap::from([
+                    (
+                        "datum_bekendmaking".to_string(),
+                        Value::String("2024-03-04".to_string()),
+                    ),
+                    (
+                        "toegezonden_aan_belanghebbende".to_string(),
+                        Value::Bool(true),
+                    ),
+                ]),
+            )
+            .expect_err("een termijn zonder vervaldag hoort de bekendmaking te weigeren");
+        assert!(
+            matches!(
+                &error,
+                regelrecht_simulator::SimulatorError::BekendmakingZonderBetaaldatum { veld, .. }
+                    if veld == "eerste_controle_uiterlijk_op"
+            ),
+            "met_voorschriften={met_voorschriften}: verwachtte een weigering op de \
+             vervaldag, kreeg: {error}"
+        );
+        assert_eq!(
+            beschikkingen_van(&world).len(),
+            1,
+            "er is niets vastgelegd: alleen het besluit ligt er"
+        );
+    }
 }
 
 /// **Een vervaldag uit de eigen regeling die al voorbij is, wordt ingehaald.**

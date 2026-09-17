@@ -276,6 +276,34 @@ describe('de herkomst in een decretogram', () => {
     expect(supporting).toContain('nee · artikel 2');
   });
 
+  // Een uitkomst die de eigen regeling declareerde en die niet kwam, staat als
+  // waarschuwing achter de uitklap: tussen de velden staat ze dan niet.
+  it('toont een gedeclareerde stage-uitkomst die niet kwam', async () => {
+    const cell = structuredClone(fixtureCell('toeslagen'));
+    for (const chronicle of cell.chronicles) {
+      for (const gram of chronicle.grams) {
+        if (gram.kind !== 'decretogram') continue;
+        gram.fields.stage_uitkomst_niet_geleverd = {
+          value: [
+            {
+              uitkomst: 'nakoming_gemeld_uiterlijk_op',
+              lexogram: { regulation: 'test_regeling', regulation_valid_from: null, artikel: '2' },
+              reden: 'onbekend, want deze feiten ontbraken: datum_controleverzoek (test_regeling)',
+            },
+          ],
+          origin: { herkomst: 'besluit' },
+        };
+      }
+    }
+    const wrapper = mount(CellColumn, { props: { cell, clock } });
+    await decisionRow(wrapper).trigger('click');
+    expect(attrs(wrapper, 'nldd-text-cell', 'text')).toContain(
+      'Stage-uitkomst niet geleverd: Nakoming gemeld uiterlijk op',
+    );
+    const supporting = attrs(wrapper, 'nldd-text-cell', 'supporting-text').filter(Boolean);
+    expect(supporting).toContain('test_regeling, artikel 2 · onbekend, want deze feiten ontbraken: datum_controleverzoek (test_regeling)');
+  });
+
   it('klapt weer dicht', async () => {
     const wrapper = mountCell('toeslagen');
     const row = decisionRow(wrapper);

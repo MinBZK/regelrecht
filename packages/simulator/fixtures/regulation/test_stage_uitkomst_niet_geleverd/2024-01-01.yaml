@@ -1,0 +1,190 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: test_stage_uitkomst_niet_geleverd
+name: Testregeling vergunning met een stage-uitkomst die niet altijd ontstaat
+regulatory_layer: WET
+bwb_id: BWBR9999922
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+url: https://example.com/test_stage_uitkomst_niet_geleverd
+competent_authority: Uitvoerder
+
+# Een testregeling, met opzet **niet** in het corpus: ze bestaat om een
+# eigenschap van de opstelling aan te tonen en niet om recht weer te geven.
+#
+# Wat ze aantoont is het verschil tussen een uitkomst onder `stage_uitkomsten`
+# die de regeling bij de bekendmaking **niet oplevert**, en een die ze oplevert
+# als `null` (RFC-036). Artikel 1 declareert er drie voor de bekendmaking. De
+# eerste (art. 3) ontstaat altijd. De tweede (art. 2) is er alleen bij een
+# vergunning onder voorschriften; zonder zegt de regeling "er is geen dag"
+# (`null`), en dat is een waarde. De derde (art. 4) leunt onder voorschriften op
+# een feit dat bij de bekendmaking niemand aanlevert, en blijft dan onbekend:
+# die is niet geleverd, en dat hoort in het gram te staan en niet stil weg te
+# vallen.
+articles:
+  - number: '1'
+    url: https://example.com/test_stage_uitkomst_niet_geleverd#Artikel1
+    text: >-
+      De uitvoerder verleent de vergunning, al dan niet onder voorschriften.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+          extensions:
+            chronolex:
+              stage_uitkomsten:
+                BEKENDMAKING:
+                  - vergunning_geldig_vanaf
+                  - nakoming_gemeld_uiterlijk_op
+                  - eerste_controle_uiterlijk_op
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: met_voorschriften
+            type: boolean
+            required: true
+        output:
+          - name: vergunning_verleend
+            type: boolean
+        actions:
+          - output: vergunning_verleend
+            value: true
+
+  - number: '2'
+    url: https://example.com/test_stage_uitkomst_niet_geleverd#Artikel2
+    text: >-
+      Is de vergunning onder voorschriften verleend, dan meldt de houder
+      uiterlijk vier weken na de bekendmaking dat hij aan de voorschriften
+      voldoet.
+    machine_readable:
+      execution:
+        parameters:
+          - name: met_voorschriften
+            type: boolean
+            required: true
+          # De dag van de bekendmaking, onder de naam die de procedure van de
+          # algemene wet ervoor gebruikt.
+          - name: datum_bekendmaking
+            type: date
+            required: true
+        output:
+          # Zonder voorschriften valt er niets te melden: dan is er geen dag.
+          - name: nakoming_gemeld_uiterlijk_op
+            type: date
+            nullable: true
+        actions:
+          - output: nakoming_gemeld_uiterlijk_op
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $met_voorschriften
+                    value: true
+                  then:
+                    operation: DATE_ADD
+                    date: $datum_bekendmaking
+                    weeks: 4
+
+  - number: '3'
+    url: https://example.com/test_stage_uitkomst_niet_geleverd#Artikel3
+    text: >-
+      De vergunning geldt vanaf de dag waarop zij is bekendgemaakt.
+    machine_readable:
+      execution:
+        parameters:
+          - name: datum_bekendmaking
+            type: date
+            required: true
+        output:
+          - name: vergunning_geldig_vanaf
+            type: date
+        actions:
+          - output: vergunning_geldig_vanaf
+            value: $datum_bekendmaking
+
+  - number: '4'
+    url: https://example.com/test_stage_uitkomst_niet_geleverd#Artikel4
+    text: >-
+      Is de vergunning onder voorschriften verleend, dan controleert de
+      uitvoerder de naleving uiterlijk acht weken na het verzoek van de houder.
+    machine_readable:
+      execution:
+        parameters:
+          - name: met_voorschriften
+            type: boolean
+            required: true
+          # Het verzoek van de houder: bij de bekendmaking is het er nog niet,
+          # en niemand geeft het door. Daarom `required: false` — de uitkomst
+          # is dan onbekend, niet afwezig.
+          - name: datum_controleverzoek
+            type: date
+            required: false
+        output:
+          - name: eerste_controle_uiterlijk_op
+            type: date
+            nullable: true
+        actions:
+          - output: eerste_controle_uiterlijk_op
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $met_voorschriften
+                    value: true
+                  then:
+                    operation: DATE_ADD
+                    date: $datum_controleverzoek
+                    weeks: 8
+
+  # Een besluit waarvan een termijn op zo'n uitkomst leunt. Is die er niet —
+  # onbekend, of `null` — dan valt de bekendmaking hard om: een verplichting
+  # zonder vervaldag laat zich niet inroosteren, en een gat in het gram zou
+  # dat verzwijgen. Geen scenario draait dit besluit; alleen de test die de
+  # weigering aantoont.
+  - number: '5'
+    url: https://example.com/test_stage_uitkomst_niet_geleverd#Artikel5
+    text: >-
+      De uitvoerder vergoedt de houder de kosten van de controle, uiterlijk op
+      de dag waarop hij uiterlijk controleert.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+          extensions:
+            chronolex:
+              stage_uitkomsten:
+                BEKENDMAKING:
+                  - eerste_controle_uiterlijk_op
+              verplichtingen:
+                - soort: betaling
+                  bedrag: $hoogte_vergoeding
+                  ritme: ineens
+                  vanaf: bekendmaking
+                  vervaldatum: eerste_controle_uiterlijk_op
+                  grondslag: >-
+                    Testregeling vergunning art. 5 jo. art. 4
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: met_voorschriften
+            type: boolean
+            required: true
+        output:
+          - name: vergoeding_toegekend
+            type: boolean
+          - name: hoogte_vergoeding
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: vergoeding_toegekend
+            value: true
+          - output: hoogte_vergoeding
+            value: 5000

@@ -106,6 +106,12 @@ pub enum JournalKind {
     /// Een eigen soort: het gram ligt er gewoon, en het nieuws is dat een artikel
     /// van de wet er níet op toegepast is.
     HookNietUitgevoerd,
+    /// Een uitkomst die de eigen regeling van een besluit voor de bekendmaking
+    /// declareert, kwam er bij die bekendmaking niet.
+    ///
+    /// Een eigen soort, om dezelfde reden als [`Self::HookNietUitgevoerd`]: de
+    /// bekendmaking ligt er gewoon, en het nieuws is wat er níet in staat.
+    StageUitkomstNietGeleverd,
     /// Een vraag die over een celgrens ging.
     Vraag,
 }
