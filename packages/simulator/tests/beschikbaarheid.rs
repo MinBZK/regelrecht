@@ -451,3 +451,51 @@ fn bekendmaken_kan_pas_als_er_een_besluit_ligt() {
         "de weigering hoort te zeggen wat er aan de hand is, kreeg: {error}"
     );
 }
+
+/// Een **tweede** besluit over dezelfde zaak wacht op zijn eigen bekendmaking.
+///
+/// Over één zaak wordt meer dan eens besloten, en elk besluit wordt apart
+/// bekendgemaakt (Awb 3:40 geldt voor elk besluit). Dat de vorige bekendmaking
+/// er ligt, mag de volgende dus niet blokkeren — de stand kijkt naar het gram
+/// waar een bekendmaking naar wijst en niet naar het zaakkenmerk.
+#[test]
+fn een_tweede_besluit_over_dezelfde_zaak_kan_opnieuw_bekendgemaakt_worden() {
+    let mut world = bekendmakingswereld();
+    let formulier = BTreeMap::from([("bsn".to_string(), text("999993653"))]);
+    world
+        .act("uitvoerder.toekenning", &formulier)
+        .unwrap_or_else(|e| panic!("het eerste besluit moet kunnen: {e}"));
+    world
+        .act("uitvoerder.bekendmaking", &BTreeMap::new())
+        .unwrap_or_else(|e| panic!("de eerste bekendmaking moet kunnen: {e}"));
+
+    let later = "2024-07-01"
+        .parse()
+        .unwrap_or_else(|e| panic!("een datum: {e}"));
+    world
+        .advance(later)
+        .unwrap_or_else(|e| panic!("de klok hoort vooruit te kunnen: {e}"));
+    world
+        .act("uitvoerder.toekenning", &formulier)
+        .unwrap_or_else(|e| {
+            panic!("hetzelfde besluit hoort opnieuw genomen te kunnen worden: {e}")
+        });
+
+    let na = action(&world, "uitvoerder.bekendmaking");
+    assert!(
+        na.available && na.unavailable_reason.is_none(),
+        "het tweede besluit is nog niet bekendgemaakt, dus de actie hoort te kunnen: {:?}",
+        na.unavailable_reason
+    );
+    world
+        .act("uitvoerder.bekendmaking", &BTreeMap::new())
+        .unwrap_or_else(|e| panic!("de tweede bekendmaking moet kunnen: {e}"));
+
+    // En dan is ook die er, en kan het niet nog eens: de weigering noemt het
+    // besluit waar de bekendmaking die er ligt bij hoort.
+    let nogmaals = reason(&world, "uitvoerder.bekendmaking");
+    assert!(
+        nogmaals.contains("2024-07-01") && nogmaals.contains("al bekendgemaakt"),
+        "de reden hoort het besluit te noemen dat al bekendgemaakt is, kreeg: {nogmaals}"
+    );
+}

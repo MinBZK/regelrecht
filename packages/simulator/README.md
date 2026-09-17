@@ -1145,17 +1145,23 @@ lexostatus_definitions:
         stage: BEKENDMAKING            # het gram van déze stage
 ```
 
-**Twee keer bekendmaken wordt geweigerd**, en niet als voorzichtigheid: twee
-bekendmakingen van hetzelfde besluit zouden twee verschillende uiterste
-betaaldata op één zaak opleveren, en dan zegt de kroniek twee dingen over
-dezelfde verplichting. Of de actie kan, wordt afgeleid uit de kronieken zelf —
-zie [Acties](#acties-wat-een-actor-kan-doen).
+**Hetzelfde besluit twee keer bekendmaken wordt geweigerd**, en niet als
+voorzichtigheid: twee bekendmakingen van één besluit zouden twee verschillende
+uiterste betaaldata op één zaak opleveren, en dan zegt de kroniek twee dingen
+over dezelfde verplichting. Hetzelfde *besluit* en niet dezelfde *zaak*: wordt er
+over een zaak opnieuw besloten, dan is dat een eigen besluit met een eigen
+bekendmaking — de stand kijkt naar het gram waar een bekendmaking naar wijst
+(`besluit_gram`). Of de actie kan, wordt afgeleid uit de kronieken zelf — zie
+[Acties](#acties-wat-een-actor-kan-doen).
 
 Wat er **niet** in zit: de stages vóór het besluit (AANVRAAG, BEHANDELING — in
-deze opstelling gaat daar een `records`-actie aan vooraf), BEZWAAR en alles
-daarna, en het opnieuw bekendmaken van een gewijzigd besluit. De procedure van de
-testregeling `fixtures/regulation/test_awb_procedure` kent daarom precies twee
-stages: wat er staat, is wat het platform ook werkelijk uitvoert.
+deze opstelling gaat daar een `records`-actie aan vooraf), en BEZWAAR en alles
+daarna. Evenmin de **modaliteit** die twee besluiten over één zaak aan elkaar
+knoopt (`is_wijziging_van`, `is_intrekking_van`): een later besluit is hier een
+los besluit met een eigen bekendmaking, en dat het het vorige wijzigt, staat
+nergens. De procedure van de testregeling
+`fixtures/regulation/test_awb_procedure` kent daarom precies twee stages: wat er
+staat, is wat het platform ook werkelijk uitvoert.
 
 Het scenario staat in
 [`scenarios/bekendmaking.yaml`](scenarios/bekendmaking.yaml) (een besluit op T1,
@@ -2670,9 +2676,8 @@ besluitende cel landen; dan is het een eigen feit en telt het gewoon mee.
 
 **De procedure loopt van besluit tot bekendmaking, en niet verder.** De stages
 ervóór (AANVRAAG, BEHANDELING) zijn hier gewone acties en geen stage van de
-engine, en alles ná de bekendmaking — bezwaar, beroep, het opnieuw bekendmaken
-van een gewijzigd besluit — bestaat niet. Een besluit kan dus wel bekendgemaakt
-worden en daarna niets meer; wat een belanghebbende ertegen kan beginnen, staat
+engine, en alles ná de bekendmaking — bezwaar, beroep — bestaat niet. Een besluit
+kan dus wel bekendgemaakt worden en daarna niets meer; wat een belanghebbende ertegen kan beginnen, staat
 alleen als tekst in het gram (`bezwaar_bij`, `bezwaar_termijn_weken`) en is geen
 stap die deze wereld kent. Zie
 [De bekendmaking](#de-bekendmaking-een-tweede-gram-op-dezelfde-zaak).

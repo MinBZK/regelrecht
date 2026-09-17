@@ -102,11 +102,13 @@ use std::rc::Rc;
 pub(crate) enum BekendmakingStand {
     /// Er ligt geen gram van de stage BESLUIT: er valt niets bekend te maken.
     GeenBesluit,
-    /// Er ligt al een gram van de stage BEKENDMAKING over deze zaak.
+    /// Er ligt al een gram van de stage BEKENDMAKING dat naar dit besluit wijst.
     AlBekendgemaakt {
-        /// De zaak die al bekendgemaakt is.
+        /// De zaak waarover het besluit ging.
         zaakkenmerk: String,
-        /// Wanneer dat gebeurde.
+        /// Het moment van het besluit dat al bekendgemaakt is.
+        besluit_op_moment: NaiveDate,
+        /// Wanneer die bekendmaking gebeurde.
         op_moment: NaiveDate,
     },
     /// Er ligt een besluit dat nog bekendgemaakt kan worden.
@@ -139,10 +141,12 @@ impl BekendmakingStand {
             }
             Self::AlBekendgemaakt {
                 zaakkenmerk,
+                besluit_op_moment,
                 op_moment,
             } => format!(
-                "zaak '{zaakkenmerk}' is op {op_moment} al bekendgemaakt: er ligt een gram \
-                 van de stage BEKENDMAKING"
+                "het besluit van {besluit_op_moment} over zaak '{zaakkenmerk}' is op \
+                 {op_moment} al bekendgemaakt: er ligt een gram van de stage BEKENDMAKING \
+                 dat ernaar wijst"
             ),
             Self::TeDoen { .. } => String::new(),
         }
@@ -1570,14 +1574,22 @@ impl Cell {
             return BekendmakingStand::GeenBesluit;
         };
         let zaakkenmerk = veld(laatste, besluit::ZAAKKENMERK);
+        // Naar dít gram en niet naar deze zaak: over één zaak worden meer
+        // besluiten genomen, en dat een eerder besluit bekendgemaakt is, zegt
+        // niets over het besluit dat er nu ligt. De verwijzing staat in het gram
+        // van de bekendmaking zelf ([`besluit::BESLUIT_GRAM`]) — op het
+        // zaakkenmerk zoeken zou het tweede besluit voorgoed onbekendgemaakt
+        // laten.
+        let naar_dit_gram = Value::Int(i64::try_from(plek).unwrap_or(i64::MAX));
         let bekend = grams.iter().find(|event| {
             veld(event, besluit::BESLUIT) == besluit
                 && veld(event, besluit::STAGE) == besluit::STAGE_BEKENDMAKING
-                && veld(event, besluit::ZAAKKENMERK) == zaakkenmerk
+                && event.fields.get(besluit::BESLUIT_GRAM) == Some(&naar_dit_gram)
         });
         match bekend {
             Some(event) => BekendmakingStand::AlBekendgemaakt {
                 zaakkenmerk,
+                besluit_op_moment: laatste.op_moment,
                 op_moment: event.op_moment,
             },
             None => BekendmakingStand::TeDoen {
@@ -3326,12 +3338,6 @@ fn chronolex_per_output(service: &LawExecutionService) -> Result<DeclaredChronol
     Ok(declared_chronolex)
 }
 
-/// De uitkomstnamen per regeling, over alle geladen versies heen.
-///
-/// De engine indexeert uitkomsten alleen voor de nieuwste geladen versie,
-/// terwijl een cel elke versie laadt en een vraag over een ouder moment op een
-/// oudere versie landt. Voor de vraag "kent deze regeling deze uitkomst?" telt
-/// daarom elke versie mee.
 /// De uitkomsten die de hooks op de stage BEKENDMAKING kunnen opleveren.
 ///
 /// Bekend vóór de eerste bekendmaking, om dezelfde reden als bij
@@ -3368,6 +3374,12 @@ fn stage_hook_outputs(service: &LawExecutionService) -> BTreeSet<String> {
     outputs
 }
 
+/// De uitkomstnamen per regeling, over alle geladen versies heen.
+///
+/// De engine indexeert uitkomsten alleen voor de nieuwste geladen versie,
+/// terwijl een cel elke versie laadt en een vraag over een ouder moment op een
+/// oudere versie landt. Voor de vraag "kent deze regeling deze uitkomst?" telt
+/// daarom elke versie mee.
 fn outputs_per_regulation(service: &LawExecutionService) -> BTreeMap<String, BTreeSet<String>> {
     let mut per_regulation: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for law in service.resolver().all_law_versions() {

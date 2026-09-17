@@ -1850,7 +1850,9 @@ pub enum SimulatorError {
     /// voeren — en dan is een gram vastleggen alsof er wél een stage gedraaid is,
     /// precies de stilte die dit pad moet voorkomen.
     #[error(
-        "cel '{cell}' kan besluit '{besluit}' niet bekendmaken: geen enkele geladen regeling          declareert voor rechtskarakter '{legal_character}' een procedure met een stage          '{stage}' ({reason})"
+        "cel '{cell}' kan besluit '{besluit}' niet bekendmaken: geen enkele geladen regeling \
+         declareert voor rechtskarakter '{legal_character}' een procedure met een stage \
+         '{stage}' ({reason})"
     )]
     GeenBekendmakingStage {
         /// De cel die zou bekendmaken.
@@ -1872,7 +1874,8 @@ pub enum SimulatorError {
     /// platform zelf aanreikt — de dag van de bekendmaking, het bevoegd gezag en
     /// de inputs van het besluit — staat in de melding niet, want dat is er al.
     #[error(
-        "de bekendmaking van besluit '{besluit}' van cel '{cell}' kan niet draaien: de stage          wacht op {missing}"
+        "de bekendmaking van besluit '{besluit}' van cel '{cell}' kan niet draaien: de stage \
+         wacht op {missing}"
     )]
     BekendmakingWachtOpInvoer {
         /// De cel die zou bekendmaken.
@@ -1891,7 +1894,8 @@ pub enum SimulatorError {
     /// er geen hook die haar uitrekent, dan zou het platform zelf een termijn
     /// moeten verzinnen, en dat is precies wat het niet doet.
     #[error(
-        "de bekendmaking van besluit '{besluit}' van cel '{cell}' levert geen          '{veld}', terwijl er een verplichting op de bekendmaking wacht ({found})"
+        "de bekendmaking van besluit '{besluit}' van cel '{cell}' levert geen '{veld}', \
+         terwijl er een verplichting op de bekendmaking wacht ({found})"
     )]
     BekendmakingZonderBetaaldatum {
         /// De cel die bekendmaakte.
@@ -1911,7 +1915,8 @@ pub enum SimulatorError {
     /// omdat de helft inroosteren erger zou zijn dan niets: een termijn zonder
     /// bedrag of zonder partij is een belofte die niemand kan nakomen.
     #[error(
-        "het besluit '{besluit}' van cel '{cell}' draagt een wachtende verplichting die niet          te lezen is"
+        "het besluit '{besluit}' van cel '{cell}' draagt een wachtende verplichting die niet \
+         te lezen is"
     )]
     OnleesbareWachtendeVerplichting {
         /// De cel die besloot.
