@@ -2087,6 +2087,33 @@ pub enum InputOrigin {
         /// Het moment van dat eerdere besluit — niet dat van dit besluit.
         moment: NaiveDate,
     },
+    /// Een **uitkomst van het besluit** dat bij een latere stage (de
+    /// bekendmaking) verder gaat, zoals zijn gram haar vastlegde.
+    ///
+    /// Alleen in het gram van die stage, bij een input die een hook daar las.
+    /// Niet [`Self::EarlierDecretogram`]: dat is een ánder besluit over dezelfde
+    /// zaak, dit is hetzelfde besluit in een volgende stap van zijn procedure
+    /// (RFC-008). Een expliciete `null` in het besluit-gram is hier een waarde,
+    /// en geen onbekend feit.
+    BesluitUitkomst {
+        /// De besluit-definitie waarvan het gram gelezen is.
+        besluit: String,
+        /// De plek van dat gram in [`BESCHIKKINGEN`], geteld vanaf nul.
+        besluit_gram: usize,
+        /// De uitkomst die de waarde droeg.
+        field: String,
+    },
+    /// Een **input van het besluit** dat bij een latere stage verder gaat, zoals
+    /// zijn gram haar vastlegde. Zie [`Self::BesluitUitkomst`]; de herkomst van
+    /// die input zelf staat in het besluit-gram, en wordt hier niet overgeschreven.
+    BesluitInput {
+        /// De besluit-definitie waarvan het gram gelezen is.
+        besluit: String,
+        /// De plek van dat gram in [`BESCHIKKINGEN`], geteld vanaf nul.
+        besluit_gram: usize,
+        /// De input die de waarde droeg.
+        field: String,
+    },
 }
 
 impl InputOrigin {
@@ -2164,6 +2191,16 @@ impl InputOrigin {
                 (ZAAKKENMERK.to_string(), Value::String(zaakkenmerk.clone())),
                 ("moment".to_string(), Value::String(moment.to_string())),
             ])),
+            Self::BesluitUitkomst {
+                besluit,
+                besluit_gram,
+                field,
+            } => besluit_veld_value("besluit_uitkomst", besluit, *besluit_gram, field),
+            Self::BesluitInput {
+                besluit,
+                besluit_gram,
+                field,
+            } => besluit_veld_value("besluit_input", besluit, *besluit_gram, field),
         }
     }
 
@@ -2178,7 +2215,9 @@ impl InputOrigin {
             Self::Accepted { cell, .. } => Some(cell),
             Self::OwnChronicle { .. }
             | Self::Parameter { .. }
-            | Self::EarlierDecretogram { .. } => None,
+            | Self::EarlierDecretogram { .. }
+            | Self::BesluitUitkomst { .. }
+            | Self::BesluitInput { .. } => None,
         }
     }
 
@@ -2192,7 +2231,12 @@ impl InputOrigin {
     pub fn earlier_besluit(&self) -> Option<&str> {
         match self {
             Self::EarlierDecretogram { besluit, .. } => Some(besluit),
-            Self::OwnChronicle { .. } | Self::Parameter { .. } | Self::Accepted { .. } => None,
+            // Hetzelfde besluit in een volgende stage, en dus geen eerder besluit.
+            Self::OwnChronicle { .. }
+            | Self::Parameter { .. }
+            | Self::Accepted { .. }
+            | Self::BesluitUitkomst { .. }
+            | Self::BesluitInput { .. } => None,
         }
     }
 
@@ -2232,8 +2276,99 @@ impl InputOrigin {
                 zaakkenmerk,
                 moment,
             } => format!("uit eerder besluit '{besluit}' over zaak '{zaakkenmerk}' ({moment})"),
+            Self::BesluitUitkomst {
+                besluit,
+                besluit_gram,
+                field,
+            } => format!("uitkomst '{field}' van besluit '{besluit}' (gram {besluit_gram})"),
+            Self::BesluitInput {
+                besluit,
+                besluit_gram,
+                field,
+            } => format!("input '{field}' van besluit '{besluit}' (gram {besluit_gram})"),
         }
     }
+}
+
+/// Een waarde uit het gram van het besluit zelf, als vastlegbare herkomst.
+///
+/// Eén vorm voor [`InputOrigin::BesluitUitkomst`] en [`InputOrigin::BesluitInput`]:
+/// ze verschillen alleen in de laag van het gram waaruit gelezen is.
+fn besluit_veld_value(herkomst: &str, besluit: &str, besluit_gram: usize, field: &str) -> Value {
+    Value::Object(BTreeMap::from([
+        ("herkomst".to_string(), Value::String(herkomst.to_string())),
+        (BESLUIT.to_string(), Value::String(besluit.to_string())),
+        (
+            BESLUIT_GRAM.to_string(),
+            Value::Int(i64::try_from(besluit_gram).unwrap_or(i64::MAX)),
+        ),
+        ("field".to_string(), Value::String(field.to_string())),
+    ]))
+}
+
+/// Wat een hook op een latere stage van een besluit als parameter krijgt, elk
+/// met haar herkomst (RFC-008).
+///
+/// Drie bronnen, en bij een naamsbotsing wint de eerste: het **formulier** van
+/// de stage, dan de **uitkomsten** van het besluit-gram, dan de **inputs** van
+/// dat gram. Het formulier gaat voor omdat het is wat er bij deze stage
+/// vastgesteld werd; een uitkomst gaat voor een input omdat het besluit haar uit
+/// die inputs afleidde, en wat het besloot is wat er verder gaat. Elke waarde
+/// zoals ze vastligt, ook een expliciete `null`: wat het besluit met zoveel
+/// woorden leeg liet, is geen onbekend feit (RFC-036). Wat in geen van de drie
+/// staat, komt hier niet in, en blijft voor een optionele parameter onbekend.
+pub(crate) fn stage_context(
+    besluit: &str,
+    besluit_gram: usize,
+    form: &BTreeMap<String, Value>,
+    uitkomsten: &BTreeMap<String, Value>,
+    inputs: &BTreeMap<String, Value>,
+) -> BTreeMap<String, DecretogramInput> {
+    let van_besluit = |field: &str, uitkomst: bool| {
+        let (besluit, field) = (besluit.to_string(), field.to_string());
+        if uitkomst {
+            InputOrigin::BesluitUitkomst {
+                besluit,
+                besluit_gram,
+                field,
+            }
+        } else {
+            InputOrigin::BesluitInput {
+                besluit,
+                besluit_gram,
+                field,
+            }
+        }
+    };
+    let mut context = BTreeMap::new();
+    let lagen = inputs
+        .iter()
+        .map(|(name, value)| (name, value, van_besluit(name, false)))
+        .chain(
+            uitkomsten
+                .iter()
+                .map(|(name, value)| (name, value, van_besluit(name, true))),
+        )
+        .chain(form.iter().map(|(name, value)| {
+            (
+                name,
+                value,
+                InputOrigin::Parameter {
+                    parameter: name.clone(),
+                },
+            )
+        }));
+    // Van laag naar hoog: wat later komt, overschrijft.
+    for (name, value, origin) in lagen {
+        context.insert(
+            name.clone(),
+            DecretogramInput {
+                value: value.clone(),
+                origin,
+            },
+        );
+    }
+    context
 }
 
 /// Eén regeling die bij dit besluit werkelijk uitgevoerd is, met de versie die
@@ -2869,8 +3004,10 @@ fn hooks_niet_uitgevoerd_value(hooks: &[HookNietUitgevoerd]) -> Value {
 pub struct Bekendmaking {
     /// De cel die bekendmaakte; dezelfde die besloot.
     pub cell: String,
-    /// Wat er bij de bekendmaking ingevuld is: de `requires` van de stage uit de
-    /// procedure, elk als parameter.
+    /// Wat er bij de bekendmaking ingevuld is — de `requires` van de stage uit de
+    /// procedure, elk als parameter — plus wat een hook op deze stage uit het
+    /// besluit las, met herkomst [`InputOrigin::BesluitUitkomst`] of
+    /// [`InputOrigin::BesluitInput`].
     pub inputs: BTreeMap<String, DecretogramInput>,
     /// Waar elke uitkomst van de eigen regeling bij deze stage vandaan komt.
     pub stage_uitkomsten: Vec<StageUitkomstHerkomst>,
@@ -6299,5 +6436,101 @@ params:
             matches!(err, SimulatorError::UnknownReference { .. }),
             "verwachtte UnknownReference, kreeg {err}"
         );
+    }
+
+    /// Een hook op een latere stage krijgt het formulier, de uitkomsten en de
+    /// inputs van het besluit; bij een naamsbotsing wint het formulier, dan de
+    /// uitkomst, dan de input. Een `null` is een waarde en gaat mee.
+    #[test]
+    fn de_stagecontext_volgt_formulier_dan_uitkomst_dan_input() {
+        let tekst = |text: &str| Value::String(text.to_string());
+        let form = BTreeMap::from([("dag".to_string(), tekst("formulier"))]);
+        let uitkomsten = BTreeMap::from([
+            ("dag".to_string(), tekst("uitkomst")),
+            ("termijn".to_string(), tekst("uitkomst")),
+            ("later".to_string(), Value::Null),
+        ]);
+        let inputs = BTreeMap::from([
+            ("dag".to_string(), tekst("input")),
+            ("termijn".to_string(), tekst("input")),
+            ("bedrag".to_string(), tekst("input")),
+        ]);
+        let context = stage_context("toekenning", 3, &form, &uitkomsten, &inputs);
+
+        let van = |uitkomst: bool, field: &str| {
+            let (besluit, field) = ("toekenning".to_string(), field.to_string());
+            if uitkomst {
+                InputOrigin::BesluitUitkomst {
+                    besluit,
+                    besluit_gram: 3,
+                    field,
+                }
+            } else {
+                InputOrigin::BesluitInput {
+                    besluit,
+                    besluit_gram: 3,
+                    field,
+                }
+            }
+        };
+        let verwacht = BTreeMap::from([
+            (
+                "dag".to_string(),
+                DecretogramInput {
+                    value: tekst("formulier"),
+                    origin: InputOrigin::Parameter {
+                        parameter: "dag".to_string(),
+                    },
+                },
+            ),
+            (
+                "termijn".to_string(),
+                DecretogramInput {
+                    value: tekst("uitkomst"),
+                    origin: van(true, "termijn"),
+                },
+            ),
+            (
+                "later".to_string(),
+                DecretogramInput {
+                    value: Value::Null,
+                    origin: van(true, "later"),
+                },
+            ),
+            (
+                "bedrag".to_string(),
+                DecretogramInput {
+                    value: tekst("input"),
+                    origin: van(false, "bedrag"),
+                },
+            ),
+        ]);
+        assert_eq!(context, verwacht);
+    }
+
+    #[test]
+    fn een_waarde_uit_het_besluit_noemt_haar_laag_en_haar_gram() {
+        let origin = InputOrigin::BesluitInput {
+            besluit: "toekenning".to_string(),
+            besluit_gram: 2,
+            field: "termijn".to_string(),
+        };
+        assert_eq!(
+            origin.as_value(),
+            Value::Object(BTreeMap::from([
+                (
+                    "herkomst".to_string(),
+                    Value::String("besluit_input".to_string())
+                ),
+                (
+                    "besluit".to_string(),
+                    Value::String("toekenning".to_string())
+                ),
+                ("besluit_gram".to_string(), Value::Int(2)),
+                ("field".to_string(), Value::String("termijn".to_string())),
+            ]))
+        );
+        assert_eq!(origin.accepted_from(), None);
+        assert_eq!(origin.earlier_besluit(), None);
     }
 }

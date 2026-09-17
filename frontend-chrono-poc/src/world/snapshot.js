@@ -747,6 +747,21 @@ export function describeRecordedOrigin(recorded) {
           ['besloten op', formatMoment(recorded.moment)],
         ]),
       };
+    case 'besluit_uitkomst':
+    case 'besluit_input':
+      // Een waarde die een hook op een latere stage uit het gram van hetzelfde
+      // besluit las. Geen eerder besluit: het is dit besluit, een stap verder in
+      // zijn procedure. De laag van het gram zegt of het een uitkomst of een
+      // input van het besluit was.
+      return {
+        kind: recorded.herkomst,
+        label: `${recorded.herkomst === 'besluit_uitkomst' ? 'uitkomst' : 'input'} van het besluit '${recorded.besluit}'`,
+        color: 'donkerblauw',
+        details: pairs([
+          ['veld', recorded.field],
+          ['gram', recorded.besluit_gram],
+        ]),
+      };
     default:
       return { kind: 'onbekend', label: 'input, herkomst niet te lezen', color: 'neutral', details: [] };
   }
