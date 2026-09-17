@@ -4176,6 +4176,7 @@ dependencies = [
  "rust_decimal_macros",
  "serde",
  "serde_json",
+ "serde_yaml_ng",
 ]
 
 [[package]]
@@ -4185,6 +4186,7 @@ dependencies = [
  "async-trait",
  "axum",
  "chrono",
+ "futures",
  "libc",
  "pretty_assertions",
  "regelrecht-corpus",
@@ -4193,6 +4195,7 @@ dependencies = [
  "regelrecht-law-model",
  "regelrecht-pipeline",
  "regelrecht-shared",
+ "regex",
  "reqwest 0.13.2",
  "roxmltree",
  "serde",
@@ -4209,6 +4212,7 @@ dependencies = [
  "tokio-util",
  "tower-http 0.7.1",
  "tracing",
+ "tracing-subscriber",
  "url",
  "uuid",
 ]

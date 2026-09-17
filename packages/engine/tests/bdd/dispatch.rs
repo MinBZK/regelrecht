@@ -321,6 +321,10 @@ impl RegelrechtWorld {
             "direct" => matches!(prov, Some(OutputProvenance::Direct { .. })),
             "reactive" => matches!(prov, Some(OutputProvenance::Reactive { .. })),
             "override" => matches!(prov, Some(OutputProvenance::Override { .. })),
+            // A voided output is absent from `outputs` and present here with
+            // its ground, so a scenario can assert the exclusion rather than
+            // only the missing value.
+            "voided" => matches!(prov, Some(OutputProvenance::Voided { .. })),
             other => panic!("unknown provenance kind '{other}'"),
         };
         assert!(
@@ -360,7 +364,9 @@ impl RegelrechtWorld {
                 number: row[number_at].trim().to_string(),
                 text: row[text_at].trim().to_string(),
                 url: None,
+                placement: None,
                 machine_readable: None,
+                references: None,
             });
         }
     }
