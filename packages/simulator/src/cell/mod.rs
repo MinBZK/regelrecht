@@ -37,7 +37,7 @@ pub use besluit::{
     AcceptanceRequest, Afwijzingsgrond, Bekendmaking, BesluitDefinition, BesluitInput,
     ChronicleSource, Decretogram, DecretogramInput, ExecutedRegulation, HookHerkomst,
     HookNietUitgevoerd, InputOrigin, NietsTeBetalen, ObligationDefinition, ObligationDue,
-    ObligationKind, ObligationOrigin, ObsoleteField, RichtingBijNegatief, Schedule,
+    ObligationKind, ObligationOrigin, ObsoleteField, RichtingBijNegatief, Schedule, ScheduleOrigin,
     StageUitkomstHerkomst, TermijnenVervallen, Vervanging, WachtendeVerplichting, AFWIJZING,
     BESCHIKKING, BESCHIKKINGEN, BETALINGEN, DECISION_TYPE, STAGE, STAGE_BEKENDMAKING,
     STAGE_BESLUIT, ZAAKKENMERK,
@@ -1574,12 +1574,18 @@ impl Cell {
         // waaruit het bedrag zou komen, zou hier anders omvallen op een bedrag
         // dat de wet terecht niet gegeven heeft.
         if !declared.is_empty() && !decretogram.is_afwijzing() {
+            let output_articles = self.output_articles(
+                &definition.regulation,
+                declared.schedule_outputs(&definition),
+                op_moment,
+            );
             let schema = definition.schedule_obligations(
                 ObligationScope {
                     cell: &self.id,
                     parties,
                     zaakkenmerk: &decretogram.zaakkenmerk,
                     op_moment,
+                    output_articles: &output_articles,
                 },
                 &declared,
                 &computed,
@@ -2468,6 +2474,34 @@ impl Cell {
         )
     }
 
+    /// Per uitkomst het artikel dat haar voortbrengt, in de versie die op
+    /// `op_moment` gold.
+    ///
+    /// Voor de herkomst van een ritme dat uit een uitkomst komt: die uitkomst kan
+    /// uit een ander artikel komen dan het artikel dat de verplichting declareert,
+    /// en het gram hoort het artikel te noemen dat het ritme uitrekende. Langs de
+    /// resolver van de engine, dezelfde weg als bij een afwijzingsgrond. Een
+    /// uitkomst zonder artikel staat er niet in.
+    fn output_articles<'a>(
+        &self,
+        regulation: &str,
+        outputs: impl Iterator<Item = &'a str>,
+        op_moment: NaiveDate,
+    ) -> BTreeMap<String, String> {
+        let Some(service) = self.besluit_service.as_ref() else {
+            return BTreeMap::new();
+        };
+        let service = service.borrow();
+        let resolver = service.resolver();
+        outputs
+            .filter_map(|output| {
+                resolver
+                    .get_article_by_output(regulation, output, Some(op_moment))
+                    .map(|article| (output.to_string(), article.number.clone()))
+            })
+            .collect()
+    }
+
     /// Wat het artikel van dit besluit zegt over de termijnen die over dezelfde
     /// zaak nog openstaan.
     ///
@@ -3029,6 +3063,7 @@ impl Cell {
             .into_iter()
             .chain(conditions.keys().map(String::as_str))
             .chain(declared.amounts())
+            .chain(declared.schedule_outputs(definition))
             .collect();
         let recorded: Vec<&str> = requested_outputs.into_iter().collect();
         // Mét trace, en dat is het verschil met een reductie: het decretogram

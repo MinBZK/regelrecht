@@ -1,0 +1,157 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: test_ritme_uit_uitkomst
+name: Testregeling betalingsritme uit de beschikking
+regulatory_layer: WET
+bwb_id: BWBR9999911
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+url: https://example.com/test_ritme_uit_uitkomst
+competent_authority: Subsidieverstrekker
+
+# Een testregeling, met opzet **niet** in het corpus: ze bestaat om een
+# eigenschap van de opstelling aan te tonen en niet om recht weer te geven. Zie
+# `test_betalingsritmes` voor dezelfde afweging.
+#
+# Wat ze aantoont is dat het **ritme** van een betalingsverplichting een
+# uitkomst van het besluit mag zijn, en dus in de wet staat in plaats van in een
+# instelling van het wereldbestand. Tot een drempelbedrag wordt ineens betaald,
+# daarboven per kwartaal: dat rekent artikel 1 uit, en `ritme: $betaalritme`
+# leest die uitkomst.
+articles:
+  - number: '1'
+    url: https://example.com/test_ritme_uit_uitkomst#Artikel1
+    text: >-
+      Een subsidie tot en met € 25.000 wordt ineens betaald. Een hogere subsidie wordt in vier termijnen per kwartaal
+      betaald.
+    machine_readable:
+      definitions:
+        drempelbedrag:
+          value: 2500000
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+          extensions:
+            chronolex:
+              verplichtingen:
+                # `$betaalritme` is een uitkomst van dít artikel. Een uitkomst
+                # gaat voor een instelling: er hoeft niets in `settings` te
+                # staan, en wat er uitkomt staat met dit artikel als herkomst in
+                # het gram.
+                - soort: betaling
+                  bedrag: $subsidie
+                  ritme: $betaalritme
+                  grondslag: Testregeling betalingsritme uit de beschikking art. 1
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          # Geen `source`: het besluit levert het bedrag aan als parameter.
+          - name: subsidiebedrag
+            type: amount
+            source: {}
+            type_spec:
+              unit: eurocent
+        output:
+          - name: subsidie
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: betaalritme
+            type: string
+        actions:
+          - output: subsidie
+            value: $subsidiebedrag
+          - output: betaalritme
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: LESS_THAN_OR_EQUAL
+                    subject: $subsidiebedrag
+                    value: $drempelbedrag
+                  then: ineens
+              default: kwartaal
+
+  - number: '2'
+    url: https://example.com/test_ritme_uit_uitkomst#Artikel2
+    text: >-
+      Een vergoeding ter hoogte van de subsidie wordt betaald in het ritme van artikel 1.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+          extensions:
+            chronolex:
+              verplichtingen:
+                # Het ritme is een uitkomst van een ánder artikel. Dat mag zolang
+                # het besluit haar vastlegt (`outputs`), net als bij het bedrag;
+                # het gram noemt dan artikel 1 als herkomst van het ritme.
+                - soort: betaling
+                  bedrag: $vergoeding
+                  ritme: $betaalritme
+                  grondslag: Testregeling betalingsritme uit de beschikking art. 2
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: subsidiebedrag
+            type: amount
+            source: {}
+            type_spec:
+              unit: eurocent
+        output:
+          - name: vergoeding
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: vergoeding
+            value: $subsidiebedrag
+
+  - number: '3'
+    url: https://example.com/test_ritme_uit_uitkomst#Artikel3
+    text: >-
+      Een tegemoetkoming wordt halfjaarlijks betaald.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+          extensions:
+            chronolex:
+              verplichtingen:
+                # Een uitkomst die geen ritme is dat de opstelling kent. Het
+                # optuigen kan dat niet zien — de waarde bestaat pas bij het
+                # besluit — dus het besluit valt om en er wordt niets vastgelegd.
+                - soort: betaling
+                  bedrag: $tegemoetkoming
+                  ritme: $halfjaarritme
+                  grondslag: Testregeling betalingsritme uit de beschikking art. 3
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: subsidiebedrag
+            type: amount
+            source: {}
+            type_spec:
+              unit: eurocent
+        output:
+          - name: tegemoetkoming
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: halfjaarritme
+            type: string
+        actions:
+          - output: tegemoetkoming
+            value: $subsidiebedrag
+          - output: halfjaarritme
+            value: halfjaar

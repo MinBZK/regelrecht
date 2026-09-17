@@ -760,9 +760,9 @@ uitbreiding van RFC-013 stil achterlopen.
 | de uitkomsten | de uitkomst die het besluit *is*, plus wat `outputs` erbij noemt |
 | `inputs` | wat de besluit-definitie zelf aanleverde, **met herkomst per waarde**: uit een eigen kroniek (met het moment van die vastlegging), uit een parameter, of geaccepteerd van een andere cel |
 | `chronicle_sources` | de eigen kronieken die als databron klaarstonden, elk met haar stand op het moment van het besluit: aantal grammen en een hash erover (RFC-022 §1.3). Wat de engine daaruit las, staat in de trace van het receipt |
-| `obligations` | het betalingsschema dat uit dit besluit volgt: per termijn een vervaldatum, een bedrag, een volgnummer, de betalende cel, de `grondslag` uit het lexogram en de herkomst (`lexogram`: regeling, versie, artikel). Een ingehaalde termijn draagt er de dag uit het schema bij als `oorspronkelijke_vervaldatum` — zie [Verplichtingen](#verplichtingen-wat-een-besluit-achterlaat). Leeg bij een afwijzing, ook als het lexogram er een oplegt |
+| `obligations` | het betalingsschema dat uit dit besluit volgt: per termijn een vervaldatum, een bedrag, een volgnummer, de betalende cel, de `grondslag` uit het lexogram, de herkomst (`lexogram`: regeling, versie, artikel) en waar het ritme vandaan kwam (`ritme_herkomst`: het lexogram, of een instelling van het wereldbestand). Een ingehaalde termijn draagt er de dag uit het schema bij als `oorspronkelijke_vervaldatum` — zie [Verplichtingen](#verplichtingen-wat-een-besluit-achterlaat). Leeg bij een afwijzing, ook als het lexogram er een oplegt |
 | `wacht_op_bekendmaking` | de verplichtingen die het lexogram met `vanaf: bekendmaking` oplegt: bedrag, partijen, ritme, grondslag en volgnummer staan er, de vervaldatum niet — die volgt uit de bekendmaking. Leeg bij elk besluit waarvan de termijnen meteen vervielen |
-| `niets_te_betalen` | de verplichtingen waarvan het bedrag op precies nul uitkwam: soort, partijen, ritme, grondslag en `bedrag: 0`, zonder termijnen. Leeg bij elk besluit waarvan geen verplichting op nul uitviel |
+| `niets_te_betalen` | de verplichtingen waarvan het bedrag op precies nul uitkwam: soort, partijen, ritme (met `ritme_herkomst`), grondslag en `bedrag: 0`, zonder termijnen. Leeg bij elk besluit waarvan geen verplichting op nul uitviel |
 | `receipt` | het volledige Execution Receipt, **met de uitvoeringstrace** (`results.trace`) |
 
 ### Het schema van het decretogram: wat komt uit de wet?
@@ -802,6 +802,12 @@ voortbrengt, declareert ze zelf in `produces.extensions.chronolex`, dus ze drage
 partijen staan daar: het artikel zegt wie schuldenaar is en wie schuldeiser, en het
 schema schrijft de standaarden uit voor wie ze weglaat. Wat het wereldbestand er nog
 over zegt, is wélke cel de schuldenaar nakomt — uitvoering, en geen norm.
+
+Op één plek na: het **ritme** staat als eigen veld `obligations[i].ritme`, omdat
+het antwoord daar kan verschillen. Letterlijk in het artikel, of als uitkomst van
+het besluit, is het `lexogram` (bij een uitkomst met het artikel dat haar
+voortbrengt). Leest `ritme: $naam` een instelling, dan is het `wereldbestand` en
+een gat: de wet zegt dat er betaald wordt, maar niet in welk ritme.
 
 Twee dingen die het schema met opzet níet doet. Het spreekt zich niet uit over
 `platform`-velden: dat een gram zijn eigen moment, zijn eigen receipt en de stand
@@ -959,7 +965,8 @@ produces:
       verplichtingen:
         - soort: betaling                  # de enige soort die te declareren is
           bedrag: $hoogte_zorgtoeslag      # een uitkomst van dít artikel
-          ritme: $betalingsritme           # ineens | kwartaal | maand, of $instelling
+          ritme: $betalingsritme           # ineens | kwartaal | maand, of $naam: eerst
+                                           # een uitkomst, anders een instelling
           schuldenaar: '#bevoegd_gezag'    # optioneel; dit is de standaard
           schuldeiser: $bsn                # optioneel; standaard de parameter uit
                                            # het zaakkenmerk
@@ -1013,12 +1020,32 @@ bedrag toe.
   `maand` twaalf. Elke termijn krijgt hetzelfde bedrag in hele eenheden en het
   restant gaat naar de laatste, dus de som van de termijnen is exact het
   toegekende bedrag. Dat is de eigenschap waarop "betaald tot nu toe" rust.
-- **Het ritme mag een instelling zijn.** Een betalingsritme is doorgaans beleid en
-  geen wet; `ritme: $betalingsritme` leest uit `settings` van het wereldbestand,
-  zodat de regeling niet beweert dat de wet per kwartaal betaalt. Een instelling
-  die niet bestaat of geen ritme noemt, sneuvelt bij het optuigen van de wereld —
-  en zodra een besluit haar gebruikt heeft, staat ze vast (zie
-  [Instellingen komen vast te staan](#instellingen-komen-vast-te-staan)).
+- **Het ritme mag een uitkomst van het besluit zijn.** Zegt de regeling
+  "tot een drempelbedrag ineens, daarboven per kwartaal", dan rekent ze het
+  ritme uit en leest de verplichting die uitkomst: `ritme: $naam` zoekt eerst een
+  uitkomst van het artikel dat de verplichting declareert of van `outputs` van de
+  besluit-definitie. Dan staat het ritme in de wet, waar het hoort, en niet in een
+  instelling. Wat de uitkomst oplevert moet `ineens`, `kwartaal` of `maand` zijn;
+  iets anders laat het besluit omvallen met een melding die de uitkomst, haar
+  waarde en de toegestane ritmes noemt, en er wordt niets vastgelegd. Zie
+  `scenarios/ritme_uit_uitkomst.yaml`.
+- **Anders mag het ritme een instelling zijn.** Heet er geen uitkomst zo, dan
+  leest `$naam` uit `settings` van het wereldbestand — voor een regeling die het
+  ritme echt aan de uitvoerder laat, zonder te beweren dat de wet per kwartaal
+  betaalt. Een instelling die niet bestaat of geen ritme noemt, sneuvelt bij het
+  optuigen van de wereld, en zodra een besluit haar gebruikt heeft staat ze vast
+  (zie [Instellingen komen vast te staan](#instellingen-komen-vast-te-staan)).
+  Een ritme uit een uitkomst zet niets vast.
+- **Een naam die op beide plekken bestaat, wordt geweigerd.** De uitkomst zou
+  voorgaan en de instelling zou stil niets doen; het optuigen weigert daarom met
+  een melding die beide noemt.
+- **Het gram zegt waar het ritme vandaan kwam.** Elke termijn, elke
+  verplichting die op de bekendmaking wacht en elke verplichting die op nul
+  uitviel (`niets_te_betalen`) draagt `ritme_herkomst`: met
+  `herkomst: lexogram` de regeling, versie en het artikel — bij een uitkomst het
+  artikel dat haar voortbrengt, plus `uitkomst` — of met
+  `herkomst: wereldbestand` de `instelling`. Het schema van het decretogram
+  labelt het ritme net zo, als eigen veld `obligations[i].ritme`.
 - **`vanaf` is een sjabloon over de gedocumenteerde parameters** van het besluit
   dat het artikel uitvoert, net als het zaakkenmerk, en wat het oplevert moet een
   datum zijn — een sjabloon dat geen datum oplevert laat het besluit omvallen.
@@ -2894,9 +2921,10 @@ onder vandaan geschoven wordt, laat het gram iets anders zeggen dan er gebeurd i
 en dan is een decretogram niet meer terug te lezen. Wie het toch wil wijzigen,
 begint een nieuwe wereld.
 
-Wat "gebruikt" betekent, komt uit de besluit-definitie en niet uit het gram: het
-gram draagt het uitgerekende schema, en daaruit is niet meer te zien of het ritme
-uit een instelling kwam of letterlijk in de definitie stond. Welke instellingen
+Wat "gebruikt" betekent, komt uit de declaratie van de verplichting, langs
+dezelfde voorrang als het besluit: `ritme: $naam` is eerst een uitkomst en pas
+daarna een instelling. Een ritme uit een uitkomst zet dus niets vast — het staat
+met zijn herkomst in het gram, en er is geen knop die eronder vandaan kan. Welke instellingen
 vaststaan, staat in het beeld van de wereld (`locked_settings`) — zodat een lezer
 kan zien welke knop nog om kan zonder het te hoeven proberen.
 

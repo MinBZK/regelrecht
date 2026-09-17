@@ -116,6 +116,16 @@ fn het_schema_van_de_toekenning_ligt_vast() {
                 Herkomst::Lexogram,
                 false
             ),
+            // Behalve het ritme: `ritme: $betalingsritme` is geen uitkomst van
+            // het besluit, dus het is een instelling van het wereldbestand. De wet
+            // zegt dát er betaald wordt, niet in welk ritme — en dat is een gat.
+            (
+                "obligations[0].ritme",
+                Some("string"),
+                None,
+                Herkomst::Wereldbestand,
+                true
+            ),
             // De omslag. Twee velden erin komen niet uit een regeling: het
             // kenmerk waaronder de zaak loopt en de naam van de besluit-definitie
             // (en daarmee welke uitkomsten samen één gram vormen). Dat zijn de
@@ -291,6 +301,14 @@ fn het_schema_van_de_vaststelling_ligt_vast() {
             (
                 "obligations[0]",
                 Some("object"),
+                None,
+                Herkomst::Lexogram,
+                false
+            ),
+            // Het ritme staat letterlijk in het artikel (`ineens`): geen gat.
+            (
+                "obligations[0].ritme",
+                Some("string"),
                 None,
                 Herkomst::Lexogram,
                 false

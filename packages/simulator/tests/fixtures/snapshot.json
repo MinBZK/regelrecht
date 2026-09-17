@@ -1171,6 +1171,13 @@
               "toelichting": "verplichting van soort 'betaling': schuldenaar #bevoegd_gezag (standaard), schuldeiser de parameter uit zaakkenmerk 'zorgtoeslag/{bsn}' (standaard), bedrag $hoogte_zorgtoeslag, ritme '$betalingsritme', op grondslag 'Wet op de zorgtoeslag art. 2 jo. Awir art. 16 jo. art. 22 (uitbetaling in termijnen)'; zij levert de termijnen in 'obligations'. Wélke cel de schuldenaar nakomt, staat in het wereldbestand (`komt_na`)"
             },
             {
+              "name": "obligations[0].ritme",
+              "type": "string",
+              "herkomst": "wereldbestand",
+              "gat": true,
+              "toelichting": "instelling 'betalingsritme' uit `settings` van het wereldbestand: de regeling zegt niet in welk ritme er betaald wordt"
+            },
+            {
               "name": "op_moment",
               "type": "date",
               "herkomst": "platform",
@@ -1377,6 +1384,19 @@
                 "regulatory_layer": "WET"
               },
               "toelichting": "verplichting van soort 'betaling': schuldenaar #bevoegd_gezag (standaard), schuldeiser de parameter uit zaakkenmerk 'zorgtoeslag/{bsn}' (standaard), bedrag $slotbedrag, ritme 'ineens', op grondslag 'Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening); bij een negatief slotbedrag art. 24, derde lid jo. art. 26 (de belanghebbende is de terugvordering in zijn geheel verschuldigd)'; een negatief bedrag keert de richting om en wordt een 'terugvordering'; zij levert de termijnen in 'obligations'. Wélke cel de schuldenaar nakomt, staat in het wereldbestand (`komt_na`)"
+            },
+            {
+              "name": "obligations[0].ritme",
+              "type": "string",
+              "herkomst": "lexogram",
+              "gat": false,
+              "lexogram": {
+                "regulation": "algemene_wet_inkomensafhankelijke_regelingen",
+                "valid_from": null,
+                "article": "19",
+                "regulatory_layer": "WET"
+              },
+              "toelichting": "'ineens': het artikel dat de verplichting declareert, zegt het letterlijk"
             },
             {
               "name": "op_moment",
@@ -2504,6 +2524,10 @@
                         "regulation": "wet_op_de_zorgtoeslag",
                         "regulation_valid_from": "2024-01-01"
                       },
+                      "ritme_herkomst": {
+                        "herkomst": "wereldbestand",
+                        "instelling": "betalingsritme"
+                      },
                       "schedule": "kwartaal",
                       "schuldeiser": "999993653",
                       "schuldenaar": "Dienst Toeslagen",
@@ -2519,6 +2543,10 @@
                         "artikel": "2",
                         "regulation": "wet_op_de_zorgtoeslag",
                         "regulation_valid_from": "2024-01-01"
+                      },
+                      "ritme_herkomst": {
+                        "herkomst": "wereldbestand",
+                        "instelling": "betalingsritme"
                       },
                       "schedule": "kwartaal",
                       "schuldeiser": "999993653",
@@ -2536,6 +2564,10 @@
                         "regulation": "wet_op_de_zorgtoeslag",
                         "regulation_valid_from": "2024-01-01"
                       },
+                      "ritme_herkomst": {
+                        "herkomst": "wereldbestand",
+                        "instelling": "betalingsritme"
+                      },
                       "schedule": "kwartaal",
                       "schuldeiser": "999993653",
                       "schuldenaar": "Dienst Toeslagen",
@@ -2551,6 +2583,10 @@
                         "artikel": "2",
                         "regulation": "wet_op_de_zorgtoeslag",
                         "regulation_valid_from": "2024-01-01"
+                      },
+                      "ritme_herkomst": {
+                        "herkomst": "wereldbestand",
+                        "instelling": "betalingsritme"
                       },
                       "schedule": "kwartaal",
                       "schuldeiser": "999993653",
@@ -2733,6 +2769,12 @@
                       "grondslag": "Awir art. 19 jo. art. 24, eerste en tweede lid (uitbetaling onder verrekening); bij een negatief slotbedrag art. 24, derde lid jo. art. 26 (de belanghebbende is de terugvordering in zijn geheel verschuldigd)",
                       "lexogram": {
                         "artikel": "19",
+                        "regulation": "algemene_wet_inkomensafhankelijke_regelingen",
+                        "regulation_valid_from": null
+                      },
+                      "ritme_herkomst": {
+                        "artikel": "19",
+                        "herkomst": "lexogram",
                         "regulation": "algemene_wet_inkomensafhankelijke_regelingen",
                         "regulation_valid_from": null
                       },
