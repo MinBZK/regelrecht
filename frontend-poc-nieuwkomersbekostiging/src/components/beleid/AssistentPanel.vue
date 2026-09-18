@@ -21,10 +21,12 @@
          Een doel-run kan minuten stil zijn, en zonder dit is dat niet van
          vastgelopen te onderscheiden. -->
     <div v-if="streaming || afronding" class="as-status">
-      <nldd-activity-indicator v-if="streaming && !openVraag" size="16" timing="instant"></nldd-activity-indicator>
-      <nldd-icon v-else-if="!streaming" name="checked" size="16"></nldd-icon>
-      <nldd-icon v-else name="help" size="16"></nldd-icon>
-      <span class="as-status-wat">{{ openVraag ? 'Wacht op jouw keuze.' : statusWat }}</span>
+      <span class="as-status-wat">
+        <nldd-activity-indicator v-if="streaming && !openVraag" size="16" timing="instant"></nldd-activity-indicator>
+        <nldd-icon v-else-if="!streaming" name="checked" size="16"></nldd-icon>
+        <nldd-icon v-else name="help" size="16"></nldd-icon>
+        <span>{{ openVraag ? 'Wacht op jouw keuze.' : statusWat }}</span>
+      </span>
       <span v-if="!openVraag && statusTeller" class="as-status-teller">{{ statusTeller }}</span>
     </div>
 
@@ -660,13 +662,17 @@ function takeOverlays() {
 .as-voorbeelden > summary::before { content: '▸ '; }
 .as-voorbeelden[open] > summary::before { content: '▾ '; }
 .as-status {
-  display: flex; align-items: baseline; gap: var(--primitives-space-8);
+  display: flex; align-items: center; gap: var(--primitives-space-8);
   flex-wrap: wrap;
   font-size: 0.85em; color: var(--semantics-content-secondary-color);
   font-variant-numeric: tabular-nums;
 }
-.as-status nldd-activity-indicator, .as-status nldd-icon { align-self: center; }
-.as-status-wat { flex: 1 1 auto; min-width: 0; }
+/* Icoon en tekst horen bij elkaar: als groep breken ze niet uit elkaar, zodat
+   het spinnertje nooit alleen op een regel belandt. */
+.as-status-wat {
+  display: inline-flex; align-items: center; gap: var(--primitives-space-8);
+  flex: 1 1 auto; min-width: 0;
+}
 /* De teller blijft heel: hij hoort bij elkaar of hij gaat als geheel mee. */
 .as-status-teller { white-space: nowrap; margin-left: auto; }
 .as-punt {

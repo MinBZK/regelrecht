@@ -414,7 +414,15 @@ async function handleAssistent(req, res) {
   };
 
   // Kill het childproces als de browser de SSE-verbinding sluit.
-  req.on('close', () => {
+  //
+  // Op `res` en niet op `req`: de request-body is hierboven al helemaal
+  // uitgelezen (`for await (const chunk of req)`), dus die stream is dan al
+  // geëindigd en zijn 'close' is allang geweest voordat we hem hier zouden
+  // kunnen aanhaken. Het gevolg was dat een weggeklikt tabblad zijn CLI-proces
+  // liet staan: na vier van die tabbladen zat de grens vol en kreeg iedereen
+  // "er lopen al 4 gesprekken", tot de opruimer na een halfuur langskwam.
+  // `res` blijft wel open zolang de SSE-stream loopt.
+  res.on('close', () => {
     if (!afgerond) {
       child.kill('SIGTERM');
       rond_af(null);
