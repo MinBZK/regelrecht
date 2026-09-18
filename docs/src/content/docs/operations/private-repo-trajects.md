@@ -92,6 +92,14 @@ De editor doet vóór het aanmaken een **pre-flight check** tegen de GitHub-API:
 
 Faalt één van deze checks, dan zie je een gerichte foutmelding (zie [foutmeldingen](#foutmeldingen-en-wat-ze-betekenen) hieronder). Geen rij in de database, je kunt direct opnieuw proberen na correctie.
 
+## Het subpath later wijzigen
+
+Staat de regelgeving na verloop van tijd ergens anders in de repo — bijvoorbeeld omdat er werkmappen naast het corpus zijn gekomen — dan past de traject-eigenaar het subpath aan onder **Instellingen → Algemeen → Subpath**. Leeg laten betekent repo-root.
+
+Het subpath is de wortel van álles wat de editor op deze repo leest en schrijft: wetten, scenario's, annotaties (`annotations/<wet>/annotations.yaml`) en documenten (`documents/<traject-ref>/`). Na een wijziging zoekt de editor die dus onder het nieuwe pad. Bestaande annotaties en documenten verhuizen niet vanzelf mee; dat doe je zelf op de traject-branch. Wat buiten het subpath ligt, laat de editor ongemoeid — het telt alleen niet meer mee als regelgeving.
+
+Alleen de traject-eigenaar kan dit, en alleen op een eigen repo: trajecten die naar het centrale corpus schrijven houden het vaste pad `regulation/nl`.
+
 ## Hoe commit-attributie werkt
 
 Elke save in een traject produceert een commit op de session-branch met:
