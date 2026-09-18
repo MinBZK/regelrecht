@@ -209,7 +209,7 @@ function verschilTekst(rij, col) {
   const abs = Math.abs(d);
   if (rij.kind === 'euro') return `${teken}${euroCompact(abs)}`;
   if (rij.kind === 'pct') return `${teken}${percent(abs, 1)}`;
-  if (rij.kind === 'uren') return `${teken}${uren(abs)}`;
+  if (rij.kind === 'uren') return `${teken}${urenCompact(abs)}`;
   return `${teken}${number(abs)}`;
 }
 
