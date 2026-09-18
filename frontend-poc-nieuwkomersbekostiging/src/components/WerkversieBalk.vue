@@ -22,7 +22,19 @@
     <div class="wv-rechts">
       <nldd-button size="sm" text="Bekijk wijzigingen" start-icon="document" variant="neutral-transparent" :disabled="!werkversie && changeCount === 0 ? true : undefined" @click="diffOpen = true"></nldd-button>
       <nldd-button size="sm" text="Terugzetten" start-icon="undo" variant="neutral-transparent" :disabled="changeCount === 0 ? true : undefined" @click="resetChanges"></nldd-button>
-      <nldd-button size="sm" text="Bewaar als variant" start-icon="save" variant="secondary" :disabled="changeCount === 0 ? true : undefined" @click="opslaanOpen = !opslaanOpen"></nldd-button>
+      <!-- Werk je in je eigen variant, dan is bewaren in diezelfde variant de
+           gewone handeling en aftakken de uitzondering; daarom staat die knop
+           hier voorop en draagt hij de naam van de variant. -->
+      <nldd-button
+        v-if="eigenWerkversie"
+        size="sm"
+        :text="`Bewaar in ${werkversieLabel}`"
+        start-icon="save"
+        variant="secondary"
+        :disabled="changeCount === 0 || bezig ? true : undefined"
+        @click="bewerkBij"
+      ></nldd-button>
+      <nldd-button size="sm" :text="eigenWerkversie ? 'Bewaar als nieuwe variant' : 'Bewaar als variant'" :start-icon="eigenWerkversie ? 'add' : 'save'" :variant="eigenWerkversie ? 'neutral-transparent' : 'secondary'" :disabled="changeCount === 0 ? true : undefined" @click="opslaanOpen = !opslaanOpen"></nldd-button>
       <nldd-button v-if="eigenWerkversie" size="sm" text="Verwijder variant" start-icon="remove" variant="neutral-transparent" @click="verwijderOpen = true"></nldd-button>
       <!-- "Terugzetten" hierboven maakt bewerkingen in de wet ongedaan; deze
            knop wist wat de browser onthoudt (kolommen, gekozen casus of
@@ -116,7 +128,7 @@ const { ready } = useEngine();
 const {
   variants, werkversie, werkversieLabel, changeCount, version,
   setWerkversie, resetChanges,
-  bewaarAlsBrowserVariant, verwijderEigenVariant, variantDrift, isBrowserVariant,
+  bewaarAlsBrowserVariant, werkWerkversieBij, verwijderEigenVariant, variantDrift, isBrowserVariant,
 } = useLawStore();
 const { selectedVariants } = useSimulation();
 
@@ -190,6 +202,26 @@ async function opslaan() {
   } catch (e) {
     meldingSoort.value = 'critical';
     melding.value = `Bewaren mislukt: ${e?.message ?? e}`;
+  } finally {
+    bezig.value = false;
+  }
+}
+
+/**
+ * Bewaar de bewerkingen in de variant waar je nu in werkt. Geen dialoog: de
+ * variant heeft al een naam, en er valt niets te kiezen.
+ */
+async function bewerkBij() {
+  bezig.value = true;
+  melding.value = '';
+  const naam = werkversieLabel.value;
+  try {
+    await werkWerkversieBij();
+    meldingSoort.value = 'success';
+    melding.value = `De bewerkingen staan nu in ${naam}.`;
+  } catch (e) {
+    meldingSoort.value = 'critical';
+    melding.value = `Bewaren in ${naam} mislukt: ${e?.message ?? e}`;
   } finally {
     bezig.value = false;
   }

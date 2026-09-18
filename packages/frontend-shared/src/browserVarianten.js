@@ -96,6 +96,10 @@ function alsVariant(v) {
     files: v.bestanden.map((b) => ({ path: b.pad, base: b.pad })),
     herkomst: 'browser',
     gemaakt: v.gemaakt,
+    // Wanneer er voor het laatst in bewaard is, of null als dat nooit gebeurde.
+    // Moet mee door deze mapping heen: elke afnemer (keuzelijst, driftmelding)
+    // leest de variant in deze vorm, dus wat hier wegvalt bestaat verderop niet.
+    bijgewerkt: v.bijgewerkt ?? null,
     basis: v.basis ?? null,
   };
 }
@@ -142,6 +146,52 @@ export function maakId(titel, bestaandeIds = []) {
   return id;
 }
 
+/** Een titel die overblijft na trimmen en het samentrekken van spaties. */
+function keurTitel(titel) {
+  const schoon = String(titel ?? '').trim().replace(/\s+/g, ' ');
+  if (!schoon) throw new Error('Een variant heeft een titel nodig.');
+  return schoon;
+}
+
+/** Bestanden moeten een pad en een tekst dragen; anders is de variant stuk. */
+function keurBestanden(bestanden) {
+  if (!Array.isArray(bestanden) || !bestanden.length) {
+    throw new Error('Er is niets bewerkt om te bewaren.');
+  }
+  for (const b of bestanden) {
+    if (!b?.pad || typeof b.yaml !== 'string') {
+      throw new Error(`Onbruikbaar bestand in de variant: ${JSON.stringify(b?.pad)}`);
+    }
+  }
+}
+
+/** De bestanden in de bewaarde vorm, met een vingerafdruk van de basistekst. */
+function alsBestanden(bestanden) {
+  return bestanden.map((b) => ({
+    pad: b.pad,
+    yaml: b.yaml,
+    // De vingerafdruk van de tekst waarop bewerkt is. Hiermee is later te
+    // zien of het corpus onder de variant vandaan is gewijzigd, zonder die
+    // hele tekst een tweede keer te bewaren.
+    origineelHash: vingerafdruk(b.origineel),
+  }));
+}
+
+/** Schrijf de lijst weg; gooit als de opslag vol zit of uit staat. */
+function schrijf(nieuw) {
+  // Meteen schrijven en kijken of het lukte, in plaats van het aan de watcher
+  // van de ref over te laten. Die slikt een volle opslag stil in, en dan meldt
+  // de app "bewaard" terwijl het werk na een ververs weg is.
+  if (!bewaarStand(SLEUTEL, nieuw)) {
+    throw new Error(
+      'De browseropslag zit vol of staat uit, dus deze variant is niet bewaard. '
+      + 'Verwijder een eerdere eigen variant en probeer het opnieuw.',
+    );
+  }
+  opgeslagen.value = nieuw;
+  versie.value++;
+}
+
 /**
  * Bewaar een variant.
  *
@@ -154,45 +204,68 @@ export function maakId(titel, bestaandeIds = []) {
  * @returns {object} de bewaarde variant in variants.json-vorm
  */
 export function bewaarVariant({ titel, bestanden, basis = null, bestaandeIds = [] }) {
-  const schoon = String(titel ?? '').trim().replace(/\s+/g, ' ');
-  if (!schoon) throw new Error('Een variant heeft een titel nodig.');
-  if (!Array.isArray(bestanden) || !bestanden.length) {
-    throw new Error('Er is niets bewerkt om te bewaren.');
-  }
-  for (const b of bestanden) {
-    if (!b?.pad || typeof b.yaml !== 'string') {
-      throw new Error(`Onbruikbaar bestand in de variant: ${JSON.stringify(b?.pad)}`);
-    }
-  }
+  const schoon = keurTitel(titel);
+  keurBestanden(bestanden);
   const id = maakId(schoon, [...bestaandeIds, ...opgeslagen.value.map((v) => v.id)]);
   const variant = {
     id,
     titel: schoon,
     gemaakt: new Date().toISOString(),
     basis,
-    bestanden: bestanden.map((b) => ({
-      pad: b.pad,
-      yaml: b.yaml,
-      // De vingerafdruk van de tekst waarop bewerkt is. Hiermee is later te
-      // zien of het corpus onder de variant vandaan is gewijzigd, zonder die
-      // hele tekst een tweede keer te bewaren.
-      origineelHash: vingerafdruk(b.origineel),
-    })),
+    bestanden: alsBestanden(bestanden),
   };
-  const nieuw = [...opgeslagen.value, variant];
-  // Meteen schrijven en kijken of het lukte, in plaats van het aan de watcher
-  // van de ref over te laten. Die slikt een volle opslag stil in, en dan meldt
-  // de app "bewaard" terwijl het werk na een ververs weg is. Dat is precies
-  // wat deze functie moest voorkomen.
-  if (!bewaarStand(SLEUTEL, nieuw)) {
-    throw new Error(
-      'De browseropslag zit vol of staat uit, dus deze variant is niet bewaard. '
-      + 'Verwijder een eerdere eigen variant en probeer het opnieuw.',
-    );
-  }
-  opgeslagen.value = nieuw;
-  versie.value++;
+  schrijf([...opgeslagen.value, variant]);
   return alsVariant(variant);
+}
+
+/**
+ * Werk een bestaande eigen variant bij: dezelfde variant, nieuwe inhoud.
+ *
+ * Zonder dit kon een variant alleen groeien. Wie in zijn eigen variant
+ * doorwerkte en wilde bewaren, kreeg er een tweede naast, met dezelfde naam
+ * plus een nummer erachter. Bij de gebruikelijke gang (variant maken,
+ * doorrekenen, parameter bijstellen, opnieuw) levert dat een rij bijna-gelijke
+ * kolommen op, en de browseropslag heeft een grens.
+ *
+ * `gemaakt` blijft staan: het is dezelfde variant, en die datum bepaalt de
+ * volgorde in de keuzelijst. `bijgewerkt` komt erbij, zodat zichtbaar is dat
+ * er sinds het maken aan gewerkt is.
+ *
+ * Dit overschrijft werk dat er al stond, en dat is onomkeerbaar zodra het
+ * weggeschreven is. Daarom komt er een `herstel` mee die de vorige inhoud
+ * terugzet: de aanroeper activeert de variant daarna nog, en als de engine de
+ * bewerkte wet afkeurt moet de oude, werkende inhoud terug kunnen komen.
+ * Zonder dat blijft er een variant staan die nooit meer laadt.
+ *
+ * @param {string} id - de variant die wordt overschreven
+ * @param {object} opties
+ * @param {Array<{pad: string, yaml: string, origineel: string}>} opties.bestanden
+ * @param {string} [opties.titel] - een nieuwe naam; weggelaten blijft de oude
+ * @returns {{variant: object, herstel: () => void}} de bijgewerkte variant in
+ *   variants.json-vorm, plus een functie die de vorige inhoud terugzet
+ */
+export function werkVariantBij(id, { bestanden, titel } = {}) {
+  const bestaand = opgeslagen.value.find((v) => v.id === id);
+  if (!bestaand) throw new Error(`Deze variant staat niet in deze browser: ${id}`);
+  keurBestanden(bestanden);
+  const vorige = bestaand;
+  const variant = {
+    ...bestaand,
+    titel: titel === undefined ? bestaand.titel : keurTitel(titel),
+    bijgewerkt: new Date().toISOString(),
+    bestanden: alsBestanden(bestanden),
+  };
+  schrijf(opgeslagen.value.map((v) => (v.id === id ? variant : v)));
+  return {
+    variant: alsVariant(variant),
+    herstel: () => {
+      // Terugzetten mag zelf niet omvallen: dit draait in het foutpad, en een
+      // fout hier zou de fout verbergen waar het echt om ging.
+      try {
+        schrijf(opgeslagen.value.map((v) => (v.id === id ? vorige : v)));
+      } catch { /* de opslag weigert; de melding hieronder gaat over de echte fout */ }
+    },
+  };
 }
 
 /** Verwijder een bewaarde variant. Geeft terug of er iets weg was. */
