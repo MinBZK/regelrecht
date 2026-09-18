@@ -31,5 +31,7 @@ onderzoeksvragen:
 onderzoek: ''
 bouw: ''
 rfcs: []
+afhankelijkVan:
+  - verkenning-publicatievoorziening
 samenhangIds: []
 ---
