@@ -155,13 +155,20 @@ voortgangsveld: het zegt of er iemand op zit, niet hoe ver het is. `klaar` is
 hier een eigen stand en geen afleiding uit `onderzoek: beantwoord` +
 `bouw: wel` — een verkenning is klaar zonder dat er ooit iets gebouwd wordt.
 
-**`''` en `vrij` zijn niet hetzelfde, en dat verschil draagt het veld.** `''`
-is de standaard: er is niets over gezegd, en daar beginnen alle
-negenenveertig. `vrij` is een redactionele daad: je hebt het werkpakket
-gelezen en vastgesteld dat het op te pakken is. Een roadmap waar alles op
-`vrij` staat omdat dat de standaard is, nodigt niemand uit; een roadmap waar
-er zes op `vrij` staan, is een oproep. Zet `vrij` dus niet om het vakje te
-vullen — dezelfde regel als bij prioriteit.
+**`''` betekent `vrij`.** Een leeg veld zegt dat niemand zijn hand heeft
+opgestoken, en dat ís vrij. De pagina's lezen het zo (`getBelegging()` in
+`docs/src/lib/roadmap.ts`), het filter heeft er dus ook maar drie knoppen: Vrij,
+Opgepakt, Klaar. Je hoeft `vrij` nergens in te vullen — `''` laten staan is
+hetzelfde en is wat bijna alle werkpakketten doen.
+
+Dit stond hier andersom: `''` zou "er is niets over gezegd" betekenen en `vrij`
+een redactionele daad, want een roadmap waar alles op `vrij` staat nodigt
+niemand uit. Het bezwaar klopt, maar het antwoord was de verkeerde kant op.
+Zesenveertig van de negenenveertig stonden leeg en géén enkele op `vrij`, dus
+wie op "Vrij" filterde kreeg een lege matrix te zien terwijl juist die
+zesenveertig open lagen. Dat de kaarten niet volstromen met een tag die zegt
+dat er niets aan de hand is, wordt opgelost waar het hoort: `vrij` krijgt geen
+tag op de matrix, alleen `opgepakt` en `klaar`.
 
 **Er staat geen naam in, met opzet.** De roadmap is publiek en vanaf de
 homepage gelinkt. Wie eraan werkt blijkt uit de pull requests, die via de
@@ -339,7 +346,9 @@ ouderdom ("sinds 3 maanden"), en dat is met opzet: een veld in de frontmatter
 verloopt niet, dus de pagina moet laten zien hoe oud een claim is.
 
 **Loslaten is dezelfde bewerking omgekeerd**, en een normale handeling, geen
-falen. Zet `stand` terug op `vrij` (of `''`) en haal `sinds` weg. Doe dat ook
+falen. Zet `stand` terug op `''` (of `vrij`, dat is hetzelfde) en haal `sinds`
+weg — dat laatste moet, want een datum bij een vrije stand rendert nergens en
+de build valt erop. Doe dat ook
 als je het werkpakket overdraagt: de belegging zegt dat het belegd is, niet
 door wie, dus een overdracht verandert er niets aan — alleen een werkpakket dat
 weer vrijkomt.
@@ -450,7 +459,8 @@ aan zodra je `/roadmap` echt opvraagt. Vertrouw op `docs-build`.
 - een RFC-nummer in `rfcs` dat niet bestaat
 - een `belegging` die niet klopt: `opgepakt` of `klaar` zonder `sinds`, een
   `sinds` bij een stand die hem nergens toont, een datum in de toekomst, of
-  `vrij` op een werkpakket dat al beantwoord én gebouwd is
+  `vrij` op een werkpakket dat al beantwoord én gebouwd is — en een leeg veld
+  telt daarin mee als `vrij`, want dat is wat het betekent
 - een ontbrekende of foute waarde volgens het zod-schema
 
 Raak je ook de pagina's aan, draai dan `just docs-a11y` (duurt ~10 minuten en
@@ -465,9 +475,8 @@ afgaan en daarmee genegeerd worden — en hij zou het toevoegen van een
 half-uitgewerkt werkpakket blokkeren, wat juist de manier is waarop deze
 roadmap groeit.
 
-Dat geldt ook voor de belegging: de build controleert niet of er überhaupt een
-werkpakket op `vrij` staat, of iemand nog echt aan een opgepakt werkpakket
-werkt, of dat er pull requests aan hangen. Dat laatste zou een API-call in de
+Dat geldt ook voor de belegging: de build controleert niet of iemand nog echt
+aan een opgepakt werkpakket werkt, of dat er pull requests aan hangen. Dat laatste zou een API-call in de
 build betekenen, en een netwerkhapering tot een rode build maken. Voor de vraag
 of een claim nog klopt is er `check-roadmap-belegging.mjs`, die meldt en niet
 blokkeert.

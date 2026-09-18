@@ -163,7 +163,9 @@ const kerngegevens = [
     onder: wp.belegging.sinds
       ? `sinds ${sindsTekst(wp.belegging.sinds)}`
       : undefined,
-    leeg: NIET_BEPAALD,
+    // Geen `leeg`: getBelegging() leest een leeg veld als 'vrij', dus er is
+    // altijd een tag. "Niet bepaald" zou hier een vierde stand suggereren die
+    // niet bestaat.
   },
   { label: 'Onderzoek', tag: getOnderzoek(wp.onderzoek), value: '' },
   { label: 'Bouw', tag: getBouw(wp.bouw), value: '' },
