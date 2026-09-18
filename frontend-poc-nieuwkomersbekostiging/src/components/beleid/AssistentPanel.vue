@@ -84,9 +84,9 @@
            de feed stond hij los van waar je kijkt. -->
       <div v-if="streaming || afronding" class="as-status">
         <span class="as-status-wat">
-          <nldd-activity-indicator v-if="streaming && !openVraag" size="16" timing="instant"></nldd-activity-indicator>
-          <nldd-icon v-else-if="!streaming" name="checked" size="16"></nldd-icon>
-          <nldd-icon v-else name="help" size="16"></nldd-icon>
+          <nldd-icon v-if="openVraag" name="help" size="16"></nldd-icon>
+          <nldd-icon v-else-if="afronding" name="checked" size="16"></nldd-icon>
+          <nldd-activity-indicator v-else size="16" timing="instant"></nldd-activity-indicator>
           <span>{{ openVraag ? 'Wacht op jouw keuze.' : statusWat }}</span>
         </span>
         <span v-if="!openVraag && statusTeller" class="as-status-teller">{{ statusTeller }}</span>
@@ -308,6 +308,13 @@ const wijzigingLabel = computed(() => {
   return delen.join(' en ');
 });
 
+/**
+ * Loopt er een gesprek? Zo ja, dan stuurt het invoerveld een vervolgbericht in
+ * plaats van een nieuwe opdracht. De knop blijft "Verstuur": het is
+ * dezelfde handeling, en wát je verstuurt staat al in het label boven het veld.
+ */
+const loopt = computed(() => streaming.value);
+
 /** De voorbeelden die bij de gekozen modus horen. */
 const voorbeelden = computed(() => VOORBEELDEN[modus.value] ?? []);
 
@@ -365,7 +372,6 @@ const afronding = ref(null);
 /** De keuze die nu voorligt, als de assistent er een stelde. */
 const openVraag = ref(null);
 const aangevinkt = ref([]);
-const vervolg = ref('');
 
 function vinkAan(label, ev) {
   const aan = ev?.detail?.checked ?? ev?.target?.checked;
@@ -379,6 +385,8 @@ async function beantwoord(keuzes) {
   if (!vraag) return;
   openVraag.value = null;
   aangevinkt.value = [];
+  // Het antwoord zet de assistent weer aan het werk; zie stuurVervolg.
+  afronding.value = null;
   try {
     await antwoord(vraag.id, keuzes);
   } catch (e) {
@@ -387,15 +395,27 @@ async function beantwoord(keuzes) {
   }
 }
 
+/**
+ * Eén knop voor twee dingen: loopt er nog niets, dan start dit een gesprek;
+ * loopt er een gesprek, dan gaat de tekst als vervolgbericht mee.
+ */
+async function verstuur() {
+  if (loopt.value) return stuurVervolg();
+  return submit();
+}
+
 async function stuurVervolg() {
-  const tekst = vervolg.value.trim();
+  const tekst = prompt.value.trim();
   if (!tekst) return;
-  vervolg.value = '';
+  prompt.value = '';
+  // Een nieuwe beurt begint: de afronding van de vorige hoort weg, anders staat
+  // er "Klaar" boven een assistent die net weer begonnen is.
+  afronding.value = null;
   try {
     await stuur(tekst);
   } catch (e) {
-    feed.value.push({ type: 'fout', melding: `Insturen mislukt: ${e?.message ?? e}` });
-    vervolg.value = tekst;
+    feed.value.push({ type: 'fout', melding: `Versturen mislukt: ${e?.message ?? e}` });
+    prompt.value = tekst;
   }
 }
 
@@ -564,7 +584,10 @@ async function submit() {
           handelingenGewijzigd: !!ev.handelingenGewijzigd,
         });
       }
-    } else if (ev.type === 'klaar') {
+    } else if (ev.type === 'beurt_klaar' || ev.type === 'klaar') {
+      // beurt_klaar komt na elk antwoord, klaar pas als het gesprek sluit.
+      // Allebei betekenen ze: deze beurt is af, dus het spinnertje uit en de
+      // wijzigingen klaarzetten om over te nemen.
       overlays.value = ev.overlays ?? null;
       handelingenYaml.value = ev.handelingen ?? null;
       resultaat.value = true;
