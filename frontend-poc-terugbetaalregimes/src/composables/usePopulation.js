@@ -107,6 +107,26 @@ async function loadDistributions() {
   return distributions;
 }
 
+/**
+ * Het uitvoeringslastmodel: handelingen met minuten en tarieven.
+ *
+ * Blijft null als het bestand er niet is of niet laadt. Dat is met opzet geen
+ * lege standaard: een uitvoeringslast van nul euro is een bewering, en
+ * "onbekend" is hier de eerlijke uitkomst.
+ */
+const handelingenModel = shallowRef(null);
+async function loadHandelingen() {
+  if (handelingenModel.value) return handelingenModel.value;
+  try {
+    const res = await fetch(b('/data/handelingen.yaml'));
+    if (!res.ok) return null;
+    handelingenModel.value = yaml.load(await res.text());
+  } catch {
+    handelingenModel.value = null;
+  }
+  return handelingenModel.value;
+}
+
 function terminate(key) {
   const entry = workers.get(key);
   if (entry) {
@@ -165,6 +185,9 @@ function runInWorker(key, laws, recs) {
 /** Genereer de populatie (deterministisch) alleen als N, de seed of een aanname veranderd is. */
 async function ensureRecords() {
   await loadDistributions();
+  // Het uitvoeringslastmodel hoort bij dezelfde doorrekening; ontbreekt het,
+  // dan blijft de uitvoeringslast leeg en rekent de rest gewoon door.
+  await loadHandelingen();
   const dist = aannameEffectief.value ?? distributions;
   if (
     records.value.length !== n.value
@@ -251,7 +274,7 @@ const metricsByColumn = computed(() => {
   const out = {};
   for (const col of columns.value) {
     const res = results.value[col.key];
-    if (res) out[col.key] = aggregate(res);
+    if (res) out[col.key] = aggregate(res, handelingenModel.value);
   }
   return out;
 });
@@ -294,6 +317,7 @@ export function usePopulation() {
     columns,
     records,
     distributions: distributionsRef,
+    handelingenModel,
     running,
     anyRunning,
     progress,

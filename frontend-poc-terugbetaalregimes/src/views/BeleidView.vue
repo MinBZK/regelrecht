@@ -37,6 +37,10 @@
               <assistent-panel />
             </paneel>
 
+            <paneel titel="Uitvoeringslastmodel" subtitel="Handelingen × minuten × tarief. Wat DUO het kost staat in euro's, wat het debiteuren kost in uren." :samenvatting="uitvoeringSamenvatting">
+              <handelingen-panel />
+            </paneel>
+
             <paneel titel="Populatie" subtitel="Eén vaste steekproef van synthetische debiteuren, gewogen naar de echte aantallen. Beide kolommen rekenen met dezelfde debiteuren." :samenvatting="populatieSamenvatting">
               <population-controls />
             </paneel>
@@ -95,7 +99,7 @@ import { useLawStore } from '../engine/lawStore.js';
 import { usePersonas } from '../composables/usePersonas.js';
 import { usePopulation } from '../composables/usePopulation.js';
 import { usePopulatieAannames } from '../composables/usePopulatieAannames.js';
-import { number } from '../lib/format.js';
+import { number, euroCompact } from '../lib/format.js';
 import Paneel from '@regelrecht/frontend-shared/components/Paneel.vue';
 import ParameterPanel from '../components/beleid/ParameterPanel.vue';
 import KolomTabel from '../components/beleid/KolomTabel.vue';
@@ -105,6 +109,7 @@ import PopulationControls from '../components/beleid/PopulationControls.vue';
 import DoorrekenKnop from '../components/beleid/DoorrekenKnop.vue';
 import RegimeMetricsChart from '../components/beleid/RegimeMetricsChart.vue';
 import AssistentPanel from '../components/beleid/AssistentPanel.vue';
+import HandelingenPanel from '../components/beleid/HandelingenPanel.vue';
 import VariantenLijst from '../components/beleid/VariantenLijst.vue';
 
 const { ready, initError, lawIndex, initEngine } = useEngine();
@@ -123,6 +128,13 @@ const kolomLabel = computed(() => (werkversie.value ? werkversieLabel.value : ha
 // als eerste paneel de hele linkerkolom vullen voordat iemand iets gekozen heeft.
 const bijstellenSamenvatting = computed(() => (hasChanges.value ? `${werkversieLabel.value} bewerkt` : `percentages en termijnen van ${werkversieLabel.value}`));
 
+// Dicht toont het paneel de twee eenheden naast elkaar; dat verschil (euro's
+// bij DUO, uren bij de debiteur) is waar dit model over gaat.
+const uitvoeringSamenvatting = computed(() => {
+  const last = metrics.value?.uitvoeringslast;
+  if (!last) return 'nog niet doorgerekend';
+  return `${euroCompact(last.kostenTotaal)} bij DUO · ${number(Math.round(last.urenBurger))} uur bij debiteuren`;
+});
 const populatieSamenvatting = computed(() => {
   const debiteuren = totaalDebiteuren.value ? `${number(totaalDebiteuren.value)} aflossende debiteuren` : 'debiteuren uit CBS en de Stand van DUO';
   return `${debiteuren} · ${number(n.value)} records · in elke kolom dezelfde debiteuren`;

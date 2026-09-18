@@ -65,8 +65,9 @@
     <p class="kt-bron">
       Bedragen zijn de contante som over de hele looptijd van de steekproef, gewogen naar
       {{ number(baseline?.aantalDebiteuren ?? 0) }} debiteuren. De pijl vergelijkt met huidig recht.
-      Uitvoering bij DUO staat als aantallen: deze casus heeft geen uitvoeringslastmodel met minuten en tarieven,
-      dus er staan bewust geen euro's bij.
+      De uitvoeringskosten bij DUO zijn handelingen × minuten × tarief (HOT 2026); de minuten zijn aannames.
+      De tijd van debiteuren staat in uren en niet in euro's: er bestaat geen tarief voor de tijd van een burger,
+      en er een op plakken zou een uitspraak zijn die dit model niet doet.
     </p>
     <p v-if="ramingRijen.length" class="kt-bron">
       Raming Stand van de Uitvoering OCW 2026 ter vergelijking:
@@ -156,9 +157,13 @@ const GROEPEN = [
     })),
   },
   {
-    titel: 'Uitvoering bij DUO',
-    hint: 'volumes, geen kosten',
+    titel: 'Uitvoering',
+    hint: 'volumes, kosten bij DUO en tijd van debiteuren',
     rijen: [
+      // De twee eenheden staan bewust apart. DUO's tijd is loonkosten en telt
+      // in euro's; de tijd van een debiteur heeft geen tarief en telt in uren.
+      { key: 'ul_duo', label: 'Uitvoeringskosten DUO', hint: 'handelingen × minuten × tarief (HOT 2026)', kind: 'euro', beter: 'lager', kern: true, get: (m) => m.uitvoeringslast?.kostenTotaal ?? null },
+      { key: 'ul_burger', label: 'Tijd van debiteuren', hint: 'aanvragen en achterstanden; bewust niet in euro’s uitgedrukt', kind: 'uren', beter: 'lager', kern: true, get: (m) => m.uitvoeringslast?.urenBurger ?? null },
       { key: 'dk', label: 'Draagkrachtmetingen', hint: 'debiteuren met een meting', kind: 'aantal', beter: 'neutraal', kern: true, get: (m) => m.uitvoering?.draagkrachtmetingen ?? null },
       { key: 'oo', label: 'Partner-opt-outs', hint: 'partnerinkomen niet laten meetellen', kind: 'aantal', beter: 'neutraal', get: (m) => m.uitvoering?.partnerOptOuts ?? null },
       // Peiljaarverleggingen (artikel 6.12) stond hier en telde altijd 0:
@@ -182,7 +187,20 @@ function toon(rij, m) {
   if (v === null || v === undefined) return '—';
   if (rij.kind === 'euro') return euroCompact(v);
   if (rij.kind === 'pct') return percent(v, 1);
+  if (rij.kind === 'uren') return uren(v);
   return number(v);
+}
+
+/**
+ * Uren van debiteuren over de hele populatie lopen in de miljoenen, dus voluit
+ * is onleesbaar. Geen euroteken: dat is precies het verschil dat deze rij maakt.
+ */
+function uren(v) {
+  // Twee decimalen bij miljoenen: met één decimaal lazen 1,03 en 0,97 mln
+  // allebei als "1 mln uur" en leek een echt verschil tussen de kolommen weg.
+  if (v >= 1e6) return `${number(Math.round(v / 1e4) / 100)} mln uur`;
+  if (v >= 1e3) return `${number(Math.round(v / 1e2) / 10)} dzd uur`;
+  return `${number(Math.round(v))} uur`;
 }
 
 function verschil(rij, col) {
@@ -203,6 +221,7 @@ function verschilTekst(rij, col) {
   const abs = Math.abs(d);
   if (rij.kind === 'euro') return `${teken}${euroCompact(abs)}`;
   if (rij.kind === 'pct') return `${teken}${percent(abs, 1)}`;
+  if (rij.kind === 'uren') return `${teken}${uren(abs)}`;
   return `${teken}${number(abs)}`;
 }
 
