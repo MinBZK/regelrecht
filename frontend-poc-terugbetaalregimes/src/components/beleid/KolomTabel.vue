@@ -88,7 +88,7 @@
 import { ref, computed } from 'vue';
 import KolommenMenu from '@regelrecht/frontend-shared/components/KolommenMenu.vue';
 import { useLawStore, kortTitel } from '../../engine/lawStore.js';
-import { number, euroCompact, percent, regimeLabel } from '../../lib/format.js';
+import { number, euroCompact, percent, regimeLabel, urenCompact } from '../../lib/format.js';
 import { KOLOM_BASIS, usePopulation, MAX_VARIANTEN } from '../../composables/usePopulation.js';
 import { VARIANT_RAMING } from '../../lib/regimeFacts.js';
 
@@ -187,20 +187,8 @@ function toon(rij, m) {
   if (v === null || v === undefined) return '—';
   if (rij.kind === 'euro') return euroCompact(v);
   if (rij.kind === 'pct') return percent(v, 1);
-  if (rij.kind === 'uren') return uren(v);
+  if (rij.kind === 'uren') return urenCompact(v);
   return number(v);
-}
-
-/**
- * Uren van debiteuren over de hele populatie lopen in de miljoenen, dus voluit
- * is onleesbaar. Geen euroteken: dat is precies het verschil dat deze rij maakt.
- */
-function uren(v) {
-  // Twee decimalen bij miljoenen: met één decimaal lazen 1,03 en 0,97 mln
-  // allebei als "1 mln uur" en leek een echt verschil tussen de kolommen weg.
-  if (v >= 1e6) return `${number(Math.round(v / 1e4) / 100)} mln uur`;
-  if (v >= 1e3) return `${number(Math.round(v / 1e2) / 10)} dzd uur`;
-  return `${number(Math.round(v))} uur`;
 }
 
 function verschil(rij, col) {
