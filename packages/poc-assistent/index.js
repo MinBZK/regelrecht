@@ -5,7 +5,12 @@
  *   documenten = de werkversie uit de browser (beginstand van de overlays)
  * POST /api/variant    { sleutel, titel, bestanden: [{ path, yaml }] } → branch variant/<sleutel>
  *   → SSE-stream met events:
- *     {type: "tekst", tekst}            assistent-tekst (per beurt)
+ *     {type: "tekst", tekst}            assistent-tekst (per beurt, compleet)
+ *     {type: "tekst_deel", tekst}       hetzelfde, maar terwijl het getypt
+ *                                       wordt; de app toont dit en vervangt
+ *                                       het door de complete tekst
+ *     {type: "voortgang", beurten, seconden, status, tool}
+ *                                       leeft hij nog, en waar is hij mee bezig
  *     {type: "tool", naam, input}       toolaanroep van de assistent
  *     {type: "wijziging", document_key, toelichting}
  *     {type: "simulatie", doel, n?, metrics?}
@@ -172,7 +177,32 @@ async function handleAssistent(req, res) {
     Connection: 'keep-alive',
   });
   const send = (event) => res.write(`data: ${JSON.stringify(event)}\n\n`);
-  const heartbeat = setInterval(() => res.write(': ping\n\n'), 15000);
+
+  // Voortgang: wat doet hij nu, hoeveel beurten, hoe lang bezig.
+  //
+  // Waarom dit er is: een doel-run mag zestig beurten doen met simulaties van
+  // n=1000, en kan daarin minuten niets zichtbaars doen. De enige aanwijzing
+  // was dat de knop "Assistent werkt…" heette, en dat leest na een minuut als
+  // vastgelopen. De heartbeat die hier stond was een SSE-commentaarregel, die
+  // de browser wel wakker houdt maar niets vertelt.
+  const begonnen = Date.now();
+  const voortgang = { beurten: 0, status: null, laatsteTool: null };
+  const stuurVoortgang = () => send({
+    type: 'voortgang',
+    beurten: voortgang.beurten,
+    seconden: Math.round((Date.now() - begonnen) / 1000),
+    status: voortgang.status,
+    tool: voortgang.laatsteTool,
+  });
+  const meldVoortgang = ({ status, beurt, tool } = {}) => {
+    if (typeof status === 'string') voortgang.status = status;
+    if (typeof tool === 'string') voortgang.laatsteTool = tool;
+    if (beurt) voortgang.beurten += 1;
+    stuurVoortgang();
+  };
+  // Ook als er niets gebeurt blijft de teller lopen, zodat zichtbaar is dat
+  // hij nog leeft.
+  const heartbeat = setInterval(stuurVoortgang, 5000);
 
   const sessieDir = maakSessieMap();
   const beginstand = new Map();
@@ -224,6 +254,10 @@ async function handleAssistent(req, res) {
     '-p', opdracht,
     '--output-format', 'stream-json',
     '--verbose',
+    // Tekst komt binnen terwijl hij getypt wordt in plaats van pas als de
+    // beurt af is, en de CLI meldt onderweg zelf dat hij op het model wacht.
+    // Dat is het grootste deel van "hangt hij nou?".
+    '--include-partial-messages',
     '--model', MODEL,
     '--system-prompt', SYSTEM,
     '--mcp-config', mcpConfig,
@@ -277,6 +311,10 @@ async function handleAssistent(req, res) {
         type: 'klaar',
         overlays,
         handelingen: handelingenEind !== handelingenBegin ? handelingenEind : null,
+        // Een zichtbare afronding: zonder dit oogt "klaar" hetzelfde als
+        // "bezig", en blijft de gebruiker wachten op iets dat al gebeurd is.
+        beurten: voortgang.beurten,
+        seconden: Math.round((Date.now() - begonnen) / 1000),
       });
     }
     ruimSessieOp(sessieDir);
@@ -302,7 +340,7 @@ async function handleAssistent(req, res) {
       const line = stdoutBuf.slice(0, index).trim();
       stdoutBuf = stdoutBuf.slice(index + 1);
       if (line) {
-        const res = verwerkStreamRegel(line, send);
+        const res = verwerkStreamRegel(line, send, meldVoortgang);
         if (res) laatsteResultaat = res;
       }
     }
@@ -330,7 +368,8 @@ async function handleAssistent(req, res) {
 function foutmeldingVoor(code, stderrBuf, resultaat) {
   if (resultaat?.subtype === 'error_max_turns') {
     return `De assistent had meer stappen nodig dan de limiet van ${resultaat.num_turns ?? 'het maximum'}. `
-      + 'Splits de opdracht op, of verhoog --max-turns in server/index.js.';
+      + 'Maak de opdracht kleiner, of splits hem: een doel met één maatstaf komt meestal binnen de limiet, '
+      + 'een doel met drie randvoorwaarden niet.';
   }
   if (resultaat?.subtype === 'error_during_execution') {
     return 'De assistent liep vast tijdens het uitvoeren. Probeer de opdracht opnieuw of maak hem kleiner.';
@@ -347,7 +386,7 @@ function foutmeldingVoor(code, stderrBuf, resultaat) {
  *   assistant → message.content[] met text- en tool_use-blokken
  *   result → einde (afhandeling gebeurt via child 'close')
  */
-function verwerkStreamRegel(line, send) {
+function verwerkStreamRegel(line, send, voortgang) {
   let msg;
   try {
     msg = JSON.parse(line);
@@ -360,6 +399,26 @@ function verwerkStreamRegel(line, send) {
   if (msg.type === 'result') {
     return { subtype: msg.subtype ?? null, is_error: !!msg.is_error, num_turns: msg.num_turns ?? null };
   }
+
+  // De CLI meldt zelf wanneer hij op het model wacht. Dat is het verschil
+  // tussen "denkt na" en "hangt", en zonder die melding is een doel-run die
+  // een minuut stil is niet te onderscheiden van een vastgelopen proces.
+  if (msg.type === 'system' && msg.subtype === 'status') {
+    voortgang?.({ status: msg.status ?? null });
+    return;
+  }
+
+  // Tekst zoals hij getypt wordt, in plaats van pas als de beurt af is.
+  if (msg.type === 'stream_event') {
+    const ev = msg.event;
+    if (ev?.type === 'content_block_delta' && ev.delta?.type === 'text_delta' && ev.delta.text) {
+      send({ type: 'tekst_deel', tekst: ev.delta.text });
+    } else if (ev?.type === 'message_start') {
+      voortgang?.({ beurt: true });
+    }
+    return;
+  }
+
   if (msg.type !== 'assistant' || !msg.message?.content) return;
 
   for (const block of msg.message.content) {
@@ -374,6 +433,7 @@ function verwerkStreamRegel(line, send) {
       if (naam === 'wijzig_regelgeving') {
         input = { document_key: input.document_key, toelichting: input.toelichting };
       }
+      voortgang?.({ tool: naam });
       send({ type: 'tool', naam, input });
     }
   }

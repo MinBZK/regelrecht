@@ -40,6 +40,15 @@
       <nldd-button v-if="streaming" text="Stop" start-icon="remove" variant="secondary" @click="stop"></nldd-button>
     </div>
 
+    <!-- Zolang hij bezig is: wat doet hij, hoeveel beurten, hoe lang al. Een
+         doel-run kan minuten stil zijn, en zonder dit is dat niet van
+         vastgelopen te onderscheiden. -->
+    <div v-if="streaming || afronding" class="as-status">
+      <nldd-activity-indicator v-if="streaming" size="16" timing="instant"></nldd-activity-indicator>
+      <nldd-icon v-else name="checked" size="16"></nldd-icon>
+      <span>{{ statusTekst }}</span>
+    </div>
+
     <!-- Twee assen: de regeling in miljoenen tegenover de uitvoeringslast, die
          een orde kleiner is. Op één as zou die laatste een platte lijn zijn,
          terwijl een doel als "gelijktrekken zonder dat de uitgave stijgt" juist
@@ -258,6 +267,43 @@ function samenvatting(metrics) {
   return delen.length ? `${delen.join(' · ')} per jaar` : 'klaar';
 }
 
+/** Laatste voortgangsmelding van de backend, en de afronding na afloop. */
+const voortgang = ref(null);
+const afronding = ref(null);
+
+/** Namen van de tools zoals een beleidsmaker ze zou noemen. */
+const TOOLTEKST = {
+  lees_regelgeving: 'leest de regelgeving',
+  wijzig_definitie: 'past een waarde aan',
+  wijzig_regelgeving: 'herschrijft een artikel',
+  lees_handelingen: 'leest het uitvoeringslastmodel',
+  wijzig_handelingen: 'past het uitvoeringslastmodel aan',
+  simuleer_personas: "rekent de persona's door",
+  simuleer_populatie: 'rekent de populatie door',
+};
+
+const statusTekst = computed(() => {
+  if (afronding.value) {
+    const { beurten, seconden } = afronding.value;
+    return `Klaar in ${duur(seconden)}, ${beurten} ${beurten === 1 ? 'beurt' : 'beurten'}.`;
+  }
+  const v = voortgang.value;
+  if (!v) return 'Bezig…';
+  const wat = v.tool ? (TOOLTEKST[v.tool] ?? v.tool)
+    : v.status === 'requesting' ? 'denkt na'
+      : 'bezig';
+  const beurt = v.beurten ? `, beurt ${v.beurten}` : '';
+  return `${wat[0].toUpperCase()}${wat.slice(1)}${beurt} · ${duur(v.seconden)}`;
+});
+
+function duur(seconden) {
+  const s = Number(seconden) || 0;
+  if (s < 60) return `${s} s`;
+  const m = Math.floor(s / 60);
+  const rest = s % 60;
+  return rest ? `${m} min ${rest} s` : `${m} min`;
+}
+
 const gekozenStand = computed(() => (gekozenPunt.value === null ? null : pad.value[gekozenPunt.value] ?? null));
 
 function kiesPunt(index) {
@@ -297,6 +343,8 @@ async function submit() {
   overlays.value = null;
   handelingenYaml.value = null;
   resultaat.value = false;
+  voortgang.value = null;
+  afronding.value = null;
   let iteratie = 0;
 
   // De assistent werkt op de werkversie: stuur die documenten mee als beginstand.
@@ -307,7 +355,20 @@ async function submit() {
   const handelingen = handelingenYamlFor(werkversie.value);
   feed.value.push({ type: 'tekst', tekst: `Werkt op ${werkversieLabel.value}.` });
   await run({ modus: modus.value, prompt: prompt.value, documenten, handelingen }, (ev) => {
-    if (ev.type === 'tool') {
+    if (ev.type === 'voortgang') {
+      voortgang.value = ev;
+    } else if (ev.type === 'tekst_deel') {
+      // Tekst terwijl hij getypt wordt. De losse stukjes gaan in één regel in
+      // de feed; het complete `tekst`-event erna vervangt die regel, zodat er
+      // niet twee keer hetzelfde komt te staan.
+      const laatste = feed.value[feed.value.length - 1];
+      if (laatste?.type === 'tekst' && laatste.deels) laatste.tekst += ev.tekst;
+      else feed.value.push({ type: 'tekst', tekst: ev.tekst, deels: true });
+    } else if (ev.type === 'tekst') {
+      const laatste = feed.value[feed.value.length - 1];
+      if (laatste?.deels) feed.value[feed.value.length - 1] = { type: 'tekst', tekst: ev.tekst };
+      else feed.value.push(ev);
+    } else if (ev.type === 'tool') {
       const inputText = ev.input
         ? Object.entries(ev.input).map(([k, v]) => `${k}=${v}`).join(' ')
         : '';
@@ -335,6 +396,8 @@ async function submit() {
       overlays.value = ev.overlays ?? null;
       handelingenYaml.value = ev.handelingen ?? null;
       resultaat.value = true;
+      afronding.value = { beurten: ev.beurten ?? 0, seconden: ev.seconden ?? 0 };
+      voortgang.value = null;
     } else {
       feed.value.push(ev);
     }
@@ -382,6 +445,11 @@ function takeOverlays() {
 .as-knoppen { display: flex; gap: var(--primitives-space-8); align-items: center; }
 .as-md code { font-size: 0.9em; }
 .as-hint { margin: 0; font-size: 0.85em; color: var(--semantics-content-secondary-color); }
+.as-status {
+  display: flex; align-items: center; gap: var(--primitives-space-8);
+  font-size: 0.85em; color: var(--semantics-content-secondary-color);
+  font-variant-numeric: tabular-nums;
+}
 .as-punt {
   display: flex; flex-direction: column; gap: var(--primitives-space-8);
   padding: var(--primitives-space-12);
