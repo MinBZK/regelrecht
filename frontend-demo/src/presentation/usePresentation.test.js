@@ -23,6 +23,10 @@ const ROUTES = [
   { name: 'zaaksysteem', path: '/zaaksysteem' },
 ];
 
+/**
+ * Onbekend pad geeft `undefined`, net als de echte router: die vangt zoiets op
+ * met `/:pathMatch(.*)*`, en die route draagt geen naam.
+ */
 function nameFor(path) {
   const head = `/${String(path).split('/')[1] ?? ''}`;
   return ROUTES.find((r) => r.path === head)?.name;
@@ -56,6 +60,28 @@ const SLIDES = [
 function press(key) {
   const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
   document.body.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+
+/**
+ * Een toetsaanslag uit een invoerveld van het ontwerpsysteem, zoals Chrome hem
+ * aflevert: het event is geretarget naar de host (`e.target` is de custom
+ * element) en de echte `<input>` staat alleen op `composedPath()`.
+ *
+ * Nagebouwd in plaats van nagespeeld, want happy-dom implementeert die
+ * retargeting niet: daar blijft `e.target` gewoon de `<input>`, en dan zou deze
+ * test groen staan zonder iets te bewijzen. In Chrome is gemeten dat
+ * `e.target` `NLDD-TEXT-FIELD` is en `closest('input')` niets vindt.
+ */
+function pressFromShadowInput(key) {
+  const host = document.createElement('nldd-text-field');
+  document.body.append(host);
+  const input = document.createElement('input');
+  const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'target', { value: host });
+  Object.defineProperty(event, 'composedPath', { value: () => [input, host, document.body, document.documentElement, document, window] });
+  window.dispatchEvent(event);
+  host.remove();
   return event.defaultPrevented;
 }
 
@@ -153,9 +179,51 @@ describe('usePresentation toetsafvang', () => {
     expect(p.active.value).toBe(false);
   });
 
-  it('Escape doet niets als er geen presentatie loopt', () => {
+  it('koppelt de luisteraar los na Escape, zodat de pagina de toetsen terugkrijgt', async () => {
+    await p.start(1);
+    press('Escape');
     expect(p.active.value).toBe(false);
+
+    // Na Escape is de luisteraar weg: een volgende spatie is weer van de
+    // pagina en bladert niets. Dit is wat de gebruiker merkt, en het pint
+    // meteen dat `stop()` de luisteraar echt loskoppelt.
+    document.documentElement.classList.add('rr-sentinel');
+    expect(press(' ')).toBe(false);
     expect(press('Escape')).toBe(false);
+    expect(document.documentElement.classList.contains('rr-sentinel')).toBe(true);
+    document.documentElement.classList.remove('rr-sentinel');
+  });
+
+  it('laat een spatie in een invoerveld van het ontwerpsysteem met rust', async () => {
+    await p.start(0);
+    // Het dek staat in beeld en vangt spaties af, maar niet deze: die hoort in
+    // het veld. `nldd-text-field` zet zijn <input> in een open shadow root, dus
+    // het event komt op de host uit en `closest('input')` vindt niets.
+    expect(press(' ')).toBe(true);
+    expect(p.index.value).toBe(1);
+
+    expect(pressFromShadowInput(' ')).toBe(false);
+    expect(p.index.value).toBe(1); // niet doorgebladerd
+  });
+
+  it('houdt de toetsen niet vast op een dia met een route die niet bestaat', async () => {
+    // Een typefout in `route:` in demo-config.yaml valt in de catch-all
+    // `/:pathMatch(.*)*`, die naar `/` redirect en geen naam draagt. De
+    // presentatie belandt dus op home terwijl de dia iets anders noemt: naam
+    // noch pad komt overeen, en losgelaten is de veilige kant. Liever een dia
+    // die niet bladert dan een spatie die overal in de app verdwijnt.
+    const redirecting = fakeRouter();
+    redirecting.push = (to) => {
+      const landed = nameFor(to) ? to : '/';
+      redirecting.currentRoute.value = { path: landed, name: nameFor(landed) };
+      return Promise.resolve();
+    };
+    p.init({ router: redirecting, slides: [{ kind: 'title' }, { kind: 'demo', route: '/tikfout' }] });
+    await p.start(1);
+
+    expect(redirecting.currentRoute.value.path).toBe('/');
+    expect(p.isOnStage()).toBe(false);
+    expect(press(' ')).toBe(false);
   });
 
   it('houdt zelfstandig de toetsen vast, want dan staat het dek er altijd', async () => {

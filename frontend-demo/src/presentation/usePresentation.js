@@ -157,8 +157,30 @@ function prev() {
   return undefined;
 }
 
+/**
+ * Waar kwam deze toetsaanslag vandaan?
+ *
+ * Niet `e.target.closest(...)`, want de invoervelden van het ontwerpsysteem
+ * (`nldd-text-field`, `nldd-date-field`, ...) zetten hun `<input>` in een open
+ * shadow root. Het event retarget dan naar de host, en `closest('input')` op
+ * die host vindt niets: gemeten in Chrome is `e.target` `NLDD-TEXT-FIELD` en
+ * staat de `<input>` alleen op `composedPath()`. Zonder dit liep een spatie in
+ * een bedragveld niet het veld in maar bladerde hij een dia verder.
+ *
+ * `composedPath()` loopt dwars door shadow-grenzen heen, dus daar staat alles
+ * tussen de echte `<input>` en `window`. Lukt dat niet (oudere browser,
+ * gesynthetiseerd event), dan valt hij terug op `closest`.
+ */
+function pathMatches(e, selector) {
+  const path = e.composedPath?.();
+  if (Array.isArray(path) && path.length) {
+    return path.some((n) => n?.matches?.(selector));
+  }
+  return !!e.target?.closest?.(selector);
+}
+
 function onKey(e) {
-  if (e.target?.closest?.('input, textarea, select, [contenteditable]')) return;
+  if (pathMatches(e, 'input, textarea, select, [contenteditable]')) return;
   // Escape blijft altijd de noodrem, ook als het dek niet in beeld staat. Het
   // is de enige toets die een presentatie beeindigt zonder haar uit te lopen,
   // en juist off-stage moet dat kunnen: dan leeft ze onzichtbaar door.
@@ -175,7 +197,7 @@ function onKey(e) {
   // klikt de presentator in de demo zelf, en dan zou één spatie tegelijk de
   // knop indrukken én een dia verder springen. De pijltjes blijven wel werken,
   // want die doen op een knop niets.
-  if (e.key === ' ' && e.target?.closest?.('button, [role="button"], a[href], summary')) return;
+  if (e.key === ' ' && pathMatches(e, 'button, [role="button"], a[href], summary')) return;
   switch (e.key) {
     case 'ArrowRight':
     case ' ':
