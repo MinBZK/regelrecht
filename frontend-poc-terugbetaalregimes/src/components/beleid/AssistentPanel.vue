@@ -7,12 +7,18 @@
       De backend draait, maar de Claude Code CLI is niet gevonden. Installeer die en herstart met <code>just poc-assistent terugbetaalregimes</code>.
     </nldd-banner>
 
+    <!-- Doel staat voor en is de standaard: dat is de vraag waarmee een
+         beleidsmaker binnenkomt, en de modus waar het optimalisatiepad
+         hieronder voor bestaat. -->
     <nldd-segmented-control size="sm" :value="modus" @change="modus = $event.detail?.value ?? modus">
-      <nldd-segmented-control-item value="instructie" text="Instructie"></nldd-segmented-control-item>
       <nldd-segmented-control-item value="doel" text="Doel"></nldd-segmented-control-item>
+      <nldd-segmented-control-item value="instructie" text="Instructie"></nldd-segmented-control-item>
     </nldd-segmented-control>
 
-    <nldd-form-field :label="modus === 'doel' ? 'Doel' : 'Instructie'">
+    <nldd-form-field
+      :label="modus === 'doel' ? 'Doel' : 'Instructie'"
+      :supporting-label="modusUitleg"
+    >
       <nldd-multi-line-text-field
         :value="prompt"
         :placeholder="placeholder"
@@ -125,7 +131,7 @@ async function peilHealth() {
   }
 }
 
-const modus = ref('instructie');
+const modus = ref('doel');
 const prompt = ref('');
 const feed = ref([]);
 const pad = ref([]); // [{iteratie, pct}] voor de doel-modus
@@ -136,6 +142,18 @@ const placeholder = computed(() =>
   modus.value === 'doel'
     ? 'Minimaliseer het aantal debiteuren met betalingsproblemen zonder de kwijtscheldingskosten meer dan te verdubbelen'
     : 'Verhoog de draagkrachtvrije voet van SF15-oud naar 84% van het belastbaar minimumloon',
+);
+
+/**
+ * Wat de twee modi van elkaar onderscheidt, in één regel. Zonder dit is het
+ * verschil alleen uit het gedrag af te leiden: doel rekent iteratief naar een
+ * uitkomst toe en mag daar zestig beurten over doen, instructie voert één
+ * wijziging uit en laat het effect zien.
+ */
+const modusUitleg = computed(() =>
+  modus.value === 'doel'
+    ? 'Je weet wat je wilt bereiken. De assistent probeert wijzigingen, meet het effect en stelt bij tot het niet verder verbetert.'
+    : 'Je weet wat je wilt veranderen. De assistent voert die ene wijziging uit en rekent door.',
 );
 
 onMounted(peilHealth);

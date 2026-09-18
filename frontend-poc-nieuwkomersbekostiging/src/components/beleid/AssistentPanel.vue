@@ -7,14 +7,19 @@
       De backend draait, maar de Claude Code CLI is niet gevonden. Installeer die en herstart met <code>just poc-assistent nieuwkomersbekostiging</code>.
     </nldd-banner>
 
+    <!-- Doel staat voor en is de standaard: dat is de vraag waarmee een
+         beleidsmaker binnenkomt. -->
     <div class="as-modus">
       <nldd-segmented-control :value="modus" @change="modus = $event.detail?.value ?? modus">
-        <nldd-segmented-control-item value="instructie" text="Instructie"></nldd-segmented-control-item>
         <nldd-segmented-control-item value="doel" text="Doel"></nldd-segmented-control-item>
+        <nldd-segmented-control-item value="instructie" text="Instructie"></nldd-segmented-control-item>
       </nldd-segmented-control>
     </div>
 
-    <nldd-form-field :label="modus === 'doel' ? 'Beschrijf het beleidsdoel' : 'Geef een instructie'">
+    <nldd-form-field
+      :label="modus === 'doel' ? 'Beschrijf het beleidsdoel' : 'Geef een instructie'"
+      :supporting-label="modusUitleg"
+    >
       <nldd-multi-line-text-field
         :value="prompt"
         :placeholder="placeholder"
@@ -127,7 +132,7 @@ async function peilHealth() {
   return health.value;
 }
 
-const modus = ref('instructie');
+const modus = ref('doel');
 const prompt = ref('');
 const feed = ref([]);
 const overlays = ref(null);
@@ -154,6 +159,18 @@ const placeholder = computed(() =>
   modus.value === 'doel'
     ? 'Trek de bedragen voor asielzoekers en overige vreemdelingen in het po gelijk zonder dat de totale uitgave stijgt'
     : 'Laat de drempel van vier nieuwkomers per school in artikel 34 vervallen',
+);
+
+/**
+ * Wat de twee modi van elkaar onderscheidt, in één regel. Zonder dit is het
+ * verschil alleen uit het gedrag af te leiden: doel rekent iteratief naar een
+ * uitkomst toe en mag daar zestig beurten over doen, instructie voert één
+ * wijziging uit en laat het effect zien.
+ */
+const modusUitleg = computed(() =>
+  modus.value === 'doel'
+    ? 'Je weet wat je wilt bereiken. De assistent probeert wijzigingen, meet het effect en stelt bij tot het niet verder verbetert.'
+    : 'Je weet wat je wilt veranderen. De assistent voert die ene wijziging uit en rekent door.',
 );
 
 onMounted(peilHealth);
