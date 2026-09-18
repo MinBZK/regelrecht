@@ -17,7 +17,7 @@
     "nldd:check": "node ../script/check-nldd-imports.mjs src src/nldd-components.js"
   },
   "dependencies": {
-    "@cucumber/gherkin": "^41.0.0",
+    "@cucumber/gherkin": "^42.0.1",
     "@cucumber/messages": "^34.0.1",
     "@nldd/design-system": "^0.8.88",
     "echarts": "^6.1.0",
