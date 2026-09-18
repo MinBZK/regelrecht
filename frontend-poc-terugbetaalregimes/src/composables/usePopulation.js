@@ -13,7 +13,7 @@
  * De werkversie is een van de kolommen: zodra je hem bewerkt, wijkt die
  * kolom af van de branch waar hij vandaan komt.
  */
-import { ref, shallowRef, computed, watch } from 'vue';
+import { ref, shallowRef, reactive, computed, watch } from 'vue';
 import * as yaml from 'js-yaml';
 import { generatePopulation } from '../sim/population.js';
 import { aggregate } from '../sim/metrics.js';
@@ -114,17 +114,72 @@ async function loadDistributions() {
  * lege standaard: een uitvoeringslast van nul euro is een bewering, en
  * "onbekend" is hier de eerlijke uitkomst.
  */
-const handelingenModel = shallowRef(null);
+const handelingenBasis = shallowRef(null);
 async function loadHandelingen() {
-  if (handelingenModel.value) return handelingenModel.value;
+  if (handelingenBasis.value) return handelingenBasis.value;
   try {
     const res = await fetch(b('/data/handelingen.yaml'));
     if (!res.ok) return null;
-    handelingenModel.value = yaml.load(await res.text());
+    handelingenBasis.value = yaml.load(await res.text());
   } catch {
-    handelingenModel.value = null;
+    handelingenBasis.value = null;
   }
-  return handelingenModel.value;
+  return handelingenBasis.value;
+}
+
+/**
+ * Bijstellingen op het model, voor deze sessie.
+ *
+ * Elke minuut in handelingen.yaml is een aanname en staat daar ook zo
+ * gemarkeerd; DUO kan ze ijken. Dan moet je er ook aan kunnen draaien zonder
+ * het bestand te wijzigen, en zien wat het met de uitkomst doet.
+ *
+ * Bewust niet bewaard: dit zijn geen keuzes zoals de kolommen of de werkversie,
+ * maar een "wat als" binnen één gesprek. Een ververs zet het model terug op
+ * wat er in het dossier staat, en dat is het cijfer waar iedereen het over
+ * heeft.
+ */
+const handelingenOverrides = reactive({
+  minuten: {}, // handeling-id -> minuten
+  tarieven: {}, // tariefnaam -> eurocent per uur
+});
+
+/** Het model zoals er nu mee gerekend wordt: het dossier plus de bijstellingen. */
+const handelingenModel = computed(() => {
+  const doc = handelingenBasis.value;
+  if (!doc) return null;
+  return {
+    ...doc,
+    tarieven: { ...(doc.tarieven ?? {}), ...handelingenOverrides.tarieven },
+    handelingen: (doc.handelingen ?? []).map((h) => ({
+      ...h,
+      minuten: handelingenOverrides.minuten[h.id] ?? h.minuten,
+    })),
+  };
+});
+
+const handelingenGewijzigd = computed(
+  () => Object.keys(handelingenOverrides.minuten).length > 0
+    || Object.keys(handelingenOverrides.tarieven).length > 0,
+);
+
+function stelMinutenIn(id, minuten) {
+  const n = Number(minuten);
+  if (!Number.isFinite(n) || n < 0) return;
+  handelingenOverrides.minuten[id] = n;
+}
+
+function stelTariefIn(naam, eurocentPerUur) {
+  const n = Number(eurocentPerUur);
+  if (!Number.isFinite(n) || n < 0) return;
+  handelingenOverrides.tarieven[naam] = n;
+}
+
+/** Alles terug naar het model uit het dossier. */
+function herstelHandelingen() {
+  for (const groep of Object.values(handelingenOverrides)) {
+    for (const sleutel of Object.keys(groep)) delete groep[sleutel];
+  }
 }
 
 function terminate(key) {
@@ -318,6 +373,11 @@ export function usePopulation() {
     records,
     distributions: distributionsRef,
     handelingenModel,
+    handelingenBasis,
+    handelingenGewijzigd,
+    stelMinutenIn,
+    stelTariefIn,
+    herstelHandelingen,
     running,
     anyRunning,
     progress,
