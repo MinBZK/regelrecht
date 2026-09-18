@@ -17,7 +17,7 @@
  *     value, baseValue, currentValue, type, unit, description }
  */
 import { reactive, ref, computed } from 'vue';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { b } from '../basePad.js';
 import { patchDefinitionValue } from '../lib/yamlPatch.js';
 import { bewaarStand, leesStand } from '../composables/useBewaardeStand.js';

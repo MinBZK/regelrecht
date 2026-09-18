@@ -11,7 +11,7 @@
  * handelingenmodel, dus minuten/tarieven/budget bijstellen is gratis.
  */
 import { ref, shallowRef, computed, watch } from 'vue';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { b } from '../basePad.js';
 import { generatePopulation } from '../sim/population.js';
 import { aggregate, terugverdientijd, verschil } from '../sim/metrics.js';
