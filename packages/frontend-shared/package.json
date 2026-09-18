@@ -7,7 +7,9 @@
   "exports": {
     ".": "./src/index.js",
     "./gherkin": "./src/gherkin/index.js",
-    "./gherkin/*": "./src/gherkin/*"
+    "./gherkin/*": "./src/gherkin/*",
+    "./lib/*": "./src/lib/*",
+    "./useBewaardeStand.js": "./src/useBewaardeStand.js"
   },
   "dependencies": {
     "@cucumber/gherkin": "^42.0.1",
