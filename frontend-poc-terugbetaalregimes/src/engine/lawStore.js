@@ -21,6 +21,14 @@ import { b } from '../basePad.js';
 import yaml from 'js-yaml';
 import { patchDefinitionValue } from '../lib/yamlPatch.js';
 import { bewaarStand, leesStand } from '../composables/useBewaardeStand.js';
+import {
+  browserVarianten,
+  browserVariantYaml,
+  bewaarVariant as bewaarBrowserVariant,
+  verwijderVariant as verwijderBrowserVariant,
+  controleerDrift,
+  isBrowserVariant,
+} from '@regelrecht/frontend-shared/browserVarianten.js';
 
 // De wet die de simulatie daadwerkelijk raadpleegt; alleen die hoeft een
 // editor/diff te krijgen. De overige (WML, besluit, regelingen, werkinstructie)
@@ -38,7 +46,13 @@ const docs = reactive({});
 const docPaths = ref([]);
 
 const activeVariant = ref(null); // { id, title, files } of null
-const variants = ref([]);
+// De varianten uit de repo (variants.json), zoals ze zijn ingecheckt.
+const repoVariants = ref([]);
+// Wat de kiezer, de kolommen en de werkversiebalk zien: de ingecheckte
+// varianten met de zelf bewaarde erachteraan. Eén lijst, zodat geen enkele
+// aanroeper hoeft te weten waar een variant vandaan komt; alleen de tekst
+// komt bij een eigen variant uit de browser in plaats van uit een fetch.
+const variants = computed(() => [...repoVariants.value, ...browserVarianten()]);
 
 let engineRef = null;
 
@@ -86,9 +100,9 @@ async function initStore(engine, lawIndex) {
 
   // Varianten-index (optioneel; ontbreekt niet in deze build maar defensief).
   try {
-    variants.value = JSON.parse(await fetchText('laws/variants.json'));
+    repoVariants.value = JSON.parse(await fetchText('laws/variants.json'));
   } catch {
-    variants.value = [];
+    repoVariants.value = [];
   }
 
   // Werkversie van de vorige keer terugzetten, maar alleen als die variant er
@@ -313,9 +327,9 @@ const werkversieLabel = computed(() => kortTitel(activeVariant.value ? variants.
 /** Haal variants.json opnieuw op (na "Bewaar als variant"). */
 async function reloadVariants() {
   try {
-    variants.value = JSON.parse(await fetchText(`laws/variants.json?t=${Date.now()}`));
+    repoVariants.value = JSON.parse(await fetchText(`laws/variants.json?t=${Date.now()}`));
   } catch {
-    variants.value = [];
+    repoVariants.value = [];
   }
   variantYamlCache.clear();
 }
@@ -366,6 +380,66 @@ function editedFilesForSave() {
 }
 
 /**
+ * Dezelfde bestanden, maar met het indexpad dat de app gebruikt en met de
+ * basistekst erbij. Dat laatste is het uitgangspunt waarop bewerkt is: daarmee
+ * kan later gemeld worden dat het corpus onder de variant vandaan is gewijzigd.
+ *
+ * Afgezet tegen `baseYaml` en niet tegen de werkversie, zodat een variant die
+ * op een andere variant voortbouwt zichzelf compleet meedraagt en dus zonder
+ * die ander te activeren is.
+ */
+function editedFilesForBrowserVariant() {
+  const out = [];
+  for (const path of docPaths.value) {
+    const d = docs[path];
+    const nieuw = extraPaths.has(path);
+    if (!nieuw && d.currentYaml === d.baseYaml) continue;
+    out.push({ pad: path, yaml: d.currentYaml, origineel: nieuw ? null : d.baseYaml });
+  }
+  return out;
+}
+
+/**
+ * Bewaar de werkversie als eigen variant in de browser, en zet hem meteen als
+ * werkversie. Geeft de nieuwe variant terug.
+ */
+async function bewaarAlsBrowserVariant(titel) {
+  const bestanden = editedFilesForBrowserVariant();
+  const variant = bewaarBrowserVariant({
+    titel,
+    bestanden,
+    basis: werkversie.value,
+    // Ook de ingecheckte id's, zodat een eigen variant er nooit een overschaduwt.
+    bestaandeIds: variants.value.map((v) => v.id),
+  });
+  await setWerkversie(variant.id);
+  return variant;
+}
+
+/**
+ * Gooi een eigen variant weg. Was hij de werkversie, dan valt de app terug op
+ * huidig recht: doorwerken op een variant die er niet meer is, levert een
+ * kolom op die niets meer voorstelt.
+ */
+async function verwijderEigenVariant(id) {
+  const wasWerkversie = werkversie.value === id;
+  const weg = verwijderBrowserVariant(id);
+  if (weg && wasWerkversie) await setWerkversie(null);
+  else if (weg) version.value++;
+  return weg;
+}
+
+/**
+ * Is het corpus gewijzigd sinds deze eigen variant is bewaard? Geeft
+ * `{ afgedreven, paden, onbekend }`; voor een ingecheckte variant altijd
+ * "niets aan de hand", want die beweegt met de repo mee.
+ */
+function variantDrift(id) {
+  if (!isBrowserVariant(id)) return { afgedreven: false, paden: [], onbekend: false };
+  return controleerDrift(id, (pad) => docs[pad]?.baseYaml);
+}
+
+/**
  * Activeer een beleidsvariant: laad per bestand de varianten-YAML in de engine
  * (vervangt de basis) en houd de rauwe tekst bij voor de diff. Wist eerst
  * eventuele andere variant/edits terug naar basis.
@@ -388,7 +462,7 @@ async function activateVariant(variantId) {
     const d = docs[file.base];
     if (!d) {
       // Nieuw versiebestand: als extra document registreren en laden.
-      const text = await fetchText(file.path);
+      const text = await fetchVariantYaml(file.path, variantId);
       const parsed = yaml.load(text);
       docs[file.base] = {
         entry: { id: parsed.$id, name: parsed.name, regulatory_layer: parsed.regulatory_layer, valid_from: parsed.valid_from, path: file.base },
@@ -401,7 +475,7 @@ async function activateVariant(variantId) {
       reloadLawId(parsed.$id);
       continue;
     }
-    const variantYaml = await fetchText(file.path);
+    const variantYaml = await fetchVariantYaml(file.path, variantId);
     d.variantYaml = variantYaml;
     d.currentYaml = variantYaml;
     d.doc = yaml.load(variantYaml);
@@ -463,7 +537,19 @@ function docYaml(lawPath) {
 }
 
 
-async function fetchVariantYaml(path) {
+/**
+ * De YAML van één variantbestand. Dit is de enige plek waar de tekst van een
+ * variant vandaan komt, en daarmee ook de enige plek die hoeft te weten dat
+ * een eigen variant in de browser staat in plaats van in public/.
+ */
+async function fetchVariantYaml(path, variantId = null) {
+  if (isBrowserVariant(variantId)) {
+    const tekst = browserVariantYaml(variantId, path);
+    if (typeof tekst !== 'string') {
+      throw new Error(`Variant ${variantId} heeft geen bewaarde tekst voor ${path}`);
+    }
+    return tekst;
+  }
   if (!variantYamlCache.has(path)) variantYamlCache.set(path, await fetchText(path));
   return variantYamlCache.get(path);
 }
@@ -487,7 +573,7 @@ async function lawDocsFor(variantId = null) {
     // Extra documenten horen bij de werkversie, niet bij deze kolom.
     if (extraPaths.has(path)) continue;
     const file = variant?.files?.find((f) => f.base === path);
-    out.push({ path, yaml: file ? await fetchVariantYaml(file.path) : docs[path].baseYaml, entry: docs[path].entry });
+    out.push({ path, yaml: file ? await fetchVariantYaml(file.path, variantId) : docs[path].baseYaml, entry: docs[path].entry });
   }
   if (!isWerkversie) {
     // Nieuwe versiebestanden van deze variant (zonder basisdocument) erbij.
@@ -496,7 +582,7 @@ async function lawDocsFor(variantId = null) {
       // versiebestand van de werkversie) hoort bij de werkversie, dus hier
       // komt de branchversie van dit bestand alsnog mee.
       if (docPaths.value.includes(file.base) && !extraPaths.has(file.base)) continue;
-      const text = await fetchVariantYaml(file.path);
+      const text = await fetchVariantYaml(file.path, variantId);
       const parsed = yaml.load(text);
       out.push({ path: file.base, yaml: text, entry: { id: parsed.$id, name: parsed.name, regulatory_layer: parsed.regulatory_layer, valid_from: parsed.valid_from, path: file.base } });
     }
@@ -529,6 +615,10 @@ export function useLawStore() {
     setWerkversie,
     reloadVariants,
     editedFilesForSave,
+    bewaarAlsBrowserVariant,
+    verwijderEigenVariant,
+    variantDrift,
+    isBrowserVariant,
     initStore,
     readDefinition,
     applyDefinitionChange,

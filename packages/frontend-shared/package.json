@@ -10,7 +10,7 @@
     "./gherkin/*": "./src/gherkin/*",
     "./lib/*": "./src/lib/*",
     "./components/*": "./src/components/*",
-    "./useBewaardeStand.js": "./src/useBewaardeStand.js"
+    "./*.js": "./src/*.js"
   },
   "dependencies": {
     "@cucumber/gherkin": "^42.0.1",

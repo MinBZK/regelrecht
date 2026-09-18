@@ -74,11 +74,21 @@ function lees(naam, standaard) {
   }
 }
 
+/**
+ * Schrijf een waarde weg. Geeft terug of dat lukte.
+ *
+ * Voor de meeste dingen hier (welke kolom, welke persona, de stand van een
+ * schuifje) is een mislukte schrijfactie geen ramp: in privémodus werkt de
+ * demo dan gewoon zonder onthouden, en de aanroeper negeert de uitkomst.
+ * Voor iets dat de gebruiker zelf gemaakt heeft, is het dat wél, en die
+ * aanroeper kijkt dus naar wat hier uitkomt.
+ */
 function schrijf(naam, waarde) {
   try {
     localStorage.setItem(prefix() + naam, JSON.stringify(waarde));
+    return true;
   } catch {
-    // Privémodus of volle opslag: de demo werkt dan gewoon zonder onthouden.
+    return false;
   }
 }
 
@@ -109,10 +119,10 @@ export function leesStand(naam, standaard) {
   return lees(naam, standaard);
 }
 
-/** Losse waarde bewaren zonder ref. */
+/** Losse waarde bewaren zonder ref. Geeft terug of het lukte. */
 export function bewaarStand(naam, waarde) {
   sleutels.add(naam);
-  schrijf(naam, waarde);
+  return schrijf(naam, waarde);
 }
 
 /**
