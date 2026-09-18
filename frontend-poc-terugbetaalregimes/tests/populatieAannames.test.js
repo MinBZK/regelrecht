@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { usePopulatieAannames } from '../src/composables/usePopulatieAannames.js';
 import { generatePopulation } from '../src/sim/population.js';
 import { dataDir } from './helpers/casusPaden.js';

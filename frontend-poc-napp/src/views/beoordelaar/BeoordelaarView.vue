@@ -5,6 +5,7 @@ import PortalHeader from '../../components/PortalHeader.vue';
 import NBanner from '../../components/NBanner.vue';
 import { api } from '../../api.js';
 import { session, refreshSession } from '../../session.js';
+import { b } from '../../basePad.js';
 import { euro, datum, datumTijd, onderdelen, statusLabel, statusColor, BETAAL_LABELS, betaalKleur } from '../../format.js';
 
 const router = useRouter();
@@ -108,7 +109,7 @@ watch(() => session.beoordelaar, laad);
               variant="primary"
               text="Inloggen met SSO Rijk"
               start-icon="shield-check-mark"
-              href="/auth/login"
+              :href="b('/auth/login')"
               width="full"
             ></nldd-button>
             <nldd-divider></nldd-divider>
