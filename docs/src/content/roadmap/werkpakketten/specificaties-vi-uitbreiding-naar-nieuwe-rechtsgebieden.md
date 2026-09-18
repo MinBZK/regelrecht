@@ -76,6 +76,9 @@ bouw: niet
 rfcs:
   - 3
   - 10
+afhankelijkVan:
+  - verkenning-rechtsgebieden
+  - specificaties-iv-de-ontbrekende-delen-bouwen
 samenhangIds:
   - verkenning-rechtsgebieden
   - specificaties-v-beproeving-van-de-taal

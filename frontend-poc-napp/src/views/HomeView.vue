@@ -1,13 +1,14 @@
 <script setup>
 import { useRouter } from 'vue-router';
 import PortalHeader from '../components/PortalHeader.vue';
+import { b } from '../basePad.js';
 
 const router = useRouter();
 
 // Inloggen rechtsboven: het aanvragersportaal regelt de (gesimuleerde)
 // eHerkenning-login zelf.
 function naarInloggen(item) {
-  if (item.key === 'login') window.location.href = '/aanvrager/';
+  if (item.key === 'login') window.location.href = b('/aanvrager/');
 }
 
 const navItems = [
@@ -64,13 +65,13 @@ const stappen = [
           variant="primary"
           text="Subsidie aanvragen"
           end-icon="arrow-right"
-          href="/aanvrager/"
+          :href="b('/aanvrager/')"
         ></nldd-button>
         <nldd-button
           variant="secondary"
           text="Inloggen"
           start-icon="person"
-          href="/aanvrager/"
+          :href="b('/aanvrager/')"
         ></nldd-button>
       </nldd-button-group>
     </nldd-simple-section>
@@ -113,7 +114,7 @@ const stappen = [
               variant="primary"
               text="Naar het subsidieportaal"
               end-icon="arrow-right"
-              href="/aanvrager/"
+              :href="b('/aanvrager/')"
             ></nldd-button>
           </nldd-container>
         </nldd-card>
@@ -154,7 +155,7 @@ const stappen = [
         </nldd-rich-text>
       </nldd-container>
       <nldd-page-footer-legal-bar slot="legal-bar">
-        <nldd-page-footer-legal-bar-item href="/register" text="Openbaar register"></nldd-page-footer-legal-bar-item>
+        <nldd-page-footer-legal-bar-item :href="b('/register')" text="Openbaar register"></nldd-page-footer-legal-bar-item>
         <nldd-page-footer-legal-bar-item href="#" text="Contact"></nldd-page-footer-legal-bar-item>
         <nldd-page-footer-legal-bar-item href="#" text="Toegankelijkheid"></nldd-page-footer-legal-bar-item>
         <nldd-page-footer-legal-bar-item href="#" text="Privacy"></nldd-page-footer-legal-bar-item>

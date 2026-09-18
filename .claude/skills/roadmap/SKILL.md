@@ -98,6 +98,7 @@ belegging:
   stand: ''
 rfcs: []
 onderzoeksvragen: []
+afhankelijkVan: []
 samenhangIds: []
 ---
 ```
@@ -154,13 +155,20 @@ voortgangsveld: het zegt of er iemand op zit, niet hoe ver het is. `klaar` is
 hier een eigen stand en geen afleiding uit `onderzoek: beantwoord` +
 `bouw: wel` — een verkenning is klaar zonder dat er ooit iets gebouwd wordt.
 
-**`''` en `vrij` zijn niet hetzelfde, en dat verschil draagt het veld.** `''`
-is de standaard: er is niets over gezegd, en daar beginnen alle
-negenenveertig. `vrij` is een redactionele daad: je hebt het werkpakket
-gelezen en vastgesteld dat het op te pakken is. Een roadmap waar alles op
-`vrij` staat omdat dat de standaard is, nodigt niemand uit; een roadmap waar
-er zes op `vrij` staan, is een oproep. Zet `vrij` dus niet om het vakje te
-vullen — dezelfde regel als bij prioriteit.
+**`''` betekent `vrij`.** Een leeg veld zegt dat niemand zijn hand heeft
+opgestoken, en dat ís vrij. De pagina's lezen het zo (`getBelegging()` in
+`docs/src/lib/roadmap.ts`), het filter heeft er dus ook maar drie knoppen: Vrij,
+Opgepakt, Klaar. Je hoeft `vrij` nergens in te vullen — `''` laten staan is
+hetzelfde en is wat bijna alle werkpakketten doen.
+
+Dit stond hier andersom: `''` zou "er is niets over gezegd" betekenen en `vrij`
+een redactionele daad, want een roadmap waar alles op `vrij` staat nodigt
+niemand uit. Het bezwaar klopt, maar het antwoord was de verkeerde kant op.
+Zesenveertig van de negenenveertig stonden leeg en géén enkele op `vrij`, dus
+wie op "Vrij" filterde kreeg een lege matrix te zien terwijl juist die
+zesenveertig open lagen. Dat de kaarten niet volstromen met een tag die zegt
+dat er niets aan de hand is, wordt opgelost waar het hoort: `vrij` krijgt geen
+tag op de matrix, alleen `opgepakt` en `klaar`.
 
 **Er staat geen naam in, met opzet.** De roadmap is publiek en vanaf de
 homepage gelinkt. Wie eraan werkt blijkt uit de pull requests, die via de
@@ -187,6 +195,56 @@ je er later tussen schuiven zonder alles te hernummeren.
 `samenhangIds` — slugs van andere werkpakketten. De build controleert of ze
 bestaan. Dit is eenrichtingsverkeer: zet je A → B, dan verschijnt B niet
 automatisch bij A. Zet 'm er handmatig bij als de relatie wederzijds is.
+
+`afhankelijkVan` — slugs van werkpakketten die af moeten zijn voordat dit
+werkpakket kan beginnen. Een andere soort relatie dan `samenhangIds`, en houd
+die twee uit elkaar: samenhang is wederzijds en zegt niets over volgorde,
+afhankelijkheid is een richting in de tijd.
+
+Zet het alleen neer waar het echt zo is. "Hangt hiermee samen" en "gaat hier
+logisch op volgen" zijn geen afhankelijkheid; de toets is of het tweede
+werkpakket zonder het eerste niet uitgevoerd kan worden.
+
+Je schrijft één kant op. De werkpakketpagina leidt de andere kant er zelf uit
+af en toont onder "Afhankelijkheden" allebei: waar dit werkpakket op wacht, en
+wat op dit werkpakket wacht. Zet de omgekeerde verwijzing dus niet handmatig in
+het andere bestand, want dan staat er een kring.
+
+De build valt op een id dat niet bestaat, op een werkpakket dat naar zichzelf
+wijst, en op een kring (`afhankelijkheden lopen rond: A → B → C → A`, met de
+titels in de volgorde waarin hij ze tegenkwam). Een kring betekent dat geen van
+die werkpakketten ooit kan beginnen; welke pijl de verkeerde is, is een
+inhoudelijk oordeel en geen bestandsfout.
+
+### Wat de matrix ermee doet
+
+Onder "Weergave" staat een schakelaar **Afhankelijkheden**, en die staat uit.
+De matrix is eerst een beeld van wat er te doen is; de afhankelijkheden zijn
+een tweede lezing die een flink bredere kolom kost. Zet je 'm aan, dan gebeuren
+er drie dingen tegelijk, en uit zet ze alle drie weer terug.
+
+De kaart schuift naar rechts, één stap per werkpakket in de langste keten
+achter zich binnen dezelfde fase. Een stap is een hele kaartbreedte plus de
+ruimte voor de pijl, dus een kaart staat echt naast zijn voorwaarde en niet er
+half overheen. Alleen binnen dezelfde fase geteld: wie op iets uit een eerdere
+fase wacht, staat er al voorbij door in een latere kolom te staan.
+
+De kaart gaat op de rij van de voorwaarde staan waar hij op wacht, zolang die
+plek vrij is. Daardoor loopt een keten op één lijn en zijn de pijlen recht.
+Staat die plek al vol, dan begint hij een rij eronder. Een kaart die in deze
+cel niets voor zich heeft begint altijd een eigen rij, zodat twee werkpakketten
+alleen naast elkaar staan als de een echt op de ander wacht.
+
+En de pijl zelf wordt getekend. Wijs een kaart aan en de hele keten waar hij in
+zit licht op, in beide richtingen doorgelopen; de rest van de matrix valt terug.
+
+Je bepaalt de plaatsing dus niet zelf. `volgorde` blijft wel gelden: dat bepaalt
+welke kaart als eerste een rij claimt, en daarmee de volgorde binnen de cel.
+
+Dat rekenwerk gebeurt in de browser en niet bij de build, over de kaarten die
+het zoekveld en het categoriefilter op dat moment laten staan. Filter je een
+kaart weg, dan schuift de rest aan in plaats van een gat te laten, en een keten
+loopt niet door over een kaart die niet op het scherm staat.
 
 ## Onderzoeksvragen
 
@@ -288,7 +346,9 @@ ouderdom ("sinds 3 maanden"), en dat is met opzet: een veld in de frontmatter
 verloopt niet, dus de pagina moet laten zien hoe oud een claim is.
 
 **Loslaten is dezelfde bewerking omgekeerd**, en een normale handeling, geen
-falen. Zet `stand` terug op `vrij` (of `''`) en haal `sinds` weg. Doe dat ook
+falen. Zet `stand` terug op `''` (of `vrij`, dat is hetzelfde) en haal `sinds`
+weg — dat laatste moet, want een datum bij een vrije stand rendert nergens en
+de build valt erop. Doe dat ook
 als je het werkpakket overdraagt: de belegging zegt dat het belegd is, niet
 door wie, dus een overdracht verandert er niets aan — alleen een werkpakket dat
 weer vrijkomt.
@@ -392,12 +452,15 @@ aan zodra je `/roadmap` echt opvraagt. Vertrouw op `docs-build`.
 - een onbekende `faseId` of `disciplineId`
 - een discipline die in geen, of in meer dan één, swimlane staat
 - een `samenhangId` dat nergens heen wijst
+- een `afhankelijkVan` dat nergens heen wijst, naar zichzelf wijst, of in een
+  kring loopt
 - twee bestanden met hetzelfde `id`, of een bestandsnaam die niet het `id` is
 - een `paper:`-anker dat niet in het paper staat
 - een RFC-nummer in `rfcs` dat niet bestaat
 - een `belegging` die niet klopt: `opgepakt` of `klaar` zonder `sinds`, een
   `sinds` bij een stand die hem nergens toont, een datum in de toekomst, of
-  `vrij` op een werkpakket dat al beantwoord én gebouwd is
+  `vrij` op een werkpakket dat al beantwoord én gebouwd is — en een leeg veld
+  telt daarin mee als `vrij`, want dat is wat het betekent
 - een ontbrekende of foute waarde volgens het zod-schema
 
 Raak je ook de pagina's aan, draai dan `just docs-a11y` (duurt ~10 minuten en
@@ -412,9 +475,8 @@ afgaan en daarmee genegeerd worden — en hij zou het toevoegen van een
 half-uitgewerkt werkpakket blokkeren, wat juist de manier is waarop deze
 roadmap groeit.
 
-Dat geldt ook voor de belegging: de build controleert niet of er überhaupt een
-werkpakket op `vrij` staat, of iemand nog echt aan een opgepakt werkpakket
-werkt, of dat er pull requests aan hangen. Dat laatste zou een API-call in de
+Dat geldt ook voor de belegging: de build controleert niet of iemand nog echt
+aan een opgepakt werkpakket werkt, of dat er pull requests aan hangen. Dat laatste zou een API-call in de
 build betekenen, en een netwerkhapering tot een rode build maken. Voor de vraag
 of een claim nog klopt is er `check-roadmap-belegging.mjs`, die meldt en niet
 blokkeert.
