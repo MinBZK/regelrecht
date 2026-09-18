@@ -112,10 +112,10 @@ pocs:
     tags: [OCW, DUO, bekostiging]
     status: verkenning
     voorbehoud: >-
-      Een verkenning van maatregel 1 uit de knelpuntenbrief, inclusief
-      varianten die niet bestaan en niet zijn voorgesteld. De
-      populatiesimulatie en het uitvoeringslastmodel draaien op synthetische
-      gegevens en aannames, niet op cijfers van DUO of scholen.
+      Een verkenning van maatregel 1 uit de knelpuntenbrief, plus simulaties
+      van nieuwe varianten. De informatie is niet gevalideerd op juridische
+      juistheid en is enkel bedoeld om de mogelijkheden te verkennen van AI
+      tijdens een multidisciplinaire samenwerking.
 
   - slug: napp
     titel: Een uitvoeringsketen uit de regelgeving

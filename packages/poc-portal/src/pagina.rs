@@ -258,9 +258,12 @@ pub fn voorbehoud_strip(poc: &Poc) -> String {
     // One line each: this is spliced into another document, and a multi-line
     // raw string would carry this file's indentation into it.
     //
-    // The strip stays one row high. Its job here is to be present on every
-    // screenshot and every deep link, not to repeat the argument; the full text
-    // is in the `title` attribute for anyone who wants it in full.
+    // De strook loopt over zoveel regels als de tekst nodig heeft. Hij stond op
+    // één regel met een ellipsis, en dat betekende dat het voorbehoud precies
+    // daar werd afgekapt waar het iets ging beweren: "de informatie is niet
+    // gevalideerd op…". Een waarschuwing die je moet aanwijzen om te lezen, is
+    // geen waarschuwing. Hij kost nu een paar regels hoogte op elke poc, en dat
+    // is de prijs.
     // De kleuren via `light-dark()`, met `color-scheme` op de strook zelf: hij
     // landt in de pagina van een andere app, dus hij kan niets van het
     // ontwerpsysteem aannemen en moet zijn eigen stand meebrengen. De vaste
@@ -270,11 +273,13 @@ pub fn voorbehoud_strip(poc: &Poc) -> String {
     // volgen; een poc die zichzelf op `data-scheme` vastzet, zet daarmee ook
     // deze strook goed, want dat attribuut staat op het root-element erboven.
     let stijl = "position:sticky;top:0;z-index:2147483647;display:flex;gap:.75rem;\
-                 align-items:baseline;padding:.4rem 1rem;color-scheme:light dark;\
+                 align-items:baseline;flex-wrap:wrap;padding:.4rem 1rem;color-scheme:light dark;\
                  background:light-dark(#fef3c7,#3b2f0b);color:light-dark(#4b3a05,#f4e2a8);\
                  font:500 .8125rem/1.4 system-ui,sans-serif;\
                  border-bottom:1px solid light-dark(#d7b95c,#6b571c)";
-    let tekst = "flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+    // `min-width:16rem` zorgt dat de tekst op een smal scherm op zijn eigen
+    // regel belandt in plaats van zich tot één woord per regel te wringen.
+    let tekst = "flex:1 1 16rem;min-width:16rem";
     format!(
         r#"<div data-poc-portaal style="{stijl}" title="{uitleg} {voorbehoud}"><strong style="flex:none">{titel} — demonstratie, {status}</strong>"#,
         stijl = stijl,
