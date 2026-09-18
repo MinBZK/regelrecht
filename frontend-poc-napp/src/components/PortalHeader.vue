@@ -9,6 +9,7 @@ import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api } from '../api.js';
 import { session, refreshSession } from '../session.js';
+import { b } from '../basePad.js';
 
 // Functionele sitenaam onder het woordmerk, per portaal vast; afgeleid
 // van de portal-prop zodat hij nooit per pagina kan verschillen.
@@ -98,8 +99,8 @@ function onSelect(event, item) {
     <nldd-top-navigation-bar
       logo-title="Nederlandse autoriteit politieke partijen"
       :logo-subtitle="PORTAL_SUBTITLES[portal] ?? ''"
-      logo-href="/"
-      website-href="/"
+      :logo-href="b('/')"
+      :website-href="b('/')"
     >
       <nldd-menu-bar v-if="items.length" slot="global">
         <nldd-menu-bar-item
