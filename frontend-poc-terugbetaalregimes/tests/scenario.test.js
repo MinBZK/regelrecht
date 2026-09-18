@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { regimeVanCohort, cohortUitleg, COHORTGRENS } from '../src/lib/regimeFacts.js';
 import { dataDir } from './helpers/casusPaden.js';
 
