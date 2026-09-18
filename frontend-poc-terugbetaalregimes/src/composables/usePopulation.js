@@ -14,7 +14,7 @@
  * kolom af van de branch waar hij vandaan komt.
  */
 import { ref, shallowRef, computed, watch } from 'vue';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { generatePopulation } from '../sim/population.js';
 import { aggregate } from '../sim/metrics.js';
 import { useLawStore, kortTitel } from '../engine/lawStore.js';

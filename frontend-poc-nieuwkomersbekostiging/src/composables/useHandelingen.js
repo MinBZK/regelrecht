@@ -10,7 +10,7 @@
  * metrics.js op de hoofdthread: bijstellen kost geen hersimulatie.
  */
 import { ref, reactive, computed } from 'vue';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { b } from '../basePad.js';
 import { useLawStore } from '../engine/lawStore.js';
 
