@@ -515,17 +515,23 @@ function currentLawYamls() {
  * het assistent-resultaat weerspiegelen. document_key wordt gematcht op het
  * law-$id (entry.id) of, als fallback, op het pad-einde.
  */
+/**
+ * Het documentpad bij een sleutel van de assistent. Die gebruikt
+ * "wet_id@valid_from"; match daarom op id en versie, met het kale id en het
+ * pad als terugval.
+ */
+function docPathVoorKey(key) {
+  const [keyId, keyVersie] = decodeURIComponent(String(key)).split('@');
+  return docPaths.value.find((p) => {
+    const d = docs[p];
+    if (keyVersie) return d.entry.id === keyId && String(d.entry.valid_from) === keyVersie;
+    return d.entry.id === key || p.endsWith(key) || p.includes(key);
+  }) ?? null;
+}
+
 function applyOverlays(overlays) {
   for (const [key, yamlText] of Object.entries(overlays ?? {})) {
-    // De assistent gebruikt sleutels als "regeling_bekostiging_wpo_en_wec@2026-01-01"
-    // (wet-id plus versie); match daarom op id én valid_from, met het kale id en
-    // het pad als terugval.
-    const [keyId, keyVersie] = decodeURIComponent(String(key)).split('@');
-    const path = docPaths.value.find((p) => {
-      const d = docs[p];
-      if (keyVersie) return d.entry.id === keyId && String(d.entry.valid_from) === keyVersie;
-      return d.entry.id === key || p.endsWith(key) || p.includes(key);
-    });
+    const path = docPathVoorKey(key);
     if (!path) {
       console.warn('Overlay van de assistent past op geen document:', key);
       continue;
@@ -640,6 +646,7 @@ export function useLawStore() {
     lawDocsFor,
     docPaths,
     docYaml,
+    docPathVoorKey,
     applyOverlays,
   };
 }

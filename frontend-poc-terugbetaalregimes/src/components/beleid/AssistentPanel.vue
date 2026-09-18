@@ -38,7 +38,43 @@
       <nldd-button v-if="streaming" text="Stop" start-icon="remove" variant="secondary" @click="stop"></nldd-button>
     </div>
 
-    <optimalisatiepad-chart v-if="modus === 'doel' && pad.length" :pad="pad" />
+    <optimalisatiepad-chart
+      v-if="modus === 'doel' && pad.length"
+      :pad="pad"
+      :reeksen="reeksen"
+      :as-titels="['%']"
+      :as-formatters="[(v) => `${v}%`]"
+      :gekozen="gekozenPunt"
+      @kies="kiesPunt"
+    />
+
+    <!-- Wat er op de aangeklikte meting stond, met de mogelijkheid die
+         tussenstand over te nemen zonder op convergentie te wachten. -->
+    <div v-if="gekozenStand" class="as-punt">
+      <div class="as-punt-kop">
+        <strong>Meting {{ gekozenStand.iteratie }}</strong>
+        <span>{{ percent(gekozenStand.pct, 1) }} betalingsproblemen<span v-if="gekozenStand.n">, n={{ gekozenStand.n }}</span></span>
+        <nldd-icon-button icon="remove" size="sm" accessible-label="Sluit deze meting" @click="gekozenPunt = null"></nldd-icon-button>
+      </div>
+      <ul v-if="gekozenStand.wijzigingen?.length" class="as-punt-lijst">
+        <li v-for="w in gekozenStand.wijzigingen" :key="`${w.artikel}:${w.naam}`">
+          art. {{ w.artikel }} · <code>{{ w.naam }}</code>: {{ w.oud }} → {{ w.nieuw }}
+        </li>
+      </ul>
+      <p v-else class="as-hint">Op deze meting was er nog niets gewijzigd.</p>
+      <p v-if="gekozenStand.structuurGewijzigd?.length" class="as-hint">
+        Ook de structuur van {{ gekozenStand.structuurGewijzigd.length === 1 ? 'een document' : `${gekozenStand.structuurGewijzigd.length} documenten` }}
+        is herschreven; die wijziging staat niet als losse waarden in deze lijst.
+      </p>
+      <nldd-button
+        v-if="gekozenStand.wijzigingen?.length"
+        size="sm"
+        variant="secondary"
+        start-icon="save"
+        :text="`Neem deze stand over in ${werkversieLabel}`"
+        @click="neemStandOver(gekozenStand)"
+      ></nldd-button>
+    </div>
 
     <div v-if="feed.length" ref="feedEl" class="as-feed">
       <div v-for="(item, i) in feed" :key="i" class="as-item" :class="`as-${item.type}`">
@@ -80,15 +116,19 @@ import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
 import { useAssistent } from '../../composables/useAssistent.js';
 import { useLawStore } from '../../engine/lawStore.js';
 import { percent } from '../../lib/format.js';
+import { resolveToken } from '../../lib/tokens.js';
 import { b } from '../../basePad.js';
-import OptimalisatiepadChart from './OptimalisatiepadChart.vue';
+import OptimalisatiepadChart from '@regelrecht/frontend-shared/components/OptimalisatiepadChart.vue';
 
 // Geen `metrics`-emit meer. De assistent meet met zijn eigen n op zijn eigen
 // tussenstand; die cijfers naast de tegels zetten zou de doorrekening van de
 // gebruiker stil overschrijven met een tussenmeting. Ze horen thuis in de
 // feed en in het optimalisatiepad hieronder, en nergens anders.
 const { streaming, run, abort } = useAssistent();
-const { applyOverlays, lawDocsFor, werkversie, werkversieLabel } = useLawStore();
+const {
+  applyOverlays, applyDefinitionChange, docPathVoorKey,
+  lawDocsFor, werkversie, werkversieLabel,
+} = useLawStore();
 
 /** Minimale markdown voor de assistenttekst: vet, code, regeleinden; de rest blijft tekst. */
 function eenvoudigeMarkdown(tekst) {
@@ -144,6 +184,50 @@ const placeholder = computed(() =>
     : 'Verhoog de draagkrachtvrije voet van SF15-oud naar 84% van het belastbaar minimumloon',
 );
 
+/** Eén reeks: het aandeel debiteuren met betalingsproblemen, in procenten. */
+const reeksen = [{
+  sleutel: 'pct',
+  label: 'betalingsproblemen',
+  kleur: resolveToken('--semantics-content-accent-color', '#154273'),
+  formatter: (v) => `${v}%`,
+}];
+
+/** Index van het aangeklikte punt in `pad`, of null. */
+const gekozenPunt = ref(null);
+const gekozenStand = computed(() => (gekozenPunt.value === null ? null : pad.value[gekozenPunt.value] ?? null));
+
+function kiesPunt(index) {
+  gekozenPunt.value = gekozenPunt.value === index ? null : index;
+}
+
+/**
+ * Neem de stand van één meting over in de werkversie. Dat is niet de eindstand
+ * van de assistent maar een tussenstap, en dat is precies waar dit voor is: een
+ * pad loopt soms door een uitkomst heen die je beter bevalt dan waar hij
+ * uitkomt.
+ */
+function neemStandOver(stand) {
+  const mislukt = [];
+  for (const w of stand.wijzigingen) {
+    // De sleutel van de assistent is "id@valid_from"; de store vindt daar zijn
+    // documentpad bij.
+    const pad = docPathVoorKey(w.document_key);
+    if (!pad) { mislukt.push(`${w.naam} (document ${w.document_key} niet gevonden)`); continue; }
+    try {
+      applyDefinitionChange(pad, w.artikel, w.naam, w.nieuw);
+    } catch (e) {
+      mislukt.push(`${w.naam} (${e?.message ?? e})`);
+    }
+  }
+  const aantal = stand.wijzigingen.length - mislukt.length;
+  feed.value.push({
+    type: mislukt.length ? 'fout' : 'tekst',
+    tekst: `Meting ${stand.iteratie} overgenomen in ${werkversieLabel.value}: ${aantal} van de ${stand.wijzigingen.length} wijzigingen.`,
+    melding: mislukt.length ? `Niet overgenomen: ${mislukt.join('; ')}.` : undefined,
+  });
+  gekozenPunt.value = null;
+}
+
 /**
  * Wat de twee modi van elkaar onderscheidt, in één regel. Zonder dit is het
  * verschil alleen uit het gedrag af te leiden: doel rekent iteratief naar een
@@ -164,6 +248,7 @@ onUnmounted(() => {
 async function submit() {
   feed.value = [];
   pad.value = [];
+  gekozenPunt.value = null;
   overlays.value = null;
   let iteratie = 0;
 
@@ -180,7 +265,15 @@ async function submit() {
       const pct = ev.metrics?.pctBetalingsprobleem ?? null;
       feed.value.push({ type: 'simulatie', doel: ev.doel, n: ev.n, pct });
       if (ev.doel === 'populatie' && pct !== null) {
-        pad.value.push({ iteratie: ++iteratie, pct });
+        pad.value.push({
+          iteratie: ++iteratie,
+          waarden: { pct: Math.round(pct * 1000) / 10 },
+          // De stand waarop deze meting rust, zodat het punt aanklikbaar is.
+          pct,
+          n: ev.n ?? null,
+          wijzigingen: ev.wijzigingen ?? [],
+          structuurGewijzigd: ev.structuurGewijzigd ?? [],
+        });
       }
     } else if (ev.type === 'klaar') {
       overlays.value = ev.overlays ?? null;
@@ -222,5 +315,15 @@ function takeOverlays() {
 .as-fout { color: var(--semantics-content-critical-color); }
 .as-knoppen { display: flex; gap: var(--primitives-space-8); align-items: center; }
 .as-hint { margin: 0; font-size: 0.85em; color: var(--semantics-content-secondary-color); }
+.as-punt {
+  display: flex; flex-direction: column; gap: var(--primitives-space-8);
+  padding: var(--primitives-space-12);
+  border-radius: var(--semantics-surfaces-corner-radius);
+  background: var(--semantics-surfaces-tinted-background-color);
+  border: 1px solid var(--semantics-dividers-color);
+}
+.as-punt-kop { display: flex; align-items: center; gap: var(--primitives-space-8); font-size: 0.9em; }
+.as-punt-kop nldd-icon-button { margin-left: auto; }
+.as-punt-lijst { margin: 0; padding-left: 1.2em; font-size: 0.85em; display: flex; flex-direction: column; gap: 2px; }
 .as-md code { font-size: 0.9em; }
 </style>

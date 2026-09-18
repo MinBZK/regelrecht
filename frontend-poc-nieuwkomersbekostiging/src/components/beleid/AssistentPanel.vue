@@ -40,6 +40,49 @@
       <nldd-button v-if="streaming" text="Stop" start-icon="remove" variant="secondary" @click="stop"></nldd-button>
     </div>
 
+    <!-- Twee assen: de regeling in miljoenen tegenover de uitvoeringslast, die
+         een orde kleiner is. Op één as zou die laatste een platte lijn zijn,
+         terwijl een doel als "gelijktrekken zonder dat de uitgave stijgt" juist
+         over de verhouding tussen die twee gaat. -->
+    <optimalisatiepad-chart
+      v-if="modus === 'doel' && pad.length"
+      :pad="pad"
+      :reeksen="reeksen"
+      :as-titels="['regeling', 'uitvoering']"
+      :as-formatters="[euroCompact, euroCompact]"
+      :gekozen="gekozenPunt"
+      @kies="kiesPunt"
+    />
+
+    <div v-if="gekozenStand" class="as-punt">
+      <div class="as-punt-kop">
+        <strong>Meting {{ gekozenStand.iteratie }}</strong>
+        <span>{{ gekozenStand.samenvatting }}</span>
+        <nldd-icon-button icon="remove" size="sm" accessible-label="Sluit deze meting" @click="gekozenPunt = null"></nldd-icon-button>
+      </div>
+      <ul v-if="gekozenStand.wijzigingen?.length" class="as-punt-lijst">
+        <li v-for="w in gekozenStand.wijzigingen" :key="`${w.artikel}:${w.naam}`">
+          art. {{ w.artikel }} · <code>{{ w.naam }}</code>: {{ w.oud }} → {{ w.nieuw }}
+        </li>
+      </ul>
+      <p v-else class="as-hint">Op deze meting was er nog niets aan de regeling gewijzigd.</p>
+      <p v-if="gekozenStand.handelingenGewijzigd" class="as-hint">
+        Het uitvoeringslastmodel was op dat moment ook bijgesteld; dat gaat niet mee met "overnemen".
+      </p>
+      <p v-if="gekozenStand.structuurGewijzigd?.length" class="as-hint">
+        Ook de structuur van {{ gekozenStand.structuurGewijzigd.length === 1 ? 'een document' : `${gekozenStand.structuurGewijzigd.length} documenten` }}
+        is herschreven; die wijziging staat niet als losse waarden in deze lijst.
+      </p>
+      <nldd-button
+        v-if="gekozenStand.wijzigingen?.length"
+        size="sm"
+        variant="secondary"
+        start-icon="save"
+        :text="`Neem deze stand over in ${werkversieLabel}`"
+        @click="neemStandOver(gekozenStand)"
+      ></nldd-button>
+    </div>
+
     <div v-if="feed.length" ref="feedEl" class="as-feed">
       <div v-for="(item, i) in feed" :key="i" class="as-item" :class="`as-${item.type}`">
         <span v-if="item.type === 'tekst'" class="as-md" v-html="eenvoudigeMarkdown(item.tekst)"></span>
@@ -80,12 +123,34 @@ import { useHandelingen } from '../../composables/useHandelingen.js';
 import { useLawStore } from '../../engine/lawStore.js';
 import { euroCompact } from '../../lib/format.js';
 import { b } from '../../basePad.js';
+import OptimalisatiepadChart from '@regelrecht/frontend-shared/components/OptimalisatiepadChart.vue';
 
 // Geen `metrics`-emit meer. De assistent meet met zijn eigen n op zijn eigen
 // tussenstand; die cijfers naast de tegels zetten zou de doorrekening van de
-// gebruiker stil overschrijven met een tussenmeting. Ze horen thuis in de
-// feed, en straks in het optimalisatiepad.
+// gebruiker stil overschrijven met een tussenmeting. Ze horen thuis in de feed
+// en in het optimalisatiepad.
 const { streaming, run, abort } = useAssistent();
+
+/**
+ * De drie posten die een doel in deze casus tegen elkaar afweegt. Kleuren uit
+ * de categorie-tokens van het ontwerpsysteem; echarts kent geen CSS-variabelen,
+ * dus ze worden hier opgelost.
+ */
+function kleurVan(naam, terugval) {
+  if (typeof document === 'undefined') return terugval;
+  const el = document.createElement('span');
+  el.style.cssText = `position:absolute;visibility:hidden;color:var(--semantics-categories-${naam}-filled-background-color)`;
+  document.body.appendChild(el);
+  const kleur = getComputedStyle(el).color;
+  el.remove();
+  return kleur && kleur !== 'rgba(0, 0, 0, 0)' ? kleur : terugval;
+}
+
+const reeksen = [
+  { sleutel: 'regeling_po', label: 'regeling po', kleur: kleurVan('lintblauw', '#154273'), as: 0, formatter: euroCompact },
+  { sleutel: 'regeling_vo', label: 'regeling vo', kleur: kleurVan('oranje', '#e17000'), as: 0, formatter: euroCompact },
+  { sleutel: 'uitvoeringslast', label: 'uitvoeringslast', kleur: kleurVan('groen', '#39870c'), as: 1, formatter: euroCompact },
+];
 
 /** Minimale markdown voor de assistenttekst: vet, code, regeleinden; de rest blijft tekst. */
 function eenvoudigeMarkdown(tekst) {
@@ -101,7 +166,10 @@ function stop() {
   abort();
   feed.value.push({ type: 'tekst', tekst: 'Afgebroken.' });
 }
-const { applyOverlays, lawDocsFor, werkversie, werkversieLabel } = useLawStore();
+const {
+  applyOverlays, applyDefinitionChange, docPathVoorKey,
+  lawDocsFor, werkversie, werkversieLabel,
+} = useLawStore();
 const { applyHandelingenYaml, ensureVariantDoc, handelingenYamlFor } = useHandelingen();
 
 // 'onbekend' (nog niet gepeild) | 'onbereikbaar' | 'geen-cli' | 'ok'
@@ -135,6 +203,8 @@ async function peilHealth() {
 const modus = ref('doel');
 const prompt = ref('');
 const feed = ref([]);
+const pad = ref([]); // [{iteratie, waarden, …}] voor de doel-modus
+const gekozenPunt = ref(null); // index in `pad`, of null
 const overlays = ref(null);
 // De bewerkte handelingen.yaml, als de assistent het uitvoeringslastmodel
 // raakte. Apart van de overlays: dat zijn wetten, dit is het kostenmodel.
@@ -188,11 +258,46 @@ function samenvatting(metrics) {
   return delen.length ? `${delen.join(' · ')} per jaar` : 'klaar';
 }
 
+const gekozenStand = computed(() => (gekozenPunt.value === null ? null : pad.value[gekozenPunt.value] ?? null));
+
+function kiesPunt(index) {
+  gekozenPunt.value = gekozenPunt.value === index ? null : index;
+}
+
+/**
+ * Neem de stand van één meting over in de werkversie. Dat is niet de eindstand
+ * van de assistent maar een tussenstap, en dat is precies waar dit voor is: een
+ * pad loopt soms door een uitkomst heen die je beter bevalt dan waar hij
+ * uitkomt.
+ */
+function neemStandOver(stand) {
+  const mislukt = [];
+  for (const w of stand.wijzigingen) {
+    const docPad = docPathVoorKey(w.document_key);
+    if (!docPad) { mislukt.push(`${w.naam} (document ${w.document_key} niet gevonden)`); continue; }
+    try {
+      applyDefinitionChange(docPad, w.artikel, w.naam, w.nieuw);
+    } catch (e) {
+      mislukt.push(`${w.naam} (${e?.message ?? e})`);
+    }
+  }
+  const aantal = stand.wijzigingen.length - mislukt.length;
+  feed.value.push({
+    type: mislukt.length ? 'fout' : 'tekst',
+    tekst: `Meting ${stand.iteratie} overgenomen in ${werkversieLabel.value}: ${aantal} van de ${stand.wijzigingen.length} wijzigingen.`,
+    melding: mislukt.length ? `Niet overgenomen: ${mislukt.join('; ')}.` : undefined,
+  });
+  gekozenPunt.value = null;
+}
+
 async function submit() {
   feed.value = [];
+  pad.value = [];
+  gekozenPunt.value = null;
   overlays.value = null;
   handelingenYaml.value = null;
   resultaat.value = false;
+  let iteratie = 0;
 
   // De assistent werkt op de werkversie: stuur die documenten mee als beginstand.
   const documenten = (await lawDocsFor(werkversie.value)).map((d) => ({ key: `${d.entry.id}@${d.entry.valid_from ?? ''}`, yaml: d.yaml }));
@@ -208,7 +313,24 @@ async function submit() {
         : '';
       feed.value.push({ type: 'tool', naam: ev.naam, inputText });
     } else if (ev.type === 'simulatie') {
-      feed.value.push({ type: 'simulatie', doel: ev.doel, n: ev.n, samenvatting: samenvatting(ev.metrics) });
+      const kort = samenvatting(ev.metrics);
+      feed.value.push({ type: 'simulatie', doel: ev.doel, n: ev.n, samenvatting: kort });
+      const t = ev.metrics?.totaal;
+      if (ev.doel === 'populatie' && t) {
+        pad.value.push({
+          iteratie: ++iteratie,
+          waarden: {
+            regeling_po: t.regeling_po ?? null,
+            regeling_vo: t.regeling_vo ?? null,
+            uitvoeringslast: t.uitvoeringslast ?? null,
+          },
+          samenvatting: kort,
+          n: ev.n ?? null,
+          wijzigingen: ev.wijzigingen ?? [],
+          structuurGewijzigd: ev.structuurGewijzigd ?? [],
+          handelingenGewijzigd: !!ev.handelingenGewijzigd,
+        });
+      }
     } else if (ev.type === 'klaar') {
       overlays.value = ev.overlays ?? null;
       handelingenYaml.value = ev.handelingen ?? null;
@@ -259,4 +381,15 @@ function takeOverlays() {
 .as-fout { color: var(--semantics-content-critical-color); }
 .as-knoppen { display: flex; gap: var(--primitives-space-8); align-items: center; }
 .as-md code { font-size: 0.9em; }
+.as-hint { margin: 0; font-size: 0.85em; color: var(--semantics-content-secondary-color); }
+.as-punt {
+  display: flex; flex-direction: column; gap: var(--primitives-space-8);
+  padding: var(--primitives-space-12);
+  border-radius: var(--semantics-surfaces-corner-radius);
+  background: var(--semantics-surfaces-tinted-background-color);
+  border: 1px solid var(--semantics-dividers-color);
+}
+.as-punt-kop { display: flex; align-items: center; gap: var(--primitives-space-8); font-size: 0.9em; }
+.as-punt-kop nldd-icon-button { margin-left: auto; }
+.as-punt-lijst { margin: 0; padding-left: 1.2em; font-size: 0.85em; display: flex; flex-direction: column; gap: 2px; }
 </style>

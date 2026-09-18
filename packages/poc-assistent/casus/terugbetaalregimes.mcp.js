@@ -71,6 +71,38 @@ function emit(event) {
   writeFileSync(resolve(eventsDir, `${seq}-${process.pid}.json`), JSON.stringify(event));
 }
 
+/**
+ * Wat de assistent tot nu toe heeft gewijzigd, als `artikel::naam` → waarde.
+ *
+ * Hangt aan elke meting mee, zodat de grafiek in de app kan laten zien wélke
+ * stand bij een punt hoort. Zonder dit is het pad een reeks uitkomsten zonder
+ * oorzaak: je ziet dat het beter wordt, niet waardoor, en je kunt er dus ook
+ * geen tussenstand uit overnemen.
+ *
+ * Alleen de gewijzigde definities en niet de hele YAML: die is hier ~53 KB, en
+ * een doel-run doet twintig metingen. De app heeft aan de waarden genoeg om de
+ * stand te tonen en de wijziging over te nemen.
+ */
+const gewijzigdeDefinities = new Map();
+
+/**
+ * Documenten die met wijzig_regelgeving zijn herschreven. Daarvan is niet uit
+ * losse waarden te zeggen wat er veranderd is, dus zegt de app daar "structuur
+ * gewijzigd" in plaats van een onvolledige lijst.
+ */
+const structuurGewijzigd = new Set();
+
+function onthoudWijziging(document_key, artikel, naam, oud, nieuw) {
+  gewijzigdeDefinities.set(`${document_key}::${artikel}::${naam}`, {
+    document_key, artikel: String(artikel), naam, oud, nieuw,
+  });
+}
+
+/** De stand van de wijzigingen nu, als lijst voor een meting-event. */
+function huidigeWijzigingen() {
+  return [...gewijzigdeDefinities.values()];
+}
+
 async function simulateRecords(records, defaultChoices = {}) {
   const overlays = readOverlays();
   const engine = await createEngine(overlays);
@@ -156,6 +188,10 @@ async function wijzigRegelgeving({ document_key, nieuwe_yaml, toelichting }) {
     return `Validatie mislukt, wijziging NIET toegepast: ${result.error}`;
   }
   writeOverlay(document_key, nieuwe_yaml);
+  // Een structuurwijziging herschrijft het hele document, dus wat we van de
+  // losse definities bijhielden klopt daarna niet meer. Vergeten is hier
+  // eerlijker dan een lijst tonen die niet meer zegt wat er is veranderd.
+  structuurGewijzigd.add(document_key);
   emit({ type: 'wijziging', document_key, toelichting: toelichting ?? '' });
   return 'Wijziging gevalideerd en toegepast.';
 }
@@ -180,6 +216,7 @@ async function wijzigDefinitie({ document_key, artikel, naam, waarde, toelichtin
   const result = await validateYaml(overlays, document_key, nieuw);
   if (!result.ok) return `Validatie mislukt, wijziging NIET toegepast: ${result.error}`;
   writeOverlay(document_key, nieuw);
+  onthoudWijziging(document_key, artikel, naam, oud, Number(waarde));
   emit({ type: 'wijziging', document_key, toelichting: toelichting ?? `${naam} in artikel ${artikel}: ${oud} -> ${waarde}` });
   return `Toegepast: ${naam} in artikel ${artikel} van ${oud} naar ${waarde} (gevalideerd).`;
 }
@@ -224,7 +261,16 @@ async function simuleerPopulatie({ n, seed }) {
   const results = await simulateRecords(records);
   const ok = results.filter((r) => !r.error);
   const metrics = aggregate(ok);
-  emit({ type: 'simulatie', doel: 'populatie', n: count, metrics });
+  emit({
+    type: 'simulatie',
+    doel: 'populatie',
+    n: count,
+    metrics,
+    // De stand waarop deze meting rust, zodat een punt in het optimalisatiepad
+    // te openen en over te nemen is.
+    wijzigingen: huidigeWijzigingen(),
+    structuurGewijzigd: [...structuurGewijzigd],
+  });
   return JSON.stringify({
     n: count,
     fouten: results.length - ok.length,
