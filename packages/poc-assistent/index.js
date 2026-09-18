@@ -10,7 +10,11 @@
  *                                       wordt; de app toont dit en vervangt
  *                                       het door de complete tekst
  *     {type: "voortgang", beurten, seconden, status, tool}
- *                                       leeft hij nog, en waar is hij mee bezig
+ *                                       leeft de assistent nog, en waar is die
+ *                                       mee bezig
+ *     {type: "beurt_klaar", beurten, seconden}
+ *                                       deze beurt is af; het gesprek loopt
+ *                                       door, dus er kan nog een bericht bij
  *     {type: "tool", naam, input}       toolaanroep van de assistent
  *     {type: "wijziging", document_key, toelichting}
  *     {type: "simulatie", doel, n?, metrics?}
@@ -225,7 +229,20 @@ async function handleAssistent(req, res) {
   });
   const send = (event) => res.write(`data: ${JSON.stringify(event)}\n\n`);
 
-  // Voortgang: wat doet hij nu, hoeveel beurten, hoe lang bezig.
+  const sessieDir = maakSessieMap();
+  const beginstand = new Map();
+  for (const d of documenten) {
+    if (!d?.key || typeof d.yaml !== 'string') continue;
+    fs.writeFileSync(path.join(sessieDir, 'overlays', `${encodeURIComponent(d.key)}.yaml`), d.yaml);
+    beginstand.set(String(d.key), d.yaml);
+  }
+  // Beginstand van het uitvoeringslastmodel, zodat `klaar` straks alleen
+  // meldt dat het gewijzigd is als het echt afwijkt van wat de browser stuurde.
+  const handelingenBegin = handelingen;
+  if (handelingen) fs.writeFileSync(path.join(sessieDir, 'handelingen.yaml'), handelingen);
+  const gezienEvents = new Set();
+
+  // Voortgang: wat de assistent nu doet, hoeveel beurten, hoe lang bezig.
   //
   // Waarom dit er is: een doel-run mag zestig beurten doen met simulaties van
   // n=1000, en kan daarin minuten niets zichtbaars doen. De enige aanwijzing
@@ -241,10 +258,35 @@ async function handleAssistent(req, res) {
     status: voortgang.status,
     tool: voortgang.laatsteTool,
   });
-  const meldVoortgang = ({ status, beurt, tool } = {}) => {
+  const meldVoortgang = ({ status, beurt, tool, beurtKlaar } = {}) => {
     if (typeof status === 'string') voortgang.status = status;
     if (typeof tool === 'string') voortgang.laatsteTool = tool;
     if (beurt) voortgang.beurten += 1;
+    if (beurtKlaar) {
+      // De beurt is af, het gesprek niet: de stream blijft open zodat er nog
+      // een bericht bij kan. De app zet de statusregel op klaar en haalt het
+      // spinnertje weg.
+      voortgang.status = null;
+      voortgang.laatsteTool = null;
+      // Eerst de laatste events van de MCP-server, anders komt een wijziging
+      // of meting van deze beurt pas na de afronding binnen.
+      for (const ev of leesNieuweEvents(sessieDir, gezienEvents)) send(ev);
+      // En de stand van de regelgeving na deze beurt, zodat "Overnemen"
+      // meteen kan; wachten tot het gesprek sluit is in een gesprek te laat.
+      const overlaysNu = {};
+      for (const [key, tekst] of Object.entries(leesOverlays(sessieDir))) {
+        if (beginstand.get(key) !== tekst) overlaysNu[key] = tekst;
+      }
+      const handelingenNu = leesHandelingen(sessieDir);
+      send({
+        type: 'beurt_klaar',
+        beurten: voortgang.beurten,
+        seconden: Math.round((Date.now() - begonnen) / 1000),
+        overlays: overlaysNu,
+        handelingen: handelingenNu !== handelingenBegin ? handelingenNu : null,
+      });
+      return;
+    }
     stuurVoortgang();
   };
   // Ook als er niets gebeurt blijft de teller lopen, zodat zichtbaar is dat
@@ -256,18 +298,6 @@ async function handleAssistent(req, res) {
   // keuze te kunnen sturen; het is het eerste dat over de stream gaat.
   send({ type: 'gesprek', gesprek_id: gesprekId });
 
-  const sessieDir = maakSessieMap();
-  const beginstand = new Map();
-  for (const d of documenten) {
-    if (!d?.key || typeof d.yaml !== 'string') continue;
-    fs.writeFileSync(path.join(sessieDir, 'overlays', `${encodeURIComponent(d.key)}.yaml`), d.yaml);
-    beginstand.set(String(d.key), d.yaml);
-  }
-  // Beginstand van het uitvoeringslastmodel, zodat `klaar` straks alleen
-  // meldt dat het gewijzigd is als het echt afwijkt van wat de browser stuurde.
-  const handelingenBegin = handelingen;
-  if (handelingen) fs.writeFileSync(path.join(sessieDir, 'handelingen.yaml'), handelingen);
-  const gezienEvents = new Set();
   // Poll de MCP-event-map zodat wijziging/simulatie-events tijdens de run
   // binnenkomen, niet pas aan het eind.
   const eventPoll = setInterval(() => {
@@ -496,7 +526,12 @@ function verwerkStreamRegel(line, send, voortgang) {
   // De result-regel draagt de reden waarom de CLI stopt (bijvoorbeeld
   // error_max_turns). Zonder die regel eindigt het proces non-zero met lege
   // stderr en werd dat "exitcode 1", wat niets zegt.
+  //
+  // Hij markeert ook het einde van een beurt. Sinds de CLI op stdin wacht op
+  // een volgend bericht eindigt het proces niet meer na een antwoord, dus
+  // zonder dit bleef het spinnertje draaien terwijl het antwoord er al stond.
   if (msg.type === 'result') {
+    voortgang?.({ beurtKlaar: true });
     return { subtype: msg.subtype ?? null, is_error: !!msg.is_error, num_turns: msg.num_turns ?? null };
   }
 

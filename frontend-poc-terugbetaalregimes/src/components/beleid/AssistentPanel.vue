@@ -78,9 +78,9 @@
            de feed stond hij los van waar je kijkt. -->
       <div v-if="streaming || afronding" class="as-status">
         <span class="as-status-wat">
-          <nldd-activity-indicator v-if="streaming && !openVraag" size="16" timing="instant"></nldd-activity-indicator>
-          <nldd-icon v-else-if="!streaming" name="checked" size="16"></nldd-icon>
-          <nldd-icon v-else name="help" size="16"></nldd-icon>
+          <nldd-icon v-if="openVraag" name="help" size="16"></nldd-icon>
+          <nldd-icon v-else-if="afronding" name="checked" size="16"></nldd-icon>
+          <nldd-activity-indicator v-else size="16" timing="instant"></nldd-activity-indicator>
           <span>{{ openVraag ? 'Wacht op jouw keuze.' : statusWat }}</span>
         </span>
         <span v-if="!openVraag && statusTeller" class="as-status-teller">{{ statusTeller }}</span>
@@ -327,6 +327,8 @@ async function beantwoord(keuzes) {
   if (!vraag) return;
   openVraag.value = null;
   aangevinkt.value = [];
+  // Het antwoord zet de assistent weer aan het werk; zie stuurVervolg.
+  afronding.value = null;
   try {
     await antwoord(vraag.id, keuzes);
   } catch (e) {
@@ -349,6 +351,9 @@ async function stuurVervolg() {
   const tekst = prompt.value.trim();
   if (!tekst) return;
   prompt.value = '';
+  // Een nieuwe beurt begint: de afronding van de vorige hoort weg, anders staat
+  // er "Klaar" boven een assistent die net weer begonnen is.
+  afronding.value = null;
   try {
     await stuur(tekst);
   } catch (e) {
@@ -529,7 +534,10 @@ async function submit() {
           structuurGewijzigd: ev.structuurGewijzigd ?? [],
         });
       }
-    } else if (ev.type === 'klaar') {
+    } else if (ev.type === 'beurt_klaar' || ev.type === 'klaar') {
+      // beurt_klaar komt na elk antwoord, klaar pas als het gesprek sluit.
+      // Allebei betekenen ze: deze beurt is af, dus het spinnertje uit en de
+      // wijzigingen klaarzetten om over te nemen.
       overlays.value = ev.overlays ?? null;
       afronding.value = { beurten: ev.beurten ?? 0, seconden: ev.seconden ?? 0 };
       voortgang.value = null;
