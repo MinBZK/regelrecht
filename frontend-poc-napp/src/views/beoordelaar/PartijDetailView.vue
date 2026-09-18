@@ -11,6 +11,7 @@ import PortalHeader from '../../components/PortalHeader.vue';
 import NBanner from '../../components/NBanner.vue';
 import { api } from '../../api.js';
 import { session } from '../../session.js';
+import { b } from '../../basePad.js';
 
 const route = useRoute();
 const router = useRouter();
@@ -204,7 +205,7 @@ watch(kvk, laad);
             <nldd-link
               size="sm"
               end-icon="chevron-right"
-              :href="`/beoordelaar/partijregister/${partij.moederpartij_kvk}`"
+              :href="b(`/beoordelaar/partijregister/${partij.moederpartij_kvk}`)"
               :text="`Naar moederpartij ${partij.moederpartij_naam ?? partij.moederpartij_kvk}`"
               @click.prevent="router.push(`/partijregister/${partij.moederpartij_kvk}`)"
             ></nldd-link>
