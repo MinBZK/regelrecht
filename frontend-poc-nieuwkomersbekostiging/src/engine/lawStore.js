@@ -448,11 +448,21 @@ async function werkWerkversieBij() {
   if (!isBrowserVariant(id)) {
     throw new Error('Alleen een eigen variant is bij te werken.');
   }
-  const variant = werkBrowserVariantBij(id, { bestanden: editedFilesForBrowserVariant() });
-  // Opnieuw activeren wist de losse bewerkingen: die zitten nu in de variant
-  // zelf. Zonder dit zou "Terugzetten" ze daarna alsnog weggooien terwijl ze
-  // bewaard zijn.
-  await setWerkversie(id);
+  const { variant, herstel } = werkBrowserVariantBij(id, { bestanden: editedFilesForBrowserVariant() });
+  try {
+    // Opnieuw activeren wist de losse bewerkingen: die zitten nu in de variant
+    // zelf. Zonder dit zou "Terugzetten" ze daarna alsnog weggooien terwijl ze
+    // bewaard zijn.
+    await setWerkversie(id);
+  } catch (e) {
+    // De engine keurt de bewerkte wet af. Anders dan bij een nieuwe variant
+    // valt hier niets weg te gooien: deze variant bestond al en de vorige
+    // inhoud is net overschreven. Die gaat terug, en de werkversie laadt hem
+    // opnieuw, zodat er geen variant achterblijft die nooit meer opent.
+    herstel();
+    await setWerkversie(id).catch(async () => { await setWerkversie(null).catch(() => {}); });
+    throw e;
+  }
   return variant;
 }
 

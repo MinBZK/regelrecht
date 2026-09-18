@@ -133,7 +133,7 @@ describe('browser-varianten', () => {
       const { bewaarVariant, werkVariantBij, browserVarianten, browserVariantYaml } = await laad();
       const v = bewaarVariant({ titel: 'Mijn variant', bestanden: [bestand('value: 2')] });
 
-      const bij = werkVariantBij(v.id, { bestanden: [bestand('value: 3')] });
+      const { variant: bij } = werkVariantBij(v.id, { bestanden: [bestand('value: 3')] });
 
       expect(bij.id).toBe(v.id);
       expect(browserVarianten()).toHaveLength(1);
@@ -144,18 +144,59 @@ describe('browser-varianten', () => {
       const { bewaarVariant, werkVariantBij } = await laad();
       const v = bewaarVariant({ titel: 'Blijft heten', bestanden: [bestand()] });
 
-      expect(werkVariantBij(v.id, { bestanden: [bestand('value: 9')] }).title).toBe('Blijft heten');
+      expect(werkVariantBij(v.id, { bestanden: [bestand('value: 9')] }).variant.title).toBe('Blijft heten');
     });
 
     it('hernoemt als er wel een titel bij zit, met hetzelfde id', async () => {
       const { bewaarVariant, werkVariantBij } = await laad();
       const v = bewaarVariant({ titel: 'Oude naam', bestanden: [bestand()] });
 
-      const bij = werkVariantBij(v.id, { bestanden: [bestand()], titel: 'Nieuwe naam' });
+      const { variant: bij } = werkVariantBij(v.id, { bestanden: [bestand()], titel: 'Nieuwe naam' });
 
       // Het id blijft: anders verwijst een bewaarde kolomkeuze naar niets meer.
       expect(bij.id).toBe(v.id);
       expect(bij.title).toBe('Nieuwe naam');
+    });
+
+    // Bijwerken overschrijft werk dat er al stond. Gaat het activeren daarna
+    // mis, dan moet de vorige inhoud terug kunnen komen; anders blijft er een
+    // variant staan die nooit meer laadt.
+    it('zet de vorige inhoud terug met herstel()', async () => {
+      const { bewaarVariant, werkVariantBij, browserVariantYaml, browserVariant } = await laad();
+      const v = bewaarVariant({ titel: 'Herstel', bestanden: [bestand('value: 2')] });
+      const gemaakt = browserVariant(v.id).gemaakt;
+
+      const { herstel } = werkVariantBij(v.id, { bestanden: [bestand('value: 3')], titel: 'Andere naam' });
+      expect(browserVariantYaml(v.id, 'laws/wet/2025-01-01.yaml')).toBe('value: 3');
+
+      herstel();
+
+      const na = browserVariant(v.id);
+      expect(browserVariantYaml(v.id, 'laws/wet/2025-01-01.yaml')).toBe('value: 2');
+      expect(na.titel).toBe('Herstel');
+      expect(na.gemaakt).toBe(gemaakt);
+      expect(na.bijgewerkt).toBeUndefined();
+    });
+
+    it('laat na herstel geen tweede variant achter', async () => {
+      const { bewaarVariant, werkVariantBij, browserVarianten } = await laad();
+      const v = bewaarVariant({ titel: 'Eén blijft', bestanden: [bestand()] });
+
+      werkVariantBij(v.id, { bestanden: [bestand('value: 5')] }).herstel();
+
+      expect(browserVarianten()).toHaveLength(1);
+    });
+
+    it('draagt `bijgewerkt` mee naar de vorm die de app leest', async () => {
+      const { bewaarVariant, werkVariantBij, browserVarianten } = await laad();
+      const v = bewaarVariant({ titel: 'Zichtbaar', bestanden: [bestand()] });
+
+      // Vers bewaard: nog nooit bijgewerkt.
+      expect(browserVarianten()[0].bijgewerkt).toBe(null);
+
+      werkVariantBij(v.id, { bestanden: [bestand('value: 6')] });
+
+      expect(browserVarianten()[0].bijgewerkt).toBeTruthy();
     });
 
     it('houdt `gemaakt` staan en noteert wanneer er bijgewerkt is', async () => {

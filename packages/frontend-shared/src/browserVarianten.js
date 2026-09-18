@@ -96,6 +96,10 @@ function alsVariant(v) {
     files: v.bestanden.map((b) => ({ path: b.pad, base: b.pad })),
     herkomst: 'browser',
     gemaakt: v.gemaakt,
+    // Wanneer er voor het laatst in bewaard is, of null als dat nooit gebeurde.
+    // Moet mee door deze mapping heen: elke afnemer (keuzelijst, driftmelding)
+    // leest de variant in deze vorm, dus wat hier wegvalt bestaat verderop niet.
+    bijgewerkt: v.bijgewerkt ?? null,
     basis: v.basis ?? null,
   };
 }
@@ -227,16 +231,24 @@ export function bewaarVariant({ titel, bestanden, basis = null, bestaandeIds = [
  * volgorde in de keuzelijst. `bijgewerkt` komt erbij, zodat zichtbaar is dat
  * er sinds het maken aan gewerkt is.
  *
+ * Dit overschrijft werk dat er al stond, en dat is onomkeerbaar zodra het
+ * weggeschreven is. Daarom komt er een `herstel` mee die de vorige inhoud
+ * terugzet: de aanroeper activeert de variant daarna nog, en als de engine de
+ * bewerkte wet afkeurt moet de oude, werkende inhoud terug kunnen komen.
+ * Zonder dat blijft er een variant staan die nooit meer laadt.
+ *
  * @param {string} id - de variant die wordt overschreven
  * @param {object} opties
  * @param {Array<{pad: string, yaml: string, origineel: string}>} opties.bestanden
  * @param {string} [opties.titel] - een nieuwe naam; weggelaten blijft de oude
- * @returns {object} de bijgewerkte variant in variants.json-vorm
+ * @returns {{variant: object, herstel: () => void}} de bijgewerkte variant in
+ *   variants.json-vorm, plus een functie die de vorige inhoud terugzet
  */
 export function werkVariantBij(id, { bestanden, titel } = {}) {
   const bestaand = opgeslagen.value.find((v) => v.id === id);
   if (!bestaand) throw new Error(`Deze variant staat niet in deze browser: ${id}`);
   keurBestanden(bestanden);
+  const vorige = bestaand;
   const variant = {
     ...bestaand,
     titel: titel === undefined ? bestaand.titel : keurTitel(titel),
@@ -244,7 +256,16 @@ export function werkVariantBij(id, { bestanden, titel } = {}) {
     bestanden: alsBestanden(bestanden),
   };
   schrijf(opgeslagen.value.map((v) => (v.id === id ? variant : v)));
-  return alsVariant(variant);
+  return {
+    variant: alsVariant(variant),
+    herstel: () => {
+      // Terugzetten mag zelf niet omvallen: dit draait in het foutpad, en een
+      // fout hier zou de fout verbergen waar het echt om ging.
+      try {
+        schrijf(opgeslagen.value.map((v) => (v.id === id ? vorige : v)));
+      } catch { /* de opslag weigert; de melding hieronder gaat over de echte fout */ }
+    },
+  };
 }
 
 /** Verwijder een bewaarde variant. Geeft terug of er iets weg was. */
