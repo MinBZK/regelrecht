@@ -43,6 +43,41 @@ const isFull = computed(() => !current.value?.route);
  */
 const visible = computed(() => (mode.value === 'zaal' ? isFull.value : true));
 
+/**
+ * Luistert het dek nog naar de toetsen?
+ *
+ * Staat het dek in beeld, dan hoort het toetsenbord erbij. Staat het er niet
+ * (zaalmodus op een dia die de demo opent), dan alleen zolang het scherm nog
+ * van díe dia is: de presentator klikt in de demo die de dia geopend heeft en
+ * bladert ondertussen door. Loopt hij daarna zelf naar een ander tabblad, dan
+ * gaat de presentatie nergens meer over en moeten spatie en de pijltjes terug
+ * naar de pagina. Anders drukt spatie op de voorgrond niets in en springt er
+ * onzichtbaar een dia verder.
+ *
+ * Een functie en geen `computed`: dit wordt gelezen op het moment van een
+ * toetsaanslag, niet in een template. Een computed zou de route cachen en is
+ * daarmee juist onbetrouwbaar op het enige moment dat telt.
+ */
+function isOnStage() {
+  if (!active.value) return false;
+  if (visible.value) return true;
+  const slideRoute = current.value?.route;
+  // Geen router (init is nog niet langsgekomen): dan valt niet vast te stellen
+  // waar we zijn, en houdt het dek de toetsen niet vast. Dat is de veilige
+  // kant: onzichtbaar bladeren is precies wat hier misging.
+  if (!slideRoute || !router) return false;
+  // Op het tabblad vergelijken en niet op het pad. `/wetten/:lawId?`,
+  // `/scenarios/:featurePath(.*)?` en `/zaaksysteem/:caseId?` verdiepen hun
+  // eigen pad: WettenView en ScenariosView doen bij binnenkomst meteen een
+  // `router.replace` naar de standaardwet of -feature van het profiel, nog
+  // voordat de presentator iets aanraakt. Op het pad vergelijken zou het dek
+  // dus doof maken op precies de dia die dat tabblad zojuist opende.
+  const here = router.currentRoute?.value;
+  const target = router.resolve?.(slideRoute);
+  if (target?.name && here?.name) return here.name === target.name;
+  return here?.path === slideRoute;
+}
+
 function init({ router: r, demo: d, slides }) {
   if (r) router = r;
   if (d) demo = d;
@@ -123,6 +158,9 @@ function prev() {
 }
 
 function onKey(e) {
+  // Is het scherm niet meer van de presentatie, dan vangt ze ook geen toetsen
+  // meer af. Shift+P staat in App.vue en haalt het dek altijd terug.
+  if (!isOnStage()) return;
   if (e.target?.closest?.('input, textarea, select, [contenteditable]')) return;
   // Spatie bedient ook de knop die focus heeft. Zonder dek in beeld (zaalmodus)
   // klikt de presentator in de demo zelf, en dan zou één spatie tegelijk de
@@ -182,5 +220,5 @@ export function usePresentation() {
   // `mode` zelf gaat er niet uit: de bron daarvan is `state.presentationMode`
   // in de store, en twee plekken om dezelfde waarde te lezen lopen uiteen.
   // Wie wil weten wat het dek doet, leest `visible`.
-  return { active, index, current, total, isFull, visible, setMode, slides: slidesRef, init, start, stop, next, prev, goTo };
+  return { active, index, current, total, isFull, visible, isOnStage, setMode, slides: slidesRef, init, start, stop, next, prev, goTo };
 }

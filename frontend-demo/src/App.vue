@@ -57,7 +57,11 @@ watch(() => state.presentationMode, (m) => presentation.setMode(m), { immediate:
 function onGlobalKey(e) {
   if (e.key === 'P' && e.shiftKey && !e.target?.closest?.('input, textarea, select, [contenteditable]')) {
     e.preventDefault();
-    if (presentation.active.value) presentation.stop();
+    // Staat de presentatie wel aan maar is het scherm niet meer van haar (de
+    // presentator is zelf naar een ander tabblad gelopen), dan haalt Shift+P
+    // haar terug in plaats van haar te beëindigen: zo werkt de toets altijd
+    // zoals de tekst op het tabblad hem uitlegt.
+    if (presentation.active.value && presentation.isOnStage()) presentation.stop();
     else presentation.start(presentation.index.value);
   }
 }
