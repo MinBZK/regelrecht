@@ -260,12 +260,12 @@ function applyRawYaml(lawPath, newYaml) {
 
 /**
  * Werkversie-model. Er is altijd precies één werkversie: huidig recht (basis)
- * of één variant. Alles wat bewerkt (parameterpaneel, YAML-editor, assistent,
- * budgetneutraal-oplosser) werkt op de werkversie. De andere kolommen zijn
- * vast: huidig recht is de basis uit main, een variant is basis plus branch.
+ * of één variant. Alles wat bewerkt (parameterpaneel, YAML-editor, assistent)
+ * werkt op de werkversie. De andere kolommen zijn vast: huidig recht is de
+ * basis uit de repo, een variant zijn eigen bestanden daaroverheen.
  *
  * Per document is `originYaml` het uitgangspunt van de werkversie: de basis,
- * of bij een variant de branchtekst. Bewerkingen = currentYaml !== originYaml.
+ * of bij een variant de varianttekst. Bewerkingen = currentYaml !== originYaml.
  */
 function originOf(d) {
   return d.variantYaml ?? d.baseYaml;

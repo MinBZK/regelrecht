@@ -1,20 +1,23 @@
 <template>
   <div class="bn">
     <p class="bn-hint">
-      Zoek het bedrag waarbij de werkversie evenveel uitgeeft als huidig recht.
-      Elke iteratie is een volledige doorrekening van de werkversiekolom.
+      De vraag hier is: <em>wat kan ik veranderen zonder dat het meer geld kost?</em> Je kiest één bedrag uit de
+      regeling en één post die gelijk moet blijven. De oplosser probeert een waarde, rekent de hele kolom door,
+      kijkt hoe ver de uitgave van huidig recht af zit, en probeert opnieuw tot hij er binnen een half procent bij zit.
+      Je krijgt een bedrag terug; toepassen doe je zelf.
     </p>
 
     <nldd-banner v-if="!werkversie" variant="accent">
-      De werkversie is nu huidig recht. Kies een variant als werkversie (balk bovenaan) om daarin een budgetneutrale
-      waarde te zoeken.
+      Hiervoor is een variant nodig om aan te draaien. Huidig recht is het ijkpunt waar de uitgave gelijk aan moet
+      blijven, dus daarin een budgetneutrale waarde zoeken zou betekenen dat je hem met zichzelf vergelijkt.
+      Kies een variant als werkversie, of bewaar je eigen bewerkingen eerst als variant.
       <span v-if="changeCount === 0 && variantColumns.length" class="bn-row">
         <nldd-button v-for="c in variantColumns" :key="c.key" size="sm" variant="secondary" :text="`Werk in ${c.short}`" @click="setWerkversie(c.variantId)"></nldd-button>
       </span>
     </nldd-banner>
 
     <template v-else>
-      <nldd-form-field label="Parameter (bedrag)" :supporting-label="`definitie in eurocent uit ${werkversieLabel}`">
+      <nldd-form-field label="Waaraan draaien" :supporting-label="`een bedrag uit ${werkversieLabel}; dit is wat de oplosser verandert`">
         <nldd-dropdown :key="`${werkversie}:${definities.length}:${defKey}`" size="sm" @change="defKey = $event.detail?.value ?? defKey">
           <select :value="defKey">
             <option v-for="d in definities" :key="d.key" :value="d.key">{{ d.label }}</option>
@@ -22,7 +25,7 @@
         </nldd-dropdown>
       </nldd-form-field>
 
-      <nldd-form-field label="Gelijk houden">
+      <nldd-form-field label="Wat gelijk moet blijven" :supporting-label="doelpostUitleg">
         <nldd-segmented-control size="sm" :value="doelpost" @change="doelpost = $event.detail?.value ?? doelpost">
           <nldd-segmented-control-item value="regeling_po" text="Regeling po"></nldd-segmented-control-item>
           <nldd-segmented-control-item value="regeling_vo" text="Regeling vo"></nldd-segmented-control-item>
@@ -43,13 +46,27 @@
 
       <nldd-banner v-if="error" variant="critical">{{ error }}</nldd-banner>
 
+      <!-- Met het verschil per poging erbij is te zien dat de oplosser
+           toeloopt; alleen bedrag en uitgave lieten dat niet zien, en dan
+           oogt een reeks getallen als willekeur. -->
       <div v-if="solveLog.length" class="bn-log">
+        <div class="bn-kop">
+          <span class="bn-i"></span>
+          <span>probeersel</span>
+          <span></span>
+          <span>uitgave</span>
+          <span class="bn-af">verschil met huidig recht</span>
+        </div>
         <div v-for="(step, i) in solveLog" :key="i" class="bn-step">
           <span class="bn-i">{{ i + 1 }}</span>
           <span>{{ euro(step.value) }}</span>
           <nldd-icon name="arrow-right" size="16"></nldd-icon>
           <span>{{ euroCompact(step.spend) }}</span>
+          <span class="bn-af" :class="{ 'bn-raak': raak(step) }">{{ afwijking(step) }}</span>
         </div>
+        <p v-if="doelUitgave" class="bn-hint">
+          Huidig recht geeft {{ euroCompact(doelUitgave) }} uit aan deze post; daar moet de werkversie op uitkomen.
+        </p>
       </div>
 
       <nldd-inline-dialog v-if="result" :variant="result.converged === false ? 'alert' : 'success'" :text="resultTekst">
@@ -133,9 +150,47 @@ const gekozen = computed(() => definities.value.find((d) => d.key === defKey.val
 const resultTekst = computed(() => {
   const r = result.value;
   if (!r) return '';
-  const status = r.converged === false ? 'niet geconvergeerd na' : 'gevonden in';
-  return `${gekozen.value?.name} = ${euro(r.value)} geeft ${euroCompact(r.spend)} (doel ${euroCompact(r.target)}), ${status} ${r.iterations} iteraties.`;
+  const kern = `${gekozen.value?.name} = ${euro(r.value)} geeft ${euroCompact(r.spend)}, tegenover ${euroCompact(r.target)} onder huidig recht`;
+  if (r.converged === false) {
+    // "Niet geconvergeerd na 8 iteraties" zegt niets tegen wie de oplosser
+    // niet kent. Wat het betekent en wat je eraan doet, hoort erbij.
+    return `${kern}. De oplosser kwam er in ${r.iterations} pogingen niet dichtbij genoeg: dit bedrag komt het `
+      + 'meest in de buurt. Meestal betekent dat deze knop de post niet genoeg beweegt. Probeer een ander bedrag, '
+      + 'of een andere post om gelijk te houden.';
+  }
+  return `${kern}. Gevonden in ${r.iterations} ${r.iterations === 1 ? 'poging' : 'pogingen'}.`;
 });
+
+const doelpostUitleg = computed(() => ({
+  regeling_po: 'de uitgave aan de po-regeling blijft gelijk aan huidig recht',
+  regeling_vo: 'de uitgave aan de vo-regeling blijft gelijk aan huidig recht',
+  regeling_totaal: 'po en vo samen blijven gelijk aan huidig recht',
+}[doelpost.value] ?? ''));
+
+/** Wat huidig recht aan de gekozen post uitgeeft: het ijkpunt van de zoektocht. */
+const doelUitgave = computed(() => {
+  const ist = istMetrics.value;
+  if (!ist) return null;
+  return doelpost.value === 'regeling_totaal'
+    ? ist.totaal.regeling_totaal
+    : ist.totaal[doelpost.value]?.totaal ?? null;
+});
+
+/** Hoe ver deze poging van huidig recht af zat, met teken. */
+function afwijking(step) {
+  const doel = doelUitgave.value;
+  if (!doel) return '';
+  const verschil = step.spend - doel;
+  const pct = (verschil / doel) * 100;
+  const teken = verschil > 0 ? '+' : '−';
+  return `${teken} ${euroCompact(Math.abs(verschil))} (${teken}${Math.abs(pct).toFixed(1)}%)`;
+}
+
+/** Zat deze poging binnen de tolerantie van een half procent? */
+function raak(step) {
+  const doel = doelUitgave.value;
+  return !!doel && Math.abs(step.spend - doel) <= 0.005 * doel;
+}
 
 async function solve() {
   const d = gekozen.value;
@@ -183,6 +238,10 @@ async function apply() {
   background: var(--semantics-surfaces-tinted-background-color);
   border: 1px solid var(--semantics-dividers-color);
 }
-.bn-step { display: flex; align-items: center; gap: 6px; }
+.bn-step, .bn-kop { display: flex; align-items: center; gap: 6px; }
+.bn-kop { font-size: 0.9em; color: var(--semantics-content-secondary-color); padding-bottom: 2px; }
 .bn-i { width: 1.5em; color: var(--semantics-content-secondary-color); }
+.bn-af { margin-left: auto; color: var(--semantics-content-secondary-color); }
+.bn-raak { color: var(--semantics-content-success-color); font-weight: 600; }
+.bn-log .bn-hint { margin-top: var(--primitives-space-8); }
 </style>

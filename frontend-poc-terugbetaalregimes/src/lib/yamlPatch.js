@@ -1,7 +1,7 @@
 /**
  * Pure helpers om een definitie-waarde in een regelrecht-YAML-tekst te
- * lezen of te vervangen, zonder de lawStore te raken. Gebruikt door de
- * budgetneutraal-oplosser, die kandidaat-YAML's naar de worker stuurt.
+ * lezen of te vervangen, zonder de lawStore te raken. Gebruikt door het
+ * parameterpaneel en door de MCP-tools van de beleidsassistent.
  */
 import yaml from 'js-yaml';
 

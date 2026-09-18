@@ -37,7 +37,7 @@
               </details>
             </paneel>
 
-            <paneel titel="Budgetneutraal" subtitel="Zoek het bedrag waarbij de werkversie evenveel uitgeeft als huidig recht." samenvatting="oplosser">
+            <paneel titel="Budgetneutraal" subtitel="Wat kan er veranderen zonder dat het meer geld kost? Zoekt het bedrag waarbij de werkversie evenveel uitgeeft als huidig recht." samenvatting="zoekt een bedrag">
               <budgetneutraal-panel />
             </paneel>
 
