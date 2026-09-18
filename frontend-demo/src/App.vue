@@ -57,11 +57,11 @@ watch(() => state.presentationMode, (m) => presentation.setMode(m), { immediate:
 function onGlobalKey(e) {
   if (e.key === 'P' && e.shiftKey && !e.target?.closest?.('input, textarea, select, [contenteditable]')) {
     e.preventDefault();
-    // Staat de presentatie wel aan maar is het scherm niet meer van haar (de
-    // presentator is zelf naar een ander tabblad gelopen), dan haalt Shift+P
-    // haar terug in plaats van haar te beëindigen: zo werkt de toets altijd
-    // zoals de tekst op het tabblad hem uitlegt.
-    if (presentation.active.value && presentation.isOnStage()) presentation.stop();
+    // Een schakelaar, ook als het dek uit beeld staat. `start()` navigeert naar
+    // de dia, en dat is precies wat je níet wilt van iemand die zelf naar een
+    // ander tabblad is gelopen: die wil zijn toetsenbord terug, niet ergens
+    // anders heen gesleept worden. Uitzetten kan altijd, hier en met Escape.
+    if (presentation.active.value) presentation.stop();
     else presentation.start(presentation.index.value);
   }
 }

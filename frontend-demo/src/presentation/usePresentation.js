@@ -158,10 +158,19 @@ function prev() {
 }
 
 function onKey(e) {
-  // Is het scherm niet meer van de presentatie, dan vangt ze ook geen toetsen
-  // meer af. Shift+P staat in App.vue en haalt het dek altijd terug.
-  if (!isOnStage()) return;
   if (e.target?.closest?.('input, textarea, select, [contenteditable]')) return;
+  // Escape blijft altijd de noodrem, ook als het dek niet in beeld staat. Het
+  // is de enige toets die een presentatie beeindigt zonder haar uit te lopen,
+  // en juist off-stage moet dat kunnen: dan leeft ze onzichtbaar door.
+  // Bewust vóór de poort hieronder, want die is precies de toestand waarin je
+  // eruit wilt.
+  if (e.key === 'Escape' && active.value) {
+    stop();
+    return;
+  }
+  // De bladertoetsen gaan wél door de poort: is het scherm niet meer van de
+  // presentatie, dan vangt ze niets meer af.
+  if (!isOnStage()) return;
   // Spatie bedient ook de knop die focus heeft. Zonder dek in beeld (zaalmodus)
   // klikt de presentator in de demo zelf, en dan zou één spatie tegelijk de
   // knop indrukken én een dia verder springen. De pijltjes blijven wel werken,
@@ -185,9 +194,7 @@ function onKey(e) {
     case 'End':
       goTo(total.value - 1);
       break;
-    case 'Escape':
-      stop();
-      break;
+    // Escape staat hierboven, vóór de poort.
     case 'f':
       if (document.fullscreenElement) document.exitFullscreen?.();
       else document.documentElement.requestFullscreen?.();

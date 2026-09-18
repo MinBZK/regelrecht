@@ -56,7 +56,7 @@ function kindLabel(s) {
         </nldd-segmented-control>
         <nldd-rich-text spacing="tight">
           <p v-if="state.presentationMode === 'zaal'">
-            De dia's van het verhaal vullen het scherm. Zodra een dia de demo opent, verdwijnen ze en is het scherm van de demo. Bladeren gaat daar gewoon door. Loop je zelf naar een ander tabblad, dan laten de dia's het toetsenbord los; <kbd>Shift</kbd>+<kbd>P</kbd> haalt ze terug.
+            De dia's van het verhaal vullen het scherm. Zodra een dia de demo opent, verdwijnen ze en is het scherm van de demo. Bladeren gaat daar gewoon door. Loop je zelf naar een ander tabblad, dan laten de dia's het toetsenbord los en is spatie weer van de pagina. <kbd>Esc</kbd> stopt de presentatie, waar je ook bent.
           </p>
           <p v-else>De dia's blijven links naast de demo staan, zodat iemand die zelf doorklikt het verhaal erbij leest.</p>
         </nldd-rich-text>

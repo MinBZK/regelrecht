@@ -133,6 +133,31 @@ describe('usePresentation toetsafvang', () => {
     expect(p.index.value).toBe(0);
   });
 
+  it('Escape stopt de presentatie ook als je zelf weggelopen bent', async () => {
+    await p.start(1);
+    router.goTo('/simulatie');
+    // De bladertoetsen zijn hier terecht los, maar Escape moet blijven werken:
+    // het is de enige toets die een presentatie beeindigt zonder haar uit te
+    // lopen, en zonder hem leeft ze onzichtbaar door.
+    expect(p.isOnStage()).toBe(false);
+    expect(press(' ')).toBe(false);
+
+    press('Escape');
+    expect(p.active.value).toBe(false);
+    expect(document.documentElement.classList.contains('rr-presenting')).toBe(false);
+  });
+
+  it('Escape werkt ook gewoon met het dek in beeld', async () => {
+    await p.start(0);
+    press('Escape');
+    expect(p.active.value).toBe(false);
+  });
+
+  it('Escape doet niets als er geen presentatie loopt', () => {
+    expect(p.active.value).toBe(false);
+    expect(press('Escape')).toBe(false);
+  });
+
   it('houdt zelfstandig de toetsen vast, want dan staat het dek er altijd', async () => {
     p.setMode('zelfstandig');
     await p.start(1);
