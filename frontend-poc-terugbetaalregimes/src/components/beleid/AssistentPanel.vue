@@ -1,7 +1,7 @@
 <template>
   <div class="assistent">
     <nldd-banner v-if="health === 'onbereikbaar'" variant="accent">
-      De assistent-backend draait niet. Start hem met <code>just poc-assistent terugbetaalregimes</code> in een tweede terminal.
+      De assistent-backend draait niet. Start de assistent met <code>just poc-assistent terugbetaalregimes</code> in een tweede terminal.
     </nldd-banner>
     <nldd-banner v-else-if="health === 'geen-cli'" variant="warning">
       De backend draait, maar de Claude Code CLI is niet gevonden. Installeer die en herstart met <code>just poc-assistent terugbetaalregimes</code>.
@@ -16,8 +16,8 @@
       <nldd-segmented-control-item value="instructie" text="Instructie"></nldd-segmented-control-item>
     </nldd-segmented-control>
 
-    <!-- Zolang hij bezig is: wat doet hij, hoeveel beurten, hoe lang al. Een
-         doel-run kan minuten stil zijn, en zonder dit is dat niet van
+    <!-- Zolang de assistent werkt: wat er gebeurt, hoeveel beurten, hoe lang al.
+         Een doel-run kan minuten stil zijn, en zonder dit is dat niet van
          vastgelopen te onderscheiden. -->
     <div v-if="streaming || afronding" class="as-status">
       <nldd-activity-indicator v-if="streaming && !openVraag" size="16" timing="instant"></nldd-activity-indicator>
@@ -122,7 +122,7 @@
           {{ item.pct !== null ? percent(item.pct, 1) + ' betalingsproblemen' : 'klaar' }}
         </template>
         <template v-else-if="item.type === 'vraag'">❓ {{ item.vraag }}</template>
-        <template v-else-if="item.type === 'gebruiker'">🙋 {{ item.tekst }}</template>
+        <template v-else-if="item.type === 'gebruiker'">{{ item.tekst }}</template>
         <template v-else-if="item.type === 'fout'">⚠️ {{ item.melding }}</template>
       </div>
     </div>
@@ -149,7 +149,7 @@
          vervolgbericht was een tweede plek om hetzelfde te doen. -->
     <nldd-form-field
       :label="loopt ? 'Stuur er iets achteraan' : { vraag: 'Vraag', doel: 'Doel', instructie: 'Instructie' }[modus]"
-      :supporting-label="loopt ? 'komt binnen bij zijn volgende beurt' : modusUitleg"
+      :supporting-label="loopt ? 'komt binnen bij de volgende beurt van de assistent' : modusUitleg"
     >
       <nldd-multi-line-text-field
         :value="prompt"
@@ -204,7 +204,7 @@ import { VOORBEELDEN } from '../../lib/assistentVoorbeelden.js';
 import { bewaardeRef } from '../../composables/useBewaardeStand.js';
 import OptimalisatiepadChart from '@regelrecht/frontend-shared/components/OptimalisatiepadChart.vue';
 
-// Geen `metrics`-emit meer. De assistent meet met zijn eigen n op zijn eigen
+// Geen `metrics`-emit meer. De assistent meet met een eigen n op een eigen
 // tussenstand; die cijfers naast de tegels zetten zou de doorrekening van de
 // gebruiker stil overschrijven met een tussenmeting. Ze horen thuis in de
 // feed en in het optimalisatiepad hieronder, en nergens anders.
@@ -334,7 +334,7 @@ async function beantwoord(keuzes) {
   } catch (e) {
     // Valt de verbinding weg terwijl de vraag openstaat, dan is het gesprek
     // voorbij en heeft terugzetten van de keuze geen zin: er is niemand meer
-    // om hem aan te geven. Zeg dat, in plaats van een knop te tonen die het
+    // om de keuze aan te geven. Zeg dat, in plaats van een knop te tonen die het
     // opnieuw niet doet.
     const weg = !streaming.value;
     feed.value.push({
@@ -475,8 +475,13 @@ async function submit() {
 
   // De assistent werkt op de werkversie: stuur die documenten mee als beginstand.
   const documenten = (await lawDocsFor(werkversie.value)).map((d) => ({ key: `${d.entry.id}@${d.entry.valid_from ?? ''}`, yaml: d.yaml }));
+  // De opdracht zelf als eerste bericht in het gesprek, en het veld leeg: je
+  // moet er iets nieuws in kunnen typen zonder eerst te wissen.
+  const opdracht = prompt.value.trim();
+  prompt.value = '';
+  feed.value.push({ type: 'gebruiker', tekst: opdracht });
   feed.value.push({ type: 'tekst', tekst: `Werkt op ${werkversieLabel.value}.` });
-  await run({ modus: modus.value, prompt: prompt.value, documenten }, (ev) => {
+  await run({ modus: modus.value, prompt: opdracht, documenten }, (ev) => {
     if (ev.type === 'voortgang') {
       voortgang.value = ev;
     } else if (ev.type === 'vraag') {
@@ -488,11 +493,16 @@ async function submit() {
       if (openVraag.value?.id === ev.id) openVraag.value = null;
       feed.value.push({ type: 'tekst', tekst: 'Geen antwoord gegeven; de assistent kiest zelf verder.' });
     } else if (ev.type === 'gebruiker') {
-      feed.value.push({ type: 'gebruiker', tekst: ev.tekst });
+      // De eerste opdracht staat er al (submit zet hem erin); alleen wat daarna
+      // wordt ingestuurd komt hier nog bij.
+      const laatste = feed.value[feed.value.length - 1];
+      if (!(laatste?.type === 'gebruiker' && laatste.tekst === ev.tekst)) {
+        feed.value.push({ type: 'gebruiker', tekst: ev.tekst });
+      }
     } else if (ev.type === 'gesprek') {
       // alleen het id; useAssistent houdt het bij
     } else if (ev.type === 'tekst_deel') {
-      // Tekst terwijl hij getypt wordt. De losse stukjes gaan in één regel in
+      // Tekst terwijl die getypt wordt. De losse stukjes gaan in één regel in
       // de feed; het complete `tekst`-event erna vervangt die regel, zodat er
       // niet twee keer hetzelfde komt te staan.
       const laatste = feed.value[feed.value.length - 1];
@@ -534,8 +544,8 @@ async function submit() {
     });
   });
   // De stream is dicht. Staat er nog een vraag open, dan komt er niemand meer
-  // om hem te beantwoorden; een dialoog laten staan die niets meer doet is
-  // erger dan hem weghalen.
+  // om de keuze te beantwoorden; een dialoog laten staan die niets meer doet
+  // is erger dan die weghalen.
   if (openVraag.value) {
     openVraag.value = null;
     feed.value.push({ type: 'tekst', tekst: 'Het gesprek is afgelopen terwijl er een keuze openstond.' });
@@ -570,7 +580,18 @@ function takeOverlays() {
 .as-simulatie { color: var(--semantics-content-secondary-color); }
 .as-fout { color: var(--semantics-content-critical-color); }
 .as-vraag { color: var(--semantics-content-accent-color); font-weight: 600; }
-.as-gebruiker { color: var(--semantics-content-color); font-weight: 600; }
+/* Wat de gebruiker zegt, als bubbel rechts; alles van de assistent blijft
+   links. Zo is met één blik te zien wie wat zei, zonder dat er een emoji voor
+   hoeft te staan. */
+.as-gebruiker {
+  align-self: flex-end;
+  max-width: 85%;
+  padding: 6px var(--primitives-space-12);
+  border-radius: var(--semantics-surfaces-corner-radius);
+  background: var(--semantics-surfaces-base-background-color);
+  border: 1px solid var(--semantics-dividers-color);
+  color: var(--semantics-content-color);
+}
 .as-opties { display: flex; flex-direction: column; gap: var(--primitives-space-8); align-items: flex-start; }
 .as-voorbeelden > summary {
   cursor: pointer; list-style: none;
