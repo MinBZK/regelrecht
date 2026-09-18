@@ -25,6 +25,7 @@ import {
   browserVarianten,
   browserVariantYaml,
   bewaarVariant as bewaarBrowserVariant,
+  werkVariantBij as werkBrowserVariantBij,
   verwijderVariant as verwijderBrowserVariant,
   controleerDrift,
   isBrowserVariant,
@@ -431,6 +432,31 @@ async function bewaarAlsBrowserVariant(titel) {
 }
 
 /**
+ * Werk de eigen variant bij waar je nu in werkt: dezelfde variant, met de
+ * bewerkingen die er sindsdien bij zijn gekomen.
+ *
+ * Zonder dit kon een variant alleen groeien. De gebruikelijke gang is een
+ * variant maken, doorrekenen, een parameter bijstellen en opnieuw bewaren; dat
+ * leverde elke keer een bijna-gelijke variant naast de vorige op, met alleen
+ * een nummer als verschil. De browseropslag heeft bovendien een grens.
+ *
+ * Na afloop laadt de werkversie opnieuw, zodat de app met de bewaarde tekst
+ * rekent en niet met de bewerkingen die er los overheen lagen.
+ */
+async function werkWerkversieBij() {
+  const id = werkversie.value;
+  if (!isBrowserVariant(id)) {
+    throw new Error('Alleen een eigen variant is bij te werken.');
+  }
+  const variant = werkBrowserVariantBij(id, { bestanden: editedFilesForBrowserVariant() });
+  // Opnieuw activeren wist de losse bewerkingen: die zitten nu in de variant
+  // zelf. Zonder dit zou "Terugzetten" ze daarna alsnog weggooien terwijl ze
+  // bewaard zijn.
+  await setWerkversie(id);
+  return variant;
+}
+
+/**
  * Gooi een eigen variant weg. Was hij de werkversie, dan valt de app terug op
  * huidig recht: doorwerken op een variant die er niet meer is, levert een
  * kolom op die niets meer voorstelt.
@@ -631,6 +657,7 @@ export function useLawStore() {
     reloadVariants,
     editedFilesForSave,
     bewaarAlsBrowserVariant,
+    werkWerkversieBij,
     verwijderEigenVariant,
     variantDrift,
     isBrowserVariant,

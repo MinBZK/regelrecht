@@ -126,6 +126,85 @@ describe('browser-varianten', () => {
     expect(verwijderVariant(v.id)).toBe(false);
   });
 
+  describe('bijwerken', () => {
+    // Zonder dit kon een variant alleen groeien: wie in zijn eigen variant
+    // doorwerkte kreeg er bij elke keer bewaren een bijna-gelijke naast.
+    it('overschrijft dezelfde variant in plaats van er een naast te zetten', async () => {
+      const { bewaarVariant, werkVariantBij, browserVarianten, browserVariantYaml } = await laad();
+      const v = bewaarVariant({ titel: 'Mijn variant', bestanden: [bestand('value: 2')] });
+
+      const bij = werkVariantBij(v.id, { bestanden: [bestand('value: 3')] });
+
+      expect(bij.id).toBe(v.id);
+      expect(browserVarianten()).toHaveLength(1);
+      expect(browserVariantYaml(v.id, 'laws/wet/2025-01-01.yaml')).toBe('value: 3');
+    });
+
+    it('houdt de titel als er geen nieuwe wordt meegegeven', async () => {
+      const { bewaarVariant, werkVariantBij } = await laad();
+      const v = bewaarVariant({ titel: 'Blijft heten', bestanden: [bestand()] });
+
+      expect(werkVariantBij(v.id, { bestanden: [bestand('value: 9')] }).title).toBe('Blijft heten');
+    });
+
+    it('hernoemt als er wel een titel bij zit, met hetzelfde id', async () => {
+      const { bewaarVariant, werkVariantBij } = await laad();
+      const v = bewaarVariant({ titel: 'Oude naam', bestanden: [bestand()] });
+
+      const bij = werkVariantBij(v.id, { bestanden: [bestand()], titel: 'Nieuwe naam' });
+
+      // Het id blijft: anders verwijst een bewaarde kolomkeuze naar niets meer.
+      expect(bij.id).toBe(v.id);
+      expect(bij.title).toBe('Nieuwe naam');
+    });
+
+    it('houdt `gemaakt` staan en noteert wanneer er bijgewerkt is', async () => {
+      const { bewaarVariant, werkVariantBij, browserVariant } = await laad();
+      const v = bewaarVariant({ titel: 'Tijden', bestanden: [bestand()] });
+      const gemaakt = browserVariant(v.id).gemaakt;
+
+      werkVariantBij(v.id, { bestanden: [bestand('value: 4')] });
+
+      const na = browserVariant(v.id);
+      expect(na.gemaakt).toBe(gemaakt);
+      expect(na.bijgewerkt).toBeTruthy();
+    });
+
+    it('ververst de vingerafdruk, zodat drift van de nieuwe basis uitgaat', async () => {
+      const { bewaarVariant, werkVariantBij, controleerDrift } = await laad();
+      const v = bewaarVariant({ titel: 'Drift', bestanden: [bestand('value: 2', 'value: 1')] });
+
+      // De wet is gewijzigd; opnieuw bewaren gebeurt op die nieuwe tekst.
+      werkVariantBij(v.id, { bestanden: [bestand('value: 3', 'value: 1b')] });
+
+      expect(controleerDrift(v.id, () => 'value: 1b').afgedreven).toBe(false);
+      expect(controleerDrift(v.id, () => 'value: 1').afgedreven).toBe(true);
+    });
+
+    it('overleeft een ververs', async () => {
+      const eerste = await laad();
+      const v = eerste.bewaarVariant({ titel: 'Na ververs', bestanden: [bestand('value: 2')] });
+      eerste.werkVariantBij(v.id, { bestanden: [bestand('value: 7')] });
+
+      const tweede = await laad();
+      expect(tweede.browserVarianten()).toHaveLength(1);
+      expect(tweede.browserVariantYaml(v.id, 'laws/wet/2025-01-01.yaml')).toBe('value: 7');
+    });
+
+    it('weigert een variant die hier niet staat', async () => {
+      const { werkVariantBij } = await laad();
+
+      expect(() => werkVariantBij('eigen-bestaat-niet', { bestanden: [bestand()] })).toThrow(/niet in deze browser/);
+    });
+
+    it('weigert een lege set bestanden', async () => {
+      const { bewaarVariant, werkVariantBij } = await laad();
+      const v = bewaarVariant({ titel: 'Leeg', bestanden: [bestand()] });
+
+      expect(() => werkVariantBij(v.id, { bestanden: [] })).toThrow(/niets bewerkt/);
+    });
+  });
+
   describe('drift', () => {
     it('meldt niets zolang het corpus gelijk blijft', async () => {
       const { bewaarVariant, controleerDrift } = await laad();
