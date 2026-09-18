@@ -100,7 +100,7 @@ import { usePersonas } from '../composables/usePersonas.js';
 import { usePopulation } from '../composables/usePopulation.js';
 import { usePopulatieAannames } from '../composables/usePopulatieAannames.js';
 import { number } from '../lib/format.js';
-import Paneel from '../components/Paneel.vue';
+import Paneel from '@regelrecht/frontend-shared/components/Paneel.vue';
 import ParameterPanel from '../components/beleid/ParameterPanel.vue';
 import KolomTabel from '../components/beleid/KolomTabel.vue';
 import MetricTiles from '../components/beleid/MetricTiles.vue';

@@ -3,12 +3,13 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Shared frontend primitives (auth, color scheme, API fetch) for the regelrecht Vue frontends",
+  "description": "Shared frontend primitives (auth, color scheme, API fetch, Gherkin runner, saved state) for the regelrecht Vue frontends",
   "exports": {
     ".": "./src/index.js",
     "./gherkin": "./src/gherkin/index.js",
     "./gherkin/*": "./src/gherkin/*",
     "./lib/*": "./src/lib/*",
+    "./components/*": "./src/components/*",
     "./useBewaardeStand.js": "./src/useBewaardeStand.js"
   },
   "dependencies": {

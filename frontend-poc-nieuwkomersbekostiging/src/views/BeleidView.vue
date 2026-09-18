@@ -124,7 +124,7 @@ import { useLawStore } from '../engine/lawStore.js';
 import { useSimulation } from '../composables/useSimulation.js';
 import { useHandelingen } from '../composables/useHandelingen.js';
 import { number } from '../lib/format.js';
-import Paneel from '../components/Paneel.vue';
+import Paneel from '@regelrecht/frontend-shared/components/Paneel.vue';
 import VariantSwitcher from '../components/VariantSwitcher.vue';
 import ParameterPanel from '../components/beleid/ParameterPanel.vue';
 import HandelingenPanel from '../components/beleid/HandelingenPanel.vue';
