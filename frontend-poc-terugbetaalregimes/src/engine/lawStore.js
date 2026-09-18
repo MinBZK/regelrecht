@@ -402,6 +402,12 @@ function editedFilesForBrowserVariant() {
 /**
  * Bewaar de werkversie als eigen variant in de browser, en zet hem meteen als
  * werkversie. Geeft de nieuwe variant terug.
+ *
+ * Lukt het activeren niet (de engine keurt de bewerkte wet af), dan gaat de
+ * variant er weer uit, valt de werkversie terug op huidig recht en komt de
+ * fout naar boven. Anders bleef er een variant staan die de app niet kan
+ * laden, terwijl het scherm "bewaren mislukt" meldt: de gebruiker ziet hem dan
+ * wel in de lijst en loopt er later opnieuw tegenaan.
  */
 async function bewaarAlsBrowserVariant(titel) {
   const bestanden = editedFilesForBrowserVariant();
@@ -412,7 +418,15 @@ async function bewaarAlsBrowserVariant(titel) {
     // Ook de ingecheckte id's, zodat een eigen variant er nooit een overschaduwt.
     bestaandeIds: variants.value.map((v) => v.id),
   });
-  await setWerkversie(variant.id);
+  try {
+    await setWerkversie(variant.id);
+  } catch (e) {
+    verwijderBrowserVariant(variant.id);
+    // De activering is halverwege gestrand, dus de engine draagt nu een
+    // mengsel. Terug naar de basis, die altijd laadt.
+    await setWerkversie(null).catch(() => {});
+    throw e;
+  }
   return variant;
 }
 
