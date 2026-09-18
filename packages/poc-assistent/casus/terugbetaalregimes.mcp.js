@@ -242,6 +242,57 @@ async function wijzigDefinitie({ document_key, artikel, naam, waarde, nieuwe_wet
       + ' Stuur nieuwe_wettekst mee als de tekst het gewijzigde getal noemt.');
 }
 
+/**
+ * Een vraag aan de beleidsmaker, die blokkeert tot het antwoord er is.
+ *
+ * Waarom een tool en geen tekst: een assistent die in zijn antwoord "wat wil
+ * je?" schrijft, praat tegen een leeg scherm en gaat daarna toch zelf door.
+ * Een tool die wacht, dwingt de beurt af: de CLI staat stil tot de gebruiker
+ * geklikt heeft, en het antwoord komt als toolresultaat terug in het gesprek.
+ *
+ * Het HTTP-proces legt het antwoord neer als bestand, net zoals deze server
+ * zijn events daar neerlegt: dezelfde weg, andere richting.
+ */
+const vragenDir = resolve(SESSION_DIR, 'vragen');
+mkdirSync(vragenDir, { recursive: true });
+let vraagSeq = 0;
+
+// Ruim tien minuten. Loopt iemand weg, dan kiest de assistent zelf verder in
+// plaats van het proces vast te houden tot de sessie wordt opgeruimd.
+const VRAAG_TIMEOUT_MS = 10 * 60 * 1000;
+
+async function vraagBeleidsmaker({ vraag, opties, meerkeuze, toelichting }) {
+  const schoon = String(vraag ?? '').trim();
+  const lijst = (Array.isArray(opties) ? opties : [])
+    .map((o) => (typeof o === 'string' ? { label: o } : o))
+    .filter((o) => o && typeof o.label === 'string' && o.label.trim())
+    .map((o) => ({ label: String(o.label).trim(), gevolg: o.gevolg ? String(o.gevolg).trim() : null }));
+  if (!schoon) return 'Geen vraag meegegeven.';
+  if (lijst.length < 2) return 'Een keuze heeft minstens twee opties nodig; anders valt er niets te kiezen.';
+
+  const id = `${Date.now()}-${++vraagSeq}`;
+  emit({ type: 'vraag', id, vraag: schoon, opties: lijst, meerkeuze: !!meerkeuze, toelichting: toelichting ?? null });
+
+  const antwoordPad = resolve(vragenDir, `${id}.antwoord.json`);
+  const tot = Date.now() + VRAAG_TIMEOUT_MS;
+  while (Date.now() < tot) {
+    if (existsSync(antwoordPad)) {
+      try {
+        const { keuzes } = JSON.parse(readFileSync(antwoordPad, 'utf-8'));
+        const gekozen = (Array.isArray(keuzes) ? keuzes : []).filter((k) => typeof k === 'string');
+        if (gekozen.length) return `De beleidsmaker koos: ${gekozen.join(' en ')}.`;
+        return 'De beleidsmaker koos geen van de opties; kies zelf en zeg welke aanname je doet.';
+      } catch {
+        return 'Het antwoord was onleesbaar; kies zelf en zeg welke aanname je doet.';
+      }
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  emit({ type: 'vraag_verlopen', id });
+  return 'Er kwam binnen tien minuten geen antwoord. Kies zelf de meest voor de hand liggende optie '
+    + 'en zeg er expliciet bij welke aanname je doet.';
+}
+
 async function simuleerPersonas() {
   const personas = loadPersonas();
   const results = await simulateRecords(
@@ -395,6 +446,41 @@ const TOOLS = [
       additionalProperties: false,
     },
     run: wijzigDefinitie,
+  },
+  {
+    name: 'vraag_beleidsmaker',
+    description:
+      'Leg een keuze voor aan de beleidsmaker en wacht op het antwoord. Gebruik '
+      + 'dit voordat je een beleidsmatige aanname zelf invult: welke groep erop '
+      + 'achteruit mag, of een wijziging ook voor bestaande gevallen geldt, waar '
+      + 'de dekking vandaan komt. Niet gebruiken voor iets wat je zelf kunt '
+      + 'opzoeken of uitrekenen. Geef per optie kort het gevolg, anders is het '
+      + 'geen keuze die iemand kan maken.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        vraag: { type: 'string', description: 'De keuze, in één zin, in gewone taal.' },
+        opties: {
+          type: 'array',
+          minItems: 2,
+          description: 'Twee tot vier opties, elk met een label en het gevolg ervan.',
+          items: {
+            type: 'object',
+            properties: {
+              label: { type: 'string', description: 'De keuze zelf, kort.' },
+              gevolg: { type: 'string', description: 'Wat er gebeurt als de beleidsmaker dit kiest.' },
+            },
+            required: ['label'],
+            additionalProperties: false,
+          },
+        },
+        meerkeuze: { type: 'boolean', description: 'true als er meer dan één optie tegelijk mag.' },
+        toelichting: { type: 'string', description: 'Eén zin context, als de vraag dat nodig heeft.' },
+      },
+      required: ['vraag', 'opties'],
+      additionalProperties: false,
+    },
+    run: vraagBeleidsmaker,
   },
   {
     name: 'simuleer_personas',

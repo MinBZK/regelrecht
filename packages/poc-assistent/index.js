@@ -142,6 +142,42 @@ function ruimSessieOp(sessieDir) {
   }
 }
 
+// ---- Lopende gesprekken -------------------------------------------------
+
+/**
+ * De gesprekken die nu openstaan: gesprek_id → { child, sessieDir, … }.
+ *
+ * Eén langlopend CLI-proces per gesprek, in plaats van één per opdracht. Dat
+ * is wat een vervolgvraag mogelijk maakt, en wat de assistent in staat stelt
+ * een keuze voor te leggen en op het antwoord te wachten.
+ *
+ * Een gesprek verdwijnt hier zodra zijn SSE-stream sluit, en dat gebeurt ook
+ * als de browser weg is. Blijft er toch iets hangen, dan haalt de opruimer
+ * hieronder het weg: hosted draait dit op één abonnement, en een vergeten
+ * proces is daar niet gratis.
+ */
+const gesprekken = new Map();
+
+/** Hoe lang een gesprek zonder stream mag blijven staan. */
+const GESPREK_MAX_MS = 30 * 60 * 1000;
+
+/**
+ * Hoeveel gesprekken er tegelijk mogen lopen. Elk gesprek is een CLI-proces
+ * op hetzelfde abonnement; zonder grens legt één drukke middag de assistent
+ * voor iedereen plat.
+ */
+const MAX_GESPREKKEN = Number(process.env.POC_MAX_GESPREKKEN ?? 4);
+
+setInterval(() => {
+  const nu = Date.now();
+  for (const [id, g] of gesprekken) {
+    if (nu - g.begonnen > GESPREK_MAX_MS) {
+      try { g.child.kill('SIGTERM'); } catch { /* al weg */ }
+      gesprekken.delete(id);
+    }
+  }
+}, 60_000).unref();
+
 // ---- Assistent-run via `claude -p` --------------------------------------
 
 async function handleAssistent(req, res) {
@@ -170,6 +206,16 @@ async function handleAssistent(req, res) {
   // -- de po-accountant bestaat bijvoorbeeld alleen in nk-3-harmonisatie-po-vo.
   // Een instructie over die handeling liep dan dood op "bestaat niet".
   const handelingen = typeof payload.handelingen === 'string' ? payload.handelingen : null;
+
+  // Elk gesprek is een CLI-proces op hetzelfde abonnement; zonder grens legt
+  // één drukke middag de assistent voor iedereen plat.
+  if (gesprekken.size >= MAX_GESPREKKEN) {
+    res.writeHead(503, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      fout: `Er lopen al ${gesprekken.size} gesprekken met de assistent. Probeer het zo opnieuw.`,
+    }));
+    return;
+  }
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -203,6 +249,11 @@ async function handleAssistent(req, res) {
   // Ook als er niets gebeurt blijft de teller lopen, zodat zichtbaar is dat
   // hij nog leeft.
   const heartbeat = setInterval(stuurVoortgang, 5000);
+
+  const gesprekId = `g${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  // De browser heeft dit id nodig om een vervolgbericht of een antwoord op een
+  // keuze te kunnen sturen; het is het eerste dat over de stream gaat.
+  send({ type: 'gesprek', gesprek_id: gesprekId });
 
   const sessieDir = maakSessieMap();
   const beginstand = new Map();
@@ -248,10 +299,16 @@ async function handleAssistent(req, res) {
     'mcp__regelrecht__wijzig_handelingen',
     'mcp__regelrecht__simuleer_personas',
     'mcp__regelrecht__simuleer_populatie',
+    'mcp__regelrecht__vraag_beleidsmaker',
   ];
 
   const args = [
-    '-p', opdracht,
+    '-p',
+    // Geen prompt als argument maar op stdin, zodat er ná de eerste opdracht
+    // nog berichten bij kunnen. Dat is wat het gesprek mogelijk maakt: een
+    // vervolgvraag, een antwoord op een keuze, of een bijsturing terwijl hij
+    // nog bezig is.
+    '--input-format', 'stream-json',
     '--output-format', 'stream-json',
     '--verbose',
     // Tekst komt binnen terwijl hij getypt wordt in plaats van pas als de
@@ -273,18 +330,40 @@ async function handleAssistent(req, res) {
     // Doelmodus meet, stelt bij, meet opnieuw tot het convergeert en sluit af
     // met een eindmeting; dertig beurten was daar krap voor en kapte hem
     // midden in het kalibreren af.
-    '--max-turns', modus === 'doel' ? '60' : '12',
+    //
+    // Dit is nu het budget voor het hele gesprek en niet voor één opdracht:
+    // een vervolgvraag telt mee. Ruimer dus, want anders is de tweede vraag in
+    // een gesprek de laatste. De grens blijft staan omdat een weggelopen
+    // gesprek anders op één abonnement door blijft draaien.
+    '--max-turns', modus === 'doel' ? '120' : '40',
   ];
 
   const child = spawn(CLAUDE_BIN, args, {
     cwd: sessieDir,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['pipe', 'pipe', 'pipe'],
     // De regelgevingsdocumenten zijn groot (de WSF 2000 is ~53 KB / ~20k
     // tokens). Zonder een ruime MCP-outputlimiet krijgt de assistent alleen een
     // preview van lees_regelgeving en kan hij de te wijzigen parameter niet
     // vinden. Ingebouwde tools staan uit, dus dit is zijn enige leeskanaal.
     env: { ...process.env, MAX_MCP_OUTPUT_TOKENS: '50000' },
   });
+
+  /** Een gebruikersbericht naar de lopende CLI. */
+  const stuurNaarAssistent = (tekst) => {
+    if (child.stdin.destroyed) return false;
+    child.stdin.write(`${JSON.stringify({
+      type: 'user',
+      message: { role: 'user', content: [{ type: 'text', text: String(tekst) }] },
+    })}\n`);
+    return true;
+  };
+
+  // De opdracht is nu het eerste bericht in plaats van een argument.
+  stuurNaarAssistent(opdracht);
+
+  // Het gesprek staat in het register zolang de stream openstaat, zodat
+  // /bericht en /antwoord erbij kunnen.
+  gesprekken.set(gesprekId, { child, sessieDir, stuurNaarAssistent, send, begonnen: Date.now() });
 
   let afgerond = false;
   const rond_af = (foutmelding) => {
@@ -317,6 +396,7 @@ async function handleAssistent(req, res) {
         seconden: Math.round((Date.now() - begonnen) / 1000),
       });
     }
+    gesprekken.delete(gesprekId);
     ruimSessieOp(sessieDir);
     res.end();
   };
@@ -437,6 +517,65 @@ function verwerkStreamRegel(line, send, voortgang) {
       send({ type: 'tool', naam, input });
     }
   }
+}
+
+/**
+ * POST /api/gesprek/:id/bericht   { tekst }
+ * POST /api/gesprek/:id/antwoord  { vraag_id, keuzes: [label, …] }
+ *
+ * Een bericht gaat op stdin naar de lopende CLI; die pakt het bij zijn
+ * volgende beurt op, ook als hij nu midden in een doel-run zit. Dat is het
+ * "halverwege insturen" waar dit voor bestaat.
+ *
+ * Een antwoord gaat naar een bestand in de sessiemap, waar de blokkerende
+ * vraag_beleidsmaker-tool op staat te wachten. Niet via stdin, want de
+ * assistent staat op dat moment stil in een toolaanroep en leest niets.
+ */
+async function handleGesprekInvoer(req, res) {
+  const [, , , id, soort] = (req.url ?? '').split('/');
+  const antwoord = (status, obj) => {
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(obj));
+  };
+
+  const gesprek = gesprekken.get(id);
+  if (!gesprek) return antwoord(404, { fout: 'Dit gesprek loopt niet (meer).' });
+
+  let body = '';
+  for await (const chunk of req) body += chunk;
+  let payload;
+  try {
+    payload = JSON.parse(body);
+  } catch {
+    return antwoord(400, { fout: 'ongeldige JSON' });
+  }
+
+  if (soort === 'bericht') {
+    const tekst = String(payload.tekst ?? '').trim();
+    if (!tekst) return antwoord(400, { fout: 'Leeg bericht.' });
+    if (!gesprek.stuurNaarAssistent(tekst)) {
+      return antwoord(409, { fout: 'De assistent neemt geen berichten meer aan.' });
+    }
+    // Ook in de feed, zodat het gesprek leest als een gesprek.
+    gesprek.send({ type: 'gebruiker', tekst });
+    return antwoord(200, { ok: true });
+  }
+
+  // antwoord op een vraag
+  const vraagId = String(payload.vraag_id ?? '').trim();
+  const keuzes = (Array.isArray(payload.keuzes) ? payload.keuzes : [])
+    .map((k) => String(k).trim())
+    .filter(Boolean);
+  if (!/^[0-9]+-[0-9]+$/.test(vraagId)) return antwoord(400, { fout: 'Onbekende vraag.' });
+  const vragenDir = path.join(gesprek.sessieDir, 'vragen');
+  try {
+    fs.mkdirSync(vragenDir, { recursive: true });
+    fs.writeFileSync(path.join(vragenDir, `${vraagId}.antwoord.json`), JSON.stringify({ keuzes }));
+  } catch (e) {
+    return antwoord(500, { fout: `Antwoord kon niet worden doorgegeven: ${String(e?.message ?? e)}` });
+  }
+  gesprek.send({ type: 'gebruiker', tekst: keuzes.join(' en ') || 'geen keuze' });
+  return antwoord(200, { ok: true });
 }
 
 // ---- Bewaar als variant: git-branch vanaf main -------------------------
@@ -565,6 +704,18 @@ const server = http.createServer((req, res) => {
       console.error(e);
       if (!res.headersSent) res.writeHead(500);
       res.end();
+    });
+    return;
+  }
+  // Een vervolgbericht of het antwoord op een keuze, in een lopend gesprek.
+  // Beide gaan naar hetzelfde CLI-proces: een bericht via stdin (dat pakt hij
+  // bij zijn volgende beurt op, ook als hij nu nog bezig is), een antwoord via
+  // een bestand waar de wachtende tool op staat te kijken.
+  if (req.method === 'POST' && /^\/api\/gesprek\/[^/]+\/(bericht|antwoord)$/.test(req.url ?? '')) {
+    handleGesprekInvoer(req, res).catch((e) => {
+      console.error(e);
+      if (!res.headersSent) res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ fout: String(e?.message ?? e) }));
     });
     return;
   }

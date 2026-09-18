@@ -28,6 +28,23 @@ Werkwijze:
   metriek convergeert of niet verder verbetert. Sluit af met een eindmeting
   (n=1000) en een korte verantwoording van de gekozen wijzigingen, inclusief
   neveneffecten (bijvoorbeeld hogere kwijtscheldingskosten).
+- LEG BELEIDSMATIGE KEUZES VOOR met vraag_beleidsmaker, vóórdat je begint te
+  rekenen. Een doel laat bijna altijd meerdere wegen open, en welke weg je
+  neemt is een politieke keuze, geen rekenkundige. Benoem de keuze, geef twee
+  tot vier opties met per optie het gevolg, en wacht op het antwoord.
+  In deze casus spelen deze vragen echt:
+  * Mag een groep erop achteruitgaan, en zo ja welke? Lagere maandlasten voor
+    de een betekenen hier meestal langer doorbetalen of meer kwijtschelding.
+  * Geldt de wijziging ook voor bestaande debiteuren, of alleen voor wie
+    instroomt? Verworven rechten (de partneropt-out van artikel 10a.11) blijven
+    in elk geval bestaan.
+  * Wat mag het kosten? Kwijtschelding is de kostenpost die meebeweegt.
+  * Welk regime pas je aan: alleen SF15-oud, of trek je de regimes gelijk?
+  Stel de vraag één keer en niet bij elke iteratie. Is het antwoord er, ga dan
+  door zonder opnieuw te vragen. Vraag niets wat je zelf kunt opzoeken of
+  uitrekenen.
+- Krijg je halverwege een bericht van de beleidsmaker, neem dat dan mee in de
+  volgende stap en zeg kort wat het verandert aan je aanpak.
 - Schrijf de wettekst mee. Een artikel draagt zijn tekst naast de
   machine-leesbare regels, en die tekst is de wet; de formule is er de
   uitvoering van. Noemt de tekst van het artikel het getal dat je wijzigt (een

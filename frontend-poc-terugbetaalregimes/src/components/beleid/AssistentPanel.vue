@@ -42,9 +42,74 @@
          doel-run kan minuten stil zijn, en zonder dit is dat niet van
          vastgelopen te onderscheiden. -->
     <div v-if="streaming || afronding" class="as-status">
-      <nldd-activity-indicator v-if="streaming" size="16" timing="instant"></nldd-activity-indicator>
-      <nldd-icon v-else name="checked" size="16"></nldd-icon>
-      <span>{{ statusTekst }}</span>
+      <nldd-activity-indicator v-if="streaming && !openVraag" size="16" timing="instant"></nldd-activity-indicator>
+      <nldd-icon v-else-if="!streaming" name="checked" size="16"></nldd-icon>
+      <nldd-icon v-else name="help" size="16"></nldd-icon>
+      <span>{{ openVraag ? 'Wacht op jouw keuze.' : statusTekst }}</span>
+    </div>
+
+    <!-- De assistent legt een keuze voor en staat stil tot je antwoordt. Dit is
+         waar het gesprek zijn waarde krijgt: de beleidsmatige aanname wordt
+         gemaakt door de beleidsmaker, niet stilletjes door het model. -->
+    <nldd-inline-dialog
+      v-if="openVraag"
+      variant="alert"
+      icon="help"
+      :text="openVraag.vraag"
+      :supporting-text="openVraag.toelichting ?? ''"
+    >
+      <div slot="actions" class="as-opties">
+        <template v-if="openVraag.meerkeuze">
+          <!-- Het gevolg staat in het label zelf: nldd-checkbox-field heeft
+               geen supporting-label, en zonder gevolg is het geen keuze die
+               een beleidsmaker kan maken. -->
+          <nldd-checkbox-field
+            v-for="(o, i) in openVraag.opties"
+            :key="i"
+            :label="o.gevolg ? `${o.label} — ${o.gevolg}` : o.label"
+            :checked="aangevinkt.includes(o.label) ? true : undefined"
+            @change="vinkAan(o.label, $event)"
+          ></nldd-checkbox-field>
+          <nldd-button
+            size="sm"
+            variant="primary"
+            text="Doorgeven"
+            :disabled="!aangevinkt.length ? true : undefined"
+            @click="beantwoord(aangevinkt)"
+          ></nldd-button>
+        </template>
+        <template v-else>
+          <nldd-button
+            v-for="(o, i) in openVraag.opties"
+            :key="i"
+            size="sm"
+            :variant="i === 0 ? 'primary' : 'secondary'"
+            :text="o.gevolg ? `${o.label} — ${o.gevolg}` : o.label"
+            @click="beantwoord([o.label])"
+          ></nldd-button>
+        </template>
+      </div>
+    </nldd-inline-dialog>
+
+    <!-- Een vervolgbericht, ook terwijl hij nog bezig is: dat komt bij zijn
+         volgende beurt binnen. -->
+    <div v-if="streaming && !openVraag" class="as-vervolg">
+      <nldd-form-field label="Stuur er iets achteraan" supporting-label="komt binnen bij zijn volgende beurt">
+        <nldd-text-field
+          size="sm"
+          :value="vervolg"
+          placeholder="Let ook op de kwijtscheldingskosten"
+          @input="vervolg = $event.detail?.value ?? vervolg"
+        ></nldd-text-field>
+      </nldd-form-field>
+      <nldd-button
+        size="sm"
+        variant="secondary"
+        start-icon="send"
+        text="Insturen"
+        :disabled="!vervolg.trim() ? true : undefined"
+        @click="stuurVervolg"
+      ></nldd-button>
     </div>
 
     <optimalisatiepad-chart
@@ -98,6 +163,8 @@
           📊 Simulatie ({{ item.doel }}<span v-if="item.n">, n={{ item.n }}</span>):
           {{ item.pct !== null ? percent(item.pct, 1) + ' betalingsproblemen' : 'klaar' }}
         </template>
+        <template v-else-if="item.type === 'vraag'">❓ {{ item.vraag }}</template>
+        <template v-else-if="item.type === 'gebruiker'">🙋 {{ item.tekst }}</template>
         <template v-else-if="item.type === 'fout'">⚠️ {{ item.melding }}</template>
       </div>
     </div>
@@ -133,7 +200,7 @@ import OptimalisatiepadChart from '@regelrecht/frontend-shared/components/Optima
 // tussenstand; die cijfers naast de tegels zetten zou de doorrekening van de
 // gebruiker stil overschrijven met een tussenmeting. Ze horen thuis in de
 // feed en in het optimalisatiepad hieronder, en nergens anders.
-const { streaming, run, abort } = useAssistent();
+const { streaming, run, stuur, antwoord, abort } = useAssistent();
 const {
   applyOverlays, applyDefinitionChange, docPathVoorKey,
   lawDocsFor, werkversie, werkversieLabel,
@@ -204,6 +271,53 @@ const reeksen = [{
 /** Laatste voortgangsmelding van de backend, en de afronding na afloop. */
 const voortgang = ref(null);
 const afronding = ref(null);
+
+/** De keuze die nu voorligt, als de assistent er een stelde. */
+const openVraag = ref(null);
+const aangevinkt = ref([]);
+const vervolg = ref('');
+
+function vinkAan(label, ev) {
+  const aan = ev?.detail?.checked ?? ev?.target?.checked;
+  aangevinkt.value = aan
+    ? [...new Set([...aangevinkt.value, label])]
+    : aangevinkt.value.filter((l) => l !== label);
+}
+
+async function beantwoord(keuzes) {
+  const vraag = openVraag.value;
+  if (!vraag) return;
+  openVraag.value = null;
+  aangevinkt.value = [];
+  try {
+    await antwoord(vraag.id, keuzes);
+  } catch (e) {
+    // Valt de verbinding weg terwijl de vraag openstaat, dan is het gesprek
+    // voorbij en heeft terugzetten van de keuze geen zin: er is niemand meer
+    // om hem aan te geven. Zeg dat, in plaats van een knop te tonen die het
+    // opnieuw niet doet.
+    const weg = !streaming.value;
+    feed.value.push({
+      type: 'fout',
+      melding: weg
+        ? 'De verbinding met de assistent is weggevallen, dus je keuze kon niet meer aankomen. Stel de vraag opnieuw.'
+        : `Antwoord doorgeven mislukt: ${e?.message ?? e}`,
+    });
+    if (!weg) openVraag.value = vraag;
+  }
+}
+
+async function stuurVervolg() {
+  const tekst = vervolg.value.trim();
+  if (!tekst) return;
+  vervolg.value = '';
+  try {
+    await stuur(tekst);
+  } catch (e) {
+    feed.value.push({ type: 'fout', melding: `Insturen mislukt: ${e?.message ?? e}` });
+    vervolg.value = tekst;
+  }
+}
 
 /** Namen van de tools zoals een beleidsmaker ze zou noemen. */
 const TOOLTEKST = {
@@ -298,6 +412,9 @@ async function submit() {
   overlays.value = null;
   voortgang.value = null;
   afronding.value = null;
+  openVraag.value = null;
+  aangevinkt.value = [];
+  vervolg.value = '';
   let iteratie = 0;
 
   // De assistent werkt op de werkversie: stuur die documenten mee als beginstand.
@@ -306,6 +423,18 @@ async function submit() {
   await run({ modus: modus.value, prompt: prompt.value, documenten }, (ev) => {
     if (ev.type === 'voortgang') {
       voortgang.value = ev;
+    } else if (ev.type === 'vraag') {
+      openVraag.value = ev;
+      aangevinkt.value = [];
+      feed.value.push({ type: 'vraag', vraag: ev.vraag });
+    } else if (ev.type === 'vraag_verlopen') {
+      // Niemand antwoordde; de assistent kiest zelf verder en zegt dat erbij.
+      if (openVraag.value?.id === ev.id) openVraag.value = null;
+      feed.value.push({ type: 'tekst', tekst: 'Geen antwoord gegeven; de assistent kiest zelf verder.' });
+    } else if (ev.type === 'gebruiker') {
+      feed.value.push({ type: 'gebruiker', tekst: ev.tekst });
+    } else if (ev.type === 'gesprek') {
+      // alleen het id; useAssistent houdt het bij
     } else if (ev.type === 'tekst_deel') {
       // Tekst terwijl hij getypt wordt. De losse stukjes gaan in één regel in
       // de feed; het complete `tekst`-event erna vervangt die regel, zodat er
@@ -340,6 +469,7 @@ async function submit() {
       overlays.value = ev.overlays ?? null;
       afronding.value = { beurten: ev.beurten ?? 0, seconden: ev.seconden ?? 0 };
       voortgang.value = null;
+      openVraag.value = null;
     } else {
       feed.value.push(ev);
     }
@@ -347,6 +477,13 @@ async function submit() {
       if (feedEl.value) feedEl.value.scrollTop = feedEl.value.scrollHeight;
     });
   });
+  // De stream is dicht. Staat er nog een vraag open, dan komt er niemand meer
+  // om hem te beantwoorden; een dialoog laten staan die niets meer doet is
+  // erger dan hem weghalen.
+  if (openVraag.value) {
+    openVraag.value = null;
+    feed.value.push({ type: 'tekst', tekst: 'Het gesprek is afgelopen terwijl er een keuze openstond.' });
+  }
 }
 
 function takeOverlays() {
@@ -376,6 +513,11 @@ function takeOverlays() {
 .as-wijziging { color: var(--semantics-content-accent-color); }
 .as-simulatie { color: var(--semantics-content-secondary-color); }
 .as-fout { color: var(--semantics-content-critical-color); }
+.as-vraag { color: var(--semantics-content-accent-color); font-weight: 600; }
+.as-gebruiker { color: var(--semantics-content-color); font-weight: 600; }
+.as-opties { display: flex; flex-direction: column; gap: var(--primitives-space-8); align-items: flex-start; }
+.as-vervolg { display: flex; gap: var(--primitives-space-8); align-items: flex-end; }
+.as-vervolg nldd-form-field { flex: 1; }
 .as-knoppen { display: flex; gap: var(--primitives-space-8); align-items: center; }
 .as-hint { margin: 0; font-size: 0.85em; color: var(--semantics-content-secondary-color); }
 .as-status {

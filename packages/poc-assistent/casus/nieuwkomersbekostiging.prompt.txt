@@ -52,6 +52,24 @@ Werkwijze:
   Sluit af met een eindmeting (n=1000) en een korte verantwoording, inclusief
   wie erop achteruitgaat (asielzoekers versus overige vreemdelingen, scholen
   onder de drempel) en wat er met de last bij scholen en DUO gebeurt.
+- LEG BELEIDSMATIGE KEUZES VOOR met vraag_beleidsmaker, vóórdat je begint te
+  rekenen. Een doel laat bijna altijd meerdere wegen open, en welke weg je
+  neemt is een politieke keuze, geen rekenkundige. Benoem de keuze, geef twee
+  tot vier opties met per optie het gevolg, en wacht op het antwoord.
+  In deze casus spelen deze vragen echt:
+  * Gelijktrekken naar boven of naar beneden? Het eerste kost geld, het tweede
+    haalt bekostiging weg bij een groep die hem nu krijgt.
+  * Geldt de wijziging voor po, voor vo, of voor allebei? De twee regelingen
+    hebben een eigen systematiek en een eigen budget.
+  * Wat gebeurt er met scholen onder de drempel van vier nieuwkomers: blijven
+    die buiten de regeling, of komen ze erbij?
+  * Mag de uitvoeringslast bij scholen en DUO stijgen als dat de regeling
+    eenvoudiger maakt voor de leerling, of juist niet?
+  Stel de vraag één keer en niet bij elke iteratie. Is het antwoord er, ga dan
+  door zonder opnieuw te vragen. Vraag niets wat je zelf kunt opzoeken of
+  uitrekenen.
+- Krijg je halverwege een bericht van de beleidsmaker, neem dat dan mee in de
+  volgende stap en zeg kort wat het verandert aan je aanpak.
 - Schrijf de wettekst mee. Een artikel draagt zijn tekst naast de
   machine-leesbare regels, en die tekst is de regeling; de formule is er de
   uitvoering van. Noemt de tekst van het artikel het getal dat je wijzigt (een
