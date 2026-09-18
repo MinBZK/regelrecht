@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { lineDiff, compactDiff, definitionDiff } from './diff.js';
+import { lineDiff, compactDiff, definitionDiff, articleTextDiff } from './diff.js';
 
 describe('lineDiff', () => {
   it('marks an added line and keeps the rest as context', () => {
@@ -47,6 +47,31 @@ describe('compactDiff', () => {
 
   it('returns a single gap when nothing changed', () => {
     expect(compactDiff('a\nb\nc', 'a\nb\nc')).toEqual([{ type: 'gap', text: '…' }]);
+  });
+});
+
+describe('articleTextDiff', () => {
+  const doc = (text) => ({ articles: [{ number: '6.10', text }] });
+
+  it('meldt een gewijzigde wettekst met het artikelnummer', () => {
+    expect(articleTextDiff(doc('Vier procent.'), doc('Vijf procent.'))).toEqual([
+      { article: '6.10', oud: 'Vier procent.', nieuw: 'Vijf procent.' },
+    ]);
+  });
+
+  it('meldt niets als de tekst gelijk blijft', () => {
+    expect(articleTextDiff(doc('Vier procent.'), doc('Vier procent.'))).toEqual([]);
+  });
+
+  // Een artikel zonder wettekst is niet hetzelfde als een lege wettekst; daar
+  // valt niets over te zeggen, dus zegt de diff er niets over.
+  it('slaat een artikel zonder wettekst over', () => {
+    expect(articleTextDiff(doc(undefined), doc('Nu wel tekst.'))).toEqual([]);
+    expect(articleTextDiff(doc('Was er tekst.'), doc(undefined))).toEqual([]);
+  });
+
+  it('slaat een artikel over dat in de werkversie niet meer bestaat', () => {
+    expect(articleTextDiff(doc('Tekst.'), { articles: [] })).toEqual([]);
   });
 });
 

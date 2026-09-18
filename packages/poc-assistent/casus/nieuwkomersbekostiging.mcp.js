@@ -33,7 +33,7 @@ const mod = (rel) => import(pathToFileURL(resolve(appSrc, rel)).href);
 const { simulate, evaluateLeerlingTimeline } = await mod('sim/simulate.js');
 const { generatePopulation } = await mod('sim/population.js');
 const { aggregate } = await mod('sim/metrics.js');
-const { patchDefinitionValue, readDefinitionValue } = await mod('lib/yamlPatch.js');
+const { patchDefinitionValue, readDefinitionValue, patchArticleText, readArticleText } = await mod('lib/yamlPatch.js');
 const { DEFAULT_JAREN, peildataTussen, PERSONA_PEILDATA_VAN, PERSONA_PEILDATA_TOT, categorieLabel } =
   await mod('lib/nieuwkomerFacts.js');
 const {
@@ -219,7 +219,7 @@ async function wijzigRegelgeving({ document_key, nieuwe_yaml, toelichting }) {
  * Wijzig één definitie-waarde in een document (tekstpatch van één regel):
  * de snelle weg voor bedragen, kwartalen, drempels en termijnen.
  */
-async function wijzigDefinitie({ document_key, artikel, naam, waarde, toelichting }) {
+async function wijzigDefinitie({ document_key, artikel, naam, waarde, nieuwe_wettekst, toelichting }) {
   const overlays = readOverlays();
   const doc = corpusMetOverlays(overlays).find((d) => d.key === document_key);
   if (!doc) return `Onbekend document: ${document_key}`;
@@ -232,12 +232,33 @@ async function wijzigDefinitie({ document_key, artikel, naam, waarde, toelichtin
   } catch (e) {
     return `Definitie niet gevonden: ${e.message}. Zoek de naam met lees_regelgeving (zoek=...) en let op het artikelnummer als string, bijvoorbeeld "34, tweede lid".`;
   }
+  // De wettekst mee, als de assistent hem meestuurt. Een wet is zijn tekst:
+  // alleen de waarde patchen laat de proza de oude regel vertellen, en in een
+  // demo over wetgeving is dat precies de verkeerde indruk.
+  let tekstGewijzigd = false;
+  if (typeof nieuwe_wettekst === 'string' && nieuwe_wettekst.trim()) {
+    try {
+      const oudeTekst = readArticleText(nieuw, String(artikel));
+      nieuw = patchArticleText(nieuw, String(artikel), nieuwe_wettekst.trim());
+      tekstGewijzigd = oudeTekst !== readArticleText(nieuw, String(artikel));
+    } catch (e) {
+      return `De waarde is NIET gewijzigd omdat de wettekst niet kon worden bijgewerkt: ${e.message}`;
+    }
+  }
   const result = await validateYaml(overlays, document_key, nieuw);
   if (!result.ok) return `Validatie mislukt, wijziging NIET toegepast: ${result.error}`;
   writeOverlay(document_key, nieuw);
   onthoudWijziging(document_key, artikel, naam, oud, Number(waarde));
-  emit({ type: 'wijziging', document_key, toelichting: toelichting ?? `${naam} in artikel ${artikel}: ${oud} -> ${waarde}` });
-  return `Toegepast: ${naam} in artikel ${artikel} van ${oud} naar ${waarde} (gevalideerd).`;
+  const staart = tekstGewijzigd ? ' De wettekst van dit artikel is meegeschreven.' : '';
+  emit({
+    type: 'wijziging',
+    document_key,
+    toelichting: (toelichting ?? `${naam} in artikel ${artikel}: ${oud} -> ${waarde}`) + staart,
+    wettekst_gewijzigd: tekstGewijzigd,
+  });
+  return `Toegepast: ${naam} in artikel ${artikel} van ${oud} naar ${waarde} (gevalideerd).${staart}`
+    + (tekstGewijzigd ? '' : ' LET OP: de wettekst van dit artikel vertelt nu nog de oude regel.'
+      + ' Stuur nieuwe_wettekst mee als de tekst het gewijzigde getal noemt.');
 }
 
 // ---- Uitvoeringslastmodel (data/handelingen.yaml) -----------------------
@@ -474,6 +495,15 @@ const TOOLS = [
         artikel: { type: 'string', description: 'artikelnummer zoals in de YAML, bv. "34, tweede lid"' },
         naam: { type: 'string', description: 'naam van de definitie, bv. "drempel_aantal_leerlingen"' },
         waarde: { type: 'number', description: 'nieuwe waarde (eurocent voor bedragen)' },
+        nieuwe_wettekst: {
+          type: 'string',
+          description:
+            'De wettekst van dit artikel, herschreven zodat hij de nieuwe waarde vertelt. '
+            + 'Stuur dit mee zodra de tekst het gewijzigde getal noemt: een wet is zijn tekst, '
+            + 'en alleen de waarde aanpassen laat de proza de oude regel vertellen. Schrijf in de '
+            + 'stijl van het artikel zelf, wijzig alleen wat de wijziging raakt, en laat '
+            + 'artikelnummers en verwijzingen staan. Weglaten als de tekst het getal niet noemt.',
+        },
         toelichting: { type: 'string', description: 'Korte omschrijving van de wijziging, voor de gebruiker' },
       },
       required: ['document_key', 'artikel', 'naam', 'waarde'],

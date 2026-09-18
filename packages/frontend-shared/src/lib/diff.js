@@ -65,6 +65,29 @@ export function compactDiff(a, b, contextLines = 2) {
 }
 
 /**
+ * Artikelen waarvan de wettekst is gewijzigd, als
+ * [{ article, oud, nieuw }].
+ *
+ * Waarom apart van definitionDiff: een wet is zijn tekst, en een wijziging die
+ * alleen in de formule zit vertelt een andere wet dan de proza eromheen. Wie
+ * de diff leest, moet beide zien staan.
+ */
+export function articleTextDiff(baseDoc, currentDoc) {
+  const changes = [];
+  const curByNumber = new Map((currentDoc?.articles ?? []).map((a) => [String(a.number), a]));
+  for (const art of baseDoc?.articles ?? []) {
+    const cur = curByNumber.get(String(art.number));
+    if (!cur) continue;
+    const oud = typeof art.text === 'string' ? art.text : null;
+    const nieuw = typeof cur.text === 'string' ? cur.text : null;
+    if (oud !== null && nieuw !== null && oud !== nieuw) {
+      changes.push({ article: art.number, oud, nieuw });
+    }
+  }
+  return changes;
+}
+
+/**
  * Verschillen in definitie-waarden tussen twee geparste documenten, als
  * leesbare "artikel X: naam: oud → nieuw"-regels.
  */

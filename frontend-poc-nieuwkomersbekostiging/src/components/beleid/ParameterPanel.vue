@@ -1,5 +1,14 @@
 <template>
   <div class="param-panel">
+    <!-- Een knop hier verandert de rekenregels, niet de tekst van de regeling
+         ernaast. Dat verschil hoort zichtbaar te zijn: anders vertelt het
+         artikel straks de oude regel terwijl de berekening de nieuwe volgt. De
+         beleidsassistent schrijft de tekst wel mee. -->
+    <nldd-banner v-if="hasChanges" variant="accent">
+      Je wijzigt hier de rekenregels. De tekst van het artikel beweegt niet mee; die staat er nog zoals hij was.
+      Vraag de beleidsassistent om de wijziging als je ook de tekst wilt laten meeschrijven.
+    </nldd-banner>
+
     <nldd-form-field label="Document" supporting-label="één regeling tegelijk; oudere versies staan onderaan de lijst">
       <nldd-dropdown :key="`pp:${docsMetVersie.length}:${gekozenPad}`" size="sm" width="100%" @change="gekozenPad = $event.detail?.value ?? gekozenPad">
         <select :value="gekozenPad ?? ''" aria-label="Kies het document waarvan je de parameters bijstelt">
@@ -39,7 +48,7 @@
 import { ref, computed, watch } from 'vue';
 import { useLawStore } from '../../engine/lawStore.js';
 
-const { definitionsByDoc, applyDefinitionChange, changedPaths } = useLawStore();
+const { definitionsByDoc, applyDefinitionChange, changedPaths, hasChanges } = useLawStore();
 import { LAW_PO, artikelOnderwerp, leesbaar } from '../../lib/nieuwkomerFacts.js';
 
 /** Documenten met een vlag voor oudere versies van dezelfde wet (dichtgeklapt). */

@@ -28,8 +28,15 @@ Werkwijze:
   metriek convergeert of niet verder verbetert. Sluit af met een eindmeting
   (n=1000) en een korte verantwoording van de gekozen wijzigingen, inclusief
   neveneffecten (bijvoorbeeld hogere kwijtscheldingskosten).
-- Respecteer de juridische structuur: wijzig geen artikelnummers of
-  wettekst-citaten, en documenteer beleidsmatige keuzes in de descriptions.
+- Schrijf de wettekst mee. Een artikel draagt zijn tekst naast de
+  machine-leesbare regels, en die tekst is de wet; de formule is er de
+  uitvoering van. Noemt de tekst van het artikel het getal dat je wijzigt (een
+  percentage, een voet, een termijn), stuur dan `nieuwe_wettekst` mee met
+  wijzig_definitie: hetzelfde artikel, in dezelfde stijl en zinsbouw, met alleen
+  dat ene gegeven aangepast. Noemt de tekst het getal niet, laat hem dan staan.
+- Verzin geen nieuwe wettekst en schrap niets wat je niet wijzigt. Laat
+  artikelnummers, verwijzingen naar andere artikelen en wetten, en de
+  citeertitel ongemoeid. Documenteer beleidsmatige keuzes in de descriptions.
 - Houd rekening met verworven rechten: de partneropt-out van artikel 10a.11
   blijft in alle varianten bestaan.
 - Antwoord in het Nederlands, beknopt en zakelijk. Rapporteer bedragen in
