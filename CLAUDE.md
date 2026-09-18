@@ -94,6 +94,79 @@ merge). The format is **Conventional Commits**: `type(scope): subject`, where
 Per the global convention these subjects are written in **Dutch** (PR
 descriptions too), while code identifiers stay English.
 
+### Every pull request names its werkpakket
+
+**Every PR body ends with a `Werkpakket:` line naming the werkpakket from the
+roadmap that the work contributes to.** The check **`Werkpakket genoemd`**
+(`.github/workflows/werkpakket-gate.yml`) blocks the merge without it. Write the
+line whenever you open a PR; it is not optional and not something to ask about.
+
+```
+Werkpakket: referentie-casus-i
+Werkpakket: referentie-casus-i, effect-over-tijd
+Werkpakket: geen — losse typefout in de docs
+```
+
+- **The slug is the werkpakket's `id`**, which is also its filename and its URL.
+  The full list is `ls docs/src/content/roadmap/werkpakketten/`, rendered at
+  `/roadmap`. Never invent one: an unknown slug fails the check, which then
+  suggests the nearest matches.
+- **Several werkpakketten** on one line, comma-separated.
+- **`geen` needs a reason.** `Werkpakket: geen` on its own fails. Work that
+  genuinely belongs to no werkpakket says why: `geen — losse typefout in de
+  docs`. Without the reason it is a box that fills itself, and then the check
+  measures whether someone can paste a line rather than whether they asked the
+  question.
+- **Exempt**, decided from the API and not from the workflow: Dependabot PRs and
+  fork PRs.
+
+Put it on its own line at the end of the body, in trailer form. That is what
+makes it greppable, survives being copied into a merge commit, and lets a later
+script total up commits and PRs per werkpakket without this gate changing.
+
+**Write the bare slug.** After the gate passes, `script/linkify-werkpakket.sh`
+rewrites the line in the PR body into a markdown link to the roadmap, so the
+reference is clickable where people actually read it:
+
+```
+Werkpakket: [referentie-casus-i](https://regelrecht.rijks.app/roadmap/werkpakket/referentie-casus-i)
+```
+
+Do not write that link yourself and do not paste a URL into the trailer; the bot
+builds it. The gate reads both forms (it strips the markdown before matching), so
+the rewrite cannot turn the next run red, and a line that is already a link is
+left alone. The werkpakket page links back to the PRs carrying its slug, so the
+reference works in both directions.
+
+Commit messages are not checked and carry no trailer requirement. Note that this
+repo squash-merges and the squash body is assembled from the individual commit
+messages, not the PR body, so a `Werkpakket:` line only reaches `git log` if you
+put it in a commit message. Do that when it is useful, not as a rule.
+
+**When the PR touches a law from the corpus, add a `Wet:` line under it**, with
+the law's `$id` (the directory name under `corpus/regulation/`):
+
+```
+Werkpakket: referentie-casus-i
+Wet: wet_op_de_zorgtoeslag
+```
+
+This line is optional, because most PRs touch no law and requiring it would
+produce the same empty box as a reasonless `geen`. Present, it has to resolve:
+the gate rejects an id that is not in the corpus, and renders each one as a link
+to the law on wetten.overheid.nl in the check's summary. The URL comes from the
+law file's own `url` (falling back to `bwb_id`), so it cannot drift from the
+corpus. Do not write the link yourself, and never invent a BWB number: name the
+`$id` and let the gate resolve it.
+
+Which werkpakket a change belongs to is a judgement, so make it deliberately:
+match the work to the roadmap rather than reaching for the nearest-sounding
+slug. If nothing fits, `geen` with an honest reason is the correct answer, not a
+failure. The logic lives in `script/require-werkpakket.sh`, with
+`script/require-werkpakket.test.sh` next to it (a `gh` stub) covering every path
+that decides green or red; both run as a pre-commit hook. Content changes to the
+roadmap itself go through the `roadmap` skill.
+
 ### Test Data
 
 **Never use real secret or private information in tests.** This is a public
@@ -262,6 +335,34 @@ as "unknown":
 - **`implementation`** — build state: `Implemented | Partially implemented | Not implemented`.
   Independent of `status` (code can land ahead of acceptance). Ground the value
   in the actual codebase, not the RFC's aspirations.
+
+### An accepted RFC is not rewritten
+
+Once an RFC is accepted it records what was decided then, so a change of design
+gets a **new RFC** and the old one goes to `status: Superseded` with a line
+pointing at its replacement. The text underneath stays as it was written. This
+is the same reason the published papers are frozen: a document that quietly
+tracks the code cannot be cited, and a reader who follows a reference has to
+find what the author wrote.
+
+The frontmatter is not the design. `status` moving to `Superseded` or
+`Rejected`, and `implementation` tracking what is built, are records *about* the
+document and are expected to change; that is what those fields are for. What
+stays put is the body: the claim the author made.
+
+What else needs no supersede: updating a reference when another document is
+renamed, and *adding* a note about what a later RFC did with the old decision.
+An RFC that is amended on one point, rather than replaced, keeps its status and
+gains a pointer; its own text stays as it was.
+
+What does need one: replacing the title, the central concept, or the field
+definitions. The case that produced this rule: schema v0.7.0 renames the channel
+RFC-012 describes from `untranslatables` to `markings`, and the first attempt
+rewrote RFC-012 to match. That would have made every existing citation to it
+point at a document about a different field, while a law file on schema v0.5.x
+still carries `untranslatables` and the engine still reads it. The RFC keeps its
+text and goes to `Superseded` instead, and the RFC introducing the new channel
+carries the new design.
 
 ## Code Reviews
 

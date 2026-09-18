@@ -9,6 +9,7 @@ import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api } from '../api.js';
 import { session, refreshSession } from '../session.js';
+import { b } from '../basePad.js';
 
 // Functionele sitenaam onder het woordmerk, per portaal vast; afgeleid
 // van de portal-prop zodat hij nooit per pagina kan verschillen.
@@ -83,6 +84,17 @@ function onSelect(event, item) {
     router.push(item.to);
   }
 }
+
+// Het menu-item rendert een echte <a href>. Links klikken vangt `onSelect` af,
+// maar middelklik, "openen in nieuw tabblad" en de statusbalk lezen het pad
+// zoals het er staat. Een `to` is relatief aan de router-basis, niet aan de
+// app-basis, dus `b()` volstaat hier niet: onder /napp/ moet `/nieuw` van het
+// aanvragersportaal /napp/aanvrager/nieuw worden. `router.resolve` kent die
+// basis al en levert het volledige pad.
+function itemHref(item) {
+  if (item.href) return item.href;
+  return item.to ? router.resolve(item.to).href : undefined;
+}
 </script>
 
 <template>
@@ -98,15 +110,15 @@ function onSelect(event, item) {
     <nldd-top-navigation-bar
       logo-title="Nederlandse autoriteit politieke partijen"
       :logo-subtitle="PORTAL_SUBTITLES[portal] ?? ''"
-      logo-href="/"
-      website-href="/"
+      :logo-href="b('/')"
+      :website-href="b('/')"
     >
       <nldd-menu-bar v-if="items.length" slot="global">
         <nldd-menu-bar-item
           v-for="item in items"
           :key="item.text"
           :text="item.text"
-          :href="item.href ?? item.to"
+          :href="itemHref(item)"
           :icon="item.icon"
           :current="isCurrent(item) || undefined"
           @click="onSelect($event, item)"

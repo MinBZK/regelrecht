@@ -53,7 +53,9 @@ async function initEngine() {
 
       const index = JSON.parse(await fetchText(b('/laws/index.json')));
       for (const entry of index) {
-        const yamlText = await fetchText(entry.path);
+        // `entry.path` komt uit het manifest dat copy-assets.js schrijft; dat
+        // is relatief, dus ook die gaat langs de basis.
+        const yamlText = await fetchText(b(entry.path));
         engineInstance.loadLaw(yamlText);
       }
       lawIndex.value = index;

@@ -3,6 +3,7 @@ import { glob } from 'astro/loaders';
 import {
   ONDERZOEK_IDS,
   BOUW_IDS,
+  BELEGGING_IDS,
   PRIORITEIT_IDS,
   OMVANG_IDS,
   CATEGORIE_IDS,
@@ -68,13 +69,35 @@ const rfcs = defineCollection({
  * src/data/roadmap-config.json, which a per-entry schema cannot see. That
  * check, and the samenhangIds one, live in assertReferencesResolve().
  */
+
+/*
+ * A werkpakket id is a slug: lowercase, digits, single hyphens between parts.
+ *
+ * It replaced a UUID. The id is the filename, the URL and what samenhangIds
+ * point at, and a UUID made all three unreadable — a list of three
+ * samenhangIds carried no information about the relation it recorded. The slug
+ * is derived from the titel once and then stays put; it is deliberately not
+ * kept in sync with the titel, because a reference that moves when a title is
+ * edited is exactly what makes a derived slug unusable as an identity.
+ *
+ * The pattern rejects uppercase rather than tolerating it. The filename must
+ * equal the id (assertReferencesResolve), that comparison is literal, and
+ * macOS is case-insensitive: a capital would look right locally and fail the
+ * build elsewhere.
+ */
+const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+const slug = () =>
+  z
+    .string()
+    .regex(SLUG, 'moet een slug zijn: kleine letters, cijfers en koppeltekens');
+
 const werkpakketten = defineCollection({
   loader: glob({
     pattern: '*.md',
     base: 'src/content/roadmap/werkpakketten',
   }),
   schema: z.object({
-    id: z.string().uuid(),
+    id: slug(),
     titel: z.string(),
     faseId: z.string(),
     disciplineId: z.string(),
@@ -105,7 +128,14 @@ const werkpakketten = defineCollection({
         ]),
       )
       .default([]),
-    samenhangIds: z.array(z.string().uuid()).default([]),
+    samenhangIds: z.array(slug()).default([]),
+    // Werkpakketten that have to be delivered before this one can start.
+    // Distinct from samenhangIds, which is a mutual "these belong together"
+    // and carries no order: this one is a direction in time, so it is written
+    // one way round and read both ways (the werkpakket page derives the
+    // reverse list itself). assertReferencesResolve() checks that every id
+    // exists, that nothing depends on itself, and that the graph has no cycle.
+    afhankelijkVan: z.array(slug()).default([]),
     // Two axes that genuinely diverge, so two fields rather than one.
     // A question can be answered without anything being built (onderzoek
     // 'beantwoord', bouw 'niet'), and a thing can be built while the question
@@ -117,6 +147,60 @@ const werkpakketten = defineCollection({
     // done", and the pages render an unset field as "niet bepaald".
     onderzoek: z.enum(ONDERZOEK_IDS).or(z.literal('')).default(''),
     bouw: z.enum(BOUW_IDS).or(z.literal('')).default(''),
+    /*
+     * Of het werkpakket belegd is: of iemand het heeft opgepakt.
+     *
+     * Een derde as naast `onderzoek` en `bouw`, en met opzet geen vierde
+     * voortgangsveld — dit zegt of er iemand op zit, niet hoe ver het is.
+     * Zie BELEGGING_STANDEN in lib/roadmap.ts voor de standen en het
+     * verschil tussen '' (niets gezegd) en 'vrij' (op te pakken).
+     *
+     * Eén object in plaats van losse velden: het is één feit, in één
+     * bewerking geschreven, en alleen zo is te controleren dat een datum
+     * zonder stand niets betekent.
+     *
+     * Het hele object mag ontbreken; dat is de minste-bewering-waarde en
+     * waar alle negenenveertig werkpakketten beginnen. `sinds` is een
+     * string en geen z.date(), om dezelfde reden als de datum van een RFC:
+     * geen tijdzoneverschuiving in de build.
+     *
+     * Er staat met opzet geen naam in, en geen lijst met issues of pull
+     * requests. De roadmap is publiek en vanaf de homepage gelinkt, en wie
+     * eraan werkt blijkt al uit de pull requests: die dragen een
+     * `Werkpakket: <slug>`-regel, en de werkpakketpagina zoekt daarop. Die
+     * index onderhoudt zichzelf; een lijst hier zou een tweede waarheid zijn
+     * die veroudert zodra iemand vergeet hem bij te werken.
+     */
+    belegging: z
+      .object({
+        stand: z.enum(BELEGGING_IDS).or(z.literal('')).default(''),
+        sinds: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/, "moet 'JJJJ-MM-DD' zijn")
+          .optional(),
+      })
+      .default({ stand: '' })
+      .superRefine((b, ctx) => {
+        // Zonder datum is niet te zien of dit vorige week of vorig jaar is
+        // opgepakt, en dat is precies wat een verjaarde claim zichtbaar maakt.
+        if ((b.stand === 'opgepakt' || b.stand === 'klaar') && !b.sinds) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['sinds'],
+            message: `belegging.stand '${b.stand}' vereist een \`sinds\`.`,
+          });
+        }
+        // Gegevens bij een stand die ze nergens rendert zouden stil zijn.
+        if (b.stand !== 'opgepakt' && b.stand !== 'klaar' && b.sinds) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['stand'],
+            message:
+              '`sinds` ingevuld terwijl `stand` niet ' +
+              "'opgepakt' of 'klaar' is; die datum rendert dan nergens.",
+          });
+        }
+      }),
     // RFC numbers whose design work belongs to this werkpakket, e.g. [13, 21].
     // The RFC keeps its own `implementation` field; this is a pointer, not a
     // copy of it. assertRfcReferences() checks each number exists.

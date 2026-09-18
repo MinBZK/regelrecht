@@ -6,18 +6,26 @@
  * Split out of index.astro so the (sizeable) card markup lives in one place
  * instead of being inlined once per fase column in the matrix template.
  *
- * Every card carries two attributes the filters read and nothing else uses:
- * `data-categorie` for the CSS-only categorie filter, and `data-zoek` for the
+ * Every card carries attributes that the page's scripts read and nothing else
+ * uses: `data-categorie` for the CSS-only categorie filter, `data-zoek` for the
  * zoekfilter — the werkpakket's full text, built here at build time so the
- * script does no more than an indexOf per card. That string holds text which
- * renders only on the detail page (toelichting, onderzoeksvragen); see
- * zoektekst() in lib/roadmap.ts for why.
+ * script does no more than an indexOf per card; that string holds text which
+ * renders only on the detail page (toelichting, onderzoeksvragen), see
+ * zoektekst() in lib/roadmap.ts for why — and `data-wp-id`,
+ * `data-afhankelijk-van` and `data-fase` for the afhankelijkhedenweergave.
+ *
+ * Where a card sits is not decided here. The dependency view places the cards
+ * in the browser, over the ones that are actually on screen; see the script in
+ * index.astro. Deciding it at build time put the layout and the two filters on
+ * different clocks, and a filtered-away card then left a hole in the matrix.
  */
 import {
   GEEN_CATEGORIE,
+  beleggingStand,
   getPrioriteit,
   getCategorie,
   getCapability,
+  getBelegging,
   zoektekst,
   type WerkpakketData,
 } from '~/lib/roadmap';
@@ -33,13 +41,39 @@ const { cel, class: className, headers } = Astro.props;
 ---
 
 <td class:list={['rr-matrix__cell', className]} headers={headers}>
-  <nldd-container gap="8">
+  {/*
+     A plain element rather than an nldd-container: with the dependency view on
+     this becomes a two-axis grid (a column per step of dependency, a row per
+     chain), and a container stacks in one direction only. Off, it is the same
+     stack of cards with the same gap the container gave it.
+  */}
+  <div class="rr-cel-raster">
     {
       cel.map((wp) => {
         const prioriteit = getPrioriteit(wp.data.prioriteit);
         const categorie = getCategorie(wp.data.categorie);
         const capability = getCapability(wp.data.capability);
+        const belegging = getBelegging(wp.data.belegging.stand);
         const tags = [
+          /* Alleen 'opgepakt' en 'klaar' krijgen een tag, 'vrij' niet. Vrij is
+             de stilzwijgende meerderheid — een leeg veld telt daarin mee, zie
+             getBelegging() — en zesenveertig kaarten met een tag die zegt dat
+             er niets aan de hand is, is ruis.
+
+             Dit maakt van vier tags er vijf op de kaarten die alle vier de
+             andere velden ingevuld hebben — vandaag precies één
+             (`aansluiten-op-bronnen-chronolexografie`). Dat is bewust: het
+             plafond waar de RFC-teller hieronder over spreekt gaat over
+             metadata die met de titel concurreert, en deze tag staat vóór de
+             andere omdat hij zegt of er iemand op zit. Loopt dit op, dan is
+             de vraag welke van de vijf weg mag, niet deze. */
+          belegging &&
+            belegging.id !== 'vrij' && {
+              color: belegging.tagColor,
+              text: belegging.label,
+              icon: belegging.id === 'klaar' ? 'done' : 'user',
+              label: belegging.label,
+            },
           prioriteit && {
             color: prioriteit.tagColor,
             text: prioriteit.label,
@@ -65,6 +99,7 @@ const { cel, class: className, headers } = Astro.props;
           <nldd-card
             class="rr-wp-card"
             href={`/roadmap/werkpakket/${wp.data.id}`}
+            background={belegging?.id === 'opgepakt' ? 'tinted' : undefined}
             accessible-label={[
               wp.data.titel,
               ...tags.map((t: any) => t.label),
@@ -73,7 +108,11 @@ const { cel, class: className, headers } = Astro.props;
                 : []),
             ].join(', ')}
             data-categorie={wp.data.categorie || GEEN_CATEGORIE}
+            data-belegging={beleggingStand(wp.data.belegging.stand)}
             data-zoek={zoektekst(wp.data)}
+            data-wp-id={wp.data.id}
+            data-fase={wp.data.faseId}
+            data-afhankelijk-van={wp.data.afhankelijkVan.join(' ') || undefined}
           >
             {/* nldd-card leaves padding to a nested container by design;
                 without one the content sits flush against the border. */}
@@ -87,12 +126,13 @@ const { cel, class: className, headers } = Astro.props;
                     <nldd-tag
                       color={tag.color}
                       text={tag.text}
+                      icon={tag.icon}
                       accessible-label={tag.label}
                       size="sm"
                     />
                   ))}
-                  {/* Not a tag: the card already carries up to four, and a
-                      fifth would make the title compete with its own
+                  {/* Not a tag: the card already carries up to five, and one
+                      more would make the title compete with its own
                       metadata. This is a quiet count of the design behind
                       the werkpakket — the detail page names them. */}
                   {wp.data.rfcs.length > 0 && (
@@ -107,5 +147,5 @@ const { cel, class: className, headers } = Astro.props;
         );
       })
     }
-  </nldd-container>
+  </div>
 </td>

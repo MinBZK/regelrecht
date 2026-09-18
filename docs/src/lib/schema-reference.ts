@@ -662,7 +662,7 @@ export function otherSubStructures(): Record<string, SubStructure[]> {
     'law-file': [
       ...expandInline(schema, '', ['preamble', 'procedure']),
     ],
-    articles: expandInline(article, 'articles[].', ['references']),
+    articles: expandInline(article, 'articles[].', ['placement', 'references']),
     procedure: expandInline(
       schema.properties?.procedure?.items ?? {},
       'procedure[].',

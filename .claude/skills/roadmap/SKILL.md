@@ -18,7 +18,7 @@ redenering erachter in de commits van PR #1317.
 ## Waar de inhoud staat
 
 ```
-docs/src/content/roadmap/werkpakketten/<uuid>.md   één bestand per werkpakket
+docs/src/content/roadmap/werkpakketten/<slug>.md   één bestand per werkpakket
 docs/src/data/roadmap-config.json                  de fases, disciplines en swimlanes
 ```
 
@@ -33,41 +33,51 @@ matrix toont dan twee kaarten die naar dezelfde pagina wijzen. De build vangt
 het (`id "…" wordt door meer dan één bestand gebruikt`), maar je hebt dan al
 gewerkt aan het verkeerde bestand.
 
-### De UUID moet gegenereerd worden
+### Het id is een slug, en die kies je
 
-**Schrijf nooit zelf een UUID op.** Een verzonnen UUID ziet er goed uit en komt
-door het schema — dat toetst alleen de vorm — maar hij is niet uniform
-getrokken. Een taalmodel dat er een "bedenkt" grijpt terug op patronen uit zijn
-invoer en herhaalt cijferreeksen; de kans op een botsing met een bestaand id is
-dan niet meer verwaarloosbaar. En een botsing is precies de fout die twee
-kaarten naar dezelfde pagina laat wijzen. Laat een generator het doen:
+Het `id` is een slug: kleine letters, cijfers, koppeltekens ertussen. Hij is
+afgeleid van de titel, maar hij ís de titel niet — je kiest hem één keer en
+daarna blijft hij staan.
+
+`Referentie casus I` → `referentie-casus-i`
+`Aansluiten op bronnen (chronolexografie)` → `aansluiten-op-bronnen-chronolexografie`
+
+Een paar regels, en waarom:
+
+- **Kleine letters, altijd.** Het schema weigert hoofdletters. De controle op
+  bestandsnaam-is-id vergelijkt letterlijk, en op macOS is het bestandssysteem
+  hoofdletter-ongevoelig: een hoofdletter lijkt lokaal in orde terwijl git de
+  afwijkende schrijfwijze vastlegt en de build bij een ander valt.
+- **Romeinse cijfers in een reeks blijven romeins.** `specificaties-i-…`,
+  `specificaties-ii-…`. Dat houdt de reeks op volgorde in `ls` en leest als de
+  titel.
+- **Kort waar de titel lang is.** `Hoe omgaan met partijen als Raad van State,
+  Sociaal-Cultureel Planbureau, CPB, etcetera?` werd `omgang-met-adviesorganen`.
+  Een slug die de hele titel uitschrijft is geen verwijzing meer maar een zin.
+- **Leesbaar boven volledig.** De slug wordt gelezen in een URL, in een lijst
+  `samenhangIds`, en in de `Werkpakket:`-regel van een pull request. Dat is
+  waar hij zijn werk doet.
+
+**Verander een slug niet als de titel verandert.** De slug is een verwijzing:
+er wijzen `samenhangIds` naar, er staan pull requests mee, en er is een URL van.
+Een titel bijwerken is redactie; een slug bijwerken is een hernoeming die je
+overal moet nalopen. Alleen doen als de slug echt niet meer klopt, en dan met
+dezelfde zorg als het verwijderen van een werkpakket (zie onder).
+
+Kies een slug die nog niet bestaat:
 
 ```bash
-node -e "console.log(require('node:crypto').randomUUID())"
+ls docs/src/content/roadmap/werkpakketten/
 ```
 
-Node is de veilige keuze omdat de docs-build er toch al op draait, en het geeft
-op elk platform hetzelfde resultaat: kleine letters, versie 4. Alternatieven,
-als je die liever hebt:
-
-| Waar | Commando |
-|---|---|
-| Overal met Python | `python3 -c "import uuid; print(uuid.uuid4())"` |
-| macOS, Linux met util-linux | `uuidgen \| tr 'A-Z' 'a-z'` |
-| Windows PowerShell | `[guid]::NewGuid().ToString()` |
-
-**Kleine letters, altijd.** `uuidgen` geeft op macOS hoofdletters terug, vandaar
-de `tr` erachter; PowerShell geeft al kleine letters. Het schema accepteert
-hoofdletters wel, maar de controle op bestandsnaam-is-id vergelijkt letterlijk,
-en op macOS is het bestandssysteem hoofdletter-ongevoelig: lokaal lijkt dan
-alles in orde terwijl git de afwijkende schrijfwijze vastlegt en de build bij
-een ander valt. Alle negentien bestaande ids zijn kleine letters; houd dat zo.
+De build valt op een dubbele (`id "…" wordt door meer dan één bestand
+gebruikt`), maar dan heb je al aan het verkeerde bestand gewerkt.
 
 Het bestand bevat alleen frontmatter, geen body:
 
 ```yaml
 ---
-id: <de uuid van hierboven>
+id: <de slug van hierboven>
 titel: Korte titel van het werkpakket
 faseId: wat
 disciplineId: recht
@@ -84,8 +94,11 @@ toelichting: |-
 volgorde: 1000
 onderzoek: ''
 bouw: ''
+belegging:
+  stand: ''
 rfcs: []
 onderzoeksvragen: []
+afhankelijkVan: []
 samenhangIds: []
 ---
 ```
@@ -109,8 +122,9 @@ build vallen met de naam van het werkpakket erbij.
 `capability` — `basis`, `ontwikkelen`, `simuleren`, `publiceren`, `analyseren`,
 `implementeren`, `verifieren`, of `''`.
 
-**Lege strings zijn normaal, geen tekortkoming.** Vijftien van de negentien
-werkpakketten hebben geen prioriteit, zes geen categorie. De roadmap groeit door
+**Lege strings zijn normaal, geen tekortkoming.** Negenentwintig van de
+negenenveertig werkpakketten hebben geen prioriteit, negentien geen categorie.
+De roadmap groeit door
 eerst een titel en een plek vast te leggen en de rest later in te vullen. Vul
 niets in om het vakje te vullen; een verzonnen prioriteit is slechter dan een
 lege.
@@ -133,14 +147,104 @@ dat er iets gebouwd is, en er kan iets staan terwijl de vraag erachter nog open
 is. Eén gecombineerde status zou in de helft van de gevallen een verkeerd beeld
 geven. Beide mogen leeg blijven; de pagina toont dan "Nog niet bepaald".
 
+`belegging.stand` — `vrij`, `opgepakt`, `klaar`, of `''`. Plus
+`belegging.sinds` (`'JJJJ-MM-DD'`, verplicht bij `opgepakt` en `klaar`).
+
+Dit is een derde as naast `onderzoek` en `bouw`, en met opzet geen vierde
+voortgangsveld: het zegt of er iemand op zit, niet hoe ver het is. `klaar` is
+hier een eigen stand en geen afleiding uit `onderzoek: beantwoord` +
+`bouw: wel` — een verkenning is klaar zonder dat er ooit iets gebouwd wordt.
+
+**`''` betekent `vrij`.** Een leeg veld zegt dat niemand zijn hand heeft
+opgestoken, en dat ís vrij. De pagina's lezen het zo (`getBelegging()` in
+`docs/src/lib/roadmap.ts`), het filter heeft er dus ook maar drie knoppen: Vrij,
+Opgepakt, Klaar. Je hoeft `vrij` nergens in te vullen — `''` laten staan is
+hetzelfde en is wat bijna alle werkpakketten doen.
+
+Dit stond hier andersom: `''` zou "er is niets over gezegd" betekenen en `vrij`
+een redactionele daad, want een roadmap waar alles op `vrij` staat nodigt
+niemand uit. Het bezwaar klopt, maar het antwoord was de verkeerde kant op.
+Zesenveertig van de negenenveertig stonden leeg en géén enkele op `vrij`, dus
+wie op "Vrij" filterde kreeg een lege matrix te zien terwijl juist die
+zesenveertig open lagen. Dat de kaarten niet volstromen met een tag die zegt
+dat er niets aan de hand is, wordt opgelost waar het hoort: `vrij` krijgt geen
+tag op de matrix, alleen `opgepakt` en `klaar`.
+
+**Er staat geen naam in, met opzet.** De roadmap is publiek en vanaf de
+homepage gelinkt. Wie eraan werkt blijkt uit de pull requests, die via de
+`Werkpakket:`-regel al aan het werkpakket hangen. Zet er dus geen `wie:` bij:
+dat zou een persoonsnaam van een collega op een publieke pagina zetten, en het
+veld gaat over óf het werk belegd is, niet over wie.
+
+**En geen lijst met issues of pull requests**, om dezelfde reden als waarom er
+geen labels per werkpakket zijn: de `Werkpakket:`-regel ís de index, en de
+werkpakketpagina zoekt erop. Een lijst hier zou met de hand bijgehouden moeten
+worden en verouderen zodra iemand dat vergeet.
+
+```yaml
+belegging:
+  stand: opgepakt
+  sinds: '2026-09-17'
+```
+
 `volgorde` — een getal dat de plek binnen één matrixcel bepaalt, laag eerst.
 Dit veld is verplicht en heeft met opzet geen default: een ontbrekend veld zou
 het werkpakket stilzwijgend bovenaan zetten. Gebruik stappen van 1000, dan kun
 je er later tussen schuiven zonder alles te hernummeren.
 
-`samenhangIds` — UUID's van andere werkpakketten. De build controleert of ze
+`samenhangIds` — slugs van andere werkpakketten. De build controleert of ze
 bestaan. Dit is eenrichtingsverkeer: zet je A → B, dan verschijnt B niet
 automatisch bij A. Zet 'm er handmatig bij als de relatie wederzijds is.
+
+`afhankelijkVan` — slugs van werkpakketten die af moeten zijn voordat dit
+werkpakket kan beginnen. Een andere soort relatie dan `samenhangIds`, en houd
+die twee uit elkaar: samenhang is wederzijds en zegt niets over volgorde,
+afhankelijkheid is een richting in de tijd.
+
+Zet het alleen neer waar het echt zo is. "Hangt hiermee samen" en "gaat hier
+logisch op volgen" zijn geen afhankelijkheid; de toets is of het tweede
+werkpakket zonder het eerste niet uitgevoerd kan worden.
+
+Je schrijft één kant op. De werkpakketpagina leidt de andere kant er zelf uit
+af en toont onder "Afhankelijkheden" allebei: waar dit werkpakket op wacht, en
+wat op dit werkpakket wacht. Zet de omgekeerde verwijzing dus niet handmatig in
+het andere bestand, want dan staat er een kring.
+
+De build valt op een id dat niet bestaat, op een werkpakket dat naar zichzelf
+wijst, en op een kring (`afhankelijkheden lopen rond: A → B → C → A`, met de
+titels in de volgorde waarin hij ze tegenkwam). Een kring betekent dat geen van
+die werkpakketten ooit kan beginnen; welke pijl de verkeerde is, is een
+inhoudelijk oordeel en geen bestandsfout.
+
+### Wat de matrix ermee doet
+
+Onder "Weergave" staat een schakelaar **Afhankelijkheden**, en die staat uit.
+De matrix is eerst een beeld van wat er te doen is; de afhankelijkheden zijn
+een tweede lezing die een flink bredere kolom kost. Zet je 'm aan, dan gebeuren
+er drie dingen tegelijk, en uit zet ze alle drie weer terug.
+
+De kaart schuift naar rechts, één stap per werkpakket in de langste keten
+achter zich binnen dezelfde fase. Een stap is een hele kaartbreedte plus de
+ruimte voor de pijl, dus een kaart staat echt naast zijn voorwaarde en niet er
+half overheen. Alleen binnen dezelfde fase geteld: wie op iets uit een eerdere
+fase wacht, staat er al voorbij door in een latere kolom te staan.
+
+De kaart gaat op de rij van de voorwaarde staan waar hij op wacht, zolang die
+plek vrij is. Daardoor loopt een keten op één lijn en zijn de pijlen recht.
+Staat die plek al vol, dan begint hij een rij eronder. Een kaart die in deze
+cel niets voor zich heeft begint altijd een eigen rij, zodat twee werkpakketten
+alleen naast elkaar staan als de een echt op de ander wacht.
+
+En de pijl zelf wordt getekend. Wijs een kaart aan en de hele keten waar hij in
+zit licht op, in beide richtingen doorgelopen; de rest van de matrix valt terug.
+
+Je bepaalt de plaatsing dus niet zelf. `volgorde` blijft wel gelden: dat bepaalt
+welke kaart als eerste een rij claimt, en daarmee de volgorde binnen de cel.
+
+Dat rekenwerk gebeurt in de browser en niet bij de build, over de kaarten die
+het zoekveld en het categoriefilter op dat moment laten staan. Filter je een
+kaart weg, dan schuift de rest aan in plaats van een gat te laten, en een keten
+loopt niet door over een kaart die niet op het scherm staat.
 
 ## Onderzoeksvragen
 
@@ -226,6 +330,43 @@ die daarop blokkeert zet de roadmap in de weg van het werk dat hij beschrijft.
 Niet elke RFC hoort trouwens bij een werkpakket — RFC-000 gaat over het
 RFC-proces zelf.
 
+## Een werkpakket oppakken
+
+Eén pull request, één bestand, twee regels:
+
+```yaml
+belegging:
+  stand: opgepakt
+  sinds: '2026-09-17'
+```
+
+De datum is de dag dat je het oppakt, niet de dag dat je klaar denkt te zijn.
+De kaart op de matrix krijgt een tint en een tag; de detailpagina toont de
+ouderdom ("sinds 3 maanden"), en dat is met opzet: een veld in de frontmatter
+verloopt niet, dus de pagina moet laten zien hoe oud een claim is.
+
+**Loslaten is dezelfde bewerking omgekeerd**, en een normale handeling, geen
+falen. Zet `stand` terug op `''` (of `vrij`, dat is hetzelfde) en haal `sinds`
+weg — dat laatste moet, want een datum bij een vrije stand rendert nergens en
+de build valt erop. Doe dat ook
+als je het werkpakket overdraagt: de belegging zegt dat het belegd is, niet
+door wie, dus een overdracht verandert er niets aan — alleen een werkpakket dat
+weer vrijkomt.
+
+Een werkpakket dat af is krijgt `stand: klaar` (met de datum waarop het af
+was). Dat is een uitspraak over het werkpakket als geheel, en niet hetzelfde
+als `onderzoek: beantwoord` plus `bouw: wel` — een verkenning is klaar zonder
+dat er ooit iets gebouwd is.
+
+Welke werkpakketten al te lang op `opgepakt` staan:
+
+```bash
+cd docs && node scripts/check-roadmap-belegging.mjs
+```
+
+Dat meldt en blokkeert nooit, net als `check-roadmap-rfcs.mjs`; het draait mee
+in `just docs-a11y`.
+
 ## Een werkpakket verplaatsen
 
 Binnen een cel: pas `volgorde` aan. Naar een andere cel: pas `faseId` of
@@ -239,18 +380,23 @@ Het bestand weggooien is niet genoeg: andere werkpakketten kunnen er via
 daarop, en noemt elk bestand dat opgeruimd moet worden:
 
 ```
-werkpakket 8faa572b-… (Controle en herstel): samenhangId "413459cd-…" bestaat niet
-werkpakket 992fa816-… (Discretionaire ruimte): samenhangId "413459cd-…" bestaat niet
+werkpakket controle-en-herstel (Controle en herstel): samenhangId "juridische-status-van-een-specificatie" bestaat niet
+werkpakket discretionaire-ruimte (Discretionaire ruimte): samenhangId "juridische-status-van-een-specificatie" bestaat niet
 ```
 
 Kijk dus eerst wie er naar verwijst, dan weet je vooraf wat je aanpast:
 
 ```bash
-grep -l '<uuid>' docs/src/content/roadmap/werkpakketten/*.md
+grep -l '<slug>' docs/src/content/roadmap/werkpakketten/*.md
 ```
 
 Het bestand zelf staat ook in die uitkomst, want zijn eigen `id` staat erin;
 de rest zijn de verwijzers.
+
+Een slug die al in een pull request of een commit is genoemd, leeft ook buiten
+de repo voort. Verwijderen mag, maar die verwijzingen wijzen daarna nergens
+heen; dat is een reden te meer om een slug niet lichtvaardig te hergebruiken
+voor een ánder werkpakket.
 
 De app die hier ooit stond ruimde die verwijzingen zelf op bij het verwijderen;
 dat deed een server die er niet meer is. Nu doet de build het niet voor je, hij
@@ -306,9 +452,15 @@ aan zodra je `/roadmap` echt opvraagt. Vertrouw op `docs-build`.
 - een onbekende `faseId` of `disciplineId`
 - een discipline die in geen, of in meer dan één, swimlane staat
 - een `samenhangId` dat nergens heen wijst
+- een `afhankelijkVan` dat nergens heen wijst, naar zichzelf wijst, of in een
+  kring loopt
 - twee bestanden met hetzelfde `id`, of een bestandsnaam die niet het `id` is
 - een `paper:`-anker dat niet in het paper staat
 - een RFC-nummer in `rfcs` dat niet bestaat
+- een `belegging` die niet klopt: `opgepakt` of `klaar` zonder `sinds`, een
+  `sinds` bij een stand die hem nergens toont, een datum in de toekomst, of
+  `vrij` op een werkpakket dat al beantwoord én gebouwd is — en een leeg veld
+  telt daarin mee als `vrij`, want dat is wat het betekent
 - een ontbrekende of foute waarde volgens het zod-schema
 
 Raak je ook de pagina's aan, draai dan `just docs-a11y` (duurt ~10 minuten en
@@ -323,19 +475,53 @@ afgaan en daarmee genegeerd worden — en hij zou het toevoegen van een
 half-uitgewerkt werkpakket blokkeren, wat juist de manier is waarop deze
 roadmap groeit.
 
+Dat geldt ook voor de belegging: de build controleert niet of iemand nog echt
+aan een opgepakt werkpakket werkt, of dat er pull requests aan hangen. Dat laatste zou een API-call in de
+build betekenen, en een netwerkhapering tot een rode build maken. Voor de vraag
+of een claim nog klopt is er `check-roadmap-belegging.mjs`, die meldt en niet
+blokkeert.
+
 Wil je weten waar de roadmap onaf is, kijk dan zelf:
 
 ```bash
 grep -L 'prioriteit: [a-z]' docs/src/content/roadmap/werkpakketten/*.md
 ```
 
+## Het werk dat bij een werkpakket hoort
+
+Elke pull request draagt onderaan zijn omschrijving een regel met de slug van
+het werkpakket waaraan hij bijdraagt:
+
+```
+Werkpakket: referentie-casus-i
+Werkpakket: geen — losse typefout in de docs
+```
+
+De check `Werkpakket genoemd` blokkeert zonder die regel
+(`script/require-werkpakket.sh`). De detailpagina van een werkpakket linkt
+terug: "Pull requests op GitHub" zoekt op precies die regel.
+
+**Er zijn geen labels per werkpakket, met opzet.** De zoekfunctie van GitHub
+indexeert de body van een pull request, dus de regel is zelf al de index.
+Negenenveertig labels zouden aangemaakt, toegepast en bij elke hernoeming
+bijgewerkt moeten worden — een tweede waarheid die uit de pas loopt met de
+regel die er toch al staat.
+
+Dat de regel een trailer is, op zijn eigen regel onderaan, is waarom dit later
+ook uit `git log` te oogsten is. Dat is de bedoeling: commits en PR's per
+werkpakket kunnen optellen zonder dat er aan de poort iets verandert.
+
 ## Twee dingen om te weten
 
-**De pagina staat bewust nergens gelinkt.** Niet in de navigatie, niet op de
-landingspagina, en hij is uitgesloten van de zoekindex. Hij is wel gewoon
-publiek bereikbaar, op zowel `regelrecht.rijks.app` als
-`docs.regelrecht.rijks.app`. Wil je hem gaan linken, dan is dat het moment om
-de inhoud publicatierijp te maken: er staan nu werktitels en lege velden in.
+**De pagina wordt sinds #1465 vanaf de homepage gelinkt**, met een eigen sectie
+en een verwijzing in de voettekst; hij is nog wel uitgesloten van de zoekindex.
+Hij staat daarmee in de etalage: wat je erin zet wordt gelezen door iemand die
+niet weet hoe het werk ervoor staat. Er staan nog werktitels en lege velden in,
+en dat is op zichzelf in orde (zie hierboven), maar een werktitel die je niet
+uitgelegd wilt hebben hoort er niet meer in.
+
+Dat hij gelinkt is, telt ook voor de slugs: een URL die van de homepage af te
+bereiken is, is een URL die iemand deelt. Hernoem er dus niet lichtvaardig een.
 
 **Er is geen ondersteuning voor meerdere papers.** Het veld heet `paper` en het
 anker wordt getoetst aan dat ene paper. Komt er een tweede, dan is dat een
