@@ -57,6 +57,10 @@ watch(() => state.presentationMode, (m) => presentation.setMode(m), { immediate:
 function onGlobalKey(e) {
   if (e.key === 'P' && e.shiftKey && !e.target?.closest?.('input, textarea, select, [contenteditable]')) {
     e.preventDefault();
+    // Een schakelaar, ook als het dek uit beeld staat. `start()` navigeert naar
+    // de dia, en dat is precies wat je níet wilt van iemand die zelf naar een
+    // ander tabblad is gelopen: die wil zijn toetsenbord terug, niet ergens
+    // anders heen gesleept worden. Uitzetten kan altijd, hier en met Escape.
     if (presentation.active.value) presentation.stop();
     else presentation.start(presentation.index.value);
   }
