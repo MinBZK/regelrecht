@@ -29,49 +29,6 @@
       <span v-if="!openVraag && statusTeller" class="as-status-teller">{{ statusTeller }}</span>
     </div>
 
-    <!-- De assistent legt een keuze voor en staat stil tot je antwoordt. Dit is
-         waar het gesprek zijn waarde krijgt: de beleidsmatige aanname wordt
-         gemaakt door de beleidsmaker, niet stilletjes door het model. -->
-    <nldd-inline-dialog
-      v-if="openVraag"
-      variant="alert"
-      icon="help"
-      :text="openVraag.vraag"
-      :supporting-text="openVraag.toelichting ?? ''"
-    >
-      <div slot="actions" class="as-opties">
-        <template v-if="openVraag.meerkeuze">
-          <!-- Het gevolg staat in het label zelf: nldd-checkbox-field heeft
-               geen supporting-label, en zonder gevolg is het geen keuze die
-               een beleidsmaker kan maken. -->
-          <nldd-checkbox-field
-            v-for="(o, i) in openVraag.opties"
-            :key="i"
-            :label="o.gevolg ? `${o.label} — ${o.gevolg}` : o.label"
-            :checked="aangevinkt.includes(o.label) ? true : undefined"
-            @change="vinkAan(o.label, $event)"
-          ></nldd-checkbox-field>
-          <nldd-button
-            size="sm"
-            variant="primary"
-            text="Doorgeven"
-            :disabled="!aangevinkt.length ? true : undefined"
-            @click="beantwoord(aangevinkt)"
-          ></nldd-button>
-        </template>
-        <template v-else>
-          <nldd-button
-            v-for="(o, i) in openVraag.opties"
-            :key="i"
-            size="sm"
-            :variant="i === 0 ? 'primary' : 'secondary'"
-            :text="o.gevolg ? `${o.label} — ${o.gevolg}` : o.label"
-            @click="beantwoord([o.label])"
-          ></nldd-button>
-        </template>
-      </div>
-    </nldd-inline-dialog>
-
     <optimalisatiepad-chart
       v-if="modus === 'doel' && pad.length"
       :pad="pad"
@@ -123,9 +80,47 @@
           📊 Simulatie ({{ item.doel }}<span v-if="item.n">, n={{ item.n }}</span>):
           {{ item.pct !== null ? percent(item.pct, 1) + ' betalingsproblemen' : 'klaar' }}
         </template>
-        <template v-else-if="item.type === 'vraag'">❓ {{ item.vraag }}</template>
+        <template v-else-if="item.type === 'vraag'">{{ item.vraag }}</template>
         <template v-else-if="item.type === 'gebruiker'">{{ item.tekst }}</template>
         <template v-else-if="item.type === 'fout'">⚠️ {{ item.melding }}</template>
+      </div>
+
+      <!-- De openstaande keuze staat onderaan het gesprek, op dezelfde plek
+           waar het antwoord van de assistent zou komen: een vraag van de
+           assistent is een beurt, geen waarschuwing boven het scherm. -->
+      <div v-if="openVraag" class="as-keuze">
+        <p v-if="openVraag.toelichting" class="as-keuze-toelichting">{{ openVraag.toelichting }}</p>
+        <div class="as-opties">
+          <template v-if="openVraag.meerkeuze">
+            <!-- Het gevolg staat in het label zelf: nldd-checkbox-field heeft
+                 geen supporting-label, en zonder gevolg is het geen keuze die
+                 een beleidsmaker kan maken. -->
+            <nldd-checkbox-field
+              v-for="(o, i) in openVraag.opties"
+              :key="i"
+              :label="o.gevolg ? `${o.label} — ${o.gevolg}` : o.label"
+              :checked="aangevinkt.includes(o.label) ? true : undefined"
+              @change="vinkAan(o.label, $event)"
+            ></nldd-checkbox-field>
+            <nldd-button
+              size="sm"
+              variant="primary"
+              text="Doorgeven"
+              :disabled="!aangevinkt.length ? true : undefined"
+              @click="beantwoord(aangevinkt)"
+            ></nldd-button>
+          </template>
+          <template v-else>
+            <nldd-button
+              v-for="(o, i) in openVraag.opties"
+              :key="i"
+              size="sm"
+              :variant="i === 0 ? 'primary' : 'secondary'"
+              :text="o.gevolg ? `${o.label} — ${o.gevolg}` : o.label"
+              @click="beantwoord([o.label])"
+            ></nldd-button>
+          </template>
+        </div>
       </div>
     </div>
 
@@ -582,6 +577,18 @@ function takeOverlays() {
 .as-simulatie { color: var(--semantics-content-secondary-color); }
 .as-fout { color: var(--semantics-content-critical-color); }
 .as-vraag { color: var(--semantics-content-accent-color); font-weight: 600; }
+/* De openstaande keuze hoort bij de laatste beurt van de assistent: links
+   uitgelijnd, knoppen eronder, geen kader eromheen. Een gecentreerde dialoog
+   boven het gesprek las als een systeemmelding in plaats van als een vraag. */
+.as-keuze { display: flex; flex-direction: column; gap: var(--primitives-space-8); }
+.as-keuze-toelichting {
+  margin: 0; font-size: 0.85em;
+  color: var(--semantics-content-secondary-color);
+}
+.as-opties {
+  display: flex; flex-direction: column; gap: var(--primitives-space-8);
+  align-items: flex-start;
+}
 /* Wat de gebruiker zegt, als bubbel rechts; alles van de assistent blijft
    links. Zo is met één blik te zien wie wat zei, zonder dat er een emoji voor
    hoeft te staan. */
@@ -594,7 +601,6 @@ function takeOverlays() {
   border: 1px solid var(--semantics-dividers-color);
   color: var(--semantics-content-color);
 }
-.as-opties { display: flex; flex-direction: column; gap: var(--primitives-space-8); align-items: flex-start; }
 .as-voorbeelden > summary {
   cursor: pointer; list-style: none;
   font-size: 0.85em; font-weight: 600;
