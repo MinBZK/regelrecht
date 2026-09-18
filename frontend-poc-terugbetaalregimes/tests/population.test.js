@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { generatePopulation } from '../src/sim/population.js';
 import { aggregate } from '../src/sim/metrics.js';
 import { simulate } from '../src/sim/simulate.js';

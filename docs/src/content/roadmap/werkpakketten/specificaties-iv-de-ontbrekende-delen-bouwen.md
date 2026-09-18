@@ -54,6 +54,8 @@ rfcs:
   - 30
   - 31
   - 32
+afhankelijkVan:
+  - specificaties-ii-enrichment-overhaul-landen
 samenhangIds:
   - specificaties-i-documentatie-op-orde
   - specificaties-iii-gaten-vinden-met-de-enricher
