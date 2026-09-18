@@ -68,6 +68,11 @@ COPY frontend-poc-terugbetaalregimes/package.json frontend-poc-terugbetaalregime
 COPY frontend-poc-nieuwkomersbekostiging/package.json frontend-poc-nieuwkomersbekostiging/
 RUN npm ci --ignore-scripts
 
+# De bron van het gedeelde pakket. npm ci hierboven legt alleen de symlink in
+# node_modules; zonder deze kopie staat daar een lege map en valt de build om
+# op de imports uit de pocs (Paneel, de Gherkin-runner, useBewaardeStand).
+COPY packages/frontend-shared/ packages/frontend-shared/
+
 # Het portaal: alleen het ontwerpsysteem voor zijn eigen twee pagina's.
 COPY frontend-poc-portal/ frontend-poc-portal/
 RUN npm run build -w poc-portal-assets
