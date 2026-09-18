@@ -6,7 +6,7 @@
  * burger-view toont.
  */
 import { ref, computed } from 'vue';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { b } from '../basePad.js';
 import { leesStand, bewaarStand } from './useBewaardeStand.js';
 

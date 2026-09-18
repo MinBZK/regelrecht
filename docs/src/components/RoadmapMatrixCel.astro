@@ -21,7 +21,7 @@
  */
 import {
   GEEN_CATEGORIE,
-  GEEN_BELEGGING,
+  beleggingStand,
   getPrioriteit,
   getCategorie,
   getCapability,
@@ -55,10 +55,10 @@ const { cel, class: className, headers } = Astro.props;
         const capability = getCapability(wp.data.capability);
         const belegging = getBelegging(wp.data.belegging.stand);
         const tags = [
-          /* Alleen 'opgepakt' en 'klaar' krijgen een tag, niet 'vrij' en niet
-             de lege stand. Die twee zijn de stilzwijgende meerderheid, en
-             zesenveertig kaarten met een tag die zegt dat er niets aan de
-             hand is, is ruis.
+          /* Alleen 'opgepakt' en 'klaar' krijgen een tag, 'vrij' niet. Vrij is
+             de stilzwijgende meerderheid — een leeg veld telt daarin mee, zie
+             getBelegging() — en zesenveertig kaarten met een tag die zegt dat
+             er niets aan de hand is, is ruis.
 
              Dit maakt van vier tags er vijf op de kaarten die alle vier de
              andere velden ingevuld hebben — vandaag precies één
@@ -108,7 +108,7 @@ const { cel, class: className, headers } = Astro.props;
                 : []),
             ].join(', ')}
             data-categorie={wp.data.categorie || GEEN_CATEGORIE}
-            data-belegging={wp.data.belegging.stand || GEEN_BELEGGING}
+            data-belegging={beleggingStand(wp.data.belegging.stand)}
             data-zoek={zoektekst(wp.data)}
             data-wp-id={wp.data.id}
             data-fase={wp.data.faseId}
