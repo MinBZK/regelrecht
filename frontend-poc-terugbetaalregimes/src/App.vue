@@ -5,8 +5,8 @@
       <nldd-top-navigation-bar
         logo-title="Terugbetalen studieschuld"
         logo-subtitle="OCW/DUO-casus · Stand van de Uitvoering 2026"
-        logo-href="/beleid"
-        website-href="/beleid"
+        :logo-href="b('/beleid')"
+        :website-href="b('/beleid')"
         @click.prevent
       >
         <nldd-menu-bar slot="global">
@@ -50,6 +50,7 @@
 import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useThema } from './composables/useThema.js';
+import { b } from './basePad.js';
 import WerkversieBalk from './components/WerkversieBalk.vue';
 
 const route = useRoute();
