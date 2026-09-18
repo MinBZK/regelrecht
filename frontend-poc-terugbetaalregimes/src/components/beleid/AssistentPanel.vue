@@ -77,8 +77,10 @@ import { percent } from '../../lib/format.js';
 import { b } from '../../basePad.js';
 import OptimalisatiepadChart from './OptimalisatiepadChart.vue';
 
-const emit = defineEmits(['metrics']);
-
+// Geen `metrics`-emit meer. De assistent meet met zijn eigen n op zijn eigen
+// tussenstand; die cijfers naast de tegels zetten zou de doorrekening van de
+// gebruiker stil overschrijven met een tussenmeting. Ze horen thuis in de
+// feed en in het optimalisatiepad hieronder, en nergens anders.
 const { streaming, run, abort } = useAssistent();
 const { applyOverlays, lawDocsFor, werkversie, werkversieLabel } = useLawStore();
 
@@ -159,7 +161,6 @@ async function submit() {
     } else if (ev.type === 'simulatie') {
       const pct = ev.metrics?.pctBetalingsprobleem ?? null;
       feed.value.push({ type: 'simulatie', doel: ev.doel, n: ev.n, pct });
-      if (ev.metrics) emit('metrics', ev.metrics);
       if (ev.doel === 'populatie' && pct !== null) {
         pad.value.push({ iteratie: ++iteratie, pct });
       }

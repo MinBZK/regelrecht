@@ -52,8 +52,15 @@ if (!fs.existsSync(MCP_SERVER) || !fs.existsSync(PROMPT_BESTAND)) {
   process.exit(1);
 }
 
-// Hosted staat er geen schrijfbare checkout onder deze server, dus "bewaar als
-// variant" (dat een git-worktree maakt) kan daar niet. Lokaal wel.
+// "Bewaar als variant" maakt een git-branch in de casus-checkout. Hosted staat
+// die er niet (POC_VARIANT_OPSLAG=0 in start.sh), en lokaal staat de vlag ook
+// op 0: handleVariant draagt nog de paden van de losse PoC-repo van voor de
+// verhuizing naar de monorepo. CASUS_DIR wijst daar naar `packages/`, dus het
+// zou schrijven in `packages/corpus/` (een Rust-crate) en daarna een
+// copy-assets.js zoeken op `packages/app/scripts/` die niet bestaat.
+//
+// De route is dus nergens werkend, en een 410 die zegt "kan alleen lokaal" is
+// daarmee zelf achterhaald. Varianten bewaren loopt via de browser-opslag.
 const VARIANT_OPSLAG = process.env.POC_VARIANT_OPSLAG !== '0';
 
 const SYSTEM = fs.readFileSync(PROMPT_BESTAND, 'utf8');

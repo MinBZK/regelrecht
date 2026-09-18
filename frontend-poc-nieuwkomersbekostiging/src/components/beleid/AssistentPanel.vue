@@ -76,8 +76,10 @@ import { useLawStore } from '../../engine/lawStore.js';
 import { euroCompact } from '../../lib/format.js';
 import { b } from '../../basePad.js';
 
-const emit = defineEmits(['metrics']);
-
+// Geen `metrics`-emit meer. De assistent meet met zijn eigen n op zijn eigen
+// tussenstand; die cijfers naast de tegels zetten zou de doorrekening van de
+// gebruiker stil overschrijven met een tussenmeting. Ze horen thuis in de
+// feed, en straks in het optimalisatiepad.
 const { streaming, run, abort } = useAssistent();
 
 /** Minimale markdown voor de assistenttekst: vet, code, regeleinden; de rest blijft tekst. */
@@ -190,7 +192,6 @@ async function submit() {
       feed.value.push({ type: 'tool', naam: ev.naam, inputText });
     } else if (ev.type === 'simulatie') {
       feed.value.push({ type: 'simulatie', doel: ev.doel, n: ev.n, samenvatting: samenvatting(ev.metrics) });
-      if (ev.metrics) emit('metrics', ev.metrics);
     } else if (ev.type === 'klaar') {
       overlays.value = ev.overlays ?? null;
       handelingenYaml.value = ev.handelingen ?? null;

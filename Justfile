@@ -896,24 +896,42 @@ poc: poc-build
 # POC_ASSISTENT_<CASUS> gezet is, dus `just poc` moet die variabele kennen:
 #
 #     POC_ASSISTENT_TERUGBETAALREGIMES=http://127.0.0.1:3600 just poc
+#     POC_ASSISTENT_NIEUWKOMERSBEKOSTIGING=http://127.0.0.1:3700 just poc
+#
+# Wie de vite-dev-server gebruikt (`npm run dev -w poc-<casus>`) heeft dat niet
+# nodig: die proxyt /api zelf naar dezelfde poort.
 #
 # Vereist een ingelogde Claude CLI (`claude setup-token`) of ANTHROPIC_API_KEY;
 # zonder allebei weigert de assistent te starten.
 
 # Start de beleidsassistent van één casus (naast `just poc`)
-poc-assistent casus="terugbetaalregimes" poort="3600":
+#
+# De poort leidt standaard uit de casus, want elke app proxyt /api naar een
+# eigen poort (vite.config.js): terugbetaalregimes naar 3600,
+# nieuwkomersbekostiging naar 3700. Een vaste standaard van 3600 startte de
+# assistent van nieuwkomers op een poort waar zijn app niet keek, en dat
+# leest als "de backend draait niet" zonder dat er iets faalt.
+poc-assistent casus="terugbetaalregimes" poort="":
     #!/usr/bin/env bash
     set -euo pipefail
     if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}${ANTHROPIC_API_KEY:-}" ]; then
       echo "geen CLAUDE_CODE_OAUTH_TOKEN of ANTHROPIC_API_KEY; draai eerst \`claude setup-token\`" >&2
       exit 1
     fi
-    echo "beleidsassistent {{casus}} → http://127.0.0.1:{{poort}}"
+    poort="{{poort}}"
+    if [ -z "$poort" ]; then
+      case "{{casus}}" in
+        terugbetaalregimes) poort=3600 ;;
+        nieuwkomersbekostiging) poort=3700 ;;
+        *) echo "onbekende casus {{casus}}: geef de poort mee" >&2; exit 1 ;;
+      esac
+    fi
+    echo "beleidsassistent {{casus}} → http://127.0.0.1:$poort"
     POC_CASUS={{casus}} \
     POC_CASUS_DIR="$(pwd)/corpus-poc/{{casus}}" \
     POC_WASM_DIR="$(pwd)/.poc-static/{{casus}}/wasm/pkg" \
     POC_VARIANT_OPSLAG=0 \
-    PORT={{poort}} \
+    PORT="$poort" \
     node packages/poc-assistent/index.js
 
 # --- Architecture model ---
