@@ -1,7 +1,7 @@
 /**
  * Pure helpers om een definitie-waarde in een regelrecht-YAML-tekst te
- * lezen of te vervangen, zonder de lawStore te raken. Gebruikt door de
- * budgetneutraal-oplosser, die kandidaat-YAML's naar de worker stuurt.
+ * lezen of te vervangen, zonder de lawStore te raken. Gebruikt door het
+ * parameterpaneel en door de MCP-tools van de beleidsassistent.
  */
 import * as yaml from 'js-yaml';
 
@@ -61,6 +61,81 @@ export function patchDefinitionText(yamlText, article, name, value) {
     }
   }
   return null;
+}
+
+/** De wettekst (`text:`) van één artikel, of undefined. */
+export function readArticleText(yamlText, article) {
+  const doc = yaml.load(yamlText);
+  const art = (doc?.articles ?? []).find((a) => String(a.number) === String(article));
+  return art?.text;
+}
+
+/**
+ * Vervang de wettekst (`text:`) van één artikel, met behoud van de
+ * blokstijl die er stond (`>-` of `|`).
+ *
+ * Waarom een tekstpatch en geen yaml.dump: dumpen herschrijft het hele
+ * document en gooit commentaar en inspringing overhoop. De diff die de
+ * gebruiker te zien krijgt moet de wetswijziging tonen, niet duizend regels
+ * herschikking.
+ *
+ * Waarom dit bestaat: een artikel draagt zijn wettekst naast de
+ * machine-leesbare regels. Werd alleen de waarde gepatcht, dan bleef de proza
+ * de oude regel vertellen, en dat is in een demo over wetgeving precies de
+ * verkeerde indruk: de wet is de tekst.
+ */
+export function patchArticleText(yamlText, article, nieuweTekst) {
+  const lines = yamlText.split('\n');
+  const artRe = /^(\s*)-\s*number:\s*(['"]?)(.+?)\2\s*$/;
+  let start = -1;
+  let itemIndent = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(artRe);
+    if (m && m[3] === String(article)) { start = i; itemIndent = m[1].length; break; }
+  }
+  if (start < 0) throw new Error(`artikel ${article} niet gevonden`);
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i++) {
+    if (artRe.test(lines[i])) { end = i; break; }
+  }
+
+  // `text:` van dit artikel: twee spaties dieper dan het streepje van het item.
+  const keyIndent = itemIndent + 2;
+  let textRegel = -1;
+  for (let i = start + 1; i < end; i++) {
+    const m = lines[i].match(/^(\s*)text:(.*)$/);
+    if (m && m[1].length === keyIndent) { textRegel = i; break; }
+  }
+  if (textRegel < 0) throw new Error(`artikel ${article} heeft geen wettekst om te wijzigen`);
+
+  // De stijl aanhouden die er stond; zonder blokindicator wordt het `>-`,
+  // want dat is wat het corpus overwegend gebruikt voor lopende tekst.
+  const kop = lines[textRegel].match(/^(\s*)text:\s*(\S*)/);
+  const stijl = /^[|>]/.test(kop[2] ?? '') ? kop[2] : '>-';
+
+  // Alles wat bij deze waarde hoort: de ingesprongen regels eronder.
+  let waardeEind = textRegel + 1;
+  while (waardeEind < end) {
+    const regel = lines[waardeEind];
+    if (regel.trim() === '') { waardeEind++; continue; }
+    if (regel.match(/^(\s*)/)[1].length <= keyIndent) break;
+    waardeEind++;
+  }
+
+  const inhoudIndent = ' '.repeat(keyIndent + 2);
+  const nieuweRegels = String(nieuweTekst)
+    .replace(/\s+$/, '')
+    .split('\n')
+    .map((r) => (r.trim() ? inhoudIndent + r.trim() : ''));
+
+  lines.splice(textRegel, waardeEind - textRegel, `${' '.repeat(keyIndent)}text: ${stijl}`, ...nieuweRegels);
+  const nieuw = lines.join('\n');
+  // Bewijs dat het nog geldige YAML is en dat de tekst echt is aangekomen;
+  // een kapotte wet valt anders pas in de engine op.
+  const doc = yaml.load(nieuw);
+  const art = (doc?.articles ?? []).find((a) => String(a.number) === String(article));
+  if (typeof art?.text !== 'string') throw new Error('wettekst kon niet worden weggeschreven');
+  return nieuw;
 }
 
 /**

@@ -2,10 +2,16 @@
   <div v-if="ready" class="wv" :class="{ 'wv-variant': !!werkversie, 'wv-bewerkt': changeCount > 0 }">
     <div class="wv-links">
       <span class="wv-label">Werkversie</span>
+      <!-- Eigen varianten apart gegroepeerd: ze zien er in een uitkomst net zo
+           stellig uit als een variant uit het dossier, terwijl ze van de
+           gebruiker zelf komen en alleen in deze browser staan. -->
       <nldd-dropdown :key="`wv:${werkversie}:${variants.length}:${herteken}`" size="sm" width="360px" @change="kies($event.detail?.value ?? '')">
         <select :value="werkversie ?? ''" aria-label="Kies de werkversie: wat je bewerkt">
           <option value="">Huidig recht (basis)</option>
-          <option v-for="v in variants" :key="v.id" :value="v.id">{{ variantMetSoort(kortTitel(v)) }}</option>
+          <option v-for="v in dossierVarianten" :key="v.id" :value="v.id">{{ variantMetSoort(kortTitel(v)) }}</option>
+          <optgroup v-if="eigenVarianten.length" label="Zelf bewaard (deze browser)">
+            <option v-for="v in eigenVarianten" :key="v.id" :value="v.id">{{ v.title }}</option>
+          </optgroup>
         </select>
       </nldd-dropdown>
       <span class="wv-status">
@@ -16,7 +22,8 @@
     <div class="wv-rechts">
       <nldd-button size="sm" text="Bekijk wijzigingen" start-icon="document" variant="neutral-transparent" :disabled="!werkversie && changeCount === 0 ? true : undefined" @click="diffOpen = true"></nldd-button>
       <nldd-button size="sm" text="Terugzetten" start-icon="undo" variant="neutral-transparent" :disabled="changeCount === 0 ? true : undefined" @click="resetChanges"></nldd-button>
-      <nldd-button v-if="variantOpslag" size="sm" text="Bewaar als variant" start-icon="save" variant="secondary" :disabled="changeCount === 0 ? true : undefined" @click="opslaanOpen = !opslaanOpen"></nldd-button>
+      <nldd-button size="sm" text="Bewaar als variant" start-icon="save" variant="secondary" :disabled="changeCount === 0 ? true : undefined" @click="opslaanOpen = !opslaanOpen"></nldd-button>
+      <nldd-button v-if="eigenWerkversie" size="sm" text="Verwijder variant" start-icon="remove" variant="neutral-transparent" @click="verwijderOpen = true"></nldd-button>
       <!-- "Terugzetten" hierboven maakt bewerkingen in de wet ongedaan; deze
            knop wist wat de browser onthoudt (kolommen, persona, keuzes,
            populatie-instellingen) en begint de demo schoon. -->
@@ -50,24 +57,44 @@
 
     <div v-if="opslaanOpen" class="wv-breed wv-opslaan">
       <p class="wv-uitleg">
-        Maakt een git-branch <code>variant/&lt;sleutel&gt;</code> met de bewerkte documenten
-        {{ werkversie ? `(de branch van ${werkversieLabel} plus jouw bewerkingen)` : '' }}
-        en zet die als werkversie klaar. De branch blijft lokaal tot je hem pusht.
+        Bewaart de bewerkte documenten
+        {{ werkversie ? `(${werkversieLabel} plus jouw bewerkingen)` : '' }}
+        als eigen variant en zet die als werkversie klaar. Daarna staat hij als kolom naast huidig recht,
+        net als de varianten uit het dossier.
+      </p>
+      <p class="wv-uitleg">
+        <strong>In deze browser.</strong> Een eigen variant gaat niet mee naar een ander apparaat of een
+        collega, en is weg als je je browsergegevens wist. Hij overleeft wel een ververs en "Begin opnieuw".
       </p>
       <div class="wv-velden">
         <nldd-form-field label="Titel" supporting-label="korte omschrijving, bijvoorbeeld: voet naar 90% van het minimumloon">
           <nldd-text-field size="sm" :value="titel" @input="titel = $event.detail?.value ?? titel"></nldd-text-field>
         </nldd-form-field>
-        <nldd-form-field label="Sleutel" supporting-label="branchnaam: variant/<sleutel>">
-          <nldd-text-field size="sm" :value="sleutel" @input="sleutelHandmatig = true; sleutel = $event.detail?.value ?? sleutel"></nldd-text-field>
-        </nldd-form-field>
       </div>
       <div class="wv-knoppen">
-        <nldd-button size="sm" text="Bewaar" variant="primary" :disabled="!titel.trim() || !sleutelOk || bezig ? true : undefined" @click="opslaan"></nldd-button>
+        <nldd-button size="sm" text="Bewaar" variant="primary" :disabled="!titel.trim() || bezig ? true : undefined" @click="opslaan"></nldd-button>
         <nldd-button size="sm" text="Annuleren" variant="neutral-transparent" @click="opslaanOpen = false"></nldd-button>
         <span v-if="bezig" class="wv-status">bezig…</span>
       </div>
     </div>
+
+    <nldd-banner v-if="verwijderOpen" variant="warning" class="wv-breed">
+      {{ werkversieLabel }} verwijderen? Deze variant staat alleen in deze browser, dus hij is daarna weg.
+      De werkversie valt terug op huidig recht.
+      <span class="wv-knoppen">
+        <nldd-button size="sm" text="Verwijderen" variant="primary" @click="verwijder"></nldd-button>
+        <nldd-button size="sm" text="Annuleren" variant="neutral-transparent" @click="verwijderOpen = false"></nldd-button>
+      </span>
+    </nldd-banner>
+
+    <!-- De wet is gewijzigd sinds deze variant is bewaard. De bewerking staat
+         dus op een tekst die er niet meer zo staat; dat hoort de gebruiker te
+         weten voordat hij een uitkomst gelooft. -->
+    <nldd-banner v-if="driftPaden.length" variant="warning" class="wv-breed">
+      {{ werkversieLabel }} is bewaard op een oudere versie van
+      {{ driftPaden.length === 1 ? 'een wet' : `${driftPaden.length} wetten` }} in dit dossier. De variant
+      rekent met de tekst van toen; huidig recht is sindsdien gewijzigd.
+    </nldd-banner>
     <nldd-banner v-if="melding" :variant="meldingSoort" class="wv-breed" dismissible @dismiss="melding = ''">{{ melding }}</nldd-banner>
   </div>
   <diff-sheet :open="diffOpen" @close="diffOpen = false" />
@@ -83,17 +110,15 @@ import { ref, computed, watch } from 'vue';
 import { useEngine } from '../engine/useEngine.js';
 import { useLawStore, kortTitel } from '../engine/lawStore.js';
 import { variantMetSoort } from '../lib/regimeFacts.js';
-import { b } from '../basePad.js';
-import { useAssistent } from '../composables/useAssistent.js';
 import { wisStand, heeftBewaardeStand } from '../composables/useBewaardeStand.js';
 import DiffSheet from './beleid/DiffSheet.vue';
 
 const { ready } = useEngine();
-// De assistent-backend zegt of een variant hier opgeslagen kan worden.
-// checkHealth() is idempotent en gedeeld met het assistent-paneel.
-const { variantOpslag, checkHealth } = useAssistent();
-checkHealth();
-const { variants, werkversie, werkversieLabel, changeCount, setWerkversie, resetChanges, editedFilesForSave, reloadVariants } = useLawStore();
+const {
+  variants, werkversie, werkversieLabel, changeCount, version,
+  setWerkversie, resetChanges,
+  bewaarAlsBrowserVariant, verwijderEigenVariant, variantDrift, isBrowserVariant,
+} = useLawStore();
 
 const diffOpen = ref(false);
 const wisselNaar = ref(null); // '' = huidig recht, anders variant-id; null = geen wissel gevraagd
@@ -101,19 +126,25 @@ const herteken = ref(0); // bumpen zet de keuzelijst terug op de werkversie na a
 const opnieuwOpen = ref(false);
 const ietsBewaard = heeftBewaardeStand();
 const opslaanOpen = ref(false);
+const verwijderOpen = ref(false);
 const titel = ref('');
-const sleutel = ref('');
 const bezig = ref(false);
 const melding = ref('');
 const meldingSoort = ref('accent');
 
-const sleutelOk = computed(() => /^[a-z0-9][a-z0-9-]{1,40}$/.test(sleutel.value));
+/** Is de werkversie een variant die de gebruiker zelf bewaarde? */
+const eigenWerkversie = computed(() => isBrowserVariant(werkversie.value));
 
-const sleutelHandmatig = ref(false); // true zodra de gebruiker de sleutel zelf aanpaste
-watch(titel, (t) => {
-  // Sleutel afleiden van de titel zolang de gebruiker hem niet zelf aanpaste.
-  const auto = t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
-  if (!sleutelHandmatig.value) sleutel.value = auto;
+const dossierVarianten = computed(() => variants.value.filter((v) => !isBrowserVariant(v.id)));
+const eigenVarianten = computed(() => variants.value.filter((v) => isBrowserVariant(v.id)));
+
+/**
+ * Wetten waarvan de basis is gewijzigd sinds deze eigen variant is bewaard.
+ * Hangt aan `version` zodat de melding meebeweegt met een wissel van werkversie.
+ */
+const driftPaden = computed(() => {
+  version.value;
+  return werkversie.value ? variantDrift(werkversie.value).paden : [];
 });
 
 function kies(value) {
@@ -145,34 +176,29 @@ async function opslaan() {
   bezig.value = true;
   melding.value = '';
   try {
-    const bestanden = editedFilesForSave();
-    const res = await fetch(b('/api/variant'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sleutel: sleutel.value, titel: titel.value.trim(), bestanden, basis: werkversie.value }),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.fout ?? `Backend gaf ${res.status}`);
-    const id = body.id ?? sleutel.value;
-    const branch = body.branch ?? `variant/${id}`;
+    await bewaarAlsBrowserVariant(titel.value);
     opslaanOpen.value = false;
     titel.value = '';
-    sleutel.value = '';
-    sleutelHandmatig.value = false;
-    try {
-      await reloadVariants();
-      await setWerkversie(id);
-      meldingSoort.value = 'success';
-      melding.value = `Bewaard als branch ${branch}; de nieuwe variant is nu de werkversie.`;
-    } catch (e) {
-      meldingSoort.value = 'warning';
-      melding.value = `Bewaard als branch ${branch}, maar het laden van de nieuwe variant lukte niet (${e?.message ?? e}). Herlaad de pagina.`;
-    }
+    meldingSoort.value = 'success';
+    melding.value = 'Bewaard als eigen variant; hij is nu de werkversie en staat in de keuzelijst.';
   } catch (e) {
     meldingSoort.value = 'critical';
     melding.value = `Bewaren mislukt: ${e?.message ?? e}`;
   } finally {
     bezig.value = false;
+  }
+}
+
+async function verwijder() {
+  verwijderOpen.value = false;
+  const naam = werkversieLabel.value;
+  try {
+    await verwijderEigenVariant(werkversie.value);
+    meldingSoort.value = 'accent';
+    melding.value = `${naam} is verwijderd; de werkversie is weer huidig recht.`;
+  } catch (e) {
+    meldingSoort.value = 'critical';
+    melding.value = `Verwijderen mislukt: ${e?.message ?? e}`;
   }
 }
 </script>

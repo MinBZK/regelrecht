@@ -1,5 +1,15 @@
 <template>
   <div class="param-panel">
+    <!-- Een knop hier verandert de formule, niet de wettekst ernaast. Dat
+         verschil hoort zichtbaar te zijn: anders vertelt het artikel straks de
+         oude regel terwijl de berekening de nieuwe volgt, en dat is precies de
+         verwarring die deze demo moet wegnemen. De assistent schrijft de tekst
+         wél mee. -->
+    <nldd-banner v-if="hasChanges" variant="accent">
+      Je wijzigt hier de rekenregels. De wettekst van het artikel beweegt niet mee; die staat er nog zoals hij was.
+      Vraag de beleidsassistent om de wijziging als je ook de tekst wilt laten meeschrijven.
+    </nldd-banner>
+
     <nldd-form-field v-if="docsMetVersie.length > 1" label="Document" supporting-label="één wet tegelijk; oudere versies staan onderaan de lijst">
       <nldd-dropdown :key="`pp:${docsMetVersie.length}:${gekozenPad}`" size="sm" width="100%" @change="gekozenPad = $event.detail?.value ?? gekozenPad">
         <select :value="gekozenPad ?? ''" aria-label="Kies het document waarvan je de parameters bijstelt">
@@ -40,7 +50,7 @@ import { ref, computed, watch } from 'vue';
 import { useLawStore } from '../../engine/lawStore.js';
 import { artikelOnderwerp, leesbaar } from '../../lib/regimeFacts.js';
 
-const { definitionsByDoc, applyDefinitionChange, changedPaths } = useLawStore();
+const { definitionsByDoc, applyDefinitionChange, changedPaths, hasChanges } = useLawStore();
 
 /**
  * Alleen beleidsknoppen: percentages, ratio's, bedragen en termijnen in

@@ -56,6 +56,24 @@ export function number(value) {
   return Math.round(value).toLocaleString('nl-NL');
 }
 
+/**
+ * Uren, compact: 1424000 → "1,42 mln uur".
+ *
+ * Bewust niet via number(), want die rondt af op hele getallen: bij miljoenen
+ * lazen 1,42 en 0,97 mln daardoor allebei als "1 mln uur" en werd het verschil
+ * tussen de kolommen onzichtbaar. Geen euroteken: dat het geen geld is, is hier
+ * precies het punt.
+ */
+export function urenCompact(value) {
+  if (value === null || value === undefined || Number.isNaN(value)) return '—';
+  if (value >= 1e6) {
+    const mln = (value / 1e6).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return `${mln} mln uur`;
+  }
+  if (value >= 1e3) return `${number(value / 1e3)} dzd uur`;
+  return `${number(value)} uur`;
+}
+
 /** Maanden → leesbare duur "12 jaar en 4 maanden". */
 export function duration(maanden) {
   if (maanden === null || maanden === undefined) return '—';

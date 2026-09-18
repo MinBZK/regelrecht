@@ -31,6 +31,15 @@
             </ul>
           </section>
 
+          <section v-if="tekstChanges.length" class="ds-block">
+            <nldd-title :size="5"><span>Gewijzigde wettekst</span></nldd-title>
+            <div v-for="(c, i) in tekstChanges" :key="i" class="ds-tekst">
+              <span class="ds-art">artikel {{ c.article }}</span>
+              <p class="ds-tekst-oud">{{ c.oud }}</p>
+              <p class="ds-tekst-nieuw">{{ c.nieuw }}</p>
+            </div>
+          </section>
+
           <section v-for="d in fileDiffs" :key="d.lawPath" class="ds-block">
             <nldd-title :size="5"><span>{{ d.docName }}</span></nldd-title>
             <div class="ds-diff">
@@ -55,7 +64,7 @@
 import { ref, computed, watch, nextTick } from 'vue';
 import * as yaml from 'js-yaml';
 import { useLawStore } from '../../engine/lawStore.js';
-import { compactDiff, definitionDiff } from '../../lib/diff.js';
+import { compactDiff, definitionDiff, articleTextDiff } from '../../lib/diff.js';
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -92,6 +101,21 @@ const defChanges = computed(() => {
   return all;
 });
 
+/**
+ * Artikelen waarvan de wettekst meebewoog. Staat apart van de parameters,
+ * want een wet is zijn tekst: wie alleen de getallen ziet veranderen, leest
+ * niet wat er juridisch gebeurt.
+ */
+const tekstChanges = computed(() => {
+  version.value;
+  const all = [];
+  for (const d of editableDocs.value) {
+    if (d.currentYaml === d.baseYaml) continue;
+    all.push(...articleTextDiff(parseBase(d), d.doc));
+  }
+  return all;
+});
+
 // Parse de basis-YAML on demand (goedkoop; alleen bij open sheet).
 function parseBase(d) {
   try {
@@ -122,6 +146,11 @@ watch(
 </script>
 
 <style scoped>
+.ds-tekst { display: flex; flex-direction: column; gap: 4px; margin-bottom: var(--primitives-space-12); }
+.ds-tekst-oud, .ds-tekst-nieuw { margin: 0; padding: var(--primitives-space-8); border-radius: var(--semantics-surfaces-corner-radius); font-size: 0.9em; }
+.ds-tekst-oud { background: var(--semantics-surfaces-tinted-background-color); text-decoration: line-through; color: var(--semantics-content-secondary-color); }
+.ds-tekst-nieuw { background: var(--semantics-surfaces-tinted-background-color); }
+
 .ds-content { padding: var(--primitives-space-24); display: flex; flex-direction: column; gap: var(--primitives-space-16); }
 .ds-block { display: flex; flex-direction: column; gap: var(--primitives-space-8); }
 .ds-defs { margin: 0; padding-left: var(--primitives-space-16); display: flex; flex-direction: column; gap: 4px; }

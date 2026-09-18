@@ -1,0 +1,133 @@
+# Standaardkostenmodel voor de uitvoeringslast van het terugbetalen van
+# studieschuld: handelingen met een aanleiding, minuten en een tarief, plus
+# eenmalige investeringen. De simulatie telt per jaar het aantal aanleidingen
+# uit de populatie (aflossende debiteuren, aangevraagde draagkrachtmetingen,
+# partner-opt-outs, peiljaarverleggingen) en vermenigvuldigt met minuten x
+# tarief.
+#
+# TWEE PARTIJEN, EN ZE TELLEN NIET IN DEZELFDE EENHEID.
+#
+# DUO is een uitvoeringsorganisatie: zijn tijd is loonkosten en staat in
+# euro's. De debiteur is dat niet. Een uurtarief op de tijd van een burger
+# plakken zou een uitspraak zijn over wat die tijd waard is, en die uitspraak
+# doet dit model niet. Debiteurenhandelingen dragen daarom wel minuten, maar
+# geen tarief: ze tellen op tot uren en verschijnen apart van de euro's.
+#
+# Waarom de debiteur er überhaupt in staat: alle drie de volumes die de
+# simulatie telt zijn handelingen VAN de debiteur (een meting aanvragen, een
+# peiljaar verleggen, een opt-out kiezen); DUO verwerkt ze. Een model met
+# alleen DUO zou een regeling met veel aanvraagdrempels goedkoop laten lijken,
+# terwijl de last daar juist verschuift naar de burger. Dat is precies de
+# afweging waar dit dossier over gaat.
+#
+# Aanleidingen (de simulatie levert het aantal per jaar):
+#   per_aflossende_debiteur      elke debiteur in de aflosfase, per jaar
+#   per_draagkrachtmeting        debiteur die een draagkrachtmeting aanvroeg
+#   per_partner_opt_out          debiteur die de partner niet laat meetellen
+#   per_debiteur_betalingsprobleem  debiteur met een jaar betalingsprobleem
+#
+# Minuten zijn overal AANNAME (geen tijdmeting beschikbaar; DUO kan ze ijken).
+
+# TARIEVEN, eurocent per uur.
+# Bron: Handleiding Overheidstarieven 2026 (HOT 2026, ministerie van
+# Financiën), tabel 2 "integrale kosten per salarisschaal 2026": loonkosten
+# plus overhead per fte, gedeeld door de productieve uren, exclusief btw.
+# Dezelfde bron en dezelfde schalen als het nieuwkomersmodel, zodat de twee
+# casussen vergelijkbaar blijven. De koppeling van DUO-functies aan een
+# Rijksschaal is AANNAME.
+tarieven:
+  duo_medewerker: 7300          # HOT 2026 tabel 2, schaal 8
+  duo_behandelaar: 9500         # HOT 2026 tabel 2, schaal 11, complexer werk
+  # De debiteur heeft geen tarief. Zie de kop: zijn tijd telt in uren.
+
+handelingen:
+  # --- DUO: de vaste last per aflossende debiteur ---
+  - id: jaarlijkse_vaststelling
+    omschrijving: >-
+      Jaarlijks de maandtermijn vaststellen op basis van de resterende schuld
+      en de resterende looptijd, en de debiteur daarover berichten.
+      Geautomatiseerd; alleen uitval wordt met de hand bekeken.
+    partij: duo
+    aanleiding: per_aflossende_debiteur
+    minuten: 1                 # AANNAME
+    tarief: duo_medewerker
+
+  # --- DUO: wat een aanvraag kost om te verwerken ---
+  - id: draagkrachtmeting_verwerken
+    omschrijving: >-
+      Een aangevraagde draagkrachtmeting verwerken: inkomensgegevens bij de
+      Belastingdienst ophalen, de draagkracht berekenen, de nieuwe termijn
+      vaststellen en beschikken.
+    partij: duo
+    aanleiding: per_draagkrachtmeting
+    minuten: 12                # AANNAME
+    tarief: duo_medewerker
+
+  - id: partner_opt_out_verwerken
+    omschrijving: >-
+      Het verzoek om het partnerinkomen buiten beschouwing te laten
+      beoordelen en verwerken in de draagkrachtberekening.
+    partij: duo
+    aanleiding: per_partner_opt_out
+    minuten: 15                # AANNAME
+    tarief: duo_medewerker
+
+  # Peiljaarverlegging (artikel 6.12) staat hier bewust NIET, in beide
+  # richtingen niet. `population.js` zet die keuze op elk record hard op false
+  # en `distributions.yaml` heeft er geen prior voor, dus het volume is per
+  # constructie nul. Een handeling die altijd nul kost leest als "dit kost
+  # niets" in plaats van "dit wordt niet gesimuleerd". Terug zodra er een
+  # onderbouwd percentage is: een `peiljaarverlegging_prior` erbij, samplen
+  # zoals de andere twee keuzes, en dan hier twee handelingen toevoegen (DUO
+  # beoordeelt, de debiteur vraagt aan). Dezelfde afweging als bij de rij die
+  # om deze reden uit KolomTabel.vue is gehaald.
+
+  - id: betalingsregeling_treffen
+    omschrijving: >-
+      Contact met een debiteur die niet betaalt: achterstand vaststellen, een
+      betalingsregeling treffen of de vordering overdragen.
+    partij: duo
+    aanleiding: per_debiteur_betalingsprobleem
+    minuten: 35                # AANNAME
+    tarief: duo_behandelaar
+
+  # --- De debiteur: wat de aanvraagkant hem aan tijd kost ---
+  # Geen tarief. Deze regels tellen op tot uren, niet tot euro's.
+  - id: draagkrachtmeting_aanvragen
+    omschrijving: >-
+      Uitzoeken dat een draagkrachtmeting bestaat en of je ervoor in
+      aanmerking komt, de gegevens verzamelen en de aanvraag indienen.
+    partij: debiteur
+    aanleiding: per_draagkrachtmeting
+    minuten: 90                # AANNAME
+    # tarief bewust afwezig
+
+  - id: partner_opt_out_aanvragen
+    omschrijving: >-
+      Nagaan wat het partnerinkomen met de termijn doet en het verzoek
+      indienen om het buiten beschouwing te laten.
+    partij: debiteur
+    aanleiding: per_partner_opt_out
+    minuten: 60                # AANNAME
+
+  - id: achterstand_afhandelen
+    omschrijving: >-
+      Als debiteur reageren op een betalingsachterstand: post lezen, contact
+      opnemen, een regeling treffen en die nakomen.
+    partij: debiteur
+    aanleiding: per_debiteur_betalingsprobleem
+    minuten: 180               # AANNAME
+
+# Eenmalige investeringen. `actief: false` hoort bij een variant en telt pas
+# mee als die wordt aangezet. Afschrijving lineair vanaf vanaf_jaar.
+investeringen:
+  - id: ambtshalve_draagkracht_it
+    omschrijving: >-
+      Draagkracht ambtshalve vaststellen in plaats van op aanvraag:
+      DUO-opdracht voor de koppeling met de inkomensgegevens, de berekening
+      en de beschikkingen zonder aanvraag.
+    partij: duo
+    bedrag: 25000000000        # eurocent, AANNAME
+    afschrijving_jaren: 5
+    vanaf_jaar: 2028
+    actief: false

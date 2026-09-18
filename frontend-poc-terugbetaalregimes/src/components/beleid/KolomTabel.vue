@@ -1,6 +1,16 @@
 <template>
   <div class="kt">
     <div class="kt-head">
+      <!-- De kolomkeuze staat bij de kolommen die hij vult, niet in het
+           linkerpaneel waar alleen staat wat je wijzigt. -->
+      <kolommen-menu
+        :varianten="variants"
+        :gekozen="selectedVariants"
+        :max="MAX_VARIANTEN"
+        :titel="kortTitel"
+        voet="Tonen, niet bewerken. Geldt ook voor de persona's."
+        @update:gekozen="selectedVariants = $event"
+      />
       <nldd-segmented-control size="sm" :value="detail" @change="detail = $event.detail?.value ?? detail">
         <nldd-segmented-control-item value="kern" text="Kern"></nldd-segmented-control-item>
         <nldd-segmented-control-item value="alles" text="Alle posten"></nldd-segmented-control-item>
@@ -55,8 +65,9 @@
     <p class="kt-bron">
       Bedragen zijn de contante som over de hele looptijd van de steekproef, gewogen naar
       {{ number(baseline?.aantalDebiteuren ?? 0) }} debiteuren. De pijl vergelijkt met huidig recht.
-      Uitvoering bij DUO staat als aantallen: deze casus heeft geen uitvoeringslastmodel met minuten en tarieven,
-      dus er staan bewust geen euro's bij.
+      De uitvoeringskosten bij DUO zijn handelingen × minuten × tarief (HOT 2026); de minuten zijn aannames.
+      De tijd van debiteuren staat in uren en niet in euro's: er bestaat geen tarief voor de tijd van een burger,
+      en er een op plakken zou een uitspraak zijn die dit model niet doet.
     </p>
     <p v-if="ramingRijen.length" class="kt-bron">
       Raming Stand van de Uitvoering OCW 2026 ter vergelijking:
@@ -75,9 +86,10 @@
 
 <script setup>
 import { ref, computed } from 'vue';
-import { useLawStore } from '../../engine/lawStore.js';
-import { number, euroCompact, percent, regimeLabel } from '../../lib/format.js';
-import { KOLOM_BASIS } from '../../composables/usePopulation.js';
+import KolommenMenu from '@regelrecht/frontend-shared/components/KolommenMenu.vue';
+import { useLawStore, kortTitel } from '../../engine/lawStore.js';
+import { number, euroCompact, percent, regimeLabel, urenCompact } from '../../lib/format.js';
+import { KOLOM_BASIS, usePopulation, MAX_VARIANTEN } from '../../composables/usePopulation.js';
 import { VARIANT_RAMING } from '../../lib/regimeFacts.js';
 
 const props = defineProps({
@@ -86,7 +98,8 @@ const props = defineProps({
   running: { type: Object, default: () => ({}) },
 });
 
-const { hasChanges } = useLawStore();
+const { hasChanges, variants } = useLawStore();
+const { selectedVariants } = usePopulation();
 const detail = ref('kern');
 
 /** Kolombreedtes: de postkolom breed, de waardekolommen gelijk verdeeld. */
@@ -144,9 +157,13 @@ const GROEPEN = [
     })),
   },
   {
-    titel: 'Uitvoering bij DUO',
-    hint: 'volumes, geen kosten',
+    titel: 'Uitvoering',
+    hint: 'volumes, kosten bij DUO en tijd van debiteuren',
     rijen: [
+      // De twee eenheden staan bewust apart. DUO's tijd is loonkosten en telt
+      // in euro's; de tijd van een debiteur heeft geen tarief en telt in uren.
+      { key: 'ul_duo', label: 'Uitvoeringskosten DUO', hint: 'handelingen × minuten × tarief (HOT 2026)', kind: 'euro', beter: 'lager', kern: true, get: (m) => m.uitvoeringslast?.kostenTotaal ?? null },
+      { key: 'ul_burger', label: 'Tijd van debiteuren', hint: 'aanvragen en achterstanden; bewust niet in euro’s uitgedrukt', kind: 'uren', beter: 'lager', kern: true, get: (m) => m.uitvoeringslast?.urenBurger ?? null },
       { key: 'dk', label: 'Draagkrachtmetingen', hint: 'debiteuren met een meting', kind: 'aantal', beter: 'neutraal', kern: true, get: (m) => m.uitvoering?.draagkrachtmetingen ?? null },
       { key: 'oo', label: 'Partner-opt-outs', hint: 'partnerinkomen niet laten meetellen', kind: 'aantal', beter: 'neutraal', get: (m) => m.uitvoering?.partnerOptOuts ?? null },
       // Peiljaarverleggingen (artikel 6.12) stond hier en telde altijd 0:
@@ -170,6 +187,7 @@ function toon(rij, m) {
   if (v === null || v === undefined) return '—';
   if (rij.kind === 'euro') return euroCompact(v);
   if (rij.kind === 'pct') return percent(v, 1);
+  if (rij.kind === 'uren') return urenCompact(v);
   return number(v);
 }
 
@@ -191,6 +209,7 @@ function verschilTekst(rij, col) {
   const abs = Math.abs(d);
   if (rij.kind === 'euro') return `${teken}${euroCompact(abs)}`;
   if (rij.kind === 'pct') return `${teken}${percent(abs, 1)}`;
+  if (rij.kind === 'uren') return `${teken}${urenCompact(abs)}`;
   return `${teken}${number(abs)}`;
 }
 
@@ -210,7 +229,11 @@ const ramingRijen = computed(() => props.columns
 
 <style scoped>
 .kt { display: flex; flex-direction: column; gap: var(--primitives-space-8); }
-.kt-head { display: flex; justify-content: flex-end; }
+/* De kolomkeuze links, de detailkeuze rechts: wat er in de tabel staat
+   tegenover hoe je ernaar kijkt. `auto` op de marge houdt die tweedeling ook
+   heel als de rij afbreekt op een smal scherm. */
+.kt-head { display: flex; gap: var(--primitives-space-12); flex-wrap: wrap; align-items: center; }
+.kt-head > nldd-segmented-control { margin-left: auto; }
 /* nldd-table-row zet geen ::part, dus de groepsrij valt op aan zijn eigen
    inhoud (vetgedrukte kop, lege waardekolommen), niet aan een achtergrond. */
 .kt-value { font-variant-numeric: tabular-nums; }

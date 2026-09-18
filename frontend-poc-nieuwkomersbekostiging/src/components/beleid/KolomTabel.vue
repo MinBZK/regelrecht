@@ -1,6 +1,16 @@
 <template>
   <div class="kolom-tabel">
     <div class="kt-head">
+      <!-- De kolomkeuze staat bij de kolommen die hij vult, niet in het
+           linkerpaneel waar alleen staat wat je wijzigt. -->
+      <kolommen-menu
+        :varianten="variants"
+        :gekozen="selectedVariants"
+        :max="MAX_VARIANTEN"
+        :titel="shortTitle"
+        voet="Tonen, niet bewerken: wijzigen gaat op de werkversie."
+        @update:gekozen="selectedVariants = $event"
+      />
       <nldd-segmented-control size="sm" :value="periode" @change="periode = $event.detail?.value ?? periode">
         <nldd-segmented-control-item value="totaal" text="Totaal"></nldd-segmented-control-item>
         <nldd-segmented-control-item v-for="j in jaren" :key="j" :value="String(j)" :text="String(j)"></nldd-segmented-control-item>
@@ -47,10 +57,13 @@
 
 <script setup>
 import { ref, computed } from 'vue';
+import KolommenMenu from '@regelrecht/frontend-shared/components/KolommenMenu.vue';
 import { euroCompact, euroDelta, number, numberDelta, years, decimal, jaNee } from '../../lib/format.js';
 import { useLawStore } from '../../engine/lawStore.js';
+import { useSimulation, shortTitle, MAX_VARIANTEN } from '../../composables/useSimulation.js';
 
-const { werkversie, changeCount } = useLawStore();
+const { werkversie, changeCount, variants } = useLawStore();
+const { selectedVariants } = useSimulation();
 
 const props = defineProps({
   columns: { type: Array, required: true }, // [{key, short, variantId}]
@@ -170,7 +183,11 @@ function cellColor(row, col) {
 
 <style scoped>
 .kolom-tabel { display: flex; flex-direction: column; gap: var(--primitives-space-12); }
-.kt-head { display: flex; gap: var(--primitives-space-12); flex-wrap: wrap; justify-content: space-between; }
+/* De kolomkeuze links, de periode- en detailkeuze rechts: wat er in de tabel
+   staat tegenover hoe je ernaar kijkt. `auto` op de eerste marge houdt die
+   tweedeling ook heel als de rij afbreekt op een smal scherm. */
+.kt-head { display: flex; gap: var(--primitives-space-12); flex-wrap: wrap; align-items: center; }
+.kt-head > nldd-segmented-control:first-of-type { margin-left: auto; }
 .kt-value { font-variant-numeric: tabular-nums; }
 .kt-bold { font-weight: 700; }
 .kt-delta { font-variant-numeric: tabular-nums; font-size: 0.85em; }

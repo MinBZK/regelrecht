@@ -27,7 +27,7 @@ const mod = (rel) => import(pathToFileURL(resolve(appSrc, rel)).href);
 const { simulate } = await mod('sim/simulate.js');
 const { generatePopulation } = await mod('sim/population.js');
 const { aggregate } = await mod('sim/metrics.js');
-const { patchDefinitionValue, readDefinitionValue } = await mod('lib/yamlPatch.js');
+const { patchDefinitionValue, readDefinitionValue, patchArticleText, readArticleText } = await mod('lib/yamlPatch.js');
 
 const SIM_OPTIONS = { startJaar: 2026 };
 const SESSION_DIR = process.env.OCW_SESSION_DIR;
@@ -69,6 +69,38 @@ function writeOverlay(key, yaml) {
 function emit(event) {
   const seq = String(++eventSeq).padStart(6, '0');
   writeFileSync(resolve(eventsDir, `${seq}-${process.pid}.json`), JSON.stringify(event));
+}
+
+/**
+ * Wat de assistent tot nu toe heeft gewijzigd, als `artikel::naam` → waarde.
+ *
+ * Hangt aan elke meting mee, zodat de grafiek in de app kan laten zien wélke
+ * stand bij een punt hoort. Zonder dit is het pad een reeks uitkomsten zonder
+ * oorzaak: je ziet dat het beter wordt, niet waardoor, en je kunt er dus ook
+ * geen tussenstand uit overnemen.
+ *
+ * Alleen de gewijzigde definities en niet de hele YAML: die is hier ~53 KB, en
+ * een doel-run doet twintig metingen. De app heeft aan de waarden genoeg om de
+ * stand te tonen en de wijziging over te nemen.
+ */
+const gewijzigdeDefinities = new Map();
+
+/**
+ * Documenten die met wijzig_regelgeving zijn herschreven. Daarvan is niet uit
+ * losse waarden te zeggen wat er veranderd is, dus zegt de app daar "structuur
+ * gewijzigd" in plaats van een onvolledige lijst.
+ */
+const structuurGewijzigd = new Set();
+
+function onthoudWijziging(document_key, artikel, naam, oud, nieuw) {
+  gewijzigdeDefinities.set(`${document_key}::${artikel}::${naam}`, {
+    document_key, artikel: String(artikel), naam, oud, nieuw,
+  });
+}
+
+/** De stand van de wijzigingen nu, als lijst voor een meting-event. */
+function huidigeWijzigingen() {
+  return [...gewijzigdeDefinities.values()];
 }
 
 async function simulateRecords(records, defaultChoices = {}) {
@@ -156,6 +188,10 @@ async function wijzigRegelgeving({ document_key, nieuwe_yaml, toelichting }) {
     return `Validatie mislukt, wijziging NIET toegepast: ${result.error}`;
   }
   writeOverlay(document_key, nieuwe_yaml);
+  // Een structuurwijziging herschrijft het hele document, dus wat we van de
+  // losse definities bijhielden klopt daarna niet meer. Vergeten is hier
+  // eerlijker dan een lijst tonen die niet meer zegt wat er is veranderd.
+  structuurGewijzigd.add(document_key);
   emit({ type: 'wijziging', document_key, toelichting: toelichting ?? '' });
   return 'Wijziging gevalideerd en toegepast.';
 }
@@ -164,7 +200,7 @@ async function wijzigRegelgeving({ document_key, nieuwe_yaml, toelichting }) {
  * Wijzig één definitie-waarde in een document (tekstpatch van één regel):
  * de snelle weg voor percentages, voeten, bedragen en termijnen.
  */
-async function wijzigDefinitie({ document_key, artikel, naam, waarde, toelichting }) {
+async function wijzigDefinitie({ document_key, artikel, naam, waarde, nieuwe_wettekst, toelichting }) {
   const overlays = readOverlays();
   const doc = corpusMetOverlays(overlays).find((d) => d.key === document_key);
   if (!doc) return `Onbekend document: ${document_key}`;
@@ -177,11 +213,84 @@ async function wijzigDefinitie({ document_key, artikel, naam, waarde, toelichtin
   } catch (e) {
     return `Definitie niet gevonden: ${e.message}. Zoek de naam met lees_regelgeving (zoek=...) en let op het artikelnummer als string, bijvoorbeeld "10a.8".`;
   }
+  // De wettekst mee, als de assistent hem meestuurt. Een wet is zijn tekst:
+  // alleen de waarde patchen laat de proza de oude regel vertellen, en in een
+  // demo over wetgeving is dat precies de verkeerde indruk.
+  let tekstGewijzigd = false;
+  if (typeof nieuwe_wettekst === 'string' && nieuwe_wettekst.trim()) {
+    try {
+      const oudeTekst = readArticleText(nieuw, String(artikel));
+      nieuw = patchArticleText(nieuw, String(artikel), nieuwe_wettekst.trim());
+      tekstGewijzigd = oudeTekst !== readArticleText(nieuw, String(artikel));
+    } catch (e) {
+      return `De waarde is NIET gewijzigd omdat de wettekst niet kon worden bijgewerkt: ${e.message}`;
+    }
+  }
   const result = await validateYaml(overlays, document_key, nieuw);
   if (!result.ok) return `Validatie mislukt, wijziging NIET toegepast: ${result.error}`;
   writeOverlay(document_key, nieuw);
-  emit({ type: 'wijziging', document_key, toelichting: toelichting ?? `${naam} in artikel ${artikel}: ${oud} -> ${waarde}` });
-  return `Toegepast: ${naam} in artikel ${artikel} van ${oud} naar ${waarde} (gevalideerd).`;
+  onthoudWijziging(document_key, artikel, naam, oud, Number(waarde));
+  const staart = tekstGewijzigd ? ' De wettekst van dit artikel is meegeschreven.' : '';
+  emit({
+    type: 'wijziging',
+    document_key,
+    toelichting: (toelichting ?? `${naam} in artikel ${artikel}: ${oud} -> ${waarde}`) + staart,
+    wettekst_gewijzigd: tekstGewijzigd,
+  });
+  return `Toegepast: ${naam} in artikel ${artikel} van ${oud} naar ${waarde} (gevalideerd).${staart}`
+    + (tekstGewijzigd ? '' : ' LET OP: de wettekst van dit artikel vertelt nu nog de oude regel.'
+      + ' Stuur nieuwe_wettekst mee als de tekst het gewijzigde getal noemt.');
+}
+
+/**
+ * Een vraag aan de beleidsmaker, die blokkeert tot het antwoord er is.
+ *
+ * Waarom een tool en geen tekst: een assistent die in zijn antwoord "wat wil
+ * je?" schrijft, praat tegen een leeg scherm en gaat daarna toch zelf door.
+ * Een tool die wacht, dwingt de beurt af: de CLI staat stil tot de gebruiker
+ * geklikt heeft, en het antwoord komt als toolresultaat terug in het gesprek.
+ *
+ * Het HTTP-proces legt het antwoord neer als bestand, net zoals deze server
+ * zijn events daar neerlegt: dezelfde weg, andere richting.
+ */
+const vragenDir = resolve(SESSION_DIR, 'vragen');
+mkdirSync(vragenDir, { recursive: true });
+let vraagSeq = 0;
+
+// Ruim tien minuten. Loopt iemand weg, dan kiest de assistent zelf verder in
+// plaats van het proces vast te houden tot de sessie wordt opgeruimd.
+const VRAAG_TIMEOUT_MS = 10 * 60 * 1000;
+
+async function vraagBeleidsmaker({ vraag, opties, meerkeuze, toelichting }) {
+  const schoon = String(vraag ?? '').trim();
+  const lijst = (Array.isArray(opties) ? opties : [])
+    .map((o) => (typeof o === 'string' ? { label: o } : o))
+    .filter((o) => o && typeof o.label === 'string' && o.label.trim())
+    .map((o) => ({ label: String(o.label).trim(), gevolg: o.gevolg ? String(o.gevolg).trim() : null }));
+  if (!schoon) return 'Geen vraag meegegeven.';
+  if (lijst.length < 2) return 'Een keuze heeft minstens twee opties nodig; anders valt er niets te kiezen.';
+
+  const id = `${Date.now()}-${++vraagSeq}`;
+  emit({ type: 'vraag', id, vraag: schoon, opties: lijst, meerkeuze: !!meerkeuze, toelichting: toelichting ?? null });
+
+  const antwoordPad = resolve(vragenDir, `${id}.antwoord.json`);
+  const tot = Date.now() + VRAAG_TIMEOUT_MS;
+  while (Date.now() < tot) {
+    if (existsSync(antwoordPad)) {
+      try {
+        const { keuzes } = JSON.parse(readFileSync(antwoordPad, 'utf-8'));
+        const gekozen = (Array.isArray(keuzes) ? keuzes : []).filter((k) => typeof k === 'string');
+        if (gekozen.length) return `De beleidsmaker koos: ${gekozen.join(' en ')}.`;
+        return 'De beleidsmaker koos geen van de opties; kies zelf en zeg welke aanname je doet.';
+      } catch {
+        return 'Het antwoord was onleesbaar; kies zelf en zeg welke aanname je doet.';
+      }
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  emit({ type: 'vraag_verlopen', id });
+  return 'Er kwam binnen tien minuten geen antwoord. Kies zelf de meest voor de hand liggende optie '
+    + 'en zeg er expliciet bij welke aanname je doet.';
 }
 
 async function simuleerPersonas() {
@@ -224,7 +333,16 @@ async function simuleerPopulatie({ n, seed }) {
   const results = await simulateRecords(records);
   const ok = results.filter((r) => !r.error);
   const metrics = aggregate(ok);
-  emit({ type: 'simulatie', doel: 'populatie', n: count, metrics });
+  emit({
+    type: 'simulatie',
+    doel: 'populatie',
+    n: count,
+    metrics,
+    // De stand waarop deze meting rust, zodat een punt in het optimalisatiepad
+    // te openen en over te nemen is.
+    wijzigingen: huidigeWijzigingen(),
+    structuurGewijzigd: [...structuurGewijzigd],
+  });
   return JSON.stringify({
     n: count,
     fouten: results.length - ok.length,
@@ -313,12 +431,56 @@ const TOOLS = [
         artikel: { type: 'string', description: 'artikelnummer zoals in de YAML, bv. "10a.8"' },
         naam: { type: 'string', description: 'naam van de definitie, bv. "voet_ratio_overig_sf15_oud"' },
         waarde: { type: 'number', description: 'nieuwe waarde (ratio als getal, eurocent voor bedragen)' },
+        nieuwe_wettekst: {
+          type: 'string',
+          description:
+            'De wettekst van dit artikel, herschreven zodat hij de nieuwe waarde vertelt. '
+            + 'Stuur dit mee zodra de tekst het gewijzigde getal noemt: een wet is zijn tekst, '
+            + 'en alleen de waarde aanpassen laat de proza de oude regel vertellen. Schrijf in de '
+            + 'stijl van het artikel zelf, wijzig alleen wat de wijziging raakt, en laat '
+            + 'artikelnummers en verwijzingen staan. Weglaten als de tekst het getal niet noemt.',
+        },
         toelichting: { type: 'string', description: 'Korte omschrijving van de wijziging, voor de gebruiker' },
       },
       required: ['document_key', 'artikel', 'naam', 'waarde'],
       additionalProperties: false,
     },
     run: wijzigDefinitie,
+  },
+  {
+    name: 'vraag_beleidsmaker',
+    description:
+      'Leg een keuze voor aan de beleidsmaker en wacht op het antwoord. Gebruik '
+      + 'dit voordat je een beleidsmatige aanname zelf invult: welke groep erop '
+      + 'achteruit mag, of een wijziging ook voor bestaande gevallen geldt, waar '
+      + 'de dekking vandaan komt. Niet gebruiken voor iets wat je zelf kunt '
+      + 'opzoeken of uitrekenen. Geef per optie kort het gevolg, anders is het '
+      + 'geen keuze die iemand kan maken.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        vraag: { type: 'string', description: 'De keuze, in één zin, in gewone taal.' },
+        opties: {
+          type: 'array',
+          minItems: 2,
+          description: 'Twee tot vier opties, elk met een label en het gevolg ervan.',
+          items: {
+            type: 'object',
+            properties: {
+              label: { type: 'string', description: 'De keuze zelf, kort.' },
+              gevolg: { type: 'string', description: 'Wat er gebeurt als de beleidsmaker dit kiest.' },
+            },
+            required: ['label'],
+            additionalProperties: false,
+          },
+        },
+        meerkeuze: { type: 'boolean', description: 'true als er meer dan één optie tegelijk mag.' },
+        toelichting: { type: 'string', description: 'Eén zin context, als de vraag dat nodig heeft.' },
+      },
+      required: ['vraag', 'opties'],
+      additionalProperties: false,
+    },
+    run: vraagBeleidsmaker,
   },
   {
     name: 'simuleer_personas',

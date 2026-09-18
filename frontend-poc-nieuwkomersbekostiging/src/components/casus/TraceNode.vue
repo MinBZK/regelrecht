@@ -14,7 +14,20 @@
       <span v-else class="tn-toggle tn-leaf" aria-hidden="true"></span>
 
       <span class="tn-type">{{ typeLabel }}</span>
-      <span class="tn-name">{{ node.name }}</span>
+      <!-- Staat er een wetsartikel achter deze stap, dan is de naam een link
+           naar dat artikel op wetten.overheid.nl. De engine levert die URL zelf
+           (anchor.url), dus hij kan niet afwijken van waar de stap vandaan
+           kwam. In een nieuw tabblad: de trace is je plaats in het verhaal, en
+           die wil je niet kwijt om een artikel na te lezen. -->
+      <a
+        v-if="wetsartikelUrl"
+        class="tn-name tn-link"
+        :href="wetsartikelUrl"
+        target="_blank"
+        rel="noopener"
+        :title="`${wetsartikelLabel} openen op wetten.overheid.nl`"
+      >{{ node.name }}<nldd-icon name="external-link" size="12"></nldd-icon></a>
+      <span v-else class="tn-name">{{ node.name }}</span>
       <span v-if="node.result !== null && node.result !== undefined" class="tn-result">
         = {{ formatResult(node.result) }}
       </span>
@@ -46,6 +59,28 @@ const TYPE_LABELS = {
   cross_law_reference: 'verwijzing',
 };
 const typeLabel = computed(() => TYPE_LABELS[props.node.node_type] ?? props.node.node_type);
+
+/**
+ * De link naar het wetsartikel achter deze stap.
+ *
+ * `anchor` komt uit het wetsmodel en zegt waar de engine stond; `legal_basis`
+ * is de citatie die de auteur van de YAML erbij schreef. Die twee worden met
+ * opzet uit elkaar gehouden, dus de voorkeur gaat naar het anker: dat is waar
+ * de berekening werkelijk vandaan kwam.
+ */
+const anker = computed(() => props.node.anchor ?? props.node.legal_basis ?? null);
+const wetsartikelUrl = computed(() => {
+  const url = anker.value?.url;
+  // Alleen http(s): een `javascript:`-url uit een corpusbestand zou anders
+  // hier als link belanden.
+  return typeof url === 'string' && /^https?:\/\//i.test(url) ? url : null;
+});
+const wetsartikelLabel = computed(() => {
+  const a = anker.value;
+  if (!a) return '';
+  const delen = [a.law, a.article ? `artikel ${a.article}` : null].filter(Boolean);
+  return delen.join(', ') || 'Het artikel';
+});
 
 function formatResult(value) {
   if (typeof value === 'boolean') return value ? 'waar' : 'onwaar';
@@ -90,6 +125,12 @@ function formatResult(value) {
   color: var(--semantics-content-color);
 }
 .tn-article > .tn-name { font-weight: 700; }
+.tn-link {
+  color: var(--semantics-content-accent-color);
+  text-decoration: underline;
+  display: inline-flex; align-items: center; gap: 3px;
+}
+.tn-link nldd-icon { opacity: .7; }
 .tn-result {
   font-family: var(--primitives-font-family-monospace, monospace);
   color: var(--semantics-content-accent-color);

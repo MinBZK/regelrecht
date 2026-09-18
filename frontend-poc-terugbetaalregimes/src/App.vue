@@ -4,7 +4,7 @@
       <nldd-skip-link text="Direct naar de inhoud">
       <nldd-top-navigation-bar
         logo-title="Terugbetalen studieschuld"
-        logo-subtitle="OCW/DUO-casus · Stand van de Uitvoering 2026"
+        logo-subtitle="OCW/DUO-casus · Stand van de Uitvoering"
         :logo-href="b('/beleid')"
         :website-href="b('/beleid')"
         @click.prevent
@@ -57,12 +57,10 @@ const route = useRoute();
 const router = useRouter();
 const { thema, volgende } = useThema();
 
-const themaIcoon = computed(
-  () => ({ systeem: 'monitoring', licht: 'light-mode', donker: 'dark-mode' })[thema.value],
-);
-const themaTekst = computed(
-  () => ({ systeem: 'Systeem', licht: 'Licht', donker: 'Donker' })[thema.value],
-);
+// Het icoon toont wat je krijgt als je klikt, niet waar je nu staat: een
+// knop die zijn eigen huidige stand afbeeldt, leest als een statuslampje.
+const themaIcoon = computed(() => (thema.value === 'donker' ? 'light-mode' : 'dark-mode'));
+const themaTekst = computed(() => (thema.value === 'donker' ? 'Licht' : 'Donker'));
 </script>
 
 <style scoped>

@@ -18,11 +18,7 @@
           <nldd-banner v-else-if="!ready" variant="accent">Rekenmachine wordt geladen…</nldd-banner>
 
           <template v-if="ready">
-            <paneel titel="Kolommen" subtitel="Huidig recht staat altijd; kies tot drie varianten ernaast." :samenvatting="kolommenSamenvatting" open>
-              <variant-switcher multiple :model-value="selectedVariants" :max="3" @update:model-value="selectedVariants = $event" />
-            </paneel>
-
-            <paneel :titel="`Regeling bijstellen`" :subtitel="`Bedragen, duur en drempel van ${werkversieLabel}. Elke wijziging rekent de werkversiekolom opnieuw.`" :badge="hasChanges ? `${changeCount} bewerkt` : ''" open>
+            <paneel :titel="`Regeling bijstellen`" :subtitel="`Bedragen, duur en drempel van ${werkversieLabel}. Elke wijziging rekent de werkversiekolom opnieuw.`" :samenvatting="bijstellenSamenvatting" :badge="hasChanges ? `${changeCount} bewerkt` : ''">
               <parameter-panel />
               <details class="geavanceerd">
                 <summary>Geavanceerd: YAML rechtstreeks bewerken</summary>
@@ -37,7 +33,7 @@
               </details>
             </paneel>
 
-            <paneel titel="Budgetneutraal" subtitel="Zoek het bedrag waarbij de werkversie evenveel uitgeeft als huidig recht." samenvatting="oplosser">
+            <paneel titel="Budgetneutraal" subtitel="Wat kan er veranderen zonder dat het meer geld kost? Zoekt het bedrag waarbij de werkversie evenveel uitgeeft als huidig recht." samenvatting="zoekt een bedrag">
               <budgetneutraal-panel />
             </paneel>
 
@@ -124,8 +120,7 @@ import { useLawStore } from '../engine/lawStore.js';
 import { useSimulation } from '../composables/useSimulation.js';
 import { useHandelingen } from '../composables/useHandelingen.js';
 import { number } from '../lib/format.js';
-import Paneel from '../components/Paneel.vue';
-import VariantSwitcher from '../components/VariantSwitcher.vue';
+import Paneel from '@regelrecht/frontend-shared/components/Paneel.vue';
 import ParameterPanel from '../components/beleid/ParameterPanel.vue';
 import HandelingenPanel from '../components/beleid/HandelingenPanel.vue';
 import BudgetneutraalPanel from '../components/beleid/BudgetneutraalPanel.vue';
@@ -141,7 +136,7 @@ import AssistentPanel from '../components/beleid/AssistentPanel.vue';
 
 const { ready, initError, lawIndex, initEngine } = useEngine();
 const { initStore, hasChanges, changeCount, editableDocs, werkversieLabel } = useLawStore();
-const { selectedVariants, columns, metricsByColumn, istMetrics, jaren, simVersion, distributions, recompute, running, progress, n } = useSimulation();
+const { columns, metricsByColumn, istMetrics, jaren, simVersion, distributions, recompute, running, progress, n } = useSimulation();
 const { fetchHandelingen, base, overrides, hasOverrides, alleHandelingen } = useHandelingen();
 const { instroomRijen, instroomTotaal, hasOverrides: popGewijzigd } = usePopulatie();
 
@@ -167,7 +162,9 @@ watch(editableDocs, (docs) => {
 }, { immediate: true });
 
 // Samenvattingen op de dichtgeklapte panelen: de huidige stand in één regel.
-const kolommenSamenvatting = computed(() => (selectedVariants.value.length ? `huidig recht + ${selectedVariants.value.length} variant${selectedVariants.value.length === 1 ? '' : 'en'}` : 'alleen huidig recht'));
+// Dicht zegt het paneel waar het over gaat en of eraan gewerkt is; open zou het
+// als eerste paneel de hele linkerkolom vullen voordat iemand iets gekozen heeft.
+const bijstellenSamenvatting = computed(() => (hasChanges.value ? `${werkversieLabel.value} bewerkt` : `bedragen en drempel van ${werkversieLabel.value}`));
 const populatieSamenvatting = computed(() => {
   const instroom = instroomTotaal.value
     ? `${number(instroomTotaal.value)} nieuwkomers over ${instroomRijen.value.length} instroomjaren`

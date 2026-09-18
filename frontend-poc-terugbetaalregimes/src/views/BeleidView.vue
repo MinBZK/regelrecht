@@ -15,11 +15,7 @@
           <nldd-banner v-else-if="!ready" variant="accent">Rekenmachine wordt geladen…</nldd-banner>
 
           <template v-if="ready">
-            <paneel titel="Kolommen" subtitel="Huidig recht staat altijd; kies tot drie varianten ernaast." :samenvatting="kolommenSamenvatting" open>
-              <kolom-kiezer />
-            </paneel>
-
-            <paneel titel="Wet bijstellen" :subtitel="`Percentages, voeten en termijnen van ${werkversieLabel}. Elke wijziging rekent de werkversie opnieuw door.`" :badge="hasChanges ? `${changeCount} bewerkt` : ''" open>
+            <paneel titel="Wet bijstellen" :subtitel="`Percentages, voeten en termijnen van ${werkversieLabel}. Elke wijziging rekent de werkversie opnieuw door.`" :samenvatting="bijstellenSamenvatting" :badge="hasChanges ? `${changeCount} bewerkt` : ''">
               <parameter-panel />
               <details class="geavanceerd">
                 <summary>Geavanceerd: YAML rechtstreeks bewerken</summary>
@@ -39,6 +35,10 @@
 
             <paneel titel="Beleidsassistent" subtitel="Een instructie of doel in gewone taal; de assistent wijzigt de werkversie en rekent door." samenvatting="instructie of doel">
               <assistent-panel />
+            </paneel>
+
+            <paneel titel="Uitvoeringslastmodel" subtitel="Handelingen × minuten × tarief. Wat DUO het kost staat in euro's, wat het debiteuren kost in uren." :samenvatting="uitvoeringSamenvatting">
+              <handelingen-panel />
             </paneel>
 
             <paneel titel="Populatie" subtitel="Eén vaste steekproef van synthetische debiteuren, gewogen naar de echte aantallen. Beide kolommen rekenen met dezelfde debiteuren." :samenvatting="populatieSamenvatting">
@@ -99,8 +99,8 @@ import { useLawStore } from '../engine/lawStore.js';
 import { usePersonas } from '../composables/usePersonas.js';
 import { usePopulation } from '../composables/usePopulation.js';
 import { usePopulatieAannames } from '../composables/usePopulatieAannames.js';
-import { number } from '../lib/format.js';
-import Paneel from '../components/Paneel.vue';
+import { number, euroCompact } from '../lib/format.js';
+import Paneel from '@regelrecht/frontend-shared/components/Paneel.vue';
 import ParameterPanel from '../components/beleid/ParameterPanel.vue';
 import KolomTabel from '../components/beleid/KolomTabel.vue';
 import MetricTiles from '../components/beleid/MetricTiles.vue';
@@ -109,8 +109,8 @@ import PopulationControls from '../components/beleid/PopulationControls.vue';
 import DoorrekenKnop from '../components/beleid/DoorrekenKnop.vue';
 import RegimeMetricsChart from '../components/beleid/RegimeMetricsChart.vue';
 import AssistentPanel from '../components/beleid/AssistentPanel.vue';
+import HandelingenPanel from '../components/beleid/HandelingenPanel.vue';
 import VariantenLijst from '../components/beleid/VariantenLijst.vue';
-import KolomKiezer from '../components/beleid/KolomKiezer.vue';
 
 const { ready, initError, lawIndex, initEngine } = useEngine();
 const { initStore, hasChanges, changeCount, editableDocs, werkversie, werkversieLabel, variants } = useLawStore();
@@ -124,9 +124,17 @@ const yamlPath = ref(null);
 /** Naam van de werkversiekolom: de variant, of huidig recht (met bewerkingen). */
 const kolomLabel = computed(() => (werkversie.value ? werkversieLabel.value : hasChanges.value ? 'huidig recht met bewerkingen' : 'huidig recht'));
 
-const kolommenSamenvatting = computed(() => (columns.value.length === 1
-  ? 'alleen huidig recht'
-  : `huidig recht + ${columns.value.length - 1} variant${columns.value.length === 2 ? '' : 'en'}`));
+// Dicht zegt het paneel waar het over gaat en of eraan gewerkt is; open zou het
+// als eerste paneel de hele linkerkolom vullen voordat iemand iets gekozen heeft.
+const bijstellenSamenvatting = computed(() => (hasChanges.value ? `${werkversieLabel.value} bewerkt` : `percentages en termijnen van ${werkversieLabel.value}`));
+
+// Dicht toont het paneel de twee eenheden naast elkaar; dat verschil (euro's
+// bij DUO, uren bij de debiteur) is waar dit model over gaat.
+const uitvoeringSamenvatting = computed(() => {
+  const last = metrics.value?.uitvoeringslast;
+  if (!last) return 'nog niet doorgerekend';
+  return `${euroCompact(last.kostenTotaal)} bij DUO · ${number(Math.round(last.urenBurger))} uur bij debiteuren`;
+});
 const populatieSamenvatting = computed(() => {
   const debiteuren = totaalDebiteuren.value ? `${number(totaalDebiteuren.value)} aflossende debiteuren` : 'debiteuren uit CBS en de Stand van DUO';
   return `${debiteuren} · ${number(n.value)} records · in elke kolom dezelfde debiteuren`;
