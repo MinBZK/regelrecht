@@ -16,18 +16,6 @@
       <nldd-segmented-control-item value="instructie" text="Instructie"></nldd-segmented-control-item>
     </nldd-segmented-control>
 
-    <!-- Zolang de assistent werkt: wat er gebeurt, hoeveel beurten, hoe lang al.
-         Een doel-run kan minuten stil zijn, en zonder dit is dat niet van
-         vastgelopen te onderscheiden. -->
-    <div v-if="streaming || afronding" class="as-status">
-      <span class="as-status-wat">
-        <nldd-activity-indicator v-if="streaming && !openVraag" size="16" timing="instant"></nldd-activity-indicator>
-        <nldd-icon v-else-if="!streaming" name="checked" size="16"></nldd-icon>
-        <nldd-icon v-else name="help" size="16"></nldd-icon>
-        <span>{{ openVraag ? 'Wacht op jouw keuze.' : statusWat }}</span>
-      </span>
-      <span v-if="!openVraag && statusTeller" class="as-status-teller">{{ statusTeller }}</span>
-    </div>
 
     <optimalisatiepad-chart
       v-if="modus === 'doel' && pad.length"
@@ -67,7 +55,7 @@
       ></nldd-button>
     </div>
 
-    <div v-if="feed.length" ref="feedEl" class="as-feed">
+    <div v-if="feed.length || streaming || afronding" ref="feedEl" class="as-feed">
       <div v-for="(item, i) in feed" :key="i" class="as-item" :class="`as-${item.type}`">
         <span v-if="item.type === 'tekst'" class="as-md" v-html="eenvoudigeMarkdown(item.tekst)"></span>
         <template v-else-if="item.type === 'tool'">
@@ -83,6 +71,19 @@
         <template v-else-if="item.type === 'vraag'">{{ item.vraag }}</template>
         <template v-else-if="item.type === 'gebruiker'">{{ item.tekst }}</template>
         <template v-else-if="item.type === 'fout'">⚠️ {{ item.melding }}</template>
+      </div>
+
+      <!-- Wat er nu gebeurt, onderaan het gesprek: op de plek waar het
+           volgende bericht komt, zoals de "denkt na"-regel in elke chat. Boven
+           de feed stond hij los van waar je kijkt. -->
+      <div v-if="streaming || afronding" class="as-status">
+        <span class="as-status-wat">
+          <nldd-activity-indicator v-if="streaming && !openVraag" size="16" timing="instant"></nldd-activity-indicator>
+          <nldd-icon v-else-if="!streaming" name="checked" size="16"></nldd-icon>
+          <nldd-icon v-else name="help" size="16"></nldd-icon>
+          <span>{{ openVraag ? 'Wacht op jouw keuze.' : statusWat }}</span>
+        </span>
+        <span v-if="!openVraag && statusTeller" class="as-status-teller">{{ statusTeller }}</span>
       </div>
 
       <!-- De openstaande keuze staat onderaan het gesprek, op dezelfde plek
@@ -614,18 +615,32 @@ function takeOverlays() {
 .as-hint { margin: 0; font-size: 0.85em; color: var(--semantics-content-secondary-color); }
 .as-status {
   display: flex; align-items: center; gap: var(--primitives-space-8);
-  flex-wrap: wrap;
   font-size: 0.85em; color: var(--semantics-content-secondary-color);
   font-variant-numeric: tabular-nums;
+  min-height: 24px;
 }
-/* Icoon en tekst horen bij elkaar: als groep breken ze niet uit elkaar, zodat
-   het spinnertje nooit alleen op een regel belandt. */
+/* Icoon en tekst horen bij elkaar; de groep krimpt mee maar rekt niet uit. */
 .as-status-wat {
   display: inline-flex; align-items: center; gap: var(--primitives-space-8);
-  flex: 1 1 auto; min-width: 0;
+  min-width: 0;
 }
-/* De teller blijft heel: hij hoort bij elkaar of hij gaat als geheel mee. */
-.as-status-teller { white-space: nowrap; margin-left: auto; }
+/* nldd-activity-indicator is een block-element en rekte in de flexregel uit
+   tot de halve breedte van het paneel, waardoor de tekst ernaast over twee
+   regels brak. Vaste maat, en niet laten groeien of krimpen. */
+.as-status-wat > nldd-activity-indicator,
+.as-status-wat > nldd-icon {
+  flex: none;
+  width: 16px; height: 16px;
+  display: inline-block;
+}
+/* De tekst krijgt wat overblijft en breekt niet midden in een woord af. */
+.as-status-wat > span {
+  min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* De teller staat direct achter de tekst, niet tegen de rechterrand: die
+   afstand las als twee losse dingen in plaats van een regel. */
+.as-status-teller { white-space: nowrap; flex: none; }
 .as-punt {
   display: flex; flex-direction: column; gap: var(--primitives-space-8);
   padding: var(--primitives-space-12);
