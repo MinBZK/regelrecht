@@ -16,29 +16,6 @@
       <nldd-segmented-control-item value="instructie" text="Instructie"></nldd-segmented-control-item>
     </nldd-segmented-control>
 
-    <nldd-form-field
-      :label="{ vraag: 'Vraag', doel: 'Doel', instructie: 'Instructie' }[modus]"
-      :supporting-label="modusUitleg"
-    >
-      <nldd-multi-line-text-field
-        :value="prompt"
-        :placeholder="placeholder"
-        rows="3"
-        @input="prompt = $event.detail?.value ?? prompt"
-      ></nldd-multi-line-text-field>
-    </nldd-form-field>
-
-    <div class="as-knoppen">
-      <nldd-button
-        :text="streaming ? 'Assistent werkt…' : 'Verstuur'"
-        start-icon="send"
-        variant="primary"
-        :disabled="!beschikbaar || streaming || !prompt.trim()"
-        @click="submit"
-      ></nldd-button>
-      <nldd-button v-if="streaming" text="Stop" start-icon="remove" variant="secondary" @click="stop"></nldd-button>
-    </div>
-
     <!-- Zolang hij bezig is: wat doet hij, hoeveel beurten, hoe lang al. Een
          doel-run kan minuten stil zijn, en zonder dit is dat niet van
          vastgelopen te onderscheiden. -->
@@ -46,7 +23,8 @@
       <nldd-activity-indicator v-if="streaming && !openVraag" size="16" timing="instant"></nldd-activity-indicator>
       <nldd-icon v-else-if="!streaming" name="checked" size="16"></nldd-icon>
       <nldd-icon v-else name="help" size="16"></nldd-icon>
-      <span>{{ openVraag ? 'Wacht op jouw keuze.' : statusTekst }}</span>
+      <span class="as-status-wat">{{ openVraag ? 'Wacht op jouw keuze.' : statusWat }}</span>
+      <span v-if="!openVraag && statusTeller" class="as-status-teller">{{ statusTeller }}</span>
     </div>
 
     <!-- De assistent legt een keuze voor en staat stil tot je antwoordt. Dit is
@@ -91,27 +69,6 @@
         </template>
       </div>
     </nldd-inline-dialog>
-
-    <!-- Een vervolgbericht, ook terwijl hij nog bezig is: dat komt bij zijn
-         volgende beurt binnen. -->
-    <div v-if="streaming && !openVraag" class="as-vervolg">
-      <nldd-form-field label="Stuur er iets achteraan" supporting-label="komt binnen bij zijn volgende beurt">
-        <nldd-text-field
-          size="sm"
-          :value="vervolg"
-          placeholder="Let ook op de kwijtscheldingskosten"
-          @input="vervolg = $event.detail?.value ?? vervolg"
-        ></nldd-text-field>
-      </nldd-form-field>
-      <nldd-button
-        size="sm"
-        variant="secondary"
-        start-icon="send"
-        text="Insturen"
-        :disabled="!vervolg.trim() ? true : undefined"
-        @click="stuurVervolg"
-      ></nldd-button>
-    </div>
 
     <optimalisatiepad-chart
       v-if="modus === 'doel' && pad.length"
@@ -185,6 +142,54 @@
       {{ Object.keys(overlays).length === 1 ? 'document' : 'documenten' }}); zichtbaar via Bekijk wijzigingen, terug te
       draaien met Terugzetten, te bewaren met Bewaar als variant.
     </p>
+
+    <!-- Het invoerveld staat onder het gesprek, zoals bij elke andere
+         assistent: je leest naar beneden en typt onderaan. Eén veld voor de
+         eerste opdracht en voor alles wat daarna komt; een apart vak voor een
+         vervolgbericht was een tweede plek om hetzelfde te doen. -->
+    <nldd-form-field
+      :label="loopt ? 'Stuur er iets achteraan' : { vraag: 'Vraag', doel: 'Doel', instructie: 'Instructie' }[modus]"
+      :supporting-label="loopt ? 'komt binnen bij zijn volgende beurt' : modusUitleg"
+    >
+      <nldd-multi-line-text-field
+        :value="prompt"
+        :placeholder="loopt ? 'Let ook op de kwijtscheldingskosten' : placeholder"
+        :rows="loopt ? '2' : '3'"
+        @input="prompt = $event.detail?.value ?? prompt"
+      ></nldd-multi-line-text-field>
+    </nldd-form-field>
+
+    <!-- Voorbeelden per modus. Open tot de assistent voor het eerst gebruikt
+         is: wie het blok nooit openklapt ziet ze nooit, en dat is precies de
+         bezoeker voor wie ze bedoeld zijn. De toelichting per regel zegt wát je
+         te zien krijgt, zodat de lijst ook uitlegt hoe de drie modi verschillen. -->
+    <details v-if="!loopt && !feed.length" class="as-voorbeelden" :open="voorbeeldenOpen">
+      <summary @click.prevent="voorbeeldenOpen = !voorbeeldenOpen">
+        Voorbeelden ({{ voorbeelden.length }})
+      </summary>
+      <nldd-list variant="simple">
+        <nldd-list-item
+          v-for="(v, i) in voorbeelden"
+          :key="i"
+          size="sm"
+          button
+          @click="kiesVoorbeeld(v)"
+        >
+          <nldd-text-cell size="sm" :text="v.tekst" :supporting-text="v.toelichting"></nldd-text-cell>
+        </nldd-list-item>
+      </nldd-list>
+    </details>
+
+    <div class="as-knoppen">
+      <nldd-button
+        text="Verstuur"
+        start-icon="send"
+        variant="primary"
+        :disabled="!beschikbaar || !prompt.trim() || (loopt && !!openVraag)"
+        @click="verstuur"
+      ></nldd-button>
+      <nldd-button v-if="loopt" text="Stop" start-icon="remove" variant="secondary" @click="stop"></nldd-button>
+    </div>
   </div>
 </template>
 
@@ -195,6 +200,8 @@ import { useLawStore } from '../../engine/lawStore.js';
 import { percent } from '../../lib/format.js';
 import { resolveToken } from '../../lib/tokens.js';
 import { b } from '../../basePad.js';
+import { VOORBEELDEN } from '../../lib/assistentVoorbeelden.js';
+import { bewaardeRef } from '../../composables/useBewaardeStand.js';
 import OptimalisatiepadChart from '@regelrecht/frontend-shared/components/OptimalisatiepadChart.vue';
 
 // Geen `metrics`-emit meer. De assistent meet met zijn eigen n op zijn eigen
@@ -276,7 +283,39 @@ const afronding = ref(null);
 /** De keuze die nu voorligt, als de assistent er een stelde. */
 const openVraag = ref(null);
 const aangevinkt = ref([]);
-const vervolg = ref('');
+
+/**
+ * Loopt er een gesprek? Zo ja, dan stuurt het invoerveld een vervolgbericht in
+ * plaats van een nieuwe opdracht. De knop blijft "Verstuur": het is
+ * dezelfde handeling, en wát je verstuurt staat al in het label boven het veld.
+ */
+const loopt = computed(() => streaming.value);
+
+/** De voorbeelden die bij de gekozen modus horen. */
+const voorbeelden = computed(() => VOORBEELDEN[modus.value] ?? []);
+
+/**
+ * Staat het voorbeeldenblok open? Open tot de assistent voor het eerst is
+ * gebruikt; daarna weet de bezoeker wat hier kan en is het blok in de weg.
+ * Het onthouden loopt via de bewaarde stand, dus het overleeft een ververs.
+ */
+const voorbeeldenGebruikt = bewaardeRef('assistent.voorbeeldenGezien', false);
+const voorbeeldenOpen = ref(!voorbeeldenGebruikt.value);
+
+/** Zet het voorbeeld in het veld; versturen doet de gebruiker zelf. */
+function kiesVoorbeeld(v) {
+  prompt.value = v.tekst;
+  voorbeeldenOpen.value = false;
+}
+
+/**
+ * Eén knop voor twee dingen: loopt er nog niets, dan start dit een gesprek;
+ * loopt er wel iets, dan gaat de tekst als bericht naar de lopende beurt.
+ */
+async function verstuur() {
+  if (loopt.value) return stuurVervolg();
+  return submit();
+}
 
 function vinkAan(label, ev) {
   const aan = ev?.detail?.checked ?? ev?.target?.checked;
@@ -309,14 +348,14 @@ async function beantwoord(keuzes) {
 }
 
 async function stuurVervolg() {
-  const tekst = vervolg.value.trim();
+  const tekst = prompt.value.trim();
   if (!tekst) return;
-  vervolg.value = '';
+  prompt.value = '';
   try {
     await stuur(tekst);
   } catch (e) {
-    feed.value.push({ type: 'fout', melding: `Insturen mislukt: ${e?.message ?? e}` });
-    vervolg.value = tekst;
+    feed.value.push({ type: 'fout', melding: `Versturen mislukt: ${e?.message ?? e}` });
+    prompt.value = tekst;
   }
 }
 
@@ -331,18 +370,31 @@ const TOOLTEKST = {
   simuleer_populatie: 'rekent de populatie door',
 };
 
-const statusTekst = computed(() => {
-  if (afronding.value) {
-    const { beurten, seconden } = afronding.value;
-    return `Klaar in ${duur(seconden)}, ${beurten} ${beurten === 1 ? 'beurt' : 'beurten'}.`;
-  }
+/**
+ * De statusregel staat in twee stukken, zodat hij niet midden in een zin
+ * afbreekt: links wat hij doet, rechts de teller. Op een smalle kolom valt de
+ * teller als geheel naar de volgende regel in plaats van "beurt" en "4 · 25 s"
+ * uit elkaar te trekken.
+ */
+const statusWat = computed(() => {
+  if (afronding.value) return 'Klaar';
   const v = voortgang.value;
   if (!v) return 'Bezig…';
   const wat = v.tool ? (TOOLTEKST[v.tool] ?? v.tool)
     : v.status === 'requesting' ? 'denkt na'
       : 'bezig';
-  const beurt = v.beurten ? `, beurt ${v.beurten}` : '';
-  return `${wat[0].toUpperCase()}${wat.slice(1)}${beurt} · ${duur(v.seconden)}`;
+  return `${wat[0].toUpperCase()}${wat.slice(1)}`;
+});
+
+const statusTeller = computed(() => {
+  const beurtLabel = (n) => `${n} ${n === 1 ? 'beurt' : 'beurten'}`;
+  if (afronding.value) {
+    const { beurten, seconden } = afronding.value;
+    return `${duur(seconden)} · ${beurtLabel(beurten)}`;
+  }
+  const v = voortgang.value;
+  if (!v) return '';
+  return v.beurten ? `${duur(v.seconden)} · ${beurtLabel(v.beurten)}` : duur(v.seconden);
 });
 
 function duur(seconden) {
@@ -415,7 +467,10 @@ async function submit() {
   afronding.value = null;
   openVraag.value = null;
   aangevinkt.value = [];
-  vervolg.value = '';
+  // De bezoeker heeft de assistent nu gebruikt; de voorbeelden mogen voortaan
+  // dicht.
+  voorbeeldenGebruikt.value = true;
+  voorbeeldenOpen.value = false;
   let iteratie = 0;
 
   // De assistent werkt op de werkversie: stuur die documenten mee als beginstand.
@@ -517,15 +572,27 @@ function takeOverlays() {
 .as-vraag { color: var(--semantics-content-accent-color); font-weight: 600; }
 .as-gebruiker { color: var(--semantics-content-color); font-weight: 600; }
 .as-opties { display: flex; flex-direction: column; gap: var(--primitives-space-8); align-items: flex-start; }
-.as-vervolg { display: flex; gap: var(--primitives-space-8); align-items: flex-end; }
-.as-vervolg nldd-form-field { flex: 1; }
+.as-voorbeelden > summary {
+  cursor: pointer; list-style: none;
+  font-size: 0.85em; font-weight: 600;
+  color: var(--semantics-content-secondary-color);
+  padding: 2px 0;
+}
+.as-voorbeelden > summary::-webkit-details-marker { display: none; }
+.as-voorbeelden > summary::before { content: '▸ '; }
+.as-voorbeelden[open] > summary::before { content: '▾ '; }
 .as-knoppen { display: flex; gap: var(--primitives-space-8); align-items: center; }
 .as-hint { margin: 0; font-size: 0.85em; color: var(--semantics-content-secondary-color); }
 .as-status {
-  display: flex; align-items: center; gap: var(--primitives-space-8);
+  display: flex; align-items: baseline; gap: var(--primitives-space-8);
+  flex-wrap: wrap;
   font-size: 0.85em; color: var(--semantics-content-secondary-color);
   font-variant-numeric: tabular-nums;
 }
+.as-status nldd-activity-indicator, .as-status nldd-icon { align-self: center; }
+.as-status-wat { flex: 1 1 auto; min-width: 0; }
+/* De teller blijft heel: hij hoort bij elkaar of hij gaat als geheel mee. */
+.as-status-teller { white-space: nowrap; margin-left: auto; }
 .as-punt {
   display: flex; flex-direction: column; gap: var(--primitives-space-8);
   padding: var(--primitives-space-12);
