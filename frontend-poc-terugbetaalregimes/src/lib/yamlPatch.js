@@ -3,7 +3,7 @@
  * lezen of te vervangen, zonder de lawStore te raken. Gebruikt door het
  * parameterpaneel en door de MCP-tools van de beleidsassistent.
  */
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 
 /** Lees definitions[name].value uit artikel `article` van een YAML-tekst. */
 export function readDefinitionValue(yamlText, article, name) {

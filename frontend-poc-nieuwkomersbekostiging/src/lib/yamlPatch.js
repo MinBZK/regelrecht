@@ -3,7 +3,7 @@
  * lezen of te vervangen, zonder de lawStore te raken. Gebruikt door de
  * budgetneutraal-oplosser, die kandidaat-YAML's naar de worker stuurt.
  */
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 
 /** Lees definitions[name].value uit artikel `article` van een YAML-tekst. */
 export function readDefinitionValue(yamlText, article, name) {

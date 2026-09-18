@@ -145,133 +145,222 @@ const pathname = '/roadmap';
         </nldd-title>
 
         {/*
-          Both filters on one row: the categorie checkboxes on the left, the
-          zoekveld on the right. They are two ways of narrowing the same
-          matrix, so they read as one band of controls rather than as two
-          stacked blocks — and it saves the vertical space that pushed the
-          matrix itself below the fold.
+          Eén balk boven de matrix, met de drie soorten bediening in de
+          volgorde waarin iemand ze pakt: eerst zoeken, dan filteren, dan een
+          andere lezing van dezelfde matrix.
 
-          The row wraps on a narrow screen (see .rr-controls in roadmap.css),
-          where the zoekveld drops under the checkboxes and both go full width.
+          Wat hier verdween zijn de negen losse vinkjes met hun drie
+          onderschriften, die naast elkaar meer gewicht droegen dan de matrix
+          eronder. De vinkjes zelf zijn er nog — ze staan in een popover achter
+          de knop van hun groep, en dat is precies waar het ontwerpsysteem een
+          popover voor aanwijst. Een filtergroep die niemand openklapt kost zo
+          één knop in plaats van een rij.
+
+          De scheiding in twee groepen is niet cosmetisch. Zoeken, categorie en
+          belegging beperken welke kaarten er staan; "Afhankelijkheden" doet
+          dat niet, die verandert hoe dezelfde kaarten geordend worden. Ze op
+          één rij zetten als vierde vinkje maakte dat verschil onzichtbaar.
+          Vandaar een scheidslijn en een toggle-knop in plaats van een vinkje:
+          een ingedrukte knop leest als een stand, een vinkje als een keuze uit
+          een lijst.
         */}
         <div class="rr-controls">
           {/*
-            The categorie filter works without any JavaScript of our own:
-            nldd-checkbox-field reflects `checked` onto its host element, so
-            the :has() rules in roadmap.css can read the state straight off the
-            component. A <fieldset> and <legend> group the controls, which is
-            what a group of checkboxes needs and what the design system has no
-            component for.
-
-            It composes with the zoekfilter beside it rather than overriding
-            it: a card shows when both allow it. The specificity that makes
-            that hold is spelled out in roadmap.css.
+            De zoek- en filtergroep. Staat vooraan omdat zoeken het meest
+            gebruikte en het minst verkennende is: wie de naam van een
+            werkpakket weet, typt hem.
           */}
-          <fieldset class="rr-filter">
-            <legend class="rr-filter__legend">
-              <nldd-text size="sm" weight="medium" color="secondary">
-                Filter op categorie
-              </nldd-text>
-            </legend>
+          <div class="rr-controls__groep rr-controls__groep--filters">
+            {/*
+              De zoekfilter. Die kan niet in CSS: een getypte tekst met de
+              tekst van een kaart vergelijken doet geen selector. Het is een
+              script, en daarom progressief — zonder JavaScript verschijnt het
+              veld nooit (het script haalt `hidden` eraf), zodat er geen dood
+              invoerveld staat.
+
+              `rr-zoek-count` is de melding die zegt hoeveel er over is; zonder
+              die regel leest een leeggefilterde matrix als een stukke pagina.
+              Hij staat onder het veld, zodat een oplopend getal het veld niet
+              opzij duwt terwijl iemand erin typt.
+            */}
+            <nldd-container class="rr-zoek" gap="4" hidden>
+              <nldd-search-field
+                id="rr-zoek-veld"
+                placeholder="Zoek in werkpakketten"
+                accessible-label="Zoek in werkpakketten"
+                no-spellcheck
+              ></nldd-search-field>
+              <nldd-text
+                id="rr-zoek-count"
+                class="rr-zoek__count"
+                size="sm"
+                color="secondary"
+                role="status"
+                aria-live="polite"
+              ></nldd-text>
+            </nldd-container>
+
             {
-              FILTER_OPTIES.map((optie) => (
-                <nldd-checkbox-field
-                  class="rr-filter__option"
-                  id={`rr-cat-${optie.id}`}
-                  label={optie.label}
-                />
+              /*
+               * De twee filtergroepen, elk achter een eigen knop.
+               *
+               * De koppeling loopt via `popovertarget`, dus de browser regelt
+               * openen, sluiten met Esc en sluiten bij een klik ernaast. Dat
+               * is wat de popover-documentatie aanraadt en het scheelt ons de
+               * hele open/dicht-toestand.
+               *
+               * De vinkjes staan in de popover maar blijven in het document —
+               * een popover slot zijn inhoud in de light DOM en verhuist hem
+               * bij openen naar de toplaag, niet in de DOM-boom. De
+               * `:has([checked])`-regels in roadmap.css lezen dus hetzelfde als
+               * voorheen, open of dicht. Was dat niet zo, dan zou het
+               * categoriefilter stoppen zodra de popover dichtging.
+               *
+               * De twee groepen delen deze lus maar niet hun werking: het
+               * categoriefilter is puur CSS, het beleggingsfilter loopt via
+               * het script. Waarom dat verschil moet bestaan staat bij
+               * `filterBelegging` en in roadmap.css; hier is alleen de
+               * omlijsting gedeeld.
+               */
+              [
+                {
+                  id: 'cat',
+                  knop: 'Categorie',
+                  titel: 'Filter op categorie',
+                  optieKlasse: 'rr-filter__option',
+                  opties: FILTER_OPTIES,
+                },
+                {
+                  id: 'bel',
+                  knop: 'Belegging',
+                  titel: 'Filter op belegging',
+                  optieKlasse: 'rr-filter__belegging-option',
+                  opties: BELEGGING_FILTER_OPTIES,
+                },
+              ].map((groep) => (
+                <div class="rr-filtergroep">
+                  {/*
+                    De popover zit in de `popup`-slot van de knop, niet aan een
+                    `popovertarget` met een id. Dat is niet één van twee smaken:
+                    `popovertarget` wordt doorgegeven aan de <button> ín de
+                    shadow root van nldd-button, en die zoekt het id op in zijn
+                    eigen boom. De popover staat daarbuiten, dus de browser
+                    vindt hem nooit en er gebeurt bij een klik niets — geen
+                    fout, geen spoor, alleen een knop die niet opengaat. Dat
+                    was de eerste versie hiervan.
+
+                    Geslot regelt de knop het anker en de toggle zelf, en
+                    spiegelt `expanded` en `aria-haspopup` terug. Daarmee
+                    vervalt ook `popup-type`: de knop zet het zelf.
+                  */}
+                  <nldd-button
+                    id={`rr-${groep.id}-knop`}
+                    class="rr-filtergroep__knop"
+                    variant="neutral-tinted"
+                    size="sm"
+                    start-icon="filter"
+                    expandable
+                    text={groep.knop}
+                    accessible-label={groep.titel}
+                  >
+                    <nldd-popover
+                      slot="popup"
+                      id={`rr-${groep.id}-popover`}
+                      accessible-label={groep.titel}
+                      placement="bottom-start"
+                      width="260px"
+                    >
+                      <nldd-container padding="16" gap="12">
+                        <nldd-text size="sm" weight="medium" color="secondary">
+                          {groep.titel}
+                        </nldd-text>
+                        {/*
+                          Nog steeds een fieldset: het blijft een groep vinkjes
+                          die bij elkaar horen, en daar heeft het ontwerpsysteem
+                          geen component voor. De legend is visueel verborgen
+                          omdat de regel erboven hem al uitschrijft, maar hij
+                          blijft staan zodat de groep een naam houdt voor wie
+                          hem niet ziet.
+                        */}
+                        <fieldset class="rr-filter">
+                          <legend class="rr-sr-only">{groep.titel}</legend>
+                          {groep.opties.map((optie) => (
+                            <nldd-checkbox-field
+                              class={groep.optieKlasse}
+                              id={`rr-${groep.id}-${optie.id}`}
+                              label={optie.label}
+                            />
+                          ))}
+                        </fieldset>
+                      </nldd-container>
+                    </nldd-popover>
+                  </nldd-button>
+                  {/*
+                    Hoeveel er in deze groep aanstaat, naast de knop en niet
+                    erin: `text` op nldd-button is één tekst, en een getal dat
+                    in die tekst meegroeit laat de knop bij elk vinkje van
+                    breedte veranderen. Het script vult hem; met alles uit
+                    blijft hij leeg, want een badge die "0" zegt is een badge
+                    die niets zegt.
+                  */}
+                  <nldd-badge
+                    id={`rr-${groep.id}-telling`}
+                    class="rr-filtergroep__telling"
+                    color="accent"
+                    size="sm"
+                    hidden
+                  />
+                </div>
               ))
             }
-          </fieldset>
 
-          {/*
-            The belegging filter: is anyone on this werkpakket.
-
-            A checkbox group like the categorie filter, but it cannot work the
-            same way. That one hides everything and shows matches back with a
-            `:has(#id)` rule that wins on specificity; a second group cannot
-            repeat the trick, because two groups have to *intersect* and a
-            second show-back rule would return cards the first group just
-            hid. Inverting to hide-on-non-match fixes that but breaks OR
-            within a group: with both 'bar' and 'pivot' checked, each rule
-            hides what the other shows and nothing is left.
-
-            So this one goes through the script instead, on the contract the
-            zoekfilter already established: mark non-matching cards with a
-            class, hide that class with !important so the rule sits outside
-            the specificity contest altogether. All three controls then
-            compose — a card survives only when none of them hides it.
-
-            Nothing checked means no filter, exactly like the categorie group.
-          */}
-          <fieldset class="rr-filter rr-filter--belegging">
-            <legend class="rr-filter__legend">
-              <nldd-text size="sm" weight="medium" color="secondary">
-                Filter op belegging
-              </nldd-text>
-            </legend>
-            {
-              BELEGGING_FILTER_OPTIES.map((optie) => (
-                <nldd-checkbox-field
-                  class="rr-filter__belegging-option"
-                  id={`rr-bel-${optie.id}`}
-                  label={optie.label}
-                />
-              ))
-            }
-          </fieldset>
-
-          {/*
-            Turns the dependency view on: the arrows, the indenting and the row
-            packing. Off by default — the matrix is first of all a picture of
-            what there is to do, and this is a second reading of it that costs
-            a much wider column.
-
-            Its own class, not `rr-filter__option`: that one carries the
-            categorie filter's hide-rule, and a checked schakelaar would then
-            hide every card on the matrix.
-          */}
-          <fieldset class="rr-filter">
-            <legend class="rr-filter__legend">
-              <nldd-text size="sm" weight="medium" color="secondary">
-                Weergave
-              </nldd-text>
-            </legend>
-            <nldd-checkbox-field
-              class="rr-weergave__option"
-              id="rr-afhankelijkheden"
-              label="Afhankelijkheden"
-            />
-          </fieldset>
-
-          {/*
-            The zoekfilter. Unlike the categorie filter beside it this one
-            needs a script: CSS cannot compare a typed string to a card's text.
-            It is progressive — with no JavaScript the field never appears (the
-            script unhides it), so a dead input is never shown.
-
-            `rr-zoek-count` is the live region that says how much is left; it
-            is the only feedback that a search which matches nothing did
-            anything, since an empty matrix on its own reads as a broken page.
-            It sits under the field, so a growing count never shifts the field
-            sideways while someone is typing in it.
-          */}
-          <nldd-container class="rr-zoek" gap="4" hidden>
-            <nldd-search-field
-              id="rr-zoek-veld"
-              placeholder="Zoek in werkpakketten"
-              accessible-label="Zoek in werkpakketten"
-              no-spellcheck
-            ></nldd-search-field>
-            <nldd-text
-              id="rr-zoek-count"
-              class="rr-zoek__count"
+            {/*
+              Alles weer aan. Staat er alleen als er iets uit staat — een knop
+              die niets te wissen heeft is een knop die je leert negeren. Het
+              script zet hem aan en uit, dus zonder JavaScript is hij er niet;
+              dat mag, want dan zijn de twee vinkjesgroepen zelf nog wél te
+              bedienen.
+            */}
+            <nldd-button
+              id="rr-wis"
+              class="rr-controls__wissen"
+              variant="neutral-transparent"
               size="sm"
-              color="secondary"
-              role="status"
-              aria-live="polite"
-            ></nldd-text>
-          </nldd-container>
+              start-icon="close"
+              text="Wissen"
+              accessible-label="Alle filters wissen"
+              hidden
+            />
+          </div>
+
+          {/*
+            De weergaveschakelaar, achter een scheidslijn: dit filtert niets,
+            het legt een tweede lezing over dezelfde matrix — de pijlen, het
+            inspringen en het pakken van de rijen. Uit is de standaard, want de
+            matrix is eerst een beeld van wat er te doen is en deze lezing kost
+            een flink bredere kolom.
+
+            Een nldd-toggle-button en geen vinkje: een ingedrukte knop leest als
+            een stand waar je in staat, en dat is wat dit is.
+
+            De id blijft `rr-afhankelijkheden`, want de :has()-regels in
+            roadmap.css en het script hangen eraan. Wat wél veranderde is het
+            attribuut dat de stand draagt: een toggle-button reflecteert
+            `selected`, geen `checked`. Beide plekken lezen nu `selected` — zie
+            de regel in roadmap.css en `aan()` in het script hieronder.
+          */}
+          <div class="rr-controls__groep rr-controls__groep--weergave">
+            <nldd-toggle-button
+              id="rr-afhankelijkheden"
+              class="rr-weergave__option"
+              type="button"
+              size="sm"
+              icon="arrow-right"
+              text="Afhankelijkheden"
+              variant="icon-and-text"
+              accessible-label="Afhankelijkheden tonen"
+            />
+          </div>
         </div>
       </nldd-container>
 
@@ -559,6 +648,97 @@ const pathname = '/roadmap';
         });
       });
     }
+
+    /*
+     * Wat er aanstaat, op de knop van de groep.
+     *
+     * De vinkjes zitten in een popover, dus met de popover dicht is er geen
+     * enkel spoor van een filter dat wél werkt — precies de val die een
+     * ingeklapte filtergroep heeft. Het getal naast de knop is dat spoor.
+     *
+     * Leeg is niet nul. Een badge die "0" toont zegt dat er iets is om te
+     * zien; `hidden` zegt dat er niets aan de hand is. Dat scheelt de lezer
+     * het verschil tussen "geen filter" en "een filter dat niets doorlaat",
+     * dat op de matrix zelf niet te zien is.
+     */
+    const groepen = [
+      { knop: 'rr-cat', optieKlasse: '.rr-filter__option' },
+      { knop: 'rr-bel', optieKlasse: '.rr-filter__belegging-option' },
+    ];
+
+    const tellingen = () => {
+      let totaal = 0;
+      for (const groep of groepen) {
+        const aantal = document.querySelectorAll(
+          `${groep.optieKlasse}[checked]`,
+        ).length;
+        totaal += aantal;
+        const badge = document.getElementById(`${groep.knop}-telling`);
+        if (!badge) continue;
+        badge.toggleAttribute('hidden', aantal === 0);
+        // `number` en niet `text`: nldd-badge kort een getal zelf in boven
+        // `max`, en een tekst zou dat omzeilen.
+        badge.setAttribute('number', String(aantal));
+      }
+      return totaal;
+    };
+
+    /*
+     * De wisknop, en waarom hij meetelt wat hij meetelt.
+     *
+     * Hij wist de drie dingen die kaarten wegnemen: de zoekterm en de twee
+     * vinkjesgroepen. Níet de afhankelijkhedenweergave — die verbergt niets,
+     * en meewissen zou een stand omgooien waar de lezer niet om vroeg. Dat is
+     * dezelfde scheiding die de balk zelf al toont.
+     */
+    const wis = document.getElementById('rr-wis');
+
+    const herzieBalk = () => {
+      const aantal = tellingen();
+      const heeftQuery = normaliseerZoekterm(fieldValue(field)).length > 0;
+      wis?.toggleAttribute('hidden', aantal === 0 && !heeftQuery);
+    };
+
+    wis?.addEventListener('click', () => {
+      for (const groep of groepen) {
+        for (const optie of document.querySelectorAll(
+          `${groep.optieKlasse}[checked]`,
+        )) {
+          // De property, niet het attribuut: nldd-checkbox-field spiegelt zelf
+          // terug naar het attribuut, en alleen dat pad houdt zijn interne
+          // <input> in de pas. Het attribuut weghalen laat het vinkje staan.
+          (optie as HTMLElement & { checked?: boolean }).checked = false;
+        }
+      }
+      (field as HTMLElement & { value?: string }).value = '';
+      requestAnimationFrame(() => {
+        filterBelegging();
+        filter('');
+        herzieBalk();
+      });
+    });
+
+    /*
+     * De balk bijwerken bij elke verandering aan een filter. Eén listener over
+     * beide groepen plus het veld, in de bubbelfase: de knoppen dragen geen
+     * eigen toestand, ze lezen die van de vinkjes terug.
+     *
+     * Een frame later, om dezelfde reden als overal op deze pagina: bij
+     * `change` is `checked` nog alleen een property en is het attribuut dat
+     * hier geteld wordt nog niet gespiegeld.
+     */
+    for (const optie of document.querySelectorAll(
+      `${groepen[0].optieKlasse}, ${groepen[1].optieKlasse}`,
+    )) {
+      optie.addEventListener('change', () =>
+        requestAnimationFrame(herzieBalk),
+      );
+    }
+    for (const event of ['input', 'search']) {
+      field.addEventListener(event, herzieBalk);
+    }
+
+    herzieBalk();
   }
 
   /**
@@ -640,7 +820,15 @@ const pathname = '/roadmap';
       table.querySelectorAll<HTMLElement>('thead th[id^="rr-fase-"]'),
     ).map((th) => th.id.slice('rr-fase-'.length));
 
-    const aan = () => schakelaar.hasAttribute('checked');
+    /*
+     * `selected` en niet `checked`: de schakelaar is een nldd-toggle-button,
+     * en die reflecteert zijn stand naar `selected`. De :has()-regels in
+     * roadmap.css lezen hetzelfde attribuut — staan die twee niet op dezelfde
+     * naam, dan tekent het script pijlen over een matrix die de CSS nooit in
+     * de afhankelijkhedenstand heeft gezet, of andersom. Vandaar de controle
+     * in assertFilterRules().
+     */
+    const aan = () => schakelaar.hasAttribute('selected');
     const { stap: STAP, basis: KOLOM_BASIS } = maten(table);
 
     /*

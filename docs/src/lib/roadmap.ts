@@ -108,10 +108,23 @@ export const BOUW_STANDEN = [
  * built, and would never reach the derived version of "done"; saying so is a
  * judgement about the werkpakket as a whole, which is a person's to make.
  *
- * '' is not 'vrij'. '' is the default and means nothing has been said —
- * where all forty-nine start. 'vrij' is an editorial act: someone read the
- * werkpakket and decided it is ready to be picked up. A roadmap where
- * everything says 'vrij' because that is the default invites nobody.
+ * '' is 'vrij'. Een leeg veld betekent dat niemand zijn hand heeft opgestoken,
+ * en dat is precies wat vrij betekent: er kan iemand op. Er is geen vierde
+ * stand naast de drie hieronder.
+ *
+ * Dit stond hier andersom, en die redenering was: '' betekent dat er niets
+ * gezegd is, terwijl 'vrij' een redactionele daad is, en een roadmap waar
+ * alles 'vrij' zegt omdat dat de standaard is nodigt niemand uit. Het bezwaar
+ * klopt over uitnodigen, maar het antwoord was de verkeerde kant op. Wie op de
+ * roadmap zoekt naar werk dat open ligt, moet ook de werkpakketten zien waar
+ * nog niemand over vergaderd heeft — juist die. Ze buiten 'Vrij' houden gaf ze
+ * een eigen hokje ('Niet bepaald') dat zich gedroeg als een vierde stand, en
+ * dan moet iemand twee vakjes aanvinken voor één vraag.
+ *
+ * Wat het bezwaar wél terecht wilde voorkomen — dat de kaarten volstromen met
+ * een tag die zegt dat er niets aan de hand is — blijft staan, en op de plek
+ * waar het thuishoort: RoadmapMatrixCel toont geen tag voor 'vrij'. Vrij is de
+ * stilzwijgende meerderheid; alleen 'opgepakt' en 'klaar' verdienen een tag.
  *
  * The colours deliberately leave the neutral/warning/success ladder that
  * `onderzoek` and `bouw` share: those two are progress, this is ownership, and
@@ -128,8 +141,18 @@ export const BELEGGING_STANDEN = [
 export const getOnderzoek = (id: string) =>
   ONDERZOEK_STANDEN.find((s) => s.id === id);
 export const getBouw = (id: string) => BOUW_STANDEN.find((s) => s.id === id);
+
+/**
+ * De beleggingsstand, met een leeg veld als 'vrij'.
+ *
+ * Deze ene functie is waar '' naar 'vrij' gaat, en daarom staat het hier en
+ * niet op de aanroepplekken: de kaart, de detailpagina en het filter lezen
+ * allemaal hierlangs, en drie kopieën van dezelfde `|| 'vrij'` is drie kansen
+ * om er één te vergeten. Anders dan getOnderzoek en getBouw hiernaast geeft
+ * deze dus nooit undefined terug voor een leeg veld.
+ */
 export const getBelegging = (id: string) =>
-  BELEGGING_STANDEN.find((s) => s.id === id);
+  BELEGGING_STANDEN.find((s) => s.id === (id || 'vrij'));
 
 export const CATEGORIEEN = [
   { id: 'bar', label: 'Bar' },
@@ -167,17 +190,28 @@ type NonEmpty = [string, ...string[]];
 export const GEEN_CATEGORIE = 'geen';
 
 /**
- * The value `data-belegging` carries for a werkpakket nobody has said
- * anything about. That is the normal state — all forty-nine start there — so
- * the filter needs a way to show them, the same way `GEEN_CATEGORIE` does.
+ * De beleggingsstand zoals hij op `data-belegging` komt te staan, met een leeg
+ * veld als 'vrij' — dezelfde afbeelding die getBelegging() maakt.
+ *
+ * Dit moet dezelfde waarde opleveren als de knop in het filter, anders vinkt
+ * iemand 'Vrij' aan en verdwijnen juist de werkpakketten waar nog niemand iets
+ * over gezegd heeft. Er is daarom geen `GEEN_BELEGGING` meer: er is geen
+ * vierde stand om een eigen waarde voor te hebben.
  */
-export const GEEN_BELEGGING = 'geen';
+export const beleggingStand = (stand: string) => stand || 'vrij';
 
-/** The belegging filter's checkboxes: every stand, plus the ones without one. */
-export const BELEGGING_FILTER_OPTIES = [
-  ...BELEGGING_STANDEN.map((s) => ({ id: s.id, label: s.label })),
-  { id: GEEN_BELEGGING, label: 'Niet bepaald' },
-];
+/**
+ * De vinkjes van het beleggingsfilter: de drie standen, en niet meer.
+ *
+ * Anders dan FILTER_OPTIES hieronder heeft deze geen 'zonder'-optie, omdat er
+ * geen werkpakket zonder belegging is: een leeg veld is 'vrij'. Bij categorie
+ * ligt dat wel zo — daar is geen categorie een echte toestand van twintig van
+ * de negenenveertig, en zonder vakje ervoor zijn ze niet meer terug te halen.
+ */
+export const BELEGGING_FILTER_OPTIES = BELEGGING_STANDEN.map((s) => ({
+  id: s.id,
+  label: s.label,
+}));
 
 /** The filter's checkboxes: every categorie, plus the ones without one. */
 export const FILTER_OPTIES = [
@@ -221,6 +255,32 @@ export function assertFilterRules(css: string): void {
       'roadmap.css mist de verberg-regel voor het beleggingsfilter. Voeg ' +
         '`.rr-wp-card--geen-belegging` toe aan de `display: none !important`-' +
         'regel naast `.rr-wp-card--geen-treffer`, anders doen die vinkjes niets.',
+    );
+  }
+
+  /*
+   * De afhankelijkhedenschakelaar is een nldd-toggle-button, en die
+   * reflecteert zijn stand naar `selected` — niet naar `checked`, zoals de
+   * nldd-checkbox-field die hij verving.
+   *
+   * Dat verschil is onzichtbaar tot het misgaat: een `[checked]` dat hier
+   * bleef staan matcht nooit, dus de weergave gaat gewoon nooit aan, zonder
+   * fout en zonder spoor in de console. Dezelfde val als bij de filterregels
+   * hierboven, dus dezelfde behandeling — omvallen tijdens de build.
+   */
+  if (css.includes('#rr-afhankelijkheden[checked]')) {
+    throw new Error(
+      'roadmap.css leest `#rr-afhankelijkheden[checked]`, maar de schakelaar ' +
+        'is een nldd-toggle-button en die reflecteert `selected`. Vervang ' +
+        '`[checked]` door `[selected]`, anders gaat de ' +
+        'afhankelijkhedenweergave nooit aan.',
+    );
+  }
+  if (!css.includes('#rr-afhankelijkheden[selected]')) {
+    throw new Error(
+      'roadmap.css mist de regels achter `#rr-afhankelijkheden[selected]`. ' +
+        'Zonder die selector blijft de matrix in de gewone stapelweergave ' +
+        'staan, ook met de schakelaar aan.',
     );
   }
 }
@@ -569,6 +629,11 @@ export function assertRfcReferences(
  *
  * - 'vrij' on a werkpakket whose question is answered and whose build is
  *   done. The card would invite someone to pick up work that is finished.
+ *   A blank field counts as 'vrij' here, the same as everywhere else — see
+ *   getBelegging(). Checking the raw string instead would let exactly the
+ *   common case through: forty-six of the forty-nine leave the field blank,
+ *   so a werkpakket that quietly finishes while nobody updates its belegging
+ *   is precisely the one this rule is for.
  * - a `sinds` in the future. That is a typo (2062 for 2026), and sindsTekst()
  *   would render it as a negative age.
  *
@@ -583,7 +648,8 @@ export function assertBelegging(
   const problems: string[] = [];
 
   for (const { data } of werkpakketten) {
-    const { stand, sinds } = data.belegging;
+    const { sinds } = data.belegging;
+    const stand = beleggingStand(data.belegging.stand);
 
     if (
       stand === 'vrij' &&
@@ -591,9 +657,10 @@ export function assertBelegging(
       data.bouw === 'wel'
     ) {
       problems.push(
-        `werkpakket ${data.id} (${data.titel}): belegging.stand is 'vrij' ` +
-          'terwijl onderzoek beantwoord en bouw wel is; de kaart zou ' +
-          'uitnodigen tot werk dat af is',
+        `werkpakket ${data.id} (${data.titel}): de belegging staat op 'vrij' ` +
+          '(of is leeg, wat hetzelfde betekent) terwijl onderzoek beantwoord ' +
+          'en bouw wel is; de kaart zou uitnodigen tot werk dat af is. Zet ' +
+          "belegging.stand op 'klaar'.",
       );
     }
 

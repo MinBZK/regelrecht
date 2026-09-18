@@ -62,7 +62,7 @@
 
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { useLawStore } from '../../engine/lawStore.js';
 import { compactDiff, definitionDiff, articleTextDiff } from '../../lib/diff.js';
 

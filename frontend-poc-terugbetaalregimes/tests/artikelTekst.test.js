@@ -6,7 +6,7 @@
 // leden), `>-` vouwt ze samen tot een lopende zin. Wie dat door elkaar haalt,
 // verandert de wet zonder dat er een woord verandert.
 import { describe, it, expect } from 'vitest';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { patchArticleText, readArticleText } from '../src/lib/yamlPatch.js';
 
 const GEVOUWEN = `articles:

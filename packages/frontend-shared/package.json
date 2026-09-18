@@ -30,7 +30,7 @@
     "vue-echarts": { "optional": true }
   },
   "devDependencies": {
-    "happy-dom": "^20.14.0",
+    "happy-dom": "^20.14.5",
     "vitest": "^5.0.0"
   }
 }
