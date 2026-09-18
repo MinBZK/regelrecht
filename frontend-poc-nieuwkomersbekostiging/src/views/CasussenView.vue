@@ -13,7 +13,7 @@
             :selected-bsn="selected?.bsn"
             @select="selectPersona"
           />
-          <variant-switcher :model-value="variantId" @update:model-value="variantId = $event" />
+          <variant-switcher multiple :model-value="variantIds" @update:model-value="variantIds = $event" />
         </div>
       </div>
 
@@ -49,36 +49,38 @@
         </div>
       </nldd-simple-section>
 
+      <!-- De peildata staan boven de uitleg: dat is de uitkomst waar iemand
+           voor komt, en de herleiding eronder is waar je heen gaat als je hem
+           niet gelooft. -->
       <nldd-simple-section>
         <nldd-title :size="4">
-          <span>Categorie en kwartalen</span>
-          <span slot="subtitle">Van de gegevens in ROD naar het aantal peildata dat telt (huidig recht).</span>
-        </nldd-title>
-        <categorie-uitleg :persona="selected" :uitkomst="uitlegUitkomst" />
-      </nldd-simple-section>
-
-      <nldd-simple-section>
-        <nldd-title :size="4">
-          <span>Peildata</span>
-          <span slot="subtitle">Per kwartaal: telt de leerling, in welke categorie en welk jaar, tegen welk bedrag (25% van het jaarbedrag).{{ variantId ? ' Rechts dezelfde leerling onder de variant.' : '' }}</span>
+          <span>Regelingen vergelijken per peildatum</span>
+          <span slot="subtitle">Per kwartaal: telt de leerling, in welke categorie en welk jaar, tegen welk bedrag (25% van het jaarbedrag). Huidig recht staat altijd links; elke gekozen regeling komt daarnaast.</span>
         </nldd-title>
         <nldd-activity-indicator v-if="loading" size="24" timing="instant"></nldd-activity-indicator>
         <peildata-tijdlijn
           v-else-if="istTimeline"
           :peildata="PERSONA_PEILDATA"
           :ist="istTimeline"
-          :variant="variantTimeline"
-          :variant-titel="variantTitel"
+          :kolommen="variantKolommen"
           :ist-titel="istTitel"
           :geselecteerd="tracePeildatum"
           @trace="openTrace"
         />
       </nldd-simple-section>
+
+      <nldd-simple-section>
+        <nldd-title :size="4">
+          <span>Waarom deze leerling meetelt, en hoe vaak</span>
+          <span slot="subtitle">Van de gegevens in ROD naar de categorie (asielzoeker of overige vreemdeling) en het aantal kwartalen dat bekostigd wordt, onder huidig recht.</span>
+        </nldd-title>
+        <categorie-uitleg :persona="selected" :uitkomst="uitlegUitkomst" />
+      </nldd-simple-section>
     </template>
 
     <berekening-sheet
       :open="traceOpen"
-      :titel="`${selected?.naam ?? ''} op ${datumLabel(tracePeildatum)}${traceKolom === 'variant' ? ` (${variantTitel})` : ''}`"
+      :titel="`${selected?.naam ?? ''} op ${datumLabel(tracePeildatum)}${traceKolom ? ` (${variantTitelVan(traceKolom)})` : ''}`"
       :trace="trace"
       :error="traceError"
       :peildata="PERSONA_PEILDATA"
@@ -114,19 +116,36 @@ const { personas, fetchPersonas, personaTimeline, personaTrace } = usePersonas()
 const { engineFor } = useColumnEngines();
 
 const selected = ref(null);
-const variantId = bewaardeRef('casussen.variant', null);
-const variantVanafDatum = computed(() => variantVanaf(variants.value.find((x) => x.id === variantId.value)));
+// Meerdere regelingen tegelijk, net als op het beleidstabblad: de impact van
+// varianten op één leerling is pas te zien als ze naast elkaar staan, niet als
+// je ze twee aan twee moet vergelijken. Huidig recht staat altijd links.
+const variantIds = bewaardeRef('casussen.varianten', []);
+const variantVanafDatum = computed(() => {
+  // De vroegste ingangsdatum onder de gekozen varianten: daarvoor zijn alle
+  // kolommen per definitie gelijk.
+  const datums = variantIds.value
+    .map((id) => variantVanaf(variants.value.find((x) => x.id === id)))
+    .filter(Boolean)
+    .sort();
+  return datums[0] ?? null;
+});
 const istTimeline = ref(null);
-const variantTimeline = ref(null);
+/** Per gekozen variant-id de tijdlijn van deze leerling. */
+const variantTimelines = ref({});
 const loading = ref(false);
 const error = ref(null);
 
 const sector = computed(() => sectorVan(selected.value));
-const variantTitel = computed(() => {
-  const v = variants.value.find((x) => x.id === variantId.value);
-  const bewerkt = variantId.value && variantId.value === werkversie.value && changeCount.value ? ' (werkversie, bewerkt)' : '';
+function variantTitelVan(id) {
+  const v = variants.value.find((x) => x.id === id);
+  const bewerkt = id === werkversie.value && changeCount.value ? ' (werkversie, bewerkt)' : '';
   return (v ? shortTitle(v) : 'Variant') + bewerkt;
-});
+}
+
+/** Wat de tijdlijn naast huidig recht zet: [{ id, titel, timeline }]. */
+const variantKolommen = computed(() => variantIds.value
+  .filter((id) => variantTimelines.value[id])
+  .map((id) => ({ id, titel: variantTitelVan(id), timeline: variantTimelines.value[id] })));
 /** Links staat huidig recht; als dat de werkversie is met bewerkingen, zeg dat. */
 const istTitel = computed(() => (werkversie.value === null && changeCount.value ? 'Huidig recht (werkversie, bewerkt)' : 'Huidig recht'));
 
@@ -161,14 +180,14 @@ async function herbereken() {
   try {
     const ist = await engineFor(null);
     const tlIst = personaTimeline(ist, selected.value);
-    let tlVar = null;
-    if (variantId.value) {
-      const ve = await engineFor(variantId.value);
-      tlVar = personaTimeline(ve, selected.value);
+    const tlVar = {};
+    for (const vid of variantIds.value) {
+      const ve = await engineFor(vid);
+      tlVar[vid] = personaTimeline(ve, selected.value);
     }
     if (id !== runId) return;
     istTimeline.value = tlIst;
-    variantTimeline.value = tlVar;
+    variantTimelines.value = tlVar;
     const fout = tlIst.find((u) => u.fout);
     if (fout) error.value = `De engine kon deze casus niet volledig doorrekenen: ${fout.fout}`;
     if (traceOpen.value) laadTrace();
@@ -179,13 +198,14 @@ async function herbereken() {
   }
 }
 
-watch([selected, variantId, version, ready], herbereken);
+watch([selected, variantIds, version, ready], herbereken, { deep: true });
 
 // ---- Trace-sheet ------------------------------------------------------------
 const traceOpen = ref(false);
 const tracePeildatum = ref(PERSONA_PEILDATA[0]);
 const traceOutput = ref('bedrag_kwartaal');
-const traceKolom = ref('ist');
+// Welke kolom de trace toont: null = huidig recht, anders een variant-id.
+const traceKolom = ref(null);
 const trace = ref(null);
 const traceError = ref(null);
 
@@ -193,7 +213,7 @@ const traceOutputs = computed(() => (sector.value === 'vo' ? VO_LEERLING_OUTPUTS
 
 function openTrace(peildatum) {
   tracePeildatum.value = peildatum;
-  traceKolom.value = 'ist';
+  traceKolom.value = null;
   traceOpen.value = true;
   laadTrace();
 }
@@ -202,7 +222,7 @@ async function laadTrace() {
   trace.value = null;
   traceError.value = null;
   try {
-    const engine = await engineFor(traceKolom.value === 'variant' ? variantId.value : null);
+    const engine = await engineFor(traceKolom.value);
     trace.value = personaTrace(engine, selected.value, tracePeildatum.value, traceOutput.value);
   } catch (e) {
     traceError.value = String(e?.message ?? e);

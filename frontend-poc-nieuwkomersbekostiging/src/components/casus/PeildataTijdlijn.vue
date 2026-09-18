@@ -8,7 +8,7 @@
       <nldd-table-row slot="header">
         <nldd-text-cell size="sm" text="Peildatum"></nldd-text-cell>
         <nldd-text-cell size="sm" :text="istTitel" supporting-text="telt · categorie · jaar · bedrag"></nldd-text-cell>
-        <nldd-text-cell v-if="variant" size="sm" :text="variantTitel" supporting-text="telt · categorie · jaar · bedrag"></nldd-text-cell>
+        <nldd-text-cell v-for="k in kolommen" :key="k.id" size="sm" :text="k.titel" supporting-text="telt · categorie · jaar · bedrag"></nldd-text-cell>
         <nldd-text-cell size="sm" text=""></nldd-text-cell>
       </nldd-table-row>
 
@@ -22,13 +22,13 @@
             <span class="tl-bedrag">{{ ist[i]?.telt ? euro(ist[i].bedrag) : uitlegNietTellend(ist[i]) }}</span>
           </span>
         </nldd-text-cell>
-        <nldd-text-cell v-if="variant" size="sm" :color="kleur(variant[i])">
+        <nldd-text-cell v-for="k in kolommen" :key="k.id" size="sm" :color="kleur(k.timeline?.[i])">
           <span class="tl-cel">
-            <nldd-icon :name="variant[i]?.telt ? 'check-mark-circle' : 'dismiss-circle'" size="16"></nldd-icon>
-            <nldd-tag v-if="variant[i]?.telt" size="sm" :color="categorieColor(variant[i].categorie_effectief)" :text="categorieLabel(variant[i].categorie_effectief)"></nldd-tag>
-            <span v-if="variant[i]?.telt" class="tl-jaar">jaar {{ variant[i].bekostigingsjaar }}</span>
-            <span class="tl-bedrag">{{ variant[i]?.telt ? euro(variant[i].bedrag) : uitlegNietTellend(variant[i]) }}</span>
-            <span v-if="verschil(i)" class="tl-delta" :class="verschil(i) > 0 ? 'tl-plus' : 'tl-min'">{{ euroDelta(verschil(i)) }}</span>
+            <nldd-icon :name="k.timeline?.[i]?.telt ? 'check-mark-circle' : 'dismiss-circle'" size="16"></nldd-icon>
+            <nldd-tag v-if="k.timeline?.[i]?.telt" size="sm" :color="categorieColor(k.timeline[i].categorie_effectief)" :text="categorieLabel(k.timeline[i].categorie_effectief)"></nldd-tag>
+            <span v-if="k.timeline?.[i]?.telt" class="tl-jaar">jaar {{ k.timeline[i].bekostigingsjaar }}</span>
+            <span class="tl-bedrag">{{ k.timeline?.[i]?.telt ? euro(k.timeline[i].bedrag) : uitlegNietTellend(k.timeline?.[i]) }}</span>
+            <span v-if="verschil(k, i)" class="tl-delta" :class="verschil(k, i) > 0 ? 'tl-plus' : 'tl-min'">{{ euroDelta(verschil(k, i)) }}</span>
           </span>
         </nldd-text-cell>
         <nldd-text-cell size="sm" horizontal-alignment="right">
@@ -48,9 +48,9 @@
           <strong>{{ euro(totaal(ist)) }}</strong>
           <span slot="supporting-text">{{ kwartalen(ist) }} tellende peildata</span>
         </nldd-text-cell>
-        <nldd-text-cell v-if="variant" size="sm">
-          <strong>{{ euro(totaal(variant)) }}</strong>
-          <span slot="supporting-text">{{ kwartalen(variant) }} tellende peildata · {{ euroDelta(totaal(variant) - totaal(ist)) }}</span>
+        <nldd-text-cell v-for="k in kolommen" :key="k.id" size="sm">
+          <strong>{{ euro(totaal(k.timeline)) }}</strong>
+          <span slot="supporting-text">{{ kwartalen(k.timeline) }} tellende peildata · {{ euroDelta(totaal(k.timeline) - totaal(ist)) }}</span>
         </nldd-text-cell>
         <nldd-text-cell size="sm" text=""></nldd-text-cell>
       </nldd-table-row>
@@ -74,8 +74,12 @@ import { datumLabel, kwartaalLabel, categorieLabel, categorieColor } from '../..
 const props = defineProps({
   peildata: { type: Array, required: true },
   ist: { type: Array, required: true },
-  variant: { type: Array, default: null },
-  variantTitel: { type: String, default: 'Variant' },
+  /**
+   * De regelingen naast huidig recht: [{ id, titel, timeline }]. Meerdere
+   * tegelijk, zodat de impact van varianten op één leerling naast elkaar
+   * staat in plaats van twee aan twee vergeleken te moeten worden.
+   */
+  kolommen: { type: Array, default: () => [] },
   istTitel: { type: String, default: 'Huidig recht' },
   geselecteerd: { type: String, default: null },
 });
@@ -86,15 +90,22 @@ const emit = defineEmits(['trace']);
 const alles = ref(false);
 const relevant = computed(() => props.peildata.map((_, i) => i).filter((i) => {
   const a = props.ist[i];
-  const b = props.variant?.[i];
-  return !!(a?.in_bestand || a?.telt || b?.in_bestand || b?.telt);
+  if (a?.in_bestand || a?.telt) return true;
+  // Een peildatum telt ook mee als hij in één van de gekozen regelingen iets
+  // doet; anders verdwijnt juist het verschil dat je wilde zien.
+  return props.kolommen.some((k) => k.timeline?.[i]?.in_bestand || k.timeline?.[i]?.telt);
 }));
 const zichtbaar = computed(() => (alles.value || relevant.value.length === 0 ? props.peildata.map((_, i) => i) : relevant.value));
 const verborgen = computed(() => props.peildata.length - zichtbaar.value.length);
 
-const gridColumns = computed(() =>
-  props.variant ? 'minmax(150px, 0.8fr) minmax(260px, 1.4fr) minmax(260px, 1.4fr) 80px' : 'minmax(150px, 0.8fr) minmax(260px, 2fr) 80px',
-);
+const gridColumns = computed(() => {
+  const n = props.kolommen.length;
+  if (!n) return 'minmax(150px, 0.8fr) minmax(260px, 2fr) 80px';
+  // Naarmate er meer regelingen naast elkaar staan, mag elke kolom smaller;
+  // onder de 200px wordt een cel met tag, jaar en bedrag onleesbaar.
+  const breedte = n >= 3 ? 'minmax(200px, 1fr)' : 'minmax(260px, 1.4fr)';
+  return `minmax(150px, 0.8fr) ${breedte} ${Array(n).fill(breedte).join(' ')} 80px`;
+});
 
 function kleur(u) {
   if (!u) return 'secondary';
@@ -113,9 +124,8 @@ function uitlegNietTellend(u) {
   return 'telt niet';
 }
 
-function verschil(i) {
-  if (!props.variant) return 0;
-  return (props.variant[i]?.bedrag ?? 0) - (props.ist[i]?.bedrag ?? 0);
+function verschil(kolom, i) {
+  return (kolom.timeline?.[i]?.bedrag ?? 0) - (props.ist[i]?.bedrag ?? 0);
 }
 
 function totaal(list) {

@@ -43,8 +43,8 @@
             <strong>{{ formatOutput(trace.outputs?.[output]) }}</strong>
             <span v-if="trace.article_number" class="bs-artikel">(artikel {{ trace.article_number }})</span>
           </div>
-          <ul class="bs-tree">
-            <trace-node :node="trace.trace" :depth="0" />
+          <ul v-if="traceWortel" class="bs-tree">
+            <trace-node :node="traceWortel" :depth="0" />
           </ul>
         </template>
       </nldd-container>
@@ -53,7 +53,7 @@
 </template>
 
 <script setup>
-import { ref, watch, nextTick } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 import TraceNode from './TraceNode.vue';
 import { euro } from '../../lib/format.js';
 import { datumLabel } from '../../lib/nieuwkomerFacts.js';
@@ -69,6 +69,22 @@ const props = defineProps({
   output: { type: String, default: 'bedrag_kwartaal' },
 });
 const emit = defineEmits(['close', 'update:peildatum', 'update:output']);
+
+/**
+ * De wortel van de tracestructuur.
+ *
+ * De engine geeft sinds RFC-039 een tracedocument terug (`{ trace_version,
+ * root }`) in plaats van de boom zelf. Dit stond op `trace.trace`, dus het gaf
+ * het document door alsof het een knoop was: dat rendert als één lege regel
+ * zonder naam of type, en de hele herleiding was daarmee stil verdwenen.
+ * De oude vorm blijft werken, zodat een engine van voor die wijziging het niet
+ * breekt.
+ */
+const traceWortel = computed(() => {
+  const t = props.trace?.trace;
+  if (!t) return null;
+  return t.root ?? (t.node_type ? t : null);
+});
 
 const sheetEl = ref(null);
 
