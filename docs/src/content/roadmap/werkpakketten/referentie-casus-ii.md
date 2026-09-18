@@ -11,5 +11,7 @@ capaciteit: ''
 toelichting: Verticale integratie voor overige capabilities
 volgorde: 3000
 onderzoeksvragen: []
+afhankelijkVan:
+  - referentie-casus-i
 samenhangIds: []
 ---

@@ -4,6 +4,7 @@ import PortalHeader from '../components/PortalHeader.vue';
 import NBanner from '../components/NBanner.vue';
 import { api } from '../api.js';
 import { euro, datum } from '../format.js';
+import { b } from '../basePad.js';
 
 const navItems = [
   { text: 'Home', to: '/' },
@@ -141,7 +142,7 @@ onMounted(async () => {
         </nldd-rich-text>
       </nldd-container>
       <nldd-page-footer-legal-bar slot="legal-bar">
-        <nldd-page-footer-legal-bar-item href="/" text="Home"></nldd-page-footer-legal-bar-item>
+        <nldd-page-footer-legal-bar-item :href="b('/')" text="Home"></nldd-page-footer-legal-bar-item>
         <nldd-page-footer-legal-bar-item href="#" text="Contact"></nldd-page-footer-legal-bar-item>
         <nldd-page-footer-legal-bar-item href="#" text="Toegankelijkheid"></nldd-page-footer-legal-bar-item>
         <nldd-page-footer-legal-bar-item href="#" text="Privacy"></nldd-page-footer-legal-bar-item>

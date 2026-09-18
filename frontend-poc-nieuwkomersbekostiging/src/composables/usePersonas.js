@@ -5,7 +5,7 @@
  * peildatum voor de "dit komt letterlijk uit de regeling"-sheet.
  */
 import { ref } from 'vue';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { b } from '../basePad.js';
 import { evaluateLeerlingTimeline, sectorVan } from '../sim/simulate.js';
 import {
