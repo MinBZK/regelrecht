@@ -11,12 +11,13 @@
          beleidsmaker binnenkomt, en de modus waar het optimalisatiepad
          hieronder voor bestaat. -->
     <nldd-segmented-control size="sm" :value="modus" @change="modus = $event.detail?.value ?? modus">
+      <nldd-segmented-control-item value="vraag" text="Vraag"></nldd-segmented-control-item>
       <nldd-segmented-control-item value="doel" text="Doel"></nldd-segmented-control-item>
       <nldd-segmented-control-item value="instructie" text="Instructie"></nldd-segmented-control-item>
     </nldd-segmented-control>
 
     <nldd-form-field
-      :label="modus === 'doel' ? 'Doel' : 'Instructie'"
+      :label="{ vraag: 'Vraag', doel: 'Doel', instructie: 'Instructie' }[modus]"
       :supporting-label="modusUitleg"
     >
       <nldd-multi-line-text-field
@@ -247,18 +248,18 @@ async function peilHealth() {
   }
 }
 
-const modus = ref('doel');
+const modus = ref('vraag');
 const prompt = ref('');
 const feed = ref([]);
 const pad = ref([]); // [{iteratie, pct}] voor de doel-modus
 const overlays = ref(null);
 const feedEl = ref(null);
 
-const placeholder = computed(() =>
-  modus.value === 'doel'
-    ? 'Minimaliseer het aantal debiteuren met betalingsproblemen zonder de kwijtscheldingskosten meer dan te verdubbelen'
-    : 'Verhoog de draagkrachtvrije voet van SF15-oud naar 84% van het belastbaar minimumloon',
-);
+const placeholder = computed(() => ({
+  vraag: 'Welk regime is voor een debiteur met een laag inkomen het gunstigst?',
+  doel: 'Minimaliseer het aantal debiteuren met betalingsproblemen zonder de kwijtscheldingskosten meer dan te verdubbelen',
+  instructie: 'Verhoog de draagkrachtvrije voet van SF15-oud naar 84% van het belastbaar minimumloon',
+}[modus.value]));
 
 /** Eén reeks: het aandeel debiteuren met betalingsproblemen, in procenten. */
 const reeksen = [{
@@ -394,11 +395,11 @@ function neemStandOver(stand) {
  * uitkomst toe en mag daar zestig beurten over doen, instructie voert één
  * wijziging uit en laat het effect zien.
  */
-const modusUitleg = computed(() =>
-  modus.value === 'doel'
-    ? 'Je weet wat je wilt bereiken. De assistent probeert wijzigingen, meet het effect en stelt bij tot het niet verder verbetert.'
-    : 'Je weet wat je wilt veranderen. De assistent voert die ene wijziging uit en rekent door.',
-);
+const modusUitleg = computed(() => ({
+  vraag: 'Je wilt iets weten. De assistent zoekt het uit en rekent door, maar wijzigt niets.',
+  doel: 'Je weet wat je wilt bereiken. De assistent probeert wijzigingen, meet het effect en stelt bij tot het niet verder verbetert.',
+  instructie: 'Je weet wat je wilt veranderen. De assistent voert die ene wijziging uit en rekent door.',
+}[modus.value]));
 
 onMounted(peilHealth);
 onUnmounted(() => {

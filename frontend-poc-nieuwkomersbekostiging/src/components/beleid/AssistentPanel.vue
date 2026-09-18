@@ -11,13 +11,14 @@
          beleidsmaker binnenkomt. -->
     <div class="as-modus">
       <nldd-segmented-control :value="modus" @change="modus = $event.detail?.value ?? modus">
+        <nldd-segmented-control-item value="vraag" text="Vraag"></nldd-segmented-control-item>
         <nldd-segmented-control-item value="doel" text="Doel"></nldd-segmented-control-item>
         <nldd-segmented-control-item value="instructie" text="Instructie"></nldd-segmented-control-item>
       </nldd-segmented-control>
     </div>
 
     <nldd-form-field
-      :label="modus === 'doel' ? 'Beschrijf het beleidsdoel' : 'Geef een instructie'"
+      :label="{ vraag: 'Vraag', doel: 'Beschrijf het beleidsdoel', instructie: 'Geef een instructie' }[modus]"
       :supporting-label="modusUitleg"
     >
       <nldd-multi-line-text-field
@@ -277,7 +278,7 @@ async function peilHealth() {
   return health.value;
 }
 
-const modus = ref('doel');
+const modus = ref('vraag');
 const prompt = ref('');
 const feed = ref([]);
 const pad = ref([]); // [{iteratie, waarden, …}] voor de doel-modus
@@ -302,11 +303,11 @@ const wijzigingLabel = computed(() => {
   return delen.join(' en ');
 });
 
-const placeholder = computed(() =>
-  modus.value === 'doel'
-    ? 'Trek de bedragen voor asielzoekers en overige vreemdelingen in het po gelijk zonder dat de totale uitgave stijgt'
-    : 'Laat de drempel van vier nieuwkomers per school in artikel 34 vervallen',
-);
+const placeholder = computed(() => ({
+  vraag: 'Welke variant van de regelingen is voor scholen het meest voordelig?',
+  doel: 'Trek de bedragen voor asielzoekers en overige vreemdelingen in het po gelijk zonder dat de totale uitgave stijgt',
+  instructie: 'Laat de drempel van vier nieuwkomers per school in artikel 34 vervallen',
+}[modus.value]));
 
 /**
  * Wat de twee modi van elkaar onderscheidt, in één regel. Zonder dit is het
@@ -314,11 +315,11 @@ const placeholder = computed(() =>
  * uitkomst toe en mag daar zestig beurten over doen, instructie voert één
  * wijziging uit en laat het effect zien.
  */
-const modusUitleg = computed(() =>
-  modus.value === 'doel'
-    ? 'Je weet wat je wilt bereiken. De assistent probeert wijzigingen, meet het effect en stelt bij tot het niet verder verbetert.'
-    : 'Je weet wat je wilt veranderen. De assistent voert die ene wijziging uit en rekent door.',
-);
+const modusUitleg = computed(() => ({
+  vraag: 'Je wilt iets weten. De assistent zoekt het uit en rekent door, maar wijzigt niets.',
+  doel: 'Je weet wat je wilt bereiken. De assistent probeert wijzigingen, meet het effect en stelt bij tot het niet verder verbetert.',
+  instructie: 'Je weet wat je wilt veranderen. De assistent voert die ene wijziging uit en rekent door.',
+}[modus.value]));
 
 onMounted(peilHealth);
 onUnmounted(() => {

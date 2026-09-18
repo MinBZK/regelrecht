@@ -1,7 +1,7 @@
 /**
  * Beleidsassistent-backend.
  *
- * POST /api/assistent  { modus: "instructie" | "doel", prompt: string, documenten?: [{ key, yaml }] }
+ * POST /api/assistent  { modus: "vraag" | "doel" | "instructie", prompt: string, documenten?: [{ key, yaml }] }
  *   documenten = de werkversie uit de browser (beginstand van de overlays)
  * POST /api/variant    { sleutel, titel, bestanden: [{ path, yaml }] } → branch variant/<sleutel>
  *   → SSE-stream met events:
@@ -192,7 +192,8 @@ async function handleAssistent(req, res) {
     return;
   }
   const prompt = String(payload.prompt ?? '').trim();
-  const modus = payload.modus === 'doel' ? 'doel' : 'instructie';
+  const MODI = ['vraag', 'doel', 'instructie'];
+  const modus = MODI.includes(payload.modus) ? payload.modus : 'vraag';
   if (!prompt) {
     res.writeHead(400).end('prompt ontbreekt');
     return;
@@ -273,9 +274,18 @@ async function handleAssistent(req, res) {
     for (const ev of leesNieuweEvents(sessieDir, gezienEvents)) send(ev);
   }, 300);
 
-  const opdracht = modus === 'doel'
-    ? `DOEL van de beleidsmakers: ${prompt}\n\nWerk iteratief naar dit doel toe zoals beschreven in je werkwijze.`
-    : `INSTRUCTIE van de beleidsmakers: ${prompt}`;
+  const OPDRACHT = {
+    // Een vraag verandert niets: de assistent zoekt het uit en antwoordt. Dat
+    // staat er met zoveel woorden bij, want de wijzig-tools staan gewoon open
+    // en een model dat mag wijzigen, wijzigt.
+    vraag: (p) => `VRAAG van de beleidsmakers: ${p}\n\nBeantwoord deze vraag. `
+      + 'Lees de regelgeving en reken door wat nodig is om een onderbouwd antwoord te geven, '
+      + 'maar WIJZIG NIETS: geen wijzig_definitie, geen wijzig_regelgeving, geen wijzig_handelingen. '
+      + 'Sluit af met het antwoord in twee of drie zinnen, met de cijfers waarop het rust.',
+    doel: (p) => `DOEL van de beleidsmakers: ${p}\n\nWerk iteratief naar dit doel toe zoals beschreven in je werkwijze.`,
+    instructie: (p) => `INSTRUCTIE van de beleidsmakers: ${p}`,
+  };
+  const opdracht = OPDRACHT[modus](prompt);
 
   const mcpConfig = JSON.stringify({
     mcpServers: {
@@ -335,7 +345,9 @@ async function handleAssistent(req, res) {
     // een vervolgvraag telt mee. Ruimer dus, want anders is de tweede vraag in
     // een gesprek de laatste. De grens blijft staan omdat een weggelopen
     // gesprek anders op één abonnement door blijft draaien.
-    '--max-turns', modus === 'doel' ? '120' : '40',
+    // Een vraag rekent wel door maar stelt niets bij, dus die heeft minder
+    // beurten nodig dan een doel dat naar convergentie toewerkt.
+    '--max-turns', { vraag: '40', doel: '120', instructie: '40' }[modus],
   ];
 
   const child = spawn(CLAUDE_BIN, args, {
