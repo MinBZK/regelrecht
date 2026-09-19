@@ -10,6 +10,7 @@ pub mod config;
 pub mod corpus_handlers;
 pub mod credentials;
 pub mod crypto;
+pub mod enrich_review;
 pub mod feature_flags;
 pub mod github_oauth;
 pub mod state;

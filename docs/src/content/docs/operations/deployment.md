@@ -42,8 +42,23 @@ The preview deployment and its GHCR images are cleaned up automatically.
 | Enrich Worker | `regelrecht-enrich-worker` | (no web UI) |
 | Pipeline API | `regelrecht-pipeline-api` | (no public URL; reached in-cluster) |
 | Lawmaking | `regelrecht-lawmaking` | `lawmaking.regelrecht.rijks.app` |
+| Demo | `regelrecht-demo` | `demo.regelrecht.rijks.app` |
 | Docs | `regelrecht-docs` | `docs.regelrecht.rijks.app` + `regelrecht.rijks.app` (landing) |
+| PoC portal | `regelrecht-poc` | `poc.regelrecht.rijks.app` |
+| PoC napp | `regelrecht-poc-napp` | (internal; reached through the portal at `/napp/`) |
 | Grafana | `regelrecht-grafana` | `grafana.regelrecht.rijks.app` |
+
+The docs image also serves `/roadmap`, a read-only rendering of the werkpakketten in `docs/src/content/roadmap/` and the JSON file in `docs/src/data/`. It is not a component of its own and has no write path: changing the roadmap means editing those files through a pull request, and every werkpakket page links to its own source on GitHub. The landing page links to it from the footer, next to the documentation and research links; it stays out of the main navigation, which covers the landing page's own sections.
+
+## De demo
+
+De demo (`frontend-demo/`) draait op `demo.regelrecht.rijks.app`, als ZAD-component `demo` in de deployment `regelrecht`, met alleen `publish-on-web` op poort 8000. Ze rolt mee in `deploy-preview` en `deploy-production` als `script/deploy-filters.mjs` de component `demo` raakt: de engine-crate, `frontend-demo/`, `packages/frontend-shared/`, `corpus/demo/` of `deploy/nginx/`.
+
+De bouw zit in `deploy.yml` als `build-demo` (`image-name: minbzk/regelrecht-demo`, `dockerfile: frontend-demo/Dockerfile`, `cache-scope: demo`). Het image valt onder `scheduled-cleanup.yml`, dat op `sha-`-tags en de draaiende deployment toetst.
+
+Wat bij een wijziging te controleren is, het makkelijkst op een preview (label de PR met `deploy:preview`): dat de WASM-engine laadt (netwerktab: `wasm/pkg/*.wasm` als `application/wasm`), de dia's, het portaal van Merijn en Claudia, en een aanvraag tot in het zaaksysteem. De twee dingen die in `nginx.conf` stuk kunnen gaan zijn de SPA-fallback naar `index.html` en het MIME-type voor `.wasm`.
+
+De demo heeft geen backend en geen secrets nodig; de bouw duurt langer dan de andere frontends door de Rust-naar-WASM-stap (de `wasm-builder`-stage is gepind op de Rust-versie uit `rust-toolchain.toml` en de `wasm-bindgen`-versie uit `packages/Cargo.lock`, en faalt luid als die uit elkaar lopen).
 
 ## ZAD CLI
 

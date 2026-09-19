@@ -1,0 +1,432 @@
+/* Demo app: the design system supplies every visual value. This file only
+ * resets the document box and hosts the few layout hooks the design system has
+ * no component for (listed in frontend-demo/README.md under "Eigen CSS"). */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+/* Organisation logos on tiles and in data rows: a padded tile with the wordmark
+ * scaled inside. Logos are designed on white, also in dark mode. nldd-avatar
+ * crops an image to fill (object-fit: cover), which cuts a wordmark; nldd-image
+ * forces full width. Services without a logo get an nldd-avatar instead. */
+.org-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 5px;
+  border-radius: var(--primitives-radius-8, 8px);
+  /* Wit in beide modi, niet het thema volgen: een woordmerk is ontworpen op
+     wit en wordt onleesbaar op een donker vlak. `color-scheme: light` dwingt
+     `coolgray-0` naar zijn lichte waarde, ook als de rest donker staat. */
+  color-scheme: light;
+  background: var(--primitives-color-coolgray-0);
+  border: 1px solid var(--semantics-border-color, var(--primitives-color-coolgray-200));
+  overflow: hidden;
+  flex: none;
+}
+
+.org-logo img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.org-logo--sm {
+  width: 24px;
+  height: 24px;
+  padding: 3px;
+  border-radius: var(--primitives-radius-4, 4px);
+}
+
+/* Gherkin and YAML renderers: token colouring on top of nldd-code-viewer's
+ * monospace surface. The viewer highlights a fixed grammar set; our scenario
+ * status marks and the cross-law links inside YAML are demo-specific. */
+.yaml-tree {
+  font-family: var(--primitives-font-family-monospace, monospace);
+  /* Bewust groter dan de 0.875rem die hier stond: een presentator loopt hier
+   * op een zaalscherm doorheen en benoemt invoer, uitvoer en voorwaarden. Op
+   * 14px was dat vanaf een paar meter niet te volgen, en inzoomen met de
+   * browser vergrootte ook de dia ernaast. */
+  font-size: 1.125rem;
+  line-height: 1.5;
+  /* A long token (the $schema URL, a juriconnect id) must wrap inside the box
+   * instead of running out of it. */
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+/* In `em`, niet `rem`: de inspringing moet met de letter meeschalen. In `rem`
+ * volgt hij de rootfont, en kruipt de boom bij een grotere letter dicht. */
+.yaml-tree .yaml-node {
+  padding-left: 1.25em;
+}
+
+.yaml-tree .yaml-key {
+  color: var(--primitives-color-donkerblauw-700);
+}
+
+.yaml-tree .yaml-scalar {
+  color: var(--semantics-content-color, var(--primitives-color-coolgray-800));
+}
+
+.yaml-tree .yaml-string {
+  color: var(--primitives-color-groen-700);
+}
+
+.yaml-tree .yaml-var {
+  color: var(--primitives-color-paars-700);
+  font-weight: 600;
+}
+
+.yaml-tree .yaml-toggle {
+  cursor: pointer;
+  user-select: none;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  padding: 0;
+}
+
+.yaml-tree .yaml-toggle::before {
+  content: '▸';
+  display: inline-block;
+  width: 1rem;
+  color: var(--semantics-content-secondary-color, var(--primitives-color-coolgray-500));
+}
+
+.yaml-tree .yaml-toggle[aria-expanded='true']::before {
+  content: '▾';
+}
+
+.yaml-tree .yaml-link {
+  color: var(--primitives-color-donkerblauw-700);
+  text-decoration: underline dotted;
+  cursor: pointer;
+  border: 0;
+  background: none;
+  font: inherit;
+  padding: 0;
+}
+
+.yaml-tree .yaml-highlight {
+  background: var(--primitives-color-geel-100);
+  border-radius: 3px;
+}
+
+.gherkin {
+  font-family: var(--primitives-font-family-monospace, monospace);
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+.gherkin .kw {
+  color: var(--primitives-color-donkerblauw-700);
+  font-weight: 600;
+}
+
+/* Engine errors keep their line breaks. pre-wrap stays off the block itself:
+ * it inherits into the shadow DOM of the nldd-table under a step and would turn
+ * the template whitespace there into blank lines. */
+.gherkin .str {
+  color: var(--primitives-color-groen-700);
+  white-space: pre-wrap;
+}
+
+.gherkin .num {
+  color: var(--primitives-color-oranje-700);
+}
+
+.gherkin .step {
+  padding-left: 2rem;
+}
+
+/* `groen`/`rood`, niet `green`/`red`: de palet-namen zijn Nederlands. Met de
+ * Engelse naam bestond het token niet en won stilletjes de hex-fallback, die
+ * naast het palet lag en niet met het thema meebewoog. */
+.gherkin .step.pass {
+  border-left: 3px solid var(--primitives-color-groen-600);
+}
+
+.gherkin .step.fail {
+  border-left: 3px solid var(--primitives-color-rood-600);
+}
+
+.trace {
+  font-family: var(--primitives-font-family-monospace, monospace);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* Law graph canvas: vue-flow needs an explicit height. The node classes below
+ * draw the POC's picture (a law as a frame with boxes for sources, inputs and
+ * outputs); a graph canvas is not in the design system (same exception as the
+ * editor). Colours come from the Rijkshuisstijl and design-system tokens. */
+.graph-canvas {
+  position: relative;
+  height: 100%;
+  min-height: 60vh;
+}
+
+/* De zoomknoppen zweven over het canvas, linksonder zoals vue-flow ze zette.
+   Positioneren is het enige wat hier eigen is; de knopgroep zelf komt uit het
+   design system en bepaalt haar eigen vorm.
+
+   De onderrand ligt op dezelfde hoogte als de dia-knoppen in de presentatierail
+   ernaast. Op 12px stonden twee vrijwel identieke balken naast elkaar een rij
+   verschoven, en dat viel meteen op. De maat is opgebouwd uit de delen die het
+   dek eronder zet (voetrand 1.5rem + bedieningsregel 0.8rem×1.5 + tussenruimte
+   0.6rem), zodat hij meebeweegt als die regel van formaat verandert. De
+   dia-knoppen staan gecentreerd over de teller- en toetsenregel samen, dus de
+   helft van dat verschil komt er nog af. */
+.graph-zoom {
+  position: absolute;
+  left: 12px;
+  bottom: calc(3rem + 0.25rem);
+  z-index: 5;
+}
+
+.graph-canvas .vue-flow__node {
+  cursor: default;
+}
+
+.graph-canvas .vue-flow__node-law {
+  cursor: grab;
+}
+
+.graph-law {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border: 1.5px solid var(--primitives-color-donkerblauw-600);
+  /* Trap van oppervlakken: canvas (tinted) → wetkader (base) → vak (tinted) →
+     rij (base, met rand). Elke stap wisselt af, zodat de nesting zichtbaar
+     blijft zonder dat er een vierde grijstint bij hoeft. De tokens keren zelf
+     om, dus dit klopt in beide modi. */
+  background: var(--semantics-surfaces-base-background-color);
+  color: var(--semantics-content-color, var(--primitives-color-coolgray-900));
+  border-radius: var(--primitives-radius-12, 12px);
+  font-family: var(--primitives-font-family-body, system-ui, sans-serif);
+}
+
+.graph-law--selected {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primitives-color-lintblauw-750) 35%, transparent);
+}
+
+.graph-law__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.graph-law__title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.graph-law__name {
+  font-weight: 600;
+  font-size: 0.9375rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.graph-law__service {
+  font-size: 0.75rem;
+  color: var(--semantics-content-secondary-color, var(--primitives-color-coolgray-600));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.graph-box {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--primitives-color-donkerblauw-300);
+  background: var(--semantics-surfaces-tinted-background-color);
+  border-radius: var(--primitives-radius-8, 8px);
+}
+
+.graph-box__label {
+  display: block;
+  padding: 5px 8px 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--primitives-color-donkerblauw-700);
+}
+
+.graph-item {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 8px;
+  border: 1px solid var(--semantics-dividers-color);
+  /* De rij is de bovenste laag en moet loskomen van het vak eronder. De twee
+     oppervlakte-tokens wisselen elkaar hierboven al af, dus een derde stap
+     komt van een lichte optrekking met de contentkleur: die keert vanzelf mee
+     om, zodat de rij in donkere modus lichter wordt en in lichte juist iets
+     donkerder dan wit. */
+  background: color-mix(in srgb, var(--semantics-content-color) 7%, var(--semantics-surfaces-base-background-color));
+  color: var(--semantics-content-color, var(--primitives-color-coolgray-900));
+  border-radius: var(--primitives-radius-6, 6px);
+  font-size: 0.8125rem;
+}
+
+.graph-item__name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.graph-item__value {
+  flex: none;
+  max-width: 45%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--primitives-color-donkerblauw-700);
+}
+
+.graph-item .vue-flow__handle {
+  width: 7px;
+  height: 7px;
+  min-width: 0;
+  min-height: 0;
+  background: var(--primitives-color-donkerblauw-600);
+  border: 0;
+}
+
+/* Donkerder en dikker dan de lintblauw-500 op 1.5 die hier stond: van een paar
+ * meter afstand was niet te zien waar een lijn heen liep. */
+.graph-canvas .vue-flow__edge-path {
+  stroke: var(--primitives-color-lintblauw-700);
+  stroke-width: 2;
+}
+
+
+/* One Rijkshuisstijl colour per organisation, as the POC coloured its laws.
+ *
+ * De kleur zit in de RAND en het LABEL, niet in het vlak. De vlakken komen uit
+ * de oppervlakte-tokens van het design system, zodat de graaf dezelfde trap
+ * gebruikt als de rest van de app: canvas (tinted) → wetkader → vak → rij, elke
+ * stap iets lichter dan de vorige in donkere modus en iets donkerder in lichte.
+ * Zo blijft de nesting zichtbaar in beide modi, en blijft de organisatiekleur
+ * doen waar hij voor is: één wet van de andere onderscheiden.
+ *
+ * Wat hiervoor misging, twee keer:
+ * 1. `light-dark(x-25, x-950)` om een token dat zelf al omkeert. In donkere
+ *    modus koos dat het hoge nummer, en `robijnrood-950` is daar bijna wit: het
+ *    wetkader werd een lichtroze vlak met onleesbare titel.
+ * 2. Daarna `x-25` kaal. Dat is in donkere modus juist bijna zwart (L 0.16),
+ *    dus donkerder dan de canvas (L 0.23) waarop het ligt. Het kader zakte weg
+ *    terwijl de rijen erboven zweefden: de nesting las binnenstebuiten.
+ *
+ * De trap staat een stap zwaarder dan eerst (kader -700, vak -500, label -800,
+ * was -500/-300/-800): op een zaalscherm was van een afstand niet te zien waar
+ * je naar keek. De verhouding tussen de drie blijft dezelfde, dus de nesting
+ * leest nog steeds van buiten naar binnen. */
+.graph-c0 .graph-law {
+  border-color: var(--primitives-color-lintblauw-700);
+}
+.graph-c0 .graph-box {
+  border-color: var(--primitives-color-lintblauw-500);
+}
+.graph-c0 .graph-box__label {
+  color: var(--primitives-color-lintblauw-800);
+}
+.graph-c1 .graph-law {
+  border-color: var(--primitives-color-oranje-700);
+}
+.graph-c1 .graph-box {
+  border-color: var(--primitives-color-oranje-500);
+}
+.graph-c1 .graph-box__label {
+  color: var(--primitives-color-oranje-800);
+}
+.graph-c2 .graph-law {
+  border-color: var(--primitives-color-groen-700);
+}
+.graph-c2 .graph-box {
+  border-color: var(--primitives-color-groen-500);
+}
+.graph-c2 .graph-box__label {
+  color: var(--primitives-color-groen-800);
+}
+.graph-c3 .graph-law {
+  border-color: var(--primitives-color-paars-700);
+}
+.graph-c3 .graph-box {
+  border-color: var(--primitives-color-paars-500);
+}
+.graph-c3 .graph-box__label {
+  color: var(--primitives-color-paars-800);
+}
+.graph-c4 .graph-law {
+  border-color: var(--primitives-color-robijnrood-700);
+}
+.graph-c4 .graph-box {
+  border-color: var(--primitives-color-robijnrood-500);
+}
+.graph-c4 .graph-box__label {
+  color: var(--primitives-color-robijnrood-800);
+}
+.graph-c5 .graph-law {
+  border-color: var(--primitives-color-donkergeel-700);
+}
+.graph-c5 .graph-box {
+  border-color: var(--primitives-color-donkergeel-500);
+}
+.graph-c5 .graph-box__label {
+  color: var(--primitives-color-donkergeel-800);
+}
+.graph-c6 .graph-law {
+  border-color: var(--primitives-color-mintgroen-700);
+}
+.graph-c6 .graph-box {
+  border-color: var(--primitives-color-mintgroen-500);
+}
+.graph-c6 .graph-box__label {
+  color: var(--primitives-color-mintgroen-800);
+}
+
+/* Focused law: the lines it reads along (outgoing) and the lines others read
+ * from it (incoming), coloured apart as in the POC. */
+.graph-canvas .vue-flow__edge.graph-edge--out .vue-flow__edge-path {
+  stroke: var(--primitives-color-groen-600);
+  stroke-width: 2.5;
+}
+
+.graph-canvas .vue-flow__edge.graph-edge--in .vue-flow__edge-path {
+  stroke: var(--primitives-color-robijnrood-600);
+  stroke-width: 2.5;
+}
+
+.graph-canvas .vue-flow__node.graph-dim {
+  opacity: 0.25;
+}

@@ -8,6 +8,9 @@ frontend
 # the npm-workspace `npm ci`, which needs every workspace package.json present.
 # (The editor image itself uses frontend/Dockerfile.dockerignore, not this file.)
 !frontend/package.json
+# Same for the demo: the workspace needs its manifest, nothing else of it.
+frontend-demo
+!frontend-demo/package.json
 doc
 *.md
 *.png

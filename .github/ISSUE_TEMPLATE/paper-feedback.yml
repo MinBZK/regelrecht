@@ -1,0 +1,57 @@
+---
+# Feedback on a published paper. Reached from the "Discuss this passage"
+# button on a paper page (docs/src/layouts/Base.astro), which prefills the
+# passage and source fields from the reader's text selection; it is also
+# usable directly from the issue chooser with those fields left empty.
+#
+# Papers under docs/src/research/ are frozen published artifacts, so this
+# form deliberately collects discussion rather than an edit: the response to
+# a paper is an argument, and where it leads to a change that change belongs
+# in an erratum or a new version, which is the authors' call.
+name: Discuss a paper
+description: Comment on a passage in a published paper
+title: 'paper: '
+labels: [contribution:paper, comp:docs]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reading closely enough to respond.
+
+        Papers here are published work, fixed at the moment they were
+        written, so this is not an edit request: it is a place to argue with
+        a claim, point out an error, or ask a question. Where that leads to a
+        correction, the authors decide whether it becomes an erratum or a new
+        version.
+  - type: input
+    id: paper
+    attributes:
+      label: Paper
+      description: Which paper, and which section.
+      placeholder: Rules as Executed — 2.1 Proactive Service and Known Data
+    validations:
+      required: true
+  - type: textarea
+    id: passage
+    attributes:
+      label: Passage
+      description: The text you are responding to, quoted.
+    validations:
+      required: false
+  - type: textarea
+    id: comment
+    attributes:
+      label: Your comment
+      description: >-
+        What is your point? Disagreement, a question, a factual correction,
+        or a reference we missed are all welcome.
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Link
+      description: Link to the passage on the site (filled in automatically).
+      placeholder: https://regelrecht.rijks.app/research/rules-as-executed#sec:introduction
+    validations:
+      required: false

@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue';
-import { formatValue, normalizeForCompare, matchStatus as _matchStatus } from '../../utils/outputFormat.js';
+import { formatOutputValue, normalizeForCompare, matchStatus as _matchStatus } from '../../utils/outputFormat.js';
 
 const props = defineProps({
   step: { type: Object, default: null },
@@ -12,8 +12,23 @@ function matchStatus(name, value) {
   return _matchStatus(name, value, props.expectations);
 }
 
+/** The step's result, carrying its declared unit when the law states one.
+ *  Truncation wins over the unit: a value long enough to be cut is not one a
+ *  currency form helps with. */
+function formatResult(step) {
+  const shown = truncate(step.result);
+  if (!step.unit || shown.endsWith('…')) return shown;
+  return formatOutputValue(step.result, step.unit);
+}
+
+// No unit here (see the note above Outputs), so formatOutputValue adds
+// nothing to a number; for an unknown outcome it appends the missing facts.
+function fmt(v) {
+  return formatOutputValue(v, null);
+}
+
 function truncate(v) {
-  const s = formatValue(v);
+  const s = fmt(v);
   return s.length > 80 ? `${s.substring(0, 77)}…` : s;
 }
 
@@ -39,9 +54,15 @@ const expectationEntries = computed(() => Object.entries(props.expectations || {
           <dt>Resolve:</dt>
           <dd class="mono indigo">{{ step.resolveType }}</dd>
         </div>
-        <div v-if="step.result !== undefined && step.result !== null" class="step-detail__row">
+        <!-- A null result is an absence the node produced (RFC-036), shown
+             as `geen`; only a node without a result has no row. -->
+        <div v-if="step.result !== undefined" class="step-detail__row">
           <dt>Resultaat:</dt>
-          <dd class="mono emerald">{{ truncate(step.result) }}</dd>
+          <!-- With the unit the law declares, so an amount reads as euros
+               instead of a count of cents (RFC-039). Without one it falls
+               back to the plain value, which is what an intermediate result
+               has. -->
+          <dd class="mono emerald">{{ formatResult(step) }}</dd>
         </div>
         <div v-if="step.durationUs !== undefined" class="step-detail__row">
           <dt>Duur:</dt>
@@ -61,7 +82,7 @@ const expectationEntries = computed(() => Object.entries(props.expectations || {
     <dl class="step-detail__outputs">
       <div v-for="[k, v] in outputEntries" :key="k" class="step-detail__row">
         <dt>{{ k }}:</dt>
-        <dd class="mono">{{ formatValue(v) }}</dd>
+        <dd class="mono">{{ fmt(v) }}</dd>
       </div>
       <div v-if="outputEntries.length === 0" class="step-detail__empty">Geen outputs</div>
     </dl>
@@ -78,9 +99,9 @@ const expectationEntries = computed(() => Object.entries(props.expectations || {
             }"
           >{{ matchStatus(name, outputs[name]) === 'failed' ? '✗' : '✓' }}</span>
           <span class="mono">
-            {{ name }} = {{ formatValue(normalizeForCompare(expected)) }}
+            {{ name }} = {{ fmt(normalizeForCompare(expected)) }}
             <span v-if="matchStatus(name, outputs[name]) === 'failed'" class="fail">
-              (kreeg {{ formatValue(outputs[name]) }})
+              (kreeg {{ fmt(outputs[name]) }})
             </span>
           </span>
         </li>

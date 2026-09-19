@@ -33,6 +33,18 @@ wasm-build:
     # python3 dependency) needed, and it works with or without dev-setup.
     cargo build --manifest-path packages/engine/Cargo.toml --target wasm32-unknown-unknown --release --features wasm --target-dir packages/target
     wasm-bindgen --target web --out-dir frontend/public/wasm/pkg packages/target/wasm32-unknown-unknown/release/regelrecht_engine.wasm
+    # The demo runs the same engine in the browser; keep the two copies identical.
+    mkdir -p frontend-demo/public/wasm/pkg && cp frontend/public/wasm/pkg/* frontend-demo/public/wasm/pkg/
+    # The landing page runs the zorgtoeslag scenario in the visitor's browser
+    # when the panel scrolls into view, so the amount it shows is computed there
+    # and then rather than asserted. Same artifact again: one engine, three
+    # places.
+    mkdir -p docs/public/wasm/pkg && cp frontend/public/wasm/pkg/* docs/public/wasm/pkg/
+
+# Copy the laws, the scenario and the canonical-grammar runner into the docs
+# project, so the landing page can run the scenario in the visitor's browser.
+landing-laws:
+    ./script/landing-laws.sh
 
 # --- Quality checks ---
 
@@ -60,6 +72,17 @@ build-check:
 validate *FILES:
     script/validate.sh {{FILES}}
 
+# Validate the demo corpus (schema + type check, RFC-036/RFC-037)
+#
+# `validate` without arguments walks corpus/regulation only, so the eighty demo
+# laws would be seen by the pre-commit hook and by nothing else. This recipe
+# hands them to the same binary, so a law that stops type-checking is caught by
+# `just demo` and not first by a red scenario run.
+[doc("Validate the demo corpus (schema + type check)")]
+validate-demo:
+    find corpus/demo/regulation -name '*.yaml' ! -name '.*' -print0 \
+        | sort -z | xargs -0 script/validate.sh
+
 # Validate note sidecar files (RFC-005, RFC-016)
 # Orphaned/ambiguous notes and unknown tags are warnings, not errors.
 [doc("Validate note sidecar files (RFC-005, RFC-016)")]
@@ -79,6 +102,14 @@ conformance:
 [doc("Check the deploy filters against the real cargo dependency graph")]
 deploy-filters-test:
     node --test script/deploy-filters.test.mjs
+
+# Pins the GHCR cleaner against its safety rules. It deletes manifests from a
+# production registry and there is no undo, so every rule that decides "delete"
+# versus "keep" is covered here. Same reasoning as deploy-filters-test: node's
+# built-in runner, no dependency.
+[doc("Check the GHCR cleanup safety rules")]
+ghcr-cleanup-test:
+    node --test script/ghcr-cleanup.test.mjs
 
 # Pins the build-time asset precompression the editor image relies on. Same
 # reasoning as deploy-filters-test: node's built-in runner, no dependency.
@@ -106,6 +137,44 @@ first-load-test:
 [doc("Check that the Test gate in ci.yml blocks on a failed predecessor")]
 ci-gate-test:
     node --test script/ci-gate.test.mjs
+
+# De guard die de per-component imports bij de gebruikte tags houdt. Zonder
+# deze test is het verschil tussen een gerenderde tag en een tag die de
+# documentatie alleen noemt niet vastgelegd, en dat verschil is precies waar hij
+# eerder op omviel.
+[doc("Check the design-system import guard")]
+nldd-imports-test:
+    node --test script/nldd-imports.test.mjs
+
+# Een `slot="..."` die het component niet kent, is nergens een fout: het
+# element blijft in de light-DOM, wordt nooit toegewezen en is 0x0. Zo stonden
+# de persona-tags op het portaal en de startknop van de presentatie er wel,
+# maar zag niemand ze. Deze guard laat de build erop omvallen.
+[doc("Check that every nldd slot assignment exists")]
+nldd-slots:
+    node script/check-nldd-slots.mjs frontend-demo/src frontend/src frontend-lawmaking/src
+
+[doc("Check the design-system slot guard")]
+nldd-slots-test:
+    node --test script/nldd-slots.test.mjs
+
+# De Awb staat in twee corpora en moet daar hetzelfde zeggen. Het overzetten
+# ging twee keer mis op een weggevallen laatste regel — één keer de termijn in
+# artikel 6:8, waardoor de einddatum van de bezwaartermijn gelijk werd aan de
+# bekendmakingsdatum. Geldige YAML, dus de schemacontrole zag het niet, en geen
+# scenario raakt 6:8.
+[doc("Check that the Awb says the same in both corpora")]
+awb-parity-test:
+    node --test script/awb-parity.test.mjs
+
+# Welke organisatie een wet uitvoert staat in services.yaml en niet in het
+# wetsbestand: het stuurt logo's, kleuren en groepering, en waarden als
+# GEMEENTE_ROTTERDAM volgen uit geen wet. Een wet die in die kaart ontbreekt
+# krijgt stil `service: null`: geen logo, geen kleur, geen foutmelding. Deze
+# controle is wat de garantie vervangt die het oude veld gratis gaf.
+[doc("Check that services.yaml covers every demo law")]
+service-map-check:
+    node frontend-demo/scripts/check-service-map.mjs
 
 # Houdt de drie Rust-Dockerfiles bij de workspace: elke member wordt ge-COPYd
 # of weggeknipt, de rust-tag volgt rust-toolchain.toml en elke binary-naam
@@ -136,7 +205,7 @@ preview-environments-test:
 # container-backed suites; on a machine without a daemon, swap `test` for
 # `test-no-docker`.
 [doc("Run all quality checks, exactly what CI runs (needs Docker)")]
-check: format lint build-check validate validate-annotations deploy-filters-test precompress-test security-headers-test first-load-test ci-gate-test dockerfile-consistency-test deploy-gate-test deployed-urls-test preview-environments-test advisories-report-test test
+check: format lint build-check validate validate-annotations deploy-filters-test ghcr-cleanup-test precompress-test security-headers-test first-load-test ci-gate-test nldd-imports-test nldd-slots nldd-slots-test dockerfile-consistency-test deploy-gate-test deployed-urls-test preview-environments-test advisories-report-test test
 
 # --- Tests ---
 
@@ -174,6 +243,51 @@ test-db:
 bdd:
     cd packages/engine && {{ci_flags}} cargo test --test bdd -- --nocapture
 
+# Bucket A over de democorpus: REGULATION_PATH wijst wetten en scenario's naar corpus/demo.
+#
+# De Awb-levensloop draait er achteraan, over hetzelfde corpus. Een scenario
+# toetst één wet; de levensloop-test toetst wat de Awb aan elk besluit toevoegt
+# (RFC-007, RFC-008) en daar kwam een fout in dit corpus aan het licht die geen
+# enkel scenario zag: artikel 6:8 rekende met een afgekapte formule en gaf de
+# bekendmakingsdatum terug als einddatum van de bezwaartermijn.
+bdd-demo:
+    cd packages/engine && {{ci_flags}} BDD_BUCKET=corpus REGULATION_PATH="$(pwd)/../../corpus/demo/regulation" cargo test --test bdd -- --nocapture
+    cd packages/engine && {{ci_flags}} REGULATION_PATH="$(pwd)/../../corpus/demo/regulation" cargo test --test awb_lifecycle
+
+# Start the demo and open it. One command for anyone who just wants to see it:
+# it builds the engine to WASM, starts Vite and opens the browser on the
+# presentation. Stop it with ctrl-c.
+[doc("Start the demo and open it in a browser")]
+demo: wasm-build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Vite's own --open races the server on a cold start and lands on an error
+    # page, so wait for the port to answer before opening the browser.
+    ( until curl -sf -o /dev/null http://127.0.0.1:7400/; do sleep 0.3; done
+      case "$(uname -s)" in
+        Darwin) open http://127.0.0.1:7400/ ;;
+        *) xdg-open http://127.0.0.1:7400/ >/dev/null 2>&1 || true ;;
+      esac ) &
+    cd frontend-demo && npx vite --port 7400 --strictPort --host 0.0.0.0
+
+# Run the demo frontend locally without opening a browser (same server as `demo`)
+dev-demo: wasm-build
+    cd frontend-demo && npx vite --port 7400 --strictPort --host 0.0.0.0
+
+# Everything the demo consists of, in the order a failure is cheapest to read:
+# the laws themselves, then what they compute, then the app around them.
+#
+# The demo is a corpus plus a frontend plus the engine compiled to WASM, and
+# each of the three used to be checked by a different command. Running them
+# separately meant a law could be schema-valid, its scenarios green, and the
+# app still broken on a stale WASM build. This is the one command to run before
+# pushing anything demo-related; CI runs the same four steps in its own jobs.
+[doc("Check the whole demo: laws, scenarios, frontend tests, WASM and build")]
+demo-check: validate-demo awb-parity-test service-map-check bdd-demo
+    cd frontend-demo && npx vitest run
+    just wasm-build
+    cd frontend-demo && npx vite build
+
 # Regenerate all BDD step bindings from bdd/grammar.yaml
 bdd-codegen:
     node bdd/codegen/gen-js.mjs
@@ -192,11 +306,14 @@ github-test:
 harvester-test:
     cd packages/harvester && {{ci_flags}} cargo test
 
-# Run the pipeline unit tests in `src/`. The container-backed suites live in
-# `tests/` and run via `pipeline-integration-test`, not here.
-[doc("Run pipeline unit tests (src/ only, no Docker)")]
+# Run pipeline unit tests. Five of these are container-backed and carry
+# #[ignore]; add `-- --ignored` to run those instead. The two CLI test
+# suites run the built binaries against temp directories and need no
+# Docker either, so they belong in this recipe, not only in the db-leg.
+[doc("Run pipeline unit tests (the container-backed ones are #[ignore]d)")]
 pipeline-test:
     cd packages/pipeline && {{ci_flags}} cargo test --lib
+    cd packages/pipeline && {{ci_flags}} cargo test --test law_source_cli --test law_check_cli --test enrich_once_cli
 
 # Run pipeline integration tests (requires Docker for testcontainers)
 pipeline-integration-test:
@@ -726,6 +843,96 @@ docs-preview:
 # Run the accessibility gate (build + mermaid-alt + heading-order + pa11y-ci htmlcs+axe, WCAG 2.1 AA)
 docs-a11y:
     cd docs && npm run a11y
+
+# --- PoC-portaal ---
+
+# Bouw de assets van het portaal (het ontwerpsysteem voor zijn eigen twee pagina's)
+poc-assets:
+    npm run build -w poc-portal-assets
+
+# Bouw elke statische poc met zijn eigen basis, en zet alles klaar in .poc-static/
+#
+# De WASM-engine komt uit `just wasm-build`; copy-assets.js van elke poc stopt
+# met een duidelijke melding als die er niet is.
+poc-build: wasm-build poc-assets
+    #!/usr/bin/env bash
+    set -euo pipefail
+    rm -rf .poc-static
+    mkdir -p .poc-static/_assets
+    cp -R frontend-poc-portal/dist/. .poc-static/_assets/
+    POC_BASE=/terugbetaalregimes/ npm run build -w poc-terugbetaalregimes
+    mkdir -p .poc-static/terugbetaalregimes
+    cp -R frontend-poc-terugbetaalregimes/dist/. .poc-static/terugbetaalregimes/
+    POC_BASE=/nieuwkomersbekostiging/ npm run build -w poc-nieuwkomersbekostiging
+    mkdir -p .poc-static/nieuwkomersbekostiging
+    cp -R frontend-poc-nieuwkomersbekostiging/dist/. .poc-static/nieuwkomersbekostiging/
+
+# Start het poc-portaal op http://localhost:8611
+#
+# De wachtwoorden zijn hier bewust hardcoded en flauw: dit recept draait alleen
+# lokaal, en een ontwikkelaar die ze moet opzoeken gebruikt het niet. In ZAD
+# komen ze uit `zad env`; het portaal weigert te starten als er één ontbreekt.
+#
+# De statische pocs worden verwacht in .poc-static/<slug>/. Zolang die er niet
+# zijn toont het overzicht ze wel en geeft de poc zelf een 404 achter de poort —
+# de poort werkt dus los van de vraag of er al een poc gebouwd is.
+poc: poc-build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "poc-portaal → http://localhost:8611"
+    echo "wachtwoorden: terugbetaalregimes/nieuwkomersbekostiging/napp = 'demo'"
+    POC_COOKIE_SECRET=lokale-ontwikkelsleutel-niet-geheim-0123 \
+    POC_PW_TERUGBETAALREGIMES=demo \
+    POC_PW_NIEUWKOMERSBEKOSTIGING=demo \
+    POC_PW_NAPP=demo \
+    POC_STATIC_DIR="$(pwd)/.poc-static" \
+    POC_PORT=8611 \
+    cargo run --manifest-path packages/Cargo.toml --package regelrecht-poc-portal
+
+# Start de beleidsassistent van één casus, naast `just poc` in een tweede terminal
+#
+# In het image doet start.sh dit met een poort per casus; lokaal is één casus
+# tegelijk genoeg. Het portaal proxyt /<casus>/api hiernaartoe zodra
+# POC_ASSISTENT_<CASUS> gezet is, dus `just poc` moet die variabele kennen:
+#
+#     POC_ASSISTENT_TERUGBETAALREGIMES=http://127.0.0.1:3600 just poc
+#     POC_ASSISTENT_NIEUWKOMERSBEKOSTIGING=http://127.0.0.1:3700 just poc
+#
+# Wie de vite-dev-server gebruikt (`npm run dev -w poc-<casus>`) heeft dat niet
+# nodig: die proxyt /api zelf naar dezelfde poort.
+#
+# Vereist een ingelogde Claude CLI (`claude setup-token`) of ANTHROPIC_API_KEY;
+# zonder allebei weigert de assistent te starten.
+
+# Start de beleidsassistent van één casus (naast `just poc`)
+#
+# De poort leidt standaard uit de casus, want elke app proxyt /api naar een
+# eigen poort (vite.config.js): terugbetaalregimes naar 3600,
+# nieuwkomersbekostiging naar 3700. Een vaste standaard van 3600 startte de
+# assistent van nieuwkomers op een poort waar zijn app niet keek, en dat
+# leest als "de backend draait niet" zonder dat er iets faalt.
+poc-assistent casus="terugbetaalregimes" poort="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}${ANTHROPIC_API_KEY:-}" ]; then
+      echo "geen CLAUDE_CODE_OAUTH_TOKEN of ANTHROPIC_API_KEY; draai eerst \`claude setup-token\`" >&2
+      exit 1
+    fi
+    poort="{{poort}}"
+    if [ -z "$poort" ]; then
+      case "{{casus}}" in
+        terugbetaalregimes) poort=3600 ;;
+        nieuwkomersbekostiging) poort=3700 ;;
+        *) echo "onbekende casus {{casus}}: geef de poort mee" >&2; exit 1 ;;
+      esac
+    fi
+    echo "beleidsassistent {{casus}} → http://127.0.0.1:$poort"
+    POC_CASUS={{casus}} \
+    POC_CASUS_DIR="$(pwd)/corpus-poc/{{casus}}" \
+    POC_WASM_DIR="$(pwd)/.poc-static/{{casus}}/wasm/pkg" \
+    POC_VARIANT_OPSLAG=0 \
+    PORT="$poort" \
+    node packages/poc-assistent/index.js
 
 # --- Architecture model ---
 

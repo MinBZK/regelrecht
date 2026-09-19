@@ -181,6 +181,64 @@ pub async fn get_task_for_account(
     Ok(task)
 }
 
+/// Alle taken van één job voor dit account, oudste eerst — de onderdelen van
+/// één verrijking. Afgehandelde taken blijven meekomen: wie een verrijking
+/// verwerkt moet kunnen zien dat een zusje al dicht is (bijvoorbeeld omdat
+/// het traject eronder verdween, zie [`dismiss_open_tasks_for_traject`]).
+///
+/// Zelfde account-gating als [`get_task_for_account`]: een job van iemand
+/// anders levert een lege lijst, niet andermans taken.
+pub async fn list_tasks_for_job_and_account(
+    pool: &PgPool,
+    job_id: Uuid,
+    account_id: Uuid,
+) -> Result<Vec<Task>> {
+    let query = format!(
+        "SELECT {RETURNING} FROM tasks \
+         WHERE job_id = $1 AND assignee_account_id = $2 \
+         ORDER BY created_at, id",
+    );
+    let tasks = sqlx::query_as::<_, Task>(&query)
+        .bind(job_id)
+        .bind(account_id)
+        .fetch_all(pool)
+        .await?;
+    Ok(tasks)
+}
+
+/// Handel een reeks taken in één keer af en lever het aantal rijen dat
+/// daadwerkelijk dichtging. Generiek over de executor, zodat het verwerken van
+/// een hele verrijking (alle onderdelen tegelijk) in dezelfde transactie past
+/// als de schrijfactie die eruit volgt.
+///
+/// De aanroeper hoort te controleren of het aantal klopt: is het lager dan wat
+/// hij aanbood, dan was een taak niet meer open (race of vreemd account) en
+/// hoort de hele verwerking terug te rollen in plaats van half te landen.
+/// Dezelfde WHERE-voorwaarden als [`resolve_task`] doen dat werk.
+pub async fn resolve_tasks<'e, E>(
+    executor: E,
+    task_ids: &[Uuid],
+    account_id: Uuid,
+    new_status: TaskStatus,
+) -> Result<u64>
+where
+    E: sqlx::PgExecutor<'e>,
+{
+    if task_ids.is_empty() || new_status == TaskStatus::Open {
+        return Ok(0);
+    }
+    let result = sqlx::query(
+        "UPDATE tasks SET status = $3, resolved_at = now(), resolved_by = $2 \
+         WHERE id = ANY($1) AND assignee_account_id = $2 AND status = 'open'",
+    )
+    .bind(task_ids)
+    .bind(account_id)
+    .bind(new_status)
+    .execute(executor)
+    .await?;
+    Ok(result.rows_affected())
+}
+
 /// Handel een taak af. Alleen de assignee mag dat, en alleen vanuit 'open':
 /// beide voorwaarden zitten in de WHERE zodat een race of vreemd account
 /// simpelweg `None` oplevert (geen aparte foutklasse nodig).
@@ -210,6 +268,62 @@ pub async fn resolve_task(
         tracing::info!(task_id = %t.id, status = ?t.status, "task resolved");
     }
     Ok(task)
+}
+
+/// Sluit alle open taken van een traject als `dismissed` en levert de job-ids
+/// van die taken terug (ontdubbeld) zodat de aanroeper per job de blobs kan
+/// opruimen met [`delete_blobs_for_finished_job`].
+///
+/// Bedoeld voor het verwijderen van een traject. Zonder dit blijven de open
+/// taken staan: `tasks.traject_id` is `ON DELETE SET NULL` (migratie 0028), dus
+/// de traject-DELETE knipt alleen de koppeling door en laat een taak achter die
+/// in de account-brede takenlijst blijft hangen en via `payload.traject_ref`
+/// naar een traject wijst dat niet meer bestaat.
+///
+/// Moet daarom lópen vóór de traject-DELETE en in dezelfde transactie: erna is
+/// niet meer te achterhalen welke taken bij dit traject hoorden.
+///
+/// De taakrij blijft bestaan (audit-spoor, zelfde afweging als `resolve_task`);
+/// `resolved_by` blijft leeg, want niemand heeft deze taak beoordeeld — het
+/// traject verdween eronder.
+pub async fn dismiss_open_tasks_for_traject<'e, E>(
+    executor: E,
+    traject_id: Uuid,
+) -> Result<Vec<Uuid>>
+where
+    E: sqlx::PgExecutor<'e>,
+{
+    let rows = sqlx::query_as::<_, (Option<Uuid>,)>(
+        "UPDATE tasks SET status = 'dismissed', resolved_at = now() \
+         WHERE traject_id = $1 AND status = 'open' \
+         RETURNING job_id",
+    )
+    .bind(traject_id)
+    .fetch_all(executor)
+    .await?;
+
+    if !rows.is_empty() {
+        // Zelfde reden als de log in `resolve_task`: een taak die dichtgaat is
+        // een gebeurtenis die iemand later wil kunnen terugvinden, en deze gaan
+        // dicht zonder dat een gebruiker erop klikte.
+        tracing::info!(
+            traject_id = %traject_id,
+            tasks = rows.len(),
+            "open tasks dismissed with deleted traject"
+        );
+    }
+
+    let mut job_ids: Vec<Uuid> = Vec::new();
+    for (job_id,) in rows {
+        // Eén verrijking levert een taak per gewijzigd artikel op dezelfde job;
+        // die job hoeft maar één keer opgeruimd te worden.
+        if let Some(id) = job_id {
+            if !job_ids.contains(&id) {
+                job_ids.push(id);
+            }
+        }
+    }
+    Ok(job_ids)
 }
 
 /// Target paths reserved by OPEN document-review tasks of a traject: a
