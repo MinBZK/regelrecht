@@ -10,6 +10,7 @@ function cluster(overrides = {}) {
     laws: 2,
     articles: 3,
     providers: ['opencode', 'claude'],
+    providers_on_these_laws: 2,
     all_accepted: false,
     ...overrides,
   };
@@ -51,11 +52,27 @@ describe('MarkingClusters', () => {
   // than at the format, and the two are indistinguishable from the marking.
   it('flags a cluster only one provider asked for', () => {
     const w = mount(MarkingClusters, {
-      props: { clusters: [cluster({ providers: ['opencode'] })] },
+      props: {
+        clusters: [cluster({ providers: ['opencode'], providers_on_these_laws: 2 })],
+      },
       global,
     });
     expect(w.html()).toContain('alleen opencode');
     expect(w.html()).toContain('mogelijk de enricher');
+  });
+
+  // With one provider in the corpus every cluster has exactly one, so the hint
+  // would fire on all of them. A signal that is always on is decoration: it
+  // only means something when another provider went over the same laws and did
+  // not ask for this change.
+  it('stays quiet when there was no other provider to disagree', () => {
+    const w = mount(MarkingClusters, {
+      props: {
+        clusters: [cluster({ providers: ['opencode'], providers_on_these_laws: 1 })],
+      },
+      global,
+    });
+    expect(w.html()).not.toContain('mogelijk de enricher');
   });
 
   it('does not flag a cluster several providers asked for', () => {
@@ -87,19 +104,20 @@ describe('MarkingClusters', () => {
   // Whether a human has been past every marking in the cluster. Without this
   // a reviewed cluster and an untouched one render identically, and the
   // backlog is exactly where that difference decides what to pick up.
-  it('says whether a cluster has been reviewed', () => {
-    const open = mount(MarkingClusters, {
-      props: { clusters: [cluster({ all_accepted: false })] },
-      global,
-    });
-    expect(open.html()).toContain('nog te beoordelen');
-
+  it('marks a reviewed cluster, and says nothing about an unreviewed one', () => {
     const done = mount(MarkingClusters, {
       props: { clusters: [cluster({ all_accepted: true })] },
       global,
     });
     expect(done.html()).toContain('beoordeeld');
-    expect(done.html()).not.toContain('nog te beoordelen');
+
+    // Unreviewed is the default state of the whole backlog, so labelling every
+    // row with it is noise rather than information.
+    const open = mount(MarkingClusters, {
+      props: { clusters: [cluster({ all_accepted: false })] },
+      global,
+    });
+    expect(open.html()).not.toContain('beoordeeld');
   });
 
   it('emits the cluster when one is picked', async () => {

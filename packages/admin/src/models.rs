@@ -64,6 +64,15 @@ pub struct MarkingCluster {
     pub articles: i64,
     /// Which providers asked for this change.
     pub providers: Vec<String>,
+    /// How many distinct providers produced markings on the laws this cluster
+    /// touches, asked for or not.
+    ///
+    /// Without it, "only one provider asked" says nothing: with a single
+    /// provider in the corpus every cluster has exactly one, so the hint fires
+    /// on all of them and a signal that is always on is not a signal. The
+    /// difference only means something when another provider went over the
+    /// same laws and did not ask.
+    pub providers_on_these_laws: i64,
     /// Whether every marking in the cluster has been accepted by a human.
     pub all_accepted: bool,
 }

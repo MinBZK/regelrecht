@@ -175,47 +175,36 @@ export const MARKING_COLUMNS = [
     label: 'Constructie',
     filter: { key: 'about', type: 'text', label: 'Constructie' },
     text: (row) => row.about || '—',
+    // What would fix it, under what cannot be expressed: the problem and the
+    // direction in one glance, without a column of its own.
+    supportingText: (row) => row.resolved_by || undefined,
   },
   {
-    // What has to change before this article can be translated in full. The
-    // field the backlog is grouped by, so it earns a column even though it is
-    // free text and often long; the full value sits in the detail panel.
-    key: 'resolved_by',
-    label: 'Wat het oplost',
-    hideBelow: '640px',
-    text: (row) => row.resolved_by || '—',
-  },
-  {
+    // `resolved_by` and `target` are deliberately absent as columns. Both are
+    // long free text that no cell can show in full, and eight columns pushed
+    // the table so wide that "opencode" broke across two lines. They live in
+    // the detail panel, one click away; `resolution` carries the gist here.
     key: 'resolution',
     label: 'Soort',
     filter: { options: MARKING_RESOLUTIONS },
     width: 'fit-content',
-    minWidth: '90px',
-  },
-  {
-    // A TEXT[] on the wire. No generic cell renderer handles an array, so the
-    // view fills this through a `cell-target` slot; without one the fallback
-    // would print a stringified list.
-    key: 'target',
-    label: 'Blokkeert',
-    hideBelow: '900px',
-    width: 'fit-content',
-    minWidth: '100px',
-  },
-  {
-    key: 'accepted',
-    label: 'Beoordeeld',
-    filter: { options: ['true', 'false'] },
-    width: 120,
+    minWidth: '150px',
   },
   {
     key: 'provider',
     label: 'Provider',
     filter: { options: MARKING_PROVIDERS },
     width: 'fit-content',
-    minWidth: '80px',
+    minWidth: '100px',
     hideBelow: '640px',
     text: (row) => row.provider || '—',
+  },
+  {
+    key: 'accepted',
+    label: 'Beoordeeld',
+    filter: { options: ['true', 'false'] },
+    width: 'fit-content',
+    minWidth: '110px',
   },
 ];
 

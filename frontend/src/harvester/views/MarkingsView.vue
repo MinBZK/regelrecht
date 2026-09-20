@@ -89,24 +89,16 @@ function onFilterChange(key, value) {
     @filter-change="onFilterChange"
     @row-click="openDetail"
   >
+    <!-- A closed pair, so a badge reads faster than a sentence and keeps the
+         column narrow. What it means in full is in the detail panel. -->
     <template #cell-resolution="{ row }">
-      <nldd-text-cell
-        :text="row.resolution === 'operation' ? 'bewerking' : 'formaat'"
-        :supporting-text="
-          row.resolution === 'operation'
-            ? 'een bewerking ontbreekt'
-            : 'het formaat mist een vorm'
-        "
-      />
-    </template>
-    <template #cell-target="{ row }">
-      <!-- An empty target is a claim, not a blank: the article still runs. -->
-      <nldd-text-cell
-        :text="row.target && row.target.length ? String(row.target.length) : '—'"
-        :supporting-text="
-          row.target && row.target.length ? row.target.join(', ') : 'artikel blijft werken'
-        "
-      />
+      <nldd-cell width="fit-content">
+        <nldd-badge
+          :color="row.resolution === 'operation' ? 'accent' : 'neutral'"
+          size="sm"
+          :text="row.resolution === 'operation' ? 'bewerking' : 'formaat'"
+        />
+      </nldd-cell>
     </template>
     <template #cell-accepted="{ row }">
       <StatusBadge :status="row.accepted ? 'accepted' : 'open'" />

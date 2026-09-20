@@ -418,6 +418,8 @@ pub async fn list_marking_clusters(
          COUNT(DISTINCT m.law_id) AS laws, \
          COUNT(DISTINCT ROW(m.law_id, m.article)) AS articles, \
          ARRAY_AGG(DISTINCT m.provider) AS providers, \
+         (SELECT COUNT(DISTINCT o.provider) FROM markings o \
+          WHERE o.law_id = ANY(ARRAY_AGG(DISTINCT m.law_id))) AS providers_on_these_laws, \
          BOOL_AND(m.accepted) AS all_accepted \
          FROM markings m {where_sql} \
          GROUP BY m.resolution, m.resolved_by \
