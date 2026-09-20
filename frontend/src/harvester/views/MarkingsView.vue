@@ -17,7 +17,11 @@ const {
 } = useMarkings();
 
 // The backlog reads the same filtered set as the list below it.
-const { data: clusters, loading: clustersLoading } = useMarkingClusters(filterParams);
+const {
+  data: clusters,
+  loading: clustersLoading,
+  refresh: refreshClusters,
+} = useMarkingClusters(filterParams);
 
 // Read-only detail: no polling needed, unlike the jobs sheet.
 const selected = ref(null);
@@ -34,8 +38,26 @@ function closeDetail() {
 
 // Clicking a cluster filters the list to it, which is how a reader gets from
 // "this change is wanted in four places" to the four articles themselves.
+//
+// Both fields, because `resolution` has two possible values: filtering on it
+// alone lands the reader on half the corpus rather than on those four
+// articles. `resolved_by` is what identifies the cluster.
+//
+// A cluster that names no change (`resolved_by` is nullable) can only be
+// narrowed by resolution, which is honest: there is nothing else to match on.
 function focusCluster(cluster) {
   setFilter('resolution', cluster.resolution);
+  setFilter('resolved_by', cluster.resolved_by || '');
+  refreshClusters();
+}
+
+// Every filter change has to reach the clusters too, or the backlog describes
+// a different set than the rows under it until the next poll tick. A count
+// that groups something other than the visible rows is worse than no count:
+// nothing about the page looks wrong while it happens.
+function onFilterChange(key, value) {
+  setFilter(key, value);
+  refreshClusters();
 }
 </script>
 
@@ -59,7 +81,7 @@ function focusCluster(cluster) {
     empty-text="Geen markeringen"
     empty-supporting-text="Ze verschijnen hier zodra een verrijking een constructie markeert die het formaat niet kan uitdrukken"
     @sort="setSort"
-    @filter-change="setFilter"
+    @filter-change="onFilterChange"
     @row-click="openDetail"
   >
     <template #cell-resolution="{ row }">

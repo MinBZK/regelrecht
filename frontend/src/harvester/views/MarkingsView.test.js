@@ -11,6 +11,7 @@ const setSort = vi.fn();
 const setFilter = vi.fn();
 const goToPage = vi.fn();
 const filterParams = vi.fn(() => new URLSearchParams());
+const refreshClusters = vi.fn();
 
 vi.mock('../composables/useMarkings.js', () => ({
   useMarkings: () => ({
@@ -42,6 +43,7 @@ vi.mock('../composables/useMarkings.js', () => ({
 
 vi.mock('../composables/useMarkingClusters.js', () => ({
   useMarkingClusters: () => ({
+    refresh: refreshClusters,
     data: ref([
       {
         resolution: 'operation',
@@ -97,13 +99,50 @@ describe('MarkingsView', () => {
   });
 
   // Getting from "this change is wanted in four places" to the four articles
-  // is the whole point of showing the backlog beside the list.
-  it('filters the list when a cluster is picked', () => {
+  // is the whole point of showing the backlog beside the list. Filtering on
+  // `resolution` alone would land the reader on half the corpus, since it has
+  // two possible values; `resolved_by` is what identifies the cluster.
+  it('filters the list to the picked cluster, on both fields', () => {
     const w = shallowMount(MarkingsView);
     w.findComponent(MarkingClusters).vm.$emit('select', {
       resolution: 'operation',
       resolved_by: 'een WORKING_DAY-bewerking',
     });
     expect(setFilter).toHaveBeenCalledWith('resolution', 'operation');
+    expect(setFilter).toHaveBeenCalledWith('resolved_by', 'een WORKING_DAY-bewerking');
+  });
+
+  // A cluster that names no change can only be narrowed by resolution. Passing
+  // the null through would filter on the string "null" and return nothing.
+  it('clears the resolved_by filter for a cluster that names no change', () => {
+    const w = shallowMount(MarkingsView);
+    w.findComponent(MarkingClusters).vm.$emit('select', {
+      resolution: 'model',
+      resolved_by: null,
+    });
+    expect(setFilter).toHaveBeenCalledWith('resolved_by', '');
+  });
+
+  // The backlog groups over the filtered set, so a filter change has to reach
+  // it at once. Without this the clusters describe a different selection than
+  // the rows under them until the next 20s poll tick, and nothing about the
+  // page looks wrong while it happens.
+  it('refreshes the backlog when a filter changes', () => {
+    const w = shallowMount(MarkingsView);
+    refreshClusters.mockClear();
+
+    w.findComponent(DataTable).vm.$emit('filter-change', 'provider', 'claude');
+    expect(refreshClusters).toHaveBeenCalled();
+  });
+
+  it('refreshes the backlog when a cluster is picked', () => {
+    const w = shallowMount(MarkingsView);
+    refreshClusters.mockClear();
+
+    w.findComponent(MarkingClusters).vm.$emit('select', {
+      resolution: 'operation',
+      resolved_by: 'x',
+    });
+    expect(refreshClusters).toHaveBeenCalled();
   });
 });

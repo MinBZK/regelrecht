@@ -519,6 +519,84 @@ async fn markings_without_a_named_change_still_form_a_cluster() {
     assert_eq!(clusters[0]["laws"], 2);
 }
 
+/// A marking whose law has no `law_entries` row still has to appear. The join
+/// is a LEFT JOIN for that reason, and an inner one would hide exactly the
+/// markings worth seeing: a law that failed partway through harvesting is more
+/// likely to carry gaps, not less.
+///
+/// Reachable in practice because `markings` has no foreign key to
+/// `law_entries`, only to `jobs`.
+#[tokio::test]
+async fn a_marking_survives_a_missing_law_entry() {
+    let db = TestDb::new().await;
+    seed_marking(
+        &db.pool,
+        "wet_a",
+        "A",
+        "opencode",
+        "1",
+        "x",
+        "model",
+        None,
+        &[],
+        false,
+    )
+    .await;
+
+    // Drop the law_entries row, leaving the marking behind.
+    sqlx::query("DELETE FROM law_entries WHERE law_id = $1")
+        .bind("wet_a")
+        .execute(&db.pool)
+        .await
+        .unwrap();
+
+    let json = get_markings(&db.pool, "").await;
+    assert_eq!(json["total"], 1, "the marking is still listed");
+    assert!(
+        json["data"][0]["law_name"].is_null(),
+        "with no name to show for it"
+    );
+    assert_eq!(json["data"][0]["law_id"], "wet_a");
+}
+
+/// Clicking a cluster narrows the list to the markings behind it, which needs
+/// an exact match on the change it names. `resolution` alone has two possible
+/// values, so it would land the reader on half the corpus.
+#[tokio::test]
+async fn markings_filter_on_the_change_a_cluster_names() {
+    let db = TestDb::new().await;
+    seed_marking(
+        &db.pool,
+        "wet_a",
+        "A",
+        "opencode",
+        "1",
+        "werkdag",
+        "operation",
+        Some("een WORKING_DAY-bewerking"),
+        &[],
+        false,
+    )
+    .await;
+    seed_marking(
+        &db.pool,
+        "wet_b",
+        "B",
+        "opencode",
+        "1",
+        "jaardeel",
+        "operation",
+        Some("een YEAR-bewerking"),
+        &[],
+        false,
+    )
+    .await;
+
+    let json = get_markings(&db.pool, "?resolved_by=een%20WORKING_DAY-bewerking").await;
+    assert_eq!(json["total"], 1, "exact match, not a partial one");
+    assert_eq!(json["data"][0]["law_id"], "wet_a");
+}
+
 // --- the backlog: clusters ---
 
 /// The point of the whole view: the same change asked for by several articles
@@ -656,6 +734,36 @@ async fn a_cluster_names_the_providers_that_asked_for_it() {
     assert_eq!(providers.len(), 2);
     assert!(providers.iter().any(|p| p == "opencode"));
     assert!(providers.iter().any(|p| p == "claude"));
+}
+
+/// Several markings from one provider must collapse to one entry, or the
+/// triage signal inverts: `providerHint` only fires when a single provider
+/// asked, so an unaggregated list of three identical names would read as three
+/// providers and hide exactly the case the hint exists for.
+#[tokio::test]
+async fn one_provider_asking_repeatedly_stays_one_provider() {
+    let db = TestDb::new().await;
+    for article in ["1", "2", "3"] {
+        seed_marking(
+            &db.pool,
+            "wet_a",
+            "A",
+            "opencode",
+            article,
+            "x",
+            "operation",
+            Some("dezelfde wijziging"),
+            &[],
+            false,
+        )
+        .await;
+    }
+
+    let json = get_clusters(&db.pool, "").await;
+    let providers = json[0]["providers"].as_array().unwrap();
+    assert_eq!(providers.len(), 1, "three markings, one provider");
+    assert_eq!(providers[0], "opencode");
+    assert_eq!(json[0]["markings"], 3);
 }
 
 /// Reach decides the order, and reach means laws before sheer count: five

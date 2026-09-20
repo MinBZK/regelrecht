@@ -226,6 +226,11 @@ pub struct MarkingsQuery {
     pub provider: Option<String>,
     pub accepted: Option<bool>,
     pub about: Option<String>,
+    /// The change a cluster names. Matched exactly, not partially: this is how
+    /// clicking a cluster narrows the list to the markings behind it, and a
+    /// partial match would pull in every neighbour that happens to share a
+    /// word.
+    pub resolved_by: Option<String>,
     /// `operation` or `model`. A closed vocabulary, so an exact match rather
     /// than the ILIKE the free-text filters use.
     pub resolution: Option<String>,
@@ -280,6 +285,11 @@ fn markings_where(params: &MarkingsQuery) -> (String, Vec<Bind<'_>>) {
     if let Some(ref resolution) = params.resolution {
         clauses.push(format!("m.resolution = ${i}"));
         binds.push(Bind::Str(resolution));
+        i += 1;
+    }
+    if let Some(ref resolved_by) = params.resolved_by {
+        clauses.push(format!("m.resolved_by = ${i}"));
+        binds.push(Bind::Str(resolved_by));
         i += 1;
     }
     if let Some(ref about) = params.about {
