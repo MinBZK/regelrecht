@@ -118,7 +118,7 @@ The General Administrative Law Act (Awb) applies to every government decision wi
 
 Sometimes a specific law overrides a general rule. The Aliens Act (*Vreemdelingenwet*) article 69 says: *"in afwijking van artikel 6:7 Awb bedraagt de termijn vier weken"*, departing from the Awb's standard 6-week objection period. This is modeled with `overrides`: the specific law unilaterally replaces a value from the general law. The Awb does not know it is being overridden. This only applies when the overriding law is part of the execution chain. See [Hooks and Reactive Execution](./hooks-and-reactive-execution#overrides-lex-specialis).
 
-### Untranslatables
+### Markings
 
 The engine's operation set is small by design. When a legal construct cannot yet be faithfully expressed, complex table lookups or discretionary assessments for instance, the article carries a **marking** rather than an approximation. A marking means "not yet", not "never": each one is a named gap in the format and a tracked signal for what to build next. The engine can error, warn, or propagate taint through downstream outputs, depending on the mode. This prevents silent divergence between law text and machine-readable interpretation. The field was called `untranslatables` before schema v0.7.0. See [Markings](./markings).
 
