@@ -37,7 +37,7 @@
               <assistent-panel />
             </paneel>
 
-            <paneel titel="Uitvoeringslastmodel" subtitel="Handelingen × minuten × tarief. Wat DUO het kost staat in euro's, wat het debiteuren kost in uren." :samenvatting="uitvoeringSamenvatting">
+            <paneel titel="Uitvoeringslastmodel" subtitel="Handelingen × minuten × tarief. Wat DUO het kost staat in euro's, wat het debiteuren kost in uren." :samenvatting="uitvoeringSamenvatting" :badge="handelingenGewijzigd ? 'aangepast' : ''">
               <handelingen-panel />
             </paneel>
 
@@ -115,7 +115,7 @@ import VariantenLijst from '../components/beleid/VariantenLijst.vue';
 const { ready, initError, lawIndex, initEngine } = useEngine();
 const { initStore, hasChanges, changeCount, editableDocs, werkversie, werkversieLabel, variants } = useLawStore();
 const { fetchPersonas } = usePersonas();
-const { metrics, baselineMetrics, columns, metricsByColumn, running, simVersion, recompute, n } = usePopulation();
+const { metrics, baselineMetrics, columns, metricsByColumn, running, simVersion, recompute, n, handelingenGewijzigd } = usePopulation();
 const { totaalDebiteuren } = usePopulatieAannames();
 
 const yamlOpen = ref(false);
