@@ -331,6 +331,194 @@ async fn markings_reject_a_sort_column_outside_the_allowlist() {
     assert_ne!(response.status(), StatusCode::OK);
 }
 
+/// Every filter at once, which is where hand-rolled dynamic SQL goes wrong.
+///
+/// The placeholders are numbered while the clauses are built and the values
+/// are pushed in the same step, so a desync would need the two to drift apart
+/// within one block. The existing untranslatable tests each exercise a single
+/// filter, so this combination was untested on either endpoint; a swapped pair
+/// would have returned plausible-looking rows rather than an error.
+#[tokio::test]
+async fn every_filter_at_once_still_binds_in_the_right_order() {
+    let db = TestDb::new().await;
+    // The row that matches all five.
+    seed_marking(
+        &db.pool,
+        "wet_op_de_zorgtoeslag",
+        "Zorgtoeslag",
+        "claude",
+        "5",
+        "de eerstvolgende werkdag",
+        "operation",
+        Some("een WORKING_DAY-bewerking"),
+        &[],
+        true,
+    )
+    .await;
+    // Each of these differs from it in exactly one filtered field.
+    seed_marking(
+        &db.pool,
+        "participatiewet",
+        "P",
+        "claude",
+        "5",
+        "werkdag",
+        "operation",
+        None,
+        &[],
+        true,
+    )
+    .await;
+    seed_marking(
+        &db.pool,
+        "wet_op_de_zorgtoeslag",
+        "Zorgtoeslag",
+        "opencode",
+        "5",
+        "werkdag",
+        "operation",
+        None,
+        &[],
+        true,
+    )
+    .await;
+    seed_marking(
+        &db.pool,
+        "wet_op_de_zorgtoeslag",
+        "Zorgtoeslag",
+        "claude",
+        "5",
+        "werkdag",
+        "model",
+        None,
+        &[],
+        true,
+    )
+    .await;
+    seed_marking(
+        &db.pool,
+        "wet_op_de_zorgtoeslag",
+        "Zorgtoeslag",
+        "claude",
+        "5",
+        "iets anders",
+        "operation",
+        None,
+        &[],
+        true,
+    )
+    .await;
+    seed_marking(
+        &db.pool,
+        "wet_op_de_zorgtoeslag",
+        "Zorgtoeslag",
+        "claude",
+        "5",
+        "werkdag",
+        "operation",
+        None,
+        &[],
+        false,
+    )
+    .await;
+
+    let json = get_markings(
+        &db.pool,
+        "?law_id=zorgtoeslag&provider=claude&resolution=operation&about=werkdag&accepted=true",
+    )
+    .await;
+
+    assert_eq!(json["total"], 1, "exactly the row that matches all five");
+    assert_eq!(json["data"][0]["about"], "de eerstvolgende werkdag");
+}
+
+/// The same combination on the cluster endpoint, which shares the WHERE
+/// builder. If the backlog grouped a different set than the list, the page
+/// would state a count for rows the reader cannot see.
+#[tokio::test]
+async fn the_backlog_narrows_with_the_same_filters_as_the_list() {
+    let db = TestDb::new().await;
+    seed_marking(
+        &db.pool,
+        "wet_a",
+        "A",
+        "claude",
+        "1",
+        "werkdag",
+        "operation",
+        Some("de gezochte wijziging"),
+        &[],
+        false,
+    )
+    .await;
+    seed_marking(
+        &db.pool,
+        "wet_a",
+        "A",
+        "opencode",
+        "2",
+        "werkdag",
+        "operation",
+        Some("een andere wijziging"),
+        &[],
+        false,
+    )
+    .await;
+
+    let list = get_markings(&db.pool, "?provider=claude&resolution=operation").await;
+    let clusters = get_clusters(&db.pool, "?provider=claude&resolution=operation").await;
+
+    assert_eq!(list["total"], 1);
+    assert_eq!(
+        clusters.as_array().unwrap().len(),
+        1,
+        "the backlog describes the same selection as the rows"
+    );
+    assert_eq!(clusters[0]["resolved_by"], "de gezochte wijziging");
+    assert_eq!(clusters[0]["markings"], 1);
+}
+
+/// `resolved_by` is nullable, and a marking that cannot say what would fix it
+/// still has to appear: it is exactly the one a reader should look at. Postgres
+/// groups NULLs together, so those land in one cluster rather than vanishing.
+#[tokio::test]
+async fn markings_without_a_named_change_still_form_a_cluster() {
+    let db = TestDb::new().await;
+    seed_marking(
+        &db.pool,
+        "wet_a",
+        "A",
+        "opencode",
+        "1",
+        "x",
+        "model",
+        None,
+        &[],
+        false,
+    )
+    .await;
+    seed_marking(
+        &db.pool,
+        "wet_b",
+        "B",
+        "opencode",
+        "1",
+        "y",
+        "model",
+        None,
+        &[],
+        false,
+    )
+    .await;
+
+    let json = get_clusters(&db.pool, "").await;
+    let clusters = json.as_array().unwrap();
+    assert_eq!(clusters.len(), 1);
+    assert!(clusters[0]["resolved_by"].is_null());
+    assert_eq!(clusters[0]["markings"], 2);
+    assert_eq!(clusters[0]["laws"], 2);
+}
+
 // --- the backlog: clusters ---
 
 /// The point of the whole view: the same change asked for by several articles
