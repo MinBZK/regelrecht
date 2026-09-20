@@ -139,7 +139,7 @@ describe('useMarkings', () => {
     comp.setFilters({ resolution: 'operation', resolved_by: 'een WORKING_DAY-bewerking' });
     await Promise.resolve();
 
-    expect(spy.mock.calls.length).toBe(before + 1, 'one request, not two');
+    expect(spy.mock.calls.length, 'one request, not two').toBe(before + 1);
     const url = lastUrl(spy);
     expect(url).toContain('resolution=operation');
     expect(url).toContain('resolved_by=');
