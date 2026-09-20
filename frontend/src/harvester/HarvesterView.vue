@@ -48,6 +48,8 @@ const tabs = [
   { key: 'overview', label: 'Overzicht', route: '/harvesting/overview' },
   { key: 'law-entries', label: 'Wetten', route: '/harvesting/law-entries' },
   { key: 'jobs', label: 'Taken', route: '/harvesting/jobs' },
+  { key: 'markings', label: 'Markeringen', route: '/harvesting/markings' },
+  // The predecessor of markings, for laws still pinned to schema v0.5.x.
   { key: 'untranslatables', label: 'Untranslatables', route: '/harvesting/untranslatables' },
 ];
 const activeTab = computed(() => route.name);
