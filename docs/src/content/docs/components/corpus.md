@@ -31,9 +31,11 @@ Other packages use it:
 | `validation.rs` | Schema validation against the JSON schema |
 | `auth.rs` | Token management for private repositories |
 | `client.rs` | `CorpusClient` - higher-level read/write access used by editor-api |
-| `backend.rs`, `pr_client.rs` | Git/GitHub write backends for editing through pull requests |
-| `repo_access.rs` | Validates that a token can reach a private repository |
-| `annotation_schema.rs`, `dto.rs`, `config.rs` | Annotation schema, transfer types, and deployment config |
+| `backend.rs` | The `RepoBackend` trait and the factory that picks an implementation per source |
+| `github_api_backend.rs` | API-only backend: no local clone, reads through the Contents API, writes buffered in memory and flushed as one PUT or DELETE per file |
+| `implements_index.rs` | Reads the committed implements-index, the precomputed artefact that replaces a full-corpus scan for IoC resolution |
+| `timing.rs` | Request-scoped phase timings, surfaced as a `Server-Timing` header and as tracing spans |
+| `annotation_schema.rs`, `dto.rs`, `config.rs`, `error.rs` | Annotation schema, transfer types, deployment config, and error types |
 
 ## Usage
 

@@ -10,12 +10,15 @@
     "preview": "astro preview",
     "check:rfc-coverage": "node scripts/check-rfc-coverage.mjs",
     "check:schema-version": "node scripts/check-schema-version.mjs",
+    "check:cited-paths": "node scripts/check-cited-paths.mjs",
+    "check:prose": "node ../.claude/skills/docs-writing/check-prose-style.mjs docs/src/content/docs",
+    "check:source": "npm run check:cited-paths && npm run check:prose && npm run check:rfc-coverage && npm run check:schema-version",
     "sync:schema": "node scripts/sync-schema.mjs",
     "a11y": "npm run build && node scripts/check-rfc-coverage.mjs && node scripts/check-roadmap-rfcs.mjs && node scripts/check-roadmap-belegging.mjs && node scripts/check-mermaid-alt.mjs && node scripts/check-heading-order.mjs && node scripts/check-links.mjs && node scripts/gen-pa11yci.mjs && start-server-and-test 'astro preview --port 4173' http://localhost:4173 'pa11y-ci'",
     "nldd:imports": "node ../script/check-nldd-imports.mjs src src/nldd-components.js --write",
     "nldd:check": "node ../script/check-nldd-imports.mjs src src/nldd-components.js"
   },
-  "//@astrojs/markdown-remark": "Needed by astro.config.mjs (markdown.remarkPlugins/rehypePlugins): since astro 7.2 Sätteri is the default Markdown processor, so neither astro nor @astrojs/mdx installs this package itself — both only declare it as an optional peer (^7.3.0). Pinned exactly so the tree keeps one copy of it; bump it together with astro.",
+  "//@astrojs/markdown-remark": "Needed by astro.config.mjs (markdown.remarkPlugins/rehypePlugins): since astro 7.2 S\u00e4tteri is the default Markdown processor, so neither astro nor @astrojs/mdx installs this package itself \u2014 both only declare it as an optional peer (^7.3.0). Pinned exactly so the tree keeps one copy of it; bump it together with astro.",
   "dependencies": {
     "@astrojs/markdown-remark": "7.3.1",
     "@astrojs/mdx": "^8.0.1",

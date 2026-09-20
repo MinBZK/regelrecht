@@ -30,9 +30,9 @@ default, what `just bdd` runs), `corpus` or `conformance`.
 
 ### BDD conformance (on relevant changes)
 
-The **BDD conformance** job runs bucket B — `bdd/conformance/*.feature` against
-the synthetic `test_*` laws — as `BDD_BUCKET=conformance cargo test --test bdd`,
-and hangs on the `Test` gate, so it blocks a merge. That bucket proves the engine
+The **BDD conformance** job runs bucket B (`bdd/conformance/*.feature` against
+the synthetic `test_*` laws) as `BDD_BUCKET=conformance cargo test --test bdd`.
+It hangs on the `Test` gate, so it blocks a merge. That bucket proves the engine
 speaks the whole feature language and depends on nothing outside the repo.
 
 Bucket A (`corpus/regulation/**/scenarios/*.feature`) stays out of CI. It asserts
@@ -68,14 +68,28 @@ CI uses path filters to determine which checks to run:
 
 | Change group | Triggers on changes to |
 |---|---|
-| `ci` | `packages/corpus/`, `packages/engine/`, `packages/harvester/`, `packages/pipeline/`, `frontend/`, `corpus/regulation/`, `features/`, `schema/`, `script/` |
+| `ci` | `packages/`, `frontend/`, `corpus/regulation/`, `corpus/demo/`, `bdd/`, `schema/`, `script/`, the PoC trees, and the root build files (`Justfile`, `package.json`, `rust-toolchain.toml`) |
 | `admin` | `packages/admin/` |
 | `editor-api` | `packages/editor-api/`, `packages/corpus/`, `packages/pipeline/`, `packages/harvester/` |
 | `docs` | `docs/` |
 
 The `ci` group includes `frontend/`, so frontend changes also trigger the Rust checks (the editor is shipped as one image built from `frontend/` plus the `editor-api` Rust binary that serves it). Docs-only changes skip the Rust checks and run just the docs accessibility gate (`just docs-a11y`).
 
+## Merge gates
+
+Passing the checks above is not enough on its own. Four gates decide whether a pull request can merge, and three of them block.
+
+| Gate | What it requires |
+|------|------------------|
+| **Werkpakket genoemd** | The PR body ends with a `Werkpakket:` line naming a werkpakket from the roadmap. `geen` is allowed with a reason. See [Contributing](./contributing). |
+| **Claude review completed** | The automated review ran to completion for this commit and left no finding marked Critical. There is no override: fix the finding and push again. |
+| **Security update approved** | A Dependabot security update needs an approving review from someone with write access, on the commit being merged. Security updates skip the five-day cooldown, so a human looks at them instead. |
+| **Mutation Testing (diff)** | Reports on whether the tests pin the behavior the change introduces. |
+
+A green review job is not the same as a review that happened, and the gate checks both: that the review workflow matches the copy on the default branch, and that the step recording a completed run did not skip. Fork PRs and Dependabot are handled separately rather than waved through.
+
 ## Further reading
 
+- [Contributing](./contributing) - the PR process, including the required trailer
 - [Deployment](./deployment) - what happens after CI passes
 - [Testing](/guide/testing) - how to run tests locally

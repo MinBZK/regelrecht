@@ -1,5 +1,6 @@
 ---
 title: "Voorstel: RegelRecht als engine achter de Blauwe-Knop-source van CJIB"
+description: "Conceptvoorstel om een RegelRecht-engine achter CJIB's Blauwe-Knop-source te zetten, zodat een FCID-response juridische onderbouwing per vordering meedraagt."
 lang: nl
 ---
 

@@ -28,6 +28,7 @@ jobs:
     outputs:
       ci: ${{ steps.filter.outputs.ci }}
       docs: ${{ steps.filter.outputs.docs }}
+      docs-source: ${{ steps.filter.outputs.docs-source }}
       rust-image: ${{ steps.filter.outputs.rust-image }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -91,6 +92,21 @@ jobs:
               - corpus/annotations/**
               - packages/frontend-shared/**
               - script/landing-laws.sh
+              - .github/workflows/ci.yml
+            # De broncontroles op de documentatie (geciteerde paden, proza,
+            # RFC-dekking, schemaversie) hebben geen astro-build nodig en
+            # moeten juist draaien als de *code* verschuift, niet alleen als
+            # iemand docs/ aanraakt. Dat is de richting waaruit de afdrijving
+            # komt: een hernoemd veld of een verplaatste map laat de proza
+            # stilletjes achter. Daarom een eigen, lichte filter naast `docs`.
+            docs-source:
+              - docs/**
+              - packages/**
+              - bdd/**
+              - schema/**
+              - corpus/regulation/**
+              - justfile
+              - .claude/skills/docs-writing/**
               - .github/workflows/ci.yml
             # Wat de bouw van een Rust-image kan breken. Smaller dan `ci`: een
             # wijziging in frontend/ of bdd/ raakt deze Dockerfiles niet, en die
@@ -747,6 +763,7 @@ jobs:
       - cross-law-integrity
       - provenance-checks
       - docs-a11y
+      - docs-source
       - rust-image
     if: always()
     runs-on: ubuntu-latest
@@ -787,6 +804,7 @@ jobs:
           check cross-law-integrity "${{ needs.cross-law-integrity.result }}"
           check provenance-checks "${{ needs.provenance-checks.result }}"
           check docs-a11y "${{ needs.docs-a11y.result }}"
+          check docs-source "${{ needs.docs-source.result }}"
           check rust-image "${{ needs.rust-image.result }}"
           exit "$status"
 
@@ -1099,6 +1117,43 @@ jobs:
       - name: Run security audit
         run: just audit
 
+  # De broncontroles op de documentatie. Los van docs-a11y omdat ze geen
+  # astro-build, geen Chromium en geen pa11y nodig hebben: ze lezen de
+  # markdown en de repo zelf, draaien in seconden, en kunnen daarom breed
+  # getriggerd worden op elke wijziging in de code die de documentatie
+  # beschrijft.
+  #
+  # Dat brede filter is de kern. De afdrijving die deze controles moeten
+  # vangen ontstaat niet in docs/ maar erbuiten: een map verhuist, een veld
+  # krijgt een andere naam, een bewerking komt erbij, en de proza die dat
+  # beschrijft blijft staan. Een poort die alleen op docs/** draait kijkt
+  # precies de verkeerde kant op.
+  docs-source:
+    name: Docs source checks
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # check-schema-version telt de schema-tags, en die komen niet mee in
+          # een ondiepe checkout. Zonder tags slaat die controle zichzelf over
+          # in plaats van te liegen, maar dan vangt ze ook niets.
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        if: needs.changes.outputs.docs-source == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v6
+        with:
+          node-version: '22'
+
+      # De controles gebruiken alleen de standaardbibliotheek van Node, dus
+      # geen npm ci: dat zou een minuut kosten voor niets.
+      - name: Run docs source checks
+        if: needs.changes.outputs.docs-source == 'true'
+        working-directory: docs
+        run: npm run check:source
+
   docs-a11y:
     name: Docs accessibility gate
     needs: changes
@@ -1189,6 +1244,36 @@ jobs:
         env:
           A11Y_CHANGED_FILES: ${{ steps.changed.outputs.files }}
         run: just docs-a11y
+
+      # Een gepubliceerd adres blijft bereikbaar. Een documentatiepagina wordt
+      # geciteerd in een RFC, in een issue, in een bladwijzer en in mail buiten
+      # deze repo; hernoemen mag, het oude adres laten verdwijnen niet, want die
+      # rekening ligt bij een lezer die niet kan weten waar het heen ging.
+      #
+      # De vorige stap heeft de site al gebouwd. Hier komt daar de bouw van de
+      # base-branch naast, puur om te vragen welke routes die uitgaf. Een route
+      # die daar bestond en hier niet meer laat de job vallen, met de
+      # redirect-regel die het oplost erbij.
+      #
+      # Alleen op een pull request: bij een push naar main is er geen "ervoor"
+      # om tegen te vergelijken.
+      - name: Check no published URL disappeared
+        if: needs.changes.outputs.docs == 'true' && github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          base="$(mktemp -d)"
+          git worktree add --detach "$base" "${{ github.event.pull_request.base.sha }}"
+          cp -R docs/node_modules "$base/docs/node_modules"
+          ( cd "$base/docs" && npm run build >/dev/null 2>&1 ) || {
+            # Faalt de base-bouw, dan zegt dat niets over deze PR. Overslaan is
+            # dan eerlijker dan rood gaan op andermans probleem.
+            echo "::warning::kon de base-branch niet bouwen, URL-controle overgeslagen"
+            exit 0
+          }
+          find "$base/docs/dist" -name index.html \
+            | sed "s|^$base/docs/dist||; s|/index.html$||; s|^$|/|" \
+            | sort > /tmp/base-routes.txt
+          node docs/scripts/check-no-dead-urls.mjs /tmp/base-routes.txt
 
       - name: Skip (no relevant changes)
         if: needs.changes.outputs.docs != 'true'

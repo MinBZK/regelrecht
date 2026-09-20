@@ -15,8 +15,8 @@ Every execution produces an **Execution Receipt**: an output envelope that conta
 {
   "provenance": {
     "engine": "regelrecht",
-    "engine_version": "0.6.0",
-    "schema_version": "v0.5.1",
+    "engine_version": "0.3.0",
+    "schema_version": "v0.7.0",
     "regulation_id": "wet_op_de_zorgtoeslag",
     "regulation_valid_from": "2025-01-01",
     "regulation_hash": "sha256:a1b2c3..."
@@ -44,7 +44,7 @@ The receipt records which engine version and schema produced the result, which r
 
 The schema defines the regulation format. The engine interprets and executes regulations that conform to the schema. These are versioned independently:
 
-- **Schema versions** are immutable directories under `schema/` (e.g., `schema/v0.5.1/schema.json`). A published version is never modified.
+- **Schema versions** are immutable directories under `schema/` (one directory per version, such as `schema/v0.7.0/schema.json`). A published version is never modified, and `schema/latest` is a symlink to the current one.
 - **Engine versions** correspond to GitHub Release tags. Each release declares which schema versions it supports.
 
 This distinction matters because third-party organizations may build their own engine implementations. The schema is the specification; the engine is one implementation of it.

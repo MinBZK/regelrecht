@@ -2513,11 +2513,16 @@ fn vocabulary_of_yaml(raw: &str) -> Vocabulary {
 
 /// Whether a `vMAJOR.MINOR.PATCH` schema version is v0.7.0 or later, the point
 /// at which `markings` replaced `untranslatables` and `norm_gaps`.
+///
+/// The boundary is v0.7.0 exactly. v0.6.0 still defines `untranslatables` and
+/// has no `markings`, and `machine_readable` is `additionalProperties: false`,
+/// so handing an agent the new vocabulary for a v0.6.x law yields a file that
+/// its own schema rejects.
 fn schema_has_markings(version: &str) -> bool {
     let mut parts = version.trim_start_matches('v').split('.');
     let mut next = || parts.next().and_then(|p| p.parse::<u32>().ok());
     match (next(), next(), next()) {
-        (Some(major), Some(minor), Some(patch)) => (major, minor, patch) >= (0, 6, 0),
+        (Some(major), Some(minor), Some(patch)) => (major, minor, patch) >= (0, 7, 0),
         // An unparseable version is not an old one: treat it as current
         // rather than sending an agent back to fields the schema dropped.
         _ => true,
@@ -8255,11 +8260,25 @@ articles:
         assert!(!schema_has_markings("v0.5.6"));
         assert!(!schema_has_markings("v0.4.0"));
         assert!(schema_has_markings("v0.7.0"));
-        assert!(schema_has_markings("v0.6.1"));
+        assert!(schema_has_markings("v0.7.1"));
         assert!(schema_has_markings("v1.0.0"));
         // Unparseable is read as current: sending an agent back to fields the
         // schema dropped is the failure this distinction exists to avoid.
         assert!(schema_has_markings("nonsense"));
+    }
+
+    /// The boundary is v0.7.0, not v0.6.0. `schema/v0.6.0/schema.json` defines
+    /// `untranslatables` and has no `markings` at all, so telling an agent to
+    /// write markings into a v0.6.x law produces a file its own schema rejects:
+    /// `machine_readable` is `additionalProperties: false`, and `just validate`
+    /// fails on the result.
+    ///
+    /// Its own test never covered v0.6.0, the one version where the off-by-one
+    /// bites, so the mistake sat behind a green suite.
+    #[test]
+    fn v0_6_x_still_speaks_the_old_vocabulary() {
+        assert!(!schema_has_markings("v0.6.0"));
+        assert!(!schema_has_markings("v0.6.1"));
     }
 
     #[test]

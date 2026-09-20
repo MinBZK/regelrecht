@@ -44,7 +44,7 @@ Amsterdam is **silent** about trees outside the centrum. For those, the BW defau
 A first attempt might be to have BW 5:42 declare an `open_term` for the distance and let Amsterdam implement it entirely:
 
 ```yaml
-# BW 5:42 — naive approach
+# BW 5:42, naive approach
 open_terms:
   - id: minimale_afstand_cm
     default:
@@ -59,7 +59,7 @@ open_terms:
 ```
 
 ```yaml
-# Amsterdam APV — naive approach
+# Amsterdam APV, naive approach
 implements:
   - open_term: minimale_afstand_cm
 
@@ -70,7 +70,7 @@ actions:
       cases:
         - when: { boom AND centrum }
           then: 100
-      default: 50  # ← WRONG: gives 50cm for trees outside centrum
+      default: 50  # WRONG: gives 50cm for trees outside centrum
 ```
 
 The problem: once Amsterdam claims to implement `minimale_afstand_cm`, it must return a value for **every** case. But Amsterdam has nothing to say about trees outside the centrum. If the default is 50, non-centrum trees get 50 cm instead of 200 cm. If we hardcode 200 in the APV, we're putting BW 5:42's value in Amsterdam's regulation, a scope violation.
@@ -85,7 +85,7 @@ The "tenzij" (unless) structure tells us how to model this:
 
 1. **The BW sets its own defaults**: these are the rule.
 2. **The BW offers an optional delegation**: this is the exception.
-3. **The BW decides which to use**: if the delegation produces a value, use it; otherwise, use the default.
+3. **The BW carries its own rule as the term's default**: if the delegation produces a value, the engine uses it; otherwise it falls back to that default.
 
 This maps directly to the YAML:
 
@@ -98,6 +98,20 @@ machine_readable:
       required: false                    # "tenzij" = optional
       delegated_to: gemeenteraad
       delegation_type: GEMEENTELIJKE_VERORDENING
+      legal_basis: artikel 5:42 lid 2 Burgerlijk Wetboek
+      # The rule of lid 2, carried by the term itself.
+      default:
+        actions:
+          - output: gemeentelijke_afstand_cm
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $type_beplanting
+                    value: boom
+                  then: 200
+              default: 50
 
   execution:
     parameters:
@@ -113,32 +127,19 @@ machine_readable:
         type: number
 
     actions:
-      # Step 1: The rule — BW's own defaults (lid 2)
-      - output: wettelijke_afstand_cm
-        value:
-          operation: IF
-          cases:
-            - when:
-                operation: EQUALS
-                subject: $type_beplanting
-                value: boom
-              then: 200
-          default: 50
-
-      # Step 2: The exception — "tenzij verordening"
-      # If a municipality provides a value, use it.
-      # If not (null), the rule applies.
+      # The applicable distance is the open term: the municipal distance
+      # where a verordening allows one, otherwise the rule of lid 2, which
+      # is the term's own default.
       - output: minimale_afstand_cm
-        value:
-          operation: IF
-          cases:
-            - when:
-                operation: EQUALS
-                subject: $gemeentelijke_afstand_cm
-                value: null
-              then: $wettelijke_afstand_cm
-          default: $gemeentelijke_afstand_cm
+        value: $gemeentelijke_afstand_cm
 ```
+
+The article does not write the fallback itself. The rule of lid 2 lives in the
+open term's `default:` block, and the engine falls back to it when the
+implementing regulation returns null for a case. That resolution is marked in
+the trace as `OpenTermSilent`, which is how you tell "Amsterdam set this
+distance" apart from "Amsterdam said nothing, so the BW's own rule applies".
+See [RFC-036](/rfcs/rfc-036).
 
 The Amsterdam APV only speaks where it has authority:
 
@@ -157,11 +158,12 @@ machine_readable:
         required: true
       - name: postcode
         type: number
-        required: true
+        required: false        # only lid 1 uses it; lid 2 covers all of Amsterdam
 
     output:
       - name: gemeentelijke_afstand_cm
         type: number
+        nullable: true         # the APV is silent about trees outside the centrum
 
     actions:
       - output: gemeentelijke_afstand_cm
@@ -189,14 +191,14 @@ machine_readable:
                 value: heg_of_heester
               then: 50
           # No default: returns null for trees outside centrum.
-          # The BW's null-check then uses the statutory 200cm.
+          # The open term's own default then gives the statutory 200cm.
 ```
 
 ### Why this works
 
 Each article stays within its own scope:
 
-- **BW 5:42** sets the rule (200/50) and defines the exception mechanism ("tenzij verordening"). Both are in the article text. The null-check is the machine-readable expression of "tenzij": if no exception exists, the rule applies.
+- **BW 5:42** sets the rule (200/50) and defines the exception mechanism ("tenzij verordening"). Both are in the article text. The open term's `default:` is the machine-readable expression of "tenzij": if no exception exists, the rule applies.
 
 - **Amsterdam APV 2.75** only produces values where it has something to say (centrum bomen: 100, heggen: 50). For cases it doesn't cover (bomen buiten centrum), it returns null, meaning "I have no opinion on this." The BW then applies its own default.
 
@@ -206,10 +208,10 @@ No article hardcodes values from another article, so no scope is violated. The d
 
 This pattern applies whenever a higher law sets defaults that lower regulations may override:
 
-1. The higher law computes its **own default** as a named output.
-2. The higher law declares an **optional open_term** for the override.
-3. The higher law uses a **null-check** to choose between the override and the default.
-4. The lower regulation **only returns values where it deviates**; null otherwise.
+1. The higher law declares an **optional open_term** for the override.
+2. That term carries the higher law's **own rule** in its `default:` block.
+3. The lower regulation **only returns values where it deviates**; null otherwise.
+4. The engine takes the term's default whenever the implementation is silent, and marks it `OpenTermSilent` in the trace.
 
 The "tenzij" in the law text is the signal that this pattern applies. The word means "unless": the rule applies unless the exception is triggered.
 
@@ -217,7 +219,7 @@ The "tenzij" in the law text is the signal that this pattern applies. The word m
 Rule: X
 Exception: tenzij verordening Y
 
-→ wettelijke_waarde = X
-→ gemeentelijke_waarde = open_term (optional, may be null)
-→ resultaat = IF gemeentelijke_waarde == null THEN wettelijke_waarde ELSE gemeentelijke_waarde
+→ gemeentelijke_waarde = open_term (optional), default: X
+→ resultaat = $gemeentelijke_waarde
+→ the engine takes the default when the verordening is silent (OpenTermSilent)
 ```

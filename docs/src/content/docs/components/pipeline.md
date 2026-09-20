@@ -40,7 +40,7 @@ flowchart LR
 | Module | Purpose |
 |--------|---------|
 | `job_queue.rs` | Job creation, claiming (`FOR UPDATE SKIP LOCKED`), completion, failure with auto-retry |
-| `law_status.rs` | Per-law status tracking through 10 states |
+| `law_status.rs` | Per-law status tracking through 11 states |
 | `harvest.rs` | Harvest execution - download XML from BWB, convert to YAML |
 | `enrich.rs` | Enrichment execution - call LLM to add `machine_readable` sections |
 | `worker.rs` | Polling loops for harvest and enrich workers |
@@ -90,7 +90,16 @@ stateDiagram-v2
     Enriching --> EnrichFailed: job retries exhausted
     EnrichFailed --> Enriching: re-queued (fail count below threshold)
     EnrichFailed --> EnrichExhausted: fail count reaches threshold
+    Harvesting --> NotHarvestable: no consolidated text
+    NotHarvestable --> [*]
 ```
+
+`NotHarvestable` is the terminal one. A work can have no consolidated text to
+harvest because it was withdrawn, is not yet in force, or has only been
+announced. The skip reason is uniform, so the status is a single value and the
+precise reason and date go into the harvest job's result. The job is completed
+rather than failed, so it is never retried; a future law can be re-harvested by
+hand once its text appears.
 
 ## Harvest Worker
 
@@ -223,7 +232,7 @@ just pipeline-integration-test   # Integration tests (Docker + testcontainers)
 
 Integration tests use `testcontainers` to spin up ephemeral PostgreSQL instances; no local database setup is required.
 
-## Further Reading
+## Further reading
 
 - [Harvester](./harvester) - the BWB law downloader used by harvest jobs
 - [Architecture](/guide/architecture) - where the pipeline fits in the system
