@@ -22,21 +22,34 @@ import { fileURLToPath } from 'node:url';
 
 const RFC_DIR = fileURLToPath(new URL('../src/content/rfcs', import.meta.url));
 
+// Tolerate CRLF. A file saved with Windows line endings would otherwise not
+// match at all, `frontmatter()` would return '', every field would read as
+// null, and the consistency rules below would quietly skip it — a checker that
+// reports "passed" on a file it could not read is worse than one that fails.
 function frontmatter(src) {
-  const fm = src.match(/^---\n([\s\S]*?)\n---/);
-  return fm ? fm[1] : '';
+  const fm = src.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  return fm ? fm[1] : null;
 }
 
 function field(fm, name) {
-  const line = fm.match(new RegExp(`^${name}:\\s*(.+)$`, 'm'));
+  const line = fm.match(new RegExp(`^${name}:[ \\t]*(.+?)[ \\t]*\\r?$`, 'm'));
   return line ? line[1].trim().replace(/^['"]|['"]$/g, '') : null;
 }
 
 const rfcs = [];
+const problems = [];
+
 for (const entry of readdirSync(RFC_DIR)) {
   const m = entry.match(/^rfc-(\d+)\.md$/);
   if (!m) continue;
   const fm = frontmatter(readFileSync(join(RFC_DIR, entry), 'utf8'));
+  if (fm === null) {
+    problems.push(
+      `${entry} has no frontmatter block, so its status cannot be read.\n` +
+        `  Every RFC opens with a '---' block carrying at least a title and a status.`,
+    );
+    continue;
+  }
   rfcs.push({
     num: Number(m[1]),
     file: entry,
@@ -46,7 +59,22 @@ for (const entry of readdirSync(RFC_DIR)) {
 }
 rfcs.sort((a, b) => a.num - b.num);
 
-const problems = [];
+// 0. One file per number. `rfc-01.md` and `rfc-001.md` both parse to 1, so
+//    without this the two would sit side by side and the gap check would see a
+//    complete sequence. That is the very collision this script exists to stop,
+//    reached through a filename variant instead of through two branches.
+const byNumber = new Map();
+for (const r of rfcs) {
+  const existing = byNumber.get(r.num);
+  if (existing) {
+    problems.push(
+      `RFC-${String(r.num).padStart(3, '0')} is claimed by two files: ${existing.file} and ${r.file}.\n` +
+        `  One file per number, named rfc-NNN.md with three digits.`,
+    );
+    continue;
+  }
+  byNumber.set(r.num, r);
+}
 
 // 1. No holes. Every number from 000 up to the highest must exist as a file,
 //    even if only as a Reserved placeholder.
