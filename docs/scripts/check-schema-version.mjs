@@ -130,9 +130,16 @@ if (!existsSync(SNAPSHOT)) {
 //    tree but never tagged passes every existing gate while its published URL
 //    404s. That is how v0.5.7, v0.5.8 and v0.7.0 shipped untagged.
 //
+//    This blocks. Tagging is the step that makes a released version immutable:
+//    without a tag the `$schema` URL resolves to nothing, and nothing stops the
+//    file being edited afterwards, so "a published version is never modified"
+//    holds by convention rather than by construction. A release is not finished
+//    until its tag exists.
+//
 //    Tags are only present in a checkout that fetched them, so a missing tag
-//    list is not evidence of a missing tag: warn and move on rather than fail
-//    a shallow clone. Run `git fetch --tags` to make this check meaningful.
+//    list is not evidence of a missing tag: skip when there are none at all
+//    rather than fail a shallow clone. Use `fetch-depth: 0` in CI, or fetch the
+//    tags locally, to make this check meaningful.
 try {
   const { execFileSync } = await import('node:child_process');
   const tags = execFileSync('git', ['tag', '--list', 'schema-v*'], {
@@ -154,15 +161,11 @@ try {
     const released = readdirSync(SCHEMA_DIR).filter((n) => /^v\d+\.\d+\.\d+$/.test(n));
     const untagged = released.filter((v) => !tags.includes(`schema-${v}`)).sort();
     if (untagged.length) {
-      // A warning, not a failure. The fix is pushing a tag, which is a release
-      // action rather than something a pull request can carry, so failing here
-      // would block every unrelated change on it.
-      console.warn(
-        `check-schema-version WARNING: ${untagged.length} released schema version(s) have no git tag, ` +
-          `so the $schema URL a law file cites for them does not resolve: ${untagged.join(', ')}.`,
-      );
-      console.warn(
-        `  Fix with, for each: git tag schema-vX.Y.Z <commit that released it> && git push origin schema-vX.Y.Z`,
+      problems.push(
+        `${untagged.length} released schema version(s) have no tag, so the $schema URL a law ` +
+          `file cites for them does not resolve: ${untagged.join(', ')}. ` +
+          `A release is finished when its tag exists: tag each one at the commit ` +
+          `that released it, then push the tag.`,
       );
     }
   }
