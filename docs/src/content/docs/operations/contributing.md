@@ -89,6 +89,30 @@ Reviewers check for:
 - Test coverage - are there BDD scenarios, especially for edge cases?
 - Schema compliance - does `just validate` pass?
 
+## Documentation URLs
+
+A published address stays reachable. A docs page gets cited in an RFC, pasted
+into an issue, bookmarked, and mailed to people outside this repository, so
+renaming it is fine but letting the old address disappear is not. The cost of a
+dead link lands on a reader who cannot know where the page went.
+
+Renaming a page is therefore two steps. Move the file, then add the old path to
+`redirects` in `docs/astro.config.mjs`:
+
+```js
+redirects: {
+  '/concepts/untranslatables': '/concepts/markings',
+},
+```
+
+CI compares the routes this branch builds against the routes the base branch
+builds, so a page that moves without a redirect fails the docs gate and the
+failure names the line that fixes it. The same check rejects a redirect whose
+target does not exist.
+
+If a page is removed rather than moved, redirect it to whatever now covers the
+subject.
+
 ## Design decisions (RFCs)
 
 Changes to the law format, engine architecture, or cross-cutting patterns require an RFC. See the [RFC process](/rfcs/rfc-000) for details.

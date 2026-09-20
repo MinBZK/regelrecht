@@ -1245,6 +1245,36 @@ jobs:
           A11Y_CHANGED_FILES: ${{ steps.changed.outputs.files }}
         run: just docs-a11y
 
+      # Een gepubliceerd adres blijft bereikbaar. Een documentatiepagina wordt
+      # geciteerd in een RFC, in een issue, in een bladwijzer en in mail buiten
+      # deze repo; hernoemen mag, het oude adres laten verdwijnen niet, want die
+      # rekening ligt bij een lezer die niet kan weten waar het heen ging.
+      #
+      # De vorige stap heeft de site al gebouwd. Hier komt daar de bouw van de
+      # base-branch naast, puur om te vragen welke routes die uitgaf. Een route
+      # die daar bestond en hier niet meer laat de job vallen, met de
+      # redirect-regel die het oplost erbij.
+      #
+      # Alleen op een pull request: bij een push naar main is er geen "ervoor"
+      # om tegen te vergelijken.
+      - name: Check no published URL disappeared
+        if: needs.changes.outputs.docs == 'true' && github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          base="$(mktemp -d)"
+          git worktree add --detach "$base" "${{ github.event.pull_request.base.sha }}"
+          cp -R docs/node_modules "$base/docs/node_modules"
+          ( cd "$base/docs" && npm run build >/dev/null 2>&1 ) || {
+            # Faalt de base-bouw, dan zegt dat niets over deze PR. Overslaan is
+            # dan eerlijker dan rood gaan op andermans probleem.
+            echo "::warning::kon de base-branch niet bouwen, URL-controle overgeslagen"
+            exit 0
+          }
+          find "$base/docs/dist" -name index.html \
+            | sed "s|^$base/docs/dist||; s|/index.html$||; s|^$|/|" \
+            | sort > /tmp/base-routes.txt
+          node docs/scripts/check-no-dead-urls.mjs /tmp/base-routes.txt
+
       - name: Skip (no relevant changes)
         if: needs.changes.outputs.docs != 'true'
         run: echo "No docs changes, skipping accessibility gate"

@@ -55,7 +55,7 @@ export const sidebar: Record<string, SidebarGroup[]> = {
         { text: 'Notes and Annotations', link: '/concepts/notes-and-annotations' },
         { text: 'Collections', link: '/concepts/collections' },
         { text: 'Temporal Validity and Dates', link: '/concepts/temporal-and-dates' },
-        { text: 'Markings (untranslatables)', link: '/concepts/untranslatables' },
+        { text: 'Markings (untranslatables)', link: '/concepts/markings' },
         { text: 'Execution Provenance', link: '/concepts/execution-provenance' },
         { text: 'Traceability', link: '/concepts/traceability' },
       ],
