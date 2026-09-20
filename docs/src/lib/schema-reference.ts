@@ -175,9 +175,15 @@ const CONCEPTS: Record<string, ConceptLink> = {
     href: '/concepts/competent-authority#the-two-forms',
     label: 'Competent Authority',
   },
-  untranslatables: {
+  markings: {
     href: '/concepts/untranslatables#how-they-are-flagged',
-    label: 'Untranslatables',
+    label: 'Markings',
+  },
+  // Schema v0.5.x called this channel `untranslatables`. Kept so a law file on
+  // an older schema version still links to the concept page.
+  untranslatables: {
+    href: '/concepts/untranslatables#a-note-on-the-name',
+    label: 'Markings (formerly untranslatables)',
   },
   valid_to: {
     href: '/concepts/temporal-and-dates#which-version-is-in-force',
@@ -239,12 +245,12 @@ const GLOSSARY: Record<string, ConceptLink> = {
     label: 'Glossary: Legal Hierarchy',
   },
   legal_character: {
-    href: '/reference/glossary#administrative-law-bestuursrecht',
-    label: 'Glossary: Administrative Law',
+    href: '/reference/glossary#legal-character',
+    label: 'Glossary: Legal Character',
   },
   decision_type: {
-    href: '/reference/glossary#administrative-law-bestuursrecht',
-    label: 'Glossary: Administrative Law',
+    href: '/reference/glossary#decision-type',
+    label: 'Glossary: Decision Type',
   },
 };
 

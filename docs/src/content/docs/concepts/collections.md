@@ -120,7 +120,7 @@ The worked article is in `corpus/regulation/nl/wet/participatiewet/2022-03-15.ya
 
 An error in `filter` or `body` aborts the whole operation. Partial results are never returned: a sum over some of the children is not a legal determination.
 
-An [untranslatable](./untranslatables) taints the whole result, wherever it appears. Dropping the untranslatable elements and combining the rest would produce a number that looks complete and is not.
+A [marked construct](./untranslatables) taints the whole result, wherever it appears. Dropping the tainted elements and combining the rest would produce a number that looks complete and is not.
 
 The same holds for a fact nobody has ([RFC-036](/rfcs/rfc-036)). A `filter` that evaluates to *unknown* makes the result unknown, because the engine cannot tell whether that element belongs in the collection. A `body` that evaluates to unknown does too: the element is definitely in the collection and its contribution is not known, so `ADD`, `MIN` and `MAX` report that rather than a total that is short by an unknown amount, naming the missing facts. `OR` and `AND` settle on a definitive `true` or `false` where one exists, and are unknown otherwise.
 
@@ -140,4 +140,4 @@ Every iteration appears in the [execution trace](./execution-provenance) with it
 
 - [Law Format](./law-format) lists the full operation set.
 - [RFC-016](/rfcs/rfc-016) records why collection operations look like this, and which alternatives were rejected.
-- [Untranslatables](./untranslatables) covers what happens when a construct cannot be modeled at all.
+- [Markings](./untranslatables) covers what happens when a construct cannot be modeled at all.
