@@ -27,7 +27,7 @@ Then the execution fails with
   "No version of law 'test_einddatum' in force on 2025-06-01; last in force until 2024-12-31"
 ```
 
-The same applies across a cross-law reference: a law that reads an ended law reports which law ended and when, and does not compute on rules that are no longer valid. The selection outcome is one of in force, not yet in force, or ended on a date (`SelectionReason` in `packages/engine/src/resolver.rs`), and both `valid_from` and `valid_to` are recorded in the [Execution Receipt](./execution-provenance) so the choice is reproducible. The scenarios above come from `features/einddatum.feature`.
+The same applies across a cross-law reference: a law that reads an ended law reports which law ended and when, and does not compute on rules that are no longer valid. The selection outcome is one of in force, not yet in force, or ended on a date (`SelectionReason` in `packages/engine/src/resolver.rs`), and both `valid_from` and `valid_to` are recorded in the [Execution Receipt](./execution-provenance) so the choice is reproducible. The scenarios above come from `bdd/conformance/einddatum.feature`.
 
 ## Comparing and subtracting dates
 
@@ -54,7 +54,7 @@ When the law "test_date_operations" is executed for outputs "doorlooptijd_maande
 Then the output "doorlooptijd_maanden" is "1"
 ```
 
-Dates must be in canonical `YYYY-MM-DD` form, zero-padded. `2025-1-1` is rejected; the engine does not guess. These scenarios come from `features/date_operations.feature`, and the related operations `AGE`, `DATE_ADD`, and `DATE` are listed in the [Law Format](./law-format) operation table.
+Dates must be in canonical `YYYY-MM-DD` form, zero-padded. `2025-1-1` is rejected; the engine does not guess. These scenarios come from `bdd/conformance/date_operations.feature`, and the related operations `AGE`, `DATE_ADD`, and `DATE` are listed in the [Law Format](./law-format) operation table.
 
 ## Reading a component, and cutting back to a month
 

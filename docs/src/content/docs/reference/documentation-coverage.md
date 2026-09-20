@@ -21,7 +21,7 @@ The table below is **enforced**: `docs/scripts/check-rfc-coverage.mjs` reads the
 | RFC-008 | Awb procedures | [Hooks and Reactive Execution](../concepts/hooks-and-reactive-execution) |
 | RFC-010 | Federated corpus | [Federated Corpus](../concepts/federated-corpus) |
 | RFC-011 | Rules language selection | Backlog: the "why custom YAML" rationale has no prose page |
-| RFC-012 | Untranslatables | [Untranslatables](../concepts/untranslatables) |
+| RFC-012 | Untranslatables (now `markings`) | [Markings](../concepts/markings) |
 | RFC-013 | Execution provenance | [Execution Provenance](../concepts/execution-provenance) |
 | RFC-014 | Conformance suite | [Conformance](./conformance) |
 | RFC-016 | Collection operations | [Collections](../concepts/collections) |

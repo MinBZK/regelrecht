@@ -1,6 +1,7 @@
 ---
 title: "Private-repo trajects"
 description: "Hoe een traject aan een eigen (private) GitHub-repo gekoppeld wordt in plaats van de centrale corpus-repo."
+lang: nl
 ---
 
 Vanaf [PR #704](https://github.com/MinBZK/regelrecht/pull/704) kan een traject in de editor gekoppeld worden aan een **eigen GitHub-repo** in plaats van de centrale `MinBZK/regelrecht-corpus`. Handig voor organisaties of teams die hun regelgeving in een private repo willen beheren, met behoud van RegelRecht's editor- en attributie-eigenschappen.
@@ -67,7 +68,7 @@ waarbij `<OWNER>_<REPO>` een **deterministische slug** is van de coordinates: lo
 |---|---|
 | `MinBZK/regelrecht-corpus` (de centrale repo) | `CORPUS_AUTH_MINBZK_CENTRAL_TOKEN` |
 | `acme/regels` | `CORPUS_AUTH_ACME_REGELS_TOKEN` |
-| `tdjager/regelrecht-private-test` | `CORPUS_AUTH_TDJAGER_REGELRECHT_PRIVATE_TEST_TOKEN` |
+| `acme/regelrecht-private-test` | `CORPUS_AUTH_ACME_REGELRECHT_PRIVATE_TEST_TOKEN` |
 
 > **Let op:** de centrale schrijfbare repo (`MinBZK/regelrecht-corpus`) gebruikt **niet** de afgeleide slug maar de vaste auth-ref `minbzk-central`, dus de env var heet `CORPUS_AUTH_MINBZK_CENTRAL_TOKEN` (niet `CORPUS_AUTH_MINBZK_REGELRECHT_CORPUS_TOKEN`).
 
