@@ -395,7 +395,7 @@ pub async fn list_markings(
 pub async fn list_marking_clusters(
     State(state): State<AppState>,
     Query(params): Query<MarkingsQuery>,
-) -> Result<Json<Vec<MarkingCluster>>, ApiError> {
+) -> Result<Json<PaginatedResponse<MarkingCluster>>, ApiError> {
     let pool = &state.pool;
     let (where_sql, binds) = markings_where(&params);
 
@@ -428,7 +428,18 @@ pub async fn list_marking_clusters(
         .await
         .map_err(db_err("cluster query failed"))?;
 
-    Ok(Json(clusters))
+    // Wrapped in the same envelope as every other list endpoint, so the
+    // frontend's polling composable reads it without a special case. There is
+    // no paging here: a backlog is short by construction, and truncating it
+    // would hide the long tail of single-marking clusters that is the most
+    // interesting part.
+    let total = clusters.len() as i64;
+    Ok(Json(PaginatedResponse {
+        data: clusters,
+        total,
+        limit: total,
+        offset: 0,
+    }))
 }
 
 // --- Untranslatables ---

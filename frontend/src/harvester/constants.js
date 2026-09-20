@@ -141,6 +141,84 @@ export const UNTRANSLATABLE_COLUMNS = [
   },
 ];
 
+// Markings (schema v0.7.0): one row per construct the format itself cannot
+// express. The successor of untranslatables; both are shown because a law
+// pinned to schema v0.5.x still carries the old field.
+//
+// Atomic grain, like the untranslatable list: the cluster view is an
+// aggregation over these same rows, not a separate dataset.
+export const MARKING_PROVIDERS = UNTRANSLATABLE_PROVIDERS;
+
+// `resolution` is a closed vocabulary in the schema, so it filters as a
+// dropdown rather than the free-text search the other fields use.
+export const MARKING_RESOLUTIONS = ['operation', 'model'];
+
+export const MARKING_COLUMNS = [
+  {
+    key: 'law_name',
+    label: 'Wet',
+    filter: { key: 'law_id', type: 'text', label: 'Wet' },
+    overline: (row) => row.law_id,
+    text: (row) => row.law_name || '—',
+    supportingText: (row) =>
+      row.created_at ? `Gevonden op ${formatDate(row.created_at)}` : undefined,
+  },
+  {
+    key: 'article',
+    label: 'Artikel',
+    width: 'fit-content',
+    minWidth: '60px',
+    text: (row) => row.article || '—',
+  },
+  {
+    key: 'about',
+    label: 'Constructie',
+    filter: { key: 'about', type: 'text', label: 'Constructie' },
+    text: (row) => row.about || '—',
+  },
+  {
+    // What has to change before this article can be translated in full. The
+    // field the backlog is grouped by, so it earns a column even though it is
+    // free text and often long; the full value sits in the detail panel.
+    key: 'resolved_by',
+    label: 'Wat het oplost',
+    hideBelow: '640px',
+    text: (row) => row.resolved_by || '—',
+  },
+  {
+    key: 'resolution',
+    label: 'Soort',
+    filter: { options: MARKING_RESOLUTIONS },
+    width: 'fit-content',
+    minWidth: '90px',
+  },
+  {
+    // A TEXT[] on the wire. No generic cell renderer handles an array, so the
+    // view fills this through a `cell-target` slot; without one the fallback
+    // would print a stringified list.
+    key: 'target',
+    label: 'Blokkeert',
+    hideBelow: '900px',
+    width: 'fit-content',
+    minWidth: '100px',
+  },
+  {
+    key: 'accepted',
+    label: 'Beoordeeld',
+    filter: { options: ['true', 'false'] },
+    width: 120,
+  },
+  {
+    key: 'provider',
+    label: 'Provider',
+    filter: { options: MARKING_PROVIDERS },
+    width: 'fit-content',
+    minWidth: '80px',
+    hideBelow: '640px',
+    text: (row) => row.provider || '—',
+  },
+];
+
 // Sort menus are independent from visible columns - users should be able to
 // sort by fields that aren't shown as a separate column.
 // `directionLabels` controls which directions appear in the menu:
@@ -194,6 +272,21 @@ export const UNTRANSLATABLE_SORT_OPTIONS = [
 export const LAW_ENTRY_SORT_KEYS = new Set(LAW_ENTRY_SORT_OPTIONS.map((o) => o.key));
 export const JOB_SORT_KEYS = new Set(JOB_SORT_OPTIONS.map((o) => o.key));
 export const GROUPED_SORT_KEYS = new Set(GROUPED_SORT_OPTIONS.map((o) => o.key));
+// Keys must match the backend allowlist (ALLOWED_SORT_COLUMNS_MARKING): real
+// columns on `markings` only. `law_name` is joined, so it is not sortable.
+export const MARKING_SORT_OPTIONS = [
+  { key: 'created_at', label: 'Recent gevonden' },
+  { key: 'law_id', label: 'Wet', directionLabels: DIR_TEXT },
+  { key: 'about', label: 'Constructie', directionLabels: DIR_TEXT },
+  { key: 'resolution', label: 'Soort', directionLabels: DIR_TEXT },
+  { key: 'resolved_by', label: 'Wat het oplost', directionLabels: DIR_TEXT },
+  { key: 'article', label: 'Artikel', directionLabels: DIR_TEXT },
+  { key: 'accepted', label: 'Beoordeeld' },
+  { key: 'provider', label: 'Provider', directionLabels: DIR_TEXT },
+];
+
+export const MARKING_SORT_KEYS = new Set(MARKING_SORT_OPTIONS.map((o) => o.key));
+
 export const UNTRANSLATABLE_SORT_KEYS = new Set(UNTRANSLATABLE_SORT_OPTIONS.map((o) => o.key));
 
 export const STATUS_BADGE_MAP = {

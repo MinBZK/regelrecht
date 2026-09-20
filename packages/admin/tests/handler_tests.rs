@@ -173,7 +173,9 @@ async fn get_clusters(pool: &sqlx::PgPool, query: &str) -> Value {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    body_json(response).await
+    // The endpoint wraps its rows in the standard {data,total} envelope; the
+    // tests below are about the clusters themselves.
+    body_json(response).await["data"].clone()
 }
 
 #[tokio::test]
