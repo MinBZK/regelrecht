@@ -22,23 +22,35 @@ const COVERAGE = fileURLToPath(
 // so in prose rather than the table. Any other Accepted RFC must appear.
 const EXEMPT = new Set(['RFC-000']);
 
-// Pull the `status:` value out of YAML frontmatter (first --- ... --- block).
-function frontmatterStatus(src) {
+// Pull a field out of YAML frontmatter (first --- ... --- block).
+function frontmatterField(src, name) {
   const fm = src.match(/^---\n([\s\S]*?)\n---/);
   if (!fm) return null;
-  const line = fm[1].match(/^status:\s*(.+)$/m);
+  const line = fm[1].match(new RegExp(`^${name}:\\s*(.+)$`, 'm'));
   if (!line) return null;
   return line[1].trim().replace(/^['"]|['"]$/g, '');
 }
 
-// Every Accepted RFC id, from frontmatter — the source of truth, not a list to
-// keep in sync by hand.
+// Every RFC that owes prose coverage, from frontmatter — the source of truth,
+// not a list to keep in sync by hand.
+//
+// Two ways to owe it, because either one alone leaves a hole. `Accepted` is the
+// decision having been taken. `Implemented` is the construct being live in the
+// shipped schema, which obliges coverage whatever the acceptance ceremony says:
+// a reader hits the field in a law file, not the status tag. Keying on
+// `Accepted` alone let `voids` ship in schema v0.7.0 — a field distinguishing
+// "no entitlement" from "an entitlement of zero" — with no prose page at all,
+// because RFC-041 that defined it sits at `Proposed`.
 const acceptedRfcs = [];
 for (const entry of readdirSync(RFC_DIR)) {
   const m = entry.match(/^(rfc-\d+)\.md$/);
   if (!m) continue;
-  const status = frontmatterStatus(readFileSync(join(RFC_DIR, entry), 'utf8'));
-  if (status === 'Accepted') acceptedRfcs.push(m[1].toUpperCase());
+  const src = readFileSync(join(RFC_DIR, entry), 'utf8');
+  const status = frontmatterField(src, 'status');
+  const implementation = frontmatterField(src, 'implementation');
+  if (status === 'Accepted' || implementation === 'Implemented') {
+    acceptedRfcs.push(m[1].toUpperCase());
+  }
 }
 acceptedRfcs.sort();
 
@@ -51,7 +63,7 @@ const missing = acceptedRfcs.filter((id) => !EXEMPT.has(id) && !tracked.has(id))
 
 if (missing.length) {
   console.error(
-    `RFC coverage check FAILED: ${missing.length} Accepted RFC(s) absent from ` +
+    `RFC coverage check FAILED: ${missing.length} RFC(s) absent from ` +
       `documentation-coverage.md:`,
   );
   for (const id of missing) console.error('  ' + id);
@@ -63,5 +75,5 @@ if (missing.length) {
 
 console.log(
   `RFC coverage check passed: all ${acceptedRfcs.length - acceptedRfcs.filter((id) => EXEMPT.has(id)).length} ` +
-    `Accepted RFC(s) (excluding ${[...EXEMPT].join(', ')}) are tracked.`,
+    `Accepted or Implemented RFC(s) (excluding ${[...EXEMPT].join(', ')}) are tracked.`,
 );

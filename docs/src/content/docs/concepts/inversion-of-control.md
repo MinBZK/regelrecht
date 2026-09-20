@@ -35,6 +35,11 @@ machine_readable:
 
 This says: "I need a value called `standaardpremie`. The minister should set it via a ministerial regulation. If nobody has set it, use 211200 (EUR 2,112.00)."
 
+Two optional fields say more about who fills the term, and both are properties of the law rather than of the corpus:
+
+- **`expected_source`** names the regulation the article itself points at, such as `Regeling zorgverzekering`, with a BWB id when the text carries one. Whether that regulation is currently in the corpus is a separate question, because that changes without the law changing.
+- **`decided_per_case_by`** names the authority that fills the norm in the individual case while no general specification exists, with the article making it competent. That answer needs a motivation under Awb 3:46 and forms part of the *besluit* rather than a ground for it, which is what separates a discretionary power from a value that is merely missing.
+
 ### The lower regulation implements it
 
 ```yaml

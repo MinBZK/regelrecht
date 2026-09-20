@@ -122,6 +122,24 @@ machine_readable:
 
 The Awb does not know it is being overridden. The Vreemdelingenwet unilaterally replaces the value. This only applies when the Vreemdelingenwet is part of the execution chain (a Participatiewet case is not affected by this override).
 
+### Voiding an output
+
+An override can also say that the output does not arise at all, rather than being replaced by another value:
+
+```yaml
+machine_readable:
+  overrides:
+    - law: algemene_wet_bestuursrecht
+      article: '6:7'
+      output: bezwaartermijn_weken
+      voids: true
+      legal_text_excerpt: "geen bezwaar mogelijk"
+```
+
+This distinction is legal, not technical. *"Bestaat geen aanspraak"* is not an entitlement of zero: an entitlement of zero is still a decision, so it carries legal remedies and a ground for recovery, and no entitlement carries neither. Writing a void as `value: 0` would erase that difference. The engine reads the flag and needs no knowledge of administrative law to act on it.
+
+A void and a replacement are scoped differently. A replacement applies when the overriding law is part of the execution chain. A void that a law declares over its own outputs applies whenever that law runs, because a law that says an entitlement does not arise is not conditional on which chain reached it; a void over another law's output still requires the overriding law to be in the chain. See [RFC-041](/rfcs/rfc-041) for the amendment this makes to the contextual-law rule.
+
 ### How overrides differ from IoC
 
 | | IoC (`open_terms` + `implements`) | Overrides |

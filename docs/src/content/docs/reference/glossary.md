@@ -116,6 +116,7 @@ The values of `decision_type`, saying what kind of decision an output is within 
 | **Implements** | Gelet op | A lower regulation declaring which open terms of a higher law it fills. The schema field carries `gelet_op`, the citation the Dutch instrument itself opens with |
 | **Cross-law reference** | Verwijzing | A law reading an output of another law through a `source` block. See [Cross-Law References](/concepts/cross-law-references) |
 | **Marking** | Markering | A construct the format cannot yet express, flagged on the article. Called `untranslatables` before schema v0.7.0. See [Markings](/concepts/markings) |
+| **Void** | Bestaat geen aanspraak | An override stating that an output does not arise at all, rather than being replaced by a value. Not the same as an entitlement of zero, which is still a decision carrying legal remedies. See [Voiding an output](/concepts/hooks-and-reactive-execution#voiding-an-output) |
 | **Hook** | Haak | Logic that fires at a stage of a procedure rather than on a direct request. See [Hooks and Reactive Execution](/concepts/hooks-and-reactive-execution) |
 | **Trace** | Spoor | The tree showing how each value in an execution was computed. See [Traceability](/concepts/traceability) |
 | **Execution Receipt** | Uitvoeringsbewijs | The sealed record of one execution: engine, schema, law version and hash, so the result can be reproduced. See [Execution Provenance](/concepts/execution-provenance) |
