@@ -52,19 +52,30 @@ Fix any schema errors before proceeding.
 
 Derive test scenarios from the Memorie van Toelichting (MvT), the explanatory memorandum that accompanies the law. The MvT contains worked examples of how the legislature intended the law to be applied.
 
-Create a Gherkin feature file in `features/`. Use the step phrasings the cucumber-rs suite actually defines (see `packages/engine/tests/bdd/steps/` and the existing `features/*.feature` files for the full vocabulary). A minimal scenario looks like:
+A law's scenarios live next to the law, in a `scenarios/` directory beside the YAML file: `corpus/regulation/nl/wet/your_law/scenarios/eligibility.feature`. That is bucket A, the law-validation bucket, described in [Testing](/guide/testing).
+
+The step vocabulary is not free text. `bdd/grammar.yaml` is the single source of truth, and the bindings are generated from it, so a step that is not in that file does not exist. A minimal scenario:
 
 ```gherkin
 Feature: Wet op de zorgtoeslag
 
-  Scenario: MvT example - single person, output present
+  Scenario: MvT example, single person, output present
     Given the calculation date is "2025-01-01"
-    When the law "wet_op_de_zorgtoeslag" is executed for outputs "hoogte_zorgtoeslag"
+    Given parameter "bsn" is "999993653"
+    When I evaluate "hoogte_zorgtoeslag" of "wet_op_de_zorgtoeslag"
     Then the execution succeeds
-    And the output "hoogte_zorgtoeslag" is "123400"
+    Then output "hoogte_zorgtoeslag" equals 157731
 ```
 
-Laws that need source data (BRP, Belastingdienst, etc.) provide it with the data-table steps, for example `Given the following RVIG "personal_data" data:` followed by a table. See `features/zorgtoeslag.feature` for a complete, data-driven example.
+Laws that need source data (BRP, Belastingdienst, and the like) provide it with a data-table step keyed on the identifier the law looks up:
+
+```gherkin
+    Given the following "personal_data" data with key "bsn":
+      | bsn       | geboortedatum | verblijfsadres |
+      | 999993653 | 2005-01-01    | Amsterdam      |
+```
+
+See `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/scenarios/eligibility.feature` for a complete, data-driven example.
 
 Run the tests:
 
@@ -75,6 +86,15 @@ just bdd
 ## Step 6: Open a pull request
 
 Commit the new law file, any BDD scenarios, and open a PR. CI will run schema validation, BDD tests, and all other checks automatically. Add the `deploy:preview` label to the PR if reviewers should be able to try the law in a running editor.
+
+End the PR body with a `Werkpakket:` line, which a required check enforces, and add a `Wet:` line naming the law's `$id`:
+
+```
+Werkpakket: referentie-casus-i
+Wet: wet_op_de_zorgtoeslag
+```
+
+See [Contributing](/operations/contributing) for what both lines mean and how the slug is checked.
 
 ## Further reading
 
