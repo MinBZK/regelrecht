@@ -2407,15 +2407,31 @@ pub async fn complete_enrich_success_tx(
 ) -> Result<Option<crate::models::Job>> {
     let mut tx = pool.begin().await?;
     job_queue::complete_job(&mut *tx, job.id, result_json).await?;
-    // Mirror the captured untranslatables into their table so they
-    // surface in the harvester UI. Atomic with the completion:
-    // delete-and-replace per (law_id, provider).
+    // Mirror the captured flags into their tables so they surface in the
+    // harvester UI. Atomic with the completion: delete-and-replace per
+    // (law_id, provider).
+    //
+    // Both channels are written on every run, and which one carries anything
+    // follows from the law's schema version: a law on v0.5.x yields
+    // untranslatables and no markings, one on v0.7.0 the reverse. Writing both
+    // unconditionally is what makes a migration safe in either direction,
+    // because each call clears its own table for this (law, provider) before
+    // inserting. Skipping the empty one would leave the other channel's stale
+    // rows standing after a law changed schema version.
     crate::untranslatables::replace_untranslatables(
         &mut tx,
         &result.law_id,
         &result.provider,
         job.id,
         &result.untranslatables,
+    )
+    .await?;
+    crate::markings::replace_markings(
+        &mut tx,
+        &result.law_id,
+        &result.provider,
+        job.id,
+        &result.markings,
     )
     .await?;
 
