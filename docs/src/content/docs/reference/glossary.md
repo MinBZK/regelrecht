@@ -46,6 +46,9 @@ Dutch legal terminology used throughout RegelRecht, with English translations.
 | **Memorie van Toelichting (MvT)** | Explanatory Memorandum | Legislative intent document accompanying a bill |
 | **Wetsvoorstel** | Bill | Proposed legislation before Parliament |
 | **Staatsblad** | Official Gazette | Publication where laws are formally published |
+| **Gemeenteblad** | Official Municipality Gazette | Publication where municipal ordinances are published officially |
+| **Provincieblad** | Official Province Gazette | Publication where provincial ordinances are published officially |
+| **Waterschapsblad** | Offical Waterboard Gazette | Publication where waterboard ordinances are published officially | 
 | **Inwerkingtreding** | Entry into force | Date a law becomes effective |
 
 ## Temporal Concepts
