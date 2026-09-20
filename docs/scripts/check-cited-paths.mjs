@@ -134,7 +134,11 @@ for (const file of markdownFiles(DOCS)) {
       if (ALLOW.has(raw)) continue;
       if (PLACEHOLDER.test(raw)) continue;
       // Path-shaped: has a slash, no whitespace, no scheme, no leading dash.
-      if (!/^[A-Za-z_][A-Za-z0-9_.-]*(\/[A-Za-z0-9_.-]+)+\/?$/.test(raw)) continue;
+      // A leading dot counts: `.github/workflows/ci.yml` and `.claude/skills/`
+      // are exactly the kind of path the docs cite, and an earlier version of
+      // this pattern required a letter first and skipped every one of them
+      // without saying so.
+      if (!/^\.?[A-Za-z_][A-Za-z0-9_.-]*(\/[A-Za-z0-9_.-]+)+\/?$/.test(raw)) continue;
       if (/^https?:/.test(raw)) continue;
 
       const candidate = raw.replace(/\/$/, '');
