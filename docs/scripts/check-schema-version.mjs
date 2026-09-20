@@ -128,7 +128,10 @@ if (!existsSync(SNAPSHOT)) {
 //    not enough: the corpus check elsewhere matches `$schema` against the
 //    local `schema/vX.Y.Z` directories, so a version that was released in the
 //    tree but never tagged passes every existing gate while its published URL
-//    404s. That is how v0.5.7, v0.5.8 and v0.7.0 shipped untagged.
+//    404s. That is how five versions shipped untagged (v0.5.7 through v0.7.0),
+//    leaving eleven corpus files citing an address that returned a 404. They
+//    have since been tagged; this check is what keeps the next one from
+//    slipping out the same way.
 //
 //    This blocks. Tagging is the step that makes a released version immutable:
 //    without a tag the `$schema` URL resolves to nothing, and nothing stops the
