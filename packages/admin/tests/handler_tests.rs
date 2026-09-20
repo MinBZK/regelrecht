@@ -805,6 +805,126 @@ async fn one_provider_asking_repeatedly_stays_one_provider() {
     assert_eq!(json[0]["markings"], 3);
 }
 
+/// `providers_on_these_laws` is what makes the triage hint mean anything: the
+/// frontend only says "only opencode asked" when another provider went over
+/// the same laws and did not. Until now it was exercised only against a mocked
+/// value in the frontend tests, so the query that computes it was unpinned.
+///
+/// One provider in the corpus: every cluster has exactly one, so the hint must
+/// stay quiet.
+#[tokio::test]
+async fn one_provider_over_these_laws_is_counted_as_one() {
+    let db = TestDb::new().await;
+    seed_marking(
+        &db.pool,
+        "wet_a",
+        "A",
+        "opencode",
+        "1",
+        "x",
+        "operation",
+        Some("a"),
+        &[],
+        false,
+    )
+    .await;
+
+    let json = get_clusters(&db.pool, "").await;
+    assert_eq!(json[0]["providers_on_these_laws"], 1);
+}
+
+/// Two providers over the same law, each asking for something different. The
+/// count is over the laws, not over the cluster, which is exactly the point: a
+/// cluster of one provider only says something when another one was there.
+#[tokio::test]
+async fn a_second_provider_on_the_same_law_is_counted() {
+    let db = TestDb::new().await;
+    seed_marking(
+        &db.pool,
+        "wet_a",
+        "A",
+        "opencode",
+        "1",
+        "x",
+        "operation",
+        Some("a"),
+        &[],
+        false,
+    )
+    .await;
+    seed_marking(
+        &db.pool,
+        "wet_a",
+        "A",
+        "claude",
+        "2",
+        "y",
+        "model",
+        Some("b"),
+        &[],
+        false,
+    )
+    .await;
+
+    let json = get_clusters(&db.pool, "").await;
+    let clusters = json.as_array().unwrap();
+    assert_eq!(clusters.len(), 2, "two changes, two clusters");
+    for cluster in clusters {
+        assert_eq!(
+            cluster["providers_on_these_laws"], 2,
+            "both clusters sit on a law two providers went over"
+        );
+        assert_eq!(
+            cluster["providers"].as_array().unwrap().len(),
+            1,
+            "but each change was asked for by one of them"
+        );
+    }
+}
+
+/// A provider working on a different law must not raise the count: the
+/// question is who went over *these* laws, not who ran at all. Counting every
+/// provider in the corpus would turn the hint on everywhere the moment a
+/// second one exists.
+#[tokio::test]
+async fn a_provider_on_another_law_does_not_count() {
+    let db = TestDb::new().await;
+    seed_marking(
+        &db.pool,
+        "wet_a",
+        "A",
+        "opencode",
+        "1",
+        "x",
+        "operation",
+        Some("a"),
+        &[],
+        false,
+    )
+    .await;
+    seed_marking(
+        &db.pool,
+        "wet_b",
+        "B",
+        "claude",
+        "1",
+        "y",
+        "model",
+        Some("b"),
+        &[],
+        false,
+    )
+    .await;
+
+    let json = get_clusters(&db.pool, "").await;
+    for cluster in json.as_array().unwrap() {
+        assert_eq!(
+            cluster["providers_on_these_laws"], 1,
+            "each cluster sits on a law only its own provider touched"
+        );
+    }
+}
+
 /// Reach decides the order, and reach means laws before sheer count: five
 /// markings inside one law may be that law's peculiarity, while three spread
 /// over three laws is a property of the format.
@@ -971,6 +1091,32 @@ async fn a_cluster_reports_whether_all_its_markings_are_accepted() {
 
     let json = get_clusters(&db.pool, "").await;
     assert_eq!(json[0]["all_accepted"], false, "one is still unreviewed");
+}
+
+/// The positive path, which the mixed case above cannot reach: with only that
+/// test, an implementation that always answered `false` would pass, and the
+/// backlog would never mark a cluster as weighed and accepted.
+#[tokio::test]
+async fn a_cluster_whose_markings_are_all_accepted_says_so() {
+    let db = TestDb::new().await;
+    for article in ["1", "2"] {
+        seed_marking(
+            &db.pool,
+            "wet_a",
+            "A",
+            "opencode",
+            article,
+            "x",
+            "model",
+            Some("a"),
+            &[],
+            true,
+        )
+        .await;
+    }
+
+    let json = get_clusters(&db.pool, "").await;
+    assert_eq!(json[0]["all_accepted"], true);
 }
 
 // --- list_untranslatables ---
