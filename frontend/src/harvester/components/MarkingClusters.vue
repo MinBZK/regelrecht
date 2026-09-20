@@ -72,14 +72,14 @@ function reachText(cluster) {
           supporting-text="mogelijk de enricher"
           width="fit-content"
           min-width="120px"
-          color="subtle"
+          color="secondary"
         />
         <nldd-text-cell
           :text="String(cluster.markings)"
           supporting-text="markeringen"
           width="fit-content"
           min-width="90px"
-          horizontal-alignment="end"
+          horizontal-alignment="right"
         />
       </nldd-list-item>
     </nldd-list>

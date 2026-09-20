@@ -16,9 +16,6 @@ pub struct PaginatedResponse<T: Serialize> {
     pub offset: i64,
 }
 
-/// A captured untranslatable (RFC-012) as returned by the harvester API. Unlike
-/// the pipeline row type, this carries the joined `law_name` (from `law_entries`)
-/// for display; the join is a LEFT JOIN, so `law_name` may be `None`.
 /// A marking as the API returns it (schema v0.7.0). Like [`Untranslatable`],
 /// this carries the joined `law_name` from `law_entries` for display, so it is
 /// declared here rather than re-exported from the pipeline crate.
@@ -71,6 +68,9 @@ pub struct MarkingCluster {
     pub all_accepted: bool,
 }
 
+/// A captured untranslatable (RFC-012) as returned by the harvester API. Unlike
+/// the pipeline row type, this carries the joined `law_name` (from `law_entries`)
+/// for display; the join is a LEFT JOIN, so `law_name` may be `None`.
 #[derive(Serialize, sqlx::FromRow)]
 pub struct Untranslatable {
     pub id: uuid::Uuid,
