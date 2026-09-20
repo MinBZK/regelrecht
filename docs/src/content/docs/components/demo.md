@@ -1,6 +1,7 @@
 ---
 title: "Demo"
 description: "De RegelRecht-demo: presentatie, wetten, graaf, scenario's, simulatie, burgerportaal en zaaksysteem, met de engine als WASM in de browser."
+lang: nl
 ---
 
 De demo laat in één werkruimte zien wat RegelRecht doet: de machine-leesbare wet, de afhankelijkheden tussen wetten, de scenario's die de wet toetsen, en de uitvoering voor één persoon op een portaal en in een zaaksysteem. Het is de opvolger van de losse `poc-machine-law`-repository.
@@ -10,7 +11,7 @@ De demo laat in één werkruimte zien wat RegelRecht doet: de machine-leesbare w
 - **Taal**: Vue 3 / Vite, `@nldd/design-system`
 - **Locatie**: `frontend-demo/`
 - **Corpus**: `corpus/demo/`
-- **Productie-URL**: `demo.regelrecht.rijks.app` (nog niet in `deploy.yml` opgenomen; zie het plan onder [Deployment](/operations/deployment))
+- **Productie-URL**: `demo.regelrecht.rijks.app` (ZAD-component `demo`; zie [Deployment](/operations/deployment))
 
 ## Wat het doet
 
