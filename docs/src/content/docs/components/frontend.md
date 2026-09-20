@@ -69,7 +69,7 @@ The Rijksoverheid brand color (`#154273`) and typography come from the design sy
 
 ## Vue components
 
-The app is split into two top-level shells, `LibraryApp.vue` (the law browser) and `EditorApp.vue` (the split-pane editor), plus ~30 components under `src/components/`. Notable ones:
+The app is split into two top-level shells, `LibraryApp.vue` (the law browser) and `EditorApp.vue` (the split-pane editor), plus 40 components under `src/components/`. Notable ones:
 
 | Component | Purpose |
 |-----------|---------|
@@ -81,7 +81,7 @@ The app is split into two top-level shells, `LibraryApp.vue` (the law browser) a
 | `ExecutionTraceView.vue` | Execution trace tree |
 | `ScenarioBuilder/Form/Gherkin/Visual/Panel.vue` | BDD scenario authoring |
 | `NoteCreator.vue` / `NoteCard.vue` | Stand-off notes (RFC-018) |
-| `TrajectMenu.vue` / `TrajectMembersDialog.vue` | Traject collaboration |
+| `TrajectMenu.vue` / `TrajectMembersPane.vue` | Traject collaboration |
 
 Composables hold the shared logic (`useLaw.js` for loading and article selection, plus others for settings and corpus URLs).
 

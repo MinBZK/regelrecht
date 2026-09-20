@@ -126,10 +126,10 @@ The logic of a law is written with operations:
 | **Comparison** | `EQUALS`, `GREATER_THAN`, `LESS_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN_OR_EQUAL` | `subject:`, `value:` (operands may be numbers or ISO dates, see [RFC-021](/rfcs/rfc-021)) |
 | **Logical** | `AND`, `OR`, `NOT` | `AND`/`OR`: `conditions: [...]`; `NOT`: `value:` (wraps a single operation) |
 | **Collection** | `IN`, `LIST`, `FOREACH` | `IN`: `subject:` + `value:` or `values: [...]`; `LIST`: `items: [...]`; `FOREACH`: `collection:` + `body:`, optional `as:`, `filter:` and `combine:` (see [RFC-016](/rfcs/rfc-016)) |
-| **Conditional** | `IF` (alias `SWITCH`) | `cases: [{when:, then:}]`, `default:` |
+| **Conditional** | `IF` | `cases: [{when:, then:}]`, `default:` |
 | **Date** | `AGE`, `DATE_ADD`, `DATE`, `DAY_OF_WEEK`, `DATE_DIFF`, `DATE_PART`, `START_OF` | `AGE`: `date_of_birth:`, `reference_date:`; `DATE_ADD`: `date:` + `years:`/`months:`/`days:`; `DATE`: `year:`, `month:`, `day:`; `DAY_OF_WEEK`: `date:`; `DATE_DIFF`: `from:`, `to:`, `in:` (days/months/years); `DATE_PART`: `date:`, `in:` (year/month/day); `START_OF`: `date:`, `in:` (year/month) |
 
-These 28 operations make up the schema. The engine also accepts the compat aliases `NOT_EQUALS`, `IS_NULL`, `NOT_NULL`, and `NOT_IN` for backward compatibility, but they are outside the schema, so prefer wrapping the positive operation in `NOT`. See [RFC-004: Uniform Operation Syntax](/rfcs/rfc-004) for the full specification.
+These 28 operations make up the schema. The engine also accepts the compat aliases `NOT_EQUALS`, `IS_NULL`, `NOT_NULL`, and `NOT_IN` for backward compatibility, but they are outside the schema, so prefer wrapping the positive operation in `NOT`. `SWITCH` is an alias of `IF` in the same sense: the engine reads it, the schema does not, so a law using it parses and then fails `just validate`. See [RFC-004: Uniform Operation Syntax](/rfcs/rfc-004) for the full specification.
 
 The set is short on purpose. An operation earns its place when a real law needs it, not when an engine could plausibly offer it: `ROUND` because a law rounds to whole euros, `DATE_DIFF` because a deadline is measured in days, `FOREACH` because a norm counts medebewoners. What an engine *can* do is close to unbounded, and every operation added on that basis is a promise the schema, the editor, the conformance suite and every other engine have to keep. A law that cannot be expressed is the signal to extend the language; the absence of an operation someone imagined a use for is not.
 

@@ -44,10 +44,12 @@ scenario went stale; a human decides what that is worth. Run it locally with
 
 Builds the engine for the WebAssembly target to catch compilation issues early.
 
-### Security audit (always runs)
+### Licence and supply-chain audit (always runs)
 
-- **Rust** - `cargo-deny` checks for known vulnerabilities and license issues
-- **Frontend** - `npm ci` over the npm workspace at the repo root
+- **Rust** - `cargo-deny bans licenses sources`: banned crates, licence compliance, and an allowlist of dependency sources
+- **Frontend** - `license-checker` over the npm workspace at the repo root, refusing the copyleft licences the project cannot ship
+
+Neither scans for known vulnerabilities. That is `just audit-advisories` (RustSec plus npm advisories), which runs periodically from `security-advisories.yml` rather than on every push.
 
 ### Schema protection (on PRs)
 
