@@ -84,6 +84,24 @@ describe('MarkingClusters', () => {
     expect(w.html()).not.toContain('cluster telt');
   });
 
+  // Whether a human has been past every marking in the cluster. Without this
+  // a reviewed cluster and an untouched one render identically, and the
+  // backlog is exactly where that difference decides what to pick up.
+  it('says whether a cluster has been reviewed', () => {
+    const open = mount(MarkingClusters, {
+      props: { clusters: [cluster({ all_accepted: false })] },
+      global,
+    });
+    expect(open.html()).toContain('nog te beoordelen');
+
+    const done = mount(MarkingClusters, {
+      props: { clusters: [cluster({ all_accepted: true })] },
+      global,
+    });
+    expect(done.html()).toContain('beoordeeld');
+    expect(done.html()).not.toContain('nog te beoordelen');
+  });
+
   it('emits the cluster when one is picked', async () => {
     const c = cluster();
     const w = mount(MarkingClusters, { props: { clusters: [c] }, global });

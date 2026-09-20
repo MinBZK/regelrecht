@@ -33,6 +33,13 @@ function providerHint(cluster) {
   return providers[0] ? `alleen ${providers[0]}` : null;
 }
 
+// Whether a human has been past every marking in the cluster. An unreviewed
+// cluster reads differently from one that was weighed and accepted as a real
+// gap, and the backlog is where that difference decides what to pick up.
+function reviewText(cluster) {
+  return cluster.all_accepted ? 'beoordeeld' : 'nog te beoordelen';
+}
+
 function reachText(cluster) {
   const laws = cluster.laws === 1 ? '1 wet' : `${cluster.laws} wetten`;
   const articles = cluster.articles === 1 ? '1 artikel' : `${cluster.articles} artikelen`;
@@ -73,6 +80,13 @@ function reachText(cluster) {
           width="fit-content"
           min-width="120px"
           color="secondary"
+        />
+        <nldd-text-cell
+          :text="reviewText(cluster)"
+          width="fit-content"
+          min-width="130px"
+          :color="cluster.all_accepted ? 'success' : 'default'"
+          horizontal-alignment="right"
         />
         <nldd-text-cell
           :text="String(cluster.markings)"
