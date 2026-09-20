@@ -326,9 +326,48 @@ async fn markings_reject_a_sort_column_outside_the_allowlist() {
         )
         .await
         .unwrap();
-    // `law_name` is joined, not a real column on `markings`, so it is not
-    // sortable, exactly as on untranslatables.
-    assert_ne!(response.status(), StatusCode::OK);
+    // 400, not merely "not 200". The sort column is interpolated into the SQL,
+    // so the allowlist is what keeps that safe; asserting `!= OK` would pass
+    // just as well on the 500 an unguarded column name produces, and a test
+    // that accepts the crash it is meant to prevent pins nothing.
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+/// The allowlist is the only thing between a query parameter and the SQL it is
+/// interpolated into, so it has to reject rather than pass through. A name
+/// that would be syntactically valid inside an ORDER BY is the case worth
+/// proving: it cannot reach the query at all.
+#[tokio::test]
+async fn markings_reject_a_sort_column_that_would_be_valid_sql() {
+    let db = TestDb::new().await;
+    // Percent-encoded by hand rather than pulling in a dependency for four
+    // literals.
+    for sort in [
+        "law_name",
+        "1",
+        "m.id%3B%20DROP%20TABLE%20markings",
+        "%28SELECT%201%29",
+    ] {
+        let app = test_app(db.pool.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/api/markings?sort={sort}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "sort={sort} must be refused, not interpolated"
+        );
+    }
+
+    // And the table is still there.
+    let json = get_markings(&db.pool, "").await;
+    assert_eq!(json["total"], 0);
 }
 
 /// Every filter at once, which is where hand-rolled dynamic SQL goes wrong.
