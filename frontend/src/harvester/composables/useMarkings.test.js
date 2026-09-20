@@ -126,6 +126,40 @@ describe('useMarkings', () => {
     expect(params).not.toContain('sort');
   });
 
+  // Two `setFilter` calls fire two un-awaited refreshes, and `buildUrl()` runs
+  // synchronously at the start of each fetch. The first would go out with only
+  // the filter set so far, and the two race for the same `data` ref: there is
+  // no sequencing or cancellation in `usePollingFetch`, so a broader first
+  // response landing last overwrites the narrower one.
+  it('sends one request for several filters at once', async () => {
+    const spy = vi.fn().mockResolvedValue(res());
+    const comp = await create(spy);
+    const before = spy.mock.calls.length;
+
+    comp.setFilters({ resolution: 'operation', resolved_by: 'een WORKING_DAY-bewerking' });
+    await Promise.resolve();
+
+    expect(spy.mock.calls.length).toBe(before + 1, 'one request, not two');
+    const url = lastUrl(spy);
+    expect(url).toContain('resolution=operation');
+    expect(url).toContain('resolved_by=');
+  });
+
+  it('clears a filter passed as empty in the same update', async () => {
+    const spy = vi.fn().mockResolvedValue(res());
+    const comp = await create(spy);
+
+    comp.setFilters({ resolution: 'model', resolved_by: 'iets' });
+    await Promise.resolve();
+    expect(lastUrl(spy)).toContain('resolved_by=iets');
+
+    // A cluster that names no change can only be narrowed by resolution.
+    comp.setFilters({ resolution: 'model', resolved_by: '' });
+    await Promise.resolve();
+    expect(lastUrl(spy)).not.toContain('resolved_by=');
+    expect(lastUrl(spy)).toContain('resolution=model');
+  });
+
   it('turns a page number into an offset', async () => {
     const spy = vi.fn().mockResolvedValue(res({ data: [], total: 200 }));
     const comp = await create(spy);

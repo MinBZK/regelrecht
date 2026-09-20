@@ -66,6 +66,26 @@ export function useMarkings() {
     refresh();
   }
 
+  // Several filters in one update, and one request.
+  //
+  // Calling `setFilter` twice fires two un-awaited refreshes. `buildUrl()` runs
+  // synchronously at the start of each fetch, so the first goes out with only
+  // the filter set so far, and the two race for the same `data` ref with no
+  // sequencing or cancellation in `usePollingFetch`. If the broader first
+  // response lands last it overwrites the narrower one, which is the bug this
+  // filter exists to avoid, now intermittent rather than constant.
+  function setFilters(next) {
+    for (const [key, value] of Object.entries(next)) {
+      if (value) {
+        filters[key] = value;
+      } else {
+        delete filters[key];
+      }
+    }
+    offset.value = 0;
+    refresh();
+  }
+
   function goToPage(page) {
     const maxPage = Math.max(1, Math.ceil(totalCount.value / limit.value));
     const clamped = Math.max(1, Math.min(page, maxPage));
@@ -84,7 +104,7 @@ export function useMarkings() {
     data, totalCount, loading, error,
     sort, order, limit, offset, filters,
     currentPage, totalPages,
-    setSort, setFilter, goToPage, filterParams,
+    setSort, setFilter, setFilters, goToPage, filterParams,
     refresh, startPolling, stopPolling,
   };
 }

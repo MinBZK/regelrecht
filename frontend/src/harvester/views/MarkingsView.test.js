@@ -12,6 +12,7 @@ const setFilter = vi.fn();
 const goToPage = vi.fn();
 const filterParams = vi.fn(() => new URLSearchParams());
 const refreshClusters = vi.fn();
+const setFilters = vi.fn();
 
 vi.mock('../composables/useMarkings.js', () => ({
   useMarkings: () => ({
@@ -36,6 +37,7 @@ vi.mock('../composables/useMarkings.js', () => ({
     totalPages: ref(1),
     setSort,
     setFilter,
+    setFilters,
     goToPage,
     filterParams,
   }),
@@ -102,25 +104,36 @@ describe('MarkingsView', () => {
   // is the whole point of showing the backlog beside the list. Filtering on
   // `resolution` alone would land the reader on half the corpus, since it has
   // two possible values; `resolved_by` is what identifies the cluster.
-  it('filters the list to the picked cluster, on both fields', () => {
+  it('filters the list to the picked cluster, on both fields at once', () => {
     const w = shallowMount(MarkingsView);
+    setFilters.mockClear();
+
     w.findComponent(MarkingClusters).vm.$emit('select', {
       resolution: 'operation',
       resolved_by: 'een WORKING_DAY-bewerking',
     });
-    expect(setFilter).toHaveBeenCalledWith('resolution', 'operation');
-    expect(setFilter).toHaveBeenCalledWith('resolved_by', 'een WORKING_DAY-bewerking');
+
+    // One update rather than two calls: two would fire two un-awaited
+    // refreshes, and the first would go out with only `resolution` set.
+    expect(setFilters).toHaveBeenCalledTimes(1);
+    expect(setFilters).toHaveBeenCalledWith({
+      resolution: 'operation',
+      resolved_by: 'een WORKING_DAY-bewerking',
+    });
   });
 
   // A cluster that names no change can only be narrowed by resolution. Passing
   // the null through would filter on the string "null" and return nothing.
   it('clears the resolved_by filter for a cluster that names no change', () => {
     const w = shallowMount(MarkingsView);
+    setFilters.mockClear();
+
     w.findComponent(MarkingClusters).vm.$emit('select', {
       resolution: 'model',
       resolved_by: null,
     });
-    expect(setFilter).toHaveBeenCalledWith('resolved_by', '');
+
+    expect(setFilters).toHaveBeenCalledWith({ resolution: 'model', resolved_by: '' });
   });
 
   // The backlog groups over the filtered set, so a filter change has to reach

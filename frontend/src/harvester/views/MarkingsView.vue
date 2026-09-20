@@ -13,7 +13,7 @@ const {
   data, loading, error,
   sort, order, filters,
   currentPage, totalPages,
-  setSort, setFilter, goToPage, filterParams,
+  setSort, setFilter, setFilters, goToPage, filterParams,
 } = useMarkings();
 
 // The backlog reads the same filtered set as the list below it.
@@ -46,8 +46,13 @@ function closeDetail() {
 // A cluster that names no change (`resolved_by` is nullable) can only be
 // narrowed by resolution, which is honest: there is nothing else to match on.
 function focusCluster(cluster) {
-  setFilter('resolution', cluster.resolution);
-  setFilter('resolved_by', cluster.resolved_by || '');
+  // One update, one request. Two `setFilter` calls would race: each fires its
+  // own un-awaited refresh, and the first would go out with only `resolution`
+  // set.
+  setFilters({
+    resolution: cluster.resolution,
+    resolved_by: cluster.resolved_by || '',
+  });
   refreshClusters();
 }
 
