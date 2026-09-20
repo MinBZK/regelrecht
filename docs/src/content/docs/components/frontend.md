@@ -110,14 +110,14 @@ The editor ships as a single Docker image (`regelrecht-editor`) that bundles the
 - **Production**: `editor.regelrecht.rijks.app`
 - **PR previews**: deployed for a pull request that carries the `deploy:preview` label
 
-## Admin Dashboard
+## Corpusinwinning (harvester admin)
 
-A separate admin UI exists at `packages/admin/` for pipeline management:
+The harvester-admin dashboard is a section of this editor, at `frontend/src/harvester/`, not a separate app. It reaches the standalone `packages/admin/` API through the editor-api `/api/harvest-admin/*` proxy, which forwards the shared session cookie so the admin service enforces its own `harvester-*` role gates. `packages/admin/` is a Rust Axum API and serves no SPA of its own.
 
-- **Backend**: Rust (Axum) with PostgreSQL
-- **Frontend**: Vue 3 + Vite + `@nldd/design-system` (same stack as the editor)
-- **Features**: Law status overview, job management, harvest/enrich triggers
-- **Auth**: Optional OIDC integration
+- **Features**: Law status overview, job management, harvest and enrich triggers
+- **Where**: `editor.regelrecht.rijks.app` → Corpusinwinning
+
+See [Admin](/components/admin) for the service itself.
 
 See the admin API endpoints:
 - `GET /api/law_entries` - query law processing status
