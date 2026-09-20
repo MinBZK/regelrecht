@@ -39,6 +39,12 @@ const rfcs = defineCollection({
       // open pull request has already claimed, so the next author does not take
       // it a second time. It carries no design, so `implementation` is not just
       // optional but forbidden — see the superRefine below.
+      //
+      // What makes a file a placeholder is `reserved_by`, not the status value.
+      // A placeholder whose pull request closes unmerged goes to `Rejected` and
+      // keeps its `reserved_by`: the number stays spent, and the link is the
+      // record of what spent it. Keying the rule on `status === 'Reserved'`
+      // would make that documented transition a build error.
       status: z.enum([
         'Draft',
         'Proposed',
@@ -63,47 +69,52 @@ const rfcs = defineCollection({
       short_title: z.string().optional(),
     })
     // Making `implementation` optional above would, on its own, let any RFC
-    // drop it and render a silent gap where every sibling shows a tag. The two
-    // fields are therefore tied to `status` here: exactly the Reserved ones
-    // omit `implementation` and carry `reserved_by`, and exactly the real ones
-    // do the reverse. Both directions are checked, because a placeholder that
-    // kept claiming "Not implemented" would read as a design decision that was
+    // drop it and render a silent gap where every sibling shows a tag. It is
+    // therefore tied to `reserved_by`: a placeholder omits it, a real RFC
+    // states it. Both directions are checked, because a placeholder that kept
+    // claiming "Not implemented" would read as a design decision that was
     // never written down.
+    //
+    // A placeholder is any file carrying `reserved_by`, which covers both a
+    // live reservation (`Reserved`) and a spent one whose pull request closed
+    // unmerged (`Rejected`). `Reserved` additionally requires the link, since
+    // a live reservation nobody can trace blocks the number forever.
     .superRefine((data, ctx) => {
-      if (data.status === 'Reserved') {
+      const isPlaceholder = data.reserved_by !== undefined;
+
+      if (data.status === 'Reserved' && !data.reserved_by) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['reserved_by'],
+          message:
+            'A Reserved RFC must name the pull request that claimed the number, so the reservation can be traced and released.',
+        });
+      }
+
+      if (isPlaceholder) {
         if (data.implementation !== undefined) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             path: ['implementation'],
             message:
-              'A Reserved RFC holds a number, not a design, so it carries no implementation state. Remove the field.',
+              'A placeholder holds a number, not a design, so it carries no implementation state. Remove the field.',
           });
         }
-        if (!data.reserved_by) {
+        if (data.status !== 'Reserved' && data.status !== 'Rejected') {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            path: ['reserved_by'],
+            path: ['status'],
             message:
-              'A Reserved RFC must name the pull request that claimed the number, so the reservation can be traced and released.',
+              "A file with `reserved_by` is a placeholder, so its status is 'Reserved' while its pull request is open, or 'Rejected' once that pull request closed unmerged. Any other status means the real RFC landed, and then `reserved_by` should go.",
           });
         }
-      } else {
-        if (data.implementation === undefined) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ['implementation'],
-            message:
-              'Every RFC that is not Reserved states whether it is built, so an absent tag never reads as "unknown".',
-          });
-        }
-        if (data.reserved_by !== undefined) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ['reserved_by'],
-            message:
-              '`reserved_by` belongs to a Reserved placeholder only; a real RFC records its pull request in git history.',
-          });
-        }
+      } else if (data.implementation === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['implementation'],
+          message:
+            'Every RFC that is not a placeholder states whether it is built, so an absent tag never reads as "unknown".',
+        });
       }
     }),
 });
