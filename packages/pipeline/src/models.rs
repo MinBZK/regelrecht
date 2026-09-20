@@ -221,6 +221,37 @@ pub struct Untranslatable {
     pub created_at: DateTime<Utc>,
 }
 
+/// A single marking captured during enrichment (schema v0.7.0), one row per
+/// (law, provider, article, construct). Mirrors the `markings` table;
+/// refreshed per (law_id, provider) on each enrich.
+///
+/// The successor of [`Untranslatable`]. Both exist at once because a law
+/// pinned to schema v0.5.x still carries the old field and the engine still
+/// reads it, so the UI shows the two channels merged rather than making a
+/// reader work out which schema version a law happens to be on.
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Marking {
+    pub id: Uuid,
+    pub law_id: String,
+    pub enrich_job_id: Uuid,
+    pub provider: String,
+    pub article: String,
+    /// The construct the format cannot express, in the article's own words.
+    pub about: String,
+    /// `operation` (the operation must be built) or `model` (the format has no
+    /// shape for this construct). Constrained in the database.
+    pub resolution: String,
+    /// The change that would resolve it. Nullable because the capture struct
+    /// carries it as an `Option`, unlike the schema, which requires it.
+    pub resolved_by: Option<String>,
+    /// The values this article cannot produce. Empty means the article stays
+    /// executable, which is a claim rather than a missing value.
+    pub target: Vec<String>,
+    pub legal_text_excerpt: String,
+    pub accepted: bool,
+    pub created_at: DateTime<Utc>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct FeatureFlag {
     pub key: String,

@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 use crate::error::ApiError;
-use crate::models::{Job, LawEntry, PaginatedResponse, Untranslatable};
+use crate::models::{Job, LawEntry, Marking, MarkingCluster, PaginatedResponse, Untranslatable};
 use crate::state::AppState;
 
 /// Map a sqlx error to a 500 ApiError, logging the cause with `op` so the log
@@ -216,6 +216,219 @@ pub async fn list_law_entries(
         limit,
         offset,
     }))
+}
+
+// --- Markings ---
+
+#[derive(Deserialize)]
+pub struct MarkingsQuery {
+    pub law_id: Option<String>,
+    pub provider: Option<String>,
+    pub accepted: Option<bool>,
+    pub about: Option<String>,
+    /// `operation` or `model`. A closed vocabulary, so an exact match rather
+    /// than the ILIKE the free-text filters use.
+    pub resolution: Option<String>,
+    pub sort: Option<String>,
+    pub order: Option<String>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+const ALLOWED_SORT_COLUMNS_MARKING: &[&str] = &[
+    "id",
+    "law_id",
+    "provider",
+    "article",
+    "about",
+    "resolution",
+    "resolved_by",
+    "accepted",
+    "created_at",
+];
+
+/// One bound filter value, kept typed so the query builder does not have to
+/// turn a boolean into text and cast it back.
+enum Bind<'a> {
+    Text(String),
+    Str(&'a str),
+    Bool(bool),
+}
+
+/// The WHERE clause shared by the list, its count, and the cluster view, plus
+/// the binds in the order the placeholders were numbered.
+///
+/// Written once because the queries have to agree: a filter added to one and
+/// forgotten in another yields a total that does not match the rows, or a
+/// cluster view that answers a different question than the list above it, and
+/// nothing about the page looks wrong while it happens.
+fn markings_where(params: &MarkingsQuery) -> (String, Vec<Bind<'_>>) {
+    let mut clauses = Vec::new();
+    let mut binds = Vec::new();
+    let mut i: usize = 1;
+
+    if let Some(ref law_id) = params.law_id {
+        clauses.push(format!("m.law_id ILIKE ${i}"));
+        binds.push(Bind::Text(format!("%{}%", like_escape(law_id))));
+        i += 1;
+    }
+    if let Some(ref provider) = params.provider {
+        clauses.push(format!("m.provider = ${i}"));
+        binds.push(Bind::Str(provider));
+        i += 1;
+    }
+    if let Some(ref resolution) = params.resolution {
+        clauses.push(format!("m.resolution = ${i}"));
+        binds.push(Bind::Str(resolution));
+        i += 1;
+    }
+    if let Some(ref about) = params.about {
+        clauses.push(format!("m.about ILIKE ${i}"));
+        binds.push(Bind::Text(format!("%{}%", like_escape(about))));
+        i += 1;
+    }
+    if let Some(accepted) = params.accepted {
+        clauses.push(format!("m.accepted = ${i}"));
+        binds.push(Bind::Bool(accepted));
+        i += 1;
+    }
+    let _ = i;
+
+    let sql = if clauses.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", clauses.join(" AND "))
+    };
+    (sql, binds)
+}
+
+pub async fn list_markings(
+    State(state): State<AppState>,
+    Query(params): Query<MarkingsQuery>,
+) -> Result<Json<PaginatedResponse<Marking>>, ApiError> {
+    let pool = &state.pool;
+    let limit = clamped_limit(params.limit);
+    let offset = clamped_offset(params.offset);
+
+    let sort_column = validated_sort_column(
+        params.sort.as_deref(),
+        ALLOWED_SORT_COLUMNS_MARKING,
+        "created_at",
+    )
+    .ok_or(ApiError::BadRequest("invalid sort column".to_string()))?;
+
+    let order = normalized_order(params.order.as_deref());
+    let (where_sql, binds) = markings_where(&params);
+
+    let count_sql = format!("SELECT COUNT(*) FROM markings m {where_sql}");
+    let mut count_query = sqlx::query_scalar::<_, i64>(&count_sql);
+    for bind in &binds {
+        count_query = match bind {
+            Bind::Text(v) => count_query.bind(v.clone()),
+            Bind::Str(v) => count_query.bind(*v),
+            Bind::Bool(v) => count_query.bind(*v),
+        };
+    }
+    let total: i64 = count_query
+        .fetch_one(pool)
+        .await
+        .map_err(db_err("count query failed"))?;
+
+    // The sort column is validated against an allowlist above, so
+    // interpolating it is safe. LEFT JOIN so a marking whose law_entry is
+    // missing still appears, with law_name = NULL.
+    let limit_idx = binds.len() + 1;
+    let offset_idx = binds.len() + 2;
+    let data_sql = format!(
+        "SELECT m.id, m.law_id, le.law_name, m.enrich_job_id, m.provider, \
+         m.article, m.about, m.resolution, m.resolved_by, m.target, \
+         m.legal_text_excerpt, m.accepted, m.created_at \
+         FROM markings m \
+         LEFT JOIN law_entries le ON le.law_id = m.law_id \
+         {where_sql} \
+         ORDER BY m.{sort_column} {order} LIMIT ${limit_idx} OFFSET ${offset_idx}"
+    );
+
+    let mut data_query = sqlx::query_as::<_, Marking>(&data_sql);
+    for bind in &binds {
+        data_query = match bind {
+            Bind::Text(v) => data_query.bind(v.clone()),
+            Bind::Str(v) => data_query.bind(*v),
+            Bind::Bool(v) => data_query.bind(*v),
+        };
+    }
+    data_query = data_query.bind(limit).bind(offset);
+
+    let data: Vec<Marking> = data_query
+        .fetch_all(pool)
+        .await
+        .map_err(db_err("data query failed"))?;
+
+    Ok(Json(PaginatedResponse {
+        data,
+        total,
+        limit,
+        offset,
+    }))
+}
+
+/// The backlog, read off the corpus.
+///
+/// One marking is an observation. The same `resolved_by` on four articles
+/// across two laws is a pattern, and the pattern is what decides whether a
+/// change is worth making. The schema says as much on the field itself:
+/// "Grouping markings by this field is how the backlog is read off the
+/// corpus."
+///
+/// Grouping is exact on `(resolution, resolved_by)` today, which undercounts:
+/// `resolved_by` is free text, so two agents asking for the same operation in
+/// different words land in two clusters. That is left visible rather than
+/// papered over, because a cluster of one is exactly what a reader should look
+/// at twice, and because the alternative (fuzzy or model-based grouping) needs
+/// real markings to calibrate against. The corpus carries none yet.
+///
+/// `providers` is the triage signal. A change only ever asked for by one
+/// provider, while another modelled the same articles without complaint, is
+/// evidence that the agent did not see what it could have expressed. That is
+/// work on the enricher rather than on the format, and the two are easy to
+/// confuse because a marking looks the same either way.
+pub async fn list_marking_clusters(
+    State(state): State<AppState>,
+    Query(params): Query<MarkingsQuery>,
+) -> Result<Json<Vec<MarkingCluster>>, ApiError> {
+    let pool = &state.pool;
+    let (where_sql, binds) = markings_where(&params);
+
+    // Ordered by laws first, then markings: a change wanted by three articles
+    // across three laws is a stronger signal than one wanted by five articles
+    // in a single law, which may be that one law's peculiarity.
+    let sql = format!(
+        "SELECT m.resolution, m.resolved_by, \
+         COUNT(*) AS markings, \
+         COUNT(DISTINCT m.law_id) AS laws, \
+         COUNT(DISTINCT ROW(m.law_id, m.article)) AS articles, \
+         ARRAY_AGG(DISTINCT m.provider) AS providers, \
+         BOOL_AND(m.accepted) AS all_accepted \
+         FROM markings m {where_sql} \
+         GROUP BY m.resolution, m.resolved_by \
+         ORDER BY laws DESC, markings DESC"
+    );
+
+    let mut query = sqlx::query_as::<_, MarkingCluster>(&sql);
+    for bind in &binds {
+        query = match bind {
+            Bind::Text(v) => query.bind(v.clone()),
+            Bind::Str(v) => query.bind(*v),
+            Bind::Bool(v) => query.bind(*v),
+        };
+    }
+
+    let clusters: Vec<MarkingCluster> = query
+        .fetch_all(pool)
+        .await
+        .map_err(db_err("cluster query failed"))?;
+
+    Ok(Json(clusters))
 }
 
 // --- Untranslatables ---
