@@ -64,6 +64,7 @@ export const sidebar: Record<string, SidebarGroup[]> = {
       text: 'Research',
       items: [
         { text: 'Branches of Law', link: '/concepts/branches-of-law' },
+        { text: 'CJIB Blauwe Knop (proposal)', link: '/concepts/cjib-blauwe-knop-source-proposal' },
       ],
     },
     {
