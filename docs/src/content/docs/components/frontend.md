@@ -69,7 +69,7 @@ The Rijksoverheid brand color (`#154273`) and typography come from the design sy
 
 ## Vue components
 
-The app is split into two top-level shells, `LibraryApp.vue` (the law browser) and `EditorApp.vue` (the split-pane editor), plus 40 components under `src/components/`. Notable ones:
+The app is split into two top-level shells, `LibraryApp.vue` (the law browser) and `EditorApp.vue` (the split-pane editor), plus 44 components under `src/components/`. Notable ones:
 
 | Component | Purpose |
 |-----------|---------|

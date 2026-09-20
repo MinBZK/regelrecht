@@ -41,7 +41,7 @@ function frontmatterField(src, name) {
 // `Accepted` alone let `voids` ship in schema v0.7.0 — a field distinguishing
 // "no entitlement" from "an entitlement of zero" — with no prose page at all,
 // because RFC-041 that defined it sits at `Proposed`.
-const acceptedRfcs = [];
+const rfcsOwingCoverage = [];
 for (const entry of readdirSync(RFC_DIR)) {
   const m = entry.match(/^(rfc-\d+)\.md$/);
   if (!m) continue;
@@ -49,17 +49,17 @@ for (const entry of readdirSync(RFC_DIR)) {
   const status = frontmatterField(src, 'status');
   const implementation = frontmatterField(src, 'implementation');
   if (status === 'Accepted' || implementation === 'Implemented') {
-    acceptedRfcs.push(m[1].toUpperCase());
+    rfcsOwingCoverage.push(m[1].toUpperCase());
   }
 }
-acceptedRfcs.sort();
+rfcsOwingCoverage.sort();
 
 // Every RFC id mentioned anywhere in the coverage page (table rows or the
 // Backlog prose both count as "tracked").
 const coverageSrc = readFileSync(COVERAGE, 'utf8');
 const tracked = new Set(coverageSrc.match(/RFC-\d+/g) ?? []);
 
-const missing = acceptedRfcs.filter((id) => !EXEMPT.has(id) && !tracked.has(id));
+const missing = rfcsOwingCoverage.filter((id) => !EXEMPT.has(id) && !tracked.has(id));
 
 if (missing.length) {
   console.error(
@@ -74,6 +74,6 @@ if (missing.length) {
 }
 
 console.log(
-  `RFC coverage check passed: all ${acceptedRfcs.length - acceptedRfcs.filter((id) => EXEMPT.has(id)).length} ` +
+  `RFC coverage check passed: all ${rfcsOwingCoverage.length - rfcsOwingCoverage.filter((id) => EXEMPT.has(id)).length} ` +
     `Accepted or Implemented RFC(s) (excluding ${[...EXEMPT].join(', ')}) are tracked.`,
 );
