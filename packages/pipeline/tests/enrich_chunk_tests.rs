@@ -430,3 +430,45 @@ async fn legacy_result_json_counts_as_complete() {
         LawStatusValue::Enriched
     );
 }
+
+/// The worker must mirror markings, not just untranslatables.
+///
+/// This goes through `complete_enrich_success_tx` rather than calling
+/// `replace_markings` directly, because the bug being guarded against was in
+/// the wiring: the worker mirrored one channel and silently dropped the other.
+/// A test that calls the persistence function itself proves the function works
+/// and says nothing about whether anyone calls it. Delete the
+/// `replace_markings` call in the worker and this is the test that goes red.
+#[tokio::test]
+async fn completing_an_enrich_run_mirrors_its_markings() {
+    let db = TestDb::new().await;
+    let job = setup_processing_enrich_job(&db, "opencode").await;
+
+    let mut result = chunk_result("opencode", true, 30);
+    result.markings = vec![regelrecht_pipeline::enrich::CapturedMarking {
+        article: "5".into(),
+        about: "de eerstvolgende werkdag".into(),
+        resolution: "operation".into(),
+        resolved_by: Some("een WORKING_DAY-bewerking".into()),
+        target: vec!["datum_van_betaling".into()],
+        legal_text_excerpt: "De betaling geschiedt op de eerstvolgende werkdag".into(),
+        accepted: false,
+    }];
+
+    worker::complete_enrich_success_tx(
+        &db.pool,
+        &job,
+        &payload("opencode"),
+        &result,
+        Some(serde_json::to_value(&result).unwrap()),
+    )
+    .await
+    .unwrap();
+
+    let (law_id, about): (String, String) = sqlx::query_as("SELECT law_id, about FROM markings")
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+    assert_eq!(law_id, LAW_ID);
+    assert_eq!(about, "de eerstvolgende werkdag");
+}
