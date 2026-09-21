@@ -1,0 +1,89 @@
+---
+name: Merge queue gates
+
+# `Validate PR title` en `Claude review completed` zijn required checks die
+# alleen op een pull request kunnen bestaan. De eerste leest de titel van de PR,
+# de tweede de review-comments, de PR-body en `refs/pull/N/merge`. In een
+# merge_group-run is er geen pull request, dus die twee workflows draaien er
+# niet en rapporteren er niets.
+#
+# GitHub kent de merge queue geen eigen lijst verplichte checks toe: het is
+# dezelfde lijst als in de branch protection. Een verplichte check die in de rij
+# nooit rapporteert laat elke entry hangen tot de status-check-timeout hem eruit
+# gooit. Deze workflow rapporteert die twee namen daarom in de rij.
+#
+# Eén instelling hoort bij het aanzetten van de rij en staat in geen enkel
+# bestand: "Require branches to be up to date before merging" (`strict` op de
+# branch protection) moet dan úit. Die eist dat een pull request eerst op de
+# punt van main wordt bijgewerkt, en dat is precies het handwerk dat de rij
+# overneemt — de rij bouwt zelf main plus de wachtende pull requests en toetst
+# dat. Blijft hij aan, dan rebaset iedereen nog steeds met de hand, draait CI
+# daarna opnieuw, en kost de rij alleen maar een extra run per merge.
+#
+# Wat dit wel en niet waard is. Een pull request sluit pas aan als élke
+# verplichte check op de pull request zelf groen is, dus op dat moment waren
+# beide poorten groen. Dat is wat de job hieronder vaststelt en in de
+# samenvatting opschrijft, en verder niets.
+#
+# Wat het niet afdekt is het venster daarna: vindt de review alsnog een
+# 🔴 Critical, dan staat de pull request al in de rij en houdt niets hem meer
+# tegen. Dat venster was precies wat de review-poort dichtte, en het is met een
+# wachtrij niet kleiner geworden maar makkelijker te missen. Wie "Merge when
+# ready" aanklikt terwijl de review nog loopt, laat GitHub het aansluiten doen
+# zodra de poort groen wordt: er zit dan geen mens meer tussen het groen worden
+# en het aansluiten.
+#
+# Een regelset naast de klassieke branch protection zou het venster kunnen
+# sluiten — die twee stapelen, en op main draait er al een. Maar een regelset
+# met required checks levert een tweede, onafhankelijke lijst naast die van de
+# branch protection, en twee lijsten lopen uiteen zodra iemand er één bijwerkt.
+# Dat is een grotere verbouwing dan het aanzetten van een wachtrij, en het
+# hoort niet mee te liften op deze wijziging.
+
+on:
+  merge_group:
+
+permissions:
+  contents: read
+
+jobs:
+  # Twee banen en niet één, want een baan levert één check-naam en beide namen
+  # moeten in de rij rapporteren.
+  pr-title:
+    name: Validate PR title
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: De titel is op de pull request beoordeeld
+        run: |
+          {
+            echo "### Validate PR title"
+            echo
+            echo "Beoordeeld op de pull request zelf, vóór het aansluiten in de"
+            echo "rij: zonder een groene titelcheck laat GitHub een pull request"
+            echo "niet toe. De titel verandert daarna niet meer, dus er valt"
+            echo "hier niets opnieuw te toetsen."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  claude-review:
+    name: Claude review completed
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: De review is op de pull request afgerond
+        run: |
+          {
+            echo "### Claude review completed"
+            echo
+            echo "De poort draaide op de pull request en was groen op het moment"
+            echo "van aansluiten: een pull request met een rode verplichte check"
+            echo "komt de rij niet in. Dat betekent dat de review voor die commit"
+            echo "is afgerond en er toen geen 🔴 Critical stond."
+            echo
+            echo "Wat hier niet getoetst wordt: een bevinding die ná het"
+            echo "aansluiten binnenkomt. De review draait niet op de queue-branch"
+            echo "en kan een entry niet meer tegenhouden. Let daarop bij \"Merge"
+            echo "when ready\" terwijl de review nog loopt: GitHub sluit de pull"
+            echo "request dan zelf aan zodra de poort groen wordt, zonder dat"
+            echo "iemand op dat moment meekijkt."
+          } >> "$GITHUB_STEP_SUMMARY"
