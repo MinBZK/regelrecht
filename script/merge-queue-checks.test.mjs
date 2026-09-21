@@ -31,6 +31,14 @@ const WORKFLOW_DIR = fileURLToPath(new URL('../.github/workflows/', import.meta.
 // check meer — stil, en zonder spoor in een review, want de branch protection
 // wijzigt met een knop en niet met een commit. Zet dus bij elke wijziging daar
 // deze lijst mee om.
+//
+// Eén geval blijft daarmee buiten bereik, en het is eerlijker dat hier te
+// noemen dan te suggereren dat dit bestand alles dekt: wie een baan hernoemt
+// én die naam hier meteen meeverandert, houdt beide lijsten consistent terwijl
+// de branch protection op de oude naam blijft wachten. Alles loopt dan vast,
+// op elke pull request en in de rij, en geen enkele test ziet het. Dat sluit
+// alleen een controle tegen de API, en die hoort niet in een test die zonder
+// netwerk moet draaien.
 const REQUIRED_CHECKS = [
   'Pre-commit',
   'WASM Build',
@@ -56,9 +64,15 @@ const SLAAT_OVER_IN_DE_RIJ = new Map([
  * regexes: `{ on: [regels], jobs: [regels], ... }`. Comments en lege regels
  * gaan eruit, zodat `jobs:  # alle banen` net zo goed leest als `jobs:`.
  *
- * Genoeg YAML voor wat hier nodig is, en bewust niet meer. Een echte parser
- * zou beter zijn, maar die is er niet zonder dependency; wat deze lezer niet
- * aankan faalt daarom zichtbaar in plaats van stil (zie `sleutelsVan`).
+ * Genoeg YAML voor wat hier nodig is, en bewust niet meer. Een echte parser zou
+ * beter zijn, maar die is er niet zonder dependency; wat deze lezer niet aankan
+ * faalt daarom zichtbaar in plaats van stil (zie de eerste test).
+ *
+ * Wat deze lezer niet toetst is of de YAML überhaupt geldig is: een tab in de
+ * inspringing of een `on:` die twee keer voorkomt leest hij gewoon door, terwijl
+ * GitHub zo'n workflow weigert en er dus niets rapporteert. Dat hoeft hier ook
+ * niet — `yamllint --strict` draait in dezelfde pre-commit-run en in de
+ * `Pre-commit`-baan over elk YAML-bestand, en struikelt over allebei.
  */
 function topBlokken(source) {
   const blokken = new Map();
@@ -66,10 +80,13 @@ function topBlokken(source) {
   for (const raw of source.split('\n')) {
     const line = raw.replace(/\s+$/, '');
     if (line === '' || /^\s*#/.test(line)) continue;
-    const top = /^([A-Za-z_][A-Za-z0-9_-]*):(.*)$/.exec(line);
+    // Ook de aanhalingstekens meenemen die een schrijver of formatter om een
+    // sleutel kan zetten: `on:` is in YAML de booleaanse waarde true, dus
+    // sommige gereedschappen maken er `"on":` van. Dat is hetzelfde blok.
+    const top = /^(?:"([^"]+)"|'([^']+)'|([A-Za-z_][A-Za-z0-9_-]*)):(.*)$/.exec(line);
     if (top) {
-      huidig = top[1];
-      blokken.set(huidig, { inline: top[2].trim(), lines: [] });
+      huidig = top[1] ?? top[2] ?? top[3];
+      blokken.set(huidig, { inline: top[4].trim(), lines: [] });
       continue;
     }
     if (huidig) blokken.get(huidig).lines.push(line);
@@ -135,16 +152,47 @@ function sleutelsVan(blok) {
   return sleutels;
 }
 
+/**
+ * De regels die onder één sleutel van een blok hangen. Voor `on:` is dat wat
+ * een trigger meekrijgt: `branches:`, `types:`, of niets.
+ */
+function onderSleutel(blok, sleutel) {
+  if (!blok) return [];
+  const eerste = blok.lines.find((l) => l.trim() !== '');
+  if (!eerste) return [];
+  const diepte = eerste.length - eerste.trimStart().length;
+  const uit = [];
+  let binnen = false;
+  for (const line of blok.lines) {
+    const inspring = line.length - line.trimStart().length;
+    if (inspring === diepte) {
+      const m = /^([A-Za-z_][A-Za-z0-9_-]*):(.*)$/.exec(line.trim());
+      binnen = Boolean(m) && m[1] === sleutel;
+      if (binnen && zonderComment(m[2]).trim() !== '') uit.push(m[2].trim());
+      continue;
+    }
+    if (binnen) uit.push(line.trim());
+  }
+  return uit;
+}
+
 /** Draait deze workflow op het merge_group-event? */
 function draaitInDeRij(source) {
   // Alleen de sleutels van het `on:`-blok tellen. Een baan, een `env:`- of een
   // `outputs:`-sleutel die toevallig `merge_group` heet is géén trigger, en een
   // losse regex op het hele bestand zou dat verschil niet zien.
-  const blokken = topBlokken(source);
-  // In YAML is een kale `on` de booleaanse waarde true, dus sommige parsers en
-  // schrijvers maken er `"on"` van; beide vormen komen hier langs.
-  const blok = blokken.get('on') ?? blokken.get('"on"') ?? blokken.get("'on'");
-  return sleutelsVan(blok).has('merge_group');
+  // `topBlokken` haalt de aanhalingstekens van een sleutel af, dus zowel `on:`
+  // als `"on":` komt hier als `on` binnen. Dat verschil bestaat omdat een kale
+  // `on` in YAML de booleaanse waarde true is.
+  const blok = topBlokken(source).get('on');
+  if (!sleutelsVan(blok).has('merge_group')) return false;
+  // De trigger moet kaal zijn. `merge_group:` met een `branches:` eronder dat
+  // main niet noemt vuurt nooit op deze rij, en met een `types:` die niet
+  // bestaat evenmin — en in beide gevallen staat het woord `merge_group` er
+  // wel, dus alleen op die sleutel afgaan zou een dode trigger goedkeuren.
+  // `merge_group` kent één activiteit, `checks_requested`, en een rij op main
+  // draait op main: een filter kan hier alleen maar minder doen.
+  return onderSleutel(blok, 'merge_group').length === 0;
 }
 
 /**
