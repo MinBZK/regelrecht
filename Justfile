@@ -138,6 +138,13 @@ first-load-test:
 ci-gate-test:
     node --test script/ci-gate.test.mjs
 
+# De merge queue deelt zijn lijst verplichte checks met de pull request. Een
+# check die op de queue-branch niet rapporteert laat elke entry vastlopen, en
+# dat gebeurt stil: de melding staat daar en niet op de pull request.
+[doc("Check that every required check also reports in the merge queue")]
+merge-queue-checks-test:
+    node --test script/merge-queue-checks.test.mjs
+
 # De guard die de per-component imports bij de gebruikte tags houdt. Zonder
 # deze test is het verschil tussen een gerenderde tag en een tag die de
 # documentatie alleen noemt niet vastgelegd, en dat verschil is precies waar hij
@@ -205,7 +212,7 @@ preview-environments-test:
 # container-backed suites; on a machine without a daemon, swap `test` for
 # `test-no-docker`.
 [doc("Run all quality checks, exactly what CI runs (needs Docker)")]
-check: format lint build-check validate validate-annotations deploy-filters-test ghcr-cleanup-test precompress-test security-headers-test first-load-test ci-gate-test nldd-imports-test nldd-slots nldd-slots-test dockerfile-consistency-test deploy-gate-test deployed-urls-test preview-environments-test advisories-report-test test
+check: format lint build-check validate validate-annotations deploy-filters-test ghcr-cleanup-test precompress-test security-headers-test first-load-test ci-gate-test merge-queue-checks-test nldd-imports-test nldd-slots nldd-slots-test dockerfile-consistency-test deploy-gate-test deployed-urls-test preview-environments-test advisories-report-test test
 
 # --- Tests ---
 

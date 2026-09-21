@@ -6,6 +6,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # De merge queue bouwt zijn eigen branch (`gh-readonly-queue/main/...`) met
+  # main plus de wachtende pull requests erin, en mergt pas als de checks daar
+  # groen zijn. Zonder deze trigger draait hier niets en blijft elke entry
+  # hangen tot de queue-timeout hem eruit gooit.
+  merge_group:
 
 permissions:
   contents: read
@@ -36,6 +41,17 @@ jobs:
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d  # v4.0.3
         id: filter
         with:
+          # Geen `base:` en geen `ref:`, ook niet voor de rij. De action kent
+          # merge_group zelf (sinds v4.0.1) en pakt dan `base_sha` en `head_sha`
+          # uit de payload: twee commits, rechtstreeks met elkaar vergeleken.
+          # Dat is precies de gewenste verzameling — wat de groep toevoegt
+          # bovenop de commit waarop hij bouwt.
+          #
+          # Zet hier vooral geen `base: refs/heads/main` bij als het ooit lijkt
+          # te helpen. De action strípt dat naar `main`, en dat is geen SHA meer,
+          # dus valt hij terug op een vergelijking met de merge-base tegen de
+          # punt van main. In een rij is de punt van main juist niet waar de
+          # groep vandaan vertakt, en dan klopt de lijst niet meer.
           filters: |
             ci:
               # Alle crates; een handmatige opsomming dreef eerder weg.
@@ -125,6 +141,18 @@ jobs:
     needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # Alleen op een pull request, ook nu er een wachtrij is. Deze baan is een
+    # required check, maar een baan die op een `if:` hieronder overslaat meldt
+    # `skipped`, en dat telt bij GitHub als geslaagd; alleen een workflow die
+    # in het geheel niet draait blijft op "Expected" staan en laat een entry
+    # hangen. Deze workflow draait in de rij wél, dus de check rapporteert.
+    #
+    # Hem daar echt laten draaien zou schadelijk zijn. De vergelijking
+    # hieronder is `origin/main...HEAD`, en HEAD is in de rij niet één pull
+    # request maar de hele groep: raakt één ervan een vrijgegeven
+    # schemaversie, dan valt de groep om en vliegen de andere mee. Op de pull
+    # request zelf wordt dat al afgevangen, per wijziging, tegen een main die
+    # niet onder de baan door beweegt.
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -1218,21 +1246,35 @@ jobs:
         working-directory: docs
         run: npx --no puppeteer browsers install chrome
 
-      # Alleen op een pull request: de lijst gewijzigde bestanden, waarmee
-      # gen-pa11yci.mjs de gate tot de geraakte pagina's beperkt. Raakt de PR
-      # iets anders dan inhoud (layout, component, stylesheet, configuratie),
-      # dan valt dat script terug op de volledige site. Bij een push naar main
-      # blijft de lijst leeg en draait de gate altijd volledig.
+      # Op een pull request en in de rij: de lijst gewijzigde bestanden, waarmee
+      # gen-pa11yci.mjs de gate tot de geraakte pagina's beperkt. Raakt de
+      # wijziging iets anders dan inhoud (layout, component, stylesheet,
+      # configuratie), dan valt dat script terug op de volledige site. Bij een
+      # push naar main blijft de lijst leeg en draait de gate altijd volledig.
       - name: Bepaal gewijzigde bestanden
         if: needs.changes.outputs.docs == 'true'
         id: changed
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: >-
+            ${{ github.event.pull_request.base.sha
+                || github.event.merge_group.base_sha }}
         run: |
-          if [ -n "$BASE_SHA" ]; then
+          files=""
+          # Is de basis hier niet bereikbaar, dan geen lijst, en draait de poort
+          # over de volledige site. Zonder dit vangnet stopt `bash -e` de baan
+          # bij een `bad object`, valt de Test-poort om en gaat in de rij de
+          # hele groep eruit — een strengere uitkomst dan de poort bedoelt, om
+          # een commit die alleen maar niet op te halen was.
+          #
+          # Eerst `cat-file`, en niet alleen `git diff` in een `if`: de uitkomst
+          # van een pijplijn is die van het laatste onderdeel, dus `| tr` zou de
+          # fout van `git diff` opslokken zodra `pipefail` er niet is. Actions
+          # zet die vlag vandaag wel, maar dan hangt deze poort aan een
+          # standaard die een `shell:` of `defaults:` elders ongemerkt wegneemt.
+          if [ -n "$BASE_SHA" ] && ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            echo "::warning title=Toegankelijkheidspoort::$BASE_SHA is hier niet bereikbaar; de poort draait over de volledige site."
+          elif [ -n "$BASE_SHA" ]; then
             files=$(git diff --name-only "$BASE_SHA" HEAD | tr '\n' ' ')
-          else
-            files=""
           fi
           echo "files=$files" >> "$GITHUB_OUTPUT"
 

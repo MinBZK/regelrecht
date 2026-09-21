@@ -610,6 +610,71 @@ of weghaalt; er is dan op main nog niets wat deze check beschermt, dus de job
 meldt dat en laat door. Dezelfde beperking als bij de review-poort geldt hier:
 de job staat in het workflowbestand dat de PR meebrengt.
 
+### De merge queue
+
+Main mergt via een merge queue. Die mergt niet de PR-branch, maar bouwt een
+eigen branch (`gh-readonly-queue/main/...`) met main plus de wachtende pull
+requests erin en toetst de checks daarop. Daar volgt alles uit wat hieronder
+staat, want de verplichte checks moeten dus op die branch rapporteren en niet
+alleen op de pull request.
+
+**De rij heeft geen eigen lijst verplichte checks.** Het is dezelfde lijst als
+in de branch protection. Een check die op de queue-branch nooit rapporteert
+blijft op "Expected" staan en laat elke entry hangen tot de
+status-check-timeout hem eruit gooit. Dat gebeurt stil: de melding staat op de
+queue-branch, niet als rode check op de pull request, dus je ziet het pas als
+er niets meer mergt. `gh run list --branch 'gh-readonly-queue/main/...'` toont
+wat daar gebeurde.
+
+**Overgeslagen is niet hetzelfde als afwezig**, en dat is het niet-intuïtieve
+feit waar het hier om draait. Een baan die op een `if:` overslaat meldt
+`skipped`, en dat telt bij GitHub als geslaagd. Alleen een wórkflow die in het
+geheel niet draait rapporteert niets. Een verplichte baan mag in de rij dus
+overslaan; zijn workflow mag er niet wegvallen.
+
+`Protect schema versions` maakt van dat verschil gebruik en slaat in de rij
+bewust over. Die baan vergelijkt tegen `origin/main`, en HEAD is in de rij niet
+één pull request maar de hele groep: raakt één ervan een vrijgegeven
+schemaversie, dan valt de groep om en vliegen de andere mee. Op de pull request
+zelf wordt dat al afgevangen, per wijziging.
+
+`Validate PR title` en `Claude review completed` kunnen andersom juist alleen
+op een pull request bestaan — de een leest de titel, de ander de
+review-comments, de body en `refs/pull/N/merge`. In de rij komen die twee uit
+`.github/workflows/merge-queue-gates.yml`. Wat die workflow vaststelt is dat
+beide poorten groen waren op het moment van aansluiten, en verder niets: een
+bevinding die ná het aansluiten binnenkomt houdt niets meer tegen. Met "Merge
+when ready" sluit GitHub zelf aan zodra de laatste poort groen wordt, dus zit
+er dan geen mens meer tussen.
+
+**"Require branches to be up to date before merging" hoort uit te staan.** Die
+eist dat een pull request eerst op de punt van main wordt bijgewerkt, precies
+het handwerk dat de rij overneemt. Blijft hij aan, dan rebaset iedereen nog
+steeds met de hand, draait CI daarna opnieuw, en levert de rij alleen een extra
+run per merge op zonder de winst. Die instelling staat in geen enkel bestand,
+alleen in de branch protection.
+
+Elke merge draait de CI twee keer: eenmaal op de queue-branch en eenmaal op de
+push naar main erna. Bij een groep van meerdere pull requests wordt dat per
+pull request goedkoper, zolang de groep slaagt; faalt hij, dan gaat het werk
+verloren en bouwt de herbouwde groep opnieuw. De build-concurrency in de
+queue-instellingen begrenst dat.
+
+`script/merge-queue-checks.test.mjs` bindt elke verplichte check aan een baan
+die in de rij draait, met de uitzondering die bewust overslaat er expliciet in.
+De hook draait op élke workflow, want elke workflow kan zo'n check dragen of
+verliezen. De lijst `REQUIRED_CHECKS` daarin is met de hand bijgehouden en de
+twee richtingen zijn niet symmetrisch: een naam te veel faalt luid, een naam te
+weinig is stil dekkingsverlies. De branch protection wijzigt met een knop en
+niet met een commit, dus daar is geen review die eraan herinnert — zet die
+lijst mee om.
+
+Terug is één knop: zet de merge queue uit in de branch protection. De
+`merge_group`-triggers en `merge-queue-gates.yml` worden dan nooit meer
+getriggerd en kosten niets; een revert is niet nodig. Let er bij een vastloper
+op dat `enforce_admins` aan staat, dus er is geen weg om een hangende entry
+heen: eerst de rij uit, dan mergen, dan weer aan.
+
 ### Deployed Components
 
 | Component | Image | Production URL |
