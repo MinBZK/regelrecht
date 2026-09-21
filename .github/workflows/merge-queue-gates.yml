@@ -7,19 +7,31 @@ name: Merge queue gates
 # merge_group-run is er geen pull request, dus die twee workflows draaien er
 # niet en rapporteren er niets.
 #
-# GitHub kent de merge queue geen eigen lijst required checks toe: het is
-# dezelfde lijst als in de branch protection. Een required check die in de rij
+# GitHub kent de merge queue geen eigen lijst verplichte checks toe: het is
+# dezelfde lijst als in de branch protection. Een verplichte check die in de rij
 # nooit rapporteert laat elke entry hangen tot de status-check-timeout hem eruit
 # gooit. Deze workflow rapporteert die twee namen daarom in de rij.
 #
-# Wat dit wel en niet waard is. GitHub laat een pull request alleen aansluiten
-# als élke required check op de PR zelf groen is, dus op het moment van
-# aansluiten waren beide gates groen. Dat is wat de job hieronder vaststelt en
-# in de samenvatting opschrijft. Wat het níét afdekt is het venster daarna: gaat
-# de review verder en vindt hij alsnog een 🔴 Critical, dan is de PR al in de
-# rij en houdt niets hem meer tegen. Dat venster was precies wat de review-poort
-# dichtte; het is kleiner geworden (de poort moet eerst groen zijn geweest) maar
-# het is er.
+# Eén instelling hoort bij het aanzetten van de rij en staat in geen enkel
+# bestand: "Require branches to be up to date before merging" (`strict` op de
+# branch protection) moet dan úit. Die eist dat een pull request eerst op de
+# punt van main wordt bijgewerkt, en dat is precies het handwerk dat de rij
+# overneemt — de rij bouwt zelf main plus de wachtende pull requests en toetst
+# dat. Blijft hij aan, dan rebaset iedereen nog steeds met de hand, draait CI
+# daarna opnieuw, en kost de rij alleen maar een extra run per merge.
+#
+# Wat dit wel en niet waard is. Een pull request sluit pas aan als élke
+# verplichte check op de pull request zelf groen is, dus op dat moment waren
+# beide poorten groen. Dat is wat de job hieronder vaststelt en in de
+# samenvatting opschrijft, en verder niets.
+#
+# Wat het niet afdekt is het venster daarna: vindt de review alsnog een
+# 🔴 Critical, dan staat de pull request al in de rij en houdt niets hem meer
+# tegen. Dat venster was precies wat de review-poort dichtte, en het is met een
+# wachtrij niet kleiner geworden maar makkelijker te missen. Wie "Merge when
+# ready" aanklikt terwijl de review nog loopt, laat GitHub het aansluiten doen
+# zodra de poort groen wordt: er zit dan geen mens meer tussen het groen worden
+# en het aansluiten.
 #
 # Een regelset naast de klassieke branch protection zou het venster kunnen
 # sluiten — die twee stapelen, en op main draait er al een. Maar een regelset
@@ -64,11 +76,14 @@ jobs:
             echo "### Claude review completed"
             echo
             echo "De poort draaide op de pull request en was groen op het moment"
-            echo "van aansluiten: GitHub laat een pull request met een rode"
-            echo "required check niet in de rij toe. Dat betekent dat de review"
-            echo "voor die commit is afgerond en er toen geen 🔴 Critical stond."
+            echo "van aansluiten: een pull request met een rode verplichte check"
+            echo "komt de rij niet in. Dat betekent dat de review voor die commit"
+            echo "is afgerond en er toen geen 🔴 Critical stond."
             echo
             echo "Wat hier niet getoetst wordt: een bevinding die ná het"
             echo "aansluiten binnenkomt. De review draait niet op de queue-branch"
-            echo "en kan een entry niet meer tegenhouden."
+            echo "en kan een entry niet meer tegenhouden. Let daarop bij \"Merge"
+            echo "when ready\" terwijl de review nog loopt: GitHub sluit de pull"
+            echo "request dan zelf aan zodra de poort groen wordt, zonder dat"
+            echo "iemand op dat moment meekijkt."
           } >> "$GITHUB_STEP_SUMMARY"

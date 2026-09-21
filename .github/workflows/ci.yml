@@ -1260,16 +1260,21 @@ jobs:
                 || github.event.merge_group.base_sha }}
         run: |
           files=""
-          if [ -n "$BASE_SHA" ]; then
-            # Niet bereikbaar in deze checkout? Dan geen lijst, en draait de
-            # poort over de volledige site. Zonder dit vangnet stopt `bash -e`
-            # de baan bij een `bad object`, valt de Test-poort om en gaat in de
-            # rij de hele groep eruit — een strengere uitkomst dan de poort
-            # bedoelt, om een commit die alleen maar niet op te halen was.
-            if ! files=$(git diff --name-only "$BASE_SHA" HEAD | tr '\n' ' '); then
-              echo "::warning title=Toegankelijkheidspoort::$BASE_SHA is hier niet bereikbaar; de poort draait over de volledige site."
-              files=""
-            fi
+          # Is de basis hier niet bereikbaar, dan geen lijst, en draait de poort
+          # over de volledige site. Zonder dit vangnet stopt `bash -e` de baan
+          # bij een `bad object`, valt de Test-poort om en gaat in de rij de
+          # hele groep eruit — een strengere uitkomst dan de poort bedoelt, om
+          # een commit die alleen maar niet op te halen was.
+          #
+          # Eerst `cat-file`, en niet alleen `git diff` in een `if`: de uitkomst
+          # van een pijplijn is die van het laatste onderdeel, dus `| tr` zou de
+          # fout van `git diff` opslokken zodra `pipefail` er niet is. Actions
+          # zet die vlag vandaag wel, maar dan hangt deze poort aan een
+          # standaard die een `shell:` of `defaults:` elders ongemerkt wegneemt.
+          if [ -n "$BASE_SHA" ] && ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            echo "::warning title=Toegankelijkheidspoort::$BASE_SHA is hier niet bereikbaar; de poort draait over de volledige site."
+          elif [ -n "$BASE_SHA" ]; then
+            files=$(git diff --name-only "$BASE_SHA" HEAD | tr '\n' ' ')
           fi
           echo "files=$files" >> "$GITHUB_OUTPUT"
 
