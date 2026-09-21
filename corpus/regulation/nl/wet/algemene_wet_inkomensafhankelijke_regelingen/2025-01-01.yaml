@@ -332,6 +332,40 @@ articles:
       volzin vast te stellen algemene maatregel van bestuur wordt niet eerder gedaan dan vier weken nadat het ontwerp aan
       beide kamers der Staten-Generaal is overgelegd.
     url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel15
+    machine_readable:
+      # Lid 1: een aanvraag om een tegemoetkoming over een berekeningsjaar kan
+      # tot 1 april van het jaar volgend op dat berekeningsjaar worden
+      # ingediend. "Tot" is exclusief: op 1 april zelf is de termijn voorbij.
+      #
+      # De uitkomst zegt of een aanvraag op een gegeven dag binnen die termijn
+      # valt. Ze zegt niet dat een aanvraag daarna niet ingediend kan worden:
+      # indienen kan altijd (Awb art. 4:1), en een te late aanvraag leidt tot
+      # een beslissing daarop, niet tot een weigering om haar te ontvangen.
+      execution:
+        parameters:
+          - name: berekeningsjaar
+            type: number
+            required: true
+          - name: aanvraagdatum
+            type: date
+            required: true
+        output:
+          - name: aanvraag_binnen_termijn
+            type: boolean
+        actions:
+          - output: aanvraag_binnen_termijn
+            value:
+              operation: LESS_THAN
+              subject: $aanvraagdatum
+              value:
+                operation: DATE
+                year:
+                  operation: ADD
+                  values:
+                    - $berekeningsjaar
+                    - 1
+                month: 4
+                day: 1
   - number: '16'
     text: >-
       Artikel 16. Voorschot op tegemoetkoming 1. Indien de tegemoetkoming naar verwachting niet binnen acht weken na
