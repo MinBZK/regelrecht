@@ -117,13 +117,21 @@ const stappen = computed(() => {
   );
   return [...basis, ...vervolg];
 });
+
+// De laatst bereikte stap is waar de aanvraag nu staat.
+const huidige = computed(() => stappen.value.findLastIndex((s) => s.bereikt));
+
+function trackStatus(i) {
+  if (i < huidige.value) return 'past';
+  return i === huidige.value ? 'current' : 'future';
+}
 </script>
 
 <template>
   <nldd-list variant="simple" no-dividers>
     <nldd-list-item v-for="(stap, i) in stappen" :key="stap.key" size="md">
       <nldd-timeline-track-cell
-        :status="stap.bereikt ? 'past' : 'future'"
+        :status="trackStatus(i)"
         :position="stappen.length === 1 ? 'only' : i === 0 ? 'first' : i === stappen.length - 1 ? 'last' : 'between'"
       ></nldd-timeline-track-cell>
       <nldd-spacer-cell size="12"></nldd-spacer-cell>

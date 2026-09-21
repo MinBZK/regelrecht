@@ -14,12 +14,6 @@ import { session } from '../../session.js';
 
 const router = useRouter();
 
-const navItems = [
-  { text: 'Mijn aanvragen', to: '/' },
-  { text: 'Nieuwe aanvraag', to: '/nieuw' },
-  { text: 'Mijn organisatie', to: '/organisatie' },
-];
-
 const registratie = ref(null);
 
 const machtiging = computed(() => session.aanvrager?.machtiging ?? null);
@@ -118,8 +112,8 @@ watch(() => session.aanvrager, laadAlles);
   <nldd-page>
     <PortalHeader
       slot="header"
-      :items="session.aanvrager ? navItems : []"
       portal="aanvrager"
+      :back="{ text: 'Aanvragen', to: '/subsidieaanvragen/' }"
     />
 
     <template v-if="session.loaded && !session.aanvrager">
@@ -142,7 +136,6 @@ watch(() => session.aanvrager, laadAlles);
     <template v-else-if="session.aanvrager">
       <nldd-simple-section width="820px">
         <nldd-title size="2">
-          <span slot="overline">{{ session.aanvrager.partij_naam }} · KVK {{ session.aanvrager.kvk_nummer }}</span>
           <h2>Mijn organisatie</h2>
         </nldd-title>
         <nldd-spacer size="24"></nldd-spacer>
@@ -328,5 +321,7 @@ watch(() => session.aanvrager, laadAlles);
         </nldd-container>
       </nldd-sheet>
     </template>
+
+    <nldd-page-footer slot="footer"></nldd-page-footer>
   </nldd-page>
 </template>

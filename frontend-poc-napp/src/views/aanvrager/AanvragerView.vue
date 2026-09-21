@@ -1,13 +1,16 @@
 <script setup>
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import PortalHeader from '../../components/PortalHeader.vue';
 import NBanner from '../../components/NBanner.vue';
+import AanvraagFormulier from '../../components/AanvraagFormulier.vue';
+import AanvraagDetail from '../../components/AanvraagDetail.vue';
 import { api } from '../../api.js';
 import { session, refreshSession } from '../../session.js';
-import { euro, datum, onderdelen, statusLabel, statusColor } from '../../format.js';
+import { euro, statusLabel, statusColor, aanvraagTitel, aanvraagOndertitel } from '../../format.js';
 
 const router = useRouter();
+const route = useRoute();
 
 const kvk = ref('');
 const loginFout = ref('');
@@ -36,27 +39,52 @@ function kiesDemo(d) {
   login();
 }
 
-const navItems = computed(() =>
-  session.aanvrager
-    ? [
-        { text: 'Mijn aanvragen', to: '/' },
-        { text: 'Nieuwe aanvraag', to: '/nieuw' },
-        { text: 'Mijn organisatie', to: '/organisatie' },
-      ]
-    : [],
+const aanvraagSheet = ref(null);
+const aanvraagOpen = ref(false);
+
+// Het formulier bestaat alleen zolang de sheet open is: elke aanvraag begint
+// leeg, met de aanspraken zoals ze nu in het register staan.
+async function openAanvraag() {
+  aanvraagOpen.value = true;
+  await nextTick();
+  aanvraagSheet.value?.show();
+}
+
+function sluitAanvraag() {
+  aanvraagSheet.value?.hide();
+}
+
+function onAanvraagIngediend() {
+  sluitAanvraag();
+  laadAanvragen();
+}
+
+const detailSheet = ref(null);
+const detailId = ref(null);
+
+async function openDetail(id) {
+  detailId.value = id;
+  await nextTick();
+  detailSheet.value?.show();
+}
+
+function sluitDetail() {
+  detailSheet.value?.hide();
+}
+
+watch(
+  () => [session.loaded, session.aanvrager],
+  () => {
+    if (!session.loaded) return;
+    if (session.aanvrager && route.path === '/') router.replace('/subsidieaanvragen/');
+    else if (!session.aanvrager && route.path !== '/') router.replace('/');
+  },
+  { immediate: true },
 );
 
 const beperkteProfielen = computed(() =>
   profielen.value.filter((p) => p.type === 'BEPERKT'),
 );
-
-const aanvragerOverline = computed(() => {
-  const a = session.aanvrager;
-  if (!a) return '';
-  const afdeling =
-    a.machtiging?.type === 'BEPERKT' ? ` · afdeling ${a.machtiging.gebied_naam}` : '';
-  return `${a.partij_naam}${afdeling} · KVK ${a.kvk_nummer}`;
-});
 
 const MAX_GETOOND = 12;
 const gefilterdeProfielen = computed(() => {
@@ -146,11 +174,7 @@ watch(() => session.aanvrager, laadAanvragen);
 
 <template>
   <nldd-page>
-    <PortalHeader
-      slot="header"
-      :items="navItems"
-      portal="aanvrager"
-    />
+    <PortalHeader slot="header" portal="aanvrager" />
 
     <!-- Niet ingelogd: de gesimuleerde eHerkenning-omgeving. In het echt
          verlaat de gebruiker het portaal (omgeving van de middelenleverancier
@@ -243,7 +267,7 @@ watch(() => session.aanvrager, laadAanvragen);
               <nldd-spacer size="16"></nldd-spacer>
 
               <nldd-list variant="box">
-                <nldd-list-item size="md" type="button" @click="doLogin({ type: 'VOLLEDIG' })">
+                <nldd-list-item size="md" button @click="doLogin({ type: 'VOLLEDIG' })">
                   <nldd-title-cell
                     text="De gehele partij"
                     supporting-text="Tekenbevoegd bestuur: alle aanspraken, landelijk en decentraal"
@@ -251,7 +275,7 @@ watch(() => session.aanvrager, laadAanvragen);
                   <nldd-spacer-cell size="8"></nldd-spacer-cell>
                   <nldd-icon-cell icon="chevron-right" size="16"></nldd-icon-cell>
                 </nldd-list-item>
-                <nldd-list-item size="md" type="button" @click="afdelingKiezen = !afdelingKiezen">
+                <nldd-list-item size="md" button @click="afdelingKiezen = !afdelingKiezen">
                   <nldd-title-cell
                     text="Een afdeling"
                     :supporting-text="`Beperkte machtiging voor één gebied (${beperkteProfielen.length} gebieden)`"
@@ -280,7 +304,7 @@ watch(() => session.aanvrager, laadAanvragen);
                     v-for="p in getoondeProfielen"
                     :key="`${p.orgaan}:${p.gebied_code}`"
                     size="sm"
-                    type="button"
+                    button
                     @click="doLogin({ type: 'BEPERKT', gebied_code: p.gebied_code })"
                   >
                     <nldd-text-cell
@@ -329,7 +353,7 @@ watch(() => session.aanvrager, laadAanvragen);
               v-for="d in demoVoorbeelden"
               :key="d.kvk_nummer"
               size="sm"
-              type="button"
+              button
               @click="kiesDemo(d)"
             >
               <nldd-text-cell
@@ -353,30 +377,32 @@ watch(() => session.aanvrager, laadAanvragen);
     <template v-else-if="session.aanvrager">
       <nldd-simple-section>
         <nldd-title size="2">
-          <span slot="overline">{{ aanvragerOverline }}</span>
-          <h2>Uw subsidieaanvragen</h2>
-          <div v-if="aanvragen.length" slot="actions">
+          <h2>Aanvragen</h2>
+        </nldd-title>
+        <nldd-spacer size="16"></nldd-spacer>
+        <nldd-toolbar>
+          <nldd-toolbar-item slot="start">
             <nldd-button
               variant="primary"
               text="Nieuwe aanvraag"
               start-icon="plus"
-              @click="router.push('/nieuw')"
+              @click="openAanvraag"
             ></nldd-button>
-          </div>
-        </nldd-title>
+          </nldd-toolbar-item>
+        </nldd-toolbar>
         <nldd-spacer size="24"></nldd-spacer>
 
-        <nldd-list v-if="aanvragen.length" variant="box">
+        <nldd-list v-if="aanvragen.length" variant="simple">
           <nldd-list-item
             v-for="item in aanvragen"
             :key="item.aanvraag.id"
             size="md"
-            type="button"
-            @click="router.push(`/aanvraag/${item.aanvraag.id}`)"
+            button
+            @click="openDetail(item.aanvraag.id)"
           >
             <nldd-title-cell
-              :text="`Jaaraanvraag ${item.aanvraag.subsidiejaar}`"
-              :supporting-text="`${onderdelen(item.aanvraag.componenten.length)} · ingediend op ${datum(item.aanvraag.aanvraag_datum)}`"
+              :text="aanvraagTitel(item.aanvraag)"
+              :supporting-text="aanvraagOndertitel(item.aanvraag)"
             ></nldd-title-cell>
             <nldd-text-cell
               v-if="item.besluit"
@@ -398,21 +424,42 @@ watch(() => session.aanvrager, laadAanvragen);
 
         <nldd-inline-dialog
           v-else-if="!laden"
-          icon="inbox"
           text="Nog geen aanvragen"
           supporting-text="Dien uw eerste subsidieaanvraag in. U ziet direct of uw partij aan de voorwaarden voldoet."
-        >
-          <nldd-button
-            slot="actions"
-            variant="primary"
-            text="Nieuwe aanvraag"
-            @click="router.push('/nieuw')"
-          ></nldd-button>
-        </nldd-inline-dialog>
-
+        ></nldd-inline-dialog>
       </nldd-simple-section>
     </template>
+
+    <nldd-page-footer slot="footer"></nldd-page-footer>
   </nldd-page>
+
+  <Teleport to="body">
+    <nldd-sheet
+      ref="aanvraagSheet"
+      placement="right"
+      accessible-label="Nieuwe aanvraag"
+      @close="aanvraagOpen = false"
+    >
+      <nldd-page v-if="aanvraagOpen" sticky-header>
+        <AanvraagFormulier @sluit="sluitAanvraag" @ingediend="onAanvraagIngediend" />
+      </nldd-page>
+    </nldd-sheet>
+    <nldd-sheet
+      ref="detailSheet"
+      placement="right"
+      accessible-label="Aanvraag"
+      @close="detailId = null"
+    >
+      <nldd-page v-if="detailId" sticky-header>
+        <AanvraagDetail
+          :key="detailId"
+          :id="detailId"
+          @sluit="sluitDetail"
+          @gewijzigd="laadAanvragen"
+        />
+      </nldd-page>
+    </nldd-sheet>
+  </Teleport>
 </template>
 
 <style scoped>

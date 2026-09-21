@@ -52,6 +52,15 @@ export function onderdelen(n) {
   return `${n} ${n === 1 ? 'onderdeel' : 'onderdelen'}`;
 }
 
+// Titel en ondertitel van een eigen aanvraag, in de lijst en in het detail.
+export function aanvraagTitel(aanvraag) {
+  return `Jaaraanvraag ${aanvraag.subsidiejaar}`;
+}
+
+export function aanvraagOndertitel(aanvraag) {
+  return `${onderdelen(aanvraag.componenten.length)} · ingediend op ${datum(aanvraag.aanvraag_datum)}`;
+}
+
 /// Datum mét tijdstip (voor uitvoeringsmomenten zoals een uitbetaling).
 export function datumTijd(value) {
   if (!value) return '';

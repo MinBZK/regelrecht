@@ -11,12 +11,15 @@ import { api } from '../api.js';
 import { session, refreshSession } from '../session.js';
 import { b } from '../basePad.js';
 
-// Functionele sitenaam onder het woordmerk, per portaal vast; afgeleid
-// van de portal-prop zodat hij nooit per pagina kan verschillen.
+// Functionele sitenaam, per portaal vast; afgeleid van de portal-prop zodat
+// hij nooit per pagina kan verschillen. Het aanvragersportaal voert hem als
+// websitetitel boven het menu, de andere nog onder het woordmerk.
 const PORTAL_SUBTITLES = {
-  aanvrager: 'Subsidieportaal',
   beoordelaar: 'Beoordelingsomgeving',
   publiek: 'Publieksportaal',
+};
+const WEBSITE_TITLES = {
+  aanvrager: 'Subsidieportaal',
 };
 
 const props = defineProps({
@@ -25,34 +28,26 @@ const props = defineProps({
   // ingelogd, op elke pagina van het portaal.
   portal: { type: String, default: null },
   utilityItems: { type: Array, default: () => [] },
+  back: { type: Object, default: null }, // { text, to }
 });
 const emit = defineEmits(['utility']);
 
 const router = useRouter();
 const route = useRoute();
 
+const aanvrager = computed(() =>
+  props.portal === 'aanvrager' ? session.aanvrager : null,
+);
+
+// Branch login: the identity names the represented party plus the scope.
+const machtigingTekst = computed(() => {
+  const machtiging = aanvrager.value?.machtiging;
+  return machtiging?.type === 'BEPERKT'
+    ? `Afdeling ${machtiging.gebied_naam} (beperkte machtiging)`
+    : '';
+});
+
 const sessieItems = computed(() => {
-  if (props.portal === 'aanvrager' && session.aanvrager) {
-    const machtiging = session.aanvrager.machtiging;
-    if (machtiging?.type === 'BEPERKT') {
-      // Branch login: show who is represented plus a subtle scope marker.
-      return [
-        {
-          text: `${session.aanvrager.partij_naam} · afdeling ${machtiging.gebied_naam} (beperkte machtiging)`,
-          icon: 'person',
-          key: 'machtiging-info',
-        },
-        { text: 'Uitloggen', icon: 'logout', key: 'logout-aanvrager' },
-      ];
-    }
-    return [
-      {
-        text: `Uitloggen (${session.aanvrager.partij_naam})`,
-        icon: 'logout',
-        key: 'logout-aanvrager',
-      },
-    ];
-  }
   if (props.portal === 'beoordelaar' && session.beoordelaar) {
     return [{ text: session.beoordelaar.naam, icon: 'person', key: 'beoordelaar' }];
   }
@@ -61,15 +56,14 @@ const sessieItems = computed(() => {
 
 const alleUtilityItems = computed(() => [...props.utilityItems, ...sessieItems.value]);
 
-async function onUtility(item) {
-  if (item.key === 'machtiging-info') return; // informational, no action
-  if (item.key === 'logout-aanvrager') {
-    await api.eherkenningLogout();
-    await refreshSession();
-    router.push('/');
-    return;
-  }
+function onUtility(item) {
   emit('utility', item);
+}
+
+async function logoutAanvrager() {
+  await api.eherkenningLogout();
+  await refreshSession();
+  router.push('/');
 }
 
 function isCurrent(item) {
@@ -88,8 +82,8 @@ function onSelect(event, item) {
 // Het menu-item rendert een echte <a href>. Links klikken vangt `onSelect` af,
 // maar middelklik, "openen in nieuw tabblad" en de statusbalk lezen het pad
 // zoals het er staat. Een `to` is relatief aan de router-basis, niet aan de
-// app-basis, dus `b()` volstaat hier niet: onder /napp/ moet `/nieuw` van het
-// aanvragersportaal /napp/aanvrager/nieuw worden. `router.resolve` kent die
+// app-basis, dus `b()` volstaat hier niet: onder /napp/ moet `/partijregister`
+// van de beoordelingsomgeving /napp/beoordelaar/partijregister worden. `router.resolve` kent die
 // basis al en levert het volledige pad.
 function itemHref(item) {
   if (item.href) return item.href;
@@ -111,7 +105,10 @@ function itemHref(item) {
       logo-title="Nederlandse autoriteit politieke partijen"
       :logo-subtitle="PORTAL_SUBTITLES[portal] ?? ''"
       :logo-href="b('/')"
-      :website-href="b('/')"
+      :website-title="WEBSITE_TITLES[portal] ?? ''"
+      :website-href="WEBSITE_TITLES[portal] ? router.resolve('/').href : b('/')"
+      :back-text="back?.text"
+      @back-click="router.push(back.to)"
     >
       <nldd-menu-bar v-if="items.length" slot="global">
         <nldd-menu-bar-item
@@ -124,7 +121,7 @@ function itemHref(item) {
           @click="onSelect($event, item)"
         ></nldd-menu-bar-item>
       </nldd-menu-bar>
-      <nldd-menu-bar v-if="alleUtilityItems.length" slot="utility">
+      <nldd-menu-bar v-if="alleUtilityItems.length || aanvrager" slot="utility">
         <nldd-menu-bar-item
           v-for="item in alleUtilityItems"
           :key="item.text"
@@ -132,6 +129,24 @@ function itemHref(item) {
           :icon="item.icon"
           @click="onUtility(item)"
         ></nldd-menu-bar-item>
+        <nldd-menu-bar-item v-if="aanvrager" text="Account" icon="account" expandable>
+          <nldd-menu>
+            <nldd-container slot="header" padding-inline="16" padding-block="12">
+              <nldd-identity
+                :text="aanvrager.partij_naam"
+                :supporting-text="machtigingTekst"
+              ></nldd-identity>
+            </nldd-container>
+            <nldd-menu-item
+              text="Mijn organisatie"
+              icon="building"
+              :href="router.resolve('/organisatie').href"
+              @click="onSelect($event, { to: '/organisatie' })"
+            ></nldd-menu-item>
+            <nldd-menu-divider></nldd-menu-divider>
+            <nldd-menu-item text="Uitloggen" icon="logout" @select="logoutAanvrager"></nldd-menu-item>
+          </nldd-menu>
+        </nldd-menu-bar-item>
       </nldd-menu-bar>
     </nldd-top-navigation-bar>
   </nldd-skip-link>
