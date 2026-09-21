@@ -1,0 +1,1093 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/gram.json",
+  "title": "Gram (chronolexogram) v0.6.0",
+  "description": "Eén gram zoals het beeld van de wereld het toont (`GET /api/world`, `cells[].chronicles[].grams[]`): de vastlegging uit een kroniek, met per veld de waarde en de herkomst ervan. Drie varianten op `kind` (RFC-022 §1): een lexogram (het recht zelf), een decretogram (een besluit dat de cel nam, §1.2) en een executogram (een feit dat de cel overkwam, §1.3). Het volledige RFC-013 Execution Receipt van een decretogram staat niet in het gram maar is apart op te vragen (`GET /api/cells/{cel}/chronicles/{stroom}/grams/{n}/receipt`); het draagt wandkloktijd, en een beeld dat per run verschilt is geen contract.",
+  "type": "object",
+  "required": [
+    "kind",
+    "name",
+    "intake",
+    "recording_actor",
+    "grondslag",
+    "op_moment",
+    "fields"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "description": "Welk van de drie chronolexogrammen dit is. Volgt uit `intake`: een gram dat de cel via `eigen_besluit` vastlegde is een decretogram, elk ander een executogram. Een lexogram ligt in geen enkele kroniek: dat is de regeling zelf (RFC-022 §1.1), gevalideerd door `schema.json`.",
+      "enum": ["lexogram", "decretogram", "executogram"]
+    },
+    "name": {
+      "description": "Wat er gebeurde, in de woorden van de cel: de gebeurtenisnaam uit het gebeurtenisschema van de stroom, de naam van de besluit-definitie, of `<besluit>_bekendmaking`.",
+      "type": "string",
+      "minLength": 1
+    },
+    "intake": {
+      "$ref": "#/definitions/intake"
+    },
+    "recording_actor": {
+      "description": "Wie vastlegde: het id van de cel zelf. De celbeheerder, niet de `competent_authority`: een executogram is een feit en geen besluit (RFC-022 §1.3).",
+      "type": "string",
+      "minLength": 1
+    },
+    "grondslag": {
+      "description": "Op welke grondslag dit gram vastgelegd is. Vrije tekst, mag leeg zijn; een gram zonder eigen grondslag krijgt die van het gebeurtenisschema van zijn stroom.",
+      "type": "string"
+    },
+    "op_moment": {
+      "description": "Het moment waarop dit feit in deze cel feit werd; de as waarop een reductie ordent (RFC-022 §4.1).",
+      "$ref": "#/definitions/date"
+    },
+    "fields": {
+      "description": "De vastgelegde velden, elk met de waarde en de herkomst van die waarde.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/field"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "kind": { "const": "decretogram" } }
+      },
+      "then": {
+        "$ref": "#/definitions/decretogram"
+      }
+    },
+    {
+      "if": {
+        "properties": { "kind": { "const": "executogram" } }
+      },
+      "then": {
+        "$ref": "#/definitions/executogram"
+      }
+    },
+    {
+      "if": {
+        "properties": { "kind": { "const": "lexogram" } }
+      },
+      "then": {
+        "$ref": "#/definitions/lexogram"
+      }
+    }
+  ],
+  "definitions": {
+    "date": {
+      "description": "Een kalenderdag in ISO-notatie (jjjj-mm-dd).",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "optional_date": {
+      "description": "Een kalenderdag in ISO-notatie, of `null` als er geen is.",
+      "anyOf": [{ "$ref": "#/definitions/date" }, { "type": "null" }]
+    },
+    "intake": {
+      "description": "Het kanaal waarlangs het feit de cel bereikte of erin ontstond (RFC-022 §1.3). Een gesloten lijst: een typfout in een kanaalnaam mag niet stil doorgaan.",
+      "enum": ["aanvraag", "levering", "betaling", "eigen_besluit"]
+    },
+    "field": {
+      "description": "Eén veld van een gram: de vastgelegde waarde en waar ze vandaan komt.",
+      "type": "object",
+      "required": ["value", "origin"],
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "description": "De vastgelegde waarde; elk JSON-type, inclusief `null` (een uitspraak over het veld, RFC-036)."
+        },
+        "origin": {
+          "$ref": "#/definitions/field_origin"
+        }
+      }
+    },
+    "field_origin": {
+      "description": "Waar de waarde van één veld vandaan komt, op het etiket `herkomst`.",
+      "type": "object",
+      "required": ["herkomst"],
+      "properties": {
+        "herkomst": {
+          "enum": ["recorded", "besluit_input", "computed", "besluit"]
+        }
+      },
+      "oneOf": [
+        {
+          "description": "De cel legde dit feit zelf vast, langs een kanaal en op een grondslag.",
+          "type": "object",
+          "required": ["herkomst", "intake", "grondslag"],
+          "additionalProperties": false,
+          "properties": {
+            "herkomst": { "const": "recorded" },
+            "intake": { "$ref": "#/definitions/intake" },
+            "grondslag": { "type": "string" }
+          }
+        },
+        {
+          "description": "Een input waarop het besluit rekende, met de herkomst die het decretogram ervan vastlegde.",
+          "type": "object",
+          "required": ["herkomst", "recorded_origin"],
+          "additionalProperties": false,
+          "properties": {
+            "herkomst": { "const": "besluit_input" },
+            "recorded_origin": { "$ref": "#/definitions/input_origin" }
+          }
+        },
+        {
+          "description": "Een uitkomst die de regeling van het besluit berekende.",
+          "type": "object",
+          "required": ["herkomst", "regulation"],
+          "additionalProperties": false,
+          "properties": {
+            "herkomst": { "const": "computed" },
+            "regulation": {
+              "description": "De `$id` van de uitgevoerde regeling.",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "description": "Een vast veld van het decretogram zelf: zaakkenmerk, regeling, bevoegd gezag, verplichtingen.",
+          "type": "object",
+          "required": ["herkomst"],
+          "additionalProperties": false,
+          "properties": {
+            "herkomst": { "const": "besluit" }
+          }
+        }
+      ]
+    },
+    "input_origin": {
+      "description": "De herkomst van één input van een besluit, zoals het decretogram haar vastlegde: uit een eigen kroniek, uit een parameter, geaccepteerd van een andere cel (invariant I5), teruggelezen uit een eerder besluit over dezelfde zaak, of — in het gram van een latere stage (de bekendmaking) — gelezen uit het gram van hetzelfde besluit: een uitkomst ervan (`besluit_uitkomst`) of een input ervan (`besluit_input`).",
+      "type": "object",
+      "required": ["herkomst"],
+      "properties": {
+        "herkomst": {
+          "enum": [
+            "eigen_kroniek",
+            "parameter",
+            "geaccepteerd",
+            "eerder_besluit",
+            "besluit_uitkomst",
+            "besluit_input"
+          ]
+        }
+      },
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["herkomst", "chronicle", "field", "op_moment"],
+          "additionalProperties": false,
+          "properties": {
+            "herkomst": { "const": "eigen_kroniek" },
+            "chronicle": {
+              "description": "De eigen kroniekstroom waaruit gelezen is.",
+              "type": "string"
+            },
+            "field": {
+              "description": "Het veld in die stroom.",
+              "type": "string"
+            },
+            "op_moment": {
+              "description": "Het moment van de vastlegging waaruit de waarde komt.",
+              "$ref": "#/definitions/date"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["herkomst", "parameter"],
+          "additionalProperties": false,
+          "properties": {
+            "herkomst": { "const": "parameter" },
+            "parameter": {
+              "description": "De gedocumenteerde parameter van het besluit.",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "herkomst",
+            "cell",
+            "competent_authority",
+            "lexostatus",
+            "field",
+            "op_moment",
+            "asked_by",
+            "signature",
+            "contact"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "herkomst": { "const": "geaccepteerd" },
+            "cell": {
+              "description": "De cel die de waarde vaststelt.",
+              "type": "string"
+            },
+            "competent_authority": {
+              "description": "Het bevoegd gezag dat die cel voor de waarde noemt; `null` als er geen is.",
+              "type": ["string", "null"]
+            },
+            "lexostatus": {
+              "description": "De gepubliceerde lexostatus die bevraagd is.",
+              "type": "string"
+            },
+            "field": {
+              "description": "De uitkomst van die lexostatus die de waarde is.",
+              "type": "string"
+            },
+            "op_moment": {
+              "description": "Het moment waarop gevraagd is.",
+              "$ref": "#/definitions/date"
+            },
+            "asked_by": {
+              "description": "De identiteit die vroeg en ondertekende.",
+              "type": "string"
+            },
+            "signature": {
+              "description": "De (gesimuleerde) ondertekening van de vraag.",
+              "type": "string"
+            },
+            "contact": {
+              "description": "Het volgnummer van dit contact binnen het besluit, vanaf 1.",
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["herkomst", "besluit", "zaakkenmerk", "moment"],
+          "additionalProperties": false,
+          "properties": {
+            "herkomst": { "const": "eerder_besluit" },
+            "besluit": {
+              "description": "De besluit-definitie waarvan het eerdere gram teruggelezen is.",
+              "type": "string"
+            },
+            "zaakkenmerk": {
+              "description": "De zaak: altijd die van het lopende besluit.",
+              "type": "string"
+            },
+            "moment": {
+              "description": "Het moment van dat eerdere besluit.",
+              "$ref": "#/definitions/date"
+            }
+          }
+        },
+        {
+          "description": "Een uitkomst van hetzelfde besluit, zoals zijn gram haar vastlegde; alleen in het gram van een latere stage. Een expliciete `null` in het besluit-gram is een waarde, geen onbekend feit.",
+          "type": "object",
+          "required": ["herkomst", "besluit", "besluit_gram", "field"],
+          "additionalProperties": false,
+          "properties": {
+            "herkomst": { "const": "besluit_uitkomst" },
+            "besluit": {
+              "description": "De besluit-definitie waarvan het gram gelezen is.",
+              "type": "string"
+            },
+            "besluit_gram": {
+              "description": "De plek van dat gram in de stroom `beschikkingen`, vanaf nul.",
+              "type": "integer",
+              "minimum": 0
+            },
+            "field": {
+              "description": "De uitkomst die de waarde droeg.",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "description": "Een input van hetzelfde besluit, zoals zijn gram haar vastlegde; alleen in het gram van een latere stage. De herkomst van die input zelf staat in het besluit-gram en wordt hier niet overgeschreven.",
+          "type": "object",
+          "required": ["herkomst", "besluit", "besluit_gram", "field"],
+          "additionalProperties": false,
+          "properties": {
+            "herkomst": { "const": "besluit_input" },
+            "besluit": {
+              "description": "De besluit-definitie waarvan het gram gelezen is.",
+              "type": "string"
+            },
+            "besluit_gram": {
+              "description": "De plek van dat gram in de stroom `beschikkingen`, vanaf nul.",
+              "type": "integer",
+              "minimum": 0
+            },
+            "field": {
+              "description": "De input die de waarde droeg.",
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "lexogram_ref": {
+      "description": "Het artikel van een regeling waaruit iets volgt, in de versie die gold.",
+      "type": "object",
+      "required": ["regulation", "regulation_valid_from", "artikel"],
+      "additionalProperties": false,
+      "properties": {
+        "regulation": {
+          "description": "De `$id` van de regeling.",
+          "type": "string"
+        },
+        "regulation_valid_from": {
+          "description": "De `valid_from` van de versie die gold; `null` als de regeling er geen noemt.",
+          "$ref": "#/definitions/optional_date"
+        },
+        "artikel": {
+          "description": "Het artikelnummer.",
+          "type": "string"
+        }
+      }
+    },
+    "ritme_herkomst": {
+      "description": "Waar het ritme van een verplichting vandaan kwam: uit het lexogram (het artikel zelf, of een uitkomst van een ander artikel), of uit een instelling van het wereldbestand. Dat laatste is geen recht.",
+      "type": "object",
+      "required": ["herkomst"],
+      "properties": {
+        "herkomst": { "enum": ["lexogram", "wereldbestand"] }
+      },
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["herkomst", "regulation", "regulation_valid_from", "artikel"],
+          "additionalProperties": false,
+          "properties": {
+            "herkomst": { "const": "lexogram" },
+            "regulation": { "type": "string" },
+            "regulation_valid_from": { "$ref": "#/definitions/optional_date" },
+            "artikel": { "type": "string" },
+            "uitkomst": {
+              "description": "De uitkomst die het ritme leverde; afwezig bij een letterlijk ritme.",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["herkomst", "instelling"],
+          "additionalProperties": false,
+          "properties": {
+            "herkomst": { "const": "wereldbestand" },
+            "instelling": {
+              "description": "De naam van de instelling in het wereldbestand.",
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "obligation_kind": {
+      "description": "De soort verplichting: een betaling, of haar spiegelbeeld bij een negatief bedrag (Awb 4:57).",
+      "enum": ["betaling", "terugvordering"]
+    },
+    "schedule": {
+      "description": "Het ritme waarin de termijnen vervallen.",
+      "enum": ["ineens", "kwartaal", "maand"]
+    },
+    "termijn": {
+      "description": "Eén termijn van het betalingsschema dat uit een besluit volgt.",
+      "type": "object",
+      "required": [
+        "vervaldatum",
+        "bedrag",
+        "volgnummer",
+        "soort",
+        "schuldenaar",
+        "schuldeiser",
+        "betaler",
+        "schedule",
+        "ritme_herkomst",
+        "grondslag",
+        "lexogram"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "vervaldatum": {
+          "description": "De dag waarop de termijn vervalt.",
+          "$ref": "#/definitions/date"
+        },
+        "oorspronkelijke_vervaldatum": {
+          "description": "Alleen bij een ingehaalde termijn: de dag uit het schema, die vóór het moment lag waarop er betaald kón worden.",
+          "$ref": "#/definitions/date"
+        },
+        "bedrag": {
+          "description": "Het bedrag van deze termijn.",
+          "type": "number"
+        },
+        "volgnummer": {
+          "description": "Het nummer van deze termijn binnen de verplichting, vanaf 1.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "soort": { "$ref": "#/definitions/obligation_kind" },
+        "schuldenaar": {
+          "description": "De partij die moet nakomen: een naam uit het recht, geen cel.",
+          "type": "string"
+        },
+        "schuldeiser": {
+          "description": "De partij aan wie nagekomen moet worden.",
+          "type": "string"
+        },
+        "betaler": {
+          "description": "De cel die namens de schuldenaar nakomt, uit het wereldbestand (`komt_na`); `null` als deze wereld er geen kent.",
+          "type": ["string", "null"]
+        },
+        "schedule": { "$ref": "#/definitions/schedule" },
+        "ritme_herkomst": { "$ref": "#/definitions/ritme_herkomst" },
+        "grondslag": {
+          "description": "Waarop de verplichting berust, in de woorden van het lexogram.",
+          "type": "string"
+        },
+        "lexogram": { "$ref": "#/definitions/lexogram_ref" }
+      }
+    },
+    "wachtende_verplichting": {
+      "description": "Een verplichting die op de bekendmaking wacht (`vanaf: bekendmaking`): alles staat vast behalve de vervaldatum.",
+      "type": "object",
+      "required": [
+        "soort",
+        "schuldenaar",
+        "schuldeiser",
+        "betaler",
+        "bedrag",
+        "schedule",
+        "ritme_herkomst",
+        "volgnummer",
+        "termijnen",
+        "grondslag",
+        "lexogram",
+        "vervaldatum_uit"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "soort": { "$ref": "#/definitions/obligation_kind" },
+        "schuldenaar": { "type": "string" },
+        "schuldeiser": { "type": "string" },
+        "betaler": { "type": ["string", "null"] },
+        "bedrag": { "type": "number" },
+        "schedule": { "$ref": "#/definitions/schedule" },
+        "ritme_herkomst": { "$ref": "#/definitions/ritme_herkomst" },
+        "volgnummer": {
+          "description": "Het volgnummer van de eerste termijn.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "termijnen": {
+          "description": "Het aantal termijnen.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "grondslag": { "type": "string" },
+        "lexogram": { "$ref": "#/definitions/lexogram_ref" },
+        "vervaldatum_uit": {
+          "description": "De uitkomst van de bekendmaking die de eerste vervaldag levert.",
+          "type": "string"
+        }
+      }
+    },
+    "niets_te_betalen": {
+      "description": "Een verplichting waarvan het bedrag op precies nul uitkwam: opgelegd, maar zonder termijnen.",
+      "type": "object",
+      "required": [
+        "soort",
+        "schuldenaar",
+        "schuldeiser",
+        "bedrag",
+        "schedule",
+        "ritme_herkomst",
+        "grondslag",
+        "lexogram"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "soort": { "$ref": "#/definitions/obligation_kind" },
+        "schuldenaar": { "type": "string" },
+        "schuldeiser": { "type": "string" },
+        "bedrag": { "const": 0 },
+        "schedule": { "$ref": "#/definitions/schedule" },
+        "ritme_herkomst": { "$ref": "#/definitions/ritme_herkomst" },
+        "grondslag": { "type": "string" },
+        "lexogram": { "$ref": "#/definitions/lexogram_ref" }
+      }
+    },
+    "hook_niet_uitgevoerd": {
+      "description": "Een hook die op dit gram vuurde maar niet draaide, omdat een input die hij nodig heeft er niet was.",
+      "type": "object",
+      "required": ["lexogram", "hook_point", "ontbrekende_input"],
+      "additionalProperties": false,
+      "properties": {
+        "lexogram": { "$ref": "#/definitions/lexogram_ref" },
+        "hook_point": {
+          "description": "Het punt in de uitvoering waarop de hook vuurde.",
+          "type": "string"
+        },
+        "ontbrekende_input": {
+          "description": "De input die er niet was.",
+          "type": "string"
+        }
+      }
+    },
+    "besluit_field": {
+      "description": "Een vast veld van een decretogram uit het besluit-pad: de herkomst is altijd `besluit`.",
+      "type": "object",
+      "required": ["value", "origin"],
+      "properties": {
+        "origin": {
+          "type": "object",
+          "required": ["herkomst"],
+          "properties": { "herkomst": { "const": "besluit" } }
+        }
+      }
+    },
+    "decretogram": {
+      "description": "Een besluit dat de cel zelf nam en in haar kroniek `beschikkingen` legde (RFC-022 §1.2). Een gram uit het besluit-pad draagt `stage` met herkomst `besluit`, en daarmee de vaste velden van die stage. Een cel zonder engine (een bron-cel) kan ook een eigen vaststelling als decretogram vastleggen; dat gram draagt alleen zijn eigen velden, met herkomst `recorded`.",
+      "properties": {
+        "intake": { "const": "eigen_besluit" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "$ref": "#/definitions/stage_is_besluit"
+          },
+          "then": {
+            "$ref": "#/definitions/decretogram_besluit"
+          }
+        },
+        {
+          "if": {
+            "$ref": "#/definitions/stage_is_bekendmaking"
+          },
+          "then": {
+            "$ref": "#/definitions/decretogram_bekendmaking"
+          }
+        }
+      ]
+    },
+    "stage_is_besluit": {
+      "required": ["fields"],
+      "properties": {
+        "fields": {
+          "required": ["stage"],
+          "properties": {
+            "stage": {
+              "required": ["value", "origin"],
+              "properties": {
+                "value": { "const": "BESLUIT" },
+                "origin": {
+                  "required": ["herkomst"],
+                  "properties": { "herkomst": { "const": "besluit" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "stage_is_bekendmaking": {
+      "required": ["fields"],
+      "properties": {
+        "fields": {
+          "required": ["stage"],
+          "properties": {
+            "stage": {
+              "required": ["value", "origin"],
+              "properties": {
+                "value": { "const": "BEKENDMAKING" },
+                "origin": {
+                  "required": ["herkomst"],
+                  "properties": { "herkomst": { "const": "besluit" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "besluit_path_origins": {
+      "description": "In een gram uit het besluit-pad komt elke waarde van het besluit zelf: een vast veld, een uitkomst van de regeling of een input met haar vastgelegde herkomst. Niets is er door de cel als los feit vastgelegd.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "origin": {
+            "type": "object",
+            "properties": {
+              "herkomst": { "enum": ["besluit", "computed", "besluit_input"] }
+            }
+          }
+        }
+      }
+    },
+    "decretogram_besluit": {
+      "description": "Het decretogram van de stage BESLUIT: het besluit zelf. Dit is het RFC-013 Execution Receipt plus wat dat receipt niet kan weten; de uitkomsten van de regeling staan ernaast als velden met herkomst `computed`, de inputs als velden met herkomst `besluit_input`.",
+      "properties": {
+        "fields": {
+          "allOf": [{ "$ref": "#/definitions/besluit_path_origins" }],
+          "required": [
+            "zaakkenmerk",
+            "besluit",
+            "stage",
+            "regulation",
+            "regulation_valid_from",
+            "executed_regulations",
+            "competent_authority",
+            "besloten_door",
+            "legal_character",
+            "decision_type",
+            "afwijzingsgrond",
+            "hook_niet_uitgevoerd",
+            "obligations",
+            "wacht_op_bekendmaking",
+            "niets_te_betalen",
+            "chronicle_sources"
+          ],
+          "properties": {
+            "zaakkenmerk": {
+              "description": "Waaronder deze zaak terug te vinden is, ingevuld uit het sjabloon van de besluit-definitie. De stage-grammen van één besluit delen het (RFC-022 §1.2).",
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": { "value": { "type": "string", "minLength": 1 } }
+            },
+            "besluit": {
+              "description": "De naam van de besluit-definitie die dit gram voortbracht.",
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": { "value": { "type": "string", "minLength": 1 } }
+            },
+            "stage": {
+              "description": "De stap van de procedure waarin dit gram ontstond (RFC-008): het besluit zelf.",
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": { "value": { "const": "BESLUIT" } }
+            },
+            "regulation": {
+              "description": "De `$id` van de regeling die het besluit is.",
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": { "value": { "type": "string", "minLength": 1 } }
+            },
+            "regulation_valid_from": {
+              "description": "Welke versie van die regeling gold op `op_moment`; `null` als de versie geen datum draagt.",
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": { "value": { "$ref": "#/definitions/optional_date" } }
+            },
+            "executed_regulations": {
+              "description": "Alle regelingen die deze uitvoering aanriep, elk met de versie die gold; die van het besluit vooraan.",
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": {
+                "value": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "object",
+                    "required": ["regulation", "regulation_valid_from"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "regulation": { "type": "string" },
+                      "regulation_valid_from": { "$ref": "#/definitions/optional_date" }
+                    }
+                  }
+                }
+              }
+            },
+            "competent_authority": {
+              "description": "Het bevoegd gezag dat de regeling noemt (RFC-002): dat van het artikel dat de aansturende uitkomst voortbrengt, anders dat van het document; `null` als ze er geen noemt.",
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": { "value": { "type": ["string", "null"] } }
+            },
+            "besloten_door": {
+              "description": "De identiteit van de cel die besloot.",
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": { "value": { "type": "string" } }
+            },
+            "legal_character": {
+              "description": "Altijd `BESCHIKKING`: dat is wat een decretogram is (RFC-022 §1.2).",
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": { "value": { "const": "BESCHIKKING" } }
+            },
+            "decision_type": {
+              "description": "Wélk besluit dit is: `AFWIJZING` zodra een afwijzingsvoorwaarde vervuld was, anders wat het uitvoerende artikel aanwijst; `null` als de regeling zwijgt. Een open vocabulaire (RFC-022 §1.2).",
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": { "value": { "type": ["string", "null"] } }
+            },
+            "afwijzingsgrond": {
+              "description": "De vervulde afwijzingsvoorwaarden; leeg bij elk besluit dat niet afwees.",
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": {
+                "value": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["output", "value", "article"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "output": {
+                        "description": "De uitkomst die de voorwaarde vervulde.",
+                        "type": "string"
+                      },
+                      "value": {
+                        "description": "De waarde die tot afwijzing leidde.",
+                        "type": "boolean"
+                      },
+                      "article": {
+                        "description": "Het artikel dat de uitkomst voortbrengt; `null` als er geen te vinden was.",
+                        "type": ["string", "null"]
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "hook_niet_uitgevoerd": {
+              "description": "De hooks die op dit besluit vuurden maar niet draaiden; leeg als elke hook draaide.",
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": {
+                "value": {
+                  "type": "array",
+                  "items": { "$ref": "#/definitions/hook_niet_uitgevoerd" }
+                }
+              }
+            },
+            "obligations": {
+              "description": "Het betalingsschema dat uit dit besluit volgt, per termijn. Leeg bij een afwijzing.",
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": {
+                "value": {
+                  "type": "array",
+                  "items": { "$ref": "#/definitions/termijn" }
+                }
+              }
+            },
+            "wacht_op_bekendmaking": {
+              "description": "De verplichtingen die pas bij de bekendmaking gaan lopen; leeg als de termijnen meteen vervielen.",
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": {
+                "value": {
+                  "type": "array",
+                  "items": { "$ref": "#/definitions/wachtende_verplichting" }
+                }
+              }
+            },
+            "niets_te_betalen": {
+              "description": "De verplichtingen waarvan het bedrag op nul uitkwam.",
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": {
+                "value": {
+                  "type": "array",
+                  "items": { "$ref": "#/definitions/niets_te_betalen" }
+                }
+              }
+            },
+            "chronicle_sources": {
+              "description": "De eigen kronieken die als databron klaarstonden, elk met haar stand op het moment van het besluit (RFC-022 §1.3): aantal grammen en een hash erover.",
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": {
+                "value": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["chronicle", "op_moment", "grams", "content_hash"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "chronicle": {
+                        "description": "De eigen stroom.",
+                        "type": "string"
+                      },
+                      "op_moment": {
+                        "description": "Het moment waarop de stand genomen is: het moment van het besluit.",
+                        "$ref": "#/definitions/date"
+                      },
+                      "grams": {
+                        "description": "Hoeveel grammen er toen in de stroom lagen; ook een lege stroom staat erin.",
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "content_hash": {
+                        "description": "Een hash over die grammen, in de volgorde van de tijdas.",
+                        "type": "string",
+                        "pattern": "^sha256:[0-9a-f]{64}$"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "decretogram_bekendmaking": {
+      "description": "Het decretogram van de stage BEKENDMAKING (Awb 3:40 jo. 3:41): een eigen elementair gram op hetzelfde zaakkenmerk als het besluit, met wat de wet bij deze stage toevoegt.",
+      "properties": {
+        "name": {
+          "pattern": "_bekendmaking$"
+        },
+        "fields": {
+          "allOf": [{ "$ref": "#/definitions/besluit_path_origins" }],
+          "required": [
+            "zaakkenmerk",
+            "besluit",
+            "stage",
+            "besluit_op_moment",
+            "besluit_gram",
+            "regulation",
+            "regulation_valid_from",
+            "competent_authority",
+            "bekendgemaakt_door",
+            "legal_character",
+            "decision_type",
+            "hooks",
+            "stage_uitkomsten",
+            "stage_uitkomst_niet_geleverd",
+            "hook_niet_uitgevoerd",
+            "obligations",
+            "termijnen_vervallen_door"
+          ],
+          "properties": {
+            "zaakkenmerk": {
+              "description": "Dezelfde zaak als het besluit dat bekendgemaakt wordt.",
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": { "value": { "type": "string", "minLength": 1 } }
+            },
+            "besluit": {
+              "description": "De besluit-definitie waarvan het besluit bekendgemaakt wordt.",
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": { "value": { "type": "string", "minLength": 1 } }
+            },
+            "stage": {
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": { "value": { "const": "BEKENDMAKING" } }
+            },
+            "besluit_op_moment": {
+              "description": "Het moment van het besluit dat bekendgemaakt wordt.",
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": { "value": { "$ref": "#/definitions/date" } }
+            },
+            "besluit_gram": {
+              "description": "De plek van dat besluit in de stroom `beschikkingen`, vanaf nul.",
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": { "value": { "type": "integer", "minimum": 0 } }
+            },
+            "regulation": {
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": { "value": { "type": "string" } }
+            },
+            "regulation_valid_from": {
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": { "value": { "$ref": "#/definitions/optional_date" } }
+            },
+            "competent_authority": {
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": { "value": { "type": ["string", "null"] } }
+            },
+            "bekendgemaakt_door": {
+              "description": "De identiteit van de cel die bekendmaakte.",
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": { "value": { "type": "string" } }
+            },
+            "legal_character": {
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": { "value": { "const": "BESCHIKKING" } }
+            },
+            "decision_type": {
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": { "value": { "type": ["string", "null"] } }
+            },
+            "hooks": {
+              "description": "Per uitkomst die een hook bij deze stage leverde: het lexogram dat haar voortbracht.",
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": {
+                "value": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["veld", "lexogram", "hook_point"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "veld": { "type": "string" },
+                      "lexogram": { "$ref": "#/definitions/lexogram_ref" },
+                      "hook_point": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            },
+            "stage_uitkomsten": {
+              "description": "Per uitkomst die de eigen regeling bij deze stage oplevert: het lexogram dat haar voortbracht.",
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": {
+                "value": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["veld", "lexogram"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "veld": { "type": "string" },
+                      "lexogram": { "$ref": "#/definitions/lexogram_ref" }
+                    }
+                  }
+                }
+              }
+            },
+            "stage_uitkomst_niet_geleverd": {
+              "description": "De uitkomsten die de eigen regeling voor deze stage declareert maar niet opleverde.",
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": {
+                "value": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["uitkomst", "lexogram", "reden"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "uitkomst": { "type": "string" },
+                      "lexogram": { "$ref": "#/definitions/lexogram_ref" },
+                      "reden": { "type": ["string", "null"] }
+                    }
+                  }
+                }
+              }
+            },
+            "hook_niet_uitgevoerd": {
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": {
+                "value": {
+                  "type": "array",
+                  "items": { "$ref": "#/definitions/hook_niet_uitgevoerd" }
+                }
+              }
+            },
+            "obligations": {
+              "description": "De termijnen die bij de bekendmaking ingeroosterd zijn.",
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": {
+                "value": {
+                  "type": "array",
+                  "items": { "$ref": "#/definitions/termijn" }
+                }
+              }
+            },
+            "termijnen_vervallen_door": {
+              "description": "Het besluit dat in de plaats kwam vóór de bekendmaking, waardoor er niets meer in te roosteren viel; `null` als dat niet speelde.",
+              "allOf": [{ "$ref": "#/definitions/besluit_field" }],
+              "properties": {
+                "value": {
+                  "anyOf": [
+                    { "type": "null" },
+                    {
+                      "type": "object",
+                      "required": ["besluit", "op_moment", "grondslag"],
+                      "additionalProperties": false,
+                      "properties": {
+                        "besluit": { "type": "string" },
+                        "op_moment": { "$ref": "#/definitions/date" },
+                        "grondslag": { "type": "string" }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "executogram": {
+      "description": "Een feit dat de cel overkwam: een aanvraag, een levering of een betaling (RFC-022 §1.3). Elk veld is door de cel zelf vastgelegd. Wat een gebeurtenis van een bepaalde naam minstens draagt, zegt het gebeurtenisschema van haar stroom (`chronicle.json`); hier staat de vorm die voor elk executogram geldt, plus die van de betaling die het platform zelf vastlegt.",
+      "properties": {
+        "intake": { "enum": ["aanvraag", "levering", "betaling"] },
+        "fields": {
+          "additionalProperties": {
+            "properties": {
+              "origin": {
+                "properties": { "herkomst": { "const": "recorded" } }
+              }
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "name": { "pattern": "^(betaling|terugvordering)_(gedaan|gemeld)$" }
+            }
+          },
+          "then": {
+            "$ref": "#/definitions/executogram_betaling"
+          }
+        }
+      ]
+    },
+    "executogram_betaling": {
+      "description": "De nakoming van één termijn uit een besluit: `<soort>_gedaan` in de kroniek `betalingen` van de cel die betaalde (kanaal `betaling`), `<soort>_gemeld` in die van de cel die besloot (kanaal `levering`). Draagt de verwijzing naar het besluit waaruit de termijn volgt en het volgnummer van de termijn.",
+      "properties": {
+        "fields": {
+          "required": [
+            "zaakkenmerk",
+            "bedrag",
+            "volgnummer",
+            "besluit",
+            "schuldenaar",
+            "schuldeiser"
+          ],
+          "properties": {
+            "zaakkenmerk": {
+              "description": "De zaak van het besluit; de sleutel van de stroom `betalingen`.",
+              "properties": { "value": { "type": "string", "minLength": 1 } }
+            },
+            "bedrag": {
+              "description": "Het bedrag van de termijn.",
+              "properties": { "value": { "type": "number" } }
+            },
+            "volgnummer": {
+              "description": "Het nummer van de termijn binnen de verplichting, vanaf 1.",
+              "properties": { "value": { "type": "integer", "minimum": 1 } }
+            },
+            "soort": {
+              "description": "De soort verplichting.",
+              "properties": { "value": { "$ref": "#/definitions/obligation_kind" } }
+            },
+            "besluit": {
+              "description": "De besluit-definitie waaruit de termijn volgt.",
+              "properties": { "value": { "type": "string", "minLength": 1 } }
+            },
+            "besluit_cel": {
+              "description": "De cel die het besluit nam.",
+              "properties": { "value": { "type": "string", "minLength": 1 } }
+            },
+            "besluit_kroniek": {
+              "description": "De kroniek waarin het decretogram van het besluit ligt: altijd `beschikkingen`.",
+              "properties": { "value": { "const": "beschikkingen" } }
+            },
+            "besluit_gram": {
+              "description": "De plek van dat decretogram in die kroniek, vanaf nul. Samen met `besluit_cel` en `besluit_kroniek` de volledige verwijzing `<cel>|<kroniek>|<plek>` naar het besluit, en daarmee naar zijn receipt.",
+              "properties": { "value": { "type": "integer", "minimum": 0 } }
+            },
+            "besluit_op_moment": {
+              "description": "Het moment van het besluit.",
+              "properties": { "value": { "$ref": "#/definitions/date" } }
+            },
+            "schuldenaar": {
+              "description": "De partij die nakwam.",
+              "properties": { "value": { "type": "string" } }
+            },
+            "schuldeiser": {
+              "description": "De partij aan wie nagekomen is.",
+              "properties": { "value": { "type": "string" } }
+            }
+          },
+          "dependencies": {
+            "besluit_cel": ["besluit_kroniek", "besluit_gram"],
+            "besluit_kroniek": ["besluit_cel", "besluit_gram"],
+            "besluit_gram": ["besluit_cel", "besluit_kroniek"]
+          }
+        }
+      }
+    },
+    "lexogram": {
+      "description": "Het recht zelf: een versie van een regeling (RFC-022 §1.1). Generiek en compile-time, van geen cel in het bijzonder, en daarom in geen enkele kroniek te vinden: de inhoud is het regelingsbestand onder `corpus/regulation/`, gevalideerd door `schema.json`. De variant staat hier zodat één vocabulaire alle drie de grammen dekt."
+    }
+  }
+}

@@ -1,0 +1,640 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/world-snapshot.json",
+  "title": "Beeld van de wereld v0.6.0",
+  "description": "Het antwoord van `GET /api/world` van de chronolexografie-testopstelling (RFC-022): één doorsnede van alles wat er in een gesimuleerde wereld staat. Waar de klok staat, welke instellingen gelden en welke vastliggen, wat er per cel in welke kroniek ligt, welke acties er nu kunnen, wat er over een celgrens ging, welke termijnen verstreken, en het journaal. Casus-onwetend: elke naam komt uit het wereldbestand. Passief en deterministisch: het receipt van een decretogram staat er met opzet niet in.",
+  "type": "object",
+  "required": [
+    "clock",
+    "settings",
+    "locked_settings",
+    "cells",
+    "actions",
+    "crossings",
+    "warnings",
+    "journal",
+    "persona"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "clock": {
+      "description": "Waar de logische klok staat.",
+      "$ref": "gram.json#/definitions/date"
+    },
+    "settings": {
+      "description": "De instellingen van deze wereld: casusdata die geen wet is, bijvoorbeeld een betalingsritme.",
+      "type": "object"
+    },
+    "locked_settings": {
+      "description": "De instellingen die een besluit al gebruikte en die daarmee vast staan, met de cel en het besluit.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["cell", "besluit"],
+        "additionalProperties": false,
+        "properties": {
+          "cell": { "type": "string" },
+          "besluit": { "type": "string" }
+        }
+      }
+    },
+    "cells": {
+      "description": "De cellen, met wat ze publiceren, wat ze kunnen besluiten en hun kronieken.",
+      "type": "array",
+      "items": { "$ref": "#/definitions/cell" }
+    },
+    "actions": {
+      "description": "Elke actie uit het wereldbestand, met haar formulier en of ze nu kan.",
+      "type": "array",
+      "items": { "$ref": "#/definitions/action" }
+    },
+    "crossings": {
+      "description": "Elk contact over een celgrens, in volgorde: het materiaal van het observatielog, een meetinstrument buiten de band en geen onderdeel van de opstelling.",
+      "type": "array",
+      "items": { "$ref": "#/definitions/crossing" }
+    },
+    "warnings": {
+      "description": "Wat de wereld meldt zonder te blokkeren: gemiste termijnen, regelingen zonder bevoegd gezag, hooks zonder hun input.",
+      "type": "array",
+      "items": { "$ref": "#/definitions/warning" }
+    },
+    "journal": {
+      "description": "Het journaal: één regel per gebeurtenis tot en met de klok, in volgorde van ontstaan.",
+      "type": "array",
+      "items": { "$ref": "#/definitions/journal_entry" }
+    },
+    "persona": {
+      "description": "De persona die in het portaal gekozen is; `null` zolang er niemand gekozen is.",
+      "type": ["string", "null"]
+    }
+  },
+  "definitions": {
+    "parameter_type": {
+      "description": "Het type van een gedocumenteerde waarde.",
+      "enum": ["string", "number", "amount", "boolean", "date"]
+    },
+    "documented_parameter": {
+      "description": "Een gedocumenteerde parameter of formulierveld: naam en type.",
+      "type": "object",
+      "required": ["name", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "type": { "$ref": "#/definitions/parameter_type" }
+      }
+    },
+    "cell": {
+      "type": "object",
+      "required": ["id", "laws", "lexostatussen", "besluiten", "chronicles"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Het cel-id.",
+          "type": "string",
+          "minLength": 1
+        },
+        "laws": {
+          "description": "De regelingen die de cel laadt, bij `$id`. Leeg is een bron-cel: ze legt vast en reduceert zonder engine.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "lexostatussen": {
+          "description": "Wat de cel publiceert, zoals ze het documenteert.",
+          "type": "array",
+          "items": { "$ref": "#/definitions/lexostatus_definition" }
+        },
+        "besluiten": {
+          "description": "De besluiten die de cel kan nemen, zoals ze ze documenteert.",
+          "type": "array",
+          "items": { "$ref": "#/definitions/besluit_definition" }
+        },
+        "chronicles": {
+          "description": "De kronieken van de cel, met elk gram dat erin ligt.",
+          "type": "array",
+          "items": { "$ref": "#/definitions/chronicle" }
+        }
+      }
+    },
+    "lexostatus_definition": {
+      "description": "Eén gepubliceerde lexostatus: de belofte, niet het antwoord.",
+      "type": "object",
+      "required": ["name", "doc", "inputs", "outputs", "key"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "doc": { "type": ["string", "null"] },
+        "inputs": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/documented_parameter" }
+        },
+        "outputs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "key": {
+          "description": "De stroom en het sleutelveld waarop de reductie groepeert; `null` bij de wetsvorm.",
+          "anyOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["chronicle", "parameter"],
+              "additionalProperties": false,
+              "properties": {
+                "chronicle": { "type": "string" },
+                "parameter": { "type": "string" }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "besluit_definition": {
+      "description": "Eén besluit dat de cel kan nemen, met het schema van het decretogram dat het voortbrengt.",
+      "type": "object",
+      "required": ["name", "doc", "zaakkenmerk", "chronicle", "outputs", "schema"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "doc": { "type": ["string", "null"] },
+        "zaakkenmerk": {
+          "description": "Het zaakkenmerk als sjabloon, met `{parameter}`-verwijzingen.",
+          "type": "string"
+        },
+        "chronicle": {
+          "description": "De stroom waarin de decretogrammen landen: altijd `beschikkingen`.",
+          "const": "beschikkingen"
+        },
+        "outputs": {
+          "description": "De uitkomsten die het besluit vastlegt.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "schema": {
+          "description": "Per veld van het decretogram het type en wie het declareert.",
+          "type": "array",
+          "items": { "$ref": "#/definitions/decretogram_field" }
+        }
+      }
+    },
+    "decretogram_field": {
+      "type": "object",
+      "required": ["name", "herkomst", "gat"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "unit": { "type": "string" },
+        "herkomst": {
+          "description": "Wie het veld declareert: de wet, beleid, het wereldbestand of het platform.",
+          "enum": ["lexogram", "beleid", "wereldbestand", "platform"]
+        },
+        "gat": {
+          "description": "Of dit veld een gat is: iets dat uit de wet had moeten volgen en uit het wereldbestand komt.",
+          "type": "boolean"
+        },
+        "lexogram": {
+          "type": "object",
+          "required": ["regulation", "valid_from", "article", "regulatory_layer"],
+          "additionalProperties": false,
+          "properties": {
+            "regulation": { "type": "string" },
+            "valid_from": { "$ref": "gram.json#/definitions/optional_date" },
+            "article": { "type": ["string", "null"] },
+            "regulatory_layer": { "type": "string" }
+          }
+        },
+        "toelichting": { "type": "string" }
+      }
+    },
+    "chronicle": {
+      "description": "Eén kroniekstroom met haar gebeurtenisschema en haar grammen.",
+      "type": "object",
+      "required": ["stream", "key", "gebeurtenissen", "grams"],
+      "additionalProperties": false,
+      "properties": {
+        "stream": { "type": "string" },
+        "key": { "type": "string" },
+        "gebeurtenissen": {
+          "description": "Het gebeurtenisschema van de stroom; leeg als ze er geen declareert.",
+          "type": "array",
+          "items": { "$ref": "chronicle.json#/definitions/gebeurtenis" }
+        },
+        "grams": {
+          "description": "De grammen, in de volgorde waarin ze vastgelegd zijn.",
+          "type": "array",
+          "items": {
+            "allOf": [
+              { "$ref": "gram.json" },
+              { "properties": { "kind": { "$ref": "#/definitions/kroniek_kind" } } }
+            ]
+          }
+        }
+      }
+    },
+    "action": {
+      "type": "object",
+      "required": [
+        "id",
+        "actor",
+        "label",
+        "doc",
+        "effect",
+        "form",
+        "prefill",
+        "available",
+        "unavailable_reason"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "actor": { "type": "string" },
+        "label": { "type": "string" },
+        "doc": { "type": ["string", "null"] },
+        "effect": {
+          "type": "object",
+          "required": ["soort", "cell"],
+          "properties": {
+            "soort": { "enum": ["records", "decides", "publishes"] }
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["soort", "cell", "chronicle", "name", "delivers_to"],
+              "additionalProperties": false,
+              "properties": {
+                "soort": { "const": "records" },
+                "cell": { "type": "string" },
+                "chronicle": { "type": "string" },
+                "name": { "type": "string" },
+                "delivers_to": { "type": ["string", "null"] }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["soort", "cell", "besluit"],
+              "additionalProperties": false,
+              "properties": {
+                "soort": { "enum": ["decides", "publishes"] },
+                "cell": { "type": "string" },
+                "besluit": { "type": "string" }
+              }
+            }
+          ]
+        },
+        "form": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/documented_parameter" }
+        },
+        "prefill": {
+          "description": "De voorinvulling per formulierveld, opgelost op de stand van de klok. Een voorstel, geen feit.",
+          "type": "object"
+        },
+        "available": { "type": "boolean" },
+        "unavailable_reason": { "type": ["string", "null"] }
+      }
+    },
+    "crossing": {
+      "description": "Eén contact over een celgrens.",
+      "type": "object",
+      "required": ["asked_by", "signature", "params", "answer"],
+      "additionalProperties": false,
+      "properties": {
+        "asked_by": { "type": "string" },
+        "signature": { "type": "string" },
+        "params": { "type": "object" },
+        "answer": { "$ref": "#/definitions/lexostatus" }
+      }
+    },
+    "lexostatus": {
+      "description": "Het antwoord van een cel op een lexostatus-vraag, met hoe het tot stand kwam.",
+      "type": "object",
+      "required": ["cell", "name", "op_moment", "outcome", "reductie"],
+      "additionalProperties": false,
+      "properties": {
+        "cell": { "type": "string" },
+        "name": { "type": "string" },
+        "op_moment": { "$ref": "gram.json#/definitions/date" },
+        "outcome": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["established"],
+              "additionalProperties": false,
+              "properties": {
+                "established": { "type": "object" }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["not_established"],
+              "additionalProperties": false,
+              "properties": {
+                "not_established": {
+                  "type": "object",
+                  "required": ["reason"],
+                  "additionalProperties": false,
+                  "properties": { "reason": { "type": "string" } }
+                }
+              }
+            }
+          ]
+        },
+        "reductie": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/definitions/reductie" }]
+        }
+      }
+    },
+    "reductie": {
+      "description": "Welke reductie er liep en welke grammen ze las.",
+      "type": "object",
+      "required": ["vorm", "grammen"],
+      "additionalProperties": false,
+      "properties": {
+        "vorm": {
+          "type": "object",
+          "required": ["soort"],
+          "properties": {
+            "soort": { "enum": ["kroniekfilter", "wetsvorm", "openstaand"] }
+          }
+        },
+        "grammen": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "cell",
+              "chronicle",
+              "id",
+              "kind",
+              "name",
+              "volgnummer",
+              "op_moment",
+              "regulation_valid_from",
+              "bijdrage"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "cell": { "type": "string" },
+              "chronicle": { "type": "string" },
+              "id": { "$ref": "#/definitions/gram_id" },
+              "kind": { "$ref": "#/definitions/kroniek_kind" },
+              "name": { "type": "string" },
+              "volgnummer": { "type": "integer", "minimum": 0 },
+              "op_moment": { "$ref": "gram.json#/definitions/date" },
+              "regulation_valid_from": { "type": ["string", "null"] },
+              "bijdrage": {}
+            }
+          }
+        },
+        "gemist": {
+          "type": "object",
+          "required": ["in_de_stroom", "na_het_moment", "andere_sleutel", "buiten_de_voorwaarden"],
+          "additionalProperties": false,
+          "properties": {
+            "in_de_stroom": { "type": "integer", "minimum": 0 },
+            "na_het_moment": { "type": "integer", "minimum": 0 },
+            "andere_sleutel": { "type": "integer", "minimum": 0 },
+            "buiten_de_voorwaarden": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "kroniek_kind": {
+      "description": "De soort van een gram dat in een kroniek ligt: een decretogram of een executogram. De derde soort uit `gram.json`, het lexogram, is de regeling zelf en ligt in geen enkele kroniek (RFC-022 §1.1); een beeld dat er een in een kroniek toont, klopt niet.",
+      "enum": ["decretogram", "executogram"]
+    },
+    "gram_id": {
+      "description": "Waaronder een gram in dit beeld terug te vinden is: `<cel>|<kroniek>|<plek in de kroniek>`, de plek vanaf nul.",
+      "type": "string",
+      "pattern": "^[^|]+\\|[^|]+\\|[0-9]+$"
+    },
+    "gram_ref": {
+      "description": "Een verwijzing naar een gram in een kroniek.",
+      "type": "object",
+      "required": ["cell", "chronicle", "id", "kind", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "cell": { "type": "string" },
+        "chronicle": { "type": "string" },
+        "id": { "$ref": "#/definitions/gram_id" },
+        "kind": { "$ref": "#/definitions/kroniek_kind" },
+        "name": { "type": "string" }
+      }
+    },
+    "warning": {
+      "type": "object",
+      "required": ["soort", "at", "cell"],
+      "properties": {
+        "soort": { "enum": ["gemiste_termijn", "hook_zonder_input", "geen_bevoegd_gezag"] }
+      },
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["soort", "label", "at", "cell", "chronicle", "name"],
+          "additionalProperties": false,
+          "properties": {
+            "soort": { "const": "gemiste_termijn" },
+            "label": { "type": "string" },
+            "at": { "$ref": "gram.json#/definitions/date" },
+            "cell": { "type": "string" },
+            "chronicle": { "type": "string" },
+            "name": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["soort", "at", "cell", "besluit", "stage", "regulation", "article", "input"],
+          "additionalProperties": false,
+          "properties": {
+            "soort": { "const": "hook_zonder_input" },
+            "at": { "$ref": "gram.json#/definitions/date" },
+            "cell": { "type": "string" },
+            "besluit": { "type": "string" },
+            "stage": { "type": "string" },
+            "regulation": { "type": "string" },
+            "article": { "type": "string" },
+            "input": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["soort", "at", "cell", "besluit", "regulation"],
+          "additionalProperties": false,
+          "properties": {
+            "soort": { "const": "geen_bevoegd_gezag" },
+            "at": { "$ref": "gram.json#/definitions/date" },
+            "cell": { "type": "string" },
+            "besluit": { "type": "string" },
+            "regulation": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "journal_entry": {
+      "description": "Eén regel van het journaal: wie deed wat, welke grammen ontstonden, en wat er aan de stand van de zaak veranderde.",
+      "type": "object",
+      "required": [
+        "seq",
+        "moment",
+        "actor",
+        "kind",
+        "description",
+        "grams",
+        "changes",
+        "accepted",
+        "executed",
+        "question",
+        "parent"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "seq": { "type": "integer", "minimum": 0 },
+        "moment": { "$ref": "gram.json#/definitions/date" },
+        "actor": {
+          "type": "object",
+          "required": ["soort"],
+          "properties": {
+            "soort": { "enum": ["actor", "cell", "klok"] }
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["soort", "id"],
+              "additionalProperties": false,
+              "properties": {
+                "soort": { "enum": ["actor", "cell"] },
+                "id": { "type": "string" }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["soort"],
+              "additionalProperties": false,
+              "properties": {
+                "soort": { "const": "klok" }
+              }
+            }
+          ]
+        },
+        "kind": {
+          "enum": [
+            "vastlegging",
+            "besluit",
+            "bekendmaking",
+            "betaling",
+            "niet_nagekomen",
+            "termijn",
+            "hook_niet_uitgevoerd",
+            "stage_uitkomst_niet_geleverd",
+            "vraag"
+          ]
+        },
+        "description": { "type": "string" },
+        "grams": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/gram_ref" }
+        },
+        "changes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["cell", "lexostatus", "label", "voor", "na"],
+            "additionalProperties": false,
+            "properties": {
+              "cell": { "type": "string" },
+              "lexostatus": { "type": "string" },
+              "label": { "type": "string" },
+              "voor": { "type": ["object", "null"] },
+              "na": { "type": ["object", "null"] }
+            }
+          }
+        },
+        "accepted": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "value", "cell", "lexostatus", "op_moment"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "value": {},
+              "cell": { "type": "string" },
+              "lexostatus": { "type": ["string", "null"] },
+              "op_moment": { "$ref": "gram.json#/definitions/optional_date" }
+            }
+          }
+        },
+        "executed": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/definitions/execution" }]
+        },
+        "question": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/definitions/crossing" }]
+        },
+        "parent": {
+          "description": "De `seq` van de regel waar deze onder valt; `null` voor een regel op het hoogste niveau.",
+          "type": ["integer", "null"],
+          "minimum": 0
+        }
+      }
+    },
+    "execution": {
+      "description": "Wat een besluit uitvoerde: besluittype, afwijzingsgronden, regelingen, inputs met herkomst en uitkomsten.",
+      "type": "object",
+      "required": ["decision_type", "afwijzingsgronden", "regulations", "inputs", "outputs"],
+      "additionalProperties": false,
+      "properties": {
+        "decision_type": { "type": ["string", "null"] },
+        "afwijzingsgronden": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["output", "value", "article"],
+            "additionalProperties": false,
+            "properties": {
+              "output": { "type": "string" },
+              "value": { "type": "boolean" },
+              "article": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "regulations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["regulation", "valid_from"],
+            "additionalProperties": false,
+            "properties": {
+              "regulation": { "type": "string" },
+              "valid_from": { "$ref": "gram.json#/definitions/optional_date" }
+            }
+          }
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "value", "herkomst"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "value": {},
+              "herkomst": { "$ref": "gram.json#/definitions/input_origin" }
+            }
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "value"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "value": {}
+            }
+          }
+        }
+      }
+    }
+  }
+}

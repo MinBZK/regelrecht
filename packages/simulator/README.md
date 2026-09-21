@@ -3024,6 +3024,17 @@ is het vastgepinde voorbeeld):
 | `warnings` | de termijnen die verstreken zonder dat het feit er lag |
 | `journal` | het [journaal](#het-journaal-wie-deed-wat-en-wat-veranderde-er): één regel per gebeurtenis, in volgorde van ontstaan |
 
+De vorm staat ook als JSON-schema in de repo, naast het wetsschema:
+`schema/v0.6.0/world-snapshot.json` voor het beeld, `schema/v0.6.0/gram.json`
+voor één gram (drie varianten op `kind`, met de vaste velden van een decretogram
+en van de betaling) en `schema/v0.6.0/chronicle.json` voor een
+kroniekstroom-definitie. [`tests/json_schemas.rs`](tests/json_schemas.rs) houdt
+ze bij de code: elk gram en elk beeld uit elk scenario en elke stroom in elk
+scenario- en wereldbestand valideert ertegen, en de tests van
+`packages/chrono-poc-web` toetsen elk beeld dat de API in hun runs teruggeeft.
+Uitleg per veld met voorbeelden uit de publieke wereld staat op de docs-pagina
+*Grammen* (`docs/src/content/docs/concepts/grammen.md`).
+
 Drie dingen om bij stil te staan:
 
 **Wat een cel belooft, staat erbij.** Een consument die een lexostatus vraagt,

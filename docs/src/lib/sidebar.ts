@@ -61,6 +61,12 @@ export const sidebar: Record<string, SidebarGroup[]> = {
       ],
     },
     {
+      text: 'Chronolexografie (RFC-022)',
+      items: [
+        { text: 'Grammen', link: '/concepts/grammen' },
+      ],
+    },
+    {
       text: 'Research',
       items: [
         { text: 'Branches of Law', link: '/concepts/branches-of-law' },

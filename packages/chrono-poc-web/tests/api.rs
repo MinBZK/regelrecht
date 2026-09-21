@@ -28,6 +28,11 @@ use regelrecht_chrono_poc_web::worlds::WorldRegistry;
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
+/// De toets tegen de JSON-schema's in `schema/v0.6.0/`, gedeeld met de tests van
+/// de simulator.
+#[path = "../../simulator/tests/common/schema_contract.rs"]
+mod schema_contract;
+
 /// Het wereldbestand waarmee de app lokaal draait.
 fn world_file() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -103,6 +108,7 @@ impl Browser {
         uri: &str,
         body: Option<Value>,
     ) -> (StatusCode, Value) {
+        let method_name = method.to_string();
         let mut request = Request::builder().method(method).uri(uri);
         if let Some(cookie) = &self.cookie {
             request = request.header(COOKIE, cookie);
@@ -143,6 +149,9 @@ impl Browser {
             serde_json::from_slice(&bytes)
                 .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&bytes).to_string()))
         };
+        if let Some(snapshot) = snapshot_in(&method_name, uri, status, &json) {
+            schema_contract::assert_snapshot_valid(snapshot, &format!("{method_name} {uri}"));
+        }
         (status, json)
     }
 
@@ -163,6 +172,34 @@ impl Browser {
         let (status, body) = self.get("/api/world").await;
         assert_eq!(status, StatusCode::OK, "GET /api/world: {body}");
         body
+    }
+}
+
+/// Het beeld van de wereld in een geslaagd antwoord, als de route er een geeft.
+///
+/// Elke route die de wereld verandert of toont, geeft het beeld terug: kaal
+/// (`GET /api/world`, `PUT /api/settings`, `POST /api/reset`, `PUT /api/persona`)
+/// of onder `snapshot`, naast wat er gebeurde (`POST /api/actions/…`,
+/// `POST /api/advance`). Door ze hier op te vangen valideert elk beeld dat een
+/// test ziet tegen `world-snapshot.json`, zonder dat een test daar zelf aan hoeft
+/// te denken.
+fn snapshot_in<'a>(
+    method: &str,
+    uri: &str,
+    status: StatusCode,
+    body: &'a Value,
+) -> Option<&'a Value> {
+    if status != StatusCode::OK {
+        return None;
+    }
+    match (method, uri) {
+        ("GET", "/api/world")
+        | ("PUT", "/api/settings")
+        | ("POST", "/api/reset")
+        | ("PUT", "/api/persona") => Some(body),
+        ("POST", "/api/advance") => Some(&body["snapshot"]),
+        ("POST", action) if action.starts_with("/api/actions/") => Some(&body["snapshot"]),
+        _ => None,
     }
 }
 
