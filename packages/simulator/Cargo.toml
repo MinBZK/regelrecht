@@ -27,6 +27,10 @@ walkdir.workspace = true
 # test die het vastpint schrijft JSON. De crate zelf serialiseert niets naar JSON
 # — `Snapshot` is `Serialize` en laat de vorm aan de aanroeper.
 serde_json.workspace = true
+# Voor de toets dat elk gram, elke streamdefinitie en elk beeld van de wereld
+# valideert tegen de JSON-schema's in `schema/v0.6.0/` (gram, chronicle,
+# world-snapshot). Alleen in de tests: de crate zelf valideert niets.
+jsonschema.workspace = true
 
 [[bin]]
 name = "run-scenario"

@@ -50,6 +50,9 @@ uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
 http-body-util.workspace = true
+# Elk beeld dat `GET /api/world` in de tests teruggeeft, wordt getoetst tegen
+# `schema/v0.6.0/world-snapshot.json`.
+jsonschema.workspace = true
 # Om een GitHub-tarball te máken in de test die het ophalen bij het starten
 # nabootst. Inline zoals in `corpus`, de enige andere crate die ze gebruikt: het
 # zijn geen workspace-brede deps maar het gereedschap van één pad.

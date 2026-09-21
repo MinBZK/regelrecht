@@ -4061,6 +4061,7 @@ dependencies = [
  "dashmap",
  "flate2",
  "http-body-util",
+ "jsonschema",
  "regelrecht-auth",
  "regelrecht-corpus",
  "regelrecht-github",
@@ -4331,6 +4332,7 @@ name = "regelrecht-simulator"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "jsonschema",
  "regelrecht-engine",
  "rust_decimal",
  "serde",

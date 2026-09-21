@@ -1,0 +1,122 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/chronicle.json",
+  "title": "Kroniekstroom-definitie v0.6.0",
+  "description": "De definitie van één kroniekstroom van een cel (RFC-022 §1.3): de naam, het veld waarop de stroom groepeert, en per gebeurtenisnaam welke velden een executogram van die naam draagt, langs welk kanaal het binnenkomt en op welke grondslag het vastgelegd wordt. Een registratiespecificatie en geen regeling. Waar deze definities wonen (in het wereldbestand onder `cells[].chronicles[]`, of in eigen bestanden naast het corpus) staat los van hun vorm; vandaag staan ze in het wereldbestand.",
+  "type": "object",
+  "required": ["stream", "key"],
+  "additionalProperties": false,
+  "properties": {
+    "stream": {
+      "description": "De naam van de stroom; tevens de naam van de databron waaronder de engine de stroom leest. `beschikkingen` is voorbehouden aan de eigen decretogrammen van de cel, `betalingen` is platformvocabulaire voor de nakoming van verplichtingen.",
+      "type": "string",
+      "minLength": 1
+    },
+    "key": {
+      "description": "Het veld waarop de vastleggingen gegroepeerd worden, bijvoorbeeld `bsn` of `zaakkenmerk`. Een reductie over de stroom zoekt op dit veld.",
+      "type": "string",
+      "minLength": 1
+    },
+    "gebeurtenissen": {
+      "description": "Het gebeurtenisschema van de stroom: per gebeurtenisnaam wat een executogram van die naam vastlegt. Mag ontbreken of leeg zijn, en dan wordt de stroom niet getoetst. Staat er een schema, dan wordt elke vastlegging eraan gehouden: een onbekende naam, een ontbrekend veld of een verkeerd type wordt geweigerd (`null` komt door elke typetoets heen).",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/gebeurtenis"
+      }
+    },
+    "events": {
+      "description": "Wat de cel al bijhield toen de wereld begon: vastleggingen in de opgeslagen vorm. Een feit dat tijdens een run gebeurt staat niet hier maar in `fixtures` (met een `at`), of ontstaat door een actie.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/event"
+      }
+    }
+  },
+  "definitions": {
+    "date": {
+      "description": "Een kalenderdag in ISO-notatie (jjjj-mm-dd).",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "intake": {
+      "description": "Het kanaal waarlangs een feit de cel bereikt of erin ontstaat. Een gesloten lijst, anders dan RFC-022 §1.3: een typfout in een kanaalnaam mag niet stil doorgaan.",
+      "enum": ["aanvraag", "levering", "betaling", "eigen_besluit"]
+    },
+    "field_type": {
+      "description": "Het type van een veld: dezelfde typen als die van een gedocumenteerde parameter, met `amount` voor een bedrag. Een `date` staat op de draad als ISO-string.",
+      "enum": ["string", "number", "amount", "boolean", "date"]
+    },
+    "gebeurtenis": {
+      "description": "Eén gebeurtenis in het schema van een stroom: de vier vragen uit RFC-022 §1.3 — wat (`name` + `fields`), op welke grondslag (`grondslag`), waarlangs (`intake`); door wie is de cel die de stroom houdt, en op welk moment staat in elk gram zelf.",
+      "type": "object",
+      "required": ["name", "intake"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "De naam waaronder deze gebeurtenis in de stroom vastgelegd wordt. Uniek binnen de stroom.",
+          "type": "string",
+          "minLength": 1
+        },
+        "intake": {
+          "$ref": "#/definitions/intake"
+        },
+        "grondslag": {
+          "description": "De grondslag die een gram van deze naam krijgt als het er zelf geen noemt. Mag leeg zijn of ontbreken.",
+          "type": "string"
+        },
+        "fields": {
+          "description": "De velden die een gram van deze naam minstens draagt, elk met zijn type. Een ondergrens: een gram mag meer dragen.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "type"],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "description": "De veldnaam, zoals ze in het gram staat.",
+                "type": "string",
+                "minLength": 1
+              },
+              "type": {
+                "$ref": "#/definitions/field_type"
+              }
+            }
+          }
+        }
+      }
+    },
+    "event": {
+      "description": "Eén vastlegging in de opgeslagen vorm: een executogram (of een eigen vaststelling van een bron-cel) zoals het in de kroniek ligt, zonder de herkomst per veld die het beeld van de wereld erbij zet (zie `gram.json`).",
+      "type": "object",
+      "required": ["name", "intake", "recording_actor", "op_moment", "fields"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Wat er gebeurde, in de woorden van de cel.",
+          "type": "string",
+          "minLength": 1
+        },
+        "intake": {
+          "$ref": "#/definitions/intake"
+        },
+        "recording_actor": {
+          "description": "Wie vastlegde: het id van de cel die de stroom houdt; een vastlegging op naam van een ander wordt geweigerd.",
+          "type": "string",
+          "minLength": 1
+        },
+        "grondslag": {
+          "description": "Op welke grondslag; vrije tekst, mag leeg zijn of ontbreken.",
+          "type": "string"
+        },
+        "op_moment": {
+          "description": "Het moment waarop dit feit in deze cel feit werd.",
+          "$ref": "#/definitions/date"
+        },
+        "fields": {
+          "description": "De vastgelegde velden. Veldnamen komen overeen met de inputnamen in de regelingen van de cel.",
+          "type": "object"
+        }
+      }
+    }
+  }
+}
