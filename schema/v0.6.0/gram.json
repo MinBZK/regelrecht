@@ -158,12 +158,19 @@
       ]
     },
     "input_origin": {
-      "description": "De herkomst van één input van een besluit, zoals het decretogram haar vastlegde: uit een eigen kroniek, uit een parameter, geaccepteerd van een andere cel (invariant I5), of teruggelezen uit een eerder besluit over dezelfde zaak.",
+      "description": "De herkomst van één input van een besluit, zoals het decretogram haar vastlegde: uit een eigen kroniek, uit een parameter, geaccepteerd van een andere cel (invariant I5), teruggelezen uit een eerder besluit over dezelfde zaak, of — in het gram van een latere stage (de bekendmaking) — gelezen uit het gram van hetzelfde besluit: een uitkomst ervan (`besluit_uitkomst`) of een input ervan (`besluit_input`).",
       "type": "object",
       "required": ["herkomst"],
       "properties": {
         "herkomst": {
-          "enum": ["eigen_kroniek", "parameter", "geaccepteerd", "eerder_besluit"]
+          "enum": [
+            "eigen_kroniek",
+            "parameter",
+            "geaccepteerd",
+            "eerder_besluit",
+            "besluit_uitkomst",
+            "besluit_input"
+          ]
         }
       },
       "oneOf": [
@@ -267,6 +274,50 @@
             "moment": {
               "description": "Het moment van dat eerdere besluit.",
               "$ref": "#/definitions/date"
+            }
+          }
+        },
+        {
+          "description": "Een uitkomst van hetzelfde besluit, zoals zijn gram haar vastlegde; alleen in het gram van een latere stage. Een expliciete `null` in het besluit-gram is een waarde, geen onbekend feit.",
+          "type": "object",
+          "required": ["herkomst", "besluit", "besluit_gram", "field"],
+          "additionalProperties": false,
+          "properties": {
+            "herkomst": { "const": "besluit_uitkomst" },
+            "besluit": {
+              "description": "De besluit-definitie waarvan het gram gelezen is.",
+              "type": "string"
+            },
+            "besluit_gram": {
+              "description": "De plek van dat gram in de stroom `beschikkingen`, vanaf nul.",
+              "type": "integer",
+              "minimum": 0
+            },
+            "field": {
+              "description": "De uitkomst die de waarde droeg.",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "description": "Een input van hetzelfde besluit, zoals zijn gram haar vastlegde; alleen in het gram van een latere stage. De herkomst van die input zelf staat in het besluit-gram en wordt hier niet overgeschreven.",
+          "type": "object",
+          "required": ["herkomst", "besluit", "besluit_gram", "field"],
+          "additionalProperties": false,
+          "properties": {
+            "herkomst": { "const": "besluit_input" },
+            "besluit": {
+              "description": "De besluit-definitie waarvan het gram gelezen is.",
+              "type": "string"
+            },
+            "besluit_gram": {
+              "description": "De plek van dat gram in de stroom `beschikkingen`, vanaf nul.",
+              "type": "integer",
+              "minimum": 0
+            },
+            "field": {
+              "description": "De input die de waarde droeg.",
+              "type": "string"
             }
           }
         }

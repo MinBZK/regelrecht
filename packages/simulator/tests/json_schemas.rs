@@ -341,6 +341,49 @@ fn het_gramschema_weigert_een_bekendmaking_zonder_haar_vaste_velden() {
     }
 }
 
+/// Een gram van een latere stage leest uit het gram van hetzelfde besluit: een
+/// uitkomst ervan (`besluit_uitkomst`) of een input ervan (`besluit_input`).
+/// Zonder de plek van dat besluit-gram is die herkomst niet na te lopen.
+#[test]
+fn het_gramschema_weigert_een_besluitherkomst_zonder_de_plek_van_het_besluit() {
+    let snapshot = snapshot_of(
+        &crate_dir()
+            .join("scenarios")
+            .join("bekendmaking_besluitcontext.yaml"),
+    );
+    let grams: Vec<Value> = schema_contract::grams(&snapshot)
+        .into_iter()
+        .map(|(_, gram)| gram.clone())
+        .collect();
+
+    for herkomst in ["besluit_uitkomst", "besluit_input"] {
+        let (gram, veld) = grams
+            .iter()
+            .find_map(|gram| {
+                gram["fields"]
+                    .as_object()?
+                    .iter()
+                    .find(|(_, field)| field["origin"]["recorded_origin"]["herkomst"] == herkomst)
+                    .map(|(veld, _)| (gram, veld.clone()))
+            })
+            .unwrap_or_else(|| panic!("het scenario levert geen input met herkomst '{herkomst}'"));
+        schema_contract::assert_valid(schema_contract::gram(), gram, herkomst);
+
+        for vereist in ["besluit", "besluit_gram", "field"] {
+            let mut zonder = gram.clone();
+            zonder["fields"][&veld]["origin"]["recorded_origin"]
+                .as_object_mut()
+                .expect("recorded_origin is een object")
+                .remove(vereist);
+            assert_rejected(
+                &zonder,
+                schema_contract::gram(),
+                &format!("herkomst '{herkomst}' zonder '{vereist}'"),
+            );
+        }
+    }
+}
+
 #[test]
 fn het_beeldschema_toetst_de_grammen_erin() {
     let mut snapshot = fixture();

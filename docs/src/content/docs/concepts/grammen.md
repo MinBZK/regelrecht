@@ -65,7 +65,7 @@ juist daar is het nodig om te zien dat een waarde die van een andere cel is
 |---|---|---|
 | `recorded` | de cel legde dit feit zelf vast | `intake`, `grondslag` |
 | `computed` | een uitkomst die de regeling van het besluit berekende | `regulation` |
-| `besluit_input` | een input waarop het besluit rekende | `recorded_origin`: uit een eigen kroniek (`eigen_kroniek`), uit een parameter (`parameter`), geaccepteerd van een andere cel (`geaccepteerd`, met ondertekening en contactnummer), of teruggelezen uit een eerder besluit over dezelfde zaak (`eerder_besluit`) |
+| `besluit_input` | een input waarop het besluit rekende | `recorded_origin`: uit een eigen kroniek (`eigen_kroniek`), uit een parameter (`parameter`), geaccepteerd van een andere cel (`geaccepteerd`, met ondertekening en contactnummer), teruggelezen uit een eerder besluit over dezelfde zaak (`eerder_besluit`), of, in het gram van een latere stage zoals de bekendmaking, gelezen uit het gram van hetzelfde besluit: een uitkomst ervan (`besluit_uitkomst`) of een input ervan (`besluit_input`), elk met `besluit`, `besluit_gram` en `field` |
 | `besluit` | een vast veld van het decretogram zelf | niets |
 
 ### Het receipt staat er niet in
@@ -304,6 +304,11 @@ kroniek `betalingen` (kanaal `betaling`), de cel die besloot krijgt
 `betaling_gemeld` (kanaal `levering`). Bij een negatief slotbedrag, als het
 artikel dat toestaat, keert de verplichting om en heten de grammen
 `terugvordering_gedaan` en `terugvordering_gemeld`.
+
+Die vier namen zijn een vaste woordenschat van het platform, geen vrije keuze
+van een wereldbestand: `gram.json` herkent een betaling aan haar naam
+(`^(betaling|terugvordering)_(gedaan|gemeld)$`) en eist dan de velden hieronder.
+Een executogram onder een van die namen dat ze niet draagt, valideert niet.
 
 De eerste termijn van de toekenning, bij de Belastingdienst (waarden zonder
 herkomst):
