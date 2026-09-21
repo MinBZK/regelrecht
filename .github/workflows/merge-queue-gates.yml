@@ -21,10 +21,12 @@ name: Merge queue gates
 # dichtte; het is kleiner geworden (de poort moet eerst groen zijn geweest) maar
 # het is er.
 #
-# De nette oplossing is een regelset die het aansluiten zelf blokkeert. Die kan
-# hier niet: main draait op klassieke branch protection en daar bestaat geen
-# voorwaarde los van de required checks. Dat omzetten raakt alles wat main
-# beschermt en hoort niet bij het aanzetten van een wachtrij.
+# Een regelset naast de klassieke branch protection zou het venster kunnen
+# sluiten — die twee stapelen, en op main draait er al een. Maar een regelset
+# met required checks levert een tweede, onafhankelijke lijst naast die van de
+# branch protection, en twee lijsten lopen uiteen zodra iemand er één bijwerkt.
+# Dat is een grotere verbouwing dan het aanzetten van een wachtrij, en het
+# hoort niet mee te liften op deze wijziging.
 
 on:
   merge_group:

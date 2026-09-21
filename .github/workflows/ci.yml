@@ -141,11 +141,19 @@ jobs:
     needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    # Ook in de rij, want dit is een required check: sloeg hij daar over, dan
-    # blijft elke entry hangen tot de queue-timeout. De vergelijking hieronder
-    # is `origin/main...HEAD` en niet iets PR-eigens, dus op de queue-branch —
-    # main plus de wachtende pull requests — leest hij hetzelfde.
-    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+    # Alleen op een pull request, ook nu er een wachtrij is. Deze baan is een
+    # required check, maar een baan die op een `if:` hieronder overslaat meldt
+    # `skipped`, en dat telt bij GitHub als geslaagd; alleen een workflow die
+    # in het geheel niet draait blijft op "Expected" staan en laat een entry
+    # hangen. Deze workflow draait in de rij wél, dus de check rapporteert.
+    #
+    # Hem daar echt laten draaien zou schadelijk zijn. De vergelijking
+    # hieronder is `origin/main...HEAD`, en HEAD is in de rij niet één pull
+    # request maar de hele groep: raakt één ervan een vrijgegeven
+    # schemaversie, dan valt de groep om en vliegen de andere mee. Op de pull
+    # request zelf wordt dat al afgevangen, per wijziging, tegen een main die
+    # niet onder de baan door beweegt.
+    if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         if: needs.changes.outputs.ci == 'true'
@@ -1251,10 +1259,17 @@ jobs:
             ${{ github.event.pull_request.base.sha
                 || github.event.merge_group.base_sha }}
         run: |
+          files=""
           if [ -n "$BASE_SHA" ]; then
-            files=$(git diff --name-only "$BASE_SHA" HEAD | tr '\n' ' ')
-          else
-            files=""
+            # Niet bereikbaar in deze checkout? Dan geen lijst, en draait de
+            # poort over de volledige site. Zonder dit vangnet stopt `bash -e`
+            # de baan bij een `bad object`, valt de Test-poort om en gaat in de
+            # rij de hele groep eruit — een strengere uitkomst dan de poort
+            # bedoelt, om een commit die alleen maar niet op te halen was.
+            if ! files=$(git diff --name-only "$BASE_SHA" HEAD | tr '\n' ' '); then
+              echo "::warning title=Toegankelijkheidspoort::$BASE_SHA is hier niet bereikbaar; de poort draait over de volledige site."
+              files=""
+            fi
           fi
           echo "files=$files" >> "$GITHUB_OUTPUT"
 
