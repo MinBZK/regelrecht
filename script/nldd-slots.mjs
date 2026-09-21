@@ -12,7 +12,18 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-export const EXTENSIONS = ['.vue', '.html', '.js', '.ts'];
+// .rs for the poc portal, whose pages are markup in Rust strings.
+export const EXTENSIONS = ['.vue', '.html', '.js', '.ts', '.rs'];
+
+// The attributes of a tag, up to its closing `>`. A quoted value is taken
+// whole, because Vue expressions carry comparisons: `[^>]*` stopped at the `>`
+// in `v-if="n > 1"`, so a slot after it was never seen.
+const ATTRIBUTES = String.raw`(?:[^>"']|"[^"]*"|'[^']*')*`;
+const SLOT_ASSIGNMENT = new RegExp(
+  String.raw`<([a-z][a-z0-9-]*)\b(${ATTRIBUTES}?)\bslot=["']([a-z0-9-]+)["']`,
+  'gi',
+);
+const TAG = new RegExp(String.raw`<(\/?)([a-z][a-z0-9-]*)\b(${ATTRIBUTES})>`, 'gi');
 
 /**
  * Every file under `dir` with one of these extensions. A directory that is not
@@ -42,6 +53,10 @@ export function sourceFiles(dir, extensions = EXTENSIONS, out = []) {
  * child it is given, which is how a page adds its own toolbars. Those map to
  * `null`, meaning "do not check this tag", rather than to a set that would
  * reject every real usage.
+ *
+ * A name with a fixed part around the expression (`<slot name="pane-${n}">`,
+ * how `nldd-side-by-side-split-view` numbers its panes) is kept as a pattern:
+ * `pane-*`. That accepts `pane-2` and still rejects a typo like `paneel-2`.
  */
 export function componentSlots(packageDir) {
   const slots = new Map();
@@ -56,13 +71,23 @@ export function componentSlots(packageDir) {
       continue;
     }
     const names = new Set();
-    for (const m of text.matchAll(/<slot\s+name=["']([a-z0-9-]+)["']/gi)) names.add(m[1]);
+    for (const m of text.matchAll(/<slot\s+name=["']((?:[a-z0-9-]|\$\{[^}]*\})+)["']/gi)) {
+      names.add(m[1].replace(/\$\{[^}]*\}/g, '*'));
+    }
     // A component can also forward a slot it received; those show up as
     // `slot="x"` on an element inside its own template.
     for (const m of text.matchAll(/\bslot=["']([a-z0-9-]+)["']/gi)) names.add(m[1]);
-    slots.set(tag, names);
+    slots.set(tag, names.has('*') ? null : names);
   }
   return slots;
+}
+
+/** Whether `slot` is one of `known`, literally or through a `pane-*` pattern. */
+function definesSlot(known, slot) {
+  if (known.has(slot)) return true;
+  return [...known].some(
+    (name) => name.includes('*') && new RegExp(`^${name.replaceAll('*', '.+')}$`).test(slot),
+  );
 }
 
 /**
@@ -80,7 +105,7 @@ export function slotAssignments(dir, extensions = EXTENSIONS) {
   const found = [];
   for (const file of sourceFiles(dir, extensions)) {
     const text = readFileSync(file, 'utf8');
-    for (const m of text.matchAll(/<([a-z][a-z0-9-]*)\b([^>]*?)\bslot=["']([a-z0-9-]+)["']/gi)) {
+    for (const m of text.matchAll(SLOT_ASSIGNMENT)) {
       const parent = enclosingTag(text, m.index);
       if (!parent?.startsWith('nldd-')) continue;
       found.push({
@@ -99,7 +124,7 @@ export function slotAssignments(dir, extensions = EXTENSIONS) {
 function enclosingTag(text, index) {
   const before = text.slice(0, index);
   const stack = [];
-  for (const m of before.matchAll(/<(\/?)([a-z][a-z0-9-]*)\b([^>]*)>/gi)) {
+  for (const m of before.matchAll(TAG)) {
     const [, closing, tag, attrs] = m;
     if (closing) {
       const at = stack.lastIndexOf(tag.toLowerCase());
@@ -122,6 +147,6 @@ function enclosingTag(text, index) {
 export function unknownSlots(assignments, slots) {
   return assignments.filter(({ parent, slot }) => {
     const known = slots.get(parent);
-    return known != null && !known.has(slot);
+    return known != null && !definesSlot(known, slot);
   });
 }

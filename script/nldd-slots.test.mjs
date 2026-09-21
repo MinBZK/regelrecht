@@ -22,6 +22,8 @@ function fakePackage() {
   write('inline-dialog', `export function t() { return html\`<slot></slot><slot name="actions"></slot>\`; }`);
   // Zoals nldd-bar-split-view: benoemt slots pas als het draait.
   write('bar-split-view', 'export function t(c) { return html`<slot name=${pane.slot}></slot>`; }');
+  // Zoals nldd-side-by-side-split-view: een vast voorvoegsel met een nummer erachter.
+  write('side-by-side-split-view', 'export function t(c) { return html`<slot name="pane-${n}"></slot>`; }');
   return dir;
 }
 
@@ -46,6 +48,47 @@ test('vindt een slot die het component niet heeft', () => {
     assert.equal(bad[0].parent, 'nldd-title');
     assert.equal(bad[0].slot, 'actions');
     assert.equal(bad[0].child, 'nldd-container');
+  } finally {
+    rmSync(pkg, { recursive: true, force: true });
+    rmSync(src, { recursive: true, force: true });
+  }
+});
+
+test('vindt de slot ook als een attribuut ervoor een > bevat', () => {
+  const pkg = fakePackage();
+  const src = fakeSource({
+    'Vergelijking.vue': `<template>
+      <nldd-title>
+        <div v-if="n > 1" slot="actions"><nldd-button text="Alles"></nldd-button></div>
+      </nldd-title>
+    </template>`,
+  });
+  try {
+    const bad = unknownSlots(slotAssignments(src), componentSlots(pkg));
+    assert.equal(bad.length, 1);
+    assert.equal(bad[0].parent, 'nldd-title');
+    assert.equal(bad[0].slot, 'actions');
+    assert.equal(bad[0].line, 3);
+  } finally {
+    rmSync(pkg, { recursive: true, force: true });
+    rmSync(src, { recursive: true, force: true });
+  }
+});
+
+test('ziet een zelfsluitende tag met een > in een attribuut als gesloten', () => {
+  const pkg = fakePackage();
+  const src = fakeSource({
+    'Zelfsluitend.vue': `<template>
+      <nldd-title>
+        <Teller :zichtbaar="aantal > 0" />
+        <div slot="actions"></div>
+      </nldd-title>
+    </template>`,
+  });
+  try {
+    const bad = unknownSlots(slotAssignments(src), componentSlots(pkg));
+    assert.equal(bad.length, 1);
+    assert.equal(bad[0].parent, 'nldd-title');
   } finally {
     rmSync(pkg, { recursive: true, force: true });
     rmSync(src, { recursive: true, force: true });
@@ -85,6 +128,26 @@ test('laat een component dat zijn slots pas bij het draaien benoemt met rust', (
   });
   try {
     assert.deepEqual(unknownSlots(slotAssignments(src), componentSlots(pkg)), []);
+  } finally {
+    rmSync(pkg, { recursive: true, force: true });
+    rmSync(src, { recursive: true, force: true });
+  }
+});
+
+test('leest een slotnaam met een vast voorvoegsel als patroon', () => {
+  const pkg = fakePackage();
+  const src = fakeSource({
+    'Panelen.vue': `<template>
+      <nldd-side-by-side-split-view panes="2">
+        <div slot="pane-1"></div>
+        <div slot="pane-2"></div>
+        <div slot="paneel-3"></div>
+      </nldd-side-by-side-split-view>
+    </template>`,
+  });
+  try {
+    const bad = unknownSlots(slotAssignments(src), componentSlots(pkg));
+    assert.deepEqual(bad.map((b) => b.slot), ['paneel-3']);
   } finally {
     rmSync(pkg, { recursive: true, force: true });
     rmSync(src, { recursive: true, force: true });

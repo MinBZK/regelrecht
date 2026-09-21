@@ -157,9 +157,12 @@ nldd-imports-test:
 # element blijft in de light-DOM, wordt nooit toegewezen en is 0x0. Zo stonden
 # de persona-tags op het portaal en de startknop van de presentatie er wel,
 # maar zag niemand ze. Deze guard laat de build erop omvallen.
+#
+# De pocs horen erbij: napp had zes van zulke knoppen en tags. Het poc-portaal
+# heeft geen eigen src; zijn markup staat in Rust, in packages/poc-portal.
 [doc("Check that every nldd slot assignment exists")]
 nldd-slots:
-    node script/check-nldd-slots.mjs frontend-demo/src frontend/src frontend-lawmaking/src
+    node script/check-nldd-slots.mjs frontend-demo/src frontend/src frontend-lawmaking/src frontend-poc-*/src packages/poc-portal/src
 
 [doc("Check the design-system slot guard")]
 nldd-slots-test:
