@@ -127,10 +127,17 @@ pub fn velden(event: &Event, formulier: Option<&Formulier>) -> Vec<Veld> {
             });
         }
     }
+    // Of een veld een tabel is, bepaalt de stroom: anders toont het scherm
+    // een invoer die de cel bij het indienen weigert.
     for veld in &mut uit {
         if let Some(Vorm::Tabel(kolommen)) = vorm.get(&veld.naam) {
-            veld.soort.get_or_insert_with(|| "tabel".to_string());
+            veld.soort = Some("tabel".to_string());
             veld.kolommen = Some(tabelkolommen(kolommen, veld.kolommen.as_ref()));
+        } else {
+            if veld.soort.as_deref() == Some("tabel") {
+                veld.soort = None;
+            }
+            veld.kolommen = None;
         }
     }
     uit
@@ -210,6 +217,27 @@ mod tests {
             vec!["orgaan", "zetels", "samengevoegd", "aantal_aanduidingen"]
         );
         assert_eq!(v[6].kolommen.as_ref().unwrap()[0]["label"], "Orgaan");
+    }
+
+    #[test]
+    fn de_stroom_bepaalt_of_een_veld_een_tabel_is() {
+        let s = stroom::parse(STROOM, "fixture").unwrap();
+        // Het formulier noemt `organen` tekst en `naam` een tabel.
+        let f = parse(
+            &FORMULIER.replace("type: tabel", "type: tekst").replace(
+                "{id: naam, label: Naam van de aanvrager, type: tekst}",
+                "{id: naam, label: Naam van de aanvrager, type: tabel, kolommen: [{id: x}]}",
+            ),
+            "aanvraag",
+            "fixture",
+        )
+        .unwrap();
+        let v = velden(&s.events[0], Some(&f));
+        let veld = |naam: &str| v.iter().find(|v| v.naam == naam).unwrap();
+        assert_eq!(veld("organen").soort.as_deref(), Some("tabel"));
+        assert!(veld("organen").kolommen.is_some());
+        assert_eq!(veld("naam").soort, None);
+        assert_eq!(veld("naam").kolommen, None);
     }
 
     #[test]

@@ -82,9 +82,9 @@ RFC-022 does not settle the points below. The cell settles them as follows.
 - a column the table field does not declare, such as `organen[1].kleur`;
 - a list or object where the stream expects a single value, or a table that is not a list of rows.
 
-What has no `grondslag` is not recorded. A form file cannot widen this: its columns are shown only when the stream declares them.
+What has no `grondslag` is not recorded. A form file cannot widen this. Its columns are shown only when the stream declares them, and whether a field is a table is up to the stream, not the form.
 
-**`filter` selects on the gram itself.** The keys are `name`, `type`, `soort`, `zaakkenmerk`, `recording_actor` and `chronicle`, and none of them is required. The fixtures filter on `type` and `soort` alone, so a second event of the same soort would be read by the same reduction. A value `$x` comes from the inputs of the lexostatus.
+**`filter` selects on the gram itself.** The keys are `name`, `type`, `soort`, `zaakkenmerk`, `recording_actor` and `chronicle`, and none of them is required. The fixtures filter on `type`, `soort` and `zaakkenmerk` without `name`, so a second event of the same soort would be read by the same reduction. A value `$x` comes from the inputs of the lexostatus.
 
 **`ontbreekt` lists presence derivations that came out false.** A presence derivation is `gevuld`, or `tabel` with `elke_regel`. When one of those is false, the application lacks something, and the parameter is listed under `ontbreekt` in the answer of `POST /api/aanvraag/toets`. This follows the `bevat_*` parameters of a regulation without relying on their names. A false `gelijk` or `een_regel` is an answer, not a gap, so it is not listed. A `veld` or `gelijk` derivation on an empty field yields no value at all; the parameter stays out of the lexostatus and the cell does not fill it in.
 

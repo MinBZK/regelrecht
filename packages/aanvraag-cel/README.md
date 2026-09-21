@@ -86,7 +86,8 @@ portaal:
 
 Het formulierbestand levert alleen labels, soorten en volgorde. Een veld dat
 het formulier niet kent, krijgt zijn veldnaam; een veld dat de stroom niet
-kent, wordt overgeslagen. Voor de kolommen van een tabelveld geldt hetzelfde.
+kent, wordt overgeslagen. Voor de kolommen van een tabelveld geldt hetzelfde,
+en of een veld een tabel is, bepaalt de stroom.
 
 ## Modules
 
