@@ -2309,7 +2309,7 @@ impl InputOrigin {
 /// ze verschillen alleen in de laag van het gram waaruit gelezen is.
 fn besluit_veld_value(herkomst: &str, besluit: &str, besluit_gram: usize, field: &str) -> Value {
     Value::Object(BTreeMap::from([
-        ("herkomst".to_string(), Value::String(herkomst.to_string())),
+        (HERKOMST.to_string(), Value::String(herkomst.to_string())),
         (BESLUIT.to_string(), Value::String(besluit.to_string())),
         (
             BESLUIT_GRAM.to_string(),
