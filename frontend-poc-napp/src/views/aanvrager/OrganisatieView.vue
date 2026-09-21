@@ -192,7 +192,7 @@ watch(() => session.aanvrager, laadAlles);
           <h3>Rekening voor uitbetaling</h3>
           <div
             v-if="rekening?.in_register && !beperkteMachtiging"
-            slot="actions"
+            slot="end"
           >
             <nldd-button
               variant="secondary"

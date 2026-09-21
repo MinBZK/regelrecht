@@ -161,7 +161,7 @@ watch(kvk, laad);
           <nldd-title size="2">
             <span slot="overline">KvK-nummer {{ partij.kvk_nummer }}</span>
             <h2>{{ partij.naam }}</h2>
-            <div slot="actions">
+            <div slot="end">
               <nldd-button
                 variant="secondary"
                 text="Koppeling bewerken"

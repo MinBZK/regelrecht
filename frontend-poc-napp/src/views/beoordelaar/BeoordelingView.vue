@@ -290,7 +290,7 @@ onMounted(laad);
               <nldd-spacer size="24"></nldd-spacer>
               <nldd-title size="4">
                 <h3>Voorschot (art. 16/17 Wpp)</h3>
-                <div slot="actions">
+                <div slot="end">
                   <nldd-tag
                     :color="betaalKleur(item.betaalopdracht.status)"
                     :text="BETAAL_LABELS[item.betaalopdracht.status] ?? item.betaalopdracht.status"
@@ -338,7 +338,7 @@ onMounted(laad);
               <nldd-spacer size="24"></nldd-spacer>
               <nldd-title size="4">
                 <h3>Bezwaar (Awb hoofdstuk 6/7)</h3>
-                <div slot="actions">
+                <div slot="end">
                   <nldd-tag
                     :color="item.bezwaar.beslissing ? (item.bezwaar.beslissing === 'GEGROND' ? 'success' : 'critical') : 'accent'"
                     :text="item.bezwaar.beslissing ? (BESLISSING_LABELS[item.bezwaar.beslissing] ?? item.bezwaar.beslissing) : item.bezwaar.status"

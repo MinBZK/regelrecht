@@ -156,7 +156,7 @@ onMounted(run);
       <nldd-title size="2">
         <span slot="overline">Beoordelingsomgeving</span>
         <h2>Scenario's</h2>
-        <div slot="actions">
+        <div slot="end">
           <nldd-button
             variant="secondary"
             text="Alles opnieuw uitvoeren"
