@@ -24,28 +24,99 @@ const docs = defineCollection({
 
 const rfcs = defineCollection({
   loader: glob({ pattern: 'rfc-*.md', base: 'src/content/rfcs' }),
-  schema: z.object({
-    title: z.string().optional(),
-    description: z.string().optional(),
-    // RFC metadata, in frontmatter so it is structured data rather than a
-    // bold-labelled preamble parsed out of the body. Both status and
-    // implementation are required enums: every RFC carries both (so an absent
-    // implementation tag never reads as "unknown"), and a typo fails the build
-    // here rather than rendering a silent grey "Unknown" badge.
-    status: z.enum(['Draft', 'Proposed', 'Accepted', 'Rejected', 'Superseded']),
-    implementation: z.enum([
-      'Implemented',
-      'Partially implemented',
-      'Not implemented',
-    ]),
-    // Stored as a 'YYYY-MM-DD' string rather than z.date() so it round-trips
-    // through the build without timezone shifts and renders verbatim.
-    date: z.string().optional(),
-    authors: z.array(z.string()).optional(),
-    depends_on: z.array(z.string()).optional(),
-    // Sidebar label; falls back to the stripped title when absent.
-    short_title: z.string().optional(),
-  }),
+  schema: z
+    .object({
+      title: z.string().optional(),
+      description: z.string().optional(),
+      // RFC metadata, in frontmatter so it is structured data rather than a
+      // bold-labelled preamble parsed out of the body. Both status and
+      // implementation are required enums: every RFC carries both (so an absent
+      // implementation tag never reads as "unknown"), and a typo fails the build
+      // here rather than rendering a silent grey "Unknown" badge.
+      //
+      // `Reserved` is the exception, and the only status that is not a place in
+      // the decision lifecycle: it is a placeholder holding a number that an
+      // open pull request has already claimed, so the next author does not take
+      // it a second time. It carries no design, so `implementation` is not just
+      // optional but forbidden — see the superRefine below.
+      //
+      // What makes a file a placeholder is `reserved_by`, not the status value.
+      // A placeholder whose pull request closes unmerged goes to `Rejected` and
+      // keeps its `reserved_by`: the number stays spent, and the link is the
+      // record of what spent it. Keying the rule on `status === 'Reserved'`
+      // would make that documented transition a build error.
+      status: z.enum([
+        'Draft',
+        'Proposed',
+        'Accepted',
+        'Rejected',
+        'Superseded',
+        'Reserved',
+      ]),
+      implementation: z
+        .enum(['Implemented', 'Partially implemented', 'Not implemented'])
+        .optional(),
+      // The pull request that holds a reserved number. Required on (and only
+      // on) a Reserved RFC: a reservation nobody can trace back to a branch is
+      // a number blocked forever by an author nobody can find.
+      reserved_by: z.string().url().optional(),
+      // Stored as a 'YYYY-MM-DD' string rather than z.date() so it round-trips
+      // through the build without timezone shifts and renders verbatim.
+      date: z.string().optional(),
+      authors: z.array(z.string()).optional(),
+      depends_on: z.array(z.string()).optional(),
+      // Sidebar label; falls back to the stripped title when absent.
+      short_title: z.string().optional(),
+    })
+    // Making `implementation` optional above would, on its own, let any RFC
+    // drop it and render a silent gap where every sibling shows a tag. It is
+    // therefore tied to `reserved_by`: a placeholder omits it, a real RFC
+    // states it. Both directions are checked, because a placeholder that kept
+    // claiming "Not implemented" would read as a design decision that was
+    // never written down.
+    //
+    // A placeholder is any file carrying `reserved_by`, which covers both a
+    // live reservation (`Reserved`) and a spent one whose pull request closed
+    // unmerged (`Rejected`). `Reserved` additionally requires the link, since
+    // a live reservation nobody can trace blocks the number forever.
+    .superRefine((data, ctx) => {
+      const isPlaceholder = data.reserved_by !== undefined;
+
+      if (data.status === 'Reserved' && !data.reserved_by) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['reserved_by'],
+          message:
+            'A Reserved RFC must name the pull request that claimed the number, so the reservation can be traced and released.',
+        });
+      }
+
+      if (isPlaceholder) {
+        if (data.implementation !== undefined) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['implementation'],
+            message:
+              'A placeholder holds a number, not a design, so it carries no implementation state. Remove the field.',
+          });
+        }
+        if (data.status !== 'Reserved' && data.status !== 'Rejected') {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['status'],
+            message:
+              "A file with `reserved_by` is a placeholder, so its status is 'Reserved' while its pull request is open, or 'Rejected' once that pull request closed unmerged. Any other status means the real RFC landed, and then `reserved_by` should go.",
+          });
+        }
+      } else if (data.implementation === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['implementation'],
+          message:
+            'Every RFC that is not a placeholder states whether it is built, so an absent tag never reads as "unknown".',
+        });
+      }
+    }),
 });
 
 /*

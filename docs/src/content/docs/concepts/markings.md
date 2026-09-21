@@ -79,11 +79,12 @@ Markings tell us what to build next. When enough laws need a working-day calenda
 
 ## A note on the name
 
-This channel was called `untranslatables` through schema v0.5.x, alongside a separate `norm_gaps`. Schema v0.7.0 replaced both with `markings`, and a file carrying the old field does not validate under v0.7.0; `law-migrate` converts it. The engine still reads both channels, so a law on an older schema version keeps working. [RFC-012](/rfcs/rfc-012) describes the original design under the old name and is kept as written.
+This channel was called `untranslatables` through schema v0.5.x, alongside a separate `norm_gaps`. Schema v0.7.0 replaced both with `markings`, and a file carrying the old field does not validate under v0.7.0; `law-migrate` converts it. The engine still reads both channels, so a law on an older schema version keeps working. [RFC-031](/rfcs/rfc-031) is the design this page describes: it merged the two channels and defined the fields above. [RFC-012](/rfcs/rfc-012) describes the original design under the old name and is kept as written.
 
 ## Further reading
 
 - [Law Format](./law-format) - structure of YAML law files
 - [Schema Reference](../reference/schema) - the generated field reference for `markings`
+- [RFC-031: Markeringen en open normen](/rfcs/rfc-031) - the specification this page describes
 - [RFC-012: Untranslatables](/rfcs/rfc-012) - the original specification, under the former name
 - [Rules as Executed, section 9.2](/research/rules-as-executed#sec:opset) - the position paper on why the operation set stays small and only grows in public

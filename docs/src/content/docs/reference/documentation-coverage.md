@@ -3,9 +3,9 @@ title: "Documentation Coverage"
 description: "Which accepted RFCs and built features have prose documentation outside the RFCs, and what is still on the backlog."
 ---
 
-This page tracks how well the prose docs cover the accepted RFCs and the implemented engine and platform features. It exists so coverage gaps are visible and tracked, rather than discovered by accident. RFCs that are still Draft or Proposed are out of scope here; their own pages under [RFCs](/rfcs/) are the source of truth until they are accepted.
+This page tracks how well the prose docs cover the accepted RFCs and the implemented engine and platform features. It exists so coverage gaps are visible and tracked, rather than discovered by accident. A Draft or Proposed RFC that is not built is out of scope; its own page under [RFCs](/rfcs/) is the source of truth until it is accepted or shipped.
 
-The table below is **enforced**: `docs/scripts/check-rfc-coverage.mjs` reads the `status` frontmatter of every RFC and fails CI when an Accepted RFC has no row here (or Backlog mention). So the matrix cannot silently fall behind the RFC set: accept a new RFC without adding it, and the docs build breaks. The check guarantees a *row exists* for each Accepted RFC; it does not, and cannot, judge whether the coverage that row points at is good. That judgement stays with whoever accepts the RFC, who owns adding an accurate entry as part of acceptance.
+The tables below are **enforced**: `docs/scripts/check-rfc-coverage.mjs` reads the `status` and `implementation` frontmatter of every RFC and fails CI when an RFC that is `Accepted` **or** `Implemented` has no row here (or Backlog mention). Both conditions count, because either alone leaves a hole. An implemented construct is live in the schema whatever its acceptance status says, and a reader meets it in a law file rather than in a status tag. Keying on `Accepted` alone is how `voids` shipped in schema v0.7.0 with no prose page: the RFC defining it sits at `Proposed`. So the matrix cannot silently fall behind the RFC set: accept a new RFC without adding it, and the docs build breaks. The check guarantees a *row exists* for each Accepted RFC; it does not, and cannot, judge whether the coverage that row points at is good. That judgement stays with whoever accepts the RFC, who owns adding an accurate entry as part of acceptance.
 
 ## Accepted RFCs
 
@@ -31,6 +31,23 @@ The table below is **enforced**: `docs/scripts/check-rfc-coverage.mjs` reads the
 | RFC-039 | Addressable execution traces | [Traceability](../concepts/traceability), which still describes the pre-RFC-039 shape; see the backlog |
 
 RFC-000 (the RFC process) is documented by [rfc-000](/rfcs/rfc-000) itself; the contributing guide links to it.
+
+## Implemented RFCs
+
+Constructs that are live in the shipped schema while their RFC is still `Proposed`. A reader meets these in a law file, not in a status tag, so they owe prose coverage on the same terms as an Accepted RFC.
+
+| RFC | Topic | Prose coverage |
+|-----|-------|----------------|
+| RFC-023 | Quantities (money, percentages, units) | [Law Format](../concepts/law-format), [Schema](./schema) |
+| RFC-024 | Precision and rounding | [Law Format](../concepts/law-format), [Temporal Validity and Dates](../concepts/temporal-and-dates) |
+| RFC-031 | Markings and open norms | [Markings](../concepts/markings) |
+| RFC-032 | Date parts and truncation | [Temporal Validity and Dates](../concepts/temporal-and-dates) |
+| RFC-033 | Enrichment build plan | [Pipeline](../components/pipeline) |
+| RFC-036 | Absent and unknown values | [Law Format](../concepts/law-format), [Collections](../concepts/collections) |
+| RFC-037 | Type checking of laws | [Law Format](../concepts/law-format) |
+| RFC-038 | Callable is not presentable | [Schema](./schema) |
+| RFC-040 | The schema documents itself | [Schema](./schema) |
+| RFC-041 | A void is not scoped like a replacement | [Voiding an output](../concepts/hooks-and-reactive-execution#voiding-an-output) |
 
 ## Backlog
 

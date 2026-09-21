@@ -7,12 +7,14 @@ RegelRecht is open source and welcomes contributions. The workflow is below.
 
 ## Branching model
 
-The project uses GitFlow:
+Short-lived branches off `main`, merged back into `main`. There is no `develop`, `release/*` or `hotfix/*` branch:
 
 - `main` - production, always deployable
-- `feature/*` - new features
+- `feat/*` - new features
 - `fix/*` - bug fixes
 - `docs/*` - documentation changes
+
+Name the branch after the Conventional Commits type its work carries, so `feat/` rather than `feature/`.
 
 Create your branch from `main`, open a PR back to `main`.
 

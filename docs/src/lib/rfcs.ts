@@ -61,6 +61,9 @@ export function rfcStatusColor(status: string): string {
   if (k.includes('propos')) return 'accent'
   if (k.includes('reject')) return 'critical'
   if (k.includes('supersed')) return 'warning'
+  // A reserved number is a placeholder, not a decision. Grey is deliberate:
+  // it should read as "nothing here yet" next to the RFCs that say something.
+  if (k.includes('reserv')) return 'neutral'
   return 'neutral'
 }
 

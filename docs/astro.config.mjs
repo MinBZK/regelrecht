@@ -33,6 +33,12 @@ export default defineConfig({
   // zoeken op de oude term er nog steeds uitkomt.
   redirects: {
     '/concepts/untranslatables': '/concepts/markings',
+    // Het CJIB-pilotvoorstel is verwijderd: een ongevraagd voorstel aan een
+    // andere organisatie, met bemensing, een tijdpad en aannames over hun
+    // systemen, hoort niet op een publieke documentatiesite. De techniek die
+    // erin stond (chronolexogram-types, de afleiding van de rechtsmiddel-route,
+    // het `blauwe_knop`-blok) staat in RFC-022 en blijft daar staan.
+    '/concepts/cjib-blauwe-knop-source-proposal': '/rfcs/rfc-022',
   },
   integrations: [
     mdx(),
