@@ -135,7 +135,7 @@ export interface LandingContent {
     partOfTitle: string
     copyright: string
     links: NavLink[]
-    partOf: string[]
+    partOf: { label: string; href?: string }[]
   }
   signup: {
     pageTitle: string
@@ -176,7 +176,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     meta: {
       title: 'RegelRecht: van wet naar digitale werking',
       description:
-        'Een verkenning van het Ministerie van BZK naar transparante, machine-uitvoerbare wetgeving.',
+        'Een project van de Nederlandse Digitale Dienst dat verkent of wetgeving als uitvoerbare code geschreven kan worden.',
     },
     nav: {
       brandMinistry: 'Ministerie van Economische Zaken en Klimaat',
@@ -610,7 +610,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     },
     footer: {
       blurb:
-        'Een verkenning van Bureau Architectuur van het Ministerie van Economische Zaken en Klimaat naar de mogelijkheden van transparante, uitvoerbare wetgeving.',
+        'Een verkenning naar transparante, uitvoerbare wetgeving, en een van de drie projecten uit de startselectie van de Nederlandse Digitale Dienst.',
       linksTitle: 'Links',
       contactTitle: 'Contact',
       partOfTitle: 'Onderdeel van',
@@ -625,8 +625,11 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         { label: 'Onderzoek (Engels)', href: '/research/' },
       ],
       partOf: [
-        'Bureau Architectuur',
-        'Ministerie van Economische Zaken en Klimaat',
+        {
+          label: 'Nederlandse Digitale Dienst',
+          href: 'https://digitaledienst.overheid.nl/',
+        },
+        { label: 'Ministerie van Economische Zaken en Klimaat' },
       ],
     },
     signup: {
@@ -665,7 +668,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     meta: {
       title: 'RegelRecht: from statute to digital execution',
       description:
-        'An exploration by the Dutch Ministry of the Interior into transparent, machine-executable legislation.',
+        'A project of the Nederlandse Digitale Dienst exploring whether legislation can be written as executable code.',
     },
     nav: {
       brandMinistry: 'Ministry of Economic Affairs and Climate Policy',
@@ -1095,7 +1098,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     },
     footer: {
       blurb:
-        'An exploration by Bureau Architectuur of the Dutch Ministry of Economic Affairs and Climate Policy into the possibilities of transparent, executable legislation.',
+        'An exploration into transparent, executable legislation, and one of the three projects in the starting selection of the Nederlandse Digitale Dienst.',
       linksTitle: 'Links',
       contactTitle: 'Contact',
       partOfTitle: 'Part of',
@@ -1110,8 +1113,11 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         { label: 'Research', href: '/research/' },
       ],
       partOf: [
-        'Bureau Architectuur',
-        'Ministry of Economic Affairs and Climate Policy',
+        {
+          label: 'Nederlandse Digitale Dienst',
+          href: 'https://digitaledienst.overheid.nl/',
+        },
+        { label: 'Ministry of Economic Affairs and Climate Policy' },
       ],
     },
     signup: {
