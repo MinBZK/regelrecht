@@ -414,6 +414,22 @@ fn een_parameter_die_de_regeling_niet_kent_faalt_bij_het_optuigen() {
 }
 
 #[test]
+fn een_verplichte_parameter_die_ontbreekt_faalt_bij_het_optuigen() {
+    let melding = melding(
+        "      - label: termijn
+        regulation: algemene_wet_inkomensafhankelijke_regelingen
+        output: aanvraag_binnen_termijn
+        params:
+          berekeningsjaar: $jaar
+",
+    );
+    assert!(
+        melding.contains("aanvraagdatum") && melding.contains("vult die niet"),
+        "een voorwaarde zonder verplichte parameter is voorgoed onbekend: {melding}"
+    );
+}
+
+#[test]
 fn een_veld_dat_het_formulier_niet_kent_faalt_bij_het_optuigen() {
     let melding = melding(
         "      - label: termijn

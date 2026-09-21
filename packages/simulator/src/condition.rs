@@ -279,6 +279,7 @@ pub(crate) fn check(
                 let Some(RegulationSurface {
                     outputs,
                     parameters,
+                    required,
                 }) = actor.regulation_surface(regulation)
                 else {
                     return Err(fail(
@@ -321,6 +322,22 @@ pub(crate) fn check(
                         format!(
                             "regeling '{regulation}' kent geen parameter '{unknown}' (wel: {})",
                             joined(parameters.iter().map(String::as_str))
+                        ),
+                    ));
+                }
+                // Een verplichte parameter die de voorwaarde niet vult, geeft bij
+                // elke uitrekening een enginefout: voorgoed onbekend.
+                if let Some(missing) = required
+                    .get(output)
+                    .into_iter()
+                    .flatten()
+                    .find(|name| !condition.params.contains_key(name.as_str()))
+                {
+                    return Err(fail(
+                        condition,
+                        format!(
+                            "uitkomst '{output}' van '{regulation}' vraagt parameter \
+                             '{missing}', maar de voorwaarde vult die niet"
                         ),
                     ));
                 }

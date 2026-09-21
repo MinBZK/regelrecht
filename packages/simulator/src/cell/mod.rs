@@ -415,6 +415,10 @@ pub(crate) struct RegulationSurface {
     pub(crate) outputs: BTreeMap<String, BTreeSet<String>>,
     /// De namen van de parameters en inputs.
     pub(crate) parameters: BTreeSet<String>,
+    /// Per uitkomst de parameters die een artikel dat haar voortbrengt verplicht
+    /// stelt, in een van de geladen versies. Wie er een weglaat, krijgt van de
+    /// engine bij elke uitrekening een fout en nooit een uitkomst.
+    pub(crate) required: BTreeMap<String, BTreeSet<String>>,
 }
 
 /// Eén chronolexocel.
@@ -1197,9 +1201,11 @@ impl Cell {
         let parameters = inputs_per_regulation(&service)
             .remove(regulation)
             .unwrap_or_default();
+        let required = required_parameters_per_output(&service, regulation);
         Some(RegulationSurface {
             outputs,
             parameters,
+            required,
         })
     }
 
@@ -3854,6 +3860,40 @@ fn inputs_per_regulation(service: &LawExecutionService) -> BTreeMap<String, BTre
         }
     }
     per_regulation
+}
+
+/// Per uitkomst van één regeling de parameters die een artikel dat haar
+/// voortbrengt verplicht stelt (`required` afwezig of `true`, zoals de engine
+/// het leest), over alle geladen versies heen.
+fn required_parameters_per_output(
+    service: &LawExecutionService,
+    regulation: &str,
+) -> BTreeMap<String, BTreeSet<String>> {
+    let mut per_output: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for law in service.resolver().all_law_versions() {
+        if law.id != regulation {
+            continue;
+        }
+        for article in &law.articles {
+            let Some(execution) = article.get_execution_spec() else {
+                continue;
+            };
+            let required: Vec<&str> = execution
+                .parameters
+                .iter()
+                .flatten()
+                .filter(|parameter| parameter.required != Some(false))
+                .map(|parameter| parameter.name.as_str())
+                .collect();
+            for output in execution.output.iter().flatten() {
+                per_output
+                    .entry(output.name.clone())
+                    .or_default()
+                    .extend(required.iter().map(|name| name.to_string()));
+            }
+        }
+    }
+    per_output
 }
 
 /// Per regeling en per uitkomst het rechtskarakter dat het voortbrengende
