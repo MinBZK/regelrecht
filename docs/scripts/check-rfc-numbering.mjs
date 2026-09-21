@@ -97,9 +97,18 @@ if (missing.length) {
   );
 }
 
-// 2. A reservation must be traceable. The content schema enforces this at build
-//    time; repeated here so the source check catches it without a build, and so
-//    the rule is stated where the numbering rule lives.
+// 2. A reservation must be traceable, and a placeholder must say it is one.
+//    The content schema enforces the same two rules at build time; they are
+//    repeated here so the source check catches them without a build.
+//
+//    Keep these in step with the superRefine in src/content.config.ts. A
+//    placeholder is any file carrying `reserved_by`, and it sits at `Reserved`
+//    while its pull request is open or `Rejected` once that pull request
+//    closed unmerged — the number is spent either way. Allowing only
+//    `Reserved` here would reject the end state the schema accepts and
+//    RFC-000 documents, which is how these two guards drifted apart once.
+const PLACEHOLDER_STATUSES = new Set(['Reserved', 'Rejected']);
+
 for (const r of rfcs) {
   if (r.status === 'Reserved' && !r.reservedBy) {
     problems.push(
@@ -107,10 +116,12 @@ for (const r of rfcs) {
         `  A reservation nobody can trace back to a branch blocks the number forever.`,
     );
   }
-  if (r.status !== 'Reserved' && r.reservedBy) {
+  if (r.reservedBy && !PLACEHOLDER_STATUSES.has(r.status)) {
     problems.push(
       `${r.file} carries 'reserved_by' but its status is '${r.status}'.\n` +
-        `  That field belongs to a Reserved placeholder only.`,
+        `  That field belongs to a placeholder: 'Reserved' while its pull request is\n` +
+        `  open, or 'Rejected' once it closed unmerged. Any other status means the real\n` +
+        `  RFC landed, and then 'reserved_by' should go.`,
     );
   }
 }
