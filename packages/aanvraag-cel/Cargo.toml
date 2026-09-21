@@ -1,0 +1,41 @@
+[package]
+name = "regelrecht-aanvraag-cel"
+version = "0.1.0"
+edition = "2021"
+authors = ["MinBZK <noreply@minbzk.nl>"]
+description = "PoC: een cel die een ingediende aanvraag vastlegt als chronolexogram en er via een reductie een lexostatus van maakt"
+license = "EUPL-1.2"
+repository = "https://github.com/MinBZK/regelrecht"
+
+[lib]
+name = "regelrecht_aanvraag_cel"
+path = "src/lib.rs"
+
+[[bin]]
+name = "regelrecht-aanvraag-cel"
+path = "src/main.rs"
+
+[dependencies]
+regelrecht-engine = { path = "../engine" }
+regelrecht-shared = { path = "../shared", features = ["telemetry"] }
+axum.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net"] }
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml_ng.workspace = true
+jsonschema.workspace = true
+sha2.workspace = true
+hex = "0.4"
+chrono.workspace = true
+chrono-tz.workspace = true
+uuid = { workspace = true, features = ["v4"] }
+walkdir.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+tower.workspace = true
+http-body-util.workspace = true
+
+[lints]
+workspace = true

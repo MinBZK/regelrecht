@@ -1,0 +1,180 @@
+//! Het optionele formulierbestand: labels en volgorde voor de velden die
+//! een indiening via `$external` meegeeft.
+//!
+//! Het formulier bepaalt nooit het gedrag. Een veld dat het formulier niet
+//! kent, krijgt zijn veldnaam als label en komt achteraan; een veld van het
+//! formulier dat de stroom niet kent, wordt overgeslagen.
+//!
+//! Vorm: `schermen: [{id, titel, groepen: [{titel, velden: [{id, label,
+//! type, opties, kolommen, uitleg}]}]}]`.
+
+use std::path::Path;
+
+use serde::Serialize;
+use serde_json::Value;
+use serde_yaml_ng::Value as Y;
+
+use crate::stroom::Event;
+
+/// Een scherm uit een formulierbestand.
+#[derive(Debug, Clone, Default)]
+pub struct Formulier {
+    pub titel: Option<String>,
+    pub velden: Vec<Veld>,
+}
+
+/// Een veld zoals de frontend het toont.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Veld {
+    /// De naam onder `external` bij het indienen.
+    pub naam: String,
+    pub label: String,
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub soort: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub opties: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kolommen: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uitleg: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub groep: Option<String>,
+}
+
+fn tekst(v: &Y, sleutel: &str) -> Option<String> {
+    v.get(sleutel).and_then(Y::as_str).map(str::to_string)
+}
+
+fn json(v: &Y, sleutel: &str) -> Option<Value> {
+    v.get(sleutel).and_then(|w| serde_json::to_value(w).ok())
+}
+
+/// Lees een scherm uit een formulierbestand.
+pub fn parse(tekst_: &str, scherm: &str, bron: &str) -> Result<Formulier, String> {
+    let doc: Y =
+        serde_yaml_ng::from_str(tekst_).map_err(|e| format!("{bron}: geen geldige YAML: {e}"))?;
+    let scherm_doc = doc
+        .get("schermen")
+        .and_then(Y::as_sequence)
+        .and_then(|s| {
+            s.iter()
+                .find(|s| s.get("id").and_then(Y::as_str) == Some(scherm))
+        })
+        .ok_or_else(|| format!("{bron}: geen scherm '{scherm}'"))?;
+    let mut velden = Vec::new();
+    let mut voeg_toe = |groep: Option<String>, lijst: Option<&Y>| {
+        for v in lijst.and_then(Y::as_sequence).into_iter().flatten() {
+            let Some(id) = tekst(v, "id") else { continue };
+            velden.push(Veld {
+                label: tekst(v, "label").unwrap_or_else(|| id.clone()),
+                naam: id,
+                soort: tekst(v, "type"),
+                opties: json(v, "opties"),
+                kolommen: json(v, "kolommen"),
+                uitleg: tekst(v, "uitleg"),
+                groep: groep.clone(),
+            });
+        }
+    };
+    voeg_toe(None, scherm_doc.get("velden"));
+    for groep in scherm_doc
+        .get("groepen")
+        .and_then(Y::as_sequence)
+        .into_iter()
+        .flatten()
+    {
+        voeg_toe(tekst(groep, "titel"), groep.get("velden"));
+    }
+    Ok(Formulier {
+        titel: tekst(scherm_doc, "titel"),
+        velden,
+    })
+}
+
+/// Laad een scherm uit een formulierbestand.
+pub fn laad(pad: &Path, scherm: &str) -> Result<Formulier, String> {
+    let bron = pad.display().to_string();
+    let t = std::fs::read_to_string(pad).map_err(|e| format!("{bron}: {e}"))?;
+    parse(&t, scherm, &bron)
+}
+
+/// De velden die een indiening voor dit event meegeeft: in de volgorde van
+/// het formulier, daarna wat het formulier niet kent in de volgorde van de
+/// stroom.
+pub fn velden(event: &Event, formulier: Option<&Formulier>) -> Vec<Veld> {
+    let sleutels = event.external_sleutels();
+    let mut uit: Vec<Veld> = formulier
+        .map(|f| {
+            f.velden
+                .iter()
+                .filter(|v| sleutels.contains(&v.naam))
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default();
+    for sleutel in sleutels {
+        if !uit.iter().any(|v| v.naam == sleutel) {
+            uit.push(Veld {
+                label: sleutel.clone(),
+                naam: sleutel,
+                soort: None,
+                opties: None,
+                kolommen: None,
+                uitleg: None,
+                groep: None,
+            });
+        }
+    }
+    uit
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+    use crate::stroom;
+
+    const STROOM: &str = include_str!("../tests/fixtures/chronicles/test_aanvragen.yaml");
+    const FORMULIER: &str = include_str!("../tests/fixtures/cel/formulier.yaml");
+
+    #[test]
+    fn volgorde_en_labels_uit_het_formulier() {
+        let s = stroom::parse(STROOM, "fixture").unwrap();
+        let f = parse(FORMULIER, "aanvraag", "fixture").unwrap();
+        let v = velden(&s.events[0], Some(&f));
+        let namen: Vec<&str> = v.iter().map(|v| v.naam.as_str()).collect();
+        // `telefoon` kent de stroom niet; `rekeningnummer` kent het formulier niet.
+        assert_eq!(
+            namen,
+            vec![
+                "naam",
+                "aanduiding",
+                "adres",
+                "aanvraagjaar",
+                "dagtekening",
+                "registratie",
+                "organen",
+                "rekeningnummer"
+            ]
+        );
+        assert_eq!(v[0].label, "Naam van de aanvrager");
+        assert_eq!(v[0].groep.as_deref(), Some("De aanvrager"));
+        assert_eq!(v[7].label, "rekeningnummer");
+        assert!(v[6].kolommen.is_some());
+    }
+
+    #[test]
+    fn zonder_formulier_de_veldnaam() {
+        let s = stroom::parse(STROOM, "fixture").unwrap();
+        let v = velden(&s.events[0], None);
+        assert_eq!(v[0].naam, "naam");
+        assert_eq!(v[0].label, "naam");
+    }
+
+    #[test]
+    fn onbekend_scherm() {
+        assert!(parse(FORMULIER, "bestaat_niet", "f")
+            .unwrap_err()
+            .contains("bestaat_niet"));
+    }
+}

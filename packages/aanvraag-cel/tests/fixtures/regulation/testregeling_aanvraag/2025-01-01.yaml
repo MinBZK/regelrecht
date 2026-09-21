@@ -1,0 +1,178 @@
+---
+# Fictieve testregeling voor de aanvraag-cel. Geen geldend recht.
+# Artikel 1 is een TOETS op de volledigheid van een aanvraag; al zijn
+# parameters komen uit de aanvraag.
+# Artikel 2 is een TOETS die daarnaast een feit van de instantie zelf vraagt
+# (`eigen_feit_behandelaar`) en een invoer uit een andere regeling. Daarmee
+# ligt vast hoe de engine zich gedraagt als maar een uitkomst gevraagd wordt:
+# hij voert het hele artikel uit, dus ook wat die uitkomst niet nodig heeft.
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
+$id: testregeling_aanvraag
+name: Testregeling aanvraag
+regulatory_layer: WET
+bwb_id: BWBR9999950
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/testregeling_aanvraag
+
+articles:
+  - number: '1'
+    url: https://example.com/testregeling_aanvraag/1
+    text: >-
+      1. Een aanvraag wordt ingediend voor 1 april van het aanvraagjaar.
+      2. De aanvraag bevat de naam van de aanvrager, de aanduiding waaronder
+      zij optreedt, en per orgaan de naam van dat orgaan en het aantal zetels.
+      3. Is de aanduiding samengevoegd, dan bevat de aanvraag ook het aantal
+      aanduidingen waaruit zij is gevormd.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TOETS
+          decision_type: GEEN_BESLUIT
+        parameters:
+          - name: aanvraagjaar
+            type: number
+            required: true
+          - name: aanvraagdatum
+            type: date
+            required: true
+          - name: bevat_naam
+            type: boolean
+            required: true
+          - name: bevat_aanduiding
+            type: boolean
+            required: true
+          - name: bevat_naam_orgaan
+            type: boolean
+            required: true
+          - name: bevat_aantal_zetels
+            type: boolean
+            required: true
+          - name: is_samengevoegd
+            type: boolean
+            required: true
+          - name: bevat_aantal_aanduidingen
+            type: boolean
+            required: false
+          - name: registratie_categorie_a
+            type: boolean
+            required: true
+        output:
+          - name: aanvraag_tijdig
+            type: boolean
+          - name: samengevoegd_volledig
+            type: boolean
+          - name: aanvraag_volledig
+            type: boolean
+          - name: registratie_via_categorie_a
+            type: boolean
+        actions:
+          - output: aanvraag_tijdig
+            value:
+              operation: LESS_THAN
+              subject: $aanvraagdatum
+              value:
+                operation: DATE
+                year: $aanvraagjaar
+                month: 4
+                day: 1
+          - output: samengevoegd_volledig
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $is_samengevoegd
+                    value: true
+                  then:
+                    operation: EQUALS
+                    subject: $bevat_aantal_aanduidingen
+                    value: true
+              default: true
+          - output: aanvraag_volledig
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $bevat_naam
+                  value: true
+                - operation: EQUALS
+                  subject: $bevat_aanduiding
+                  value: true
+                - operation: EQUALS
+                  subject: $bevat_naam_orgaan
+                  value: true
+                - operation: EQUALS
+                  subject: $bevat_aantal_zetels
+                  value: true
+                - operation: EQUALS
+                  subject: $samengevoegd_volledig
+                  value: true
+          - output: registratie_via_categorie_a
+            value:
+              operation: EQUALS
+              subject: $registratie_categorie_a
+              value: true
+  - number: '2'
+    url: https://example.com/testregeling_aanvraag/2
+    text: >-
+      1. Een aanvraag is in behandeling te nemen als zij compleet is en de
+      aanvrager niet in verzuim is.
+      2. De instantie stelt zelf vast of behandeling nodig is.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TOETS
+          decision_type: GEEN_BESLUIT
+        parameters:
+          - name: bevat_naam
+            type: boolean
+            required: true
+          - name: bevat_aanduiding
+            type: boolean
+            required: true
+          - name: eigen_feit_behandelaar
+            type: boolean
+            required: true
+        input:
+          - name: aanvrager_in_verzuim
+            type: boolean
+            source:
+              regulation: testregeling_awb
+              output: in_verzuim
+              parameters:
+                verzuimdagen: $verzuimdagen
+        output:
+          - name: aanvraag_compleet
+            type: boolean
+          - name: in_behandeling_te_nemen
+            type: boolean
+          - name: behandeling_nodig
+            type: boolean
+        actions:
+          - output: aanvraag_compleet
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $bevat_naam
+                  value: true
+                - operation: EQUALS
+                  subject: $bevat_aanduiding
+                  value: true
+          - output: in_behandeling_te_nemen
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $aanvraag_compleet
+                  value: true
+                - operation: EQUALS
+                  subject: $aanvrager_in_verzuim
+                  value: false
+          - output: behandeling_nodig
+            value:
+              operation: EQUALS
+              subject: $eigen_feit_behandelaar
+              value: true

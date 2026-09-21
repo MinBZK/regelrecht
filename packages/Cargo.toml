@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "aanvraag-cel",
     "admin",
     "arch-extract",
     "auth",
