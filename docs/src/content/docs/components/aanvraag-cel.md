@@ -19,7 +19,7 @@ Nothing in the code names a case. The stream definition, the lexostatus definiti
 The design keeps four things apart. The regulation does not know that a chronicle exists, and the chronicle does not know which article reads it. The reduction is the only place where the two meet.
 
 1. **Lexogram.** The regulations under `REGULATION_PATH`, unchanged. An article declares the parameters it needs, such as `bevat_naam` or `aanvraagdatum`.
-2. **Stream definition.** Which facts the cell records, by which actor, in which chronicle and on which legal ground (`grondslag`). Each field binds to `$intake.*` (who submitted it and through which channel), to `$external.*` (the content as submitted) or to a constant of the stream. This follows the sketch in RFC-022 §1.3.
+2. **Stream definition.** Which facts the cell records, by which actor, in which chronicle and on which legal ground (`grondslag`). Each field binds to `$intake.*` (who submitted it and through which channel), to `$external.*` (the content as submitted) or to a constant of the stream. A table field declares its columns: `{tabel: $external.<path>, kolommen: [...]}`. This follows the sketch in RFC-022 §1.3.
 3. **Reduction to lexostatus.** A `lexostatus_definitions` entry picks grams from the chronicle with `filter` and `kies: laatste`, and derives each parameter of an article with an `afleiding`. The vocabulary is small and fixed: `veld`, `gevuld`, `gelijk`, `tabel` with `elke_regel` or `een_regel` (optionally `alleen_waar`), and `moment`. Field paths use dots, as in `inhoud.organen`.
 4. **The gram.** What the cell writes, one JSON line per gram in `DATA_DIR/<chronicle>.jsonl`. A gram is appended and never changed; a correction is a new gram. It carries `kind`, `type`, `soort`, `name`, `chronicle`, `recording_actor`, `grondslag`, `op_moment`, `zaakkenmerk`, `stroom {id, sha256}` and `fields`.
 
@@ -30,7 +30,7 @@ A submitted application is recorded with `type: indiening` and `soort: aanvraag`
 The cell refuses to start when a check fails, and names the field or parameter in the message.
 
 1. The stream definitions and the cell configuration validate against their schemas.
-2. Every derivation points at a parameter of an article in the `grondslag` of the event its filter selects, and at field paths that exist in that event.
+2. Every derivation points at a parameter of an article in the `grondslag` of the event its filter selects, and at field paths that exist in that event. A `tabel` derivation points at a table field and reads only columns the stream declares for it.
 3. No orphaned field: each field of each event is read by a derivation, or is listed under `niet_gereduceerd` with a reason.
 4. No name collision: a parameter gets one derivation.
 
@@ -70,6 +70,25 @@ These are deliberate. Each is a candidate for an amendment once the proof of con
 5. **`niet_gereduceerd`** in the stream, for the orphaned-field check.
 6. **A separate schema directory**, `schema/chronolex/`, instead of the `chronicle.json` that RFC-022 §1.3 places in `schema/v0.6.0/`.
 7. **The `portaal` block** in the cell configuration. It is how the configuration, not the code, decides which outcome the check evaluates.
+
+## Choices the cell makes
+
+RFC-022 does not settle the points below. The cell settles them as follows.
+
+**The gram keeps the shape of the stream.** A field left empty is recorded as `null`, because `kern` is fixed and an incomplete application is recorded too. A table field is recorded row by row, and each row has every declared column in the order of the stream, with `null` for a column the submission left out. The cell refuses a submission (HTTP 400) that does not fit this shape, and names the field path in the message:
+
+- a field under `external` that no `$external` binding reads;
+- a key under a nested `$external` object that the stream does not bind, such as `adres.huisnummer` when only `$external.adres.straat` is bound;
+- a column the table field does not declare, such as `organen[1].kleur`;
+- a list or object where the stream expects a single value, or a table that is not a list of rows.
+
+What has no `grondslag` is not recorded. A form file cannot widen this: its columns are shown only when the stream declares them.
+
+**`filter` selects on the gram itself.** The keys are `name`, `type`, `soort`, `zaakkenmerk`, `recording_actor` and `chronicle`, and none of them is required. The fixtures filter on `type` and `soort` alone, so a second event of the same soort would be read by the same reduction. A value `$x` comes from the inputs of the lexostatus.
+
+**`ontbreekt` lists presence derivations that came out false.** A presence derivation is `gevuld`, or `tabel` with `elke_regel`. When one of those is false, the application lacks something, and the parameter is listed under `ontbreekt` in the answer of `POST /api/aanvraag/toets`. This follows the `bevat_*` parameters of a regulation without relying on their names. A false `gelijk` or `een_regel` is an answer, not a gap, so it is not listed. A `veld` or `gelijk` derivation on an empty field yields no value at all; the parameter stays out of the lexostatus and the cell does not fill it in.
+
+**`tabel` with `elke_regel`** is true when the table has at least one row and every row has the named column filled. Filled means not `null`, not empty text, and not an empty list or object. An empty or missing table gives false. With `alleen_waar: <column>`, only rows where that column is exactly `true` count. If no row qualifies, the result is true as long as the table has rows, since nothing that the condition asks for is missing. `tabel` with `een_regel` is true when at least one row has the named column exactly `true`.
 
 ## Open questions
 
