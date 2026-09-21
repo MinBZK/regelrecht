@@ -1,0 +1,69 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: test_hook_besluitcontext
+name: Testregeling algemene uitvoeringstermijn na de bekendmaking
+regulatory_layer: WET
+bwb_id: BWBR9999923
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+url: https://example.com/test_hook_besluitcontext
+
+# Een testregeling, met opzet **niet** in het corpus: ze bestaat om een
+# eigenschap van de opstelling aan te tonen en niet om recht weer te geven.
+#
+# Wat ze aantoont is een **hook op de bekendmaking die leest wat het besluit
+# vastlegde**. De dag van de bekendmaking komt uit het formulier van die stage.
+# Of de beschikking een later tijdstip vermeldt, en welke termijn er geldt, zijn
+# feiten van het besluit: de eerste een uitkomst, de tweede een input. Beide
+# parameters zijn optioneel, dus wat het besluit niet draagt blijft onbekend
+# (RFC-036) — en een expliciete `null` uit het besluit is geen onbekend.
+articles:
+  - number: '1'
+    url: https://example.com/test_hook_besluitcontext#Artikel1
+    text: >-
+      Een beschikking wordt uitgevoerd binnen de termijn die voor de voorziening
+      geldt, gerekend vanaf de bekendmaking, tenzij de beschikking een later
+      tijdstip vermeldt.
+    machine_readable:
+      # `pre_actions` en niet `post_actions`: een hook ná de acties krijgt ook
+      # wat het uitvoerende artikel bij deze stage opnieuw uitrekent, en dan zou
+      # niet te zien zijn dat de uitkomst uit het gram van het besluit komt.
+      # Vóór de acties is er niets anders dan wat de stage meegeeft.
+      hooks:
+        - hook_point: pre_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: BEKENDMAKING
+      execution:
+        parameters:
+          # Uit het formulier van de bekendmaking.
+          - name: datum_bekendmaking
+            type: date
+            required: true
+          # Een uitkomst van het besluit.
+          - name: later_tijdstip_in_besluit
+            type: date
+            required: false
+            nullable: true
+          # Een input van het besluit.
+          - name: uitvoeringstermijn_weken
+            type: number
+            required: false
+        output:
+          - name: uiterlijk_uitgevoerd_op
+            type: date
+        actions:
+          - output: uiterlijk_uitgevoerd_op
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $later_tijdstip_in_besluit
+                    value: null
+                  then:
+                    operation: DATE_ADD
+                    date: $datum_bekendmaking
+                    weeks: $uitvoeringstermijn_weken
+              default: $later_tijdstip_in_besluit
