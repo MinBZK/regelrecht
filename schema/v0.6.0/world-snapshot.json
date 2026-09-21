@@ -222,7 +222,12 @@
         "grams": {
           "description": "De grammen, in de volgorde waarin ze vastgelegd zijn.",
           "type": "array",
-          "items": { "$ref": "gram.json" }
+          "items": {
+            "allOf": [
+              { "$ref": "gram.json" },
+              { "properties": { "kind": { "$ref": "#/definitions/kroniek_kind" } } }
+            ]
+          }
         }
       }
     },
@@ -372,7 +377,7 @@
               "cell": { "type": "string" },
               "chronicle": { "type": "string" },
               "id": { "$ref": "#/definitions/gram_id" },
-              "kind": { "$ref": "gram.json#/properties/kind" },
+              "kind": { "$ref": "#/definitions/kroniek_kind" },
               "name": { "type": "string" },
               "volgnummer": { "type": "integer", "minimum": 0 },
               "op_moment": { "$ref": "gram.json#/definitions/date" },
@@ -394,6 +399,10 @@
         }
       }
     },
+    "kroniek_kind": {
+      "description": "De soort van een gram dat in een kroniek ligt: een decretogram of een executogram. De derde soort uit `gram.json`, het lexogram, is de regeling zelf en ligt in geen enkele kroniek (RFC-022 §1.1); een beeld dat er een in een kroniek toont, klopt niet.",
+      "enum": ["decretogram", "executogram"]
+    },
     "gram_id": {
       "description": "Waaronder een gram in dit beeld terug te vinden is: `<cel>|<kroniek>|<plek in de kroniek>`, de plek vanaf nul.",
       "type": "string",
@@ -408,7 +417,7 @@
         "cell": { "type": "string" },
         "chronicle": { "type": "string" },
         "id": { "$ref": "#/definitions/gram_id" },
-        "kind": { "$ref": "gram.json#/properties/kind" },
+        "kind": { "$ref": "#/definitions/kroniek_kind" },
         "name": { "type": "string" }
       }
     },

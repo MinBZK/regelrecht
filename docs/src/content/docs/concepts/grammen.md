@@ -87,7 +87,8 @@ van de Wet op de zorgtoeslag.
 Een lexogram hoort bij geen enkele cel, dus het ligt in geen enkele kroniek. De
 inhoud is het regelingsbestand, en dat valideert tegen `schema.json` (zie
 [Law Format](/concepts/law-format)). `gram.json` noemt de variant zodat één
-vocabulaire alle drie de grammen dekt. Welke lexogrammen een cel laadt, staat in
+vocabulaire alle drie de grammen dekt; `world-snapshot.json` weigert een
+kroniek of journaalregel die er toch een draagt. Welke lexogrammen een cel laadt, staat in
 het beeld bij `cells[].laws`, en welke versie een besluit uitvoerde, staat in het
 decretogram (`regulation`, `regulation_valid_from`, `executed_regulations`).
 
@@ -287,8 +288,13 @@ waarop de stroom groepeert en waarop een reductie zoekt) en `gebeurtenissen`
 `number`, `amount`, `boolean` of `date`). Het gebeurtenisschema is een
 ondergrens: een gram mag meer dragen. Een stroom zonder `gebeurtenissen` wordt
 niet getoetst. RFC-022 §1.3 zet deze definities in een eigen map `chronicles/`
-naast het corpus; in de testopstelling staan ze vandaag in het wereldbestand,
-onder `cells[].chronicles[]`. De vorm is in beide gevallen dezelfde.
+naast het corpus, met een schets die er anders uitziet (`$id`,
+`recording_actor`, `chronicle` en `events` met verwijzingen als
+`$external.amount_cents`). In de testopstelling staan ze vandaag in het
+wereldbestand, onder `cells[].chronicles[]`, en `chronicle.json` legt die vorm
+vast. De cel die de stroom houdt is daar de `recording_actor`, dus een eigen
+veld is niet nodig. Waar de definities uiteindelijk komen te staan, ligt nog
+niet vast.
 
 ### De betaling
 

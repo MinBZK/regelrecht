@@ -27,21 +27,17 @@ fn crate_dir() -> PathBuf {
 }
 
 /// Alle YAML-bestanden onder `dir`, ook in submappen, gesorteerd.
+///
+/// Een map die niet te lezen is laat de toets vallen in plaats van haar stil
+/// over te slaan: een scenario dat niet meedoet, valideert ook niet.
 fn yaml_files(dir: &Path) -> Vec<PathBuf> {
-    let mut files = Vec::new();
-    let mut todo = vec![dir.to_path_buf()];
-    while let Some(current) = todo.pop() {
-        for entry in std::fs::read_dir(&current)
-            .unwrap_or_else(|e| panic!("kan {} niet lezen: {e}", current.display()))
-        {
-            let path = entry.expect("een map-entry is te lezen").path();
-            if path.is_dir() {
-                todo.push(path);
-            } else if path.extension().is_some_and(|ext| ext == "yaml") {
-                files.push(path);
-            }
-        }
-    }
+    let mut files: Vec<PathBuf> = walkdir::WalkDir::new(dir)
+        .into_iter()
+        .map(|entry| entry.unwrap_or_else(|e| panic!("kan {} niet doorlopen: {e}", dir.display())))
+        .filter(|entry| entry.file_type().is_file())
+        .map(walkdir::DirEntry::into_path)
+        .filter(|path| path.extension().is_some_and(|ext| ext == "yaml"))
+        .collect();
     files.sort();
     files
 }
@@ -135,17 +131,25 @@ fn elk_gram_en_elk_beeld_uit_elk_scenario_valideert() {
     }
 }
 
-#[test]
-fn de_vastgepinde_fixture_valideert() {
-    let path = crate_dir()
+/// Het pad van de vastgepinde fixture: het beeld van de publieke wereld.
+fn fixture_path() -> PathBuf {
+    crate_dir()
         .join("tests")
         .join("fixtures")
-        .join("snapshot.json");
+        .join("snapshot.json")
+}
+
+/// De vastgepinde fixture, als JSON.
+fn fixture() -> Value {
+    let path = fixture_path();
     let text = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("kan {} niet lezen: {e}", path.display()));
-    let snapshot: Value = serde_json::from_str(&text)
-        .unwrap_or_else(|e| panic!("{} is geen JSON: {e}", path.display()));
-    schema_contract::assert_snapshot_valid(&snapshot, &label(&path));
+    serde_json::from_str(&text).unwrap_or_else(|e| panic!("{} is geen JSON: {e}", path.display()))
+}
+
+#[test]
+fn de_vastgepinde_fixture_valideert() {
+    schema_contract::assert_snapshot_valid(&fixture(), &label(&fixture_path()));
 }
 
 /// Elke kroniekstroom-definitie in een wereld- of scenariobestand.
@@ -205,15 +209,7 @@ fn elke_kroniekstroom_definitie_valideert() {
 
 /// Het eerste gram van de variant, uit de vastgepinde fixture.
 fn fixture_gram(wanted: &str) -> Value {
-    let path = crate_dir()
-        .join("tests")
-        .join("fixtures")
-        .join("snapshot.json");
-    let snapshot: Value = serde_json::from_str(
-        &std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display())),
-    )
-    .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-    schema_contract::grams(&snapshot)
+    schema_contract::grams(&fixture())
         .into_iter()
         .map(|(_, gram)| gram.clone())
         .find(|gram| variant(gram) == wanted)
@@ -347,14 +343,7 @@ fn het_gramschema_weigert_een_bekendmaking_zonder_haar_vaste_velden() {
 
 #[test]
 fn het_beeldschema_toetst_de_grammen_erin() {
-    let path = crate_dir()
-        .join("tests")
-        .join("fixtures")
-        .join("snapshot.json");
-    let mut snapshot: Value = serde_json::from_str(
-        &std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display())),
-    )
-    .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let mut snapshot = fixture();
 
     // Het eerste decretogram uit het besluit-pad, zonder bevoegd gezag: het beeld
     // verwijst voor zijn grammen naar gram.json, dus ook het beeld hoort dit te
@@ -386,6 +375,59 @@ fn het_beeldschema_toetst_de_grammen_erin() {
         &snapshot,
         schema_contract::world_snapshot(),
         "een beeld met een decretogram zonder bevoegd gezag",
+    );
+}
+
+/// Een lexogram is de regeling zelf en ligt in geen enkele kroniek (RFC-022
+/// §1.1). `gram.json` noemt de soort voor het vocabulaire; het beeld hoort een
+/// kroniek die er een draagt te weigeren, en een verwijzing ernaar ook.
+#[test]
+fn het_beeldschema_weigert_een_lexogram_in_een_kroniek() {
+    let snapshot = fixture();
+    schema_contract::assert_valid(schema_contract::world_snapshot(), &snapshot, "de fixture");
+
+    let mut in_de_kroniek = snapshot.clone();
+    let gram = in_de_kroniek["cells"]
+        .as_array_mut()
+        .expect("cells is een lijst")
+        .iter_mut()
+        .flat_map(|cell| {
+            cell["chronicles"]
+                .as_array_mut()
+                .expect("chronicles is een lijst")
+                .iter_mut()
+        })
+        .flat_map(|chronicle| {
+            chronicle["grams"]
+                .as_array_mut()
+                .expect("grams is een lijst")
+                .iter_mut()
+        })
+        .find(|gram| gram["kind"] == "executogram")
+        .expect("de fixture draagt een executogram");
+    gram["kind"] = json!("lexogram");
+    assert_rejected(
+        &in_de_kroniek,
+        schema_contract::world_snapshot(),
+        "een lexogram in een kroniek",
+    );
+
+    let mut in_het_journaal = snapshot;
+    let verwijzing = in_het_journaal["journal"]
+        .as_array_mut()
+        .expect("journal is een lijst")
+        .iter_mut()
+        .find_map(|entry| {
+            entry["grams"]
+                .as_array_mut()
+                .and_then(|grams| grams.first_mut())
+        })
+        .expect("het journaal van de fixture wijst naar een gram");
+    verwijzing["kind"] = json!("lexogram");
+    assert_rejected(
+        &in_het_journaal,
+        schema_contract::world_snapshot(),
+        "een journaalregel die naar een lexogram in een kroniek wijst",
     );
 }
 
