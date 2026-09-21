@@ -1,0 +1,72 @@
+---
+name: Merge queue gates
+
+# `Validate PR title` en `Claude review completed` zijn required checks die
+# alleen op een pull request kunnen bestaan. De eerste leest de titel van de PR,
+# de tweede de review-comments, de PR-body en `refs/pull/N/merge`. In een
+# merge_group-run is er geen pull request, dus die twee workflows draaien er
+# niet en rapporteren er niets.
+#
+# GitHub kent de merge queue geen eigen lijst required checks toe: het is
+# dezelfde lijst als in de branch protection. Een required check die in de rij
+# nooit rapporteert laat elke entry hangen tot de status-check-timeout hem eruit
+# gooit. Deze workflow rapporteert die twee namen daarom in de rij.
+#
+# Wat dit wel en niet waard is. GitHub laat een pull request alleen aansluiten
+# als élke required check op de PR zelf groen is, dus op het moment van
+# aansluiten waren beide gates groen. Dat is wat de job hieronder vaststelt en
+# in de samenvatting opschrijft. Wat het níét afdekt is het venster daarna: gaat
+# de review verder en vindt hij alsnog een 🔴 Critical, dan is de PR al in de
+# rij en houdt niets hem meer tegen. Dat venster was precies wat de review-poort
+# dichtte; het is kleiner geworden (de poort moet eerst groen zijn geweest) maar
+# het is er.
+#
+# De nette oplossing is een regelset die het aansluiten zelf blokkeert. Die kan
+# hier niet: main draait op klassieke branch protection en daar bestaat geen
+# voorwaarde los van de required checks. Dat omzetten raakt alles wat main
+# beschermt en hoort niet bij het aanzetten van een wachtrij.
+
+on:
+  merge_group:
+
+permissions:
+  contents: read
+
+jobs:
+  # Twee banen en niet één, want een baan levert één check-naam en beide namen
+  # moeten in de rij rapporteren.
+  pr-title:
+    name: Validate PR title
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: De titel is op de pull request beoordeeld
+        run: |
+          {
+            echo "### Validate PR title"
+            echo
+            echo "Beoordeeld op de pull request zelf, vóór het aansluiten in de"
+            echo "rij: zonder een groene titelcheck laat GitHub een pull request"
+            echo "niet toe. De titel verandert daarna niet meer, dus er valt"
+            echo "hier niets opnieuw te toetsen."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  claude-review:
+    name: Claude review completed
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: De review is op de pull request afgerond
+        run: |
+          {
+            echo "### Claude review completed"
+            echo
+            echo "De poort draaide op de pull request en was groen op het moment"
+            echo "van aansluiten: GitHub laat een pull request met een rode"
+            echo "required check niet in de rij toe. Dat betekent dat de review"
+            echo "voor die commit is afgerond en er toen geen 🔴 Critical stond."
+            echo
+            echo "Wat hier niet getoetst wordt: een bevinding die ná het"
+            echo "aansluiten binnenkomt. De review draait niet op de queue-branch"
+            echo "en kan een entry niet meer tegenhouden."
+          } >> "$GITHUB_STEP_SUMMARY"

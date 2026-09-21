@@ -6,6 +6,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # De merge queue bouwt zijn eigen branch (`gh-readonly-queue/main/...`) met
+  # main plus de wachtende pull requests erin, en mergt pas als de checks daar
+  # groen zijn. Zonder deze trigger draait hier niets en blijft elke entry
+  # hangen tot de queue-timeout hem eruit gooit.
+  merge_group:
 
 permissions:
   contents: read
@@ -36,6 +41,17 @@ jobs:
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d  # v4.0.3
         id: filter
         with:
+          # Geen `base:` en geen `ref:`, ook niet voor de rij. De action kent
+          # merge_group zelf (sinds v4.0.1) en pakt dan `base_sha` en `head_sha`
+          # uit de payload: twee commits, rechtstreeks met elkaar vergeleken.
+          # Dat is precies de gewenste verzameling — wat de groep toevoegt
+          # bovenop de commit waarop hij bouwt.
+          #
+          # Zet hier vooral geen `base: refs/heads/main` bij als het ooit lijkt
+          # te helpen. De action strípt dat naar `main`, en dat is geen SHA meer,
+          # dus valt hij terug op een vergelijking met de merge-base tegen de
+          # punt van main. In een rij is de punt van main juist niet waar de
+          # groep vandaan vertakt, en dan klopt de lijst niet meer.
           filters: |
             ci:
               # Alle crates; een handmatige opsomming dreef eerder weg.
@@ -125,7 +141,11 @@ jobs:
     needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    if: github.event_name == 'pull_request'
+    # Ook in de rij, want dit is een required check: sloeg hij daar over, dan
+    # blijft elke entry hangen tot de queue-timeout. De vergelijking hieronder
+    # is `origin/main...HEAD` en niet iets PR-eigens, dus op de queue-branch —
+    # main plus de wachtende pull requests — leest hij hetzelfde.
+    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         if: needs.changes.outputs.ci == 'true'
@@ -1218,16 +1238,18 @@ jobs:
         working-directory: docs
         run: npx --no puppeteer browsers install chrome
 
-      # Alleen op een pull request: de lijst gewijzigde bestanden, waarmee
-      # gen-pa11yci.mjs de gate tot de geraakte pagina's beperkt. Raakt de PR
-      # iets anders dan inhoud (layout, component, stylesheet, configuratie),
-      # dan valt dat script terug op de volledige site. Bij een push naar main
-      # blijft de lijst leeg en draait de gate altijd volledig.
+      # Op een pull request en in de rij: de lijst gewijzigde bestanden, waarmee
+      # gen-pa11yci.mjs de gate tot de geraakte pagina's beperkt. Raakt de
+      # wijziging iets anders dan inhoud (layout, component, stylesheet,
+      # configuratie), dan valt dat script terug op de volledige site. Bij een
+      # push naar main blijft de lijst leeg en draait de gate altijd volledig.
       - name: Bepaal gewijzigde bestanden
         if: needs.changes.outputs.docs == 'true'
         id: changed
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: >-
+            ${{ github.event.pull_request.base.sha
+                || github.event.merge_group.base_sha }}
         run: |
           if [ -n "$BASE_SHA" ]; then
             files=$(git diff --name-only "$BASE_SHA" HEAD | tr '\n' ' ')
