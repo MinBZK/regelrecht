@@ -8,7 +8,7 @@ description: >
   "rekenvoorbeelden", or "kamerstukken" in the context of Dutch law.
   Activate automatically when a new law YAML file is created and the user
   discusses testing or validation.
-allowed-tools: Read, Write, WebFetch, WebSearch, Bash, Grep, Glob
+allowed-tools: Read, Write, Bash, WebSearch, WebFetch, Grep, Glob
 user-invocable: true
 ---
 
@@ -28,30 +28,51 @@ examples into Gherkin acceptance tests.
 
 Extract the `bwb_id` (e.g., `BWBR0018451`) from the law YAML's `bwb_id` field.
 
-Search for related parliamentary documents using the overheid.nl SRU API:
+Search for related parliamentary documents using the overheid.nl SRU API at
+`repository.overheid.nl`. **URL-encode the whole query string** before use.
+
+The most productive search is by **dossiernummer**, which returns the complete
+legislative file in one call (bill, MvT, every nota van wijziging, the Eerste
+Kamer stukken). Find the dossier number from the title search below, or from the
+citation `Kamerstukken II ..., 29 762, nr. 3` if you already have one:
 
 ```
-https://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=officielepublicaties&query=dcterms.references=={BWB_ID}&maximumRecords=20
+https://repository.overheid.nl/sru?operation=searchRetrieve&version=2.0
+  &query=(c.product-area==officielepublicaties) and (w.dossiernummer==29762)
+  &maximumRecords=100
 ```
 
-Use WebFetch to retrieve the results. Parse the XML response to find documents of
-these types (in `<dcterms:type>`):
+When you do not know the dossier, search by title (`dt.title` is the working
+index; `dcterms.title` is not):
+
+```
+https://repository.overheid.nl/sru?operation=searchRetrieve&version=2.0
+  &query=(c.product-area==officielepublicaties) and (dt.title any "{KEYWORD}")
+  &maximumRecords=100
+```
+
+Filter the results **by reading `<dcterms:title>`**, not by a type index: the
+document kind is written into the title after a semicolon ("…; Memorie van
+toelichting", "…; Nota van wijziging"). Filtering on `dt.type` returns zero
+records even when matching documents exist, so it silently hides everything.
+The fields that carry the useful metadata are `<dcterms:title>`,
+`<dcterms:identifier>`, `<dcterms:date>` and `<overheidwetgeving:dossiernummer>`.
+
+Collect all of these, since each may explain a different part of the law:
 - **Memorie van toelichting** (explanatory memorandum)
 - **Nota naar aanleiding van het verslag** (response to parliamentary report)
 - **Nota van wijziging** (amendment note)
 - **Brief van de minister** (ministerial letter with examples)
 
-Also search by law title for additional coverage. **URL-encode the law title**
-(replace spaces with `%20`, quotes with `%22`, etc.) before substituting:
-```
-https://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=officielepublicaties&query=dcterms.title%20any%20%22{URL_ENCODED_LAW_TITLE}%22%20AND%20dcterms.type%3D%3D%22Memorie%20van%20toelichting%22&maximumRecords=10
-```
-
 There may be **multiple MvT documents** (original + amendments). Collect all of them.
 
-**Error handling:** The SRU API may return empty results, HTTP errors, or malformed
-XML. If a search returns no results:
-1. Try the alternate query (BWB ID vs title, or vice versa)
+**Do not use `zoekservice.overheid.nl/sru/Search`.** That host now rejects every
+`x-connection` value except `cvdr` and `bwb`, answering anything else with SRU
+diagnostic `info:srw/diagnostic/1/6` ("Unsupported parameter value"). It also has
+no `dcterms.references` index, so a BWB-id search cannot be made to work there.
+
+**Error handling:** If a search returns no results:
+1. Try the alternate query (dossier number vs title, or vice versa)
 2. Try broadening the title query (use fewer keywords)
 3. Try WebSearch as a fallback (e.g., search for `site:zoek.officielebekendmakingen.nl memorie van toelichting {law_title}`)
 4. If all searches fail, report "No MvT documents found" and proceed — this is not an error
@@ -73,8 +94,26 @@ Then use it to download the HTML version:
 https://zoek.officielebekendmakingen.nl/{DOCUMENT_ID}.html
 ```
 
-Use WebFetch to retrieve the content. If HTML is too large, focus on sections that
-contain:
+**Do not use WebFetch for the document body.** WebFetch returns a model's
+summary of the page, and a summary cannot be quoted: a paraphrase attributed to
+a real parliamentary document is a fabricated citation, and this corpus is
+published. Download the raw HTML instead and strip the tags yourself:
+
+```bash
+curl -s "https://zoek.officielebekendmakingen.nl/{DOCUMENT_ID}.html" -o {DOCUMENT_ID}.html
+```
+
+Then extract text locally (tags stripped, entities unescaped, whitespace
+collapsed, nothing else). Every sentence you later quote must survive that path
+literally. When a passage carries a **table** of worked examples, re-extract the
+`<table>` markup cell by cell and reconcile it against the flattened text before
+trusting any number: flattening a table can silently misalign rows against
+values.
+
+Note the source documents use guillemets («») and non-breaking spaces in
+amounts; keep them as they are rather than normalizing them away.
+
+If HTML is too large, focus on sections that contain:
 - "voorbeeld" (example)
 - "rekenvoorbeeld" (calculation example)
 - "casus" (case)
@@ -86,7 +125,35 @@ contain:
 
 ## Step 3: Extract Test-Relevant Information
 
-From the MvT content, extract:
+### First: an MvT explains a bill, not necessarily the law
+
+A memorie van toelichting describes the text **as introduced**. Parliament then
+amends it. Where a nota van wijziging changed a provision, the original MvT
+explains a rule that never entered into force, and mining it for scenarios
+imports the opposite of legislative intent.
+
+This is not a rare edge case. In the Wet op de zorgtoeslag the original MvT
+(`kst-29762-3`) works out an example giving a verzekerde with a non-insured
+partner a zorgtoeslag of **zero**. The nota van wijziging (`kst-29762-18`) calls
+exactly that outcome "niet evenwichtig" and replaces it with the fifty-percent
+rule that is in the law today. An agent reading only the MvT would encode the
+abandoned design as the legislature's intention.
+
+So, before using any passage:
+
+1. Read **every** nota van wijziging in the dossier, not just the MvT.
+2. Compare the article text the MvT explains with the article text in the corpus
+   YAML. Where the wording differs, the MvT is describing something else.
+3. Where the two conflict, the later document wins, and say so explicitly in the
+   output rather than silently preferring one.
+4. Percentages, amounts and thresholds in an old MvT are almost always stale.
+   Use them to check the **shape** of a calculation, never as expected values.
+
+A later amending MvT (a subsequent bill touching the same law) often restates
+the enacted rule more cleanly than the original, and postdates the amendments.
+Prefer it for a plain statement of how the article works.
+
+### Then, from the MvT content, extract:
 
 1. **Rekenvoorbeelden** (calculation examples):
    - Input values used by the legislature

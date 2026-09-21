@@ -33,8 +33,10 @@ corpus/regulation/nl/
 
 ### Header Metadata
 
+The `$schema` line pins the exact schema version the file was written against, by immutable git tag. The current version and the full URL to copy are on the [Schema Reference](/reference/schema#current-version).
+
 ```yaml
-$schema: https://raw.githubusercontent.com/.../refs/tags/schema-v0.5.2/schema/v0.5.2/schema.json
+$schema: https://raw.githubusercontent.com/.../refs/tags/schema-vX.Y.Z/schema/vX.Y.Z/schema.json
 $id: wet_op_de_zorgtoeslag
 regulatory_layer: WET
 publication_date: '2025-01-01'
@@ -98,7 +100,7 @@ articles:
                     - $normpremie
 ```
 
-## Key Concepts
+## Key concepts
 
 ### Definitions
 
@@ -124,10 +126,10 @@ The logic of a law is written with operations:
 | **Comparison** | `EQUALS`, `GREATER_THAN`, `LESS_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN_OR_EQUAL` | `subject:`, `value:` (operands may be numbers or ISO dates, see [RFC-021](/rfcs/rfc-021)) |
 | **Logical** | `AND`, `OR`, `NOT` | `AND`/`OR`: `conditions: [...]`; `NOT`: `value:` (wraps a single operation) |
 | **Collection** | `IN`, `LIST`, `FOREACH` | `IN`: `subject:` + `value:` or `values: [...]`; `LIST`: `items: [...]`; `FOREACH`: `collection:` + `body:`, optional `as:`, `filter:` and `combine:` (see [RFC-016](/rfcs/rfc-016)) |
-| **Conditional** | `IF` (alias `SWITCH`) | `cases: [{when:, then:}]`, `default:` |
-| **Date** | `AGE`, `DATE_ADD`, `DATE`, `DAY_OF_WEEK`, `DATE_DIFF` | `AGE`: `date_of_birth:`, `reference_date:`; `DATE_ADD`: `date:` + `years:`/`months:`/`days:`; `DATE`: `year:`, `month:`, `day:`; `DAY_OF_WEEK`: `date:`; `DATE_DIFF`: `from:`, `to:`, `in:` (days/months/years) |
+| **Conditional** | `IF` | `cases: [{when:, then:}]`, `default:` |
+| **Date** | `AGE`, `DATE_ADD`, `DATE`, `DAY_OF_WEEK`, `DATE_DIFF`, `DATE_PART`, `START_OF` | `AGE`: `date_of_birth:`, `reference_date:`; `DATE_ADD`: `date:` + `years:`/`months:`/`days:`; `DATE`: `year:`, `month:`, `day:`; `DAY_OF_WEEK`: `date:`; `DATE_DIFF`: `from:`, `to:`, `in:` (days/months/years); `DATE_PART`: `date:`, `in:` (year/month/day); `START_OF`: `date:`, `in:` (year/month) |
 
-These 26 operations make up the schema. The engine also accepts the compat aliases `NOT_EQUALS`, `IS_NULL`, `NOT_NULL`, and `NOT_IN` for backward compatibility, but they are outside the schema, so prefer wrapping the positive operation in `NOT`. See [RFC-004: Uniform Operation Syntax](/rfcs/rfc-004) for the full specification.
+These 28 operations make up the schema. The engine also accepts the compat aliases `NOT_EQUALS`, `IS_NULL`, `NOT_NULL`, and `NOT_IN` for backward compatibility, but they are outside the schema, so prefer wrapping the positive operation in `NOT`. `SWITCH` is an alias of `IF` in the same sense: the engine reads it, the schema does not, so a law using it parses and then fails `just validate`. See [RFC-004: Uniform Operation Syntax](/rfcs/rfc-004) for the full specification.
 
 The set is short on purpose. An operation earns its place when a real law needs it, not when an engine could plausibly offer it: `ROUND` because a law rounds to whole euros, `DATE_DIFF` because a deadline is measured in days, `FOREACH` because a norm counts medebewoners. What an engine *can* do is close to unbounded, and every operation added on that basis is a promise the schema, the editor, the conformance suite and every other engine have to keep. A law that cannot be expressed is the signal to extend the language; the absence of an operation someone imagined a use for is not.
 
@@ -267,17 +269,29 @@ The engine uses these labels to reject nonsensical combinations (adding a `euroc
 
 ## Corpus Contents
 
-The corpus is still small and growing. At the time of writing it spans three regulatory layers:
+The corpus is still small and growing. It spans three regulatory layers, with
+national law the bulk of it and a handful of ministerial regulations and
+municipal by-laws that exercise delegation and the local layer. A snapshot taken
+on 2026-09-20:
 
 | Layer | Laws | Examples |
 |-------|------|---------|
-| WET | ~15 | Participatiewet, Zorgtoeslag, Zorgverzekeringswet, Awb, BW Boek 5 |
-| MINISTERIELE_REGELING | 1 | Regeling standaardpremie (2 versions) |
+| WET | 29 (of which 13 synthetic) | Participatiewet, Zorgtoeslag, Zorgverzekeringswet, Awb, BW Boek 5 |
+| MINISTERIELE_REGELING | 3 | Regeling standaardpremie (2 versions), Subsidieregeling energietarieven |
 | GEMEENTELIJKE_VERORDENING | 2 | Amsterdam APV erfgrens, Diemen afstemmingsverordening |
 
-For the authoritative, current set, see `corpus/regulation/` in the repository.
+The 13 synthetic laws are the `test_*` directories under
+`corpus/regulation/nl/wet/`. They are not Dutch law: each one exercises a corner
+of the language (null semantics, scoped sources, collections, date operations)
+for the engine-conformance BDD bucket, which needs a law that isolates one
+feature rather than a real statute that mixes many. That leaves 16 real laws.
 
-## Next Steps
+These counts move whenever a law is harvested, so read them as an order of
+magnitude. Count them yourself with
+`grep -rh '^regulatory_layer:' corpus/regulation/ | sort | uniq -c`, and see
+`corpus/regulation/` for the authoritative set.
+
+## Next steps
 
 - [Testing](/guide/testing) - writing BDD scenarios for laws
 - [Schema Reference](/reference/schema) - full schema specification

@@ -9,7 +9,7 @@ import { useDemo } from '../store/demoStore.js';
 // what remains when the deck is closed on this route: a way to start again.
 
 const p = usePresentation();
-const { ready, corpus } = useDemo();
+const { ready, corpus, state } = useDemo();
 const slides = computed(() => corpus.value?.config?.slides ?? []);
 
 function startWhenReady() {
@@ -39,6 +39,28 @@ function kindLabel(s) {
       <nldd-rich-text spacing="tight">
         <p>Pijltjes of spatie bladeren, <kbd>Esc</kbd> sluit de dia's en laat de demo staan, <kbd>f</kbd> zet het scherm vol. Buiten dit tabblad opent <kbd>Shift</kbd>+<kbd>P</kbd> de dia's bij de huidige plek in het verhaal.</p>
       </nldd-rich-text>
+      <!-- De modus bepaalt of de dia's náást de demo blijven staan. In de zaal
+           vertelt de presentator zelf en is het scherm van de demo; zelfstandig
+           is er niemand die het verhaal erbij vertelt, dus blijft het staan.
+           `nldd-segmented-control` zoals in WettenView; de uitleg eronder in
+           dezelfde rich-text als de toetsenregel hierboven. -->
+      <nldd-container padding="0" gap="8">
+        <nldd-segmented-control
+          width="fit-content"
+          accessible-label="Hoe wordt er gepresenteerd?"
+          :value="state.presentationMode"
+          @change="state.presentationMode = $event.detail?.value ?? state.presentationMode"
+        >
+          <nldd-segmented-control-item value="zaal" text="In de zaal"></nldd-segmented-control-item>
+          <nldd-segmented-control-item value="zelfstandig" text="Zelfstandig"></nldd-segmented-control-item>
+        </nldd-segmented-control>
+        <nldd-rich-text spacing="tight">
+          <p v-if="state.presentationMode === 'zaal'">
+            De dia's van het verhaal vullen het scherm. Zodra een dia de demo opent, verdwijnen ze en is het scherm van de demo. Bladeren gaat daar gewoon door. Loop je zelf naar een ander tabblad, dan laten de dia's het toetsenbord los en is spatie weer van de pagina. <kbd>Esc</kbd> stopt de presentatie, waar je ook bent.
+          </p>
+          <p v-else>De dia's blijven links naast de demo staan, zodat iemand die zelf doorklikt het verhaal erbij leest.</p>
+        </nldd-rich-text>
+      </nldd-container>
       <nldd-list variant="box-base" accessible-label="Dia's">
         <nldd-list-item v-for="(s, i) in slides" :key="i" size="sm" button @click="p.start(i)">
           <nldd-text-cell size="sm" color="secondary" width="fit-content" min-width="32px" :text="String(i + 1)"></nldd-text-cell>

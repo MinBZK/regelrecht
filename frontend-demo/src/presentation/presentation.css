@@ -1,10 +1,16 @@
 /*
  * Presentation mode, global rules (the deck itself is a component).
  *
- * While presenting, the deck is a fixed rail on the left (40vw) and the app is
- * pushed to the right; on an intro or closing slide the deck covers the whole
- * screen. The design system has no presentation component, so this is custom
- * CSS on purpose (see frontend-demo/README.md, "Eigen CSS").
+ * Er zijn twee modi. Zelfstandig is het dek een vaste rail links (36vw) met de
+ * app ernaast, en dekt het op een intro- of slotdia het hele scherm. In de zaal
+ * staat er een presentator die het verhaal zelf vertelt: daar dekt het dek het
+ * scherm op de verhaal-dia's en verdwijnt het op de dia's die de demo openen,
+ * want daar is het scherm van de demo. `rr-presenting-full` betekent dus "de
+ * body schuift niet op", of dat nu is omdat het dek het scherm dekt of omdat
+ * het er niet staat.
+ *
+ * The design system has no presentation component, so this is custom CSS on
+ * purpose (see frontend-demo/README.md, "Eigen CSS").
  */
 
 /* Rijkshuisstijl serif for the slide titles. RijksSans comes with the design
@@ -39,8 +45,11 @@ html.rr-presenting.rr-presenting-full body {
   padding-left: 0;
 }
 
-/* While the deck names the persona, the profile tag in the bar is noise. */
-html.rr-presenting .rr-hide-presenting {
+/* While the deck names the persona, the profile tag in the bar is noise. In de
+ * zaal verdwijnt het dek op een demo-dia, en dan benoemt het de persona dus
+ * niet meer: daar horen de knoppen terug te zijn. Vandaar de uitzondering op
+ * `rr-deck-hidden` in plaats van kaal op `rr-presenting`. */
+html.rr-presenting:not(.rr-deck-hidden) .rr-hide-presenting {
   display: none;
 }
 

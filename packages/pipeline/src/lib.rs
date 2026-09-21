@@ -34,6 +34,7 @@ pub mod config;
 pub mod db;
 pub mod document_convert;
 pub mod enrich;
+pub mod enrich_v2;
 pub mod error;
 pub mod feature_flags;
 pub mod harvest;
@@ -41,7 +42,9 @@ pub mod harvest_request;
 pub mod health;
 pub mod job_queue;
 pub mod law_convert;
+pub mod law_migrate;
 pub mod law_status;
+pub mod markings;
 pub mod models;
 pub mod tasks;
 #[cfg(feature = "test-utils")]

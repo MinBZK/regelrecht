@@ -56,5 +56,6 @@ function onRow(law) {
         <nldd-icon-cell v-if="mode === 'pick'" icon="chevron-right" size="16" color="secondary"></nldd-icon-cell>
       </nldd-list-item>
     </nldd-list-item>
+    <nldd-inline-dialog slot="empty" text="Geen wetten gevonden" supporting-text="Pas je zoekterm aan"></nldd-inline-dialog>
   </nldd-list>
 </template>

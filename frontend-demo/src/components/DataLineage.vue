@@ -72,7 +72,7 @@ const slotName = computed(() => (props.nested ? 'children' : undefined));
     <nldd-icon-cell v-else icon="question-mark-circle" size="16" color="secondary"></nldd-icon-cell>
     <nldd-spacer-cell size="8"></nldd-spacer-cell>
     <nldd-text-cell size="sm" min-width="120px" :text="humanize(node.name)" :supporting-text="pending(node) ? `${supportingText(node) ? supportingText(node) + ' · ' : ''}meegerekend, nog te beoordelen` : supportingText(node)"></nldd-text-cell>
-    <nldd-text-cell size="sm" width="fit-content" max-width="55%" horizontal-alignment="right" :color="pending(node) ? 'warning' : isUnknown(node.value) ? 'secondary' : 'default'">
+    <nldd-text-cell size="sm" width="fit-content" max-width="55%" horizontal-alignment="right" :color="pending(node) ? 'warning' : isUnknown(node.value) ? 'secondary' : 'content'">
       <!-- Doorgestreept staat de waarde van vóór de correctie, en die komt van
            de correctie zelf. Niet `node.value`: de engine rekent de burger zijn
            openstaande correcties al mee (`claimsForEngine`), dus dat ís de
@@ -112,7 +112,7 @@ const slotName = computed(() => (props.nested ? 'children' : undefined));
     <nldd-cell v-if="lawService(node.law)"><OrgLogo :service="lawService(node.law)" size="sm" /></nldd-cell>
     <nldd-spacer-cell v-if="lawService(node.law)" size="8"></nldd-spacer-cell>
     <nldd-text-cell size="sm" :text="humanize(node.name)" :supporting-text="isUnknown(node.value) ? `berekend door ${lawName(node.law)} · ${formatMissing(node.value, { ownLaw: node.law, lawName })}` : `berekend door ${lawName(node.law)}`"></nldd-text-cell>
-    <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :color="isUnknown(node.value) ? 'secondary' : 'default'" :text="formatValue(node.value, specFor(node))"></nldd-text-cell>
+    <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :color="isUnknown(node.value) ? 'secondary' : 'content'" :text="formatValue(node.value, specFor(node))"></nldd-text-cell>
     <nldd-spacer-cell size="8"></nldd-spacer-cell>
     <nldd-icon-cell v-if="canSubmitClaims" icon="edit" size="16" color="secondary" role="button" tabindex="0" accessible-label="Corrigeren" @click.stop="emit('edit', node)" @keydown.enter.stop="emit('edit', node)"></nldd-icon-cell>
     <nldd-spacer-cell v-if="node.children?.length" size="8"></nldd-spacer-cell>

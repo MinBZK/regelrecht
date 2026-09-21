@@ -251,6 +251,19 @@ export function registerClaims(engine, claims) {
  * @returns {{ok: true, outputs: object, trace: object, traceText: string, resolvedInputs: object}
  *   | {ok: false, error: string}}
  */
+/**
+ * The root step of a trace document (RFC-039).
+ *
+ * The engine hands back `{trace_version, root}`; everything downstream walks
+ * steps, so the document is opened once here rather than at every consumer.
+ * Tolerates a bare step so a recorded fixture from before the envelope still
+ * renders.
+ */
+function traceRoot(trace) {
+  if (!trace) return null;
+  return trace.root ?? trace;
+}
+
 export function evaluateLaw(engine, lawEntry, params, referenceDate, outputs = null) {
   const names = outputs ?? lawEntry.outputs;
   if (names.length === 0) return { ok: false, error: 'Deze wet heeft geen uitvoer.' };
@@ -259,7 +272,7 @@ export function evaluateLaw(engine, lawEntry, params, referenceDate, outputs = n
     return {
       ok: true,
       outputs: result.outputs ?? {},
-      trace: result.trace ?? null,
+      trace: traceRoot(result.trace),
       traceText: result.trace_text ?? '',
       resolvedInputs: result.resolved_inputs ?? {},
       raw: result,
@@ -267,7 +280,7 @@ export function evaluateLaw(engine, lawEntry, params, referenceDate, outputs = n
   } catch (e) {
     // The engine throws either a string or an object {error, trace}.
     const message = typeof e === 'string' ? e : e?.error ?? e?.message ?? JSON.stringify(e);
-    return { ok: false, error: String(message), trace: e?.trace ?? null };
+    return { ok: false, error: String(message), trace: traceRoot(e?.trace) };
   }
 }
 

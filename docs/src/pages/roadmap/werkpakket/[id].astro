@@ -1,11 +1,17 @@
 ---
 /*
- * /roadmap/werkpakket/<uuid> — one werkpakket.
+ * /roadmap/werkpakket/<slug> — one werkpakket.
  *
- * Keyed on the frontmatter `id`, not on the filename slug: samenhangIds point
- * at that value, so keying on it makes the cross-links correct by construction.
- * The UUID stays in the URL because a title-derived slug would have to be kept
- * in sync with those references and would break on every rename.
+ * Keyed on the frontmatter `id`, not on the filename: samenhangIds point at
+ * that value, so keying on it makes the cross-links correct by construction.
+ * (The two are equal — assertReferencesResolve enforces it — but the id is the
+ * identity and the filename follows it, not the other way round.)
+ *
+ * That id is a slug, and used to be a UUID. A slug survives here where a
+ * *title-derived* slug could not: it is chosen once and then fixed, so editing
+ * a titel does not move the URL or break the samenhangIds pointing at it.
+ * What it buys is a readable reference — in the URL, in the content directory,
+ * and in a pull request that says which werkpakket it contributes to.
  *
  * Built entirely from design-system components: nldd-sidebar-section for the
  * document layout (it collapses the sidebar into a sheet on narrow screens by
@@ -33,6 +39,9 @@ import {
   rfcVerwijzingen,
   getOnderzoek,
   getBouw,
+  getBelegging,
+  sindsTekst,
+  assertBelegging,
   NIET_BEPAALD,
   NIET_GESPECIFICEERD,
 } from '~/lib/roadmap';
@@ -48,6 +57,9 @@ export async function getStaticPaths() {
   assertPaperSections(werkpakketten);
   // Fails the build on a werkpakket pointing at an RFC that does not exist.
   assertRfcReferences(werkpakketten);
+  // Fails the build on a belegging that contradicts onderzoek/bouw, or that
+  // claims a date in the future.
+  assertBelegging(werkpakketten);
   return werkpakketten.map((entry) => ({
     params: { id: entry.data.id },
     props: { entry, all: werkpakketten },
@@ -66,6 +78,15 @@ const capability = getCapability(wp.capability);
 const samenhang = wp.samenhangIds
   .map((id: string) => all.find((w) => w.data.id === id))
   .filter(Boolean);
+
+// Both directions of the dependency, because both are things you need to know
+// before you plan: what this werkpakket waits for, and what waits for it. Only
+// the first is written down anywhere; the second is that same field read the
+// other way round, so it cannot drift.
+const wachtOp = wp.afhankelijkVan
+  .map((id: string) => all.find((w) => w.data.id === id))
+  .filter(Boolean);
+const blokkeert = all.filter((w) => w.data.afhankelijkVan.includes(wp.id));
 
 // The absolute path of the source file, so the toelichting's markdown can be
 // stamped with the line numbers the select-to-edit affordance reads.
@@ -99,12 +120,53 @@ const editBase = entry.filePath
 
 const pathname = `/roadmap/werkpakket/${wp.id}`;
 
+/*
+ * The pull requests that carry this werkpakket's slug.
+ *
+ * Every PR body ends with a `Werkpakket: <slug>` line, which the merge gate
+ * enforces, so GitHub's own search over PR bodies is the index — no label per
+ * werkpakket to create, apply and keep aligned with a rename.
+ *
+ * Two forms, because the line has two lives. The author writes the bare slug;
+ * script/linkify-werkpakket.sh then rewrites it to a markdown link, and the
+ * literal `Werkpakket: <slug>` is gone from the body after that. Searching only
+ * the bare form would find the PRs the bot did NOT touch (forks, Dependabot) and
+ * miss the team's own — an empty page that reads as "no work yet" rather than
+ * "wrong query". Searching only the link form would miss those same exceptions.
+ *
+ * The URL form keeps the closing paren so `referentie-casus-i` does not also
+ * match `referentie-casus-ii`. Both phrases are quoted so GitHub matches them
+ * whole; unquoted they would match every PR containing the word "werkpakket".
+ *
+ * This query tracks linkify's output format: change the shape the bot writes and
+ * this has to change with it.
+ */
+const prZoekUrl = `https://github.com/MinBZK/regelrecht/pulls?q=${encodeURIComponent(
+  `is:pr "werkpakket/${wp.id})" OR "Werkpakket: ${wp.id}"`,
+)}`;
+
 // The RFCs whose design work belongs here. Their implementation state comes
 // from the RFC itself, so it cannot drift from what was actually decided.
 const rfcs = rfcVerwijzingen(wp.rfcs);
 
+const belegging = getBelegging(wp.belegging.stand);
+
 // The metadata pairs, so the sidebar is one loop instead of five near-copies.
 const kerngegevens = [
+  // Bovenaan, want of er iemand op zit is het eerste wat je wilt weten als je
+  // op een werkpakket landt. `onder` is de ouderdom: een kale datum leest als
+  // metadata, "sinds 3 maanden" leest als een vraag.
+  {
+    label: 'Belegging',
+    tag: belegging,
+    value: '',
+    onder: wp.belegging.sinds
+      ? `sinds ${sindsTekst(wp.belegging.sinds)}`
+      : undefined,
+    // Geen `leeg`: getBelegging() leest een leeg veld als 'vrij', dus er is
+    // altijd een tag. "Niet bepaald" zou hier een vierde stand suggereren die
+    // niet bestaat.
+  },
   { label: 'Onderzoek', tag: getOnderzoek(wp.onderzoek), value: '' },
   { label: 'Bouw', tag: getBouw(wp.bouw), value: '' },
   { label: 'Prioriteit', tag: prioriteit, value: '' },
@@ -176,10 +238,15 @@ const kerngegevens = [
               ) : (
                 <nldd-text
                   size="sm"
-                  color={veld.value ? 'default' : 'secondary'}
+                  color={veld.value ? 'content' : 'secondary'}
                 >
                   {veld.value || veld.leeg || NIET_BEPAALD}
                 </nldd-text>
+              )}
+              {/* Een stille tweede regel onder de tag. Alleen de belegging
+                  gebruikt hem, voor de ouderdom van de claim. */}
+              {veld.onder && (
+                <nldd-text size="xs" color="secondary">{veld.onder}</nldd-text>
               )}
             </nldd-container>
           ))
@@ -189,6 +256,23 @@ const kerngegevens = [
       <nldd-divider />
 
       <EditLink filePath={entry.filePath} text="Bewerk op GitHub" />
+
+      {/* Het werk dat bij dit werkpakket hoort, op GitHub.
+
+          Dit leunt op de `Werkpakket: <slug>`-regel die elke pull request
+          draagt (script/require-werkpakket.sh bewaakt hem) en op het feit dat
+          de zoekfunctie van GitHub de body van een PR indexeert. Daarom zijn er
+          geen labels per werkpakket nodig: die zouden een tweede waarheid zijn
+          die bij elke hernoeming uit de pas loopt met de regel in de body.
+
+          De zoekopdracht staat tussen aanhalingstekens, anders zoekt GitHub op
+          de losse woorden en komt elke PR terug die "werkpakket" noemt. */}
+      <nldd-link
+        size="sm"
+        href={prZoekUrl}
+        target="_blank"
+        text="Pull requests op GitHub"
+      />
     </nldd-container>
 
     <nldd-container gap="32" data-edit-base={editBase}>
@@ -265,6 +349,64 @@ const kerngegevens = [
                 </nldd-list-item>
               ))}
             </nldd-list>
+          </nldd-container>
+        )
+      }
+
+      {
+        (wachtOp.length > 0 || blokkeert.length > 0) && (
+          <nldd-container gap="12">
+            <nldd-title size="4"><h2>Afhankelijkheden</h2></nldd-title>
+            {wachtOp.length > 0 && (
+              <nldd-container gap="8">
+                <nldd-text size="sm" weight="medium" color="secondary">
+                  Kan pas beginnen als dit opgeleverd is
+                </nldd-text>
+                <nldd-list type="navigation" variant="box-tinted">
+                  {wachtOp.map((related) => (
+                    <nldd-list-item href={`/roadmap/werkpakket/${related!.data.id}`}>
+                      <nldd-text-cell
+                        text={related!.data.titel}
+                        supporting-text={[
+                          getFase(related!.data.faseId)?.naam,
+                          getDiscipline(related!.data.disciplineId)?.naam,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
+                        width="full"
+                      />
+                      <nldd-spacer-cell />
+                      <nldd-icon-cell size="20" icon="chevron-right" />
+                    </nldd-list-item>
+                  ))}
+                </nldd-list>
+              </nldd-container>
+            )}
+            {blokkeert.length > 0 && (
+              <nldd-container gap="8">
+                <nldd-text size="sm" weight="medium" color="secondary">
+                  Wacht op dit werkpakket
+                </nldd-text>
+                <nldd-list type="navigation" variant="box-tinted">
+                  {blokkeert.map((related) => (
+                    <nldd-list-item href={`/roadmap/werkpakket/${related.data.id}`}>
+                      <nldd-text-cell
+                        text={related.data.titel}
+                        supporting-text={[
+                          getFase(related.data.faseId)?.naam,
+                          getDiscipline(related.data.disciplineId)?.naam,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
+                        width="full"
+                      />
+                      <nldd-spacer-cell />
+                      <nldd-icon-cell size="20" icon="chevron-right" />
+                    </nldd-list-item>
+                  ))}
+                </nldd-list>
+              </nldd-container>
+            )}
           </nldd-container>
         )
       }

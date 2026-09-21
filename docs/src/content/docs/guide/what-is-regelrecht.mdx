@@ -9,11 +9,11 @@ RegelRecht is an open-source platform for making Dutch legislation machine-reada
 
 <DocsFeatureCards />
 
-## The Problem
+## The problem
 
 Dutch law is published as natural language text. When government agencies need to implement legislation in IT systems, they manually translate legal rules into software. Each agency writes its own interpretation of the same law. Nobody can check whether those implementations match what Parliament intended. Citizens cannot see how decisions about them are made. There is no way to test whether the software follows the law.
 
-## The Vision
+## The vision
 
 RegelRecht encodes each law once in a structured format and runs it through a single execution engine. The specification *is* the law. One engine runs it the same way everywhere: in the editor for lawmakers, in the browser for citizens, and in government backends for official decisions.
 
@@ -71,7 +71,7 @@ flowchart LR
 
 Each article sits alongside the original legal text. The `machine_readable` section defines inputs, outputs, and the calculation logic. The engine executes this directly.
 
-## Key Concepts
+## Key concepts
 
 ### Cross-Law References
 
@@ -93,7 +93,7 @@ Legislation is decentralized: municipalities, provinces, and water boards produc
 
 Individual decisions (*beschikkingen*) are administrative law processes spanning stages over time (application → review → decision → notification → objection). They are not instant computations. The Awb lifecycle is modeled as data in YAML, not hardcoded in the engine.
 
-## Design Principles
+## Design principles
 
 | Principle | What It Means |
 |-----------|--------------|
@@ -111,7 +111,7 @@ Individual decisions (*beschikkingen*) are administrative law processes spanning
 
 **Policy makers** exploring how legislation works in practice. Run "what if" scenarios in the browser to see how changing a parameter affects outcomes across multiple laws.
 
-## Next Steps
+## Next steps
 
 - [Getting Started](./getting-started) - set up your development environment
 - [Law Format](/concepts/law-format) - understand the YAML law format

@@ -136,6 +136,23 @@ pub enum EngineError {
     #[error("Output '{output}' not found in law '{law_id}'")]
     OutputNotFound { law_id: String, output: String },
 
+    /// An output the law says does not arise.
+    ///
+    /// Distinct from [`EngineError::OutputNotFound`], which is the shape of a
+    /// misspelled name or a broken binding. "Bestaat geen aanspraak" is an
+    /// answer the law gives, and one a consuming law has to be able to act on:
+    /// reporting it as a missing output tells an operator to go looking for a
+    /// modelling error that is not there, and leaves the citizen without the
+    /// ground for a decision that does exist.
+    #[error("Output '{output}' of law '{law_id}' does not arise: {grounds} ({voided_by} article {article})")]
+    OutputVoided {
+        law_id: String,
+        output: String,
+        voided_by: String,
+        article: String,
+        grounds: String,
+    },
+
     /// Circular reference detected
     #[error("Circular reference detected: {0}")]
     CircularReference(String),
@@ -330,6 +347,10 @@ pub enum ExternalError {
     #[error("Output not found: {0}")]
     OutputNotFound(String),
 
+    /// The law says this output does not arise, with the words that say so.
+    #[error("Output '{output}' does not arise: {grounds}")]
+    OutputVoided { output: String, grounds: String },
+
     /// Circular reference detected
     #[error("Circular reference detected")]
     CircularReference,
@@ -425,6 +446,11 @@ impl From<EngineError> for ExternalError {
             },
             EngineError::ArticleNotFound { .. } => ExternalError::ArticleNotFound,
             EngineError::OutputNotFound { output, .. } => ExternalError::OutputNotFound(output),
+            // The ground travels with it: an API caller has to be able to tell
+            // "the law says no" from "this output does not exist".
+            EngineError::OutputVoided {
+                output, grounds, ..
+            } => ExternalError::OutputVoided { output, grounds },
             EngineError::CircularReference(_) => ExternalError::CircularReference,
             EngineError::MissingParameter { name, .. } => ExternalError::MissingParameter(name),
             EngineError::ArithmeticOverflow(_) => ExternalError::ArithmeticOverflow,

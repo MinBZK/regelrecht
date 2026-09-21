@@ -44,9 +44,11 @@ The preview deployment and its GHCR images are cleaned up automatically.
 | Lawmaking | `regelrecht-lawmaking` | `lawmaking.regelrecht.rijks.app` |
 | Demo | `regelrecht-demo` | `demo.regelrecht.rijks.app` |
 | Docs | `regelrecht-docs` | `docs.regelrecht.rijks.app` + `regelrecht.rijks.app` (landing) |
+| PoC portal | `regelrecht-poc` | `poc.regelrecht.rijks.app` |
+| PoC napp | `regelrecht-poc-napp` | (internal; reached through the portal at `/napp/`) |
 | Grafana | `regelrecht-grafana` | `grafana.regelrecht.rijks.app` |
 
-The docs image also serves `/roadmap`, a read-only rendering of the werkpakketten in `docs/src/content/roadmap/` and the JSON file in `docs/src/data/`. It is not a component of its own and has no write path: changing the roadmap means editing those files through a pull request, and every werkpakket page links to its own source on GitHub. The page is deliberately not linked from the navigation or the landing page.
+The docs image also serves `/roadmap`, a read-only rendering of the werkpakketten in `docs/src/content/roadmap/` and the JSON file in `docs/src/data/`. It is not a component of its own and has no write path: changing the roadmap means editing those files through a pull request, and every werkpakket page links to its own source on GitHub. The landing page links to it from the footer, next to the documentation and research links; it stays out of the main navigation, which covers the landing page's own sections.
 
 ## De demo
 

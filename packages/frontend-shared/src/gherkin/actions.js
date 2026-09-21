@@ -398,3 +398,17 @@ export async function dispatch(ctx, engine, action, args, table, { loadDependenc
       throw new Error(`unknown action '${action}' - grammar/dispatch out of sync`);
   }
 }
+
+/**
+ * The root step of a trace document (RFC-039).
+ *
+ * `executeWithTrace` and `executeMultipleWithTrace` hand back
+ * `{trace_version, root}`, the shape `schema/trace/v1/trace-schema.json`
+ * defines. Consumers walk steps, so the document is opened here rather than at
+ * every call site. A bare step passes through unchanged, so a trace recorded
+ * before the envelope still renders.
+ */
+export function traceRoot(trace) {
+  if (!trace) return null;
+  return trace.root ?? trace;
+}

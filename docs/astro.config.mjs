@@ -7,6 +7,7 @@ import { rehypeMermaidAlt } from './src/lib/rehype-mermaid-alt.ts';
 import { rehypeNlddCodeViewer } from './src/lib/rehype-nldd-code-viewer.ts';
 import { rehypeSourceLines } from './src/lib/rehype-source-lines.ts';
 import { rehypeRfcLinks } from './src/lib/rehype-rfc-links.ts';
+import { rehypeIssueLinks } from './src/lib/rehype-issue-links.ts';
 
 export default defineConfig({
   site: 'https://docs.regelrecht.rijks.app',
@@ -19,6 +20,25 @@ export default defineConfig({
   trailingSlash: 'ignore',
   build: {
     format: 'directory',
+  },
+  // Pagina's die van naam zijn veranderd houden hun oude adres. Een
+  // documentatiepagina is een adres dat elders geciteerd wordt: in een RFC, in
+  // een issue, in een bladwijzer, en dat adres stilletjes laten verdwijnen
+  // verplaatst het probleem naar de lezer.
+  //
+  // `/concepts/untranslatables` heette zo toen het schemaveld nog
+  // `untranslatables` heette. Schema v0.7.0 vervangt dat door `markings`
+  // (RFC-031), dus de pagina heet nu naar wat ze beschrijft. De oude naam
+  // blijft doorverwijzen, en de pagina zelf legt de hernoeming uit zodat
+  // zoeken op de oude term er nog steeds uitkomt.
+  redirects: {
+    '/concepts/untranslatables': '/concepts/markings',
+    // Het CJIB-pilotvoorstel is verwijderd: een ongevraagd voorstel aan een
+    // andere organisatie, met bemensing, een tijdpad en aannames over hun
+    // systemen, hoort niet op een publieke documentatiesite. De techniek die
+    // erin stond (chronolexogram-types, de afleiding van de rechtsmiddel-route,
+    // het `blauwe_knop`-blok) staat in RFC-022 en blijft daar staan.
+    '/concepts/cjib-blauwe-knop-source-proposal': '/rfcs/rfc-022',
   },
   integrations: [
     mdx(),
@@ -33,6 +53,12 @@ export default defineConfig({
     pagefind({ indexConfig: { forceLanguage: 'en' } }),
   ],
   markdown: {
+    // Setting markdown.remarkPlugins / rehypePlugins (below) routes Markdown
+    // through the `unified` processor from `@astrojs/markdown-remark`. Since
+    // Astro 7.2 — Sätteri is the default Markdown processor — Astro no longer
+    // installs that package itself, so docs/package.json depends on it
+    // explicitly. Do not drop it again as "a peer of astro/mdx anyway": the
+    // build hard-errors on this config without it.
     // No Shiki: rehype-nldd-code-viewer turns every fenced block into <nldd-code-viewer>,
     // which owns styling + (Prism) highlighting. Disabling Shiki also leaves
     // ```mermaid blocks as real <pre><code class="language-mermaid"> for
@@ -53,12 +79,13 @@ export default defineConfig({
       // Stamp source-line data attributes first, before the plugins below
       // restructure nodes and lose the original markdown positions.
       rehypeSourceLines,
-      // Auto-link bare RFC cross-references ("RFC-008", "RFC-001 §9") in RFC
-      // bodies. Runs after source-lines (it inserts <a> nodes, which would
-      // otherwise perturb the line stamping) and before the code-viewer
-      // reshape; it skips <a>/<code>/<pre> so existing links and code examples
-      // are left untouched.
+      // Auto-link bare cross-references: RFC's ("RFC-008", "RFC-001 §9") and
+      // issues/PR's ("issue #444", "PR #748"). Both run after source-lines
+      // (they insert <a> nodes, which would otherwise perturb the line
+      // stamping) and before the code-viewer reshape; both skip
+      // <a>/<code>/<pre> so existing links and code examples are left alone.
       rehypeRfcLinks,
+      rehypeIssueLinks,
       [
         rehypeMermaid,
         {

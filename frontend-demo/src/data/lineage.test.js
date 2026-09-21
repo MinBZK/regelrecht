@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { leafValues, lineageFromTrace } from './lineage.js';
 
+// A traced data-source step as the engine emits it (RFC-039): the register is
+// a field, and `message` is the line a person reads in a terminal. The message
+// is kept in the fixture precisely because nothing may parse it any more.
 const resolve = (name, result, source, extra = {}) => ({
   node_type: 'resolve',
   name,
   result,
   resolve_type: 'DATA_SOURCE',
+  source: { kind: 'DATA_SOURCE', provider: source },
   message: `Resolving from SOURCE ${source}: ${JSON.stringify(result)}`,
   children: [],
   ...extra,

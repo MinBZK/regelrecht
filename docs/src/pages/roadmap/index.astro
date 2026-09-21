@@ -29,6 +29,7 @@ import {
   swimlanes,
   getDiscipline,
   FILTER_OPTIES,
+  BELEGGING_FILTER_OPTIES,
   werkpakkettenInCel,
   assertReferencesResolve,
   assertFilterRules,
@@ -144,29 +145,223 @@ const pathname = '/roadmap';
         </nldd-title>
 
         {/*
-          The filter works without any JavaScript of our own:
-          nldd-checkbox-field reflects `checked` onto its host element, so the
-          :has() rules in roadmap.css can read the state straight off the
-          component. A <fieldset> and <legend> group the controls, which is
-          what a group of checkboxes needs and what the design system has no
-          component for.
+          Eén balk boven de matrix, met de drie soorten bediening in de
+          volgorde waarin iemand ze pakt: eerst zoeken, dan filteren, dan een
+          andere lezing van dezelfde matrix.
+
+          Wat hier verdween zijn de negen losse vinkjes met hun drie
+          onderschriften, die naast elkaar meer gewicht droegen dan de matrix
+          eronder. De vinkjes zelf zijn er nog — ze staan in een popover achter
+          de knop van hun groep, en dat is precies waar het ontwerpsysteem een
+          popover voor aanwijst. Een filtergroep die niemand openklapt kost zo
+          één knop in plaats van een rij.
+
+          De scheiding in twee groepen is niet cosmetisch. Zoeken, categorie en
+          belegging beperken welke kaarten er staan; "Afhankelijkheden" doet
+          dat niet, die verandert hoe dezelfde kaarten geordend worden. Ze op
+          één rij zetten als vierde vinkje maakte dat verschil onzichtbaar.
+          Vandaar een scheidslijn en een toggle-knop in plaats van een vinkje:
+          een ingedrukte knop leest als een stand, een vinkje als een keuze uit
+          een lijst.
         */}
-        <fieldset class="rr-filter">
-          <legend class="rr-filter__legend">
-            <nldd-text size="sm" weight="medium" color="secondary">
-              Filter op categorie
-            </nldd-text>
-          </legend>
-          {
-            FILTER_OPTIES.map((optie) => (
-              <nldd-checkbox-field
-                class="rr-filter__option"
-                id={`rr-cat-${optie.id}`}
-                label={optie.label}
-              />
-            ))
-          }
-        </fieldset>
+        <div class="rr-controls">
+          {/*
+            De zoek- en filtergroep. Staat vooraan omdat zoeken het meest
+            gebruikte en het minst verkennende is: wie de naam van een
+            werkpakket weet, typt hem.
+          */}
+          <div class="rr-controls__groep rr-controls__groep--filters">
+            {/*
+              De zoekfilter. Die kan niet in CSS: een getypte tekst met de
+              tekst van een kaart vergelijken doet geen selector. Het is een
+              script, en daarom progressief — zonder JavaScript verschijnt het
+              veld nooit (het script haalt `hidden` eraf), zodat er geen dood
+              invoerveld staat.
+
+              `rr-zoek-count` is de melding die zegt hoeveel er over is; zonder
+              die regel leest een leeggefilterde matrix als een stukke pagina.
+              Hij staat onder het veld, zodat een oplopend getal het veld niet
+              opzij duwt terwijl iemand erin typt.
+            */}
+            <nldd-container class="rr-zoek" gap="4" hidden>
+              <nldd-search-field
+                id="rr-zoek-veld"
+                placeholder="Zoek in werkpakketten"
+                accessible-label="Zoek in werkpakketten"
+                no-spellcheck
+              ></nldd-search-field>
+              <nldd-text
+                id="rr-zoek-count"
+                class="rr-zoek__count"
+                size="sm"
+                color="secondary"
+                role="status"
+                aria-live="polite"
+              ></nldd-text>
+            </nldd-container>
+
+            {
+              /*
+               * De twee filtergroepen, elk achter een eigen knop.
+               *
+               * De koppeling loopt via `popovertarget`, dus de browser regelt
+               * openen, sluiten met Esc en sluiten bij een klik ernaast. Dat
+               * is wat de popover-documentatie aanraadt en het scheelt ons de
+               * hele open/dicht-toestand.
+               *
+               * De vinkjes staan in de popover maar blijven in het document —
+               * een popover slot zijn inhoud in de light DOM en verhuist hem
+               * bij openen naar de toplaag, niet in de DOM-boom. De
+               * `:has([checked])`-regels in roadmap.css lezen dus hetzelfde als
+               * voorheen, open of dicht. Was dat niet zo, dan zou het
+               * categoriefilter stoppen zodra de popover dichtging.
+               *
+               * De twee groepen delen deze lus maar niet hun werking: het
+               * categoriefilter is puur CSS, het beleggingsfilter loopt via
+               * het script. Waarom dat verschil moet bestaan staat bij
+               * `filterBelegging` en in roadmap.css; hier is alleen de
+               * omlijsting gedeeld.
+               */
+              [
+                {
+                  id: 'cat',
+                  knop: 'Categorie',
+                  titel: 'Filter op categorie',
+                  optieKlasse: 'rr-filter__option',
+                  opties: FILTER_OPTIES,
+                },
+                {
+                  id: 'bel',
+                  knop: 'Belegging',
+                  titel: 'Filter op belegging',
+                  optieKlasse: 'rr-filter__belegging-option',
+                  opties: BELEGGING_FILTER_OPTIES,
+                },
+              ].map((groep) => (
+                <div class="rr-filtergroep">
+                  {/*
+                    De popover zit in de `popup`-slot van de knop, niet aan een
+                    `popovertarget` met een id. Dat is niet één van twee smaken:
+                    `popovertarget` wordt doorgegeven aan de <button> ín de
+                    shadow root van nldd-button, en die zoekt het id op in zijn
+                    eigen boom. De popover staat daarbuiten, dus de browser
+                    vindt hem nooit en er gebeurt bij een klik niets — geen
+                    fout, geen spoor, alleen een knop die niet opengaat. Dat
+                    was de eerste versie hiervan.
+
+                    Geslot regelt de knop het anker en de toggle zelf, en
+                    spiegelt `expanded` en `aria-haspopup` terug. Daarmee
+                    vervalt ook `popup-type`: de knop zet het zelf.
+                  */}
+                  <nldd-button
+                    id={`rr-${groep.id}-knop`}
+                    class="rr-filtergroep__knop"
+                    variant="neutral-tinted"
+                    size="sm"
+                    start-icon="filter"
+                    expandable
+                    text={groep.knop}
+                    accessible-label={groep.titel}
+                  >
+                    <nldd-popover
+                      slot="popup"
+                      id={`rr-${groep.id}-popover`}
+                      accessible-label={groep.titel}
+                      placement="bottom-start"
+                      width="260px"
+                    >
+                      <nldd-container padding="16" gap="12">
+                        <nldd-text size="sm" weight="medium" color="secondary">
+                          {groep.titel}
+                        </nldd-text>
+                        {/*
+                          Nog steeds een fieldset: het blijft een groep vinkjes
+                          die bij elkaar horen, en daar heeft het ontwerpsysteem
+                          geen component voor. De legend is visueel verborgen
+                          omdat de regel erboven hem al uitschrijft, maar hij
+                          blijft staan zodat de groep een naam houdt voor wie
+                          hem niet ziet.
+                        */}
+                        <fieldset class="rr-filter">
+                          <legend class="rr-sr-only">{groep.titel}</legend>
+                          {groep.opties.map((optie) => (
+                            <nldd-checkbox-field
+                              class={groep.optieKlasse}
+                              id={`rr-${groep.id}-${optie.id}`}
+                              label={optie.label}
+                            />
+                          ))}
+                        </fieldset>
+                      </nldd-container>
+                    </nldd-popover>
+                  </nldd-button>
+                  {/*
+                    Hoeveel er in deze groep aanstaat, naast de knop en niet
+                    erin: `text` op nldd-button is één tekst, en een getal dat
+                    in die tekst meegroeit laat de knop bij elk vinkje van
+                    breedte veranderen. Het script vult hem; met alles uit
+                    blijft hij leeg, want een badge die "0" zegt is een badge
+                    die niets zegt.
+                  */}
+                  <nldd-badge
+                    id={`rr-${groep.id}-telling`}
+                    class="rr-filtergroep__telling"
+                    color="accent"
+                    size="sm"
+                    hidden
+                  />
+                </div>
+              ))
+            }
+
+            {/*
+              Alles weer aan. Staat er alleen als er iets uit staat — een knop
+              die niets te wissen heeft is een knop die je leert negeren. Het
+              script zet hem aan en uit, dus zonder JavaScript is hij er niet;
+              dat mag, want dan zijn de twee vinkjesgroepen zelf nog wél te
+              bedienen.
+            */}
+            <nldd-button
+              id="rr-wis"
+              class="rr-controls__wissen"
+              variant="neutral-transparent"
+              size="sm"
+              start-icon="close"
+              text="Wissen"
+              accessible-label="Alle filters wissen"
+              hidden
+            />
+          </div>
+
+          {/*
+            De weergaveschakelaar, achter een scheidslijn: dit filtert niets,
+            het legt een tweede lezing over dezelfde matrix — de pijlen, het
+            inspringen en het pakken van de rijen. Uit is de standaard, want de
+            matrix is eerst een beeld van wat er te doen is en deze lezing kost
+            een flink bredere kolom.
+
+            Een nldd-toggle-button en geen vinkje: een ingedrukte knop leest als
+            een stand waar je in staat, en dat is wat dit is.
+
+            De id blijft `rr-afhankelijkheden`, want de :has()-regels in
+            roadmap.css en het script hangen eraan. Wat wél veranderde is het
+            attribuut dat de stand draagt: een toggle-button reflecteert
+            `selected`, geen `checked`. Beide plekken lezen nu `selected` — zie
+            de regel in roadmap.css en `aan()` in het script hieronder.
+          */}
+          <div class="rr-controls__groep rr-controls__groep--weergave">
+            <nldd-toggle-button
+              id="rr-afhankelijkheden"
+              class="rr-weergave__option"
+              type="button"
+              size="sm"
+              icon="arrow-right"
+              text="Afhankelijkheden"
+              variant="icon-and-text"
+              accessible-label="Afhankelijkheden tonen"
+            />
+          </div>
+        </div>
       </nldd-container>
 
       {/* tabindex + role make the horizontally scrolling matrix reachable by
@@ -177,7 +372,20 @@ const pathname = '/roadmap';
         role="region"
         aria-label="Roadmapmatrix, horizontaal scrollbaar"
       >
-        <table class="rr-matrix" style={`--rr-fase-count: ${fases.length}`}>
+        {/*
+          The dependency overlay sits in its own positioned wrapper so the SVG
+          can be placed against the table's own box rather than the scroll
+          container's: the container scrolls, the table does not move inside
+          it, and anchoring to the scroller would slide every arrow out of
+          place the moment you pan sideways.
+
+          aria-hidden: every werkpakket page lists the same dependencies under
+          "Afhankelijkheden", as links. Reading the curves to a screen reader
+          adds nothing that is not already there in text.
+        */}
+        <div class="rr-matrix-canvas">
+          <svg class="rr-afhankelijk" aria-hidden="true" focusable="false"></svg>
+          <table class="rr-matrix" style={`--rr-fase-count: ${fases.length}`}>
           <caption class="rr-matrix__caption">
             Werkpakketten per fase (kolommen) en discipline (rijen). De vijf
             fases zijn Wat (in twee stappen), Hoe, Waar en Garantie. De
@@ -267,8 +475,688 @@ const pathname = '/roadmap';
               ))
             }
           </tbody>
-        </table>
+          </table>
+        </div>
       </div>
     </nldd-container>
   </nldd-simple-section>
 </Base>
+
+{/*
+  The zoekfilter.
+
+  A module script, so it is bundled and `normaliseerZoekterm` is the very
+  function the build used to write every `data-zoek` — the two sides of a
+  search have to normalise identically, and importing it is the only way to
+  keep that true without a second copy drifting. It comes from
+  lib/roadmap-zoek.ts rather than lib/roadmap.ts for a hard reason: the latter
+  imports astro:content and node:fs, which a client bundle cannot have.
+
+  It matches on all terms, in any order: "garantie toezicht" finds a card that
+  has both words anywhere in its text, not the phrase. That is what someone
+  typing two words means, and it makes the field forgiving about the order the
+  words happen to appear in.
+
+  Hiding is a class on the card, not `display` set inline: the categorie filter
+  already owns `display` through its :has() rules, and a script writing
+  element.style would beat those and strand a card visible that the categorie
+  filter had hidden. As a class the two compose — a card shows only when both
+  filters allow it, which is what a reader expects of two controls side by side.
+*/}
+<script>
+  import { normaliseerZoekterm } from '~/lib/roadmap-zoek';
+
+  function wireZoek() {
+    const field = document.getElementById('rr-zoek-veld');
+    const count = document.getElementById('rr-zoek-count');
+    const cards = Array.from(
+      document.querySelectorAll<HTMLElement>('.rr-wp-card[data-zoek]'),
+    );
+    if (!field || !count || !cards.length) return;
+
+    // The field is hidden in the markup so it never shows without this script
+    // behind it. `hidden` sits on the wrapper, which also holds the counter.
+    field.closest<HTMLElement>('.rr-zoek')?.removeAttribute('hidden');
+
+    /*
+     * Say how much is left, counting what is actually on screen rather than
+     * what the search matched.
+     *
+     * The categorie filter hides cards through its own CSS, which this script
+     * knows nothing about, so counting search matches would state a number the
+     * reader cannot see — with a categorie checked it could announce "1 van de
+     * 49 gevonden" over an empty matrix. Asking the browser for the rendered
+     * height settles it against both filters at once and cannot drift from the
+     * CSS the way a second copy of the categorie logic in JS would.
+     *
+     * Always call this through `hertelStraks`, never directly: offsetHeight is
+     * only meaningful once the DOM change that prompted it has been styled.
+     */
+    const hertel = (raw: string) => {
+      const heeftQuery = normaliseerZoekterm(raw).length > 0;
+      const zichtbaar = cards.filter((card) => card.offsetHeight > 0).length;
+
+      // Silent while the field is empty: with nothing typed the count would
+      // state the obvious on every page load and read as a result.
+      if (!heeftQuery) {
+        count.textContent = '';
+      } else if (zichtbaar === 0) {
+        count.textContent = 'Geen werkpakketten gevonden.';
+      } else {
+        // "werkpakketten" stays plural whatever the count: the noun in this
+        // sentence belongs to the total, not to the hits. "1 van de 49
+        // werkpakket" is what agreeing with the hit count produces.
+        count.textContent = `${zichtbaar} van de ${cards.length} werkpakketten gevonden.`;
+      }
+    };
+
+    /*
+     * Recount on the next frame, after style and layout have caught up.
+     *
+     * nldd-checkbox-field dispatches `change` while `checked` is still only a
+     * property: Lit reflects it to the attribute one microtask later, and the
+     * attribute is what the categorie filter's :has() rules read. Counting
+     * straight from the handler therefore measures the layout from *before*
+     * the click — the counter lagged a full toggle behind, and unchecking the
+     * last categorie announced "Geen werkpakketten gevonden" over thirty
+     * visible cards. rAF runs after the style recalc, so the measurement sees
+     * the toggle that caused it.
+     */
+    let gepland = 0;
+    const hertelStraks = (raw: string) => {
+      cancelAnimationFrame(gepland);
+      gepland = requestAnimationFrame(() => hertel(raw));
+    };
+
+    /*
+     * Which belegging-standen are checked. Nothing checked is no filter, the
+     * same reading the categorie group has: a filter nobody set narrows
+     * nothing.
+     *
+     * Read from the attribute, not the property. nldd-checkbox-field reflects
+     * `checked` to the attribute one microtask after dispatching `change`, and
+     * the categorie filter's :has() rules already depend on that reflection;
+     * reading the same source here keeps the two groups measuring one truth.
+     * The callers run inside rAF, by which point the reflection has happened.
+     */
+    const gekozenBelegging = () =>
+      new Set(
+        Array.from(
+          document.querySelectorAll('.rr-filter__belegging-option[checked]'),
+        ).map((el) => el.id.replace('rr-bel-', '')),
+      );
+
+    const filterBelegging = () => {
+      const gekozen = gekozenBelegging();
+      for (const card of cards) {
+        const stand = card.dataset.belegging ?? '';
+        const match = gekozen.size === 0 || gekozen.has(stand);
+        card.classList.toggle('rr-wp-card--geen-belegging', !match);
+      }
+    };
+
+    const filter = (raw: string) => {
+      const terms = normaliseerZoekterm(raw).split(' ').filter(Boolean);
+
+      for (const card of cards) {
+        const haystack = card.dataset.zoek ?? '';
+        const match = terms.every((term) => haystack.includes(term));
+        card.classList.toggle('rr-wp-card--geen-treffer', !match);
+      }
+
+      hertelStraks(raw);
+    };
+
+    /*
+     * `input` covers typing and the component's own clear button; `search`
+     * fires on Enter, where the value is already the same, so re-running is
+     * harmless and keeps the two paths from needing different code.
+     *
+     * The query is read from the field's `.value`, never from `event.detail`.
+     * Base.astro:866 records why, from a bug this repo already had on this
+     * same component and these same two events: detail's `.value` is not
+     * reliably a plain string, and it broke `query.trim()` there. Here it
+     * would reach normaliseerZoekterm(), which calls .normalize() on it.
+     * `.value` is also what the inner input's own native `input` event leaves
+     * correct — that one bubbles (composed) carrying no detail at all, where
+     * a `detail?.value ?? ''` would silently wipe the query.
+     */
+    for (const event of ['input', 'search']) {
+      field.addEventListener(event, () => filter(fieldValue(field)));
+    }
+
+    // The categorie checkboxes change what is on screen without the query
+    // changing. Only the count needs redoing — the cards' own match state is
+    // unaffected — so this recounts rather than re-running the whole filter.
+    for (const optie of document.querySelectorAll('.rr-filter__option')) {
+      optie.addEventListener('change', () => hertelStraks(fieldValue(field)));
+    }
+
+    /*
+     * The belegging checkboxes do change which cards match, so unlike the
+     * categorie group these re-run their own pass before recounting. Both go
+     * through rAF: `checked` is still only a property when `change` fires, and
+     * gekozenBelegging() reads the reflected attribute.
+     */
+    for (const optie of document.querySelectorAll(
+      '.rr-filter__belegging-option',
+    )) {
+      optie.addEventListener('change', () => {
+        requestAnimationFrame(() => {
+          filterBelegging();
+          hertelStraks(fieldValue(field));
+        });
+      });
+    }
+
+    /*
+     * Wat er aanstaat, op de knop van de groep.
+     *
+     * De vinkjes zitten in een popover, dus met de popover dicht is er geen
+     * enkel spoor van een filter dat wél werkt — precies de val die een
+     * ingeklapte filtergroep heeft. Het getal naast de knop is dat spoor.
+     *
+     * Leeg is niet nul. Een badge die "0" toont zegt dat er iets is om te
+     * zien; `hidden` zegt dat er niets aan de hand is. Dat scheelt de lezer
+     * het verschil tussen "geen filter" en "een filter dat niets doorlaat",
+     * dat op de matrix zelf niet te zien is.
+     */
+    const groepen = [
+      { knop: 'rr-cat', optieKlasse: '.rr-filter__option' },
+      { knop: 'rr-bel', optieKlasse: '.rr-filter__belegging-option' },
+    ];
+
+    const tellingen = () => {
+      let totaal = 0;
+      for (const groep of groepen) {
+        const aantal = document.querySelectorAll(
+          `${groep.optieKlasse}[checked]`,
+        ).length;
+        totaal += aantal;
+        const badge = document.getElementById(`${groep.knop}-telling`);
+        if (!badge) continue;
+        badge.toggleAttribute('hidden', aantal === 0);
+        // `number` en niet `text`: nldd-badge kort een getal zelf in boven
+        // `max`, en een tekst zou dat omzeilen.
+        badge.setAttribute('number', String(aantal));
+      }
+      return totaal;
+    };
+
+    /*
+     * De wisknop, en waarom hij meetelt wat hij meetelt.
+     *
+     * Hij wist de drie dingen die kaarten wegnemen: de zoekterm en de twee
+     * vinkjesgroepen. Níet de afhankelijkhedenweergave — die verbergt niets,
+     * en meewissen zou een stand omgooien waar de lezer niet om vroeg. Dat is
+     * dezelfde scheiding die de balk zelf al toont.
+     */
+    const wis = document.getElementById('rr-wis');
+
+    const herzieBalk = () => {
+      const aantal = tellingen();
+      const heeftQuery = normaliseerZoekterm(fieldValue(field)).length > 0;
+      wis?.toggleAttribute('hidden', aantal === 0 && !heeftQuery);
+    };
+
+    wis?.addEventListener('click', () => {
+      for (const groep of groepen) {
+        for (const optie of document.querySelectorAll(
+          `${groep.optieKlasse}[checked]`,
+        )) {
+          // De property, niet het attribuut: nldd-checkbox-field spiegelt zelf
+          // terug naar het attribuut, en alleen dat pad houdt zijn interne
+          // <input> in de pas. Het attribuut weghalen laat het vinkje staan.
+          (optie as HTMLElement & { checked?: boolean }).checked = false;
+        }
+      }
+      (field as HTMLElement & { value?: string }).value = '';
+      requestAnimationFrame(() => {
+        filterBelegging();
+        filter('');
+        herzieBalk();
+      });
+    });
+
+    /*
+     * De balk bijwerken bij elke verandering aan een filter. Eén listener over
+     * beide groepen plus het veld, in de bubbelfase: de knoppen dragen geen
+     * eigen toestand, ze lezen die van de vinkjes terug.
+     *
+     * Een frame later, om dezelfde reden als overal op deze pagina: bij
+     * `change` is `checked` nog alleen een property en is het attribuut dat
+     * hier geteld wordt nog niet gespiegeld.
+     */
+    for (const optie of document.querySelectorAll(
+      `${groepen[0].optieKlasse}, ${groepen[1].optieKlasse}`,
+    )) {
+      optie.addEventListener('change', () =>
+        requestAnimationFrame(herzieBalk),
+      );
+    }
+    for (const event of ['input', 'search']) {
+      field.addEventListener(event, herzieBalk);
+    }
+
+    herzieBalk();
+  }
+
+  /**
+   * The field's current text, via the property the component reflects — the
+   * single place the query is read, so the `event.detail` trap documented at
+   * Base.astro:866 has no second entrance here.
+   *
+   * The typeof guard is the same defence one level down: everything
+   * downstream calls string methods on this, so a value that is not a string
+   * becomes an empty query (showing everything) rather than a thrown handler
+   * that leaves the matrix frozen on the previous result.
+   */
+  function fieldValue(field: HTMLElement): string {
+    const value = (field as HTMLElement & { value?: unknown }).value;
+    return typeof value === 'string' ? value : '';
+  }
+
+  /*
+   * Bound on astro:page-load, not at top level. Base.astro renders
+   * <ClientRouter />, and a module script runs once per document: on a
+   * ClientRouter navigation back to /roadmap the DOM is swapped in fresh —
+   * `hidden` back on the wrapper, no listeners — and a top-level binding would
+   * never run again, leaving no search field at all until a hard reload. Since
+   * every card links to a detail page, that return trip is the normal path
+   * through this page. astro:page-load also fires on the initial load, so this
+   * covers both. Same pattern as wireSearch() in Base.astro.
+   */
+  document.addEventListener('astro:page-load', wireZoek);
+</script>
+
+<script>
+  /*
+   * De afhankelijkhedenweergave: waar een kaart komt te staan, en de pijlen
+   * ertussen.
+   *
+   * Alles hier gebeurt in de browser, niets tijdens de build. Waar een kaart
+   * hoort te staan hangt af van welke kaarten er op dat moment staan, en dat
+   * bepalen de twee filters pas als er iemand typt of aanvinkt. Rekende de
+   * build de inspringing uit, dan liet een weggefilterde kaart een gat in de
+   * matrix achter en liep een keten door over kaarten die niet op het scherm
+   * stonden.
+   *
+   * Zonder JavaScript gebeurt er niets: de schakelaar staat uit, de cellen
+   * zijn een gewone stapel kaarten en de overlay blijft leeg.
+   */
+
+  /** Hoe lang de pijlpunt is, in dezelfde eenheid als de paden. */
+  const PIJL_LENGTE = 11;
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+
+  /**
+   * De maten staan in roadmap.css op .rr-matrix en worden hier gelezen, niet
+   * herhaald: de kolombreedte die dit script uitrekent en de opmaak die de
+   * stylesheet aanbrengt moeten dezelfde getallen gebruiken.
+   */
+  function maten(table: HTMLElement) {
+    const stijl = getComputedStyle(table);
+    const px = (naam: string) => parseFloat(stijl.getPropertyValue(naam)) || 0;
+    const kaart = px('--rr-kaart-breedte');
+    const ruimte = px('--rr-pijl-ruimte');
+    return { stap: kaart + ruimte, basis: kaart + (ruimte - px('--rr-matrix-gat')) };
+  }
+
+  type Plek = { kolom: number; rij: number };
+
+  function wireAfhankelijkheden() {
+    const canvas = document.querySelector<HTMLElement>('.rr-matrix-canvas');
+    const svg = canvas?.querySelector<SVGSVGElement>('.rr-afhankelijk');
+    const table = canvas?.querySelector<HTMLElement>('.rr-matrix');
+    const schakelaar = document.getElementById('rr-afhankelijkheden');
+    if (!canvas || !svg || !table || !schakelaar) return;
+
+    const kaarten = Array.from(
+      table.querySelectorAll<HTMLElement>('.rr-wp-card[data-wp-id]'),
+    );
+    if (!kaarten.length) return;
+
+    const faseVolgorde = Array.from(
+      table.querySelectorAll<HTMLElement>('thead th[id^="rr-fase-"]'),
+    ).map((th) => th.id.slice('rr-fase-'.length));
+
+    /*
+     * `selected` en niet `checked`: de schakelaar is een nldd-toggle-button,
+     * en die reflecteert zijn stand naar `selected`. De :has()-regels in
+     * roadmap.css lezen hetzelfde attribuut — staan die twee niet op dezelfde
+     * naam, dan tekent het script pijlen over een matrix die de CSS nooit in
+     * de afhankelijkhedenstand heeft gezet, of andersom. Vandaar de controle
+     * in assertFilterRules().
+     */
+    const aan = () => schakelaar.hasAttribute('selected');
+    const { stap: STAP, basis: KOLOM_BASIS } = maten(table);
+
+    /*
+     * Op het scherm of niet. Het zoek- en beleggingsfilter verbergen met een
+     * klasse en het categoriefilter met een :has()-regel, dus geen van drieën
+     * is aan één attribuut af te lezen; de gerenderde hoogte vat ze alle drie
+     * samen en kan niet uit de pas lopen met de CSS zoals een tweede kopie van
+     * die logica in JS zou doen. Dat is dezelfde maat die de zoekteller
+     * gebruikt.
+     */
+    const zichtbaar = (kaart: HTMLElement) => kaart.offsetHeight > 0;
+
+    let buren = new Map<string, Set<string>>();
+
+    /** Een pijl: `van` moet af zijn voordat `naar` kan beginnen. */
+    let pijlen: { van: string; naar: string }[] = [];
+
+    function indeel() {
+      // Eerst alles terugzetten, zodat een uitgezette weergave en een
+      // weggefilterde kaart geen plaatsing achterlaten die niemand meer beheert.
+      for (const kaart of kaarten) {
+        kaart.style.removeProperty('grid-column');
+        kaart.style.removeProperty('grid-row');
+      }
+      table!.style.removeProperty('--rr-fase-kolommen');
+      svg!.replaceChildren();
+      buren = new Map();
+      pijlen = [];
+      if (!aan()) return;
+
+      const zichtbare = kaarten.filter(zichtbaar);
+      const ids = new Set(zichtbare.map((k) => k.dataset.wpId!));
+      const fase = new Map(zichtbare.map((k) => [k.dataset.wpId!, k.dataset.fase!]));
+      const voorwaarden = new Map(
+        zichtbare.map((k) => [
+          k.dataset.wpId!,
+          (k.dataset.afhankelijkVan ?? '')
+            .split(' ')
+            .filter((v) => v && ids.has(v)),
+        ]),
+      );
+
+      for (const [naar, van] of voorwaarden) {
+        for (const v of van) pijlen.push({ van: v, naar });
+      }
+      for (const pijl of pijlen) {
+        for (const [a, b] of [
+          [pijl.van, pijl.naar],
+          [pijl.naar, pijl.van],
+        ]) {
+          if (!buren.has(a)) buren.set(a, new Set());
+          buren.get(a)!.add(b);
+        }
+      }
+
+      /*
+       * Hoe ver naar rechts: de langste keten van voorwaarden erachter binnen
+       * dezelfde fase. Alleen dezelfde fase, want de matrix zet de fases al
+       * links naar rechts; wie op iets uit een eerdere fase wacht staat er al
+       * voorbij door in een latere kolom te staan.
+       *
+       * De kring die dit zou laten rondlopen is bij de build al afgevangen
+       * (assertReferencesResolve); `bezig` is er zodat een kring die hier toch
+       * komt één keer rondgaat in plaats van eeuwig.
+       */
+      const diepte = new Map<string, number>();
+      const bezig = new Set<string>();
+      const bereken = (id: string): number => {
+        const bekend = diepte.get(id);
+        if (bekend !== undefined) return bekend;
+        if (bezig.has(id)) return 0;
+        bezig.add(id);
+        const eigen = (voorwaarden.get(id) ?? [])
+          .filter((v) => fase.get(v) === fase.get(id))
+          .map((v) => bereken(v) + 1);
+        bezig.delete(id);
+        const uitkomst = eigen.length ? Math.max(...eigen) : 0;
+        diepte.set(id, uitkomst);
+        return uitkomst;
+      };
+      for (const id of ids) bereken(id);
+
+      /*
+       * En hoe ver naar beneden: een kaart gaat op de rij van de voorwaarde
+       * waar hij op wacht, zolang die plek vrij is, zodat een keten op één lijn
+       * loopt en de pijlen recht zijn. Heeft hij in deze cel niets voor zich,
+       * dan begint hij een eigen rij — twee werkpakketten staan zo alleen naast
+       * elkaar als de een echt op de ander wacht. De DOM-volgorde binnen een cel
+       * is `volgorde`, dus wie het eerst komt claimt de rij.
+       */
+      const cellen = new Map<HTMLElement, HTMLElement[]>();
+      for (const kaart of zichtbare) {
+        const cel = kaart.closest<HTMLElement>('.rr-cel-raster')!;
+        if (!cellen.has(cel)) cellen.set(cel, []);
+        cellen.get(cel)!.push(kaart);
+      }
+
+      for (const [, inCel] of cellen) {
+        const bezetteRijen: Set<number>[] = [];
+        const hier = new Map<string, Plek>();
+        for (const kaart of inCel) {
+          const id = kaart.dataset.wpId!;
+          const kolom = diepte.get(id) ?? 0;
+          const voorganger = (voorwaarden.get(id) ?? [])
+            .map((v) => hier.get(v))
+            .filter((plek): plek is Plek => plek !== undefined)
+            .sort((a, b) => b.kolom - a.kolom)[0];
+          const rij =
+            voorganger !== undefined && !bezetteRijen[voorganger.rij]?.has(kolom)
+              ? voorganger.rij
+              : bezetteRijen.push(new Set()) - 1;
+          bezetteRijen[rij].add(kolom);
+          const plek = { kolom, rij };
+          hier.set(id, plek);
+          kaart.style.gridColumn = String(kolom + 1);
+          kaart.style.gridRow = String(rij + 1);
+        }
+      }
+
+      // Elke fasekolom zo breed als zijn diepste keten.
+      table!.style.setProperty(
+        '--rr-fase-kolommen',
+        faseVolgorde
+          .map((f) => {
+            const diepst = zichtbare
+              .filter((k) => k.dataset.fase === f)
+              .reduce((m, k) => Math.max(m, diepte.get(k.dataset.wpId!) ?? 0), 0);
+            return `minmax(${KOLOM_BASIS + diepst * STAP}px, 1fr)`;
+          })
+          .join(' '),
+      );
+
+      teken();
+    }
+
+    function doos(id: string) {
+      const el = table!.querySelector<HTMLElement>(`[data-wp-id="${id}"]`);
+      if (!el || !zichtbaar(el)) return null;
+      const r = el.getBoundingClientRect();
+      const c = canvas!.getBoundingClientRect();
+      return {
+        left: r.left - c.left,
+        right: r.right - c.left,
+        mid: r.top - c.top + r.height / 2,
+      };
+    }
+
+    /*
+     * De pijl verlaat de voorwaarde aan de kant die naar de wachtende kaart
+     * wijst en komt daar aan de kant terug. Gespiegeld waar een latere fase
+     * voorwaarde is voor een eerdere, want de andere route stuurt de kromme
+     * dwars over de kaart waarop hij begint. Kaarten boven elkaar in dezelfde
+     * kolom knopen allebei rechts aan en de kromme bolt ernaast uit.
+     *
+     * De kromme komt horizontaal aan, dus de lijn stopt één pijlpunt vóór de
+     * kaart: anders loopt de streep onder de punt door en komt er aan de
+     * voorkant weer uit.
+     */
+    function pad(
+      van: NonNullable<ReturnType<typeof doos>>,
+      naar: NonNullable<ReturnType<typeof doos>>,
+    ) {
+      const gestapeld = Math.abs(van.left - naar.left) < 8;
+      const naarRechts = van.right <= naar.left;
+      const x1 = gestapeld || naarRechts ? van.right : van.left;
+      const x2 = gestapeld ? naar.right : naarRechts ? naar.left : naar.right;
+      const bocht = gestapeld ? 64 : Math.max(48, Math.abs(x2 - x1) * 0.45);
+      const richting = gestapeld || naarRechts ? 1 : -1;
+      const eind = x2 - PIJL_LENGTE * (gestapeld ? 1 : richting);
+      const c2 = eind + bocht * (gestapeld ? 1 : -richting);
+      return `M ${x1} ${van.mid} C ${x1 + bocht * richting} ${van.mid}, ${c2} ${naar.mid}, ${eind} ${naar.mid}`;
+    }
+
+    function teken() {
+      svg!.replaceChildren();
+      // scrollWidth, niet offsetWidth: het grid is breder dan de scroller die
+      // het afknipt, en een SVG op die maat snijdt elke pijl voorbij de vouw af.
+      const breed = table!.scrollWidth;
+      const hoog = table!.scrollHeight;
+      svg!.setAttribute('width', String(breed));
+      svg!.setAttribute('height', String(hoog));
+      svg!.setAttribute('viewBox', `0 0 ${breed} ${hoog}`);
+
+      const defs = document.createElementNS(SVG_NS, 'defs');
+      const marker = document.createElementNS(SVG_NS, 'marker');
+      marker.setAttribute('id', 'rr-pijlpunt');
+      marker.setAttribute('viewBox', '0 0 10 8');
+      // refX op de voet van de punt, zodat hij vóór het einde van de lijn staat
+      // en zijn tip op de kaart landt. Op de tip zou hij precies het stuk
+      // dekken waar de lijn nog loopt.
+      marker.setAttribute('refX', '0');
+      marker.setAttribute('refY', '4');
+      marker.setAttribute('markerWidth', String(PIJL_LENGTE));
+      marker.setAttribute('markerHeight', String(PIJL_LENGTE));
+      marker.setAttribute('orient', 'auto-start-reverse');
+      marker.setAttribute('markerUnits', 'userSpaceOnUse');
+      const punt = document.createElementNS(SVG_NS, 'polygon');
+      punt.setAttribute('points', '0,0 10,4 0,8');
+      marker.appendChild(punt);
+      defs.appendChild(marker);
+      svg!.appendChild(defs);
+
+      for (const pijl of pijlen) {
+        const van = doos(pijl.van);
+        const naar = doos(pijl.naar);
+        if (!van || !naar) continue;
+        const path = document.createElementNS(SVG_NS, 'path');
+        path.setAttribute('d', pad(van, naar));
+        path.setAttribute('class', 'rr-afhankelijk__lijn');
+        path.setAttribute('marker-end', 'url(#rr-pijlpunt)');
+        path.dataset.van = pijl.van;
+        path.dataset.naar = pijl.naar;
+        svg!.appendChild(path);
+      }
+    }
+
+    /*
+     * Wijs een kaart aan en de hele keten waar hij in zit blijft staan: alles
+     * waar hij op wacht, alles wat op hem wacht, en zo door in beide
+     * richtingen. De rest van de matrix valt terug, kaarten inbegrepen — de
+     * pijlen alleen waren te weinig om als volgorde van werk te lezen, omdat
+     * de kaarten ertussen even hard bleven staan.
+     *
+     * De keten loopt over `buren`, en daar staat alleen in wat zichtbaar is.
+     * Een kaart die weggefilterd is geeft dus geen doorgang naar de volgende.
+     */
+    function keten(id: string): Set<string> {
+      const gezien = new Set<string>([id]);
+      const wachtrij = [id];
+      while (wachtrij.length) {
+        for (const buur of buren.get(wachtrij.pop()!) ?? []) {
+          if (gezien.has(buur)) continue;
+          gezien.add(buur);
+          wachtrij.push(buur);
+        }
+      }
+      return gezien;
+    }
+
+    function accent(id: string | null) {
+      // Een kaart zonder afhankelijkheden heeft geen keten om te tonen, en de
+      // rest van de matrix dimmen zou ruis zijn bij elke muisbeweging.
+      const leden = id !== null && buren.has(id) ? keten(id) : null;
+      canvas!.classList.toggle('rr-matrix-canvas--accent', leden !== null);
+      for (const kaart of kaarten) {
+        kaart.classList.toggle(
+          'rr-wp-card--in-keten',
+          leden !== null && leden.has(kaart.dataset.wpId!),
+        );
+      }
+      for (const path of svg!.querySelectorAll<SVGPathElement>(
+        '.rr-afhankelijk__lijn',
+      )) {
+        path.classList.toggle(
+          'rr-afhankelijk__lijn--actief',
+          leden !== null &&
+            leden.has(path.dataset.van!) &&
+            leden.has(path.dataset.naar!),
+        );
+      }
+    }
+
+    for (const kaart of kaarten) {
+      const id = kaart.dataset.wpId!;
+      kaart.addEventListener('pointerenter', () => accent(id));
+      kaart.addEventListener('pointerleave', () => accent(null));
+      kaart.addEventListener('focusin', () => accent(id));
+      kaart.addEventListener('focusout', () => accent(null));
+    }
+
+    /*
+     * Opnieuw indelen zodra er iets verandert aan wat er staat. Altijd een
+     * frame later: nldd-checkbox-field stuurt zijn `change` terwijl `checked`
+     * nog alleen een property is en Lit hem een microtask later naar het
+     * attribuut spiegelt, en het is dat attribuut dat de :has()-regels lezen.
+     * Meteen meten geeft dus de opmaak van vóór de klik. Dezelfde reden als bij
+     * de zoekteller hierboven.
+     */
+    let gepland = 0;
+    const indeelStraks = () => {
+      cancelAnimationFrame(gepland);
+      gepland = requestAnimationFrame(indeel);
+    };
+
+    schakelaar.addEventListener('change', indeelStraks);
+    for (const optie of document.querySelectorAll('.rr-filter__option')) {
+      optie.addEventListener('change', indeelStraks);
+    }
+    /*
+     * Het zoek- en het beleggingsfilter zijn een eigen script dat kaarten een
+     * klasse geeft; hier kijken we naar het gevolg in plaats van naar de
+     * invoer, zodat ze niet aan elkaar vastzitten.
+     *
+     * Alleen naar de twee klassen die een kaart verbergen, en niet naar elke
+     * klasse die er langskomt. `accent()` zet bij hover `--in-keten` op de
+     * kaarten van de keten, en die kaarten staan in deze tabel: een observer
+     * op alles hertekent dan de SVG één frame na de hover, met
+     * `replaceChildren()`, en wist zo precies de `--actief` die er net op
+     * gezet was. De kaarten bleven wel oplichten, want die klassen raakt
+     * indeel() niet aan — de pijl ertussen viel als enige weg.
+     */
+    const VERBERGERS = ['rr-wp-card--geen-treffer', 'rr-wp-card--geen-belegging'];
+    new MutationObserver((mutaties) => {
+      for (const mutatie of mutaties) {
+        const el = mutatie.target as HTMLElement;
+        const was = mutatie.oldValue ?? '';
+        const nu = el.className ?? '';
+        if (VERBERGERS.some((k) => was.includes(k) !== nu.includes(k))) {
+          indeelStraks();
+          return;
+        }
+      }
+    }).observe(table, {
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class'],
+      attributeOldValue: true,
+    });
+    new ResizeObserver(indeelStraks).observe(table);
+
+    indeel();
+  }
+
+  /*
+   * Gebonden op astro:page-load en niet op het topniveau, om dezelfde reden als
+   * het zoekveld hierboven: bij een ClientRouter-navigatie terug naar /roadmap
+   * is de DOM vers omgewisseld en zou een binding op het topniveau niet meer
+   * draaien.
+   */
+  document.addEventListener('astro:page-load', wireAfhankelijkheden);
+</script>

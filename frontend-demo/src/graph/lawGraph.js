@@ -1,8 +1,9 @@
 /**
  * The dependency graph as the POC drew it: one box per law with its register
  * sources, its inputs from other laws and its outputs, and an edge from every
- * input to the output of the law that supplies it. Pure functions; the view
- * hands the result to vue-flow.
+ * supplying output to the input that reads it — the way the layout runs, with
+ * the supplier on the left. Pure functions; the view hands the result to
+ * vue-flow.
  */
 import { MarkerType, Position } from '@vue-flow/core';
 
@@ -163,14 +164,24 @@ export function buildGraph(laws, values = {}, focus = null, visible = null) {
       edges.push({
         hidden: !(shown(law.id) && shown(supplier.id)),
         class: direction,
-        id: `${itemId(law.id, 'in', input.name)}->${itemId(supplier.id, 'out', input.ref.output)}`,
-        source: itemId(law.id, 'in', input.name),
-        target: itemId(supplier.id, 'out', input.ref.output),
+        // De lijn loopt van de leverancier naar de afnemer, dezelfde kant op als
+        // de layout die de leverancier links zet. Andersom (van de invoer terug
+        // naar de uitvoer links ervan) maakte de bezier een lus dwars over de
+        // tussenliggende wetkaders, en wees de pijl de verkeerde kant op.
+        id: `${itemId(supplier.id, 'out', input.ref.output)}->${itemId(law.id, 'in', input.name)}`,
+        source: itemId(supplier.id, 'out', input.ref.output),
+        target: itemId(law.id, 'in', input.name),
+        // `from`/`to` beschrijven de verwijzing (wie leest van wie), niet de
+        // tekenrichting: `from` is de lezende wet, `to` de leverancier. Dat is
+        // de kant op die `dimmed()` hierboven en de lijstjes "leest van" /
+        // "gelezen door" in GraafView lezen, en het staat los van source/target.
         data: { from: law.id, to: supplier.id },
         markerEnd: MarkerType.ArrowClosed,
         animated: !!focus && bright,
         style: { opacity: bright ? 0.85 : 0.12 },
-        zIndex: 5,
+        // Onder de wetkaders, niet erboven: een lijn die over een kader loopt,
+        // loopt over de naam van de wet en over de item-labels heen.
+        zIndex: 0,
       });
     }
   }
@@ -215,8 +226,10 @@ export function buildGraph(laws, values = {}, focus = null, visible = null) {
           position: { x: BOX_PAD, y: BOX_LABEL_H + BOX_PAD + i * (ITEM_H + ITEM_GAP) },
           style: { width: `${COL_W - BOX_PAD * 2}px`, height: `${ITEM_H}px` },
           data: { name: item.name, kind, value: values[kind]?.[law.id]?.[item.name], ref: item.ref ?? null },
-          sourcePosition: Position.Left,
-          targetPosition: Position.Right,
+          // De uitvoer van de leverancier vertrekt rechts, de invoer van de
+          // afnemer komt links binnen: de lijn loopt mee met de layout.
+          sourcePosition: Position.Right,
+          targetPosition: Position.Left,
           draggable: false,
           selectable: false,
         });

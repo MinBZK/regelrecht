@@ -1,9 +1,11 @@
 // Assert the schema reference page tracks the latest released schema version.
 //
-// `reference/schema.md` hand-states the current schema version in three places
-// (a "current version is vX.Y.Z" line, an immutable-tag example URL, and the
-// top row of the Version History table). None of them are derived from the
-// repo, so the page silently rots the moment `schema/latest` is bumped and
+// `reference/schema.mdx` hand-states the current schema version in three
+// places (a "current version is vX.Y.Z" line, an immutable-tag example URL,
+// and the top row of the Version History table), and renders the rest of the
+// page from a committed snapshot of the schema, which is the fourth thing
+// checked here. None of them are derived from the repo at build time, so the
+// page silently rots the moment `schema/latest` is bumped and
 // nobody edits the doc: it then advertises an old version as current while
 // looking authoritative, and law authors copy a stale `$schema` URL. This
 // check makes CI fail when the page falls behind `schema/latest`, so the
@@ -21,7 +23,13 @@ import { fileURLToPath } from 'node:url';
 
 const SCHEMA_DIR = fileURLToPath(new URL('../../schema', import.meta.url));
 const PAGE = fileURLToPath(
-  new URL('../src/content/docs/reference/schema.md', import.meta.url),
+  new URL('../src/content/docs/reference/schema.mdx', import.meta.url),
+);
+// The committed copy the reference page actually renders from. It exists
+// because `schema/` is not in the docs Docker build context; see
+// scripts/sync-schema.mjs.
+const SNAPSHOT = fileURLToPath(
+  new URL('../src/data/schema-latest.json', import.meta.url),
 );
 
 if (!existsSync(SCHEMA_DIR)) {
@@ -84,11 +92,98 @@ if (!historyRow.test(page)) {
   problems.push(`the Version History table has no row for ${latest}`);
 }
 
+// 4. The committed snapshot the page renders from must BE `schema/latest`.
+//    Byte-for-byte: the page shows field names, descriptions and examples
+//    straight out of this file, so a stale copy does not merely misstate a
+//    version number, it documents a schema that is no longer current.
+let snapshotStale = false;
+if (!existsSync(SNAPSHOT)) {
+  problems.push(
+    'docs/src/data/schema-latest.json is missing (run: npm run sync:schema)',
+  );
+  snapshotStale = true;
+} else {
+  const snapshot = readFileSync(SNAPSHOT);
+  const source = readFileSync(`${SCHEMA_DIR}/latest/schema.json`);
+  if (!snapshot.equals(source)) {
+    // Name the version the snapshot claims, so the failure says what drifted
+    // rather than only that something did.
+    let snapshotVersion = 'unparseable';
+    try {
+      snapshotVersion = JSON.parse(snapshot.toString('utf8')).title ?? 'untitled';
+    } catch {
+      /* keep the placeholder */
+    }
+    problems.push(
+      `docs/src/data/schema-latest.json does not match schema/latest (${latest}); ` +
+        `the snapshot says "${snapshotVersion}"`,
+    );
+    snapshotStale = true;
+  }
+}
+
+// 5. The tag the page advertises must exist. The URL in `$schema` is a
+//    promise to every law author and every outside reader that the schema
+//    they validated against stays fetchable at that address. Shape alone is
+//    not enough: the corpus check elsewhere matches `$schema` against the
+//    local `schema/vX.Y.Z` directories, so a version that was released in the
+//    tree but never tagged passes every existing gate while its published URL
+//    404s. That is how five versions shipped untagged (v0.5.7 through v0.7.0),
+//    leaving eleven corpus files citing an address that returned a 404. They
+//    have since been tagged; this check is what keeps the next one from
+//    slipping out the same way.
+//
+//    This blocks. Tagging is the step that makes a released version immutable:
+//    without a tag the `$schema` URL resolves to nothing, and nothing stops the
+//    file being edited afterwards, so "a published version is never modified"
+//    holds by convention rather than by construction. A release is not finished
+//    until its tag exists.
+//
+//    Tags are only present in a checkout that fetched them, so a missing tag
+//    list is not evidence of a missing tag: skip when there are none at all
+//    rather than fail a shallow clone. Use `fetch-depth: 0` in CI, or fetch the
+//    tags locally, to make this check meaningful.
+try {
+  const { execFileSync } = await import('node:child_process');
+  const tags = execFileSync('git', ['tag', '--list', 'schema-v*'], {
+    cwd: SCHEMA_DIR,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  })
+    .split('\n')
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  if (tags.length === 0) {
+    console.warn(
+      'check-schema-version: no schema-v* tags in this checkout, skipping the tag check (run `git fetch --tags`)',
+    );
+  } else {
+    // Report every untagged released version, not just the latest: the gap is
+    // historical (v0.5.7 onwards) and a law file may cite any of them.
+    const released = readdirSync(SCHEMA_DIR).filter((n) => /^v\d+\.\d+\.\d+$/.test(n));
+    const untagged = released.filter((v) => !tags.includes(`schema-${v}`)).sort();
+    if (untagged.length) {
+      problems.push(
+        `${untagged.length} released schema version(s) have no tag, so the $schema URL a law ` +
+          `file cites for them does not resolve: ${untagged.join(', ')}. ` +
+          `A release is finished when its tag exists: tag each one at the commit ` +
+          `that released it, then push the tag.`,
+      );
+    }
+  }
+} catch {
+  console.warn('check-schema-version: could not list git tags, skipping the tag check');
+}
+
 if (problems.length) {
   console.error(`check-schema-version FAILED (schema/latest is ${latest}):`);
   for (const p of problems) console.error('  - ' + p);
+  if (snapshotStale) {
+    console.error('\nRun `npm run sync:schema` to refresh the snapshot.');
+  }
   console.error(
-    '\nUpdate docs/src/content/docs/reference/schema.md: bump the current-version line ' +
+    '\nUpdate docs/src/content/docs/reference/schema.mdx: bump the current-version line ' +
       'and tag URL, and add a Version History row describing what the new version introduces.',
   );
   process.exit(1);

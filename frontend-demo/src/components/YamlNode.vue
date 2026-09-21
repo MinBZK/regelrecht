@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
+import { initiallyOpen } from './yamlExpand.js';
 
 // One node of a parsed YAML document rendered as a collapsible tree. Mappings
 // and sequences fold; scalars show typed. A `source.regulation: <law>` value
@@ -10,7 +11,7 @@ const props = defineProps({
   value: { default: null },
   path: { type: String, default: '' },
   depth: { type: Number, default: 0 },
-  /** Dotted paths that start expanded (with their ancestors); '*' matches any segment. */
+  /** Dotted paths that start expanded, together with the nodes above them; '*' matches any segment. */
   expanded: { type: Object, default: () => ({ paths: [], version: 0, all: null }) },
   lawIds: { type: Object, default: () => new Set() },
   parentKey: { type: String, default: '' },
@@ -21,29 +22,14 @@ const isMap = computed(() => props.value !== null && typeof props.value === 'obj
 const isList = computed(() => Array.isArray(props.value));
 const isContainer = computed(() => isMap.value || isList.value);
 
-function pathMatches(pattern, path) {
-  const p = pattern.split('.');
-  const q = path.split('.');
-  if (p.length > q.length) return false;
-  return p.every((seg, i) => seg === '*' || q[i] === '*' || seg === q[i]);
+/** De voorbereide stand: zie yamlExpand.js voor waarom die zo staat. */
+function openHere() {
+  return initiallyOpen({ path: props.path, depth: props.depth, all: props.expanded.all, paths: props.expanded.paths });
 }
 
-function initiallyOpen() {
-  if (props.expanded.all === true) return true;
-  if (props.expanded.all === false) return false;
-  if (props.depth < 1) return true;
-  // Articles and their execution blocks open by default; the long `text` and
-  // the operations inside actions stay folded unless a configured path says so.
-  if (/^articles(\.[^.]+)?$/.test(props.path)) return true;
-  if (/^articles\.[^.]+\.machine_readable(\.execution)?$/.test(props.path)) return true;
-  // A configured path opens itself and every node above it; what lies beside
-  // or below it stays folded, so the prepared view lands on the right lines.
-  return props.expanded.paths.some((pattern) => pathMatches(props.path, pattern));
-}
-
-const open = ref(initiallyOpen());
+const open = ref(openHere());
 watch(() => props.expanded.version, () => {
-  open.value = initiallyOpen();
+  open.value = openHere();
 });
 
 const entries = computed(() => {

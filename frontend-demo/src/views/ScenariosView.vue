@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { parseFeature, dispatch, quotedValue, bareValue, ExecutionContext } from '@regelrecht/frontend-shared/gherkin';
+import { parseFeature, dispatch, quotedValue, bareValue, traceRoot, ExecutionContext } from '@regelrecht/frontend-shared/gherkin';
 import { matchStep, renderStepNl, FEATURE_KEYWORDS_NL } from '../data/gherkinNl.js';
 import { serviceInfo } from '../data/loadCorpus.js';
 import { loadFailureFor, loadFailures, prepareScenarioEngine } from '../engine/useDemoEngine.js';
@@ -224,7 +224,7 @@ function evaluateWithTrace(ctx, e, lawId, outputs, state) {
     ctx.result = result;
     ctx.executed = true;
     ctx.error = null;
-    state.trace = result.trace ?? null;
+    state.trace = traceRoot(result.trace);
     state.traceText = result.trace_text ?? '';
     state.outputs = result.outputs ?? {};
   } catch (err) {
@@ -291,6 +291,7 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
             <nldd-list-item v-for="f in filtered" :key="f.path" size="sm" button :selected="f.path === selectedPath || undefined" @click="select(f.path)">
               <nldd-text-cell size="sm" :text="f.title" :supporting-text="lawFor(f) ? serviceInfo(corpus, lawFor(f).service).name : f.law_path"></nldd-text-cell>
             </nldd-list-item>
+            <nldd-inline-dialog slot="empty" text="Geen scenario's gevonden" supporting-text="Pas je zoekterm aan"></nldd-inline-dialog>
           </nldd-list>
         </nldd-container>
       </nldd-page>
