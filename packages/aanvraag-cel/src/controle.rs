@@ -11,7 +11,8 @@
 //! 4. Geen naamsbotsing: een parameter krijgt maar een afleiding.
 //!
 //! Daarnaast: het portaalblok wijst naar een bestaand event, een bestaande
-//! lexostatus en een bestaande uitkomst.
+//! lexostatus en een bestaande uitkomst, van een artikel uit de grondslag
+//! van dat event.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -296,15 +297,27 @@ fn portaal(
             }
         }
     }
-    if service
+    match service
         .resolver()
         .get_article_by_output(&p.toets.regeling, &p.toets.uitkomst, None)
-        .is_none()
     {
-        fouten.push(format!(
+        None => fouten.push(format!(
             "portaal: regeling '{}' heeft geen uitkomst '{}'",
             p.toets.regeling, p.toets.uitkomst
-        ));
+        )),
+        // De toets geeft de lexostatus als parameters aan dit artikel; die
+        // zijn afgeleid voor de artikelen uit de grondslag van het event.
+        Some(artikel) => {
+            let grondslag = format!("{}#{}", p.toets.regeling, artikel.number);
+            if !event.grondslag.contains(&grondslag) {
+                fouten.push(format!(
+                    "portaal: uitkomst '{}' komt uit {grondslag}, en dat staat niet in de grondslag van event '{}' ({})",
+                    p.toets.uitkomst,
+                    event.name,
+                    event.grondslag.join(", ")
+                ));
+            }
+        }
     }
 }
 
@@ -469,6 +482,15 @@ mod tests {
     fn portaal_met_onbekende_uitkomst() {
         let cel = CEL.replace("uitkomst: aanvraag_volledig", "uitkomst: bestaat_niet");
         faalt_met(STROOM, &cel, "geen uitkomst 'bestaat_niet'");
+    }
+
+    #[test]
+    fn portaal_met_uitkomst_buiten_de_grondslag() {
+        let cel = CEL.replace(
+            "regeling: testregeling_aanvraag\n    uitkomst: aanvraag_volledig",
+            "regeling: testregeling_awb\n    uitkomst: in_verzuim",
+        );
+        faalt_met(STROOM, &cel, "staat niet in de grondslag van event");
     }
 
     #[test]

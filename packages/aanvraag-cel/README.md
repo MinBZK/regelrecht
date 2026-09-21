@@ -54,7 +54,7 @@ noemt, als:
    `niet_gereduceerd` staat;
 4. een parameter meer dan een afleiding krijgt;
 5. het `portaal`-blok naar een event, lexostatus of uitkomst wijst die er niet
-   is.
+   is, of naar een uitkomst van een artikel buiten de grondslag van het event.
 
 ## Configuratie
 
@@ -89,7 +89,7 @@ kent, wordt overgeslagen.
 | `kroniek` | append-only opslag en lezen per zaak |
 | `controle` | de controles bij het opstarten |
 | `eherkenning` | nep-login (KvK, gemachtigde, machtiging `volledig`) en sessies |
-| `toets` | lexostatus als parameters aan de engine, een uitkomst evalueren |
+| `toets` | lexostatus als parameters aan de engine, een uitkomst evalueren; `ontbreekt` noemt de aanwezigheidsafleidingen (`gevuld`, `tabel` met `elke_regel`) die onwaar zijn |
 | `api` | de routes |
 | `regelingen`, `formulier`, `schema`, `config` | laden en valideren |
 

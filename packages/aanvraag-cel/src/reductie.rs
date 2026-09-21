@@ -158,6 +158,13 @@ impl Afleiding {
         }
     }
 
+    /// Of de afleiding toetst of iets aanwezig is (`gevuld`, `tabel` met
+    /// `elke_regel`). Onwaar betekent dan: dit ontbreekt in het gram. Bij
+    /// `gelijk` en `een_regel` is onwaar een antwoord, geen gat.
+    pub fn toetst_aanwezigheid(&self) -> bool {
+        matches!(self, Afleiding::Gevuld { .. } | Afleiding::ElkeRegel { .. })
+    }
+
     /// Pas de afleiding toe op een gram. `None`: het gram zegt er niets over
     /// en de parameter blijft weg; er wordt niets aangevuld.
     pub fn pas_toe(&self, gram: &Gram) -> Option<Value> {
@@ -228,6 +235,24 @@ pub struct Lexostatus {
     pub parameters: BTreeMap<String, Value>,
     /// Parameters met een afleiding waarover het gram niets zegt.
     pub niet_afgeleid: Vec<String>,
+}
+
+/// De parameters van een lexostatus die zeggen dat iets ontbreekt: een
+/// aanwezigheidsafleiding (zie [`Afleiding::toetst_aanwezigheid`]) met de
+/// waarde onwaar.
+pub fn ontbreekt(
+    definitie: &LexostatusDefinitie,
+    parameters: &BTreeMap<String, Value>,
+) -> Vec<String> {
+    definitie
+        .reduction
+        .afleidingen
+        .iter()
+        .filter(|(naam, a)| {
+            a.toetst_aanwezigheid() && parameters.get(*naam) == Some(&Value::Bool(false))
+        })
+        .map(|(naam, _)| naam.clone())
+        .collect()
 }
 
 /// Pas alle afleidingen van een definitie toe op een gram.
@@ -492,6 +517,27 @@ mod tests {
         assert_eq!(l.parameters["bevat_naam"], json!(true));
         assert_eq!(l.parameters["aanvraagdatum"], json!("2025-03-02"));
         assert!(l.niet_afgeleid.contains(&"aanvraagjaar".to_string()));
+    }
+
+    #[test]
+    fn ontbreekt_noemt_alleen_aanwezigheidsafleidingen() {
+        let c = parse(CEL, "fixture").unwrap();
+        let def = &c.lexostatus_definitions[0];
+        let g = gram(
+            ZAAK,
+            "2025-03-01T09:00:00+01:00",
+            json!({"inhoud": {"naam": "X", "registratie": "b",
+                "organen": [{"orgaan": "raad", "samengevoegd": false}]}}),
+        );
+        let l = leid_af(def, &g);
+        // Onwaar, maar een antwoord: registratie_categorie_a (gelijk) en
+        // is_samengevoegd (een_regel). Onwaar en een gat: de rest.
+        assert_eq!(l.parameters["registratie_categorie_a"], json!(false));
+        assert_eq!(l.parameters["is_samengevoegd"], json!(false));
+        assert_eq!(
+            ontbreekt(def, &l.parameters),
+            vec!["bevat_aanduiding", "bevat_aantal_zetels"]
+        );
     }
 
     #[test]

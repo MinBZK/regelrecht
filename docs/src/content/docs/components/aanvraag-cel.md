@@ -34,7 +34,7 @@ The cell refuses to start when a check fails, and names the field or parameter i
 3. No orphaned field: each field of each event is read by a derivation, or is listed under `niet_gereduceerd` with a reason.
 4. No name collision: a parameter gets one derivation.
 
-The same pass checks that the `portaal` block in the cell configuration names an existing event, lexostatus and regulation outcome.
+The same pass checks that the `portaal` block in the cell configuration names an existing event, lexostatus and regulation outcome, and that the article with that outcome is in the `grondslag` of the event.
 
 ## Configuration
 
@@ -54,7 +54,7 @@ The `portaal` block says which event a submission becomes, which lexostatus and 
 |---|---|
 | `POST /api/eherkenning/login` | `{kvk, persoon, machtiging}` to a session. A KvK number has eight digits and the only accepted mandate is `volledig`. There is no register. |
 | `GET /api/stroom` | The stream definition and the form fields |
-| `POST /api/aanvraag/toets` | Builds the gram in memory without recording it, reduces it and evaluates the configured outcome |
+| `POST /api/aanvraag/toets` | Builds the gram in memory without recording it, reduces it and evaluates the configured outcome. `ontbreekt` lists the parameters of a presence derivation (`gevuld`, `tabel` with `elke_regel`) that came out false. |
 | `POST /api/aanvraag` | Records the gram and returns it |
 | `GET /api/kroniek` | The grams of the logged-in KvK number, each with its YAML |
 | `GET /api/lexostatus/{naam}?zaakkenmerk=...` | The reduction of one of your own cases |

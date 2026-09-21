@@ -81,7 +81,7 @@ const uitslagToelichting = computed(() => {
   if (!u) return '';
   const delen = [];
   if (u.reden) delen.push(u.reden);
-  if (u.onwaar?.length) delen.push(`Onwaar in de lexostatus: ${u.onwaar.join(', ')}`);
+  if (u.ontbreekt?.length) delen.push(`Ontbreekt: ${u.ontbreekt.join(', ')}`);
   const niet = toets.value?.lexostatus?.niet_afgeleid ?? [];
   if (niet.length) delen.push(`Niet af te leiden uit het concept: ${niet.join(', ')}`);
   return delen.join('. ');
@@ -99,7 +99,7 @@ const uitslagToelichting = computed(() => {
       <template v-for="g in groepen" :key="g.titel">
         <nldd-form-section v-if="g.titel" :text="g.titel"></nldd-form-section>
         <template v-for="v in g.velden" :key="v.naam">
-          <nldd-form-field v-if="v.type === 'janee' || v.type === 'vink'" label="">
+          <nldd-form-field v-if="v.type === 'vink'" label="">
             <Invoer :soort="v.type" :label="v.label" :model-value="waarden[v.naam]" @update:model-value="zet(v.naam, $event)" />
           </nldd-form-field>
           <nldd-form-field v-else :label="v.label" :supporting-label="v.naam !== v.label ? v.naam : undefined">

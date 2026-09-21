@@ -165,10 +165,7 @@ async fn toets_volledig_en_onvolledig_zonder_vastleggen() {
     )
     .await;
     assert_eq!(body["uitslag"]["waarde"], json!(false), "{body}");
-    assert_eq!(
-        body["uitslag"]["onwaar"],
-        json!(["bevat_aanduiding", "is_samengevoegd"])
-    );
+    assert_eq!(body["uitslag"]["ontbreekt"], json!(["bevat_aanduiding"]));
 
     let mut zonder_jaar = volledig();
     zonder_jaar["external"]

@@ -1,6 +1,10 @@
 <script setup>
 // Een invoerelement voor een formuliersoort: tekst, getal, datum, keuze,
 // janee of vink. Een onbekende soort is tekst.
+//
+// janee is een keuze uit Ja en Nee met "Kies" als beginstand: niet
+// beantwoord blijft null en wordt niet stilzwijgend nee. Een vink is een
+// verklaring; niet aangevinkt is niet verklaard.
 import { opties } from '../formulier.js';
 
 const props = defineProps({
@@ -13,6 +17,19 @@ const emit = defineEmits(['update:modelValue']);
 
 function tekst(e) {
   return e.detail?.value ?? e.target?.value ?? '';
+}
+
+function janee(e) {
+  const t = e.target?.value;
+  return t === 'ja' ? true : t === 'nee' ? false : null;
+}
+
+// De waarde van een keuze zoals het formulier haar noemt (een getal blijft
+// een getal), niet de tekst uit de select.
+function keuze(e) {
+  const t = e.target?.value ?? '';
+  if (t === '') return null;
+  return opties(props.keuzes).find((o) => String(o.waarde) === t)?.waarde ?? t;
 }
 
 function getal(e) {
@@ -39,13 +56,20 @@ function getal(e) {
     @change="emit('update:modelValue', tekst($event))"
   ></nldd-date-field>
   <nldd-dropdown v-else-if="soort === 'keuze'" :accessible-label="label">
-    <select :value="modelValue ?? ''" @change="emit('update:modelValue', $event.target.value || null)">
+    <select :value="modelValue === null ? '' : String(modelValue)" @change="emit('update:modelValue', keuze($event))">
       <option value="">Kies</option>
-      <option v-for="o in opties(props.keuzes)" :key="String(o.waarde)" :value="o.waarde">{{ o.label }}</option>
+      <option v-for="o in opties(props.keuzes)" :key="String(o.waarde)" :value="String(o.waarde)">{{ o.label }}</option>
+    </select>
+  </nldd-dropdown>
+  <nldd-dropdown v-else-if="soort === 'janee'" :accessible-label="label">
+    <select :value="modelValue === true ? 'ja' : modelValue === false ? 'nee' : ''" @change="emit('update:modelValue', janee($event))">
+      <option value="">Kies</option>
+      <option value="ja">Ja</option>
+      <option value="nee">Nee</option>
     </select>
   </nldd-dropdown>
   <nldd-checkbox-field
-    v-else-if="soort === 'janee' || soort === 'vink'"
+    v-else-if="soort === 'vink'"
     :label="label"
     :checked="modelValue === true || undefined"
     @change="emit('update:modelValue', $event.detail?.checked ?? $event.target?.checked ?? false)"

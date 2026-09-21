@@ -28,24 +28,22 @@ pub struct Uitslag {
     /// Waarom niet te beoordelen, in woorden.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reden: Option<String>,
-    /// De parameters uit de lexostatus die onwaar zijn.
-    pub onwaar: Vec<String>,
+    /// De parameters uit de lexostatus die zeggen dat iets ontbreekt
+    /// (zie [`crate::reductie::ontbreekt`]). Staat los van de uitkomst: ook
+    /// een niet te beoordelen toets noemt wat er aan de aanvraag ontbreekt.
+    pub ontbreekt: Vec<String>,
 }
 
 /// Evalueer `uitkomst` van `regeling` met deze parameters op `datum`
-/// (JJJJ-MM-DD).
+/// (JJJJ-MM-DD). `ontbreekt` gaat ongewijzigd mee in de uitslag.
 pub fn toets(
     service: &LawExecutionService,
     regeling: &str,
     uitkomst: &str,
     parameters: &BTreeMap<String, Value>,
+    ontbreekt: Vec<String>,
     datum: &str,
 ) -> Uitslag {
-    let onwaar = parameters
-        .iter()
-        .filter(|(_, w)| **w == Value::Bool(false))
-        .map(|(k, _)| k.clone())
-        .collect();
     let mut uitslag = Uitslag {
         regeling: regeling.to_string(),
         uitkomst: uitkomst.to_string(),
@@ -53,7 +51,7 @@ pub fn toets(
         waarde: None,
         mist: Vec::new(),
         reden: None,
-        onwaar,
+        ontbreekt,
     };
     let invoer: BTreeMap<String, EngineValue> = parameters
         .iter()
@@ -62,9 +60,12 @@ pub fn toets(
     match service.evaluate_law(regeling, &[uitkomst], invoer, datum) {
         Ok(resultaat) => match resultaat.outputs.get(uitkomst) {
             Some(w) if w.contains_unknown() => {
-                let mut mist: Vec<String> =
-                    w.missing_facts().iter().map(|f| f.name.clone()).collect();
-                mist.dedup();
+                let mut mist: Vec<String> = Vec::new();
+                for f in w.missing_facts() {
+                    if !mist.contains(&f.name) {
+                        mist.push(f.name.clone());
+                    }
+                }
                 uitslag.reden = Some(niet_te_beoordelen(&mist));
                 uitslag.mist = mist;
             }
@@ -135,6 +136,7 @@ mod tests {
             "testregeling_aanvraag",
             "aanvraag_volledig",
             &volledig(),
+            Vec::new(),
             "2025-03-12",
         );
         assert!(u.te_beoordelen, "{u:?}");
@@ -142,7 +144,7 @@ mod tests {
     }
 
     #[test]
-    fn onvolledige_aanvraag_noemt_wat_onwaar_is() {
+    fn onvolledige_aanvraag() {
         let mut p = volledig();
         p.insert("bevat_aanduiding".into(), json!(false));
         let u = toets(
@@ -150,10 +152,11 @@ mod tests {
             "testregeling_aanvraag",
             "aanvraag_volledig",
             &p,
+            vec!["bevat_aanduiding".into()],
             "2025-03-12",
         );
         assert_eq!(u.waarde, Some(json!(false)));
-        assert!(u.onwaar.contains(&"bevat_aanduiding".to_string()));
+        assert_eq!(u.ontbreekt, vec!["bevat_aanduiding"]);
     }
 
     #[test]
@@ -165,6 +168,7 @@ mod tests {
             "testregeling_aanvraag",
             "aanvraag_volledig",
             &p,
+            Vec::new(),
             "2025-03-12",
         );
         assert!(!u.te_beoordelen);
@@ -185,6 +189,7 @@ mod tests {
             "testregeling_aanvraag",
             "aanvraag_volledig",
             &p,
+            Vec::new(),
             "2025-03-12",
         );
         assert!(!u.te_beoordelen);
@@ -206,6 +211,7 @@ mod tests {
             "testregeling_aanvraag",
             "aanvraag_compleet",
             &p,
+            Vec::new(),
             "2025-03-12",
         );
         assert!(!u.te_beoordelen, "{u:?}");
@@ -218,6 +224,7 @@ mod tests {
             "testregeling_aanvraag",
             "aanvraag_compleet",
             &p2,
+            Vec::new(),
             "2025-03-12",
         );
         assert_eq!(u.mist, vec!["eigen_feit_behandelaar"]);
@@ -228,6 +235,7 @@ mod tests {
             "testregeling_aanvraag",
             "aanvraag_compleet",
             &p2,
+            Vec::new(),
             "2025-03-12",
         );
         assert_eq!(u.waarde, Some(json!(true)));
@@ -240,6 +248,7 @@ mod tests {
             "bestaat_niet",
             "x",
             &BTreeMap::new(),
+            Vec::new(),
             "2025-03-12",
         );
         assert!(!u.te_beoordelen);

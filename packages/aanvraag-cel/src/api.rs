@@ -214,6 +214,7 @@ async fn toets_route(
         &portaal.toets.regeling,
         &portaal.toets.uitkomst,
         &lexostatus.parameters,
+        reductie::ontbreekt(def, &lexostatus.parameters),
         &datum,
     );
     Ok(Json(json!({"uitslag": uitslag, "lexostatus": lexostatus})))

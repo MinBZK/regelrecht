@@ -13,7 +13,8 @@ use crate::stroom::Gram;
 
 pub struct Kroniek {
     map: PathBuf,
-    /// Een schrijver tegelijk, zodat regels niet door elkaar lopen.
+    /// Een schrijver tegelijk, zodat regels niet door elkaar lopen; een
+    /// lezer wacht op hem, zodat hij geen half geschreven regel ziet.
     schrijver: Mutex<()>,
 }
 
@@ -64,6 +65,10 @@ impl Kroniek {
     /// Alle grammen van een kroniek, in de volgorde van vastleggen.
     pub fn lees(&self, chronicle: &str) -> Result<Vec<Gram>, String> {
         let pad = self.bestand(chronicle)?;
+        let _slot = self
+            .schrijver
+            .lock()
+            .map_err(|_| "kroniek vergrendeld".to_string())?;
         let f = match std::fs::File::open(&pad) {
             Ok(f) => f,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
