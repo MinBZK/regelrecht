@@ -24,6 +24,8 @@ just aanvraag-cel          # cel op :7170, frontend op :7171, op de fixtures
    `grondslag` (een lijst). Een veld bindt aan `$intake.*` (wie en langs welke
    weg), aan `$external.*` (de inhoud zoals ingediend) of is een constante van
    de stroom. Een `$external`-waarde mag meer dan een veld voeden. Een
+   tabelveld declareert zijn kolommen:
+   `{tabel: $external.<pad>, kolommen: [...]}`. Een
    indiening van soort `aanvraag` heeft `fields.kern` (Awb 4:2 lid 1: aanvrager
    met naam en adres, dagtekening, gevraagde beschikking, ondertekening) en
    `fields.inhoud`. `niet_gereduceerd` noemt met reden de velden die geen
@@ -39,7 +41,12 @@ just aanvraag-cel          # cel op :7170, frontend op :7171, op de fixtures
    `type`, `soort`, `name`, `chronicle`, `recording_actor`, `grondslag`,
    `op_moment`, `zaakkenmerk`, `stroom {id, sha256}` en `fields`. Een
    niet-ingevuld veld staat erin als `null`: ook een onvolledige aanvraag wordt
-   vastgelegd. Elke indiening opent een nieuwe zaak.
+   vastgelegd. Een tabelregel krijgt elke gedeclareerde kolom, een ontbrekende
+   als `null`. Wat niet in de vorm van de stroom past (een onbekend veld, een
+   onbekende sleutel in een genest `$external`-object, een onbekende kolom, of
+   een lijst waar een enkele waarde hoort) weigert de cel met 400 en het
+   veldpad, bijvoorbeeld `organen[1].kleur`. Elke indiening opent een nieuwe
+   zaak.
 
 ## Controles bij het opstarten
 
@@ -49,7 +56,8 @@ noemt, als:
 1. stroom of celconfiguratie niet valideert tegen het schema;
 2. een afleiding wijst naar iets wat niet bestaat: een parameter die geen
    artikel uit de grondslag van het gefilterde event kent, of een veldpad dat
-   het event niet heeft;
+   het event niet heeft, of een tabelafleiding die geen tabelveld leest of een
+   kolom die het tabelveld niet declareert;
 3. er een weesveld is: een veld dat geen afleiding leest en dat niet in
    `niet_gereduceerd` staat;
 4. een parameter meer dan een afleiding krijgt;
@@ -78,7 +86,7 @@ portaal:
 
 Het formulierbestand levert alleen labels, soorten en volgorde. Een veld dat
 het formulier niet kent, krijgt zijn veldnaam; een veld dat de stroom niet
-kent, wordt overgeslagen.
+kent, wordt overgeslagen. Voor de kolommen van een tabelveld geldt hetzelfde.
 
 ## Modules
 

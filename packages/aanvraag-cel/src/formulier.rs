@@ -14,7 +14,7 @@ use serde::Serialize;
 use serde_json::Value;
 use serde_yaml_ng::Value as Y;
 
-use crate::stroom::Event;
+use crate::stroom::{Event, Vorm};
 
 /// Een scherm uit een formulierbestand.
 #[derive(Debug, Clone, Default)]
@@ -100,9 +100,11 @@ pub fn laad(pad: &Path, scherm: &str) -> Result<Formulier, String> {
 
 /// De velden die een indiening voor dit event meegeeft: in de volgorde van
 /// het formulier, daarna wat het formulier niet kent in de volgorde van de
-/// stroom.
+/// stroom. Voor een tabelveld geldt hetzelfde per kolom: de kolommen van
+/// de stroom, met label en volgorde uit het formulier.
 pub fn velden(event: &Event, formulier: Option<&Formulier>) -> Vec<Veld> {
     let sleutels = event.external_sleutels();
+    let vorm = event.external_vorm().unwrap_or_default();
     let mut uit: Vec<Veld> = formulier
         .map(|f| {
             f.velden
@@ -125,7 +127,39 @@ pub fn velden(event: &Event, formulier: Option<&Formulier>) -> Vec<Veld> {
             });
         }
     }
+    for veld in &mut uit {
+        if let Some(Vorm::Tabel(kolommen)) = vorm.get(&veld.naam) {
+            veld.soort.get_or_insert_with(|| "tabel".to_string());
+            veld.kolommen = Some(tabelkolommen(kolommen, veld.kolommen.as_ref()));
+        }
+    }
     uit
+}
+
+/// De kolommen van een tabelveld: de kolommen van het formulier die de
+/// stroom kent, daarna de kolommen van de stroom die het formulier niet
+/// kent, met hun naam als label.
+fn tabelkolommen(stroom: &[String], formulier: Option<&Value>) -> Value {
+    let mut uit: Vec<Value> = formulier
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|k| {
+            k.get("id")
+                .and_then(Value::as_str)
+                .is_some_and(|id| stroom.iter().any(|s| s == id))
+        })
+        .cloned()
+        .collect();
+    for kolom in stroom {
+        if !uit
+            .iter()
+            .any(|k| k.get("id").and_then(Value::as_str) == Some(kolom))
+        {
+            uit.push(serde_json::json!({"id": kolom, "label": kolom}));
+        }
+    }
+    Value::Array(uit)
 }
 
 #[cfg(test)]
@@ -160,7 +194,34 @@ mod tests {
         assert_eq!(v[0].label, "Naam van de aanvrager");
         assert_eq!(v[0].groep.as_deref(), Some("De aanvrager"));
         assert_eq!(v[7].label, "rekeningnummer");
-        assert!(v[6].kolommen.is_some());
+        // Kolommen: die van de stroom, met label en volgorde uit het
+        // formulier; `opmerking` kent de stroom niet.
+        let kolommen: Vec<&str> = v[6]
+            .kolommen
+            .as_ref()
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|k| k["id"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            kolommen,
+            vec!["orgaan", "zetels", "samengevoegd", "aantal_aanduidingen"]
+        );
+        assert_eq!(v[6].kolommen.as_ref().unwrap()[0]["label"], "Orgaan");
+    }
+
+    #[test]
+    fn tabelkolommen_zonder_formulier() {
+        let s = stroom::parse(STROOM, "fixture").unwrap();
+        let v = velden(&s.events[0], None);
+        let organen = v.iter().find(|v| v.naam == "organen").unwrap();
+        assert_eq!(organen.soort.as_deref(), Some("tabel"));
+        assert_eq!(
+            organen.kolommen.as_ref().unwrap()[1],
+            serde_json::json!({"id": "zetels", "label": "zetels"})
+        );
     }
 
     #[test]

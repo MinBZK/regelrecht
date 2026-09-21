@@ -1,6 +1,7 @@
 ---
 # Fictief formulierbestand: labels en volgorde voor het scherm `aanvraag`.
-# Velden die de stroom niet kent (hier `telefoon`) slaat de cel over.
+# Velden en kolommen die de stroom niet kent (hier `telefoon` en
+# `opmerking`) slaat de cel over.
 schermen:
   - id: aanvraag
     titel: Testaanvraag
@@ -29,3 +30,4 @@ schermen:
               - {id: zetels, label: Zetels, type: getal}
               - {id: samengevoegd, label: Samengevoegd, type: janee}
               - {id: aantal_aanduidingen, label: Aantal aanduidingen, type: getal}
+              - {id: opmerking, label: Opmerking, type: tekst}
