@@ -1,10 +1,12 @@
 <script setup>
 import { computed, onMounted } from 'vue';
+import ActorView from './views/ActorView.vue';
 import InzichtView from './views/InzichtView.vue';
 import PortaalView from './views/PortaalView.vue';
 import WereldView from './views/WereldView.vue';
 import { formatMoment } from './world/format.js';
-import { currentPage, pages, useHash } from './world/route.js';
+import { ACTOR_PAGE, currentActor, currentPage, pages, useHash } from './world/route.js';
+import { actionsByActor } from './world/snapshot.js';
 import { useWorld } from './world/useWorld.js';
 
 // De schil om de pagina's: de werkbalk met de klok, en daaronder de pagina die
@@ -17,24 +19,39 @@ import { useWorld } from './world/useWorld.js';
 // cellen over haar publiceren; het totaalbeeld staat op die derde pagina, en
 // daar hoort het ook: het bestaat nergens anders dan in deze opstelling.
 //
+// Heeft het wereldbestand acties, dan is er ook een pagina per actor: wat die
+// actor kan doen, met de voorwaarden die haar eigen cel erbij uitrekende.
+//
 // Eén store voor alle pagina's (`useWorld`): wie op de ene pagina een aanvrager
 // kiest of een aanvraag indient, ziet dat op de andere terug.
 
-const { loading, clock, portaal, load, loadPortaal } = useWorld();
+const { loading, clock, portaal, snapshot, load, loadPortaal } = useWorld();
 
 const hash = useHash();
 
-/** De pagina's van deze wereld; leeg zonder portaal. */
-const navigation = computed(() => pages(portaal.value));
+/** De actoren: elke cel die in het wereldbestand een actie heeft. */
+const actors = computed(() => actionsByActor(snapshot.value).map((group) => group.actor));
+
+/** De pagina's van deze wereld; leeg als de wereld de enige is. */
+const navigation = computed(() => pages(portaal.value, actors.value));
+
+/** De actor die op de actorpagina open staat. */
+const actor = computed(() => currentActor(hash.value, actors.value));
 
 /**
  * De pagina die open staat.
  *
  * Pas bekend als het portaal opgehaald is: tot dan is niet te zeggen of er naast
  * de wereld nog pagina's zijn, en een adres als `#/inzicht` zou anders eerst de
- * wereld tonen en dan wegspringen.
+ * wereld tonen en dan wegspringen. Een adres naar een actor wacht om dezelfde
+ * reden op het beeld, want daaruit blijkt welke actoren er zijn — zolang het
+ * beeld nog onderweg is.
  */
-const page = computed(() => (portaal.value === undefined ? null : currentPage(hash.value, portaal.value)));
+const page = computed(() => {
+  if (portaal.value === undefined) return null;
+  if (snapshot.value === null && loading.value) return null;
+  return currentPage(hash.value, portaal.value, actors.value);
+});
 
 onMounted(() => {
   load();
@@ -92,6 +109,7 @@ onMounted(() => {
       </nldd-skip-link>
 
       <PortaalView v-if="page === 'portaal'" />
+      <ActorView v-else-if="page === ACTOR_PAGE" :key="actor" :actor="actor" />
       <InzichtView v-else-if="page === 'inzicht'" />
       <WereldView v-else-if="page === 'wereld'" />
       <nldd-split-view-pane v-else slot="main" has-content>

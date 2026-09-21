@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { cloneWorld, fixtureCell, fixtureGram, worldFixture } from '../testing/worldFixture.js';
 import {
+  conditionGroups,
+  conditionOutcome,
+  describeConditionSource,
+  unmetConditions,
   actionsByActor,
   afwijzingsgrondenOf,
   allGrams,
@@ -901,5 +905,34 @@ describe('de zaak van een gram', () => {
     for (const plek of ['', ' 0 ', '0x0', '-1', '1e0']) {
       expect(gramByRef(worldFixture, { id: `toeslagen|${chronicle.stream}|${plek}` })).toBeNull();
     }
+  });
+});
+
+describe('de voorwaarden van een actie', () => {
+  const aanvraag = worldFixture.actions.find((action) => action.id === 'burger.aanvraag');
+
+  it('staan in twee groepen: uit de wet en uit de eigen stand', () => {
+    const groups = conditionGroups(aanvraag);
+    expect(groups.map((group) => group.title)).toStrictEqual(['Uit de wet', 'Uit de eigen stand']);
+    expect(groups.map((group) => group.conditions.length)).toStrictEqual([1, 1]);
+    expect(conditionGroups({ conditions: [] })).toStrictEqual([]);
+    expect(conditionGroups({})).toStrictEqual([]);
+  });
+
+  it('noemen het artikel, of de lexostatus met wat ze verwacht', () => {
+    const [wet, stand] = conditionGroups(aanvraag).map((group) => group.conditions[0]);
+    expect(describeConditionSource(wet)).toBe(
+      'art. 15 algemene_wet_inkomensafhankelijke_regelingen · aanvraag_binnen_termijn',
+    );
+    expect(describeConditionSource(stand)).toBe('ingediende_aanvraag · jaar (waar als er niets ligt)');
+  });
+
+  it('tellen als niet vervuld als ze niet waar zijn, ook als ze onbekend zijn', () => {
+    expect(unmetConditions(aanvraag).map((condition) => condition.label)).toStrictEqual([
+      'nog geen aanvraag ingediend',
+    ]);
+    expect(unmetConditions({ conditions: [{ outcome: 'onbekend' }, { outcome: 'waar' }] })).toHaveLength(1);
+    expect(conditionOutcome('onbekend').text).toBe('onbekend');
+    expect(conditionOutcome('iets nieuws').text).toBe('onbekend');
   });
 });

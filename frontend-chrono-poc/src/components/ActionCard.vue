@@ -2,7 +2,17 @@
 import { computed, ref, watch } from 'vue';
 import { formatMoment, humanize } from '../world/format.js';
 import { fieldValue } from '../world/events.js';
-import { decidedAlready, describeEffect, gramKind, initialForm, isPrefilled } from '../world/snapshot.js';
+import {
+  conditionGroups,
+  conditionOutcome,
+  decidedAlready,
+  describeConditionSource,
+  describeEffect,
+  gramKind,
+  initialForm,
+  isPrefilled,
+  unmetConditions,
+} from '../world/snapshot.js';
 
 // Eén actie uit het wereldbestand: wie haar doet, wat ze uitwerkt, wat de actor
 // invult, en of ze nu kan.
@@ -28,6 +38,15 @@ import { decidedAlready, describeEffect, gramKind, initialForm, isPrefilled } fr
 // bruikbaar: een tweede besluit is legitiem — dat is juist het verhaal van deze
 // opstelling — maar het legt een tweede decretogram, en dat hoort niet per
 // ongeluk te gebeuren.
+//
+// Draagt de actie **voorwaarden**, dan staan die op de kaart: per voorwaarde de
+// uitkomst (waar, onwaar, onbekend), waar ze vandaan komt en waarom. Uit de wet
+// en uit de eigen stand van de actor staan apart, want het zijn twee soorten
+// uitspraken. Een voorwaarde die niet waar is, maakt de kaart zichtbaar anders
+// (een tag bovenaan) maar schakelt de knop niet uit: indienen kan altijd, en
+// wie niet gerechtigd is, krijgt een afwijzing. De uitkomsten rekent de server
+// uit op de voorinvulling; wie een veld anders invult, ziet ze pas na het
+// uitvoeren bijgewerkt.
 
 const props = defineProps({
   /** De actie uit het beeld. */
@@ -91,6 +110,23 @@ const decidedTag = computed(() =>
     : null,
 );
 
+/** De voorwaarden, in hun twee groepen; leeg als de actie er geen draagt. */
+const conditions = computed(() => conditionGroups(props.action));
+
+/** De voorwaarden die niet waar zijn: daarom ziet de kaart er anders uit. */
+const unmet = computed(() => unmetConditions(props.action));
+
+/** De tag bij een voorwaarde die niet waar is; `null` als ze dat allemaal zijn. */
+const unmetTag = computed(() => {
+  const count = unmet.value.length;
+  if (count === 0) return null;
+  return {
+    color: 'warning',
+    icon: 'warning',
+    text: count === 1 ? '1 voorwaarde niet vervuld' : `${count} voorwaarden niet vervuld`,
+  };
+});
+
 /** Wat de wereld over de actie zegt: kan ze nu? */
 const availabilityTag = computed(() => ({
   color: props.action.available ? 'success' : 'warning',
@@ -110,6 +146,9 @@ const availabilityTag = computed(() => ({
 const tags = computed(() => {
   const list = decidedTag.value ? [decidedTag.value] : [];
   if (!decidedTag.value || !props.action.available) list.push(availabilityTag.value);
+  // Naast "kan nu" en niet in plaats ervan: kunnen en mogen zijn twee vragen,
+  // en de knop blijft doen wat de eerste zegt.
+  if (unmetTag.value) list.push(unmetTag.value);
   return list;
 });
 
@@ -250,6 +289,45 @@ function run() {
 
     <nldd-container layout="stack" gap="12" padding="16" padding-top="8">
       <nldd-text v-if="action.doc" size="sm" color="secondary">{{ action.doc }}</nldd-text>
+
+      <!-- De voorwaarden: wat de wet en de eigen stand van de actor over deze
+           actie zeggen, elk met uitkomst, herkomst en reden. Alles komt uit het
+           beeld; deze kaart rekent niets uit. -->
+      <nldd-container v-if="conditions.length > 0" layout="stack" gap="12">
+        <nldd-container v-for="group in conditions" :key="group.kind" layout="stack" gap="4">
+          <nldd-title size="6">
+            <span slot="overline">Voorwaarden</span>
+            <span>{{ group.title }}</span>
+          </nldd-title>
+          <nldd-list variant="box-base" :accessible-label="`${group.title}: voorwaarden bij ${action.label}`">
+            <nldd-list-item v-for="condition in group.conditions" :key="condition.label" size="sm">
+              <nldd-icon-cell
+                :icon="conditionOutcome(condition.outcome).icon"
+                size="16"
+                :color="conditionOutcome(condition.outcome).iconColor"
+              ></nldd-icon-cell>
+              <nldd-spacer-cell size="8"></nldd-spacer-cell>
+              <nldd-text-cell
+                size="sm"
+                :overline="describeConditionSource(condition)"
+                :text="condition.label"
+                :supporting-text="condition.reason"
+              ></nldd-text-cell>
+              <nldd-cell>
+                <nldd-tag
+                  size="sm"
+                  :color="conditionOutcome(condition.outcome).color"
+                  :text="conditionOutcome(condition.outcome).text"
+                ></nldd-tag>
+              </nldd-cell>
+            </nldd-list-item>
+          </nldd-list>
+        </nldd-container>
+        <nldd-text v-if="unmet.length > 0" size="sm" color="secondary">
+          Een voorwaarde die niet waar is, houdt deze actie niet tegen: ze is gewoon uit te voeren, en wat
+          het recht er dan van vindt, blijkt uit wat er daarna gebeurt.
+        </nldd-text>
+      </nldd-container>
 
       <nldd-banner
         v-if="!action.available && action.unavailable_reason"

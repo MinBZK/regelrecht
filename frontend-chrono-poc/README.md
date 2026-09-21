@@ -2,9 +2,10 @@
 
 De frontend van de chronolexografie-testopstelling: een app die tekent wat de
 wereld aanbiedt, en die het woord van geen enkele casus kent. Draagt het
-wereldbestand een `portaal`, dan zijn er drie pagina's (zie
-[Portaal en inzicht](#portaal-en-inzicht)); de pagina hieronder heet dan
-"Achter de schermen". Zonder portaal is zij de enige.
+wereldbestand een `portaal`, dan zijn er pagina's voor de aanvrager (zie
+[Portaal en inzicht](#portaal-en-inzicht)); heeft het acties, dan is er een
+[pagina per actor](#een-pagina-per-actor). De pagina hieronder heet dan
+"Achter de schermen". Zonder portaal en zonder acties is zij de enige.
 
 - **bovenaan** de bediening, over de volle breedte: de acties die de wereld nu
   aanbiedt (gegroepeerd per actor, met het formulier uit de actie zelf), de
@@ -27,16 +28,44 @@ iets mee te doen; de cellen krijgen de rest. Past het rijtje kolommen niet naast
 elkaar, dan schuift het **binnen zijn eigen paneel** opzij (`nldd-collection`
 met `layout="horizontal-scroll"` en een vaste `item-width`) en nooit de pagina.
 
+## Een pagina per actor
+
+Elke cel met acties in het wereldbestand krijgt een pagina op `#/actor/<cel>`,
+met één ingang in de navigatie ("Per actor") en een keuzelijst op de pagina
+zelf: wat deze actor kan doen, en wat de wet en haar eigen stand erover zeggen.
+Dezelfde actiekaarten als op het portaal en achter de schermen, want het is
+dezelfde actie; de pagina voegt de blik toe, niet een tweede weergave.
+
+Draagt een actie **voorwaarden** (`actions[].conditions` in het beeld), dan
+staan die op haar kaart — daar, en dus ook op het portaal en achter de schermen —
+in twee lijsten: **uit de wet** (een uitkomst van een regeling die de actor zelf
+laadt, met het artikel) en **uit de eigen stand** (een lexostatus van de actor
+zelf, met de waarde waarbij ze waar is). Per voorwaarde de uitkomst als tag
+(`waar`, `onwaar`, `onbekend`) en de reden die de server gaf. Deze app rekent
+niets uit; alles staat in het beeld.
+
+**Tonen, niet blokkeren.** Is een voorwaarde niet waar, dan krijgt de kaart een
+tag ("1 voorwaarde niet vervuld") en een regel dat de actie daarmee niet
+tegengehouden wordt — en de knop blijft staan. Juridisch mag iedereen een
+aanvraag indienen; wie niet gerechtigd is of te laat komt, krijgt een afwijzing,
+en die tegenproef hoort te spelen te blijven. "Kan nu" en "kan nu niet" blijven
+gaan over wat de wereld technisch kan, en dat is een andere vraag.
+
+De uitkomsten rekent de server uit op de **voorinvulling**. Wie een veld anders
+invult, ziet de voorwaarden bijgewerkt nadat de actie is uitgevoerd, niet
+tijdens het typen.
+
 ## Portaal en inzicht
 
 Met een `portaal` in het wereldbestand krijgt de werkbalk een navigatie
 (`nldd-tab-bar navigation`, één link per pagina, zoals `frontend-demo` die doet)
-tussen drie pagina's op een eigen hash-adres:
+tussen pagina's op een eigen hash-adres:
 
 | adres | pagina |
 |---|---|
 | `#/portaal` | het **aanvraagportaal**: "Aanvragen als" (`nldd-dropdown`) en daaronder alleen de acties van de portaal-actor, met formulieren die de server voor die aanvrager invulde; na indienen een bevestiging met een link naar inzicht |
 | `#/inzicht` | **inzicht in je aanvraag**: dezelfde keuzelijst en één kaart per vraag uit het portaal, met de uitkomsten van die ene cel en het moment; "niets vastgesteld" staat er als "nog niets bekend" |
+| `#/actor/<cel>` | **per actor**: zie [Een pagina per actor](#een-pagina-per-actor); ook zonder portaal |
 | `#/wereld` | **achter de schermen**: de weergave hieronder, ongewijzigd |
 
 Een aanvrager kiezen is een mock-login: `PUT /api/persona`, bij de sessie op de
