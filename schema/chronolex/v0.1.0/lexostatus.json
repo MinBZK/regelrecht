@@ -1,0 +1,312 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.1.0/lexostatus.json",
+  "title": "Celconfiguratie met lexostatus-definities v0.1.0",
+  "description": "De lexostatussen die een cel aanbiedt en hoe elk uit de eigen kroniek wordt gereduceerd (RFC-022 par. 4.1, daar voorlopig). reduction kiest met filter en kies een gram en leidt daaruit met afleidingen de parameters van een artikel af. Het optionele blok portaal zegt welk event een portaal vastlegt en welke uitkomst de toets vraagt.",
+  "type": "object",
+  "required": [
+    "cel",
+    "lexostatus_definitions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "cel": {
+      "$ref": "#/definitions/identifier"
+    },
+    "description": {
+      "type": "string"
+    },
+    "lexostatus_definitions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/lexostatus"
+      }
+    },
+    "portaal": {
+      "$ref": "#/definitions/portaal"
+    }
+  },
+  "definitions": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "veldpad": {
+      "type": "string",
+      "description": "Pad naar een veld onder fields van het gram, met punten tussen de niveaus.",
+      "pattern": "^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)*$"
+    },
+    "kolom": {
+      "type": "string",
+      "pattern": "^[a-z_][a-z0-9_]*$"
+    },
+    "lexostatus": {
+      "type": "object",
+      "required": [
+        "name",
+        "inputs",
+        "reduction"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "$ref": "#/definitions/identifier"
+        },
+        "description": {
+          "type": "string"
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "type"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "$ref": "#/definitions/identifier"
+              },
+              "type": {
+                "enum": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "date"
+                ]
+              }
+            }
+          }
+        },
+        "reduction": {
+          "$ref": "#/definitions/reductie"
+        }
+      }
+    },
+    "reductie": {
+      "type": "object",
+      "required": [
+        "kroniek",
+        "filter",
+        "kies",
+        "afleidingen"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kroniek": {
+          "$ref": "#/definitions/identifier"
+        },
+        "filter": {
+          "type": "object",
+          "description": "Gelijkheid op velden van het gram zelf (name, type, soort, zaakkenmerk, ...). Een waarde $<input> komt uit de inputs van de lexostatus. De vaste waarden wijzen het event of de events aan waarop de reductie werkt.",
+          "propertyNames": {
+            "enum": [
+              "name",
+              "type",
+              "soort",
+              "zaakkenmerk",
+              "recording_actor",
+              "chronicle"
+            ]
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minProperties": 1
+        },
+        "kies": {
+          "enum": [
+            "laatste"
+          ],
+          "description": "Welk gram telt als er meer zijn: laatste is het gram met het laatste op_moment (een herstel is een nieuw gram)."
+        },
+        "afleidingen": {
+          "type": "object",
+          "minProperties": 1,
+          "description": "Per parameter van een artikel onder de grondslag: hoe die uit het gram volgt.",
+          "propertyNames": {
+            "pattern": "^[a-z_][a-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/definitions/afleiding"
+          }
+        }
+      }
+    },
+    "afleiding": {
+      "oneOf": [
+        {
+          "description": "De waarde van het veld. Leeg of afwezig: de parameter blijft weg.",
+          "type": "object",
+          "required": [
+            "veld"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "veld": {
+              "$ref": "#/definitions/veldpad"
+            }
+          }
+        },
+        {
+          "description": "Waar als het veld gevuld is (niet afwezig, niet null, geen lege tekst, geen lege lijst).",
+          "type": "object",
+          "required": [
+            "gevuld"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "gevuld": {
+              "$ref": "#/definitions/veldpad"
+            }
+          }
+        },
+        {
+          "description": "Waar als het veld die waarde heeft. Leeg of afwezig: de parameter blijft weg.",
+          "type": "object",
+          "required": [
+            "gelijk"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "gelijk": {
+              "type": "object",
+              "required": [
+                "veld",
+                "aan"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "veld": {
+                  "$ref": "#/definitions/veldpad"
+                },
+                "aan": {
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "description": "Waar als de tabel ten minste een regel heeft en elke regel die kolom gevuld heeft; met alleen_waar tellen alleen de regels waarin die kolom waar is.",
+          "type": "object",
+          "required": [
+            "tabel",
+            "elke_regel"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "tabel": {
+              "$ref": "#/definitions/veldpad"
+            },
+            "elke_regel": {
+              "$ref": "#/definitions/kolom"
+            },
+            "alleen_waar": {
+              "$ref": "#/definitions/kolom"
+            }
+          }
+        },
+        {
+          "description": "Waar als ten minste een regel van de tabel die kolom op waar heeft.",
+          "type": "object",
+          "required": [
+            "tabel",
+            "een_regel"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "tabel": {
+              "$ref": "#/definitions/veldpad"
+            },
+            "een_regel": {
+              "$ref": "#/definitions/kolom"
+            }
+          }
+        },
+        {
+          "description": "De datum van een moment van het gram zelf; op_moment is het moment waarop het tot feit werd gemaakt.",
+          "type": "object",
+          "required": [
+            "moment"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "moment": {
+              "enum": [
+                "op_moment"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "portaal": {
+      "type": "object",
+      "required": [
+        "stroom",
+        "event",
+        "toets"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "stroom": {
+          "$ref": "#/definitions/identifier",
+          "description": "De $id van de stroom waarin het portaal vastlegt."
+        },
+        "event": {
+          "$ref": "#/definitions/identifier",
+          "description": "Het event uit die stroom dat een indiening wordt."
+        },
+        "toets": {
+          "type": "object",
+          "required": [
+            "lexostatus",
+            "regeling",
+            "uitkomst"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "lexostatus": {
+              "$ref": "#/definitions/identifier"
+            },
+            "regeling": {
+              "$ref": "#/definitions/identifier"
+            },
+            "uitkomst": {
+              "$ref": "#/definitions/identifier"
+            }
+          }
+        },
+        "formulier": {
+          "type": "object",
+          "description": "Optioneel formulierbestand voor labels en volgorde. Het bepaalt nooit het gedrag.",
+          "required": [
+            "pad",
+            "scherm"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "pad": {
+              "type": "string",
+              "description": "Pad, relatief aan dit bestand."
+            },
+            "scherm": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

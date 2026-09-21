@@ -1,0 +1,170 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.1.0/gram.json",
+  "title": "Vastgelegd chronolexogram v0.1.0",
+  "description": "Een feit zoals een cel het vastlegt: op op_moment stelde recording_actor vast dat dit event met deze velden plaatsvond, op deze grondslag. Een gram wordt alleen toegevoegd, nooit bewerkt; een correctie is een nieuw gram. Een veld dat niet is ingevuld staat erin als null: het gram houdt de vorm van de stroom.",
+  "type": "object",
+  "required": [
+    "kind",
+    "type",
+    "name",
+    "chronicle",
+    "recording_actor",
+    "grondslag",
+    "op_moment",
+    "zaakkenmerk",
+    "stroom",
+    "fields"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "const": "chronolexogram"
+    },
+    "type": {
+      "$ref": "#/definitions/identifier",
+      "description": "Open woordenschat (RFC-022 par. 1), bijvoorbeeld executogram of indiening."
+    },
+    "soort": {
+      "$ref": "#/definitions/identifier",
+      "description": "De soort binnen het type, bijvoorbeeld aanvraag bij een indiening."
+    },
+    "name": {
+      "$ref": "#/definitions/identifier"
+    },
+    "chronicle": {
+      "$ref": "#/definitions/identifier"
+    },
+    "recording_actor": {
+      "$ref": "#/definitions/identifier"
+    },
+    "grondslag": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*#[A-Za-z0-9][A-Za-z0-9:._-]*$"
+      }
+    },
+    "op_moment": {
+      "type": "string",
+      "description": "Het moment waarop het tot feit werd gemaakt (RFC 3339, met tijdzone).",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
+    },
+    "zaakkenmerk": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "stroom": {
+      "type": "object",
+      "description": "De stroomdefinitie waarmee het gram is gebouwd, met de hash van dat bestand.",
+      "required": [
+        "id",
+        "sha256"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/identifier"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "fields": {
+      "type": "object"
+    }
+  },
+  "definitions": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "kern_aanvraag": {
+      "description": "De vaste kern van een aanvraag (Awb 4:2 lid 1). Een waarde mag null zijn: ook een onvolledige aanvraag wordt vastgelegd.",
+      "type": "object",
+      "required": [
+        "aanvrager",
+        "dagtekening",
+        "gevraagde_beschikking",
+        "ondertekend_via"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "aanvrager": {
+          "type": "object",
+          "required": [
+            "naam",
+            "adres"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "naam": {},
+            "adres": {}
+          }
+        },
+        "dagtekening": {},
+        "gevraagde_beschikking": {},
+        "ondertekend_via": {
+          "type": "object"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "indiening"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "required": [
+          "soort"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "indiening"
+          },
+          "soort": {
+            "const": "aanvraag"
+          }
+        },
+        "required": [
+          "type",
+          "soort"
+        ]
+      },
+      "then": {
+        "properties": {
+          "fields": {
+            "required": [
+              "kern",
+              "inhoud"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "kern": {
+                "$ref": "#/definitions/kern_aanvraag"
+              },
+              "inhoud": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
