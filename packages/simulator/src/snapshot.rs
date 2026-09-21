@@ -30,6 +30,7 @@ use crate::cell::{
     DocumentedParameter, GebeurtenisSchema, Intake, Lexostatus, LexostatusDefinition,
     ParameterType, Prefill, Reduction, BESCHIKKINGEN, INPUTS, RECEIPT, REGULATION,
 };
+use crate::condition::ConditionSnapshot;
 use crate::journal::JournalEntry;
 use crate::security::SignedAnswer;
 use crate::world::{ActionDefinition, ActionEffect, Warning};
@@ -347,6 +348,18 @@ pub struct ActionSnapshot {
     /// alleen de mogelijke acties toont, laat een keuze verdwijnen zonder te
     /// zeggen waarom — en dan is niet te zien waar het verhaal staat.
     pub unavailable_reason: Option<String>,
+    /// Wat de wet of de eigen stand van de actor over deze actie zegt: per
+    /// voorwaarde de uitkomst (`waar`, `onwaar`, `onbekend`) en de reden.
+    ///
+    /// **Naast** [`Self::available`] en niet erin. Die twee beantwoorden een
+    /// andere vraag: `available` zegt of de wereld de actie nu kan uitvoeren,
+    /// dit zegt wat het recht ervan vindt — en een actie waarvan een voorwaarde
+    /// niet waar is, blijft uitvoerbaar. Wie niet gerechtigd is, mag toch
+    /// aanvragen, en krijgt dan een afwijzing (Awb art. 4:1).
+    ///
+    /// Uitgerekend in de cel van de actor, op [`Self::prefill`]: het formulier
+    /// dat de lezer ziet. Zie [`crate::condition`].
+    pub conditions: Vec<ConditionSnapshot>,
 }
 
 /// Wat een actie uitwerkt, zoals een lezer het ziet.
@@ -414,6 +427,8 @@ pub(crate) struct ActionState<'a> {
     pub(crate) prefill: BTreeMap<String, Value>,
     /// Waarom ze nu niet kan; `None` als ze kan.
     pub(crate) unavailable: Option<String>,
+    /// Wat haar voorwaarden op deze voorinvulling zeggen.
+    pub(crate) conditions: Vec<ConditionSnapshot>,
 }
 
 /// Alles wat de wereld aan het beeld meegeeft, geleend.
@@ -739,6 +754,7 @@ fn action_snapshot(state: &ActionState<'_>) -> ActionSnapshot {
         form: state.form.clone(),
         available: state.unavailable.is_none(),
         unavailable_reason: state.unavailable.clone(),
+        conditions: state.conditions.clone(),
     }
 }
 

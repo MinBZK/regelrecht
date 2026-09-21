@@ -671,7 +671,9 @@
     },
     {
       "id": "burger",
-      "laws": [],
+      "laws": [
+        "algemene_wet_inkomensafhankelijke_regelingen"
+      ],
       "lexostatussen": [
         {
           "name": "betaald_tot_nu_toe",
@@ -2916,7 +2918,41 @@
         "ondertekend_op": "2025-02-01"
       },
       "available": true,
-      "unavailable_reason": null
+      "unavailable_reason": null,
+      "conditions": [
+        {
+          "label": "aanvraag binnen de termijn",
+          "doc": "Een aanvraag over een berekeningsjaar kan tot 1 april van het jaar erna worden ingediend.",
+          "cell": "burger",
+          "kind": "regulation",
+          "regulation": "algemene_wet_inkomensafhankelijke_regelingen",
+          "output": "aanvraag_binnen_termijn",
+          "article": "15",
+          "valid_from": null,
+          "params": {
+            "aanvraagdatum": "2025-02-01",
+            "berekeningsjaar": 2024
+          },
+          "outcome": "waar",
+          "value": true,
+          "reason": "volgens art. 15 van algemene_wet_inkomensafhankelijke_regelingen is 'aanvraag_binnen_termijn' waar"
+        },
+        {
+          "label": "nog geen aanvraag ingediend",
+          "doc": null,
+          "cell": "burger",
+          "kind": "lexostatus",
+          "lexostatus": "ingediende_aanvraag",
+          "output": "jaar",
+          "expected": null,
+          "params": {
+            "bsn": "999993653"
+          },
+          "outcome": "onwaar",
+          "value": 2024,
+          "reason": "'ingediende_aanvraag' bij burger: 'jaar' is 2024; waar als er niets ligt"
+        }
+      ]
     },
     {
       "id": "toeslagen.toekenning",
@@ -2938,7 +2974,8 @@
         "bsn": "999993653"
       },
       "available": true,
-      "unavailable_reason": null
+      "unavailable_reason": null,
+      "conditions": []
     },
     {
       "id": "toeslagen.vaststelling",
@@ -2960,7 +2997,8 @@
         "bsn": "999993653"
       },
       "available": true,
-      "unavailable_reason": null
+      "unavailable_reason": null,
+      "conditions": []
     }
   ],
   "crossings": [

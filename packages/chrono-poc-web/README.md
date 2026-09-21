@@ -77,7 +77,7 @@ de simulator, en die praat Nederlands.
 | route | wat |
 |---|---|
 | `GET /health` | leeft dit proces. Zonder login |
-| `GET /api/world` | het beeld: klok, instellingen, cellen met hun kronieken, de acties die nu kunnen, wat er over een celgrens ging, de waarschuwingen |
+| `GET /api/world` | het beeld: klok, instellingen, cellen met hun kronieken, de acties die nu kunnen (met per actie haar voorwaarden), wat er over een celgrens ging, de waarschuwingen |
 | `POST /api/actions/{id}` | voer een actie uit; body = het formulier van die actie. Antwoord: `{ "snapshot": …, "events": … }` |
 | `POST /api/advance` | `{"until": "2024-04-01"}`; de triggers gaan onderweg af. Zelfde antwoord |
 | `GET /api/cells/{cel}/lexostatus/{naam}` | één reductie, alleen lezen. Parameters als queryparameters, `op_moment` optioneel |
@@ -178,6 +178,17 @@ is iets anders dan een leeg receipt.
   vast, en dat is precies wat ze hoort te doen.
 - **Een verstreken termijn** is een waarschuwing in het antwoord en geen fout. De
   uitvoerder mag alsnog besluiten; de wet zegt alleen wat de termijn was.
+- **Een voorwaarde die niet waar is** houdt een actie niet tegen. Een actie kan
+  voorwaarden dragen — een uitkomst van een regeling die de actor zelf laadt, of
+  een lexostatus van haar eigen stand — en die staan in het beeld onder
+  `actions[].conditions` met `outcome` (`waar`, `onwaar`, `onbekend`), het artikel
+  en de reden. `POST /api/actions/{id}` voert de actie gewoon uit, ook als een
+  voorwaarde `onwaar` of `onbekend` zegt: juridisch mag iedereen een aanvraag
+  indienen (Awb art. 4:1), en wie niet gerechtigd is, krijgt een afwijzing en geen
+  409. Een 409 blijft voor wat de wereld technisch niet kan (`available: false`).
+  De actor rekent de voorwaarden zelf uit en vraagt niets over een celgrens, dus
+  `GET /api/world` levert nog steeds geen verkeer op. Zie
+  [Voorwaarden op een actie](../simulator/README.md#voorwaarden-op-een-actie-tonen-niet-blokkeren).
 
 Fouten zijn altijd `{"error": "…"}`. De status volgt de **foutvariant** van de
 simulator en niet de tekst van de melding: 404 voor wat het pad aanwijst maar niet
@@ -196,7 +207,9 @@ bespeeld te worden.
 De publieke wereld staat in
 [`packages/simulator/worlds/publieke_wereld.yaml`](../simulator/worlds/publieke_wereld.yaml)
 (`burger`, `brp`, `belastingdienst`, `toeslagen`) en is waar `just chrono-poc` en
-de tests van deze crate op draaien.
+de tests van deze crate op draaien. De aanvraag van `burger` draagt er twee
+voorwaarden: of ze binnen de termijn van Awir art. 15 valt (uit de wet, die
+`burger` daarvoor laadt) en of er al een aanvraag ligt (uit haar eigen kroniek).
 
 ## Tests
 

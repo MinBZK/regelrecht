@@ -2691,8 +2691,11 @@ definitie van het besluit dat ze start. Een besluit zegt daar al welke inputs he
 uit welke eigen kroniek leest (`from_chronicle`) en welk eerder besluit over
 dezelfde zaak het terugleest (`from_decretogram`); levert elk van die feiten op de
 stand van de klok een waarde op — voor de parameters zoals het formulier ze
-voorgevuld aanbiedt — dan kan de actie, en anders niet. Er is dus geen voorwaarde
-om te schrijven en geen die uit de pas kan lopen met de inputs waarover ze gaat.
+voorgevuld aanbiedt — dan kan de actie, en anders niet. Er is dus geen
+beschikbaarheidsregel om te schrijven en geen die uit de pas kan lopen met de
+inputs waarover ze gaat. Wat de **wet** over een actie zegt — mag deze actor dit,
+loopt de termijn — is een andere vraag; zie
+[Voorwaarden op een actie](#voorwaarden-op-een-actie-tonen-niet-blokkeren).
 
 Kan een besluit nu niet, dan noemt de reden het **feit** dat ontbreekt: welke cel,
 welke kroniekstroom, welk onderwerp en op welke dag er gezocht is. Het beeld van de
@@ -2732,6 +2735,92 @@ formulier krijgen, en bestaat het besluit. Een actie die pas bij de eerste klik
 omvalt, is een typfout die op het verkeerde moment boven water komt. De stroom met
 decretogrammen (`beschikkingen`) is geen doel voor een actie: daar ontstaat een
 gram door te besluiten.
+
+### Voorwaarden op een actie: tonen, niet blokkeren
+
+Of een actie nu **kan**, is een technische vraag (hierboven): ligt het eigen feit
+er, valt er iets bekend te maken. Of een actor haar volgens het recht **mag** of
+**kan**, is een andere vraag, en die beantwoordt het wereldbestand niet. Een actie
+mag nul of meer `conditions` dragen, en elke voorwaarde is een **verwijzing** —
+de regel zelf staat nooit in het wereldbestand.
+
+```yaml
+actions:
+  - id: burger.aanvraag
+    actor: burger
+    # … records/decides/publishes zoals altijd …
+    conditions:
+      # Uit de wet: een uitkomst van een regeling die de actor laadt.
+      - label: aanvraag binnen de termijn
+        regulation: algemene_wet_inkomensafhankelijke_regelingen
+        output: aanvraag_binnen_termijn          # een ja-of-nee
+        params:
+          berekeningsjaar: $jaar                 # `$veld` = veld van het formulier
+          aanvraagdatum: $ondertekend_op
+      # Uit de eigen stand: een lexostatus die de actor zelf publiceert.
+      - label: nog geen aanvraag ingediend
+        lexostatus: ingediende_aanvraag
+        output: jaar
+        expect: null                             # waar als er niets ligt
+        params:
+          bsn: $bsn
+```
+
+Twee soorten, en ze staan met opzet apart:
+
+- een **regelingsvoorwaarde** noemt een regeling, een uitkomst daarvan en de
+  parameters. De uitkomst is een ja-of-nee; `waar` is ja. Het artikel dat haar
+  voortbrengt, staat in de regeling en komt mee in het beeld;
+- een **lexostatusvoorwaarde** noemt een lexostatus van de actor zelf, een
+  uitkomst daarvan en de waarde waarbij ze waar is. `null` verwacht dat er niets
+  ligt. Dit is de eigen stand van de actor — "er loopt nog geen aanvraag" — en
+  die hoort in haar eigen kroniek en niet in een wet.
+
+**De actor rekent zelf.** Een voorwaarde wordt uitgerekend in de cel van de
+actor, met de regelingen die zij laadt en de kronieken die zij houdt. Een actor
+die een regelingsvoorwaarde draagt, laadt die regeling dus onder `laws:` — ook een
+cel die verder nergens over besluit. De engine is die van `Cell::reduce`: zonder
+cel-tier. Wat de actor niet zelf weet, is `onbekend`, met de reden erbij (welk
+feit ontbrak, of dat de wet het bij een andere organisatie zou halen). Er gaat
+niets over een celgrens, en dat is een eis en geen gevolg: het beeld van de wereld
+wordt bij elke stap opgevraagd, dus een voorwaarde die over een grens reikte, zou
+bij elk scherm verkeer opleveren dat niemand vroeg (invariant I1).
+`tests/voorwaarden.rs` meet dat aan beide kanten van de naad, met een wet die een
+waarde bij een andere cel haalt.
+
+**Tonen, niet blokkeren.** Elke voorwaarde levert `waar`, `onwaar` of
+`onbekend`, en geen van de drie houdt de actie tegen. Juridisch mag iedereen een
+aanvraag indienen (Awb art. 1:3 en 4:1); wie niet gerechtigd is of te laat komt,
+krijgt een beslissing — een afwijzing — en die tegenproef hoort in de opstelling te
+spelen te blijven. `available` en `unavailable_reason` houden daarom precies hun
+technische betekenis; de voorwaarden staan er als eigen veld naast
+(`actions[].conditions`), elk met `label`, `kind` (`regulation` of `lexostatus`),
+de verwijzing (`regulation`/`output`/`article`/`valid_from`, of
+`lexostatus`/`output`/`expected`), de gebruikte `params`, de `outcome`, de
+gevonden `value` en de `reason`. Dezelfde keuze als bij een
+[termijn](#termijnen-waarschuwen-zonder-te-blokkeren).
+
+Het beeld rekent de voorwaarden uit op de **voorinvulling**: het formulier dat de
+lezer ziet. Een veld dat nog leeg is, maakt een voorwaarde die erop leunt
+`onbekend`. `World::conditions(actie, waarden)` rekent ze uit op andere waarden,
+en een scenario rekent erop af met `expect_conditions` op een `act`-stap — per
+label de verwachte uitkomst, gewogen vlak vóórdat de actor de actie doet (zie
+[`scenarios/voorwaarden_op_de_aanvraag.yaml`](scenarios/voorwaarden_op_de_aanvraag.yaml),
+dat beide uitkomsten van beide soorten raakt, en de te late aanvraag daarna gewoon
+laat landen).
+
+Wat bij het optuigen faalt, faalt luid: een regeling die de actor niet laadt, een
+uitkomst die de regeling niet kent of die geen ja-of-nee is, een parameter die de
+regeling niet kent, een lexostatus die de actor niet publiceert of een uitkomst
+die zij niet publiceert, parameters die niet precies de `inputs` van die
+lexostatus vullen, een `$veld` dat het formulier niet kent, of twee voorwaarden
+met hetzelfde label. Een voorwaarde die nooit uit te rekenen is, zou anders
+voorgoed "onbekend" tonen — en dat is niet te onderscheiden van een actor die het
+echt niet weet.
+
+Wat hier met opzet níet in zit: acties afleiden uit de regeling. Het
+wereldbestand blijft opsommen wat een actor kan doen; de regeling zegt alleen wat
+het recht ervan vindt.
 
 ### Voorinvulling: wat de wereld al weet
 
@@ -2962,6 +3051,7 @@ is het vastgepinde voorbeeld):
 | `…grams[].fields[].origin` | de herkomst per waarde |
 | `actions` | elke actie met haar formulier, en of ze nu kan |
 | `actions[].prefill` | de [voorinvulling](#voorinvulling-wat-de-wereld-al-weet) per veld, opgelost op de stand van de klok |
+| `actions[].conditions` | de [voorwaarden](#voorwaarden-op-een-actie-tonen-niet-blokkeren) met uitkomst en reden, uitgerekend door de actor op die voorinvulling; naast `available` en niet erin |
 | `crossings` | wat er over een celgrens ging |
 | `warnings` | de termijnen die verstreken zonder dat het feit er lag |
 | `journal` | het [journaal](#het-journaal-wie-deed-wat-en-wat-veranderde-er): één regel per gebeurtenis, in volgorde van ontstaan |

@@ -53,6 +53,12 @@
 //! wereldbestand en geen Rust. Een [`Deadline`] waarschuwt als een feit op tijd
 //! ontbreekt, en blokkeert nooit.
 //!
+//! Een actie kan **voorwaarden** dragen ([`condition`]): een uitkomst van een
+//! regeling die de cel van de actor zelf uitrekent, of een eigen lexostatus
+//! tegen een verwachte waarde. Ze staan in het beeld naast de actie, met
+//! uitkomst en reden, en blokkeren net zo min: juridisch mag iedereen een
+//! aanvraag indienen, en de afwijzing die volgt hoort te spelen te blijven.
+//!
 //! Naar buiten geeft [`World::snapshot`] één beeld van alles wat er staat: de
 //! klok, de instellingen, per cel haar kronieken met elk gram en de herkomst van
 //! elke waarde, de acties die nu kunnen, wat er over een celgrens ging en de
@@ -102,6 +108,7 @@
 
 mod accept;
 pub mod cell;
+pub mod condition;
 mod corpus;
 pub mod error;
 pub mod invariant;
@@ -129,6 +136,9 @@ pub use cell::{
     Opschorting, ParameterType, Prefill, Reductie, ReductieVorm, Reduction, Regel,
     RichtingBijNegatief, Schedule, ScheduleOrigin, TermijnenVervallen, Vervanging, Wetsvorm,
     AFWIJZING, BESCHIKKINGEN, BETALINGEN, DECISION_TYPE,
+};
+pub use condition::{
+    ActionCondition, ConditionCheck, ConditionOutcome, ConditionSnapshot, ConditionSource,
 };
 pub use corpus::regulation_root;
 // De waarde waarin deze crate praat. Ze komt uit de engine en blijft dat, maar

@@ -28,15 +28,19 @@ settings:
   betalingsritme: kwartaal
 
 cells:
-  # De aanvrager. Een bron-cel: geen wetten, geen engine. Wat zij houdt is haar
-  # eigen journaal van wat zij indiende — en van wat zij terugbetaalde.
+  # De aanvrager. Wat zij houdt is haar eigen journaal van wat zij indiende — en
+  # van wat zij terugbetaalde.
   - id: burger
     # De naam waaronder deze cel zich uitgeeft. Zij komt geen gezag na: ze ís de
     # partij, en dit is de naam die een omgekeerde verplichting als schuldenaar
     # aanwijst. Valt het slotbedrag van de vaststelling onder nul, dan is dit de
     # cel die terugbetaalt.
     identity: '999993653'
-    laws: []
+    # Eén regeling, en niet om over te besluiten: de voorwaarde op haar aanvraag
+    # (zie `actions`) rekent in háár cel, met wat zij zelf weet. Een voorwaarde
+    # gaat een regeling niet elders uitvoeren, dus wie er een noemt, laadt haar.
+    laws:
+      - algemene_wet_inkomensafhankelijke_regelingen
     chronicles:
       - stream: aanvragen
         key: bsn
@@ -662,6 +666,32 @@ actions:
         chronicle: aanvragen
         name: aanvraag_ontvangen
         intake: aanvraag
+    # Wat de wet en de eigen stand van de aanvrager over deze aanvraag zeggen.
+    # Getoond naast de actie en nooit gehandhaafd: indienen kan altijd (Awb art.
+    # 4:1), en wie buiten de termijn aanvraagt, krijgt daarop een beslissing en
+    # geen dichte deur. Hier staat alleen de verwijzing; de regel zelf staat in
+    # de regeling, en de stand in de eigen kroniek van de aanvrager.
+    conditions:
+      # Uit de wet: Awir art. 15, eerste lid. De aanvrager rekent het zelf uit,
+      # met het jaar en de datum uit haar eigen formulier.
+      - label: aanvraag binnen de termijn
+        doc: >-
+          Een aanvraag over een berekeningsjaar kan tot 1 april van het jaar
+          erna worden ingediend.
+        regulation: algemene_wet_inkomensafhankelijke_regelingen
+        output: aanvraag_binnen_termijn
+        params:
+          berekeningsjaar: $jaar
+          aanvraagdatum: $ondertekend_op
+      # Uit de eigen stand: heeft deze aanvrager al een aanvraag ingediend? Dat
+      # is geen recht maar wat haar overkwam, dus het komt uit haar eigen
+      # kroniek. `null` verwacht dat er niets ligt.
+      - label: nog geen aanvraag ingediend
+        lexostatus: ingediende_aanvraag
+        output: jaar
+        expect: null
+        params:
+          bsn: $bsn
 
   - id: toeslagen.toekenning
     actor: toeslagen
