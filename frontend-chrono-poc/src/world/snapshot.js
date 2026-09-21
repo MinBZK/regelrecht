@@ -529,6 +529,63 @@ export function actionsByActor(snapshot) {
 }
 
 /**
+ * De uitkomsten van een voorwaarde, zoals een lezer ze ziet.
+ *
+ * Drie en niet twee: `onbekend` is wat de cel van de actor niet zelf weet, en
+ * dat is iets anders dan `onwaar`. Beide tonen dat de voorwaarde niet vervuld
+ * is, geen van beide houdt de actie tegen. `color` is die van de tag,
+ * `iconColor` die van het pictogram ervoor — die twee kennen niet dezelfde namen.
+ */
+export const CONDITION_OUTCOMES = {
+  waar: { color: 'success', iconColor: 'success', icon: 'check-mark-circle', text: 'waar' },
+  onwaar: { color: 'warning', iconColor: 'warning', icon: 'warning', text: 'onwaar' },
+  onbekend: { color: 'neutral', iconColor: 'secondary', icon: 'question', text: 'onbekend' },
+};
+
+/** De weergave van één uitkomst; een onbekende uitkomst leest als onbekend. */
+export function conditionOutcome(outcome) {
+  return CONDITION_OUTCOMES[outcome] ?? CONDITION_OUTCOMES.onbekend;
+}
+
+/**
+ * De voorwaarden van een actie, in twee groepen: wat de wet zegt en wat de
+ * eigen stand van de actor zegt.
+ *
+ * Apart en niet door elkaar, want het zijn twee soorten uitspraken: de eerste
+ * rekent de actor uit met een regeling die zij laadt, de tweede leest haar
+ * eigen kroniek. Een groep zonder voorwaarden valt weg.
+ */
+export function conditionGroups(action) {
+  const all = Array.isArray(action?.conditions) ? action.conditions : [];
+  return [
+    { kind: 'regulation', title: 'Uit de wet', conditions: all.filter((c) => c.kind === 'regulation') },
+    { kind: 'lexostatus', title: 'Uit de eigen stand', conditions: all.filter((c) => c.kind === 'lexostatus') },
+  ].filter((group) => group.conditions.length > 0);
+}
+
+/**
+ * Waar een voorwaarde vandaan komt, in één regel: het artikel en de regeling,
+ * of de lexostatus van de actor met de waarde waarbij ze waar is.
+ */
+export function describeConditionSource(condition) {
+  if (condition?.kind === 'regulation') {
+    const artikel = condition.article ? `art. ${condition.article} ` : '';
+    return `${artikel}${condition.regulation} · ${condition.output}`;
+  }
+  const expected = condition?.expected === null || condition?.expected === undefined
+    ? 'waar als er niets ligt'
+    : `waar bij ${condition.expected}`;
+  return `${condition?.lexostatus} · ${condition?.output} (${expected})`;
+}
+
+/** De voorwaarden van een actie die niet `waar` zijn. */
+export function unmetConditions(action) {
+  return (Array.isArray(action?.conditions) ? action.conditions : []).filter(
+    (condition) => condition.outcome !== 'waar',
+  );
+}
+
+/**
  * Het beginformulier van een actie: elk veld uit `form`, voorgevuld waar het
  * beeld iets aanlevert en anders leeg naar zijn type.
  *

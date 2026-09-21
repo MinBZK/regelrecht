@@ -72,6 +72,15 @@ function journalRows(wrapper) {
     .filter((item) => item.attributes('slot') !== 'children');
 }
 
+/**
+ * De tab-bar van de bediening, en niet die van de navigatie tussen de pagina's:
+ * een wereld met acties heeft ook zonder portaal een pagina per actor, en dan
+ * staat de navigatie er als eerste tab-bar.
+ */
+function panelBar(wrapper) {
+  return wrapper.findAll('nldd-tab-bar').find((bar) => bar.attributes('navigation') === undefined);
+}
+
 async function mountApp(world = worldFixture) {
   vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(world)));
   const wrapper = mount(App);
@@ -100,7 +109,7 @@ describe('de pagina', () => {
 
   it('laat de vijf panelen van de bediening kiezen', async () => {
     const wrapper = await mountApp();
-    const tabs = wrapper.findAll('nldd-tab-bar-item');
+    const tabs = panelBar(wrapper).findAll('nldd-tab-bar-item');
     expect(tabs.map((tab) => tab.attributes('text'))).toStrictEqual([
       'Acties',
       'Instellingen',
@@ -111,7 +120,7 @@ describe('de pagina', () => {
     expect(tabs[0].attributes('current')).toBe('true');
 
     // De tab-bar meldt de keuze; de pagina wisselt van paneel.
-    wrapper.find('nldd-tab-bar').element.dispatchEvent(
+    panelBar(wrapper).element.dispatchEvent(
       new CustomEvent('tabchange', { detail: { item: tabs[4].element } }),
     );
     await flushPromises();
@@ -122,8 +131,8 @@ describe('de pagina', () => {
 
   it('zet elk gram van de wereld in het grammenpaneel', async () => {
     const wrapper = await mountApp();
-    const tabs = wrapper.findAll('nldd-tab-bar-item');
-    wrapper.find('nldd-tab-bar').element.dispatchEvent(
+    const tabs = panelBar(wrapper).findAll('nldd-tab-bar-item');
+    panelBar(wrapper).element.dispatchEvent(
       new CustomEvent('tabchange', { detail: { item: tabs[3].element } }),
     );
     await flushPromises();
@@ -177,9 +186,8 @@ describe('de pagina', () => {
     const wrapper = mount(App);
     await flushPromises();
 
-    const tabs = wrapper.findAll('nldd-tab-bar-item');
-    wrapper
-      .find('nldd-tab-bar')
+    const tabs = panelBar(wrapper).findAll('nldd-tab-bar-item');
+    panelBar(wrapper)
       .element.dispatchEvent(new CustomEvent('tabchange', { detail: { item: tabs[2].element } }));
     await flushPromises();
     await wrapper.find('form').trigger('submit');
@@ -367,8 +375,8 @@ describe('de pagina', () => {
 
       // Een ander tabblad haalt die kaart weg. Bleef de banner dan zwijgen, dan
       // stond de melding nergens meer op het scherm.
-      const tabs = wrapper.findAll('nldd-tab-bar-item');
-      wrapper.find('nldd-tab-bar').element.dispatchEvent(
+      const tabs = panelBar(wrapper).findAll('nldd-tab-bar-item');
+      panelBar(wrapper).element.dispatchEvent(
         new CustomEvent('tabchange', { detail: { item: tabs[2].element } }),
       );
       await flushPromises();
@@ -415,10 +423,56 @@ describe("de pagina's", () => {
     return flushPromises();
   }
 
-  it('heeft zonder portaal geen navigatie en alleen de wereld', async () => {
+  it('heeft zonder portaal alleen de actoren en de wereld, en opent op de wereld', async () => {
     await mountWith({ portaal: null }, '#/portaal');
+    const items = navigation().findAll('nldd-tab-bar-item');
+    expect(items.map((item) => item.attributes('text'))).toStrictEqual(['Per actor', 'Achter de schermen']);
+    expect(wrapper.find('nldd-stacked-split-view').exists()).toBe(true);
+    expect(complaints).toStrictEqual([]);
+  });
+
+  it('heeft zonder portaal en zonder acties geen navigatie en alleen de wereld', async () => {
+    const world = cloneWorld();
+    world.actions = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url) => jsonResponse(String(url).includes('/api/portaal') ? null : world)),
+    );
+    window.location.hash = '#/actor/burger';
+    wrapper = mount(App);
+    await flushPromises();
     expect(navigation()).toBeUndefined();
     expect(wrapper.find('nldd-stacked-split-view').exists()).toBe(true);
+    expect(complaints).toStrictEqual([]);
+  });
+
+  it('toont per actor haar acties, met de voorwaarden en hun uitkomst', async () => {
+    await mountWith({}, '#/actor/burger');
+    expect(wrapper.find('h1').text()).toBe('burger');
+    const cards = wrapper.findAll('nldd-card');
+    expect(cards.map((card) => card.attributes('accessible-label'))).toStrictEqual(
+      worldFixture.actions.filter((action) => action.actor === 'burger').map((action) => action.label),
+    );
+    // Uit de wet en uit de eigen stand, elk in een eigen lijst.
+    const lists = wrapper
+      .findAll('nldd-list')
+      .map((list) => list.attributes('accessible-label'))
+      .filter((label) => label?.includes('voorwaarden bij'));
+    expect(lists).toHaveLength(2);
+    expect(lists[0]).toMatch(/^Uit de wet/);
+    expect(lists[1]).toMatch(/^Uit de eigen stand/);
+    // Een voorwaarde die niet waar is, is te zien, en de knop staat er gewoon.
+    expect(wrapper.findAll('nldd-tag').map((tag) => tag.attributes('text'))).toContain('1 voorwaarde niet vervuld');
+    const button = wrapper.findAll('nldd-button').find((item) => item.attributes('type') === 'submit');
+    expect(button.attributes('disabled')).toBeUndefined();
+
+    // De keuzelijst zet het adres; de pagina volgt.
+    await goTo('#/actor/toeslagen');
+    expect(wrapper.find('h1').text()).toBe('toeslagen');
+    const current = navigation()
+      .findAll('nldd-tab-bar-item')
+      .filter((item) => item.attributes('current') === 'true');
+    expect(current.map((item) => item.attributes('text'))).toStrictEqual(['Per actor']);
     expect(complaints).toStrictEqual([]);
   });
 
@@ -428,10 +482,16 @@ describe("de pagina's", () => {
     expect(items.map((item) => item.attributes('text'))).toStrictEqual([
       portaalFixture.label,
       'Inzicht in je aanvraag',
+      'Per actor',
       'Achter de schermen',
     ]);
-    expect(items.map((item) => item.attributes('href'))).toStrictEqual(['#/portaal', '#/inzicht', '#/wereld']);
-    expect(items.map((item) => item.attributes('current'))).toStrictEqual(['true', undefined, undefined]);
+    expect(items.map((item) => item.attributes('href'))).toStrictEqual([
+      '#/portaal',
+      '#/inzicht',
+      '#/actor/burger',
+      '#/wereld',
+    ]);
+    expect(items.map((item) => item.attributes('current'))).toStrictEqual(['true', undefined, undefined, undefined]);
     expect(wrapper.find('nldd-stacked-split-view').exists()).toBe(false);
     expect(complaints).toStrictEqual([]);
   });

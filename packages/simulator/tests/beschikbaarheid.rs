@@ -335,6 +335,7 @@ fn besluit_actie(id: &str, besluit: &str) -> ActionDefinition {
             cell: "toeslagen".to_string(),
             besluit: besluit.to_string(),
         }),
+        conditions: Vec::new(),
     }
 }
 

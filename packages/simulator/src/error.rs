@@ -2230,6 +2230,24 @@ pub enum SimulatorError {
         reason: String,
     },
 
+    /// Een voorwaarde op een actie verwijst naar iets dat de cel van de actor
+    /// niet heeft: een regeling die ze niet laadt, een uitkomst die niet bestaat,
+    /// een lexostatus die ze niet publiceert, of een veld dat het formulier niet
+    /// kent.
+    ///
+    /// Blijkt bij het optuigen en niet bij het eerste beeld: een voorwaarde die
+    /// nooit uit te rekenen is, zou anders stil voorgoed "onbekend" tonen, en dat
+    /// is niet te onderscheiden van een cel die het echt niet weet.
+    #[error("actie '{action}', voorwaarde '{condition}': {reason}")]
+    ActionCondition {
+        /// De actie uit het wereldbestand.
+        action: String,
+        /// Het label van de voorwaarde.
+        condition: String,
+        /// Wat er niet klopt.
+        reason: String,
+    },
+
     /// Een actie levert een feit aan de cel die het zelf vastlegt.
     ///
     /// Dan zou hetzelfde gram twee keer in dezelfde kroniek landen. Een levering

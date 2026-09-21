@@ -54,7 +54,10 @@ cells:
     # partij, en dit is de naam die een omgekeerde verplichting als schuldenaar
     # aanwijst (zie de vaststelling). Daarom staat er geen `komt_na` onder.
     identity: '999993653'
-    laws: []
+    # Voor de voorwaarde op haar aanvraag: die rekent in háár cel (zie
+    # `actions`), dus zij laadt de regeling waar de voorwaarde naar verwijst.
+    laws:
+      - algemene_wet_inkomensafhankelijke_regelingen
     chronicles:
       - stream: aanvragen
         key: bsn
@@ -545,6 +548,25 @@ actions:
         chronicle: aanvragen
         name: aanvraag_ontvangen
         intake: aanvraag
+    # Dezelfde twee voorwaarden als in de publieke wereld: één uit de wet, één
+    # uit de eigen stand. Ze staan hier zodat het beeld dat de frontend als
+    # contract krijgt (`tests/fixtures/snapshot.json`) ze allebei draagt.
+    conditions:
+      - label: aanvraag binnen de termijn
+        doc: >-
+          Een aanvraag over een berekeningsjaar kan tot 1 april van het jaar
+          erna worden ingediend.
+        regulation: algemene_wet_inkomensafhankelijke_regelingen
+        output: aanvraag_binnen_termijn
+        params:
+          berekeningsjaar: $jaar
+          aanvraagdatum: $ondertekend_op
+      - label: nog geen aanvraag ingediend
+        lexostatus: ingediende_aanvraag
+        output: jaar
+        expect: null
+        params:
+          bsn: $bsn
 
   - id: toeslagen.toekenning
     actor: toeslagen

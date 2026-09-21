@@ -408,6 +408,19 @@ struct DecisionDraft<'a> {
     declared: &'a DeclaredObligations,
 }
 
+/// Wat een regeling die een cel laadt aan uitkomsten en parameters kent, over
+/// alle geladen versies heen. Zie [`Cell::regulation_surface`].
+pub(crate) struct RegulationSurface {
+    /// Per uitkomst de typen die de versies eraan geven.
+    pub(crate) outputs: BTreeMap<String, BTreeSet<String>>,
+    /// De namen van de parameters en inputs.
+    pub(crate) parameters: BTreeSet<String>,
+    /// Per uitkomst de parameters die een artikel dat haar voortbrengt verplicht
+    /// stelt, in een van de geladen versies. Wie er een weglaat, krijgt van de
+    /// engine bij elke uitrekening een fout en nooit een uitkomst.
+    pub(crate) required: BTreeMap<String, BTreeSet<String>>,
+}
+
 /// Eén chronolexocel.
 ///
 /// De cel bezit haar feiten. Er is met opzet geen `pub fn store()` en geen
@@ -1061,17 +1074,9 @@ impl Cell {
             });
         };
 
-        let mut service = service.borrow_mut();
-        self.register_own_facts(&mut service, op_moment)?;
-
         let engine_params = engine_parameters(parameters, params);
-        let result = service
-            .evaluate_law_output(
-                regulation,
-                output,
-                engine_params.clone(),
-                &op_moment.format("%Y-%m-%d").to_string(),
-            )
+        let result = self
+            .run_own_law(service, regulation, output, &engine_params, op_moment)?
             .map_err(|error| self.explain_reach(definition, error))?;
 
         let (inputs, grammen) = self.explain_inputs(&result, parameters, &engine_params, op_moment);
@@ -1087,6 +1092,146 @@ impl Cell {
             LexostatusOutcome::Established(definition.project(result.outputs)),
             Reductie::vastgesteld(wetsvorm, grammen),
         ))
+    }
+
+    /// Laat de eigen engine één uitkomst van een eigen regeling uitrekenen, over
+    /// de eigen feiten zoals ze op dit moment waren.
+    ///
+    /// De engine van [`Self::reduce`] en niet die van het besluit-pad: deze heeft
+    /// geen [`CellResolver`] en kan de celgrens dus niet over. Eén plek voor de
+    /// wetsvorm van een reductie en voor een voorwaarde op een actie (zie
+    /// [`Self::evaluate_own_output`]), want die twee horen op precies dezelfde
+    /// feiten te rekenen.
+    ///
+    /// De buitenste fout is een fout van de cel (haar feiten klaarzetten); de
+    /// binnenste is wat de engine zegt, en die laat de aanroeper zelf uitleggen.
+    fn run_own_law(
+        &self,
+        service: &RefCell<LawExecutionService>,
+        regulation: &str,
+        output: &str,
+        engine_params: &BTreeMap<String, Value>,
+        op_moment: NaiveDate,
+    ) -> Result<std::result::Result<ArticleResult, EngineError>> {
+        let mut service = service.borrow_mut();
+        self.register_own_facts(&mut service, op_moment)?;
+        Ok(service.evaluate_law_output(
+            regulation,
+            output,
+            engine_params.clone(),
+            &op_moment.format("%Y-%m-%d").to_string(),
+        ))
+    }
+
+    /// Wat de eigen engine over één uitkomst van een eigen regeling zegt, op de
+    /// eigen feiten: de waarde, of waarom er geen is.
+    ///
+    /// Dit is de weg van een **voorwaarde op een actie** (zie
+    /// [`crate::condition`]): de cel van de actor rekent zelf, met de regelingen
+    /// die zij laadt en de kronieken die zij houdt. Wat zij niet weet, blijft
+    /// onbekend — de engine hier heeft geen cel-tier, dus een regeling die een
+    /// andere organisatie aanwijst komt niet verder dan "die kent deze cel niet".
+    /// Dat is geen gemis maar invariant I1: het beeld van de wereld wordt bij
+    /// elke stap opgevraagd, en een voorwaarde die over een grens reikte, zou bij
+    /// elk scherm verkeer opleveren dat niemand vroeg.
+    ///
+    /// `Ok(None)` is: de engine rekende, maar deze uitkomst zat er niet bij.
+    /// `Err` is een uitleg in woorden en geen fout van de wereld: een voorwaarde
+    /// die niet uit te rekenen is, is onbekend en blokkeert niets.
+    pub(crate) fn evaluate_own_output(
+        &self,
+        regulation: &str,
+        output: &str,
+        engine_params: &BTreeMap<String, Value>,
+        op_moment: NaiveDate,
+    ) -> std::result::Result<Option<Value>, String> {
+        let Some(service) = &self.service else {
+            return Err(format!(
+                "cel '{}' laadt geen regelingen en kan '{output}' dus niet uitrekenen",
+                self.id
+            ));
+        };
+        let result = self
+            .run_own_law(service, regulation, output, engine_params, op_moment)
+            .map_err(|error| error.to_string())?
+            .map_err(|error| self.explain_own_output_error(output, error))?;
+        Ok(result.outputs.get(output).cloned())
+    }
+
+    /// Het artikel dat deze uitkomst van een eigen regeling voortbrengt, en de
+    /// versie van de regeling die op dit moment geldt; `None` waar de regeling
+    /// dat niet zegt.
+    ///
+    /// Langs de resolver van de engine, dezelfde weg als bij de herkomst van een
+    /// ritme of een afwijzingsgrond: welk artikel een uitkomst geeft, kan per
+    /// versie verschillen.
+    pub(crate) fn own_output_article(
+        &self,
+        regulation: &str,
+        output: &str,
+        op_moment: NaiveDate,
+    ) -> (Option<String>, Option<String>) {
+        let Some(service) = self.service.as_ref() else {
+            return (None, None);
+        };
+        let service = service.borrow();
+        let resolver = service.resolver();
+        let article = resolver
+            .get_article_by_output(regulation, output, Some(op_moment))
+            .map(|article| article.number.clone());
+        let valid_from = resolver
+            .get_law_for_date(regulation, Some(op_moment))
+            .and_then(|law| law.valid_from.clone());
+        (article, valid_from)
+    }
+
+    /// Wat een eigen regeling aan uitkomsten en parameters kent, over alle
+    /// geladen versies heen; `None` als deze cel haar niet laadt.
+    ///
+    /// Voor het optuigen van een voorwaarde: bestaat de uitkomst, is ze een
+    /// ja-of-nee, en heten de parameters wat de regeling vraagt. Dezelfde
+    /// opzoekingen als waarmee de eigen definities van de cel getoetst zijn, en
+    /// niet een tweede lijst.
+    pub(crate) fn regulation_surface(&self, regulation: &str) -> Option<RegulationSurface> {
+        if !self.laws.iter().any(|law| law == regulation) {
+            return None;
+        }
+        let service = self.service.as_ref()?.borrow();
+        let outputs = types_per_output(&service).remove(regulation)?;
+        let parameters = inputs_per_regulation(&service)
+            .remove(regulation)
+            .unwrap_or_default();
+        let required = required_parameters_per_output(&service, regulation);
+        Some(RegulationSurface {
+            outputs,
+            parameters,
+            required,
+        })
+    }
+
+    /// Vertaal een enginefout bij een voorwaarde naar wat er aan de hand is.
+    ///
+    /// Een "onbekende regeling" is hier bijna altijd een naam die de wet noemt en
+    /// die deze cel niet laadt — een andere regeling, of een andere organisatie
+    /// (tier 3). In beide gevallen is het antwoord hetzelfde: dat weet deze cel
+    /// niet zelf, en een voorwaarde gaat het niet elders halen.
+    fn explain_own_output_error(&self, output: &str, error: EngineError) -> String {
+        match &error {
+            EngineError::LawNotFound(name) => {
+                let peer = self.accepts_from.keys().any(|(cell, _)| cell == name);
+                let wie = if peer {
+                    "een andere organisatie"
+                } else {
+                    "een regeling die deze cel niet laadt"
+                };
+                format!(
+                    "'{output}' vraagt een uitkomst van '{name}', {wie}; cel '{}' rekent \
+                     alleen met wat zij zelf weet en vraagt het niet over haar grens",
+                    self.id
+                )
+            }
+            _ => format!("cel '{}' kon '{output}' niet uitrekenen: {error}", self.id),
+        }
     }
 
     /// Waar elke input van deze uitvoering vandaan kwam, en welke grammen daar
@@ -3402,7 +3547,7 @@ fn executing_article<'a>(
 /// onbekende in een lijst of record zit (RFC-036). Een `null` komt hier niet: dat
 /// is een geleverde waarde. Een uitkomst die helemaal niet terugkwam, heeft geen
 /// waarde om uit te lezen en krijgt hier dus ook geen reden.
-fn niet_geleverd_reden(value: &Value) -> Option<String> {
+pub(crate) fn niet_geleverd_reden(value: &Value) -> Option<String> {
     let merged = Value::merge_unknown_deep([value])?;
     Some(format!(
         "onbekend, want deze feiten ontbraken: {}",
@@ -3715,6 +3860,40 @@ fn inputs_per_regulation(service: &LawExecutionService) -> BTreeMap<String, BTre
         }
     }
     per_regulation
+}
+
+/// Per uitkomst van één regeling de parameters die een artikel dat haar
+/// voortbrengt verplicht stelt (`required` afwezig of `true`, zoals de engine
+/// het leest), over alle geladen versies heen.
+fn required_parameters_per_output(
+    service: &LawExecutionService,
+    regulation: &str,
+) -> BTreeMap<String, BTreeSet<String>> {
+    let mut per_output: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for law in service.resolver().all_law_versions() {
+        if law.id != regulation {
+            continue;
+        }
+        for article in &law.articles {
+            let Some(execution) = article.get_execution_spec() else {
+                continue;
+            };
+            let required: Vec<&str> = execution
+                .parameters
+                .iter()
+                .flatten()
+                .filter(|parameter| parameter.required != Some(false))
+                .map(|parameter| parameter.name.as_str())
+                .collect();
+            for output in execution.output.iter().flatten() {
+                per_output
+                    .entry(output.name.clone())
+                    .or_default()
+                    .extend(required.iter().map(|name| name.to_string()));
+            }
+        }
+    }
+    per_output
 }
 
 /// Per regeling en per uitkomst het rechtskarakter dat het voortbrengende

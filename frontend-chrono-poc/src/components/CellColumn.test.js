@@ -45,7 +45,7 @@ describe('een kolom per cel', () => {
   });
 
   it('noemt een cel zonder wetten een bron-cel', () => {
-    expect(mountCell('burger').text()).toContain('bron-cel');
+    expect(mountCell('belastingdienst').text()).toContain('bron-cel');
     expect(mountCell('toeslagen').text()).toContain('regelingen geladen');
   });
 

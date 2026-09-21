@@ -6,6 +6,7 @@
 //! iemand kan lezen en wijzigen zonder de crate te kennen.
 
 use crate::cell::{CellConfig, Decretogram, Lexostatus, LexostatusOutcome};
+use crate::condition::{ConditionOutcome, ConditionSnapshot};
 use crate::error::{Result, SimulatorError};
 use crate::invariant::{
     check_invariants, observed_graph, DecisionTraffic, DeclaredQuery, InvariantFailure, QueryEdge,
@@ -161,6 +162,15 @@ pub struct Act {
     /// Waarden die het besluit van deze actie **zelf** moet hebben vastgesteld.
     #[serde(default)]
     pub expect_computed: Vec<String>,
+    /// Wat de voorwaarden van deze actie moeten zeggen, per label, vlak vóórdat
+    /// de actor haar doet: op dit moment en op de waarden van deze stap.
+    ///
+    /// Vóór en niet ná, want een voorwaarde gaat over de vraag of de actor dit
+    /// mag, en die vraag stelt zich voordat hij het doet. De actie gebeurt
+    /// daarna hoe dan ook: een voorwaarde blokkeert niet, en een scenario dat
+    /// `onwaar` verwacht, laat precies dat zien.
+    #[serde(default)]
+    pub expect_conditions: BTreeMap<String, ConditionOutcome>,
 }
 
 /// Eén vraag van een consument aan één cel.
@@ -310,6 +320,18 @@ pub enum ExpectationFailure {
         /// Wat er over haar herkomst mis is.
         reason: String,
     },
+    /// Een voorwaarde op een actie zei iets anders dan verwacht, of bestond niet.
+    Condition {
+        /// Het label van de voorwaarde.
+        label: String,
+        /// Wat het scenario verwachtte.
+        expected: ConditionOutcome,
+        /// Wat de voorwaarde zei; `None` als de actie geen voorwaarde met dit
+        /// label draagt.
+        actual: Option<ConditionOutcome>,
+        /// De reden die de voorwaarde gaf, of welke labels er wel zijn.
+        reason: String,
+    },
     /// De run meldde andere gemiste termijnen dan het scenario verwachtte.
     Warnings {
         /// De labels die het scenario verwachtte.
@@ -371,6 +393,8 @@ pub struct ActOutcome {
     pub description: Option<String>,
     /// De actie die gedaan is.
     pub action: String,
+    /// Wat haar voorwaarden zeiden, vlak voordat de actor haar deed.
+    pub conditions: Vec<ConditionSnapshot>,
     /// Wat er door deze actie gebeurde.
     pub events: Events,
     /// De verwachtingen die niet uitkwamen; leeg is goed.
@@ -510,6 +534,16 @@ impl ScenarioRun {
             let _ = writeln!(out, "  [{mark}] actie '{}'", act.action);
             if let Some(description) = &act.description {
                 let _ = writeln!(out, "        {description}");
+            }
+            // Wat het recht ervan zei, vóór wat er gebeurde: een voorwaarde
+            // houdt niets tegen, dus de gebeurtenissen eronder volgen hoe dan
+            // ook — en dat is wat dit verslag dan laat zien.
+            for condition in &act.conditions {
+                let _ = writeln!(
+                    out,
+                    "        voorwaarde '{}': {} — {}",
+                    condition.label, condition.outcome, condition.reason
+                );
             }
             out.push_str(&act.events.describe());
             write_failures(&mut out, &act.failures);
@@ -684,6 +718,39 @@ fn describe_authority(gram: &Decretogram) -> String {
     }
 }
 
+/// Leg wat de voorwaarden van een actie zeiden naast wat het scenario verwachtte.
+fn check_conditions(
+    expected: &BTreeMap<String, ConditionOutcome>,
+    actual: &[ConditionSnapshot],
+) -> Vec<ExpectationFailure> {
+    expected
+        .iter()
+        .filter_map(|(label, expected)| {
+            let Some(found) = actual.iter().find(|found| &found.label == label) else {
+                return Some(ExpectationFailure::Condition {
+                    label: label.clone(),
+                    expected: *expected,
+                    actual: None,
+                    reason: format!(
+                        "de actie draagt alleen: {}",
+                        actual
+                            .iter()
+                            .map(|found| found.label.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                });
+            };
+            (found.outcome != *expected).then(|| ExpectationFailure::Condition {
+                label: label.clone(),
+                expected: *expected,
+                actual: Some(found.outcome),
+                reason: found.reason.clone(),
+            })
+        })
+        .collect()
+}
+
 /// Schrijf de gemiste verwachtingen van één vraag in het verslag.
 ///
 /// Eén plek, want een vraag over de celgrens wordt op precies dezelfde manier
@@ -713,6 +780,18 @@ fn write_failures(out: &mut String, failures: &[ExpectationFailure]) {
             ExpectationFailure::Provenance { value, reason } => {
                 writeln!(out, "        herkomst van '{value}': {reason}")
             }
+            ExpectationFailure::Condition {
+                label,
+                expected,
+                actual,
+                reason,
+            } => match actual {
+                Some(actual) => writeln!(
+                    out,
+                    "        voorwaarde '{label}': verwacht {expected}, kreeg {actual} ({reason})"
+                ),
+                None => writeln!(out, "        voorwaarde '{label}' bestaat niet: {reason}"),
+            },
             ExpectationFailure::Warnings { expected, actual } => writeln!(
                 out,
                 "        verwachtte gemiste termijnen [{}], kreeg [{}]",
@@ -950,12 +1029,14 @@ impl Scenario {
         for step in &self.act {
             world.advance(step.op_moment)?;
 
+            let conditions = world.conditions(&step.action, &step.values)?;
+            let mut failures = check_conditions(&step.expect_conditions, &conditions);
+
             let events = world.act(&step.action, &step.values)?;
 
             // Een actie die een besluit start, wordt op datzelfde besluit
             // afgerekend — verwachtingen én de herkomstgate van I5. Een actie die
             // vastlegt, heeft geen besluit, en dan is er niets om op te rekenen.
-            let mut failures = Vec::new();
             for record in &events.decisions {
                 let gram = &record.decretogram;
                 failures.extend(check_values(&step.expect, &gram.assertable()));
@@ -971,6 +1052,7 @@ impl Scenario {
             acts.push(ActOutcome {
                 description: step.description.clone(),
                 action: step.action.clone(),
+                conditions,
                 events,
                 failures,
             });

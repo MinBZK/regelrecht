@@ -53,6 +53,7 @@ use crate::cell::{
     STAGE_BEKENDMAKING, STAGE_BESLUIT, ZAAKKENMERK,
 };
 use crate::cell::{nakoming_schema, uncovered};
+use crate::condition::{self, ActionCondition, ConditionSnapshot};
 use crate::error::{Result, SimulatorError, Subject};
 use crate::journal::{
     changes, AcceptedValue, ExecutedInput, ExecutedOutput, Execution, GramRef, IndicatorParam,
@@ -162,6 +163,14 @@ pub struct ActionDefinition {
     pub doc: Option<String>,
     /// Wat de actie uitwerkt.
     pub effect: ActionEffect,
+    /// Wat de wet of de eigen stand van de actor over deze actie zegt.
+    ///
+    /// Getoond en niet gehandhaafd: een voorwaarde die niet vervuld is, laat de
+    /// actie uitvoerbaar, en [`crate::ActionSnapshot::available`] houdt zijn
+    /// eigen, technische betekenis. Het wereldbestand noemt alleen de
+    /// verwijzing — een regeling en haar uitkomst, of een eigen lexostatus — en
+    /// nooit de regel zelf. Zie [`crate::condition`].
+    pub conditions: Vec<ActionCondition>,
 }
 
 /// De twee dingen die een actie kan uitwerken.
@@ -216,6 +225,9 @@ struct ActionFields {
     /// Zie [`ActionEffect::Publishes`].
     #[serde(default)]
     publishes: Option<PublishesAction>,
+    /// Zie [`ActionDefinition::conditions`].
+    #[serde(default)]
+    conditions: Vec<ActionCondition>,
 }
 
 impl TryFrom<ActionFields> for ActionDefinition {
@@ -251,6 +263,7 @@ impl TryFrom<ActionFields> for ActionDefinition {
             label: fields.label,
             doc: fields.doc,
             effect,
+            conditions: fields.conditions,
         })
     }
 }
@@ -996,22 +1009,7 @@ impl World {
         action_id: &str,
         form_values: &BTreeMap<String, Value>,
     ) -> Result<Events> {
-        let action = self
-            .definition
-            .actions
-            .iter()
-            .find(|candidate| candidate.id == action_id)
-            .ok_or_else(|| SimulatorError::UnknownAction {
-                action: action_id.to_string(),
-                known: self
-                    .definition
-                    .actions
-                    .iter()
-                    .map(|candidate| candidate.id.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", "),
-            })?
-            .clone();
+        let action = self.action(action_id)?.clone();
 
         check_documented_params(
             &action.actor,
@@ -1215,13 +1213,71 @@ impl World {
                 let form = self.form(action).unwrap_or_default();
                 let prefill = prefilled(&form, self.clock, &self.cells, self.chosen_values(action));
                 let unavailable = self.unavailable(action, &prefill);
+                let conditions = self.conditions_of(action, &prefill);
                 ActionState {
                     action,
                     form,
                     prefill,
                     unavailable,
+                    conditions,
                 }
             })
+            .collect()
+    }
+
+    /// De actie met dit id uit het wereldbestand, of de fout die opsomt welke
+    /// er wel zijn.
+    fn action(&self, action_id: &str) -> Result<&ActionDefinition> {
+        self.definition
+            .actions
+            .iter()
+            .find(|candidate| candidate.id == action_id)
+            .ok_or_else(|| SimulatorError::UnknownAction {
+                action: action_id.to_string(),
+                known: self
+                    .definition
+                    .actions
+                    .iter()
+                    .map(|candidate| candidate.id.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            })
+    }
+
+    /// Wat de voorwaarden van een actie nu zeggen, op deze waarden van haar
+    /// formulier.
+    ///
+    /// Het beeld rekent ze uit op de voorinvulling — het formulier dat de lezer
+    /// ziet — en een scenario op de waarden die het werkelijk verstuurt. Dezelfde
+    /// uitrekening, zodat die twee niet uiteen kunnen lopen.
+    ///
+    /// Alleen lezen en alleen in de cel van de actor: er gaat niets over een
+    /// celgrens, er komt geen gram en geen journaalregel van, en een onvervulde
+    /// voorwaarde houdt de actie niet tegen. Een onbekende actie is een fout die
+    /// de acties opsomt, net als bij [`World::act`].
+    pub fn conditions(
+        &self,
+        action_id: &str,
+        form_values: &BTreeMap<String, Value>,
+    ) -> Result<Vec<ConditionSnapshot>> {
+        let action = self.action(action_id)?;
+        Ok(self.conditions_of(action, form_values))
+    }
+
+    /// De voorwaarden van één actie, uitgerekend in de cel van haar actor.
+    fn conditions_of(
+        &self,
+        action: &ActionDefinition,
+        values: &BTreeMap<String, Value>,
+    ) -> Vec<ConditionSnapshot> {
+        // Onbereikbaar leeg: het optuigen heeft de actor aan een cel gebonden.
+        let Some(actor) = self.cells.get(&action.actor) else {
+            return Vec::new();
+        };
+        action
+            .conditions
+            .iter()
+            .map(|found| condition::evaluate(found, actor, values, self.clock))
             .collect()
     }
 
@@ -2910,6 +2966,17 @@ fn check_actions(
             // anders zou de actie pas bij de eerste klik omvallen.
             ActionEffect::Publishes(_) => {
                 action_form(action, cells, start)?;
+            }
+        }
+
+        // De voorwaarden rekenen in de cel van de actor, dus daar worden ze aan
+        // getoetst: laadt zij de regeling, publiceert zij de lexostatus, en
+        // wijst elke `$veld` een veld van dit formulier aan.
+        if !action.conditions.is_empty() {
+            // Onbereikbaar leeg: de actor is hierboven al gevonden.
+            if let Some(actor) = cells.get(&action.actor) {
+                let form = action_form(action, cells, start)?;
+                condition::check(&action.id, &action.conditions, actor, &form)?;
             }
         }
     }
