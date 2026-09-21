@@ -381,6 +381,15 @@ fn het_gramschema_weigert_een_besluitherkomst_zonder_de_plek_van_het_besluit() {
                 &format!("herkomst '{herkomst}' zonder '{vereist}'"),
             );
         }
+
+        // De plek telt vanaf nul; een negatieve plek wijst naar geen gram.
+        let mut negatief = gram.clone();
+        negatief["fields"][&veld]["origin"]["recorded_origin"]["besluit_gram"] = Value::from(-1);
+        assert_rejected(
+            &negatief,
+            schema_contract::gram(),
+            &format!("herkomst '{herkomst}' met een negatieve 'besluit_gram'"),
+        );
     }
 }
 
