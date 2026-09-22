@@ -93,7 +93,28 @@ for (const name of ['bindings.yaml', 'profiles.yaml', 'demo-config.yaml', 'servi
   if (existsSync(src)) cpSync(src, join(destDir, name));
 }
 
+// De Engelse woordenlijst voor veldnamen wordt een JS-module en geen asset:
+// `format.js` leest hem synchroon en wordt zelf door zijn eigen tests
+// geïmporteerd, dus een fetch erin zou die tests van een netwerkaanroep
+// afhankelijk maken. Ontbreekt de lijst, dan is hij leeg en valt elk label
+// terug op het Nederlands — dat is het gedrag vóór de woordenlijst bestond.
+const glossaryFile = join(corpusDir, 'i18n', 'glossary.en.yaml');
+const glossary = existsSync(glossaryFile) ? yaml.load(readFileSync(glossaryFile, 'utf8')) ?? {} : {};
+const generated = resolve(appRoot, 'src', 'i18n', 'glossary.generated.js');
+writeFileSync(
+  generated,
+  `// @generated from corpus/demo/i18n/glossary.en.yaml by frontend-demo/scripts/copy-demo-corpus.mjs — do not edit.\nexport default ${JSON.stringify(
+    { laws: glossary.laws ?? {}, names: glossary.names ?? {}, words: glossary.words ?? {} },
+    null,
+    2,
+  )};\n`,
+);
+
 laws.sort((a, b) => a.id.localeCompare(b.id) || a.valid_from.localeCompare(b.valid_from));
 scenarios.sort((a, b) => a.path.localeCompare(b.path));
 writeFileSync(join(destDir, 'index.json'), JSON.stringify({ laws, scenarios }, null, 2));
-console.log(`demo corpus: ${laws.length} law files, ${scenarios.length} feature files → ${relative(appRoot, destDir)}`);
+const wordCount = Object.keys(glossary.words ?? {}).length;
+console.log(
+  `demo corpus: ${laws.length} law files, ${scenarios.length} feature files → ${relative(appRoot, destDir)}` +
+    ` (woordenlijst: ${wordCount} woorden)`,
+);

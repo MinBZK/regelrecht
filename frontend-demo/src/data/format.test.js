@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { fieldSpec, formatDate, formatDateTime, formatMissing, formatValue, humanize, intlLocale, isAmountSpec, numericImpact, setGlossary, untranslated, verdictOf } from './format.js';
 import { adoptLocale } from '../i18n/index.js';
+import glossary from '../i18n/glossary.generated.js';
 
 const UNKNOWN = { __unknown: true, missing: [{ law: 'zorgtoeslagwet', name: 'huurprijs', kind: 'no_data' }, { law: 'wet_inkomstenbelasting', name: 'spaargeld', kind: 'no_data' }] };
 
@@ -138,10 +139,12 @@ describe('in English', () => {
     expect(formatValue([{ x: 1 }, { x: 2 }])).toBe('2 items');
   });
 
-  it('names the missing facts in English', () => {
+  it('names the missing facts in English, with the glossary applied', () => {
+    // The labels come from the shipped glossary, so this also proves the
+    // generated module reaches `humanize` rather than the empty default.
     adoptLocale('en');
     expect(formatMissing(UNKNOWN, { ownLaw: 'zorgtoeslagwet', lawName: (id) => id })).toBe(
-      'missing: huurprijs, spaargeld (wet_inkomstenbelasting)',
+      'missing: rent, savings (wet_inkomstenbelasting)',
     );
   });
 
@@ -201,5 +204,44 @@ describe('humanize with a glossary', () => {
     adoptLocale('en');
     setGlossary({ words: { vereist: 'required', vergunning: 'permit' } });
     expect(humanize('agp_vergunning_vereist')).toBe('AGP permit required');
+  });
+});
+
+describe('de meegeleverde woordenlijst', () => {
+  afterEach(() => adoptLocale('nl'));
+
+  it('vertaalt de namen die op elk scherm staan', () => {
+    // Deze vier komen in vrijwel elke tegel voor; gaan die terug naar het
+    // Nederlands, dan leest de hele demo half vertaald.
+    adoptLocale('en');
+    expect(humanize('voldoet_aan_voorwaarden')).toBe('Meets conditions');
+    expect(humanize('hoogte_toeslag')).toBe('Allowance amount');
+    expect(humanize('heeft_partner')).toBe('Has a partner');
+    expect(humanize('toetsingsinkomen')).toBe('Assessment income');
+  });
+
+  it('laat afkortingen staan zoals ze geschreven horen', () => {
+    adoptLocale('en');
+    expect(humanize('heeft_geldige_vog')).toBe('Has valid VOG');
+    expect(humanize('is_verzekerde_zorgtoeslag')).toBe('Is insured for healthcare allowance');
+  });
+
+  it('levert alleen woorden op, geen booleans of leegte', () => {
+    // `null` kaal in YAML is leegte en `true`/`false` zijn booleans, en dan
+    // wordt het label "Null" of "False" in plaats van een woord. (`no` en
+    // `yes` zouden dat in YAML 1.1 ook zijn; js-yaml volgt 1.2 en leest ze als
+    // woorden, maar de lijst quote ze toch, want yamllint vraagt erom.)
+    const nonStrings = Object.entries(glossary.words).filter(([, v]) => typeof v !== 'string');
+    expect(nonStrings).toEqual([]);
+    adoptLocale('en');
+    expect(humanize('geen_recht')).toBe('No right');
+  });
+
+  it('zet een Nederlandse woordvolgorde recht waar die niet meekan', () => {
+    // Woord voor woord zou dit "Advice degree of danger" en "Meets the
+    // article 8" opleveren: elk woord goed, de zin fout.
+    adoptLocale('en');
+    expect(humanize('advies_mate_van_gevaar')).toBe('Advised degree of danger');
+    expect(humanize('voldoet_aan_artikel_8')).toBe('Meets article 8');
   });
 });

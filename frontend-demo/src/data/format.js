@@ -12,6 +12,7 @@
  */
 import { isUnknown, missingFacts } from '@regelrecht/frontend-shared';
 import { currentLocale, t } from '../i18n/index.js';
+import generatedGlossary from '../i18n/glossary.generated.js';
 
 export { isUnknown, missingFacts };
 
@@ -219,10 +220,10 @@ export function humanize(name, { lawId = null } = {}) {
  * vult; `setGlossary` is er zodat die stap en de tests hem kunnen zetten
  * zonder dat dit bestand er iets van hoeft te weten.
  */
-let glossary = { laws: {}, names: {}, words: {} };
+let glossary = generatedGlossary;
 
 export function setGlossary(next) {
-  glossary = { laws: {}, names: {}, words: {}, ...(next ?? {}) };
+  glossary = next ? { laws: {}, names: {}, words: {}, ...next } : generatedGlossary;
   untranslated.clear();
 }
 

@@ -17,7 +17,7 @@
  * line-oriented reads, a Dutch summary, exit 1. No YAML parser and no
  * dependency on the app being built.
  */
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import en from '../src/i18n/en.js';
@@ -26,12 +26,15 @@ import nl from '../src/i18n/nl.js';
 const here = dirname(fileURLToPath(import.meta.url));
 const srcDir = resolve(here, '..', 'src');
 const i18nDir = join(srcDir, 'i18n');
+const lawsDir = resolve(here, '..', '..', 'corpus', 'demo', 'regulation', 'nl');
+const glossaryFile = resolve(here, '..', '..', 'corpus', 'demo', 'i18n', 'glossary.en.yaml');
 
-function walk(dir, out = []) {
+function walk(dir, out = [], match = (f) => /\.(vue|js)$/.test(f) && !f.endsWith('.test.js')) {
+  if (!existsSync(dir)) return out;
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);
-    if (statSync(full).isDirectory()) walk(full, out);
-    else if (/\.(vue|js)$/.test(full) && !full.endsWith('.test.js')) out.push(full);
+    if (statSync(full).isDirectory()) walk(full, out, match);
+    else if (match(full)) out.push(full);
   }
   return out;
 }
@@ -86,6 +89,64 @@ for (const file of walk(srcDir)) {
   }
 }
 
+// ---- 3. de woordenlijst dekt elke veldnaam die de demo kan tonen -----------
+//
+// Deze controle kruist de grens tussen code en corpus, en dat is precies wat de
+// vitest-suite niet kan zien: een nieuwe wet brengt nieuwe veldnamen mee, en die
+// vallen stil terug op het Nederlands. Niet fataal — een Nederlands label is een
+// schoonheidsfout en geen onwaarheid — maar wel iets wat iemand hoort te zien,
+// dus het telt hier mee en wordt op frequentie geprint zodat de volgende ronde
+// zichzelf sorteert.
+function readGlossaryBlock(text, block) {
+  const out = new Set();
+  let inBlock = false;
+  for (const raw of text.split('\n')) {
+    const line = raw.replace(/\s+$/, '');
+    if (!line || line.startsWith('#')) continue;
+    if (line === `${block}:`) { inBlock = true; continue; }
+    if (/^\S/.test(line)) { inBlock = false; continue; }
+    if (!inBlock) continue;
+    const m = /^ {2}("?)([a-z0-9][a-z0-9_]*)\1:\s*\S/.exec(line);
+    if (m) out.add(m[2]);
+  }
+  return out;
+}
+
+// Dezelfde afkortingen die format.js kent; die horen bewust niet in de lijst.
+const ABBREVIATIONS = new Set(['agp', 'aow', 'bsn', 'bbz', 'brp', 'cbs', 'haccp', 'kvk', 'nvwa', 'sbi', 'svh', 'vog', 'wia', 'ww', 'zvw']);
+
+if (existsSync(glossaryFile)) {
+  const text = readFileSync(glossaryFile, 'utf8');
+  const words = readGlossaryBlock(text, 'words');
+  const wholeNames = readGlossaryBlock(text, 'names');
+
+  const fieldNames = new Map();
+  for (const file of walk(lawsDir, [], (f) => f.endsWith('.yaml'))) {
+    for (const line of readFileSync(file, 'utf8').split('\n')) {
+      const m = /^\s*-\s+name:\s+([a-z][a-z0-9_]*)\s*$/.exec(line);
+      if (m) fieldNames.set(m[1], (fieldNames.get(m[1]) ?? 0) + 1);
+    }
+  }
+
+  const missing = new Map();
+  for (const [name, count] of fieldNames) {
+    if (wholeNames.has(name)) continue;
+    for (const token of name.split('_')) {
+      if (words.has(token) || ABBREVIATIONS.has(token)) continue;
+      missing.set(token, (missing.get(token) ?? 0) + count);
+    }
+  }
+
+  if (missing.size) {
+    const top = [...missing.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12);
+    problems.push(
+      `de woordenlijst mist ${missing.size} woord(en); label(s) vallen terug op het Nederlands. ` +
+        'Draai `node scripts/i18n-report.mjs --missing`. Meest voorkomend: ' +
+        top.map(([w, n]) => `${w} (${n}x)`).join(', '),
+    );
+  }
+}
+
 if (problems.length) {
   console.error('i18n en het democorpus lopen uiteen:\n');
   for (const p of problems) console.error('  ' + p);
@@ -93,4 +154,8 @@ if (problems.length) {
   process.exit(1);
 }
 
-console.log(`i18n: ${Object.keys(nl).length} sleutels in nl en ${Object.keys(en).length} in en, ${used.size} gebruikt in de app.`);
+const glossaryWords = existsSync(glossaryFile) ? readGlossaryBlock(readFileSync(glossaryFile, 'utf8'), 'words').size : 0;
+console.log(
+  `i18n: ${Object.keys(nl).length} sleutels in nl en ${Object.keys(en).length} in en, ${used.size} gebruikt in de app` +
+    (glossaryWords ? `, woordenlijst ${glossaryWords} woorden.` : '.'),
+);
