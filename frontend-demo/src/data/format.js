@@ -1,17 +1,60 @@
 /**
- * Dutch display formatting for law values.
+ * Display formatting for law values, in the language that is on.
  *
  * Two kinds of "nothing" (RFC-036): `null` is an absence the data states
- * ("geen": no partner, no rent) and the engine's Unknown is a fact nobody
- * supplied ("onbekend"), which names what is missing. They are never shown
- * with the same word.
+ * ("geen"/"none": no partner, no rent) and the engine's Unknown is a fact
+ * nobody supplied ("onbekend"/"unknown"), which names what is missing. They
+ * are never shown with the same word, in either language.
+ *
+ * This module is imported by its own tests and by plain modules that have no
+ * component around them, which is why it reads the locale through
+ * `currentLocale()` rather than through `useI18n()`.
  */
 import { isUnknown, missingFacts } from '@regelrecht/frontend-shared';
+import { currentLocale, t } from '../i18n/index.js';
 
 export { isUnknown, missingFacts };
 
-const euro = new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' });
-const number = new Intl.NumberFormat('nl-NL', { maximumFractionDigits: 4 });
+/**
+ * `en-GB` and not `en-US`, deliberately.
+ *
+ * It gives "22 September 2026" and 24-hour time, which is how a Dutch
+ * government screen states a date and a time, and it keeps the reading order
+ * of the Dutch original. `en-US` would render "September 22, 2026" and
+ * "12:00 AM" and make the demo read as American. The docs writing rules ask
+ * for American *spelling* in prose; date order is a separate question and this
+ * is the answer to it.
+ *
+ * The currency stays EUR in both: only the separators and the symbol's
+ * position change (`€ 1.654,12` against `€1,654.12`), and `Intl` handles that.
+ */
+const INTL_LOCALE = { nl: 'nl-NL', en: 'en-GB' };
+
+// Built per locale and cached: an `Intl` formatter bakes its locale in at
+// construction, so the module-level pair the demo used to have would keep
+// formatting in Dutch after a switch.
+const formatters = new Map();
+function intl(kind) {
+  const loc = INTL_LOCALE[currentLocale()] ?? INTL_LOCALE.nl;
+  const key = `${kind}:${loc}`;
+  if (!formatters.has(key)) {
+    formatters.set(
+      key,
+      kind === 'euro'
+        ? new Intl.NumberFormat(loc, { style: 'currency', currency: 'EUR' })
+        : new Intl.NumberFormat(loc, { maximumFractionDigits: 4 }),
+    );
+  }
+  return formatters.get(key);
+}
+
+/** The BCP 47 tag for the active locale, for the few callers that need it. */
+export function intlLocale() {
+  return INTL_LOCALE[currentLocale()] ?? INTL_LOCALE.nl;
+}
+
+const euro = { format: (v) => intl('euro').format(v) };
+const number = { format: (v) => intl('number').format(v) };
 
 /** Find the declared field (input/output/parameter) spec for a name in a law doc. */
 export function fieldSpec(lawDoc, name) {
@@ -32,14 +75,14 @@ export function isAmountSpec(spec) {
 
 /** Format one value for display, guided by its declared spec when known. */
 export function formatValue(value, spec = null) {
-  if (isUnknown(value) || value === undefined) return 'onbekend';
-  if (value === null) return 'geen';
-  if (typeof value === 'boolean') return value ? 'Ja' : 'Nee';
+  if (isUnknown(value) || value === undefined) return t('format.unknown');
+  if (value === null) return t('format.none');
+  if (typeof value === 'boolean') return value ? t('format.yes') : t('format.no');
   if (typeof value === 'number') {
     if (isAmountSpec(spec)) return euro.format(value / 100);
     if (spec?.type_spec?.unit === 'euro') return euro.format(value);
     if (spec?.type_spec?.unit === 'percentage') return `${number.format(value)}%`;
-    if (spec?.type_spec?.unit === 'years' || spec?.type_spec?.unit === 'jaar') return `${number.format(value)} jaar`;
+    if (spec?.type_spec?.unit === 'years' || spec?.type_spec?.unit === 'jaar') return t('format.years', { n: number.format(value) });
     return number.format(value);
   }
   if (typeof value === 'string') {
@@ -47,9 +90,9 @@ export function formatValue(value, spec = null) {
     return value.replaceAll('_', ' ');
   }
   if (Array.isArray(value)) {
-    if (value.length === 0) return 'geen';
+    if (value.length === 0) return t('format.none');
     if (value.every((v) => typeof v !== 'object' || v === null)) return value.map((v) => formatValue(v)).join(', ');
-    return `${value.length} ${value.length === 1 ? 'item' : 'items'}`;
+    return t.plural(value.length, 'format.items');
   }
   if (typeof value === 'object') {
     if (typeof value.iso === 'string') return formatDate(value.iso);
@@ -76,7 +119,7 @@ export function formatMissing(value, { ownLaw = null, lawName = (id) => id } = {
     const part = fact.law && fact.law !== ownLaw ? `${label} (${lawName(fact.law)})` : label;
     if (!parts.includes(part)) parts.push(part);
   }
-  return parts.length ? `ontbreekt: ${parts.join(', ')}` : '';
+  return parts.length ? t('format.missing', { facts: parts.join(', ') }) : '';
 }
 
 /**
@@ -95,13 +138,13 @@ export function verdictOf(outputs) {
 export function formatDate(iso) {
   const d = new Date(`${iso}T00:00:00`);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
+  return d.toLocaleDateString(intlLocale(), { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
 export function formatDateTime(iso) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleString(intlLocale(), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
 /** `hoogte_toeslag` -> `Hoogte toeslag`. */
@@ -132,15 +175,55 @@ const ABBREVIATIONS = new Map(
   ],
 );
 
-export function humanize(name) {
-  if (!name) return '';
-  const words = String(name).replaceAll('_', ' ').trim().split(/\s+/);
-  const out = words.map((w) => ABBREVIATIONS.get(w.toLowerCase()) ?? w);
+function capitalise(words) {
+  const out = [...words];
   if (!out.length) return '';
   // De eerste letter met een hoofdletter, tenzij het woord al een afkorting is.
   const first = out[0];
-  out[0] = ABBREVIATIONS.has(words[0].toLowerCase()) ? first : first.charAt(0).toUpperCase() + first.slice(1);
+  out[0] = ABBREVIATIONS.has(String(first).toLowerCase()) ? first : first.charAt(0).toUpperCase() + first.slice(1);
   return out.join(' ');
+}
+
+/**
+ * Namen waarvan het Engels nog niet is vastgesteld, verzameld tijdens het
+ * ontwikkelen. `scripts/i18n-report.mjs` en de woordenlijst-fase leunen hierop;
+ * in productie blijft de verzameling leeg omdat er dan niets aan toegevoegd
+ * wordt wat iemand opvraagt.
+ */
+export const untranslated = new Set();
+
+export function humanize(name, { lawId = null } = {}) {
+  if (!name) return '';
+  const words = String(name).replaceAll('_', ' ').trim().split(/\s+/);
+  const dutch = capitalise(words.map((w) => ABBREVIATIONS.get(w.toLowerCase()) ?? w));
+  if (currentLocale() === 'nl') return dutch;
+
+  // Engels: eerst de hele naam, dan woord voor woord. De woordenlijst zelf
+  // komt in een volgende stap; tot die tijd is hij leeg en valt alles terug op
+  // het Nederlands, wat een schoonheidsfout is en geen onwaarheid.
+  const g = glossary;
+  const exact = g.laws?.[lawId]?.[name] ?? g.names?.[name];
+  if (exact) return capitalise(String(exact).split(/\s+/));
+
+  // Alles of niets. Een half vertaald label ("Has partner inkomen") leest als
+  // een bug, waar een Nederlands label leest als iets dat nog niet vertaald is.
+  const parts = words.map((w) => g.words?.[w] ?? ABBREVIATIONS.get(w.toLowerCase()) ?? null);
+  if (parts.every(Boolean)) return capitalise(parts.join(' ').split(/\s+/));
+
+  if (import.meta.env?.DEV) untranslated.add(name);
+  return dutch;
+}
+
+/**
+ * De Engelse woordenlijst voor veldnamen. Leeg tot de woordenlijst-fase hem
+ * vult; `setGlossary` is er zodat die stap en de tests hem kunnen zetten
+ * zonder dat dit bestand er iets van hoeft te weten.
+ */
+let glossary = { laws: {}, names: {}, words: {} };
+
+export function setGlossary(next) {
+  glossary = { laws: {}, names: {}, words: {}, ...(next ?? {}) };
+  untranslated.clear();
 }
 
 /** Eurocent value for a monetary spec; the raw number otherwise. */

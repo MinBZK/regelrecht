@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import { usePresentation } from './usePresentation.js';
 import { useDemo } from '../store/demoStore.js';
+import { intlLocale } from '../data/format.js';
 
 // The deck: a Rijkshuisstijl-blue panel, full-screen for the intro and the
 // closing, a left rail while the live demo runs on the right. Slides are data
@@ -10,7 +11,9 @@ import { useDemo } from '../store/demoStore.js';
 const p = usePresentation();
 const { state } = useDemo();
 
-const today = new Date().toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
+// Een computed: het dek blijft staan tijdens een taalwissel, dus een datum die
+// eenmalig is uitgerekend zou in de oude taal blijven hangen.
+const today = computed(() => new Date().toLocaleDateString(intlLocale(), { day: 'numeric', month: 'long', year: 'numeric' }));
 const counter = computed(() => `${p.index.value + 1} / ${p.total.value}`);
 const progress = computed(() => (p.total.value ? `${((p.index.value + 1) / p.total.value) * 100}%` : '0%'));
 const isLast = computed(() => p.index.value === p.total.value - 1);

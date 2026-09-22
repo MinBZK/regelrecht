@@ -245,6 +245,18 @@ bestand landt is een bug, geen halve klus.
 - **Eigennamen blijven staan.** `Belastingdienst` is de naam van een orgaan,
   geen omschrijving; wie op "Tax Administration" zoekt vindt niets. Een
   Engelse toelichting tussen haakjes mag, vertalen niet.
+- **Opmaak loopt via `intlLocale()` in `src/data/format.js`**, nooit via een
+  hardgecodeerde taalcode. Een `Intl`-formatter legt zijn taal vast op het
+  moment dat je hem maakt, dus eentje op moduleniveau blijft na een taalwissel
+  in de oude taal formatteren.
+- **Engels is `en-GB`, niet `en-US`.** Dat geeft "22 September 2026" en een
+  24-uurs klok, zoals een Nederlands overheidsscherm een datum en een tijd
+  noteert, en het houdt de leesvolgorde van het Nederlandse origineel aan.
+  `en-US` zou er "September 22, 2026" en "12:00 AM" van maken. De
+  `docs-writing`-skill vraagt Amerikaans Engels voor *proza*; datumvolgorde is
+  een andere vraag en dit is het antwoord daarop. Het bedrag blijft in beide
+  talen in euro's; alleen de scheidingstekens en de plaats van het symbool
+  verschillen.
 
 ## Frontend / UI Components
 

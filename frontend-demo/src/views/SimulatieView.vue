@@ -2,7 +2,7 @@
 import { computed, reactive, ref, shallowRef, watch } from 'vue';
 import OrgLogo from '../components/OrgLogo.vue';
 import SimBarChart from '../components/SimBarChart.vue';
-import { fieldSpec, formatValue, humanize } from '../data/format.js';
+import { fieldSpec, formatValue, humanize, intlLocale } from '../data/format.js';
 import { serviceInfo } from '../data/loadCorpus.js';
 import { BUSINESS_DEFAULTS, CITIZEN_DEFAULTS } from '../simulation/population.js';
 import { definitionKind, overridableDefinitions } from '../simulation/lawParameters.js';
@@ -241,15 +241,15 @@ function resetOverrides(lawId) {
 function definitionHint(def) {
   const k = definitionKind(def.key, def.value);
   if (k === 'eurocent') return `${formatValue(def.value, { type: 'amount' })} · in eurocent`;
-  if (k === 'percentage') return def.value <= 1 ? `${(def.value * 100).toLocaleString('nl-NL', { maximumFractionDigits: 3 })}% · als fractie` : 'percentage';
+  if (k === 'percentage') return def.value <= 1 ? `${(def.value * 100).toLocaleString(intlLocale(), { maximumFractionDigits: 3 })}% · als fractie` : 'percentage';
   return 'getal';
 }
 
 // ---- presentation helpers -----------------------------------------------------
-const euro = new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+const euro = { format: (v) => new Intl.NumberFormat(intlLocale(), { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(v) };
 const pct = (v) => (v === null || v === undefined ? '–' : `${Math.round(v)}%`);
 const money = (v) => (v === null || v === undefined ? '–' : euro.format(v));
-const num = (v, digits = 0) => (v === null || v === undefined ? '–' : new Intl.NumberFormat('nl-NL', { maximumFractionDigits: digits }).format(v));
+const num = (v, digits = 0) => (v === null || v === undefined ? '–' : new Intl.NumberFormat(intlLocale(), { maximumFractionDigits: digits }).format(v));
 
 function amountLabel(run, lawId) {
   const law = run.laws.find((l) => l.id === lawId);

@@ -62,4 +62,16 @@ export default {
   'app.reset.label': 'Reset the demo',
   'app.reset.confirm': 'Reset',
   'app.reset.cancel': 'Cancel',
+
+  // ---- formatting values ---------------------------------------------------
+  // Two kinds of "nothing" (RFC-036): `null` is an absence the data states,
+  // Unknown is a fact nobody supplied. Never the same word.
+  'format.unknown': 'unknown',
+  'format.none': 'none',
+  'format.yes': 'Yes',
+  'format.no': 'No',
+  'format.years': '{n} years',
+  'format.items.one': '{n} item',
+  'format.items.other': '{n} items',
+  'format.missing': 'missing: {facts}',
 };

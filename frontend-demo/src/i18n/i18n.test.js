@@ -24,6 +24,10 @@ const IDENTICAL_BY_DESIGN = new Set([
   'app.features.label',
   'app.language.nl',
   'app.language.en',
+  // "item" and "items" happen to be the same word in both languages. Both
+  // forms still exist on both sides, because the key shape has to match.
+  'format.items.one',
+  'format.items.other',
 ]);
 
 /** The `{placeholder}` names in a string, sorted. */

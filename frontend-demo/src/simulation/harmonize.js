@@ -35,6 +35,7 @@
  * interpolatie ertussen loopt monotoon, en de grootste stap is € 0,44 per euro
  * inkomen. Een bedrag dat iemand écht krijgt komt uit de engine, niet hieruit.
  */
+import { intlLocale } from '../data/format.js';
 
 // ---- elementaire statistiek ------------------------------------------------
 
@@ -495,5 +496,5 @@ function labelOf(model, key) {
 }
 
 function formatNumber(v) {
-  return new Intl.NumberFormat('nl-NL', { maximumFractionDigits: 0 }).format(v);
+  return new Intl.NumberFormat(intlLocale(), { maximumFractionDigits: 0 }).format(v);
 }

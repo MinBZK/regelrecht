@@ -45,4 +45,12 @@ export default {
   "app.tabs.simulatie": "4946",
   "app.tabs.wetten": "71ae",
   "app.tabs.zaaksysteem": "2e3a",
+  "format.items.one": "aac6",
+  "format.items.other": "a7ac",
+  "format.missing": "1cc5",
+  "format.no": "9924",
+  "format.none": "8710",
+  "format.unknown": "8638",
+  "format.years": "a3bc",
+  "format.yes": "6bf1",
 };
