@@ -866,4 +866,6 @@ export default {
   'scenario.run': 'Run',
   'scenario.run_failed': 'Execution failed',
   'scenario.outputs': 'Outcomes',
+  'app.toolbar.label': 'Workspace',
+  'scenario.trace': 'Trace',
 };

@@ -869,4 +869,6 @@ export default {
   'scenario.run': 'Uitvoeren',
   'scenario.run_failed': 'Uitvoering mislukt',
   'scenario.outputs': 'Uitkomsten',
+  'app.toolbar.label': 'Werkruimte',
+  'scenario.trace': 'Trace',
 };

@@ -33,6 +33,8 @@ const IDENTICAL_BY_DESIGN = new Set([
   'sim.dimension.partner',
   'delegation.type.curator',
   'delegation.type.mentor',
+  // 'Trace' is in beide talen de term voor wat de engine uitschrijft.
+  'scenario.trace',
   // Het Britse "postcode" is hetzelfde woord als het Nederlandse.
   'sheet.change.field.postcode',
   // Een bestandsformaat en een domeinnaam; die hebben geen vertaling.

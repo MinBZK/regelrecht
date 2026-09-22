@@ -385,7 +385,7 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
                    24px; no tag size matches an sm button. -->
               <nldd-tag v-if="resultTag(index)" :color="resultTag(index).color" :text="resultTag(index).text"></nldd-tag>
               <nldd-button size="xs" variant="secondary" start-icon="play" :text="t('scenario.run')" :loading="runs[index]?.status === 'running' || undefined" :disabled="(anyRunning && runs[index]?.status !== 'running') || undefined" @click="run(index)"></nldd-button>
-              <nldd-button v-if="runs[index]?.traceText" size="xs" variant="neutral-tinted" start-icon="list" text="Trace" @click="activeTrace = index"></nldd-button>
+              <nldd-button v-if="runs[index]?.traceText" size="xs" variant="neutral-tinted" start-icon="list" :text="t('scenario.trace')" @click="activeTrace = index"></nldd-button>
               <nldd-icon-button size="xs" variant="neutral-transparent" :icon="open[index] ? 'chevron-up' : 'chevron-down'" :text="open[index] ? 'Stappen verbergen' : 'Stappen tonen'" :expanded="open[index] || undefined" @click="open[index] = !open[index]"></nldd-icon-button>
             </nldd-container>
             <nldd-container v-if="open[index]" padding-inline="16" padding-bottom="12" gap="12">

@@ -261,7 +261,7 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
     <PresentationDeck />
     <nldd-bar-split-view>
       <nldd-container slot="toolbar" padding="8" background="base">
-        <nldd-toolbar size="md" label="Werkruimte">
+        <nldd-toolbar size="md" :label="t('app.toolbar.label')">
           <!-- Eén tab-bar met alle tabbladen, niet één per tabblad. Een tab-bar
                per tabblad leek de overloop netjes op te lossen, maar elke bar
                rendert zijn eigen `<nav>`-landmark en regelt pijltjesnavigatie
