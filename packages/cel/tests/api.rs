@@ -783,15 +783,462 @@ fn synthese_controle_bij_het_opstarten() {
         &|t: String| t.replace("veld: aanduiding}", "veld: aanduiding_x}"),
         "levert geen 'aanduiding_x'",
     );
-    // Synthese zonder portaal.
+    // Synthese zonder portaal en zonder besluit.
     geval(
         &|t: String| {
-            let (voor, na) = t.split_once("portaal:").unwrap();
+            let (voor, na) = t.split_once("rollen:").unwrap();
             let (_, synthese) = na.split_once("synthese:").unwrap();
+            let (synthese, _) = synthese.split_once("behandeling:").unwrap();
             format!("{voor}synthese:{synthese}")
         },
-        "synthese zonder portaal",
+        "synthese zonder portaal en zonder besluit",
     );
+}
+
+#[test]
+fn besluit_controle_bij_het_opstarten() {
+    let geval = |aanpassing: &dyn Fn(String) -> String, verwacht: &str| {
+        let cellen = eigen_cellen(&[("afnemer", aanpassing), ("register", &|t: String| t)]);
+        let data = tempfile::tempdir().unwrap();
+        let fouten = runtime_op(&cellen.path().join("cellen"), data.path())
+            .err()
+            .unwrap();
+        assert!(
+            fouten
+                .iter()
+                .any(|f| f.starts_with("cel 'test_afnemer': ") && f.contains(verwacht)),
+            "verwacht '{verwacht}' in {fouten:?}"
+        );
+    };
+    geval(
+        &|t: String| t.replace("  behandelaar: medewerker\n", ""),
+        "behandeling zonder rol behandelaar",
+    );
+    geval(
+        &|t: String| t.replace("  aanvrager: eherkenning\n", ""),
+        "portaal zonder rol aanvrager",
+    );
+    geval(
+        &|t: String| {
+            t.replace(
+                "werkvoorraad: werkvoorraad",
+                "werkvoorraad: aanvraag_inhoud",
+            )
+        },
+        "werkvoorraad 'aanvraag_inhoud' is geen lijst",
+    );
+    geval(
+        &|t: String| {
+            t.replace(
+                "uitkomsten: [vastgesteld_bedrag,",
+                "uitkomsten: [bestaat_niet,",
+            )
+        },
+        "heeft geen uitkomst 'bestaat_niet'",
+    );
+    geval(
+        &|t: String| {
+            t.replace(
+                "lexostatussen: [aanvraag_inhoud, zaakverloop]",
+                "lexostatussen: [zaakverloop, werkvoorraad]",
+            )
+        },
+        "lexostatus 'werkvoorraad' is een lijst",
+    );
+    geval(
+        &|t: String| t.replace("{parameter: besluitdatum,", "{parameter: onbekend_oordeel,"),
+        "'onbekend_oordeel' is geen parameter van testregeling_afnemer#3",
+    );
+    geval(
+        &|t: String| {
+            t.replace(
+                "      bekendgemaakt: false\n",
+                "      bekendgemaakt: false\n      besluitdatum: null\n",
+            )
+        },
+        "parameter 'besluitdatum' komt uit meer dan een bron",
+    );
+    geval(
+        &|t: String| t.replace("      datum_bekendmaking: null\n", "      datum_bekendmaking: null\n      opgeschorte_dagen: null\n"),
+        "parameter 'opgeschorte_dagen' komt uit meer dan een bron: de eigen lexostatus 'zaakverloop', de stand bij besluit",
+    );
+}
+
+// --- De behandelaar: werkvoorraad, zaak en proefbesluit ---
+
+const AFNEMER: &str = "/cellen/test_afnemer";
+
+async fn afnemer_indienen(app: &Router, kvk: &str) -> String {
+    let (_, _, cookie) = vraag(
+        app,
+        "POST",
+        &format!("{AFNEMER}/api/eherkenning/login"),
+        None,
+        Some(json!({"kvk": kvk, "persoon": "A. Tester", "machtiging": "volledig"})),
+    )
+    .await;
+    let (status, body, _) = vraag(
+        app,
+        "POST",
+        &format!("{AFNEMER}/api/aanvraag"),
+        cookie.as_deref(),
+        Some(afnemer_concept(Some("VOORBEELD"))),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    body["gram"]["zaakkenmerk"].as_str().unwrap().to_string()
+}
+
+async fn behandelaar(app: &Router) -> String {
+    let (status, body, cookie) = vraag(
+        app,
+        "POST",
+        &format!("{AFNEMER}/api/medewerker/login"),
+        None,
+        Some(json!({"naam": "B. Behandelaar"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["naam"], "B. Behandelaar");
+    cookie.unwrap()
+}
+
+/// Voeg een gram toe aan de kroniek van de afnemer, zoals stap voor stap
+/// vastleggen dat later zal doen. De runtime leest de kroniek bij elke vraag.
+fn voeg_gram_toe(data: &Path, name: &str, zaak: &str, fields: Value) {
+    let (type_, stage) = if name == "besluit_genomen" {
+        ("decretogram", Some("BESLUIT"))
+    } else {
+        ("executogram", None)
+    };
+    let mut gram = json!({
+        "kind": "chronolexogram", "type": type_, "name": name,
+        "chronicle": "test_afnemer", "recording_actor": "test_afnemer",
+        "grondslag": ["testregeling_afnemer#3"], "op_moment": "2025-03-13T09:00:00+01:00",
+        "zaak": "volgt", "zaakkenmerk": zaak,
+        "stroom": {"id": "test_afnemer_zaakverloop", "sha256": "0".repeat(64)},
+        "fields": fields,
+    });
+    if let Some(s) = stage {
+        gram["stage"] = json!(s);
+    }
+    schema::valideer(Soort::Gram, &gram).unwrap();
+    let pad = data.join("test_afnemer/test_afnemer.jsonl");
+    let mut tekst = std::fs::read_to_string(&pad).unwrap();
+    tekst.push_str(&format!("{gram}\n"));
+    std::fs::write(&pad, tekst).unwrap();
+}
+
+#[tokio::test]
+async fn rollen_bepalen_wie_wat_mag() {
+    let data = tempfile::tempdir().unwrap();
+    let app = app(data.path());
+    let een = afnemer_indienen(&app, "12345678").await;
+    let _twee = afnemer_indienen(&app, "87654321").await;
+
+    // Zonder login: niets.
+    let (status, _, _) = vraag(
+        &app,
+        "GET",
+        &format!("{AFNEMER}/api/werkvoorraad"),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, _, _) = vraag(&app, "GET", &format!("{AFNEMER}/api/kroniek"), None, None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    // De aanvrager: zijn eigen grammen, geen werkvoorraad en geen zaak.
+    let (_, _, aanvrager) = vraag(
+        &app,
+        "POST",
+        &format!("{AFNEMER}/api/eherkenning/login"),
+        None,
+        Some(json!({"kvk": "12345678", "persoon": "A", "machtiging": "volledig"})),
+    )
+    .await;
+    let aanvrager = aanvrager.as_deref();
+    for (methode, pad) in [
+        ("GET", format!("{AFNEMER}/api/werkvoorraad")),
+        ("GET", format!("{AFNEMER}/api/zaken/{een}")),
+        ("POST", format!("{AFNEMER}/api/zaken/{een}/proefbesluit")),
+        ("GET", format!("{AFNEMER}/api/medewerker/sessie")),
+    ] {
+        let (status, body, _) = vraag(&app, methode, &pad, aanvrager, Some(json!({}))).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{methode} {pad}: {body}");
+    }
+    let (_, kroniek, _) = vraag(
+        &app,
+        "GET",
+        &format!("{AFNEMER}/api/kroniek"),
+        aanvrager,
+        None,
+    )
+    .await;
+    assert_eq!(kroniek.as_array().unwrap().len(), 1);
+
+    // De behandelaar: alle grammen, en het portaal niet.
+    let b = behandelaar(&app).await;
+    let (_, kroniek, _) = vraag(
+        &app,
+        "GET",
+        &format!("{AFNEMER}/api/kroniek"),
+        Some(&b),
+        None,
+    )
+    .await;
+    assert_eq!(kroniek.as_array().unwrap().len(), 2);
+    let (status, _, _) = vraag(
+        &app,
+        "POST",
+        &format!("{AFNEMER}/api/aanvraag/toets"),
+        Some(&b),
+        Some(afnemer_concept(Some("VOORBEELD"))),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _, _) = vraag(
+        &app,
+        "GET",
+        &format!("{AFNEMER}/api/eherkenning/sessie"),
+        Some(&b),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // Een lege naam is geen medewerker; een cel zonder rol behandelaar heeft
+    // geen medewerkerslogin en geen werkvoorraad.
+    let (status, _, _) = vraag(
+        &app,
+        "POST",
+        &format!("{AFNEMER}/api/medewerker/login"),
+        None,
+        Some(json!({"naam": " "})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    for pad in ["/api/medewerker/login", "/api/werkvoorraad"] {
+        let (status, _, _) = vraag(
+            &app,
+            "POST",
+            &format!("{INSTANTIE}{pad}"),
+            None,
+            Some(json!({})),
+        )
+        .await;
+        assert!(
+            status == StatusCode::NOT_FOUND || status == StatusCode::METHOD_NOT_ALLOWED,
+            "{pad}: {status}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn werkvoorraad_is_een_lijst_van_zaken_zonder_besluit() {
+    let data = tempfile::tempdir().unwrap();
+    let app = app(data.path());
+    let een = afnemer_indienen(&app, "12345678").await;
+    let twee = afnemer_indienen(&app, "87654321").await;
+    let b = behandelaar(&app).await;
+
+    let (status, w, _) = vraag(
+        &app,
+        "GET",
+        &format!("{AFNEMER}/api/werkvoorraad"),
+        Some(&b),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{w}");
+    assert_eq!(w["naam"], "werkvoorraad");
+    assert_eq!(
+        w["parameters"],
+        json!({}),
+        "een lijst heeft geen parameters"
+    );
+    let lijst = w["lijst"].as_array().unwrap();
+    assert_eq!(lijst.len(), 2);
+    let regel = lijst
+        .iter()
+        .find(|r| r["zaakkenmerk"] == een.as_str())
+        .unwrap();
+    assert_eq!(
+        regel["velden"],
+        json!({"ontvangen_op": "2025-03-12", "aanvrager": "Vereniging Voorbeeld", "kvk": "12345678"})
+    );
+
+    // Een verloopgram laat de zaak staan; een besluit haalt haar eraf.
+    voeg_gram_toe(data.path(), "termijn_opgeschort", &een, json!({"dagen": 5}));
+    let (_, w, _) = vraag(
+        &app,
+        "GET",
+        &format!("{AFNEMER}/api/werkvoorraad"),
+        Some(&b),
+        None,
+    )
+    .await;
+    assert_eq!(w["lijst"].as_array().unwrap().len(), 2);
+    voeg_gram_toe(
+        data.path(),
+        "besluit_genomen",
+        &een,
+        json!({"vastgesteld_bedrag": 6000}),
+    );
+    let (_, w, _) = vraag(
+        &app,
+        "GET",
+        &format!("{AFNEMER}/api/werkvoorraad"),
+        Some(&b),
+        None,
+    )
+    .await;
+    let lijst = w["lijst"].as_array().unwrap();
+    assert_eq!(lijst.len(), 1);
+    assert_eq!(lijst[0]["zaakkenmerk"], twee.as_str());
+
+    // De cellenlijst noemt de werkvoorraad een lijst, met kolommen.
+    let (_, cellen, _) = vraag(&app, "GET", "/api/cellen", None, None).await;
+    let werkvoorraad = cellen[0]["lexostatussen"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|l| l["name"] == "werkvoorraad")
+        .unwrap();
+    assert_eq!(werkvoorraad["lijst"], json!(true));
+    assert_eq!(werkvoorraad["parameters"], json!([]));
+    assert_eq!(
+        cellen[0]["rollen"],
+        json!({"aanvrager": true, "behandelaar": true})
+    );
+    assert_eq!(cellen[0]["behandeling"]["werkvoorraad"], "werkvoorraad");
+}
+
+#[tokio::test]
+async fn zaak_met_proefbesluit_zonder_vastleggen() {
+    let data = tempfile::tempdir().unwrap();
+    let app = app(data.path());
+    let zaak = afnemer_indienen(&app, "12345678").await;
+    let b = behandelaar(&app).await;
+    let kroniek = data.path().join("test_afnemer/test_afnemer.jsonl");
+    let voor = std::fs::read_to_string(&kroniek).unwrap();
+
+    // Zonder oordelen: niet te nemen, en het proefbesluit zegt wat er mist.
+    let (status, z, _) = vraag(
+        &app,
+        "GET",
+        &format!("{AFNEMER}/api/zaken/{zaak}"),
+        Some(&b),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{z}");
+    assert_eq!(z["grammen"].as_array().unwrap().len(), 1);
+    assert_eq!(z["besluit"]["artikel"], "testregeling_afnemer#3");
+    assert_eq!(
+        z["besluit"]["formulier"],
+        json!([
+            {"naam": "besluitdatum", "label": "Besluitdatum", "type": "datum"},
+            {"naam": "feiten_vergaard", "label": "De relevante feiten zijn vergaard", "type": "janee", "groep": "Zorgvuldigheid"}
+        ])
+    );
+    let p = &z["proefbesluit"];
+    assert_eq!(p["te_nemen"], json!(false), "{p}");
+    assert!(p.get("uitkomsten").is_none());
+    assert!(
+        p["reden"]
+            .as_str()
+            .unwrap()
+            .starts_with("niet te nemen: mist "),
+        "{p}"
+    );
+    let niet: Vec<&str> = p["niet_geleverd"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|n| n["naam"].as_str().unwrap())
+        .collect();
+    assert_eq!(niet, ["besluitdatum", "feiten_vergaard"]);
+
+    // Met oordelen: te nemen, met herkomst per parameter.
+    let (status, p, _) = vraag(
+        &app,
+        "POST",
+        &format!("{AFNEMER}/api/zaken/{zaak}/proefbesluit"),
+        Some(&b),
+        Some(json!({"formulier": {"besluitdatum": "2025-03-20", "feiten_vergaard": true}})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{p}");
+    assert_eq!(p["te_nemen"], json!(true), "{p}");
+    assert_eq!(p["uitkomsten"]["vastgesteld_bedrag"], json!(6000));
+    assert_eq!(p["uitkomsten"]["besluit_tijdig"], json!(false));
+    assert_eq!(p["uitkomsten"]["besluitdeadline"], json!("2025-04-11"));
+    assert_eq!(p["uitkomsten"]["zorgvuldig"], json!(true));
+    assert_eq!(
+        p["herkomst"]["besluitdatum"],
+        json!({"bron": "behandelaar"})
+    );
+    assert_eq!(
+        p["herkomst"]["datum_bekendmaking"],
+        json!({"bron": "stand_bij_besluit"})
+    );
+    assert_eq!(
+        p["herkomst"]["opgeschorte_dagen"],
+        json!({"bron": "eigen", "lexostatus": "zaakverloop"})
+    );
+    assert_eq!(
+        p["herkomst"]["aanvraagdatum"],
+        json!({"bron": "eigen", "lexostatus": "aanvraag_inhoud"})
+    );
+    assert_eq!(p["herkomst"]["zetels_op_lijst"]["cel"], "test_register");
+    // Geen aanvulling gevraagd: de reductie leest het ontbreken als null.
+    assert_eq!(p["parameters"]["datum_uitnodiging_aanvulling"], Value::Null);
+    assert_eq!(p["parameters"]["opgeschorte_dagen"], json!(0));
+    assert_eq!(p["niet_geleverd"], json!([]));
+
+    // Een opschorting in de zaak schuift de uiterste datum op.
+    voeg_gram_toe(
+        data.path(),
+        "termijn_opgeschort",
+        &zaak,
+        json!({"dagen": 5}),
+    );
+    let (_, p, _) = vraag(
+        &app,
+        "POST",
+        &format!("{AFNEMER}/api/zaken/{zaak}/proefbesluit"),
+        Some(&b),
+        Some(json!({"formulier": {"besluitdatum": "2025-03-20", "feiten_vergaard": true}})),
+    )
+    .await;
+    assert_eq!(p["uitkomsten"]["besluitdeadline"], json!("2025-04-16"));
+
+    // Er is niets vastgelegd, behalve het verloopgram van deze test.
+    let na = std::fs::read_to_string(&kroniek).unwrap();
+    assert_eq!(na.lines().count(), voor.lines().count() + 1);
+
+    // Een oordeel dat het formulier niet kent, en een onbekende zaak.
+    let (status, f, _) = vraag(
+        &app,
+        "POST",
+        &format!("{AFNEMER}/api/zaken/{zaak}/proefbesluit"),
+        Some(&b),
+        Some(json!({"formulier": {"bekendgemaakt": true}})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(f["fout"].as_str().unwrap().contains("'bekendgemaakt'"));
+    let (status, _, _) = vraag(
+        &app,
+        "GET",
+        &format!("{AFNEMER}/api/zaken/00000000-0000-4000-8000-000000000009"),
+        Some(&b),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

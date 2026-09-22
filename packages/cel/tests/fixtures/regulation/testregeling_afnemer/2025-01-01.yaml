@@ -3,6 +3,13 @@
 # recht. Artikel 1 is een TOETS die feiten uit de aanvraag combineert met
 # feiten uit een register: via een invoer uit de testregeling register en via
 # artikel 2, dat artikel 1 zonder parameterbinding aanroept.
+# Artikel 3 is het besluit op de aanvraag (een BESCHIKKING). Zijn parameters
+# komen uit vier bronnen: de aanvraag en het verloop van de zaak (eigen
+# lexostatussen), het register (synthese, via artikel 1 en 2 in dezelfde
+# regeling), de oordelen van de behandelaar, en de stand bij besluit (de
+# bekendmaking, die pas na het besluit komt). Een aanroep binnen dezelfde
+# regeling deelt de parameters; een aanroep van een andere regeling krijgt
+# alleen wat `parameters` meegeeft.
 $schema: >-
   https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
 $id: testregeling_afnemer
@@ -99,3 +106,115 @@ articles:
               operation: GREATER_THAN
               subject: $zetels_op_lijst
               value: 0
+  - number: '3'
+    url: https://example.com/testregeling_afnemer/3
+    text: >-
+      1. De instantie besluit op een toelaatbare aanvraag binnen dertig dagen,
+      verlengd met de dagen waarin de termijn was opgeschort, en stelt de
+      subsidie vast op duizend euro per zetel op de lijst.
+      2. Het besluit is tijdig als het binnen die termijn is bekendgemaakt.
+      3. De instantie vergaart de relevante feiten.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: aanvraagdatum
+            type: date
+            required: true
+          - name: zetels_op_lijst
+            type: number
+            required: true
+          - name: besluitdatum
+            type: date
+            nullable: true
+            required: true
+          - name: feiten_vergaard
+            type: boolean
+            required: false
+          - name: datum_bekendmaking
+            type: date
+            nullable: true
+            required: true
+          - name: bekendgemaakt
+            type: boolean
+            required: false
+          - name: datum_uitnodiging_aanvulling
+            type: date
+            nullable: true
+            required: true
+          - name: opgeschorte_dagen
+            type: number
+            required: true
+        input:
+          - name: toelaatbaar
+            type: boolean
+            source:
+              output: aanvraag_toelaatbaar
+        output:
+          - name: besluitdeadline
+            type: date
+          - name: aanvulling_gevraagd
+            type: boolean
+          - name: vastgesteld_bedrag
+            type: number
+          - name: besluit_tijdig
+            type: boolean
+          - name: zorgvuldig
+            type: boolean
+        actions:
+          - output: besluitdeadline
+            value:
+              operation: DATE_ADD
+              date: $aanvraagdatum
+              days:
+                operation: ADD
+                values:
+                  - 30
+                  - $opgeschorte_dagen
+          - output: aanvulling_gevraagd
+            value:
+              operation: NOT
+              value:
+                operation: EQUALS
+                subject: $datum_uitnodiging_aanvulling
+                value: null
+          - output: vastgesteld_bedrag
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $besluitdatum
+                          value: null
+                      - operation: EQUALS
+                        subject: $toelaatbaar
+                        value: true
+                  then:
+                    operation: MULTIPLY
+                    values:
+                      - $zetels_op_lijst
+                      - 1000
+              default: 0
+          - output: besluit_tijdig
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $bekendgemaakt
+                  value: true
+                - operation: NOT
+                  value:
+                    operation: EQUALS
+                    subject: $datum_bekendmaking
+                    value: null
+          - output: zorgvuldig
+            value:
+              operation: EQUALS
+              subject: $feiten_vergaard
+              value: true

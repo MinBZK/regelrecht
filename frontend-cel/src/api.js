@@ -32,6 +32,13 @@ export function celApi(id) {
     toets: (external) => vraag('POST', `${p}/aanvraag/toets`, { external }),
     indienen: (external) => vraag('POST', `${p}/aanvraag`, { external }),
     kroniek: () => vraag('GET', `${p}/kroniek`),
+    medewerkerInloggen: (naam) => vraag('POST', `${p}/medewerker/login`, { naam }),
+    medewerkerSessie: () => vraag('GET', `${p}/medewerker/sessie`),
+    medewerkerUitloggen: () => vraag('POST', `${p}/medewerker/logout`),
+    werkvoorraad: () => vraag('GET', `${p}/werkvoorraad`),
+    zaak: (zaakkenmerk) => vraag('GET', `${p}/zaken/${encodeURIComponent(zaakkenmerk)}`),
+    proefbesluit: (zaakkenmerk, formulier) =>
+      vraag('POST', `${p}/zaken/${encodeURIComponent(zaakkenmerk)}/proefbesluit`, { formulier }),
     lexostatus: (naam, invoer) =>
       vraag('GET', `${p}/lexostatus/${encodeURIComponent(naam)}?${new URLSearchParams(invoer)}`),
   };

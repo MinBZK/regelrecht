@@ -34,6 +34,86 @@ pub struct Uitslag {
     pub ontbreekt: Vec<String>,
 }
 
+/// Wat de engine van een of meer uitkomsten maakte.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Evaluatie {
+    /// De uitkomsten met een waarde zonder onbekende feiten.
+    pub waarden: BTreeMap<String, Value>,
+    /// Wat de engine miste, zonder dubbelen, in de volgorde van de uitkomsten.
+    pub mist: Vec<String>,
+    /// Waarom een uitkomst geen waarde kreeg, als de engine dat niet als
+    /// ontbrekend feit noemde.
+    pub fout: Option<String>,
+}
+
+impl Evaluatie {
+    /// Of elke gevraagde uitkomst een waarde heeft.
+    pub fn volledig(&self, uitkomsten: &[&str]) -> bool {
+        self.fout.is_none()
+            && self.mist.is_empty()
+            && uitkomsten.iter().all(|u| self.waarden.contains_key(*u))
+    }
+
+    /// Waarom niet volledig, in woorden; `voorvoegsel` is bijvoorbeeld "niet
+    /// te beoordelen".
+    pub fn reden(&self, voorvoegsel: &str) -> String {
+        match (&self.fout, self.mist.is_empty()) {
+            (_, false) => format!("{voorvoegsel}: mist {}", self.mist.join(", ")),
+            (Some(f), true) => format!("{voorvoegsel}: {f}"),
+            (None, true) => voorvoegsel.to_string(),
+        }
+    }
+}
+
+/// Laat de engine `uitkomsten` van `regeling` evalueren met deze parameters
+/// op `datum` (JJJJ-MM-DD). Er wordt niets aangevuld: een uitkomst met een
+/// onbekend feit heeft geen waarde, en dat feit staat in `mist`.
+pub fn evalueer(
+    service: &LawExecutionService,
+    regeling: &str,
+    uitkomsten: &[&str],
+    parameters: &BTreeMap<String, Value>,
+    datum: &str,
+) -> Evaluatie {
+    let mut uit = Evaluatie::default();
+    let invoer: BTreeMap<String, EngineValue> = parameters
+        .iter()
+        .map(|(k, v)| (k.clone(), EngineValue::from(v)))
+        .collect();
+    match service.evaluate_law(regeling, uitkomsten, invoer, datum) {
+        Ok(resultaat) => {
+            for u in uitkomsten {
+                match resultaat.outputs.get(*u) {
+                    Some(w) if w.contains_unknown() => {
+                        for f in w.missing_facts() {
+                            if !uit.mist.contains(&f.name) {
+                                uit.mist.push(f.name.clone());
+                            }
+                        }
+                    }
+                    Some(w) => {
+                        if let Ok(v) = serde_json::to_value(w) {
+                            uit.waarden.insert((*u).to_string(), v);
+                        }
+                    }
+                    None => {
+                        uit.fout
+                            .get_or_insert_with(|| format!("de engine gaf geen waarde voor '{u}'"));
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            let (mist, reden) = verklaar(&e);
+            match mist {
+                Some(m) => uit.mist.push(m),
+                None => uit.fout = Some(reden),
+            }
+        }
+    }
+    uit
+}
+
 /// Evalueer `uitkomst` van `regeling` met deze parameters op `datum`
 /// (JJJJ-MM-DD). `ontbreekt` gaat ongewijzigd mee in de uitslag.
 pub fn toets(
@@ -44,54 +124,16 @@ pub fn toets(
     ontbreekt: Vec<String>,
     datum: &str,
 ) -> Uitslag {
-    let mut uitslag = Uitslag {
+    let e = evalueer(service, regeling, &[uitkomst], parameters, datum);
+    let te_beoordelen = e.volledig(&[uitkomst]);
+    Uitslag {
         regeling: regeling.to_string(),
         uitkomst: uitkomst.to_string(),
-        te_beoordelen: false,
-        waarde: None,
-        mist: Vec::new(),
-        reden: None,
+        te_beoordelen,
+        waarde: e.waarden.get(uitkomst).cloned(),
+        reden: (!te_beoordelen).then(|| e.reden("niet te beoordelen")),
+        mist: e.mist,
         ontbreekt,
-    };
-    let invoer: BTreeMap<String, EngineValue> = parameters
-        .iter()
-        .map(|(k, v)| (k.clone(), EngineValue::from(v)))
-        .collect();
-    match service.evaluate_law(regeling, &[uitkomst], invoer, datum) {
-        Ok(resultaat) => match resultaat.outputs.get(uitkomst) {
-            Some(w) if w.contains_unknown() => {
-                let mut mist: Vec<String> = Vec::new();
-                for f in w.missing_facts() {
-                    if !mist.contains(&f.name) {
-                        mist.push(f.name.clone());
-                    }
-                }
-                uitslag.reden = Some(niet_te_beoordelen(&mist));
-                uitslag.mist = mist;
-            }
-            Some(w) => {
-                uitslag.te_beoordelen = true;
-                uitslag.waarde = serde_json::to_value(w).ok();
-            }
-            None => uitslag.reden = Some(format!("de engine gaf geen waarde voor '{uitkomst}'")),
-        },
-        Err(e) => {
-            let (mist, reden) = verklaar(&e);
-            uitslag.reden = Some(match &mist {
-                Some(m) => niet_te_beoordelen(std::slice::from_ref(m)),
-                None => format!("niet te beoordelen: {reden}"),
-            });
-            uitslag.mist = mist.into_iter().collect();
-        }
-    }
-    uitslag
-}
-
-fn niet_te_beoordelen(mist: &[String]) -> String {
-    if mist.is_empty() {
-        "niet te beoordelen".to_string()
-    } else {
-        format!("niet te beoordelen: mist {}", mist.join(", "))
     }
 }
 
@@ -101,6 +143,8 @@ fn verklaar(e: &EngineError) -> (Option<String>, String) {
         EngineError::TracedError { source, .. } => verklaar(source),
         EngineError::VariableNotFound(naam) => (Some(naam.clone()), e.to_string()),
         EngineError::MissingParameter { name, .. } => (Some(name.clone()), e.to_string()),
+        // Een null waar de regeling er geen toestaat: ook dat feit is er niet.
+        EngineError::NullForNonNullable { field, .. } => (Some(field.clone()), e.to_string()),
         ander => (None, ander.to_string()),
     }
 }

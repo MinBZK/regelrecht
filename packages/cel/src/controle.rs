@@ -14,8 +14,13 @@
 //!    filter gelezen, of staat met reden in `niet_gereduceerd`.
 //! 4. Geen naamsbotsing: een parameter krijgt maar een afleiding.
 //! 5. Alleen een event met een zaak (`zaak: opent` of `volgt`) heeft een
-//!    zaakkenmerk: een filter op `zaakkenmerk`, of een input `zaakkenmerk`,
-//!    mag alleen events met een zaak aanwijzen.
+//!    zaakkenmerk: een filter op `zaakkenmerk`, een input `zaakkenmerk` of
+//!    `groepeer: zaakkenmerk` mag alleen events met een zaak aanwijzen, ook
+//!    in `zonder`.
+//! 6. Een lijst-lexostatus (`groepeer`) heeft kolommen, geen parameters: haar
+//!    afleidingen hoeven geen parameter van een artikel te zijn en botsen niet
+//!    met die van andere lexostatussen. Haar `zonder` wijst een event aan in
+//!    haar kroniek, anders zou het nooit iets weglaten.
 //!
 //! Heeft de cel een portaal, dan wijst dat naar een bestaand event, een
 //! bestaande lexostatus en een bestaande uitkomst, van een artikel uit de
@@ -47,6 +52,7 @@ fn event_past(filter: &Filter, stroom: &Stroom, event: &Event) -> bool {
             "name" => Some(event.name.as_str()),
             "type" => Some(event.type_.as_str()),
             "soort" => event.soort.as_deref(),
+            "stage" => event.stage.as_deref(),
             "recording_actor" => Some(stroom.recording_actor.as_str()),
             "chronicle" => Some(stroom.chronicle.as_str()),
             _ => return true,
@@ -77,6 +83,21 @@ pub fn events_voor<'a>(
         }
     }
     uit
+}
+
+/// De events in een kroniek die door een filter kunnen komen, los van het
+/// filter van een lexostatus (voor `zonder`).
+pub fn events_in<'a>(
+    kroniek: &str,
+    filter: &Filter,
+    strommen: &'a [Stroom],
+) -> Vec<StroomEvent<'a>> {
+    strommen
+        .iter()
+        .filter(|s| s.chronicle == kroniek)
+        .flat_map(|s| s.events.iter().map(move |e| (s, e)))
+        .filter(|(s, e)| event_past(filter, s, e))
+        .collect()
 }
 
 /// Alle controles. `Ok` als de cel mag starten.
@@ -190,6 +211,26 @@ fn verwijzingen(
                 }
             }
         }
+        if !def.reduction.zonder.is_empty() {
+            inputs_in_filter(def, &def.reduction.zonder, fouten);
+            let zonder = events_in(&def.reduction.kroniek, &def.reduction.zonder, strommen);
+            if zonder.is_empty() {
+                fouten.push(format!(
+                    "lexostatus '{}': zonder wijst geen event aan in kroniek '{}', en zou dus nooit een zaak weglaten",
+                    def.name, def.reduction.kroniek
+                ));
+            }
+            for (_, event) in &zonder {
+                for pad in reductie::filter_paden(&def.reduction.zonder) {
+                    if !event.heeft_pad(pad) {
+                        fouten.push(format!(
+                            "lexostatus '{}': zonder filtert op veldpad '{pad}', dat niet bestaat in event '{}'",
+                            def.name, event.name
+                        ));
+                    }
+                }
+            }
+        }
         for naam in def.reduction.extra_velden.keys() {
             if def.reduction.afleidingen.contains_key(naam) {
                 fouten.push(format!(
@@ -199,7 +240,8 @@ fn verwijzingen(
             }
         }
         for (param, afleiding) in def.alle_afleidingen() {
-            let is_parameter = def.reduction.afleidingen.contains_key(param);
+            // Een kolom van een lijst is geen parameter: ze gaat niet naar de engine.
+            let is_parameter = def.reduction.afleidingen.contains_key(param) && !def.is_lijst();
             if afleiding.op_gekozen_gram() && def.reduction.kies.is_none() {
                 fouten.push(format!(
                     "lexostatus '{}', afleiding '{param}': leest het gekozen gram, maar de lexostatus kiest er geen (kies)",
@@ -275,6 +317,13 @@ fn weesvelden(strommen: &[Stroom], lexostatussen: &Lexostatussen, fouten: &mut V
                 if events_voor(def, None, strommen).iter().any(dit_event) {
                     gelezen.extend(reductie::filter_paden(&def.reduction.filter));
                 }
+                if events_in(&def.reduction.kroniek, &def.reduction.zonder, strommen)
+                    .iter()
+                    .any(dit_event)
+                    && !def.reduction.zonder.is_empty()
+                {
+                    gelezen.extend(reductie::filter_paden(&def.reduction.zonder));
+                }
                 for (_, a) in def.alle_afleidingen() {
                     if events_voor(def, a.filter(), strommen).iter().any(dit_event) {
                         gelezen.extend(a.gelezen_paden());
@@ -309,7 +358,11 @@ fn weesvelden(strommen: &[Stroom], lexostatussen: &Lexostatussen, fouten: &mut V
 fn botsingen(strommen: &[Stroom], lexostatussen: &Lexostatussen, fouten: &mut Vec<String>) {
     // (stroom, event, parameter) -> lexostatussen die hem afleiden
     let mut per: BTreeMap<(String, String, String), Vec<&str>> = BTreeMap::new();
-    for def in &lexostatussen.lexostatus_definitions {
+    for def in lexostatussen
+        .lexostatus_definitions
+        .iter()
+        .filter(|d| !d.is_lijst())
+    {
         for (param, a) in &def.reduction.afleidingen {
             for (s, e) in events_voor(def, a.filter(), strommen) {
                 let defs = per
@@ -349,6 +402,22 @@ fn zaakkenmerken(strommen: &[Stroom], lexostatussen: &Lexostatussen, fouten: &mu
         )
     };
     for def in &lexostatussen.lexostatus_definitions {
+        if def.is_lijst() {
+            let mut events = zonder_zaak(events_voor(def, None, strommen));
+            if !def.reduction.zonder.is_empty() {
+                events.extend(zonder_zaak(events_in(
+                    &def.reduction.kroniek,
+                    &def.reduction.zonder,
+                    strommen,
+                )));
+            }
+            if !events.is_empty() {
+                fouten.push(melding(
+                    &format!("lexostatus '{}': groepeer op 'zaakkenmerk'", def.name),
+                    events,
+                ));
+            }
+        }
         let input = def.inputs.iter().any(|i| i.name == "zaakkenmerk");
         let filter = def.reduction.filter.contains_key("zaakkenmerk");
         if input || filter {
@@ -430,6 +499,12 @@ fn portaal_(
             if def.reduction.kies.is_none() {
                 fouten.push(format!(
                     "portaal: lexostatus '{}' kiest geen gram (kies), en de toets reduceert een concept",
+                    def.name
+                ));
+            }
+            if def.is_lijst() {
+                fouten.push(format!(
+                    "portaal: lexostatus '{}' is een lijst (groepeer), en een lijst gaat nooit naar de engine",
                     def.name
                 ));
             }
@@ -855,5 +930,61 @@ mod tests {
         // Een extra veld hoeft geen parameter te zijn.
         let cel = format!("{CEL}      extra_velden:\n        naam: {{veld: inhoud.naam}}\n");
         draai(STROOM, &cel).unwrap();
+    }
+
+    // 6. Een lijst-lexostatus.
+    const LIJST: &str = "  - name: werkvoorraad\n    inputs: []\n    reduction:\n      kroniek: test_kroniek\n      filter: {type: indiening}\n      groepeer: zaakkenmerk\n      kies: laatste\n      afleidingen:\n        naam: {veld: inhoud.naam}\n        aanvraagjaar: {veld: inhoud.aanvraagjaar}\n";
+
+    #[test]
+    fn lijst_heeft_kolommen_geen_parameters() {
+        // `naam` is geen parameter, en `aanvraagjaar` botst niet met de
+        // afleiding in aanvraag_inhoud: een lijst gaat nooit naar de engine.
+        draai(STROOM, &format!("{CEL}{LIJST}")).unwrap();
+    }
+
+    #[test]
+    fn groepeer_vraagt_events_met_een_zaak() {
+        let stroom = STROOM.replace("zaak: opent", "zaak: geen");
+        let cel = CEL
+            .replace("inputs: [{name: zaakkenmerk, type: string}]", "inputs: []")
+            .replace(", zaakkenmerk: $zaakkenmerk", "");
+        faalt_met(
+            &stroom,
+            &format!("{cel}{LIJST}"),
+            "lexostatus 'werkvoorraad': groepeer op 'zaakkenmerk', maar event 'aanvraag_ontvangen'",
+        );
+    }
+
+    #[test]
+    fn zonder_wijst_een_event_aan() {
+        let lijst = LIJST.replace(
+            "      kies: laatste\n",
+            "      zonder: {stage: BESLUIT}\n      kies: laatste\n",
+        );
+        faalt_met(
+            STROOM,
+            &format!("{CEL}{lijst}"),
+            "lexostatus 'werkvoorraad': zonder wijst geen event aan in kroniek 'test_kroniek'",
+        );
+        // Wijst het een event aan, dan leest het ook zijn veldpaden.
+        let lijst = LIJST.replace("      kies: laatste\n", "      zonder: {name: aanvraag_ontvangen, inhoud.bestaat_niet: x}\n      kies: laatste\n");
+        faalt_met(
+            STROOM,
+            &format!("{CEL}{lijst}"),
+            "zonder filtert op veldpad 'inhoud.bestaat_niet'",
+        );
+    }
+
+    #[test]
+    fn portaal_toetst_geen_lijst() {
+        let cel = format!("{CEL}{LIJST}");
+        let celdef = CELDEF.replace("lexostatus: aanvraag_inhoud", "lexostatus: werkvoorraad");
+        let fouten = draai_met(STROOM, &cel, &celdef).unwrap_err();
+        assert!(
+            fouten
+                .iter()
+                .any(|f| f.contains("'werkvoorraad' is een lijst")),
+            "{fouten:?}"
+        );
     }
 }

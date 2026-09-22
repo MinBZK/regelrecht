@@ -109,6 +109,7 @@ mod tests {
             kind: "chronolexogram".into(),
             type_: "indiening".into(),
             soort: Some("melding".into()),
+            stage: None,
             name: "melding_ontvangen".into(),
             chronicle: "test_kroniek".into(),
             recording_actor: "test_instantie".into(),

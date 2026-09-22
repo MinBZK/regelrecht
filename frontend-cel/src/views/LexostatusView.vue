@@ -2,6 +2,7 @@
 // Een lexostatus van de cel opvragen: kies de lexostatus, vul de inputs in,
 // en zie de parameters die de reductie oplevert.
 import { computed, inject, ref } from 'vue';
+import { waardeTekst as waarde } from '../tekst.js';
 
 const props = defineProps({ lexostatussen: { type: Array, required: true } });
 const api = inject('api');
@@ -37,11 +38,9 @@ async function opvragen() {
   }
 }
 
-function waarde(w) {
-  if (w === true) return 'ja';
-  if (w === false) return 'nee';
-  return typeof w === 'string' ? w : JSON.stringify(w);
-}
+// Een lijst-lexostatus: een regel per zaak, met de kolommen als velden.
+const lijst = computed(() => uitkomst.value?.lijst ?? null);
+const kolommen = computed(() => definitie.value?.kolommen ?? []);
 
 const rijen = computed(() => {
   const u = uitkomst.value;
@@ -78,7 +77,25 @@ const rijen = computed(() => {
       <nldd-button variant="primary" type="submit" text="Opvragen" :loading="bezig || undefined"></nldd-button>
     </nldd-form-actions>
   </nldd-form>
-  <template v-if="uitkomst">
+  <template v-if="lijst">
+    <nldd-spacer size="24"></nldd-spacer>
+    <nldd-table
+      :columns="['minmax(280px,1.4fr)', ...kolommen.map(() => 'minmax(120px,1fr)')].join(' ')"
+      accessible-label="Regels van de lijst"
+      empty-text="Geen regels"
+      empty-supporting-text="Een lijst gaat nooit naar de engine."
+    >
+      <nldd-table-row slot="header">
+        <nldd-text-cell text="Zaakkenmerk"></nldd-text-cell>
+        <nldd-text-cell v-for="k in kolommen" :key="k" :text="k"></nldd-text-cell>
+      </nldd-table-row>
+      <nldd-table-row v-for="r in lijst" :key="r.zaakkenmerk">
+        <nldd-text-cell :text="r.zaakkenmerk"></nldd-text-cell>
+        <nldd-text-cell v-for="k in kolommen" :key="k" :text="waarde(r.velden[k])"></nldd-text-cell>
+      </nldd-table-row>
+    </nldd-table>
+  </template>
+  <template v-else-if="uitkomst">
     <nldd-spacer size="24"></nldd-spacer>
     <nldd-table columns="minmax(200px,1fr) minmax(160px,1fr) minmax(200px,1fr)" accessible-label="Parameters van de lexostatus">
       <nldd-table-row slot="header">

@@ -4,6 +4,7 @@
 // het label de veldnaam en elk veld tekst.
 import { computed, inject, onMounted, ref } from 'vue';
 import { external } from '../formulier.js';
+import { herkomstRijen } from '../tekst.js';
 import Invoer from '../components/Invoer.vue';
 import TabelInvoer from '../components/TabelInvoer.vue';
 
@@ -74,27 +75,10 @@ const uitslag = computed(() => toets.value?.uitslag ?? null);
 
 // Per parameter die naar de engine ging: de waarde en waar hij vandaan kwam,
 // de eigen lexostatus of een andere cel.
-const herkomst = computed(() => {
-  const h = toets.value?.herkomst ?? {};
-  const waarden = toets.value?.parameters ?? {};
-  return Object.entries(h).map(([naam, bron]) => ({
-    naam,
-    bron:
-      bron.bron === 'eigen'
-        ? `eigen lexostatus ${bron.lexostatus}`
-        : `cel ${bron.cel}, lexostatus ${bron.lexostatus} (${bron.transport})`,
-    waarde: waarden[naam],
-  }));
-});
+const herkomst = computed(() => herkomstRijen(toets.value?.parameters, toets.value?.herkomst));
 
 const bronnen = computed(() => toets.value?.bronnen ?? []);
 
-function tekst(w) {
-  if (w === true) return 'ja';
-  if (w === false) return 'nee';
-  if (w === undefined || w === null) return '';
-  return typeof w === 'string' ? w : JSON.stringify(w);
-}
 const uitslagTekst = computed(() => {
   const u = uitslag.value;
   if (!u) return '';
@@ -162,7 +146,7 @@ const uitslagToelichting = computed(() => {
           </nldd-table-row>
           <nldd-table-row v-for="h in herkomst" :key="h.naam">
             <nldd-text-cell :text="h.naam"></nldd-text-cell>
-            <nldd-text-cell :text="tekst(h.waarde)"></nldd-text-cell>
+            <nldd-text-cell :text="h.waarde"></nldd-text-cell>
             <nldd-text-cell :text="h.bron"></nldd-text-cell>
           </nldd-table-row>
         </nldd-table>

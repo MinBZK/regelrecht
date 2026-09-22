@@ -13,7 +13,14 @@
 //! Geen gram betekent binnen de eigen kroniek "nee" (`bestaat`, `bevat`) of
 //! nul (`som`): de cel spreekt alleen over haar eigen kroniek. Een waarde die
 //! er niet is (`veld` op een leeg veld, `kies` zonder gram) blijft weg; er
-//! wordt niets aangevuld.
+//! wordt niets aangevuld, tenzij de definitie met `geen_gram` zegt hoe zij
+//! afwezigheid leest (bijvoorbeeld null: niet gebeurd).
+//!
+//! Met `groepeer: zaakkenmerk` is een lexostatus een **lijst**: een regel per
+//! zaak waarvan ten minste een gram door `filter` komt, en met `zonder` geen
+//! gram door dat filter. `kies` en de afleidingen werken dan per zaak. Een
+//! lijst is voor de afnemer, zoals een behandelaar met een werkvoorraad; ze
+//! heeft geen parameters en gaat nooit naar de engine.
 //!
 //! `extra_velden` leidt waarden af die geen parameter zijn, zoals de invoer
 //! van een synthese-bron. Ze staan apart in de lexostatus en gaan nooit naar
@@ -64,6 +71,7 @@ pub const GRAM_SLEUTELS: &[&str] = &[
     "name",
     "type",
     "soort",
+    "stage",
     "zaakkenmerk",
     "recording_actor",
     "chronicle",
@@ -74,11 +82,25 @@ pub struct Reductie {
     pub kroniek: String,
     #[serde(default, skip_serializing_if = "Filter::is_empty")]
     pub filter: Filter,
+    /// Maakt van de lexostatus een lijst met een regel per zaak.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub groepeer: Option<Groepeer>,
+    /// Alleen met `groepeer`: een zaak met een gram door dit filter valt af.
+    #[serde(default, skip_serializing_if = "Filter::is_empty")]
+    pub zonder: Filter,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kies: Option<Kies>,
     pub afleidingen: BTreeMap<String, Afleiding>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub extra_velden: BTreeMap<String, Afleiding>,
+}
+
+/// Waarop een lijst-lexostatus groepeert.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Groepeer {
+    /// Een regel per zaak. Alleen events met een zaak hebben een zaakkenmerk.
+    Zaakkenmerk,
 }
 
 /// Welk gram telt als er meer zijn.
@@ -98,11 +120,18 @@ pub enum Kies {
 #[serde(untagged)]
 pub enum Afleiding {
     /// Over de grammen door `filter`: de waarde van `veld` in het laatste.
+    /// Komt geen gram door het filter, dan `geen_gram`, als dat er is.
     LaatsteVeld {
         #[serde(default, skip_serializing_if = "Filter::is_empty")]
         filter: Filter,
         kies: Kies,
         veld: String,
+        #[serde(
+            default,
+            deserialize_with = "aanwezig",
+            skip_serializing_if = "Option::is_none"
+        )]
+        geen_gram: Option<Value>,
     },
     /// Over de grammen door `filter`: of het lijstveld in het laatste de
     /// waarde bevat.
@@ -146,6 +175,11 @@ pub enum Afleiding {
     Moment {
         moment: Moment,
     },
+}
+
+/// Een sleutel die er staat, ook met de waarde null: `Some(Value::Null)`.
+fn aanwezig<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Value>, D::Error> {
+    Value::deserialize(d).map(Some)
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -199,6 +233,12 @@ impl LexostatusDefinitie {
             .afleidingen
             .iter()
             .chain(self.reduction.extra_velden.iter())
+    }
+
+    /// Of de lexostatus een lijst is (`groepeer`): geen parameters, en nooit
+    /// naar de engine.
+    pub fn is_lijst(&self) -> bool {
+        self.reduction.groepeer.is_some()
     }
 
     /// De namen die deze lexostatus levert: parameters en extra velden.
@@ -371,10 +411,12 @@ impl Afleiding {
                     serde_json::Number::from_f64(reeel).map(Value::Number)
                 }
             }
-            Afleiding::LaatsteVeld { veld, .. } => laatste(&door)?
-                .and_then(|g| g.veld(veld))
-                .filter(|w| gevuld(w))
-                .cloned(),
+            Afleiding::LaatsteVeld {
+                veld, geen_gram, ..
+            } => match laatste(&door)? {
+                Some(g) => g.veld(veld).filter(|w| gevuld(w)).cloned(),
+                None => geen_gram.clone(),
+            },
             Afleiding::LaatsteBevat { bevat, .. } => Some(Value::Bool(
                 laatste(&door)?
                     .and_then(|g| g.veld(&bevat.veld))
@@ -434,6 +476,23 @@ pub struct Lexostatus {
     /// Parameters met een afleiding waarover de kroniek niets zegt.
     #[serde(default)]
     pub niet_afgeleid: Vec<String>,
+    /// Bij een lijst-lexostatus (`groepeer`): de regels. Een lijst is voor de
+    /// afnemer en gaat nooit naar de engine; `parameters` is dan leeg.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lijst: Option<Vec<Regel>>,
+}
+
+/// Een regel van een lijst-lexostatus: een zaak.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Regel {
+    pub zaakkenmerk: String,
+    /// Het gekozen gram van de zaak, als de definitie er een kiest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_moment: Option<String>,
+    /// De afleidingen en extra velden, per zaak. Geen parameters.
+    pub velden: BTreeMap<String, Value>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub niet_afgeleid: Vec<String>,
 }
 
 /// De parameters van een lexostatus die zeggen dat iets ontbreekt: een
@@ -468,6 +527,7 @@ pub fn past(filter: &Filter, inputs: &Map<String, Value>, gram: &Gram) -> Result
             "name" => gram.name == verwacht,
             "type" => gram.type_ == verwacht,
             "soort" => gram.soort.as_deref() == Some(verwacht),
+            "stage" => gram.stage.as_deref() == Some(verwacht),
             "zaakkenmerk" => gram.zaakkenmerk.as_deref() == Some(verwacht),
             "recording_actor" => gram.recording_actor == verwacht,
             "chronicle" => gram.chronicle == verwacht,
@@ -484,31 +544,31 @@ pub fn past(filter: &Filter, inputs: &Map<String, Value>, gram: &Gram) -> Result
     Ok(true)
 }
 
-/// Reduceer de grammen van een kroniek tot een lexostatus. `None`: de
-/// definitie kiest een gram (`kies`) en geen gram komt door het filter.
-pub fn reduceer(
+/// Wat de afleidingen over een groep grammen opleveren.
+struct Afgeleid<'g> {
+    gekozen: Option<&'g Gram>,
+    parameters: BTreeMap<String, Value>,
+    extra_velden: BTreeMap<String, Value>,
+    niet_afgeleid: Vec<String>,
+}
+
+/// Kies zo nodig een gram uit `door` en pas elke afleiding toe. `None`: de
+/// definitie kiest een gram en er is er geen.
+fn leid_af_uit<'g>(
     definitie: &LexostatusDefinitie,
     inputs: &Map<String, Value>,
-    grammen: &[Gram],
-) -> Result<Option<Lexostatus>, String> {
+    door: &[&'g Gram],
+) -> Result<Option<Afgeleid<'g>>, String> {
     let r = &definitie.reduction;
-    let mut door: Vec<&Gram> = Vec::new();
-    for gram in grammen.iter().filter(|g| g.chronicle == r.kroniek) {
-        if past(&r.filter, inputs, gram)? {
-            door.push(gram);
-        }
-    }
     let gekozen = match r.kies {
-        Some(Kies::Laatste) => match laatste(&door)? {
+        Some(Kies::Laatste) => match laatste(door)? {
             Some(g) => Some(g),
             None => return Ok(None),
         },
         None => None,
     };
-    let mut uit = Lexostatus {
-        naam: definitie.name.clone(),
-        zaakkenmerk: gekozen.and_then(|g| g.zaakkenmerk.clone()),
-        op_moment: gekozen.map(|g| g.op_moment.clone()),
+    let mut uit = Afgeleid {
+        gekozen,
         parameters: BTreeMap::new(),
         extra_velden: BTreeMap::new(),
         niet_afgeleid: Vec::new(),
@@ -528,7 +588,7 @@ pub fn reduceer(
             })?;
             afleiding.pas_toe(gram)
         } else {
-            afleiding.pas_toe_op_verzameling(inputs, &door)?
+            afleiding.pas_toe_op_verzameling(inputs, door)?
         };
         match (waarde, extra) {
             (Some(w), false) => {
@@ -542,6 +602,109 @@ pub fn reduceer(
         }
     }
     Ok(Some(uit))
+}
+
+/// De grammen die door een filter komen.
+fn door_filter<'g>(
+    filter: &Filter,
+    inputs: &Map<String, Value>,
+    grammen: impl IntoIterator<Item = &'g Gram>,
+) -> Result<Vec<&'g Gram>, String> {
+    let mut door = Vec::new();
+    for gram in grammen {
+        if past(filter, inputs, gram)? {
+            door.push(gram);
+        }
+    }
+    Ok(door)
+}
+
+/// Reduceer de grammen van een kroniek tot een lexostatus. `None`: de
+/// definitie kiest een gram (`kies`) en geen gram komt door het filter. Een
+/// lijst-lexostatus (`groepeer`) geeft altijd een lexostatus, met een lege
+/// lijst als geen zaak past.
+pub fn reduceer(
+    definitie: &LexostatusDefinitie,
+    inputs: &Map<String, Value>,
+    grammen: &[Gram],
+) -> Result<Option<Lexostatus>, String> {
+    let r = &definitie.reduction;
+    let in_kroniek = grammen.iter().filter(|g| g.chronicle == r.kroniek);
+    if r.groepeer.is_some() {
+        return reduceer_lijst(definitie, inputs, in_kroniek).map(Some);
+    }
+    let door = door_filter(&r.filter, inputs, in_kroniek)?;
+    let Some(a) = leid_af_uit(definitie, inputs, &door)? else {
+        return Ok(None);
+    };
+    Ok(Some(Lexostatus {
+        naam: definitie.name.clone(),
+        zaakkenmerk: a.gekozen.and_then(|g| g.zaakkenmerk.clone()),
+        op_moment: a.gekozen.map(|g| g.op_moment.clone()),
+        parameters: a.parameters,
+        extra_velden: a.extra_velden,
+        niet_afgeleid: a.niet_afgeleid,
+        lijst: None,
+    }))
+}
+
+/// Een lijst-lexostatus: groepeer per zaakkenmerk, houd de zaken met een gram
+/// door `filter` en zonder gram door `zonder`, en leid per zaak af. De regels
+/// staan op het moment van het gekozen gram, de oudste eerst.
+fn reduceer_lijst<'g>(
+    definitie: &LexostatusDefinitie,
+    inputs: &Map<String, Value>,
+    grammen: impl IntoIterator<Item = &'g Gram>,
+) -> Result<Lexostatus, String> {
+    let r = &definitie.reduction;
+    let mut zaken: BTreeMap<&str, Vec<&Gram>> = BTreeMap::new();
+    for g in grammen {
+        // Een gram zonder zaak hoort in geen regel.
+        if let Some(z) = g.zaakkenmerk.as_deref() {
+            zaken.entry(z).or_default().push(g);
+        }
+    }
+    let mut regels = Vec::new();
+    for (zaak, groep) in zaken {
+        if !r.zonder.is_empty()
+            && !door_filter(&r.zonder, inputs, groep.iter().copied())?.is_empty()
+        {
+            continue;
+        }
+        let door = door_filter(&r.filter, inputs, groep.iter().copied())?;
+        if door.is_empty() {
+            continue;
+        }
+        let Some(a) = leid_af_uit(definitie, inputs, &door)? else {
+            continue;
+        };
+        let moment = a
+            .gekozen
+            .map(|g| DateTime::parse_from_rfc3339(&g.op_moment))
+            .transpose()
+            .map_err(|e| format!("gram met ongeldig op_moment: {e}"))?;
+        let mut velden = a.parameters;
+        velden.extend(a.extra_velden);
+        regels.push((
+            moment,
+            Regel {
+                zaakkenmerk: zaak.to_string(),
+                op_moment: a.gekozen.map(|g| g.op_moment.clone()),
+                velden,
+                niet_afgeleid: a.niet_afgeleid,
+            },
+        ));
+    }
+    regels.sort_by(|(a, ra), (b, rb)| a.cmp(b).then_with(|| ra.zaakkenmerk.cmp(&rb.zaakkenmerk)));
+    Ok(Lexostatus {
+        naam: definitie.name.clone(),
+        zaakkenmerk: None,
+        op_moment: None,
+        parameters: BTreeMap::new(),
+        extra_velden: BTreeMap::new(),
+        niet_afgeleid: Vec::new(),
+        lijst: Some(regels.into_iter().map(|(_, r)| r).collect()),
+    })
 }
 
 /// Reduceer een enkel gram, zoals een concept dat nog geen feit is. Heeft
@@ -569,6 +732,7 @@ mod tests {
             kind: "chronolexogram".into(),
             type_: "indiening".into(),
             soort: Some("aanvraag".into()),
+            stage: None,
             name: "aanvraag_ontvangen".into(),
             chronicle: "test_kroniek".into(),
             recording_actor: "test_instantie".into(),
@@ -975,5 +1139,161 @@ mod tests {
             c.lexostatus_definitions[0].levert_aan,
             vec!["testregeling_afnemer#1", "testregeling_afnemer#2"]
         );
+    }
+
+    // --- Lijst-lexostatus: groepeer en zonder ---
+
+    const WERKVOORRAAD: &str = "cel: c\nlexostatus_definitions:\n  - name: werkvoorraad\n    inputs: []\n    reduction:\n      kroniek: test_kroniek\n      filter: {type: indiening, soort: aanvraag}\n      groepeer: zaakkenmerk\n      zonder: {stage: BESLUIT}\n      kies: laatste\n      afleidingen:\n        ontvangen_op: {moment: op_moment}\n        naam: {veld: inhoud.naam}\n";
+
+    fn stage(zaak: &str, moment: &str, stage: &str) -> Gram {
+        let mut g = gram(zaak, moment, json!({}));
+        g.type_ = "decretogram".into();
+        g.soort = None;
+        g.stage = Some(stage.into());
+        g.name = "besluit".into();
+        g.zaak = Zaak::Volgt;
+        g
+    }
+
+    #[test]
+    fn groepeer_per_zaak_zonder_besluit() {
+        let c = parse(WERKVOORRAAD, "w").unwrap();
+        let def = &c.lexostatus_definitions[0];
+        assert!(def.is_lijst());
+        let (a, b, d) = (
+            "00000000-0000-4000-8000-00000000000a",
+            "00000000-0000-4000-8000-00000000000b",
+            "00000000-0000-4000-8000-00000000000d",
+        );
+        let mut zonder_zaak = gram(
+            a,
+            "2025-01-01T09:00:00+01:00",
+            json!({"inhoud": {"naam": "Geen"}}),
+        );
+        zonder_zaak.zaak = Zaak::Geen;
+        zonder_zaak.zaakkenmerk = None;
+        let grammen = vec![
+            // Zaak b is later ingediend maar komt eerst op kenmerk; de lijst
+            // staat op moment.
+            gram(
+                b,
+                "2025-03-05T09:00:00+01:00",
+                json!({"inhoud": {"naam": "B"}}),
+            ),
+            gram(
+                a,
+                "2025-03-01T09:00:00+01:00",
+                json!({"inhoud": {"naam": "A eerst"}}),
+            ),
+            gram(
+                a,
+                "2025-03-02T09:00:00+01:00",
+                json!({"inhoud": {"naam": "A herstel"}}),
+            ),
+            // Zaak d heeft een besluit en valt af; een andere stage niet.
+            gram(
+                d,
+                "2025-03-03T09:00:00+01:00",
+                json!({"inhoud": {"naam": "D"}}),
+            ),
+            stage(d, "2025-03-04T09:00:00+01:00", "BESLUIT"),
+            stage(b, "2025-03-06T09:00:00+01:00", "BEKENDMAKING"),
+            zonder_zaak,
+        ];
+        let l = reduceer(def, &Map::new(), &grammen).unwrap().unwrap();
+        assert!(l.parameters.is_empty());
+        let lijst = l.lijst.unwrap();
+        let zaken: Vec<&str> = lijst.iter().map(|r| r.zaakkenmerk.as_str()).collect();
+        assert_eq!(zaken, [a, b]);
+        assert_eq!(lijst[0].velden["naam"], json!("A herstel"));
+        assert_eq!(lijst[0].velden["ontvangen_op"], json!("2025-03-02"));
+        assert_eq!(
+            lijst[0].op_moment.as_deref(),
+            Some("2025-03-02T09:00:00+01:00")
+        );
+        // Een zaak met alleen een besluit en geen aanvraag telt niet.
+        let alleen = vec![stage(a, "2025-03-04T09:00:00+01:00", "BEKENDMAKING")];
+        let l = reduceer(def, &Map::new(), &alleen).unwrap().unwrap();
+        assert!(l.lijst.unwrap().is_empty());
+    }
+
+    #[test]
+    fn zonder_vraagt_groepeer() {
+        let tekst = WERKVOORRAAD.replace("      groepeer: zaakkenmerk\n", "");
+        let fout = parse(&tekst, "w").unwrap_err();
+        assert!(fout.iter().any(|f| f.contains("groepeer")), "{fout:?}");
+    }
+
+    #[test]
+    fn geen_gram_leest_afwezigheid() {
+        let a = afl("{filter: {name: x}, kies: laatste, veld: datum, geen_gram: null}");
+        assert!(matches!(
+            &a,
+            Afleiding::LaatsteVeld {
+                geen_gram: Some(Value::Null),
+                ..
+            }
+        ));
+        assert_eq!(
+            a.pas_toe_op_verzameling(&Map::new(), &[]).unwrap(),
+            Some(Value::Null)
+        );
+        let g = besluit(
+            "x",
+            "2024-03-20T09:00:00+01:00",
+            json!({"datum": "2024-03-20"}),
+        );
+        assert_eq!(
+            a.pas_toe_op_verzameling(&Map::new(), &[&g]).unwrap(),
+            Some(json!("2024-03-20"))
+        );
+        // Een gram met een leeg veld is geen afwezigheid van het gram: weg.
+        let leeg = besluit("x", "2024-03-20T09:00:00+01:00", json!({"datum": null}));
+        assert_eq!(
+            a.pas_toe_op_verzameling(&Map::new(), &[&leeg]).unwrap(),
+            None
+        );
+        let onwaar = afl("{filter: {name: x}, kies: laatste, veld: ja, geen_gram: false}");
+        assert_eq!(
+            onwaar.pas_toe_op_verzameling(&Map::new(), &[]).unwrap(),
+            Some(json!(false))
+        );
+        // Zonder geen_gram blijft de parameter weg.
+        let zonder = afl("{filter: {name: x}, kies: laatste, veld: datum}");
+        assert!(matches!(
+            &zonder,
+            Afleiding::LaatsteVeld {
+                geen_gram: None,
+                ..
+            }
+        ));
+        assert_eq!(
+            zonder.pas_toe_op_verzameling(&Map::new(), &[]).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn filter_op_stage() {
+        let f: Filter = serde_json::from_value(json!({"stage": "BESLUIT"})).unwrap();
+        let z = "00000000-0000-4000-8000-00000000000a";
+        assert!(past(
+            &f,
+            &Map::new(),
+            &stage(z, "2025-03-04T09:00:00+01:00", "BESLUIT")
+        )
+        .unwrap());
+        assert!(!past(
+            &f,
+            &Map::new(),
+            &stage(z, "2025-03-04T09:00:00+01:00", "BEKENDMAKING")
+        )
+        .unwrap());
+        assert!(!past(
+            &f,
+            &Map::new(),
+            &gram(z, "2025-03-04T09:00:00+01:00", json!({}))
+        )
+        .unwrap());
     }
 }

@@ -17,11 +17,11 @@ use serde_json::Value;
 use crate::api::{self, AppState, Klok};
 use crate::cel::{met_cel, Cel};
 use crate::config::{celmappen, Config};
-use crate::eherkenning::Sessies;
 use crate::kroniek::Kroniek;
-use crate::regelingen;
+use crate::sessie::Sessies;
 use crate::synthese::{self, Bron, TIJDSLIMIET};
 use crate::transport::{Http, Intern, Transport};
+use crate::{besluit, regelingen};
 
 /// Een geladen runtime: de cellen en de router over allemaal.
 pub struct Runtime {
@@ -54,6 +54,7 @@ impl Runtime {
                 ));
             }
             fouten.extend(met_cel(c.id(), synthese::controleer(c)));
+            fouten.extend(met_cel(c.id(), besluit::controleer(c)));
         }
         if !fouten.is_empty() {
             return Err(fouten);

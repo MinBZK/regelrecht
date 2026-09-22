@@ -4,7 +4,8 @@ Een proof of concept bij RFC-022: een runtime voor cellen. Een cel legt feiten
 vast als chronolexogram in een eigen kroniek, reduceert die kroniek tot een
 lexostatus, en kan met een portaal een indiening laten toetsen door een artikel
 (een `TOETS`). De toets mag lexostatussen van andere cellen erbij halen
-(synthese).
+(synthese). Een behandelaar ziet een werkvoorraad (een lijst-lexostatus), opent
+een zaak en laat de engine een proefbesluit uitrekenen, zonder vast te leggen.
 
 Een cel is configuratie, geen code: een map met een `cel.yaml`. De code noemt
 geen casus; de tests draaien op de generieke fixtures in `tests/fixtures/`. De
@@ -32,17 +33,30 @@ id: <cel-id>                      # routes onder /cellen/<id>/api/
 recording_actor: <actor>          # elke stroom van de cel heeft deze actor
 stromen: [<pad>, ...]             # stroombestanden of mappen, relatief aan deze map
 lexostatussen: <pad>              # lexostatus-definities
-portaal:                          # optioneel
+rollen:                           # optioneel; zonder rollen geen login
+  aanvrager: eherkenning          # het portaal
+  behandelaar: medewerker         # werkvoorraad, zaak en proefbesluit
+portaal:                          # optioneel, vraagt rollen.aanvrager
   stroom: <$id van de stroom>
   event: <event dat een indiening wordt>
   toets: {lexostatus: <naam>, regeling: <$id>, uitkomst: <output>}
   formulier: {pad: <pad>, scherm: <id>}   # optioneel
-synthese:                         # optioneel, alleen met een portaal
+synthese:                         # optioneel, alleen met een portaal of een besluit
   - cel: <id van de bron-cel>
     url: <http://host:poort>      # optioneel; zonder url: intern transport
     lexostatus: <naam bij de bron>
     invoer: {<input van de bron>: {lexostatus: <eigen toets-lexostatus>, veld: <parameter of extra veld>}}
     parameters: [<naam>, ...]     # expliciet, geen wildcard
+behandeling:                      # optioneel, vraagt rollen.behandelaar
+  werkvoorraad: <lijst-lexostatus>
+  besluit:
+    regeling: <$id>
+    uitkomsten: [<output>, ...]   # van een en hetzelfde artikel
+    lexostatussen: [<naam>, ...]  # eigen, met als enige input zaakkenmerk
+    formulier:                    # oordelen van de behandelaar
+      - {parameter: <naam>, label: <tekst>, groep: <tekst>}
+    stand_bij_besluit:            # feiten van na het besluit: null of false
+      <parameter>: null
 startstand: <pad>                 # optioneel: grammen voor een lege kroniek
 ```
 
@@ -61,9 +75,16 @@ volgorde; het bepaalt nooit het gedrag.
 | `GET /cellen/<id>/api/stroom` | alleen met portaal: de stroom en de formuliervelden |
 | `POST /cellen/<id>/api/aanvraag/toets` | alleen met portaal: concept, reductie, synthese, engine |
 | `POST /cellen/<id>/api/aanvraag` | alleen met portaal: het gram vastleggen |
+| `POST /cellen/<id>/api/medewerker/login` (`{naam}`), `GET .../sessie`, `POST .../logout` | alleen met de rol behandelaar |
+| `GET /cellen/<id>/api/werkvoorraad` | behandelaar: de werkvoorraad, een lijst |
+| `GET /cellen/<id>/api/zaken/<zaakkenmerk>` | behandelaar: de grammen van de zaak, het besluitformulier en een proefbesluit zonder oordelen |
+| `POST /cellen/<id>/api/zaken/<zaakkenmerk>/proefbesluit` | behandelaar: `{formulier}` naar een proefbesluit; niets wordt vastgelegd |
 
-Bij een cel met een portaal zijn kroniek en lexostatus alleen voor de
-ingelogde KvK, en alleen over diens eigen grammen.
+Een cel met rollen heeft een sessie per gebruiker (een cookie per cel); wie
+als de andere rol inlogt, vervangt de sessie. Kroniek en lexostatus zijn dan
+alleen voor wie is ingelogd: de aanvrager ziet de grammen van zijn KvK, de
+behandelaar alle. De portaalroutes zijn alleen voor de aanvrager (403 voor de
+behandelaar), de behandelroutes alleen voor de behandelaar.
 
 ## De vier lagen
 
@@ -82,15 +103,23 @@ ingelogde KvK, en alleen over diens eigen grammen.
    - op het gekozen gram: `veld`, `gevuld`, `gelijk`, `tabel` met `elke_regel`
      of `een_regel` (en `alleen_waar`), `moment`;
    - over de grammen die door een eigen `filter` komen: `bestaat: true`,
-     `som: <veld>`, `kies: laatste` met `veld: <pad>` of met
+     `som: <veld>`, `kies: laatste` met `veld: <pad>` (en optioneel
+     `geen_gram: <waarde>`, de lezing van afwezigheid) of met
      `bevat: {veld, waarde}`.
 
+   Met `groepeer: zaakkenmerk` is de lexostatus een **lijst**: een regel per
+   zaak waarvan ten minste een gram door `filter` komt, en met `zonder:
+   {filter}` geen gram door dat filter. `kies` en de afleidingen werken per
+   zaak; de afleidingen zijn kolommen, geen parameters. Een lijst gaat nooit
+   naar de engine.
+
    Een filtersleutel is een veld van het gram zelf (`name`, `type`, `soort`,
-   `zaakkenmerk`, `recording_actor`, `chronicle`) of een veldpad onder
+   `stage`, `zaakkenmerk`, `recording_actor`, `chronicle`) of een veldpad onder
    `fields`; `$x` komt uit de inputs. Geen gram is "nee" bij `bestaat` en
    `bevat`, en nul bij `som`: de cel spreekt alleen over haar eigen kroniek.
    Een waarde die er niet is (`veld` op een leeg veld, `kies` zonder gram)
-   blijft weg; de cel vult nooit aan. `extra_velden` levert waarden die geen
+   blijft weg, tenzij de definitie met `geen_gram` zegt hoe zij het ontbreken
+   van een gram leest (bijvoorbeeld null: niet gebeurd); de cel vult nooit aan. `extra_velden` levert waarden die geen
    parameter zijn, zoals de invoer van een synthese-bron; ze gaan nooit naar de
    engine. `levert_aan` noemt artikelen van een afnemer waarvan de lexostatus
    parameters levert, als de afnemer een feit onder een eigen naam vraagt.
@@ -123,6 +152,22 @@ synthese wordt vastgelegd. Is een bron onbereikbaar en de uitkomst daardoor
 niet te beoordelen, dan zegt de toets "niet te beoordelen: bron <id>
 onbereikbaar", en vult ze niets aan.
 
+## Proefbesluit
+
+`behandeling.besluit` zegt welke uitkomsten van welk artikel het besluit zijn
+en waar elke parameter vandaan komt, uit precies een bron: een eigen
+lexostatus van de zaak, een synthese-bron (met de invoer uit die eigen
+lexostatus), het besluitformulier (oordelen van de behandelaar, herkomst
+`behandelaar`) of de stand bij besluit (feiten van na het besluit, zoals de
+bekendmaking, als null of false; herkomst `stand_bij_besluit`). Het
+proefbesluit voert het artikel uit op de datum van vandaag. Het antwoord heeft
+de uitkomsten als elk een waarde heeft, anders "niet te nemen: mist X"; per
+parameter de herkomst; en `niet_geleverd`: elke parameter die de aanroeper van
+het artikel moet leveren en die geen bron leverde, met de omschrijving uit de
+regeling. Een aanroep binnen dezelfde regeling zonder `parameters` deelt de
+parameters; een aanroep van een andere regeling krijgt alleen wat
+`parameters` meegeeft. Niets wordt vastgelegd.
+
 ## Controles bij het opstarten
 
 Per cel; faalt er een, dan start de runtime niet, en elke melding begint met
@@ -139,11 +184,21 @@ Per cel; faalt er een, dan start de runtime niet, en elke melding begint met
 4. Een parameter krijgt maar een afleiding.
 5. Het portaal wijst naar een bestaand event, een lexostatus die een gram
    kiest, en een uitkomst van een artikel uit de grondslag van het event.
-6. Synthese: alleen met een portaal; elke invoer komt uit een veld van de
-   toets-lexostatus; elke parameter is een parameter van het artikel van de
-   toets of van een artikel dat het transitief aanroept (via `source`); een
-   parameter komt uit maar een bron.
+6. Synthese: alleen met een portaal of een besluit; elke invoer komt uit een
+   veld van de toets-lexostatus; elke parameter is een parameter van het
+   artikel van de toets of het besluit, of van een artikel dat een van beide
+   transitief aanroept (via `source`); een parameter komt uit maar een bron.
 7. De startstand past in de stromen van de cel.
+8. Een lijst (`groepeer`) wijst alleen events met een zaak aan, ook in
+   `zonder`, en `zonder` wijst een event aan. Haar kolommen hoeven geen
+   parameter te zijn en botsen niet met die van andere lexostatussen. Het
+   portaal en het besluit gebruiken geen lijst.
+9. Rollen en behandeling: een portaal vraagt de rol aanvrager (en omgekeerd),
+   een behandeling de rol behandelaar; de werkvoorraad is een lijst; de
+   uitkomsten van het besluit komen uit een artikel; de lexostatussen van het
+   besluit hebben als enige input `zaakkenmerk`; elke parameter uit het
+   formulier of de stand bij besluit moet de aanroeper van het artikel
+   leveren; een parameter komt uit maar een bron.
 
 Of een bron bereikbaar is en de lexostatus met die parameters en inputs
 aanbiedt, controleert de runtime na het starten via `GET /api/cellen` bij de
@@ -164,8 +219,10 @@ komen.
 | `controle` | de controles bij het opstarten |
 | `synthese` | bronnen bevragen, samenvoegen met herkomst, en de controles erop |
 | `transport` | intern en HTTP |
-| `eherkenning` | nep-login (KvK, gemachtigde, machtiging `volledig`) en sessies |
-| `toets` | parameters aan de engine, een uitkomst evalueren |
+| `eherkenning` | nep-login (KvK, gemachtigde, machtiging `volledig`) |
+| `sessie` | sessies per rol, en de nagebootste medewerkerslogin |
+| `toets` | parameters aan de engine, een of meer uitkomsten evalueren |
+| `besluit` | het proefbesluit op een zaak, en de controles op rollen en behandeling |
 | `api` | de routes van een cel |
 | `regelingen`, `formulier`, `schema` | laden en valideren |
 

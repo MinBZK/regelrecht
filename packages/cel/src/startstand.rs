@@ -83,6 +83,7 @@ fn bouw(tekst: &str, strommen: &[Stroom]) -> Result<Gram, String> {
         kind: "chronolexogram".into(),
         type_: event.type_.clone(),
         soort: event.soort.clone(),
+        stage: event.stage.clone(),
         name: event.name.clone(),
         chronicle: stroom.chronicle.clone(),
         recording_actor: stroom.recording_actor.clone(),

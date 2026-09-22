@@ -1,11 +1,17 @@
 ---
-# Fictieve cel met een portaal en een synthese: de toets voegt de eigen
-# lexostatus samen met de registerstatus van de registercel. Zonder url is het
-# transport intern.
+# Fictieve cel met een portaal, een synthese en een behandeling: de toets
+# voegt de eigen lexostatus samen met de registerstatus van de registercel
+# (zonder url is het transport intern); de behandelaar ziet de werkvoorraad
+# en rekent per zaak een proefbesluit uit.
 id: test_afnemer
 recording_actor: test_afnemer
-stromen: [../../chronicles/test_afnemer_aanvragen.yaml]
+stromen:
+  - ../../chronicles/test_afnemer_aanvragen.yaml
+  - ../../chronicles/test_afnemer_zaakverloop.yaml
 lexostatussen: lexostatussen.yaml
+rollen:
+  aanvrager: eherkenning
+  behandelaar: medewerker
 portaal:
   stroom: test_afnemer_aanvragen
   event: aanvraag_ontvangen
@@ -19,3 +25,15 @@ synthese:
     invoer:
       aanduiding: {lexostatus: aanvraag_inhoud, veld: aanduiding}
     parameters: [is_ingeschreven_raad, is_geschrapt_raad, zetels_op_lijst, datum_mededeling, geblokkeerd_raad]
+behandeling:
+  werkvoorraad: werkvoorraad
+  besluit:
+    regeling: testregeling_afnemer
+    uitkomsten: [vastgesteld_bedrag, besluit_tijdig, besluitdeadline, zorgvuldig]
+    lexostatussen: [aanvraag_inhoud, zaakverloop]
+    formulier:
+      - {parameter: besluitdatum, label: Besluitdatum}
+      - {parameter: feiten_vergaard, label: De relevante feiten zijn vergaard, groep: Zorgvuldigheid}
+    stand_bij_besluit:
+      datum_bekendmaking: null
+      bekendgemaakt: false

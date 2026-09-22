@@ -1,7 +1,9 @@
 <script setup>
 // De cellen van de runtime. Een cel met een portaal laat inloggen en
-// indienen; elke cel toont haar kroniek en haar lexostatussen. De frontend
-// kent geen casus: welke cellen er zijn, komt van GET /api/cellen.
+// indienen, een cel met een behandeling laat een behandelaar een zaak openen
+// en een proefbesluit uitrekenen; elke cel toont haar kroniek en haar
+// lexostatussen. De frontend kent geen casus: welke cellen er zijn, komt van
+// GET /api/cellen.
 import { computed, onMounted, ref } from 'vue';
 import { cellen as haalCellen } from './api.js';
 import CelView from './views/CelView.vue';
@@ -33,6 +35,7 @@ function tab(e) {
 
 function mogelijkheden(c) {
   const delen = [c.portaal ? 'portaal' : 'geen portaal'];
+  if (c.behandeling) delen.push(`behandeling (werkvoorraad, besluit ${c.behandeling.regeling})`);
   if (c.lexostatussen.length) delen.push(`lexostatus ${c.lexostatussen.map((l) => l.name).join(', ')}`);
   if (c.synthese.length) delen.push(`synthese uit ${c.synthese.map((s) => s.cel).join(', ')}`);
   return delen.join('; ');

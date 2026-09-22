@@ -44,6 +44,9 @@ pub struct Event {
     pub type_: String,
     #[serde(default)]
     pub soort: Option<String>,
+    /// Bij een stage-decretogram: de stage van het besluit (RFC-008).
+    #[serde(default)]
+    pub stage: Option<String>,
     /// Of het gram een zaak opent, een bestaande zaak volgt, of geen zaak
     /// heeft. Bepaalt of het gram een `zaakkenmerk` draagt.
     #[serde(default)]
@@ -149,6 +152,8 @@ pub struct Gram {
     pub type_: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub soort: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stage: Option<String>,
     pub name: String,
     pub chronicle: String,
     pub recording_actor: String,
@@ -606,6 +611,7 @@ pub fn bouw_gram(
         kind: "chronolexogram".to_string(),
         type_: event.type_.clone(),
         soort: event.soort.clone(),
+        stage: event.stage.clone(),
         name: event.name.clone(),
         chronicle: stroom.chronicle.clone(),
         recording_actor: stroom.recording_actor.clone(),

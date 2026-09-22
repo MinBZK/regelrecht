@@ -60,12 +60,81 @@ pub struct CelDefinitie {
     pub recording_actor: String,
     pub stromen: Vec<String>,
     pub lexostatussen: String,
+    /// Wie er inlogt, en hoe. Zonder rollen is er geen login.
+    #[serde(default)]
+    pub rollen: Rollen,
     #[serde(default)]
     pub portaal: Option<Portaal>,
     #[serde(default)]
     pub synthese: Vec<SyntheseBron>,
     #[serde(default)]
+    pub behandeling: Option<Behandeling>,
+    #[serde(default)]
     pub startstand: Option<String>,
+}
+
+/// De rollen van een cel, elk met een (nagebootste) login.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct Rollen {
+    /// Wie via het portaal indient.
+    #[serde(default)]
+    pub aanvrager: Option<AanvragerLogin>,
+    /// Wie de werkvoorraad, de zaken en het besluit ziet.
+    #[serde(default)]
+    pub behandelaar: Option<BehandelaarLogin>,
+}
+
+impl Rollen {
+    pub fn is_leeg(&self) -> bool {
+        self.aanvrager.is_none() && self.behandelaar.is_none()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AanvragerLogin {
+    Eherkenning,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BehandelaarLogin {
+    Medewerker,
+}
+
+/// Wat de behandelaar in de cel doet: een werkvoorraad en een besluit.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Behandeling {
+    /// Een lijst-lexostatus van deze cel.
+    pub werkvoorraad: String,
+    pub besluit: BesluitDefinitie,
+}
+
+/// Het besluit op een zaak: de uitkomsten van een artikel, en per parameter
+/// de bron (zie [`crate::besluit`]).
+#[derive(Debug, Clone, Deserialize)]
+pub struct BesluitDefinitie {
+    pub regeling: String,
+    pub uitkomsten: Vec<String>,
+    /// Eigen lexostatussen met als enige input `zaakkenmerk`.
+    pub lexostatussen: Vec<String>,
+    /// De oordelen van de behandelaar.
+    #[serde(default)]
+    pub formulier: Vec<Oordeel>,
+    /// Feiten die pas na het besluit ontstaan, met hun stand bij het besluit.
+    #[serde(default)]
+    pub stand_bij_besluit: BTreeMap<String, Value>,
+}
+
+/// Een veld van het besluitformulier: een parameter met een label.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Oordeel {
+    pub parameter: String,
+    pub label: String,
+    #[serde(default)]
+    pub groep: Option<String>,
+    #[serde(default)]
+    pub uitleg: Option<String>,
 }
 
 /// Het portaalblok: welk event een indiening wordt en welke uitkomst de

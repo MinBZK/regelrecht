@@ -1,9 +1,11 @@
 //! Het lexogram: de regelingen uit `REGULATION_PATH`, geladen in de engine.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use regelrecht_engine::{Article, LawExecutionService};
+use serde::Serialize;
+use serde_json::Value;
 use walkdir::WalkDir;
 
 /// Laad elke regeling (een YAML-bestand met `$id` en `articles`) onder een
@@ -96,6 +98,67 @@ pub fn transitieve_parameters(
     parameters
 }
 
+/// Een parameter die de aanroeper van een artikel moet leveren, met het
+/// artikel dat hem declareert.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Benodigd {
+    pub naam: String,
+    /// `<regeling>#<artikel>`.
+    pub artikel: String,
+    #[serde(rename = "type")]
+    pub soort: Value,
+    pub nullable: bool,
+    /// De omschrijving uit de regeling, met de herkomst volgens het model.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub omschrijving: Option<String>,
+}
+
+/// De parameters die de aanroeper van een artikel moet leveren: die van het
+/// artikel zelf, en die van elk artikel in dezelfde regeling dat het via een
+/// invoer zonder eigen `parameters` aanroept, transitief; zo'n aanroep deelt
+/// de parameters. Een invoer met `parameters` bindt de parameters van het
+/// aangeroepen artikel zelf, en een aanroep van een andere regeling krijgt
+/// alleen wat `parameters` meegeeft; die vraagt de aanroeper niet. Per naam
+/// het eerste artikel dat hem declareert.
+pub fn benodigde_parameters(
+    service: &LawExecutionService,
+    regeling: &str,
+    artikel: &Article,
+) -> BTreeMap<String, Benodigd> {
+    let mut uit: BTreeMap<String, Benodigd> = BTreeMap::new();
+    let mut gezien: BTreeSet<(String, String)> = BTreeSet::new();
+    let mut te_doen: Vec<(String, &Article)> = vec![(regeling.to_string(), artikel)];
+    while let Some((law, a)) = te_doen.pop() {
+        if !gezien.insert((law.clone(), a.number.clone())) {
+            continue;
+        }
+        for p in a.get_parameters() {
+            uit.entry(p.name.clone()).or_insert_with(|| Benodigd {
+                naam: p.name.clone(),
+                artikel: format!("{law}#{}", a.number),
+                soort: serde_json::to_value(p.param_type).unwrap_or(Value::Null),
+                nullable: p.is_nullable(),
+                omschrijving: p.description.clone(),
+            });
+        }
+        for invoer in a.get_inputs() {
+            let Some(bron) = &invoer.source else { continue };
+            let Some(output) = &bron.output else { continue };
+            let doel = bron.regulation.clone().unwrap_or_else(|| law.clone());
+            if doel != law || bron.parameters.as_ref().is_some_and(|p| !p.is_empty()) {
+                continue;
+            }
+            if let Some(volgend) = service
+                .resolver()
+                .get_article_by_output(&doel, output, None)
+            {
+                te_doen.push((doel, volgend));
+            }
+        }
+    }
+    uit
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
@@ -141,5 +204,17 @@ mod tests {
             assert!(p.contains(naam), "{naam} ontbreekt in {p:?}");
         }
         assert!(!p.contains("datum_vaststelling"));
+    }
+
+    #[test]
+    fn benodigde_parameters_zonder_wat_een_invoer_bindt() {
+        let s = laad(&fixtures()).unwrap();
+        let a = artikel(&s, "testregeling_afnemer#1").unwrap();
+        let p = benodigde_parameters(&s, "testregeling_afnemer", a);
+        // Artikel 2 wordt zonder parameters aangeroepen: zijn parameter telt.
+        assert_eq!(p["zetels_op_lijst"].artikel, "testregeling_afnemer#2");
+        assert_eq!(p["datum_mededeling"].soort, serde_json::json!("date"));
+        // De testregeling register krijgt haar parameters van artikel 1.
+        assert!(!p.contains_key("is_ingeschreven_in_register"));
     }
 }

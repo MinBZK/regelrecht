@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.1.0/cel.json",
   "title": "Celdefinitie (cel.yaml) v0.1.0",
-  "description": "Een cel is een map met configuratie; cel.yaml zegt wie de cel is, welke stromen ze vastlegt, welke lexostatussen ze aanbiedt, en optioneel of ze een portaal heeft, van welke andere cellen ze lexostatussen samenvoegt (synthese) en met welke grammen een lege kroniek begint (startstand). Paden zijn relatief aan de map van cel.yaml.",
+  "description": "Een cel is een map met configuratie; cel.yaml zegt wie de cel is, welke stromen ze vastlegt, welke lexostatussen ze aanbiedt, en optioneel wie er inlogt (rollen), of ze een portaal heeft, of een behandelaar er een werkvoorraad en een besluit heeft (behandeling), van welke andere cellen ze lexostatussen samenvoegt (synthese) en met welke grammen een lege kroniek begint (startstand). Paden zijn relatief aan de map van cel.yaml.",
   "type": "object",
   "required": [
     "id",
@@ -41,15 +41,21 @@
       "minLength": 1,
       "description": "Het bestand met de lexostatus-definities (lexostatus.json)."
     },
+    "rollen": {
+      "$ref": "#/definitions/rollen"
+    },
     "portaal": {
       "$ref": "#/definitions/portaal"
     },
     "synthese": {
       "type": "array",
-      "description": "Lexostatussen van andere cellen die de toets van het portaal samenvoegt met de eigen lexostatus. Niets hiervan wordt vastgelegd.",
+      "description": "Lexostatussen van andere cellen die de toets van het portaal en het proefbesluit samenvoegen met de eigen lexostatus. Niets hiervan wordt vastgelegd.",
       "items": {
         "$ref": "#/definitions/bron"
       }
+    },
+    "behandeling": {
+      "$ref": "#/definitions/behandeling"
     },
     "startstand": {
       "type": "string",
@@ -172,6 +178,116 @@
           "items": {
             "type": "string",
             "pattern": "^[a-z_][a-z0-9_]*$"
+          }
+        }
+      }
+    },
+    "rollen": {
+      "type": "object",
+      "description": "Wie er in de cel inlogt, en hoe. aanvrager: eherkenning (nagebootst) voor het portaal; behandelaar: medewerker (een nagebootste login van een medewerker van de cel, alleen een naam) voor de werkvoorraad, de zaak en het besluit. Heeft een cel rollen, dan zijn kroniek en lexostatussen alleen voor wie is ingelogd: de aanvrager ziet zijn eigen grammen, de behandelaar alle. Zonder rollen is er geen login en is alles leesbaar.",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "aanvrager": {
+          "enum": [
+            "eherkenning"
+          ]
+        },
+        "behandelaar": {
+          "enum": [
+            "medewerker"
+          ]
+        }
+      }
+    },
+    "behandeling": {
+      "type": "object",
+      "description": "Wat de behandelaar in de cel doet: de werkvoorraad bekijken, een zaak openen en een proefbesluit laten uitrekenen. Vraagt rollen.behandelaar.",
+      "required": [
+        "werkvoorraad",
+        "besluit"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "werkvoorraad": {
+          "$ref": "#/definitions/identifier",
+          "description": "Een lijst-lexostatus (groepeer: zaakkenmerk) van deze cel."
+        },
+        "besluit": {
+          "$ref": "#/definitions/besluit"
+        }
+      }
+    },
+    "besluit": {
+      "type": "object",
+      "description": "Het besluit op een zaak: welke uitkomsten van welk artikel het besluit zijn, en waar elke parameter vandaan komt. Een parameter komt uit precies een bron: een eigen lexostatus (met input zaakkenmerk), een synthese-bron, het besluitformulier (oordelen van de behandelaar) of de stand bij besluit.",
+      "required": [
+        "regeling",
+        "uitkomsten",
+        "lexostatussen"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "regeling": {
+          "$ref": "#/definitions/identifier"
+        },
+        "uitkomsten": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Uitkomsten van een en hetzelfde artikel van de regeling.",
+          "items": {
+            "$ref": "#/definitions/identifier"
+          }
+        },
+        "lexostatussen": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Eigen lexostatussen met als enige input zaakkenmerk, bijvoorbeeld de inhoud van de aanvraag en het verloop van de zaak.",
+          "items": {
+            "$ref": "#/definitions/identifier"
+          }
+        },
+        "formulier": {
+          "type": "array",
+          "description": "De oordelen van de behandelaar: parameters die pas bij het besluiten bestaan. Het type volgt uit de parameter in de regeling.",
+          "items": {
+            "type": "object",
+            "required": [
+              "parameter",
+              "label"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "parameter": {
+                "type": "string",
+                "pattern": "^[a-z_][a-z0-9_]*$"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "groep": {
+                "type": "string"
+              },
+              "uitleg": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "stand_bij_besluit": {
+          "type": "object",
+          "description": "Feiten die pas na het besluit ontstaan, zoals de bekendmaking, met hun stand op het moment van besluiten (null of false: nog niet). Herkomst: stand bij besluit.",
+          "propertyNames": {
+            "pattern": "^[a-z_][a-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "type": [
+              "null",
+              "boolean"
+            ]
           }
         }
       }

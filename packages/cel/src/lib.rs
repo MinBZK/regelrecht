@@ -17,6 +17,7 @@
 //! noemt een casus.
 
 pub mod api;
+pub mod besluit;
 pub mod cel;
 pub mod config;
 pub mod controle;
@@ -27,6 +28,7 @@ pub mod reductie;
 pub mod regelingen;
 pub mod runtime;
 pub mod schema;
+pub mod sessie;
 pub mod startstand;
 pub mod stroom;
 pub mod synthese;

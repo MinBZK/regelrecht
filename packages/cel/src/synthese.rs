@@ -44,6 +44,10 @@ pub enum Herkomst {
         lexostatus: String,
         transport: &'static str,
     },
+    /// Het besluitformulier: een oordeel van de behandelaar.
+    Behandelaar,
+    /// De stand bij besluit: een feit dat pas na het besluit ontstaat.
+    StandBijBesluit,
 }
 
 /// Hoe de vraag aan een bron verliep.
@@ -246,21 +250,61 @@ pub async fn voeg_samen(eigen: &Lexostatus, bronnen: &[Bron]) -> Samenvoeging {
 /// De controles op de synthese van een cel bij het opstarten. Een fout hier
 /// houdt de cel tegen:
 ///
-/// - synthese vraagt een portaal, want alleen de toets gebruikt haar;
+/// - synthese vraagt een portaal of een besluit, want alleen de toets en het
+///   proefbesluit gebruiken haar;
 /// - een bron is een andere cel;
-/// - elke invoer komt uit een veld van de toets-lexostatus;
-/// - elke parameter is een parameter van het artikel van de toets of van een
-///   artikel dat het transitief aanroept;
+/// - elke invoer komt uit een veld van de toets-lexostatus (met een portaal);
+/// - elke parameter is een parameter van het artikel van de toets of van het
+///   besluit, of van een artikel dat een van beide transitief aanroept;
 /// - een parameter komt uit maar een bron: de eigen reductie of een bron.
+///
+/// Wat het besluit verder vraagt, staat in [`crate::besluit::controleer`].
 pub fn controleer(cel: &Cel) -> Vec<String> {
     let mut fouten = Vec::new();
     let bronnen = &cel.definitie.synthese;
     if bronnen.is_empty() {
         return fouten;
     }
+    let besluit = cel.definitie.behandeling.as_ref().map(|b| &b.besluit);
+    let onder_besluit = besluit
+        .and_then(|b| {
+            let u = b.uitkomsten.first()?;
+            let a = cel
+                .service
+                .resolver()
+                .get_article_by_output(&b.regeling, u, None)?;
+            Some(regelingen::transitieve_parameters(
+                &cel.service,
+                &b.regeling,
+                a,
+            ))
+        })
+        .unwrap_or_default();
     let Some(portaal) = cel.portaal() else {
-        fouten
-            .push("synthese zonder portaal: alleen de toets van een portaal gebruikt haar".into());
+        if besluit.is_none() {
+            fouten.push(
+                "synthese zonder portaal en zonder besluit: alleen de toets van een portaal en het proefbesluit gebruiken haar"
+                    .into(),
+            );
+            return fouten;
+        }
+        for bron in bronnen {
+            let wie = format!("synthese-bron {}/{}", bron.cel, bron.lexostatus);
+            if bron.cel == cel.id() {
+                fouten.push(format!(
+                    "{wie}: een bron is een andere cel, niet de cel zelf"
+                ));
+            }
+            for p in bron
+                .parameters
+                .iter()
+                .filter(|p| !onder_besluit.contains(*p))
+            {
+                fouten.push(format!(
+                    "{wie}: '{p}' is geen parameter van het besluit of van een artikel dat het aanroept"
+                ));
+            }
+        }
         return fouten;
     };
     let eigen = cel.lexostatussen.lexostatus(&portaal.toets.lexostatus);
@@ -300,7 +344,7 @@ pub fn controleer(cel: &Cel) -> Vec<String> {
             }
         }
         for p in &bron.parameters {
-            if !onder_toets.contains(p) {
+            if !onder_toets.contains(p) && !onder_besluit.contains(p) {
                 fouten.push(format!(
                     "{wie}: '{p}' is geen parameter van {}#{} ('{}') of van een artikel dat het aanroept",
                     portaal.toets.regeling,
@@ -385,6 +429,11 @@ pub async fn waarschuwingen(cel: &str, bronnen: &[Bron]) -> Vec<String> {
                 continue;
             }
         };
+        if lexo.get("lijst") == Some(&Value::Bool(true)) {
+            uit.push(format!(
+                "{wie}: de bron is een lijst (groepeer) en levert geen parameters"
+            ));
+        }
         let geleverd = namen(lexo, "parameters");
         for p in d.parameters.iter().filter(|p| !geleverd.contains(*p)) {
             uit.push(format!("{wie}: de bron levert geen parameter '{p}'"));

@@ -1,6 +1,8 @@
 ---
-# Fictieve lexostatus van de afnemer. De aanduiding zelf is geen parameter:
-# ze is de invoer voor de registercel, en gaat niet naar de engine.
+# Fictieve lexostatussen van de afnemer. De aanduiding zelf is geen
+# parameter: ze is de invoer voor de registercel, en gaat niet naar de engine.
+# De werkvoorraad is een lijst: een regel per zaak met een aanvraag en zonder
+# besluit. Het verloop van de zaak leest afwezigheid als "niet gebeurd".
 cel: test_afnemer
 lexostatus_definitions:
   - name: aanvraag_inhoud
@@ -14,3 +16,27 @@ lexostatus_definitions:
         bevat_aanduiding: {gevuld: inhoud.aanduiding}
       extra_velden:
         aanduiding: {veld: inhoud.aanduiding}
+  - name: werkvoorraad
+    inputs: []
+    reduction:
+      kroniek: test_afnemer
+      filter: {type: indiening, soort: aanvraag}
+      groepeer: zaakkenmerk
+      zonder: {stage: BESLUIT}
+      kies: laatste
+      afleidingen:
+        ontvangen_op: {moment: op_moment}
+        aanvrager: {veld: kern.aanvrager.naam}
+        kvk: {veld: kern.ondertekend_via.kvk_nummer}
+  - name: zaakverloop
+    inputs: [{name: zaakkenmerk, type: string}]
+    reduction:
+      kroniek: test_afnemer
+      filter: {zaakkenmerk: $zaakkenmerk}
+      afleidingen:
+        datum_uitnodiging_aanvulling:
+          filter: {name: aanvulling_gevraagd}
+          kies: laatste
+          veld: datum_uitnodiging
+          geen_gram: null
+        opgeschorte_dagen: {filter: {name: termijn_opgeschort}, som: dagen}

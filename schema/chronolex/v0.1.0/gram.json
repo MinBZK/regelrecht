@@ -28,6 +28,11 @@
       "$ref": "#/definitions/identifier",
       "description": "De soort binnen het type, bijvoorbeeld aanvraag bij een indiening."
     },
+    "stage": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z_]*$",
+      "description": "Uit de stroom: de stage van het besluit (RFC-008) bij een stage-decretogram."
+    },
     "name": {
       "$ref": "#/definitions/identifier"
     },

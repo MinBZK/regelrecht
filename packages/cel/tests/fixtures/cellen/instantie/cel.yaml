@@ -6,6 +6,8 @@ id: test_instantie
 recording_actor: test_instantie
 stromen: [../../chronicles/test_aanvragen.yaml]
 lexostatussen: lexostatussen.yaml
+rollen:
+  aanvrager: eherkenning
 portaal:
   stroom: test_aanvragen
   event: aanvraag_ontvangen

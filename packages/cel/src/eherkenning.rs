@@ -2,15 +2,8 @@
 //! en een machtiging. Er is geen register en geen databasecontrole; wie het
 //! formulier invult, is voor deze PoC de gemachtigde.
 
-use std::collections::HashMap;
-use std::sync::Mutex;
-
-use axum::http::HeaderMap;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-
-/// Naam van de sessiecookie.
-pub const COOKIE: &str = "cel_sessie";
 
 /// De enige machtiging die deze PoC kent.
 pub const MACHTIGING_VOLLEDIG: &str = "volledig";
@@ -74,43 +67,6 @@ pub const INTAKE_PADEN: &[&str] = &[
     "eherkenning.machtiging",
 ];
 
-/// Sessies in het geheugen: een herstart logt iedereen uit.
-#[derive(Default)]
-pub struct Sessies(Mutex<HashMap<String, Sessie>>);
-
-impl Sessies {
-    pub fn nieuw(&self, sessie: Sessie) -> String {
-        let token = uuid::Uuid::new_v4().to_string();
-        if let Ok(mut m) = self.0.lock() {
-            m.insert(token.clone(), sessie);
-        }
-        token
-    }
-
-    pub fn zoek(&self, headers: &HeaderMap) -> Option<Sessie> {
-        let token = token(headers)?;
-        self.0.lock().ok()?.get(&token).cloned()
-    }
-
-    pub fn verwijder(&self, headers: &HeaderMap) {
-        if let (Some(token), Ok(mut m)) = (token(headers), self.0.lock()) {
-            m.remove(&token);
-        }
-    }
-}
-
-fn token(headers: &HeaderMap) -> Option<String> {
-    headers
-        .get_all(axum::http::header::COOKIE)
-        .iter()
-        .filter_map(|v| v.to_str().ok())
-        .flat_map(|v| v.split(';'))
-        .find_map(|deel| {
-            let (naam, waarde) = deel.trim().split_once('=')?;
-            (naam == COOKIE).then(|| waarde.to_string())
-        })
-}
-
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
@@ -138,20 +94,5 @@ mod tests {
         assert!(login("1234567a", "A", "volledig").is_err());
         assert!(login("12345678", "  ", "volledig").is_err());
         assert!(login("12345678", "A", "beperkt").is_err());
-    }
-
-    #[test]
-    fn sessie_via_cookie() {
-        let sessies = Sessies::default();
-        let token = sessies.nieuw(login("12345678", "A", "volledig").unwrap());
-        let mut h = HeaderMap::new();
-        h.insert(
-            axum::http::header::COOKIE,
-            format!("ander=1; {COOKIE}={token}").parse().unwrap(),
-        );
-        assert_eq!(sessies.zoek(&h).unwrap().kvk, "12345678");
-        sessies.verwijder(&h);
-        assert!(sessies.zoek(&h).is_none());
-        assert!(sessies.zoek(&HeaderMap::new()).is_none());
     }
 }
