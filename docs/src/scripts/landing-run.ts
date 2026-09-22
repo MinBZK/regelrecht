@@ -28,7 +28,7 @@ import {
 } from '~/lib/gherkin/index.js';
 // The engine and the laws are loaded once per page and shared with the
 // scenario runner on /concepts/scenarios; see ~/scripts/engine.ts.
-import { prepare } from './engine';
+import { prepare, corpusScenario } from './engine';
 // Re-exported: the panel warms the engine through this module before it asks
 // for a run, and the two belong to the same import for it.
 export { prepare };
@@ -126,7 +126,10 @@ function flatten(node: any, depth: number, out: Beat[]): void {
  * engine ran it" means the same thing here as it does there.
  */
 export async function runScenario(base = '/'): Promise<RunResult> {
-  const { engine, feature } = await prepare(base);
+  // Together rather than one after the other: the scenario file is a separate
+  // fetch now (only this panel needs it), and it should still land beside the
+  // laws instead of after them.
+  const [{ engine }, feature] = await Promise.all([prepare(base), corpusScenario(base)]);
 
   const parsed = parseFeature(feature);
   // The scenario the panel above shows: an income above the threshold, where

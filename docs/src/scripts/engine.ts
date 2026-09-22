@@ -25,10 +25,10 @@ export interface Manifest {
 export interface Loaded {
   engine: any;
   manifest: Manifest;
-  feature: string;
 }
 
 let enginePromise: Promise<Loaded> | null = null;
+let featurePromise: Promise<string> | null = null;
 
 /**
  * Load the engine and the laws, at most once.
@@ -60,22 +60,45 @@ async function load(base: string): Promise<Loaded> {
 
   const engine = new wasm.WasmEngine();
 
-  const [laws, feature] = await Promise.all([
-    Promise.all(
-      manifest.laws.map((p) =>
-        fetch(`${base}${p}`).then((r) => {
-          if (!r.ok) throw new Error(`${p}: ${r.status}`);
-          return r.text();
-        }),
-      ),
+  const laws = await Promise.all(
+    manifest.laws.map((p) =>
+      fetch(`${base}${p}`).then((r) => {
+        if (!r.ok) throw new Error(`${p}: ${r.status}`);
+        return r.text();
+      }),
     ),
-    fetch(`${base}laws/${manifest.scenario}`).then((r) => {
-      if (!r.ok) throw new Error(`scenario: ${r.status}`);
-      return r.text();
-    }),
-  ]);
+  );
 
   for (const yaml of laws) engine.loadLaw(yaml);
 
-  return { engine, manifest, feature };
+  return { engine, manifest };
+}
+
+/**
+ * The scenario file from the corpus, for the caller that runs it as it stands.
+ *
+ * Separate from `prepare`, and fetched only on demand, because only one of the
+ * two panels wants it. The landing page executes the corpus scenario itself; the
+ * runner on /concepts/scenarios executes whatever is in its editor and ships its
+ * own copy of the text in the page. Loading it inside `prepare` cost every
+ * visitor to that page a 26 KB fetch whose result was dropped on the floor.
+ *
+ * Callers that want both should ask for them together, so the fetch still runs
+ * beside the engine's rather than after it.
+ */
+export function corpusScenario(base = '/'): Promise<string> {
+  if (!featurePromise) {
+    featurePromise = prepare(base)
+      .then(({ manifest }) =>
+        fetch(`${base}laws/${manifest.scenario}`).then((r) => {
+          if (!r.ok) throw new Error(`scenario: ${r.status}`);
+          return r.text();
+        }),
+      )
+      .catch((err) => {
+        featurePromise = null;
+        throw err;
+      });
+  }
+  return featurePromise;
 }

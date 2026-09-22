@@ -147,10 +147,19 @@ function reveal(row: HTMLElement | undefined, scroller: Element | null | undefin
   });
 }
 
+/*
+ * The mark per outcome.
+ *
+ * The colours are nldd-icon-cell's own, which are not nldd-icon's: the cell
+ * knows 'content' | 'secondary' | 'accent' | 'success' | 'warning' | 'critical'
+ * and draws nothing at all for a name outside that set. `secondary-content`
+ * came from the icon's list, matched no selector, and left a skipped step in
+ * the default colour with no error anywhere.
+ */
 const ICONS: Record<Status, { icon: string; color: string }> = {
   passed: { icon: 'success', color: 'success' },
   failed: { icon: 'error', color: 'critical' },
-  skipped: { icon: 'remove', color: 'secondary-content' },
+  skipped: { icon: 'remove', color: 'secondary' },
 };
 
 class ScenarioRunner extends HTMLElement {
