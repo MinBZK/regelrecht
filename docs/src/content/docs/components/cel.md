@@ -10,9 +10,9 @@ Nothing in the code names a case. The stream definition, the lexostatus definiti
 ## Overview
 
 - **Language**: Rust (axum) for the cell, Vue 3 with Vite and `@nldd/design-system` for the frontend
-- **Location**: `packages/aanvraag-cel/` and `frontend-aanvraag-cel/`
+- **Location**: `packages/cel/` and `frontend-cel/`
 - **Schemas**: `schema/chronolex/v0.1.0/` (`stream.json`, `lexostatus.json`, `gram.json`)
-- **Run locally**: `just aanvraag-cel` starts the cell on port 7170 and the frontend on port 7171
+- **Run locally**: `just cel` starts the cell on port 7170 and the frontend on port 7171
 
 ## Four layers
 
@@ -102,5 +102,5 @@ What has no `grondslag` is not recorded. A form file cannot widen this. Its colu
 8. **Awb 4:2 paragraph 1.** The fixed core (name, address, date, requested decision, signature) is not machine-readable in the corpus, so `kern` is not reduced. Should paragraph 1 get a `TOETS`?
 9. **Signature.** Does the login method count as a signature (Awb 2:16)? And how does `ondertekend_via` relate to signing the gram itself (RFC-009)?
 10. **Prefilling.** If data is later prefilled from registers, how do you record that the applicant saw and confirmed it, without keeping a shadow copy of the source?
-11. **Engine and single outcomes.** The engine evaluates the whole article when one outcome is asked for. Every action runs and every `input` is resolved, including cross-law inputs the requested outcome never reads. A required parameter that only another output uses is therefore needed as well. The engine stops at the first missing value (`Variable not found`); a `required: false` parameter that is not passed becomes an unknown value and is reported as missing. For the check before submitting, this means an outcome can only be judged when every fact the article touches is present, including facts of the authority itself. The cell does not fill anything in. It reports "niet te beoordelen: mist <parameter>", one missing value per run. A test (`engine_eist_het_hele_artikel_bij_een_uitkomst` in `packages/aanvraag-cel/src/toets.rs`) pins this behavior on the fixtures. An engine that resolves only what the requested outcome depends on would let the check answer from the application alone.
+11. **Engine and single outcomes.** The engine evaluates the whole article when one outcome is asked for. Every action runs and every `input` is resolved, including cross-law inputs the requested outcome never reads. A required parameter that only another output uses is therefore needed as well. The engine stops at the first missing value (`Variable not found`); a `required: false` parameter that is not passed becomes an unknown value and is reported as missing. For the check before submitting, this means an outcome can only be judged when every fact the article touches is present, including facts of the authority itself. The cell does not fill anything in. It reports "niet te beoordelen: mist <parameter>", one missing value per run. A test (`engine_eist_het_hele_artikel_bij_een_uitkomst` in `packages/cel/src/toets.rs`) pins this behavior on the fixtures. An engine that resolves only what the requested outcome depends on would let the check answer from the application alone.
 12. **Schema version.** `schema/chronolex/v0.1.0/` stands apart from `schema/v0.6.0/`. Merge them, or keep them separate?

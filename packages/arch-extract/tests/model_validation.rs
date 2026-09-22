@@ -95,9 +95,9 @@ fn depends_on(model: &Value, from_short: &str) -> std::collections::BTreeSet<Str
 fn product_crates_present() {
     let crates = crate_short_names(model());
     let expected: std::collections::BTreeSet<String> = [
-        "aanvraag-cel",
         "admin",
         "auth",
+        "cel",
         "corpus",
         "editor-api",
         "engine",
@@ -293,7 +293,7 @@ fn frontend_apps_extracted() {
     let apps = ids_of_kind(model, "app");
     let expected_apps: std::collections::BTreeSet<String> = [
         "app:frontend",
-        "app:frontend-aanvraag-cel",
+        "app:frontend-cel",
         "app:frontend-demo",
         "app:frontend-lawmaking",
         "app:frontend-poc-napp",

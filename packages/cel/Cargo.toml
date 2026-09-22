@@ -1,5 +1,5 @@
 [package]
-name = "regelrecht-aanvraag-cel"
+name = "regelrecht-cel"
 version = "0.1.0"
 edition = "2021"
 authors = ["MinBZK <noreply@minbzk.nl>"]
@@ -8,11 +8,11 @@ license = "EUPL-1.2"
 repository = "https://github.com/MinBZK/regelrecht"
 
 [lib]
-name = "regelrecht_aanvraag_cel"
+name = "regelrecht_cel"
 path = "src/lib.rs"
 
 [[bin]]
-name = "regelrecht-aanvraag-cel"
+name = "regelrecht-cel"
 path = "src/main.rs"
 
 [dependencies]

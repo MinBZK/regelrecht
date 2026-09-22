@@ -103,7 +103,7 @@ export const sidebar: Record<string, SidebarGroup[]> = {
     {
       text: 'Proofs of Concept',
       items: [
-        { text: 'Aanvraag-cel', link: '/components/aanvraag-cel' },
+        { text: 'Cel', link: '/components/cel' },
       ],
     },
     {

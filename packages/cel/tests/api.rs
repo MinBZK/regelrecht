@@ -10,11 +10,11 @@ use axum::http::{header, Request, StatusCode};
 use axum::Router;
 use chrono::DateTime;
 use http_body_util::BodyExt;
-use regelrecht_aanvraag_cel::api::{router, AppState, Klok};
-use regelrecht_aanvraag_cel::config::{Cel, Config, STANDAARD_POORT};
-use regelrecht_aanvraag_cel::eherkenning::Sessies;
-use regelrecht_aanvraag_cel::kroniek::Kroniek;
-use regelrecht_aanvraag_cel::schema::{self, Soort};
+use regelrecht_cel::api::{router, AppState, Klok};
+use regelrecht_cel::config::{Cel, Config, STANDAARD_POORT};
+use regelrecht_cel::eherkenning::Sessies;
+use regelrecht_cel::kroniek::Kroniek;
+use regelrecht_cel::schema::{self, Soort};
 use serde_json::{json, Value};
 use tower::ServiceExt;
 

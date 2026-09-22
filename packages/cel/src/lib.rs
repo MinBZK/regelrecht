@@ -1,4 +1,4 @@
-//! De aanvraag-cel: een cel die een ingediende aanvraag vastlegt als
+//! De cel: een cel die een ingediende aanvraag vastlegt als
 //! chronolexogram en er via een reductie een lexostatus van maakt.
 //!
 //! Vier lagen, elk met een eigen bestand (zie README.md):

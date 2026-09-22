@@ -12,7 +12,7 @@
     "frontend-poc-terugbetaalregimes",
     "frontend-poc-nieuwkomersbekostiging",
     "frontend-poc-napp",
-    "frontend-aanvraag-cel"
+    "frontend-cel"
   ],
   "overrides": {
     "brace-expansion": "^5.0.8",

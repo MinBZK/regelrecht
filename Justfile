@@ -851,31 +851,31 @@ docs-preview:
 docs-a11y:
     cd docs && npm run a11y
 
-# --- Aanvraag-cel ---
+# --- Cel ---
 
-# Start de aanvraag-cel en zijn frontend lokaal: cel op :7170, frontend op :7171
+# Start de cel en zijn frontend lokaal: cel op :7170, frontend op :7171
 #
 # Zonder variabelen draait de cel op de generieke testfixtures uit
-# packages/aanvraag-cel/tests/fixtures. Een ander corpus: zet REGULATION_PATH,
+# packages/cel/tests/fixtures. Een ander corpus: zet REGULATION_PATH,
 # CHRONICLES_PATH en CELL_CONFIG_PATH voor de recipe-naam. De kroniek komt in
-# .aanvraag-cel/ (DATA_DIR), en blijft staan tussen twee runs. De controles bij
+# .cel/ (DATA_DIR), en blijft staan tussen twee runs. De controles bij
 # het opstarten falen luid; lees dan de regels boven "de cel start niet".
-[doc("Start de aanvraag-cel en zijn frontend lokaal")]
-aanvraag-cel:
+[doc("Start de cel en zijn frontend lokaal")]
+cel:
     #!/usr/bin/env bash
     set -euo pipefail
-    fx="$(pwd)/packages/aanvraag-cel/tests/fixtures"
+    fx="$(pwd)/packages/cel/tests/fixtures"
     export REGULATION_PATH="${REGULATION_PATH:-$fx/regulation}"
     export CHRONICLES_PATH="${CHRONICLES_PATH:-$fx/chronicles}"
     export CELL_CONFIG_PATH="${CELL_CONFIG_PATH:-$fx/cel/lexostatussen.yaml}"
-    export DATA_DIR="${DATA_DIR:-$(pwd)/.aanvraag-cel}"
+    export DATA_DIR="${DATA_DIR:-$(pwd)/.cel}"
     export AANVRAAG_CEL_PORT="${AANVRAAG_CEL_PORT:-7170}"
-    cargo build --manifest-path packages/Cargo.toml --package regelrecht-aanvraag-cel
-    cargo run --quiet --manifest-path packages/Cargo.toml --package regelrecht-aanvraag-cel &
+    cargo build --manifest-path packages/Cargo.toml --package regelrecht-cel
+    cargo run --quiet --manifest-path packages/Cargo.toml --package regelrecht-cel &
     cel=$!
     trap 'kill "$cel" 2>/dev/null || true' EXIT
-    echo "aanvraag-cel → http://localhost:${AANVRAAG_CEL_FRONTEND_PORT:-7171}"
-    npm run dev -w aanvraag-cel
+    echo "cel → http://localhost:${AANVRAAG_CEL_FRONTEND_PORT:-7171}"
+    npm run dev -w cel
 
 # --- PoC-portaal ---
 

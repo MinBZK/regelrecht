@@ -3964,30 +3964,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "regelrecht-aanvraag-cel"
-version = "0.1.0"
-dependencies = [
- "axum",
- "chrono",
- "chrono-tz",
- "hex",
- "http-body-util",
- "jsonschema",
- "regelrecht-engine",
- "regelrecht-shared",
- "serde",
- "serde_json",
- "serde_yaml_ng",
- "sha2",
- "tempfile",
- "tokio",
- "tower",
- "tracing",
- "uuid",
- "walkdir",
-]
-
-[[package]]
 name = "regelrecht-admin"
 version = "0.1.0"
 dependencies = [
@@ -4055,6 +4031,30 @@ dependencies = [
  "tower-sessions-memory-store",
  "tracing",
  "url",
+]
+
+[[package]]
+name = "regelrecht-cel"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "chrono-tz",
+ "hex",
+ "http-body-util",
+ "jsonschema",
+ "regelrecht-engine",
+ "regelrecht-shared",
+ "serde",
+ "serde_json",
+ "serde_yaml_ng",
+ "sha2",
+ "tempfile",
+ "tokio",
+ "tower",
+ "tracing",
+ "uuid",
+ "walkdir",
 ]
 
 [[package]]

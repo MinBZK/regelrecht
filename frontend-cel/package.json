@@ -1,9 +1,9 @@
 {
-  "name": "aanvraag-cel",
+  "name": "cel",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "PoC: indienen bij een cel die de aanvraag vastlegt als chronolexogram (frontend bij packages/aanvraag-cel)",
+  "description": "PoC: de cellen van een cel-runtime bekijken, en indienen bij een cel met een portaal (frontend bij packages/cel)",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

@@ -1,11 +1,11 @@
-//! De aanvraag-cel. Zie README.md voor de vier lagen en de env-variabelen.
+//! De cel. Zie README.md voor de vier lagen en de env-variabelen.
 
 use std::sync::Arc;
 
-use regelrecht_aanvraag_cel::api::{router, systeemklok, AppState};
-use regelrecht_aanvraag_cel::config::{Cel, Config};
-use regelrecht_aanvraag_cel::eherkenning::Sessies;
-use regelrecht_aanvraag_cel::kroniek::Kroniek;
+use regelrecht_cel::api::{router, systeemklok, AppState};
+use regelrecht_cel::config::{Cel, Config};
+use regelrecht_cel::eherkenning::Sessies;
+use regelrecht_cel::kroniek::Kroniek;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -33,7 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         lexostatussen = cel.config.lexostatus_definitions.len(),
         regelingen = cel.service.law_count(),
         data_dir = %config.data_dir.display(),
-        "aanvraag-cel gecontroleerd",
+        "cel gecontroleerd",
     );
 
     let app = router(AppState {

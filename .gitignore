@@ -28,9 +28,9 @@ node_modules/
 frontend/dist/
 frontend/public/wasm/pkg/
 frontend-poc-portal/dist/
-frontend-aanvraag-cel/dist/
-# De kroniek van `just aanvraag-cel` (DATA_DIR).
-.aanvraag-cel/
+frontend-cel/dist/
+# De kroniek van `just cel` (DATA_DIR).
+.cel/
 packages/admin/static/
 
 # Landing page: the engine and the laws it needs are copied in by

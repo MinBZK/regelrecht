@@ -1,4 +1,4 @@
-# aanvraag-cel
+# cel
 
 Een proof of concept bij RFC-022: een cel die een ingediende aanvraag vastlegt
 als chronolexogram, en er via een reductie een lexostatus van maakt waarmee een
@@ -6,13 +6,13 @@ artikel (een `TOETS`) beoordeelt of de aanvraag volledig is.
 
 De code noemt geen casus. Stroom, lexostatus-definities en corpus komen uit
 configuratie; de tests draaien op de generieke fixtures in `tests/fixtures/`.
-De docs-pagina `docs/src/content/docs/components/aanvraag-cel.md` beschrijft
+De docs-pagina `docs/src/content/docs/components/cel.md` beschrijft
 dezelfde opzet, met de afwijkingen van RFC-022 en de open vragen.
 
 ## Starten
 
 ```bash
-just aanvraag-cel          # cel op :7170, frontend op :7171, op de fixtures
+just cel          # cel op :7170, frontend op :7171, op de fixtures
 ```
 
 ## De vier lagen
