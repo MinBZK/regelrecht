@@ -92,7 +92,7 @@ impl Kroniek {
         Ok(self
             .lees(chronicle)?
             .into_iter()
-            .filter(|g| g.zaakkenmerk == zaakkenmerk)
+            .filter(|g| g.zaakkenmerk.as_deref() == Some(zaakkenmerk))
             .collect())
     }
 }
@@ -101,7 +101,7 @@ impl Kroniek {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use crate::stroom::StroomVerwijzing;
+    use crate::stroom::{StroomVerwijzing, Zaak};
     use serde_json::json;
 
     fn gram(zaak: &str) -> Gram {
@@ -114,7 +114,8 @@ mod tests {
             recording_actor: "test_instantie".into(),
             grondslag: vec!["testregeling_aanvraag#1".into()],
             op_moment: "2025-03-12T10:14:03+01:00".into(),
-            zaakkenmerk: zaak.into(),
+            zaak: Zaak::Opent,
+            zaakkenmerk: Some(zaak.into()),
             stroom: StroomVerwijzing {
                 id: "test".into(),
                 sha256: "a".repeat(64),
@@ -157,8 +158,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let k = Kroniek::open(dir.path()).unwrap();
         let mut g = gram(Z1);
-        g.zaakkenmerk = "geen-uuid".into();
+        g.zaakkenmerk = Some("geen-uuid".into());
         assert!(k.voeg_toe(&g).unwrap_err().contains("zaakkenmerk"));
+        // Een event met een zaak zonder zaakkenmerk, en een zonder zaak met.
+        g.zaakkenmerk = None;
+        assert!(k.voeg_toe(&g).unwrap_err().contains("zaakkenmerk"));
+        g.zaak = Zaak::Geen;
+        g.zaakkenmerk = Some(Z1.into());
+        assert!(k.voeg_toe(&g).is_err());
         assert!(k.lees("test_kroniek").unwrap().is_empty());
     }
 

@@ -44,10 +44,60 @@ pub struct Event {
     pub type_: String,
     #[serde(default)]
     pub soort: Option<String>,
+    /// Of het gram een zaak opent, een bestaande zaak volgt, of geen zaak
+    /// heeft. Bepaalt of het gram een `zaakkenmerk` draagt.
+    #[serde(default)]
+    pub zaak: Zaak,
     /// De veldboom, in documentvolgorde (een YAML-mapping houdt die vast).
     pub fields: serde_yaml_ng::Mapping,
     #[serde(default)]
     pub niet_gereduceerd: Vec<NietGereduceerd>,
+}
+
+/// De zaak van een event. Een zaakkenmerk groepeert grammen van een zaak
+/// (RFC-022 par. 1.2 doet dat alleen voor de stage-decretogrammen van een
+/// besluit); niet elk feit hoort bij een zaak, dus de stroom zegt het per
+/// event.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Zaak {
+    /// De cel geeft bij vastleggen een nieuw zaakkenmerk.
+    Opent,
+    /// Het gram draagt het zaakkenmerk van een bestaande zaak, dat in de
+    /// invoer wordt meegegeven.
+    Volgt,
+    /// Geen zaakkenmerk.
+    #[default]
+    Geen,
+}
+
+impl Zaak {
+    /// Of een gram van dit event een zaakkenmerk draagt.
+    pub fn heeft_kenmerk(self) -> bool {
+        self != Zaak::Geen
+    }
+
+    pub fn als_tekst(self) -> &'static str {
+        match self {
+            Zaak::Opent => "opent",
+            Zaak::Volgt => "volgt",
+            Zaak::Geen => "geen",
+        }
+    }
+
+    /// Of een zaakkenmerk, of het ontbreken ervan, past bij deze zaak.
+    pub fn toets_kenmerk(self, event: &str, zaakkenmerk: Option<&str>) -> Result<(), String> {
+        match (self.heeft_kenmerk(), zaakkenmerk) {
+            (true, None) => Err(format!(
+                "event '{event}' heeft zaak: {}, maar het zaakkenmerk ontbreekt",
+                self.als_tekst()
+            )),
+            (false, Some(_)) => Err(format!(
+                "event '{event}' heeft geen zaak (zaak: geen) en krijgt geen zaakkenmerk"
+            )),
+            _ => Ok(()),
+        }
+    }
 }
 
 /// Een veld dat bewust door geen afleiding gelezen wordt, met de reden.
@@ -104,13 +154,23 @@ pub struct Gram {
     pub recording_actor: String,
     pub grondslag: Vec<String>,
     pub op_moment: String,
-    pub zaakkenmerk: String,
+    /// Uit de stroom: of het gram een zaak opent of volgt. Weggelaten als
+    /// het event geen zaak heeft.
+    #[serde(default, skip_serializing_if = "zonder_zaak")]
+    pub zaak: Zaak,
+    /// Alleen bij een event met een zaak (`zaak: opent` of `volgt`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zaakkenmerk: Option<String>,
     pub stroom: StroomVerwijzing,
     /// Alleen als de cel het gram niet zelf vaststelde: `startstand` is bij
     /// het starten in een lege kroniek geplaatst (zie [`crate::startstand`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub herkomst: Option<String>,
     pub fields: Map<String, Value>,
+}
+
+fn zonder_zaak(z: &Zaak) -> bool {
+    !z.heeft_kenmerk()
 }
 
 /// Welke stroomdefinitie een gram bouwde, en welke versie ervan.
@@ -476,7 +536,9 @@ pub struct Indiening<'a> {
     /// De inhoud zoals ingediend.
     pub external: &'a Map<String, Value>,
     pub op_moment: DateTime<FixedOffset>,
-    pub zaakkenmerk: &'a str,
+    /// Bij `zaak: opent` het nieuwe kenmerk, bij `volgt` dat van de
+    /// bestaande zaak, bij `geen` niets.
+    pub zaakkenmerk: Option<&'a str>,
 }
 
 fn waarde_op<'v>(wortel: &'v Value, pad: &str) -> Option<&'v Value> {
@@ -494,6 +556,9 @@ pub fn bouw_gram(
     event: &Event,
     indiening: &Indiening<'_>,
 ) -> Result<Gram, String> {
+    event
+        .zaak
+        .toets_kenmerk(&event.name, indiening.zaakkenmerk)?;
     let vorm = event.external_vorm().map_err(|f| f.join("; "))?;
     let mut onbekend = Vec::new();
     let mut fouten = Vec::new();
@@ -548,7 +613,8 @@ pub fn bouw_gram(
         op_moment: indiening
             .op_moment
             .to_rfc3339_opts(chrono::SecondsFormat::Secs, false),
-        zaakkenmerk: indiening.zaakkenmerk.to_string(),
+        zaak: event.zaak,
+        zaakkenmerk: indiening.zaakkenmerk.map(str::to_string),
         stroom: StroomVerwijzing {
             id: stroom.id.clone(),
             sha256: stroom.sha256.clone(),
@@ -583,6 +649,8 @@ mod tests {
     use serde_json::json;
 
     const STROOM: &str = include_str!("../tests/fixtures/chronicles/test_aanvragen.yaml");
+
+    const ZAAK: &str = "00000000-0000-4000-8000-000000000001";
 
     fn moment() -> DateTime<FixedOffset> {
         DateTime::parse_from_rfc3339("2025-03-12T10:14:03+01:00").unwrap()
@@ -655,7 +723,7 @@ mod tests {
                 intake: &intake(),
                 external: external.as_object().unwrap(),
                 op_moment: moment(),
-                zaakkenmerk: "00000000-0000-4000-8000-000000000001",
+                zaakkenmerk: Some(ZAAK),
             },
         )
         .unwrap();
@@ -696,7 +764,7 @@ mod tests {
                 intake: &intake(),
                 external: external.as_object().unwrap(),
                 op_moment: moment(),
-                zaakkenmerk: "00000000-0000-4000-8000-000000000001",
+                zaakkenmerk: Some(ZAAK),
             },
         )
         .unwrap_err();
@@ -711,7 +779,7 @@ mod tests {
                 intake: &intake(),
                 external: external.as_object().unwrap(),
                 op_moment: moment(),
-                zaakkenmerk: "00000000-0000-4000-8000-000000000001",
+                zaakkenmerk: Some(ZAAK),
             },
         )
     }
@@ -821,6 +889,57 @@ mod tests {
     }
 
     #[test]
+    fn zaakkenmerk_volgt_de_zaak_van_het_event() {
+        for (zaak, kenmerk, fout) in [
+            ("opent", Some(ZAAK), None),
+            ("volgt", Some(ZAAK), None),
+            ("geen", None, None),
+            (
+                "opent",
+                None,
+                Some("zaak: opent, maar het zaakkenmerk ontbreekt"),
+            ),
+            (
+                "volgt",
+                None,
+                Some("zaak: volgt, maar het zaakkenmerk ontbreekt"),
+            ),
+            ("geen", Some(ZAAK), Some("heeft geen zaak (zaak: geen)")),
+        ] {
+            let s = parse(
+                &STROOM.replace("zaak: opent", &format!("zaak: {zaak}")),
+                "t",
+            )
+            .unwrap();
+            let uitkomst = bouw_gram(
+                &s,
+                &s.events[0],
+                &Indiening {
+                    intake: &intake(),
+                    external: &Map::new(),
+                    op_moment: moment(),
+                    zaakkenmerk: kenmerk,
+                },
+            );
+            match fout {
+                None => {
+                    let gram = uitkomst.unwrap();
+                    assert_eq!(gram.zaakkenmerk.as_deref(), kenmerk);
+                    let json = gram.als_json();
+                    // Zonder zaak staat er geen zaak en geen zaakkenmerk in het gram.
+                    assert_eq!(json.get("zaak").is_some(), zaak != "geen");
+                    assert_eq!(json.get("zaakkenmerk").is_some(), zaak != "geen");
+                    gram.valideer().unwrap();
+                }
+                Some(f) => assert!(uitkomst.unwrap_err().contains(f), "{zaak}"),
+            }
+        }
+        // Zonder `zaak` in de stroom: geen.
+        let s = parse(&STROOM.replace("    zaak: opent\n", ""), "t").unwrap();
+        assert_eq!(s.events[0].zaak, Zaak::Geen);
+    }
+
+    #[test]
     fn ontbrekende_intake_is_een_fout() {
         let s = parse(STROOM, "fixture").unwrap();
         let external = Map::new();
@@ -831,7 +950,7 @@ mod tests {
                 intake: &json!({"kanaal": "portaal"}),
                 external: &external,
                 op_moment: moment(),
-                zaakkenmerk: "00000000-0000-4000-8000-000000000001",
+                zaakkenmerk: Some(ZAAK),
             },
         )
         .unwrap_err();

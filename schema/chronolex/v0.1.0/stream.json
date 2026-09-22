@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.1.0/stream.json",
   "title": "Stroomdefinitie (chronicle-stream) v0.1.0",
-  "description": "Welke feiten een cel vastlegt, door welke actor, in welke kroniek, op welke grondslag en met welke velden. Volgt de schets in RFC-022 par. 1.3, met deze invullingen: grondslag is een lijst; elk event draagt een open type en zo nodig een soort; velden mogen genest zijn; een veld bindt aan $intake.* of $external.*, is een tabel met gedeclareerde kolommen, of is een constante van de stroom; een indiening van soort aanvraag scheidt kern (Awb 4:2 lid 1) van inhoud; en niet_gereduceerd noemt de velden die bewust door geen reductie gelezen worden.",
+  "description": "Welke feiten een cel vastlegt, door welke actor, in welke kroniek, op welke grondslag en met welke velden. Volgt de schets in RFC-022 par. 1.3, met deze invullingen: grondslag is een lijst; elk event draagt een open type en zo nodig een soort; zaak zegt of een gram een zaak opent, volgt of er geen heeft; velden mogen genest zijn; een veld bindt aan $intake.* of $external.*, is een tabel met gedeclareerde kolommen, of is een constante van de stroom; een indiening van soort aanvraag scheidt kern (Awb 4:2 lid 1) van inhoud; en niet_gereduceerd noemt de velden die bewust door geen reductie gelezen worden.",
   "type": "object",
   "required": [
     "$id",
@@ -140,6 +140,15 @@
         "soort": {
           "$ref": "#/definitions/identifier",
           "description": "De soort binnen het type, bijvoorbeeld aanvraag, aangifte of melding bij een indiening."
+        },
+        "zaak": {
+          "enum": [
+            "opent",
+            "volgt",
+            "geen"
+          ],
+          "default": "geen",
+          "description": "Of een gram van dit event bij een zaak hoort. opent: de cel geeft bij vastleggen een nieuw zaakkenmerk. volgt: het gram draagt het zaakkenmerk van een bestaande zaak, meegegeven in de invoer. geen (standaard): het gram heeft geen zaakkenmerk. Een uitbreiding van RFC-022 par. 1.2, dat een zaakkenmerk alleen gebruikt om de stage-decretogrammen van een besluit te groeperen."
         },
         "fields": {
           "$ref": "#/definitions/velden"

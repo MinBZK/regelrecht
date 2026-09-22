@@ -54,7 +54,7 @@
     "startstand": {
       "type": "string",
       "minLength": 1,
-      "description": "Een JSONL-bestand met grammen die de cel bij het starten in een lege kroniek zet. Elke regel heeft stroom, name, op_moment, herkomst: startstand en fields, en optioneel zaakkenmerk; de rest volgt uit de stroom."
+      "description": "Een JSONL-bestand met grammen die de cel bij het starten in een lege kroniek zet. Elke regel heeft stroom, name, op_moment, herkomst: startstand en fields, en een zaakkenmerk als het event een zaak heeft (zaak: opent of volgt), en alleen dan; de rest volgt uit de stroom."
     }
   },
   "definitions": {

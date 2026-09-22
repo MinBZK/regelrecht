@@ -92,4 +92,56 @@ mod tests {
             "{fouten:?}"
         );
     }
+
+    fn gram(zaak: Option<&str>, zaakkenmerk: Option<&str>) -> Value {
+        let mut g = serde_json::json!({
+            "kind": "chronolexogram", "type": "decretogram", "name": "x",
+            "chronicle": "k", "recording_actor": "a", "grondslag": ["r#1"],
+            "op_moment": "2025-03-12T10:14:03+01:00",
+            "stroom": {"id": "s", "sha256": "0".repeat(64)}, "fields": {}
+        });
+        if let Some(z) = zaak {
+            g["zaak"] = z.into();
+        }
+        if let Some(k) = zaakkenmerk {
+            g["zaakkenmerk"] = k.into();
+        }
+        g
+    }
+
+    #[test]
+    fn gram_zaakkenmerk_alleen_bij_een_zaak() {
+        const Z: &str = "00000000-0000-4000-8000-000000000001";
+        for zaak in ["opent", "volgt"] {
+            valideer(Soort::Gram, &gram(Some(zaak), Some(Z))).unwrap();
+            let fouten = valideer(Soort::Gram, &gram(Some(zaak), None)).unwrap_err();
+            assert!(
+                fouten.iter().any(|f| f.contains("zaakkenmerk")),
+                "{fouten:?}"
+            );
+        }
+        for zaak in [Some("geen"), None] {
+            valideer(Soort::Gram, &gram(zaak, None)).unwrap();
+            assert!(valideer(Soort::Gram, &gram(zaak, Some(Z))).is_err());
+        }
+        assert!(valideer(Soort::Gram, &gram(Some("misschien"), None)).is_err());
+    }
+
+    #[test]
+    fn stroom_zaak_is_opent_volgt_of_geen() {
+        let stroom = |zaak: &str| {
+            serde_json::json!({"$id": "s", "recording_actor": "a", "chronicle": "k", "events": [{
+                "name": "x", "intake": "besluit", "grondslag": ["r#1"],
+                "type": "decretogram", "zaak": zaak, "fields": {"a": "$external.a"}
+            }]})
+        };
+        for zaak in ["opent", "volgt", "geen"] {
+            valideer(Soort::Stroom, &stroom(zaak)).unwrap();
+        }
+        let fouten = valideer(Soort::Stroom, &stroom("misschien")).unwrap_err();
+        assert!(
+            fouten.iter().any(|f| f.starts_with("/events/0/zaak")),
+            "{fouten:?}"
+        );
+    }
 }

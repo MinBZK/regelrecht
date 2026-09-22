@@ -2,8 +2,9 @@
 //! zet.
 //!
 //! Een regel van het JSONL-bestand noemt de stroom, het event (`name`),
-//! `op_moment`, `herkomst: startstand` en `fields`, en optioneel een
-//! `zaakkenmerk`. De rest (type, soort, grondslag, kroniek, actor en de hash
+//! `op_moment`, `herkomst: startstand` en `fields`. Een `zaakkenmerk` staat
+//! erin als het event een zaak heeft (`zaak: opent` of `volgt`), en alleen
+//! dan; de startstand verzint er geen. De rest (type, soort, grondslag, kroniek, actor en de hash
 //! van de stroom) volgt uit de stroom, zodat een startstand niet veroudert als
 //! de stroom verandert. De velden moeten precies die van het event zijn.
 //!
@@ -75,6 +76,9 @@ fn bouw(tekst: &str, strommen: &[Stroom]) -> Result<Gram, String> {
         .event(&regel.name)
         .ok_or_else(|| format!("stroom '{}' heeft geen event '{}'", stroom.id, regel.name))?;
     velden_passen(event, &regel.fields, "")?;
+    event
+        .zaak
+        .toets_kenmerk(&event.name, regel.zaakkenmerk.as_deref())?;
     let gram = Gram {
         kind: "chronolexogram".into(),
         type_: event.type_.clone(),
@@ -84,9 +88,8 @@ fn bouw(tekst: &str, strommen: &[Stroom]) -> Result<Gram, String> {
         recording_actor: stroom.recording_actor.clone(),
         grondslag: event.grondslag.clone(),
         op_moment: regel.op_moment,
-        zaakkenmerk: regel
-            .zaakkenmerk
-            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+        zaak: event.zaak,
+        zaakkenmerk: regel.zaakkenmerk,
         stroom: StroomVerwijzing {
             id: stroom.id.clone(),
             sha256: stroom.sha256.clone(),
@@ -183,5 +186,46 @@ mod tests {
         let r = r#"{"stroom": "test_registers", "name": "aanduiding_geschrapt", "op_moment": "gisteren", "herkomst": "startstand", "fields": {"aanduiding": "X", "orgaan": "raad"}}"#;
         assert!(fout(r).contains("op_moment"), "{}", fout(r));
         assert!(fout(r).starts_with("s regel 1: "));
+    }
+
+    #[test]
+    fn geen_zaak_geen_zaakkenmerk() {
+        // De startstand verzint geen zaakkenmerk.
+        for g in parse(STARTSTAND, "s", &strommen()).unwrap() {
+            assert_eq!(g.zaakkenmerk, None);
+            assert!(g.als_json().get("zaakkenmerk").is_none());
+            assert!(g.als_json().get("zaak").is_none());
+        }
+        let r = r#"{"stroom": "test_registers", "name": "aanduiding_geschrapt", "op_moment": "2024-01-10T09:00:00+01:00", "herkomst": "startstand", "zaakkenmerk": "00000000-0000-4000-8000-000000000001", "fields": {"aanduiding": "X", "orgaan": "raad"}}"#;
+        assert!(
+            fout(r).contains("heeft geen zaak (zaak: geen)"),
+            "{}",
+            fout(r)
+        );
+    }
+
+    #[test]
+    fn zaakkenmerk_bij_een_event_met_een_zaak() {
+        for zaak in ["opent", "volgt"] {
+            let stroom = STROOM.replace(
+                "  - name: aanduiding_geschrapt\n",
+                &format!("  - name: aanduiding_geschrapt\n    zaak: {zaak}\n"),
+            );
+            let strommen = vec![crate::stroom::parse(&stroom, "stroom").unwrap()];
+            let zonder = r#"{"stroom": "test_registers", "name": "aanduiding_geschrapt", "op_moment": "2024-01-10T09:00:00+01:00", "herkomst": "startstand", "fields": {"aanduiding": "X", "orgaan": "raad"}}"#;
+            let f = parse(zonder, "s", &strommen).unwrap_err().join("; ");
+            assert!(f.contains("het zaakkenmerk ontbreekt"), "{f}");
+            let met = zonder.replace(
+                r#""fields""#,
+                r#""zaakkenmerk": "00000000-0000-4000-8000-000000000001", "fields""#,
+            );
+            let g = parse(&met, "s", &strommen).unwrap().remove(0);
+            assert_eq!(
+                g.zaakkenmerk.as_deref(),
+                Some("00000000-0000-4000-8000-000000000001")
+            );
+            assert_eq!(g.als_json()["zaak"], zaak);
+            g.valideer().unwrap();
+        }
     }
 }

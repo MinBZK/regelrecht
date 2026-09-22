@@ -468,7 +468,7 @@ pub fn past(filter: &Filter, inputs: &Map<String, Value>, gram: &Gram) -> Result
             "name" => gram.name == verwacht,
             "type" => gram.type_ == verwacht,
             "soort" => gram.soort.as_deref() == Some(verwacht),
-            "zaakkenmerk" => gram.zaakkenmerk == verwacht,
+            "zaakkenmerk" => gram.zaakkenmerk.as_deref() == Some(verwacht),
             "recording_actor" => gram.recording_actor == verwacht,
             "chronicle" => gram.chronicle == verwacht,
             pad => match gram.veld(pad) {
@@ -507,7 +507,7 @@ pub fn reduceer(
     };
     let mut uit = Lexostatus {
         naam: definitie.name.clone(),
-        zaakkenmerk: gekozen.map(|g| g.zaakkenmerk.clone()),
+        zaakkenmerk: gekozen.and_then(|g| g.zaakkenmerk.clone()),
         op_moment: gekozen.map(|g| g.op_moment.clone()),
         parameters: BTreeMap::new(),
         extra_velden: BTreeMap::new(),
@@ -544,13 +544,13 @@ pub fn reduceer(
     Ok(Some(uit))
 }
 
-/// Reduceer een enkel gram, zoals een concept dat nog geen feit is.
+/// Reduceer een enkel gram, zoals een concept dat nog geen feit is. Heeft
+/// het gram een zaakkenmerk, dan is dat de input `zaakkenmerk`.
 pub fn leid_af(definitie: &LexostatusDefinitie, gram: &Gram) -> Result<Lexostatus, String> {
     let mut inputs = Map::new();
-    inputs.insert(
-        "zaakkenmerk".into(),
-        Value::String(gram.zaakkenmerk.clone()),
-    );
+    if let Some(z) = &gram.zaakkenmerk {
+        inputs.insert("zaakkenmerk".into(), Value::String(z.clone()));
+    }
     reduceer(definitie, &inputs, std::slice::from_ref(gram))?
         .ok_or_else(|| "de reductie vond het gram niet".to_string())
 }
@@ -559,7 +559,7 @@ pub fn leid_af(definitie: &LexostatusDefinitie, gram: &Gram) -> Result<Lexostatu
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use crate::stroom::StroomVerwijzing;
+    use crate::stroom::{StroomVerwijzing, Zaak};
     use serde_json::json;
 
     const CEL: &str = include_str!("../tests/fixtures/cellen/instantie/lexostatussen.yaml");
@@ -574,7 +574,8 @@ mod tests {
             recording_actor: "test_instantie".into(),
             grondslag: vec!["testregeling_aanvraag#1".into()],
             op_moment: moment.into(),
-            zaakkenmerk: zaak.into(),
+            zaak: Zaak::Opent,
+            zaakkenmerk: Some(zaak.into()),
             stroom: StroomVerwijzing {
                 id: "test_aanvragen".into(),
                 sha256: "0".repeat(64),
@@ -785,10 +786,25 @@ mod tests {
         assert!(fout.contains("zaakkenmerk"), "{fout}");
     }
 
+    #[test]
+    fn filter_op_zaakkenmerk_laat_een_gram_zonder_zaak_niet_door() {
+        let mut filter = Filter::new();
+        filter.insert("zaakkenmerk".into(), "$zaakkenmerk".into());
+        let inputs = json!({"zaakkenmerk": ZAAK});
+        let inputs = inputs.as_object().unwrap();
+        let mut g = gram(ZAAK, "2025-03-01T09:00:00+01:00", json!({}));
+        assert!(past(&filter, inputs, &g).unwrap());
+        g.zaak = Zaak::Geen;
+        g.zaakkenmerk = None;
+        assert!(!past(&filter, inputs, &g).unwrap());
+    }
+
     const REGISTER: &str = include_str!("../tests/fixtures/cellen/register/lexostatussen.yaml");
 
     fn besluit(name: &str, moment: &str, fields: Value) -> Gram {
         let mut g = gram(ZAAK, moment, fields);
+        g.zaak = Zaak::Geen;
+        g.zaakkenmerk = None;
         g.type_ = "decretogram".into();
         g.soort = None;
         g.name = name.into();

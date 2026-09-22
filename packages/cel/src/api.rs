@@ -37,7 +37,7 @@ use crate::cel::Cel;
 use crate::eherkenning::{Login, Sessie, Sessies, COOKIE};
 use crate::kroniek::Kroniek;
 use crate::reductie;
-use crate::stroom::{self, Binding, Gram, Indiening};
+use crate::stroom::{self, Binding, Gram, Indiening, Zaak};
 use crate::synthese::{self, Bron};
 use crate::toets;
 
@@ -162,12 +162,67 @@ fn portaal_event(state: &AppState) -> Result<(&stroom::Stroom, &stroom::Event), 
 struct Concept {
     #[serde(default)]
     external: Map<String, Value>,
+    /// Alleen bij een event met `zaak: volgt`: de zaak die het gram volgt.
+    #[serde(default)]
+    zaakkenmerk: Option<String>,
 }
 
-/// Bouw een gram uit een concept. Een indiening opent een nieuwe zaak.
+/// Het zaakkenmerk voor een gram van het portaal-event. `zaak: opent` geeft
+/// een nieuw kenmerk; `volgt` neemt dat uit het concept, van een zaak die
+/// de vrager in de kroniek heeft; `geen` geeft er geen.
+fn zaakkenmerk_voor(
+    state: &AppState,
+    sessie: &Sessie,
+    event: &stroom::Event,
+    concept: &Concept,
+) -> Result<Option<String>, Fout> {
+    let meegegeven = concept.zaakkenmerk.clone();
+    match event.zaak {
+        Zaak::Opent if meegegeven.is_some() => Err(fout(
+            StatusCode::BAD_REQUEST,
+            format!(
+                "event '{}' opent een zaak: de cel geeft het zaakkenmerk, het concept niet",
+                event.name
+            ),
+        )),
+        Zaak::Opent => Ok(Some(uuid::Uuid::new_v4().to_string())),
+        Zaak::Volgt => {
+            let Some(z) = meegegeven else {
+                return Err(fout(
+                    StatusCode::BAD_REQUEST,
+                    format!(
+                        "event '{}' volgt een zaak: geef het zaakkenmerk mee",
+                        event.name
+                    ),
+                ));
+            };
+            let mut bestaat = false;
+            for chronicle in state.cel.kronieken() {
+                let grammen = state
+                    .kroniek
+                    .lees(chronicle)
+                    .map_err(|e| fout(StatusCode::INTERNAL_SERVER_ERROR, e))?;
+                bestaat |= zichtbaar(state, Some(sessie), grammen)
+                    .iter()
+                    .any(|g| g.zaakkenmerk.as_deref() == Some(z.as_str()));
+            }
+            if bestaat {
+                Ok(Some(z))
+            } else {
+                Err(fout(
+                    StatusCode::BAD_REQUEST,
+                    format!("geen zaak '{z}' in de kroniek"),
+                ))
+            }
+        }
+        Zaak::Geen => Ok(meegegeven),
+    }
+}
+
+/// Bouw een gram uit een concept.
 fn bouw(state: &AppState, sessie: &Sessie, concept: &Concept) -> Result<Gram, Fout> {
     let (stroom, event) = portaal_event(state)?;
-    let zaakkenmerk = uuid::Uuid::new_v4().to_string();
+    let zaakkenmerk = zaakkenmerk_voor(state, sessie, event, concept)?;
     let gram = stroom::bouw_gram(
         stroom,
         event,
@@ -175,7 +230,7 @@ fn bouw(state: &AppState, sessie: &Sessie, concept: &Concept) -> Result<Gram, Fo
             intake: &sessie.intake(&event.intake),
             external: &concept.external,
             op_moment: (state.klok)(),
-            zaakkenmerk: &zaakkenmerk,
+            zaakkenmerk: zaakkenmerk.as_deref(),
         },
     )
     .map_err(|e| fout(StatusCode::BAD_REQUEST, e))?;
@@ -272,7 +327,7 @@ async fn indienen(
         .kroniek
         .voeg_toe(&gram)
         .map_err(|e| fout(StatusCode::INTERNAL_SERVER_ERROR, e))?;
-    tracing::info!(cel = %state.cel.id(), zaakkenmerk = %gram.zaakkenmerk, name = %gram.name, "gram vastgelegd");
+    tracing::info!(cel = %state.cel.id(), zaakkenmerk = gram.zaakkenmerk.as_deref().unwrap_or("-"), name = %gram.name, "gram vastgelegd");
     let yaml = als_yaml(&state.cel, &gram);
     Ok((
         StatusCode::CREATED,

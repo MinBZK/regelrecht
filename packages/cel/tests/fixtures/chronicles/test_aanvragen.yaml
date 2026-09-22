@@ -10,6 +10,7 @@ events:
       - testregeling_aanvraag#1
     type: indiening
     soort: aanvraag
+    zaak: opent
     fields:
       kern:
         aanvrager:

@@ -13,6 +13,9 @@
 //! 3. Geen weesveld: elk veld van een event wordt door een afleiding of een
 //!    filter gelezen, of staat met reden in `niet_gereduceerd`.
 //! 4. Geen naamsbotsing: een parameter krijgt maar een afleiding.
+//! 5. Alleen een event met een zaak (`zaak: opent` of `volgt`) heeft een
+//!    zaakkenmerk: een filter op `zaakkenmerk`, of een input `zaakkenmerk`,
+//!    mag alleen events met een zaak aanwijzen.
 //!
 //! Heeft de cel een portaal, dan wijst dat naar een bestaand event, een
 //! bestaande lexostatus en een bestaande uitkomst, van een artikel uit de
@@ -89,6 +92,7 @@ pub fn controleer(
     verwijzingen(strommen, lexostatussen, service, &mut fouten);
     weesvelden(strommen, lexostatussen, &mut fouten);
     botsingen(strommen, lexostatussen, &mut fouten);
+    zaakkenmerken(strommen, lexostatussen, &mut fouten);
     if let Some(p) = portaal {
         portaal_(strommen, lexostatussen, p, service, &mut fouten);
     }
@@ -323,6 +327,58 @@ fn botsingen(strommen: &[Stroom], lexostatussen: &Lexostatussen, fouten: &mut Ve
                 "parameter '{param}' krijgt meer dan een afleiding voor event '{event}': lexostatus {}",
                 defs.join(", ")
             ));
+        }
+    }
+}
+
+/// Een filter op `zaakkenmerk`, of een input `zaakkenmerk`, vraagt dat elk
+/// event dat het aanwijst een zaak heeft: zonder zaak heeft een gram geen
+/// zaakkenmerk en komt het nooit door zo'n filter.
+fn zaakkenmerken(strommen: &[Stroom], lexostatussen: &Lexostatussen, fouten: &mut Vec<String>) {
+    let zonder_zaak = |events: Vec<StroomEvent<'_>>| -> Vec<String> {
+        events
+            .into_iter()
+            .filter(|(_, e)| !e.zaak.heeft_kenmerk())
+            .map(|(s, e)| format!("'{}' (stroom '{}')", e.name, s.id))
+            .collect()
+    };
+    let melding = |waar: &str, events: Vec<String>| {
+        format!(
+            "{waar}, maar event {} heeft geen zaak (zaak: geen) en dus geen zaakkenmerk; geef het event zaak: opent of volgt, of gebruik geen zaakkenmerk",
+            events.join(", ")
+        )
+    };
+    for def in &lexostatussen.lexostatus_definitions {
+        let input = def.inputs.iter().any(|i| i.name == "zaakkenmerk");
+        let filter = def.reduction.filter.contains_key("zaakkenmerk");
+        if input || filter {
+            let events = zonder_zaak(events_voor(def, None, strommen));
+            if !events.is_empty() {
+                let wat = match (input, filter) {
+                    (true, true) => "input en filter op 'zaakkenmerk'",
+                    (true, false) => "input 'zaakkenmerk'",
+                    _ => "filter op 'zaakkenmerk'",
+                };
+                fouten.push(melding(
+                    &format!("lexostatus '{}': {wat}", def.name),
+                    events,
+                ));
+            }
+        }
+        for (naam, a) in def.alle_afleidingen() {
+            let Some(f) = a.filter().filter(|f| f.contains_key("zaakkenmerk")) else {
+                continue;
+            };
+            let events = zonder_zaak(events_voor(def, Some(f), strommen));
+            if !events.is_empty() {
+                fouten.push(melding(
+                    &format!(
+                        "lexostatus '{}', afleiding '{naam}': filter op 'zaakkenmerk'",
+                        def.name
+                    ),
+                    events,
+                ));
+            }
         }
     }
 }
@@ -610,6 +666,53 @@ mod tests {
             STROOM,
             &cel,
             "duplicate entry with key \"bevat_aanduiding\"",
+        );
+    }
+
+    // 5. Zaakkenmerk alleen bij een event met een zaak.
+    #[test]
+    fn filter_op_zaakkenmerk_vraagt_een_event_met_een_zaak() {
+        // De fixture: aanvraag_ontvangen opent een zaak.
+        assert!(STROOM.contains("zaak: opent"));
+        let volgt = STROOM.replace("zaak: opent", "zaak: volgt");
+        draai(&volgt, CEL).unwrap();
+        for stroom in [
+            STROOM.replace("    zaak: opent\n", ""),
+            STROOM.replace("zaak: opent", "zaak: geen"),
+        ] {
+            faalt_met(
+                &stroom,
+                CEL,
+                "lexostatus 'aanvraag_inhoud': input en filter op 'zaakkenmerk', maar event 'aanvraag_ontvangen' (stroom 'test_aanvragen') heeft geen zaak",
+            );
+        }
+        // Alleen de input, zonder filter.
+        let stroom = STROOM.replace("zaak: opent", "zaak: geen");
+        let cel = CEL.replace(", zaakkenmerk: $zaakkenmerk}", "}");
+        faalt_met(
+            &stroom,
+            &cel,
+            "lexostatus 'aanvraag_inhoud': input 'zaakkenmerk', maar",
+        );
+    }
+
+    #[test]
+    fn filter_per_afleiding_op_zaakkenmerk_zonder_zaak() {
+        let cel = REG_CEL.replace(
+            "inputs: [{name: aanduiding, type: string}]",
+            "inputs: [{name: aanduiding, type: string}, {name: zaakkenmerk, type: string}]",
+        );
+        register_faalt_met(
+            &cel,
+            "lexostatus 'registerstatus': input 'zaakkenmerk', maar event",
+        );
+        let cel = REG_CEL.replace(
+            "{filter: {name: aanduiding_geschrapt, orgaan: raad,",
+            "{filter: {name: aanduiding_geschrapt, zaakkenmerk: 00000000-0000-4000-8000-000000000001, orgaan: raad,",
+        );
+        register_faalt_met(
+            &cel,
+            "afleiding 'is_geschrapt_raad': filter op 'zaakkenmerk', maar event 'aanduiding_geschrapt' (stroom 'test_registers') heeft geen zaak",
         );
     }
 

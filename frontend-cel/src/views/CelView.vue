@@ -31,7 +31,7 @@ onMounted(async () => {
 });
 
 function ingediend(gram) {
-  nieuw.value = gram.zaakkenmerk;
+  nieuw.value = gram;
   scherm.value = 'kroniek';
 }
 

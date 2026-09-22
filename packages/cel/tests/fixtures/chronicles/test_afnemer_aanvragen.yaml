@@ -12,6 +12,7 @@ events:
       - testregeling_afnemer#1
     type: indiening
     soort: aanvraag
+    zaak: opent
     fields:
       kern:
         aanvrager:

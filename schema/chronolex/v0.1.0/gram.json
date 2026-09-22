@@ -12,7 +12,6 @@
     "recording_actor",
     "grondslag",
     "op_moment",
-    "zaakkenmerk",
     "stroom",
     "fields"
   ],
@@ -51,7 +50,16 @@
       "description": "Het moment waarop het tot feit werd gemaakt (RFC 3339, met tijdzone).",
       "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
     },
+    "zaak": {
+      "enum": [
+        "opent",
+        "volgt",
+        "geen"
+      ],
+      "description": "Uit de stroom: of het gram een zaak opent of volgt. Ontbreekt het, dan is het geen: het gram hoort bij geen zaak."
+    },
     "zaakkenmerk": {
+      "description": "Alleen bij zaak opent of volgt, en dan verplicht.",
       "type": "string",
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
     },
@@ -120,6 +128,33 @@
     }
   },
   "allOf": [
+    {
+      "if": {
+        "properties": {
+          "zaak": {
+            "enum": [
+              "opent",
+              "volgt"
+            ]
+          }
+        },
+        "required": [
+          "zaak"
+        ]
+      },
+      "then": {
+        "required": [
+          "zaakkenmerk"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "zaakkenmerk"
+          ]
+        }
+      }
+    },
     {
       "if": {
         "properties": {

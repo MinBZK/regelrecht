@@ -456,6 +456,9 @@ async fn startstand_in_een_lege_kroniek_en_niet_nog_eens() {
     assert_eq!(grammen.len(), 4);
     for g in grammen {
         assert_eq!(g["gram"]["herkomst"], "startstand");
+        // Een registerbesluit hoort bij geen zaak.
+        assert!(g["gram"].get("zaakkenmerk").is_none(), "{g}");
+        assert!(!g["yaml"].as_str().unwrap().contains("zaakkenmerk"));
         schema::valideer(Soort::Gram, &g["gram"]).unwrap();
     }
     // De kroniek staat in de eigen map van de cel.
@@ -789,6 +792,66 @@ fn synthese_controle_bij_het_opstarten() {
         },
         "synthese zonder portaal",
     );
+}
+
+#[tokio::test]
+async fn zaak_opent_en_volgt() {
+    let data = tempfile::tempdir().unwrap();
+    let app = app(data.path());
+    let c = inloggen(&app, "12345678").await;
+    let aanvraag = format!("{INSTANTIE}/api/aanvraag");
+    // Een event dat een zaak opent: de cel geeft het kenmerk, het concept niet.
+    let mut met_kenmerk = volledig();
+    met_kenmerk["zaakkenmerk"] = json!("00000000-0000-4000-8000-000000000009");
+    let (status, body, _) = vraag(&app, "POST", &aanvraag, Some(&c), Some(met_kenmerk)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        body["fout"].as_str().unwrap().contains("opent een zaak"),
+        "{body}"
+    );
+    let (status, body, _) = vraag(&app, "POST", &aanvraag, Some(&c), Some(volledig())).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(body["gram"]["zaak"], "opent");
+    let zaak = body["gram"]["zaakkenmerk"].as_str().unwrap().to_string();
+    drop(app);
+
+    // Dezelfde kroniek, nu met een stroom waarin het event een zaak volgt.
+    let cellen = eigen_cellen(&[("instantie", &|t: String| t)]);
+    let stroom = cellen.path().join("chronicles/test_aanvragen.yaml");
+    let tekst = std::fs::read_to_string(&stroom).unwrap();
+    std::fs::write(&stroom, tekst.replace("zaak: opent", "zaak: volgt")).unwrap();
+    let app = runtime_op(&cellen.path().join("cellen"), data.path())
+        .unwrap()
+        .router;
+    let c = inloggen(&app, "12345678").await;
+    let (status, body, _) = vraag(&app, "POST", &aanvraag, Some(&c), Some(volledig())).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        body["fout"]
+            .as_str()
+            .unwrap()
+            .contains("geef het zaakkenmerk mee"),
+        "{body}"
+    );
+    let mut onbekend = volledig();
+    onbekend["zaakkenmerk"] = json!("00000000-0000-4000-8000-000000000009");
+    let (status, body, _) = vraag(&app, "POST", &aanvraag, Some(&c), Some(onbekend)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        body["fout"].as_str().unwrap().contains("geen zaak"),
+        "{body}"
+    );
+    let mut volgt = volledig();
+    volgt["zaakkenmerk"] = json!(zaak);
+    // Een andere KvK kent deze zaak niet.
+    let ander = inloggen(&app, "87654321").await;
+    let (status, _, _) = vraag(&app, "POST", &aanvraag, Some(&ander), Some(volgt.clone())).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, body, _) = vraag(&app, "POST", &aanvraag, Some(&c), Some(volgt)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(body["gram"]["zaak"], "volgt");
+    assert_eq!(body["gram"]["zaakkenmerk"], json!(zaak));
+    schema::valideer(Soort::Gram, &body["gram"]).unwrap();
 }
 
 #[test]
