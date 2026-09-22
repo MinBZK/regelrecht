@@ -21,7 +21,7 @@ profiles:
     portal_tab_label: Mijn overheid
     portal_heading: Waar heb ik recht op? Wat zijn mijn plichten?
     portal_subtitle: >-
-      Bekijk hier uw toeslagen, uitkeringen, aangiften, en andere regelingen van de overheid.
+      Bekijk hier je toeslagen, uitkeringen, aangiften, en andere regelingen van de overheid.
     # Merijn is het startprofiel (`default_profile`), dus dit is wat iemand
     # ziet die de demo opent. Alles staat daarom uit: het verhaal begint bij
     # een burger met toeslagen, en wie een feature wil tonen zet hem tijdens de
@@ -233,9 +233,9 @@ tile_details:
     - voldoet_aan_vergunningsplicht
 
 # Hoe een tegel haar uitkomst vertelt. Zonder dit zegt elke tegel hetzelfde:
-# "U voldoet aan de voorwaarden", het bedrag, en de veldnaam eronder. Dat is
+# "Je voldoet aan de voorwaarden", het bedrag, en de veldnaam eronder. Dat is
 # een label, geen antwoord. De POC schreef per wet een zin om het bedrag heen
-# ("Uw huurtoeslag is waarschijnlijk € 302,96 per jaar"), en dat leest als iets
+# ("Je huurtoeslag is waarschijnlijk € 302,96 per jaar"), en dat leest als iets
 # wat tegen déze burger gaat.
 #
 # Per wet: `lead` staat boven de uitkomst, `unit` erachter, en `none` vervangt
@@ -248,116 +248,116 @@ tile_details:
 #   yes/no: voor een ja/nee-wet, in plaats van lead/unit
 outcome_phrasing:
   TOESLAGEN/zorgtoeslagwet:
-    lead: Uw zorgtoeslag is waarschijnlijk
+    lead: Je zorgtoeslag is waarschijnlijk
     unit: dit jaar
-    none: U krijgt waarschijnlijk geen zorgtoeslag.
+    none: Je krijgt waarschijnlijk geen zorgtoeslag.
   TOESLAGEN/wet_op_de_huurtoeslag:
-    lead: Uw huurtoeslag is waarschijnlijk
+    lead: Je huurtoeslag is waarschijnlijk
     unit: per jaar
-    none: U krijgt waarschijnlijk geen huurtoeslag.
+    none: Je krijgt waarschijnlijk geen huurtoeslag.
   TOESLAGEN/wet_op_het_kindgebonden_budget:
-    lead: Uw kindgebonden budget is waarschijnlijk
+    lead: Je kindgebonden budget is waarschijnlijk
     unit: per jaar
-    none: U krijgt waarschijnlijk geen kindgebonden budget.
+    none: Je krijgt waarschijnlijk geen kindgebonden budget.
   TOESLAGEN/wet_kinderopvang:
-    lead: Uw kinderopvangtoeslag is waarschijnlijk
+    lead: Je kinderopvangtoeslag is waarschijnlijk
     unit: per jaar
-    none: U krijgt waarschijnlijk geen kinderopvangtoeslag.
+    none: Je krijgt waarschijnlijk geen kinderopvangtoeslag.
   BELASTINGDIENST/wet_inkomstenbelasting:
-    lead: Uw verschuldigde inkomstenbelasting is waarschijnlijk
+    lead: Je verschuldigde inkomstenbelasting is waarschijnlijk
     unit: dit jaar
-    none: U bent waarschijnlijk geen inkomstenbelasting verschuldigd.
+    none: Je bent waarschijnlijk geen inkomstenbelasting verschuldigd.
   SVB/algemene_ouderdomswet:
-    lead: Uw AOW-pensioen is waarschijnlijk
+    lead: Je AOW-pensioen is waarschijnlijk
     unit: per jaar
-    none: U heeft nog geen recht op AOW.
+    none: Je hebt nog geen recht op AOW.
   SVB/algemene_nabestaandenwet:
-    lead: Uw nabestaandenuitkering is waarschijnlijk
+    lead: Je nabestaandenuitkering is waarschijnlijk
     unit: per maand
-    none: U heeft waarschijnlijk geen recht op een nabestaandenuitkering.
+    none: Je hebt waarschijnlijk geen recht op een nabestaandenuitkering.
   SVB/participatiewet/aio:
-    lead: Uw AIO-aanvulling is waarschijnlijk
+    lead: Je AIO-aanvulling is waarschijnlijk
     unit: per maand
-    none: U heeft waarschijnlijk geen recht op een AIO-aanvulling.
+    none: Je hebt waarschijnlijk geen recht op een AIO-aanvulling.
   SZW/participatiewet/bijstand:
-    lead: Uw bijstandsuitkering is waarschijnlijk
+    lead: Je bijstandsuitkering is waarschijnlijk
     unit: per maand
-    none: U heeft waarschijnlijk geen recht op bijstand.
+    none: Je hebt waarschijnlijk geen recht op bijstand.
   GEMEENTE_AMSTERDAM/participatiewet/bijstand/gemeenten:
-    lead: Uw bijstandsuitkering is waarschijnlijk
+    lead: Je bijstandsuitkering is waarschijnlijk
     unit: per maand
-    none: U heeft waarschijnlijk geen recht op bijstand.
+    none: Je hebt waarschijnlijk geen recht op bijstand.
   SZW/besluit_bijstandverlening_zelfstandigen:
-    lead: Uw Bbz-bijstand is waarschijnlijk
+    lead: Je Bbz-bijstand is waarschijnlijk
     unit: per maand
-    none: U heeft waarschijnlijk geen recht op Bbz-bijstand.
+    none: Je hebt waarschijnlijk geen recht op Bbz-bijstand.
   UWV/werkloosheidswet:
-    lead: Uw WW-uitkering is waarschijnlijk
+    lead: Je WW-uitkering is waarschijnlijk
     unit: per maand
-    none: U heeft waarschijnlijk geen recht op WW.
+    none: Je hebt waarschijnlijk geen recht op WW.
   UWV/ziektewet:
-    lead: Uw ziekengeld is waarschijnlijk
+    lead: Je ziekengeld is waarschijnlijk
     unit: per dag
-    none: U heeft waarschijnlijk geen recht op ziekengeld.
+    none: Je hebt waarschijnlijk geen recht op ziekengeld.
   UWV/wet_werk_en_inkomen_naar_arbeidsvermogen:
-    lead: Uw WIA-uitkering is waarschijnlijk
+    lead: Je WIA-uitkering is waarschijnlijk
     unit: per maand
-    none: U heeft waarschijnlijk geen recht op een WIA-uitkering.
+    none: Je hebt waarschijnlijk geen recht op een WIA-uitkering.
   DUO/wet_studiefinanciering:
-    lead: Uw studiefinanciering is waarschijnlijk
+    lead: Je studiefinanciering is waarschijnlijk
     unit: per maand
-    none: U heeft waarschijnlijk geen recht op studiefinanciering.
+    none: Je hebt waarschijnlijk geen recht op studiefinanciering.
   PENSIOENFONDS/pensioenwet:
-    lead: Uw pensioen is waarschijnlijk
+    lead: Je pensioen is waarschijnlijk
     unit: per maand
-    none: U bouwt hier nog geen pensioen op.
+    none: Je bouwt hier nog geen pensioen op.
   BELASTINGDIENST/zorgverzekeringswet/bijdrage:
-    lead: Uw bijdrage Zvw is waarschijnlijk
+    lead: Je bijdrage Zvw is waarschijnlijk
     unit: dit jaar
-    none: U bent waarschijnlijk geen bijdrage Zvw verschuldigd.
+    none: Je bent waarschijnlijk geen bijdrage Zvw verschuldigd.
   GEMEENTE_ROTTERDAM/verordening_precariobelasting/gemeenten:
-    lead: Uw precariobelasting is waarschijnlijk
+    lead: Je precariobelasting is waarschijnlijk
     unit: per jaar
-    none: U bent waarschijnlijk geen precariobelasting verschuldigd.
+    none: Je bent waarschijnlijk geen precariobelasting verschuldigd.
   DOUANE/wet_op_de_accijns/accijnsplicht_alcohol:
-    lead: Over deze partij bent u waarschijnlijk
+    lead: Over deze partij ben je waarschijnlijk
     unit: aan accijns verschuldigd
-    none: Over deze partij bent u waarschijnlijk geen accijns verschuldigd.
+    none: Over deze partij ben je waarschijnlijk geen accijns verschuldigd.
   # Ja/nee-wetten: geen bedrag, wel een uitspraak. `date_input` zet de datum
   # waar de uitspraak over gaat in de aanhef.
   KIESRAAD/kieswet:
-    lead: Voor de verkiezingen van {date} heeft u
+    lead: Voor de verkiezingen van {date} heb je
     # Zonder datum valt de hele bijzin weg, niet alleen de plaatshouder.
-    lead_no_date: Voor de verkiezingen heeft u
+    lead_no_date: Voor de verkiezingen heb je
     date_input: verkiezingsdatum
     'yes': STEMRECHT
     'no': GEEN stemrecht
   SVB/algemene_kinderbijslagwet:
-    lead: U heeft
+    lead: Je hebt
     'yes': RECHT OP KINDERBIJSLAG
     'no': GEEN recht op kinderbijslag
   IND/vreemdelingenwet:
-    lead: U heeft
+    lead: Je hebt
     'yes': VERBLIJFSRECHT
     'no': GEEN verblijfsrecht
   GEMEENTE_ROTTERDAM/algemene_plaatselijke_verordening/terrassen:
-    lead: Voor een terras heeft u
+    lead: Voor een terras heb je
     'yes': RECHT OP EEN VERGUNNING
     'no': GEEN recht op een vergunning
   GEMEENTE_ROTTERDAM/alcoholwet/vergunning/gemeenten:
-    lead: Voor alcoholverkoop heeft u
+    lead: Voor alcoholverkoop heb je
     'yes': RECHT OP EEN VERGUNNING
     'no': GEEN recht op een vergunning
   NVWA/warenwet/haccp:
-    lead: Voor voedselveiligheid heeft u
+    lead: Voor voedselveiligheid heb je
     'yes': EEN HACCP-VERPLICHTING
     'no': GEEN HACCP-verplichting
   NVWA/warenwet/meldplicht:
-    lead: Bij een voedselveiligheidsincident heeft u
+    lead: Bij een voedselveiligheidsincident heb je
     'yes': EEN MELDPLICHT
     'no': GEEN meldplicht
   RVO/omgevingswet/energiebesparing/informatieplicht:
-    lead: Voor energiebesparing heeft u
+    lead: Voor energiebesparing heb je
     'yes': EEN INFORMATIEPLICHT
     'no': GEEN informatieplicht
 

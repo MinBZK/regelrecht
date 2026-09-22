@@ -49,7 +49,7 @@ function pending(node) {
  * "Nog niet bekend"; an unknown that misses other facts names them.
  */
 function supportingText(node) {
-  if (node.corrected) return 'Gecorrigeerd door u';
+  if (node.corrected) return 'Gecorrigeerd door jou';
   if (isUnknown(node.value)) {
     const missing = formatMissing(node.value, { ownLaw: node.law, lawName });
     return missing === `ontbreekt: ${humanize(node.name).toLowerCase()}` ? 'Nog niet bekend' : missing;

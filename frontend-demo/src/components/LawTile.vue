@@ -84,7 +84,7 @@ const secondary = computed(() => {
 });
 
 // The tile's sentence (see outcomePhrasing.js): a lead, the outcome big, and
-// the unit after it — "Uw huurtoeslag is waarschijnlijk € 302,96 per jaar".
+// the unit after it — "Je huurtoeslag is waarschijnlijk € 302,96 per jaar".
 // Null for a law nobody wrote wording for, and then the general rendering
 // below stands unchanged.
 const phrasing = computed(() => phrasingFor(corpus.value?.config, props.law.service, props.law.law_path));
@@ -233,7 +233,7 @@ const statusTag = computed(() => {
         <nldd-activity-indicator timing="instant" size="24"></nldd-activity-indicator>
       </template>
       <template v-else-if="missingInputs.length">
-        <nldd-inline-dialog icon="edit" text="Nog een gegeven nodig" :supporting-text="`De wet is doorgerekend met wat de overheid weet en loopt vast op ${humanize(missingInputs[0].name).toLowerCase()}: dat staat in geen register, alleen u kunt het opgeven.`"></nldd-inline-dialog>
+        <nldd-inline-dialog icon="edit" text="Nog een gegeven nodig" :supporting-text="`De wet is doorgerekend met wat de overheid weet en loopt vast op ${humanize(missingInputs[0].name).toLowerCase()}: dat staat in geen register, alleen jij kunt het opgeven.`"></nldd-inline-dialog>
       </template>
       <template v-else-if="!evaluation.ok">
         <nldd-inline-dialog variant="alert" text="Kon deze regeling niet berekenen" :supporting-text="evaluation.error"></nldd-inline-dialog>
@@ -254,7 +254,7 @@ const statusTag = computed(() => {
         <nldd-banner
           v-if="drift"
           variant="warning"
-          text="Uw aanvraag klopt niet meer"
+          text="Je aanvraag klopt niet meer"
           :supporting-text="driftText"
         ></nldd-banner>
         <nldd-inline-dialog v-if="verdict === 'unknown'" icon="info" text="Nog niet te bepalen" :supporting-text="`De wet kan met de bekende gegevens geen uitkomst geven; ${verdictMissing}.`"></nldd-inline-dialog>
@@ -267,7 +267,7 @@ const statusTag = computed(() => {
                  general rendering below, so the pencil and the row keep working. -->
             <!-- Size follows what the headline is. With a lead it is a short
                  figure ("€ 406,95", "STEMRECHT") and carries the tile, so it is
-                 large. Without one the headline IS the whole sentence ("U krijgt
+                 large. Without one the headline IS the whole sentence ("Je krijgt
                  waarschijnlijk geen kindgebonden budget."), and set that large it
                  shouts a non-result across three lines. -->
             <nldd-title-cell
@@ -280,7 +280,7 @@ const statusTag = computed(() => {
             <nldd-title-cell
               v-else
               size="4"
-              :overline="requirementsMet ? 'U voldoet aan de voorwaarden' : 'U voldoet niet aan de voorwaarden'"
+              :overline="requirementsMet ? 'Je voldoet aan de voorwaarden' : 'Je voldoet niet aan de voorwaarden'"
               :text="requirementsMet ? (primary ? formatValue(primary.value, primary.spec) : 'Ja') : 'Niet van toepassing'"
               :supporting-text="requirementsMet && primary ? (isUnknown(primary.value) ? `${humanize(primary.name)} · ${formatMissing(primary.value, { ownLaw: law.id, lawName })}` : humanize(primary.name)) : ''"
             ></nldd-title-cell>
@@ -297,15 +297,15 @@ const statusTag = computed(() => {
         </nldd-list>
 
         <!-- These rows are questions the registers cannot answer, so only the
-             citizen can. Until one is answered it is not "door u opgegeven" —
+             citizen can. Until one is answered it is not "door jou opgegeven" —
              saying that of an empty row claims the person supplied something
              they never did. Unanswered reads as a question, answered says who
              gave the answer. -->
-        <nldd-list v-if="ownInputs.length" variant="simple" accessible-label="Gegevens die u zelf opgeeft">
+        <nldd-list v-if="ownInputs.length" variant="simple" accessible-label="Gegevens die je zelf opgeeft">
           <nldd-list-item v-for="input in ownInputs" :key="input.name" size="sm" button @click="supply(input)">
             <nldd-icon-cell :icon="input.claim ? 'edit' : 'question-mark-circle'" size="16" :color="input.claim ? 'accent' : 'secondary'"></nldd-icon-cell>
             <nldd-spacer-cell size="8"></nldd-spacer-cell>
-            <nldd-text-cell size="sm" :text="humanize(input.name)" :supporting-text="input.claim ? 'door u opgegeven' : 'alleen u kunt dit opgeven'"></nldd-text-cell>
+            <nldd-text-cell size="sm" :text="humanize(input.name)" :supporting-text="input.claim ? 'door jou opgegeven' : 'alleen jij kunt dit opgeven'"></nldd-text-cell>
             <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :color="input.claim ? 'content' : 'secondary'" :text="input.claim ? formatValue(input.claim.newValue, input.spec) : 'nog niet opgegeven'"></nldd-text-cell>
           </nldd-list-item>
         </nldd-list>

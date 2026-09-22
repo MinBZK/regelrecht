@@ -73,7 +73,7 @@ export const CHANGE_TYPES = [
     keyField: 'bsn',
     groups: [
       {
-        label: 'Wat u per maand betaalt',
+        label: 'Wat je per maand betaalt',
         fields: [
           { name: 'huurprijs', label: 'Kale huurprijs per maand', ...EUROS },
           { name: 'servicekosten', label: 'Servicekosten per maand', ...EUROS },
@@ -86,12 +86,12 @@ export const CHANGE_TYPES = [
     id: 'woonadres',
     label: 'Mijn adres',
     icon: 'location',
-    description: 'Verhuizing of een correctie op uw adres',
+    description: 'Verhuizing of een correctie op je adres',
     law: 'wet_brp',
     keyField: 'bsn',
     groups: [
       {
-        label: 'Uw nieuwe adres',
+        label: 'Je nieuwe adres',
         fields: [
           { name: 'straat', label: 'Straatnaam', kind: 'text', part: 'adres' },
           { name: 'huisnummer', label: 'Huisnummer', kind: 'text', part: 'adres' },
@@ -123,7 +123,7 @@ export const CHANGE_TYPES = [
         value: 'samenwonen',
         label: 'Ik ga trouwen of samenwonen',
         icon: 'heart',
-        unsupported: 'Hiervoor is de gegevens van uw partner nodig; dat kan in deze demo nog niet.',
+        unsupported: 'Hiervoor is de gegevens van je partner nodig; dat kan in deze demo nog niet.',
       },
       { value: 'kind', label: 'Ik krijg een kind', icon: 'person-badge-plus', unsupported: 'Een geboorte melden kan in deze demo nog niet.' },
       { value: 'iemand-bij', label: 'Er komt iemand bij mij wonen', icon: 'person-badge-plus', unsupported: 'Een medebewoner melden kan in deze demo nog niet.' },

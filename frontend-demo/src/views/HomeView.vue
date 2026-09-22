@@ -75,7 +75,7 @@ onActivated(() => {
           <nldd-rich-text color="inherit">
             <p>
               Wat gebeurt er als de wet zelf machine-uitvoerbaar is en openbaar gepubliceerd wordt?
-              Deze demo rekent het voor, in uw eigen browser, op verzonnen personen.
+              Deze demo rekent het voor, in je eigen browser, op verzonnen personen.
             </p>
           </nldd-rich-text>
           <nldd-spacer size="24"></nldd-spacer>
@@ -102,7 +102,7 @@ onActivated(() => {
           v-if="pageUrl"
           class="qr"
           :value="pageUrl"
-          accessible-label="QR-code naar deze pagina, om de demo op uw telefoon te openen"
+          accessible-label="QR-code naar deze pagina, om de demo op je telefoon te openen"
         />
       </div>
     </nldd-hero>
@@ -132,7 +132,10 @@ onActivated(() => {
 
     <nldd-simple-section background="tinted">
       <nldd-title slot="header" size="3">
-        <h2>Wat u hier kunt zien</h2>
+        <!-- Een kop die met "Wat ..." begint leest als een tussenkop uit een
+             gegenereerde tekst; de sectie is een lijst van onderdelen, dus zij
+             heet naar wat zij toont. -->
+        <h2>De onderdelen</h2>
         <span slot="subtitle">Dezelfde wetten, zes keer anders bekeken. De presentatie loopt er zelf langs.</span>
       </nldd-title>
       <nldd-collection layout="grid" item-width="240px">
