@@ -6,6 +6,11 @@ import { matchStep, renderStepNl, FEATURE_KEYWORDS_NL } from '../data/gherkinNl.
 import { serviceInfo } from '../data/loadCorpus.js';
 import { loadFailureFor, loadFailures, prepareScenarioEngine } from '../engine/useDemoEngine.js';
 import { useDemo } from '../store/demoStore.js';
+import { useLocalePath } from '../i18n/useLocalePath.js';
+
+// Naar een ander tabblad op naam, niet op pad: onder `/en/` leidt een
+// letterlijk Nederlands pad de bezoeker ongemerkt het Nederlandse tabblad in.
+const { goTo, localePath } = useLocalePath();
 
 // The scenario runner: every law's acceptance scenarios (Gherkin, canonical
 // grammar) in the sidebar; the chosen feature rendered for a Dutch audience;
@@ -69,14 +74,22 @@ async function select(path, { replaceRoute = false } = {}) {
     loadError.value = e;
     parsed.value = null;
   }
-  const target = `/scenarios/${path.replace(/^\/data\/laws\//, '')}`;
+  // Het pad van het tabblad zelf (`/scenarios` of `/en/scenarios`) plus de
+  // bestandsnaam ongecodeerd erachter. Niet via `resolve` met een param: deze
+  // route vangt de rest van het pad op (`:featurePath(.*)`), en `resolve`
+  // percent-codeert de schuine strepen daarin tot `%2F`, waarna de view zijn
+  // eigen bestand niet meer terugvindt.
+  const target = `${localePath('scenarios')}/${path.replace(/^\/data\/laws\//, '')}`;
   if (route.fullPath !== target) (replaceRoute ? router.replace : router.push).call(router, target);
 }
 
 watch(
-  () => [route.name, route.params.featurePath, corpus.value, profile.value],
-  ([name, featurePath]) => {
-    if (name !== 'scenarios' || !corpus.value) return;
+  // Op `meta.page` en niet op `route.name`: zie WettenView. Onder
+  // /en/scenarios heet de route `scenarios:en`, en op de naam vergelijken laat
+  // dit tabblad leeg achter.
+  () => [route.meta?.page, route.params.featurePath, corpus.value, profile.value],
+  ([page, featurePath]) => {
+    if (page !== 'scenarios' || !corpus.value) return;
     if (featurePath) {
       const path = `/data/laws/${featurePath}`;
       if (path !== selectedPath.value) select(path, { replaceRoute: true });
@@ -315,7 +328,7 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
               <nldd-button size="sm" variant="primary" start-icon="play" text="Alles uitvoeren" :loading="runningAll || undefined" :disabled="(anyRunning && !runningAll) || undefined" @click="runAll"></nldd-button>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end" v-if="parsed && selectedLaw">
-              <nldd-button size="sm" variant="neutral-tinted" start-icon="book" text="Wettekst" @click="router.push(`/wetten/${encodeURIComponent(selectedLaw.id)}`)"></nldd-button>
+              <nldd-button size="sm" variant="neutral-tinted" start-icon="book" text="Wettekst" @click="goTo('wetten', { lawId: selectedLaw.id })"></nldd-button>
             </nldd-toolbar-item>
           </nldd-toolbar>
         </nldd-container>

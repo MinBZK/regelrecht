@@ -1,8 +1,10 @@
 <script setup>
-import { onActivated, onMounted, ref } from 'vue';
+import { computed, onActivated, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useDemo } from '../store/demoStore.js';
 import QrCode from '../components/QrCode.vue';
+import { useI18n } from '../i18n/index.js';
+import { localeRouteName } from '../router.js';
 
 // De landingspagina op `/`. Wie de demo opent zonder te weten wat het is, leest
 // hier in een paar regels wat er te zien valt, start de presentatie met één
@@ -12,6 +14,12 @@ import QrCode from '../components/QrCode.vue';
 // zijn eigen telefoon kan openen terwijl hij naar het scherm kijkt.
 
 const router = useRouter();
+const { locale } = useI18n();
+
+/** Het pad van een tabblad in de taal die aan staat. */
+function pathFor(page) {
+  return router.resolve({ name: localeRouteName(page, locale.value) }).path;
+}
 const { ready } = useDemo();
 
 // De QR-code moet naar het adres wijzen waar déze pagina draait: productie,
@@ -19,22 +27,36 @@ const { ready } = useDemo();
 // URL vastleggen zou op alle drie op één na fout zijn, dus hij komt uit de
 // browser. `origin` en niet `href`: de route eronder verandert tijdens de demo
 // mee, en de code hoort naar het beginpunt te leiden.
-const pageUrl = ref('');
+// Een computed en geen eenmalige `onMounted`: de view blijft door keep-alive
+// gemount, dus een taalwissel moet de code meenemen. `origin` staat pas vast
+// zodra er een window is, vandaar de ref eromheen.
+const origin = ref('');
 onMounted(() => {
-  pageUrl.value = `${window.location.origin}/`;
+  origin.value = window.location.origin;
+});
+const pageUrl = computed(() => {
+  // Het pad van de voorpagina in de taal die aan staat, niet een vaste `/`:
+  // wie tijdens een Engelse presentatie scant hoort in het Engels te landen.
+  //
+  // Expliciet 'home' en niet `route.name`: deze view blijft door keep-alive
+  // gemount, dus zodra de presentator naar een ander tabblad loopt wijst
+  // `route` daarheen en zou de code naar dat tabblad verwijzen. Bij het eerste
+  // bezoek valt dat samen en daarom viel het niet op.
+  if (!origin.value) return '';
+  return `${origin.value}${pathFor('home')}`;
 });
 
 // Wat er in de demo te zien is, in de volgorde van de tabbladen erboven. Dit is
 // een leeswijzer, geen tweede navigatie: de kaarten brengen je naar hetzelfde
 // tabblad waar de tabbalk heen gaat.
-const onderdelen = [
-  { icon: 'books', title: 'Wetten', text: 'De wet als machine-uitvoerbare YAML, naast de artikelen waar hij vandaan komt.', to: '/wetten' },
-  { icon: 'centralized-network', title: 'Graaf', text: 'Welke wet welke andere wet nodig heeft, en welke waarde daartussen loopt.', to: '/graaf' },
-  { icon: 'checklist', title: "Scenario's", text: 'Voorbeelden uit de memorie van toelichting, live doorgerekend door de engine.', to: '/scenarios' },
-  { icon: 'chart-line', title: 'Simulatie', text: 'Wat een regel doet bij een hele bevolking in plaats van bij één persoon.', to: '/simulatie' },
-  { icon: 'user', title: 'Mijn overheid', text: 'Hetzelfde corpus als portaal: waar heeft deze persoon recht op, en waarom.', to: '/portaal' },
-  { icon: 'inbox', title: 'Zaaksysteem', text: 'De andere kant van de balie: een behandelaar die een aanvraag beoordeelt.', to: '/zaaksysteem' },
-];
+const onderdelen = computed(() => [
+  { icon: 'books', title: 'Wetten', text: 'De wet als machine-uitvoerbare YAML, naast de artikelen waar hij vandaan komt.', to: pathFor('wetten') },
+  { icon: 'centralized-network', title: 'Graaf', text: 'Welke wet welke andere wet nodig heeft, en welke waarde daartussen loopt.', to: pathFor('graaf') },
+  { icon: 'checklist', title: "Scenario's", text: 'Voorbeelden uit de memorie van toelichting, live doorgerekend door de engine.', to: pathFor('scenarios') },
+  { icon: 'chart-line', title: 'Simulatie', text: 'Wat een regel doet bij een hele bevolking in plaats van bij één persoon.', to: pathFor('simulatie') },
+  { icon: 'user', title: 'Mijn overheid', text: 'Hetzelfde corpus als portaal: waar heeft deze persoon recht op, en waarom.', to: pathFor('portaal') },
+  { icon: 'inbox', title: 'Zaaksysteem', text: 'De andere kant van de balie: een behandelaar die een aanvraag beoordeelt.', to: pathFor('zaaksysteem') },
+]);
 
 const links = [
   { icon: 'home', title: 'regelrecht.rijks.app', text: 'Wat RegelRecht is, voor wie, en hoe je meedoet.', href: 'https://regelrecht.rijks.app' },
@@ -43,7 +65,7 @@ const links = [
 ];
 
 function start() {
-  router.push('/presentatie');
+  router.push(pathFor('presentatie'));
 }
 
 // De scrollpositie van een keep-alive-view blijft staan. Voor een pagina waar
@@ -94,7 +116,7 @@ onActivated(() => {
               start-icon="books"
               text="Zelf rondkijken"
               :disabled="!ready || undefined"
-              @click="router.push('/wetten')"
+              @click="router.push(pathFor('wetten'))"
             ></nldd-button>
           </nldd-button-group>
         </div>

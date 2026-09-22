@@ -1,6 +1,5 @@
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
 import { VueFlow, useVueFlow } from '@vue-flow/core';
 import { Background } from '@vue-flow/background';
 import '@vue-flow/core/dist/style.css';
@@ -15,6 +14,11 @@ import { fieldSpec, formatValue } from '../data/format.js';
 import { lineageFromTrace } from '../data/lineage.js';
 import { serviceInfo } from '../data/loadCorpus.js';
 import { useDemo } from '../store/demoStore.js';
+import { useLocalePath } from '../i18n/useLocalePath.js';
+
+// Naar een ander tabblad op naam, niet op pad: onder `/en/` leidt een
+// letterlijk Nederlands pad de bezoeker ongemerkt het Nederlandse tabblad in.
+const { goTo } = useLocalePath();
 
 // The dependency graph as the POC drew it: every selected law and its direct
 // neighbours as a box with its register sources, its inputs from other laws
@@ -26,7 +30,6 @@ import { useDemo } from '../store/demoStore.js';
 // laws. The canvas is vue-flow, as in the editor: the design system has no
 // graph component (documented exception).
 
-const router = useRouter();
 const demo = useDemo();
 const { corpus, profile, portalLaws, dataVersion } = demo;
 // Same store id as the <VueFlow> below, otherwise fitView talks to a different instance.
@@ -156,7 +159,7 @@ function onNodeClick({ node }) {
   else if (node.type === 'item' && node.data.ref && selected.value.has(node.data.ref.regulation)) focus.value = node.data.ref.regulation;
 }
 function onNodeDoubleClick({ node }) {
-  if (node.type === 'law') router.push(`/wetten/${encodeURIComponent(node.id)}`);
+  if (node.type === 'law') goTo('wetten', { lawId: node.id });
 }
 function onPaneClick() {
   focus.value = null;
@@ -275,7 +278,7 @@ function unique(laws) {
         </nldd-container>
         <nldd-container padding="12" gap="12">
           <nldd-button-group orientation="horizontal" size="sm">
-            <nldd-button variant="secondary" size="sm" start-icon="book" text="Open in Wetten" @click="router.push(`/wetten/${encodeURIComponent(focusLaw.id)}`)"></nldd-button>
+            <nldd-button variant="secondary" size="sm" start-icon="book" text="Open in Wetten" @click="goTo('wetten', { lawId: focusLaw.id })"></nldd-button>
             <nldd-button variant="neutral-tinted" size="sm" text="Alleen deze" @click="only(focusLaw.id)"></nldd-button>
           </nldd-button-group>
           <nldd-container gap="4">

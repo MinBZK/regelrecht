@@ -216,6 +216,36 @@ For delegated values (e.g., "bij ministeriële regeling"), laws use the IoC patt
 higher laws declare `open_terms`, lower regulations declare `implements`.
 See `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml` for a working example.
 
+## De demo is tweetalig
+
+`frontend-demo/` draait in het Nederlands en in het Engels. **Nederlands is de
+bron**: elke tekst staat eerst in `src/i18n/nl.js`, en `en.js` is er de
+vertaling van. Bewerk ze in dezelfde wijziging; een sleutel die maar in één
+bestand landt is een bug, geen halve klus.
+
+- **Elke zichtbare tekst gaat door `t()`.** Geen `locale === 'en' ? … : …` in
+  een component: dat haalt de tekst buiten bereik van elke controle, en het is
+  precies hoe de landingspagina zijn strings over drie plekken verspreid kreeg.
+  `scripts/check-i18n.mjs` weigert zo'n vertakking, tenzij er een
+  `i18n-ok:`-commentaar boven staat dat uitlegt waarom (het enige geldige geval
+  nu: terugvallen op corpusinhoud die nog geen vertaling heeft).
+- **Na het wijzigen van een Nederlandse tekst: hervertaal en draai
+  `node scripts/i18n-bless.mjs`.** `en.sources.js` houdt per sleutel de
+  vingerafdruk bij van het Nederlands waaruit vertaald is, zodat een vertaling
+  die is blijven staan terwijl het origineel veranderde, opvalt. Zonder die
+  stap faalt `i18n.test.js`, mét de sleutelnamen en het commando erbij.
+- **Adressen**: Nederlandse paden blijven zoals ze zijn, Engels staat onder
+  `/en/` met vertaalde slugs (`/wetten` ↔ `/en/laws`). De tabel staat in
+  `src/router.js`; een pagina spreek je aan op naam (`localeRouteName`), nooit
+  op een letterlijk pad, anders belandt een Engelse bezoeker op een Nederlands
+  tabblad.
+- **Wetteksten worden niet vertaald.** `article.text` is de geldende wettekst;
+  een vertaling daarvan heeft geen rechtskracht en is de wet niet. Die blijft
+  Nederlands, in beide talen, met `lang="nl"` op het paneel eromheen.
+- **Eigennamen blijven staan.** `Belastingdienst` is de naam van een orgaan,
+  geen omschrijving; wie op "Tax Administration" zoekt vindt niets. Een
+  Engelse toelichting tussen haakjes mag, vertalen niet.
+
 ## Frontend / UI Components
 
 **All user interface MUST be built with components from the MinBZK design system: https://github.com/MinBZK/storybook** (the NLDD `nldd-*` web components, from `@nldd/design-system`). Do not hand-roll custom UI elements when a design-system component exists. For the required component hierarchy, nesting rules, and layout patterns, use the `storybook-component-hierarchy` skill.

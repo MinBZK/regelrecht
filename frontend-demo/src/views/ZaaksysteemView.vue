@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { useRoute } from 'vue-router';
 import CorrectionRows from '../components/CorrectionRows.vue';
 import DataLineage from '../components/DataLineage.vue';
 import EditValueSheet from '../components/EditValueSheet.vue';
@@ -9,6 +9,11 @@ import { lineageFromTrace } from '../data/lineage.js';
 import { useDemo } from '../store/demoStore.js';
 import { isDelegationProvider, producesBeschikking, subjectOf } from '../data/entrypoints.js';
 import { awbOutcomes, statusOf } from '../data/lifecycle.js';
+import { useLocalePath } from '../i18n/useLocalePath.js';
+
+// Naar een ander tabblad op naam, niet op pad: onder `/en/` leidt een
+// letterlijk Nederlands pad de bezoeker ongemerkt het Nederlandse tabblad in.
+const { goTo } = useLocalePath();
 
 // The caseworker's side: applications the citizen submitted, in three lanes,
 // with the engine's fresh verdict next to what the citizen claimed, the
@@ -17,7 +22,6 @@ import { awbOutcomes, statusOf } from '../data/lifecycle.js';
 // can make every change the citizen can; such a correction applies at once.
 
 const route = useRoute();
-const router = useRouter();
 const demo = useDemo();
 const { corpus, profile, state, dataVersion } = demo;
 
@@ -73,10 +77,10 @@ watch(
 );
 
 function open(c) {
-  router.push(`/zaaksysteem/${c.id}`);
+  goTo('zaaksysteem', { caseId: c.id });
 }
 function close() {
-  router.push('/zaaksysteem');
+  goTo('zaaksysteem');
 }
 
 function personaName(bsn) {
@@ -239,7 +243,7 @@ function claimLawName(cl) {
             <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">{{ `Regelingen die ${corpus.services[service]?.name ?? service} uitvoert` }}</nldd-text></nldd-container>
             <nldd-list variant="box-tinted" accessible-label="Regelingen van deze organisatie">
               <nldd-list-item v-if="orgLaws.length === 0" size="sm"><nldd-text-cell size="sm" color="secondary" text="Geen regelingen in het demo-corpus"></nldd-text-cell></nldd-list-item>
-              <nldd-list-item v-for="{ law, count } in orgLaws" :key="law.id" size="sm" button @click="router.push(`/wetten/${encodeURIComponent(law.id)}`)">
+              <nldd-list-item v-for="{ law, count } in orgLaws" :key="law.id" size="sm" button @click="goTo('wetten', { lawId: law.id })">
                 <nldd-text-cell size="sm" :text="law.name" :supporting-text="lawAudience(law)"></nldd-text-cell>
                 <nldd-cell><nldd-tag size="sm" :color="count ? 'accent' : 'neutral'" :text="count === 1 ? '1 zaak' : `${count} zaken`"></nldd-tag></nldd-cell>
                 <nldd-icon-cell icon="chevron-right" size="16" color="secondary"></nldd-icon-cell>

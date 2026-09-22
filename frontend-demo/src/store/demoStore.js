@@ -210,16 +210,20 @@ const persona = computed(() => {
  * midden in zijn verhaal aan te kunnen zetten, dus staan ze in het demo-menu.
  */
 export const FEATURES = [
+  // Het label staat niet hier maar in de woordenboeken, onder
+  // `app.features.<key>`: de demo is tweetalig, en een Nederlands label hier
+  // zou ernaast blijven staan alsof het nog iets aanstuurde.
+  //
   // `hint` beschrijft wat de vlag aanzet en staat niet in het menu: het
   // `details`-attribuut van nldd-menu-item is een kort label rechts, en een
   // hele zin daarin perst het label op een smal scherm in een kolom van één
   // woord breed. Het blijft hier staan als uitleg bij de vlag zelf.
-  { key: 'DELEGATION', label: 'Machtigingen', icon: 'switch', hint: 'Handelen namens een kind of een onderneming' },
-  { key: 'CHANGE_WIZARD', label: 'Wijziging doorgeven', icon: 'edit', hint: 'Eén ingang voor inkomen, huur, adres en huishouden' },
-  { key: 'HARMONIZE', label: 'Harmonisatie', icon: 'chart-x-y-axis-line', hint: 'Eén staffel, op het simulatietabblad' },
+  { key: 'DELEGATION', icon: 'switch', hint: 'Handelen namens een kind of een onderneming' },
+  { key: 'CHANGE_WIZARD', icon: 'edit', hint: 'Eén ingang voor inkomen, huur, adres en huishouden' },
+  { key: 'HARMONIZE', icon: 'chart-x-y-axis-line', hint: 'Eén staffel, op het simulatietabblad' },
   // Geen vinkje-achtig icoon: het menu-item zet er zelf al een vinkje voor als
   // de vlag aan staat, en twee vinkjes naast elkaar leest als een fout.
-  { key: 'AUTO_APPROVE_CLAIMS', label: 'Correcties direct goedkeuren', icon: 'lightning', hint: 'Zonder tussenkomst van een behandelaar' },
+  { key: 'AUTO_APPROVE_CLAIMS', icon: 'lightning', hint: 'Zonder tussenkomst van een behandelaar' },
 ];
 
 /**

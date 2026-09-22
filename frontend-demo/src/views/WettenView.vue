@@ -1,6 +1,7 @@
 <script setup>
 import { computed, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useLocalePath } from '../i18n/useLocalePath.js';
 import YamlNode from '../components/YamlNode.vue';
 import OrgLogo from '../components/OrgLogo.vue';
 import LawGroupTree from '../components/LawGroupTree.vue';
@@ -15,6 +16,10 @@ import { serviceInfo } from '../data/loadCorpus.js';
 
 const route = useRoute();
 const router = useRouter();
+// Het pad van dit tabblad in de taal die aan staat: een letterlijk `/wetten/...`
+// zou een Engelse bezoeker bij elke wet die hij opent het Nederlandse tabblad
+// in duwen.
+const { localePath } = useLocalePath();
 const { corpus, profile } = useDemo();
 // The law list is a sheet (primary-sidebar-as-sheet): closed by default so the
 // law itself has the room, opened from the toolbar.
@@ -67,7 +72,7 @@ function openLaw(lawId, { replaceRoute = false } = {}) {
   expandState.paths = expandedFor(corpus.value.lawById(lawId));
   expandState.all = null;
   expandState.version += 1;
-  const target = `/wetten/${encodeURIComponent(lawId)}`;
+  const target = localePath('wetten', { lawId });
   if (route.fullPath !== target) (replaceRoute ? router.replace : router.push).call(router, target);
 }
 
@@ -95,9 +100,14 @@ function resetExpansion() {
 // Route → state (deep link, and the presentation's hand-off). The profile's
 // default law opens when the tab is entered without one.
 watch(
-  () => [route.name, route.params.lawId, corpus.value, profile.value],
-  ([name, lawId]) => {
-    if (name !== 'wetten' || !corpus.value) return;
+  // Op `meta.page` en niet op `route.name`: dezelfde pagina heeft per taal een
+  // eigen routenaam (`wetten` en `wetten:en`), en op de naam vergelijken laat
+  // deze watcher onder /en/laws meteen terugkeren. Het tabblad opent dan geen
+  // enkele wet, ook niet de standaardwet van het profiel, en toont een leeg
+  // paneel zonder dat er iets faalt.
+  () => [route.meta?.page, route.params.lawId, corpus.value, profile.value],
+  ([page, lawId]) => {
+    if (page !== 'wetten' || !corpus.value) return;
     if (lawId && typeof lawId === 'string') {
       openLaw(decodeURIComponent(lawId), { replaceRoute: true });
     } else if (!activeId.value && profile.value?.default_law) {

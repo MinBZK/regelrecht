@@ -6,6 +6,30 @@
   <title>Demo &middot; RegelRecht</title>
   <link rel="icon" type="image/svg+xml" href="/regelrecht-icon.svg">
   <link rel="stylesheet" href="/src/css/main.css">
+  <script>
+    // Wie eerder Engels koos, komt op `/` in het Engels binnen. Dit staat vóór
+    // de app en niet erin, zodat er geen Nederlandse flits is voordat de router
+    // zijn werk doet.
+    //
+    // Alleen de kale voorpagina wordt omgeleid. Een gedeelde `/en/...`- of
+    // `/wetten`-link houdt zijn eigen taal: een adres dat iemand doorstuurt
+    // hoort niet af te hangen van wat de ontvanger ooit in een menu koos.
+    // Dezelfde regel als op de landingspagina.
+    try {
+      var onEnglishPath = location.pathname === '/en' || location.pathname.indexOf('/en/') === 0;
+      if (location.pathname === '/' && localStorage.getItem('rr-lang') === 'en') {
+        location.replace('/en' + location.search + location.hash);
+      } else if (onEnglishPath) {
+        // `lang` staat statisch op "nl" en wordt pas gezet als de router
+        // langskomt. Zonder deze regel kondigt een Engelse pagina zich in dat
+        // venster als Nederlands aan bij een schermlezer.
+        document.documentElement.lang = 'en';
+      }
+    } catch (e) {
+      // Private mode of storage uit: dan is er geen voorkeur, en is Nederlands
+      // de juiste uitkomst.
+    }
+  </script>
 </head>
 <body>
   <div id="app" style="height: 100%;"></div>

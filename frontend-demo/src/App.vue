@@ -4,6 +4,8 @@ import { useRoute, useRouter } from 'vue-router';
 import { useColorScheme } from '@regelrecht/frontend-shared';
 import { FEATURES, useDemo } from './store/demoStore.js';
 import { delegationLabel } from './data/delegation.js';
+import { LOCALES, useI18n } from './i18n/index.js';
+import { localeRouteName } from './router.js';
 import PresentationDeck from './presentation/PresentationDeck.vue';
 import { usePresentation } from './presentation/usePresentation.js';
 
@@ -15,15 +17,22 @@ import { usePresentation } from './presentation/usePresentation.js';
 const route = useRoute();
 const router = useRouter();
 const demo = useDemo();
+const { t, locale, setLocale } = useI18n();
 const { ready, loadError, profile, profileKey, corpus, state, delegations, delegationEnabled, activeDelegation, features } = demo;
+
+/**
+ * The path of a tab in the language that is on.
+ *
+ * Without params: a tab points at the root of its section, and carrying the
+ * current route's params along would put `/wetten/:lawId` on the Graph tab.
+ * The views restore their own last position when they mount.
+ */
+function pathFor(page) {
+  return router.resolve({ name: localeRouteName(page, locale.value) }).path;
+}
 
 /** Heeft de presentator een vlag omgezet? Dan kan hij terug naar het profiel. */
 const hasFeatureOverrides = computed(() => Object.keys(state.featureOverrides ?? {}).length > 0);
-/** Hoeveel er aanstaan, zodat je het ziet zonder de uitklapper te openen. */
-const featureSummary = computed(() => {
-  const aan = FEATURES.filter((f) => features.value[f.key]).length;
-  return `${aan} van ${FEATURES.length} aan`;
-});
 
 // The design system derives its scroll mode (document vs. per-pane) from the
 // outermost split view once, at connect. Ours arrives later (the tab views are
@@ -69,25 +78,36 @@ onMounted(() => window.addEventListener('keydown', onGlobalKey));
 onUnmounted(() => window.removeEventListener('keydown', onGlobalKey));
 
 const tabs = computed(() => [
-  { name: 'home', text: 'Home', icon: 'home', to: '/', iconOnly: true },
-  { name: 'presentatie', text: 'Presentatie', icon: 'display', to: '/presentatie' },
-  { name: 'wetten', text: 'Wetten', icon: 'books', to: '/wetten' },
-  { name: 'graaf', text: 'Graaf', icon: 'centralized-network', to: '/graaf' },
-  { name: 'scenarios', text: "Scenario's", icon: 'checklist', to: '/scenarios' },
-  { name: 'simulatie', text: 'Simulatie', icon: 'chart-x-y-axis-line', to: '/simulatie' },
+  { name: 'home', text: t('app.tabs.home'), icon: 'home', to: pathFor('home'), iconOnly: true },
+  { name: 'presentatie', text: t('app.tabs.presentatie'), icon: 'display', to: pathFor('presentatie') },
+  { name: 'wetten', text: t('app.tabs.wetten'), icon: 'books', to: pathFor('wetten') },
+  { name: 'graaf', text: t('app.tabs.graaf'), icon: 'centralized-network', to: pathFor('graaf') },
+  { name: 'scenarios', text: t('app.tabs.scenarios'), icon: 'checklist', to: pathFor('scenarios') },
+  { name: 'simulatie', text: t('app.tabs.simulatie'), icon: 'chart-x-y-axis-line', to: pathFor('simulatie') },
   // Namens een onderneming heet het tabblad naar die onderneming: 'Mijn
   // overheid' gaat over de ingelogde burger, en dat is dan niet het onderwerp.
+  //
+  // i18n-ok: `portal_tab_label` komt uit demo-config.yaml en is Nederlands.
+  // Die inhoud wordt later vertaald; tot die tijd valt het tabblad in het
+  // Engels terug op de sleutel, zodat er geen Nederlands woord tussen de
+  // Engelse tabbladen staat. Dit is dus geen tekst die in een woordenboek
+  // hoort, maar een keuze over corpusinhoud die er nog niet is.
   {
     name: 'portaal',
-    text: activeDelegation.value?.subjectType === 'BUSINESS' ? activeDelegation.value.subjectName : profile.value?.portal_tab_label ?? 'Mijn overheid',
+    text:
+      activeDelegation.value?.subjectType === 'BUSINESS'
+        ? activeDelegation.value.subjectName
+        : (locale.value === 'nl' && profile.value?.portal_tab_label) || t('app.tabs.portaal'),
     icon: activeDelegation.value?.subjectType === 'BUSINESS' ? 'building' : 'person',
-    to: '/portaal',
+    to: pathFor('portaal'),
   },
-  { name: 'zaaksysteem', text: 'Zaaksysteem', icon: 'inbox', to: '/zaaksysteem' },
+  { name: 'zaaksysteem', text: t('app.tabs.zaaksysteem'), icon: 'inbox', to: pathFor('zaaksysteem') },
 ]);
 
 function isActive(tab) {
-  return route.name === tab.name;
+  // On the page, not on the route name: the same page has one route name per
+  // language (`wetten` and `wetten:en`), and `meta.page` is what the two share.
+  return (route.meta?.page ?? route.name) === tab.name;
 }
 
 // De tabbalk krimpt met het venster mee in plaats van tabbladen weg te laten
@@ -119,7 +139,9 @@ function onOverflowMenuClick(event) {
   if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
   const item = event.composedPath?.().find((n) => n?.tagName?.toLowerCase?.() === 'nldd-menu-item');
   const to = item?.getAttribute?.('href');
-  if (!to || !tabs.value.some((t) => t.to === to)) return;
+  // `tab`, niet `t`: `t` is hier de vertaalfunctie, en die naam nog eens als
+  // lusvariabele gebruiken werkt wel maar leest als een fout.
+  if (!to || !tabs.value.some((tab) => tab.to === to)) return;
   event.preventDefault();
   router.push(to);
 }
@@ -151,7 +173,7 @@ function onProfileSelect(e) {
 const showDelegation = computed(() => delegationEnabled.value && delegations.value.length > 1);
 
 /** Wat er in de knop staat: 'Mezelf' of degene namens wie gehandeld wordt. */
-const delegationButtonText = computed(() => activeDelegation.value?.subjectName ?? 'Mezelf');
+const delegationButtonText = computed(() => activeDelegation.value?.subjectName ?? t('app.delegation.self'));
 
 const DELEGATION_ICONS = { SELF: 'person', CITIZEN: 'person', BUSINESS: 'building' };
 
@@ -162,11 +184,52 @@ function onDelegationSelect(e) {
 }
 
 const { colorScheme, setColorScheme } = useColorScheme();
-const colorSchemeOptions = [
-  ['auto', 'Systeem', 'display'],
-  ['light', 'Licht', 'light-mode'],
-  ['dark', 'Donker', 'dark-mode'],
-];
+const colorSchemeOptions = computed(() => [
+  ['auto', t('app.appearance.auto'), 'display'],
+  ['light', t('app.appearance.light'), 'light-mode'],
+  ['dark', t('app.appearance.dark'), 'dark-mode'],
+]);
+
+// ---- taal ------------------------------------------------------------------
+// De taal staat in het menu, naast Weergave, en niet als eigen knop in de
+// werkbalk. Het is dezelfde soort instelling als licht/donker: je zet hem één
+// keer goed en raakt hem daarna niet meer aan, waar 'namens wie' en het profiel
+// de knoppen zijn waarmee tijdens een demo het verhaal wordt verteld. Elke taal
+// noemt zichzelf in de eigen taal ('Nederlands', 'English'), want dat is wat
+// leesbaar is voor wie hem zoekt.
+const languageOptions = computed(() => LOCALES.map((code) => [code, t(`app.language.${code}`)]));
+
+function switchLocale(next) {
+  if (!next || next === locale.value) return;
+  const page = route.meta?.page ?? route.name;
+  // Het staartstuk van het huidige pad (`/zorgtoeslagwet`, of een heel
+  // bestandspad op het scenario-tabblad) wordt letterlijk overgenomen, vóór
+  // `setLocale` het pad onder ons verandert.
+  //
+  // Letterlijk, en niet via de params: het scenario-tabblad vangt de rest van
+  // het pad op (`:featurePath(.*)`), en `resolve` percent-codeert de schuine
+  // strepen daarin tot `%2F`. Het bestand laadt dan nog wel — vue-router
+  // decodeert het weer — maar het adres blijft onleesbaar in de balk staan, en
+  // dat is precies het adres dat tijdens een presentatie op het scherm komt of
+  // gedeeld wordt.
+  const here = page ? router.resolve({ name: localeRouteName(page, locale.value) }).path : '';
+  const tail = here && route.path.startsWith(here) ? route.path.slice(here.length) : '';
+  setLocale(next);
+  // `replace`, niet `push`: een taal is geen plek om naar terug te keren, en de
+  // terugknop hoort niet tussen twee talen heen en weer te springen.
+  //
+  // De routenaam verschilt per taal (`wetten` en `wetten:en`), maar beide
+  // wijzen naar hetzelfde component, en daarop keyt keep-alive. De gemounte
+  // view wordt dus hergebruikt en een open wettab of een lopend scenario
+  // overleeft de wissel; `query` en `hash` gaan mee, zodat een gedeelde
+  // deeplink niet halverwege iets kwijtraakt.
+  if (!page) return;
+  router.replace({
+    path: `${router.resolve({ name: localeRouteName(page, next) }).path}${tail}`,
+    query: route.query,
+    hash: route.hash,
+  });
+}
 function onColorSchemeSelect(e) {
   const value = e.target?.getAttribute?.('value');
   if (value) setColorScheme(value);
@@ -184,7 +247,7 @@ function askReset() {
 function confirmReset() {
   resetDialog.value?.hide?.();
   demo.resetState();
-  router.push('/');
+  router.push(pathFor('home'));
 }
 
 function toggleManualReview() {
@@ -216,7 +279,7 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
             <nldd-tab-bar
               size="md"
               navigation
-              accessible-label="Demo-onderdeel"
+              :accessible-label="t('app.tabs.label')"
               :variant="tabVariant"
             >
               <!-- Home draagt alleen zijn huisje: het icoon is eenduidig genoeg
@@ -240,7 +303,7 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
             <!-- Vangnet: past zelfs de iconenbalk niet meer, dan verbergt de
                  toolbar dit item en komen de tabbladen hier terug. Zonder dit
                  was de navigatie onder 500px weg, dezelfde fout als eerst. -->
-            <nldd-menu-group slot="overflow" text="Ga naar">
+            <nldd-menu-group slot="overflow" :text="t('app.tabs.goto')">
               <!-- Met `href` rendert het item als een echte link en zet het
                    `aria-current="page"` op het actieve tabblad. Zonder href
                    doet `selected` hier niets: het vinkje hoort bij checkbox
@@ -257,7 +320,7 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
             </nldd-menu-group>
           </nldd-toolbar-item>
           <nldd-toolbar-item slot="end" v-if="openCases > 0">
-            <nldd-button size="sm" variant="neutral-tinted" start-icon="inbox" :text="`${openCases} te beoordelen`" @click="router.push('/zaaksysteem')"></nldd-button>
+            <nldd-button size="sm" variant="neutral-tinted" start-icon="inbox" :text="t.plural(openCases, 'app.cases.pending')" @click="router.push(pathFor('zaaksysteem'))"></nldd-button>
           </nldd-toolbar-item>
           <!-- Namens wie: alleen als de wet meer dan één mogelijkheid geeft.
                Staat naast het profiel, want het hoort bij wie er ingelogd is. -->
@@ -270,7 +333,7 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
               expandable
               popup-type="menu"
             >
-              <nldd-menu slot="popup" accessible-label="Namens wie" @select="onDelegationSelect">
+              <nldd-menu slot="popup" :accessible-label="t('app.delegation.label')" @select="onDelegationSelect">
                 <nldd-menu-item
                   v-for="d in delegations"
                   :key="`${d.subjectType}:${d.subjectId}`"
@@ -287,7 +350,7 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
                  `@select` per item: het overloopmenu toont een kloon en de
                  toolbar dispatcht `select` op het originele item, dus een
                  handler op de groep eromheen vuurt nooit. -->
-            <nldd-menu-group slot="overflow" text="Namens wie">
+            <nldd-menu-group slot="overflow" :text="t('app.delegation.label')">
               <nldd-menu-item
                 v-for="d in delegations"
                 :key="`${d.subjectType}:${d.subjectId}`"
@@ -303,7 +366,7 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
           </nldd-toolbar-item>
           <nldd-toolbar-item slot="end" v-if="profile" class="rr-hide-presenting" :priority="30">
             <nldd-button size="md" variant="neutral-transparent" start-icon="person" :text="profile.name" expandable popup-type="menu">
-              <nldd-menu slot="popup" accessible-label="Demoprofiel" @select="onProfileSelect">
+              <nldd-menu slot="popup" :accessible-label="t('app.profile.label')" @select="onProfileSelect">
                 <nldd-menu-item
                   v-for="[key, p] in profileOptions"
                   :key="key"
@@ -317,7 +380,7 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
             </nldd-button>
             <!-- Idem voor het personage: zonder deze variant verdween de
                  profielkiezer onder 1130px zonder vervanging. -->
-            <nldd-menu-group slot="overflow" text="Demoprofiel">
+            <nldd-menu-group slot="overflow" :text="t('app.profile.label')">
               <nldd-menu-item
                 v-for="[key, p] in profileOptions"
                 :key="key"
@@ -343,7 +406,7 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
                Buiten dat menu bubbelt het event er nooit heen, dus Features en
                Weergave deden als uitklapper helemaal niets, op elke breedte.
                Groepen mét een titel geven dezelfde ordening zonder die klik. -->
-          <nldd-menu-group slot="overflow" text="Features">
+          <nldd-menu-group slot="overflow" :text="t('app.features.label')">
             <!-- Geen `details` op deze items: dat is een kort label rechts,
                  geen ondertitel. Een hele zin erin duwt het label op een smal
                  scherm in een kolom van één woord breed, zodat "Wijziging
@@ -352,7 +415,7 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
               v-for="f in FEATURES"
               :key="f.key"
               type="checkbox"
-              :text="f.label"
+              :text="t(`app.features.${f.key}`)"
               :icon="f.icon"
               :selected="features[f.key] || undefined"
               @select="demo.toggleFeature(f.key)"
@@ -365,19 +428,35 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
                  dat is niets wat een presentator hoeft te zien. -->
             <nldd-menu-item
               type="checkbox"
-              text="Alle aanvragen handmatig beoordelen"
+              :text="t('app.features.manualReview')"
               icon="checklist"
               :selected="state.manualReview || undefined"
               @select="toggleManualReview"
             ></nldd-menu-item>
             <nldd-menu-item
               v-if="hasFeatureOverrides"
-              text="Terug naar het profiel"
+              :text="t('app.features.reset')"
               icon="refresh"
               @select="demo.resetFeatures()"
             ></nldd-menu-item>
           </nldd-menu-group>
-          <nldd-menu-group slot="overflow" text="Weergave">
+          <nldd-menu-group slot="overflow" :text="t('app.language.label')">
+            <!-- `@select` op het item en niet op de groep: het overloopmenu
+                 toont een kloon en de toolbar dispatcht `select` op het
+                 originele item, dus een handler op de groep eromheen vuurt
+                 nooit. Zelfde reden als bij 'Namens wie' hierboven. -->
+            <nldd-menu-item
+              v-for="[value, label] in languageOptions"
+              :key="value"
+              type="radio"
+              :value="value"
+              :text="label"
+              icon="languages"
+              :selected="locale === value || undefined"
+              @select="switchLocale(value)"
+            ></nldd-menu-item>
+          </nldd-menu-group>
+          <nldd-menu-group slot="overflow" :text="t('app.appearance.label')">
             <nldd-menu-item
               v-for="[value, label, icon] in colorSchemeOptions"
               :key="value"
@@ -389,9 +468,9 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
               @select="setColorScheme(value)"
             ></nldd-menu-item>
           </nldd-menu-group>
-          <nldd-menu-group slot="overflow" text="Demo">
-            <nldd-menu-item text="Volledig scherm" icon="square-arrow-up" @select="toggleFullscreen"></nldd-menu-item>
-            <nldd-menu-item text="Demo resetten…" icon="refresh" @select="askReset"></nldd-menu-item>
+          <nldd-menu-group slot="overflow" :text="t('app.demo.label')">
+            <nldd-menu-item :text="t('app.demo.fullscreen')" icon="square-arrow-up" @select="toggleFullscreen"></nldd-menu-item>
+            <nldd-menu-item :text="t('app.demo.reset')" icon="refresh" @select="askReset"></nldd-menu-item>
           </nldd-menu-group>
         </nldd-toolbar>
       </nldd-container>
@@ -399,12 +478,12 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
       <nldd-split-view-pane slot="main" has-content>
         <nldd-page v-if="loadError">
           <nldd-simple-section>
-            <nldd-banner variant="critical" text="De demo kon niet starten" :supporting-text="String(loadError)"></nldd-banner>
+            <nldd-banner variant="critical" :text="t('app.error.title')" :supporting-text="String(loadError)"></nldd-banner>
           </nldd-simple-section>
         </nldd-page>
         <nldd-page v-else-if="!ready">
           <nldd-simple-section height="60vh">
-            <nldd-activity-indicator show-text text="Wetten en engine laden…" timing="instant" size="48"></nldd-activity-indicator>
+            <nldd-activity-indicator show-text :text="t('app.loading')" timing="instant" size="48"></nldd-activity-indicator>
           </nldd-simple-section>
         </nldd-page>
         <router-view v-else v-slot="{ Component }">
@@ -418,12 +497,12 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
     <nldd-modal-dialog
       ref="resetDialog"
       variant="alert"
-      text="Demo resetten?"
-      supporting-text="Alle aanvragen en correcties uit deze demo worden gewist. De wetten en persona's blijven."
-      accessible-label="Demo resetten"
+      :text="t('app.reset.title')"
+      :supporting-text="t('app.reset.body')"
+      :accessible-label="t('app.reset.label')"
     >
-      <nldd-button slot="actions" variant="destructive" text="Resetten" @click="confirmReset"></nldd-button>
-      <nldd-button slot="actions" variant="secondary" text="Annuleren" @click="resetDialog?.hide?.()"></nldd-button>
+      <nldd-button slot="actions" variant="destructive" :text="t('app.reset.confirm')" @click="confirmReset"></nldd-button>
+      <nldd-button slot="actions" variant="secondary" :text="t('app.reset.cancel')" @click="resetDialog?.hide?.()"></nldd-button>
     </nldd-modal-dialog>
   </nldd-app-view>
 </template>

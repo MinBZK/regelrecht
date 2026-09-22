@@ -1,6 +1,5 @@
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
 import OrgLogo from './OrgLogo.vue';
 import DataLineage from './DataLineage.vue';
 import { fieldSpec, formatMissing, formatValue, humanize, isUnknown, verdictOf } from '../data/format.js';
@@ -10,6 +9,11 @@ import { dateInputFor, phraseOutcome, phrasingFor } from '../data/outcomePhrasin
 import { driftSentence } from '../data/caseDrift.js';
 import { useDemo } from '../store/demoStore.js';
 import { objectionOpen, statusOf } from '../data/lifecycle.js';
+import { useLocalePath } from '../i18n/useLocalePath.js';
+
+// Naar een ander tabblad op naam, niet op pad: onder `/en/` leidt een
+// letterlijk Nederlands pad de bezoeker ongemerkt het Nederlandse tabblad in.
+const { goTo } = useLocalePath();
 
 // One regeling on the portal: the outcome of the law for this persona, the
 // values it used (expandable, each correctable), the application button and
@@ -19,7 +23,6 @@ const props = defineProps({
   law: { type: Object, required: true },
 });
 const emit = defineEmits(['edit-value', 'evaluated', 'apply']);
-const router = useRouter();
 const demo = useDemo();
 const { corpus, dataVersion, profile, personaParams, findCase, caseDrift, canSubmitClaims, activeDelegation } = demo;
 
@@ -355,7 +358,7 @@ const statusTag = computed(() => {
       <nldd-button v-else-if="canSubmitClaims && evaluation && missingInputs.length && produces?.legal_character === 'BESCHIKKING'" variant="primary" size="sm" start-icon="edit" text="Aanvullen" @click="apply"></nldd-button>
       <nldd-button v-else-if="canApply" variant="primary" size="sm" start-icon="paper-plane" text="Aanvragen" @click="apply"></nldd-button>
       <nldd-button v-if="evaluation?.ok" variant="neutral-transparent" size="sm" start-icon="list" text="Berekening" @click="showTrace = true"></nldd-button>
-      <nldd-button variant="neutral-transparent" size="sm" start-icon="book" text="Wettekst" @click="router.push(`/wetten/${encodeURIComponent(law.id)}`)"></nldd-button>
+      <nldd-button variant="neutral-transparent" size="sm" start-icon="book" text="Wettekst" @click="goTo('wetten', { lawId: law.id })"></nldd-button>
     </nldd-container>
 
     <Teleport to="body">

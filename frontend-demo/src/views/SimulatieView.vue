@@ -12,6 +12,11 @@ import { disposableIncomeBreakdown, summariseDisposableIncome } from '../simulat
 import { describeModel, featuresFor, taxLawIds, trainBracketModel, trainingData } from '../simulation/harmonize.js';
 import { useDemo } from '../store/demoStore.js';
 import { useNarrow } from '../useNarrow.js';
+import { useLocalePath } from '../i18n/useLocalePath.js';
+
+// Naar een ander tabblad op naam, niet op pad: onder `/en/` leidt een
+// letterlijk Nederlands pad de bezoeker ongemerkt het Nederlandse tabblad in.
+const { goTo } = useLocalePath();
 
 // Simulatie: a synthetic population of citizens or businesses, every portal
 // law evaluated for each of them by the same engine the portal uses, and the
@@ -807,7 +812,7 @@ function exportJson() {
             </nldd-dropdown>
           </nldd-form-field>
           <SimBarChart :categories="breakdownFor(inspector.lawId).map((r) => humanize(r.group))" :series="[{ name: 'Voldoet', values: breakdownFor(inspector.lawId).map((r) => r.eligiblePct) }]" unit="percent" height="220px" />
-          <nldd-button variant="secondary" start-icon="book" text="Wettekst" @click="$router.push(`/wetten/${encodeURIComponent(inspector.lawId)}`)"></nldd-button>
+          <nldd-button variant="secondary" start-icon="book" text="Wettekst" @click="goTo('wetten', { lawId: inspector.lawId })"></nldd-button>
         </nldd-container>
       </nldd-page>
     </nldd-split-view-pane>

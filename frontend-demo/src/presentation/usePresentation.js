@@ -10,6 +10,23 @@
  * Same pattern as the Begane Grond deck, reduced to what this demo needs.
  */
 import { computed, nextTick, ref } from 'vue';
+import { currentLocale } from '../i18n/index.js';
+import { localeRouteName, pageForConfigPath } from '../router.js';
+
+/**
+ * The slide's target, in the language that is on.
+ *
+ * `route:` in demo-config.yaml is a Dutch path (`/wetten`), because a file
+ * about slides should not have to know the routing table of every language.
+ * It is read back to its page here and resolved against the active locale, so
+ * a deck presented in English opens the English tabs.
+ */
+function slideTarget(path) {
+  if (!path || !router) return null;
+  const page = pageForConfigPath(path);
+  if (!page) return path;
+  return router.resolve({ name: localeRouteName(page, currentLocale()) }).path;
+}
 
 const active = ref(false);
 const index = ref(0);
@@ -73,7 +90,12 @@ function isOnStage() {
   // voordat de presentator iets aanraakt. Op het pad vergelijken zou het dek
   // dus doof maken op precies de dia die dat tabblad zojuist opende.
   const here = router.currentRoute?.value;
-  const target = router.resolve?.(slideRoute);
+  // Op de pagina vergelijken en niet op de routenaam: dezelfde pagina heeft
+  // per taal een eigen naam (`wetten` en `wetten:en`), en `meta.page` is wat
+  // die twee delen.
+  const page = pageForConfigPath(slideRoute);
+  if (page && here?.meta?.page) return here.meta.page === page;
+  const target = router.resolve?.(slideTarget(slideRoute) ?? slideRoute);
   if (target?.name && here?.name) return here.name === target.name;
   return here?.path === slideRoute;
 }
@@ -132,9 +154,10 @@ async function runSlide(i) {
       }
     }
   }
-  if (s.route && router && router.currentRoute.value.path !== s.route) {
+  const target = slideTarget(s.route);
+  if (target && router && router.currentRoute.value.path !== target) {
     try {
-      await router.push(s.route);
+      await router.push(target);
     } catch {
       /* redundant navigation */
     }
