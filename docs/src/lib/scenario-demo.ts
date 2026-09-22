@@ -1,83 +1,77 @@
 /*
- * What the scenario runner on /concepts/scenarios starts from.
+ * The zorgtoeslag feature file, and the blocks cut out of it.
  *
- * Read out of the corpus at build time, like the landing-page demo
- * (~/lib/landing-demo.ts) and for the same reason: a scenario retyped into a
- * documentation page is a claim about the corpus rather than a piece of it, and
- * it goes stale the first time the law moves. What the reader edits in the
- * browser is the file CI runs, minus the scenarios they are not looking at.
+ * Read from the corpus at build time rather than retyped, for the same reason
+ * the rest of the landing demo is (~/lib/landing-demo.ts): a scenario retyped
+ * into a page is a claim about the corpus rather than a piece of it, and it
+ * goes stale the first time the law moves.
  *
- * The runner needs a feature that stands on its own, so this assembles three
- * parts of the file into one: the Feature line, the Background that loads the
- * laws, and a single Scenario.
+ * One module for the file, because two pages want different cuts of it. The
+ * landing page shows the scenario alone, under a wipe against the memorandum
+ * that works the same sum out. The runner on /concepts/scenarios needs a
+ * feature that stands on its own, so it gets the Feature line and the
+ * Background that loads the laws around the same scenario. Both used to walk
+ * the file themselves, with the same off-by-a-blank-line rule written out
+ * twice.
  */
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-
-// The repository is one level above the docs project, in `astro dev`, in
-// `astro build` and in the image. Same reasoning as ~/lib/landing-demo.ts.
-const repo = join(process.cwd(), '..');
+import { read } from './corpus';
 
 const SCENARIO =
   'corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/scenarios/eligibility.feature';
 
 /**
- * The scenario the runner opens with: an income above the threshold, where the
+ * The scenario both pages use: an income above the threshold, where the
  * allowance tapers off.
  *
- * The same one the landing page executes. A scenario below the threshold pays
- * out a flat maximum, so editing the income in it changes nothing on screen and
- * the reader learns the opposite of the lesson.
+ * The landing page shows this one because it is what the memorandum panel
+ * beside it quotes. The runner opens with it for a related reason: a scenario
+ * below the threshold pays out a flat maximum, so editing the income in it
+ * changes nothing on screen and the reader learns the opposite of the lesson.
  */
-const OPENS_WITH = 'Inkomen boven het drempelinkomen';
+const TAPER = 'Inkomen boven het drempelinkomen';
 
-const feature = readFileSync(join(repo, SCENARIO), 'utf8');
-
-/** Everything from `Background:` up to the blank line that ends its block. */
-function background(text: string): string {
-  const start = text.indexOf('  Background:');
-  if (start === -1) throw new Error(`${SCENARIO}: no Background block`);
-  const out: string[] = [];
-  for (const line of text.slice(start).split('\n')) {
-    if (out.length > 0 && line.trim() === '') break;
-    out.push(line);
-  }
-  return out.join('\n');
-}
+const feature = read(SCENARIO);
 
 /**
- * One scenario, from its `Scenario:` line to the blank line after its last
- * step.
+ * One block of the feature file, from a line that starts it to the blank line
+ * that ends it.
  *
- * Stopping at the blank line rather than at the next `Scenario:`, because the
- * scenario that follows this one is introduced by a comment block: a search for
- * the next keyword runs straight past it and hands the runner two scenarios
- * where the page promises one.
+ * Stopping at the blank line rather than at the next keyword, because the
+ * scenario that follows the taper one is introduced by a comment: a search for
+ * the next `Scenario:` runs straight past it and returns two scenarios where
+ * both pages promise one.
  */
-function scenario(text: string, name: string): string {
-  const start = text.indexOf(`  Scenario: ${name}`);
-  if (start === -1) throw new Error(`${SCENARIO}: no scenario named ${name}`);
+function block(opening: string): string {
+  const start = feature.indexOf(opening);
+  if (start === -1) throw new Error(`${SCENARIO}: no block opening with ${opening.trim()}`);
   const out: string[] = [];
-  for (const line of text.slice(start).split('\n')) {
+  for (const line of feature.slice(start).split('\n')) {
     if (out.length > 0 && line.trim() === '') break;
     out.push(line);
   }
-  return out.join('\n');
+  return out.join('\n').trimEnd();
 }
 
 const featureName = feature.match(/^Feature:\s*(.+)$/m)?.[1]?.trim();
 if (!featureName) throw new Error(`${SCENARIO}: no Feature line`);
 
 export const scenarioDemo = {
+  /** The scenario on its own, dedented, for the landing page's wipe panel. */
+  scenario: block(`  Scenario: ${TAPER}`)
+    .split('\n')
+    .map((line) => line.slice(2))
+    .join('\n'),
+
   /** A complete, runnable feature file: Feature, Background, one Scenario. */
   text: [
     `Feature: ${featureName}`,
     '',
-    background(feature),
+    block('  Background:'),
     '',
-    scenario(feature, OPENS_WITH),
+    block(`  Scenario: ${TAPER}`),
     '',
   ].join('\n'),
+
   /** Where it comes from, for the citation under the runner. */
   path: SCENARIO,
   url: `https://github.com/MinBZK/regelrecht/blob/main/${SCENARIO}`,
