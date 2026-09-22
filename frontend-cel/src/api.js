@@ -1,4 +1,5 @@
-// De routes van de cel. Elke fout komt terug als {fout: "..."}.
+// De routes van de runtime en van een cel. Elke fout komt terug als
+// {fout: "..."}.
 
 async function vraag(methode, pad, body) {
   const resp = await fetch(pad, {
@@ -17,12 +18,21 @@ async function vraag(methode, pad, body) {
   return data;
 }
 
-export const api = {
-  inloggen: (login) => vraag('POST', '/api/eherkenning/login', login),
-  sessie: () => vraag('GET', '/api/eherkenning/sessie'),
-  uitloggen: () => vraag('POST', '/api/eherkenning/logout'),
-  stroom: () => vraag('GET', '/api/stroom'),
-  toets: (external) => vraag('POST', '/api/aanvraag/toets', { external }),
-  indienen: (external) => vraag('POST', '/api/aanvraag', { external }),
-  kroniek: () => vraag('GET', '/api/kroniek'),
-};
+// De cellen van de runtime, met per cel haar mogelijkheden.
+export const cellen = () => vraag('GET', '/api/cellen');
+
+// De routes van een cel, onder /cellen/<id>.
+export function celApi(id) {
+  const p = `/cellen/${encodeURIComponent(id)}/api`;
+  return {
+    inloggen: (login) => vraag('POST', `${p}/eherkenning/login`, login),
+    sessie: () => vraag('GET', `${p}/eherkenning/sessie`),
+    uitloggen: () => vraag('POST', `${p}/eherkenning/logout`),
+    stroom: () => vraag('GET', `${p}/stroom`),
+    toets: (external) => vraag('POST', `${p}/aanvraag/toets`, { external }),
+    indienen: (external) => vraag('POST', `${p}/aanvraag`, { external }),
+    kroniek: () => vraag('GET', `${p}/kroniek`),
+    lexostatus: (naam, invoer) =>
+      vraag('GET', `${p}/lexostatus/${encodeURIComponent(naam)}?${new URLSearchParams(invoer)}`),
+  };
+}

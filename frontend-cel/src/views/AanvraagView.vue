@@ -2,11 +2,12 @@
 // Het formulier, opgebouwd uit GET /api/stroom. Labels, soorten en volgorde
 // komen uit het formulierbestand dat de cel meelevert; zonder dat bestand is
 // het label de veldnaam en elk veld tekst.
-import { computed, onMounted, ref } from 'vue';
-import { api } from '../api.js';
+import { computed, inject, onMounted, ref } from 'vue';
 import { external } from '../formulier.js';
 import Invoer from '../components/Invoer.vue';
 import TabelInvoer from '../components/TabelInvoer.vue';
+
+const api = inject('api');
 
 const emit = defineEmits(['ingediend']);
 
@@ -70,6 +71,30 @@ async function indienen() {
 }
 
 const uitslag = computed(() => toets.value?.uitslag ?? null);
+
+// Per parameter die naar de engine ging: de waarde en waar hij vandaan kwam,
+// de eigen lexostatus of een andere cel.
+const herkomst = computed(() => {
+  const h = toets.value?.herkomst ?? {};
+  const waarden = toets.value?.parameters ?? {};
+  return Object.entries(h).map(([naam, bron]) => ({
+    naam,
+    bron:
+      bron.bron === 'eigen'
+        ? `eigen lexostatus ${bron.lexostatus}`
+        : `cel ${bron.cel}, lexostatus ${bron.lexostatus} (${bron.transport})`,
+    waarde: waarden[naam],
+  }));
+});
+
+const bronnen = computed(() => toets.value?.bronnen ?? []);
+
+function tekst(w) {
+  if (w === true) return 'ja';
+  if (w === false) return 'nee';
+  if (w === undefined || w === null) return '';
+  return typeof w === 'string' ? w : JSON.stringify(w);
+}
 const uitslagTekst = computed(() => {
   const u = uitslag.value;
   if (!u) return '';
@@ -127,6 +152,28 @@ const uitslagToelichting = computed(() => {
           :text="uitslagTekst"
           :supporting-text="uitslagToelichting"
         ></nldd-inline-dialog>
+      </template>
+      <template v-if="herkomst.length">
+        <nldd-table columns="minmax(200px,1fr) 160px minmax(200px,1fr)" accessible-label="Herkomst per parameter">
+          <nldd-table-row slot="header">
+            <nldd-text-cell text="Parameter"></nldd-text-cell>
+            <nldd-text-cell text="Waarde"></nldd-text-cell>
+            <nldd-text-cell text="Herkomst"></nldd-text-cell>
+          </nldd-table-row>
+          <nldd-table-row v-for="h in herkomst" :key="h.naam">
+            <nldd-text-cell :text="h.naam"></nldd-text-cell>
+            <nldd-text-cell :text="tekst(h.waarde)"></nldd-text-cell>
+            <nldd-text-cell :text="h.bron"></nldd-text-cell>
+          </nldd-table-row>
+        </nldd-table>
+        <template v-for="b in bronnen" :key="b.cel + b.lexostatus">
+          <nldd-inline-dialog
+            v-if="b.status !== 'bevraagd'"
+            variant="alert"
+            :text="`Bron ${b.cel}: ${b.status.replace('_', ' ')}`"
+            :supporting-text="b.fout"
+          ></nldd-inline-dialog>
+        </template>
       </template>
       <template v-if="fout">
         <nldd-inline-dialog variant="alert" text="Dat lukte niet" :supporting-text="fout"></nldd-inline-dialog>

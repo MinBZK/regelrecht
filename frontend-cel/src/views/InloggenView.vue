@@ -1,8 +1,9 @@
 <script setup>
 // Nep-eHerkenning: KvK-nummer, gemachtigde en machtiging. Er is geen
 // register; de cel controleert alleen de vorm.
-import { ref } from 'vue';
-import { api } from '../api.js';
+import { inject, ref } from 'vue';
+
+const api = inject('api');
 
 const emit = defineEmits(['ingelogd']);
 
