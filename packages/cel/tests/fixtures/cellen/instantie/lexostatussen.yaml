@@ -1,5 +1,5 @@
 ---
-# Fictieve celconfiguratie: de lexostatus die de kroniek van een zaak
+# Fictieve lexostatus-definities: de lexostatus die de kroniek van een zaak
 # reduceert tot de parameters van artikel 1 van de testregeling.
 cel: test_instantie
 lexostatus_definitions:
@@ -19,13 +19,3 @@ lexostatus_definitions:
         is_samengevoegd: {tabel: inhoud.organen, een_regel: samengevoegd}
         bevat_aantal_aanduidingen: {tabel: inhoud.organen, elke_regel: aantal_aanduidingen, alleen_waar: samengevoegd}
         registratie_categorie_a: {gelijk: {veld: inhoud.registratie, aan: a}}
-portaal:
-  stroom: test_aanvragen
-  event: aanvraag_ontvangen
-  toets:
-    lexostatus: aanvraag_inhoud
-    regeling: testregeling_aanvraag
-    uitkomst: aanvraag_volledig
-  formulier:
-    pad: formulier.yaml
-    scherm: aanvraag

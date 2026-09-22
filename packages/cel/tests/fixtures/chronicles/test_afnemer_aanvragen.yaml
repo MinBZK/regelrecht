@@ -1,0 +1,30 @@
+---
+# Fictieve teststroom: een afnemer ontvangt een aanvraag die een aanduiding
+# noemt. Welke registerfeiten bij die aanduiding horen, vraagt de toets aan
+# de registercel (synthese); de stroom legt ze niet vast.
+$id: test_afnemer_aanvragen
+recording_actor: test_afnemer
+chronicle: test_afnemer
+events:
+  - name: aanvraag_ontvangen
+    intake: portaal
+    grondslag:
+      - testregeling_afnemer#1
+    type: indiening
+    soort: aanvraag
+    fields:
+      kern:
+        aanvrager:
+          naam: $external.naam
+          adres: $external.adres
+        dagtekening: $external.dagtekening
+        gevraagde_beschikking: testbeschikking, testregeling afnemer artikel 1
+        ondertekend_via:
+          kanaal: $intake.kanaal
+          kvk_nummer: $intake.eherkenning.kvk
+          gemachtigde: $intake.eherkenning.persoon
+          machtiging: $intake.eherkenning.machtiging
+      inhoud:
+        aanduiding: $external.aanduiding
+    niet_gereduceerd:
+      - {veld: kern, reden: de vaste kern van een aanvraag; geen artikel van de testregeling leest haar}

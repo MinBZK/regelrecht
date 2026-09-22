@@ -1,4 +1,14 @@
-//! De routes van de cel.
+//! De routes van een cel. De runtime biedt ze aan onder `/cellen/<id>`
+//! (zie [`crate::runtime`]).
+//!
+//! Elke cel:
+//!
+//! | Route | Doet |
+//! |---|---|
+//! | `GET /api/kroniek` | de grammen, elk met YAML |
+//! | `GET /api/lexostatus/{naam}?<input>=...` | een reductie, met de inputs als query |
+//!
+//! Een cel met een portaal heeft daarnaast:
 //!
 //! | Route | Doet |
 //! |---|---|
@@ -6,10 +16,11 @@
 //! | `GET /api/eherkenning/sessie` | wie is ingelogd |
 //! | `POST /api/eherkenning/logout` | sessie beeindigen |
 //! | `GET /api/stroom` | de stroomdefinitie en de velden van het formulier |
-//! | `POST /api/aanvraag/toets` | concept naar gram in het geheugen, reductie, engine |
+//! | `POST /api/aanvraag/toets` | concept naar gram in het geheugen, reductie, synthese, engine |
 //! | `POST /api/aanvraag` | het gram vastleggen in de kroniek |
-//! | `GET /api/kroniek` | de grammen van de ingelogde KvK |
-//! | `GET /api/lexostatus/{naam}?zaakkenmerk=...` | de reductie van een eigen zaak |
+//!
+//! Bij een cel met een portaal zijn kroniek en lexostatus alleen voor de
+//! ingelogde KvK, en alleen over diens eigen grammen.
 
 use std::sync::Arc;
 
@@ -22,11 +33,12 @@ use chrono::{DateTime, FixedOffset};
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
-use crate::config::Cel;
+use crate::cel::Cel;
 use crate::eherkenning::{Login, Sessie, Sessies, COOKIE};
 use crate::kroniek::Kroniek;
 use crate::reductie;
 use crate::stroom::{self, Binding, Gram, Indiening};
+use crate::synthese::{self, Bron};
 use crate::toets;
 
 /// Levert het moment waarop iets tot feit wordt gemaakt.
@@ -41,25 +53,32 @@ pub fn systeemklok() -> Klok {
     })
 }
 
+/// De toestand van een cel in de runtime.
 #[derive(Clone)]
 pub struct AppState {
     pub cel: Arc<Cel>,
     pub kroniek: Arc<Kroniek>,
     pub sessies: Arc<Sessies>,
     pub klok: Klok,
+    /// De synthese-bronnen, met het transport dat de runtime koos.
+    pub bronnen: Arc<Vec<Bron>>,
 }
 
+/// De routes van een cel, relatief aan `/cellen/<id>`.
 pub fn router(state: AppState) -> Router {
-    Router::new()
-        .route("/api/eherkenning/login", post(login))
-        .route("/api/eherkenning/sessie", get(sessie))
-        .route("/api/eherkenning/logout", post(logout))
-        .route("/api/stroom", get(stroom_route))
-        .route("/api/aanvraag/toets", post(toets_route))
-        .route("/api/aanvraag", post(indienen))
+    let mut r = Router::new()
         .route("/api/kroniek", get(kroniek_route))
-        .route("/api/lexostatus/{naam}", get(lexostatus_route))
-        .with_state(state)
+        .route("/api/lexostatus/{naam}", get(lexostatus_route));
+    if state.cel.portaal().is_some() {
+        r = r
+            .route("/api/eherkenning/login", post(login))
+            .route("/api/eherkenning/sessie", get(sessie))
+            .route("/api/eherkenning/logout", post(logout))
+            .route("/api/stroom", get(stroom_route))
+            .route("/api/aanvraag/toets", post(toets_route))
+            .route("/api/aanvraag", post(indienen));
+    }
+    r.with_state(state)
 }
 
 /// Een fout als `{"fout": "..."}` met een status.
@@ -82,12 +101,30 @@ fn ingelogd(state: &AppState, headers: &HeaderMap) -> Result<Sessie, Fout> {
         .ok_or_else(|| fout(StatusCode::UNAUTHORIZED, "niet ingelogd"))
 }
 
+/// De sessie als de cel een portaal heeft; zonder portaal is er geen login
+/// en ziet iedereen alles.
+fn sessie_als_portaal(state: &AppState, headers: &HeaderMap) -> Result<Option<Sessie>, Fout> {
+    if state.cel.portaal().is_some() {
+        ingelogd(state, headers).map(Some)
+    } else {
+        Ok(None)
+    }
+}
+
+/// De cookie geldt alleen onder het pad van deze cel.
+fn cookie(state: &AppState, waarde: &str, extra: &str) -> String {
+    format!(
+        "{COOKIE}={waarde}; Path=/cellen/{}/; HttpOnly; SameSite=Strict{extra}",
+        state.cel.id()
+    )
+}
+
 async fn login(State(state): State<AppState>, Json(login): Json<Login>) -> Result<Response, Fout> {
     let sessie = login
         .valideer()
         .map_err(|e| fout(StatusCode::BAD_REQUEST, e))?;
     let token = state.sessies.nieuw(sessie.clone());
-    let cookie = format!("{COOKIE}={token}; Path=/; HttpOnly; SameSite=Strict");
+    let cookie = cookie(&state, &token, "");
     Ok(([(header::SET_COOKIE, cookie)], Json(sessie)).into_response())
 }
 
@@ -97,7 +134,7 @@ async fn sessie(State(state): State<AppState>, headers: HeaderMap) -> Result<Jso
 
 async fn logout(State(state): State<AppState>, headers: HeaderMap) -> Response {
     state.sessies.verwijder(&headers);
-    let cookie = format!("{COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0");
+    let cookie = cookie(&state, "", "; Max-Age=0");
     ([(header::SET_COOKIE, cookie)], StatusCode::NO_CONTENT).into_response()
 }
 
@@ -187,7 +224,7 @@ async fn toets_route(
     })?;
     let def = state
         .cel
-        .config
+        .lexostatussen
         .lexostatus(&portaal.toets.lexostatus)
         .ok_or_else(|| {
             fout(
@@ -195,29 +232,33 @@ async fn toets_route(
                 "toets-lexostatus ontbreekt",
             )
         })?;
-    let inputs = json!({"zaakkenmerk": gram.zaakkenmerk});
-    let lexostatus = reductie::reduceer(
-        def,
-        inputs.as_object().unwrap_or(&Map::new()),
-        std::slice::from_ref(&gram),
-    )
-    .map_err(|e| fout(StatusCode::INTERNAL_SERVER_ERROR, e))?
-    .ok_or_else(|| {
-        fout(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "de reductie vond het concept niet",
-        )
-    })?;
+    let lexostatus =
+        reductie::leid_af(def, &gram).map_err(|e| fout(StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    // Synthese: de eigen lexostatus plus die van de bronnen. Niets hiervan
+    // wordt vastgelegd.
+    let samen = synthese::voeg_samen(&lexostatus, &state.bronnen).await;
     let datum = gram.op_moment.get(..10).unwrap_or_default().to_string();
-    let uitslag = toets::toets(
+    let mut uitslag = toets::toets(
         &state.cel.service,
         &portaal.toets.regeling,
         &portaal.toets.uitkomst,
-        &lexostatus.parameters,
+        &samen.parameters,
         reductie::ontbreekt(def, &lexostatus.parameters),
         &datum,
     );
-    Ok(Json(json!({"uitslag": uitslag, "lexostatus": lexostatus})))
+    if !uitslag.te_beoordelen {
+        if let Some(reden) = samen.reden() {
+            uitslag.reden = Some(reden);
+        }
+    }
+    Ok(Json(json!({
+        "uitslag": uitslag,
+        "lexostatus": lexostatus,
+        // Wat naar de engine ging, en per parameter waar het vandaan kwam.
+        "parameters": samen.parameters,
+        "herkomst": samen.herkomst,
+        "bronnen": samen.bronnen,
+    })))
 }
 
 async fn indienen(
@@ -231,7 +272,7 @@ async fn indienen(
         .kroniek
         .voeg_toe(&gram)
         .map_err(|e| fout(StatusCode::INTERNAL_SERVER_ERROR, e))?;
-    tracing::info!(zaakkenmerk = %gram.zaakkenmerk, name = %gram.name, "gram vastgelegd");
+    tracing::info!(cel = %state.cel.id(), zaakkenmerk = %gram.zaakkenmerk, name = %gram.name, "gram vastgelegd");
     let yaml = als_yaml(&state.cel, &gram);
     Ok((
         StatusCode::CREATED,
@@ -256,28 +297,29 @@ fn van_kvk(cel: &Cel, gram: &Gram, kvk: &str) -> bool {
     })
 }
 
-fn kronieken(cel: &Cel) -> Vec<&str> {
-    let mut v: Vec<&str> = cel.strommen.iter().map(|s| s.chronicle.as_str()).collect();
-    v.sort_unstable();
-    v.dedup();
-    v
+/// De grammen die deze vrager mag zien.
+fn zichtbaar(state: &AppState, sessie: Option<&Sessie>, grammen: Vec<Gram>) -> Vec<Gram> {
+    match sessie {
+        Some(s) => grammen
+            .into_iter()
+            .filter(|g| van_kvk(&state.cel, g, &s.kvk))
+            .collect(),
+        None => grammen,
+    }
 }
 
 async fn kroniek_route(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Value>, Fout> {
-    let sessie = ingelogd(&state, &headers)?;
+    let sessie = sessie_als_portaal(&state, &headers)?;
     let mut uit = Vec::new();
-    for chronicle in kronieken(&state.cel) {
+    for chronicle in state.cel.kronieken() {
         let grammen = state
             .kroniek
             .lees(chronicle)
             .map_err(|e| fout(StatusCode::INTERNAL_SERVER_ERROR, e))?;
-        for gram in grammen
-            .into_iter()
-            .filter(|g| van_kvk(&state.cel, g, &sessie.kvk))
-        {
+        for gram in zichtbaar(&state, sessie.as_ref(), grammen) {
             let yaml = als_yaml(&state.cel, &gram);
             uit.push(json!({"gram": gram, "yaml": yaml}));
         }
@@ -291,21 +333,68 @@ async fn lexostatus_route(
     Path(naam): Path<String>,
     Query(inputs): Query<Map<String, Value>>,
 ) -> Result<Json<reductie::Lexostatus>, Fout> {
-    let sessie = ingelogd(&state, &headers)?;
+    let sessie = sessie_als_portaal(&state, &headers)?;
     let def = state
         .cel
-        .config
+        .lexostatussen
         .lexostatus(&naam)
         .ok_or_else(|| fout(StatusCode::NOT_FOUND, format!("geen lexostatus '{naam}'")))?;
-    let grammen: Vec<Gram> = state
+    for i in &def.inputs {
+        if !inputs.get(&i.name).is_some_and(reductie::gevuld) {
+            return Err(fout(
+                StatusCode::BAD_REQUEST,
+                format!("input '{}' ontbreekt", i.name),
+            ));
+        }
+    }
+    let grammen = state
         .kroniek
         .lees(&def.reduction.kroniek)
-        .map_err(|e| fout(StatusCode::INTERNAL_SERVER_ERROR, e))?
-        .into_iter()
-        .filter(|g| van_kvk(&state.cel, g, &sessie.kvk))
-        .collect();
+        .map_err(|e| fout(StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    let grammen = zichtbaar(&state, sessie.as_ref(), grammen);
     reductie::reduceer(def, &inputs, &grammen)
         .map_err(|e| fout(StatusCode::BAD_REQUEST, e))?
         .map(Json)
         .ok_or_else(|| fout(StatusCode::NOT_FOUND, "geen gram voor deze vraag"))
+}
+
+/// Wat `GET /api/cellen` over een cel zegt: wie ze is, of ze een portaal
+/// heeft, welke lexostatussen ze aanbiedt en uit welke bronnen haar toets
+/// samenvoegt.
+pub fn beschrijving(state: &AppState) -> Value {
+    let cel = &state.cel;
+    let lexostatussen: Vec<Value> = cel
+        .lexostatussen
+        .lexostatus_definitions
+        .iter()
+        .map(|d| {
+            json!({
+                "name": d.name,
+                "inputs": d.inputs,
+                "parameters": d.reduction.afleidingen.keys().collect::<Vec<_>>(),
+                "extra_velden": d.reduction.extra_velden.keys().collect::<Vec<_>>(),
+            })
+        })
+        .collect();
+    let synthese: Vec<Value> = state
+        .bronnen
+        .iter()
+        .map(|b| {
+            json!({
+                "cel": b.definitie.cel,
+                "lexostatus": b.definitie.lexostatus,
+                "transport": b.transport.soort(),
+                "parameters": b.definitie.parameters,
+            })
+        })
+        .collect();
+    json!({
+        "id": cel.id(),
+        "recording_actor": cel.definitie.recording_actor,
+        "portaal": cel.portaal().is_some(),
+        "titel": cel.formulier.as_ref().and_then(|f| f.titel.clone()),
+        "kronieken": cel.kronieken(),
+        "lexostatussen": lexostatussen,
+        "synthese": synthese,
+    })
 }

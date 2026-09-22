@@ -1,0 +1,21 @@
+---
+# Fictieve lexostatus van de registercel. Elke afleiding werkt over de
+# grammen die door haar eigen filter komen. De namen zijn die van de
+# afnemende artikelen (levert_aan); de testregeling register noemt dezelfde
+# feiten per artikel generiek.
+cel: test_register
+lexostatus_definitions:
+  - name: registerstatus
+    inputs: [{name: aanduiding, type: string}]
+    levert_aan: [testregeling_afnemer#1, testregeling_afnemer#2]
+    reduction:
+      kroniek: test_register
+      afleidingen:
+        is_ingeschreven_raad: {filter: {name: aanduiding_ingeschreven, orgaan: raad, aanduiding: $aanduiding}, bestaat: true}
+        is_geschrapt_raad: {filter: {name: aanduiding_geschrapt, orgaan: raad, aanduiding: $aanduiding}, bestaat: true}
+        zetels_op_lijst: {filter: {name: uitslag_vastgesteld, lijst: $aanduiding}, som: zetels}
+        datum_mededeling: {filter: {name: mededeling_gedaan, aanduiding: $aanduiding}, kies: laatste, veld: datum}
+        geblokkeerd_raad:
+          filter: {name: mededeling_gedaan, aanduiding: $aanduiding}
+          kies: laatste
+          bevat: {veld: geblokkeerd_voor, waarde: raad}

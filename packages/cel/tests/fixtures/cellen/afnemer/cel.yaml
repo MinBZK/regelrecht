@@ -1,0 +1,21 @@
+---
+# Fictieve cel met een portaal en een synthese: de toets voegt de eigen
+# lexostatus samen met de registerstatus van de registercel. Zonder url is het
+# transport intern.
+id: test_afnemer
+recording_actor: test_afnemer
+stromen: [../../chronicles/test_afnemer_aanvragen.yaml]
+lexostatussen: lexostatussen.yaml
+portaal:
+  stroom: test_afnemer_aanvragen
+  event: aanvraag_ontvangen
+  toets:
+    lexostatus: aanvraag_inhoud
+    regeling: testregeling_afnemer
+    uitkomst: aanvraag_toelaatbaar
+synthese:
+  - cel: test_register
+    lexostatus: registerstatus
+    invoer:
+      aanduiding: {lexostatus: aanvraag_inhoud, veld: aanduiding}
+    parameters: [is_ingeschreven_raad, is_geschrapt_raad, zetels_op_lijst, datum_mededeling, geblokkeerd_raad]

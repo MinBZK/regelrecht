@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.1.0/lexostatus.json",
   "title": "Celconfiguratie met lexostatus-definities v0.1.0",
-  "description": "De lexostatussen die een cel aanbiedt en hoe elk uit de eigen kroniek wordt gereduceerd (RFC-022 par. 4.1, daar voorlopig). reduction kiest met filter en kies een gram en leidt daaruit met afleidingen de parameters van een artikel af. Het optionele blok portaal zegt welk event een portaal vastlegt en welke uitkomst de toets vraagt.",
+  "description": "De lexostatussen die een cel aanbiedt en hoe elk uit de eigen kroniek wordt gereduceerd (RFC-022 par. 4.1, daar voorlopig). reduction kiest met filter en kies zo nodig een gram en leidt met afleidingen de parameters van een artikel af: een afleiding op het gekozen gram (veld, gevuld, gelijk, tabel, moment), of een afleiding over de grammen die door haar eigen filter komen (bestaat, som, kies met veld of bevat). extra_velden levert waarden die geen parameter zijn en niet naar de engine gaan.",
   "type": "object",
   "required": [
     "cel",
@@ -25,9 +25,6 @@
       "items": {
         "$ref": "#/definitions/lexostatus"
       }
-    },
-    "portaal": {
-      "$ref": "#/definitions/portaal"
     }
   },
   "definitions": {
@@ -83,6 +80,15 @@
             }
           }
         },
+        "levert_aan": {
+          "type": "array",
+          "description": "Artikelen van een afnemer waarvan deze lexostatus parameters levert, als <regeling>#<artikel>. Een afleiding mag dan ook een parameter van zo'n artikel noemen, naast de parameters van de artikelen uit de grondslag van het event. Nodig als de afnemer een feit onder een eigen naam vraagt.",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*#[A-Za-z0-9]([A-Za-z0-9:._ -]*[A-Za-z0-9])?$"
+          }
+        },
         "reduction": {
           "$ref": "#/definitions/reductie"
         }
@@ -92,8 +98,6 @@
       "type": "object",
       "required": [
         "kroniek",
-        "filter",
-        "kies",
         "afleidingen"
       ],
       "additionalProperties": false,
@@ -102,34 +106,28 @@
           "$ref": "#/definitions/identifier"
         },
         "filter": {
-          "type": "object",
-          "description": "Gelijkheid op velden van het gram zelf (name, type, soort, zaakkenmerk, ...). Een waarde $<input> komt uit de inputs van de lexostatus. De vaste waarden wijzen het event of de events aan waarop de reductie werkt.",
-          "propertyNames": {
-            "enum": [
-              "name",
-              "type",
-              "soort",
-              "zaakkenmerk",
-              "recording_actor",
-              "chronicle"
-            ]
-          },
-          "additionalProperties": {
-            "type": "string",
-            "minLength": 1
-          },
-          "minProperties": 1
+          "$ref": "#/definitions/filter"
         },
         "kies": {
           "enum": [
             "laatste"
           ],
-          "description": "Welk gram telt als er meer zijn: laatste is het gram met het laatste op_moment (een herstel is een nieuw gram)."
+          "description": "Welk gram telt als er meer zijn: laatste is het gram met het laatste op_moment (een herstel is een nieuw gram). Zonder kies wordt geen gram gekozen, en kan elke afleiding alleen over een verzameling grammen werken."
         },
         "afleidingen": {
           "type": "object",
           "minProperties": 1,
           "description": "Per parameter van een artikel onder de grondslag: hoe die uit het gram volgt.",
+          "propertyNames": {
+            "pattern": "^[a-z_][a-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/definitions/afleiding"
+          }
+        },
+        "extra_velden": {
+          "type": "object",
+          "description": "Waarden die geen parameter zijn, zoals een invoer voor een synthese-bron. Ze staan apart in de lexostatus en gaan nooit naar de engine.",
           "propertyNames": {
             "pattern": "^[a-z_][a-z0-9_]*$"
           },
@@ -248,65 +246,113 @@
               ]
             }
           }
+        },
+        {
+          "description": "Over de grammen die door filter komen: waar als er ten minste een is. Geen gram is onwaar: de cel spreekt alleen over haar eigen kroniek.",
+          "type": "object",
+          "required": [
+            "bestaat"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "filter": {
+              "$ref": "#/definitions/filter"
+            },
+            "bestaat": {
+              "const": true
+            }
+          }
+        },
+        {
+          "description": "Over de grammen die door filter komen: de som van dit getalveld. Geen gram is nul.",
+          "type": "object",
+          "required": [
+            "som"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "filter": {
+              "$ref": "#/definitions/filter"
+            },
+            "som": {
+              "$ref": "#/definitions/veldpad"
+            }
+          }
+        },
+        {
+          "description": "Over de grammen die door filter komen: de waarde van veld in het gram met het laatste op_moment. Geen gram of een leeg veld: de parameter blijft weg.",
+          "type": "object",
+          "required": [
+            "kies",
+            "veld"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "filter": {
+              "$ref": "#/definitions/filter"
+            },
+            "kies": {
+              "enum": [
+                "laatste"
+              ]
+            },
+            "veld": {
+              "$ref": "#/definitions/veldpad"
+            }
+          }
+        },
+        {
+          "description": "Over de grammen die door filter komen: waar als het lijstveld bevat.veld in het laatste gram de waarde bevat. Geen gram is onwaar.",
+          "type": "object",
+          "required": [
+            "kies",
+            "bevat"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "filter": {
+              "$ref": "#/definitions/filter"
+            },
+            "kies": {
+              "enum": [
+                "laatste"
+              ]
+            },
+            "bevat": {
+              "type": "object",
+              "required": [
+                "veld",
+                "waarde"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "veld": {
+                  "$ref": "#/definitions/veldpad"
+                },
+                "waarde": {
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean"
+                  ]
+                }
+              }
+            }
+          }
         }
       ]
     },
-    "portaal": {
+    "filter": {
       "type": "object",
-      "required": [
-        "stroom",
-        "event",
-        "toets"
-      ],
-      "additionalProperties": false,
-      "properties": {
-        "stroom": {
-          "$ref": "#/definitions/identifier",
-          "description": "De $id van de stroom waarin het portaal vastlegt."
-        },
-        "event": {
-          "$ref": "#/definitions/identifier",
-          "description": "Het event uit die stroom dat een indiening wordt."
-        },
-        "toets": {
-          "type": "object",
-          "required": [
-            "lexostatus",
-            "regeling",
-            "uitkomst"
-          ],
-          "additionalProperties": false,
-          "properties": {
-            "lexostatus": {
-              "$ref": "#/definitions/identifier"
-            },
-            "regeling": {
-              "$ref": "#/definitions/identifier"
-            },
-            "uitkomst": {
-              "$ref": "#/definitions/identifier"
-            }
-          }
-        },
-        "formulier": {
-          "type": "object",
-          "description": "Optioneel formulierbestand voor labels en volgorde. Het bepaalt nooit het gedrag.",
-          "required": [
-            "pad",
-            "scherm"
-          ],
-          "additionalProperties": false,
-          "properties": {
-            "pad": {
-              "type": "string",
-              "description": "Pad, relatief aan dit bestand."
-            },
-            "scherm": {
-              "type": "string"
-            }
-          }
-        }
-      }
+      "description": "Gelijkheid op het gram. De sleutels name, type, soort, zaakkenmerk, recording_actor en chronicle zijn velden van het gram zelf; elke andere sleutel is een veldpad onder fields. Een waarde $<input> komt uit de inputs van de lexostatus. De vaste waarden van name, type en soort wijzen het event of de events aan.",
+      "propertyNames": {
+        "$ref": "#/definitions/veldpad"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minProperties": 1
     }
   }
 }

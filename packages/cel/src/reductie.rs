@@ -1,11 +1,23 @@
-//! Reductie tot lexostatus: de celconfiguratie laden, en een kroniek
+//! Reductie tot lexostatus: de lexostatus-definities laden, en een kroniek
 //! reduceren tot de parameters van een artikel.
 //!
-//! Een lexostatus-definitie kiest met `filter` en `kies` een gram uit de
-//! kroniek en leidt met `afleidingen` per parameter een waarde af. De
-//! afleidingswoordenschat is klein en vast: `veld`, `gevuld`, `gelijk`,
-//! `tabel` met `elke_regel` of `een_regel` (en `alleen_waar`), en `moment`.
-//! Veldpaden zijn relatief aan `fields` van het gram, met punten ertussen.
+//! Een lexostatus-definitie beperkt de kroniek met `filter` en kiest met
+//! `kies` zo nodig een gram. Per parameter leidt een afleiding een waarde af,
+//! op een van twee manieren:
+//!
+//! - **op het gekozen gram**: `veld`, `gevuld`, `gelijk`, `tabel` met
+//!   `elke_regel` of `een_regel` (en `alleen_waar`), en `moment`;
+//! - **over een verzameling grammen**, met een eigen `filter`: `bestaat`,
+//!   `som`, en `kies: laatste` met `veld` of `bevat`.
+//!
+//! Geen gram betekent binnen de eigen kroniek "nee" (`bestaat`, `bevat`) of
+//! nul (`som`): de cel spreekt alleen over haar eigen kroniek. Een waarde die
+//! er niet is (`veld` op een leeg veld, `kies` zonder gram) blijft weg; er
+//! wordt niets aangevuld.
+//!
+//! `extra_velden` leidt waarden af die geen parameter zijn, zoals de invoer
+//! van een synthese-bron. Ze staan apart in de lexostatus en gaan nooit naar
+//! de engine. Veldpaden zijn relatief aan `fields` van het gram, met punten.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -17,19 +29,21 @@ use serde_json::{Map, Value};
 use crate::schema::{self, Soort};
 use crate::stroom::Gram;
 
-/// De celconfiguratie (`schema/chronolex/v0.1.0/lexostatus.json`).
+/// De lexostatus-definities van een cel (`schema/chronolex/v0.1.0/lexostatus.json`).
 #[derive(Debug, Clone, Deserialize)]
-pub struct CelConfig {
+pub struct Lexostatussen {
     pub cel: String,
     pub lexostatus_definitions: Vec<LexostatusDefinitie>,
-    #[serde(default)]
-    pub portaal: Option<Portaal>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct LexostatusDefinitie {
     pub name: String,
     pub inputs: Vec<InputDefinitie>,
+    /// Artikelen van een afnemer (`<regeling>#<artikel>`) waarvan deze
+    /// lexostatus parameters levert.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub levert_aan: Vec<String>,
     pub reduction: Reductie,
 }
 
@@ -40,15 +54,34 @@ pub struct InputDefinitie {
     pub soort: String,
 }
 
+/// Gelijkheid op het gram: een sleutel uit [`GRAM_SLEUTELS`] is een veld van
+/// het gram zelf, elke andere een veldpad onder `fields`. Een waarde `$x`
+/// komt uit de inputs.
+pub type Filter = BTreeMap<String, String>;
+
+/// De filtersleutels die een veld van het gram zelf zijn, geen veldpad.
+pub const GRAM_SLEUTELS: &[&str] = &[
+    "name",
+    "type",
+    "soort",
+    "zaakkenmerk",
+    "recording_actor",
+    "chronicle",
+];
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Reductie {
     pub kroniek: String,
-    pub filter: BTreeMap<String, String>,
-    pub kies: Kies,
+    #[serde(default, skip_serializing_if = "Filter::is_empty")]
+    pub filter: Filter,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kies: Option<Kies>,
     pub afleidingen: BTreeMap<String, Afleiding>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub extra_velden: BTreeMap<String, Afleiding>,
 }
 
-/// Welk gram telt als het filter er meer vindt.
+/// Welk gram telt als er meer zijn.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Kies {
@@ -56,10 +89,41 @@ pub enum Kies {
     Laatste,
 }
 
-/// Een afleiding: hoe een parameter uit het gram volgt.
+/// Een afleiding: hoe een parameter uit de kroniek volgt.
+///
+/// De volgorde telt: serde probeert de varianten van boven naar beneden en
+/// negeert onbekende sleutels, dus de varianten met meer sleutels staan
+/// eerst. Het schema heeft de vorm dan al gecontroleerd.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum Afleiding {
+    /// Over de grammen door `filter`: de waarde van `veld` in het laatste.
+    LaatsteVeld {
+        #[serde(default, skip_serializing_if = "Filter::is_empty")]
+        filter: Filter,
+        kies: Kies,
+        veld: String,
+    },
+    /// Over de grammen door `filter`: of het lijstveld in het laatste de
+    /// waarde bevat.
+    LaatsteBevat {
+        #[serde(default, skip_serializing_if = "Filter::is_empty")]
+        filter: Filter,
+        kies: Kies,
+        bevat: Bevat,
+    },
+    /// Over de grammen door `filter`: of er ten minste een is.
+    Bestaat {
+        #[serde(default, skip_serializing_if = "Filter::is_empty")]
+        filter: Filter,
+        bestaat: bool,
+    },
+    /// Over de grammen door `filter`: de som van een getalveld.
+    Som {
+        #[serde(default, skip_serializing_if = "Filter::is_empty")]
+        filter: Filter,
+        som: String,
+    },
     Veld {
         veld: String,
     },
@@ -90,38 +154,20 @@ pub struct Gelijk {
     pub aan: Value,
 }
 
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct Bevat {
+    pub veld: String,
+    pub waarde: Value,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Moment {
     OpMoment,
 }
 
-/// Het portaalblok: welk event een indiening wordt en welke uitkomst de
-/// toets vraagt.
-#[derive(Debug, Clone, Deserialize)]
-pub struct Portaal {
-    pub stroom: String,
-    pub event: String,
-    pub toets: Toets,
-    #[serde(default)]
-    pub formulier: Option<FormulierVerwijzing>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct Toets {
-    pub lexostatus: String,
-    pub regeling: String,
-    pub uitkomst: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct FormulierVerwijzing {
-    pub pad: String,
-    pub scherm: String,
-}
-
-/// Lees een celconfiguratie uit tekst en valideer haar tegen het schema.
-pub fn parse(tekst: &str, bron: &str) -> Result<CelConfig, Vec<String>> {
+/// Lees lexostatus-definities uit tekst en valideer ze tegen het schema.
+pub fn parse(tekst: &str, bron: &str) -> Result<Lexostatussen, Vec<String>> {
     let yaml: serde_yaml_ng::Value = serde_yaml_ng::from_str(tekst)
         .map_err(|e| vec![format!("{bron}: geen geldige YAML: {e}")])?;
     let document: Value = serde_json::to_value(&yaml).map_err(|e| vec![format!("{bron}: {e}")])?;
@@ -133,29 +179,84 @@ pub fn parse(tekst: &str, bron: &str) -> Result<CelConfig, Vec<String>> {
     serde_json::from_value(document).map_err(|e| vec![format!("{bron}: {e}")])
 }
 
-/// Laad de celconfiguratie uit een bestand.
-pub fn laad(pad: &Path) -> Result<CelConfig, Vec<String>> {
+/// Laad de lexostatus-definities uit een bestand.
+pub fn laad(pad: &Path) -> Result<Lexostatussen, Vec<String>> {
     let bron = pad.display().to_string();
     let tekst = std::fs::read_to_string(pad).map_err(|e| vec![format!("{bron}: {e}")])?;
     parse(&tekst, &bron)
 }
 
-impl CelConfig {
+impl Lexostatussen {
     pub fn lexostatus(&self, naam: &str) -> Option<&LexostatusDefinitie> {
         self.lexostatus_definitions.iter().find(|d| d.name == naam)
     }
 }
 
+impl LexostatusDefinitie {
+    /// Alle afleidingen: de parameters en de extra velden.
+    pub fn alle_afleidingen(&self) -> impl Iterator<Item = (&String, &Afleiding)> {
+        self.reduction
+            .afleidingen
+            .iter()
+            .chain(self.reduction.extra_velden.iter())
+    }
+
+    /// De namen die deze lexostatus levert: parameters en extra velden.
+    pub fn levert(&self, naam: &str) -> bool {
+        self.reduction.afleidingen.contains_key(naam)
+            || self.reduction.extra_velden.contains_key(naam)
+    }
+}
+
+/// Of een filtersleutel een veld van het gram zelf is.
+pub fn is_gram_sleutel(sleutel: &str) -> bool {
+    GRAM_SLEUTELS.contains(&sleutel)
+}
+
+/// De veldpaden onder `fields` waarop een filter selecteert.
+pub fn filter_paden(filter: &Filter) -> Vec<&str> {
+    filter
+        .keys()
+        .map(String::as_str)
+        .filter(|k| !is_gram_sleutel(k))
+        .collect()
+}
+
 impl Afleiding {
-    /// De veldpaden die deze afleiding leest.
-    pub fn gelezen_paden(&self) -> Vec<&str> {
+    /// Het eigen filter van een afleiding over een verzameling grammen;
+    /// `None` bij een afleiding op het gekozen gram.
+    pub fn filter(&self) -> Option<&Filter> {
         match self {
-            Afleiding::Veld { veld } => vec![veld],
-            Afleiding::Gevuld { gevuld } => vec![gevuld],
-            Afleiding::Gelijk { gelijk } => vec![&gelijk.veld],
-            Afleiding::ElkeRegel { tabel, .. } | Afleiding::EenRegel { tabel, .. } => vec![tabel],
-            Afleiding::Moment { .. } => vec![],
+            Afleiding::LaatsteVeld { filter, .. }
+            | Afleiding::LaatsteBevat { filter, .. }
+            | Afleiding::Bestaat { filter, .. }
+            | Afleiding::Som { filter, .. } => Some(filter),
+            _ => None,
         }
+    }
+
+    /// Of de afleiding het gekozen gram leest (en dus `kies` vraagt).
+    pub fn op_gekozen_gram(&self) -> bool {
+        self.filter().is_none()
+    }
+
+    /// De veldpaden die deze afleiding leest, ook die van haar filter.
+    pub fn gelezen_paden(&self) -> Vec<&str> {
+        let mut paden = match self {
+            Afleiding::Veld { veld } | Afleiding::LaatsteVeld { veld, .. } => vec![veld.as_str()],
+            Afleiding::Gevuld { gevuld } => vec![gevuld.as_str()],
+            Afleiding::Gelijk { gelijk } => vec![gelijk.veld.as_str()],
+            Afleiding::ElkeRegel { tabel, .. } | Afleiding::EenRegel { tabel, .. } => {
+                vec![tabel.as_str()]
+            }
+            Afleiding::Som { som, .. } => vec![som.as_str()],
+            Afleiding::LaatsteBevat { bevat, .. } => vec![bevat.veld.as_str()],
+            Afleiding::Bestaat { .. } | Afleiding::Moment { .. } => vec![],
+        };
+        if let Some(f) = self.filter() {
+            paden.extend(filter_paden(f));
+        }
+        paden
     }
 
     /// Bij een tabelafleiding: het tabelveld en de kolommen die ze leest
@@ -183,8 +284,10 @@ impl Afleiding {
         matches!(self, Afleiding::Gevuld { .. } | Afleiding::ElkeRegel { .. })
     }
 
-    /// Pas de afleiding toe op een gram. `None`: het gram zegt er niets over
-    /// en de parameter blijft weg; er wordt niets aangevuld.
+    /// Pas een afleiding op het gekozen gram toe. `None`: het gram zegt er
+    /// niets over en de parameter blijft weg; er wordt niets aangevuld. Een
+    /// afleiding over een verzameling grammen geeft hier `None`; zie
+    /// [`Afleiding::pas_toe_op_verzameling`].
     pub fn pas_toe(&self, gram: &Gram) -> Option<Value> {
         match self {
             Afleiding::Veld { veld } => gram.veld(veld).filter(|w| gevuld(w)).cloned(),
@@ -221,8 +324,80 @@ impl Afleiding {
             } => DateTime::parse_from_rfc3339(&gram.op_moment)
                 .ok()
                 .map(|m| Value::String(m.date_naive().format("%Y-%m-%d").to_string())),
+            Afleiding::LaatsteVeld { .. }
+            | Afleiding::LaatsteBevat { .. }
+            | Afleiding::Bestaat { .. }
+            | Afleiding::Som { .. } => None,
         }
     }
+
+    /// Pas een afleiding over een verzameling toe op de grammen die al door
+    /// het filter van de lexostatus kwamen. Ze filtert zelf verder.
+    pub fn pas_toe_op_verzameling(
+        &self,
+        inputs: &Map<String, Value>,
+        grammen: &[&Gram],
+    ) -> Result<Option<Value>, String> {
+        let Some(filter) = self.filter() else {
+            return Ok(None);
+        };
+        let mut door = Vec::new();
+        for g in grammen {
+            if past(filter, inputs, g)? {
+                door.push(*g);
+            }
+        }
+        Ok(match self {
+            Afleiding::Bestaat { .. } => Some(Value::Bool(!door.is_empty())),
+            Afleiding::Som { som, .. } => {
+                let (mut geheel, mut reeel, mut alleen_geheel) = (0_i64, 0.0_f64, true);
+                for g in &door {
+                    match g.veld(som) {
+                        None | Some(Value::Null) => {}
+                        Some(Value::Number(n)) => {
+                            match n.as_i64() {
+                                Some(i) => geheel = geheel.saturating_add(i),
+                                None => alleen_geheel = false,
+                            }
+                            reeel += n.as_f64().unwrap_or(0.0);
+                        }
+                        // Geen getal: de som is niet af te leiden.
+                        Some(_) => return Ok(None),
+                    }
+                }
+                if alleen_geheel {
+                    Some(Value::from(geheel))
+                } else {
+                    serde_json::Number::from_f64(reeel).map(Value::Number)
+                }
+            }
+            Afleiding::LaatsteVeld { veld, .. } => laatste(&door)?
+                .and_then(|g| g.veld(veld))
+                .filter(|w| gevuld(w))
+                .cloned(),
+            Afleiding::LaatsteBevat { bevat, .. } => Some(Value::Bool(
+                laatste(&door)?
+                    .and_then(|g| g.veld(&bevat.veld))
+                    .and_then(Value::as_array)
+                    .is_some_and(|lijst| lijst.contains(&bevat.waarde)),
+            )),
+            _ => None,
+        })
+    }
+}
+
+/// Het gram met het laatste `op_moment`; bij gelijk moment het later
+/// toegevoegde.
+fn laatste<'g>(grammen: &[&'g Gram]) -> Result<Option<&'g Gram>, String> {
+    let mut gekozen: Option<(DateTime<chrono::FixedOffset>, &Gram)> = None;
+    for gram in grammen {
+        let moment = DateTime::parse_from_rfc3339(&gram.op_moment)
+            .map_err(|e| format!("gram met ongeldig op_moment '{}': {e}", gram.op_moment))?;
+        if gekozen.as_ref().is_none_or(|(m, _)| moment >= *m) {
+            gekozen = Some((moment, gram));
+        }
+    }
+    Ok(gekozen.map(|(_, g)| g))
 }
 
 /// Gevuld: niet null, geen lege tekst, geen lege lijst of leeg object.
@@ -244,14 +419,20 @@ fn rijen<'g>(gram: &'g Gram, tabel: &str) -> Vec<&'g Map<String, Value>> {
 }
 
 /// Een lexostatus: de parameters die een reductie oplevert.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Lexostatus {
     pub naam: String,
-    /// Het gram waaruit is afgeleid.
-    pub zaakkenmerk: String,
-    pub op_moment: String,
+    /// Het gekozen gram, als de definitie er een kiest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zaakkenmerk: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_moment: Option<String>,
     pub parameters: BTreeMap<String, Value>,
-    /// Parameters met een afleiding waarover het gram niets zegt.
+    /// Waarden die geen parameter zijn; ze gaan nooit naar de engine.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub extra_velden: BTreeMap<String, Value>,
+    /// Parameters met een afleiding waarover de kroniek niets zegt.
+    #[serde(default)]
     pub niet_afgeleid: Vec<String>,
 }
 
@@ -273,33 +454,8 @@ pub fn ontbreekt(
         .collect()
 }
 
-/// Pas alle afleidingen van een definitie toe op een gram.
-pub fn leid_af(definitie: &LexostatusDefinitie, gram: &Gram) -> Lexostatus {
-    let mut parameters = BTreeMap::new();
-    let mut niet_afgeleid = Vec::new();
-    for (naam, afleiding) in &definitie.reduction.afleidingen {
-        match afleiding.pas_toe(gram) {
-            Some(w) => {
-                parameters.insert(naam.clone(), w);
-            }
-            None => niet_afgeleid.push(naam.clone()),
-        }
-    }
-    Lexostatus {
-        naam: definitie.name.clone(),
-        zaakkenmerk: gram.zaakkenmerk.clone(),
-        op_moment: gram.op_moment.clone(),
-        parameters,
-        niet_afgeleid,
-    }
-}
-
 /// Of een gram door het filter komt. Een waarde `$x` komt uit de inputs.
-fn past(
-    filter: &BTreeMap<String, String>,
-    inputs: &Map<String, Value>,
-    gram: &Gram,
-) -> Result<bool, String> {
+pub fn past(filter: &Filter, inputs: &Map<String, Value>, gram: &Gram) -> Result<bool, String> {
     for (sleutel, verwacht) in filter {
         let verwacht = match verwacht.strip_prefix('$') {
             Some(input) => inputs
@@ -308,48 +464,95 @@ fn past(
                 .ok_or_else(|| format!("input '{input}' ontbreekt"))?,
             None => verwacht.as_str(),
         };
-        let waarde = match sleutel.as_str() {
-            "name" => Some(gram.name.as_str()),
-            "type" => Some(gram.type_.as_str()),
-            "soort" => gram.soort.as_deref(),
-            "zaakkenmerk" => Some(gram.zaakkenmerk.as_str()),
-            "recording_actor" => Some(gram.recording_actor.as_str()),
-            "chronicle" => Some(gram.chronicle.as_str()),
-            ander => return Err(format!("onbekende filtersleutel '{ander}'")),
+        let gelijk = match sleutel.as_str() {
+            "name" => gram.name == verwacht,
+            "type" => gram.type_ == verwacht,
+            "soort" => gram.soort.as_deref() == Some(verwacht),
+            "zaakkenmerk" => gram.zaakkenmerk == verwacht,
+            "recording_actor" => gram.recording_actor == verwacht,
+            "chronicle" => gram.chronicle == verwacht,
+            pad => match gram.veld(pad) {
+                Some(Value::String(s)) => s == verwacht,
+                Some(w @ (Value::Number(_) | Value::Bool(_))) => *w.to_string() == *verwacht,
+                _ => false,
+            },
         };
-        if waarde != Some(verwacht) {
+        if !gelijk {
             return Ok(false);
         }
     }
     Ok(true)
 }
 
-/// Reduceer de grammen van een kroniek tot een lexostatus. `None`: geen gram
-/// komt door het filter.
+/// Reduceer de grammen van een kroniek tot een lexostatus. `None`: de
+/// definitie kiest een gram (`kies`) en geen gram komt door het filter.
 pub fn reduceer(
     definitie: &LexostatusDefinitie,
     inputs: &Map<String, Value>,
     grammen: &[Gram],
 ) -> Result<Option<Lexostatus>, String> {
-    let mut gekozen: Option<(DateTime<chrono::FixedOffset>, &Gram)> = None;
-    for gram in grammen {
-        if gram.chronicle != definitie.reduction.kroniek
-            || !past(&definitie.reduction.filter, inputs, gram)?
-        {
-            continue;
-        }
-        let moment = DateTime::parse_from_rfc3339(&gram.op_moment)
-            .map_err(|e| format!("gram met ongeldig op_moment '{}': {e}", gram.op_moment))?;
-        match definitie.reduction.kies {
-            // `>=`: bij gelijk moment wint het later toegevoegde gram.
-            Kies::Laatste => {
-                if gekozen.as_ref().is_none_or(|(m, _)| moment >= *m) {
-                    gekozen = Some((moment, gram));
-                }
-            }
+    let r = &definitie.reduction;
+    let mut door: Vec<&Gram> = Vec::new();
+    for gram in grammen.iter().filter(|g| g.chronicle == r.kroniek) {
+        if past(&r.filter, inputs, gram)? {
+            door.push(gram);
         }
     }
-    Ok(gekozen.map(|(_, gram)| leid_af(definitie, gram)))
+    let gekozen = match r.kies {
+        Some(Kies::Laatste) => match laatste(&door)? {
+            Some(g) => Some(g),
+            None => return Ok(None),
+        },
+        None => None,
+    };
+    let mut uit = Lexostatus {
+        naam: definitie.name.clone(),
+        zaakkenmerk: gekozen.map(|g| g.zaakkenmerk.clone()),
+        op_moment: gekozen.map(|g| g.op_moment.clone()),
+        parameters: BTreeMap::new(),
+        extra_velden: BTreeMap::new(),
+        niet_afgeleid: Vec::new(),
+    };
+    for (naam, afleiding, extra) in r
+        .afleidingen
+        .iter()
+        .map(|(n, a)| (n, a, false))
+        .chain(r.extra_velden.iter().map(|(n, a)| (n, a, true)))
+    {
+        let waarde = if afleiding.op_gekozen_gram() {
+            let gram = gekozen.ok_or_else(|| {
+                format!(
+                    "afleiding '{naam}' leest het gekozen gram, maar lexostatus '{}' kiest er geen",
+                    definitie.name
+                )
+            })?;
+            afleiding.pas_toe(gram)
+        } else {
+            afleiding.pas_toe_op_verzameling(inputs, &door)?
+        };
+        match (waarde, extra) {
+            (Some(w), false) => {
+                uit.parameters.insert(naam.clone(), w);
+            }
+            (Some(w), true) => {
+                uit.extra_velden.insert(naam.clone(), w);
+            }
+            (None, false) => uit.niet_afgeleid.push(naam.clone()),
+            (None, true) => {}
+        }
+    }
+    Ok(Some(uit))
+}
+
+/// Reduceer een enkel gram, zoals een concept dat nog geen feit is.
+pub fn leid_af(definitie: &LexostatusDefinitie, gram: &Gram) -> Result<Lexostatus, String> {
+    let mut inputs = Map::new();
+    inputs.insert(
+        "zaakkenmerk".into(),
+        Value::String(gram.zaakkenmerk.clone()),
+    );
+    reduceer(definitie, &inputs, std::slice::from_ref(gram))?
+        .ok_or_else(|| "de reductie vond het gram niet".to_string())
 }
 
 #[cfg(test)]
@@ -359,7 +562,7 @@ mod tests {
     use crate::stroom::StroomVerwijzing;
     use serde_json::json;
 
-    const CEL: &str = include_str!("../tests/fixtures/cel/lexostatussen.yaml");
+    const CEL: &str = include_str!("../tests/fixtures/cellen/instantie/lexostatussen.yaml");
 
     fn gram(zaak: &str, moment: &str, fields: Value) -> Gram {
         Gram {
@@ -376,6 +579,7 @@ mod tests {
                 id: "test_aanvragen".into(),
                 sha256: "0".repeat(64),
             },
+            herkomst: None,
             fields: fields.as_object().unwrap().clone(),
         }
     }
@@ -395,12 +599,14 @@ mod tests {
         let c = parse(CEL, "fixture").unwrap();
         assert_eq!(c.cel, "test_instantie");
         assert_eq!(c.lexostatus_definitions[0].reduction.afleidingen.len(), 9);
-        assert_eq!(c.portaal.unwrap().toets.uitkomst, "aanvraag_volledig");
     }
 
     #[test]
     fn ongeldige_afleiding_faalt_op_het_schema() {
-        let tekst = CEL.replace("{veld: inhoud.aanvraagjaar}", "{som: inhoud.aanvraagjaar}");
+        let tekst = CEL.replace(
+            "{veld: inhoud.aanvraagjaar}",
+            "{optellen: inhoud.aanvraagjaar}",
+        );
         let fout = parse(&tekst, "t").unwrap_err();
         assert!(
             fout.iter().any(|f| f.contains("afleidingen/aanvraagjaar")),
@@ -531,7 +737,7 @@ mod tests {
         let l = reduceer(def, inputs.as_object().unwrap(), &grammen)
             .unwrap()
             .unwrap();
-        assert_eq!(l.op_moment, "2025-03-02T09:00:00+01:00");
+        assert_eq!(l.op_moment.as_deref(), Some("2025-03-02T09:00:00+01:00"));
         assert_eq!(l.parameters["bevat_naam"], json!(true));
         assert_eq!(l.parameters["aanvraagdatum"], json!("2025-03-02"));
         assert!(l.niet_afgeleid.contains(&"aanvraagjaar".to_string()));
@@ -547,7 +753,7 @@ mod tests {
             json!({"inhoud": {"naam": "X", "registratie": "b",
                 "organen": [{"orgaan": "raad", "samengevoegd": false}]}}),
         );
-        let l = leid_af(def, &g);
+        let l = leid_af(def, &g).unwrap();
         // Onwaar, maar een antwoord: registratie_categorie_a (gelijk) en
         // is_samengevoegd (een_regel). Onwaar en een gat: de rest.
         assert_eq!(l.parameters["registratie_categorie_a"], json!(false));
@@ -577,5 +783,181 @@ mod tests {
         let g = gram(ZAAK, "2025-03-01T09:00:00+01:00", json!({}));
         let fout = reduceer(&c.lexostatus_definitions[0], &Map::new(), &[g]).unwrap_err();
         assert!(fout.contains("zaakkenmerk"), "{fout}");
+    }
+
+    const REGISTER: &str = include_str!("../tests/fixtures/cellen/register/lexostatussen.yaml");
+
+    fn besluit(name: &str, moment: &str, fields: Value) -> Gram {
+        let mut g = gram(ZAAK, moment, fields);
+        g.type_ = "decretogram".into();
+        g.soort = None;
+        g.name = name.into();
+        g.chronicle = "test_register".into();
+        g
+    }
+
+    fn register() -> Vec<Gram> {
+        vec![
+            besluit(
+                "aanduiding_ingeschreven",
+                "2024-01-10T09:00:00+01:00",
+                json!({"aanduiding": "VOORBEELD", "orgaan": "raad", "gebied": "A"}),
+            ),
+            besluit(
+                "uitslag_vastgesteld",
+                "2024-03-20T09:00:00+01:00",
+                json!({"lijst": "VOORBEELD", "orgaan": "raad", "gebied": "A", "zetels": 4}),
+            ),
+            besluit(
+                "uitslag_vastgesteld",
+                "2024-03-21T09:00:00+01:00",
+                json!({"lijst": "VOORBEELD", "orgaan": "raad", "gebied": "B", "zetels": 2}),
+            ),
+            besluit(
+                "uitslag_vastgesteld",
+                "2024-03-21T09:00:00+01:00",
+                json!({"lijst": "ANDERS", "orgaan": "raad", "gebied": "B", "zetels": 7}),
+            ),
+            besluit(
+                "mededeling_gedaan",
+                "2024-11-01T09:00:00+01:00",
+                json!({"aanduiding": "VOORBEELD", "datum": "2024-11-01", "geblokkeerd_voor": ["staten"]}),
+            ),
+            besluit(
+                "mededeling_gedaan",
+                "2024-12-01T09:00:00+01:00",
+                json!({"aanduiding": "VOORBEELD", "datum": "2024-12-01", "geblokkeerd_voor": ["raad"]}),
+            ),
+        ]
+    }
+
+    fn registerstatus(aanduiding: &str) -> Lexostatus {
+        let c = parse(REGISTER, "register").unwrap();
+        let inputs = json!({"aanduiding": aanduiding});
+        reduceer(
+            &c.lexostatus_definitions[0],
+            inputs.as_object().unwrap(),
+            &register(),
+        )
+        .unwrap()
+        .unwrap()
+    }
+
+    #[test]
+    fn filter_per_afleiding_bestaat_som_en_laatste() {
+        let l = registerstatus("VOORBEELD");
+        assert_eq!(l.zaakkenmerk, None, "zonder kies wordt geen gram gekozen");
+        assert_eq!(l.parameters["is_ingeschreven_raad"], json!(true));
+        assert_eq!(l.parameters["is_geschrapt_raad"], json!(false));
+        // Alleen de uitslagen met deze aanduiding boven de lijst, over alle gebieden.
+        assert_eq!(l.parameters["zetels_op_lijst"], json!(6));
+        assert_eq!(l.parameters["datum_mededeling"], json!("2024-12-01"));
+        // Het laatste gram telt: daar staat raad wel in de lijst.
+        assert_eq!(l.parameters["geblokkeerd_raad"], json!(true));
+        assert!(l.niet_afgeleid.is_empty(), "{:?}", l.niet_afgeleid);
+    }
+
+    #[test]
+    fn afwezigheid_in_de_eigen_kroniek_is_nee() {
+        let l = registerstatus("ONBEKEND");
+        assert_eq!(l.parameters["is_ingeschreven_raad"], json!(false));
+        assert_eq!(l.parameters["zetels_op_lijst"], json!(0));
+        assert_eq!(l.parameters["geblokkeerd_raad"], json!(false));
+        // Een datum is er niet: die blijft weg, er wordt niets aangevuld.
+        assert!(!l.parameters.contains_key("datum_mededeling"));
+        assert_eq!(l.niet_afgeleid, vec!["datum_mededeling"]);
+    }
+
+    #[test]
+    fn som_zonder_getal_is_niet_af_te_leiden() {
+        let a = afl("{filter: {name: uitslag_vastgesteld}, som: zetels}");
+        let g = besluit(
+            "uitslag_vastgesteld",
+            "2024-03-20T09:00:00+01:00",
+            json!({"zetels": "vier"}),
+        );
+        assert_eq!(a.pas_toe_op_verzameling(&Map::new(), &[&g]).unwrap(), None);
+        let h = besluit(
+            "uitslag_vastgesteld",
+            "2024-03-20T09:00:00+01:00",
+            json!({"zetels": 1.5}),
+        );
+        let i = besluit(
+            "uitslag_vastgesteld",
+            "2024-03-20T09:00:00+01:00",
+            json!({"zetels": 2}),
+        );
+        assert_eq!(
+            a.pas_toe_op_verzameling(&Map::new(), &[&h, &i]).unwrap(),
+            Some(json!(3.5))
+        );
+    }
+
+    #[test]
+    fn filter_op_een_veldpad_vergelijkt_ook_getallen() {
+        let g = besluit(
+            "x",
+            "2024-03-20T09:00:00+01:00",
+            json!({"a": {"jaar": 2024, "ja": true}}),
+        );
+        let f: Filter = serde_json::from_value(json!({"a.jaar": "2024", "a.ja": "true"})).unwrap();
+        assert!(past(&f, &Map::new(), &g).unwrap());
+        let f: Filter = serde_json::from_value(json!({"a.jaar": "2025"})).unwrap();
+        assert!(!past(&f, &Map::new(), &g).unwrap());
+        let f: Filter = serde_json::from_value(json!({"a.ontbreekt": "x"})).unwrap();
+        assert!(!past(&f, &Map::new(), &g).unwrap());
+    }
+
+    #[test]
+    fn afleidingen_over_een_verzameling_lezen_ook_hun_filter() {
+        let a = afl("{filter: {name: x, orgaan: raad, aanduiding: $aanduiding}, bestaat: true}");
+        assert!(!a.op_gekozen_gram());
+        assert_eq!(a.gelezen_paden(), vec!["aanduiding", "orgaan"]);
+        let a = afl("{filter: {name: x}, kies: laatste, bevat: {veld: lijst, waarde: raad}}");
+        assert!(matches!(a, Afleiding::LaatsteBevat { .. }));
+        assert_eq!(a.gelezen_paden(), vec!["lijst"]);
+        let a = afl("{filter: {name: x}, kies: laatste, veld: datum}");
+        assert!(matches!(a, Afleiding::LaatsteVeld { .. }));
+        assert!(afl("{veld: datum}").op_gekozen_gram());
+    }
+
+    #[test]
+    fn extra_velden_staan_apart_van_de_parameters() {
+        let mut c = parse(CEL, "fixture").unwrap();
+        let def = &mut c.lexostatus_definitions[0];
+        def.reduction
+            .extra_velden
+            .insert("aanduiding".into(), afl("{veld: inhoud.aanduiding}"));
+        let g = gram(
+            ZAAK,
+            "2025-03-01T09:00:00+01:00",
+            json!({"inhoud": {"aanduiding": "X"}}),
+        );
+        let l = leid_af(def, &g).unwrap();
+        assert_eq!(l.extra_velden["aanduiding"], json!("X"));
+        assert!(!l.parameters.contains_key("aanduiding"));
+        assert!(def.levert("aanduiding") && def.levert("bevat_naam"));
+    }
+
+    #[test]
+    fn afleiding_op_het_gram_zonder_kies_is_een_fout() {
+        let mut c = parse(REGISTER, "register").unwrap();
+        let def = &mut c.lexostatus_definitions[0];
+        def.reduction
+            .afleidingen
+            .insert("x".into(), afl("{veld: aanduiding}"));
+        let inputs = json!({"aanduiding": "VOORBEELD"});
+        let fout = reduceer(def, inputs.as_object().unwrap(), &register()).unwrap_err();
+        assert!(fout.contains("kiest er geen"), "{fout}");
+    }
+
+    #[test]
+    fn register_fixture_valideert_tegen_het_schema() {
+        let c = parse(REGISTER, "register").unwrap();
+        assert_eq!(c.cel, "test_register");
+        assert_eq!(
+            c.lexostatus_definitions[0].levert_aan,
+            vec!["testregeling_afnemer#1", "testregeling_afnemer#2"]
+        );
     }
 }

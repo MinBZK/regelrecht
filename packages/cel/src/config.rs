@@ -1,26 +1,30 @@
-//! Configuratie uit de omgeving, en het laden van een gecontroleerde cel.
+//! Configuratie: de omgeving van de runtime, en de celdefinitie (`cel.yaml`).
+//!
+//! Een cel is een map onder `CELLS_PATH` met een `cel.yaml`. Paden daarin
+//! zijn relatief aan die map.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use regelrecht_engine::LawExecutionService;
+use serde::Deserialize;
+use serde_json::Value;
 
-use crate::formulier::{self, Formulier};
-use crate::reductie::{self, CelConfig, Portaal};
-use crate::stroom::{self, Event, Stroom};
-use crate::{controle, regelingen};
+use crate::schema::{self, Soort};
 
 /// Standaardpoort, binnen 7100-7300.
 pub const STANDAARD_POORT: u16 = 7170;
 
+/// De naam van het bestand dat van een map een cel maakt.
+pub const CEL_BESTAND: &str = "cel.yaml";
+
+/// De omgeving van de runtime.
 #[derive(Debug, Clone)]
 pub struct Config {
-    /// Map met de regelingen (het corpus).
+    /// Map met een submap per cel, elk met een `cel.yaml`.
+    pub cells_path: PathBuf,
+    /// Map met de regelingen (het corpus), gedeeld door alle cellen.
     pub regulation_path: PathBuf,
-    /// Een stroombestand, of een map met stroombestanden.
-    pub chronicles_path: PathBuf,
-    /// De celconfiguratie met lexostatus-definities en het portaalblok.
-    pub cell_config_path: PathBuf,
-    /// Map voor de kronieken (`<chronicle>.jsonl`).
+    /// Map voor de kronieken: per cel een submap `<id>/`.
     pub data_dir: PathBuf,
     pub port: u16,
 }
@@ -34,74 +38,119 @@ impl Config {
                 .map(PathBuf::from)
                 .ok_or_else(|| format!("{naam} is niet gezet"))
         }
-        let port = match std::env::var("AANVRAAG_CEL_PORT") {
+        let port = match std::env::var("CEL_PORT") {
             Ok(v) => v
                 .parse()
-                .map_err(|_| format!("AANVRAAG_CEL_PORT '{v}' is geen poortnummer"))?,
+                .map_err(|_| format!("CEL_PORT '{v}' is geen poortnummer"))?,
             Err(_) => STANDAARD_POORT,
         };
         Ok(Self {
+            cells_path: pad("CELLS_PATH")?,
             regulation_path: pad("REGULATION_PATH")?,
-            chronicles_path: pad("CHRONICLES_PATH")?,
-            cell_config_path: pad("CELL_CONFIG_PATH")?,
             data_dir: pad("DATA_DIR")?,
             port,
         })
     }
 }
 
-/// Een geladen cel die de controles bij het opstarten doorstond.
-pub struct Cel {
-    pub strommen: Vec<Stroom>,
-    pub config: CelConfig,
-    pub service: LawExecutionService,
-    pub formulier: Option<Formulier>,
+/// Een celdefinitie (`schema/chronolex/v0.1.0/cel.json`).
+#[derive(Debug, Clone, Deserialize)]
+pub struct CelDefinitie {
+    pub id: String,
+    pub recording_actor: String,
+    pub stromen: Vec<String>,
+    pub lexostatussen: String,
+    #[serde(default)]
+    pub portaal: Option<Portaal>,
+    #[serde(default)]
+    pub synthese: Vec<SyntheseBron>,
+    #[serde(default)]
+    pub startstand: Option<String>,
 }
 
-impl Cel {
-    /// Laad stroom, celconfiguratie, regelingen en formulier, en controleer
-    /// ze. Elke fout komt terug, niet alleen de eerste.
-    pub fn laad(config: &Config) -> Result<Self, Vec<String>> {
-        let mut fouten = Vec::new();
-        let strommen = stroom::laad(&config.chronicles_path)
-            .map_err(|f| fouten.extend(f))
-            .ok();
-        let cel = reductie::laad(&config.cell_config_path)
-            .map_err(|f| fouten.extend(f))
-            .ok();
-        let service = regelingen::laad(&config.regulation_path)
-            .map_err(|f| fouten.extend(f))
-            .ok();
-        let (Some(strommen), Some(cel), Some(service)) = (strommen, cel, service) else {
-            return Err(fouten);
-        };
-        controle::controleer(&strommen, &cel, &service)?;
-        let formulier = match cel.portaal.as_ref().and_then(|p| p.formulier.as_ref()) {
-            Some(f) => {
-                let basis = config.cell_config_path.parent().unwrap_or(Path::new("."));
-                Some(formulier::laad(&basis.join(&f.pad), &f.scherm).map_err(|e| vec![e])?)
-            }
-            None => None,
-        };
-        Ok(Self {
-            strommen,
-            config: cel,
-            service,
-            formulier,
-        })
+/// Het portaalblok: welk event een indiening wordt en welke uitkomst de
+/// toets vraagt.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Portaal {
+    pub stroom: String,
+    pub event: String,
+    pub toets: Toets,
+    #[serde(default)]
+    pub formulier: Option<FormulierVerwijzing>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Toets {
+    pub lexostatus: String,
+    pub regeling: String,
+    pub uitkomst: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct FormulierVerwijzing {
+    pub pad: String,
+    pub scherm: String,
+}
+
+/// Een lexostatus van een andere cel die de toets samenvoegt met de eigen.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SyntheseBron {
+    pub cel: String,
+    /// Zonder url: de bron-cel draait in dezelfde runtime (intern transport).
+    #[serde(default)]
+    pub url: Option<String>,
+    pub lexostatus: String,
+    /// Per input van de bron: uit welk veld van de eigen lexostatus.
+    pub invoer: BTreeMap<String, InvoerVerwijzing>,
+    /// De parameters die deze bron levert, expliciet.
+    pub parameters: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct InvoerVerwijzing {
+    pub lexostatus: String,
+    pub veld: String,
+}
+
+impl CelDefinitie {
+    /// Lees een celdefinitie uit tekst en valideer haar tegen het schema.
+    pub fn parse(tekst: &str, bron: &str) -> Result<Self, Vec<String>> {
+        let yaml: serde_yaml_ng::Value = serde_yaml_ng::from_str(tekst)
+            .map_err(|e| vec![format!("{bron}: geen geldige YAML: {e}")])?;
+        let document: Value =
+            serde_json::to_value(&yaml).map_err(|e| vec![format!("{bron}: {e}")])?;
+        schema::valideer(Soort::Cel, &document).map_err(|f| {
+            f.into_iter()
+                .map(|f| format!("{bron}: {f}"))
+                .collect::<Vec<_>>()
+        })?;
+        serde_json::from_value(document).map_err(|e| vec![format!("{bron}: {e}")])
     }
 
-    /// Het portaalblok. Bestaat altijd: de controle eist het.
-    pub fn portaal(&self) -> Option<&Portaal> {
-        self.config.portaal.as_ref()
+    /// Laad `cel.yaml` uit de map van een cel.
+    pub fn laad(map: &Path) -> Result<Self, Vec<String>> {
+        let pad = map.join(CEL_BESTAND);
+        let bron = pad.display().to_string();
+        let tekst = std::fs::read_to_string(&pad).map_err(|e| vec![format!("{bron}: {e}")])?;
+        Self::parse(&tekst, &bron)
     }
+}
 
-    /// De stroom en het event waarin het portaal vastlegt.
-    pub fn portaal_event(&self) -> Option<(&Stroom, &Event)> {
-        let p = self.portaal()?;
-        let s = self.strommen.iter().find(|s| s.id == p.stroom)?;
-        Some((s, s.event(&p.event)?))
+/// De mappen onder `CELLS_PATH` met een `cel.yaml`, gesorteerd.
+pub fn celmappen(cells_path: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut mappen: Vec<PathBuf> = std::fs::read_dir(cells_path)
+        .map_err(|e| format!("{}: {e}", cells_path.display()))?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.join(CEL_BESTAND).is_file())
+        .collect();
+    mappen.sort();
+    if mappen.is_empty() {
+        return Err(format!(
+            "{}: geen submap met een {CEL_BESTAND}",
+            cells_path.display()
+        ));
     }
+    Ok(mappen)
 }
 
 #[cfg(test)]
@@ -109,32 +158,42 @@ impl Cel {
 mod tests {
     use super::*;
 
-    pub(crate) fn fixture_config(data_dir: &Path) -> Config {
-        let f = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
-        Config {
-            regulation_path: f.join("regulation"),
-            chronicles_path: f.join("chronicles"),
-            cell_config_path: f.join("cel/lexostatussen.yaml"),
-            data_dir: data_dir.to_path_buf(),
-            port: STANDAARD_POORT,
-        }
+    pub(crate) fn fixtures() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
     }
 
     #[test]
-    fn fixture_cel_laadt() {
-        let dir = tempfile::tempdir().unwrap();
-        let cel = Cel::laad(&fixture_config(dir.path())).unwrap();
-        assert_eq!(cel.portaal_event().unwrap().1.name, "aanvraag_ontvangen");
-        assert!(cel.formulier.is_some());
+    fn fixture_cellen_laden() {
+        let mappen = celmappen(&fixtures().join("cellen")).unwrap();
+        let ids: Vec<String> = mappen
+            .iter()
+            .map(|m| CelDefinitie::laad(m).unwrap().id)
+            .collect();
+        assert_eq!(ids, ["test_afnemer", "test_instantie", "test_register"]);
     }
 
     #[test]
-    fn ontbrekende_bestanden_worden_allemaal_gemeld() {
+    fn celdefinitie_valideert_tegen_het_schema() {
+        let fout =
+            CelDefinitie::parse("id: x\nrecording_actor: x\nstromen: []\n", "t").unwrap_err();
+        assert!(fout.iter().any(|f| f.contains("lexostatussen")), "{fout:?}");
+        assert!(fout.iter().any(|f| f.contains("/stromen")), "{fout:?}");
+    }
+
+    #[test]
+    fn synthese_bron_met_url() {
+        let d = CelDefinitie::parse(
+            "id: a\nrecording_actor: a\nstromen: [s.yaml]\nlexostatussen: l.yaml\nsynthese:\n  - {cel: b, url: 'http://localhost:7172', lexostatus: l, invoer: {}, parameters: [p]}\n",
+            "t",
+        )
+        .unwrap();
+        assert_eq!(d.synthese[0].url.as_deref(), Some("http://localhost:7172"));
+        assert!(d.portaal.is_none());
+    }
+
+    #[test]
+    fn map_zonder_cellen() {
         let dir = tempfile::tempdir().unwrap();
-        let mut c = fixture_config(dir.path());
-        c.chronicles_path = dir.path().join("geen.yaml");
-        c.cell_config_path = dir.path().join("geen_cel.yaml");
-        let fouten = Cel::laad(&c).err().unwrap();
-        assert_eq!(fouten.len(), 2, "{fouten:?}");
+        assert!(celmappen(dir.path()).unwrap_err().contains("geen submap"));
     }
 }

@@ -1,0 +1,44 @@
+---
+# Fictieve teststroom: een registerhouder legt besluiten over een register
+# vast. Een besluit is een decretogram.
+$id: test_registers
+recording_actor: test_register
+chronicle: test_register
+events:
+  - name: aanduiding_ingeschreven
+    intake: besluit
+    grondslag: [testregeling_register#1]
+    type: decretogram
+    fields:
+      aanduiding: $external.aanduiding
+      orgaan: $external.orgaan
+      gebied: $external.gebied
+    niet_gereduceerd:
+      - {veld: gebied, reden: de registratie geldt per orgaansoort; het gebied leest geen afleiding}
+  - name: aanduiding_geschrapt
+    intake: besluit
+    grondslag: [testregeling_register#1]
+    type: decretogram
+    fields:
+      aanduiding: $external.aanduiding
+      orgaan: $external.orgaan
+  - name: uitslag_vastgesteld
+    intake: besluit
+    grondslag: [testregeling_register#2]
+    type: decretogram
+    fields:
+      orgaan: $external.orgaan
+      gebied: $external.gebied
+      lijst: $external.lijst
+      zetels: $external.zetels
+    niet_gereduceerd:
+      - {veld: orgaan, reden: de zetels tellen over alle organen}
+      - {veld: gebied, reden: de zetels tellen over alle gebieden}
+  - name: mededeling_gedaan
+    intake: besluit
+    grondslag: [testregeling_register#3]
+    type: decretogram
+    fields:
+      aanduiding: $external.aanduiding
+      datum: $external.datum
+      geblokkeerd_voor: $external.geblokkeerd_voor

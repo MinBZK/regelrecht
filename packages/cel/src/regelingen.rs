@@ -1,5 +1,6 @@
 //! Het lexogram: de regelingen uit `REGULATION_PATH`, geladen in de engine.
 
+use std::collections::BTreeSet;
 use std::path::Path;
 
 use regelrecht_engine::{Article, LawExecutionService};
@@ -62,6 +63,39 @@ pub fn artikel<'s>(
     })
 }
 
+/// De parameters van een artikel en van elk artikel dat het via een invoer
+/// aanroept, transitief: een invoer met `source.output` wijst naar het artikel
+/// met die uitkomst, in `source.regulation` of in dezelfde regeling. Een
+/// parameter die alleen een aangeroepen artikel declareert, telt mee: de
+/// engine geeft hem door als de invoer geen eigen `parameters` meegeeft.
+pub fn transitieve_parameters(
+    service: &LawExecutionService,
+    regeling: &str,
+    artikel: &Article,
+) -> BTreeSet<String> {
+    let mut parameters = BTreeSet::new();
+    let mut gezien: BTreeSet<(String, String)> = BTreeSet::new();
+    let mut te_doen: Vec<(String, &Article)> = vec![(regeling.to_string(), artikel)];
+    while let Some((law, a)) = te_doen.pop() {
+        if !gezien.insert((law.clone(), a.number.clone())) {
+            continue;
+        }
+        parameters.extend(a.get_parameters().iter().map(|p| p.name.clone()));
+        for invoer in a.get_inputs() {
+            let Some(bron) = &invoer.source else { continue };
+            let Some(output) = &bron.output else { continue };
+            let doel = bron.regulation.clone().unwrap_or_else(|| law.clone());
+            if let Some(volgend) = service
+                .resolver()
+                .get_article_by_output(&doel, output, None)
+            {
+                te_doen.push((doel, volgend));
+            }
+        }
+    }
+    parameters
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
@@ -90,5 +124,22 @@ mod tests {
             .unwrap_err()
             .contains("niet geladen"));
         assert!(artikel(&s, "zonder_hekje").is_err());
+    }
+
+    #[test]
+    fn transitieve_parameters_volgen_de_invoer() {
+        let s = laad(&fixtures()).unwrap();
+        let a = artikel(&s, "testregeling_afnemer#1").unwrap();
+        let p = transitieve_parameters(&s, "testregeling_afnemer", a);
+        // Eigen parameters, die van artikel 2 (zelfde regeling, geen binding)
+        // en die van de testregeling register (andere regeling).
+        for naam in [
+            "bevat_aanduiding",
+            "zetels_op_lijst",
+            "is_ingeschreven_in_register",
+        ] {
+            assert!(p.contains(naam), "{naam} ontbreekt in {p:?}");
+        }
+        assert!(!p.contains("datum_vaststelling"));
     }
 }

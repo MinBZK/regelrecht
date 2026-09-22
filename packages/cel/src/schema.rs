@@ -9,14 +9,17 @@ use serde_json::Value;
 const STREAM: &str = include_str!("../../../schema/chronolex/v0.1.0/stream.json");
 const LEXOSTATUS: &str = include_str!("../../../schema/chronolex/v0.1.0/lexostatus.json");
 const GRAM: &str = include_str!("../../../schema/chronolex/v0.1.0/gram.json");
+const CEL: &str = include_str!("../../../schema/chronolex/v0.1.0/cel.json");
 
 /// Welk van de drie schema's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Soort {
     /// Een stroomdefinitie (`stream.json`).
     Stroom,
-    /// Een celconfiguratie met lexostatus-definities (`lexostatus.json`).
+    /// De lexostatus-definities van een cel (`lexostatus.json`).
     Lexostatus,
+    /// Een celdefinitie, `cel.yaml` (`cel.json`).
+    Cel,
     /// Een vastgelegd gram (`gram.json`).
     Gram,
 }
@@ -32,6 +35,7 @@ static STREAM_V: LazyLock<Result<Validator, String>> =
 static LEXOSTATUS_V: LazyLock<Result<Validator, String>> =
     LazyLock::new(|| compileer(LEXOSTATUS, "lexostatus.json"));
 static GRAM_V: LazyLock<Result<Validator, String>> = LazyLock::new(|| compileer(GRAM, "gram.json"));
+static CEL_V: LazyLock<Result<Validator, String>> = LazyLock::new(|| compileer(CEL, "cel.json"));
 
 /// Valideer een document tegen een van de schema's. Bij een fout: elke
 /// schending als `<pad>: <melding>`.
@@ -40,6 +44,7 @@ pub fn valideer(soort: Soort, doc: &Value) -> Result<(), Vec<String>> {
         Soort::Stroom => &*STREAM_V,
         Soort::Lexostatus => &*LEXOSTATUS_V,
         Soort::Gram => &*GRAM_V,
+        Soort::Cel => &*CEL_V,
     }
     .as_ref()
     .map_err(|e| vec![e.clone()])?;
@@ -72,6 +77,7 @@ mod tests {
             ("stream", &*STREAM_V),
             ("lexostatus", &*LEXOSTATUS_V),
             ("gram", &*GRAM_V),
+            ("cel", &*CEL_V),
         ] {
             assert!(v.is_ok(), "{naam}: {:?}", v.as_ref().err());
         }

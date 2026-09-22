@@ -1,0 +1,84 @@
+---
+# Fictieve testregeling voor een register. Geen geldend recht.
+# De parameters heten per artikel generiek (is_ingeschreven_in_register); een
+# afnemer geeft ze onder een eigen naam door (testregeling_afnemer).
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
+$id: testregeling_register
+name: Testregeling register
+regulatory_layer: WET
+bwb_id: BWBR9999952
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/testregeling_register
+
+articles:
+  - number: '1'
+    url: https://example.com/testregeling_register/1
+    text: >-
+      Een aanduiding is geregistreerd als zij in het register is ingeschreven
+      en niet is geschrapt.
+    machine_readable:
+      execution:
+        parameters:
+          - name: is_ingeschreven_in_register
+            type: boolean
+            required: true
+          - name: is_geschrapt
+            type: boolean
+            required: true
+        output:
+          - name: aanduiding_geregistreerd
+            type: boolean
+        actions:
+          - output: aanduiding_geregistreerd
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $is_ingeschreven_in_register
+                  value: true
+                - operation: EQUALS
+                  subject: $is_geschrapt
+                  value: false
+  - number: '2'
+    url: https://example.com/testregeling_register/2
+    text: De registerhouder stelt de uitslag vast en maakt haar openbaar.
+    machine_readable:
+      execution:
+        parameters:
+          - name: uitslag_openbaar
+            type: boolean
+            required: true
+        output:
+          - name: uitslag_bekend
+            type: boolean
+        actions:
+          - output: uitslag_bekend
+            value:
+              operation: EQUALS
+              subject: $uitslag_openbaar
+              value: true
+  - number: '3'
+    url: https://example.com/testregeling_register/3
+    text: >-
+      De registerhouder deelt de registraties mee, en zegt daarbij voor welke
+      organen de doorwerking is geblokkeerd.
+    machine_readable:
+      execution:
+        parameters:
+          - name: datum_mededeling
+            type: date
+            required: true
+          - name: geblokkeerd
+            type: boolean
+            required: true
+        output:
+          - name: doorwerking
+            type: boolean
+        actions:
+          - output: doorwerking
+            value:
+              operation: EQUALS
+              subject: $geblokkeerd
+              value: false

@@ -1,5 +1,5 @@
 //! De kroniek: append-only opslag van grammen, een JSON-regel per gram in
-//! `DATA_DIR/<chronicle>.jsonl`.
+//! `DATA_DIR/<cel>/<chronicle>.jsonl`.
 //!
 //! Er is bewust geen pad om een gram te wijzigen of te verwijderen. Een
 //! correctie of herstel is een nieuw gram.
@@ -119,6 +119,7 @@ mod tests {
                 id: "test".into(),
                 sha256: "a".repeat(64),
             },
+            herkomst: None,
             fields: json!({"x": 1}).as_object().unwrap().clone(),
         }
     }

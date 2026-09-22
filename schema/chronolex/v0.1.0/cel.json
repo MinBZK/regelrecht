@@ -1,0 +1,180 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.1.0/cel.json",
+  "title": "Celdefinitie (cel.yaml) v0.1.0",
+  "description": "Een cel is een map met configuratie; cel.yaml zegt wie de cel is, welke stromen ze vastlegt, welke lexostatussen ze aanbiedt, en optioneel of ze een portaal heeft, van welke andere cellen ze lexostatussen samenvoegt (synthese) en met welke grammen een lege kroniek begint (startstand). Paden zijn relatief aan de map van cel.yaml.",
+  "type": "object",
+  "required": [
+    "id",
+    "recording_actor",
+    "stromen",
+    "lexostatussen"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "id": {
+      "$ref": "#/definitions/identifier",
+      "description": "De naam van de cel. De runtime biedt haar aan onder /cellen/<id>/api/ en schrijft haar kroniek in DATA_DIR/<id>/."
+    },
+    "description": {
+      "type": "string"
+    },
+    "recording_actor": {
+      "$ref": "#/definitions/identifier",
+      "description": "De actor die in deze cel vastlegt. Elke stroom van de cel heeft deze recording_actor."
+    },
+    "stromen": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Stroomdefinities (stream.json): een bestand of een map met bestanden.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "lexostatussen": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Het bestand met de lexostatus-definities (lexostatus.json)."
+    },
+    "portaal": {
+      "$ref": "#/definitions/portaal"
+    },
+    "synthese": {
+      "type": "array",
+      "description": "Lexostatussen van andere cellen die de toets van het portaal samenvoegt met de eigen lexostatus. Niets hiervan wordt vastgelegd.",
+      "items": {
+        "$ref": "#/definitions/bron"
+      }
+    },
+    "startstand": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Een JSONL-bestand met grammen die de cel bij het starten in een lege kroniek zet. Elke regel heeft stroom, name, op_moment, herkomst: startstand en fields, en optioneel zaakkenmerk; de rest volgt uit de stroom."
+    }
+  },
+  "definitions": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "portaal": {
+      "type": "object",
+      "description": "Een cel met een portaal laat inloggen (nep-eHerkenning), een concept toetsen en een indiening vastleggen. Zonder portaal heeft de cel die routes niet.",
+      "required": [
+        "stroom",
+        "event",
+        "toets"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "stroom": {
+          "$ref": "#/definitions/identifier",
+          "description": "De $id van de stroom waarin het portaal vastlegt."
+        },
+        "event": {
+          "$ref": "#/definitions/identifier",
+          "description": "Het event uit die stroom dat een indiening wordt."
+        },
+        "toets": {
+          "type": "object",
+          "required": [
+            "lexostatus",
+            "regeling",
+            "uitkomst"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "lexostatus": {
+              "$ref": "#/definitions/identifier"
+            },
+            "regeling": {
+              "$ref": "#/definitions/identifier"
+            },
+            "uitkomst": {
+              "$ref": "#/definitions/identifier"
+            }
+          }
+        },
+        "formulier": {
+          "type": "object",
+          "description": "Optioneel formulierbestand voor labels en volgorde. Het bepaalt nooit het gedrag.",
+          "required": [
+            "pad",
+            "scherm"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "pad": {
+              "type": "string"
+            },
+            "scherm": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "bron": {
+      "type": "object",
+      "description": "Een lexostatus van een andere cel. Zonder url is het transport intern: de bron-cel draait in dezelfde runtime. Met url gaat de vraag over HTTP naar <url>/cellen/<cel>/api/lexostatus/<lexostatus>.",
+      "required": [
+        "cel",
+        "lexostatus",
+        "invoer",
+        "parameters"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "cel": {
+          "$ref": "#/definitions/identifier"
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^https?://[^\\s/]+(/[^\\s]*)?$"
+        },
+        "lexostatus": {
+          "$ref": "#/definitions/identifier"
+        },
+        "invoer": {
+          "type": "object",
+          "description": "Per input van de bron-lexostatus: uit welk veld van de eigen lexostatus de waarde komt (een parameter of een extra veld).",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "lexostatus",
+              "veld"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "lexostatus": {
+                "$ref": "#/definitions/identifier"
+              },
+              "veld": {
+                "type": "string",
+                "pattern": "^[a-z_][a-z0-9_]*$"
+              }
+            }
+          }
+        },
+        "parameters": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "De parameters die deze bron levert, expliciet en zonder wildcard. Elke naam is een parameter van een artikel onder de toets, en komt uit maar een bron.",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_][a-z0-9_]*$"
+          }
+        }
+      }
+    }
+  }
+}

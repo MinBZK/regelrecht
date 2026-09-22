@@ -44,8 +44,8 @@
     },
     "grondslag": {
       "type": "string",
-      "description": "<regeling-$id>#<artikelnummer>, bijvoorbeeld een_wet#12 of een_wet#4:2.",
-      "pattern": "^[a-z][a-z0-9_]*#[A-Za-z0-9][A-Za-z0-9:._-]*$"
+      "description": "<regeling-$id>#<artikelnummer>, bijvoorbeeld een_wet#12, een_wet#4:2 of een_wet#A 1 (een artikelnummer mag een spatie hebben).",
+      "pattern": "^[a-z][a-z0-9_]*#[A-Za-z0-9]([A-Za-z0-9:._ -]*[A-Za-z0-9])?$"
     },
     "veldpad": {
       "type": "string",

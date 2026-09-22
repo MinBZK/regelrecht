@@ -1,0 +1,18 @@
+---
+# Fictieve cel met een portaal: een instantie die een aanvraag ontvangt en
+# vóór het indienen toetst of zij volledig is. Geen synthese: de toets leest
+# alleen de eigen lexostatus.
+id: test_instantie
+recording_actor: test_instantie
+stromen: [../../chronicles/test_aanvragen.yaml]
+lexostatussen: lexostatussen.yaml
+portaal:
+  stroom: test_aanvragen
+  event: aanvraag_ontvangen
+  toets:
+    lexostatus: aanvraag_inhoud
+    regeling: testregeling_aanvraag
+    uitkomst: aanvraag_volledig
+  formulier:
+    pad: formulier.yaml
+    scherm: aanvraag

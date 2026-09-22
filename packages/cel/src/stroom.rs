@@ -106,6 +106,10 @@ pub struct Gram {
     pub op_moment: String,
     pub zaakkenmerk: String,
     pub stroom: StroomVerwijzing,
+    /// Alleen als de cel het gram niet zelf vaststelde: `startstand` is bij
+    /// het starten in een lege kroniek geplaatst (zie [`crate::startstand`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub herkomst: Option<String>,
     pub fields: Map<String, Value>,
 }
 
@@ -549,6 +553,7 @@ pub fn bouw_gram(
             id: stroom.id.clone(),
             sha256: stroom.sha256.clone(),
         },
+        herkomst: None,
         fields,
     })
 }

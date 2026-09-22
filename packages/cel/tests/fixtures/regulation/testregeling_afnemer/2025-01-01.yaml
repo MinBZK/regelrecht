@@ -1,0 +1,101 @@
+---
+# Fictieve testregeling voor een afnemer van registerfeiten. Geen geldend
+# recht. Artikel 1 is een TOETS die feiten uit de aanvraag combineert met
+# feiten uit een register: via een invoer uit de testregeling register en via
+# artikel 2, dat artikel 1 zonder parameterbinding aanroept.
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
+$id: testregeling_afnemer
+name: Testregeling afnemer
+regulatory_layer: WET
+bwb_id: BWBR9999953
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/testregeling_afnemer
+
+articles:
+  - number: '1'
+    url: https://example.com/testregeling_afnemer/1
+    text: >-
+      Een aanvraag is toelaatbaar als zij de aanduiding bevat, de aanduiding
+      voor de raad is geregistreerd, de lijst zetels heeft, de doorwerking
+      voor de raad niet is geblokkeerd, en de registraties voor de aanvraag
+      zijn meegedeeld.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TOETS
+          decision_type: GEEN_BESLUIT
+        parameters:
+          - name: aanvraagdatum
+            type: date
+            required: true
+          - name: bevat_aanduiding
+            type: boolean
+            required: true
+          - name: is_ingeschreven_raad
+            type: boolean
+            required: true
+          - name: is_geschrapt_raad
+            type: boolean
+            required: true
+          - name: geblokkeerd_raad
+            type: boolean
+            required: true
+          - name: datum_mededeling
+            type: date
+            required: true
+        input:
+          - name: aanduiding_geregistreerd_raad
+            type: boolean
+            source:
+              regulation: testregeling_register
+              output: aanduiding_geregistreerd
+              parameters:
+                is_ingeschreven_in_register: $is_ingeschreven_raad
+                is_geschrapt: $is_geschrapt_raad
+          - name: lijst_heeft_zetels
+            type: boolean
+            source:
+              output: lijst_heeft_zetels
+        output:
+          - name: aanvraag_toelaatbaar
+            type: boolean
+        actions:
+          - output: aanvraag_toelaatbaar
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $bevat_aanduiding
+                  value: true
+                - operation: EQUALS
+                  subject: $aanduiding_geregistreerd_raad
+                  value: true
+                - operation: EQUALS
+                  subject: $lijst_heeft_zetels
+                  value: true
+                - operation: EQUALS
+                  subject: $geblokkeerd_raad
+                  value: false
+                - operation: LESS_THAN
+                  subject: $datum_mededeling
+                  value: $aanvraagdatum
+  - number: '2'
+    url: https://example.com/testregeling_afnemer/2
+    text: Een lijst heeft zetels als haar ten minste een zetel is toegewezen.
+    machine_readable:
+      execution:
+        parameters:
+          - name: zetels_op_lijst
+            type: number
+            required: true
+        output:
+          - name: lijst_heeft_zetels
+            type: boolean
+        actions:
+          - output: lijst_heeft_zetels
+            value:
+              operation: GREATER_THAN
+              subject: $zetels_op_lijst
+              value: 0

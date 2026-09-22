@@ -1,57 +1,74 @@
 //! De controles bij het opstarten. De cel weigert te starten als er een
 //! faalt, met een melding die het veld of de parameter noemt.
 //!
-//! 1. Stroom en celconfiguratie valideren tegen hun schema (bij het laden,
-//!    zie [`crate::stroom::parse`] en [`crate::reductie::parse`]).
+//! 1. Stroom, lexostatus-definities en celdefinitie valideren tegen hun
+//!    schema (bij het laden, zie [`crate::stroom::parse`],
+//!    [`crate::reductie::parse`] en [`crate::config::CelDefinitie::parse`]).
 //! 2. Elke afleiding wijst naar iets dat bestaat: een parameter van een
-//!    artikel uit de grondslag van het gefilterde event, en veldpaden van
-//!    dat event. Een tabelafleiding wijst naar een tabelveld en leest
-//!    alleen kolommen die de stroom voor dat veld declareert.
-//! 3. Geen weesveld: elk veld van een event wordt door een afleiding gelezen
-//!    of staat met reden in `niet_gereduceerd`.
+//!    artikel uit de grondslag van een event dat haar filter aanwijst (of van
+//!    een artikel uit `levert_aan`), en veldpaden van dat event. Een
+//!    tabelafleiding wijst naar een tabelveld en leest alleen kolommen die de
+//!    stroom voor dat veld declareert. Een afleiding op het gekozen gram
+//!    vraagt een lexostatus die een gram kiest (`kies`).
+//! 3. Geen weesveld: elk veld van een event wordt door een afleiding of een
+//!    filter gelezen, of staat met reden in `niet_gereduceerd`.
 //! 4. Geen naamsbotsing: een parameter krijgt maar een afleiding.
 //!
-//! Daarnaast: het portaalblok wijst naar een bestaand event, een bestaande
-//! lexostatus en een bestaande uitkomst, van een artikel uit de grondslag
-//! van dat event.
+//! Heeft de cel een portaal, dan wijst dat naar een bestaand event, een
+//! bestaande lexostatus en een bestaande uitkomst, van een artikel uit de
+//! grondslag van dat event. De controles op de synthese staan in
+//! [`crate::synthese`].
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use regelrecht_engine::LawExecutionService;
 
+use crate::config::Portaal;
 use crate::eherkenning::INTAKE_PADEN;
-use crate::reductie::{CelConfig, LexostatusDefinitie};
+use crate::reductie::{self, Filter, LexostatusDefinitie, Lexostatussen};
 use crate::regelingen;
 use crate::stroom::{Binding, Event, Stroom};
 
 /// Een event met de stroom waar het in staat.
 pub type StroomEvent<'a> = (&'a Stroom, &'a Event);
 
-/// De events die het filter van een definitie kan aanwijzen: in de kroniek
-/// van de reductie, en gelijk op elke vaste filterwaarde. Een waarde `$x`
-/// hangt van de vraag af en telt hier als passend.
-pub fn events_voor<'a>(def: &LexostatusDefinitie, strommen: &'a [Stroom]) -> Vec<StroomEvent<'a>> {
+/// Of een event door een filter kan komen: gelijk op elke vaste waarde van
+/// een sleutel van het gram zelf. Een veldpad of een waarde `$x` hangt van het
+/// gram of de vraag af en telt hier als passend.
+fn event_past(filter: &Filter, stroom: &Stroom, event: &Event) -> bool {
+    filter.iter().all(|(sleutel, waarde)| {
+        if waarde.starts_with('$') {
+            return true;
+        }
+        let eigen = match sleutel.as_str() {
+            "name" => Some(event.name.as_str()),
+            "type" => Some(event.type_.as_str()),
+            "soort" => event.soort.as_deref(),
+            "recording_actor" => Some(stroom.recording_actor.as_str()),
+            "chronicle" => Some(stroom.chronicle.as_str()),
+            _ => return true,
+        };
+        eigen == Some(waarde.as_str())
+    })
+}
+
+/// De events die een definitie kan aanwijzen: in de kroniek van de
+/// reductie, door het filter van de lexostatus en, voor een afleiding over
+/// een verzameling, ook door haar eigen filter.
+pub fn events_voor<'a>(
+    def: &LexostatusDefinitie,
+    afleiding_filter: Option<&Filter>,
+    strommen: &'a [Stroom],
+) -> Vec<StroomEvent<'a>> {
     let mut uit = Vec::new();
     for stroom in strommen
         .iter()
         .filter(|s| s.chronicle == def.reduction.kroniek)
     {
         for event in &stroom.events {
-            let past = def.reduction.filter.iter().all(|(sleutel, waarde)| {
-                if waarde.starts_with('$') {
-                    return true;
-                }
-                let eigen = match sleutel.as_str() {
-                    "name" => Some(event.name.as_str()),
-                    "type" => Some(event.type_.as_str()),
-                    "soort" => event.soort.as_deref(),
-                    "recording_actor" => Some(stroom.recording_actor.as_str()),
-                    "chronicle" => Some(stroom.chronicle.as_str()),
-                    _ => return true,
-                };
-                eigen == Some(waarde.as_str())
-            });
-            if past {
+            if event_past(&def.reduction.filter, stroom, event)
+                && afleiding_filter.is_none_or(|f| event_past(f, stroom, event))
+            {
                 uit.push((stroom, event));
             }
         }
@@ -62,16 +79,19 @@ pub fn events_voor<'a>(def: &LexostatusDefinitie, strommen: &'a [Stroom]) -> Vec
 /// Alle controles. `Ok` als de cel mag starten.
 pub fn controleer(
     strommen: &[Stroom],
-    config: &CelConfig,
+    lexostatussen: &Lexostatussen,
+    portaal: Option<&Portaal>,
     service: &LawExecutionService,
 ) -> Result<(), Vec<String>> {
     let mut fouten = Vec::new();
-    uniek(strommen, config, &mut fouten);
+    uniek(strommen, lexostatussen, &mut fouten);
     grondslagen(strommen, service, &mut fouten);
-    verwijzingen(strommen, config, service, &mut fouten);
-    weesvelden(strommen, config, &mut fouten);
-    botsingen(strommen, config, &mut fouten);
-    portaal(strommen, config, service, &mut fouten);
+    verwijzingen(strommen, lexostatussen, service, &mut fouten);
+    weesvelden(strommen, lexostatussen, &mut fouten);
+    botsingen(strommen, lexostatussen, &mut fouten);
+    if let Some(p) = portaal {
+        portaal_(strommen, lexostatussen, p, service, &mut fouten);
+    }
     if fouten.is_empty() {
         Ok(())
     } else {
@@ -79,7 +99,7 @@ pub fn controleer(
     }
 }
 
-fn uniek(strommen: &[Stroom], config: &CelConfig, fouten: &mut Vec<String>) {
+fn uniek(strommen: &[Stroom], lexostatussen: &Lexostatussen, fouten: &mut Vec<String>) {
     let mut gezien = BTreeSet::new();
     for s in strommen {
         if !gezien.insert(&s.id) {
@@ -87,7 +107,7 @@ fn uniek(strommen: &[Stroom], config: &CelConfig, fouten: &mut Vec<String>) {
         }
     }
     let mut gezien = BTreeSet::new();
-    for d in &config.lexostatus_definitions {
+    for d in &lexostatussen.lexostatus_definitions {
         if !gezien.insert(&d.name) {
             fouten.push(format!(
                 "lexostatus '{}' staat er meer dan een keer",
@@ -109,51 +129,102 @@ fn grondslagen(strommen: &[Stroom], service: &LawExecutionService, fouten: &mut 
     }
 }
 
-/// De parameters van de artikelen uit de grondslag van een event.
-fn parameters(event: &Event, service: &LawExecutionService) -> BTreeSet<String> {
-    event
-        .grondslag
-        .iter()
+/// De parameters van de artikelen achter een lijst grondslagen.
+fn parameters_van<'s>(
+    grondslag: impl IntoIterator<Item = &'s String>,
+    service: &LawExecutionService,
+) -> BTreeSet<String> {
+    grondslag
+        .into_iter()
         .filter_map(|g| regelingen::artikel(service, g).ok())
         .flat_map(|a| a.get_parameters().iter().map(|p| p.name.clone()))
         .collect()
 }
 
+fn inputs_in_filter(def: &LexostatusDefinitie, filter: &Filter, fouten: &mut Vec<String>) {
+    let inputs: BTreeSet<&str> = def.inputs.iter().map(|i| i.name.as_str()).collect();
+    for (sleutel, waarde) in filter {
+        if let Some(input) = waarde.strip_prefix('$') {
+            if !inputs.contains(input) {
+                fouten.push(format!(
+                    "lexostatus '{}': filter '{sleutel}' gebruikt '${input}', maar '{input}' is geen input",
+                    def.name
+                ));
+            }
+        }
+    }
+}
+
 fn verwijzingen(
     strommen: &[Stroom],
-    config: &CelConfig,
+    lexostatussen: &Lexostatussen,
     service: &LawExecutionService,
     fouten: &mut Vec<String>,
 ) {
-    for def in &config.lexostatus_definitions {
-        let inputs: BTreeSet<&str> = def.inputs.iter().map(|i| i.name.as_str()).collect();
-        for (sleutel, waarde) in &def.reduction.filter {
-            if let Some(input) = waarde.strip_prefix('$') {
-                if !inputs.contains(input) {
-                    fouten.push(format!(
-                        "lexostatus '{}': filter '{sleutel}' gebruikt '${input}', maar '{input}' is geen input",
-                        def.name
-                    ));
-                }
+    for def in &lexostatussen.lexostatus_definitions {
+        inputs_in_filter(def, &def.reduction.filter, fouten);
+        for g in &def.levert_aan {
+            if let Err(f) = regelingen::artikel(service, g) {
+                fouten.push(format!("lexostatus '{}', levert_aan: {f}", def.name));
             }
         }
-        let events = events_voor(def, strommen);
+        let afnemer = parameters_van(&def.levert_aan, service);
+        let events = events_voor(def, None, strommen);
         if events.is_empty() {
             fouten.push(format!(
                 "lexostatus '{}': het filter wijst geen event aan in kroniek '{}'",
                 def.name, def.reduction.kroniek
             ));
         }
-        for (_, event) in events {
-            let params = parameters(event, service);
-            for (param, afleiding) in &def.reduction.afleidingen {
-                if !params.contains(param) {
+        for (_, event) in &events {
+            for pad in reductie::filter_paden(&def.reduction.filter) {
+                if !event.heeft_pad(pad) {
                     fouten.push(format!(
-                        "lexostatus '{}', afleiding '{param}': '{param}' is geen parameter van een artikel uit de grondslag van event '{}' ({})",
-                        def.name,
-                        event.name,
-                        event.grondslag.join(", ")
+                        "lexostatus '{}': filter op veldpad '{pad}', dat niet bestaat in event '{}'",
+                        def.name, event.name
                     ));
+                }
+            }
+        }
+        for naam in def.reduction.extra_velden.keys() {
+            if def.reduction.afleidingen.contains_key(naam) {
+                fouten.push(format!(
+                    "lexostatus '{}': '{naam}' is zowel een afleiding als een extra veld",
+                    def.name
+                ));
+            }
+        }
+        for (param, afleiding) in def.alle_afleidingen() {
+            let is_parameter = def.reduction.afleidingen.contains_key(param);
+            if afleiding.op_gekozen_gram() && def.reduction.kies.is_none() {
+                fouten.push(format!(
+                    "lexostatus '{}', afleiding '{param}': leest het gekozen gram, maar de lexostatus kiest er geen (kies)",
+                    def.name
+                ));
+            }
+            if let Some(f) = afleiding.filter() {
+                inputs_in_filter(def, f, fouten);
+            }
+            let events = events_voor(def, afleiding.filter(), strommen);
+            if events.is_empty() && afleiding.filter().is_some() {
+                fouten.push(format!(
+                    "lexostatus '{}', afleiding '{param}': het filter wijst geen event aan in kroniek '{}'",
+                    def.name, def.reduction.kroniek
+                ));
+            }
+            for (_, event) in events {
+                if is_parameter {
+                    let params = parameters_van(&event.grondslag, service);
+                    if !params.contains(param) && !afnemer.contains(param) {
+                        let mut waar = event.grondslag.join(", ");
+                        if !def.levert_aan.is_empty() {
+                            waar = format!("{waar}; levert_aan: {}", def.levert_aan.join(", "));
+                        }
+                        fouten.push(format!(
+                            "lexostatus '{}', afleiding '{param}': '{param}' is geen parameter van een artikel uit de grondslag van event '{}' ({waar})",
+                            def.name, event.name
+                        ));
+                    }
                 }
                 if let Some((tabel, gelezen)) = afleiding.tabel_kolommen() {
                     match event.kolommen(tabel) {
@@ -191,16 +262,17 @@ fn gedekt(pad: &str, door: &str) -> bool {
     pad == door || pad.starts_with(&format!("{door}."))
 }
 
-fn weesvelden(strommen: &[Stroom], config: &CelConfig, fouten: &mut Vec<String>) {
+fn weesvelden(strommen: &[Stroom], lexostatussen: &Lexostatussen, fouten: &mut Vec<String>) {
     for stroom in strommen {
         for event in &stroom.events {
+            let dit_event = |(s, e): &StroomEvent<'_>| s.id == stroom.id && e.name == event.name;
             let mut gelezen: Vec<&str> = Vec::new();
-            for def in &config.lexostatus_definitions {
-                if events_voor(def, strommen)
-                    .iter()
-                    .any(|(s, e)| s.id == stroom.id && e.name == event.name)
-                {
-                    for a in def.reduction.afleidingen.values() {
+            for def in &lexostatussen.lexostatus_definitions {
+                if events_voor(def, None, strommen).iter().any(dit_event) {
+                    gelezen.extend(reductie::filter_paden(&def.reduction.filter));
+                }
+                for (_, a) in def.alle_afleidingen() {
+                    if events_voor(def, a.filter(), strommen).iter().any(dit_event) {
                         gelezen.extend(a.gelezen_paden());
                     }
                 }
@@ -230,15 +302,18 @@ fn weesvelden(strommen: &[Stroom], config: &CelConfig, fouten: &mut Vec<String>)
     }
 }
 
-fn botsingen(strommen: &[Stroom], config: &CelConfig, fouten: &mut Vec<String>) {
+fn botsingen(strommen: &[Stroom], lexostatussen: &Lexostatussen, fouten: &mut Vec<String>) {
     // (stroom, event, parameter) -> lexostatussen die hem afleiden
     let mut per: BTreeMap<(String, String, String), Vec<&str>> = BTreeMap::new();
-    for def in &config.lexostatus_definitions {
-        for (s, e) in events_voor(def, strommen) {
-            for param in def.reduction.afleidingen.keys() {
-                per.entry((s.id.clone(), e.name.clone(), param.clone()))
-                    .or_default()
-                    .push(&def.name);
+    for def in &lexostatussen.lexostatus_definitions {
+        for (param, a) in &def.reduction.afleidingen {
+            for (s, e) in events_voor(def, a.filter(), strommen) {
+                let defs = per
+                    .entry((s.id.clone(), e.name.clone(), param.clone()))
+                    .or_default();
+                if !defs.contains(&def.name.as_str()) {
+                    defs.push(&def.name);
+                }
             }
         }
     }
@@ -252,16 +327,13 @@ fn botsingen(strommen: &[Stroom], config: &CelConfig, fouten: &mut Vec<String>) 
     }
 }
 
-fn portaal(
+fn portaal_(
     strommen: &[Stroom],
-    config: &CelConfig,
+    lexostatussen: &Lexostatussen,
+    p: &Portaal,
     service: &LawExecutionService,
     fouten: &mut Vec<String>,
 ) {
-    let Some(p) = &config.portaal else {
-        fouten.push("de celconfiguratie mist het blok 'portaal'".into());
-        return;
-    };
     let Some(stroom) = strommen.iter().find(|s| s.id == p.stroom) else {
         fouten.push(format!("portaal: stroom '{}' bestaat niet", p.stroom));
         return;
@@ -284,19 +356,25 @@ fn portaal(
             }
         }
     }
-    match config.lexostatus(&p.toets.lexostatus) {
+    match lexostatussen.lexostatus(&p.toets.lexostatus) {
         None => fouten.push(format!(
             "portaal: lexostatus '{}' bestaat niet",
             p.toets.lexostatus
         )),
         Some(def) => {
-            if !events_voor(def, strommen)
+            if !events_voor(def, None, strommen)
                 .iter()
                 .any(|(s, e)| s.id == stroom.id && e.name == event.name)
             {
                 fouten.push(format!(
                     "portaal: lexostatus '{}' leest event '{}' niet",
                     def.name, event.name
+                ));
+            }
+            if def.reduction.kies.is_none() {
+                fouten.push(format!(
+                    "portaal: lexostatus '{}' kiest geen gram (kies), en de toets reduceert een concept",
+                    def.name
                 ));
             }
             for i in def.inputs.iter().filter(|i| i.name != "zaakkenmerk") {
@@ -339,7 +417,10 @@ mod tests {
     use std::path::Path;
 
     const STROOM: &str = include_str!("../tests/fixtures/chronicles/test_aanvragen.yaml");
-    const CEL: &str = include_str!("../tests/fixtures/cel/lexostatussen.yaml");
+    const CEL: &str = include_str!("../tests/fixtures/cellen/instantie/lexostatussen.yaml");
+    const CELDEF: &str = include_str!("../tests/fixtures/cellen/instantie/cel.yaml");
+    const REG_STROOM: &str = include_str!("../tests/fixtures/chronicles/test_registers.yaml");
+    const REG_CEL: &str = include_str!("../tests/fixtures/cellen/register/lexostatussen.yaml");
 
     fn service() -> LawExecutionService {
         regelingen::laad(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/regulation"))
@@ -347,9 +428,36 @@ mod tests {
     }
 
     fn draai(stroom_tekst: &str, cel_tekst: &str) -> Result<(), Vec<String>> {
+        draai_met(stroom_tekst, cel_tekst, CELDEF)
+    }
+
+    fn draai_met(stroom_tekst: &str, cel_tekst: &str, celdef: &str) -> Result<(), Vec<String>> {
         let s = stroom::parse(stroom_tekst, "stroom")?;
         let c = reductie::parse(cel_tekst, "cel")?;
-        controleer(&[s], &c, &service())
+        let d = crate::config::CelDefinitie::parse(celdef, "cel.yaml")?;
+        controleer(&[s], &c, d.portaal.as_ref(), &service())
+    }
+
+    fn portaal_faalt_met(celdef: &str, verwacht: &str) {
+        let fouten = draai_met(STROOM, CEL, celdef).unwrap_err();
+        assert!(
+            fouten.iter().any(|f| f.contains(verwacht)),
+            "verwacht '{verwacht}' in {fouten:?}"
+        );
+    }
+
+    fn register(cel_tekst: &str) -> Result<(), Vec<String>> {
+        let s = stroom::parse(REG_STROOM, "stroom")?;
+        let c = reductie::parse(cel_tekst, "cel")?;
+        controleer(&[s], &c, None, &service())
+    }
+
+    fn register_faalt_met(cel_tekst: &str, verwacht: &str) {
+        let fouten = register(cel_tekst).unwrap_err();
+        assert!(
+            fouten.iter().any(|f| f.contains(verwacht)),
+            "verwacht '{verwacht}' in {fouten:?}"
+        );
     }
 
     fn faalt_met(stroom_tekst: &str, cel_tekst: &str, verwacht: &str) {
@@ -482,8 +590,8 @@ mod tests {
     // 4. Geen naamsbotsing.
     #[test]
     fn dubbele_afleiding_over_twee_lexostatussen() {
-        let extra = "  - name: tweede\n    inputs: [{name: zaakkenmerk, type: string}]\n    reduction:\n      kroniek: test_kroniek\n      filter: {name: aanvraag_ontvangen, zaakkenmerk: $zaakkenmerk}\n      kies: laatste\n      afleidingen:\n        bevat_naam: {gevuld: kern.aanvrager.naam}\nportaal:";
-        let cel = CEL.replacen("portaal:", extra, 1);
+        let extra = "  - name: tweede\n    inputs: [{name: zaakkenmerk, type: string}]\n    reduction:\n      kroniek: test_kroniek\n      filter: {name: aanvraag_ontvangen, zaakkenmerk: $zaakkenmerk}\n      kies: laatste\n      afleidingen:\n        bevat_naam: {gevuld: kern.aanvrager.naam}\n";
+        let cel = format!("{CEL}{extra}");
         faalt_met(
             STROOM,
             &cel,
@@ -508,17 +616,17 @@ mod tests {
     // Portaal.
     #[test]
     fn portaal_met_onbekende_uitkomst() {
-        let cel = CEL.replace("uitkomst: aanvraag_volledig", "uitkomst: bestaat_niet");
-        faalt_met(STROOM, &cel, "geen uitkomst 'bestaat_niet'");
+        let celdef = CELDEF.replace("uitkomst: aanvraag_volledig", "uitkomst: bestaat_niet");
+        portaal_faalt_met(&celdef, "geen uitkomst 'bestaat_niet'");
     }
 
     #[test]
     fn portaal_met_uitkomst_buiten_de_grondslag() {
-        let cel = CEL.replace(
+        let celdef = CELDEF.replace(
             "regeling: testregeling_aanvraag\n    uitkomst: aanvraag_volledig",
             "regeling: testregeling_awb\n    uitkomst: in_verzuim",
         );
-        faalt_met(STROOM, &cel, "staat niet in de grondslag van event");
+        portaal_faalt_met(&celdef, "staat niet in de grondslag van event");
     }
 
     #[test]
@@ -528,8 +636,121 @@ mod tests {
     }
 
     #[test]
-    fn portaal_ontbreekt() {
-        let cel = CEL.split("portaal:").next().unwrap().to_string();
-        faalt_met(STROOM, &cel, "mist het blok 'portaal'");
+    fn zonder_portaal_geen_portaalcontrole() {
+        let celdef = CELDEF.split("\nportaal:").next().unwrap().to_string();
+        draai_met(STROOM, CEL, &celdef).unwrap();
+        // Ook een intake-pad dat geen portaal levert, is dan geen fout.
+        let stroom = STROOM.replace("$intake.eherkenning.persoon", "$intake.eherkenning.bsn");
+        draai_met(&stroom, CEL, &celdef).unwrap();
+    }
+
+    #[test]
+    fn portaal_met_lexostatus_zonder_kies() {
+        let cel = CEL.replace("      kies: laatste\n", "");
+        let fouten = draai(STROOM, &cel).unwrap_err();
+        assert!(
+            fouten.iter().any(|f| f.contains("kiest geen gram (kies)")),
+            "{fouten:?}"
+        );
+        // En elke afleiding op het gekozen gram meldt het ook.
+        assert!(
+            fouten
+                .iter()
+                .any(|f| f.contains("afleiding 'bevat_naam': leest het gekozen gram")),
+            "{fouten:?}"
+        );
+    }
+
+    // Afleidingen over een verzameling, met een filter per afleiding.
+    #[test]
+    fn de_registerfixture_slaagt() {
+        register(REG_CEL).unwrap();
+    }
+
+    #[test]
+    fn levert_aan_maakt_een_parameter_van_de_afnemer_geldig() {
+        let cel = REG_CEL.replace(
+            "    levert_aan: [testregeling_afnemer#1, testregeling_afnemer#2]\n",
+            "",
+        );
+        register_faalt_met(
+            &cel,
+            "'is_ingeschreven_raad' is geen parameter van een artikel uit de grondslag van event 'aanduiding_ingeschreven' (testregeling_register#1)",
+        );
+        // Zonder levert_aan blijft een parameter uit de grondslag geldig.
+        let fouten = register(&cel).unwrap_err();
+        assert!(
+            !fouten
+                .iter()
+                .any(|f| f.contains("'datum_mededeling' is geen")),
+            "{fouten:?}"
+        );
+        // levert_aan naar een artikel dat niet bestaat.
+        let cel = REG_CEL.replace("testregeling_afnemer#2]", "testregeling_afnemer#9]");
+        register_faalt_met(&cel, "levert_aan: grondslag 'testregeling_afnemer#9'");
+    }
+
+    #[test]
+    fn filter_per_afleiding_wijst_een_event_aan() {
+        let cel = REG_CEL.replace(
+            "{name: aanduiding_geschrapt,",
+            "{name: aanduiding_verloren,",
+        );
+        register_faalt_met(
+            &cel,
+            "afleiding 'is_geschrapt_raad': het filter wijst geen event aan",
+        );
+    }
+
+    #[test]
+    fn filter_per_afleiding_op_een_veldpad_dat_bestaat() {
+        let cel = REG_CEL.replace(
+            "{name: aanduiding_geschrapt, orgaan: raad,",
+            "{name: aanduiding_geschrapt, gebied: raad,",
+        );
+        register_faalt_met(
+            &cel,
+            "veldpad 'gebied' bestaat niet in event 'aanduiding_geschrapt'",
+        );
+        let cel = REG_CEL.replace(
+            "aanduiding: $aanduiding}, bestaat",
+            "aanduiding: $naam}, bestaat",
+        );
+        register_faalt_met(&cel, "'naam' is geen input");
+    }
+
+    #[test]
+    fn filter_en_som_lezen_velden_dus_geen_weesveld() {
+        // `lijst` leest alleen het filter, `zetels` alleen de som.
+        let cel = REG_CEL.replace(
+            "        zetels_op_lijst: {filter: {name: uitslag_vastgesteld, lijst: $aanduiding}, som: zetels}\n",
+            "",
+        );
+        register_faalt_met(&cel, "weesveld 'lijst' in event 'uitslag_vastgesteld'");
+        register_faalt_met(&cel, "weesveld 'zetels' in event 'uitslag_vastgesteld'");
+    }
+
+    #[test]
+    fn afleiding_op_het_gram_in_een_lexostatus_zonder_kies() {
+        let cel = format!("{REG_CEL}        x: {{veld: aanduiding}}\n");
+        register_faalt_met(
+            &cel,
+            "afleiding 'x': leest het gekozen gram, maar de lexostatus kiest er geen",
+        );
+    }
+
+    #[test]
+    fn extra_veld_met_de_naam_van_een_afleiding() {
+        let cel = format!("{CEL}      extra_velden:\n        bevat_naam: {{veld: inhoud.naam}}\n");
+        faalt_met(
+            STROOM,
+            &cel,
+            "'bevat_naam' is zowel een afleiding als een extra veld",
+        );
+        let cel = format!("{CEL}      extra_velden:\n        naam: {{veld: inhoud.naamx}}\n");
+        faalt_met(STROOM, &cel, "veldpad 'inhoud.naamx' bestaat niet");
+        // Een extra veld hoeft geen parameter te zijn.
+        let cel = format!("{CEL}      extra_velden:\n        naam: {{veld: inhoud.naam}}\n");
+        draai(STROOM, &cel).unwrap();
     }
 }

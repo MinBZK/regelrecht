@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 /// Naam van de sessiecookie.
-pub const COOKIE: &str = "aanvraag_cel_sessie";
+pub const COOKIE: &str = "cel_sessie";
 
 /// De enige machtiging die deze PoC kent.
 pub const MACHTIGING_VOLLEDIG: &str = "volledig";

@@ -43,7 +43,7 @@
       "minItems": 1,
       "items": {
         "type": "string",
-        "pattern": "^[a-z][a-z0-9_]*#[A-Za-z0-9][A-Za-z0-9:._-]*$"
+        "pattern": "^[a-z][a-z0-9_]*#[A-Za-z0-9]([A-Za-z0-9:._ -]*[A-Za-z0-9])?$"
       }
     },
     "op_moment": {
@@ -72,6 +72,12 @@
           "pattern": "^[0-9a-f]{64}$"
         }
       }
+    },
+    "herkomst": {
+      "enum": [
+        "startstand"
+      ],
+      "description": "Alleen als het gram niet door de cel zelf is vastgesteld. startstand: bij het starten in een lege kroniek geplaatst, niet berekend (geen engine-trace)."
     },
     "fields": {
       "type": "object"

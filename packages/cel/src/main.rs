@@ -1,49 +1,55 @@
-//! De cel. Zie README.md voor de vier lagen en de env-variabelen.
+//! De cel-runtime: laadt elke cel onder `CELLS_PATH` en biedt ze aan onder
+//! `/cellen/<id>/api/`. Zie README.md voor de env-variabelen.
 
-use std::sync::Arc;
-
-use regelrecht_cel::api::{router, systeemklok, AppState};
-use regelrecht_cel::config::{Cel, Config};
-use regelrecht_cel::eherkenning::Sessies;
-use regelrecht_cel::kroniek::Kroniek;
+use regelrecht_cel::api::systeemklok;
+use regelrecht_cel::config::Config;
+use regelrecht_cel::runtime::Runtime;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     regelrecht_shared::telemetry::init_subscriber("info");
 
     let config = Config::from_env()?;
-    // De controles bij het opstarten: bij een fout start de cel niet, en elke
-    // fout wordt genoemd.
-    let cel = match Cel::laad(&config) {
-        Ok(cel) => cel,
+    // De controles bij het opstarten: faalt er een cel, dan start de runtime
+    // niet, en elke fout wordt genoemd met de cel erbij.
+    let runtime = match Runtime::laad(&config, systeemklok()) {
+        Ok(r) => r,
         Err(fouten) => {
             for f in &fouten {
                 tracing::error!("{f}");
             }
             return Err(format!(
-                "de cel start niet: {} fout(en) bij de controle",
+                "de runtime start niet: {} fout(en) bij de controle",
                 fouten.len()
             )
             .into());
         }
     };
-    let kroniek = Kroniek::open(&config.data_dir)?;
+    for s in &runtime.cellen {
+        tracing::info!(
+            cel = %s.cel.id(),
+            portaal = s.cel.portaal().is_some(),
+            strommen = s.cel.strommen.len(),
+            lexostatussen = s.cel.lexostatussen.lexostatus_definitions.len(),
+            synthese = s.bronnen.len(),
+            "cel gecontroleerd",
+        );
+    }
     tracing::info!(
-        strommen = cel.strommen.len(),
-        lexostatussen = cel.config.lexostatus_definitions.len(),
-        regelingen = cel.service.law_count(),
+        cellen = runtime.cellen.len(),
+        regelingen = runtime.cellen.first().map_or(0, |s| s.cel.service.law_count()),
         data_dir = %config.data_dir.display(),
-        "cel gecontroleerd",
+        "runtime gecontroleerd",
     );
 
-    let app = router(AppState {
-        cel: Arc::new(cel),
-        kroniek: Arc::new(kroniek),
-        sessies: Arc::new(Sessies::default()),
-        klok: systeemklok(),
-    });
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", config.port)).await?;
     tracing::info!("luistert op 0.0.0.0:{}", config.port);
-    axum::serve(listener, app).await?;
+    let router = runtime.router.clone();
+    let server = tokio::spawn(async move { axum::serve(listener, router).await });
+    // Na het starten, zodat een bron in dezelfde runtime al antwoordt.
+    for w in runtime.waarschuwingen().await {
+        tracing::warn!("{w}");
+    }
+    server.await??;
     Ok(())
 }

@@ -1,0 +1,16 @@
+---
+# Fictieve lexostatus van de afnemer. De aanduiding zelf is geen parameter:
+# ze is de invoer voor de registercel, en gaat niet naar de engine.
+cel: test_afnemer
+lexostatus_definitions:
+  - name: aanvraag_inhoud
+    inputs: [{name: zaakkenmerk, type: string}]
+    reduction:
+      kroniek: test_afnemer
+      filter: {type: indiening, soort: aanvraag, zaakkenmerk: $zaakkenmerk}
+      kies: laatste
+      afleidingen:
+        aanvraagdatum: {moment: op_moment}
+        bevat_aanduiding: {gevuld: inhoud.aanduiding}
+      extra_velden:
+        aanduiding: {veld: inhoud.aanduiding}
