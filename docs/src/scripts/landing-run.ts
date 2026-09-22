@@ -18,10 +18,9 @@
 import {
   parseFeature,
   dispatch,
-  quotedValue,
-  bareValue,
+  matchStep,
+  typedArgs,
   traceRoot,
-  GRAMMAR,
   ExecutionContext,
   // Copied into this project rather than imported from the workspace; see
   // script/landing-laws.sh for why. The copy is remade on every build (npm
@@ -119,21 +118,6 @@ function flatten(node: any, depth: number, out: Beat[]): void {
 }
 
 /**
- * Match a step against the canonical grammar.
- *
- * The same walk the demo does (frontend-demo/src/data/gherkinNl.js); the
- * grammar itself is generated from bdd/grammar.yaml, so both read the one
- * source of truth for what a step means.
- */
-function matchStep(text: string): { entry: any; args: string[] } | null {
-  for (const entry of GRAMMAR as any[]) {
-    const m = entry.pattern.exec(text);
-    if (m) return { entry, args: m.slice(1) };
-  }
-  return null;
-}
-
-/**
  * Run the scenario and return its trace as rows.
  *
  * The scenario is the file that sits beside the law in the repository, not a
@@ -165,9 +149,7 @@ export async function runScenario(base = '/'): Promise<RunResult> {
     const match = matchStep(step.text);
     if (!match) throw new Error(`unknown step: ${step.text}`);
     const { entry, args } = match;
-    const typed = args.map((raw: string, i: number) =>
-      entry.argTypes[i] === 'number' ? bareValue(raw) : quotedValue(raw),
-    );
+    const typed = typedArgs(entry, args);
     const table = step.dataTable ?? null;
 
     if (entry.action === 'evaluate' || entry.action === 'evaluate_outputs') {

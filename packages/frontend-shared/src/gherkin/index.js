@@ -4,7 +4,7 @@
 // (frontend/) and the demo (frontend-demo/).
 export { parseFeature } from './parser.js';
 export { GRAMMAR, VALUE_TYPING } from './grammar.generated.js';
-export { createStepDefinitions, SUPPORTED_TIERS } from './steps.js';
+export { createStepDefinitions, SUPPORTED_TIERS, matchStep, typedArgs } from './steps.js';
 export {
   dispatch,
   parseValue,

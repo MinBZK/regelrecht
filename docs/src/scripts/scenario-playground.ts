@@ -20,9 +20,8 @@
 import {
   parseFeature,
   dispatch,
-  quotedValue,
-  bareValue,
-  GRAMMAR,
+  matchStep,
+  typedArgs,
   ExecutionContext,
 } from '~/lib/gherkin/index.js';
 import { prepare } from './engine';
@@ -40,15 +39,6 @@ interface RunResult {
   steps: StepResult[];
   outputs: Record<string, unknown> | null;
   failed: boolean;
-}
-
-/** Match a step against the canonical grammar; the same walk landing-run does. */
-function matchStep(text: string): { entry: any; args: string[] } | null {
-  for (const entry of GRAMMAR as any[]) {
-    const m = entry.pattern.exec(text);
-    if (m) return { entry, args: m.slice(1) };
-  }
-  return null;
 }
 
 /**
@@ -95,9 +85,7 @@ async function runFeature(text: string, base: string): Promise<RunResult> {
     }
 
     const { entry, args } = match;
-    const typed = args.map((raw: string, i: number) =>
-      entry.argTypes[i] === 'number' ? bareValue(raw) : quotedValue(raw),
-    );
+    const typed = typedArgs(entry, args);
 
     try {
       await dispatch(ctx, engine, entry.action, [...typed, ...entry.literals], step.dataTable ?? null, {
