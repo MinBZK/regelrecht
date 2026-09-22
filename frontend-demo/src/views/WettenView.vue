@@ -21,7 +21,7 @@ const router = useRouter();
 // zou een Engelse bezoeker bij elke wet die hij opent het Nederlandse tabblad
 // in duwen.
 const { localePath } = useLocalePath();
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const { corpus, profile } = useDemo();
 // The law list is a sheet (primary-sidebar-as-sheet): closed by default so the
 // law itself has the room, opened from the toolbar.
@@ -200,10 +200,30 @@ const referencedBy = computed(() => {
           </nldd-inline-dialog>
         </nldd-simple-section>
         <nldd-simple-section v-else width="full">
-          <nldd-code-viewer v-if="showRaw" language="yaml" wrap>{{ activeLaw.text }}</nldd-code-viewer>
+          <!-- De wettekst blijft Nederlands, en dat hoort uitgelegd te worden
+               waar hij staat. Alleen in het Engels: voor een Nederlandse lezer
+               valt er niets te verklaren. -->
+          <template v-if="locale !== 'nl'">
+            <nldd-banner variant="neutral" :text="t('wet.dutch_only.title')" :supporting-text="t('wet.dutch_only.body')">
+              <nldd-button
+                slot="actions"
+                size="sm"
+                variant="neutral-tinted"
+                end-icon="external-link"
+                :text="t('wet.dutch_only.published')"
+                :href="activeLaw.doc.url"
+                target="_blank"
+              ></nldd-button>
+            </nldd-banner>
+            <nldd-spacer size="16"></nldd-spacer>
+          </template>
+          <!-- `lang="nl"` op het paneel zelf, ook als de pagina op Engels staat.
+               Geen decoratie: een schermlezer kiest hierop zijn stem, en de
+               tekst eronder is Nederlands. Het is de eerlijke opmaak. -->
+          <nldd-code-viewer v-if="showRaw" lang="nl" language="yaml" wrap>{{ activeLaw.text }}</nldd-code-viewer>
           <nldd-box v-else>
             <nldd-container padding="12">
-              <div class="yaml-tree">
+              <div class="yaml-tree" lang="nl">
                 <YamlNode :key="activeLaw.id" :value="activeLaw.doc" :expanded="expandState" :law-ids="lawIds" @open-law="openLaw" />
               </div>
             </nldd-container>

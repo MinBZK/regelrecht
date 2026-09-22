@@ -852,4 +852,15 @@ export default {
   'scenario.table_for': 'Tabel bij {step}',
   'scenario.files.one': '{n} testbestand',
   'scenario.files.other': '{n} testbestanden',
+
+  // ---- waarom de wettekst Nederlands blijft --------------------------------
+  // Staat alleen in het Engels op het scherm; voor een Nederlandse lezer valt
+  // er niets uit te leggen. De sleutels bestaan in beide talen omdat de
+  // pariteitscontrole dat eist.
+  'wet.dutch_only.title': 'De wettekst staat in het Nederlands',
+  'wet.dutch_only.body':
+    'De bindende tekst van een Nederlandse wet bestaat alleen in het Nederlands. Een vertaling ervan is de wet niet, ' +
+    'en zou hier de indruk wekken van iets waar niemand zich op kan beroepen. De tekst staat er daarom zoals hij is ' +
+    'bekendgemaakt. Het model dat erop gebouwd is, en alles eromheen, is wel vertaald.',
+  'wet.dutch_only.published': 'Lees de bekendgemaakte tekst',
 };

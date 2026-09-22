@@ -852,4 +852,12 @@ export default {
   'scenario.table_for': 'Table for {step}',
   'scenario.files.one': '{n} test file',
   'scenario.files.other': '{n} test files',
+
+  // ---- why the legal text stays Dutch --------------------------------------
+  'wet.dutch_only.title': 'The legal text is shown in Dutch',
+  'wet.dutch_only.body':
+    'The binding text of a Dutch statute exists only in Dutch. A translation of it is not the law, and putting one ' +
+    'here would suggest something nobody could rely on. The text therefore stands as it was published. The model ' +
+    'built on it, and everything around it, is translated.',
+  'wet.dutch_only.published': 'Read the published text',
 };

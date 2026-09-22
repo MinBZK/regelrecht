@@ -241,7 +241,12 @@ bestand landt is een bug, geen halve klus.
   tabblad.
 - **Wetteksten worden niet vertaald.** `article.text` is de geldende wettekst;
   een vertaling daarvan heeft geen rechtskracht en is de wet niet. Die blijft
-  Nederlands, in beide talen, met `lang="nl"` op het paneel eromheen.
+  Nederlands, in beide talen, met `lang="nl"` op het paneel eromheen — geen
+  opmaakdetail, want een schermlezer kiest daarop zijn stem. In het Engels
+  staat er een banner boven (`wet.dutch_only.*`) die uitlegt waaróm, met een
+  link naar de bekendgemaakte tekst op wetten.overheid.nl. Dat die uitleg er
+  staat is het punt: een onvertaalde tekst zonder verklaring leest als werk dat
+  niet af is, en dit is juist een keuze.
 - **Eigennamen blijven staan.** `Belastingdienst` is de naam van een orgaan,
   geen omschrijving; wie op "Tax Administration" zoekt vindt niets. Een
   Engelse toelichting tussen haakjes mag, vertalen niet.
