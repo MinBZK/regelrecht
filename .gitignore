@@ -29,7 +29,7 @@ frontend/dist/
 frontend/public/wasm/pkg/
 frontend-poc-portal/dist/
 frontend-cel/dist/
-# De kroniek van `just cel` (DATA_DIR).
+# De kronieken van `just cel` (DATA_DIR).
 .cel/
 packages/admin/static/
 
