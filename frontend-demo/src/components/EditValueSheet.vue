@@ -240,7 +240,7 @@ function submit() {
             <nldd-list-item size="md">
               <nldd-cell v-if="node.service"><OrgLogo :service="node.service" /></nldd-cell>
               <nldd-spacer-cell v-if="node.service" size="12"></nldd-spacer-cell>
-              <nldd-text-cell :overline="selfDeclared ? 'Door u op te geven' : 'Geregistreerde waarde'" :text="formatValue(node.value, spec)" :supporting-text="node.service ? `Bron: ${corpus.services[node.service]?.name ?? node.service}` : 'Dit gegeven staat in geen register; u geeft het zelf op.'"></nldd-text-cell>
+              <nldd-text-cell :overline="selfDeclared ? 'Door jou op te geven' : 'Geregistreerde waarde'" :text="formatValue(node.value, spec)" :supporting-text="node.service ? `Bron: ${corpus.services[node.service]?.name ?? node.service}` : 'Dit gegeven staat in geen register; je geeft het zelf op.'"></nldd-text-cell>
             </nldd-list-item>
           </nldd-list>
           <nldd-rich-text v-if="spec?.description"><p>{{ spec.description }}</p></nldd-rich-text>
@@ -330,7 +330,7 @@ function submit() {
           </nldd-form-field>
           <nldd-form-field :label="selfDeclared ? 'Toelichting' : 'Waarom klopt het geregistreerde gegeven niet?'" :optional="selfDeclared || undefined">
             <nldd-multi-line-text-field :value="reason" rows="3" :placeholder="caseworker ? 'Bijvoorbeeld: bewijsstuk van de burger ontvangen en gecontroleerd.' : 'Bijvoorbeeld: mijn inkomen is dit jaar lager door minder opdrachten.'" @input="reason = $event.detail?.value ?? $event.target.value"></nldd-multi-line-text-field>
-            <nldd-form-field-help-text>{{ caseworker ? 'De correctie geldt direct en komt in het dossier van de zaak; de burger ziet haar op het portaal.' : hardship ? 'Een beroep op een hardheidsclausule beoordeelt een behandelaar altijd; uw aanvraag rekent ondertussen met wat u opgeeft.' : selfDeclared || features.AUTO_APPROVE_CLAIMS ? 'Uw opgave wordt direct gebruikt in de berekening.' : 'Uw aanvraag rekent meteen met wat u opgeeft; een behandelaar beoordeelt de correctie voordat de uitkomst vaststaat.' }}</nldd-form-field-help-text>
+            <nldd-form-field-help-text>{{ caseworker ? 'De correctie geldt direct en komt in het dossier van de zaak; de burger ziet haar op het portaal.' : hardship ? 'Een beroep op een hardheidsclausule beoordeelt een behandelaar altijd; je aanvraag rekent ondertussen met wat je opgeeft.' : selfDeclared || features.AUTO_APPROVE_CLAIMS ? 'Je opgave wordt direct gebruikt in de berekening.' : 'Je aanvraag rekent meteen met wat je opgeeft; een behandelaar beoordeelt de correctie voordat de uitkomst vaststaat.' }}</nldd-form-field-help-text>
           </nldd-form-field>
           <nldd-form-field label="Beroep op een hardheidsclausule" optional>
             <nldd-dropdown width="full">

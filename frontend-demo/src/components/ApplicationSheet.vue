@@ -196,24 +196,24 @@ function submitApplication() {
 const statusView = computed(() => {
   const c = currentCase.value;
   if (!c) return null;
-  if (c.objection?.status === 'PENDING') return { variant: 'warning', icon: 'flag', text: 'Bezwaar ingediend', supporting: 'De gemeente of dienst beoordeelt uw bezwaar.' };
+  if (c.objection?.status === 'PENDING') return { variant: 'warning', icon: 'flag', text: 'Bezwaar ingediend', supporting: 'De gemeente of dienst beoordeelt je bezwaar.' };
   // Uit de fase, niet uit het opgeslagen veld (zie lifecycle.js).
   const status = statusOf(c);
   if (status === 'DECIDED') {
     if (c.objection) return c.approved ? { variant: 'success', icon: 'check-mark-circle', text: 'Toegekend na bezwaar', supporting: c.reason } : { variant: 'critical', icon: 'dismiss-circle', text: 'Afgewezen, bezwaar ongegrond', supporting: c.reason };
     return c.approved ? { variant: 'success', icon: 'check-mark-circle', text: 'Toegekend', supporting: c.reason } : { variant: 'critical', icon: 'dismiss-circle', text: 'Afgewezen', supporting: c.reason };
   }
-  if (status === 'IN_REVIEW') return { variant: 'accent', icon: 'clock', text: 'In behandeling', supporting: 'Een behandelaar beoordeelt uw aanvraag. U ontvangt bericht.' };
-  return { variant: 'accent', icon: 'paper-plane', text: 'Ingediend', supporting: 'Uw aanvraag is ontvangen.' };
+  if (status === 'IN_REVIEW') return { variant: 'accent', icon: 'clock', text: 'In behandeling', supporting: 'Een behandelaar beoordeelt je aanvraag. Je ontvangt bericht.' };
+  return { variant: 'accent', icon: 'paper-plane', text: 'Ingediend', supporting: 'Je aanvraag is ontvangen.' };
 });
 const citizenEvents = computed(() =>
   (currentCase.value?.events ?? []).map((e) => ({
     at: e.at,
-    text: e.type === 'SUBMITTED' ? 'U heeft de aanvraag ingediend.'
-      : e.type === 'IN_REVIEW' ? 'Uw aanvraag wordt door een behandelaar beoordeeld.'
-      : e.type === 'DECIDED' ? (e.text.startsWith('Toegekend') || e.text.startsWith('Automatisch toegekend') ? 'Uw aanvraag is toegekend.' : 'Uw aanvraag is afgewezen.')
-      : e.type === 'OBJECTION' ? 'U heeft bezwaar gemaakt.'
-      : e.type === 'OBJECTION_DECIDED' ? (e.text.includes('gegrond:') && !e.text.includes('ongegrond') ? 'Uw bezwaar is gegrond verklaard.' : 'Uw bezwaar is ongegrond verklaard.')
+    text: e.type === 'SUBMITTED' ? 'Je hebt de aanvraag ingediend.'
+      : e.type === 'IN_REVIEW' ? 'Je aanvraag wordt door een behandelaar beoordeeld.'
+      : e.type === 'DECIDED' ? (e.text.startsWith('Toegekend') || e.text.startsWith('Automatisch toegekend') ? 'Je aanvraag is toegekend.' : 'Je aanvraag is afgewezen.')
+      : e.type === 'OBJECTION' ? 'Je hebt bezwaar gemaakt.'
+      : e.type === 'OBJECTION_DECIDED' ? (e.text.includes('gegrond:') && !e.text.includes('ongegrond') ? 'Je bezwaar is gegrond verklaard.' : 'Je bezwaar is ongegrond verklaard.')
       : e.text,
   })),
 );
@@ -280,8 +280,8 @@ function claimStatus(cl) {
           <!-- Step 1: the questions only the citizen can answer -->
           <template v-if="step === 'gegevens'">
             <nldd-rich-text spacing="tight">
-              <p v-if="answered === 0">De wet is voor u doorgerekend met wat de overheid al weet. Eén gegeven staat in geen register; dat kunt alleen u opgeven.</p>
-              <p v-else>Dank u. De wet is opnieuw doorgerekend en loopt tegen nog een gegeven aan dat alleen u weet.</p>
+              <p v-if="answered === 0">De wet is voor jou doorgerekend met wat de overheid al weet. Eén gegeven staat in geen register; dat kun alleen jij opgeven.</p>
+              <p v-else>Bedankt. De wet is opnieuw doorgerekend en loopt tegen nog een gegeven aan dat alleen jij weet.</p>
             </nldd-rich-text>
             <template v-if="question">
               <!-- Enter op het veld is Verder, wat voor soort vraag het ook is:
@@ -318,11 +318,11 @@ function claimStatus(cl) {
               <nldd-activity-indicator timing="instant" size="24"></nldd-activity-indicator>
               <nldd-rich-text spacing="tight"><p>De wet wordt opnieuw doorgerekend…</p></nldd-rich-text>
             </template>
-            <nldd-list v-if="asked.some((a) => a.claim)" variant="simple" accessible-label="Door u opgegeven">
+            <nldd-list v-if="asked.some((a) => a.claim)" variant="simple" accessible-label="Door jou opgegeven">
               <nldd-list-item v-for="a in asked.filter((x) => x.claim)" :key="a.name" size="sm">
                 <nldd-icon-cell icon="checked" size="16" color="success"></nldd-icon-cell>
                 <nldd-spacer-cell size="8"></nldd-spacer-cell>
-                <nldd-text-cell size="sm" :text="humanize(a.name)" supporting-text="door u opgegeven"></nldd-text-cell>
+                <nldd-text-cell size="sm" :text="humanize(a.name)" supporting-text="door jou opgegeven"></nldd-text-cell>
                 <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="formatValue(a.claim.newValue, a.spec)"></nldd-text-cell>
               </nldd-list-item>
             </nldd-list>
@@ -332,7 +332,7 @@ function claimStatus(cl) {
           <template v-else-if="step === 'controleren'">
             <template v-if="!evaluation?.ok">
               <nldd-activity-indicator timing="instant" size="24"></nldd-activity-indicator>
-              <nldd-rich-text spacing="tight"><p>De regeling wordt met uw gegevens berekend…</p></nldd-rich-text>
+              <nldd-rich-text spacing="tight"><p>De regeling wordt met je gegevens berekend…</p></nldd-rich-text>
             </template>
             <template v-else>
               <nldd-banner v-if="verdict === 'unknown'" variant="accent" text="De wet kan nog geen uitkomst geven" :supporting-text="`Er ${verdictMissing}. Zonder deze gegevens kan de aanvraag niet worden beoordeeld.`"></nldd-banner>
@@ -340,7 +340,7 @@ function claimStatus(cl) {
                 <nldd-list-item size="md">
                   <nldd-icon-cell :icon="requirementsMet ? 'check-mark-circle' : 'dismiss-circle'" :color="requirementsMet ? 'success' : 'critical'"></nldd-icon-cell>
                   <nldd-spacer-cell size="12"></nldd-spacer-cell>
-                  <nldd-title-cell size="4" :overline="requirementsMet ? 'U voldoet aan de voorwaarden' : 'U voldoet niet aan de voorwaarden'" :text="requirementsMet && outcomeRows[0] ? formatValue(outcomeRows[0][1], fieldSpec(doc, outcomeRows[0][0])) : requirementsMet ? 'Ja' : 'Aanvragen heeft geen zin'" :supporting-text="requirementsMet && outcomeRows[0] ? humanize(outcomeRows[0][0]) : ''"></nldd-title-cell>
+                  <nldd-title-cell size="4" :overline="requirementsMet ? 'Je voldoet aan de voorwaarden' : 'Je voldoet niet aan de voorwaarden'" :text="requirementsMet && outcomeRows[0] ? formatValue(outcomeRows[0][1], fieldSpec(doc, outcomeRows[0][0])) : requirementsMet ? 'Ja' : 'Aanvragen heeft geen zin'" :supporting-text="requirementsMet && outcomeRows[0] ? humanize(outcomeRows[0][0]) : ''"></nldd-title-cell>
                 </nldd-list-item>
               </nldd-list>
               <nldd-list v-if="outcomeRows.length > 1" variant="simple" accessible-label="Overige uitkomsten">
@@ -352,7 +352,7 @@ function claimStatus(cl) {
 
               <nldd-title size="5">
                 <h3>Gegevens waarop de berekening rust</h3>
-                <span slot="subtitle">{{ usedCount }} gegevens uit registers en uw eigen opgave</span>
+                <span slot="subtitle">{{ usedCount }} gegevens uit registers en je eigen opgave</span>
               </nldd-title>
               <nldd-list type="tree" variant="box-tinted" accessible-label="Gebruikte gegevens">
                 <DataLineage :nodes="lineage" @edit="emit('edit-value', { node: $event, law })" />
@@ -365,14 +365,14 @@ function claimStatus(cl) {
                   <nldd-button variant="primary" start-icon="paper-plane" text="Aanvraag indienen" :disabled="!canSubmit || undefined" @click="submitApplication"></nldd-button>
                 </nldd-form-actions>
               </template>
-              <nldd-banner v-else-if="verdict === false" variant="warning" text="U voldoet niet aan de voorwaarden" supporting-text="U kunt wel aanvragen, maar de wet wijst de aanvraag af. Controleer eerst of alle gegevens kloppen."></nldd-banner>
+              <nldd-banner v-else-if="verdict === false" variant="warning" text="Je voldoet niet aan de voorwaarden" supporting-text="Je kunt wel aanvragen, maar de wet wijst de aanvraag af. Controleer eerst of alle gegevens kloppen."></nldd-banner>
             </template>
           </template>
 
           <!-- Status of the application -->
           <template v-else-if="currentCase">
             <nldd-banner :variant="statusView.variant" :icon="statusView.icon" :text="statusView.text" :supporting-text="statusView.supporting"></nldd-banner>
-            <nldd-rich-text v-if="justSubmitted" spacing="tight"><p>Uw aanvraag is ingediend bij {{ service }}. U kunt de voortgang hier volgen.</p></nldd-rich-text>
+            <nldd-rich-text v-if="justSubmitted" spacing="tight"><p>Je aanvraag is ingediend bij {{ service }}. Je kunt de voortgang hier volgen.</p></nldd-rich-text>
 
             <!-- Wat er ligt klopt niet meer met wat de wet nu zegt. De demo
                  rekent niets opnieuw af achter de rug van de burger om: het
@@ -380,8 +380,8 @@ function claimStatus(cl) {
                  met de weg terug ernaast. Aanvraag per aanvraag, want elke
                  aanvraag is een eigen besluit. -->
             <template v-if="drift && !justSubmitted">
-              <nldd-banner variant="warning" text="Uw aanvraag klopt niet meer" :supporting-text="driftText"></nldd-banner>
-              <nldd-list variant="box-tinted" accessible-label="Verschil met uw eerdere aanvraag">
+              <nldd-banner variant="warning" text="Je aanvraag klopt niet meer" :supporting-text="driftText"></nldd-banner>
+              <nldd-list variant="box-tinted" accessible-label="Verschil met je eerdere aanvraag">
                 <nldd-list-item v-for="row in rows" :key="row.name" size="sm">
                   <nldd-text-cell size="sm" color="secondary" min-width="50%" :text="humanize(row.name)"></nldd-text-cell>
                   <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="`${row.was} → ${row.now}`"></nldd-text-cell>
@@ -402,12 +402,12 @@ function claimStatus(cl) {
               </nldd-list-item>
             </nldd-list>
             <template v-if="caseClaims.length">
-              <nldd-title size="5"><h3>Correcties op uw gegevens</h3></nldd-title>
-              <nldd-list variant="box-tinted" accessible-label="Correcties op uw gegevens">
+              <nldd-title size="5"><h3>Correcties op je gegevens</h3></nldd-title>
+              <nldd-list variant="box-tinted" accessible-label="Correcties op je gegevens">
                 <nldd-list-item v-for="cl in caseClaims" :key="cl.id" size="sm">
                   <nldd-text-cell size="sm" :text="`${humanize(cl.input)}: ${formatValue(cl.oldValue, claimSpec(cl))} → **${formatValue(cl.newValue, claimSpec(cl))}**`">
                     <span slot="supporting-text">
-                      {{ cl.claimant === 'BEHANDELAAR' ? 'door behandelaar' : 'door u' }} · {{ cl.reason }}
+                      {{ cl.claimant === 'BEHANDELAAR' ? 'door behandelaar' : 'door jou' }} · {{ cl.reason }}
                       <template v-if="cl.hardship?.clause"><br />Beroep op hardheidsclausule: {{ cl.hardship.clause }}</template>
                       <template v-if="cl.evidence"><br />Bewijsstuk: {{ cl.evidence.name }}</template>
                     </span>
@@ -432,7 +432,7 @@ function claimStatus(cl) {
                  geen vaste tekst. -->
             <nldd-list v-if="awb.bezwaartermijnEinde" variant="box-tinted" accessible-label="Bezwaartermijn">
               <nldd-list-item size="sm">
-                <nldd-text-cell size="sm" color="secondary" text="U kunt bezwaar maken tot en met"></nldd-text-cell>
+                <nldd-text-cell size="sm" color="secondary" text="Je kunt bezwaar maken tot en met"></nldd-text-cell>
                 <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="formatValue(awb.bezwaartermijnEinde, null)"></nldd-text-cell>
               </nldd-list-item>
               <nldd-list-item v-if="awb.bezwaartermijnWeken" size="sm">
@@ -442,7 +442,7 @@ function claimStatus(cl) {
             </nldd-list>
             <template v-if="canObject">
               <nldd-form-field label="Niet mee eens? Maak bezwaar" optional>
-                <nldd-multi-line-text-field :value="objectionReason" rows="3" placeholder="Waarom bent u het niet eens met het besluit? (Awb art. 6:5)" @input="objectionReason = $event.detail?.value ?? $event.target.value"></nldd-multi-line-text-field>
+                <nldd-multi-line-text-field :value="objectionReason" rows="3" placeholder="Waarom ben je het niet eens met het besluit? (Awb art. 6:5)" @input="objectionReason = $event.detail?.value ?? $event.target.value"></nldd-multi-line-text-field>
               </nldd-form-field>
               <nldd-form-actions>
                 <nldd-button variant="secondary" start-icon="flag" text="Bezwaar indienen" @click="fileObjection"></nldd-button>
@@ -455,7 +455,7 @@ function claimStatus(cl) {
               v-else-if="currentCase && !currentCase.publishedAt && currentCase.decidedAt"
               variant="accent"
               text="Het besluit is nog niet bekendgemaakt"
-              supporting-text="Zodra u het besluit ontvangt, begint de bezwaartermijn te lopen (Awb art. 6:8)."
+              supporting-text="Zodra je het besluit ontvangt, begint de bezwaartermijn te lopen (Awb art. 6:8)."
             ></nldd-banner>
           </template>
         </nldd-container>

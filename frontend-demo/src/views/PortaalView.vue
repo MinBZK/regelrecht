@@ -103,14 +103,14 @@ const actingText = computed(() => {
   const d = activeDelegation.value;
   if (!d) return null;
   const kind = delegationLabel(d);
-  return `U handelt namens ${d.subjectName}${kind ? ` (${kind})` : ''}.`;
+  return `Je handelt namens ${d.subjectName}${kind ? ` (${kind})` : ''}.`;
 });
 const actingSupport = computed(() => {
   const d = activeDelegation.value;
   if (!d) return null;
   const rights = d.permissions.map((p) => PERMISSION_LABELS[p] ?? p).join(', ').toLowerCase();
   const source = d.lawName ? ` Deze machtiging volgt uit ${d.lawName}.` : '';
-  return `Wat u hier ziet zijn de regelingen van ${d.subjectName}. U mag: ${rights}.${source}`;
+  return `Wat je hier ziet zijn de regelingen van ${d.subjectName}. Je mag: ${rights}.${source}`;
 });
 
 // A law the engine refused to load (a type-check finding, RFC-037) is missing
@@ -144,6 +144,16 @@ const loadFailureText = computed(() => loadFailures.value.map((f) => `${f.id} ($
         <span v-if="!narrow || activeDelegation" slot="overline">
           <template v-if="narrow">Namens {{ activeDelegation.subjectName }}</template>
           <template v-else>Ingelogd als {{ persona?.name ?? profile?.name }}<template v-if="activeDelegation"> · namens {{ activeDelegation.subjectName }}</template> · demo, geen echte overheidsdienst</template>
+          <!-- De beschrijving staat bij wie er is ingelogd, want zij zegt wie
+               die persoon is. Zij stond eerder onder kop én subtitel, los van
+               de naam waar zij bij hoort; daar las zij als een derde regel
+               inleidende tekst in plaats van als een eigenschap van de
+               persona. Zij zit binnen dezelfde overline-span en niet in een
+               tweede met hetzelfde slot: nldd-title verdeelt zijn slots in de
+               shadow-DOM en het is niet gezegd dat een tweede element daar
+               naast het eerste terechtkomt. Namens een ander zegt de
+               beschrijving van de gemachtigde niets, dus dan blijft zij weg. -->
+          <template v-if="!narrow && persona?.description && !activeDelegation"><br /><em>{{ persona.description }}</em></template>
         </span>
         <h1>{{ heading }}</h1>
         <span v-if="!narrow" slot="subtitle">{{ subtitle }}</span>
@@ -155,8 +165,8 @@ const loadFailureText = computed(() => loadFailures.value.map((f) => `${f.id} ($
              heeft geen eigen breedte en werd 0px breed.
              Op een smal scherm staan ze naast de kop en namen ze de helft van
              de breedte, waardoor die over vier regels brak. Het zijn
-             eigenschappen van de persona, net als de beschrijving hierboven,
-             dus ze gaan daar samen weg. -->
+             eigenschappen van de persona, net als de beschrijving in de
+             overline, dus ze gaan daar samen weg. -->
         <template v-if="!narrow">
           <nldd-tag v-for="p in properties" :key="p" slot="end" size="sm" :text="p"></nldd-tag>
           <nldd-tag v-if="profile?.kvk && !activeDelegation" slot="end" size="sm" icon="building" :text="`KVK ${profile.kvk}`"></nldd-tag>
@@ -168,11 +178,11 @@ const loadFailureText = computed(() => loadFailures.value.map((f) => `${f.id} ($
       <nldd-container v-if="showWizard" padding-top="8">
         <nldd-button size="sm" variant="secondary" start-icon="edit" text="Wijziging doorgeven" @click="wizardOpen = true"></nldd-button>
       </nldd-container>
-      <!-- De beschrijving hoort bij de persona zelf; namens een ander zegt zij niets. -->
-      <nldd-rich-text v-if="persona?.description && !activeDelegation && !narrow" spacing="tight"><p><em>{{ persona.description }}</em></p></nldd-rich-text>
-      <!-- The persona line above sets `spacing="tight"`, which strips the space
-           under it, so a banner placed straight after touched it (measured: 0px
-           between them). The banners get their own container with a gap. -->
+      <!-- De persona-beschrijving stond hier, onder de kop; zij is naar de
+           overline verhuisd, naast de naam waar zij bij hoort. De container
+           houdt zijn eigen padding-top: die stond er omdat de beschrijving
+           `spacing="tight"` had en een banner er anders tegenaan plakte, en
+           blijft nodig om de banners los van de kop te zetten. -->
       <nldd-container v-if="loadFailures.length || pendingClaims.length || activeDelegation" padding-top="16" gap="12">
       <!-- Namens een ander handelen is niet hetzelfde als zelf inloggen; dat
            hoort in beeld te blijven zolang het duurt, met de wet erbij. -->
@@ -186,8 +196,8 @@ const loadFailureText = computed(() => loadFailures.value.map((f) => `${f.id} ($
       <nldd-banner
         v-if="activeDelegation && !canSubmitClaims"
         variant="warning"
-        text="U mag deze gegevens alleen inzien"
-        supporting-text="Met deze machtiging kunt u geen gegevens corrigeren en geen aanvraag indienen."
+        text="Je mag deze gegevens alleen inzien"
+        supporting-text="Met deze machtiging kun je geen gegevens corrigeren en geen aanvraag indienen."
       ></nldd-banner>
       <nldd-banner
         v-if="loadFailures.length"
@@ -199,7 +209,7 @@ const loadFailureText = computed(() => loadFailures.value.map((f) => `${f.id} ($
         v-if="pendingClaims.length"
         variant="accent"
         :text="`${pendingClaims.length} ${pendingClaims.length === 1 ? 'correctie wacht' : 'correcties wachten'} op beoordeling`"
-        supporting-text="De regelingen hieronder rekenen al met wat u heeft opgegeven. Een behandelaar beoordeelt de correctie; pas daarna staat de uitkomst vast."
+        supporting-text="De regelingen hieronder rekenen al met wat je hebt opgegeven. Een behandelaar beoordeelt de correctie; pas daarna staat de uitkomst vast."
       ></nldd-banner>
       </nldd-container>
     </nldd-simple-section>

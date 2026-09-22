@@ -10,7 +10,7 @@ import { useDemo } from '../store/demoStore.js';
 // gegeven bezit (zie data/changeWizard.js), en daarna rekent elke regeling die
 // ervan afhangt opnieuw.
 //
-// Drie stappen: wat wilt u doorgeven, wat verandert er, en een bevestiging die
+// Drie stappen: wat wil je doorgeven, wat verandert er, en een bevestiging die
 // laat zien wat er precies ingaat en naar welke wet.
 
 const props = defineProps({
@@ -80,8 +80,8 @@ function toConfirm() {
   }
   if (!claims.value.length) {
     error.value = type.value?.events
-      ? 'Kies wat er in uw huishouden verandert.'
-      : 'Vul ten minste één veld in. Wat u leeg laat, blijft ongewijzigd.';
+      ? 'Kies wat er in je huishouden verandert.'
+      : 'Vul ten minste één veld in. Wat je leeg laat, blijft ongewijzigd.';
     return;
   }
   error.value = '';
@@ -136,17 +136,17 @@ function show(claim) {
         <nldd-container slot="header" padding="12">
           <nldd-top-title-bar
             text="Wijziging doorgeven"
-            :supporting-text="type ? type.label : 'Geef door wat er in uw situatie is veranderd'"
+            :supporting-text="type ? type.label : 'Geef door wat er in je situatie is veranderd'"
             dismiss-text="Sluiten"
             @dismiss="emit('close')"
           ></nldd-top-title-bar>
         </nldd-container>
 
         <nldd-container padding="16" gap="16">
-          <!-- Stap 1: wat wilt u doorgeven -->
+          <!-- Stap 1: wat wil je doorgeven -->
           <template v-if="step === 0">
             <nldd-rich-text spacing="tight">
-              <p>Kies wat er is veranderd. De overheid rekent daarna al uw regelingen opnieuw uit; u hoeft dat niet per regeling door te geven.</p>
+              <p>Kies wat er is veranderd. De overheid rekent daarna al je regelingen opnieuw uit; je hoeft dat niet per regeling door te geven.</p>
             </nldd-rich-text>
             <nldd-list variant="box" accessible-label="Soort wijziging">
               <nldd-list-item v-for="t in CHANGE_TYPES" :key="t.id" size="md" button @click="chooseType(t.id)">
@@ -182,7 +182,7 @@ function show(claim) {
             <!-- Waarden: alleen wat verandert hoeft ingevuld. -->
             <template v-else>
               <nldd-rich-text spacing="tight">
-                <p>Vul alleen in wat er verandert. Wat u leeg laat, blijft zoals het geregistreerd staat.</p>
+                <p>Vul alleen in wat er verandert. Wat je leeg laat, blijft zoals het geregistreerd staat.</p>
               </nldd-rich-text>
               <template v-for="group in type?.groups ?? []" :key="group.label">
                 <nldd-title size="4"><h2>{{ group.label }}</h2></nldd-title>
@@ -210,9 +210,9 @@ function show(claim) {
           <!-- Stap 3: bevestigen. Wat er ingaat en naar welke wet, voordat het ingaat. -->
           <template v-else-if="step === 2">
             <nldd-rich-text spacing="tight">
-              <p>U geeft het volgende door aan <strong>{{ lawName }}</strong>. Controleer het voordat u het indient.</p>
+              <p>Je geeft het volgende door aan <strong>{{ lawName }}</strong>. Controleer het voordat je het indient.</p>
             </nldd-rich-text>
-            <nldd-list variant="box-tinted" accessible-label="Wat u doorgeeft">
+            <nldd-list variant="box-tinted" accessible-label="Wat je doorgeeft">
               <nldd-list-item v-for="c in claims" :key="c.input" size="md">
                 <nldd-text-cell :text="c.label" :supporting-text="c.input"></nldd-text-cell>
                 <nldd-text-cell width="fit-content" horizontal-alignment="right" :text="show(c)"></nldd-text-cell>
@@ -227,8 +227,8 @@ function show(claim) {
               ></nldd-multi-line-text-field>
               <nldd-form-field-help-text>
                 {{ features.AUTO_APPROVE_CLAIMS
-                  ? 'Uw melding wordt direct gebruikt in de berekening.'
-                  : 'Uw regelingen rekenen meteen met wat u doorgeeft; een behandelaar beoordeelt de wijziging voordat de uitkomst vaststaat.' }}
+                  ? 'Je melding wordt direct gebruikt in de berekening.'
+                  : 'Je regelingen rekenen meteen met wat je doorgeeft; een behandelaar beoordeelt de wijziging voordat de uitkomst vaststaat.' }}
               </nldd-form-field-help-text>
             </nldd-form-field>
             <nldd-form-actions>
@@ -244,8 +244,8 @@ function show(claim) {
             <nldd-inline-dialog
               icon="checked"
               icon-color="success"
-              text="Uw wijziging is doorgegeven"
-              :supporting-text="`${submitted?.count === 1 ? 'Eén gegeven is' : `${submitted?.count} gegevens zijn`} gewijzigd bij ${submitted?.law}. Uw regelingen zijn opnieuw berekend; op het portaal ziet u wat dit betekent.`"
+              text="Je wijziging is doorgegeven"
+              :supporting-text="`${submitted?.count === 1 ? 'Eén gegeven is' : `${submitted?.count} gegevens zijn`} gewijzigd bij ${submitted?.law}. Je regelingen zijn opnieuw berekend; op het portaal zie je wat dit betekent.`"
             ></nldd-inline-dialog>
             <nldd-form-actions>
               <nldd-button-group orientation="horizontal">
