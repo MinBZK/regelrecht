@@ -3,7 +3,7 @@ title: "Cel"
 description: "A proof-of-concept runtime for cells that record facts as chronolexograms, reduce them to lexostatuses, and combine lexostatuses from other cells."
 ---
 
-The cell runtime is a small proof of concept for [RFC-022](/rfcs/rfc-022). A cell records facts as chronolexograms in its own append-only chronicle, and a reduction turns that chronicle into a lexostatus. A cell can have a portal: a fictitious organization logs in with a simulated eHerkenning, fills in an application form, checks it and submits it. The check evaluates one outcome of a regulation (a `TOETS`) against the lexostatus. When the regulation needs facts that another cell keeps, the check asks that cell for its lexostatus and combines the two (synthesis).
+The cell runtime is a small proof of concept for [RFC-022](/rfcs/rfc-022). A cell records facts as chronolexograms in its own append-only chronicle, and a reduction turns that chronicle into a lexostatus. A cell can have a portal: a fictitious organization logs in with a simulated eHerkenning, fills in an application form, checks it and submits it. The check evaluates one outcome of a regulation (a `TOETS`) against the lexostatus. When the regulation needs facts that another cell keeps, the check asks that cell for its lexostatus and combines the two (synthesis). A cell can also have a case handler: a fictitious employee who logs in, sees the cases still waiting for a decision, opens one and has the engine compute a trial decision (`proefbesluit`) without recording anything.
 
 A cell is configuration, not code. The runtime loads every directory under `CELLS_PATH` that has a `cel.yaml`, so the same binary runs the generic test fixtures in this repository and the cells of a private case corpus. Nothing in the code names a case.
 
@@ -39,12 +39,37 @@ The design keeps four things apart. The regulation does not know that a chronicl
 
 1. **Lexogram.** The regulations under `REGULATION_PATH`, unchanged and shared by all cells. An article declares the parameters it needs, such as `bevat_naam` or `aanvraagdatum`.
 2. **Stream definition.** Which facts the cell records, by which actor, in which chronicle and on which legal ground (`grondslag`). Each field binds to `$intake.*` (who submitted it and through which channel), to `$external.*` (the content as submitted) or to a constant of the stream. A table field declares its columns: `{tabel: $external.<path>, kolommen: [...]}`. Each event says whether its grams belong to a case: `zaak: opent` (the cell gives a new `zaakkenmerk` when it records the gram), `zaak: volgt` (the gram carries the `zaakkenmerk` of an existing case, passed in with the submission) or `zaak: geen`, the default. This follows the sketch in RFC-022 §1.3.
-3. **Reduction to lexostatus.** A `lexostatus_definitions` entry narrows the chronicle with `filter` and, when it needs one gram, picks it with `kies: laatste`. Each parameter gets a derivation (`afleiding`), of one of two kinds. On the chosen gram: `veld`, `gevuld`, `gelijk`, `tabel` with `elke_regel` or `een_regel` (optionally `alleen_waar`), and `moment`. Over the grams that pass the derivation's own `filter`: `bestaat: true`, `som: <field>`, and `kies: laatste` with `veld` or with `bevat: {veld, waarde}`. Field paths use dots, as in `inhoud.organen`.
-4. **The gram.** What the cell writes, one JSON line per gram in `DATA_DIR/<cel>/<chronicle>.jsonl`. A gram is appended and never changed; a correction is a new gram. It carries `kind`, `type`, `soort`, `name`, `chronicle`, `recording_actor`, `grondslag`, `op_moment`, `stroom {id, sha256}` and `fields`, and `herkomst: startstand` when it was placed at start-up. A gram of an event with a case also carries `zaak` and `zaakkenmerk`; `gram.json` requires the `zaakkenmerk` then and forbids it otherwise.
+3. **Reduction to lexostatus.** A `lexostatus_definitions` entry narrows the chronicle with `filter` and, when it needs one gram, picks it with `kies: laatste`. Each parameter gets a derivation (`afleiding`), of one of two kinds. On the chosen gram: `veld`, `gevuld`, `gelijk`, `tabel` with `elke_regel` or `een_regel` (optionally `alleen_waar`), and `moment`. Over the grams that pass the derivation's own `filter`: `bestaat: true`, `som: <field>`, and `kies: laatste` with `veld` or with `bevat: {veld, waarde}`. `kies: laatste` with `veld` may add `geen_gram: <value>`, the value when no gram passes the filter, such as `null` for the date of something that did not happen. Field paths use dots, as in `inhoud.organen`.
+
+   With `groepeer: zaakkenmerk` the lexostatus is a **list**: one row per case with at least one gram through `filter`, and, with `zonder: {filter}`, no gram through that filter. `kies` and the derivations then work per case, and the derivations are columns rather than parameters. A list is meant for the consumer, such as a case handler with a work queue, and never goes to the engine.
+4. **The gram.** What the cell writes, one JSON line per gram in `DATA_DIR/<cel>/<chronicle>.jsonl`. A gram is appended and never changed; a correction is a new gram. It carries `kind`, `type`, `soort`, `stage` (for a stage decretogram), `name`, `chronicle`, `recording_actor`, `grondslag`, `op_moment`, `stroom {id, sha256}` and `fields`, and `herkomst: startstand` when it was placed at start-up. A gram of an event with a case also carries `zaak` and `zaakkenmerk`; `gram.json` requires the `zaakkenmerk` then and forbids it otherwise.
 
 A submitted application is recorded with `type: indiening` and `soort: aanvraag`, and its event opens a new case (`zaak: opent`). For that soort, `gram.json` fixes `fields.kern` to the elements Awb 4:2 paragraph 1 asks of every application: the applicant's name and address, the date, the decision requested and the signature (`ondertekend_via`). The content a specific regulation asks for goes under `fields.inhoud`, which each stream defines. A field left empty is recorded as `null`, so an incomplete application is recorded as well. Completeness is a judgment, and the gram holds none.
 
 A decision of a register keeper (an entry, a removal, an established result) is recorded as `type: decretogram`. It belongs to no case: an election result or a register entry is not a case, and it has no `zaakkenmerk`. The grams are grouped by chronicle instead. A cell can keep several chronicles, one per stream, and each lexostatus reduces one of them.
+
+## Roles and the trial decision
+
+`rollen` in `cel.yaml` says who logs in: `aanvrager: eherkenning` for the portal and `behandelaar: medewerker` for case handling. The employee login is simulated like the eHerkenning one; it asks for a name and checks nothing else. A cell has one session cookie, so logging in as the other role replaces the session. With roles, the chronicle and the lexostatuses are only for someone logged in. The applicant sees the grams of their own KvK number, the case handler sees all of them. The portal routes answer 403 to a case handler, and the case routes answer 403 to an applicant. A cell without roles has no login at all.
+
+`behandeling` names the work queue, a list lexostatus of the cell, and the decision:
+
+```yaml
+behandeling:
+  werkvoorraad: <list lexostatus>
+  besluit:
+    regeling: <$id>
+    uitkomsten: [<output>, ...]          # outputs of one article
+    lexostatussen: [<name>, ...]         # own, with zaakkenmerk as the only input
+    formulier:                           # judgments of the case handler
+      - {parameter: <name>, label: <text>, groep: <text>}
+    stand_bij_besluit:                   # facts that arise after the decision
+      <parameter>: null
+```
+
+Every parameter of the decision comes from exactly one source. The own lexostatuses reduce the case: the application, and the course of the case, such as a request to supplement or a suspension of the decision period. The synthesis sources of the cell supply facts of other cells, with their input taken from one of those lexostatuses. The decision form holds the judgments of the case handler, which only exist at the moment of deciding; they go in with provenance `behandelaar`. The state at decision (`stand_bij_besluit`) covers facts that can only arise later, such as the notification of the decision: at the moment of deciding it has not happened, so the value is `null` or `false`, with provenance `stand_bij_besluit`.
+
+The trial decision runs the article on today's date. When every configured outcome has a value, the answer has the outcomes. Otherwise it says "niet te nemen: mist <parameter>". The answer names the provenance of each parameter, and under `niet_geleverd` every parameter a caller of the article has to supply that no source supplied, with the description the regulation gives it. A call within the same regulation without `parameters` shares the caller's parameters; a call to another regulation receives only what `parameters` passes. Nothing is recorded, and nothing is filled in.
 
 ## Start state
 
@@ -77,8 +102,10 @@ Each cell is checked on its own. When one fails, the runtime does not start, and
 4. No name collision: a parameter gets one derivation.
 5. A filter or input on `zaakkenmerk` only selects events with a case (`zaak: opent` or `volgt`). A gram without a case has no `zaakkenmerk`, so such a filter would never match it.
 6. The `portaal` block names an existing event, a lexostatus that picks a gram, and a regulation outcome whose article is in the `grondslag` of the event.
-7. Synthesis needs a portal. Each input comes from a field of the check's lexostatus. Each parameter is a parameter of the check's article or of an article it calls, transitively through `source`. A parameter comes from exactly one place: the own reduction or one source.
+7. Synthesis needs a portal or a decision. Each input comes from a field of the check's lexostatus. Each parameter is a parameter of the check's article or of an article it calls, transitively through `source`. A parameter comes from exactly one place: the own reduction or one source.
 8. The start state fits the streams of the cell.
+9. A list lexostatus (`groepeer`) only selects events with a case, in `filter` and in `zonder`, and its `zonder` selects at least one event, since otherwise it would never leave a case out. Its columns need not be parameters and do not collide with other lexostatuses. The portal check and the decision never use a list.
+10. A portal needs the applicant role and the other way around; case handling needs the case handler role. The work queue is a list. The outcomes of the decision come from one article. The lexostatuses of the decision have `zaakkenmerk` as their only input. Each parameter in the form or in the state at decision is one a caller of the article has to supply, and every parameter of the decision comes from one source only.
 
 Whether a source is reachable and offers the lexostatus with those parameters and inputs is checked after start-up, through `GET /api/cellen` at the source. A problem there is a warning, not a refusal: the source may come up later.
 
@@ -104,6 +131,10 @@ The `portaal` block in `cel.yaml` says which event a submission becomes, which l
 | `GET /cellen/<id>/api/stroom` | Portal only. The stream definition and the form fields |
 | `POST /cellen/<id>/api/aanvraag/toets` | Portal only. Builds the gram in memory without recording it, reduces it, runs the synthesis and evaluates the configured outcome. `ontbreekt` lists the parameters of a presence derivation (`gevuld`, `tabel` with `elke_regel`) that came out false. |
 | `POST /cellen/<id>/api/aanvraag` | Portal only. Records the gram and returns it |
+| `POST /cellen/<id>/api/medewerker/login` | Case handler role only. `{naam}` to a session; `GET .../sessie` and `POST .../logout` as for eHerkenning. |
+| `GET /cellen/<id>/api/werkvoorraad` | Case handler only. The work queue, a list lexostatus. |
+| `GET /cellen/<id>/api/zaken/<zaakkenmerk>` | Case handler only. The grams of the case, the decision form, and a trial decision without judgments. |
+| `POST /cellen/<id>/api/zaken/<zaakkenmerk>/proefbesluit` | Case handler only. `{formulier}` to a trial decision. Records nothing. |
 
 ## Deviations from RFC-022
 
@@ -124,6 +155,13 @@ These are deliberate. Each is a candidate for an amendment once the proof of con
 13. **An article number may contain a space** (`een_wet#A 1`), because the corpus numbers some articles that way.
 14. **`zaakkenmerk` and `zaak: opent|volgt|geen`** extend RFC-022 §1.2, which uses a case identifier only to group the stage decretograms of one decision. Neither the law nor the position paper introduces them. The position paper groups facts with chronicles. Here a case identifier appears only on grams of an event that opens or follows a case, and the start-up check refuses a filter or input on `zaakkenmerk` that could reach an event without one.
 
+15. **A lexostatus may be a list.** RFC-022 §4.1 has a lexostatus answer with parameters. `groepeer` and `zonder` let a lexostatus return one row per case instead. RFC-022 §4.1 sketches `group_by zaakkenmerk` in a comment; the list shape and the rule that a list never reaches the engine are filled in here.
+16. **Roles in a cell, with simulated logins.** RFC-022 leaves authorization to the security context (§2). Here `rollen` in `cel.yaml` decides who sees what, with a simulated eHerkenning for the applicant and a simulated employee login for the case handler, and no security context.
+17. **Judgments in the decretogram, the course of the case as grams.** The judgments of the case handler (careful preparation, proportionality, reasoning, the date of the decision) exist only at the moment of deciding and will be accepted input of the decretogram (RFC-013 `accepted_values`). Facts from the course of the case, such as a request to supplement, are grams of their own that follow the case, and the decision reads them through a reduction. When there is no such gram, the reduction reads it as "did not happen" (`geen_gram`, deviation 9).
+18. **The state at decision.** An article can ask for facts about the notification of the decision, which only arise after it. The trial decision passes them as `null` or `false`, with provenance `stand_bij_besluit`, and does not make up a date.
+19. **`stage` on a gram.** A stage decretogram carries its RFC-008 stage (such as `BESLUIT`), taken from the stream. RFC-022 §1.2 names the stages but gives the chronicle stream no field for them.
+20. **Types of the grams in the course of a case.** An invitation to supplement or a suspension of the decision period is recorded as an executogram, and a supplement from the applicant as an `indiening` of soort `aanvulling`. The position paper does not classify procedural acts; this is a choice for the proof of concept.
+
 ## Open questions
 
 1. **Typology.** Is `indiening` (application, notification, report, objection) a fourth class next to lexogram, decretogram and executogram? The position paper leaves this for further research, and so does RFC-022 §1. A candidate for an amendment to RFC-022.
@@ -139,3 +177,4 @@ These are deliberate. Each is a candidate for an amendment once the proof of con
 11. **Engine and single outcomes.** The engine evaluates the whole article when one outcome is asked for. Every action runs and every `input` is resolved, including cross-law inputs the requested outcome never reads. A required parameter that only another output uses is therefore needed as well. The engine stops at the first missing value (`Variable not found`); a `required: false` parameter that is not passed becomes an unknown value and is reported as missing. For the check before submitting, this means an outcome can only be judged when every fact the article touches is present, including facts of the authority itself. The cell does not fill anything in. It reports "niet te beoordelen: mist <parameter>", one missing value per run. A test (`engine_eist_het_hele_artikel_bij_een_uitkomst` in `packages/cel/src/toets.rs`) pins this behavior on the fixtures. An engine that resolves only what the requested outcome depends on would let the check answer from the application alone.
 12. **Schema version.** `schema/chronolex/v0.1.0/` stands apart from `schema/v0.6.0/`. Merge them, or keep them separate?
 13. **Claim in the submission, fact in the decision.** A regulation can require the application to *state* a fact that belongs to another cell, such as the number of seats a list received, while the calculation in the decision uses the fact itself ("per seat that *was allocated*"). The submission gram records the claim. The decision should take the fact from the source cell through synthesis and compare the two. Where is that comparison recorded, and what follows from a mismatch: a request to supplement the application under the general administrative law's completion procedure, or a decision that simply follows the source?
+14. **Proposed decisions.** Drafts before the decision (a *voorgenomen besluit*) are out of scope. The position paper asks whether they are decisions already.
