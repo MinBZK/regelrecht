@@ -2,7 +2,7 @@
 import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { parseFeature, dispatch, quotedValue, bareValue, traceRoot, ExecutionContext } from '@regelrecht/frontend-shared/gherkin';
-import { matchStep, renderStepNl, FEATURE_KEYWORDS_NL } from '../data/gherkinNl.js';
+import { matchStep, renderStep, featureKeywords, scenarioTitle } from '../data/gherkinNl.js';
 import { serviceInfo } from '../data/loadCorpus.js';
 import { loadFailureFor, loadFailures, prepareScenarioEngine } from '../engine/useDemoEngine.js';
 import { useDemo } from '../store/demoStore.js';
@@ -42,8 +42,10 @@ const query = ref('');
 
 const filtered = computed(() => {
   const q = query.value.trim().toLowerCase();
-  const list = q ? features.value.filter((f) => `${f.title} ${f.law_path}`.toLowerCase().includes(q)) : features.value;
-  return [...list].sort((a, b) => a.title.localeCompare(b.title));
+  // Zoeken en sorteren op wat er staat, niet op de Nederlandse bron: wie in het
+  // Engels "refusal" typt hoort te vinden wat er "Refusal" heet.
+  const list = q ? features.value.filter((f) => `${scenarioTitle(f.title)} ${f.title} ${f.law_path}`.toLowerCase().includes(q)) : features.value;
+  return [...list].sort((a, b) => scenarioTitle(a.title).localeCompare(scenarioTitle(b.title)));
 });
 
 // One track per column of the Gherkin table, sized to its content, plus a
@@ -298,13 +300,13 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
     <nldd-split-view-pane slot="sidebar" has-content background="tinted">
       <nldd-page sticky-header background="inherit">
         <nldd-container slot="header" padding="12" gap="8">
-          <nldd-top-title-bar text="Scenario's" :supporting-text="`${features.length} testbestanden`"></nldd-top-title-bar>
+          <nldd-top-title-bar :text="t('app.tabs.scenarios')" :supporting-text="t.plural(features.length, 'scenario.files')"></nldd-top-title-bar>
           <nldd-search-field :placeholder="t('scenario.search')" size="sm" :value="query" @input="query = $event.detail?.value ?? $event.target.value"></nldd-search-field>
         </nldd-container>
         <nldd-container padding-inline="8" padding-bottom="16">
           <nldd-list type="navigation" accessible-label="Testbestanden">
             <nldd-list-item v-for="f in filtered" :key="f.path" size="sm" button :selected="f.path === selectedPath || undefined" @click="select(f.path)">
-              <nldd-text-cell size="sm" :text="f.title" :supporting-text="lawFor(f) ? serviceInfo(corpus, lawFor(f).service).name : f.law_path"></nldd-text-cell>
+              <nldd-text-cell size="sm" :text="scenarioTitle(f.title)" :supporting-text="lawFor(f) ? serviceInfo(corpus, lawFor(f).service).name : f.law_path"></nldd-text-cell>
             </nldd-list-item>
             <nldd-inline-dialog slot="empty" :text="t('scenario.none_found')" :supporting-text="t('scenario.none_found.hint')"></nldd-inline-dialog>
           </nldd-list>
@@ -319,7 +321,7 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
             <nldd-toolbar-item slot="start">
               <nldd-button size="sm" variant="neutral-tinted" start-icon="checklist" text="Scenario's" :supporting-text="`${features.length}`" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
             </nldd-toolbar-item>
-            <nldd-toolbar-title v-if="parsed" slot="start" :text="parsed.feature" :supporting-text="fileName"></nldd-toolbar-title>
+            <nldd-toolbar-title v-if="parsed" slot="start" :text="scenarioTitle(parsed.feature)" :supporting-text="fileName"></nldd-toolbar-title>
             <nldd-toolbar-item slot="end" v-if="parsed">
               <nldd-segmented-control size="sm" width="fit-content" :value="showText ? 'text' : 'steps'" @change="showText = $event.detail?.value === 'text'">
                 <nldd-segmented-control-item value="steps" text="Scenario's"></nldd-segmented-control-item>
@@ -358,7 +360,7 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
           <nldd-box>
             <nldd-container padding="12" layout="row" gap="12" vertical-alignment="center">
               <nldd-icon-cell icon="checklist" color="secondary"></nldd-icon-cell>
-              <nldd-title-cell size="5" :text="parsed.feature" :overline="FEATURE_KEYWORDS_NL.Feature" :supporting-text="parsed.background?.length ? `${FEATURE_KEYWORDS_NL.Background}: ${parsed.background.length} ${parsed.background.length === 1 ? 'stap' : 'stappen'}` : undefined"></nldd-title-cell>
+              <nldd-title-cell size="5" :text="scenarioTitle(parsed.feature)" :overline="featureKeywords().Feature" :supporting-text="parsed.background?.length ? `${featureKeywords().Background}: ${t.plural(parsed.background.length, 'scenario.steps')}` : undefined"></nldd-title-cell>
               <!-- The run summary sits with the feature, next to its title, as the result
                    tag does on each scenario card. In the toolbar it stood between 32px
                    controls; no tag or badge size reaches that height. -->
@@ -368,17 +370,17 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
                  stays in view; only the scenario cards collapse. -->
             <nldd-container v-if="parsed.background?.length" padding-inline="16" padding-bottom="12">
               <div class="gherkin">
-                <div><span class="kw">{{ FEATURE_KEYWORDS_NL.Background }}:</span></div>
+                <div><span class="kw">{{ featureKeywords().Background }}:</span></div>
                 <div v-for="(step, i) in parsed.background" :key="`bg-${i}`" class="step">
-                  <span class="kw">{{ renderStepNl(step).keyword }}</span> {{ renderStepNl(step).text }}
+                  <span class="kw">{{ renderStep(step).keyword }}</span> {{ renderStep(step).text }}
                 </div>
               </div>
             </nldd-container>
           </nldd-box>
-          <nldd-card v-for="(scenario, index) in parsed.scenarios" :key="index" :accessible-label="scenario.name">
+          <nldd-card v-for="(scenario, index) in parsed.scenarios" :key="index" :accessible-label="scenarioTitle(scenario.name)">
             <nldd-container slot="header" padding="12" layout="row" gap="12" vertical-alignment="center">
               <nldd-icon-cell :icon="statusIcon(index)" :color="statusColor(index)"></nldd-icon-cell>
-              <nldd-title-cell size="5" :text="scenario.name" :supporting-text="scenario.tags.join(' ') || undefined"></nldd-title-cell>
+              <nldd-title-cell size="5" :text="scenarioTitle(scenario.name)" :supporting-text="scenario.tags.join(' ') || undefined"></nldd-title-cell>
               <!-- One height across the action row: an md tag and xs buttons are both
                    24px; no tag size matches an sm button. -->
               <nldd-tag v-if="resultTag(index)" :color="resultTag(index).color" :text="resultTag(index).text"></nldd-tag>
@@ -390,9 +392,9 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
               <nldd-banner v-if="runs[index]?.error && !runs[index]?.steps?.length" variant="critical" text="Uitvoering mislukt" :supporting-text="runs[index].error"></nldd-banner>
               <div class="gherkin">
                 <div v-for="(step, si) in scenario.steps" :key="si" :class="['step', stepClass(index, (parsed.background?.length ?? 0) + si)]">
-                  <span class="kw">{{ renderStepNl(step).keyword }}</span> {{ renderStepNl(step).text }}
+                  <span class="kw">{{ renderStep(step).keyword }}</span> {{ renderStep(step).text }}
                   <nldd-container v-if="step.dataTable" padding-block="4">
-                    <nldd-table :columns="dataTableColumns(step.dataTable)" :accessible-label="`Tabel bij ${renderStepNl(step).text}`">
+                    <nldd-table :columns="dataTableColumns(step.dataTable)" :accessible-label="t('scenario.table_for', { step: renderStep(step).text })">
                       <nldd-table-row slot="header">
                         <nldd-text-cell v-for="(cell, ci) in step.dataTable[0]" :key="ci" size="sm" :text="cell"></nldd-text-cell>
                       </nldd-table-row>

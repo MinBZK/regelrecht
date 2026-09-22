@@ -132,6 +132,20 @@ if (existsSync(overlayFile)) {
   writeFileSync(join(destDir, 'demo-config.en.yaml'), yaml.dump(english, { lineWidth: 120 }));
 }
 
+// De Engelse titels van de features en scenario's.
+//
+// De `.feature`-bestanden zelf blijven Nederlands: de Rust-runner en de
+// browser-runner lezen dezelfde bestanden en `just bdd-demo` toetst erop, dus
+// de vertaling staat ernaast en is gesleuteld op de Nederlandse titel. Een
+// titel die ontbreekt blijft Nederlands; de stappen eronder zijn canoniek
+// Engels en dragen de inhoud.
+const scenarioTitlesFile = join(corpusDir, 'i18n', 'scenarios.en.yaml');
+const scenarioTitles = existsSync(scenarioTitlesFile) ? yaml.load(readFileSync(scenarioTitlesFile, 'utf8')) ?? {} : {};
+writeFileSync(
+  resolve(appRoot, 'src', 'i18n', 'scenarioTitles.generated.js'),
+  `// @generated from corpus/demo/i18n/scenarios.en.yaml by frontend-demo/scripts/copy-demo-corpus.mjs — do not edit.\nexport default ${JSON.stringify(scenarioTitles.titles ?? {}, null, 2)};\n`,
+);
+
 const glossaryFile = join(corpusDir, 'i18n', 'glossary.en.yaml');
 const glossary = existsSync(glossaryFile) ? yaml.load(readFileSync(glossaryFile, 'utf8')) ?? {} : {};
 const generated = resolve(appRoot, 'src', 'i18n', 'glossary.generated.js');
@@ -150,5 +164,5 @@ writeFileSync(join(destDir, 'index.json'), JSON.stringify({ laws, scenarios }, n
 const wordCount = Object.keys(glossary.words ?? {}).length;
 console.log(
   `demo corpus: ${laws.length} law files, ${scenarios.length} feature files → ${relative(appRoot, destDir)}` +
-    ` (woordenlijst: ${wordCount} woorden)`,
+    ` (woordenlijst: ${wordCount} woorden, ${Object.keys(scenarioTitles.titles ?? {}).length} scenariotitels)`,
 );

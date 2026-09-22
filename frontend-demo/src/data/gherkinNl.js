@@ -1,12 +1,19 @@
 /**
- * Dutch rendering of the canonical (English) BDD grammar, for the audience.
+ * How a BDD step is shown to the audience.
  *
  * The scenario files stay in the canonical vocabulary from bdd/grammar.yaml so
  * the Rust runner and the browser runner read the same text; this module only
  * decides how a step is *shown*. Every template is keyed by grammar step id, so
- * a new step in the grammar shows up in English until it gets a line here.
+ * a new step in the grammar shows up in its canonical form until it gets a
+ * line here.
+ *
+ * That canonical form is English, which is why the English side of this module
+ * is empty: showing a step in English means not translating it at all. The
+ * Dutch templates are the work; English is what the file already says.
  */
 import { matchStep } from '@regelrecht/frontend-shared/gherkin';
+import { currentLocale } from '../i18n/index.js';
+import titles from '../i18n/scenarioTitles.generated.js';
 
 // Re-exported, not redefined: matching a step against the canonical grammar is
 // the shared runner's job, and this module only decides how a matched step is
@@ -54,12 +61,48 @@ function q(s) {
   return `"${s}"`;
 }
 
-/** Dutch keyword + Dutch phrasing of a step; falls back to the English text. */
-export function renderStepNl(step) {
-  const keyword = KEYWORDS[step.keyword] ?? step.keyword;
+/**
+ * A step as the audience sees it, in the language that is on.
+ *
+ * In English the step is printed as it stands in the file: that *is* the
+ * canonical grammar, so there is nothing to render. `matched` still says
+ * whether the step is one the grammar knows, because the view marks an
+ * unknown step either way.
+ */
+export function renderStep(step) {
   const match = matchStep(step.text);
+  if (currentLocale() !== 'nl') return { keyword: step.keyword, text: step.text, matched: !!match };
+  const keyword = KEYWORDS[step.keyword] ?? step.keyword;
   const template = match ? TEMPLATES[match.entry.id] : null;
   return { keyword, text: template ? template(match.args) : step.text, matched: !!match };
 }
 
-export const FEATURE_KEYWORDS_NL = { Feature: 'Functionaliteit', Background: 'Achtergrond', Scenario: 'Scenario' };
+/** Kept for callers that still import the old name. */
+export const renderStepNl = renderStep;
+
+const FEATURE_KEYWORDS = {
+  nl: { Feature: 'Functionaliteit', Background: 'Achtergrond', Scenario: 'Scenario' },
+  en: { Feature: 'Feature', Background: 'Background', Scenario: 'Scenario' },
+};
+
+/** The Gherkin keywords, in the language that is on. */
+export function featureKeywords() {
+  return FEATURE_KEYWORDS[currentLocale()] ?? FEATURE_KEYWORDS.nl;
+}
+
+export const FEATURE_KEYWORDS_NL = FEATURE_KEYWORDS.nl;
+/**
+ * De titel van een feature of scenario, in de taal die aanstaat.
+ *
+ * De `.feature`-bestanden blijven Nederlands: de Rust-runner en de
+ * browser-runner lezen dezelfde bestanden, en `just bdd-demo` toetst erop. De
+ * vertaling staat er dus naast, gesleuteld op de Nederlandse titel zelf.
+ *
+ * Een titel die er niet in staat blijft Nederlands. Dat is bij een scenario
+ * minder erg dan het klinkt: de stappen eronder zijn canoniek Engels en dragen
+ * de inhoud.
+ */
+export function scenarioTitle(title) {
+  if (!title || currentLocale() === 'nl') return title ?? '';
+  return titles[title] ?? title;
+}

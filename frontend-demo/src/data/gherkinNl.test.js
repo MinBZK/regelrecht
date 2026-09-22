@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { GRAMMAR } from '@regelrecht/frontend-shared/gherkin';
-import { FEATURE_KEYWORDS_NL, TRANSLATED_STEP_IDS, matchStep, renderStepNl } from './gherkinNl.js';
+import { FEATURE_KEYWORDS_NL, TRANSLATED_STEP_IDS, featureKeywords, matchStep, renderStep, renderStepNl, scenarioTitle } from './gherkinNl.js';
+import { adoptLocale } from '../i18n/index.js';
 
 describe('renderStepNl', () => {
   it('translates the keyword and phrases a matched step in Dutch', () => {
@@ -36,5 +37,39 @@ describe('renderStepNl', () => {
       expect(renderStepNl({ keyword: 'Given', text: english }).matched).toBe(true);
     }
     expect(FEATURE_KEYWORDS_NL.Feature).toBe('Functionaliteit');
+  });
+});
+
+describe('in het Engels', () => {
+  afterEach(() => adoptLocale('nl'));
+
+  it('toont een stap in zijn canonieke vorm, onvertaald', () => {
+    // De canonieke grammatica is Engels, dus "vertalen naar het Engels" is
+    // hier: niets doen. Dat is waarom deze stap goedkoop was.
+    adoptLocale('en');
+    const step = { keyword: 'Given', text: 'the calculation date is "2025-01-01"' };
+    expect(renderStep(step)).toEqual({ keyword: 'Given', text: 'the calculation date is "2025-01-01"', matched: true });
+  });
+
+  it('blijft melden of een stap in de grammatica staat', () => {
+    // Het scherm markeert een onbekende stap in beide talen; dat oordeel mag
+    // niet verdwijnen omdat er niet vertaald wordt.
+    adoptLocale('en');
+    expect(renderStep({ keyword: 'Given', text: 'iets wat de grammatica niet kent' }).matched).toBe(false);
+  });
+
+  it('gebruikt de Engelse Gherkin-sleutelwoorden', () => {
+    expect(featureKeywords().Feature).toBe('Functionaliteit');
+    adoptLocale('en');
+    expect(featureKeywords().Feature).toBe('Feature');
+    expect(featureKeywords().Background).toBe('Background');
+  });
+
+  it('vertaalt een titel en laat een onbekende staan', () => {
+    adoptLocale('en');
+    expect(scenarioTitle('Berekening Zorgtoeslag 2024')).toBe('Calculation of zorgtoeslag (healthcare allowance) 2024');
+    expect(scenarioTitle('Een titel die niet bestaat')).toBe('Een titel die niet bestaat');
+    adoptLocale('nl');
+    expect(scenarioTitle('Berekening Zorgtoeslag 2024')).toBe('Berekening Zorgtoeslag 2024');
   });
 });

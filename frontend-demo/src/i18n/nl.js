@@ -847,4 +847,9 @@ export default {
   'deck.previous': 'Vorige dia',
   'deck.next': 'Volgende dia',
   'deck.close': 'Sluiten',
+  'scenario.steps.one': '{n} stap',
+  'scenario.steps.other': '{n} stappen',
+  'scenario.table_for': 'Tabel bij {step}',
+  'scenario.files.one': '{n} testbestand',
+  'scenario.files.other': '{n} testbestanden',
 };

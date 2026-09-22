@@ -847,4 +847,9 @@ export default {
   'deck.previous': 'Previous slide',
   'deck.next': 'Next slide',
   'deck.close': 'Close',
+  'scenario.steps.one': '{n} step',
+  'scenario.steps.other': '{n} steps',
+  'scenario.table_for': 'Table for {step}',
+  'scenario.files.one': '{n} test file',
+  'scenario.files.other': '{n} test files',
 };
