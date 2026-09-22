@@ -839,4 +839,12 @@ export default {
   'scenario.trace.label': 'Uitvoering door de engine',
   'scenario.close': 'Sluiten',
   'zaak.portaal.signed_in.lead': 'Ingelogd als',
+
+  // ---- het presentatiedek --------------------------------------------------
+  'deck.label': 'Presentatie',
+  'deck.presenter_name': 'Naam presentator',
+  'deck.slide_of': 'Dia {n} van {total}',
+  'deck.previous': 'Vorige dia',
+  'deck.next': 'Volgende dia',
+  'deck.close': 'Sluiten',
 };

@@ -1,0 +1,231 @@
+---
+# Engelse overlay op demo-config.yaml.
+#
+# Het Nederlands in demo-config.yaml is de bron en blijft daar staan; dit
+# bestand zegt per pad wat de Engelse tekst is. Elk pad moet bestaan in dat
+# bestand: `check-i18n.mjs` weigert een pad dat nergens heen wijst, zodat deze
+# vertaling niet stilletjes kan verouderen als de dia's veranderen.
+#
+# Een pad-gesleutelde sidecar en geen `_en`-velden in demo-config.yaml zelf:
+# `slides:` is een lijst die iemand leest en bewerkt als lopende tekst, en daar
+# om en om Nederlands en Engels doorheen zetten maakt precies het bestand
+# onleesbaar waar het om de leesbaarheid gaat.
+#
+# Over het deck: Engels valt op een dia langer uit dan Nederlands. Deze
+# vertaling is daarom op sommige plekken korter dan een letterlijke zou zijn,
+# want een regel die omslaat kost meer dan een bijzin oplevert.
+
+# ---- de twee persona's ------------------------------------------------------
+profiles.merijn.portal_tab_label: My government
+profiles.merijn.portal_heading: What am I entitled to? What do I owe?
+profiles.merijn.portal_subtitle: >-
+  Your allowances, benefits, tax returns and other government schemes, in one place.
+profiles.claudia.portal_tab_label: My business
+profiles.claudia.portal_heading: Which schemes apply to my business?
+profiles.claudia.portal_subtitle: >-
+  Available subsidies, reporting duties, permits, laws and other schemes for
+  entrepreneurs.
+
+# ---- wat een tegel over zijn uitkomst zegt ----------------------------------
+# De aanhef loopt door in het bedrag eronder ("Your healthcare allowance is
+# probably" + "€ 1.654,12" + "this year"), dus de zinsdelen moeten op elkaar
+# aansluiten. "Probably", omdat de demo met verzonnen gegevens rekent.
+outcome_phrasing.TOESLAGEN/zorgtoeslagwet.lead: Your healthcare allowance is probably
+outcome_phrasing.TOESLAGEN/zorgtoeslagwet.unit: this year
+outcome_phrasing.TOESLAGEN/zorgtoeslagwet.none: You probably do not qualify for healthcare allowance.
+outcome_phrasing.TOESLAGEN/wet_op_de_huurtoeslag.lead: Your housing benefit is probably
+outcome_phrasing.TOESLAGEN/wet_op_de_huurtoeslag.unit: per year
+outcome_phrasing.TOESLAGEN/wet_op_de_huurtoeslag.none: You probably do not qualify for housing benefit.
+outcome_phrasing.TOESLAGEN/wet_op_het_kindgebonden_budget.lead: Your child budget is probably
+outcome_phrasing.TOESLAGEN/wet_op_het_kindgebonden_budget.unit: per year
+outcome_phrasing.TOESLAGEN/wet_op_het_kindgebonden_budget.none: You probably do not qualify for child budget.
+outcome_phrasing.TOESLAGEN/wet_kinderopvang.lead: Your childcare allowance is probably
+outcome_phrasing.TOESLAGEN/wet_kinderopvang.unit: per year
+outcome_phrasing.TOESLAGEN/wet_kinderopvang.none: You probably do not qualify for childcare allowance.
+outcome_phrasing.BELASTINGDIENST/wet_inkomstenbelasting.lead: The income tax you owe is probably
+outcome_phrasing.BELASTINGDIENST/wet_inkomstenbelasting.unit: this year
+outcome_phrasing.BELASTINGDIENST/wet_inkomstenbelasting.none: You probably owe no income tax.
+outcome_phrasing.SVB/algemene_ouderdomswet.lead: Your state pension is probably
+outcome_phrasing.SVB/algemene_ouderdomswet.unit: per year
+outcome_phrasing.SVB/algemene_ouderdomswet.none: You are not yet entitled to a state pension.
+outcome_phrasing.SVB/algemene_nabestaandenwet.lead: Your survivor benefit is probably
+outcome_phrasing.SVB/algemene_nabestaandenwet.unit: per month
+outcome_phrasing.SVB/algemene_nabestaandenwet.none: You are probably not entitled to a survivor benefit.
+outcome_phrasing.SVB/participatiewet/aio.lead: Your AIO supplement is probably
+outcome_phrasing.SVB/participatiewet/aio.unit: per month
+outcome_phrasing.SVB/participatiewet/aio.none: You are probably not entitled to an AIO supplement.
+outcome_phrasing.SZW/participatiewet/bijstand.lead: Your social assistance is probably
+outcome_phrasing.SZW/participatiewet/bijstand.unit: per month
+outcome_phrasing.SZW/participatiewet/bijstand.none: You are probably not entitled to social assistance.
+outcome_phrasing.GEMEENTE_AMSTERDAM/participatiewet/bijstand/gemeenten.lead: Your social assistance is probably
+outcome_phrasing.GEMEENTE_AMSTERDAM/participatiewet/bijstand/gemeenten.unit: per month
+outcome_phrasing.GEMEENTE_AMSTERDAM/participatiewet/bijstand/gemeenten.none: >-
+  You are probably not entitled to social assistance.
+outcome_phrasing.SZW/besluit_bijstandverlening_zelfstandigen.lead: Your Bbz assistance is probably
+outcome_phrasing.SZW/besluit_bijstandverlening_zelfstandigen.unit: per month
+outcome_phrasing.SZW/besluit_bijstandverlening_zelfstandigen.none: You are probably not entitled to Bbz assistance.
+outcome_phrasing.UWV/werkloosheidswet.lead: Your unemployment benefit is probably
+outcome_phrasing.UWV/werkloosheidswet.unit: per month
+outcome_phrasing.UWV/werkloosheidswet.none: You are probably not entitled to unemployment benefit.
+outcome_phrasing.UWV/ziektewet.lead: Your sickness benefit is probably
+outcome_phrasing.UWV/ziektewet.unit: per day
+outcome_phrasing.UWV/ziektewet.none: You are probably not entitled to sickness benefit.
+outcome_phrasing.UWV/wet_werk_en_inkomen_naar_arbeidsvermogen.lead: Your WIA benefit is probably
+outcome_phrasing.UWV/wet_werk_en_inkomen_naar_arbeidsvermogen.unit: per month
+outcome_phrasing.UWV/wet_werk_en_inkomen_naar_arbeidsvermogen.none: You are probably not entitled to a WIA benefit.
+outcome_phrasing.DUO/wet_studiefinanciering.lead: Your student finance is probably
+outcome_phrasing.DUO/wet_studiefinanciering.unit: per month
+outcome_phrasing.DUO/wet_studiefinanciering.none: You are probably not entitled to student finance.
+outcome_phrasing.PENSIOENFONDS/pensioenwet.lead: Your pension is probably
+outcome_phrasing.PENSIOENFONDS/pensioenwet.unit: per month
+outcome_phrasing.PENSIOENFONDS/pensioenwet.none: You are not accruing a pension here yet.
+outcome_phrasing.BELASTINGDIENST/zorgverzekeringswet/bijdrage.lead: Your Zvw contribution is probably
+outcome_phrasing.BELASTINGDIENST/zorgverzekeringswet/bijdrage.unit: this year
+outcome_phrasing.BELASTINGDIENST/zorgverzekeringswet/bijdrage.none: You probably owe no Zvw contribution.
+outcome_phrasing.GEMEENTE_ROTTERDAM/verordening_precariobelasting/gemeenten.lead: Your precario tax is probably
+outcome_phrasing.GEMEENTE_ROTTERDAM/verordening_precariobelasting/gemeenten.unit: per year
+outcome_phrasing.GEMEENTE_ROTTERDAM/verordening_precariobelasting/gemeenten.none: You probably owe no precario tax.
+outcome_phrasing.DOUANE/wet_op_de_accijns/accijnsplicht_alcohol.lead: On this consignment you probably owe
+outcome_phrasing.DOUANE/wet_op_de_accijns/accijnsplicht_alcohol.unit: in excise duty
+outcome_phrasing.DOUANE/wet_op_de_accijns/accijnsplicht_alcohol.none: On this consignment you probably owe no excise duty.
+
+# Ja/nee-wetten. De uitspraak staat in kapitalen omdat hij het antwoord is; de
+# aanhef loopt erop uit.
+outcome_phrasing.KIESRAAD/kieswet.lead: For the elections of {date} you have
+outcome_phrasing.KIESRAAD/kieswet.lead_no_date: For the elections you have
+outcome_phrasing.KIESRAAD/kieswet.yes: THE RIGHT TO VOTE
+outcome_phrasing.KIESRAAD/kieswet.no: NO right to vote
+outcome_phrasing.SVB/algemene_kinderbijslagwet.lead: You have
+outcome_phrasing.SVB/algemene_kinderbijslagwet.yes: THE RIGHT TO CHILD BENEFIT
+outcome_phrasing.SVB/algemene_kinderbijslagwet.no: NO right to child benefit
+outcome_phrasing.IND/vreemdelingenwet.lead: You have
+outcome_phrasing.IND/vreemdelingenwet.yes: THE RIGHT OF RESIDENCE
+outcome_phrasing.IND/vreemdelingenwet.no: NO right of residence
+outcome_phrasing.GEMEENTE_ROTTERDAM/algemene_plaatselijke_verordening/terrassen.lead: For a terrace you have
+outcome_phrasing.GEMEENTE_ROTTERDAM/algemene_plaatselijke_verordening/terrassen.yes: THE RIGHT TO A PERMIT
+outcome_phrasing.GEMEENTE_ROTTERDAM/algemene_plaatselijke_verordening/terrassen.no: NO right to a permit
+outcome_phrasing.GEMEENTE_ROTTERDAM/alcoholwet/vergunning/gemeenten.lead: To sell alcohol you have
+outcome_phrasing.GEMEENTE_ROTTERDAM/alcoholwet/vergunning/gemeenten.yes: THE RIGHT TO A PERMIT
+outcome_phrasing.GEMEENTE_ROTTERDAM/alcoholwet/vergunning/gemeenten.no: NO right to a permit
+outcome_phrasing.NVWA/warenwet/haccp.lead: For food safety you have
+outcome_phrasing.NVWA/warenwet/haccp.yes: A HACCP OBLIGATION
+outcome_phrasing.NVWA/warenwet/haccp.no: NO HACCP obligation
+outcome_phrasing.NVWA/warenwet/meldplicht.lead: In a food safety incident you have
+outcome_phrasing.NVWA/warenwet/meldplicht.yes: A DUTY TO REPORT
+outcome_phrasing.NVWA/warenwet/meldplicht.no: NO duty to report
+outcome_phrasing.RVO/omgevingswet/energiebesparing/informatieplicht.lead: For energy saving you have
+outcome_phrasing.RVO/omgevingswet/energiebesparing/informatieplicht.yes: A DUTY TO REPORT
+outcome_phrasing.RVO/omgevingswet/energiebesparing/informatieplicht.no: NO duty to report
+
+# ---- de grafiek van het besteedbaar inkomen ---------------------------------
+simulation.disposable_income.0.label: Income tax
+simulation.disposable_income.1.label: Zvw contribution
+simulation.disposable_income.2.label: Healthcare allowance
+simulation.disposable_income.3.label: Housing benefit
+simulation.disposable_income.4.label: Child budget
+simulation.disposable_income.5.label: Childcare allowance
+simulation.disposable_income.6.label: State pension
+simulation.disposable_income.7.label: Survivor benefit
+simulation.disposable_income.8.label: AIO supplement
+simulation.disposable_income.9.label: Social assistance
+simulation.disposable_income.10.label: Housing cost allowance
+simulation.disposable_income.11.label: Bbz
+simulation.disposable_income.12.label: Unemployment benefit
+
+# ---- het presentatiedeck ----------------------------------------------------
+slides.0.title: RegelRecht
+slides.0.subtitle: from law to digital effect
+slides.0.footer: Netherlands Digital Service
+
+slides.1.overline: Today
+slides.1.lines.0: Every organisation
+slides.1.lines.1: has its **own reading** of the law
+slides.1.lines.2: which lands in **its own software**
+
+slides.2.overline: The result
+slides.2.lines.0: No overview
+slides.2.lines.1: Unpredictable
+slides.2.lines.2: Unmanageable
+
+slides.3.overline: What if
+slides.3.lines.0: We **start with the law**
+slides.3.lines.1: Make it **machine-executable**
+slides.3.lines.2: Publish it **openly**
+
+slides.4.title: RegelRecht demo
+slides.4.lines.0: A complete story, not a finished product
+slides.4.lines.1: We make policy by doing
+
+slides.5.overline: The law
+slides.5.title: The law, machine-readable
+slides.5.lead: The legal text and the executable rule sit side by side, article by article.
+slides.5.bullets.0: >-
+  Every article has a **machine_readable** part: what goes in, what comes out,
+  and how.
+slides.5.bullets.1: A reference to another law is explicit, not a copied amount.
+slides.5.bullets.2: The same YAML runs in the editor, in this portal and in the simulation.
+
+slides.6.overline: Coherence
+slides.6.title: Laws hang together
+slides.6.lead: >-
+  Whether you are insured depends on detention; whether you get healthcare
+  allowance depends on being insured.
+slides.6.bullets.0: 'Per law: which data from registers, which from other laws, what comes out.'
+slides.6.bullets.1: Every line is a real reference from the law, with this person's value on it.
+slides.6.bullets.2: Change a law and you see at once who it touches.
+
+slides.7.overline: Testing
+slides.7.title: The law tested, in plain language
+slides.7.lead: A scenario describes a person and what the law should produce for them.
+slides.7.bullets.0: >-
+  Given a 17-year-old, no healthcare allowance. Given a single person on a low
+  income, yes.
+slides.7.bullets.1: The same scenarios run here in the browser and in the build pipeline.
+slides.7.bullets.2: Change the law and you see which scenario falls over.
+
+slides.8.overline: Policy
+slides.8.title: What does it do to fifty thousand people?
+slides.8.lead: A generated population through every scheme, with the real laws.
+slides.8.bullets.0: >-
+  Who meets the conditions, for how much, broken down by age, income and
+  household.
+slides.8.bullets.1: Turn a threshold in the law and see the difference, before it takes effect.
+slides.8.bullets.2: 'For businesses too: permits, reporting duties, precario tax.'
+
+slides.9.overline: The citizen
+slides.9.title: One citizen, Merijn
+slides.9.lead: Self-employed in home care, a single parent with two young children.
+slides.9.bullets.0: Everything he is entitled to, computed live by the law itself.
+slides.9.bullets.1: Every fact traces back to the register that supplied it.
+slides.9.bullets.2: A fact wrong? He corrects it, a case officer assesses it.
+
+slides.10.overline: Applying
+slides.10.title: Asking only what government does not know
+slides.10.lead: The law computes with what is already there, and asks only when it gets stuck.
+slides.10.bullets.0: Housing benefit does not know the rent. That is the only question, at that moment.
+slides.10.bullets.1: After every answer the law computes again.
+slides.10.bullets.2: Check, declare, submit. Without a ten-page form.
+
+slides.11.overline: The case officer
+slides.11.title: The same right, the other side of the desk
+slides.11.lead: The application arrives with the calculation the citizen saw.
+slides.11.bullets.0: The engine recomputes it against the registered data.
+slides.11.bullets.1: The citizen's corrections are waiting to be assessed.
+slides.11.bullets.2: Grant or refuse, with reasons; an objection comes back through the portal.
+
+slides.12.overline: The entrepreneur
+slides.12.title: An entrepreneur, Claudia
+slides.12.lead: Owner of the coffee bar Noon in Rotterdam West, with a terrace.
+slides.12.bullets.0: 'The same engine, other laws: local by-laws, alcohol, food safety, precario tax.'
+slides.12.bullets.1: >-
+  The terrace permit asks for location and area; the precario tax computes with
+  it straight away.
+slides.12.bullets.2: >-
+  The municipality, the food authority and the enterprise agency in one
+  overview, without having to ask each other anything.
+
+slides.13.overline: RegelRecht demo
+slides.13.title: From law to digital effect
+slides.13.lines.0: A complete story, **not a finished product**
+slides.13.lines.1: We make policy **by doing**
+slides.13.link.label: regelrecht.rijks.app

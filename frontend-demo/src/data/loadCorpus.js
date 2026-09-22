@@ -38,11 +38,16 @@ export function loadCorpus() {
   if (corpusPromise) return corpusPromise;
   corpusPromise = (async () => {
     const index = await (await fetch('/data/index.json')).json();
-    const [bindings, profiles, services, config] = await Promise.all([
+    // Beide talen van de configuratie worden opgehaald, niet één op basis van
+    // de taal die op dat moment aanstaat: een taalwissel halverwege een
+    // presentatie mag geen laadmoment opleveren, en het corpus wordt maar één
+    // keer geladen. Het verschil is een bestand van twintig kilobyte.
+    const [bindings, profiles, services, config, configEn] = await Promise.all([
       fetchYaml('/data/bindings.yaml'),
       fetchYaml('/data/profiles.yaml'),
       fetchYaml('/data/services.yaml'),
       fetchYaml('/data/demo-config.yaml'),
+      fetchYaml('/data/demo-config.en.yaml').catch(() => null),
     ]);
     const laws = await Promise.all(
       index.laws.map(async (entry) => {
@@ -74,6 +79,15 @@ export function loadCorpus() {
       profiles,
       services: services.services ?? {},
       config,
+      /**
+       * Dezelfde configuratie met de Engelse teksten erin.
+       *
+       * Beide talen staan naast elkaar in het corpus; welke een scherm ziet,
+       * bepaalt de store (`useDemo().corpus`), want dat is de plek die
+       * reactief is. `null` als er geen overlay is: dan draait de demo in het
+       * Nederlands, wat beter is dan lege dia's.
+       */
+      configEn,
     };
   })();
   return corpusPromise;

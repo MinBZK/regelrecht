@@ -47,6 +47,16 @@ export function currentLocale() {
 }
 
 /**
+ * The active locale as a ref, for a computed that has to re-run on a switch.
+ *
+ * `currentLocale()` does track when it is called inside a reactive effect —
+ * it reads the same ref — but it reads as a plain function call, and a reader
+ * checking whether some computed follows the language should not have to go
+ * and look. This makes the dependency visible at the use site.
+ */
+export const activeLocale = computed(() => locale.value);
+
+/**
  * The string for `key`, with `{placeholder}`s filled from `vars`.
  *
  * A key missing from the active locale falls back to Dutch, not to the key

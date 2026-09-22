@@ -839,4 +839,12 @@ export default {
   'scenario.trace.label': 'Execution by the engine',
   'scenario.close': 'Close',
   'zaak.portaal.signed_in.lead': 'Signed in as',
+
+  // ---- the presentation deck -----------------------------------------------
+  'deck.label': 'Presentation',
+  'deck.presenter_name': "Presenter's name",
+  'deck.slide_of': 'Slide {n} of {total}',
+  'deck.previous': 'Previous slide',
+  'deck.next': 'Next slide',
+  'deck.close': 'Close',
 };

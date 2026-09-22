@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import { usePresentation } from './usePresentation.js';
 import { useDemo } from '../store/demoStore.js';
 import { intlLocale } from '../data/format.js';
+import { useI18n } from '../i18n/index.js';
 
 // The deck: a Rijkshuisstijl-blue panel, full-screen for the intro and the
 // closing, a left rail while the live demo runs on the right. Slides are data
@@ -10,6 +11,7 @@ import { intlLocale } from '../data/format.js';
 
 const p = usePresentation();
 const { state } = useDemo();
+const { t } = useI18n();
 
 // Een computed: het dek blijft staan tijdens een taalwissel, dus een datum die
 // eenmalig is uitgerekend zou in de oude taal blijven hangen.
@@ -30,7 +32,7 @@ function saveName(e) {
 
 <template>
   <Teleport to="body">
-    <div v-if="p.active.value && p.current.value && p.visible.value" class="deck" :class="{ full: p.isFull.value }" role="region" aria-label="Presentatie">
+    <div v-if="p.active.value && p.current.value && p.visible.value" class="deck" :class="{ full: p.isFull.value }" role="region" :aria-label="t('deck.label')">
       <!-- Het podium: de tekstkolom van de dia. Op het hele scherm is dat een
            gecentreerde kolom van hooguit 1600px, in de rail de hele kolom. In
            beide gevallen is dit de container waar de typografie zich op meet,
@@ -44,7 +46,7 @@ function saveName(e) {
             <h1 class="title title-hero">{{ p.current.value.title }}</h1>
             <p v-if="p.current.value.subtitle" class="lead lead-hero">{{ p.current.value.subtitle }}</p>
             <div class="title-meta">
-              <input class="presenter" :value="state.presenterName" placeholder="Naam presentator" aria-label="Naam presentator" @change="saveName" />
+              <input class="presenter" :value="state.presenterName" :placeholder="t('deck.presenter_name')" :aria-label="t('deck.presenter_name')" @change="saveName" />
               <span v-if="p.current.value.footer" class="affiliation">{{ p.current.value.footer }}</span>
             </div>
           </template>
@@ -89,7 +91,7 @@ function saveName(e) {
              stonden ze op de tellerregel, waardoor ze hoog naast een lege regel
              hingen terwijl de toetsen eronder de breedte vulden. -->
         <div class="footer-text">
-          <span class="counter" :aria-label="`Dia ${p.index.value + 1} van ${p.total.value}`">{{ counter }}</span>
+          <span class="counter" :aria-label="t('deck.slide_of', { n: p.index.value + 1, total: p.total.value })">{{ counter }}</span>
           <!-- De toetsen als echte toetsen: nldd-keyboard-shortcut rendert een
                <kbd> per toets, met de OS-detectie en de semantiek erbij. Dit
                waren drie <span>'s met een eigen tekstkleur. `color="inherit"`
@@ -123,7 +125,7 @@ function saveName(e) {
           <nldd-icon-button
             variant="inherit-tinted"
             icon="back"
-            text="Vorige dia"
+            :text="t('deck.previous')"
             tooltip-timing="never"
             :disabled="p.index.value === 0 || undefined"
             @click="p.prev()"
@@ -131,14 +133,14 @@ function saveName(e) {
           <nldd-button
             v-if="isLast"
             variant="inherit-tinted"
-            text="Sluiten"
+            :text="t('deck.close')"
             @click="p.stop()"
           ></nldd-button>
           <nldd-icon-button
             v-else
             variant="inherit-tinted"
             icon="forward"
-            text="Volgende dia"
+            :text="t('deck.next')"
             tooltip-timing="never"
             @click="p.next()"
           ></nldd-icon-button>

@@ -23,7 +23,7 @@ import { verdictOf } from '../data/format.js';
 import { driftOf } from '../data/caseDrift.js';
 import { isEntrypointFor, subjectOf } from '../data/entrypoints.js';
 import { assignClaimOwnership } from '../data/claimOwnership.js';
-import { t } from '../i18n/index.js';
+import { activeLocale, t } from '../i18n/index.js';
 
 const STORAGE_KEY = 'rr-demo-state-v1';
 
@@ -88,8 +88,27 @@ watch(
 // Shallow on purpose: the corpus holds 80 parsed law documents and the engine
 // is a wasm-bindgen object; wrapping either in a deep proxy would be slow and
 // break the engine's private pointer access.
-const corpus = shallowRef(null);
+const loadedCorpus = shallowRef(null);
 const engine = shallowRef(null);
+
+/**
+ * Het corpus zoals elk scherm het leest, met de configuratie in de taal die
+ * aanstaat.
+ *
+ * Hier en niet in `loadCorpus`, omdat dit de reactieve kant is: `currentLocale`
+ * is een ref, dus een computed eromheen laat elk scherm dat `corpus.config`
+ * leest opnieuw tekenen bij een taalwissel. Het corpus zelf wordt niet opnieuw
+ * geladen; alleen welke van de twee configuraties eruit komt verandert.
+ *
+ * Het Nederlands is de terugval: zonder overlay draait de demo in het
+ * Nederlands, en dat is beter dan lege dia's.
+ */
+const corpus = computed(() => {
+  const c = loadedCorpus.value;
+  if (!c) return null;
+  const config = activeLocale.value === 'en' && c.configEn ? c.configEn : c.config;
+  return config === c.config ? c : markRaw({ ...c, config });
+});
 const ready = ref(false);
 const loadError = ref(null);
 /** Bumped whenever registered data changed; views re-evaluate on it. */
@@ -180,7 +199,7 @@ async function boot() {
   if (bootPromise) return bootPromise;
   bootPromise = (async () => {
     try {
-      corpus.value = markRaw(await loadCorpus());
+      loadedCorpus.value = markRaw(await loadCorpus());
       pruneStaleRecords(corpus.value);
       engine.value = markRaw(await prepareEngine(corpus.value));
       reregister();
