@@ -77,7 +77,6 @@ const pendingClaims = computed(() => {
     (c) => c.status === 'PENDING' && (key ? c.keyValue === key : c.bsn === demo.subjectBsn()),
   );
 });
-const properties = computed(() => (activeDelegation.value ? [] : persona.value?.properties ?? []));
 
 // Namens een ander gaat de pagina over die ander: de vraag "waar heb ik recht
 // op" is dan niet de goede vraag, en de persoonsbeschrijving van de
@@ -131,58 +130,58 @@ const loadFailureText = computed(() => loadFailures.value.map((f) => `${f.id} ($
          kolommen meer ruimte in plaats van een vierde erbij. De kop loopt mee, zodat
          de tekst boven de tegels op dezelfde marge staat. -->
     <nldd-simple-section width="1440px">
+      <!-- De kop draagt alleen de vraag en haar toelichting. Wie er is
+           ingelogd stond eerder in de overline, bóven de kop, en dat zette een
+           voetnoot op de plek van het onderwerp: de pagina gaat over waar deze
+           burger recht op heeft, niet over wie er is ingelogd. De identiteit
+           staat daarom onder de kop, waar zij de vraag beantwoordt in plaats
+           van hem aan te kondigen. -->
       <nldd-title slot="header" size="2">
-        <!-- Op een smal scherm blijft alleen de kop staan: vijf lagen tekst
-             vulden daar het scherm voordat de eerste tegel in beeld kwam. Wie
-             is ingelogd staat ook in de werkbalk. Namens wie er gehandeld
-             wordt blijft wél staan, want dat verandert de betekenis van alles
-             eronder.
-             Dit gaat met v-if en niet met een CSS-klasse: overline en subtitle
-             zijn slots van nldd-title, en de component zet daar in zijn
-             shadow-DOM een eigen display op die een regel van buiten niet
-             overstemt (gemeten: allebei bleven zichtbaar). -->
-        <span v-if="!narrow || activeDelegation" slot="overline">
-          <template v-if="narrow">Namens {{ activeDelegation.subjectName }}</template>
-          <template v-else>Ingelogd als {{ persona?.name ?? profile?.name }}<template v-if="activeDelegation"> · namens {{ activeDelegation.subjectName }}</template> · demo, geen echte overheidsdienst</template>
-          <!-- De beschrijving staat bij wie er is ingelogd, want zij zegt wie
-               die persoon is. Zij stond eerder onder kop én subtitel, los van
-               de naam waar zij bij hoort; daar las zij als een derde regel
-               inleidende tekst in plaats van als een eigenschap van de
-               persona. Zij zit binnen dezelfde overline-span en niet in een
-               tweede met hetzelfde slot: nldd-title verdeelt zijn slots in de
-               shadow-DOM en het is niet gezegd dat een tweede element daar
-               naast het eerste terechtkomt. Namens een ander zegt de
-               beschrijving van de gemachtigde niets, dus dan blijft zij weg. -->
-          <template v-if="!narrow && persona?.description && !activeDelegation"><br /><em>{{ persona.description }}</em></template>
-        </span>
         <h1>{{ heading }}</h1>
         <span v-if="!narrow" slot="subtitle">{{ subtitle }}</span>
-        <!-- De slot heet `end`, niet `actions`: nldd-title kent alleen
-             overline, default, subtitle en end. Met `actions` viel het blok
-             buiten de shadow-DOM en was het 0x0 — de persona-tags stonden er
-             dus wel, maar zag niemand. `.title__end` is een flexrij die niet
-             krimpt, dus de tags gaan er los in: een nldd-container ertussen
-             heeft geen eigen breedte en werd 0px breed.
-             Op een smal scherm staan ze naast de kop en namen ze de helft van
-             de breedte, waardoor die over vier regels brak. Het zijn
-             eigenschappen van de persona, net als de beschrijving in de
-             overline, dus ze gaan daar samen weg. -->
-        <template v-if="!narrow">
-          <nldd-tag v-for="p in properties" :key="p" slot="end" size="sm" :text="p"></nldd-tag>
-          <nldd-tag v-if="profile?.kvk && !activeDelegation" slot="end" size="sm" icon="building" :text="`KVK ${profile.kvk}`"></nldd-tag>
-        </template>
       </nldd-title>
+      <!-- Naam, voorbehoud en beschrijving horen bij elkaar: het zijn drie
+           dingen over dezelfde persoon. Ze staan in één blok onder de kop, met
+           de naam als eerste regel en de beschrijving eronder.
+
+           Het blok zit in de header-slot, naast nldd-title, en niet in de body
+           van de sectie. nldd-simple-section zet 32px tussen zijn header en
+           zijn inhoud, en die afstand is niet in te stellen: in de body kwam de
+           identiteit daardoor even ver van de kop te staan als de tegels, terwijl
+           zij bij de kop hoort. In de header is die 32px juist de scheiding naar
+           de tegels (gemeten: 80px tot de eerste tegel). De 12px erboven is het
+           ritme dat nldd-title intern ook aanhoudt; zonder padding sloot de
+           naam strak op de subtitel aan (gemeten: 0px). Dit kost geen eigen CSS
+           en geen negatieve marge.
+
+           Op een smal scherm blijft alleen de kop staan: vijf lagen tekst
+           vulden daar het scherm voordat de eerste tegel in beeld kwam, en wie
+           is ingelogd staat ook in de werkbalk. Namens wie er gehandeld wordt
+           blijft wél staan, want dat verandert de betekenis van alles eronder.
+
+           De persona-tags (Ouderlijk gezag, Ondernemer, KVK-nummer) stonden
+           hier als derde kanaal naast de beschrijving en zijn weg: "alleenstaande
+           ouder met twee jonge kinderen" zegt al wat "Ouderlijk gezag" zegt, en
+           een tag die niets filtert en nergens heen leidt is een label om het
+           label. -->
+      <nldd-container v-if="!narrow || activeDelegation" slot="header" padding-top="12">
+        <nldd-rich-text spacing="tight">
+          <p>
+            <template v-if="narrow">Namens {{ activeDelegation.subjectName }}</template>
+            <template v-else>Ingelogd als <strong>{{ persona?.name ?? profile?.name }}</strong><template v-if="activeDelegation"> · namens {{ activeDelegation.subjectName }}</template> · demo, geen echte overheidsdienst</template>
+          </p>
+          <!-- Namens een ander zegt de beschrijving van de gemachtigde niets. -->
+          <p v-if="!narrow && persona?.description && !activeDelegation">{{ persona.description }}</p>
+        </nldd-rich-text>
+      </nldd-container>
       <!-- Eén ingang voor 'er is iets veranderd', naast de tegels die elk over
            één regeling gaan. Onder de kop en niet ernaast: het is een actie op
            de hele pagina, geen eigenschap van de persoon. -->
       <nldd-container v-if="showWizard" padding-top="8">
         <nldd-button size="sm" variant="secondary" start-icon="edit" text="Wijziging doorgeven" @click="wizardOpen = true"></nldd-button>
       </nldd-container>
-      <!-- De persona-beschrijving stond hier, onder de kop; zij is naar de
-           overline verhuisd, naast de naam waar zij bij hoort. De container
-           houdt zijn eigen padding-top: die stond er omdat de beschrijving
-           `spacing="tight"` had en een banner er anders tegenaan plakte, en
-           blijft nodig om de banners los van de kop te zetten. -->
+      <!-- De banners krijgen hun eigen container met een marge, zodat ze los
+           staan van wat erboven eindigt. -->
       <nldd-container v-if="loadFailures.length || pendingClaims.length || activeDelegation" padding-top="16" gap="12">
       <!-- Namens een ander handelen is niet hetzelfde als zelf inloggen; dat
            hoort in beeld te blijven zolang het duurt, met de wet erbij. -->
