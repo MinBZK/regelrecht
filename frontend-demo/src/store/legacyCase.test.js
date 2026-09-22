@@ -42,3 +42,24 @@ describe('een zaak van vóór de vertaling', () => {
     expect(caseReason({})).toBe(null);
   });
 });
+
+describe('de reden onder een automatisch besluit', () => {
+  afterEach(() => adoptLocale('nl'));
+
+  it('komt uit `reasonKey` en niet uit `reason`', () => {
+    // De store schrijft `reasonKey` op het automatische pad en `reason` alleen
+    // wanneer een behandelaar beslist. Een scherm dat `c.reason` leest toont
+    // dus niets voor elke zaak die de wet zelf afdeed, en dat is de
+    // standaardstroom van de demo. Geen foutmelding, alleen een lege regel.
+    const auto = { approved: true, reasonKey: 'case.reason.granted_by_law' };
+    expect(auto.reason).toBeUndefined();
+    expect(caseReason(auto)).toBe('Automatisch toegekend op basis van de wet.');
+    adoptLocale('en');
+    expect(caseReason(auto)).toBe('Granted automatically under the law.');
+  });
+
+  it('laat een reden van een behandelaar staan zoals hij is', () => {
+    // Die is ingetypt door een mens en hoort niet vertaald te worden.
+    expect(caseReason({ reason: 'Onvoldoende onderbouwd.' })).toBe('Onvoldoende onderbouwd.');
+  });
+});

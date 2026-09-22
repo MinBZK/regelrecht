@@ -199,9 +199,9 @@ export function humanize(name, { lawId = null } = {}) {
   const dutch = capitalise(words.map((w) => ABBREVIATIONS.get(w.toLowerCase()) ?? w));
   if (currentLocale() === 'nl') return dutch;
 
-  // Engels: eerst de hele naam, dan woord voor woord. De woordenlijst zelf
-  // komt in een volgende stap; tot die tijd is hij leeg en valt alles terug op
-  // het Nederlands, wat een schoonheidsfout is en geen onwaarheid.
+  // Engels: eerst de hele naam, dan woord voor woord. Een naam die in geen van
+  // beide staat valt terug op het Nederlands, wat een schoonheidsfout is en
+  // geen onwaarheid.
   const g = glossary;
   const exact = g.laws?.[lawId]?.[name] ?? g.names?.[name];
   if (exact) return capitalise(String(exact).split(/\s+/));
@@ -216,9 +216,12 @@ export function humanize(name, { lawId = null } = {}) {
 }
 
 /**
- * De Engelse woordenlijst voor veldnamen. Leeg tot de woordenlijst-fase hem
- * vult; `setGlossary` is er zodat die stap en de tests hem kunnen zetten
- * zonder dat dit bestand er iets van hoeft te weten.
+ * De Engelse woordenlijst voor veldnamen.
+ *
+ * Gegenereerd uit `corpus/demo/i18n/glossary.en.yaml` door
+ * `copy-demo-corpus.mjs`. `setGlossary` is er voor de tests, die een eigen
+ * lijst willen zetten zonder de meegeleverde te raken; `setGlossary(null)`
+ * zet hem terug.
  */
 let glossary = generatedGlossary;
 

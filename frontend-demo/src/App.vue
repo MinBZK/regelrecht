@@ -87,17 +87,16 @@ const tabs = computed(() => [
   // Namens een onderneming heet het tabblad naar die onderneming: 'Mijn
   // overheid' gaat over de ingelogde burger, en dat is dan niet het onderwerp.
   //
-  // i18n-ok: `portal_tab_label` komt uit demo-config.yaml en is Nederlands.
-  // Die inhoud wordt later vertaald; tot die tijd valt het tabblad in het
-  // Engels terug op de sleutel, zodat er geen Nederlands woord tussen de
-  // Engelse tabbladen staat. Dit is dus geen tekst die in een woordenboek
-  // hoort, maar een keuze over corpusinhoud die er nog niet is.
+  // `portal_tab_label` komt uit demo-config.yaml, en die configuratie wordt per
+  // taal geleverd: de store kiest tussen de Nederlandse en de Engelse versie.
+  // Het tabblad leest hem dus gewoon, in welke taal hij ook binnenkomt. De
+  // sleutel is de terugval voor een profiel dat er geen heeft.
   {
     name: 'portaal',
     text:
       activeDelegation.value?.subjectType === 'BUSINESS'
         ? activeDelegation.value.subjectName
-        : (locale.value === 'nl' && profile.value?.portal_tab_label) || t('app.tabs.portaal'),
+        : profile.value?.portal_tab_label || t('app.tabs.portaal'),
     icon: activeDelegation.value?.subjectType === 'BUSINESS' ? 'building' : 'person',
     to: pathFor('portaal'),
   },

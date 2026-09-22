@@ -4,7 +4,7 @@ import DataLineage from './DataLineage.vue';
 import { fieldSpec, formatDateTime, formatMissing, formatValue, humanize, verdictOf } from '../data/format.js';
 import { lineageFromTrace, leafValues } from '../data/lineage.js';
 import { askedInputsFor, claimKeyFor, evaluationParamsFor, inputKind, nextQuestions, parseAnswer } from '../data/askedInputs.js';
-import { eventText, useDemo } from '../store/demoStore.js';
+import { caseReason, eventText, useDemo } from '../store/demoStore.js';
 import { t } from '../i18n/index.js';
 import { awbOutcomes, objectionOpen, statusOf } from '../data/lifecycle.js';
 import { driftRows, driftSentence } from '../data/caseDrift.js';
@@ -201,8 +201,8 @@ const statusView = computed(() => {
   // Uit de fase, niet uit het opgeslagen veld (zie lifecycle.js).
   const status = statusOf(c);
   if (status === 'DECIDED') {
-    if (c.objection) return c.approved ? { variant: 'success', icon: 'check-mark-circle', text: t('sheet.application.status.granted_after_objection'), supporting: c.reason } : { variant: 'critical', icon: 'dismiss-circle', text: t('sheet.application.status.refused_objection_dismissed'), supporting: c.reason };
-    return c.approved ? { variant: 'success', icon: 'check-mark-circle', text: t('sheet.application.status.granted'), supporting: c.reason } : { variant: 'critical', icon: 'dismiss-circle', text: t('sheet.application.status.refused'), supporting: c.reason };
+    if (c.objection) return c.approved ? { variant: 'success', icon: 'check-mark-circle', text: t('sheet.application.status.granted_after_objection'), supporting: caseReason(c) } : { variant: 'critical', icon: 'dismiss-circle', text: t('sheet.application.status.refused_objection_dismissed'), supporting: caseReason(c) };
+    return c.approved ? { variant: 'success', icon: 'check-mark-circle', text: t('sheet.application.status.granted'), supporting: caseReason(c) } : { variant: 'critical', icon: 'dismiss-circle', text: t('sheet.application.status.refused'), supporting: caseReason(c) };
   }
   if (status === 'IN_REVIEW') return { variant: 'accent', icon: 'clock', text: t('sheet.application.status.in_review'), supporting: t('sheet.application.status.in_review.supporting') };
   return { variant: 'accent', icon: 'paper-plane', text: t('sheet.application.status.submitted'), supporting: t('sheet.application.status.submitted.supporting') };

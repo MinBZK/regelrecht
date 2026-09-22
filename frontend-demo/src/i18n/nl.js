@@ -863,4 +863,10 @@ export default {
     'en zou hier de indruk wekken van iets waar niemand zich op kan beroepen. De tekst staat er daarom zoals hij is ' +
     'bekendgemaakt. Het model dat erop gebouwd is, en alles eromheen, is wel vertaald.',
   'wet.dutch_only.published': 'Lees de bekendgemaakte tekst',
+  'scenario.files.label': 'Testbestanden',
+  'scenario.view.file': 'Bestand',
+  'scenario.run_all': 'Alles uitvoeren',
+  'scenario.run': 'Uitvoeren',
+  'scenario.run_failed': 'Uitvoering mislukt',
+  'scenario.outputs': 'Uitkomsten',
 };

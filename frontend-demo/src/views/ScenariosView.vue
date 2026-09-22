@@ -296,7 +296,7 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
 </script>
 
 <template>
-  <nldd-navigation-split-view ref="splitView" primary-sidebar-as-sheet primary-sidebar-accessible-label="Scenario's">
+  <nldd-navigation-split-view ref="splitView" primary-sidebar-as-sheet :primary-sidebar-accessible-label="t('app.tabs.scenarios')">
     <nldd-split-view-pane slot="sidebar" has-content background="tinted">
       <nldd-page sticky-header background="inherit">
         <nldd-container slot="header" padding="12" gap="8">
@@ -304,7 +304,7 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
           <nldd-search-field :placeholder="t('scenario.search')" size="sm" :value="query" @input="query = $event.detail?.value ?? $event.target.value"></nldd-search-field>
         </nldd-container>
         <nldd-container padding-inline="8" padding-bottom="16">
-          <nldd-list type="navigation" accessible-label="Testbestanden">
+          <nldd-list type="navigation" :accessible-label="t('scenario.files.label')">
             <nldd-list-item v-for="f in filtered" :key="f.path" size="sm" button :selected="f.path === selectedPath || undefined" @click="select(f.path)">
               <nldd-text-cell size="sm" :text="scenarioTitle(f.title)" :supporting-text="lawFor(f) ? serviceInfo(corpus, lawFor(f).service).name : f.law_path"></nldd-text-cell>
             </nldd-list-item>
@@ -319,20 +319,20 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
         <nldd-container slot="header" padding="8">
           <nldd-toolbar size="sm">
             <nldd-toolbar-item slot="start">
-              <nldd-button size="sm" variant="neutral-tinted" start-icon="checklist" text="Scenario's" :supporting-text="`${features.length}`" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
+              <nldd-button size="sm" variant="neutral-tinted" start-icon="checklist" :text="t('app.tabs.scenarios')" :supporting-text="`${features.length}`" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
             </nldd-toolbar-item>
             <nldd-toolbar-title v-if="parsed" slot="start" :text="scenarioTitle(parsed.feature)" :supporting-text="fileName"></nldd-toolbar-title>
             <nldd-toolbar-item slot="end" v-if="parsed">
               <nldd-segmented-control size="sm" width="fit-content" :value="showText ? 'text' : 'steps'" @change="showText = $event.detail?.value === 'text'">
-                <nldd-segmented-control-item value="steps" text="Scenario's"></nldd-segmented-control-item>
-                <nldd-segmented-control-item value="text" text="Bestand"></nldd-segmented-control-item>
+                <nldd-segmented-control-item value="steps" :text="t('app.tabs.scenarios')"></nldd-segmented-control-item>
+                <nldd-segmented-control-item value="text" :text="t('scenario.view.file')"></nldd-segmented-control-item>
               </nldd-segmented-control>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end" v-if="parsed">
-              <nldd-button size="sm" variant="primary" start-icon="play" text="Alles uitvoeren" :loading="runningAll || undefined" :disabled="(anyRunning && !runningAll) || undefined" @click="runAll"></nldd-button>
+              <nldd-button size="sm" variant="primary" start-icon="play" :text="t('scenario.run_all')" :loading="runningAll || undefined" :disabled="(anyRunning && !runningAll) || undefined" @click="runAll"></nldd-button>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end" v-if="parsed && selectedLaw">
-              <nldd-button size="sm" variant="neutral-tinted" start-icon="book" text="Wettekst" @click="goTo('wetten', { lawId: selectedLaw.id })"></nldd-button>
+              <nldd-button size="sm" variant="neutral-tinted" start-icon="book" :text="t('wet.tile.action.law_text')" @click="goTo('wetten', { lawId: selectedLaw.id })"></nldd-button>
             </nldd-toolbar-item>
           </nldd-toolbar>
         </nldd-container>
@@ -349,7 +349,7 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
         </nldd-simple-section>
         <nldd-simple-section v-else-if="!parsed" height="60vh">
           <nldd-inline-dialog icon="checklist" :text="t('scenario.pick')" :supporting-text="t('scenario.pick.hint')">
-            <nldd-button slot="actions" variant="primary" size="sm" text="Scenario's" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
+            <nldd-button slot="actions" variant="primary" size="sm" :text="t('app.tabs.scenarios')" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
           </nldd-inline-dialog>
         </nldd-simple-section>
         <nldd-simple-section v-else-if="showText" width="full">
@@ -384,12 +384,12 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
               <!-- One height across the action row: an md tag and xs buttons are both
                    24px; no tag size matches an sm button. -->
               <nldd-tag v-if="resultTag(index)" :color="resultTag(index).color" :text="resultTag(index).text"></nldd-tag>
-              <nldd-button size="xs" variant="secondary" start-icon="play" text="Uitvoeren" :loading="runs[index]?.status === 'running' || undefined" :disabled="(anyRunning && runs[index]?.status !== 'running') || undefined" @click="run(index)"></nldd-button>
+              <nldd-button size="xs" variant="secondary" start-icon="play" :text="t('scenario.run')" :loading="runs[index]?.status === 'running' || undefined" :disabled="(anyRunning && runs[index]?.status !== 'running') || undefined" @click="run(index)"></nldd-button>
               <nldd-button v-if="runs[index]?.traceText" size="xs" variant="neutral-tinted" start-icon="list" text="Trace" @click="activeTrace = index"></nldd-button>
               <nldd-icon-button size="xs" variant="neutral-transparent" :icon="open[index] ? 'chevron-up' : 'chevron-down'" :text="open[index] ? 'Stappen verbergen' : 'Stappen tonen'" :expanded="open[index] || undefined" @click="open[index] = !open[index]"></nldd-icon-button>
             </nldd-container>
             <nldd-container v-if="open[index]" padding-inline="16" padding-bottom="12" gap="12">
-              <nldd-banner v-if="runs[index]?.error && !runs[index]?.steps?.length" variant="critical" text="Uitvoering mislukt" :supporting-text="runs[index].error"></nldd-banner>
+              <nldd-banner v-if="runs[index]?.error && !runs[index]?.steps?.length" variant="critical" :text="t('scenario.run_failed')" :supporting-text="runs[index].error"></nldd-banner>
               <div class="gherkin">
                 <div v-for="(step, si) in scenario.steps" :key="si" :class="['step', stepClass(index, (parsed.background?.length ?? 0) + si)]">
                   <span class="kw">{{ renderStep(step).keyword }}</span> {{ renderStep(step).text }}
@@ -422,8 +422,8 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
             <nldd-top-title-bar :text="t('scenario.trace.label')" :supporting-text="parsed?.scenarios[activeTrace]?.name" :dismiss-text="t('scenario.close')" @dismiss="activeTrace = null"></nldd-top-title-bar>
           </nldd-container>
           <nldd-container padding="16" gap="16">
-            <nldd-banner v-if="traceScenario.error" variant="critical" text="Uitvoering mislukt" :supporting-text="traceScenario.error"></nldd-banner>
-            <nldd-list v-if="traceScenario.outputs" variant="box-tinted" accessible-label="Uitkomsten">
+            <nldd-banner v-if="traceScenario.error" variant="critical" :text="t('scenario.run_failed')" :supporting-text="traceScenario.error"></nldd-banner>
+            <nldd-list v-if="traceScenario.outputs" variant="box-tinted" :accessible-label="t('scenario.outputs')">
               <nldd-list-item v-for="(v, k) in traceScenario.outputs" :key="k" size="sm">
                 <nldd-text-cell size="sm" :text="String(k)"></nldd-text-cell>
                 <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="JSON.stringify(v)"></nldd-text-cell>

@@ -860,4 +860,10 @@ export default {
     'here would suggest something nobody could rely on. The text therefore stands as it was published. The model ' +
     'built on it, and everything around it, is translated.',
   'wet.dutch_only.published': 'Read the published text',
+  'scenario.files.label': 'Test files',
+  'scenario.view.file': 'File',
+  'scenario.run_all': 'Run all',
+  'scenario.run': 'Run',
+  'scenario.run_failed': 'Execution failed',
+  'scenario.outputs': 'Outcomes',
 };
