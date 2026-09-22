@@ -14,7 +14,7 @@ import { localeRouteName } from '../router.js';
 // zijn eigen telefoon kan openen terwijl hij naar het scherm kijkt.
 
 const router = useRouter();
-const { locale } = useI18n();
+const { t, locale } = useI18n();
 
 /** Het pad van een tabblad in de taal die aan staat. */
 function pathFor(page) {
@@ -49,20 +49,25 @@ const pageUrl = computed(() => {
 // Wat er in de demo te zien is, in de volgorde van de tabbladen erboven. Dit is
 // een leeswijzer, geen tweede navigatie: de kaarten brengen je naar hetzelfde
 // tabblad waar de tabbalk heen gaat.
+// De titels zijn dezelfde als in de tabbalk: het zijn dezelfde tabbladen, dus
+// ze lenen de sleutels van App.vue in plaats van een tweede naam te krijgen die
+// bij een wijziging kan gaan afwijken.
 const onderdelen = computed(() => [
-  { icon: 'books', title: 'Wetten', text: 'De wet als machine-uitvoerbare YAML, naast de artikelen waar hij vandaan komt.', to: pathFor('wetten') },
-  { icon: 'centralized-network', title: 'Graaf', text: 'Welke wet welke andere wet nodig heeft, en welke waarde daartussen loopt.', to: pathFor('graaf') },
-  { icon: 'checklist', title: "Scenario's", text: 'Voorbeelden uit de memorie van toelichting, live doorgerekend door de engine.', to: pathFor('scenarios') },
-  { icon: 'chart-line', title: 'Simulatie', text: 'Wat een regel doet bij een hele bevolking in plaats van bij één persoon.', to: pathFor('simulatie') },
-  { icon: 'user', title: 'Mijn overheid', text: 'Hetzelfde corpus als portaal: waar heeft deze persoon recht op, en waarom.', to: pathFor('portaal') },
-  { icon: 'inbox', title: 'Zaaksysteem', text: 'De andere kant van de balie: een behandelaar die een aanvraag beoordeelt.', to: pathFor('zaaksysteem') },
+  { icon: 'books', title: t('app.tabs.wetten'), text: t('home.parts.wetten.text'), to: pathFor('wetten') },
+  { icon: 'centralized-network', title: t('app.tabs.graaf'), text: t('home.parts.graaf.text'), to: pathFor('graaf') },
+  { icon: 'checklist', title: t('app.tabs.scenarios'), text: t('home.parts.scenarios.text'), to: pathFor('scenarios') },
+  { icon: 'chart-line', title: t('app.tabs.simulatie'), text: t('home.parts.simulatie.text'), to: pathFor('simulatie') },
+  { icon: 'user', title: t('app.tabs.portaal'), text: t('home.parts.portaal.text'), to: pathFor('portaal') },
+  { icon: 'inbox', title: t('app.tabs.zaaksysteem'), text: t('home.parts.zaaksysteem.text'), to: pathFor('zaaksysteem') },
 ]);
 
-const links = [
-  { icon: 'home', title: 'regelrecht.rijks.app', text: 'Wat RegelRecht is, voor wie, en hoe je meedoet.', href: 'https://regelrecht.rijks.app' },
-  { icon: 'document', title: 'Documentatie', text: 'Het wetformaat, de engine, de RFC’s en hoe je zelf een wet toevoegt.', href: 'https://docs.regelrecht.rijks.app/docs/' },
-  { icon: 'library', title: 'Onderzoek', text: 'Het position paper Rules as Executed en het onderzoek eromheen.', href: 'https://regelrecht.rijks.app/research/' },
-];
+// Computed en geen vaste lijst: de teksten moeten bij een taalwissel mee, net
+// als `tabs` in App.vue. De eerste titel is een adres en blijft zoals hij is.
+const links = computed(() => [
+  { icon: 'home', title: 'regelrecht.rijks.app', text: t('home.links.site.text'), href: 'https://regelrecht.rijks.app' },
+  { icon: 'document', title: t('home.links.docs.title'), text: t('home.links.docs.text'), href: 'https://docs.regelrecht.rijks.app/docs/' },
+  { icon: 'library', title: t('home.links.research.title'), text: t('home.links.research.text'), href: 'https://regelrecht.rijks.app/research/' },
+]);
 
 function start() {
   router.push(pathFor('presentatie'));
@@ -89,16 +94,13 @@ onActivated(() => {
       <div class="hero-row">
         <div class="hero-text">
           <nldd-title size="1" color="inherit">
-            <span slot="overline">Demo</span>
+            <span slot="overline">{{ t('app.demo.label') }}</span>
             <h1>RegelRecht</h1>
-            <span slot="subtitle">Van wet naar digitale werking</span>
+            <span slot="subtitle">{{ t('home.hero.subtitle') }}</span>
           </nldd-title>
           <nldd-spacer size="16"></nldd-spacer>
           <nldd-rich-text color="inherit">
-            <p>
-              Wat gebeurt er als de wet zelf machine-uitvoerbaar is en openbaar gepubliceerd wordt?
-              Deze demo rekent het voor, in je eigen browser, op verzonnen personen.
-            </p>
+            <p>{{ t('home.hero.lead') }}</p>
           </nldd-rich-text>
           <nldd-spacer size="24"></nldd-spacer>
           <nldd-button-group orientation="horizontal">
@@ -106,7 +108,7 @@ onActivated(() => {
               size="lg"
               variant="inherit-filled"
               start-icon="play"
-              text="Start de presentatie"
+              :text="t('home.hero.start')"
               :disabled="!ready || undefined"
               @click="start"
             ></nldd-button>
@@ -114,7 +116,7 @@ onActivated(() => {
               size="lg"
               variant="inherit-tinted"
               start-icon="books"
-              text="Zelf rondkijken"
+              :text="t('home.hero.browse')"
               :disabled="!ready || undefined"
               @click="router.push(pathFor('wetten'))"
             ></nldd-button>
@@ -124,7 +126,7 @@ onActivated(() => {
           v-if="pageUrl"
           class="qr"
           :value="pageUrl"
-          accessible-label="QR-code naar deze pagina, om de demo op je telefoon te openen"
+          :accessible-label="t('home.hero.qr')"
         />
       </div>
     </nldd-hero>
@@ -134,8 +136,8 @@ onActivated(() => {
          beschrijving van tabbladen die vlak boven hem al staan. -->
     <nldd-simple-section>
       <nldd-title slot="header" size="3">
-        <h2>Verder lezen</h2>
-        <span slot="subtitle">Het werk waar deze demo uit voortkomt.</span>
+        <h2>{{ t('home.links.title') }}</h2>
+        <span slot="subtitle">{{ t('home.links.subtitle') }}</span>
       </nldd-title>
       <nldd-collection layout="grid" item-width="240px">
         <nldd-card v-for="l in links" :key="l.href" :href="l.href" target="_blank">
@@ -157,8 +159,8 @@ onActivated(() => {
         <!-- Een kop die met "Wat ..." begint leest als een tussenkop uit een
              gegenereerde tekst; de sectie is een lijst van onderdelen, dus zij
              heet naar wat zij toont. -->
-        <h2>De onderdelen</h2>
-        <span slot="subtitle">Dezelfde wetten, zes keer anders bekeken. De presentatie loopt er zelf langs.</span>
+        <h2>{{ t('home.parts.title') }}</h2>
+        <span slot="subtitle">{{ t('home.parts.subtitle') }}</span>
       </nldd-title>
       <nldd-collection layout="grid" item-width="240px">
         <nldd-card v-for="o in onderdelen" :key="o.to" button @click="router.push(o.to)">

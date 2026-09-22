@@ -6,8 +6,9 @@ import ApplicationSheet from '../components/ApplicationSheet.vue';
 import ChangeWizardSheet from '../components/ChangeWizardSheet.vue';
 import { fieldSpec, numericImpact } from '../data/format.js';
 import { loadFailures } from '../engine/useDemoEngine.js';
-import { PERMISSION_LABELS, delegationLabel } from '../data/delegation.js';
+import { delegationLabel, permissionLabel } from '../data/delegation.js';
 import { useDemo } from '../store/demoStore.js';
+import { useI18n } from '../i18n/index.js';
 import { useNarrow } from '../useNarrow.js';
 
 // The citizen's (or entrepreneur's) portal: every regeling the persona can
@@ -16,6 +17,7 @@ import { useNarrow } from '../useNarrow.js';
 // submits an application.
 
 const demo = useDemo();
+const { t } = useI18n();
 // Op een smal scherm blijft alleen de kop staan; zie de toelichting in de
 // template bij nldd-title.
 const narrow = useNarrow();
@@ -84,16 +86,12 @@ const pendingClaims = computed(() => {
 const heading = computed(() => {
   const d = activeDelegation.value;
   if (!d) return profile.value?.portal_heading;
-  return d.subjectType === 'BUSINESS'
-    ? `Welke regelingen gelden voor ${d.subjectName}?`
-    : `Waar heeft ${d.subjectName} recht op?`;
+  return t(d.subjectType === 'BUSINESS' ? 'zaak.portaal.heading.business' : 'zaak.portaal.heading.citizen', { name: d.subjectName });
 });
 const subtitle = computed(() => {
   const d = activeDelegation.value;
   if (!d) return profile.value?.portal_subtitle;
-  return d.subjectType === 'BUSINESS'
-    ? 'Bekijk de subsidies, rapportageverplichtingen, vergunningen en andere regelingen van deze onderneming.'
-    : 'Bekijk de toeslagen, uitkeringen en andere regelingen waar deze persoon mee te maken heeft.';
+  return t(d.subjectType === 'BUSINESS' ? 'zaak.portaal.subtitle.business' : 'zaak.portaal.subtitle.citizen');
 });
 
 // Namens wie er gehandeld wordt. De machtiging komt uit een wet, en die wet
@@ -102,14 +100,14 @@ const actingText = computed(() => {
   const d = activeDelegation.value;
   if (!d) return null;
   const kind = delegationLabel(d);
-  return `Je handelt namens ${d.subjectName}${kind ? ` (${kind})` : ''}.`;
+  return t('zaak.portaal.acting.text', { name: d.subjectName, kind: kind ? ` (${kind})` : '' });
 });
 const actingSupport = computed(() => {
   const d = activeDelegation.value;
   if (!d) return null;
-  const rights = d.permissions.map((p) => PERMISSION_LABELS[p] ?? p).join(', ').toLowerCase();
-  const source = d.lawName ? ` Deze machtiging volgt uit ${d.lawName}.` : '';
-  return `Wat je hier ziet zijn de regelingen van ${d.subjectName}. Je mag: ${rights}.${source}`;
+  const rights = d.permissions.map((p) => permissionLabel(p)).join(', ').toLowerCase();
+  const source = d.lawName ? t('zaak.portaal.acting.source', { law: d.lawName }) : '';
+  return t('zaak.portaal.acting.support', { name: d.subjectName, rights, source });
 });
 
 // A law the engine refused to load (a type-check finding, RFC-037) is missing
@@ -167,8 +165,8 @@ const loadFailureText = computed(() => loadFailures.value.map((f) => `${f.id} ($
       <nldd-container v-if="!narrow || activeDelegation" slot="header" padding-top="12">
         <nldd-rich-text spacing="tight">
           <p>
-            <template v-if="narrow">Namens {{ activeDelegation.subjectName }}</template>
-            <template v-else>Ingelogd als <strong>{{ persona?.name ?? profile?.name }}</strong><template v-if="activeDelegation"> · namens {{ activeDelegation.subjectName }}</template> · demo, geen echte overheidsdienst</template>
+            <template v-if="narrow">{{ t('zaak.portaal.overline.acting_narrow', { name: activeDelegation.subjectName }) }}</template>
+            <template v-else>{{ t('zaak.portaal.signed_in.lead') }} <strong>{{ persona?.name ?? profile?.name }}</strong><template v-if="activeDelegation"> · {{ t('zaak.portaal.overline.acting', { name: activeDelegation.subjectName }) }}</template> · {{ t('zaak.portaal.overline.disclaimer') }}</template>
           </p>
           <!-- Namens een ander zegt de beschrijving van de gemachtigde niets. -->
           <p v-if="!narrow && persona?.description && !activeDelegation">{{ persona.description }}</p>
@@ -178,7 +176,7 @@ const loadFailureText = computed(() => loadFailures.value.map((f) => `${f.id} ($
            één regeling gaan. Onder de kop en niet ernaast: het is een actie op
            de hele pagina, geen eigenschap van de persoon. -->
       <nldd-container v-if="showWizard" padding-top="8">
-        <nldd-button size="sm" variant="secondary" start-icon="edit" text="Wijziging doorgeven" @click="wizardOpen = true"></nldd-button>
+        <nldd-button size="sm" variant="secondary" start-icon="edit" :text="t('zaak.portaal.change_wizard')" @click="wizardOpen = true"></nldd-button>
       </nldd-container>
       <!-- De banners krijgen hun eigen container met een marge, zodat ze los
            staan van wat erboven eindigt. -->
@@ -195,20 +193,20 @@ const loadFailureText = computed(() => loadFailures.value.map((f) => `${f.id} ($
       <nldd-banner
         v-if="activeDelegation && !canSubmitClaims"
         variant="warning"
-        text="Je mag deze gegevens alleen inzien"
-        supporting-text="Met deze machtiging kun je geen gegevens corrigeren en geen aanvraag indienen."
+        :text="t('zaak.portaal.read_only.title')"
+        :supporting-text="t('zaak.portaal.read_only.body')"
       ></nldd-banner>
       <nldd-banner
         v-if="loadFailures.length"
         variant="critical"
-        :text="`${loadFailures.length === 1 ? 'Eén wet is' : `${loadFailures.length} wetten zijn`} niet geladen`"
-        :supporting-text="`De engine weigerde: ${loadFailureText}. Regelingen die hiervan afhangen kunnen geen uitkomst geven.`"
+        :text="t.plural(loadFailures.length, 'zaak.portaal.load_failure')"
+        :supporting-text="t('zaak.portaal.load_failure.body', { details: loadFailureText })"
       ></nldd-banner>
       <nldd-banner
         v-if="pendingClaims.length"
         variant="accent"
-        :text="`${pendingClaims.length} ${pendingClaims.length === 1 ? 'correctie wacht' : 'correcties wachten'} op beoordeling`"
-        supporting-text="De regelingen hieronder rekenen al met wat je hebt opgegeven. Een behandelaar beoordeelt de correctie; pas daarna staat de uitkomst vast."
+        :text="t.plural(pendingClaims.length, 'zaak.portaal.pending_claims')"
+        :supporting-text="t('zaak.portaal.pending_claims.body')"
       ></nldd-banner>
       </nldd-container>
     </nldd-simple-section>
@@ -222,7 +220,7 @@ const loadFailureText = computed(() => loadFailures.value.map((f) => `${f.id} ($
       <nldd-collection layout="grid" item-width="360px" max-items="60">
         <LawTile v-for="law in sortedLaws" :key="law.id" :law="law" @edit-value="onEditValue" @evaluated="onEvaluated" @apply="onApply" />
       </nldd-collection>
-      <nldd-inline-dialog v-if="sortedLaws.length === 0" icon="inbox" text="Geen regelingen" supporting-text="Voor dit profiel zijn geen regelingen zichtbaar."></nldd-inline-dialog>
+      <nldd-inline-dialog v-if="sortedLaws.length === 0" icon="inbox" :text="t('zaak.portaal.empty.title')" :supporting-text="t('zaak.portaal.empty.body')"></nldd-inline-dialog>
     </nldd-simple-section>
 
     <EditValueSheet :open="!!editing" :node="editing?.node ?? null" :tile-law-id="editing?.law?.id ?? null" :self-declared="!!editing?.selfDeclared" @close="editing = null" />

@@ -10,10 +10,12 @@ import { driftSentence } from '../data/caseDrift.js';
 import { useDemo } from '../store/demoStore.js';
 import { objectionOpen, statusOf } from '../data/lifecycle.js';
 import { useLocalePath } from '../i18n/useLocalePath.js';
+import { useI18n } from '../i18n/index.js';
 
 // Naar een ander tabblad op naam, niet op pad: onder `/en/` leidt een
 // letterlijk Nederlands pad de bezoeker ongemerkt het Nederlandse tabblad in.
 const { goTo } = useLocalePath();
+const { t } = useI18n();
 
 // One regeling on the portal: the outcome of the law for this persona, the
 // values it used (expandable, each correctable), the application button and
@@ -217,9 +219,9 @@ const statusTag = computed(() => {
   // Uit de fase en niet uit het opgeslagen veld: die twee horen hetzelfde te
   // zeggen, en als er ooit één achterloopt is de fase de bron (zie lifecycle.js).
   const status = statusOf(c);
-  if (status === 'DECIDED') return c.approved ? { color: 'success', text: 'Toegekend', icon: 'checked' } : { color: 'critical', text: 'Afgewezen', icon: 'dismiss-circle' };
-  if (status === 'IN_REVIEW') return { color: 'warning', text: 'In behandeling', icon: 'clock' };
-  return { color: 'neutral', text: 'Ingediend', icon: 'paper-plane' };
+  if (status === 'DECIDED') return c.approved ? { color: 'success', text: t('wet.tile.status.granted'), icon: 'checked' } : { color: 'critical', text: t('wet.tile.status.refused'), icon: 'dismiss-circle' };
+  if (status === 'IN_REVIEW') return { color: 'warning', text: t('wet.tile.status.in_review'), icon: 'clock' };
+  return { color: 'neutral', text: t('wet.tile.status.submitted'), icon: 'paper-plane' };
 });
 </script>
 
@@ -236,10 +238,10 @@ const statusTag = computed(() => {
         <nldd-activity-indicator timing="instant" size="24"></nldd-activity-indicator>
       </template>
       <template v-else-if="missingInputs.length">
-        <nldd-inline-dialog icon="edit" text="Nog een gegeven nodig" :supporting-text="`De wet is doorgerekend met wat de overheid weet en loopt vast op ${humanize(missingInputs[0].name).toLowerCase()}: dat staat in geen register, alleen jij kunt het opgeven.`"></nldd-inline-dialog>
+        <nldd-inline-dialog icon="edit" :text="t('wet.tile.need_fact.title')" :supporting-text="t('wet.tile.need_fact.body', { field: humanize(missingInputs[0].name).toLowerCase() })"></nldd-inline-dialog>
       </template>
       <template v-else-if="!evaluation.ok">
-        <nldd-inline-dialog variant="alert" text="Kon deze regeling niet berekenen" :supporting-text="evaluation.error"></nldd-inline-dialog>
+        <nldd-inline-dialog variant="alert" :text="t('wet.tile.error.title')" :supporting-text="evaluation.error"></nldd-inline-dialog>
       </template>
       <template v-else>
         <!-- Wat er al lag klopt niet meer met wat de wet nu zegt. Geen
@@ -257,11 +259,11 @@ const statusTag = computed(() => {
         <nldd-banner
           v-if="drift"
           variant="warning"
-          text="Je aanvraag klopt niet meer"
+          :text="t('wet.tile.drift.title')"
           :supporting-text="driftText"
         ></nldd-banner>
-        <nldd-inline-dialog v-if="verdict === 'unknown'" icon="info" text="Nog niet te bepalen" :supporting-text="`De wet kan met de bekende gegevens geen uitkomst geven; ${verdictMissing}.`"></nldd-inline-dialog>
-        <nldd-list v-else variant="box-tinted" accessible-label="Uitkomst">
+        <nldd-inline-dialog v-if="verdict === 'unknown'" icon="info" :text="t('wet.tile.undecidable.title')" :supporting-text="t('wet.tile.undecidable.body', { missing: verdictMissing })"></nldd-inline-dialog>
+        <nldd-list v-else variant="box-tinted" :accessible-label="t('wet.tile.outcome.label')">
           <nldd-list-item size="md" :button="primary ? true : undefined" @click="primary && correctOutcome(primary.name, primary.value)">
             <nldd-icon-cell :icon="requirementsMet ? 'check-mark-circle' : 'dismiss-circle'" :color="requirementsMet ? 'success' : 'critical'"></nldd-icon-cell>
             <nldd-spacer-cell size="12"></nldd-spacer-cell>
@@ -283,14 +285,14 @@ const statusTag = computed(() => {
             <nldd-title-cell
               v-else
               size="4"
-              :overline="requirementsMet ? 'Je voldoet aan de voorwaarden' : 'Je voldoet niet aan de voorwaarden'"
-              :text="requirementsMet ? (primary ? formatValue(primary.value, primary.spec) : 'Ja') : 'Niet van toepassing'"
-              :supporting-text="requirementsMet && primary ? (isUnknown(primary.value) ? `${humanize(primary.name)} · ${formatMissing(primary.value, { ownLaw: law.id, lawName })}` : humanize(primary.name)) : ''"
+              :overline="requirementsMet ? t('wet.tile.conditions.met') : t('wet.tile.conditions.not_met')"
+              :text="requirementsMet ? (primary ? formatValue(primary.value, primary.spec) : t('wet.tile.outcome.yes')) : t('wet.tile.outcome.not_applicable')"
+              :supporting-text="requirementsMet && primary ? (isUnknown(primary.value) ? t('wet.tile.outcome.missing', { field: humanize(primary.name), missing: formatMissing(primary.value, { ownLaw: law.id, lawName }) }) : humanize(primary.name)) : ''"
             ></nldd-title-cell>
           </nldd-list-item>
         </nldd-list>
 
-        <nldd-list v-if="secondary.length" variant="simple" accessible-label="Overige uitkomsten">
+        <nldd-list v-if="secondary.length" variant="simple" :accessible-label="t('wet.tile.other_outcomes')">
           <nldd-list-item v-for="[name, value] in secondary" :key="name" size="sm" button @click="correctOutcome(name, value)">
             <nldd-text-cell size="sm" color="secondary" min-width="55%" :text="humanize(name)"></nldd-text-cell>
             <nldd-text-cell size="sm" width="fit-content" max-width="45%" horizontal-alignment="right" :color="isUnknown(value) ? 'secondary' : 'content'" :text="formatValue(value, fieldSpec(doc, name))"></nldd-text-cell>
@@ -304,22 +306,22 @@ const statusTag = computed(() => {
              saying that of an empty row claims the person supplied something
              they never did. Unanswered reads as a question, answered says who
              gave the answer. -->
-        <nldd-list v-if="ownInputs.length" variant="simple" accessible-label="Gegevens die je zelf opgeeft">
+        <nldd-list v-if="ownInputs.length" variant="simple" :accessible-label="t('wet.tile.own_inputs.label')">
           <nldd-list-item v-for="input in ownInputs" :key="input.name" size="sm" button @click="supply(input)">
             <nldd-icon-cell :icon="input.claim ? 'edit' : 'question-mark-circle'" size="16" :color="input.claim ? 'accent' : 'secondary'"></nldd-icon-cell>
             <nldd-spacer-cell size="8"></nldd-spacer-cell>
-            <nldd-text-cell size="sm" :text="humanize(input.name)" :supporting-text="input.claim ? 'door jou opgegeven' : 'alleen jij kunt dit opgeven'"></nldd-text-cell>
-            <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :color="input.claim ? 'content' : 'secondary'" :text="input.claim ? formatValue(input.claim.newValue, input.spec) : 'nog niet opgegeven'"></nldd-text-cell>
+            <nldd-text-cell size="sm" :text="humanize(input.name)" :supporting-text="input.claim ? t('wet.tile.own_inputs.supplied') : t('wet.tile.own_inputs.only_you')"></nldd-text-cell>
+            <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :color="input.claim ? 'content' : 'secondary'" :text="input.claim ? formatValue(input.claim.newValue, input.spec) : t('wet.tile.own_inputs.empty')"></nldd-text-cell>
           </nldd-list-item>
         </nldd-list>
         <!-- Outlined, not tinted. The tinted box is the answer; giving the same
              fill to a link into the reasoning made the two read as equals, and
              the eye had nowhere to land. This one is a door, not a statement. -->
-        <nldd-list type="tree" variant="box-base" accessible-label="Gebruikte gegevens">
+        <nldd-list type="tree" variant="box-base" :accessible-label="t('wet.tile.data.label')">
           <nldd-list-item size="sm" button :expanded="showData" @click="showData = !showData">
             <nldd-icon-cell icon="rectangle-stack" size="16" color="secondary"></nldd-icon-cell>
             <nldd-spacer-cell size="8"></nldd-spacer-cell>
-            <nldd-text-cell size="sm" :text="`Gebruikte gegevens (${valueCount})`" :supporting-text="showData ? 'Klik op een gegeven om het te corrigeren' : undefined"></nldd-text-cell>
+            <nldd-text-cell size="sm" :text="t('wet.tile.data.heading', { n: valueCount })" :supporting-text="showData ? t('wet.tile.data.hint') : undefined"></nldd-text-cell>
             <nldd-icon-cell disclosure icon="chevron-right" size="16" color="secondary"></nldd-icon-cell>
             <DataLineage v-if="showData" :nodes="lineage" nested @edit="emit('edit-value', { node: $event, law })" />
           </nldd-list-item>
@@ -352,23 +354,23 @@ const statusTag = computed(() => {
            about 313px of a 384px footer before padding and gaps push the last
            one onto a second line. "Mijn aanvraag" needed 336px and "Bezwaar
            maken" 347px, so both wrapped; "Aanvraag" and "Bezwaar" fit. -->
-      <nldd-button v-if="canObject" variant="primary" size="sm" start-icon="flag" text="Bezwaar" @click="apply"></nldd-button>
-      <nldd-button v-else-if="drift" variant="primary" size="sm" start-icon="edit" text="Wijzigen" @click="apply"></nldd-button>
-      <nldd-button v-else-if="currentCase" variant="secondary" size="sm" start-icon="file-text" text="Aanvraag" @click="apply"></nldd-button>
-      <nldd-button v-else-if="canSubmitClaims && evaluation && missingInputs.length && produces?.legal_character === 'BESCHIKKING'" variant="primary" size="sm" start-icon="edit" text="Aanvullen" @click="apply"></nldd-button>
-      <nldd-button v-else-if="canApply" variant="primary" size="sm" start-icon="paper-plane" text="Aanvragen" @click="apply"></nldd-button>
-      <nldd-button v-if="evaluation?.ok" variant="neutral-transparent" size="sm" start-icon="list" text="Berekening" @click="showTrace = true"></nldd-button>
-      <nldd-button variant="neutral-transparent" size="sm" start-icon="book" text="Wettekst" @click="goTo('wetten', { lawId: law.id })"></nldd-button>
+      <nldd-button v-if="canObject" variant="primary" size="sm" start-icon="flag" :text="t('wet.tile.action.object')" @click="apply"></nldd-button>
+      <nldd-button v-else-if="drift" variant="primary" size="sm" start-icon="edit" :text="t('wet.tile.action.amend')" @click="apply"></nldd-button>
+      <nldd-button v-else-if="currentCase" variant="secondary" size="sm" start-icon="file-text" :text="t('wet.tile.action.case')" @click="apply"></nldd-button>
+      <nldd-button v-else-if="canSubmitClaims && evaluation && missingInputs.length && produces?.legal_character === 'BESCHIKKING'" variant="primary" size="sm" start-icon="edit" :text="t('wet.tile.action.complete')" @click="apply"></nldd-button>
+      <nldd-button v-else-if="canApply" variant="primary" size="sm" start-icon="paper-plane" :text="t('wet.tile.action.apply')" @click="apply"></nldd-button>
+      <nldd-button v-if="evaluation?.ok" variant="neutral-transparent" size="sm" start-icon="list" :text="t('wet.tile.action.calculation')" @click="showTrace = true"></nldd-button>
+      <nldd-button variant="neutral-transparent" size="sm" start-icon="book" :text="t('wet.tile.action.law_text')" @click="goTo('wetten', { lawId: law.id })"></nldd-button>
     </nldd-container>
 
     <Teleport to="body">
-      <nldd-sheet ref="traceSheet" placement="right" width="720px" accessible-label="Berekening" @close="showTrace = false">
+      <nldd-sheet ref="traceSheet" placement="right" width="720px" :accessible-label="t('wet.tile.trace.title')" @close="showTrace = false">
         <nldd-page>
           <nldd-container slot="header" padding="12">
-            <nldd-top-title-bar text="Berekening" :supporting-text="law.name" dismiss-text="Sluiten" @dismiss="showTrace = false"></nldd-top-title-bar>
+            <nldd-top-title-bar :text="t('wet.tile.trace.title')" :supporting-text="law.name" :dismiss-text="t('wet.tile.trace.close')" @dismiss="showTrace = false"></nldd-top-title-bar>
           </nldd-container>
           <nldd-container padding="16">
-            <nldd-rich-text spacing="tight"><p>Dit is de volledige uitvoering van de wet door de RegelRecht-engine voor deze persoon: elke stap, elk opgehaald gegeven en elke tussenuitkomst.</p></nldd-rich-text>
+            <nldd-rich-text spacing="tight"><p>{{ t('wet.tile.trace.intro') }}</p></nldd-rich-text>
             <nldd-spacer size="12"></nldd-spacer>
             <nldd-code-viewer v-if="showTrace" variant="box-tinted" no-copy>{{ evaluation?.traceText }}</nldd-code-viewer>
           </nldd-container>

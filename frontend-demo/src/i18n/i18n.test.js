@@ -28,6 +28,20 @@ const IDENTICAL_BY_DESIGN = new Set([
   // forms still exist on both sides, because the key shape has to match.
   'format.items.one',
   'format.items.other',
+  // Zelfde woord in beide talen. 'Curator' en 'mentor' zijn allebei juridische
+  // termen die het Engels uit het Latijn heeft, net als het Nederlands.
+  'sim.dimension.partner',
+  'delegation.type.curator',
+  'delegation.type.mentor',
+  // Het Britse "postcode" is hetzelfde woord als het Nederlandse.
+  'sheet.change.field.postcode',
+  // Een bestandsformaat en een domeinnaam; die hebben geen vertaling.
+  'wet.view.raw',
+  'wet.source.link',
+  // Alleen opmaak: de woorden zitten in de waarden die erin komen, niet in het
+  // sjabloon zelf. Er valt hier niets te vertalen.
+  'wet.tree.law_state',
+  'wet.tile.outcome.missing',
 ]);
 
 /** The `{placeholder}` names in a string, sorted. */

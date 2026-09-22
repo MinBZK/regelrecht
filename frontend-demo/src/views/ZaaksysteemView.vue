@@ -6,14 +6,16 @@ import DataLineage from '../components/DataLineage.vue';
 import EditValueSheet from '../components/EditValueSheet.vue';
 import { fieldSpec, formatDateTime, formatValue, humanize } from '../data/format.js';
 import { lineageFromTrace } from '../data/lineage.js';
-import { useDemo } from '../store/demoStore.js';
+import { caseReason, eventText, useDemo } from '../store/demoStore.js';
 import { isDelegationProvider, producesBeschikking, subjectOf } from '../data/entrypoints.js';
 import { awbOutcomes, statusOf } from '../data/lifecycle.js';
+import { useI18n } from '../i18n/index.js';
 import { useLocalePath } from '../i18n/useLocalePath.js';
 
 // Naar een ander tabblad op naam, niet op pad: onder `/en/` leidt een
 // letterlijk Nederlands pad de bezoeker ongemerkt het Nederlandse tabblad in.
 const { goTo } = useLocalePath();
+const { t } = useI18n();
 
 // The caseworker's side: applications the citizen submitted, in three lanes,
 // with the engine's fresh verdict next to what the citizen claimed, the
@@ -51,9 +53,9 @@ const cases = computed(() => state.cases.filter((c) => c.service === service.val
 // besluit dat genomen is maar nog niet is meegedeeld, is een echt moment in de
 // wet en was hier eerder onzichtbaar.
 const lanes = computed(() => [
-  { key: 'IN_REVIEW', title: 'Te beoordelen', items: cases.value.filter((c) => statusOf(c) !== 'DECIDED') },
-  { key: 'BESLUIT', title: 'Bekend te maken', items: cases.value.filter((c) => statusOf(c) === 'DECIDED' && !c.publishedAt) },
-  { key: 'BEKENDMAKING', title: 'Bekendgemaakt', items: cases.value.filter((c) => statusOf(c) === 'DECIDED' && c.publishedAt) },
+  { key: 'IN_REVIEW', title: t('zaak.lane.in_review'), items: cases.value.filter((c) => statusOf(c) !== 'DECIDED') },
+  { key: 'BESLUIT', title: t('zaak.lane.besluit'), items: cases.value.filter((c) => statusOf(c) === 'DECIDED' && !c.publishedAt) },
+  { key: 'BEKENDMAKING', title: t('zaak.lane.bekendmaking'), items: cases.value.filter((c) => statusOf(c) === 'DECIDED' && c.publishedAt) },
 ]);
 
 const selected = computed(() => state.cases.find((c) => c.id === route.params.caseId) ?? null);
@@ -86,7 +88,7 @@ function close() {
 function personaName(bsn) {
   // A BSN without a persona (e.g. a case persisted before profiles.yaml
   // changed) is stated as a fact, not passed off as a name.
-  return corpus.value?.profiles?.profiles?.[bsn]?.name ?? `onbekende persoon (BSN ${bsn})`;
+  return corpus.value?.profiles?.profiles?.[bsn]?.name ?? t('zaak.unknown_person', { bsn });
 }
 function lawOf(c) {
   return corpus.value?.lawById(c.lawId) ?? null;
@@ -141,7 +143,7 @@ function decide(approved) {
   // citizen while the tile beside it showed the amount the law had granted.
   // Awb art. 3:46 asks a besluit to rest on a deugdelijke motivering; the
   // honest fallback is that none was given.
-  const text = reason.value.trim() || (approved ? 'Toegekend door de behandelaar. Geen toelichting gegeven.' : 'Afgewezen door de behandelaar. Geen toelichting gegeven.');
+  const text = reason.value.trim() || t(approved ? 'zaak.granted_no_reason' : 'zaak.refused_no_reason');
   demo.decideCase(selected.value.id, approved, text, verified.value?.ok ? verified.value.outputs : null);
   reason.value = '';
 }
@@ -155,7 +157,7 @@ const awb = computed(() => awbOutcomes(selected.value));
 
 function decideObjection(upheld) {
   if (!selected.value) return;
-  demo.decideObjection(selected.value.id, upheld, reason.value.trim() || (upheld ? 'Bezwaar gegrond.' : 'Bezwaar ongegrond.'));
+  demo.decideObjection(selected.value.id, upheld, reason.value.trim() || t(upheld ? 'zaak.objection.upheld_default' : 'zaak.objection.dismissed_default'));
   reason.value = '';
 }
 
@@ -180,14 +182,14 @@ const driftedIds = computed(() => {
 });
 
 function laneTag(c) {
-  if (c.objection?.status === 'PENDING') return { color: 'warning', text: 'Bezwaar' };
-  if (statusOf(c) === 'DECIDED') return c.approved ? { color: 'success', text: 'Toegekend' } : { color: 'critical', text: 'Afgewezen' };
-  return { color: 'neutral', text: 'Te beoordelen' };
+  if (c.objection?.status === 'PENDING') return { color: 'warning', text: t('zaak.tag.objection') };
+  if (statusOf(c) === 'DECIDED') return c.approved ? { color: 'success', text: t('zaak.tag.granted') } : { color: 'critical', text: t('zaak.tag.refused') };
+  return { color: 'neutral', text: t('zaak.tag.in_review') };
 }
 /** Voor wie deze regeling is, afgeleid uit de wet zelf (RFC-038). */
 function lawAudience(law) {
-  if (isDelegationProvider(law.doc) || !producesBeschikking(law.doc)) return 'levert gegevens aan andere wetten';
-  return subjectOf(law.doc) === 'BUSINESS' ? 'voor ondernemers' : 'voor burgers';
+  if (isDelegationProvider(law.doc) || !producesBeschikking(law.doc)) return t('zaak.audience.provider');
+  return subjectOf(law.doc) === 'BUSINESS' ? t('zaak.audience.business') : t('zaak.audience.citizen');
 }
 function claimLawName(cl) {
   return corpus.value?.lawById(cl.lawId)?.name ?? cl.lawId;
@@ -199,8 +201,8 @@ function claimLawName(cl) {
     <nldd-split-view-pane slot="main" has-content>
       <nldd-page sticky-header>
         <nldd-container slot="header" padding="12">
-          <nldd-top-title-bar text="Zaaksysteem" :supporting-text="corpus.services[service]?.name ?? service ?? ''">
-            <nldd-dropdown slot="toolbar" size="sm" accessible-label="Organisatie">
+          <nldd-top-title-bar :text="t('zaak.title')" :supporting-text="corpus.services[service]?.name ?? service ?? ''">
+            <nldd-dropdown slot="toolbar" size="sm" :accessible-label="t('zaak.organisation')">
               <select :value="service" @change="service = $event.target.value">
                 <option v-for="s in services" :key="s" :value="s">{{ corpus.services[s]?.name ?? s }}</option>
               </select>
@@ -214,10 +216,10 @@ function claimLawName(cl) {
               <nldd-container padding="12" gap="8">
                 <nldd-container layout="row" gap="8" vertical-alignment="center" padding-inline="4">
                   <nldd-title-cell size="6" :text="lane.title" heading-level="2"></nldd-title-cell>
-                  <nldd-badge color="neutral" :number="lane.items.length" :accessible-label="`${lane.items.length} zaken`"></nldd-badge>
+                  <nldd-badge color="neutral" :number="lane.items.length" :accessible-label="t('zaak.lane.count', { n: lane.items.length })"></nldd-badge>
                 </nldd-container>
                 <nldd-container v-if="lane.items.length === 0" padding-inline="4" padding-block="8">
-                  <nldd-text-cell size="sm" color="secondary" text="Geen zaken"></nldd-text-cell>
+                  <nldd-text-cell size="sm" color="secondary" :text="t('zaak.lane.empty')"></nldd-text-cell>
                 </nldd-container>
                 <nldd-list v-for="c in lane.items" :key="c.id" variant="box-base" :accessible-label="c.lawName">
                   <nldd-list-item size="md" button :selected="selected?.id === c.id || undefined" @click="open(c)">
@@ -229,7 +231,7 @@ function claimLawName(cl) {
                       <!-- Er is een gegeven gewijzigd waarmee deze wet nu op iets
                            anders uitkomt dan waarop besloten is. Het besluit staat
                            nog; dit zegt alleen dat ernaar gekeken moet worden. -->
-                      <nldd-tag v-if="driftedIds.has(c.id)" slot="overline" size="sm" color="warning" icon="warning" text="Gewijzigd"></nldd-tag>
+                      <nldd-tag v-if="driftedIds.has(c.id)" slot="overline" size="sm" color="warning" icon="warning" :text="t('zaak.tag.changed')"></nldd-tag>
                     </nldd-text-cell>
                   </nldd-list-item>
                 </nldd-list>
@@ -240,12 +242,12 @@ function claimLawName(cl) {
 
         <nldd-simple-section width="full" padding-top="0">
           <nldd-container gap="4">
-            <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">{{ `Regelingen die ${corpus.services[service]?.name ?? service} uitvoert` }}</nldd-text></nldd-container>
-            <nldd-list variant="box-tinted" accessible-label="Regelingen van deze organisatie">
-              <nldd-list-item v-if="orgLaws.length === 0" size="sm"><nldd-text-cell size="sm" color="secondary" text="Geen regelingen in het demo-corpus"></nldd-text-cell></nldd-list-item>
+            <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">{{ t('zaak.laws.heading', { service: corpus.services[service]?.name ?? service }) }}</nldd-text></nldd-container>
+            <nldd-list variant="box-tinted" :accessible-label="t('zaak.laws.label')">
+              <nldd-list-item v-if="orgLaws.length === 0" size="sm"><nldd-text-cell size="sm" color="secondary" :text="t('zaak.laws.empty')"></nldd-text-cell></nldd-list-item>
               <nldd-list-item v-for="{ law, count } in orgLaws" :key="law.id" size="sm" button @click="goTo('wetten', { lawId: law.id })">
                 <nldd-text-cell size="sm" :text="law.name" :supporting-text="lawAudience(law)"></nldd-text-cell>
-                <nldd-cell><nldd-tag size="sm" :color="count ? 'accent' : 'neutral'" :text="count === 1 ? '1 zaak' : `${count} zaken`"></nldd-tag></nldd-cell>
+                <nldd-cell><nldd-tag size="sm" :color="count ? 'accent' : 'neutral'" :text="t.plural(count, 'zaak.laws.cases')"></nldd-tag></nldd-cell>
                 <nldd-icon-cell icon="chevron-right" size="16" color="secondary"></nldd-icon-cell>
               </nldd-list-item>
             </nldd-list>
@@ -254,8 +256,8 @@ function claimLawName(cl) {
 
         <nldd-simple-section v-if="serviceClaims.length" width="full" padding-top="0">
           <nldd-container gap="4">
-            <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">Correcties van burgers ter beoordeling</nldd-text></nldd-container>
-            <nldd-list variant="box-tinted" accessible-label="Correcties ter beoordeling">
+            <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">{{ t('zaak.claims.heading') }}</nldd-text></nldd-container>
+            <nldd-list variant="box-tinted" :accessible-label="t('zaak.claims.label')">
               <CorrectionRows :claims="serviceClaims" :origin="(cl) => `${personaName(cl.bsn)} · ${claimLawName(cl)}`" />
             </nldd-list>
           </nldd-container>
@@ -266,23 +268,23 @@ function claimLawName(cl) {
   </nldd-navigation-split-view>
 
   <Teleport to="body">
-    <nldd-sheet ref="caseSheet" placement="right" width="720px" accessible-label="Zaakdetails" @close="close">
+    <nldd-sheet ref="caseSheet" placement="right" width="720px" :accessible-label="t('zaak.sheet.label')" @close="close">
       <nldd-page v-if="selected">
         <nldd-container slot="header" padding="12">
-          <nldd-top-title-bar :text="selected.lawName" :supporting-text="`Zaak ${selected.id.slice(-5)} · ${personaName(selected.bsn)}`" dismiss-text="Sluiten" @dismiss="close"></nldd-top-title-bar>
+          <nldd-top-title-bar :text="selected.lawName" :supporting-text="t('zaak.sheet.subtitle', { id: selected.id.slice(-5), person: personaName(selected.bsn) })" :dismiss-text="t('zaak.sheet.close')" @dismiss="close"></nldd-top-title-bar>
         </nldd-container>
         <nldd-container padding="16" gap="16">
           <nldd-banner
             :variant="selected.status === 'DECIDED' ? (selected.approved ? 'success' : 'critical') : 'accent'"
-            :text="selected.status === 'DECIDED' ? (selected.approved ? 'Toegekend' : 'Afgewezen') : selected.objection?.status === 'PENDING' ? 'Bezwaar ingediend' : 'Wacht op beoordeling'"
-            :supporting-text="selected.reason ?? selected.events.at(-1)?.text"
+            :text="selected.status === 'DECIDED' ? t(selected.approved ? 'zaak.tag.granted' : 'zaak.tag.refused') : selected.objection?.status === 'PENDING' ? t('zaak.banner.objection') : t('zaak.banner.awaiting')"
+            :supporting-text="caseReason(selected) ?? eventText(selected.events.at(-1))"
           ></nldd-banner>
 
           <nldd-container gap="4">
 
-            <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">Uitkomst</nldd-text><nldd-text size="xs" color="secondary">{{ verified?.ok ? 'aangevraagd → nu berekend door de engine' : 'zoals aangevraagd' }}</nldd-text></nldd-container>
+            <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">{{ t('zaak.outcome') }}</nldd-text><nldd-text size="xs" color="secondary">{{ verified?.ok ? t('zaak.outcome.recomputed') : t('zaak.outcome.claimed') }}</nldd-text></nldd-container>
 
-            <nldd-list variant="box-tinted" accessible-label="Uitkomst">
+            <nldd-list variant="box-tinted" :accessible-label="t('zaak.outcome')">
               <nldd-list-item v-for="row in outputRows(selected)" :key="row.name" size="sm">
                 <nldd-text-cell size="sm" :text="humanize(row.name)"></nldd-text-cell>
                 <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :color="row.differs ? 'warning' : 'content'">
@@ -293,41 +295,41 @@ function claimLawName(cl) {
             </nldd-list>
 
           </nldd-container>
-          <nldd-banner v-if="verified && !verified.ok" variant="warning" text="Herberekening mislukt" :supporting-text="verified.error"></nldd-banner>
+          <nldd-banner v-if="verified && !verified.ok" variant="warning" :text="t('zaak.recompute_failed')" :supporting-text="verified.error"></nldd-banner>
           <!-- De levensloop kon niet verder. Het besluit blijft staan zoals het
                was, maar wat de Awb eraan toevoegt (de termijn, de einddatum)
                ontbreekt dan, en dat hoort niet stil te blijven. -->
-          <nldd-banner v-if="selected.lifecycleError" variant="warning" text="De levensloop van dit besluit liep vast" :supporting-text="selected.lifecycleError"></nldd-banner>
+          <nldd-banner v-if="selected.lifecycleError" variant="warning" :text="t('zaak.lifecycle_failed')" :supporting-text="selected.lifecycleError"></nldd-banner>
 
           <nldd-container v-if="lineage.length" gap="4">
-            <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">Gebruikte gegevens</nldd-text><nldd-text size="xs" color="secondary">dezelfde gegevens als de burger ziet; klik op een gegeven om het te corrigeren</nldd-text></nldd-container>
-            <nldd-list type="tree" variant="box-tinted" accessible-label="Gebruikte gegevens">
+            <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">{{ t('zaak.data') }}</nldd-text><nldd-text size="xs" color="secondary">{{ t('zaak.data.hint') }}</nldd-text></nldd-container>
+            <nldd-list type="tree" variant="box-tinted" :accessible-label="t('zaak.data')">
               <DataLineage :nodes="lineage" @edit="editing = $event" />
             </nldd-list>
           </nldd-container>
 
-          <nldd-container v-if="caseClaims.length" padding-inline="12" padding-block="6"><nldd-text-cell size="sm" color="secondary" text="Correcties"></nldd-text-cell></nldd-container>
-          <nldd-list v-if="caseClaims.length" variant="box-tinted" accessible-label="Correcties">
+          <nldd-container v-if="caseClaims.length" padding-inline="12" padding-block="6"><nldd-text-cell size="sm" color="secondary" :text="t('zaak.corrections')"></nldd-text-cell></nldd-container>
+          <nldd-list v-if="caseClaims.length" variant="box-tinted" :accessible-label="t('zaak.corrections')">
             <CorrectionRows :claims="caseClaims" />
           </nldd-list>
 
           <template v-if="selected.status !== 'DECIDED' && !selected.objection">
-            <nldd-form-field label="Motivering">
-              <nldd-multi-line-text-field :value="reason" rows="2" placeholder="Toelichting bij het besluit" @input="reason = $event.detail?.value ?? $event.target.value"></nldd-multi-line-text-field>
+            <nldd-form-field :label="t('zaak.motivation')">
+              <nldd-multi-line-text-field :value="reason" rows="2" :placeholder="t('zaak.motivation.placeholder')" @input="reason = $event.detail?.value ?? $event.target.value"></nldd-multi-line-text-field>
             </nldd-form-field>
             <nldd-button-group orientation="horizontal">
-              <nldd-button variant="primary" start-icon="checked" text="Toekennen" @click="decide(true)"></nldd-button>
-              <nldd-button variant="destructive" start-icon="dismiss" text="Afwijzen" @click="decide(false)"></nldd-button>
+              <nldd-button variant="primary" start-icon="checked" :text="t('zaak.grant')" @click="decide(true)"></nldd-button>
+              <nldd-button variant="destructive" start-icon="dismiss" :text="t('zaak.refuse')" @click="decide(false)"></nldd-button>
             </nldd-button-group>
           </template>
           <template v-else-if="selected.objection?.status === 'PENDING'">
-            <nldd-rich-text spacing="tight"><p><strong>Bezwaar:</strong> {{ selected.objection.reason }}</p></nldd-rich-text>
-            <nldd-form-field label="Motivering">
+            <nldd-rich-text spacing="tight"><p><strong>{{ t('zaak.objection.prefix') }}</strong> {{ selected.objection.reason }}</p></nldd-rich-text>
+            <nldd-form-field :label="t('zaak.motivation')">
               <nldd-multi-line-text-field :value="reason" rows="2" @input="reason = $event.detail?.value ?? $event.target.value"></nldd-multi-line-text-field>
             </nldd-form-field>
             <nldd-button-group orientation="horizontal">
-              <nldd-button variant="primary" text="Bezwaar gegrond" @click="decideObjection(true)"></nldd-button>
-              <nldd-button variant="secondary" text="Bezwaar ongegrond" @click="decideObjection(false)"></nldd-button>
+              <nldd-button variant="primary" :text="t('zaak.objection.uphold')" @click="decideObjection(true)"></nldd-button>
+              <nldd-button variant="secondary" :text="t('zaak.objection.dismiss')" @click="decideObjection(false)"></nldd-button>
             </nldd-button-group>
           </template>
           <!-- Besloten, maar nog niet verstuurd. De Awb maakt van het besluit
@@ -337,34 +339,34 @@ function claimLawName(cl) {
           <template v-else-if="!selected.publishedAt">
             <nldd-banner
               variant="accent"
-              text="Het besluit is genomen en nog niet bekendgemaakt"
-              supporting-text="Zolang het besluit niet is verstuurd, loopt er geen bezwaartermijn: de belanghebbende weet nog van niets (Awb art. 3:41 en 6:8)."
+              :text="t('zaak.publish.title')"
+              :supporting-text="t('zaak.publish.body')"
             ></nldd-banner>
             <nldd-button-group orientation="horizontal">
-              <nldd-button variant="primary" start-icon="paper-plane" text="Bekendmaken" @click="publish"></nldd-button>
+              <nldd-button variant="primary" start-icon="paper-plane" :text="t('zaak.publish.action')" @click="publish"></nldd-button>
             </nldd-button-group>
           </template>
           <template v-else-if="!selected.objection">
             <!-- De termijn komt uit de wet: 6:7 geeft het aantal weken, 6:8 de
                  einddatum vanaf de bekendmaking. -->
-            <nldd-list v-if="awb.bezwaartermijnEinde" variant="box-tinted" accessible-label="Bezwaartermijn">
+            <nldd-list v-if="awb.bezwaartermijnEinde" variant="box-tinted" :accessible-label="t('zaak.term.label')">
               <nldd-list-item size="sm">
-                <nldd-text-cell size="sm" color="secondary" text="Bezwaar mogelijk tot en met"></nldd-text-cell>
+                <nldd-text-cell size="sm" color="secondary" :text="t('zaak.term.until')"></nldd-text-cell>
                 <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="formatValue(awb.bezwaartermijnEinde, null)"></nldd-text-cell>
               </nldd-list-item>
             </nldd-list>
-            <nldd-rich-text spacing="tight"><p><small>Bekendgemaakt. De burger kan op het portaal bezwaar maken; dat verschijnt dan hier.</small></p></nldd-rich-text>
+            <nldd-rich-text spacing="tight"><p><small>{{ t('zaak.published.note') }}</small></p></nldd-rich-text>
           </template>
 
           <nldd-container gap="4">
 
-            <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">Gebeurtenissen</nldd-text></nldd-container>
+            <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">{{ t('zaak.events') }}</nldd-text></nldd-container>
 
-            <nldd-list variant="box-tinted" accessible-label="Gebeurtenissen">
+            <nldd-list variant="box-tinted" :accessible-label="t('zaak.events')">
               <nldd-list-item v-for="(ev, i) in selected.events" :key="i" size="sm">
                 <nldd-timeline-track-cell :status="i === selected.events.length - 1 ? 'future' : 'past'" :position="selected.events.length === 1 ? 'only' : i === 0 ? 'first' : i === selected.events.length - 1 ? 'last' : 'between'"></nldd-timeline-track-cell>
                 <nldd-spacer-cell size="8"></nldd-spacer-cell>
-                <nldd-text-cell size="sm" :text="ev.text" :supporting-text="formatDateTime(ev.at)"></nldd-text-cell>
+                <nldd-text-cell size="sm" :text="eventText(ev)" :supporting-text="formatDateTime(ev.at)"></nldd-text-cell>
               </nldd-list-item>
             </nldd-list>
 

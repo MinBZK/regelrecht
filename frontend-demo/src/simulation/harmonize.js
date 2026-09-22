@@ -36,6 +36,7 @@
  * inkomen. Een bedrag dat iemand écht krijgt komt uit de engine, niet hieruit.
  */
 import { intlLocale } from '../data/format.js';
+import { t } from '../i18n/index.js';
 
 // ---- elementaire statistiek ------------------------------------------------
 
@@ -88,23 +89,33 @@ function sumSquares(values, m) {
  * een getal om op te staffelen, of een ja/nee om op te groeperen.
  */
 export const CITIZEN_FEATURES = [
-  { key: 'inkomen', label: 'Inkomen', kind: 'number', of: (s) => s.inkomen ?? 0 },
-  { key: 'leeftijd', label: 'Leeftijd', kind: 'number', of: (s) => s.leeftijd ?? 0 },
-  { key: 'huur', label: 'Huur per maand', kind: 'number', of: (s) => s.huur ?? 0 },
-  { key: 'kinderen', label: 'Aantal kinderen', kind: 'number', of: (s) => s.kinderen ?? 0 },
-  { key: 'heeft_partner', label: 'Heeft partner', kind: 'boolean', of: (s) => (s.partner ? 1 : 0) },
-  { key: 'heeft_kinderen', label: 'Heeft kinderen', kind: 'boolean', of: (s) => ((s.kinderen ?? 0) > 0 ? 1 : 0) },
-  { key: 'huurder', label: 'Huurt een woning', kind: 'boolean', of: (s) => (s.huurder ? 1 : 0) },
-  { key: 'student', label: 'Is student', kind: 'boolean', of: (s) => (s.student ? 1 : 0) },
+  { key: 'inkomen', labelKey: 'harm.feature.income', kind: 'number', of: (s) => s.inkomen ?? 0 },
+  { key: 'leeftijd', labelKey: 'harm.feature.age', kind: 'number', of: (s) => s.leeftijd ?? 0 },
+  { key: 'huur', labelKey: 'harm.feature.rent_per_month', kind: 'number', of: (s) => s.huur ?? 0 },
+  { key: 'kinderen', labelKey: 'harm.feature.number_of_children', kind: 'number', of: (s) => s.kinderen ?? 0 },
+  { key: 'heeft_partner', labelKey: 'harm.feature.has_partner', kind: 'boolean', of: (s) => (s.partner ? 1 : 0) },
+  { key: 'heeft_kinderen', labelKey: 'harm.feature.has_children', kind: 'boolean', of: (s) => ((s.kinderen ?? 0) > 0 ? 1 : 0) },
+  { key: 'huurder', labelKey: 'harm.feature.rents_a_home', kind: 'boolean', of: (s) => (s.huurder ? 1 : 0) },
+  { key: 'student', labelKey: 'harm.feature.is_student', kind: 'boolean', of: (s) => (s.student ? 1 : 0) },
 ];
 
 export const BUSINESS_FEATURES = [
-  { key: 'oppervlakte', label: 'Vloeroppervlakte', kind: 'number', of: (s) => s.oppervlakte ?? 0 },
-  { key: 'werknemers', label: 'Aantal werknemers', kind: 'number', of: (s) => s.werknemers ?? 0 },
-  { key: 'horeca', label: 'Is horeca', kind: 'boolean', of: (s) => (s.type && s.type !== 'overig' ? 1 : 0) },
-  { key: 'voedsel', label: 'Bereidt voedsel', kind: 'boolean', of: (s) => (s.voedsel ? 1 : 0) },
-  { key: 'terras', label: 'Heeft terras', kind: 'boolean', of: (s) => (s.terras ? 1 : 0) },
+  { key: 'oppervlakte', labelKey: 'harm.feature.floor_area', kind: 'number', of: (s) => s.oppervlakte ?? 0 },
+  { key: 'werknemers', labelKey: 'harm.feature.number_of_employees', kind: 'number', of: (s) => s.werknemers ?? 0 },
+  { key: 'horeca', labelKey: 'harm.feature.is_hospitality', kind: 'boolean', of: (s) => (s.type && s.type !== 'overig' ? 1 : 0) },
+  { key: 'voedsel', labelKey: 'harm.feature.prepares_food', kind: 'boolean', of: (s) => (s.voedsel ? 1 : 0) },
+  { key: 'terras', labelKey: 'harm.feature.has_terrace', kind: 'boolean', of: (s) => (s.terras ? 1 : 0) },
 ];
+
+/**
+ * Hoe een kenmerk heet op het scherm, in de taal die aan staat.
+ *
+ * Het kenmerk draagt een sleutel en geen zin, net als de dimensies in stats.js:
+ * `key` is waar de code op werkt en blijft zoals hij is.
+ */
+export function featureLabel(feature) {
+  return feature?.labelKey ? t(feature.labelKey) : '';
+}
 
 export function featuresFor(kind) {
   return kind === 'ondernemers' ? BUSINESS_FEATURES : CITIZEN_FEATURES;
@@ -286,7 +297,7 @@ function stepsFor(points, boundaries, config) {
 export function trainBracketModel(data, options = {}) {
   const config = { ...DEFAULTS, ...options };
   const { rows, features } = data;
-  if (rows.length < 10) throw new Error('Te weinig gegevens om een model te leren; draai een grotere simulatie.');
+  if (rows.length < 10) throw new Error(t('harm.error.too_little_data'));
 
   const amounts = rows.map((r) => r.amount);
   const overallMean = mean(amounts);
@@ -314,7 +325,7 @@ export function trainBracketModel(data, options = {}) {
     features.find((f) => f.key === options.primary && f.kind === 'number') ??
     influence.find((i) => i.feature.kind === 'number')?.feature ??
     features.find((f) => f.kind === 'number');
-  if (!primary) throw new Error('Geen numeriek kenmerk om op te staffelen.');
+  if (!primary) throw new Error(t('harm.error.no_numeric_feature'));
 
   // Waarop groeperen: de invloedrijkste ja/nee-kenmerken, behalve het kenmerk
   // waarop al gestaffeld wordt.
@@ -492,7 +503,8 @@ export function describeModel(model, formatAmount = (v) => `€ ${v.toFixed(0)}`
 }
 
 function labelOf(model, key) {
-  return model.groupKeys.find((f) => f.key === key)?.label ?? key;
+  const feature = model.groupKeys.find((f) => f.key === key);
+  return feature ? featureLabel(feature) : key;
 }
 
 function formatNumber(v) {

@@ -2,6 +2,7 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useLocalePath } from '../i18n/useLocalePath.js';
+import { useI18n } from '../i18n/index.js';
 import YamlNode from '../components/YamlNode.vue';
 import OrgLogo from '../components/OrgLogo.vue';
 import LawGroupTree from '../components/LawGroupTree.vue';
@@ -20,6 +21,7 @@ const router = useRouter();
 // zou een Engelse bezoeker bij elke wet die hij opent het Nederlandse tabblad
 // in duwen.
 const { localePath } = useLocalePath();
+const { t } = useI18n();
 const { corpus, profile } = useDemo();
 // The law list is a sheet (primary-sidebar-as-sheet): closed by default so the
 // law itself has the room, opened from the toolbar.
@@ -147,12 +149,12 @@ const referencedBy = computed(() => {
 </script>
 
 <template>
-  <nldd-navigation-split-view ref="splitView" primary-sidebar-as-sheet primary-sidebar-accessible-label="Wetten" inspector-accessible-label="Verwijzingen">
+  <nldd-navigation-split-view ref="splitView" primary-sidebar-as-sheet :primary-sidebar-accessible-label="t('wet.sidebar.label')" :inspector-accessible-label="t('wet.inspector.label')">
     <nldd-split-view-pane slot="sidebar" has-content background="tinted">
       <nldd-page sticky-header background="inherit">
         <nldd-container slot="header" padding="12" gap="8">
-          <nldd-top-title-bar text="Wetten" :supporting-text="`${sidebarLaws.length} regelingen`"></nldd-top-title-bar>
-          <nldd-search-field placeholder="Zoek een wet" size="sm" :value="query" @input="query = $event.detail?.value ?? $event.target.value"></nldd-search-field>
+          <nldd-top-title-bar :text="t('wet.sidebar.label')" :supporting-text="t.plural(sidebarLaws.length, 'wet.sidebar.count')"></nldd-top-title-bar>
+          <nldd-search-field :placeholder="t('wet.sidebar.search')" size="sm" :value="query" @input="query = $event.detail?.value ?? $event.target.value"></nldd-search-field>
         </nldd-container>
         <nldd-container padding-inline="8" padding-bottom="16">
           <LawGroupTree :groups="groups" mode="pick" :active-id="activeId" @pick="openLaw" />
@@ -165,24 +167,24 @@ const referencedBy = computed(() => {
         <nldd-container slot="header" padding="8">
           <nldd-toolbar size="sm">
             <nldd-toolbar-item slot="start">
-              <nldd-button size="sm" variant="neutral-tinted" start-icon="books" text="Wetten" :supporting-text="`${sidebarLaws.length}`" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
+              <nldd-button size="sm" variant="neutral-tinted" start-icon="books" :text="t('wet.sidebar.label')" :supporting-text="`${sidebarLaws.length}`" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
             </nldd-toolbar-item>
             <template v-if="activeLaw">
               <nldd-toolbar-item slot="start" v-if="trail.length > 1">
-                <nldd-icon-button size="sm" variant="neutral-transparent" icon="chevron-left" :text="`Terug naar ${tabInfo(trail.at(-2))?.name ?? 'vorige wet'}`" @click="goBack"></nldd-icon-button>
+                <nldd-icon-button size="sm" variant="neutral-transparent" icon="chevron-left" :text="t('wet.back', { name: tabInfo(trail.at(-2))?.name ?? t('wet.back.fallback') })" @click="goBack"></nldd-icon-button>
               </nldd-toolbar-item>
-              <nldd-toolbar-title slot="start" :text="activeLaw.name" :supporting-text="`${serviceInfo(corpus, activeLaw.service).name} · geldig vanaf ${activeLaw.valid_from}`" max-width="480px"></nldd-toolbar-title>
+              <nldd-toolbar-title slot="start" :text="activeLaw.name" :supporting-text="t('wet.valid_from', { service: serviceInfo(corpus, activeLaw.service).name, date: activeLaw.valid_from })" max-width="480px"></nldd-toolbar-title>
               <nldd-toolbar-item slot="end">
                 <nldd-segmented-control size="sm" width="fit-content" :value="showRaw ? 'raw' : 'tree'" @change="showRaw = $event.detail?.value === 'raw'">
-                  <nldd-segmented-control-item value="tree" text="Boom"></nldd-segmented-control-item>
-                  <nldd-segmented-control-item value="raw" text="YAML"></nldd-segmented-control-item>
+                  <nldd-segmented-control-item value="tree" :text="t('wet.view.tree')"></nldd-segmented-control-item>
+                  <nldd-segmented-control-item value="raw" :text="t('wet.view.raw')"></nldd-segmented-control-item>
                 </nldd-segmented-control>
               </nldd-toolbar-item>
               <nldd-toolbar-item slot="end" v-if="!showRaw">
                 <nldd-button-bar size="sm">
-                  <nldd-icon-button icon="chevron-up-chevron-down" text="Standaardweergave" @click="resetExpansion"></nldd-icon-button>
-                  <nldd-icon-button icon="chevron-down" text="Alles openvouwen" @click="expandAll"></nldd-icon-button>
-                  <nldd-icon-button icon="chevron-up" text="Alles dichtvouwen" @click="collapseAll"></nldd-icon-button>
+                  <nldd-icon-button icon="chevron-up-chevron-down" :text="t('wet.expand.default')" @click="resetExpansion"></nldd-icon-button>
+                  <nldd-icon-button icon="chevron-down" :text="t('wet.expand.all')" @click="expandAll"></nldd-icon-button>
+                  <nldd-icon-button icon="chevron-up" :text="t('wet.collapse.all')" @click="collapseAll"></nldd-icon-button>
                 </nldd-button-bar>
               </nldd-toolbar-item>
               <nldd-toolbar-item slot="end">
@@ -193,8 +195,8 @@ const referencedBy = computed(() => {
         </nldd-container>
 
         <nldd-simple-section v-if="!activeLaw" height="60vh">
-          <nldd-inline-dialog icon="books" text="Kies een wet" supporting-text="Open de lijst met wetten om de machine-leesbare wet te bekijken.">
-            <nldd-button slot="actions" variant="primary" size="sm" text="Wetten" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
+          <nldd-inline-dialog icon="books" :text="t('wet.empty.title')" :supporting-text="t('wet.empty.body')">
+            <nldd-button slot="actions" variant="primary" size="sm" :text="t('wet.sidebar.label')" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
           </nldd-inline-dialog>
         </nldd-simple-section>
         <nldd-simple-section v-else width="full">
@@ -213,20 +215,20 @@ const referencedBy = computed(() => {
     <nldd-split-view-pane v-if="activeLaw" slot="inspector" has-content background="tinted">
       <nldd-page background="inherit">
         <nldd-container slot="header" padding="12">
-          <nldd-top-title-bar text="Verwijzingen"></nldd-top-title-bar>
+          <nldd-top-title-bar :text="t('wet.inspector.label')"></nldd-top-title-bar>
         </nldd-container>
         <nldd-container padding="12" gap="16">
-          <nldd-list variant="box-base" accessible-label="Uitgevoerd door">
+          <nldd-list variant="box-base" :accessible-label="t('wet.executed_by')">
             <nldd-list-item size="md">
               <nldd-cell><OrgLogo :service="activeLaw.service" /></nldd-cell>
               <nldd-spacer-cell size="12"></nldd-spacer-cell>
-              <nldd-text-cell overline="Uitgevoerd door" :text="serviceInfo(corpus, activeLaw.service).name"></nldd-text-cell>
+              <nldd-text-cell :overline="t('wet.executed_by')" :text="serviceInfo(corpus, activeLaw.service).name"></nldd-text-cell>
             </nldd-list-item>
           </nldd-list>
           <nldd-container gap="4">
-            <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">Gebruikt gegevens uit</nldd-text></nldd-container>
-            <nldd-list variant="box-base" accessible-label="Gebruikt gegevens uit">
-              <nldd-list-item v-if="references.length === 0" size="sm"><nldd-text-cell size="sm" color="secondary" text="Geen andere wetten"></nldd-text-cell></nldd-list-item>
+            <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">{{ t('wet.uses_data_from') }}</nldd-text></nldd-container>
+            <nldd-list variant="box-base" :accessible-label="t('wet.uses_data_from')">
+              <nldd-list-item v-if="references.length === 0" size="sm"><nldd-text-cell size="sm" color="secondary" :text="t('wet.no_other_laws')"></nldd-text-cell></nldd-list-item>
               <nldd-list-item v-for="ref in references" :key="ref.id" size="sm" button @click="openLaw(ref.id)">
                 <nldd-cell><OrgLogo :service="ref.service" size="sm" /></nldd-cell>
                 <nldd-spacer-cell size="8"></nldd-spacer-cell>
@@ -236,9 +238,9 @@ const referencedBy = computed(() => {
             </nldd-list>
           </nldd-container>
           <nldd-container gap="4">
-            <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">Wordt gebruikt door</nldd-text></nldd-container>
-            <nldd-list variant="box-base" accessible-label="Wordt gebruikt door">
-              <nldd-list-item v-if="referencedBy.length === 0" size="sm"><nldd-text-cell size="sm" color="secondary" text="Geen andere wetten"></nldd-text-cell></nldd-list-item>
+            <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">{{ t('wet.used_by') }}</nldd-text></nldd-container>
+            <nldd-list variant="box-base" :accessible-label="t('wet.used_by')">
+              <nldd-list-item v-if="referencedBy.length === 0" size="sm"><nldd-text-cell size="sm" color="secondary" :text="t('wet.no_other_laws')"></nldd-text-cell></nldd-list-item>
               <nldd-list-item v-for="ref in referencedBy" :key="ref.id" size="sm" button @click="openLaw(ref.id)">
                 <nldd-cell><OrgLogo :service="ref.service" size="sm" /></nldd-cell>
                 <nldd-spacer-cell size="8"></nldd-spacer-cell>

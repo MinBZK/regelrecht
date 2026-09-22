@@ -7,10 +7,12 @@ import { serviceInfo } from '../data/loadCorpus.js';
 import { loadFailureFor, loadFailures, prepareScenarioEngine } from '../engine/useDemoEngine.js';
 import { useDemo } from '../store/demoStore.js';
 import { useLocalePath } from '../i18n/useLocalePath.js';
+import { useI18n } from '../i18n/index.js';
 
 // Naar een ander tabblad op naam, niet op pad: onder `/en/` leidt een
 // letterlijk Nederlands pad de bezoeker ongemerkt het Nederlandse tabblad in.
 const { goTo, localePath } = useLocalePath();
+const { t } = useI18n();
 
 // The scenario runner: every law's acceptance scenarios (Gherkin, canonical
 // grammar) in the sidebar; the chosen feature rendered for a Dutch audience;
@@ -164,7 +166,7 @@ async function run(index) {
       state.steps.push(record);
       if (!match) {
         record.status = 'fail';
-        record.error = 'Onbekende stap (niet in bdd/grammar.yaml)';
+        record.error = t('scenario.error.unknown_step');
         break;
       }
       const { entry, args } = match;
@@ -212,7 +214,7 @@ function resultTag(index) {
   if (r?.status === 'pass') return { color: 'success', text: 'Geslaagd' };
   if (r?.status === 'fail') {
     const n = failedStepNumber(index);
-    const text = n === 0 ? 'Mislukt in de achtergrond' : n ? `Mislukt bij stap ${n}` : 'Mislukt';
+    const text = n === 0 ? t('scenario.failed.background') : n ? t('scenario.failed.at_step', { n }) : t('scenario.failed');
     // A @wip scenario is known not to pass yet (the Rust runner skips it); its
     // failure is expected, not a regression.
     return r.wip ? { color: 'warning', text: `${text} (@wip)` } : { color: 'critical', text };
@@ -231,7 +233,7 @@ function statusColor(index) {
 }
 
 function evaluateWithTrace(ctx, e, lawId, outputs, state) {
-  if (!ctx.calculationDate) throw new Error('Geen peildatum: voeg "the calculation date is" toe.');
+  if (!ctx.calculationDate) throw new Error(t('scenario.error.no_reference_date'));
   try {
     const result = e.executeMultipleWithTrace(lawId, outputs, ctx.parameters, ctx.calculationDate);
     ctx.result = result;
@@ -297,14 +299,14 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
       <nldd-page sticky-header background="inherit">
         <nldd-container slot="header" padding="12" gap="8">
           <nldd-top-title-bar text="Scenario's" :supporting-text="`${features.length} testbestanden`"></nldd-top-title-bar>
-          <nldd-search-field placeholder="Zoek een scenario" size="sm" :value="query" @input="query = $event.detail?.value ?? $event.target.value"></nldd-search-field>
+          <nldd-search-field :placeholder="t('scenario.search')" size="sm" :value="query" @input="query = $event.detail?.value ?? $event.target.value"></nldd-search-field>
         </nldd-container>
         <nldd-container padding-inline="8" padding-bottom="16">
           <nldd-list type="navigation" accessible-label="Testbestanden">
             <nldd-list-item v-for="f in filtered" :key="f.path" size="sm" button :selected="f.path === selectedPath || undefined" @click="select(f.path)">
               <nldd-text-cell size="sm" :text="f.title" :supporting-text="lawFor(f) ? serviceInfo(corpus, lawFor(f).service).name : f.law_path"></nldd-text-cell>
             </nldd-list-item>
-            <nldd-inline-dialog slot="empty" text="Geen scenario's gevonden" supporting-text="Pas je zoekterm aan"></nldd-inline-dialog>
+            <nldd-inline-dialog slot="empty" :text="t('scenario.none_found')" :supporting-text="t('scenario.none_found.hint')"></nldd-inline-dialog>
           </nldd-list>
         </nldd-container>
       </nldd-page>
@@ -336,15 +338,15 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
         <nldd-simple-section v-if="loadFailures.length" width="full">
           <nldd-banner
             variant="critical"
-            :text="selectedLoadFailure ? `Wet ${selectedLoadFailure.id} is niet geladen` : `${loadFailures.length === 1 ? 'Eén wet is' : `${loadFailures.length} wetten zijn`} niet geladen`"
+            :text="selectedLoadFailure ? t('scenario.law_not_loaded', { id: selectedLoadFailure.id }) : t.plural(loadFailures.length, 'scenario.laws_not_loaded')"
             :supporting-text="`De engine weigerde: ${loadFailures.map((f) => `${f.id} (${f.path}): ${f.message}`).join(' — ')}`"
           ></nldd-banner>
         </nldd-simple-section>
         <nldd-simple-section v-if="loadError" width="full">
-          <nldd-banner variant="critical" text="Kon het scenario niet laden" :supporting-text="String(loadError)"></nldd-banner>
+          <nldd-banner variant="critical" :text="t('scenario.load_failed')" :supporting-text="String(loadError)"></nldd-banner>
         </nldd-simple-section>
         <nldd-simple-section v-else-if="!parsed" height="60vh">
-          <nldd-inline-dialog icon="checklist" text="Kies een scenario" supporting-text="Open de lijst met testbestanden.">
+          <nldd-inline-dialog icon="checklist" :text="t('scenario.pick')" :supporting-text="t('scenario.pick.hint')">
             <nldd-button slot="actions" variant="primary" size="sm" text="Scenario's" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
           </nldd-inline-dialog>
         </nldd-simple-section>
@@ -412,10 +414,10 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
     <!-- The engine's trace is wide; a 320px inspector column cuts every line,
          so it opens in a broad sheet, as the tile's "Berekening" does. -->
     <Teleport to="body">
-      <nldd-sheet ref="traceSheet" placement="right" width="760px" accessible-label="Uitvoering door de engine" @close="activeTrace = null">
+      <nldd-sheet ref="traceSheet" placement="right" width="760px" :accessible-label="t('scenario.trace.label')" @close="activeTrace = null">
         <nldd-page v-if="traceScenario">
           <nldd-container slot="header" padding="12">
-            <nldd-top-title-bar text="Uitvoering door de engine" :supporting-text="parsed?.scenarios[activeTrace]?.name" dismiss-text="Sluiten" @dismiss="activeTrace = null"></nldd-top-title-bar>
+            <nldd-top-title-bar :text="t('scenario.trace.label')" :supporting-text="parsed?.scenarios[activeTrace]?.name" :dismiss-text="t('scenario.close')" @dismiss="activeTrace = null"></nldd-top-title-bar>
           </nldd-container>
           <nldd-container padding="16" gap="16">
             <nldd-banner v-if="traceScenario.error" variant="critical" text="Uitvoering mislukt" :supporting-text="traceScenario.error"></nldd-banner>
