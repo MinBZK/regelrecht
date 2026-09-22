@@ -285,12 +285,13 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           title: 'Regelformaat',
           meta: 'YAML + JSON Schema',
-          link: { label: 'RFC-001', href: '/rfcs/rfc-001' },
+          link: { label: 'Schemadocumentatie', href: '/reference/schema' },
           text: 'Wetten als YAML-bestanden met de wettekst en de machine-uitvoerbare regels naast elkaar. Een versioned JSON Schema bewaakt de structuur.',
         },
         {
           title: 'BDD-scenario’s',
           meta: 'Gherkin + cucumber',
+          link: { label: 'Scenario’s uitproberen', href: '/concepts/scenarios' },
           text: 'Verwachte uitkomsten worden vastgelegd als leesbare scenario’s. Juristen en programmeurs lezen dezelfde tests, en elke wijziging in de regels wordt direct gevalideerd. Waar mogelijk halen we die scenario’s rechtstreeks uit de memorie van toelichting.',
         },
         {
@@ -777,12 +778,13 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           title: 'Rule format',
           meta: 'YAML + JSON Schema',
-          link: { label: 'RFC-001', href: '/rfcs/rfc-001' },
+          link: { label: 'Schema reference', href: '/reference/schema' },
           text: 'Laws as YAML files, with the legal text and the machine-executable rules side by side. A versioned JSON Schema guards the structure.',
         },
         {
           title: 'BDD scenarios',
           meta: 'Gherkin + cucumber',
+          link: { label: 'Try a scenario', href: '/concepts/scenarios' },
           text: 'Expected outcomes are captured as readable scenarios. Legal experts and programmers read the same tests, and every change to the rules is validated immediately. Where possible we draw those scenarios straight from the explanatory memorandum.',
         },
         {
