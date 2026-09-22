@@ -6,7 +6,12 @@
  * decides how a step is *shown*. Every template is keyed by grammar step id, so
  * a new step in the grammar shows up in English until it gets a line here.
  */
-import { GRAMMAR } from '@regelrecht/frontend-shared/gherkin';
+import { matchStep } from '@regelrecht/frontend-shared/gherkin';
+
+// Re-exported, not redefined: matching a step against the canonical grammar is
+// the shared runner's job, and this module only decides how a matched step is
+// shown. ScenariosView and the tests here keep importing it from this module.
+export { matchStep };
 
 const KEYWORDS = {
   Given: 'Gegeven',
@@ -47,18 +52,6 @@ export const TRANSLATED_STEP_IDS = new Set(Object.keys(TEMPLATES));
 
 function q(s) {
   return `"${s}"`;
-}
-
-/**
- * Match a step text against the grammar.
- * @returns {{entry: object, args: string[]} | null}
- */
-export function matchStep(text) {
-  for (const entry of GRAMMAR) {
-    const m = entry.pattern.exec(text);
-    if (m) return { entry, args: m.slice(1) };
-  }
-  return null;
 }
 
 /** Dutch keyword + Dutch phrasing of a step; falls back to the English text. */
