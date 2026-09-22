@@ -27,7 +27,9 @@ events:
         naam: $external.naam
         aanduiding: $external.aanduiding
         registratie: $external.registratie
-        organen: $external.organen
+        organen:
+          tabel: $external.organen
+          kolommen: [orgaan, zetels, samengevoegd, aantal_aanduidingen]
         rekeningnummer: $external.rekeningnummer
     niet_gereduceerd:
       - {veld: kern, reden: de vaste kern van een aanvraag; geen artikel van de testregeling leest haar}

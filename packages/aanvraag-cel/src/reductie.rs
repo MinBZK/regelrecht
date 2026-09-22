@@ -158,6 +158,24 @@ impl Afleiding {
         }
     }
 
+    /// Bij een tabelafleiding: het tabelveld en de kolommen die ze leest
+    /// (`elke_regel` of `een_regel`, en `alleen_waar`).
+    pub fn tabel_kolommen(&self) -> Option<(&str, Vec<&str>)> {
+        match self {
+            Afleiding::ElkeRegel {
+                tabel,
+                elke_regel,
+                alleen_waar,
+            } => {
+                let mut k = vec![elke_regel.as_str()];
+                k.extend(alleen_waar.as_deref());
+                Some((tabel, k))
+            }
+            Afleiding::EenRegel { tabel, een_regel } => Some((tabel, vec![een_regel])),
+            _ => None,
+        }
+    }
+
     /// Of de afleiding toetst of iets aanwezig is (`gevuld`, `tabel` met
     /// `elke_regel`). Onwaar betekent dan: dit ontbreekt in het gram. Bij
     /// `gelijk` en `een_regel` is onwaar een antwoord, geen gat.

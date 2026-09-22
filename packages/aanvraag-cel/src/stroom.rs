@@ -4,8 +4,14 @@
 //! Een veld van een event bindt aan `$intake.<pad>` (wie en langs welke weg:
 //! het ontvangstkanaal) of aan `$external.<pad>` (de inhoud zoals ingediend),
 //! of is een constante van de stroom. Velden mogen genest zijn, en een
-//! `$external`-waarde mag meer dan een veld voeden.
+//! `$external`-waarde mag meer dan een veld voeden. Een tabelveld
+//! (`{tabel: $external.<pad>, kolommen: [...]}`) declareert zijn kolommen.
+//!
+//! Wat een indiening onder `external` meegeeft, moet passen in de vorm die de
+//! stroom declareert ([`Vorm`]): een onbekend veld of een onbekende kolom
+//! wordt geweigerd, met het veldpad.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use chrono::{DateTime, FixedOffset};
@@ -58,8 +64,23 @@ pub enum Binding {
     Intake(String),
     /// `$external.<pad>`: de inhoud zoals ingediend.
     External(String),
+    /// `{tabel: $external.<pad>, kolommen: [...]}`: een lijst van regels
+    /// met de gedeclareerde kolommen.
+    Tabel { bron: String, kolommen: Vec<String> },
     /// Een vaste waarde van de stroom.
     Constante(Value),
+}
+
+/// De vorm die een indiening onder `external` mag hebben, afgeleid uit de
+/// `$external`-bindingen van een event.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Vorm {
+    /// Een enkele waarde (tekst, getal, ja/nee of null).
+    Waarde,
+    /// Een lijst van regels met alleen deze kolommen.
+    Tabel(Vec<String>),
+    /// Een object met alleen deze sleutels.
+    Tak(BTreeMap<String, Vorm>),
 }
 
 /// Een blad van de veldboom: het pad in het gram en waaraan het bindt.
@@ -138,6 +159,16 @@ pub fn parse(tekst: &str, bron: &str) -> Result<Stroom, Vec<String>> {
         events: Vec<Event>,
     }
     let ruw: Ruw = serde_yaml_ng::from_value(yaml).map_err(|e| vec![format!("{bron}: {e}")])?;
+    let fouten: Vec<String> = ruw
+        .events
+        .iter()
+        .filter_map(|e| e.external_vorm().err())
+        .flatten()
+        .map(|f| format!("{bron}: {f}"))
+        .collect();
+    if !fouten.is_empty() {
+        return Err(fouten);
+    }
     Ok(Stroom {
         id: ruw.id,
         recording_actor: ruw.recording_actor,
@@ -204,6 +235,25 @@ impl Event {
                     format!("{prefix}.{naam}")
                 };
                 let binding = match waarde {
+                    // Het schema laat `kolommen` als lijst alleen toe in een
+                    // tabelveld; een groep velden heeft geen lijsten.
+                    Y::Mapping(kind) if kind.get("kolommen").is_some_and(Y::is_sequence) => {
+                        let bron = kind
+                            .get("tabel")
+                            .and_then(Y::as_str)
+                            .and_then(|t| t.strip_prefix("$external."))
+                            .unwrap_or_default()
+                            .to_string();
+                        let kolommen = kind
+                            .get("kolommen")
+                            .and_then(Y::as_sequence)
+                            .into_iter()
+                            .flatten()
+                            .filter_map(Y::as_str)
+                            .map(str::to_string)
+                            .collect();
+                        Binding::Tabel { bron, kolommen }
+                    }
                     Y::Mapping(kind) => {
                         loop_(&pad, kind, uit);
                         continue;
@@ -265,20 +315,154 @@ impl Event {
         self.bladeren().iter().any(|b| b.pad == pad)
     }
 
+    /// De kolommen van een tabelveld, of `None` als het pad geen tabelveld is.
+    pub fn kolommen(&self, pad: &str) -> Option<Vec<String>> {
+        self.bladeren().into_iter().find_map(|b| match b.binding {
+            Binding::Tabel { kolommen, .. } if b.pad == pad => Some(kolommen),
+            _ => None,
+        })
+    }
+
+    /// De `$external`-bindingen: het bronpad en de vorm van de waarde.
+    fn external_bronnen(&self) -> Vec<(String, Vorm)> {
+        self.bladeren()
+            .into_iter()
+            .filter_map(|b| match b.binding {
+                Binding::External(bron) => Some((bron, Vorm::Waarde)),
+                Binding::Tabel { bron, kolommen } => Some((bron, Vorm::Tabel(kolommen))),
+                _ => None,
+            })
+            .collect()
+    }
+
     /// De namen die een indiening onder `external` mag meegeven: het eerste
-    /// deel van elk `$external.*`-pad.
+    /// deel van elk `$external`-pad, in de volgorde van de stroom.
     pub fn external_sleutels(&self) -> Vec<String> {
         let mut v: Vec<String> = Vec::new();
-        for blad in self.bladeren() {
-            if let Binding::External(bronpad) = &blad.binding {
-                let kop = bronpad.split('.').next().unwrap_or_default().to_string();
-                if !v.contains(&kop) {
-                    v.push(kop);
-                }
+        for (bron, _) in self.external_bronnen() {
+            let kop = bron.split('.').next().unwrap_or_default().to_string();
+            if !v.contains(&kop) {
+                v.push(kop);
             }
         }
         v
     }
+
+    /// De vorm die `external` mag hebben. Een fout als twee bindingen
+    /// hetzelfde bronpad een andere vorm geven, zoals een enkele waarde en
+    /// een tabel, of een waarde en een object met velden eronder.
+    pub fn external_vorm(&self) -> Result<BTreeMap<String, Vorm>, Vec<String>> {
+        let mut wortel = BTreeMap::new();
+        let mut fouten = Vec::new();
+        for (bron, vorm) in self.external_bronnen() {
+            let delen: Vec<&str> = bron.split('.').collect();
+            if !voeg_vorm_toe(&mut wortel, &delen, vorm) {
+                fouten.push(format!(
+                    "event '{}': '$external.{bron}' krijgt meer dan een vorm (waarde, tabel of velden eronder)",
+                    self.name
+                ));
+            }
+        }
+        if fouten.is_empty() {
+            Ok(wortel)
+        } else {
+            Err(fouten)
+        }
+    }
+}
+
+/// Zet een vorm op een bronpad. Onwaar als er al een andere vorm staat.
+fn voeg_vorm_toe(tak: &mut BTreeMap<String, Vorm>, delen: &[&str], vorm: Vorm) -> bool {
+    match delen {
+        [] => true,
+        [laatste] => {
+            let bestaand = tak.entry((*laatste).to_string()).or_insert(vorm.clone());
+            *bestaand == vorm
+        }
+        [kop, rest @ ..] => match tak
+            .entry((*kop).to_string())
+            .or_insert_with(|| Vorm::Tak(BTreeMap::new()))
+        {
+            Vorm::Tak(sub) => voeg_vorm_toe(sub, rest, vorm),
+            _ => false,
+        },
+    }
+}
+
+/// Een enkele waarde: geen lijst en geen object.
+fn enkel(w: &Value) -> bool {
+    !matches!(w, Value::Array(_) | Value::Object(_))
+}
+
+/// Toets `external` aan de vorm van de stroom. Levert de veldpaden die de
+/// stroom niet kent, en de meldingen over waarden van de verkeerde vorm.
+fn toets_vorm(
+    velden: &Map<String, Value>,
+    vorm: &BTreeMap<String, Vorm>,
+    prefix: &str,
+    onbekend: &mut Vec<String>,
+    fouten: &mut Vec<String>,
+) {
+    for (naam, waarde) in velden {
+        let pad = format!("{prefix}{naam}");
+        match vorm.get(naam) {
+            None => onbekend.push(pad),
+            Some(Vorm::Waarde) => {
+                if !enkel(waarde) {
+                    fouten.push(format!("veld '{pad}' verwacht een enkele waarde"));
+                }
+            }
+            Some(Vorm::Tak(sub)) => match waarde {
+                Value::Null => {}
+                Value::Object(m) => toets_vorm(m, sub, &format!("{pad}."), onbekend, fouten),
+                _ => fouten.push(format!("veld '{pad}' verwacht velden eronder")),
+            },
+            Some(Vorm::Tabel(kolommen)) => match waarde {
+                Value::Null => {}
+                Value::Array(regels) => {
+                    for (i, regel) in regels.iter().enumerate() {
+                        let Value::Object(regel) = regel else {
+                            fouten.push(format!("regel '{pad}[{i}]' is geen object met kolommen"));
+                            continue;
+                        };
+                        for (kolom, w) in regel {
+                            let kolompad = format!("{pad}[{i}].{kolom}");
+                            if !kolommen.contains(kolom) {
+                                onbekend.push(kolompad);
+                            } else if !enkel(w) {
+                                fouten
+                                    .push(format!("kolom '{kolompad}' verwacht een enkele waarde"));
+                            }
+                        }
+                    }
+                }
+                _ => fouten.push(format!(
+                    "veld '{pad}' is een tabel en verwacht een lijst van regels"
+                )),
+            },
+        }
+    }
+}
+
+/// Een tabel zoals het gram hem vastlegt: elke regel met alle gedeclareerde
+/// kolommen in de volgorde van de stroom, een ontbrekende kolom als null.
+fn als_tabel(waarde: Option<&Value>, kolommen: &[String]) -> Value {
+    let Some(Value::Array(regels)) = waarde else {
+        return Value::Null;
+    };
+    Value::Array(
+        regels
+            .iter()
+            .map(|r| {
+                Value::Object(
+                    kolommen
+                        .iter()
+                        .map(|k| (k.clone(), r.get(k).cloned().unwrap_or(Value::Null)))
+                        .collect(),
+                )
+            })
+            .collect(),
+    )
 }
 
 /// Wat nodig is om een gram te bouwen, naast de stroom zelf.
@@ -298,20 +482,18 @@ fn waarde_op<'v>(wortel: &'v Value, pad: &str) -> Option<&'v Value> {
 
 /// Bouw een gram uit een indiening. Het gram houdt de vorm van de stroom:
 /// een veld dat niet is ingevuld staat erin als null, want ook een
-/// onvolledige indiening wordt vastgelegd. Een veld dat de stroom niet kent
-/// wordt geweigerd: wat geen grondslag heeft, wordt niet vastgelegd.
+/// onvolledige indiening wordt vastgelegd. Een veld of tabelkolom dat de
+/// stroom niet kent wordt geweigerd, met het veldpad: wat geen grondslag
+/// heeft, wordt niet vastgelegd.
 pub fn bouw_gram(
     stroom: &Stroom,
     event: &Event,
     indiening: &Indiening<'_>,
 ) -> Result<Gram, String> {
-    let bekend = event.external_sleutels();
-    let mut onbekend: Vec<&str> = indiening
-        .external
-        .keys()
-        .map(String::as_str)
-        .filter(|k| !bekend.iter().any(|b| b == k))
-        .collect();
+    let vorm = event.external_vorm().map_err(|f| f.join("; "))?;
+    let mut onbekend = Vec::new();
+    let mut fouten = Vec::new();
+    toets_vorm(indiening.external, &vorm, "", &mut onbekend, &mut fouten);
     if !onbekend.is_empty() {
         onbekend.sort_unstable();
         return Err(format!(
@@ -324,25 +506,30 @@ pub fn bouw_gram(
             event.name
         ));
     }
+    if !fouten.is_empty() {
+        return Err(fouten.join("; "));
+    }
 
     let external = Value::Object(indiening.external.clone());
     let mut fields = Map::new();
     for blad in event.bladeren() {
-        let waarde =
-            match &blad.binding {
-                Binding::Intake(bronpad) => waarde_op(indiening.intake, bronpad)
+        let waarde = match &blad.binding {
+            Binding::Intake(bronpad) => {
+                waarde_op(indiening.intake, bronpad)
                     .cloned()
                     .ok_or_else(|| {
                         format!(
                             "het ontvangstkanaal levert '$intake.{bronpad}' niet (veld '{}')",
                             blad.pad
                         )
-                    })?,
-                Binding::External(bronpad) => waarde_op(&external, bronpad)
-                    .cloned()
-                    .unwrap_or(Value::Null),
-                Binding::Constante(w) => w.clone(),
-            };
+                    })?
+            }
+            Binding::External(bronpad) => waarde_op(&external, bronpad)
+                .cloned()
+                .unwrap_or(Value::Null),
+            Binding::Tabel { bron, kolommen } => als_tabel(waarde_op(&external, bron), kolommen),
+            Binding::Constante(w) => w.clone(),
+        };
         zet(&mut fields, &blad.pad, waarde);
     }
 
@@ -509,6 +696,123 @@ mod tests {
         )
         .unwrap_err();
         assert!(fout.contains("'schoenmaat'"), "{fout}");
+    }
+
+    fn bouw(s: &Stroom, external: Value) -> Result<Gram, String> {
+        bouw_gram(
+            s,
+            &s.events[0],
+            &Indiening {
+                intake: &intake(),
+                external: external.as_object().unwrap(),
+                op_moment: moment(),
+                zaakkenmerk: "00000000-0000-4000-8000-000000000001",
+            },
+        )
+    }
+
+    #[test]
+    fn tabelveld_declareert_zijn_kolommen() {
+        let s = parse(STROOM, "fixture").unwrap();
+        let e = &s.events[0];
+        assert_eq!(
+            e.kolommen("inhoud.organen").unwrap(),
+            vec!["orgaan", "zetels", "samengevoegd", "aantal_aanduidingen"]
+        );
+        assert_eq!(e.kolommen("inhoud.naam"), None);
+        assert!(e.heeft_blad("inhoud.organen"));
+    }
+
+    #[test]
+    fn onbekende_kolom_wordt_geweigerd_met_veldpad() {
+        let s = parse(STROOM, "fixture").unwrap();
+        let fout = bouw(
+            &s,
+            json!({"organen": [{"orgaan": "raad"}, {"orgaan": "raad", "kleur": "rood"}]}),
+        )
+        .unwrap_err();
+        assert!(fout.contains("onbekend veld 'organen[1].kleur'"), "{fout}");
+    }
+
+    #[test]
+    fn tabel_krijgt_elke_kolom_in_het_gram() {
+        let s = parse(STROOM, "fixture").unwrap();
+        let gram = bouw(&s, json!({"organen": [{"zetels": 3, "orgaan": "raad"}]})).unwrap();
+        assert_eq!(
+            gram.veld("inhoud.organen"),
+            Some(
+                &json!([{"orgaan": "raad", "zetels": 3, "samengevoegd": null, "aantal_aanduidingen": null}])
+            )
+        );
+        gram.valideer().unwrap();
+        // Niet ingevuld: null, net als een gewoon veld.
+        let gram = bouw(&s, json!({})).unwrap();
+        assert_eq!(gram.veld("inhoud.organen"), Some(&Value::Null));
+        gram.valideer().unwrap();
+    }
+
+    #[test]
+    fn waarde_van_de_verkeerde_vorm_wordt_geweigerd() {
+        let s = parse(STROOM, "fixture").unwrap();
+        for (external, verwacht) in [
+            (json!({"organen": "raad"}), "veld 'organen' is een tabel"),
+            (
+                json!({"organen": ["raad"]}),
+                "regel 'organen[0]' is geen object",
+            ),
+            (
+                json!({"organen": [{"zetels": {"aantal": 3}}]}),
+                "kolom 'organen[0].zetels' verwacht een enkele waarde",
+            ),
+            (
+                json!({"naam": {"voornaam": "A"}}),
+                "veld 'naam' verwacht een enkele waarde",
+            ),
+        ] {
+            let fout = bouw(&s, external).unwrap_err();
+            assert!(fout.contains(verwacht), "{fout}");
+        }
+    }
+
+    #[test]
+    fn onbekend_veld_in_een_genest_external_object() {
+        let tekst = STROOM.replace("adres: $external.adres", "adres: $external.adres.straat");
+        let s = parse(&tekst, "t").unwrap();
+        let gram = bouw(&s, json!({"adres": {"straat": "Voorbeeldstraat 1"}})).unwrap();
+        assert_eq!(
+            gram.veld("kern.aanvrager.adres"),
+            Some(&json!("Voorbeeldstraat 1"))
+        );
+        let fout = bouw(&s, json!({"adres": {"straat": "x", "huisdier": "kat"}})).unwrap_err();
+        assert!(fout.contains("onbekend veld 'adres.huisdier'"), "{fout}");
+    }
+
+    #[test]
+    fn een_bronpad_met_twee_vormen_faalt_bij_het_laden() {
+        let tekst = STROOM.replace(
+            "rekeningnummer: $external.rekeningnummer",
+            "rekeningnummer: $external.organen",
+        );
+        let fout = parse(&tekst, "t").unwrap_err();
+        assert!(
+            fout.iter()
+                .any(|f| f.contains("'$external.organen' krijgt meer dan een vorm")),
+            "{fout:?}"
+        );
+    }
+
+    #[test]
+    fn tabel_zonder_kolommen_faalt_op_het_schema() {
+        let tekst = STROOM.replace(
+            "          kolommen: [orgaan, zetels, samengevoegd, aantal_aanduidingen]\n",
+            "          kolommen: []\n",
+        );
+        let fout = parse(&tekst, "t").unwrap_err();
+        assert!(
+            fout.iter()
+                .any(|f| f.contains("/events/0/fields/inhoud/organen")),
+            "{fout:?}"
+        );
     }
 
     #[test]

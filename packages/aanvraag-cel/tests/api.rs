@@ -209,6 +209,27 @@ async fn onbekend_veld_wordt_geweigerd() {
 }
 
 #[tokio::test]
+async fn onbekende_tabelkolom_wordt_geweigerd() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path());
+    let c = inloggen(&app, "12345678").await;
+    let mut body = volledig();
+    body["external"]["organen"][1]["kleur"] = json!("rood");
+    let (status, antwoord, _) = vraag(&app, "POST", "/api/aanvraag", Some(&c), Some(body)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        antwoord["fout"]
+            .as_str()
+            .unwrap()
+            .contains("onbekend veld 'organen[1].kleur'"),
+        "{antwoord}"
+    );
+    // Er is niets vastgelegd.
+    let (_, kroniek, _) = vraag(&app, "GET", "/api/kroniek", Some(&c), None).await;
+    assert_eq!(kroniek, json!([]));
+}
+
+#[tokio::test]
 async fn indienen_legt_een_gram_vast_per_kvk() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path());

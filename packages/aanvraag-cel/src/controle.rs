@@ -5,7 +5,8 @@
 //!    zie [`crate::stroom::parse`] en [`crate::reductie::parse`]).
 //! 2. Elke afleiding wijst naar iets dat bestaat: een parameter van een
 //!    artikel uit de grondslag van het gefilterde event, en veldpaden van
-//!    dat event.
+//!    dat event. Een tabelafleiding wijst naar een tabelveld en leest
+//!    alleen kolommen die de stroom voor dat veld declareert.
 //! 3. Geen weesveld: elk veld van een event wordt door een afleiding gelezen
 //!    of staat met reden in `niet_gereduceerd`.
 //! 4. Geen naamsbotsing: een parameter krijgt maar een afleiding.
@@ -154,18 +155,27 @@ fn verwijzingen(
                         event.grondslag.join(", ")
                     ));
                 }
-                let tabel = matches!(
-                    afleiding,
-                    crate::reductie::Afleiding::ElkeRegel { .. }
-                        | crate::reductie::Afleiding::EenRegel { .. }
-                );
+                if let Some((tabel, gelezen)) = afleiding.tabel_kolommen() {
+                    match event.kolommen(tabel) {
+                        None => fouten.push(format!(
+                            "lexostatus '{}', afleiding '{param}': veldpad '{tabel}' is geen tabelveld van event '{}'",
+                            def.name, event.name
+                        )),
+                        Some(kolommen) => {
+                            for kolom in gelezen.into_iter().filter(|k| !kolommen.iter().any(|c| c == k)) {
+                                fouten.push(format!(
+                                    "lexostatus '{}', afleiding '{param}': kolom '{kolom}' staat niet in de kolommen van tabel '{tabel}' van event '{}' ({})",
+                                    def.name,
+                                    event.name,
+                                    kolommen.join(", ")
+                                ));
+                            }
+                        }
+                    }
+                    continue;
+                }
                 for pad in afleiding.gelezen_paden() {
-                    let bestaat = if tabel {
-                        event.heeft_blad(pad)
-                    } else {
-                        event.heeft_pad(pad)
-                    };
-                    if !bestaat {
+                    if !event.heeft_pad(pad) {
                         fouten.push(format!(
                             "lexostatus '{}', afleiding '{param}': veldpad '{pad}' bestaat niet in event '{}'",
                             def.name, event.name
@@ -397,7 +407,25 @@ mod tests {
             "{tabel: inhoud.organen, een_regel",
             "{tabel: inhoud, een_regel",
         );
-        faalt_met(STROOM, &cel, "veldpad 'inhoud' bestaat niet");
+        faalt_met(STROOM, &cel, "veldpad 'inhoud' is geen tabelveld");
+        // Een gewoon veld is ook geen tabel.
+        let cel = CEL.replace(
+            "{tabel: inhoud.organen, een_regel",
+            "{tabel: inhoud.naam, een_regel",
+        );
+        faalt_met(STROOM, &cel, "veldpad 'inhoud.naam' is geen tabelveld");
+    }
+
+    #[test]
+    fn tabelafleiding_leest_een_gedeclareerde_kolom() {
+        let cel = CEL.replace("elke_regel: zetels}", "elke_regel: stoelen}");
+        faalt_met(
+            STROOM,
+            &cel,
+            "kolom 'stoelen' staat niet in de kolommen van tabel 'inhoud.organen'",
+        );
+        let cel = CEL.replace("alleen_waar: samengevoegd}", "alleen_waar: gebundeld}");
+        faalt_met(STROOM, &cel, "kolom 'gebundeld' staat niet in de kolommen");
     }
 
     #[test]
