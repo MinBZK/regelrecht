@@ -26,6 +26,7 @@ pub mod formulier;
 pub mod kroniek;
 pub mod reductie;
 pub mod regelingen;
+pub mod rijen;
 pub mod runtime;
 pub mod schema;
 pub mod sessie;

@@ -1,0 +1,2 @@
+{"stroom": "test_gebieden", "name": "tarief_vastgesteld", "op_moment": "2024-01-02T09:00:00+01:00", "herkomst": "startstand", "fields": {"gebied": "Voorbeeldstad", "peildatum": "2024-01-01", "tarief": 1000}}
+{"stroom": "test_gebieden", "name": "tarief_vastgesteld", "op_moment": "2024-01-02T09:00:00+01:00", "herkomst": "startstand", "fields": {"gebied": "Buurdorp", "peildatum": "2024-01-01", "tarief": 500}}

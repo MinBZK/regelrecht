@@ -1,0 +1,17 @@
+---
+# Fictieve teststroom: een bureau stelt per gebied en per peildatum een
+# tarief vast. Een vaststelling is een besluit, dus een decretogram, en geen
+# zaak: zij hoort bij een gebied en een peildatum, niet bij een aanvraag.
+$id: test_gebieden
+recording_actor: test_gebieden
+chronicle: test_gebieden
+events:
+  - name: tarief_vastgesteld
+    intake: besluit
+    grondslag: [testregeling_afnemer#3]
+    type: decretogram
+    zaak: geen
+    fields:
+      gebied: $external.gebied
+      peildatum: $external.peildatum
+      tarief: $external.tarief

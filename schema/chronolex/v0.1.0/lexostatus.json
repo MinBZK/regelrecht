@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.1.0/lexostatus.json",
   "title": "Celconfiguratie met lexostatus-definities v0.1.0",
-  "description": "De lexostatussen die een cel aanbiedt en hoe elk uit de eigen kroniek wordt gereduceerd (RFC-022 par. 4.1, daar voorlopig). reduction kiest met filter en kies zo nodig een gram en leidt met afleidingen de parameters van een artikel af: een afleiding op het gekozen gram (veld, gevuld, gelijk, tabel, moment), of een afleiding over de grammen die door haar eigen filter komen (bestaat, som, kies met veld of bevat). Met groepeer: zaakkenmerk (en zo nodig zonder) is de lexostatus een lijst met een regel per zaak. extra_velden levert waarden die geen parameter zijn en niet naar de engine gaan.",
+  "description": "De lexostatussen die een cel aanbiedt en hoe elk uit de eigen kroniek wordt gereduceerd (RFC-022 par. 4.1, daar voorlopig). reduction kiest met filter en kies zo nodig een gram en leidt met afleidingen de parameters van een artikel af: een afleiding op het gekozen gram (veld, jaar_van, gevuld, gelijk, tabel, moment), of een afleiding over de grammen die door haar eigen filter komen (bestaat, som, kies met veld, jaar_van of bevat). Met groepeer: zaakkenmerk (en zo nodig zonder) is de lexostatus een lijst met een regel per zaak. extra_velden levert waarden die geen parameter zijn en niet naar de engine gaan.",
   "type": "object",
   "required": [
     "cel",
@@ -126,8 +126,7 @@
         },
         "afleidingen": {
           "type": "object",
-          "minProperties": 1,
-          "description": "Per parameter van een artikel onder de grondslag: hoe die uit het gram volgt.",
+          "description": "Per parameter van een artikel onder de grondslag: hoe die uit het gram volgt. Leeg mag, als extra_velden wel iets levert: een lexostatus die alleen kolommen voor een synthese per regel levert, levert geen parameter.",
           "propertyNames": {
             "pattern": "^[a-z_][a-z0-9_]*$"
           },
@@ -163,6 +162,19 @@
           "additionalProperties": false,
           "properties": {
             "veld": {
+              "$ref": "#/definitions/veldpad"
+            }
+          }
+        },
+        {
+          "description": "Het jaartal van een datumveld (JJJJ-MM-DD). Geen datum: de parameter blijft weg.",
+          "type": "object",
+          "required": [
+            "jaar_van"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "jaar_van": {
               "$ref": "#/definitions/veldpad"
             }
           }
@@ -322,6 +334,37 @@
                 "boolean"
               ],
               "description": "De waarde als geen gram door filter komt: de lezing van afwezigheid binnen de eigen kroniek, bijvoorbeeld null voor een datum van iets dat niet gebeurde. Zonder geen_gram blijft de parameter dan weg."
+            }
+          }
+        },
+        {
+          "description": "Over de grammen die door filter komen: het jaartal van het datumveld in het gram met het laatste op_moment. Geen datum: de parameter blijft weg. Geen gram: de waarde van geen_gram, en zonder geen_gram blijft de parameter weg.",
+          "type": "object",
+          "required": [
+            "kies",
+            "jaar_van"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "filter": {
+              "$ref": "#/definitions/filter"
+            },
+            "kies": {
+              "enum": [
+                "laatste"
+              ]
+            },
+            "jaar_van": {
+              "$ref": "#/definitions/veldpad"
+            },
+            "geen_gram": {
+              "type": [
+                "null",
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "De waarde als geen gram door filter komt: de lezing van afwezigheid binnen de eigen kroniek. Zonder geen_gram blijft de parameter dan weg."
             }
           }
         },

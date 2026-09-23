@@ -6,16 +6,27 @@ use std::path::Path;
 use regelrecht_engine::{Article, LawExecutionService};
 use serde::Serialize;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
+
+use crate::stroom::GeladenRegeling;
+
+/// Het corpus zoals de runtime het laadde: de engine met alle regelingen, en
+/// de inventaris ervan voor het receipt van een besluit (RFC-013).
+pub struct Corpus {
+    pub service: LawExecutionService,
+    pub regelingen: Vec<GeladenRegeling>,
+}
 
 /// Laad elke regeling (een YAML-bestand met `$id` en `articles`) onder een
 /// map. Andere YAML-bestanden (scenario's, notities) worden overgeslagen;
 /// een regeling die de engine niet laadt is een fout.
-pub fn laad(map: &Path) -> Result<LawExecutionService, Vec<String>> {
+pub fn laad(map: &Path) -> Result<Corpus, Vec<String>> {
     if !map.is_dir() {
         return Err(vec![format!("{}: geen map", map.display())]);
     }
     let mut service = LawExecutionService::new();
+    let mut geladen: Vec<GeladenRegeling> = Vec::new();
     let mut fouten = Vec::new();
     let mut bestanden: Vec<_> = WalkDir::new(map)
         .into_iter()
@@ -39,12 +50,43 @@ pub fn laad(map: &Path) -> Result<LawExecutionService, Vec<String>> {
         }
         if let Err(e) = service.load_law(&tekst) {
             fouten.push(format!("{}: {e}", pad.display()));
+            continue;
         }
+        geladen.push(inventariseer(&pad, &tekst));
     }
+    geladen.sort();
     if fouten.is_empty() {
-        Ok(service)
+        Ok(Corpus {
+            service,
+            regelingen: geladen,
+        })
     } else {
         Err(fouten)
+    }
+}
+
+/// Een geladen regeling voor het receipt: haar `$id`, vanaf wanneer die
+/// versie geldt en de hash van het bestand zoals gelezen. De bestandsnaam is
+/// in het corpus de ingangsdatum; staat die er niet, dan telt `valid_from` of
+/// `publication_date` uit het bestand zelf.
+fn inventariseer(pad: &Path, tekst: &str) -> GeladenRegeling {
+    let doc: serde_yaml_ng::Value = serde_yaml_ng::from_str(tekst).unwrap_or_default();
+    let lees = |sleutel: &str| {
+        doc.get(sleutel)
+            .and_then(serde_yaml_ng::Value::as_str)
+            .map(str::to_string)
+    };
+    let stam = pad
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .filter(|s| s.len() == 10 && s.split('-').count() == 3);
+    GeladenRegeling {
+        id: lees("$id").unwrap_or_default(),
+        valid_from: stam
+            .or_else(|| lees("valid_from"))
+            .or_else(|| lees("publication_date"))
+            .unwrap_or_default(),
+        sha256: hex::encode(Sha256::digest(tekst.as_bytes())),
     }
 }
 
@@ -170,14 +212,18 @@ mod tests {
 
     #[test]
     fn laadt_de_testregelingen() {
-        let s = laad(&fixtures()).unwrap();
-        assert!(s.has_law("testregeling_aanvraag"));
-        assert!(s.has_law("testregeling_awb"));
+        let c = laad(&fixtures()).unwrap();
+        assert!(c.service.has_law("testregeling_aanvraag"));
+        assert!(c.service.has_law("testregeling_awb"));
+        // De inventaris voor het receipt: elke regeling met haar hash.
+        assert!(c.regelingen.iter().any(|r| r.id == "testregeling_aanvraag"
+            && r.valid_from == "2025-01-01"
+            && r.sha256.len() == 64));
     }
 
     #[test]
     fn grondslag_naar_artikel() {
-        let s = laad(&fixtures()).unwrap();
+        let s = laad(&fixtures()).unwrap().service;
         let a = artikel(&s, "testregeling_aanvraag#1").unwrap();
         assert!(a.get_parameters().iter().any(|p| p.name == "bevat_naam"));
         assert!(artikel(&s, "testregeling_aanvraag#9")
@@ -191,7 +237,7 @@ mod tests {
 
     #[test]
     fn transitieve_parameters_volgen_de_invoer() {
-        let s = laad(&fixtures()).unwrap();
+        let s = laad(&fixtures()).unwrap().service;
         let a = artikel(&s, "testregeling_afnemer#1").unwrap();
         let p = transitieve_parameters(&s, "testregeling_afnemer", a);
         // Eigen parameters, die van artikel 2 (zelfde regeling, geen binding)
@@ -208,7 +254,7 @@ mod tests {
 
     #[test]
     fn benodigde_parameters_zonder_wat_een_invoer_bindt() {
-        let s = laad(&fixtures()).unwrap();
+        let s = laad(&fixtures()).unwrap().service;
         let a = artikel(&s, "testregeling_afnemer#1").unwrap();
         let p = benodigde_parameters(&s, "testregeling_afnemer", a);
         // Artikel 2 wordt zonder parameters aangeroepen: zijn parameter telt.

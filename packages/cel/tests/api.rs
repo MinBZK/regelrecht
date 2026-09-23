@@ -415,8 +415,16 @@ async fn cellen_worden_opgesomd_met_hun_mogelijkheden() {
         .iter()
         .map(|c| c["id"].as_str().unwrap())
         .collect();
-    assert_eq!(ids, ["test_afnemer", "test_instantie", "test_register"]);
-    let register = &body[2];
+    assert_eq!(
+        ids,
+        [
+            "test_afnemer",
+            "test_gebieden",
+            "test_instantie",
+            "test_register"
+        ]
+    );
+    let register = &body[3];
     assert_eq!(register["portaal"], json!(false));
     assert_eq!(register["lexostatussen"][0]["name"], "registerstatus");
     assert_eq!(
@@ -426,7 +434,7 @@ async fn cellen_worden_opgesomd_met_hun_mogelijkheden() {
     assert_eq!(body[0]["synthese"][0]["transport"], "intern");
     assert_eq!(
         body[0]["lexostatussen"][0]["extra_velden"],
-        json!(["aanduiding"])
+        json!(["aanduiding", "gebieden"])
     );
 }
 
@@ -490,7 +498,7 @@ async fn lexostatus_met_invoer_als_query() {
     assert_eq!(status, StatusCode::OK, "{l}");
     assert_eq!(
         l["parameters"],
-        json!({"is_ingeschreven_raad": true, "is_geschrapt_raad": false,
+        json!({"is_ingeschreven_raad": true, "is_geschrapt_raad": false, "jaar": 2024,
                "zetels_op_lijst": 6, "datum_mededeling": "2024-11-01", "geblokkeerd_raad": false})
     );
     let (status, l, _) = vraag(
@@ -510,6 +518,10 @@ fn afnemer_concept(aanduiding: Option<&str>) -> Value {
         "naam": "Vereniging Voorbeeld",
         "adres": "Voorbeeldstraat 1, 1234 AB Voorbeeld",
         "dagtekening": "2025-03-12",
+        "gebieden": [
+            {"gebied": "Voorbeeldstad", "zetels": 4},
+            {"gebied": "Buurdorp", "zetels": 2},
+        ],
     });
     if let Some(a) = aanduiding {
         external["aanduiding"] = json!(a);
@@ -582,7 +594,7 @@ async fn synthese_zonder_registratie_en_zonder_invoer() {
     assert_eq!(body["herkomst"]["is_ingeschreven_raad"]["bron"], "cel");
     assert_eq!(
         body["bronnen"][0]["niet_geleverd"],
-        json!(["datum_mededeling"])
+        json!(["datum_mededeling", "jaar"])
     );
     assert!(body["herkomst"].get("datum_mededeling").is_none());
     // Zonder aanduiding wordt de bron niet bevraagd.
@@ -628,9 +640,10 @@ fn eigen_cellen(cellen: &[(&str, &dyn Fn(String) -> String)]) -> tempfile::TempD
 
 fn met_url(url: String) -> impl Fn(String) -> String {
     move |t: String| {
+        // Alleen de synthese-bron, niet de gelijknamige bron onder rijen.
         t.replace(
-            "  - cel: test_register\n",
-            &format!("  - cel: test_register\n    url: {url}\n"),
+            "synthese:\n  - cel: test_register\n",
+            &format!("synthese:\n  - cel: test_register\n    url: {url}\n"),
         )
     }
 }
@@ -749,8 +762,8 @@ fn synthese_controle_bij_het_opstarten() {
         let cellen = eigen_cellen(&[("afnemer", aanpassing), ("register", &|t: String| t)]);
         let data = tempfile::tempdir().unwrap();
         let fouten = runtime_op(&cellen.path().join("cellen"), data.path())
-            .err()
-            .unwrap();
+            .map(|_| ())
+            .expect_err(verwacht);
         assert!(
             fouten
                 .iter()
@@ -801,8 +814,8 @@ fn besluit_controle_bij_het_opstarten() {
         let cellen = eigen_cellen(&[("afnemer", aanpassing), ("register", &|t: String| t)]);
         let data = tempfile::tempdir().unwrap();
         let fouten = runtime_op(&cellen.path().join("cellen"), data.path())
-            .err()
-            .unwrap();
+            .map(|_| ())
+            .expect_err(verwacht);
         assert!(
             fouten
                 .iter()
@@ -861,6 +874,56 @@ fn besluit_controle_bij_het_opstarten() {
     geval(
         &|t: String| t.replace("      datum_bekendmaking: null\n", "      datum_bekendmaking: null\n      opgeschorte_dagen: null\n"),
         "parameter 'opgeschorte_dagen' komt uit meer dan een bron: de eigen lexostatus 'zaakverloop', de stand bij besluit",
+    );
+    // Synthese per regel.
+    geval(
+        &|t: String| {
+            t.replace(
+                "        tabel: {lexostatus: aanvraag_inhoud, veld: gebieden}",
+                "        tabel: {lexostatus: aanvraag_inhoud, veld: dorpen}",
+            )
+        },
+        "lexostatus 'aanvraag_inhoud' levert geen 'dorpen'",
+    );
+    geval(
+        &|t: String| t.replace("        tabel: {lexostatus: aanvraag_inhoud, veld: gebieden}", "        tabel: {lexostatus: werkvoorraad, veld: gebieden}"),
+        "de tabel komt uit lexostatus 'werkvoorraad', en die staat niet in de lexostatussen van het besluit",
+    );
+    geval(
+        &|t: String| {
+            t.replace(
+                "              gebied: {kolom: gebied}\n              peildatum:",
+                "              gebied: {kolom: gebiedje}\n              peildatum:",
+            )
+        },
+        "kolom 'gebiedje' wordt door niets ervoor gevuld",
+    );
+    geval(
+        &|t: String| t.replace("- parameter: gebiedstabel", "- parameter: dorpstabel"),
+        "besluit, rijen: 'dorpstabel' is geen parameter van testregeling_afnemer#3",
+    );
+    geval(
+        &|t: String| {
+            t.replace(
+                "            kolommen: {tarief: tarief}",
+                "            kolommen: {tarief: zetels}",
+            )
+        },
+        "kolom 'zetels' komt uit meer dan een plek: de tabel, bron test_gebieden/tarief",
+    );
+    // Waar het besluit wordt vastgelegd.
+    geval(
+        &|t: String| {
+            t.replace(
+                "      event: besluit_genomen",
+                "      event: termijn_opgeschort",
+            )
+        },
+        "het event heeft geen stage",
+    );
+    geval(
+        &|t: String| t.replace("    uitkomsten: [vastgesteld_bedrag, gebiedsbedrag,", "    uitkomsten: [vastgesteld_bedrag,"),
+        "het besluit heeft de uitkomsten [besluit_tijdig, besluitdeadline, vastgesteld_bedrag, zorgvuldig]",
     );
 }
 
@@ -1084,7 +1147,8 @@ async fn werkvoorraad_is_een_lijst_van_zaken_zonder_besluit() {
         data.path(),
         "besluit_genomen",
         &een,
-        json!({"vastgesteld_bedrag": 6000}),
+        json!({"vastgesteld_bedrag": 6000, "gebiedsbedrag": 5000, "besluit_tijdig": false,
+               "besluitdeadline": "2025-04-11", "zorgvuldig": true}),
     );
     let (_, w, _) = vraag(
         &app,
@@ -1316,4 +1380,311 @@ fn een_falende_cel_houdt_de_runtime_tegen() {
         .unwrap();
     assert_eq!(fouten.len(), 1, "{fouten:?}");
     assert!(fouten[0].starts_with("cel 'test_register': "), "{fouten:?}");
+}
+
+// --- Synthese per regel en het vastleggen van het besluit ---
+
+/// Het besluitformulier van de afnemer, volledig ingevuld.
+fn oordelen() -> Value {
+    json!({"formulier": {"besluitdatum": "2025-03-20", "feiten_vergaard": true}})
+}
+
+#[tokio::test]
+async fn synthese_per_regel_vult_de_tabel_aan() {
+    let data = tempfile::tempdir().unwrap();
+    let app = app(data.path());
+    let zaak = afnemer_indienen(&app, "12345678").await;
+    let b = behandelaar(&app).await;
+    let (status, p, _) = vraag(
+        &app,
+        "POST",
+        &format!("{AFNEMER}/api/zaken/{zaak}/proefbesluit"),
+        Some(&b),
+        Some(oordelen()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{p}");
+
+    // De regels komen uit de aanvraag; de kolommen `ingeschreven` en
+    // `tarief` uit twee andere cellen, per regel bevraagd.
+    assert_eq!(
+        p["parameters"]["gebiedstabel"],
+        json!([
+            {"gebied": "Voorbeeldstad", "zetels": 4, "ingeschreven": true, "tarief": 1000},
+            {"gebied": "Buurdorp", "zetels": 2, "ingeschreven": false, "tarief": 500},
+        ])
+    );
+    // 4 x 1000 + 2 x 500.
+    assert_eq!(p["uitkomsten"]["gebiedsbedrag"], json!(5000));
+    assert_eq!(
+        p["herkomst"]["gebiedstabel"],
+        json!({"bron": "per_regel", "lexostatus": "aanvraag_inhoud", "veld": "gebieden"})
+    );
+    let rijen = &p["rijen"][0];
+    assert_eq!(rijen["parameter"], "gebiedstabel");
+    assert_eq!(rijen["bronnen"][0]["cel"], "test_register");
+    assert_eq!(rijen["bronnen"][0]["bevraagd"], json!(2));
+    assert_eq!(rijen["bronnen"][1]["cel"], "test_gebieden");
+    assert_eq!(rijen["bronnen"][1]["status"], "bevraagd");
+    assert!(rijen.get("mist").is_none(), "{rijen}");
+
+    // De peildatum is het jaartal uit de registercel (jaar_van), omgezet
+    // naar 1 januari van dat jaar.
+    assert_eq!(p["parameters"]["jaar"], json!(2024));
+    assert_eq!(p["herkomst"]["jaar"]["cel"], "test_register");
+}
+
+#[tokio::test]
+async fn een_gebied_zonder_tarief_blijft_leeg() {
+    let data = tempfile::tempdir().unwrap();
+    let app = app(data.path());
+    // Een gebied waarvoor geen tarief is vastgesteld: die kolom blijft weg,
+    // en de engine kan de uitkomst dan niet geven.
+    let (_, _, cookie) = vraag(
+        &app,
+        "POST",
+        &format!("{AFNEMER}/api/eherkenning/login"),
+        None,
+        Some(json!({"kvk": "12345678", "persoon": "A. Tester", "machtiging": "volledig"})),
+    )
+    .await;
+    let mut concept = afnemer_concept(Some("VOORBEELD"));
+    concept["external"]["gebieden"] = json!([{"gebied": "Onbekendstad", "zetels": 1}]);
+    let (status, body, _) = vraag(
+        &app,
+        "POST",
+        &format!("{AFNEMER}/api/aanvraag"),
+        cookie.as_deref(),
+        Some(concept),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let zaak = body["gram"]["zaakkenmerk"].as_str().unwrap().to_string();
+    let b = behandelaar(&app).await;
+    let (_, p, _) = vraag(
+        &app,
+        "POST",
+        &format!("{AFNEMER}/api/zaken/{zaak}/proefbesluit"),
+        Some(&b),
+        Some(oordelen()),
+    )
+    .await;
+    assert_eq!(p["rijen"][0]["mist"], json!(["tarief"]));
+    assert_eq!(
+        p["parameters"]["gebiedstabel"],
+        json!([{"gebied": "Onbekendstad", "zetels": 1, "ingeschreven": false}])
+    );
+    assert_eq!(p["te_nemen"], json!(false), "{p}");
+
+    // En dan legt de cel niets vast.
+    let (status, f, _) = vraag(
+        &app,
+        "POST",
+        &format!("{AFNEMER}/api/zaken/{zaak}/besluit"),
+        Some(&b),
+        Some(oordelen()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{f}");
+    assert!(f["fout"].as_str().unwrap().starts_with("niet te nemen"));
+    let kroniek =
+        std::fs::read_to_string(data.path().join("test_afnemer/test_afnemer.jsonl")).unwrap();
+    assert_eq!(kroniek.lines().count(), 1, "alleen de aanvraag");
+}
+
+#[tokio::test]
+async fn besluit_nemen_legt_een_decretogram_vast() {
+    let data = tempfile::tempdir().unwrap();
+    let app = app(data.path());
+    let zaak = afnemer_indienen(&app, "12345678").await;
+    let twee = afnemer_indienen(&app, "87654321").await;
+    let b = behandelaar(&app).await;
+
+    let (status, body, _) = vraag(
+        &app,
+        "POST",
+        &format!("{AFNEMER}/api/zaken/{zaak}/besluit"),
+        Some(&b),
+        Some(oordelen()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let gram = &body["gram"];
+    schema::valideer(Soort::Gram, gram).unwrap();
+    assert_eq!(gram["type"], "decretogram");
+    assert_eq!(gram["stage"], "BESLUIT");
+    assert_eq!(gram["zaak"], "volgt");
+    assert_eq!(gram["zaakkenmerk"], zaak.as_str());
+    assert_eq!(gram["legal_character"], "BESCHIKKING");
+    assert_eq!(gram["decision_type"], "TOEKENNING");
+    assert_eq!(gram["regulation"], "testregeling_afnemer");
+    assert_eq!(gram["regulation_valid_from"], "2025-01-01");
+    // De testregeling noemt geen bevoegd gezag: vastleggen met een
+    // waarschuwing, en zonder een verzonnen gezag.
+    assert!(gram.get("competent_authority").is_none(), "{gram}");
+    assert_eq!(body["waarschuwingen"].as_array().unwrap().len(), 1);
+    assert!(body["waarschuwingen"][0]
+        .as_str()
+        .unwrap()
+        .contains("geen bevoegd gezag"));
+
+    // De velden zijn de uitkomsten van het artikel.
+    assert_eq!(
+        gram["fields"],
+        json!({"vastgesteld_bedrag": 6000, "gebiedsbedrag": 5000, "besluit_tijdig": false,
+               "besluitdeadline": "2025-04-11", "zorgvuldig": true})
+    );
+    // De invoer, elk met haar herkomst.
+    let inputs = gram["inputs"].as_object().unwrap();
+    assert_eq!(
+        inputs["besluitdatum"],
+        json!({"waarde": "2025-03-20", "herkomst": {"bron": "behandelaar"}})
+    );
+    assert_eq!(inputs["zetels_op_lijst"]["herkomst"]["bron"], "cel");
+    assert_eq!(inputs["gebiedstabel"]["herkomst"]["bron"], "per_regel");
+    assert_eq!(
+        inputs["datum_bekendmaking"]["herkomst"]["bron"],
+        "stand_bij_besluit"
+    );
+    assert_eq!(
+        inputs["aanvraagdatum"]["herkomst"],
+        json!({"bron": "eigen", "lexostatus": "aanvraag_inhoud"})
+    );
+    // Het receipt: de geladen regelingen en de stromen, met een hash erover.
+    let receipt = &gram["receipt"];
+    let regelingen: Vec<&str> = receipt["regelingen"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["id"].as_str().unwrap())
+        .collect();
+    assert!(regelingen.contains(&"testregeling_afnemer"), "{receipt}");
+    assert_eq!(receipt["regelingen"][0]["valid_from"], "2025-01-01");
+    let stromen: Vec<&str> = receipt["stromen"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        stromen,
+        ["test_afnemer_aanvragen", "test_afnemer_zaakverloop"]
+    );
+    assert_eq!(receipt["sha256"].as_str().unwrap().len(), 64);
+
+    // De zaak verdwijnt uit de werkvoorraad, en het gram staat in de zaak.
+    let (_, w, _) = vraag(
+        &app,
+        "GET",
+        &format!("{AFNEMER}/api/werkvoorraad"),
+        Some(&b),
+        None,
+    )
+    .await;
+    let lijst = w["lijst"].as_array().unwrap();
+    assert_eq!(lijst.len(), 1);
+    assert_eq!(lijst[0]["zaakkenmerk"], twee.as_str());
+    let (_, z, _) = vraag(
+        &app,
+        "GET",
+        &format!("{AFNEMER}/api/zaken/{zaak}"),
+        Some(&b),
+        None,
+    )
+    .await;
+    assert_eq!(z["grammen"].as_array().unwrap().len(), 2);
+
+    // Een tweede besluit in dezelfde zaak: dat is een wijziging.
+    let (status, f, _) = vraag(
+        &app,
+        "POST",
+        &format!("{AFNEMER}/api/zaken/{zaak}/besluit"),
+        Some(&b),
+        Some(oordelen()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{f}");
+    assert!(
+        f["fout"].as_str().unwrap().contains("ligt al een besluit"),
+        "{f}"
+    );
+    let kroniek =
+        std::fs::read_to_string(data.path().join("test_afnemer/test_afnemer.jsonl")).unwrap();
+    assert_eq!(kroniek.lines().count(), 3, "twee aanvragen en een besluit");
+
+    // De aanvrager mag niet besluiten.
+    let (_, _, aanvrager) = vraag(
+        &app,
+        "POST",
+        &format!("{AFNEMER}/api/eherkenning/login"),
+        None,
+        Some(json!({"kvk": "12345678", "persoon": "A", "machtiging": "volledig"})),
+    )
+    .await;
+    let (status, _, _) = vraag(
+        &app,
+        "POST",
+        &format!("{AFNEMER}/api/zaken/{twee}/besluit"),
+        aanvrager.as_deref(),
+        Some(oordelen()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn een_ander_bevoegd_gezag_weigert_het_besluit() {
+    // De regeling wijst een ander gezag aan dan de cel: geen gram.
+    let cellen = eigen_cellen(&[
+        ("afnemer", &|t: String| t),
+        ("register", &|t: String| t),
+        ("gebieden", &|t: String| t),
+    ]);
+    let doel = cellen.path().join("regulation/testregeling_afnemer");
+    std::fs::create_dir_all(&doel).unwrap();
+    let tekst =
+        std::fs::read_to_string(fixtures().join("regulation/testregeling_afnemer/2025-01-01.yaml"))
+            .unwrap();
+    // Alleen artikel 3 is een BESCHIKKING; daar komt het gezag bij te staan.
+    let met_gezag = tekst.replace(
+        "    machine_readable:\n      execution:\n        produces:\n          legal_character: BESCHIKKING",
+        "    machine_readable:\n      competent_authority:\n        name: Een andere instantie\n      execution:\n        produces:\n          legal_character: BESCHIKKING",
+    );
+    assert_ne!(met_gezag, tekst, "het gezag is niet in de regeling gezet");
+    std::fs::write(doel.join("2025-01-01.yaml"), met_gezag).unwrap();
+    for naam in ["testregeling_register", "testregeling_awb"] {
+        let van = fixtures().join(format!("regulation/{naam}/2025-01-01.yaml"));
+        let naar = cellen.path().join(format!("regulation/{naam}"));
+        std::fs::create_dir_all(&naar).unwrap();
+        std::fs::copy(van, naar.join("2025-01-01.yaml")).unwrap();
+    }
+    let data = tempfile::tempdir().unwrap();
+    let config = Config {
+        cells_path: cellen.path().join("cellen"),
+        regulation_path: cellen.path().join("regulation"),
+        data_dir: data.path().to_path_buf(),
+        port: 0,
+    };
+    let app = Runtime::laad(&config, klok()).unwrap().router;
+    let zaak = afnemer_indienen(&app, "12345678").await;
+    let b = behandelaar(&app).await;
+    let (status, f, _) = vraag(
+        &app,
+        "POST",
+        &format!("{AFNEMER}/api/zaken/{zaak}/besluit"),
+        Some(&b),
+        Some(oordelen()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{f}");
+    assert!(
+        f["fout"]
+            .as_str()
+            .unwrap()
+            .contains("'Een andere instantie' aan als bevoegd gezag"),
+        "{f}"
+    );
+    let kroniek =
+        std::fs::read_to_string(data.path().join("test_afnemer/test_afnemer.jsonl")).unwrap();
+    assert_eq!(kroniek.lines().count(), 1, "alleen de aanvraag");
 }

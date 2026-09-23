@@ -158,6 +158,21 @@ pub struct Gram {
     pub chronicle: String,
     pub recording_actor: String,
     pub grondslag: Vec<String>,
+    /// Alleen bij een besluit dat de cel zelf nam: het rechtskarakter en de
+    /// soort beslissing uit `produces` van het artikel (RFC-008).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub legal_character: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decision_type: Option<String>,
+    /// De regeling waarop het besluit rust, met de versie ervan.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub regulation: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub regulation_valid_from: Option<String>,
+    /// Het bevoegd gezag volgens de wet. Ontbreekt het in de regeling, dan
+    /// staat het er niet: de cel verzint geen gezag.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub competent_authority: Option<String>,
     pub op_moment: String,
     /// Uit de stroom: of het gram een zaak opent of volgt. Weggelaten als
     /// het event geen zaak heeft.
@@ -172,6 +187,54 @@ pub struct Gram {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub herkomst: Option<String>,
     pub fields: Map<String, Value>,
+    /// Alleen bij een besluit: elke parameter die meedeed, met haar waarde en
+    /// haar herkomst (RFC-013 `accepted_values`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub inputs: BTreeMap<String, Invoer>,
+    /// Alleen bij een besluit: wat er meedeed, met de hash erover (RFC-013,
+    /// RFC-022 par. 1.3).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub receipt: Option<Receipt>,
+}
+
+/// Een geaccepteerde invoer van een besluit: een waarde met haar herkomst.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Invoer {
+    pub waarde: Value,
+    pub herkomst: crate::synthese::Herkomst,
+}
+
+/// Wat er bij een besluit meedeed, zodat het te herhalen is: de geladen
+/// regelingen en de stroomdefinities, met een hash over beide.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Receipt {
+    pub regelingen: Vec<GeladenRegeling>,
+    pub stromen: Vec<StroomVerwijzing>,
+    /// SHA-256 over de twee lijsten hierboven, als canonieke JSON.
+    pub sha256: String,
+}
+
+/// Een regeling zoals de runtime haar laadde.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct GeladenRegeling {
+    pub id: String,
+    pub valid_from: String,
+    pub sha256: String,
+}
+
+impl Receipt {
+    /// Bouw het receipt en reken de hash uit.
+    pub fn nieuw(regelingen: Vec<GeladenRegeling>, stromen: Vec<StroomVerwijzing>) -> Self {
+        let canoniek = serde_json::to_string(
+            &serde_json::json!({"regelingen": regelingen, "stromen": stromen}),
+        )
+        .unwrap_or_default();
+        Self {
+            regelingen,
+            stromen,
+            sha256: hex::encode(Sha256::digest(canoniek.as_bytes())),
+        }
+    }
 }
 
 fn zonder_zaak(z: &Zaak) -> bool {
@@ -616,6 +679,11 @@ pub fn bouw_gram(
         chronicle: stroom.chronicle.clone(),
         recording_actor: stroom.recording_actor.clone(),
         grondslag: event.grondslag.clone(),
+        legal_character: None,
+        decision_type: None,
+        regulation: None,
+        regulation_valid_from: None,
+        competent_authority: None,
         op_moment: indiening
             .op_moment
             .to_rfc3339_opts(chrono::SecondsFormat::Secs, false),
@@ -627,6 +695,8 @@ pub fn bouw_gram(
         },
         herkomst: None,
         fields,
+        inputs: BTreeMap::new(),
+        receipt: None,
     })
 }
 

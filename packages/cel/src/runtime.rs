@@ -21,7 +21,7 @@ use crate::kroniek::Kroniek;
 use crate::sessie::Sessies;
 use crate::synthese::{self, Bron, TIJDSLIMIET};
 use crate::transport::{Http, Intern, Transport};
-use crate::{besluit, regelingen};
+use crate::{besluit, regelingen, rijen};
 
 /// Een geladen runtime: de cellen en de router over allemaal.
 pub struct Runtime {
@@ -34,7 +34,9 @@ impl Runtime {
     /// startstand als een kroniek leeg is) en bouw de router. Faalt een cel,
     /// dan start de runtime niet; elke melding noemt de cel.
     pub fn laad(config: &Config, klok: Klok) -> Result<Self, Vec<String>> {
-        let service = Arc::new(regelingen::laad(&config.regulation_path)?);
+        let corpus = regelingen::laad(&config.regulation_path)?;
+        let service = Arc::new(corpus.service);
+        let geladen = Arc::new(corpus.regelingen);
         let mappen = celmappen(&config.cells_path).map_err(|e| vec![e])?;
         let mut cellen = Vec::new();
         let mut fouten = Vec::new();
@@ -66,17 +68,33 @@ impl Runtime {
         for cel in cellen {
             let kroniek =
                 open_kroniek(&config.data_dir, &cel).map_err(|f| met_cel(cel.id(), vec![f]))?;
-            let mut bronnen = Vec::new();
-            for b in &cel.definitie.synthese {
-                let transport: Arc<dyn Transport> = match &b.url {
+            let transport = |url: &Option<String>| -> Result<Arc<dyn Transport>, Vec<String>> {
+                Ok(match url {
                     Some(url) => Arc::new(
                         Http::new(url, TIJDSLIMIET).map_err(|e| met_cel(cel.id(), vec![e]))?,
                     ),
                     None => intern.clone(),
-                };
+                })
+            };
+            let mut bronnen = Vec::new();
+            for b in &cel.definitie.synthese {
                 bronnen.push(Bron {
                     definitie: b.clone(),
-                    transport,
+                    transport: transport(&b.url)?,
+                });
+            }
+            let mut per_regel = Vec::new();
+            for r in cel.rijen() {
+                let mut rijbronnen = Vec::new();
+                for b in &r.bronnen {
+                    rijbronnen.push(rijen::Bron {
+                        definitie: b.clone(),
+                        transport: transport(&b.url)?,
+                    });
+                }
+                per_regel.push(rijen::Rijen {
+                    definitie: r.clone(),
+                    bronnen: rijbronnen,
                 });
             }
             staten.push(AppState {
@@ -85,6 +103,8 @@ impl Runtime {
                 sessies: Arc::new(Sessies::default()),
                 klok: klok.clone(),
                 bronnen: Arc::new(bronnen),
+                rijen: Arc::new(per_regel),
+                regelingen: geladen.clone(),
             });
         }
         let router = bouw_router(&staten);

@@ -1,0 +1,9 @@
+---
+# Fictieve cel zonder portaal en zonder rollen: zij stelt per gebied en per
+# peildatum een tarief vast. De afnemer bevraagt haar per regel van zijn
+# gebiedstabel (synthese per regel).
+id: test_gebieden
+recording_actor: test_gebieden
+stromen: [../../chronicles/test_gebieden.yaml]
+lexostatussen: lexostatussen.yaml
+startstand: startstand.jsonl

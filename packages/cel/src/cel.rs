@@ -126,6 +126,15 @@ impl Cel {
         Some((s, s.event(&p.event)?))
     }
 
+    /// De rijen-definities van het besluit (synthese per regel).
+    pub fn rijen(&self) -> &[crate::config::RijenDefinitie] {
+        self.definitie
+            .behandeling
+            .as_ref()
+            .map(|b| b.besluit.rijen.as_slice())
+            .unwrap_or_default()
+    }
+
     /// De kronieken van de cel, gesorteerd en zonder dubbelen.
     pub fn kronieken(&self) -> Vec<&str> {
         let mut v: Vec<&str> = self.strommen.iter().map(|s| s.chronicle.as_str()).collect();
@@ -153,7 +162,11 @@ mod tests {
     }
 
     fn service() -> Arc<LawExecutionService> {
-        Arc::new(crate::regelingen::laad(&fixtures().join("regulation")).unwrap())
+        Arc::new(
+            crate::regelingen::laad(&fixtures().join("regulation"))
+                .unwrap()
+                .service,
+        )
     }
 
     #[test]

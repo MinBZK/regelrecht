@@ -7,7 +7,7 @@ cel: test_register
 lexostatus_definitions:
   - name: registerstatus
     inputs: [{name: aanduiding, type: string}]
-    levert_aan: [testregeling_afnemer#1, testregeling_afnemer#2]
+    levert_aan: [testregeling_afnemer#1, testregeling_afnemer#2, testregeling_afnemer#3]
     reduction:
       kroniek: test_register
       afleidingen:
@@ -19,3 +19,21 @@ lexostatus_definitions:
           filter: {name: mededeling_gedaan, aanduiding: $aanduiding}
           kies: laatste
           bevat: {veld: geblokkeerd_voor, waarde: raad}
+        jaar:                            # het jaartal van een datum in de kroniek
+          filter: {name: mededeling_gedaan, aanduiding: $aanduiding}
+          kies: laatste
+          jaar_van: datum
+  - name: registratie_per_gebied
+    # Een kolom van de gebiedstabel van de afnemer, per regel bevraagd. Geen
+    # parameter van een artikel, dus een extra veld: het gaat nooit
+    # rechtstreeks naar de engine.
+    inputs:
+      - {name: aanduiding, type: string}
+      - {name: gebied, type: string}
+    reduction:
+      kroniek: test_register
+      afleidingen: {}
+      extra_velden:
+        ingeschreven:
+          filter: {name: aanduiding_ingeschreven, aanduiding: $aanduiding, gebied: $gebied}
+          bestaat: true

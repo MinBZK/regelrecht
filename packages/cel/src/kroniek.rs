@@ -103,6 +103,7 @@ mod tests {
     use super::*;
     use crate::stroom::{StroomVerwijzing, Zaak};
     use serde_json::json;
+    use std::collections::BTreeMap;
 
     fn gram(zaak: &str) -> Gram {
         Gram {
@@ -114,6 +115,11 @@ mod tests {
             chronicle: "test_kroniek".into(),
             recording_actor: "test_instantie".into(),
             grondslag: vec!["testregeling_aanvraag#1".into()],
+            legal_character: None,
+            decision_type: None,
+            regulation: None,
+            regulation_valid_from: None,
+            competent_authority: None,
             op_moment: "2025-03-12T10:14:03+01:00".into(),
             zaak: Zaak::Opent,
             zaakkenmerk: Some(zaak.into()),
@@ -123,6 +129,8 @@ mod tests {
             },
             herkomst: None,
             fields: json!({"x": 1}).as_object().unwrap().clone(),
+            inputs: BTreeMap::new(),
+            receipt: None,
         }
     }
 

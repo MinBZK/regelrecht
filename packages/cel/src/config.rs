@@ -124,6 +124,97 @@ pub struct BesluitDefinitie {
     /// Feiten die pas na het besluit ontstaan, met hun stand bij het besluit.
     #[serde(default)]
     pub stand_bij_besluit: BTreeMap<String, Value>,
+    /// Synthese per regel: een tabelveld wordt een array-parameter.
+    #[serde(default)]
+    pub rijen: Vec<RijenDefinitie>,
+    /// Waar het besluit als gram wordt vastgelegd.
+    #[serde(default)]
+    pub vastleggen: Option<Vastleggen>,
+}
+
+/// Het event waarin de cel het genomen besluit vastlegt. Het event heeft
+/// `zaak: volgt` en een stage, en zijn `$external`-sleutels zijn precies de
+/// uitkomsten van het besluit.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Vastleggen {
+    pub stroom: String,
+    pub event: String,
+}
+
+/// Synthese per regel: voor elke regel van een tabelveld uit een eigen
+/// lexostatus bevraagt de cel bronnen met waarden uit die regel, en voegt de
+/// kolommen samen tot een array-parameter.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RijenDefinitie {
+    /// De array-parameter die de regels samen vormen.
+    pub parameter: String,
+    /// Het tabelveld van een eigen lexostatus (een extra veld of parameter).
+    pub tabel: InvoerVerwijzing,
+    /// Per kolom van de tabel: onder welke naam ze in de parameter komt.
+    /// Een kolom die hier niet staat, gaat niet mee.
+    pub kolommen: BTreeMap<String, String>,
+    /// Bronnen die per regel worden bevraagd.
+    #[serde(default)]
+    pub bronnen: Vec<RijBron>,
+}
+
+/// Een bron die per regel wordt bevraagd.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RijBron {
+    pub cel: String,
+    /// Zonder url: de bron-cel draait in dezelfde runtime (intern transport).
+    #[serde(default)]
+    pub url: Option<String>,
+    pub lexostatus: String,
+    /// Per input van de bron: waar de waarde vandaan komt.
+    pub invoer: BTreeMap<String, RijInvoer>,
+    /// Per naam die de bron levert: onder welke kolomnaam ze in de regel komt.
+    pub kolommen: BTreeMap<String, String>,
+}
+
+/// Waar de invoer van een bron per regel vandaan komt.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum RijInvoer {
+    /// Een kolom van de regel zelf, zoals die na de kolomnamen heet.
+    Kolom {
+        kolom: String,
+        #[serde(default)]
+        als: Option<Omzetting>,
+    },
+    /// Een veld van een eigen lexostatus (een parameter of een extra veld).
+    Eigen {
+        lexostatus: String,
+        veld: String,
+        #[serde(default)]
+        als: Option<Omzetting>,
+    },
+    /// Een parameter uit de samenvoeging: de eigen lexostatussen en de
+    /// synthese van de cel.
+    Parameter {
+        parameter: String,
+        #[serde(default)]
+        als: Option<Omzetting>,
+    },
+}
+
+/// Een omzetting van een waarde voor ze als invoer meegaat.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Omzetting {
+    /// Van een jaartal naar de datum 1 januari van dat jaar. De tegenhanger
+    /// van de afleiding `jaar_van`.
+    EersteDagVanHetJaar,
+}
+
+impl RijInvoer {
+    pub fn omzetting(&self) -> Option<Omzetting> {
+        match self {
+            RijInvoer::Kolom { als, .. }
+            | RijInvoer::Eigen { als, .. }
+            | RijInvoer::Parameter { als, .. } => *als,
+        }
+    }
 }
 
 /// Een veld van het besluitformulier: een parameter met een label.
@@ -238,7 +329,15 @@ mod tests {
             .iter()
             .map(|m| CelDefinitie::laad(m).unwrap().id)
             .collect();
-        assert_eq!(ids, ["test_afnemer", "test_instantie", "test_register"]);
+        assert_eq!(
+            ids,
+            [
+                "test_afnemer",
+                "test_gebieden",
+                "test_instantie",
+                "test_register"
+            ]
+        );
     }
 
     #[test]

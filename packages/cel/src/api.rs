@@ -54,8 +54,9 @@ use crate::cel::Cel;
 use crate::eherkenning::{Login, Sessie};
 use crate::kroniek::Kroniek;
 use crate::reductie;
+use crate::rijen::Rijen;
 use crate::sessie::{Gebruiker, Medewerker, Sessies, COOKIE};
-use crate::stroom::{self, Binding, Gram, Indiening, Zaak};
+use crate::stroom::{self, Binding, GeladenRegeling, Gram, Indiening, Zaak};
 use crate::synthese::{self, Bron};
 use crate::toets;
 
@@ -80,6 +81,10 @@ pub struct AppState {
     pub klok: Klok,
     /// De synthese-bronnen, met het transport dat de runtime koos.
     pub bronnen: Arc<Vec<Bron>>,
+    /// De synthese per regel van het besluit, met haar bronnen.
+    pub rijen: Arc<Vec<Rijen>>,
+    /// De geladen regelingen, voor het receipt van een besluit.
+    pub regelingen: Arc<Vec<GeladenRegeling>>,
 }
 
 /// De routes van een cel, relatief aan `/cellen/<id>`.
@@ -113,7 +118,8 @@ pub fn router(state: AppState) -> Router {
             .route(
                 "/api/zaken/{zaakkenmerk}/proefbesluit",
                 post(proefbesluit_route),
-            );
+            )
+            .route("/api/zaken/{zaakkenmerk}/besluit", post(besluit_route));
     }
     r.with_state(state)
 }
@@ -554,15 +560,67 @@ async fn proefbesluit_voor(
         &state.cel,
         &state.kroniek,
         &state.bronnen,
+        &state.rijen,
         zaakkenmerk,
         formulier,
         &vandaag(state),
     )
     .await
-    .map_err(|w| match w {
+    .map_err(weigering)
+}
+
+/// Een weigering van het besluit als HTTP-antwoord. Een vraag die niet kan
+/// (nog niet compleet, al besloten, een ander bevoegd gezag) is een 409: de
+/// stand van de zaak laat het niet toe.
+fn weigering(w: Weigering) -> Fout {
+    match w {
         Weigering::OnbekendOordeel(t) => fout(StatusCode::BAD_REQUEST, t),
+        Weigering::NietTeNemen(t) | Weigering::AlBesloten(t) | Weigering::Onbevoegd(t) => {
+            fout(StatusCode::CONFLICT, t)
+        }
         Weigering::Cel(t) => fout(StatusCode::INTERNAL_SERVER_ERROR, t),
-    })
+    }
+}
+
+/// Het besluit nemen en vastleggen. Is het proefbesluit niet compleet, ligt
+/// er al een besluit, of wijst de wet een ander bevoegd gezag aan, dan komt
+/// er geen gram.
+async fn besluit_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(zaakkenmerk): Path<String>,
+    Json(invoer): Json<Besluitformulier>,
+) -> Result<(StatusCode, Json<Value>), Fout> {
+    behandelaar(&state, &headers)?;
+    zaakgrammen(&state, &zaakkenmerk)?;
+    let genomen = besluit::neem_besluit(
+        &state.cel,
+        &state.kroniek,
+        &state.bronnen,
+        &state.rijen,
+        &state.regelingen,
+        &zaakkenmerk,
+        &invoer.formulier,
+        (state.klok)(),
+    )
+    .await
+    .map_err(weigering)?;
+    tracing::info!(
+        cel = %state.cel.id(),
+        zaakkenmerk = %zaakkenmerk,
+        stage = genomen.gram.stage.as_deref().unwrap_or("-"),
+        "besluit vastgelegd"
+    );
+    let yaml = als_yaml(&state.cel, &genomen.gram);
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({
+            "gram": genomen.gram,
+            "yaml": yaml,
+            "proefbesluit": genomen.proefbesluit,
+            "waarschuwingen": genomen.waarschuwingen,
+        })),
+    ))
 }
 
 /// De grammen van een zaak; een 404 als de kroniek de zaak niet kent.

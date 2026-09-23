@@ -13,7 +13,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use std::time::Duration;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::cel::Cel;
@@ -33,7 +33,7 @@ pub struct Bron {
 }
 
 /// Waar een parameter vandaan kwam.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "bron", rename_all = "snake_case")]
 pub enum Herkomst {
     /// De eigen reductie.
@@ -42,8 +42,11 @@ pub enum Herkomst {
     Cel {
         cel: String,
         lexostatus: String,
-        transport: &'static str,
+        transport: String,
     },
+    /// Samengesteld per regel uit een tabelveld van een eigen lexostatus en
+    /// de bronnen die per regel zijn bevraagd (zie [`crate::rijen`]).
+    PerRegel { lexostatus: String, veld: String },
     /// Het besluitformulier: een oordeel van de behandelaar.
     Behandelaar,
     /// De stand bij besluit: een feit dat pas na het besluit ontstaat.
@@ -230,7 +233,7 @@ pub async fn voeg_samen(eigen: &Lexostatus, bronnen: &[Bron]) -> Samenvoeging {
                             Herkomst::Cel {
                                 cel: uitslag.cel.clone(),
                                 lexostatus: uitslag.lexostatus.clone(),
-                                transport: uitslag.transport,
+                                transport: uitslag.transport.to_string(),
                             },
                         );
                     }

@@ -5,10 +5,10 @@
 //! `kies` zo nodig een gram. Per parameter leidt een afleiding een waarde af,
 //! op een van twee manieren:
 //!
-//! - **op het gekozen gram**: `veld`, `gevuld`, `gelijk`, `tabel` met
-//!   `elke_regel` of `een_regel` (en `alleen_waar`), en `moment`;
+//! - **op het gekozen gram**: `veld`, `jaar_van`, `gevuld`, `gelijk`, `tabel`
+//!   met `elke_regel` of `een_regel` (en `alleen_waar`), en `moment`;
 //! - **over een verzameling grammen**, met een eigen `filter`: `bestaat`,
-//!   `som`, en `kies: laatste` met `veld` of `bevat`.
+//!   `som`, en `kies: laatste` met `veld`, `jaar_van` of `bevat`.
 //!
 //! Geen gram betekent binnen de eigen kroniek "nee" (`bestaat`, `bevat`) of
 //! nul (`som`): de cel spreekt alleen over haar eigen kroniek. Een waarde die
@@ -29,7 +29,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use chrono::DateTime;
+use chrono::{DateTime, Datelike};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -133,6 +133,20 @@ pub enum Afleiding {
         )]
         geen_gram: Option<Value>,
     },
+    /// Over de grammen door `filter`: het jaartal van de datum in `jaar_van`
+    /// in het laatste gram. Geen gram: `geen_gram`, als dat er is.
+    LaatsteJaarVan {
+        #[serde(default, skip_serializing_if = "Filter::is_empty")]
+        filter: Filter,
+        kies: Kies,
+        jaar_van: String,
+        #[serde(
+            default,
+            deserialize_with = "aanwezig",
+            skip_serializing_if = "Option::is_none"
+        )]
+        geen_gram: Option<Value>,
+    },
     /// Over de grammen door `filter`: of het lijstveld in het laatste de
     /// waarde bevat.
     LaatsteBevat {
@@ -155,6 +169,10 @@ pub enum Afleiding {
     },
     Veld {
         veld: String,
+    },
+    /// Het jaartal van een datumveld van het gekozen gram.
+    JaarVan {
+        jaar_van: String,
     },
     Gevuld {
         gevuld: String,
@@ -268,6 +286,7 @@ impl Afleiding {
     pub fn filter(&self) -> Option<&Filter> {
         match self {
             Afleiding::LaatsteVeld { filter, .. }
+            | Afleiding::LaatsteJaarVan { filter, .. }
             | Afleiding::LaatsteBevat { filter, .. }
             | Afleiding::Bestaat { filter, .. }
             | Afleiding::Som { filter, .. } => Some(filter),
@@ -284,6 +303,9 @@ impl Afleiding {
     pub fn gelezen_paden(&self) -> Vec<&str> {
         let mut paden = match self {
             Afleiding::Veld { veld } | Afleiding::LaatsteVeld { veld, .. } => vec![veld.as_str()],
+            Afleiding::JaarVan { jaar_van } | Afleiding::LaatsteJaarVan { jaar_van, .. } => {
+                vec![jaar_van.as_str()]
+            }
             Afleiding::Gevuld { gevuld } => vec![gevuld.as_str()],
             Afleiding::Gelijk { gelijk } => vec![gelijk.veld.as_str()],
             Afleiding::ElkeRegel { tabel, .. } | Afleiding::EenRegel { tabel, .. } => {
@@ -331,6 +353,7 @@ impl Afleiding {
     pub fn pas_toe(&self, gram: &Gram) -> Option<Value> {
         match self {
             Afleiding::Veld { veld } => gram.veld(veld).filter(|w| gevuld(w)).cloned(),
+            Afleiding::JaarVan { jaar_van } => gram.veld(jaar_van).and_then(jaar_uit),
             Afleiding::Gevuld { gevuld: pad } => {
                 Some(Value::Bool(gram.veld(pad).is_some_and(gevuld)))
             }
@@ -365,6 +388,7 @@ impl Afleiding {
                 .ok()
                 .map(|m| Value::String(m.date_naive().format("%Y-%m-%d").to_string())),
             Afleiding::LaatsteVeld { .. }
+            | Afleiding::LaatsteJaarVan { .. }
             | Afleiding::LaatsteBevat { .. }
             | Afleiding::Bestaat { .. }
             | Afleiding::Som { .. } => None,
@@ -417,6 +441,14 @@ impl Afleiding {
                 Some(g) => g.veld(veld).filter(|w| gevuld(w)).cloned(),
                 None => geen_gram.clone(),
             },
+            Afleiding::LaatsteJaarVan {
+                jaar_van,
+                geen_gram,
+                ..
+            } => match laatste(&door)? {
+                Some(g) => g.veld(jaar_van).and_then(jaar_uit),
+                None => geen_gram.clone(),
+            },
             Afleiding::LaatsteBevat { bevat, .. } => Some(Value::Bool(
                 laatste(&door)?
                     .and_then(|g| g.veld(&bevat.veld))
@@ -440,6 +472,17 @@ fn laatste<'g>(grammen: &[&'g Gram]) -> Result<Option<&'g Gram>, String> {
         }
     }
     Ok(gekozen.map(|(_, g)| g))
+}
+
+/// Het jaartal van een datum (`JJJJ-MM-DD`, of een moment met tijdzone).
+/// Geen datum: niets, en de parameter blijft weg.
+pub fn jaar_uit(waarde: &Value) -> Option<Value> {
+    let tekst = waarde.as_str()?;
+    let jaar = match chrono::NaiveDate::parse_from_str(tekst, "%Y-%m-%d") {
+        Ok(d) => d.year(),
+        Err(_) => DateTime::parse_from_rfc3339(tekst).ok()?.year(),
+    };
+    Some(Value::from(jaar))
 }
 
 /// Gevuld: niet null, geen lege tekst, geen lege lijst of leeg object.
@@ -737,6 +780,11 @@ mod tests {
             chronicle: "test_kroniek".into(),
             recording_actor: "test_instantie".into(),
             grondslag: vec!["testregeling_aanvraag#1".into()],
+            legal_character: None,
+            decision_type: None,
+            regulation: None,
+            regulation_valid_from: None,
+            competent_authority: None,
             op_moment: moment.into(),
             zaak: Zaak::Opent,
             zaakkenmerk: Some(zaak.into()),
@@ -746,6 +794,8 @@ mod tests {
             },
             herkomst: None,
             fields: fields.as_object().unwrap().clone(),
+            inputs: BTreeMap::new(),
+            receipt: None,
         }
     }
 
@@ -855,6 +905,49 @@ mod tests {
         assert_eq!(een("{tabel: t, een_regel: s}", f), Some(json!(true)));
         let f = json!({"t": [{"s": false}, {"s": "true"}]});
         assert_eq!(een("{tabel: t, een_regel: s}", f), Some(json!(false)));
+    }
+
+    #[test]
+    fn afleiding_jaar_van() {
+        let f = json!({"a": {"datum": "2026-03-18", "leeg": null, "tekst": "geen datum"}});
+        assert_eq!(een("{jaar_van: a.datum}", f.clone()), Some(json!(2026)));
+        assert_eq!(een("{jaar_van: a.leeg}", f.clone()), None);
+        assert_eq!(een("{jaar_van: a.tekst}", f.clone()), None);
+        assert_eq!(een("{jaar_van: a.ontbreekt}", f), None);
+        assert_eq!(afl("{jaar_van: a.datum}").gelezen_paden(), vec!["a.datum"]);
+    }
+
+    #[test]
+    fn afleiding_jaar_van_over_een_verzameling() {
+        let a = afl("{filter: {name: x}, kies: laatste, jaar_van: datum, geen_gram: null}");
+        assert!(matches!(a, Afleiding::LaatsteJaarVan { .. }));
+        assert!(!a.op_gekozen_gram());
+        let oud = besluit(
+            "x",
+            "2024-03-20T09:00:00+01:00",
+            json!({"datum": "2024-03-20"}),
+        );
+        let nieuw = besluit(
+            "x",
+            "2025-03-20T09:00:00+01:00",
+            json!({"datum": "2025-01-02"}),
+        );
+        assert_eq!(
+            a.pas_toe_op_verzameling(&Map::new(), &[&oud, &nieuw])
+                .unwrap(),
+            Some(json!(2025))
+        );
+        // Geen gram: de lezing van afwezigheid.
+        assert_eq!(
+            a.pas_toe_op_verzameling(&Map::new(), &[]).unwrap(),
+            Some(Value::Null)
+        );
+        // Een gram zonder datum levert niets; er wordt niets aangevuld.
+        let leeg = besluit("x", "2024-03-20T09:00:00+01:00", json!({"datum": null}));
+        assert_eq!(
+            a.pas_toe_op_verzameling(&Map::new(), &[&leeg]).unwrap(),
+            None
+        );
     }
 
     #[test]
@@ -1045,7 +1138,7 @@ mod tests {
         assert_eq!(l.parameters["geblokkeerd_raad"], json!(false));
         // Een datum is er niet: die blijft weg, er wordt niets aangevuld.
         assert!(!l.parameters.contains_key("datum_mededeling"));
-        assert_eq!(l.niet_afgeleid, vec!["datum_mededeling"]);
+        assert_eq!(l.niet_afgeleid, vec!["datum_mededeling", "jaar"]);
     }
 
     #[test]
@@ -1137,7 +1230,11 @@ mod tests {
         assert_eq!(c.cel, "test_register");
         assert_eq!(
             c.lexostatus_definitions[0].levert_aan,
-            vec!["testregeling_afnemer#1", "testregeling_afnemer#2"]
+            vec![
+                "testregeling_afnemer#1",
+                "testregeling_afnemer#2",
+                "testregeling_afnemer#3"
+            ]
         );
     }
 

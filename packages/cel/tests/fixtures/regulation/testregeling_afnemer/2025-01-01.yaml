@@ -111,7 +111,9 @@ articles:
     text: >-
       1. De instantie besluit op een toelaatbare aanvraag binnen dertig dagen,
       verlengd met de dagen waarin de termijn was opgeschort, en stelt de
-      subsidie vast op duizend euro per zetel op de lijst.
+      subsidie vast op duizend euro per zetel op de lijst. Per gebied telt
+      zij de zetels maal het tarief van dat gebied in het jaar van de
+      mededeling.
       2. Het besluit is tijdig als het binnen die termijn is bekendgemaakt.
       3. De instantie vergaart de relevante feiten.
     machine_readable:
@@ -147,12 +149,21 @@ articles:
           - name: opgeschorte_dagen
             type: number
             required: true
+          - name: jaar
+            type: number
+            required: true
+          - name: gebiedstabel
+            type: array
+            nullable: true
+            required: true
         input:
           - name: toelaatbaar
             type: boolean
             source:
               output: aanvraag_toelaatbaar
         output:
+          - name: gebiedsbedrag
+            type: number
           - name: besluitdeadline
             type: date
           - name: aanvulling_gevraagd
@@ -164,6 +175,17 @@ articles:
           - name: zorgvuldig
             type: boolean
         actions:
+          - output: gebiedsbedrag
+            value:
+              operation: FOREACH
+              collection: $gebiedstabel
+              as: rij
+              body:
+                operation: MULTIPLY
+                values:
+                  - $rij.zetels
+                  - $rij.tarief
+              combine: ADD
           - output: besluitdeadline
             value:
               operation: DATE_ADD

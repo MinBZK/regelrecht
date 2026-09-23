@@ -30,8 +30,16 @@ events:
     type: decretogram
     stage: BESLUIT
     zaak: volgt
-    fields:
+    fields:                            # precies de uitkomsten van het besluit
       vastgesteld_bedrag: $external.vastgesteld_bedrag
+      gebiedsbedrag: $external.gebiedsbedrag
+      besluit_tijdig: $external.besluit_tijdig
+      besluitdeadline: $external.besluitdeadline
+      zorgvuldig: $external.zorgvuldig
     niet_gereduceerd:
       - veld: vastgesteld_bedrag
         reden: de uitkomst van het besluit zelf; de werkvoorraad leest alleen dat er een besluit is
+      - {veld: gebiedsbedrag, reden: uitkomst van het besluit}
+      - {veld: besluit_tijdig, reden: uitkomst van het besluit}
+      - {veld: besluitdeadline, reden: uitkomst van het besluit}
+      - {veld: zorgvuldig, reden: uitkomst van het besluit}

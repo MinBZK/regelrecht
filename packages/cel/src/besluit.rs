@@ -21,15 +21,20 @@
 
 use std::collections::BTreeMap;
 
+use chrono::{DateTime, FixedOffset};
 use serde::Serialize;
 use serde_json::{Map, Value};
 
 use crate::cel::Cel;
-use crate::config::BesluitDefinitie;
+use crate::config::{BesluitDefinitie, RijInvoer};
 use crate::formulier::Veld;
 use crate::kroniek::Kroniek;
 use crate::reductie::{self, Lexostatus};
 use crate::regelingen::{self, Benodigd};
+use crate::rijen::{self, Rijen};
+use crate::stroom::{
+    self, GeladenRegeling, Gram, Indiening, Invoer, Receipt, StroomVerwijzing, Zaak,
+};
 use crate::synthese::{self, Bron, BronUitslag, Herkomst};
 use crate::toets;
 
@@ -59,6 +64,9 @@ pub struct Proefbesluit {
     pub niet_geleverd: Vec<Benodigd>,
     /// De eigen lexostatussen van de zaak.
     pub lexostatussen: Vec<Lexostatus>,
+    /// Wat de synthese per regel opleverde (zie [`crate::rijen`]).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub rijen: Vec<rijen::Uitslag>,
 }
 
 /// Het artikel achter de uitkomsten, als `<regeling>#<artikel>`.
@@ -258,6 +266,115 @@ pub fn controleer(cel: &Cel) -> Vec<String> {
         }
     }
 
+    // Synthese per regel: het tabelveld, de kolomnamen en de bronnen.
+    for r in &b.rijen {
+        let wie = format!("besluit, rijen '{}'", r.parameter);
+        per.entry(&r.parameter)
+            .or_default()
+            .push(format!("de synthese per regel uit '{}'", r.tabel.veld));
+        if !b.lexostatussen.contains(&r.tabel.lexostatus) {
+            fouten.push(format!(
+                "{wie}: de tabel komt uit lexostatus '{}', en die staat niet in de lexostatussen van het besluit",
+                r.tabel.lexostatus
+            ));
+        } else if !cel
+            .lexostatussen
+            .lexostatus(&r.tabel.lexostatus)
+            .is_some_and(|l| l.levert(&r.tabel.veld))
+        {
+            fouten.push(format!(
+                "{wie}: lexostatus '{}' levert geen '{}' (geen afleiding en geen extra veld)",
+                r.tabel.lexostatus, r.tabel.veld
+            ));
+        }
+        // Elke kolomnaam komt uit maar een plek: de tabel of een bron.
+        let mut kolommen: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+        for naam in r.kolommen.values() {
+            kolommen.entry(naam).or_default().push("de tabel".into());
+        }
+        for bron in &r.bronnen {
+            let bronwie = format!("{wie}, bron {}/{}", bron.cel, bron.lexostatus);
+            if bron.cel == cel.id() {
+                fouten.push(format!(
+                    "{bronwie}: een bron is een andere cel, niet de cel zelf"
+                ));
+            }
+            for naam in bron.kolommen.values() {
+                kolommen
+                    .entry(naam)
+                    .or_default()
+                    .push(format!("bron {}/{}", bron.cel, bron.lexostatus));
+            }
+            for (i, v) in &bron.invoer {
+                match v {
+                    RijInvoer::Kolom { kolom, .. } if !kolommen.contains_key(kolom.as_str()) => {
+                        fouten.push(format!(
+                            "{bronwie}, invoer '{i}': kolom '{kolom}' wordt door niets ervoor gevuld"
+                        ));
+                    }
+                    RijInvoer::Eigen {
+                        lexostatus, veld, ..
+                    } if !cel
+                        .lexostatussen
+                        .lexostatus(lexostatus)
+                        .is_some_and(|l| l.levert(veld)) =>
+                    {
+                        fouten.push(format!(
+                            "{bronwie}, invoer '{i}': lexostatus '{lexostatus}' levert geen '{veld}'"
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+        }
+        for (naam, waar) in &kolommen {
+            if waar.len() > 1 {
+                fouten.push(format!(
+                    "{wie}: kolom '{naam}' komt uit meer dan een plek: {}",
+                    waar.join(", ")
+                ));
+            }
+        }
+    }
+
+    // Waar het besluit wordt vastgelegd: een event met een zaak en een stage,
+    // dat precies de uitkomsten als velden vraagt.
+    if let Some(v) = &b.vastleggen {
+        let wie = format!("besluit, vastleggen {}/{}", v.stroom, v.event);
+        match cel
+            .strommen
+            .iter()
+            .find(|s| s.id == v.stroom)
+            .and_then(|s| s.event(&v.event))
+        {
+            None => fouten.push(format!("{wie}: die stroom of dat event bestaat niet")),
+            Some(event) => {
+                if event.zaak != Zaak::Volgt {
+                    fouten.push(format!(
+                        "{wie}: het event heeft zaak: {}, en een besluit volgt de zaak van de aanvraag",
+                        event.zaak.als_tekst()
+                    ));
+                }
+                if event.stage.is_none() {
+                    fouten.push(format!(
+                        "{wie}: het event heeft geen stage; een besluit is een stage-decretogram (RFC-008)"
+                    ));
+                }
+                let mut sleutels = event.external_sleutels();
+                sleutels.sort();
+                let mut verwacht = b.uitkomsten.clone();
+                verwacht.sort();
+                if sleutels != verwacht {
+                    fouten.push(format!(
+                        "{wie}: het event legt [{}] vast, en het besluit heeft de uitkomsten [{}]",
+                        sleutels.join(", "),
+                        verwacht.join(", ")
+                    ));
+                }
+            }
+        }
+    }
+
     if artikelen.len() == 1 {
         match benodigd(cel, b) {
             Err(f) => fouten.push(format!("besluit: {f}")),
@@ -271,7 +388,8 @@ pub fn controleer(cel: &Cel) -> Vec<String> {
                         b.stand_bij_besluit
                             .keys()
                             .map(|p| ("stand_bij_besluit", p.as_str())),
-                    );
+                    )
+                    .chain(b.rijen.iter().map(|r| ("rijen", r.parameter.as_str())));
                 for (waar, p) in namen {
                     if !benodigd.contains_key(p) {
                         fouten.push(format!(
@@ -290,6 +408,13 @@ pub fn controleer(cel: &Cel) -> Vec<String> {
 pub enum Weigering {
     /// Het formulier noemt iets dat geen oordeel van het besluit is.
     OnbekendOordeel(String),
+    /// Het proefbesluit is niet compleet: er wordt geen gram vastgelegd.
+    NietTeNemen(String),
+    /// Er ligt al een besluit in deze zaak. Een tweede besluit is een
+    /// wijziging, en die valt buiten deze stap.
+    AlBesloten(String),
+    /// De wet wijst een ander bevoegd gezag aan dan deze cel.
+    Onbevoegd(String),
     /// De cel zelf: configuratie, kroniek of reductie.
     Cel(String),
 }
@@ -300,6 +425,7 @@ pub async fn proefbesluit(
     cel: &Cel,
     kroniek: &Kroniek,
     bronnen: &[Bron],
+    rijen: &[Rijen],
     zaakkenmerk: &str,
     formulier: &Map<String, Value>,
     peildatum: &str,
@@ -376,7 +502,27 @@ pub async fn proefbesluit(
         }
     }
 
-    // 3. De oordelen van de behandelaar; een leeg veld gaat niet mee.
+    // 3. Synthese per regel: een tabelveld wordt een array-parameter.
+    let mut uitslagen = Vec::new();
+    for r in rijen {
+        let Some(uitslag) = rijen::stel_samen(r, &eigen, &samen.parameters).await else {
+            continue;
+        };
+        samen.parameters.insert(
+            uitslag.parameter.clone(),
+            Value::Array(uitslag.regels.clone()),
+        );
+        samen.herkomst.insert(
+            uitslag.parameter.clone(),
+            Herkomst::PerRegel {
+                lexostatus: r.definitie.tabel.lexostatus.clone(),
+                veld: r.definitie.tabel.veld.clone(),
+            },
+        );
+        uitslagen.push(uitslag);
+    }
+
+    // 4. De oordelen van de behandelaar; een leeg veld gaat niet mee.
     for (p, w) in formulier {
         if !w.is_null() {
             samen.parameters.insert(p.clone(), w.clone());
@@ -384,7 +530,7 @@ pub async fn proefbesluit(
         }
     }
 
-    // 4. De stand bij besluit.
+    // 5. De stand bij besluit.
     for (p, w) in &b.stand_bij_besluit {
         samen.parameters.insert(p.clone(), w.clone());
         samen.herkomst.insert(p.clone(), Herkomst::StandBijBesluit);
@@ -423,6 +569,214 @@ pub async fn proefbesluit(
         bronnen: samen.bronnen,
         niet_geleverd,
         lexostatussen: eigen,
+        rijen: uitslagen,
+    })
+}
+
+/// Het genomen besluit: het vastgelegde gram, het proefbesluit waaruit het
+/// volgde, en wat er bij het vastleggen op te merken viel.
+#[derive(Debug, Clone, Serialize)]
+pub struct Besluit {
+    pub gram: Gram,
+    pub proefbesluit: Proefbesluit,
+    /// Bijvoorbeeld: de regeling noemt geen bevoegd gezag.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub waarschuwingen: Vec<String>,
+}
+
+/// De stage van een gram dat zegt dat er al een besluit ligt.
+const STAGE_BESLUIT: &str = "BESLUIT";
+
+/// Een naam vergelijkbaar maken: kleine letters, en alles wat geen letter of
+/// cijfer is wordt een liggend streepje. Zo is "Autoriteit politieke
+/// partijen" hetzelfde als `autoriteit_politieke_partijen`.
+fn genormaliseerd(naam: &str) -> String {
+    let mut uit = String::new();
+    for c in naam.to_lowercase().chars() {
+        if c.is_alphanumeric() {
+            uit.push(c);
+        } else if !uit.ends_with('_') {
+            uit.push('_');
+        }
+    }
+    uit.trim_matches('_').to_string()
+}
+
+/// Het bevoegd gezag volgens de wet: van het artikel zelf, anders van de
+/// regeling. Een verwijzing (`#bevoegd_gezag`) telt niet als een naam.
+fn bevoegd_gezag(cel: &Cel, regeling: &str, artikel: &str) -> Option<String> {
+    fn naam(a: &Value) -> Option<String> {
+        match a {
+            // Een verwijzing zoals '#bevoegd_gezag' is geen naam.
+            Value::String(s) => s.strip_prefix('#').is_none().then(|| s.clone()),
+            Value::Object(o) => o.get("name").and_then(Value::as_str).map(str::to_string),
+            _ => None,
+        }
+    }
+    let law = cel.service.resolver().get_law(regeling)?;
+    let gezag = law
+        .find_article_by_number(artikel)
+        .and_then(|a| a.machine_readable.as_ref())
+        .and_then(|m| m.competent_authority.as_ref())
+        .or(law.competent_authority.as_ref())?;
+    naam(&serde_json::to_value(gezag).ok()?)
+}
+
+/// Neem het besluit op een zaak en leg het vast als stage-decretogram.
+///
+/// Het proefbesluit moet compleet zijn; is het dat niet, dan komt er geen
+/// gram en zegt de cel wat er mist. Ligt er al een gram met stage `BESLUIT`
+/// in de zaak, dan weigert de cel: een tweede besluit is een wijziging, en
+/// die valt buiten deze stap. Wijst de wet een ander bevoegd gezag aan dan de
+/// cel, dan weigert ze ook; noemt de wet er geen, dan legt ze vast met een
+/// waarschuwing.
+#[allow(clippy::too_many_arguments)]
+pub async fn neem_besluit(
+    cel: &Cel,
+    kroniek: &Kroniek,
+    bronnen: &[Bron],
+    rijen: &[Rijen],
+    regelingen: &[GeladenRegeling],
+    zaakkenmerk: &str,
+    formulier: &Map<String, Value>,
+    op_moment: DateTime<FixedOffset>,
+) -> Result<Besluit, Weigering> {
+    let behandeling = cel
+        .definitie
+        .behandeling
+        .as_ref()
+        .ok_or_else(|| Weigering::Cel("geen behandeling geconfigureerd".into()))?;
+    let b = &behandeling.besluit;
+    let v = b
+        .vastleggen
+        .as_ref()
+        .ok_or_else(|| Weigering::Cel("het besluit zegt niet waar het wordt vastgelegd".into()))?;
+    let stroom = cel
+        .strommen
+        .iter()
+        .find(|s| s.id == v.stroom)
+        .ok_or_else(|| Weigering::Cel(format!("de cel heeft geen stroom '{}'", v.stroom)))?;
+    let event = stroom.event(&v.event).ok_or_else(|| {
+        Weigering::Cel(format!(
+            "stroom '{}' heeft geen event '{}'",
+            v.stroom, v.event
+        ))
+    })?;
+
+    // Een tweede besluit in dezelfde zaak is een wijziging: buiten scope.
+    for k in cel.kronieken() {
+        let bestaand = kroniek.lees(k).map_err(Weigering::Cel)?;
+        if bestaand.iter().any(|g| {
+            g.zaakkenmerk.as_deref() == Some(zaakkenmerk)
+                && g.stage.as_deref() == Some(STAGE_BESLUIT)
+        }) {
+            return Err(Weigering::AlBesloten(format!(
+                "in zaak {zaakkenmerk} ligt al een besluit; het wijzigen van een besluit valt buiten deze stap"
+            )));
+        }
+    }
+
+    let peildatum = op_moment.format("%Y-%m-%d").to_string();
+    let proef = proefbesluit(
+        cel,
+        kroniek,
+        bronnen,
+        rijen,
+        zaakkenmerk,
+        formulier,
+        &peildatum,
+    )
+    .await?;
+    if !proef.te_nemen {
+        return Err(Weigering::NietTeNemen(
+            proef
+                .reden
+                .clone()
+                .unwrap_or_else(|| "niet te nemen".to_string()),
+        ));
+    }
+
+    // Het bevoegd gezag: gelijk is vastleggen, ongelijk is weigeren,
+    // ontbrekend is een waarschuwing.
+    let mut waarschuwingen = Vec::new();
+    let nummer = proef.artikel.split_once('#').map(|(_, n)| n).unwrap_or("");
+    let gezag = bevoegd_gezag(cel, &b.regeling, nummer);
+    match &gezag {
+        Some(g) if genormaliseerd(g) != genormaliseerd(&cel.definitie.recording_actor) => {
+            return Err(Weigering::Onbevoegd(format!(
+                "{} wijst '{g}' aan als bevoegd gezag, en deze cel is '{}'",
+                proef.artikel, cel.definitie.recording_actor
+            )))
+        }
+        Some(_) => {}
+        None => waarschuwingen.push(format!(
+            "regeling '{}' noemt geen bevoegd gezag bij {}; het besluit is vastgelegd zonder competent_authority",
+            b.regeling, proef.artikel
+        )),
+    }
+
+    // De uitkomsten worden de velden van het gram, elk onder zijn eigen naam.
+    let external: Map<String, Value> = proef
+        .uitkomsten
+        .iter()
+        .map(|(k, w)| (k.clone(), w.clone()))
+        .collect();
+    let mut gram = stroom::bouw_gram(
+        stroom,
+        event,
+        &Indiening {
+            intake: &Value::Null,
+            external: &external,
+            op_moment,
+            zaakkenmerk: Some(zaakkenmerk),
+        },
+    )
+    .map_err(Weigering::Cel)?;
+
+    let artikel = regelingen::artikel(&cel.service, &proef.artikel).map_err(Weigering::Cel)?;
+    let produces = artikel
+        .get_execution_spec()
+        .and_then(|e| e.produces.as_ref());
+    gram.legal_character = produces.and_then(|p| p.legal_character.clone());
+    gram.decision_type = produces.and_then(|p| p.decision_type.clone());
+    gram.regulation = Some(b.regeling.clone());
+    gram.regulation_valid_from = cel.service.resolver().get_law(&b.regeling).and_then(|l| {
+        l.valid_from
+            .clone()
+            .or_else(|| Some(l.publication_date.clone()))
+    });
+    gram.competent_authority = gezag;
+    gram.inputs = proef
+        .parameters
+        .iter()
+        .filter_map(|(naam, waarde)| {
+            Some((
+                naam.clone(),
+                Invoer {
+                    waarde: waarde.clone(),
+                    herkomst: proef.herkomst.get(naam)?.clone(),
+                },
+            ))
+        })
+        .collect();
+    let mut stromen: Vec<StroomVerwijzing> = cel
+        .strommen
+        .iter()
+        .map(|s| StroomVerwijzing {
+            id: s.id.clone(),
+            sha256: s.sha256.clone(),
+        })
+        .collect();
+    stromen.sort_by(|a, b| a.id.cmp(&b.id));
+    gram.receipt = Some(Receipt::nieuw(regelingen.to_vec(), stromen));
+
+    gram.valideer()
+        .map_err(|f| Weigering::Cel(format!("het besluit valideert niet: {}", f.join("; "))))?;
+    kroniek.voeg_toe(&gram).map_err(Weigering::Cel)?;
+    Ok(Besluit {
+        gram,
+        proefbesluit: proef,
+        waarschuwingen,
     })
 }
 

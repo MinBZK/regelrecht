@@ -27,5 +27,8 @@ events:
           machtiging: $intake.eherkenning.machtiging
       inhoud:
         aanduiding: $external.aanduiding
+        gebieden:                      # de regels van de gebiedstabel (artikel 3)
+          tabel: $external.gebieden
+          kolommen: [gebied, zetels]
     niet_gereduceerd:
       - {veld: kern, reden: de vaste kern van een aanvraag; geen artikel van de testregeling leest haar}

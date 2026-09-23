@@ -39,6 +39,8 @@ export function celApi(id) {
     zaak: (zaakkenmerk) => vraag('GET', `${p}/zaken/${encodeURIComponent(zaakkenmerk)}`),
     proefbesluit: (zaakkenmerk, formulier) =>
       vraag('POST', `${p}/zaken/${encodeURIComponent(zaakkenmerk)}/proefbesluit`, { formulier }),
+    besluit: (zaakkenmerk, formulier) =>
+      vraag('POST', `${p}/zaken/${encodeURIComponent(zaakkenmerk)}/besluit`, { formulier }),
     lexostatus: (naam, invoer) =>
       vraag('GET', `${p}/lexostatus/${encodeURIComponent(naam)}?${new URLSearchParams(invoer)}`),
   };

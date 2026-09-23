@@ -161,6 +161,7 @@ mod tests {
             &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/regulation"),
         )
         .unwrap()
+        .service
     }
 
     fn volledig() -> BTreeMap<String, Value> {

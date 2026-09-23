@@ -11,6 +11,7 @@
 //! Een startstand-gram is geplaatst, niet berekend: er is geen engine-trace
 //! bij. Daarom draagt het `herkomst: startstand`.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use serde::Deserialize;
@@ -88,6 +89,11 @@ fn bouw(tekst: &str, strommen: &[Stroom]) -> Result<Gram, String> {
         chronicle: stroom.chronicle.clone(),
         recording_actor: stroom.recording_actor.clone(),
         grondslag: event.grondslag.clone(),
+        legal_character: None,
+        decision_type: None,
+        regulation: None,
+        regulation_valid_from: None,
+        competent_authority: None,
         op_moment: regel.op_moment,
         zaak: event.zaak,
         zaakkenmerk: regel.zaakkenmerk,
@@ -97,6 +103,8 @@ fn bouw(tekst: &str, strommen: &[Stroom]) -> Result<Gram, String> {
         },
         herkomst: Some(HERKOMST.into()),
         fields: regel.fields,
+        inputs: BTreeMap::new(),
+        receipt: None,
     };
     gram.valideer()
         .map_err(|f| format!("gram valideert niet: {}", f.join("; ")))?;

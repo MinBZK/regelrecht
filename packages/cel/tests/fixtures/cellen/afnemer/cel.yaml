@@ -24,12 +24,12 @@ synthese:
     lexostatus: registerstatus
     invoer:
       aanduiding: {lexostatus: aanvraag_inhoud, veld: aanduiding}
-    parameters: [is_ingeschreven_raad, is_geschrapt_raad, zetels_op_lijst, datum_mededeling, geblokkeerd_raad]
+    parameters: [is_ingeschreven_raad, is_geschrapt_raad, zetels_op_lijst, datum_mededeling, geblokkeerd_raad, jaar]
 behandeling:
   werkvoorraad: werkvoorraad
   besluit:
     regeling: testregeling_afnemer
-    uitkomsten: [vastgesteld_bedrag, besluit_tijdig, besluitdeadline, zorgvuldig]
+    uitkomsten: [vastgesteld_bedrag, gebiedsbedrag, besluit_tijdig, besluitdeadline, zorgvuldig]
     lexostatussen: [aanvraag_inhoud, zaakverloop]
     formulier:
       - {parameter: besluitdatum, label: Besluitdatum}
@@ -37,3 +37,26 @@ behandeling:
     stand_bij_besluit:
       datum_bekendmaking: null
       bekendgemaakt: false
+    # Synthese per regel: de gebiedstabel. De aanvraag levert de regels, de
+    # kolommen die de instantie zelf vaststelt komen per regel uit een
+    # andere cel.
+    rijen:
+      - parameter: gebiedstabel
+        tabel: {lexostatus: aanvraag_inhoud, veld: gebieden}
+        kolommen: {gebied: gebied, zetels: zetels}
+        bronnen:
+          - cel: test_register
+            lexostatus: registratie_per_gebied
+            invoer:
+              aanduiding: {lexostatus: aanvraag_inhoud, veld: aanduiding}
+              gebied: {kolom: gebied}
+            kolommen: {ingeschreven: ingeschreven}
+          - cel: test_gebieden
+            lexostatus: tarief
+            invoer:
+              gebied: {kolom: gebied}
+              peildatum: {parameter: jaar, als: eerste_dag_van_het_jaar}
+            kolommen: {tarief: tarief}
+    vastleggen:
+      stroom: test_afnemer_zaakverloop
+      event: besluit_genomen

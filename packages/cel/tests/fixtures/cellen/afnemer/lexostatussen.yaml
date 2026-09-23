@@ -16,6 +16,7 @@ lexostatus_definitions:
         bevat_aanduiding: {gevuld: inhoud.aanduiding}
       extra_velden:
         aanduiding: {veld: inhoud.aanduiding}
+        gebieden: {veld: inhoud.gebieden}   # de regels voor de synthese per regel
   - name: werkvoorraad
     inputs: []
     reduction:

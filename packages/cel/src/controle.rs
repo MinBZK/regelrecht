@@ -231,6 +231,12 @@ fn verwijzingen(
                 }
             }
         }
+        if def.reduction.afleidingen.is_empty() && def.reduction.extra_velden.is_empty() {
+            fouten.push(format!(
+                "lexostatus '{}': geen afleiding en geen extra veld, dus zij levert niets",
+                def.name
+            ));
+        }
         for naam in def.reduction.extra_velden.keys() {
             if def.reduction.afleidingen.contains_key(naam) {
                 fouten.push(format!(
@@ -556,6 +562,7 @@ mod tests {
     fn service() -> LawExecutionService {
         regelingen::laad(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/regulation"))
             .unwrap()
+            .service
     }
 
     fn draai(stroom_tekst: &str, cel_tekst: &str) -> Result<(), Vec<String>> {
@@ -848,7 +855,7 @@ mod tests {
     #[test]
     fn levert_aan_maakt_een_parameter_van_de_afnemer_geldig() {
         let cel = REG_CEL.replace(
-            "    levert_aan: [testregeling_afnemer#1, testregeling_afnemer#2]\n",
+            "    levert_aan: [testregeling_afnemer#1, testregeling_afnemer#2, testregeling_afnemer#3]\n",
             "",
         );
         register_faalt_met(
@@ -864,7 +871,7 @@ mod tests {
             "{fouten:?}"
         );
         // levert_aan naar een artikel dat niet bestaat.
-        let cel = REG_CEL.replace("testregeling_afnemer#2]", "testregeling_afnemer#9]");
+        let cel = REG_CEL.replace("testregeling_afnemer#3]", "testregeling_afnemer#9]");
         register_faalt_met(&cel, "levert_aan: grondslag 'testregeling_afnemer#9'");
     }
 

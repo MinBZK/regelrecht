@@ -289,6 +289,165 @@
               "boolean"
             ]
           }
+        },
+        "rijen": {
+          "type": "array",
+          "description": "Synthese per regel: tabelvelden die een array-parameter worden.",
+          "items": {
+            "$ref": "#/definitions/rijen"
+          }
+        },
+        "vastleggen": {
+          "type": "object",
+          "description": "Waar de cel het genomen besluit vastlegt. Het event heeft zaak: volgt en een stage, en zijn $external-sleutels zijn precies de uitkomsten van het besluit. Zonder dit blok kan de cel wel een proefbesluit uitrekenen, maar geen besluit vastleggen.",
+          "required": [
+            "stroom",
+            "event"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "stroom": {
+              "$ref": "#/definitions/identifier"
+            },
+            "event": {
+              "$ref": "#/definitions/identifier"
+            }
+          }
+        }
+      }
+    },
+    "rijen": {
+      "type": "object",
+      "description": "Synthese per regel: voor elke regel van een tabelveld uit een eigen lexostatus bevraagt de cel bronnen met waarden uit die regel, en de kolommen samen vormen een array-parameter. Zo vult de instantie de kolommen die zij zelf vaststelt, zonder ze in code te zetten.",
+      "required": [
+        "parameter",
+        "tabel",
+        "kolommen"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "parameter": {
+          "$ref": "#/definitions/identifier",
+          "description": "De array-parameter die de regels samen vormen."
+        },
+        "tabel": {
+          "type": "object",
+          "description": "Het tabelveld dat de regels levert: een eigen lexostatus van het besluit en de naam waaronder zij de tabel levert (een parameter of een extra veld).",
+          "required": [
+            "lexostatus",
+            "veld"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "lexostatus": {
+              "$ref": "#/definitions/identifier"
+            },
+            "veld": {
+              "type": "string",
+              "pattern": "^[a-z_][a-z0-9_]*$"
+            }
+          }
+        },
+        "kolommen": {
+          "type": "object",
+          "description": "Per kolom van de tabel: onder welke naam ze in de parameter komt. Een kolom die hier niet staat gaat niet mee.",
+          "propertyNames": {
+            "pattern": "^[a-z_][a-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[a-z_][a-z0-9_]*$"
+          },
+          "minProperties": 1
+        },
+        "bronnen": {
+          "type": "array",
+          "description": "Bronnen die per regel worden bevraagd, in volgorde: een bron kan een kolom gebruiken die een eerdere bron leverde.",
+          "items": {
+            "type": "object",
+            "required": [
+              "cel",
+              "lexostatus",
+              "invoer",
+              "kolommen"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "cel": {
+                "$ref": "#/definitions/identifier"
+              },
+              "url": {
+                "type": "string",
+                "pattern": "^https?://[^\\s/]+(/[^\\s]*)?$"
+              },
+              "lexostatus": {
+                "$ref": "#/definitions/identifier"
+              },
+              "invoer": {
+                "type": "object",
+                "description": "Per input van de bron: de waarde uit de regel (kolom), uit een eigen lexostatus (lexostatus en veld) of uit de samengevoegde parameters (parameter). Met als: eerste_dag_van_het_jaar wordt een jaartal de datum 1 januari van dat jaar.",
+                "propertyNames": {
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "kolom": {
+                      "type": "string",
+                      "pattern": "^[a-z_][a-z0-9_]*$"
+                    },
+                    "lexostatus": {
+                      "$ref": "#/definitions/identifier"
+                    },
+                    "veld": {
+                      "type": "string",
+                      "pattern": "^[a-z_][a-z0-9_]*$"
+                    },
+                    "parameter": {
+                      "type": "string",
+                      "pattern": "^[a-z_][a-z0-9_]*$"
+                    },
+                    "als": {
+                      "enum": [
+                        "eerste_dag_van_het_jaar"
+                      ]
+                    }
+                  },
+                  "oneOf": [
+                    {
+                      "required": [
+                        "kolom"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "lexostatus",
+                        "veld"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "parameter"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "kolommen": {
+                "type": "object",
+                "description": "Per naam die de bron levert (een parameter of een extra veld): onder welke kolomnaam ze in de regel komt.",
+                "propertyNames": {
+                  "pattern": "^[a-z_][a-z0-9_]*$"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "pattern": "^[a-z_][a-z0-9_]*$"
+                },
+                "minProperties": 1
+              }
+            }
+          }
         }
       }
     }
