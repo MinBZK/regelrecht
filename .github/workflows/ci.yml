@@ -380,10 +380,16 @@ jobs:
       - name: Install just
         uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3  # v4.0.0
 
+      # Het target moet mee, ook al bouwt deze baan geen wasm: de hooks roepen
+      # cargo aan, rustup leest dan rust-toolchain.toml, en een ontbrekend target
+      # laat het de toolchain als half geïnstalleerd behandelen. De reparatie die
+      # daarop volgt strandt op een component die er al staat ("detected
+      # conflict: bin/cargo-clippy") en neemt de hook mee die cargo nodig heeft.
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
         with:
           components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
 
       - name: Install mold linker
         run: |
