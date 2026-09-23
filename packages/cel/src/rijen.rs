@@ -306,7 +306,7 @@ mod tests {
             "cel": "register",
             "lexostatus": "per_gebied",
             "invoer": invoer,
-            "kolommen": {"inwoners": "inwonertal"},
+            "kolommen": {"bedrag": "tarief"},
         }))
         .unwrap();
         (
@@ -321,7 +321,7 @@ mod tests {
     #[tokio::test]
     async fn elke_regel_krijgt_haar_kolommen() {
         let (b, t) = bron(
-            Ok(json!({"extra_velden": {"inwoners": 5}})),
+            Ok(json!({"extra_velden": {"bedrag": 5}})),
             json!({"gebied": {"kolom": "gebiedscode"}}),
         );
         let rijen = Rijen {
@@ -340,7 +340,7 @@ mod tests {
         );
         assert_eq!(
             u.regels[0],
-            json!({"orgaan": "raad", "gebiedscode": "A", "zetels": 10, "samenstellende": null, "inwonertal": 5})
+            json!({"orgaan": "raad", "gebiedscode": "A", "zetels": 10, "samenstellende": null, "tarief": 5})
         );
         assert_eq!(u.regels[1]["samenstellende"], json!(2));
         assert!(u.mist.is_empty(), "{:?}", u.mist);
@@ -361,15 +361,15 @@ mod tests {
         let u = stel_samen(&rijen, &eigen(), &BTreeMap::new())
             .await
             .unwrap();
-        assert!(!u.regels[0].as_object().unwrap().contains_key("inwonertal"));
-        assert_eq!(u.mist, ["inwonertal"]);
+        assert!(!u.regels[0].as_object().unwrap().contains_key("tarief"));
+        assert_eq!(u.mist, ["tarief"]);
         assert_eq!(u.bronnen[0].status, Status::Onbereikbaar);
     }
 
     #[tokio::test]
     async fn invoer_uit_een_parameter_met_omzetting() {
         let (b, t) = bron(
-            Ok(json!({"parameters": {"inwoners": 7}})),
+            Ok(json!({"parameters": {"bedrag": 7}})),
             json!({
                 "gebied": {"kolom": "gebiedscode"},
                 "peildatum": {"parameter": "jaar", "als": "eerste_dag_van_het_jaar"},
@@ -387,13 +387,13 @@ mod tests {
             t.vragen.lock().unwrap()[0],
             "/cellen/register/api/lexostatus/per_gebied?gebied=A&naam=EEN+LIJST&peildatum=2026-01-01"
         );
-        assert_eq!(u.regels[0]["inwonertal"], json!(7));
+        assert_eq!(u.regels[0]["tarief"], json!(7));
     }
 
     #[tokio::test]
     async fn zonder_invoer_wordt_de_bron_niet_bevraagd() {
         let (b, t) = bron(
-            Ok(json!({"parameters": {"inwoners": 7}})),
+            Ok(json!({"parameters": {"bedrag": 7}})),
             json!({"peildatum": {"parameter": "ontbreekt"}}),
         );
         let rijen = Rijen {
@@ -410,7 +410,7 @@ mod tests {
             .as_ref()
             .unwrap()
             .contains("invoer 'peildatum' ontbreekt"));
-        assert_eq!(u.mist, ["inwonertal"]);
+        assert_eq!(u.mist, ["tarief"]);
     }
 
     #[tokio::test]

@@ -588,8 +588,9 @@ pub struct Besluit {
 const STAGE_BESLUIT: &str = "BESLUIT";
 
 /// Een naam vergelijkbaar maken: kleine letters, en alles wat geen letter of
-/// cijfer is wordt een liggend streepje. Zo is "Autoriteit politieke
-/// partijen" hetzelfde als `autoriteit_politieke_partijen`.
+/// cijfer is wordt een liggend streepje. Zo is een gezag dat de regeling
+/// voluit noemt ("De Raad van Voorbeeld") te vergelijken met de id van een
+/// cel (`de_raad_van_voorbeeld`).
 fn genormaliseerd(naam: &str) -> String {
     let mut uit = String::new();
     for c in naam.to_lowercase().chars() {
