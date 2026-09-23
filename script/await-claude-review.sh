@@ -11,7 +11,7 @@
 # staat in de pull request, dus wat dat bestand meegeeft is geschreven door de
 # auteur van de wijziging die onder review staat.
 #
-# Zie CLAUDE.md voor het volledige ontwerp en wat de poort niet afdekt.
+# Zie AGENTS.md voor het volledige ontwerp en wat de poort niet afdekt.
 set -uo pipefail
 
 : "${REPO:?REPO is verplicht}"

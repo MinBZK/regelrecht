@@ -198,7 +198,7 @@ fi
 # De laatste `<Naam>:`-regel in de body die géén voorbeeld is.
 #
 # Een codeblok telt niet mee. Een pull request die de vorm van deze regel
-# documenteert — de template, een stuk CLAUDE.md, een uitleg aan een collega —
+# documenteert — de template, een stuk AGENTS.md, een uitleg aan een collega —
 # zet die voorbeelden in een ``` -blok, en zonder deze regel zou het laatste
 # voorbeeld de echte trailer overstemmen. De poort blokkeerde dan op een regel
 # die de auteur niet als trailer bedoeld had, met een slug uit de documentatie
