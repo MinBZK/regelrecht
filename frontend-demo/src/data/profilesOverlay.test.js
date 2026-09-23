@@ -13,27 +13,50 @@
  * scherm dat de twee talen naast elkaar zet. Vandaar deze test, die de twee
  * documenten ontdoet van hun beschrijving en daarna eist dat er niets meer over
  * is om over te verschillen.
+ *
+ * De test leest het corpus en niet `public/data/`. Die map is het resultaat van
+ * `copy-demo-corpus.mjs`, dat aan `predev`/`prebuild` hangt en niet aan `test`:
+ * in CI draait `npm test -w frontend-demo` zonder build, en een test die daar
+ * overslaat bewaakt niets op de enige plek waar het moet. Hij past de overlay
+ * hier dus zelf toe, op dezelfde manier als het script.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as yaml from 'js-yaml';
 import { describe, expect, it } from 'vitest';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const dataDir = resolve(here, '..', '..', 'public', 'data');
-const nlFile = join(dataDir, 'profiles.yaml');
-const enFile = join(dataDir, 'profiles.en.yaml');
+const demoDir = resolve(here, '..', '..', '..', 'corpus', 'demo');
 
-// De bestanden zijn het resultaat van `copy-demo-corpus.mjs`, dat in `predev` en
-// `prebuild` draait. Wie de tests draait zonder ooit gebouwd te hebben, heeft ze
-// niet; dan is er niets te toetsen en is overslaan eerlijker dan rood.
-const built = existsSync(nlFile) && existsSync(enFile);
+const nl = yaml.load(readFileSync(join(demoDir, 'profiles.yaml'), 'utf8'));
+const overlay = yaml.load(readFileSync(join(demoDir, 'i18n', 'en.yaml'), 'utf8')) ?? {};
 
-describe.skipIf(!built)('de Engelse persona\'s', () => {
-  const nl = yaml.load(readFileSync(nlFile, 'utf8'));
-  const en = yaml.load(readFileSync(enFile, 'utf8'));
+/**
+ * De overlay toegepast, zoals `copy-demo-corpus.mjs` het doet.
+ *
+ * Alleen de paden die in dit document bestaan: de rest van `en.yaml` gaat over
+ * `demo-config.yaml`. Een pad dat in geen van beide bestaat wordt daar door de
+ * build afgevangen, en dat hoeft deze test niet over te doen.
+ */
+function englishProfiles() {
+  const doc = structuredClone(nl);
+  for (const [path, value] of Object.entries(overlay)) {
+    const parts = path.split('.');
+    let cur = doc;
+    for (const part of parts.slice(0, -1)) {
+      if (cur === null || cur === undefined) break;
+      cur = cur[part];
+    }
+    const last = parts.at(-1);
+    if (cur !== null && cur !== undefined && cur[last] !== undefined) cur[last] = value;
+  }
+  return doc;
+}
 
+const en = englishProfiles();
+
+describe("de Engelse persona's", () => {
   /** Hetzelfde document zonder de beschrijvingen: dit is wat gelijk moet zijn. */
   function withoutDescriptions(doc) {
     const copy = structuredClone(doc);
