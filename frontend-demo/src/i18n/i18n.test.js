@@ -12,7 +12,7 @@ import nl from './nl.js';
 import sources from './en.sources.js';
 import { hash } from './hash.js';
 import { FEATURES } from '../store/demoStore.js';
-import { DEFAULT_LOCALE, LOCALES, adoptLocale, currentLocale, setLocale, t } from './index.js';
+import { DEFAULT_LOCALE, LOCALE_CODES, adoptLocale, currentLocale, setLocale, t } from './index.js';
 
 /**
  * Keys whose English is legitimately identical to the Dutch: proper names, and
@@ -22,8 +22,6 @@ const IDENTICAL_BY_DESIGN = new Set([
   'app.tabs.home',
   'app.demo.label',
   'app.features.label',
-  'app.language.nl',
-  'app.language.en',
   // "item" and "items" happen to be the same word in both languages. Both
   // forms still exist on both sides, because the key shape has to match.
   'format.items.one',
@@ -170,7 +168,7 @@ describe('adoptLocale', () => {
 
   it('ignores a locale it does not have', () => {
     adoptLocale('fr');
-    expect(LOCALES).not.toContain('fr');
+    expect(LOCALE_CODES).not.toContain('fr');
     expect(currentLocale()).toBe('nl');
   });
 });

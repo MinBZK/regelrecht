@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { fieldSpec, formatDate, formatDateTime, formatMissing, formatValue, humanize, intlLocale, isAmountSpec, numericImpact, setGlossary, untranslated, verdictOf } from './format.js';
 import { adoptLocale } from '../i18n/index.js';
-import glossary from '../i18n/glossary.generated.js';
+import glossaries from '../i18n/glossary.generated.js';
 
 const UNKNOWN = { __unknown: true, missing: [{ law: 'zorgtoeslagwet', name: 'huurprijs', kind: 'no_data' }, { law: 'wet_inkomstenbelasting', name: 'spaargeld', kind: 'no_data' }] };
 
@@ -231,8 +231,13 @@ describe('de meegeleverde woordenlijst', () => {
     // wordt het label "Null" of "False" in plaats van een woord. (`no` en
     // `yes` zouden dat in YAML 1.1 ook zijn; js-yaml volgt 1.2 en leest ze als
     // woorden, maar de lijst quote ze toch, want yamllint vraagt erom.)
-    const nonStrings = Object.entries(glossary.words).filter(([, v]) => typeof v !== 'string');
-    expect(nonStrings).toEqual([]);
+    //
+    // Over elke taal, niet alleen over het Engels: elke woordenlijst die
+    // meegeleverd wordt kan dezelfde fout bevatten.
+    for (const [code, g] of Object.entries(glossaries)) {
+      const nonStrings = Object.entries(g.words).filter(([, v]) => typeof v !== 'string');
+      expect(nonStrings, `woordenlijst ${code}`).toEqual([]);
+    }
     adoptLocale('en');
     expect(humanize('geen_recht')).toBe('No right');
   });

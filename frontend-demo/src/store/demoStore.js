@@ -98,15 +98,19 @@ const engine = shallowRef(null);
  * Hier en niet in `loadCorpus`, omdat dit de reactieve kant is: `currentLocale`
  * is een ref, dus een computed eromheen laat elk scherm dat `corpus.config`
  * leest opnieuw tekenen bij een taalwissel. Het corpus zelf wordt niet opnieuw
- * geladen; alleen welke van de twee configuraties eruit komt verandert.
+ * geladen; alleen welke van de configuraties eruit komt verandert.
  *
  * Het Nederlands is de terugval: zonder overlay draait de demo in het
  * Nederlands, en dat is beter dan lege dia's.
+ *
+ * De identiteitscheck erna is geen optimalisatie achteraf: het corpus zit in
+ * een `shallowRef`, dus een vers object per aanroep zou elk scherm dat het
+ * leest laten hertekenen. In de bron-taal komt hetzelfde object terug.
  */
 const corpus = computed(() => {
   const c = loadedCorpus.value;
   if (!c) return null;
-  const config = activeLocale.value === 'en' && c.configEn ? c.configEn : c.config;
+  const config = c.configByLocale?.[activeLocale.value] ?? c.config;
   return config === c.config ? c : markRaw({ ...c, config });
 });
 const ready = ref(false);

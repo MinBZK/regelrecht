@@ -1,5 +1,5 @@
 /**
- * Taal van de demo: Nederlands (de bron) en Engels (de vertaling).
+ * Taal van de demo: Nederlands is de bron, de rest is er de vertaling van.
  *
  * Dutch is the source of truth. Every key exists in `nl.js` first; `en.js` is
  * a translation of it, and `en.sources.js` records which Dutch string each
@@ -16,7 +16,7 @@
  * inside a component, so every one of those modules would need the parallel
  * `global.t` API instead.
  *
- * Both dictionaries are bundled eagerly. Lazy-loading a locale would be the
+ * Every dictionary is bundled eagerly. Lazy-loading a locale would be the
  * wrong trade for a tool that is driven live from a laptop: a language switch
  * halfway through a presentation must never show a loading state.
  */
@@ -24,8 +24,51 @@ import { computed, ref } from 'vue';
 import en from './en.js';
 import nl from './nl.js';
 
-export const LOCALES = ['nl', 'en'];
+/**
+ * De talen van de demo. Nederlands is de bron; de rest is er de vertaling van.
+ *
+ * Eén tabel, en elke plek die een taal moet kennen leest hieruit. Vóór deze
+ * tabel stond een taalcode op negen plekken los in de code — in een `===`, in
+ * een objectsleutel, in een bestandsnaam — en een derde taal toevoegen betekende
+ * ze alle negen vinden. De plekken die je dan mist falen niet: `localeFromPath`
+ * geeft gewoon `nl` terug voor een pad dat hij niet kent, en dan staat er een
+ * Nederlandse UI onder een Fries adres zonder dat er iets stukgaat.
+ *
+ * - `prefix` is het URL-segment, leeg voor de bron: de Nederlandse paden zijn de
+ *   originelen en houden hun kale vorm.
+ * - `intl` is de BCP 47-tag waarmee elke `Intl`-formatter wordt gebouwd. Engels
+ *   is `en-GB` en niet `en-US`: dat geeft "22 September 2026" en een 24-uurs
+ *   klok, zoals een Nederlands overheidsscherm een datum noteert.
+ * - `label` staat in de taal zelf. Een taalmenu dat "Dutch" zegt tegen wie geen
+ *   Engels leest, helpt precies de persoon niet die het menu zoekt.
+ */
+export const LOCALES = [
+  { code: 'nl', prefix: '', intl: 'nl-NL', label: 'Nederlands', dict: nl },
+  { code: 'en', prefix: '/en', intl: 'en-GB', label: 'English', dict: en },
+];
+
 export const DEFAULT_LOCALE = 'nl';
+
+/** Alleen de codes, voor waar een lijst strings handiger is dan de tabel. */
+export const LOCALE_CODES = LOCALES.map((l) => l.code);
+
+const BY_CODE = new Map(LOCALES.map((l) => [l.code, l]));
+
+/**
+ * De tabelregel van een taal, met de bron als terugval.
+ *
+ * Nooit `undefined`, zodat een aanroeper niet hoeft te controleren: een
+ * onbekende code levert het Nederlands op, en dat is precies wat er moet
+ * gebeuren bij een taal die niet (meer) bestaat.
+ */
+export function localeDef(code) {
+  return BY_CODE.get(code) ?? BY_CODE.get(DEFAULT_LOCALE);
+}
+
+/** Of `code` een taal is die de demo kent. */
+export function isLocale(code) {
+  return BY_CODE.has(code);
+}
 
 // Same key the docs landing page uses. The two run on separate subdomains
 // (separate ZAD components), so they do not in fact share storage; the name
@@ -37,7 +80,7 @@ export const DEFAULT_LOCALE = 'nl';
 // van wat de ontvanger ooit in een menu koos.
 const STORAGE_KEY = 'rr-lang';
 
-const DICTS = { nl, en };
+const DICTS = Object.fromEntries(LOCALES.map((l) => [l.code, l.dict]));
 
 const locale = ref(DEFAULT_LOCALE);
 
@@ -89,7 +132,7 @@ t.plural = (n, key, vars) => t(`${key}.${n === 1 ? 'one' : 'other'}`, { n, ...va
  * overrides it back to `nl` is the pane showing verbatim statutory text.
  */
 export function setLocale(next) {
-  if (!LOCALES.includes(next)) return;
+  if (!isLocale(next)) return;
   locale.value = next;
   try {
     window.localStorage?.setItem(STORAGE_KEY, next);
@@ -108,7 +151,7 @@ export function setLocale(next) {
  * same reason: a link someone sends you is not you picking a language.
  */
 export function adoptLocale(next) {
-  if (!LOCALES.includes(next) || locale.value === next) return;
+  if (!isLocale(next) || locale.value === next) return;
   locale.value = next;
   if (typeof document !== 'undefined') document.documentElement.lang = next;
 }

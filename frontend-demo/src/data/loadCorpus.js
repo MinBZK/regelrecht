@@ -7,6 +7,7 @@
  * that needs the corpus awaits the same load.
  */
 import * as yaml from 'js-yaml';
+import { DEFAULT_LOCALE, LOCALES } from '../i18n/index.js';
 
 let corpusPromise = null;
 
@@ -38,16 +39,22 @@ export function loadCorpus() {
   if (corpusPromise) return corpusPromise;
   corpusPromise = (async () => {
     const index = await (await fetch('/data/index.json')).json();
-    // Beide talen van de configuratie worden opgehaald, niet één op basis van
-    // de taal die op dat moment aanstaat: een taalwissel halverwege een
+    // De vertaalde talen, in de volgorde van de talentabel. Het Nederlands zit
+    // er niet bij: dat is de bron en staat in `demo-config.yaml` zelf.
+    const translated = LOCALES.filter((l) => l.code !== DEFAULT_LOCALE);
+    // Elke taal van de configuratie wordt opgehaald, niet één op basis van de
+    // taal die op dat moment aanstaat: een taalwissel halverwege een
     // presentatie mag geen laadmoment opleveren, en het corpus wordt maar één
-    // keer geladen. Het verschil is een bestand van twintig kilobyte.
-    const [bindings, profiles, services, config, configEn] = await Promise.all([
+    // keer geladen. Het verschil is per taal een bestand van twintig kilobyte.
+    const [bindings, profiles, services, config, ...overlays] = await Promise.all([
       fetchYaml('/data/bindings.yaml'),
       fetchYaml('/data/profiles.yaml'),
       fetchYaml('/data/services.yaml'),
       fetchYaml('/data/demo-config.yaml'),
-      fetchYaml('/data/demo-config.en.yaml').catch(() => null),
+      // `null` bij een ontbrekende overlay: een taal zonder vertaalde
+      // configuratie valt terug op het Nederlands, en dat mag het opstarten
+      // niet breken.
+      ...translated.map((l) => fetchYaml(`/data/demo-config.${l.code}.yaml`).catch(() => null)),
     ]);
     const laws = await Promise.all(
       index.laws.map(async (entry) => {
@@ -80,14 +87,19 @@ export function loadCorpus() {
       services: services.services ?? {},
       config,
       /**
-       * Dezelfde configuratie met de Engelse teksten erin.
+       * Dezelfde configuratie per taal, met de vertaalde teksten erin.
        *
-       * Beide talen staan naast elkaar in het corpus; welke een scherm ziet,
+       * Alle talen staan naast elkaar in het corpus; welke een scherm ziet,
        * bepaalt de store (`useDemo().corpus`), want dat is de plek die
-       * reactief is. `null` als er geen overlay is: dan draait de demo in het
-       * Nederlands, wat beter is dan lege dia's.
+       * reactief is. Een taal zonder overlay staat er niet in en valt daar
+       * terug op het Nederlands, wat beter is dan lege dia's.
        */
-      configEn,
+      configByLocale: {
+        [DEFAULT_LOCALE]: config,
+        ...Object.fromEntries(
+          translated.map((l, i) => [l.code, overlays[i]]).filter(([, doc]) => doc),
+        ),
+      },
     };
   })();
   return corpusPromise;

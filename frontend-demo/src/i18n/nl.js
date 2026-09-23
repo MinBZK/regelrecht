@@ -31,8 +31,6 @@ export default {
   'app.profile.label': 'Demoprofiel',
 
   'app.language.label': 'Taal',
-  'app.language.nl': 'Nederlands',
-  'app.language.en': 'English',
 
   'app.features.label': 'Features',
   'app.features.DELEGATION': 'Machtigingen',

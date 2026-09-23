@@ -11,7 +11,7 @@
  * `currentLocale()` rather than through `useI18n()`.
  */
 import { isUnknown, missingFacts } from '@regelrecht/frontend-shared';
-import { currentLocale, t } from '../i18n/index.js';
+import { DEFAULT_LOCALE, currentLocale, localeDef, t } from '../i18n/index.js';
 import generatedGlossary from '../i18n/glossary.generated.js';
 
 export { isUnknown, missingFacts };
@@ -29,14 +29,16 @@ export { isUnknown, missingFacts };
  * The currency stays EUR in both: only the separators and the symbol's
  * position change (`€ 1.654,12` against `€1,654.12`), and `Intl` handles that.
  */
-const INTL_LOCALE = { nl: 'nl-NL', en: 'en-GB' };
+// De tag staat in de talentabel (`src/i18n/index.js`) en niet hier: hij hoort
+// bij de taal, net als zijn prefix en zijn naam, en twee lijstjes die allebei
+// de talen opsommen lopen vroeg of laat uiteen.
 
 // Built per locale and cached: an `Intl` formatter bakes its locale in at
 // construction, so the module-level pair the demo used to have would keep
 // formatting in Dutch after a switch.
 const formatters = new Map();
 function intl(kind) {
-  const loc = INTL_LOCALE[currentLocale()] ?? INTL_LOCALE.nl;
+  const loc = intlLocale();
   const key = `${kind}:${loc}`;
   if (!formatters.has(key)) {
     formatters.set(
@@ -51,7 +53,7 @@ function intl(kind) {
 
 /** The BCP 47 tag for the active locale, for the few callers that need it. */
 export function intlLocale() {
-  return INTL_LOCALE[currentLocale()] ?? INTL_LOCALE.nl;
+  return localeDef(currentLocale()).intl;
 }
 
 const euro = { format: (v) => intl('euro').format(v) };
@@ -197,12 +199,12 @@ export function humanize(name, { lawId = null } = {}) {
   if (!name) return '';
   const words = String(name).replaceAll('_', ' ').trim().split(/\s+/);
   const dutch = capitalise(words.map((w) => ABBREVIATIONS.get(w.toLowerCase()) ?? w));
-  if (currentLocale() === 'nl') return dutch;
+  if (currentLocale() === DEFAULT_LOCALE) return dutch;
 
-  // Engels: eerst de hele naam, dan woord voor woord. Een naam die in geen van
-  // beide staat valt terug op het Nederlands, wat een schoonheidsfout is en
-  // geen onwaarheid.
-  const g = glossary;
+  // Vertaald: eerst de hele naam, dan woord voor woord. Een naam die in geen
+  // van beide staat valt terug op het Nederlands, wat een schoonheidsfout is
+  // en geen onwaarheid.
+  const g = activeGlossary();
   const exact = g.laws?.[lawId]?.[name] ?? g.names?.[name];
   if (exact) return capitalise(String(exact).split(/\s+/));
 
@@ -215,18 +217,29 @@ export function humanize(name, { lawId = null } = {}) {
   return dutch;
 }
 
+/** Wat `humanize` gebruikt als er geen woordenlijst voor de taal is. */
+const EMPTY_GLOSSARY = { laws: {}, names: {}, words: {} };
+
 /**
- * De Engelse woordenlijst voor veldnamen.
+ * De woordenlijst voor veldnamen in de taal die aanstaat.
  *
- * Gegenereerd uit `corpus/demo/i18n/glossary.en.yaml` door
- * `copy-demo-corpus.mjs`. `setGlossary` is er voor de tests, die een eigen
- * lijst willen zetten zonder de meegeleverde te raken; `setGlossary(null)`
- * zet hem terug.
+ * Gegenereerd per taal uit `corpus/demo/i18n/glossary.<taal>.yaml` door
+ * `copy-demo-corpus.mjs`. Een taal zonder lijst krijgt een lege, en dan valt
+ * elk label terug op het Nederlands: een schoonheidsfout, geen onwaarheid.
+ *
+ * `override` is er voor de tests, die een eigen lijst willen zetten zonder de
+ * meegeleverde te raken. Hij geldt voor elke taal, want een test zet er één en
+ * kiest daarna de taal; `setGlossary(null)` zet hem terug.
  */
-let glossary = generatedGlossary;
+let override = null;
+
+function activeGlossary() {
+  if (override) return override;
+  return generatedGlossary[currentLocale()] ?? EMPTY_GLOSSARY;
+}
 
 export function setGlossary(next) {
-  glossary = next ? { laws: {}, names: {}, words: {}, ...next } : generatedGlossary;
+  override = next ? { ...EMPTY_GLOSSARY, ...next } : null;
   untranslated.clear();
 }
 

@@ -34,8 +34,6 @@ export default {
   'app.profile.label': 'Demo profile',
 
   'app.language.label': 'Language',
-  'app.language.nl': 'Nederlands',
-  'app.language.en': 'English',
 
   'app.features.label': 'Features',
   'app.features.DELEGATION': 'Authorisations',

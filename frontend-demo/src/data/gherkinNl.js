@@ -12,7 +12,7 @@
  * Dutch templates are the work; English is what the file already says.
  */
 import { matchStep } from '@regelrecht/frontend-shared/gherkin';
-import { currentLocale } from '../i18n/index.js';
+import { DEFAULT_LOCALE, currentLocale } from '../i18n/index.js';
 import titles from '../i18n/scenarioTitles.generated.js';
 
 // Re-exported, not redefined: matching a step against the canonical grammar is
@@ -71,7 +71,7 @@ function q(s) {
  */
 export function renderStep(step) {
   const match = matchStep(step.text);
-  if (currentLocale() !== 'nl') return { keyword: step.keyword, text: step.text, matched: !!match };
+  if (currentLocale() !== DEFAULT_LOCALE) return { keyword: step.keyword, text: step.text, matched: !!match };
   const keyword = KEYWORDS[step.keyword] ?? step.keyword;
   const template = match ? TEMPLATES[match.entry.id] : null;
   return { keyword, text: template ? template(match.args) : step.text, matched: !!match };
@@ -87,7 +87,7 @@ const FEATURE_KEYWORDS = {
 
 /** The Gherkin keywords, in the language that is on. */
 export function featureKeywords() {
-  return FEATURE_KEYWORDS[currentLocale()] ?? FEATURE_KEYWORDS.nl;
+  return FEATURE_KEYWORDS[currentLocale()] ?? FEATURE_KEYWORDS[DEFAULT_LOCALE];
 }
 
 export const FEATURE_KEYWORDS_NL = FEATURE_KEYWORDS.nl;
@@ -103,6 +103,6 @@ export const FEATURE_KEYWORDS_NL = FEATURE_KEYWORDS.nl;
  * de inhoud.
  */
 export function scenarioTitle(title) {
-  if (!title || currentLocale() === 'nl') return title ?? '';
-  return titles[title] ?? title;
+  if (!title || currentLocale() === DEFAULT_LOCALE) return title ?? '';
+  return titles[currentLocale()]?.[title] ?? title;
 }
