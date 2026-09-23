@@ -229,3 +229,121 @@ slides.13.title: From law to digital effect
 slides.13.lines.0: A complete story, **not a finished product**
 slides.13.lines.1: We make policy **by doing**
 slides.13.link.label: regelrecht.rijks.app
+
+# ---- de persona's -----------------------------------------------------------
+# De beschrijving onder de kop van het portaal, en de enige tekst daar die uit
+# `profiles.yaml` komt in plaats van uit het woordenboek. Zonder deze overlay
+# staat er een Nederlandse zin onder een Engelse kop.
+#
+# Gesleuteld op BSN en niet op de zin zelf, want vijftig van de drieënzestig
+# beschrijvingen zijn uniek en de tien wallet-persona's delen er één; op de
+# tekst sleutelen zou die tien aan elkaar knopen.
+#
+# Eigennamen blijven staan: `Merijn van der Meer` is een naam, geen
+# omschrijving. Afkortingen van regelingen ook (`Bbz`, `WSNP`, `WGBO`, `AOW`),
+# met een Engelse toelichting waar de afkorting zonder uitleg niets zegt.
+profiles.900253010.description: Person with an NL Wallet
+profiles.900253022.description: Person with an NL Wallet
+profiles.900253034.description: Person with an NL Wallet
+profiles.900253046.description: Person with an NL Wallet
+profiles.900253058.description: Person with an NL Wallet
+profiles.900265425.description: Person with an NL Wallet
+profiles.900265437.description: Person with an NL Wallet
+profiles.900265449.description: Person with an NL Wallet
+profiles.900265450.description: Person with an NL Wallet
+profiles.900265462.description: Person with an NL Wallet
+profiles.999991772.description: Person with an NL Wallet
+profiles.999100001.description: >-
+  Self-employed home carer on a low income, single parent of two young
+  children, one of them with a chronic condition. Eligible for Bbz, the
+  income support scheme for the self-employed.
+profiles.999100002.description: >-
+  Single mother, working part time in hospitality on irregular hours, applies
+  for housing benefit only
+profiles.999100003.description: >-
+  Self-employed in construction with a strongly fluctuating income, struggles
+  with the paperwork and charges low rates
+profiles.999100004.description: >-
+  On income support and partially unfit for work, receives every allowance
+  there is and still only just gets by
+profiles.999200001.description: Child of Merijn van der Meer (BSN 999100001)
+profiles.999200002.description: Child of Merijn van der Meer (BSN 999100001)
+profiles.999200003.description: Child of Maria Rodriguez (BSN 999100002)
+profiles.999200004.description: Child of Maria Rodriguez (BSN 999100002)
+profiles.999200005.description: Child of Omar Yilmaz (BSN 999100003)
+profiles.999200006.description: Child of Sophie Jansen (BSN 999300001)
+profiles.999200007.description: Child of Lisa de Jong (BSN 999993660)
+profiles.999300001.description: >-
+  Recently unemployed single mother with one child, eligible for unemployment
+  benefit and for child budget with the single-parent supplement
+profiles.999400001.description: >-
+  Guardian of her nephew Daan after his parents died (art. 1:295 of the Civil
+  Code)
+profiles.999400002.description: Minor under the guardianship of his aunt Maria (BSN 999400001)
+profiles.999410001.description: >-
+  Professional conservator, administrator and mental welfare guardian for
+  several clients
+profiles.999410002.description: Holds a general power of attorney for her mother
+profiles.999410003.description: Notary and executor of estates
+profiles.999410004.description: Lawyer and bankruptcy trustee
+profiles.999410005.description: >-
+  Administrator under the WSNP, the statutory debt restructuring scheme
+profiles.999410006.description: >-
+  Husband of a patient who cannot give consent, and her representative under
+  the WGBO, the law on the medical treatment contract
+profiles.999410007.description: Was a conservator, but the conservatorship has ended
+profiles.999500001.description: Placed under conservatorship because of a mental disorder
+profiles.999500002.description: >-
+  Under protective administration, and still has legal capacity
+profiles.999500003.description: >-
+  Under mental welfare guardianship, and still has legal capacity
+profiles.999500004.description: Has given a general power of attorney to her daughter Anna
+profiles.999500006.description: Declared bankrupt; the estate is managed by a trustee
+profiles.999500007.description: In WSNP debt restructuring
+profiles.999500008.description: Declared unable to give consent, and under conservatorship
+profiles.999500009.description: >-
+  The conservatorship has been lifted; has full legal capacity again
+profiles.999600001.description: Director of a listed public limited company
+profiles.999600002.description: Chair of a charitable foundation
+profiles.999600003.description: Chair of a sports club
+profiles.999600004.description: Director of an agricultural cooperative
+profiles.999600005.description: Partner in a law firm partnership
+profiles.999600006.description: General partner in a limited partnership
+profiles.999600007.description: >-
+  Limited (silent) partner in a limited partnership, and therefore has NO
+  authority to represent it
+profiles.999777777.description: >-
+  Living alone on a low income with a high rent, eligible for housing benefit
+profiles.999888888.description: >-
+  Single parent using childcare, eligible for the childcare allowance
+profiles.999991723.description: Child of Linda Strijps and Peter-Jan van der Meijden
+profiles.999992740.description: Child of Linda Strijps and Peter-Jan van der Meijden
+profiles.999991905.description: >-
+  Mother of two young children, works part time, has an NL Wallet
+profiles.999993653.description: >-
+  Young person with a part-time job alongside a vocational course, eligible
+  for the healthcare allowance
+profiles.999993654.description: >-
+  Receives the state pension on a full record; married, and her partner has
+  not reached pension age yet
+profiles.999993655.description: >-
+  Homeless with a postal address, entitled to income support with a housing
+  costs supplement
+profiles.999993656.description: >-
+  Self-employed on a low income, entitled to supplementary income support and
+  to start-up capital
+profiles.999993657.description: >-
+  Medically exempt, and so entitled to income support without the duty to
+  return to work
+profiles.999993658.description: >-
+  Student on a low income with a student grant, entitled to the healthcare
+  allowance
+profiles.999993659.description: German student, and so not entitled to vote for the House of Representatives
+profiles.999993660.description: >-
+  Working parent of a young child, eligible for the income-related combination
+  tax credit
+profiles.999993670.description: Partner of Maria Pietersen, has not reached pension age yet
+profiles.999993872.description: Father of two young children, owns his home
+profiles.999999990.description: >-
+  Owner of the coffee bar Noon in Rotterdam West; runs a hospitality business
+  with an operating licence

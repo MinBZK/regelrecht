@@ -98,16 +98,24 @@ for (const name of ['bindings.yaml', 'profiles.yaml', 'demo-config.yaml', 'servi
 // geïmporteerd, dus een fetch erin zou die tests van een netwerkaanroep
 // afhankelijk maken. Ontbreekt de lijst, dan is hij leeg en valt elk label
 // terug op het Nederlands — dat is het gedrag vóór de woordenlijst bestond.
-// De Engelse versie van demo-config.yaml, opgebouwd uit de overlay ernaast.
+// De Engelse versie van demo-config.yaml en profiles.yaml, opgebouwd uit de
+// overlay ernaast.
 //
 // De samenvoeging gebeurt hier en niet in de browser: een pad dat nergens heen
 // wijst hoort de build te laten falen en niet tijdens een presentatie een lege
 // dia op te leveren. Het Nederlands blijft de bron; de overlay zegt per pad wat
 // de Engelse tekst is.
+//
+// Eén overlaybestand voedt twee documenten, en het eerste padsegment wijst aan
+// welk: `profiles.` gaat naar profiles.yaml, de rest naar demo-config.yaml. Dat
+// is een keuze vóór twee losse bestanden, omdat de portaalkop van een persona
+// al in demo-config.yaml staat en zijn beschrijving in profiles.yaml: wie de
+// ene vertaalt wil de andere ernaast zien staan, niet in een ander bestand.
 const overlayFile = join(corpusDir, 'i18n', 'en.yaml');
 if (existsSync(overlayFile)) {
   const overlay = yaml.load(readFileSync(overlayFile, 'utf8')) ?? {};
   const config = yaml.load(readFileSync(join(corpusDir, 'demo-config.yaml'), 'utf8'));
+  const profilesNl = yaml.load(readFileSync(join(corpusDir, 'profiles.yaml'), 'utf8'));
 
   /** Zet `value` op `path` in een kopie van `node`, zonder het origineel te raken. */
   function setPath(node, path, value) {
@@ -127,9 +135,41 @@ if (existsSync(overlayFile)) {
     return copy;
   }
 
+  // Welk document een pad bedoelt, blijkt uit welk document het pad heeft.
+  //
+  // Op het eerste segment routeren kan hier niet: béide documenten hebben een
+  // `profiles:`-tak. In demo-config.yaml staat die op naam (`profiles.merijn.
+  // portal_heading`), in profiles.yaml op BSN (`profiles.999100001.description`).
+  // Routeren op de vorm van het tweede segment zou werken tot iemand een
+  // persona `claudia` in profiles.yaml zet, en dan stil de verkeerde kant op
+  // vallen. `hasPath` kijkt gewoon.
+  //
+  // Precies één document moet het pad hebben. Nul betekent een verwijzing die
+  // nergens heen wijst, twee betekent dat de vertaling onbedoeld op twee
+  // plekken landt; allebei falen de build in plaats van een halve vertaling op
+  // te leveren.
+  function hasPath(node, path) {
+    let cur = node;
+    for (const part of path.split('.')) {
+      if (cur === null || cur === undefined) return false;
+      cur = Array.isArray(cur) ? cur[Number(part)] : cur[part];
+    }
+    return cur !== undefined;
+  }
+
   let english = config;
-  for (const [path, value] of Object.entries(overlay)) english = setPath(english, path, value);
+  let englishProfiles = profilesNl;
+  for (const [path, value] of Object.entries(overlay)) {
+    const inConfig = hasPath(config, path);
+    const inProfiles = hasPath(profilesNl, path);
+    if (inConfig && inProfiles) {
+      throw new Error(`en.yaml wijst naar een pad dat in twee documenten bestaat: ${path}`);
+    }
+    if (inProfiles) englishProfiles = setPath(englishProfiles, path, value);
+    else english = setPath(english, path, value);
+  }
   writeFileSync(join(destDir, 'demo-config.en.yaml'), yaml.dump(english, { lineWidth: 120 }));
+  writeFileSync(join(destDir, 'profiles.en.yaml'), yaml.dump(englishProfiles, { lineWidth: 120 }));
 }
 
 // De Engelse titels van de features en scenario's.
