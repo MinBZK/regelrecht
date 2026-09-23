@@ -52,9 +52,13 @@ export function loadCorpus() {
       fetchYaml('/data/services.yaml'),
       fetchYaml('/data/demo-config.yaml'),
       // `null` bij een ontbrekende overlay: een taal zonder vertaalde
-      // configuratie valt terug op het Nederlands, en dat mag het opstarten
-      // niet breken.
-      ...translated.map((l) => fetchYaml(`/data/demo-config.${l.code}.yaml`).catch(() => null)),
+      // configuratie of persona's valt terug op het Nederlands, en dat mag het
+      // opstarten niet breken. Config en profiles per taal, in die volgorde,
+      // zodat de index hieronder klopt.
+      ...translated.flatMap((l) => [
+        fetchYaml(`/data/demo-config.${l.code}.yaml`).catch(() => null),
+        fetchYaml(`/data/profiles.${l.code}.yaml`).catch(() => null),
+      ]),
     ]);
     const laws = await Promise.all(
       index.laws.map(async (entry) => {
@@ -97,7 +101,21 @@ export function loadCorpus() {
       configByLocale: {
         [DEFAULT_LOCALE]: config,
         ...Object.fromEntries(
-          translated.map((l, i) => [l.code, overlays[i]]).filter(([, doc]) => doc),
+          translated.map((l, i) => [l.code, overlays[i * 2]]).filter(([, doc]) => doc),
+        ),
+      },
+      /**
+       * Dezelfde persona's met hun vertaalde beschrijving, per taal.
+       *
+       * Alleen `description` verschilt: namen blijven namen, en de
+       * geregistreerde gegevens eronder zijn de invoer van de wet en horen in
+       * geen enkele taal vertaald te worden. Een taal zonder overlay staat er
+       * niet in en valt daar terug op het Nederlands.
+       */
+      profilesByLocale: {
+        [DEFAULT_LOCALE]: profiles,
+        ...Object.fromEntries(
+          translated.map((l, i) => [l.code, overlays[i * 2 + 1]]).filter(([, doc]) => doc),
         ),
       },
     };

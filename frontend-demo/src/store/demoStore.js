@@ -111,7 +111,9 @@ const corpus = computed(() => {
   const c = loadedCorpus.value;
   if (!c) return null;
   const config = c.configByLocale?.[activeLocale.value] ?? c.config;
-  return config === c.config ? c : markRaw({ ...c, config });
+  const profiles = c.profilesByLocale?.[activeLocale.value] ?? c.profiles;
+  if (config === c.config && profiles === c.profiles) return c;
+  return markRaw({ ...c, config, profiles });
 });
 const ready = ref(false);
 const loadError = ref(null);

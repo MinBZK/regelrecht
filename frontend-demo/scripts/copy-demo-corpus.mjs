@@ -94,6 +94,12 @@ for (const name of ['bindings.yaml', 'profiles.yaml', 'demo-config.yaml', 'servi
   if (existsSync(src)) cpSync(src, join(destDir, name));
 }
 
+// De woordenlijst voor veldnamen wordt een JS-module en geen asset:
+// `format.js` leest hem synchroon en wordt zelf door zijn eigen tests
+// geimporteerd, dus een fetch erin zou die tests van een netwerkaanroep
+// afhankelijk maken. Ontbreekt de lijst, dan is hij leeg en valt elk label
+// terug op het Nederlands: dat is het gedrag van voor de woordenlijst.
+
 // De vertaalde talen, in de volgorde van de talentabel. Het Nederlands zit er
 // niet bij: dat is de bron, en het staat al in de bestanden hierboven.
 const translatedLocales = LOCALES.filter((l) => l.code !== DEFAULT_LOCALE).map((l) => l.code);
@@ -122,20 +128,54 @@ function setPath(node, path, value, source) {
   return copy;
 }
 
-// De vertaalde versies van demo-config.yaml, opgebouwd uit de overlay ernaast.
+/** Of `path` in `node` bestaat. */
+function hasPath(node, path) {
+  let cur = node;
+  for (const part of path.split('.')) {
+    if (cur === null || cur === undefined) return false;
+    cur = Array.isArray(cur) ? cur[Number(part)] : cur[part];
+  }
+  return cur !== undefined;
+}
+
+// De vertaalde versies van demo-config.yaml en profiles.yaml, opgebouwd uit de
+// overlay ernaast.
 //
 // De samenvoeging gebeurt hier en niet in de browser: een pad dat nergens heen
 // wijst hoort de build te laten falen en niet tijdens een presentatie een lege
 // dia op te leveren. Het Nederlands blijft de bron; de overlay zegt per pad wat
 // de vertaalde tekst is.
+//
+// Een overlaybestand voedt twee documenten, en welk document een pad bedoelt
+// blijkt uit welk document het pad heeft. Op het eerste segment routeren kan
+// niet: beide documenten hebben een `profiles:`-tak, in demo-config.yaml op
+// naam (`profiles.merijn.portal_heading`) en in profiles.yaml op BSN
+// (`profiles.999100001.description`). Routeren op de vorm van het tweede
+// segment werkt tot iemand een persona `claudia` in profiles.yaml zet, en valt
+// dan stil de verkeerde kant op.
+//
+// Precies een document moet het pad hebben. Nul betekent een verwijzing die
+// nergens heen wijst, twee dat de vertaling onbedoeld op twee plekken landt;
+// allebei falen de build in plaats van een halve vertaling op te leveren.
 const baseConfig = yaml.load(readFileSync(join(corpusDir, 'demo-config.yaml'), 'utf8'));
+const baseProfiles = yaml.load(readFileSync(join(corpusDir, 'profiles.yaml'), 'utf8'));
 for (const code of translatedLocales) {
   const source = `${code}.yaml`;
   const overlay = readCorpusI18n(source);
   if (!Object.keys(overlay).length) continue;
-  let translated = baseConfig;
-  for (const [path, value] of Object.entries(overlay)) translated = setPath(translated, path, value, source);
-  writeFileSync(join(destDir, `demo-config.${code}.yaml`), yaml.dump(translated, { lineWidth: 120 }));
+  let config = baseConfig;
+  let profiles = baseProfiles;
+  for (const [path, value] of Object.entries(overlay)) {
+    const inConfig = hasPath(baseConfig, path);
+    const inProfiles = hasPath(baseProfiles, path);
+    if (inConfig && inProfiles) {
+      throw new Error(`${source} wijst naar een pad dat in twee documenten bestaat: ${path}`);
+    }
+    if (inProfiles) profiles = setPath(profiles, path, value, source);
+    else config = setPath(config, path, value, source);
+  }
+  writeFileSync(join(destDir, `demo-config.${code}.yaml`), yaml.dump(config, { lineWidth: 120 }));
+  writeFileSync(join(destDir, `profiles.${code}.yaml`), yaml.dump(profiles, { lineWidth: 120 }));
 }
 
 // De vertaalde titels van de features en scenario's, en de woordenlijst voor
