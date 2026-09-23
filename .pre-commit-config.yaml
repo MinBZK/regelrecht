@@ -226,7 +226,12 @@ repos:
       - id: cross-law-toestand-tests
         name: De cross-law-poort leest de toestand die geldt
         entry: script/cross-law-integriteit.test.sh
-        language: system
+        # The gate imports yaml. With language: system that only works where the
+        # interpreter running pre-commit happens to carry pyyaml (CI does, a
+        # pre-commit installed through uv or pipx does not), so the hook gets its
+        # own environment and the test script finds that python3 first on PATH.
+        language: python
+        additional_dependencies: [pyyaml]
         pass_filenames: false
         files: ^script/cross-law-integriteit(\.test)?\.(py|sh)$
 

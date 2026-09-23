@@ -34,6 +34,12 @@ engine uses. States that begin after the reference date are ignored; if every
 state is in the future the earliest one is used, so a fully forward-dated corpus
 still gets checked.
 
+A state whose `valid_to` lies before the reference date is still the one that is
+checked: the engine does not fall back to an older state either, it reports the
+law as no longer in force. The check follows the same text and says in its output
+that the law has ended, rather than silently reading a predecessor the engine
+would never use.
+
 Usage:  python3 cross-law-integriteit.py [corpus_root] [--peildatum YYYY-MM-DD]
         (defaults: regulation, today)
 """
@@ -70,7 +76,7 @@ for path in glob.glob(f'{root}/**/*.yaml', recursive=True):
     if isinstance(doc, dict) and '$id' in doc:
         toestanden.setdefault(doc['$id'], []).append((path, doc))
 
-laws, gekozen = {}, []
+laws, gekozen, vervallen = {}, [], []
 for lid, versies in toestanden.items():
     versies.sort(key=lambda pd: _valid_from(pd[1]))
     geldig = [pd for pd in versies if _valid_from(pd[1]) <= peildatum]
@@ -78,6 +84,10 @@ for lid, versies in toestanden.items():
     laws[lid] = doc
     if len(versies) > 1:
         gekozen.append(f'{lid}: {path.split("/")[-1]} (uit {len(versies)} toestanden)')
+    # Upper bound is inclusive, as in the engine: in force while peildatum <= valid_to.
+    valid_to = str(doc.get('valid_to') or '')
+    if valid_to and peildatum > valid_to:
+        vervallen.append(f'{lid}: {path.split("/")[-1]} vervallen op {valid_to}')
 
 
 def action_outputs(doc):
@@ -185,6 +195,10 @@ if gekozen:
     print(f'  toestand op peildatum {peildatum}:')
     for g in gekozen:
         print(f'    {g}')
+if vervallen:
+    print(f'  niet meer in werking op peildatum {peildatum} (wel gecontroleerd):')
+    for v in vervallen:
+        print(f'    {v}')
 for x in misplaced:
     print('  MISPLACED', x)
 for x in dangling:
