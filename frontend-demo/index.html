@@ -15,15 +15,31 @@
     // `/wetten`-link houdt zijn eigen taal: een adres dat iemand doorstuurt
     // hoort niet af te hangen van wat de ontvanger ooit in een menu koos.
     // Dezelfde regel als op de landingspagina.
+    //
+    // De prefixen staan hier als letterlijke lijst en niet uit de talentabel:
+    // dit script draait vóór de bundle en kan niets importeren. `index.test.js`
+    // leest deze regel terug en vergelijkt hem met `LOCALES`, zodat de twee niet
+    // uit elkaar kunnen lopen zonder dat er iets rood wordt.
+    var PREFIXED = [['en', '/en'], ['fy', '/fy']];
     try {
-      var onEnglishPath = location.pathname === '/en' || location.pathname.indexOf('/en/') === 0;
-      if (location.pathname === '/' && localStorage.getItem('rr-lang') === 'en') {
-        location.replace('/en' + location.search + location.hash);
-      } else if (onEnglishPath) {
+      var path = location.pathname;
+      var here = null;
+      for (var i = 0; i < PREFIXED.length; i++) {
+        var prefix = PREFIXED[i][1];
+        if (path === prefix || path.indexOf(prefix + '/') === 0) { here = PREFIXED[i]; break; }
+      }
+      var stored = localStorage.getItem('rr-lang');
+      var wanted = null;
+      for (var j = 0; j < PREFIXED.length; j++) {
+        if (PREFIXED[j][0] === stored) { wanted = PREFIXED[j]; break; }
+      }
+      if (path === '/' && wanted) {
+        location.replace(wanted[1] + location.search + location.hash);
+      } else if (here) {
         // `lang` staat statisch op "nl" en wordt pas gezet als de router
-        // langskomt. Zonder deze regel kondigt een Engelse pagina zich in dat
-        // venster als Nederlands aan bij een schermlezer.
-        document.documentElement.lang = 'en';
+        // langskomt. Zonder deze regel kondigt een anderstalige pagina zich in
+        // dat venster als Nederlands aan bij een schermlezer.
+        document.documentElement.lang = here[0];
       }
     } catch (e) {
       // Private mode of storage uit: dan is er geen voorkeur, en is Nederlands

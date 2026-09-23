@@ -14,16 +14,28 @@
  * Read-only.
  *
  * Usage:
- *   node scripts/i18n-labels.mjs           # every name
+ *   node scripts/i18n-labels.mjs             # every name, in the first translated locale
+ *   node scripts/i18n-labels.mjs --locale=en # a specific locale
  *   node scripts/i18n-labels.mjs --fallback  # only the ones still in Dutch
  */
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import glossary from '../src/i18n/glossary.generated.js';
+import glossaries from '../src/i18n/glossary.generated.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const lawsDir = resolve(here, '..', '..', 'corpus', 'demo', 'regulation', 'nl');
+
+// Welke taal wordt nagelopen. De woordenlijst is per taal gegenereerd, dus dit
+// script moet er een kiezen; zonder vlag is dat de eerste vertaalde taal, want
+// zolang er maar één is scheelt dat een argument bij elke aanroep.
+const localeArg = process.argv.find((a) => a.startsWith('--locale='))?.slice('--locale='.length);
+const locale = localeArg ?? Object.keys(glossaries)[0];
+const glossary = glossaries[locale];
+if (!glossary) {
+  console.error(`geen woordenlijst voor taal "${locale}"; beschikbaar: ${Object.keys(glossaries).join(', ') || '(geen)'}`);
+  process.exit(1);
+}
 
 // Dezelfde afkortingenlijst als format.js. Bewust gedupliceerd en niet
 // geïmporteerd: format.js hangt aan Vue en aan de i18n-module, en dit script
@@ -78,4 +90,4 @@ for (const name of [...names].sort()) {
   if (onlyFallback && r.composed) continue;
   console.log(`${r.composed ? '=' : '~'} ${name.padEnd(42)} ${r.en}`);
 }
-console.error(`\n${composed} van ${names.size} veldnamen stellen samen; ${names.size - composed} vallen terug op het Nederlands.`);
+console.error(`\n${locale}: ${composed} van ${names.size} veldnamen stellen samen; ${names.size - composed} vallen terug op het Nederlands.`);

@@ -1,12 +1,12 @@
 import { createRouter, createWebHistory } from 'vue-router';
-import { DEFAULT_LOCALE, adoptLocale } from './i18n/index.js';
+import { DEFAULT_LOCALE, LOCALES, adoptLocale } from './i18n/index.js';
 
 /**
- * One route per workspace tab, in two languages.
+ * One route per workspace tab, in every language.
  *
- * Each page is one entry with a Dutch path and an English one under `/en/`.
- * The Dutch paths are the originals and keep working forever; `/en/*` is
- * additive. The English slugs are translated (`/en/laws`, not `/en/wetten`),
+ * Each page is one entry with one path per language, keyed on the language
+ * code. The Dutch paths are the originals and keep working forever; a prefixed
+ * language is additive. The English slugs are translated (`/en/laws`, not `/en/wetten`),
  * the way the landing page does it (`/en/signup`) — a half-translated URL
  * reads as unfinished work.
  *
@@ -28,19 +28,32 @@ import { DEFAULT_LOCALE, adoptLocale } from './i18n/index.js';
  * against the route name.
  */
 const PAGES = [
-  { name: 'home', nl: '/', en: '/en', component: () => import('./views/HomeView.vue') },
-  { name: 'presentatie', nl: '/presentatie', en: '/en/presentation', component: () => import('./views/PresentatieView.vue') },
-  { name: 'wetten', nl: '/wetten/:lawId?', en: '/en/laws/:lawId?', component: () => import('./views/WettenView.vue') },
-  { name: 'graaf', nl: '/graaf', en: '/en/graph', component: () => import('./views/GraafView.vue') },
-  { name: 'scenarios', nl: '/scenarios/:featurePath(.*)?', en: '/en/scenarios/:featurePath(.*)?', component: () => import('./views/ScenariosView.vue') },
-  { name: 'simulatie', nl: '/simulatie', en: '/en/simulation', component: () => import('./views/SimulatieView.vue') },
-  { name: 'portaal', nl: '/portaal', en: '/en/portal', component: () => import('./views/PortaalView.vue') },
-  { name: 'zaaksysteem', nl: '/zaaksysteem/:caseId?', en: '/en/cases/:caseId?', component: () => import('./views/ZaaksysteemView.vue') },
+  { name: 'home', paths: { nl: '/', en: '/en', fy: '/fy' }, component: () => import('./views/HomeView.vue') },
+  { name: 'presentatie', paths: { nl: '/presentatie', en: '/en/presentation', fy: '/fy/presintaasje' }, component: () => import('./views/PresentatieView.vue') },
+  { name: 'wetten', paths: { nl: '/wetten/:lawId?', en: '/en/laws/:lawId?', fy: '/fy/wetten/:lawId?' }, component: () => import('./views/WettenView.vue') },
+  { name: 'graaf', paths: { nl: '/graaf', en: '/en/graph', fy: '/fy/graaf' }, component: () => import('./views/GraafView.vue') },
+  { name: 'scenarios', paths: { nl: '/scenarios/:featurePath(.*)?', en: '/en/scenarios/:featurePath(.*)?', fy: '/fy/senarios/:featurePath(.*)?' }, component: () => import('./views/ScenariosView.vue') },
+  { name: 'simulatie', paths: { nl: '/simulatie', en: '/en/simulation', fy: '/fy/simulaasje' }, component: () => import('./views/SimulatieView.vue') },
+  { name: 'portaal', paths: { nl: '/portaal', en: '/en/portal', fy: '/fy/portaal' }, component: () => import('./views/PortaalView.vue') },
+  { name: 'zaaksysteem', paths: { nl: '/zaaksysteem/:caseId?', en: '/en/cases/:caseId?', fy: '/fy/saaksysteem/:caseId?' }, component: () => import('./views/ZaaksysteemView.vue') },
 ];
+
+// Elke taal uit de tabel moet elke pagina hebben. Een ontbrekend pad zou hier
+// een route zonder `path` opleveren, en vue-router maakt daar een match op '/'
+// van: de hele app zou dan op de home-pagina uitkomen, zonder foutmelding.
+for (const l of LOCALES) {
+  const missing = PAGES.filter((p) => !p.paths[l.code]).map((p) => p.name);
+  if (missing.length) {
+    throw new Error(`router: taal '${l.code}' mist een pad voor ${missing.join(', ')}`);
+  }
+}
 
 /** The locale a path belongs to, by its prefix. */
 export function localeFromPath(path) {
-  return path === '/en' || path.startsWith('/en/') ? 'en' : DEFAULT_LOCALE;
+  // De bron heeft een lege prefix en matcht daarom op alles; die slaan we over
+  // en gebruiken hem als terugval.
+  const hit = LOCALES.find((l) => l.prefix && (path === l.prefix || path.startsWith(`${l.prefix}/`)));
+  return hit?.code ?? DEFAULT_LOCALE;
 }
 
 // vue-router matches in order and a name may appear once, so the two languages
@@ -48,17 +61,28 @@ export function localeFromPath(path) {
 // and what `resolve({name})` should find first) and the English one is suffixed.
 // `localeRouteName` is the single place that knows about that suffix.
 const routes = [
-  ...PAGES.map((p) => ({ path: p.nl, name: p.name, component: p.component, meta: { locale: 'nl', page: p.name } })),
-  ...PAGES.map((p) => ({ path: p.en, name: `${p.name}:en`, component: p.component, meta: { locale: 'en', page: p.name } })),
+  ...LOCALES.flatMap((l) =>
+    PAGES.map((p) => ({
+      path: p.paths[l.code],
+      name: localeRouteName(p.name, l.code),
+      component: p.component,
+      meta: { locale: l.code, page: p.name },
+    })),
+  ),
   // An unknown path keeps the language it was typed in. Sending an English
   // visitor with a typo to the Dutch home page would be a silent demotion.
-  { path: '/en/:pathMatch(.*)*', redirect: '/en' },
+  //
+  // De volgorde binnen deze lijst maakt hier niet uit, en dat is nagemeten en
+  // niet aangenomen: vue-router rangschikt zijn matchers op specificiteit, dus
+  // `/en/:pathMatch(.*)*` gaat vóór `/:pathMatch(.*)*` ook als hij eronder
+  // staat. `/en/typefout` komt dus hoe dan ook op `/en` uit.
+  ...LOCALES.filter((l) => l.prefix).map((l) => ({ path: `${l.prefix}/:pathMatch(.*)*`, redirect: l.prefix })),
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ];
 
 /** The route name for `page` in `locale`. */
 export function localeRouteName(page, locale) {
-  return locale === 'en' ? `${page}:en` : page;
+  return locale === DEFAULT_LOCALE ? page : `${page}:${locale}`;
 }
 
 /**
@@ -73,7 +97,7 @@ export function localeRouteName(page, locale) {
 export function pageForConfigPath(path) {
   const clean = String(path || '').split('?')[0];
   const match = PAGES.find((p) => {
-    const root = p.nl.split('/:')[0];
+    const root = p.paths[DEFAULT_LOCALE].split('/:')[0];
     return clean === root || clean.startsWith(`${root}/`);
   });
   return match?.name ?? null;

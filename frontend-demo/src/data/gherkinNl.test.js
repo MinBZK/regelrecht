@@ -73,3 +73,31 @@ describe('in het Engels', () => {
     expect(scenarioTitle('Berekening Zorgtoeslag 2024')).toBe('Berekening Zorgtoeslag 2024');
   });
 });
+
+describe('een taal zonder eigen sjablonen', () => {
+  afterEach(() => adoptLocale('nl'));
+
+  // Fries is de eerste taal die dit raakt. Hij staat in de talentabel, maar de
+  // stappen zijn geschreven zinnen en die schrijft een vertaler, geen tabel.
+  // Tot die er zijn hoort er iets wáárs op het scherm te staan.
+
+  it('toont de stap zoals hij in het bestand staat', () => {
+    adoptLocale('fy');
+    const step = { keyword: 'Given', text: 'the calculation date is "2025-01-01"' };
+    expect(renderStep(step)).toEqual({ keyword: 'Given', text: 'the calculation date is "2025-01-01"', matched: true });
+  });
+
+  it('houdt de Engelse sleutelwoorden en niet de Nederlandse', () => {
+    // De stap eronder staat in het Engels, dus `Functionaliteit` erboven zou
+    // een taal suggereren die er niet is. Dit is het verschil tussen een
+    // terugval op de bron en een terugval op de canonieke vorm.
+    adoptLocale('fy');
+    expect(featureKeywords().Feature).toBe('Feature');
+    expect(featureKeywords().Background).toBe('Background');
+  });
+
+  it('blijft melden of een stap in de grammatica staat', () => {
+    adoptLocale('fy');
+    expect(renderStep({ keyword: 'Given', text: 'iets wat de grammatica niet kent' }).matched).toBe(false);
+  });
+});

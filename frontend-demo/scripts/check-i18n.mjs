@@ -22,12 +22,19 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import en from '../src/i18n/en.js';
 import nl from '../src/i18n/nl.js';
+// Uit dezelfde tabel die de app leest, en niet uit een lijstje hier: een taal
+// die erbij komt moet ook in de controles hieronder meetellen, en twee lijsten
+// die allebei de talen opsommen lopen vroeg of laat uiteen. Deze import kan,
+// omdat `index.js` alleen Vue en de woordenboeken aantrekt en die uit
+// node_modules oplossen; `check-i18n.mjs` importeerde al uit `src/i18n/`.
+import { DEFAULT_LOCALE, LOCALE_CODES } from '../src/i18n/index.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const srcDir = resolve(here, '..', 'src');
 const i18nDir = join(srcDir, 'i18n');
 const lawsDir = resolve(here, '..', '..', 'corpus', 'demo', 'regulation', 'nl');
-const glossaryFile = resolve(here, '..', '..', 'corpus', 'demo', 'i18n', 'glossary.en.yaml');
+const corpusI18nDir = resolve(here, '..', '..', 'corpus', 'demo', 'i18n');
+const translatedLocales = LOCALE_CODES.filter((c) => c !== DEFAULT_LOCALE);
 
 function walk(dir, out = [], match = (f) => /\.(vue|js)$/.test(f) && !f.endsWith('.test.js')) {
   if (!existsSync(dir)) return out;
@@ -67,6 +74,12 @@ for (const [key, file] of used) {
 }
 
 // ---- 2. no component decides language on its own ---------------------------
+//
+// De alternatie komt uit de talentabel, zodat een taal die erbij komt hier
+// meteen meetelt: stond `nl|en` hier vast, dan glipte de eerste `=== 'fy'`
+// er ongezien doorheen en was er niets wat dat meldde.
+const LOCALE_BRANCH = new RegExp(`locale(?:\\.value)?\\s*===\\s*'(?:${LOCALE_CODES.join('|')})'`);
+
 for (const file of walk(srcDir)) {
   if (file.startsWith(i18nDir)) continue;
   const rel = relative(srcDir, file);
@@ -78,13 +91,13 @@ for (const file of walk(srcDir)) {
     // Any branch on the locale, not only a ternary: `locale === 'nl' && x` is
     // the same decision written differently, and an author reaching for it is
     // making the choice this check exists to catch.
-    if (!/locale(?:\.value)?\s*===\s*'(?:nl|en)'/.test(line)) continue;
+    if (!LOCALE_BRANCH.test(line)) continue;
     // A branch may be deliberate — falling back to Dutch corpus content that
     // has no translation yet. It then says so on the line above, and the
     // comment is what a reviewer reads.
     const excused = lines.slice(Math.max(0, i - 10), i).some((l) => /i18n-ok:/.test(l));
     if (!excused) {
-      problems.push(`taal-vertakking in ${rel}:${i + 1} — zet de tekst in nl.js/en.js, of verantwoord hem met een \`i18n-ok:\`-commentaar`);
+      problems.push(`taal-vertakking in ${rel}:${i + 1} — zet de tekst in ${LOCALE_CODES.map((c) => `${c}.js`).join('/')}, of verantwoord hem met een \`i18n-ok:\`-commentaar`);
     }
   }
 }
@@ -115,18 +128,29 @@ function readGlossaryBlock(text, block) {
 // Dezelfde afkortingen die format.js kent; die horen bewust niet in de lijst.
 const ABBREVIATIONS = new Set(['agp', 'aow', 'bsn', 'bbz', 'brp', 'cbs', 'haccp', 'kvk', 'nvwa', 'sbi', 'svh', 'vog', 'wia', 'ww', 'zvw']);
 
-if (existsSync(glossaryFile)) {
+// De veldnamen uit het corpus, met hoe vaak ze voorkomen. Eenmaal gelezen; elke
+// taal wordt tegen dezelfde verzameling gehouden.
+const fieldNames = new Map();
+for (const file of walk(lawsDir, [], (f) => f.endsWith('.yaml'))) {
+  for (const line of readFileSync(file, 'utf8').split('\n')) {
+    const m = /^\s*-\s+name:\s+([a-z][a-z0-9_]*)\s*$/.exec(line);
+    if (m) fieldNames.set(m[1], (fieldNames.get(m[1]) ?? 0) + 1);
+  }
+}
+
+/** Het aantal woorden in de woordenlijst van `code`, of 0 als er geen is. */
+const glossaryWordCount = new Map();
+
+for (const code of translatedLocales) {
+  const glossaryFile = join(corpusI18nDir, `glossary.${code}.yaml`);
+  // Een taal zonder woordenlijst is geen fout: elk label valt dan terug op het
+  // Nederlands, wat het gedrag is van vóór de woordenlijst bestond. Hier niets
+  // melden dus, in plaats van elk woord uit het corpus als ontbrekend opsommen.
+  if (!existsSync(glossaryFile)) continue;
   const text = readFileSync(glossaryFile, 'utf8');
   const words = readGlossaryBlock(text, 'words');
   const wholeNames = readGlossaryBlock(text, 'names');
-
-  const fieldNames = new Map();
-  for (const file of walk(lawsDir, [], (f) => f.endsWith('.yaml'))) {
-    for (const line of readFileSync(file, 'utf8').split('\n')) {
-      const m = /^\s*-\s+name:\s+([a-z][a-z0-9_]*)\s*$/.exec(line);
-      if (m) fieldNames.set(m[1], (fieldNames.get(m[1]) ?? 0) + 1);
-    }
-  }
+  glossaryWordCount.set(code, words.size);
 
   const missing = new Map();
   for (const [name, count] of fieldNames) {
@@ -140,7 +164,7 @@ if (existsSync(glossaryFile)) {
   if (missing.size) {
     const top = [...missing.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12);
     problems.push(
-      `de woordenlijst mist ${missing.size} woord(en); label(s) vallen terug op het Nederlands. ` +
+      `de woordenlijst ${code} mist ${missing.size} woord(en); label(s) vallen terug op het Nederlands. ` +
         'Draai `node scripts/i18n-report.mjs --missing`. Meest voorkomend: ' +
         top.map(([w, n]) => `${w} (${n}x)`).join(', '),
     );
@@ -154,8 +178,14 @@ if (problems.length) {
   process.exit(1);
 }
 
-const glossaryWords = existsSync(glossaryFile) ? readGlossaryBlock(readFileSync(glossaryFile, 'utf8'), 'words').size : 0;
+// `woordenlijst en: 591` en niet `woordenlijst en 591 woorden`: die laatste
+// vorm leest als het voegwoord "en" zodra de taalcode toevallig `en` is, en dat
+// is precies de taal die er nu in zit.
+const glossarySummary = [...glossaryWordCount].map(([code, n]) => `${code}: ${n} woorden`).join(', ');
+// Pariteit tussen de woordenboeken is niet wat dit getal bewaakt; dat doet
+// `i18n.test.js`. Hier staat het om te zien of het aantal klopt met wat je net
+// hebt toegevoegd.
 console.log(
-  `i18n: ${Object.keys(nl).length} sleutels in nl en ${Object.keys(en).length} in en, ${used.size} gebruikt in de app` +
-    (glossaryWords ? `, woordenlijst ${glossaryWords} woorden.` : '.'),
+  `i18n: ${Object.keys(nl).length} sleutels in nl, ${Object.keys(en).length} in en, ${used.size} gebruikt in de app` +
+    (glossarySummary ? `; woordenlijst ${glossarySummary}.` : '.'),
 );

@@ -193,10 +193,13 @@ const colorSchemeOptions = computed(() => [
 // De taal staat in het menu, naast Weergave, en niet als eigen knop in de
 // werkbalk. Het is dezelfde soort instelling als licht/donker: je zet hem één
 // keer goed en raakt hem daarna niet meer aan, waar 'namens wie' en het profiel
-// de knoppen zijn waarmee tijdens een demo het verhaal wordt verteld. Elke taal
-// noemt zichzelf in de eigen taal ('Nederlands', 'English'), want dat is wat
-// leesbaar is voor wie hem zoekt.
-const languageOptions = computed(() => LOCALES.map((code) => [code, t(`app.language.${code}`)]));
+// de knoppen zijn waarmee tijdens een demo het verhaal wordt verteld.
+//
+// Het label komt uit de talentabel en niet uit het woordenboek: elke taal noemt
+// zichzelf in de eigen taal ('Nederlands', 'English'), in wélke taal de demo ook
+// staat. Als sleutel zou hij in elk woordenboek dezelfde waarde hebben, en dat
+// is precies wat de pariteitstest als onvertaald aanmerkt.
+const languageOptions = computed(() => LOCALES.map((l) => [l.code, l.label]));
 
 function switchLocale(next) {
   if (!next || next === locale.value) return;

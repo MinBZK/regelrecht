@@ -131,6 +131,32 @@ describe('the route table', () => {
   });
 });
 
+describe('de paden per taal', () => {
+  it('bevatten geen apostrof of ander teken dat gecodeerd moet worden', () => {
+    // Een pad moet te typen en door te sturen zijn. "Scenario's" heet in het
+    // Fries "senario's", maar een apostrof in een URL wordt `%27`, en dat is
+    // precies het adres dat tijdens een presentatie op het scherm komt of in
+    // een chat geplakt wordt. Het Nederlands lost dat al zo op: het tabblad
+    // heet "Scenario's" en het pad is `/scenarios`.
+    //
+    // Alleen kleine letters, cijfers, koppelteken en schuine streep, plus wat
+    // vue-router zelf nodig heeft voor zijn parameters.
+    for (const route of router.getRoutes()) {
+      // De parameters eruit, inclusief hun herhaal-achtervoegsel (`*`, `+`, `?`):
+      // die zijn syntaxis van vue-router en staan niet in het adres zelf.
+      const withoutParams = route.path.replace(/:\w+(\([^)]*\))?[*+?]?/g, '');
+      expect(withoutParams, `pad ${route.path}`).toMatch(/^[a-z0-9/-]*$/);
+    }
+  });
+
+  it('geven elke taal een eigen pad per pagina', () => {
+    // Twee talen die hetzelfde pad delen zouden op één route uitkomen, en dan
+    // wint er stil één: de andere taal is dan onbereikbaar via haar eigen adres.
+    const paths = router.getRoutes().map((r) => r.path);
+    expect(new Set(paths).size).toBe(paths.length);
+  });
+});
+
 describe('the QR code target', () => {
   it('points at the home page of the language that is on', () => {
     // HomeView builds it as origin + the resolved path of the current route.
