@@ -8,9 +8,12 @@
  * <nldd-button> and CSS shows exactly one (see landing.css).
  */
 import { Image, type ImageMetadata } from 'astro:assets';
+import { getCollection } from 'astro:content';
 import { content } from '~/lib/landing-content';
+import { fases } from '~/lib/roadmap';
 import SignupForm from './SignupForm.astro';
 import LinkCard from './LinkCard.astro';
+import LandingDemo from './LandingDemo.astro';
 
 interface Props {
   lang: 'nl' | 'en';
@@ -24,6 +27,30 @@ const t = content[lang];
 // no-JS text); the script at the bottom rewrites them relative to the
 // visitor's clock ("Sluit vandaag", "Gesloten gisteren"), which a static
 // build can't know.
+/*
+ * The roadmap teaser. Names, subtitles and the werkpakket counts come from the
+ * roadmap's own config and content collection, so the landing page cannot
+ * announce a fase that /roadmap does not have, or a count that is out of date.
+ * Only the one-line prose per fase lives in landing-content, keyed by fase id;
+ * a fase without a line fails the build below rather than rendering an empty
+ * card.
+ */
+const werkpakketten = await getCollection('werkpakketten');
+const roadmapFases = fases.map((fase) => {
+  const tekst = t.roadmap.fases[fase.id];
+  if (!tekst) {
+    throw new Error(
+      `landing-content.${lang}.roadmap.fases mist een tekst voor fase "${fase.id}". ` +
+        `Voeg er een toe, of haal de fase uit roadmap-config.json.`,
+    );
+  }
+  return {
+    ...fase,
+    tekst,
+    aantal: werkpakketten.filter((w) => w.data.faseId === fase.id).length,
+  };
+});
+
 const closesDate = new Intl.DateTimeFormat(lang === 'en' ? 'en-GB' : 'nl-NL', {
   day: 'numeric',
   month: 'long',
@@ -75,7 +102,7 @@ function exampleImage(key: string): ImageMetadata {
         <nldd-box>
           <nldd-container sm-padding="16" md-padding="24" lg-padding="32">
             <nldd-title size="2">
-              <h1>{t.signup.pageTitle}</h1>
+              <h1 id="rr-signup-title">{t.signup.pageTitle}</h1>
             </nldd-title>
             <nldd-spacer size="24" />
             <SignupForm lang={lang} />
@@ -157,6 +184,8 @@ function exampleImage(key: string): ImageMetadata {
             ))}
           </nldd-collection>
         </nldd-simple-section>
+
+        <LandingDemo lang={lang} />
 
         {showJobs && (
           <nldd-simple-section
@@ -318,7 +347,7 @@ function exampleImage(key: string): ImageMetadata {
             {t.howItWorks.steps.map((step, i, arr) => (
               <nldd-list-item>
                 <nldd-timeline-track-cell
-                  variant="step"
+                  size="md"
                   text={String(i + 1)}
                   position={
                     i === 0 ? 'first' : i === arr.length - 1 ? 'last' : 'between'
@@ -436,6 +465,11 @@ function exampleImage(key: string): ImageMetadata {
                       <li>{b}</li>
                     ))}
                   </ul>
+                  {ex.link && (
+                    <p>
+                      <a href={ex.link.href}>{ex.link.label}</a>
+                    </p>
+                  )}
                 </nldd-rich-text>
               </nldd-container>
             </>
@@ -511,6 +545,56 @@ function exampleImage(key: string): ImageMetadata {
               <LinkCard lang={lang} {...ref} />
             ))}
           </nldd-collection>
+        </nldd-simple-section>
+
+        {/*
+          The roadmap teaser. One card per fase, in the order the roadmap
+          itself uses, with the werkpakket count as a tag; the button below
+          goes to /roadmap, where those cards are the columns of the matrix.
+        */}
+        <nldd-simple-section
+          id="roadmap"
+          sm-padding-block="32"
+          md-padding-block="64"
+          lg-padding-block="96"
+        >
+          <nldd-title size="2">
+            <h2>{t.roadmap.title}</h2>
+          </nldd-title>
+          <nldd-spacer size="8" />
+          <nldd-rich-text>
+            <p>{t.roadmap.lede}</p>
+          </nldd-rich-text>
+          <nldd-spacer size="24" />
+          <nldd-collection layout="grid" item-width="320px">
+            {roadmapFases.map((fase) => (
+              <nldd-card background="tinted" accessible-label={`${fase.naam}: ${fase.ondertitel}`}>
+                <nldd-container padding="20">
+                  <nldd-title size="3">
+                    <h3>{fase.naam}</h3>
+                    <p slot="subtitle">{fase.ondertitel}</p>
+                  </nldd-title>
+                  <nldd-spacer size="8" />
+                  <nldd-tag color="neutral" size="md">
+                    {t.roadmap.werkpakkettenLabel(fase.aantal)}
+                  </nldd-tag>
+                  <nldd-spacer size="8" />
+                  <nldd-rich-text>
+                    <p>{fase.tekst}</p>
+                  </nldd-rich-text>
+                </nldd-container>
+              </nldd-card>
+            ))}
+          </nldd-collection>
+          <nldd-spacer size="24" />
+          <nldd-button-group orientation="horizontal">
+            <nldd-button
+              variant="primary"
+              href="/roadmap"
+              start-icon="arrow-right"
+              text={t.roadmap.ctaLabel}
+            />
+          </nldd-button-group>
         </nldd-simple-section>
 
         <nldd-simple-section

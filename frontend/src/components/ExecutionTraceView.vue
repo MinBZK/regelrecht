@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue';
-import { formatValue, formatOutputValueParts, normalizeForCompare, matchStatus as _matchStatus, humanize } from '../utils/outputFormat.js';
+import { formatValue, formatOutputValueParts, formatMissing, normalizeForCompare, matchStatus as _matchStatus, humanize } from '../utils/outputFormat.js';
 
 const props = defineProps({
   /** Execution result with outputs */
@@ -101,6 +101,7 @@ const overallStatus = computed(() => {
             horizontal-alignment="right"
             width="100px"
             :text="humanize(formatValue(normalizeForCompare(expectations[name])))"
+            :supporting-text="formatMissing(expectations[name]) || undefined"
           ></nldd-text-cell>
           <nldd-text-cell
             size="md"

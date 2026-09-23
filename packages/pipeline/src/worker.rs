@@ -557,6 +557,7 @@ async fn process_next_job(
             } else {
                 for provider_name in crate::enrich::ENRICH_PROVIDERS {
                     let enrich_payload = EnrichPayload {
+                        pass: Default::default(),
                         law_id: job.law_id.clone(),
                         yaml_path: result.file_path.clone(),
                         provider: Some((*provider_name).to_string()),
@@ -575,6 +576,8 @@ async fn process_next_job(
                         new_law: None,
                         chunk_articles: None,
                         skip_mvt: None,
+                        // Queue payload: a session never outlives its window.
+                        session: None,
                     };
                     let payload_json = match serde_json::to_value(&enrich_payload) {
                         Ok(json) => json,
@@ -2303,9 +2306,7 @@ async fn process_enrich_task_job(
     }
 
     let mut bounded_config = effective_config.clone();
-    if bounded_config.timeout >= job_timeout {
-        bounded_config.timeout = job_timeout.saturating_sub(Duration::from_secs(30));
-    }
+    bound_llm_timeout(&mut bounded_config, job_timeout);
     // Taak-flow verrijkt altijd de hele wet in één sessie: het resultaat wordt
     // een review-taak (blobs), niet een push naar de enrich-branch, dus er is
     // geen cursor-persistentie of continuation-lus om op te bouwen.
@@ -2406,15 +2407,31 @@ pub async fn complete_enrich_success_tx(
 ) -> Result<Option<crate::models::Job>> {
     let mut tx = pool.begin().await?;
     job_queue::complete_job(&mut *tx, job.id, result_json).await?;
-    // Mirror the captured untranslatables into their table so they
-    // surface in the harvester UI. Atomic with the completion:
-    // delete-and-replace per (law_id, provider).
+    // Mirror the captured flags into their tables so they surface in the
+    // harvester UI. Atomic with the completion: delete-and-replace per
+    // (law_id, provider).
+    //
+    // Both channels are written on every run, and which one carries anything
+    // follows from the law's schema version: a law on v0.5.x yields
+    // untranslatables and no markings, one on v0.7.0 the reverse. Writing both
+    // unconditionally is what makes a migration safe in either direction,
+    // because each call clears its own table for this (law, provider) before
+    // inserting. Skipping the empty one would leave the other channel's stale
+    // rows standing after a law changed schema version.
     crate::untranslatables::replace_untranslatables(
         &mut tx,
         &result.law_id,
         &result.provider,
         job.id,
         &result.untranslatables,
+    )
+    .await?;
+    crate::markings::replace_markings(
+        &mut tx,
+        &result.law_id,
+        &result.provider,
+        job.id,
+        &result.markings,
     )
     .await?;
 
@@ -2426,6 +2443,7 @@ pub async fn complete_enrich_success_tx(
         // cursor on the enrich branch at claim time, so it does NOT ride in
         // the queue payload (`chunk_articles`/`skip_mvt` stay transport-only).
         let continuation_payload = EnrichPayload {
+            pass: Default::default(),
             law_id: payload.law_id.clone(),
             yaml_path: payload.yaml_path.clone(),
             provider: Some(result.provider.clone()),
@@ -2438,6 +2456,8 @@ pub async fn complete_enrich_success_tx(
             new_law: None,
             chunk_articles: None,
             skip_mvt: None,
+            // The continuation is a new window and opens its own session.
+            session: None,
         };
         let continuation_json = serde_json::to_value(&continuation_payload).map_err(|e| {
             PipelineError::Enrich(format!("serialize continuation enrich payload: {e}"))
@@ -2473,6 +2493,35 @@ pub async fn complete_enrich_success_tx(
 ///
 /// Returns the [`JobOutcome`]: `Processed` when a job was handled, `Idle` when
 /// none was available, or `ResourceExhausted` when the job failed because the
+/// Shrink the per-call LLM timeout so a whole run fits the job budget.
+///
+/// A run is not one agent call. Translation, a feedback round per gate, the
+/// closing pass and the final schema gate together make up to
+/// [`MAX_AGENT_CALLS_PER_RUN`] of them, and the job timeout covers all of
+/// them at once. The old rule only fired when a single call exceeded the
+/// whole job, so with the defaults (600 s per call, 1200 s per job) nothing
+/// was adjusted and a law needing a third call was killed mid-round, failed,
+/// and hit the same wall on every retry.
+///
+/// The share is the budget minus a reserve for commit and cleanup, divided by
+/// the calls a run may make. Lowering the ceiling is right here: a call that
+/// would overrun the job is a call whose result is thrown away.
+fn bound_llm_timeout(config: &mut crate::enrich::EnrichConfig, job_timeout: Duration) {
+    let reserve = Duration::from_secs(30);
+    let budget = job_timeout.saturating_sub(reserve);
+    let share = budget / crate::enrich::MAX_AGENT_CALLS_PER_RUN;
+    if config.timeout > share {
+        tracing::warn!(
+            llm_timeout = ?config.timeout,
+            job_timeout = ?job_timeout,
+            calls = crate::enrich::MAX_AGENT_CALLS_PER_RUN,
+            adjusted_to = ?share,
+            "LLM timeout leaves no room for a full chain, reducing it to the per-call share"
+        );
+        config.timeout = share;
+    }
+}
+
 /// container could not spawn processes/threads (fork()/EAGAIN).
 ///
 /// Each enrichment creates a separate branch (`enrich/{provider}`)
@@ -2674,15 +2723,7 @@ async fn process_next_enrich_job(
     // if LLM_TIMEOUT_SECS > WORKER_JOB_TIMEOUT_SECS, the outer timeout would
     // drop the future while the OS subprocess keeps running.
     let mut bounded_config = effective_config.clone();
-    if bounded_config.timeout >= job_timeout {
-        bounded_config.timeout = job_timeout.saturating_sub(Duration::from_secs(30));
-        tracing::warn!(
-            llm_timeout = ?effective_config.timeout,
-            job_timeout = ?job_timeout,
-            adjusted_to = ?bounded_config.timeout,
-            "LLM timeout >= job timeout, reducing LLM timeout to leave headroom"
-        );
-    }
+    bound_llm_timeout(&mut bounded_config, job_timeout);
 
     let source_hash = enrich_corpus
         .as_ref()
@@ -3129,7 +3170,7 @@ async fn execute_harvest_job(
 /// voor het succespad, en die de frontend sinds de poll-cap-exemptie voor
 /// `enriching` niet meer met een (vals) timeout-signaal afdekt. Spiegel daarom
 /// het synchrone pad: markeer de wet `enrich_failed` en laat
-/// [`handle_enrich_exhausted_or_retry`] óf een retry-job met backoff plannen
+/// `handle_enrich_exhausted_or_retry` óf een retry-job met backoff plannen
 /// (de lus hervat bij de cursor op de branch) óf de wet `enrich_exhausted`
 /// maken. Taak-flow-jobs (`deliver=task`) volgen het bestaande
 /// task-notificatiepad (`tasks::notify_reaped_task_jobs`) en raken

@@ -5,7 +5,7 @@ description: "A tour of the two parts, the Corpus Juris and the Execution Engine
 
 RegelRecht has two parts: the **Corpus Juris** (a git-versioned body of all Dutch law) and the **Execution Engine** (a runtime that evaluates laws deterministically).
 
-## System Context
+## System context
 
 ```mermaid
 C4Context
@@ -24,7 +24,7 @@ C4Context
     Rel(bwb, regelrecht, "Source of law text")
 ```
 
-## Container Diagram
+## Container diagram
 
 ```mermaid
 C4Container
@@ -39,7 +39,7 @@ C4Container
         Container(pipeline, "Pipeline", "Rust / PostgreSQL", "Job queue and law status tracking")
         Container(harvester, "Harvester", "Rust", "Downloads laws from BWB / CVDR")
         Container(enrich, "Enrich Worker", "Rust / LLM", "Adds machine_readable sections")
-        Container(admin, "Admin", "Rust + Vue", "Operations dashboard")
+        Container(admin, "Harvester Admin", "Rust", "Operations API; its UI lives in the editor")
         ContainerDb(corpus, "Corpus Juris", "Git / YAML", "All laws in machine-readable format")
         ContainerDb(db, "PostgreSQL", "Database", "Job queue and law status")
     }
@@ -58,7 +58,7 @@ C4Container
 
 The editor, TUI, lawmaking visualization, Grafana, and the engine's WASM/CLI builds are additional surfaces over the same engine and corpus; they are omitted here to keep the container view readable. See the [component docs](/components/engine) for each.
 
-## Data Flow
+## Data flow
 
 1. **Harvesting**: The harvester downloads laws from BWB (wetten.nl) and converts XML to YAML
 2. **Enrichment**: Laws are enriched with machine-readable interpretations (currently manual + AI-assisted)
@@ -66,12 +66,12 @@ The editor, TUI, lawmaking visualization, Grafana, and the engine's WASM/CLI bui
 4. **Execution**: The engine loads laws from the corpus and evaluates them given inputs
 5. **Cross-references**: When a law references another, the engine resolves the dependency chain automatically
 
-## Design Principles
+## Design principles
 
 The YAML format stays close to the original legal text structure. Same inputs always produce the same outputs. Every computed value traces back to a specific article and paragraph. Text interpretation is separate from execution. All laws, tooling, and decisions are publicly auditable.
 
-## Further Reading
+## Further reading
 
 - [Methodology](/concepts/methodology) - the execution-first validation approach
-- [Engine](../components/engine) - execution engine architecture
+- [Engine](/components/engine) - execution engine architecture
 - [RFC Index](../rfcs/) - all design decisions

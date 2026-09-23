@@ -24,7 +24,7 @@ import { apiFetchJson } from '../lib/apiFetch.js';
 import { useLatest } from '../lib/useLatest.js';
 import { parseFeature } from '../gherkin/parser.js';
 import { mapFeatureToForm, getEffectiveSetup, formStateToGherkin, syncEditedValues } from '../gherkin/formMapper.js';
-import { matchStatus, humanize } from '../utils/outputFormat.js';
+import { matchStatus, humanize, formatOutputValue, normalizeForCompare, expectationsFromAssertions } from '../utils/outputFormat.js';
 import * as yaml from 'js-yaml';
 import { buildArticleMap, buildTypeMap, buildExternalFieldTypeMap } from '../utils/articleMapping.js';
 import ScenarioForm from './ScenarioForm.vue';
@@ -162,11 +162,15 @@ function markDirty() {
   isDirty.value = editSnapshot() !== dirtyBaseline;
 }
 
+// The same map the result views compare against, rendered the way they
+// render an outcome, so the card says `geen` / `onbekend` where the sheet
+// does (RFC-036).
 function scenarioExpectations(index) {
   const assertions = formState.value?.scenarios?.[index]?.assertions || [];
-  return assertions
-    .filter((a) => a.outputName && a.value !== null && a.value !== undefined)
-    .map((a) => ({ name: humanize(a.outputName), value: humanize(String(a.value)) }));
+  return Object.entries(expectationsFromAssertions(assertions)).map(([name, expected]) => ({
+    name: humanize(name),
+    value: humanize(formatOutputValue(normalizeForCompare(expected), null)),
+  }));
 }
 
 // Parse feature file when loaded
@@ -358,18 +362,12 @@ function scenarioStatus(index) {
   const scenario = formState.value?.scenarios[index];
   if (!scenario) return null;
 
-  const checkable = (scenario.assertions || []).filter(
-    (a) => a.outputName && a.value != null,
-  );
-  if (checkable.length === 0) return null;
+  const expectations = expectationsFromAssertions(scenario.assertions);
+  const names = Object.keys(expectations);
+  if (names.length === 0) return null;
 
-  for (const a of checkable) {
-    const status = matchStatus(
-      a.outputName,
-      data.result.outputs?.[a.outputName],
-      { [a.outputName]: String(a.value) },
-    );
-    if (status === 'failed') return 'failed';
+  for (const name of names) {
+    if (matchStatus(name, data.result.outputs?.[name], expectations) === 'failed') return 'failed';
   }
   return 'passed';
 }

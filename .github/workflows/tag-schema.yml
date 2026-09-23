@@ -1,0 +1,81 @@
+---
+# Zet de tag op een nieuwe schemaversie zodra die op main staat.
+#
+# De `$schema`-URL in elk wetsbestand wijst naar `refs/tags/schema-vX.Y.Z`. Die
+# tag is wat een uitgebrachte versie onveranderlijk maakt: zonder tag lost de
+# URL nergens op, en houdt niets tegen dat het bestand daarna nog verandert, dus
+# dan geldt "een uitgebrachte versie wordt nooit gewijzigd" bij afspraak in
+# plaats van bij constructie.
+#
+# Die stap met de hand doen is vergeten v0.5.7 tot en met v0.7.0 ongetagd de
+# deur uit te laten gaan, met elf corpusbestanden die naar een 404 wezen. De
+# poort in `check-schema-version.mjs` blokkeert daar nu op; deze workflow zorgt
+# dat er niets te blokkeren valt.
+#
+# Waarom bij een push naar main en niet bij de merge van de pull request: een
+# schemaversie is pas uitgebracht als ze op main staat. En waarom niet in de
+# CI-run van de PR zelf: die draait op een testmerge die nooit main wordt, dus
+# een tag daarop zou naar een commit wijzen die niemand terugvindt.
+name: Tag schema versions
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "schema/v*/schema.json"
+
+permissions: {}
+
+jobs:
+  tag:
+    name: Tag released schema versions
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      # Tags aanmaken is een schrijfactie op de repo-inhoud.
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # Zonder de tags weet de stap hieronder niet wat er al bestaat en
+          # maakt hij alles opnieuw aan.
+          fetch-depth: 0
+
+      - name: Tag any untagged schema version
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          created=0
+          for dir in schema/v*/; do
+            version="$(basename "$dir")"
+            [ -f "$dir/schema.json" ] || continue
+
+            tag="schema-$version"
+            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              continue
+            fi
+
+            # De tag komt op de commit die nu op main staat. Dat is het moment
+            # waarop deze versie uitgebracht is, en het is de enige commit
+            # waarvan vaststaat dat het schemabestand er in zijn definitieve
+            # vorm staat: een reeks gestapelde PR's kan een versie over
+            # meerdere merges opbouwen, en pas hier is die reeks af.
+            git tag -a "$tag" "$SHA" -m "schema $version
+
+          Automatisch getagd bij het landen op main. De \$schema-URL in een
+          wetsbestand wijst naar deze tag, dus vanaf hier ligt de inhoud van
+          $version vast."
+            echo "tag $tag gezet op $SHA"
+            created=$((created + 1))
+          done
+
+          if [ "$created" -eq 0 ]; then
+            echo "Geen nieuwe schemaversies om te taggen."
+            exit 0
+          fi
+
+          git push origin --tags
+          echo "$created tag(s) gepusht." >> "$GITHUB_STEP_SUMMARY"

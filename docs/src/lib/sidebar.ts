@@ -46,6 +46,7 @@ export const sidebar: Record<string, SidebarGroup[]> = {
       items: [
         { text: 'Overview', link: '/concepts/how-it-works' },
         { text: 'Law Format', link: '/concepts/law-format' },
+        { text: 'Scenarios', link: '/concepts/scenarios' },
         { text: 'Cross-Law References', link: '/concepts/cross-law-references' },
         { text: 'Inversion of Control', link: '/concepts/inversion-of-control' },
         { text: 'Hooks and Reactive Execution', link: '/concepts/hooks-and-reactive-execution' },
@@ -55,7 +56,7 @@ export const sidebar: Record<string, SidebarGroup[]> = {
         { text: 'Notes and Annotations', link: '/concepts/notes-and-annotations' },
         { text: 'Collections', link: '/concepts/collections' },
         { text: 'Temporal Validity and Dates', link: '/concepts/temporal-and-dates' },
-        { text: 'Untranslatables', link: '/concepts/untranslatables' },
+        { text: 'Markings (untranslatables)', link: '/concepts/markings' },
         { text: 'Execution Provenance', link: '/concepts/execution-provenance' },
         { text: 'Traceability', link: '/concepts/traceability' },
       ],
@@ -69,8 +70,8 @@ export const sidebar: Record<string, SidebarGroup[]> = {
     {
       text: 'Methodology',
       items: [
-        { text: 'Validation Methodology', link: '/concepts/methodology' },
-        { text: 'Validation Methodology (full)', link: '/concepts/validation-methodology' },
+        { text: 'Execution-First Validation', link: '/concepts/methodology' },
+        { text: 'Validation: the full argument', link: '/concepts/validation-methodology' },
       ],
     },
   ],
@@ -94,8 +95,9 @@ export const sidebar: Record<string, SidebarGroup[]> = {
       items: [
         { text: 'Editor', link: '/components/frontend' },
         { text: 'Editor API', link: '/components/editor-api' },
-        { text: 'Admin Dashboard', link: '/components/admin' },
+        { text: 'Harvester Admin', link: '/components/admin' },
         { text: 'Lawmaking Frontend', link: '/components/lawmaking' },
+        { text: 'Demo', link: '/components/demo' },
         { text: 'TUI', link: '/components/tui' },
       ],
     },
@@ -146,10 +148,10 @@ export const sidebar: Record<string, SidebarGroup[]> = {
       ],
     },
     {
-      text: 'Known Issues',
+      text: 'Harvester Notes',
       items: [
-        { text: 'Article ID Collision', link: '/reference/issues/issue-article-id-collision' },
-        { text: 'Phased Implementation', link: '/reference/issues/issue-phased-implementation' },
+        { text: 'Article ID Collision (open)', link: '/reference/issues/issue-article-id-collision' },
+        { text: 'Phased Implementation (resolved)', link: '/reference/issues/issue-phased-implementation' },
       ],
     },
   ],

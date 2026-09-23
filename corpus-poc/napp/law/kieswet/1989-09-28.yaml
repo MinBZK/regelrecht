@@ -1,0 +1,87 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.2/schema/v0.5.2/schema.json
+$id: kieswet
+regulatory_layer: WET
+publication_date: '1989-09-28'
+valid_from: '1989-09-28'
+bwb_id: BWBR0004627
+url: https://wetten.overheid.nl/BWBR0004627/
+name: Kieswet
+
+# Subset van de Kieswet voor de Napp: artikel G 1 stelt de eisen aan de
+# registratie van een aanduiding van een politieke groepering. De Napp
+# gebruikt deze toets bij het koppelen van een rechtspersoon aan een
+# aanduiding in het partijregister (claim-flow). De raadpleging van het
+# Handelsregister zelf is een databron (orchestratie); de eisen waaraan de
+# raadpleging wordt getoetst staan hier.
+
+articles:
+  - number: 'G 1'
+    text: |-
+      Een politieke groepering die een vereniging is met volledige
+      rechtsbevoegdheid kan aan het centraal stembureau verzoeken de
+      aanduiding waarmee zij op de kandidatenlijst wenst te worden vermeld,
+      te registreren. Bij het verzoek worden overgelegd een afschrift van de
+      notariele akte waarin de statuten van de vereniging zijn opgenomen en
+      een bewijs van inschrijving in het handelsregister, bedoeld in
+      artikel 2 van de Handelsregisterwet 2007.
+    url: https://wetten.overheid.nl/BWBR0004627/#AfdelingII_HoofdstukG_Artikel_G1
+    machine_readable:
+      execution:
+        parameters:
+          - name: ingeschreven_in_handelsregister
+            type: boolean
+            required: true
+            description: >-
+              Of het KVK-nummer een inschrijving in het Handelsregister
+              oplevert (Handelsregisterwet 2007, art. 2)
+          - name: rechtsvorm
+            type: string
+            required: true
+            description: De rechtsvorm volgens het Handelsregister
+          - name: naam_komt_overeen
+            type: boolean
+            required: true
+            description: >-
+              Of de statutaire naam overeenkomt met de te registreren
+              aanduiding
+        output:
+          - name: voldoet_aan_registratie_eisen
+            type: boolean
+          # Per eis een eigen output, zodat de beoordelaar ziet welke eis
+          # faalt zonder dat de uitvoering de eisen herhaalt.
+          - name: voldoet_eis_inschrijving
+            type: boolean
+          - name: voldoet_eis_rechtsvorm
+            type: boolean
+          - name: voldoet_eis_naam
+            type: boolean
+        actions:
+          - output: voldoet_eis_inschrijving
+            value:
+              operation: EQUALS
+              subject: $ingeschreven_in_handelsregister
+              value: true
+          - output: voldoet_eis_rechtsvorm
+            value:
+              operation: EQUALS
+              subject: $rechtsvorm
+              value: Vereniging met volledige rechtsbevoegdheid
+          - output: voldoet_eis_naam
+            value:
+              operation: EQUALS
+              subject: $naam_komt_overeen
+              value: true
+          - output: voldoet_aan_registratie_eisen
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $ingeschreven_in_handelsregister
+                  value: true
+                - operation: EQUALS
+                  subject: $rechtsvorm
+                  value: Vereniging met volledige rechtsbevoegdheid
+                - operation: EQUALS
+                  subject: $naam_komt_overeen
+                  value: true

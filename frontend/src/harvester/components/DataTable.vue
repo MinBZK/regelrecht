@@ -124,7 +124,7 @@ function formatCellValue(value, key) {
             <nldd-text-cell
               v-else
               :text="formatCellValue(row[col.key], col.key) || '—'"
-              :color="formatCellValue(row[col.key], col.key) ? 'default' : 'secondary'"
+              :color="formatCellValue(row[col.key], col.key) ? 'content' : 'secondary'"
               :width="col.width || 'stretch'"
               :min-width="col.minWidth"
               :horizontal-alignment="col.align"

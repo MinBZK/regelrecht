@@ -2,9 +2,11 @@
 import { ref, computed, watch, onBeforeUnmount, useId } from 'vue';
 import { quotedValue, tableCellValue } from '../gherkin/actions.js';
 import { isCollectionValue, collectionColumns, formCollectionToState } from '../gherkin/formMapper.js';
-import { formatValue, normalizeForCompare, matchStatus as _matchStatus, humanize } from '../utils/outputFormat.js';
+import { formatValue, formatMissing, normalizeForCompare, matchStatus as _matchStatus, humanize, expectationsFromAssertions } from '../utils/outputFormat.js';
+import { NOT_NULLABLE_MESSAGE, nullAllowed, isNullText } from '../utils/nullability.js';
 import DataSourceTable from './DataSourceTable.vue';
 import ScenarioParameterInput from './ScenarioParameterInput.vue';
+import AbsenceToggle from './AbsenceToggle.vue';
 
 const props = defineProps({
   /** Scenario object from mapFeatureToForm() */
@@ -19,24 +21,26 @@ const props = defineProps({
   lawId: { type: String, required: true },
   /** Article mapping: { outputToArticle, inputToArticle, paramToArticle } */
   articleMap: { type: Object, default: null },
-  /** Datatype mapping from buildTypeMap(): name -> { type, unit } */
+  /** Datatype mapping from buildTypeMap(): name -> { type, unit, nullable } */
   typeMap: { type: Object, default: null },
-  /** External data-source field types from buildExternalFieldTypeMap(): name -> { type, unit } */
+  /** External data-source field types from buildExternalFieldTypeMap(): name -> { type, unit, nullable } */
   externalFieldTypeMap: { type: Object, default: null },
 });
 
 // Resolve a parameter's declared datatype/unit; default to a plain text field
 // for params not found in the map (background-only params, articles without
-// machine_readable).
+// machine_readable). Such a parameter has no `nullable` either: no
+// declaration, no claim (utils/nullability.js).
 function paramMeta(name) {
   return props.typeMap?.get(name) ?? { type: 'string', unit: null };
 }
 
-// Resolve an external data-source column's datatype/unit from the dependency
-// graph; default to a plain text field for columns not found in the map.
+// Resolve an external data-source column's datatype/unit/nullability from the
+// dependency graph; default to a plain text field, nullability unknown, for
+// columns not found in the map.
 function typeField(name) {
   const meta = props.externalFieldTypeMap?.get(name);
-  return { name, type: meta?.type ?? 'string', unit: meta?.unit ?? null };
+  return { name, type: meta?.type ?? 'string', unit: meta?.unit ?? null, nullable: meta?.nullable };
 }
 
 const emit = defineEmits(['show-details', 'executed', 'change', 'drill-change']);
@@ -53,6 +57,49 @@ const scalarParams = () => (props.setup.parameters || []).filter((p) => !isColle
 const parameterValues = ref(
   Object.fromEntries(scalarParams().map((p) => [p.name, p.value ?? ''])),
 );
+
+// A stated absence (`null`) is a value of a parameter only where the law
+// declares it nullable (RFC-036). Typing `null` into a parameter the law
+// declares as never absent is refused: a blank is stored (the parameter is
+// then left out of the run, unknown) and the field is marked invalid, with
+// the message, until the author types something else. The field itself
+// keeps showing what was typed, so the message points at the text it is
+// about. A `null` that is already there (read from the feature file) is
+// marked the same way but kept: it came from the file, a human decides.
+const rejectedNullParams = ref(new Set());
+const paramErrorIdPrefix = useId();
+
+function paramNullAllowed(name) {
+  return nullAllowed(paramMeta(name));
+}
+// The "afwezig" checkbox (AbsenceToggle) is the explicit way to state an
+// absence, offered where the law declares the parameter `nullable: true`,
+// whatever its type: a number field cannot hold the word `null` and a switch
+// cannot show it. Not offered on `false` (refused anyway) nor on an unknown
+// declaration (a text field, where typing `null` already works; a control
+// there would read as a claim the form cannot make).
+function paramOffersAbsenceToggle(name) {
+  return paramMeta(name).nullable === true;
+}
+function updateParameter(name, value) {
+  if (isNullText(value) && !paramNullAllowed(name)) {
+    rejectedNullParams.value.add(name);
+    parameterValues.value = { ...parameterValues.value, [name]: '' };
+  } else {
+    rejectedNullParams.value.delete(name);
+    parameterValues.value = { ...parameterValues.value, [name]: value };
+  }
+  emit('change');
+}
+function paramNullInvalid(name, value) {
+  return rejectedNullParams.value.has(name) || (isNullText(value) && !paramNullAllowed(name));
+}
+function paramErrorId(name) {
+  return `${paramErrorIdPrefix}-${name}`;
+}
+function paramControlId(name) {
+  return `${paramErrorId(name)}-control`;
+}
 
 // Convert collection parameters to DataSourceTable format. A collection has
 // no key field; the element fields are not typed by the law (an `array`
@@ -124,14 +171,8 @@ watch([selectedSource, selectedCollection], ([src, coll]) => {
   else emit('drill-change', null);
 });
 
-// Expectations from scenario assertions
-const expectations = ref(
-  Object.fromEntries(
-    (props.scenario.assertions || [])
-      .filter((a) => a.outputName && a.value !== null && a.value !== undefined)
-      .map((a) => [a.outputName, String(a.value)]),
-  ),
-);
+// Expectations from scenario assertions (null and unknown included, RFC-036)
+const expectations = ref(expectationsFromAssertions(props.scenario.assertions));
 
 // Output selection: default to outputs referenced in execution + assertions
 const initOutputs = () => {
@@ -160,15 +201,12 @@ function discardEdits() {
   parameterValues.value = Object.fromEntries(
     scalarParams().map((p) => [p.name, p.value ?? '']),
   );
+  rejectedNullParams.value.clear();
   collections.value = initCollections();
   dataSources.value = initDataSources();
   selectedSource.value = null;
   selectedCollection.value = null;
-  expectations.value = Object.fromEntries(
-    (props.scenario.assertions || [])
-      .filter((a) => a.outputName && a.value !== null && a.value !== undefined)
-      .map((a) => [a.outputName, String(a.value)]),
-  );
+  expectations.value = expectationsFromAssertions(props.scenario.assertions);
   selectedOutputs.value = initOutputs();
   // Wiping the local result is safe even on a cancel-with-edits: the
   // builder keeps the last run in its scenarioResults map, and
@@ -218,10 +256,13 @@ function execute() {
     // Register data sources
     for (const ds of dataSources.value) {
       if (ds.rows.length === 0) continue;
+      // A blank cell is left out of the record, the same rule the runner
+      // applies to the saved table (RFC-036): the engine then reports the
+      // input as unknown instead of reading an empty string.
       const typedRows = ds.rows.map((row) => {
         const typed = {};
         for (const [k, v] of Object.entries(row)) {
-          if (k === '_id') continue;
+          if (k === '_id' || v === '' || v === undefined) continue;
           typed[k] = typeof v === 'string' ? tableCellValue(v) : v;
         }
         return typed;
@@ -350,9 +391,10 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
 // can over-mark a legitimately-blank optional param, but it never
 // mis-points at an unrelated field, which was the worse failure.
 const dateInvalid = computed(() => !calculationDate.value);
-// Unique id so the inline message can be aria-associated with the field
-// (ScenarioForm is mounted once per scenario, so a static id would clash).
+// Unique ids for the date's validation item and for the control its list
+// reads (ScenarioForm is mounted once per scenario, so a static id would clash).
 const dateErrorId = useId();
+const dateControlId = useId();
 </script>
 
 <template>
@@ -370,6 +412,7 @@ const dateErrorId = useId();
               size="md"
               horizontal-alignment="right"
               :text="humanize(formatValue(normalizeForCompare(exp)))"
+              :supporting-text="formatMissing(exp) || undefined"
             ></nldd-text-cell>
           </nldd-list-item>
           <nldd-list-item size="md">
@@ -401,14 +444,17 @@ const dateErrorId = useId();
           <nldd-spacer-cell size="8"></nldd-spacer-cell>
           <nldd-cell width="full" min-width="120px">
             <ScenarioParameterInput
+              :id="dateControlId"
               type="date"
               name="Datum"
               :value="calculationDate"
               :invalid="dateInvalid"
-              :error-message-ids="dateErrorId"
+              :unmet="dateErrorId"
               @update="calculationDate = $event; emit('change')"
             />
-            <span v-if="dateInvalid" :id="dateErrorId" class="sf-error">Datum is verplicht</span>
+            <nldd-validation-list v-if="dateInvalid" :for="dateControlId">
+              <nldd-validation-item :id="dateErrorId">Datum is verplicht</nldd-validation-item>
+            </nldd-validation-list>
           </nldd-cell>
         </nldd-list-item>
         <nldd-list-item v-for="(value, name) in parameterValues" :key="name" size="md">
@@ -416,14 +462,31 @@ const dateErrorId = useId();
           <nldd-spacer-cell size="8"></nldd-spacer-cell>
           <nldd-cell width="full" min-width="120px">
             <ScenarioParameterInput
+              :id="paramControlId(name)"
               :type="paramMeta(name).type"
               :unit="paramMeta(name).unit"
               :name="name"
               :value="value"
-              :invalid="!!error && (value === '' || value == null)"
-              @update="parameterValues = { ...parameterValues, [name]: $event }; emit('change')"
+              :invalid="(!!error && (value === '' || value == null)) || paramNullInvalid(name, value)"
+              :unmet="paramNullInvalid(name, value) ? paramErrorId(name) : undefined"
+              @update="updateParameter(name, $event)"
             />
+            <nldd-validation-list v-if="paramNullInvalid(name, value)" :for="paramControlId(name)">
+              <nldd-validation-item :id="paramErrorId(name)">
+                {{ NOT_NULLABLE_MESSAGE }}
+              </nldd-validation-item>
+            </nldd-validation-list>
           </nldd-cell>
+          <template v-if="paramOffersAbsenceToggle(name)">
+            <nldd-spacer-cell size="8"></nldd-spacer-cell>
+            <nldd-cell width="fit-content">
+              <AbsenceToggle
+                :value="value"
+                :data-testid="`absent-${name}`"
+                @update="updateParameter(name, $event)"
+              />
+            </nldd-cell>
+          </template>
         </nldd-list-item>
         <!-- Collection parameters: a row per collection, drill in one level
              deeper to edit the elements, the same way a data source works. -->
@@ -444,25 +507,27 @@ const dateErrorId = useId();
       </nldd-list>
 
       <!-- Data sources: a row per source, drill in one level deeper -->
-      <nldd-spacer size="16"></nldd-spacer>
-      <nldd-title size="5"><h2>Bronnen</h2></nldd-title>
-      <nldd-spacer size="8"></nldd-spacer>
-      <nldd-list variant="box-tinted">
-        <nldd-list-item
-          v-for="(ds, i) in dataSources"
-          :key="ds.sourceName"
-          size="md"
-          button
-          :data-testid="`ds-row-${i}`"
-          @click="selectedSource = i"
-        >
-          <nldd-text-cell :text="sourceLabel(ds.sourceName)"></nldd-text-cell>
-          <nldd-spacer-cell size="12"></nldd-spacer-cell>
-          <nldd-text-cell horizontal-alignment="right" :text="ds.rows.length ? String(ds.rows.length) : ''"></nldd-text-cell>
-          <nldd-spacer-cell size="12"></nldd-spacer-cell>
-          <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
-        </nldd-list-item>
-      </nldd-list>
+      <template v-if="dataSources.length">
+        <nldd-spacer size="16"></nldd-spacer>
+        <nldd-title size="5"><h2>Bronnen</h2></nldd-title>
+        <nldd-spacer size="8"></nldd-spacer>
+        <nldd-list variant="box-tinted">
+          <nldd-list-item
+            v-for="(ds, i) in dataSources"
+            :key="ds.sourceName"
+            size="md"
+            button
+            :data-testid="`ds-row-${i}`"
+            @click="selectedSource = i"
+          >
+            <nldd-text-cell :text="sourceLabel(ds.sourceName)"></nldd-text-cell>
+            <nldd-spacer-cell size="12"></nldd-spacer-cell>
+            <nldd-text-cell horizontal-alignment="right" :text="ds.rows.length ? String(ds.rows.length) : ''"></nldd-text-cell>
+            <nldd-spacer-cell size="12"></nldd-spacer-cell>
+            <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
+          </nldd-list-item>
+        </nldd-list>
+      </template>
     </template>
 
     <!-- One level deeper: a single data source's table. Back to the scenario
@@ -508,13 +573,6 @@ const dateErrorId = useId();
   font-size: 12px;
   color: var(--semantics-text-color-secondary, #666);
   font-style: italic;
-  padding: 4px 0;
-}
-
-.sf-error {
-  font-size: 12px;
-  color: #c00;
-  word-break: break-word;
   padding: 4px 0;
 }
 </style>

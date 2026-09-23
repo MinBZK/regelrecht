@@ -1,29 +1,32 @@
 ---
 /*
  * Research overview: papers and other research output around RegelRecht.
- * Follows the /rfcs/ category-page pattern: intro left, item list right.
+ * Intro left, cards right: a paper carries a kind, its authors, a date and the
+ * opening of its abstract, which is more than a list row can carry. The card is
+ * the same LinkCard the landing page renders for this paper.
  */
 import Base from '~/layouts/Base.astro';
+import LinkCard from '~/components/LinkCard.astro';
 import paper from '~/research/rules-as-executed.meta.json';
 
 const pathname = '/research/';
 
 interface ResearchItem {
-  overline: string;
   title: string;
-  authors: string;
-  abstract: string;
-  link: string;
+  meta: string;
+  text: string;
+  href: string;
+  linkLabel: string;
 }
 
 const items: ResearchItem[] = [
   {
-    overline: `${paper.kind} · ${paper.date_display}`,
     title: `${paper.title}: ${paper.subtitle}`,
-    authors: paper.authors.join(' and '),
+    meta: `${paper.kind} • ${paper.authors.join(' and ')} • ${paper.date_display}`,
     // Opening of the abstract, verbatim (generated with the paper HTML).
-    abstract: paper.abstract_lead,
-    link: '/research/rules-as-executed',
+    text: paper.abstract_lead,
+    href: '/research/rules-as-executed',
+    linkLabel: 'position paper',
   },
 ];
 ---
@@ -40,7 +43,7 @@ const items: ResearchItem[] = [
     md-padding-bottom="64"
     lg-padding-bottom="96"
   >
-    <div slot="left">
+    <nldd-container slot="left">
       <nldd-title size="2">
         <h1>Research</h1>
       </nldd-title>
@@ -51,28 +54,9 @@ const items: ResearchItem[] = [
           machine-executable law, written up for an academic audience.
         </p>
       </nldd-rich-text>
-    </div>
-    <div slot="right">
-      <nldd-list type="navigation" variant="box">
-        {
-          items.map((item) => (
-            <nldd-list-item href={item.link}>
-              <nldd-text-cell
-                overline={item.overline}
-                text={item.title}
-                width="full"
-              >
-                <nldd-container slot="supporting-text" gap="4">
-                  <span>{item.authors}</span>
-                  <span>{item.abstract}</span>
-                </nldd-container>
-              </nldd-text-cell>
-              <nldd-spacer-cell />
-              <nldd-icon-cell size="20" icon="chevron-right" />
-            </nldd-list-item>
-          ))
-        }
-      </nldd-list>
-    </div>
+    </nldd-container>
+    <nldd-collection slot="right" layout="grid" item-width="320px">
+      {items.map((item) => <LinkCard lang="en" tinted headingLevel={2} {...item} />)}
+    </nldd-collection>
   </nldd-one-third-two-thirds-section>
 </Base>

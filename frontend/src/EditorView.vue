@@ -1459,12 +1459,23 @@ const currentLawYaml = computed(() => {
 // edits, article switches, traject switches - debounce.
 let engineLoadDebounce = null;
 
+// The engine's verdict on the current YAML, shown to the author as a
+// page-wide banner. `loadLaw` rejects a law that fails its type check
+// (RFC-037, e.g. "article 2: 'huur' is not nullable ...") the same way it
+// rejects an unparseable one, and it has already dropped the previous copy
+// by then, so every scenario would otherwise fail with "Law not found"
+// without saying why. The WASM binding throws a plain string.
+const engineLoadError = ref(null);
+
 async function reloadEngineLaw(lawYaml, isReady) {
   if (!isReady || !lawYaml) return;
   try {
     await loadLawYaml(lawYaml, lawId.value, activeTrajectRef.value);
+    engineLoadError.value = null;
   } catch (e) {
-    console.warn(`Failed to load law '${lawId.value}' into engine:`, e);
+    engineLoadError.value = typeof e === 'string' ? e : (e?.message || String(e));
+    // Plain first argument: the law id is user text, not a format string.
+    console.warn('Failed to load law into engine:', lawId.value, e);
   }
 }
 
@@ -2627,6 +2638,17 @@ async function handleActionSave() {
             ></nldd-banner>
           </nldd-container>
 
+          <!-- The engine refused the current YAML (parse or type-check error,
+               RFC-037). Same page-wide pattern as the feedback above; not
+               dismissible, it clears when a reload succeeds. -->
+          <nldd-container v-if="engineLoadError" padding="8">
+            <nldd-banner
+              variant="critical"
+              text="De engine kan deze wet niet laden"
+              :supporting-text="engineLoadError"
+            ></nldd-banner>
+          </nldd-container>
+
         <nldd-side-by-side-split-view :panes="String(paneViews.length)">
           <!-- Compound key: when a flag flip shifts which view sits at a
                given index, Vue would otherwise patch the existing pane in
@@ -3001,7 +3023,7 @@ async function handleActionSave() {
                       <nldd-container padding="16" data-testid="note-detail">
                         <QuotedFragment :fragment="activeGroup" />
                         <nldd-spacer v-if="activeGroup && activeGroup.quote" size="12"></nldd-spacer>
-                        <nldd-collection layout="stack" gap="12px">
+                        <nldd-collection layout="stack" gap="12">
                           <nldd-card v-for="(note, i) in activeNotes" :key="i">
                             <nldd-container padding="10">
                               <NoteCard
@@ -3218,7 +3240,7 @@ async function handleActionSave() {
                       <p><i>Zonder verankering</i></p>
                     </nldd-rich-text>
                     <nldd-spacer size="10"></nldd-spacer>
-                    <nldd-collection layout="stack" gap="12px">
+                    <nldd-collection layout="stack" gap="12">
                       <nldd-card v-for="(note, ni) in group.notes" :key="ni">
                         <nldd-container padding="10">
                           <NoteCard

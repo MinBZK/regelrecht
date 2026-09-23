@@ -34,7 +34,7 @@ flowchart TD
 | `engine.rs` | `ArticleEngine` - single article execution |
 | `resolver.rs` | `RuleResolver` - law registry, output→article indexing, IoC lookup |
 | `context.rs` | `RuleContext` - execution state, variable resolution with priority chain |
-| `operations.rs` | 21 operation types (arithmetic, comparison, logical, conditional, date) |
+| `operations.rs` | 28 operation types (arithmetic, rounding, comparison, logical, conditional, collection, date) |
 | `uri.rs` | `regelrecht://` URI parsing for cross-law references |
 | `trace.rs` | Execution tracing with box-drawing visualization |
 | `priority.rs` | Lex superior / lex posterior resolution for competing implementations |
@@ -140,17 +140,20 @@ The `output_name` (singular) field is still accepted for backward compatibility.
 
 ## Operations
 
-The engine supports 21 schema operations for expressing legal logic:
+The engine supports 28 schema operations for expressing legal logic:
 
 | Category | Operations |
 |----------|-----------|
 | **Comparison** (5) | `EQUALS`, `GREATER_THAN`, `LESS_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN_OR_EQUAL` |
 | **Arithmetic** (4) | `ADD`, `SUBTRACT`, `MULTIPLY`, `DIVIDE` |
+| **Rounding** (3) | `ROUND`, `CEIL`, `FLOOR` |
 | **Aggregate** (2) | `MAX`, `MIN` |
 | **Logical** (3) | `AND`, `OR`, `NOT` |
 | **Conditional** (1) | `IF` (`cases: [{when, then}]` + `default`; `SWITCH` is an accepted alias) |
-| **Collection** (2) | `IN`, `LIST` |
-| **Date** (4) | `AGE`, `DATE_ADD`, `DATE`, `DAY_OF_WEEK` |
+| **Collection** (3) | `IN`, `LIST`, `FOREACH` |
+| **Date** (7) | `AGE`, `DATE_ADD`, `DATE`, `DAY_OF_WEEK`, `DATE_DIFF`, `DATE_PART`, `START_OF` |
+
+`FOREACH` iterates over a collection and combines the results; see [Collections](/concepts/collections).
 
 Negation is expressed by wrapping a positive operation in `NOT`: `NOT` around `EQUALS` for "not equal", `NOT` around `IN` for "not in". A null check is `EQUALS` against `value: null` (wrap it in `NOT` for "is not null"). For backward compatibility the engine also accepts the aliases `NOT_EQUALS`, `IS_NULL`, `NOT_NULL`, and `NOT_IN`, but these are **not** part of the schema: YAML using them executes correctly yet fails schema validation, so new laws should use the `NOT` / `EQUALS null` forms instead.
 
@@ -259,7 +262,7 @@ engine.resolveNote(lawId, selector): ResolvedNote
 engine.resolveNotes(lawId, annotationsYaml: string): ResolvedNote[]
 ```
 
-> **WASM limitations.** Open term resolution (`open_terms` / `implements` IoC pattern) is not yet available in the WASM build. Cross-law references work when all referenced laws are pre-loaded via `loadLaw()`.
+> **Loading laws in WASM.** The WASM build wraps the same `LawExecutionService` as the native build, so cross-law references and open term resolution (the `open_terms` / `implements` IoC pattern) both work. There is no filesystem in the browser, so every law the execution reaches has to be pre-loaded with `loadLaw()` first. The [demo](/components/demo) runs the whole zorgtoeslag chain, open terms included, entirely in the browser.
 
 ## Security Limits
 
@@ -313,7 +316,7 @@ just bench
 
 Key benchmarks: URI parsing, variable resolution, operations, article evaluation, law loading, priority resolution, and end-to-end service execution.
 
-## Further Reading
+## Further reading
 
 - [Law Format](/concepts/law-format) - structure of law YAML files
 - [RFC-003: Inversion of Control](/rfcs/rfc-003) - open terms and delegation

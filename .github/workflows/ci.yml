@@ -6,6 +6,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # De merge queue bouwt zijn eigen branch (`gh-readonly-queue/main/...`) met
+  # main plus de wachtende pull requests erin, en mergt pas als de checks daar
+  # groen zijn. Zonder deze trigger draait hier niets en blijft elke entry
+  # hangen tot de queue-timeout hem eruit gooit.
+  merge_group:
 
 permissions:
   contents: read
@@ -28,6 +33,7 @@ jobs:
     outputs:
       ci: ${{ steps.filter.outputs.ci }}
       docs: ${{ steps.filter.outputs.docs }}
+      docs-source: ${{ steps.filter.outputs.docs-source }}
       rust-image: ${{ steps.filter.outputs.rust-image }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -35,15 +41,35 @@ jobs:
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d  # v4.0.3
         id: filter
         with:
+          # Geen `base:` en geen `ref:`, ook niet voor de rij. De action kent
+          # merge_group zelf (sinds v4.0.1) en pakt dan `base_sha` en `head_sha`
+          # uit de payload: twee commits, rechtstreeks met elkaar vergeleken.
+          # Dat is precies de gewenste verzameling — wat de groep toevoegt
+          # bovenop de commit waarop hij bouwt.
+          #
+          # Zet hier vooral geen `base: refs/heads/main` bij als het ooit lijkt
+          # te helpen. De action strípt dat naar `main`, en dat is geen SHA meer,
+          # dus valt hij terug op een vergelijking met de merge-base tegen de
+          # punt van main. In een rij is de punt van main juist niet waar de
+          # groep vandaan vertakt, en dan klopt de lijst niet meer.
           filters: |
             ci:
               # Alle crates; een handmatige opsomming dreef eerder weg.
               - packages/**
               - frontend/**
               - frontend-lawmaking/**
+              - frontend-demo/**
+              - frontend-poc-portal/**
+              - frontend-poc-terugbetaalregimes/**
+              - frontend-poc-nieuwkomersbekostiging/**
+              - frontend-poc-napp/**
+              - corpus-poc/**
+              - pocs/**
               - packages/frontend-shared/**
               - bdd/**
               - corpus/regulation/**
+              # De demo-wetten en -scenario's: gevalideerd en gedraaid als bucket demo.
+              - corpus/demo/**
               - schema/**
               - script/**
               # De npm-workspace zelf: een dependency-bump raakt alleen deze
@@ -58,8 +84,13 @@ jobs:
               # de bundel meegaan.
               - corpus-registry.yaml
               # The schema reference doc is version-locked to schema/latest by
-              # provenance-checks; edit it and that guard must re-run.
-              - docs/src/content/docs/reference/schema.md
+              # provenance-checks; edit it and that guard must re-run. The
+              # committed snapshot the page renders from is part of that lock
+              # (the guard asserts it matches schema/latest byte for byte), so
+              # it and the script that writes it belong here too.
+              - docs/src/content/docs/reference/schema.mdx
+              - docs/src/data/schema-latest.json
+              - docs/scripts/sync-schema.mjs
               - docs/scripts/check-schema-version.mjs
               - Justfile
               - .pre-commit-config.yaml
@@ -67,6 +98,31 @@ jobs:
               - .github/workflows/ci.yml
             docs:
               - docs/**
+              # De landingspagina leest het corpus bij het bouwen en draait het
+              # zorgtoeslag-scenario in de browser. De parsers in
+              # docs/src/lib/landing-demo.ts staan op exacte posities in de
+              # YAML, dus een herformattering van de wet laat de docs-build
+              # omvallen; zonder deze paden merkt de toegankelijkheidspoort dat
+              # niet en valt het pas om bij de volgende docs-wijziging.
+              - corpus/regulation/**
+              - corpus/annotations/**
+              - packages/frontend-shared/**
+              - script/landing-laws.sh
+              - .github/workflows/ci.yml
+            # De broncontroles op de documentatie (geciteerde paden, proza,
+            # RFC-dekking, schemaversie) hebben geen astro-build nodig en
+            # moeten juist draaien als de *code* verschuift, niet alleen als
+            # iemand docs/ aanraakt. Dat is de richting waaruit de afdrijving
+            # komt: een hernoemd veld of een verplaatste map laat de proza
+            # stilletjes achter. Daarom een eigen, lichte filter naast `docs`.
+            docs-source:
+              - docs/**
+              - packages/**
+              - bdd/**
+              - schema/**
+              - corpus/regulation/**
+              - justfile
+              - .claude/skills/docs-writing/**
               - .github/workflows/ci.yml
             # Wat de bouw van een Rust-image kan breken. Smaller dan `ci`: een
             # wijziging in frontend/ of bdd/ raakt deze Dockerfiles niet, en die
@@ -85,6 +141,18 @@ jobs:
     needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # Alleen op een pull request, ook nu er een wachtrij is. Deze baan is een
+    # required check, maar een baan die op een `if:` hieronder overslaat meldt
+    # `skipped`, en dat telt bij GitHub als geslaagd; alleen een workflow die
+    # in het geheel niet draait blijft op "Expected" staan en laat een entry
+    # hangen. Deze workflow draait in de rij wél, dus de check rapporteert.
+    #
+    # Hem daar echt laten draaien zou schadelijk zijn. De vergelijking
+    # hieronder is `origin/main...HEAD`, en HEAD is in de rij niet één pull
+    # request maar de hele groep: raakt één ervan een vrijgegeven
+    # schemaversie, dan valt de groep om en vliegen de andere mee. Op de pull
+    # request zelf wordt dat al afgevangen, per wijziging, tegen een main die
+    # niet onder de baan door beweegt.
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -95,10 +163,18 @@ jobs:
       - name: Check for modifications to released schema versions
         if: needs.changes.outputs.ci == 'true'
         run: |
-          # Get list of versioned schema directories that exist on main
+          # Get list of versioned schema directories that exist on main.
+          # Two version axes: the law schema under schema/vX.Y.Z, and a
+          # companion format on its own axis under schema/<name>/vN, because a
+          # trace shape and a law shape change for different reasons (RFC-039).
+          # Both are immutable once on main, so both are listed here; without
+          # the second pattern a published trace schema could be edited in
+          # place, which is the thing this job exists to prevent.
+          # `-r` is needed for the second pattern: the companion directories sit
+          # one level deeper, and a non-recursive ls-tree stops at schema/trace.
           git fetch origin main
-          EXISTING_VERSIONS=$(git ls-tree -d --name-only origin/main schema/ 2>/dev/null \
-            | grep -E '^schema/v[0-9]+\.[0-9]+\.[0-9]+$' || true)
+          EXISTING_VERSIONS=$(git ls-tree -d -r --name-only origin/main schema/ 2>/dev/null \
+            | grep -E '^schema/(v[0-9]+\.[0-9]+\.[0-9]+|[a-z0-9_-]+/v[0-9]+)$' || true)
 
           if [ -z "$EXISTING_VERSIONS" ]; then
             echo "No existing schema versions on main, skipping check"
@@ -203,6 +279,13 @@ jobs:
           fi
           echo "All corpus schema references valid"
 
+      - name: Check schema examples validate against their own subschema
+        run: |
+          # An `examples` value is rendered as copyable YAML on
+          # /reference/schema, so an invalid one hands a law author a file that
+          # `just validate` rejects.
+          python3 script/check-schema-examples.py
+
       - name: Check schema/latest symlink
         run: |
           TARGET=$(readlink schema/latest)
@@ -303,7 +386,12 @@ jobs:
           components: rustfmt, clippy
 
       - name: Install mold linker
-        run: sudo apt-get update && sudo apt-get install -y mold
+        run: |
+          # De runner-image draagt een Google Chrome-apt-bron mee die geregeld een
+          # kapotte index geeft ("Hash Sum mismatch") en dan elke apt-get update laat
+          # falen; wij gebruiken die bron niet, dus weg ermee vóór apt-get update.
+          sudo rm -f /etc/apt/sources.list.d/google-chrome*.list
+          sudo apt-get update && sudo apt-get install -y mold
 
       - name: Run sccache
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba  # v0.0.11
@@ -431,7 +519,12 @@ jobs:
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
 
       - name: Install mold linker
-        run: sudo apt-get update && sudo apt-get install -y mold
+        run: |
+          # De runner-image draagt een Google Chrome-apt-bron mee die geregeld een
+          # kapotte index geeft ("Hash Sum mismatch") en dan elke apt-get update laat
+          # falen; wij gebruiken die bron niet, dus weg ermee vóór apt-get update.
+          sudo rm -f /etc/apt/sources.list.d/google-chrome*.list
+          sudo apt-get update && sudo apt-get install -y mold
 
       - name: Run sccache
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba  # v0.0.11
@@ -465,7 +558,12 @@ jobs:
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
 
       - name: Install mold linker
-        run: sudo apt-get update && sudo apt-get install -y mold
+        run: |
+          # De runner-image draagt een Google Chrome-apt-bron mee die geregeld een
+          # kapotte index geeft ("Hash Sum mismatch") en dan elke apt-get update laat
+          # falen; wij gebruiken die bron niet, dus weg ermee vóór apt-get update.
+          sudo rm -f /etc/apt/sources.list.d/google-chrome*.list
+          sudo apt-get update && sudo apt-get install -y mold
 
       - name: Run sccache
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba  # v0.0.11
@@ -493,6 +591,65 @@ jobs:
         working-directory: packages/engine
         env:
           BDD_BUCKET: conformance
+          RUSTFLAGS: -Dwarnings -C link-arg=-fuse-ld=mold
+        run: cargo test --test bdd -- --nocapture
+
+  # Bucket A over het demo-corpus: de 80 gemigreerde POC-wetten onder
+  # corpus/demo met hun scenario's en persona-data (REGULATION_PATH wijst wetten
+  # én scenario's daarheen). Anders dan bucket A over corpus/regulation hangt
+  # dit aan niets buiten de repo en zijn de gegevens synthetisch, dus rood hier
+  # is een echte fout (een wet, een binding of de engine) en geen oordeel van
+  # een mens.
+  bdd-demo:
+    name: BDD demo
+    needs: changes
+    if: needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
+
+      - name: Install mold linker
+        run: |
+          # De runner-image draagt een Google Chrome-apt-bron mee die geregeld een
+          # kapotte index geeft ("Hash Sum mismatch") en dan elke apt-get update laat
+          # falen; wij gebruiken die bron niet, dus weg ermee vóór apt-get update.
+          sudo rm -f /etc/apt/sources.list.d/google-chrome*.list
+          sudo apt-get update && sudo apt-get install -y mold
+
+      - name: Run sccache
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba  # v0.0.11
+
+      - name: Cache cargo registry (shared)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('packages/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-registry-
+
+      # De pre-commit-hook valideert corpus/demo ook, maar alleen de bestanden
+      # in de commit; hier het hele demo-corpus tegen schema/latest.
+      - name: Validate demo laws
+        env:
+          RUSTFLAGS: -Dwarnings -C link-arg=-fuse-ld=mold
+        run: |
+          find corpus/demo/regulation -name '*.yaml' ! -name '.*' -print0 | sort -z \
+            | xargs -0 script/validate.sh
+
+      - name: Run demo bucket
+        working-directory: packages/engine
+        env:
+          BDD_BUCKET: corpus
+          REGULATION_PATH: ${{ github.workspace }}/corpus/demo/regulation
           RUSTFLAGS: -Dwarnings -C link-arg=-fuse-ld=mold
         run: cargo test --test bdd -- --nocapture
 
@@ -566,7 +723,7 @@ jobs:
       - name: BDD grammar codegen is in sync
         run: |
           node bdd/codegen/gen-js.mjs
-          git diff --exit-code frontend/src/gherkin/grammar.generated.js \
+          git diff --exit-code packages/frontend-shared/src/gherkin/grammar.generated.js \
             || { echo "::error::grammar.generated.js is stale — run 'just bdd-codegen' and commit the result"; exit 1; }
 
       - name: Run frontend tests
@@ -576,6 +733,9 @@ jobs:
 
       - name: Run lawmaking tests
         run: npm test -w frontend-lawmaking
+
+      - name: Run demo tests
+        run: npm test -w frontend-demo
 
       # packages/arch-extract/ui is geen workspace-member (eigen package.json en
       # lockfile), dus `npm test -w` bereikt het niet en de test die er ligt
@@ -603,6 +763,12 @@ jobs:
       - name: Build lawmaking bundle
         run: npm run build -w frontend-lawmaking
 
+      # De demo bundelt corpus/demo (prebuild) en verwacht de WASM-engine onder
+      # public/wasm/pkg; die bouwt frontend-demo/Dockerfile zelf. Hier volstaat
+      # de bundel zonder engine: het gaat om de Vue-build en de corpuskopie.
+      - name: Build demo bundle
+        run: npm run build -w frontend-demo
+
   # Verplichte check op main. De benen hierboven dragen nieuwe namen en mogen
   # dus van vorm veranderen; deze naam moet blijven bestaan, want een required
   # check die niet verschijnt laat elke PR eeuwig hangen. Skipped benen (geen
@@ -615,6 +781,7 @@ jobs:
       - changes
       - rust-tests
       - bdd-conformance
+      - bdd-demo
       - frontend-tests
       - nldd-imports
       # Deze vier draaiden al bij elke PR maar blokkeerden niets. Ze hier
@@ -624,6 +791,7 @@ jobs:
       - cross-law-integrity
       - provenance-checks
       - docs-a11y
+      - docs-source
       - rust-image
     if: always()
     runs-on: ubuntu-latest
@@ -657,12 +825,14 @@ jobs:
           require changes "${{ needs.changes.result }}"
           check rust-tests "${{ needs.rust-tests.result }}"
           check bdd-conformance "${{ needs.bdd-conformance.result }}"
+          check bdd-demo "${{ needs.bdd-demo.result }}"
           check frontend-tests "${{ needs.frontend-tests.result }}"
           check nldd-imports "${{ needs.nldd-imports.result }}"
           check e2e "${{ needs.e2e.result }}"
           check cross-law-integrity "${{ needs.cross-law-integrity.result }}"
           check provenance-checks "${{ needs.provenance-checks.result }}"
           check docs-a11y "${{ needs.docs-a11y.result }}"
+          check docs-source "${{ needs.docs-source.result }}"
           check rust-image "${{ needs.rust-image.result }}"
           exit "$status"
 
@@ -889,13 +1059,32 @@ jobs:
       - name: Install Playwright Chromium
         if: needs.changes.outputs.ci == 'true'
         working-directory: frontend
-        run: npx playwright install --with-deps chromium
+        run: |
+          # De runner-image draagt een Google Chrome-apt-bron mee die geregeld een
+          # kapotte index geeft ("Hash Sum mismatch") en dan elke apt-get update laat
+          # falen; wij gebruiken die bron niet, dus weg ermee vóór apt-get update.
+          sudo rm -f /etc/apt/sources.list.d/google-chrome*.list
+          npx playwright install --with-deps chromium
 
       # Bouwt eerst het WASM-artefact (frontend/public/wasm/pkg) en start dan de
       # vite-dev-server via playwright's webServer-config.
       - name: Run mocked e2e suite
         if: needs.changes.outputs.ci == 'true'
         run: just test-e2e
+
+      # De poc-tests draaien de echte WASM-engine tegen het casus-corpus
+      # (Gherkin-scenario's incluis), dus ze horen in deze baan en niet bij de
+      # gewone frontend-tests: daar is geen wasm-artefact. `just test-e2e`
+      # hierboven heeft het al gebouwd.
+      - name: Run poc tests
+        if: needs.changes.outputs.ci == 'true'
+        run: |
+          npm test -w frontend-poc-terugbetaalregimes
+          npm test -w frontend-poc-nieuwkomersbekostiging
+          # De assistent-backend is geen workspace-member (het is een server,
+          # geen frontend), dus `npm test -w` bereikt hem niet. De vitest uit
+          # de root draait zijn tests wel.
+          npx vitest run --root packages/poc-assistent
 
       - name: Upload Playwright report
         if: failure() && needs.changes.outputs.ci == 'true'
@@ -960,6 +1149,43 @@ jobs:
       - name: Run security audit
         run: just audit
 
+  # De broncontroles op de documentatie. Los van docs-a11y omdat ze geen
+  # astro-build, geen Chromium en geen pa11y nodig hebben: ze lezen de
+  # markdown en de repo zelf, draaien in seconden, en kunnen daarom breed
+  # getriggerd worden op elke wijziging in de code die de documentatie
+  # beschrijft.
+  #
+  # Dat brede filter is de kern. De afdrijving die deze controles moeten
+  # vangen ontstaat niet in docs/ maar erbuiten: een map verhuist, een veld
+  # krijgt een andere naam, een bewerking komt erbij, en de proza die dat
+  # beschrijft blijft staan. Een poort die alleen op docs/** draait kijkt
+  # precies de verkeerde kant op.
+  docs-source:
+    name: Docs source checks
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # check-schema-version telt de schema-tags, en die komen niet mee in
+          # een ondiepe checkout. Zonder tags slaat die controle zichzelf over
+          # in plaats van te liegen, maar dan vangt ze ook niets.
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        if: needs.changes.outputs.docs-source == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v6
+        with:
+          node-version: '22'
+
+      # De controles gebruiken alleen de standaardbibliotheek van Node, dus
+      # geen npm ci: dat zou een minuut kosten voor niets.
+      - name: Run docs source checks
+        if: needs.changes.outputs.docs-source == 'true'
+        working-directory: docs
+        run: npm run check:source
+
   docs-a11y:
     name: Docs accessibility gate
     needs: changes
@@ -995,7 +1221,12 @@ jobs:
       - name: Install Playwright Chromium
         if: needs.changes.outputs.docs == 'true'
         working-directory: docs
-        run: npx playwright install --with-deps chromium
+        run: |
+          # De runner-image draagt een Google Chrome-apt-bron mee die geregeld een
+          # kapotte index geeft ("Hash Sum mismatch") en dan elke apt-get update laat
+          # falen; wij gebruiken die bron niet, dus weg ermee vóór apt-get update.
+          sudo rm -f /etc/apt/sources.list.d/google-chrome*.list
+          npx playwright install --with-deps chromium
 
       # pa11y draait niet op playwright maar op puppeteer, met een eigen
       # browsercache (~/.cache/puppeteer). Die download zat in puppeteers
@@ -1019,21 +1250,35 @@ jobs:
         working-directory: docs
         run: npx --no puppeteer browsers install chrome
 
-      # Alleen op een pull request: de lijst gewijzigde bestanden, waarmee
-      # gen-pa11yci.mjs de gate tot de geraakte pagina's beperkt. Raakt de PR
-      # iets anders dan inhoud (layout, component, stylesheet, configuratie),
-      # dan valt dat script terug op de volledige site. Bij een push naar main
-      # blijft de lijst leeg en draait de gate altijd volledig.
+      # Op een pull request en in de rij: de lijst gewijzigde bestanden, waarmee
+      # gen-pa11yci.mjs de gate tot de geraakte pagina's beperkt. Raakt de
+      # wijziging iets anders dan inhoud (layout, component, stylesheet,
+      # configuratie), dan valt dat script terug op de volledige site. Bij een
+      # push naar main blijft de lijst leeg en draait de gate altijd volledig.
       - name: Bepaal gewijzigde bestanden
         if: needs.changes.outputs.docs == 'true'
         id: changed
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: >-
+            ${{ github.event.pull_request.base.sha
+                || github.event.merge_group.base_sha }}
         run: |
-          if [ -n "$BASE_SHA" ]; then
+          files=""
+          # Is de basis hier niet bereikbaar, dan geen lijst, en draait de poort
+          # over de volledige site. Zonder dit vangnet stopt `bash -e` de baan
+          # bij een `bad object`, valt de Test-poort om en gaat in de rij de
+          # hele groep eruit — een strengere uitkomst dan de poort bedoelt, om
+          # een commit die alleen maar niet op te halen was.
+          #
+          # Eerst `cat-file`, en niet alleen `git diff` in een `if`: de uitkomst
+          # van een pijplijn is die van het laatste onderdeel, dus `| tr` zou de
+          # fout van `git diff` opslokken zodra `pipefail` er niet is. Actions
+          # zet die vlag vandaag wel, maar dan hangt deze poort aan een
+          # standaard die een `shell:` of `defaults:` elders ongemerkt wegneemt.
+          if [ -n "$BASE_SHA" ] && ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            echo "::warning title=Toegankelijkheidspoort::$BASE_SHA is hier niet bereikbaar; de poort draait over de volledige site."
+          elif [ -n "$BASE_SHA" ]; then
             files=$(git diff --name-only "$BASE_SHA" HEAD | tr '\n' ' ')
-          else
-            files=""
           fi
           echo "files=$files" >> "$GITHUB_OUTPUT"
 
@@ -1045,6 +1290,36 @@ jobs:
         env:
           A11Y_CHANGED_FILES: ${{ steps.changed.outputs.files }}
         run: just docs-a11y
+
+      # Een gepubliceerd adres blijft bereikbaar. Een documentatiepagina wordt
+      # geciteerd in een RFC, in een issue, in een bladwijzer en in mail buiten
+      # deze repo; hernoemen mag, het oude adres laten verdwijnen niet, want die
+      # rekening ligt bij een lezer die niet kan weten waar het heen ging.
+      #
+      # De vorige stap heeft de site al gebouwd. Hier komt daar de bouw van de
+      # base-branch naast, puur om te vragen welke routes die uitgaf. Een route
+      # die daar bestond en hier niet meer laat de job vallen, met de
+      # redirect-regel die het oplost erbij.
+      #
+      # Alleen op een pull request: bij een push naar main is er geen "ervoor"
+      # om tegen te vergelijken.
+      - name: Check no published URL disappeared
+        if: needs.changes.outputs.docs == 'true' && github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          base="$(mktemp -d)"
+          git worktree add --detach "$base" "${{ github.event.pull_request.base.sha }}"
+          cp -R docs/node_modules "$base/docs/node_modules"
+          ( cd "$base/docs" && npm run build >/dev/null 2>&1 ) || {
+            # Faalt de base-bouw, dan zegt dat niets over deze PR. Overslaan is
+            # dan eerlijker dan rood gaan op andermans probleem.
+            echo "::warning::kon de base-branch niet bouwen, URL-controle overgeslagen"
+            exit 0
+          }
+          find "$base/docs/dist" -name index.html \
+            | sed "s|^$base/docs/dist||; s|/index.html$||; s|^$|/|" \
+            | sort > /tmp/base-routes.txt
+          node docs/scripts/check-no-dead-urls.mjs /tmp/base-routes.txt
 
       - name: Skip (no relevant changes)
         if: needs.changes.outputs.docs != 'true'

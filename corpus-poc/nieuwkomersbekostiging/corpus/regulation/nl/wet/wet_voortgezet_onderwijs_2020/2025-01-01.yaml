@@ -1,0 +1,76 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.6/schema/v0.5.6/schema.json
+$id: wet_voortgezet_onderwijs_2020
+regulatory_layer: WET
+publication_date: '2020-09-30'
+valid_from: '2025-01-01'
+bwb_id: BWBR0044212
+url: https://wetten.overheid.nl/BWBR0044212/2025-01-01
+name: Wet voortgezet onderwijs 2020
+competent_authority:
+  name: Minister van Onderwijs, Cultuur en Wetenschap
+# Grondslag voor de aanvullende bekostiging van de eerste opvang van
+# nieuwkomers in het voortgezet onderwijs (casus nieuwkomersbekostiging).
+# Alleen de delegatiebepalingen zijn opgenomen: artikel 5.8 (teldatum;
+# lid 1 en lid 3, grondslag voor de telregels in het Uitvoeringsbesluit
+# WVO 2020) en artikel 5.9 (aanvullende bekostiging bij bijzondere
+# ontwikkelingen, leden 1 en 2, grondslag voor de Regeling aanvullende
+# bekostiging eerste opvang nieuwkomers vo). De wet bevat geen rekenregels.
+articles:
+  # ---------------------------------------------------------------- 5.8
+  - number: '5.8'
+    text: >-
+      1. Voor het bepalen van de hoogte van de bekostiging, bedoeld in de
+      artikelen 5.4 en 5.5, neemt Onze Minister in aanmerking het aantal en
+      het soort vestigingen van de school of scholengemeenschap, alsmede het
+      aantal leerlingen dat op 1 oktober van het jaar voorafgaand aan het
+      jaar waarop de bekostiging betrekking heeft: a. als werkelijk
+      schoolgaand aan de school of scholengemeenschap stond ingeschreven; en
+      b. in bij of krachtens algemene maatregel van bestuur te bepalen
+      gevallen voor de bekostiging wordt meegeteld.
+
+      (...)
+
+      3. Bij of krachtens algemene maatregel van bestuur kunnen nadere
+      regels worden gesteld over de leerlingen die niet worden meegeteld
+      voor het bepalen van de hoogte van de bekostiging.
+    url: https://wetten.overheid.nl/BWBR0044212/2025-01-01#Hoofdstuk5_Paragraaf2_Artikel5.8
+    machine_readable:
+      open_terms:
+        - id: niet_meegetelde_leerlingen
+          type: boolean
+          required: false
+          delegated_to: uitvoeringsbesluit_wvo_2020
+          delegation_type: AMVB
+          legal_basis: artikel 5.8, derde lid, Wet voortgezet onderwijs 2020
+          description: >-
+            Welke leerlingen niet worden meegeteld voor het bepalen van de
+            hoogte van de bekostiging; ingevuld door artikel 6.8 van het
+            Uitvoeringsbesluit WVO 2020 (onder meer nieuwkomers die korter
+            dan een jaar staan ingeschreven).
+
+  # ---------------------------------------------------------------- 5.9
+  - number: '5.9'
+    text: >-
+      1. Indien bijzondere ontwikkelingen in het voortgezet onderwijs
+      daartoe aanleiding geven, kunnen bij ministeriële regeling regels
+      worden gesteld over het verstrekken van aanvullende bekostiging.
+
+      2. Onze Minister kan in verband met de in het eerste lid bedoelde
+      bekostiging een bekostigingsplafond vaststellen. In dat geval worden
+      bij ministeriële regeling regels gesteld over de verdeling.
+    url: https://wetten.overheid.nl/BWBR0044212/2025-01-01#Hoofdstuk5_Paragraaf2_Artikel5.9
+    machine_readable:
+      open_terms:
+        - id: aanvullende_bekostiging_eerste_opvang_nieuwkomers_vo
+          type: amount
+          required: true
+          delegated_to: regeling_aanvullende_bekostiging_eerste_opvang_nieuwkomers_vo
+          delegation_type: MINISTERIELE_REGELING
+          legal_basis: artikel 5.9, eerste lid, Wet voortgezet onderwijs 2020
+          description: >-
+            De aanvullende bekostiging bij bijzondere ontwikkelingen in het
+            voortgezet onderwijs; voor de eerste opvang van nieuwkomers
+            ingevuld door de Regeling aanvullende bekostiging eerste opvang
+            nieuwkomers vo (bedrag per kwartaal per nieuwkomer en eenmalige
+            voorbereidingskosten per school).

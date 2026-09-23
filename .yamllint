@@ -41,7 +41,11 @@ rules:
     require-starting-space: true
     ignore-shebangs: true
 
-  comments-indentation: enable
+  comments-indentation:
+    # The demo corpus is migrated from the POC by tooling; its comments keep the
+    # indentation they had there, and re-indenting them by hand buys nothing.
+    ignore: |
+      corpus/demo/
 
   # Empty lines
   empty-lines:
@@ -75,3 +79,10 @@ ignore: |
   .tox/
   node_modules/
   .github/workflows/
+  # Casus-inhoud van de proof-of-concepts: overgenomen uit de losse PoC-repo's
+  # en daar met de hand geschreven in een eigen stijl. Het is geen geldend
+  # recht en het gaat niet door `just validate`; het herformatteren van
+  # wetsteksten en gegevensbestanden om een linter blij te maken is een groter
+  # risico (een cijfer dat verschuift) dan de winst. pocs/registry.yaml — dat
+  # wél hier is geschreven — valt er bewust buiten en wordt gewoon gelint.
+  corpus-poc/

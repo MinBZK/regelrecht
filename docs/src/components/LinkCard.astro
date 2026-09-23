@@ -3,7 +3,10 @@
  * One card in a landing-page collection: title, meta line, body text and a
  * full-width "Lees …"/"Read …" button. The research and references sections
  * render the same card; `tinted` picks the card surface for a section on the
- * plain page background (a tinted section uses plain cards).
+ * plain page background (a tinted section uses plain cards). `headingLevel`
+ * is the rank of the title in the page outline: 3 under a section heading, as
+ * on the landing page, 2 where the card sits directly under the page's h1. The
+ * visual size stays the same either way.
  */
 interface Props {
   lang: 'nl' | 'en';
@@ -13,11 +16,21 @@ interface Props {
   href: string;
   linkLabel: string;
   tinted?: boolean;
+  headingLevel?: 2 | 3;
 }
 
-const { lang, title, meta, text, href, linkLabel, tinted = false } =
-  Astro.props;
+const {
+  lang,
+  title,
+  meta,
+  text,
+  href,
+  linkLabel,
+  tinted = false,
+  headingLevel = 3,
+} = Astro.props;
 const read = lang === 'en' ? 'Read' : 'Lees';
+const Heading = `h${headingLevel}`;
 ---
 
 <nldd-card
@@ -26,7 +39,7 @@ const read = lang === 'en' ? 'Read' : 'Lees';
 >
   <nldd-container padding="20" padding-bottom="12">
     <nldd-title size="3">
-      <h3>{title}</h3>
+      <Heading>{title}</Heading>
       <p slot="subtitle">{meta}</p>
     </nldd-title>
     <nldd-spacer size="12" />

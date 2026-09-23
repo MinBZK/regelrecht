@@ -1,0 +1,82 @@
+---
+/*
+ * The step vocabulary, generated.
+ *
+ * Read from the grammar this site already ships to the browser
+ * (src/lib/gherkin/grammar.generated.js, assembled from bdd/grammar.yaml by
+ * script/landing-laws.sh at build time), so this table is the language the
+ * runner on this page and the Rust suite in CI both speak. A hand-written list
+ * of steps would be a fourth copy of the grammar, and the first to fall behind.
+ *
+ * The keyword is part of the step rather than a column of its own: it is what a
+ * reader types, and a three-column table with long ids in the last one ran off
+ * the edge of the reading column. Argument slots show as an ellipsis, because
+ * the generated grammar carries the shape of each capture and not the name
+ * bdd/grammar.yaml gives it. Where the name matters, the id names it.
+ */
+import { GRAMMAR } from '~/lib/gherkin/grammar.generated.js';
+import '~/styles/scenario.css';
+
+interface Props {
+  /** Which tier to list. One table per tier keeps the core one scannable. */
+  tier: string;
+  label: string;
+}
+
+const { tier, label } = Astro.props;
+
+const KEYWORDS: Record<string, string> = {
+  given: 'Given',
+  when: 'When',
+  then: 'Then',
+};
+
+/** The step as a reader writes it, with each captured value shown as a slot. */
+function phrasing(entry: any): string {
+  const keyword = KEYWORDS[entry.keyword] ?? entry.keyword;
+  return `${keyword} ${entry.template(entry.argTypes.map(() => '…'))}`;
+}
+
+const steps = (GRAMMAR as any[]).filter((entry) => entry.tier === tier);
+---
+
+<nldd-table
+  class="rr-steps-table"
+  accessible-label={label}
+  background="tinted"
+  columns="minmax(300px, 1fr) minmax(190px, max-content)"
+  sm-columns="minmax(240px, 1fr)"
+>
+  <nldd-table-row slot="header">
+    <nldd-cell width="full"><nldd-text weight="bold">Step</nldd-text></nldd-cell>
+    <nldd-cell width="full" hide-below="md"><nldd-text weight="bold">Id</nldd-text></nldd-cell>
+  </nldd-table-row>
+
+  {
+    steps.map((entry: any) => (
+      <nldd-table-row>
+        <nldd-cell width="full" vertical-alignment="top">
+          <nldd-container layout="stack" gap="4">
+            <code class="rr-steps-step">{phrasing(entry)}</code>
+            {/* A step that is followed by a table row block. The tag says so
+                once; repeating it in the phrasing would put a colon and an
+                invisible block into a line meant to be copied. */}
+            {entry.datatable && (
+              <nldd-container width="fit-content">
+                <nldd-tag size="sm" color="neutral" text="data table" />
+              </nldd-container>
+            )}
+            {/* Below md the Id column is dropped, so the id rides along under
+                the step rather than disappearing. */}
+            <nldd-text size="sm" color="secondary" class="rr-steps-id-inline">
+              <code>{entry.id}</code>
+            </nldd-text>
+          </nldd-container>
+        </nldd-cell>
+        <nldd-cell width="full" vertical-alignment="top" hide-below="md">
+          <nldd-text size="sm" color="secondary"><code>{entry.id}</code></nldd-text>
+        </nldd-cell>
+      </nldd-table-row>
+    ))
+  }
+</nldd-table>

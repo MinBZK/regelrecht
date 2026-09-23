@@ -12,7 +12,7 @@ The harvester downloads Dutch legislation and converts it to the RegelRecht YAML
 - **Sources**: BWB / wetten.nl (national law) and CVDR (local/decentralized regulations)
 - **Output**: YAML law files with textual content (no `machine_readable` yet)
 
-## How It Works
+## How it works
 
 ```mermaid
 flowchart LR
@@ -105,7 +105,7 @@ println!("Articles: {}", law.articles.len());
 
 For CVDR regulations use `download_cvdr_law`; `detect_source` returns the right source for either kind of identifier.
 
-## Output Path Convention
+## Output path convention
 
 ```
 {output}/{regulatory_layer}/{slug}/{date}.yaml
@@ -123,7 +123,7 @@ The regulatory layer is determined from the WTI metadata (`soort-regeling` field
 - **Retry triggers**: Connection errors, timeouts, 5xx responses
 - **No retry on**: 4xx client errors
 
-## Current Limitations
+## Current limitations
 
 - **Text-only extraction** - tables and complex formatting simplified to text
 - **No machine_readable** - output contains text only; executable logic added separately
@@ -138,7 +138,7 @@ just harvester-test
 
 Integration tests use fixtures from `tests/fixtures/zorgtoeslag/` (real WTI and content XML) to validate the complete pipeline from XML to valid YAML.
 
-## Further Reading
+## Further reading
 
 - [Law Format](/concepts/law-format) - the YAML format the harvester produces
 - [Pipeline](./pipeline) - job orchestration for harvesting tasks

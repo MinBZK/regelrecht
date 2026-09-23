@@ -1,0 +1,8 @@
+/*
+ * Forceer light mode als default (NLDD volgt anders de OS-voorkeur via
+ * light-dark()). Dit is het door het design system gedocumenteerde
+ * mechanisme: color-scheme op een root-element.
+ */
+:root {
+  color-scheme: light;
+}

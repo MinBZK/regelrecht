@@ -4,9 +4,11 @@
  * Almost everything the roadmap renders is a design-system component:
  * nldd-sidebar-section for the werkpakket layout, nldd-container for spacing
  * and nldd-text for every run of text. Those bring their own responsive
- * behaviour, so this file deliberately holds no media queries.
+ * behaviour, so this file holds exactly one media query — on the filter bar,
+ * where a group has to stop being pushed to the right once the bar wraps.
+ * Its reason is written out at the rule.
  *
- * What is left are the two things the design system has no component for:
+ * What is left are the things the design system has no component for:
  *
  * 1. The fase x discipline matrix. It is a real <table> so a screen reader can
  *    place a card, laid out as one CSS grid (`display: contents` on the table
@@ -14,29 +16,185 @@
  *    each, where a matrix cell holds a stack of cards.
  * 2. The categorie filter. It works without JavaScript, through :has() on the
  *    checkbox state, and nldd-checkbox-field keeps its <input> in shadow DOM
- *    where a page stylesheet cannot reach it. Using the component would mean
- *    adding a script; the docs site runs zero client islands on purpose.
+ *    where a page stylesheet cannot reach it.
+ * 2b. The zoekfilter's hide-rule. The search itself cannot be CSS — comparing a
+ *    typed string to a card's text is not something a selector does — so that
+ *    part is a script, which marks non-matching cards with a class this file
+ *    then hides. The two filters compose; see the rule for how.
+ * 3. Two measures on one page: the section runs full-width for the matrix,
+ *    while the heading and the filter keep the docs measure. A section has one
+ *    body width, so the narrower one is restored on a block inside it.
  *
  * Colours, spacing and radii come from NLDD tokens, which are light-dark()
  * pairs, so both blocks follow the theme toggle. Nothing here sets a font or
  * hardcodes a colour.
  */
 
+/* --- Kop ---------------------------------------------------------------- */
+
+/*
+ * The page's section runs at width="full" so the matrix can use the whole
+ * viewport. The heading and the filter are prose-shaped and would read badly
+ * that wide, so this block puts the docs measure back for them. It uses the
+ * token nldd-simple-section applies by default, so the heading lands on the
+ * same measure as every other docs page rather than on a width invented here.
+ *
+ * `margin-inline: auto` centres it, which is what puts it back where it would
+ * have been: the navigation bar and the footer centre their own content on
+ * this same token, and so does a page section that is not at width="full".
+ * Left-aligning it instead lines it up with the matrix, but then the heading
+ * sits left of the bar above it and the page reads as misaligned.
+ */
+.rr-roadmap .rr-roadmap__kop {
+  max-width: var(--semantics-page-sections-body-max-width);
+  margin-inline: auto;
+}
+
 /* --- Filter ------------------------------------------------------------- */
 
-.rr-roadmap .rr-filter {
+/*
+ * Eén balk boven de matrix, in twee groepen: links wat kaarten wegneemt
+ * (zoeken, en de twee filterknoppen), rechts wat dezelfde kaarten anders
+ * ordent (de afhankelijkhedenweergave).
+ *
+ * Wat hier weg is: negen losse vinkjes met drie onderschriften, die op één rij
+ * meer gewicht droegen dan de matrix eronder. De vinkjes staan nu in een
+ * popover achter de knop van hun groep — zie index.astro voor waarom het
+ * ontwerpsysteem daar een popover voor aanwijst, en waarom de :has()-regels
+ * verderop dat overleven.
+ *
+ * Alle bediening staat op één lijn (`align-items: center`), en de teller onder
+ * het zoekveld telt daar niet in mee: hij staat absoluut onder het veld, niet
+ * ernaast in de stroom. Zou hij wél meetellen, dan werd de zoekgroep een regel
+ * hoger dan de knoppen ernaast en zakten die mee naar zijn onderrand — precies
+ * de scheve balk die de eerste versie van dit ontwerp opleverde.
+ *
+ * Absoluut is hier ook wat de balk stil houdt. De teller verschijnt pas zodra
+ * iemand typt; stond hij in de stroom, dan groeide de balk op dat moment een
+ * regel en sprong alles eronder omlaag, onder de cursor vandaan.
+ *
+ * `margin-inline-start: auto` duwt de weergavegroep naar rechts. Dat mag hier
+ * wél waar het bij het zoekveld niet mocht (zie de historie in de git-log van
+ * dit bestand): deze groep heeft geen eigen breedtewens, dus op een gewikkelde
+ * regel neemt hij niet stiekem ruimte in — hij staat dan gewoon links, onder
+ * de filters, wat op een smal scherm de juiste volgorde is.
+ */
+.rr-roadmap .rr-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--primitives-space-12, 0.75rem)
+    var(--primitives-space-16, 1rem);
+  /* Ruimte voor de teller, die absoluut onder het zoekveld hangt en dus geen
+     eigen hoogte in de balk inneemt. */
+  padding-block-end: 1.5em;
+}
+
+.rr-roadmap .rr-controls__groep {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--primitives-space-8, 0.5rem);
+}
+
+.rr-roadmap .rr-controls__groep--filters {
+  flex: 1 1 auto;
+}
+
+/*
+ * De scheidslijn tussen filteren en weergeven, en niet alleen wat lucht: de
+ * twee groepen doen verschillende dingen met dezelfde matrix, en zonder
+ * streep leest "Afhankelijkheden" als een vierde filter.
+ *
+ * `auto` duwt de groep naar rechts zolang hij naast de filters past. Zodra de
+ * balk wikkelt staat hij op een eigen regel, en dan doen de marge én de streep
+ * meer kwaad dan goed: de knop schoof naar de rechterrand met een los stukje
+ * lijn ervoor, dat niets meer scheidde omdat er links niets naast stond. Vanaf
+ * `md` (641px, de grens van het ontwerpsysteem) past hij ernaast; daaronder
+ * staat hij links, zonder streep, gewoon als volgende regel.
+ *
+ * Een media query en geen container query: waar deze balk wikkelt hangt af van
+ * de breedte van het venster, want de kop staat op de docs-maat die daarmee
+ * meebeweegt. Dit is de enige in dit bestand, en de reden staat hier.
+ */
+@media (min-width: 641px) {
+  .rr-roadmap .rr-controls__groep--weergave {
+    margin-inline-start: auto;
+    padding-inline-start: var(--primitives-space-16, 1rem);
+    border-inline-start: 1px solid
+      var(--semantics-surfaces-tinted-border-color);
+  }
+}
+
+/*
+ * De teller hangt onder het zoekveld in plaats van ernaast in de stroom, zodat
+ * hij de balk niet een regel hoger maakt en niets verschuift als hij
+ * verschijnt. Zie .rr-controls hierboven voor waarom dat allebei nodig is.
+ *
+ * Geen `min-height` meer om zijn regel vrij te houden: buiten de stroom duwt
+ * hij niets meer weg, dus een lege live region mag echt leeg zijn — wat een
+ * screenreader de melding laat horen verschijnen in plaats van een lege tekst
+ * die vervangen wordt.
+ */
+.rr-roadmap .rr-zoek {
+  position: relative;
+}
+
+.rr-roadmap .rr-zoek__count {
+  position: absolute;
+  inset-block-start: 100%;
+  inset-inline-start: 0;
+  padding-block-start: var(--primitives-space-4, 0.25rem);
+  white-space: nowrap;
+}
+
+/*
+ * Het zoekveld neemt de ruimte die overblijft, tot 360px. Op een breed scherm
+ * houdt de balk honderden pixels over, en een invoerveld van die lengte leest
+ * als een veld voor een alinea in plaats van voor de één of twee woorden die
+ * mensen erin typen. De ondergrens van 220px is waar het nog een veld is en
+ * geen hokje; daaronder wikkelt de balk en krijgt het veld een eigen regel.
+ */
+.rr-roadmap .rr-controls .rr-zoek {
+  flex: 1 1 220px;
+  max-width: 360px;
+}
+
+/*
+ * De knop van een filtergroep met zijn teller ernaast. `position: relative` is
+ * wat de teller aan de knop bindt in plaats van aan de balk.
+ *
+ * De teller hangt half over de rechterbovenhoek, de plek waar het
+ * ontwerpsysteem een badge zet. Dat mag over de knoprand heen: de knop is
+ * breed genoeg dat de badge nooit over zijn tekst valt, en de hoek is waar een
+ * lezer een aantal zoekt.
+ */
+.rr-roadmap .rr-filtergroep {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.rr-roadmap .rr-filtergroep__telling {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-end: 0;
+  transform: translate(35%, -35%);
+  pointer-events: none;
+}
+
+/*
+ * De vinkjes in de popover, onder elkaar. Dit is de enige plek waar ze nog
+ * staan; buiten de popover is er geen tweede kopie.
+ */
+.rr-roadmap .rr-filter {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  gap: var(--primitives-space-8, 0.5rem);
   margin: 0;
   padding: 0;
   border: 0;
-}
-
-.rr-roadmap .rr-filter__legend {
-  padding: 0;
-  padding-inline-end: var(--primitives-space-8, 0.5rem);
 }
 
 /*
@@ -48,7 +206,7 @@
  *
  * Every option the filter offers has a rule below, "Zonder categorie"
  * included: a filter that can hide cards it offers no way to show back is
- * broken, and six of the nineteen werkpakketten have no categorie.
+ * broken, and twenty of the forty-nine werkpakketten have no categorie.
  *
  * These ids are written out because CSS cannot read FILTER_OPTIES. Add a
  * categorie to CATEGORIEEN and its checkbox renders without a rule here, so
@@ -73,6 +231,52 @@
   display: block;
 }
 
+/* --- Zoekfilter --------------------------------------------------------- */
+
+/*
+ * The zoekfilter's own hide-rule, and the one place on this page where
+ * !important is the right tool rather than a shortcut.
+ *
+ * The two filters have to compose: a card shows only when the categorie filter
+ * allows it *and* the search matches. The show-rules above are (1,3,0) — the
+ * id inside :has() is what lifts them, deliberately, so they beat the blanket
+ * hide-rule. A class selector cannot outrank that, and matching their
+ * specificity would only tie. !important is what puts this rule outside that
+ * contest altogether, which is precisely the relationship wanted: whatever the
+ * categorie filter decides, a card the search rules out stays hidden.
+ *
+ * The alternative is a script that writes element.style, and that is worse: it
+ * would beat the categorie filter too, stranding cards visible that the
+ * checkboxes had hidden.
+ */
+.rr-roadmap .rr-wp-card--geen-treffer,
+.rr-roadmap .rr-wp-card--geen-belegging {
+  display: none !important;
+}
+
+/*
+ * Het beleggingsfilter deelt de bovenstaande regel, en dat is de hele reden
+ * dat het in JavaScript zit en niet in CSS.
+ *
+ * Het categoriefilter verbergt alles en toont daarna terug met een
+ * `:has(#id)`-regel die op specificiteit wint. Een tweede groep kan die truc
+ * niet herhalen: twee groepen moeten elkaar dóórsnijden, en een tweede
+ * toon-terug-regel haalt kaarten terug die de eerste groep net verborgen had.
+ * Omdraaien naar verbergen-op-niet-match lost dat op, maar breekt dan OR
+ * binnen een groep — met 'bar' en 'pivot' allebei aangevinkt verbergt elke
+ * regel wat de andere toont en blijft er niets over.
+ *
+ * Door hier dezelfde `!important`-regel te delen als het zoekfilter staan
+ * beide buiten de specificiteitswedstrijd, en overleeft een kaart alleen als
+ * geen van de drie filters hem verbergt.
+ */
+
+/*
+ * The field's width comes from the row it sits in (.rr-controls above): it
+ * takes the leftover space next to the checkboxes. nldd-search-field stretches
+ * to fill its container by default, so it needs no width of its own here.
+ */
+
 /* --- Matrix ------------------------------------------------------------- */
 
 /* The scroll container is keyboard-reachable: without tabindex a scrollable
@@ -81,14 +285,39 @@
   overflow-x: auto;
 }
 
-/* The table lays out as one grid: `display: contents` on thead/tbody/tr lifts
-   the cells into it, so the columns line up across every row while the table
-   semantics stay intact in the accessibility tree. */
+/*
+ * The table lays out as one grid: `display: contents` on thead/tbody/tr lifts
+ * the cells into it, so the columns line up across every row while the table
+ * semantics stay intact in the accessibility tree.
+ *
+ * Three fixed tracks — the swimlane bar, the row-header, and the fases,
+ * repeated to whatever count roadmap-config.json declares (--rr-fase-count).
+ *
+ * grid-column/grid-row spans on the header cells (set inline, matching their
+ * colspan/rowspan attributes) are what makes the corner and the swimlane bar
+ * line up correctly: this grid does not rely on the browser mapping HTML
+ * colspan/rowspan to grid placement on its own.
+ */
 .rr-roadmap .rr-matrix {
   display: grid;
-  grid-template-columns: 200px repeat(var(--rr-fase-count, 5), minmax(240px, 1fr));
-  gap: var(--primitives-space-8, 0.5rem);
+  grid-template-columns:
+    36px
+    200px
+    repeat(var(--rr-fase-count, 5), minmax(240px, 1fr));
+  gap: var(--rr-matrix-gat);
   border-collapse: separate;
+  /* Boven de afhankelijkhedenlaag, zodat een pijl achter de kaarten langs gaat. */
+  position: relative;
+  z-index: 1;
+
+  /*
+   * De maten van de afhankelijkhedenweergave, hier en nergens anders. Het
+   * script leest ze met getComputedStyle, zodat de kolombreedte die het
+   * uitrekent en de opmaak die hier staat niet uit elkaar kunnen lopen.
+   */
+  --rr-kaart-breedte: 240px;
+  --rr-pijl-ruimte: 72px;
+  --rr-matrix-gat: 8px;
 }
 
 .rr-roadmap .rr-matrix thead,
@@ -111,16 +340,41 @@
   border: 0;
 }
 
+/*
+ * Same technique as .rr-matrix__caption, generalised: content stays in the
+ * accessibility tree (an assistive technology still reads it) but is not
+ * painted. Used on a swimlane bar's label when it would otherwise repeat,
+ * word for word, the row-header sitting right next to it — see the
+ * `bar.zichtbaar` comment in index.astro.
+ */
+.rr-roadmap .rr-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 .rr-roadmap .rr-matrix__corner {
   min-height: 1px;
   padding: 0;
   border: 0;
 }
 
-/* Only the surface, the corner and the alignment: the text inside is
-   nldd-text and its spacing is nldd-container, so no font or colour here. */
+/*
+ * Only the surface, the corner and the alignment: the text inside is
+ * nldd-text and its spacing is nldd-container, so no font or colour here.
+ * `align-items: center` keeps every header's content vertically centred, so
+ * a fase with an ondertitel (three lines) and one without (two) still line
+ * up on the same baseline instead of one sitting stuck to the top.
+ */
 .rr-roadmap .rr-matrix__header {
   display: flex;
+  align-items: center;
   padding: var(--primitives-space-12, 0.75rem);
   border-radius: var(--semantics-surfaces-corner-radius, 8px);
   background: var(--semantics-surfaces-tinted-background-color);
@@ -132,9 +386,31 @@
   justify-content: center;
 }
 
+/*
+ * A hairline between every fase column, so each reads as a distinct slice of
+ * time without needing its own boxed column.
+ */
+.rr-roadmap .rr-matrix__cell--kolom-start {
+  border-inline-start: 1px solid var(--semantics-surfaces-tinted-border-color);
+}
+
 /* The discipline label sits centred against the tall row of cards beside it. */
 .rr-roadmap .rr-matrix__header--discipline {
   align-items: center;
+}
+
+/*
+ * The swimlane bar: a narrow column of its own, one cell per swimlane
+ * spanning down over all of its rows (rowspan, set inline in the template),
+ * with the name rotated to read top-to-bottom. This is the literal
+ * "swimlane" picture — a lane running the height of its group — and it costs
+ * a dedicated column rather than sharing space with the row-header.
+ */
+.rr-roadmap .rr-matrix__header--swimlanebalk {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  justify-content: center;
+  padding-inline: var(--primitives-space-4, 0.25rem);
 }
 
 .rr-roadmap .rr-matrix__cell {
@@ -152,4 +428,168 @@
 
 .rr-roadmap .rr-wp-card {
   display: block;
+}
+
+/* --- Afhankelijkheden --------------------------------------------------- */
+
+/*
+ * De afhankelijkhedenweergave, achter de schakelaar "Afhankelijkheden". Uit is
+ * de standaard: de matrix is eerst een beeld van wat er te doen is, en dit is
+ * een tweede lezing die een flink bredere kolom kost.
+ *
+ * Alles hieronder wat alleen aan gezet geldt, hangt aan
+ * `:has(#rr-afhankelijkheden[selected])`, zodat de matrix uit precies is wat
+ * hij zonder deze regels ook zou zijn.
+ *
+ * Waar een kaart komt te staan bepaalt het script in index.astro, in de
+ * browser, over de kaarten die de twee filters op dat moment laten staan. Het
+ * ontwerpsysteem heeft geen component voor een verband tussen twee kaarten,
+ * dus de laag zelf is met de hand geschreven: een raster per cel, een SVG over
+ * de tabel, en de lijnstijl.
+ */
+
+.rr-roadmap .rr-matrix-canvas {
+  position: relative;
+}
+
+/*
+ * De cellen: uit een stapel, aan een raster op twee assen. De kolommen staan
+ * een hele kaartbreedte plus de pijlruimte uit elkaar, zodat een kaart nooit
+ * over de kaart valt waar hij op wacht.
+ */
+.rr-roadmap .rr-cel-raster {
+  display: flex;
+  flex-direction: column;
+  gap: var(--primitives-space-8, 0.5rem);
+  width: 100%;
+}
+
+.rr-roadmap:has(#rr-afhankelijkheden[selected]) .rr-cel-raster {
+  display: grid;
+  grid-auto-columns: var(--rr-kaart-breedte);
+  grid-auto-flow: row;
+  column-gap: var(--rr-pijl-ruimte);
+  row-gap: var(--primitives-space-8, 0.5rem);
+  align-items: start;
+  justify-content: start;
+  width: auto;
+}
+
+/*
+ * De SVG ligt onder de kaarten, zodat een pijl er nooit overheen loopt, en
+ * vangt geen muis, zodat hij nooit een klik inslikt die voor de kaart eronder
+ * bedoeld was. Uit staat hij er wel, maar leeg.
+ *
+ * Wél boven de randen van de cellen: de haarlijn tussen twee fasekolommen is
+ * een border op de cel, en die tekent over alles wat eronder ligt. Een pijl
+ * die zo'n kolomgrens oversteekt — en dat doet elke pijl tussen twee fases —
+ * werd daar doorgesneden. Vandaar een eigen laag tussen de celranden en de
+ * kaarten in, in plaats van de gedeelde laag 0.
+ */
+.rr-roadmap .rr-afhankelijk {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  z-index: 1;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.rr-roadmap:not(:has(#rr-afhankelijkheden[selected])) .rr-afhankelijk {
+  display: none;
+}
+
+/*
+ * De kolommen die het script uitrekent (--rr-fase-kolommen), elk zo breed als
+ * de diepste keten die er op dat moment in staat. Zonder script of met de
+ * weergave uit geldt de regel in het matrixblok hierboven.
+ */
+.rr-roadmap:has(#rr-afhankelijkheden[selected]) .rr-matrix {
+  grid-template-columns: 36px 200px var(--rr-fase-kolommen);
+}
+
+/*
+ * De cel draagt de rest van de pijlruimte als inline padding: twee daarvan
+ * plus het gat van het grid maken samen één pijlruimte over een kolomgrens,
+ * dezelfde afstand die twee kaarten binnen een cel hebben.
+ *
+ * En de cel laat de pijlen door. Zijn achtergrond is even dekkend als die van
+ * een kaart, maar hij dekt de hele cel af: de SVG ligt eronder, dus zonder
+ * deze regel verdwijnt elke pijl die over cel-ruimte loopt, en blijft alleen
+ * het stukje over dat toevallig tussen twee fasekolommen valt. De kaart zelf
+ * houdt zijn achtergrond (zie hieronder) — die mág dekken, de ruimte ernaast
+ * is juist waar de pijlen doorheen moeten.
+ */
+.rr-roadmap:has(#rr-afhankelijkheden[selected]) .rr-matrix__cell {
+  padding-inline: calc(
+    (var(--rr-pijl-ruimte) - var(--rr-matrix-gat)) / 2
+  );
+  background: transparent;
+}
+
+/*
+ * Ondoorzichtig met opzet: de pijlen lopen achter de kaarten langs, en door
+ * een doorschijnende kaart zou een lijn dwars over de titel lopen.
+ *
+ * De z-index hoort bij die achtergrond: de SVG ligt een laag hoger dan de
+ * celranden (zie .rr-afhankelijk), dus zonder eigen laag zou hij ook boven de
+ * kaarten uitkomen en was de dekkende achtergrond voor niets.
+ */
+.rr-roadmap .rr-wp-card {
+  position: relative;
+  z-index: 2;
+  background: var(--semantics-surfaces-base-background-color);
+  border-radius: var(--semantics-surfaces-corner-radius, 8px);
+}
+
+.rr-roadmap .rr-afhankelijk__lijn {
+  fill: none;
+  stroke: var(--semantics-content-accent-color, var(--semantics-content-secondary-color));
+  stroke-width: 2;
+  opacity: 0.85;
+  transition: opacity 120ms ease-out;
+}
+
+.rr-roadmap .rr-afhankelijk marker polygon {
+  fill: var(--semantics-content-accent-color, var(--semantics-content-secondary-color));
+}
+
+/*
+ * Eén keten tegelijk. Wat niet in de keten zit valt terug, kaarten zowel als
+ * pijlen, zodat wat blijft staan de volgorde van werk rond die kaart is.
+ *
+ * Dat gaat met opacity en niet met een donkerder kleur: de site volgt het
+ * thema van de lezer, en een waarde die op een donkere ondergrond terugvalt
+ * springt op een lichte juist naar voren.
+ */
+.rr-roadmap .rr-matrix-canvas--accent .rr-afhankelijk__lijn {
+  opacity: 0.12;
+}
+
+/*
+ * De canvas-klasse hoort in deze selector en niet alleen `--actief`: zonder
+ * hem telt de regel twee klassen tegen de drie van de dim-regel hierboven,
+ * verliest hij, en vervaagt juist de keten die je aanwijst.
+ */
+.rr-roadmap .rr-matrix-canvas--accent .rr-afhankelijk__lijn--actief {
+  opacity: 1;
+  stroke-width: 3;
+}
+
+.rr-roadmap .rr-matrix-canvas--accent .rr-wp-card {
+  opacity: 0.3;
+  transition: opacity 120ms ease-out;
+}
+
+.rr-roadmap .rr-matrix-canvas--accent .rr-wp-card--in-keten {
+  opacity: 1;
+}
+
+/* Een lijn die beweegt terwijl iemand de pagina leest is erger dan geen
+   animatie, voor wie daar juist om vroeg. */
+@media (prefers-reduced-motion: reduce) {
+  .rr-roadmap .rr-afhankelijk__lijn,
+  .rr-roadmap .rr-matrix-canvas--accent .rr-wp-card {
+    transition: none;
+  }
 }

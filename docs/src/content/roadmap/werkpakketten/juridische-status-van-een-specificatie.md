@@ -1,0 +1,121 @@
+---
+id: juridische-status-van-een-specificatie
+titel: Juridische status van een specificatie
+faseId: wat
+disciplineId: recht
+prioriteit: hoog
+omvang: ''
+categorie: bar
+capability: basis
+capaciteit: juridisch specialist / PhD
+toelichting: >-
+  **Waarom dit werkpakket**\
+
+  Zolang de juridische status van interpretatieve keuzes in de specificatie
+  onbepaald blijft, ontstaan drie risico's die zich niet in het onderzoek maar
+  in de uitvoeringspraktijk manifesteren.
+
+
+  Ten eerste ontbreekt een aangewezen correctieroute wanneer een keuze
+  naderhand onjuist blijkt. Bij de WIA-uitkeringen constateerde de Algemene
+  Rekenkamer dat wettelijke regels onjuist waren geïmplementeerd in de gebruikte
+  ICT-toepassingen en dat een systeem niet was aangepast aan wetswijzigingen;
+  structurele samenwerking tussen uitvoeringsmedewerkers, juristen en
+  IT-professionals en een proces voor validatie van gemaakte keuzes bleken geen
+  zichtbaar onderdeel van het kwaliteitsmanagementsysteem (Lokin, _Digitaal
+  disciplineren anno 2026_, § 3).
+
+
+  Ten tweede is het niet waarschijnlijk dat juridische afdelingen van potentiële
+  deelnemende organisaties instemmen met het uitbesteden van hun
+  uitvoeringslogica aan een gedeelde specificatie zolang onduidelijk is wie
+  verantwoordelijk is wanneer die specificatie een fout bevat. De vraag is
+  daarmee ook een adoptievoorwaarde.
+
+
+  Ten derde bestaat het risico dat de aanpak het aantal interpretatieve keuzes
+  wel verkleint, maar de resterende keuzes concentreert in één specificatie
+  zonder dat daar een juridisch kanaal tegenover staat dat publicatie en
+  toetsing waarborgt. Het probleem van onzichtbare interpretatie verplaatst zich
+  dan van veel systemen naar één, in plaats van dat het wordt opgelost.
+
+
+  Het wetsvoorstel versterking waarborgfunctie Awb, waarin een specifieke
+  beleidsregelplicht voor digitale uitvoering een plek zou kunnen krijgen, ligt
+  op dit moment nog open (Lokin, _Digitaal disciplineren anno 2026_, § 5.3.1).
+  De uitkomst van dit werkpakket kan als input dienen voor die lopende
+  wetgevingsprocedure.
+
+
+  **De specificatie**\
+
+  De specificatie lijkt op onderdelen op een beleidsregel maar wijkt daar ook op
+  wezenlijke punten vanaf. Met name omdat het uitvoerbaar, samenstelbaar en via
+  attestatie aan uitvoering gebonden is. (section 4.2, _Rules as Executed_, 12
+  July 2026)
+
+
+  **De juridische kwalificatie en rechtmatigheid van keuzes**\
+
+  Het gaat hier om het onderscheid tussen een toelaatbare interpretatie, een
+  beleidsregel (Art. 4:81 Awb) of een algemeen verbindend voorschrift dat een
+  wettelijke basis vereist. Daarnaast wordt gevraagd of transparantie/publicatie
+  aan het licht zal brengen dat huidige digitale systemen mogelijk zonder juiste
+  wettelijke grondslag opereren.
+
+
+
+  **Institutionele borging van interpretatie**\
+
+  Omdat het omzetten van een wet naar code een interpretatieve handeling is (en
+  geen puur technische), wordt gevraagd welk proces (wie ontwerpt, wie
+  controleert, wie keurt goed) nodig is om dit legitiem te maken en hoe dit zich
+  verhoudt tot de bestaande toetsing door de Raad van State.
+
+
+
+  **De formele publicatie en rechtsgevolgen (Bekendmakingswet)**\
+
+  Dit richt zich op de praktische en constitutionele kant: waar wordt dit
+  gepubliceerd, wat is de status van deze code ten opzichte van de wettekst, en
+  wat zijn de rechtsgevolgen van besluiten die zijn genomen op basis van code
+  die wel is uitgevoerd, maar nooit officieel is gepubliceerd?
+volgorde: 1000
+onderzoeksvragen:
+  - vraag: Wat voor juridisch instrument is de specificatie?
+    paper: sec:legalstatus
+  - vraag: Is het een beleidsregel of een nieuwe vorm?
+    paper: sec:legalstatus
+  - vraag: 'Welke bezwaar-, amendement en intrekkingsprocedure hoort er bij?'
+    paper: sec:agenda-legal
+  - vraag: >-
+      Welke juridische status hebben de concrete keuzes die in code worden
+      vastgelegd?
+    paper: sec:agenda-legal
+  - vraag: >-
+      Hoe kunnen we garanderen dat de vertaling van wet naar software-specificatie
+      een verdedigbare juridische interpretatie is?
+    paper: sec:whochooses
+  - vraag: >-
+      Wat betekent het juridisch om een 'uitvoerbare specificatie' officieel te
+      publiceren?
+    paper: sec:agenda-legal
+  - vraag: >-
+      Welke juridische status en certificering moeten digitale bewijzen
+      ('attestations') hebben om over organisatiegrenzen heen betrouwbaar te zijn,
+      en moet deze erkenning wettelijk worden verankerd om de uitwisseling van
+      gegevens (bijv. onder de AVG) rechtmatig te maken?
+    paper: sec:crossorg
+  - vraag: >-
+      Wat gebeurt er als achteraf blijkt dat een gepubliceerde regel foutief was
+      gecodeerd: prevaleert dan de rechtszekerheid (formele rechtskracht) of is er
+      een plicht tot rechtsherstel voor de benadeelde burger?
+    paper: sec:cannotbuildback
+onderzoek: loopt
+bouw: ''
+rfcs: []
+samenhangIds:
+  - specificaties-i-documentatie-op-orde
+  - vaststelling-van-specificaties
+  - controle-en-herstel
+---

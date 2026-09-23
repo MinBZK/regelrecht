@@ -24,7 +24,7 @@ A trace is a tree of nodes. Each node has a type (what kind of step it was), a n
 | `HookResolution` | A hook firing on another article's output (RFC-007) |
 | `OverrideResolution` | A value replaced by lex specialis (RFC-007) |
 
-A `Resolve` node also records a **resolve type** saying where the value came from: `Parameter` (caller input), `Definition` (an article constant), `Output` (a value computed earlier), `DataSource` (an external register), `ResolvedInput` (a cached cross-law result), `OpenTerm`, `Hook`, `Override`, `Context` (the `referencedate`), `Local` (a loop variable), `Input`, or `Uri`. The resolve type is the difference between "this number is a hard-coded constant in the law" and "this number came from the Tax Authority". The full set is defined in `PathNodeType` and `ResolveType` in `packages/engine/src/types.rs`.
+A `Resolve` node also records a **resolve type** saying where the value came from: `Parameter` (caller input), `Definition` (an article constant), `Output` (a value computed earlier), `DataSource` (an external register), `ResolvedInput` (a cached cross-law result), `OpenTerm`, `OpenTermSilent` (the delegating law's own default, taken because the implementing regulation returned null for this case, see [RFC-036](/rfcs/rfc-036)), `Hook`, `Override`, `Context` (the `referencedate`), `Local` (a loop variable), `Input`, or `Uri`. The resolve type is the difference between "this number is a hard-coded constant in the law" and "this number came from the Tax Authority". The full set is defined in `PathNodeType` and `ResolveType` in `packages/engine/src/types.rs`.
 
 ## How to read the tree
 

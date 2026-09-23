@@ -26,8 +26,11 @@ import { rfcTargets, type RfcTarget } from './rfcs.ts'
  *   - a bare self-reference (an RFC linking to its own page top is noise) —
  *     but a self-reference WITH a §section becomes an in-page anchor jump.
  *
- * Runs on RFC pages only (keyed off the source path under content/rfcs); a
- * stray "RFC-008" elsewhere in the docs is left alone.
+ * Runs on every page. The source path only decides what counts as a *self*
+ * reference: on an RFC page that is its own number, elsewhere there is none, so
+ * every reference links. It used to bail out entirely off the RFC pages, which
+ * left "RFC-022 leunt op RFC-008, RFC-009 en RFC-013" in a roadmap toelichting
+ * as four pieces of dead text.
  */
 
 // "RFC-008" or "RFC-8" (zero-padding optional), optionally followed by a
@@ -127,10 +130,13 @@ function anchor(
 }
 
 export function rehypeRfcLinks() {
-  return (tree: Root, file: VFile) => {
+  return (tree: Root, file?: VFile) => {
+    // null off the RFC pages: there is no self-reference there, so every
+    // reference links. Not a reason to skip the page — see the header.
+    //
+    // `file` is optional because roadmap-markdown.ts renders frontmatter
+    // fields through its own unified stack, without a VFile to hand it.
     const selfNum = currentRfcNum(file)
-    // Only RFC source files carry RFC cross-references worth auto-linking.
-    if (selfNum === null) return
     const targets = rfcTargets()
 
     const walk = (parent: { children?: ElementContent[] }) => {

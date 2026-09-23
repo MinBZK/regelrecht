@@ -58,6 +58,17 @@ function extractFragment(entry, match, step) {
         headers: step.dataTable?.[0] || [],
         rows: step.dataTable?.slice(1) || [],
       };
+    case 'set_data_source_for_law':
+      // Same shape plus the law the source is bound to; the builder shows it
+      // as a data source and writes the scoped step back out.
+      return {
+        type: 'dataSource',
+        sourceName: match[1],
+        keyField: match[2],
+        lawId: match[3],
+        headers: step.dataTable?.[0] || [],
+        rows: step.dataTable?.slice(1) || [],
+      };
     case 'evaluate':
       return { type: 'execution', outputName: match[1], lawId: match[2] };
     case 'assert_succeeds':
@@ -79,6 +90,11 @@ function extractFragment(entry, match, step) {
         : { type: 'assertion', assertionType: 'equalsString', outputName: match[1], value: match[2] };
     case 'assert_null':
       return { type: 'assertion', assertionType: 'null', outputName: match[1] };
+    // Unknown (RFC-036): the second form names the fact that must be missing.
+    case 'assert_unknown':
+      return { type: 'assertion', assertionType: 'unknown', outputName: match[1] };
+    case 'assert_unknown_for':
+      return { type: 'assertion', assertionType: 'unknownFor', outputName: match[1], value: match[2] };
     case 'assert_contains':
       return { type: 'assertion', assertionType: 'contains', outputName: match[1], value: match[2] };
     default:
@@ -91,25 +107,30 @@ function extractFragment(entry, match, step) {
 function tableToParams(dataTable) {
   if (!dataTable) return [];
   return dataTable
-    .filter((row) => row.length >= 2)
+    // An empty value cell is a parameter that is not passed (RFC-036), the
+    // same as in the runners: it does not become a form value at all.
+    .filter((row) => row.length >= 2 && row[1].trim() !== '')
     .map((row) => ({
       name: row[0].trim(),
-      value: tableCellValue(row[1] || ''),
+      value: tableCellValue(row[1]),
     }));
 }
 
 // A `Given parameter "x" is the collection:` table has a header row and one
-// row per element (mirror of Rust `rows_to_records`): every element becomes
-// an object keyed by the column names, cells typed by content. Lenient on a
-// short row - a missing cell reads as null - so one ragged row does not
-// take the whole feature down in the editor.
+// row per element (mirror of Rust `rows_to_records` and the runner's
+// `tableToRecords`): every element becomes an object keyed by the column
+// names, cells typed by content. An empty cell leaves the key out of the
+// record (RFC-036: no value stated), the literal `null` is an absence the
+// author stated. Lenient on a short row - a missing cell counts as empty -
+// so one ragged row does not take the whole feature down in the editor.
 function tableToCollection(dataTable) {
   if (!dataTable || dataTable.length === 0) return { columns: [], records: [] };
   const columns = dataTable[0].map((h) => h.trim());
   const records = dataTable.slice(1).map((row) => {
     const record = {};
     columns.forEach((h, i) => {
-      record[h] = i < row.length ? tableCellValue(row[i]) : null;
+      if (i >= row.length || row[i].trim() === '') return;
+      record[h] = tableCellValue(row[i]);
     });
     return record;
   });
@@ -122,12 +143,15 @@ export function isCollectionValue(value) {
 }
 
 /**
- * Type one cell of a collection as edited in the form: an empty or absent
- * cell is null (what formatCell writes and the runner reads back), a string
- * is typed by content, anything else is already typed.
+ * Type one cell of a collection as edited in the form. A blank or absent
+ * cell is `undefined`: the record gets no such key, formatCell writes an
+ * empty cell and the runner reads that back as "no value" (RFC-036). A
+ * `null` (or the text `null`) is an absence the author stated and stays
+ * null. Any other string is typed by content; anything else is already typed.
  */
 export function collectionCell(v) {
-  if (v === undefined || v === null || v === '') return null;
+  if (v === undefined || v === '') return undefined;
+  if (v === null) return null;
   return typeof v === 'string' ? tableCellValue(v) : v;
 }
 
@@ -188,6 +212,7 @@ function classifySteps(steps) {
         setup.dataSources.push({
           sourceName: classified.sourceName,
           keyField: classified.keyField,
+          ...(classified.lawId ? { lawId: classified.lawId } : {}),
           headers: classified.headers,
           rows: classified.rows,
         });
@@ -302,7 +327,8 @@ export function formCollectionToState(coll) {
   const records = (coll.rows || []).map((row) => {
     const record = {};
     for (const c of columns) {
-      record[c] = collectionCell(row[c]);
+      const v = collectionCell(row[c]);
+      if (v !== undefined) record[c] = v;
     }
     return record;
   });
@@ -327,7 +353,7 @@ function parameterValuesEqual(a, b) {
 /** Deep equality check for two state-format data sources. */
 function dataSourcesEqual(a, b) {
   if (!a || !b) return false;
-  if (a.sourceName !== b.sourceName || a.keyField !== b.keyField) return false;
+  if (a.sourceName !== b.sourceName || a.keyField !== b.keyField || (a.lawId ?? null) !== (b.lawId ?? null)) return false;
   if ((a.headers || []).length !== (b.headers || []).length) return false;
   for (let i = 0; i < a.headers.length; i++) {
     if (a.headers[i] !== b.headers[i]) return false;
@@ -388,7 +414,24 @@ export function syncEditedValues(formState, scenarioIndex, values) {
     }
   };
 
+  // A field left blank is a parameter that is not filled in, not a value
+  // (RFC-036): the scenario must not say `parameter "x" is ""`. A scenario-
+  // level entry for it is dropped; a background value stands, because a
+  // scenario has no step that un-passes a parameter its background passes.
+  // The live run (ScenarioForm) drops blanks the same way.
+  const isBlank = (v) => v === undefined || v === null || v === '';
+  const dropParameter = (name) => {
+    if (!scenarioParamMap.has(name)) return;
+    scenario.setup.parameters = scenario.setup.parameters.filter((p) => p.name !== name);
+    scenarioParamMap.clear();
+    scenario.setup.parameters.forEach((p, i) => scenarioParamMap.set(p.name, i));
+  };
+
   for (const [name, rawValue] of Object.entries(parameterValues)) {
+    if (isBlank(rawValue)) {
+      dropParameter(name);
+      continue;
+    }
     // Same rule as reading a step: the content decides. An input control hands
     // back a raw string, and leaving it at that would write `is "50000"` where
     // the scenario said `is 50000`.
@@ -458,8 +501,12 @@ export function syncEditedValues(formState, scenarioIndex, values) {
 
 // --- Reverse: Form State → Gherkin text ---
 
+// A blank cell stays blank ("no value stated", RFC-036); only a `null` the
+// author stated is written as the word. Data-source rows carry the cell text
+// as read, so the word `null` in one of them passes through String() intact.
 function formatCell(value) {
-  if (value === null || value === undefined || value === '') return 'null';
+  if (value === undefined || value === '') return '';
+  if (value === null) return 'null';
   return String(value).replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
 }
 
@@ -528,6 +575,9 @@ function writeSetupSteps(lines, setup, indent) {
   }
 
   for (const param of setup.parameters || []) {
+    // A parameter without a value is not passed; there is no step for that
+    // (RFC-036), and `parameter "x" is ""` would pass an absence instead.
+    if (param.value === undefined || param.value === '') continue;
     if (isCollectionValue(param.value)) {
       lines.push(`${indent}${KW.set_parameter_collection} ${TPL.set_parameter_collection([param.name])}`);
       const columns = collectionColumns(param);
@@ -545,7 +595,11 @@ function writeSetupSteps(lines, setup, indent) {
 
   for (const ds of setup.dataSources || []) {
     if (ds.headers.length === 0) continue;
-    lines.push(`${indent}${KW.set_data_source} ${TPL.set_data_source([ds.sourceName, ds.keyField])}`);
+    lines.push(
+      ds.lawId
+        ? `${indent}${KW.set_data_source_for_law} ${TPL.set_data_source_for_law([ds.sourceName, ds.keyField, ds.lawId])}`
+        : `${indent}${KW.set_data_source} ${TPL.set_data_source([ds.sourceName, ds.keyField])}`,
+    );
 
     // Header
     lines.push(`${indent}  | ${ds.headers.join(' | ')} |`);
@@ -596,6 +650,10 @@ function formatAssertion(assertion) {
       return ['assert_equals_string', TPL.assert_equals_string([assertion.outputName, assertion.value])];
     case 'null':
       return ['assert_null', TPL.assert_null([assertion.outputName])];
+    case 'unknown':
+      return ['assert_unknown', TPL.assert_unknown([assertion.outputName])];
+    case 'unknownFor':
+      return ['assert_unknown_for', TPL.assert_unknown_for([assertion.outputName, assertion.value])];
     case 'contains':
       return ['assert_contains', TPL.assert_contains([assertion.outputName, assertion.value])];
     default:
