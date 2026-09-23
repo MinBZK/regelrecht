@@ -68,6 +68,19 @@ const overlays = ref(null);
 const handelingenYaml = ref(null);
 
 /**
+ * Wat de bezoeker had ingesteld voordat hij wegliep: de gekozen modus, de
+ * tekst die klaarstond, en het optimalisatiepad met het aangeklikte punt.
+ *
+ * Hoort bij het gesprek en niet bij het paneel. Stond dit in het paneel, dan
+ * viel het bij een routewissel terug op de standaard: je had een doel gesteld
+ * en kwam terug op 'vraag'.
+ */
+const modus = ref('vraag');
+const prompt = ref('');
+const pad = ref([]);
+const gekozenPunt = ref(null);
+
+/**
  * Meldingen voor wie niet op de beleidspagina staat. Elk item is
  * `{ id, soort, tekst }`; de app haalt ze weg zodra ze gezien zijn.
  */
@@ -272,6 +285,10 @@ export function useAssistent() {
     openVraag,
     overlays,
     handelingenYaml,
+    modus,
+    prompt,
+    pad,
+    gekozenPunt,
     meldingen,
     meld,
     wisMelding,

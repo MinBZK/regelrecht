@@ -198,7 +198,7 @@
 </template>
 
 <script setup>
-import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
+import { watch, ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
 import { useAssistent } from '../../composables/useAssistent.js';
 import { useHandelingen } from '../../composables/useHandelingen.js';
 import { useLawStore } from '../../engine/lawStore.js';
@@ -216,7 +216,8 @@ const {
   streaming, run, hervat, stuur, antwoord, abort,
   // Gedeelde state: leeft buiten dit paneel, zodat een routewissel het gesprek
   // niet wist. Zie de kop van useAssistent.
-  gesprekId, feed, voortgang, afronding, openVraag, overlays, handelingenYaml,
+  gesprekId, feed, voortgang, afronding, openVraag, overlays,
+  modus, prompt, pad, gekozenPunt, handelingenYaml,
   meld, vraagNotificatieToestemming,
 } = useAssistent();
 
@@ -289,10 +290,6 @@ async function peilHealth() {
   return health.value;
 }
 
-const modus = ref('vraag');
-const prompt = ref('');
-const pad = ref([]); // [{iteratie, waarden, …}] voor de doel-modus
-const gekozenPunt = ref(null); // index in `pad`, of null
 // De bewerkte handelingen.yaml, als de assistent het uitvoeringslastmodel
 // raakte. Apart van de overlays: dat zijn wetten, dit is het kostenmodel.
 // Is er een resultaat binnen? Onderscheidt "nog niets gedraaid" van "gedraaid
@@ -355,6 +352,9 @@ const modusUitleg = computed(() => ({
 
 onMounted(() => {
   peilHealth();
+  // Het gesprek van voor de routewissel staat er al; zet het meteen onderaan,
+  // want daar staat het laatste bericht.
+  scrollNaarBeneden();
   // Loopt er nog een gesprek van voor de routewissel? Haak er weer op aan; de
   // backend stuurt eerst wat er gemist is en gaat daarna live verder.
   if (gesprekId.value && !streaming.value) {
@@ -363,7 +363,22 @@ onMounted(() => {
     });
   }
 });
+
+// Staat het paneel dicht, dan heeft de feed geen hoogte en doet scrollen
+// niets. Zodra hij er is (het paneel klapt open), alsnog naar beneden.
+watch(feedEl, (el) => {
+  if (el) scrollNaarBeneden();
+});
+
+// En als het browsertabblad weer de aandacht krijgt. Een verborgen tabblad
+// krijgt zijn berichten wel binnen, maar het scrollen erbij landt op een
+// pagina die niemand ziet; sommige browsers rekenen er dan ook niet goed mee.
+function opZichtbaar() {
+  if (document.visibilityState === 'visible') scrollNaarBeneden();
+}
+document.addEventListener('visibilitychange', opZichtbaar);
 onUnmounted(() => {
+  document.removeEventListener('visibilitychange', opZichtbaar);
   if (healthTimer) clearInterval(healthTimer);
 });
 
@@ -627,9 +642,20 @@ function verwerkEvent(ev) {
     } else {
       feed.value.push(ev);
     }
-    nextTick(() => {
-      if (feedEl.value) feedEl.value.scrollTop = feedEl.value.scrollHeight;
-    });
+    scrollNaarBeneden();
+}
+
+/**
+ * Houd het gesprek onderaan, waar het laatste bericht staat.
+ *
+ * Gebeurt bij elk bericht, en ook bij het openen van het paneel: kom je terug
+ * van een andere pagina, dan is de feed al gevuld en staat hij anders bovenaan
+ * te wachten terwijl het antwoord onderaan staat.
+ */
+function scrollNaarBeneden() {
+  nextTick(() => {
+    if (feedEl.value) feedEl.value.scrollTop = feedEl.value.scrollHeight;
+  });
 }
 /**
  * De stream is dicht. Dat hoeft niet te betekenen dat het gesprek voorbij is:
