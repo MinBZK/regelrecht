@@ -44,6 +44,9 @@ pub struct Evaluatie {
     pub waarden: BTreeMap<String, Value>,
     /// Wat de engine miste, zonder dubbelen, in de volgorde van de uitkomsten.
     pub mist: Vec<String>,
+    /// Wat de engine miste, per uitkomst zonder waarde. Brak de run af op een
+    /// ontbrekend feit, dan mist elke gevraagde uitkomst dat feit.
+    pub mist_per: BTreeMap<String, Vec<String>>,
     /// Waarom een uitkomst geen waarde kreeg, als de engine dat niet als
     /// ontbrekend feit noemde.
     pub fout: Option<String>,
@@ -57,6 +60,11 @@ impl Evaluatie {
         self.fout.is_none()
             && self.mist.is_empty()
             && uitkomsten.iter().all(|u| self.waarden.contains_key(*u))
+    }
+
+    /// Wat `uitkomst` miste; leeg als ze niets miste.
+    pub fn mist_van(&self, uitkomst: &str) -> &[String] {
+        self.mist_per.get(uitkomst).map_or(&[], Vec::as_slice)
     }
 
     /// Waarom niet volledig, in woorden; `voorvoegsel` is bijvoorbeeld "niet
@@ -121,7 +129,11 @@ fn evalueer_als(
             for u in uitkomsten {
                 match resultaat.outputs.get(*u) {
                     Some(w) if w.contains_unknown() => {
+                        let eigen = uit.mist_per.entry((*u).to_string()).or_default();
                         for f in w.missing_facts() {
+                            if !eigen.contains(&f.name) {
+                                eigen.push(f.name.clone());
+                            }
                             if !uit.mist.contains(&f.name) {
                                 uit.mist.push(f.name.clone());
                             }
@@ -142,7 +154,12 @@ fn evalueer_als(
         Err(e) => {
             let (mist, reden) = verklaar(&e);
             match mist {
-                Some(m) => uit.mist.push(m),
+                Some(m) => {
+                    for u in uitkomsten {
+                        uit.mist_per.insert((*u).to_string(), vec![m.clone()]);
+                    }
+                    uit.mist.push(m);
+                }
                 None => uit.fout = Some(reden),
             }
         }
