@@ -40,6 +40,12 @@ function termijnTekst(m) {
   return vandaag.value && m.termijn < vandaag.value ? `${m.termijn} (verstreken)` : m.termijn;
 }
 
+function grond(m) {
+  if (m.reden) return m.reden;
+  if (m.oordeel === 'mogelijk' && m.mist?.length) return `Hangt af van uw aanvraag: ${m.mist.join(', ')}`;
+  return `${m.regeling}: ${m.uitkomst}`;
+}
+
 function kop(m) {
   if (m.oordeel === 'mogelijk') return `Subsidiejaar ${m.subsidiejaar}: u kunt aanvragen`;
   if (m.oordeel === 'uitgesloten') return `Subsidiejaar ${m.subsidiejaar}: geen aanvraag mogelijk`;
@@ -76,13 +82,13 @@ function kop(m) {
       <nldd-table-row>
         <nldd-text-cell text="Kunt u deze aanvraag doen?"></nldd-text-cell>
         <nldd-text-cell :text="antwoord(m)"></nldd-text-cell>
-        <nldd-text-cell :text="m.reden ?? `${m.regeling}: ${m.uitkomst}`"></nldd-text-cell>
+        <nldd-text-cell :text="grond(m)"></nldd-text-cell>
         <nldd-cell>
           <TraceKnop v-if="m.trace_text" :trace-text="m.trace_text" :titel="`Aanbod ${m.subsidiejaar}`" />
         </nldd-cell>
       </nldd-table-row>
       <nldd-table-row>
-        <nldd-text-cell text="Uiterste indieningsdatum"></nldd-text-cell>
+        <nldd-text-cell text="Indienen vóór"></nldd-text-cell>
         <nldd-text-cell :text="termijnTekst(m)"></nldd-text-cell>
         <nldd-text-cell :text="`${m.regeling}`"></nldd-text-cell>
         <nldd-text-cell text=""></nldd-text-cell>
