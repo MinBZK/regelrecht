@@ -496,6 +496,7 @@ juridische context per regeling.)
 | `docs/financieel-cv/modellering-fixes-plan.md`                                    | Vijf modellering-fouten met fix en validatiecommando |
 | `docs/financieel-cv/wetgevingsfouten-analyse.md`                                  | Vier kandidaat-wetgevings-fouten, beslispunten B12-B15 |
 | `docs/financieel-cv/ankers-naar-wetten-overheid.md`                               | Corpusbrede harvester-bevinding: de ankers in `url` bestaan niet op de doelpagina |
+| `docs/financieel-cv/diepte-van-een-variabele.md`                                  | Hoe diep een variabele gaat, uitgewerkt op de chapeau-uitsluiting van Wfsv 38b |
 | `docs/financieel-cv/presentatie-juristsessie.html`                                | Slidedeck voor de validerende juristsessie van 24 september |
 | `docs/financieel-cv/pyyaml-valkuil.md`                                            | Waarom je dit corpus niet met PyYAML analyseert         |
 | `docs/financieel-cv/szw/ruwe-feedback.md`                                         | Onbewerkte juristfeedback, letterlijk, per ronde        |

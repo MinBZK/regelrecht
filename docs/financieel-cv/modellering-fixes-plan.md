@@ -35,10 +35,10 @@ het Reintegratiebesluit · **Bron**: de vier-weg-classificatie in
 
 | Fix | Wet/artikel | Wat | Validatie na fix |
 |---|---|---|---|
-| F1 | Wfsv 38b | Omschrijving van `datum_opname_doelgroepregister` ontdoen van de driejaarstermijn | `just validate` |
-| F2 | Wfsv 38b | `is_uitgesloten_beschut_werk_pwet_10b` vervangen door een `input` met `source.regulation: participatiewet`, output `verricht_arbeid_in_beschut_werk` | `just validate` + `just bdd` op de Wfsv-scenarios |
+| F1 | Wfsv 38b | **Gedaan 23 september.** Omschrijving noemt nu wat Wtl 2.12 wel zegt | `script/validate.sh` 8/8 OK |
+| F2 | Wfsv 38b | **Gedaan 23 september.** De parameter is vervangen door een `input` met `source.regulation: participatiewet`, output `is_uitsluitend_aangewezen_op_beschut_werk`. De drie parameters van Pwet 10b worden doorgegeven, dus de lijst van 38b gaat van 15 naar 17. Zie [`diepte-van-een-variabele.md`](diepte-van-een-variabele.md) | `script/validate.sh` 8/8 OK; BDD nog niet bevestigd |
 | F3 | Pwet 10c | Afronding van `hoogte_lks_eurocent_per_maand` toepassen volgens RFC-023 en RFC-024 | `just bdd` op `loonkostensubsidie.feature` |
-| F4 | ZW 29b | Niets toe te voegen; de untranslatable is bij de migratie verwijderd | `just validate` |
+| F4 | ZW 29b | **Gedaan 22 september** bij de migratie | `script/validate.sh` 8/8 OK |
 | F5 | Pwet 10c en 10d | `machine_readable` van de LKS-berekening verplaatsen naar artikel 10d, of ten minste de omschrijvingen corrigeren | `just validate` + `just bdd` |
 
 ## Open vraag
