@@ -487,6 +487,16 @@ juridische context per regeling.)
 | `docs/financieel-cv/financieel-cv-graph-detail.png`                               | NRP zoom-in (8 cross-law inputs + lid-OR-logica)       |
 | `docs/financieel-cv/financieel-cv-graph-detail-alle-7.png`                        | Detail-diagram alle 7 met untranslatables-annotaties   |
 | `docs/financieel-cv/relaties-per-regeling.md`                                      | Welk RFC-mechanisme per regeling, met welk veldtype en waarom |
+| `docs/financieel-cv/gegevensherkomst.md`                                          | Alle 120 invoergegevens van de zeven wetten, ingedeeld naar herkomst |
+| `docs/financieel-cv/doelgroepregister-categorieen.md`                             | Gronden van Wfsv 38b, de rechten per grond en de hoogte daarvan |
+| `docs/financieel-cv/beslisboom-doelgroepregister.md`                              | Drie beslisbomen: grond, recht, bedrag |
+| `docs/financieel-cv/beslisboom-doelgroepregister.mmd`                             | Mermaid-bron van de opnamebeslisboom |
+| `docs/financieel-cv/classificatie-untranslatables.md`                             | Alle 64 untranslatables vier-weg geclassificeerd, met factual/judgment en de beslispunten B1-B15 en S1-S5 |
+| `docs/financieel-cv/schema-migratie.md`                                           | v0.5.4 naar v0.7.0: untranslatables omgezet naar markings en open_terms |
+| `docs/financieel-cv/modellering-fixes-plan.md`                                    | Vijf modellering-fouten met fix en validatiecommando |
+| `docs/financieel-cv/wetgevingsfouten-analyse.md`                                  | Vier kandidaat-wetgevings-fouten, beslispunten B12-B15 |
+| `docs/financieel-cv/ankers-naar-wetten-overheid.md`                               | Corpusbrede harvester-bevinding: de ankers in `url` bestaan niet op de doelpagina |
+| `docs/financieel-cv/presentatie-juristsessie.html`                                | Slidedeck voor de validerende juristsessie van 24 september |
 | `docs/financieel-cv/pyyaml-valkuil.md`                                            | Waarom je dit corpus niet met PyYAML analyseert         |
 | `docs/financieel-cv/szw/ruwe-feedback.md`                                         | Onbewerkte juristfeedback, letterlijk, per ronde        |
 | `docs/financieel-cv/szw/actieregister.md`                                         | Doorlopend actieregister: wat is gesignaleerd, wanneer gedaan |
