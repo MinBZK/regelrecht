@@ -19,6 +19,7 @@ het Reintegratiebesluit · **Bron**: de vier-weg-classificatie in
 | 3 | Pwet 10c | De evenredig verminderde loonkostensubsidie wordt niet afgerond; de untranslatable noemde dat een taalgat. RFC-023 en RFC-024 over bedragen en afronding zijn voorgesteld en geimplementeerd, dus de engine kan dit. |
 | 4 | ZW 29b | Onder de Ziektewet staat een untranslatable die vastlegt dat er geen lagere regelgeving is. Een bevestigde leegte is geen untranslatable. |
 | 5 | Pwet 10c en 10d | De loonkostensubsidieberekening staat in het `machine_readable`-blok van artikel 10c, met omschrijvingen die naar "lid 4" verwijzen. Artikel 10c kent twee leden en gaat over de doelgroepvaststelling; de berekening staat in artikel 10d lid 4, dat geen `machine_readable`-blok heeft. |
+| 6 | Wet WIA 37 | De wet vraagt haar eigen conclusie als invoer. `heeft_recht_op_wia_uitkering` is de OR van de rechten die artikel 47 en 54 al berekenen; de Ziektewet rekent die OR vandaag uit en de WIA vraagt hem op. Gevonden met de dubbelencontrole van 23 september. |
 
 ### Structurele problemen
 
@@ -40,7 +41,13 @@ het Reintegratiebesluit · **Bron**: de vier-weg-classificatie in
 | F3 | Pwet 10c | Afronding van `hoogte_lks_eurocent_per_maand` toepassen volgens RFC-023 en RFC-024 | `just bdd` op `loonkostensubsidie.feature` |
 | F4 | ZW 29b | **Gedaan 22 september** bij de migratie | `script/validate.sh` 8/8 OK |
 | F5 | Pwet 10c en 10d | `machine_readable` van de LKS-berekening verplaatsen naar artikel 10d, of ten minste de omschrijvingen corrigeren | `just validate` + `just bdd` |
+| F6 | Wet WIA 37 | De parameter `heeft_recht_op_wia_uitkering` vraagt om een recht "op grond van deze wet". De WIA rekent het zelf uit: `heeft_recht_op_iva_uitkering` (art. 47) OF `heeft_recht_op_wga_uitkering` (art. 54). Nu rekent de Ziektewet die OR uit en vraagt de WIA hem aan de aanroeper. Vervangen door een verwijzing naar de eigen outputs | `script/validate.sh` + `just bdd` op de WIA-scenario's |
 
 ## Open vraag
 
 - Accepteert wetten.overheid.nl het ankerformaat `#Artikel220` voor artikelen met een dubbele punt? Het corpus gebruikt die vorm voor alle 472.245 ankers in de Wajong en de Awb. Werkt zij niet, dan is het een corpusbrede harvester-fix en geen dossierfix. Vergt een netwerkcontrole.
+
+- Hoort `heeft_recht_op_wia_uitkering` als output in de Ziektewet thuis? De
+  Ziektewet berekent daar een recht op grond van een andere wet. Na F6 heeft de
+  Wet WIA die waarde zelf, en kan de Ziektewet hem via `source` lezen in plaats
+  van zelf samen te stellen.

@@ -26,7 +26,7 @@ any are found (usable as a CI gate).
 
 Usage:  python3 cross-law-integriteit.py [corpus_root]   (default: regulation)
 """
-import sys, glob
+import sys, glob, re
 
 try:
     import yaml
@@ -34,16 +34,61 @@ except ImportError:
     sys.stderr.write("cross-law-integriteit.py requires pyyaml (pip install pyyaml)\n")
     sys.exit(2)
 
+
+# --- YAML 1.2-lezer -----------------------------------------------------------
+# PyYAML implementeert YAML 1.1, waarin `2:20` een sexagesimaal getal is: 140.
+# Artikelnummers met een dubbele punt (Wajong, Awb) worden daardoor integers, en
+# dan matcht `implements: {article: '2:22'}` niet meer op het artikel dat de
+# open_term draagt. Dat levert een IMPL-DANGLING op die er niet is. Precies die
+# bevinding is op 8 september 2026 gemeld en op 9 september ingetrokken; zie
+# docs/financieel-cv/pyyaml-valkuil.md. De engine leest met serde_yaml (YAML 1.2)
+# en ziet gewoon de string.
+#
+# Deze loader zet alleen de sexagesimale int- en float-resolvers uit. De rest van
+# PyYAML blijft ongemoeid, zodat datums, booleans en gewone getallen blijven werken.
+class _Loader12(yaml.SafeLoader):
+    pass
+
+
+_INT12 = re.compile(r"""^(?:[-+]?0b[0-1_]+
+    |[-+]?0[0-7_]+
+    |[-+]?(?:0|[1-9][0-9_]*)
+    |[-+]?0x[0-9a-fA-F_]+)$""", re.X)
+_FLOAT12 = re.compile(r"""^(?:[-+]?(?:[0-9][0-9_]*)\.[0-9_]*(?:[eE][-+][0-9]+)?
+    |\.[0-9_]+(?:[eE][-+][0-9]+)?
+    |[-+]?\.(?:inf|Inf|INF)
+    |\.(?:nan|NaN|NAN))$""", re.X)
+
+_Loader12.yaml_implicit_resolvers = {
+    ch: [(tag, rx) for (tag, rx) in res
+         if tag not in ('tag:yaml.org,2002:int', 'tag:yaml.org,2002:float')]
+    for ch, res in yaml.SafeLoader.yaml_implicit_resolvers.items()
+}
+_Loader12.add_implicit_resolver('tag:yaml.org,2002:int', _INT12, list('-+0123456789'))
+_Loader12.add_implicit_resolver('tag:yaml.org,2002:float', _FLOAT12, list('-+0123456789.'))
+
+
+def load_yaml(path):
+    """Lees een corpusbestand met YAML 1.2-semantiek."""
+    with open(path, encoding='utf-8') as fh:
+        return yaml.load(fh, Loader=_Loader12)
+
 root = sys.argv[1] if len(sys.argv) > 1 else 'regulation'
 
 laws = {}
 for path in glob.glob(f'{root}/**/*.yaml', recursive=True):
     try:
-        doc = yaml.safe_load(open(path))
+        doc = load_yaml(path)
     except Exception:
         continue
     if isinstance(doc, dict) and '$id' in doc:
-        laws[doc['$id']] = doc
+        # Een corpus draagt meerdere peildatums per wet. Zonder keuze wint een
+        # willekeurige versie, afhankelijk van de globvolgorde, en toetst de
+        # controle tegen een andere versie dan de aanroeper bedoelt. Houd de
+        # nieuwste valid_from aan.
+        vorige = laws.get(doc['$id'])
+        if vorige is None or str(doc.get('valid_from') or '') >= str(vorige.get('valid_from') or ''):
+            laws[doc['$id']] = doc
 
 
 def action_outputs(doc):
