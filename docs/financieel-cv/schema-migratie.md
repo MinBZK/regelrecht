@@ -89,8 +89,25 @@ vastgelegd in de doc-producten.
 
 ## Validatie
 
-- JSON-schema-validatie van alle acht bestanden tegen `schema/v0.7.0/schema.json` met `jsonschema` 4.26.0 → **8/8 schoon, 0 fouten**.
+- `script/validate.sh` op alle acht bestanden → **8/8 OK**, schema en typecheck, exitcode 0.
+- BDD, bucket corpus, tegen een mini-corpus van de acht regelingen →
+  **76 van 76 scenario's, 521 van 521 stappen.**
 - Tellingen na migratie: 21 `markings`, 39 `open_terms` (16 bestaande plus 23 nieuwe), 0 `untranslatables`.
+
+### Wat de BDD-run heeft gevangen
+
+De eerste run gaf 74 van de 76 scenario's rood, met veertien keer dezelfde
+melding: `Required open term '<id>' has no implementation and no default`.
+
+De omzetting schreef `required: true` op alle 23 nieuwe open termen, terwijl
+alle zestien bestaande op `required: false` staan. Voor een norm met
+`decided_per_case_by` is `true` ook inhoudelijk onjuist: er komt per definitie
+geen uitvoeringsregeling die hem invult, dus de engine wacht op iets dat niet
+gaat bestaan. Onder v0.5.4 waren het inerte `untranslatables`; als verplichte
+open term werden het blokkades.
+
+Alle 23 staan nu op `required: false`, conform de bestaande conventie. Dit is de
+reden dat een schema- en typecheck-groen corpus nog niets zegt over uitvoerbaarheid.
 
 ## Open punten
 

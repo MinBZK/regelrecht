@@ -37,11 +37,11 @@ het Reintegratiebesluit · **Bron**: de vier-weg-classificatie in
 | Fix | Wet/artikel | Wat | Validatie na fix |
 |---|---|---|---|
 | F1 | Wfsv 38b | **Gedaan 23 september.** Omschrijving noemt nu wat Wtl 2.12 wel zegt | `script/validate.sh` 8/8 OK |
-| F2 | Wfsv 38b | **Gedaan 23 september.** De parameter is vervangen door een `input` met `source.regulation: participatiewet`, output `is_uitsluitend_aangewezen_op_beschut_werk`. De drie parameters van Pwet 10b worden doorgegeven, dus de lijst van 38b gaat van 15 naar 17. Zie [`diepte-van-een-variabele.md`](diepte-van-een-variabele.md) | `script/validate.sh` 8/8 OK; BDD nog niet bevestigd |
+| F2 | Wfsv 38b | **Gedaan 23 september.** De parameter is vervangen door een `input` met `source.regulation: participatiewet`, output `is_uitsluitend_aangewezen_op_beschut_werk`. De drie parameters van Pwet 10b worden doorgegeven, dus de lijst van 38b gaat van 15 naar 17. Zie [`diepte-van-een-variabele.md`](diepte-van-een-variabele.md) | `script/validate.sh` 8/8 OK; BDD 76/76 groen |
 | F3 | Pwet 10c | Afronding van `hoogte_lks_eurocent_per_maand` toepassen volgens RFC-023 en RFC-024 | `just bdd` op `loonkostensubsidie.feature` |
 | F4 | ZW 29b | **Gedaan 22 september** bij de migratie | `script/validate.sh` 8/8 OK |
 | F5 | Pwet 10c en 10d | `machine_readable` van de LKS-berekening verplaatsen naar artikel 10d, of ten minste de omschrijvingen corrigeren | `just validate` + `just bdd` |
-| F6 | Wet WIA 37 | De parameter `heeft_recht_op_wia_uitkering` vraagt om een recht "op grond van deze wet". De WIA rekent het zelf uit: `heeft_recht_op_iva_uitkering` (art. 47) OF `heeft_recht_op_wga_uitkering` (art. 54). Nu rekent de Ziektewet die OR uit en vraagt de WIA hem aan de aanroeper. Vervangen door een verwijzing naar de eigen outputs | `script/validate.sh` + `just bdd` op de WIA-scenario's |
+| F6 | Wet WIA 37 | De parameter `heeft_recht_op_wia_uitkering` vraagt om een recht "op grond van deze wet". De WIA rekent het zelf uit: `heeft_recht_op_iva_uitkering` (art. 47) OF `heeft_recht_op_wga_uitkering` (art. 54). Nu rekent de Ziektewet die OR uit en vraagt de WIA hem aan de aanroeper. **Mijn eerste voorstel was fout:** niet de OR van 47 en 54. Artikel 5 zegt "doch die **niet** volledig en duurzaam arbeidsongeschikt is", artikel 47 lid 1 b zegt het tegenovergestelde. Een IVA-gerechtigde is geen adressaat van artikel 37. Juiste binding: `is_gedeeltelijk_arbeidsgeschikt AND heeft_recht_op_wga_uitkering`. Zie [`fideliteitsaudit.md`](fideliteitsaudit.md) | `script/validate.sh` + `just bdd` op de WIA-scenario's |
 
 ## Open vraag
 
