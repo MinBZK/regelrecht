@@ -1,5 +1,7 @@
-import { describe, expect, it } from 'vitest';
-import { fieldSpec, formatDate, formatMissing, formatValue, humanize, isAmountSpec, numericImpact, verdictOf } from './format.js';
+import { afterEach, describe, expect, it } from 'vitest';
+import { fieldSpec, formatDate, formatDateTime, formatMissing, formatValue, humanize, intlLocale, isAmountSpec, numericImpact, setGlossary, untranslated, verdictOf } from './format.js';
+import { adoptLocale } from '../i18n/index.js';
+import glossary from '../i18n/glossary.generated.js';
 
 const UNKNOWN = { __unknown: true, missing: [{ law: 'zorgtoeslagwet', name: 'huurprijs', kind: 'no_data' }, { law: 'wet_inkomstenbelasting', name: 'spaargeld', kind: 'no_data' }] };
 
@@ -105,5 +107,141 @@ describe('helpers', () => {
 
   it('formatDate leaves an unparsable value alone', () => {
     expect(formatDate('geen datum')).toBe('geen datum');
+  });
+});
+
+describe('in English', () => {
+  afterEach(() => {
+    adoptLocale('nl');
+    setGlossary(null);
+  });
+
+  it('formats numbers and money the British way, in euros', () => {
+    // en-GB and not en-US: day-first dates and 24-hour time match how a Dutch
+    // government screen states them. The currency stays EUR in both; only the
+    // separators and the symbol's position move.
+    adoptLocale('en');
+    expect(intlLocale()).toBe('en-GB');
+    expect(formatValue(165412, fieldSpec(DOC, 'hoogte_toeslag'))).toBe('€1,654.12');
+    expect(formatValue(12.5, { type_spec: { unit: 'percentage' } })).toBe('12.5%');
+    expect(formatDate('2025-03-01')).toBe('1 March 2025');
+    expect(formatDateTime('2025-03-01T14:30:00')).toMatch(/^1 Mar[a-z]*,? 14:30$/);
+  });
+
+  it('says the two kinds of nothing with two different words', () => {
+    adoptLocale('en');
+    expect(formatValue(null)).toBe('none');
+    expect(formatValue(UNKNOWN)).toBe('unknown');
+    expect(formatValue(true)).toBe('Yes');
+    expect(formatValue(false)).toBe('No');
+    expect(formatValue(35, fieldSpec(DOC, 'leeftijd'))).toBe('35 years');
+    expect(formatValue([{ x: 1 }])).toBe('1 item');
+    expect(formatValue([{ x: 1 }, { x: 2 }])).toBe('2 items');
+  });
+
+  it('names the missing facts in English, with the glossary applied', () => {
+    // The labels come from the shipped glossary, so this also proves the
+    // generated module reaches `humanize` rather than the empty default.
+    adoptLocale('en');
+    expect(formatMissing(UNKNOWN, { ownLaw: 'zorgtoeslagwet', lawName: (id) => id })).toBe(
+      'missing: rent, savings (wet_inkomstenbelasting)',
+    );
+  });
+
+  it('switches back cleanly, so a cached formatter cannot pin the language', () => {
+    // An Intl formatter bakes its locale in at construction. Built once at
+    // module level, it would keep formatting in Dutch after a switch.
+    adoptLocale('en');
+    expect(formatValue(1654.12, { type_spec: { unit: 'euro' } })).toBe('€1,654.12');
+    adoptLocale('nl');
+    expect(formatValue(1654.12, { type_spec: { unit: 'euro' } })).toBe('€\u00a01.654,12');
+  });
+});
+
+describe('humanize with a glossary', () => {
+  afterEach(() => {
+    adoptLocale('nl');
+    setGlossary(null);
+  });
+
+  it('leaves Dutch alone in Dutch, glossary or not', () => {
+    setGlossary({ words: { hoogte: 'amount', toeslag: 'allowance' } });
+    expect(humanize('hoogte_toeslag')).toBe('Hoogte toeslag');
+  });
+
+  it('composes a label word by word', () => {
+    adoptLocale('en');
+    setGlossary({ words: { hoogte: 'amount of', toeslag: 'allowance' } });
+    expect(humanize('hoogte_toeslag')).toBe('Amount of allowance');
+  });
+
+  it('prefers a whole-name entry over composing', () => {
+    adoptLocale('en');
+    setGlossary({
+      words: { inkomen: 'income', uit: 'from', arbeid: 'labour' },
+      names: { inkomen_uit_arbeid: 'employment income' },
+    });
+    expect(humanize('inkomen_uit_arbeid')).toBe('Employment income');
+  });
+
+  it('prefers a per-law entry over the general one', () => {
+    adoptLocale('en');
+    setGlossary({ names: { vermogen: 'capacity' }, laws: { participatiewet: { vermogen: 'assets' } } });
+    expect(humanize('vermogen', { lawId: 'participatiewet' })).toBe('Assets');
+    expect(humanize('vermogen')).toBe('Capacity');
+  });
+
+  it('falls back to the whole Dutch name rather than half-translating', () => {
+    // "Has partner inkomen" reads like a bug; the Dutch label reads like
+    // something not translated yet, which is the truth.
+    adoptLocale('en');
+    setGlossary({ words: { heeft: 'has', partner: 'partner' } });
+    expect(humanize('heeft_partner_inkomen')).toBe('Heeft partner inkomen');
+    expect(untranslated.has('heeft_partner_inkomen')).toBe(true);
+  });
+
+  it('keeps abbreviations as abbreviations in both languages', () => {
+    adoptLocale('en');
+    setGlossary({ words: { vereist: 'required', vergunning: 'permit' } });
+    expect(humanize('agp_vergunning_vereist')).toBe('AGP permit required');
+  });
+});
+
+describe('de meegeleverde woordenlijst', () => {
+  afterEach(() => adoptLocale('nl'));
+
+  it('vertaalt de namen die op elk scherm staan', () => {
+    // Deze vier komen in vrijwel elke tegel voor; gaan die terug naar het
+    // Nederlands, dan leest de hele demo half vertaald.
+    adoptLocale('en');
+    expect(humanize('voldoet_aan_voorwaarden')).toBe('Meets conditions');
+    expect(humanize('hoogte_toeslag')).toBe('Allowance amount');
+    expect(humanize('heeft_partner')).toBe('Has a partner');
+    expect(humanize('toetsingsinkomen')).toBe('Assessment income');
+  });
+
+  it('laat afkortingen staan zoals ze geschreven horen', () => {
+    adoptLocale('en');
+    expect(humanize('heeft_geldige_vog')).toBe('Has valid VOG');
+    expect(humanize('is_verzekerde_zorgtoeslag')).toBe('Is insured for healthcare allowance');
+  });
+
+  it('levert alleen woorden op, geen booleans of leegte', () => {
+    // `null` kaal in YAML is leegte en `true`/`false` zijn booleans, en dan
+    // wordt het label "Null" of "False" in plaats van een woord. (`no` en
+    // `yes` zouden dat in YAML 1.1 ook zijn; js-yaml volgt 1.2 en leest ze als
+    // woorden, maar de lijst quote ze toch, want yamllint vraagt erom.)
+    const nonStrings = Object.entries(glossary.words).filter(([, v]) => typeof v !== 'string');
+    expect(nonStrings).toEqual([]);
+    adoptLocale('en');
+    expect(humanize('geen_recht')).toBe('No right');
+  });
+
+  it('zet een Nederlandse woordvolgorde recht waar die niet meekan', () => {
+    // Woord voor woord zou dit "Advice degree of danger" en "Meets the
+    // article 8" opleveren: elk woord goed, de zin fout.
+    adoptLocale('en');
+    expect(humanize('advies_mate_van_gevaar')).toBe('Advised degree of danger');
+    expect(humanize('voldoet_aan_artikel_8')).toBe('Meets article 8');
   });
 });

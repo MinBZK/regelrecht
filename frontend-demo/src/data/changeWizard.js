@@ -14,7 +14,13 @@
  * gebeurtenissen ("ik ben verhuisd", "mijn inkomen is veranderd"), niet in
  * velden van een register. Eén melding raakt meerdere waarden tegelijk, en
  * elke regeling die ervan afhangt rekent meteen opnieuw.
+ *
+ * Alles wat op het scherm komt staat hier als sleutel, niet als zin: de
+ * structuur is in beide talen dezelfde en `typeLabel()`, `fieldLabel()` en
+ * hun buren zijn de enige plek die er een taal aan geeft. Hetzelfde patroon
+ * als `simulation/stats.js` volgt voor zijn dimensies.
  */
+import { t } from '../i18n/index.js';
 
 /** Bedragen staan in de registers in centen; het formulier vraagt hele euro's. */
 const EUROS = { scale: 100 };
@@ -30,89 +36,89 @@ const EUROS = { scale: 100 };
 export const CHANGE_TYPES = [
   {
     id: 'inkomen',
-    label: 'Mijn inkomen of vermogen',
+    labelKey: 'sheet.change.type.inkomen',
     icon: 'euro-sign',
-    description: 'Loon, winst, uitkering, spaargeld of schulden',
+    descriptionKey: 'sheet.change.type.inkomen.description',
     law: 'wet_inkomstenbelasting',
     keyField: 'bsn',
     groups: [
       {
-        label: 'Box 1 — werk en woning',
+        labelKey: 'sheet.change.group.box1',
         fields: [
-          { name: 'loon_uit_dienstbetrekking', label: 'Loon uit dienstbetrekking', ...EUROS },
-          { name: 'uitkeringen_en_pensioenen', label: 'Uitkeringen en pensioenen', ...EUROS },
-          { name: 'winst_uit_onderneming', label: 'Winst uit onderneming', ...EUROS },
-          { name: 'resultaat_overige_werkzaamheden', label: 'Resultaat overige werkzaamheden', ...EUROS },
-          { name: 'eigen_woning', label: 'Inkomsten uit eigen woning', ...EUROS },
+          { name: 'loon_uit_dienstbetrekking', labelKey: 'sheet.change.field.loon_uit_dienstbetrekking', ...EUROS },
+          { name: 'uitkeringen_en_pensioenen', labelKey: 'sheet.change.field.uitkeringen_en_pensioenen', ...EUROS },
+          { name: 'winst_uit_onderneming', labelKey: 'sheet.change.field.winst_uit_onderneming', ...EUROS },
+          { name: 'resultaat_overige_werkzaamheden', labelKey: 'sheet.change.field.resultaat_overige_werkzaamheden', ...EUROS },
+          { name: 'eigen_woning', labelKey: 'sheet.change.field.eigen_woning', ...EUROS },
         ],
       },
       {
-        label: 'Box 2 — aanmerkelijk belang',
+        labelKey: 'sheet.change.group.box2',
         fields: [
-          { name: 'reguliere_voordelen', label: 'Reguliere voordelen (dividend)', ...EUROS },
-          { name: 'vervreemdingsvoordelen', label: 'Vervreemdingsvoordelen', ...EUROS },
+          { name: 'reguliere_voordelen', labelKey: 'sheet.change.field.reguliere_voordelen', ...EUROS },
+          { name: 'vervreemdingsvoordelen', labelKey: 'sheet.change.field.vervreemdingsvoordelen', ...EUROS },
         ],
       },
       {
-        label: 'Box 3 — sparen en beleggen',
+        labelKey: 'sheet.change.group.box3',
         fields: [
-          { name: 'spaargeld', label: 'Spaargeld', ...EUROS },
-          { name: 'beleggingen', label: 'Beleggingen', ...EUROS },
-          { name: 'onroerend_goed', label: 'Onroerend goed', ...EUROS },
-          { name: 'schulden', label: 'Schulden', ...EUROS },
+          { name: 'spaargeld', labelKey: 'sheet.change.field.spaargeld', ...EUROS },
+          { name: 'beleggingen', labelKey: 'sheet.change.field.beleggingen', ...EUROS },
+          { name: 'onroerend_goed', labelKey: 'sheet.change.field.onroerend_goed', ...EUROS },
+          { name: 'schulden', labelKey: 'sheet.change.field.schulden', ...EUROS },
         ],
       },
     ],
   },
   {
     id: 'huurprijs',
-    label: 'Mijn huur',
+    labelKey: 'sheet.change.type.huurprijs',
     icon: 'house',
-    description: 'Huurprijs en servicekosten',
+    descriptionKey: 'sheet.change.type.huurprijs.description',
     law: 'wet_op_de_huurtoeslag',
     keyField: 'bsn',
     groups: [
       {
-        label: 'Wat je per maand betaalt',
+        labelKey: 'sheet.change.group.monthly',
         fields: [
-          { name: 'huurprijs', label: 'Kale huurprijs per maand', ...EUROS },
-          { name: 'servicekosten', label: 'Servicekosten per maand', ...EUROS },
-          { name: 'subsidiabele_servicekosten', label: 'Waarvan subsidiabel', ...EUROS },
+          { name: 'huurprijs', labelKey: 'sheet.change.field.huurprijs', ...EUROS },
+          { name: 'servicekosten', labelKey: 'sheet.change.field.servicekosten', ...EUROS },
+          { name: 'subsidiabele_servicekosten', labelKey: 'sheet.change.field.subsidiabele_servicekosten', ...EUROS },
         ],
       },
     ],
   },
   {
     id: 'woonadres',
-    label: 'Mijn adres',
+    labelKey: 'sheet.change.type.woonadres',
     icon: 'location',
-    description: 'Verhuizing of een correctie op je adres',
+    descriptionKey: 'sheet.change.type.woonadres.description',
     law: 'wet_brp',
     keyField: 'bsn',
     groups: [
       {
-        label: 'Je nieuwe adres',
+        labelKey: 'sheet.change.group.new_address',
         fields: [
-          { name: 'straat', label: 'Straatnaam', kind: 'text', part: 'adres' },
-          { name: 'huisnummer', label: 'Huisnummer', kind: 'text', part: 'adres' },
-          { name: 'postcode', label: 'Postcode', kind: 'text', part: 'adres' },
-          { name: 'woonplaats', label: 'Woonplaats', kind: 'text', part: 'adres' },
+          { name: 'straat', labelKey: 'sheet.change.field.straat', kind: 'text', part: 'adres' },
+          { name: 'huisnummer', labelKey: 'sheet.change.field.huisnummer', kind: 'text', part: 'adres' },
+          { name: 'postcode', labelKey: 'sheet.change.field.postcode', kind: 'text', part: 'adres' },
+          { name: 'woonplaats', labelKey: 'sheet.change.field.woonplaats', kind: 'text', part: 'adres' },
         ],
       },
     ],
   },
   {
     id: 'huishouden',
-    label: 'Mijn huishouden',
+    labelKey: 'sheet.change.type.huishouden',
     icon: 'person-2',
-    description: 'Trouwen, scheiden, samenwonen of een kind',
+    descriptionKey: 'sheet.change.type.huishouden.description',
     law: 'wet_brp',
     keyField: 'bsn',
     // Een gebeurtenis, geen bedrag: de keuze bepaalt wat er verandert.
     events: [
       {
         value: 'scheiden',
-        label: 'Ik ga scheiden of wij gaan uit elkaar',
+        labelKey: 'sheet.change.event.scheiden',
         icon: 'person-badge-minus',
         // De POC ondersteunde alleen deze; de andere kwamen terug als
         // "Deze flow is nog niet ondersteund". Hier gebeurt hetzelfde,
@@ -121,14 +127,14 @@ export const CHANGE_TYPES = [
       },
       {
         value: 'samenwonen',
-        label: 'Ik ga trouwen of samenwonen',
+        labelKey: 'sheet.change.event.samenwonen',
         icon: 'heart',
-        unsupported: 'Hiervoor is de gegevens van je partner nodig; dat kan in deze demo nog niet.',
+        unsupportedKey: 'sheet.change.event.samenwonen.unsupported',
       },
-      { value: 'kind', label: 'Ik krijg een kind', icon: 'person-badge-plus', unsupported: 'Een geboorte melden kan in deze demo nog niet.' },
-      { value: 'iemand-bij', label: 'Er komt iemand bij mij wonen', icon: 'person-badge-plus', unsupported: 'Een medebewoner melden kan in deze demo nog niet.' },
-      { value: 'iemand-weg', label: 'Er gaat iemand mijn huis uit', icon: 'person-badge-minus', unsupported: 'Een vertrekkende medebewoner melden kan in deze demo nog niet.' },
-      { value: 'overlijden', label: 'Er is iemand overleden', icon: 'person-badge-minus', unsupported: 'Een overlijden melden kan in deze demo nog niet.' },
+      { value: 'kind', labelKey: 'sheet.change.event.kind', icon: 'person-badge-plus', unsupportedKey: 'sheet.change.event.kind.unsupported' },
+      { value: 'iemand-bij', labelKey: 'sheet.change.event.iemand_bij', icon: 'person-badge-plus', unsupportedKey: 'sheet.change.event.iemand_bij.unsupported' },
+      { value: 'iemand-weg', labelKey: 'sheet.change.event.iemand_weg', icon: 'person-badge-minus', unsupportedKey: 'sheet.change.event.iemand_weg.unsupported' },
+      { value: 'overlijden', labelKey: 'sheet.change.event.overlijden', icon: 'person-badge-minus', unsupportedKey: 'sheet.change.event.overlijden.unsupported' },
     ],
   },
 ];
@@ -142,6 +148,32 @@ export function fieldsOf(type) {
   return (type?.groups ?? []).flatMap((g) => g.fields);
 }
 
+/** Hoe een soort wijziging, een groep, een veld of een gebeurtenis heet op het scherm. */
+export function typeLabel(type) {
+  return type?.labelKey ? t(type.labelKey) : '';
+}
+
+export function typeDescription(type) {
+  return type?.descriptionKey ? t(type.descriptionKey) : '';
+}
+
+export function groupLabel(group) {
+  return group?.labelKey ? t(group.labelKey) : '';
+}
+
+export function fieldLabel(field) {
+  return field?.labelKey ? t(field.labelKey) : '';
+}
+
+export function eventLabel(event) {
+  return event?.labelKey ? t(event.labelKey) : '';
+}
+
+/** Waarom een gebeurtenis in deze demo nog niet kan; lege tekst als zij wél kan. */
+export function eventUnsupported(event) {
+  return event?.unsupportedKey ? t(event.unsupportedKey) : '';
+}
+
 /**
  * Een ingevuld formulier omzetten naar de correcties die ingediend worden.
  *
@@ -150,6 +182,9 @@ export function fieldsOf(type) {
  * samengestelde waarde (`adres`, kind: record in bindings.yaml) plus het
  * verblijfsadres als tekst, precies zoals `/edit/update-situation` het
  * samenstelde.
+ *
+ * `label` is de vertaalde tekst op het moment van indienen: de bevestiging
+ * toont haar meteen en verder gaat zij als reden mee naar de correctie.
  *
  * @returns {Array<{law: string, input: string, value: any, label: string}>}
  */
@@ -162,12 +197,12 @@ export function claimsFromAnswers(type, answers) {
 
   if (type.id === 'huishouden') {
     const event = (type.events ?? []).find((e) => e.value === answers?.event);
-    if (!event || event.unsupported || !event.changes) return [];
+    if (!event || event.unsupportedKey || !event.changes) return [];
     return Object.entries(event.changes).map(([input, value]) => ({
       law: type.law,
       input,
       value,
-      label: event.label,
+      label: eventLabel(event),
     }));
   }
 
@@ -175,12 +210,12 @@ export function claimsFromAnswers(type, answers) {
     const parts = fieldsOf(type).filter((f) => filled(f.name));
     if (!parts.length) return [];
     const adres = Object.fromEntries(parts.map((f) => [f.name, String(answers[f.name]).trim()]));
-    const claims = [{ law: type.law, input: 'adres', value: { ...adres, type: 'WOONADRES' }, label: 'Adres' }];
+    const claims = [{ law: type.law, input: 'adres', value: { ...adres, type: 'WOONADRES' }, label: t('sheet.change.field.adres') }];
     // De wet leest het adres ook als één regel; die blijft anders op het oude staan.
     const street = adres.straat && adres.huisnummer ? `${adres.straat} ${adres.huisnummer}` : null;
     const city = adres.postcode && adres.woonplaats ? `${adres.postcode} ${adres.woonplaats}` : adres.woonplaats ?? null;
     const full = [street, city].filter(Boolean).join(', ');
-    if (full) claims.push({ law: type.law, input: 'verblijfsadres', value: full, label: 'Verblijfsadres' });
+    if (full) claims.push({ law: type.law, input: 'verblijfsadres', value: full, label: t('sheet.change.field.verblijfsadres') });
     return claims;
   }
 
@@ -192,7 +227,7 @@ export function claimsFromAnswers(type, answers) {
         law: type.law,
         input: f.name,
         value: f.scale ? Math.round(raw * f.scale) : raw,
-        label: f.label,
+        label: fieldLabel(f),
       };
     })
     .filter((c) => Number.isFinite(c.value));

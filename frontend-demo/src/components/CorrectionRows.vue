@@ -1,5 +1,6 @@
 <script setup>
 import { fieldSpec, formatValue, humanize } from '../data/format.js';
+import { useI18n } from '../i18n/index.js';
 import { useDemo } from '../store/demoStore.js';
 
 // The rows of a corrections list in the case system: what the citizen (or the
@@ -19,6 +20,7 @@ const props = defineProps({
   origin: { type: Function, default: null },
 });
 
+const { t } = useI18n();
 const demo = useDemo();
 const { corpus } = demo;
 
@@ -44,16 +46,16 @@ function formatSize(bytes) {
       <nldd-text-cell size="sm" min-width="120px" :text="text(cl)">
         <span slot="supporting-text">
           <template v-if="props.origin">{{ props.origin(cl) }} · </template>{{ cl.reason }}
-          <template v-if="cl.hardship?.clause"><br />Beroep op hardheidsclausule: {{ cl.hardship.clause }}</template>
-          <template v-if="cl.evidence"><br />Bewijsstuk: {{ cl.evidence.name }} ({{ formatSize(cl.evidence.size) }})</template>
+          <template v-if="cl.hardship?.clause"><br />{{ t('sheet.corrections.hardship', { clause: cl.hardship.clause }) }}</template>
+          <template v-if="cl.evidence"><br />{{ t('sheet.corrections.evidence', { name: cl.evidence.name, size: formatSize(cl.evidence.size) }) }}</template>
         </span>
       </nldd-text-cell>
       <!-- A caseworker's correction is approved by definition: one tag says both. -->
-      <nldd-cell v-if="cl.claimant === 'BEHANDELAAR'"><nldd-tag size="sm" color="success" text="Door behandelaar"></nldd-tag></nldd-cell>
-      <nldd-cell v-else-if="cl.status !== 'PENDING'"><nldd-tag size="sm" :color="cl.status === 'APPROVED' ? 'success' : 'critical'" :text="cl.status === 'APPROVED' ? 'Goedgekeurd' : 'Afgewezen'"></nldd-tag></nldd-cell>
+      <nldd-cell v-if="cl.claimant === 'BEHANDELAAR'"><nldd-tag size="sm" color="success" :text="t('sheet.corrections.by_officer')"></nldd-tag></nldd-cell>
+      <nldd-cell v-else-if="cl.status !== 'PENDING'"><nldd-tag size="sm" :color="cl.status === 'APPROVED' ? 'success' : 'critical'" :text="cl.status === 'APPROVED' ? t('sheet.corrections.approved') : t('sheet.corrections.rejected')"></nldd-tag></nldd-cell>
     </nldd-list-item>
     <nldd-list-item v-if="cl.hardship?.clause || cl.evidence" size="sm">
-      <nldd-cell v-if="cl.hardship?.clause"><nldd-tag size="sm" color="warning" text="Hardheidsclausule"></nldd-tag></nldd-cell>
+      <nldd-cell v-if="cl.hardship?.clause"><nldd-tag size="sm" color="warning" :text="t('sheet.corrections.hardship.tag')"></nldd-tag></nldd-cell>
       <!-- Twee losse labels naast elkaar: zonder tussenruimte lezen ze als een. -->
       <nldd-spacer-cell v-if="cl.hardship?.clause && cl.evidence" size="8"></nldd-spacer-cell>
       <nldd-cell v-if="cl.evidence">
@@ -64,8 +66,8 @@ function formatSize(bytes) {
     <nldd-list-item v-if="awaitsDecision(cl)" size="sm">
       <nldd-cell width="full">
         <nldd-button-group orientation="horizontal" size="sm">
-          <nldd-button size="sm" variant="primary" text="Goedkeuren" @click="demo.decideClaim(cl.id, true)"></nldd-button>
-          <nldd-button size="sm" variant="secondary" text="Afwijzen" @click="demo.decideClaim(cl.id, false)"></nldd-button>
+          <nldd-button size="sm" variant="primary" :text="t('sheet.corrections.approve')" @click="demo.decideClaim(cl.id, true)"></nldd-button>
+          <nldd-button size="sm" variant="secondary" :text="t('sheet.corrections.reject')" @click="demo.decideClaim(cl.id, false)"></nldd-button>
         </nldd-button-group>
       </nldd-cell>
     </nldd-list-item>

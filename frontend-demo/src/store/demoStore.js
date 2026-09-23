@@ -18,11 +18,12 @@ import {
   registerPersonaData,
 } from '../engine/useDemoEngine.js';
 import { statusOf } from '../data/lifecycle.js';
-import { DELEGATION_TYPE_LABELS, delegationKey, delegationsFor, maySubmitClaims } from '../data/delegation.js';
+import { delegationKey, delegationTypeLabel, delegationsFor, maySubmitClaims } from '../data/delegation.js';
 import { verdictOf } from '../data/format.js';
 import { driftOf } from '../data/caseDrift.js';
 import { isEntrypointFor, subjectOf } from '../data/entrypoints.js';
 import { assignClaimOwnership } from '../data/claimOwnership.js';
+import { activeLocale, t } from '../i18n/index.js';
 
 const STORAGE_KEY = 'rr-demo-state-v1';
 
@@ -87,8 +88,27 @@ watch(
 // Shallow on purpose: the corpus holds 80 parsed law documents and the engine
 // is a wasm-bindgen object; wrapping either in a deep proxy would be slow and
 // break the engine's private pointer access.
-const corpus = shallowRef(null);
+const loadedCorpus = shallowRef(null);
 const engine = shallowRef(null);
+
+/**
+ * Het corpus zoals elk scherm het leest, met de configuratie in de taal die
+ * aanstaat.
+ *
+ * Hier en niet in `loadCorpus`, omdat dit de reactieve kant is: `currentLocale`
+ * is een ref, dus een computed eromheen laat elk scherm dat `corpus.config`
+ * leest opnieuw tekenen bij een taalwissel. Het corpus zelf wordt niet opnieuw
+ * geladen; alleen welke van de twee configuraties eruit komt verandert.
+ *
+ * Het Nederlands is de terugval: zonder overlay draait de demo in het
+ * Nederlands, en dat is beter dan lege dia's.
+ */
+const corpus = computed(() => {
+  const c = loadedCorpus.value;
+  if (!c) return null;
+  const config = activeLocale.value === 'en' && c.configEn ? c.configEn : c.config;
+  return config === c.config ? c : markRaw({ ...c, config });
+});
 const ready = ref(false);
 const loadError = ref(null);
 /** Bumped whenever registered data changed; views re-evaluate on it. */
@@ -179,7 +199,7 @@ async function boot() {
   if (bootPromise) return bootPromise;
   bootPromise = (async () => {
     try {
-      corpus.value = markRaw(await loadCorpus());
+      loadedCorpus.value = markRaw(await loadCorpus());
       pruneStaleRecords(corpus.value);
       engine.value = markRaw(await prepareEngine(corpus.value));
       reregister();
@@ -209,17 +229,59 @@ const persona = computed(() => {
  * wijzigen door de server opnieuw te starten. Hier hoort een presentator ze
  * midden in zijn verhaal aan te kunnen zetten, dus staan ze in het demo-menu.
  */
+/**
+ * Waarom een zaak met de hand beoordeeld wordt.
+ *
+ * Een sleutel en geen zin: de gebeurtenissen van een zaak gaan naar
+ * localStorage, en een opgeslagen Nederlandse zin zou na een taalwissel
+ * Nederlands blijven terwijl de rest van het scherm Engels is. De zaak bewaart
+ * dus wát er gebeurde; welke woorden daarbij horen is een vraag van het moment
+ * van tonen.
+ */
+function reviewReasonKey({ pendingClaims, undecided }) {
+  if (pendingClaims.length) return 'case.review.citizen_changed_data';
+  if (undecided) return 'case.review.law_needs_more_facts';
+  return 'case.review.sample';
+}
+
+
+
+/**
+ * De zin bij een gebeurtenis, in de taal die aan staat.
+ *
+ * `key` + `vars` is wat een zaak sinds deze versie bewaart. Een zaak die al in
+ * localStorage stond draagt nog een kant-en-klare Nederlandse `text`, en die
+ * blijft staan: hem weggooien zou de geschiedenis van een lopende demo wissen,
+ * en hem vertalen kan niet, want de woorden zijn het enige wat ervan over is.
+ */
+export function eventText(event) {
+  if (!event) return '';
+  if (event.key) return t(event.key, event.vars);
+  return event.text ?? '';
+}
+
+/** Waarom een zaak is toegekend of afgewezen, in de taal die aan staat. */
+export function caseReason(c) {
+  if (!c) return null;
+  if (c.reasonKey) return t(c.reasonKey);
+  return c.reason ?? null;
+}
+
 export const FEATURES = [
+  // Het label staat niet hier maar in de woordenboeken, onder
+  // `app.features.<key>`: de demo is tweetalig, en een Nederlands label hier
+  // zou ernaast blijven staan alsof het nog iets aanstuurde.
+  //
   // `hint` beschrijft wat de vlag aanzet en staat niet in het menu: het
   // `details`-attribuut van nldd-menu-item is een kort label rechts, en een
   // hele zin daarin perst het label op een smal scherm in een kolom van één
   // woord breed. Het blijft hier staan als uitleg bij de vlag zelf.
-  { key: 'DELEGATION', label: 'Machtigingen', icon: 'switch', hint: 'Handelen namens een kind of een onderneming' },
-  { key: 'CHANGE_WIZARD', label: 'Wijziging doorgeven', icon: 'edit', hint: 'Eén ingang voor inkomen, huur, adres en huishouden' },
-  { key: 'HARMONIZE', label: 'Harmonisatie', icon: 'chart-x-y-axis-line', hint: 'Eén staffel, op het simulatietabblad' },
+  { key: 'DELEGATION', icon: 'switch', hint: 'Handelen namens een kind of een onderneming' },
+  { key: 'CHANGE_WIZARD', icon: 'edit', hint: 'Eén ingang voor inkomen, huur, adres en huishouden' },
+  { key: 'HARMONIZE', icon: 'chart-x-y-axis-line', hint: 'Eén staffel, op het simulatietabblad' },
   // Geen vinkje-achtig icoon: het menu-item zet er zelf al een vinkje voor als
   // de vlag aan staat, en twee vinkjes naast elkaar leest als een fout.
-  { key: 'AUTO_APPROVE_CLAIMS', label: 'Correcties direct goedkeuren', icon: 'lightning', hint: 'Zonder tussenkomst van een behandelaar' },
+  { key: 'AUTO_APPROVE_CLAIMS', icon: 'lightning', hint: 'Zonder tussenkomst van een behandelaar' },
 ];
 
 /**
@@ -442,7 +504,7 @@ function submitCase(lawEntry, evaluation, params = personaParams()) {
     verifiedResult: null,
     status: needsReview ? 'IN_REVIEW' : 'DECIDED',
     approved: needsReview ? null : requirementsMet,
-    reason: needsReview ? null : requirementsMet ? 'Automatisch toegekend op basis van de wet.' : 'Voldoet niet aan de voorwaarden.',
+    reasonKey: needsReview ? null : requirementsMet ? 'case.reason.granted_by_law' : 'case.reason.conditions_not_met',
     submittedAt: nowIso(),
     decidedAt: needsReview ? null : nowIso(),
     objection: null,
@@ -452,13 +514,20 @@ function submitCase(lawEntry, evaluation, params = personaParams()) {
       {
         at: nowIso(),
         type: 'SUBMITTED',
-        text: acting
-          ? `Aanvraag ingediend door ${acting.actorName} namens ${acting.subjectName} (${DELEGATION_TYPE_LABELS[acting.delegationType] ?? acting.delegationType}).`
-          : 'Aanvraag ingediend door de burger.',
+        ...(acting
+          ? {
+              key: 'case.event.submitted_by_agent',
+              vars: {
+                actor: acting.actorName,
+                subject: acting.subjectName,
+                kind: delegationTypeLabel(acting.delegationType),
+              },
+            }
+          : { key: 'case.event.submitted' }),
       },
       needsReview
-        ? { at: nowIso(), type: 'IN_REVIEW', text: pendingClaims.length ? 'Handmatige beoordeling: de burger heeft gegevens gewijzigd.' : undecided ? 'Handmatige beoordeling: de wet kan nog geen uitkomst geven, er ontbreken gegevens.' : 'Handmatige beoordeling (steekproef).' }
-        : { at: nowIso(), type: 'DECIDED', text: requirementsMet ? 'Automatisch toegekend.' : 'Automatisch afgewezen.' },
+        ? { at: nowIso(), type: 'IN_REVIEW', key: reviewReasonKey({ pendingClaims, undecided }) }
+        : { at: nowIso(), type: 'DECIDED', key: requirementsMet ? 'case.event.granted_auto' : 'case.event.refused_auto' },
     ],
   };
   for (const claim of pendingClaims) claim.caseId = c.id;
@@ -564,21 +633,13 @@ function resubmitCase(caseId, evaluation, params = personaParams()) {
   c.claimedResult = evaluation.outputs ?? {};
   c.verifiedResult = null;
   c.approved = needsReview ? null : requirementsMet;
-  c.reason = needsReview ? null : requirementsMet ? 'Automatisch toegekend op basis van de wet.' : 'Voldoet niet aan de voorwaarden.';
+  c.reasonKey = needsReview ? null : requirementsMet ? 'case.reason.granted_by_law' : 'case.reason.conditions_not_met';
   c.decidedAt = needsReview ? null : nowIso();
-  c.events.push({ at: nowIso(), type: 'SUBMITTED', text: 'Aanvraag gewijzigd door de burger.' });
+  c.events.push({ at: nowIso(), type: 'SUBMITTED', key: 'case.event.amended' });
   c.events.push(
     needsReview
-      ? {
-          at: nowIso(),
-          type: 'IN_REVIEW',
-          text: pendingClaims.length
-            ? 'Handmatige beoordeling: de burger heeft gegevens gewijzigd.'
-            : undecided
-              ? 'Handmatige beoordeling: de wet kan nog geen uitkomst geven, er ontbreken gegevens.'
-              : 'Handmatige beoordeling (steekproef).',
-        }
-      : { at: nowIso(), type: 'DECIDED', text: requirementsMet ? 'Automatisch toegekend.' : 'Automatisch afgewezen.' },
+      ? { at: nowIso(), type: 'IN_REVIEW', key: reviewReasonKey({ pendingClaims, undecided }) }
+      : { at: nowIso(), type: 'DECIDED', key: requirementsMet ? 'case.event.granted_auto' : 'case.event.refused_auto' },
   );
   // De lijst hierboven is met opzet breder dan deze regeling — een wijziging
   // bij een andere regeling telt mee voor de vraag óf er beoordeeld moet
@@ -607,7 +668,13 @@ function decideCase(caseId, approved, reason, verifiedResult = null) {
   c.reason = reason;
   c.verifiedResult = verifiedResult;
   c.decidedAt = nowIso();
-  c.events.push({ at: nowIso(), type: 'DECIDED', text: `${approved ? 'Toegekend' : 'Afgewezen'} door behandelaar: ${reason}` });
+  c.events.push({
+    at: nowIso(),
+    type: 'DECIDED',
+    approved,
+    key: approved ? 'case.event.granted_by_officer' : 'case.event.refused_by_officer',
+    vars: { reason },
+  });
   // Het besluit is genomen: dat is de datum waar de fase BESLUIT op wachtte.
   advanceLifecycle(c, { besluit_datum: isoDate(c.decidedAt) });
   c.status = statusOf(c);
@@ -633,7 +700,7 @@ function publishCase(caseId, bekendmakingDatum = null) {
   if (statusOf(c) !== 'DECIDED') return;
   c.publishedAt = nowIso();
   const datum = bekendmakingDatum ?? isoDate(c.publishedAt);
-  c.events.push({ at: nowIso(), type: 'BEKENDMAKING', text: `Besluit bekendgemaakt aan de belanghebbende op ${datum}.` });
+  c.events.push({ at: nowIso(), type: 'BEKENDMAKING', key: 'case.event.announced', vars: { date: datum } });
   advanceLifecycle(c, { bekendmaking_datum: datum });
   c.status = statusOf(c);
   reregister();
@@ -648,7 +715,7 @@ function moveCase(caseId, status) {
   const c = state.cases.find((x) => x.id === caseId);
   if (!c || c.status === status) return;
   c.status = status;
-  c.events.push({ at: nowIso(), type: status, text: `Status gewijzigd naar ${status}.` });
+  c.events.push({ at: nowIso(), type: status, key: 'case.event.status_changed', vars: { status } });
   reregister();
 }
 
@@ -665,7 +732,7 @@ function objectToCase(caseId, reason) {
   const c = state.cases.find((x) => x.id === caseId);
   if (!c) return;
   c.objection = { reason, status: 'PENDING', filedAt: nowIso() };
-  c.events.push({ at: nowIso(), type: 'OBJECTION', text: `Bezwaar ingediend: ${reason}` });
+  c.events.push({ at: nowIso(), type: 'OBJECTION', key: 'case.event.objection', vars: { reason } });
   reregister();
 }
 
@@ -676,7 +743,13 @@ function decideObjection(caseId, upheld, reason) {
   c.objection.decidedAt = nowIso();
   c.status = 'DECIDED';
   if (upheld) c.approved = !c.approved;
-  c.events.push({ at: nowIso(), type: 'OBJECTION_DECIDED', text: `Bezwaar ${upheld ? 'gegrond' : 'ongegrond'}: ${reason}` });
+  c.events.push({
+    at: nowIso(),
+    type: 'OBJECTION_DECIDED',
+    upheld,
+    key: upheld ? 'case.event.objection_upheld' : 'case.event.objection_dismissed',
+    vars: { reason },
+  });
   reregister();
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CHANGE_TYPES, changeTypeById, claimsFromAnswers, fieldsOf } from './changeWizard.js';
+import { CHANGE_TYPES, changeTypeById, claimsFromAnswers, eventUnsupported, fieldsOf, typeLabel } from './changeWizard.js';
 
 describe('CHANGE_TYPES', () => {
   it('wijst elke soort wijziging aan de wet die het gegeven bezit', () => {
@@ -12,7 +12,7 @@ describe('CHANGE_TYPES', () => {
   });
 
   it('vindt een soort op id en geeft niets terug voor een onbekende', () => {
-    expect(changeTypeById('inkomen')?.label).toBe('Mijn inkomen of vermogen');
+    expect(typeLabel(changeTypeById('inkomen'))).toBe('Mijn inkomen of vermogen');
     expect(changeTypeById('bestaat-niet')).toBeNull();
   });
 });
@@ -143,14 +143,14 @@ describe('claimsFromAnswers voor het huishouden', () => {
     // stilletjes correcties indienen.
     const halfaf = {
       ...huishouden,
-      events: [{ value: 'halfaf', label: 'Half afgebouwd', unsupported: 'Kan nog niet.', changes: { partnerschap_type: 'GEEN' } }],
+      events: [{ value: 'halfaf', labelKey: 'sheet.change.event.kind', unsupportedKey: 'sheet.change.event.kind.unsupported', changes: { partnerschap_type: 'GEEN' } }],
     };
     expect(claimsFromAnswers(halfaf, { event: 'halfaf' })).toEqual([]);
   });
 
   it('zegt per niet-ondersteunde gebeurtenis waaróm het niet kan', () => {
     for (const e of huishouden.events.filter((e) => !e.changes)) {
-      expect(e.unsupported).toMatch(/kan in deze demo nog niet|demo nog niet/);
+      expect(eventUnsupported(e)).toMatch(/kan in deze demo nog niet|demo nog niet/);
     }
   });
 
