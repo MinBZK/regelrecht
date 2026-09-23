@@ -76,7 +76,7 @@ async fn inloggen(app: &Router, kvk: &str) -> String {
         "POST",
         &format!("{INSTANTIE}/api/eherkenning/login"),
         None,
-        Some(json!({"kvk": kvk, "persoon": "A. Tester", "machtiging": "volledig"})),
+        Some(json!({"kvk": kvk, "persoon": "A. Tester"})),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
@@ -108,7 +108,7 @@ async fn login_weigert_ongeldige_kvk() {
         "POST",
         &format!("{INSTANTIE}/api/eherkenning/login"),
         None,
-        Some(json!({"kvk": "123", "persoon": "A", "machtiging": "volledig"})),
+        Some(json!({"kvk": "123", "persoon": "A"})),
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
@@ -535,7 +535,7 @@ async fn afnemer_toets(app: &Router, aanduiding: Option<&str>) -> Value {
         "POST",
         "/cellen/test_afnemer/api/eherkenning/login",
         None,
-        Some(json!({"kvk": "12345678", "persoon": "A. Tester", "machtiging": "volledig"})),
+        Some(json!({"kvk": "12345678", "persoon": "A. Tester"})),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
@@ -937,7 +937,7 @@ async fn afnemer_indienen(app: &Router, kvk: &str) -> String {
         "POST",
         &format!("{AFNEMER}/api/eherkenning/login"),
         None,
-        Some(json!({"kvk": kvk, "persoon": "A. Tester", "machtiging": "volledig"})),
+        Some(json!({"kvk": kvk, "persoon": "A. Tester"})),
     )
     .await;
     let (status, body, _) = vraag(
@@ -1018,7 +1018,7 @@ async fn rollen_bepalen_wie_wat_mag() {
         "POST",
         &format!("{AFNEMER}/api/eherkenning/login"),
         None,
-        Some(json!({"kvk": "12345678", "persoon": "A", "machtiging": "volledig"})),
+        Some(json!({"kvk": "12345678", "persoon": "A"})),
     )
     .await;
     let aanvrager = aanvrager.as_deref();
@@ -1445,7 +1445,7 @@ async fn een_gebied_zonder_tarief_blijft_leeg() {
         "POST",
         &format!("{AFNEMER}/api/eherkenning/login"),
         None,
-        Some(json!({"kvk": "12345678", "persoon": "A. Tester", "machtiging": "volledig"})),
+        Some(json!({"kvk": "12345678", "persoon": "A. Tester"})),
     )
     .await;
     let mut concept = afnemer_concept(Some("VOORBEELD"));
@@ -1618,7 +1618,7 @@ async fn besluit_nemen_legt_een_decretogram_vast() {
         "POST",
         &format!("{AFNEMER}/api/eherkenning/login"),
         None,
-        Some(json!({"kvk": "12345678", "persoon": "A", "machtiging": "volledig"})),
+        Some(json!({"kvk": "12345678", "persoon": "A"})),
     )
     .await;
     let (status, _, _) = vraag(

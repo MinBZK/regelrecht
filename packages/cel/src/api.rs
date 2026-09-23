@@ -12,7 +12,7 @@
 //!
 //! | Route | Doet |
 //! |---|---|
-//! | `POST /api/eherkenning/login` | `{kvk, persoon, machtiging}` naar een sessie |
+//! | `POST /api/eherkenning/login` | `{kvk, persoon}` naar een sessie |
 //! | `GET /api/eherkenning/sessie` | wie is ingelogd |
 //! | `POST /api/eherkenning/logout` | sessie beeindigen |
 //! | `GET /api/stroom` | de stroomdefinitie en de velden van het formulier |

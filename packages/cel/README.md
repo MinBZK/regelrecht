@@ -286,7 +286,7 @@ komen.
 | `controle` | de controles bij het opstarten |
 | `synthese` | bronnen bevragen, samenvoegen met herkomst, en de controles erop |
 | `transport` | intern en HTTP |
-| `eherkenning` | nep-login (KvK, gemachtigde, machtiging `volledig`) |
+| `eherkenning` | nep-login (KvK en persoon; bevoegdheid komt uit het handelsregister) |
 | `sessie` | sessies per rol, en de nagebootste medewerkerslogin |
 | `toets` | parameters aan de engine, een of meer uitkomsten evalueren |
 | `besluit` | het proefbesluit op een zaak, het vastleggen ervan, en de controles op rollen en behandeling |

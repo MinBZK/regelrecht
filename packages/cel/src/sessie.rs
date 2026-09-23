@@ -107,7 +107,6 @@ mod tests {
         let sessie = Login {
             kvk: "12345678".into(),
             persoon: "A".into(),
-            machtiging: "volledig".into(),
         }
         .valideer()
         .unwrap();

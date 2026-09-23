@@ -733,7 +733,7 @@ mod tests {
     }
 
     fn intake() -> Value {
-        json!({"kanaal": "portaal", "eherkenning": {"kvk": "12345678", "persoon": "A. Tester", "machtiging": "volledig"}})
+        json!({"kanaal": "portaal", "eherkenning": {"kvk": "12345678", "persoon": "A. Tester"}})
     }
 
     #[test]
