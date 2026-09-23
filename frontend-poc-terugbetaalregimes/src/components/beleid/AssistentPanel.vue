@@ -206,7 +206,13 @@ import OptimalisatiepadChart from '@regelrecht/frontend-shared/components/Optima
 // tussenstand; die cijfers naast de tegels zetten zou de doorrekening van de
 // gebruiker stil overschrijven met een tussenmeting. Ze horen thuis in de
 // feed en in het optimalisatiepad hieronder, en nergens anders.
-const { streaming, run, stuur, antwoord, abort } = useAssistent();
+const {
+  streaming, run, hervat, stuur, antwoord, abort,
+  // Gedeelde state: leeft buiten dit paneel, zodat een routewissel het gesprek
+  // niet wist. Zie de kop van useAssistent.
+  gesprekId, feed, voortgang, afronding, openVraag, overlays,
+  meld, vraagNotificatieToestemming,
+} = useAssistent();
 const {
   applyOverlays, applyDefinitionChange, docPathVoorKey,
   lawDocsFor, werkversie, werkversieLabel,
@@ -255,9 +261,7 @@ async function peilHealth() {
 
 const modus = ref('vraag');
 const prompt = ref('');
-const feed = ref([]);
 const pad = ref([]); // [{iteratie, pct}] voor de doel-modus
-const overlays = ref(null);
 const feedEl = ref(null);
 
 const placeholder = computed(() => ({
@@ -275,11 +279,8 @@ const reeksen = [{
 }];
 
 /** Laatste voortgangsmelding van de backend, en de afronding na afloop. */
-const voortgang = ref(null);
-const afronding = ref(null);
 
 /** De keuze die nu voorligt, als de assistent er een stelde. */
-const openVraag = ref(null);
 const aangevinkt = ref([]);
 
 /**
@@ -456,12 +457,25 @@ const modusUitleg = computed(() => ({
   instructie: 'Je weet wat je wilt veranderen. De assistent voert die ene wijziging uit en rekent door.',
 }[modus.value]));
 
-onMounted(peilHealth);
+onMounted(() => {
+  peilHealth();
+  // Loopt er nog een gesprek van voor de routewissel? Haak er weer op aan; de
+  // backend stuurt eerst wat er gemist is en gaat daarna live verder.
+  if (gesprekId.value && !streaming.value) {
+    hervat(gesprekId.value, verwerkEvent).then((gelukt) => {
+      if (!gelukt) rondGesprekAf();
+    });
+  }
+});
 onUnmounted(() => {
   if (healthTimer) clearInterval(healthTimer);
 });
 
 async function submit() {
+  // Toestemming voor notificaties vragen we hier en niet bij het laden: de
+  // browser weigert de prompt buiten een klik om, en een prompt zodra je
+  // binnenkomt is in een demo voor OCW lelijk.
+  vraagNotificatieToestemming();
   feed.value = [];
   pad.value = [];
   gekozenPunt.value = null;
@@ -484,10 +498,22 @@ async function submit() {
   prompt.value = '';
   feed.value.push({ type: 'gebruiker', tekst: opdracht });
   feed.value.push({ type: 'tekst', tekst: `Werkt op ${werkversieLabel.value}.` });
-  await run({ modus: modus.value, prompt: opdracht, documenten }, (ev) => {
+  await run({ modus: modus.value, prompt: opdracht, documenten }, verwerkEvent);
+  rondGesprekAf();
+}
+
+/**
+ * Verwerk één bericht uit de stream. Staat los van `submit`, want
+ * hervatten na een routewissel voert dezelfde berichten langs dezelfde
+ * verwerking.
+ */
+function verwerkEvent(ev) {
     if (ev.type === 'voortgang') {
       voortgang.value = ev;
     } else if (ev.type === 'vraag') {
+      // Hier staat de assistent stil tot er iemand antwoordt, dus dit is de
+      // melding die het meest oplevert.
+      meld('vraag', 'De beleidsassistent wacht op een keuze.');
       openVraag.value = ev;
       aangevinkt.value = [];
       feed.value.push({ type: 'vraag', vraag: ev.vraag });
@@ -535,6 +561,11 @@ async function submit() {
         });
       }
     } else if (ev.type === 'beurt_klaar' || ev.type === 'klaar') {
+      // Wie op een andere pagina staat hoort dit te weten; daar is het paneel
+      // niet in beeld en blijft hij anders wachten op iets dat al gebeurd is.
+      meld('klaar', ev.type === 'klaar'
+        ? 'De beleidsassistent is klaar.'
+        : 'De beleidsassistent heeft een antwoord.');
       // beurt_klaar komt na elk antwoord, klaar pas als het gesprek sluit.
       // Allebei betekenen ze: deze beurt is af, dus het spinnertje uit en de
       // wijzigingen klaarzetten om over te nemen.
@@ -548,11 +579,17 @@ async function submit() {
     nextTick(() => {
       if (feedEl.value) feedEl.value.scrollTop = feedEl.value.scrollHeight;
     });
-  });
-  // De stream is dicht. Staat er nog een vraag open, dan komt er niemand meer
-  // om de keuze te beantwoorden; een dialoog laten staan die niets meer doet
-  // is erger dan die weghalen.
+}
+/**
+ * De stream is dicht. Dat hoeft niet te betekenen dat het gesprek voorbij is:
+ * sinds een run doorloopt als je naar een ander tabblad gaat, sluit de stream
+ * ook bij een routewissel. Alleen als het gesprek echt weg is (`gesprekId` is
+ * gewist door een `klaar`, of hervatten gaf 404) valt er iets af te ronden.
+ */
+function rondGesprekAf() {
+  if (gesprekId.value) return;
   if (openVraag.value) {
+    // Een dialoog laten staan die niets meer doet is erger dan hem weghalen.
     openVraag.value = null;
     feed.value.push({ type: 'tekst', tekst: 'Het gesprek is afgelopen terwijl er een keuze openstond.' });
   }
