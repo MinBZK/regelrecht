@@ -93,7 +93,7 @@ When an input is missing, a source is unreachable, or it does not supply the val
 
 ## Taking the decision
 
-`POST /cellen/<id>/api/zaken/<zaakkenmerk>/besluit` computes the same thing and records the outcome, when `behandeling.besluit.vastleggen` says where. The gram is a stage decretogram of that event: `zaak: volgt` with the case identifier of the case, and the outcomes as its fields. On top of that comes what makes the decision a decision: `legal_character` and `decision_type` from the article's `produces`, `regulation` and `regulation_valid_from`, `inputs` with every parameter's value and provenance ([RFC-013](/rfcs/rfc-013) `accepted_values`), and a `receipt` holding the loaded regulations and the cell's streams with a SHA-256 over both.
+`POST /cellen/<id>/api/zaken/<zaakkenmerk>/besluit` computes the same thing and records the outcome, when `behandeling.besluit.vastleggen` says where. The gram is a stage decretogram of that event: `zaak: volgt` with the case identifier the application opened, and the outcomes as its fields. On top of that comes what makes the decision a decision: `legal_character` and `decision_type` from the article's `produces`, `regulation` and `regulation_valid_from`, `inputs` with every parameter's value and provenance ([RFC-013](/rfcs/rfc-013) `accepted_values`), and a `receipt` holding the loaded regulations and the cell's streams with a SHA-256 over both.
 
 The competent authority comes from the regulation (the article, otherwise the regulation itself) and is tested against the cell's `recording_actor`. Equal means record; a different authority means refuse; when the regulation names none, the cell records with a warning and without `competent_authority`. It does not make one up.
 
