@@ -183,3 +183,38 @@ test te laten slagen.
 De BDD-suite staat op 76 van de 76 groen. Dat en dit rapport zijn niet met elkaar
 in tegenspraak: de scenario's toetsen wat het model doet, niet of het model de
 wet volgt.
+
+## Naschrift: de ketenpoort mat niets
+
+`script/cross-law-integriteit.py` bestond al en controleert of elke `source`- en
+`implements`-binding oplost. Op 23 september bleek hij twee gebreken te hebben.
+Het tweede is het ernstigst, en werd pas zichtbaar door de reparatie van het
+eerste.
+
+| Draai op de trajectcorpus | clean | overige |
+|---|---|---|
+| Voor de reparatie | **0** | alles 0 |
+| Na de reparatie | **21** | alles 0 |
+
+`clean=0` betekent niet "niets mis". Het betekent dat de poort **geen enkele
+binding heeft gevonden om te controleren**, en vervolgens groen rapporteerde.
+
+De oorzaak: het script laadde alle bestanden onder de corpusmap en indexeerde ze
+op `$id`. Een corpus draagt tientallen peildatums per wet, dus een willekeurige
+versie won, afhankelijk van de globvolgorde, en de meeste versies dragen geen
+`machine_readable`. Alle negentien cross-law-aanroepen en beide
+`implements`-koppelingen van dit dossier verdwenen daarmee uit beeld.
+
+Het eerste gebrek was de PyYAML-valkuil: artikelnummers met een dubbele punt
+werden getallen, waardoor de `implements` van het Reintegratiebesluit naar Wajong
+2:22 als dood werd gemeld. Dat is dezelfde bevinding die op 8 september 2026 is
+gemeld en op 9 september is ingetrokken; de oorzaak is toen opgeschreven, het
+script is nooit aangepast.
+
+Beide zijn gerepareerd. De 21 bindingen van dit dossier lossen alle op.
+
+Een waarschuwing blijft staan: de poort toetst de **vorm** van een binding, niet
+de **inhoud**. De `implements` van het Reintegratiebesluit telt als schoon,
+terwijl die volgens deze audit aan een artikel hangt dat uitsluitend grondslagen
+opsomt en niets invult. Een groene poort betekent hier dat de verwijzing bestaat,
+niet dat er iets achter zit.
