@@ -30,10 +30,22 @@ const NEEDS_DIACRITIC = [
   ['Of', 'Ôf', /(^|[\s("'>])Of(wiis|wiiz|wize|sluting|brekke|hannel|hinne|spraak)/],
   ['Ut', 'Út', /(^|[\s("'>])Ut(fier|kom|kear|zoom|sûndering|stel|lis| namme)/],
   ['Under', 'Ûnder', /(^|[\s("'>])Under(syk|diel|nim|wiis|steun)/],
-  ['Un', 'Û', /(^|[\s("'>])Un(bekend|tbrek|replik|gegrûn|mooglik)/],
+  ['Un', 'Ûn', /(^|[\s("'>])Un(bekend|tbrek|replik|gegrûn|mooglik)/],
 ];
 
 describe('het Fries', () => {
+  it('adviseert een vorm die bestaat', () => {
+    // De melding zegt `"Un…" hoort "Ûn…" te zijn`, dus de vervanging moet
+    // evenveel letters houden als de stam. Stond er `Û` tegenover `Un`, dan
+    // leest een vertaler dat hij `Ûbekend` moet schrijven in plaats van
+    // `Ûnbekend`. De regex vangt dan nog steeds het juiste woord, en het advies
+    // eronder is stil fout: precies het soort fout dat deze test zelf hoort te
+    // voorkomen.
+    for (const [from, to] of NEEDS_DIACRITIC) {
+      expect([from, to.length], `${from} -> ${to}`).toEqual([from, from.length]);
+    }
+  });
+
   it('houdt zijn diakriet op een hoofdletter', () => {
     const wrong = [];
     for (const [key, value] of Object.entries(fy)) {
