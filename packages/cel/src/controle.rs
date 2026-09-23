@@ -31,7 +31,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use regelrecht_engine::LawExecutionService;
 
-use crate::config::Portaal;
+use crate::config::{Aanbod, Portaal};
 use crate::eherkenning::INTAKE_PADEN;
 use crate::reductie::{self, Filter, LexostatusDefinitie, Lexostatussen};
 use crate::regelingen;
@@ -544,6 +544,41 @@ fn portaal_(
             }
         }
     }
+    if let Some(a) = &p.aanbod {
+        aanbod_(a, service, fouten);
+    }
+}
+
+/// Het aanbod: de uitkomst bestaat, en een termijn komt uit hetzelfde
+/// artikel. Uitkomst en termijn gaan in een run; een termijn uit een ander
+/// artikel, of een die niet bestaat, zou die run laten mislukken en daarmee
+/// ook het oordeel over de uitkomst.
+fn aanbod_(a: &Aanbod, service: &LawExecutionService, fouten: &mut Vec<String>) {
+    let resolver = service.resolver();
+    let Some(artikel) = resolver.get_article_by_output(&a.regeling, &a.uitkomst, None) else {
+        fouten.push(format!(
+            "portaal.aanbod: regeling '{}' heeft geen uitkomst '{}'",
+            a.regeling, a.uitkomst
+        ));
+        return;
+    };
+    let Some(t) = &a.termijn else {
+        return;
+    };
+    match resolver.get_article_by_output(&a.regeling, t, None) {
+        None => fouten.push(format!(
+            "portaal.aanbod: regeling '{}' heeft geen termijn-uitkomst '{t}'",
+            a.regeling
+        )),
+        Some(ander) if ander.number != artikel.number => fouten.push(format!(
+            "portaal.aanbod: termijn '{t}' komt uit {r}#{}, de uitkomst '{}' uit {r}#{}; ze moeten uit hetzelfde artikel komen",
+            ander.number,
+            a.uitkomst,
+            artikel.number,
+            r = a.regeling,
+        )),
+        Some(_) => {}
+    }
 }
 
 #[cfg(test)]
@@ -812,6 +847,56 @@ mod tests {
             "regeling: testregeling_awb\n    uitkomst: in_verzuim",
         );
         portaal_faalt_met(&celdef, "staat niet in de grondslag van event");
+    }
+
+    /// De cel-definitie met een aanbod uit `testregeling_aanvraag`.
+    fn met_aanbod(uitkomst: &str, termijn: Option<&str>) -> String {
+        let termijn = termijn
+            .map(|t| format!("    termijn: {t}\n"))
+            .unwrap_or_default();
+        CELDEF.replace(
+            "  formulier:",
+            &format!(
+                "  aanbod:\n    regeling: testregeling_aanvraag\n    uitkomst: {uitkomst}\n{termijn}  formulier:"
+            ),
+        )
+    }
+
+    #[test]
+    fn portaal_met_aanbod_en_termijn_uit_hetzelfde_artikel() {
+        draai_met(
+            STROOM,
+            CEL,
+            &met_aanbod("aanvraag_volledig", Some("aanvraag_tijdig")),
+        )
+        .unwrap();
+        draai_met(STROOM, CEL, &met_aanbod("aanvraag_volledig", None)).unwrap();
+    }
+
+    #[test]
+    fn aanbod_met_onbekende_uitkomst() {
+        portaal_faalt_met(
+            &met_aanbod("bestaat_niet", None),
+            "portaal.aanbod: regeling 'testregeling_aanvraag' heeft geen uitkomst 'bestaat_niet'",
+        );
+    }
+
+    #[test]
+    fn aanbod_met_onbekende_termijn() {
+        portaal_faalt_met(
+            &met_aanbod("aanvraag_volledig", Some("bestaat_niet")),
+            "portaal.aanbod: regeling 'testregeling_aanvraag' heeft geen termijn-uitkomst 'bestaat_niet'",
+        );
+    }
+
+    /// De termijn gaat in dezelfde run mee: een ander artikel zou de run van
+    /// de uitkomst laten afhangen van wat dat artikel nodig heeft.
+    #[test]
+    fn aanbod_met_termijn_uit_een_ander_artikel() {
+        portaal_faalt_met(
+            &met_aanbod("aanvraag_volledig", Some("aanvraag_compleet")),
+            "portaal.aanbod: termijn 'aanvraag_compleet' komt uit testregeling_aanvraag#2, de uitkomst 'aanvraag_volledig' uit testregeling_aanvraag#1; ze moeten uit hetzelfde artikel komen",
+        );
     }
 
     #[test]
