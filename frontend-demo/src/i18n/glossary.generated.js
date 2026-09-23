@@ -707,5 +707,10 @@ export default {
       "zorgtype": "care type",
       "zw": "ZW"
     }
+  },
+  "fy": {
+    "laws": {},
+    "names": {},
+    "words": {}
   }
 };

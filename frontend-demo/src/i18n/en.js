@@ -854,9 +854,9 @@ export default {
   // ---- why the legal text stays Dutch --------------------------------------
   'wet.dutch_only.title': 'The legal text is shown in Dutch',
   'wet.dutch_only.body':
-    'The binding text of a Dutch statute exists only in Dutch. A translation of it is not the law, and putting one ' +
-    'here would suggest something nobody could rely on. The text therefore stands as it was published. The model ' +
-    'built on it, and everything around it, is translated.',
+    'The laws in this demo were published in Dutch, and the published text is the text that applies. A translation of ' +
+    'it is not the law, and putting one here would suggest something nobody could rely on. The text therefore stands ' +
+    'as it was published. The model built on it, and everything around it, is translated.',
   'wet.dutch_only.published': 'Read the published text',
   'scenario.files.label': 'Test files',
   'scenario.view.file': 'File',

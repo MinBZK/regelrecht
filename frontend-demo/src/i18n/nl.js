@@ -852,14 +852,23 @@ export default {
   'scenario.files.other': '{n} testbestanden',
 
   // ---- waarom de wettekst Nederlands blijft --------------------------------
-  // Staat alleen in het Engels op het scherm; voor een Nederlandse lezer valt
-  // er niets uit te leggen. De sleutels bestaan in beide talen omdat de
-  // pariteitscontrole dat eist.
+  // Staat alleen in een andere taal dan het Nederlands op het scherm; voor een
+  // Nederlandse lezer valt er niets uit te leggen. De sleutels bestaan in elke
+  // taal omdat de pariteitscontrole dat eist.
+  //
+  // De tekst zegt wat er van déze teksten waar is: ze zijn in het Nederlands
+  // bekendgemaakt. Dat is iets anders dan "een Nederlandse wet bestaat alleen
+  // in het Nederlands", wat er eerst stond. Fries is op grond van de Wet
+  // gebruik Friese taal een officiele taal in Fryslan, en er zijn regelingen
+  // met een authentieke Friese tekst; die staan alleen niet in dit corpus. Een
+  // banner die het algemener stelt dan het is, zegt tegen een Friese lezer iets
+  // onwaars over zijn eigen taal, en dat is precies het soort stelligheid dat
+  // deze demo niet hoort uit te stralen.
   'wet.dutch_only.title': 'De wettekst staat in het Nederlands',
   'wet.dutch_only.body':
-    'De bindende tekst van een Nederlandse wet bestaat alleen in het Nederlands. Een vertaling ervan is de wet niet, ' +
-    'en zou hier de indruk wekken van iets waar niemand zich op kan beroepen. De tekst staat er daarom zoals hij is ' +
-    'bekendgemaakt. Het model dat erop gebouwd is, en alles eromheen, is wel vertaald.',
+    'De wetten in deze demo zijn in het Nederlands bekendgemaakt, en die bekendgemaakte tekst is de tekst die geldt. ' +
+    'Een vertaling ervan is de wet niet, en zou hier de indruk wekken van iets waar niemand zich op kan beroepen. De ' +
+    'tekst staat er daarom zoals hij is bekendgemaakt. Het model dat erop gebouwd is, en alles eromheen, is wel vertaald.',
   'wet.dutch_only.published': 'Lees de bekendgemaakte tekst',
   'scenario.files.label': 'Testbestanden',
   'scenario.view.file': 'Bestand',

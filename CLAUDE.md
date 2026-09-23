@@ -216,12 +216,37 @@ For delegated values (e.g., "bij ministeriële regeling"), laws use the IoC patt
 higher laws declare `open_terms`, lower regulations declare `implements`.
 See `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml` for a working example.
 
-## De demo is tweetalig
+## De demo is meertalig
 
-`frontend-demo/` draait in het Nederlands en in het Engels. **Nederlands is de
-bron**: elke tekst staat eerst in `src/i18n/nl.js`, en `en.js` is er de
-vertaling van. Bewerk ze in dezelfde wijziging; een sleutel die maar in één
-bestand landt is een bug, geen halve klus.
+`frontend-demo/` draait in het Nederlands, het Engels en het Fries.
+**Nederlands is de bron**: elke tekst staat eerst in `src/i18n/nl.js`, en de
+andere woordenboeken zijn er de vertaling van. Bewerk ze in dezelfde wijziging;
+een sleutel die maar in één bestand landt is een bug, geen halve klus.
+
+- **De talentabel in `src/i18n/index.js` is de enige bron.** Daar staat per taal
+  zijn prefix, zijn `Intl`-tag, zijn naam in de eigen taal en zijn woordenboek.
+  Een taal toevoegen is een regel in die tabel plus een pad per pagina in
+  `router.js`; zet nooit een taalcode los in een `===` of een objectsleutel,
+  want dat is precies wat een vierde taal stil Nederlands laat worden.
+- **Fries is aanwezig maar nog niet vertaald.** `fy.js` draagt de Nederlandse
+  tekst, zodat de taal te kiezen is terwijl de vertaling gemaakt wordt. Daar
+  staat bewust geen machinevertaling: Fries en Nederlands delen zoveel
+  woordenschat dat een model Nederlands met â en û oplevert, en dat haalt elke
+  geautomatiseerde controle terwijl een Friese lezer het meteen ziet. De
+  vertaling hoort van een vertaler te komen (Afûk, Fryske Akademy).
+  `MAX_IDENTICAL_SHARE` in `i18n.test.js` bewaakt dat het aandeel onvertaalde
+  sleutels daalt en niet stijgt; dat getal gaat met de hand omlaag, met de reden
+  in de commit.
+- **Paden bevatten geen teken dat gecodeerd moet worden.** Slugs worden vertaald
+  (`/en/laws`, `/fy/senarios`), maar een apostrof wordt `%27` en dat is het
+  adres dat tijdens een presentatie op het scherm komt. Het Nederlands doet het
+  al zo: het tabblad heet "Scenario's" en het pad is `/scenarios`.
+  `router.test.js` weigert een pad met zo'n teken.
+- **Gherkin-stappen zijn de uitzondering op "een taal is een tabelregel".** De
+  sjablonen in `gherkinNl.js` zijn geschreven zinnen, geen tabelwaarde. Een taal
+  zonder sjablonen toont de canonieke Engelse stap, mét Engelse sleutelwoorden:
+  `Functionaliteit` boven een Engelse stap zou een taal suggereren die er niet
+  is.
 
 - **Elke zichtbare tekst gaat door `t()`.** Geen `locale === 'en' ? … : …` in
   een component: dat haalt de tekst buiten bereik van elke controle, en het is
@@ -241,12 +266,19 @@ bestand landt is een bug, geen halve klus.
   tabblad.
 - **Wetteksten worden niet vertaald.** `article.text` is de geldende wettekst;
   een vertaling daarvan heeft geen rechtskracht en is de wet niet. Die blijft
-  Nederlands, in beide talen, met `lang="nl"` op het paneel eromheen — geen
-  opmaakdetail, want een schermlezer kiest daarop zijn stem. In het Engels
-  staat er een banner boven (`wet.dutch_only.*`) die uitlegt waaróm, met een
-  link naar de bekendgemaakte tekst op wetten.overheid.nl. Dat die uitleg er
-  staat is het punt: een onvertaalde tekst zonder verklaring leest als werk dat
-  niet af is, en dit is juist een keuze.
+  Nederlands, in elke taal, met `lang="nl"` op het paneel eromheen. Dat is geen
+  opmaakdetail, want een schermlezer kiest daarop zijn stem. In elke andere taal
+  dan het Nederlands staat er een banner boven (`wet.dutch_only.*`) die uitlegt
+  waaróm, met een link naar de bekendgemaakte tekst op wetten.overheid.nl. Dat
+  die uitleg er staat is het punt: een onvertaalde tekst zonder verklaring leest
+  als werk dat niet af is, en dit is juist een keuze.
+
+  Die banner zegt dat de wetten in deze demo in het Nederlands zijn
+  bekendgemaakt, en niet dat een Nederlandse wet alleen in het Nederlands
+  bestaat. Dat laatste stond er eerst en is onwaar: Fries is op grond van de Wet
+  gebruik Friese taal een officiële taal in Fryslân, en er zijn regelingen met
+  een authentieke Friese tekst. Die staan alleen niet in dit corpus. Zeg wat van
+  déze teksten waar is.
 - **Eigennamen blijven staan.** `Belastingdienst` is de naam van een orgaan,
   geen omschrijving; wie op "Tax Administration" zoekt vindt niets. Een
   Engelse toelichting tussen haakjes mag, vertalen niet.

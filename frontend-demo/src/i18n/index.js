@@ -22,6 +22,7 @@
  */
 import { computed, ref } from 'vue';
 import en from './en.js';
+import fy from './fy.js';
 import nl from './nl.js';
 
 /**
@@ -45,6 +46,10 @@ import nl from './nl.js';
 export const LOCALES = [
   { code: 'nl', prefix: '', intl: 'nl-NL', label: 'Nederlands', dict: nl },
   { code: 'en', prefix: '/en', intl: 'en-GB', label: 'English', dict: en },
+  // Fries is aanwezig maar nog niet vertaald: `fy.js` draagt voorlopig de
+  // Nederlandse tekst. Zie de kop van dat bestand voor waarom daar geen
+  // machinevertaling staat.
+  { code: 'fy', prefix: '/fy', intl: 'fy-NL', label: 'Frysk', dict: fy },
 ];
 
 export const DEFAULT_LOCALE = 'nl';

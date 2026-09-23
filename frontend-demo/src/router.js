@@ -28,14 +28,14 @@ import { DEFAULT_LOCALE, LOCALES, adoptLocale } from './i18n/index.js';
  * against the route name.
  */
 const PAGES = [
-  { name: 'home', paths: { nl: '/', en: '/en' }, component: () => import('./views/HomeView.vue') },
-  { name: 'presentatie', paths: { nl: '/presentatie', en: '/en/presentation' }, component: () => import('./views/PresentatieView.vue') },
-  { name: 'wetten', paths: { nl: '/wetten/:lawId?', en: '/en/laws/:lawId?' }, component: () => import('./views/WettenView.vue') },
-  { name: 'graaf', paths: { nl: '/graaf', en: '/en/graph' }, component: () => import('./views/GraafView.vue') },
-  { name: 'scenarios', paths: { nl: '/scenarios/:featurePath(.*)?', en: '/en/scenarios/:featurePath(.*)?' }, component: () => import('./views/ScenariosView.vue') },
-  { name: 'simulatie', paths: { nl: '/simulatie', en: '/en/simulation' }, component: () => import('./views/SimulatieView.vue') },
-  { name: 'portaal', paths: { nl: '/portaal', en: '/en/portal' }, component: () => import('./views/PortaalView.vue') },
-  { name: 'zaaksysteem', paths: { nl: '/zaaksysteem/:caseId?', en: '/en/cases/:caseId?' }, component: () => import('./views/ZaaksysteemView.vue') },
+  { name: 'home', paths: { nl: '/', en: '/en', fy: '/fy' }, component: () => import('./views/HomeView.vue') },
+  { name: 'presentatie', paths: { nl: '/presentatie', en: '/en/presentation', fy: '/fy/presintaasje' }, component: () => import('./views/PresentatieView.vue') },
+  { name: 'wetten', paths: { nl: '/wetten/:lawId?', en: '/en/laws/:lawId?', fy: '/fy/wetten/:lawId?' }, component: () => import('./views/WettenView.vue') },
+  { name: 'graaf', paths: { nl: '/graaf', en: '/en/graph', fy: '/fy/graaf' }, component: () => import('./views/GraafView.vue') },
+  { name: 'scenarios', paths: { nl: '/scenarios/:featurePath(.*)?', en: '/en/scenarios/:featurePath(.*)?', fy: '/fy/senarios/:featurePath(.*)?' }, component: () => import('./views/ScenariosView.vue') },
+  { name: 'simulatie', paths: { nl: '/simulatie', en: '/en/simulation', fy: '/fy/simulaasje' }, component: () => import('./views/SimulatieView.vue') },
+  { name: 'portaal', paths: { nl: '/portaal', en: '/en/portal', fy: '/fy/portaal' }, component: () => import('./views/PortaalView.vue') },
+  { name: 'zaaksysteem', paths: { nl: '/zaaksysteem/:caseId?', en: '/en/cases/:caseId?', fy: '/fy/saaksysteem/:caseId?' }, component: () => import('./views/ZaaksysteemView.vue') },
 ];
 
 // Elke taal uit de tabel moet elke pagina hebben. Een ontbrekend pad zou hier

@@ -582,7 +582,7 @@ export default {
   "wet.back": "9a2b",
   "wet.back.fallback": "ea83",
   "wet.collapse.all": "3421",
-  "wet.dutch_only.body": "b3a0",
+  "wet.dutch_only.body": "354b",
   "wet.dutch_only.published": "d9f9",
   "wet.dutch_only.title": "450e",
   "wet.empty.body": "e41e",

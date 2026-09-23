@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import en from './en.js';
 import nl from './nl.js';
 import sources from './en.sources.js';
+import { LOCALES } from './index.js';
 import { hash } from './hash.js';
 import { FEATURES } from '../store/demoStore.js';
 import { DEFAULT_LOCALE, LOCALE_CODES, adoptLocale, currentLocale, setLocale, t } from './index.js';
@@ -49,20 +50,58 @@ function placeholders(s) {
   return [...String(s).matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
 }
 
+/**
+ * Hoeveel van de sleutels in een taal nog letterlijk het Nederlands mogen zijn.
+ *
+ * Voor het Engels is dat nul: elke uitzondering staat met reden in
+ * `IDENTICAL_BY_DESIGN`, en die lijst is kort genoeg om te lezen.
+ *
+ * Voor het Fries werkt diezelfde aanpak niet. Fries en Nederlands delen een
+ * groot deel van hun woordenschat, dus een vertaalde demo houdt legitiem
+ * tientallen tot honderden identieke sleutels over. Een uitzonderingenlijst zou
+ * van 19 naar 200+ groeien en dan een lijst zijn die zichzelf vult: niemand
+ * leest hem meer na, en hij bewaakt niets.
+ *
+ * Een vastgelegd getal doet dat wel. Het meet niet of de vertaling goed is (dat
+ * kan geen test), maar het maakt van "er blijft steeds meer Nederlands staan"
+ * een zichtbare gebeurtenis. Het getal gaat met de hand omlaag naarmate er
+ * vertaald is, met de reden in de commit. Nu staat het op 1: `fy.js` draagt de
+ * Nederlandse tekst omdat de vertaling er nog niet is, en dat is een bewuste
+ * tussenstand en geen sluipend verval.
+ */
+const MAX_IDENTICAL_SHARE = { en: 0, fy: 1 };
+
+/** De vertaalde talen: alles behalve de bron. */
+const TRANSLATED = LOCALES.filter((l) => l.code !== 'nl');
+
 describe('i18n parity', () => {
-  it('every Dutch key has an English translation', () => {
-    expect(Object.keys(nl).filter((k) => !(k in en))).toEqual([]);
+  it.each(TRANSLATED)('$code has a translation for every Dutch key', ({ dict }) => {
+    expect(Object.keys(nl).filter((k) => !(k in dict))).toEqual([]);
   });
 
-  it('English carries no key Dutch does not have', () => {
+  it.each(TRANSLATED)('$code carries no key Dutch does not have', ({ dict }) => {
     // A key renamed on the Dutch side and left behind here would otherwise sit
     // in the file forever, looking translated and reaching nothing.
-    expect(Object.keys(en).filter((k) => !(k in nl))).toEqual([]);
+    expect(Object.keys(dict).filter((k) => !(k in nl))).toEqual([]);
   });
 
   it('no English string is still the untranslated Dutch', () => {
     const same = Object.keys(nl).filter((k) => nl[k] === en[k] && !IDENTICAL_BY_DESIGN.has(k));
     expect(same).toEqual([]);
+  });
+
+  it.each(TRANSLATED)('$code keeps its share of untranslated strings within bounds', ({ code, dict }) => {
+    // De sleutels die per definitie gelijk zijn tellen niet mee: die zijn geen
+    // onvertaald Nederlands maar een woord dat in beide talen hetzelfde is.
+    const keys = Object.keys(nl).filter((k) => !IDENTICAL_BY_DESIGN.has(k));
+    const share = keys.filter((k) => nl[k] === dict[k]).length / keys.length;
+    const max = MAX_IDENTICAL_SHARE[code] ?? 0;
+    expect(
+      share,
+      `${code}: ${(share * 100).toFixed(1)}% van de sleutels is nog letterlijk het Nederlands, ` +
+        `en dat mag hoogstens ${(max * 100).toFixed(1)}% zijn. Vertaal verder, of verlaag ` +
+        'MAX_IDENTICAL_SHARE met een reden als er juist vertaald is.',
+    ).toBeLessThanOrEqual(max);
   });
 
   it('every key listed as identical by design really is identical', () => {
@@ -71,11 +110,11 @@ describe('i18n parity', () => {
     expect([...IDENTICAL_BY_DESIGN].filter((k) => nl[k] !== en[k])).toEqual([]);
   });
 
-  it('placeholders survive translation', () => {
+  it.each(TRANSLATED)('$code keeps every placeholder', ({ dict }) => {
     // A dropped `{n}` renders "to review" instead of "3 to review", and does
     // so silently.
     for (const key of Object.keys(nl)) {
-      expect(placeholders(en[key]), key).toEqual(placeholders(nl[key]));
+      expect(placeholders(dict[key]), key).toEqual(placeholders(nl[key]));
     }
   });
 

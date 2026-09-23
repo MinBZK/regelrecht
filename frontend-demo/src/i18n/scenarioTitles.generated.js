@@ -453,5 +453,6 @@ export default {
     "Zorgverzekeringswet - Inkomensafhankelijke bijdrage": "Zorgverzekeringswet - Income-dependent contribution",
     "Zus is WGBO vertegenwoordiger voor wilsonbekwame broer": "Sister is WGBO representative for a brother lacking mental capacity",
     "Zwak bier valt terug op het minimumbedrag": "Weak beer falls back on the minimum amount"
-  }
+  },
+  "fy": {}
 };
