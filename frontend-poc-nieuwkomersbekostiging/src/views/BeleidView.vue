@@ -37,7 +37,10 @@
               <budgetneutraal-panel />
             </paneel>
 
-            <paneel titel="Beleidsassistent" subtitel="Een instructie of doel in gewone taal; de assistent wijzigt de werkversie en rekent door." samenvatting="instructie of doel">
+            <!-- Loopt er een gesprek, dan staat dit paneel open. Je komt terug op
+                 deze pagina om te zien wat de assistent doet; dan is dichtgeklapt
+                 precies het verkeerde. -->
+            <paneel titel="Beleidsassistent" subtitel="Een instructie of doel in gewone taal; de assistent wijzigt de werkversie en rekent door." samenvatting="instructie of doel" :badge="assistentLoopt ? 'bezig' : ''" :open="assistentLoopt">
               <assistent-panel />
             </paneel>
 
@@ -133,6 +136,7 @@ import MetricTiles from '../components/beleid/MetricTiles.vue';
 import PlausibiliteitTabel from '../components/beleid/PlausibiliteitTabel.vue';
 import YamlEditorSheet from '../components/beleid/YamlEditorSheet.vue';
 import AssistentPanel from '../components/beleid/AssistentPanel.vue';
+import { useAssistent } from '../composables/useAssistent.js';
 
 const { ready, initError, lawIndex, initEngine } = useEngine();
 const { initStore, hasChanges, changeCount, editableDocs, werkversieLabel } = useLawStore();
@@ -152,6 +156,14 @@ const UITVOERING_POSTEN = [
 ];
 
 const mountError = ref(null);
+/**
+ * Loopt er een gesprek, of staat er een antwoord dat nog niet gezien is? Dan
+ * staat het assistentpaneel open: je komt terug op deze pagina om te zien wat
+ * hij doet, en dan is dichtgeklapt precies het verkeerde.
+ */
+const { streaming: assistentStreamt, gesprekId: assistentGesprek } = useAssistent();
+const assistentLoopt = computed(() => assistentStreamt.value || !!assistentGesprek.value);
+
 const yamlOpen = ref(false);
 const yamlPath = ref(null);
 const yamlKeuze = ref(null);
