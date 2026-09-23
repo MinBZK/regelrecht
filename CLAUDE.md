@@ -228,15 +228,20 @@ een sleutel die maar in één bestand landt is een bug, geen halve klus.
   Een taal toevoegen is een regel in die tabel plus een pad per pagina in
   `router.js`; zet nooit een taalcode los in een `===` of een objectsleutel,
   want dat is precies wat een vierde taal stil Nederlands laat worden.
-- **Fries is aanwezig maar nog niet vertaald.** `fy.js` draagt de Nederlandse
-  tekst, zodat de taal te kiezen is terwijl de vertaling gemaakt wordt. Daar
-  staat bewust geen machinevertaling: Fries en Nederlands delen zoveel
-  woordenschat dat een model Nederlands met â en û oplevert, en dat haalt elke
-  geautomatiseerde controle terwijl een Friese lezer het meteen ziet. De
-  vertaling hoort van een vertaler te komen (Afûk, Fryske Akademy).
-  `MAX_IDENTICAL_SHARE` in `i18n.test.js` bewaakt dat het aandeel onvertaalde
-  sleutels daalt en niet stijgt; dat getal gaat met de hand omlaag, met de reden
-  in de commit.
+- **Het Fries is vertaald maar nog niet nagekeken.** De vertaling komt van
+  taalmodellen, niet van een vertaler. Wat een Friestalige revisor moet
+  nakijken staat in `corpus/demo/i18n/REVIEW-fy.md`: de plekken waar de
+  vertalers zelf zeiden dat ze het niet zeker wisten, met per geval wat er vast
+  staat en wat niet. Vul die lijst aan wanneer je op zo'n plek stuit, in plaats
+  van de twijfel in een commit-bericht te laten zitten.
+  `MAX_IDENTICAL_SHARE` in `i18n.test.js` bewaakt dat het aandeel sleutels dat
+  nog letterlijk het Nederlands is daalt en niet stijgt; dat getal gaat met de
+  hand omlaag, met de reden in de commit.
+- **Een Fries woord houdt zijn diakriet, ook vooraan een zin.** `Ôfwiisd`, niet
+  `Ofwiisd`. Zo'n fout haalt élke andere controle, want de tekst verschilt nog
+  steeds van het Nederlands, en hij is toch fout. Alle vier de vertalers
+  maakten hem. `frisian.test.js` vangt hem nu; breid de stammenlijst daar uit
+  als er een woord bijkomt.
 - **Paden bevatten geen teken dat gecodeerd moet worden.** Slugs worden vertaald
   (`/en/laws`, `/fy/senarios`), maar een apostrof wordt `%27` en dat is het
   adres dat tijdens een presentatie op het scherm komt. Het Nederlands doet het
