@@ -219,10 +219,10 @@ describe('trainBracketModel', () => {
     // groep in de lijst — een wíllekeurige andere combinatie.
     const stap = (a) => ({ lower: 0, upper: 100000, amountAtLower: a, amountAtUpper: a, count: 100 });
     const model = {
-      primary: { key: 'inkomen', label: 'Inkomen' },
+      primary: { key: 'inkomen', labelKey: 'harm.feature.income' },
       groupKeys: [
-        { key: 'heeft_partner', label: 'Heeft partner', kind: 'boolean' },
-        { key: 'huurder', label: 'Huurt een woning', kind: 'boolean' },
+        { key: 'heeft_partner', labelKey: 'harm.feature.has_partner', kind: 'boolean' },
+        { key: 'huurder', labelKey: 'harm.feature.rents_a_home', kind: 'boolean' },
       ],
       groups: [
         { filter: { heeft_partner: 0, huurder: 0 }, keys: ['heeft_partner', 'huurder'], steps: [stap(100)], count: 200 },
@@ -239,8 +239,8 @@ describe('trainBracketModel', () => {
   it('noemt de reststaffel apart in de tabel', () => {
     const stap = (a) => ({ lower: 0, upper: 100000, amountAtLower: a, amountAtUpper: a, count: 10 });
     const metRest = {
-      primary: { key: 'inkomen', label: 'Inkomen' },
-      groupKeys: [{ key: 'heeft_partner', label: 'Heeft partner', kind: 'boolean' }],
+      primary: { key: 'inkomen', labelKey: 'harm.feature.income' },
+      groupKeys: [{ key: 'heeft_partner', labelKey: 'harm.feature.has_partner', kind: 'boolean' }],
       groups: [
         { filter: { heeft_partner: 1 }, keys: ['heeft_partner'], steps: [stap(900)], count: 200 },
         { filter: {}, keys: [], steps: [stap(500)], count: 20 },
@@ -312,7 +312,7 @@ describe('evaluateModel', () => {
     // dan zou het scherm beweren dat het model perfect is terwijl het er bij
     // allebei € 100 naast zit.
     const model = {
-      primary: { key: 'inkomen', label: 'Inkomen' },
+      primary: { key: 'inkomen', labelKey: 'harm.feature.income' },
       groupKeys: [],
       groups: [{ filter: {}, keys: [], count: 2, steps: [{ lower: 0, upper: 100000, amountAtLower: 100, amountAtUpper: 100 }] }],
     };

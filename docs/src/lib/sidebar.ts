@@ -46,6 +46,7 @@ export const sidebar: Record<string, SidebarGroup[]> = {
       items: [
         { text: 'Overview', link: '/concepts/how-it-works' },
         { text: 'Law Format', link: '/concepts/law-format' },
+        { text: 'Scenarios', link: '/concepts/scenarios' },
         { text: 'Cross-Law References', link: '/concepts/cross-law-references' },
         { text: 'Inversion of Control', link: '/concepts/inversion-of-control' },
         { text: 'Hooks and Reactive Execution', link: '/concepts/hooks-and-reactive-execution' },

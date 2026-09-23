@@ -576,7 +576,7 @@ const legalLinks = [
                     {t.footer.partOf.map((o, i) => (
                       <Fragment>
                         {i > 0 && <br />}
-                        {o}
+                        {o.href ? <a href={o.href}>{o.label}</a> : o.label}
                       </Fragment>
                     ))}
                   </p>

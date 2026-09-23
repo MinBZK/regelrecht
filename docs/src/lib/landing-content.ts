@@ -135,7 +135,7 @@ export interface LandingContent {
     partOfTitle: string
     copyright: string
     links: NavLink[]
-    partOf: string[]
+    partOf: { label: string; href?: string }[]
   }
   signup: {
     pageTitle: string
@@ -176,7 +176,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     meta: {
       title: 'RegelRecht: van wet naar digitale werking',
       description:
-        'Een verkenning van het Ministerie van BZK naar transparante, machine-uitvoerbare wetgeving.',
+        'Een project van de Nederlandse Digitale Dienst dat verkent of wetgeving als uitvoerbare code geschreven kan worden.',
     },
     nav: {
       brandMinistry: 'Ministerie van Economische Zaken en Klimaat',
@@ -285,12 +285,13 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           title: 'Regelformaat',
           meta: 'YAML + JSON Schema',
-          link: { label: 'RFC-001', href: '/rfcs/rfc-001' },
+          link: { label: 'Schemadocumentatie', href: '/reference/schema' },
           text: 'Wetten als YAML-bestanden met de wettekst en de machine-uitvoerbare regels naast elkaar. Een versioned JSON Schema bewaakt de structuur.',
         },
         {
           title: 'BDD-scenario’s',
           meta: 'Gherkin + cucumber',
+          link: { label: 'Scenario’s uitproberen', href: '/concepts/scenarios' },
           text: 'Verwachte uitkomsten worden vastgelegd als leesbare scenario’s. Juristen en programmeurs lezen dezelfde tests, en elke wijziging in de regels wordt direct gevalideerd. Waar mogelijk halen we die scenario’s rechtstreeks uit de memorie van toelichting.',
         },
         {
@@ -610,7 +611,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     },
     footer: {
       blurb:
-        'Een verkenning van Bureau Architectuur van het Ministerie van Economische Zaken en Klimaat naar de mogelijkheden van transparante, uitvoerbare wetgeving.',
+        'Een verkenning naar transparante, uitvoerbare wetgeving, en een van de drie projecten uit de startselectie van de Nederlandse Digitale Dienst.',
       linksTitle: 'Links',
       contactTitle: 'Contact',
       partOfTitle: 'Onderdeel van',
@@ -625,8 +626,11 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         { label: 'Onderzoek (Engels)', href: '/research/' },
       ],
       partOf: [
-        'Bureau Architectuur',
-        'Ministerie van Economische Zaken en Klimaat',
+        {
+          label: 'Nederlandse Digitale Dienst',
+          href: 'https://digitaledienst.overheid.nl/',
+        },
+        { label: 'Ministerie van Economische Zaken en Klimaat' },
       ],
     },
     signup: {
@@ -665,7 +669,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     meta: {
       title: 'RegelRecht: from statute to digital execution',
       description:
-        'An exploration by the Dutch Ministry of the Interior into transparent, machine-executable legislation.',
+        'A project of the Nederlandse Digitale Dienst exploring whether legislation can be written as executable code.',
     },
     nav: {
       brandMinistry: 'Ministry of Economic Affairs and Climate Policy',
@@ -774,12 +778,13 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           title: 'Rule format',
           meta: 'YAML + JSON Schema',
-          link: { label: 'RFC-001', href: '/rfcs/rfc-001' },
+          link: { label: 'Schema reference', href: '/reference/schema' },
           text: 'Laws as YAML files, with the legal text and the machine-executable rules side by side. A versioned JSON Schema guards the structure.',
         },
         {
           title: 'BDD scenarios',
           meta: 'Gherkin + cucumber',
+          link: { label: 'Try a scenario', href: '/concepts/scenarios' },
           text: 'Expected outcomes are captured as readable scenarios. Legal experts and programmers read the same tests, and every change to the rules is validated immediately. Where possible we draw those scenarios straight from the explanatory memorandum.',
         },
         {
@@ -1095,7 +1100,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     },
     footer: {
       blurb:
-        'An exploration by Bureau Architectuur of the Dutch Ministry of Economic Affairs and Climate Policy into the possibilities of transparent, executable legislation.',
+        'An exploration into transparent, executable legislation, and one of the three projects in the starting selection of the Nederlandse Digitale Dienst.',
       linksTitle: 'Links',
       contactTitle: 'Contact',
       partOfTitle: 'Part of',
@@ -1110,8 +1115,11 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         { label: 'Research', href: '/research/' },
       ],
       partOf: [
-        'Bureau Architectuur',
-        'Ministry of Economic Affairs and Climate Policy',
+        {
+          label: 'Nederlandse Digitale Dienst',
+          href: 'https://digitaledienst.overheid.nl/',
+        },
+        { label: 'Ministry of Economic Affairs and Climate Policy' },
       ],
     },
     signup: {

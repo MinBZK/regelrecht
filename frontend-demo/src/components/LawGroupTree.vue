@@ -1,6 +1,9 @@
 <script setup>
 import { reactive } from 'vue';
 import OrgLogo from './OrgLogo.vue';
+import { useI18n } from '../i18n/index.js';
+
+const { t } = useI18n();
 
 // Laws grouped by the organisation that executes them, as one design-system
 // tree: an organisation is a branch row (mark, name, count) that folds, its
@@ -32,12 +35,12 @@ function onRow(law) {
 </script>
 
 <template>
-  <nldd-list type="tree" accessible-label="Wetten per organisatie">
+  <nldd-list type="tree" :accessible-label="t('wet.tree.label')">
     <nldd-list-item v-for="group in groups" :key="group.service" size="md" button :expanded="isOpen(group.service)" @click="folded[group.service] = !folded[group.service]">
       <nldd-cell><OrgLogo :service="group.service" size="sm" /></nldd-cell>
       <nldd-spacer-cell size="12"></nldd-spacer-cell>
-      <nldd-text-cell :text="group.info.name" :supporting-text="`${group.laws.length} ${group.laws.length === 1 ? 'regeling' : 'regelingen'}`"></nldd-text-cell>
-      <nldd-cell v-if="mode === 'check' && checkedCount(group)"><nldd-badge color="accent" :number="checkedCount(group)" :accessible-label="`${checkedCount(group)} gekozen`"></nldd-badge></nldd-cell>
+      <nldd-text-cell :text="group.info.name" :supporting-text="t.plural(group.laws.length, 'wet.sidebar.count')"></nldd-text-cell>
+      <nldd-cell v-if="mode === 'check' && checkedCount(group)"><nldd-badge color="accent" :number="checkedCount(group)" :accessible-label="t('wet.tree.chosen', { n: checkedCount(group) })"></nldd-badge></nldd-cell>
       <nldd-icon-cell disclosure icon="chevron-right" size="16" color="secondary"></nldd-icon-cell>
       <nldd-list-item
         v-for="law in group.laws"
@@ -46,7 +49,7 @@ function onRow(law) {
         size="sm"
         button
         :selected="mode === 'pick' && law.id === activeId ? true : undefined"
-        :accessible-label="mode === 'check' ? `${law.name}, ${checked.has(law.id) ? 'aan' : 'uit'}` : undefined"
+        :accessible-label="mode === 'check' ? t('wet.tree.law_state', { name: law.name, state: t(checked.has(law.id) ? 'wet.tree.law_on' : 'wet.tree.law_off') }) : undefined"
         @click.stop="onRow(law)"
       >
         <nldd-spacer-cell size="20"></nldd-spacer-cell>
@@ -56,6 +59,6 @@ function onRow(law) {
         <nldd-icon-cell v-if="mode === 'pick'" icon="chevron-right" size="16" color="secondary"></nldd-icon-cell>
       </nldd-list-item>
     </nldd-list-item>
-    <nldd-inline-dialog slot="empty" text="Geen wetten gevonden" supporting-text="Pas je zoekterm aan"></nldd-inline-dialog>
+    <nldd-inline-dialog slot="empty" :text="t('wet.tree.empty.title')" :supporting-text="t('wet.tree.empty.body')"></nldd-inline-dialog>
   </nldd-list>
 </template>

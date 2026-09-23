@@ -1,0 +1,63 @@
+---
+title: "Scenarios"
+description: "How RegelRecht records what a law is supposed to do: Gherkin scenarios over a fixed vocabulary, executed by the engine that executes the law."
+---
+
+import ScenarioPlayground from '~/components/ScenarioPlayground.astro';
+import StepVocabulary from '~/components/StepVocabulary.astro';
+
+A machine-executable law is a claim: run this text against these facts and you get this outcome. A scenario is where the claim gets checked.
+
+The form is Gherkin, executed by [cucumber-rs](https://github.com/cucumber-rs/cucumber). That looks like a testing decision and mostly is not one. A scenario is the only artifact in this repository that a legal expert and a programmer can both sign off on without either of them learning the other's tools. It states facts and an outcome, and says nothing whatever about how the outcome is computed.
+
+## One scenario
+
+Facts come in under `Given`, one question is asked under `When`, and every `Then` is an assertion that holds or does not.
+
+<ScenarioPlayground />
+
+The interesting move is the last line. `hoogte_zorgtoeslag` is asserted in eurocent, to the cent, on an income above the threshold where the allowance tapers off. Raise it by one and the step turns red. Nothing about the law changed; the claim about it did.
+
+## The vocabulary is closed
+
+`bdd/grammar.yaml` is the single source of truth for what a step may say. The bindings are generated from it: Rust through `packages/engine/build.rs`, the JavaScript the editor and this page run through `bdd/codegen/gen-js.mjs`. Never hand-edit a generated file. Change the grammar and run `just bdd-codegen`.
+
+A step that is not in the grammar does not exist. That is a stronger guarantee than it sounds. A scenario cannot express a condition the engine has no operation for, so an expectation that quietly outruns what the format can say gets rejected at the door rather than six months later. And no engine can invent a phrasing of its own: an implementation that speaks the language speaks all of it, or fails the conformance suite.
+
+Steps are grouped in tiers. The `core` tier is what a law-validation scenario uses, and every engine has to support it:
+
+<StepVocabulary tier="core" label="Core step vocabulary" />
+
+Three smaller tiers sit beside it. `provenance` asks where an output came from ([execution provenance](/concepts/execution-provenance)), `untranslatable` covers execution over a law with a [marking](/concepts/markings) on it, and `notes` covers resolving a stand-off annotation against an article ([RFC-005](/rfcs/rfc-005)). They exist because those features need proving, not because a law-validation scenario needs them.
+
+## Where the expected numbers come from
+
+Writing a scenario down is the easy half. Knowing what the answer ought to be is the rest of it.
+
+Where we can, we take it from the legislature. Dutch bills come with a Memorie van Toelichting, and the parliamentary papers around them work examples out in full, down to the household and the amount. That arithmetic is the lawmaker's own reading of the rule, and it is published under a date you can cite. Turning it into a scenario costs almost nothing and buys a check that nobody on this project authored.
+
+The zorgtoeslag scenario above is one of those. Its expected amount comes from a worked example in the answers to parliamentary questions, quoted in `corpus/annotations/wet_op_de_zorgtoeslag/annotations.yaml` with a link to the document it came from. When the scenario and the memorandum disagree, one of two things is true, and both are worth knowing.
+
+Where the legislature worked nothing out, the expected value is somebody's judgement and the scenario says so in a comment above it. A few in the corpus record a disagreement rather than a check: the scenario asserts what the law ought to produce, carries a `@wip` tag, and is skipped until the model catches up.
+
+## Two places scenarios live
+
+The same language, two buckets, and the difference decides who fixes a failure.
+
+**Law validation** sits next to the laws, in `corpus/regulation/**/scenarios/*.feature`, and runs against the real corpus. A failure here means a law moved or a scenario went stale. Which of the two it is, is a human's call, so CI does not block on this bucket.
+
+**Engine conformance** sits in `bdd/conformance/*.feature` and proves an engine speaks the whole language, against synthetic `test_*` laws rather than real ones. A failure is unambiguous: the engine is wrong. CI blocks on it.
+
+`REGULATION_PATH` points the law-validation bucket at a corpus, so the same scenarios run over a different set of laws. `just bdd-demo` aims it at `corpus/demo/regulation`, the laws migrated from the proof of concept with their synthetic persona data. The engine and its harness know nothing demo-specific.
+
+## Running them
+
+```bash
+just bdd                          # Both buckets
+BDD_BUCKET=conformance just bdd   # Engine conformance only
+BDD_BUCKET=corpus just bdd        # Law validation only
+just bdd-demo                     # Law validation over the demo corpus
+just bdd-trace                    # With execution traces in trace_output/
+```
+
+[Testing](/guide/testing) covers the rest of the test suite and how the BDD run fits into it. For what an execution trace shows once a scenario has run, see [Traceability](/concepts/traceability).

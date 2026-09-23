@@ -1,7 +1,8 @@
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue';
-import { CHANGE_TYPES, claimsFromAnswers } from '../data/changeWizard.js';
+import { CHANGE_TYPES, claimsFromAnswers, eventLabel, eventUnsupported, fieldLabel, groupLabel, typeDescription, typeLabel } from '../data/changeWizard.js';
 import { formatValue } from '../data/format.js';
+import { useI18n } from '../i18n/index.js';
 import { useDemo } from '../store/demoStore.js';
 
 // Wijziging doorgeven: iemand meldt een verandering in zijn leven (verhuisd,
@@ -10,13 +11,14 @@ import { useDemo } from '../store/demoStore.js';
 // gegeven bezit (zie data/changeWizard.js), en daarna rekent elke regeling die
 // ervan afhangt opnieuw.
 //
-// Drie stappen: wat wilt u doorgeven, wat verandert er, en een bevestiging die
+// Drie stappen: wat wil je doorgeven, wat verandert er, en een bevestiging die
 // laat zien wat er precies ingaat en naar welke wet.
 
 const props = defineProps({
   open: { type: Boolean, default: false },
 });
 const emit = defineEmits(['close', 'submitted']);
+const { t } = useI18n();
 const { corpus, submitClaim, profile, subjectBsn, features } = useDemo();
 
 const sheet = ref(null);
@@ -74,14 +76,12 @@ function back() {
 }
 
 function toConfirm() {
-  if (chosenEvent.value?.unsupported) {
-    error.value = chosenEvent.value.unsupported;
+  if (chosenEvent.value?.unsupportedKey) {
+    error.value = eventUnsupported(chosenEvent.value);
     return;
   }
   if (!claims.value.length) {
-    error.value = type.value?.events
-      ? 'Kies wat er in uw huishouden verandert.'
-      : 'Vul ten minste één veld in. Wat u leeg laat, blijft ongewijzigd.';
+    error.value = type.value?.events ? t('sheet.change.error.event') : t('sheet.change.error.empty');
     return;
   }
   error.value = '';
@@ -96,6 +96,7 @@ function toConfirm() {
 function submit() {
   const bsn = subjectBsn();
   const list = claims.value;
+  const label = typeLabel(type.value);
   for (const c of list) {
     submitClaim({
       lawId: c.law,
@@ -105,17 +106,17 @@ function submit() {
       keyValue: bsn,
       oldValue: null,
       newValue: c.value,
-      reason: reason.value || `Wijziging doorgegeven: ${type.value.label.toLowerCase()}.`,
+      reason: reason.value || t('sheet.change.reason', { label: label.toLowerCase() }),
     });
   }
-  submitted.value = { count: list.length, label: type.value.label, law: lawName.value };
+  submitted.value = { count: list.length, label, law: lawName.value };
   emit('submitted', { type: type.value.id, claims: list });
   step.value = 3;
 }
 
 /** Hoe een waarde in de bevestiging leest: een bedrag als bedrag, een adres als regel. */
 function show(claim) {
-  if (claim.value === null) return 'niet meer van toepassing';
+  if (claim.value === null) return t('sheet.change.not_applicable');
   if (typeof claim.value === 'object') {
     return Object.entries(claim.value)
       .filter(([k]) => k !== 'type')
@@ -131,28 +132,28 @@ function show(claim) {
 
 <template>
   <Teleport to="body">
-    <nldd-sheet ref="sheet" placement="right" accessible-label="Wijziging doorgeven" @close="emit('close')">
+    <nldd-sheet ref="sheet" placement="right" :accessible-label="t('sheet.change.label')" @close="emit('close')">
       <nldd-page>
         <nldd-container slot="header" padding="12">
           <nldd-top-title-bar
-            text="Wijziging doorgeven"
-            :supporting-text="type ? type.label : 'Geef door wat er in uw situatie is veranderd'"
-            dismiss-text="Sluiten"
+            :text="t('sheet.change.label')"
+            :supporting-text="type ? typeLabel(type) : t('sheet.change.subtitle')"
+            :dismiss-text="t('sheet.dismiss')"
             @dismiss="emit('close')"
           ></nldd-top-title-bar>
         </nldd-container>
 
         <nldd-container padding="16" gap="16">
-          <!-- Stap 1: wat wilt u doorgeven -->
+          <!-- Stap 1: wat wil je doorgeven -->
           <template v-if="step === 0">
             <nldd-rich-text spacing="tight">
-              <p>Kies wat er is veranderd. De overheid rekent daarna al uw regelingen opnieuw uit; u hoeft dat niet per regeling door te geven.</p>
+              <p>{{ t('sheet.change.intro') }}</p>
             </nldd-rich-text>
-            <nldd-list variant="box" accessible-label="Soort wijziging">
-              <nldd-list-item v-for="t in CHANGE_TYPES" :key="t.id" size="md" button @click="chooseType(t.id)">
-                <nldd-icon-cell :icon="t.icon" size="20" color="accent"></nldd-icon-cell>
+            <nldd-list variant="box" :accessible-label="t('sheet.change.kind.label')">
+              <nldd-list-item v-for="ct in CHANGE_TYPES" :key="ct.id" size="md" button @click="chooseType(ct.id)">
+                <nldd-icon-cell :icon="ct.icon" size="20" color="accent"></nldd-icon-cell>
                 <nldd-spacer-cell size="12"></nldd-spacer-cell>
-                <nldd-text-cell :text="t.label" :supporting-text="t.description"></nldd-text-cell>
+                <nldd-text-cell :text="typeLabel(ct)" :supporting-text="typeDescription(ct)"></nldd-text-cell>
                 <nldd-icon-cell disclosure icon="chevron-right" size="16" color="secondary"></nldd-icon-cell>
               </nldd-list-item>
             </nldd-list>
@@ -162,7 +163,7 @@ function show(claim) {
           <template v-else-if="step === 1">
             <!-- Een gebeurtenis (huishouden): kiezen, geen invullen. -->
             <template v-if="type?.events">
-              <nldd-list variant="box" accessible-label="Wat verandert er">
+              <nldd-list variant="box" :accessible-label="t('sheet.change.what.label')">
                 <nldd-list-item
                   v-for="e in type.events"
                   :key="e.value"
@@ -171,10 +172,10 @@ function show(claim) {
                   :selected="answers.event === e.value || undefined"
                   @click="setAnswer('event', e.value)"
                 >
-                  <nldd-icon-cell :icon="e.icon" size="20" :color="e.unsupported ? 'secondary' : 'accent'"></nldd-icon-cell>
+                  <nldd-icon-cell :icon="e.icon" size="20" :color="e.unsupportedKey ? 'secondary' : 'accent'"></nldd-icon-cell>
                   <nldd-spacer-cell size="12"></nldd-spacer-cell>
-                  <nldd-text-cell :text="e.label" :supporting-text="e.unsupported ? 'Nog niet mogelijk in deze demo' : undefined"></nldd-text-cell>
-                  <nldd-icon-cell v-if="answers.event === e.value && !e.unsupported" icon="checked" size="16" color="success"></nldd-icon-cell>
+                  <nldd-text-cell :text="eventLabel(e)" :supporting-text="e.unsupportedKey ? t('sheet.change.unsupported') : undefined"></nldd-text-cell>
+                  <nldd-icon-cell v-if="answers.event === e.value && !e.unsupportedKey" icon="checked" size="16" color="success"></nldd-icon-cell>
                 </nldd-list-item>
               </nldd-list>
             </template>
@@ -182,11 +183,11 @@ function show(claim) {
             <!-- Waarden: alleen wat verandert hoeft ingevuld. -->
             <template v-else>
               <nldd-rich-text spacing="tight">
-                <p>Vul alleen in wat er verandert. Wat u leeg laat, blijft zoals het geregistreerd staat.</p>
+                <p>{{ t('sheet.change.values.intro') }}</p>
               </nldd-rich-text>
-              <template v-for="group in type?.groups ?? []" :key="group.label">
-                <nldd-title size="4"><h2>{{ group.label }}</h2></nldd-title>
-                <nldd-form-field v-for="f in group.fields" :key="f.name" :label="f.label" optional>
+              <template v-for="group in type?.groups ?? []" :key="group.labelKey">
+                <nldd-title size="4"><h2>{{ groupLabel(group) }}</h2></nldd-title>
+                <nldd-form-field v-for="f in group.fields" :key="f.name" :label="fieldLabel(f)" optional>
                   <nldd-text-field
                     :value="answers[f.name] ?? ''"
                     width="full"
@@ -201,40 +202,41 @@ function show(claim) {
             <nldd-banner v-if="error" variant="critical" :text="error"></nldd-banner>
             <nldd-form-actions>
               <nldd-button-group orientation="horizontal">
-                <nldd-button variant="primary" text="Verder" @click="toConfirm"></nldd-button>
-                <nldd-button variant="secondary" text="Terug" @click="back"></nldd-button>
+                <nldd-button variant="primary" :text="t('sheet.change.continue')" @click="toConfirm"></nldd-button>
+                <nldd-button variant="secondary" :text="t('sheet.change.back')" @click="back"></nldd-button>
               </nldd-button-group>
             </nldd-form-actions>
           </template>
 
           <!-- Stap 3: bevestigen. Wat er ingaat en naar welke wet, voordat het ingaat. -->
           <template v-else-if="step === 2">
+            <!-- De wetnaam staat vet in de zin. `t()` levert tekst en geen
+                 opmaak, dus de zin bestaat uit twee sleutels met de naam
+                 ertussen; in beide talen staat de naam op dezelfde plek. -->
             <nldd-rich-text spacing="tight">
-              <p>U geeft het volgende door aan <strong>{{ lawName }}</strong>. Controleer het voordat u het indient.</p>
+              <p>{{ t('sheet.change.confirm.before') }}<strong>{{ lawName }}</strong>{{ t('sheet.change.confirm.after') }}</p>
             </nldd-rich-text>
-            <nldd-list variant="box-tinted" accessible-label="Wat u doorgeeft">
+            <nldd-list variant="box-tinted" :accessible-label="t('sheet.change.confirm.label')">
               <nldd-list-item v-for="c in claims" :key="c.input" size="md">
                 <nldd-text-cell :text="c.label" :supporting-text="c.input"></nldd-text-cell>
                 <nldd-text-cell width="fit-content" horizontal-alignment="right" :text="show(c)"></nldd-text-cell>
               </nldd-list-item>
             </nldd-list>
-            <nldd-form-field label="Toelichting" optional>
+            <nldd-form-field :label="t('sheet.change.note')" optional>
               <nldd-multi-line-text-field
                 :value="reason"
                 rows="3"
-                placeholder="Bijvoorbeeld: ik ben per 1 maart verhuisd."
+                :placeholder="t('sheet.change.note.placeholder')"
                 @input="reason = $event.detail?.value ?? $event.target.value"
               ></nldd-multi-line-text-field>
               <nldd-form-field-help-text>
-                {{ features.AUTO_APPROVE_CLAIMS
-                  ? 'Uw melding wordt direct gebruikt in de berekening.'
-                  : 'Uw regelingen rekenen meteen met wat u doorgeeft; een behandelaar beoordeelt de wijziging voordat de uitkomst vaststaat.' }}
+                {{ features.AUTO_APPROVE_CLAIMS ? t('sheet.change.note.help.immediate') : t('sheet.change.note.help.pending') }}
               </nldd-form-field-help-text>
             </nldd-form-field>
             <nldd-form-actions>
               <nldd-button-group orientation="horizontal">
-                <nldd-button variant="primary" text="Doorgeven" @click="submit"></nldd-button>
-                <nldd-button variant="secondary" text="Terug" @click="back"></nldd-button>
+                <nldd-button variant="primary" :text="t('sheet.change.submit')" @click="submit"></nldd-button>
+                <nldd-button variant="secondary" :text="t('sheet.change.back')" @click="back"></nldd-button>
               </nldd-button-group>
             </nldd-form-actions>
           </template>
@@ -244,13 +246,13 @@ function show(claim) {
             <nldd-inline-dialog
               icon="checked"
               icon-color="success"
-              text="Uw wijziging is doorgegeven"
-              :supporting-text="`${submitted?.count === 1 ? 'Eén gegeven is' : `${submitted?.count} gegevens zijn`} gewijzigd bij ${submitted?.law}. Uw regelingen zijn opnieuw berekend; op het portaal ziet u wat dit betekent.`"
+              :text="t('sheet.change.done.title')"
+              :supporting-text="t.plural(submitted?.count ?? 0, 'sheet.change.done', { law: submitted?.law })"
             ></nldd-inline-dialog>
             <nldd-form-actions>
               <nldd-button-group orientation="horizontal">
-                <nldd-button variant="primary" text="Naar mijn regelingen" @click="emit('close')"></nldd-button>
-                <nldd-button variant="secondary" text="Nog een wijziging" @click="reset"></nldd-button>
+                <nldd-button variant="primary" :text="t('sheet.change.done.to_portal')" @click="emit('close')"></nldd-button>
+                <nldd-button variant="secondary" :text="t('sheet.change.done.another')" @click="reset"></nldd-button>
               </nldd-button-group>
             </nldd-form-actions>
           </template>

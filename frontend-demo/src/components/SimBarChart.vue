@@ -12,6 +12,7 @@ import { BarChart } from 'echarts/charts';
 import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components';
 import VChart from 'vue-echarts';
 import { resolveChartColors, SERIES_KEYS } from '../simulation/chartColors.js';
+import { intlLocale } from '../data/format.js';
 
 use([CanvasRenderer, BarChart, GridComponent, LegendComponent, TooltipComponent]);
 
@@ -51,12 +52,14 @@ onUnmounted(() => {
   if (retry) cancelAnimationFrame(retry);
 });
 
-const euro = new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+// Per aanroep opgebouwd en niet eenmalig op moduleniveau: een `Intl`-formatter
+// legt zijn taal vast bij het maken, en de grafiek hoort na een taalwissel mee
+// te veranderen.
 function fmt(v) {
   if (v === null || v === undefined) return '–';
   if (props.unit === 'percent') return `${Math.round(v)}%`;
-  if (props.unit === 'euro') return euro.format(v);
-  return new Intl.NumberFormat('nl-NL', { maximumFractionDigits: 1 }).format(v);
+  if (props.unit === 'euro') return new Intl.NumberFormat(intlLocale(), { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(v);
+  return new Intl.NumberFormat(intlLocale(), { maximumFractionDigits: 1 }).format(v);
 }
 
 const option = computed(() => {

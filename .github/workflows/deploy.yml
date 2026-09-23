@@ -398,7 +398,7 @@ jobs:
           echo "'status: superseded' in de output hierboven betekent dat een nieuwere taak"
           echo "voor dit deployment (een nieuwe push, of het opruimen van een gesloten PR)"
           echo "het werk heeft overgenomen. Deze job opnieuw draaien is dan veilig."
-          echo "Iets anders? Zie 'Debugging deploy-preview failures' in CLAUDE.md."
+          echo "Iets anders? Zie 'Debugging deploy-preview failures' in AGENTS.md."
 
   # -- Deploy production --
   deploy-production:
@@ -562,7 +562,7 @@ jobs:
           echo "'status: superseded' in de output hierboven betekent dat een nieuwere taak"
           echo "voor dit deployment (een volgende merge naar main) het werk heeft overgenomen."
           echo "Deze job opnieuw draaien is dan veilig."
-          echo "Iets anders? Zie 'Debugging deploy-preview failures' in CLAUDE.md."
+          echo "Iets anders? Zie 'Debugging deploy-preview failures' in AGENTS.md."
 
   # -- Cleanup preview --
   cleanup-preview:

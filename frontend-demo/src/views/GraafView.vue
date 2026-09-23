@@ -1,6 +1,5 @@
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
 import { VueFlow, useVueFlow } from '@vue-flow/core';
 import { Background } from '@vue-flow/background';
 import '@vue-flow/core/dist/style.css';
@@ -15,6 +14,13 @@ import { fieldSpec, formatValue } from '../data/format.js';
 import { lineageFromTrace } from '../data/lineage.js';
 import { serviceInfo } from '../data/loadCorpus.js';
 import { useDemo } from '../store/demoStore.js';
+import { useLocalePath } from '../i18n/useLocalePath.js';
+import { useI18n } from '../i18n/index.js';
+
+// Naar een ander tabblad op naam, niet op pad: onder `/en/` leidt een
+// letterlijk Nederlands pad de bezoeker ongemerkt het Nederlandse tabblad in.
+const { goTo } = useLocalePath();
+const { t } = useI18n();
 
 // The dependency graph as the POC drew it: every selected law and its direct
 // neighbours as a box with its register sources, its inputs from other laws
@@ -26,7 +32,6 @@ import { useDemo } from '../store/demoStore.js';
 // laws. The canvas is vue-flow, as in the editor: the design system has no
 // graph component (documented exception).
 
-const router = useRouter();
 const demo = useDemo();
 const { corpus, profile, portalLaws, dataVersion } = demo;
 // Same store id as the <VueFlow> below, otherwise fitView talks to a different instance.
@@ -156,7 +161,7 @@ function onNodeClick({ node }) {
   else if (node.type === 'item' && node.data.ref && selected.value.has(node.data.ref.regulation)) focus.value = node.data.ref.regulation;
 }
 function onNodeDoubleClick({ node }) {
-  if (node.type === 'law') router.push(`/wetten/${encodeURIComponent(node.id)}`);
+  if (node.type === 'law') goTo('wetten', { lawId: node.id });
 }
 function onPaneClick() {
   focus.value = null;
@@ -180,14 +185,14 @@ function unique(laws) {
 </script>
 
 <template>
-  <nldd-navigation-split-view ref="splitView" primary-sidebar-as-sheet primary-sidebar-accessible-label="Wetten in de graaf" inspector-accessible-label="Geselecteerde wet">
+  <nldd-navigation-split-view ref="splitView" primary-sidebar-as-sheet :primary-sidebar-accessible-label="t('wet.graph.sidebar.label')" :inspector-accessible-label="t('wet.graph.inspector.label')">
     <nldd-split-view-pane slot="sidebar" has-content background="tinted">
       <nldd-page sticky-header background="inherit">
         <nldd-container slot="header" padding="12">
-          <nldd-top-title-bar text="Wetten in de graaf" :supporting-text="`${selected.size} gekozen, ${shownLaws.length} in beeld`"></nldd-top-title-bar>
+          <nldd-top-title-bar :text="t('wet.graph.sidebar.label')" :supporting-text="t('wet.graph.selection', { chosen: selected.size, shown: shownLaws.length })"></nldd-top-title-bar>
         </nldd-container>
         <nldd-container padding-inline="8" padding-bottom="16">
-          <LawGroupTree :groups="groups" mode="check" :checked="selected" :supporting-text="(law) => (!selected.has(law.id) && shownIds.has(law.id) ? 'in beeld als buur' : undefined)" @toggle="toggle" />
+          <LawGroupTree :groups="groups" mode="check" :checked="selected" :supporting-text="(law) => (!selected.has(law.id) && shownIds.has(law.id) ? t('wet.graph.neighbour') : undefined)" @toggle="toggle" />
         </nldd-container>
       </nldd-page>
     </nldd-split-view-pane>
@@ -197,24 +202,24 @@ function unique(laws) {
         <nldd-container slot="header" padding="8">
           <nldd-toolbar size="sm">
             <nldd-toolbar-item slot="start">
-              <nldd-button size="sm" variant="neutral-tinted" start-icon="books" text="Wetten" :supporting-text="`${selected.size}`" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
+              <nldd-button size="sm" variant="neutral-tinted" start-icon="books" :text="t('wet.sidebar.label')" :supporting-text="`${selected.size}`" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
             </nldd-toolbar-item>
-            <nldd-toolbar-title slot="start" text="Graaf" :supporting-text="`${shownLaws.length} wetten, ${graph.edges.filter((e) => !e.hidden).length} verwijzingen · waarden voor ${profile?.name ?? 'de persona'}`" max-width="480px"></nldd-toolbar-title>
+            <nldd-toolbar-title slot="start" :text="t('wet.graph.title')" :supporting-text="t('wet.graph.subtitle', { laws: shownLaws.length, edges: graph.edges.filter((e) => !e.hidden).length, persona: profile?.name ?? t('wet.graph.persona.fallback') })" max-width="480px"></nldd-toolbar-title>
             <nldd-toolbar-item slot="end">
               <nldd-segmented-control size="sm" width="fit-content" :value="preset" @change="applyPreset($event.detail?.value)">
-                <nldd-segmented-control-item value="verhaal" text="Verhaal"></nldd-segmented-control-item>
-                <nldd-segmented-control-item value="portaal" :text="profile?.name ?? 'Portaal'"></nldd-segmented-control-item>
-                <nldd-segmented-control-item value="alles" text="Alles"></nldd-segmented-control-item>
+                <nldd-segmented-control-item value="verhaal" :text="t('wet.graph.preset.story')"></nldd-segmented-control-item>
+                <nldd-segmented-control-item value="portaal" :text="profile?.name ?? t('wet.graph.preset.portal')"></nldd-segmented-control-item>
+                <nldd-segmented-control-item value="alles" :text="t('wet.graph.preset.all')"></nldd-segmented-control-item>
               </nldd-segmented-control>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
-              <nldd-button size="sm" variant="neutral-tinted" start-icon="binoculars" text="Passend maken" @click="refit"></nldd-button>
+              <nldd-button size="sm" variant="neutral-tinted" start-icon="binoculars" :text="t('wet.graph.fit')" @click="refit"></nldd-button>
             </nldd-toolbar-item>
           </nldd-toolbar>
         </nldd-container>
         <nldd-simple-section v-if="!shownLaws.length" height="60vh">
-          <nldd-inline-dialog icon="centralized-network" text="Geen wetten gekozen" supporting-text="Kies een preset of vink wetten aan.">
-            <nldd-button slot="actions" variant="primary" size="sm" text="Wetten" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
+          <nldd-inline-dialog icon="centralized-network" :text="t('wet.graph.empty.title')" :supporting-text="t('wet.graph.empty.body')">
+            <nldd-button slot="actions" variant="primary" size="sm" :text="t('wet.sidebar.label')" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
           </nldd-inline-dialog>
         </nldd-simple-section>
         <div v-else class="graph-canvas">
@@ -254,15 +259,15 @@ function unique(laws) {
                heeft helemaal geen hover-vulling. Getint geeft 0.923 in rust en
                0.898 onder de muis. -->
           <nldd-button-bar class="graph-zoom" variant="neutral-tinted">
-            <nldd-icon-button icon="add" text="Inzoomen" @click="zoomIn()"></nldd-icon-button>
-            <nldd-icon-button icon="remove" text="Uitzoomen" @click="zoomOut()"></nldd-icon-button>
+            <nldd-icon-button icon="add" :text="t('wet.graph.zoom_in')" @click="zoomIn()"></nldd-icon-button>
+            <nldd-icon-button icon="remove" :text="t('wet.graph.zoom_out')" @click="zoomOut()"></nldd-icon-button>
             <nldd-button-bar-divider></nldd-button-bar-divider>
             <!-- `refit()`, niet een kale `fitView()`: die laatste past ook de
                  verborgen wetten in beeld en zoomde dus verder uit dan nodig.
                  Doet nu hetzelfde als "Passend maken" in de werkbalk; die staat
                  er voor wie de balk leest, deze voor wie in het canvas bezig is
                  en zijn hand bij de zoomknoppen heeft. -->
-            <nldd-icon-button icon="fit-to-view" text="Alles in beeld" @click="refit()"></nldd-icon-button>
+            <nldd-icon-button icon="fit-to-view" :text="t('wet.graph.fit_all')" @click="refit()"></nldd-icon-button>
           </nldd-button-bar>
         </div>
       </nldd-page>
@@ -271,26 +276,26 @@ function unique(laws) {
     <nldd-split-view-pane v-if="focusLaw" slot="inspector" has-content background="tinted">
       <nldd-page background="inherit">
         <nldd-container slot="header" padding="12">
-          <nldd-top-title-bar :text="focusLaw.name" :supporting-text="serviceInfo(corpus, focusLaw.service).name" dismiss-text="Sluiten" @dismiss="focus = null"></nldd-top-title-bar>
+          <nldd-top-title-bar :text="focusLaw.name" :supporting-text="serviceInfo(corpus, focusLaw.service).name" :dismiss-text="t('wet.graph.close')" @dismiss="focus = null"></nldd-top-title-bar>
         </nldd-container>
         <nldd-container padding="12" gap="12">
           <nldd-button-group orientation="horizontal" size="sm">
-            <nldd-button variant="secondary" size="sm" start-icon="book" text="Open in Wetten" @click="router.push(`/wetten/${encodeURIComponent(focusLaw.id)}`)"></nldd-button>
-            <nldd-button variant="neutral-tinted" size="sm" text="Alleen deze" @click="only(focusLaw.id)"></nldd-button>
+            <nldd-button variant="secondary" size="sm" start-icon="book" :text="t('wet.graph.open_in_laws')" @click="goTo('wetten', { lawId: focusLaw.id })"></nldd-button>
+            <nldd-button variant="neutral-tinted" size="sm" :text="t('wet.graph.only_this')" @click="only(focusLaw.id)"></nldd-button>
           </nldd-button-group>
           <nldd-container gap="4">
-            <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">Leest uit</nldd-text></nldd-container>
-            <nldd-list variant="box-base" accessible-label="Leest uit">
-              <nldd-list-item v-if="uses.length === 0" size="sm"><nldd-text-cell size="sm" color="secondary" text="Geen andere wet in beeld"></nldd-text-cell></nldd-list-item>
+            <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">{{ t('wet.graph.reads_from') }}</nldd-text></nldd-container>
+            <nldd-list variant="box-base" :accessible-label="t('wet.graph.reads_from')">
+              <nldd-list-item v-if="uses.length === 0" size="sm"><nldd-text-cell size="sm" color="secondary" :text="t('wet.graph.no_law_in_view')"></nldd-text-cell></nldd-list-item>
               <nldd-list-item v-for="l in unique(uses)" :key="l.id" size="sm" button @click="focus = l.id">
                 <nldd-text-cell size="sm" :text="l.name" :supporting-text="serviceInfo(corpus, l.service).name"></nldd-text-cell>
               </nldd-list-item>
             </nldd-list>
           </nldd-container>
           <nldd-container gap="4">
-            <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">Wordt gelezen door</nldd-text></nldd-container>
-            <nldd-list variant="box-base" accessible-label="Wordt gelezen door">
-              <nldd-list-item v-if="usedBy.length === 0" size="sm"><nldd-text-cell size="sm" color="secondary" text="Geen andere wet in beeld"></nldd-text-cell></nldd-list-item>
+            <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">{{ t('wet.graph.read_by') }}</nldd-text></nldd-container>
+            <nldd-list variant="box-base" :accessible-label="t('wet.graph.read_by')">
+              <nldd-list-item v-if="usedBy.length === 0" size="sm"><nldd-text-cell size="sm" color="secondary" :text="t('wet.graph.no_law_in_view')"></nldd-text-cell></nldd-list-item>
               <nldd-list-item v-for="l in unique(usedBy)" :key="l.id" size="sm" button @click="focus = l.id">
                 <nldd-text-cell size="sm" :text="l.name" :supporting-text="serviceInfo(corpus, l.service).name"></nldd-text-cell>
               </nldd-list-item>

@@ -4,6 +4,7 @@
  * demographic dimension (age, income, partner, business type, size).
  * Pure functions over the run's `results` array.
  */
+import { t } from '../i18n/index.js';
 
 /**
  * @typedef {object} LawResult
@@ -67,31 +68,70 @@ export function breakdown(results, lawId, groupOf, order = null) {
   return keys.map((key) => ({ group: key, ...summariseLaw(groups.get(key), lawId) }));
 }
 
+/**
+ * De groepsnamen zijn sleutels, geen labels.
+ *
+ * `groupOf` levert ze op, `order` sorteert erop en de tabel keyt erop, dus ze
+ * moeten in beide talen hetzelfde blijven. Wat je ervan ziet gaat door
+ * `groupLabel()`, en dat is de enige plek die er een taal aan geeft. Ze
+ * vertalen waar ze staan zou de groepering stilzwijgend breken: `order` zou
+ * niet meer matchen en elke tabel viel terug op alfabetische volgorde.
+ *
+ * De sleutels blijven daarom Nederlands, zoals de veldnamen in het corpus dat
+ * ook doen.
+ */
+const GROUP_LABELS = {
+  'Met partner': 'group.with_partner',
+  'Zonder partner': 'group.without_partner',
+  Huur: 'group.rented',
+  Koop: 'group.owned',
+  Geen: 'group.none',
+  'Bereidt voedsel': 'group.prepares_food',
+  'Geen voedsel': 'group.no_food',
+  horecabedrijf: 'group.hospitality',
+  slijtersbedrijf: 'group.off_licence',
+  overig: 'group.other',
+  small: 'group.small',
+  medium: 'group.medium',
+  large: 'group.large',
+};
+
+/** Hoe een groep heet op het scherm. Leeftijden en bedragen spreken voor zich. */
+export function groupLabel(group) {
+  const key = GROUP_LABELS[group];
+  return key ? t(key) : String(group);
+}
+
 export const CITIZEN_DIMENSIONS = [
   {
     id: 'leeftijd',
-    label: 'Leeftijd',
+    labelKey: 'sim.dimension.age',
     order: ['18-30', '30-45', '45-67', '67-85', '85+'],
     groupOf: (s) => (s.leeftijd < 30 ? '18-30' : s.leeftijd < 45 ? '30-45' : s.leeftijd < 67 ? '45-67' : s.leeftijd < 85 ? '67-85' : '85+'),
   },
   {
     id: 'inkomen',
-    label: 'Inkomen',
+    labelKey: 'sim.dimension.income',
     order: ['€ 0-20k', '€ 20-40k', '€ 40-60k', '€ 60k+'],
     groupOf: (s) => (s.inkomen < 20000 ? '€ 0-20k' : s.inkomen < 40000 ? '€ 20-40k' : s.inkomen < 60000 ? '€ 40-60k' : '€ 60k+'),
   },
-  { id: 'partner', label: 'Partner', order: ['Met partner', 'Zonder partner'], groupOf: (s) => (s.partner ? 'Met partner' : 'Zonder partner') },
-  { id: 'wonen', label: 'Wonen', order: ['Huur', 'Koop'], groupOf: (s) => (s.huurder ? 'Huur' : 'Koop') },
-  { id: 'kinderen', label: 'Kinderen', order: ['Geen', '1', '2', '3+'], groupOf: (s) => (s.kinderen === 0 ? 'Geen' : s.kinderen >= 3 ? '3+' : String(s.kinderen)) },
+  { id: 'partner', labelKey: 'sim.dimension.partner', order: ['Met partner', 'Zonder partner'], groupOf: (s) => (s.partner ? 'Met partner' : 'Zonder partner') },
+  { id: 'wonen', labelKey: 'sim.dimension.housing', order: ['Huur', 'Koop'], groupOf: (s) => (s.huurder ? 'Huur' : 'Koop') },
+  { id: 'kinderen', labelKey: 'sim.dimension.children', order: ['Geen', '1', '2', '3+'], groupOf: (s) => (s.kinderen === 0 ? 'Geen' : s.kinderen >= 3 ? '3+' : String(s.kinderen)) },
 ];
 
 export const BUSINESS_DIMENSIONS = [
-  { id: 'type', label: 'Type bedrijf', order: ['horecabedrijf', 'slijtersbedrijf', 'overig'], groupOf: (s) => s.type },
-  { id: 'grootte', label: 'Vloeroppervlakte', order: ['small', 'medium', 'large'], groupOf: (s) => s.grootte },
-  { id: 'voedsel', label: 'Voedsel', order: ['Bereidt voedsel', 'Geen voedsel'], groupOf: (s) => (s.voedsel ? 'Bereidt voedsel' : 'Geen voedsel') },
-  { id: 'rechtsvorm', label: 'Rechtsvorm', order: null, groupOf: (s) => s.rechtsvorm },
-  { id: 'werknemers', label: 'Werknemers', order: ['Geen', '1-9', '10-49', '50+'], groupOf: (s) => (s.werknemers === 0 ? 'Geen' : s.werknemers < 10 ? '1-9' : s.werknemers < 50 ? '10-49' : '50+') },
+  { id: 'type', labelKey: 'sim.dimension.business_type', order: ['horecabedrijf', 'slijtersbedrijf', 'overig'], groupOf: (s) => s.type },
+  { id: 'grootte', labelKey: 'sim.dimension.floor_area', order: ['small', 'medium', 'large'], groupOf: (s) => s.grootte },
+  { id: 'voedsel', labelKey: 'sim.dimension.food', order: ['Bereidt voedsel', 'Geen voedsel'], groupOf: (s) => (s.voedsel ? 'Bereidt voedsel' : 'Geen voedsel') },
+  { id: 'rechtsvorm', labelKey: 'sim.dimension.legal_form', order: null, groupOf: (s) => s.rechtsvorm },
+  { id: 'werknemers', labelKey: 'sim.dimension.employees', order: ['Geen', '1-9', '10-49', '50+'], groupOf: (s) => (s.werknemers === 0 ? 'Geen' : s.werknemers < 10 ? '1-9' : s.werknemers < 50 ? '10-49' : '50+') },
 ];
+
+/** Het label van een dimensie in de taal die aan staat. */
+export function dimensionLabel(dimension) {
+  return dimension?.labelKey ? t(dimension.labelKey) : '';
+}
 
 /** Population-level facts for the header of a run. */
 export function describePopulation(kind, subjects) {
