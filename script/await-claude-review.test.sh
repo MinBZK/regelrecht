@@ -48,7 +48,10 @@ case "$url" in
 */actions/runs/*/jobs*)
   n=$(cat "$STUB_COUNTER")
   echo $((n + 1)) >"$STUB_COUNTER"
-  mapfile -t responses <"$STUB_JOBS"
+  # No mapfile: macOS ships bash 3.2, where the stub would otherwise answer
+  # nothing and every case would sit out the gate's poll loop.
+  responses=()
+  while IFS= read -r l; do responses+=("$l"); done <"$STUB_JOBS"
   idx=$n
   if [ "$idx" -ge "${#responses[@]}" ]; then
     idx=$((${#responses[@]} - 1))
