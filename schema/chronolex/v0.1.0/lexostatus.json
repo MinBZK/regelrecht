@@ -291,6 +291,27 @@
           }
         },
         {
+          "description": "Over de grammen die door filter komen: per gram een regel met deze velden, in de volgorde van de kroniek. Een veld dat een gram niet heeft, is null. Geen gram is een lege lijst. Voor een tabel, zoals de regels van een uitslag; gebruik het als extra veld, niet als parameter.",
+          "type": "object",
+          "required": [
+            "verzamel"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "filter": {
+              "$ref": "#/definitions/filter"
+            },
+            "verzamel": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/definitions/veldpad"
+              }
+            }
+          }
+        },
+        {
           "description": "Over de grammen die door filter komen: de som van dit getalveld. Geen gram is nul.",
           "type": "object",
           "required": [

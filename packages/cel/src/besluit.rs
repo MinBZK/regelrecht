@@ -281,13 +281,22 @@ pub fn controleer(cel: &Cel) -> Vec<String> {
         }
     }
 
-    // Synthese per regel: het tabelveld, de kolomnamen en de bronnen.
+    // Synthese per regel: het tabelveld, de kolomnamen en de bronnen. Een
+    // tabel of invoer mag ook uit een extra veld komen dat een synthese-bron
+    // doorgeeft (bijvoorbeeld de regels van een uitslag uit een register).
+    let doorgegeven_veld = |lexostatus: &str, veld: &str| {
+        d.synthese
+            .iter()
+            .any(|s| s.lexostatus == lexostatus && s.extra_velden.iter().any(|e| e == veld))
+    };
     for r in &b.rijen {
         let wie = format!("besluit, rijen '{}'", r.parameter);
         per.entry(&r.parameter)
             .or_default()
             .push(format!("de synthese per regel uit '{}'", r.tabel.veld));
-        if !b.lexostatussen.contains(&r.tabel.lexostatus) {
+        if doorgegeven_veld(&r.tabel.lexostatus, &r.tabel.veld) {
+            // Uit een bron: de synthese controleert de bron zelf.
+        } else if !b.lexostatussen.contains(&r.tabel.lexostatus) {
             fouten.push(format!(
                 "{wie}: de tabel komt uit lexostatus '{}', en die staat niet in de lexostatussen van het besluit",
                 r.tabel.lexostatus
@@ -329,10 +338,11 @@ pub fn controleer(cel: &Cel) -> Vec<String> {
                     }
                     RijInvoer::Eigen {
                         lexostatus, veld, ..
-                    } if !cel
-                        .lexostatussen
-                        .lexostatus(lexostatus)
-                        .is_some_and(|l| l.levert(veld)) =>
+                    } if !doorgegeven_veld(lexostatus, veld)
+                        && !cel
+                            .lexostatussen
+                            .lexostatus(lexostatus)
+                            .is_some_and(|l| l.levert(veld)) =>
                     {
                         fouten.push(format!(
                             "{bronwie}, invoer '{i}': lexostatus '{lexostatus}' levert geen '{veld}'"
@@ -515,10 +525,28 @@ pub async fn proefbesluit(
         }
     }
 
-    // 3. Synthese per regel: een tabelveld wordt een array-parameter.
+    // 3. Synthese per regel: een tabelveld wordt een array-parameter. De
+    // tabel kan ook een extra veld zijn dat een bron doorgaf; dat staat
+    // naast de eigen lexostatussen onder de naam van die bron.
+    let mut met_bronnen = eigen.clone();
+    for u in samen.bronnen.iter().filter(|u| !u.extra_velden.is_empty()) {
+        met_bronnen.push(Lexostatus {
+            naam: u.lexostatus.clone(),
+            zaakkenmerk: None,
+            op_moment: None,
+            parameters: BTreeMap::new(),
+            extra_velden: u
+                .extra_velden
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
+            niet_afgeleid: Vec::new(),
+            lijst: None,
+        });
+    }
     let mut uitslagen = Vec::new();
     for r in rijen {
-        let Some(uitslag) = rijen::stel_samen(r, &eigen, &samen.parameters).await else {
+        let Some(uitslag) = rijen::stel_samen(r, &met_bronnen, &samen.parameters).await else {
             continue;
         };
         samen.parameters.insert(

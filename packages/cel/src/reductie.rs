@@ -167,6 +167,14 @@ pub enum Afleiding {
         filter: Filter,
         som: String,
     },
+    /// Over de grammen door `filter`: per gram een regel met deze velden, in
+    /// de volgorde van de kroniek. Een lijst voor een tabel, bijvoorbeeld de
+    /// regels van een uitslag; een veld dat een gram niet heeft, is null.
+    Verzamel {
+        #[serde(default, skip_serializing_if = "Filter::is_empty")]
+        filter: Filter,
+        verzamel: Vec<String>,
+    },
     Veld {
         veld: String,
     },
@@ -289,7 +297,8 @@ impl Afleiding {
             | Afleiding::LaatsteJaarVan { filter, .. }
             | Afleiding::LaatsteBevat { filter, .. }
             | Afleiding::Bestaat { filter, .. }
-            | Afleiding::Som { filter, .. } => Some(filter),
+            | Afleiding::Som { filter, .. }
+            | Afleiding::Verzamel { filter, .. } => Some(filter),
             _ => None,
         }
     }
@@ -312,6 +321,7 @@ impl Afleiding {
                 vec![tabel.as_str()]
             }
             Afleiding::Som { som, .. } => vec![som.as_str()],
+            Afleiding::Verzamel { verzamel, .. } => verzamel.iter().map(String::as_str).collect(),
             Afleiding::LaatsteBevat { bevat, .. } => vec![bevat.veld.as_str()],
             Afleiding::Bestaat { .. } | Afleiding::Moment { .. } => vec![],
         };
@@ -391,7 +401,8 @@ impl Afleiding {
             | Afleiding::LaatsteJaarVan { .. }
             | Afleiding::LaatsteBevat { .. }
             | Afleiding::Bestaat { .. }
-            | Afleiding::Som { .. } => None,
+            | Afleiding::Som { .. }
+            | Afleiding::Verzamel { .. } => None,
         }
     }
 
@@ -413,6 +424,18 @@ impl Afleiding {
         }
         Ok(match self {
             Afleiding::Bestaat { .. } => Some(Value::Bool(!door.is_empty())),
+            Afleiding::Verzamel { verzamel, .. } => Some(Value::Array(
+                door.iter()
+                    .map(|g| {
+                        Value::Object(
+                            verzamel
+                                .iter()
+                                .map(|v| (v.clone(), g.veld(v).cloned().unwrap_or(Value::Null)))
+                                .collect(),
+                        )
+                    })
+                    .collect(),
+            )),
             Afleiding::Som { som, .. } => {
                 let (mut geheel, mut reeel, mut alleen_geheel) = (0_i64, 0.0_f64, true);
                 for g in &door {
@@ -1102,6 +1125,29 @@ mod tests {
                 json!({"aanduiding": "VOORBEELD", "datum": "2024-12-01", "geblokkeerd_voor": ["raad"]}),
             ),
         ]
+    }
+
+    /// `verzamel` maakt van de grammen door het filter een lijst met een
+    /// regel per gram; een veld dat een gram niet heeft, is null.
+    #[test]
+    fn verzamel_geeft_een_regel_per_gram() {
+        let a: Afleiding = serde_yaml_ng::from_str(
+            "{filter: {name: uitslag_vastgesteld, lijst: $aanduiding}, verzamel: [gebied, zetels, samengevoegd]}",
+        )
+        .unwrap();
+        let grammen = register();
+        let refs: Vec<&Gram> = grammen.iter().collect();
+        let inputs = json!({"aanduiding": "VOORBEELD"});
+        let w = a
+            .pas_toe_op_verzameling(inputs.as_object().unwrap(), &refs)
+            .unwrap();
+        assert_eq!(
+            w,
+            Some(json!([
+                {"gebied": "A", "zetels": 4, "samengevoegd": null},
+                {"gebied": "B", "zetels": 2, "samengevoegd": null}
+            ]))
+        );
     }
 
     fn registerstatus(aanduiding: &str) -> Lexostatus {
