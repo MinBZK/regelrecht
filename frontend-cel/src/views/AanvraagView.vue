@@ -142,7 +142,7 @@ const uitslagToelichting = computed(() => {
             :text="uitslagTekst"
             :supporting-text="uitslagToelichting"
           ></nldd-inline-dialog>
-          <TraceKnop v-if="uitslag.trace" :trace="uitslag.trace" :titel="uitslag.uitkomst" />
+          <TraceKnop v-if="uitslag.trace_text" :trace-text="uitslag.trace_text" :titel="uitslag.uitkomst" />
         </nldd-container>
       </template>
       <template v-if="herkomst.length">

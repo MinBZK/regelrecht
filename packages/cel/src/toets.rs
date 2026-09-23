@@ -32,9 +32,9 @@ pub struct Uitslag {
     /// (zie [`crate::reductie::ontbreekt`]). Staat los van de uitkomst: ook
     /// een niet te beoordelen toets noemt wat er aan de aanvraag ontbreekt.
     pub ontbreekt: Vec<String>,
-    /// De trace van de engine-run.
+    /// De trace van de engine-run, als tekst.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub trace: Option<Value>,
+    pub trace_text: Option<String>,
 }
 
 /// Wat de engine van een of meer uitkomsten maakte.
@@ -47,8 +47,8 @@ pub struct Evaluatie {
     /// Waarom een uitkomst geen waarde kreeg, als de engine dat niet als
     /// ontbrekend feit noemde.
     pub fout: Option<String>,
-    /// De trace van de engine-run, als die gevraagd was.
-    pub trace: Option<Value>,
+    /// De trace van de engine-run als tekst, als die gevraagd was.
+    pub trace_text: Option<String>,
 }
 
 impl Evaluatie {
@@ -115,10 +115,9 @@ fn evalueer_als(
     };
     match resultaat {
         Ok(resultaat) => {
-            uit.trace = resultaat
-                .trace
-                .as_ref()
-                .and_then(|t| serde_json::to_value(t).ok());
+            // Dezelfde tekstweergave als de editor: de box-drawing-trace van
+            // de engine.
+            uit.trace_text = resultaat.trace.as_ref().map(|t| t.render_box_drawing());
             for u in uitkomsten {
                 match resultaat.outputs.get(*u) {
                     Some(w) if w.contains_unknown() => {
@@ -171,7 +170,7 @@ pub fn toets(
         reden: (!te_beoordelen).then(|| e.reden("niet te beoordelen")),
         mist: e.mist,
         ontbreekt,
-        trace: e.trace,
+        trace_text: e.trace_text,
     }
 }
 

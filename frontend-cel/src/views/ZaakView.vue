@@ -133,7 +133,7 @@ const nietGeleverd = computed(() => proef.value?.niet_geleverd ?? []);
           :text="proef.te_nemen ? 'Het besluit is te nemen' : 'Niet te nemen'"
           :supporting-text="proef.reden"
         ></nldd-inline-dialog>
-        <TraceKnop v-if="proef.trace" :trace="proef.trace" :titel="proef.artikel" />
+        <TraceKnop v-if="proef.trace_text" :trace-text="proef.trace_text" :titel="proef.artikel" />
       </nldd-container>
       <template v-if="uitkomsten.length">
         <nldd-spacer size="16"></nldd-spacer>

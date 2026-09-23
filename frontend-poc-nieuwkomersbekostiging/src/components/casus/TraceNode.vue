@@ -26,7 +26,7 @@
         target="_blank"
         rel="noopener"
         :title="`${wetsartikelLabel} openen op wetten.overheid.nl`"
-      >{{ node.name }}<nldd-icon name="external-link" size="16"></nldd-icon></a>
+      >{{ node.name }}<nldd-icon name="external-link" size="12"></nldd-icon></a>
       <span v-else class="tn-name">{{ node.name }}</span>
       <span v-if="node.result !== null && node.result !== undefined" class="tn-result">
         = {{ formatResult(node.result) }}
@@ -83,17 +83,11 @@ const wetsartikelLabel = computed(() => {
 });
 
 function formatResult(value) {
-  // Een onbekende waarde (RFC-036) noemt de feiten die ontbraken.
-  if (value && typeof value === 'object' && value.__unknown) {
-    const namen = (value.missing ?? []).map((m) => m.name).filter(Boolean);
-    return namen.length ? `onbekend (ontbreekt: ${namen.join(', ')})` : 'onbekend';
-  }
   if (typeof value === 'boolean') return value ? 'waar' : 'onwaar';
   if (typeof value === 'number') {
     if (!Number.isInteger(value)) return value.toLocaleString('nl-NL', { maximumFractionDigits: 2 });
     return value.toLocaleString('nl-NL');
   }
-  if (value && typeof value === 'object') return JSON.stringify(value);
   return String(value);
 }
 </script>

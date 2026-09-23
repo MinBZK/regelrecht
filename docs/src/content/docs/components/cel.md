@@ -153,7 +153,7 @@ This needs the regulation to let facts be unknown. RFC-036 says that application
 
 No possibility is not a refusal. The portal offers what the law allows; an application sent another way (Awb 4:1) is still recorded and judged. Nothing of this is recorded.
 
-Every outcome the portal shows that comes from an engine run carries the trace of that run: the check before submitting, the trial decision, and each question above. The frontend opens it from a small RegelRecht icon.
+Every outcome the portal shows that comes from an engine run carries the trace of that run: the check before submitting, the trial decision, and each question above. The answer carries it as text (`trace_text`, the same box-drawing rendering the editor shows), and the frontend opens it from a small RegelRecht icon.
 
 ## Start-up checks
 

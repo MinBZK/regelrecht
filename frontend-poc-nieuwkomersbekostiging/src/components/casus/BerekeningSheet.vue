@@ -54,7 +54,7 @@
 
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue';
-import TraceNode from '@regelrecht/frontend-shared/components/TraceNode.vue';
+import TraceNode from './TraceNode.vue';
 import { euro } from '../../lib/format.js';
 import { datumLabel } from '../../lib/nieuwkomerFacts.js';
 

@@ -27,9 +27,8 @@
           <span>{{ titel }}</span>
         </nldd-title>
         <nldd-rich-text v-if="toelichting"><p>{{ toelichting }}</p></nldd-rich-text>
-        <ul v-if="wortel" class="rr-boom">
-          <TraceNode :node="wortel" />
-        </ul>
+        <!-- Dezelfde weergave als de editor: de box-drawing-tekst van de engine. -->
+        <nldd-code-viewer v-if="traceText" wrap>{{ traceText }}</nldd-code-viewer>
         <nldd-rich-text v-else><p>Deze run gaf geen trace terug.</p></nldd-rich-text>
       </nldd-container>
     </nldd-page>
@@ -37,26 +36,19 @@
 </template>
 
 <script setup>
-import { computed, nextTick, ref, watch } from 'vue';
-import TraceNode from './TraceNode.vue';
+import { nextTick, ref, watch } from 'vue';
 import icoon from '../assets/regelrecht-icon.svg';
 
-const props = defineProps({
-  // De trace zoals de engine hem geeft: een PathNode, of een tracedocument
-  // ({ trace_version, root }, RFC-039).
-  trace: { type: Object, default: null },
+defineProps({
+  // De trace van de engine als tekst (`render_box_drawing`), zoals de
+  // editor hem toont.
+  traceText: { type: String, default: null },
   titel: { type: String, required: true },
   toelichting: { type: String, default: '' },
 });
 
 const open = ref(false);
 const sheetEl = ref(null);
-// Een tracedocument heeft een `root`; zonder die sleutel is het de boom zelf.
-const wortel = computed(() => {
-  const t = props.trace;
-  if (!t) return null;
-  return 'trace_version' in t ? (t.root ?? null) : t;
-});
 
 // Spiegel de open-toestand naar de imperatieve API van de sheet, zodat de
 // animatie speelt. @close zet de toestand terug; de watch roept dan nog een
@@ -70,12 +62,3 @@ watch(open, async (o) => {
   sheetEl.value?.show();
 });
 </script>
-
-<style scoped>
-/* De boom is een <ul> van TraceNode-items; alleen de standaard inspringing van
-   de browser eraf. */
-.rr-boom {
-  margin: 0;
-  padding: 0;
-}
-</style>

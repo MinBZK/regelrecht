@@ -70,7 +70,7 @@ pub struct Proefbesluit {
     /// De trace van de engine-run, voor wie wil zien hoe het bedrag tot
     /// stand kwam.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub trace: Option<Value>,
+    pub trace_text: Option<String>,
 }
 
 /// Het artikel achter de uitkomsten, als `<regeling>#<artikel>`.
@@ -574,7 +574,7 @@ pub async fn proefbesluit(
         artikel,
         peildatum: peildatum.to_string(),
         te_nemen,
-        trace: e.trace,
+        trace_text: e.trace_text,
         uitkomsten: if te_nemen { e.waarden } else { BTreeMap::new() },
         mist: e.mist,
         reden,

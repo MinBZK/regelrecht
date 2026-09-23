@@ -79,7 +79,7 @@ pub struct Toetsing {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reden: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub trace: Option<Value>,
+    pub trace_text: Option<String>,
 }
 
 /// Een mogelijkheid voor een subsidiejaar.
@@ -194,7 +194,7 @@ pub fn toets(
             .cloned()
             .collect(),
         reden,
-        trace: e.trace,
+        trace_text: e.trace_text,
     }
 }
 
@@ -274,7 +274,7 @@ mod tests {
             mist: Vec::new(),
             mist_behandeling: Vec::new(),
             reden: None,
-            trace: None,
+            trace_text: None,
         }
     }
 

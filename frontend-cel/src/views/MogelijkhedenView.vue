@@ -96,7 +96,7 @@ function kop(m) {
         <nldd-text-cell :text="antwoord(t)"></nldd-text-cell>
         <nldd-text-cell :text="toelichting(t)"></nldd-text-cell>
         <nldd-cell>
-          <TraceKnop v-if="t.trace" :trace="t.trace" :titel="`${VRAAG[t.vraag] ?? t.vraag} (${m.subsidiejaar})`" />
+          <TraceKnop v-if="t.trace_text" :trace-text="t.trace_text" :titel="`${VRAAG[t.vraag] ?? t.vraag} (${m.subsidiejaar})`" />
         </nldd-cell>
       </nldd-table-row>
     </nldd-table>
