@@ -1,0 +1,285 @@
+---
+# Fryske oerlaach op demo-config.yaml en profiles.yaml.
+#
+# Het Nederlands in die bestanden is de bron en blijft daar staan; dit bestand
+# zegt per pad wat de Friese tekst is. Elk pad moet bestaan: `check-i18n.mjs`
+# weigert een pad dat nergens heen wijst, zodat deze vertaling niet stilletjes
+# kan verouderen als de dia's veranderen.
+#
+# Vertaald door een taalmodel en nog niet nagekeken door een Friestalige
+# revisor. Wat daarbij aandacht nodig heeft, staat in de PR-omschrijving.
+
+profiles.merijn.portal_tab_label: Myn oerheid
+profiles.merijn.portal_heading: Wêr haw ik rjocht op? Wat binne myn plichten?
+profiles.merijn.portal_subtitle: >-
+  Besjoch hjir jo taslaggen, útkearingen, oanjeftes en oare regelingen fan de oerheid.
+profiles.claudia.portal_tab_label: Myn ûndernimming
+profiles.claudia.portal_heading: Hokker regelingen passe by myn bedriuw?
+profiles.claudia.portal_subtitle: >-
+  Besjoch beskikbere subsydzjes, rapportaazjeferplichtingen, fergunningen, wetten en oare
+  ûndernimmersregelingen.
+simulation.disposable_income.0.label: Ynkomstebelesting
+simulation.disposable_income.1.label: Bydrage Zvw
+simulation.disposable_income.2.label: Soarchtaslach
+simulation.disposable_income.3.label: Hiertaslach
+simulation.disposable_income.4.label: Bernebûn budget
+simulation.disposable_income.5.label: Bernedeiferbliuwtaslach
+simulation.disposable_income.6.label: AOW
+simulation.disposable_income.7.label: Anw
+simulation.disposable_income.8.label: AIO
+simulation.disposable_income.9.label: Bystân
+simulation.disposable_income.10.label: Wenkostetaslach
+simulation.disposable_income.11.label: Bbz
+simulation.disposable_income.12.label: WW
+slides.0.title: RegelRecht
+slides.0.subtitle: fan wet nei digitale wurking
+slides.0.footer: Nederlandse Digitale Dienst
+slides.1.overline: Hjoeddeistige sitewaasje
+slides.1.lines.0: Eltse organisaasje
+slides.1.lines.1: hat in **eigen útlis** fan 'e wet
+slides.1.lines.2: dy't lânet yn **eigen software**
+slides.2.overline: It gefolch
+slides.2.lines.0: Gjin oersjoch
+slides.2.lines.1: Net te foarsizzen
+slides.2.lines.2: Net te behearskjen
+slides.3.overline: Wat as
+slides.3.lines.0: Wy **begjinne by de wet**
+slides.3.lines.1: Dy **masine-útfierber** meitsje
+slides.3.lines.2: '**Iepenbier** publisearje'
+slides.4.title: Demo RegelRecht
+slides.4.lines.0: Folslein ferhaal, gjin einprodukt
+slides.4.lines.1: Wy meitsje belied troch te dwaan
+slides.5.overline: De wet
+slides.5.title: De wet, masine-lêsber
+slides.5.lead: De wettekst en de útfierbere regel steane neistinoar, per artikel.
+slides.5.bullets.0: >-
+  Elk artikel hat in **machine_readable**-diel: hokker gegevens deryn geane, wat derút komt en hoe.
+slides.5.bullets.1: In ferwizing nei in oare wet is eksplisyt, gjin kopy fan in bedrach.
+slides.5.bullets.2: Deselde YAML draait yn 'e editor, yn dit portaal en yn 'e simulaasje.
+slides.6.overline: Gearhing
+slides.6.title: Wetten hingje gear
+slides.6.lead: >-
+  Oft immen fersekere is, hinget ôf fan detinsje; oft immen soarchtaslach krijt, hinget ôf fan fersekere
+  wêzen.
+slides.6.bullets.0: 'Per wet: hokker gegevens út registers, hokker út oare wetten, wat derút komt.'
+slides.6.bullets.1: Eltse line is in echte ferwizing út 'e wet, mei de wearde foar dizze persoan derby.
+slides.6.bullets.2: Feroaret in wet, dan sjogge jo fuortendaliks wa't dat rekket.
+slides.7.overline: Toetse
+slides.7.title: De wet toetst, yn gewoane taal
+slides.7.lead: Senario's beskriuwe in persoan en wat de wet foar dy persoan opsmite moat.
+slides.7.bullets.0: >-
+  Jûn in 17-jierrige, dan gjin soarchtaslach. Jûn in allinnichsteande mei leech ynkommen, dan al.
+slides.7.bullets.1: Deselde senario's draaie hjir yn 'e browser en yn 'e boustrjitte.
+slides.7.bullets.2: Wa't de wet feroaret, sjocht hokker senario omfalt.
+slides.8.overline: Belied
+slides.8.title: Wat docht it mei fyftichtûzen minsken?
+slides.8.lead: In generearre befolking troch alle regelingen hinne, mei de echte wetten.
+slides.8.bullets.0: >-
+  Wa't oan 'e betingsten foldocht, foar hoefolle, útsplitst nei leeftyd, ynkommen, húshâlden.
+slides.8.bullets.1: Draai oan in drompel yn 'e wet en sjoch it ferskil, foar't de wet yngiet.
+slides.8.bullets.2: 'Ek foar ûndernimmers: fergunningen, meldplichten, prekario.'
+slides.9.overline: De boarger
+slides.9.title: Ien boarger, Merijn
+slides.9.lead: ZZP'er yn 'e thússoarch, allinnichsteande âlder mei twa jonge bern.
+slides.9.bullets.0: Alles dêr't er rjocht op hat, live berekkene troch de wet sels.
+slides.9.bullets.1: Elk gegeven is werom te fieren op it register dat it levere.
+slides.9.bullets.2: Kloppet in gegeven net? Hy korrizjearret it, in behanneler beoardielet.
+slides.10.overline: Oanfreegje
+slides.10.title: Allinne freegje wat de oerheid net wit
+slides.10.lead: De wet rekkenet mei wat der al is en freget pas wat as se fêstrint.
+slides.10.bullets.0: De hiertaslach ken de hier net. Dat is de iennige fraach, op dat stuit.
+slides.10.bullets.1: Nei elk antwurd rekkenet de wet opnij.
+slides.10.bullets.2: Kontrolearje, ferklearje, yntsjinje. Sûnder formulier fan tsien siden.
+slides.11.overline: De behanneler
+slides.11.title: Itselde rjocht, oare kant fan 'e baalje
+slides.11.lead: De oanfraach komt binnen mei de berekkening dy't de boarger seach.
+slides.11.bullets.0: De engine rekkenet it opnij nei mei de registrearre gegevens.
+slides.11.bullets.1: Korreksjes fan 'e boarger steane klear om beoardiele te wurden.
+slides.11.bullets.2: Takenne of ôfwize, mei motivearring; beswier komt fia it portaal werom.
+slides.12.overline: De ûndernimmer
+slides.12.title: In ûndernimmer, Claudia
+slides.12.lead: Eigener fan koffiesaak Noon yn Rotterdam-West, mei in terras.
+slides.12.bullets.0: 'Deselde engine, oare wetten: APV, Alcoholwet, Warenwet, prekario.'
+slides.12.bullets.1: >-
+  De terrasfergunning freget om lokaasje en oerflak; de prekariobelesting rekkenet der fuortendaliks mei.
+slides.12.bullets.2: Gemeente, NVWA en RVO yn ien oersjoch, sûnder dat sy inoar wat freegje hoege.
+slides.13.overline: Demo RegelRecht
+slides.13.title: Fan wet nei digitale wurking
+slides.13.lines.0: Folslein ferhaal, **gjin einprodukt**
+slides.13.lines.1: Wy meitsje belied **troch te dwaan**
+slides.13.link.label: regelrecht.rijks.app
+profiles.900253010.description: Persoan mei NL Wallet
+profiles.900253022.description: Persoan mei NL Wallet
+profiles.900253034.description: Persoan mei NL Wallet
+profiles.900253046.description: Persoan mei NL Wallet
+profiles.900253058.description: Persoan mei NL Wallet
+profiles.900265425.description: Persoan mei NL Wallet
+profiles.900265437.description: Persoan mei NL Wallet
+profiles.900265449.description: Persoan mei NL Wallet
+profiles.900265450.description: Persoan mei NL Wallet
+profiles.900265462.description: Persoan mei NL Wallet
+profiles.999991772.description: Persoan mei NL Wallet
+profiles.999100001.description: >-
+  ZZP'er yn 'e thússoarch mei leech ynkommen, allinnichsteande âlder mei twa jonge bern wêrfan ien mei in
+  chronyske oandwaning. Komt yn oanmerking foar Bbz.
+profiles.999100002.description: >-
+  Allinnichsteande mem, parttime oan it wurk yn 'e horeka mei ûnregelmjittige oeren, freget allinne
+  hiertaslach oan
+profiles.999100003.description: >-
+  ZZP'er yn 'e bousektor mei sterk wikseljend ynkommen, muoite mei de administraasje en lege taryven
+profiles.999100004.description: >-
+  Bystânsgerjochtige mei part-arbeidsûngeskiktheid, ûntfangt alle taslaggen mar komt min rûn
+profiles.999200001.description: Bern fan Merijn van der Meer (BSN 999100001)
+profiles.999200002.description: Bern fan Merijn van der Meer (BSN 999100001)
+profiles.999200003.description: Bern fan Maria Rodriguez (BSN 999100002)
+profiles.999200004.description: Bern fan Maria Rodriguez (BSN 999100002)
+profiles.999200005.description: Bern fan Omar Yilmaz (BSN 999100003)
+profiles.999200006.description: Bern fan Sophie Jansen (BSN 999300001)
+profiles.999200007.description: Bern fan Lisa de Jong (BSN 999993660)
+profiles.999300001.description: >-
+  Koartlyn wurkleas wurden allinnichsteande mem, 1 bern, komt yn oanmerking foar WW en bernebûn budget mei
+  ALO-kop
+profiles.999400001.description: Fâd fan har neefke Daan nei it ferstjerren fan syn âlden (Art. 1:295 BW)
+profiles.999400002.description: Minderjierrige ûnder fâdij fan muoike Maria (BSN 999400001)
+profiles.999410001.description: Profesjoneel kurator, bewindfierder en mentor foar meardere kliïnten
+profiles.999410002.description: Folmachtige mei algemiene folmacht foar har mem
+profiles.999410003.description: Notaris en eksekuteur fan neilittenskippen
+profiles.999410004.description: Advokaat en fallisemintskurator
+profiles.999410005.description: WSNP bewindfierder foar persoanen yn skuldsanearring
+profiles.999410006.description: Man fan in wilsûnbekwame pasjint, WGBO-fertsjintwurdiger
+profiles.999410007.description: Wie kurator mar de kuratele is beëinige
+profiles.999500001.description: Ûnder kuratele steld fanwege in geastlike steuring
+profiles.999500002.description: Ûnder beskermingsbewind, bliuwt hanneljensbekwaam
+profiles.999500003.description: Ûnder mentorskip, bliuwt hanneljensbekwaam
+profiles.999500004.description: Hat algemiene folmacht jûn oan har dochter Anna
+profiles.999500006.description: Fallyt ferklearre, de boel wurdt beheard troch in kurator
+profiles.999500007.description: Yn WSNP skuldsanearring
+profiles.999500008.description: Wilsûnbekwaam ferklearre, ûnder kuratele
+profiles.999500009.description: Kuratele is opheven, wer folslein hanneljensbekwaam
+profiles.999600001.description: Bestjoerder fan in beursnotearre NV
+profiles.999600002.description: Foarsitter fan in goededoelestichting
+profiles.999600003.description: Foarsitter fan in sportferiening
+profiles.999600004.description: Bestjoerder fan in agraryske koöperaasje
+profiles.999600005.description: Maat yn in advokatemaatskip
+profiles.999600006.description: Behearend fennoat fan in kommanditêre fennoatskip
+profiles.999600007.description: >-
+  Kommanditêre (stille) fennoat yn in CV - hat GJIN fertsjintwurdigingsbefoegdheid
+profiles.999777777.description: >-
+  Allinnichsteande mei leech ynkommen en hege hier, komt yn oanmerking foar hiertaslach
+profiles.999888888.description: >-
+  Allinnichsteande âlder mei bernedeiferbliuw, komt yn oanmerking foar bernedeiferbliuwtaslach
+profiles.999991723.description: Bern fan Linda Strijps en Peter-Jan van der Meijden
+profiles.999992740.description: Bern fan Linda Strijps en Peter-Jan van der Meijden
+profiles.999991905.description: Mem fan twa jonge bern, wurket parttime, mei NL Wallet
+profiles.999993653.description: >-
+  Jongere mei in part-time baan neist in MBO-oplieding, komt yn oanmerking foar soarchtaslach
+profiles.999993654.description: AOW-gerjochtige mei folsleine opbou, troud, partner noch gjin AOW-leeftyd
+profiles.999993655.description: Dakleaze mei briefadres, rjocht op bystân mei wenkostetaslach
+profiles.999993656.description: ZZP'er mei leech ynkommen, rjocht op oanfoljende bystân en startkapitaal
+profiles.999993657.description: >-
+  Persoan mei medyske ûntheffing, rjocht op bystân sûnder re-yntegraasjeferplichting
+profiles.999993658.description: Studint mei leech ynkommen en stúdzjefinansiering, rjocht op soarchtaslach
+profiles.999993659.description: Dútske studint sûnder stimrjocht foar de Twadde Keamer
+profiles.999993660.description: >-
+  Wurkjende âlder mei jong bern, komt yn oanmerking foar ynkommensôfhinklike kombinaasjekoarting
+profiles.999993670.description: Partner fan Maria Pietersen, noch gjin AOW-leeftyd
+profiles.999993872.description: Heit fan twa jonge bern, eigen wenning
+profiles.999999990.description: >-
+  Eigener fan koffiesaak Noon yn Rotterdam West, horeka-ûndernimmer mei eksploitaasjefergunning
+outcome_phrasing.TOESLAGEN/zorgtoeslagwet.lead: Jo soarchtaslach is nei alle gedachten
+outcome_phrasing.TOESLAGEN/zorgtoeslagwet.unit: dit jier
+outcome_phrasing.TOESLAGEN/zorgtoeslagwet.none: Jo krije nei alle gedachten gjin soarchtaslach.
+outcome_phrasing.TOESLAGEN/wet_op_de_huurtoeslag.lead: Jo hiertaslach is nei alle gedachten
+outcome_phrasing.TOESLAGEN/wet_op_de_huurtoeslag.unit: yn 't jier
+outcome_phrasing.TOESLAGEN/wet_op_de_huurtoeslag.none: Jo krije nei alle gedachten gjin hiertaslach.
+outcome_phrasing.TOESLAGEN/wet_op_het_kindgebonden_budget.lead: Jo bernebûn budget is nei alle gedachten
+outcome_phrasing.TOESLAGEN/wet_op_het_kindgebonden_budget.unit: yn 't jier
+outcome_phrasing.TOESLAGEN/wet_op_het_kindgebonden_budget.none: >-
+  Jo krije nei alle gedachten gjin bernebûn budget.
+outcome_phrasing.TOESLAGEN/wet_kinderopvang.lead: Jo bernedeiferbliuwtaslach is nei alle gedachten
+outcome_phrasing.TOESLAGEN/wet_kinderopvang.unit: yn 't jier
+outcome_phrasing.TOESLAGEN/wet_kinderopvang.none: Jo krije nei alle gedachten gjin bernedeiferbliuwtaslach.
+outcome_phrasing.BELASTINGDIENST/wet_inkomstenbelasting.lead: >-
+  De ynkomstebelesting dy't jo skuldich binne is nei alle gedachten
+outcome_phrasing.BELASTINGDIENST/wet_inkomstenbelasting.unit: dit jier
+outcome_phrasing.BELASTINGDIENST/wet_inkomstenbelasting.none: >-
+  Jo binne nei alle gedachten gjin ynkomstebelesting skuldich.
+outcome_phrasing.SVB/algemene_ouderdomswet.lead: Jo AOW-pensjoen is nei alle gedachten
+outcome_phrasing.SVB/algemene_ouderdomswet.unit: yn 't jier
+outcome_phrasing.SVB/algemene_ouderdomswet.none: Jo hawwe noch gjin rjocht op AOW.
+outcome_phrasing.SVB/algemene_nabestaandenwet.lead: Jo neibesteandenútkearing is nei alle gedachten
+outcome_phrasing.SVB/algemene_nabestaandenwet.unit: yn 'e moanne
+outcome_phrasing.SVB/algemene_nabestaandenwet.none: >-
+  Jo hawwe nei alle gedachten gjin rjocht op in neibesteandenútkearing.
+outcome_phrasing.SVB/participatiewet/aio.lead: Jo AIO-oanfolling is nei alle gedachten
+outcome_phrasing.SVB/participatiewet/aio.unit: yn 'e moanne
+outcome_phrasing.SVB/participatiewet/aio.none: Jo hawwe nei alle gedachten gjin rjocht op in AIO-oanfolling.
+outcome_phrasing.SZW/participatiewet/bijstand.lead: Jo bystânsútkearing is nei alle gedachten
+outcome_phrasing.SZW/participatiewet/bijstand.unit: yn 'e moanne
+outcome_phrasing.SZW/participatiewet/bijstand.none: Jo hawwe nei alle gedachten gjin rjocht op bystân.
+outcome_phrasing.GEMEENTE_AMSTERDAM/participatiewet/bijstand/gemeenten.lead: >-
+  Jo bystânsútkearing is nei alle gedachten
+outcome_phrasing.GEMEENTE_AMSTERDAM/participatiewet/bijstand/gemeenten.unit: yn 'e moanne
+outcome_phrasing.GEMEENTE_AMSTERDAM/participatiewet/bijstand/gemeenten.none: >-
+  Jo hawwe nei alle gedachten gjin rjocht op bystân.
+outcome_phrasing.SZW/besluit_bijstandverlening_zelfstandigen.lead: Jo Bbz-bystân is nei alle gedachten
+outcome_phrasing.SZW/besluit_bijstandverlening_zelfstandigen.unit: yn 'e moanne
+outcome_phrasing.SZW/besluit_bijstandverlening_zelfstandigen.none: >-
+  Jo hawwe nei alle gedachten gjin rjocht op Bbz-bystân.
+outcome_phrasing.UWV/werkloosheidswet.lead: Jo WW-útkearing is nei alle gedachten
+outcome_phrasing.UWV/werkloosheidswet.unit: yn 'e moanne
+outcome_phrasing.UWV/werkloosheidswet.none: Jo hawwe nei alle gedachten gjin rjocht op WW.
+outcome_phrasing.UWV/ziektewet.lead: Jo sykjild is nei alle gedachten
+outcome_phrasing.UWV/ziektewet.unit: de dei
+outcome_phrasing.UWV/ziektewet.none: Jo hawwe nei alle gedachten gjin rjocht op sykjild.
+outcome_phrasing.UWV/wet_werk_en_inkomen_naar_arbeidsvermogen.lead: Jo WIA-útkearing is nei alle gedachten
+outcome_phrasing.UWV/wet_werk_en_inkomen_naar_arbeidsvermogen.unit: yn 'e moanne
+outcome_phrasing.UWV/wet_werk_en_inkomen_naar_arbeidsvermogen.none: >-
+  Jo hawwe nei alle gedachten gjin rjocht op in WIA-útkearing.
+outcome_phrasing.DUO/wet_studiefinanciering.lead: Jo stúdzjefinansiering is nei alle gedachten
+outcome_phrasing.DUO/wet_studiefinanciering.unit: yn 'e moanne
+outcome_phrasing.DUO/wet_studiefinanciering.none: >-
+  Jo hawwe nei alle gedachten gjin rjocht op stúdzjefinansiering.
+outcome_phrasing.PENSIOENFONDS/pensioenwet.lead: Jo pensjoen is nei alle gedachten
+outcome_phrasing.PENSIOENFONDS/pensioenwet.unit: yn 'e moanne
+outcome_phrasing.PENSIOENFONDS/pensioenwet.none: Jo bouwe hjir noch gjin pensjoen op.
+outcome_phrasing.BELASTINGDIENST/zorgverzekeringswet/bijdrage.lead: Jo bydrage Zvw is nei alle gedachten
+outcome_phrasing.BELASTINGDIENST/zorgverzekeringswet/bijdrage.unit: dit jier
+outcome_phrasing.BELASTINGDIENST/zorgverzekeringswet/bijdrage.none: >-
+  Jo binne nei alle gedachten gjin bydrage Zvw skuldich.
+outcome_phrasing.GEMEENTE_ROTTERDAM/verordening_precariobelasting/gemeenten.lead: >-
+  Jo prekariobelesting is nei alle gedachten
+outcome_phrasing.GEMEENTE_ROTTERDAM/verordening_precariobelasting/gemeenten.unit: yn 't jier
+outcome_phrasing.GEMEENTE_ROTTERDAM/verordening_precariobelasting/gemeenten.none: >-
+  Jo binne nei alle gedachten gjin prekariobelesting skuldich.
+outcome_phrasing.DOUANE/wet_op_de_accijns/accijnsplicht_alcohol.lead: >-
+  Oer dizze partij binne jo nei alle gedachten
+outcome_phrasing.DOUANE/wet_op_de_accijns/accijnsplicht_alcohol.unit: oan aksyns skuldich
+outcome_phrasing.DOUANE/wet_op_de_accijns/accijnsplicht_alcohol.none: >-
+  Oer dizze partij binne jo nei alle gedachten gjin aksyns skuldich.
+outcome_phrasing.KIESRAAD/kieswet.lead: Foar de ferkiezings fan {date} hawwe jo
+outcome_phrasing.KIESRAAD/kieswet.lead_no_date: Foar de ferkiezings hawwe jo
+outcome_phrasing.KIESRAAD/kieswet.yes: STIMRJOCHT
+outcome_phrasing.KIESRAAD/kieswet.no: GJIN stimrjocht
+outcome_phrasing.SVB/algemene_kinderbijslagwet.lead: Jo hawwe
+outcome_phrasing.SVB/algemene_kinderbijslagwet.yes: RJOCHT OP BERNEBYSLACH
+outcome_phrasing.SVB/algemene_kinderbijslagwet.no: GJIN rjocht op bernebyslach
+outcome_phrasing.IND/vreemdelingenwet.lead: Jo hawwe
+outcome_phrasing.IND/vreemdelingenwet.yes: FERBLIUWSRJOCHT
+outcome_phrasing.IND/vreemdelingenwet.no: GJIN ferbliuwsrjocht
+outcome_phrasing.GEMEENTE_ROTTERDAM/algemene_plaatselijke_verordening/terrassen.lead: Foar in terras hawwe jo
+outcome_phrasing.GEMEENTE_ROTTERDAM/algemene_plaatselijke_verordening/terrassen.yes: RJOCHT OP IN FERGUNNING
+outcome_phrasing.GEMEENTE_ROTTERDAM/algemene_plaatselijke_verordening/terrassen.no: >-
+  GJIN rjocht op in fergunning
+outcome_phrasing.GEMEENTE_ROTTERDAM/alcoholwet/vergunning/gemeenten.lead: Foar alkoholferkeap hawwe jo
+outcome_phrasing.GEMEENTE_ROTTERDAM/alcoholwet/vergunning/gemeenten.yes: RJOCHT OP IN FERGUNNING
+outcome_phrasing.GEMEENTE_ROTTERDAM/alcoholwet/vergunning/gemeenten.no: GJIN rjocht op in fergunning
+outcome_phrasing.NVWA/warenwet/haccp.lead: Foar itenfeilichheid hawwe jo
+outcome_phrasing.NVWA/warenwet/haccp.yes: IN HACCP-FERPLICHTING
+outcome_phrasing.NVWA/warenwet/haccp.no: GJIN HACCP-ferplichting
+outcome_phrasing.NVWA/warenwet/meldplicht.lead: By in itenfeilichheidsfoarfal hawwe jo
+outcome_phrasing.NVWA/warenwet/meldplicht.yes: IN MELDPLICHT
+outcome_phrasing.NVWA/warenwet/meldplicht.no: GJIN meldplicht
+outcome_phrasing.RVO/omgevingswet/energiebesparing/informatieplicht.lead: Foar enerzjybesparring hawwe jo
+outcome_phrasing.RVO/omgevingswet/energiebesparing/informatieplicht.yes: IN YNFORMAASJEPLICHT
+outcome_phrasing.RVO/omgevingswet/energiebesparing/informatieplicht.no: GJIN ynformaasjeplicht
