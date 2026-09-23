@@ -106,8 +106,11 @@ const engine = shallowRef(null);
 const corpus = computed(() => {
   const c = loadedCorpus.value;
   if (!c) return null;
-  const config = activeLocale.value === 'en' && c.configEn ? c.configEn : c.config;
-  return config === c.config ? c : markRaw({ ...c, config });
+  const english = activeLocale.value === 'en';
+  const config = english && c.configEn ? c.configEn : c.config;
+  const profiles = english && c.profilesEn ? c.profilesEn : c.profiles;
+  if (config === c.config && profiles === c.profiles) return c;
+  return markRaw({ ...c, config, profiles });
 });
 const ready = ref(false);
 const loadError = ref(null);

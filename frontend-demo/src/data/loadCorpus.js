@@ -42,12 +42,13 @@ export function loadCorpus() {
     // de taal die op dat moment aanstaat: een taalwissel halverwege een
     // presentatie mag geen laadmoment opleveren, en het corpus wordt maar één
     // keer geladen. Het verschil is een bestand van twintig kilobyte.
-    const [bindings, profiles, services, config, configEn] = await Promise.all([
+    const [bindings, profiles, services, config, configEn, profilesEn] = await Promise.all([
       fetchYaml('/data/bindings.yaml'),
       fetchYaml('/data/profiles.yaml'),
       fetchYaml('/data/services.yaml'),
       fetchYaml('/data/demo-config.yaml'),
       fetchYaml('/data/demo-config.en.yaml').catch(() => null),
+      fetchYaml('/data/profiles.en.yaml').catch(() => null),
     ]);
     const laws = await Promise.all(
       index.laws.map(async (entry) => {
@@ -88,6 +89,15 @@ export function loadCorpus() {
        * Nederlands, wat beter is dan lege dia's.
        */
       configEn,
+      /**
+       * Dezelfde persona's met hun Engelse beschrijving.
+       *
+       * Alleen `description` verschilt: namen blijven namen, en de
+       * geregistreerde gegevens eronder zijn de invoer van de wet en horen in
+       * geen enkele taal vertaald te worden. Net als bij `configEn` is `null`
+       * de terugval op het Nederlands.
+       */
+      profilesEn,
     };
   })();
   return corpusPromise;
