@@ -7,6 +7,7 @@
 import { computed, onMounted, provide, ref } from 'vue';
 import { celApi } from '../api.js';
 import InloggenView from './InloggenView.vue';
+import MogelijkhedenView from './MogelijkhedenView.vue';
 import MedewerkerView from './MedewerkerView.vue';
 import AanvraagView from './AanvraagView.vue';
 import KroniekView from './KroniekView.vue';
@@ -27,9 +28,14 @@ const geladen = ref(rol.value === null);
 const scherm = ref(beginscherm(rol.value));
 const nieuw = ref(null);
 const zaak = ref(null);
+// De aanvraagmogelijkheden die de wet deze organisatie geeft. Het tabblad
+// Indienen verschijnt alleen als er een is; dit is aanbieden, geen
+// afscherming: de cel weigert een indiening niet.
+const mogelijk = ref([]);
+const vooraf = ref({});
 
 function beginscherm(r) {
-  if (r === 'aanvrager' && props.cel.portaal) return 'aanvraag';
+  if (r === 'aanvrager' && props.cel.portaal) return 'mogelijkheden';
   if (r === 'behandelaar' && props.cel.behandeling) return 'werkvoorraad';
   return 'kroniek';
 }
@@ -65,6 +71,15 @@ const werkvoorraadKolommen = computed(
   () => props.cel.lexostatussen.find((l) => l.name === props.cel.behandeling?.werkvoorraad)?.kolommen ?? [],
 );
 
+function mogelijkhedenGeladen(lijst) {
+  mogelijk.value = lijst.filter((m) => m.oordeel === 'mogelijk');
+}
+
+function aanvragen({ subsidiejaar }) {
+  vooraf.value = { subsidiejaar };
+  scherm.value = 'aanvraag';
+}
+
 function ingediend(gram) {
   nieuw.value = gram;
   scherm.value = 'kroniek';
@@ -74,6 +89,9 @@ async function uitloggen() {
   const weg = sessie.value?.rol === 'behandelaar' ? api.medewerkerUitloggen : api.uitloggen;
   await weg().catch(() => {});
   sessie.value = null;
+  mogelijk.value = [];
+  vooraf.value = {};
+  scherm.value = beginscherm(rol.value);
 }
 
 function tab(e) {
@@ -110,6 +128,12 @@ const wie = computed(() => {
       <nldd-tab-bar size="md" accessible-label="Scherm" @tabchange="tab">
         <nldd-tab-bar-item
           v-if="rol === 'aanvrager' && cel.portaal"
+          data-scherm="mogelijkheden"
+          text="Wat kan ik aanvragen"
+          :current="scherm === 'mogelijkheden' || undefined"
+        ></nldd-tab-bar-item>
+        <nldd-tab-bar-item
+          v-if="rol === 'aanvrager' && cel.portaal && mogelijk.length"
           data-scherm="aanvraag"
           text="Indienen"
           :current="scherm === 'aanvraag' || undefined"
@@ -137,7 +161,8 @@ const wie = computed(() => {
       ></nldd-button>
     </nldd-container>
     <nldd-spacer size="24"></nldd-spacer>
-    <AanvraagView v-if="scherm === 'aanvraag'" @ingediend="ingediend" />
+    <MogelijkhedenView v-if="scherm === 'mogelijkheden'" @geladen="mogelijkhedenGeladen" @aanvragen="aanvragen" />
+    <AanvraagView v-else-if="scherm === 'aanvraag'" :key="vooraf.subsidiejaar" :vooraf="vooraf" @ingediend="ingediend" />
     <template v-else-if="scherm === 'werkvoorraad'">
       <ZaakView v-if="zaak" :key="zaak" :zaakkenmerk="zaak" @terug="zaak = null" />
       <WerkvoorraadView v-else :kolommen="werkvoorraadKolommen" @open="zaak = $event" />

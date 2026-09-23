@@ -32,6 +32,9 @@ pub struct Uitslag {
     /// (zie [`crate::reductie::ontbreekt`]). Staat los van de uitkomst: ook
     /// een niet te beoordelen toets noemt wat er aan de aanvraag ontbreekt.
     pub ontbreekt: Vec<String>,
+    /// De trace van de engine-run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trace: Option<Value>,
 }
 
 /// Wat de engine van een of meer uitkomsten maakte.
@@ -44,6 +47,8 @@ pub struct Evaluatie {
     /// Waarom een uitkomst geen waarde kreeg, als de engine dat niet als
     /// ontbrekend feit noemde.
     pub fout: Option<String>,
+    /// De trace van de engine-run, als die gevraagd was.
+    pub trace: Option<Value>,
 }
 
 impl Evaluatie {
@@ -75,13 +80,45 @@ pub fn evalueer(
     parameters: &BTreeMap<String, Value>,
     datum: &str,
 ) -> Evaluatie {
+    evalueer_als(service, regeling, uitkomsten, parameters, datum, false)
+}
+
+/// Als [`evalueer`], met de trace van de engine erbij (voor wie wil zien hoe
+/// de uitkomst tot stand kwam).
+pub fn evalueer_met_trace(
+    service: &LawExecutionService,
+    regeling: &str,
+    uitkomsten: &[&str],
+    parameters: &BTreeMap<String, Value>,
+    datum: &str,
+) -> Evaluatie {
+    evalueer_als(service, regeling, uitkomsten, parameters, datum, true)
+}
+
+fn evalueer_als(
+    service: &LawExecutionService,
+    regeling: &str,
+    uitkomsten: &[&str],
+    parameters: &BTreeMap<String, Value>,
+    datum: &str,
+    met_trace: bool,
+) -> Evaluatie {
     let mut uit = Evaluatie::default();
     let invoer: BTreeMap<String, EngineValue> = parameters
         .iter()
         .map(|(k, v)| (k.clone(), EngineValue::from(v)))
         .collect();
-    match service.evaluate_law(regeling, uitkomsten, invoer, datum) {
+    let resultaat = if met_trace {
+        service.evaluate_law_with_trace(regeling, uitkomsten, invoer, datum)
+    } else {
+        service.evaluate_law(regeling, uitkomsten, invoer, datum)
+    };
+    match resultaat {
         Ok(resultaat) => {
+            uit.trace = resultaat
+                .trace
+                .as_ref()
+                .and_then(|t| serde_json::to_value(t).ok());
             for u in uitkomsten {
                 match resultaat.outputs.get(*u) {
                     Some(w) if w.contains_unknown() => {
@@ -124,7 +161,7 @@ pub fn toets(
     ontbreekt: Vec<String>,
     datum: &str,
 ) -> Uitslag {
-    let e = evalueer(service, regeling, &[uitkomst], parameters, datum);
+    let e = evalueer_met_trace(service, regeling, &[uitkomst], parameters, datum);
     let te_beoordelen = e.volledig(&[uitkomst]);
     Uitslag {
         regeling: regeling.to_string(),
@@ -134,6 +171,7 @@ pub fn toets(
         reden: (!te_beoordelen).then(|| e.reden("niet te beoordelen")),
         mist: e.mist,
         ontbreekt,
+        trace: e.trace,
     }
 }
 

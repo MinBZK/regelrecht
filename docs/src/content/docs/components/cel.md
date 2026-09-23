@@ -118,7 +118,42 @@ synthese:
 
 A value that is needed as input but is not a parameter of any article, such as the name the applicant registered under, is an `extra_velden` entry of the own lexostatus. It is marked apart and never goes to the engine.
 
+A source can also pass a value on to a later source. It lists the field under `extra_velden` (and may then have no parameters at all), and the later source names that source's lexostatus as the origin of its input:
+
+```yaml
+synthese:
+  - cel: <register>
+    lexostatus: <by organisation number>
+    invoer: {nummer: {lexostatus: <own>, veld: nummer}}
+    parameters: []
+    extra_velden: [aanduiding]         # not a parameter; input for the next source
+  - cel: <register>
+    lexostatus: <by name>
+    invoer: {aanduiding: {lexostatus: <by organisation number>, veld: aanduiding}}
+    parameters: [<name>, ...]
+```
+
+The synthesis then runs in two rounds: first the sources that need only the own lexostatus, then the ones that wait on an earlier source. When the earlier source passes nothing, the later one is not asked (`niet_bevraagd`), and nothing is filled in. Two rounds is the limit: a source cannot wait on a source that itself waits.
+
 Each source gets three seconds. The check takes only the listed parameters from the answer and passes the merged set to the engine. Its answer shows, per parameter, where the value came from: the own lexostatus, or cell and lexostatus with the transport. Per source it shows the status: `bevraagd`, `onbereikbaar`, `fout`, or `niet_bevraagd` when an input was missing from the draft. Nothing from the synthesis is recorded; it informs the check and is not a fact of the consuming cell. When a source is unreachable and the outcome therefore cannot be judged, the check says "niet te beoordelen: bron <id> onbereikbaar". It does not fill anything in.
+
+## What an organisation can apply for
+
+Nobody lists which applications an organisation can make, not in the law and not in the cell. A portal cell derives it by running the law for whoever logs in. `GET /api/mogelijkheden` builds an empty draft (only the subsidy year, for this year and the next), reduces it, runs the synthesis, and evaluates up to three outcomes:
+
+| Question | Outcome | Counts |
+|---|---|---|
+| May this person act for the organisation? | `portaal.mandaat` | yes |
+| Can the organisation receive anything? | the first outcome of the decision | yes |
+| By when? | `portaal.termijn` | shown only |
+
+Each outcome gets a verdict. A definite zero or false means the regulation rules it out (`uitgesloten`). An unknown outcome, with the facts it lacks, means an application is possible: those facts are what the application has to supply (Awb 4:2 paragraph 2). A definite positive value is possible as well. An engine error that names no missing fact is `niet_te_bepalen`. One check that rules out decides for all of them.
+
+This needs the regulation to let facts be unknown. RFC-036 says that application-form fields a caller never passes are `required: false`; a law that marks them `required: true` cannot be evaluated before the form exists ("a law cannot be evaluated for nobody"). The engine then returns an unknown that names the missing facts, and a definite `false` in an `AND` decides whatever the unknown turns out to be.
+
+No possibility is not a refusal. The portal offers what the law allows; an application sent another way (Awb 4:1) is still recorded and judged. Nothing of this is recorded.
+
+Every outcome the portal shows that comes from an engine run carries the trace of that run: the check before submitting, the trial decision, and each question above. The frontend opens it from a small RegelRecht icon.
 
 ## Start-up checks
 
@@ -130,7 +165,7 @@ Each cell is checked on its own. When one fails, the runtime does not start, and
 4. No name collision: a parameter gets one derivation.
 5. A filter or input on `zaakkenmerk` only selects events with a case (`zaak: opent` or `volgt`). A gram without a case has no `zaakkenmerk`, so such a filter would never match it.
 6. The `portaal` block names an existing event, a lexostatus that picks a gram, and a regulation outcome whose article is in the `grondslag` of the event.
-7. Synthesis needs a portal or a decision. Each input comes from a field of the check's lexostatus. Each parameter is a parameter of the check's article or of an article it calls, transitively through `source`. A parameter comes from exactly one place: the own reduction or one source.
+7. Synthesis needs a portal or a decision. Each input comes from a field of the check's lexostatus, or from an extra field an earlier source passes on; that earlier source takes its own inputs from the check's lexostatus. A source supplies a parameter or passes an extra field. Each parameter is a parameter of the check's article or of an article it calls, transitively through `source`. A parameter comes from exactly one place: the own reduction or one source.
 8. The start state fits the streams of the cell.
 9. A list lexostatus (`groepeer`) only selects events with a case, in `filter` and in `zonder`, and its `zonder` selects at least one event, since otherwise it would never leave a case out. Its columns need not be parameters and do not collide with other lexostatuses. The portal check and the decision never use a list.
 10. A portal needs the applicant role and the other way around; case handling needs the case handler role. The work queue is a list. The outcomes of the decision come from one article. The lexostatuses of the decision have `zaakkenmerk` as their only input. Each parameter in the form, in the state at decision or in a `rijen` block is one a caller of the article has to supply, and every parameter of the decision comes from one source only.
@@ -148,7 +183,7 @@ Whether a source is reachable and offers the lexostatus with those parameters an
 | `DATA_DIR` | Where the chronicles are written, in a subdirectory per cell. |
 | `CEL_PORT` | Port of the runtime, default 7170. It binds to `0.0.0.0`. |
 
-The `portaal` block in `cel.yaml` says which event a submission becomes, which lexostatus and outcome the check before submitting evaluates (`toets: {lexostatus, regeling, uitkomst}`), and optionally which form file supplies labels and order (`formulier: {pad, scherm}`). The form file never changes behavior: a field it does not know gets its field name as label, and a field the stream does not know is skipped.
+The `portaal` block in `cel.yaml` says which event a submission becomes, which lexostatus and outcome the check before submitting evaluates (`toets: {lexostatus, regeling, uitkomst}`), optionally which outcomes answer "may this person act for the organisation" and "by when" (`mandaat` and `termijn`, each `{regeling, uitkomst}`), and optionally which form file supplies labels and order (`formulier: {pad, scherm}`). The form file never changes behavior: a field it does not know gets its field name as label, and a field the stream does not know is skipped.
 
 ## Routes
 
@@ -157,10 +192,11 @@ The `portaal` block in `cel.yaml` says which event a submission becomes, which l
 | `GET /api/cellen` | The cells in this runtime and what each offers |
 | `GET /cellen/<id>/api/kroniek` | The grams, each with its YAML. With a portal: only those of the logged-in KvK number. |
 | `GET /cellen/<id>/api/lexostatus/{naam}?<input>=...` | A reduction, with the inputs as query parameters. With a portal: only over your own grams. |
-| `POST /cellen/<id>/api/eherkenning/login` | Portal only. `{kvk, persoon, machtiging}` to a session. A KvK number has eight digits and the only accepted mandate is `volledig`. There is no register. |
+| `POST /cellen/<id>/api/eherkenning/login` | Portal only. `{kvk, persoon, machtiging}` to a session. A KvK number has eight digits and the mandate is `volledig` or `geen`. There is no register. What a missing mandate means is up to the regulation, not the login. |
 | `GET /cellen/<id>/api/stroom` | Portal only. The stream definition and the form fields |
 | `POST /cellen/<id>/api/aanvraag/toets` | Portal only. Builds the gram in memory without recording it, reduces it, runs the synthesis and evaluates the configured outcome. `ontbreekt` lists the parameters of a presence derivation (`gevuld`, `tabel` with `elke_regel`) that came out false. |
 | `POST /cellen/<id>/api/aanvraag` | Portal only. Records the gram and returns it |
+| `GET /cellen/<id>/api/mogelijkheden` | Portal only. What the law lets the logged-in organisation apply for, per subsidy year, with the trace of each check. Records nothing. |
 | `POST /cellen/<id>/api/medewerker/login` | Case handler role only. `{naam}` to a session; `GET .../sessie` and `POST .../logout` as for eHerkenning. |
 | `GET /cellen/<id>/api/werkvoorraad` | Case handler only. The work queue, a list lexostatus. |
 | `GET /cellen/<id>/api/zaken/<zaakkenmerk>` | Case handler only. The grams of the case, the decision form, and a trial decision without judgments. |
@@ -198,6 +234,11 @@ These are deliberate. Each is a candidate for an amendment once the proof of con
 24. **What a recorded decision carries.** The gram of a decision the cell took itself adds `legal_character`, `decision_type`, `regulation`, `regulation_valid_from`, `competent_authority`, `inputs` and `receipt` to the chronicle-stream shape of RFC-022 §1.3, which has none of them. `inputs` is the RFC-013 `accepted_values` idea applied to every parameter rather than to cross-organisational ones only, and the `receipt` is a short form of the RFC-013 Execution Receipt: the loaded regulations and the cell's streams with one hash over both, which is the generalisation RFC-022 §1.3 announces as an amendment to RFC-013.
 25. **The competent authority is tested before recording.** RFC-002 and RFC-007 model who is competent; nothing says a cell has to compare that with itself before it writes. Here equal records, different refuses, and absent records with a warning.
 26. **One decision per case.** A second gram with stage `BESLUIT` in the same case is refused. Changing a decision is a later stage of RFC-008 and out of scope for this step.
+27. **Deriving what can be applied for.** The position paper and RFC-022 say nothing about which acts an actor may perform, or about applications at all. The cell does not list them either: the portal runs the decision's regulation on an empty draft and reads the verdict from the outcome. This is informing by the actor, in the paper's sense, and records nothing.
+28. **The portal refuses nothing and offers only what the law allows.** The position paper is silent on refusing a recording. The general administrative law is not: an application is a request for a decision (Awb 1:3 paragraph 3), not treating it is a decision after receipt (Awb 4:5), and refusing an electronic message beforehand is limited to two grounds (Awb 2:15). So the portal refuses nothing it receives. It leaves out an application the law rules out, which is a choice about what to offer.
+29. **Passing values between sources.** RFC-022 §4.1 has each source answer from inputs the consumer already holds. Here a source can pass an extra field to a later source, so a register keyed on an organisation number can supply the name under which another register keeps the results.
+30. **Traces in the answers.** The check, the trial decision and the possibilities return the engine trace of their run. RFC-013 puts a trace in the Execution Receipt; here it is part of the answer and is not recorded.
+
 
 ## Open questions
 
@@ -217,3 +258,5 @@ These are deliberate. Each is a candidate for an amendment once the proof of con
 14. **Proposed decisions.** Drafts before the decision (a *voorgenomen besluit*) are out of scope. The position paper asks whether they are decisions already.
 15. **A column with no source.** A table parameter can have a column no cell can answer for, because no register holds the fact under that shape. The row then simply lacks the column, which the engine reports as a missing value only when it reads it. Should the configuration be able to name such a column and say why it stays empty, the way `niet_gereduceerd` does for an unread field?
 16. **The receipt and the source cells.** The receipt covers what this cell loaded: its regulations and its own streams. What a source cell answered is in `inputs` with its provenance, but not with that cell's own receipt. RFC-013 §4 sketches the chain; a cell that signs its lexostatus answers would close it.
+17. **Which outcome says "can receive anything".** The portal takes the first outcome of the decision. A regulation does not mark which outcome is the grant; for a decision with several amounts or a refusal outcome, that choice is configuration and could be wrong.
+18. **Unknown that stays unknown.** A route in the law that depends only on facts the applicant supplies keeps the verdict at "possible" for an organisation that will almost certainly not qualify, such as a merger route open to any registered association. The law gives that answer; whether the portal should say more than "possible" is open.

@@ -67,6 +67,10 @@ pub struct Proefbesluit {
     /// Wat de synthese per regel opleverde (zie [`crate::rijen`]).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub rijen: Vec<rijen::Uitslag>,
+    /// De trace van de engine-run, voor wie wil zien hoe het bedrag tot
+    /// stand kwam.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trace: Option<Value>,
 }
 
 /// Het artikel achter de uitkomsten, als `<regeling>#<artikel>`.
@@ -219,10 +223,19 @@ pub fn controleer(cel: &Cel) -> Vec<String> {
             }
         }
     }
+    // Een invoer uit een eerdere bron (een doorgegeven extra veld) komt niet
+    // uit een eigen lexostatus; de synthese zelf controleert haar.
+    let doorgegeven: Vec<&str> = d
+        .synthese
+        .iter()
+        .filter(|s| !s.extra_velden.is_empty())
+        .map(|s| s.lexostatus.as_str())
+        .collect();
     let mut invoer_uit: Vec<&str> = d
         .synthese
         .iter()
         .flat_map(|s| s.invoer.values().map(|v| v.lexostatus.as_str()))
+        .filter(|l| !doorgegeven.contains(l))
         .collect();
     invoer_uit.sort_unstable();
     invoer_uit.dedup();
@@ -239,7 +252,9 @@ pub fn controleer(cel: &Cel) -> Vec<String> {
                 .push(format!("synthese-bron {}/{}", bron.cel, bron.lexostatus));
         }
         for (i, v) in &bron.invoer {
-            if !b.lexostatussen.contains(&v.lexostatus) {
+            if !b.lexostatussen.contains(&v.lexostatus)
+                && !doorgegeven.contains(&v.lexostatus.as_str())
+            {
                 fouten.push(format!(
                     "besluit: synthese-bron {}/{}, invoer '{i}': komt uit lexostatus '{}', en die staat niet in de lexostatussen van het besluit",
                     bron.cel, bron.lexostatus, v.lexostatus
@@ -472,16 +487,14 @@ pub async fn proefbesluit(
         eigen.push(l);
     }
 
-    // 2. Synthese, met de invoer uit de eigen lexostatus die haar levert.
-    let invoer_uit = cel
+    // 2. Synthese, met de invoer uit de eigen lexostatus die haar levert. Een
+    // invoer die een eerdere bron doorgeeft, wijst geen eigen lexostatus aan.
+    let hoofd = cel
         .definitie
         .synthese
         .iter()
         .flat_map(|s| s.invoer.values())
-        .map(|v| v.lexostatus.as_str())
-        .next();
-    let hoofd = invoer_uit
-        .and_then(|n| eigen.iter().position(|l| l.naam == n))
+        .find_map(|v| eigen.iter().position(|l| l.naam == v.lexostatus))
         .unwrap_or(0);
     let mut samen = match eigen.get(hoofd) {
         Some(l) => synthese::voeg_samen(l, bronnen).await,
@@ -537,7 +550,7 @@ pub async fn proefbesluit(
     }
 
     let uitkomsten: Vec<&str> = b.uitkomsten.iter().map(String::as_str).collect();
-    let e = toets::evalueer(
+    let e = toets::evalueer_met_trace(
         &cel.service,
         &b.regeling,
         &uitkomsten,
@@ -561,6 +574,7 @@ pub async fn proefbesluit(
         artikel,
         peildatum: peildatum.to_string(),
         te_nemen,
+        trace: e.trace,
         uitkomsten: if te_nemen { e.waarden } else { BTreeMap::new() },
         mist: e.mist,
         reden,

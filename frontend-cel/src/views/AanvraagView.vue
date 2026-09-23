@@ -7,8 +7,13 @@ import { external } from '../formulier.js';
 import { herkomstRijen } from '../tekst.js';
 import Invoer from '../components/Invoer.vue';
 import TabelInvoer from '../components/TabelInvoer.vue';
+import TraceKnop from '@regelrecht/frontend-shared/components/TraceKnop.vue';
 
 const api = inject('api');
+
+// Waarden die al vaststaan, bijvoorbeeld het subsidiejaar van de gekozen
+// aanvraagmogelijkheid.
+const props = defineProps({ vooraf: { type: Object, default: () => ({}) } });
 
 const emit = defineEmits(['ingediend']);
 
@@ -22,7 +27,7 @@ onMounted(async () => {
   try {
     stroom.value = await api.stroom();
     for (const v of stroom.value.velden) {
-      waarden.value[v.naam] = v.type === 'tabel' ? [{}] : null;
+      waarden.value[v.naam] = props.vooraf[v.naam] ?? (v.type === 'tabel' ? [{}] : null);
     }
   } catch (e) {
     fout.value = e.message;
@@ -131,11 +136,14 @@ const uitslagToelichting = computed(() => {
         </template>
       </template>
       <template v-if="uitslag">
-        <nldd-inline-dialog
-          :variant="uitslag.te_beoordelen && uitslag.waarde === true ? 'success' : 'alert'"
-          :text="uitslagTekst"
-          :supporting-text="uitslagToelichting"
-        ></nldd-inline-dialog>
+        <nldd-container layout="row" gap="8" vertical-alignment="center">
+          <nldd-inline-dialog
+            :variant="uitslag.te_beoordelen && uitslag.waarde === true ? 'success' : 'alert'"
+            :text="uitslagTekst"
+            :supporting-text="uitslagToelichting"
+          ></nldd-inline-dialog>
+          <TraceKnop v-if="uitslag.trace" :trace="uitslag.trace" :titel="uitslag.uitkomst" />
+        </nldd-container>
       </template>
       <template v-if="herkomst.length">
         <nldd-table columns="minmax(200px,1fr) 160px minmax(200px,1fr)" accessible-label="Herkomst per parameter">

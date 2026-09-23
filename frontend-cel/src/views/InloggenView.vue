@@ -1,6 +1,7 @@
 <script setup>
-// Nep-eHerkenning: KvK-nummer, gemachtigde en machtiging. Er is geen
-// register; de cel controleert alleen de vorm.
+// Nep-eHerkenning: KvK-nummer, persoon en machtiging. Er is geen register;
+// de cel controleert alleen de vorm. Wat een ontbrekende machtiging
+// betekent, zegt daarna de regeling, niet deze inlog.
 import { inject, ref } from 'vue';
 
 const api = inject('api');
@@ -49,6 +50,7 @@ async function inloggen() {
       <nldd-dropdown accessible-label="Machtiging">
         <select :value="machtiging" @change="machtiging = $event.target.value">
           <option value="volledig">Volledig</option>
+          <option value="geen">Geen (niet gemachtigd voor deze dienst)</option>
         </select>
       </nldd-dropdown>
     </nldd-form-field>

@@ -106,6 +106,14 @@
             }
           }
         },
+        "mandaat": {
+          "$ref": "#/definitions/uitkomst",
+          "description": "Optioneel: de uitkomst die zegt of wie inlogt namens de organisatie mag handelen. Is die definitief onwaar, dan biedt het portaal geen aanvraag aan."
+        },
+        "termijn": {
+          "$ref": "#/definitions/uitkomst",
+          "description": "Optioneel: de uitkomst die de uiterste datum voor de indiening geeft. Het portaal toont haar bij een aanvraagmogelijkheid; zij blokkeert niets."
+        },
         "formulier": {
           "type": "object",
           "description": "Optioneel formulierbestand voor labels en volgorde. Het bepaalt nooit het gedrag.",
@@ -148,7 +156,7 @@
         },
         "invoer": {
           "type": "object",
-          "description": "Per input van de bron-lexostatus: uit welk veld van de eigen lexostatus de waarde komt (een parameter of een extra veld).",
+          "description": "Per input van de bron-lexostatus: uit welk veld de waarde komt. Uit de eigen lexostatus (een parameter of een extra veld), of uit het antwoord van een eerdere bron in de lijst die dat veld onder extra_velden doorgeeft.",
           "propertyNames": {
             "pattern": "^[a-z][a-z0-9_]*$"
           },
@@ -170,11 +178,19 @@
             }
           }
         },
+        "extra_velden": {
+          "type": "array",
+          "uniqueItems": true,
+          "description": "Extra velden uit het antwoord van deze bron die geen parameter zijn, maar invoer voor een latere bron in de lijst (bijvoorbeeld een naam bij een registratienummer). Ze gaan niet naar de engine.",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_][a-z0-9_]*$"
+          }
+        },
         "parameters": {
           "type": "array",
-          "minItems": 1,
           "uniqueItems": true,
-          "description": "De parameters die deze bron levert, expliciet en zonder wildcard. Elke naam is een parameter van een artikel onder de toets, en komt uit maar een bron.",
+          "description": "De parameters die deze bron levert, expliciet en zonder wildcard. Elke naam is een parameter van een artikel onder de toets, en komt uit maar een bron. Leeg mag alleen als de bron extra_velden doorgeeft.",
           "items": {
             "type": "string",
             "pattern": "^[a-z_][a-z0-9_]*$"
@@ -448,6 +464,23 @@
               }
             }
           }
+        }
+      }
+    },
+    "uitkomst": {
+      "type": "object",
+      "description": "Een uitkomst van een regeling.",
+      "required": [
+        "regeling",
+        "uitkomst"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "regeling": {
+          "$ref": "#/definitions/identifier"
+        },
+        "uitkomst": {
+          "$ref": "#/definitions/identifier"
         }
       }
     }

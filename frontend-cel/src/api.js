@@ -31,6 +31,7 @@ export function celApi(id) {
     stroom: () => vraag('GET', `${p}/stroom`),
     toets: (external) => vraag('POST', `${p}/aanvraag/toets`, { external }),
     indienen: (external) => vraag('POST', `${p}/aanvraag`, { external }),
+    mogelijkheden: () => vraag('GET', `${p}/mogelijkheden`),
     kroniek: () => vraag('GET', `${p}/kroniek`),
     medewerkerInloggen: (naam) => vraag('POST', `${p}/medewerker/login`, { naam }),
     medewerkerSessie: () => vraag('GET', `${p}/medewerker/sessie`),

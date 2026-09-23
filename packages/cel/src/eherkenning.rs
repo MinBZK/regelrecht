@@ -5,8 +5,12 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-/// De enige machtiging die deze PoC kent.
+/// De machtiging om namens de organisatie deze aanvraag te doen.
 pub const MACHTIGING_VOLLEDIG: &str = "volledig";
+/// Wel ingelogd namens de organisatie, maar zonder machtiging voor deze
+/// dienst. Het inlogmiddel laat dat zien; wat eruit volgt, bepaalt de
+/// regeling, niet de login.
+pub const MACHTIGING_GEEN: &str = "geen";
 
 /// Wat de login meegeeft.
 #[derive(Debug, Clone, Deserialize)]
@@ -25,7 +29,7 @@ pub struct Sessie {
 }
 
 impl Login {
-    /// KvK-nummer van acht cijfers, een naam, en machtiging `volledig`.
+    /// KvK-nummer van acht cijfers, een naam, en machtiging `volledig` of `geen`.
     pub fn valideer(self) -> Result<Sessie, String> {
         let kvk = self.kvk.trim();
         if kvk.len() != 8 || !kvk.bytes().all(|b| b.is_ascii_digit()) {
@@ -35,9 +39,9 @@ impl Login {
         if persoon.is_empty() {
             return Err("de naam van de gemachtigde ontbreekt".into());
         }
-        if self.machtiging != MACHTIGING_VOLLEDIG {
+        if self.machtiging != MACHTIGING_VOLLEDIG && self.machtiging != MACHTIGING_GEEN {
             return Err(format!(
-                "alleen machtiging '{MACHTIGING_VOLLEDIG}' wordt geaccepteerd"
+                "machtiging is '{MACHTIGING_VOLLEDIG}' of '{MACHTIGING_GEEN}'"
             ));
         }
         Ok(Sessie {
@@ -94,5 +98,11 @@ mod tests {
         assert!(login("1234567a", "A", "volledig").is_err());
         assert!(login("12345678", "  ", "volledig").is_err());
         assert!(login("12345678", "A", "beperkt").is_err());
+    }
+
+    #[test]
+    fn zonder_machtiging_inloggen_mag() {
+        let s = login("12345678", "A. Tester", "geen").unwrap();
+        assert_eq!(s.machtiging, "geen");
     }
 }

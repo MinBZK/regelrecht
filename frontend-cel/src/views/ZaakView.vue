@@ -8,6 +8,7 @@ import { computed, inject, onMounted, ref } from 'vue';
 import Grammen from '../components/Grammen.vue';
 import Invoer from '../components/Invoer.vue';
 import { herkomstRijen, waardeTekst } from '../tekst.js';
+import TraceKnop from '@regelrecht/frontend-shared/components/TraceKnop.vue';
 
 const props = defineProps({ zaakkenmerk: { type: String, required: true } });
 const emit = defineEmits(['terug']);
@@ -126,11 +127,14 @@ const nietGeleverd = computed(() => proef.value?.niet_geleverd ?? []);
         <span slot="subtitle">{{ proef.artikel }}, peildatum {{ proef.peildatum }}. Er is niets vastgelegd.</span>
       </nldd-title>
       <nldd-spacer size="8"></nldd-spacer>
-      <nldd-inline-dialog
-        :variant="proef.te_nemen ? 'success' : 'alert'"
-        :text="proef.te_nemen ? 'Het besluit is te nemen' : 'Niet te nemen'"
-        :supporting-text="proef.reden"
-      ></nldd-inline-dialog>
+      <nldd-container layout="row" gap="8" vertical-alignment="center">
+        <nldd-inline-dialog
+          :variant="proef.te_nemen ? 'success' : 'alert'"
+          :text="proef.te_nemen ? 'Het besluit is te nemen' : 'Niet te nemen'"
+          :supporting-text="proef.reden"
+        ></nldd-inline-dialog>
+        <TraceKnop v-if="proef.trace" :trace="proef.trace" :titel="proef.artikel" />
+      </nldd-container>
       <template v-if="uitkomsten.length">
         <nldd-spacer size="16"></nldd-spacer>
         <nldd-table columns="minmax(240px,1fr) minmax(160px,1fr)" accessible-label="Uitkomsten">

@@ -24,6 +24,7 @@ pub mod controle;
 pub mod eherkenning;
 pub mod formulier;
 pub mod kroniek;
+pub mod mogelijkheid;
 pub mod reductie;
 pub mod regelingen;
 pub mod rijen;

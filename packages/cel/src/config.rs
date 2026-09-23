@@ -235,8 +235,21 @@ pub struct Portaal {
     pub stroom: String,
     pub event: String,
     pub toets: Toets,
+    /// De uitkomst die zegt of wie inlogt namens de organisatie mag handelen.
+    #[serde(default)]
+    pub mandaat: Option<UitkomstVerwijzing>,
+    /// De uitkomst die de uiterste indieningsdatum geeft; alleen getoond.
+    #[serde(default)]
+    pub termijn: Option<UitkomstVerwijzing>,
     #[serde(default)]
     pub formulier: Option<FormulierVerwijzing>,
+}
+
+/// Een uitkomst van een regeling.
+#[derive(Debug, Clone, Deserialize)]
+pub struct UitkomstVerwijzing {
+    pub regeling: String,
+    pub uitkomst: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -264,6 +277,10 @@ pub struct SyntheseBron {
     pub invoer: BTreeMap<String, InvoerVerwijzing>,
     /// De parameters die deze bron levert, expliciet.
     pub parameters: Vec<String>,
+    /// Velden uit het antwoord die geen parameter zijn, maar invoer voor een
+    /// latere bron (bijvoorbeeld een naam bij een registratienummer).
+    #[serde(default)]
+    pub extra_velden: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

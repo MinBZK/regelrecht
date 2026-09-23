@@ -18,6 +18,7 @@
 //! | `GET /api/stroom` | de stroomdefinitie en de velden van het formulier |
 //! | `POST /api/aanvraag/toets` | concept naar gram in het geheugen, reductie, synthese, engine |
 //! | `POST /api/aanvraag` | het gram vastleggen in de kroniek |
+//! | `GET /api/mogelijkheden` | wat de wet deze organisatie laat aanvragen, per subsidiejaar, met trace |
 //!
 //! Een cel met de rol behandelaar (nagebootste medewerkerslogin) heeft:
 //!
@@ -53,6 +54,7 @@ use crate::besluit::{self, Weigering};
 use crate::cel::Cel;
 use crate::eherkenning::{Login, Sessie};
 use crate::kroniek::Kroniek;
+use crate::mogelijkheid;
 use crate::reductie;
 use crate::rijen::Rijen;
 use crate::sessie::{Gebruiker, Medewerker, Sessies, COOKIE};
@@ -103,7 +105,8 @@ pub fn router(state: AppState) -> Router {
         r = r
             .route("/api/stroom", get(stroom_route))
             .route("/api/aanvraag/toets", post(toets_route))
-            .route("/api/aanvraag", post(indienen));
+            .route("/api/aanvraag", post(indienen))
+            .route("/api/mogelijkheden", get(mogelijkheden_route));
     }
     if rollen.behandelaar.is_some() {
         r = r
@@ -344,14 +347,22 @@ pub fn als_yaml(cel: &Cel, gram: &Gram) -> String {
     serde_yaml_ng::to_string(&doc).unwrap_or_default()
 }
 
-async fn toets_route(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Json(concept): Json<Concept>,
-) -> Result<Json<Value>, Fout> {
-    let sessie = ingelogd(&state, &headers)?;
-    // Een concept is geen feit: het gram blijft in het geheugen.
-    let gram = bouw(&state, &sessie, &concept)?;
+/// Een concept in het geheugen, gereduceerd tot de toets-lexostatus en
+/// samengevoegd met de bronnen. Een concept is geen feit: niets hiervan wordt
+/// vastgelegd. Gedeeld door de toets en de aanvraagmogelijkheden.
+struct Concepttoets<'a> {
+    portaal: &'a crate::config::Portaal,
+    def: &'a reductie::LexostatusDefinitie,
+    gram: Gram,
+    lexostatus: reductie::Lexostatus,
+    samen: synthese::Samenvoeging,
+}
+
+async fn concepttoets<'a>(
+    state: &'a AppState,
+    sessie: &Sessie,
+    concept: &Concept,
+) -> Result<Concepttoets<'a>, Fout> {
     let portaal = state.cel.portaal().ok_or_else(|| {
         fout(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -368,32 +379,152 @@ async fn toets_route(
                 "toets-lexostatus ontbreekt",
             )
         })?;
+    let gram = bouw(state, sessie, concept)?;
     let lexostatus =
         reductie::leid_af(def, &gram).map_err(|e| fout(StatusCode::INTERNAL_SERVER_ERROR, e))?;
-    // Synthese: de eigen lexostatus plus die van de bronnen. Niets hiervan
-    // wordt vastgelegd.
+    // Synthese: de eigen lexostatus plus die van de bronnen.
     let samen = synthese::voeg_samen(&lexostatus, &state.bronnen).await;
-    let datum = gram.op_moment.get(..10).unwrap_or_default().to_string();
+    Ok(Concepttoets {
+        portaal,
+        def,
+        gram,
+        lexostatus,
+        samen,
+    })
+}
+
+async fn toets_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(concept): Json<Concept>,
+) -> Result<Json<Value>, Fout> {
+    let sessie = ingelogd(&state, &headers)?;
+    let c = concepttoets(&state, &sessie, &concept).await?;
+    let datum = c.gram.op_moment.get(..10).unwrap_or_default().to_string();
     let mut uitslag = toets::toets(
         &state.cel.service,
-        &portaal.toets.regeling,
-        &portaal.toets.uitkomst,
-        &samen.parameters,
-        reductie::ontbreekt(def, &lexostatus.parameters),
+        &c.portaal.toets.regeling,
+        &c.portaal.toets.uitkomst,
+        &c.samen.parameters,
+        reductie::ontbreekt(c.def, &c.lexostatus.parameters),
         &datum,
     );
     if !uitslag.te_beoordelen {
-        if let Some(reden) = samen.reden() {
+        if let Some(reden) = c.samen.reden() {
             uitslag.reden = Some(reden);
         }
     }
     Ok(Json(json!({
         "uitslag": uitslag,
-        "lexostatus": lexostatus,
+        "lexostatus": c.lexostatus,
         // Wat naar de engine ging, en per parameter waar het vandaan kwam.
-        "parameters": samen.parameters,
-        "herkomst": samen.herkomst,
-        "bronnen": samen.bronnen,
+        "parameters": c.samen.parameters,
+        "herkomst": c.samen.herkomst,
+        "bronnen": c.samen.bronnen,
+    })))
+}
+
+fn vraag(
+    vraag: mogelijkheid::Vraag,
+    u: &crate::config::UitkomstVerwijzing,
+) -> mogelijkheid::Vraagstelling<'_> {
+    mogelijkheid::Vraagstelling {
+        vraag,
+        regeling: &u.regeling,
+        uitkomst: &u.uitkomst,
+    }
+}
+
+/// Wat de wet de ingelogde organisatie laat aanvragen, voor dit en het
+/// volgende subsidiejaar. Het besluit van de behandeling wordt uitgevoerd op
+/// een leeg concept: alleen het subsidiejaar, plus wat de eHerkenning en de
+/// synthese over de organisatie weten, en de stand bij besluit. Een feit dat
+/// een bron niet leverde, maakt een toets niet te bepalen; een feit uit het
+/// besluitformulier ontstaat pas bij de behandeling en telt niet mee. Niets
+/// wordt vastgelegd.
+async fn mogelijkheden_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, Fout> {
+    let sessie = ingelogd(&state, &headers)?;
+    let besluit = state
+        .cel
+        .definitie
+        .behandeling
+        .as_ref()
+        .map(|b| &b.besluit)
+        .ok_or_else(|| {
+            fout(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "geen besluit geconfigureerd",
+            )
+        })?;
+    let uitkomst = besluit.uitkomsten.first().ok_or_else(|| {
+        fout(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "het besluit heeft geen uitkomst",
+        )
+    })?;
+    let nu = (state.klok)();
+    let datum = nu.format("%Y-%m-%d").to_string();
+    let jaar = i64::from(chrono::Datelike::year(&nu));
+    let mut uit = Vec::new();
+    for subsidiejaar in [jaar, jaar + 1] {
+        let mut external = Map::new();
+        external.insert("subsidiejaar".into(), json!(subsidiejaar));
+        let concept = Concept {
+            external,
+            zaakkenmerk: None,
+        };
+        let mut c = concepttoets(&state, &sessie, &concept).await?;
+        for (p, w) in &besluit.stand_bij_besluit {
+            c.samen.parameters.insert(p.clone(), w.clone());
+            c.samen
+                .herkomst
+                .insert(p.clone(), synthese::Herkomst::StandBijBesluit);
+        }
+        let herkomsten = mogelijkheid::Herkomsten {
+            niet_van_bronnen: c.samen.niet_van_bronnen(&state.bronnen),
+            van_behandeling: besluit
+                .formulier
+                .iter()
+                .map(|f| f.parameter.clone())
+                .collect(),
+        };
+        let mut vragen = Vec::new();
+        if let Some(m) = &c.portaal.mandaat {
+            vragen.push(vraag(mogelijkheid::Vraag::Mandaat, m));
+        }
+        vragen.push(mogelijkheid::Vraagstelling {
+            vraag: mogelijkheid::Vraag::Besluit,
+            regeling: &besluit.regeling,
+            uitkomst,
+        });
+        if let Some(t) = &c.portaal.termijn {
+            vragen.push(vraag(mogelijkheid::Vraag::Termijn, t));
+        }
+        let m = mogelijkheid::bepaal(
+            &state.cel.service,
+            subsidiejaar,
+            &vragen,
+            &c.samen.parameters,
+            &herkomsten,
+            &datum,
+        );
+        uit.push(json!({
+            "mogelijkheid": m,
+            "parameters": c.samen.parameters,
+            "herkomst": c.samen.herkomst,
+            "bronnen": c.samen.bronnen,
+        }));
+    }
+    Ok(Json(json!({
+        "kvk": sessie.kvk,
+        "persoon": sessie.persoon,
+        // De datum van de cel, zodat de frontend "verstreken" niet op de
+        // klok van de browser beoordeelt.
+        "datum": datum,
+        "mogelijkheden": uit,
     })))
 }
 
