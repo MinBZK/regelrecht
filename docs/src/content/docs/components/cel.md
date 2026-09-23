@@ -58,7 +58,7 @@ A decision of a register keeper (an entry, a removal, an established result) is 
 behandeling:
   werkvoorraad: <list lexostatus>
   besluit:
-    regeling: <$id>
+    regeling: <$id>                      # optional, see below
     uitkomsten: [<output>, ...]          # outputs of one article
     lexostatussen: [<name>, ...]         # own, with zaakkenmerk as the only input
     formulier:                           # judgments of the case handler
@@ -78,6 +78,8 @@ behandeling:
       stroom: <$id>
       event: <event with zaak: volgt and a stage>
 ```
+
+The cell finds its decision in the law. Without `regeling`, the runtime looks at load time for the article that produces a `BESCHIKKING` and whose competent authority (of the article, else of the regulation) equals the cell's `recording_actor`, compared after normalizing case and punctuation. Exactly one such article is the decision, and every listed outcome must come from it; none or several is a start-up error that names the candidates, and then `regeling` settles it. Which outcomes make up the decision stays configuration, and the first one is what the portal reads as "can receive something" (open question 17).
 
 Every parameter of the decision comes from exactly one source. The own lexostatuses reduce the case: the application, and the course of the case, such as a request to supplement or a suspension of the decision period. The synthesis sources of the cell supply facts of other cells, with their input taken from one of those lexostatuses. The decision form holds the judgments of the case handler, which only exist at the moment of deciding; they go in with provenance `behandelaar`. The state at decision (`stand_bij_besluit`) covers facts that can only arise later, such as the notification of the decision: at the moment of deciding it has not happened, so the value is `null` or `false`, with provenance `stand_bij_besluit`.
 
@@ -232,7 +234,7 @@ These are deliberate. Each is a candidate for an amendment once the proof of con
 22. **A lexostatus that supplies only columns.** `afleidingen` may be empty when `extra_velden` supplies something. Such a lexostatus answers with no parameter of any article: its values are columns of a table parameter the consumer assembles. RFC-022 §4.1 has a lexostatus answer with the parameters of an article.
 23. **A conversion on the way to a source** (`als: eerste_dag_van_het_jaar`), the counterpart of the `jaar_van` derivation. The alternative was to have the source cell hold the consuming article's rule about which reference date applies, which would put one authority's law in another authority's register.
 24. **What a recorded decision carries.** The gram of a decision the cell took itself adds `legal_character`, `decision_type`, `regulation`, `regulation_valid_from`, `competent_authority`, `inputs` and `receipt` to the chronicle-stream shape of RFC-022 §1.3, which has none of them. `inputs` is the RFC-013 `accepted_values` idea applied to every parameter rather than to cross-organisational ones only, and the `receipt` is a short form of the RFC-013 Execution Receipt: the loaded regulations and the cell's streams with one hash over both, which is the generalisation RFC-022 §1.3 announces as an amendment to RFC-013.
-25. **The competent authority is tested before recording.** RFC-002 and RFC-007 model who is competent; nothing says a cell has to compare that with itself before it writes. Here equal records, different refuses, and absent records with a warning.
+25. **The competent authority is tested before recording, and finds the decision.** RFC-002 and RFC-007 model who is competent; nothing says a cell has to compare that with itself before it writes. Here equal records, different refuses, and absent records with a warning. The same comparison also picks the decision when `cel.yaml` names no regulation: the cell is the actor the law makes competent, so the law says which decision it takes.
 26. **One decision per case.** A second gram with stage `BESLUIT` in the same case is refused. Changing a decision is a later stage of RFC-008 and out of scope for this step.
 27. **Deriving what can be applied for.** The position paper and RFC-022 say nothing about which acts an actor may perform, or about applications at all. The cell does not list them either: the portal runs the decision's regulation on an empty draft and reads the verdict from the outcome. This is informing by the actor, in the paper's sense, and records nothing.
 28. **The portal refuses nothing and offers only what the law allows.** The position paper is silent on refusing a recording. The general administrative law is not: an application is a request for a decision (Awb 1:3 paragraph 3), not treating it is a decision after receipt (Awb 4:5), and refusing an electronic message beforehand is limited to two grounds (Awb 2:15). So the portal refuses nothing it receives. It leaves out an application the law rules out, which is a choice about what to offer.

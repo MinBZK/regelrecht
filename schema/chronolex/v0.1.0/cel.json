@@ -238,14 +238,14 @@
       "type": "object",
       "description": "Het besluit op een zaak: welke uitkomsten van welk artikel het besluit zijn, en waar elke parameter vandaan komt. Een parameter komt uit precies een bron: een eigen lexostatus (met input zaakkenmerk), een synthese-bron, het besluitformulier (oordelen van de behandelaar) of de stand bij besluit.",
       "required": [
-        "regeling",
         "uitkomsten",
         "lexostatussen"
       ],
       "additionalProperties": false,
       "properties": {
         "regeling": {
-          "$ref": "#/definitions/identifier"
+          "$ref": "#/definitions/identifier",
+          "description": "Optioneel. Zonder deze sleutel zoekt de runtime de regeling zelf: de beschikking (produces: BESCHIKKING) waarvoor het bevoegd gezag gelijk is aan de recording_actor van de cel. Nodig alleen als de wet geen bevoegd gezag noemt of als er meer dan een zo'n beschikking is."
         },
         "uitkomsten": {
           "type": "array",

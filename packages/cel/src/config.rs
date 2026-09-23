@@ -114,6 +114,10 @@ pub struct Behandeling {
 /// de bron (zie [`crate::besluit`]).
 #[derive(Debug, Clone, Deserialize)]
 pub struct BesluitDefinitie {
+    /// Leeg in `cel.yaml`: de runtime vult haar bij het laden met de regeling
+    /// van de beschikking waarvoor de cel bevoegd is (zie
+    /// [`crate::besluit::beschikkingen_van`]).
+    #[serde(default)]
     pub regeling: String,
     pub uitkomsten: Vec<String>,
     /// Eigen lexostatussen met als enige input `zaakkenmerk`.

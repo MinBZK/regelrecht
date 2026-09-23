@@ -38,7 +38,7 @@ impl Cel {
     }
 
     fn laad_definitie(
-        definitie: CelDefinitie,
+        mut definitie: CelDefinitie,
         map: &Path,
         service: Arc<LawExecutionService>,
     ) -> Result<Self, Vec<String>> {
@@ -72,6 +72,7 @@ impl Cel {
                 ));
             }
         }
+        fouten.extend(vind_besluit(&mut definitie, &service));
         if let Err(f) = controle::controleer(
             &strommen,
             &lexostatussen,
@@ -145,6 +146,48 @@ impl Cel {
 }
 
 /// Zet de cel voor elke melding.
+/// Vul de regeling van het besluit in uit de wet, als `cel.yaml` haar niet
+/// noemt: de beschikking waarvoor het bevoegd gezag de `recording_actor` van
+/// de cel is. Precies een zo'n beschikking, en de uitkomsten van het besluit
+/// komen uit dat artikel; anders een fout die de kandidaten noemt.
+fn vind_besluit(definitie: &mut CelDefinitie, service: &LawExecutionService) -> Vec<String> {
+    let actor = definitie.recording_actor.clone();
+    let Some(b) = definitie.behandeling.as_mut().map(|b| &mut b.besluit) else {
+        return Vec::new();
+    };
+    if !b.regeling.is_empty() {
+        return Vec::new();
+    }
+    let kandidaten = crate::besluit::beschikkingen_van(service, &actor);
+    let [(regeling, artikel)] = kandidaten.as_slice() else {
+        let lijst: Vec<String> = kandidaten.iter().map(|(r, a)| format!("{r}#{a}")).collect();
+        return vec![if lijst.is_empty() {
+            format!(
+                "besluit: geen regeling noemt '{actor}' als bevoegd gezag bij een BESCHIKKING; noem de regeling in behandeling.besluit.regeling"
+            )
+        } else {
+            format!(
+                "besluit: '{actor}' is bevoegd voor meer dan een beschikking ({}); kies er een met behandeling.besluit.regeling",
+                lijst.join(", ")
+            )
+        }];
+    };
+    let mut fouten = Vec::new();
+    for u in &b.uitkomsten {
+        let van = service
+            .resolver()
+            .get_article_by_output(regeling, u, None)
+            .map(|a| a.number.clone());
+        if van.as_deref() != Some(artikel.as_str()) {
+            fouten.push(format!(
+                "besluit: uitkomst '{u}' komt niet uit {regeling}#{artikel}, de beschikking waarvoor '{actor}' bevoegd is"
+            ));
+        }
+    }
+    b.regeling = regeling.clone();
+    fouten
+}
+
 pub fn met_cel(cel: &str, fouten: Vec<String>) -> Vec<String> {
     fouten
         .into_iter()

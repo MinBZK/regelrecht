@@ -620,6 +620,47 @@ fn genormaliseerd(naam: &str) -> String {
 /// Het bevoegd gezag volgens de wet: van het artikel zelf, anders van de
 /// regeling. Een verwijzing (`#bevoegd_gezag`) telt niet als een naam.
 fn bevoegd_gezag(cel: &Cel, regeling: &str, artikel: &str) -> Option<String> {
+    gezag_van(&cel.service, regeling, artikel)
+}
+
+/// De beschikkingen waarvoor `gezag` bevoegd is, als (regeling, artikel):
+/// elk artikel dat een `BESCHIKKING` produceert en waarvan het bevoegd gezag
+/// (van het artikel, anders van de regeling) na normalisatie gelijk is aan
+/// `gezag`. Zo vindt een cel haar besluit in de wet, zonder dat de
+/// configuratie het aanwijst.
+pub fn beschikkingen_van(
+    service: &regelrecht_engine::LawExecutionService,
+    gezag: &str,
+) -> Vec<(String, String)> {
+    let mut uit = Vec::new();
+    for id in service.list_laws() {
+        let Some(law) = service.resolver().get_law(id) else {
+            continue;
+        };
+        for a in &law.articles {
+            let beschikking = a
+                .get_execution_spec()
+                .and_then(|e| e.produces.as_ref())
+                .and_then(|p| p.legal_character.as_deref())
+                == Some("BESCHIKKING");
+            if beschikking
+                && gezag_van(service, id, &a.number)
+                    .is_some_and(|g| genormaliseerd(&g) == genormaliseerd(gezag))
+            {
+                uit.push((id.to_string(), a.number.clone()));
+            }
+        }
+    }
+    uit.sort();
+    uit.dedup();
+    uit
+}
+
+fn gezag_van(
+    service: &regelrecht_engine::LawExecutionService,
+    regeling: &str,
+    artikel: &str,
+) -> Option<String> {
     fn naam(a: &Value) -> Option<String> {
         match a {
             // Een verwijzing zoals '#bevoegd_gezag' is geen naam.
@@ -628,7 +669,7 @@ fn bevoegd_gezag(cel: &Cel, regeling: &str, artikel: &str) -> Option<String> {
             _ => None,
         }
     }
-    let law = cel.service.resolver().get_law(regeling)?;
+    let law = service.resolver().get_law(regeling)?;
     let gezag = law
         .find_article_by_number(artikel)
         .and_then(|a| a.machine_readable.as_ref())
@@ -804,5 +845,59 @@ fn leeg() -> Lexostatus {
         extra_velden: BTreeMap::new(),
         niet_afgeleid: Vec::new(),
         lijst: None,
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+    use regelrecht_engine::LawExecutionService;
+
+    /// Een fictieve regeling met twee artikelen: een beschikking van "De
+    /// Instantie van Voorbeeld" en een toets van hetzelfde gezag.
+    const REGELING: &str = r#"
+$id: testregeling_bevoegd
+regulatory_layer: WET
+publication_date: '2025-01-01'
+competent_authority:
+  name: De Instantie van Voorbeeld
+articles:
+  - number: '1'
+    text: Toets
+    machine_readable:
+      execution:
+        produces: {legal_character: TOETS, decision_type: GEEN_BESLUIT}
+        parameters: [{name: x, type: number, required: false}]
+        output: [{name: toets, type: boolean}]
+        actions: [{output: toets, value: {operation: GREATER_THAN, subject: $x, value: 0}}]
+  - number: '2'
+    text: Besluit
+    machine_readable:
+      execution:
+        produces: {legal_character: BESCHIKKING, decision_type: TOEKENNING}
+        parameters: [{name: x, type: number, required: false}]
+        output: [{name: bedrag, type: number}]
+        actions: [{output: bedrag, value: $x}]
+"#;
+
+    fn service() -> LawExecutionService {
+        let mut s = LawExecutionService::new();
+        s.load_law(REGELING).unwrap();
+        s
+    }
+
+    #[test]
+    fn de_beschikking_van_het_bevoegd_gezag_wordt_gevonden() {
+        let s = service();
+        assert_eq!(
+            beschikkingen_van(&s, "de_instantie_van_voorbeeld"),
+            vec![("testregeling_bevoegd".to_string(), "2".to_string())]
+        );
+    }
+
+    #[test]
+    fn een_ander_gezag_vindt_niets() {
+        assert!(beschikkingen_van(&service(), "een_ander_orgaan").is_empty());
     }
 }
