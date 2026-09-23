@@ -409,8 +409,9 @@ fn doorgeven(cel: &Cel) -> Vec<String> {
 /// - een bron is een andere cel;
 /// - elke invoer komt uit een veld van de toets-lexostatus (met een portaal),
 ///   of van een eerdere bron die haar doorgeeft (zie [`doorgeven`]);
-/// - elke parameter is een parameter van het artikel van de toets of van het
-///   besluit, of van een artikel dat een van beide transitief aanroept;
+/// - elke parameter is een parameter van het artikel van de toets, van het
+///   besluit of van het aanbod (`portaal.aanbod`), of van een artikel dat een
+///   van die transitief aanroept;
 /// - een parameter komt uit maar een bron: de eigen reductie of een bron.
 ///
 /// Wat het besluit verder vraagt, staat in [`crate::besluit::controleer`].
@@ -475,6 +476,22 @@ pub fn controleer(cel: &Cel) -> Vec<String> {
         .get_article_by_output(&portaal.toets.regeling, &portaal.toets.uitkomst, None)
         .map(|a| regelingen::transitieve_parameters(&cel.service, &portaal.toets.regeling, a))
         .unwrap_or_default();
+    // Wat het aanbod vraagt: de parameters van het aanbod-artikel.
+    let onder_aanbod = portaal
+        .aanbod
+        .as_ref()
+        .and_then(|a| {
+            let art =
+                cel.service
+                    .resolver()
+                    .get_article_by_output(&a.regeling, &a.uitkomst, None)?;
+            Some(regelingen::transitieve_parameters(
+                &cel.service,
+                &a.regeling,
+                art,
+            ))
+        })
+        .unwrap_or_default();
     // parameter -> bronnen die hem leveren
     let mut per: BTreeMap<&str, Vec<String>> = BTreeMap::new();
     if let Some(def) = eigen {
@@ -507,9 +524,9 @@ pub fn controleer(cel: &Cel) -> Vec<String> {
             }
         }
         for p in &bron.parameters {
-            if !onder_toets.contains(p) && !onder_besluit.contains(p) {
+            if !onder_toets.contains(p) && !onder_besluit.contains(p) && !onder_aanbod.contains(p) {
                 fouten.push(format!(
-                    "{wie}: '{p}' is geen parameter van {}#{} ('{}') of van een artikel dat het aanroept",
+                    "{wie}: '{p}' is geen parameter van {}#{} (de toets, '{}'), het besluit of het aanbod, of van een artikel dat een van die aanroept",
                     portaal.toets.regeling,
                     cel.service
                         .resolver()

@@ -18,7 +18,7 @@
 //! | `GET /api/stroom` | de stroomdefinitie en de velden van het formulier |
 //! | `POST /api/aanvraag/toets` | concept naar gram in het geheugen, reductie, synthese, engine |
 //! | `POST /api/aanvraag` | het gram vastleggen in de kroniek |
-//! | `GET /api/mogelijkheden` | wat de wet deze organisatie laat aanvragen, per subsidiejaar, met trace |
+//! | `GET /api/mogelijkheden` | wat het portaal aanbiedt volgens het beleid, per subsidiejaar, met trace |
 //!
 //! Een cel met de rol behandelaar (nagebootste medewerkerslogin) heeft:
 //!
@@ -424,47 +424,27 @@ async fn toets_route(
     })))
 }
 
-fn vraag(
-    vraag: mogelijkheid::Vraag,
-    u: &crate::config::UitkomstVerwijzing,
-) -> mogelijkheid::Vraagstelling<'_> {
-    mogelijkheid::Vraagstelling {
-        vraag,
-        regeling: &u.regeling,
-        uitkomst: &u.uitkomst,
-    }
-}
-
-/// Wat de wet de ingelogde organisatie laat aanvragen, voor dit en het
-/// volgende subsidiejaar. Het besluit van de behandeling wordt uitgevoerd op
-/// een leeg concept: alleen het subsidiejaar, plus wat de eHerkenning en de
-/// synthese over de organisatie weten, en de stand bij besluit. Een feit dat
-/// een bron niet leverde, maakt een toets niet te bepalen; een feit uit het
-/// besluitformulier ontstaat pas bij de behandeling en telt niet mee. Niets
-/// wordt vastgelegd.
+/// Wat het beleid de ingelogde persoon aanbiedt (`portaal.aanbod`), voor dit
+/// en het volgende subsidiejaar. Het beleid wordt uitgevoerd op een leeg
+/// concept: alleen het subsidiejaar, plus wat de eHerkenning en de synthese
+/// weten. Uitkomst en termijn komen uit een run, met trace. Een feit dat een
+/// bron niet leverde, maakt het aanbod niet te bepalen. Niets wordt
+/// vastgelegd.
 async fn mogelijkheden_route(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Value>, Fout> {
     let sessie = ingelogd(&state, &headers)?;
-    let besluit = state
+    let c0 = state
         .cel
-        .definitie
-        .behandeling
-        .as_ref()
-        .map(|b| &b.besluit)
+        .portaal()
+        .and_then(|p| p.aanbod.clone())
         .ok_or_else(|| {
             fout(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "geen besluit geconfigureerd",
+                "geen aanbod geconfigureerd",
             )
         })?;
-    let uitkomst = besluit.uitkomsten.first().ok_or_else(|| {
-        fout(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "het besluit heeft geen uitkomst",
-        )
-    })?;
     let nu = (state.klok)();
     let datum = nu.format("%Y-%m-%d").to_string();
     let jaar = i64::from(chrono::Datelike::year(&nu));
@@ -476,39 +456,14 @@ async fn mogelijkheden_route(
             external,
             zaakkenmerk: None,
         };
-        let mut c = concepttoets(&state, &sessie, &concept).await?;
-        for (p, w) in &besluit.stand_bij_besluit {
-            c.samen.parameters.insert(p.clone(), w.clone());
-            c.samen
-                .herkomst
-                .insert(p.clone(), synthese::Herkomst::StandBijBesluit);
-        }
-        let herkomsten = mogelijkheid::Herkomsten {
-            niet_van_bronnen: c.samen.niet_van_bronnen(&state.bronnen),
-            van_behandeling: besluit
-                .formulier
-                .iter()
-                .map(|f| f.parameter.clone())
-                .collect(),
-        };
-        let mut vragen = Vec::new();
-        if let Some(m) = &c.portaal.mandaat {
-            vragen.push(vraag(mogelijkheid::Vraag::Mandaat, m));
-        }
-        vragen.push(mogelijkheid::Vraagstelling {
-            vraag: mogelijkheid::Vraag::Besluit,
-            regeling: &besluit.regeling,
-            uitkomst,
-        });
-        if let Some(t) = &c.portaal.termijn {
-            vragen.push(vraag(mogelijkheid::Vraag::Termijn, t));
-        }
+        let c = concepttoets(&state, &sessie, &concept).await?;
+        let niet_van_bronnen = c.samen.niet_van_bronnen(&state.bronnen);
         let m = mogelijkheid::bepaal(
             &state.cel.service,
             subsidiejaar,
-            &vragen,
+            &c0,
             &c.samen.parameters,
-            &herkomsten,
+            &niet_van_bronnen,
             &datum,
         );
         uit.push(json!({

@@ -239,21 +239,23 @@ pub struct Portaal {
     pub stroom: String,
     pub event: String,
     pub toets: Toets,
-    /// De uitkomst die zegt of wie inlogt namens de organisatie mag handelen.
+    /// Wat het portaal aanbiedt: een uitkomst van het beleid van de cel, met
+    /// optioneel de termijn die erbij getoond wordt.
     #[serde(default)]
-    pub mandaat: Option<UitkomstVerwijzing>,
-    /// De uitkomst die de uiterste indieningsdatum geeft; alleen getoond.
-    #[serde(default)]
-    pub termijn: Option<UitkomstVerwijzing>,
+    pub aanbod: Option<Aanbod>,
     #[serde(default)]
     pub formulier: Option<FormulierVerwijzing>,
 }
 
-/// Een uitkomst van een regeling.
+/// Het aanbod van een portaal: een uitkomst van een regeling, uitgevoerd in
+/// een run, en optioneel een tweede uitkomst van dezelfde regeling die de
+/// termijn geeft.
 #[derive(Debug, Clone, Deserialize)]
-pub struct UitkomstVerwijzing {
+pub struct Aanbod {
     pub regeling: String,
     pub uitkomst: String,
+    #[serde(default)]
+    pub termijn: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

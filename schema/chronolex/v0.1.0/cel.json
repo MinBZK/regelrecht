@@ -106,13 +106,25 @@
             }
           }
         },
-        "mandaat": {
-          "$ref": "#/definitions/uitkomst",
-          "description": "Optioneel: de uitkomst die zegt of wie inlogt namens de organisatie mag handelen. Is die definitief onwaar, dan biedt het portaal geen aanvraag aan."
-        },
-        "termijn": {
-          "$ref": "#/definitions/uitkomst",
-          "description": "Optioneel: de uitkomst die de uiterste datum voor de indiening geeft. Het portaal toont haar bij een aanvraagmogelijkheid; zij blokkeert niets."
+        "aanbod": {
+          "type": "object",
+          "description": "Wat het portaal aanbiedt: een uitkomst van het beleid (bijvoorbeeld 'aanvraag aangeboden'), uitgevoerd in een run, en optioneel de uitkomst van dezelfde regeling die de termijn geeft. Het portaal toont het aanbod; het weigert niets.",
+          "required": [
+            "regeling",
+            "uitkomst"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "regeling": {
+              "$ref": "#/definitions/identifier"
+            },
+            "uitkomst": {
+              "$ref": "#/definitions/identifier"
+            },
+            "termijn": {
+              "$ref": "#/definitions/identifier"
+            }
+          }
         },
         "formulier": {
           "type": "object",
@@ -464,23 +476,6 @@
               }
             }
           }
-        }
-      }
-    },
-    "uitkomst": {
-      "type": "object",
-      "description": "Een uitkomst van een regeling.",
-      "required": [
-        "regeling",
-        "uitkomst"
-      ],
-      "additionalProperties": false,
-      "properties": {
-        "regeling": {
-          "$ref": "#/definitions/identifier"
-        },
-        "uitkomst": {
-          "$ref": "#/definitions/identifier"
         }
       }
     }
