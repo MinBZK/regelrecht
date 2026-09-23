@@ -51,12 +51,18 @@ exclude_re = [
 
     # --- service.rs --------------------------------------------------------
 
-    # evaluate_article_with_service: `taints.len() > 1` bewaakt uitsluitend een
+    # evaluate_article_body: `taints.len() > 1` bewaakt uitsluitend een
     # tracing::warn. De taint die daarna op de outputs terechtkomt is in beide
     # takken dezelfde waarde, dus geen assertie kan het verschil zien. Dit is nu
     # de enige `>`-vergelijking in die functie; komt er een tweede bij, dan is
     # deze regel te breed en hoort hij aangescherpt te worden.
-    'service\.rs.*replace > with (<|==|>=) in LawExecutionService::evaluate_article_with_service',
+    #
+    # De regel stond eerst op evaluate_article_with_service. Toen RFC-039 de
+    # body afsplitste om het anker eromheen te zetten, verhuisde de vergelijking
+    # mee en ving de regel niets meer: de drie mutanten doken in de weekrun van
+    # 2026-09-21 op als nieuw. Een hernoemde functie laat een uitsluiting stil
+    # vallen, dus zoek bij een onverwachte overlever eerst hier.
+    'service\.rs.*replace > with (<|==|>=) in LawExecutionService::evaluate_article_body',
 
     # evaluate_law_multi_internal: `article_numbers.len() > 1` met >= is
     # equivalent. Bij precies één artikel levert join(", ") exact het
