@@ -1,9 +1,10 @@
 <script setup>
-// Wat kan de ingelogde organisatie hier aanvragen? Niemand somt dat op: de
-// cel voert de wet uit voor deze organisatie, met alleen wat de eHerkenning
-// en de andere cellen al weten (GET /api/mogelijkheden). Per subsidiejaar
-// zegt elke toets mogelijk, uitgesloten of niet te bepalen; een toets die
-// uitsluit, beslist. Bij elke uitkomst staat een RR-icoon met de trace.
+// Wat kan de ingelogde persoon hier aanvragen? Niemand somt dat op: de cel
+// voert het dienstverleningsbeleid uit voor deze persoon en organisatie, met
+// alleen wat de inlog en de andere cellen al weten (GET /api/mogelijkheden).
+// Per subsidiejaar geeft het beleid één aanbod: mogelijk, uitgesloten of niet
+// te bepalen, met de uiterste indieningsdatum. Bij het aanbod staat een
+// RR-icoon met de trace.
 import { computed, inject, onMounted, ref } from 'vue';
 import TraceKnop from '@regelrecht/frontend-shared/components/TraceKnop.vue';
 
@@ -24,38 +25,19 @@ onMounted(async () => {
 
 const mogelijkheden = computed(() => (data.value?.mogelijkheden ?? []).map((m) => m.mogelijkheid));
 
-const VRAAG = {
-  mandaat: 'Mag u namens deze organisatie aanvragen?',
-  besluit: 'Kan deze organisatie iets krijgen?',
-  termijn: 'Uiterste indieningsdatum',
-};
-
 // De datum van de cel, niet van de browser: "verstreken" hoort bij dezelfde
-// klok als de toets.
+// klok als het aanbod.
 const vandaag = computed(() => data.value?.datum ?? '');
 
-function antwoord(t) {
-  if (t.vraag === 'termijn') {
-    if (t.waarde == null) return 'Onbekend';
-    return vandaag.value && t.waarde < vandaag.value ? `${t.waarde} (verstreken)` : t.waarde;
-  }
-  if (t.oordeel === 'uitgesloten') return 'Nee';
-  if (t.oordeel === 'niet_te_bepalen') return 'Niet te bepalen';
-  if (t.waarde === true) return 'Ja';
-  if (t.waarde != null && t.waarde !== true) {
-    return typeof t.waarde === 'object' ? JSON.stringify(t.waarde) : String(t.waarde);
-  }
-  return 'Waarschijnlijk: dat hangt af van uw aanvraag';
+function antwoord(m) {
+  if (m.oordeel === 'uitgesloten') return 'Nee';
+  if (m.oordeel === 'niet_te_bepalen') return 'Niet te bepalen';
+  return 'Ja';
 }
 
-function toelichting(t) {
-  if (t.vraag === 'termijn') return `${t.regeling}: ${t.uitkomst}`;
-  if (t.reden) return t.reden;
-  const delen = [];
-  if (t.mist?.length) delen.push(`Hangt af van uw aanvraag: ${t.mist.join(', ')}`);
-  if (t.mist_behandeling?.length) delen.push(`Later bij de behandeling: ${t.mist_behandeling.join(', ')}`);
-  if (delen.length) return delen.join('. ');
-  return `${t.regeling}: ${t.uitkomst}`;
+function termijnTekst(m) {
+  if (m.termijn == null) return 'Onbekend';
+  return vandaag.value && m.termijn < vandaag.value ? `${m.termijn} (verstreken)` : m.termijn;
 }
 
 function kop(m) {
@@ -73,8 +55,8 @@ function kop(m) {
   <nldd-spacer size="8"></nldd-spacer>
   <nldd-rich-text>
     <p>
-      Dit volgt uit de wet, uitgevoerd voor uw organisatie met wat nu al bekend is: uw inlog en de registers
-      van andere organisaties. U vult niets in. Het RR-icoon laat zien hoe elke uitkomst tot stand kwam.
+      Dit volgt uit het dienstverleningsbeleid, uitgevoerd voor u met wat nu bekend is: uw inlog en de registers.
+      U vult niets in. Het RR-icoon laat zien hoe de uitkomst tot stand kwam.
     </p>
   </nldd-rich-text>
   <nldd-spacer size="16"></nldd-spacer>
@@ -91,13 +73,19 @@ function kop(m) {
         <nldd-text-cell text="Grond"></nldd-text-cell>
         <nldd-text-cell text=""></nldd-text-cell>
       </nldd-table-row>
-      <nldd-table-row v-for="t in m.toetsen" :key="t.vraag">
-        <nldd-text-cell :text="VRAAG[t.vraag] ?? t.vraag"></nldd-text-cell>
-        <nldd-text-cell :text="antwoord(t)"></nldd-text-cell>
-        <nldd-text-cell :text="toelichting(t)"></nldd-text-cell>
+      <nldd-table-row>
+        <nldd-text-cell text="Kunt u deze aanvraag doen?"></nldd-text-cell>
+        <nldd-text-cell :text="antwoord(m)"></nldd-text-cell>
+        <nldd-text-cell :text="m.reden ?? `${m.regeling}: ${m.uitkomst}`"></nldd-text-cell>
         <nldd-cell>
-          <TraceKnop v-if="t.trace_text" :trace-text="t.trace_text" :titel="`${VRAAG[t.vraag] ?? t.vraag} (${m.subsidiejaar})`" />
+          <TraceKnop v-if="m.trace_text" :trace-text="m.trace_text" :titel="`Aanbod ${m.subsidiejaar}`" />
         </nldd-cell>
+      </nldd-table-row>
+      <nldd-table-row>
+        <nldd-text-cell text="Uiterste indieningsdatum"></nldd-text-cell>
+        <nldd-text-cell :text="termijnTekst(m)"></nldd-text-cell>
+        <nldd-text-cell :text="`${m.regeling}`"></nldd-text-cell>
+        <nldd-text-cell text=""></nldd-text-cell>
       </nldd-table-row>
     </nldd-table>
     <nldd-spacer size="12"></nldd-spacer>
