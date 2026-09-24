@@ -543,7 +543,7 @@ slides:
     route: /scenarios
   - kind: demo
     overline: Beleid
-    title: Wat doet het met vijftigduizend mensen?
+    title: Wat doet het met tweeduizend mensen?
     lead: Een gegenereerde bevolking door alle regelingen, met de echte wetten.
     bullets:
       - Wie voldoet aan de voorwaarden, voor hoeveel, uitgesplitst naar leeftijd, inkomen, huishouden.
@@ -570,7 +570,7 @@ slides:
       - Na elk antwoord rekent de wet opnieuw.
       - Controleren, verklaren, indienen. Zonder formulier van tien pagina's.
     route: /portaal
-    highlight: nldd-button[text="Gegevens aanvullen"]
+    highlight: '[data-highlight="complete-data"]'
   - kind: demo
     overline: De behandelaar
     title: Hetzelfde recht, andere kant van de balie
