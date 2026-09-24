@@ -109,4 +109,5 @@ samenhangIds:
   - verkenning-publicatievoorziening
   - lakmoesproef-besluiten-execution-trace
   - rechtsbescherming-en-de-execution-trace
+  - referentie-casus-i
 ---
