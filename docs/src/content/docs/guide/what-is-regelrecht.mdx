@@ -5,7 +5,9 @@ description: An introduction to RegelRecht and its goal of making Dutch law exec
 
 import DocsFeatureCards from '~/components/DocsFeatureCards.astro';
 
-RegelRecht is an open-source platform for making Dutch legislation machine-readable and executable. Lawmakers draft in it and government agencies run it. Citizens can inspect how decisions about them are made.
+RegelRecht is an open-source project about writing Dutch legislation down in a form a computer can execute, and publishing it so that anyone can check how a decision was reached. It is an exploration by the Nederlandse Digitale Dienst, not a system in production: no government agency takes decisions with it today.
+
+What exists and runs is the groundwork. An [execution engine](/components/engine) in Rust evaluates law files, natively on a server and as WebAssembly in the browser. The [corpus](/components/corpus) holds a curated set of regulations with machine-readable logic and [scenarios](/concepts/scenarios) that test it, among them the Wet op de zorgtoeslag and the Awb. The [harvester](/components/harvester) converts legislation from the national registers (BWB and CVDR) into that format. An [editor](/components/frontend) lets people read and work on the laws, and the [demo](/components/demo) runs a larger corpus of 80 laws end to end in the browser. What is still being explored is listed on the [roadmap](/roadmap): how a specification gets adopted and what legal status it has, attested execution, publication infrastructure, and executing a decision across organizations.
 
 <DocsFeatureCards />
 
@@ -15,7 +17,7 @@ Dutch law is published as natural language text. When government agencies need t
 
 ## The vision
 
-RegelRecht encodes each law once in a structured format and runs it through a single execution engine. The specification *is* the law. One engine runs it the same way everywhere: in the editor for lawmakers, in the browser for citizens, and in government backends for official decisions. The [architecture overview](./architecture) shows how the corpus, the engine and the tools around them fit together.
+RegelRecht encodes each law once in a structured format and runs it through a single execution engine. The specification is an interpretation of the law, not the law itself: where the two conflict, the statute prevails and the specification has to be corrected ([Rules as Executed, section 4.2](/research/rules-as-executed#sec:legalstatus)). What the format adds is that the interpretation is written down where anyone can read it and run it, instead of staying buried in an agency's software. The aim is that one engine runs it the same way everywhere: in the editor for lawmakers, in the browser for citizens, and, if an agency adopts it, in government backends for official decisions. The [architecture overview](./architecture) shows how the corpus, the engine and the tools around them fit together.
 
 ## An example
 
@@ -37,4 +39,5 @@ Ask the engine whether a given person qualifies on 1 January 2025 and it loads t
 - [Architecture](./architecture) - the components and how data flows between them
 - [Getting Started](./getting-started) - from a fresh clone to a first build
 - [RFCs](/rfcs/) - all design decisions
+- [Glossary](/reference/glossary) - the Dutch legal terms and the RegelRecht vocabulary used on these pages
 - [Rules as Executed](/research/rules-as-executed) - the position paper: why publishing executable law matters for the balance of powers

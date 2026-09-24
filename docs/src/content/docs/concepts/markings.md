@@ -3,7 +3,7 @@ title: "Markings"
 description: "Constructs the format cannot express yet, why each one is a concrete piece of work rather than a complaint, and how they are handled at runtime."
 ---
 
-The engine's operation set is small by design: arithmetic, comparison, conditional logic, date operations. Dutch law regularly uses constructs that fall outside this set. When a construct cannot yet be faithfully expressed, the article carries a **marking**.
+The engine's operation set is small by design: arithmetic, comparison, conditional logic, date operations and iteration over [collections](./collections). Dutch law regularly uses constructs that fall outside this set. When a construct cannot yet be faithfully expressed, the article carries a **marking**.
 
 A marking means "not yet", not "never". It names a gap in the format: a specific operation or schema feature that has not been built. Every marking is a concrete piece of work, recorded at the article that needs it. The position paper makes publishing these gaps part of the proposal itself ([Rules as Executed, section 5.4](/research/rules-as-executed#sec:untranslatables)): a reader sees where interpretation still happens outside the format.
 
@@ -17,9 +17,11 @@ A construct is marked when the format cannot express it without approximation. E
 
 - **Table lookups** (bracket tables with many rows) that would require fragile chains of IF cases
 - **Calendar logic** ("the next working day") when the engine has no holiday calendar
-- **Discretionary assessments** ("naar het oordeel van de minister") that are inherently human
+- **Legal fictions**, where the format has no shape for treating one thing as if it were another ([RFC-031](/rfcs/rfc-031) names them as a `resolution: model` case)
 
 In each case the law is clear about what it means and the formal language cannot express it yet. The gap belongs to the format, and we expect to close it.
+
+A discretionary assessment ("naar het oordeel van de minister") does not earn a marking. The format can express it: it is an [open term](./inversion-of-control) whose `decided_per_case_by` names the authority that decides it in each case. The position paper still files it under untranslatables ([section 5.4](/research/rules-as-executed#sec:untranslatables)), because it predates [RFC-031](/rfcs/rfc-031).
 
 Rounding used to be the standard example here. `ROUND`, `CEIL` and `FLOOR` shipped in schema v0.5.5, which is what closing a gap looks like.
 

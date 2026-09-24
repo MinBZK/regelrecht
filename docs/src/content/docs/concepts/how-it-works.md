@@ -3,13 +3,13 @@ title: "How RegelRecht Works"
 description: "A plain-language walkthrough of the core ideas behind turning legislation into executable files."
 ---
 
-RegelRecht turns Dutch legislation into structured files that a computer can execute. This page is the map. It follows a law from text to file to execution and names the concepts met on the way, each with a link to the page that covers it in full. Why this matters is on [What is RegelRecht?](/guide/what-is-regelrecht) and, at length, in the position paper [Rules as Executed](/research/rules-as-executed). Which programs do the work is in the [architecture overview](/guide/architecture).
+RegelRecht turns Dutch legislation into structured files that a computer can execute. This page is the map. It follows a law from text to file to execution and names the concepts met on the way, each with a link to the page that covers it in full. Why this matters is on [What is RegelRecht?](/guide/what-is-regelrecht) and, at length, in the position paper [Rules as Executed](/research/rules-as-executed). Which programs do the work is in the [architecture overview](/guide/architecture). Dutch legal terms and RegelRecht's own vocabulary are defined in the [glossary](/reference/glossary).
 
 ## The approach
 
 RegelRecht encodes each law once, in a structured YAML format that both people and computers can read. A single execution engine runs these law files and produces answers: does this person qualify? How much do they receive? Which rules applied?
 
-The YAML specification *is* the law in executable form. Every article in the file corresponds to an article in the official legal text, with a link back to the original.
+The YAML specification is an interpretation of the law in executable form, not the law itself. If the two conflict, the statute prevails and the specification is corrected; legal validity stays with the published legislation ([Rules as Executed, section 4.2](/research/rules-as-executed#sec:legalstatus)). Every article in the file corresponds to an article in the official legal text, with a link back to the original, so a reader can hold the interpretation against the text it claims to follow.
 
 A few principles hold throughout:
 
@@ -105,7 +105,7 @@ See [Inversion of Control](./inversion-of-control).
 
 ### Laws that fire automatically
 
-The General Administrative Law Act (Awb) applies to every government decision without being called explicitly. When any law produces a *beschikking*, Awb rules about objection periods and reasoning requirements kick in through hooks. Neither law knows about the other. See [Hooks and Reactive Execution](./hooks-and-reactive-execution).
+The General Administrative Law Act (Awb) applies to every government decision without being called explicitly. When any law produces a [*beschikking*](/reference/glossary#administrative-law-bestuursrecht), Awb rules about objection periods and reasoning requirements kick in through hooks. Neither law knows about the other. See [Hooks and Reactive Execution](./hooks-and-reactive-execution).
 
 A *beschikking* is also not an instant computation. It moves through stages over time, from application and review to decision, notification and objection, and which rule applies at which stage is declared in the YAML (`applies_to.stage`), not hardcoded in the engine. See [Administrative procedure stages](./hooks-and-reactive-execution#administrative-procedure-stages).
 

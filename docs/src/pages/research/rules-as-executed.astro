@@ -108,6 +108,89 @@ const discussionUrl =
     </nldd-rich-text>
     <nldd-spacer size="24" />
     {/*
+     * The paper is frozen (see AGENTS.md, "Published papers are frozen"); this
+     * note is where its divergence from the current code is recorded instead.
+     * It sits outside the data-discuss-paper rich-text on purpose: it is the
+     * site's text, not the authors', and a selection in it is not a passage of
+     * the paper. Add an entry when a later RFC changes something the paper
+     * states as fact; never edit the paper to match.
+     */}
+    <nldd-rich-text centered>
+      <h2 id="since-publication">Since publication</h2>
+      <p>
+        The paper is published as it was written on {meta.date_display}, when
+        the reference implementation was on schema v0.5.6. The code has moved
+        on since. Where the paper states something about the format or the
+        engine that no longer holds, the list below says what changed and
+        where it was decided. The paper itself is not edited.
+      </p>
+      <ul>
+        <li>
+          <strong>Collections.</strong> Section 9.2 says the format has no
+          aggregation over collections and announces bounded aggregation. That
+          arrived in schema v0.5.7 as <code>FOREACH</code>, which iterates over
+          a finite collection, filters it and can combine the results into a
+          sum or a count (<a href="/rfcs/rfc-016">RFC-016</a>, see
+          <a href="/concepts/collections">Collections</a>).
+        </li>
+        <li>
+          <strong>The operation count.</strong> The 25 operations listed in
+          section 9.2 are now 28: <code>FOREACH</code>, plus
+          <code>DATE_PART</code> and <code>START_OF</code>, which read a year,
+          month or day from a date and truncate a date to the start of a period
+          (<a href="/rfcs/rfc-032">RFC-032</a>, schema v0.7.0). The
+          <a href="/reference/schema">schema reference</a> keeps the version
+          history the paper points to.
+        </li>
+        <li>
+          <strong>Untranslatables are now markings.</strong> Section 5.4 and
+          Figure 5 use a field <code>untranslatables</code> with
+          <code>construct</code> and <code>suggestion</code>. Schema v0.7.0
+          replaced it with <code>markings</code>, whose entries carry
+          <code>about</code>, <code>reason</code>, <code>resolution</code>,
+          <code>resolved_by</code> and <code>target</code>
+          (<a href="/rfcs/rfc-031">RFC-031</a>, see
+          <a href="/concepts/markings">Markings</a>). The <code>accepted</code>
+          field works as the paper describes, and the engine still reads the old
+          field in files on an older schema.
+        </li>
+        <li>
+          <strong>Discretion is an open term, not a gap.</strong> Section 5.4
+          records a provision such as "naar het oordeel van de minister" as an
+          untranslatable construct. Under RFC-031 such a provision is an open
+          term whose <code>decided_per_case_by</code> names the authority that
+          decides it per case; a marking is reserved for what the format cannot
+          yet express (see
+          <a href="/concepts/inversion-of-control">Inversion of Control</a>).
+        </li>
+        <li>
+          <strong>Absent and unknown values.</strong> The paper does not
+          distinguish a value that does not exist from one that nobody has
+          supplied. The engine now does: an absent value (<code>null</code>) is
+          a fact a law may test, while an unknown value propagates to the
+          outcome with the names of the missing facts, so no decision rests on
+          it (<a href="/rfcs/rfc-036">RFC-036</a>, schema v0.5.8).
+        </li>
+        <li>
+          <strong>Type checking.</strong> Section 5.4 names a mechanical schema
+          check as what catches structural mismatches. A static type checker now
+          runs after it, on validation and when the engine loads a law, and
+          holds each expression to the types and nullability the law declares
+          (<a href="/rfcs/rfc-037">RFC-037</a>).
+        </li>
+        <li>
+          <strong>A second kind of departure.</strong> Section 4.6 says the
+          format has one way of departing from a computed outcome: replacing the
+          value. Schema v0.7.0 added a second, <code>voids: true</code>, for a
+          provision saying that an entitlement does not arise at all, which is
+          not the same as an entitlement of zero
+          (<a href="/rfcs/rfc-027">RFC-027</a>, scoped by
+          <a href="/rfcs/rfc-041">RFC-041</a>).
+        </li>
+      </ul>
+    </nldd-rich-text>
+    <nldd-spacer size="24" />
+    {/*
      * The paper body is a rich-text of its own, so it carries the whole of the
      * paper and nothing else: data-discuss-paper turns on the selection
      * affordance in Base.astro, where selecting text offers "Discuss this
