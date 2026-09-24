@@ -131,6 +131,50 @@ fn parse_calculation_date(calculation_date: &str) -> Result<NaiveDate> {
         .map_err(|e| EngineError::InvalidDate(format!("{calculation_date}: {e}")))
 }
 
+/// Why an override whose law is in force still is not applied: the version
+/// selected for the reference date has no article with the indexed number.
+///
+/// Worded as a data fact in the same register as [`SelectionReason::describe`],
+/// naming the version so a reader can look it up. When another article of that
+/// same version declares an override of the same output, the reason says so:
+/// that is the renumbering case, where the special rule *is* in force under
+/// another number and the undated overrides index misses it. The engine does
+/// not apply it (that would change the outcome and is a separate question), but
+/// the receipt must not let it pass for a rule that does not exist yet.
+fn article_missing_from_version(
+    law: &ArticleBasedLaw,
+    article_number: &str,
+    target_law: &str,
+    target_article: &str,
+    output_name: &str,
+) -> String {
+    let version = match law.valid_from.as_deref() {
+        Some(valid_from) => format!(" (valid_from {valid_from})"),
+        None => String::new(),
+    };
+    let mut reason =
+        format!("the version of it in force on this date{version} has no article {article_number}");
+    let redeclared: Vec<&str> = law
+        .articles
+        .iter()
+        .filter(|candidate| {
+            candidate.get_overrides().is_some_and(|decls| {
+                decls.iter().any(|d| {
+                    d.law == target_law && d.article == target_article && d.output == output_name
+                })
+            })
+        })
+        .map(|candidate| candidate.number.as_str())
+        .collect();
+    if !redeclared.is_empty() {
+        reason.push_str(&format!(
+            "; article {} of that version declares an override of the same output",
+            redeclared.join(", ")
+        ));
+    }
+    reason
+}
+
 /// Map a failed version selection to an honest engine error (RFC-019 §3):
 /// the message states the data fact for the reference date, never a verdict.
 fn selection_error(law_id: &str, calculation_date: &str, reason: SelectionReason) -> EngineError {
@@ -273,7 +317,8 @@ impl<'a> ResolutionContext<'a> {
     }
 
     /// Record a hook, override or implementation that the indexes offered but
-    /// that has no version in force on the reference date.
+    /// that is not in force on the reference date: its law has no version for
+    /// that date, or the version it has lacks the indexed article.
     ///
     /// It is skipped either way — a regulation that is not in force does not
     /// apply — but the skip leaves no mark on the outcome, so it is stated
@@ -287,7 +332,7 @@ impl<'a> ResolutionContext<'a> {
             article = %note.article,
             subject = %note.subject,
             reason = %note.reason,
-            "Declaration not applied: no version in force on the reference date"
+            "Declaration not applied: not in force on the reference date"
         );
         let node_type = match note.kind {
             DeclarationKind::Hook => PathNodeType::HookResolution,
@@ -1969,7 +2014,33 @@ impl LawExecutionService {
                     continue;
                 }
             };
+            // The law is in force, but the version selected for this date need
+            // not carry the article the index points at: the index is built
+            // from the newest version. An article inserted later is genuinely
+            // not in force today. A renumbering is a known limitation of that
+            // undated index: the special rule is in force under another number
+            // and is still not applied. Either way the general rule's value
+            // stands, unchanged from before; what changes is that the skip is
+            // recorded like the one above, so "no lex specialis" never reads as
+            // a finding about the case (and the reason names a renumbered
+            // declaration when that version has one).
             let Some(ovr_article) = ovr_law.find_article_by_number(ovr_article_number) else {
+                res_ctx.note_not_in_force(DeclarationNotInForce {
+                    kind: DeclarationKind::Override,
+                    law_id: ovr_law_id.clone(),
+                    article: ovr_article_number.clone(),
+                    subject: format!(
+                        "output '{}' of {} article {}",
+                        output_name, law.id, article.number
+                    ),
+                    reason: article_missing_from_version(
+                        ovr_law,
+                        ovr_article_number,
+                        &law.id,
+                        &article.number,
+                        &output_name,
+                    ),
+                });
                 continue;
             };
 
@@ -8289,6 +8360,255 @@ articles:
             }
             other => panic!("expected a completed execution, got: {other:?}"),
         }
+    }
+
+    /// The special rule is in force, but the version in force today does not
+    /// yet carry the article the overrides index points at: it arrives with a
+    /// later version (or the article was renumbered). The general rule stands,
+    /// and it used to stand with a trace that showed nothing else: the skip was
+    /// a bare `continue`, before the trace node was even pushed.
+    #[test]
+    fn test_an_override_whose_article_is_missing_on_the_date_is_recorded() {
+        let kaderwet = r#"
+$id: kaderwet_bedrag
+regulatory_layer: WET
+publication_date: '2020-01-01'
+valid_from: '2020-01-01'
+procedure:
+  - id: beschikking_procedure
+    default: true
+    applies_to:
+      legal_character: TEST_BESCHIKKING
+    stages:
+      - name: BESLUIT
+articles:
+  - number: '1'
+    text: Het bedrag bedraagt 100
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TEST_BESCHIKKING
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 100
+"#;
+        let bijzondere_oud = r#"
+$id: bijzondere_regeling
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+articles:
+  - number: '2'
+    text: Deze regeling treedt in werking op 1 januari 2024
+"#;
+        let bijzondere_nieuw = r#"
+$id: bijzondere_regeling
+regulatory_layer: WET
+publication_date: '2026-01-01'
+valid_from: '2027-01-01'
+articles:
+  - number: '1'
+    text: In afwijking van artikel 1 van de kaderwet bedraagt het bedrag 250
+    machine_readable:
+      overrides:
+        - law: kaderwet_bedrag
+          article: '1'
+          output: bedrag
+      execution:
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 250
+  - number: '2'
+    text: Deze regeling treedt in werking op 1 januari 2024
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(kaderwet).unwrap();
+        service.load_law(bijzondere_oud).unwrap();
+        service.load_law(bijzondere_nieuw).unwrap();
+
+        let state = || StageState {
+            procedure_id: "beschikking_procedure".to_string(),
+            contextual_law: "bijzondere_regeling".to_string(),
+            current_stage: "BESLUIT".to_string(),
+            accumulated_outputs: BTreeMap::new(),
+            parameters: BTreeMap::new(),
+        };
+
+        let outcome = service
+            .execute_stage(
+                "kaderwet_bedrag",
+                "bedrag",
+                Some(state()),
+                BTreeMap::new(),
+                "2025-06-01",
+            )
+            .expect("the general rule is in force and executes");
+        let result = match outcome {
+            ExecutionOutcome::Complete(result) => result,
+            other => panic!("expected a completed execution, got: {other:?}"),
+        };
+        assert_eq!(
+            result.outputs.get("bedrag"),
+            Some(&Value::Int(100)),
+            "the article is not there on this date, so the general rule stands"
+        );
+        assert_eq!(
+            result.declarations_not_in_force,
+            vec![DeclarationNotInForce {
+                kind: DeclarationKind::Override,
+                law_id: "bijzondere_regeling".to_string(),
+                article: "1".to_string(),
+                subject: "output 'bedrag' of kaderwet_bedrag article 1".to_string(),
+                reason: "the version of it in force on this date (valid_from 2024-01-01) \
+                         has no article 1"
+                    .to_string(),
+            }],
+            "the skipped lex specialis must leave a mark naming the version that lacks it"
+        );
+        assert!(
+            result
+                .declaration_version_notes
+                .iter()
+                .any(|n| n.law_id == "bijzondere_regeling"),
+            "the receipt also says the indexes read another version of the special rule: {:?}",
+            result.declaration_version_notes
+        );
+
+        let trace = Rc::new(RefCell::new(TraceBuilder::new()));
+        trace
+            .borrow_mut()
+            .push("test harness".to_string(), PathNodeType::Article);
+        service
+            .execute_stage_internal(
+                "kaderwet_bedrag",
+                "bedrag",
+                Some(state()),
+                BTreeMap::new(),
+                "2025-06-01",
+                Some(Rc::clone(&trace)),
+            )
+            .unwrap();
+        let root = trace.borrow_mut().pop().expect("a traced run has a trace");
+        fn find_override(node: &crate::trace::PathNode) -> Option<&crate::trace::PathNode> {
+            if node.node_type == PathNodeType::OverrideResolution {
+                return Some(node);
+            }
+            node.children.iter().find_map(find_override)
+        }
+        let node = find_override(&root).unwrap_or_else(|| {
+            panic!(
+                "the trace must carry the skipped override:\n{}",
+                root.render_box_drawing()
+            )
+        });
+        assert_eq!(node.name, "bijzondere_regeling:1");
+        assert_eq!(
+            node.message.as_deref(),
+            Some(
+                "Not applied: override bijzondere_regeling article 1 would have applied to \
+                 output 'bedrag' of kaderwet_bedrag article 1, but the version of it in \
+                 force on this date (valid_from 2024-01-01) has no article 1"
+            )
+        );
+
+        // Once the version carrying the article is in force, it applies.
+        match service
+            .execute_stage(
+                "kaderwet_bedrag",
+                "bedrag",
+                Some(state()),
+                BTreeMap::new(),
+                "2027-06-01",
+            )
+            .unwrap()
+        {
+            ExecutionOutcome::Complete(result) => {
+                assert_eq!(result.outputs.get("bedrag"), Some(&Value::Int(250)));
+                assert!(result.declarations_not_in_force.is_empty());
+            }
+            other => panic!("expected a completed execution, got: {other:?}"),
+        }
+    }
+
+    /// After a renumbering the special rule is in force under another number.
+    /// The engine still does not apply it, but the reason must not let it pass
+    /// for a rule that does not exist yet: it names the article that carries
+    /// the declaration now. Only a declaration of exactly the same output of
+    /// exactly the same article counts.
+    #[test]
+    fn test_article_missing_from_version_names_a_renumbered_declaration() {
+        let law = ArticleBasedLaw::from_yaml_str(
+            r#"
+$id: bijzondere_regeling
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+articles:
+  - number: '3'
+    text: Hernummerd
+    machine_readable:
+      overrides:
+        - law: kaderwet_bedrag
+          article: '1'
+          output: bedrag
+  - number: '4'
+    text: Ander output
+    machine_readable:
+      overrides:
+        - law: kaderwet_bedrag
+          article: '1'
+          output: iets_anders
+  - number: '5'
+    text: Ander artikel
+    machine_readable:
+      overrides:
+        - law: kaderwet_bedrag
+          article: '2'
+          output: bedrag
+  - number: '6'
+    text: Andere wet
+    machine_readable:
+      overrides:
+        - law: andere_wet
+          article: '1'
+          output: bedrag
+  - number: '7'
+    text: Geen machine_readable
+"#,
+        )
+        .unwrap();
+        assert_eq!(
+            article_missing_from_version(&law, "1", "kaderwet_bedrag", "1", "bedrag"),
+            "the version of it in force on this date (valid_from 2024-01-01) has no \
+             article 1; article 3 of that version declares an override of the same output"
+        );
+    }
+
+    /// A law without a `valid_from` is in force on any date; the note then
+    /// names no version date rather than an empty one.
+    #[test]
+    fn test_article_missing_from_version_without_valid_from() {
+        let law = ArticleBasedLaw::from_yaml_str(
+            r#"
+$id: zonder_datum
+regulatory_layer: WET
+publication_date: '2024-01-01'
+articles:
+  - number: '2'
+    text: Tekst
+"#,
+        )
+        .unwrap();
+        assert_eq!(
+            article_missing_from_version(&law, "1", "kaderwet", "1", "bedrag"),
+            "the version of it in force on this date has no article 1"
+        );
     }
 
     /// The motiveringsplicht commences next year. Today the beschikking comes

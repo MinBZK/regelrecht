@@ -120,11 +120,19 @@ impl DeclarationKind {
     }
 }
 
-/// A hook, override or implementation the indexes offered, whose law has no
-/// version the engine could select for the reference date.
+/// A hook, override or implementation the indexes offered, that did not apply
+/// on the reference date: its law has no version the engine could select for
+/// that date, or (for an override) the version it selected does not carry the
+/// indexed article. The index is built from the newest version, so an article
+/// inserted later leaves the reference pointing at nothing on an earlier date,
+/// which is the calendar at work. A renumbering does the same, and that one is
+/// a limitation of the undated index rather than a regulation out of force:
+/// the reason then names the article that carries the declaration instead, and
+/// [`DeclarationsFromOtherVersion`] records that the indexes read another
+/// version.
 ///
-/// Skipping it is right: a regulation that is not in force does not apply. But
-/// the skip is invisible in the outcome — the general rule computes a value,
+/// Where the regulation is not in force, skipping it is right: it does not
+/// apply. But the skip is invisible in the outcome — the general rule computes a value,
 /// the hook does not fire, the open term falls through to its default — and
 /// then "no lex specialis" reads as a finding while it is an answer about a
 /// date. Recorded so an absence with a ground stays distinguishable from an
@@ -146,8 +154,8 @@ pub struct DeclarationNotInForce {
     /// What it would have applied to, in the terms of this execution: the open
     /// term it fills, the output it overrides, the hook point it fires on.
     pub subject: String,
-    /// Why no version could be selected, as a data fact
-    /// ([`SelectionReason::describe`]).
+    /// Why it does not apply, as a data fact: why no version could be selected
+    /// ([`SelectionReason::describe`]), or which version lacks the article.
     pub reason: String,
 }
 
