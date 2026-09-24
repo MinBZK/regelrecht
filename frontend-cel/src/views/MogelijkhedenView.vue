@@ -1,7 +1,8 @@
 <script setup>
 // Wat kan de ingelogde persoon hier aanvragen? Niemand somt dat op: het
 // proces voert het dienstverleningsbeleid uit voor deze persoon en organisatie, met
-// alleen wat de inlog en de andere cellen al weten (GET /api/mogelijkheden).
+// alleen wat de inlog en de andere cellen al weten (GET /api/mogelijkheden):
+// alleen voorwaarden die vooraf vaststaan; onbekend is geen aanbod.
 // Per subsidiejaar geeft het beleid één aanbod: mogelijk, uitgesloten of niet
 // te bepalen, met de uiterste indieningsdatum. Per jaar is er een knop die
 // alleen bij "mogelijk" actief is, met een (?) die de redenen en de trace
@@ -43,7 +44,6 @@ function termijnTekst(m) {
 
 function grond(m) {
   if (m.reden) return m.reden;
-  if (m.oordeel === 'mogelijk' && m.mist?.length) return `Hangt af van uw aanvraag: ${m.mist.join(', ')}`;
   return `${m.regeling}: ${m.uitkomst}`;
 }
 </script>

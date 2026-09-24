@@ -9,7 +9,7 @@
 //! stromen en lexostatussen ze heeft) leest het rechtstreeks, voor de
 //! controles bij het opstarten en voor de velden van het formulier.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -19,7 +19,8 @@ use crate::cel::Cel;
 use crate::config::{Portaal, ProcesDefinitie, RijenDefinitie, VoorbeeldenDefinitie};
 use crate::controle;
 use crate::formulier::{self, Formulier};
-use crate::stroom::{Event, Stroom};
+use crate::regelingen;
+use crate::stroom::{Binding, Event, Stroom};
 use crate::voorbeelden::{self, Voorbeelden};
 
 /// Een geladen proces dat de controles bij het opstarten doorstond.
@@ -73,6 +74,7 @@ impl Proces {
                 &service,
             ));
         }
+        fouten.extend(aanbod_vooraf(&definitie, &cel, &service));
         fouten.extend(vind_besluit(&mut definitie, &service));
         let formulier = match definitie
             .portaal
@@ -205,6 +207,60 @@ fn actor_legt_vast(definitie: &ProcesDefinitie, cel: &Cel) -> Vec<String> {
         }
     }
     fouten
+}
+
+/// Het aanbod toetst alleen voorwaarden die vooraf vaststaan: elke parameter
+/// van het artikel van de aanbod-uitkomst komt uit de login (een afleiding
+/// van de toets-lexostatus die alleen `$intake` leest), uit een
+/// synthese-bron, of is `subsidiejaar`, het enige wat het portaal in het lege
+/// concept zet. Of een aanvraag volledig is, weet je vooraf niet: dat is de
+/// toets na het invullen. De controle gaat per artikel, niet per uitkomst:
+/// de engine voert bij een uitkomst het hele artikel uit (en de termijn komt
+/// uit hetzelfde artikel).
+fn aanbod_vooraf(
+    definitie: &ProcesDefinitie,
+    cel: &Cel,
+    service: &LawExecutionService,
+) -> Vec<String> {
+    let Some(p) = &definitie.portaal else {
+        return Vec::new();
+    };
+    let Some(a) = &p.aanbod else {
+        return Vec::new();
+    };
+    // Een uitkomst die niet bestaat, meldt de controle op het portaal.
+    let Some(artikel) = service
+        .resolver()
+        .get_article_by_output(&a.regeling, &a.uitkomst, None)
+    else {
+        return Vec::new();
+    };
+    let mut vooraf: BTreeSet<String> = BTreeSet::from(["subsidiejaar".to_string()]);
+    for b in definitie.andere_bronnen() {
+        vooraf.extend(b.parameters.iter().cloned());
+    }
+    if let (Some((_, event)), Some(def)) = (
+        cel.event(&p.stroom, &p.event),
+        cel.lexostatussen.lexostatus(&p.toets.lexostatus),
+    ) {
+        let intake: BTreeSet<String> = event
+            .bladeren()
+            .into_iter()
+            .filter(|b| matches!(b.binding, Binding::Intake(_)))
+            .map(|b| b.pad)
+            .collect();
+        for (naam, afleiding) in &def.reduction.afleidingen {
+            let paden = afleiding.gelezen_paden();
+            if !paden.is_empty() && paden.iter().all(|pad| intake.contains(*pad)) {
+                vooraf.insert(naam.clone());
+            }
+        }
+    }
+    regelingen::benodigde_parameters(service, &a.regeling, artikel)
+        .into_keys()
+        .filter(|naam| !vooraf.contains(naam))
+        .map(|naam| format!("aanbod: voorwaarde leunt op '{naam}', dat vooraf niet bekend is"))
+        .collect()
 }
 
 /// Een voorbeeld voor een handeling die het proces niet heeft, is een fout:
@@ -436,5 +492,40 @@ mod tests {
         assert_eq!(f.len(), 2, "{f:?}");
         assert!(f[0].contains("voorbeelden.besluit: het proces heeft geen behandeling"));
         assert!(f[1].contains("weg.json"), "{f:?}");
+    }
+
+    /// Een aanbod dat alleen register- en loginfeiten vraagt, mag.
+    #[test]
+    fn aanbod_op_feiten_die_vooraf_vaststaan() {
+        let s = service();
+        let dir = met("afnemer", |t| {
+            t.replace(
+                "    uitkomst: aanvraag_toelaatbaar\n",
+                "    uitkomst: aanvraag_toelaatbaar\n  aanbod: {regeling: testregeling_afnemer, uitkomst: lijst_heeft_zetels}\n",
+            )
+        });
+        let p = Proces::laad(dir.path(), &cellen(&s), s).unwrap();
+        assert!(p.portaal().unwrap().aanbod.is_some());
+    }
+
+    /// Een aanbod dat een feit uit de aanvraag vraagt, houdt de runtime tegen:
+    /// of een aanvraag volledig is, weet je vooraf niet.
+    #[test]
+    fn aanbod_op_een_aanvraagfeit() {
+        let f = fouten("instantie", |t| {
+            t.replace(
+                "  formulier:",
+                "  aanbod: {regeling: testregeling_aanvraag, uitkomst: aanvraag_volledig}\n  formulier:",
+            )
+        });
+        assert!(
+            f.iter().any(|f| f
+                == "proces 'test_instantie_proces': aanbod: voorwaarde leunt op 'bevat_naam', dat vooraf niet bekend is"),
+            "{f:?}"
+        );
+        assert!(
+            f.iter().all(|f| f.contains("aanbod: voorwaarde leunt op")),
+            "{f:?}"
+        );
     }
 }

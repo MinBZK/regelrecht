@@ -94,27 +94,6 @@ pub struct Samenvoeging {
 }
 
 impl Samenvoeging {
-    /// De parameters die een bron had moeten leveren en niet leverde: alle
-    /// parameters van een bron die niet antwoordde, en wat een bron die wel
-    /// antwoordde niet had. Zo'n feit ontbreekt niet omdat de aanvrager het nog
-    /// moet vertellen, maar omdat de bron het niet gaf.
-    pub fn niet_van_bronnen(&self, bronnen: &[Bron]) -> BTreeSet<String> {
-        let mut uit = BTreeSet::new();
-        for u in &self.bronnen {
-            uit.extend(u.niet_geleverd.iter().cloned());
-            if u.status != Status::Bevraagd {
-                let def = bronnen
-                    .iter()
-                    .map(|b| &b.definitie)
-                    .find(|d| d.cel == u.cel && d.lexostatus == u.lexostatus);
-                if let Some(d) = def {
-                    uit.extend(d.parameters.iter().cloned());
-                }
-            }
-        }
-        uit
-    }
-
     /// Waarom de toets niet te beoordelen is als een bron niets leverde, in
     /// woorden; `None` als elke bron antwoordde.
     pub fn reden(&self) -> Option<String> {

@@ -2051,3 +2051,22 @@ async fn een_proefreductie_reduceert_de_kroniek_met_het_concept() {
     .await;
     assert_eq!(w["lijst"].as_array().unwrap().len(), 1);
 }
+
+// --- Het aanbod toetst alleen wat vooraf vaststaat ---
+
+#[test]
+fn een_aanbod_op_een_aanvraagfeit_houdt_de_runtime_tegen() {
+    let met_aanbod = |t: String| {
+        t.replace(
+            "  formulier:",
+            "  aanbod: {regeling: testregeling_aanvraag, uitkomst: aanvraag_volledig}\n  formulier:",
+        )
+    };
+    let opstelling = eigen_opstelling(&[("instantie", &zo)], &[("instantie", &met_aanbod)]);
+    let data = tempfile::tempdir().unwrap();
+    let fouten = runtime_op(opstelling.path(), data.path()).err().unwrap();
+    assert!(
+        fouten.contains(&"proces 'test_instantie_proces': aanbod: voorwaarde leunt op 'aanvraagdatum', dat vooraf niet bekend is".to_string()),
+        "{fouten:?}"
+    );
+}

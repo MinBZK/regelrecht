@@ -1,13 +1,16 @@
 //! Aanvraagmogelijkheden: wat biedt het portaal een ingelogde persoon aan?
 //!
-//! Het beleid van de actor zegt het (`portaal.aanbod` in `proces.yaml`): een uitkomst van een
-//! regeling, uitgevoerd in een run met wat er vooraf bekend is: wie er
-//! inlogt en wat andere cellen weten. Definitief onwaar of nul: geen aanbod.
-//! Onbekend door feiten die de aanvraag nog levert, of waar: aanbod. Een
-//! feit dat een bron niet leverde, of een lege uitkomst: niet te bepalen.
-//! Geen aanbod is geen weigering. Niets hiervan wordt vastgelegd.
+//! Het beleid van de actor zegt het (`portaal.aanbod` in `proces.yaml`): een
+//! uitkomst van een regeling, uitgevoerd in een run met wat er vooraf
+//! vaststaat: wie er inlogt, wat andere cellen weten en het subsidiejaar.
+//! Waar: aanbod. Definitief onwaar of nul: geen aanbod. Al het andere (leeg,
+//! er mist iets, een fout van de engine) is niet te bepalen. Of een aanvraag
+//! volledig is, weet je vooraf niet; dat is de toets na het invullen. De
+//! runtime start daarom niet als de aanbod-uitkomst een feit vraagt dat vooraf
+//! niet bekend is (zie [`crate::proces`]). Geen aanbod is geen weigering.
+//! Niets hiervan wordt vastgelegd.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use regelrecht_engine::LawExecutionService;
 use serde::Serialize;
@@ -20,13 +23,12 @@ use crate::toets::{self, Evaluatie};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Oordeel {
-    /// De uitkomst is positief, of onbekend door feiten die de aanvraag nog
-    /// levert: het portaal biedt de aanvraag aan.
+    /// De uitkomst is waar (of positief): het portaal biedt de aanvraag aan.
     Mogelijk,
     /// De uitkomst is definitief nul of onwaar: geen aanbod.
     Uitgesloten,
-    /// Geen oordeel: de uitkomst is leeg, de engine gaf een fout, of er mist
-    /// een feit dat een bron had moeten leveren.
+    /// Geen oordeel: de uitkomst is leeg, er mist een feit, of de engine gaf
+    /// een fout.
     NietTeBepalen,
 }
 
@@ -59,20 +61,15 @@ fn is_nee(w: &Value) -> bool {
     }
 }
 
-/// Het oordeel over `uitkomst` in een evaluatie. Alleen wat deze uitkomst
-/// mist telt, niet wat andere uitkomsten van dezelfde run missen. Leeg is
-/// geen nee: een lege uitkomst is niet te bepalen. Mist de uitkomst een feit
-/// uit `niet_van_bronnen` (een bron leverde het niet), dan is ze niet te
-/// bepalen, want dat feit komt niet uit de aanvraag.
-pub fn oordeel(e: &Evaluatie, uitkomst: &str, niet_van_bronnen: &BTreeSet<String>) -> Oordeel {
-    let mist = e.mist_van(uitkomst);
+/// Het oordeel over `uitkomst` in een evaluatie: waar is mogelijk, nul of
+/// onwaar is uitgesloten, en al het andere is niet te bepalen. Leeg is geen
+/// nee, en onbekend is geen ja: een uitkomst die een feit mist, zegt niets
+/// over het aanbod.
+pub fn oordeel(e: &Evaluatie, uitkomst: &str) -> Oordeel {
     match e.waarden.get(uitkomst) {
-        Some(Value::Null) => Oordeel::NietTeBepalen,
+        Some(Value::Null) | None => Oordeel::NietTeBepalen,
         Some(w) if is_nee(w) => Oordeel::Uitgesloten,
         Some(_) => Oordeel::Mogelijk,
-        None if mist.iter().any(|m| niet_van_bronnen.contains(m)) => Oordeel::NietTeBepalen,
-        None if !mist.is_empty() => Oordeel::Mogelijk,
-        None => Oordeel::NietTeBepalen,
     }
 }
 
@@ -82,13 +79,12 @@ pub fn bepaal(
     subsidiejaar: i64,
     aanbod: &Aanbod,
     parameters: &BTreeMap<String, Value>,
-    niet_van_bronnen: &BTreeSet<String>,
     datum: &str,
 ) -> Mogelijkheid {
     let mut uitkomsten = vec![aanbod.uitkomst.as_str()];
     uitkomsten.extend(aanbod.termijn.as_deref());
     let e = toets::evalueer_met_trace(service, &aanbod.regeling, &uitkomsten, parameters, datum);
-    let oordeel = oordeel(&e, &aanbod.uitkomst, niet_van_bronnen);
+    let oordeel = oordeel(&e, &aanbod.uitkomst);
     let waarde = e.waarden.get(&aanbod.uitkomst).cloned();
     let mist = e.mist_van(&aanbod.uitkomst).to_vec();
     let reden = match oordeel {
@@ -138,46 +134,33 @@ mod tests {
         e
     }
 
-    fn geen() -> BTreeSet<String> {
-        BTreeSet::new()
-    }
-
     #[test]
     fn onwaar_sluit_uit() {
         assert_eq!(
-            oordeel(&ev(Some(json!(false)), &[]), "u", &geen()),
+            oordeel(&ev(Some(json!(false)), &[]), "u"),
             Oordeel::Uitgesloten
         );
     }
 
     #[test]
     fn nul_sluit_uit() {
-        assert_eq!(
-            oordeel(&ev(Some(json!(0)), &[]), "u", &geen()),
-            Oordeel::Uitgesloten
-        );
+        assert_eq!(oordeel(&ev(Some(json!(0)), &[]), "u"), Oordeel::Uitgesloten);
     }
 
     #[test]
     fn waar_is_mogelijk() {
-        assert_eq!(
-            oordeel(&ev(Some(json!(true)), &[]), "u", &geen()),
-            Oordeel::Mogelijk
-        );
+        assert_eq!(oordeel(&ev(Some(json!(true)), &[]), "u"), Oordeel::Mogelijk);
     }
 
     #[test]
     fn positief_is_mogelijk() {
-        assert_eq!(
-            oordeel(&ev(Some(json!(1200)), &[]), "u", &geen()),
-            Oordeel::Mogelijk
-        );
+        assert_eq!(oordeel(&ev(Some(json!(1200)), &[]), "u"), Oordeel::Mogelijk);
     }
 
     #[test]
     fn leeg_is_niet_te_bepalen() {
         assert_eq!(
-            oordeel(&ev(Some(Value::Null), &[]), "u", &geen()),
+            oordeel(&ev(Some(Value::Null), &[]), "u"),
             Oordeel::NietTeBepalen
         );
     }
@@ -186,30 +169,20 @@ mod tests {
     fn fout_zonder_ontbrekend_feit_is_niet_te_bepalen() {
         let mut e = ev(None, &[]);
         e.fout = Some("kapot".into());
-        assert_eq!(oordeel(&e, "u", &geen()), Oordeel::NietTeBepalen);
+        assert_eq!(oordeel(&e, "u"), Oordeel::NietTeBepalen);
     }
 
-    /// Een feit dat een bron niet leverde, komt niet uit de aanvraag: dan is
-    /// de uitkomst niet te bepalen, ook als er daarnaast een feit uit de
-    /// aanvraag mist.
+    /// Onbekend is geen ja: mist de uitkomst een feit, uit de aanvraag of uit
+    /// een bron, dan zegt ze niets over het aanbod.
     #[test]
-    fn wat_een_bron_niet_leverde_maakt_niet_te_bepalen() {
-        let bron: BTreeSet<String> = ["registerfeit".to_string()].into();
+    fn onbekend_is_niet_te_bepalen() {
         assert_eq!(
-            oordeel(&ev(None, &["registerfeit"]), "u", &bron),
+            oordeel(&ev(None, &["feit_uit_de_aanvraag"]), "u"),
             Oordeel::NietTeBepalen
         );
         assert_eq!(
-            oordeel(
-                &ev(None, &["registerfeit", "feit_uit_de_aanvraag"]),
-                "u",
-                &bron
-            ),
+            oordeel(&ev(None, &["registerfeit"]), "u"),
             Oordeel::NietTeBepalen
-        );
-        assert_eq!(
-            oordeel(&ev(None, &["feit_uit_de_aanvraag"]), "u", &bron),
-            Oordeel::Mogelijk
         );
     }
 
@@ -268,16 +241,8 @@ articles:
         serde_json::from_value(v).unwrap()
     }
 
-    fn bepaal_met(termijn: bool, p: Value, bronnen: &[&str]) -> Mogelijkheid {
-        let bron: BTreeSet<String> = bronnen.iter().map(|s| s.to_string()).collect();
-        bepaal(
-            &service(),
-            2026,
-            &aanbod(termijn),
-            &params(p),
-            &bron,
-            "2026-02-01",
-        )
+    fn bepaal_met(termijn: bool, p: Value) -> Mogelijkheid {
+        bepaal(&service(), 2026, &aanbod(termijn), &params(p), "2026-02-01")
     }
 
     #[test]
@@ -285,7 +250,6 @@ articles:
         let m = bepaal_met(
             true,
             json!({"bevoegd": false, "jaar": 2026, "registerdatum": "2026-01-01"}),
-            &[],
         );
         assert_eq!(m.oordeel, Oordeel::Uitgesloten, "{m:?}");
         assert_eq!(m.waarde, Some(json!(false)));
@@ -298,35 +262,45 @@ articles:
     }
 
     #[test]
-    fn bevoegd_is_mogelijk_en_mist_het_aanvraagfeit() {
+    fn alle_voorwaarden_waar_is_mogelijk() {
         let m = bepaal_met(
             true,
-            json!({"bevoegd": true, "jaar": 2026, "registerdatum": "2026-01-01"}),
-            &[],
+            json!({"bevoegd": true, "aanvraagfeit": true, "jaar": 2026, "registerdatum": "2026-01-01"}),
         );
         assert_eq!(m.oordeel, Oordeel::Mogelijk, "{m:?}");
-        assert_eq!(m.waarde, None);
-        assert_eq!(m.mist, ["aanvraagfeit"]);
+        assert_eq!(m.waarde, Some(json!(true)));
         assert_eq!(m.reden, None);
     }
 
+    /// Een voorwaarde die een feit mist, maakt het aanbod niet te bepalen, ook
+    /// als dat feit later uit de aanvraag zou komen. (De runtime start niet
+    /// met zo'n aanbod; zie de controle in `proces`.)
     #[test]
-    fn wat_een_bron_niet_leverde_maakt_het_aanbod_niet_te_bepalen() {
+    fn een_ontbrekend_feit_maakt_het_aanbod_niet_te_bepalen() {
         let m = bepaal_met(
             true,
-            json!({"jaar": 2026, "registerdatum": "2026-01-01"}),
-            &["bevoegd"],
+            json!({"bevoegd": true, "jaar": 2026, "registerdatum": "2026-01-01"}),
         );
+        assert_eq!(m.oordeel, Oordeel::NietTeBepalen, "{m:?}");
+        assert_eq!(m.waarde, None);
+        assert_eq!(m.mist, ["aanvraagfeit"]);
+        assert_eq!(
+            m.reden.as_deref(),
+            Some("niet te bepalen: mist aanvraagfeit")
+        );
+        let m = bepaal_met(true, json!({"jaar": 2026, "registerdatum": "2026-01-01"}));
         assert_eq!(m.oordeel, Oordeel::NietTeBepalen, "{m:?}");
         assert!(m.reden.as_deref().unwrap().contains("bevoegd"), "{m:?}");
     }
 
     #[test]
     fn zonder_termijn() {
-        let m = bepaal_met(false, json!({"bevoegd": true, "jaar": 2026}), &[]);
+        let m = bepaal_met(
+            false,
+            json!({"bevoegd": true, "aanvraagfeit": true, "jaar": 2026}),
+        );
         assert_eq!(m.termijn, None);
         assert_eq!(m.oordeel, Oordeel::Mogelijk, "{m:?}");
-        assert_eq!(m.mist, ["aanvraagfeit"]);
     }
 
     /// Wat de termijn mist, telt niet voor het oordeel over de uitkomst.
@@ -334,11 +308,10 @@ articles:
     fn wat_de_termijn_mist_telt_niet_mee() {
         let m = bepaal_met(
             true,
-            json!({"bevoegd": true, "jaar": 2026}),
-            &["registerdatum"],
+            json!({"bevoegd": false, "aanvraagfeit": true, "jaar": 2026}),
         );
-        assert_eq!(m.oordeel, Oordeel::Mogelijk, "{m:?}");
+        assert_eq!(m.oordeel, Oordeel::Uitgesloten, "{m:?}");
         assert_eq!(m.termijn, None);
-        assert_eq!(m.mist, ["aanvraagfeit"]);
+        assert!(m.mist.is_empty());
     }
 }

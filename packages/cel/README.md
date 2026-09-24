@@ -307,7 +307,9 @@ Per proces:
    `$intake`-paden leest die het portaal levert, een lexostatus die dat event
    leest en een gram kiest (geen lijst, alleen input `zaakkenmerk`), en een
    uitkomst van een artikel uit de grondslag van het event. Het aanbod noemt een
-   bestaande uitkomst en een termijn uit hetzelfde artikel.
+   bestaande uitkomst en een termijn uit hetzelfde artikel, en leunt alleen op
+   wat vooraf vaststaat: elke parameter van zijn artikel komt uit de login, uit
+   een synthese-bron of is `subsidiejaar`.
 4. Synthese: alleen met een portaal of een besluit; elke invoer komt uit een
    veld van de toets-lexostatus of een lexostatus van de zaak, of van een
    eerdere bron die het doorgeeft; elke parameter is een parameter van het

@@ -837,13 +837,11 @@ async fn mogelijkheden_route(
             zaakkenmerk: None,
         };
         let c = concepttoets(&state, &sessie, &concept).await?;
-        let niet_van_bronnen = c.samen.niet_van_bronnen(&state.bronnen);
         let m = mogelijkheid::bepaal(
             &state.proces.service,
             subsidiejaar,
             &c0,
             &c.samen.parameters,
-            &niet_van_bronnen,
             &datum,
         );
         uit.push(json!({
