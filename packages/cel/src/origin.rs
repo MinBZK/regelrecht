@@ -46,7 +46,7 @@ pub struct Geldend {
 }
 
 impl Geldend {
-    /// Voor een melding: `REGISTER, register kieswet, grondslag x#1`.
+    /// Voor een melding: `REGISTER, register een_registerwet, grondslag x#1`.
     pub fn beschrijving(&self) -> String {
         let mut s = self.origin.waarde.as_str().to_string();
         if let Some(r) = &self.origin.register {

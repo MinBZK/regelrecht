@@ -57,7 +57,11 @@ portaal:                          # optioneel, vraagt rollen.aanvrager
   stroom: <$id van de stroom>
   event: <event dat een indiening wordt>
   toets: {lexostatus: <naam>, regeling: <$id>, uitkomst: <output>}
-  aanbod: {regeling: <$id>, uitkomst: <output>, termijn: <output>}   # optioneel
+  aanbod:                         # optioneel
+    regeling: <$id>
+    uitkomst: <output>
+    termijn: <output>             # optioneel
+    keuzes: {jaren_vanaf_nu: [0, 1]}   # als het artikel een tijdvak vraagt (Awb 4:2 lid 1)
   formulier: {pad: <pad>, scherm: <id>}   # optioneel
 synthese:                         # optioneel, alleen met een portaal of een besluit
   - {cel: <cel-id>, lexostatus: <naam>, zaak: true}   # een lexostatus van de zaak
@@ -72,8 +76,6 @@ behandeling:                      # optioneel, vraagt rollen.behandelaar
   besluit:
     regeling: <$id>               # optioneel: anders de beschikking van de actor
     uitkomsten: [<output>, ...]   # van een en hetzelfde artikel
-    formulier:                    # oordelen van de behandelaar
-      - {parameter: <naam>, label: <tekst>, groep: <tekst>}
     stand_bij_besluit:            # feiten van na het besluit: null of false
       <parameter>: null
     rijen:                        # synthese per regel (zie hieronder)
@@ -124,7 +126,7 @@ het gedrag.
 | `GET /processen/<id>/api/formulier` | alleen met portaal: de stroom en de formuliervelden |
 | `POST /processen/<id>/api/aanvraag/toets` | alleen met portaal: proefreductie in de cel, synthese, engine |
 | `POST /processen/<id>/api/aanvraag` | alleen met portaal: de cel legt het gram vast |
-| `GET /processen/<id>/api/mogelijkheden` | alleen met portaal: wat het aanbod per subsidiejaar zegt |
+| `GET /processen/<id>/api/mogelijkheden` | alleen met portaal: wat het aanbod per tijdvak uit `aanbod.keuzes` zegt |
 | `POST /processen/<id>/api/medewerker/login` (`{naam}`), `GET .../sessie`, `POST .../logout` | alleen met de rol behandelaar |
 | `GET /processen/<id>/api/werkvoorraad` | behandelaar: de werkvoorraad, een lijst uit de cel |
 | `GET /processen/<id>/api/zaken/<zaakkenmerk>` | behandelaar: de grammen van de zaak, het besluitformulier en een proefbesluit zonder oordelen |
@@ -240,7 +242,8 @@ dan blijft die kolom weg; `mist` noemt welke. Er wordt niets aangevuld.
 `behandeling.besluit` zegt welke uitkomsten van welk artikel het besluit zijn
 en waar elke parameter vandaan komt, uit precies een bron: een lexostatus van
 de zaak (een synthese-bron met `zaak: true`, gevraagd aan de cel), een andere
-synthese-bron (met de invoer uit die lexostatus), het besluitformulier (oordelen van de behandelaar, herkomst
+synthese-bron (met de invoer uit die lexostatus), het besluitformulier (oordelen van de behandelaar: de parameters met origin
+`OORDEEL`, met het label na "Naam:" in hun omschrijving; herkomst
 `behandelaar`) of de stand bij besluit (feiten van na het besluit, zoals de
 bekendmaking, als null of false; herkomst `stand_bij_besluit`). Het
 proefbesluit voert het artikel uit op de datum van vandaag. Het antwoord heeft
@@ -311,8 +314,9 @@ Per proces:
    leest en een gram kiest (geen lijst, alleen input `zaakkenmerk`), en een
    uitkomst van een artikel uit de grondslag van het event. Het aanbod noemt een
    bestaande uitkomst en een termijn uit hetzelfde artikel, en leunt alleen op
-   wat vooraf vaststaat: elke parameter van zijn artikel komt uit de login, uit
-   een synthese-bron of is `subsidiejaar`.
+   wat vooraf vaststaat: elke parameter van zijn artikel heeft origin `KANAAL`
+   of `REGISTER`, of `BELANGHEBBENDE` met grondslag Awb 4:2 lid 1 (het
+   tijdvak, met `aanbod.keuzes`).
 4. Synthese: alleen met een portaal of een besluit; elke invoer komt uit een
    veld van de toets-lexostatus of een lexostatus van de zaak, of van een
    eerdere bron die het doorgeeft; elke parameter is een parameter van het
@@ -333,7 +337,15 @@ Per proces:
    bron is een andere cel. Waar het besluit wordt vastgelegd: een bestaand
    event met `zaak: volgt` en een stage, waarvan de `$external`-sleutels
    precies de uitkomsten van het besluit zijn.
-7. De voorbeelden bestaan en hebben de goede vorm, en horen bij een handeling
+7. Als synthese en besluit kloppen: elke parameter die de aanroeper van de
+   toets, het aanbod of het besluit moet leveren, heeft een leverancier die bij
+   zijn geldende origin past (RFC-043; zie `origin`). Zonder leverancier start
+   de runtime niet, behalve bij `required: false`: dan is het een waarschuwing.
+   Een parameter zonder origin, en een `BELANGHEBBENDE`-parameter zonder
+   `required: false`, geven ook een waarschuwing. `origins` in uitvoeringsbeleid
+   van de actor overschrijft de origin uit de wet; twee botsende
+   overschrijvingen zijn een fout.
+8. De voorbeelden bestaan en hebben de goede vorm, en horen bij een handeling
    die het proces heeft.
 
 Of een bron bereikbaar is en de lexostatus met die parameters en inputs
@@ -355,6 +367,7 @@ komen.
 | `kroniek` | append-only opslag |
 | `controle` | de controles bij het opstarten |
 | `synthese` | bronnen bevragen, samenvoegen met herkomst, en de controles erop |
+| `origin` | wie een parameter levert volgens de wet (RFC-043): de controle bij het opstarten, de aanbodregel, het tijdvak en het besluitformulier |
 | `transport` | intern en HTTP |
 | `eherkenning` | nep-login (KvK en persoon; bevoegdheid komt uit het handelsregister) |
 | `sessie` | sessies per rol, en de nagebootste medewerkerslogin |
