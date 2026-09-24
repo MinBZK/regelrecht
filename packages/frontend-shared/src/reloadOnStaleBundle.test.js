@@ -26,6 +26,9 @@ describe('isChunkLoadError', () => {
     expect(isChunkLoadError(chromeError)).toBe(true);
     expect(isChunkLoadError(new TypeError('error loading dynamically imported module'))).toBe(true);
     expect(isChunkLoadError(new TypeError('Importing a module script failed.'))).toBe(true);
+    // Vite throws this when a view's stylesheet is gone; without a
+    // vite:preloadError listener it reaches the router like the others.
+    expect(isChunkLoadError(new Error('Unable to preload CSS for /terugbetaalregimes/assets/BeleidView-abc.css'))).toBe(true);
   });
 
   it('leaves other errors alone', () => {
