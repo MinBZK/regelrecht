@@ -1,5 +1,5 @@
 ---
-title: "Frontend"
+title: "Editor"
 description: "The Vue 3 law editor and library browser for working with machine-readable law."
 ---
 

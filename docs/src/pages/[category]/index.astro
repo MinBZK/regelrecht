@@ -24,6 +24,19 @@ const title = category.title + ' · RegelRecht';
 const descByLink = new Map(
   (await getCollection('docs')).map((e) => ['/' + e.id, e.data.description]),
 );
+
+// A sidebar item that points at no page would render as a dead row here, and
+// check-links.mjs only sees <a> elements. Fail the build instead.
+const dangling = groups
+  .flatMap((g) => g.items)
+  .filter((it) => it.link && !descByLink.has(it.link))
+  .map((it) => `${it.text} -> ${it.link}`);
+if (dangling.length > 0) {
+  throw new Error(
+    `Sidebar for ${category.prefix} links to pages that do not exist:\n  ` +
+      dangling.join('\n  '),
+  );
+}
 ---
 
 <Base lang="en" kind="docs" pathname={category.prefix} title={title}>
