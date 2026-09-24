@@ -17,6 +17,7 @@ path = "src/main.rs"
 
 [dependencies]
 regelrecht-engine = { path = "../engine" }
+regelrecht-law-model = { path = "../law-model" }
 regelrecht-shared = { path = "../shared", features = ["telemetry"] }
 axum.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "time"] }

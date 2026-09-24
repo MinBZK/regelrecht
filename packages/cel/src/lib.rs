@@ -29,6 +29,7 @@ pub mod eherkenning;
 pub mod formulier;
 pub mod kroniek;
 pub mod mogelijkheid;
+pub mod origin;
 pub mod proces;
 pub mod reductie;
 pub mod regelingen;

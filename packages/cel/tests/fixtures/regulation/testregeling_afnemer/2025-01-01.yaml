@@ -36,22 +36,28 @@ articles:
         parameters:
           - name: aanvraagdatum
             type: date
-            required: true
+            required: false
+            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_afnemer#1}
           - name: bevat_aanduiding
             type: boolean
-            required: true
+            required: false
+            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_afnemer#1}
           - name: is_ingeschreven_raad
             type: boolean
             required: true
+            origin: {waarde: REGISTER, register: testregeling_register, grondslag: testregeling_register#1}
           - name: is_geschrapt_raad
             type: boolean
             required: true
+            origin: {waarde: REGISTER, register: testregeling_register, grondslag: testregeling_register#1}
           - name: geblokkeerd_raad
             type: boolean
             required: true
+            origin: {waarde: REGISTER, register: testregeling_register, grondslag: testregeling_register#3}
           - name: datum_mededeling
             type: date
             required: true
+            origin: {waarde: REGISTER, register: testregeling_register, grondslag: testregeling_register#3}
         input:
           - name: aanduiding_geregistreerd_raad
             type: boolean
@@ -97,6 +103,7 @@ articles:
           - name: zetels_op_lijst
             type: number
             required: true
+            origin: {waarde: REGISTER, register: testregeling_register, grondslag: testregeling_register#2}
         output:
           - name: lijst_heeft_zetels
             type: boolean
@@ -124,38 +131,48 @@ articles:
         parameters:
           - name: aanvraagdatum
             type: date
-            required: true
+            required: false
+            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_afnemer#1}
           - name: zetels_op_lijst
             type: number
             required: true
+            origin: {waarde: REGISTER, register: testregeling_register, grondslag: testregeling_register#2}
           - name: besluitdatum
             type: date
             nullable: true
             required: true
+            origin: {waarde: OORDEEL, grondslag: testregeling_afnemer#3 lid 1}
           - name: feiten_vergaard
             type: boolean
             required: false
+            origin: {waarde: OORDEEL, grondslag: testregeling_afnemer#3 lid 3}
           - name: datum_bekendmaking
             type: date
             nullable: true
             required: true
+            origin: {waarde: DOSSIER, grondslag: testregeling_afnemer#3 lid 2}
           - name: bekendgemaakt
             type: boolean
             required: false
+            origin: {waarde: DOSSIER, grondslag: testregeling_afnemer#3 lid 2}
           - name: datum_uitnodiging_aanvulling
             type: date
             nullable: true
             required: true
+            origin: {waarde: DOSSIER, grondslag: testregeling_afnemer#3 lid 1}
           - name: opgeschorte_dagen
             type: number
             required: true
+            origin: {waarde: DOSSIER, grondslag: testregeling_afnemer#3 lid 1}
           - name: jaar
             type: number
             required: true
+            origin: {waarde: REGISTER, register: testregeling_register, grondslag: testregeling_register#3}
           - name: gebiedstabel
             type: array
             nullable: true
-            required: true
+            required: false
+            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_afnemer#3 lid 1}
         input:
           - name: toelaatbaar
             type: boolean

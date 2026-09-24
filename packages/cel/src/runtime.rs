@@ -76,7 +76,7 @@ impl Runtime {
             }
         }
         let mut ids = BTreeSet::new();
-        for p in &processen {
+        for p in &mut processen {
             if !ids.insert(p.id().to_string()) {
                 fouten.push(format!(
                     "proces '{}': de id staat er meer dan een keer ({})",
@@ -84,8 +84,15 @@ impl Runtime {
                     p.map.display()
                 ));
             }
-            fouten.extend(met_proces(p.id(), synthese::controleer(p)));
-            fouten.extend(met_proces(p.id(), besluit::controleer(p)));
+            let mut eigen = synthese::controleer(p);
+            eigen.extend(besluit::controleer(p));
+            // Wie elke parameter levert, is pas na te gaan als synthese en
+            // besluit kloppen.
+            let herkomst = p.controleer_herkomst(&per_id);
+            if eigen.is_empty() {
+                eigen = herkomst;
+            }
+            fouten.extend(met_proces(p.id(), eigen));
         }
         if !fouten.is_empty() {
             return Err(fouten);
@@ -162,6 +169,7 @@ impl Runtime {
     pub async fn waarschuwingen(&self) -> Vec<String> {
         let mut uit = Vec::new();
         for s in &self.processen {
+            uit.extend(met_proces(s.proces.id(), s.proces.waarschuwingen.clone()));
             for b in s.bronnen.iter() {
                 // Een intern transport naar een cel die hier niet draait.
                 if b.definitie.url.is_none()

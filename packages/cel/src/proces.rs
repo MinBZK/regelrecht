@@ -19,6 +19,7 @@ use crate::cel::Cel;
 use crate::config::{Portaal, ProcesDefinitie, RijenDefinitie, VoorbeeldenDefinitie};
 use crate::controle;
 use crate::formulier::{self, Formulier};
+use crate::origin;
 use crate::regelingen;
 use crate::stroom::{Binding, Event, Stroom};
 use crate::voorbeelden::{self, Voorbeelden};
@@ -36,6 +37,9 @@ pub struct Proces {
     pub formulier: Option<Formulier>,
     /// Standaardgegevens per handeling (leeg zonder `voorbeelden`).
     pub voorbeelden: Voorbeelden,
+    /// Wat de controle op de herkomst van de parameters zag, maar geen reden
+    /// is om niet te starten (zie [`crate::origin`]).
+    pub waarschuwingen: Vec<String>,
 }
 
 impl Proces {
@@ -105,11 +109,20 @@ impl Proces {
             service,
             formulier,
             voorbeelden,
+            waarschuwingen: Vec::new(),
         })
     }
 
     pub fn id(&self) -> &str {
         &self.definitie.id
+    }
+
+    /// De controle op de herkomst van de parameters (zie [`crate::origin`]).
+    /// De waarschuwingen bewaart het proces; de fouten komen terug.
+    pub fn controleer_herkomst(&mut self, cellen: &BTreeMap<String, Arc<Cel>>) -> Vec<String> {
+        let c = origin::controleer(&self.definitie, &self.cel, cellen, &self.service);
+        self.waarschuwingen = c.waarschuwingen;
+        c.fouten
     }
 
     /// Het portaalblok, als het proces een portaal heeft.

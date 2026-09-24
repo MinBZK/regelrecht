@@ -666,7 +666,7 @@ const STAGE_BESLUIT: &str = "BESLUIT";
 /// cijfer is wordt een liggend streepje. Zo is een gezag dat de regeling
 /// voluit noemt ("De Raad van Voorbeeld") te vergelijken met de id van een
 /// cel (`de_raad_van_voorbeeld`).
-fn genormaliseerd(naam: &str) -> String {
+pub(crate) fn genormaliseerd(naam: &str) -> String {
     let mut uit = String::new();
     for c in naam.to_lowercase().chars() {
         if c.is_alphanumeric() {
@@ -713,7 +713,7 @@ pub fn beschikkingen_van(
 
 /// Het bevoegd gezag volgens de wet: van het artikel zelf, anders van de
 /// regeling. Een verwijzing (`#bevoegd_gezag`) telt niet als een naam.
-fn gezag_van(
+pub(crate) fn gezag_van(
     service: &regelrecht_engine::LawExecutionService,
     regeling: &str,
     artikel: &str,

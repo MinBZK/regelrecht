@@ -4045,6 +4045,7 @@ dependencies = [
  "http-body-util",
  "jsonschema",
  "regelrecht-engine",
+ "regelrecht-law-model",
  "regelrecht-shared",
  "reqwest 0.13.2",
  "serde",

@@ -34,30 +34,39 @@ articles:
           - name: aanvraagjaar
             type: number
             required: true
+            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_aanvraag#1 lid 1}
           - name: aanvraagdatum
             type: date
             required: true
+            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_aanvraag#1 lid 1}
           - name: bevat_naam
             type: boolean
             required: true
+            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_aanvraag#1 lid 2}
           - name: bevat_aanduiding
             type: boolean
             required: true
+            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_aanvraag#1 lid 2}
           - name: bevat_naam_orgaan
             type: boolean
             required: true
+            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_aanvraag#1 lid 2}
           - name: bevat_aantal_zetels
             type: boolean
             required: true
+            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_aanvraag#1 lid 2}
           - name: is_samengevoegd
             type: boolean
             required: true
+            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_aanvraag#1 lid 3}
           - name: bevat_aantal_aanduidingen
             type: boolean
             required: false
+            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_aanvraag#1 lid 3}
           - name: registratie_categorie_a
             type: boolean
             required: true
+            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_aanvraag#1}
         output:
           - name: aanvraag_tijdig
             type: boolean
