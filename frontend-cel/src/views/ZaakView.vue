@@ -13,6 +13,9 @@ import TraceKnop from '@regelrecht/frontend-shared/components/TraceKnop.vue';
 const props = defineProps({ zaakkenmerk: { type: String, required: true } });
 const emit = defineEmits(['terug']);
 const api = inject('api');
+// Het besluitvoorbeeld van de cel (`formulier`), of null.
+const voorbeelden = inject('voorbeelden');
+const voorbeeld = computed(() => voorbeelden.value.besluit);
 
 const zaak = ref(null);
 const oordelen = ref({});
@@ -20,7 +23,7 @@ const proef = ref(null);
 const besluit = ref(null);
 const fout = ref('');
 const bezig = ref(false);
-const beslissen = ref(false);
+const beslissen = ref('');
 
 onMounted(async () => {
   try {
@@ -63,20 +66,32 @@ async function proefbesluit() {
   }
 }
 
+// Een nldd-dropdown werkt zijn getoonde waarde alleen bij na een keuze van de
+// gebruiker of een nieuwe select, niet als de waarde van buiten verandert.
+// Na het invullen met het voorbeeld bouwt de sleutel het formulier opnieuw op.
+const versie = ref(0);
+
+// Vul de oordelen van het formulier met het voorbeeld.
+function voorbeeldInvullen() {
+  oordelen.value = Object.fromEntries(Object.keys(oordelen.value).map((naam) => [naam, voorbeeld.value[naam] ?? null]));
+  versie.value++;
+}
+
 // Het besluit nemen: de engine rekent opnieuw, en de cel legt de uitkomst
 // vast als decretogram. Weigert zij, dan blijft de kroniek zoals hij was.
-async function besluitNemen() {
+// Met het voorbeeld: de oordelen uit het voorbeeld, niet uit het formulier.
+async function besluitNemen(metVoorbeeld = false) {
   fout.value = '';
-  beslissen.value = true;
+  beslissen.value = metVoorbeeld ? 'voorbeeld' : 'formulier';
   try {
-    const uitslag = await api.besluit(props.zaakkenmerk, ingevuld());
+    const uitslag = await api.besluit(props.zaakkenmerk, metVoorbeeld ? voorbeeld.value : ingevuld());
     besluit.value = uitslag;
     proef.value = uitslag.proefbesluit;
     zaak.value = await api.zaak(props.zaakkenmerk);
   } catch (e) {
     fout.value = e.message;
   } finally {
-    beslissen.value = false;
+    beslissen.value = '';
   }
 }
 
@@ -100,7 +115,19 @@ const nietGeleverd = computed(() => proef.value?.niet_geleverd ?? []);
   <template v-if="zaak">
     <nldd-title size="3"><h2>Besluitformulier</h2></nldd-title>
     <nldd-spacer size="8"></nldd-spacer>
-    <nldd-form novalidate @submit.prevent="proefbesluit">
+    <template v-if="voorbeeld && besluit === null">
+      <nldd-button-group orientation="horizontal">
+        <nldd-button variant="secondary" text="Voorbeeld invullen" @click="voorbeeldInvullen"></nldd-button>
+        <nldd-button
+          variant="secondary"
+          text="Direct besluiten met voorbeeld"
+          :loading="beslissen === 'voorbeeld' || undefined"
+          @click="besluitNemen(true)"
+        ></nldd-button>
+      </nldd-button-group>
+      <nldd-spacer size="16"></nldd-spacer>
+    </template>
+    <nldd-form :key="versie" novalidate @submit.prevent="proefbesluit">
       <template v-for="g in groepen" :key="g.titel">
         <nldd-form-section v-if="g.titel" :text="g.titel"></nldd-form-section>
         <nldd-form-field v-for="v in g.velden" :key="v.naam" :label="v.label" :supporting-label="v.naam">
@@ -113,9 +140,9 @@ const nietGeleverd = computed(() => proef.value?.niet_geleverd ?? []);
           variant="secondary"
           type="button"
           text="Besluit nemen"
-          :loading="beslissen || undefined"
+          :loading="beslissen === 'formulier' || undefined"
           :disabled="besluit !== null || undefined"
-          @click="besluitNemen"
+          @click="besluitNemen()"
         ></nldd-button>
       </nldd-form-actions>
     </nldd-form>

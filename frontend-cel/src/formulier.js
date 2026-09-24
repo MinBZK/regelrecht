@@ -19,16 +19,27 @@ function regel(r) {
   return uit;
 }
 
+// Zet een waarde onder een naam met punten, genest.
+export function zetPad(doel, naam, waarde) {
+  const delen = naam.split('.');
+  for (const deel of delen.slice(0, -1)) doel = doel[deel] ??= {};
+  doel[delen.at(-1)] = waarde;
+}
+
+// De waarde onder een naam met punten, of null.
+export function leesPad(bron, naam) {
+  let w = bron;
+  for (const deel of naam.split('.')) w = w?.[deel];
+  return w ?? null;
+}
+
 export function external(waarden) {
   const uit = {};
   for (const [naam, waarde] of Object.entries(waarden)) {
     let w = waarde;
     if (Array.isArray(w)) w = w.map(regel).filter((r) => Object.keys(r).length > 0);
     if (leeg(w)) continue;
-    const delen = naam.split('.');
-    let doel = uit;
-    for (const deel of delen.slice(0, -1)) doel = doel[deel] ??= {};
-    doel[delen.at(-1)] = w;
+    zetPad(uit, naam, w);
   }
   return uit;
 }

@@ -32,6 +32,8 @@ export function celApi(id) {
     toets: (external) => vraag('POST', `${p}/aanvraag/toets`, { external }),
     indienen: (external) => vraag('POST', `${p}/aanvraag`, { external }),
     mogelijkheden: () => vraag('GET', `${p}/mogelijkheden`),
+    // Standaardgegevens per handeling; ook zonder login.
+    voorbeelden: () => vraag('GET', `${p}/voorbeelden`),
     kroniek: () => vraag('GET', `${p}/kroniek`),
     medewerkerInloggen: (naam) => vraag('POST', `${p}/medewerker/login`, { naam }),
     medewerkerSessie: () => vraag('GET', `${p}/medewerker/sessie`),

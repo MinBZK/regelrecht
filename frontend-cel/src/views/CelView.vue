@@ -19,6 +19,9 @@ const props = defineProps({ cel: { type: Object, required: true } });
 
 const api = celApi(props.cel.id);
 provide('api', api);
+// De voorbeelden van de cel (inloggen, aanvraag, besluit); zonder: leeg.
+const voorbeelden = ref({ inloggen: [], aanvraag: null, besluit: null });
+provide('voorbeelden', voorbeelden);
 
 const rollen = computed(() => ['aanvrager', 'behandelaar'].filter((r) => props.cel.rollen?.[r]));
 const rol = ref(rollen.value[0] ?? null);
@@ -42,6 +45,10 @@ function beginscherm(r) {
 
 onMounted(async () => {
   if (rol.value === null) return;
+  api
+    .voorbeelden()
+    .then((v) => (voorbeelden.value = v))
+    .catch(() => {});
   try {
     if (props.cel.rollen.behandelaar) {
       const m = await api.medewerkerSessie().catch(() => null);

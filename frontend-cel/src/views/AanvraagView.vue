@@ -3,13 +3,16 @@
 // komen uit het formulierbestand dat de cel meelevert; zonder dat bestand is
 // het label de veldnaam en elk veld tekst.
 import { computed, inject, onMounted, ref } from 'vue';
-import { external } from '../formulier.js';
+import { external, leesPad, zetPad } from '../formulier.js';
 import { herkomstRijen } from '../tekst.js';
 import Invoer from '../components/Invoer.vue';
 import TabelInvoer from '../components/TabelInvoer.vue';
 import TraceKnop from '@regelrecht/frontend-shared/components/TraceKnop.vue';
 
 const api = inject('api');
+// Het aanvraagvoorbeeld van de cel (`external`), of null.
+const voorbeelden = inject('voorbeelden');
+const voorbeeld = computed(() => voorbeelden.value.aanvraag);
 
 // Waarden die al vaststaan, bijvoorbeeld het subsidiejaar van de gekozen
 // aanvraagmogelijkheid.
@@ -63,11 +66,36 @@ async function controleer() {
   }
 }
 
-async function indienen() {
+// Een nldd-dropdown werkt zijn getoonde waarde alleen bij na een keuze van de
+// gebruiker of een nieuwe select, niet als de waarde van buiten verandert.
+// Na het invullen met het voorbeeld bouwt de sleutel het formulier opnieuw op.
+const versie = ref(0);
+
+// Vul het formulier met het voorbeeld; wat vooraf vaststaat (het gekozen
+// subsidiejaar) wint.
+function voorbeeldInvullen() {
+  const uit = {};
+  for (const v of stroom.value.velden) {
+    const w = props.vooraf[v.naam] ?? leesPad(voorbeeld.value, v.naam);
+    uit[v.naam] = w ?? (v.type === 'tabel' ? [{}] : null);
+  }
+  waarden.value = uit;
+  toets.value = null;
+  versie.value++;
+}
+
+// Het voorbeeld zoals het is, met wat vooraf vaststaat erover.
+function voorbeeldExternal() {
+  const uit = JSON.parse(JSON.stringify(voorbeeld.value));
+  for (const [naam, w] of Object.entries(props.vooraf)) zetPad(uit, naam, w);
+  return uit;
+}
+
+async function indienen(metVoorbeeld = false) {
   fout.value = '';
-  bezig.value = 'indienen';
+  bezig.value = metVoorbeeld ? 'voorbeeld' : 'indienen';
   try {
-    const r = await api.indienen(external(waarden.value));
+    const r = await api.indienen(metVoorbeeld ? voorbeeldExternal() : external(waarden.value));
     emit('ingediend', r.gram);
   } catch (e) {
     fout.value = e.message;
@@ -108,8 +136,20 @@ const uitslagToelichting = computed(() => {
     <span slot="subtitle" v-if="stroom">{{ stroom.event }} in stroom {{ stroom.stroom?.$id }}</span>
   </nldd-title>
   <nldd-spacer size="16"></nldd-spacer>
+  <template v-if="stroom && voorbeeld">
+    <nldd-button-group orientation="horizontal">
+      <nldd-button variant="secondary" text="Voorbeeld invullen" @click="voorbeeldInvullen"></nldd-button>
+      <nldd-button
+        variant="secondary"
+        text="Direct indienen met voorbeeld"
+        :loading="bezig === 'voorbeeld' || undefined"
+        @click="indienen(true)"
+      ></nldd-button>
+    </nldd-button-group>
+    <nldd-spacer size="16"></nldd-spacer>
+  </template>
   <template v-if="stroom">
-    <nldd-form novalidate @submit.prevent="indienen">
+    <nldd-form :key="versie" novalidate @submit.prevent="indienen()">
       <template v-for="g in groepen" :key="g.titel">
         <nldd-form-section v-if="g.titel" :text="g.titel"></nldd-form-section>
         <template v-for="v in g.velden" :key="v.naam">
