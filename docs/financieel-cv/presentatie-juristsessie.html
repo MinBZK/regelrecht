@@ -17,6 +17,7 @@
   --wg:  #aed4c4;
   --reg: #c9b8dd;
   --gap: #e0aaaa;
+  --bd:  #d9c98f;
 
   --ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -85,6 +86,7 @@ body { font-family: var(--ui); background: var(--ground); color: var(--ink); ove
 .swatch { width: 0.7em; height: 0.7em; border: 1px solid currentColor; }
 .sw-uwv { color: var(--uwv); } .sw-gem { color: var(--gem); }
 .sw-wg { color: var(--wg); } .sw-reg { color: var(--reg); } .sw-gap { color: var(--gap); }
+.sw-bd { color: var(--bd); }
 
 /* Stelselschema */
 .schema-slide { justify-content: flex-start; padding-top: 3.5vw; }
@@ -109,6 +111,11 @@ body { font-family: var(--ui); background: var(--ground); color: var(--ink); ove
 .reg-grond { font-family: var(--mono); font-size: clamp(8px, 0.9vw, 12px); color: var(--ink-faint); margin: 0.15em 0 0.3em; }
 .reg-rekenvorm { font-size: clamp(9px, 1.05vw, 14px); font-weight: 300; line-height: 1.45; color: var(--ink-dim); }
 .vorm { display: inline-block; font-weight: 700; color: var(--ink); background: rgba(255,255,255,0.12); padding: 0.1em 0.4em; margin-right: 0.35em; font-size: 0.94em; }
+.instantie { display: flex; flex-wrap: wrap; gap: 0.2em 0.35em; margin: 0.2em 0 0.3em; }
+.org { font-size: clamp(8px, 0.92vw, 12px); font-weight: 700; letter-spacing: 0.02em; padding: 0.12em 0.4em; border: 1px solid currentColor; white-space: nowrap; }
+.org.gem { color: var(--gem); } .org.uwv { color: var(--uwv); }
+.org.wg { color: var(--wg); } .org.bd { color: var(--bd); } .org.raad { color: var(--reg); }
+.org em { font-style: normal; font-weight: 300; color: var(--ink-faint); }
 
 @media (max-width: 640px) {
   .ingangen, .uitkomsten { grid-template-columns: 1fr; gap: 8px; }
@@ -384,18 +391,34 @@ body { font-family: var(--ui); background: var(--ground); color: var(--ink); ove
   </div>
 
   <div class="slide schema-slide">
-    <div class="h tight">Hoe je bij een regeling terechtkomt</div>
-    <div class="p dim" style="margin-top:0;margin-bottom:0.7em">Het doelgroepregister is een gemeenschappelijke doorgang, geen gemeenschappelijk recht. Twee regelingen hangen aan de lijst; de rest hangt aan de wet waarlangs iemand er kwam.</div>
+    <div class="h tight">Hoe je bij een regeling terechtkomt, en wie erover gaat</div>
+    <div class="p dim" style="margin-top:0;margin-bottom:0.6em">Het doelgroepregister is een gemeenschappelijke doorgang, geen gemeenschappelijk recht. Twee regelingen hangen aan de lijst; de rest hangt aan de wet waarlangs iemand er kwam. Achter elke regeling staat een ander bestuursorgaan.</div>
 
     <div class="schema">
 
       <div class="band">
-        <div class="band-label">1 — Waarlangs iemand binnenkomt</div>
+        <div class="band-label">1 — Waarlangs iemand binnenkomt, en wie het vaststelt</div>
         <div class="ingangen">
-          <div class="ing gem"><b>Participatiewet</b><small>college stelt loonwaarde vast, of UWV stelt vast dat het minimumloon niet haalbaar is — Wfsv 38b lid 1 a en e</small></div>
-          <div class="ing uwv"><b>Wajong</b><small>recht op arbeidsondersteuning of uitkering — Wfsv 38b lid 1 c</small></div>
-          <div class="ing uwv"><b>Wsw</b><small>indicatie, of een nog geldende beschikking van vóór 2015 — Wfsv 38b lid 1 b</small></div>
-          <div class="ing reg"><b>Overige gronden</b><small>AMvB-indicatie (d), overgangsrecht (f), IVA met experiment (g), UWV-oordeel (lid 2)</small></div>
+          <div class="ing gem">
+            <b>Participatiewet</b>
+            <div class="instantie"><span class="org gem">College van B en W</span><span class="org uwv">UWV <em>toetst</em></span></div>
+            <small>Het college leidt toe en stelt de loonwaarde vast, of het UWV stelt vast dat het minimumloon niet haalbaar is — Wfsv 38b lid 1 a en e</small>
+          </div>
+          <div class="ing uwv">
+            <b>Wajong</b>
+            <div class="instantie"><span class="org uwv">UWV</span></div>
+            <small>Recht op arbeidsondersteuning of uitkering — Wfsv 38b lid 1 c</small>
+          </div>
+          <div class="ing uwv">
+            <b>Wsw</b>
+            <div class="instantie"><span class="org uwv">UWV <em>indicatie</em></span><span class="org gem">Gemeente <em>uitvoering</em></span></div>
+            <small>Indicatie, of een nog geldende beschikking van vóór 2015 — Wfsv 38b lid 1 b</small>
+          </div>
+          <div class="ing reg">
+            <b>Overige gronden</b>
+            <div class="instantie"><span class="org uwv">UWV</span></div>
+            <small>AMvB-indicatie (d), overgangsrecht (f), IVA met experiment (g), UWV-oordeel (lid 2)</small>
+          </div>
         </div>
       </div>
 
@@ -404,27 +427,29 @@ body { font-family: var(--ui); background: var(--ground); color: var(--ink); ove
       <div class="band">
         <div class="band-label">2 — De lijst</div>
         <div class="register">
-          <b>Doelgroepregister banenafspraak</b>
-          <small>UWV houdt de registratie bij — Wfsv 38b (wie is arbeidsbeperkte) en 38d (de registratie zelf)</small>
+          <b>Doelgroepregister banenafspraak &mdash; het UWV houdt de registratie</b>
+          <small>Wfsv 38b bepaalt wie arbeidsbeperkte is, 38d regelt de registratie zelf. Het college levert de gegevens over zijn eigen vaststellingen aan.</small>
         </div>
       </div>
 
       <div class="pijl"><span>&darr;</span></div>
 
       <div class="band">
-        <div class="band-label">3 — Wat eruit volgt</div>
+        <div class="band-label">3 — Wat eruit volgt, en wie beslist en betaalt</div>
         <div class="uitkomsten">
 
           <div class="kolom lijst">
             <div class="kolom-kop">Aan de lijst — voor iedereen gelijk</div>
             <div class="reg-kaart">
               <div class="reg-naam">Loonkostenvoordeel banenafspraak</div>
-              <div class="reg-grond">Wtl artikel 2.10 en 2.13</div>
+              <div class="reg-grond">Wtl artikel 2.10 en 2.13, berekening 4.1</div>
+              <div class="instantie"><span class="org wg">Werkgever <em>verzoekt in de loonaangifte</em></span><span class="org uwv">UWV <em>beoordeelt en berekent</em></span><span class="org bd">Belastingdienst <em>keert uit</em></span></div>
               <div class="reg-rekenvorm"><span class="vorm">Uurtarief met jaardak</span> € 1,01 per verloond uur, ten hoogste € 2.000 per jaar. Onafhankelijk van loonwaarde.</div>
             </div>
             <div class="reg-kaart">
               <div class="reg-naam">No-riskpolis</div>
               <div class="reg-grond">Ziektewet artikel 29b</div>
+              <div class="instantie"><span class="org uwv">UWV <em>betaalt het ziekengeld</em></span></div>
               <div class="reg-rekenvorm"><span class="vorm">Risico-overname</span> Geen bedrag vooraf. Wordt de werknemer ziek, dan betaalt het UWV 70% van het dagloon in plaats van de werkgever (lid 5).</div>
             </div>
           </div>
@@ -433,31 +458,42 @@ body { font-family: var(--ui); background: var(--ground); color: var(--ink); ove
             <div class="kolom-kop">Aan de wet van binnenkomst — verschilt per route</div>
             <div class="reg-kaart gem-rand">
               <div class="reg-naam">Loonkostensubsidie <span class="via">via de Participatiewet</span></div>
-              <div class="reg-grond">Participatiewet artikel 10d</div>
+              <div class="reg-grond">Participatiewet artikel 10c en 10d</div>
+              <div class="instantie"><span class="org gem">College van B en W <em>stelt vast, verleent en betaalt</em></span></div>
               <div class="reg-rekenvorm"><span class="vorm">Verschil</span> Minimumloon plus vakantiebijslag en werkgeverslasten, min de loonwaarde; ten hoogste 70% van die grondslag (lid 4). Zonder loonwaardevaststelling: 50% plat over de eerste zes maanden (lid 5).</div>
             </div>
             <div class="reg-kaart uwv-rand">
               <div class="reg-naam">Loondispensatie <span class="via">via de Wajong</span></div>
               <div class="reg-grond">Wajong artikel 2:20</div>
+              <div class="instantie"><span class="org uwv">UWV <em>verlaagt de loonaanspraak</em></span></div>
               <div class="reg-rekenvorm"><span class="vorm">Vrijstelling</span> Het UWV verlaagt de loonaanspraak naar evenredigheid. Er stroomt geen geld naar de werkgever; die hoeft minder te betalen.</div>
             </div>
             <div class="reg-kaart">
               <div class="reg-naam">Jobcoaching en werkplekaanpassing <span class="via">drie deuren</span></div>
-              <div class="reg-grond">Participatiewet 10 (college) &middot; Wajong 2:22 (UWV) &middot; Wet WIA 35 (UWV)</div>
+              <div class="reg-grond">Participatiewet 10 &middot; Wajong 2:22 &middot; Wet WIA 35</div>
+              <div class="instantie"><span class="org gem">College <em>Pwet 10</em></span><span class="org uwv">UWV <em>Wajong 2:22 en WIA 35</em></span></div>
               <div class="reg-rekenvorm"><span class="vorm">Voorziening zonder bedrag</span> De wet noemt geen bedrag en geen tarief; het bestuursorgaan bepaalt de omvang per geval. Wet WIA 35 lid 4 sluit uit wie het langs de Participatiewet of de Wajong krijgt.</div>
             </div>
             <div class="reg-kaart gem-rand">
-              <div class="reg-naam">Begeleiding op de werkplek <span class="via">via de Participatiewet</span></div>
-              <div class="reg-grond">Participatiewet artikel 10da</div>
-              <div class="reg-rekenvorm"><span class="vorm">Aanspraak zonder bedrag</span> De wet kent de aanspraak toe en laat de invulling aan de gemeentelijke verordening.</div>
+              <div class="reg-naam">Beschut werk en begeleiding op de werkplek <span class="via">via de Participatiewet</span></div>
+              <div class="reg-grond">Participatiewet artikel 10b en 10da</div>
+              <div class="instantie"><span class="org gem">College <em>biedt aan</em></span><span class="org uwv">UWV <em>adviseert, 10b lid 2</em></span><span class="org raad">Gemeenteraad <em>verordening</em></span></div>
+              <div class="reg-rekenvorm"><span class="vorm">Aanspraak zonder bedrag</span> Het college moet de voorziening beschut werk aanbieden zolang het aantal van lid 4 of 5 niet is gerealiseerd. De invulling staat in de gemeentelijke verordening.</div>
             </div>
           </div>
 
         </div>
       </div>
     </div>
-  </div>
 
+    <div class="legend" style="margin-top:0.5em">
+      <span><i class="swatch sw-gem"></i> College van burgemeester en wethouders</span>
+      <span><i class="swatch sw-uwv"></i> UWV</span>
+      <span><i class="swatch sw-bd"></i> Belastingdienst</span>
+      <span><i class="swatch sw-wg"></i> Werkgever</span>
+      <span><i class="swatch sw-reg"></i> Gemeenteraad, bij verordening</span>
+    </div>
+  </div>
 </div>
 
 <div id="nav">
