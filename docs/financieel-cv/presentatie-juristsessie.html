@@ -181,8 +181,32 @@ body { font-family: var(--ui); background: var(--ground); color: var(--ink); ove
   </div>
 
   <div class="slide">
-    <div class="h tight">Van untranslatables naar markeringen en open termen</div>
-    <div class="p dim" style="margin-top:0;margin-bottom:0.8em">In eerdere rondes stonden 64 <b>untranslatables</b> in de zeven wetten, alle met <code>accepted: true</code>. Dat veld bestaat sinds 22 september niet meer.</div>
+    <div class="h tight">Waarom het veld untranslatables is afgeschaft</div>
+    <div class="p dim" style="margin-top:0;margin-bottom:0.8em">In eerdere rondes stonden 64 <b>untranslatables</b> in de zeven wetten, alle met <code>accepted: true</code>. Schema v0.7.0 kent dat veld sinds 22 september niet meer. Vier redenen, vastgelegd in RFC-031.</div>
+    <div class="grid">
+      <div class="cell">
+        <div class="cell-label">Reden 1</div>
+        <div class="cell-body"><b>Vier velden voor hetzelfde moment.</b> <code>untranslatables</code>, <code>norm_gaps</code>, <code>enables</code> en <code>open_terms</code> beschreven alle vier het moment waarop een artikel niet geheel in logica opgaat. Welk veld werd gebruikt, was een keuze per artikel.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Reden 2</div>
+        <div class="cell-body"><b>Eén veld voor twee soorten zaken.</b> Een tekortkoming van het formaat en een norm die de wet elders belegt stonden door elkaar. De eerste is werk voor de desk, de tweede een vraag aan wetgever of uitvoerder. Zolang beide hetzelfde heetten, had geen van beide een adressaat.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Reden 3</div>
+        <div class="cell-body"><b>Wat wegviel werd niet benoemd.</b> Het veld <code>blocks</code>, dat moest aangeven welke uitkomst verloren gaat, was leeg in 39 van de 39 gemeten gevallen. Het heeft die vraag geen enkele keer beantwoord.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Reden 4</div>
+        <div class="cell-body"><b><code>accepted: true</code> was een zelfverleende vrijstelling.</b> Alle 64 droegen die markering. De vaststelling dat iets niet te modelleren is, werd daarmee door de opsteller zelf afgedaan en kwam nergens terug.</div>
+      </div>
+    </div>
+    <div class="legend" style="margin-top:0.8em"><span>Gevolg: elk item krijgt een adressaat. Dat maakt de 23 vragen van vandaag stelbaar.</span></div>
+  </div>
+
+  <div class="slide">
+    <div class="h tight">Waar de 64 untranslatables zijn gebleven</div>
+    <div class="p dim" style="margin-top:0;margin-bottom:0.8em">De 64 zijn eerst vier-weg geclassificeerd en daarna omgezet naar de twee velden die v0.7.0 wel kent.</div>
     <div class="matrix">
       <div class="row">
         <div class="grond">21<small>markeringen</small></div>
@@ -205,7 +229,7 @@ body { font-family: var(--ui); background: var(--ground); color: var(--ink); ove
         <div class="rechten"><span class="recht geen">geen werking</span></div>
       </div>
     </div>
-    <div class="legend" style="margin-top:0.8em"><span>Grondslag: RFC-031. Indeling volgens de vier-weg-classificatie van de desk-methode.</span></div>
+    <div class="legend" style="margin-top:0.8em"><span>Grondslag: RFC-031. Indeling volgens de vier-weg-classificatie van de desk-methode. Vastgelegd in schema-migratie.md.</span></div>
   </div>
 
 </div>
