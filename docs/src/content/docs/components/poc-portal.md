@@ -63,7 +63,7 @@ A static PoC can have `assistent: true`. The image then also carries `packages/p
 
 ### Image and deployment
 
-`packages/poc-portal/Dockerfile` builds the engine to WASM, the portal's design-system bundle from `frontend-poc-portal/`, each static PoC with its own base path, and the Rust binary. The portal and napp deploy as two ZAD components, `poc` and `napp`; see [Deployment](/operations/deployment). Only `poc` is published on the web.
+`packages/poc-portal/Dockerfile` builds the engine to WASM, the portal's design-system bundle from `frontend-poc-portal/`, each static PoC with its own base path, and the Rust binary. The portal and napp deploy as two ZAD components, `poc` and `napp`; see [Deployment](/operations/deployment). Only `poc` is published on the web. Because the image builds the engine, `script/deploy-filters.mjs` ties the `poc` component to two crates, the portal binary and the engine, so an engine change rebuilds the image even though the portal itself does not depend on the engine.
 
 ## Configuration
 
