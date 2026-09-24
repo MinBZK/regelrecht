@@ -132,7 +132,7 @@ An element whose filter is definitively `false` is simply skipped, and an empty 
 
 A collection longer than 1000 elements is an error, and nesting is bounded by the operation-depth limit of 100. Those two multiply: a FOREACH inside a FOREACH, each over a thousand elements, is a million evaluations with both limits satisfied. Collections come from finite data sources; there are no generators.
 
-The bound is what keeps termination intact, and termination is the reason the format held off. The position paper [Rules as Executed](/research/rules-as-executed#sec:opset) predates this operation: it says the format has no aggregation over collections and announces bounded aggregation as the next addition. `FOREACH` is that addition, in schema v0.5.7. The paper is left as written; the [note on its page](/research/rules-as-executed#since-publication) records the change.
+The bound is what keeps termination intact. The position paper [Rules as Executed](/research/rules-as-executed#sec:opset) predates this operation: it says the format has no aggregation over collections, because the operation set grows only when encoding real law runs into a limit, and it announces that bounded aggregation, which preserves termination, will be added that way. `FOREACH` is that addition, in schema v0.5.7. The paper is left as written; the [note on its page](/research/rules-as-executed#since-publication) records the change.
 
 Under [quantities](/rfcs/rfc-023) the result carries the unit of `body`: summing eurocents yields eurocents, and `MIN` and `MAX` preserve it the same way. `AND` and `OR` produce a boolean, and without `combine` the result is an array, so neither carries a unit.
 

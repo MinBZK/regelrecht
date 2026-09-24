@@ -138,7 +138,7 @@ The values of `decision_type`, saying what kind of decision an output is within 
 | **Execution-first** | - | The validation method in which an interpretation is run against concrete cases, often from the Memorie van Toelichting, and corrected until the outcomes hold, instead of being analyzed in full before anything runs. See [Execution-First Validation](/concepts/methodology) |
 | **Reverse validation** | - | The check after generation that every element of a machine-readable article traces back to the legal text. Logic that cannot be grounded in the text is flagged as possibly invented. See [The Loop](/concepts/methodology#the-loop) |
 | **Enrichment** | Verrijking | The pipeline stage in which a language model drafts `machine_readable` sections for a harvested law. The program doing it is the enricher, and its output is a draft that automated checks and then people review. See [Pipeline](/components/pipeline) |
-| **WASM** | - | WebAssembly. The engine compiled to run in a browser, giving the same results as the native build. See [Engine](/components/engine) |
+| **WASM** | - | WebAssembly. The engine compiled from the same code as the native build, to run in a browser. See [Engine](/components/engine) |
 | **Werkpakket** | Werkpakket | A unit of work on the [roadmap](/roadmap). Every pull request names the werkpakket it contributes to |
 | **Bucket A / Bucket B** | - | The two BDD suites: law validation against the real corpus, and engine conformance against synthetic laws. See [Testing](/guide/testing) |
 

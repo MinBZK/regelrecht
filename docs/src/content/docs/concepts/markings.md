@@ -21,7 +21,7 @@ A construct is marked when the format cannot express it without approximation. E
 
 In each case the law is clear about what it means and the formal language cannot express it yet. The gap belongs to the format, and we expect to close it.
 
-A discretionary assessment ("naar het oordeel van de minister") does not earn a marking. The format can express it: it is an [open term](./inversion-of-control) whose `decided_per_case_by` names the authority that decides it in each case. The position paper still files it under untranslatables ([section 5.4](/research/rules-as-executed#sec:untranslatables)), because it predates [RFC-031](/rfcs/rfc-031).
+A discretionary assessment ("naar het oordeel van de minister") does not earn a marking. The format can express it: it is an [open term](./inversion-of-control) whose `decided_per_case_by` names the authority that decides it in each case. The position paper, which predates [RFC-031](/rfcs/rfc-031), already sets it apart as a gap the format is not meant to compute, and records it as an untranslatable annotation all the same ([section 5.4](/research/rules-as-executed#sec:untranslatables)).
 
 Rounding used to be the standard example here. `ROUND`, `CEIL` and `FLOOR` shipped in schema v0.5.5, which is what closing a gap looks like.
 
