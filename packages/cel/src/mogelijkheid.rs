@@ -7,7 +7,7 @@
 //! er mist iets, een fout van de engine) is niet te bepalen. Of een aanvraag
 //! volledig is, weet je vooraf niet; dat is de toets na het invullen. De
 //! runtime start daarom niet als de aanbod-uitkomst een feit vraagt dat vooraf
-//! niet bekend is (zie [`crate::proces`]). Geen aanbod is geen weigering.
+//! niet bekend is (zie [`crate::origin`]). Geen aanbod is geen weigering.
 //! Niets hiervan wordt vastgelegd.
 
 use std::collections::BTreeMap;
@@ -274,7 +274,7 @@ articles:
 
     /// Een voorwaarde die een feit mist, maakt het aanbod niet te bepalen, ook
     /// als dat feit later uit de aanvraag zou komen. (De runtime start niet
-    /// met zo'n aanbod; zie de controle in `proces`.)
+    /// met zo'n aanbod; zie de controle in `origin`.)
     #[test]
     fn een_ontbrekend_feit_maakt_het_aanbod_niet_te_bepalen() {
         let m = bepaal_met(

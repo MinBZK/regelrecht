@@ -2070,7 +2070,7 @@ fn een_aanbod_op_een_aanvraagfeit_houdt_de_runtime_tegen() {
     let data = tempfile::tempdir().unwrap();
     let fouten = runtime_op(opstelling.path(), data.path()).err().unwrap();
     assert!(
-        fouten.contains(&"proces 'test_instantie_proces': aanbod: voorwaarde leunt op 'aanvraagdatum', dat vooraf niet bekend is".to_string()),
+        fouten.contains(&"proces 'test_instantie_proces': aanbod: voorwaarde leunt op 'aanvraagdatum' (BELANGHEBBENDE, grondslag testregeling_aanvraag#1 lid 1), dat vooraf niet bekend is".to_string()),
         "{fouten:?}"
     );
 }

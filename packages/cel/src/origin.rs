@@ -399,6 +399,20 @@ pub fn controleer(
                     }
                 }
             };
+            if uitvoering == Uitvoering::Aanbod && !vooraf_bekend(g.as_ref()) {
+                let herkomst = g
+                    .as_ref()
+                    .map(Geldend::beschrijving)
+                    .unwrap_or_else(|| "geen origin".into());
+                eenmaal(
+                    "aanbod-regel",
+                    format!(
+                        "aanbod: voorwaarde leunt op '{}' ({herkomst}), dat vooraf niet bekend is",
+                        b.naam
+                    ),
+                    true,
+                );
+            }
             match &g {
                 None => eenmaal(
                     "zonder",
@@ -454,6 +468,17 @@ pub fn controleer(
         c.parameters.insert(uitvoering.naam(), lijst);
     }
     c
+}
+
+/// Of het aanbod op een parameter mag leunen: wat vooraf vaststaat, is wie
+/// inlogt (`KANAAL`), wat een register weet (`REGISTER`) en wat de aanvrager
+/// vraagt (`BELANGHEBBENDE` met grondslag Awb 4:2 lid 1, zoals het tijdvak).
+/// Of een aanvraag volledig is, weet je pas na het invullen.
+fn vooraf_bekend(g: Option<&Geldend>) -> bool {
+    g.is_some_and(|g| {
+        matches!(g.origin.waarde, OriginValue::Kanaal | OriginValue::Register)
+            || g.is_gevraagde_beschikking()
+    })
 }
 
 /// Waarom een parameter geen leverancier heeft die bij zijn herkomst past, of
@@ -773,6 +798,49 @@ articles:
                 "besluit: geen leverancier voor 'betaald_bedrag' van testregeling_betaling#1 (DOSSIER, grondslag testregeling_betaling#1 lid 1)",
             ]
         );
+    }
+
+    /// Een aanbod dat een dossierfeit vraagt, houdt de runtime tegen.
+    #[test]
+    fn een_aanbod_op_een_dossierfeit_is_een_fout() {
+        let c = afnemer(
+            zo,
+            |t| {
+                t.replace(
+                    "    uitkomst: aanvraag_toelaatbaar\n",
+                    "    uitkomst: aanvraag_toelaatbaar\n  aanbod: {regeling: testregeling_afnemer, uitkomst: besluitdeadline}\n",
+                )
+            },
+            &[],
+        );
+        assert!(c.fouten.contains(
+            &"aanbod: voorwaarde leunt op 'opgeschorte_dagen' (DOSSIER, grondslag testregeling_afnemer#3 lid 1), dat vooraf niet bekend is".to_string()
+        ), "{:?}", c.fouten);
+        assert!(c.fouten.contains(
+            &"aanbod: voorwaarde leunt op 'aanvraagdatum' (BELANGHEBBENDE, grondslag testregeling_afnemer#1), dat vooraf niet bekend is".to_string()
+        ), "{:?}", c.fouten);
+        // Registerfeiten mogen.
+        assert!(
+            !c.fouten.iter().any(|f| f.contains("'jaar'")),
+            "{:?}",
+            c.fouten
+        );
+    }
+
+    /// Een aanbod op register- en loginfeiten mag.
+    #[test]
+    fn een_aanbod_op_registerfeiten() {
+        let c = afnemer(
+            zo,
+            |t| {
+                t.replace(
+                    "    uitkomst: aanvraag_toelaatbaar\n",
+                    "    uitkomst: aanvraag_toelaatbaar\n  aanbod: {regeling: testregeling_afnemer, uitkomst: lijst_heeft_zetels}\n",
+                )
+            },
+            &[],
+        );
+        assert!(c.fouten.is_empty(), "{:?}", c.fouten);
     }
 
     /// Uitvoeringsbeleid van de actor geeft `jaar` een andere herkomst.
