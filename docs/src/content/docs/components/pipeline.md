@@ -41,13 +41,40 @@ flowchart LR
 |--------|---------|
 | `job_queue.rs` | Job creation, claiming (`FOR UPDATE SKIP LOCKED`), completion, failure with auto-retry |
 | `law_status.rs` | Per-law status tracking through 11 states |
-| `harvest.rs` | Harvest execution - download XML from BWB, convert to YAML |
-| `enrich.rs` | Enrichment execution - call LLM to add `machine_readable` sections |
-| `worker.rs` | Polling loops for harvest and enrich workers |
+| `harvest.rs` | Harvest execution: download XML from BWB, convert to YAML |
+| `harvest_request.rs` | The one entry point for "request a harvest", shared by the pipeline API and the admin API |
+| `traject_harvest.rs` | Harvest of a law for one traject, delivered as a review task instead of written to the corpus |
+| `enrich.rs` | Enrichment execution: call the LLM to add `machine_readable` sections |
+| `enrich_v2/` | The model-free parts of enrichment: checks, capability plan, reference graph, closing pass |
+| `document_convert.rs` | Uploaded document (docx, PDF and others) to a markdown werkdocument |
+| `law_convert.rs` | Uploaded PDF or Word document to a base-law YAML, followed by a task-flow enrich |
+| `law_migrate.rs` | Lift a law file to schema v0.7.0 |
+| `markings.rs`, `untranslatables.rs` | Persist the markings and untranslatables the enrichment agent reports |
+| `tasks.rs` | Personal review tasks that tie a finished job to the account that requested it |
+| `feature_flags.rs` | Read and write the shared `feature_flags` table |
+| `worker.rs` | Polling loops for the harvest and enrich workers |
+| `health.rs` | The small HTTP health endpoint inside each worker |
+| `api/` | Handlers of the `pipeline-api` service |
 | `models.rs` | Data types: `Job`, `LawEntry`, `JobType`, `JobStatus`, `LawStatusValue`, `Priority` |
 | `config.rs` | Configuration from environment variables |
 | `db.rs` | Connection pool creation and migration runner |
 | `error.rs` | Error types (`PipelineError`) |
+
+## Binaries
+
+| Binary | Source | What it is |
+|--------|--------|------------|
+| `regelrecht-harvest-worker` | `src/bin/harvest_worker.rs` | Claims `harvest` and `traject_harvest` jobs |
+| `regelrecht-enrich-worker` | `src/bin/enrich_worker.rs` | Claims `enrich`, `document_convert` and `law_convert` jobs, which share the LLM CLI environment and the hourly budget |
+| `regelrecht-pipeline-api` | `src/bin/pipeline_api.rs` | Internal HTTP service, see [Pipeline API](#pipeline-api) |
+| `law-check` | `src/bin/law_check.rs` | Runs the deterministic enrichment checks over law files, without database, git or model. Exits 1 on schema errors; `--strict` fails on every finding; `--corpus` adds the cross-law binding check |
+| `law-source` | `src/bin/law_source.rs` | Compares a law file's text with the official BWB toestand. Exits 1 when an article drifts, is missing or is fabricated. `--rewrite` replaces the text with the official one and keeps `machine_readable` per article |
+| `law-migrate` | `src/bin/law_migrate.rs` | Lifts law files to schema v0.7.0 and validates the result. A required field it cannot fill is reported, never guessed; it writes only with `--write` |
+| `enrich-once` | `src/bin/enrich_once.rs` | Runs the real enrichment loop against a directory on disk, without database or git, so a worker change can be tried on one law locally |
+
+Run the four tools from `packages/` with
+`cargo run -p regelrecht-pipeline --bin <name> -- <args>`. The usage of each is
+in the doc comment at the top of its source file.
 
 ## Job Lifecycle
 
@@ -120,96 +147,113 @@ The harvest worker:
 2. Downloads law XML from BWB (wetten.nl)
 3. Converts XML to YAML via the harvester library
 4. Writes YAML to the corpus
-5. Auto-creates enrich jobs for each configured LLM provider
-6. Creates follow-up harvest jobs for referenced laws (respects depth limit of 1000)
+5. Creates enrich jobs for each LLM provider, but only when `ENRICH_AUTO_ENQUEUE` is on (it is off by default) and the law is not `enrich_exhausted`
+6. Creates follow-up harvest jobs for the laws the harvested text references
+
+Two mechanisms pull in further laws, each with its own limit:
+
+- **References in the text.** Step 6 follows the external references the
+  harvester finds in the XML. A follow-up job carries its parent's depth plus
+  one, and the chain stops at `MAX_HARVEST_DEPTH` (1000, in `harvest.rs`). That
+  constant guards against runaway recursion and is not a tuning knob; the chain
+  normally ends because every referenced law is already harvested or queued.
+- **Related legislation from enrichment.** After an enrich job, the related
+  legislation the agent reports (delegated regelingen, cross-law sources, legal
+  bases the harvester misses) is harvested only while the enrich job's depth is
+  below `RELATED_HARVEST_MAX_DEPTH` (default 2). This is the limit that bounds
+  how far one enrichment can grow the corpus.
 
 ## Enrich Worker
 
 The enrich worker:
-1. Polls the queue for pending enrich jobs
+1. Polls the queue for pending enrich jobs, within the hourly budget (`ENRICH_HOURLY_LIMIT`)
 2. Spawns an LLM CLI process to generate `machine_readable` sections
 3. Tracks progress via `.enrichment-progress.json` (polled every 10s)
 4. Computes coverage score (the stored `law_entries.coverage_score` is the cumulative fraction of articles with `machine_readable`; the per-run delta rides in the job result)
-5. Creates per-provider branches (e.g., `enrich/opencode`)
+5. Pushes the result to a per-provider branch (`enrich/` followed by the provider name, `opencode` or `claude`) for review
 
-### Chunked enrichment of large laws
+The hourly budget fails closed. Without `ENRICH_HOURLY_LIMIT`, or with `0`, the
+worker enriches nothing, so a forgotten variable cannot spend a subscription on
+the whole corpus. The cap counts runs for the worker's own `LLM_PROVIDER` per
+clock hour (Europe/Amsterdam), and because it is counted in the `jobs` table it
+survives a restart.
 
-One LLM session cannot enrich a large law (hundreds of articles) within the
-session/RSS limits. With `ENRICH_MAX_ARTICLES_PER_RUN = N` (default 15, `0`
-disables chunking) each enrich run processes at most N articles, in document
-order, from a **worker-owned cursor**:
+### Large laws and agent sessions
 
-- The cursor (`enrich_cursor` + `enrich_cursor_path`) persists in the
-  `.enrichment.yaml` on the `enrich/{provider}` branch. It only applies when
-  recorded for the same YAML path and within bounds; otherwise it resets to 0
-  (covers new law versions and legacy metadata).
-- Each successful chunk commits and pushes its own result, so a failing later
-  chunk never loses earlier chunks.
-- While the law is not finished (`law_complete = false`), its status stays
-  `enriching` and a continuation job is created **in the same database
-  transaction** as the job completion (respecting the unique active-enrich-job
-  index), so there is never a law in `enriching` without an active/pending job.
-- MvT research runs only in the first chunk (cursor 0); reverse validation is
-  limited to the articles of the chunk. A chunk may legitimately add zero
-  `machine_readable` sections when the agent records a `chunk_report` in
-  `.enrichment-result.yaml` that references at least one article of the
-  chunk's window; a chunk without any output (or with an empty/unrelated
-  report) fails retryable (never terminal).
-- Termination is guaranteed in `ceil(articles_total / N)` successful runs,
-  independent of LLM behavior; the last chunk marks the law `enriched`.
-- Task-flow enrichments (`deliver=task`) always run whole-law (chunking off).
+A large law does not fit in one agent session. The worker splits it into
+windows of at most `ENRICH_MAX_ARTICLES_PER_RUN` articles (default 15) and owns
+the cursor itself: it lives in `.enrichment.yaml` on the `enrich/{provider}`
+branch, each chunk pushes its own result, and the next chunk is queued in the
+same transaction that completes the current one. A law of N articles is done in
+at most `ceil(N / 15)` successful runs, whatever the model does. Task-flow
+enrichments (`deliver: task`) always take the whole law.
 
-### One session per window
+Within one window, `ENRICH_SESSION_REUSE` decides how the translation pass and
+the feedback rounds of the gates share an agent session: all of them (`window`,
+the default), only the schema repair (`repair`), or none (`off`). It applies to
+the claude provider and never crosses a window. Token use and cost of every
+call land in the job result (`agent_calls`, `usage`), which is how the modes are
+compared; `enrich-once --session-reuse` prints the same table locally.
 
-A window is one law and one article range: the translation pass plus the
-feedback rounds of the three gates. Every one of those calls used to be a cold
-CLI process that read the law, the context brief, the skills and the schema
-again, up to seven starts per window. `ENRICH_SESSION_REUSE` decides whether
-they share one agent session instead. It applies to the claude provider only;
-the worker picks the session id itself and passes `--session-id` on the first
-call and `--resume` after that.
-
-- `window` (default): every call in the window continues the same session.
-  Each resumed feedback prompt opens with an instruction to read the file from
-  disk before answering. A gate is meant to be a fresh look at what stands
-  there, and an agent that remembers writing it can otherwise defend its own
-  choice instead of reading the finding.
-- `repair`: the translation pass and the schema gate share a session, the
-  checks and marking gates run cold. A schema error is a fact about the file;
-  those two gates ask for judgement.
-- `off`: every call its own cold process, the behaviour before this existed.
-
-The session never crosses a window: a continuation chunk opens its own. An
-agent that kept everything it wrote would carry half a large law into the last
-chunk, which costs more than starting over.
-
-Whether reuse is cheaper has a number behind it. A resumed round pays every
-turn over the context the translation pass ended at, so it wins only if
-knowing the law already shortens the round. Every call is therefore accounted
-(`agent_calls` in the job result: step, whether it was resumed, input/output/
-cache-read tokens and cost), with the window total beside it (`usage`) and the
-mode that produced them (`session_reuse`). `enrich-once --session-reuse` runs
-the same loop locally and prints the table.
+The reasoning behind both, including why a window follows document order rather
+than "the next articles without `machine_readable`", is in the doc comments on
+`plan_chunk` and `SessionReuse` in `enrich.rs`.
 
 ### LLM Providers
 
-The LLM provider is configurable via `LLM_PROVIDER` (default: `opencode`). Provider-specific paths and models are set via environment variables (e.g., `OPENCODE_PATH`, `OPENCODE_MODEL`).
+`LLM_PROVIDER` selects `opencode` (the default) or `claude`. The binary and model
+come from `OPENCODE_PATH` / `OPENCODE_MODEL` or `CLAUDE_PATH` / `CLAUDE_MODEL`,
+with `LLM_PATH` and `LLM_MODEL` as the fallback for either.
 
 The LLM subprocess runs with a stripped environment (allowlisted vars only) for security.
 
 ## Configuration
 
+### Database and workers
+
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `DATABASE_URL` | required | PostgreSQL connection string |
+| `DATABASE_URL` | required | PostgreSQL connection string; `DATABASE_SERVER_FULL` is read as fallback |
 | `DATABASE_MAX_CONNECTIONS` | 5 | Connection pool size |
-| `REGULATION_REPO_PATH` | `./regulation-repo` | Output directory |
+| `REGULATION_REPO_PATH` | `./regulation-repo` | Local checkout the workers write to |
+| `REGULATION_OUTPUT_BASE` | `regulation/nl` | Directory inside that checkout where harvested laws land |
 | `WORKER_POLL_INTERVAL_SECS` | 5 | Queue poll interval |
 | `WORKER_MAX_POLL_INTERVAL_SECS` | 60 | Max backoff interval |
 | `WORKER_JOB_TIMEOUT_SECS` | 1200 (20 min) | Job execution timeout |
 | `WORKER_ORPHAN_TIMEOUT_SECS` | 1800 (30 min) | Orphan detection timeout |
-| `LLM_PROVIDER` | `opencode` | LLM provider selection |
-| `LLM_TIMEOUT_SECS` | 600 (10 min) | LLM execution timeout |
+| `WORKER_MAX_CONSECUTIVE_RESOURCE_FAILURES` | 5 | Consecutive fork or out-of-memory failures after which the worker exits, so the platform restarts it with a clean process table |
+| `EXHAUSTED_THRESHOLD` | 10 | Consecutive failures after which a law becomes `harvest_exhausted` or `enrich_exhausted` |
+| `RELATED_HARVEST_MAX_DEPTH` | 2 | Depth up to which related legislation from enrichment is harvested |
+| `HEALTH_PORT` | 8000 | Port of the worker's health endpoint |
+| `PORT` | 8000 | Listen port of `pipeline-api` |
+
+The corpus checkout is configured by the [corpus library](./corpus)
+(`packages/corpus/src/config.rs`). Without `CORPUS_REPO_URL` the workers run
+without one.
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `CORPUS_REPO_URL` | none | Corpus repository to clone and push to |
+| `CORPUS_REPO_PATH` | `/tmp/corpus-repo` | Where the clone lives |
+| `CORPUS_BRANCH` | derived | Branch to use; a preview deployment derives its own from `HOSTNAME` / `DEPLOYMENT_NAME` |
+| `CORPUS_GIT_TOKEN` | none | Token for the central corpus repository only, never for a traject repository |
+| `CORPUS_GIT_AUTHOR_NAME`, `CORPUS_GIT_AUTHOR_EMAIL` | `regelrecht-harvester`, `noreply@minbzk.nl` | Commit author |
+
+### Enrichment
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `ENRICH_HOURLY_LIMIT` | 0 (paused) | Enrich runs per clock hour for this worker's provider; must be set for the worker to enrich at all |
+| `ENRICH_NIGHT_MULTIPLIER` | 1 | Multiplier on the hourly limit between 00:00 and 08:00 (Europe/Amsterdam) |
+| `ENRICH_AUTO_ENQUEUE` | off | `true` (or `1`, `yes`, `on`) makes a completed harvest queue enrich jobs; otherwise enrichment is requested explicitly through `POST /api/enrich-jobs` on the [Harvester Admin](./admin) API |
+| `LLM_PROVIDER` | `opencode` | `opencode` or `claude` |
+| `LLM_PATH`, `LLM_MODEL` | none | Fallback binary and model for either provider |
+| `OPENCODE_PATH`, `OPENCODE_MODEL` | `opencode`, provider default | Binary and model for opencode |
+| `CLAUDE_PATH`, `CLAUDE_MODEL` | `claude`, provider default | Binary and model for claude |
+| `LLM_EFFORT` | none | Reasoning effort passed to the provider (`claude --effort`) |
+| `LLM_TIMEOUT_SECS` | 600 (10 min) | Ceiling per agent call |
+| `CLAUDE_CODE_OAUTH_TOKEN` | none | Subscription token for the claude provider; several comma-separated tokens are rotated over time |
+| `SKILLS_DIR` | `/opt/skills` | Skills baked into the image, linked into the checkout when the directory exists |
 | `ENRICH_MAX_ARTICLES_PER_RUN` | 15 | Max articles per enrich run (chunked enrichment); `0` disables chunking |
 | `ENRICH_FEEDBACK_ROUNDS` | 1 | Feedback rounds per gate; `2` or `checks=2,marking=3` |
 | `ENRICH_SESSION_REUSE` | `window` | Session sharing within one window: `window`, `repair` or `off` |
@@ -218,6 +262,7 @@ The LLM subprocess runs with a stripped environment (allowlisted vars only) for 
 | `ENRICH_WINDOW_CONCURRENCY` | 1 | Windows run side by side, each in its own copy of the checkout and its own agent session |
 | `ENRICH_CONTEXT_BRIEF` | on | `0` withholds the context brief the worker writes beside the law |
 | `ENRICH_MAX_RSS_MB` | 3500 | Memory ceiling for the agent subprocess |
+| `CODE_COMMIT` | empty | Commit of the running image, recorded in the enrichment metadata |
 
 `LLM_TIMEOUT_SECS` is a ceiling per agent call, and one run makes several: a
 translation pass, a feedback round per gate, the closing pass and the final
@@ -227,11 +272,17 @@ nothing.
 
 ## Database Schema
 
-Two tables with PostgreSQL enums:
+The pipeline crate owns the migrations (`packages/pipeline/migrations/`) for the
+whole platform database, so the editor API's tables (accounts, trajects, notes,
+settings, feature flags) are created here too. The two the pipeline itself runs
+on:
 
 **`jobs`** - Job queue with retry tracking, priority ordering, and JSONB payload/result/progress columns. Partial index `WHERE status = 'pending'` for efficient claiming.
 
 **`law_entries`** - Per-law status tracking with foreign keys to harvest/enrich jobs and a coverage score (0.0–1.0).
+
+Next to those, `tasks` and `job_blobs` carry review tasks and their payloads,
+and `markings` and `untranslatables` hold what enrichment reported.
 
 Migrations run automatically at startup using an advisory lock for coordination.
 

@@ -51,21 +51,35 @@ The one proxied PoC today is napp, in `packages/poc-napp/` with its frontend in 
 
 ### The gate
 
-One shared password per PoC, read from `POC_PW_<SLUG>` (the slug in capitals, hyphens as underscores). The portal will not start when a PoC in the register has no password, since that PoC would otherwise be open to anyone. Passwords are compared as SHA-256 digests in constant time.
+One shared password per PoC, read from `POC_PW_<SLUG>` (the slug in capitals, hyphens as underscores). The portal will not start when a PoC in the register has no password, since that PoC would otherwise be open to anyone.
 
-The cookie holds an expiry and an HMAC-SHA256 over the slug and that expiry. The key is `POC_COOKIE_SECRET`, at least 32 characters, and deliberately not derived from the passwords: rotating one password should not invalidate the cookies of every other PoC. Because the slug is inside the signed message, a cookie for one PoC cannot be renamed into a cookie for another. The cookie grants nothing more than "this browser knew the password"; a PoC's own login, such as napp's, sits behind it unchanged.
-
-The redirect after signing in only accepts a path under the PoC's own prefix, so the form cannot be used as an open redirect. The content security policy is `POC_CSP` from `packages/auth/src/security_headers.rs`.
+After a correct password the portal sets an HMAC-signed cookie that names the slug and an expiry. The signing key is `POC_COOKIE_SECRET`, separate from the passwords so that rotating one password leaves the other PoCs' cookies valid. The cookie only says "this browser knew the password"; a PoC's own login, such as napp's, sits behind it unchanged. The redirect after signing in stays under the PoC's own prefix, and the content security policy is `POC_CSP` from `packages/auth/src/security_headers.rs`. The details are in `gate.rs`.
 
 ### The policy assistant
 
-A static PoC can have `assistent: true`. The image then also carries `packages/poc-assistent/`, a Node server that runs the Claude Code CLI headless with MCP tools specific to one case, and `start.sh` starts one process per case on localhost. The portal forwards `/<slug>/api/...` to it. Without a `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` no assistant starts, `/api` answers `503`, and the app hides its assistant panel.
+A static PoC can have `assistent: true`. The image then also carries `packages/poc-assistent/`, a Node server that runs the Claude Code CLI headless with MCP tools specific to one case, and `start.sh` starts one process per case on localhost, from port 3600 upward, and exports `POC_ASSISTENT_<SLUG>` so the portal knows where to forward `/<slug>/api/...`. Without a `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` no assistant starts, `/api` answers `503`, and the app hides its assistant panel.
+
+The list of cases comes from `POC_ASSISTENT_CASUSSEN` in `start.sh`, not from the register; its default is `terugbetaalregimes nieuwkomersbekostiging`. A new PoC with `assistent: true` therefore also needs that default or the variable changed.
 
 ### Image and deployment
 
 `packages/poc-portal/Dockerfile` builds the engine to WASM, the portal's design-system bundle from `frontend-poc-portal/`, each static PoC with its own base path, and the Rust binary. The portal and napp deploy as two ZAD components, `poc` and `napp`; see [Deployment](/operations/deployment). Only `poc` is published on the web. Because the image builds the engine, `script/deploy-filters.mjs` ties the `poc` component to two crates, the portal binary and the engine, so an engine change rebuilds the image even though the portal itself does not depend on the engine.
 
+## Running locally
+
+```bash
+just poc
+```
+
+This builds the WASM engine, the design-system bundle and the static PoCs into `.poc-static/`, then starts the portal at `http://localhost:8611`. The recipe sets the local cookie key and the password `demo` for every PoC; both are dev-only values written in the Justfile, and production reads its own from ZAD.
+
+`just poc-build`, the step behind it, names the static PoCs one by one (`terugbetaalregimes` and `nieuwkomersbekostiging`), as does `packages/poc-portal/Dockerfile`. Neither is derived from the register, so a new static PoC has to be added to both by hand.
+
+`just poc` does not start napp or an assistant. The napp card then answers `503` until `POC_UPSTREAM_NAPP` points at a running napp backend. For the assistant, run `just poc-assistent <case>` in a second terminal (it needs `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`) and start the portal with the matching variable, for example `POC_ASSISTENT_TERUGBETAALREGIMES=http://127.0.0.1:3600 just poc`.
+
 ## Configuration
+
+### Portal
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
@@ -73,10 +87,30 @@ A static PoC can have `assistent: true`. The image then also carries `packages/p
 | `POC_PW_<SLUG>` | none, required per PoC | The password for that PoC |
 | `POC_STATIC_DIR` | `/app/static` | Root of the built static PoCs and of `/_assets` |
 | `POC_PORT` | `8000` | Listening port |
-| `POC_UPSTREAM_<SLUG>` | derived from `HOSTNAME` | Address of a proxied PoC, for local development |
+| `HOSTNAME` | set by the platform | The pod name; the portal derives the deployment name (`regelrecht`, `pr123`) from it to address proxied PoCs in-cluster |
+| `POC_UPSTREAM_<SLUG>` | derived from `HOSTNAME` | Address of a proxied PoC, overriding the in-cluster default; for local development |
 | `POC_ASSISTENT_<SLUG>` | set by `start.sh` | Address of the assistant for that PoC |
+| `CLAUDE_CODE_OAUTH_TOKEN` | none | Token for the Claude Code CLI the assistant runs on; without it (and without `ANTHROPIC_API_KEY`) no assistant starts |
+| `ANTHROPIC_API_KEY` | none | Alternative to the OAuth token |
+| `POC_ASSISTENT_CASUSSEN` | both assistant cases | Space-separated list of cases `start.sh` starts an assistant for |
 
-Passwords live only in the platform's environment, never in the repository.
+Passwords and tokens live only in the platform's environment, never in the repository.
+
+### napp
+
+napp runs as its own component and reads its own variables. The defaults below are the binary's; the image sets the port to `8000`, the base path to `/napp/` and the database to `/data/napp.db`.
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `DATABASE_URL` | `sqlite:napp.db?mode=rwc` | SQLite database |
+| `NAPP_PORT` | `8400` | Listening port |
+| `NAPP_BASE_PATH` | `/` | Path prefix; must match the portal path, because the portal forwards `/napp/...` unchanged |
+| `NAPP_STATIC_DIR` | `dist` under `frontend`, relative to the working directory | Built frontend |
+| `NAPP_LAW_DIR` | `law` | Directory with the law YAML napp runs on (`corpus-poc/napp/law/` in the image) |
+| `NAPP_MOCK_SSO` | on | Demo login next to real SSO; `0` switches it off |
+| `BASE_URL` | none | Public base URL, read by the shared auth crate |
+| `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_DISCOVERY_URL` | none | SSO Rijk through the shared auth crate; without them only the mock login is available |
+| `OIDC_REQUIRED_ROLE` | realm membership | Role required after login; unset, membership of the ZAD realm is enough |
 
 ## Further reading
 
