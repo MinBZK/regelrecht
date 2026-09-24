@@ -3,13 +3,13 @@ title: "Harvester Admin"
 description: "The API that operators use to monitor and control the harvester pipeline. Its dashboard is part of the editor."
 ---
 
-The harvester-admin service is the API operators use to watch and steer the harvester pipeline: which jobs are queued or failed, which laws are in which state, and what the enrichment found that could not be translated. It is a standalone Rust API. Its dashboard lives in the editor as the Corpusinwinning section (`frontend/src/harvester/`), which reaches this API through the editor-api `/api/harvest-admin/*` proxy. Scripts and other services can call the API directly.
+The harvester-admin service is the API operators use to watch and steer the harvester pipeline: which jobs are queued or failed, which laws are in which state, and what the enrichment found that could not be translated. It is a standalone Rust API. Its dashboard lives in the editor as the section labelled Harvester, at `/harvesting` (`frontend/src/harvester/`; code comments call it the Corpusinwinning section). The section reaches this API through the editor-api `/api/harvest-admin/*` proxy. Scripts and other services can call the API directly.
 
 ## Overview
 
 - **Language**: Rust (Axum), API only. It serves no frontend; unmatched paths answer 404.
 - **Location**: `packages/admin/` (API); UI in `frontend/src/harvester/`
-- **Production URL**: `harvester-admin.regelrecht.rijks.app` (API); the UI is at `editor.regelrecht.rijks.app`, under Corpusinwinning
+- **Production URL**: `harvester-admin.regelrecht.rijks.app` (API); the UI is at `editor.regelrecht.rijks.app`, under `/harvesting`
 - **Port**: 8000, or `ADMIN_PORT`
 - **Database**: PostgreSQL, shared with the pipeline workers and the editor API. The service runs the pipeline migrations at startup and keeps its sessions in the same store as the editor API.
 
@@ -121,7 +121,7 @@ The dashboard UI is served by the editor. For the full flow (editor, editor-api 
 just dev-frontend all
 ```
 
-That runs this API on port 8001, so it does not clash with the editor API on 8000, and points the editor API's `HARVEST_ADMIN_URL` at it. Then open the editor and choose Corpusinwinning from the account menu (visible with any `harvester-*` role).
+That runs this API on port 8001, so it does not clash with the editor API on 8000, and points the editor API's `HARVEST_ADMIN_URL` at it. Then open the editor and choose Harvester from the account menu (visible with any `harvester-*` role or `regelrecht-admin`).
 
 ## Further reading
 

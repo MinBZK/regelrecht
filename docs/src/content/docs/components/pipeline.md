@@ -245,7 +245,7 @@ without one.
 |----------|---------|---------|
 | `ENRICH_HOURLY_LIMIT` | 0 (paused) | Enrich runs per clock hour for this worker's provider; must be set for the worker to enrich at all |
 | `ENRICH_NIGHT_MULTIPLIER` | 1 | Multiplier on the hourly limit between 00:00 and 08:00 (Europe/Amsterdam) |
-| `ENRICH_AUTO_ENQUEUE` | off | `true` makes a completed harvest queue enrich jobs; otherwise enrichment is requested explicitly |
+| `ENRICH_AUTO_ENQUEUE` | off | `true` (or `1`, `yes`, `on`) makes a completed harvest queue enrich jobs; otherwise enrichment is requested explicitly through `POST /api/enrich-jobs` on the [Harvester Admin](./admin) API |
 | `LLM_PROVIDER` | `opencode` | `opencode` or `claude` |
 | `LLM_PATH`, `LLM_MODEL` | none | Fallback binary and model for either provider |
 | `OPENCODE_PATH`, `OPENCODE_MODEL` | `opencode`, provider default | Binary and model for opencode |
