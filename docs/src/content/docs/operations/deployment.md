@@ -57,7 +57,9 @@ The reasoning behind each rule is in the header of the script concerned.
 
 ## Debugging a failed preview deploy
 
-A ZAD deploy timeout ("Task did not complete within 300s") almost always points to an application error, not a platform problem. When `deploy-preview` fails:
+Tell a timeout apart from an error first. A message that the wait ran out ("Timed out after 900s waiting for the task; it may still be running") says only that ZAD took longer than the window. The deployment carries on, and the preview usually comes up a little later. Before the window went from 300 to 900 seconds, failed and successful runs overlapped completely in duration ([#1144](https://github.com/MinBZK/regelrecht/issues/1144)), so a timeout on its own tells you nothing about the application.
+
+An error with a status or an exception in it is the diagnostic case. Then:
 
 1. Check the container logs: `zad logs <deployment>` (for example `zad logs pr429`)
 2. Look for `ERROR` lines. Common causes are migration conflicts, missing environment variables and panics at startup

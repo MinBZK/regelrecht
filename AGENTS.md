@@ -552,8 +552,9 @@ why: `docs/src/content/docs/operations/deployment.md#cleanup`.
 
 ### Debugging deploy-preview failures
 
-A ZAD deploy timeout ("Task did not complete within 300s") is almost always an
-application error. Diagnose before retrying: `zad logs <deployment>` (e.g.
+A timeout on the wait ("Timed out after 900s waiting for the task") only means
+ZAD was slower than the window; the deployment carries on. An error with a
+status or an exception is what needs diagnosing: `zad logs <deployment>` (e.g.
 `zad logs pr429`) and look for `ERROR` lines. `Could not extract URL from
 result` with `"status": "superseded"` is harmless; re-run only that job. The
 full procedure, including resetting a broken preview database, is in
