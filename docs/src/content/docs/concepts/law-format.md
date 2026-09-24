@@ -61,7 +61,7 @@ competent_authority: '#bevoegd_gezag'
 
 `regulatory_layer` decides more than it seems to. It fixes which official identifier the file must carry (a `bwb_id` for a national law, a `gemeente_code` for a municipal ordinance), and it ranks regulations when several of them fill the same delegated term. The rules per layer are in [Identifiers per regulatory layer](/reference/schema#identifiers-per-layer).
 
-`name` and `competent_authority` start with `#`. That is an internal reference: the value is computed by an output of this same law. Article 8 of the Wet op de zorgtoeslag reads "Deze wet wordt aangehaald als: Wet op de zorgtoeslag", so the law's name is itself law text, and the file says where that text is instead of copying it. `valid_from` accepts the same form. The full list of top-level keys, and which are required, is in [The law file](/reference/schema#law-file). `competent_authority` is not among them: the schema declares it per `machine_readable` section, where it also accepts the `#` form, and at the top of a file it is tolerated but not checked.
+`name` and `competent_authority` start with `#`. That is an internal reference: the value is computed by an output of this same law. Article 8 of the Wet op de zorgtoeslag reads "Deze wet wordt aangehaald als: Wet op de zorgtoeslag", so the law's name is itself law text, and the file says where that text is instead of copying it. The schema accepts the same form for `valid_from`, for a law whose commencement is fixed elsewhere, but the engine does not resolve it yet. The loader accepts such a file; version selection then reports that whether the law was in force on the date cannot be determined, and when two regulations on the same layer fill one open term, lex posterior refuses to compare a `#` start date (`packages/engine/src/priority.rs`). A law that has to run needs a concrete date in `valid_from`. The full list of top-level keys, and which are required, is in [The law file](/reference/schema#law-file). `competent_authority` is not among them: the schema declares it per `machine_readable` section, where it also accepts the `#` form, and at the top of a file it is tolerated but not checked.
 
 ### Articles
 
@@ -277,29 +277,13 @@ The Regeling standaardpremie then declares under `implements` that it fills this
 
 A `machine_readable` section can hold more than a calculation. `hooks` let an article react to a decision another law produces, `overrides` let a special provision set aside a general one, and `markings` record where the logic could not follow the text exactly. Each has its own concept page: [Hooks and Reactive Execution](/concepts/hooks-and-reactive-execution) and [Markings](/concepts/markings).
 
+The examples on this page are written to schema v0.5.x, because the corpus is. Schema v0.7.0 added `markings` (the new name for `untranslatables`), `declares`, `placement` and `voids`, and no corpus law uses any of them yet: the real laws are all on v0.5.x and still carry `untranslatables`, and the one file on v0.7.0 is the synthetic `test_date_operations`, which needs its date operations. Read the [Schema Reference](/reference/schema) for the v0.7.0 fields; do not look for them in the corpus.
+
 ## Corpus contents
 
-The corpus is still small and growing. It spans three regulatory layers, with
-national law the bulk of it and a handful of ministerial regulations and
-municipal by-laws that exercise delegation and the local layer. A snapshot taken
-on 2026-09-20:
+The corpus spans three regulatory layers: national law (`WET`) makes up most of it, with a few ministerial regulations and municipal by-laws that exercise delegation and the local layer. Next to the real laws, `corpus/regulation/nl/wet/` holds synthetic laws in the `test_*` directories. They are not Dutch law: each one isolates a corner of the language (null semantics, scoped sources, collections, date operations) for the engine-conformance BDD bucket, which needs a law that tests one feature rather than a statute that mixes many.
 
-| Layer | Laws | Examples |
-|-------|------|---------|
-| WET | 29 (of which 13 synthetic) | Participatiewet, Zorgtoeslag, Zorgverzekeringswet, Awb, BW Boek 5 |
-| MINISTERIELE_REGELING | 3 | Regeling standaardpremie (2 versions), Subsidieregeling energietarieven |
-| GEMEENTELIJKE_VERORDENING | 2 | Amsterdam APV erfgrens, Diemen afstemmingsverordening |
-
-The 13 synthetic laws are the `test_*` directories under
-`corpus/regulation/nl/wet/`. They are not Dutch law: each one exercises a corner
-of the language (null semantics, scoped sources, collections, date operations)
-for the engine-conformance BDD bucket, which needs a law that isolates one
-feature rather than a real statute that mixes many. That leaves 16 real laws.
-
-These counts move whenever a law is harvested, so read them as an order of
-magnitude. Count them yourself with
-`grep -rh '^regulatory_layer:' corpus/regulation/ | sort | uniq -c`, and see
-`corpus/regulation/` for the authoritative set.
+This page gives no counts, because they change with every harvest. The authoritative set is [`corpus/regulation/`](https://github.com/MinBZK/regelrecht/tree/main/corpus/regulation) itself. To count files per layer, run `grep -rh '^regulatory_layer:' corpus/regulation/ | sort | uniq -c` from the repository root. That counts versions, not laws: each version of a law is its own file, named after its `valid_from` date, in the law's directory.
 
 ## Next steps
 

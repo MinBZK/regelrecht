@@ -119,10 +119,94 @@ export interface EnumBlock {
 }
 
 // ---------------------------------------------------------------------------
+// Corrections to released descriptions
+//
+// A few descriptions in the released schema say what the Rust law-model does
+// with a field ("has no field for it and drops it on load"). They were true
+// when v0.7.0 was written and stopped being true when the model caught up:
+// `packages/law-model/src/model.rs` now carries every one of these fields.
+// A released schema version is immutable, so the text cannot be fixed at the
+// source; it is corrected here, on the way to the page, until a later schema
+// version rewrites it.
+//
+// Each entry is keyed on the exact stale text. When the snapshot is bumped to
+// a schema whose description no longer starts with that text, the build fails
+// and names the entry, so a correction cannot outlive the error it corrects
+// and silently overwrite a newer, better description.
+// ---------------------------------------------------------------------------
+
+interface ModelCorrection {
+  /** Path of keys from the schema root to the node whose description is stale. */
+  path: string[];
+  /** The start of the released description this entry replaces. */
+  stale: string;
+  /** What the page shows instead. */
+  corrected: string;
+}
+
+const MODEL_CORRECTIONS: ModelCorrection[] = [
+  {
+    path: ['properties', 'preamble', 'properties', 'machine_readable'],
+    stale: 'Machine-readable interpretation of the preamble, in the same shape as an article\'s. The Rust law-model carries no preamble at all',
+    corrected:
+      "Machine-readable interpretation of the preamble, in the same shape as an article's. The Rust law-model reads it and the loader checks its operations, but the engine does not execute it.",
+  },
+  {
+    path: ['properties', 'articles', 'items', 'properties', 'references'],
+    stale: 'Structured references to other laws and articles. Accepted by the schema, but the Rust law-model has no field for it',
+    corrected:
+      'Structured references to other laws and articles. The Rust law-model reads and keeps them, but nothing resolves these at runtime today.',
+  },
+  {
+    path: ['definitions', 'action', 'properties', 'resolve'],
+    stale: 'Look up the value in whichever regulation implements it. Accepted by the schema, but the Rust law-model has no field for it',
+    corrected:
+      'Look up the value in whichever regulation implements it. The Rust law-model reads it, but the engine does not execute it yet; no law in the corpus uses it.',
+  },
+  {
+    path: ['definitions', 'action', 'properties', 'legal_basis'],
+    stale: 'The provision this action rests on. Accepted by the schema, but the Rust law-model has no field for it',
+    corrected:
+      "The provision this action rests on. The engine records it on the action's trace step (RFC-039), so a result can cite the provision it follows from.",
+  },
+  {
+    path: ['definitions', 'machineReadableSection', 'properties', 'endpoint'],
+    stale: 'Named endpoint for this article. Accepted by the schema, but the Rust law-model has no field for it',
+    corrected:
+      'Named endpoint for this article. The Rust law-model reads it, but the engine does not call by endpoint: a law calls another law by output name.',
+  },
+  {
+    path: ['definitions', 'machineReadableSection', 'properties', 'requires'],
+    stale: 'Other provisions this article depends on. The schema and the Rust law-model disagree on the shape here',
+    corrected:
+      'Other provisions this article depends on. The Rust law-model reads the structure below; the engine does not act on it at runtime.',
+  },
+];
+
+function applyModelCorrections(root: SchemaNode): SchemaNode {
+  for (const { path, stale, corrected } of MODEL_CORRECTIONS) {
+    let node: unknown = root;
+    for (const key of path) node = (node as Record<string, unknown> | undefined)?.[key];
+    const target = node as SchemaNode | undefined;
+    if (!target?.description?.startsWith(stale)) {
+      throw new Error(
+        `schema-reference: the correction for ${path.join('.')} no longer matches the ` +
+          'released description. The schema has changed there; check the new text ' +
+          'against packages/law-model and remove the entry from MODEL_CORRECTIONS.',
+      );
+    }
+    target.description = corrected;
+  }
+  return root;
+}
+
+// ---------------------------------------------------------------------------
 // The schema
 // ---------------------------------------------------------------------------
 
-const schema = schemaJson as unknown as SchemaNode;
+const schema = applyModelCorrections(
+  structuredClone(schemaJson) as unknown as SchemaNode,
+);
 const defs = schema.definitions ?? {};
 
 /** Version from the $id URL, e.g. "v0.6.0" — never hand-stated. */
