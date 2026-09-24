@@ -41,6 +41,8 @@ flowchart TD
 | `data_source.rs` | External data registry for non-law data lookups |
 | `config.rs` | Security limits (max laws, YAML size, recursion depth) |
 
+The types a law file deserializes into are not defined in the engine. They live in the [Law Model](./law-model) crate, which `article.rs` re-exports and loads under the security limits.
+
 ## How It Works
 
 ```mermaid

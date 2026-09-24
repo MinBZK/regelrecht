@@ -96,6 +96,7 @@ export const sidebar: Record<string, SidebarGroup[]> = {
       text: 'Core',
       items: [
         { text: 'Execution Engine', link: '/components/engine' },
+        { text: 'Law Model', link: '/components/law-model' },
         { text: 'Corpus Library', link: '/components/corpus' },
       ],
     },
@@ -114,7 +115,9 @@ export const sidebar: Record<string, SidebarGroup[]> = {
         { text: 'Harvester Admin', link: '/components/admin' },
         { text: 'Lawmaking Frontend', link: '/components/lawmaking' },
         { text: 'Demo', link: '/components/demo' },
+        { text: 'PoC Portal', link: '/components/poc-portal' },
         { text: 'Terminal UI (TUI)', link: '/components/tui' },
+        { text: 'Shared Frontend Package', link: '/components/frontend-shared' },
       ],
     },
     {
