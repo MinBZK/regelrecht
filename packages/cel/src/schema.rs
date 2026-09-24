@@ -135,6 +135,36 @@ mod tests {
     }
 
     #[test]
+    fn stage_op_een_decretogram_of_indiening_met_een_zaak() {
+        const Z: &str = "00000000-0000-4000-8000-000000000001";
+        let mut g = gram(Some("opent"), Some(Z));
+        g["type"] = "indiening".into();
+        g["soort"] = "melding".into();
+        g["stage"] = "AANVRAAG".into();
+        valideer(Soort::Gram, &g).unwrap();
+        g["type"] = "decretogram".into();
+        g["stage"] = "BESLUIT".into();
+        valideer(Soort::Gram, &g).unwrap();
+        // Een executogram heeft geen stage.
+        g["type"] = "executogram".into();
+        assert!(valideer(Soort::Gram, &g).is_err());
+        // Zonder zaak geen stage.
+        let mut z = gram(None, None);
+        z["stage"] = "BESLUIT".into();
+        assert!(valideer(Soort::Gram, &z).is_err());
+        let stroom = |type_: &str, zaak: &str| {
+            serde_json::json!({"$id": "s", "recording_actor": "a", "chronicle": "k", "events": [{
+                "name": "x", "intake": "portaal", "grondslag": ["r#1"],
+                "type": type_, "soort": "melding", "stage": "AANVRAAG", "zaak": zaak,
+                "fields": {"a": "$external.a"}
+            }]})
+        };
+        valideer(Soort::Stroom, &stroom("indiening", "opent")).unwrap();
+        assert!(valideer(Soort::Stroom, &stroom("indiening", "geen")).is_err());
+        assert!(valideer(Soort::Stroom, &stroom("executogram", "volgt")).is_err());
+    }
+
+    #[test]
     fn stroom_zaak_is_opent_volgt_of_geen() {
         let stroom = |zaak: &str| {
             serde_json::json!({"$id": "s", "recording_actor": "a", "chronicle": "k", "events": [{

@@ -12,6 +12,7 @@ events:
       - testregeling_afnemer#1
     type: indiening
     soort: aanvraag
+    stage: AANVRAAG                # RFC-008: de aanvraag opent de zaak
     zaak: opent
     fields:
       kern:

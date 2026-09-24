@@ -1041,6 +1041,9 @@ async fn afnemer_indienen(app: &Router, kvk: &str) -> String {
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
+    // De aanvraag opent de zaak in stage AANVRAAG (RFC-008); de werkvoorraad
+    // laat alleen een zaak met stage BESLUIT weg.
+    assert_eq!(body["gram"]["stage"], "AANVRAAG");
     body["gram"]["zaakkenmerk"].as_str().unwrap().to_string()
 }
 

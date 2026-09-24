@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.1.0/stream.json",
   "title": "Stroomdefinitie (chronicle-stream) v0.1.0",
-  "description": "Welke feiten een cel vastlegt, door welke actor, in welke kroniek, op welke grondslag en met welke velden. Volgt de schets in RFC-022 par. 1.3, met deze invullingen: grondslag is een lijst; elk event draagt een open type en zo nodig een soort, en een stage-decretogram een stage; zaak zegt of een gram een zaak opent, volgt of er geen heeft; velden mogen genest zijn; een veld bindt aan $intake.* of $external.*, is een tabel met gedeclareerde kolommen, of is een constante van de stroom; een indiening van soort aanvraag scheidt kern (Awb 4:2 lid 1) van inhoud; en niet_gereduceerd noemt de velden die bewust door geen reductie gelezen worden.",
+  "description": "Welke feiten een cel vastlegt, door welke actor, in welke kroniek, op welke grondslag en met welke velden. Volgt de schets in RFC-022 par. 1.3, met deze invullingen: grondslag is een lijst; elk event draagt een open type en zo nodig een soort, en een stage-decretogram of een indiening met een zaak een stage (RFC-008); zaak zegt of een gram een zaak opent, volgt of er geen heeft; velden mogen genest zijn; een veld bindt aan $intake.* of $external.*, is een tabel met gedeclareerde kolommen, of is een constante van de stroom; een indiening van soort aanvraag scheidt kern (Awb 4:2 lid 1) van inhoud; en niet_gereduceerd noemt de velden die bewust door geen reductie gelezen worden.",
   "type": "object",
   "required": [
     "$id",
@@ -144,7 +144,7 @@
         "stage": {
           "type": "string",
           "pattern": "^[A-Z][A-Z_]*$",
-          "description": "De stage van een besluit waarvan dit event een stage-decretogram is, in de woordenschat van RFC-008 (bijvoorbeeld BESLUIT of BEKENDMAKING). RFC-022 par. 1.2: elke stage is een eigen, elementair decretogram, en de stages van een besluit delen een zaakkenmerk."
+          "description": "De stage van de zaak waarvan dit event een stap is, in de woordenschat van RFC-008: bij een stage-decretogram de stage van het besluit (bijvoorbeeld BESLUIT of BEKENDMAKING), bij een indiening de stage die zij opent (AANVRAAG: de aanvraag is het vastgelegde feit achter die stage). Alleen op een decretogram of een indiening, en alleen bij een event met een zaak (opent of volgt): RFC-022 par. 1.2 laat de stages van een zaak een zaakkenmerk delen."
         },
         "zaak": {
           "enum": [
@@ -231,6 +231,33 @@
                 }
               }
             }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "stage"
+            ]
+          },
+          "then": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "decretogram",
+                  "indiening"
+                ]
+              },
+              "zaak": {
+                "enum": [
+                  "opent",
+                  "volgt"
+                ]
+              }
+            },
+            "required": [
+              "type",
+              "zaak"
+            ]
           }
         }
       ]

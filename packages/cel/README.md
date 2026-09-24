@@ -154,7 +154,9 @@ erboven: het leest lexostatussen en vraagt de cel vast te leggen.
    `$external.*` of is een constante. Een tabelveld declareert zijn kolommen.
    Een indiening van soort `aanvraag` heeft `fields.kern` (Awb 4:2 lid 1) en
    `fields.inhoud`. `niet_gereduceerd` noemt met reden de velden die geen
-   afleiding of filter leest.
+   afleiding of filter leest. Een event met een zaak mag een RFC-008-stage
+   dragen: een besluit `BESLUIT`, een aanvraag `AANVRAAG`; alleen op een
+   decretogram of een indiening.
 3. **Reductie tot lexostatus** (`reductie`, schema `lexostatus.json`). Een
    definitie beperkt de kroniek met `filter` en kiest met `kies: laatste` zo
    nodig een gram. Per parameter een afleiding:

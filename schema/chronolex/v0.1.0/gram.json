@@ -31,7 +31,7 @@
     "stage": {
       "type": "string",
       "pattern": "^[A-Z][A-Z_]*$",
-      "description": "Uit de stroom: de stage van het besluit (RFC-008) bij een stage-decretogram."
+      "description": "Uit de stroom: de stage van de zaak (RFC-008), bij een stage-decretogram of een indiening (AANVRAAG). Alleen bij een gram met een zaak."
     },
     "name": {
       "$ref": "#/definitions/identifier"
@@ -329,6 +329,33 @@
             }
           }
         }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "stage"
+        ]
+      },
+      "then": {
+        "properties": {
+          "type": {
+            "enum": [
+              "decretogram",
+              "indiening"
+            ]
+          },
+          "zaak": {
+            "enum": [
+              "opent",
+              "volgt"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "zaak"
+        ]
       }
     }
   ]
