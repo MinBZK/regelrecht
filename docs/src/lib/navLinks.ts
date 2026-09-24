@@ -31,6 +31,15 @@ export const docsNav: DocsNavItem[] = [
       'Start here. The guide introduces RegelRecht, sketches the architecture, shows worked translations of real law, and walks you through a development environment and the test suites.',
   },
   {
+    text: 'Using RegelRecht',
+    link: '/using/',
+    match: '/using/',
+    summary:
+      'Task guides for the people who use the tools: the editor, corpus harvesting, and the demo.',
+    intro:
+      'Guides for the people who work with RegelRecht rather than on it. Each page walks through one tool step by step: the editor for jurists and traject members, the Corpusinwinning section and Grafana for corpus operators, and the demo for presenters.',
+  },
+  {
     text: 'Concepts',
     link: '/concepts/',
     match: '/concepts/',
