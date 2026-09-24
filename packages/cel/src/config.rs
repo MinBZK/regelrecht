@@ -307,6 +307,26 @@ pub struct Aanbod {
     pub uitkomst: String,
     #[serde(default)]
     pub termijn: Option<String>,
+    /// Welke tijdvakken het portaal aanbiedt, als het aanbod-artikel een
+    /// tijdvak vraagt (de parameter met origin BELANGHEBBENDE en grondslag
+    /// Awb 4:2 lid 1). Voorlopig configuratie, niet uit de wet.
+    #[serde(default)]
+    pub keuzes: Option<Keuzes>,
+}
+
+/// De tijdvakken die het portaal aanbiedt.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Keuzes {
+    /// Jaartallen, geteld vanaf het jaar van vandaag: `[0, 1]` is dit jaar en
+    /// het volgende.
+    pub jaren_vanaf_nu: Vec<i64>,
+}
+
+impl Keuzes {
+    /// De waarden van het tijdvak in een jaar.
+    pub fn waarden(&self, jaar: i64) -> Vec<i64> {
+        self.jaren_vanaf_nu.iter().map(|d| jaar + d).collect()
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

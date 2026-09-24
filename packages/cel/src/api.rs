@@ -28,7 +28,7 @@
 //! | `GET /api/formulier` | de velden van het aanvraagformulier, uit de stroom van de cel |
 //! | `POST /api/aanvraag/toets` | proefreductie in de cel, synthese, engine |
 //! | `POST /api/aanvraag` | de cel legt het gram vast |
-//! | `GET /api/mogelijkheden` | wat het portaal aanbiedt volgens het beleid, per subsidiejaar, met trace |
+//! | `GET /api/mogelijkheden` | wat het portaal aanbiedt volgens het beleid, per tijdvak, met trace |
 //!
 //! Een proces met de rol behandelaar (nagebootste medewerkerslogin) heeft:
 //!
@@ -804,12 +804,13 @@ async fn toets_route(
     })))
 }
 
-/// Wat het beleid de ingelogde persoon aanbiedt (`portaal.aanbod`), voor dit
-/// en het volgende subsidiejaar. Het beleid wordt uitgevoerd op een leeg
-/// concept: alleen het subsidiejaar, plus wat de eHerkenning en de synthese
-/// weten. Uitkomst en termijn komen uit een run, met trace. Een feit dat een
-/// bron niet leverde, maakt het aanbod niet te bepalen. Niets wordt
-/// vastgelegd.
+/// Wat het beleid de ingelogde persoon aanbiedt (`portaal.aanbod`), per
+/// tijdvak uit `aanbod.keuzes`. Het tijdvak is de parameter van het
+/// aanbod-artikel met origin BELANGHEBBENDE en grondslag Awb 4:2 lid 1; het
+/// beleid wordt uitgevoerd op een concept met alleen dat tijdvak, plus wat de
+/// eHerkenning en de synthese weten. Uitkomst en termijn komen uit een run,
+/// met trace. Een feit dat een bron niet leverde, maakt het aanbod niet te
+/// bepalen. Niets wordt vastgelegd.
 async fn mogelijkheden_route(
     State(state): State<ProcesState>,
     headers: HeaderMap,
@@ -828,18 +829,49 @@ async fn mogelijkheden_route(
     let nu = (state.klok)();
     let datum = nu.format("%Y-%m-%d").to_string();
     let jaar = i64::from(chrono::Datelike::year(&nu));
+    // Zonder tijdvak een run; met tijdvak een run per keuze.
+    let keuzes: Vec<Option<mogelijkheid::Keuze>> = match (&state.proces.tijdvak, &c0.keuzes) {
+        (Some(t), Some(k)) => k
+            .waarden(jaar)
+            .into_iter()
+            .map(|w| {
+                Some(mogelijkheid::Keuze {
+                    parameter: t.parameter.clone(),
+                    veld: t.veld.clone(),
+                    waarde: json!(w),
+                })
+            })
+            .collect(),
+        _ => vec![None],
+    };
     let mut uit = Vec::new();
-    for subsidiejaar in [jaar, jaar + 1] {
+    for keuze in keuzes {
         let mut external = Map::new();
-        external.insert("subsidiejaar".into(), json!(subsidiejaar));
+        if let Some(k) = &keuze {
+            if let Some(veld) = &k.veld {
+                external.insert(veld.clone(), k.waarde.clone());
+            }
+        }
         let concept = Concept {
             external,
             zaakkenmerk: None,
         };
-        let c = concepttoets(&state, &sessie, &concept).await?;
+        let mut c = concepttoets(&state, &sessie, &concept).await?;
+        // Leidt de toets-lexostatus het tijdvak niet af, dan gaat de keuze
+        // zelf mee.
+        if let Some(k) = &keuze {
+            if !c.samen.parameters.contains_key(&k.parameter) {
+                c.samen
+                    .parameters
+                    .insert(k.parameter.clone(), k.waarde.clone());
+                c.samen
+                    .herkomst
+                    .insert(k.parameter.clone(), synthese::Herkomst::Keuze);
+            }
+        }
         let m = mogelijkheid::bepaal(
             &state.proces.service,
-            subsidiejaar,
+            keuze,
             &c0,
             &c.samen.parameters,
             &datum,

@@ -133,6 +133,25 @@
             },
             "termijn": {
               "$ref": "#/definitions/identifier"
+            },
+            "keuzes": {
+              "type": "object",
+              "description": "Welke tijdvakken het portaal aanbiedt, als het aanbod-artikel een tijdvak vraagt: de parameter met origin BELANGHEBBENDE en grondslag Awb 4:2 lid 1 (RFC-043). Per tijdvak een run. Voorlopig configuratie, niet uit de wet.",
+              "required": [
+                "jaren_vanaf_nu"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "jaren_vanaf_nu": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "description": "Jaartallen, geteld vanaf het jaar van vandaag: [0, 1] is dit jaar en het volgende.",
+                  "items": {
+                    "type": "integer"
+                  }
+                }
+              }
             }
           }
         },

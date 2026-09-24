@@ -216,6 +216,8 @@ struct Leveranciers {
     kanaal: BTreeSet<String>,
     /// De stand bij besluit.
     stand: BTreeSet<String>,
+    /// Of het portaal tijdvakken aanbiedt (`aanbod.keuzes`).
+    keuzes: bool,
     /// Synthese-bronnen, ook die per regel.
     bronnen: BTreeMap<String, Vec<BronLevering>>,
 }
@@ -226,6 +228,7 @@ impl Leveranciers {
         let mut eigen_lexostatussen: Vec<&str> =
             d.zaakbronnen().map(|b| b.lexostatus.as_str()).collect();
         if let Some(p) = &d.portaal {
+            l.keuzes = p.aanbod.as_ref().is_some_and(|a| a.keuzes.is_some());
             eigen_lexostatussen.push(&p.toets.lexostatus);
             if let (Some((_, event)), Some(def)) = (
                 cel.event(&p.stroom, &p.event),
@@ -316,6 +319,9 @@ pub struct Controle {
     /// Per uitvoering de parameters met hun geldende herkomst, in de volgorde
     /// van declaratie.
     pub parameters: BTreeMap<&'static str, Vec<(Benodigd, Option<Geldend>)>>,
+    /// De parameter van het aanbod-artikel die het tijdvak is: origin
+    /// BELANGHEBBENDE met grondslag Awb 4:2 lid 1.
+    pub tijdvak: Option<String>,
 }
 
 /// De parameters die de aanroeper van een uitkomst moet leveren, in de
@@ -467,7 +473,40 @@ pub fn controleer(
         }
         c.parameters.insert(uitvoering.naam(), lijst);
     }
+    tijdvak(d, &mut c);
     c
+}
+
+/// Het tijdvak van het aanbod: hoogstens een parameter met de grondslag van
+/// de gevraagde beschikking, en die vraagt `aanbod.keuzes`; keuzes zonder
+/// zo'n parameter zijn ook een fout.
+fn tijdvak(d: &ProcesDefinitie, c: &mut Controle) {
+    let Some(aanbod) = d.portaal.as_ref().and_then(|p| p.aanbod.as_ref()) else {
+        return;
+    };
+    let namen: Vec<String> = c
+        .parameters
+        .get(Uitvoering::Aanbod.naam())
+        .into_iter()
+        .flatten()
+        .filter(|(_, g)| g.as_ref().is_some_and(Geldend::is_gevraagde_beschikking))
+        .map(|(b, _)| b.naam.clone())
+        .collect();
+    match (namen.as_slice(), aanbod.keuzes.is_some()) {
+        ([], false) => {}
+        ([], true) => c.fouten.push(format!(
+            "aanbod: keuzes, maar {} vraagt geen tijdvak (een parameter met origin BELANGHEBBENDE en grondslag {GEVRAAGDE_BESCHIKKING})",
+            aanbod.regeling
+        )),
+        ([naam], true) => c.tijdvak = Some(naam.clone()),
+        ([naam], false) => c.fouten.push(format!(
+            "aanbod: het tijdvak '{naam}' ({GEVRAAGDE_BESCHIKKING}) vraagt aanbod.keuzes: welke tijdvakken het portaal aanbiedt"
+        )),
+        (meer, _) => c.fouten.push(format!(
+            "aanbod: meer dan een tijdvak ({}); het portaal biedt er een aan",
+            meer.join(", ")
+        )),
+    }
 }
 
 /// Het besluitformulier: de parameters van het besluit met origin
@@ -552,7 +591,7 @@ fn geen_leverancier(
         OriginValue::Kanaal => l.kanaal.contains(naam),
         OriginValue::Belanghebbende => {
             l.eigen.contains(naam)
-                || (uitvoering == Uitvoering::Aanbod && g.is_gevraagde_beschikking())
+                || (uitvoering == Uitvoering::Aanbod && g.is_gevraagde_beschikking() && l.keuzes)
         }
         OriginValue::Dossier => {
             l.eigen.contains(naam) || (uitvoering == Uitvoering::Besluit && l.stand.contains(naam))

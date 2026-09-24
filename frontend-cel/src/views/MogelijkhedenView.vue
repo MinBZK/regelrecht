@@ -3,10 +3,12 @@
 // proces voert het dienstverleningsbeleid uit voor deze persoon en organisatie, met
 // alleen wat de inlog en de andere cellen al weten (GET /api/mogelijkheden):
 // alleen voorwaarden die vooraf vaststaan; onbekend is geen aanbod.
-// Per subsidiejaar geeft het beleid één aanbod: mogelijk, uitgesloten of niet
-// te bepalen, met de uiterste indieningsdatum. Per jaar is er een knop die
-// alleen bij "mogelijk" actief is, met een (?) die de redenen en de trace
-// toont.
+// Per tijdvak geeft het beleid één aanbod: mogelijk, uitgesloten of niet te
+// bepalen, met de uiterste indieningsdatum. Het tijdvak is de parameter die de
+// wet als gevraagde beschikking aanwijst (Awb 4:2 lid 1), met de waarden die
+// het proces aanbiedt; de runtime zegt welke parameter en welk veld van de
+// aanvraag. Per tijdvak is er een knop die alleen bij "mogelijk" actief is,
+// met een (?) die de redenen en de trace toont.
 import { computed, inject, onMounted, ref } from 'vue';
 import TraceKnop from '@regelrecht/frontend-shared/components/TraceKnop.vue';
 
@@ -42,6 +44,20 @@ function termijnTekst(m) {
   return vandaag.value && m.termijn < vandaag.value ? `${m.termijn} (verstreken)` : m.termijn;
 }
 
+// Het gekozen tijdvak in woorden, of niets zonder tijdvak.
+function tijdvak(m) {
+  return m.tijdvak ? `${m.tijdvak.waarde}` : '';
+}
+
+function titel(m) {
+  return m.tijdvak ? `Aanvraag voor ${tijdvak(m)}` : 'Aanvraag';
+}
+
+// Wat het aanvraagformulier vooraf invult: het veld van het tijdvak.
+function vooraf(m) {
+  return m.tijdvak?.veld ? { [m.tijdvak.veld]: m.tijdvak.waarde } : {};
+}
+
 function grond(m) {
   if (m.reden) return m.reden;
   return `${m.regeling}: ${m.uitkomst}`;
@@ -61,22 +77,22 @@ function grond(m) {
   <template v-if="fout">
     <nldd-inline-dialog variant="alert" text="De mogelijkheden zijn niet te bepalen" :supporting-text="fout"></nldd-inline-dialog>
   </template>
-  <template v-for="m in mogelijkheden" :key="m.subsidiejaar">
+  <template v-for="m in mogelijkheden" :key="tijdvak(m)">
     <nldd-container layout="row" gap="8" vertical-alignment="center">
       <nldd-button
         variant="primary"
-        :text="`Aanvraag doen voor ${m.subsidiejaar}`"
+        :text="m.tijdvak ? `Aanvraag doen voor ${tijdvak(m)}` : 'Aanvraag doen'"
         :disabled="m.oordeel !== 'mogelijk' || undefined"
-        @click="emit('aanvragen', { subsidiejaar: m.subsidiejaar })"
+        @click="emit('aanvragen', vooraf(m))"
       ></nldd-button>
       <TraceKnop
         icon="help"
         overline="Waarom"
-        :titel="`Aanvraag voor ${m.subsidiejaar}`"
-        :accessible-label="`Waarom: aanvraag voor ${m.subsidiejaar}`"
+        :titel="titel(m)"
+        :accessible-label="`Waarom: ${titel(m).toLowerCase()}`"
         :trace-text="m.trace_text"
       >
-        <nldd-table columns="minmax(180px,1fr) minmax(240px,2fr)" :accessible-label="`Aanvraag voor ${m.subsidiejaar}`">
+        <nldd-table columns="minmax(180px,1fr) minmax(240px,2fr)" :accessible-label="titel(m)">
           <nldd-table-row>
             <nldd-text-cell text="Kunt u deze aanvraag doen?"></nldd-text-cell>
             <nldd-text-cell :text="antwoord(m)"></nldd-text-cell>

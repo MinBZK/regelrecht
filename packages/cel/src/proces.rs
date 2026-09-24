@@ -20,7 +20,7 @@ use crate::config::{Portaal, ProcesDefinitie, RijenDefinitie, VoorbeeldenDefinit
 use crate::controle;
 use crate::formulier::{self, Formulier};
 use crate::origin;
-use crate::stroom::{Event, Stroom};
+use crate::stroom::{Binding, Event, Stroom};
 use crate::voorbeelden::{self, Voorbeelden};
 
 /// Een geladen proces dat de controles bij het opstarten doorstond.
@@ -39,6 +39,19 @@ pub struct Proces {
     /// Wat de controle op de herkomst van de parameters zag, maar geen reden
     /// is om niet te starten (zie [`crate::origin`]).
     pub waarschuwingen: Vec<String>,
+    /// Het tijdvak dat het portaal laat kiezen, als het aanbod er een vraagt.
+    pub tijdvak: Option<Tijdvak>,
+}
+
+/// Het tijdvak van het aanbod: de parameter met origin BELANGHEBBENDE en
+/// grondslag Awb 4:2 lid 1 (zie [`crate::origin`]).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct Tijdvak {
+    pub parameter: String,
+    /// Het veld van het concept (`external`) waaruit de toets-lexostatus de
+    /// parameter afleidt, als ze dat doet. Het portaal vult het vooraf in.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub veld: Option<String>,
 }
 
 impl Proces {
@@ -108,6 +121,7 @@ impl Proces {
             formulier,
             voorbeelden,
             waarschuwingen: Vec::new(),
+            tijdvak: None,
         })
     }
 
@@ -125,7 +139,32 @@ impl Proces {
             b.besluit.formulier = oordelen;
         }
         self.waarschuwingen = c.waarschuwingen;
+        self.tijdvak = c.tijdvak.map(|parameter| Tijdvak {
+            veld: self.concept_veld(&parameter),
+            parameter,
+        });
         c.fouten
+    }
+
+    /// Het veld van het concept dat de toets-lexostatus leest om een
+    /// parameter af te leiden: een `$external`-sleutel van het portaal-event.
+    fn concept_veld(&self, parameter: &str) -> Option<String> {
+        let p = self.portaal()?;
+        let (_, event) = self.portaal_event()?;
+        let afleiding = self
+            .cel
+            .lexostatussen
+            .lexostatus(&p.toets.lexostatus)?
+            .reduction
+            .afleidingen
+            .get(parameter)?;
+        let [pad] = afleiding.gelezen_paden()[..] else {
+            return None;
+        };
+        event.bladeren().into_iter().find_map(|b| match b.binding {
+            Binding::External(sleutel) if b.pad == pad && !sleutel.contains('.') => Some(sleutel),
+            _ => None,
+        })
     }
 
     /// Het portaalblok, als het proces een portaal heeft.

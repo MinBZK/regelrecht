@@ -88,8 +88,9 @@ function mogelijkhedenGeladen(lijst) {
   mogelijk.value = lijst.filter((m) => m.oordeel === 'mogelijk');
 }
 
-function aanvragen({ subsidiejaar }) {
-  vooraf.value = { subsidiejaar };
+// Wat vooraf vaststaat: het veld van het gekozen tijdvak.
+function aanvragen(velden) {
+  vooraf.value = velden;
   scherm.value = 'aanvraag';
 }
 
@@ -175,7 +176,7 @@ const wie = computed(() => {
     </nldd-container>
     <nldd-spacer size="24"></nldd-spacer>
     <MogelijkhedenView v-if="scherm === 'mogelijkheden'" @geladen="mogelijkhedenGeladen" @aanvragen="aanvragen" />
-    <AanvraagView v-else-if="scherm === 'aanvraag'" :key="vooraf.subsidiejaar" :vooraf="vooraf" @ingediend="ingediend" />
+    <AanvraagView v-else-if="scherm === 'aanvraag'" :key="JSON.stringify(vooraf)" :vooraf="vooraf" @ingediend="ingediend" />
     <template v-else-if="scherm === 'werkvoorraad'">
       <ZaakView v-if="zaak" :key="zaak" :zaakkenmerk="zaak" @terug="zaak = null" />
       <WerkvoorraadView v-else :kolommen="werkvoorraadKolommen" @open="zaak = $event" />

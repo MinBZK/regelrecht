@@ -52,6 +52,8 @@ pub enum Herkomst {
     Behandelaar,
     /// De stand bij besluit: een feit dat pas na het besluit ontstaat.
     StandBijBesluit,
+    /// Het tijdvak dat de aanvrager in het portaal koos.
+    Keuze,
 }
 
 /// Hoe de vraag aan een bron verliep.

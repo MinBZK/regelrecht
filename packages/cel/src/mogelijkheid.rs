@@ -2,7 +2,8 @@
 //!
 //! Het beleid van de actor zegt het (`portaal.aanbod` in `proces.yaml`): een
 //! uitkomst van een regeling, uitgevoerd in een run met wat er vooraf
-//! vaststaat: wie er inlogt, wat andere cellen weten en het subsidiejaar.
+//! vaststaat: wie er inlogt, wat andere cellen weten en het gekozen tijdvak
+//! (de parameter met origin BELANGHEBBENDE en grondslag Awb 4:2 lid 1).
 //! Waar: aanbod. Definitief onwaar of nul: geen aanbod. Al het andere (leeg,
 //! er mist iets, een fout van de engine) is niet te bepalen. Of een aanvraag
 //! volledig is, weet je vooraf niet; dat is de toets na het invullen. De
@@ -32,10 +33,22 @@ pub enum Oordeel {
     NietTeBepalen,
 }
 
-/// Het aanbod voor een subsidiejaar, met de trace van de ene run.
+/// Een gekozen tijdvak: de parameter, het veld van het concept dat het
+/// portaal vooraf invult, en de waarde.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Keuze {
+    pub parameter: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub veld: Option<String>,
+    pub waarde: Value,
+}
+
+/// Het aanbod voor een tijdvak (of zonder tijdvak), met de trace van de ene
+/// run.
 #[derive(Debug, Clone, Serialize)]
 pub struct Mogelijkheid {
-    pub subsidiejaar: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tijdvak: Option<Keuze>,
     pub oordeel: Oordeel,
     pub regeling: String,
     pub uitkomst: String,
@@ -73,10 +86,10 @@ pub fn oordeel(e: &Evaluatie, uitkomst: &str) -> Oordeel {
     }
 }
 
-/// Voer het aanbod uit voor een subsidiejaar: uitkomst en termijn in een run.
+/// Voer het aanbod uit voor een tijdvak: uitkomst en termijn in een run.
 pub fn bepaal(
     service: &LawExecutionService,
-    subsidiejaar: i64,
+    tijdvak: Option<Keuze>,
     aanbod: &Aanbod,
     parameters: &BTreeMap<String, Value>,
     datum: &str,
@@ -101,7 +114,7 @@ pub fn bepaal(
         Oordeel::NietTeBepalen => Some(e.reden("niet te bepalen")),
     };
     Mogelijkheid {
-        subsidiejaar,
+        tijdvak,
         oordeel,
         regeling: aanbod.regeling.clone(),
         uitkomst: aanbod.uitkomst.clone(),
@@ -234,6 +247,7 @@ articles:
             regeling: "testregeling_aanbod".into(),
             uitkomst: "aangeboden".into(),
             termijn: termijn.then(|| "termijn".into()),
+            keuzes: None,
         }
     }
 
@@ -242,7 +256,18 @@ articles:
     }
 
     fn bepaal_met(termijn: bool, p: Value) -> Mogelijkheid {
-        bepaal(&service(), 2026, &aanbod(termijn), &params(p), "2026-02-01")
+        let keuze = Keuze {
+            parameter: "jaar".into(),
+            veld: None,
+            waarde: json!(2026),
+        };
+        bepaal(
+            &service(),
+            Some(keuze),
+            &aanbod(termijn),
+            &params(p),
+            "2026-02-01",
+        )
     }
 
     #[test]

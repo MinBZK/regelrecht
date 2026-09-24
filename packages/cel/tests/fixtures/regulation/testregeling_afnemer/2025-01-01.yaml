@@ -9,7 +9,8 @@
 # regeling), de oordelen van de behandelaar, en de stand bij besluit (de
 # bekendmaking, die pas na het besluit komt). Een aanroep binnen dezelfde
 # regeling deelt de parameters; een aanroep van een andere regeling krijgt
-# alleen wat `parameters` meegeeft.
+# alleen wat `parameters` meegeeft. Artikel 4 is het aanbod: een
+# registerfeit en het jaar waarvoor de aanvraag wordt gedaan (Awb 4:2 lid 1).
 $schema: >-
   https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
 $id: testregeling_afnemer
@@ -259,3 +260,40 @@ articles:
               operation: EQUALS
               subject: $feiten_vergaard
               value: true
+  - number: '4'
+    url: https://example.com/testregeling_afnemer/4
+    text: >-
+      1. De afnemer biedt de aanvraag aan wie een voor de raad ingeschreven
+      aanduiding heeft, voor het jaar waarvoor de aanvraag wordt gedaan.
+      2. De aanvraag wordt gedaan voor 1 april van dat jaar.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TOETS
+          decision_type: GEEN_BESLUIT
+        parameters:
+          - name: aanvraagjaar
+            type: number
+            required: false
+            origin: {waarde: BELANGHEBBENDE, grondslag: algemene_wet_bestuursrecht#4:2 lid 1}
+          - name: is_ingeschreven_raad
+            type: boolean
+            required: false
+            origin: {waarde: REGISTER, register: testregeling_register, grondslag: testregeling_register#1}
+        output:
+          - name: aanvraag_aangeboden
+            type: boolean
+          - name: aanvraagtermijn
+            type: date
+        actions:
+          - output: aanvraag_aangeboden
+            value:
+              operation: EQUALS
+              subject: $is_ingeschreven_raad
+              value: true
+          - output: aanvraagtermijn
+            value:
+              operation: DATE
+              year: $aanvraagjaar
+              month: 4
+              day: 1

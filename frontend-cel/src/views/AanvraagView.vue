@@ -15,7 +15,7 @@ const api = inject('api');
 const voorbeelden = inject('voorbeelden');
 const voorbeeld = computed(() => voorbeelden.value.aanvraag);
 
-// Waarden die al vaststaan, bijvoorbeeld het subsidiejaar van de gekozen
+// Waarden die al vaststaan, bijvoorbeeld het tijdvak van de gekozen
 // aanvraagmogelijkheid.
 const props = defineProps({ vooraf: { type: Object, default: () => ({}) } });
 
@@ -73,7 +73,7 @@ async function controleer() {
 const versie = ref(0);
 
 // Vul het formulier met het voorbeeld; wat vooraf vaststaat (het gekozen
-// subsidiejaar) wint.
+// tijdvak) wint.
 function voorbeeldInvullen() {
   const uit = {};
   for (const v of stroom.value.velden) {

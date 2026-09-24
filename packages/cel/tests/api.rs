@@ -2070,3 +2070,77 @@ fn een_aanbod_op_een_aanvraagfeit_houdt_de_runtime_tegen() {
         "{fouten:?}"
     );
 }
+
+// --- Het tijdvak van het aanbod ---
+
+/// Het aanbod draait per tijdvak uit `aanbod.keuzes`; het tijdvak is de
+/// parameter met origin BELANGHEBBENDE en grondslag Awb 4:2 lid 1, niet een
+/// vaste naam.
+#[tokio::test]
+async fn het_aanbod_draait_per_gekozen_tijdvak() {
+    let met_aanbod = |t: String| {
+        t.replace(
+            "    uitkomst: aanvraag_toelaatbaar\n",
+            "    uitkomst: aanvraag_toelaatbaar\n  aanbod:\n    regeling: testregeling_afnemer\n    uitkomst: aanvraag_aangeboden\n    termijn: aanvraagtermijn\n    keuzes: {jaren_vanaf_nu: [0, 1]}\n",
+        )
+    };
+    let opstelling = eigen_opstelling(
+        &[("afnemer", &zo), ("register", &zo), ("gebieden", &zo)],
+        &[("afnemer", &met_aanbod)],
+    );
+    let data = tempfile::tempdir().unwrap();
+    let app = runtime_op(opstelling.path(), data.path()).unwrap().router;
+    let (_, _, cookie) = vraag(
+        &app,
+        "POST",
+        &format!("{AFNEMER}/api/eherkenning/login"),
+        None,
+        Some(json!({"kvk": "12345678", "persoon": "A. Tester"})),
+    )
+    .await;
+    let (status, body, _) = vraag(
+        &app,
+        "GET",
+        &format!("{AFNEMER}/api/mogelijkheden"),
+        cookie.as_deref(),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let m = body["mogelijkheden"].as_array().unwrap();
+    assert_eq!(m.len(), 2, "{body}");
+    for (i, jaar) in [(0, 2025), (1, 2026)] {
+        assert_eq!(
+            m[i]["mogelijkheid"]["tijdvak"],
+            json!({"parameter": "aanvraagjaar", "waarde": jaar}),
+            "{body}"
+        );
+        assert_eq!(m[i]["parameters"]["aanvraagjaar"], json!(jaar));
+        assert_eq!(m[i]["herkomst"]["aanvraagjaar"], json!({"bron": "keuze"}));
+        assert_eq!(
+            m[i]["mogelijkheid"]["termijn"],
+            json!(format!("{jaar}-04-01"))
+        );
+    }
+}
+
+/// Een aanbod dat een tijdvak vraagt, zonder keuzes: de runtime start niet.
+#[test]
+fn een_tijdvak_zonder_keuzes_houdt_de_runtime_tegen() {
+    let met_aanbod = |t: String| {
+        t.replace(
+            "    uitkomst: aanvraag_toelaatbaar\n",
+            "    uitkomst: aanvraag_toelaatbaar\n  aanbod: {regeling: testregeling_afnemer, uitkomst: aanvraag_aangeboden}\n",
+        )
+    };
+    let opstelling = eigen_opstelling(
+        &[("afnemer", &zo), ("register", &zo), ("gebieden", &zo)],
+        &[("afnemer", &met_aanbod)],
+    );
+    let data = tempfile::tempdir().unwrap();
+    let fouten = runtime_op(opstelling.path(), data.path()).err().unwrap();
+    assert_eq!(
+        fouten,
+        ["proces 'test_afnemer_proces': aanbod: het tijdvak 'aanvraagjaar' (algemene_wet_bestuursrecht#4:2 lid 1) vraagt aanbod.keuzes: welke tijdvakken het portaal aanbiedt"]
+    );
+}
