@@ -958,10 +958,9 @@ impl RepoBackend for GitBackend {
             return Err(e);
         }
 
-        // The harvester / non-session GitBackend doesn't open PRs — it
-        // pushes to the configured branch directly. PR info is only
-        // populated by the session-mode `GitBackend` (see
-        // `SessionGitBackend`).
+        // GitBackend doesn't open PRs: it pushes to the configured branch
+        // directly. Of the backends here only `SessionGitBackend` fills in
+        // PR info, and the editor-api does not use that one.
         Ok(PersistOutcome::default())
     }
 
@@ -982,7 +981,15 @@ impl RepoBackend for GitBackend {
 // SessionGitBackend
 // ---------------------------------------------------------------------------
 
-/// Backend used by the editor write-back path (RFC-010 phase 6).
+/// Per-session clone-and-PR backend from the RFC-010 phase 6 write path.
+///
+/// **Not used by the editor-api.** The editor stopped building it when
+/// trajects landed (#632): every traject source, own-repo or central, is
+/// now a [`crate::github_api_backend::GitHubApiBackend`], which commits
+/// straight to the traject branch through the Contents API and opens no
+/// pull request. Nothing in this workspace constructs a `SessionGitBackend`
+/// outside its own tests, so read the rest of this comment as a
+/// description of the type, not of what a save in the editor does.
 ///
 /// Each `(editor session, source repo)` pair gets its own
 /// `SessionGitBackend`. `persist` always pushes to a per-session feature

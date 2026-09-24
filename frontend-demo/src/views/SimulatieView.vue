@@ -4,7 +4,7 @@ import OrgLogo from '../components/OrgLogo.vue';
 import SimBarChart from '../components/SimBarChart.vue';
 import { fieldSpec, formatValue, humanize, intlLocale } from '../data/format.js';
 import { serviceInfo } from '../data/loadCorpus.js';
-import { BUSINESS_DEFAULTS, CITIZEN_DEFAULTS } from '../simulation/population.js';
+import { BUSINESS_DEFAULTS, CITIZEN_DEFAULTS, MAX_POPULATION } from '../simulation/population.js';
 import { definitionKind, overridableDefinitions } from '../simulation/lawParameters.js';
 import { runSimulation, simulationLaws } from '../simulation/runner.js';
 import { BUSINESS_DIMENSIONS, CITIZEN_DIMENSIONS, breakdown, dimensionLabel, flattenResults, toCsv } from '../simulation/stats.js';
@@ -425,7 +425,7 @@ function exportJson() {
         </nldd-container>
         <nldd-container padding="12" gap="12">
           <nldd-form-field :label="t(kind === 'ondernemers' ? 'sim.count.businesses' : 'sim.count.citizens')">
-            <nldd-number-field :value="params.count" min="1" max="2000" step="10" width="full" @change="params.count = numberFrom($event) ?? params.count"></nldd-number-field>
+            <nldd-number-field :value="params.count" min="1" :max="MAX_POPULATION" step="10" width="full" @change="params.count = numberFrom($event) ?? params.count"></nldd-number-field>
           </nldd-form-field>
           <nldd-form-field :label="t('sim.reference_date')">
             <nldd-date-field :value="referenceDate" width="full" @change="referenceDate = $event.detail?.value || referenceDate"></nldd-date-field>

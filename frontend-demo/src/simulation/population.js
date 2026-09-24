@@ -14,6 +14,16 @@
  */
 import { createRandom } from './random.js';
 
+/**
+ * The largest population one run generates, citizens or businesses.
+ *
+ * Every subject goes through every law in the browser, so this is a ceiling on
+ * waiting time, not on realism. The count field in SimulatieView and the
+ * simulation slide in demo-config.yaml both follow it; `slides.test.js` fails
+ * when the slide names another number.
+ */
+export const MAX_POPULATION = 2000;
+
 export const CITIZEN_DEFAULTS = Object.freeze({
   count: 50,
   seed: 42,
@@ -228,7 +238,7 @@ export function generateCitizens(userParams, referenceDate, templateRow = () => 
     bsn: () => `9995${String((bsnCounter += 1)).padStart(5, '0')}`,
     childBsn: () => `9996${String((childCounter += 1)).padStart(5, '0')}`,
   };
-  const count = Math.max(1, Math.min(2000, Math.floor(Number(params.count) || 1)));
+  const count = Math.max(1, Math.min(MAX_POPULATION, Math.floor(Number(params.count) || 1)));
   const people = [];
   for (let i = 0; i < count; i += 1) people.push(generatePerson(rng, params, referenceDate, ids));
   pairPeople(people, rng);
@@ -419,7 +429,7 @@ export function generateCitizens(userParams, referenceDate, templateRow = () => 
 export function generateBusinesses(userParams, referenceDate, templateRow = () => ({})) {
   const params = { ...BUSINESS_DEFAULTS, ...userParams };
   const rng = createRandom(params.seed);
-  const count = Math.max(1, Math.min(2000, Math.floor(Number(params.count) || 1)));
+  const count = Math.max(1, Math.min(MAX_POPULATION, Math.floor(Number(params.count) || 1)));
   const t = tableSet();
   const T = (service, table, row) => t.add(service, table, { ...templateRow(service, table), ...row });
   const refYear = yearOf(referenceDate);

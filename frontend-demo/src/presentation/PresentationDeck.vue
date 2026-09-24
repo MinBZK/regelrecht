@@ -4,6 +4,7 @@ import { usePresentation } from './usePresentation.js';
 import { useDemo } from '../store/demoStore.js';
 import { intlLocale } from '../data/format.js';
 import { useI18n } from '../i18n/index.js';
+import { HINTS, hintSegments } from './keyHints.js';
 
 // The deck: a Rijkshuisstijl-blue panel, full-screen for the intro and the
 // closing, a left rail while the live demo runs on the right. Slides are data
@@ -19,6 +20,8 @@ const today = computed(() => new Date().toLocaleDateString(intlLocale(), { day: 
 const counter = computed(() => `${p.index.value + 1} / ${p.total.value}`);
 const progress = computed(() => (p.total.value ? `${((p.index.value + 1) / p.total.value) * 100}%` : '0%'));
 const isLast = computed(() => p.index.value === p.total.value - 1);
+// Een computed, zodat de toetsregel meeverandert bij een taalwissel.
+const hints = computed(() => HINTS.map((id) => ({ id, segments: hintSegments(t(id)) })));
 
 /** `**bold**` in a statement line → <strong>, everything else escaped. */
 function emphasize(line) {
@@ -99,21 +102,14 @@ function saveName(e) {
           <div class="hints">
             <!-- Elke pijl apart, niet `←+→`: dat zet er een plusteken tussen en
                  leest als 'allebei tegelijk', terwijl het hier om de een of de
-                 ander gaat. -->
-            <span class="hint">
-              <nldd-keyboard-shortcut size="sm" color="inherit" keys="←" always-visible></nldd-keyboard-shortcut>
-              <nldd-keyboard-shortcut size="sm" color="inherit" keys="→" always-visible></nldd-keyboard-shortcut>
-              of
-              <nldd-keyboard-shortcut size="sm" color="inherit" keys="Space" always-visible></nldd-keyboard-shortcut>
-              bladeren
-            </span>
-            <span class="hint">
-              <nldd-keyboard-shortcut size="sm" color="inherit" keys="Esc" always-visible></nldd-keyboard-shortcut>
-              sluit
-            </span>
-            <span class="hint">
-              <nldd-keyboard-shortcut size="sm" color="inherit" keys="F" always-visible></nldd-keyboard-shortcut>
-              volledig scherm
+                 ander gaat. De zinnen komen uit het woordenboek met een
+                 `{placeholder}` per toets (keyHints.js); stonden ze hier als
+                 tekst, dan bleven ze Nederlands in elke taal. -->
+            <span v-for="hint in hints" :key="hint.id" class="hint">
+              <template v-for="(seg, j) in hint.segments" :key="j">
+                <nldd-keyboard-shortcut v-if="seg.key" size="sm" color="inherit" :keys="seg.key" always-visible></nldd-keyboard-shortcut>
+                <template v-else>{{ seg.text }}</template>
+              </template>
             </span>
           </div>
         </div>
