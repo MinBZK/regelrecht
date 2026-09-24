@@ -83,10 +83,21 @@ regelrecht/
 │   ├── editor-api/       # Backend for the law editor
 │   ├── admin/            # Harvester-admin API
 │   ├── tui/              # Terminal dashboard
+│   ├── shared/           # Types and helpers used across crates
+│   ├── auth/             # OIDC login and role middleware
+│   ├── github/           # GitHub REST client
+│   ├── frontend-shared/  # Code shared by the Vue frontends
+│   ├── poc-portal/       # Password-gated portal for the PoCs
+│   ├── poc-napp/         # Backend of the napp PoC
+│   ├── poc-assistent/    # Policy assistant for the PoCs
+│   ├── arch-extract/     # Architecture explorer (developer tool)
 │   └── grafana/          # Provisioned dashboards
 ├── frontend/             # Law editor (Vue 3 + Vite)
 ├── frontend-lawmaking/   # Law-making process visualization
 ├── frontend-demo/        # The demo, engine as WASM in the browser
+├── frontend-poc-*/       # The proof-of-concepts behind the portal
+├── corpus-poc/           # Case corpora of the PoCs, not law in force
+├── pocs/                 # The PoC register
 ├── corpus/               # Machine-readable laws (YAML), plus the demo corpus
 ├── bdd/                  # Canonical BDD grammar + conformance features
 ├── schema/               # Law format JSON schema, one directory per version

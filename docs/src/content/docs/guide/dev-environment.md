@@ -172,6 +172,10 @@ ZAD; locally the text lines read better, so leave the variable unset. An
 unrecognized value falls back to text and warns on stderr, so a typo never
 silences logging.
 
+## Architecture Explorer
+
+`just arch-explore` builds and starts a local explorer of the codebase on port 7180 (override with `ARCH_EXPLORE_PORT`). It renders a model of the Rust workspace and the Vue frontends, from crate down to method and from app down to component, with the dependencies between them. The model comes from `packages/arch-extract/`, a developer tool that is not deployed. It is generated from the working tree on demand and never committed, so it cannot go stale; `just arch-generate` writes it to disk for inspection. `packages/arch-extract/README.md` explains how the edges are resolved and what the explorer misses.
+
 ## Pre-commit Hooks
 
 Install [pre-commit](https://pre-commit.com/) (for example with
