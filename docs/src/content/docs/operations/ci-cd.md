@@ -57,6 +57,10 @@ Builds the engine for the WebAssembly target to catch compilation issues early.
 
 Neither scans for known vulnerabilities. That is `just audit-advisories` (RustSec plus npm advisories), which runs periodically from `security-advisories.yml` rather than on every push.
 
+### Engine release build (on a tag, and monthly)
+
+`release-engine.yml` builds the `evaluate` binary for Linux and both macOS architectures and publishes them as a GitHub release when an `engine-v*` tag is pushed. Between releases it also builds, without publishing, on the first of every month and on a pull request that changes the workflow itself. A route that only runs on a tag says nothing until the next release, so a broken one used to surface only when someone needed it.
+
 ### Schema protection (on PRs)
 
 Released schema versions in `schema/v*.*.*` are immutable. CI fails if a PR tries to modify or delete a released schema. Only `schema/latest/` can be updated freely.
