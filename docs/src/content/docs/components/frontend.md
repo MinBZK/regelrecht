@@ -46,7 +46,7 @@ A traject ref has the form `{slug}-{8 hex}`. The router pins that pattern in eve
 
 **Werkdocumenten** are Markdown documents stored in the traject's own repository, under `documents/{ref}/`. A new one opens empty in the editor. An upload is converted to Markdown by a pipeline job; before it starts, a confirmation step asks whether a language model may be used for the conversion. Conversions still running show above the document list, and a failed one becomes a task.
 
-**Taken** lists open tasks under *Prioriteit*, *Wachten op* and *Alle taken*, plus one entry per law that tasks refer to. Tasks come from pipeline jobs started for the traject: a harvest, an enrichment or a document conversion ends in a review task, and a job that fails leaves a failure task. A task never opens in the main pane itself; *Beoordelen* goes to the editor or the werkdocument it concerns.
+**Taken** lists open tasks under *Prioriteit*, *Wachten op* and *Alle taken*, then *Werkdocumenten* and one entry per law that tasks refer to. A category without tasks is not shown. Tasks come from pipeline jobs started for the traject: a harvest, an enrichment or a document conversion ends in a review task, and a job that fails leaves a failure task. A task never opens in the main pane itself; *Beoordelen* goes to the editor or the werkdocument it concerns.
 
 **Structuurcontrole** (`TrajectIntegrityPane.vue`) reports what is wrong with how the traject corpus is laid out, with a remedy per finding. The case that prompted it: the law index reads a law id from the directory name, while the editor switches to the `$id` in the YAML after loading, and when those differ everything after it fails with "not found". The report loads on opening and on *Opnieuw controleren*, not periodically.
 

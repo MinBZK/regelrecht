@@ -200,7 +200,7 @@ From `packages/auth/src/config.rs`, shared with harvester-admin. Leaving `OIDC_C
 
 ### Corpus
 
-From `init_corpus` in `main.rs` and `packages/corpus/src/auth.rs`.
+From `init_corpus` in `main.rs`, `packages/corpus/src/auth.rs` and, for `GITHUB_API_BASE`, `packages/github/src/client.rs`.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
