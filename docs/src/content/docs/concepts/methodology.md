@@ -61,7 +61,7 @@ Scenarios serve two purposes, described in [Testing](/guide/testing#two-buckets-
 
 ## What has been done with experts
 
-The procedure above is in use at the desk. The expert side is further behind. The repository records a legal expert's written review of the enrichment design, eleven corrections that now seed its curated legal memo ([RFC-027](/rfcs/rfc-027)), and a session with OCW and DUO for which the repayment regimes in one proof of concept were worked out (`pocs/registry.yaml`). No validating workshop in the sense of `regelrecht-audit-products` has been reported here yet. Until one has, the workshop design is a plan with its tooling in place.
+The procedure above is in use at the desk. The expert side is further behind. The repository records a legal expert's written corrections to three early RFCs ([RFC-002](/rfcs/rfc-002), [RFC-008](/rfcs/rfc-008), [RFC-009](/rfcs/rfc-009)), eleven in all, which now seed the curated legal memo of the enrichment design ([RFC-027](/rfcs/rfc-027)), and a session with OCW and DUO for which the repayment regimes in one proof of concept were worked out (`pocs/registry.yaml`). No validating workshop in the sense of `regelrecht-audit-products` has been reported here yet. Until one has, the workshop design is a plan with its tooling in place.
 
 ## Further reading
 

@@ -54,7 +54,7 @@ The regex catches surface tells. These are the ones you read for:
 
 ## Docs-specific mechanics
 
-- **Frontmatter is reader-facing.** `title` and `description` render on the page and in search results — they get the same anti-tell treatment as the body. RFC frontmatter has required fields (`title`, `status`, `implementation`, `date`, `authors`); see `rfc-000.md` and `template.md`. Ground `status` and `implementation` in the codebase, not the RFC's aspirations.
+- **Frontmatter is reader-facing.** `title` and `description` render on the page and in search results — they get the same anti-tell treatment as the body. RFC frontmatter has required fields (`title`, `status`, `implementation`, `topic`, `date`, `authors`; `topic` takes a value from `docs/src/lib/rfc-topics.ts`); see `rfc-000.md` and `template.md`. Ground `status` and `implementation` in the codebase, not the RFC's aspirations.
 - **Mermaid diagrams need an accessible name** (enforced separately by the a11y gate). When you add a diagram, its meaning must also be legible from the prose around it — do not make the diagram load-bearing for a reader who cannot see it.
 - **Do not hand-edit generated files.** If a page is code-generated, change the source. (The BDD grammar and RFC link-rewriting are generated; markdown content pages are not.)
 

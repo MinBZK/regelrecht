@@ -93,7 +93,8 @@ const FRONTMATTER = /^---\n([\s\S]*?)\n---\n/
 /**
  * Read a scalar `key:` value from a frontmatter block. Handles the two shapes
  * our RFC frontmatter uses: a bare scalar (`status: Accepted`) and a quoted
- * scalar (`title: "RFC-001: …"`, `date: '2026-01-01'`). Block sequences and
+ * scalar (`title: "RFC-001: …"`, `date: '2026-01-01'`), each optionally
+ * followed by a `# comment` as `template.md` writes them. Block sequences and
  * nested maps are out of scope — this is the controlled frontmatter that the
  * content collection validates, not arbitrary YAML.
  */
@@ -101,14 +102,14 @@ function frontmatterField(block: string, key: string): string | undefined {
   const m = block.match(new RegExp(`^${key}:[ \\t]*(.+?)[ \\t]*$`, 'm'))
   if (!m) return undefined
   const raw = m[1].trim()
-  // Strip a single layer of matching quotes.
-  if (
-    (raw.startsWith('"') && raw.endsWith('"')) ||
-    (raw.startsWith("'") && raw.endsWith("'"))
-  ) {
-    return raw.slice(1, -1)
-  }
-  return raw
+  // A quoted scalar: take what is between the quotes, ignoring a trailing
+  // comment after the closing quote.
+  const quoted = raw.match(/^(["'])(.*)\1(?:\s+#.*)?$/)
+  if (quoted) return quoted[2]
+  // A bare scalar ends where a YAML comment starts (whitespace, then `#`).
+  // Without this, `topic: language # …` copied from the template would read
+  // as an unknown topic and drop the RFC from the index.
+  return raw.replace(/\s+#.*$/, '')
 }
 
 /**
@@ -404,6 +405,9 @@ export function rfcIndex(): RfcIndex {
   const startHere = START_HERE.map(({ num, why }) => {
     const rfc = byNum.get(num)
     if (!rfc) throw new Error(`rfcs.ts START_HERE: RFC-${num} does not exist`)
+    if (isPlaceholder(rfc)) {
+      throw new Error(`rfcs.ts START_HERE: ${rfc.id} is a placeholder, not a design`)
+    }
     if (isRetired(rfc.status)) {
       throw new Error(
         `rfcs.ts START_HERE: ${rfc.id} is ${rfc.status}; point at the RFC that replaced it`,
@@ -411,6 +415,16 @@ export function rfcIndex(): RfcIndex {
     }
     return { ...rfc, why }
   })
+
+  // The content schema already rejects an unknown topic; this guards the other
+  // parser, so a value the two read differently fails the build instead of
+  // silently leaving the RFC out of every group.
+  const topicIds = new Set<string>(RFC_TOPICS.map((t) => t.id))
+  for (const r of rfcs) {
+    if (r.topic !== undefined && !topicIds.has(r.topic)) {
+      throw new Error(`rfcs.ts rfcIndex: ${r.id} has unknown topic "${r.topic}"`)
+    }
+  }
 
   const current = rfcs.filter((r) => !isPlaceholder(r) && !isRetired(r.status))
   const groups = RFC_TOPICS.map((t) => ({
