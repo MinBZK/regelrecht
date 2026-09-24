@@ -48,7 +48,7 @@ Delivery goes through the contact point `mattermost`, a Slack-type receiver (Mat
 
 ## Authentication
 
-`entrypoint.sh` switches Keycloak login on only when all four ZAD-injected OIDC variables are present. It builds the auth, token and userinfo endpoints from `OIDC_URL` and `OIDC_REALM`, because Grafana cannot take a single discovery URL, and then hides the local login form. Users in the Keycloak group `grafana-admin` become Grafana Admin, everyone else Viewer. Anonymous access is off.
+`entrypoint.sh` switches Keycloak login on only when all four ZAD-injected OIDC variables are present. It builds the auth, token and userinfo endpoints from `OIDC_URL` and `OIDC_REALM`, because Grafana cannot take a single discovery URL, and then hides the local login form. Users in the Keycloak group `grafana-admin` get the Admin role in the organization, everyone else Viewer. Anonymous access is off.
 
 When any of the four is missing, Grafana starts without OIDC and logs a warning. The local admin account then remains the only way in, with a random password generated at startup unless `GF_SECURITY_ADMIN_PASSWORD` is set. Do not publish an instance in that state.
 
@@ -63,12 +63,10 @@ When any of the four is missing, Grafana starts without OIDC and logs a warning.
 | `GF_SECURITY_SECRET_KEY` | yes | Signs sessions; without it Grafana falls back to its insecure built-in key and the entrypoint warns |
 | `GF_SECURITY_ADMIN_PASSWORD` | no | Local admin password; random per start when unset |
 | `MATTERMOST_WEBHOOK_URL` | for alerts | Incoming webhook for the daily summary; unset, the entrypoint puts in a placeholder and nothing is delivered |
-| `GITHUB_PAT` | no | Turns on experimental Git Sync of dashboards (see below) |
-| `GITHUB_REPO_URL`, `GITHUB_BRANCH` | no | Repository and branch for Git Sync; default `https://github.com/MinBZK/regelrecht` and `main` |
 
 ZAD also injects `OIDC_DISCOVERY_URL`, which Grafana does not use. The image sets the rest itself: port, root URL, HSTS and a content security policy with `frame-ancestors 'none'`, and unified alerting.
 
-With `GITHUB_PAT` set, the entrypoint registers a Git Sync repository through `grafanactl` that syncs a `dashboards` directory in the Grafana package every 60 seconds. That directory does not exist in the repository; the provisioned dashboard lives under `provisioning/dashboards/json/` and does not depend on Git Sync.
+Dashboards come only from the files under `provisioning/dashboards/json/`. A change to a dashboard therefore goes through a pull request on that JSON; an edit made in the Grafana UI is not written back to the repository.
 
 ## Running locally
 
