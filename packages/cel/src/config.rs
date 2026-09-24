@@ -71,6 +71,24 @@ pub struct CelDefinitie {
     pub behandeling: Option<Behandeling>,
     #[serde(default)]
     pub startstand: Option<String>,
+    /// Standaardgegevens per handeling, voor een proefopstelling.
+    #[serde(default)]
+    pub voorbeelden: Option<VoorbeeldenDefinitie>,
+}
+
+/// Het blok `voorbeelden`: per handeling een JSON-bestand, relatief aan de
+/// map van de cel (zie [`crate::voorbeelden`]).
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct VoorbeeldenDefinitie {
+    /// Logins voor de nep-eHerkenning, elk `{kvk, persoon}`.
+    #[serde(default)]
+    pub inloggen: Vec<String>,
+    /// Een aanvraag: `{external: {...}}`.
+    #[serde(default)]
+    pub aanvraag: Option<String>,
+    /// Een besluitformulier: `{formulier: {...}}`.
+    #[serde(default)]
+    pub besluit: Option<String>,
 }
 
 /// De rollen van een cel, elk met een (nagebootste) login.
@@ -380,6 +398,26 @@ mod tests {
         .unwrap();
         assert_eq!(d.synthese[0].url.as_deref(), Some("http://localhost:7172"));
         assert!(d.portaal.is_none());
+        assert!(d.voorbeelden.is_none());
+    }
+
+    #[test]
+    fn voorbeelden_blok() {
+        let d = CelDefinitie::parse(
+            "id: a\nrecording_actor: a\nstromen: [s.yaml]\nlexostatussen: l.yaml\nvoorbeelden:\n  inloggen: [login.json]\n  besluit: besluit.json\n",
+            "t",
+        )
+        .unwrap();
+        let v = d.voorbeelden.unwrap();
+        assert_eq!(v.inloggen, ["login.json"]);
+        assert_eq!(v.aanvraag, None);
+        assert_eq!(v.besluit.as_deref(), Some("besluit.json"));
+        let fout = CelDefinitie::parse(
+            "id: a\nrecording_actor: a\nstromen: [s.yaml]\nlexostatussen: l.yaml\nvoorbeelden:\n  inlog: [login.json]\n",
+            "t",
+        )
+        .unwrap_err();
+        assert!(fout.iter().any(|f| f.contains("inlog")), "{fout:?}");
     }
 
     #[test]

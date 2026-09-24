@@ -36,3 +36,4 @@ pub mod stroom;
 pub mod synthese;
 pub mod toets;
 pub mod transport;
+pub mod voorbeelden;

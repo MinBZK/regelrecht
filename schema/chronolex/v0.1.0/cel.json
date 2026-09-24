@@ -61,6 +61,32 @@
       "type": "string",
       "minLength": 1,
       "description": "Een JSONL-bestand met grammen die de cel bij het starten in een lege kroniek zet. Elke regel heeft stroom, name, op_moment, herkomst: startstand en fields, en een zaakkenmerk als het event een zaak heeft (zaak: opent of volgt), en alleen dan; de rest volgt uit de stroom."
+    },
+    "voorbeelden": {
+      "type": "object",
+      "description": "Standaardgegevens per handeling, voor een proefopstelling: de frontend biedt ze aan om een formulier voor in te vullen of de handeling er direct mee te doen. Elk bestand is JSON; de runtime controleert bij het opstarten de vorm. Niets hiervan wordt vastgelegd.",
+      "additionalProperties": false,
+      "properties": {
+        "inloggen": {
+          "type": "array",
+          "uniqueItems": true,
+          "description": "Logins voor de nep-eHerkenning, elk een object met kvk en persoon. Het label is de bestandsnaam zonder extensie.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "aanvraag": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Een aanvraag: een object met external, zoals het portaal het ontvangt."
+        },
+        "besluit": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Een besluitformulier: een object met formulier, zoals het besluit het ontvangt."
+        }
+      }
     }
   },
   "definitions": {

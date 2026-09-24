@@ -9,6 +9,7 @@ use crate::config::{CelDefinitie, Portaal};
 use crate::formulier::{self, Formulier};
 use crate::reductie::{self, Lexostatussen};
 use crate::stroom::{self, Event, Gram, Stroom};
+use crate::voorbeelden::{self, Voorbeelden};
 use crate::{controle, startstand};
 
 /// Een geladen cel die de controles bij het opstarten doorstond.
@@ -23,6 +24,8 @@ pub struct Cel {
     pub formulier: Option<Formulier>,
     /// De grammen voor een lege kroniek (leeg zonder `startstand`).
     pub startstand: Vec<Gram>,
+    /// Standaardgegevens per handeling (leeg zonder `voorbeelden`).
+    pub voorbeelden: Voorbeelden,
 }
 
 impl Cel {
@@ -97,6 +100,15 @@ impl Cel {
                 .unwrap_or_default(),
             None => Vec::new(),
         };
+        let voorbeelden = match &definitie.voorbeelden {
+            Some(v) => {
+                fouten.extend(voorbeelden_zonder_handeling(&definitie, v));
+                voorbeelden::laad(map, v)
+                    .map_err(|f| fouten.extend(f))
+                    .unwrap_or_default()
+            }
+            None => Voorbeelden::default(),
+        };
         if !fouten.is_empty() {
             return Err(fout(fouten));
         }
@@ -108,6 +120,7 @@ impl Cel {
             service,
             formulier,
             startstand,
+            voorbeelden,
         })
     }
 
@@ -145,7 +158,27 @@ impl Cel {
     }
 }
 
-/// Zet de cel voor elke melding.
+/// Een voorbeeld voor een handeling die de cel niet heeft, is een fout:
+/// logins of een aanvraag zonder portaal, een besluit zonder behandeling.
+/// (Dat een portaal de rol aanvrager heeft, controleert
+/// [`crate::besluit::controleer`].)
+fn voorbeelden_zonder_handeling(
+    definitie: &CelDefinitie,
+    v: &crate::config::VoorbeeldenDefinitie,
+) -> Vec<String> {
+    let mut fouten = Vec::new();
+    if !v.inloggen.is_empty() && definitie.portaal.is_none() {
+        fouten.push("voorbeelden.inloggen: de cel heeft geen portaal".to_string());
+    }
+    if v.aanvraag.is_some() && definitie.portaal.is_none() {
+        fouten.push("voorbeelden.aanvraag: de cel heeft geen portaal".to_string());
+    }
+    if v.besluit.is_some() && definitie.behandeling.is_none() {
+        fouten.push("voorbeelden.besluit: de cel heeft geen behandeling".to_string());
+    }
+    fouten
+}
+
 /// Vul de regeling van het besluit in uit de wet, als `cel.yaml` haar niet
 /// noemt: de beschikking waarvoor het bevoegd gezag de `recording_actor` van
 /// de cel is. Precies een zo'n beschikking, en de uitkomsten van het besluit
@@ -188,6 +221,7 @@ fn vind_besluit(definitie: &mut CelDefinitie, service: &LawExecutionService) -> 
     fouten
 }
 
+/// Zet de cel voor elke melding.
 pub fn met_cel(cel: &str, fouten: Vec<String>) -> Vec<String> {
     fouten
         .into_iter()
@@ -323,5 +357,39 @@ mod tests {
                 .any(|f| f.contains("recording_actor 'test_register'")),
             "{fouten:?}"
         );
+    }
+
+    #[test]
+    fn voorbeelden_van_de_fixture() {
+        let afnemer = Cel::laad(&fixtures().join("cellen/afnemer"), service()).unwrap();
+        let labels: Vec<&str> = afnemer
+            .voorbeelden
+            .inloggen
+            .iter()
+            .map(|v| v.label.as_str())
+            .collect();
+        assert_eq!(labels, ["voorbeeld-login", "voorbeeld-login-ander"]);
+        assert!(afnemer.voorbeelden.aanvraag.is_some());
+        assert!(afnemer.voorbeelden.besluit.is_some());
+        let register = Cel::laad(&fixtures().join("cellen/register"), service()).unwrap();
+        assert!(register.voorbeelden.inloggen.is_empty());
+    }
+
+    #[test]
+    fn voorbeeld_voor_een_handeling_die_de_cel_niet_heeft() {
+        let dir = kopie("register");
+        let map = dir.path().join("cellen/register");
+        let cel = std::fs::read_to_string(map.join("cel.yaml")).unwrap();
+        std::fs::write(map.join("x.json"), r#"{"external": {}}"#).unwrap();
+        std::fs::write(
+            map.join("cel.yaml"),
+            format!("{cel}\nvoorbeelden:\n  aanvraag: x.json\n  besluit: weg.json\n"),
+        )
+        .unwrap();
+        let fouten = Cel::laad(&map, service()).err().unwrap();
+        assert_eq!(fouten.len(), 3, "{fouten:?}");
+        assert!(fouten[0].contains("voorbeelden.aanvraag: de cel heeft geen portaal"));
+        assert!(fouten[1].contains("voorbeelden.besluit: de cel heeft geen behandeling"));
+        assert!(fouten[2].contains("weg.json"), "{fouten:?}");
     }
 }

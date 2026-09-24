@@ -7,6 +7,7 @@
 //! |---|---|
 //! | `GET /api/kroniek` | de grammen, elk met YAML |
 //! | `GET /api/lexostatus/{naam}?<input>=...` | een reductie, met de inputs als query |
+//! | `GET /api/voorbeelden` | standaardgegevens per handeling (`voorbeelden` in `cel.yaml`), ook zonder login |
 //!
 //! Een cel met een portaal (rol aanvrager, nep-eHerkenning) heeft daarnaast:
 //!
@@ -93,7 +94,8 @@ pub struct AppState {
 pub fn router(state: AppState) -> Router {
     let mut r = Router::new()
         .route("/api/kroniek", get(kroniek_route))
-        .route("/api/lexostatus/{naam}", get(lexostatus_route));
+        .route("/api/lexostatus/{naam}", get(lexostatus_route))
+        .route("/api/voorbeelden", get(voorbeelden_route));
     let rollen = &state.cel.definitie.rollen;
     if rollen.aanvrager.is_some() {
         r = r
@@ -220,6 +222,12 @@ async fn logout(State(state): State<AppState>, headers: HeaderMap) -> Response {
     state.sessies.verwijder(&headers);
     let cookie = cookie(&state, "", "; Max-Age=0");
     ([(header::SET_COOKIE, cookie)], StatusCode::NO_CONTENT).into_response()
+}
+
+/// De voorbeelden van de cel. Ook zonder login: de inlogvoorbeelden zijn er
+/// juist voor het inloggen.
+async fn voorbeelden_route(State(state): State<AppState>) -> Json<crate::voorbeelden::Voorbeelden> {
+    Json(state.cel.voorbeelden.clone())
 }
 
 async fn stroom_route(State(state): State<AppState>) -> Result<Json<Value>, Fout> {

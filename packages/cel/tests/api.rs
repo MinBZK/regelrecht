@@ -1688,3 +1688,104 @@ async fn een_ander_bevoegd_gezag_weigert_het_besluit() {
         std::fs::read_to_string(data.path().join("test_afnemer/test_afnemer.jsonl")).unwrap();
     assert_eq!(kroniek.lines().count(), 1, "alleen de aanvraag");
 }
+
+// --- Voorbeelden per handeling ---
+
+#[tokio::test]
+async fn voorbeelden_zonder_login() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path());
+    let (status, body, _) = vraag(
+        &app,
+        "GET",
+        &format!("{AFNEMER}/api/voorbeelden"),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["inloggen"],
+        json!([
+            {"label": "voorbeeld-login", "kvk": "12345678", "persoon": "A. Tester"},
+            {"label": "voorbeeld-login-ander", "kvk": "87654321", "persoon": "B. Tester"},
+        ])
+    );
+    assert_eq!(
+        body["aanvraag"],
+        afnemer_concept(Some("VOORBEELD"))["external"]
+    );
+    assert_eq!(body["besluit"], oordelen()["formulier"]);
+
+    // Een cel zonder voorbeelden: leeg, geen fout.
+    let (status, body, _) = vraag(
+        &app,
+        "GET",
+        "/cellen/test_register/api/voorbeelden",
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        body,
+        json!({"inloggen": [], "aanvraag": null, "besluit": null})
+    );
+}
+
+#[tokio::test]
+async fn het_aanvraagvoorbeeld_is_in_te_dienen() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path());
+    let (_, v, _) = vraag(
+        &app,
+        "GET",
+        &format!("{AFNEMER}/api/voorbeelden"),
+        None,
+        None,
+    )
+    .await;
+    let (status, _, cookie) = vraag(
+        &app,
+        "POST",
+        &format!("{AFNEMER}/api/eherkenning/login"),
+        None,
+        Some(json!({"kvk": v["inloggen"][0]["kvk"], "persoon": v["inloggen"][0]["persoon"]})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, body, _) = vraag(
+        &app,
+        "POST",
+        &format!("{AFNEMER}/api/aanvraag"),
+        cookie.as_deref(),
+        Some(json!({"external": v["aanvraag"]})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+}
+
+#[test]
+fn voorbeelden_controle_bij_het_opstarten() {
+    let weg = |t: String| t.replace("voorbeeld-besluit.json", "weg.json");
+    let cellen = eigen_cellen(&[("afnemer", &weg)]);
+    let data = tempfile::tempdir().unwrap();
+    let fouten = runtime_op(&cellen.path().join("cellen"), data.path())
+        .err()
+        .unwrap();
+    assert_eq!(fouten.len(), 1, "{fouten:?}");
+    assert!(
+        fouten[0].starts_with("cel 'test_afnemer': voorbeeld weg.json"),
+        "{fouten:?}"
+    );
+
+    let verkeerd = |t: String| t.replace("voorbeeld-besluit.json", "voorbeeld-login.json");
+    let cellen = eigen_cellen(&[("afnemer", &verkeerd)]);
+    let fouten = runtime_op(&cellen.path().join("cellen"), data.path())
+        .err()
+        .unwrap();
+    assert!(
+        fouten[0].contains("voorbeeld-login.json: verwacht een object met 'formulier'"),
+        "{fouten:?}"
+    );
+}

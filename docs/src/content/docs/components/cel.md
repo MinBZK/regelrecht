@@ -105,6 +105,10 @@ Three things lead to a refusal with 409 and no gram: the trial decision is incom
 
 A cell may name a `startstand`: a JSONL file of grams to put into an empty chronicle. Each line gives `stroom`, `name`, `op_moment`, `herkomst: startstand` and `fields`. A line has a `zaakkenmerk` when its event has a case, and only then; the runtime does not make one up. Type, soort, legal ground, chronicle, actor and the hash of the stream come from the stream, so a start state does not go stale when the stream changes. The fields must be exactly those of the event. The runtime loads the start state only when every chronicle of the cell is empty.
 
+## Examples
+
+For a trial setup a cell may name standard data per action, in a `voorbeelden` block: `inloggen` (a list of JSON files, each `{kvk, persoon}`; the label is the file name without extension), `aanvraag` (a JSON file with `{external: {...}}`, as the portal receives it) and `besluit` (a JSON file with `{formulier: {...}}`, as the decision receives it). Paths are relative to the cell's directory. `GET /cellen/<id>/api/voorbeelden` returns `{inloggen: [{label, kvk, persoon}], aanvraag, besluit}`, with `null` for an action without an example, and needs no login, since the login examples are there to log in with. The frontend offers each example to fill in the form first or to perform the action with it directly. An example is ordinary input: it is checked like any other and nothing about it is recorded.
+
 ## Synthesis
 
 The check of a portal cell first reduces the draft to its own lexostatus. Then it asks each source in `synthese` for a lexostatus, with inputs taken from its own lexostatus:
@@ -173,6 +177,7 @@ Each cell is checked on its own. When one fails, the runtime does not start, and
 10. A portal needs the applicant role and the other way around; case handling needs the case handler role. The work queue is a list. The outcomes of the decision come from one article. The lexostatuses of the decision have `zaakkenmerk` as their only input. Each parameter in the form, in the state at decision or in a `rijen` block is one a caller of the article has to supply, and every parameter of the decision comes from one source only.
 11. Synthesis per row: the table comes from a lexostatus of the decision that supplies it; each column name comes from one place only (the table or one source); a `kolom` input names a column something before it fills; a source is another cell. Where the decision is recorded: an existing event with `zaak: volgt` and a stage, whose `$external` keys are exactly the outcomes of the decision.
 12. A lexostatus supplies something: at least one derivation or one extra field.
+13. Each example file exists and is JSON of the right shape: a login has a valid KvK number and a name, an application has an `external` object, a decision has a `formulier` object. An example for an action the cell does not have (a login or application without a portal, a decision without case handling) is an error.
 
 Whether a source is reachable and offers the lexostatus with those parameters and inputs is checked after start-up, through `GET /api/cellen` at the source. A problem there is a warning, not a refusal: the source may come up later.
 
@@ -194,6 +199,7 @@ The `portaal` block in `cel.yaml` says which event a submission becomes, which l
 | `GET /api/cellen` | The cells in this runtime and what each offers |
 | `GET /cellen/<id>/api/kroniek` | The grams, each with its YAML. With a portal: only those of the logged-in KvK number. |
 | `GET /cellen/<id>/api/lexostatus/{naam}?<input>=...` | A reduction, with the inputs as query parameters. With a portal: only over your own grams. |
+| `GET /cellen/<id>/api/voorbeelden` | The examples per action from `voorbeelden` in `cel.yaml`, without login. Empty without that block. |
 | `POST /cellen/<id>/api/eherkenning/login` | Portal only. `{kvk, persoon, machtiging}` to a session. A KvK number has eight digits and the mandate is `volledig` or `geen`. There is no register. What a missing mandate means is up to the regulation, not the login. |
 | `GET /cellen/<id>/api/stroom` | Portal only. The stream definition and the form fields |
 | `POST /cellen/<id>/api/aanvraag/toets` | Portal only. Builds the gram in memory without recording it, reduces it, runs the synthesis and evaluates the configured outcome. `ontbreekt` lists the parameters of a presence derivation (`gevuld`, `tabel` with `elke_regel`) that came out false. |
