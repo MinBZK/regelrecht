@@ -1,4 +1,4 @@
-<title>Werkbladen juristsessie</title>
+<title>Walk-through juristsessie</title>
 <style>
 *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
 :root { --ink:#1a1a1a; --dim:#5f5f5f; --line:#bdbdbd; --zacht:#e4e4e4; --accent:#154273; }
@@ -47,45 +47,148 @@ td { border-top:1px solid var(--zacht); padding:9px 8px; vertical-align:top; }
   tr { page-break-inside:avoid; }
 }
 @media (max-width:760px) { .trede { grid-template-columns:1fr; } .plak { width:90px; } }
+
+/* Walk-through */
+.halte { display:grid; grid-template-columns:34px 1fr 150px; gap:12px; border-top:1px solid var(--zacht); padding:11px 0; }
+.halte:last-of-type { border-bottom:1px solid var(--zacht); }
+.halte .nr { font-weight:700; color:var(--dim); font-variant-numeric:tabular-nums; font-size:15px; }
+.halte .wat { font-size:13px; line-height:1.45; }
+.halte .regeling { font-weight:700; font-size:13px; }
+.halte .uitkomst { margin-top:2px; }
+.halte .bedrag-in { font-weight:700; font-variant-numeric:tabular-nums; }
+.halte .norm { margin-top:6px; padding-left:9px; border-left:2px solid #d9b26a; font-size:12px; line-height:1.4; }
+.halte .norm b { font-weight:700; }
+.halte .geen { color:var(--dim); }
+.halte .vak { border:1px dashed var(--line); background:repeating-linear-gradient(45deg,#fafafa,#fafafa 6px,#fff 6px,#fff 12px); }
+.persona { border:1px solid var(--zacht); padding:10px 13px; font-size:12.5px; line-height:1.5; margin-bottom:14px; background:#fafafa; }
+.persona b { font-weight:700; }
 </style>
 
 <div class="vel">
-  <h1>Blad 1 &mdash; Hoeveel krijgt deze werkgever?</h1>
-  <div class="sub">Koen &middot; Participatiewet-doelgroep &middot; loonwaarde 60% van het minimumloon plus vakantiebijslag &middot; 32 uur per week</div>
+  <h1>Kleurafspraak</h1>
+  <div class="sub">Op elk vel dezelfde drie kleuren. E&eacute;n sticky per uitspraak.</div>
   <div class="legenda">
     <div class="kleur"><span class="blokje geel"></span><span><b>Geel &mdash; er is een vindplaats.</b> Schrijf erop welke beleidsregel, welk protocol of welke regeling de norm invult.</span></div>
     <div class="kleur"><span class="blokje roze"></span><span><b>Roze &mdash; wordt per geval beoordeeld.</b> Geen algemene maatstaf. Schrijf erop wie beoordeelt.</span></div>
-    <div class="kleur"><span class="blokje blauw"></span><span><b>Blauw &mdash; twijfel of vervolgvraag.</b> Gaat mee terug naar de desk.</span></div>
+    <div class="kleur"><span class="blokje blauw"></span><span><b>Blauw &mdash; dit klopt niet</b>, of er is een vervolgvraag. Gaat mee terug naar de desk.</span></div>
   </div>
   <div class="instructie">
-    <b>Eerst de vraag, dan pas het model.</b> E&eacute;n gele sticky op het bedrag dat volgens de wet klopt. Daarna de zes vragen langs; blauwe sticky waar de twijfel zit.<br>
-    Wat het model vandaag toont staat hieronder aangetekend. Dat wordt voorgelezen n&aacute; de eerste sticky.
+    <b>Eerst de wettekst, dan pas de uitkomst.</b> Per halte wordt de bepaling voorgelezen; daarna wat het model eruit haalt.
+    Een lege regel is een uitkomst: waar geen sticky komt, is geen vindplaats bekend.
   </div>
+</div>
+
+<div class="vel">
+  <h1>Vel 1 &mdash; Koen door het stelsel</h1>
+  <div class="persona"><b>Koen</b> &middot; 42 jaar &middot; Participatiewet-doelgroep &middot; opgenomen in het doelgroepregister banenafspraak &middot; loonwaarde 60% van het minimumloon plus vakantiebijslag &middot; <b>32 uur per week</b></div>
+    <div class="halte">
+      <div class="nr">1</div>
+      <div class="wat"><div class="regeling">Participatiewet 10c en 10d &mdash; loonkostensubsidie</div><div class="uitkomst"><span class="bedrag-in">&euro; 766,22 / maand</span> &mdash; gemeente betaalt aan de werkgever, bij 32 uur</div><div class="norm"><b>Drie open normen in dit ene bedrag.</b> De vergoeding voor werkgeverslasten (lid 4), de loonwaarde met of zonder vakantiebijslag (lid 4), en &ldquo;de in de sector gebruikelijke volledige dienstbetrekking&rdquo; (lid 4, derde zin). Zie de lat hieronder.</div></div>
+      <div class="vak"></div>
+    </div>
+    <div class="halte">
+      <div class="nr">2</div>
+      <div class="wat"><div class="regeling">Participatiewet 10 &mdash; ondersteuning en voorziening</div><div class="uitkomst">aanspraak op persoonlijke ondersteuning en op een voorziening</div><div class="norm">&ldquo;de naar het oordeel van het college <b>noodzakelijk geachte</b> voorziening&rdquo; &mdash; lid 1. Lid 4 schrijft onderzoek voor zonder drempel.</div></div>
+      <div class="vak"></div>
+    </div>
+    <div class="halte">
+      <div class="nr">3</div>
+      <div class="wat"><div class="regeling">Participatiewet 10da &mdash; begeleiding op de werkplek</div><div class="uitkomst">harde aanspraak, want doelgroep loonkostensubsidie</div><div class="norm">&ldquo;<b>begeleiding op de werkplek</b>&rdquo; &mdash; de wet omschrijft het niet en verwijst er niet voor door.</div></div>
+      <div class="vak"></div>
+    </div>
+    <div class="halte">
+      <div class="nr">4</div>
+      <div class="wat"><div class="regeling">Ziektewet 29b &mdash; no-riskpolis</div><div class="uitkomst">recht, via lid 2 onderdeel e: toeleiding met loonkostensubsidie</div><div class="norm">&ldquo;binnen vijf jaar na die dag&rdquo; &mdash; lid 1. Bij een <b>opvolgend dienstverband</b> is niet eenduidig of de termijn opnieuw begint, doorloopt of optelt.</div></div>
+      <div class="vak"></div>
+    </div>
+    <div class="halte">
+      <div class="nr">5</div>
+      <div class="wat"><div class="regeling">Wtl 2.1 en 2.13 &mdash; loonkostenvoordeel banenafspraak</div><div class="uitkomst"><span class="bedrag-in">&euro; 1.680,64 / jaar</span> &mdash; werkgever ontvangt, op grond van het doelgroepregister</div><div class="norm">Duur: <b>zolang de dienstbetrekking duurt</b> (2.12). Het model rekent die termijn niet.</div></div>
+      <div class="vak"></div>
+    </div>
+    <div class="halte">
+      <div class="nr">6</div>
+      <div class="wat"><div class="regeling">Wet WIA 35 &mdash; jobcoaching en werkplekaanpassing</div><div class="uitkomst"><span class="geen">geen recht</span>, uitgesloten door lid 4 onderdeel b</div><div class="norm">De uitsluiting geldt <b>tot twee aaneengesloten jaren</b> minimumloon zonder loonkostensubsidie. Het model rekent die termijn niet.</div></div>
+      <div class="vak"></div>
+    </div>
+    <div class="halte">
+      <div class="nr">7</div>
+      <div class="wat"><div class="regeling">WW 76a &mdash; proefplaatsing</div><div class="uitkomst"><span class="geen">geen recht</span>, want geen WW-uitkering</div></div>
+      <div class="vak"></div>
+    </div>
+    <div class="halte">
+      <div class="nr">8</div>
+      <div class="wat"><div class="regeling">Wajong 2:20 &mdash; loondispensatie</div><div class="uitkomst"><span class="geen">geen recht</span>, want geen Wajong-status</div></div>
+      <div class="vak"></div>
+    </div>
+
+  <h2>Zoom op halte 1 &mdash; hoeveel is de loonkostensubsidie?</h2>
+  <div class="instructie">E&eacute;n gele sticky op het bedrag dat volgens de wet klopt. Pas daarna wordt verteld wat het model toont.</div>
   <div class="lat">
-    <div class="trede"><div class="bedrag">&euro; 766<small>bij benadering</small></div><div class="route">lid 4-route, naar rato van 32 uur<br><span style="color:#5f5f5f">Het model rekent de arbeidsduur niet mee.</span></div><div class="plakvak"></div></div>
-    <div class="trede"><div class="bedrag">&euro; 862,00<small>huidige uitkomst</small></div><div class="route">lid 4-route, normbasis 36 uur<br><span style="color:#5f5f5f">Wat het model vandaag toont.</span></div><div class="plakvak"></div></div>
+    <div class="trede"><div class="bedrag">&euro; 766<small>bij benadering</small></div><div class="route">lid 4-route, naar rato van 32 uur</div><div class="plakvak"></div></div>
+    <div class="trede"><div class="bedrag">&euro; 862,00<small>huidige uitkomst</small></div><div class="route">lid 4-route, normbasis 36 uur</div><div class="plakvak"></div></div>
     <div class="trede"><div class="bedrag">&euro; 958<small>bij benadering</small></div><div class="route">lid 5-route, eerste zes maanden, naar rato van 32 uur</div><div class="plakvak"></div></div>
-    <div class="trede"><div class="bedrag">&euro; 1.077,50</div><div class="route">lid 5-route, eerste zes maanden, 36 uur<br><span style="color:#5f5f5f">50% van het minimumloon plus vakantiebijslag.</span></div><div class="plakvak"></div></div>
+    <div class="trede"><div class="bedrag">&euro; 1.077,50</div><div class="route">lid 5-route, eerste zes maanden, 36 uur &mdash; 50% van minimumloon plus vakantiebijslag</div><div class="plakvak"></div></div>
   </div>
-  <h2>Zes vragen die het bedrag verschuiven</h2>
   <table>
     <tr><td style="border:0;padding:0">
-    <div class="vraag"><span class="q">1</span><span><b>Werkgeverslasten.</b> Lid 4: 70% van minimumloon plus vakantiebijslag <em>&ldquo;vermeerderd met een bij ministeri&euml;le regeling vastgestelde vergoeding voor werkgeverslasten&rdquo;</em>. Tellen die mee in de grondslag, en welke regeling stelt het bedrag vast?</span></div>
-    <div class="vraag"><span class="q">2</span><span><b>Loonwaarde met of zonder vakantiebijslag.</b> De wet noemt beide termen inclusief vakantiebijslag; de parameter heet alleen <em>loonwaarde</em>. Klopt de lezing?</span></div>
-    <div class="vraag"><span class="q">3</span><span><b>De 50%-regeling van lid 5.</b> Is de route zonder loonwaardevaststelling uitzondering of hoofdroute? Moet het Financieel CV beide bedragen tonen?</span></div>
-    <div class="vraag"><span class="q">4</span><span><b>Naar rato onder 36 uur.</b> Bevestig 32/36. Geldt de overeengekomen arbeidsduur ook als de sector een andere volledige werkweek kent?</span></div>
-    <div class="vraag"><span class="q">5</span><span><b>Voorrang bij het loonkostenvoordeel.</b> Sadee voldoet aan twee categorie&euml;n: &euro;&nbsp;5.075,20 tegenover &euro;&nbsp;1.680,64. Klopt &ldquo;hoogste bedrag wint&rdquo; uit Wtl 4.1 lid 3? <em>Verschil: &euro;&nbsp;3.394,56 per jaar.</em></span></div>
-    <div class="vraag"><span class="q">6</span><span><b>De drie Wajong-tijdperken.</b> Welke drie, en wat betekent elk voor de loondispensatie?</span></div>
+    <div class="vraag"><span class="q">1</span><span><b>Werkgeverslasten.</b> Tellen die mee in de grondslag van de 70%-grens, en welke ministeri&euml;le regeling stelt het bedrag vast?</span></div>
+    <div class="vraag"><span class="q">2</span><span><b>Loonwaarde met of zonder vakantiebijslag.</b> De wet noemt beide termen inclusief; de parameter heet alleen <em>loonwaarde</em>.</span></div>
+    <div class="vraag"><span class="q">3</span><span><b>De 50%-regeling van lid 5.</b> Uitzondering of hoofdroute? Moet het Financieel CV beide bedragen tonen?</span></div>
+    <div class="vraag"><span class="q">4</span><span><b>Naar rato onder 36 uur.</b> Bevestig 32/36, en de sectornorm uit de derde zin.</span></div>
     </td><td class="leegvak" style="width:150px"></td></tr>
   </table>
-  <h2>Vier normen zonder bron</h2>
-  <div class="sub" style="margin:0 0 6px">Als blad 2 hier geen vindplaats oplevert: is dit een gebrek in de wet?</div>
+</div>
+
+<div class="vel">
+  <h1>Vel 2 &mdash; Sadee door het stelsel</h1>
+  <div class="persona"><b>Sadee</b> &middot; 28 jaar &middot; Wajong &middot; opgenomen in het doelgroepregister banenafspraak &middot; loonwaarde 70% &middot; &euro; 14,50 per uur</div>
+    <div class="halte">
+      <div class="nr">1</div>
+      <div class="wat"><div class="regeling">Wajong 2:15 &mdash; recht op arbeidsondersteuning</div><div class="uitkomst">recht, want jonggehandicapte met een aanvraag</div><div class="norm">&ldquo;<b>jonggehandicapte in de zin van artikel 2:3</b>&rdquo; &mdash; beoordeling over een tijdvak van 52 weken rond het zeventiende jaar.</div></div>
+      <div class="vak"></div>
+    </div>
+    <div class="halte">
+      <div class="nr">2</div>
+      <div class="wat"><div class="regeling">Wajong 2:20 &mdash; loondispensatie</div><div class="uitkomst">recht; het UWV vermindert de beloning naar evenredigheid</div><div class="norm">Twee open normen: &ldquo;<b>duidelijk minder</b> dan de arbeidsprestatie die het minimumloon rechtvaardigt&rdquo; (lid 1), en het <b>dispensatiepercentage</b>, dat de wet niet noemt.</div></div>
+      <div class="vak"></div>
+    </div>
+    <div class="halte">
+      <div class="nr">3</div>
+      <div class="wat"><div class="regeling">Wajong 2:22 &mdash; jobcoaching en werkplekaanpassing</div><div class="uitkomst">komt in aanmerking; bij alleen een aanvraag jobcoaching volgt geen werkplekaanpassing</div><div class="norm">Drie open normen: &ldquo;<b>in overwegende mate op het individu afgestemd</b>&rdquo; (lid 2 c), &ldquo;<b>noodzakelijk</b> en een compensatie voor de beperkingen&rdquo; (lid 2 d), en de bevoegdheid zelf &mdash; lid 1 zegt &ldquo;<b>kan</b> toekennen&rdquo;.</div></div>
+      <div class="vak"></div>
+    </div>
+    <div class="halte">
+      <div class="nr">4</div>
+      <div class="wat"><div class="regeling">Ziektewet 29b &mdash; no-riskpolis</div><div class="uitkomst">recht, via lid 2 onderdeel a: Wajong-gerechtigde</div><div class="norm">Duur bij lid 2: <b>geen maximum</b> zolang de dienstbetrekking voortduurt.</div></div>
+      <div class="vak"></div>
+    </div>
+    <div class="halte">
+      <div class="nr">5</div>
+      <div class="wat"><div class="regeling">Wtl 2.1 en 2.13 &mdash; loonkostenvoordeel banenafspraak</div><div class="uitkomst"><span class="bedrag-in">&euro; 1.680,64 / jaar</span> &mdash; werkgever ontvangt; <b>niet</b> categorie arbeidsgehandicapte</div><div class="norm">Op 20 augustus 2026 bevestigd: een Wajonger is geen arbeidsgehandicapte werknemer in de zin van 2.1. Was &euro; 5.075,20; verschil <b>&euro; 3.394,56 per jaar</b>.</div></div>
+      <div class="vak"></div>
+    </div>
+    <div class="halte">
+      <div class="nr">6</div>
+      <div class="wat"><div class="regeling">Wet WIA 35 &mdash; jobcoaching en werkplekaanpassing</div><div class="uitkomst"><span class="geen">geen recht</span>, uitgesloten door lid 4 onderdeel a: Wajong</div></div>
+      <div class="vak"></div>
+    </div>
+    <div class="halte">
+      <div class="nr">7</div>
+      <div class="wat"><div class="regeling">Participatiewet 10d &mdash; loonkostensubsidie</div><div class="uitkomst"><span class="geen">geen recht</span>, want geen Participatiewet-doelgroep</div></div>
+      <div class="vak"></div>
+    </div>
+    <div class="halte">
+      <div class="nr">8</div>
+      <div class="wat"><div class="regeling">WW 76a &mdash; proefplaatsing</div><div class="uitkomst"><span class="geen">geen recht</span>, want geen WW-uitkering</div></div>
+      <div class="vak"></div>
+    </div>
+
+  <h2>Twee vragen bij dit pad</h2>
   <table>
     <tr><td style="border:0;padding:0">
-    <div class="vraag"><span class="q">A</span><span>&ldquo;evenwichtig over deze personen worden verdeeld&rdquo; &mdash; <em>Participatiewet 8a lid 2 a. Geen maatstaf, geen individueel rechtsmiddel.</em></span></div>
-    <div class="vraag"><span class="q">B</span><span>&ldquo;de in de sector gebruikelijke volledige dienstbetrekking&rdquo; &mdash; <em>Participatiewet 10d lid 4. Bepaalt mede de hoogte; zie vraag 4.</em></span></div>
-    <div class="vraag"><span class="q">C</span><span>&ldquo;begeleiding op de werkplek&rdquo; &mdash; <em>Participatiewet 10da. Niet omschreven, geen doorverwijzing.</em></span></div>
-    <div class="vraag"><span class="q">D</span><span>&ldquo;naar het oordeel van het UWV of de eigenrisicodrager&rdquo; &mdash; <em>Wet WIA 37 lid 2 d. Twee partijen met een tegengesteld belang, geen criterium wie beslist.</em></span></div>
+    <div class="vraag"><span class="q">5</span><span><b>Voorrang bij het loonkostenvoordeel.</b> Wtl 4.1 lid 3 zegt dat de hoogste tegemoetkoming wordt verstrekt. Klopt die regel als voorrangsregel? <em>Raakt halte 5: &euro; 3.394,56 per jaar.</em></span></div>
+    <div class="vraag"><span class="q">6</span><span><b>De drie Wajong-tijdperken.</b> Welke drie, en wat betekent elk voor de loondispensatie van halte 2? Het model maakt geen onderscheid.</span></div>
     </td><td class="leegvak" style="width:150px"></td></tr>
   </table>
 </div>
