@@ -177,7 +177,7 @@ Each cell and each process is checked on its own. When one fails, the runtime do
 
 For a cell:
 
-1. `cel.yaml`, the stream definitions and the lexostatus definitions validate against their schemas. The lexostatus file belongs to this cell, and every stream has the cell's `recording_actor`.
+1. `cel.yaml`, the stream definitions and the lexostatus definitions validate against their schemas. The lexostatus file belongs to this cell, and every stream has the cell's `recording_actor`. Every legal ground names a loaded article, and a paragraph it names exists in the article text.
 2. Every derivation points at a parameter of an article in the `grondslag` of an event its filter selects, or of an article in the lexostatus's `levert_aan`, and at field paths that exist in that event. A `tabel` derivation points at a table field and reads only columns the stream declares for it. A derivation on the chosen gram needs a lexostatus with `kies`.
 3. No orphaned field: each field of each event is read by a derivation or a filter, or is listed under `niet_gereduceerd` with a reason.
 4. No name collision: a parameter gets one derivation.
@@ -240,7 +240,7 @@ These are deliberate. Each is a candidate for an amendment once the proof of con
 The split between cell and process follows the position paper, which gives a cell three functions (recording, one or more chronicles, and reduction, which "always takes place in the cell where the chronolexograms concerned were recorded, at the request of a business process") and gives informing, concluding and having a cell record to the process ("synthesis happens at the consumer, not at the source"). RFC-022 agrees where it speaks ("the cell never does cross-cell work; it only reduces its own chronicles", "the cell is not the engine"), but it leaves the configuration of a cell to a later RFC and says nothing about how a process is configured. Deviations 7, 32 and 33 fill that gap.
 
 1. **Type `indiening` with `soort: aanvraag`**, instead of an executogram. The position paper leaves the typology open, and RFC-022 §1 calls the set of types "not a closed set".
-2. **`grondslag` is a list.** An application rests on several articles at once; RFC-022 §1.3 has a single value.
+2. **`grondslag` is a list, and may name a paragraph.** An application rests on several articles at once; RFC-022 §1.3 has a single value. An article can hold more than one application or act, so a legal ground may name the paragraph: `<regulation>#<article> lid <n>`, such as `een_wet#102 lid 1`. Article numbers can contain a space (`kieswet#G 1`, deviation 13), so the paragraph is read after the last ` lid ` and only when a paragraph number (digits, optionally one letter) follows. A paragraph has no parameters of its own: the checks on derivations and on the portal's outcome stay per article. The start-up check only tests that the paragraph exists, as a line of the article text that starts with `<n>.` or `<n> `.
 3. **The format of `lexostatus_definitions`.** RFC-022 §4.1 sketches it and calls it provisional. This runtime fills in `reduction` with `kroniek`, `filter`, `kies`, `afleidingen` and `extra_velden`, adds derivations over a set of grams, each with its own filter, and adds `jaar_van` for an article that asks for a year where the chronicle holds a date.
 4. **`kern` and `inhoud`, constant fields, and `$intake.*`** next to `$external.*`. Who submitted and through which channel belongs to the intake, not to the content.
 5. **`niet_gereduceerd`** in the stream, for the orphaned-field check.

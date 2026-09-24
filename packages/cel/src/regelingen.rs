@@ -90,14 +90,64 @@ fn inventariseer(pad: &Path, tekst: &str) -> GeladenRegeling {
     }
 }
 
-/// Het artikel achter een grondslag `<regeling>#<artikel>`.
+/// Een grondslag, ontleed: `<regeling>#<artikel>` of
+/// `<regeling>#<artikel> lid <n>`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Grondslag<'g> {
+    pub regeling: &'g str,
+    pub artikel: &'g str,
+    pub lid: Option<&'g str>,
+}
+
+/// Of een tekst een lidnummer is: cijfers, eventueel met een letter.
+fn is_lidnummer(tekst: &str) -> bool {
+    let cijfers = tekst.trim_end_matches(|c: char| c.is_ascii_lowercase());
+    !cijfers.is_empty()
+        && cijfers.bytes().all(|b| b.is_ascii_digit())
+        && tekst.len() - cijfers.len() <= 1
+}
+
+/// Ontleed een grondslag. Een artikelnummer kan een spatie hebben
+/// (`kieswet#G 1`), dus het lid staat achter de laatste ` lid `, en alleen als
+/// daar een lidnummer staat.
+pub fn ontleed(grondslag: &str) -> Result<Grondslag<'_>, String> {
+    let (regeling, rest) = grondslag.split_once('#').ok_or_else(|| {
+        format!("grondslag '{grondslag}' heeft niet de vorm <regeling>#<artikel>")
+    })?;
+    let (artikel, lid) = match rest.rsplit_once(" lid ") {
+        Some((artikel, lid)) if is_lidnummer(lid) => (artikel, Some(lid)),
+        _ => (rest, None),
+    };
+    Ok(Grondslag {
+        regeling,
+        artikel,
+        lid,
+    })
+}
+
+/// Of een artikeltekst een lid heeft: een regel die met `<n>.` of `<n> `
+/// begint.
+pub fn heeft_lid(artikel: &Article, lid: &str) -> bool {
+    artikel.text.lines().any(|regel| {
+        regel
+            .trim_start()
+            .strip_prefix(lid)
+            .is_some_and(|rest| rest.starts_with('.') || rest.starts_with(' '))
+    })
+}
+
+/// Het artikel achter een grondslag `<regeling>#<artikel>`, ook als de
+/// grondslag een lid noemt: een lid heeft geen eigen parameters. Of het lid
+/// bestaat, controleert [`heeft_lid`].
 pub fn artikel<'s>(
     service: &'s LawExecutionService,
     grondslag: &str,
 ) -> Result<&'s Article, String> {
-    let (regeling, nummer) = grondslag.split_once('#').ok_or_else(|| {
-        format!("grondslag '{grondslag}' heeft niet de vorm <regeling>#<artikel>")
-    })?;
+    let Grondslag {
+        regeling,
+        artikel: nummer,
+        ..
+    } = ontleed(grondslag)?;
     let law = service
         .resolver()
         .get_law(regeling)
@@ -233,6 +283,38 @@ mod tests {
             .unwrap_err()
             .contains("niet geladen"));
         assert!(artikel(&s, "zonder_hekje").is_err());
+    }
+
+    #[test]
+    fn grondslag_met_een_lid() {
+        assert_eq!(
+            ontleed("een_wet#102 lid 1").unwrap(),
+            Grondslag {
+                regeling: "een_wet",
+                artikel: "102",
+                lid: Some("1")
+            }
+        );
+        assert_eq!(ontleed("een_wet#4:2 lid 2a").unwrap().lid, Some("2a"));
+        // Een artikelnummer met een spatie, met en zonder lid.
+        assert_eq!(
+            ontleed("kieswet#G 1 lid 3").unwrap(),
+            Grondslag {
+                regeling: "kieswet",
+                artikel: "G 1",
+                lid: Some("3")
+            }
+        );
+        assert_eq!(ontleed("kieswet#G 1").unwrap().artikel, "G 1");
+        // Geen lidnummer: dan hoort het bij het artikelnummer.
+        assert_eq!(ontleed("een_wet#A lid B").unwrap().artikel, "A lid B");
+        assert_eq!(ontleed("een_wet#1 lid 12ab").unwrap().lid, None);
+
+        let s = laad(&fixtures()).unwrap().service;
+        let a = artikel(&s, "testregeling_aanvraag#1 lid 1").unwrap();
+        assert_eq!(a.number, "1");
+        assert!(heeft_lid(a, "1"), "{}", a.text);
+        assert!(!heeft_lid(a, "9"));
     }
 
     #[test]

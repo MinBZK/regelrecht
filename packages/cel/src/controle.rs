@@ -139,12 +139,24 @@ fn uniek(strommen: &[Stroom], lexostatussen: &Lexostatussen, fouten: &mut Vec<St
     }
 }
 
+/// Elke grondslag wijst een geladen artikel aan, en een lid dat de
+/// artikeltekst heeft (een regel die met `<n>.` of `<n> ` begint).
 fn grondslagen(strommen: &[Stroom], service: &LawExecutionService, fouten: &mut Vec<String>) {
     for s in strommen {
         for e in &s.events {
             for g in &e.grondslag {
-                if let Err(f) = regelingen::artikel(service, g) {
-                    fouten.push(format!("event '{}' (stroom '{}'): {f}", e.name, s.id));
+                let waar = format!("event '{}' (stroom '{}')", e.name, s.id);
+                match regelingen::artikel(service, g) {
+                    Err(f) => fouten.push(format!("{waar}: {f}")),
+                    Ok(a) => {
+                        let lid = regelingen::ontleed(g).ok().and_then(|o| o.lid);
+                        if let Some(lid) = lid.filter(|l| !regelingen::heeft_lid(a, l)) {
+                            fouten.push(format!(
+                                "{waar}: grondslag '{g}': artikel {} heeft geen lid {lid} (geen regel die met '{lid}.' of '{lid} ' begint)",
+                                a.number
+                            ));
+                        }
+                    }
                 }
             }
         }
@@ -548,9 +560,14 @@ fn portaal_(
         )),
         // De toets geeft de lexostatus als parameters aan dit artikel; die
         // zijn afgeleid voor de artikelen uit de grondslag van het event.
+        // Op artikel, ook als de grondslag een lid noemt.
         Some(artikel) => {
             let grondslag = format!("{}#{}", p.toets.regeling, artikel.number);
-            if !event.grondslag.contains(&grondslag) {
+            let in_grondslag = event.grondslag.iter().any(|g| {
+                regelingen::ontleed(g)
+                    .is_ok_and(|o| o.regeling == p.toets.regeling && o.artikel == artikel.number)
+            });
+            if !in_grondslag {
                 fouten.push(format!(
                     "portaal: uitkomst '{}' komt uit {grondslag}, en dat staat niet in de grondslag van event '{}' ({})",
                     p.toets.uitkomst,
@@ -751,6 +768,27 @@ mod tests {
     fn filter_met_onbekende_input() {
         let cel = CEL.replace("zaakkenmerk: $zaakkenmerk}", "zaakkenmerk: $zaak}");
         faalt_met(STROOM, &cel, "'zaak' is geen input");
+    }
+
+    #[test]
+    fn grondslag_met_een_lid() {
+        // Artikel 1 heeft lid 1 ("1. Een aanvraag ..."); de toets vergelijkt
+        // op artikel, ook als de grondslag een lid noemt.
+        let stroom = STROOM.replace(
+            "      - testregeling_aanvraag#1\n",
+            "      - testregeling_aanvraag#1 lid 1\n",
+        );
+        assert_ne!(stroom, STROOM);
+        draai(&stroom, CEL).unwrap();
+        let stroom = STROOM.replace(
+            "      - testregeling_aanvraag#1\n",
+            "      - testregeling_aanvraag#1 lid 9\n",
+        );
+        faalt_met(
+            &stroom,
+            CEL,
+            "grondslag 'testregeling_aanvraag#1 lid 9': artikel 1 heeft geen lid 9",
+        );
     }
 
     #[test]

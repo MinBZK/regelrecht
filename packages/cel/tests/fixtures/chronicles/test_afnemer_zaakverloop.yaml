@@ -26,7 +26,7 @@ events:
   - name: besluit_genomen
     intake: behandelaar
     grondslag:
-      - testregeling_afnemer#3
+      - testregeling_afnemer#3 lid 1   # het besluit, niet de tijdigheid (lid 2)
     type: decretogram
     stage: BESLUIT
     zaak: volgt

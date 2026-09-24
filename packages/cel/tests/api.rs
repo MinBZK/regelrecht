@@ -1636,6 +1636,7 @@ async fn besluit_nemen_legt_een_decretogram_vast() {
     assert_eq!(gram["zaak"], "volgt");
     assert_eq!(gram["zaakkenmerk"], zaak.as_str());
     assert_eq!(gram["legal_character"], "BESCHIKKING");
+    assert_eq!(gram["grondslag"], json!(["testregeling_afnemer#3 lid 1"]));
     assert_eq!(gram["decision_type"], "TOEKENNING");
     assert_eq!(gram["regulation"], "testregeling_afnemer");
     assert_eq!(gram["regulation_valid_from"], "2025-01-01");

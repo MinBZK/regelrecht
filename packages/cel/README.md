@@ -150,7 +150,8 @@ erboven: het leest lexostatussen en vraagt de cel vast te leggen.
    artikel declareert welke parameters het nodig heeft.
 2. **Stroomdefinitie** (`stroom`, schema `stream.json`). Welke feiten de cel
    vastlegt, door wie, in welke kroniek en op welke `grondslag` (een lijst; een
-   artikelnummer mag een spatie hebben). Een veld bindt aan `$intake.*`, aan
+   artikelnummer mag een spatie hebben; `<regeling>#<artikel> lid <n>` noemt
+   een lid, dat bij het opstarten in de artikeltekst moet staan). Een veld bindt aan `$intake.*`, aan
    `$external.*` of is een constante. Een tabelveld declareert zijn kolommen.
    Een indiening van soort `aanvraag` heeft `fields.kern` (Awb 4:2 lid 1) en
    `fields.inhoud`. `niet_gereduceerd` noemt met reden de velden die geen

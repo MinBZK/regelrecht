@@ -44,8 +44,8 @@
     },
     "grondslag": {
       "type": "string",
-      "description": "<regeling-$id>#<artikelnummer>, bijvoorbeeld een_wet#12, een_wet#4:2 of een_wet#A 1 (een artikelnummer mag een spatie hebben).",
-      "pattern": "^[a-z][a-z0-9_]*#[A-Za-z0-9]([A-Za-z0-9:._ -]*[A-Za-z0-9])?$"
+      "description": "<regeling-$id>#<artikelnummer>, optioneel met ' lid <n>': bijvoorbeeld een_wet#12, een_wet#4:2, een_wet#A 1 (een artikelnummer mag een spatie hebben) of een_wet#102 lid 1. Een artikel kan meer dan een aanvraag of handeling bevatten; het lid wijst de juiste aan. De controle op parameters blijft per artikel.",
+      "pattern": "^[a-z][a-z0-9_]*#[A-Za-z0-9]([A-Za-z0-9:._ -]*[A-Za-z0-9])?( lid [0-9]+[a-z]?)?$"
     },
     "veldpad": {
       "type": "string",
