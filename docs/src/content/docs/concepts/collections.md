@@ -138,6 +138,6 @@ Every iteration appears in the [execution trace](./execution-provenance) with it
 
 ## Further reading
 
-- [Law Format](./law-format) lists the full operation set.
+- [Schema Reference](/reference/schema#operations) lists the full operation set.
 - [RFC-016](/rfcs/rfc-016) records why collection operations look like this, and which alternatives were rejected.
 - [Markings](./markings) covers what happens when a construct cannot be modeled at all.

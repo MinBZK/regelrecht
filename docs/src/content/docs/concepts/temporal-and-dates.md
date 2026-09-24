@@ -54,7 +54,7 @@ When the law "test_date_operations" is executed for outputs "doorlooptijd_maande
 Then the output "doorlooptijd_maanden" is "1"
 ```
 
-Dates must be in canonical `YYYY-MM-DD` form, zero-padded. `2025-1-1` is rejected; the engine does not guess. These scenarios come from `bdd/conformance/date_operations.feature`, and the related operations `AGE`, `DATE_ADD`, and `DATE` are listed in the [Law Format](./law-format) operation table.
+Dates must be in canonical `YYYY-MM-DD` form, zero-padded. `2025-1-1` is rejected; the engine does not guess. These scenarios come from `bdd/conformance/date_operations.feature`, and the related operations `AGE`, `DATE_ADD` and `DATE` are specified in the [Schema Reference](/reference/schema#operations).
 
 ## Reading a component, and cutting back to a month
 
