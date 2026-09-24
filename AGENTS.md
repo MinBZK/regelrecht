@@ -720,6 +720,52 @@ requests erin en toetst de checks daarop. Daar volgt alles uit wat hieronder
 staat, want de verplichte checks moeten dus op die branch rapporteren en niet
 alleen op de pull request.
 
+#### Een pull request door de rij halen
+
+```bash
+gh pr merge <nr> -R MinBZK/regelrecht --squash
+```
+
+Dat zet hem in de rij. gh antwoordt met "The merge strategy for main is set by
+the merge queue"; dat is een mededeling, geen fout. `--delete-branch` weigert
+gh zolang de rij aanstaat, en is ook niet nodig: de repo verwijdert de
+head-branch zelf na de merge.
+
+**Dat de opdracht slaagde, zegt niet dat hij in de rij staat.** Vraag het na:
+
+```bash
+gh api graphql -f query='{repository(owner:"MinBZK",name:"regelrecht"){
+  pullRequest(number:<nr>){state mergeQueueEntry{state position}}}}'
+```
+
+**Een pull request die uit de rij valt, blijft `OPEN`.** Wie wacht tot de
+status iets anders wordt dan `OPEN`, wacht na een uitval dus eeuwig. Volg
+`mergeQueueEntry`: `MERGED` is klaar, en `OPEN` met `mergeQueueEntry: null` is
+een uitval. De reden staat in de tijdlijn:
+
+```bash
+gh api graphql -f query='{repository(owner:"MinBZK",name:"regelrecht"){
+  pullRequest(number:<nr>){timelineItems(last:5,itemTypes:[REMOVED_FROM_MERGE_QUEUE_EVENT]){
+  nodes{... on RemovedFromMergeQueueEvent{createdAt reason}}}}}}'
+```
+
+**Wat in de rij faalt, staat niet op de pull request.** De checks daar blijven
+groen; de rode run hangt aan de queue-branch. Zo vind je hem:
+
+```bash
+gh run list -R MinBZK/regelrecht --event merge_group --limit 20 \
+  --json databaseId,headBranch,workflowName,conclusion \
+  --jq '.[] | select(.headBranch | test("pr-<nr>-"))'
+```
+
+Faalt in de rij een test die de pull request niet raakt, terwijl de run op de
+pull request en de laatste run op main groen zijn, dan is dat meestal een
+flaky test, of een botsing met een andere pull request in dezelfde groep. Zet
+hem één keer opnieuw in de rij. Valt hij een tweede keer uit op hetzelfde, dan
+is het geen toeval meer: zoek de oorzaak en zet hem niet nog eens in de rij.
+Een flaky test die je zo tegenkomt krijgt een issue, want elke uitval kost een
+volledige ronde voor iedereen erachter.
+
 **De rij heeft geen eigen lijst verplichte checks.** Het is dezelfde lijst als
 in de branch protection. Een check die op de queue-branch nooit rapporteert
 blijft op "Expected" staan en laat elke entry hangen tot de
