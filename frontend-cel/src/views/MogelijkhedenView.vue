@@ -3,8 +3,9 @@
 // voert het dienstverleningsbeleid uit voor deze persoon en organisatie, met
 // alleen wat de inlog en de andere cellen al weten (GET /api/mogelijkheden).
 // Per subsidiejaar geeft het beleid één aanbod: mogelijk, uitgesloten of niet
-// te bepalen, met de uiterste indieningsdatum. Bij het aanbod staat een
-// RR-icoon met de trace.
+// te bepalen, met de uiterste indieningsdatum. Per jaar is er een knop die
+// alleen bij "mogelijk" actief is, met een (?) die de redenen en de trace
+// toont.
 import { computed, inject, onMounted, ref } from 'vue';
 import TraceKnop from '@regelrecht/frontend-shared/components/TraceKnop.vue';
 
@@ -45,12 +46,6 @@ function grond(m) {
   if (m.oordeel === 'mogelijk' && m.mist?.length) return `Hangt af van uw aanvraag: ${m.mist.join(', ')}`;
   return `${m.regeling}: ${m.uitkomst}`;
 }
-
-function kop(m) {
-  if (m.oordeel === 'mogelijk') return `Subsidiejaar ${m.subsidiejaar}: u kunt aanvragen`;
-  if (m.oordeel === 'uitgesloten') return `Subsidiejaar ${m.subsidiejaar}: geen aanvraag mogelijk`;
-  return `Subsidiejaar ${m.subsidiejaar}: niet te bepalen`;
-}
 </script>
 
 <template>
@@ -60,47 +55,43 @@ function kop(m) {
   </nldd-title>
   <nldd-spacer size="8"></nldd-spacer>
   <nldd-rich-text>
-    <p>
-      Dit volgt uit het dienstverleningsbeleid, uitgevoerd voor u met wat nu bekend is: uw inlog en de registers.
-      U vult niets in. Het RR-icoon laat zien hoe de uitkomst tot stand kwam.
-    </p>
+    <p>Dit volgt uit het dienstverleningsbeleid, voor u en uw organisatie. Het vraagteken naast een knop zegt waarom.</p>
   </nldd-rich-text>
   <nldd-spacer size="16"></nldd-spacer>
   <template v-if="fout">
     <nldd-inline-dialog variant="alert" text="De mogelijkheden zijn niet te bepalen" :supporting-text="fout"></nldd-inline-dialog>
   </template>
   <template v-for="m in mogelijkheden" :key="m.subsidiejaar">
-    <nldd-title size="4"><h2>{{ kop(m) }}</h2></nldd-title>
-    <nldd-spacer size="8"></nldd-spacer>
-    <nldd-table columns="minmax(200px,1fr) minmax(160px,1fr) minmax(200px,2fr) 48px" :accessible-label="kop(m)">
-      <nldd-table-row slot="header">
-        <nldd-text-cell text="Vraag"></nldd-text-cell>
-        <nldd-text-cell text="Antwoord"></nldd-text-cell>
-        <nldd-text-cell text="Grond"></nldd-text-cell>
-        <nldd-text-cell text=""></nldd-text-cell>
-      </nldd-table-row>
-      <nldd-table-row>
-        <nldd-text-cell text="Kunt u deze aanvraag doen?"></nldd-text-cell>
-        <nldd-text-cell :text="antwoord(m)"></nldd-text-cell>
-        <nldd-text-cell :text="grond(m)"></nldd-text-cell>
-        <nldd-cell>
-          <TraceKnop v-if="m.trace_text" :trace-text="m.trace_text" :titel="`Aanbod ${m.subsidiejaar}`" />
-        </nldd-cell>
-      </nldd-table-row>
-      <nldd-table-row>
-        <nldd-text-cell text="Indienen vóór"></nldd-text-cell>
-        <nldd-text-cell :text="termijnTekst(m)"></nldd-text-cell>
-        <nldd-text-cell :text="`${m.regeling}`"></nldd-text-cell>
-        <nldd-text-cell text=""></nldd-text-cell>
-      </nldd-table-row>
-    </nldd-table>
+    <nldd-container layout="row" gap="8" vertical-alignment="center">
+      <nldd-button
+        variant="primary"
+        :text="`Aanvraag doen voor ${m.subsidiejaar}`"
+        :disabled="m.oordeel !== 'mogelijk' || undefined"
+        @click="emit('aanvragen', { subsidiejaar: m.subsidiejaar })"
+      ></nldd-button>
+      <TraceKnop
+        icon="help"
+        overline="Waarom"
+        :titel="`Aanvraag voor ${m.subsidiejaar}`"
+        :accessible-label="`Waarom: aanvraag voor ${m.subsidiejaar}`"
+        :trace-text="m.trace_text"
+      >
+        <nldd-table columns="minmax(180px,1fr) minmax(240px,2fr)" :accessible-label="`Aanvraag voor ${m.subsidiejaar}`">
+          <nldd-table-row>
+            <nldd-text-cell text="Kunt u deze aanvraag doen?"></nldd-text-cell>
+            <nldd-text-cell :text="antwoord(m)"></nldd-text-cell>
+          </nldd-table-row>
+          <nldd-table-row>
+            <nldd-text-cell text="Waarom"></nldd-text-cell>
+            <nldd-text-cell :text="grond(m)"></nldd-text-cell>
+          </nldd-table-row>
+          <nldd-table-row>
+            <nldd-text-cell text="Indienen vóór"></nldd-text-cell>
+            <nldd-text-cell :text="termijnTekst(m)" :supporting-text="m.regeling"></nldd-text-cell>
+          </nldd-table-row>
+        </nldd-table>
+      </TraceKnop>
+    </nldd-container>
     <nldd-spacer size="12"></nldd-spacer>
-    <nldd-button
-      v-if="m.oordeel === 'mogelijk'"
-      variant="primary"
-      :text="`Aanvraag doen voor ${m.subsidiejaar}`"
-      @click="emit('aanvragen', { subsidiejaar: m.subsidiejaar })"
-    ></nldd-button>
-    <nldd-spacer size="32"></nldd-spacer>
   </template>
 </template>
