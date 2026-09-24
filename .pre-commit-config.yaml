@@ -100,6 +100,13 @@ repos:
         pass_filenames: false
         files: ^(script/require-security-approval(\.test)?\.sh|\.github/workflows/(security-update-gate|claude-dependabot)\.yml)$
 
+      - id: dev-preflight-tests
+        name: Dev-preflight eist mold alleen waar cargo ermee linkt
+        entry: script/dev-lib.test.sh
+        language: system
+        pass_filenames: false
+        files: ^(script/dev-lib(\.test)?\.sh|packages/\.cargo/config\.toml)$
+
       - id: werkpakket-gate-tests
         name: Merge-poort op een genoemd werkpakket doet wat hij belooft
         entry: script/require-werkpakket.test.sh
