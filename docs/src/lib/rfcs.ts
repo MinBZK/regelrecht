@@ -8,6 +8,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import GithubSlugger from 'github-slugger'
+import { RFC_TOPICS, type RfcTopicId } from './rfc-topics'
 
 export interface RfcEntry {
   /** Numeric RFC number, e.g. 8 */
@@ -27,6 +28,12 @@ export interface RfcEntry {
    * schema does not validate.
    */
   implementation?: string
+  /**
+   * `topic` frontmatter value, the group on the RFC index. Absent only on a
+   * placeholder (a file with `reserved_by`); the content schema requires it on
+   * every other RFC.
+   */
+  topic?: RfcTopicId
   /**
    * Raw `depends_on` frontmatter entries, each like "RFC-004 (Uniform Operation
    * Syntax)". Resolved into links by `rfcRelations()`.
@@ -172,6 +179,7 @@ export function getRfcs(): RfcEntry[] {
     const status = frontmatterField(block, 'status') ?? 'Unknown'
     const implementation = frontmatterField(block, 'implementation')
     const shortTitle = frontmatterField(block, 'short_title') ?? title
+    const topic = frontmatterField(block, 'topic') as RfcTopicId | undefined
     const dependsOn = frontmatterList(block, 'depends_on')
 
     // The link is derived from a filename we just read, so it provably
@@ -183,6 +191,7 @@ export function getRfcs(): RfcEntry[] {
       shortTitle,
       status,
       ...(implementation ? { implementation } : {}),
+      ...(topic ? { topic } : {}),
       dependsOn,
       link: `/rfcs/${filename.replace(/\.md$/, '')}`,
     })
@@ -345,4 +354,76 @@ export function rfcTargets(): Map<number, RfcTarget> {
     })
   }
   return targets
+}
+
+/**
+ * The RFCs a newcomer reads first: together they define the design as it runs
+ * today. Editorial, so it is a list here rather than a frontmatter flag; the
+ * build fails if a number no longer exists or has been superseded.
+ */
+const START_HERE: { num: number; why: string }[] = [
+  { num: 1, why: 'The shape of a law file: articles, inputs, outputs.' },
+  { num: 4, why: 'The one syntax every operation uses.' },
+  { num: 7, why: 'How a law calls another law, and which override wins.' },
+  { num: 3, why: 'How a higher law leaves a value to a lower regulation.' },
+  { num: 31, why: 'Where a model records what it could not translate.' },
+  { num: 13, why: 'What a result carries so it can be reproduced.' },
+]
+
+/** True for an RFC that no longer describes the design (shown de-emphasized). */
+export function isRetired(status: string): boolean {
+  return status === 'Superseded' || status === 'Rejected'
+}
+
+/** True for a number held by a placeholder rather than a design. */
+function isPlaceholder(rfc: RfcEntry): boolean {
+  return rfc.status === 'Reserved' || rfc.topic === undefined
+}
+
+export interface RfcIndex {
+  startHere: (RfcEntry & { why: string })[]
+  groups: {
+    id: RfcTopicId
+    label: string
+    description: string
+    rfcs: RfcEntry[]
+  }[]
+  retired: RfcEntry[]
+  placeholders: RfcEntry[]
+}
+
+/**
+ * The RFC index, grouped by `topic`. Current RFCs go into their topic group;
+ * Superseded and Rejected ones are collected separately so the index shows
+ * them after the designs still in force, and placeholders come last.
+ */
+export function rfcIndex(): RfcIndex {
+  const rfcs = getRfcs()
+  const byNum = new Map(rfcs.map((r) => [r.num, r]))
+
+  const startHere = START_HERE.map(({ num, why }) => {
+    const rfc = byNum.get(num)
+    if (!rfc) throw new Error(`rfcs.ts START_HERE: RFC-${num} does not exist`)
+    if (isRetired(rfc.status)) {
+      throw new Error(
+        `rfcs.ts START_HERE: ${rfc.id} is ${rfc.status}; point at the RFC that replaced it`,
+      )
+    }
+    return { ...rfc, why }
+  })
+
+  const current = rfcs.filter((r) => !isPlaceholder(r) && !isRetired(r.status))
+  const groups = RFC_TOPICS.map((t) => ({
+    id: t.id,
+    label: t.label,
+    description: t.description,
+    rfcs: current.filter((r) => r.topic === t.id),
+  })).filter((g) => g.rfcs.length > 0)
+
+  return {
+    startHere,
+    groups,
+    retired: rfcs.filter((r) => !isPlaceholder(r) && isRetired(r.status)),
+    placeholders: rfcs.filter(isPlaceholder),
+  }
 }

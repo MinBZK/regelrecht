@@ -10,8 +10,8 @@ capability: basis
 capaciteit: conceptueel schrijver, analisten voor het omzetwerk
 toelichting: |-
   De taal waarin een wet machine-uitvoerbaar wordt vastgelegd bestaat uit het
-  schema en de engine die het uitvoert. Het ontwerp daarvan staat nu in
-  negenendertig RFC's, en die reeks loopt uiteen in omvang en impact: de een
+  schema en de engine die het uitvoert. Het ontwerp daarvan staat nu verspreid
+  over de RFC's, en die reeks loopt uiteen in omvang en impact: de een
   legt één veld vast, de ander beschrijft een heel subsysteem. We passen ze
   bovendien voortdurend aan omdat de code verder is, en daarmee vervalt waar een
   RFC voor bedoeld is, een voorstel op een moment.
@@ -35,6 +35,10 @@ toelichting: |-
   jurist vaststelt. Die dubbele betekenis zit ook in de werkpakketten
   "Vaststelling van specificaties" en "Juridische status van een specificatie",
   die over het tweede gaan. Welk woord waar hoort is een open punt.
+
+  **Stand**: het schema documenteert zichzelf en staat per versie op
+  /reference/schema (RFC-040); de taal als één geversioneerde specificatie, los
+  van de RFC's en de subsystemen, bestaat nog niet.
 volgorde: 1000
 onderzoeksvragen:
   - Welke van de bestaande RFC's beschrijven de taal zelf, en welke beschrijven
@@ -49,7 +53,7 @@ onderzoeksvragen:
       verschillende documenten?
     paper: sec:stewarding
 onderzoek: ''
-bouw: niet
+bouw: deels
 rfcs:
   - 1
   - 2

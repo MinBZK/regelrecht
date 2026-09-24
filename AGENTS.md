@@ -396,8 +396,10 @@ Write an RFC for:
 ### RFC Metadata (frontmatter)
 
 RFC metadata lives in YAML **frontmatter**, not a bold-labelled body preamble.
-The fields are `title`, `status`, `implementation`, `date`, `authors`,
-optional `depends_on`, and optional `short_title`. The docs site
+The fields are `title`, `status`, `implementation`, `topic`, `date`, `authors`,
+optional `depends_on`, and optional `short_title`. `topic` files the RFC under a
+group on the RFC index; the allowed values live in `docs/src/lib/rfc-topics.ts`.
+The docs site
 (`docs/src/pages/rfcs/`, parsed by `docs/src/lib/rfcs.ts`) renders `status` and
 `implementation` as NDD tags and the rest as a header line — there is no rehype
 preamble plugin.
@@ -408,6 +410,9 @@ as "unknown":
 - **`status`** — lifecycle only: `Draft | Proposed | Accepted | Rejected | Superseded`.
   A built-and-merged RFC is `Accepted`, not `Draft`; "Draft" means the design
   itself is unsettled.
+  `Reserved` is the one status outside that lifecycle: a placeholder holding a
+  number an open pull request has claimed. It needs `reserved_by` (the PR URL) and
+  carries no `implementation`; see the comment in `docs/src/content.config.ts`.
 - **`implementation`** — build state: `Implemented | Partially implemented | Not implemented`.
   Independent of `status` (code can land ahead of acceptance). Ground the value
   in the actual codebase, not the RFC's aspirations.
