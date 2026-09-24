@@ -1,7 +1,6 @@
 <script setup>
-// Nagebootste login van een medewerker van de cel: alleen een naam. Er is
-// geen register en geen wachtwoord; de cel controleert alleen dat er een naam
-// is.
+// Nagebootste login van een medewerker: alleen een naam. Er is geen register
+// en geen wachtwoord; het proces controleert alleen dat er een naam is.
 import { inject, ref } from 'vue';
 
 const api = inject('api');

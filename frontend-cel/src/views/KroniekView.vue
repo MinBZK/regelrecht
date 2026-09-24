@@ -1,10 +1,12 @@
 <script setup>
-// De grammen van de cel. De aanvrager ziet alleen die van zijn KvK, de
-// behandelaar alle, en een cel zonder rollen toont ze aan iedereen.
+// De grammen van de cel. De cel kent geen login en geen rollen: iedereen
+// ziet ze allemaal (er is geen beveiligingscontext tussen cel en afnemer).
 import { inject, onMounted, ref } from 'vue';
 import Grammen from '../components/Grammen.vue';
 
-const api = inject('api');
+// De routes van de cel: kroniek en lexostatus zijn van haar, niet van het
+// proces.
+const api = inject('celApi');
 
 const props = defineProps({
   // Het zojuist vastgelegde gram, om het in de tabel aan te wijzen.

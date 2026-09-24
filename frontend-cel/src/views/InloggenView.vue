@@ -1,7 +1,7 @@
 <script setup>
-// Nep-eHerkenning: KvK-nummer en persoon. De cel controleert alleen de vorm.
+// Nep-eHerkenning: KvK-nummer en persoon. Het proces controleert alleen de vorm.
 // Of de persoon namens de organisatie mag handelen, zegt het handelsregister,
-// niet deze inlog. Levert de cel inlogvoorbeelden, dan staat eronder per
+// niet deze inlog. Levert het proces inlogvoorbeelden, dan staat eronder per
 // voorbeeld een knop om er direct mee in te loggen of het formulier ermee in
 // te vullen.
 import { inject, ref } from 'vue';

@@ -1,6 +1,7 @@
 <script setup>
-// Het formulier, opgebouwd uit GET /api/stroom. Labels, soorten en volgorde
-// komen uit het formulierbestand dat de cel meelevert; zonder dat bestand is
+// Het formulier, opgebouwd uit GET /api/formulier van het proces: de velden
+// van het event in de stroom van de cel. Labels, soorten en volgorde komen
+// uit het formulierbestand dat het proces meelevert; zonder dat bestand is
 // het label de veldnaam en elk veld tekst.
 import { computed, inject, onMounted, ref } from 'vue';
 import { external, leesPad, zetPad } from '../formulier.js';
@@ -10,7 +11,7 @@ import TabelInvoer from '../components/TabelInvoer.vue';
 import TraceKnop from '@regelrecht/frontend-shared/components/TraceKnop.vue';
 
 const api = inject('api');
-// Het aanvraagvoorbeeld van de cel (`external`), of null.
+// Het aanvraagvoorbeeld van het proces (`external`), of null.
 const voorbeelden = inject('voorbeelden');
 const voorbeeld = computed(() => voorbeelden.value.aanvraag);
 
@@ -28,7 +29,7 @@ const bezig = ref('');
 
 onMounted(async () => {
   try {
-    stroom.value = await api.stroom();
+    stroom.value = await api.formulier();
     for (const v of stroom.value.velden) {
       waarden.value[v.naam] = props.vooraf[v.naam] ?? (v.type === 'tabel' ? [{}] : null);
     }

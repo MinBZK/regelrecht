@@ -1,6 +1,6 @@
 <script setup>
-// Wat kan de ingelogde persoon hier aanvragen? Niemand somt dat op: de cel
-// voert het dienstverleningsbeleid uit voor deze persoon en organisatie, met
+// Wat kan de ingelogde persoon hier aanvragen? Niemand somt dat op: het
+// proces voert het dienstverleningsbeleid uit voor deze persoon en organisatie, met
 // alleen wat de inlog en de andere cellen al weten (GET /api/mogelijkheden).
 // Per subsidiejaar geeft het beleid één aanbod: mogelijk, uitgesloten of niet
 // te bepalen, met de uiterste indieningsdatum. Per jaar is er een knop die
@@ -26,7 +26,7 @@ onMounted(async () => {
 
 const mogelijkheden = computed(() => (data.value?.mogelijkheden ?? []).map((m) => m.mogelijkheid));
 
-// De datum van de cel, niet van de browser: "verstreken" hoort bij dezelfde
+// De datum van de runtime, niet van de browser: "verstreken" hoort bij dezelfde
 // klok als het aanbod.
 const vandaag = computed(() => data.value?.datum ?? '');
 

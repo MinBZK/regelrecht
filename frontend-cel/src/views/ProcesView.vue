@@ -1,11 +1,12 @@
 <script setup>
-// Een cel. Met de rol aanvrager (een portaal): inloggen met eHerkenning,
-// indienen, en de eigen kroniek en lexostatus van de ingelogde KvK. Met de rol
-// behandelaar: inloggen als medewerker, de werkvoorraad, een zaak met een
-// proefbesluit, en de hele kroniek. Zonder rollen: de kroniek en de
-// lexostatussen, zonder inloggen. Welke rollen er zijn, zegt GET /api/cellen.
+// Een proces. Met de rol aanvrager (een portaal): inloggen met eHerkenning,
+// zien wat het beleid aanbiedt en indienen. Met de rol behandelaar: inloggen
+// als medewerker, de werkvoorraad, een zaak met een proefbesluit en het
+// besluit. Welke rollen er zijn, zegt GET /api/processen. De kroniek en de
+// lexostatussen zijn van de cel waarin het proces vastlegt; die komen van
+// /cellen/<id>, zonder login.
 import { computed, onMounted, provide, ref } from 'vue';
-import { celApi } from '../api.js';
+import { celApi, procesApi } from '../api.js';
 import InloggenView from './InloggenView.vue';
 import MogelijkhedenView from './MogelijkhedenView.vue';
 import MedewerkerView from './MedewerkerView.vue';
@@ -15,17 +16,22 @@ import LexostatusView from './LexostatusView.vue';
 import WerkvoorraadView from './WerkvoorraadView.vue';
 import ZaakView from './ZaakView.vue';
 
-const props = defineProps({ cel: { type: Object, required: true } });
+const props = defineProps({
+  proces: { type: Object, required: true },
+  // De cel waarin het proces vastlegt, zoals GET /api/cellen haar beschrijft.
+  cel: { type: Object, required: true },
+});
 
-const api = celApi(props.cel.id);
+const api = procesApi(props.proces.id);
 provide('api', api);
-// De voorbeelden van de cel (inloggen, aanvraag, besluit); zonder: leeg.
+provide('celApi', celApi(props.cel.id));
+// De voorbeelden van het proces (inloggen, aanvraag, besluit); zonder: leeg.
 const voorbeelden = ref({ inloggen: [], aanvraag: null, besluit: null });
 provide('voorbeelden', voorbeelden);
 
-const rollen = computed(() => ['aanvrager', 'behandelaar'].filter((r) => props.cel.rollen?.[r]));
+const rollen = computed(() => ['aanvrager', 'behandelaar'].filter((r) => props.proces.rollen?.[r]));
 const rol = ref(rollen.value[0] ?? null);
-// Een sessie per cel: wie als de andere rol inlogt, vervangt haar.
+// Een sessie per proces: wie als de andere rol inlogt, vervangt haar.
 const sessie = ref(null);
 const geladen = ref(rol.value === null);
 const scherm = ref(beginscherm(rol.value));
@@ -33,13 +39,13 @@ const nieuw = ref(null);
 const zaak = ref(null);
 // De aanvraagmogelijkheden die de wet deze organisatie geeft. Het tabblad
 // Indienen verschijnt alleen als er een is; dit is aanbieden, geen
-// afscherming: de cel weigert een indiening niet.
+// afscherming: het proces weigert een indiening niet.
 const mogelijk = ref([]);
 const vooraf = ref({});
 
 function beginscherm(r) {
-  if (r === 'aanvrager' && props.cel.portaal) return 'mogelijkheden';
-  if (r === 'behandelaar' && props.cel.behandeling) return 'werkvoorraad';
+  if (r === 'aanvrager' && props.proces.portaal) return 'mogelijkheden';
+  if (r === 'behandelaar' && props.proces.behandeling) return 'werkvoorraad';
   return 'kroniek';
 }
 
@@ -50,7 +56,7 @@ onMounted(async () => {
     .then((v) => (voorbeelden.value = v))
     .catch(() => {});
   try {
-    if (props.cel.rollen.behandelaar) {
+    if (props.proces.rollen.behandelaar) {
       const m = await api.medewerkerSessie().catch(() => null);
       if (m) {
         sessie.value = { rol: 'behandelaar', naam: m.naam };
@@ -58,7 +64,7 @@ onMounted(async () => {
         return;
       }
     }
-    if (props.cel.rollen.aanvrager) {
+    if (props.proces.rollen.aanvrager) {
       const s = await api.sessie().catch(() => null);
       if (s) sessie.value = { rol: 'aanvrager', ...s };
     }
@@ -75,7 +81,7 @@ function kiesRol(r) {
 
 const ingelogd = computed(() => sessie.value !== null && sessie.value.rol === rol.value);
 const werkvoorraadKolommen = computed(
-  () => props.cel.lexostatussen.find((l) => l.name === props.cel.behandeling?.werkvoorraad)?.kolommen ?? [],
+  () => props.cel.lexostatussen.find((l) => l.name === props.proces.behandeling?.werkvoorraad)?.kolommen ?? [],
 );
 
 function mogelijkhedenGeladen(lijst) {
@@ -134,19 +140,19 @@ const wie = computed(() => {
     <nldd-container layout="row" horizontal-alignment="space-between" vertical-alignment="center">
       <nldd-tab-bar size="md" accessible-label="Scherm" @tabchange="tab">
         <nldd-tab-bar-item
-          v-if="rol === 'aanvrager' && cel.portaal"
+          v-if="rol === 'aanvrager' && proces.portaal"
           data-scherm="mogelijkheden"
           text="Wat kan ik aanvragen"
           :current="scherm === 'mogelijkheden' || undefined"
         ></nldd-tab-bar-item>
         <nldd-tab-bar-item
-          v-if="rol === 'aanvrager' && cel.portaal && mogelijk.length"
+          v-if="rol === 'aanvrager' && proces.portaal && mogelijk.length"
           data-scherm="aanvraag"
           text="Indienen"
           :current="scherm === 'aanvraag' || undefined"
         ></nldd-tab-bar-item>
         <nldd-tab-bar-item
-          v-if="rol === 'behandelaar' && cel.behandeling"
+          v-if="rol === 'behandelaar' && proces.behandeling"
           data-scherm="werkvoorraad"
           text="Werkvoorraad"
           :current="scherm === 'werkvoorraad' || undefined"
@@ -174,7 +180,7 @@ const wie = computed(() => {
       <ZaakView v-if="zaak" :key="zaak" :zaakkenmerk="zaak" @terug="zaak = null" />
       <WerkvoorraadView v-else :kolommen="werkvoorraadKolommen" @open="zaak = $event" />
     </template>
-    <KroniekView v-else-if="scherm === 'kroniek'" :nieuw="nieuw" :portaal="cel.portaal" />
+    <KroniekView v-else-if="scherm === 'kroniek'" :nieuw="nieuw" :portaal="proces.portaal" />
     <LexostatusView v-else :lexostatussen="cel.lexostatussen" />
   </template>
 </template>

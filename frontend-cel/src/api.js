@@ -1,5 +1,5 @@
-// De routes van de runtime en van een cel. Elke fout komt terug als
-// {fout: "..."}.
+// De routes van de runtime, van een cel en van een proces. Elke fout komt
+// terug als {fout: "..."}.
 
 async function vraag(methode, pad, body) {
   const resp = await fetch(pad, {
@@ -18,23 +18,36 @@ async function vraag(methode, pad, body) {
   return data;
 }
 
-// De cellen van de runtime, met per cel haar mogelijkheden.
+// De cellen van de runtime, met per cel haar kronieken en lexostatussen.
 export const cellen = () => vraag('GET', '/api/cellen');
 
-// De routes van een cel, onder /cellen/<id>.
+// De processen van de runtime, met per proces zijn cel en mogelijkheden.
+export const processen = () => vraag('GET', '/api/processen');
+
+// De routes van een cel, onder /cellen/<id>: wat ze vastlegde en wat haar
+// reducties opleveren. Zonder login.
 export function celApi(id) {
   const p = `/cellen/${encodeURIComponent(id)}/api`;
+  return {
+    kroniek: () => vraag('GET', `${p}/kroniek`),
+    lexostatus: (naam, invoer) =>
+      vraag('GET', `${p}/lexostatus/${encodeURIComponent(naam)}?${new URLSearchParams(invoer)}`),
+  };
+}
+
+// De routes van een proces, onder /processen/<id>.
+export function procesApi(id) {
+  const p = `/processen/${encodeURIComponent(id)}/api`;
   return {
     inloggen: (login) => vraag('POST', `${p}/eherkenning/login`, login),
     sessie: () => vraag('GET', `${p}/eherkenning/sessie`),
     uitloggen: () => vraag('POST', `${p}/eherkenning/logout`),
-    stroom: () => vraag('GET', `${p}/stroom`),
+    formulier: () => vraag('GET', `${p}/formulier`),
     toets: (external) => vraag('POST', `${p}/aanvraag/toets`, { external }),
     indienen: (external) => vraag('POST', `${p}/aanvraag`, { external }),
     mogelijkheden: () => vraag('GET', `${p}/mogelijkheden`),
     // Standaardgegevens per handeling; ook zonder login.
     voorbeelden: () => vraag('GET', `${p}/voorbeelden`),
-    kroniek: () => vraag('GET', `${p}/kroniek`),
     medewerkerInloggen: (naam) => vraag('POST', `${p}/medewerker/login`, { naam }),
     medewerkerSessie: () => vraag('GET', `${p}/medewerker/sessie`),
     medewerkerUitloggen: () => vraag('POST', `${p}/medewerker/logout`),
@@ -44,7 +57,5 @@ export function celApi(id) {
       vraag('POST', `${p}/zaken/${encodeURIComponent(zaakkenmerk)}/proefbesluit`, { formulier }),
     besluit: (zaakkenmerk, formulier) =>
       vraag('POST', `${p}/zaken/${encodeURIComponent(zaakkenmerk)}/besluit`, { formulier }),
-    lexostatus: (naam, invoer) =>
-      vraag('GET', `${p}/lexostatus/${encodeURIComponent(naam)}?${new URLSearchParams(invoer)}`),
   };
 }

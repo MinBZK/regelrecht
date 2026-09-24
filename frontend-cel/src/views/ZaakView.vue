@@ -13,7 +13,7 @@ import TraceKnop from '@regelrecht/frontend-shared/components/TraceKnop.vue';
 const props = defineProps({ zaakkenmerk: { type: String, required: true } });
 const emit = defineEmits(['terug']);
 const api = inject('api');
-// Het besluitvoorbeeld van de cel (`formulier`), of null.
+// Het besluitvoorbeeld van het proces (`formulier`), of null.
 const voorbeelden = inject('voorbeelden');
 const voorbeeld = computed(() => voorbeelden.value.besluit);
 
@@ -89,8 +89,8 @@ function voorbeeldInvullen() {
   versie.value++;
 }
 
-// Het besluit nemen: de engine rekent opnieuw, en de cel legt de uitkomst
-// vast als decretogram. Weigert zij, dan blijft de kroniek zoals hij was.
+// Het besluit nemen: de engine rekent opnieuw, en het proces laat de cel de
+// uitkomst vastleggen als decretogram. Weigert zij, dan blijft de kroniek zoals hij was.
 // Met het voorbeeld: precies wat "Voorbeeld invullen" in het formulier zet.
 async function besluitNemen(metVoorbeeld = false) {
   fout.value = '';

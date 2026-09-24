@@ -5,7 +5,9 @@ import { computed, inject, ref } from 'vue';
 import { waardeTekst as waarde } from '../tekst.js';
 
 const props = defineProps({ lexostatussen: { type: Array, required: true } });
-const api = inject('api');
+// De routes van de cel: kroniek en lexostatus zijn van haar, niet van het
+// proces.
+const api = inject('celApi');
 
 const naam = ref(props.lexostatussen[0]?.name ?? '');
 const invoer = ref({});
