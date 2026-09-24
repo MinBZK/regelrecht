@@ -112,9 +112,17 @@ The values of `decision_type`, saying what kind of decision an output is within 
 | Term | Dutch | Description |
 |------|-------|-------------|
 | **Corpus** | Corpus | The git-versioned collection of machine-readable laws. A [federated corpus](/concepts/federated-corpus) spans more than one repository |
-| **Open term** | Open norm | A value a higher law leaves to a lower regulation to fill. See [Inversion of Control](/concepts/inversion-of-control) |
+| **Open term** | Open term | The schema construct (`open_terms`) for a value an article leaves to be filled outside itself: by a lower regulation it delegates to, or per case by the authority `decided_per_case_by` names. See [Inversion of Control](/concepts/inversion-of-control) |
+| **Open norm** | Open norm | A standard the law leaves vague on purpose, such as *redelijkerwijs* or *in bijzondere gevallen*, so that its content is decided case by case. Not the same thing as a delegated value, though the format records it in the same place: as an open term with `decided_per_case_by`. It is not a marking, because the language can express it. See [RFC-031](/rfcs/rfc-031) |
 | **Implements** | Gelet op | A lower regulation declaring which open terms of a higher law it fills. The schema field carries `gelet_op`, the citation the Dutch instrument itself opens with |
 | **Cross-law reference** | Verwijzing | A law reading an output of another law through a `source` block. See [Cross-Law References](/concepts/cross-law-references) |
+| **Parameter** | Parameter | A value the caller supplies with the question, such as the `bsn` of the person it is about. See [Law Format](/concepts/law-format#parameters-inputs-and-outputs) |
+| **Input** | Invoer | A value an article needs but does not decide itself. It comes from another law through `source`, or from outside the corpus |
+| **Data source** | Gegevensbron | Where an input with `source: {}` comes from: a register, the caller or the person, anything outside the corpus. The empty block says that no law in the corpus computes the value |
+| **Nullable** | - | `nullable: true` on a parameter, input or output: absence (`null`) is a legitimate value of that field. Defaults to `false`, and the type checker and the engine hold a law to it. See [Absent and unknown values](/concepts/law-format#absent-and-unknown-values) |
+| **Legal basis** | Grondslag | `legal_basis`: the provision an element cites for itself, such as the article that creates a delegation on an open term, or the lid an action carries out. A trace reports it next to the place the engine actually was ([RFC-039](/rfcs/rfc-039)) |
+| **Produces** | - | The annotation stating what an article yields in legal terms, its `legal_character` and `decision_type`. Hooks fire on it. See [The produces annotation](/concepts/hooks-and-reactive-execution#the-produces-annotation) |
+| **Override** | Lex specialis | `overrides`: a specific provision that replaces a value set by a general one, as article 69 Vreemdelingenwet 2000 sets a four-week objection period in departure from article 6:7 Awb. Declared by the overriding law alone. See [Overrides](/concepts/hooks-and-reactive-execution#overrides-lex-specialis) |
 | **Marking** | Markering | A construct the format cannot yet express, flagged on the article. Called `untranslatables` before schema v0.7.0. See [Markings](/concepts/markings) |
 | **Void** | Bestaat geen aanspraak | An override stating that an output does not arise at all, rather than being replaced by a value. Not the same as an entitlement of zero, which is still a decision carrying legal remedies. See [Voiding an output](/concepts/hooks-and-reactive-execution#voiding-an-output) |
 | **Hook** | Haak | Logic that fires at a stage of a procedure rather than on a direct request. See [Hooks and Reactive Execution](/concepts/hooks-and-reactive-execution) |
@@ -123,6 +131,15 @@ The values of `decision_type`, saying what kind of decision an output is within 
 | **Traject** | Traject | A working context in the editor, with its own members, roles and branch, optionally backed by its own repository |
 | **Bevoegd gezag** | Bevoegd gezag | The body competent to take a decision under a given article. See [Competent Authority](/concepts/competent-authority) |
 | **Absent vs. unknown** | Afwezig versus onbekend | A value that does not exist, against a value nobody has. The engine keeps them apart rather than treating both as empty |
+| **Collection** | Verzameling | A group of values whose size is not known in advance, such as the medebewoners in a household. `FOREACH` iterates over one, filters it and can combine the results into one value. See [Collections](/concepts/collections) |
+| **Unit** | Eenheid | `type_spec.unit`: what an amount is counted in (eurocent, days, a percentage). A label that never changes the value; the engine rejects a calculation that mixes units that do not fit ([RFC-023](/rfcs/rfc-023)). See [Type Specifications](/concepts/law-format#type-specifications) |
+| **Type checking** | Typecontrole | The static check that `just validate` and the engine's loader run over a law's expressions, against the types and nullability the law declares. A law that fails it cannot be loaded ([RFC-037](/rfcs/rfc-037)) |
+| **Scenario** | Scenario | A case written in Gherkin: the facts, and the outcome a law should give on them. The engine that executes the law executes the scenario. See [Scenarios](/concepts/scenarios) |
+| **Execution-first** | - | The validation method in which an interpretation is run against concrete cases, often from the Memorie van Toelichting, and corrected until the outcomes hold, instead of being analyzed in full before anything runs. See [Execution-First Validation](/concepts/methodology) |
+| **Reverse validation** | - | The check after generation that every element of a machine-readable article traces back to the legal text. Logic that cannot be grounded in the text is flagged as possibly invented. See [The Loop](/concepts/methodology#the-loop) |
+| **Enrichment** | Verrijking | The pipeline stage in which a language model drafts `machine_readable` sections for a harvested law. The program doing it is the enricher, and its output is a draft that automated checks and then people review. See [Pipeline](/components/pipeline) |
+| **WASM** | - | WebAssembly. The engine compiled from the same code as the native build, to run in a browser. See [Engine](/components/engine) |
+| **Werkpakket** | Werkpakket | A unit of work on the [roadmap](/roadmap). Every pull request names the werkpakket it contributes to |
 | **Bucket A / Bucket B** | - | The two BDD suites: law validation against the real corpus, and engine conformance against synthetic laws. See [Testing](/guide/testing) |
 
 ## Abbreviations
