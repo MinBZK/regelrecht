@@ -37,7 +37,7 @@ export const docsNav: DocsNavItem[] = [
     summary:
       'Task guides for the people who use the tools: the editor, corpus harvesting, and the demo.',
     intro:
-      'Guides for the people who work with RegelRecht rather than on it. Each page walks through one tool step by step: the editor for jurists and traject members, the Corpusinwinning section and Grafana for corpus operators, and the demo for presenters.',
+      'Guides for the people who work with RegelRecht rather than on it. Each page walks through one tool step by step: the editor for jurists and traject members, the Harvester section and Grafana for corpus operators, and the demo for presenters.',
   },
   {
     text: 'Concepts',

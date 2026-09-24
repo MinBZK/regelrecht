@@ -95,8 +95,9 @@ The "YAML" pane shows the whole law file and can be edited there too. It shows "
 As soon as the article has unsaved changes, a bar appears with "Ongedaan maken", "Opnieuw" and "Opslaan".
 
 1. Click "Opslaan".
-2. The editor writes the law as a commit to the traject's branch. The first save also opens a pull request for the traject; later saves add to it.
-3. A "PR #…" button appears in the top bar. It opens the pull request, where the change can be reviewed before it reaches the corpus.
+2. The editor commits the law to the traject's branch, one commit per changed file.
+
+That is all a save does. It opens no pull request and does not touch the published corpus; the change exists on the traject branch, where every member of the traject sees it.
 
 If someone else changed the same law in the meantime, a dialog "Opslaan mislukt" says "De wet is intussen door iemand anders gewijzigd." Reload the page, redo your change, and save again. Nothing of theirs is overwritten.
 
@@ -158,7 +159,7 @@ Some parts of the editor can be switched off for a whole deployment. If a pane i
 | Switch in "Instellingen" → "Beheer" | What it hides or requires |
 |---|---|
 | "Tekst editor", "Machine editor", "Scenario editor", "YAML editor", "Notities" | The pane of that name. All are on by default |
-| "Met eigen GitHub-account schrijven" | When on, saving needs a linked GitHub account. Off by default |
+| "Met eigen GitHub-account schrijven" | When on, saving in a traject needs a linked GitHub account. Off by default, and only shown when the deployment has GitHub linking configured |
 
 Only an `editor-admin` sees "Beheer", and a change there applies to every user. When the GitHub switch is on, other users link their account under "Instellingen" → "Koppelingen" with "Koppelen".
 

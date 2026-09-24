@@ -59,8 +59,8 @@ just dev
 
 | Service | URL | Description |
 |---------|-----|-------------|
-| Editor | http://localhost:3000 | Law editor + **Corpusinwinning** section (hot reload) |
-| Admin API | http://localhost:8000 | Harvester REST API (auto-recompile; UI is the editor's Corpusinwinning section) |
+| Editor | http://localhost:3000 | Law editor + **Harvester** section (hot reload) |
+| Admin API | http://localhost:8000 | Harvester REST API (auto-recompile; UI is the editor's Harvester section) |
 | Grafana | http://localhost:3002 | Metrics dashboard |
 | Prometheus | http://localhost:9090 | Metrics collection |
 | PostgreSQL | localhost:5433 | Database |
@@ -88,8 +88,8 @@ just dev-down                # stop it (shared with `just dev`)
 
 | App | URL | Backend | DB | Notes |
 |-----|-----|---------|----|----|
-| editor | `http://localhost:7300` | editor-api `:8000` | yes | real SSO, needs `.env.sso-local`; hosts the **Corpusinwinning** section |
-| harvester-admin | API only (UI is the editor's Corpusinwinning section) | admin API `:8000` (`:8001` when all run together) | yes | in `all`, editor-api proxies `/api/harvest-admin/*` here |
+| editor | `http://localhost:7300` | editor-api `:8000` | yes | real SSO, needs `.env.sso-local`; hosts the **Harvester** section |
+| harvester-admin | API only (UI is the editor's Harvester section) | admin API `:8000` (`:8001` when all run together) | yes | in `all`, editor-api proxies `/api/harvest-admin/*` here |
 | lawmaking | `http://localhost:7500` | none | no | static, no backend |
 
 Notes:
@@ -120,7 +120,7 @@ just dev-down
 
 ```bash
 tail -f .dev-admin.log           # Admin (harvester) API log
-tail -f .dev-editor.log          # Editor log (hosts the Corpusinwinning section)
+tail -f .dev-editor.log          # Editor log (hosts the Harvester section)
 just dev-logs                    # Infrastructure logs
 ```
 

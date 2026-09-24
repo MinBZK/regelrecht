@@ -19,7 +19,7 @@ The tab bar runs in the order of the story. The labels are the Dutch ones; the E
 | "Graaf" | `/graaf` | Which law uses which other law, with the persona's values on the lines |
 | "Scenario's" | `/scenarios` | Test cases from the explanatory memoranda, run live |
 | "Simulatie" | `/simulatie` | One or more laws over a generated population |
-| "Mijn overheid" | `/portaal` | The portal of the active persona. For Claudia the tab is called "Mijn onderneming" |
+| "Mijn overheid" | `/portaal` | The portal of the active persona. For Claudia the tab is called "Mijn onderneming", and while acting for a business it carries that business's name |
 | "Zaaksysteem" | `/zaaksysteem` | The case handler's side of the same applications |
 
 On a narrow screen the tabs move into the "…" menu under "Ga naar".
@@ -29,7 +29,7 @@ On a narrow screen the tabs move into the "…" menu under "Ga naar".
 1. Open the demo in the browser you will present from. Loading the laws and the engine takes a few seconds the first time ("Wetten en engine laden…").
 2. Reset it, so no applications from an earlier session are left: open the "…" menu, choose "Demo resetten…" under "Demo", and confirm with "Resetten".
 3. Pick the language (see below).
-4. Go to "Presentatie" and choose under "Hoe wordt er gepresenteerd?":
+4. Go to "Presentatie" and pick a mode with the switch under the introduction:
    - "In de zaal" (the default): slides fill the screen, and a slide that opens the demo gets out of the way so the demo has the whole screen.
    - "Zelfstandig": the slides stay on the left next to the demo, for someone who clicks through alone.
 5. Optionally type your name in "Naam presentator" on the title slide.
@@ -50,7 +50,7 @@ The keys do nothing while the cursor is in an input field, so typing an amount d
 
 ## The slides
 
-"Start de presentatie" on Home or on "Presentatie" starts at the first slide. Clicking a slide in the "Dia's" list on "Presentatie" starts there instead. There are fourteen slides:
+"Start de presentatie" on Home or on "Presentatie" starts at the first slide. Clicking a slide in the numbered list on "Presentatie" starts there instead. There are fourteen slides:
 
 1. Title: RegelRecht, van wet naar digitale werking.
 2. Statement: the current situation.
@@ -62,14 +62,14 @@ The keys do nothing while the cursor is in an input field, so typing an amount d
 8. "De wet getoetst, in gewone taal" opens "Scenario's".
 9. A slide about scale opens "Simulatie".
 10. "Eén burger, Merijn" switches to Merijn and opens his portal.
-11. "Alleen vragen wat de overheid niet weet" stays on the portal. Point at the "Aanvullen" button on a tile yourself; the slide's own highlight does not currently find it.
+11. "Alleen vragen wat de overheid niet weet" stays on the portal. This is the moment for the "Aanvullen" button on a tile.
 12. "Hetzelfde recht, andere kant van de balie" opens "Zaaksysteem".
 13. "Een ondernemer, Claudia" switches to Claudia and opens her portal.
 14. Closing slide with the link to regelrecht.rijks.app.
 
 A slide that switches persona does so going backwards as well, so jumping around in the deck keeps the right persona on screen.
 
-Slide 9 speaks of fifty thousand people. The simulation starts at 50 and goes up to 2,000 per run, so say what you actually run.
+A simulation run takes 50 people by default and at most 2,000. Mention the number you actually run.
 
 ## A ten-minute run
 
@@ -91,7 +91,7 @@ The same order, with time to click through each tab. Press Esc when you leave th
 1. Slides 1 to 5 (3 minutes).
 2. "Wetten" (4 minutes): open a law, follow a `source.regulation` reference, and come back with "Terug naar …". Use "Alles openvouwen" and "Standaardweergave" to show the whole tree and back.
 3. "Graaf" (4 minutes): switch between "Verhaal", the persona's name and "Alles". Click a law to see what it reads and what reads it; double-click to open it in "Wetten".
-4. "Scenario's" (4 minutes): "Uitvoeren" on one scenario, then "Trace" to show the engine's execution step by step. "Wettekst" jumps to the article.
+4. "Scenario's" (4 minutes): "Uitvoeren" on one scenario, then "Trace" to show the engine's execution step by step. "Wettekst" opens the law in "Wetten".
 5. "Simulatie" (5 minutes): choose "Burgers", set "Aantal personen" (up to 2,000), click "Simuleren". Then open "Parameters van wetgeving", change one threshold, run again, and open the "Vergelijking" tab that appears next to the two runs.
 6. "Mijn overheid" as Merijn (5 minutes): "Gebruikte gegevens", correct one value, and apply for a regulation with "Aanvullen".
 7. "Zaaksysteem" (4 minutes): open the application, compare the recalculation with what was applied for, "Toekennen", then "Bekendmaken". Point out that the objection date only exists after the announcement.
@@ -128,11 +128,11 @@ The "…" menu has a group "Features" with switches. Each persona starts with it
 
 Choose "Nederlands", "English" or "Frysk" under "Taal" in the "…" menu. The page stays where it is and keeps what is open. The address changes with it (`/wetten` becomes `/en/laws`).
 
-The law texts stay Dutch in every language, because a translation of the text in force has no legal standing. In English and Frisian a banner above the law says so and links to the published text. A few small labels also stay Dutch, among them the key hints at the bottom of the slides. The Frisian translation has not yet been reviewed by a Frisian speaker.
+The law texts stay Dutch in every language, because a translation of the text in force has no legal standing. In English and Frisian a banner above the law says so and links to the published text. The Frisian translation has not yet been reviewed by a Frisian speaker.
 
 ## Reset
 
-"Demo resetten…" in the "…" menu, confirmed with "Resetten", returns to Home with a clean state. The dialog mentions applications and corrections, but the reset clears more: the persona goes back to Merijn, the feature switches to the persona's settings, the presentation mode to "In de zaal", and the presenter name is cleared. The language and the color scheme ("Weergave") are kept. The laws and personas themselves are never affected.
+"Demo resetten…" in the "…" menu, confirmed with "Resetten", returns to Home with a clean state. It clears applications and corrections, and it also puts the persona back to Merijn, stops acting on someone's behalf, returns the feature switches to the persona's settings and the presentation mode to "In de zaal", and clears the presenter name. The language and the color scheme ("Weergave") are kept. The laws and personas themselves are never affected.
 
 ## Deep links
 

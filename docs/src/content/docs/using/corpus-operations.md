@@ -1,9 +1,9 @@
 ---
-title: "Operating the Corpus"
-description: "For corpus operators: harvesting laws into the corpus from the editor, dealing with failed and exhausted laws, enrichment, and reading Grafana and the daily summary."
+title: "Operating the Harvester"
+description: "For corpus operators: the Harvester section of the editor, from starting a harvest to handling exhausted laws, plus Grafana and the daily summary."
 ---
 
-This guide is for the person who keeps the corpus filled: starting harvests, following up on laws that fail, starting enrichment, and watching the pipeline in Grafana. The corpus-harvesting section lives inside the editor at `editor.regelrecht.rijks.app`. In the code and in some docs it is called Corpusinwinning; in the editor itself it is labeled "Harvester". For how the pieces behind it work, see [Harvester Admin](/components/admin), [Pipeline](/components/pipeline) and [Grafana Monitoring](/components/grafana).
+This guide is for the person who keeps the corpus filled: starting harvests, following up on laws that fail, starting enrichment, and watching the pipeline in Grafana. The work happens in the "Harvester" section of the editor at `editor.regelrecht.rijks.app` (in code comments it is called Corpusinwinning). For how the pieces behind it work, see [Harvester Admin](/components/admin), [Pipeline](/components/pipeline) and [Grafana Monitoring](/components/grafana).
 
 Most labels in this section of the editor are English. They are quoted below as they appear.
 
@@ -79,9 +79,9 @@ To see the jobs behind a law, choose "View job details" in its row menu. That op
 
 The pipeline retries on two levels, and it helps to know which one you are looking at.
 
-**A single job** gets three attempts. After a failed attempt it goes back into the queue with a growing delay (30 seconds, then a minute, up to 15 minutes). Only when the third attempt fails is the job itself "failed". In "Job details", "Attempts" shows this as `3 / 3`.
+**A single job** gets three attempts. After a failed attempt it goes back into the queue with a delay: 30 seconds after the first, a minute after the second. Only when the third attempt fails is the job itself "failed". In "Job details", "Attempts" shows this as `3 / 3`.
 
-**A law** keeps a count of jobs that failed that way. After each failed job the law gets the status "Harvest failed" (or "Enrich failed") and the pipeline schedules a new job by itself. After ten failed jobs in a row the law becomes "Harvest exhausted" (or "Enrich exhausted"). A successful run sets the count back to zero.
+**A law** keeps a count of jobs that failed that way. After each failed job the law gets the status "Harvest failed" (or "Enrich failed") and the pipeline schedules a new job by itself, with a delay that doubles with each failed job, from 30 seconds up to 15 minutes. After ten failed jobs in a row (the default; a deployment can set another number) the law becomes "Harvest exhausted" (or "Enrich exhausted"). A successful run sets the count back to zero.
 
 Enrichment has one shortcut: when the model produces no machine-readable part at all, or output that does not validate, the law is exhausted straight away. Trying again would give the same result.
 
