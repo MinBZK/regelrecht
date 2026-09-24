@@ -34,12 +34,14 @@ flowchart TD
 | `engine.rs` | `ArticleEngine` - single article execution |
 | `resolver.rs` | `RuleResolver` - law registry, output→article indexing, IoC lookup |
 | `context.rs` | `RuleContext` - execution state, variable resolution with priority chain |
-| `operations.rs` | 28 operation types (arithmetic, rounding, comparison, logical, conditional, collection, date) |
+| `operations.rs` | Executes the 28 schema operations (arithmetic, rounding, comparison, logical, conditional, collection, date) and four engine-only ones; the `Operation` enum itself is defined in the Law Model crate (`packages/law-model/src/value.rs`) |
 | `uri.rs` | `regelrecht://` URI parsing for cross-law references |
 | `trace.rs` | Execution tracing with box-drawing visualization |
 | `priority.rs` | Lex superior / lex posterior resolution for competing implementations |
 | `data_source.rs` | External data registry for non-law data lookups |
 | `config.rs` | Security limits (max laws, YAML size, recursion depth) |
+
+The types a law file deserializes into are not defined in the engine. They live in the [Law Model](./law-model) crate, which `article.rs` re-exports and loads under the security limits.
 
 ## How It Works
 

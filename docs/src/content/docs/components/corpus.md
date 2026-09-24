@@ -58,6 +58,8 @@ let law = source_map.get_law("wet_op_de_zorgtoeslag");
 
 The `github` feature flag enables remote fetching from GitHub repositories. Without it, only local filesystem sources are available.
 
+The HTTP calls themselves are not made here. Every GitHub REST request goes through `packages/github/` (crate `regelrecht-github`), a small hand-written client covering only the endpoints in use (trees, contents, refs, compare, pulls and archive downloads), with ETag and rate-limit state kept in one place. The editor API calls it directly as well; the corpus library keeps the domain layer on top.
+
 ## Further reading
 
 - [Federated Corpus](/concepts/federated-corpus) - how the registry model works

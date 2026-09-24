@@ -10,10 +10,11 @@ set dotenv-load := true
 # would fall back to the slow default linker. (dev has no RUSTFLAGS, so it picks
 # up mold straight from .cargo/config.toml.)
 #
-# The mold link-arg is Linux-only, mirroring the [target.x86_64-unknown-linux-gnu]
-# scoping in packages/.cargo/config.toml — otherwise quality/test recipes would
-# force `-fuse-ld=mold` on macOS where mold typically isn't installed.
-ci_flags := if os() == "linux" {
+# The mold link-arg is x86_64-Linux-only, mirroring the [target.x86_64-unknown-linux-gnu]
+# scoping in packages/.cargo/config.toml (and dev_needs_mold in script/dev-lib.sh)
+# — otherwise quality/test recipes would force `-fuse-ld=mold` on macOS or
+# aarch64 Linux, where nothing else asks for mold to be installed.
+ci_flags := if os() + "-" + arch() == "linux-x86_64" {
     "RUSTFLAGS='-Dwarnings -C link-arg=-fuse-ld=mold'"
 } else {
     "RUSTFLAGS=-Dwarnings"
@@ -212,7 +213,7 @@ preview-environments-test:
 # container-backed suites; on a machine without a daemon, swap `test` for
 # `test-no-docker`.
 [doc("Run all quality checks, exactly what CI runs (needs Docker)")]
-check: format lint build-check validate validate-annotations deploy-filters-test ghcr-cleanup-test precompress-test security-headers-test first-load-test ci-gate-test merge-queue-checks-test nldd-imports-test nldd-slots nldd-slots-test dockerfile-consistency-test deploy-gate-test deployed-urls-test preview-environments-test advisories-report-test test
+check: format lint build-check validate validate-annotations deploy-filters-test ghcr-cleanup-test precompress-test security-headers-test first-load-test ci-gate-test merge-queue-checks-test nldd-imports-test nldd-slots nldd-slots-test dockerfile-consistency-test deploy-gate-test deployed-urls-test preview-environments-test advisories-report-test dev-preflight-test test
 
 # --- Tests ---
 
@@ -459,6 +460,11 @@ audit-advisories:
 advisories-report-test:
     script/report-advisories.test.sh
 
+# De preflight van `just dev`: mold alleen eisen waar cargo ermee linkt
+[doc("Check that the dev preflight only requires mold on x86_64 Linux")]
+dev-preflight-test:
+    script/dev-lib.test.sh
+
 # --- Admin ---
 
 # Run admin API locally (requires DATABASE_SERVER_FULL env var)
@@ -528,7 +534,7 @@ compose-local := compose + " -f dev/compose.local.yaml"
 compose-native := compose + " -f dev/compose.native.yaml"
 pidfile := ".dev-pids"
 
-# One-time build-speed setup: install mold + sccache, share one target dir across worktrees
+# One-time build-speed setup: install mold (x86_64 Linux) + sccache, share one target dir across worktrees
 dev-setup:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -544,27 +550,32 @@ dev-setup:
         if "$@" >/dev/null 2>&1; then printf "${green}done${reset}\n"; return 0; else printf "${red}failed${reset} (install %s manually)\n" "$bin"; return 1; fi
     }
 
-    # Track whether mold ended up available — the shared-target setup is harmless
-    # without it, but mold linking (the headline feature) needs it on PATH.
-    mold_ok=false
+    # mold is only the linker on x86_64 Linux (dev_needs_mold, shared with the
+    # dev recipes' preflight). Elsewhere it is neither installed nor asked for.
+    source script/dev-lib.sh
+    needs_mold=false
+    if dev_needs_mold; then needs_mold=true; fi
+    # install_mold <installer…>: install mold where cargo links with it, no-op elsewhere.
+    install_mold() { [ "$needs_mold" = true ] || return 0; install_one mold "$@" || true; }
+
     if command -v apt-get >/dev/null 2>&1; then
         sudo_if_needed apt-get update -qq || true
-        if install_one mold sudo_if_needed apt-get install -y mold; then mold_ok=true; fi
+        install_mold sudo_if_needed apt-get install -y mold
         install_one sccache sudo_if_needed apt-get install -y sccache || true
     elif command -v dnf >/dev/null 2>&1; then
-        if install_one mold sudo_if_needed dnf install -y mold; then mold_ok=true; fi
+        install_mold sudo_if_needed dnf install -y mold
         install_one sccache sudo_if_needed dnf install -y sccache || true
     elif command -v brew >/dev/null 2>&1; then
-        if install_one mold brew install mold; then mold_ok=true; fi
+        install_mold brew install mold
         install_one sccache brew install sccache || true
     else
         printf "${yellow}No supported package manager found.${reset}\n"
-        printf "  Install mold:    https://github.com/rui314/mold\n"
+        if [ "$needs_mold" = true ]; then printf "  Install mold:    https://github.com/rui314/mold\n"; fi
         printf "  Install sccache: cargo install sccache --locked\n"
     fi
-    # `install_one` returns 0 when the binary is already present, so a pre-existing
-    # mold also counts as OK regardless of which package-manager branch ran.
-    command -v mold >/dev/null 2>&1 && mold_ok=true
+    # Decided by what is on PATH afterwards, so a pre-existing mold counts too.
+    mold_ok=true
+    if [ "$needs_mold" = true ] && ! command -v mold >/dev/null 2>&1; then mold_ok=false; fi
     # sccache may not be packaged everywhere — fall back to cargo install.
     command -v sccache >/dev/null 2>&1 || install_one sccache cargo install sccache --locked
 
@@ -598,7 +609,9 @@ dev-setup:
     printf "${green}=> Shared target dir:${reset} %s\n" "$shared"
 
     printf "\n"
-    if [ "$mold_ok" = true ]; then
+    if [ "$needs_mold" = false ]; then
+        printf "${bold}${green}Done.${reset} Shared target is active for all worktrees (mold only links on x86_64 Linux, not needed here).\n"
+    elif [ "$mold_ok" = true ]; then
         printf "${bold}${green}Done.${reset} Mold linking + shared target are active for all worktrees.\n"
     else
         printf "${bold}${yellow}Partly done.${reset} Shared target is set up, but ${red}mold is missing${reset} — dev builds will fail to link.\n"

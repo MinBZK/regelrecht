@@ -189,7 +189,7 @@ function bind(field) {
             :value="form.base_branch"
             @input="bind('base_branch')($event)"
           ></nldd-text-field>
-          <nldd-form-field-help-text>Branch waarop het traject z'n PR opent (vaak 'main').</nldd-form-field-help-text>
+          <nldd-form-field-help-text>Branch waar de traject-branch van afsplitst (vaak 'main').</nldd-form-field-help-text>
         </nldd-form-field>
         <nldd-form-field label="Subpath" optional>
           <nldd-text-field
@@ -209,10 +209,11 @@ function bind(field) {
             Bewerkingen worden gepusht naar
             <code>{{ form.repo_owner.trim() }}/{{ form.repo_name.trim() }}</code>
             (basis: <code>{{ form.base_branch.trim() || 'main' }}</code>).
-            Je beheerder moet voor deze repo de env-var
-            <code>{{ tokenEnvName }}</code> hebben gezet - anders krijg je een
-            foutmelding bij aanmaken. Commits verschijnen onder je eigen naam
-            (uit je SSO-account), niet onder het service-account.
+            Daarvoor is schrijftoegang tot deze repo nodig: je beheerder zet de
+            env-var <code>{{ tokenEnvName }}</code>, of, als schrijven met een
+            eigen GitHub-account aanstaat, gebruikt de editor jouw gekoppelde
+            account (Instellingen). Zonder een van beide krijg je een
+            foutmelding bij aanmaken. Commits verschijnen onder je eigen naam.
           </p>
           <p v-else>
             Bewerkingen in dit traject worden gepusht naar een aparte branch op

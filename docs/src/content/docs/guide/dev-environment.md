@@ -32,8 +32,8 @@ machine after cloning:
 just dev-setup
 ```
 
-It installs the [mold](https://github.com/rui314/mold) linker plus `sccache`
-(through apt, dnf or Homebrew, whichever it finds), and points every git
+It installs `sccache`, plus the [mold](https://github.com/rui314/mold) linker
+on x86_64 Linux (through apt, dnf or Homebrew, whichever it finds), and points every git
 worktree at a single shared cargo `target-dir` so a new worktree reuses the
 already-built dependency graph instead of cold-building from scratch. That
 setting lands in a gitignored `.cargo/config.toml` at the root of the main
@@ -46,10 +46,10 @@ build-time win. `sccache` is installed but left off locally (it disables
 incremental compilation, which hurts the hot-reload loop); CI uses both.
 
 mold is the configured linker on x86_64 Linux (`packages/.cargo/config.toml`),
-so builds there fail to link without it. `just dev`, and `just dev-frontend`
-whenever it starts a Rust service, check for mold on every platform and refuse
-to start when it is missing, so run `just dev-setup` on macOS too before using
-them.
+so builds there fail to link without it. On that platform `just dev`, and
+`just dev-frontend` whenever it starts a Rust service, refuse to start when mold
+is missing. On macOS and aarch64 Linux cargo uses the default linker, and
+neither `just dev-setup` nor the dev recipes ask for mold.
 
 ## Starting the Dev Stack
 
@@ -66,7 +66,7 @@ just dev
 | PostgreSQL | localhost:5433 | Database |
 
 This command:
-1. Checks prerequisites (cargo, node, docker, cargo-watch, mold)
+1. Checks prerequisites (cargo, node, docker, cargo-watch, and mold on x86_64 Linux)
 2. Starts infrastructure containers (PostgreSQL, Prometheus, Grafana)
 3. Waits for PostgreSQL to be ready
 4. Installs frontend dependencies if needed
@@ -171,6 +171,10 @@ flattened to the top level; the enclosing spans are added as nested `span` and
 ZAD; locally the text lines read better, so leave the variable unset. An
 unrecognized value falls back to text and warns on stderr, so a typo never
 silences logging.
+
+## Architecture Explorer
+
+`just arch-explore` builds and starts a local explorer of the codebase on port 7180 (override with `ARCH_EXPLORE_PORT`). It renders a model of the Rust workspace and the Vue frontends, from crate down to method and from app down to component, with the dependencies between them. The model comes from `packages/arch-extract/`, a developer tool that is not deployed. It is generated from the working tree on demand and never committed, so it cannot go stale; `just arch-generate` writes it to disk for inspection. `packages/arch-extract/README.md` explains how the edges are resolved and what the explorer misses.
 
 ## Pre-commit Hooks
 

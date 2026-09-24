@@ -1,5 +1,5 @@
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.0/schema/v0.5.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: algemene_wet_inkomensafhankelijke_regelingen
 regulatory_layer: WET
 publication_date: '2022-12-27'
@@ -111,15 +111,42 @@ articles:
           - name: partnerschap_type
             type: string
             source: {}
+          # Lid 1: "De partner van de belanghebbende is degene die [...]".
+          # Wie die persoon is, staat in de registratie; zonder partner is
+          # daar niemand opgenomen (null).
+          - name: partner_bsn
+            type: string
+            nullable: true
+            source: {}
         output:
           - name: heeft_toeslagpartner
             type: boolean
+          # Het burgerservicenummer van "degene" die lid 1 als partner
+          # aanwijst. Afwezig (null) als er volgens lid 1 geen partner is, ook
+          # als de registratie wel iemand noemt: een persoon die onder geen van
+          # de categorieën valt, is voor deze wet geen partner. Wetten die de
+          # draagkracht van de partner meetellen (artikel 7, en bijvoorbeeld
+          # artikel 2 en 3 van de Wet op de zorgtoeslag) roepen daarmee de
+          # bronnen van die partner aan; bij null slaat de engine die aanroep
+          # over (RFC-036).
+          - name: bsn_toeslagpartner
+            type: string
+            nullable: true
         actions:
           - output: heeft_toeslagpartner
             value:
               operation: IN
               subject: $partnerschap_type
               value: $geldige_partnertypen
+          - output: bsn_toeslagpartner
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $heeft_toeslagpartner
+                    value: true
+                  then: $partner_bsn
   - number: '4'
     text: >-
       Artikel 4. Kind 1. Kind is de bloedverwant of aanverwant in de neergaande lijn van de belanghebbende of zijn
