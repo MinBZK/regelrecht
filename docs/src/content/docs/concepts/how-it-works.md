@@ -3,7 +3,7 @@ title: "How RegelRecht Works"
 description: "A plain-language walkthrough of the core ideas behind turning legislation into executable files."
 ---
 
-RegelRecht turns Dutch legislation into structured files that a computer can execute. This page is the map: how a law becomes a file, how the engine runs it, and the concepts that come up along the way, each with a link to the page that covers it in full. Why this matters is on [What is RegelRecht?](/guide/what-is-regelrecht) and, at length, in the position paper [Rules as Executed](/research/rules-as-executed). Which programs do the work is on the [System Overview](/guide/architecture).
+RegelRecht turns Dutch legislation into structured files that a computer can execute. This page is the map. It follows a law from text to file to execution and names the concepts met on the way, each with a link to the page that covers it in full. Why this matters is on [What is RegelRecht?](/guide/what-is-regelrecht) and, at length, in the position paper [Rules as Executed](/research/rules-as-executed). Which programs do the work is in the [architecture overview](/guide/architecture).
 
 ## The approach
 
@@ -106,6 +106,8 @@ See [Inversion of Control](./inversion-of-control).
 ### Laws that fire automatically
 
 The General Administrative Law Act (Awb) applies to every government decision without being called explicitly. When any law produces a *beschikking*, Awb rules about objection periods and reasoning requirements kick in through hooks. Neither law knows about the other. See [Hooks and Reactive Execution](./hooks-and-reactive-execution).
+
+A *beschikking* is also not an instant computation. It moves through stages over time, from application and review to decision, notification and objection, and which rule applies at which stage is declared in the YAML (`applies_to.stage`), not hardcoded in the engine. See [Administrative procedure stages](./hooks-and-reactive-execution#administrative-procedure-stages).
 
 ### Overrides (lex specialis)
 

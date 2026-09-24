@@ -39,6 +39,7 @@ C4Container
         Container(harvester, "Harvest Worker", "Rust", "Downloads laws from BWB / CVDR")
         Container(enrich, "Enrich Worker", "Rust / LLM", "Adds machine_readable sections")
         Container(admin, "Harvester Admin", "Rust", "Operations API; its UI lives in the editor")
+        Container(pipelineapi, "Pipeline API", "Rust / Axum", "Harvest requests, status and BWB search")
         ContainerDb(corpus, "Corpus Juris", "Git / YAML", "All laws in machine-readable format")
         ContainerDb(db, "PostgreSQL", "Pipeline", "Job queue and law status")
     }
@@ -48,14 +49,17 @@ C4Container
     Rel(editor, engine, "Executes laws (WASM)")
     Rel(editorapi, corpus, "Reads and writes law files")
     Rel(editorapi, admin, "Proxies /api/harvest-admin")
+    Rel(editorapi, pipelineapi, "Proxies /api/harvest")
+    Rel(editorapi, db, "Creates traject jobs")
     Rel(admin, db, "Creates jobs, reads status")
+    Rel(pipelineapi, db, "Creates harvest jobs, reads status")
     Rel(harvester, db, "Claims harvest jobs")
     Rel(enrich, db, "Claims enrichment jobs")
     Rel(harvester, corpus, "Writes harvested laws")
     Rel(enrich, corpus, "Writes enriched laws")
 ```
 
-The pipeline is not a separate service in this picture: it is the job queue in PostgreSQL plus the Rust library the workers and the admin API share to use it. Workers pull jobs from the queue; nothing pushes work to them. See [Pipeline](/components/pipeline) for the job lifecycle.
+The pipeline is mostly not a service of its own: it is the job queue in PostgreSQL plus the Rust library (`packages/pipeline`) that the workers, the admin API and the editor API link against to use it. The one HTTP service it ships is the small Pipeline API, which takes harvest requests and answers status and BWB search queries; the editor API reaches it through `/api/harvest`. Workers pull jobs from the queue; nothing pushes work to them. See [Pipeline](/components/pipeline) for the job lifecycle.
 
 The TUI, the lawmaking visualization, the demo, Grafana, and the engine's CLI build are additional surfaces over the same engine and corpus; they are omitted here to keep the container view readable. See the [component docs](/components/engine) for each.
 

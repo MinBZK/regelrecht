@@ -46,9 +46,10 @@ build-time win. `sccache` is installed but left off locally (it disables
 incremental compilation, which hurts the hot-reload loop); CI uses both.
 
 mold is the configured linker on x86_64 Linux (`packages/.cargo/config.toml`),
-so builds there fail to link without it. `just dev` and `just dev-frontend`
-check for mold on every platform and refuse to start when it is missing, so run
-`just dev-setup` on macOS too before using them.
+so builds there fail to link without it. `just dev`, and `just dev-frontend`
+whenever it starts a Rust service, check for mold on every platform and refuse
+to start when it is missing, so run `just dev-setup` on macOS too before using
+them.
 
 ## Starting the Dev Stack
 

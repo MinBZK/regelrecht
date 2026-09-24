@@ -36,5 +36,5 @@ This runs what CI runs: formatting, clippy, a build check, schema and annotation
 
 - [Development Environment](./dev-environment) - the editor and the rest of the local stack, and the pre-commit hooks
 - [Law Format](/concepts/law-format) - how laws are structured
-- [System Overview](./architecture) - the components and where their code lives
+- [Architecture](./architecture) - the components and where their code lives
 - [Contributing](/operations/contributing) - branches, commits and pull requests
