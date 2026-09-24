@@ -232,6 +232,128 @@ body { font-family: var(--ui); background: var(--ground); color: var(--ink); ove
     <div class="legend" style="margin-top:0.8em"><span>Grondslag: RFC-031. Indeling volgens de vier-weg-classificatie van de desk-methode. Vastgelegd in schema-migratie.md.</span></div>
   </div>
 
+  <div class="slide">
+    <div class="h tight">Doelgroepregister banenafspraak: gronden en rechten</div>
+<div class="matrix-head"><div>Grond</div><div>Welke variabelen, in welke combinatie</div><div>Recht bij deze grond</div></div>
+    <div class="matrix">
+
+      <div class="row excl">
+        <div class="grond">Chapeau<small>uitsluiting</small></div>
+        <div class="expr">
+          <span class="op">NIET</span>
+          <span class="chip gem">is_uitgesloten_beschut_werk_pwet_10b</span>
+          <span class="op">&mdash; staat in lid 1 en lid 6, <b>niet in lid 2</b>; het model past hem op alle gronden toe</span>
+        </div>
+        <div class="rechten">
+          <span class="recht">NRP</span>
+          <span class="recht geen">geen LKV</span>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="grond">lid 1 a<small>Pwet + loonwaarde</small></div>
+        <div class="expr"><span class="chip gem">is_pwet_lks_toegeleid_met_uwv_loonwaarde_vaststelling</span></div>
+        <div class="rechten">
+          <span class="recht">LKV</span><span class="recht">NRP</span><span class="recht">LKS</span>
+          <span class="recht">begeleiding</span><span class="recht vw">JC / WPA</span><span class="recht vw">PP</span>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="grond">lid 1 b<small>Wsw</small></div>
+        <div class="expr"><span class="chip uwv">is_wsw_geindiceerd_of_oude_indicatie</span></div>
+        <div class="rechten">
+          <span class="recht">LKV</span><span class="recht">NRP</span>
+          <span class="recht geen">niet bij Wsw art. 2</span>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="grond">lid 1 c<small>Wajong</small></div>
+        <div class="expr">
+          <span class="chip uwv">heeft_wajong_arbeidsondersteuning_of_uitkering</span>
+          <span class="op">EN (</span>
+          <span class="op">NIET</span>
+          <span class="chip uwv">heeft_wajong_duurzaam_geen_mogelijkheden</span>
+          <span class="op">OF</span>
+          <span class="chip wg">verricht_arbeid_in_dienstbetrekking</span>
+          <span class="op">)</span>
+        </div>
+        <div class="rechten">
+          <span class="recht">LKV</span><span class="recht">NRP</span><span class="recht">LDP</span>
+          <span class="recht">JC / WPA</span><span class="recht vw">PP</span>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="grond">lid 1 d<small>AMvB-indicatie</small></div>
+        <div class="expr">
+          <span class="chip uwv">voldoet_aan_amvb_indicatie_38b_1_d</span>
+          <span class="op">— open term, de AMvB bestaat niet in het corpus</span>
+        </div>
+        <div class="rechten"><span class="recht">LKV</span><span class="recht">NRP</span></div>
+      </div>
+
+      <div class="row">
+        <div class="grond">lid 1 e<small>eigen verzoek</small></div>
+        <div class="expr"><span class="chip uwv">is_pwet_toegeleid_met_uwv_wml_vaststelling_eigen_verzoek</span></div>
+        <div class="rechten">
+          <span class="recht">LKV</span><span class="recht">NRP</span>
+          <span class="recht vw">LKS</span><span class="recht vw">JC / WPA</span><span class="recht vw">PP</span>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="grond">lid 1 f<small>overgangsrecht</small></div>
+        <div class="expr">
+          <span class="chip reg">was_arbeidsbeperkte_lid_1_b_of_c_op_of_na_2013_01_01</span>
+          <span class="op">EN NIET</span>
+          <span class="chip uwv">was_lid_1_c_en_nu_wajong_duurzaam_geen_mogelijkheden</span>
+        </div>
+        <div class="rechten"><span class="recht">LKV</span><span class="recht">NRP</span></div>
+      </div>
+
+      <div class="row missing">
+        <div class="grond">lid 1 g<small>IVA + experiment</small></div>
+        <div class="expr">
+          <span class="chip gap">geen variabele</span>
+          <span class="op">— vereist een experiment-AMvB op grond van Wet SUWI artikel 82a</span>
+        </div>
+        <div class="rechten"><span class="recht geen">slapend</span></div>
+      </div>
+
+      <div class="row">
+        <div class="grond">lid 2<small>UWV-oordeel</small></div>
+        <div class="expr">
+          <span class="chip uwv">is_jonggehandicapt_uwv_oordeel_lid_2</span>
+          <span class="op">— beoordelingsregels bij AMvB, lid 3</span>
+        </div>
+        <div class="rechten"><span class="recht">LKV</span><span class="recht">NRP</span></div>
+      </div>
+
+      <div class="row">
+        <div class="grond">lid 6<small>blijfgrond</small></div>
+        <div class="expr">
+          <span class="chip reg">was_arbeidsbeperkte_lid_1_of_2</span>
+          <span class="op">EN</span>
+          <span class="chip uwv">registratie_nog_niet_geeindigd</span>
+        </div>
+        <div class="rechten">
+          <span class="recht">LKV</span><span class="recht">NRP</span>
+          <span class="recht vw">zolang registratie loopt</span>
+        </div>
+      </div>
+
+    </div>
+<div class="legend">
+      <span><i class="swatch sw-uwv"></i> UWV — oordeel, registratie of historie</span>
+      <span><i class="swatch sw-gem"></i> Gemeente of college</span>
+      <span><i class="swatch sw-wg"></i> Werkgever of loonaangifte</span>
+      <span><i class="swatch sw-reg"></i> Doelgroepregister zelf</span>
+      <span><i class="swatch sw-gap"></i> Ontbreekt</span>
+    </div>
+  </div>
+
 </div>
 
 <div id="nav">
