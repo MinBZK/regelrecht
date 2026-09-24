@@ -86,6 +86,35 @@ body { font-family: var(--ui); background: var(--ground); color: var(--ink); ove
 .sw-uwv { color: var(--uwv); } .sw-gem { color: var(--gem); }
 .sw-wg { color: var(--wg); } .sw-reg { color: var(--reg); } .sw-gap { color: var(--gap); }
 
+/* Stelselschema */
+.schema-slide { justify-content: flex-start; padding-top: 3.5vw; }
+.schema { width: 100%; display: flex; flex-direction: column; gap: 0.35vw; }
+.band-label { font-size: clamp(8.5px, 0.9vw, 12px); font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-faint); margin-bottom: 0.35em; }
+.ingangen { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.5vw; }
+.ing { background: var(--fill); border-left: 2px solid currentColor; padding: 0.6vw 0.8vw; color: var(--ink); }
+.ing.gem { border-left-color: var(--gem); } .ing.uwv { border-left-color: var(--uwv); } .ing.reg { border-left-color: var(--reg); }
+.ing b { font-size: clamp(11px, 1.3vw, 18px); font-weight: 700; display: block; }
+.ing small { display: block; font-weight: 300; font-size: clamp(8.5px, 0.98vw, 13px); color: var(--ink-dim); line-height: 1.4; margin-top: 0.25em; }
+.pijl { text-align: center; color: var(--ink-faint); font-size: clamp(11px, 1.3vw, 17px); line-height: 1; padding: 0.15em 0; }
+.register { background: rgba(255,255,255,0.86); color: #154273; padding: 0.6vw 1vw; }
+.register b { font-size: clamp(12px, 1.5vw, 21px); font-weight: 700; display: block; }
+.register small { display: block; font-weight: 400; font-size: clamp(8.5px, 0.98vw, 13px); line-height: 1.4; margin-top: 0.2em; }
+.uitkomsten { display: grid; grid-template-columns: minmax(0, 0.86fr) minmax(0, 1.14fr); gap: 0.7vw; }
+.kolom { display: flex; flex-direction: column; gap: 0.35vw; }
+.kolom-kop { font-size: clamp(8.5px, 0.95vw, 13px); font-weight: 700; color: var(--ink-dim); padding-bottom: 0.2em; border-bottom: 1px solid var(--line); margin-bottom: 0.15em; }
+.reg-kaart { background: var(--fill); border-left: 2px solid var(--line); padding: 0.55vw 0.8vw; }
+.reg-kaart.gem-rand { border-left-color: var(--gem); } .reg-kaart.uwv-rand { border-left-color: var(--uwv); }
+.reg-naam { font-size: clamp(10.5px, 1.24vw, 17px); font-weight: 700; }
+.reg-naam .via { font-weight: 300; font-size: 0.82em; color: var(--ink-faint); }
+.reg-grond { font-family: var(--mono); font-size: clamp(8px, 0.9vw, 12px); color: var(--ink-faint); margin: 0.15em 0 0.3em; }
+.reg-rekenvorm { font-size: clamp(9px, 1.05vw, 14px); font-weight: 300; line-height: 1.45; color: var(--ink-dim); }
+.vorm { display: inline-block; font-weight: 700; color: var(--ink); background: rgba(255,255,255,0.12); padding: 0.1em 0.4em; margin-right: 0.35em; font-size: 0.94em; }
+
+@media (max-width: 640px) {
+  .ingangen, .uitkomsten { grid-template-columns: 1fr; gap: 8px; }
+  .schema-slide { overflow-y: auto; }
+}
+
 /* Beslispunten */
 .punten { width: 100%; display: flex; flex-direction: column; gap: 0.35vw; margin-top: 0.3em; }
 .punt { display: grid; grid-template-columns: minmax(46px, 5%) 1fr; gap: 1vw; background: var(--fill); padding: 0.6vw 1vw; align-items: baseline; }
@@ -351,6 +380,81 @@ body { font-family: var(--ui); background: var(--ground); color: var(--ink); ove
       <span><i class="swatch sw-wg"></i> Werkgever of loonaangifte</span>
       <span><i class="swatch sw-reg"></i> Doelgroepregister zelf</span>
       <span><i class="swatch sw-gap"></i> Ontbreekt</span>
+    </div>
+  </div>
+
+  <div class="slide schema-slide">
+    <div class="h tight">Hoe je bij een regeling terechtkomt</div>
+    <div class="p dim" style="margin-top:0;margin-bottom:0.7em">Het doelgroepregister is een gemeenschappelijke doorgang, geen gemeenschappelijk recht. Twee regelingen hangen aan de lijst; de rest hangt aan de wet waarlangs iemand er kwam.</div>
+
+    <div class="schema">
+
+      <div class="band">
+        <div class="band-label">1 — Waarlangs iemand binnenkomt</div>
+        <div class="ingangen">
+          <div class="ing gem"><b>Participatiewet</b><small>college stelt loonwaarde vast, of UWV stelt vast dat het minimumloon niet haalbaar is — Wfsv 38b lid 1 a en e</small></div>
+          <div class="ing uwv"><b>Wajong</b><small>recht op arbeidsondersteuning of uitkering — Wfsv 38b lid 1 c</small></div>
+          <div class="ing uwv"><b>Wsw</b><small>indicatie, of een nog geldende beschikking van vóór 2015 — Wfsv 38b lid 1 b</small></div>
+          <div class="ing reg"><b>Overige gronden</b><small>AMvB-indicatie (d), overgangsrecht (f), IVA met experiment (g), UWV-oordeel (lid 2)</small></div>
+        </div>
+      </div>
+
+      <div class="pijl"><span>&darr;</span></div>
+
+      <div class="band">
+        <div class="band-label">2 — De lijst</div>
+        <div class="register">
+          <b>Doelgroepregister banenafspraak</b>
+          <small>UWV houdt de registratie bij — Wfsv 38b (wie is arbeidsbeperkte) en 38d (de registratie zelf)</small>
+        </div>
+      </div>
+
+      <div class="pijl"><span>&darr;</span></div>
+
+      <div class="band">
+        <div class="band-label">3 — Wat eruit volgt</div>
+        <div class="uitkomsten">
+
+          <div class="kolom lijst">
+            <div class="kolom-kop">Aan de lijst — voor iedereen gelijk</div>
+            <div class="reg-kaart">
+              <div class="reg-naam">Loonkostenvoordeel banenafspraak</div>
+              <div class="reg-grond">Wtl artikel 2.10 en 2.13</div>
+              <div class="reg-rekenvorm"><span class="vorm">Uurtarief met jaardak</span> € 1,01 per verloond uur, ten hoogste € 2.000 per jaar. Onafhankelijk van loonwaarde.</div>
+            </div>
+            <div class="reg-kaart">
+              <div class="reg-naam">No-riskpolis</div>
+              <div class="reg-grond">Ziektewet artikel 29b</div>
+              <div class="reg-rekenvorm"><span class="vorm">Risico-overname</span> Geen bedrag vooraf. Wordt de werknemer ziek, dan betaalt het UWV 70% van het dagloon in plaats van de werkgever (lid 5).</div>
+            </div>
+          </div>
+
+          <div class="kolom wet">
+            <div class="kolom-kop">Aan de wet van binnenkomst — verschilt per route</div>
+            <div class="reg-kaart gem-rand">
+              <div class="reg-naam">Loonkostensubsidie <span class="via">via de Participatiewet</span></div>
+              <div class="reg-grond">Participatiewet artikel 10d</div>
+              <div class="reg-rekenvorm"><span class="vorm">Verschil</span> Minimumloon plus vakantiebijslag en werkgeverslasten, min de loonwaarde; ten hoogste 70% van die grondslag (lid 4). Zonder loonwaardevaststelling: 50% plat over de eerste zes maanden (lid 5).</div>
+            </div>
+            <div class="reg-kaart uwv-rand">
+              <div class="reg-naam">Loondispensatie <span class="via">via de Wajong</span></div>
+              <div class="reg-grond">Wajong artikel 2:20</div>
+              <div class="reg-rekenvorm"><span class="vorm">Vrijstelling</span> Het UWV verlaagt de loonaanspraak naar evenredigheid. Er stroomt geen geld naar de werkgever; die hoeft minder te betalen.</div>
+            </div>
+            <div class="reg-kaart">
+              <div class="reg-naam">Jobcoaching en werkplekaanpassing <span class="via">drie deuren</span></div>
+              <div class="reg-grond">Participatiewet 10 (college) &middot; Wajong 2:22 (UWV) &middot; Wet WIA 35 (UWV)</div>
+              <div class="reg-rekenvorm"><span class="vorm">Voorziening zonder bedrag</span> De wet noemt geen bedrag en geen tarief; het bestuursorgaan bepaalt de omvang per geval. Wet WIA 35 lid 4 sluit uit wie het langs de Participatiewet of de Wajong krijgt.</div>
+            </div>
+            <div class="reg-kaart gem-rand">
+              <div class="reg-naam">Begeleiding op de werkplek <span class="via">via de Participatiewet</span></div>
+              <div class="reg-grond">Participatiewet artikel 10da</div>
+              <div class="reg-rekenvorm"><span class="vorm">Aanspraak zonder bedrag</span> De wet kent de aanspraak toe en laat de invulling aan de gemeentelijke verordening.</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
     </div>
   </div>
 
