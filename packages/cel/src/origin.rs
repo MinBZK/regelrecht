@@ -28,7 +28,7 @@ use regelrecht_law_model::{Origin, OriginValue, Parameter};
 
 use crate::besluit;
 use crate::cel::Cel;
-use crate::config::{ProcesDefinitie, RijenDefinitie};
+use crate::config::{Oordeel, ProcesDefinitie, RijenDefinitie};
 use crate::regelingen::{self, Benodigd};
 use crate::stroom::Binding;
 
@@ -470,6 +470,57 @@ pub fn controleer(
     c
 }
 
+/// Het besluitformulier: de parameters van het besluit met origin
+/// `OORDEEL`, in de volgorde van declaratie. Het label is de omschrijving van
+/// de parameter, of het deel na "Naam:" als dat er staat, en anders de naam;
+/// de groep is het artikel van de grondslag.
+pub fn oordelen(c: &Controle, service: &LawExecutionService) -> Vec<Oordeel> {
+    c.parameters
+        .get(Uitvoering::Besluit.naam())
+        .into_iter()
+        .flatten()
+        .filter_map(|(b, g)| {
+            let g = g
+                .as_ref()
+                .filter(|g| g.origin.waarde == OriginValue::Oordeel)?;
+            let p = parameter(service, b)?;
+            Some(Oordeel {
+                parameter: b.naam.clone(),
+                label: label(p),
+                groep: groep(service, &g.origin.grondslag),
+                uitleg: None,
+            })
+        })
+        .collect()
+}
+
+/// Het label van een parameter: het deel van de omschrijving na "Naam:",
+/// anders de hele omschrijving, anders de naam.
+fn label(p: &Parameter) -> String {
+    let tekst = p.description.as_deref().map(str::trim).unwrap_or_default();
+    let tekst = match tekst.rsplit_once("Naam:") {
+        Some((_, naam)) => naam.trim(),
+        None => tekst,
+    };
+    let tekst = tekst.strip_suffix('.').unwrap_or(tekst).trim();
+    if tekst.is_empty() {
+        p.name.clone()
+    } else {
+        tekst.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+}
+
+/// De groep van een oordeel: de regeling en het artikel van zijn grondslag.
+fn groep(service: &LawExecutionService, grondslag: &str) -> Option<String> {
+    let g = regelingen::ontleed(grondslag).ok()?;
+    let naam = service
+        .resolver()
+        .get_law(g.regeling)
+        .and_then(|l| l.name.clone())
+        .unwrap_or_else(|| g.regeling.to_string());
+    Some(format!("{naam}, artikel {}", g.artikel))
+}
+
 /// Of het aanbod op een parameter mag leunen: wat vooraf vaststaat, is wie
 /// inlogt (`KANAAL`), wat een register weet (`REGISTER`) en wat de aanvrager
 /// vraagt (`BELANGHEBBENDE` met grondslag Awb 4:2 lid 1, zoals het tijdvak).
@@ -841,6 +892,49 @@ articles:
             &[],
         );
         assert!(c.fouten.is_empty(), "{:?}", c.fouten);
+    }
+
+    /// Het besluitformulier: de OORDEEL-parameters van het besluit, met het
+    /// label na "Naam:" en de groep uit de grondslag.
+    #[test]
+    fn het_besluitformulier_volgt_uit_origin() {
+        let s = service(zo, &[]);
+        let c = cellen(&s);
+        let uit = controleer(&proces("afnemer", zo), &c["test_afnemer"], &c, &s);
+        let o = oordelen(&uit, &s);
+        let velden: Vec<(&str, &str, Option<&str>)> = o
+            .iter()
+            .map(|o| (o.parameter.as_str(), o.label.as_str(), o.groep.as_deref()))
+            .collect();
+        assert_eq!(
+            velden,
+            [
+                (
+                    "besluitdatum",
+                    "Besluitdatum",
+                    Some("Testregeling afnemer, artikel 3")
+                ),
+                (
+                    "feiten_vergaard",
+                    "De relevante feiten zijn vergaard",
+                    Some("Testregeling afnemer, artikel 3")
+                ),
+            ]
+        );
+        // Zonder "Naam:" is het label de omschrijving, zonder omschrijving de
+        // naam.
+        let s = service(
+            |t| {
+                t.replace(
+                    "'Het oordeel van de instantie bij het besluiten. Naam: Besluitdatum.'",
+                    "De dag van het besluit.",
+                )
+            },
+            &[],
+        );
+        let c = cellen(&s);
+        let uit = controleer(&proces("afnemer", zo), &c["test_afnemer"], &c, &s);
+        assert_eq!(oordelen(&uit, &s)[0].label, "De dag van het besluit");
     }
 
     /// Uitvoeringsbeleid van de actor geeft `jaar` een andere herkomst.

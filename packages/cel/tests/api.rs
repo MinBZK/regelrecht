@@ -950,10 +950,6 @@ fn besluit_controle_bij_het_opstarten() {
         "is een bron van de zaak (zaak: true)",
     );
     geval(
-        &|t: String| t.replace("{parameter: besluitdatum,", "{parameter: onbekend_oordeel,"),
-        "'onbekend_oordeel' is geen parameter van testregeling_afnemer#3",
-    );
-    geval(
         &|t: String| {
             t.replace(
                 "      bekendgemaakt: false\n",
@@ -1292,8 +1288,8 @@ async fn zaak_met_proefbesluit_zonder_vastleggen() {
     assert_eq!(
         z["besluit"]["formulier"],
         json!([
-            {"naam": "besluitdatum", "label": "Besluitdatum", "type": "datum"},
-            {"naam": "feiten_vergaard", "label": "De relevante feiten zijn vergaard", "type": "janee", "groep": "Zorgvuldigheid"}
+            {"naam": "besluitdatum", "label": "Besluitdatum", "type": "datum", "groep": "Testregeling afnemer, artikel 3"},
+            {"naam": "feiten_vergaard", "label": "De relevante feiten zijn vergaard", "type": "janee", "groep": "Testregeling afnemer, artikel 3"}
         ])
     );
     let p = &z["proefbesluit"];

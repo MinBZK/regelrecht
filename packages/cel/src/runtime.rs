@@ -84,11 +84,11 @@ impl Runtime {
                     p.map.display()
                 ));
             }
+            // Eerst de herkomst: daaruit volgt het besluitformulier. Haar
+            // fouten tellen pas als synthese en besluit kloppen.
+            let herkomst = p.controleer_herkomst(&per_id);
             let mut eigen = synthese::controleer(p);
             eigen.extend(besluit::controleer(p));
-            // Wie elke parameter levert, is pas na te gaan als synthese en
-            // besluit kloppen.
-            let herkomst = p.controleer_herkomst(&per_id);
             if eigen.is_empty() {
                 eigen = herkomst;
             }

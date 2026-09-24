@@ -10,7 +10,8 @@
 //!    verloop van de zaak; het proces vraagt haar aan de cel, zoals elke bron;
 //! 2. een andere synthese-bron, met invoer uit een van die lexostatussen;
 //! 3. het besluitformulier: de oordelen van de behandelaar, die pas bij het
-//!    besluiten bestaan;
+//!    besluiten bestaan; het zijn de parameters met origin `OORDEEL`
+//!    (zie [`crate::origin::oordelen`]);
 //! 4. de stand bij besluit: feiten die pas na het besluit ontstaan, zoals de
 //!    bekendmaking, met hun stand op het moment van besluiten.
 //!

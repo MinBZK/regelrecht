@@ -3,7 +3,8 @@
 # voegt de lexostatus van het concept (een proefreductie in de cel) samen
 # met de registerstatus van de registercel (zonder url is het transport
 # intern); de behandelaar ziet de werkvoorraad en rekent per zaak een
-# proefbesluit uit.
+# proefbesluit uit. Het besluitformulier volgt uit de regeling: de parameters
+# van het besluit met origin OORDEEL.
 id: test_afnemer_proces
 actor: test_afnemer
 rollen:
@@ -31,9 +32,6 @@ behandeling:
   besluit:
     regeling: testregeling_afnemer
     uitkomsten: [vastgesteld_bedrag, gebiedsbedrag, besluit_tijdig, besluitdeadline, zorgvuldig]
-    formulier:
-      - {parameter: besluitdatum, label: Besluitdatum}
-      - {parameter: feiten_vergaard, label: De relevante feiten zijn vergaard, groep: Zorgvuldigheid}
     stand_bij_besluit:
       datum_bekendmaking: null
       bekendgemaakt: false

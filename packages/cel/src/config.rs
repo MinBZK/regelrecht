@@ -168,8 +168,10 @@ pub struct BesluitDefinitie {
     #[serde(default)]
     pub regeling: String,
     pub uitkomsten: Vec<String>,
-    /// De oordelen van de behandelaar.
-    #[serde(default)]
+    /// De oordelen van de behandelaar: niet in `proces.yaml`, maar bij het
+    /// laden afgeleid uit de parameters van het besluit met origin `OORDEEL`
+    /// (zie [`crate::origin::oordelen`]).
+    #[serde(skip)]
     pub formulier: Vec<Oordeel>,
     /// Feiten die pas na het besluit ontstaan, met hun stand bij het besluit.
     #[serde(default)]
@@ -270,14 +272,13 @@ impl RijInvoer {
     }
 }
 
-/// Een veld van het besluitformulier: een parameter met een label.
-#[derive(Debug, Clone, Deserialize)]
+/// Een veld van het besluitformulier: een parameter met een label, uit de
+/// regeling.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Oordeel {
     pub parameter: String,
     pub label: String,
-    #[serde(default)]
     pub groep: Option<String>,
-    #[serde(default)]
     pub uitleg: Option<String>,
 }
 
@@ -536,6 +537,18 @@ mod tests {
         )
         .unwrap_err();
         assert!(fout.iter().any(|f| f.contains("/synthese/0")), "{fout:?}");
+    }
+
+    /// Het besluitformulier staat niet in `proces.yaml`: het volgt uit de
+    /// parameters met origin OORDEEL.
+    #[test]
+    fn een_besluitformulier_in_de_configuratie_wordt_geweigerd() {
+        let fout = ProcesDefinitie::parse(
+            "id: a\nactor: a\nbehandeling:\n  werkvoorraad: {cel: a, lexostatus: w}\n  besluit:\n    uitkomsten: [u]\n    formulier: [{parameter: p, label: P}]\n",
+            "t",
+        )
+        .unwrap_err();
+        assert!(fout.iter().any(|f| f.contains("formulier")), "{fout:?}");
     }
 
     #[test]

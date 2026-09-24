@@ -141,10 +141,12 @@ articles:
             type: date
             nullable: true
             required: true
+            description: 'Het oordeel van de instantie bij het besluiten. Naam: Besluitdatum.'
             origin: {waarde: OORDEEL, grondslag: testregeling_afnemer#3 lid 1}
           - name: feiten_vergaard
             type: boolean
             required: false
+            description: 'Het oordeel van de instantie bij het besluiten. Naam: De relevante feiten zijn vergaard.'
             origin: {waarde: OORDEEL, grondslag: testregeling_afnemer#3 lid 3}
           - name: datum_bekendmaking
             type: date

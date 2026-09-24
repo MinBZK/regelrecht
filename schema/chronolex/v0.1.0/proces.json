@@ -315,7 +315,7 @@
     },
     "besluit": {
       "type": "object",
-      "description": "Het besluit op een zaak: welke uitkomsten van welk artikel het besluit zijn, en waar elke parameter vandaan komt. Een parameter komt uit precies een bron: een lexostatus van de zaak (een synthese-bron met zaak: true), een andere synthese-bron, het besluitformulier (oordelen van de behandelaar), de stand bij besluit of de synthese per regel.",
+      "description": "Het besluit op een zaak: welke uitkomsten van welk artikel het besluit zijn, en waar elke parameter vandaan komt. Een parameter komt uit precies een bron: een lexostatus van de zaak (een synthese-bron met zaak: true), een andere synthese-bron, het besluitformulier, de stand bij besluit of de synthese per regel. Het besluitformulier staat hier niet: het zijn de parameters van het besluit met origin OORDEEL (RFC-043).",
       "required": [
         "uitkomsten"
       ],
@@ -332,34 +332,6 @@
           "description": "Uitkomsten van een en hetzelfde artikel van de regeling.",
           "items": {
             "$ref": "#/definitions/identifier"
-          }
-        },
-        "formulier": {
-          "type": "array",
-          "description": "De oordelen van de behandelaar: parameters die pas bij het besluiten bestaan. Het type volgt uit de parameter in de regeling.",
-          "items": {
-            "type": "object",
-            "required": [
-              "parameter",
-              "label"
-            ],
-            "additionalProperties": false,
-            "properties": {
-              "parameter": {
-                "type": "string",
-                "pattern": "^[a-z_][a-z0-9_]*$"
-              },
-              "label": {
-                "type": "string",
-                "minLength": 1
-              },
-              "groep": {
-                "type": "string"
-              },
-              "uitleg": {
-                "type": "string"
-              }
-            }
           }
         },
         "stand_bij_besluit": {

@@ -116,9 +116,14 @@ impl Proces {
     }
 
     /// De controle op de herkomst van de parameters (zie [`crate::origin`]).
-    /// De waarschuwingen bewaart het proces; de fouten komen terug.
+    /// Het besluitformulier volgt eruit, en de waarschuwingen bewaart het
+    /// proces; de fouten komen terug.
     pub fn controleer_herkomst(&mut self, cellen: &BTreeMap<String, Arc<Cel>>) -> Vec<String> {
         let c = origin::controleer(&self.definitie, &self.cel, cellen, &self.service);
+        let oordelen = origin::oordelen(&c, &self.service);
+        if let Some(b) = self.definitie.behandeling.as_mut() {
+            b.besluit.formulier = oordelen;
+        }
         self.waarschuwingen = c.waarschuwingen;
         c.fouten
     }
