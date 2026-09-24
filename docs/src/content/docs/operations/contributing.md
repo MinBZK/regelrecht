@@ -32,22 +32,9 @@ Subject line should be 72 characters or less and explain *why*, not *what*.
 
 ## Pre-commit hooks
 
-The repository uses pre-commit hooks that run automatically on each commit:
+The repository runs formatting, lint, schema and script checks as pre-commit hooks, and checks the commit message itself. How to install them and what they cover is on [Development Environment](/guide/dev-environment#pre-commit-hooks).
 
-- Trailing whitespace removal
-- End-of-file fixer
-- YAML linting
-- Rust formatting (`just format`)
-- Rust linting (`just lint`)
-- Schema validation on corpus files (`just validate`)
-
-Install them after cloning:
-
-```bash
-pre-commit install
-```
-
-Do not bypass hooks with `--no-verify`. If a hook fails, fix the underlying problem.
+Do not bypass hooks with `--no-verify`. If a hook fails, fix the underlying problem. CI runs the same hooks again, so a bypassed hook only moves the failure to the pull request.
 
 ## Pull request process
 
@@ -56,7 +43,7 @@ Do not bypass hooks with `--no-verify`. If a hook fails, fix the underlying prob
 3. End the PR body with a `Werkpakket:` line (see below). A required check blocks the merge without it
 4. Add the `deploy:preview` label if reviewers need a running preview (see [Deployment](./deployment))
 5. Get a code review, and clear any finding the automated review marks Critical
-6. Merge to main - production deploys automatically
+6. Add the PR to the merge queue (see [CI/CD](./ci-cd#the-merge-queue)). Once it lands on `main`, production deploys automatically
 
 The PR title follows the same Conventional Commits shape as a commit, and it is linted. The scope, when present, comes from a fixed list (`engine`, `corpus`, `editor`, `docs`, `ci` and a handful more). The subject must start with a lowercase letter, which is the rule most titles trip on: `docs: RFC-016 toelichten` fails on the capital R, `docs: verwijzing naar RFC-016 toelichten` passes. Editing the title re-runs the check, with no new commit needed.
 
@@ -123,6 +110,7 @@ Use the template at `docs/src/content/rfcs/template.md` to draft your RFC, then 
 
 ## Further reading
 
-- [Getting Started](/guide/getting-started) - set up your development environment
+- [Getting Started](/guide/getting-started) - from a fresh clone to a first build
+- [Development Environment](/guide/dev-environment) - the local stack and the pre-commit hooks
 - [Testing](/guide/testing) - how to write and run tests
 - [Adding a Law](./adding-a-law) - step-by-step guide for new laws

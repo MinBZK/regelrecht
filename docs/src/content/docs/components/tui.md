@@ -43,4 +43,4 @@ No configuration needed. Reads the corpus from local filesystem paths.
 ## Further reading
 
 - [Execution Engine](./engine) - the engine the TUI runs
-- [Getting Started](/guide/getting-started) - setting up the development environment
+- [Development Environment](/guide/dev-environment) - setting up the development environment

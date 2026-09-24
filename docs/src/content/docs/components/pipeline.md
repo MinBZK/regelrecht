@@ -101,6 +101,18 @@ precise reason and date go into the harvest job's result. The job is completed
 rather than failed, so it is never retried; a future law can be re-harvested by
 hand once its text appears.
 
+## Pipeline API
+
+Besides the workers, the crate builds one HTTP service, `pipeline-api` (`src/bin/pipeline_api.rs`, image `regelrecht-pipeline-api`). It has no public address and no authentication of its own. The editor API forwards `/api/harvest/*` to it (see `PIPELINE_API_URL` on [Editor API](./editor-api)) and does the auth checks in front of it.
+
+| Route | Purpose |
+|-------|---------|
+| `POST /harvest` | Create a harvest job for one law |
+| `POST /harvest/batch` | Create harvest jobs for several laws |
+| `GET /harvest/status` | Job and law status |
+| `GET /harvest/search` | Search BWB for a law to harvest |
+| `GET /health` | Liveness |
+
 ## Harvest Worker
 
 The harvest worker:

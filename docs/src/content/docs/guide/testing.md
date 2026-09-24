@@ -63,9 +63,9 @@ Test scenarios are derived from the **Memorie van Toelichting** (MvT), the expla
 
 `just check` runs what CI runs: formatting, lints, a build check, schema and annotation validation, the script test suites, and the full Rust test suite. Run it before pushing.
 
-## Unit Tests
+## Rust Tests
 
-Rust unit tests cover the engine internals:
+The Rust unit and integration tests, across every crate in the workspace:
 
 ```bash
 just test           # Whole workspace (needs Docker)
@@ -75,11 +75,11 @@ just test-db        # Only the container-backed crates
 
 ## Conformance
 
-`just conformance` proves the Rust `law-model` conforms to the hand-authored JSON schema, which is the canonical contract. It is a corpus differential plus synthetic valid and invalid fixtures, the structural twin of the BDD conformance bucket. See [Conformance](../reference/conformance) and `packages/engine/tests/conformance/README.md`.
-
 ```bash
 just conformance
 ```
+
+Checks that the Rust `law-model` accepts exactly what the JSON schema accepts. What it covers, and what conformance does not cover yet, is on [Conformance](../reference/conformance); adding a fixture is described in `packages/engine/tests/conformance/README.md`.
 
 ## Mutation Testing
 
