@@ -4019,4 +4019,43 @@ mod contract_tests {
         process_one(&db).await;
         assert_rejected_without_delivery(&db, job_id).await;
     }
+
+    #[tokio::test]
+    async fn related_legislation_with_a_bwb_id_enqueues_a_follow_up_harvest() {
+        // Path (a): an explicit, valid bwb_id resolves without the slug table
+        // or the SRU search, so no network is involved. The follow-up harvest
+        // must land one level deeper, at the related-harvest priority.
+        let db = TestDb::new().await;
+        let related = vec![crate::enrich::RelatedLegislation {
+            name: "Wet op de zorgtoeslag".to_string(),
+            relation: "legal_basis".to_string(),
+            bwb_id: Some("BWBR0018451".to_string()),
+            slug: None,
+            open_term: None,
+        }];
+
+        harvest_related_legislation(&db.pool, &Client::new(), "parent_law", &related, 0).await;
+
+        let rows: Vec<(String, i32, Option<serde_json::Value>)> =
+            sqlx::query_as("SELECT law_id, priority, payload FROM jobs WHERE job_type = 'harvest'")
+                .fetch_all(&db.pool)
+                .await
+                .expect("query jobs");
+        assert_eq!(rows.len(), 1, "exactly one follow-up harvest");
+        let (law_id, priority, payload) = &rows[0];
+        assert_eq!(law_id, "BWBR0018451");
+        assert_eq!(*priority, related_harvest_priority(0).value());
+        let payload = payload.as_ref().expect("harvest payload");
+        assert_eq!(payload["bwb_id"], "BWBR0018451");
+        assert_eq!(payload["depth"], 1);
+
+        // Running it again finds the pending job and does not duplicate it.
+        harvest_related_legislation(&db.pool, &Client::new(), "parent_law", &related, 0).await;
+        let (count,): (i64,) =
+            sqlx::query_as("SELECT count(*) FROM jobs WHERE job_type = 'harvest'")
+                .fetch_one(&db.pool)
+                .await
+                .expect("count jobs");
+        assert_eq!(count, 1);
+    }
 }

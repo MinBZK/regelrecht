@@ -208,5 +208,5 @@ exclude_re = [
     # lookup_failed en de rest) bestaan alleen voor de samenvattende logregel;
     # de functie heeft geen terugwaarde en ze sturen niets. Welke uitkomst als
     # welke soort telt ligt vast in classify_sru_result en wordt daar gedood.
-    'worker\.rs.*replace \+= with -= in harvest_related_legislation',
+    'worker\.rs.*replace \+= with .* in harvest_related_legislation',
 ]
