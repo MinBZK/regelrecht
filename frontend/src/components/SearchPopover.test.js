@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import SearchPopover from './SearchPopover.vue';
+import { MIN_QUERY_LENGTH } from '../composables/useBwbSearch.js';
 
 // SearchPopover queries the corpus server-side (`/corpus/laws?q=`) and orders
 // the response into a flat option list (private repo first). We drive it via
@@ -356,5 +357,45 @@ describe('SearchPopover volgt het breakpoint terwijl hij openstaat', () => {
     verander(768);
     await nextTick();
     expect(el.reposition).not.toHaveBeenCalled();
+  });
+});
+
+// De hint zei "minimaal twee letters" terwijl er pas vanaf drie tekens gezocht
+// wordt (MIN_QUERY_LENGTH, en de pipeline-api weigert korter ook). Drie is de
+// bedoeling: de constante, de AddLawSheet-hint en de backend zeggen het alle
+// drie. Deze tests binden de tekst aan het gedrag.
+describe('SearchPopover: minimale zoeklengte', () => {
+  const WORDS = { 3: 'drie' };
+
+  function emptyTexts(wrapper) {
+    return wrapper.findAll('nldd-inline-dialog').map((d) => d.attributes('text'));
+  }
+
+  function corpusCalls() {
+    return fetch.mock.calls
+      .map(([u]) => String(u))
+      .filter((u) => u.includes('/corpus/laws') && u.includes('q='));
+  }
+
+  it('noemt het aantal tekens waarbij het zoeken echt begint', async () => {
+    expect(WORDS[MIN_QUERY_LENGTH], `voeg ${MIN_QUERY_LENGTH} toe aan WORDS`).toBeDefined();
+    const wrapper = mount(SearchPopover);
+    await searchFor(wrapper, 'a'.repeat(MIN_QUERY_LENGTH - 1));
+    expect(corpusCalls()).toEqual([]);
+    expect(emptyTexts(wrapper)).toContain(`Typ minimaal ${WORDS[MIN_QUERY_LENGTH]} tekens om te zoeken`);
+  });
+
+  it('zoekt vanaf dat aantal, en toont de hint dan niet meer', async () => {
+    const wrapper = mount(SearchPopover);
+    await searchFor(wrapper, 'a'.repeat(MIN_QUERY_LENGTH));
+    expect(corpusCalls()).toHaveLength(1);
+    expect(emptyTexts(wrapper).some((t) => t?.startsWith('Typ minimaal'))).toBe(false);
+  });
+
+  it('telt spaties aan het eind niet mee, net als het zoeken zelf', async () => {
+    const wrapper = mount(SearchPopover);
+    await searchFor(wrapper, `${'a'.repeat(MIN_QUERY_LENGTH - 1)}   `);
+    expect(corpusCalls()).toEqual([]);
+    expect(emptyTexts(wrapper)).toContain(`Typ minimaal ${WORDS[MIN_QUERY_LENGTH]} tekens om te zoeken`);
   });
 });
