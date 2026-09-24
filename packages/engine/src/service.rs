@@ -9187,6 +9187,36 @@ articles:
             .load_law(&regeling("2025-01-01", "4", decoys))
             .unwrap();
         service.load_law(&regeling("2027-01-01", "1", "")).unwrap();
+        // Another regeling, scoped to a gemeente this execution is not about,
+        // fills the same term under the renumbered article's number. It is
+        // offered by the index but is another law, so it does not hide
+        // article 4 of regeling_afstand from the reason.
+        service
+            .load_law(
+                r#"
+$id: regeling_elders
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+gemeente_code: GM0363
+articles:
+  - number: '4'
+    text: De afwijkende afstand bedraagt 75
+    machine_readable:
+      implements:
+        - law: wet_met_open_term
+          article: '2'
+          open_term: afwijkende_afstand
+      execution:
+        output:
+          - name: afwijkende_afstand
+            type: number
+        actions:
+          - output: afwijkende_afstand
+            value: 75
+"#,
+            )
+            .unwrap();
 
         let before = service
             .evaluate_law_output(
