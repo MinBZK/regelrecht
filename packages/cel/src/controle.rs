@@ -1,5 +1,5 @@
-//! De controles bij het opstarten. De cel weigert te starten als er een
-//! faalt, met een melding die het veld of de parameter noemt.
+//! De controles op een cel bij het opstarten. De runtime weigert te starten
+//! als er een faalt, met een melding die het veld of de parameter noemt.
 //!
 //! 1. Stroom, lexostatus-definities en celdefinitie valideren tegen hun
 //!    schema (bij het laden, zie [`crate::stroom::parse`],
@@ -22,10 +22,11 @@
 //!    met die van andere lexostatussen. Haar `zonder` wijst een event aan in
 //!    haar kroniek, anders zou het nooit iets weglaten.
 //!
-//! Heeft de cel een portaal, dan wijst dat naar een bestaand event, een
+//! Een proces met een portaal wijst naar een bestaand event van zijn cel, een
 //! bestaande lexostatus en een bestaande uitkomst, van een artikel uit de
-//! grondslag van dat event. De controles op de synthese staan in
-//! [`crate::synthese`].
+//! grondslag van dat event ([`portaal`], aangeroepen vanuit
+//! [`crate::proces`]). De controles op de synthese staan in
+//! [`crate::synthese`], die op het besluit in [`crate::besluit`].
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -100,11 +101,10 @@ pub fn events_in<'a>(
         .collect()
 }
 
-/// Alle controles. `Ok` als de cel mag starten.
+/// Alle controles op een cel. `Ok` als de cel mag starten.
 pub fn controleer(
     strommen: &[Stroom],
     lexostatussen: &Lexostatussen,
-    portaal: Option<&Portaal>,
     service: &LawExecutionService,
 ) -> Result<(), Vec<String>> {
     let mut fouten = Vec::new();
@@ -114,9 +114,6 @@ pub fn controleer(
     weesvelden(strommen, lexostatussen, &mut fouten);
     botsingen(strommen, lexostatussen, &mut fouten);
     zaakkenmerken(strommen, lexostatussen, &mut fouten);
-    if let Some(p) = portaal {
-        portaal_(strommen, lexostatussen, p, service, &mut fouten);
-    }
     if fouten.is_empty() {
         Ok(())
     } else {
@@ -458,6 +455,22 @@ fn zaakkenmerken(strommen: &[Stroom], lexostatussen: &Lexostatussen, fouten: &mu
     }
 }
 
+/// De controles op het portaal van een proces, tegen de stromen en
+/// lexostatussen van de cel waarin het vastlegt: het event bestaat, levert
+/// alleen `$intake`-paden die het portaal kent, de toets-lexostatus leest het
+/// event en kiest een gram, de toetsuitkomst komt uit de grondslag van het
+/// event, en het aanbod klopt.
+pub fn portaal(
+    strommen: &[Stroom],
+    lexostatussen: &Lexostatussen,
+    p: &Portaal,
+    service: &LawExecutionService,
+) -> Vec<String> {
+    let mut fouten = Vec::new();
+    portaal_(strommen, lexostatussen, p, service, &mut fouten);
+    fouten
+}
+
 fn portaal_(
     strommen: &[Stroom],
     lexostatussen: &Lexostatussen,
@@ -466,7 +479,10 @@ fn portaal_(
     fouten: &mut Vec<String>,
 ) {
     let Some(stroom) = strommen.iter().find(|s| s.id == p.stroom) else {
-        fouten.push(format!("portaal: stroom '{}' bestaat niet", p.stroom));
+        fouten.push(format!(
+            "portaal: stroom '{}' bestaat niet in cel '{}'",
+            p.stroom, p.cel
+        ));
         return;
     };
     let Some(event) = stroom.event(&p.event) else {
@@ -590,7 +606,7 @@ mod tests {
 
     const STROOM: &str = include_str!("../tests/fixtures/chronicles/test_aanvragen.yaml");
     const CEL: &str = include_str!("../tests/fixtures/cellen/instantie/lexostatussen.yaml");
-    const CELDEF: &str = include_str!("../tests/fixtures/cellen/instantie/cel.yaml");
+    const CELDEF: &str = include_str!("../tests/fixtures/processes/instantie/proces.yaml");
     const REG_STROOM: &str = include_str!("../tests/fixtures/chronicles/test_registers.yaml");
     const REG_CEL: &str = include_str!("../tests/fixtures/cellen/register/lexostatussen.yaml");
 
@@ -604,11 +620,24 @@ mod tests {
         draai_met(stroom_tekst, cel_tekst, CELDEF)
     }
 
+    /// De controles op de cel, en op het portaal van het proces (`celdef` is
+    /// een `proces.yaml`).
     fn draai_met(stroom_tekst: &str, cel_tekst: &str, celdef: &str) -> Result<(), Vec<String>> {
         let s = stroom::parse(stroom_tekst, "stroom")?;
         let c = reductie::parse(cel_tekst, "cel")?;
-        let d = crate::config::CelDefinitie::parse(celdef, "cel.yaml")?;
-        controleer(&[s], &c, d.portaal.as_ref(), &service())
+        let d = crate::config::ProcesDefinitie::parse(celdef, "proces.yaml")?;
+        let strommen = [s];
+        let mut fouten = controleer(&strommen, &c, &service())
+            .err()
+            .unwrap_or_default();
+        if let Some(p) = &d.portaal {
+            fouten.extend(portaal(&strommen, &c, p, &service()));
+        }
+        if fouten.is_empty() {
+            Ok(())
+        } else {
+            Err(fouten)
+        }
     }
 
     fn portaal_faalt_met(celdef: &str, verwacht: &str) {
@@ -622,7 +651,7 @@ mod tests {
     fn register(cel_tekst: &str) -> Result<(), Vec<String>> {
         let s = stroom::parse(REG_STROOM, "stroom")?;
         let c = reductie::parse(cel_tekst, "cel")?;
-        controleer(&[s], &c, None, &service())
+        controleer(&[s], &c, &service())
     }
 
     fn register_faalt_met(cel_tekst: &str, verwacht: &str) {

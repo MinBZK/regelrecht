@@ -1,13 +1,13 @@
-//! Synthese: de toets van een cel voegt haar eigen lexostatus samen met
-//! lexostatussen van andere cellen.
+//! Synthese: een proces voegt de lexostatus van de zaak (bij de toets: de
+//! proefreductie van het concept) samen met lexostatussen van cellen.
 //!
 //! Synthese gebeurt bij de afnemer, niet bij de bron. De bron reduceert haar
-//! eigen kroniek; de afnemer vraagt die lexostatus op via een [`Transport`],
+//! eigen kroniek; het proces vraagt die lexostatus op via een [`Transport`],
 //! met een tijdslimiet van drie seconden, en neemt alleen de parameters over
-//! die zij in `cel.yaml` expliciet van die bron verwacht. Per parameter houdt
-//! ze bij waar hij vandaan kwam. Niets hiervan wordt vastgelegd: het is
-//! informeren, geen feit van de afnemer. Is een bron onbereikbaar, dan wordt
-//! er niets aangevuld.
+//! die het in `proces.yaml` expliciet van die bron verwacht. Per parameter
+//! houdt het bij waar hij vandaan kwam. Niets hiervan wordt vastgelegd: het
+//! is informeren, geen feit. Is een bron onbereikbaar, dan wordt er niets
+//! aangevuld.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -16,8 +16,8 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::cel::Cel;
 use crate::config::SyntheseBron;
+use crate::proces::Proces;
 use crate::reductie::Lexostatus;
 use crate::regelingen;
 use crate::transport::{haal_binnen, Transport, TransportFout};
@@ -36,7 +36,8 @@ pub struct Bron {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "bron", rename_all = "snake_case")]
 pub enum Herkomst {
-    /// De eigen reductie.
+    /// Een lexostatus van de zaak, uit de cel waarin het proces vastlegt (bij
+    /// de toets: de proefreductie van het concept).
     Eigen { lexostatus: String },
     /// Een lexostatus van een andere cel.
     Cel {
@@ -339,10 +340,11 @@ async fn vraag(
 /// - een invoer uit een doorgevende bron komt van een eerdere bron in de lijst,
 ///   die dat veld doorgeeft en zelf niet op een andere bron wacht (de synthese
 ///   kent twee rondes).
-fn doorgeven(cel: &Cel) -> Vec<String> {
+fn doorgeven(proces: &Proces) -> Vec<String> {
     let mut fouten = Vec::new();
-    let bronnen = &cel.definitie.synthese;
-    let eigen: Vec<&str> = cel
+    let bronnen: Vec<&SyntheseBron> = proces.definitie.andere_bronnen().collect();
+    let eigen: Vec<&str> = proces
+        .cel
         .lexostatussen
         .lexostatus_definitions
         .iter()
@@ -401,12 +403,13 @@ fn doorgeven(cel: &Cel) -> Vec<String> {
     fouten
 }
 
-/// De controles op de synthese van een cel bij het opstarten. Een fout hier
-/// houdt de cel tegen:
+/// De controles op de synthese van een proces bij het opstarten. Een fout
+/// hier houdt de runtime tegen:
 ///
 /// - synthese vraagt een portaal of een besluit, want alleen de toets en het
 ///   proefbesluit gebruiken haar;
-/// - een bron is een andere cel;
+/// - een bron is een andere cel dan die waarin het proces vastlegt, tenzij
+///   het een bron van de zaak is (`zaak: true`);
 /// - elke invoer komt uit een veld van de toets-lexostatus (met een portaal),
 ///   of van een eerdere bron die haar doorgeeft (zie [`doorgeven`]);
 /// - elke parameter is een parameter van het artikel van de toets, van het
@@ -415,34 +418,31 @@ fn doorgeven(cel: &Cel) -> Vec<String> {
 /// - een parameter komt uit maar een bron: de eigen reductie of een bron.
 ///
 /// Wat het besluit verder vraagt, staat in [`crate::besluit::controleer`].
-pub fn controleer(cel: &Cel) -> Vec<String> {
+pub fn controleer(proces: &Proces) -> Vec<String> {
     let mut fouten = Vec::new();
-    let bronnen = &cel.definitie.synthese;
-    if bronnen.is_empty() {
+    if proces.definitie.synthese.is_empty() {
         return fouten;
     }
-    fouten.extend(doorgeven(cel));
+    let bronnen: Vec<&SyntheseBron> = proces.definitie.andere_bronnen().collect();
+    let cel = &proces.cel;
+    let service = proces.service.as_ref();
+    fouten.extend(doorgeven(proces));
     let doorgevers: Vec<&str> = bronnen
         .iter()
         .filter(|b| !b.extra_velden.is_empty())
         .map(|b| b.lexostatus.as_str())
         .collect();
-    let besluit = cel.definitie.behandeling.as_ref().map(|b| &b.besluit);
+    let besluit = proces.definitie.behandeling.as_ref().map(|b| &b.besluit);
     let onder_besluit = besluit
         .and_then(|b| {
             let u = b.uitkomsten.first()?;
-            let a = cel
-                .service
+            let a = service
                 .resolver()
                 .get_article_by_output(&b.regeling, u, None)?;
-            Some(regelingen::transitieve_parameters(
-                &cel.service,
-                &b.regeling,
-                a,
-            ))
+            Some(regelingen::transitieve_parameters(service, &b.regeling, a))
         })
         .unwrap_or_default();
-    let Some(portaal) = cel.portaal() else {
+    let Some(portaal) = proces.portaal() else {
         if besluit.is_none() {
             fouten.push(
                 "synthese zonder portaal en zonder besluit: alleen de toets van een portaal en het proefbesluit gebruiken haar"
@@ -450,11 +450,11 @@ pub fn controleer(cel: &Cel) -> Vec<String> {
             );
             return fouten;
         }
-        for bron in bronnen {
+        for bron in &bronnen {
             let wie = format!("synthese-bron {}/{}", bron.cel, bron.lexostatus);
             if bron.cel == cel.id() {
                 fouten.push(format!(
-                    "{wie}: een bron is een andere cel, niet de cel zelf"
+                    "{wie}: een bron uit de cel waarin het proces vastlegt, is een bron van de zaak (zaak: true)"
                 ));
             }
             for p in bron
@@ -470,23 +470,21 @@ pub fn controleer(cel: &Cel) -> Vec<String> {
         return fouten;
     };
     let eigen = cel.lexostatussen.lexostatus(&portaal.toets.lexostatus);
-    let onder_toets = cel
-        .service
+    let onder_toets = service
         .resolver()
         .get_article_by_output(&portaal.toets.regeling, &portaal.toets.uitkomst, None)
-        .map(|a| regelingen::transitieve_parameters(&cel.service, &portaal.toets.regeling, a))
+        .map(|a| regelingen::transitieve_parameters(service, &portaal.toets.regeling, a))
         .unwrap_or_default();
     // Wat het aanbod vraagt: de parameters van het aanbod-artikel.
     let onder_aanbod = portaal
         .aanbod
         .as_ref()
         .and_then(|a| {
-            let art =
-                cel.service
-                    .resolver()
-                    .get_article_by_output(&a.regeling, &a.uitkomst, None)?;
+            let art = service
+                .resolver()
+                .get_article_by_output(&a.regeling, &a.uitkomst, None)?;
             Some(regelingen::transitieve_parameters(
-                &cel.service,
+                service,
                 &a.regeling,
                 art,
             ))
@@ -501,11 +499,11 @@ pub fn controleer(cel: &Cel) -> Vec<String> {
                 .push(format!("de eigen lexostatus '{}'", def.name));
         }
     }
-    for bron in bronnen {
+    for bron in &bronnen {
         let wie = format!("synthese-bron {}/{}", bron.cel, bron.lexostatus);
         if bron.cel == cel.id() {
             fouten.push(format!(
-                "{wie}: een bron is een andere cel, niet de cel zelf"
+                "{wie}: een bron uit de cel waarin het proces vastlegt, is een bron van de zaak (zaak: true)"
             ));
         }
         for (naam, v) in &bron.invoer {
@@ -528,7 +526,7 @@ pub fn controleer(cel: &Cel) -> Vec<String> {
                 fouten.push(format!(
                     "{wie}: '{p}' is geen parameter van {}#{} (de toets, '{}'), het besluit of het aanbod, of van een artikel dat een van die aanroept",
                     portaal.toets.regeling,
-                    cel.service
+                    service
                         .resolver()
                         .get_article_by_output(&portaal.toets.regeling, &portaal.toets.uitkomst, None)
                         .map(|a| a.number.clone())
@@ -585,12 +583,12 @@ fn namen(v: &Value, sleutel: &str) -> BTreeSet<String> {
 /// De controle op de bronnen zelf, bij het opstarten: is de bron bereikbaar,
 /// biedt ze de lexostatus aan met deze parameters, en passen de inputs? Elk
 /// probleem is een waarschuwing, geen weigering: de bron mag later komen.
-pub async fn waarschuwingen(cel: &str, bronnen: &[Bron]) -> Vec<String> {
+pub async fn waarschuwingen(proces: &str, bronnen: &[Bron]) -> Vec<String> {
     let mut uit = Vec::new();
     for bron in bronnen {
         let d = &bron.definitie;
         let wie = format!(
-            "cel '{cel}': synthese-bron {}/{} ({})",
+            "proces '{proces}': synthese-bron {}/{} ({})",
             d.cel,
             d.lexostatus,
             bron.transport.soort()
@@ -653,6 +651,9 @@ mod tests {
             self.vragen.lock().unwrap().push(pad.to_string());
             let a = self.antwoord.clone();
             Box::pin(async move { a })
+        }
+        fn stuur<'a>(&'a self, pad: &'a str, _body: &'a Value) -> Antwoord<'a> {
+            self.haal(pad)
         }
     }
 

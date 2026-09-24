@@ -1,15 +1,17 @@
 //! Een cel: een map onder `CELLS_PATH`, geladen en gecontroleerd.
+//!
+//! Een cel legt vast, bewaart en reduceert (de positionpaper: "een ruimte
+//! waarin chronolexogrammen worden gemaakt, bewaard en verwerkt"). Wie er
+//! handelt, staat niet hier maar in een proces ([`crate::proces`]).
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use regelrecht_engine::LawExecutionService;
 
-use crate::config::{CelDefinitie, Portaal};
-use crate::formulier::{self, Formulier};
+use crate::config::CelDefinitie;
 use crate::reductie::{self, Lexostatussen};
 use crate::stroom::{self, Event, Gram, Stroom};
-use crate::voorbeelden::{self, Voorbeelden};
 use crate::{controle, startstand};
 
 /// Een geladen cel die de controles bij het opstarten doorstond.
@@ -21,11 +23,8 @@ pub struct Cel {
     pub lexostatussen: Lexostatussen,
     /// Het corpus, gedeeld door alle cellen van de runtime.
     pub service: Arc<LawExecutionService>,
-    pub formulier: Option<Formulier>,
     /// De grammen voor een lege kroniek (leeg zonder `startstand`).
     pub startstand: Vec<Gram>,
-    /// Standaardgegevens per handeling (leeg zonder `voorbeelden`).
-    pub voorbeelden: Voorbeelden,
 }
 
 impl Cel {
@@ -41,7 +40,7 @@ impl Cel {
     }
 
     fn laad_definitie(
-        mut definitie: CelDefinitie,
+        definitie: CelDefinitie,
         map: &Path,
         service: Arc<LawExecutionService>,
     ) -> Result<Self, Vec<String>> {
@@ -75,39 +74,14 @@ impl Cel {
                 ));
             }
         }
-        fouten.extend(vind_besluit(&mut definitie, &service));
-        if let Err(f) = controle::controleer(
-            &strommen,
-            &lexostatussen,
-            definitie.portaal.as_ref(),
-            &service,
-        ) {
+        if let Err(f) = controle::controleer(&strommen, &lexostatussen, &service) {
             fouten.extend(f);
         }
-        let formulier = match definitie
-            .portaal
-            .as_ref()
-            .and_then(|p| p.formulier.as_ref())
-        {
-            Some(f) => formulier::laad(&map.join(&f.pad), &f.scherm)
-                .map_err(|e| fouten.push(e))
-                .ok(),
-            None => None,
-        };
         let startstand = match &definitie.startstand {
             Some(pad) => startstand::laad(&map.join(pad), &strommen)
                 .map_err(|f| fouten.extend(f))
                 .unwrap_or_default(),
             None => Vec::new(),
-        };
-        let voorbeelden = match &definitie.voorbeelden {
-            Some(v) => {
-                fouten.extend(voorbeelden_zonder_handeling(&definitie, v));
-                voorbeelden::laad(map, v)
-                    .map_err(|f| fouten.extend(f))
-                    .unwrap_or_default()
-            }
-            None => Voorbeelden::default(),
         };
         if !fouten.is_empty() {
             return Err(fout(fouten));
@@ -118,9 +92,7 @@ impl Cel {
             strommen,
             lexostatussen,
             service,
-            formulier,
             startstand,
-            voorbeelden,
         })
     }
 
@@ -128,25 +100,10 @@ impl Cel {
         &self.definitie.id
     }
 
-    /// Het portaalblok, als de cel een portaal heeft.
-    pub fn portaal(&self) -> Option<&Portaal> {
-        self.definitie.portaal.as_ref()
-    }
-
-    /// De stroom en het event waarin het portaal vastlegt.
-    pub fn portaal_event(&self) -> Option<(&Stroom, &Event)> {
-        let p = self.portaal()?;
-        let s = self.strommen.iter().find(|s| s.id == p.stroom)?;
-        Some((s, s.event(&p.event)?))
-    }
-
-    /// De rijen-definities van het besluit (synthese per regel).
-    pub fn rijen(&self) -> &[crate::config::RijenDefinitie] {
-        self.definitie
-            .behandeling
-            .as_ref()
-            .map(|b| b.besluit.rijen.as_slice())
-            .unwrap_or_default()
+    /// Een event uit een stroom van de cel.
+    pub fn event(&self, stroom: &str, event: &str) -> Option<(&Stroom, &Event)> {
+        let s = self.strommen.iter().find(|s| s.id == stroom)?;
+        Some((s, s.event(event)?))
     }
 
     /// De kronieken van de cel, gesorteerd en zonder dubbelen.
@@ -156,69 +113,6 @@ impl Cel {
         v.dedup();
         v
     }
-}
-
-/// Een voorbeeld voor een handeling die de cel niet heeft, is een fout:
-/// logins of een aanvraag zonder portaal, een besluit zonder behandeling.
-/// (Dat een portaal de rol aanvrager heeft, controleert
-/// [`crate::besluit::controleer`].)
-fn voorbeelden_zonder_handeling(
-    definitie: &CelDefinitie,
-    v: &crate::config::VoorbeeldenDefinitie,
-) -> Vec<String> {
-    let mut fouten = Vec::new();
-    if !v.inloggen.is_empty() && definitie.portaal.is_none() {
-        fouten.push("voorbeelden.inloggen: de cel heeft geen portaal".to_string());
-    }
-    if v.aanvraag.is_some() && definitie.portaal.is_none() {
-        fouten.push("voorbeelden.aanvraag: de cel heeft geen portaal".to_string());
-    }
-    if v.besluit.is_some() && definitie.behandeling.is_none() {
-        fouten.push("voorbeelden.besluit: de cel heeft geen behandeling".to_string());
-    }
-    fouten
-}
-
-/// Vul de regeling van het besluit in uit de wet, als `cel.yaml` haar niet
-/// noemt: de beschikking waarvoor het bevoegd gezag de `recording_actor` van
-/// de cel is. Precies een zo'n beschikking, en de uitkomsten van het besluit
-/// komen uit dat artikel; anders een fout die de kandidaten noemt.
-fn vind_besluit(definitie: &mut CelDefinitie, service: &LawExecutionService) -> Vec<String> {
-    let actor = definitie.recording_actor.clone();
-    let Some(b) = definitie.behandeling.as_mut().map(|b| &mut b.besluit) else {
-        return Vec::new();
-    };
-    if !b.regeling.is_empty() {
-        return Vec::new();
-    }
-    let kandidaten = crate::besluit::beschikkingen_van(service, &actor);
-    let [(regeling, artikel)] = kandidaten.as_slice() else {
-        let lijst: Vec<String> = kandidaten.iter().map(|(r, a)| format!("{r}#{a}")).collect();
-        return vec![if lijst.is_empty() {
-            format!(
-                "besluit: geen regeling noemt '{actor}' als bevoegd gezag bij een BESCHIKKING; noem de regeling in behandeling.besluit.regeling"
-            )
-        } else {
-            format!(
-                "besluit: '{actor}' is bevoegd voor meer dan een beschikking ({}); kies er een met behandeling.besluit.regeling",
-                lijst.join(", ")
-            )
-        }];
-    };
-    let mut fouten = Vec::new();
-    for u in &b.uitkomsten {
-        let van = service
-            .resolver()
-            .get_article_by_output(regeling, u, None)
-            .map(|a| a.number.clone());
-        if van.as_deref() != Some(artikel.as_str()) {
-            fouten.push(format!(
-                "besluit: uitkomst '{u}' komt niet uit {regeling}#{artikel}, de beschikking waarvoor '{actor}' bevoegd is"
-            ));
-        }
-    }
-    b.regeling = regeling.clone();
-    fouten
 }
 
 /// Zet de cel voor elke melding.
@@ -251,19 +145,25 @@ mod tests {
         let s = service();
         let instantie = Cel::laad(&fixtures().join("cellen/instantie"), s.clone()).unwrap();
         assert_eq!(
-            instantie.portaal_event().unwrap().1.name,
+            instantie
+                .event("test_aanvragen", "aanvraag_ontvangen")
+                .unwrap()
+                .1
+                .name,
             "aanvraag_ontvangen"
         );
-        assert!(instantie.formulier.is_some());
         assert!(instantie.startstand.is_empty());
 
         let register = Cel::laad(&fixtures().join("cellen/register"), s.clone()).unwrap();
-        assert!(register.portaal().is_none());
         assert_eq!(register.startstand.len(), 4);
         assert_eq!(register.kronieken(), ["test_register"]);
 
         let afnemer = Cel::laad(&fixtures().join("cellen/afnemer"), s).unwrap();
-        assert_eq!(afnemer.definitie.synthese.len(), 1);
+        assert_eq!(
+            afnemer.kronieken(),
+            ["test_afnemer"],
+            "twee stromen, een kroniek"
+        );
     }
 
     /// Kopieer een fixture-cel en de stromen naar een tijdelijke map, zodat
@@ -357,39 +257,5 @@ mod tests {
                 .any(|f| f.contains("recording_actor 'test_register'")),
             "{fouten:?}"
         );
-    }
-
-    #[test]
-    fn voorbeelden_van_de_fixture() {
-        let afnemer = Cel::laad(&fixtures().join("cellen/afnemer"), service()).unwrap();
-        let labels: Vec<&str> = afnemer
-            .voorbeelden
-            .inloggen
-            .iter()
-            .map(|v| v.label.as_str())
-            .collect();
-        assert_eq!(labels, ["voorbeeld-login", "voorbeeld-login-ander"]);
-        assert!(afnemer.voorbeelden.aanvraag.is_some());
-        assert!(afnemer.voorbeelden.besluit.is_some());
-        let register = Cel::laad(&fixtures().join("cellen/register"), service()).unwrap();
-        assert!(register.voorbeelden.inloggen.is_empty());
-    }
-
-    #[test]
-    fn voorbeeld_voor_een_handeling_die_de_cel_niet_heeft() {
-        let dir = kopie("register");
-        let map = dir.path().join("cellen/register");
-        let cel = std::fs::read_to_string(map.join("cel.yaml")).unwrap();
-        std::fs::write(map.join("x.json"), r#"{"external": {}}"#).unwrap();
-        std::fs::write(
-            map.join("cel.yaml"),
-            format!("{cel}\nvoorbeelden:\n  aanvraag: x.json\n  besluit: weg.json\n"),
-        )
-        .unwrap();
-        let fouten = Cel::laad(&map, service()).err().unwrap();
-        assert_eq!(fouten.len(), 3, "{fouten:?}");
-        assert!(fouten[0].contains("voorbeelden.aanvraag: de cel heeft geen portaal"));
-        assert!(fouten[1].contains("voorbeelden.besluit: de cel heeft geen behandeling"));
-        assert!(fouten[2].contains("weg.json"), "{fouten:?}");
     }
 }

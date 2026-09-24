@@ -1,67 +1,11 @@
 ---
-# Fictieve cel met een portaal, een synthese en een behandeling: de toets
-# voegt de eigen lexostatus samen met de registerstatus van de registercel
-# (zonder url is het transport intern); de behandelaar ziet de werkvoorraad
-# en rekent per zaak een proefbesluit uit.
+# Fictieve cel die aanvragen en het verloop van een zaak vastlegt, met een
+# lexostatus voor de inhoud van de aanvraag, een werkvoorraad en het
+# zaakverloop. Wie er handelt (portaal, synthese, besluit), staat in het
+# proces processes/afnemer/proces.yaml.
 id: test_afnemer
 recording_actor: test_afnemer
 stromen:
   - ../../chronicles/test_afnemer_aanvragen.yaml
   - ../../chronicles/test_afnemer_zaakverloop.yaml
 lexostatussen: lexostatussen.yaml
-rollen:
-  aanvrager: eherkenning
-  behandelaar: medewerker
-portaal:
-  stroom: test_afnemer_aanvragen
-  event: aanvraag_ontvangen
-  toets:
-    lexostatus: aanvraag_inhoud
-    regeling: testregeling_afnemer
-    uitkomst: aanvraag_toelaatbaar
-synthese:
-  - cel: test_register
-    lexostatus: registerstatus
-    invoer:
-      aanduiding: {lexostatus: aanvraag_inhoud, veld: aanduiding}
-    parameters: [is_ingeschreven_raad, is_geschrapt_raad, zetels_op_lijst, datum_mededeling, geblokkeerd_raad, jaar]
-behandeling:
-  werkvoorraad: werkvoorraad
-  besluit:
-    regeling: testregeling_afnemer
-    uitkomsten: [vastgesteld_bedrag, gebiedsbedrag, besluit_tijdig, besluitdeadline, zorgvuldig]
-    lexostatussen: [aanvraag_inhoud, zaakverloop]
-    formulier:
-      - {parameter: besluitdatum, label: Besluitdatum}
-      - {parameter: feiten_vergaard, label: De relevante feiten zijn vergaard, groep: Zorgvuldigheid}
-    stand_bij_besluit:
-      datum_bekendmaking: null
-      bekendgemaakt: false
-    # Synthese per regel: de gebiedstabel. De aanvraag levert de regels, de
-    # kolommen die de instantie zelf vaststelt komen per regel uit een
-    # andere cel.
-    rijen:
-      - parameter: gebiedstabel
-        tabel: {lexostatus: aanvraag_inhoud, veld: gebieden}
-        kolommen: {gebied: gebied, zetels: zetels}
-        bronnen:
-          - cel: test_register
-            lexostatus: registratie_per_gebied
-            invoer:
-              aanduiding: {lexostatus: aanvraag_inhoud, veld: aanduiding}
-              gebied: {kolom: gebied}
-            kolommen: {ingeschreven: ingeschreven}
-          - cel: test_gebieden
-            lexostatus: tarief
-            invoer:
-              gebied: {kolom: gebied}
-              peildatum: {parameter: jaar, als: eerste_dag_van_het_jaar}
-            kolommen: {tarief: tarief}
-    vastleggen:
-      stroom: test_afnemer_zaakverloop
-      event: besluit_genomen
-# Standaardgegevens per handeling, voor een proefopstelling.
-voorbeelden:
-  inloggen: [voorbeeld-login.json, voorbeeld-login-ander.json]
-  aanvraag: voorbeeld-aanvraag.json
-  besluit: voorbeeld-besluit.json

@@ -1,6 +1,6 @@
 //! Voorbeelden: standaardgegevens per handeling, voor een proefopstelling.
 //!
-//! `cel.yaml` kan per handeling een JSON-bestand noemen (zie
+//! `proces.yaml` kan per handeling een JSON-bestand noemen (zie
 //! [`crate::config::VoorbeeldenDefinitie`]): logins voor de nep-eHerkenning,
 //! een aanvraag en een besluitformulier. De frontend biedt ze aan om een
 //! formulier voor in te vullen of de handeling er direct mee te doen. Het
@@ -15,7 +15,7 @@ use serde_json::{Map, Value};
 use crate::config::VoorbeeldenDefinitie;
 use crate::eherkenning::Login;
 
-/// De geladen voorbeelden van een cel. Zonder blok `voorbeelden`: leeg.
+/// De geladen voorbeelden van een proces. Zonder blok `voorbeelden`: leeg.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct Voorbeelden {
     pub inloggen: Vec<InlogVoorbeeld>,
@@ -33,7 +33,7 @@ pub struct InlogVoorbeeld {
     pub persoon: String,
 }
 
-/// Lees de voorbeelden; paden zijn relatief aan de map van de cel. Elke fout
+/// Lees de voorbeelden; paden zijn relatief aan de map van het proces. Elke fout
 /// komt terug en noemt het pad.
 pub fn laad(map: &Path, definitie: &VoorbeeldenDefinitie) -> Result<Voorbeelden, Vec<String>> {
     let mut fouten = Vec::new();

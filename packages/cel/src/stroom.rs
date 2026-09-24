@@ -158,7 +158,7 @@ pub struct Gram {
     pub chronicle: String,
     pub recording_actor: String,
     pub grondslag: Vec<String>,
-    /// Alleen bij een besluit dat de cel zelf nam: het rechtskarakter en de
+    /// Alleen bij een besluit dat een proces nam: het rechtskarakter en de
     /// soort beslissing uit `produces` van het artikel (RFC-008).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub legal_character: Option<String>,

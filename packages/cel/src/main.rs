@@ -1,5 +1,6 @@
-//! De cel-runtime: laadt elke cel onder `CELLS_PATH` en biedt ze aan onder
-//! `/cellen/<id>/api/`. Zie README.md voor de env-variabelen.
+//! De cel-runtime: laadt elke cel onder `CELLS_PATH` en elk proces onder
+//! `PROCESSES_PATH`, en biedt ze aan onder `/cellen/<id>/api/` en
+//! `/processen/<id>/api/`. Zie README.md voor de env-variabelen.
 
 use regelrecht_cel::api::systeemklok;
 use regelrecht_cel::config::Config;
@@ -10,8 +11,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     regelrecht_shared::telemetry::init_subscriber("info");
 
     let config = Config::from_env()?;
-    // De controles bij het opstarten: faalt er een cel, dan start de runtime
-    // niet, en elke fout wordt genoemd met de cel erbij.
+    // De controles bij het opstarten: faalt er een cel of een proces, dan
+    // start de runtime niet, en elke fout wordt genoemd met de cel of het
+    // proces erbij.
     let runtime = match Runtime::laad(&config, systeemklok()) {
         Ok(r) => r,
         Err(fouten) => {
@@ -28,15 +30,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for s in &runtime.cellen {
         tracing::info!(
             cel = %s.cel.id(),
-            portaal = s.cel.portaal().is_some(),
             strommen = s.cel.strommen.len(),
             lexostatussen = s.cel.lexostatussen.lexostatus_definitions.len(),
-            synthese = s.bronnen.len(),
             "cel gecontroleerd",
+        );
+    }
+    for s in &runtime.processen {
+        tracing::info!(
+            proces = %s.proces.id(),
+            cel = %s.proces.cel.id(),
+            portaal = s.proces.portaal().is_some(),
+            behandeling = s.proces.definitie.behandeling.is_some(),
+            synthese = s.proces.definitie.synthese.len(),
+            "proces gecontroleerd",
         );
     }
     tracing::info!(
         cellen = runtime.cellen.len(),
+        processen = runtime.processen.len(),
         regelingen = runtime.cellen.first().map_or(0, |s| s.cel.service.law_count()),
         data_dir = %config.data_dir.display(),
         "runtime gecontroleerd",

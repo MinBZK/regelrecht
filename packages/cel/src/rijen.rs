@@ -1,14 +1,14 @@
-//! Synthese per regel: een tabelveld van een eigen lexostatus wordt een
-//! array-parameter, met per regel kolommen uit andere cellen.
+//! Synthese per regel: een tabelveld van een lexostatus van de zaak wordt
+//! een array-parameter, met per regel kolommen uit andere cellen.
 //!
 //! Een artikel kan een tabel als parameter vragen waarvan de indiener maar
 //! een deel invult; de rest stelt de instantie zelf vast, per regel, uit
-//! registers van andere cellen. De cel bouwt die tabel niet in code op: in
-//! `cel.yaml` staat welk tabelveld de regels levert, welke kolom onder welke
+//! registers van andere cellen. Het proces bouwt die tabel niet in code op:
+//! in `proces.yaml` staat welk tabelveld de regels levert, welke kolom onder welke
 //! naam meegaat, en welke bron per regel met welke invoer wordt bevraagd.
 //!
-//! Per regel gaat de cel langs de bronnen, in volgorde. De invoer van een
-//! bron komt uit de regel zelf (`kolom`), uit een eigen lexostatus
+//! Per regel gaat het proces langs de bronnen, in volgorde. De invoer van een
+//! bron komt uit de regel zelf (`kolom`), uit een lexostatus van de zaak
 //! (`lexostatus` en `veld`) of uit de samengevoegde parameters
 //! (`parameter`); een bron die eerder aan de beurt was kan dus een kolom
 //! leveren die een latere bron als invoer gebruikt. Ontbreekt een invoer, is
@@ -270,6 +270,9 @@ mod tests {
             self.vragen.lock().unwrap().push(pad.to_string());
             let a = self.antwoord.clone();
             Box::pin(async move { a })
+        }
+        fn stuur<'a>(&'a self, pad: &'a str, _body: &'a Value) -> Antwoord<'a> {
+            self.haal(pad)
         }
     }
 

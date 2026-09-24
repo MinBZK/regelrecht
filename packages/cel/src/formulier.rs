@@ -176,7 +176,7 @@ mod tests {
     use crate::stroom;
 
     const STROOM: &str = include_str!("../tests/fixtures/chronicles/test_aanvragen.yaml");
-    const FORMULIER: &str = include_str!("../tests/fixtures/cellen/instantie/formulier.yaml");
+    const FORMULIER: &str = include_str!("../tests/fixtures/processes/instantie/formulier.yaml");
 
     #[test]
     fn volgorde_en_labels_uit_het_formulier() {

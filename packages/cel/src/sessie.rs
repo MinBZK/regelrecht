@@ -1,6 +1,7 @@
-//! Sessies van de rollen van een cel (`rollen` in `cel.yaml`): de aanvrager
-//! logt in met nep-eHerkenning ([`crate::eherkenning`]), de behandelaar met
-//! een nagebootste medewerkerslogin ([`Medewerker`]). Een cookie per cel,
+//! Sessies van de rollen van een proces (`rollen` in `proces.yaml`): de
+//! aanvrager logt in met nep-eHerkenning ([`crate::eherkenning`]), de
+//! behandelaar met een nagebootste medewerkerslogin ([`Medewerker`]). Een
+//! cookie per proces,
 //! een gebruiker per sessie: wie als de andere rol inlogt, vervangt de sessie.
 //! Er is geen register en geen databasecontrole.
 

@@ -1,9 +1,11 @@
-//! De cel-runtime: cellen die feiten vastleggen als chronolexogram, ze
-//! reduceren tot een lexostatus, en lexostatussen van andere cellen
-//! samenvoegen.
+//! De cel-runtime: cellen die feiten vastleggen als chronolexogram en ze
+//! reduceren tot een lexostatus, en processen die lexostatussen van cellen
+//! samenvoegen, de engine uitvoeren en een cel laten vastleggen.
 //!
-//! Een cel is configuratie, geen code: een map onder `CELLS_PATH` met een
-//! `cel.yaml` (zie README.md). Per cel vier lagen, elk met een eigen bestand:
+//! Cel en proces zijn configuratie, geen code: een map onder `CELLS_PATH` met
+//! een `cel.yaml`, en een map onder `PROCESSES_PATH` met een `proces.yaml`
+//! (zie README.md). Het lexogram (1) is van niemand; een cel heeft de lagen
+//! 2 tot en met 4, elk met een eigen bestand:
 //!
 //! 1. het lexogram: de regelingen uit `REGULATION_PATH`, ongewijzigd en
 //!    gedeeld door alle cellen;
@@ -12,9 +14,11 @@
 //!    artikel voedt ([`reductie`]);
 //! 4. het gram zelf, append-only in de kroniek ([`kroniek`]).
 //!
-//! Daarboven: de runtime ([`runtime`]), het transport tussen cellen
-//! ([`transport`]) en de synthese bij de afnemer ([`synthese`]). Niets hier
-//! noemt een casus.
+//! Het proces ([`proces`]) staat daarboven: het informeert (de synthese bij
+//! de afnemer, [`synthese`], en de toets), concludeert (het besluit,
+//! [`besluit`]) en vraagt een cel vast te leggen, langs dezelfde routes als
+//! elke afnemer ([`transport`]). De runtime ([`runtime`]) draait beide. Niets
+//! hier noemt een casus.
 
 pub mod api;
 pub mod besluit;
@@ -25,6 +29,7 @@ pub mod eherkenning;
 pub mod formulier;
 pub mod kroniek;
 pub mod mogelijkheid;
+pub mod proces;
 pub mod reductie;
 pub mod regelingen;
 pub mod rijen;

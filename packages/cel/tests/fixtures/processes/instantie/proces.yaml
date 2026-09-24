@@ -1,0 +1,19 @@
+---
+# Fictief proces met een portaal: de instantie toetst vóór het indienen of
+# een aanvraag volledig is. Geen synthese: de toets leest alleen de
+# proefreductie van het concept in de cel.
+id: test_instantie_proces
+actor: test_instantie
+rollen:
+  aanvrager: eherkenning
+portaal:
+  cel: test_instantie
+  stroom: test_aanvragen
+  event: aanvraag_ontvangen
+  toets:
+    lexostatus: aanvraag_inhoud
+    regeling: testregeling_aanvraag
+    uitkomst: aanvraag_volledig
+  formulier:
+    pad: formulier.yaml
+    scherm: aanvraag

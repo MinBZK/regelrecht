@@ -1,11 +1,11 @@
-//! Transport tussen cellen: hoe een cel een lexostatus van een andere cel
-//! opvraagt.
+//! Transport naar een cel: hoe een proces een lexostatus opvraagt, een
+//! proefreductie vraagt of een cel laat vastleggen.
 //!
-//! Een cel leest nooit rechtstreeks in de kroniek van een andere cel. Ze
-//! vraagt, langs dezelfde route die elke afnemer gebruikt
-//! (`/cellen/<id>/api/lexostatus/<naam>`). De runtime kiest het transport
-//! (RFC-022 par. 4.3): draait de bron-cel in dezelfde runtime, dan gaat de
-//! vraag intern door de router, zonder netwerk; staat er een url, dan over
+//! Een proces leest nooit rechtstreeks in een kroniek, ook niet in die van de
+//! cel waarin het vastlegt. Het vraagt, langs dezelfde route die elke afnemer
+//! gebruikt (`/cellen/<id>/api/lexostatus/<naam>`). De runtime kiest het
+//! transport (RFC-022 par. 4.3): draait de cel in dezelfde runtime, dan gaat
+//! de vraag intern door de router, zonder netwerk; staat er een url, dan over
 //! HTTP. Beide leveren hetzelfde antwoord.
 
 use std::future::Future;
@@ -14,7 +14,7 @@ use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use axum::body::Body;
-use axum::http::{Request, StatusCode};
+use axum::http::{header, Request, StatusCode};
 use axum::Router;
 use http_body_util::BodyExt;
 use serde_json::Value;
@@ -49,6 +49,10 @@ pub trait Transport: Send + Sync {
     /// `GET` op een pad van de runtime, zoals `/api/cellen` of
     /// `/cellen/<id>/api/lexostatus/<naam>?<invoer>`, met JSON terug.
     fn haal<'a>(&'a self, pad: &'a str) -> Antwoord<'a>;
+
+    /// `POST` met een JSON-body op een pad van de runtime, zoals
+    /// `/cellen/<id>/api/grammen`, met JSON terug.
+    fn stuur<'a>(&'a self, pad: &'a str, body: &'a Value) -> Antwoord<'a>;
 }
 
 /// Vraag binnen een tijdslimiet. Te laat is onbereikbaar.
@@ -99,31 +103,48 @@ impl Transport for Intern {
 
     fn haal<'a>(&'a self, pad: &'a str) -> Antwoord<'a> {
         Box::pin(async move {
-            let router =
-                self.router.get().cloned().ok_or_else(|| {
-                    TransportFout::Onbereikbaar("de runtime draait nog niet".into())
-                })?;
             let req = Request::get(pad)
                 .body(Body::empty())
                 .map_err(|e| TransportFout::Onbereikbaar(e.to_string()))?;
-            let resp = router
-                .oneshot(req)
-                .await
+            self.vraag(req).await
+        })
+    }
+
+    fn stuur<'a>(&'a self, pad: &'a str, body: &'a Value) -> Antwoord<'a> {
+        Box::pin(async move {
+            let req = Request::post(pad)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(body.to_string()))
                 .map_err(|e| TransportFout::Onbereikbaar(e.to_string()))?;
-            let status = resp.status();
-            let body = resp
-                .into_body()
-                .collect()
-                .await
-                .map_err(|e| TransportFout::Onbereikbaar(e.to_string()))?
-                .to_bytes();
-            if !status.is_success() {
-                return Err(fouttekst(status, &body));
-            }
-            serde_json::from_slice(&body).map_err(|e| TransportFout::Antwoord {
-                status: status.as_u16(),
-                fout: format!("geen JSON: {e}"),
-            })
+            self.vraag(req).await
+        })
+    }
+}
+
+impl Intern {
+    async fn vraag(&self, req: Request<Body>) -> Result<Value, TransportFout> {
+        let router = self
+            .router
+            .get()
+            .cloned()
+            .ok_or_else(|| TransportFout::Onbereikbaar("de runtime draait nog niet".into()))?;
+        let resp = router
+            .oneshot(req)
+            .await
+            .map_err(|e| TransportFout::Onbereikbaar(e.to_string()))?;
+        let status = resp.status();
+        let body = resp
+            .into_body()
+            .collect()
+            .await
+            .map_err(|e| TransportFout::Onbereikbaar(e.to_string()))?
+            .to_bytes();
+        if !status.is_success() {
+            return Err(fouttekst(status, &body));
+        }
+        serde_json::from_slice(&body).map_err(|e| TransportFout::Antwoord {
+            status: status.as_u16(),
+            fout: format!("geen JSON: {e}"),
         })
     }
 }
@@ -157,25 +178,47 @@ impl Transport for Http {
     fn haal<'a>(&'a self, pad: &'a str) -> Antwoord<'a> {
         Box::pin(async move {
             let url = format!("{}{pad}", self.basis);
-            let resp = self
-                .client
-                .get(&url)
-                .send()
-                .await
-                .map_err(|e| TransportFout::Onbereikbaar(format!("{url}: {e}")))?;
-            let status = StatusCode::from_u16(resp.status().as_u16())
-                .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-            let body = resp
-                .bytes()
-                .await
-                .map_err(|e| TransportFout::Onbereikbaar(format!("{url}: {e}")))?;
-            if !status.is_success() {
-                return Err(fouttekst(status, &body));
-            }
-            serde_json::from_slice(&body).map_err(|e| TransportFout::Antwoord {
-                status: status.as_u16(),
-                fout: format!("geen JSON: {e}"),
-            })
+            self.antwoord(&url, self.client.get(&url)).await
+        })
+    }
+
+    fn stuur<'a>(&'a self, pad: &'a str, body: &'a Value) -> Antwoord<'a> {
+        Box::pin(async move {
+            let url = format!("{}{pad}", self.basis);
+            self.antwoord(
+                &url,
+                self.client
+                    .post(&url)
+                    .header(reqwest::header::CONTENT_TYPE, "application/json")
+                    .body(body.to_string()),
+            )
+            .await
+        })
+    }
+}
+
+impl Http {
+    async fn antwoord(
+        &self,
+        url: &str,
+        verzoek: reqwest::RequestBuilder,
+    ) -> Result<Value, TransportFout> {
+        let resp = verzoek
+            .send()
+            .await
+            .map_err(|e| TransportFout::Onbereikbaar(format!("{url}: {e}")))?;
+        let status = StatusCode::from_u16(resp.status().as_u16())
+            .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+        let body = resp
+            .bytes()
+            .await
+            .map_err(|e| TransportFout::Onbereikbaar(format!("{url}: {e}")))?;
+        if !status.is_success() {
+            return Err(fouttekst(status, &body));
+        }
+        serde_json::from_slice(&body).map_err(|e| TransportFout::Antwoord {
+            status: status.as_u16(),
+            fout: format!("geen JSON: {e}"),
         })
     }
 }

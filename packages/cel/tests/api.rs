@@ -17,7 +17,9 @@ use regelrecht_cel::schema::{self, Soort};
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
-const INSTANTIE: &str = "/cellen/test_instantie";
+/// Het proces met een portaal, en de cel waarin het vastlegt.
+const INSTANTIE: &str = "/processen/test_instantie_proces";
+const INSTANTIE_CEL: &str = "/cellen/test_instantie";
 
 fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
@@ -27,9 +29,11 @@ fn klok() -> Klok {
     Arc::new(|| DateTime::parse_from_rfc3339("2025-03-12T10:14:03+01:00").unwrap())
 }
 
-fn runtime_op(cellen: &Path, data: &Path) -> Result<Runtime, Vec<String>> {
+/// Een runtime over `<opstelling>/cellen` en `<opstelling>/processes`.
+fn runtime_op(opstelling: &Path, data: &Path) -> Result<Runtime, Vec<String>> {
     let config = Config {
-        cells_path: cellen.to_path_buf(),
+        cells_path: opstelling.join("cellen"),
+        processes_path: Some(opstelling.join("processes")),
         regulation_path: fixtures().join("regulation"),
         data_dir: data.to_path_buf(),
         port: STANDAARD_POORT,
@@ -38,7 +42,7 @@ fn runtime_op(cellen: &Path, data: &Path) -> Result<Runtime, Vec<String>> {
 }
 
 fn app(data: &Path) -> Router {
-    runtime_op(&fixtures().join("cellen"), data).unwrap().router
+    runtime_op(&fixtures(), data).unwrap().router
 }
 
 async fn vraag(
@@ -116,15 +120,41 @@ async fn login_weigert_ongeldige_kvk() {
 }
 
 #[tokio::test]
-async fn stroom_geeft_velden_met_labels() {
+async fn formulier_geeft_velden_met_labels() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path());
-    let (status, body, _) =
-        vraag(&app, "GET", &format!("{INSTANTIE}/api/stroom"), None, None).await;
+    let (status, body, _) = vraag(
+        &app,
+        "GET",
+        &format!("{INSTANTIE}/api/formulier"),
+        None,
+        None,
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["cel"], "test_instantie");
     assert_eq!(body["event"], "aanvraag_ontvangen");
     assert_eq!(body["velden"][0]["label"], "Naam van de aanvrager");
     schema::valideer(Soort::Stroom, &body["stroom"]).unwrap();
+}
+
+#[tokio::test]
+async fn de_cel_geeft_haar_stromen_met_hun_hash() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path());
+    let (status, body, _) = vraag(&app, "GET", "/cellen/test_afnemer/api/stroom", None, None).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let ids: Vec<&str> = body["strommen"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["test_afnemer_aanvragen", "test_afnemer_zaakverloop"]);
+    for s in body["strommen"].as_array().unwrap() {
+        assert_eq!(s["sha256"].as_str().unwrap().len(), 64);
+        schema::valideer(Soort::Stroom, &s["stroom"]).unwrap();
+    }
 }
 
 #[tokio::test]
@@ -202,8 +232,8 @@ async fn toets_volledig_en_onvolledig_zonder_vastleggen() {
     let (_, kroniek, _) = vraag(
         &app,
         "GET",
-        &format!("{INSTANTIE}/api/kroniek"),
-        Some(&c),
+        &format!("{INSTANTIE_CEL}/api/kroniek"),
+        None,
         None,
     )
     .await;
@@ -254,8 +284,8 @@ async fn onbekende_tabelkolom_wordt_geweigerd() {
     let (_, kroniek, _) = vraag(
         &app,
         "GET",
-        &format!("{INSTANTIE}/api/kroniek"),
-        Some(&c),
+        &format!("{INSTANTIE_CEL}/api/kroniek"),
+        None,
         None,
     )
     .await;
@@ -315,11 +345,13 @@ async fn indienen_legt_een_gram_vast_per_kvk() {
     );
     assert_ne!(body["gram"]["zaakkenmerk"], json!(zaak));
 
+    // De kroniek en de lexostatussen zijn van de cel, zonder login: tussen
+    // een afnemer en de cel is geen beveiligingscontext.
     let (_, kroniek, _) = vraag(
         &app,
         "GET",
-        &format!("{INSTANTIE}/api/kroniek"),
-        Some(&c),
+        &format!("{INSTANTIE_CEL}/api/kroniek"),
+        None,
         None,
     )
     .await;
@@ -334,30 +366,20 @@ async fn indienen_legt_een_gram_vast_per_kvk() {
     let (status, lexo, _) = vraag(
         &app,
         "GET",
-        &format!("{INSTANTIE}/api/lexostatus/aanvraag_inhoud?zaakkenmerk={zaak}"),
-        Some(&c),
+        &format!("{INSTANTIE_CEL}/api/lexostatus/aanvraag_inhoud?zaakkenmerk={zaak}"),
+        None,
         None,
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{lexo}");
     assert_eq!(lexo["parameters"]["bevat_naam"], json!(true));
 
-    // Een andere KvK ziet deze grammen en deze zaak niet.
-    let ander = inloggen(&app, "87654321").await;
-    let (_, kroniek, _) = vraag(
-        &app,
-        "GET",
-        &format!("{INSTANTIE}/api/kroniek"),
-        Some(&ander),
-        None,
-    )
-    .await;
-    assert_eq!(kroniek, json!([]));
+    // Het proces heeft geen kroniek en geen lexostatus.
     let (status, _, _) = vraag(
         &app,
         "GET",
-        &format!("{INSTANTIE}/api/lexostatus/aanvraag_inhoud?zaakkenmerk={zaak}"),
-        Some(&ander),
+        &format!("{INSTANTIE}/api/kroniek"),
+        Some(&c),
         None,
     )
     .await;
@@ -372,7 +394,7 @@ async fn onbekende_lexostatus() {
     let (status, _, _) = vraag(
         &app,
         "GET",
-        &format!("{INSTANTIE}/api/lexostatus/bestaat_niet?zaakkenmerk=x"),
+        &format!("{INSTANTIE_CEL}/api/lexostatus/bestaat_niet?zaakkenmerk=x"),
         Some(&c),
         None,
     )
@@ -393,6 +415,9 @@ fn fixtures_valideren_tegen_de_schemas() {
         ("cellen/instantie/cel.yaml", Soort::Cel),
         ("cellen/register/cel.yaml", Soort::Cel),
         ("cellen/afnemer/cel.yaml", Soort::Cel),
+        ("cellen/gebieden/cel.yaml", Soort::Cel),
+        ("processes/instantie/proces.yaml", Soort::Proces),
+        ("processes/afnemer/proces.yaml", Soort::Proces),
     ] {
         let doc: Value =
             serde_yaml_ng::from_str(&std::fs::read_to_string(f.join(bestand)).unwrap()).unwrap();
@@ -425,28 +450,60 @@ async fn cellen_worden_opgesomd_met_hun_mogelijkheden() {
         ]
     );
     let register = &body[3];
-    assert_eq!(register["portaal"], json!(false));
+    assert_eq!(register["recording_actor"], "test_register");
     assert_eq!(register["lexostatussen"][0]["name"], "registerstatus");
     assert_eq!(
         register["lexostatussen"][0]["inputs"][0]["name"],
         "aanduiding"
     );
-    assert_eq!(body[0]["synthese"][0]["transport"], "intern");
     assert_eq!(
         body[0]["lexostatussen"][0]["extra_velden"],
         json!(["aanduiding", "gebieden"])
     );
+    // Een cel zegt niets over wie er handelt: dat staat bij het proces.
+    for sleutel in ["portaal", "rollen", "behandeling", "synthese"] {
+        assert!(body[0].get(sleutel).is_none(), "{sleutel}");
+    }
 }
 
 #[tokio::test]
-async fn cel_zonder_portaal_heeft_geen_login_of_aanvraag() {
+async fn processen_worden_opgesomd_met_hun_cel() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path());
+    let (status, body, _) = vraag(&app, "GET", "/api/processen", None, None).await;
+    assert_eq!(status, StatusCode::OK);
+    let afnemer = &body[0];
+    assert_eq!(afnemer["id"], "test_afnemer_proces");
+    assert_eq!(afnemer["actor"], "test_afnemer");
+    assert_eq!(afnemer["cel"], "test_afnemer");
+    assert_eq!(afnemer["portaal"], json!(true));
+    // De eigen cel is een bron zoals de andere, voor de zaak.
+    assert_eq!(
+        afnemer["synthese"][0],
+        json!({"cel": "test_afnemer", "lexostatus": "aanvraag_inhoud", "zaak": true, "transport": "intern", "parameters": []})
+    );
+    assert_eq!(afnemer["synthese"][2]["cel"], "test_register");
+    assert_eq!(afnemer["synthese"][2]["transport"], "intern");
+    let instantie = &body[1];
+    assert_eq!(instantie["id"], "test_instantie_proces");
+    assert_eq!(instantie["behandeling"], Value::Null);
+    assert_eq!(
+        instantie["rollen"],
+        json!({"aanvrager": true, "behandelaar": false})
+    );
+}
+
+#[tokio::test]
+async fn een_cel_heeft_geen_login_of_aanvraag() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path());
     for (methode, pad) in [
         ("POST", "/cellen/test_register/api/eherkenning/login"),
-        ("GET", "/cellen/test_register/api/stroom"),
         ("POST", "/cellen/test_register/api/aanvraag/toets"),
         ("POST", "/cellen/test_register/api/aanvraag"),
+        ("POST", "/cellen/test_instantie/api/eherkenning/login"),
+        ("GET", "/cellen/test_instantie/api/voorbeelden"),
+        ("GET", "/cellen/test_afnemer/api/werkvoorraad"),
     ] {
         let (status, _, _) = vraag(&app, methode, pad, None, Some(json!({}))).await;
         assert_eq!(status, StatusCode::NOT_FOUND, "{methode} {pad}");
@@ -533,7 +590,7 @@ async fn afnemer_toets(app: &Router, aanduiding: Option<&str>) -> Value {
     let (status, _, cookie) = vraag(
         app,
         "POST",
-        "/cellen/test_afnemer/api/eherkenning/login",
+        &format!("{AFNEMER}/api/eherkenning/login"),
         None,
         Some(json!({"kvk": "12345678", "persoon": "A. Tester"})),
     )
@@ -542,7 +599,7 @@ async fn afnemer_toets(app: &Router, aanduiding: Option<&str>) -> Value {
     let (status, body, _) = vraag(
         app,
         "POST",
-        "/cellen/test_afnemer/api/aanvraag/toets",
+        &format!("{AFNEMER}/api/aanvraag/toets"),
         cookie.as_deref(),
         Some(afnemer_concept(aanduiding)),
     )
@@ -607,12 +664,17 @@ async fn synthese_zonder_registratie_en_zonder_invoer() {
         .starts_with("niet te beoordelen: bron test_register niet bevraagd"));
 }
 
-/// Kopieer een fixture-cel en alle stromen naar een eigen CELLS_PATH, met
-/// een aanpassing aan haar cel.yaml.
-fn eigen_cellen(cellen: &[(&str, &dyn Fn(String) -> String)]) -> tempfile::TempDir {
+/// Een aanpassing aan een `cel.yaml` of `proces.yaml`.
+type Aanpassing<'a> = (&'a str, &'a dyn Fn(String) -> String);
+
+/// Kopieer fixture-cellen, fixture-processen en alle stromen naar een eigen
+/// opstelling (`cellen/`, `processes/`, `chronicles/`), met een aanpassing
+/// aan elke `cel.yaml` en `proces.yaml`.
+fn eigen_opstelling(cellen: &[Aanpassing], processen: &[Aanpassing]) -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
     let f = fixtures();
     std::fs::create_dir_all(dir.path().join("chronicles")).unwrap();
+    std::fs::create_dir_all(dir.path().join("processes")).unwrap();
     for e in std::fs::read_dir(f.join("chronicles")).unwrap() {
         let p = e.unwrap().path();
         std::fs::copy(
@@ -621,29 +683,38 @@ fn eigen_cellen(cellen: &[(&str, &dyn Fn(String) -> String)]) -> tempfile::TempD
         )
         .unwrap();
     }
-    for (cel, pas_aan) in cellen {
-        let doel = dir.path().join("cellen").join(cel);
-        std::fs::create_dir_all(&doel).unwrap();
-        for e in std::fs::read_dir(f.join("cellen").join(cel)).unwrap() {
-            let p = e.unwrap().path();
-            let tekst = std::fs::read_to_string(&p).unwrap();
-            let tekst = if p.file_name().unwrap() == "cel.yaml" {
-                pas_aan(tekst)
-            } else {
-                tekst
-            };
-            std::fs::write(doel.join(p.file_name().unwrap()), tekst).unwrap();
+    for (soort, lijst, bestand) in [
+        ("cellen", cellen, "cel.yaml"),
+        ("processes", processen, "proces.yaml"),
+    ] {
+        for (naam, pas_aan) in lijst {
+            let doel = dir.path().join(soort).join(naam);
+            std::fs::create_dir_all(&doel).unwrap();
+            for e in std::fs::read_dir(f.join(soort).join(naam)).unwrap() {
+                let p = e.unwrap().path();
+                let tekst = std::fs::read_to_string(&p).unwrap();
+                let tekst = if p.file_name().unwrap() == bestand {
+                    pas_aan(tekst)
+                } else {
+                    tekst
+                };
+                std::fs::write(doel.join(p.file_name().unwrap()), tekst).unwrap();
+            }
         }
     }
     dir
+}
+
+fn zo(t: String) -> String {
+    t
 }
 
 fn met_url(url: String) -> impl Fn(String) -> String {
     move |t: String| {
         // Alleen de synthese-bron, niet de gelijknamige bron onder rijen.
         t.replace(
-            "synthese:\n  - cel: test_register\n",
-            &format!("synthese:\n  - cel: test_register\n    url: {url}\n"),
+            "  - cel: test_register\n    lexostatus: registerstatus\n",
+            &format!("  - cel: test_register\n    url: {url}\n    lexostatus: registerstatus\n"),
         )
     }
 }
@@ -659,9 +730,9 @@ async fn synthese_over_http_naar_een_andere_runtime() {
 
     // Runtime A: alleen de afnemer, met een url naar B.
     let aanpassing = met_url(format!("http://{adres}"));
-    let cellen = eigen_cellen(&[("afnemer", &aanpassing)]);
+    let opstelling = eigen_opstelling(&[("afnemer", &zo)], &[("afnemer", &aanpassing)]);
     let data_a = tempfile::tempdir().unwrap();
-    let a = runtime_op(&cellen.path().join("cellen"), data_a.path()).unwrap();
+    let a = runtime_op(opstelling.path(), data_a.path()).unwrap();
     assert!(
         a.waarschuwingen().await.is_empty(),
         "{:?}",
@@ -682,10 +753,10 @@ async fn onbereikbare_bron_maakt_de_toets_niet_te_beoordelen() {
     let adres = listener.local_addr().unwrap();
     drop(listener);
     let aanpassing = met_url(format!("http://{adres}"));
-    let cellen = eigen_cellen(&[("afnemer", &aanpassing)]);
+    let opstelling = eigen_opstelling(&[("afnemer", &zo)], &[("afnemer", &aanpassing)]);
     let data = tempfile::tempdir().unwrap();
     // De bron mag later komen: de runtime start wel, met een waarschuwing.
-    let a = runtime_op(&cellen.path().join("cellen"), data.path()).unwrap();
+    let a = runtime_op(opstelling.path(), data.path()).unwrap();
     let w = a.waarschuwingen().await;
     assert!(
         w.iter().any(|w| w.contains("nu niet te controleren")),
@@ -704,10 +775,9 @@ async fn onbereikbare_bron_maakt_de_toets_niet_te_beoordelen() {
 
 #[tokio::test]
 async fn interne_bron_die_niet_draait_is_een_waarschuwing() {
-    let niets = |t: String| t;
-    let cellen = eigen_cellen(&[("afnemer", &niets)]);
+    let opstelling = eigen_opstelling(&[("afnemer", &zo)], &[("afnemer", &zo)]);
     let data = tempfile::tempdir().unwrap();
-    let a = runtime_op(&cellen.path().join("cellen"), data.path()).unwrap();
+    let a = runtime_op(opstelling.path(), data.path()).unwrap();
     let w = a.waarschuwingen().await;
     assert!(
         w.iter()
@@ -724,7 +794,7 @@ async fn interne_bron_die_niet_draait_is_een_waarschuwing() {
 async fn bron_zonder_de_verwachte_parameter_is_een_waarschuwing() {
     // Een parameter die de afnemer verwacht maar de bron niet levert: haal
     // hem weg uit de lexostatus van de bron.
-    let cellen = eigen_cellen(&[("afnemer", &|t: String| t), ("register", &|t: String| t)]);
+    let cellen = eigen_opstelling(&[("afnemer", &zo), ("register", &zo)], &[("afnemer", &zo)]);
     let lexo = cellen.path().join("cellen/register/lexostatussen.yaml");
     let tekst = std::fs::read_to_string(&lexo).unwrap();
     std::fs::write(
@@ -747,7 +817,7 @@ async fn bron_zonder_de_verwachte_parameter_is_een_waarschuwing() {
     )
     .unwrap();
     let data = tempfile::tempdir().unwrap();
-    let a = runtime_op(&cellen.path().join("cellen"), data.path()).unwrap();
+    let a = runtime_op(cellen.path(), data.path()).unwrap();
     let w = a.waarschuwingen().await;
     assert!(
         w.iter()
@@ -759,15 +829,18 @@ async fn bron_zonder_de_verwachte_parameter_is_een_waarschuwing() {
 #[test]
 fn synthese_controle_bij_het_opstarten() {
     let geval = |aanpassing: &dyn Fn(String) -> String, verwacht: &str| {
-        let cellen = eigen_cellen(&[("afnemer", aanpassing), ("register", &|t: String| t)]);
+        let opstelling = eigen_opstelling(
+            &[("afnemer", &zo), ("register", &zo), ("gebieden", &zo)],
+            &[("afnemer", aanpassing)],
+        );
         let data = tempfile::tempdir().unwrap();
-        let fouten = runtime_op(&cellen.path().join("cellen"), data.path())
+        let fouten = runtime_op(opstelling.path(), data.path())
             .map(|_| ())
             .expect_err(verwacht);
         assert!(
             fouten
                 .iter()
-                .any(|f| f.starts_with("cel 'test_afnemer': ") && f.contains(verwacht)),
+                .any(|f| f.starts_with("proces 'test_afnemer_proces': ") && f.contains(verwacht)),
             "verwacht '{verwacht}' in {fouten:?}"
         );
     };
@@ -811,15 +884,18 @@ fn synthese_controle_bij_het_opstarten() {
 #[test]
 fn besluit_controle_bij_het_opstarten() {
     let geval = |aanpassing: &dyn Fn(String) -> String, verwacht: &str| {
-        let cellen = eigen_cellen(&[("afnemer", aanpassing), ("register", &|t: String| t)]);
+        let opstelling = eigen_opstelling(
+            &[("afnemer", &zo), ("register", &zo), ("gebieden", &zo)],
+            &[("afnemer", aanpassing)],
+        );
         let data = tempfile::tempdir().unwrap();
-        let fouten = runtime_op(&cellen.path().join("cellen"), data.path())
+        let fouten = runtime_op(opstelling.path(), data.path())
             .map(|_| ())
             .expect_err(verwacht);
         assert!(
             fouten
                 .iter()
-                .any(|f| f.starts_with("cel 'test_afnemer': ") && f.contains(verwacht)),
+                .any(|f| f.starts_with("proces 'test_afnemer_proces': ") && f.contains(verwacht)),
             "verwacht '{verwacht}' in {fouten:?}"
         );
     };
@@ -832,12 +908,7 @@ fn besluit_controle_bij_het_opstarten() {
         "portaal zonder rol aanvrager",
     );
     geval(
-        &|t: String| {
-            t.replace(
-                "werkvoorraad: werkvoorraad",
-                "werkvoorraad: aanvraag_inhoud",
-            )
-        },
+        &|t: String| t.replace("lexostatus: werkvoorraad}", "lexostatus: aanvraag_inhoud}"),
         "werkvoorraad 'aanvraag_inhoud' is geen lijst",
     );
     geval(
@@ -852,11 +923,31 @@ fn besluit_controle_bij_het_opstarten() {
     geval(
         &|t: String| {
             t.replace(
-                "lexostatussen: [aanvraag_inhoud, zaakverloop]",
-                "lexostatussen: [zaakverloop, werkvoorraad]",
+                "lexostatus: zaakverloop, zaak: true}",
+                "lexostatus: werkvoorraad, zaak: true}",
             )
         },
         "lexostatus 'werkvoorraad' is een lijst",
+    );
+    // Een bron van de zaak in een andere cel dan die van het proces.
+    geval(
+        &|t: String| {
+            t.replace(
+                "{cel: test_afnemer, lexostatus: zaakverloop, zaak: true}",
+                "{cel: test_register, lexostatus: zaakverloop, zaak: true}",
+            )
+        },
+        "cel 'test_register', en het proces legt vast in cel 'test_afnemer'",
+    );
+    // Een gewone bron uit de eigen cel: dat is een bron van de zaak.
+    geval(
+        &|t: String| {
+            t.replace(
+                "  - cel: test_register\n    lexostatus: registerstatus\n",
+                "  - cel: test_afnemer\n    lexostatus: registerstatus\n",
+            )
+        },
+        "is een bron van de zaak (zaak: true)",
     );
     geval(
         &|t: String| t.replace("{parameter: besluitdatum,", "{parameter: onbekend_oordeel,"),
@@ -887,7 +978,7 @@ fn besluit_controle_bij_het_opstarten() {
     );
     geval(
         &|t: String| t.replace("        tabel: {lexostatus: aanvraag_inhoud, veld: gebieden}", "        tabel: {lexostatus: werkvoorraad, veld: gebieden}"),
-        "de tabel komt uit lexostatus 'werkvoorraad', en die staat niet in de lexostatussen van het besluit",
+        "de tabel komt uit lexostatus 'werkvoorraad', en die is geen lexostatus van de zaak (zaak: true)",
     );
     geval(
         &|t: String| {
@@ -929,7 +1020,8 @@ fn besluit_controle_bij_het_opstarten() {
 
 // --- De behandelaar: werkvoorraad, zaak en proefbesluit ---
 
-const AFNEMER: &str = "/cellen/test_afnemer";
+const AFNEMER: &str = "/processen/test_afnemer_proces";
+const AFNEMER_CEL: &str = "/cellen/test_afnemer";
 
 async fn afnemer_indienen(app: &Router, kvk: &str) -> String {
     let (_, _, cookie) = vraag(
@@ -1009,8 +1101,6 @@ async fn rollen_bepalen_wie_wat_mag() {
     )
     .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
-    let (status, _, _) = vraag(&app, "GET", &format!("{AFNEMER}/api/kroniek"), None, None).await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
 
     // De aanvrager: zijn eigen grammen, geen werkvoorraad en geen zaak.
     let (_, _, aanvrager) = vraag(
@@ -1031,27 +1121,21 @@ async fn rollen_bepalen_wie_wat_mag() {
         let (status, body, _) = vraag(&app, methode, &pad, aanvrager, Some(json!({}))).await;
         assert_eq!(status, StatusCode::FORBIDDEN, "{methode} {pad}: {body}");
     }
-    let (_, kroniek, _) = vraag(
+    // De kroniek is van de cel, zonder login en zonder rollen: de cel kent
+    // geen aanvrager en geen behandelaar.
+    let (status, kroniek, _) = vraag(
         &app,
         "GET",
-        &format!("{AFNEMER}/api/kroniek"),
-        aanvrager,
+        &format!("{AFNEMER_CEL}/api/kroniek"),
+        None,
         None,
     )
     .await;
-    assert_eq!(kroniek.as_array().unwrap().len(), 1);
-
-    // De behandelaar: alle grammen, en het portaal niet.
-    let b = behandelaar(&app).await;
-    let (_, kroniek, _) = vraag(
-        &app,
-        "GET",
-        &format!("{AFNEMER}/api/kroniek"),
-        Some(&b),
-        None,
-    )
-    .await;
+    assert_eq!(status, StatusCode::OK);
     assert_eq!(kroniek.as_array().unwrap().len(), 2);
+
+    // De behandelaar: het portaal niet.
+    let b = behandelaar(&app).await;
     let (status, _, _) = vraag(
         &app,
         "POST",
@@ -1162,7 +1246,8 @@ async fn werkvoorraad_is_een_lijst_van_zaken_zonder_besluit() {
     assert_eq!(lijst.len(), 1);
     assert_eq!(lijst[0]["zaakkenmerk"], twee.as_str());
 
-    // De cellenlijst noemt de werkvoorraad een lijst, met kolommen.
+    // De cellenlijst noemt de werkvoorraad een lijst, met kolommen; de
+    // processenlijst zegt wie haar ziet.
     let (_, cellen, _) = vraag(&app, "GET", "/api/cellen", None, None).await;
     let werkvoorraad = cellen[0]["lexostatussen"]
         .as_array()
@@ -1172,11 +1257,12 @@ async fn werkvoorraad_is_een_lijst_van_zaken_zonder_besluit() {
         .unwrap();
     assert_eq!(werkvoorraad["lijst"], json!(true));
     assert_eq!(werkvoorraad["parameters"], json!([]));
+    let (_, processen, _) = vraag(&app, "GET", "/api/processen", None, None).await;
     assert_eq!(
-        cellen[0]["rollen"],
+        processen[0]["rollen"],
         json!({"aanvrager": true, "behandelaar": true})
     );
-    assert_eq!(cellen[0]["behandeling"]["werkvoorraad"], "werkvoorraad");
+    assert_eq!(processen[0]["behandeling"]["werkvoorraad"], "werkvoorraad");
 }
 
 #[tokio::test]
@@ -1327,13 +1413,11 @@ async fn zaak_opent_en_volgt() {
     drop(app);
 
     // Dezelfde kroniek, nu met een stroom waarin het event een zaak volgt.
-    let cellen = eigen_cellen(&[("instantie", &|t: String| t)]);
-    let stroom = cellen.path().join("chronicles/test_aanvragen.yaml");
+    let opstelling = eigen_opstelling(&[("instantie", &zo)], &[("instantie", &zo)]);
+    let stroom = opstelling.path().join("chronicles/test_aanvragen.yaml");
     let tekst = std::fs::read_to_string(&stroom).unwrap();
     std::fs::write(&stroom, tekst.replace("zaak: opent", "zaak: volgt")).unwrap();
-    let app = runtime_op(&cellen.path().join("cellen"), data.path())
-        .unwrap()
-        .router;
+    let app = runtime_op(opstelling.path(), data.path()).unwrap().router;
     let c = inloggen(&app, "12345678").await;
     let (status, body, _) = vraag(&app, "POST", &aanvraag, Some(&c), Some(volledig())).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
@@ -1354,10 +1438,14 @@ async fn zaak_opent_en_volgt() {
     );
     let mut volgt = volledig();
     volgt["zaakkenmerk"] = json!(zaak);
-    // Een andere KvK kent deze zaak niet.
+    // Een andere KvK kent deze zaak niet: dat weet het proces, niet de cel.
     let ander = inloggen(&app, "87654321").await;
-    let (status, _, _) = vraag(&app, "POST", &aanvraag, Some(&ander), Some(volgt.clone())).await;
+    let (status, body, _) = vraag(&app, "POST", &aanvraag, Some(&ander), Some(volgt.clone())).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        body["fout"].as_str().unwrap().contains("geen zaak"),
+        "{body}"
+    );
     let (status, body, _) = vraag(&app, "POST", &aanvraag, Some(&c), Some(volgt)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
     assert_eq!(body["gram"]["zaak"], "volgt");
@@ -1373,13 +1461,42 @@ fn een_falende_cel_houdt_de_runtime_tegen() {
             "lexostatussen: weg.yaml",
         )
     };
-    let cellen = eigen_cellen(&[("instantie", &|t: String| t), ("register", &kapot)]);
+    let opstelling = eigen_opstelling(
+        &[("instantie", &zo), ("register", &kapot)],
+        &[("instantie", &zo)],
+    );
     let data = tempfile::tempdir().unwrap();
-    let fouten = runtime_op(&cellen.path().join("cellen"), data.path())
-        .err()
-        .unwrap();
+    let fouten = runtime_op(opstelling.path(), data.path()).err().unwrap();
     assert_eq!(fouten.len(), 1, "{fouten:?}");
     assert!(fouten[0].starts_with("cel 'test_register': "), "{fouten:?}");
+}
+
+#[test]
+fn een_falend_proces_houdt_de_runtime_tegen() {
+    let kapot = |t: String| t.replace("actor: test_instantie", "actor: iemand_anders");
+    let opstelling = eigen_opstelling(&[("instantie", &zo)], &[("instantie", &kapot)]);
+    let data = tempfile::tempdir().unwrap();
+    let fouten = runtime_op(opstelling.path(), data.path()).err().unwrap();
+    assert_eq!(fouten.len(), 1, "{fouten:?}");
+    assert!(
+        fouten[0].starts_with("proces 'test_instantie_proces': portaal: stroom 'test_aanvragen' heeft recording_actor 'test_instantie'"),
+        "{fouten:?}"
+    );
+}
+
+#[test]
+fn zonder_processen_draaien_alleen_de_cellen() {
+    let data = tempfile::tempdir().unwrap();
+    let config = Config {
+        cells_path: fixtures().join("cellen"),
+        processes_path: None,
+        regulation_path: fixtures().join("regulation"),
+        data_dir: data.path().to_path_buf(),
+        port: STANDAARD_POORT,
+    };
+    let r = Runtime::laad(&config, klok()).unwrap();
+    assert_eq!(r.cellen.len(), 4);
+    assert!(r.processen.is_empty());
 }
 
 // --- Synthese per regel en het vastleggen van het besluit ---
@@ -1634,12 +1751,12 @@ async fn besluit_nemen_legt_een_decretogram_vast() {
 
 #[tokio::test]
 async fn een_ander_bevoegd_gezag_weigert_het_besluit() {
-    // De regeling wijst een ander gezag aan dan de cel: geen gram.
-    let cellen = eigen_cellen(&[
-        ("afnemer", &|t: String| t),
-        ("register", &|t: String| t),
-        ("gebieden", &|t: String| t),
-    ]);
+    // De regeling wijst een ander gezag aan dan de actor van het proces:
+    // geen gram.
+    let cellen = eigen_opstelling(
+        &[("afnemer", &zo), ("register", &zo), ("gebieden", &zo)],
+        &[("afnemer", &zo)],
+    );
     let doel = cellen.path().join("regulation/testregeling_afnemer");
     std::fs::create_dir_all(&doel).unwrap();
     let tekst =
@@ -1661,6 +1778,7 @@ async fn een_ander_bevoegd_gezag_weigert_het_besluit() {
     let data = tempfile::tempdir().unwrap();
     let config = Config {
         cells_path: cellen.path().join("cellen"),
+        processes_path: Some(cellen.path().join("processes")),
         regulation_path: cellen.path().join("regulation"),
         data_dir: data.path().to_path_buf(),
         port: 0,
@@ -1717,11 +1835,11 @@ async fn voorbeelden_zonder_login() {
     );
     assert_eq!(body["besluit"], oordelen()["formulier"]);
 
-    // Een cel zonder voorbeelden: leeg, geen fout.
+    // Een proces zonder voorbeelden: leeg, geen fout.
     let (status, body, _) = vraag(
         &app,
         "GET",
-        "/cellen/test_register/api/voorbeelden",
+        &format!("{INSTANTIE}/api/voorbeelden"),
         None,
         None,
     )
@@ -1768,24 +1886,168 @@ async fn het_aanvraagvoorbeeld_is_in_te_dienen() {
 #[test]
 fn voorbeelden_controle_bij_het_opstarten() {
     let weg = |t: String| t.replace("voorbeeld-besluit.json", "weg.json");
-    let cellen = eigen_cellen(&[("afnemer", &weg)]);
+    let alle = [
+        ("afnemer", &zo as &dyn Fn(String) -> String),
+        ("register", &zo),
+        ("gebieden", &zo),
+    ];
+    let opstelling = eigen_opstelling(&alle, &[("afnemer", &weg)]);
     let data = tempfile::tempdir().unwrap();
-    let fouten = runtime_op(&cellen.path().join("cellen"), data.path())
-        .err()
-        .unwrap();
+    let fouten = runtime_op(opstelling.path(), data.path()).err().unwrap();
     assert_eq!(fouten.len(), 1, "{fouten:?}");
     assert!(
-        fouten[0].starts_with("cel 'test_afnemer': voorbeeld weg.json"),
+        fouten[0].starts_with("proces 'test_afnemer_proces': voorbeeld weg.json"),
         "{fouten:?}"
     );
 
     let verkeerd = |t: String| t.replace("voorbeeld-besluit.json", "voorbeeld-login.json");
-    let cellen = eigen_cellen(&[("afnemer", &verkeerd)]);
-    let fouten = runtime_op(&cellen.path().join("cellen"), data.path())
-        .err()
-        .unwrap();
+    let opstelling = eigen_opstelling(&alle, &[("afnemer", &verkeerd)]);
+    let fouten = runtime_op(opstelling.path(), data.path()).err().unwrap();
     assert!(
         fouten[0].contains("voorbeeld-login.json: verwacht een object met 'formulier'"),
         "{fouten:?}"
     );
+}
+
+// --- De cel legt vast en reduceert op proef, op verzoek van een proces ---
+
+/// Een verzoek aan de instantie-cel voor het portaal-event.
+fn verzoek(actor: &str) -> Value {
+    json!({
+        "actor": actor,
+        "stroom": "test_aanvragen",
+        "event": "aanvraag_ontvangen",
+        "intake": {"kanaal": "portaal", "eherkenning": {"kvk": "12345678", "persoon": "A. Tester"}},
+        "external": volledig()["external"],
+    })
+}
+
+#[tokio::test]
+async fn de_cel_legt_een_gram_vast_voor_haar_actor() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path());
+    let grammen = format!("{INSTANTIE_CEL}/api/grammen");
+    let (status, body, _) = vraag(
+        &app,
+        "POST",
+        &grammen,
+        None,
+        Some(verzoek("test_instantie")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    schema::valideer(Soort::Gram, &body["gram"]).unwrap();
+    // De cel bouwt het gram uit haar stroom: zij geeft het zaakkenmerk en het
+    // moment.
+    assert_eq!(body["gram"]["zaak"], "opent");
+    assert!(body["gram"]["zaakkenmerk"].is_string());
+    assert_eq!(body["gram"]["op_moment"], "2025-03-12T10:14:03+01:00");
+    assert_eq!(body["gram"]["recording_actor"], "test_instantie");
+    assert!(body["yaml"]
+        .as_str()
+        .unwrap()
+        .starts_with("kind: chronolexogram\n"));
+    let pad = dir.path().join("test_instantie/test_kroniek.jsonl");
+    assert_eq!(std::fs::read_to_string(&pad).unwrap().lines().count(), 1);
+
+    // Een actor die niet de recording_actor van de stroom is: geen gram.
+    let (status, body, _) =
+        vraag(&app, "POST", &grammen, None, Some(verzoek("test_afnemer"))).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    assert_eq!(
+        body["fout"],
+        "actor 'test_afnemer' legt niet vast in stroom 'test_aanvragen': de recording_actor is 'test_instantie'"
+    );
+    // Een event dat de cel niet heeft, en een veld dat de stroom niet kent.
+    let mut onbekend = verzoek("test_instantie");
+    onbekend["event"] = json!("bestaat_niet");
+    let (status, _, _) = vraag(&app, "POST", &grammen, None, Some(onbekend)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let mut veld = verzoek("test_instantie");
+    veld["external"]["schoenmaat"] = json!(44);
+    let (status, body, _) = vraag(&app, "POST", &grammen, None, Some(veld)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["fout"].as_str().unwrap().contains("schoenmaat"));
+    assert_eq!(std::fs::read_to_string(&pad).unwrap().lines().count(), 1);
+}
+
+#[tokio::test]
+async fn de_cel_reduceert_op_proef_zonder_vast_te_leggen() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path());
+    let proef = format!("{INSTANTIE_CEL}/api/lexostatus/aanvraag_inhoud/proef");
+    let (status, body, _) = vraag(
+        &app,
+        "POST",
+        &proef,
+        None,
+        Some(json!({"concept": verzoek("test_instantie"), "inputs": {}})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    // Het gram van het concept, en de reductie met dat gram: het zaakkenmerk
+    // van het concept is de input.
+    let zaak = body["gram"]["zaakkenmerk"].as_str().unwrap();
+    assert_eq!(body["lexostatus"]["zaakkenmerk"], zaak);
+    assert_eq!(body["lexostatus"]["parameters"]["bevat_naam"], json!(true));
+    assert_eq!(
+        body["lexostatus"]["parameters"]["aanvraagdatum"],
+        "2025-03-12"
+    );
+    // Niets vastgelegd.
+    let (_, kroniek, _) = vraag(
+        &app,
+        "GET",
+        &format!("{INSTANTIE_CEL}/api/kroniek"),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(kroniek, json!([]));
+    // Ook op proef legt alleen de actor van de stroom iets voor.
+    let (status, _, _) = vraag(
+        &app,
+        "POST",
+        &proef,
+        None,
+        Some(json!({"concept": verzoek("iemand_anders")})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn een_proefreductie_reduceert_de_kroniek_met_het_concept() {
+    // De werkvoorraad van de afnemer: een lijst over de hele kroniek. Op
+    // proef telt het concept mee naast wat er al ligt, en er blijft niets van
+    // over.
+    let data = tempfile::tempdir().unwrap();
+    let app = app(data.path());
+    afnemer_indienen(&app, "12345678").await;
+    let concept = json!({
+        "actor": "test_afnemer",
+        "stroom": "test_afnemer_aanvragen",
+        "event": "aanvraag_ontvangen",
+        "intake": {"kanaal": "portaal", "eherkenning": {"kvk": "87654321", "persoon": "B. Tester"}},
+        "external": afnemer_concept(Some("VOORBEELD"))["external"],
+    });
+    let (status, body, _) = vraag(
+        &app,
+        "POST",
+        &format!("{AFNEMER_CEL}/api/lexostatus/werkvoorraad/proef"),
+        None,
+        Some(json!({"concept": concept})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["lexostatus"]["lijst"].as_array().unwrap().len(), 2);
+    let (_, w, _) = vraag(
+        &app,
+        "GET",
+        &format!("{AFNEMER_CEL}/api/lexostatus/werkvoorraad"),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(w["lijst"].as_array().unwrap().len(), 1);
 }

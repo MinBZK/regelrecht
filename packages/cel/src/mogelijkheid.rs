@@ -1,6 +1,6 @@
 //! Aanvraagmogelijkheden: wat biedt het portaal een ingelogde persoon aan?
 //!
-//! Het beleid van de cel zegt het (`portaal.aanbod`): een uitkomst van een
+//! Het beleid van de actor zegt het (`portaal.aanbod` in `proces.yaml`): een uitkomst van een
 //! regeling, uitgevoerd in een run met wat er vooraf bekend is: wie er
 //! inlogt en wat andere cellen weten. Definitief onwaar of nul: geen aanbod.
 //! Onbekend door feiten die de aanvraag nog levert, of waar: aanbod. Een
