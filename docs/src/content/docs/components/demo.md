@@ -1,53 +1,58 @@
 ---
 title: "Demo"
-description: "De RegelRecht-demo: presentatie, wetten, graaf, scenario's, simulatie, burgerportaal en zaaksysteem, met de engine als WASM in de browser."
-lang: nl
+description: "The RegelRecht demo: a presentation, the laws and their graph, scenarios, a population simulation, a citizen portal and a case system, with the engine running as WASM in the browser."
 ---
 
-De demo laat in één werkruimte zien wat RegelRecht doet: de machine-leesbare wet, de afhankelijkheden tussen wetten, de scenario's die de wet toetsen, en de uitvoering voor één persoon op een portaal en in een zaaksysteem. Het is de opvolger van de losse `poc-machine-law`-repository.
+The demo shows in one workspace what RegelRecht does: the machine-readable law, the dependencies between laws, the scenarios that test a law, and the execution for one person on a portal and in a case system. It succeeds the separate `poc-machine-law` repository.
 
-## Overzicht
+## Overview
 
-- **Taal**: Vue 3 / Vite, `@nldd/design-system`
-- **Locatie**: `frontend-demo/`
+- **Language**: Vue 3 / Vite, `@nldd/design-system`
+- **Location**: `frontend-demo/`
 - **Corpus**: `corpus/demo/`
-- **Productie-URL**: `demo.regelrecht.rijks.app` (ZAD-component `demo`; zie [Deployment](/operations/deployment))
+- **Production URL**: `demo.regelrecht.rijks.app` (ZAD component `demo`; see [Deployment](/operations/deployment))
+- **Interface languages**: Dutch (the source), English under `/en/` and Frisian under `/fy/`. The Frisian translation has not yet been reviewed by a Frisian speaker. The law texts themselves stay Dutch in every language, because a translation of the text in force has no legal standing.
 
-## Wat het doet
+## What it does
 
-De werkruimte heeft zeven tabbladen, in de volgorde van een presentatie:
+The workspace opens on a landing page (the house icon) with a short explanation, a button that starts the presentation, and a QR code that points at the demo itself, so someone in the audience can follow along on a phone. After it come seven tabs, in the order of a presentation. The labels below are the English ones, with the Dutch in parentheses.
 
-1. **Presentatie**: het dek in Rijkshuisstijl-blauw. De intro staat voluit; daarna staat het dek links als rail en opent elke dia zelf het tabblad waar het over gaat, wisselt van persona en wijst aan wat de presentator bedoelt. De dia's zijn inhoud (`demo-config.yaml`), geen code. Esc sluit het dek en laat de demo staan; Shift+P opent het overal.
-2. **Wetten**: de machine-leesbare wet als opvouwbare YAML-boom, per verhaal klaargezet (`expanded_paths` in `demo-config.yaml`: een pad opent zichzelf en alles erboven, de rest blijft dicht). Elke `source.regulation` is een link die de verwezen wet opent; een terugknop loopt de gevolgde verwijzingen terug. De lijst met alle wetten, per organisatie, is een zijpaneel dat standaard dicht staat.
-3. **Graaf**: per wet de bronnen, de invoer uit andere wetten en de uitvoer, met lijnen naar de leverende wet en de waarden van de persona erop, in een kleur per organisatie. Het profiel kiest de wetten van het verhaal (`graph_laws`); getoond worden die wetten en alles wat er direct aan hangt. Het hele corpus ligt vast, dus "Alles" voegt wetten toe zonder dat er iets verschuift. Een gekozen wet kleurt de lijnen die ze leest groen en de lijnen waarlangs anderen haar lezen rood.
-4. **Scenario's**: de Gherkin-scenario's per wet, in het Nederlands weergegeven. "Uitvoeren" draait een scenario in de browser tegen de engine en toont de volledige uitvoeringstrace.
-5. **Simulatie**: een gegenereerde populatie burgers of ondernemers (aantal, leeftijds- en inkomensverdeling, bedrijfstype, seed) wordt door de engine door alle regelingen van dat portaal gehaald. Het resultaat: wie voldoet aan de voorwaarden en voor hoeveel, uitgesplitst naar leeftijd, inkomen, partner, bedrijfstype of grootte, en voor burgers het besteedbaar inkomen per maand (inkomen min belastingen plus toeslagen en uitkeringen; welke uitvoer meetelt en per maand of per jaar staat in `simulation.disposable_income`). Constanten uit de wetten (drempels, percentages) zijn per run aan te passen; runs staan naast elkaar ter vergelijking en zijn als CSV of JSON te exporteren.
-6. **Burger.nl / Overheid.nl**: het portaal van de actieve persona. Elke regeling wordt live berekend; onder "Gebruikte gegevens" staat waar elk gegeven vandaan komt, met per gegeven de mogelijkheid het te corrigeren. Een regeling met een beschikking wordt vanuit het portaal aangevraagd, in een paneel dat de flow van de POC volgt: de wet rekent met wat de overheid al weet en vraagt één voor één alleen wat in geen register staat (de huurprijs, de terraslocatie), rekent na elk antwoord opnieuw, laat de uitkomst en de gebruikte gegevens controleren, en na indiening de status. Zodra het besluit is bekendgemaakt staat er tot wanneer bezwaar mogelijk is: die datum komt uit de Awb zelf (artikel 6:7 voor de termijn, 6:8 voor de einddatum), niet uit het scherm. Het portaal springt nooit naar het zaaksysteem, dat is de andere wereld.
-7. **Zaaksysteem**: de behandelaarskant, per uitvoerende organisatie: een bord met zaken die te beoordelen zijn, zaken die bekend te maken zijn en zaken die bekendgemaakt zijn, de regelingen die de organisatie uitvoert, de herberekening door de engine naast het aangevraagde resultaat, correcties van burgers ter beoordeling, toekennen of afwijzen, bekendmaken, bezwaar. Bekendmaken is een eigen handeling, omdat de Awb het besluit (artikel 1:3) en het bekendmaken ervan (artikel 3:41) als twee momenten kent en pas het tweede de bezwaartermijn laat lopen.
+1. **Presentation** (*Presentatie*): the slide deck in Rijkshuisstijl blue. The intro is shown full screen; after that the deck sits on the left as a rail, and each slide opens the tab it is about, switches persona and points at what the presenter means. The slides are content (`demo-config.yaml`), not code. Esc closes the deck and leaves the demo where it is; Shift+P opens it from anywhere.
+2. **Laws** (*Wetten*): the machine-readable law as a collapsible YAML tree, prepared per story (`expanded_paths` in `demo-config.yaml`: a path opens itself and everything above it, the rest stays closed). Every `source.regulation` is a link that opens the referenced law; a back button retraces the references followed. The list of all laws, grouped per organization, is a side panel that is closed by default.
+3. **Graph** (*Graaf*): per law its sources, its inputs from other laws and its outputs, with lines to the law that supplies them, the persona's values on them, and one color per organization. The profile picks the laws of its story (`graph_laws`), and the graph shows those laws plus everything directly attached to them. The layout of the whole corpus is fixed, so "All" (*Alles*) adds laws without moving anything. Selecting a law colors the lines it reads from green and the lines along which other laws read it red.
+4. **Scenarios** (*Scenario's*): the Gherkin scenarios per law. In Dutch the steps are rendered as Dutch sentences; English and Frisian show the canonical English steps, which is what the `.feature` files contain. "Run" (*Uitvoeren*) executes a scenario in the browser against the engine and shows the full execution trace.
+5. **Simulation** (*Simulatie*): a generated population of citizens or businesses (size, age and income distribution, business type, seed) is run through every regulation of that portal. The result shows who qualifies and for how much, broken down by age, income, partner, business type or size, and for citizens the disposable income per month: income minus taxes, plus allowances and benefits. Which outputs count, and whether per month or per year, is set in `simulation.disposable_income`. Constants from the laws (thresholds, percentages) can be changed per run; runs sit side by side for comparison and export as CSV or JSON.
+6. **My government** (*Mijn overheid*, or *Mijn onderneming* for a business; the label comes from `portal_tab_label` in `demo-config.yaml`): the portal of the active persona. Each regulation is computed live. Under "Data used" (*Gebruikte gegevens*) the portal shows where each piece of data comes from, and each one can be corrected. A regulation that ends in a *beschikking* (an individual administrative decision) is applied for from the portal, in a panel that follows the flow of the POC: the law computes with what the government already knows and asks, one question at a time, only for what no register holds (the rent, the location of a café terrace). It recomputes after each answer, lets the applicant check the outcome and the data used, and shows the status after submission. Once the decision has been announced, the panel shows the date until which an objection (*bezwaar*) is possible. That date comes from the Awb itself (articles 6:7 and 6:8), not from the screen. The portal never jumps to the case system, which belongs to the other side of the counter.
+7. **Case system** (*Zaaksysteem*): the case handler's side, per executing organization. It has a board with cases to assess, cases to announce and cases that have been announced, the regulations the organization executes, the engine's recalculation next to the result applied for, citizen corrections awaiting review, granting or refusing, announcing, and objection. Announcing is a separate action, because the Awb treats the decision (article 1:3) and its announcement (article 3:41) as two moments, and only the second starts the objection period.
 
-Het menu wisselt van profiel (Merijn, burger; Claudia, ondernemer), zet handmatige beoordeling aan of uit, schakelt het kleurschema en reset de demo.
+The toolbar switches the profile (Merijn, a citizen; Claudia, a business owner). With the authorizations feature on, "Acting for" offers the people or businesses the active profile may act for, when the law gives more than one option. The menu then holds four groups:
 
-## Hoe het werkt
+- **Features**: switches for features that are off or on per profile in `demo-config.yaml` (authorizations, reporting a change, harmonization, approving corrections immediately), plus "Review every application by hand". A switched flag overrides the profile until "Back to the profile" resets it.
+- **Language**: Dutch, English or Frisian.
+- **Appearance**: the color scheme.
+- **Demo**: full screen, and resetting the demo.
 
-Er is geen backend. De engine draait als WebAssembly in de browser, dezelfde engine als in de editor. Het demo-corpus wordt bij de build naar `public/data` gekopieerd. Persona-data (`profiles.yaml`) wordt via `bindings.yaml` per wet gematerialiseerd tot records en als wet-gebonden databron in de engine gezet; correcties van de burger komen daar als tweede bron met hogere prioriteit bovenop. Aanvragen en correcties leven in `localStorage`.
+## How it works
 
-Een aanvraag voor een beschikking loopt door de fasen die de Awb eraan geeft (RFC-007, RFC-008). De engine vuurt per fase de haken die erbij horen en zegt welk gegeven hij nog mist; de demo levert dat aan op het moment dat het bestaat, en bewaart de stand bij de zaak. Zo komt de bezwaartermijn als datum uit de wet, en telt een bijzondere wet die van artikel 6:7 afwijkt vanzelf mee.
+There is no backend. The engine runs as WebAssembly in the browser, the same engine as in the editor. At build time the demo corpus is copied to `public/data`. Persona data (`profiles.yaml`) is materialized per law into records through `bindings.yaml` and registered with the engine as a law-scoped data source; approved citizen corrections are layered on top as a second source with a higher priority. Applications, corrections and settings live in `localStorage`, so a page refresh during a presentation loses nothing.
 
-## Lokaal draaien
+An application for a *beschikking* passes through the phases the Awb gives it (RFC-007, RFC-008). In each phase the engine fires the hooks that belong to it and reports which piece of data it still lacks; the demo supplies it at the moment it exists, and stores the state with the case. That is how the objection period arrives as a date from the law, and how a special law that departs from article 6:7 is taken into account without extra code.
+
+## Running locally
 
 ```bash
-just demo              # bouwt de WASM-engine, start Vite op :7400 en opent de browser
-just dev-demo          # hetzelfde, zonder de browser te openen
+just demo              # builds the WASM engine, starts Vite on :7400 and opens the browser
+just dev-demo          # the same, without opening the browser
 ```
 
-Controleren, buiten de browser:
+Checking, outside the browser:
 
 ```bash
-just demo-check        # wetten, scenario's, frontend-tests, WASM en build
-just bdd-demo          # alleen de scenario's
-just validate-demo     # alleen de wetten (schema en typecontrole)
+just demo-check        # laws, Awb parity, service map, scenarios, frontend tests, WASM and build
+just bdd-demo          # the scenarios only (plus the Awb lifecycle test)
+just validate-demo     # the laws only (schema and type check)
 ```
 
-## Verder lezen
+## Further reading
 
 - [Deployment](/operations/deployment)

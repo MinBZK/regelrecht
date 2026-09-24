@@ -50,15 +50,15 @@ The preview deployment and its GHCR images are cleaned up automatically.
 
 The docs image also serves `/roadmap`, a read-only rendering of the werkpakketten in `docs/src/content/roadmap/` and the JSON file in `docs/src/data/`. It is not a component of its own and has no write path: changing the roadmap means editing those files through a pull request, and every werkpakket page links to its own source on GitHub. The landing page links to it from the footer, next to the documentation and research links; it stays out of the main navigation, which covers the landing page's own sections.
 
-## De demo
+## The demo
 
-De demo (`frontend-demo/`) draait op `demo.regelrecht.rijks.app`, als ZAD-component `demo` in de deployment `regelrecht`, met alleen `publish-on-web` op poort 8000. Ze rolt mee in `deploy-preview` en `deploy-production` als `script/deploy-filters.mjs` de component `demo` raakt: de engine-crate, `frontend-demo/`, `packages/frontend-shared/`, `corpus/demo/` of `deploy/nginx/`.
+The demo (`frontend-demo/`) runs at `demo.regelrecht.rijks.app` as the ZAD component `demo` in the `regelrecht` deployment, with only `publish-on-web` on port 8000. It rolls out with `deploy-preview` and `deploy-production` when `script/deploy-filters.mjs` marks the `demo` component as changed. That happens for changes to the engine crate and the workspace crates it depends on, the workspace-wide Rust files (`packages/Cargo.toml`, `packages/Cargo.lock`, `rust-toolchain.toml`, `schema/`), `frontend-demo/`, `packages/frontend-shared/`, `corpus/demo/`, or `deploy/nginx/`.
 
-De bouw zit in `deploy.yml` als `build-demo` (`image-name: minbzk/regelrecht-demo`, `dockerfile: frontend-demo/Dockerfile`, `cache-scope: demo`). Het image valt onder `scheduled-cleanup.yml`, dat op `sha-`-tags en de draaiende deployment toetst.
+The build is the `build-demo` job in `deploy.yml` (`image-name: minbzk/regelrecht-demo`, `dockerfile: frontend-demo/Dockerfile`, `cache-scope: demo`). The image is covered by `scheduled-cleanup.yml`, which checks `sha-` tags against the running deployment before it deletes anything.
 
-Wat bij een wijziging te controleren is, het makkelijkst op een preview (label de PR met `deploy:preview`): dat de WASM-engine laadt (netwerktab: `wasm/pkg/*.wasm` als `application/wasm`), de dia's, het portaal van Merijn en Claudia, en een aanvraag tot in het zaaksysteem. De twee dingen die in `nginx.conf` stuk kunnen gaan zijn de SPA-fallback naar `index.html` en het MIME-type voor `.wasm`.
+What to check after a change is easiest on a preview (label the PR `deploy:preview`): that the WASM engine loads (network tab: `wasm/pkg/*.wasm` served as `application/wasm`), the slides, the portals of Merijn and Claudia, and one application followed all the way into the case system. The two things in `frontend-demo/nginx.conf` that can break are the SPA fallback to `index.html` and the MIME type for `.wasm`.
 
-De demo heeft geen backend en geen secrets nodig; de bouw duurt langer dan de andere frontends door de Rust-naar-WASM-stap (de `wasm-builder`-stage is gepind op de Rust-versie uit `rust-toolchain.toml` en de `wasm-bindgen`-versie uit `packages/Cargo.lock`, en faalt luid als die uit elkaar lopen).
+The demo needs no backend and no secrets. Its build takes longer than the other frontends because of the Rust-to-WASM step. The `wasm-builder` stage pins the Rust image to the version in `rust-toolchain.toml` (a pre-commit test, `script/dockerfile-consistency.test.mjs`, fails when the two drift) and pins `wasm-bindgen-cli` to the version in `packages/Cargo.lock`; the build itself fails loudly when that second pair diverges.
 
 ## ZAD CLI
 
