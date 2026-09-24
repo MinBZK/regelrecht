@@ -122,9 +122,9 @@ impl DeclarationKind {
 
 /// A hook, override or implementation the indexes offered, that did not apply
 /// on the reference date: its law has no version the engine could select for
-/// that date, or (for an override) the version it selected does not carry the
-/// indexed article. The index is built from the newest version, so an article
-/// inserted later leaves the reference pointing at nothing on an earlier date,
+/// that date, or the version it selected does not carry the indexed article.
+/// The index is built from the newest version, so an article inserted later
+/// leaves the reference pointing at nothing on an earlier date,
 /// which is the calendar at work. A renumbering does the same, and that one is
 /// a limitation of the undated index rather than a regulation out of force:
 /// the reason then names the article that carries the declaration instead, and
@@ -173,6 +173,54 @@ impl DeclarationNotInForce {
             self.reason,
         )
     }
+}
+
+/// The reason for a [`DeclarationNotInForce`] whose law *is* in force, but
+/// whose version for the reference date has no article with the indexed number.
+///
+/// The indexes are built from the newest version, so this is what an article
+/// inserted by a later version looks like on an earlier date: the calendar at
+/// work. A renumbering looks the same, and that one is a limitation of the
+/// undated index rather than a regulation out of force. The reason then names
+/// the article of this version that carries an equivalent declaration
+/// (`redeclares`), so the skip cannot pass for a rule that does not exist yet.
+/// `what` names that declaration ("an override of the same output"). A caller
+/// leaves out of `redeclares` the articles the index itself offers, since
+/// those were tried on their own and are no renumbering. The check compares
+/// the declaration as this execution sees it, so a renumbering of the target
+/// article as well goes unnamed; the reason then under-reports, never
+/// over-reports.
+///
+/// Worded as a data fact in the register of [`SelectionReason::describe`],
+/// naming the law and its version so a reader can look it up: the subject of
+/// the note is another law, so "it" would be ambiguous.
+pub(crate) fn missing_article_reason(
+    law: &ArticleBasedLaw,
+    article_number: &str,
+    what: &str,
+    redeclares: impl Fn(&Article) -> bool,
+) -> String {
+    let version = match law.valid_from.as_deref() {
+        Some(valid_from) => format!(" (valid_from {valid_from})"),
+        None => String::new(),
+    };
+    let mut reason = format!(
+        "the version of {} in force on this date{version} has no article {article_number}",
+        law.id
+    );
+    let redeclared: Vec<&str> = law
+        .articles
+        .iter()
+        .filter(|candidate| redeclares(candidate))
+        .map(|candidate| candidate.number.as_str())
+        .collect();
+    if !redeclared.is_empty() {
+        reason.push_str(&format!(
+            "; article {} of that version declares {what}",
+            redeclared.join(", ")
+        ));
+    }
+    reason
 }
 
 /// A regulation that declared it fills an open term, but was refused because
@@ -1068,11 +1116,33 @@ impl RuleResolver {
                 // number that the newest version has and this one does not is a
                 // version mismatch, not an absent implementation — say so
                 // rather than letting the candidate disappear without a word.
-                tracing::warn!(
-                    candidate = %entry.law_id,
-                    article = %entry.article_number,
-                    "Skipping: the version in force on the reference date has no such article"
-                );
+                // The log alone did not: the caller still reported "no
+                // implementation, using the default", so the record goes the
+                // same way as the not-in-force one above, to trace and receipt.
+                lookup.not_in_force.push(DeclarationNotInForce {
+                    kind: DeclarationKind::Implementation,
+                    law_id: entry.law_id.clone(),
+                    article: entry.article_number.clone(),
+                    subject: format!("open term '{open_term_id}' of {law_id} article {article}"),
+                    reason: missing_article_reason(
+                        law,
+                        &entry.article_number,
+                        "an implementation of the same open term",
+                        |candidate| {
+                            let offered = candidate_entries.iter().any(|e| {
+                                e.law_id == entry.law_id && e.article_number == candidate.number
+                            });
+                            !offered
+                                && candidate.get_implements().is_some_and(|decls| {
+                                    decls.iter().any(|d| {
+                                        d.law == law_id
+                                            && d.article == article
+                                            && d.open_term == open_term_id
+                                    })
+                                })
+                        },
+                    ),
+                });
                 continue;
             };
 
@@ -1535,23 +1605,7 @@ impl RuleResolver {
 
         entries
             .iter()
-            .filter(|entry| {
-                // Stage filter: absent defaults to BESLUIT (backward compat per RFC-008)
-                let hook_stage = entry.filter.stage.as_deref().unwrap_or("BESLUIT");
-                if hook_stage != stage {
-                    return false;
-                }
-
-                // Decision type filter: if specified, must match
-                if let Some(ref filter_dt) = entry.filter.decision_type {
-                    match decision_type {
-                        Some(dt) if dt == filter_dt => {}
-                        _ => return false,
-                    }
-                }
-
-                true
-            })
+            .filter(|entry| hook_filter_admits(&entry.filter, decision_type, stage))
             .collect()
     }
 
@@ -1664,6 +1718,25 @@ impl RuleResolver {
             }
         }
         errors
+    }
+}
+
+/// Whether a hook filter admits a decision at this stage, apart from its legal
+/// character (which the hooks index is keyed on).
+///
+/// An absent stage means BESLUIT (backward compatibility per RFC-008); an
+/// absent decision type admits every decision type.
+pub(crate) fn hook_filter_admits(
+    filter: &HookFilter,
+    decision_type: Option<&str>,
+    stage: &str,
+) -> bool {
+    if filter.stage.as_deref().unwrap_or("BESLUIT") != stage {
+        return false;
+    }
+    match filter.decision_type.as_deref() {
+        Some(filter_dt) => decision_type == Some(filter_dt),
+        None => true,
     }
 }
 
@@ -4396,6 +4469,44 @@ articles:
     // -------------------------------------------------------------------------
     // Override target validation
     // -------------------------------------------------------------------------
+
+    /// A law without a `valid_from` is in force on any date; the reason then
+    /// names no version date rather than an empty one, and with nothing
+    /// redeclared it adds no clause about another article.
+    #[test]
+    fn test_missing_article_reason_without_valid_from() {
+        let law = ArticleBasedLaw::from_yaml_str(make_test_law()).unwrap();
+        assert_eq!(
+            missing_article_reason(&law, "9", "a hook on the same hook point", |_| false),
+            "the version of test_law in force on this date has no article 9"
+        );
+        assert_eq!(
+            missing_article_reason(&law, "9", "a hook on the same hook point", |_| true),
+            "the version of test_law in force on this date has no article 9; article 1 of \
+             that version declares a hook on the same hook point"
+        );
+
+        let two = ArticleBasedLaw::from_yaml_str(
+            r#"
+$id: twee_artikelen
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '4'
+    text: Een
+  - number: '5'
+    text: Twee
+"#,
+        )
+        .unwrap();
+        assert_eq!(
+            missing_article_reason(&two, "1", "an override of the same output", |_| true),
+            "the version of twee_artikelen in force on this date (valid_from 2025-01-01) \
+             has no article 1; article 4, 5 of that version declares an override of the \
+             same output"
+        );
+    }
 
     #[test]
     fn test_validate_override_targets_accepts_a_resolvable_override() {

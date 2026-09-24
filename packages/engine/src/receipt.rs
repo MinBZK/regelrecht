@@ -130,7 +130,7 @@ pub struct ReceiptResults {
     pub declaration_version_notes: Vec<DeclarationsFromOtherVersion>,
     /// Hooks, overrides and implementations that were offered for this
     /// execution but did not apply on the reference date: no version in force,
-    /// or (for an override) the version in force lacks the indexed article.
+    /// or the version in force lacks the indexed article.
     /// They did not run; the receipt says so, rather than letting the outcome
     /// read as though nothing was ever declared.
     #[serde(skip_serializing_if = "Vec::is_empty")]
