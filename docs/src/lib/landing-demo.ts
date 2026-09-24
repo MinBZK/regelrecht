@@ -61,7 +61,7 @@ function articleThreeLidOne(yaml: string): string {
  * file verbatim. Indentation is normalized so it reads on its own.
  *
  * The whole block rather than just the action that carries the rule: without
- * the declarations around it, `$vermogen` and `$vermogensgrens_alleenstaand`
+ * the declarations around it, `$vermogen` and `$vermogensgrens_verzekerde`
  * arrive out of nowhere. With them, the panel shows the two things that make
  * this an interesting comparison -- the amounts from the statute appear
  * literally (141.896 euro as 14189600 eurocent), and the capital being tested
