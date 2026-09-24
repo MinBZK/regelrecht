@@ -31,14 +31,15 @@ export const HINTS = Object.freeze(['deck.hint.browse', 'deck.hint.close', 'deck
  * then shows up on screen instead of silently dropping a word.
  */
 export function hintSegments(sentence) {
+  const text = String(sentence);
   const segments = [];
   let last = 0;
-  for (const m of String(sentence).matchAll(/\{(\w+)\}/g)) {
+  for (const m of text.matchAll(/\{(\w+)\}/g)) {
     if (!(m[1] in HINT_KEYS)) continue;
-    if (m.index > last) segments.push({ text: sentence.slice(last, m.index) });
+    if (m.index > last) segments.push({ text: text.slice(last, m.index) });
     segments.push({ key: HINT_KEYS[m[1]] });
     last = m.index + m[0].length;
   }
-  if (last < sentence.length) segments.push({ text: sentence.slice(last) });
+  if (last < text.length) segments.push({ text: text.slice(last) });
   return segments;
 }
