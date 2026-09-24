@@ -1,3 +1,8 @@
+// Allowed crate-wide: test helpers outside a `#[test]` fn may unwrap, expect and
+// panic too, because that is how a failing fixture reports itself.
+// `allow-*-in-tests` in clippy.toml only reaches `#[test]` fns.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 use serde_json::json;
 
 use regelrecht_pipeline::document_convert::{
@@ -530,7 +535,7 @@ async fn test_finish_enrich_task_job_creates_task_and_result_blobs() {
         &db.pool,
         &job,
         dir.path(),
-        &[law_abs.clone()],
+        std::slice::from_ref(&law_abs),
         Some(json!({"coverage_score": 1.0})),
     )
     .await
@@ -605,9 +610,15 @@ async fn test_finish_enrich_task_job_creates_one_task_per_changed_article() {
         .unwrap();
     tokio::fs::write(&law_abs, proposal).await.unwrap();
 
-    finish_enrich_task_job(&db.pool, &job, dir.path(), &[law_abs.clone()], None)
-        .await
-        .unwrap();
+    finish_enrich_task_job(
+        &db.pool,
+        &job,
+        dir.path(),
+        std::slice::from_ref(&law_abs),
+        None,
+    )
+    .await
+    .unwrap();
 
     let open = tasks::list_open_tasks_for_account(&db.pool, account_id)
         .await

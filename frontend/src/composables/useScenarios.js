@@ -46,24 +46,41 @@ export function useScenarios(lawId, trajectRef = ref(null)) {
   // which pane the user pressed Save in.
 
   async function fetchScenarios() {
-    if (!lawId.value) return;
-
-    loading.value = true;
+    // Clear before the early return, not after: navigating from a failed law
+    // to "no law selected" would otherwise leave the banner up.
     error.value = null;
     // Drop any stale save error from a previously selected law so the
     // banner does not linger after navigating to a different law.
     saveError.value = null;
+    if (!lawId.value) return;
+
+    // Snapshot the scope before the await, like saveScenario does. The read
+    // failure is now rendered, so a slow 502 for law A must not paint law B's
+    // screen with A's error after the user navigated away.
+    const savedLawId = lawId.value;
+    const savedTrajectRef = trajectRef.value;
+    const stillInScope = () =>
+      lawId.value === savedLawId && trajectRef.value === savedTrajectRef;
+
+    loading.value = true;
 
     try {
-      const res = await fetch(scenariosListUrl(trajectRef.value, lawId.value));
-      if (!res.ok) {
-        // Deliberately raw fetch + silent branch: a law without scenarios
-        // is normal, not an error - every non-ok status maps to an empty
-        // list without surfacing anything.
-        scenarios.value = [];
-        return;
-      }
-      scenarios.value = await res.json();
+      // A law without scenarios is already a 200 with `[]` (the backend's
+      // `list_scenarios_in_scope` returns that for a missing directory), so no
+      // status needs to be read as "empty" here. Every non-ok status is a real
+      // failure: 404 means the law is not in this scope at all, 500 a broken
+      // traject scan, 502 an unreachable corpus backend. They used to become
+      // the same empty list, so "we could not read the scenarios" and "this
+      // law has none" were one screen.
+      const res = await apiFetch(scenariosListUrl(trajectRef.value, lawId.value), {
+        errorMessage: (status) =>
+          status === 404
+            ? `Deze wet is niet gevonden in deze scope (${status})`
+            : `Scenario's konden niet worden geladen: ${status}`,
+      });
+      const listed = await res.json();
+      if (!stillInScope()) return;
+      scenarios.value = listed;
 
       // Auto-select the first scenario that explicitly targets this law;
       // then prefer files whose targets are unknown (no parseable
@@ -78,6 +95,7 @@ export function useScenarios(lawId, trajectRef = ref(null)) {
         await selectScenario(preferred.filename);
       }
     } catch (e) {
+      if (!stillInScope()) return;
       error.value = e;
       scenarios.value = [];
     } finally {

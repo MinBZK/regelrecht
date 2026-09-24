@@ -23,7 +23,7 @@ const SCENARIO = `Feature: Typed input controls
     Given parameter "bsn" is "999993653"
     Given parameter "is_verzekerde" is "true"
     Given parameter "toetsingsinkomen" is 150000
-    When I evaluate "heeft_recht_op_zorgtoeslag" of "zorgtoeslagwet"
+    When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
     Then the execution succeeds
 `;
 
@@ -32,19 +32,25 @@ test.describe('Scenario parameter input controls', () => {
     await clearOpenTabsStorage(page);
 
     const fixture = loadFixture('zorgtoeslag-full.yaml');
+    // Key the mock on the fixture's own `$id`. The editor's `lawId` is
+    // `law.$id || routeParam`, so it flips to the document's id the moment the
+    // YAML lands; keying the mock on anything else makes every follow-up call
+    // ask for an id the mock does not serve. The real backend cannot produce
+    // that mismatch - `SourceMap` indexes laws by `$id`, so a fetch under
+    // another id is a 404, never a body with a different `$id`.
     const corpus = new Map([
-      ['zorgtoeslagwet', { content: fixture, path: '', pubDate: '2024-12-20' }],
+      ['wet_op_de_zorgtoeslag', { content: fixture, path: '', pubDate: '2024-12-20' }],
     ]);
     await mockCorpusApi(
       page,
       corpus,
-      { id: 'zorgtoeslagwet', scenarioFilename: 'typed.feature' },
+      { id: 'wet_op_de_zorgtoeslag', scenarioFilename: 'typed.feature' },
       SCENARIO,
     );
   });
 
   test('renders a switch for boolean, number-field for amount, text-field for string', async ({ page }) => {
-    await gotoEditor(page, 'zorgtoeslagwet', '2');
+    await gotoEditor(page, 'wet_op_de_zorgtoeslag', '2');
 
     // Open the scenario edit sheet via the card's "Bewerk" button.
     const edit = page.getByRole('button', { name: 'Bewerk' }).first();

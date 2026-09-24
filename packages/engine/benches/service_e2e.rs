@@ -1,6 +1,12 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+// Allowed crate-wide: benchmark setup outside a `#[test]` fn may unwrap, expect and
+// panic too, because that is how a failing fixture reports itself.
+// `allow-*-in-tests` in clippy.toml only reaches `#[test]` fns.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
+use criterion::{criterion_group, criterion_main, Criterion};
 use regelrecht_engine::{LawExecutionService, Value};
 use std::collections::BTreeMap;
+use std::hint::black_box;
 use std::path::PathBuf;
 
 fn corpus_path() -> PathBuf {

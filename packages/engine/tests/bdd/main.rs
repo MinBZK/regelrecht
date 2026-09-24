@@ -37,6 +37,7 @@
 
 #[path = "../common/mod.rs"]
 mod common;
+mod discovery;
 mod dispatch;
 mod helpers;
 mod world;
@@ -55,8 +56,8 @@ use std::path::{Path, PathBuf};
 
 use cucumber::feature::Ext as _;
 use cucumber::{cli, parser, World as _};
+use discovery::Bucket;
 use futures::stream;
-use walkdir::WalkDir;
 
 /// Parser that consumes an explicit, pre-collected list of feature file paths
 /// (the two buckets) instead of recursively walking a single root. This keeps
@@ -81,22 +82,9 @@ impl parser::Parser<Vec<PathBuf>> for ExplicitPaths {
     }
 }
 
-/// Which bucket(s) the run covers, read from `BDD_BUCKET`.
-///
-/// Bucket A (`corpus`) runs the scenarios that live next to the laws of a
-/// corpus: `<corpus>/**/scenarios/*.feature`, where `<corpus>` is
-/// `REGULATION_PATH` when set and `corpus/regulation` otherwise. The engine
-/// loads its laws from the same variable, so the scenarios and the laws they
-/// test always come from one corpus (`just bdd-demo` points both at
-/// `corpus/demo/regulation`).
-#[derive(Clone, Copy, PartialEq)]
-enum Bucket {
-    All,
-    Corpus,
-    Conformance,
-}
-
 impl Bucket {
+    /// `BDD_BUCKET`: `all` (default), `corpus` (bucket A) or `conformance`
+    /// (bucket B).
     fn from_env() -> Self {
         match std::env::var("BDD_BUCKET").as_deref().map(str::trim) {
             Ok("") | Err(_) | Ok("all") => Self::All,
@@ -105,64 +93,16 @@ impl Bucket {
             Ok(other) => panic!("BDD_BUCKET={other}: expected all, corpus or conformance"),
         }
     }
-
-    fn covers_corpus(self) -> bool {
-        matches!(self, Self::All | Self::Corpus)
-    }
-
-    fn covers_conformance(self) -> bool {
-        matches!(self, Self::All | Self::Conformance)
-    }
-
-    fn label(self) -> &'static str {
-        match self {
-            Self::All => "<corpus>/**/scenarios or bdd/conformance",
-            Self::Corpus => "<corpus>/**/scenarios",
-            Self::Conformance => "bdd/conformance",
-        }
-    }
 }
 
 /// The corpus whose scenarios bucket A runs: `REGULATION_PATH` when set (the
 /// same variable the engine loads its laws from), else the fixture corpus.
+/// `just bdd-demo` points it at `corpus/demo/regulation`.
 fn corpus_root(root: &Path) -> PathBuf {
     match std::env::var("REGULATION_PATH") {
         Ok(p) if !p.trim().is_empty() => PathBuf::from(p),
         _ => root.join("corpus/regulation"),
     }
-}
-
-/// Collect the feature files of the selected bucket(s):
-/// - bucket A: any `*.feature` under a `scenarios/` directory in the corpus, and
-/// - bucket B: `bdd/conformance/*.feature`.
-fn collect_feature_paths(root: &Path, bucket: Bucket) -> Vec<PathBuf> {
-    let mut features: Vec<PathBuf> = Vec::new();
-
-    if bucket.covers_corpus() {
-        for entry in WalkDir::new(corpus_root(root)).into_iter().flatten() {
-            let p = entry.path();
-            let is_feature = p.extension().map(|e| e == "feature").unwrap_or(false);
-            let under_scenarios = p.components().any(|c| c.as_os_str() == "scenarios");
-            if is_feature && under_scenarios {
-                features.push(p.to_path_buf());
-            }
-        }
-    }
-
-    if bucket.covers_conformance() {
-        for entry in WalkDir::new(root.join("bdd/conformance"))
-            .into_iter()
-            .flatten()
-        {
-            let p = entry.path();
-            if p.extension().map(|e| e == "feature").unwrap_or(false) {
-                features.push(p.to_path_buf());
-            }
-        }
-    }
-
-    features.sort();
-    features
 }
 
 #[tokio::main]
@@ -182,21 +122,24 @@ async fn main() {
         .to_path_buf();
 
     let bucket = Bucket::from_env();
-    let features = collect_feature_paths(&root, bucket);
-    assert!(
-        !features.is_empty(),
-        "No feature files found under {} ({})",
-        root.display(),
-        bucket.label()
-    );
+    let features = match discovery::collect_feature_paths(&root, &corpus_root(&root), bucket) {
+        Ok(features) => features,
+        Err(e) => panic!("BDD feature discovery failed under {}: {e}", root.display()),
+    };
 
     // Run cucumber over both buckets. `@wip` scenarios document genuine,
     // NB-annotated engine gaps (they assert the desired-but-not-yet-produced
     // outcome) — skip them so they neither run nor fail the suite.
     // `filter_run_and_exit` exits non-zero on test failures.
+    //
+    // `fail_on_skipped` covers the other way a scenario stops testing: cucumber
+    // counts a step without a matching definition as *skipped*, and
+    // `execution_has_failed()` only looks at failed steps. Without it a reworded
+    // `Then` passes green while asserting nothing.
     world::RegelrechtWorld::cucumber::<&std::path::Path>()
         .with_parser::<ExplicitPaths, Vec<PathBuf>>(ExplicitPaths)
         .max_concurrent_scenarios(1) // Run scenarios sequentially for predictable state
+        .fail_on_skipped()
         .with_default_cli()
         .filter_run_and_exit(features, |feature, _rule, scenario| {
             let is_wip = |tags: &[String]| tags.iter().any(|t| t == "wip");

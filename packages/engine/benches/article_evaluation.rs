@@ -1,6 +1,12 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+// Allowed crate-wide: benchmark setup outside a `#[test]` fn may unwrap, expect and
+// panic too, because that is how a failing fixture reports itself.
+// `allow-*-in-tests` in clippy.toml only reaches `#[test]` fns.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
+use criterion::{criterion_group, criterion_main, Criterion};
 use regelrecht_engine::{ArticleBasedLaw, ArticleEngine, LawLoad, Value};
 use std::collections::BTreeMap;
+use std::hint::black_box;
 
 const SIMPLE_LAW_YAML: &str = r#"
 $id: bench_simple

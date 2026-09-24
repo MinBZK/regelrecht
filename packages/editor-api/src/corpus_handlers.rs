@@ -4715,6 +4715,9 @@ mod tests {
     /// signature assertion rather than a runtime probe — the runtime
     /// path is "session in → context out", with no body in between.
     #[test]
+    // The spelled-out fn-pointer types are the assertion: an alias would hide
+    // exactly the parameter list this test exists to pin.
+    #[allow(clippy::type_complexity)]
     fn save_handler_signatures_take_raw_body_no_author_field() {
         // Compile-time assertions: the function pointer types include
         // `body: String` as the last positional argument. If any handler

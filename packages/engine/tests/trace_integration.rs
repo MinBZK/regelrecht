@@ -3,6 +3,11 @@
 //! Verifies that the trace output matches the expected box-drawing format
 //! for the zorgtoeslag (healthcare allowance) scenario.
 
+// Allowed crate-wide: test helpers outside a `#[test]` fn may unwrap, expect and
+// panic too, because that is how a failing fixture reports itself.
+// `allow-*-in-tests` in clippy.toml only reaches `#[test]` fns.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 mod common;
 
 use regelrecht_engine::{LawExecutionService, PathNodeType, Value};

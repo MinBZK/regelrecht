@@ -45,6 +45,20 @@ local storage under `~/.cache/regelrecht/`, which is usually the biggest
 build-time win. `sccache` is installed but left off locally (it disables
 incremental compilation, which hurts the hot-reload loop); CI uses both.
 
+Sharing that target dir has a cost when two worktrees build at once. Cargo
+locks a target dir exclusively for the length of a build, so the second one
+waits: `just validate` measured 2 seconds alone and 38 seconds next to a
+45-second `just lint` in another worktree. Sharing still wins by a wide margin
+when one build runs at a time (a first `just build-check` in a fresh worktree
+took 1 second shared and 170 seconds with its own target dir). A worktree about
+to run long builds can step out of the queue with `just target-isolated`, and
+`just target-shared` puts it back. The measurements are at the top of
+`script/target-dir.sh`.
+
+sccache does not give you both. It hashes the working directory, so two
+worktrees on different paths share no Rust compilation at all: a cold
+`just build-check` with a warm cache gave 480 misses and 0 hits.
+
 mold is the configured linker on x86_64 Linux (`packages/.cargo/config.toml`),
 so builds there fail to link without it. On that platform `just dev`, and
 `just dev-frontend` whenever it starts a Rust service, refuse to start when mold

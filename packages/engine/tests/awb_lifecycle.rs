@@ -11,6 +11,11 @@
 //! haar niet kent, stond nergens vast. Dat is nu juist de eigenschap waar
 //! RFC-007 op rust.
 
+// Allowed crate-wide: test helpers outside a `#[test]` fn may unwrap, expect and
+// panic too, because that is how a failing fixture reports itself.
+// `allow-*-in-tests` in clippy.toml only reaches `#[test]` fns.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 mod common;
 
 use regelrecht_engine::{ExecutionOutcome, LawExecutionService, StageState, Value};

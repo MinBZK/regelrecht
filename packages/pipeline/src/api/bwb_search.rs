@@ -14,7 +14,7 @@ pub struct SearchParams {
     pub q: String,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, Debug)]
 pub struct BwbSearchResult {
     pub bwb_id: String,
     pub title: String,
@@ -44,6 +44,16 @@ pub async fn search_bwb_by_name(
     client: &reqwest::Client,
     q: &str,
 ) -> Result<Vec<BwbSearchResult>, String> {
+    search_bwb_at(SRU_BASE, client, q).await
+}
+
+/// `search_bwb_by_name` against an explicit SRU base URL, so a test can point it
+/// at a local server.
+async fn search_bwb_at(
+    base: &str,
+    client: &reqwest::Client,
+    q: &str,
+) -> Result<Vec<BwbSearchResult>, String> {
     let q = q.trim();
     if q.len() < 3 {
         return Ok(vec![]);
@@ -56,7 +66,7 @@ pub async fn search_bwb_by_name(
     let cql = format!("overheidbwb.titel any \"{sanitized}\"");
 
     let url = url::Url::parse_with_params(
-        SRU_BASE,
+        base,
         &[
             ("operation", "searchRetrieve"),
             ("version", "1.2"),
@@ -72,6 +82,15 @@ pub async fn search_bwb_by_name(
         .send()
         .await
         .map_err(|e| format!("BWB search failed: {e}"))?;
+
+    // Zonder deze poort leest elk niet-XML antwoord — een 429 bij throttling,
+    // een 503 bij onderhoud — als een lege trefferlijst, en dus als "die wet
+    // bestaat niet". De enrich-worker zet die uitkomst om in Unresolved en gaat
+    // door: stil onvolledige verrijking.
+    let status = response.status();
+    if !status.is_success() {
+        return Err(format!("BWB search returned HTTP {status}"));
+    }
 
     let xml_text = response
         .text()
@@ -126,4 +145,55 @@ fn parse_sru_response(xml: &str) -> Result<Vec<BwbSearchResult>, String> {
     }
 
     Ok(results)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    async fn search_against(status: u16, body: &str) -> Result<Vec<BwbSearchResult>, String> {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(status).set_body_string(body))
+            .mount(&server)
+            .await;
+
+        search_bwb_at(&server.uri(), &reqwest::Client::new(), "zorgtoeslag").await
+    }
+
+    const ONE_HIT: &str = r#"<srw:searchRetrieveResponse xmlns:srw="http://www.loc.gov/zing/srw/">
+        <owmskern><identifier>BWBR0018451</identifier><title>Wet op de zorgtoeslag</title>
+        <type>wet</type></owmskern></srw:searchRetrieveResponse>"#;
+
+    #[tokio::test]
+    async fn a_hit_is_returned() {
+        let results = search_against(200, ONE_HIT).await.expect("200 with XML");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].bwb_id, "BWBR0018451");
+    }
+
+    #[tokio::test]
+    async fn throttling_is_an_error_and_not_an_empty_result() {
+        let err = search_against(429, "rate limited")
+            .await
+            .expect_err("429 must not read as 'no such law'");
+        assert!(err.contains("429"), "message loses the status: {err}");
+    }
+
+    #[tokio::test]
+    async fn a_server_error_is_an_error() {
+        let err = search_against(503, "service unavailable")
+            .await
+            .expect_err("503 must not read as 'no such law'");
+        assert!(err.contains("503"), "message loses the status: {err}");
+    }
+
+    #[tokio::test]
+    async fn an_empty_result_set_stays_empty() {
+        let empty = r#"<srw:searchRetrieveResponse xmlns:srw="http://www.loc.gov/zing/srw/"/>"#;
+        let results = search_against(200, empty).await.expect("200 with XML");
+        assert!(results.is_empty());
+    }
 }

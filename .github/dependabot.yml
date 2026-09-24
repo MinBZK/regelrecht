@@ -26,16 +26,6 @@ updates:
       - dbot:deps
       - dbot:cargo
     groups:
-      opentelemetry:
-        patterns:
-          - opentelemetry
-          - opentelemetry-*
-          - opentelemetry_*
-          - tracing-opentelemetry
-        update-types:
-          - minor
-          - patch
-          - major
       rust-minor-patch:
         update-types:
           - minor
@@ -130,13 +120,6 @@ updates:
       - dbot:deps
       - dbot:docker
     ignore:
-      - dependency-name: node
-        versions:
-          - '23'
-          - '25'
-          - '27'
-          - '29'
-          - '31'
       # The Rust image version must match rust-toolchain.toml (source of
       # truth); bump it manually together with the toolchain.
       - dependency-name: rust

@@ -64,7 +64,8 @@ pub async fn replace_untranslatables(
     Ok(())
 }
 
-#[cfg(all(test, feature = "test-utils"))]
+#[cfg(test)]
+#[cfg(feature = "test-utils")]
 mod tests {
     use super::*;
     use crate::job_queue::{create_job, CreateJobRequest};
