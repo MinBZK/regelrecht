@@ -517,9 +517,10 @@ pub enum SessionReuse {
     /// Every call is its own cold process — the behaviour before this existed,
     /// and the way back if reuse turns out to cost more than it saves.
     Off,
-    /// The translation pass and the schema gate share a session; the checks
-    /// and marking gates stay cold. A schema error is a fact about the file
-    /// and repairing it asks for no fresh judgement, while those two gates ask
+    /// The translation pass and the two hard gates (schema and binding) share
+    /// a session; the checks and marking gates stay cold. A schema error or a
+    /// reference to nothing is a fact about the file and repairing it asks for
+    /// no fresh judgement, while those two gates ask
     /// the agent to look again at a choice it made — which is the one thing an
     /// agent that remembers making it is worst at.
     Repair,
@@ -646,7 +647,9 @@ impl AgentSession {
             (SessionReuse::Off, _) => false,
             (_, Pass::Translate) => true,
             (SessionReuse::Window, Pass::Feedback(_)) => true,
-            (SessionReuse::Repair, Pass::Feedback(f)) => f.gate == Gate::Schema,
+            (SessionReuse::Repair, Pass::Feedback(f)) => {
+                matches!(f.gate, Gate::Schema | Gate::Binding)
+            }
         };
         if !shareable {
             return SessionAction::Cold;
@@ -1286,6 +1289,18 @@ pub enum Gate {
     /// leads [`crate::enrich_v2::reconcile`] refuses to resolve on its own,
     /// and the pass that answers them may connect and nothing else.
     Reconcile,
+    /// A fact about the whole law once its last window has been walked: every
+    /// intra-law reference resolves ([`crate::enrich_v2::checks::dangling_bindings`]).
+    /// Hard like [`Gate::Schema`], because a marking is no answer to "this
+    /// variable does not exist": the law is schema-valid and fails the moment
+    /// it runs.
+    ///
+    /// Not a window gate, for the reason [`Gate::Reconcile`] is not one. A
+    /// window may read an output a later window has yet to write, so the same
+    /// finding under [`Gate::Checks`] is a measurement taken too early and
+    /// stays soft there. Only after the closing pass has connected what it
+    /// could is an unresolved reference a defect of the law.
+    Binding,
 }
 
 impl Gate {
@@ -1302,19 +1317,20 @@ impl Gate {
             Gate::Checks => "checks",
             Gate::Marking => "marking",
             Gate::Reconcile => "reconcile",
+            Gate::Binding => "binding",
         }
     }
 
     /// The gates in the order the worker runs them for one window. The
-    /// closing gate is not among them: it runs once, over the whole law,
+    /// closing gates are not among them: they run once, over the whole law,
     /// after the last window.
     pub const ALL: [Gate; 3] = [Gate::Schema, Gate::Checks, Gate::Marking];
 }
 
 /// The most agent calls one enrichment run can make, end to end.
 ///
-/// One translation pass, one feedback round per gate, the closing pass, and
-/// the final schema gate. Used to size the per-call timeout against the job
+/// One translation pass, one feedback round per gate, the closing pass, the
+/// final binding gate and the final schema gate. Used to size the per-call timeout against the job
 /// timeout: bounding one call against the whole job budget assumes a run is
 /// one call, which it stopped being when the gates gained a feedback round.
 /// With the defaults that assumption let a run ask for six times 600 s under
@@ -1323,7 +1339,7 @@ impl Gate {
 ///
 /// A ceiling, not a reservation: a clean gate spends no round at all, and
 /// most runs make far fewer calls than this.
-pub const MAX_AGENT_CALLS_PER_RUN: u32 = 1 + Gate::ALL.len() as u32 + 1 + 1;
+pub const MAX_AGENT_CALLS_PER_RUN: u32 = 1 + Gate::ALL.len() as u32 + 1 + 1 + 1;
 
 /// How many feedback rounds each gate may run.
 ///
@@ -1338,6 +1354,7 @@ pub struct FeedbackRounds {
     pub checks: usize,
     pub marking: usize,
     pub reconcile: usize,
+    pub binding: usize,
 }
 
 impl Default for FeedbackRounds {
@@ -1355,6 +1372,7 @@ impl FeedbackRounds {
             checks: rounds,
             marking: rounds,
             reconcile: rounds,
+            binding: rounds,
         }
     }
 
@@ -1366,6 +1384,7 @@ impl FeedbackRounds {
             Gate::Checks => self.checks,
             Gate::Marking => self.marking,
             Gate::Reconcile => self.reconcile,
+            Gate::Binding => self.binding,
         }
     }
 
@@ -1393,6 +1412,7 @@ impl FeedbackRounds {
                         "checks" => rounds.checks = n,
                         "marking" => rounds.marking = n,
                         "reconcile" => rounds.reconcile = n,
+                        "binding" => rounds.binding = n,
                         other => return Err(format!("unknown gate: {other}")),
                     }
                 }
@@ -2586,6 +2606,26 @@ fn build_feedback_prompt(yaml_path: &str, feedback: &Feedback, vocabulary: Vocab
              - touch an entry no finding names."
                 .to_string(),
         ),
+        // Every window has been walked and the closing pass has connected
+        // what it could, so what is left here resolves to nothing at all.
+        (Gate::Binding, _) => (
+            "is finished, and still reads values that nothing in this law provides",
+            "Every entry of this law has been translated and the closing pass has run. Each \
+             finding below is a reference the engine will fail on the moment the law is \
+             executed: a `$name` that no parameter, input, output, definition or open term of \
+             this law declares, or a `source` without `regulation` that names an output no \
+             entry of this law produces.\n\n\
+             **Make each reference resolve.** Usually the name is a slip: correct it to the \
+             name this law does declare. Where the value really is missing, declare it in the \
+             entry the finding names: a `parameter` when the caller supplies it, an `input` \
+             with a `source` when another law or an external register supplies it. A `source` \
+             to an output of this law must name an output that exists; when the value comes \
+             from another law, add the `regulation`.\n\n\
+             **A marking or an open term is not an answer here.** Neither makes a name exist, \
+             and the law stays unable to run.\n\n\
+             Touch only the entries the findings name, and change nothing else in them."
+                .to_string(),
+        ),
         (Gate::Schema, _) => (
             "does not validate against the regelrecht JSON schema",
             "Fix it in place so it validates. Change as little as possible.".to_string(),
@@ -3542,8 +3582,14 @@ async fn run_feedback_rounds(
         return Ok(progress);
     }
 
+    // The hard gates fail the job, and a failed job commits nothing: the
+    // worker only pushes on `Ok`.
+    let what = match gate {
+        Gate::Binding => "reference(s) to nothing in this law",
+        _ => "schema error(s)",
+    };
     Err(PipelineError::Enrich(format!(
-        "enriched law still has {} schema error(s) after {} feedback round(s): {}",
+        "enriched law still has {} {what} after {} feedback round(s): {}",
         findings.len(),
         progress.rounds.len(),
         findings.join("; ")
@@ -3964,6 +4010,41 @@ fn schema_error_article(raw: &str, error: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+/// The entries whose content differs between two versions of a law, by
+/// number, including entries only the second one has. Empty when either
+/// version does not parse: the caller then learns nothing it can narrow on,
+/// and the schema gate that reads the file will say why.
+fn changed_entries(before: &str, after: &str) -> Vec<String> {
+    fn entries(raw: &str) -> Option<Vec<(String, serde_yaml_ng::Value)>> {
+        let doc: serde_yaml_ng::Value = serde_yaml_ng::from_str(raw).ok()?;
+        Some(
+            doc.get("articles")?
+                .as_sequence()?
+                .iter()
+                .filter_map(|article| {
+                    let number = match article.get("number")? {
+                        serde_yaml_ng::Value::String(s) => s.clone(),
+                        other => serde_yaml_ng::to_string(other).ok()?.trim().to_string(),
+                    };
+                    Some((number, article.clone()))
+                })
+                .collect(),
+        )
+    }
+    let (Some(before), Some(after)) = (entries(before), entries(after)) else {
+        return Vec::new();
+    };
+    after
+        .into_iter()
+        .filter(|(number, entry)| {
+            !before
+                .iter()
+                .any(|(was_number, was)| was_number == number && was == entry)
+        })
+        .map(|(number, _)| number)
+        .collect()
+}
+
 fn in_window(window: Option<&[String]>, article: Option<&str>) -> bool {
     let (Some(window), Some(article)) = (window, article) else {
         return true;
@@ -4005,6 +4086,24 @@ async fn evaluate_gate(
                     .leads
                     .iter()
                     .map(crate::enrich_v2::reconcile::Lead::describe)
+                    .collect();
+            }
+            Err(e) => {
+                reading.answerable = vec![crate::enrich_v2::checks::parse_diagnosis(&raw, &e)];
+            }
+        },
+        // Whole-law for the same reason as the closing pass it follows: the
+        // reference and what it resolves to may sit in different windows.
+        Gate::Binding => match serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&raw) {
+            Ok(doc) => {
+                reading.answerable = crate::enrich_v2::checks::dangling_bindings(&doc)
+                    .into_iter()
+                    .map(|finding| match &finding.article {
+                        Some(number) => {
+                            format!("[{}] art. {number}: {}", finding.check, finding.detail)
+                        }
+                        None => format!("[{}] {}", finding.check, finding.detail),
+                    })
                     .collect();
             }
             Err(e) => {
@@ -4413,6 +4512,69 @@ pub async fn execute_enrich_with_runner(
     }
     let closing_pass_wrote = file_digest(&yaml_abs).await != digest_before_closing;
 
+    // The binding gate, over the whole law, once the walk is over and the
+    // closing pass has connected what it could (#1036).
+    //
+    // Under the checks gate a reference to nothing is soft, and has to be: a
+    // window may read an output that a later window has yet to write. Once
+    // the last window is behind us that excuse is gone, and what still
+    // resolves to nothing is a law that is schema-valid and fails the moment
+    // it runs. So it gets a repair round and then fails the job, exactly like
+    // the schema gate, and a failed job commits nothing.
+    //
+    // Not conditional on this run having written: the earlier windows wrote
+    // and committed, and this is the run that declares the law finished.
+    //
+    // What the repair writes is folded into the window of the final schema
+    // gate below. The finding may sit in an entry of an earlier window, and a
+    // schema gate that looked only at this run's window would let the repair
+    // break the file where nobody looks.
+    //
+    // "Over" means every entry has been walked, which is stricter than the
+    // condition the closing pass runs under. `--steps reconcile` runs that
+    // pass wherever the cursor stands, and on a law still being walked a
+    // forward reference is not yet a defect. Such a run only gets the gate
+    // when the cursor it leaves standing is at the end of the document; a
+    // layer walk counts layers rather than entries, so there it is left to
+    // the run that walks the last layer.
+    let walk_finished = if config.steps.window || targeted {
+        law_complete
+    } else if chunk_window.is_none() {
+        true
+    } else if config.window_mode == WindowMode::Document {
+        next_cursor >= articles_before
+    } else {
+        false
+    };
+    let mut schema_final_window = gate_window.clone();
+    let mut binding_pass_wrote = false;
+    if walk_finished {
+        let before_binding = tokio::fs::read_to_string(&yaml_abs).await?;
+        let mut binding = run_feedback_rounds(
+            Gate::Binding,
+            &yaml_abs,
+            repo_path,
+            payload,
+            None,
+            config,
+            runner,
+        )
+        .await?;
+        binding.gate = "binding-final".to_string();
+        feedback.push(binding);
+        let after_binding = tokio::fs::read_to_string(&yaml_abs).await?;
+        if after_binding != before_binding {
+            binding_pass_wrote = true;
+            if let Some(window) = schema_final_window.as_mut() {
+                for number in changed_entries(&before_binding, &after_binding) {
+                    if !window.contains(&number) {
+                        window.push(number);
+                    }
+                }
+            }
+        }
+    }
+
     // The hard gate again, after every writer of the run and not just after
     // the two soft gates.
     //
@@ -4432,13 +4594,13 @@ pub async fn execute_enrich_with_runner(
     // the model, so a schema-invalid law could be committed off a run that
     // reported success. The gate belongs after the last writer, which is what
     // it now is.
-    if file_changed_this_run || closing_pass_wrote {
+    if file_changed_this_run || closing_pass_wrote || binding_pass_wrote {
         let mut closing = run_feedback_rounds(
             Gate::Schema,
             &yaml_abs,
             repo_path,
             payload,
-            gate_window.as_deref(),
+            schema_final_window.as_deref(),
             config,
             runner,
         )
@@ -4447,6 +4609,22 @@ pub async fn execute_enrich_with_runner(
         // which of the two found what.
         closing.gate = "schema-final".to_string();
         feedback.push(closing);
+    }
+
+    // The schema repair above is the last writer, and it may rename what the
+    // binding gate just saw resolve. No agent round for that: the check is
+    // deterministic and costs one read, and a law that fails it now fails
+    // the job rather than landing.
+    if walk_finished {
+        let reading = evaluate_gate(Gate::Binding, &yaml_abs, repo_path, None).await?;
+        if !reading.answerable.is_empty() {
+            return Err(PipelineError::Enrich(format!(
+                "enriched law still has {} reference(s) to nothing in this law after the \
+                 final schema repair: {}",
+                reading.answerable.len(),
+                reading.answerable.join("; ")
+            )));
+        }
     }
 
     // Count articles with machine_readable after enrichment.
@@ -6954,12 +7132,13 @@ articles:
             FeedbackRounds::uniform(2)
         );
         assert_eq!(
-            FeedbackRounds::parse("checks=2,marking=3").unwrap(),
+            FeedbackRounds::parse("checks=2,marking=3,binding=4").unwrap(),
             FeedbackRounds {
                 schema: 1,
                 checks: 2,
                 marking: 3,
-                reconcile: 1
+                reconcile: 1,
+                binding: 4,
             }
         );
         // A bare number sets the floor, a named gate overrides it — order
@@ -6970,7 +7149,8 @@ articles:
                 schema: 1,
                 checks: 2,
                 marking: 2,
-                reconcile: 2
+                reconcile: 2,
+                binding: 2,
             }
         );
         assert!(FeedbackRounds::parse("poort=2").is_err());
@@ -7159,6 +7339,7 @@ articles:
                         Gate::Checks => "checks",
                         Gate::Marking => "marking",
                         Gate::Reconcile => "reconcile",
+                        Gate::Binding => "binding",
                     },
                 });
                 if !matches!(payload.pass, Pass::Translate) {
@@ -8622,11 +8803,20 @@ articles:
         // The last window brings the closing pass with it, and the hard gate
         // has to come after it. It used to come before: the reconcile agent
         // then wrote behind the last schema gate, with only `load_law` left,
-        // and the model is on documented points wider than the schema.
+        // and the model is on documented points wider than the schema. The
+        // binding gate sits between the two: after the pass that connects,
+        // before the gate that has the last word on the file (#1036).
         let gates: Vec<&str> = result.feedback.iter().map(|g| g.gate.as_str()).collect();
         assert_eq!(
             gates,
-            vec!["schema", "checks", "marking", "reconcile", "schema-final"],
+            vec![
+                "schema",
+                "checks",
+                "marking",
+                "reconcile",
+                "binding-final",
+                "schema-final"
+            ],
             "de harde poort staat achter elke schrijver, ook achter de afrondende pass"
         );
 
@@ -8638,6 +8828,364 @@ articles:
                 (vec!["3".to_string(), "4".to_string()], Some(true)),
             ]
         );
+    }
+
+    /// Entry 1 of [`four_article_law`], reading the standaardpremie from an
+    /// output of this same law. Entry 3 produces it.
+    const READS_OWN_OUTPUT: &str = r"    machine_readable:
+      endpoint: hoogte
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+            description: Het burgerservicenummer.
+        input:
+          - name: premie
+            type: amount
+            description: De standaardpremie.
+            source:
+              output: standaardpremie
+              parameters:
+                bsn: $bsn
+        output:
+          - name: hoogte
+            type: amount
+            description: De hoogte.
+        actions:
+          - output: hoogte
+            value: $premie
+            legal_basis:
+              law: Testwet
+              bwb_id: BWBR0000001
+              article: '1'
+              explanation: Het artikel stelt de hoogte gelijk aan de premie.
+";
+
+    /// Entry 3 of [`four_article_law`]: what entry 1 reads.
+    const PRODUCES_PREMIUM: &str = r"    machine_readable:
+      endpoint: standaardpremie
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+            description: Het burgerservicenummer.
+        output:
+          - name: standaardpremie
+            type: amount
+            description: De standaardpremie.
+        actions:
+          - output: standaardpremie
+            value: 1000
+            legal_basis:
+              law: Testwet
+              bwb_id: BWBR0000001
+              article: '3'
+              explanation: Het artikel stelt de standaardpremie vast.
+";
+
+    /// A translator that writes a fixed model per entry of its window, and a
+    /// fixed answer to the binding gate, recording which passes it was given.
+    struct ScriptedRunner {
+        models: Vec<(&'static str, String)>,
+        /// Text replacement applied when the binding gate asks for a repair.
+        binding_fix: Option<(&'static str, &'static str)>,
+        /// Text replacements applied when the schema gate asks for a repair.
+        schema_fix: Vec<(&'static str, &'static str)>,
+        passes: std::sync::Mutex<Vec<String>>,
+    }
+
+    impl ScriptedRunner {
+        fn new(models: Vec<(&'static str, String)>) -> Self {
+            Self {
+                models,
+                binding_fix: None,
+                schema_fix: Vec::new(),
+                passes: std::sync::Mutex::new(Vec::new()),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl LlmRunner for ScriptedRunner {
+        async fn run(
+            &self,
+            payload: &EnrichPayload,
+            yaml_abs: &Path,
+            _repo_path: &Path,
+            _config: &EnrichConfig,
+        ) -> Result<()> {
+            let mut text = tokio::fs::read_to_string(yaml_abs).await?;
+            match &payload.pass {
+                Pass::Translate => {
+                    self.passes.lock().unwrap().push("translate".into());
+                    let window = payload
+                        .chunk_articles
+                        .clone()
+                        .unwrap_or_else(|| ["1", "2", "3", "4"].map(String::from).to_vec());
+                    for number in window {
+                        let model = self
+                            .models
+                            .iter()
+                            .find(|(n, _)| *n == number)
+                            .map(|(_, m)| m.clone())
+                            .unwrap_or_else(|| "    machine_readable: {}\n".to_string());
+                        let anchor = format!("#Artikel{number}\n");
+                        text = text.replacen(&anchor, &format!("{anchor}{model}"), 1);
+                    }
+                }
+                Pass::Feedback(f) => {
+                    self.passes.lock().unwrap().push(f.gate.label().into());
+                    if let (Gate::Binding, Some((from, to))) = (f.gate, self.binding_fix) {
+                        text = text.replace(from, to);
+                    }
+                    if f.gate == Gate::Schema {
+                        for (from, to) in &self.schema_fix {
+                            text = text.replace(from, to);
+                        }
+                    }
+                }
+            }
+            tokio::fs::write(yaml_abs, text).await?;
+            Ok(())
+        }
+    }
+
+    /// The forward reference the reconcile gate exists for, end to end: the
+    /// first window reads an output that only the second window writes. That
+    /// is soft while the walk is under way, and resolved once it is over, so
+    /// neither run fails and the binding gate asks nobody anything (#1036).
+    #[tokio::test]
+    async fn a_reference_a_later_window_resolves_does_not_fail_the_walk() {
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
+        tokio::fs::write(dir.path().join(yaml_path), four_article_law())
+            .await
+            .unwrap();
+        let mut config = test_config(LlmProvider::OpenCode {
+            path: "fake".into(),
+            model: None,
+        });
+        config.max_articles_per_run = 2;
+        let payload = chunk_test_payload(yaml_path);
+        let runner = ScriptedRunner::new(vec![
+            ("1", READS_OWN_OUTPUT.to_string()),
+            ("3", PRODUCES_PREMIUM.to_string()),
+        ]);
+
+        // Window 1: entry 1 reads an output nobody produces yet.
+        let (first, _) = execute_enrich_with_runner(&payload, dir.path(), &config, "", &runner)
+            .await
+            .expect("a forward reference inside the walk is not fatal");
+        assert!(!first.law_complete);
+        let doc: serde_yaml_ng::Value = serde_yaml_ng::from_str(
+            &tokio::fs::read_to_string(dir.path().join(yaml_path))
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            crate::enrich_v2::checks::dangling_bindings(&doc).len(),
+            1,
+            "na het eerste venster wijst entry 1 nog naar niets"
+        );
+        assert!(
+            !first.feedback.iter().any(|g| g.gate == "binding-final"),
+            "een venster halverwege de wandeling krijgt de bindingspoort niet"
+        );
+
+        // Window 2: entry 3 produces it, and the law is complete.
+        let (second, _) = execute_enrich_with_runner(&payload, dir.path(), &config, "", &runner)
+            .await
+            .expect("the reference resolves once the walk is over");
+        assert!(second.law_complete);
+        let binding = second
+            .feedback
+            .iter()
+            .find(|g| g.gate == "binding-final")
+            .expect("the binding gate runs after the last window");
+        assert_eq!(binding.findings_initial, 0);
+        assert!(binding.rounds.is_empty());
+        assert!(!runner.passes.lock().unwrap().iter().any(|p| p == "binding"));
+    }
+
+    /// The defect itself: a law that is schema-valid and reads a name nothing
+    /// defines. It used to be recorded as a soft finding and committed; now
+    /// the agent gets a repair round, and when that does not help the job
+    /// fails, which means the worker commits nothing (#1036).
+    #[tokio::test]
+    async fn a_reference_to_nothing_fails_the_job_after_a_repair_round() {
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
+        tokio::fs::write(dir.path().join(yaml_path), four_article_law())
+            .await
+            .unwrap();
+        let config = test_config(LlmProvider::OpenCode {
+            path: "fake".into(),
+            model: None,
+        });
+        let payload = chunk_test_payload(yaml_path);
+        let runner = ScriptedRunner::new(vec![
+            (
+                "1",
+                READS_OWN_OUTPUT.replace("value: $premie", "value: $onbekend"),
+            ),
+            ("3", PRODUCES_PREMIUM.to_string()),
+        ]);
+
+        let err = execute_enrich_with_runner(&payload, dir.path(), &config, "", &runner)
+            .await
+            .expect_err("a law that cannot run must not be committed");
+        let message = err.to_string();
+        assert!(
+            message.contains("reference(s) to nothing in this law after 1 feedback round(s)")
+                && message.contains("$onbekend"),
+            "{message}"
+        );
+        // Retryable like the schema gate, not an exhaust-in-one-step failure.
+        assert!(!message.to_ascii_lowercase().contains("yaml error"));
+        assert!(!message.contains("no machine_readable sections"));
+        let passes = runner.passes.lock().unwrap().clone();
+        assert!(
+            passes.iter().any(|p| p == "binding"),
+            "de agent krijgt eerst een herstelronde: {passes:?}"
+        );
+    }
+
+    /// The other half of the same gate: a repair that makes the name resolve
+    /// lets the law through, and the schema gate after it still gets the
+    /// last word.
+    #[tokio::test]
+    async fn a_repaired_reference_lets_the_law_through() {
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
+        tokio::fs::write(dir.path().join(yaml_path), four_article_law())
+            .await
+            .unwrap();
+        let config = test_config(LlmProvider::OpenCode {
+            path: "fake".into(),
+            model: None,
+        });
+        let payload = chunk_test_payload(yaml_path);
+        let mut runner = ScriptedRunner::new(vec![
+            (
+                "1",
+                READS_OWN_OUTPUT.replace("value: $premie", "value: $onbekend"),
+            ),
+            ("3", PRODUCES_PREMIUM.to_string()),
+        ]);
+        runner.binding_fix = Some(("value: $onbekend", "value: $premie"));
+
+        let (result, _) = execute_enrich_with_runner(&payload, dir.path(), &config, "", &runner)
+            .await
+            .expect("a repaired reference is no defect");
+        let binding = result
+            .feedback
+            .iter()
+            .find(|g| g.gate == "binding-final")
+            .unwrap();
+        assert_eq!(binding.findings_initial, 1);
+        assert_eq!(binding.findings_final, 0);
+        let gates: Vec<&str> = result.feedback.iter().map(|g| g.gate.as_str()).collect();
+        assert_eq!(gates.last(), Some(&"schema-final"));
+    }
+
+    /// Walk [`four_article_law`] in two windows with a dangling reference in
+    /// entry 1, so the binding repair of the last window writes into an entry
+    /// the last window does not own.
+    async fn walk_with_a_repair_outside_the_last_window(
+        runner: &ScriptedRunner,
+    ) -> Result<(EnrichResult, Vec<PathBuf>)> {
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
+        tokio::fs::write(dir.path().join(yaml_path), four_article_law())
+            .await
+            .unwrap();
+        let mut config = test_config(LlmProvider::OpenCode {
+            path: "fake".into(),
+            model: None,
+        });
+        config.max_articles_per_run = 2;
+        let payload = chunk_test_payload(yaml_path);
+        execute_enrich_with_runner(&payload, dir.path(), &config, "", runner)
+            .await
+            .expect("window 1: a dangling reference mid-walk is soft");
+        execute_enrich_with_runner(&payload, dir.path(), &config, "", runner).await
+    }
+
+    fn dangling_in_entry_one() -> ScriptedRunner {
+        let mut runner = ScriptedRunner::new(vec![
+            (
+                "1",
+                READS_OWN_OUTPUT.replace("value: $premie", "value: $onbekend"),
+            ),
+            ("3", PRODUCES_PREMIUM.to_string()),
+        ]);
+        // The repair connects the name and breaks the schema of entry 1.
+        runner.binding_fix = Some((
+            "value: $onbekend",
+            "value: $premie\n            onbekend_veld: true",
+        ));
+        runner
+    }
+
+    /// The final schema gate judges the entries the binding repair wrote, not
+    /// only the last window: entry 1 belongs to the first window, and without
+    /// the fold its schema error would have been committed unseen.
+    #[tokio::test]
+    async fn the_final_schema_gate_sees_what_the_binding_repair_wrote() {
+        let mut runner = dangling_in_entry_one();
+        runner.schema_fix = vec![("\n            onbekend_veld: true", "")];
+        let (result, _) = walk_with_a_repair_outside_the_last_window(&runner)
+            .await
+            .expect("repaired twice, the law goes through");
+        let schema_final = result
+            .feedback
+            .iter()
+            .find(|g| g.gate == "schema-final")
+            .expect("the repair wrote, so the schema gate runs");
+        assert_eq!(
+            schema_final.findings_initial, 1,
+            "de schemafout in entry 1 valt buiten het laatste venster en moet toch gezien worden"
+        );
+        assert_eq!(schema_final.findings_final, 0);
+    }
+
+    /// The schema repair is the last writer, so what it leaves is checked for
+    /// dangling references once more, without another agent round.
+    #[tokio::test]
+    async fn a_schema_repair_that_breaks_a_reference_fails_the_job() {
+        let mut runner = dangling_in_entry_one();
+        runner.schema_fix = vec![
+            ("\n            onbekend_veld: true", ""),
+            ("value: $premie", "value: $weg"),
+        ];
+        let err = walk_with_a_repair_outside_the_last_window(&runner)
+            .await
+            .expect_err("the schema repair left a reference to nothing");
+        assert!(
+            err.to_string()
+                .contains("after the final schema repair: [binding] art. 1: $weg"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn changed_entries_names_what_a_rewrite_touched() {
+        let before = four_article_law();
+        let after = before.replace("#Artikel3\n", "#Artikel3\n    machine_readable: {}\n");
+        assert_eq!(changed_entries(before, &after), vec!["3".to_string()]);
+        assert!(changed_entries(before, before).is_empty());
+        assert!(changed_entries(before, "articles: [").is_empty());
     }
 
     #[tokio::test]
