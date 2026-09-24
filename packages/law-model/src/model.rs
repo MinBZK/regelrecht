@@ -171,6 +171,62 @@ pub struct Parameter {
     pub temporal: Option<Temporal>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub legal_basis: Option<ProvisionReference>,
+    /// Who supplies this parameter, per the law, with the provision that says
+    /// so (RFC-043). Metadata for a process runtime and an editor; the engine
+    /// does not read it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<Origin>,
+}
+
+/// Who supplies a parameter, per the law (RFC-043). Always with a
+/// `grondslag`: `<regulation>#<article>`, optionally followed by ` lid <n>`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Origin {
+    pub waarde: OriginValue,
+    /// With `REGISTER`: the regulation by or under which the register is
+    /// kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub register: Option<String>,
+    pub grondslag: String,
+}
+
+/// The five origins of a parameter (RFC-043).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum OriginValue {
+    /// What the applicant supplies or chooses: the content of the
+    /// application, the decision requested, the period.
+    Belanghebbende,
+    /// A fact from the course of the case at the administrative body.
+    Dossier,
+    /// A judgement the administrative body gives when it decides.
+    Oordeel,
+    /// A fact from a register kept by or under a regulation.
+    Register,
+    /// What the intake channel says: who logs in, and on whose behalf.
+    Kanaal,
+}
+
+impl OriginValue {
+    /// The value as it is written in a law.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            OriginValue::Belanghebbende => "BELANGHEBBENDE",
+            OriginValue::Dossier => "DOSSIER",
+            OriginValue::Oordeel => "OORDEEL",
+            OriginValue::Register => "REGISTER",
+            OriginValue::Kanaal => "KANAAL",
+        }
+    }
+}
+
+/// An implementing policy overriding the origin that a law gives one of its
+/// parameters, with the provision of the policy as `grondslag` (RFC-043).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OriginOverride {
+    pub regulation: String,
+    pub parameter: String,
+    pub origin: Origin,
 }
 
 impl Parameter {
@@ -1107,6 +1163,10 @@ pub struct MachineReadable {
     /// Document properties this article establishes (schema v0.7.0)
     #[serde(default)]
     pub declares: Option<Vec<Declaration>>,
+    /// Origins this article (of an implementing policy) gives parameters of
+    /// another regulation, overriding what that regulation says (RFC-043).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origins: Option<Vec<OriginOverride>>,
 }
 
 /// Represents a single article in a law
