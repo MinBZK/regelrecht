@@ -25,27 +25,44 @@ The development stack runs infrastructure in Docker and application services nat
 
 ## One-Time Setup (build speed)
 
-Run once per machine after cloning:
+[Getting Started](./getting-started) lists the prerequisites. Then, once per
+machine after cloning:
 
 ```bash
 just dev-setup
 ```
 
-It installs the [mold](https://github.com/rui314/mold) linker (a hard
-requirement; the dev recipes won't link without it) plus `sccache`, and points
-every git worktree at a single shared cargo `target-dir` so a new worktree
-reuses the already-built dependency graph instead of cold-building from scratch.
+It installs the [mold](https://github.com/rui314/mold) linker plus `sccache`
+(through apt, dnf or Homebrew, whichever it finds), and points every git
+worktree at a single shared cargo `target-dir` so a new worktree reuses the
+already-built dependency graph instead of cold-building from scratch. That
+setting lands in a gitignored `.cargo/config.toml` at the root of the main
+checkout.
+
 When the repo is on a slow mount (9p/NFS/SMB, e.g. a WSL2 or Docker-Desktop
 dev container backed by a Windows drive), it relocates that target dir to fast
 local storage under `~/.cache/regelrecht/`, which is usually the biggest
 build-time win. `sccache` is installed but left off locally (it disables
 incremental compilation, which hurts the hot-reload loop); CI uses both.
 
+mold is the configured linker on x86_64 Linux (`packages/.cargo/config.toml`),
+so builds there fail to link without it. `just dev` and `just dev-frontend`
+check for mold on every platform and refuse to start when it is missing, so run
+`just dev-setup` on macOS too before using them.
+
 ## Starting the Dev Stack
 
 ```bash
 just dev
 ```
+
+| Service | URL | Description |
+|---------|-----|-------------|
+| Editor | http://localhost:3000 | Law editor + **Corpusinwinning** section (hot reload) |
+| Admin API | http://localhost:8000 | Harvester REST API (auto-recompile; UI is the editor's Corpusinwinning section) |
+| Grafana | http://localhost:3002 | Metrics dashboard |
+| Prometheus | http://localhost:9090 | Metrics collection |
+| PostgreSQL | localhost:5433 | Database |
 
 This command:
 1. Checks prerequisites (cargo, node, docker, cargo-watch, mold)
@@ -63,7 +80,7 @@ the Vite dev server with HMR) and skips Grafana, Prometheus, and the workers.
 ```bash
 just dev-frontend            # all frontends at once (default)
 just dev-frontend editor     # just the editor
-just dev-frontend admin      # just the admin dashboard
+just dev-frontend admin      # just the harvester-admin API
 just dev-frontend lawmaking  # just the lawmaking UI (no backend)
 just dev-down                # stop it (shared with `just dev`)
 ```
@@ -156,15 +173,25 @@ silences logging.
 
 ## Pre-commit Hooks
 
-Install pre-commit hooks:
+Install [pre-commit](https://pre-commit.com/) (for example with
+`uv tool install pre-commit`), then register the hooks in your clone:
 
 ```bash
-pre-commit install
+pre-commit install --hook-type pre-commit --hook-type commit-msg
 ```
 
-Hooks run automatically on commit:
-- Trailing whitespace, end-of-file fixes
-- YAML linting
-- Rust formatting (`just format`)
-- Rust linting (`just lint`)
-- Schema validation (`just validate`)
+The `commit-msg` type matters. The Conventional Commits check on the commit
+message runs at that stage, and a plain `pre-commit install` registers only the
+`pre-commit` stage, so that check would never run locally.
+
+On commit the hooks run, each only when a matching file changed:
+
+- Trailing whitespace, end-of-file, merge-conflict and large-file checks
+- YAML linting (yamllint, config in `.yamllint`)
+- Rust formatting (`just format`) and clippy (`just lint`)
+- Schema validation of corpus files (`just validate`)
+- The test suites of the CI scripts and merge gates under `script/`, when that
+  script or its workflow changed
+
+`.pre-commit-config.yaml` has the full list. What to do when a hook fails is on
+[Contributing](/operations/contributing#pre-commit-hooks).
