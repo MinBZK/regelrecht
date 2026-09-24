@@ -36,4 +36,5 @@ rfcs: []
 samenhangIds:
   - juridische-status-van-een-specificatie
   - onderzoeken-juridisch-toetsingskader-voor-validatie
+  - referentie-casus-i
 ---
