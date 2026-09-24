@@ -3,191 +3,112 @@
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
 :root {
-  --ground: #152a55;
-  --slide-a: #2e5599;
-  --slide-b: #1c3468;
-  --warn-a: #2b4475;
-  --warn-b: #182d58;
-  --warn-c: #101e3d;
+  /* Rijksoverheid donkerblauw, vlak. Geen verloop. */
+  --ground: #154273;
   --ink: #ffffff;
-  --ink-dim: rgba(255,255,255,0.72);
-  --ink-faint: rgba(255,255,255,0.45);
-  --fill: rgba(255,255,255,0.09);
-  --line: rgba(255,255,255,0.22);
+  --ink-dim: rgba(255,255,255,0.74);
+  --ink-faint: rgba(255,255,255,0.48);
+  --fill: rgba(255,255,255,0.07);
+  --line: rgba(255,255,255,0.20);
 
-  /* Bronkleuren: één tint per leverancier, door de hele deck hetzelfde */
-  --uwv: #7fb2ff;
-  --gem: #ffc98a;
-  --wg:  #8fe0c0;
-  --reg: #d7b3ff;
-  --gap: #ff9d9d;
+  /* Bronaanduiding. Gedempt; de kleur draagt informatie, geen nadruk. */
+  --uwv: #a8c4e6;
+  --gem: #e6cba8;
+  --wg:  #aed4c4;
+  --reg: #c9b8dd;
+  --gap: #e0aaaa;
 
   --ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 html, body { height: 100%; }
-
-body {
-  font-family: var(--ui);
-  background: var(--ground);
-  color: var(--ink);
-  overflow: hidden;
-}
-
+body { font-family: var(--ui); background: var(--ground); color: var(--ink); overflow: hidden; }
 .deck { width: 100%; height: 100%; position: relative; }
 
 .slide {
-  position: absolute;
-  inset: 0;
-  display: none;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
+  position: absolute; inset: 0; display: none;
+  flex-direction: column; align-items: center; justify-content: center;
+  text-align: left;
   padding: 5vw max(16px, 7vw);
-  background: radial-gradient(ellipse at 50% 50%, var(--slide-a) 0%, var(--slide-b) 45%, var(--ground) 100%);
+  background: var(--ground);
 }
 .slide.active { display: flex; }
-.slide.warn {
-  background: radial-gradient(ellipse at 50% 50%, var(--warn-a) 0%, var(--warn-b) 45%, var(--warn-c) 100%);
-}
 
 /* Titel */
-.title-main {
-  font-size: clamp(44px, 9vw, 120px);
-  font-weight: 300;
-  letter-spacing: -0.02em;
-  line-height: 1;
-  margin-bottom: 0.3em;
-  text-wrap: balance;
-}
-.title-sub { font-size: clamp(17px, 2.8vw, 38px); font-weight: 300; font-style: italic; color: var(--ink-dim); }
+.title-main { font-size: clamp(36px, 6.5vw, 82px); font-weight: 400; letter-spacing: -0.01em; line-height: 1.05; margin-bottom: 0.3em; text-wrap: balance; }
+.title-sub { font-size: clamp(15px, 2.2vw, 30px); font-weight: 300; color: var(--ink-dim); }
 .title-footer {
-  position: absolute;
-  bottom: 6%; left: max(16px, 6%); right: max(16px, 6%);
-  display: flex; justify-content: space-between; gap: 12px;
-  font-size: clamp(12px, 1.5vw, 20px);
+  position: absolute; bottom: 6%; left: max(16px, 6%); right: max(16px, 6%);
+  display: flex; justify-content: space-between; gap: 12px; font-size: clamp(12px, 1.4vw, 18px);
+  color: var(--ink-dim); border-top: 1px solid var(--line); padding-top: 0.8em;
 }
-.title-footer .right { font-weight: 700; }
 
 /* Tekst */
-.h {
-  font-size: clamp(22px, 3.8vw, 56px);
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  margin-bottom: 0.55em;
-  text-wrap: balance;
-}
+.h { font-size: clamp(20px, 3.2vw, 44px); font-weight: 700; letter-spacing: -0.005em; margin-bottom: 0.55em; text-wrap: balance; align-self: flex-start; }
 .h.tight { margin-bottom: 0.3em; }
-.p { font-size: clamp(16px, 2.4vw, 34px); font-weight: 300; line-height: 1.65; }
+.p { font-size: clamp(15px, 2.1vw, 28px); font-weight: 300; line-height: 1.6; align-self: flex-start; max-width: 62ch; }
 .p b { font-weight: 700; }
-.p.dim { font-size: clamp(12px, 1.6vw, 22px); color: var(--ink-dim); margin-top: 0.7em; line-height: 1.5; }
+.p.dim { font-size: clamp(12px, 1.5vw, 20px); color: var(--ink-dim); margin-top: 0.6em; line-height: 1.5; }
 
 /* Rasters */
-.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.1vw; width: 100%; margin-top: 0.5em; text-align: left; }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1vw; width: 100%; margin-top: 0.5em; }
 .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.cell { background: var(--fill); border-radius: 10px; padding: 1.4vw 1.6vw; }
-.cell-label {
-  font-size: clamp(9px, 0.95vw, 14px); font-weight: 700;
-  text-transform: uppercase; letter-spacing: 0.12em;
-  color: var(--ink-faint); margin-bottom: 0.5em;
-}
-.cell-body { font-size: clamp(12px, 1.5vw, 21px); font-weight: 300; line-height: 1.5; }
+.cell { background: var(--fill); border-left: 2px solid var(--line); padding: 1.2vw 1.4vw; }
+.cell-label { font-size: clamp(9px, 0.92vw, 13px); font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-faint); margin-bottom: 0.5em; }
+.cell-body { font-size: clamp(12px, 1.45vw, 20px); font-weight: 300; line-height: 1.5; }
 .cell-body b { font-weight: 700; }
 
 /* Gronden-matrix */
-.matrix { width: 100%; display: flex; flex-direction: column; gap: 0.45vw; text-align: left; margin-top: 0.3em; }
-.row {
-  display: grid;
-  grid-template-columns: minmax(78px, 8.5%) 1fr minmax(130px, 21%);
-  gap: 0.8vw;
-  align-items: start;
-  background: var(--fill);
-  border-radius: 8px;
-  padding: 0.7vw 1vw;
-}
-.row.excl { background: rgba(255,157,157,0.12); }
-.row.missing { background: rgba(255,255,255,0.04); border: 1px dashed var(--line); }
-.grond {
-  font-weight: 700;
-  font-size: clamp(12px, 1.5vw, 21px);
-  font-variant-numeric: tabular-nums;
-}
-.grond small { display: block; font-weight: 300; font-size: 0.72em; color: var(--ink-faint); letter-spacing: 0.04em; }
-.expr { display: flex; flex-wrap: wrap; gap: 0.35vw 0.5vw; align-items: center; }
-.chip {
-  font-family: var(--mono);
-  font-size: clamp(9px, 1.08vw, 15px);
-  padding: 0.22em 0.55em;
-  border-radius: 5px;
-  border: 1px solid currentColor;
-  white-space: nowrap;
-}
-.chip.uwv { color: var(--uwv); }
-.chip.gem { color: var(--gem); }
-.chip.wg  { color: var(--wg); }
-.chip.reg { color: var(--reg); }
+.matrix { width: 100%; display: flex; flex-direction: column; gap: 0.35vw; margin-top: 0.3em; }
+.row { display: grid; grid-template-columns: minmax(78px, 8.5%) 1fr minmax(130px, 21%); gap: 0.8vw; align-items: start; background: var(--fill); padding: 0.6vw 1vw; }
+.row.excl { border-left: 2px solid var(--gap); }
+.row.missing { background: transparent; border: 1px dashed var(--line); }
+.grond { font-weight: 700; font-size: clamp(12px, 1.4vw, 19px); font-variant-numeric: tabular-nums; }
+.grond small { display: block; font-weight: 300; font-size: 0.72em; color: var(--ink-faint); }
+.expr { display: flex; flex-wrap: wrap; gap: 0.3vw 0.45vw; align-items: center; }
+.chip { font-family: var(--mono); font-size: clamp(9px, 1.02vw, 14px); padding: 0.18em 0.5em; border: 1px solid currentColor; white-space: nowrap; }
+.chip.uwv { color: var(--uwv); } .chip.gem { color: var(--gem); }
+.chip.wg { color: var(--wg); } .chip.reg { color: var(--reg); }
 .chip.gap { color: var(--gap); border-style: dashed; }
-.op { font-size: clamp(9px, 1.05vw, 15px); font-weight: 700; color: var(--ink-faint); letter-spacing: 0.06em; }
+.op { font-size: clamp(9px, 1vw, 14px); font-weight: 400; color: var(--ink-faint); }
 
 /* Rechten per grond */
-.rechten { display: flex; flex-wrap: wrap; gap: 0.3vw 0.35vw; align-items: center; }
-.recht {
-  font-size: clamp(8.5px, 1vw, 14px);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  padding: 0.2em 0.5em;
-  border-radius: 4px;
-  background: rgba(255,255,255,0.9);
-  color: #16294f;
-  white-space: nowrap;
-}
+.rechten { display: flex; flex-wrap: wrap; gap: 0.25vw 0.3vw; align-items: center; }
+.recht { font-size: clamp(8.5px, 0.95vw, 13px); font-weight: 700; letter-spacing: 0.03em; padding: 0.18em 0.45em; background: rgba(255,255,255,0.86); color: #154273; white-space: nowrap; }
 .recht.vw { background: transparent; color: var(--ink-dim); border: 1px dashed var(--line); font-weight: 400; }
 .recht.geen { background: transparent; color: var(--gap); border: 1px dashed var(--gap); font-weight: 400; }
-.matrix-head {
-  display: grid;
-  grid-template-columns: minmax(78px, 8.5%) 1fr minmax(130px, 21%);
-  gap: 0.8vw;
-  padding: 0 1vw 0.15em;
-  font-size: clamp(8.5px, 0.95vw, 13px);
-  font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em;
-  color: var(--ink-faint);
-}
-@media (max-width: 640px) { .matrix-head { display: none; } }
+.matrix-head { display: grid; grid-template-columns: minmax(78px, 8.5%) 1fr minmax(130px, 21%); gap: 0.8vw; padding: 0 1vw 0.15em; font-size: clamp(8.5px, 0.9vw, 12px); font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-faint); }
 
-.legend { display: flex; flex-wrap: wrap; gap: 0.6em 1.4em; margin-top: 0.9em; font-size: clamp(10px, 1.25vw, 17px); color: var(--ink-dim); }
-.legend span { display: inline-flex; align-items: center; gap: 0.45em; }
-.swatch { width: 0.72em; height: 0.72em; border-radius: 3px; border: 1px solid currentColor; }
+.legend { display: flex; flex-wrap: wrap; gap: 0.5em 1.3em; margin-top: 0.8em; font-size: clamp(10px, 1.2vw, 16px); color: var(--ink-dim); }
+.legend span { display: inline-flex; align-items: center; gap: 0.4em; }
+.swatch { width: 0.7em; height: 0.7em; border: 1px solid currentColor; }
 .sw-uwv { color: var(--uwv); } .sw-gem { color: var(--gem); }
 .sw-wg { color: var(--wg); } .sw-reg { color: var(--reg); } .sw-gap { color: var(--gap); }
 
 /* Beslispunten */
-.punten { width: 100%; display: flex; flex-direction: column; gap: 0.4vw; text-align: left; margin-top: 0.3em; }
-.punt { display: grid; grid-template-columns: minmax(46px, 5%) 1fr; gap: 1vw; background: var(--fill); border-radius: 8px; padding: 0.65vw 1vw; align-items: baseline; }
-.punt .id { font-weight: 700; font-variant-numeric: tabular-nums; font-size: clamp(12px, 1.5vw, 21px); }
-.punt .txt { font-size: clamp(11px, 1.42vw, 20px); font-weight: 300; line-height: 1.45; }
+.punten { width: 100%; display: flex; flex-direction: column; gap: 0.35vw; margin-top: 0.3em; }
+.punt { display: grid; grid-template-columns: minmax(46px, 5%) 1fr; gap: 1vw; background: var(--fill); padding: 0.6vw 1vw; align-items: baseline; }
+.punt .id { font-weight: 700; font-variant-numeric: tabular-nums; font-size: clamp(12px, 1.4vw, 19px); }
+.punt .txt { font-size: clamp(11px, 1.36vw, 18px); font-weight: 300; line-height: 1.45; }
 .punt .txt em { font-style: normal; color: var(--ink-faint); }
-.punt.kandidaat { background: rgba(255,157,157,0.12); }
+.punt.kandidaat { border-left: 2px solid var(--gap); }
 
 /* Afbeeldingen */
 .image-slide { padding: 4vw max(16px, 4vw) 8vw; justify-content: flex-start; }
-.image-slide .h { font-size: clamp(19px, 3vw, 42px); margin-bottom: 0.4em; }
+.image-slide .h { font-size: clamp(18px, 2.8vw, 36px); margin-bottom: 0.4em; }
 .image-wrap { flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; min-height: 0; }
-.image-slide img { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; background: rgba(255,255,255,0.96); border-radius: 8px; padding: 1.2vw; }
-.image-caption { font-size: clamp(11px, 1.4vw, 19px); color: var(--ink-dim); margin-top: 0.7em; font-style: italic; }
+.image-slide img { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; background: #fff; padding: 1.2vw; }
+.image-caption { font-size: clamp(11px, 1.3vw, 17px); color: var(--ink-dim); margin-top: 0.7em; }
 
 /* Navigatie */
 #nav { position: fixed; bottom: 4%; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; align-items: center; z-index: 99; }
-#nav button {
-  background: rgba(255,255,255,0.14); border: 1px solid var(--line); color: var(--ink);
-  padding: 7px 18px; border-radius: 20px; font-size: 14px; font-family: inherit; cursor: pointer;
-}
-#nav button:hover { background: rgba(255,255,255,0.26); }
+#nav button { background: rgba(255,255,255,0.12); border: 1px solid var(--line); color: var(--ink); padding: 6px 16px; font-size: 13px; font-family: inherit; cursor: pointer; }
+#nav button:hover { background: rgba(255,255,255,0.22); }
 #nav button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 #counter { color: var(--ink-faint); font-size: 13px; min-width: 56px; text-align: center; font-variant-numeric: tabular-nums; }
-#dots { position: fixed; bottom: 4.2%; right: 3%; display: flex; gap: 5px; z-index: 99; }
-.dot { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.22); cursor: pointer; border: 0; padding: 0; }
+#dots { position: fixed; bottom: 4.4%; right: 3%; display: flex; gap: 5px; z-index: 99; }
+.dot { width: 6px; height: 6px; background: rgba(255,255,255,0.22); cursor: pointer; border: 0; padding: 0; }
 .dot.on { background: rgba(255,255,255,0.85); }
 .dot:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 
@@ -195,14 +116,10 @@ body {
   .grid, .grid.three { grid-template-columns: 1fr; gap: 8px; }
   .cell { padding: 10px 12px; }
   .row, .punt { grid-template-columns: 1fr; gap: 6px; }
-  .matrix-head { display: none; }
   .matrix, .punten { gap: 6px; }
-  #dots { display: none; }
+  .matrix-head, #dots { display: none; }
 }
-
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation: none !important; transition: none !important; }
-}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
 
 <div class="deck" id="deck">
@@ -210,7 +127,7 @@ body {
   <!-- 1 -->
   <div class="slide active">
     <div class="title-main">Juristvalidatie</div>
-    <div class="title-sub">zeven wetten achter het Financieel CV</div>
+    <div class="title-sub">Toetsing van de machine-leesbare vertaling van zeven wetten</div>
     <div class="title-footer">
       <span>24 september 2026</span>
       <span class="right">Bureau Architectuur, BZK</span>
@@ -219,39 +136,39 @@ body {
 
   <!-- 2 -->
   <div class="slide">
-    <div class="h">Wat we vandaag vragen</div>
-    <div class="p">Niet of het model mooi is</div>
-    <div class="p">Maar of het <b>klopt met de wet</b>, en waar de wet zelf niet beslist</div>
-    <div class="p dim">Zeven wetten zijn vertaald naar formules die een motor uitvoert, met twee casussen als rode draad. Het model markeert zelf wat het niet vangt. Feitelijke fouten horen niet in deze sessie: die repareren wij aan de desk. Wat hier ligt is oordeel.</div>
+    <div class="h">Doel van deze sessie</div>
+    <div class="p">Toetsing van de vertaling aan de wettekst.</div>
+    <div class="p">Vaststelling van de punten waarover de wettekst zelf niet beslist.</div>
+    <div class="p dim">Zeven wetten zijn vertaald naar formules die door een motor worden uitgevoerd, met twee casussen als rode draad. Feitelijke fouten in de vertaling worden aan de desk hersteld en komen in deze sessie niet aan de orde.</div>
   </div>
 
   <!-- 3 -->
   <!-- 3. Wat er gisteren nog niet lag -->
-  <div class="slide warn">
-    <div class="h tight">Eerst dit, want het verandert wat we u vragen</div>
-    <div class="p dim" style="margin-top:0;margin-bottom:0.8em">Gisteren is het model artikel voor artikel tegen de letter van de wettekst gelegd. Dat leverde meer op dan verwacht.</div>
+  <div class="slide">
+    <div class="h tight">Uitkomst fideliteitsaudit 23 september 2026</div>
+    <div class="p dim" style="margin-top:0;margin-bottom:0.8em">Op 23 september 2026 is het model per artikel en per lid vergeleken met de letter van de wettekst.</div>
     <div class="grid">
       <div class="cell">
-        <div class="cell-label">Wat we vonden</div>
-        <div class="cell-body">Ruim <b>zestig afwijkingen</b> tussen model en wettekst. Ontbrekende uitsluitingen, weggevallen datumvoorwaarden, termijnen die niet worden gerekend, en een paar voorwaarden die de wet niet stelt.</div>
+        <div class="cell-label">Uitkomst</div>
+        <div class="cell-body">Ruim <b>zestig afwijkingen</b> tussen model en wettekst: ontbrekende uitsluitingen, weggevallen datumvoorwaarden, termijnen die niet worden berekend, en voorwaarden die de wet niet stelt.</div>
       </div>
       <div class="cell">
-        <div class="cell-label">Wat dat niet is</div>
-        <div class="cell-body">Geen tekstfouten. Alle artikelteksten zijn woordelijk gelijk aan de geldende versie. Het verschil zit in <b>onze vertaling ernaartoe</b>, en dat is ons werk om te repareren.</div>
+        <div class="cell-label">Aard van de afwijkingen</div>
+        <div class="cell-body">Alle artikelteksten zijn woordelijk gelijk aan de geldende versie. De afwijkingen betreffen <b>de vertaling naar formules</b>. Herstel daarvan is werk voor de desk.</div>
       </div>
       <div class="cell">
-        <div class="cell-label">Waarom u het toch hoort</div>
-        <div class="cell-body">Anders bevestigt u vandaag iets over een model waarvan wij de staat beter kennen dan u. <b>Dat zou uw bevestiging waardeloos maken.</b></div>
+        <div class="cell-label">Reden voor vermelding</div>
+        <div class="cell-body">Zonder deze vermelding zou een bevestiging betrekking hebben op een model waarvan de afwijkingen bij de opstellers bekend zijn.</div>
       </div>
       <div class="cell">
-        <div class="cell-label">Wat we u wel vragen</div>
-        <div class="cell-body">De punten hierna staan <b>los van die zestig</b>. Het zijn open normen en vragen waar de wettekst zelf niet beslist &mdash; die blijven staan, hoe goed wij ook repareren.</div>
+        <div class="cell-label">Reikwijdte van de vragen</div>
+        <div class="cell-body">De punten hierna staan <b>los van die zestig</b>. Het betreft open normen waarover de wettekst zelf niet beslist; die blijven bestaan na herstel van de afwijkingen.</div>
       </div>
     </div>
   </div>
 
   <div class="slide">
-    <div class="h">Waar we staan</div>
+    <div class="h">Stand van het dossier</div>
     <div class="grid">
       <div class="cell">
         <div class="cell-label">Corpus</div>
@@ -262,19 +179,19 @@ body {
         <div class="cell-body">Schema én typecheck <b>8 van 8 groen</b> sinds 23 september. Twee nullability-fouten die er al stonden zijn opgelost.</div>
       </div>
       <div class="cell">
-        <div class="cell-label">Wat gemarkeerd staat</div>
+        <div class="cell-label">Markeringen in het model</div>
         <div class="cell-body"><b>21 markings</b> — het formaat heeft er geen vorm voor. <b>39 open termen</b> — de inhoud wordt elders ingevuld.</div>
       </div>
       <div class="cell">
-        <div class="cell-label">Wat we u voorleggen</div>
-        <div class="cell-body"><b>Negen blokken</b> en <b>vijf scope-vragen</b>. Dat is wat overblijft als de taalgaten, de delegaties en onze eigen fouten eraf zijn.</div>
+        <div class="cell-label">Voorgelegde punten</div>
+        <div class="cell-body"><b>Negen blokken</b> en <b>vijf scope-vragen</b>: het deel dat overblijft na aftrek van taalgaten, delegaties en herstelbare vertaalfouten.</div>
       </div>
     </div>
   </div>
 
   <!-- 4 -->
   <div class="slide">
-    <div class="h tight">Het doelgroepregister banenafspraak</div>
+    <div class="h tight">Doelgroepregister banenafspraak, Wfsv artikel 38b</div>
     <div class="p dim" style="margin-top:0;margin-bottom:0.8em">Wfsv artikel 38b — welke variabelen beslissen over opname, en in welke combinatie</div>
     <div class="matrix-head"><div>Grond</div><div>Welke variabelen, in welke combinatie</div><div>Recht bij deze grond</div></div>
     <div class="matrix">
@@ -407,7 +324,7 @@ body {
 
   <!-- 5 -->
   <div class="slide">
-    <div class="h">Wat er nodig is om dit te vullen</div>
+    <div class="h">Herkomst van de variabelen</div>
     <div class="grid three">
       <div class="cell">
         <div class="cell-label">Dertien variabelen beslissen</div>
@@ -437,8 +354,8 @@ body {
   </div>
 
   <!-- 6 -->
-  <div class="slide warn">
-    <div class="h tight">Wet SUWI — het ontbrekende stuk ligt er al</div>
+  <div class="slide">
+    <div class="h tight">Wet SUWI, Besluit SUWI en Regeling SUWI</div>
     <div class="p dim" style="margin-top:0;margin-bottom:0.8em">Wet SUWI, Besluit SUWI en Regeling SUWI staan ingewonnen in het corpus. Geen ervan is gemodelleerd.</div>
     <div class="grid three">
       <div class="cell">
@@ -459,7 +376,7 @@ body {
       </div>
       <div class="cell">
         <div class="cell-label">Wat dat betekent</div>
-        <div class="cell-body">Grond g is niet vergeten maar <b>slapend</b>. De vraag is of er vandaag een experiment loopt — dat kan het corpus niet beantwoorden, want het bevat 4.138 van alle regelingen.</div>
+        <div class="cell-body">Grond g kan zonder een experiment-AMvB geen toepassing vinden. Of er op dit moment een experiment loopt, blijkt niet uit het corpus: dat bevat 4.138 van de regelingen.</div>
       </div>
       <div class="cell">
         <div class="cell-label">Vraag aan u</div>
@@ -470,7 +387,7 @@ body {
 
   <!-- 7 -->
   <div class="slide">
-    <div class="h tight">Hoe diep gaat &eacute;&eacute;n variabele</div>
+    <div class="h tight">Herleidbaarheid van &eacute;&eacute;n parameter</div>
     <div class="p dim" style="margin-top:0;margin-bottom:0.7em">De chapeau-uitsluiting van Wfsv 38b, helemaal uitgetrokken</div>
     <div class="matrix">
       <div class="row">
@@ -505,8 +422,8 @@ body {
   </div>
 
   <!-- 8 -->
-  <div class="slide warn">
-    <div class="h">Twee vaststellingen, ongelijk kenbaar</div>
+  <div class="slide">
+    <div class="h">Verschil in kenbaarheid tussen twee vaststellingen</div>
     <div class="grid">
       <div class="cell">
         <div class="cell-label">Kan de persoon het minimumloon verdienen?</div>
@@ -538,7 +455,7 @@ body {
 
   <!-- 7 -->
   <div class="slide">
-    <div class="h">Blauwdruk: Ziektewet artikel 29b</div>
+    <div class="h">Ziektewet artikel 29b als voorbeeld</div>
     <div class="grid">
       <div class="cell">
         <div class="cell-label">Wettekst naar formule</div>
@@ -562,30 +479,30 @@ body {
   <!-- 8 -->
   <!-- 12. Beslispunten: wat de wet openlaat -->
   <div class="slide">
-    <div class="h tight">Wat de wet openlaat</div>
-    <div class="p dim" style="margin-top:0;margin-bottom:0.6em">Vier blokken. Werkvorm 1-2-4-all, maximaal drie minuten per blok; minderheidsstandpunt noteren we.</div>
+    <div class="h tight">Beslispunten: open normen</div>
+    <div class="p dim" style="margin-top:0;margin-bottom:0.6em">Vier blokken, elk maximaal drie minuten. Minderheidsstandpunten worden genoteerd.</div>
     <div class="punten">
-      <div class="punt"><div class="id">B1</div><div class="txt"><b>Samenloop en voorrang.</b> Klopt &ldquo;hoogste bedrag wint&rdquo; (Wtl 4.1 lid 3) als voorrangsregel, en cumuleren LKV, LKS, loondispensatie en no-riskpolis zoals in juni bevestigd? <em>Staat open in het actieregister; de MvT zwijgt erover.</em></div></div>
-      <div class="punt"><div class="id">B2</div><div class="txt"><b>Zeven open normen, &eacute;&eacute;n vraag: welke vindplaats stuurt ze?</b> &ldquo;Ree&euml;l uitzicht&rdquo; (WW 76a, Wajong 2:24, WIA 37) &middot; &ldquo;structurele functionele beperking&rdquo; (WIA 35) &middot; &ldquo;duidelijk minder dan het minimumloon&rdquo; (Wajong 2:20) &middot; &ldquo;objectief medisch vast te stellen&rdquo; (WIA 4) &middot; jonggehandicapte in de zin van 2:3 &middot; &ldquo;in overwegende mate op het individu afgestemd&rdquo; &middot; &ldquo;noodzakelijk en compensatie&rdquo;. <em>Het corpus bevat geen enkele UWV-beleidsregel. E&eacute;n vindplaats is hier meer waard dan drie meningen.</em></div></div>
-      <div class="punt"><div class="id">B11</div><div class="txt"><b>De vijfjaarstermijn van ZW 29b.</b> Begint die opnieuw bij een opvolgend dienstverband, loopt hij door, of telt hij op? <em>De wettekst is aantoonbaar niet eenduidig; het model zegt dat zelf in zoveel woorden.</em></div></div>
-      <div class="punt"><div class="id">B16</div><div class="txt"><b>Loopt er een experiment onder Wet SUWI artikel 82a</b> dat loondispensatie inzet voor een IVA-gerechtigde? <em>Feitelijke vraag. Bepaalt of grond g van Wfsv 38b lid 1 vandaag betekenis heeft. Zo nee, dan is die grond terecht leeg.</em></div></div>
+      <div class="punt"><div class="id">B1</div><div class="txt"><b>Samenloop en voorrang.</b> Klopt &ldquo;hoogste bedrag wint&rdquo; (Wtl 4.1 lid 3) als voorrangsregel, en cumuleren LKV, LKS, loondispensatie en no-riskpolis zoals in juni bevestigd? <em>Staat open in het actieregister. De memorie van toelichting laat dit punt onbesproken.</em></div></div>
+      <div class="punt"><div class="id">B2</div><div class="txt"><b>Zeven open normen, &eacute;&eacute;n vraag: welke vindplaats stuurt ze?</b> &ldquo;Ree&euml;l uitzicht&rdquo; (WW 76a, Wajong 2:24, WIA 37) &middot; &ldquo;structurele functionele beperking&rdquo; (WIA 35) &middot; &ldquo;duidelijk minder dan het minimumloon&rdquo; (Wajong 2:20) &middot; &ldquo;objectief medisch vast te stellen&rdquo; (WIA 4) &middot; jonggehandicapte in de zin van 2:3 &middot; &ldquo;in overwegende mate op het individu afgestemd&rdquo; &middot; &ldquo;noodzakelijk en compensatie&rdquo;. <em>Het corpus bevat geen UWV-beleidsregels.</em></div></div>
+      <div class="punt"><div class="id">B11</div><div class="txt"><b>De vijfjaarstermijn van ZW 29b.</b> Begint die opnieuw bij een opvolgend dienstverband, loopt hij door, of telt hij op? <em>De wettekst is op dit punt niet eenduidig.</em></div></div>
+      <div class="punt"><div class="id">B16</div><div class="txt"><b>Loopt er een experiment onder Wet SUWI artikel 82a</b> dat loondispensatie inzet voor een IVA-gerechtigde? <em>Bepaalt of grond g van Wfsv 38b lid 1 op dit moment toepassing vindt.</em></div></div>
     </div>
   </div>
 
   <!-- 13. Beslispunten: bevestigen, niet interpreteren -->
   <div class="slide">
-    <div class="h tight">Bevestigen, niet interpreteren</div>
-    <div class="p dim" style="margin-top:0;margin-bottom:0.6em">Hier vragen we geen uitleg maar een oordeel over een label. Vier kandidaat-wetgevings-fouten en &eacute;&eacute;n bevestiging.</div>
+    <div class="h tight">Beslispunten: classificatie bevestigen</div>
+    <div class="p dim" style="margin-top:0;margin-bottom:0.6em">Vier kandidaat-wetgevings-fouten en een bevestiging. Gevraagd wordt een oordeel over de classificatie.</div>
     <div class="punten">
-      <div class="punt kandidaat"><div class="id">B12</div><div class="txt">Is &ldquo;evenwichtig over deze personen worden verdeeld&rdquo; een wetgevings-fout? <em>Geen maatstaf, geen individueel rechtsmiddel. Pwet 8a lid 2 a.</em></div></div>
-      <div class="punt kandidaat"><div class="id">B13</div><div class="txt">Is &ldquo;de in de sector gebruikelijke volledige dienstbetrekking&rdquo; een wetgevings-fout? <em>Geen kenbare bron, en het raakt een bedrag. Pwet 10d lid 4.</em></div></div>
-      <div class="punt kandidaat"><div class="id">B14</div><div class="txt">Is &ldquo;begeleiding op de werkplek&rdquo; zonder definitie en zonder doorverwijzing een wetgevings-fout? <em>Pwet 10da.</em></div></div>
-      <div class="punt kandidaat"><div class="id">B15</div><div class="txt">Is &ldquo;naar het oordeel van het UWV <b>of de eigenrisicodrager</b>&rdquo; zonder criterium wie oordeelt een wetgevings-fout? <em>WIA 37 lid 2 d. Twee partijen met een tegengesteld belang.</em></div></div>
+      <div class="punt kandidaat"><div class="id">B12</div><div class="txt">Is &ldquo;evenwichtig over deze personen worden verdeeld&rdquo; een wetgevings-fout? <em>Participatiewet 8a lid 2 onderdeel a. Geen maatstaf en geen individueel rechtsmiddel.</em></div></div>
+      <div class="punt kandidaat"><div class="id">B13</div><div class="txt">Is &ldquo;de in de sector gebruikelijke volledige dienstbetrekking&rdquo; een wetgevings-fout? <em>Participatiewet 10d lid 4. Geen kenbare bron; de norm bepaalt mede de hoogte van de subsidie.</em></div></div>
+      <div class="punt kandidaat"><div class="id">B14</div><div class="txt">Is &ldquo;begeleiding op de werkplek&rdquo; zonder definitie en zonder doorverwijzing een wetgevings-fout? <em>Participatiewet 10da.</em></div></div>
+      <div class="punt kandidaat"><div class="id">B15</div><div class="txt">Is &ldquo;naar het oordeel van het UWV <b>of de eigenrisicodrager</b>&rdquo; zonder criterium wie oordeelt een wetgevings-fout? <em>Wet WIA 37 lid 2 onderdeel d. De bevoegdheid berust bij twee partijen met een tegengesteld belang.</em></div></div>
       <div class="punt"><div class="id">B17</div><div class="txt">Bevestig: &ldquo;volledig en duurzaam arbeidsongeschikt&rdquo; is in de Wajong een <b>ander begrip</b> dan in de Wet WIA. <em>Wajong 2:4 kent geen percentage, WIA 4 wel. Wie 15% kan verdienen is het onder de WIA wel en onder de Wajong niet.</em></div></div>
     </div>
   </div>
-  <div class="slide warn">
-    <div class="h">Scope — vijf keer ja of nee</div>
+  <div class="slide">
+    <div class="h">Scope-vragen</div>
     <div class="punten">
       <div class="punt"><div class="id">S1</div><div class="txt">Hoort de <b>hoogte van de uitkering</b> bij de regelhulp? <em>Geen van de zeven wetten levert vandaag een uitkeringsbedrag.</em></div></div>
       <div class="punt"><div class="id">S2</div><div class="txt">Hoort de <b>quotumsystematiek</b> van Wfsv 38f erbij? <em>De formule werkt op sectorniveau, niet op persoonsniveau.</em></div></div>
@@ -597,31 +514,31 @@ body {
 
   <!-- 11 -->
   <div class="slide">
-    <div class="h">Wat we vandaag níét vragen</div>
+    <div class="h">Buiten het bereik van deze sessie</div>
     <div class="grid">
       <div class="cell">
         <div class="cell-label">21 markings</div>
-        <div class="cell-body">Plekken waar het formaat de constructie niet kan uitdrukken: samenloop, termijnen met alternatieve startpunten, samentelling over dienstverbanden. <b>Dat is ons werk, niet het uwe.</b></div>
+        <div class="cell-body">Plekken waar het formaat de constructie niet kan uitdrukken: samenloop, termijnen met alternatieve startpunten, samentelling over dienstverbanden. Herstel hiervan is werk voor de desk.</div>
       </div>
       <div class="cell">
         <div class="cell-label">39 open termen</div>
-        <div class="cell-body">Normen waarvan een AMvB, een regeling of een verordening de inhoud invult. <b>Die halen we op, we vragen er niet naar.</b></div>
+        <div class="cell-body">Normen waarvan een AMvB, een regeling of een verordening de inhoud invult. Deze regelgeving wordt ingewonnen en gemodelleerd.</div>
       </div>
       <div class="cell">
         <div class="cell-label">Modellering-fouten</div>
-        <div class="cell-body">Vijf gevonden, één opgelost voor vandaag. De rest staat in het fixes-plan. <b>Fouten van ons horen niet in uw uur.</b></div>
+        <div class="cell-body">Zes gevonden, drie hersteld. De overige staan in het modellering-fixes-plan.</div>
       </div>
       <div class="cell">
-        <div class="cell-label">Eén ding kunnen we niet</div>
-        <div class="cell-body">Wat u over samenloop bevestigt kunnen we wél vastleggen, maar <b>niet uitvoeren</b>: er is geen mechanisme voor een regel boven het stelsel.</div>
+        <div class="cell-label">Beperking van het formaat</div>
+        <div class="cell-body">Een bevestiging over samenloop kan worden vastgelegd maar niet worden uitgevoerd: het formaat kent geen mechanisme voor een regel boven het stelsel.</div>
       </div>
     </div>
   </div>
 
   <!-- 12 -->
   <div class="slide">
-    <div class="title-main">Dank</div>
-    <div class="title-sub">wat u bevestigt, gaat terug de desk-cyclus in</div>
+    <div class="title-main">Vervolg</div>
+    <div class="title-sub">Bevestigingen en correctiepunten gaan terug naar de desk-cyclus</div>
     <div class="title-footer">
       <span>regelrecht.rijks.app</span>
       <span class="right">Bureau Architectuur, BZK</span>
