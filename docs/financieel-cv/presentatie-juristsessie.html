@@ -130,7 +130,7 @@ body { font-family: var(--ui); background: var(--ground); color: var(--ink); ove
     <div class="title-sub">Toetsing van de machine-leesbare vertaling van zeven wetten</div>
     <div class="title-footer">
       <span>24 september 2026</span>
-      <span class="right">Bureau Architectuur, BZK</span>
+      <span>Bureau Architectuur, BZK</span>
     </div>
   </div>
 
@@ -139,14 +139,13 @@ body { font-family: var(--ui); background: var(--ground); color: var(--ink); ove
     <div class="h">Doel van deze sessie</div>
     <div class="p">Toetsing van de vertaling aan de wettekst.</div>
     <div class="p">Vaststelling van de punten waarover de wettekst zelf niet beslist.</div>
-    <div class="p dim">Zeven wetten zijn vertaald naar formules die door een motor worden uitgevoerd, met twee casussen als rode draad. Feitelijke fouten in de vertaling worden aan de desk hersteld en komen in deze sessie niet aan de orde.</div>
+    <div class="p dim">Zeven wetten zijn vertaald naar formules die door een motor worden uitgevoerd. Feitelijke fouten in die vertaling worden aan de desk hersteld en komen hier niet aan de orde. Gevraagd wordt een oordeel op negen beslispunten en vijf scope-vragen. Minderheidsstandpunten worden genoteerd.</div>
   </div>
 
   <!-- 3 -->
-  <!-- 3. Wat er gisteren nog niet lag -->
   <div class="slide">
     <div class="h tight">Uitkomst fideliteitsaudit 23 september 2026</div>
-    <div class="p dim" style="margin-top:0;margin-bottom:0.8em">Op 23 september 2026 is het model per artikel en per lid vergeleken met de letter van de wettekst.</div>
+    <div class="p dim" style="margin-top:0;margin-bottom:0.8em">Het model is per artikel en per lid vergeleken met de letter van de wettekst.</div>
     <div class="grid">
       <div class="cell">
         <div class="cell-label">Uitkomst</div>
@@ -162,38 +161,125 @@ body { font-family: var(--ui); background: var(--ground); color: var(--ink); ove
       </div>
       <div class="cell">
         <div class="cell-label">Reikwijdte van de vragen</div>
-        <div class="cell-body">De punten hierna staan <b>los van die zestig</b>. Het betreft open normen waarover de wettekst zelf niet beslist; die blijven bestaan na herstel van de afwijkingen.</div>
-      </div>
-    </div>
-  </div>
-
-  <div class="slide">
-    <div class="h">Stand van het dossier</div>
-    <div class="grid">
-      <div class="cell">
-        <div class="cell-label">Corpus</div>
-        <div class="cell-body">Zeven wetten en het Reïntegratiebesluit, <b>25 artikelen</b> met een machine-leesbare sectie. Tekstueel gelijk aan de wettekst op de peildatum.</div>
-      </div>
-      <div class="cell">
-        <div class="cell-label">Poort</div>
-        <div class="cell-body">Schema én typecheck <b>8 van 8 groen</b> sinds 23 september. Twee nullability-fouten die er al stonden zijn opgelost.</div>
-      </div>
-      <div class="cell">
-        <div class="cell-label">Markeringen in het model</div>
-        <div class="cell-body"><b>21 markings</b> — het formaat heeft er geen vorm voor. <b>39 open termen</b> — de inhoud wordt elders ingevuld.</div>
-      </div>
-      <div class="cell">
-        <div class="cell-label">Voorgelegde punten</div>
-        <div class="cell-body"><b>Negen blokken</b> en <b>vijf scope-vragen</b>: het deel dat overblijft na aftrek van taalgaten, delegaties en herstelbare vertaalfouten.</div>
+        <div class="cell-body">De beslispunten staan <b>los van die zestig</b>. Het betreft open normen waarover de wettekst zelf niet beslist; die blijven bestaan na herstel van de afwijkingen.</div>
       </div>
     </div>
   </div>
 
   <!-- 4 -->
   <div class="slide">
-    <div class="h tight">Doelgroepregister banenafspraak, Wfsv artikel 38b</div>
-    <div class="p dim" style="margin-top:0;margin-bottom:0.8em">Wfsv artikel 38b — welke variabelen beslissen over opname, en in welke combinatie</div>
-    <div class="matrix-head"><div>Grond</div><div>Welke variabelen, in welke combinatie</div><div>Recht bij deze grond</div></div>
+    <div class="h tight">Van untranslatables naar markeringen en open termen</div>
+    <div class="p dim" style="margin-top:0;margin-bottom:0.8em">In eerdere rondes stonden 64 <b>untranslatables</b> in de zeven wetten, alle met <code>accepted: true</code>. Dat veld bestaat sinds 22 september niet meer.</div>
+    <div class="matrix">
+      <div class="row">
+        <div class="grond">21<small>markeringen</small></div>
+        <div class="expr"><span class="op">Het formaat heeft geen vorm voor de constructie. Samenloop tussen regelingen, termijnen met alternatieve startpunten, samentelling over dienstverbanden heen.</span></div>
+        <div class="rechten"><span class="recht vw">blijft staan</span></div>
+      </div>
+      <div class="row">
+        <div class="grond">23<small>open termen</small></div>
+        <div class="expr"><span class="op">De inhoud wordt elders ingevuld. Zeventien daarvan noemen een <b>gezag dat per geval oordeelt</b> zonder dat de wet een regeling aanwijst; dat veld bestond in de oude schemaversie niet.</span></div>
+        <div class="rechten"><span class="recht">nieuw</span></div>
+      </div>
+      <div class="row">
+        <div class="grond">20<small>verwijderd</small></div>
+        <div class="expr"><span class="op">Passen in geen van beide velden: vier vertaalfouten, en zestien scope- en procedurenotities. Vastgelegd in de documenten, niet meer in de wetsbestanden.</span></div>
+        <div class="rechten"><span class="recht vw">naar de docs</span></div>
+      </div>
+      <div class="row excl">
+        <div class="grond">&mdash;<small>let op</small></div>
+        <div class="expr"><span class="op">Een open term wordt door de motor <b>alleen als symbool gedeclareerd</b>. Een bevestiging over een open term legt vandaag dus nog niets vast in de uitvoering.</span></div>
+        <div class="rechten"><span class="recht geen">geen werking</span></div>
+      </div>
+    </div>
+    <div class="legend" style="margin-top:0.8em">
+      <span>Grondslag: RFC-031. Indeling volgens de vier-weg-classificatie van de desk-methode.</span>
+    </div>
+  </div>
+
+  <!-- 5 -->
+  <div class="slide">
+    <div class="h tight">Ziektewet artikel 29b, volledig doorlopen</div>
+    <div class="p dim" style="margin-top:0;margin-bottom:0.7em">Per output: de wettekst, de formule, en drie vragen. Dekt de formule de wettekst? Klopt de bronverwijzing? Is er een casus die dit breekt?</div>
+    <div class="grid">
+      <div class="cell">
+        <div class="cell-label">Structuur</div>
+        <div class="cell-body">Lid 1, 2 en 4 verlenen elk zelfstandig recht; het model voegt ze samen met een <b>OR</b>. Lid 3 schakelt de onderdelen c en d uit voor de groepen van lid 2 d, e en f.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Duur</div>
+        <div class="cell-body">Vijf jaar bij lid 1 en lid 4. Bij lid 2 <b>geen maximum</b> zolang de dienstbetrekking voortduurt.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Vier markeringen</div>
+        <div class="cell-body">Volgorde in de tijd, ontstaansmoment van lid 2, onbepaalde duur, en de samenloop met de overige regelingen.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Eén open term</div>
+        <div class="cell-body">De vijfjaarstermijn bij opvolgende dienstverbanden. Zie beslispunt B11.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6 -->
+  <div class="slide">
+    <div class="h tight">Beslispunten: open normen</div>
+    <div class="p dim" style="margin-top:0;margin-bottom:0.6em">Vier blokken, elk maximaal tien minuten.</div>
+    <div class="punten">
+      <div class="punt"><div class="id">B1</div><div class="txt"><b>Samenloop en voorrang.</b> Klopt &ldquo;hoogste bedrag wint&rdquo; (Wtl 4.1 lid 3) als voorrangsregel, en cumuleren LKV, LKS, loondispensatie en no-riskpolis zoals in juni 2026 bevestigd? <em>Staat open in het actieregister. De memorie van toelichting laat dit punt onbesproken.</em></div></div>
+      <div class="punt"><div class="id">B2</div><div class="txt"><b>Zeven open normen, één vraag: welke vindplaats stuurt ze?</b> &ldquo;Reëel uitzicht&rdquo; (WW 76a, Wajong 2:24, WIA 37) &middot; &ldquo;structurele functionele beperking&rdquo; (WIA 35) &middot; &ldquo;duidelijk minder dan het minimumloon&rdquo; (Wajong 2:20) &middot; &ldquo;objectief medisch vast te stellen&rdquo; (WIA 4) &middot; jonggehandicapte in de zin van 2:3 &middot; &ldquo;in overwegende mate op het individu afgestemd&rdquo; &middot; &ldquo;noodzakelijk en compensatie&rdquo;. <em>Het corpus bevat geen UWV-beleidsregels.</em></div></div>
+      <div class="punt"><div class="id">B11</div><div class="txt"><b>De vijfjaarstermijn van Ziektewet 29b.</b> Begint die opnieuw bij een opvolgend dienstverband, loopt hij door, of telt hij op? <em>De wettekst is op dit punt niet eenduidig.</em></div></div>
+      <div class="punt"><div class="id">B16</div><div class="txt"><b>Loopt er een experiment onder Wet SUWI artikel 82a</b> dat loondispensatie inzet voor een gerechtigde op een IVA-uitkering? <em>Bepaalt of grond g van Wfsv 38b lid 1 op dit moment toepassing vindt.</em></div></div>
+    </div>
+  </div>
+
+  <!-- 7 -->
+  <div class="slide">
+    <div class="h tight">Beslispunten: classificatie bevestigen</div>
+    <div class="p dim" style="margin-top:0;margin-bottom:0.6em">Vier kandidaat-wetgevings-fouten en een bevestiging. Gevraagd wordt een oordeel over de classificatie, niet om een interpretatie.</div>
+    <div class="punten">
+      <div class="punt kandidaat"><div class="id">B12</div><div class="txt">Is &ldquo;evenwichtig over deze personen worden verdeeld&rdquo; een wetgevings-fout? <em>Participatiewet 8a lid 2 onderdeel a. Geen maatstaf en geen individueel rechtsmiddel.</em></div></div>
+      <div class="punt kandidaat"><div class="id">B13</div><div class="txt">Is &ldquo;de in de sector gebruikelijke volledige dienstbetrekking&rdquo; een wetgevings-fout? <em>Participatiewet 10d lid 4. Geen kenbare bron; de norm bepaalt mede de hoogte van de subsidie.</em></div></div>
+      <div class="punt kandidaat"><div class="id">B14</div><div class="txt">Is &ldquo;begeleiding op de werkplek&rdquo; zonder definitie en zonder doorverwijzing een wetgevings-fout? <em>Participatiewet 10da.</em></div></div>
+      <div class="punt kandidaat"><div class="id">B15</div><div class="txt">Is &ldquo;naar het oordeel van het UWV of de eigenrisicodrager&rdquo; zonder criterium wie oordeelt een wetgevings-fout? <em>Wet WIA 37 lid 2 onderdeel d. De bevoegdheid berust bij twee partijen met een tegengesteld belang.</em></div></div>
+      <div class="punt"><div class="id">B17</div><div class="txt">Bevestig: &ldquo;volledig en duurzaam arbeidsongeschikt&rdquo; is in de Wajong een <b>ander begrip</b> dan in de Wet WIA. <em>Wajong 2:4 kent geen percentage, Wet WIA 4 wel. Wie 15% van het maatmaninkomen kan verdienen is het onder de Wet WIA wel en onder de Wajong niet.</em></div></div>
+    </div>
+  </div>
+
+  <!-- 8 -->
+  <div class="slide">
+    <div class="h">Scope-vragen</div>
+    <div class="punten">
+      <div class="punt"><div class="id">S1</div><div class="txt">Hoort de <b>hoogte van de uitkering</b> bij de regelhulp? <em>Geen van de zeven wetten levert op dit moment een uitkeringsbedrag.</em></div></div>
+      <div class="punt"><div class="id">S2</div><div class="txt">Hoort de <b>quotumsystematiek</b> van Wfsv 38f erbij? <em>De formule werkt op sectorniveau, niet op persoonsniveau.</em></div></div>
+      <div class="punt"><div class="id">S3</div><div class="txt">Hoort de <b>variatie in de wachttijd</b> erbij? <em>Verkorting op aanvraag, verlenging via de artikelen 24, 25 en 26.</em></div></div>
+      <div class="punt"><div class="id">S4</div><div class="txt">Horen de <b>overige Wajong-voorzieningen</b> erbij? <em>Vervoer, intermediaire activiteiten, leefomstandigheden.</em></div></div>
+      <div class="punt"><div class="id">S5</div><div class="txt">Hoort het <b>Wajong-overgangsrecht</b> erbij? <em>De route via artikel 8:10 lid 4.</em></div></div>
+    </div>
+  </div>
+
+  <!-- 9 -->
+  <div class="slide">
+    <div class="title-main">Vervolg</div>
+    <div class="title-sub">Bevestigingen en correctiepunten gaan terug naar de desk-cyclus</div>
+    <div class="title-footer">
+      <span>regelrecht.rijks.app</span>
+      <span>Bureau Architectuur, BZK</span>
+    </div>
+  </div>
+
+  <!-- 10 -->
+  <div class="slide">
+    <div class="h">Naslag</div>
+    <div class="p">De volgende bladen zijn naslag.</div>
+    <div class="p dim">Zij worden niet doorgenomen, en zijn bedoeld om bij een beslispunt op te zoeken. De gronden-matrix en het herkomstoverzicht liggen ook op tafel.</div>
+  </div>
+
+  <!-- 11 -->
+  <!-- 11 -->
+  <div class="slide">
+    <div class="h tight">Naslag: doelgroepregister banenafspraak, Wfsv 38b</div>
+<div class="matrix-head"><div>Grond</div><div>Welke variabelen, in welke combinatie</div><div>Recht bij deze grond</div></div>
     <div class="matrix">
 
       <div class="row excl">
@@ -304,28 +390,19 @@ body { font-family: var(--ui); background: var(--ground); color: var(--ink); ove
       </div>
 
     </div>
-    <div class="legend">
+<div class="legend">
       <span><i class="swatch sw-uwv"></i> UWV — oordeel, registratie of historie</span>
       <span><i class="swatch sw-gem"></i> Gemeente of college</span>
       <span><i class="swatch sw-wg"></i> Werkgever of loonaangifte</span>
       <span><i class="swatch sw-reg"></i> Doelgroepregister zelf</span>
       <span><i class="swatch sw-gap"></i> Ontbreekt</span>
     </div>
-    <div class="legend" style="margin-top:0.45em">
-      <span><b>LKV</b> loonkostenvoordeel banenafspraak — € 1,01 per verloond uur, ten hoogste € 2.000 per jaar</span>
-      <span><b>NRP</b> no-riskpolis — 70% van het dagloon</span>
-      <span><b>LKS</b> loonkostensubsidie</span>
-      <span><b>LDP</b> loondispensatie</span>
-      <span><b>JC / WPA</b> jobcoaching en werkplekaanpassing</span>
-      <span><b>PP</b> proefplaatsing</span>
-      <span class="recht vw" style="font-size:inherit">gestippeld = eigen voorwaarden, volgt niet uit de grond alleen</span>
-    </div>
   </div>
 
-  <!-- 5 -->
+  <!-- 12 -->
   <div class="slide">
-    <div class="h">Herkomst van de variabelen</div>
-    <div class="grid three">
+    <div class="h">Naslag: herkomst van de variabelen</div>
+<div class="grid three">
       <div class="cell">
         <div class="cell-label">Dertien variabelen beslissen</div>
         <div class="cell-body">Eén chapeau-uitsluiting en twaalf gronden-variabelen. Daar komt de <b>BSN</b> bij als sleutel en de <b>opnamedatum</b>, die het register zelf bijhoudt.</div>
@@ -353,204 +430,12 @@ body { font-family: var(--ui); background: var(--ground); color: var(--ink); ove
     </div>
   </div>
 
-  <!-- 6 -->
-  <div class="slide">
-    <div class="h tight">Wet SUWI, Besluit SUWI en Regeling SUWI</div>
-    <div class="p dim" style="margin-top:0;margin-bottom:0.8em">Wet SUWI, Besluit SUWI en Regeling SUWI staan ingewonnen in het corpus. Geen ervan is gemodelleerd.</div>
-    <div class="grid three">
-      <div class="cell">
-        <div class="cell-label">Besluit SUWI 3.5 — gronden a en e</div>
-        <div class="cell-body">De UWV-beoordeling &ldquo;niet in staat het minimumloon te verdienen&rdquo; heeft een <b>vastgelegde methodiek</b>: drempelfuncties. Lid 6 en 7 geven de beslisregel, met een houdbaarheid van ten minste zes maanden. <b>Geen open norm, maar een gecodificeerde toets.</b></div>
-      </div>
-      <div class="cell">
-        <div class="cell-label">Besluit SUWI 3.2 — lid 6</div>
-        <div class="cell-body">Wat er wordt vastgelegd, en <b>wanneer de registratie eindigt</b>: bij de pensioengerechtigde leeftijd, bij overlijden, of zodra het college beschut werk vaststelt. Dat is de invulling van <b>registratie_nog_niet_geeindigd</b>.</div>
-      </div>
-      <div class="cell">
-        <div class="cell-label">Besluit SUWI 3.3 — de werkgever</div>
-        <div class="cell-body">Bij ministeriële regeling kan het UWV de werkgever opgeven <b>wie van zijn werknemers geregistreerd staat</b>, met de einddatum erbij. Dat is de route die de doelgroepverklaring vervangt.</div>
-      </div>
-      <div class="cell">
-        <div class="cell-label">Wet SUWI 82a — grond g</div>
-        <div class="cell-body">Grond g werkt alleen als een AMvB bij wijze van experiment loondispensatie inzet voor een IVA-gerechtigde. <b>Zo'n AMvB staat niet in het corpus.</b> Lid 3: zo'n besluit vervalt na vijf jaar.</div>
-      </div>
-      <div class="cell">
-        <div class="cell-label">Wat dat betekent</div>
-        <div class="cell-body">Grond g kan zonder een experiment-AMvB geen toepassing vinden. Of er op dit moment een experiment loopt, blijkt niet uit het corpus: dat bevat 4.138 van de regelingen.</div>
-      </div>
-      <div class="cell">
-        <div class="cell-label">Vraag aan u</div>
-        <div class="cell-body">Loopt er een experiment onder artikel 82a dat loondispensatie inzet? Zo ja: <b>welke AMvB</b>, en sinds wanneer? Zo nee, dan is grond g terecht leeg.</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 7 -->
-  <div class="slide">
-    <div class="h tight">Herleidbaarheid van &eacute;&eacute;n parameter</div>
-    <div class="p dim" style="margin-top:0;margin-bottom:0.7em">De chapeau-uitsluiting van Wfsv 38b, helemaal uitgetrokken</div>
-    <div class="matrix">
-      <div class="row">
-        <div class="grond">0<small>vandaag</small></div>
-        <div class="expr"><span class="chip gem">is_uitgesloten_beschut_werk_pwet_10b</span><span class="op">kale parameter, bron &ldquo;gemeente&rdquo;</span></div>
-        <div class="rechten"><span class="recht vw">niet herleidbaar</span></div>
-      </div>
-      <div class="row">
-        <div class="grond">1<small>Pwet 10b</small></div>
-        <div class="expr"><span class="chip uwv">is_uitsluitend_aangewezen_op_beschut_werk</span><span class="op">wordt al berekend &mdash; maar Wfsv leest hem niet</span></div>
-        <div class="rechten"><span class="recht">aan te sluiten</span></div>
-      </div>
-      <div class="row">
-        <div class="grond">2<small>bodem wettekst</small></div>
-        <div class="expr"><span class="op">drie vaststellingen: doelgroep 10b lid 1, collegevaststelling, dienstbetrekking beschut werk</span></div>
-        <div class="rechten"><span class="recht vw">blijft invoer</span></div>
-      </div>
-      <div class="row missing">
-        <div class="grond">3<small>de AMvB</small></div>
-        <div class="expr"><span class="chip gap">criteria_vaststelling_beschut_werk</span><span class="op">Pwet 10b lid 2 delegeert &mdash; die AMvB staat niet in het corpus</span></div>
-        <div class="rechten"><span class="recht geen">onbereikbaar</span></div>
-      </div>
-      <div class="row">
-        <div class="grond">4<small>Besluit SUWI</small></div>
-        <div class="expr"><span class="op">artikel 3.2 lid 3: de registratie eindigt de dag n&aacute; de vaststelling van het college</span></div>
-        <div class="rechten"><span class="recht">ingewonnen</span></div>
-      </div>
-    </div>
-    <div class="legend" style="margin-top:0.7em">
-      <span>Niveau 1 aansluiten kost invoer: &eacute;&eacute;n parameter eruit, drie erin. Wat het oplevert is herleidbaarheid, niet minder vragen.</span>
-    </div>
-  </div>
-
-  <!-- 8 -->
-  <div class="slide">
-    <div class="h">Verschil in kenbaarheid tussen twee vaststellingen</div>
-    <div class="grid">
-      <div class="cell">
-        <div class="cell-label">Kan de persoon het minimumloon verdienen?</div>
-        <div class="cell-body">Wfsv 38b gronden a en e. <b>Criterium vastgelegd:</b> Besluit SUWI 3.5 toetst het arbeidsvermogen aan drempelfuncties, met de beslisregel in lid 6 en 7 en een houdbaarheid van zes maanden.</div>
-      </div>
-      <div class="cell">
-        <div class="cell-label">Is de persoon aangewezen op beschut werk?</div>
-        <div class="cell-body">Participatiewet 10b lid 1. <b>Criterium niet vastgelegd:</b> lid 2 delegeert naar een AMvB die niet in het corpus staat. Besluit SUWI noemt beschut werk alleen voor het gevolg.</div>
-      </div>
-      <div class="cell">
-        <div class="cell-label">Waarom dit telt</div>
-        <div class="cell-body">Beide beslissingen zetten iemand in of uit het doelgroepregister. De eerste kan een burger natrekken, de tweede niet. <b>Dat verschil staat in geen van beide wetteksten.</b></div>
-      </div>
-      <div class="cell">
-        <div class="cell-label">Vraag aan u &mdash; scherpt B9</div>
-        <div class="cell-body">Niet alleen of het collegeoordeel toetsbaar is, maar <b>waarom de ene vaststelling een gepubliceerde methodiek heeft en de andere niet.</b> En: welke AMvB hoort er onder artikel 10b lid 2?</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 9 -->
-  <div class="slide image-slide">
-    <div class="h">Het stelsel in beeld</div>
-    <div class="image-wrap">
-      <img src="financieel-cv-stelsel.png" alt="Stelsel-diagram van het Financieel CV met de regelgevingslagen en de uitvoeringsorganisaties">
-    </div>
-    <div class="image-caption">Regelgevingslagen en uitvoeringsorganisaties van de zeven regelingen</div>
-  </div>
-
-  <!-- 7 -->
-  <div class="slide">
-    <div class="h">Ziektewet artikel 29b als voorbeeld</div>
-    <div class="grid">
-      <div class="cell">
-        <div class="cell-label">Wettekst naar formule</div>
-        <div class="cell-body">Lid 1, 2 en 4, elk een boolean die in een <b>OR</b> samenkomt. Lid 3 schakelt onderdelen uit.</div>
-      </div>
-      <div class="cell">
-        <div class="cell-label">Duur</div>
-        <div class="cell-body">Vijf jaar bij lid 1 en lid 4. Bij lid 2 <b>geen maximum</b> zolang de dienstbetrekking voortduurt.</div>
-      </div>
-      <div class="cell">
-        <div class="cell-label">Vier markings</div>
-        <div class="cell-body">Volgorde in de tijd, ontstaansmoment lid 2, onbepaalde duur, en de samenloop. <b>Het formaat heeft er geen vorm voor.</b></div>
-      </div>
-      <div class="cell">
-        <div class="cell-label">Eén open term</div>
-        <div class="cell-body">De vijfjaarstermijn bij opvolgende dienstverbanden. <b>Beslispunt B11.</b></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 8 -->
-  <!-- 12. Beslispunten: wat de wet openlaat -->
-  <div class="slide">
-    <div class="h tight">Beslispunten: open normen</div>
-    <div class="p dim" style="margin-top:0;margin-bottom:0.6em">Vier blokken, elk maximaal drie minuten. Minderheidsstandpunten worden genoteerd.</div>
-    <div class="punten">
-      <div class="punt"><div class="id">B1</div><div class="txt"><b>Samenloop en voorrang.</b> Klopt &ldquo;hoogste bedrag wint&rdquo; (Wtl 4.1 lid 3) als voorrangsregel, en cumuleren LKV, LKS, loondispensatie en no-riskpolis zoals in juni bevestigd? <em>Staat open in het actieregister. De memorie van toelichting laat dit punt onbesproken.</em></div></div>
-      <div class="punt"><div class="id">B2</div><div class="txt"><b>Zeven open normen, &eacute;&eacute;n vraag: welke vindplaats stuurt ze?</b> &ldquo;Ree&euml;l uitzicht&rdquo; (WW 76a, Wajong 2:24, WIA 37) &middot; &ldquo;structurele functionele beperking&rdquo; (WIA 35) &middot; &ldquo;duidelijk minder dan het minimumloon&rdquo; (Wajong 2:20) &middot; &ldquo;objectief medisch vast te stellen&rdquo; (WIA 4) &middot; jonggehandicapte in de zin van 2:3 &middot; &ldquo;in overwegende mate op het individu afgestemd&rdquo; &middot; &ldquo;noodzakelijk en compensatie&rdquo;. <em>Het corpus bevat geen UWV-beleidsregels.</em></div></div>
-      <div class="punt"><div class="id">B11</div><div class="txt"><b>De vijfjaarstermijn van ZW 29b.</b> Begint die opnieuw bij een opvolgend dienstverband, loopt hij door, of telt hij op? <em>De wettekst is op dit punt niet eenduidig.</em></div></div>
-      <div class="punt"><div class="id">B16</div><div class="txt"><b>Loopt er een experiment onder Wet SUWI artikel 82a</b> dat loondispensatie inzet voor een IVA-gerechtigde? <em>Bepaalt of grond g van Wfsv 38b lid 1 op dit moment toepassing vindt.</em></div></div>
-    </div>
-  </div>
-
-  <!-- 13. Beslispunten: bevestigen, niet interpreteren -->
-  <div class="slide">
-    <div class="h tight">Beslispunten: classificatie bevestigen</div>
-    <div class="p dim" style="margin-top:0;margin-bottom:0.6em">Vier kandidaat-wetgevings-fouten en een bevestiging. Gevraagd wordt een oordeel over de classificatie.</div>
-    <div class="punten">
-      <div class="punt kandidaat"><div class="id">B12</div><div class="txt">Is &ldquo;evenwichtig over deze personen worden verdeeld&rdquo; een wetgevings-fout? <em>Participatiewet 8a lid 2 onderdeel a. Geen maatstaf en geen individueel rechtsmiddel.</em></div></div>
-      <div class="punt kandidaat"><div class="id">B13</div><div class="txt">Is &ldquo;de in de sector gebruikelijke volledige dienstbetrekking&rdquo; een wetgevings-fout? <em>Participatiewet 10d lid 4. Geen kenbare bron; de norm bepaalt mede de hoogte van de subsidie.</em></div></div>
-      <div class="punt kandidaat"><div class="id">B14</div><div class="txt">Is &ldquo;begeleiding op de werkplek&rdquo; zonder definitie en zonder doorverwijzing een wetgevings-fout? <em>Participatiewet 10da.</em></div></div>
-      <div class="punt kandidaat"><div class="id">B15</div><div class="txt">Is &ldquo;naar het oordeel van het UWV <b>of de eigenrisicodrager</b>&rdquo; zonder criterium wie oordeelt een wetgevings-fout? <em>Wet WIA 37 lid 2 onderdeel d. De bevoegdheid berust bij twee partijen met een tegengesteld belang.</em></div></div>
-      <div class="punt"><div class="id">B17</div><div class="txt">Bevestig: &ldquo;volledig en duurzaam arbeidsongeschikt&rdquo; is in de Wajong een <b>ander begrip</b> dan in de Wet WIA. <em>Wajong 2:4 kent geen percentage, WIA 4 wel. Wie 15% kan verdienen is het onder de WIA wel en onder de Wajong niet.</em></div></div>
-    </div>
-  </div>
-  <div class="slide">
-    <div class="h">Scope-vragen</div>
-    <div class="punten">
-      <div class="punt"><div class="id">S1</div><div class="txt">Hoort de <b>hoogte van de uitkering</b> bij de regelhulp? <em>Geen van de zeven wetten levert vandaag een uitkeringsbedrag.</em></div></div>
-      <div class="punt"><div class="id">S2</div><div class="txt">Hoort de <b>quotumsystematiek</b> van Wfsv 38f erbij? <em>De formule werkt op sectorniveau, niet op persoonsniveau.</em></div></div>
-      <div class="punt"><div class="id">S3</div><div class="txt">Hoort de <b>variatie in de wachttijd</b> erbij? <em>Verkorting op aanvraag, verlenging via de artikelen 24, 25 en 26.</em></div></div>
-      <div class="punt"><div class="id">S4</div><div class="txt">Horen de <b>overige Wajong-voorzieningen</b> erbij? <em>Vervoer, intermediaire activiteiten, leefomstandigheden.</em></div></div>
-      <div class="punt"><div class="id">S5</div><div class="txt">Hoort het <b>Wajong-overgangsrecht</b> erbij? <em>De route via artikel 8:10 lid 4.</em></div></div>
-    </div>
-  </div>
-
-  <!-- 11 -->
-  <div class="slide">
-    <div class="h">Buiten het bereik van deze sessie</div>
-    <div class="grid">
-      <div class="cell">
-        <div class="cell-label">21 markings</div>
-        <div class="cell-body">Plekken waar het formaat de constructie niet kan uitdrukken: samenloop, termijnen met alternatieve startpunten, samentelling over dienstverbanden. Herstel hiervan is werk voor de desk.</div>
-      </div>
-      <div class="cell">
-        <div class="cell-label">39 open termen</div>
-        <div class="cell-body">Normen waarvan een AMvB, een regeling of een verordening de inhoud invult. Deze regelgeving wordt ingewonnen en gemodelleerd.</div>
-      </div>
-      <div class="cell">
-        <div class="cell-label">Modellering-fouten</div>
-        <div class="cell-body">Zes gevonden, drie hersteld. De overige staan in het modellering-fixes-plan.</div>
-      </div>
-      <div class="cell">
-        <div class="cell-label">Beperking van het formaat</div>
-        <div class="cell-body">Een bevestiging over samenloop kan worden vastgelegd maar niet worden uitgevoerd: het formaat kent geen mechanisme voor een regel boven het stelsel.</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 12 -->
-  <div class="slide">
-    <div class="title-main">Vervolg</div>
-    <div class="title-sub">Bevestigingen en correctiepunten gaan terug naar de desk-cyclus</div>
-    <div class="title-footer">
-      <span>regelrecht.rijks.app</span>
-      <span class="right">Bureau Architectuur, BZK</span>
-    </div>
-  </div>
-
 </div>
 
 <div id="nav">
-  <button id="bp" type="button">← Vorige</button>
+  <button id="bp" type="button">Vorige</button>
   <span id="counter"></span>
-  <button id="bn" type="button">Volgende →</button>
+  <button id="bn" type="button">Volgende</button>
 </div>
 <div id="dots"></div>
 
@@ -566,7 +451,7 @@ body { font-family: var(--ui); background: var(--ground); color: var(--ink); ove
     var d = document.createElement('button');
     d.type = 'button';
     d.className = i === 0 ? 'dot on' : 'dot';
-    d.setAttribute('aria-label', 'Naar slide ' + (i + 1));
+    d.setAttribute('aria-label', 'Naar blad ' + (i + 1));
     (function (idx) { d.addEventListener('click', function () { go(idx); }); })(i);
     dotsEl.appendChild(d);
   }

@@ -1,0 +1,246 @@
+<title>Werkbladen juristsessie</title>
+<style>
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+:root { --ink:#1a1a1a; --dim:#5a5a5a; --line:#b8b8b8; --accent:#154273; --warm:#8a4a2f; }
+body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;
+  background:#f2f1ef; color:var(--ink); font-size:14px; line-height:1.5; padding-block:24px; padding-inline:max(16px,4vw); }
+.vel { background:#fff; max-width:1000px; margin:0 auto 28px; padding:28px 30px; border:1px solid var(--line); }
+h1 { font-size:22px; font-weight:700; margin-bottom:4px; }
+h2 { font-size:17px; font-weight:700; margin:22px 0 10px; }
+.sub { color:var(--dim); font-size:13px; margin-bottom:18px; }
+.instructie { border-left:3px solid var(--accent); padding:10px 14px; background:#f6f8fb; font-size:13px; margin-bottom:18px; }
+.instructie b { font-weight:700; }
+
+/* Rekenlat */
+.lat { display:flex; flex-direction:column-reverse; gap:0; margin:16px 0 8px; }
+.trede { display:grid; grid-template-columns:130px 1fr 120px; gap:14px; align-items:center;
+  border-top:1px solid var(--line); padding:12px 0; }
+.trede:last-child { border-bottom:1px solid var(--line); }
+.bedrag { font-size:24px; font-weight:700; font-variant-numeric:tabular-nums; text-align:right; }
+.bedrag small { display:block; font-size:11px; font-weight:400; color:var(--dim); }
+.route { font-size:13px; }
+.route b { font-weight:700; }
+.merk { border:1px dashed var(--line); height:38px; }
+.merk span { font-size:10px; color:var(--dim); padding:2px 5px; display:block; }
+
+.vragen { margin-top:14px; }
+.vraag { display:grid; grid-template-columns:26px 1fr; gap:10px; border-top:1px solid #e2e2e2; padding:9px 0; font-size:13px; }
+.vraag .nr { font-weight:700; }
+.vraag em { font-style:normal; color:var(--dim); }
+
+/* Kaartjes */
+.kaarten { display:grid; grid-template-columns:repeat(2,1fr); gap:0; }
+.kaart { border:1px dashed var(--line); padding:12px 13px; min-height:132px; display:flex; flex-direction:column; }
+.kaart-wet { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--dim); }
+.kaart-norm { font-size:13px; line-height:1.4; margin:7px 0 auto; }
+.kaart-voet { font-size:10px; color:var(--dim); margin-top:9px; display:flex; flex-direction:column; gap:2px; }
+.kaart.gezag .bron { color:var(--accent); font-weight:700; }
+.kaart.delegatie .bron { color:var(--warm); font-weight:700; }
+.kaart-vak { display:flex; gap:6px; margin-top:8px; }
+.kaart-vak span { flex:1; border:1px solid var(--line); font-size:9px; color:var(--dim); text-align:center; padding:3px 0; }
+
+table { width:100%; border-collapse:collapse; font-size:13px; margin-top:10px; }
+th, td { text-align:left; padding:7px 8px; border-bottom:1px solid #e2e2e2; vertical-align:top; }
+th { font-size:10px; text-transform:uppercase; letter-spacing:0.08em; color:var(--dim); font-weight:700; }
+.leeg { height:30px; }
+
+@media print {
+  body { background:#fff; padding:0; font-size:11pt; }
+  .vel { border:0; margin:0; padding:14mm; max-width:none; page-break-after:always; }
+  .vel:last-child { page-break-after:auto; }
+}
+@media (max-width:700px) { .kaarten { grid-template-columns:1fr; } .trede { grid-template-columns:1fr; } }
+</style>
+
+<div class="vel">
+  <h1>Werkblad 1 &mdash; De rekenlat</h1>
+  <div class="sub">Koen &middot; Participatiewet-doelgroep &middot; loonwaarde 60% van WML plus vakantiebijslag &middot; 32 uur per week</div>
+  <div class="instructie">
+    Elke vraag hieronder verschuift het bedrag. <b>Zet een streep bij het bedrag dat volgens u klopt</b>, en noteer bij welke vraag de twijfel zit.
+    Het model toont op dit moment &euro;&nbsp;862,00.
+  </div>
+  <div class="lat">
+    <div class="trede"><div class="bedrag">&euro; 766<small>bij benadering</small></div><div class="route">lid 4-route, naar rato van 32 uur<br><b>Het model rekent de arbeidsduur niet mee.</b></div><div class="merk"><span>streep</span></div></div>
+    <div class="trede"><div class="bedrag">&euro; 862,00<small>huidige uitkomst</small></div><div class="route">lid 4-route, normbasis 36 uur<br><b>Wat het model vandaag toont.</b></div><div class="merk"><span>streep</span></div></div>
+    <div class="trede"><div class="bedrag">&euro; 958<small>bij benadering</small></div><div class="route">lid 5-route, eerste zes maanden, naar rato van 32 uur</div><div class="merk"><span>streep</span></div></div>
+    <div class="trede"><div class="bedrag">&euro; 1.077,50<small></small></div><div class="route">lid 5-route, eerste zes maanden, 36 uur<br><b>50% van WML plus vakantiebijslag.</b></div><div class="merk"><span>streep</span></div></div>
+  </div>
+  <h2>Zes vragen die het bedrag verschuiven</h2>
+  <div class="vragen">
+    <div class="vraag"><span class="nr">1</span><span><b>Werkgeverslasten.</b> Lid 4 zegt: 70% van WML plus vakantiebijslag <em>&ldquo;vermeerderd met een bij ministeri&euml;le regeling vastgestelde vergoeding voor werkgeverslasten&rdquo;</em>. Tellen die mee in de grondslag, en welke regeling stelt het bedrag vast?</span></div>
+    <div class="vraag"><span class="nr">2</span><span><b>Loonwaarde met of zonder vakantiebijslag.</b> De wet noemt beide termen inclusief vakantiebijslag. Onze parameter heet alleen <em>loonwaarde</em>. Klopt de lezing, en moet de naam mee veranderen?</span></div>
+    <div class="vraag"><span class="nr">3</span><span><b>De 50%-regeling van lid 5.</b> Is de route zonder loonwaardevaststelling uitzondering of hoofdroute? En moet het Financieel CV beide bedragen tonen?</span></div>
+    <div class="vraag"><span class="nr">4</span><span><b>Naar rato onder 36 uur.</b> Bevestig 32/36. En geldt de overeengekomen arbeidsduur ook als de sector een andere volledige werkweek kent?</span></div>
+    <div class="vraag"><span class="nr">5</span><span><b>Voorrang bij het loonkostenvoordeel.</b> Sadee voldoet aan twee categorie&euml;n: &euro;&nbsp;5.075,20 tegenover &euro;&nbsp;1.680,64. Klopt &ldquo;hoogste bedrag wint&rdquo; uit Wtl 4.1 lid 3? <em>Verschil: &euro;&nbsp;3.394,56 per jaar.</em></span></div>
+    <div class="vraag"><span class="nr">6</span><span><b>De drie Wajong-tijdperken.</b> Welke drie, en wat betekent elk voor de loondispensatie? Welk regime geldt voor de casus?</span></div>
+  </div>
+</div>
+
+<div class="vel">
+  <h1>Werkblad 2 &mdash; Sorteeroefening open normen</h1>
+  <div class="sub">23 open normen uit de zeven wetten</div>
+  <div class="instructie">
+    Knip de kaartjes los. Leg ze op twee stapels:<br>
+    <b>Vindplaats</b> &mdash; er bestaat een beleidsregel, protocol of andere bron die deze norm invult. Noteer welke.<br>
+    <b>Per geval</b> &mdash; dit wordt per dossier beoordeeld, zonder algemene maatstaf.<br>
+    De regel onderaan elk kaartje zegt wat het model er nu van maakt. Die mag worden doorgestreept.
+  </div>
+  <div class="kaarten">
+      <div class="kaart delegatie">
+        <div class="kaart-wet">Participatiewet 8a</div>
+        <div class="kaart-norm">&ldquo;evenwichtig over deze personen worden verdeeld&rdquo;</div>
+        <div class="kaart-voet"><span class="bron">Pwet 8a lid 2 a</span><span class="nu">Gedelegeerd aan: gemeenteraad · GEMEENTELIJKE_VERORDENING</span></div>
+        <div class="kaart-vak"><span>vindplaats</span><span>per geval</span></div>
+      </div>
+      <div class="kaart gezag">
+        <div class="kaart-wet">Participatiewet 10</div>
+        <div class="kaart-norm">&ldquo;de naar het oordeel van het college noodzakelijk geachte voorziening&rdquo;</div>
+        <div class="kaart-voet"><span class="bron">Pwet 10 lid 1</span><span class="nu">Oordeelt nu per geval: het college van burgemeester en wethouders, op grond van Participatiewet artikel 10 lid 1 en lid 4</span></div>
+        <div class="kaart-vak"><span>vindplaats</span><span>per geval</span></div>
+      </div>
+      <div class="kaart delegatie">
+        <div class="kaart-wet">Participatiewet 10b</div>
+        <div class="kaart-norm">de regels waarnaar het UWV beoordeelt of iemand uitsluitend beschut kan werken</div>
+        <div class="kaart-voet"><span class="bron">Pwet 10b lid 2</span><span class="nu">Gedelegeerd aan: Onze Minister · AMVB</span></div>
+        <div class="kaart-vak"><span>vindplaats</span><span>per geval</span></div>
+      </div>
+      <div class="kaart delegatie">
+        <div class="kaart-wet">Participatiewet 10b</div>
+        <div class="kaart-norm">het aantal dienstbetrekkingen beschut werk dat het college ten minste realiseert</div>
+        <div class="kaart-voet"><span class="bron">Pwet 10b lid 4</span><span class="nu">Gedelegeerd aan: Onze Minister · MINISTERIELE_REGELING</span></div>
+        <div class="kaart-vak"><span>vindplaats</span><span>per geval</span></div>
+      </div>
+      <div class="kaart gezag">
+        <div class="kaart-wet">Participatiewet 10c</div>
+        <div class="kaart-norm">&ldquo;de arbeidsduur welke in overeenkomstige dienstbetrekkingen in de regel geacht wordt een volledige dienstbetrekking te vormen&rdquo;</div>
+        <div class="kaart-voet"><span class="bron">Pwet 10d lid 4</span><span class="nu">Oordeelt nu per geval: het college van burgemeester en wethouders, op grond van Participatiewet artikel 10d lid 4</span></div>
+        <div class="kaart-vak"><span>vindplaats</span><span>per geval</span></div>
+      </div>
+      <div class="kaart gezag">
+        <div class="kaart-wet">Participatiewet 10da</div>
+        <div class="kaart-norm">&ldquo;begeleiding op de werkplek&rdquo; &mdash; niet omschreven, geen doorverwijzing</div>
+        <div class="kaart-voet"><span class="bron">Pwet 10da</span><span class="nu">Oordeelt nu per geval: het college van burgemeester en wethouders, op grond van Participatiewet artikel 10da</span></div>
+        <div class="kaart-vak"><span>vindplaats</span><span>per geval</span></div>
+      </div>
+      <div class="kaart gezag">
+        <div class="kaart-wet">WW 76a</div>
+        <div class="kaart-norm">&ldquo;een re&euml;el uitzicht op een aansluitende dienstbetrekking van dezelfde of grotere omvang voor ten minste 6 maanden&rdquo;</div>
+        <div class="kaart-voet"><span class="bron">WW 76a</span><span class="nu">Oordeelt nu per geval: het UWV, op grond van Werkloosheidswet artikel 76a lid 3 onderdeel d</span></div>
+        <div class="kaart-vak"><span>vindplaats</span><span>per geval</span></div>
+      </div>
+      <div class="kaart gezag">
+        <div class="kaart-wet">Wajong 2:15</div>
+        <div class="kaart-norm">jonggehandicapte in de zin van artikel 2:3 &mdash; beoordeling over 52 weken</div>
+        <div class="kaart-voet"><span class="bron">Wajong 2:15 lid 1</span><span class="nu">Oordeelt nu per geval: het UWV, op grond van Wajong artikel 2:3</span></div>
+        <div class="kaart-vak"><span>vindplaats</span><span>per geval</span></div>
+      </div>
+      <div class="kaart gezag">
+        <div class="kaart-wet">Wajong 2:20</div>
+        <div class="kaart-norm">&ldquo;duidelijk minder is dan de arbeidsprestatie die een geldelijke beloning van het minimumloon rechtvaardigt&rdquo;</div>
+        <div class="kaart-voet"><span class="bron">Wajong 2:20 lid 1</span><span class="nu">Oordeelt nu per geval: het UWV, op grond van Wajong artikel 2:20 lid 1</span></div>
+        <div class="kaart-vak"><span>vindplaats</span><span>per geval</span></div>
+      </div>
+      <div class="kaart gezag">
+        <div class="kaart-wet">Wajong 2:22</div>
+        <div class="kaart-norm">&ldquo;kan &hellip; op aanvraag voorzieningen toekennen&rdquo; &mdash; bevoegdheid, geen gebonden beschikking</div>
+        <div class="kaart-voet"><span class="bron">Wajong 2:22 lid 1</span><span class="nu">Oordeelt nu per geval: het UWV, op grond van Wajong artikel 2:22 lid 1</span></div>
+        <div class="kaart-vak"><span>vindplaats</span><span>per geval</span></div>
+      </div>
+      <div class="kaart gezag">
+        <div class="kaart-wet">Wajong 2:22</div>
+        <div class="kaart-norm">&ldquo;die in overwegende mate op het individu &hellip; zijn afgestemd&rdquo;</div>
+        <div class="kaart-voet"><span class="bron">Wajong 2:22</span><span class="nu">Oordeelt nu per geval: het UWV, op grond van Wajong artikel 2:22 lid 2 onderdeel c</span></div>
+        <div class="kaart-vak"><span>vindplaats</span><span>per geval</span></div>
+      </div>
+      <div class="kaart gezag">
+        <div class="kaart-wet">Wajong 2:22</div>
+        <div class="kaart-norm">&ldquo;noodzakelijke persoonlijke ondersteuning &hellip; indien die ondersteuning een compensatie vormt voor zijn beperkingen&rdquo;</div>
+        <div class="kaart-voet"><span class="bron">Wajong 2:22</span><span class="nu">Oordeelt nu per geval: het UWV, op grond van Wajong artikel 2:22 lid 2 onderdeel d</span></div>
+        <div class="kaart-vak"><span>vindplaats</span><span>per geval</span></div>
+      </div>
+      <div class="kaart gezag">
+        <div class="kaart-wet">Wajong 2:24</div>
+        <div class="kaart-norm">&ldquo;een re&euml;el uitzicht op een aansluitende dienstbetrekking van dezelfde of grotere omvang voor ten minste 6 maanden&rdquo;</div>
+        <div class="kaart-voet"><span class="bron">Wajong 2:24</span><span class="nu">Oordeelt nu per geval: het UWV, op grond van Wajong artikel 2:24 lid 3 onderdeel d</span></div>
+        <div class="kaart-vak"><span>vindplaats</span><span>per geval</span></div>
+      </div>
+      <div class="kaart delegatie">
+        <div class="kaart-wet">Wfsv 38b</div>
+        <div class="kaart-norm">&ldquo;bij of krachtens algemene maatregel van bestuur vastgestelde indicatie&rdquo;</div>
+        <div class="kaart-voet"><span class="bron">Wfsv 38b lid 1 d</span><span class="nu">Gedelegeerd aan: Onze Minister · AMVB</span></div>
+        <div class="kaart-vak"><span>vindplaats</span><span>per geval</span></div>
+      </div>
+      <div class="kaart delegatie">
+        <div class="kaart-wet">Wfsv 38b</div>
+        <div class="kaart-norm">de regels waarnaar het UWV het oordeel van lid 2 velt</div>
+        <div class="kaart-voet"><span class="bron">Wfsv 38b lid 3</span><span class="nu">Gedelegeerd aan: Onze Minister · AMVB</span></div>
+        <div class="kaart-vak"><span>vindplaats</span><span>per geval</span></div>
+      </div>
+      <div class="kaart delegatie">
+        <div class="kaart-wet">Wfsv 38f</div>
+        <div class="kaart-norm">nadere regels voor de variabelen A tot en met E en H van de quotumformule</div>
+        <div class="kaart-voet"><span class="bron">Wfsv 38f lid 3</span><span class="nu">Gedelegeerd aan: Onze Minister · AMVB</span></div>
+        <div class="kaart-vak"><span>vindplaats</span><span>per geval</span></div>
+      </div>
+      <div class="kaart delegatie">
+        <div class="kaart-wet">Wfsv 38f</div>
+        <div class="kaart-norm">nadere regels voor de variabelen F en G, met voorhang bij beide kamers</div>
+        <div class="kaart-voet"><span class="bron">Wfsv 38f lid 4</span><span class="nu">Gedelegeerd aan: Onze Minister · AMVB</span></div>
+        <div class="kaart-vak"><span>vindplaats</span><span>per geval</span></div>
+      </div>
+      <div class="kaart gezag">
+        <div class="kaart-wet">Wet WIA 4</div>
+        <div class="kaart-norm">&ldquo;als rechtstreeks en objectief medisch vast te stellen gevolg van ziekte, gebrek, zwangerschap of bevalling&rdquo;</div>
+        <div class="kaart-voet"><span class="bron">Wet WIA 4 lid 1</span><span class="nu">Oordeelt nu per geval: de verzekeringsarts van het UWV, op grond van Wet WIA artikel 4 lid 1</span></div>
+        <div class="kaart-vak"><span>vindplaats</span><span>per geval</span></div>
+      </div>
+      <div class="kaart gezag">
+        <div class="kaart-wet">Wet WIA 35</div>
+        <div class="kaart-norm">&ldquo;naar het oordeel van het UWV structurele functionele beperking&rdquo;</div>
+        <div class="kaart-voet"><span class="bron">Wet WIA 35 lid 1</span><span class="nu">Oordeelt nu per geval: het UWV, op grond van Wet WIA artikel 35 lid 1</span></div>
+        <div class="kaart-vak"><span>vindplaats</span><span>per geval</span></div>
+      </div>
+      <div class="kaart gezag">
+        <div class="kaart-wet">Wet WIA 35</div>
+        <div class="kaart-norm">&ldquo;die in overwegende mate op het individu &hellip; zijn afgestemd&rdquo;</div>
+        <div class="kaart-voet"><span class="bron">Wet WIA 35</span><span class="nu">Oordeelt nu per geval: het UWV, op grond van Wet WIA artikel 35 lid 2 onderdeel c</span></div>
+        <div class="kaart-vak"><span>vindplaats</span><span>per geval</span></div>
+      </div>
+      <div class="kaart gezag">
+        <div class="kaart-wet">Wet WIA 35</div>
+        <div class="kaart-norm">&ldquo;noodzakelijke persoonlijke ondersteuning &hellip; indien die ondersteuning een compensatie vormt voor zijn beperkingen&rdquo;</div>
+        <div class="kaart-voet"><span class="bron">Wet WIA 35</span><span class="nu">Oordeelt nu per geval: het UWV, op grond van Wet WIA artikel 35 lid 2 onderdeel d</span></div>
+        <div class="kaart-vak"><span>vindplaats</span><span>per geval</span></div>
+      </div>
+      <div class="kaart gezag">
+        <div class="kaart-wet">Wet WIA 37</div>
+        <div class="kaart-norm">&ldquo;een re&euml;el uitzicht op een aansluitende dienstbetrekking van dezelfde of grotere omvang voor ten minste 6 maanden&rdquo;</div>
+        <div class="kaart-voet"><span class="bron">Wet WIA 37</span><span class="nu">Oordeelt nu per geval: het UWV of de eigenrisicodrager, op grond van Wet WIA artikel 37 lid 2 onderdeel d</span></div>
+        <div class="kaart-vak"><span>vindplaats</span><span>per geval</span></div>
+      </div>
+      <div class="kaart gezag">
+        <div class="kaart-wet">Ziektewet 29b</div>
+        <div class="kaart-norm">&ldquo;binnen vijf jaar na die dag in dienstbetrekking werkzaamheden gaat verrichten&rdquo; &mdash; bij een opvolgend dienstverband niet eenduidig</div>
+        <div class="kaart-voet"><span class="bron">Ziektewet 29b lid 1</span><span class="nu">Oordeelt nu per geval: het UWV, op grond van Ziektewet artikel 29b lid 1</span></div>
+        <div class="kaart-vak"><span>vindplaats</span><span>per geval</span></div>
+      </div>
+  </div>
+</div>
+
+<div class="vel">
+  <h1>Werkblad 3 &mdash; Tijdlijn per regeling</h1>
+  <div class="sub">Waar verandert het bedrag, en waar houdt het op</div>
+  <div class="instructie">
+    Trek per regeling een lijn vanaf de indiensttreding. <b>Markeer waar het bedrag verandert en waar het recht eindigt.</b>
+    Het model rekent op dit moment geen van deze termijnen; dat is de reden voor dit blad.
+  </div>
+  <table>
+    <tr><th style="width:24%">Regeling</th><th style="width:30%">Wat de wet zegt over de duur</th><th>Tijdlijn</th></tr>
+    <tr><td><b>LKV arbeidsgehandicapte</b><br>Wtl 2.8</td><td>Ten hoogste drie aaneengesloten jaren vanaf de aanvang van de eerste dienstbetrekking</td><td class="leeg"></td></tr>
+    <tr><td><b>LKV banenafspraak</b><br>Wtl 2.12</td><td>Zolang de dienstbetrekking duurt en aan de voorwaarden wordt voldaan</td><td class="leeg"></td></tr>
+    <tr><td><b>LKV herplaatsen</b><br>Wtl 2.16</td><td>Ten hoogste een jaar vanaf de aanvang van de aanvraagtermijn</td><td class="leeg"></td></tr>
+    <tr><td><b>Loonkostensubsidie</b><br>Pwet 10d lid 5 en 7</td><td>Eerste zes maanden mogelijk 50%; jaarlijkse herziening per 1 januari</td><td class="leeg"></td></tr>
+    <tr><td><b>No-riskpolis</b><br>Ziektewet 29b</td><td>Vijf jaar bij lid 1 en lid 4; bij lid 2 geen maximum</td><td class="leeg"></td></tr>
+    <tr><td><b>Proefplaatsing</b><br>WW 76a, WIA 37, Wajong 2:24</td><td>Maximaal zes maanden; ziekteperiode blijft buiten beschouwing</td><td class="leeg"></td></tr>
+  </table>
+</div>
