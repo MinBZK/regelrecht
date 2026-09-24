@@ -167,8 +167,14 @@ onder "Reviewbevindingen" gaat over de vraag of deze PR wel mag, en terugdraaien
 kan daarna alleen met een revert-PR die zelf weer een ronde door de trein moet.
 
 ```bash
-gh pr merge <nr> -R MinBZK/regelrecht --squash --delete-branch
+gh pr merge <nr> -R MinBZK/regelrecht --squash
 ```
+
+Main mergt via een merge queue, dus dit zet de PR in de rij en mergt hem niet
+meteen. `--delete-branch` weigert gh zolang de rij aanstaat. Hoe je nagaat dat
+hij in de rij staat, en hoe je een uitval ziet (de PR blijft dan gewoon
+`OPEN`), staat in AGENTS.md onder "Een pull request door de rij halen". Wacht
+met stap 5 tot hij echt gemerged is.
 
 Squash is de enige toegestane methode in deze repo. De titel is de commit-titel,
 dus die moet aan Conventional Commits voldoen; `Validate PR title` bewaakt dat al.
