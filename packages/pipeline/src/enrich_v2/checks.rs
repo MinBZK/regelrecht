@@ -5756,6 +5756,43 @@ articles:
         );
     }
 
+    /// Only a loop's own `filter` and `body` are element scope. Its
+    /// `collection` is read in the scope around it, a field path reads a
+    /// declared record, and a name is a name with or without underscores.
+    #[test]
+    fn dangling_bindings_reads_what_a_loop_does_not_scope() {
+        let yaml = r#"
+articles:
+  - number: '1'
+    machine_readable:
+      execution:
+        input:
+          - name: aanvrager
+            source: {}
+        output:
+          - name: aantal
+          - name: leeftijd
+        actions:
+          - output: aantal
+            value:
+              operation: FOREACH
+              collection: $geen_lijst
+              body: 1
+              combine: ADD
+          - output: leeftijd
+            value: $aanvrager.leeftijd
+"#;
+        let doc: Value = serde_yaml_ng::from_str(yaml).unwrap();
+        let details: Vec<String> = dangling_bindings(&doc)
+            .into_iter()
+            .map(|f| f.detail)
+            .collect();
+        assert_eq!(
+            details,
+            vec!["$geen_lijst is referenced but never defined in this law".to_string()]
+        );
+    }
+
     #[test]
     fn a_marking_that_asks_for_an_operation_the_engine_has_is_flagged() {
         let yaml = r#"

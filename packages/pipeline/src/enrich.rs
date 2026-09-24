@@ -9179,6 +9179,193 @@ articles:
         );
     }
 
+    /// A law directory with [`four_article_law`] in it, and the config and
+    /// payload of a two-window walk over it.
+    async fn two_window_walk() -> (tempfile::TempDir, EnrichConfig, EnrichPayload) {
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
+        tokio::fs::write(dir.path().join(yaml_path), four_article_law())
+            .await
+            .unwrap();
+        let mut config = test_config(LlmProvider::OpenCode {
+            path: "fake".into(),
+            model: None,
+        });
+        config.max_articles_per_run = 2;
+        (dir, config, chunk_test_payload(yaml_path))
+    }
+
+    fn reconcile_only(config: &EnrichConfig) -> EnrichConfig {
+        let mut config = config.clone();
+        config.steps = RunSteps {
+            window: false,
+            reconcile: true,
+        };
+        config
+    }
+
+    /// `--steps reconcile` over a law whose walk is over is how a law enriched
+    /// before this gate existed gets judged. It translates nothing, so only
+    /// the binding repair writes, and the schema gate still gets the last
+    /// word over what that repair wrote.
+    #[tokio::test]
+    async fn a_reconcile_only_run_on_a_finished_law_gets_the_binding_gate() {
+        const BROKEN: &str = "\n            onbekend_veld: true";
+        let (dir, config, payload) = two_window_walk().await;
+        let mut runner = ScriptedRunner::new(vec![
+            ("1", READS_OWN_OUTPUT.to_string()),
+            ("3", PRODUCES_PREMIUM.to_string()),
+        ]);
+        runner.binding_fix = Some((
+            "value: $onbekend",
+            "value: $premie\n            onbekend_veld: true",
+        ));
+        runner.schema_fix = vec![(BROKEN, "")];
+        for _ in 0..2 {
+            execute_enrich_with_runner(&payload, dir.path(), &config, "", &runner)
+                .await
+                .unwrap();
+        }
+        // What an older run left behind: a name nothing defines.
+        let path = dir.path().join(&payload.yaml_path);
+        let text = tokio::fs::read_to_string(&path).await.unwrap();
+        tokio::fs::write(&path, text.replace("value: $premie", "value: $onbekend"))
+            .await
+            .unwrap();
+
+        let (result, _) =
+            execute_enrich_with_runner(&payload, dir.path(), &reconcile_only(&config), "", &runner)
+                .await
+                .expect("repaired, the law goes through");
+        let gate = |name: &str| result.feedback.iter().find(|g| g.gate == name);
+        let binding = gate("binding-final").expect("the walk is over, so the gate runs");
+        assert_eq!((binding.findings_initial, binding.findings_final), (1, 0));
+        let schema =
+            gate("schema-final").expect("the binding repair wrote, so the schema gate runs");
+        assert_eq!((schema.findings_initial, schema.findings_final), (1, 0));
+    }
+
+    /// The same run halfway through the walk leaves a forward reference
+    /// alone: entry 3, which produces what entry 1 reads, has not been
+    /// translated yet.
+    #[tokio::test]
+    async fn a_reconcile_only_run_halfway_the_walk_does_not_get_the_binding_gate() {
+        let (dir, config, payload) = two_window_walk().await;
+        let runner = ScriptedRunner::new(vec![
+            ("1", READS_OWN_OUTPUT.to_string()),
+            ("3", PRODUCES_PREMIUM.to_string()),
+        ]);
+        execute_enrich_with_runner(&payload, dir.path(), &config, "", &runner)
+            .await
+            .unwrap();
+
+        let (result, _) =
+            execute_enrich_with_runner(&payload, dir.path(), &reconcile_only(&config), "", &runner)
+                .await
+                .expect("a forward reference mid-walk is not fatal");
+        assert!(!result.feedback.iter().any(|g| g.gate == "binding-final"));
+    }
+
+    /// A layer walk decides completion by layers, not by entries. The run
+    /// that walks the last layer is the one that ends the walk, and it gets
+    /// the gate.
+    #[tokio::test]
+    async fn the_run_that_walks_the_last_layer_gets_the_binding_gate() {
+        let (dir, mut config, payload) = two_window_walk().await;
+        config.window_mode = WindowMode::Layer;
+        let runner = ScriptedRunner::new(vec![
+            ("1", READS_OWN_OUTPUT.to_string()),
+            ("3", PRODUCES_PREMIUM.to_string()),
+        ]);
+        let mut runs = Vec::new();
+        for _ in 0..8 {
+            let (result, _) =
+                execute_enrich_with_runner(&payload, dir.path(), &config, "", &runner)
+                    .await
+                    .unwrap();
+            let done = result.law_complete;
+            runs.push(result);
+            if done {
+                break;
+            }
+        }
+        let last = runs.last().unwrap();
+        assert!(last.law_complete, "the layer walk ends");
+        assert!(last.feedback.iter().any(|g| g.gate == "binding-final"));
+        assert!(runs[..runs.len() - 1]
+            .iter()
+            .all(|r| !r.feedback.iter().any(|g| g.gate == "binding-final")));
+    }
+
+    /// The ceiling the worker divides the job budget by is the number of agent
+    /// calls a run really makes when every gate has something to say, with the
+    /// default one round per gate. Measured by driving a run through every
+    /// gate: a translation that leaves a schema error, a checks and a marking
+    /// question, a reconcile lead and a dangling reference, and a binding
+    /// repair that breaks the schema again for the final schema gate.
+    #[tokio::test]
+    async fn the_agent_call_ceiling_is_what_a_run_through_every_gate_makes() {
+        const BROKEN: &str = "\n            onbekend_veld: true";
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
+        tokio::fs::write(dir.path().join(yaml_path), four_article_law())
+            .await
+            .unwrap();
+        let config = test_config(LlmProvider::OpenCode {
+            path: "fake".into(),
+            model: None,
+        });
+        assert_eq!(config.feedback_rounds, FeedbackRounds::default());
+        let payload = chunk_test_payload(yaml_path);
+        // Entry 1 reads a name nothing defines, and leaves open a term that
+        // entry 3 produces (a reconcile lead). Entry 3 carries a schema error
+        // that the first schema round repairs.
+        let reads = READS_OWN_OUTPUT
+            .replace("value: $premie", "value: $onbekend")
+            .replace(
+                "      execution:\n",
+                "      open_terms:\n        - id: standaardpremie\n          type: amount\n      \
+                 execution:\n",
+            );
+        let produces = PRODUCES_PREMIUM.replace(
+            "            value: 1000",
+            &format!("            value: 1000{BROKEN}"),
+        );
+        let mut runner = ScriptedRunner::new(vec![("1", reads), ("3", produces)]);
+        runner.binding_fix = Some((
+            "value: $onbekend",
+            "value: $premie\n            onbekend_veld: true",
+        ));
+        runner.schema_fix = vec![(BROKEN, "")];
+
+        let (result, _) = execute_enrich_with_runner(&payload, dir.path(), &config, "", &runner)
+            .await
+            .expect("every gate is answered");
+        let asked: Vec<(String, usize)> = result
+            .feedback
+            .iter()
+            .map(|g| (g.gate.clone(), g.rounds.len()))
+            .collect();
+        assert_eq!(
+            asked,
+            vec![
+                ("schema".to_string(), 1),
+                ("checks".to_string(), 1),
+                ("marking".to_string(), 1),
+                ("reconcile".to_string(), 1),
+                ("binding-final".to_string(), 1),
+                ("schema-final".to_string(), 1),
+            ],
+            "elke poort moet een ronde draaien, anders meet deze test het plafond niet"
+        );
+        let calls = runner.passes.lock().unwrap().len();
+        assert_eq!(calls as u32, MAX_AGENT_CALLS_PER_RUN);
+    }
+
     #[test]
     fn changed_entries_names_what_a_rewrite_touched() {
         let before = four_article_law();
