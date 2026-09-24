@@ -36,7 +36,11 @@ wasm-build:
     # elsewhere). The CLI must match the wasm-bindgen crate in Cargo.lock
     # exactly; the Docker build and CI enforce the same pin.
     locked=$(grep -A1 '^name = "wasm-bindgen"$' packages/Cargo.lock \
-      | sed -n '/^version = /{s/^version = "\(.*\)"$/\1/p;q;}')
+      | sed -n '/^version = /{s/^version = "\(.*\)"$/\1/p;q;}' || true)
+    if [ -z "$locked" ]; then
+      echo "could not read the wasm-bindgen version from packages/Cargo.lock" >&2
+      exit 1
+    fi
     bindgen=$(command -v wasm-bindgen || true)
     if [ -z "$bindgen" ] && [ -x "${CARGO_HOME:-$HOME/.cargo}/bin/wasm-bindgen" ]; then
       bindgen="${CARGO_HOME:-$HOME/.cargo}/bin/wasm-bindgen"
