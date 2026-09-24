@@ -56,7 +56,11 @@ portaal:                          # optioneel, vraagt rollen.aanvrager
   cel: <cel-id>                   # waar de indiening wordt vastgelegd; in deze runtime
   stroom: <$id van de stroom>
   event: <event dat een indiening wordt>
-  toets: {lexostatus: <naam>, regeling: <$id>, uitkomst: <output>}
+  toets:
+    lexostatus: <naam>
+    regeling: <$id>
+    uitkomst: <output>
+    rijen: [...]                  # optioneel: synthese per regel, als bij het besluit
   aanbod:                         # optioneel
     regeling: <$id>
     uitkomst: <output>
@@ -236,6 +240,13 @@ en `veld`) of uit de samengevoegde parameters (`parameter`), zo nodig omgezet me
 Een bron levert een kolom uit haar `parameters` of haar `extra_velden`.
 Ontbreekt een invoer, is een bron onbereikbaar, of levert ze de waarde niet,
 dan blijft die kolom weg; `mist` noemt welke. Er wordt niets aangevuld.
+
+De toets kent hetzelfde blok onder `portaal.toets.rijen`. Daar komt de tabel
+uit de proefreductie van het concept (de toets-lexostatus) of uit een bron die
+haar doorgeeft; de toets bouwt de rijen op vóór de engine, zoals het besluit.
+Een rijen-blok levert alleen aan de uitvoering waar het staat: de rijen van
+de toets gelden in de controle op herkomst voor de toets, die van het besluit
+voor het besluit.
 
 ## Proefbesluit
 

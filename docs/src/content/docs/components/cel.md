@@ -119,6 +119,8 @@ Per row the process walks the sources in order, so a source can use a column an 
 
 When an input is missing, a source is unreachable, or it does not supply the value, that column stays out of the row and `mist` names it. Nothing is filled in, and the engine then reports the parameter it could not compute.
 
+The check before submission takes the same block under `portaal.toets.rijen`. There the table comes from the trial reduction of the draft (the check lexostatus) or from a source that passes it on, and the check builds the rows before the engine runs, as the decision does. A `rijen` block supplies only the evaluation it belongs to: in the provenance check, the rows of the check count for the check and those of the decision for the decision.
+
 ## Taking the decision
 
 `POST /processen/<id>/api/zaken/<zaakkenmerk>/besluit` computes the same thing and has the cell record the outcome, when `behandeling.besluit.vastleggen` says where. The gram is a stage decretogram of that event: `zaak: volgt` with the case identifier the application opened, and the outcomes as its fields. On top of that comes what makes the decision a decision: `legal_character` and `decision_type` from the article's `produces`, `regulation` and `regulation_valid_from`, `inputs` with every parameter's value and provenance ([RFC-013](/rfcs/rfc-013) `accepted_values`), and a `receipt` holding the loaded regulations and the cell's streams with a SHA-256 over both. The process assembles these, because the process runs the engine; the hashes of the streams are the ones the cell keeps. It sends them with the event to `POST /cellen/<cell>/api/grammen`, and the cell builds the gram from its stream and records it.
