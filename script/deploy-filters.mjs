@@ -79,8 +79,8 @@ export const COMPONENTS = {
   },
   // De demo bouwt de engine als WASM (zie frontend-demo/Dockerfile), dus hij
   // hangt aan de engine-crate; daarnaast aan zijn eigen map, het gedeelde
-  // frontend-pakket en het demo-corpus dat hij bundelt. Nog geen job in
-  // deploy.yml gebruikt deze uitkomst: de demo wordt bewust nog niet uitgerold.
+  // frontend-pakket en het demo-corpus dat hij bundelt. `build-demo` in
+  // deploy.yml leest deze uitkomst.
   demo: {
     crate: 'regelrecht-engine',
     paths: ['frontend-demo/', 'packages/frontend-shared/', 'corpus/demo/', NGINX_SHARED],
