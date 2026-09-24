@@ -1,6 +1,6 @@
 ---
-title: "Admin Dashboard"
-description: "The web dashboard operators use to monitor and control the harvester pipeline."
+title: "Harvester Admin"
+description: "The API that operators use to monitor and control the harvester pipeline. Its dashboard is part of the editor."
 ---
 
 The harvester-admin service lets operators monitor and control the harvester pipeline. It is a standalone Rust API; its dashboard UI lives inside the editor as the "Corpusinwinning" section (`frontend/src/harvester/`), reached through the editor-api `/api/harvest-admin/*` proxy. The API stays independently addressable for scripts and other services.

@@ -1,6 +1,6 @@
 ---
 title: "Article ID Collision (420bis.1)"
-description: "When article numbering produces the same identifier for two different articles, and the proposed fix."
+description: "Open. Article numbering can give two different articles the same identifier; this page describes the problem and the proposed fix."
 ---
 
 > **Open.** Article numbering can still produce one identifier for two

@@ -1,5 +1,5 @@
 ---
-title: "System Overview"
+title: "Architecture Overview"
 description: "A tour of the two parts, the Corpus Juris and the Execution Engine, and how the pieces fit."
 ---
 
