@@ -8,5 +8,7 @@ import { reloadOnStaleBundle } from '@regelrecht/frontend-shared/reloadOnStaleBu
 
 const app = createApp(App);
 app.use(router);
+// After a deploy, a tab this browser has not opened yet reloads instead of
+// going blank; see reloadOnStaleBundle.js.
 reloadOnStaleBundle(router);
 app.mount('#app');
