@@ -28,12 +28,36 @@ default:
 
 # Build WASM module for browser use
 wasm-build:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Find wasm-bindgen and check its version BEFORE the minutes-long cargo
+    # build. `cargo install` puts it in $CARGO_HOME/bin, which is not always on
+    # the PATH a recipe gets (cargo itself may be reachable through a symlink
+    # elsewhere). The CLI must match the wasm-bindgen crate in Cargo.lock
+    # exactly; the Docker build and CI enforce the same pin.
+    locked=$(grep -A1 '^name = "wasm-bindgen"$' packages/Cargo.lock \
+      | sed -n '/^version = /{s/^version = "\(.*\)"$/\1/p;q;}')
+    bindgen=$(command -v wasm-bindgen || true)
+    if [ -z "$bindgen" ] && [ -x "${CARGO_HOME:-$HOME/.cargo}/bin/wasm-bindgen" ]; then
+      bindgen="${CARGO_HOME:-$HOME/.cargo}/bin/wasm-bindgen"
+    fi
+    if [ -z "$bindgen" ]; then
+      echo "wasm-bindgen not found. Install the version packages/Cargo.lock uses:" >&2
+      echo "  cargo install wasm-bindgen-cli --version $locked --locked" >&2
+      exit 1
+    fi
+    have=$("$bindgen" --version | awk '{print $2}')
+    if [ "$have" != "$locked" ]; then
+      echo "wasm-bindgen $have found at $bindgen, but packages/Cargo.lock uses $locked. Install the matching version:" >&2
+      echo "  cargo install wasm-bindgen-cli --version $locked --locked --force" >&2
+      exit 1
+    fi
     # Pin the target dir explicitly. A CLI --target-dir overrides any shared
     # [build] target-dir from `just dev-setup` (root .cargo/config.toml), so the
     # artifact always lands at packages/target — no metadata lookup (and no jq/
     # python3 dependency) needed, and it works with or without dev-setup.
     cargo build --manifest-path packages/engine/Cargo.toml --target wasm32-unknown-unknown --release --features wasm --target-dir packages/target
-    wasm-bindgen --target web --out-dir frontend/public/wasm/pkg packages/target/wasm32-unknown-unknown/release/regelrecht_engine.wasm
+    "$bindgen" --target web --out-dir frontend/public/wasm/pkg packages/target/wasm32-unknown-unknown/release/regelrecht_engine.wasm
     # The demo runs the same engine in the browser; keep the two copies identical.
     mkdir -p frontend-demo/public/wasm/pkg && cp frontend/public/wasm/pkg/* frontend-demo/public/wasm/pkg/
     # The landing page runs the zorgtoeslag scenario in the visitor's browser
