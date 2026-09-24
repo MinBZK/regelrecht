@@ -159,22 +159,26 @@ function reviewHref(task) {
 // Hetzelfde patroon als router-link: alleen een onbewerkte primaire klik
 // afvangen, de rest aan de browser laten (nieuw tabblad/venster).
 //
-// De guard hangt in de capture-fase op het host-element, dus vóór de
-// click-handler in de shadow root van het item. Die handler vuurt `select`, en
-// dat pad navigeert ook (zie hieronder) - bij een ctrl-klik zou je anders in
-// het nieuwe tabblad én in het huidige belanden. `activatedByClick` markeert
-// dat er een echte klik in het spel is; de bubble-fase (die ná `select` komt)
-// zet 'm weer terug.
-let activatedByClick = false;
+// The guard sits in the capture phase on the host element, so it runs before
+// the click handler inside the item's shadow root. That handler fires
+// `select`, and that path navigates too (see below): on a ctrl-click you would
+// otherwise end up both in the new tab and in the current one.
+// `pendingClick` remembers the click; while it is still being dispatched
+// (eventPhase is not NONE) a `select` belongs to that click and is skipped.
+//
+// Deliberately no flag that a second, bubble-phase listener resets. Vue skips
+// a handler when the event carries the same millisecond as the moment that
+// handler was attached (`e._vts <= invoker.attached`), and only the first Vue
+// handler an event reaches is exempt from that check. A click in the same
+// millisecond as the render left the flag set, and every later select stopped
+// navigating. The dispatch state of the event itself depends on no clock.
+let pendingClick = null;
 function onReviewClickCapture(event, task) {
-  activatedByClick = true;
+  pendingClick = event;
   if (event.defaultPrevented || event.button !== 0) return;
   if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
   event.preventDefault();
   review(task);
-}
-function onReviewClick() {
-  activatedByClick = false;
 }
 
 // `select` zonder klik erachter is een programmatische activatie door het menu
@@ -188,7 +192,8 @@ function onReviewClick() {
 // hier het gedrag van één item nabouwen zou het juist uit de pas laten lopen
 // met elk ander link-menu-item.
 function onReviewSelect(task) {
-  if (activatedByClick) return;
+  if (pendingClick && pendingClick.eventPhase !== Event.NONE) return;
+  pendingClick = null;
   review(task);
 }
 
@@ -252,7 +257,6 @@ function viewLaw(job) {
                   :href="reviewHref(task)"
                   :disabled="!reviewTarget(task) || undefined"
                   @click.capture="onReviewClickCapture($event, task)"
-                  @click="onReviewClick()"
                   @select="onReviewSelect(task)"
                 ></nldd-menu-item>
               </template>
