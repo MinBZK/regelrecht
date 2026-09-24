@@ -194,4 +194,19 @@ exclude_re = [
     'engine/src/wasm\.rs.*parse_records',
     'engine/src/wasm\.rs.*parse_parameters',
     'engine/src/wasm\.rs.*strip_undefined_deep',
+
+    # --- pipeline/src/api/bwb_search.rs + worker.rs -------------------------
+
+    # search_bwb_by_name is één regel: search_bwb_at met de vaste SRU_BASE van
+    # wetten.overheid.nl. Hem doden vraagt een test tegen de echte bron. Alles
+    # wat hij doet (de HTTP-statuspoort, het parsen, de lengte-ondergrens) wordt
+    # gemuteerd en gedood in search_bwb_at, dat de tests tegen een lokale
+    # server draaien.
+    'api/bwb_search\.rs.*replace search_bwb_by_name ->',
+
+    # De tellers in harvest_related_legislation (resolved, unresolved,
+    # lookup_failed en de rest) bestaan alleen voor de samenvattende logregel;
+    # de functie heeft geen terugwaarde en ze sturen niets. Welke uitkomst als
+    # welke soort telt ligt vast in classify_sru_result en wordt daar gedood.
+    'worker\.rs.*replace \+= with -= in harvest_related_legislation',
 ]
