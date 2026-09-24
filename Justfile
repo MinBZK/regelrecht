@@ -400,18 +400,24 @@ mutants *ARGS:
 # Driepunts (`BASE...HEAD`), niet tweepunts: tweepunts vergelijkt twee bomen,
 # dus alles wat main na jouw aftakking veranderde komt in de diff terecht als
 # jouw wijziging. Op een branch die achterloopt muteer je dan andermans regels.
+#
+# Pakketten, werkmap en timeout volgen `.github/workflows/mutation-diff.yml`.
+# Dit recept keek eerst alleen naar engine, terwijl de poort ook pipeline
+# muteert; een pipeline-PR was hier dan groen zonder één mutant te zien en
+# viel pas in CI om (#1549, 14 overlevers). Verander je het één, verander dan
+# het ander mee.
 [doc("Mutation testing on your own changed lines only")]
 mutants-diff BASE="origin/main":
     #!/usr/bin/env bash
     set -euo pipefail
     diff_file="$(mktemp -t mutants-diff-XXXXXX.diff)"
-    git -C packages diff --relative "{{BASE}}...HEAD" -- engine > "$diff_file"
+    git -C packages diff --relative "{{BASE}}...HEAD" -- engine pipeline > "$diff_file"
     if [ ! -s "$diff_file" ]; then
-        echo "Geen gewijzigde regels in packages/engine ten opzichte van {{BASE}}."
+        echo "Geen gewijzigde regels in packages/engine of packages/pipeline ten opzichte van {{BASE}}."
         exit 0
     fi
-    cd packages/engine
-    cargo mutants --in-place --timeout-multiplier 3 --in-diff "$diff_file"
+    cd packages
+    cargo mutants --in-place --timeout 120 --in-diff "$diff_file"
 
 # --- Benchmarks ---
 
