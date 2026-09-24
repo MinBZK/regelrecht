@@ -89,6 +89,12 @@ is: in tekst dêr't men rjochten oan ûntliene kin`.
 - **`regelingen`** als meervoud: de `-ing`-meervouden lopen tussen Fries en
   Nederlands soms uiteen.
 
+- **`begjinstân` en `presintaasjemodus`** in `app.reset.body`. Beide
+  samengesteld uit woorden die elders in de vertaling staan (`begjin`, `stân`,
+  `presintaasje`), niet opgezocht. `presintaasjemodus` kan ook `wize fan
+  presintearjen` zijn, als een samenstelling met `modus` in het Fries te
+  technisch leest.
+
 ## 5. Beelden die in het Fries misschien niet werken
 
 - **`baalje`** (balie), in "de andere kant van de balie". Het woord bestaat,

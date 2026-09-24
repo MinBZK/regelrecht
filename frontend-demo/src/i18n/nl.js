@@ -53,7 +53,11 @@ export default {
   'app.loading': 'Wetten en engine laden…',
   'app.error.title': 'De demo kon niet starten',
   'app.reset.title': 'Demo resetten?',
-  'app.reset.body': "Alle aanvragen en correcties uit deze demo worden gewist. De wetten en persona's blijven.",
+  // Zegt alles wat `resetState()` terugzet, en wat het laat staan. Stond er
+  // alleen "aanvragen en correcties", dan kwam een presentator na het resetten
+  // op een ander profiel en in een andere presentatiemodus uit dan hij dacht.
+  'app.reset.body':
+    'Alle aanvragen en correcties uit deze demo worden gewist. Het demoprofiel, namens wie je handelt, de features, de presentatiemodus en de naam van de presentator gaan terug naar hun beginstand. De wetten, de taal en de weergave blijven.',
   'app.reset.label': 'Demo resetten',
   'app.reset.confirm': 'Resetten',
   'app.reset.cancel': 'Annuleren',
@@ -845,6 +849,12 @@ export default {
   'deck.previous': 'Vorige dia',
   'deck.next': 'Volgende dia',
   'deck.close': 'Sluiten',
+  // De toetsen staan als `{prev}`, `{esc}` enzovoort in de zin en worden in het
+  // dek tot `nldd-keyboard-shortcut` gevuld, zodat een taal ze elders in de zin
+  // kan zetten (zie `keyHints.js`).
+  'deck.hint.browse': '{prev} {next} of {space} bladeren',
+  'deck.hint.close': '{esc} sluit',
+  'deck.hint.fullscreen': '{f} volledig scherm',
   'scenario.steps.one': '{n} stap',
   'scenario.steps.other': '{n} stappen',
   'scenario.table_for': 'Tabel bij {step}',

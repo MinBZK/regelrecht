@@ -357,7 +357,12 @@ const statusTag = computed(() => {
       <nldd-button v-if="canObject" variant="primary" size="sm" start-icon="flag" :text="t('wet.tile.action.object')" @click="apply"></nldd-button>
       <nldd-button v-else-if="drift" variant="primary" size="sm" start-icon="edit" :text="t('wet.tile.action.amend')" @click="apply"></nldd-button>
       <nldd-button v-else-if="currentCase" variant="secondary" size="sm" start-icon="file-text" :text="t('wet.tile.action.case')" @click="apply"></nldd-button>
-      <nldd-button v-else-if="canSubmitClaims && evaluation && missingInputs.length && produces?.legal_character === 'BESCHIKKING'" variant="primary" size="sm" start-icon="edit" :text="t('wet.tile.action.complete')" @click="apply"></nldd-button>
+      <!-- `data-highlight` is what the presentation slide pulses (demo-config.yaml,
+           `highlight:`). It selected on the label once, `[text="Gegevens aanvullen"]`,
+           and went dark without a sound when the label was shortened, and in every
+           language but Dutch from the start. An attribute nobody translates or
+           relabels does not have that failure; `slides.test.js` checks it exists. -->
+      <nldd-button v-else-if="canSubmitClaims && evaluation && missingInputs.length && produces?.legal_character === 'BESCHIKKING'" data-highlight="complete-data" variant="primary" size="sm" start-icon="edit" :text="t('wet.tile.action.complete')" @click="apply"></nldd-button>
       <nldd-button v-else-if="canApply" variant="primary" size="sm" start-icon="paper-plane" :text="t('wet.tile.action.apply')" @click="apply"></nldd-button>
       <nldd-button v-if="evaluation?.ok" variant="neutral-transparent" size="sm" start-icon="list" :text="t('wet.tile.action.calculation')" @click="showTrace = true"></nldd-button>
       <nldd-button variant="neutral-transparent" size="sm" start-icon="book" :text="t('wet.tile.action.law_text')" @click="goTo('wetten', { lawId: law.id })"></nldd-button>
