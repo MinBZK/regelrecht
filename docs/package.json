@@ -20,7 +20,8 @@
     "nldd:check": "node ../script/check-nldd-imports.mjs src src/nldd-components.js"
   },
   "//ASTRO_PREVIEW_BACKGROUND": "Set (to a falsy value) in the a11y script to keep `astro preview` in the FOREGROUND. Since astro 7 the preview command auto-detects an AI-agent environment (cli/agent.js isRunByAgent) and daemonises itself, printing a 'Stop: astro preview stop' banner and exiting immediately. start-server-and-test then sees the process exit, reports 'server closed unexpectedly', and pa11y-ci never runs, so the accessibility gate fails without a single a11y finding. The env var short-circuits that detection (it is only consulted for truthiness), while the value stays falsy so the lock file is still marked non-background. CI has no agent to detect and passes either way; this keeps the gate runnable from an agent session too.",
-  "//@astrojs/markdown-remark": "Needed by astro.config.mjs (markdown.remarkPlugins/rehypePlugins): since astro 7.2 S\u00e4tteri is the default Markdown processor, so neither astro nor @astrojs/mdx installs this package itself \u2014 both only declare it as an optional peer (^7.3.0). Pinned exactly so the tree keeps one copy of it; bump it together with astro.",
+  "//@astrojs/markdown-remark": "Needed by astro.config.mjs (markdown.remarkPlugins/rehypePlugins): since astro 7.2 Sätteri is the default Markdown processor, so neither astro nor @astrojs/mdx installs this package itself — both only declare it as an optional peer (^7.3.0). Pinned exactly so the tree keeps one copy of it; bump it together with astro.",
+  "//overrides.pa11y-ci": "pa11y-ci 4.1.1 pins pa11y ^9 and puppeteer ^24, whose @puppeteer/browsers still unpacks with extract-zip (GHSA-7pqw-9j4j-h8q3, GHSA-jmr9-qjv8-65gv, no fixed release). pa11y 10 is on puppeteer 25, which untars with modern-tar instead. Drop this override once pa11y-ci itself depends on pa11y 10.",
   "dependencies": {
     "@astrojs/markdown-remark": "7.3.1",
     "@astrojs/mdx": "^8.0.1",
@@ -45,6 +46,10 @@
   "overrides": {
     "astro-pagefind": {
       "astro": "$astro"
+    },
+    "pa11y-ci": {
+      "pa11y": "^10.0.0",
+      "puppeteer": "^25.12.0"
     }
   }
 }
