@@ -32,10 +32,21 @@ env:
   CARGO_MUTANTS_VERSION: 27.1.0
 
 jobs:
-  in-diff:
-    name: Mutation Testing (diff)
+  shard:
+    name: Mutation Testing (diff, shard ${{ matrix.shard }})
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    strategy:
+      # Elke shard maakt zijn eigen deel af: één rode shard mag de rest niet
+      # afbreken, anders zie je maar een deel van de overlevers.
+      fail-fast: false
+      matrix:
+        # Een mutant kost hier zo'n minuut (bouwen plus testen), en binnen een
+        # shard gaan ze achter elkaar. #1549 had 87 mutanten en hield de PR
+        # daarmee een uur op; over vier shards is dat een kwartier, voor
+        # evenveel runnerminuten. Het aantal shards volgt uit deze lijst
+        # (`strategy.job-total` hieronder), dus uitbreiden is alleen hier.
+        shard: [0, 1, 2, 3]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -76,7 +87,9 @@ jobs:
         run: cargo install cargo-mutants --locked --version "$CARGO_MUTANTS_VERSION"
 
       - name: Save cargo-mutants binary
-        if: steps.mutants-cache.outputs.cache-hit != 'true'
+        # Alleen shard 0 schrijft: de shards delen dezelfde sleutel, en een
+        # tweede save op een bestaande sleutel faalt.
+        if: matrix.shard == 0 && steps.mutants-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ~/.cargo/bin/cargo-mutants
@@ -122,7 +135,8 @@ jobs:
           # zaten. Twee minuten is ruim boven elke echte run en nog altijd
           # kort genoeg om een echte lus af te kappen.
           cargo mutants --in-place --timeout 120 \
-            --in-diff "$RUNNER_TEMP/pr.diff"
+            --in-diff "$RUNNER_TEMP/pr.diff" \
+            --shard "${{ matrix.shard }}/${{ strategy.job-total }}"
           code=$?
           set -e
           case "$code" in
@@ -146,8 +160,28 @@ jobs:
         if: always() && steps.diff.outputs.has-changes == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
-          name: mutation-report-diff
+          name: mutation-report-diff-shard-${{ matrix.shard }}
           # cargo-mutants schrijft naar de workspace-root (packages/), ook als
           # het commando vanuit packages/engine wordt gestart.
           path: packages/mutants.out/
           if-no-files-found: ignore
+
+  # De naam die de check altijd had, zodat wie ernaar kijkt (of hem ooit
+  # verplicht maakt) één uitkomst ziet en niet vier. Groen alleen als elke
+  # shard groen is; een overgeslagen of geannuleerde shard telt als rood,
+  # want dan zijn zijn mutanten niet getest.
+  in-diff:
+    name: Mutation Testing (diff)
+    needs: shard
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Uitkomst van de shards
+        env:
+          RESULT: ${{ needs.shard.result }}
+        run: |
+          if [ "$RESULT" != "success" ]; then
+            echo "::error::Minstens één shard is niet geslaagd ($RESULT). Zie de shard-banen en hun artifacts mutation-report-diff-shard-N."
+            exit 1
+          fi
+          echo "Alle shards geslaagd."
