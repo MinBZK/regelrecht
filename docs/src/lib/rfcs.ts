@@ -8,6 +8,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import GithubSlugger from 'github-slugger'
+import { RFC_TOPICS, type RfcTopicId } from './rfc-topics'
 
 export interface RfcEntry {
   /** Numeric RFC number, e.g. 8 */
@@ -27,6 +28,12 @@ export interface RfcEntry {
    * schema does not validate.
    */
   implementation?: string
+  /**
+   * `topic` frontmatter value, the group on the RFC index. Absent only on a
+   * placeholder (a file with `reserved_by`); the content schema requires it on
+   * every other RFC.
+   */
+  topic?: RfcTopicId
   /**
    * Raw `depends_on` frontmatter entries, each like "RFC-004 (Uniform Operation
    * Syntax)". Resolved into links by `rfcRelations()`.
@@ -86,7 +93,8 @@ const FRONTMATTER = /^---\n([\s\S]*?)\n---\n/
 /**
  * Read a scalar `key:` value from a frontmatter block. Handles the two shapes
  * our RFC frontmatter uses: a bare scalar (`status: Accepted`) and a quoted
- * scalar (`title: "RFC-001: …"`, `date: '2026-01-01'`). Block sequences and
+ * scalar (`title: "RFC-001: …"`, `date: '2026-01-01'`), each optionally
+ * followed by a `# comment` as `template.md` writes them. Block sequences and
  * nested maps are out of scope — this is the controlled frontmatter that the
  * content collection validates, not arbitrary YAML.
  */
@@ -94,14 +102,14 @@ function frontmatterField(block: string, key: string): string | undefined {
   const m = block.match(new RegExp(`^${key}:[ \\t]*(.+?)[ \\t]*$`, 'm'))
   if (!m) return undefined
   const raw = m[1].trim()
-  // Strip a single layer of matching quotes.
-  if (
-    (raw.startsWith('"') && raw.endsWith('"')) ||
-    (raw.startsWith("'") && raw.endsWith("'"))
-  ) {
-    return raw.slice(1, -1)
-  }
-  return raw
+  // A quoted scalar: take what is between the quotes, ignoring a trailing
+  // comment after the closing quote.
+  const quoted = raw.match(/^(["'])(.*)\1(?:\s+#.*)?$/)
+  if (quoted) return quoted[2]
+  // A bare scalar ends where a YAML comment starts (whitespace, then `#`).
+  // Without this, `topic: language # …` copied from the template would read
+  // as an unknown topic and drop the RFC from the index.
+  return raw.replace(/\s+#.*$/, '')
 }
 
 /**
@@ -172,6 +180,7 @@ export function getRfcs(): RfcEntry[] {
     const status = frontmatterField(block, 'status') ?? 'Unknown'
     const implementation = frontmatterField(block, 'implementation')
     const shortTitle = frontmatterField(block, 'short_title') ?? title
+    const topic = frontmatterField(block, 'topic') as RfcTopicId | undefined
     const dependsOn = frontmatterList(block, 'depends_on')
 
     // The link is derived from a filename we just read, so it provably
@@ -183,6 +192,7 @@ export function getRfcs(): RfcEntry[] {
       shortTitle,
       status,
       ...(implementation ? { implementation } : {}),
+      ...(topic ? { topic } : {}),
       dependsOn,
       link: `/rfcs/${filename.replace(/\.md$/, '')}`,
     })
@@ -345,4 +355,89 @@ export function rfcTargets(): Map<number, RfcTarget> {
     })
   }
   return targets
+}
+
+/**
+ * The RFCs a newcomer reads first: together they define the design as it runs
+ * today. Editorial, so it is a list here rather than a frontmatter flag; the
+ * build fails if a number no longer exists or has been superseded.
+ */
+const START_HERE: { num: number; why: string }[] = [
+  { num: 1, why: 'The shape of a law file: articles, inputs, outputs.' },
+  { num: 4, why: 'The one syntax every operation uses.' },
+  { num: 7, why: 'How a law calls another law, and which override wins.' },
+  { num: 3, why: 'How a higher law leaves a value to a lower regulation.' },
+  { num: 31, why: 'Where a model records what it could not translate.' },
+  { num: 13, why: 'What a result carries so it can be reproduced.' },
+]
+
+/** True for an RFC that no longer describes the design (shown de-emphasized). */
+export function isRetired(status: string): boolean {
+  return status === 'Superseded' || status === 'Rejected'
+}
+
+/** True for a number held by a placeholder rather than a design. */
+function isPlaceholder(rfc: RfcEntry): boolean {
+  return rfc.status === 'Reserved' || rfc.topic === undefined
+}
+
+export interface RfcIndex {
+  startHere: (RfcEntry & { why: string })[]
+  groups: {
+    id: RfcTopicId
+    label: string
+    description: string
+    rfcs: RfcEntry[]
+  }[]
+  retired: RfcEntry[]
+  placeholders: RfcEntry[]
+}
+
+/**
+ * The RFC index, grouped by `topic`. Current RFCs go into their topic group;
+ * Superseded and Rejected ones are collected separately so the index shows
+ * them after the designs still in force, and placeholders come last.
+ */
+export function rfcIndex(): RfcIndex {
+  const rfcs = getRfcs()
+  const byNum = new Map(rfcs.map((r) => [r.num, r]))
+
+  const startHere = START_HERE.map(({ num, why }) => {
+    const rfc = byNum.get(num)
+    if (!rfc) throw new Error(`rfcs.ts START_HERE: RFC-${num} does not exist`)
+    if (isPlaceholder(rfc)) {
+      throw new Error(`rfcs.ts START_HERE: ${rfc.id} is a placeholder, not a design`)
+    }
+    if (isRetired(rfc.status)) {
+      throw new Error(
+        `rfcs.ts START_HERE: ${rfc.id} is ${rfc.status}; point at the RFC that replaced it`,
+      )
+    }
+    return { ...rfc, why }
+  })
+
+  // The content schema already rejects an unknown topic; this guards the other
+  // parser, so a value the two read differently fails the build instead of
+  // silently leaving the RFC out of every group.
+  const topicIds = new Set<string>(RFC_TOPICS.map((t) => t.id))
+  for (const r of rfcs) {
+    if (r.topic !== undefined && !topicIds.has(r.topic)) {
+      throw new Error(`rfcs.ts rfcIndex: ${r.id} has unknown topic "${r.topic}"`)
+    }
+  }
+
+  const current = rfcs.filter((r) => !isPlaceholder(r) && !isRetired(r.status))
+  const groups = RFC_TOPICS.map((t) => ({
+    id: t.id,
+    label: t.label,
+    description: t.description,
+    rfcs: current.filter((r) => r.topic === t.id),
+  })).filter((g) => g.rfcs.length > 0)
+
+  return {
+    startHere,
+    groups,
+    retired: rfcs.filter((r) => !isPlaceholder(r) && isRetired(r.status)),
+    placeholders: rfcs.filter(isPlaceholder),
+  }
 }

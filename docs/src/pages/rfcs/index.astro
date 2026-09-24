@@ -1,14 +1,20 @@
 ---
 /*
- * RFC overview — a category page (like /guide/, /concepts/, …). The RFCs are
- * listed as a boxed navigation list; getRfcs() runs at build time.
+ * RFC overview: a category page (like /guide/, /concepts/, …). A short
+ * "start here" list, then the RFCs grouped by their `topic` frontmatter, then
+ * the superseded and rejected ones, then reserved numbers. The grouping comes
+ * from rfcIndex() in lib/rfcs.ts and runs at build time.
+ *
+ * RFCs that no longer describe the design are de-emphasized with the design
+ * system alone: they sit in a plain `simple` list after every boxed list of
+ * current designs, so a reader scanning the boxes never lands on one.
  */
 import Base from '~/layouts/Base.astro';
 import EditLink from '~/components/EditLink.astro';
-import { getRfcs, rfcStatusColor } from '~/lib/rfcs';
+import { rfcIndex, rfcStatusColor } from '~/lib/rfcs';
 
 const pathname = '/rfcs/';
-const rfcs = getRfcs();
+const { startHere, groups, retired, placeholders } = rfcIndex();
 ---
 
 <Base
@@ -36,6 +42,8 @@ const rfcs = getRfcs();
         </p>
         <p>
           See <a href="/rfcs/rfc-000">RFC-000</a> for the process and template.
+          An accepted RFC is not rewritten: a changed design gets a new RFC,
+          and the old one is marked superseded.
         </p>
         <p>
           The position paper{' '}
@@ -49,28 +57,128 @@ const rfcs = getRfcs();
       <EditLink filePath="src/pages/rfcs/index.astro" />
     </div>
     <div slot="right">
+      <nldd-title size="5">
+        <h2>Start here</h2>
+      </nldd-title>
+      <nldd-spacer size="8" />
       <nldd-list type="navigation" variant="box-tinted">
         {
-          rfcs.map((r) => (
+          startHere.map((r) => (
             <nldd-list-item href={r.link}>
-              <nldd-text-cell overline={r.id} text={r.title} width="full">
-                <nldd-container slot="supporting-text" layout="wrap" gap="4">
-                  <nldd-tag color={rfcStatusColor(r.status)} size="md">
-                    {r.status}
-                  </nldd-tag>
-                  {r.implementation && (
-                    <nldd-tag color="neutral" size="md">
-                      {r.implementation}
-                    </nldd-tag>
-                  )}
-                </nldd-container>
-              </nldd-text-cell>
+              <nldd-text-cell
+                overline={r.id}
+                text={r.title}
+                supporting-text={r.why}
+                width="full"
+              />
               <nldd-spacer-cell />
               <nldd-icon-cell size="20" icon="chevron-right" />
             </nldd-list-item>
           ))
         }
       </nldd-list>
+
+      {
+        groups.map((group) => (
+          <Fragment>
+            <nldd-spacer size="32" />
+            <nldd-title size="5">
+              <h2>{group.label}</h2>
+            </nldd-title>
+            <nldd-spacer size="4" />
+            <nldd-text size="sm" color="secondary">
+              {group.description}
+            </nldd-text>
+            <nldd-spacer size="8" />
+            <nldd-list type="navigation" variant="box-tinted">
+              {group.rfcs.map((r) => (
+                <nldd-list-item href={r.link}>
+                  <nldd-text-cell overline={r.id} text={r.title} width="full">
+                    <nldd-container
+                      slot="supporting-text"
+                      layout="wrap"
+                      gap="4"
+                    >
+                      <nldd-tag color={rfcStatusColor(r.status)} size="md">
+                        {r.status}
+                      </nldd-tag>
+                      {r.implementation && (
+                        <nldd-tag color="neutral" size="md">
+                          {r.implementation}
+                        </nldd-tag>
+                      )}
+                    </nldd-container>
+                  </nldd-text-cell>
+                  <nldd-spacer-cell />
+                  <nldd-icon-cell size="20" icon="chevron-right" />
+                </nldd-list-item>
+              ))}
+            </nldd-list>
+          </Fragment>
+        ))
+      }
+
+      {
+        retired.length > 0 && (
+          <Fragment>
+            <nldd-spacer size="32" />
+            <nldd-title size="5">
+              <h2>Superseded and rejected</h2>
+            </nldd-title>
+            <nldd-spacer size="4" />
+            <nldd-text size="sm" color="secondary">
+              Kept as the record of what was decided at the time. They do not
+              describe the current design.
+            </nldd-text>
+            <nldd-spacer size="8" />
+            <nldd-list type="navigation" variant="simple">
+              {retired.map((r) => (
+                <nldd-list-item href={r.link}>
+                  <nldd-text-cell
+                    overline={r.id}
+                    text={r.title}
+                    supporting-text={r.status}
+                    width="full"
+                  />
+                  <nldd-spacer-cell />
+                  <nldd-icon-cell size="20" icon="chevron-right" />
+                </nldd-list-item>
+              ))}
+            </nldd-list>
+          </Fragment>
+        )
+      }
+
+      {
+        placeholders.length > 0 && (
+          <Fragment>
+            <nldd-spacer size="32" />
+            <nldd-title size="5">
+              <h2>Reserved numbers</h2>
+            </nldd-title>
+            <nldd-spacer size="4" />
+            <nldd-text size="sm" color="secondary">
+              Numbers held for a pull request that has not landed an RFC under
+              them. They hold no design.
+            </nldd-text>
+            <nldd-spacer size="8" />
+            <nldd-list type="navigation" variant="simple">
+              {placeholders.map((r) => (
+                <nldd-list-item href={r.link}>
+                  <nldd-text-cell
+                    overline={r.id}
+                    text={r.title}
+                    supporting-text={r.status}
+                    width="full"
+                  />
+                  <nldd-spacer-cell />
+                  <nldd-icon-cell size="20" icon="chevron-right" />
+                </nldd-list-item>
+              ))}
+            </nldd-list>
+          </Fragment>
+        )
+      }
     </div>
   </nldd-one-third-two-thirds-section>
 </Base>

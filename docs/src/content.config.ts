@@ -9,6 +9,7 @@ import {
   CATEGORIE_IDS,
   CAPABILITY_IDS,
 } from '~/lib/roadmap';
+import { RFC_TOPIC_IDS } from '~/lib/rfc-topics';
 
 const docs = defineCollection({
   loader: glob({ pattern: '**/*.{md,mdx}', base: 'src/content/docs' }),
@@ -67,6 +68,9 @@ const rfcs = defineCollection({
       depends_on: z.array(z.string()).optional(),
       // Sidebar label; falls back to the stripped title when absent.
       short_title: z.string().optional(),
+      // The group the RFC index files it under (lib/rfc-topics.ts). Required
+      // on every RFC that is not a placeholder, like `implementation`.
+      topic: z.enum(RFC_TOPIC_IDS).optional(),
     })
     // Making `implementation` optional above would, on its own, let any RFC
     // drop it and render a silent gap where every sibling shows a tag. It is
@@ -108,13 +112,23 @@ const rfcs = defineCollection({
               "A file with `reserved_by` is a placeholder, so its status is 'Reserved' while its pull request is open, or 'Rejected' once that pull request closed unmerged. Any other status means the real RFC landed, and then `reserved_by` should go.",
           });
         }
-      } else if (data.implementation === undefined) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['implementation'],
-          message:
-            'Every RFC that is not a placeholder states whether it is built, so an absent tag never reads as "unknown".',
-        });
+      } else {
+        if (data.implementation === undefined) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['implementation'],
+            message:
+              'Every RFC that is not a placeholder states whether it is built, so an absent tag never reads as "unknown".',
+          });
+        }
+        if (data.topic === undefined) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['topic'],
+            message:
+              'Every RFC that is not a placeholder names its topic, so the RFC index can group it. The topics are listed in src/lib/rfc-topics.ts.',
+          });
+        }
       }
     }),
 });

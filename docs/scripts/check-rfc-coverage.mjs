@@ -1,13 +1,29 @@
-// Assert the documentation-coverage matrix lists every Accepted RFC.
+// Assert the documentation-coverage matrix lists every RFC that owes prose.
 //
 // `reference/documentation-coverage.md` is a hand-maintained table claiming,
-// per Accepted RFC, where its prose coverage lives (or that it is on the
-// backlog). A hand-maintained coverage claim rots the moment a new RFC is
-// accepted and nobody updates the table: it then asserts coverage that does
-// not exist while looking authoritative. This check makes the table fail CI
-// when an Accepted RFC is missing from it, so the matrix stays honest as the
-// RFC set grows. It reads source files (frontmatter + the markdown table),
-// not the build, so it runs without `astro build`. Non-zero exit fails the gate.
+// per RFC, where its prose coverage lives (or that it is on the backlog). A
+// hand-maintained coverage claim rots the moment an RFC is accepted or built
+// and nobody updates the table: it then asserts coverage that does not exist
+// while looking authoritative. This check fails CI when such an RFC is missing
+// from the page, so the matrix grows with the RFC set.
+//
+// An RFC owes coverage when any of three things holds:
+//
+// - `status: Accepted`: the decision has been taken.
+// - `implementation: Implemented`: the construct is live whatever the
+//   acceptance ceremony says. A reader meets the field in a law file, not the
+//   status tag. Keying on `Accepted` alone let `voids` ship in schema v0.7.0,
+//   a field separating "no entitlement" from "an entitlement of zero", with no
+//   prose page at all, because RFC-041 that defined it sits at `Proposed`.
+// - `implementation: Partially implemented`: the built half is just as live.
+//   Keying on the first two let the partly built enricher RFCs 026 and 027
+//   go without a row.
+//
+// What it does not do: judge whether the page a row points at is any good.
+// It guarantees a row exists; accuracy stays with whoever accepts or builds
+// the RFC. Any mention of the id on the page counts as tracked, so a Backlog
+// line is enough. It reads source files (frontmatter plus the markdown), not
+// the build, so it runs without `astro build`. Non-zero exit fails the gate.
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -31,16 +47,9 @@ function frontmatterField(src, name) {
   return line[1].trim().replace(/^['"]|['"]$/g, '');
 }
 
-// Every RFC that owes prose coverage, from frontmatter — the source of truth,
-// not a list to keep in sync by hand.
-//
-// Two ways to owe it, because either one alone leaves a hole. `Accepted` is the
-// decision having been taken. `Implemented` is the construct being live in the
-// shipped schema, which obliges coverage whatever the acceptance ceremony says:
-// a reader hits the field in a law file, not the status tag. Keying on
-// `Accepted` alone let `voids` ship in schema v0.7.0 — a field distinguishing
-// "no entitlement" from "an entitlement of zero" — with no prose page at all,
-// because RFC-041 that defined it sits at `Proposed`.
+// Every RFC that owes prose coverage, from frontmatter: the source of truth,
+// not a list to keep in sync by hand. See the header for the three conditions.
+const OWES_COVERAGE_IMPLEMENTATION = new Set(['Implemented', 'Partially implemented']);
 const rfcsOwingCoverage = [];
 for (const entry of readdirSync(RFC_DIR)) {
   const m = entry.match(/^(rfc-\d+)\.md$/);
@@ -48,7 +57,7 @@ for (const entry of readdirSync(RFC_DIR)) {
   const src = readFileSync(join(RFC_DIR, entry), 'utf8');
   const status = frontmatterField(src, 'status');
   const implementation = frontmatterField(src, 'implementation');
-  if (status === 'Accepted' || implementation === 'Implemented') {
+  if (status === 'Accepted' || OWES_COVERAGE_IMPLEMENTATION.has(implementation)) {
     rfcsOwingCoverage.push(m[1].toUpperCase());
   }
 }
@@ -75,5 +84,5 @@ if (missing.length) {
 
 console.log(
   `RFC coverage check passed: all ${rfcsOwingCoverage.length - rfcsOwingCoverage.filter((id) => EXEMPT.has(id)).length} ` +
-    `Accepted or Implemented RFC(s) (excluding ${[...EXEMPT].join(', ')}) are tracked.`,
+    `Accepted, Implemented or Partially implemented RFC(s) (excluding ${[...EXEMPT].join(', ')}) are tracked.`,
 );
