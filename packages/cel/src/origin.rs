@@ -459,12 +459,12 @@ pub fn controleer(
                         );
                         if p.required == Some(false) {
                             eenmaal(
-                                uitvoering.naam(),
+                                "leverancier",
                                 format!("{tekst}; required: false, dus de engine rekent zonder"),
                                 false,
                             );
                         } else {
-                            eenmaal(uitvoering.naam(), tekst, true);
+                            eenmaal("leverancier", tekst, true);
                         }
                     }
                 }
@@ -556,8 +556,19 @@ fn groep(service: &LawExecutionService, grondslag: &str) -> Option<String> {
         .resolver()
         .get_law(g.regeling)
         .and_then(|l| l.name.clone())
-        .unwrap_or_else(|| g.regeling.to_string());
+        .unwrap_or_else(|| leesbaar(g.regeling));
     Some(format!("{naam}, artikel {}", g.artikel))
+}
+
+/// Een `$id` als naam, voor een regeling zonder `name`:
+/// `een_regeling` wordt "Een regeling".
+fn leesbaar(id: &str) -> String {
+    let tekst = id.replace('_', " ");
+    let mut tekens = tekst.chars();
+    match tekens.next() {
+        Some(eerste) => eerste.to_uppercase().chain(tekens).collect(),
+        None => tekst,
+    }
 }
 
 /// Of het aanbod op een parameter mag leunen: wat vooraf vaststaat, is wie
@@ -974,6 +985,10 @@ articles:
         let c = cellen(&s);
         let uit = controleer(&proces("afnemer", zo), &c["test_afnemer"], &c, &s);
         assert_eq!(oordelen(&uit, &s)[0].label, "De dag van het besluit");
+        assert_eq!(
+            leesbaar("een_regeling_zonder_naam"),
+            "Een regeling zonder naam"
+        );
     }
 
     /// Uitvoeringsbeleid van de actor geeft `jaar` een andere herkomst.
