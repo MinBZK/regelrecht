@@ -28,7 +28,7 @@ So a new operation cannot be added to the engine without being classified into e
 
 A second suite, run with `just conformance`, proves something different and narrower: that the Rust `law-model` conforms to the hand-authored JSON schema. The schema is the canonical, language-agnostic contract; the model is one implementation of it, and neither is generated from the other. The suite checks both directions, that the model is no more permissive than the schema and no more restrictive, in three tiers: a differential over every corpus law, synthetic valid and invalid fixtures per construct, and a coverage check deriving the fixture set from the schema itself so an unexercised property has to carry a reasoned exemption.
 
-It is the structural twin of the BDD conformance bucket: that one proves an engine speaks the whole language behaviorally, this one proves the model accepts exactly the whole language structurally. The documented divergences live in `KNOWN_GAPS`. Details are in `packages/engine/tests/conformance/README.md`.
+It is the structural twin of the BDD conformance bucket: that one proves an engine speaks the whole language behaviorally, this one proves the model accepts exactly the whole language structurally. The model is currently more permissive than the schema in a few documented ways, listed in `KNOWN_GAPS`; reconciling them is tracked separately. Details are in `packages/engine/tests/conformance/README.md`.
 
 This still says nothing about a *second* engine. It binds one implementation to the contract, which is what makes the contract worth writing against.
 

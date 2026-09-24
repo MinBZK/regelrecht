@@ -15,75 +15,67 @@ They stay under `.claude/skills/` rather than the cross-tool `.agents/skills/`,
 because Claude Code only discovers skills in the former and a symlink between
 the two does not survive a Windows checkout.
 
+## Where facts live
+
+This file holds instructions for working in the repository: rules,
+conventions, and what to do or avoid. Facts about the system (which components
+exist, their URLs, what CI checks, how deployment and cleanup work) live in the
+docs site, and this file links to the page instead of repeating it. Open the
+page by its repo path; `docs/src/content/docs/operations/ci-cd.md` renders at
+`https://docs.regelrecht.rijks.app/operations/ci-cd`.
+
+When you change how the system works, update the docs page in the same pull
+request. When you find a fact here that the docs also state, move it there and
+leave a link: two copies drift.
+
 ## Project Overview
 
-**regelrecht** is a platform for machine-readable Dutch law execution. The repo is a monorepo with multiple components:
+**regelrecht** is a platform for machine-readable Dutch law execution, as a
+monorepo. The component tour and the full directory map are in
+`docs/src/content/docs/guide/architecture.md`, with a page per component under
+`docs/src/content/docs/components/`. Orientation:
 
-- `packages/engine/` - Rust law execution engine
-- `packages/pipeline/` - PostgreSQL-backed job queue and law status tracking
-- `packages/harvester/` - Law corpus harvesting from BWB (Basis Wettelijke Regelgeving)
-- `packages/admin/` - Harvester-admin API (Rust; standalone harvest job/corpus API). Its dashboard UI now lives in the editor as the "Corpusinwinning" section (`frontend/src/harvester/`), reached through the editor-api `/api/harvest-admin/*` proxy; the API stays independently addressable for scripts/services.
-- `packages/editor-api/` - Rust backend API for the editor frontend
-- `packages/corpus/` - Shared library for working with YAML regulation files
-- `packages/shared/` - Common types/utilities across packages
-- `packages/tui/` - Terminal UI dashboard
-- `packages/grafana/` - Grafana monitoring with provisioned dashboards
-- `frontend/` - Law editor (Vue/Vite + editor-api backend)
-- `frontend-lawmaking/` - Law-making process visualization (Vue/Vite)
-- `frontend-demo/` - The RegelRecht demo (Vue/Vite + the engine as WASM in the browser, no backend): presentation, law browser, dependency graph, scenario runner, population simulation, citizen/entrepreneur portal and case system, over the demo corpus in `corpus/demo/`. Successor of the separate poc-machine-law repository; deployed at `demo.regelrecht.rijks.app`
-- `docs/` - Astro site serving both the landing page (regelrecht.rijks.app) and the docs (docs.regelrecht.rijks.app)
-- `corpus/regulation/` - Dutch legal regulations in machine-readable YAML format
-- `corpus/demo/` - The demo corpus: 80 laws migrated from the POC (`regulation/nl/`, schema v0.5.8, `source: {}` for external data), their scenarios (`**/scenarios/*.feature`, canonical grammar, run with `just bdd-demo`), `bindings.yaml` (which register table/column feeds which `source: {}` input; the demo materialises persona data from it), `profiles.yaml` (fictitious personas), `demo-config.yaml` and `services.yaml`. `tools/` holds the one-off migration and conversion scripts
-- `bdd/` - Canonical, engine-agnostic BDD feature language. `bdd/grammar.yaml` is the single source of truth for the law-agnostic Gherkin vocabulary; step bindings for every engine are code-generated from it (Rust via `packages/engine/build.rs`, editor/demo JS via `bdd/codegen/gen-js.mjs` → `packages/frontend-shared/src/gherkin/grammar.generated.js`, re-exported by `frontend/src/gherkin/`). Never hand-edit a generated file — change `grammar.yaml` and run `just bdd-codegen`. Two buckets share the language: **bucket A** = law-validation scenarios next to the live laws (`corpus/regulation/**/scenarios/*.feature`, run against the real corpus — a failure means a law changed or the scenario is stale, a human decides; `@wip`-tagged scenarios are skipped); **bucket B** = engine-conformance suite (`bdd/conformance/*.feature`, `@tier:`-tagged) proving an engine speaks the whole language against synthetic `test_*` laws. `just bdd` runs both buckets; `BDD_BUCKET=conformance|corpus` narrows it to one. CI runs and blocks on bucket B (job **BDD conformance**, hung on the `Test` gate); bucket A stays out, because a failure there is a human's call. Bucket A follows `REGULATION_PATH`, the variable the engine loads its laws from, so the same bucket runs over another corpus: `just bdd-demo` points it at `corpus/demo/regulation` (the migrated POC laws with their synthetic persona data). That run is fully in-repo, so CI blocks on it too (job **BDD demo**). The engine and its test harness know nothing demo-specific.
+- `packages/` - the Rust crates (engine, law-model, pipeline, harvester, admin,
+  editor-api, corpus, shared, tui, poc-portal and a few more) and the JS package
+  `frontend-shared`, the code the Vue frontends share
+  (`docs/src/content/docs/components/frontend-shared.md`)
+- `frontend/`, `frontend-lawmaking/`, `frontend-demo/` - the editor, the
+  law-making visualization, and the demo (engine as WASM, no backend; see
+  `docs/src/content/docs/components/demo.md`)
+- `corpus/regulation/` - the law corpus in YAML; `corpus/demo/` - the demo corpus
+- `bdd/` - the canonical Gherkin language (`bdd/grammar.yaml`) and the engine
+  conformance suite; the two scenario buckets are explained in
+  `docs/src/content/docs/guide/testing.md`
+- `docs/` - the Astro site for the landing page, the docs, the RFCs and the roadmap
+
+BDD step bindings for every engine are generated from `bdd/grammar.yaml`.
+**Never hand-edit a generated file** (`grammar.generated.js`, the Rust bindings
+from `packages/engine/build.rs`): change `grammar.yaml` and run
+`just bdd-codegen`. A failing law-validation scenario (bucket A, next to a law)
+means a law changed or the scenario is stale, and a human decides which.
 
 ## Development Setup
 
-### Prerequisites
-- [Rust](https://rustup.rs/) (stable toolchain)
-- [just](https://github.com/casey/just) command runner
-- [mold](https://github.com/rui314/mold) linker, on x86_64 Linux only — `packages/.cargo/config.toml` links with it there, so the dev recipes will not link without it. macOS and aarch64 Linux use the default linker
+Prerequisites are in `docs/src/content/docs/guide/getting-started.md`; the local
+stack, `just dev-setup` and the pre-commit hooks are in
+`docs/src/content/docs/guide/dev-environment.md`.
 
-### Build speed (run once)
-
-Run `just dev-setup`. It points all worktrees at one shared target dir (no cold
-build per worktree) and, when the repo is on a slow mount (9p/NFS/SMB — e.g. a
-WSL2/Docker-Desktop dev container with the repo on a Windows drive), relocates
-that target to fast local storage under `~/.cache/regelrecht/`. The slow-mount
-I/O is usually the dominant cost — bigger than mold or debuginfo. It also
-installs `sccache`, plus `mold` on x86_64 Linux (where `packages/.cargo/config.toml` requires it).
-`sccache` is left off locally because it disables incremental compilation
-(`CARGO_INCREMENTAL=0`), which slows the `just dev` hot-reload loop. CI uses
-mold + sccache.
-
-### Just Commands
-
-Use the `just` recipes rather than calling `cargo` directly: they are what the
-pre-commit hooks run, so a green `just` run locally is the same check.
-
-```bash
-just            # List all available commands
-just format     # Check Rust formatting (cargo fmt --check)
-just lint        # Run clippy lints on all packages
-just build-check # Run cargo check on all packages
-just validate    # Validate regulation YAML files (all, or pass specific files)
-just check       # Run all quality checks (format + lint + check + validate + tests)
-just test       # Run every Rust test in the workspace (needs Docker)
-just test-no-docker  # Same, minus the container-backed suites
-just bdd        # Run Rust BDD tests (cucumber-rs; not part of `just test`)
-
-# Pipeline commands
-just pipeline-test              # Run pipeline unit tests (no Docker/DB required)
-just pipeline-integration-test  # Run pipeline integration tests (requires Docker for testcontainers)
-```
+- Run `just dev-setup` once per machine. It shares one cargo target dir across
+  all worktrees, which saves a cold build per worktree. mold is needed only on
+  x86_64 Linux, where `packages/.cargo/config.toml` links with it
+  (`dev_needs_mold` in `script/dev-lib.sh` decides); elsewhere cargo uses the
+  default linker.
+- Use the `just` recipes rather than calling `cargo` directly: they are what the
+  pre-commit hooks and CI run, so a green `just` run locally is the same check.
+  `just` lists them; `docs/src/content/docs/guide/testing.md` says which one to
+  run when. Before pushing, run `just check` (or `just test-no-docker` for the
+  tests on a machine without Docker).
 
 ### Pre-commit Hooks
 
-This repository uses pre-commit hooks for code quality:
-- **Standard hooks**: Trailing whitespace, end-of-file fixer, YAML checks, etc.
-- **yamllint**: YAML linting (config in `.yamllint`)
-- **Rust formatting**: `just format` (on `.rs` files)
-- **Rust linting**: `just lint` (on `.rs` files)
-- **Schema validation**: `just validate` (on `corpus/regulation/**/*.yaml` files)
+Install them with `pre-commit install --hook-type pre-commit --hook-type
+commit-msg`; without the `commit-msg` type the commit-message check never runs
+locally. What the hooks cover is in `docs/src/content/docs/guide/dev-environment.md`.
 
 **NEVER use `--no-verify` when committing.** Fix the underlying problem instead of bypassing hooks.
 
@@ -113,8 +105,9 @@ descriptions too), while code identifiers stay English.
 
 **Every PR body ends with a `Werkpakket:` line naming the werkpakket from the
 roadmap that the work contributes to.** The check **`Werkpakket genoemd`**
-(`.github/workflows/werkpakket-gate.yml`) blocks the merge without it. Write the
-line whenever you open a PR; it is not optional and not something to ask about.
+(`.github/workflows/werkpakket-gate.yml`) turns red without it. It is not a
+required status check, but treat it as one: write the line whenever you open a
+PR; it is not optional and not something to ask about.
 
 ```
 Werkpakket: referentie-casus-i
@@ -203,33 +196,19 @@ git worktree add .worktrees/feature-branch feature-branch
 
 ## Architecture Notes
 
-### Law Format
+The law format is in `docs/src/content/docs/concepts/law-format.md`, cross-law
+references in `docs/src/content/docs/concepts/cross-law-references.md`, and
+delegation (`open_terms` / `implements`) in
+`docs/src/content/docs/concepts/inversion-of-control.md`. A working example of
+both: `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml`.
 
-Laws are stored as article-based YAML files conforming to the official JSON schema:
-- Schema: `schema/latest/schema.json` (symlink to the current version directory in this repo)
-
-The hand-authored `schema.json` is the **canonical, language-agnostic contract**; the Rust
-`law-model` (`packages/law-model/`) is one implementation that must *conform* to it (neither is
-generated from the other). `just conformance` proves this — a corpus differential plus synthetic
-fixtures, the structural twin of the BDD bucket-B suite. See
-`packages/engine/tests/conformance/README.md`. The model is currently more permissive than the
-schema in a few documented ways (`KNOWN_GAPS`); reconciling that is tracked separately.
-
-### Cross-Law References
-
-Laws reference each other via `source` on input fields:
-
-```yaml
-source:
-  regulation: "other_law_id"   # External law $id
-  output: "output_name"        # Output field to retrieve
-  parameters:
-    bsn: $bsn                  # Parameters to pass
-```
-
-For delegated values (e.g., "bij ministeriële regeling"), laws use the IoC pattern:
-higher laws declare `open_terms`, lower regulations declare `implements`.
-See `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml` for a working example.
+- The hand-authored `schema/latest/schema.json` is the **canonical contract**.
+  The Rust `law-model` (`packages/law-model/`, described in
+  `docs/src/content/docs/components/law-model.md`) must conform to it; neither
+  is generated from the other. After changing either one, run `just conformance`
+  (see `docs/src/content/docs/reference/conformance.md`). Do not "fix" a
+  divergence listed in `KNOWN_GAPS` in passing; reconciling those is tracked
+  separately.
 
 ## De demo is meertalig
 
@@ -343,11 +322,9 @@ If you needed **any additional CSS styling** on top of the design-system compone
 ## Proof-of-concepts
 
 `poc.regelrecht.rijks.app` is één ZAD-component (`poc`) met de pocs erachter,
-elk achter een eigen wachtwoord. Dat het één component is, volgt uit de
-platformkant: de productie-deployment publiceert op `component.subdomain`, dus
-élk component krijgt zijn eigen hostnaam en drie componenten kunnen die ene
-hostnaam niet op paden delen. De routering gebeurt daarom binnen één container,
-in `packages/poc-portal`.
+elk achter een eigen wachtwoord, gerouteerd binnen `packages/poc-portal`. Hoe
+het portaal werkt en waarom het één component is:
+`docs/src/content/docs/components/poc-portal.md`.
 
 ```
 pocs/registry.yaml          het register — de enige bron
@@ -472,473 +449,118 @@ Run that review in a fresh subagent when your tool has one (in Claude Code: the
 Agent tool with `subagent_type: "general-purpose"`), so the review does not
 inherit the reasoning that produced the change.
 
-## Technology Stack
+## CI/CD and Deployment
 
-- **Engine**: Rust
-- **BDD Testing**: cucumber-rs with Gherkin feature files
-- **Code Quality**: pre-commit hooks, yamllint
-- **Deployment**: RIG (Quattro/rijksapps) via GitHub Actions
-
-## CI/CD Deployment
-
-All components are deployed to ZAD (RIG/Quattro/rijksapps) via `.github/workflows/deploy.yml`.
-CI runs via `.github/workflows/ci.yml`.
+What CI checks, which checks are required, and how the merge gates and the
+merge queue work: `docs/src/content/docs/operations/ci-cd.md`. Which components
+are deployed where, previews, cleanup, ZAD CLI and secrets:
+`docs/src/content/docs/operations/deployment.md`. The instructions below are
+what changes how you act.
 
 ### The Claude review merge gate
 
-`claude-code-review.yml` posts its findings as review comments and takes about
-ten minutes, roughly twice as long as the required checks. Merging on green
-therefore used to be possible before the review had said anything. The
-`review-gate` job (check name **Claude review completed**) closes that window:
-it waits for the `claude-review` job **inside its own workflow run** and only
-passes once that job is `completed` with `success` or `neutral`. It looks the
-job up by run id rather than by head SHA, because `ready_for_review` and
-`reopened` keep the same SHA and a SHA lookup can then read a leftover check-run
-from the previous run.
+**Claude review completed** is a required check. It passes only once the
+automated review has run to completion for this commit and left no finding
+marked `🔴 **Critical**`. How it establishes that, and what it cannot protect
+against, is in `docs/src/content/docs/operations/ci-cd.md#the-claude-review-gate`.
 
-Drive the wait off the job's `status`, never off the number of review comments —
-zero comments is equally consistent with "still running" and with "the review had
-nothing to report". The gate does read the comments, but only for what is written
-in them, and only once the proof step has established that the review ran to
-completion. That order is enforced rather than assumed: `assert_no_critical_finding`
-blocks with an internal-error message if it is reached before `assert_review_ran`
-has set `review_proven`, and the test suite asserts that the comment endpoints stay
-untouched on every path where the review is unproven.
+- **There is no override.** Fix the Critical finding and push again. Do not add
+  an escape hatch (a label, a magic comment, an environment variable): an agent
+  operates one as easily as a person, while it reads as a human judgement.
+- **Wait on the job's `status`, never on the number of review comments.** Zero
+  comments means "still running" as often as "nothing to report".
+- **A PR that edits `.github/workflows/claude-code-review.yml` gets no automatic
+  review**: the action skips itself when the file differs from the default
+  branch, and the gate then blocks. Such a PR needs a human review and an admin
+  merge.
+- **Do not rename the step "Record that the review ran"** without changing
+  `PROOF_STEP` in `script/await-claude-review.sh`, and do not change
+  `CRITICAL_MARKER` without changing the review prompt. The test suites bind
+  both pairs; a mismatch makes the gate read past every finding.
+- Every comment the review writes ends with `<!-- claude-review -->`; snapshot
+  and cleanup select on that line, not on the author.
+- A red outcome must state what was established and name no cause it has not
+  tested ([issue #1178](https://github.com/MinBZK/regelrecht/issues/1178)).
+- The logic lives in `script/await-claude-review.sh` and
+  `script/claude-review-comments.sh`; change a path that decides green or red
+  only together with its test suite next to it.
 
-`claude-review` itself cannot be a required check, because it does not run on
-cross-repo (fork) PRs, where no secrets exist and `CLAUDE_CODE_OAUTH_TOKEN` is
-absent, and a required check that never reports blocks such a PR forever.
-`review-gate` always runs and always reports; it derives "not applicable" from
-the PR as the API describes it (cross-repo, draft, dependabot) rather than from
-`claude-review`'s conclusion, so a failed or skipped review can never pass as an
-inapplicable one.
+### Security updates
 
-Dependabot is a deliberate exemption, not an oversight: those PRs go through
-`claude-dependabot.yml`, and that workflow decides for itself whether to merge.
-The gate does not verify that it ran.
+A Dependabot security update skips the five-day cooldown and turns
+**Security update approved** green only once an engineer with write access has
+approved it, on the commit being merged; after a rebase or push the approval no
+longer counts. That check is not a required status check, so nothing technically
+stops a merge: do not merge a security update without that approval.
+`claude-dependabot.yml` does not merge security updates either. Details:
+`docs/src/content/docs/operations/ci-cd.md#the-security-update-gate`.
 
-A green job is not enough on its own. `claude-code-action` exits with conclusion
-`success` **without reviewing anything** when the workflow file differs from the
-version on the default branch ("Exiting due to workflow validation skip"). The
-gate therefore checks two things before it believes a green job.
+The Mattermost notification in that workflow reads its webhook from the
+**Dependabot** secret store, not the Actions one. The logic is in
+`script/require-security-approval.sh` with its test suite.
 
-First it compares `.github/workflows/claude-code-review.yml` as this run has it
-with the copy on the default branch, through the contents API. Differ, and there
-is no automatic review to wait for: the gate blocks straight away, before the
-wait. That is also what makes the rest trustworthy — identical files mean the
-workflow that ran is the one from the default branch, not something the PR
-brought along. A PR that edits this file needs a human review plus an admin
-merge.
+### The merge queue
 
-It compares `refs/pull/N/merge`, not the head commit. A `pull_request` run
-executes the workflow file as it stands in the test merge of PR and base, so a
-branch that has fallen behind still runs the base's copy. Comparing against the
-head commit would put exactly those branches on red while their review ran fine.
-
-Then it reads the proof out of the review job: the step **Record that the review
-ran** carries `if: steps.claude-review.outputs.execution_file != ''`, and that
-output is only set once the Claude CLI has actually run. Self-skip, and the step
-is `skipped`. The gate reads that step's conclusion from the `steps[]` array of
-the job it already looked up, so the proof is bound to this run and this attempt
-by construction, and it exists just as well when the review had zero findings. It
-insists on exactly one step by that name; two would let an added decoy outvote
-the real one.
-
-Do not rename that step without changing `PROOF_STEP` in the gate. The test suite
-asserts that the workflow still carries the step under that name with that `if:`,
-and the pre-commit hook runs on the workflow file for exactly that reason.
-
-What the gate treats as fact it fetches itself. The workflow that invokes it
-lives in the pull request, so anything that workflow passes in is written by the
-author of the change under review — `IS_DRAFT: true` in the env block used to be
-enough to declare the review inapplicable. Draft, fork, author and the workflow
-file all come from the API now; the env block carries only the coordinates of the
-run (repository, run id, PR number), and the gate checks that the run and the PR
-describe the same commit, so pointing it at another PR's run yields a red.
-
-What none of this reaches: the `review-gate` job itself lives in the workflow
-file the PR brings along. A PR that keeps the job name **Claude review completed**
-and replaces its steps with `run: true` reports green without ever running the
-script, and nothing inside the script can prevent that. Closing it takes a rule
-outside the pull request — a ruleset or CODEOWNERS entry over
-`.github/workflows/**`, or a `workflow_run`-triggered gate that judges the review
-run from the outside. Until then the gate protects against mistakes, not against
-someone determined to route around it.
-
-Every red outcome states what was established and names no cause it has not
-tested. An earlier version told every clean PR that the review action had skipped
-itself over a workflow change, on PRs that changed no workflow at all (issue
-#1178).
-
-The gate runs the copy of its own script from the base branch, not the one in
-the PR — otherwise a PR could turn the script into `exit 0` and be green by
-construction. If that copy cannot be fetched or checked out, the gate blocks
-rather than falling back to the PR's version.
-
-It looks the review job up with `filter=all`, because the run id survives a
-"Re-run this job" and `claude-review` is then absent from the newest attempt's
-job list.
-
-A finished review is not the same as an acceptable one. On 8 August 2026 the
-review put a 🔴 Critical on PR 1234 at 10:11:31 and the PR merged at 10:11:54,
-green all the way, because the gate only asked whether a review had happened. It
-now searches what `claude[bot]` wrote for the exact string `🔴 **Critical**` and
-turns red on a hit, naming the comments it found it in. Three places count: the
-sticky comment, the inline comments, and the body of the submitted review. That
-last one is easy to forget and carries findings in practice that appear nowhere
-else.
-
-Only what this run wrote counts, measured against the review job's `started_at`.
-An item by `claude[bot]` without a usable timestamp blocks rather than falling
-outside the window unnoticed; a `PENDING` review is the exception, since it was
-never submitted. One edge the window does not cover: `cancel-in-progress` does not
-stop a run instantly, so a comment written by the run being cancelled can land
-inside its successor's window and turn that one red. The next push clears it.
-Anything older came from an earlier run. Cleanup removes those comments, but a
-submitted review cannot be deleted at all, and a cleanup that fails would
-otherwise keep blocking a finding that has long been fixed. Without a readable
-`started_at` the gate blocks: it cannot tell the two apart.
-
-Only Critical blocks. Significant carries "likely" in its own definition and would
-often be a false positive, and an exception that becomes routine stops holding
-anything back. There is no override: fix the finding and push again, and since the
-review rewrites its comment every run, a finding that is gone is gone from the
-gate too. An escape hatch — a label, a magic comment, an environment variable —
-is something an agent operates as easily as a person, while it reads as a human
-judgement. Better none at all; if a case ever arises that needs one, it gets
-decided then. The marker lives in `CRITICAL_MARKER` and in the review prompt, and the
-test suite binds the two: change one without the other and the gate reads past
-every finding, invisibly.
-
-That marker is free text written by a language model, so the prompt says in as
-many words that a machine parses it and that it must be written exactly, and
-nowhere else. Fully closing that is not possible.
-
-Blocking on findings only works if a finding cannot be pushed away. The review job
-used to delete every `claude[bot]` comment at the start of its run, which meant a
-crash after the deletion took the previous finding with it, and a rerun that
-happened not to notice it again turned red into green. The order is reversed now:
-`script/claude-review-comments.sh snapshot` records the ids and the texts before
-the review, and `clean-up` removes them afterwards, under the same
-`execution_file` condition as the proof step. Cleanup deletes only what is still
-there with an unchanged `updated_at`. `use_sticky_comment` makes the action reuse
-the previous comment, so its id is in the snapshot and deleting by id alone would
-wipe the review that just ran.
-
-Snapshot and cleanup pick their comments by the line `<!-- claude-review -->`,
-which the prompt tells the review to end every comment with. The author is not
-enough: `claude.yml` answers `@claude` in the same thread as the same bot, and
-that conversation is neither a finding to hand to the next review nor something
-to delete. Cleanup itself never fails the step. A hiccup on one of its list calls
-counts as a failed cleanup and lands in the step summary; failing there would put
-`claude-review` on `failure` and have the gate report that there is no usable
-review, of a review that ran fine.
-
-The snapshotted texts go into the prompt as context, with the instruction that
-they describe an earlier version of the diff and that every one of them is to be
-re-checked against the current one: nothing carried over that has been fixed,
-nothing dropped that still stands. Without that, the gate would be an incentive to
-keep pushing until the review forgets, which is worse than no gate. The severity
-markers are rewritten to `[Critical]` and friends on the way in, so a review that
-quotes an old finding to say it has been fixed does not trip the gate with the
-quote.
-
-The gate needs `issues: read` on top of `pull-requests: read`: the summary comment
-is an issue comment, and that endpoint sits behind the issues API.
-
-The gate proves the review ran to completion for this commit and that it left no
-critical finding standing. It says nothing about findings of lower severity,
-whether the findings hold up, or whether they were addressed.
-
-The logic lives in `script/await-claude-review.sh` and
-`script/claude-review-comments.sh`, each with a test suite next to it (a `gh`
-stub) covering every path that decides green versus red, or what is kept and
-thrown away. Both run as a pre-commit hook.
-
-### De goedkeuringspoort op security-updates
-
-Dependabot-security-updates vallen buiten de `cooldown` van vijf dagen in
-`dependabot.yml`: ze komen binnen op het moment dat de versie verschijnt. De
-check **Security update approved** (`security-update-gate.yml`) laat zo'n PR pas
-mergen als een engineer met schrijfrechten hem heeft goedgekeurd.
-
-Dat het een check is en geen branch protection, is geen omweg maar de enige
-route. `required_approving_review_count` hangt aan een branch, niet aan een
-auteur of een label, ook niet in een ruleset, waar de condities alleen over
-refs gaan. Repobreed aanzetten zou betekenen dat niemand nog een eigen PR kan mergen,
-want GitHub laat de auteur zijn eigen wijziging niet goedkeuren. De voorwaarde
-hoort dus in de check, precies zoals bij `Claude review completed`.
-
-Wat een security-update is, staat in geen enkel API-veld. De poort leest drie
-onafhankelijke signalen: een open Dependabot-alert voor precies het pakket dat
-de PR bumpt, Dependabots eigen regel "This update includes a security fix", en
-een GHSA- of CVE-nummer in de aanhef van de PR-body, de tekst tot aan het
-eerste `<details>`-blok: daarachter staan geciteerde changelogs die net zo
-goed over een ander pakket kunnen gaan. Eén signaal is genoeg. Een vals positief
-kost een goedkeuring die niet nodig was; een vals negatief laat een
-security-patch ongezien door, dus de poort leunt naar het eerste.
-
-Een goedkeuring telt alleen op de commit waarop ze is gegeven. `dismiss_stale_reviews`
-werkt pas bij `required_approving_review_count > 0` en dat staat hier op 0, dus
-die binding zit in het script: na een rebase of een push is er niets meer
-goedgekeurd. Goedkeuringen van bots tellen niet, en van iemand zonder
-schrijfrechten (`author_association` buiten OWNER/MEMBER/COLLABORATOR) evenmin.
-
-`claude-dependabot.yml` stelt met hetzelfde script vast of een PR een
-security-update is en mergt die dan niet meer zelf; de review blijft er wel op
-draaien, als input voor de engineer die goedkeurt. Handhaven doet die workflow
-niet; dat doet de check.
-
-Er zit geen ouderdomsdrempel op. Die drempel bestaat omdat niemand naar een
-routinebump kijkt, en dat is precies wat de goedkeuring wegneemt; hem er
-bovenop zetten zou een actief misbruikte kwetsbaarheid vijf dagen laten liggen
-*plus* de wachttijd op een mens. De publicatiedatum van de nieuwe versie is een
-van de dingen waar de goedkeurder naar kijkt, niet iets wat de poort voor hem
-afkapt.
-
-De melding naar Mattermost zit in dezelfde workflow en gaat uit bij het openen
-en het mergen van een security-PR, over `MATTERMOST_WEBHOOK_URL`. Die run wordt
-door Dependabot gestart, en dan leest `secrets.*` uit de
-Dependabot-secretstore in plaats van die van Actions: staat de webhook-URL
-alleen bij Actions, dan valt de melding stil weg. De stap faalt daarom hard op
-een lege URL.
-
-De logica staat in `script/require-security-approval.sh`, met
-`script/require-security-approval.test.sh` (een `gh`-stub) over elk pad dat
-groen of rood beslist; de tests draaien als pre-commit-hook. De poort draait de
-kopie van dat script van de base-branch en niet die uit de pull request. Staat
-het er niet, dan is dat geen leesfout maar de pull request die de poort invoert
-of weghaalt; er is dan op main nog niets wat deze check beschermt, dus de job
-meldt dat en laat door. Dezelfde beperking als bij de review-poort geldt hier:
-de job staat in het workflowbestand dat de PR meebrengt.
-
-### De merge queue
-
-Main mergt via een merge queue. Die mergt niet de PR-branch, maar bouwt een
-eigen branch (`gh-readonly-queue/main/...`) met main plus de wachtende pull
-requests erin en toetst de checks daarop. Daar volgt alles uit wat hieronder
-staat, want de verplichte checks moeten dus op die branch rapporteren en niet
-alleen op de pull request.
-
-#### Een pull request door de rij halen
+`main` merges through a merge queue. Put a PR in it with:
 
 ```bash
 gh pr merge <nr> -R MinBZK/regelrecht --squash
 ```
 
-Dat zet hem in de rij. gh antwoordt met "The merge strategy for main is set by
-the merge queue"; dat is een mededeling, geen fout. `--delete-branch` weigert
-gh zolang de rij aanstaat, en is ook niet nodig: de repo verwijdert de
-head-branch zelf na de merge.
+"The merge strategy for main is set by the merge queue" is a notice, not an
+error. Do not pass `--delete-branch`; the repository deletes the branch itself.
+The GraphQL queries and the `gh run list` command below are in
+`docs/src/content/docs/operations/ci-cd.md#the-merge-queue`.
 
-**Dat de opdracht slaagde, zegt niet dat hij in de rij staat.** Vraag het na:
+- **A successful command does not mean the PR is queued.** Check
+  `mergeQueueEntry`.
+- **A PR that drops out of the queue stays `OPEN`.** Never wait for the state to
+  leave `OPEN`; follow `mergeQueueEntry` (`MERGED` is done, `OPEN` with
+  `mergeQueueEntry: null` is a drop) and read the reason from the
+  `REMOVED_FROM_MERGE_QUEUE_EVENT` timeline item.
+- **A failure in the queue does not show on the PR.** Find the red run with
+  `gh run list --event merge_group`.
+- **Flaky test in the queue**: when a test the PR does not touch fails in the
+  queue while the PR's run and the latest `main` run are green, queue it once
+  more. If it drops a second time on the same failure, find the cause instead of
+  queueing it again, and open an issue for the flaky test.
+- **When the required checks in the branch protection change, update
+  `REQUIRED_CHECKS` in `script/merge-queue-checks.test.mjs` in the same go.**
+  Nothing reminds you: the protection changes with a button, not a commit.
+- **A required job may skip in the queue (`if:`), but its workflow must run on
+  `merge_group`.** A workflow that does not run leaves the check on "Expected"
+  and hangs every entry.
+- Keep "Require branches to be up to date before merging" off.
+- `enforce_admins` is on, so a stuck entry cannot be bypassed: take it out of
+  the queue, merge, switch the queue back on.
 
-```bash
-gh api graphql -f query='{repository(owner:"MinBZK",name:"regelrecht"){
-  pullRequest(number:<nr>){state mergeQueueEntry{state position}}}}'
-```
+### Previews
 
-**Een pull request die uit de rij valt, blijft `OPEN`.** Wie wacht tot de
-status iets anders wordt dan `OPEN`, wacht na een uitval dus eeuwig. Volg
-`mergeQueueEntry`: `MERGED` is klaar, en `OPEN` met `mergeQueueEntry: null` is
-een uitval. De reden staat in de tijdlijn:
+A PR builds and deploys nothing unless it carries the **`deploy:preview`**
+label. Add it only when someone needs a running preview; removing it (or
+closing the PR) deletes the preview. `deploy:<component>` labels force a
+component to build and do nothing without `deploy:preview`. Fork PRs never
+build.
 
-```bash
-gh api graphql -f query='{repository(owner:"MinBZK",name:"regelrecht"){
-  pullRequest(number:<nr>){timelineItems(last:5,itemTypes:[REMOVED_FROM_MERGE_QUEUE_EVENT]){
-  nodes{... on RemovedFromMergeQueueEvent{createdAt reason}}}}}}'
-```
+### Cleanup
 
-**Wat in de rij faalt, staat niet op de pull request.** De checks daar blijven
-groen; de rode run hangt aan de queue-branch. Zo vind je hem:
-
-```bash
-gh run list -R MinBZK/regelrecht --event merge_group --limit 20 \
-  --json databaseId,headBranch,workflowName,conclusion \
-  --jq '.[] | select(.headBranch | test("pr-<nr>-"))'
-```
-
-Faalt in de rij een test die de pull request niet raakt, terwijl de run op de
-pull request en de laatste run op main groen zijn, dan is dat meestal een
-flaky test, of een botsing met een andere pull request in dezelfde groep. Zet
-hem één keer opnieuw in de rij. Valt hij een tweede keer uit op hetzelfde, dan
-is het geen toeval meer: zoek de oorzaak en zet hem niet nog eens in de rij.
-Een flaky test die je zo tegenkomt krijgt een issue, want elke uitval kost een
-volledige ronde voor iedereen erachter.
-
-**De rij heeft geen eigen lijst verplichte checks.** Het is dezelfde lijst als
-in de branch protection. Een check die op de queue-branch nooit rapporteert
-blijft op "Expected" staan en laat elke entry hangen tot de
-status-check-timeout hem eruit gooit. Dat gebeurt stil: de melding staat op de
-queue-branch, niet als rode check op de pull request, dus je ziet het pas als
-er niets meer mergt. `gh run list --branch 'gh-readonly-queue/main/...'` toont
-wat daar gebeurde.
-
-**Overgeslagen is niet hetzelfde als afwezig**, en dat is het niet-intuïtieve
-feit waar het hier om draait. Een baan die op een `if:` overslaat meldt
-`skipped`, en dat telt bij GitHub als geslaagd. Alleen een wórkflow die in het
-geheel niet draait rapporteert niets. Een verplichte baan mag in de rij dus
-overslaan; zijn workflow mag er niet wegvallen.
-
-`Protect schema versions` maakt van dat verschil gebruik en slaat in de rij
-bewust over. Die baan vergelijkt tegen `origin/main`, en HEAD is in de rij niet
-één pull request maar de hele groep: raakt één ervan een vrijgegeven
-schemaversie, dan valt de groep om en vliegen de andere mee. Op de pull request
-zelf wordt dat al afgevangen, per wijziging.
-
-`Validate PR title` en `Claude review completed` kunnen andersom juist alleen
-op een pull request bestaan — de een leest de titel, de ander de
-review-comments, de body en `refs/pull/N/merge`. In de rij komen die twee uit
-`.github/workflows/merge-queue-gates.yml`. Wat die workflow vaststelt is dat
-beide poorten groen waren op het moment van aansluiten, en verder niets: een
-bevinding die ná het aansluiten binnenkomt houdt niets meer tegen. Met "Merge
-when ready" sluit GitHub zelf aan zodra de laatste poort groen wordt, dus zit
-er dan geen mens meer tussen.
-
-**"Require branches to be up to date before merging" hoort uit te staan.** Die
-eist dat een pull request eerst op de punt van main wordt bijgewerkt, precies
-het handwerk dat de rij overneemt. Blijft hij aan, dan rebaset iedereen nog
-steeds met de hand, draait CI daarna opnieuw, en levert de rij alleen een extra
-run per merge op zonder de winst. Die instelling staat in geen enkel bestand,
-alleen in de branch protection.
-
-Elke merge draait de CI twee keer: eenmaal op de queue-branch en eenmaal op de
-push naar main erna. Bij een groep van meerdere pull requests wordt dat per
-pull request goedkoper, zolang de groep slaagt; faalt hij, dan gaat het werk
-verloren en bouwt de herbouwde groep opnieuw. De build-concurrency in de
-queue-instellingen begrenst dat.
-
-`script/merge-queue-checks.test.mjs` bindt elke verplichte check aan een baan
-die in de rij draait, met de uitzondering die bewust overslaat er expliciet in.
-De hook draait op élke workflow, want elke workflow kan zo'n check dragen of
-verliezen. De lijst `REQUIRED_CHECKS` daarin is met de hand bijgehouden en de
-twee richtingen zijn niet symmetrisch: een naam te veel faalt luid, een naam te
-weinig is stil dekkingsverlies. De branch protection wijzigt met een knop en
-niet met een commit, dus daar is geen review die eraan herinnert — zet die
-lijst mee om.
-
-Terug is één knop: zet de merge queue uit in de branch protection. De
-`merge_group`-triggers en `merge-queue-gates.yml` worden dan nooit meer
-getriggerd en kosten niets; een revert is niet nodig. Let er bij een vastloper
-op dat `enforce_admins` aan staat, dus er is geen weg om een hangende entry
-heen: eerst de rij uit, dan mergen, dan weer aan.
-
-### Deployed Components
-
-| Component | Image | Production URL |
-|-----------|-------|----------------|
-| editor | `regelrecht-editor` | `editor.regelrecht.rijks.app` |
-| harvester-admin | `regelrecht-admin` | `harvester-admin.regelrecht.rijks.app` |
-| harvester-worker | `regelrecht-harvester-worker` | (no web UI) |
-| enrichworker | `regelrecht-enrich-worker` | (no web UI) |
-| pipeline-api | `regelrecht-pipeline-api` | (internal) |
-| lawmaking | `regelrecht-lawmaking` | `lawmaking.regelrecht.rijks.app` |
-| demo | `regelrecht-demo` | `demo.regelrecht.rijks.app` |
-| docs | `regelrecht-docs` | `docs.regelrecht.rijks.app` + `regelrecht.rijks.app` (landing) |
-| poc | `regelrecht-poc` | `poc.regelrecht.rijks.app` (portaal + de statische pocs) |
-| napp | `regelrecht-poc-napp` | (geen eigen adres; alleen via het portaal op `/napp/`) |
-| grafana | `regelrecht-grafana` | `grafana.regelrecht.rijks.app` |
-
-### How It Works
-
-1. **PR carrying the `deploy:preview` label, opened or pushed to**: Builds changed Docker images, pushes to GHCR, deploys `prN` to ZAD
-2. **`deploy:preview` label removed, or PR closed**: Deletes ZAD deployment and GHCR images
-3. **Push to main**: Deploys `regelrecht` (production) to ZAD
-
-### Previews are opt-in
-
-A pull request builds and deploys nothing unless someone puts the **`deploy:preview`**
-label on it. Seven images plus a preview environment per PR was about half of
-the repository's runner consumption, and it held up no merge: none of those
-checks is required and nothing tests against the preview (`E2E (mocked)` runs
-against mocks). The budget goes to the merge train; a preview is a choice
-someone makes.
-
-Put the label on and the build starts from that moment, however old the PR is.
-Every following commit rebuilds as long as the label is there. Take the label
-off and `cleanup-preview` runs, exactly as it does when the PR closes — no
-preview keeps running that nobody is looking at.
-
-The gate is the *presence* of the label on the PR, checked on every event, not
-the kind of event. The `deploy:<component>` labels are a separate, additive
-thing: they force a component to build that the change-detection did not flag,
-and they do nothing on a PR without `deploy:preview`.
-
-Fork PRs stay out of the chain regardless of labels; they have no secrets and a
-read-only `GITHUB_TOKEN`, so the push to GHCR could never succeed.
-
-### Opruimen
-
-Alle image-opruiming loopt via één script, `script/ghcr-cleanup.mjs`, in één
-stap van `scheduled-cleanup.yml` en niet bij elke gesloten pull request. Het
-verwijdert drie dingen: `pr-`-versies van gesloten pull requests, `sha-`-versies
-die nergens meer draaien en ouder zijn dan een week, en untagged manifesten waar
-geen getagde index meer naar wijst.
-
-Die drie horen bij elkaar omdat ze dezelfde bescherming delen, en twee
-opruimers naast elkaar zouden elkaars uitzonderingen niet kennen:
-
-- Productie draait op een `sha-`-tag, niet op `latest`. Wie op de tagvorm afgaat
-  haalt dus het image onder de draaiende deployment vandaan. Het script toetst
-  daarom aan wat ZAD op dat moment draait en verwijdert niets — geen enkele van
-  de drie soorten — als het die lijst niet krijgt.
-- Untagged is niet hetzelfde als afval. Buildx zet provenance aan, dus elke push
-  levert een OCI-index met de tag plus twee untagged children (het
-  platform-image en een attestation-manifest). Het script bouwt eerst de
-  referentiegraaf op en verwijdert alleen untagged versies die daar niet in
-  voorkomen; lukt één manifest-lookup niet, dan blijft voor dat package élke
-  wees staan. De children van een draaiende index zitten in die graaf en zijn
-  daarmee langs twee wegen beschermd.
-
-De opruiming inventariseert GitHub-environments, en mist daarmee elk
-ZAD-deployment waarvan de environment al weg is.
-`script/prune-orphaned-deployments.sh` inventariseert andersom;
-`check-preview-deployments.sh` en `check-preview-environments.sh` stellen daarna
-vast wat er werkelijk over is, want de melding van een opruiming zegt hier niets
-over de uitkomst.
-
-De redenering achter elke regel staat in de kop van het betreffende script.
+All image cleanup beyond a PR's own `pr-N` tags runs through
+`script/ghcr-cleanup.mjs` from `scheduled-cleanup.yml`. Extend that script; do
+not add a second cleaner next to it, because two cleaners do not know each
+other's exceptions and production runs on a `sha-` tag. What it protects and
+why: `docs/src/content/docs/operations/deployment.md#cleanup`.
 
 ### Debugging deploy-preview failures
 
-ZAD deploy timeouts ("Task did not complete within 300s") almost always indicate an **application error**, not a platform issue. When `deploy-preview` fails:
-
-1. Check container logs: `zad logs <deployment>` (e.g. `zad logs pr429`)
-2. Look for ERROR lines — common causes: migration conflicts, missing env vars, startup panics
-3. If the DB is in a bad state (e.g. migration checksum mismatch after renumbering), delete the preview deployment (`zad deployment delete <deployment>`) and re-trigger CI to get a fresh DB
-4. Do **not** blindly retry — diagnose the root cause first
-
-One failure is benign: `Could not extract URL from result` met `"status":
-"superseded"` in de JSON eronder. ZAD laat een taak wijken voor een nieuwere
-taak die dezelfde deployment dekt (een nieuwe push, of het opruimen van een
-gesloten PR). Het werk is dan door die nieuwere taak gedaan; alleen deze job
-opnieuw draaien volstaat. Om die reden deployen `deploy-preview` en
-`deploy-production` alle componenten in één taak: twee taken voor hetzelfde
-deployment naast elkaar zetten elkaar opzij.
-
-### Required Secrets
-
-- `RIG_API_KEY` - API key for ZAD Operations Manager (configured in GitHub secrets)
+A ZAD deploy timeout ("Task did not complete within 300s") is almost always an
+application error. Diagnose before retrying: `zad logs <deployment>` (e.g.
+`zad logs pr429`) and look for `ERROR` lines. `Could not extract URL from
+result` with `"status": "superseded"` is harmless; re-run only that job. The
+full procedure, including resetting a broken preview database, is in
+`docs/src/content/docs/operations/deployment.md#debugging-a-failed-preview-deploy`.
 
 ### ZAD CLI
 
-Use [`zad-cli`](https://github.com/RijksICTGilde/zad-cli) to manage deployments. Configure `ZAD_API_KEY` and `ZAD_PROJECT_ID` in `.env`.
-
-```bash
-# Install / upgrade
-uv tool install git+https://github.com/RijksICTGilde/zad-cli.git
-uv tool upgrade zad-cli
-
-# Add a new component
-zad component add docs \
-    --image ghcr.io/minbzk/regelrecht-docs:latest \
-    --deployment regelrecht \
-    --port 8000 \
-    --service publish-on-web
-
-# Get logs
-zad logs --deployment regelrecht --lines 50
-
-# List deployments
-zad deployment list
-```
+Use [`zad-cli`](https://github.com/RijksICTGilde/zad-cli) with `ZAD_API_KEY`
+and `ZAD_PROJECT_ID` in `.env`. Install and common commands:
+`docs/src/content/docs/operations/deployment.md#zad-cli`.

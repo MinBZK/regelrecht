@@ -40,7 +40,7 @@ Do not bypass hooks with `--no-verify`. If a hook fails, fix the underlying prob
 
 1. Create a feature branch and push your changes
 2. Open a PR - CI runs all relevant checks automatically
-3. End the PR body with a `Werkpakket:` line (see below). A required check blocks the merge without it
+3. End the PR body with a `Werkpakket:` line (see below). Without it the **Werkpakket genoemd** check turns red
 4. Add the `deploy:preview` label if reviewers need a running preview (see [Deployment](./deployment))
 5. Get a code review, and clear any finding the automated review marks Critical
 6. Add the PR to the merge queue (see [CI/CD](./ci-cd#the-merge-queue)). Once it lands on `main`, production deploys automatically

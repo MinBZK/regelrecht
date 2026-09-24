@@ -11,7 +11,8 @@
 # staat in de pull request, dus wat dat bestand meegeeft is geschreven door de
 # auteur van de wijziging die onder review staat.
 #
-# Zie AGENTS.md voor het volledige ontwerp en wat de poort niet afdekt.
+# Zie docs/src/content/docs/operations/ci-cd.md ("The Claude review gate") voor
+# het volledige ontwerp en wat de poort niet afdekt.
 set -uo pipefail
 
 : "${REPO:?REPO is verplicht}"

@@ -18,7 +18,7 @@ Feature files live in two places, and the difference decides who fixes a failure
 
 ### The step vocabulary is generated, not hand-written
 
-`bdd/grammar.yaml` is the single source of truth for the step phrasings. The bindings for every engine are generated from it: Rust through `packages/engine/build.rs`, the editor and demo JavaScript through `bdd/codegen/gen-js.mjs`. Never hand-edit a generated file. Change `grammar.yaml` and run `just bdd-codegen`.
+`bdd/grammar.yaml` is the single source of truth for the step phrasings. The bindings for every engine are generated from it: Rust through `packages/engine/build.rs`, the editor and demo JavaScript through `bdd/codegen/gen-js.mjs`, which writes `packages/frontend-shared/src/gherkin/grammar.generated.js` (re-exported for the editor by `frontend/src/gherkin/`). Never hand-edit a generated file. Change `grammar.yaml` and run `just bdd-codegen`.
 
 A step that is not in `grammar.yaml` does not exist. A minimal scenario:
 
@@ -62,6 +62,14 @@ Test scenarios are derived from the **Memorie van Toelichting** (MvT), the expla
 ## Everything at once
 
 `just check` runs what CI runs: formatting, lints, a build check, schema and annotation validation, the script test suites, and the full Rust test suite. Run it before pushing.
+
+The first three also run on their own, and the pre-commit hooks call them the same way:
+
+```bash
+just format       # rustfmt check (cargo fmt --check)
+just lint         # clippy over all packages
+just build-check  # cargo check over the whole workspace
+```
 
 ## Rust Tests
 
