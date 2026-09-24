@@ -60,6 +60,7 @@ fn setup_zorgtoeslag_service() -> LawExecutionService {
     let relationship = record(vec![
         ("bsn", Value::String("999993653".to_string())),
         ("partnerschap_type", Value::String("GEEN".to_string())),
+        ("partner_bsn", Value::Null),
     ]);
     let insurance = record(vec![
         ("bsn", Value::String("999993653".to_string())),
@@ -431,8 +432,13 @@ fn an_action_carries_the_provision_the_corpus_cites() {
         .collect();
     assert_eq!(
         cited,
-        vec!["hoogte_zorgtoeslag", "heeft_recht_op_zorgtoeslag"],
-        "both actions of article 2 cite their basis"
+        vec![
+            "vermogen_onder_grens",
+            "in_aanmerking_genomen_toetsingsinkomen",
+            "hoogte_zorgtoeslag",
+            "heeft_recht_op_zorgtoeslag",
+        ],
+        "every action of articles 2 and 3 cites its basis"
     );
 
     // The entitlement test draws on three provisions, so it cites the article

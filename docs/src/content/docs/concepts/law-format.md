@@ -82,12 +82,12 @@ Article 3 does have one:
   url: https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel3
   machine_readable:
     definitions:
-      vermogensgrens_alleenstaand:
+      vermogensgrens_verzekerde:
         value: 14189600
         type: amount
         type_spec:
           unit: eurocent
-      vermogensgrens_aanvrager_met_toeslagpartner:
+      vermogensgrens_gezamenlijk:
         value: 17942900
         type: amount
         type_spec:
@@ -117,30 +117,70 @@ Article 3 does have one:
             output: heeft_toeslagpartner
             parameters:
               bsn: $bsn
+        - name: bsn_toeslagpartner
+          type: string
+          nullable: true
+          source:
+            regulation: algemene_wet_inkomensafhankelijke_regelingen
+            output: bsn_toeslagpartner
+            parameters:
+              bsn: $bsn
+        - name: vermogen_toeslagpartner
+          type: amount
+          nullable: true
+          source:
+            regulation: wet_inkomstenbelasting_2001
+            output: rendementsgrondslag
+            parameters:
+              bsn: $bsn_toeslagpartner
+          type_spec:
+            unit: eurocent
+        - name: heeft_gehele_berekeningsjaar_dezelfde_partner
+          type: boolean
+          source: {}
       output:
         - name: vermogen_onder_grens
           type: boolean
       actions:
         - output: vermogen_onder_grens
           value:
-            operation: LESS_THAN_OR_EQUAL
-            subject: $vermogen
-            value:
-              operation: IF
-              cases:
-                - when:
-                    operation: EQUALS
-                    subject: $heeft_toeslagpartner
-                    value: true
-                  then: $vermogensgrens_aanvrager_met_toeslagpartner
-              default: $vermogensgrens_alleenstaand
+            operation: AND
+            conditions:
+              - operation: LESS_THAN_OR_EQUAL
+                subject: $vermogen
+                value: $vermogensgrens_verzekerde
+              - operation: IF
+                cases:
+                  - when:
+                      operation: AND
+                      conditions:
+                        - operation: EQUALS
+                          subject: $heeft_toeslagpartner
+                          value: true
+                        - operation: EQUALS
+                          subject: $heeft_gehele_berekeningsjaar_dezelfde_partner
+                          value: true
+                        - operation: NOT
+                          value:
+                            operation: EQUALS
+                            subject: $vermogen_toeslagpartner
+                            value: null
+                    then:
+                      operation: LESS_THAN_OR_EQUAL
+                      subject:
+                        operation: ADD
+                        values:
+                          - $vermogen
+                          - $vermogen_toeslagpartner
+                      value: $vermogensgrens_gezamenlijk
+                default: true
 ```
 
-The sections below take this apart in reading order. Everything the section can hold is listed under [The machine_readable section](/reference/schema#machine-readable).
+The corpus file also puts a `legal_basis` on the action, quoting the lid it carries out ([RFC-039](/rfcs/rfc-039)); it is left out here. The sections below take this apart in reading order. Everything the section can hold is listed under [The machine_readable section](/reference/schema#machine-readable).
 
 ### Definitions
 
-`definitions` holds the constants the article states outright: here the two asset limits. The article names them in euros; the file stores them in eurocent, like every other amount in this law, and says so with a unit. The bare form, `vermogensgrens_alleenstaand: 14189600`, is valid too, but it leaves the value without a unit, and an execution trace then reports it as a plain number.
+`definitions` holds the constants the article states outright: here the two asset limits. The article names them in euros; the file stores them in eurocent, like every other amount in this law, and says so with a unit. The bare form, `vermogensgrens_verzekerde: 14189600`, is valid too, but it leaves the value without a unit, and an execution trace then reports it as a plain number.
 
 A definition belongs to the article whose text states it. If a limit changes by ministerial regulation next year, the change lands in that article's new version and nowhere else.
 
@@ -150,7 +190,7 @@ The `execution` block separates three kinds of value by where they come from.
 
 A **parameter** is what the caller supplies: here the `bsn` of the person the question is about. An **input** is a value the article needs but does not decide. Article 3 needs the person's assets, which the Wet inkomstenbelasting 2001 defines as the rendementsgrondslag, so the input names that law and output under `source` and passes the `bsn` along. The engine runs the other law and uses its answer; [Cross-Law References](/concepts/cross-law-references) covers how. An input with `source: {}` comes from outside the corpus altogether, from a register or the person themselves.
 
-Here the model falls short of the text. For someone with a partner, the first lid tests the joint rendementsgrondslag of both, while `vermogen` holds the applicant's own. The corpus file says so in a comment above the input: fetching the partner's value is blocked by the same engine limitation that affects the joint toetsingsinkomen in article 2. Until that is solved, the article decides correctly for someone without a partner, and for a couple only when the partner has no assets of their own.
+The partner takes three more inputs. Who the partner is follows from article 3 of the Awir, which yields the partner's `bsn` or `null` when there is none. The partner's rendementsgrondslag comes from the same provision of the Wet inkomstenbelasting 2001 as the applicant's, called with that `bsn`. Without a partner the `bsn` is `null`, the engine does not run the other law, and `vermogen_toeslagpartner` is `null` as well. Both inputs say so with `nullable: true`, and the action tests for the absence before it adds anything ([RFC-036](/rfcs/rfc-036)). That test has a cost. A partner who is registered as a partner but without a `bsn` passes it as if there were no partner, and the applicant is then tested on their own assets alone; the type checker requires the test, and a law has no way to fail on data it knows to be wrong ([issue #1563](https://github.com/MinBZK/regelrecht/issues/1563)). The third input, whether the applicant had the same partner for the whole berekeningsjaar, is a fact about the year that no law in the corpus establishes, so it has `source: {}`.
 
 An **output** is what the article decides and offers to others. Its `name` is public: another law that needs this answer asks for `vermogen_onder_grens` by name, which makes renaming an output a change other laws can see. The reference lists the fields each kind carries under [Fields](/reference/schema#fields).
 
@@ -158,7 +198,7 @@ Values are referred to as `$name`, whether they are parameters, inputs, outputs 
 
 ### Operations
 
-An action computes one output. The logic is a tree of operations, and article 3 reads almost as the law does: the assets are less than or equal to a limit, and which limit depends on whether there is a partner.
+An action computes one output. The logic is a tree of operations, and article 3 follows the sentence of the law. Lid 1 names two grounds joined by "of": the applicant's own assets exceed the first limit, or, for someone with the same partner all year, the joint assets exceed the second. The test passes when neither ground holds, so the action is an `AND` of the first comparison and a conditional that applies the second only to a partner of the whole year. Dienst Toeslagen applies only the joint limit to a couple; the two readings differ when the applicant's own assets are above the first limit and the joint assets below the second. The model follows the letter, and a scenario in the corpus fixes that choice so it can be revisited on purpose.
 
 The schema defines 28 operations: arithmetic, comparison, logic, a conditional, rounding, collections and dates. Each one, with the operands it takes, is in [Operations](/reference/schema#operations) in the reference. They share one shape ([RFC-004](/rfcs/rfc-004)): the operation names what happens, and named operands say what it happens to, so `subject` and `value` in a comparison read in the order the law states them.
 
