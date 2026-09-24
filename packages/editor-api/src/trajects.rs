@@ -257,6 +257,13 @@ const CENTRAL_WRITABLE_BASE_BRANCH: &str = "development";
 const CENTRAL_WRITABLE_AUTH_REF: &str = "minbzk-central";
 const CENTRAL_WRITABLE_NAME: &str = "MinBZK/regelrecht-corpus";
 
+/// User-facing rejection for a malformed `repo_path`. Shared by `create`
+/// and `update` so both entry points describe the same rule in the same
+/// words — the UI shows this string verbatim.
+const REPO_PATH_INVALID_MSG: &str =
+    "repo_path moet een relatief pad zijn zonder '..' segmenten en \
+     mag alleen letters, cijfers, en '-', '_', '.' bevatten";
+
 #[derive(Debug, Deserialize)]
 pub struct UpdateTrajectRequest {
     pub name: Option<String>,
@@ -264,6 +271,19 @@ pub struct UpdateTrajectRequest {
     pub scope: Option<String>,
     /// Either `"bezig"` or `"afgerond"`.
     pub status: Option<String>,
+    /// New sub-path within the writable-own repo (DB column `gh_path`
+    /// on the `is_writable_own` source). `None` (field omitted) leaves
+    /// the current path alone; `Some("")` — or any whitespace-only
+    /// string — means "repo root" and is stored as SQL `NULL`, the same
+    /// normalisation `create` applies.
+    ///
+    /// Everything the editor reads and writes on the own source hangs
+    /// off this path: laws, scenarios, annotations and documents. Moving
+    /// it therefore moves the editor's whole view of the repo; files
+    /// outside the new root stop being regulation as far as the editor
+    /// is concerned. Relocating them is the user's job (on the branch),
+    /// not this endpoint's.
+    pub repo_path: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -833,12 +853,7 @@ async fn resolve_writable_target(
                 .map(str::to_string);
             if let Some(ref p) = repo_path {
                 if !valid_repo_path(p) {
-                    return Err((
-                        StatusCode::BAD_REQUEST,
-                        "repo_path moet een relatief pad zijn zonder '..' segmenten en \
-                         mag alleen letters, cijfers, en '-', '_', '.' bevatten"
-                            .to_string(),
-                    ));
+                    return Err((StatusCode::BAD_REQUEST, REPO_PATH_INVALID_MSG.to_string()));
                 }
             }
             let auth_ref = derive_auth_ref(owner, repo);
@@ -1244,24 +1259,66 @@ pub async fn create(
     Ok((StatusCode::CREATED, Json(summary)))
 }
 
-/// PATCH /api/trajects/:id — owner-only update of metadata fields.
+/// Lift a bare-status error into the `(StatusCode, String)` shape used
+/// by handlers that also return user-facing messages. An empty body is
+/// the right answer for these: 403/500/503 carry nothing the caller can
+/// act on beyond the status itself.
+fn bare(status: StatusCode) -> (StatusCode, String) {
+    (status, String::new())
+}
+
+/// PATCH /api/trajects/:id — owner-only update of metadata fields and of
+/// the root path (`gh_path`) of the traject's own corpus source.
+///
+/// Returns `(StatusCode, String)` on failure so the path-validation and
+/// central-corpus rejections can explain themselves in the UI; the other
+/// failures keep an empty body (see [`bare`]).
 pub async fn update(
     State(state): State<AppState>,
     Extension(account): Extension<AccountRecord>,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateTrajectRequest>,
-) -> Result<StatusCode, StatusCode> {
-    let pool = get_pool(&state)?;
-    require_owner(pool, id, account.id).await?;
+) -> Result<StatusCode, (StatusCode, String)> {
+    let pool = get_pool_msg(&state)?;
+    require_owner(pool, id, account.id).await.map_err(bare)?;
     if let Some(ref s) = req.status {
-        validate_status(s)?;
+        validate_status(s).map_err(bare)?;
     }
     // Mirror `create`'s non-empty check so a PATCH can't blank-out the
     // name with whitespace.
     if let Some(ref n) = req.name {
         if n.trim().is_empty() {
-            return Err(StatusCode::BAD_REQUEST);
+            return Err(bare(StatusCode::BAD_REQUEST));
         }
+    }
+
+    // `Option<Option<String>>`: the outer layer is "was the field sent
+    // at all" (absent = leave `gh_path` alone), the inner one is the
+    // normalised value — `None` for the repo root, stored as SQL NULL
+    // exactly like `create` does, so the row never carries the "" vs
+    // NULL ambiguity.
+    let repo_path: Option<Option<String>> = req.repo_path.as_deref().map(|raw| {
+        let trimmed = raw.trim();
+        (!trimmed.is_empty()).then(|| trimmed.to_string())
+    });
+    if let Some(Some(ref path)) = repo_path {
+        // Same boundary guard as `create`: the stored `gh_path` is the
+        // base every read/write on the own source is resolved against
+        // and is never re-validated downstream, so a traversal here
+        // would let the backend read/write outside the traject's repo
+        // subtree.
+        if !valid_repo_path(path) {
+            return Err((StatusCode::BAD_REQUEST, REPO_PATH_INVALID_MSG.to_string()));
+        }
+    }
+
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(db_err_msg("begin update traject tx"))?;
+
+    if let Some(ref new_path) = repo_path {
+        update_own_repo_path(&mut tx, id, new_path.as_deref()).await?;
     }
 
     sqlx::query(
@@ -1277,11 +1334,94 @@ pub async fn update(
     .bind(req.description.as_deref())
     .bind(req.scope.as_deref())
     .bind(req.status.as_deref())
-    .execute(pool)
+    .execute(&mut *tx)
     .await
-    .map_err(db_err("update traject"))?;
+    .map_err(db_err_msg("update traject"))?;
+
+    tx.commit()
+        .await
+        .map_err(db_err_msg("commit update traject tx"))?;
+
+    if let Some(ref new_path) = repo_path {
+        // Worth a line in the log: this one field decides what the whole
+        // traject sees, so "the library suddenly shows nothing" is a
+        // question whose answer is this event and its timestamp.
+        tracing::info!(
+            traject = %id,
+            repo_path = new_path.as_deref().unwrap_or("<repo root>"),
+            "traject root path changed"
+        );
+        // The cached `TrajectCorpus` pins the old `gh_path` in its
+        // backends, so without this the sidebar would keep listing the
+        // laws under the previous root for a whole TTL window. Dropping
+        // the cell makes the next read rebuild against the new path.
+        state.trajects.invalidate(id).await;
+    }
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Write the new root path onto the traject's writable-own source row.
+///
+/// Refuses the two cases where there is no path of ours to move:
+/// a traject that writes to the central MinBZK corpus (its layout is
+/// fixed for every traject that shares it), and a writable-own source
+/// that is not a GitHub repo (a local source has no `gh_path`).
+async fn update_own_repo_path(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    traject_id: Uuid,
+    new_path: Option<&str>,
+) -> Result<(), (StatusCode, String)> {
+    let row: Option<(String, Option<String>)> = sqlx::query_as(
+        "SELECT source_type::text, auth_ref
+         FROM traject_corpus_sources
+         WHERE traject_id = $1 AND is_writable_own
+         FOR UPDATE",
+    )
+    .bind(traject_id)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(db_err_msg("writable-own source lookup"))?;
+
+    let (source_type, auth_ref) = row.ok_or((
+        StatusCode::BAD_REQUEST,
+        "dit traject heeft geen eigen bron waarvan het pad te wijzigen is".to_string(),
+    ))?;
+
+    // `auth_ref` is the marker, not owner/repo: it decides which token
+    // the writes run over, and `create` rejects any user-supplied repo
+    // that derives to the central ref — so this value appears on
+    // exactly the trajects that write to the central corpus.
+    if auth_ref.as_deref() == Some(CENTRAL_WRITABLE_AUTH_REF) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "dit traject schrijft naar het centrale corpus ({CENTRAL_WRITABLE_NAME}); \
+                 daar ligt het pad vast op '{CENTRAL_WRITABLE_PATH}'. Maak een traject op \
+                 een eigen repo om een ander pad te gebruiken."
+            ),
+        ));
+    }
+    if source_type != "github" {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "de eigen bron van dit traject is geen GitHub-repo, dus er is geen pad te \
+             wijzigen"
+                .to_string(),
+        ));
+    }
+
+    sqlx::query(
+        "UPDATE traject_corpus_sources SET gh_path = $2
+         WHERE traject_id = $1 AND is_writable_own",
+    )
+    .bind(traject_id)
+    .bind(new_path)
+    .execute(&mut **tx)
+    .await
+    .map_err(db_err_msg("update traject repo path"))?;
+
+    Ok(())
 }
 
 /// DELETE /api/trajects/:id — owner-only hard delete.
