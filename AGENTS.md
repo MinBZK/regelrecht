@@ -41,7 +41,7 @@ the two does not survive a Windows checkout.
 ### Prerequisites
 - [Rust](https://rustup.rs/) (stable toolchain)
 - [just](https://github.com/casey/just) command runner
-- [mold](https://github.com/rui314/mold) linker — required by `packages/.cargo/config.toml`; the dev recipes will not link without it
+- [mold](https://github.com/rui314/mold) linker, on x86_64 Linux only — `packages/.cargo/config.toml` links with it there, so the dev recipes will not link without it. macOS and aarch64 Linux use the default linker
 
 ### Build speed (run once)
 
@@ -50,7 +50,7 @@ build per worktree) and, when the repo is on a slow mount (9p/NFS/SMB — e.g. a
 WSL2/Docker-Desktop dev container with the repo on a Windows drive), relocates
 that target to fast local storage under `~/.cache/regelrecht/`. The slow-mount
 I/O is usually the dominant cost — bigger than mold or debuginfo. It also
-installs `mold` (required by `packages/.cargo/config.toml`) + `sccache`.
+installs `sccache`, plus `mold` on x86_64 Linux (where `packages/.cargo/config.toml` requires it).
 `sccache` is left off locally because it disables incremental compilation
 (`CARGO_INCREMENTAL=0`), which slows the `just dev` hot-reload loop. CI uses
 mold + sccache.
