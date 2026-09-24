@@ -26,6 +26,7 @@ function invullen(v) {
 }
 
 async function inloggen() {
+  if (bezig.value) return;
   fout.value = '';
   bezig.value = true;
   try {
@@ -69,12 +70,14 @@ async function inloggen() {
         <nldd-text-cell :text="v.label" :supporting-text="`KvK ${v.kvk}, ${v.persoon}`"></nldd-text-cell>
         <nldd-cell>
           <nldd-button-group orientation="horizontal">
-            <nldd-button variant="secondary" size="sm" text="Vul in" :accessible-label="`Vul in met ${v.label}`" @click="invullen(v)"></nldd-button>
+            <nldd-button variant="secondary" size="sm" text="Vul in" :disabled="bezig || undefined" :accessible-label="`Vul in met ${v.label}`" @click="invullen(v)"></nldd-button>
             <nldd-button
-              variant="primary"
+              variant="secondary"
               size="sm"
               text="Inloggen"
               :accessible-label="`Inloggen met ${v.label}`"
+              :loading="bezig || undefined"
+              :disabled="bezig || undefined"
               @click="invullen(v); inloggen()"
             ></nldd-button>
           </nldd-button-group>

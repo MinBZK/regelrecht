@@ -38,9 +38,21 @@ pub struct InlogVoorbeeld {
 pub fn laad(map: &Path, definitie: &VoorbeeldenDefinitie) -> Result<Voorbeelden, Vec<String>> {
     let mut fouten = Vec::new();
     let mut uit = Voorbeelden::default();
+    // Het label is de sleutel waarmee de frontend een login kiest: uniek.
+    let mut labels: Vec<(String, &str)> = Vec::new();
     for pad in &definitie.inloggen {
         match inlog(map, pad) {
-            Ok(v) => uit.inloggen.push(v),
+            Ok(v) => {
+                if let Some((_, eerder)) = labels.iter().find(|(l, _)| *l == v.label) {
+                    fouten.push(format!(
+                        "voorbeelden {eerder} en {pad} hebben hetzelfde label '{}'",
+                        v.label
+                    ));
+                    continue;
+                }
+                labels.push((v.label.clone(), pad));
+                uit.inloggen.push(v);
+            }
             Err(f) => fouten.push(f),
         }
     }
@@ -218,5 +230,25 @@ mod tests {
             fouten[4].contains("besluit.json: verwacht een object met 'formulier'"),
             "{fouten:?}"
         );
+    }
+
+    #[test]
+    fn twee_logins_met_hetzelfde_label() {
+        let dir = map_met(&[("login.json", r#"{"kvk": "12345678", "persoon": "A"}"#)]);
+        std::fs::create_dir_all(dir.path().join("ander")).unwrap();
+        std::fs::write(
+            dir.path().join("ander/login.json"),
+            r#"{"kvk": "87654321", "persoon": "B"}"#,
+        )
+        .unwrap();
+        let fouten = laad(
+            dir.path(),
+            &definitie(&["login.json", "ander/login.json"], None, None),
+        )
+        .unwrap_err();
+        assert_eq!(fouten.len(), 1, "{fouten:?}");
+        assert!(fouten[0].contains("login.json"), "{fouten:?}");
+        assert!(fouten[0].contains("ander/login.json"), "{fouten:?}");
+        assert!(fouten[0].contains("label 'login'"), "{fouten:?}");
     }
 }

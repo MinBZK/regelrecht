@@ -50,8 +50,13 @@ function zet(naam, waarde) {
   oordelen.value = { ...oordelen.value, [naam]: waarde === '' ? null : waarde };
 }
 
+// Alleen wat is ingevuld gaat mee.
+function zonderLeeg(o) {
+  return Object.fromEntries(Object.entries(o).filter(([, w]) => w !== null));
+}
+
 function ingevuld() {
-  return Object.fromEntries(Object.entries(oordelen.value).filter(([, w]) => w !== null));
+  return zonderLeeg(oordelen.value);
 }
 
 async function proefbesluit() {
@@ -71,20 +76,27 @@ async function proefbesluit() {
 // Na het invullen met het voorbeeld bouwt de sleutel het formulier opnieuw op.
 const versie = ref(0);
 
-// Vul de oordelen van het formulier met het voorbeeld.
+// De oordelen van het voorbeeld, alleen voor de velden van het formulier.
+function voorbeeldOordelen() {
+  return Object.fromEntries(Object.keys(oordelen.value).map((naam) => [naam, voorbeeld.value[naam] ?? null]));
+}
+
+// Vul het formulier met het voorbeeld. Een eerder proefbesluit hoort niet
+// meer bij deze oordelen.
 function voorbeeldInvullen() {
-  oordelen.value = Object.fromEntries(Object.keys(oordelen.value).map((naam) => [naam, voorbeeld.value[naam] ?? null]));
+  oordelen.value = voorbeeldOordelen();
+  proef.value = null;
   versie.value++;
 }
 
 // Het besluit nemen: de engine rekent opnieuw, en de cel legt de uitkomst
 // vast als decretogram. Weigert zij, dan blijft de kroniek zoals hij was.
-// Met het voorbeeld: de oordelen uit het voorbeeld, niet uit het formulier.
+// Met het voorbeeld: precies wat "Voorbeeld invullen" in het formulier zet.
 async function besluitNemen(metVoorbeeld = false) {
   fout.value = '';
   beslissen.value = metVoorbeeld ? 'voorbeeld' : 'formulier';
   try {
-    const uitslag = await api.besluit(props.zaakkenmerk, metVoorbeeld ? voorbeeld.value : ingevuld());
+    const uitslag = await api.besluit(props.zaakkenmerk, zonderLeeg(metVoorbeeld ? voorbeeldOordelen() : oordelen.value));
     besluit.value = uitslag;
     proef.value = uitslag.proefbesluit;
     zaak.value = await api.zaak(props.zaakkenmerk);
