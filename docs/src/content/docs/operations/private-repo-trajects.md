@@ -3,7 +3,7 @@ title: "Private-repo trajects"
 description: "How a traject in the editor is linked to its own (private) GitHub repository instead of the central corpus repository, and which token writes to it."
 ---
 
-Since [PR #704](https://github.com/MinBZK/regelrecht/pull/704), a *traject* (a working context in the editor, with its own members and branch) can be linked to **its own GitHub repository** instead of the central `MinBZK/regelrecht-corpus`. This suits organizations and teams that want to keep their regulations in a private repository while keeping the editor and its commit attribution.
+A *traject* (a working context in the editor, with its own members and branch) can be linked to **its own GitHub repository** instead of the central `MinBZK/regelrecht-corpus`. This suits organizations and teams that want to keep their regulations in a private repository while keeping the editor and its commit attribution.
 
 What you need to do depends on your role: participant, traject owner, or operator of the RegelRecht deployment. It also depends on which of two write modes the deployment runs in.
 
@@ -79,7 +79,7 @@ where `<OWNER>_<REPO>` is a **deterministic slug** of the coordinates: lowercase
 | `acme/regels` | `CORPUS_AUTH_ACME_REGELS_TOKEN` |
 | `acme/regelrecht-private-test` | `CORPUS_AUTH_ACME_REGELRECHT_PRIVATE_TEST_TOKEN` |
 
-The central writable repository (`MinBZK/regelrecht-corpus`) does **not** use the derived slug but the fixed auth ref `minbzk-central`, so its variable is `CORPUS_AUTH_MINBZK_CENTRAL_TOKEN`, not `CORPUS_AUTH_MINBZK_REGELRECHT_CORPUS_TOKEN`. A user repository whose name would slug to `minbzk-central` is refused.
+The central writable repository (`MinBZK/regelrecht-corpus`) does **not** use the derived slug but the fixed auth ref `minbzk-central`, so its variable is `CORPUS_AUTH_MINBZK_CENTRAL_TOKEN`, not `CORPUS_AUTH_MINBZK_REGELRECHT_CORPUS_TOKEN`. A user repository whose name would slug to `minbzk-central` is refused. Writable sources resolve their token strictly, without falling back to the shared `CORPUS_GIT_TOKEN`: a deployment that only sets `CORPUS_GIT_TOKEN` cannot push to the central repository. When no token is found, the editor log names the variable it looked for.
 
 How to set an environment variable depends on the platform (ZAD, Kubernetes, docker-compose). After the change the editor pod has to restart to pick up the new variable. **One variable per repository**: when several trajects point at the same repository, one configuration covers them all.
 
@@ -141,10 +141,3 @@ Saves can fail while editing as well. Most messages are the same; for a 403 abou
 - **Replacing an expired service token is operator work.** The editor refuses reads and writes once GitHub rejects the PAT, and the operator has to replace it. Plan for this. An expired personal link is fixed by the user relinking.
 - **Service-token mode is not self-service.** Every new repository needs an operator to configure a variable. Personal mode removes that step, at the cost of every user needing their own GitHub account with push rights.
 - **No tokens in the database.** A deliberate design choice: a bug, breach or insider with database access cannot exfiltrate tokens.
-
-## Rollout notes (relevant only for the first deploy of this feature)
-
-The first deploy with this feature tightened two older paths. Check these on your deployment before rolling out the release.
-
-- **The writable-own source uses strict token resolution** (no `CORPUS_GIT_TOKEN` fallback). Existing trajects that commit to the central MinBZK repository therefore need `CORPUS_AUTH_MINBZK_CENTRAL_TOKEN` as a separate variable. Deployments that so far relied only on `CORPUS_GIT_TOKEN` for the central write path see silent push failures after the release when that variable is missing. Set it before deploying and check the editor logs on the first run; the diagnostic log names the expected variable when the resolver finds no token for the writable-own source.
-- **Existing SSO sessions lack the new `email_verified` claim.** The first save after the deploy then returns a 403 asking the user to log in again. Logging in once fixes it; no maintenance or migration is needed.

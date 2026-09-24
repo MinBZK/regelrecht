@@ -1,6 +1,6 @@
 ---
 title: "Lawmaking Frontend"
-description: "Visualizes the Dutch legislative process as an interactive, step-through flow diagram."
+description: "Visualizes the Dutch legislative process as a GitFlow diagram that plays step by step."
 ---
 
 The lawmaking frontend visualizes the Dutch legislative process as an interactive flow diagram.
@@ -11,23 +11,64 @@ The lawmaking frontend visualizes the Dutch legislative process as an interactiv
 - **Location**: `frontend-lawmaking/`
 - **Production URL**: `lawmaking.regelrecht.rijks.app`
 
-## What it does
+## The GitFlow framing
 
-The app presents the legislative process as an animated, step-through diagram. Users can advance through stages (from concept to publication), zoom in on details, and switch between three views:
+The app reads the legislative process as a Git branching model. The Corpus
+Juris, the law in force, is `main`. The wetgevingskalender, the proposals
+formally in procedure, is `develop`. A ministry that drafts a wetsvoorstel
+works in a fork, internal coordination happens on topic branches inside that
+fork, and advisory bodies such as the Raad van State work in forks of their
+own. Parliamentary debate is a pull-request review (in the extended view each amendment gets its own branch),
+and the Koninklijk Besluit that brings a law into force is the merge from
+`develop` into `main`. Meanwhile `main` keeps moving with other laws, which is
+why the diagram shows rebases.
 
-- **Simple** - the basic legislative path
-- **Advanced** - detailed stages and decision points
-- **Wet open overheid (Woo)** - the process through the lens of open government law
+Every step carries two labels, a Git one (`git rebase main`, `merge fork →
+develop`) and a legislative one (Raad van State, Eerste Kamer), so a reader who
+knows either vocabulary can follow the other.
 
-No backend is needed. Flow data is defined as static JavaScript modules in `src/data/`.
+Three datasets use this model, chosen with the segmented control in the header:
+
+- **Eenvoudig** - the basic path, from wetsvoorstel to publication
+- **Uitgebreid** - the full process, with parallel advisory and consultation forks, amendment branches and a novelle
+- **Wet open overheid** - the real history of the Woo (kamerstuk 33328 and novelle 35112), with phases and a year timeline
+
+The data is static JavaScript in `src/data/` (`flowDataSimple.js`,
+`flowDataAdvanced.js`, `flowDataWoo.js`). There is no backend.
+
+## Toolbar
+
+The diagram starts at step one and reveals later steps as you advance. The
+header toolbar has, from left to right:
+
+- **Step controls**: to the start, one step back, one step forward, to the end
+- **Afspelen / Pauzeren**: autoplay, one step every 1.5 seconds, stopping at the end; it restarts from the beginning when pressed at the last step
+- **Step counter**: current step and total
+- **Zoom**: zoom in, zoom out, and reset to 100%
+- **View selector**: the three datasets above; switching resets to step one
+
+During playback the diagram scrolls along with the newest step. A legend under
+the diagram names the branch colors.
+
+## Detail sheet
+
+Clicking a revealed node, or pressing Enter on it, opens a sheet on the right
+with the Git label next to the legislative label, a description of the step,
+and its type (commit, merge, review and so on). Clicking the node again, the
+close button, Escape or clicking the empty canvas closes it. Opening a node
+stops autoplay.
 
 ## Running locally
 
 ```bash
-cd frontend-lawmaking
-npm install
-npm run dev
+just dev-frontend lawmaking
 ```
+
+This starts Vite on port 7500 (override with `LAWMAKING_PORT`), without
+database or backend. Running `npm run dev` inside `frontend-lawmaking/` also
+works; Vite then uses the port from `vite.config.js`, 3000.
+
+`npm test` runs `src/data/flow-data.test.mjs`, which fails when a connection or stage points at a stage or branch that does not exist.
 
 ## Further reading
 

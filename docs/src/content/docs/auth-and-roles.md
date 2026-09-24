@@ -121,10 +121,9 @@ Each service is gated on a **minimum role** at login time, configured via
 | `harvester-admin` | `harvester-reader` |
 
 If `OIDC_REQUIRED_ROLE` is unset or empty, the service falls back to
-`allowed-user` and logs a warning on startup. This default keeps the
-pre-RBAC migration path working out of the box; **always set the value
-explicitly in production** so the login gate matches the per-app reader
-role (`editor-reader` / `harvester-reader`) once the migration completes.
+`allowed-user`, a realm role from before the per-app roles existed, and logs a
+warning on startup. Always set the value explicitly, so the login gate matches
+the per-app reader role (`editor-reader` / `harvester-reader`).
 
 ### Setting the env var on ZAD
 
@@ -141,39 +140,6 @@ zad component edit editor --deployment regelrecht \
 zad component edit harvester-admin --deployment regelrecht \
     --env OIDC_REQUIRED_ROLE=harvester-reader
 ```
-
-### Pre-existing sessions at deploy time
-
-Sessions created before this code shipped carry `authenticated = true` but no
-`SESSION_KEY_ROLES` key. The per-route role check distinguishes "key absent"
-(pre-RBAC session) from "key present but empty list" (a legitimately
-mis-configured Keycloak): the former returns 401, which triggers the OIDC
-re-login redirect, the callback then populates `SESSION_KEY_ROLES` from the
-JWT and the session self-heals. **No session flush is required at deploy.**
-
-## Migration from the legacy `allowed-user` role
-
-Earlier deployments used a single `allowed-user` realm role checked at login,
-with no per-route gating. To migrate without locking anyone out:
-
-1. **Keycloak (hard prerequisite)**: create the seven new roles, set up
-   composites, attach the ID-token mapper, and grant every existing user an
-   appropriate new role (most editor users → `editor-writer`). This must be
-   fully rolled out before Step 2, any user without one of the new roles
-   will get **403 on every API request** once the new code is live, because
-   the per-route middleware checks for `editor-reader` / `harvester-reader`
-   etc., not `allowed-user`.
-2. **Deploy the new code**. If `OIDC_REQUIRED_ROLE` is unset on the existing
-   deployment, the new code falls back to `allowed-user` and logs a warning,
-   so the login redirect keeps working during the rolling deploy (provided
-   step 1 is complete). Per-route checks gate on the new roles immediately,
-   so users without one of the new roles will see 403 on every protected
-   request until step 1 is rolled out for them. Setting the env var
-   explicitly to `allowed-user` is still recommended for clarity. Keep the
-   `allowed-user` role granted to all migrated users.
-3. **Switch `OIDC_REQUIRED_ROLE`** on each component to its new value
-   (`editor-reader` / `harvester-reader`).
-4. **Remove the `allowed-user` role** from the realm.
 
 ## Operational notes
 
@@ -209,6 +175,11 @@ TRUNCATE tower_sessions.session;
 
 After deleting the session row(s), the affected user is forced through the
 OIDC login again, which re-reads roles from Keycloak.
+
+A session that carries no role list at all (the `person_roles` key is absent,
+as opposed to present and empty) gets a 401 on role-gated routes. That
+triggers the OIDC re-login redirect, and the callback writes the role list
+from the JWT, so such a session repairs itself without a flush.
 
 ### Auth-disabled mode (dev/local only)
 
