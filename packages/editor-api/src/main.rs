@@ -22,6 +22,7 @@ mod config;
 mod corpus_handlers;
 mod credentials;
 mod crypto;
+mod enrich_review;
 mod favorites;
 mod feature_flags;
 mod github_oauth;
@@ -188,6 +189,14 @@ async fn main() {
             get(corpus_handlers::get_annotations),
         )
         .route("/api/feature-flags", get(feature_flags::list_feature_flags))
+        // Welke uploadformaten zonder taalmodel omgezet kunnen worden. De
+        // upload-bevestiging in de editor leest dit zodat er geen tweede
+        // formaatlijst in de frontend ontstaat; de inhoud is statisch en
+        // niet-gevoelig, vandaar publiek.
+        .route(
+            "/api/document-upload-formats",
+            get(corpus_handlers::list_document_upload_formats),
+        )
         // Harvest status — forwarded to pipeline-api. Read-only DB lookup,
         // safe to expose unauthenticated. (The search endpoint lives behind
         // auth because it triggers outbound requests to zoekservice.overheid.nl
@@ -301,6 +310,7 @@ async fn main() {
     let tasks_reader_routes = Router::new()
         .route("/api/tasks", get(tasks_api::list))
         .route("/api/tasks/{task_id}", get(tasks_api::detail))
+        .route("/api/tasks/jobs/{job_id}", get(enrich_review::job_tasks))
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
             accounts::account_middleware,
@@ -314,6 +324,10 @@ async fn main() {
         .route(
             "/api/tasks/{task_id}/resolve",
             axum::routing::post(tasks_api::resolve),
+        )
+        .route(
+            "/api/tasks/jobs/{job_id}/apply",
+            axum::routing::post(enrich_review::apply),
         )
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
@@ -386,6 +400,10 @@ async fn main() {
         .route(
             "/api/trajects/{traject_ref}/corpus/laws",
             get(corpus_handlers::list_traject_corpus_laws),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/favorites",
+            get(favorites::list_traject),
         )
         .route(
             "/api/trajects/{traject_ref}/corpus/changed-laws",
@@ -463,6 +481,10 @@ async fn main() {
         .route(
             "/api/trajects/{id}",
             axum::routing::patch(trajects::update).delete(trajects::delete),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/favorites/{law_id}",
+            axum::routing::put(favorites::add_traject).delete(favorites::remove_traject),
         )
         .route(
             "/api/trajects/{id}/leave",
@@ -759,21 +781,25 @@ async fn init_corpus(favorites: &HashSet<String>) -> CorpusState {
         None
     };
 
-    let source_map = match registry.load_favorites_async(favorites, auth_file).await {
+    let today = regelrecht_shared::dates::today_str();
+    let source_map = match registry
+        .load_favorites_async(favorites, auth_file, &today)
+        .await
+    {
         Ok(map) => {
             tracing::info!(laws = map.len(), "loaded corpus laws");
             map
         }
         Err(e) => {
             tracing::warn!(error = %e, "failed to load favorites from GitHub, falling back to local-only");
-            match registry.load_local_sources() {
+            match registry.load_local_sources(&today) {
                 Ok(map) => {
                     tracing::info!(laws = map.len(), "loaded corpus laws (local-only fallback)");
                     map
                 }
                 Err(e2) => {
                     tracing::warn!(error = %e2, "failed to load local sources");
-                    regelrecht_corpus::SourceMap::new()
+                    regelrecht_corpus::SourceMap::new(regelrecht_shared::dates::today_str())
                 }
             }
         }

@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue';
 import { centsToEuros, eurosToCents } from '../utils/currency.js';
+import { isNullText } from '../utils/nullability.js';
 
 // Generic, datatype-driven scenario input control. Given a declared datatype
 // (and optional unit), it renders the matching NDD component and emits a
@@ -23,11 +24,19 @@ const props = defineProps({
   name: { type: String, default: '' },
   /** Mark the field invalid */
   invalid: { type: Boolean, default: false },
-  /** aria error-message id(s) to associate with the field when invalid */
-  errorMessageIds: { type: String, default: undefined },
+  /** Ids of the nldd-validation-items this value fails, set as `unmet` on the control */
+  unmet: { type: String, default: undefined },
 });
 
 const emit = defineEmits(['update']);
+
+// A stated absence (RFC-036): the value is the word `null`, or a JS null
+// from a typed record. It shows as the word `null`, in a text control
+// whatever the declared type - a number field cannot hold it and a switch
+// cannot show it. The text stays editable: typing over it is one way out,
+// the AbsenceToggle next to the field (rendered by the parent where the law
+// allows an absence) is the other.
+const showsNull = computed(() => isNullText(props.value));
 
 // Amounts whose unit is eurocent are stored as integer cents but entered in
 // euros. Any other amount (unit 'euro' or unannotated) is entered raw, so we
@@ -62,10 +71,22 @@ function emitAmount(detailValue) {
 </script>
 
 <template>
+  <!-- a stated absence -> the word null, in a text field whatever the type -->
+  <nldd-text-field
+    v-if="showsNull"
+    size="md"
+    :invalid="invalid || undefined"
+    :unmet="invalid ? unmet : undefined"
+    value="null"
+    @input="emit('update', $event.target?.value ?? $event.detail?.value ?? '')"
+  ></nldd-text-field>
+
   <!-- boolean -> switch (consistent with EditSheet's boolean control) -->
   <nldd-switch-field
-    v-if="type === 'boolean'"
+    v-else-if="type === 'boolean'"
     :checked="displayValue ? true : undefined"
+    :invalid="invalid || undefined"
+    :unmet="invalid ? unmet : undefined"
     @change="emit('update', Boolean($event.detail?.checked))"
   >{{ name }}</nldd-switch-field>
 
@@ -76,6 +97,7 @@ function emitAmount(detailValue) {
     v-else-if="type === 'amount'"
     :value="displayValue"
     :invalid="invalid || undefined"
+    :unmet="invalid ? unmet : undefined"
     step="0.01"
     width="full"
     hide-spin-buttons
@@ -88,6 +110,7 @@ function emitAmount(detailValue) {
     v-else-if="type === 'number'"
     :value="displayValue"
     :invalid="invalid || undefined"
+    :unmet="invalid ? unmet : undefined"
     width="full"
     hide-spin-buttons
     @input="emitNumber($event.detail?.value)"
@@ -100,7 +123,7 @@ function emitAmount(detailValue) {
     size="md"
     type="date"
     :invalid="invalid || undefined"
-    :error-message-ids="invalid ? errorMessageIds : undefined"
+    :unmet="invalid ? unmet : undefined"
     :value="displayValue"
     @input="emit('update', $event.target?.value ?? $event.detail?.value ?? '')"
   ></nldd-text-field>
@@ -110,7 +133,7 @@ function emitAmount(detailValue) {
     v-else
     size="md"
     :invalid="invalid || undefined"
-    :error-message-ids="invalid ? errorMessageIds : undefined"
+    :unmet="invalid ? unmet : undefined"
     :value="displayValue"
     @input="emit('update', $event.target?.value ?? $event.detail?.value ?? '')"
   ></nldd-text-field>

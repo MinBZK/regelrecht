@@ -394,14 +394,21 @@ export function useTrajectDocuments(trajectRef) {
    * reviewable markdown result). The resulting `.md` appears in the list once
    * the job/review completes (surfaced meanwhile by the conversion-status
    * poller). Returns a result object `{ ok, targetPath }`.
+   *
+   * `allowLlm` is de keuze uit de uploadbevestiging: alleen met `true` mag de
+   * conversie een taalmodel gebruiken. De default is nee, zodat een aanroeper
+   * die er niets over zegt nooit per ongeluk toestemming geeft.
    */
-  async function uploadDocument(file) {
+  async function uploadDocument(file, { allowLlm = false } = {}) {
     requireTraject(trajectRef.value, 'document upload');
     saveError.value = null;
     // Shared multipart POST (raw fetch + 404/405/501 classification). Errors
     // surface via the returned result only (the consumer shows its own upload
     // dialog); don't also set saveError, which raises a 2nd modal.
-    const result = await uploadMultipart(documentUploadUrl(trajectRef.value), file);
+    const result = await uploadMultipart(
+      documentUploadUrl(trajectRef.value, { allowLlm }),
+      file,
+    );
     if (!result.ok) return result;
     // Refresh the list so the poller (and, once converted, the .md) show up.
     await fetchList();

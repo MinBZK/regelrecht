@@ -4,6 +4,9 @@
 // script/check-nldd-imports.mjs, so a newly used component fails the build
 // instead of silently never upgrading.
 //
+// A component this app only names in prose (markdown inline code) is absent
+// here on purpose: such a name has to exist, not to be imported.
+//
 // Regenerate: npm run nldd:imports
 import '@nldd/design-system/activity-indicator';
 import '@nldd/design-system/app-view';
@@ -15,9 +18,9 @@ import '@nldd/design-system/box';
 import '@nldd/design-system/button';
 import '@nldd/design-system/button-bar';
 import '@nldd/design-system/button-group';
-import '@nldd/design-system/byline';
 import '@nldd/design-system/card';
 import '@nldd/design-system/cell';
+import '@nldd/design-system/checkbox-field';
 import '@nldd/design-system/code-editor';
 import '@nldd/design-system/code-viewer';
 import '@nldd/design-system/collection';
@@ -32,6 +35,7 @@ import '@nldd/design-system/form-field';
 import '@nldd/design-system/icon';
 import '@nldd/design-system/icon-button';
 import '@nldd/design-system/icon-cell';
+import '@nldd/design-system/identity';
 import '@nldd/design-system/inline-dialog';
 import '@nldd/design-system/just-in-time-education';
 import '@nldd/design-system/link';
@@ -41,6 +45,7 @@ import '@nldd/design-system/menu';
 import '@nldd/design-system/modal-dialog';
 import '@nldd/design-system/multi-line-text-field';
 import '@nldd/design-system/navigation-split-view';
+import '@nldd/design-system/notification';
 import '@nldd/design-system/number-field';
 import '@nldd/design-system/one-half-one-half-section';
 import '@nldd/design-system/page';
@@ -71,3 +76,4 @@ import '@nldd/design-system/token-field';
 import '@nldd/design-system/toolbar';
 import '@nldd/design-system/tooltip';
 import '@nldd/design-system/top-title-bar';
+import '@nldd/design-system/validation-list';

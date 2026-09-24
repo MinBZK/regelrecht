@@ -321,7 +321,7 @@ defineExpose({ show });
           </template>
 
           <!-- Resultaatrijen: promoten (centraal corpus) of ophalen (BWB). -->
-          <nldd-list v-if="hasRows" variant="box">
+          <nldd-list v-if="hasRows" variant="box-tinted">
             <!-- Centrale-corpus-treffers: promoten naar het traject. -->
             <nldd-list-item
               v-for="law in sortedLaws"
@@ -423,7 +423,7 @@ defineExpose({ show });
           <template v-else>
             <nldd-form-field
               label="Upload een document"
-              supporting-label="PDF of Word. De conversie-naar-wet-keten zet het om naar een basis-wet en verrijkt het; het resultaat komt terug als review-taak bij Taken."
+              supporting-label="PDF of Word. Bij deze conversie leest AI het document: er is geen route naar een wet zonder taalmodel. De keten zet het om naar een basis-wet en verrijkt het; het resultaat komt terug als review-taak bij Taken."
             >
               <nldd-button
                 size="md"

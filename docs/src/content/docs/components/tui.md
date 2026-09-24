@@ -17,16 +17,20 @@ A full-screen terminal application that lets you browse the corpus, run the exec
 
 ## Screens
 
+There are ten tabs, in the order the tab bar shows them:
+
 | Screen | Purpose |
 |--------|---------|
 | Dashboard | Overview of corpus and pipeline status |
-| Corpus | Browse and search law files |
-| Engine | Execute laws with custom parameters |
-| Trace | Inspect execution trace trees |
 | BDD | Run and view BDD test results |
-| Validation | Run schema validation |
+| Engine | Execute laws with custom parameters |
+| Corpus | Browse and search law files |
 | Pipeline | Monitor harvest/enrich job status |
+| Validation | Run schema validation |
+| Trace | Inspect execution trace trees |
+| Dependencies | Which laws reference which, both ways, plus declared and implemented open terms |
 | Logs | View log output |
+| Actions | Run the `just` quality targets (format, lint, and the rest) and watch their output |
 
 ## Running
 
@@ -39,4 +43,4 @@ No configuration needed. Reads the corpus from local filesystem paths.
 ## Further reading
 
 - [Execution Engine](./engine) - the engine the TUI runs
-- [Getting Started](/guide/getting-started) - setting up the development environment
+- [Development Environment](/guide/dev-environment) - setting up the development environment

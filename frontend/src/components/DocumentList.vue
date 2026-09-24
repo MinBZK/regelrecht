@@ -37,14 +37,14 @@ const rows = computed(() => {
 </script>
 
 <template>
-  <nldd-list variant="simple" arrow-navigation>
+  <nldd-list variant="simple">
     <template v-for="row in rows" :key="row.key">
       <!-- Conversion job: running rows open a loading main pane; failed rows show the error. -->
       <nldd-list-item
         v-if="row.type === 'job'"
         size="md"
         button
-        :selected="row.job.target_path === selectedPath || undefined"
+        :current="row.job.target_path === selectedPath || undefined"
         @click="$emit('select', row.job.target_path)"
       >
         <nldd-cell v-if="row.job.status !== 'failed'">
@@ -67,7 +67,7 @@ const rows = computed(() => {
         v-else
         size="md"
         button
-        :selected="row.doc.path === selectedPath || undefined"
+        :current="row.doc.path === selectedPath || undefined"
         @click="$emit('select', row.doc.path)"
       >
         <nldd-icon-cell size="20"><nldd-icon name="text-document"></nldd-icon></nldd-icon-cell>

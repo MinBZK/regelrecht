@@ -9,48 +9,113 @@ RegelRecht uses several testing strategies.
 
 The primary testing approach uses Gherkin feature files executed by [cucumber-rs](https://github.com/cucumber-rs/cucumber).
 
-### Feature Files
+### Two buckets, one language
 
-Located in `features/`, these describe expected law behavior. Use the step phrasings the cucumber-rs suite actually defines (`packages/engine/tests/bdd/steps/`); a minimal scenario looks like:
+Feature files live in two places, and the difference decides who fixes a failure:
+
+- **Bucket A, law validation**: `corpus/regulation/**/scenarios/*.feature`, run against the real corpus. A failure means a law changed or the scenario went stale, and a human decides which. Scenarios tagged `@wip` are skipped.
+- **Bucket B, engine conformance**: `bdd/conformance/*.feature`, tagged by tier, proving an engine speaks the whole language against synthetic `test_*` laws. CI blocks on this bucket.
+
+### The step vocabulary is generated, not hand-written
+
+`bdd/grammar.yaml` is the single source of truth for the step phrasings. The bindings for every engine are generated from it: Rust through `packages/engine/build.rs`, the editor and demo JavaScript through `bdd/codegen/gen-js.mjs`, which writes `packages/frontend-shared/src/gherkin/grammar.generated.js` (re-exported for the editor by `frontend/src/gherkin/`). Never hand-edit a generated file. Change `grammar.yaml` and run `just bdd-codegen`.
+
+A step that is not in `grammar.yaml` does not exist. A minimal scenario:
 
 ```gherkin
 Feature: Healthcare allowance
 
-  Scenario: Output is present for an eligible person
+  Scenario: An adult with an active policy is entitled to zorgtoeslag
     Given the calculation date is "2025-01-01"
-    When the law "wet_op_de_zorgtoeslag" is executed for outputs "hoogte_zorgtoeslag"
+    Given law "zorgverzekeringswet" is loaded
+    Given parameter "bsn" is "999993653"
+    When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
     Then the execution succeeds
-    And the output "hoogte_zorgtoeslag" is "123400"
+    Then output "heeft_recht_op_zorgtoeslag" is true
+    Then output "hoogte_zorgtoeslag" equals 157731
 ```
 
-Laws that need source data (BRP, Belastingdienst, etc.) provide it with data-table steps such as `Given the following RVIG "personal_data" data:`. See `features/zorgtoeslag.feature` for a complete, data-driven example.
+Laws that need source data (BRP, Belastingdienst, and the like) provide it with a data-table step keyed on the identifier the law looks up:
+
+```gherkin
+    Given the following "personal_data" data with key "bsn":
+      | bsn       | geboortedatum | verblijfsadres |
+      | 999993653 | 2005-01-01    | Amsterdam      |
+```
+
+See `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/scenarios/eligibility.feature` for a complete, data-driven example.
 
 ### Running BDD Tests
 
 ```bash
-just bdd
+just bdd                          # Both buckets
+BDD_BUCKET=conformance just bdd   # Engine conformance only
+BDD_BUCKET=corpus just bdd        # Law validation only
+just bdd-demo                     # Bucket A over the demo corpus
+just bdd-trace                    # With execution traces in trace_output/
 ```
 
 ### Deriving Tests from Legislative Intent
 
 Test scenarios are derived from the **Memorie van Toelichting** (MvT), the explanatory memorandum that accompanies Dutch legislation. The MvT contains examples and reasoning from the legislature that serve as ground truth for expected behavior.
 
-## Unit Tests
+## Everything at once
 
-Rust unit tests cover the engine internals:
+`just check` runs what CI runs: formatting, lints, a build check, schema and annotation validation, the script test suites, and the full Rust test suite. Run it before pushing.
+
+The first three also run on their own, and the pre-commit hooks call them the same way:
 
 ```bash
-just test
+just format       # rustfmt check (cargo fmt --check)
+just lint         # clippy over all packages
+just build-check  # cargo check over the whole workspace
 ```
+
+## Rust Tests
+
+The Rust unit and integration tests, across every crate in the workspace:
+
+```bash
+just test           # Whole workspace (needs Docker)
+just test-no-docker # Everything that needs no external services
+just test-db        # Only the container-backed crates
+```
+
+## Conformance
+
+```bash
+just conformance
+```
+
+Checks that the Rust `law-model` accepts exactly what the JSON schema accepts. What it covers, and what conformance does not cover yet, is on [Conformance](../reference/conformance); adding a fixture is described in `packages/engine/tests/conformance/README.md`.
+
+## Mutation Testing
+
+`cargo-mutants` checks whether the tests actually pin behavior or merely execute it. CI runs the diff variant as a gate on changed code.
+
+```bash
+just mutants       # Full run
+just mutants-diff  # Only what this branch changed
+```
+
+## End-to-End
+
+`just test-e2e` builds the engine to WASM and drives the editor with Playwright.
 
 ## Schema Validation
 
 All law YAML files are validated against the JSON schema:
 
 ```bash
-just validate                    # Validate all
-just validate path/to/law.yaml   # Validate specific file
+just validate                     # Validate all
+just validate path/to/law.yaml    # Validate a specific file
+just validate-annotations         # Validate stand-off notes
+just validate-demo                # Validate the demo corpus
 ```
+
+## The Demo
+
+`just demo-check` checks the demo end to end: the laws, their scenarios, the frontend tests, and the WASM build. Run it before pushing anything demo-related.
 
 ## Pipeline Tests
 

@@ -1,0 +1,41 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+$id: test_scoped_source_bron
+name: Testwet gescoopte databron (bron)
+regulatory_layer: WET
+bwb_id: BWBR9999907
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/test_scoped_source_bron
+
+articles:
+  - number: '1'
+    url: https://example.com/test_scoped_source_bron/1
+    text: >-
+      Het toetsingsinkomen is het tweevoud van het in de registratie
+      opgenomen inkomen.
+    machine_readable:
+      # Bewust dezelfde naam voor de registerwaarde (input) en de berekende
+      # waarde (output): een afnemende wet die `inkomen` uit deze wet betrekt
+      # moet het berekende tweevoud krijgen, nooit de ruwe registerwaarde. Dat
+      # is precies wat een aan deze wet gebonden databron garandeert.
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: inkomen
+            type: number
+            source: {}
+            description: Inkomen uit de registratie, buiten de wet opgelost.
+        output:
+          - name: inkomen
+            type: number
+        actions:
+          - output: inkomen
+            operation: MULTIPLY
+            values:
+              - $inkomen
+              - 2

@@ -23,8 +23,8 @@ updates:
       prefix: chore(deps)
       prefix-development: chore(deps)
     labels:
-      - dependencies
-      - rust
+      - dbot:deps
+      - dbot:cargo
     groups:
       rust-minor-patch:
         update-types:
@@ -72,8 +72,8 @@ updates:
       prefix: chore(deps)
       prefix-development: chore(deps)
     labels:
-      - dependencies
-      - javascript
+      - dbot:deps
+      - dbot:npm
     groups:
       npm-minor-patch:
         update-types:
@@ -91,8 +91,8 @@ updates:
     cooldown:
       default-days: 5
     labels:
-      - dependencies
-      - docker
+      - dbot:deps
+      - dbot:docker
     ignore:
       - dependency-name: node
         versions:
@@ -117,16 +117,9 @@ updates:
     cooldown:
       default-days: 5
     labels:
-      - dependencies
-      - docker
+      - dbot:deps
+      - dbot:docker
     ignore:
-      - dependency-name: node
-        versions:
-          - '23'
-          - '25'
-          - '27'
-          - '29'
-          - '31'
       # The Rust image version must match rust-toolchain.toml (source of
       # truth); bump it manually together with the toolchain.
       - dependency-name: rust
@@ -142,8 +135,8 @@ updates:
     cooldown:
       default-days: 5
     labels:
-      - dependencies
-      - docker
+      - dbot:deps
+      - dbot:docker
     ignore:
       # The Rust image version must match rust-toolchain.toml (source of
       # truth); bump it manually together with the toolchain.
@@ -164,8 +157,8 @@ updates:
       prefix: chore(deps)
       prefix-development: chore(deps)
     labels:
-      - dependencies
-      - javascript
+      - dbot:deps
+      - dbot:npm
     groups:
       npm-minor-patch:
         update-types:
@@ -175,6 +168,25 @@ updates:
       # Our own design package — bump manually, not via Dependabot
       - dependency-name: '@nldd/design-system'
 
+  - package-ecosystem: npm
+    directory: /packages/arch-extract/ui
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    cooldown:
+      default-days: 5
+    commit-message:
+      prefix: chore(deps)
+      prefix-development: chore(deps)
+    labels:
+      - dbot:deps
+      - dbot:npm
+    groups:
+      npm-minor-patch:
+        update-types:
+          - minor
+          - patch
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -183,8 +195,8 @@ updates:
     cooldown:
       default-days: 5
     labels:
-      - dependencies
-      - github-actions
+      - dbot:deps
+      - dbot:actions
     groups:
       actions-minor-patch:
         update-types:

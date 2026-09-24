@@ -50,7 +50,11 @@ export default defineConfig({
   },
   test: {
     environment: 'happy-dom',
-    include: ['src/**/*.test.js'],
+    // `e2e/` holds Playwright specs (`*.spec.js`) plus plain Node helpers those
+    // specs share; the helpers' own unit tests are `*.test.js` and run here.
+    // Playwright's `testMatch` is narrowed to `*.spec.js` so the two never
+    // collect each other's files.
+    include: ['src/**/*.test.js', 'e2e/**/*.test.js'],
     pool: 'vmThreads',
     testTimeout: 10000,
     server: {
@@ -91,7 +95,7 @@ export default defineConfig({
           groups: [
             {
               name: 'echarts',
-              test: /node_modules[\\/](echarts|zrender|vue-echarts)[\\/]/,
+              test: /node_modules[\\/](echarts|zrender|vue-echarts|tslib)[\\/]/,
               includeDependenciesRecursively: false,
             },
           ],

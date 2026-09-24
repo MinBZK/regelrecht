@@ -49,7 +49,12 @@ const missing = new Map();
 let seen = 0;
 
 for (const file of sourceFiles(SRC)) {
-  const source = readFileSync(file, 'utf8');
+  // Comments go first: prose such as `runs from "the panel's bottom"` would
+  // otherwise read as an import. A `//` only opens a comment at the start of a
+  // line or after whitespace, so the `//` in a `https://` string survives.
+  const source = readFileSync(file, 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|\s)\/\/.*$/gm, '$1');
   for (const [, specifier] of source.matchAll(SPECIFIER)) {
     // Relative paths, the `~/` src alias, and the `astro:*` / `virtual:*`
     // module namespaces are not npm packages.

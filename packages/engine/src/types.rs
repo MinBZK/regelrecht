@@ -10,25 +10,28 @@
 use serde::{Deserialize, Serialize};
 
 /// Re-export the canonical document-model value types from the law-model crate.
-pub use regelrecht_law_model::{Operation, ParameterType, RegulatoryLayer, Value};
+pub use regelrecht_law_model::{
+    MissingFact, MissingKind, Operation, ParameterType, RegulatoryLayer, TypeSpec, Value,
+};
 
-/// How the engine handles articles with `untranslatables` annotations (RFC-012).
+/// How the engine handles an article that flags a construct (RFC-012).
 ///
-/// Controls runtime behavior when an article declares legal constructs that
-/// cannot be faithfully expressed with the current engine operation set.
+/// Controls runtime behavior when an article declares a construct that cannot
+/// be faithfully expressed. Both channels count: `untranslatables` on schema
+/// v0.5.x and `markings` from v0.7.0 onwards.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum UntranslatableMode {
-    /// Hard error on any unaccepted untranslatable. Accepted ones execute partial logic.
+    /// Hard error on any unaccepted flagged construct. Accepted ones execute partial logic.
     #[default]
     Error,
-    /// Execute partial logic. Outputs from articles with untranslatables carry an
+    /// Execute partial logic. Outputs from articles that flag a construct carry an
     /// `UNTRANSLATABLE` taint that propagates through downstream operations (like NaN).
     Propagate,
     /// Execute partial logic, log warning in trace. No taint propagation.
     Warn,
     /// Execute partial logic silently. Only valid for entries with `accepted: true` —
-    /// unaccepted untranslatables still error.
+    /// unaccepted ones still error.
     Ignore,
 }
 
@@ -114,8 +117,43 @@ pub enum ResolveType {
     DataSource,
     /// Value resolved via open term implementation (IoC)
     OpenTerm,
+    /// The delegating law's default for an open term, taken because the
+    /// implementing regulation returned null for this case (RFC-036: the
+    /// implementation is silent, no deviation was granted)
+    OpenTermSilent,
     /// Value resolved via lifecycle hook (RFC-007)
     Hook,
     /// Value resolved via lex specialis override (RFC-007)
     Override,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The mode string arrives from the `--untranslatable=` flag of the
+    /// evaluate binary and from BDD steps. A mode that parses to the wrong
+    /// variant changes how flagged articles execute, so every spelling maps to
+    /// its own variant and none falls back to the default.
+    #[test]
+    fn untranslatable_mode_parses_each_mode_to_its_own_variant() {
+        let cases = [
+            ("error", UntranslatableMode::Error),
+            ("propagate", UntranslatableMode::Propagate),
+            ("warn", UntranslatableMode::Warn),
+            ("ignore", UntranslatableMode::Ignore),
+        ];
+        for (input, expected) in cases {
+            assert_eq!(input.parse::<UntranslatableMode>(), Ok(expected), "{input}");
+        }
+    }
+
+    /// An unknown mode is an error, not the default: a typo in the flag must
+    /// not silently run in `Error` mode while the caller believes it chose
+    /// another.
+    #[test]
+    fn untranslatable_mode_rejects_unknown_mode() {
+        let err = "propogate".parse::<UntranslatableMode>().unwrap_err();
+        assert!(err.contains("propogate"), "{err}");
+    }
 }

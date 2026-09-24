@@ -7,6 +7,11 @@
 //!
 //! Alleen gebouwd met de `validate`-feature, net als de binary zelf (die heeft
 //! `required-features = ["validate"]`). `just test` draait met `--all-features`.
+
+// Allowed crate-wide: test helpers outside a `#[test]` fn may unwrap, expect and
+// panic too, because that is how a failing fixture reports itself.
+// `allow-*-in-tests` in clippy.toml only reaches `#[test]` fns.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #![cfg(feature = "validate")]
 
 use std::path::PathBuf;
@@ -93,4 +98,22 @@ fn een_kapot_bestand_kleurt_de_hele_run() {
     assert_eq!(output.status.code(), Some(1), "stderr: {err}");
     assert!(err.contains("OK:"), "stderr: {err}");
     assert!(err.contains("FAIL"), "stderr: {err}");
+}
+
+/// De typecontrole (RFC-036/RFC-037) draait ná een geslaagde schemavalidatie
+/// en telt mee in de afloopcode: een afwezigheidstoets op een veld dat nooit
+/// afwezig is, is een FAIL die wet, artikel, output en regel noemt.
+#[test]
+fn typefout_in_geldig_schema_faalt() {
+    let output = run(&[fixture("type_error.yaml")]);
+    let err = stderr(&output);
+    assert_eq!(output.status.code(), Some(1), "stderr: {err}");
+    assert!(err.contains("typecheck:"), "stderr: {err}");
+    assert!(err.contains("[N1]"), "stderr: {err}");
+    assert!(
+        err.contains("article 1 output 'geen_huur'"),
+        "stderr: {err}"
+    );
+    // Het schema keurde het bestand goed; de afkeuring komt van de typecontrole.
+    assert!(err.contains("OK:"), "stderr: {err}");
 }

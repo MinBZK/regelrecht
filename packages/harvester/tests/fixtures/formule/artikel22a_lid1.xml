@@ -1,0 +1,42 @@
+<artikel bwb-ng-variabel-deel="/Hoofdstuk3/Paragraaf3.2/Artikel22a" stam-id="12737833" versie-id="28273542" id="C39861621" label-id="12707504" inwerking="2022-01-01" label="Artikel 22a" bron="Stcrt.2021-49166" effect="wijziging" ondertekening_bron="2021-12-03" publicatie_bron="2021-12-17" publicatie_iwt="2021-12-17" status="goed">
+  <kop>
+    <label>Artikel</label>
+    <nr status="officieel">22a</nr>
+    <titel status="officieel">Kostendelersnorm</titel>
+  </kop>
+  <lid bwb-ng-variabel-deel="/Hoofdstuk3/Paragraaf3.2/Artikel22a/Lid1" label-id="12707504L1">
+    <lidnr status="officieel">1</lidnr>
+    <al>Indien de belanghebbende van 21 jaar of ouder een of meer kostendelende medebewoners heeft, is de norm per kalendermaand voor de belanghebbende:</al>
+    <plaatje>
+      <illustratie id="256403" display="block" formaat="png" kleur="nee" type="tekst" uitlijning="start" naam="256403.png" breedte="353" hoogte="87" />
+    </plaatje>
+    <al>Hierbij staat:</al>
+    <lijst level="single" nr-sluiting="." start="1" type="expliciet">
+      <li bwb-ng-variabel-deel="/Hoofdstuk3/Paragraaf3.2/Artikel22a/Lid1/Onderdeel._1">
+        <li.nr>•</li.nr>
+        <al>A voor het aantal kostendelende medebewoners plus de belanghebbende en zijn echtgenoot van 21 jaar of ouder indien hij gehuwd is; en</al>
+      </li>
+      <li bwb-ng-variabel-deel="/Hoofdstuk3/Paragraaf3.2/Artikel22a/Lid1/Onderdeel._2">
+        <li.nr>•</li.nr>
+        <al>B voor de norm, bedoeld in artikel:</al>
+        <lijst level="single" nr-sluiting="." start="1" type="expliciet">
+          <li bwb-ng-variabel-deel="/Hoofdstuk3/Paragraaf3.2/Artikel22a/Lid1/Onderdeel._2/Onderdeela">
+            <li.nr>a.</li.nr>
+            <al>
+              <intref doc="jci1.3:c:BWBR0015703&amp;hoofdstuk=3&amp;paragraaf=3.2&amp;artikel=21&amp;z=2022-01-01&amp;g=2022-03-15" label-id="5407724" verwijzing-id="2731451" bwb-id="BWBR0015703" bwb-ng-variabel-deel="/Hoofdstuk3/Paragraaf3.2/Artikel21">21, onderdeel b</intref>, indien de belanghebbende jonger dan de pensioengerechtigde leeftijd is;</al>
+          <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0015703&amp;hoofdstuk=3&amp;paragraaf=3.2&amp;artikel=22a&amp;lid=1&amp;o=a&amp;z=2022-01-01&amp;g=2022-03-15" onderdeel="o=a" /></jcis></meta-data></li>
+          <li bwb-ng-variabel-deel="/Hoofdstuk3/Paragraaf3.2/Artikel22a/Lid1/Onderdeel._2/Onderdeelb">
+            <li.nr>b.</li.nr>
+            <al>
+              <intref doc="jci1.3:c:BWBR0015703&amp;hoofdstuk=3&amp;paragraaf=3.2&amp;artikel=22&amp;z=2022-01-01&amp;g=2022-03-15" label-id="5407734" verwijzing-id="2731452" bwb-id="BWBR0015703" bwb-ng-variabel-deel="/Hoofdstuk3/Paragraaf3.2/Artikel22">22, onderdeel c</intref>, indien de belanghebbende jonger dan de pensioengerechtigde leeftijd is en zijn echtgenoot de pensioengerechtigde leeftijd heeft bereikt;</al>
+          <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0015703&amp;hoofdstuk=3&amp;paragraaf=3.2&amp;artikel=22a&amp;lid=1&amp;o=b&amp;z=2022-01-01&amp;g=2022-03-15" onderdeel="o=b" /></jcis></meta-data></li>
+          <li bwb-ng-variabel-deel="/Hoofdstuk3/Paragraaf3.2/Artikel22a/Lid1/Onderdeel._2/Onderdeelc">
+            <li.nr>c.</li.nr>
+            <al>
+              <intref doc="jci1.3:c:BWBR0015703&amp;hoofdstuk=3&amp;paragraaf=3.2&amp;artikel=22&amp;z=2022-01-01&amp;g=2022-03-15" label-id="5407734" verwijzing-id="2731453" bwb-id="BWBR0015703" bwb-ng-variabel-deel="/Hoofdstuk3/Paragraaf3.2/Artikel22"> 22, onderdeel b</intref>, indien de belanghebbende de pensioengerechtigde leeftijd heeft bereikt.</al>
+          <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0015703&amp;hoofdstuk=3&amp;paragraaf=3.2&amp;artikel=22a&amp;lid=1&amp;o=c&amp;z=2022-01-01&amp;g=2022-03-15" onderdeel="o=c" /></jcis></meta-data></li>
+        </lijst>
+      </li>
+    </lijst>
+  <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0015703&amp;hoofdstuk=3&amp;paragraaf=3.2&amp;artikel=22a&amp;lid=1&amp;z=2022-01-01&amp;g=2022-03-15" onderdeel="lid=1" /></jcis></meta-data></lid>
+  <meta-data><brondata><oorspronkelijk><publicatie effect="wijziging" soort="Stcrt" urlidentifier="stcrt-2021-49166"><publicatiejaar>2021</publicatiejaar><publicatienr>49166</publicatienr><uitgiftedatum isodatum="2021-12-17">17-12-2021</uitgiftedatum><ondertekeningsdatum isodatum="2021-12-03">03-12-2021</ondertekeningsdatum><kenmerk>2021-0000161502</kenmerk></publicatie></oorspronkelijk><inwerkingtreding><publicatie effect="wijziging" soort="Stcrt" urlidentifier="stcrt-2021-49166"><publicatiejaar>2021</publicatiejaar><publicatienr>49166</publicatienr><uitgiftedatum isodatum="2021-12-17">17-12-2021</uitgiftedatum><ondertekeningsdatum isodatum="2021-12-03">03-12-2021</ondertekeningsdatum><kenmerk>2021-0000161502</kenmerk></publicatie><inwerkingtreding.datum isodatum="2022-01-01">01-01-2022</inwerkingtreding.datum></inwerkingtreding></brondata><jcis><jci versie="1.0" verwijzing="1.0:c:BWBR0015703&amp;artikel=22a&amp;g=2022-03-15" onderdeel="artikel=22a" korte-verwijzing="1.0:c:BWBR0015703&amp;artikel=22a" /><jci versie="1.3" verwijzing="jci1.3:c:BWBR0015703&amp;hoofdstuk=3&amp;paragraaf=3.2&amp;artikel=22a&amp;z=2022-01-01&amp;g=2022-03-15" onderdeel="artikel=22a" korte-verwijzing="jci1.3:c:BWBR0015703&amp;artikel=22a" /></jcis></meta-data></artikel>

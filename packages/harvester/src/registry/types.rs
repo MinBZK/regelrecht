@@ -42,18 +42,6 @@ impl ParseResult {
             errors: Vec::new(),
         }
     }
-
-    /// Create a parse result with an error.
-    #[must_use]
-    pub fn with_error(mut self, error: impl Into<String>) -> Self {
-        self.errors.push(error.into());
-        self
-    }
-
-    /// Merge another parse result's errors into this one.
-    pub fn merge_errors(&mut self, other: &ParseResult) {
-        self.errors.extend(other.errors.iter().cloned());
-    }
 }
 
 /// Collector for reference-style links during parsing.

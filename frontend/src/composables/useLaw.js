@@ -439,6 +439,36 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
   }
 
   /**
+   * Haal de open wet opnieuw op bij de server, langs de cache heen.
+   *
+   * Na een gewone opslag weet de client wat er in de wet staat: hij stuurde de
+   * YAML zelf mee, dus `saveLaw` legt die body terug in `law`/`rawYaml` en in
+   * de cache. Bij het verwerken van een verrijking stuurt de client geen wet,
+   * maar alleen oordelen ("artikel 5 wel, artikel 7 niet"); de server voegt de
+   * overgenomen artikelen samen tot de nieuwe wet. Die uitkomst heeft de client
+   * nooit gezien en kan hij dus niet terugleggen - hij moet hem ophalen.
+   *
+   * Langs de cache heen, want daarin staat de wet van vóór het verwerken; de
+   * gewone loader zou juist die verouderde versie teruggeven.
+   *
+   * Springt de gebruiker tijdens het ophalen naar een andere wet of een ander
+   * traject, dan wordt er niets overschreven - zelfde guard als `saveLaw`.
+   *
+   * @returns {Promise<boolean>} of deze aanroep de state daadwerkelijk bijwerkte.
+   */
+  async function reloadLaw() {
+    if (!lawId.value) return false;
+    const reloadedLawId = lawId.value;
+    const reloadedTrajectRef = currentTrajectRef;
+    const entry = await fetchLawFresh(reloadedTrajectRef, reloadedLawId);
+    if (lawId.value !== reloadedLawId || currentTrajectRef !== reloadedTrajectRef) return false;
+    law.value = entry.law;
+    rawYaml.value = entry.rawYaml;
+    currentEtag.value = entry.etag ?? null;
+    return true;
+  }
+
+  /**
    * Create a NEW law in the active traject via POST (the approve-step of a
    * `law_create` review task). Same body/etag/PR plumbing as `saveLaw`, but
    * without `If-Match` (there is nothing to be concurrent with yet); the
@@ -508,6 +538,7 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
     saving,
     saveError,
     saveLaw,
+    reloadLaw,
     seedFromYaml,
     createLaw,
     currentEtag,

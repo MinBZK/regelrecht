@@ -22,6 +22,15 @@
 //! ```bash
 //! just bdd
 //! ```
+//!
+//! # Bucket selection
+//!
+//! `BDD_BUCKET` picks which bucket runs: `all` (default), `conformance`
+//! (bucket B) or `corpus` (bucket A). CI runs the conformance bucket as a
+//! blocking check — it is deterministic and depends only on the synthetic
+//! `test_*` laws. Bucket A stays out of CI: it asserts what the live laws
+//! currently produce, so a failure there is a question for a human, not a
+//! broken build.
 
 // Allow panic/expect in test code - these are appropriate for test setup
 #![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
@@ -47,6 +56,7 @@ use std::path::{Path, PathBuf};
 
 use cucumber::feature::Ext as _;
 use cucumber::{cli, parser, World as _};
+use discovery::Bucket;
 use futures::stream;
 
 /// Parser that consumes an explicit, pre-collected list of feature file paths
@@ -72,6 +82,29 @@ impl parser::Parser<Vec<PathBuf>> for ExplicitPaths {
     }
 }
 
+impl Bucket {
+    /// `BDD_BUCKET`: `all` (default), `corpus` (bucket A) or `conformance`
+    /// (bucket B).
+    fn from_env() -> Self {
+        match std::env::var("BDD_BUCKET").as_deref().map(str::trim) {
+            Ok("") | Err(_) | Ok("all") => Self::All,
+            Ok("corpus") | Ok("a") => Self::Corpus,
+            Ok("conformance") | Ok("b") => Self::Conformance,
+            Ok(other) => panic!("BDD_BUCKET={other}: expected all, corpus or conformance"),
+        }
+    }
+}
+
+/// The corpus whose scenarios bucket A runs: `REGULATION_PATH` when set (the
+/// same variable the engine loads its laws from), else the fixture corpus.
+/// `just bdd-demo` points it at `corpus/demo/regulation`.
+fn corpus_root(root: &Path) -> PathBuf {
+    match std::env::var("REGULATION_PATH") {
+        Ok(p) if !p.trim().is_empty() => PathBuf::from(p),
+        _ => root.join("corpus/regulation"),
+    }
+}
+
 #[tokio::main]
 async fn main() {
     // Initialize tracing subscriber (respects RUST_LOG env var)
@@ -88,7 +121,8 @@ async fn main() {
         .expect("Could not resolve project root")
         .to_path_buf();
 
-    let features = match discovery::collect_feature_paths(&root) {
+    let bucket = Bucket::from_env();
+    let features = match discovery::collect_feature_paths(&root, &corpus_root(&root), bucket) {
         Ok(features) => features,
         Err(e) => panic!("BDD feature discovery failed under {}: {e}", root.display()),
     };

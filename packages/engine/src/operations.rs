@@ -10,12 +10,31 @@
 //! - **Logical:** AND, OR, NOT
 //! - **Conditional:** IF (multi-case with cases/default)
 //! - **Collection:** IN, LIST
-//! - **Date:** AGE, DATE_ADD, DATE, DAY_OF_WEEK, DATE_DIFF
+//! - **Date:** AGE, DATE_ADD, DATE, DAY_OF_WEEK, DATE_DIFF, DATE_PART, START_OF
 //!
 //! **Engine-only (not in schema, accepted for backward compatibility):**
 //! NOT_EQUALS, IS_NULL, NOT_NULL, NOT_IN
+//!
+//! # Two kinds of nothing (RFC-036)
+//!
+//! Every operation checks its operands in one fixed order before it computes:
+//!
+//! 1. **Untranslatable** (RFC-012) taints the result;
+//! 2. **Unknown** (a fact nobody has) propagates, as the union of every
+//!    unknown operand's missing facts, so the outcome still names what is
+//!    missing;
+//! 3. **Null** (an absence the data is authoritative about) is a value: it
+//!    can be tested (`EQUALS … null`, `IS_NULL`, `IN`) but never calculated
+//!    with or decided on. Where a number, a date or a truth value is needed,
+//!    a null operand is an [`EngineError::AbsentOperand`]: the law has to say
+//!    what "geen" means before it counts it.
+//!
+//! The logical operations and `IF` are the one place a definite operand beats
+//! an unknown (Kleene): `AND` with a `false` is `false` whatever the unknown
+//! turns out to be, `OR` with a `true` is `true`.
 
-use crate::article::{ActionOperation, ActionValue, Case};
+use crate::article::{ActionOperation, ActionValue, Case, CombineOp};
+use crate::context::RuleContext;
 use crate::error::{EngineError, Result};
 use crate::types::{PathNodeType, Value};
 use chrono::{Datelike, NaiveDate};
@@ -40,6 +59,72 @@ fn propagate_binary(a: &Value, b: &Value) -> Option<Value> {
     } else {
         None
     }
+}
+
+/// Render the missing facts of an Unknown for a trace message: `law.name, …`.
+fn describe_missing(unknown: &Value) -> String {
+    unknown
+        .missing_facts()
+        .iter()
+        .map(|m| format!("{}.{}", m.law, m.name))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// If any operand is Unknown, the operation is Unknown for the union of their
+/// missing facts (RFC-036), and the trace says so.
+///
+/// Called after the Untranslatable check and before the Null check, so the
+/// precedence "Untranslatable beats Unknown beats everything else" holds in
+/// every operation that uses it.
+fn propagate_unknown<'a, R: ValueResolver>(
+    resolver: &R,
+    op: &str,
+    evaluated: impl IntoIterator<Item = &'a Value>,
+) -> Option<Value> {
+    let unknown = Value::merge_unknown(evaluated)?;
+    resolver.trace_set_message(format!(
+        "{op} with an unknown operand: unknown (missing: {})",
+        describe_missing(&unknown)
+    ));
+    Some(unknown)
+}
+
+/// The structural counterpart of [`propagate_unknown`]: an Unknown counts
+/// wherever it sits inside an operand (RFC-036). `EQUALS`, `NOT_EQUALS`, `IN`
+/// and `NOT_IN` compare arrays and objects element by element, so
+/// `[unknown] == [1]` is as undecidable as `unknown == 1`, and `PartialEq`
+/// (which equates two Unknowns for the test harnesses) must never be reached
+/// with an Unknown at any depth.
+fn propagate_unknown_deep<'a, R: ValueResolver>(
+    resolver: &R,
+    op: &str,
+    evaluated: impl IntoIterator<Item = &'a Value>,
+) -> Option<Value> {
+    let unknown = Value::merge_unknown_deep(evaluated)?;
+    resolver.trace_set_message(format!(
+        "{op} with an unknown in an operand: unknown (missing: {})",
+        describe_missing(&unknown)
+    ));
+    Some(unknown)
+}
+
+/// The error for a null operand where a value was needed (RFC-036).
+fn absent_operand(op: &str) -> EngineError {
+    EngineError::AbsentOperand {
+        operation: op.to_string(),
+    }
+}
+
+/// Refuse a null operand where the operation needs a number, date or truth
+/// value (RFC-036). Absence is a fact the law can test for; it is not an
+/// amount or a verdict, and treating it as one would decide something the
+/// legal text never said.
+fn reject_null<'a>(op: &str, evaluated: impl IntoIterator<Item = &'a Value>) -> Result<()> {
+    if evaluated.into_iter().any(Value::is_null) {
+        return Err(absent_operand(op));
+    }
+    Ok(())
 }
 
 /// Trait for resolving variable references ($var) during operation execution.
@@ -95,6 +180,31 @@ pub trait ValueResolver {
     /// Check if tracing is active. Returns false by default.
     fn has_trace(&self) -> bool {
         false
+    }
+
+    /// Execute a FOREACH (RFC-016), if this resolver can create child scopes.
+    ///
+    /// FOREACH is the one operation that binds a variable, so it needs a
+    /// resolver that can hand out a child scope to bind it in. That is more
+    /// than [`ValueResolver`] promises: the trait is generic over `&self` and
+    /// says nothing about scoping, and simple resolvers (a map of variables in
+    /// a unit test) have no scope to create.
+    ///
+    /// Returning `Option` rather than `Result` keeps those two cases apart.
+    /// `None` means "this resolver cannot do FOREACH at all", which the caller
+    /// turns into an error naming that reason; `Some(Err(..))` is a FOREACH
+    /// that ran and failed. [`RuleContext`](crate::context::RuleContext)
+    /// overrides this and delegates to [`execute_foreach`].
+    fn execute_foreach_op(
+        &self,
+        _collection: &ActionValue,
+        _as_name: &str,
+        _body: &ActionValue,
+        _filter: Option<&ActionValue>,
+        _combine: Option<&CombineOp>,
+        _depth: usize,
+    ) -> Option<Result<Value>> {
+        None
     }
 }
 
@@ -154,25 +264,28 @@ pub fn execute_operation<R: ValueResolver>(
         match &result {
             Ok(value) => {
                 resolver.trace_set_result(value.clone());
-                // For IF (cases/default), execute_if already set a message
-                // with case match info; incorporate it instead of overwriting.
+                // IF and FOREACH write their own message from inside the
+                // handler: which case matched, how many elements were seen.
+                // That says more than the value alone, so keep it instead of
+                // overwriting. FOREACH reports its own result through the
+                // combine, so its message stands on its own. An unknown result
+                // keeps the handler's message too: it says which operand was
+                // unknown and which facts are missing (RFC-036), which the
+                // value alone does not.
                 let existing_msg = resolver.trace_get_message();
-                let msg = if matches!(op, ActionOperation::If { .. }) {
-                    if let Some(case_info) = existing_msg {
+                let msg = match (op, existing_msg) {
+                    (ActionOperation::If { .. }, Some(case_info)) => {
                         format!("IF({}) = {}", case_info, format_value_for_trace(value))
-                    } else {
-                        format!(
-                            "Compute {}(...) = {}",
-                            op_name,
-                            format_value_for_trace(value)
-                        )
                     }
-                } else {
-                    format!(
+                    (ActionOperation::Foreach { .. }, Some(summary)) => {
+                        format!("{} = {}", summary, format_value_for_trace(value))
+                    }
+                    (_, Some(why_unknown)) if value.is_unknown() => why_unknown,
+                    _ => format!(
                         "Compute {}(...) = {}",
                         op_name,
                         format_value_for_trace(value)
-                    )
+                    ),
                 };
                 resolver.trace_set_message(msg);
             }
@@ -206,6 +319,14 @@ fn format_value_for_trace(value: &Value) -> String {
         }
         Value::Object(_) => "{...}".to_string(),
         Value::Untranslatable { article, .. } => format!("UNTRANSLATABLE(art. {})", article),
+        Value::Unknown(missing) => format!(
+            "UNKNOWN({})",
+            missing
+                .iter()
+                .map(|m| m.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
     }
 }
 
@@ -224,21 +345,31 @@ fn execute_operation_internal<R: ValueResolver>(
             execute_equality(subject, value, resolver, depth, true)
         }
         ActionOperation::GreaterThan { subject, value } => {
-            execute_ordered_comparison(subject, value, resolver, depth, |ord| {
+            execute_ordered_comparison(subject, value, resolver, depth, "GREATER_THAN", |ord| {
                 ord == Ordering::Greater
             })
         }
         ActionOperation::LessThan { subject, value } => {
-            execute_ordered_comparison(subject, value, resolver, depth, |ord| ord == Ordering::Less)
-        }
-        ActionOperation::GreaterThanOrEqual { subject, value } => {
-            execute_ordered_comparison(subject, value, resolver, depth, |ord| ord != Ordering::Less)
-        }
-        ActionOperation::LessThanOrEqual { subject, value } => {
-            execute_ordered_comparison(subject, value, resolver, depth, |ord| {
-                ord != Ordering::Greater
+            execute_ordered_comparison(subject, value, resolver, depth, "LESS_THAN", |ord| {
+                ord == Ordering::Less
             })
         }
+        ActionOperation::GreaterThanOrEqual { subject, value } => execute_ordered_comparison(
+            subject,
+            value,
+            resolver,
+            depth,
+            "GREATER_THAN_OR_EQUAL",
+            |ord| ord != Ordering::Less,
+        ),
+        ActionOperation::LessThanOrEqual { subject, value } => execute_ordered_comparison(
+            subject,
+            value,
+            resolver,
+            depth,
+            "LESS_THAN_OR_EQUAL",
+            |ord| ord != Ordering::Greater,
+        ),
 
         // Arithmetic
         ActionOperation::Add { values } => execute_add(values, resolver, depth),
@@ -302,6 +433,31 @@ fn execute_operation_internal<R: ValueResolver>(
         ),
         ActionOperation::List { items } => execute_list(items, resolver, depth),
 
+        // FOREACH needs a child scope to bind its element in, which the
+        // `ValueResolver` contract does not provide. Resolvers that can create
+        // one answer `Some`; the rest fall through to an error that says so,
+        // rather than a confusing "variable not found" on the loop variable.
+        ActionOperation::Foreach {
+            collection,
+            as_name,
+            body,
+            filter,
+            combine,
+        } => resolver
+            .execute_foreach_op(
+                collection,
+                as_name,
+                body,
+                filter.as_ref(),
+                combine.as_ref(),
+                depth,
+            )
+            .unwrap_or_else(|| {
+                Err(EngineError::InvalidOperation(
+                    "FOREACH requires a resolver that supports child scopes".to_string(),
+                ))
+            }),
+
         // Date
         ActionOperation::Age {
             date_of_birth,
@@ -329,6 +485,8 @@ fn execute_operation_internal<R: ValueResolver>(
         ActionOperation::DateDiff { from, to, unit } => {
             execute_date_diff(from, to, unit, resolver, depth)
         }
+        ActionOperation::DatePart { date, part } => execute_date_part(date, part, resolver, depth),
+        ActionOperation::StartOf { date, unit } => execute_start_of(date, unit, resolver, depth),
     }
 }
 
@@ -383,6 +541,16 @@ fn execute_equality<R: ValueResolver>(
     if let Some(tainted) = propagate_binary(&subject_val, &value_val) {
         return Ok(tainted);
     }
+    // Whether an unknown value equals something cannot be said yet, and that
+    // holds for an unknown inside a list or a record as much as for a bare
+    // one: the comparison below is structural and would otherwise equate two
+    // Unknowns. Null, by contrast, is a value here: `EQUALS($huur, null)` is
+    // the absence test the corpus uses, and `values_equal` answers it
+    // structurally (RFC-036).
+    let op_name = if negate { "NOT_EQUALS" } else { "EQUALS" };
+    if let Some(unknown) = propagate_unknown_deep(resolver, op_name, [&subject_val, &value_val]) {
+        return Ok(unknown);
+    }
 
     let mut equal = values_equal(&subject_val, &value_val);
 
@@ -435,6 +603,7 @@ fn execute_ordered_comparison<R: ValueResolver, F>(
     value: &ActionValue,
     resolver: &R,
     depth: usize,
+    op_name: &str,
     satisfies: F,
 ) -> Result<Value>
 where
@@ -445,6 +614,17 @@ where
 
     if let Some(tainted) = propagate_binary(&subject_val, &value_val) {
         return Ok(tainted);
+    }
+
+    // An unknown operand (a fact nobody has yet) makes the comparison unknown;
+    // AND, OR, NOT and IF carry that onward. A null operand is different: "more
+    // than nothing" is not a question the law asked, so ordering an absence is
+    // an error the law has to resolve by testing for absence first (RFC-036).
+    if let Some(unknown) = propagate_unknown(resolver, op_name, [&subject_val, &value_val]) {
+        return Ok(unknown);
+    }
+    if subject_val.is_null() || value_val.is_null() {
+        return Err(absent_operand(op_name));
     }
 
     // Numbers first: the common case and the historical behavior.
@@ -510,14 +690,30 @@ fn execute_add<R: ValueResolver>(
     depth: usize,
 ) -> Result<Value> {
     let evaluated = evaluate_values(values, resolver, depth)?;
+    if let Some(tainted) = find_untranslatable(&evaluated) {
+        return Ok(tainted);
+    }
+    if let Some(unknown) = propagate_unknown(resolver, "ADD", &evaluated) {
+        return Ok(unknown);
+    }
+    reject_null("ADD", &evaluated)?;
+    add_values(&evaluated)
+}
 
+/// Sum already-evaluated values with RFC-007's polymorphic ADD.
+///
+/// Split out of [`execute_add`] so FOREACH's `combine: ADD` reduces with the
+/// same rules the standalone operation uses, instead of a second implementation
+/// that could drift from it. The first value picks the mode: numbers add,
+/// strings concatenate, arrays flatten.
+pub(crate) fn add_values(evaluated: &[Value]) -> Result<Value> {
     if evaluated.is_empty() {
         return Err(EngineError::InvalidOperation(
             "ADD requires at least one value".to_string(),
         ));
     }
 
-    if let Some(tainted) = find_untranslatable(&evaluated) {
+    if let Some(tainted) = find_untranslatable(evaluated) {
         return Ok(tainted);
     }
 
@@ -526,7 +722,7 @@ fn execute_add<R: ValueResolver>(
         Value::Array(_) => {
             // Concatenate arrays
             let mut result = Vec::new();
-            for val in &evaluated {
+            for val in evaluated {
                 match val {
                     Value::Array(arr) => result.extend(arr.iter().cloned()),
                     _ => {
@@ -542,7 +738,7 @@ fn execute_add<R: ValueResolver>(
         Value::String(_) => {
             // Concatenate strings
             let mut result = String::new();
-            for val in &evaluated {
+            for val in evaluated {
                 match val {
                     Value::String(s) => result.push_str(s),
                     _ => {
@@ -559,7 +755,7 @@ fn execute_add<R: ValueResolver>(
             // Original numeric addition
             let mut sum = Decimal::ZERO;
             let mut has_decimal = false;
-            for val in &evaluated {
+            for val in evaluated {
                 match val {
                     Value::Int(i) => sum += Decimal::from(*i),
                     Value::Decimal(d) => {
@@ -605,6 +801,10 @@ fn execute_subtract<R: ValueResolver>(
     if let Some(tainted) = find_untranslatable(&evaluated) {
         return Ok(tainted);
     }
+    if let Some(unknown) = propagate_unknown(resolver, "SUBTRACT", &evaluated) {
+        return Ok(unknown);
+    }
+    reject_null("SUBTRACT", &evaluated)?;
 
     // SAFETY: values guaranteed non-empty by check above
     let Some((first, rest)) = evaluated.split_first() else {
@@ -642,6 +842,10 @@ fn execute_multiply<R: ValueResolver>(
     if let Some(tainted) = find_untranslatable(&evaluated) {
         return Ok(tainted);
     }
+    if let Some(unknown) = propagate_unknown(resolver, "MULTIPLY", &evaluated) {
+        return Ok(unknown);
+    }
+    reject_null("MULTIPLY", &evaluated)?;
 
     let mut result = Decimal::ONE;
     let mut has_decimal = false;
@@ -680,6 +884,10 @@ fn execute_divide<R: ValueResolver>(
     if let Some(tainted) = find_untranslatable(&evaluated) {
         return Ok(tainted);
     }
+    if let Some(unknown) = propagate_unknown(resolver, "DIVIDE", &evaluated) {
+        return Ok(unknown);
+    }
+    reject_null("DIVIDE", &evaluated)?;
 
     // SAFETY: values guaranteed non-empty by check above
     let Some((first, rest)) = evaluated.split_first() else {
@@ -726,6 +934,10 @@ where
     if let Some(tainted) = find_untranslatable(&evaluated) {
         return Ok(tainted);
     }
+    if let Some(unknown) = propagate_unknown(resolver, "MIN/MAX", &evaluated) {
+        return Ok(unknown);
+    }
+    reject_null("MIN/MAX", &evaluated)?;
 
     let mut has_decimal = false;
     let nums: Vec<Decimal> = evaluated
@@ -787,6 +999,17 @@ fn execute_rounding<R: ValueResolver>(
     if evaluated.is_untranslatable() {
         return Ok(evaluated);
     }
+    let op_name = match mode {
+        RoundMode::Round => "ROUND",
+        RoundMode::Ceil => "CEIL",
+        RoundMode::Floor => "FLOOR",
+    };
+    // Rounding an unknown amount is unknown; rounding an absence is an error
+    // (RFC-036): "geen" is not an amount to round.
+    if let Some(unknown) = propagate_unknown(resolver, op_name, [&evaluated]) {
+        return Ok(unknown);
+    }
+    reject_null(op_name, [&evaluated])?;
     let operand = to_decimal(&evaluated)?;
     let rounded = round_decimal(operand, precision, mode)?;
     // Mirror the arithmetic ops: an integral result returns `Int`, otherwise `Decimal`.
@@ -830,6 +1053,17 @@ fn round_decimal(value: Decimal, precision: i64, mode: RoundMode) -> Result<Deci
 // =============================================================================
 
 /// Execute AND operation: short-circuit evaluation, returns false if any condition is false.
+///
+/// Three-valued (RFC-036): a definitive `false` decides, whatever the other
+/// operands are; otherwise an untranslatable operand taints the result, and
+/// otherwise an unknown operand (a fact nobody has) makes it unknown, so a
+/// missing value can never come out as a confident "voldoet niet". A `null`
+/// operand is an error: an absence is not a verdict, and the law has to test
+/// for it (`EQUALS … null`) before it may count it as one.
+///
+/// The conditions are evaluated in order and a `false` stops the evaluation,
+/// which is what lets a law guard a calculation: `AND(NOT EQUALS $huur null,
+/// GREATER_THAN $huur 500)` never orders the absent rent.
 fn execute_and<R: ValueResolver>(
     conditions: &[ActionValue],
     resolver: &R,
@@ -838,9 +1072,17 @@ fn execute_and<R: ValueResolver>(
     let tracing = resolver.has_trace();
     let mut results: Option<Vec<Value>> = if tracing { Some(Vec::new()) } else { None };
     let mut taint: Option<Value> = None;
+    let mut unknowns: Vec<Value> = Vec::new();
     for condition in conditions {
         let val = evaluate_value(condition, resolver, depth)?;
-        // Definitive false wins over taint (AND commutativity)
+        if val.is_null() {
+            return Err(absent_operand("AND"));
+        }
+        if val.is_unknown() {
+            unknowns.push(val);
+            continue;
+        }
+        // Definitive false wins over taint and unknown (AND commutativity)
         if !val.to_bool() && !val.is_untranslatable() {
             return Ok(Value::Bool(false));
         }
@@ -857,6 +1099,13 @@ fn execute_and<R: ValueResolver>(
     if let Some(t) = taint {
         return Ok(t);
     }
+    if let Some(unknown) = Value::merge_unknown(&unknowns) {
+        resolver.trace_set_message(format!(
+            "AND with an unknown operand and no false: unknown (missing: {})",
+            describe_missing(&unknown)
+        ));
+        return Ok(unknown);
+    }
 
     if let Some(results) = results {
         let result_strs: Vec<String> = results.iter().map(format_value_for_trace).collect();
@@ -867,15 +1116,27 @@ fn execute_and<R: ValueResolver>(
 }
 
 /// Execute OR operation: short-circuit evaluation, returns true if any condition is true.
+///
+/// Three-valued (RFC-036): a definitive `true` decides; otherwise an
+/// untranslatable taints, otherwise an unknown operand makes the result
+/// unknown, and a `null` operand is an error (see [`execute_and`]).
 fn execute_or<R: ValueResolver>(
     conditions: &[ActionValue],
     resolver: &R,
     depth: usize,
 ) -> Result<Value> {
     let mut taint: Option<Value> = None;
+    let mut unknowns: Vec<Value> = Vec::new();
     for condition in conditions {
         let val = evaluate_value(condition, resolver, depth)?;
-        // Definitive true wins over taint (OR commutativity)
+        if val.is_null() {
+            return Err(absent_operand("OR"));
+        }
+        if val.is_unknown() {
+            unknowns.push(val);
+            continue;
+        }
+        // Definitive true wins over taint and unknown (OR commutativity)
         if val.to_bool() {
             return Ok(Value::Bool(true));
         }
@@ -888,6 +1149,13 @@ fn execute_or<R: ValueResolver>(
     if let Some(t) = taint {
         return Ok(t);
     }
+    if let Some(unknown) = Value::merge_unknown(&unknowns) {
+        resolver.trace_set_message(format!(
+            "OR with an unknown operand and no true: unknown (missing: {})",
+            describe_missing(&unknown)
+        ));
+        return Ok(unknown);
+    }
 
     Ok(Value::Bool(false))
 }
@@ -895,10 +1163,18 @@ fn execute_or<R: ValueResolver>(
 /// Execute NOT operation: logical negation.
 ///
 /// Takes a single `value` field (which should be a boolean-returning operation).
+/// The negation of unknown is unknown; the negation of an absence is an error
+/// (RFC-036).
 fn execute_not<R: ValueResolver>(value: &ActionValue, resolver: &R, depth: usize) -> Result<Value> {
     let val = evaluate_value(value, resolver, depth)?;
     if val.is_untranslatable() {
         return Ok(val);
+    }
+    if let Some(unknown) = propagate_unknown(resolver, "NOT", [&val]) {
+        return Ok(unknown);
+    }
+    if val.is_null() {
+        return Err(absent_operand("NOT"));
     }
     Ok(Value::Bool(!val.to_bool()))
 }
@@ -933,6 +1209,20 @@ fn execute_if<R: ValueResolver>(
 
         if condition_result.is_untranslatable() {
             return Ok(condition_result);
+        }
+        // A case whose condition is unknown cannot be skipped in good faith:
+        // the branch might have applied. The whole IF is that unknown; neither
+        // this `then`, nor a later case, nor the default is taken in its place
+        // (RFC-036). An absent condition is an error: "geen" is not a verdict.
+        if condition_result.is_unknown() {
+            resolver.trace_set_message(format!(
+                "case {i}: condition unknown, so the result is unknown (missing: {})",
+                describe_missing(&condition_result)
+            ));
+            return Ok(condition_result);
+        }
+        if condition_result.is_null() {
+            return Err(absent_operand("IF"));
         }
 
         if condition_result.to_bool() {
@@ -978,6 +1268,10 @@ fn execute_if<R: ValueResolver>(
 /// Execute IS_NULL / NOT_NULL operation.
 ///
 /// When `negate` is true, returns true if the subject is *not* null (NOT_NULL).
+///
+/// Absence is what this tests for, so `null` answers (`true` / `false`). An
+/// unknown subject does not: whether the register holds a value is exactly the
+/// fact nobody has yet, so the check is unknown (RFC-036).
 fn execute_null_check<R: ValueResolver>(
     subject: &ActionValue,
     resolver: &R,
@@ -986,6 +1280,14 @@ fn execute_null_check<R: ValueResolver>(
 ) -> Result<Value> {
     let subject_val = evaluate_value(subject, resolver, depth)?;
     if subject_val.is_untranslatable() {
+        return Ok(subject_val);
+    }
+    if subject_val.is_unknown() {
+        let op_name = if negate { "NOT_NULL" } else { "IS_NULL" };
+        resolver.trace_set_message(format!(
+            "{op_name} of unknown: unknown (missing: {})",
+            describe_missing(&subject_val)
+        ));
         return Ok(subject_val);
     }
     let is_null = subject_val.is_null();
@@ -1031,9 +1333,32 @@ fn execute_membership<R: ValueResolver>(
         )));
     };
 
-    let found = check_values
-        .iter()
-        .any(|val| values_equal(&subject_val, val));
+    // A definite match settles it whatever else is in the list (Kleene, as
+    // for OR). A match is definite only when neither the subject nor the
+    // element has an Unknown anywhere inside: `[unknown]` might be `[650]`,
+    // but nobody can say so yet. Without a definite match, the precedence of
+    // RFC-012 over RFC-036 holds per element: a tainted element could have
+    // been the match, so the result is that taint; otherwise an unknown
+    // subject or an unknown (inside an) element leaves the question open.
+    // Null is structural, like EQUALS: `IN(null, [null])` is true,
+    // `IN(null, [1])` is false (RFC-036).
+    let found = !subject_val.contains_unknown()
+        && check_values.iter().any(|val| {
+            !val.contains_unknown() && !val.is_untranslatable() && values_equal(&subject_val, val)
+        });
+    if !found {
+        if let Some(tainted) = find_untranslatable(&check_values) {
+            return Ok(tainted);
+        }
+        let op_name = if negate { "NOT_IN" } else { "IN" };
+        if let Some(unknown) = propagate_unknown_deep(
+            resolver,
+            op_name,
+            std::iter::once(&subject_val).chain(check_values.iter()),
+        ) {
+            return Ok(unknown);
+        }
+    }
     Ok(Value::Bool(if negate { !found } else { found }))
 }
 
@@ -1049,6 +1374,357 @@ fn execute_list<R: ValueResolver>(
         .collect::<Result<Vec<_>>>()?;
 
     Ok(Value::Array(values))
+}
+
+// =============================================================================
+// Collection Iteration (RFC-016)
+// =============================================================================
+
+/// Execute FOREACH: evaluate `body` once per element of `collection`.
+///
+/// Takes a concrete [`RuleContext`] rather than a generic `ValueResolver`,
+/// because FOREACH is the only operation that binds a variable and so needs a
+/// child scope to bind it in. Callers reach this through
+/// [`ValueResolver::execute_foreach_op`].
+///
+/// `collection` is evaluated in the context it was given, before any child
+/// exists. That is what lets a nested FOREACH read the outer binding: the inner
+/// `collection` expression is the only place the outer scope is still visible.
+///
+/// See RFC-016 for the scope, combine and taint rules this implements.
+pub fn execute_foreach(
+    collection: &ActionValue,
+    as_name: &str,
+    body: &ActionValue,
+    filter: Option<&ActionValue>,
+    combine: Option<&CombineOp>,
+    context: &RuleContext,
+    depth: usize,
+) -> Result<Value> {
+    // The schema constrains `as` with a pattern, but a law can reach the engine
+    // without passing schema validation, and a bad binding name would otherwise
+    // surface much later as a puzzling resolution failure.
+    if !is_valid_binding_name(as_name) {
+        return Err(EngineError::InvalidOperation(format!(
+            "FOREACH 'as' must be a non-empty lowercase identifier (got '{as_name}')"
+        )));
+    }
+
+    let collection_value = evaluate_value(collection, context, depth)?;
+    if collection_value.is_untranslatable() {
+        return Ok(collection_value);
+    }
+    // A collection nobody has yet cannot be iterated: its total is unknown for
+    // the same reason. A null collection is different and iterates nothing
+    // (RFC-016): the register says there are no members (RFC-036).
+    if let Some(unknown) = propagate_unknown(context, "FOREACH", [&collection_value]) {
+        return Ok(unknown);
+    }
+
+    // A non-array iterates once. Laws reach the engine with a data source that
+    // returned a single record where the law expects a list, and treating that
+    // as "one element" matches what the law means better than an error does.
+    let items = match &collection_value {
+        Value::Array(arr) => arr.clone(),
+        Value::Null => Vec::new(),
+        other => vec![other.clone()],
+    };
+
+    if items.len() > crate::config::MAX_ARRAY_SIZE {
+        return Err(EngineError::InvalidOperation(format!(
+            "FOREACH collection size {} exceeds limit {}",
+            items.len(),
+            crate::config::MAX_ARRAY_SIZE,
+        )));
+    }
+
+    let tracing = context.has_trace();
+    let mut results: Vec<Value> = Vec::with_capacity(items.len());
+    let mut skipped = 0usize;
+
+    for (index, item) in items.iter().enumerate() {
+        let mut child = context.create_child();
+
+        // Objects also expose their fields as bare locals, so `$status` works
+        // where `$item.status` does. Existing laws are written that way. Dot
+        // notation is clearer and does not risk shadowing an outer variable,
+        // which is why RFC-016 recommends it for new laws.
+        if let Value::Object(fields) = item {
+            for (key, value) in fields {
+                child.set_local(key.clone(), value.clone());
+            }
+        }
+
+        // Bound last, so a field named like the binding cannot displace it:
+        // `as: kind` over `{kind: 7, bedrag: 5}` must leave `$kind` the element,
+        // or `$kind.bedrag` becomes a type error on an integer.
+        //
+        // A field named `referencedate` is a different matter and stays
+        // unreachable by design: that name resolves ahead of local scope (see
+        // `RuleContext::resolve_variable_internal`), so the flattened form reads
+        // the calculation date. Dot notation gets at the field.
+        child.set_local(as_name.to_string(), item.clone());
+
+        if tracing {
+            context.trace_push(&format!("ITEM_{index}"), PathNodeType::Operation);
+        }
+
+        let outcome = evaluate_iteration(body, filter, &child, depth);
+
+        match outcome {
+            Ok(IterationOutcome::Skipped) => {
+                skipped += 1;
+                if tracing {
+                    context.trace_set_result(item.clone());
+                    context.trace_set_message(format!("ITEM {index}: skipped by filter"));
+                    context.trace_pop();
+                }
+            }
+            Ok(IterationOutcome::Value(value)) => {
+                if tracing {
+                    context.trace_set_result(value.clone());
+                    context.trace_set_message(format!(
+                        "ITEM {index}: {}",
+                        format_value_for_trace(&value)
+                    ));
+                    context.trace_pop();
+                }
+                // An untranslatable element taints the whole result. Combining
+                // the rest would produce a total that looks complete and is not
+                // (RFC-012). An unknown or null element is not fatal here: the
+                // combine functions decide what it means per aggregation
+                // (RFC-036), and without a combine it is simply an element.
+                if value.is_untranslatable() {
+                    return Ok(value);
+                }
+                results.push(value);
+            }
+            Ok(IterationOutcome::Tainted(value)) => {
+                if tracing {
+                    context.trace_set_result(value.clone());
+                    context.trace_set_message(format!("ITEM {index}: untranslatable, aborting"));
+                    context.trace_pop();
+                }
+                return Ok(value);
+            }
+            Err(e) => {
+                if tracing {
+                    context.trace_set_message(format!("ITEM {index}: error: {e}"));
+                    context.trace_pop();
+                }
+                // Partial results are not returned: a sum over some of the
+                // children is not a legal determination.
+                return Err(e);
+            }
+        }
+    }
+
+    if tracing {
+        let evaluated = results.len();
+        context.trace_set_message(match skipped {
+            0 => format!("FOREACH over {evaluated} element(s)"),
+            n => format!("FOREACH over {evaluated} element(s), {n} skipped by filter"),
+        });
+    }
+
+    match combine {
+        Some(CombineOp::Add) => combine_add(&results),
+        Some(CombineOp::Or) => combine_or(&results),
+        Some(CombineOp::And) => combine_and(&results),
+        Some(CombineOp::Min) => combine_min_max(&results, true),
+        Some(CombineOp::Max) => combine_min_max(&results, false),
+        None => Ok(Value::Array(results)),
+    }
+}
+
+/// What one FOREACH iteration produced.
+enum IterationOutcome {
+    /// The filter rejected this element.
+    Skipped,
+    /// The body produced a value (possibly an unknown one, see
+    /// [`evaluate_iteration`]).
+    Value(Value),
+    /// The filter is untranslatable, so the whole collection is tainted.
+    Tainted(Value),
+}
+
+/// Run `filter` and `body` for one element, in its own child scope.
+fn evaluate_iteration(
+    body: &ActionValue,
+    filter: Option<&ActionValue>,
+    child: &RuleContext,
+    depth: usize,
+) -> Result<IterationOutcome> {
+    if let Some(filter_expr) = filter {
+        let verdict = evaluate_value(filter_expr, child, depth + 1)?;
+        if verdict.is_untranslatable() {
+            return Ok(IterationOutcome::Tainted(verdict));
+        }
+        // An unknown filter means the engine cannot tell whether this element
+        // belongs in the collection. Silently excluding it would report a
+        // confident wrong answer, so the element counts as an unknown element
+        // and the combine decides what that means: a sum is unknown, an OR
+        // with a definite `true` elsewhere is still true (RFC-036).
+        if verdict.is_unknown() {
+            return Ok(IterationOutcome::Value(verdict));
+        }
+        // An absent verdict is not a verdict: the law has to test for the
+        // absence before it may select on it.
+        if verdict.is_null() {
+            return Err(absent_operand("FOREACH filter"));
+        }
+        if !verdict.to_bool() {
+            return Ok(IterationOutcome::Skipped);
+        }
+    }
+
+    Ok(IterationOutcome::Value(evaluate_value(
+        body,
+        child,
+        depth + 1,
+    )?))
+}
+
+/// Whether a FOREACH `as` name is a usable binding: lowercase, digits and
+/// underscores, not starting with a digit. Mirrors the schema's pattern.
+fn is_valid_binding_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    match chars.next() {
+        Some('a'..='z' | '_') => chars.all(|c| matches!(c, 'a'..='z' | '0'..='9' | '_')),
+        _ => false,
+    }
+}
+
+/// Combine FOREACH results with ADD.
+///
+/// An unknown element makes the total unknown, for the union of what the
+/// elements miss. RFC-016 already says this for a filter that cannot be
+/// decided ("the engine cannot tell whether this element belongs in the
+/// collection, so it cannot tell what the total is"), and a body that is
+/// unknown is the same situation one step later: the element is definitely in
+/// the collection and its contribution is not known. Summing the rest would
+/// report a confident number that is short by an unknown amount.
+///
+/// A null element is an error (RFC-036): an absence is not an amount, and a
+/// law that sums amounts some members do not have has to say what "geen"
+/// counts for (an `IF … EQUALS null` in the body) before the sum is legal.
+///
+/// An empty collection is `0`, the additive identity, because nothing is
+/// missing there.
+fn combine_add(results: &[Value]) -> Result<Value> {
+    if results.is_empty() {
+        return Ok(Value::Int(0));
+    }
+    if let Some(tainted) = find_untranslatable(results) {
+        return Ok(tainted);
+    }
+    if let Some(unknown) = Value::merge_unknown(results) {
+        return Ok(unknown);
+    }
+    reject_null("FOREACH combine ADD", results)?;
+    add_values(results)
+}
+
+/// Combine FOREACH results with OR.
+///
+/// Mirrors `execute_or`: a definitive `true` wins over an unknown, because the
+/// answer is `true` whatever the unknown turns out to be. Otherwise any unknown
+/// element makes the result unknown; a null element is an error (RFC-036).
+fn combine_or(results: &[Value]) -> Result<Value> {
+    if results.is_empty() {
+        return Ok(Value::Bool(false));
+    }
+    let mut unknowns: Vec<Value> = Vec::new();
+    for v in results {
+        if v.is_untranslatable() {
+            return Ok(v.clone());
+        }
+        if v.is_null() {
+            return Err(absent_operand("FOREACH combine OR"));
+        }
+        if v.is_unknown() {
+            unknowns.push(v.clone());
+            continue;
+        }
+        if v.to_bool() {
+            return Ok(Value::Bool(true));
+        }
+    }
+    Ok(Value::merge_unknown(&unknowns).unwrap_or(Value::Bool(false)))
+}
+
+/// Combine FOREACH results with AND.
+///
+/// Mirrors `execute_and`: a definitive `false` wins over an unknown. An empty
+/// collection is `true` by vacuous truth, so a law that must not read "no
+/// items" as "all conditions met" has to check for emptiness itself. A null
+/// element is an error (RFC-036).
+fn combine_and(results: &[Value]) -> Result<Value> {
+    if results.is_empty() {
+        return Ok(Value::Bool(true));
+    }
+    let mut unknowns: Vec<Value> = Vec::new();
+    for v in results {
+        if v.is_untranslatable() {
+            return Ok(v.clone());
+        }
+        if v.is_null() {
+            return Err(absent_operand("FOREACH combine AND"));
+        }
+        if v.is_unknown() {
+            unknowns.push(v.clone());
+            continue;
+        }
+        if !v.to_bool() {
+            return Ok(Value::Bool(false));
+        }
+    }
+    Ok(Value::merge_unknown(&unknowns).unwrap_or(Value::Bool(true)))
+}
+
+/// Combine FOREACH results with MIN or MAX.
+///
+/// Empty is `Null`: there is no lowest value of nothing, and the caller has to
+/// handle that. An unknown element makes the result unknown; a null element
+/// is an error (RFC-036). Comparison stays in `Decimal` so an all-integer
+/// collection returns `Int` without a detour through `f64`.
+fn combine_min_max(results: &[Value], is_min: bool) -> Result<Value> {
+    if results.is_empty() {
+        return Ok(Value::Null);
+    }
+    if let Some(tainted) = find_untranslatable(results) {
+        return Ok(tainted);
+    }
+    if let Some(unknown) = Value::merge_unknown(results) {
+        return Ok(unknown);
+    }
+    let op_name = if is_min {
+        "FOREACH combine MIN"
+    } else {
+        "FOREACH combine MAX"
+    };
+    reject_null(op_name, results)?;
+
+    let mut best: Option<Decimal> = None;
+    let mut all_int = true;
+
+    for v in results {
+        if !matches!(v, Value::Int(_)) {
+            all_int = false;
+        }
+        let d = to_decimal(v)?;
+        best = Some(match best {
+            None => d,
+            Some(prev) if is_min => prev.min(d),
+            Some(prev) => prev.max(d),
+        });
+    }
+
+    match best {
+        None => Ok(Value::Null),
+        Some(d) if all_int => Ok(Value::Int(decimal_to_i64_safe(d)?)),
+        Some(d) => Ok(Value::Decimal(d)),
+    }
 }
 
 // =============================================================================
@@ -1072,6 +1748,10 @@ fn execute_age<R: ValueResolver>(
     if let Some(tainted) = propagate_binary(&dob_val, &ref_val) {
         return Ok(tainted);
     }
+    if let Some(unknown) = propagate_unknown(resolver, "AGE", [&dob_val, &ref_val]) {
+        return Ok(unknown);
+    }
+    reject_null("AGE", [&dob_val, &ref_val])?;
 
     let dob_date = parse_date(&dob_val)?;
     let ref_date_parsed = parse_date(&ref_val)?;
@@ -1101,14 +1781,37 @@ fn execute_date_add<R: ValueResolver>(
     depth: usize,
 ) -> Result<Value> {
     let date_val = evaluate_value(date, resolver, depth)?;
-    if date_val.is_untranslatable() {
-        return Ok(date_val);
+    let years_val = years
+        .map(|v| evaluate_value(v, resolver, depth))
+        .transpose()?;
+    let months_val = months
+        .map(|v| evaluate_value(v, resolver, depth))
+        .transpose()?;
+    let weeks_val = weeks
+        .map(|v| evaluate_value(v, resolver, depth))
+        .transpose()?;
+    let days_val = days
+        .map(|v| evaluate_value(v, resolver, depth))
+        .transpose()?;
+    // The date and every component given take part in the RFC-012/RFC-036
+    // checks alike: a shift by an unknown number of months is an unknown date.
+    let operands: Vec<&Value> = std::iter::once(&date_val)
+        .chain(years_val.iter())
+        .chain(months_val.iter())
+        .chain(weeks_val.iter())
+        .chain(days_val.iter())
+        .collect();
+    if let Some(tainted) = operands.iter().find(|v| v.is_untranslatable()) {
+        return Ok((*tainted).clone());
     }
+    if let Some(unknown) = propagate_unknown(resolver, "DATE_ADD", operands.iter().copied()) {
+        return Ok(unknown);
+    }
+    reject_null("DATE_ADD", operands.iter().copied())?;
     let mut result_date = parse_date(&date_val)?;
 
     // Years: add to year component, clamp day to last day of target month
-    if let Some(years) = years {
-        let years_val = evaluate_value(years, resolver, depth)?;
+    if let Some(years_val) = years_val {
         let years_i64 = years_val.as_int().ok_or_else(|| {
             EngineError::InvalidOperation("DATE_ADD 'years' must be a number".to_string())
         })?;
@@ -1132,8 +1835,7 @@ fn execute_date_add<R: ValueResolver>(
     }
 
     // Months: add to month component, clamp day to last day of target month
-    if let Some(months) = months {
-        let months_val = evaluate_value(months, resolver, depth)?;
+    if let Some(months_val) = months_val {
         let months_int = months_val.as_int().ok_or_else(|| {
             EngineError::InvalidOperation("DATE_ADD 'months' must be a number".to_string())
         })?;
@@ -1141,8 +1843,7 @@ fn execute_date_add<R: ValueResolver>(
     }
 
     // Weeks
-    if let Some(weeks) = weeks {
-        let weeks_val = evaluate_value(weeks, resolver, depth)?;
+    if let Some(weeks_val) = weeks_val {
         let weeks_int = weeks_val.as_int().ok_or_else(|| {
             EngineError::InvalidOperation("DATE_ADD 'weeks' must be a number".to_string())
         })?;
@@ -1156,8 +1857,7 @@ fn execute_date_add<R: ValueResolver>(
     }
 
     // Days
-    if let Some(days) = days {
-        let days_val = evaluate_value(days, resolver, depth)?;
+    if let Some(days_val) = days_val {
         let days_int = days_val.as_int().ok_or_else(|| {
             EngineError::InvalidOperation("DATE_ADD 'days' must be a number".to_string())
         })?;
@@ -1218,6 +1918,10 @@ fn execute_date_construct<R: ValueResolver>(
     {
         return Ok(tainted);
     }
+    if let Some(unknown) = propagate_unknown(resolver, "DATE", [&year_val, &month_val, &day_val]) {
+        return Ok(unknown);
+    }
+    reject_null("DATE", [&year_val, &month_val, &day_val])?;
 
     let y_i64 = year_val
         .as_int()
@@ -1259,6 +1963,10 @@ fn execute_day_of_week<R: ValueResolver>(
     if val.is_untranslatable() {
         return Ok(val);
     }
+    if let Some(unknown) = propagate_unknown(resolver, "DAY_OF_WEEK", [&val]) {
+        return Ok(unknown);
+    }
+    reject_null("DAY_OF_WEEK", [&val])?;
     let parsed = parse_date(&val)?;
     Ok(Value::Int(parsed.weekday().num_days_from_monday() as i64))
 }
@@ -1294,16 +2002,21 @@ fn execute_date_diff<R: ValueResolver>(
     if let Some(tainted) = propagate_binary(&from_val, &to_val) {
         return Ok(tainted);
     }
-
-    let from_date = parse_date(&from_val)?;
-    let to_date = parse_date(&to_val)?;
-
     let unit_val = evaluate_value(unit, resolver, depth)?;
     // The unit participates in taint propagation like the date operands: an
     // Untranslatable unit flows through as a value (RFC-012), not as an error.
     if unit_val.is_untranslatable() {
         return Ok(unit_val);
     }
+    // Likewise for unknown and absent operands (RFC-036).
+    if let Some(unknown) = propagate_unknown(resolver, "DATE_DIFF", [&from_val, &to_val, &unit_val])
+    {
+        return Ok(unknown);
+    }
+    reject_null("DATE_DIFF", [&from_val, &to_val, &unit_val])?;
+
+    let from_date = parse_date(&from_val)?;
+    let to_date = parse_date(&to_val)?;
     let unit_str = match &unit_val {
         Value::String(s) => s.as_str(),
         _ => {
@@ -1329,6 +2042,116 @@ fn execute_date_diff<R: ValueResolver>(
     };
 
     Ok(Value::Int(diff))
+}
+
+/// Execute DATE_PART: read one calendar component out of a date.
+///
+/// ```yaml
+/// operation: DATE_PART
+/// date: $referencedate.iso
+/// in: year        # one of: year | month | day
+/// ```
+///
+/// Returns an `Int`: the year number, the month number (1-12) or the day of the
+/// month (1-31). It is the inverse of `DATE`, and `in` ranges over exactly the
+/// components `DATE` takes — which is why `month` exists even though no legal
+/// text has asked for it yet, and why the weekday does not (that is
+/// `DAY_OF_WEEK`, a projection outside the year-month-day decomposition).
+///
+/// The unit is singular where `DATE_DIFF` is plural, because this selects a
+/// component instead of counting units. An author who copies `in: months` from
+/// `DATE_DIFF` gets a named error rather than a silent answer.
+fn execute_date_part<R: ValueResolver>(
+    date_value: &ActionValue,
+    part: &str,
+    resolver: &R,
+    depth: usize,
+) -> Result<Value> {
+    let val = evaluate_value(date_value, resolver, depth)?;
+    if val.is_untranslatable() {
+        return Ok(val);
+    }
+    let parsed = parse_date(&val)?;
+
+    let component = match part {
+        "year" => i64::from(parsed.year()),
+        "month" => i64::from(parsed.month()),
+        "day" => i64::from(parsed.day()),
+        other => {
+            return Err(EngineError::InvalidOperation(format!(
+                "DATE_PART 'in' must be one of 'year', 'month', 'day', got '{}'",
+                other
+            )));
+        }
+    };
+
+    Ok(Value::Int(component))
+}
+
+/// Execute START_OF: truncate a date down to the start of the calendar unit it
+/// falls in.
+///
+/// ```yaml
+/// operation: START_OF
+/// date: $peildatum
+/// in: month       # one of: year | month
+/// ```
+///
+/// Returns a date string in canonical `%Y-%m-%d` form: 1 January of the year, or
+/// the first day of the month. `day` is the identity and `week` would need a
+/// convention (ISO Monday) that no legal text imposes, so neither is offered.
+///
+/// **Order matters for "the first day of the month following".** Truncate first,
+/// add afterwards:
+///
+/// ```yaml
+/// operation: DATE_ADD
+/// date:
+///   operation: START_OF
+///   date: $peildatum
+///   in: month
+/// months: 1
+/// ```
+///
+/// That is exact for every input date, including the first of the month and
+/// including 31 January, because the day-clamping of `DATE_ADD` never comes into
+/// play: the truncated date is always day 1, which exists in every month. The
+/// reverse order happens to give the same answer, but reaches it through the
+/// clamp — a step a reviewer has to re-check each time.
+///
+/// Truncation is an explicit operation and never an implicit property of a date
+/// (RFC-024): the cut stands in the law-YAML where the legal text prescribes it,
+/// and nowhere else.
+fn execute_start_of<R: ValueResolver>(
+    date_value: &ActionValue,
+    unit: &str,
+    resolver: &R,
+    depth: usize,
+) -> Result<Value> {
+    let val = evaluate_value(date_value, resolver, depth)?;
+    if val.is_untranslatable() {
+        return Ok(val);
+    }
+    let parsed = parse_date(&val)?;
+
+    let truncated = match unit {
+        "year" => NaiveDate::from_ymd_opt(parsed.year(), 1, 1),
+        "month" => NaiveDate::from_ymd_opt(parsed.year(), parsed.month(), 1),
+        other => {
+            return Err(EngineError::InvalidOperation(format!(
+                "START_OF 'in' must be one of 'year', 'month', got '{}'",
+                other
+            )));
+        }
+    }
+    .ok_or_else(|| {
+        EngineError::InvalidOperation(format!(
+            "START_OF: invalid date after truncating '{}' to {}",
+            parsed, unit
+        ))
+    })?;
+
+    Ok(Value::String(truncated.format("%Y-%m-%d").to_string()))
 }
 
 /// Parse a date from a Value.
@@ -1580,6 +2403,20 @@ mod tests {
     /// Helper to create a variable reference
     fn var(name: &str) -> ActionValue {
         ActionValue::Literal(Value::String(format!("${}", name)))
+    }
+
+    /// An Unknown for one missing register fact of the test law (RFC-036).
+    fn unknown_fact(name: &str) -> Value {
+        Value::unknown("testwet", name, crate::types::MissingKind::NoData)
+    }
+
+    /// The names of the facts an Unknown misses, for assertions.
+    fn missing_names(value: &Value) -> Vec<&str> {
+        value
+            .missing_facts()
+            .iter()
+            .map(|m| m.name.as_str())
+            .collect()
     }
 
     /// Helper to build a reference-date `{iso, year, month, day}` object Value,
@@ -2775,6 +3612,968 @@ mod tests {
     }
 
     // -------------------------------------------------------------------------
+    // Collection Iteration Tests (FOREACH, RFC-016)
+    // -------------------------------------------------------------------------
+    //
+    // These drive a real `RuleContext` rather than `TestResolver`: FOREACH binds
+    // a variable, and only a resolver with child scopes can run it. A
+    // `TestResolver` returns `None` from `execute_foreach_op`, which is itself
+    // worth a test (see `test_foreach_needs_a_scoped_resolver`).
+
+    mod foreach {
+        use super::*;
+        use crate::context::RuleContext;
+
+        /// A context whose parameters are the given variables.
+        fn ctx(vars: Vec<(&str, Value)>) -> RuleContext {
+            let params: BTreeMap<String, Value> =
+                vars.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+            RuleContext::new(params, "2025-06-15").expect("valid date")
+        }
+
+        /// `FOREACH $items as x: x` with the given combine.
+        fn sum_of(items: Vec<Value>, combine: Option<CombineOp>) -> Result<Value> {
+            let context = ctx(vec![("items", Value::Array(items))]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine,
+            };
+            execute_operation(&op, &context, 0)
+        }
+
+        fn obj(pairs: Vec<(&str, Value)>) -> Value {
+            Value::Object(pairs.into_iter().map(|(k, v)| (k.to_string(), v)).collect())
+        }
+
+        #[test]
+        fn test_foreach_combine_add() {
+            let result = sum_of(
+                vec![Value::Int(10), Value::Int(20), Value::Int(30)],
+                Some(CombineOp::Add),
+            )
+            .unwrap();
+            assert_eq!(result, Value::Int(60));
+        }
+
+        #[test]
+        fn test_foreach_without_combine_returns_array() {
+            let result = sum_of(vec![Value::Int(1), Value::Int(2)], None).unwrap();
+            assert_eq!(result, Value::Array(vec![Value::Int(1), Value::Int(2)]));
+        }
+
+        #[test]
+        fn test_foreach_body_is_an_operation() {
+            // FOREACH items as x: MULTIPLY(x, 2), combine ADD => 2+4+6
+            let context = ctx(vec![(
+                "items",
+                Value::Array(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
+            )]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: ActionValue::Operation(Box::new(ActionOperation::Multiply {
+                    values: vec![var("x"), lit(2i64)],
+                })),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            assert_eq!(execute_operation(&op, &context, 0).unwrap(), Value::Int(12));
+        }
+
+        #[test]
+        fn test_foreach_filter_skips_elements() {
+            // Count the elements above 2, which is the kostendelersnorm shape:
+            // a threshold that stays in the law rather than in the data source.
+            let context = ctx(vec![(
+                "items",
+                Value::Array(vec![
+                    Value::Int(1),
+                    Value::Int(2),
+                    Value::Int(3),
+                    Value::Int(4),
+                ]),
+            )]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: lit(1i64),
+                filter: Some(ActionValue::Operation(Box::new(
+                    ActionOperation::GreaterThan {
+                        subject: var("x"),
+                        value: lit(2i64),
+                    },
+                ))),
+                combine: Some(CombineOp::Add),
+            };
+            assert_eq!(execute_operation(&op, &context, 0).unwrap(), Value::Int(2));
+        }
+
+        #[test]
+        fn test_foreach_filter_rejecting_everything_is_the_empty_identity() {
+            let context = ctx(vec![("items", Value::Array(vec![Value::Int(1)]))]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: Some(lit(false)),
+                combine: Some(CombineOp::Add),
+            };
+            assert_eq!(execute_operation(&op, &context, 0).unwrap(), Value::Int(0));
+        }
+
+        #[test]
+        fn test_foreach_dot_notation_on_objects() {
+            let context = ctx(vec![(
+                "kinderen",
+                Value::Array(vec![
+                    obj(vec![("bedrag", Value::Int(703))]),
+                    obj(vec![("bedrag", Value::Int(936))]),
+                ]),
+            )]);
+            let op = ActionOperation::Foreach {
+                collection: var("kinderen"),
+                as_name: "kind".to_string(),
+                body: var("kind.bedrag"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            assert_eq!(
+                execute_operation(&op, &context, 0).unwrap(),
+                Value::Int(1639)
+            );
+        }
+
+        #[test]
+        fn test_foreach_flattens_object_fields_into_scope() {
+            // `$bedrag` resolves without the `$kind.` prefix, which is how
+            // existing law YAML refers to element properties.
+            let context = ctx(vec![(
+                "kinderen",
+                Value::Array(vec![obj(vec![("bedrag", Value::Int(42))])]),
+            )]);
+            let op = ActionOperation::Foreach {
+                collection: var("kinderen"),
+                as_name: "kind".to_string(),
+                body: var("bedrag"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            assert_eq!(execute_operation(&op, &context, 0).unwrap(), Value::Int(42));
+        }
+
+        #[test]
+        fn test_foreach_nested_inner_collection_sees_outer_binding() {
+            // The outer binding is reachable from the inner `collection`, and
+            // only from there. That is the whole scope contract of RFC-016.
+            let context = ctx(vec![(
+                "huishoudens",
+                Value::Array(vec![
+                    obj(vec![(
+                        "leden",
+                        Value::Array(vec![Value::Int(100), Value::Int(200)]),
+                    )]),
+                    obj(vec![("leden", Value::Array(vec![Value::Int(50)]))]),
+                ]),
+            )]);
+            let inner = ActionOperation::Foreach {
+                collection: var("huishouden.leden"),
+                as_name: "lid".to_string(),
+                body: var("lid"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            let outer = ActionOperation::Foreach {
+                collection: var("huishoudens"),
+                as_name: "huishouden".to_string(),
+                body: ActionValue::Operation(Box::new(inner)),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            assert_eq!(
+                execute_operation(&outer, &context, 0).unwrap(),
+                Value::Int(350)
+            );
+        }
+
+        #[test]
+        fn test_foreach_inner_scope_does_not_see_outer_binding() {
+            // `$huishouden` is bound in the parent, and a child context starts
+            // with an empty local scope, so the inner body cannot resolve it.
+            let context = ctx(vec![(
+                "huishoudens",
+                Value::Array(vec![obj(vec![(
+                    "leden",
+                    Value::Array(vec![Value::Int(1)]),
+                )])]),
+            )]);
+            let inner = ActionOperation::Foreach {
+                collection: var("huishouden.leden"),
+                as_name: "lid".to_string(),
+                body: var("huishouden"),
+                filter: None,
+                combine: None,
+            };
+            let outer = ActionOperation::Foreach {
+                collection: var("huishoudens"),
+                as_name: "huishouden".to_string(),
+                body: ActionValue::Operation(Box::new(inner)),
+                filter: None,
+                combine: None,
+            };
+            assert!(matches!(
+                execute_operation(&outer, &context, 0),
+                Err(EngineError::VariableNotFound(_))
+            ));
+        }
+
+        #[test]
+        fn test_foreach_empty_collection_per_combine() {
+            let empty = || Vec::new();
+            assert_eq!(
+                sum_of(empty(), Some(CombineOp::Add)).unwrap(),
+                Value::Int(0)
+            );
+            assert_eq!(
+                sum_of(empty(), Some(CombineOp::Or)).unwrap(),
+                Value::Bool(false)
+            );
+            // Vacuous truth: AND over nothing is true.
+            assert_eq!(
+                sum_of(empty(), Some(CombineOp::And)).unwrap(),
+                Value::Bool(true)
+            );
+            // There is no lowest value of nothing.
+            assert_eq!(sum_of(empty(), Some(CombineOp::Min)).unwrap(), Value::Null);
+            assert_eq!(sum_of(empty(), Some(CombineOp::Max)).unwrap(), Value::Null);
+            assert_eq!(sum_of(empty(), None).unwrap(), Value::Array(vec![]));
+        }
+
+        #[test]
+        fn test_foreach_null_collection_is_empty() {
+            let context = ctx(vec![("items", Value::Null)]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            assert_eq!(execute_operation(&op, &context, 0).unwrap(), Value::Int(0));
+        }
+
+        #[test]
+        fn test_foreach_non_array_iterates_once() {
+            let context = ctx(vec![("item", Value::Int(7))]);
+            let op = ActionOperation::Foreach {
+                collection: var("item"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            assert_eq!(execute_operation(&op, &context, 0).unwrap(), Value::Int(7));
+        }
+
+        #[test]
+        fn test_foreach_combine_min_and_max() {
+            let items = vec![Value::Int(30), Value::Int(10), Value::Int(20)];
+            assert_eq!(
+                sum_of(items.clone(), Some(CombineOp::Min)).unwrap(),
+                Value::Int(10)
+            );
+            assert_eq!(sum_of(items, Some(CombineOp::Max)).unwrap(), Value::Int(30));
+        }
+
+        #[test]
+        fn test_foreach_min_keeps_decimals_decimal() {
+            let items = vec![Value::Decimal(dec!(1.5)), Value::Int(3)];
+            assert_eq!(
+                sum_of(items, Some(CombineOp::Min)).unwrap(),
+                Value::Decimal(dec!(1.5))
+            );
+        }
+
+        #[test]
+        fn test_foreach_combine_add_concatenates_strings() {
+            // RFC-007 polymorphism reaches combine through the shared add_values.
+            let items = vec![Value::String("a".into()), Value::String("b".into())];
+            assert_eq!(
+                sum_of(items, Some(CombineOp::Add)).unwrap(),
+                Value::String("ab".to_string())
+            );
+        }
+
+        #[test]
+        fn test_foreach_combine_and_or_short_circuit_past_unknown() {
+            // A definitive verdict beats an unknown, matching AND/OR themselves
+            // (RFC-036).
+            let unknown = unknown_fact("verzekerd");
+            assert_eq!(
+                sum_of(
+                    vec![unknown.clone(), Value::Bool(true)],
+                    Some(CombineOp::Or)
+                )
+                .unwrap(),
+                Value::Bool(true)
+            );
+            assert_eq!(
+                sum_of(
+                    vec![unknown.clone(), Value::Bool(false)],
+                    Some(CombineOp::And)
+                )
+                .unwrap(),
+                Value::Bool(false)
+            );
+            // With no definitive verdict, the result is that unknown.
+            let or = sum_of(
+                vec![unknown.clone(), Value::Bool(false)],
+                Some(CombineOp::Or),
+            )
+            .unwrap();
+            assert_eq!(or.missing_facts(), unknown.missing_facts());
+            let and = sum_of(
+                vec![unknown.clone(), Value::Bool(true)],
+                Some(CombineOp::And),
+            )
+            .unwrap();
+            assert_eq!(and.missing_facts(), unknown.missing_facts());
+        }
+
+        #[test]
+        fn test_foreach_combine_and_or_reject_an_absent_verdict() {
+            // An absence is not a verdict: the body has to test for it first.
+            for combine in [CombineOp::Or, CombineOp::And] {
+                let err = sum_of(vec![Value::Null, Value::Bool(true)], Some(combine)).unwrap_err();
+                assert!(
+                    matches!(&err, EngineError::AbsentOperand { operation } if operation.starts_with("FOREACH combine")),
+                    "got {err:?}"
+                );
+            }
+        }
+
+        #[test]
+        fn test_foreach_combine_add_is_unknown_as_soon_as_one_element_is() {
+            // Not "skip the unknown and sum the rest": that reports a confident
+            // total that is short by an unknown amount. The result names what
+            // is missing, and names each fact once.
+            let huur = unknown_fact("huur");
+            let sum = sum_of(vec![Value::Int(5), huur.clone()], Some(CombineOp::Add)).unwrap();
+            assert_eq!(sum.missing_facts(), huur.missing_facts());
+            let both = sum_of(
+                vec![huur.clone(), unknown_fact("servicekosten"), huur.clone()],
+                Some(CombineOp::Add),
+            )
+            .unwrap();
+            let names: Vec<&str> = both
+                .missing_facts()
+                .iter()
+                .map(|m| m.name.as_str())
+                .collect();
+            assert_eq!(names, vec!["huur", "servicekosten"]);
+            // Nothing is missing from an empty collection, so it stays the
+            // additive identity.
+            assert_eq!(sum_of(vec![], Some(CombineOp::Add)).unwrap(), Value::Int(0));
+        }
+
+        #[test]
+        fn test_foreach_combine_add_min_max_reject_an_absent_element() {
+            // A null element is an absence, not an amount (RFC-036): summing it
+            // or ranking it is an error the law has to resolve (an IF on
+            // `EQUALS … null` in the body), never a silent skip or a null total.
+            for combine in [CombineOp::Add, CombineOp::Min, CombineOp::Max] {
+                let err = sum_of(vec![Value::Int(5), Value::Null], Some(combine)).unwrap_err();
+                assert!(
+                    matches!(&err, EngineError::AbsentOperand { operation } if operation.starts_with("FOREACH combine")),
+                    "got {err:?}"
+                );
+            }
+            // Without a combine the array is a value and may hold the absence.
+            assert_eq!(
+                sum_of(vec![Value::Int(5), Value::Null], None).unwrap(),
+                Value::Array(vec![Value::Int(5), Value::Null])
+            );
+        }
+
+        #[test]
+        fn test_foreach_combine_min_max_propagate_an_unknown_element() {
+            let huur = unknown_fact("huur");
+            for combine in [CombineOp::Min, CombineOp::Max] {
+                let result = sum_of(vec![Value::Int(5), huur.clone()], Some(combine)).unwrap();
+                assert_eq!(result.missing_facts(), huur.missing_facts());
+            }
+            // Unknown elements stay elements when there is no combine.
+            let listed = sum_of(vec![Value::Int(5), huur.clone()], None).unwrap();
+            assert_eq!(listed, Value::Array(vec![Value::Int(5), huur]));
+        }
+
+        #[test]
+        fn test_foreach_unknown_collection_is_unknown() {
+            // A collection nobody has yet cannot be iterated; a null collection
+            // (the register says there are no members) iterates nothing.
+            let huishoudens = unknown_fact("huishoudens");
+            let context = ctx(vec![("items", huishoudens.clone())]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            let result = execute_operation(&op, &context, 0).unwrap();
+            assert_eq!(result.missing_facts(), huishoudens.missing_facts());
+        }
+
+        #[test]
+        fn test_foreach_untranslatable_in_collection_taints() {
+            let taint = Value::Untranslatable {
+                article: "22a".to_string(),
+                construct: "kostendelersnorm".to_string(),
+            };
+            let context = ctx(vec![("items", taint.clone())]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            assert_eq!(execute_operation(&op, &context, 0).unwrap(), taint);
+        }
+
+        #[test]
+        fn test_foreach_untranslatable_in_body_taints_whole_result() {
+            let taint = Value::Untranslatable {
+                article: "7".to_string(),
+                construct: "naar redelijkheid".to_string(),
+            };
+            let context = ctx(vec![
+                ("items", Value::Array(vec![Value::Int(1), Value::Int(2)])),
+                ("onbekend", taint.clone()),
+            ]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("onbekend"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            assert_eq!(execute_operation(&op, &context, 0).unwrap(), taint);
+        }
+
+        #[test]
+        fn test_foreach_untranslatable_filter_taints() {
+            let taint = Value::Untranslatable {
+                article: "1".to_string(),
+                construct: "in redelijkheid".to_string(),
+            };
+            let context = ctx(vec![
+                ("items", Value::Array(vec![Value::Int(1)])),
+                ("onbekend", taint.clone()),
+            ]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: Some(var("onbekend")),
+                combine: Some(CombineOp::Add),
+            };
+            assert_eq!(execute_operation(&op, &context, 0).unwrap(), taint);
+        }
+
+        #[test]
+        fn test_foreach_unknown_filter_is_unknown_not_skipped() {
+            // Excluding an element the engine cannot judge would report a
+            // confident wrong total. The element is an unknown element instead,
+            // and the sum is unknown for the facts the filter missed (RFC-036).
+            let onbekend = unknown_fact("verzekerd");
+            let context = ctx(vec![
+                ("items", Value::Array(vec![Value::Int(1), Value::Int(2)])),
+                ("onbekend", onbekend.clone()),
+            ]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: Some(var("onbekend")),
+                combine: Some(CombineOp::Add),
+            };
+            let result = execute_operation(&op, &context, 0).unwrap();
+            assert_eq!(result.missing_facts(), onbekend.missing_facts());
+        }
+
+        #[test]
+        fn test_foreach_unknown_filter_loses_to_a_definite_true_under_or() {
+            // Kleene through the filter too: `OR` over [unknown-element, true]
+            // is true whatever the unknown element would have contributed.
+            let context = ctx(vec![(
+                "items",
+                Value::Array(vec![
+                    obj(vec![
+                        ("keur", unknown_fact("keur")),
+                        ("ja", Value::Bool(true)),
+                    ]),
+                    obj(vec![("keur", Value::Bool(true)), ("ja", Value::Bool(true))]),
+                ]),
+            )]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x.ja"),
+                filter: Some(var("x.keur")),
+                combine: Some(CombineOp::Or),
+            };
+            assert_eq!(
+                execute_operation(&op, &context, 0).unwrap(),
+                Value::Bool(true)
+            );
+        }
+
+        #[test]
+        fn test_foreach_absent_filter_verdict_is_an_error() {
+            // A null filter is not a verdict about the element: the law has to
+            // test for the absence before it selects on it (RFC-036).
+            let context = ctx(vec![
+                ("items", Value::Array(vec![Value::Int(1)])),
+                ("geen", Value::Null),
+            ]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: Some(var("geen")),
+                combine: Some(CombineOp::Add),
+            };
+            let err = execute_operation(&op, &context, 0).unwrap_err();
+            assert!(
+                matches!(&err, EngineError::AbsentOperand { operation } if operation == "FOREACH filter"),
+                "got {err:?}"
+            );
+        }
+
+        #[test]
+        fn test_foreach_error_in_body_aborts_without_partial_result() {
+            // A sum over some of the children is not a legal determination.
+            let context = ctx(vec![("items", Value::Array(vec![Value::Int(1)]))]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("bestaat_niet"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            assert!(matches!(
+                execute_operation(&op, &context, 0),
+                Err(EngineError::VariableNotFound(_))
+            ));
+        }
+
+        #[test]
+        fn test_foreach_binding_shadows_outer_variable() {
+            let context = ctx(vec![
+                ("items", Value::Array(vec![Value::Int(9)])),
+                ("x", Value::Int(1)),
+            ]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            assert_eq!(execute_operation(&op, &context, 0).unwrap(), Value::Int(9));
+        }
+
+        #[test]
+        fn test_foreach_rejects_invalid_binding_name() {
+            for bad in ["", "X", "1kind", "kind-naam", "kind naam"] {
+                let context = ctx(vec![("items", Value::Array(vec![Value::Int(1)]))]);
+                let op = ActionOperation::Foreach {
+                    collection: var("items"),
+                    as_name: bad.to_string(),
+                    body: lit(1i64),
+                    filter: None,
+                    combine: None,
+                };
+                assert!(
+                    matches!(
+                        execute_operation(&op, &context, 0),
+                        Err(EngineError::InvalidOperation(_))
+                    ),
+                    "expected {bad:?} to be rejected as a binding name"
+                );
+            }
+        }
+
+        #[test]
+        fn test_foreach_accepts_valid_binding_names() {
+            for good in ["x", "kind", "_kind", "kind_2", "medebewoner"] {
+                let context = ctx(vec![("items", Value::Array(vec![Value::Int(1)]))]);
+                let op = ActionOperation::Foreach {
+                    collection: var("items"),
+                    as_name: good.to_string(),
+                    body: lit(1i64),
+                    filter: None,
+                    combine: Some(CombineOp::Add),
+                };
+                assert_eq!(
+                    execute_operation(&op, &context, 0).unwrap(),
+                    Value::Int(1),
+                    "expected {good:?} to be accepted as a binding name"
+                );
+            }
+        }
+
+        #[test]
+        fn test_foreach_rejects_collection_over_max_array_size() {
+            let too_many: Vec<Value> = (0..=crate::config::MAX_ARRAY_SIZE as i64)
+                .map(Value::Int)
+                .collect();
+            assert!(matches!(
+                sum_of(too_many, Some(CombineOp::Add)),
+                Err(EngineError::InvalidOperation(_))
+            ));
+        }
+
+        #[test]
+        fn test_foreach_accepts_collection_at_max_array_size() {
+            // The limit is inclusive; one more is the error above.
+            let exactly = vec![Value::Int(1); crate::config::MAX_ARRAY_SIZE];
+            assert_eq!(
+                sum_of(exactly, Some(CombineOp::Add)).unwrap(),
+                Value::Int(crate::config::MAX_ARRAY_SIZE as i64)
+            );
+        }
+
+        #[test]
+        fn test_foreach_add_propagates_an_unknown_element() {
+            // A body that cannot produce a value yet makes the total unknown.
+            // This is the same rule RFC-016 states for an undecidable filter:
+            // the element is in the collection and its contribution is not
+            // known, so summing the rest would report a number that is short by
+            // an unknown amount.
+            let bijdrage = unknown_fact("bijdrage");
+            let result = sum_of(
+                vec![Value::Int(10), bijdrage.clone(), Value::Int(20)],
+                Some(CombineOp::Add),
+            )
+            .unwrap();
+            assert_eq!(result.missing_facts(), bijdrage.missing_facts());
+        }
+
+        #[test]
+        fn test_foreach_nested_min_over_empty_is_an_absence_the_sum_rejects() {
+            // An inner MIN/MAX over an empty collection is null: there is no
+            // highest value of nothing, and that is an absence, not an unknown.
+            // An outer ADD may neither leave it out (the total would look
+            // complete while one member was never counted) nor count it as an
+            // amount: the law has to say what an empty household contributes
+            // (RFC-036), so the sum is an error until it does.
+            let context = ctx(vec![(
+                "huishoudens",
+                Value::Array(vec![
+                    obj(vec![("leden", Value::Array(vec![Value::Int(100)]))]),
+                    obj(vec![("leden", Value::Array(vec![]))]),
+                ]),
+            )]);
+            let inner = ActionOperation::Foreach {
+                collection: var("huishouden.leden"),
+                as_name: "lid".to_string(),
+                body: var("lid"),
+                filter: None,
+                combine: Some(CombineOp::Max),
+            };
+            let outer = ActionOperation::Foreach {
+                collection: var("huishoudens"),
+                as_name: "huishouden".to_string(),
+                body: ActionValue::Operation(Box::new(inner)),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            let err = execute_operation(&outer, &context, 0).unwrap_err();
+            assert!(
+                matches!(&err, EngineError::AbsentOperand { operation } if operation == "FOREACH combine ADD"),
+                "got {err:?}"
+            );
+        }
+
+        #[test]
+        fn test_foreach_element_field_cannot_overwrite_the_binding() {
+            // `as: kind` over `{kind: 7, bedrag: 5}`: the binding must stay the
+            // element, or `$kind.bedrag` becomes a type error on an integer.
+            let context = ctx(vec![(
+                "kinderen",
+                Value::Array(vec![obj(vec![
+                    ("kind", Value::Int(7)),
+                    ("bedrag", Value::Int(5)),
+                ])]),
+            )]);
+            let op = ActionOperation::Foreach {
+                collection: var("kinderen"),
+                as_name: "kind".to_string(),
+                body: var("kind.bedrag"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            assert_eq!(execute_operation(&op, &context, 0).unwrap(), Value::Int(5));
+        }
+
+        #[test]
+        fn test_foreach_element_field_named_referencedate_stays_unreachable_bare() {
+            // `referencedate` resolves ahead of local scope, so the flattened
+            // form reads the calculation date however the element is shaped.
+            // Worth pinning: a law author reading `$referencedate` inside a
+            // FOREACH gets the peildatum, never the element's own field, and
+            // dot notation is the only way at the latter.
+            let context = ctx(vec![(
+                "items",
+                Value::Array(vec![obj(vec![(
+                    "referencedate",
+                    Value::String("1990-01-01".to_string()),
+                )])]),
+            )]);
+            let bare = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("referencedate.iso"),
+                filter: None,
+                combine: None,
+            };
+            // The context's own reference date, not the element's field.
+            assert_eq!(
+                execute_operation(&bare, &context, 0).unwrap(),
+                Value::Array(vec![Value::String("2025-06-15".to_string())])
+            );
+
+            let dotted = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x.referencedate"),
+                filter: None,
+                combine: None,
+            };
+            assert_eq!(
+                execute_operation(&dotted, &context, 0).unwrap(),
+                Value::Array(vec![Value::String("1990-01-01".to_string())])
+            );
+        }
+
+        #[test]
+        fn test_foreach_untranslatable_taints_the_array_too() {
+            // Without `combine` there is no aggregation to catch the taint on
+            // the way out, so FOREACH has to stop at the element itself. An
+            // array holding an untranslatable would read downstream as a list
+            // of real values.
+            let taint = Value::Untranslatable {
+                article: "1".to_string(),
+                construct: "naar omstandigheden".to_string(),
+            };
+            let context = ctx(vec![
+                ("items", Value::Array(vec![Value::Int(1)])),
+                ("onbekend", taint.clone()),
+            ]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("onbekend"),
+                filter: None,
+                combine: None,
+            };
+            assert_eq!(execute_operation(&op, &context, 0).unwrap(), taint);
+        }
+
+        /// Run an operation with tracing on, returning its trace node.
+        fn traced_operation(op: &ActionOperation, context: &RuleContext) -> crate::trace::PathNode {
+            let trace = std::rc::Rc::new(std::cell::RefCell::new(
+                crate::trace::TraceBuilder::new_untimed(),
+            ));
+            let mut traced = context.clone();
+            traced.set_trace(std::rc::Rc::clone(&trace));
+            trace.borrow_mut().push("root", PathNodeType::Action);
+            execute_operation(op, &traced, 0).expect("foreach should succeed");
+            let root = trace.borrow_mut().pop().expect("root node should pop");
+            root.children
+                .into_iter()
+                .next()
+                .expect("FOREACH should record a node")
+        }
+
+        #[test]
+        fn test_foreach_traces_every_iteration_and_counts_the_skipped() {
+            // RFC-013: a reduction that shows only its total does not explain
+            // how it was reached. The skip count in particular is the only
+            // place the filter's effect is visible in the trace.
+            let context = ctx(vec![(
+                "items",
+                Value::Array(vec![Value::Int(1), Value::Int(5), Value::Int(9)]),
+            )]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: Some(ActionValue::Operation(Box::new(
+                    ActionOperation::GreaterThan {
+                        subject: var("x"),
+                        value: lit(4i64),
+                    },
+                ))),
+                combine: Some(CombineOp::Add),
+            };
+
+            let node = traced_operation(&op, &context);
+            assert_eq!(node.name, "FOREACH");
+            assert_eq!(
+                node.message.as_deref(),
+                Some("FOREACH over 2 element(s), 1 skipped by filter = 14")
+            );
+
+            // One node per element, skipped ones included, each naming its index.
+            let items: Vec<&crate::trace::PathNode> = node
+                .children
+                .iter()
+                .filter(|c| c.name.starts_with("ITEM_"))
+                .collect();
+            assert_eq!(items.len(), 3);
+            assert_eq!(items[0].name, "ITEM_0");
+            assert_eq!(
+                items[0].message.as_deref(),
+                Some("ITEM 0: skipped by filter")
+            );
+            assert_eq!(items[2].name, "ITEM_2");
+            assert!(items[2]
+                .message
+                .as_deref()
+                .is_some_and(|m| m.starts_with("ITEM 2: ")));
+        }
+
+        #[test]
+        fn test_foreach_trace_message_without_a_filter_omits_the_skip_count() {
+            let context = ctx(vec![("items", Value::Array(vec![Value::Int(1)]))]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            let node = traced_operation(&op, &context);
+            assert_eq!(
+                node.message.as_deref(),
+                Some("FOREACH over 1 element(s) = 1")
+            );
+        }
+
+        #[test]
+        fn test_if_keeps_its_own_trace_message() {
+            // The dispatcher normally overwrites a handler's trace message with
+            // "Compute OP(...) = value". IF and FOREACH are the exceptions: what
+            // they write from inside says which case matched, or how many
+            // elements were seen, and the value alone does not.
+            //
+            // This lives in the FOREACH module because adding the FOREACH arm is
+            // what turned that special case from an `if` into a `match`, and a
+            // match arm is the kind of thing a refactor drops silently.
+            let context = ctx(vec![("bedrag", Value::Int(50))]);
+
+            let matched = ActionOperation::If {
+                cases: vec![Case {
+                    when: ActionValue::Operation(Box::new(ActionOperation::GreaterThan {
+                        subject: var("bedrag"),
+                        value: lit(10i64),
+                    })),
+                    then: lit(1i64),
+                }],
+                default: Some(lit(0i64)),
+            };
+            assert_eq!(
+                traced_operation(&matched, &context).message.as_deref(),
+                Some("IF(case 0 matched) = 1")
+            );
+
+            let defaulted = ActionOperation::If {
+                cases: vec![Case {
+                    when: lit(false),
+                    then: lit(1i64),
+                }],
+                default: Some(lit(0i64)),
+            };
+            assert_eq!(
+                traced_operation(&defaulted, &context).message.as_deref(),
+                Some("IF(took default) = 0")
+            );
+        }
+
+        #[test]
+        fn test_foreach_body_and_filter_count_against_the_depth_limit() {
+            // The body and filter are evaluated one level deeper than the
+            // FOREACH itself. Without that increment a deeply nested law would
+            // recurse past MAX_OPERATION_DEPTH instead of being rejected.
+            let context = ctx(vec![("items", Value::Array(vec![Value::Int(1)]))]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+
+            // At the ceiling the body's own evaluation is over it.
+            assert!(matches!(
+                execute_operation(&op, &context, MAX_OPERATION_DEPTH),
+                Err(EngineError::MaxDepthExceeded(_))
+            ));
+
+            // The filter is evaluated one level deeper too, and it runs
+            // before the body. A literal body keeps the body path within the
+            // limit, so only the filter's own increment can trip this.
+            let with_filter = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: lit(1i64),
+                filter: Some(ActionValue::Operation(Box::new(ActionOperation::Not {
+                    value: lit(false),
+                }))),
+                combine: Some(CombineOp::Add),
+            };
+            // One below the ceiling is the depth that pins the filter's own
+            // increment: the FOREACH itself still fits, and only because the
+            // filter is evaluated a level deeper does its nested operation run
+            // over the limit.
+            assert!(matches!(
+                execute_operation(&with_filter, &context, MAX_OPERATION_DEPTH - 1),
+                Err(EngineError::MaxDepthExceeded(_))
+            ));
+            // A step further down and both fit, so the rejection above is the
+            // depth limit and not the shape of the operation.
+            assert_eq!(
+                execute_operation(&with_filter, &context, MAX_OPERATION_DEPTH - 2).unwrap(),
+                Value::Int(1)
+            );
+        }
+
+        #[test]
+        fn test_foreach_needs_a_scoped_resolver() {
+            // A resolver without child scopes says so, rather than failing later
+            // with a confusing "variable not found" on the loop variable.
+            let resolver = TestResolver::new().with_var("items", Value::Array(vec![Value::Int(1)]));
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            let err = execute_operation(&op, &resolver, 0).unwrap_err();
+            assert!(
+                matches!(&err, EngineError::InvalidOperation(m) if m.contains("child scopes")),
+                "got {err:?}"
+            );
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // Null Checking Tests (IS_NULL / NOT_NULL)
     // -------------------------------------------------------------------------
 
@@ -3323,6 +5122,85 @@ mod tests {
         }
 
         #[test]
+        fn test_ordered_comparison_with_an_absent_operand_is_an_error() {
+            // "More than nothing" is not a question the law asked: ordering an
+            // absence is an error until the law tests for it (RFC-036).
+            let resolver = TestResolver::new().with_var("geen", Value::Null);
+            for (op, name) in [
+                (
+                    ActionOperation::GreaterThan {
+                        subject: var("geen"),
+                        value: lit(10i64),
+                    },
+                    "GREATER_THAN",
+                ),
+                (
+                    ActionOperation::LessThan {
+                        subject: lit(10i64),
+                        value: var("geen"),
+                    },
+                    "LESS_THAN",
+                ),
+                (
+                    ActionOperation::GreaterThanOrEqual {
+                        subject: var("geen"),
+                        value: lit("2025-01-01"),
+                    },
+                    "GREATER_THAN_OR_EQUAL",
+                ),
+                (
+                    ActionOperation::LessThanOrEqual {
+                        subject: var("geen"),
+                        value: var("geen"),
+                    },
+                    "LESS_THAN_OR_EQUAL",
+                ),
+            ] {
+                let err = execute_operation(&op, &resolver, 0).unwrap_err();
+                assert!(
+                    matches!(&err, EngineError::AbsentOperand { operation } if operation == name),
+                    "{name}: got {err:?}"
+                );
+            }
+        }
+
+        #[test]
+        fn test_ordered_comparison_with_an_unknown_operand_is_unknown() {
+            // A fact nobody has yet cannot be ordered; the result carries the
+            // facts of both unknown operands, in order, once each (RFC-036).
+            let resolver = TestResolver::new()
+                .with_var("huur", unknown_fact("huur"))
+                .with_var("grens", unknown_fact("grens"));
+            let gt = ActionOperation::GreaterThan {
+                subject: var("huur"),
+                value: lit(10i64),
+            };
+            assert_eq!(
+                missing_names(&execute_operation(&gt, &resolver, 0).unwrap()),
+                vec!["huur"]
+            );
+            let lt = ActionOperation::LessThan {
+                subject: var("grens"),
+                value: var("huur"),
+            };
+            assert_eq!(
+                missing_names(&execute_operation(&lt, &resolver, 0).unwrap()),
+                vec!["grens", "huur"]
+            );
+            // Untranslatable beats unknown.
+            let tainted = Value::Untranslatable {
+                article: "3".to_string(),
+                construct: "redelijk".to_string(),
+            };
+            let resolver = resolver.with_var("vaag", tainted.clone());
+            let mixed = ActionOperation::GreaterThan {
+                subject: var("huur"),
+                value: var("vaag"),
+            };
+            assert_eq!(execute_operation(&mixed, &resolver, 0).unwrap(), tainted);
+        }
+
+        #[test]
         fn test_non_date_string_errors() {
             let resolver = TestResolver::new();
             let op = ActionOperation::GreaterThan {
@@ -3853,6 +5731,367 @@ mod tests {
     }
 
     // -------------------------------------------------------------------------
+    // DATE_PART Tests (the inverse of DATE; the unit is a component, not a count)
+    // -------------------------------------------------------------------------
+
+    mod date_part {
+        use super::*;
+
+        fn date_part(date: ActionValue, part: &str) -> ActionOperation {
+            ActionOperation::DatePart {
+                date,
+                part: part.to_string(),
+            }
+        }
+
+        #[test]
+        fn test_part_year() {
+            let resolver = TestResolver::new();
+            let op = date_part(lit("2025-03-14"), "year");
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Int(2025)
+            );
+        }
+
+        #[test]
+        fn test_part_month() {
+            let resolver = TestResolver::new();
+            let op = date_part(lit("2025-03-14"), "month");
+            assert_eq!(execute_operation(&op, &resolver, 0).unwrap(), Value::Int(3));
+        }
+
+        #[test]
+        fn test_part_day() {
+            let resolver = TestResolver::new();
+            let op = date_part(lit("2025-03-14"), "day");
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Int(14)
+            );
+        }
+
+        #[test]
+        fn test_part_day_on_first_of_month() {
+            // Awir art. 49 asks whether a change fell *after* the first of the
+            // month, so day 1 has to come back as 1 and not as 0.
+            let resolver = TestResolver::new();
+            let op = date_part(lit("2025-03-01"), "day");
+            assert_eq!(execute_operation(&op, &resolver, 0).unwrap(), Value::Int(1));
+        }
+
+        #[test]
+        fn test_part_of_leap_day() {
+            let resolver = TestResolver::new();
+            let op = date_part(lit("2024-02-29"), "day");
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Int(29)
+            );
+        }
+
+        #[test]
+        fn test_part_reads_referencedate_object() {
+            // `$referencedate` resolves to an object with an `iso` field; the
+            // shared date parser has to accept it here too.
+            let resolver = TestResolver::new().with_var("referencedate", date_obj("2025-07-04"));
+            let op = date_part(var("referencedate"), "year");
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Int(2025)
+            );
+        }
+
+        #[test]
+        fn test_part_of_nested_operation() {
+            // The canonical form nests inside `date:`, so a computed date has to
+            // work as the operand.
+            let resolver = TestResolver::new();
+            let op = date_part(
+                ActionValue::Operation(Box::new(ActionOperation::DateAdd {
+                    date: lit("2007-11-30"),
+                    years: Some(lit(18)),
+                    months: None,
+                    weeks: None,
+                    days: None,
+                })),
+                "year",
+            );
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Int(2025)
+            );
+        }
+
+        #[test]
+        fn test_plural_unit_from_date_diff_is_rejected_by_name() {
+            // The weak spot of the design: singular here, plural in DATE_DIFF.
+            // An author who copies the wrong one gets told which words are valid.
+            let resolver = TestResolver::new();
+            let op = date_part(lit("2025-03-14"), "months");
+            let err = execute_operation(&op, &resolver, 0).unwrap_err();
+            let msg = err.to_string();
+            assert!(
+                msg.contains("DATE_PART"),
+                "message names the operation: {msg}"
+            );
+            assert!(msg.contains("'months'"), "message quotes the input: {msg}");
+            assert!(
+                msg.contains("'month'"),
+                "message lists the valid words: {msg}"
+            );
+        }
+
+        #[test]
+        fn test_weekday_is_not_a_date_part() {
+            // A weekday is no part of the year-month-day decomposition, so it is
+            // out of scope here and stays DAY_OF_WEEK.
+            let resolver = TestResolver::new();
+            let op = date_part(lit("2025-03-14"), "weekday");
+            assert!(execute_operation(&op, &resolver, 0).is_err());
+        }
+
+        #[test]
+        fn test_non_canonical_date_rejected() {
+            let resolver = TestResolver::new();
+            let op = date_part(lit("2025-3-14"), "day");
+            assert!(execute_operation(&op, &resolver, 0).is_err());
+        }
+
+        #[test]
+        fn test_tainted_date_propagates() {
+            // RFC-012: an Untranslatable date flows through as a value.
+            let tainted = Value::Untranslatable {
+                article: "1".to_string(),
+                construct: "test".to_string(),
+            };
+            let resolver = TestResolver::new().with_var("tainted", tainted.clone());
+            let op = date_part(var("tainted"), "year");
+            assert_eq!(execute_operation(&op, &resolver, 0).unwrap(), tainted);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // START_OF Tests (RFC-024: truncation is a named operation, never implicit)
+    // -------------------------------------------------------------------------
+
+    mod start_of {
+        use super::*;
+
+        fn start_of(date: ActionValue, unit: &str) -> ActionOperation {
+            ActionOperation::StartOf {
+                date,
+                unit: unit.to_string(),
+            }
+        }
+
+        fn nested(op: ActionOperation) -> ActionValue {
+            ActionValue::Operation(Box::new(op))
+        }
+
+        /// The canonical "first day of the month following" form: truncate first,
+        /// add afterwards.
+        fn first_of_next_month(date: ActionValue) -> ActionOperation {
+            ActionOperation::DateAdd {
+                date: nested(start_of(date, "month")),
+                years: None,
+                months: Some(lit(1)),
+                weeks: None,
+                days: None,
+            }
+        }
+
+        #[test]
+        fn test_start_of_month() {
+            let resolver = TestResolver::new();
+            let op = start_of(lit("2025-03-14"), "month");
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::String("2025-03-01".to_string())
+            );
+        }
+
+        #[test]
+        fn test_start_of_month_is_idempotent_on_the_first() {
+            let resolver = TestResolver::new();
+            let op = start_of(lit("2025-03-01"), "month");
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::String("2025-03-01".to_string())
+            );
+        }
+
+        #[test]
+        fn test_start_of_month_on_leap_day() {
+            let resolver = TestResolver::new();
+            let op = start_of(lit("2024-02-29"), "month");
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::String("2024-02-01".to_string())
+            );
+        }
+
+        #[test]
+        fn test_start_of_year() {
+            let resolver = TestResolver::new();
+            let op = start_of(lit("2025-12-31"), "year");
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::String("2025-01-01".to_string())
+            );
+        }
+
+        #[test]
+        fn test_start_of_year_is_idempotent_on_new_year() {
+            let resolver = TestResolver::new();
+            let op = start_of(lit("2025-01-01"), "year");
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::String("2025-01-01".to_string())
+            );
+        }
+
+        #[test]
+        fn test_start_of_returns_canonical_form() {
+            // Single-digit months and days come back zero-padded, so the result
+            // compares equal under EQUALS as well as under ordering (RFC-021).
+            let resolver = TestResolver::new();
+            let op = start_of(lit("2025-01-09"), "month");
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::String("2025-01-01".to_string())
+            );
+        }
+
+        #[test]
+        fn test_day_is_not_a_truncation_unit() {
+            // Truncating to a day is the identity; offering it would invite the
+            // reading that START_OF normalizes dates.
+            let resolver = TestResolver::new();
+            let op = start_of(lit("2025-03-14"), "day");
+            assert!(execute_operation(&op, &resolver, 0).is_err());
+        }
+
+        #[test]
+        fn test_plural_unit_from_date_diff_is_rejected_by_name() {
+            let resolver = TestResolver::new();
+            let op = start_of(lit("2025-03-14"), "months");
+            let err = execute_operation(&op, &resolver, 0).unwrap_err();
+            let msg = err.to_string();
+            assert!(
+                msg.contains("START_OF"),
+                "message names the operation: {msg}"
+            );
+            assert!(msg.contains("'months'"), "message quotes the input: {msg}");
+            assert!(
+                msg.contains("'month'"),
+                "message lists the valid words: {msg}"
+            );
+        }
+
+        #[test]
+        fn test_tainted_date_propagates() {
+            let tainted = Value::Untranslatable {
+                article: "1".to_string(),
+                construct: "test".to_string(),
+            };
+            let resolver = TestResolver::new().with_var("tainted", tainted.clone());
+            let op = start_of(var("tainted"), "month");
+            assert_eq!(execute_operation(&op, &resolver, 0).unwrap(), tainted);
+        }
+
+        // --- the canonical "first day of the month following" pattern ---
+
+        #[test]
+        fn test_first_of_next_month_midmonth() {
+            let resolver = TestResolver::new();
+            let op = first_of_next_month(lit("2025-03-15"));
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::String("2025-04-01".to_string())
+            );
+        }
+
+        #[test]
+        fn test_first_of_next_month_on_the_first() {
+            // Awir art. 49 default branch: a change on the first counts in that
+            // month itself, so this form is only reached from the other branch —
+            // and it still has to move exactly one month.
+            let resolver = TestResolver::new();
+            let op = first_of_next_month(lit("2025-03-01"));
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::String("2025-04-01".to_string())
+            );
+        }
+
+        #[test]
+        fn test_first_of_next_month_on_the_last_day() {
+            let resolver = TestResolver::new();
+            let op = first_of_next_month(lit("2025-03-31"));
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::String("2025-04-01".to_string())
+            );
+        }
+
+        #[test]
+        fn test_first_of_next_month_on_31_january_never_touches_the_clamp() {
+            // Truncate-then-add gives 1 February. Add-then-truncate would route
+            // through the DATE_ADD clamp (31 Jan + 1 month = 28 Feb) and land on
+            // the same day by coincidence; this test pins the order that does not
+            // depend on that coincidence.
+            let resolver = TestResolver::new();
+            let op = first_of_next_month(lit("2025-01-31"));
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::String("2025-02-01".to_string())
+            );
+        }
+
+        #[test]
+        fn test_first_of_next_month_crosses_the_year() {
+            let resolver = TestResolver::new();
+            let op = first_of_next_month(lit("2025-12-17"));
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::String("2026-01-01".to_string())
+            );
+        }
+
+        #[test]
+        fn test_premieplicht_from_the_month_after_turning_eighteen() {
+            // Zvw art. 16 lid 2 on a leap-day birth: 18 years later is 28 February
+            // 2026 (the DATE_ADD clamp, BW art. 1:2), truncated 1 February 2026,
+            // plus one month 1 March 2026.
+            let resolver = TestResolver::new();
+            let op = first_of_next_month(nested(ActionOperation::DateAdd {
+                date: lit("2008-02-29"),
+                years: Some(lit(18)),
+                months: None,
+                weeks: None,
+                days: None,
+            }));
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::String("2026-03-01".to_string())
+            );
+        }
+
+        #[test]
+        fn test_start_of_year_feeds_date_part() {
+            // START_OF is derivable from DATE_PART + DATE (RFC-024 rejects that
+            // as the way to write it); the two still have to agree.
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DatePart {
+                date: nested(start_of(lit("2025-12-31"), "year")),
+                part: "month".to_string(),
+            };
+            assert_eq!(execute_operation(&op, &resolver, 0).unwrap(), Value::Int(1));
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // Canonical date-form Tests (RFC-021: keep EQUALS and ordering consistent)
     // -------------------------------------------------------------------------
 
@@ -3916,6 +6155,661 @@ mod tests {
             assert_eq!(
                 execute_operation(&lt, &resolver, 0).unwrap(),
                 Value::Bool(false)
+            );
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Absent versus unknown (RFC-036)
+    // -------------------------------------------------------------------------
+
+    /// One test per row of the RFC-036 operation table, each with the Unknown
+    /// case and the Null case: an unknown operand propagates (as the union of
+    /// missing facts), an absent operand is a value that can be tested but not
+    /// calculated with or decided on.
+    mod absent_and_unknown {
+        use super::*;
+
+        fn resolver() -> TestResolver {
+            TestResolver::new()
+                .with_var("geen", Value::Null)
+                .with_var("huur", unknown_fact("huur"))
+                .with_var("partner", unknown_fact("partner_bsn"))
+                .with_var("vaag", taint())
+        }
+
+        fn taint() -> Value {
+            Value::Untranslatable {
+                article: "3".to_string(),
+                construct: "naar redelijkheid".to_string(),
+            }
+        }
+
+        fn absent(err: EngineError, op: &str) {
+            assert!(
+                matches!(&err, EngineError::AbsentOperand { operation } if operation == op),
+                "expected AbsentOperand for {op}, got {err:?}"
+            );
+        }
+
+        #[test]
+        fn equals_tests_absence_and_propagates_unknown() {
+            let r = resolver();
+            let run = |op: ActionOperation| execute_operation(&op, &r, 0);
+            // Null is a value here: this is the absence test the corpus uses.
+            assert_eq!(
+                run(ActionOperation::Equals {
+                    subject: var("geen"),
+                    value: lit(Value::Null),
+                })
+                .unwrap(),
+                Value::Bool(true)
+            );
+            assert_eq!(
+                run(ActionOperation::Equals {
+                    subject: var("geen"),
+                    value: lit(5i64),
+                })
+                .unwrap(),
+                Value::Bool(false)
+            );
+            assert_eq!(
+                run(ActionOperation::NotEquals {
+                    subject: var("geen"),
+                    value: lit(Value::Null),
+                })
+                .unwrap(),
+                Value::Bool(false)
+            );
+            // Whether an unknown equals anything, null included, is unknown.
+            let unknown = run(ActionOperation::Equals {
+                subject: var("huur"),
+                value: lit(Value::Null),
+            })
+            .unwrap();
+            assert_eq!(missing_names(&unknown), vec!["huur"]);
+            let both = run(ActionOperation::NotEquals {
+                subject: var("huur"),
+                value: var("partner"),
+            })
+            .unwrap();
+            assert_eq!(missing_names(&both), vec!["huur", "partner_bsn"]);
+            // Untranslatable beats unknown.
+            assert_eq!(
+                run(ActionOperation::Equals {
+                    subject: var("huur"),
+                    value: var("vaag"),
+                })
+                .unwrap(),
+                taint()
+            );
+        }
+
+        #[test]
+        fn arithmetic_propagates_unknown_and_rejects_absence() {
+            let r = resolver();
+            type Case = (&'static str, fn(Vec<ActionValue>) -> ActionOperation);
+            let cases: Vec<Case> = vec![
+                ("ADD", |values| ActionOperation::Add { values }),
+                ("SUBTRACT", |values| ActionOperation::Subtract { values }),
+                ("MULTIPLY", |values| ActionOperation::Multiply { values }),
+                ("DIVIDE", |values| ActionOperation::Divide { values }),
+                ("MIN/MAX", |values| ActionOperation::Min { values }),
+                ("MIN/MAX", |values| ActionOperation::Max { values }),
+            ];
+            for (name, build) in cases {
+                // Unknown: the union of the unknown operands' facts, once each.
+                let op = build(vec![lit(5i64), var("huur"), var("partner"), var("huur")]);
+                let result = execute_operation(&op, &r, 0).unwrap();
+                assert_eq!(
+                    missing_names(&result),
+                    vec!["huur", "partner_bsn"],
+                    "{name}"
+                );
+                // Untranslatable beats unknown.
+                let op = build(vec![var("huur"), var("vaag")]);
+                assert_eq!(execute_operation(&op, &r, 0).unwrap(), taint(), "{name}");
+                // Null: an absence is not an amount.
+                let op = build(vec![lit(5i64), var("geen")]);
+                absent(execute_operation(&op, &r, 0).unwrap_err(), name);
+            }
+        }
+
+        #[test]
+        fn rounding_propagates_unknown_and_rejects_absence() {
+            let r = resolver();
+            type Case = (&'static str, fn(ActionValue) -> ActionOperation);
+            let cases: Vec<Case> = vec![
+                ("ROUND", |value| ActionOperation::Round {
+                    value,
+                    precision: 0,
+                }),
+                ("CEIL", |value| ActionOperation::Ceil {
+                    value,
+                    precision: 0,
+                }),
+                ("FLOOR", |value| ActionOperation::Floor {
+                    value,
+                    precision: 0,
+                }),
+            ];
+            for (name, build) in cases {
+                let result = execute_operation(&build(var("huur")), &r, 0).unwrap();
+                assert_eq!(missing_names(&result), vec!["huur"], "{name}");
+                absent(
+                    execute_operation(&build(var("geen")), &r, 0).unwrap_err(),
+                    name,
+                );
+            }
+        }
+
+        #[test]
+        fn and_is_kleene_over_unknown_and_rejects_absence() {
+            let r = resolver();
+            let run = |conditions: Vec<ActionValue>| {
+                execute_operation(&ActionOperation::And { conditions }, &r, 0)
+            };
+            // A definite false decides, whatever the unknown turns out to be.
+            assert_eq!(
+                run(vec![var("huur"), lit(false)]).unwrap(),
+                Value::Bool(false)
+            );
+            // Otherwise unknown, for every unknown operand.
+            assert_eq!(
+                missing_names(&run(vec![lit(true), var("huur"), var("partner")]).unwrap()),
+                vec!["huur", "partner_bsn"]
+            );
+            // Untranslatable beats unknown, a false beats both.
+            assert_eq!(run(vec![var("huur"), var("vaag")]).unwrap(), taint());
+            assert_eq!(
+                run(vec![var("vaag"), var("huur"), lit(false)]).unwrap(),
+                Value::Bool(false)
+            );
+            // An absence is not a verdict.
+            absent(run(vec![lit(true), var("geen")]).unwrap_err(), "AND");
+            // The guard idiom: a false earlier stops the evaluation, so the law
+            // can test for absence before it orders the absent value.
+            let guarded = vec![
+                ActionValue::Operation(Box::new(ActionOperation::NotEquals {
+                    subject: var("geen"),
+                    value: lit(Value::Null),
+                })),
+                ActionValue::Operation(Box::new(ActionOperation::GreaterThan {
+                    subject: var("geen"),
+                    value: lit(500i64),
+                })),
+            ];
+            assert_eq!(run(guarded).unwrap(), Value::Bool(false));
+        }
+
+        #[test]
+        fn or_is_kleene_over_unknown_and_rejects_absence() {
+            let r = resolver();
+            let run = |conditions: Vec<ActionValue>| {
+                execute_operation(&ActionOperation::Or { conditions }, &r, 0)
+            };
+            assert_eq!(
+                run(vec![var("huur"), lit(true)]).unwrap(),
+                Value::Bool(true)
+            );
+            assert_eq!(
+                missing_names(&run(vec![lit(false), var("partner"), var("huur")]).unwrap()),
+                vec!["partner_bsn", "huur"]
+            );
+            assert_eq!(run(vec![var("huur"), var("vaag")]).unwrap(), taint());
+            assert_eq!(
+                run(vec![var("vaag"), var("huur"), lit(true)]).unwrap(),
+                Value::Bool(true)
+            );
+            absent(run(vec![lit(false), var("geen")]).unwrap_err(), "OR");
+            // The guard idiom for OR: a true earlier stops the evaluation.
+            let guarded = vec![
+                ActionValue::Operation(Box::new(ActionOperation::Equals {
+                    subject: var("geen"),
+                    value: lit(Value::Null),
+                })),
+                ActionValue::Operation(Box::new(ActionOperation::GreaterThan {
+                    subject: var("geen"),
+                    value: lit(500i64),
+                })),
+            ];
+            assert_eq!(run(guarded).unwrap(), Value::Bool(true));
+        }
+
+        #[test]
+        fn not_propagates_unknown_and_rejects_absence() {
+            let r = resolver();
+            let result =
+                execute_operation(&ActionOperation::Not { value: var("huur") }, &r, 0).unwrap();
+            assert_eq!(missing_names(&result), vec!["huur"]);
+            assert_eq!(
+                execute_operation(&ActionOperation::Not { value: var("vaag") }, &r, 0).unwrap(),
+                taint()
+            );
+            absent(
+                execute_operation(&ActionOperation::Not { value: var("geen") }, &r, 0).unwrap_err(),
+                "NOT",
+            );
+        }
+
+        #[test]
+        fn if_with_an_unknown_condition_is_unknown_and_evaluates_nothing_else() {
+            let r = resolver();
+            // The `then`, the later case and the default all reference a variable
+            // that does not exist: evaluating any of them would be an error, so
+            // the unknown result proves none of them was evaluated.
+            let op = ActionOperation::If {
+                cases: vec![
+                    Case {
+                        when: lit(false),
+                        then: var("bestaat_niet"),
+                    },
+                    Case {
+                        when: var("huur"),
+                        then: var("bestaat_niet"),
+                    },
+                    Case {
+                        when: var("bestaat_niet"),
+                        then: lit("later"),
+                    },
+                ],
+                default: Some(var("bestaat_niet")),
+            };
+            let result = execute_operation(&op, &r, 0).unwrap();
+            assert_eq!(missing_names(&result), vec!["huur"]);
+            // An earlier match still wins over a later unknown condition.
+            let earlier = ActionOperation::If {
+                cases: vec![
+                    Case {
+                        when: lit(true),
+                        then: lit("eerst"),
+                    },
+                    Case {
+                        when: var("huur"),
+                        then: lit("ja"),
+                    },
+                ],
+                default: Some(lit("nee")),
+            };
+            assert_eq!(
+                execute_operation(&earlier, &r, 0).unwrap(),
+                Value::String("eerst".to_string())
+            );
+            // An absent condition is an error, not a fall-through to the default.
+            let absent_case = ActionOperation::If {
+                cases: vec![Case {
+                    when: var("geen"),
+                    then: lit("ja"),
+                }],
+                default: Some(lit("nee")),
+            };
+            absent(execute_operation(&absent_case, &r, 0).unwrap_err(), "IF");
+        }
+
+        #[test]
+        fn null_checks_answer_on_absence_and_are_unknown_on_unknown() {
+            let r = resolver();
+            let is_null = |subject: ActionValue| {
+                execute_operation(&ActionOperation::IsNull { subject }, &r, 0).unwrap()
+            };
+            let not_null = |subject: ActionValue| {
+                execute_operation(&ActionOperation::NotNull { subject }, &r, 0).unwrap()
+            };
+            assert_eq!(is_null(var("geen")), Value::Bool(true));
+            assert_eq!(not_null(var("geen")), Value::Bool(false));
+            assert_eq!(is_null(lit(0i64)), Value::Bool(false));
+            // Whether the register holds a value is exactly the fact nobody has.
+            assert_eq!(missing_names(&is_null(var("huur"))), vec!["huur"]);
+            assert_eq!(missing_names(&not_null(var("huur"))), vec!["huur"]);
+            assert_eq!(is_null(var("vaag")), taint());
+        }
+
+        #[test]
+        fn membership_matches_definitely_or_stays_unknown() {
+            let r = resolver();
+            let is_in = |subject: ActionValue, values: Vec<ActionValue>| {
+                execute_operation(
+                    &ActionOperation::In {
+                        subject,
+                        value: None,
+                        values: Some(values),
+                    },
+                    &r,
+                    0,
+                )
+                .unwrap()
+            };
+            let not_in = |subject: ActionValue, values: Vec<ActionValue>| {
+                execute_operation(
+                    &ActionOperation::NotIn {
+                        subject,
+                        value: None,
+                        values: Some(values),
+                    },
+                    &r,
+                    0,
+                )
+                .unwrap()
+            };
+            // A definite element that matches settles it, unknown elements or not.
+            assert_eq!(
+                is_in(lit(2i64), vec![var("huur"), lit(2i64)]),
+                Value::Bool(true)
+            );
+            assert_eq!(
+                not_in(lit(2i64), vec![var("huur"), lit(2i64)]),
+                Value::Bool(false)
+            );
+            // No definite match and an unknown in play: unknown, for those facts.
+            assert_eq!(
+                missing_names(&is_in(var("huur"), vec![lit(1i64), lit(2i64)])),
+                vec!["huur"]
+            );
+            assert_eq!(
+                missing_names(&not_in(lit(3i64), vec![lit(1i64), var("partner")])),
+                vec!["partner_bsn"]
+            );
+            // Two unknowns are not a match for each other.
+            assert_eq!(
+                missing_names(&is_in(var("huur"), vec![var("partner")])),
+                vec!["huur", "partner_bsn"]
+            );
+            // No unknown anywhere: a plain false / true.
+            assert_eq!(is_in(lit(3i64), vec![lit(1i64)]), Value::Bool(false));
+            assert_eq!(not_in(lit(3i64), vec![lit(1i64)]), Value::Bool(true));
+            // Null is structural, as for EQUALS.
+            assert_eq!(
+                is_in(var("geen"), vec![lit(Value::Null)]),
+                Value::Bool(true)
+            );
+            assert_eq!(is_in(var("geen"), vec![lit(1i64)]), Value::Bool(false));
+        }
+
+        /// `LIST [item]` as an operand.
+        fn list(item: ActionValue) -> ActionValue {
+            ActionValue::Operation(Box::new(ActionOperation::List { items: vec![item] }))
+        }
+
+        #[test]
+        fn an_unknown_inside_a_container_propagates_through_equality() {
+            // Review probe P1: two LISTs whose only element is unknown compared
+            // equal, because the structural comparison fell through to
+            // `PartialEq`, which equates two Unknowns. An Unknown at any depth
+            // makes the comparison unknown, for the union of the facts.
+            let mut dossier = BTreeMap::new();
+            dossier.insert("status".to_string(), unknown_fact("beschikking"));
+            dossier.insert("nummer".to_string(), Value::Int(7));
+            let r = resolver().with_var("dossier", Value::Object(dossier));
+            let run = |op: ActionOperation| execute_operation(&op, &r, 0).unwrap();
+
+            let equal = run(ActionOperation::Equals {
+                subject: list(var("huur")),
+                value: list(var("partner")),
+            });
+            assert_eq!(missing_names(&equal), vec!["huur", "partner_bsn"]);
+            let not_equal = run(ActionOperation::NotEquals {
+                subject: list(var("huur")),
+                value: list(var("partner")),
+            });
+            assert_eq!(missing_names(&not_equal), vec!["huur", "partner_bsn"]);
+            // One side definite, the other with an unknown inside: still unknown.
+            let mixed = run(ActionOperation::Equals {
+                subject: list(lit(650i64)),
+                value: list(var("huur")),
+            });
+            assert_eq!(missing_names(&mixed), vec!["huur"]);
+            // A record with an unknown field, compared with itself.
+            let record = run(ActionOperation::Equals {
+                subject: var("dossier"),
+                value: var("dossier"),
+            });
+            assert_eq!(missing_names(&record), vec!["beschikking"]);
+            // Two levels deep.
+            let nested = run(ActionOperation::Equals {
+                subject: list(list(var("huur"))),
+                value: list(list(lit(1i64))),
+            });
+            assert_eq!(missing_names(&nested), vec!["huur"]);
+            // Containers without an unknown compare structurally as before;
+            // an absence inside a container is a value like any other.
+            assert_eq!(
+                run(ActionOperation::Equals {
+                    subject: list(lit(1i64)),
+                    value: list(lit(1i64)),
+                }),
+                Value::Bool(true)
+            );
+            assert_eq!(
+                run(ActionOperation::Equals {
+                    subject: list(var("geen")),
+                    value: list(lit(Value::Null)),
+                }),
+                Value::Bool(true)
+            );
+        }
+
+        #[test]
+        fn membership_looks_inside_the_subject_and_the_elements() {
+            // Review probe P1: `IN` with a LIST subject against a list of LISTs
+            // matched structurally on two Unknowns.
+            let r = resolver();
+            let is_in = |subject: ActionValue, values: Vec<ActionValue>| {
+                execute_operation(
+                    &ActionOperation::In {
+                        subject,
+                        value: None,
+                        values: Some(values),
+                    },
+                    &r,
+                    0,
+                )
+                .unwrap()
+            };
+            let not_in = |subject: ActionValue, values: Vec<ActionValue>| {
+                execute_operation(
+                    &ActionOperation::NotIn {
+                        subject,
+                        value: None,
+                        values: Some(values),
+                    },
+                    &r,
+                    0,
+                )
+                .unwrap()
+            };
+            assert_eq!(
+                missing_names(&is_in(list(var("huur")), vec![list(var("partner"))])),
+                vec!["huur", "partner_bsn"]
+            );
+            assert_eq!(
+                missing_names(&not_in(list(var("huur")), vec![list(var("partner"))])),
+                vec!["huur", "partner_bsn"]
+            );
+            // A subject with an unknown inside can never match definitely.
+            assert_eq!(
+                missing_names(&is_in(list(var("huur")), vec![list(lit(1i64))])),
+                vec!["huur"]
+            );
+            // An element with an unknown inside is not a definite match either,
+            // but another element that is definite still decides.
+            assert_eq!(
+                missing_names(&is_in(list(lit(1i64)), vec![list(var("huur"))])),
+                vec!["huur"]
+            );
+            assert_eq!(
+                is_in(list(lit(1i64)), vec![list(var("huur")), list(lit(1i64))]),
+                Value::Bool(true)
+            );
+            assert_eq!(
+                not_in(list(lit(1i64)), vec![list(var("huur")), list(lit(1i64))]),
+                Value::Bool(false)
+            );
+        }
+
+        #[test]
+        fn membership_taint_in_an_element_beats_unknown_and_false() {
+            // Untranslatable beats unknown per element too: an untranslatable
+            // element could have been the match, so without a definite match
+            // the result is that taint, not a confident false and not unknown.
+            let r = resolver();
+            let is_in = |subject: ActionValue, values: Vec<ActionValue>| {
+                execute_operation(
+                    &ActionOperation::In {
+                        subject,
+                        value: None,
+                        values: Some(values),
+                    },
+                    &r,
+                    0,
+                )
+                .unwrap()
+            };
+            let not_in = |subject: ActionValue, values: Vec<ActionValue>| {
+                execute_operation(
+                    &ActionOperation::NotIn {
+                        subject,
+                        value: None,
+                        values: Some(values),
+                    },
+                    &r,
+                    0,
+                )
+                .unwrap()
+            };
+            assert_eq!(is_in(lit(3i64), vec![lit(1i64), var("vaag")]), taint());
+            assert_eq!(not_in(lit(3i64), vec![var("vaag")]), taint());
+            assert_eq!(is_in(var("huur"), vec![var("vaag"), lit(1i64)]), taint());
+            // A definite match still wins over a tainted element.
+            assert_eq!(
+                is_in(var("geen"), vec![var("vaag"), lit(Value::Null)]),
+                Value::Bool(true)
+            );
+            assert_eq!(
+                is_in(lit(2i64), vec![var("vaag"), var("huur"), lit(2i64)]),
+                Value::Bool(true)
+            );
+        }
+
+        #[test]
+        fn foreach_arrays_with_unknown_elements_compare_as_unknown() {
+            // Review probe P1: FOREACH without `combine` yields an array that may
+            // hold unknown elements; comparing two such arrays is unknown.
+            let mut params = BTreeMap::new();
+            params.insert("items".to_string(), Value::Array(vec![Value::Int(1)]));
+            params.insert("a".to_string(), unknown_fact("a"));
+            params.insert("b".to_string(), unknown_fact("b"));
+            let context = RuleContext::new(params, "2025-01-01").expect("valid date");
+            let each = |body: ActionValue| {
+                ActionValue::Operation(Box::new(ActionOperation::Foreach {
+                    collection: var("items"),
+                    as_name: "x".to_string(),
+                    body,
+                    filter: None,
+                    combine: None,
+                }))
+            };
+            let op = ActionOperation::Equals {
+                subject: each(var("a")),
+                value: each(var("b")),
+            };
+            let result = execute_operation(&op, &context, 0).unwrap();
+            assert_eq!(missing_names(&result), vec!["a", "b"]);
+            // The arrays themselves are still arrays, unknown elements and all.
+            let listed = execute_operation(
+                &ActionOperation::List {
+                    items: vec![each(var("a"))],
+                },
+                &context,
+                0,
+            )
+            .unwrap();
+            assert!(listed.contains_unknown());
+            assert!(!listed.is_unknown());
+        }
+
+        #[test]
+        fn list_may_hold_unknown_and_absent_elements() {
+            let r = resolver();
+            let op = ActionOperation::List {
+                items: vec![lit(1i64), var("huur"), var("geen")],
+            };
+            assert_eq!(
+                execute_operation(&op, &r, 0).unwrap(),
+                Value::Array(vec![Value::Int(1), unknown_fact("huur"), Value::Null])
+            );
+        }
+
+        #[test]
+        fn date_operations_propagate_unknown_and_reject_absence() {
+            let r = resolver().with_var("datum", "2025-01-01");
+            type Case = (&'static str, fn(ActionValue) -> ActionOperation);
+            let cases: Vec<Case> = vec![
+                ("AGE", |v| ActionOperation::Age {
+                    date_of_birth: v,
+                    reference_date: lit("2025-01-01"),
+                }),
+                ("DATE_ADD", |v| ActionOperation::DateAdd {
+                    date: v,
+                    years: None,
+                    months: None,
+                    weeks: None,
+                    days: None,
+                }),
+                ("DATE_ADD", |v| ActionOperation::DateAdd {
+                    date: lit("2025-01-01"),
+                    years: None,
+                    months: Some(v),
+                    weeks: None,
+                    days: None,
+                }),
+                ("DATE", |v| ActionOperation::Date {
+                    year: lit(2025i64),
+                    month: v,
+                    day: lit(1i64),
+                }),
+                ("DAY_OF_WEEK", |v| ActionOperation::DayOfWeek { date: v }),
+                ("DATE_DIFF", |v| ActionOperation::DateDiff {
+                    from: lit("2025-01-01"),
+                    to: v,
+                    unit: lit("days"),
+                }),
+                ("DATE_DIFF", |v| ActionOperation::DateDiff {
+                    from: lit("2025-01-01"),
+                    to: lit("2025-02-01"),
+                    unit: v,
+                }),
+            ];
+            for (name, build) in cases {
+                let result = execute_operation(&build(var("huur")), &r, 0).unwrap();
+                assert_eq!(missing_names(&result), vec!["huur"], "{name}");
+                absent(
+                    execute_operation(&build(var("geen")), &r, 0).unwrap_err(),
+                    name,
+                );
+            }
+        }
+
+        #[test]
+        fn the_trace_says_why_a_result_is_unknown() {
+            // The dispatcher normally overwrites a handler's message with
+            // "Compute OP(...) = value"; for an unknown result the handler's
+            // message, which names the missing facts, is what the reader needs.
+            let mut context = RuleContext::new(BTreeMap::new(), "2025-01-01").unwrap();
+            context.set_local("huur", unknown_fact("huur"));
+            let trace = std::rc::Rc::new(std::cell::RefCell::new(
+                crate::trace::TraceBuilder::new_untimed(),
+            ));
+            context.set_trace(std::rc::Rc::clone(&trace));
+            trace.borrow_mut().push("root", PathNodeType::Action);
+            let op = ActionOperation::Add {
+                values: vec![lit(100i64), var("huur")],
+            };
+            execute_operation(&op, &context, 0).unwrap();
+            let root = trace.borrow_mut().pop().unwrap();
+            let node = root.children.into_iter().next().unwrap();
+            assert_eq!(
+                node.message.as_deref(),
+                Some("ADD with an unknown operand: unknown (missing: testwet.huur)")
             );
         }
     }

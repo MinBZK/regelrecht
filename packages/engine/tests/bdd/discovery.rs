@@ -48,26 +48,57 @@ impl fmt::Display for DiscoveryError {
 
 impl std::error::Error for DiscoveryError {}
 
-/// Collect every feature file from both buckets:
-/// - bucket A: any `*.feature` under a `scenarios/` directory in the corpus, and
-/// - bucket B: `bdd/conformance/*.feature`.
-pub fn collect_feature_paths(root: &Path) -> Result<Vec<PathBuf>, DiscoveryError> {
-    let corpus = root.join("corpus/regulation");
-    let mut features = collect_bucket("A (corpus scenarios)", &corpus, |p| {
-        // Only components below the corpus root count: a checkout that happens
-        // to live under a directory called `scenarios` must not turn every
-        // corpus feature file into a bucket-A scenario.
-        p.strip_prefix(&corpus)
-            .unwrap_or(p)
-            .components()
-            .any(|c| c.as_os_str() == "scenarios")
-    })?;
+/// Which bucket(s) a run covers. `main.rs` reads it from `BDD_BUCKET`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Bucket {
+    All,
+    Corpus,
+    Conformance,
+}
 
-    features.extend(collect_bucket(
-        "B (engine conformance)",
-        &root.join("bdd/conformance"),
-        |_| true,
-    )?);
+impl Bucket {
+    fn covers_corpus(self) -> bool {
+        matches!(self, Self::All | Self::Corpus)
+    }
+
+    fn covers_conformance(self) -> bool {
+        matches!(self, Self::All | Self::Conformance)
+    }
+}
+
+/// Collect the feature files of the selected bucket(s):
+/// - bucket A: any `*.feature` under a `scenarios/` directory in `corpus`, and
+/// - bucket B: `bdd/conformance/*.feature` under `root`.
+///
+/// `corpus` is passed separately because bucket A follows `REGULATION_PATH`,
+/// the same variable the engine loads its laws from, so the scenarios and the
+/// laws they test always come from one corpus.
+pub fn collect_feature_paths(
+    root: &Path,
+    corpus: &Path,
+    bucket: Bucket,
+) -> Result<Vec<PathBuf>, DiscoveryError> {
+    let mut features = Vec::new();
+
+    if bucket.covers_corpus() {
+        features.extend(collect_bucket("A (corpus scenarios)", corpus, |p| {
+            // Only components below the corpus root count: a checkout that
+            // happens to live under a directory called `scenarios` must not
+            // turn every corpus feature file into a bucket-A scenario.
+            p.strip_prefix(corpus)
+                .unwrap_or(p)
+                .components()
+                .any(|c| c.as_os_str() == "scenarios")
+        })?);
+    }
+
+    if bucket.covers_conformance() {
+        features.extend(collect_bucket(
+            "B (engine conformance)",
+            &root.join("bdd/conformance"),
+            |_| true,
+        )?);
+    }
 
     features.sort();
     Ok(features)

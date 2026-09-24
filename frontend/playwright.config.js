@@ -2,6 +2,9 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e',
+  // Only the browser specs. The default pattern also picks up `*.test.js`,
+  // which in `e2e/` are the vitest unit tests of the shared helpers.
+  testMatch: '**/*.spec.js',
   timeout: 30_000,
   retries: process.env.CI ? 1 : 0,
   // Eén worker in CI. De suite leunt op vaste wachttijden in plaats van op

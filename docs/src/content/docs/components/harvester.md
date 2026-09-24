@@ -12,7 +12,7 @@ The harvester downloads Dutch legislation and converts it to the RegelRecht YAML
 - **Sources**: BWB / wetten.nl (national law) and CVDR (local/decentralized regulations)
 - **Output**: YAML law files with textual content (no `machine_readable` yet)
 
-## How It Works
+## How it works
 
 ```mermaid
 flowchart LR
@@ -44,8 +44,17 @@ The harvester uses an extensible **registry system** for XML element handling:
 |-------------|----------|----------|
 | **Inline** | `nadruk`, `extref`, `intref`, `al` | Pass through with text |
 | **Structural** | `lid`, `lidnr`, `lijst`, `li` | Manage numbering, recurse |
-| **Skip** | `meta-data`, `jci`, `redactie`, `plaatje` | Excluded from output |
+| **Skip** | `meta-data`, `jci`, `kop`, `brondata` | Excluded from output |
 | **Passthrough** | `sup`, `sub` | Extract without special handling |
+| **Marker** | `plaatje`, `illustratie`, `formule` | Text where there is any, otherwise `[formule niet in tekst beschikbaar]` |
+
+The marker matters more than it looks. The BWB XML states some norms as a
+picture: artikel 22a Participatiewet puts the whole kostendelersnorm formula in
+an `<illustratie>`. Those elements used to be skipped, so the sentence that
+introduces the formula ended on its colon and the norm vanished with nothing to
+show it had. An incomplete article then read as a complete one. The harvester
+still cannot render an image, but it no longer drops it in silence, and a
+`<formule>` carrying a readable fallback keeps that text.
 
 ### Dutch Law Hierarchy
 
@@ -96,7 +105,7 @@ println!("Articles: {}", law.articles.len());
 
 For CVDR regulations use `download_cvdr_law`; `detect_source` returns the right source for either kind of identifier.
 
-## Output Path Convention
+## Output path convention
 
 ```
 {output}/{regulatory_layer}/{slug}/{date}.yaml
@@ -114,7 +123,7 @@ The regulatory layer is determined from the WTI metadata (`soort-regeling` field
 - **Retry triggers**: Connection errors, timeouts, 5xx responses
 - **No retry on**: 4xx client errors
 
-## Current Limitations
+## Current limitations
 
 - **Text-only extraction** - tables and complex formatting simplified to text
 - **No machine_readable** - output contains text only; executable logic added separately
@@ -129,7 +138,7 @@ just harvester-test
 
 Integration tests use fixtures from `tests/fixtures/zorgtoeslag/` (real WTI and content XML) to validate the complete pipeline from XML to valid YAML.
 
-## Further Reading
+## Further reading
 
 - [Law Format](/concepts/law-format) - the YAML format the harvester produces
 - [Pipeline](./pipeline) - job orchestration for harvesting tasks

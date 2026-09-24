@@ -36,5 +36,5 @@ docker run -p 3000:8000 -e GF_SECURITY_SECRET_KEY=dev regelrecht-grafana
 
 ## Further reading
 
-- [Admin Dashboard](./admin) - the other monitoring interface
+- [Harvester Admin](./admin) - the harvester job and status API
 - [Deployment](/operations/deployment) - how Grafana is deployed

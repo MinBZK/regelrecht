@@ -1,0 +1,120 @@
+---
+/*
+ * The scenario the corpus ships, and a runner that executes an edited copy of
+ * it in the visitor's browser.
+ *
+ * Two surfaces, on purpose. The scenario itself stays in the page, read-only
+ * and in the reading column, because it is what the prose around it is about.
+ * Editing and running happen in a bottom sheet: a scenario with its data tables
+ * is wider than a documentation column, and the results have to sit beside the
+ * text being edited rather than under a fold. The sheet is the design system's
+ * own overlay (a native <dialog>: focus handling, Escape, a dismiss area), so
+ * the reader gets out of it the way they expect to.
+ *
+ * Layout is nldd-container throughout (stack, row, columns, with the padding
+ * and gap tokens), so the spacing inside the sheet is the system's and not this
+ * page's opinion. The stylesheet next to this file is down to one rule.
+ *
+ * Without JavaScript the sheet never opens and its button never appears
+ * (~/scripts/scenario-playground.ts unhides it); the scenario and the note
+ * below it are all there is, which is a page that still reads.
+ */
+import { scenarioDemo } from '~/lib/scenario-demo';
+import '~/styles/scenario.css';
+---
+
+<rr-scenario-runner>
+  <nldd-code-viewer language="gherkin" variant="simple">{scenarioDemo.text}</nldd-code-viewer>
+
+  <nldd-spacer size="16" />
+
+  <nldd-rich-text>
+    <p>
+      Read from <a href={scenarioDemo.url} rel="noreferrer"><code>{scenarioDemo.path}</code></a> when
+      this page was built, so it is the scenario CI runs and not a copy of it. The runner below
+      executes what you make of it: the engine is compiled to WebAssembly and runs in this browser,
+      on your machine.
+    </p>
+  </nldd-rich-text>
+
+  <nldd-spacer size="16" />
+
+  {/* Hidden until the script claims it: a button that opens nothing is worse
+      than no button. */}
+  <nldd-button
+    variant="primary"
+    start-icon="play"
+    text="Edit and run this scenario"
+    data-open
+    hidden
+  />
+  <noscript>
+    <nldd-rich-text>
+      <p>
+        Running it needs JavaScript: the engine executes here rather than on a server. The same
+        scenario runs from a checkout with <code>just bdd</code>.
+      </p>
+    </nldd-rich-text>
+  </noscript>
+
+  <nldd-sheet placement="bottom" accessible-label="Scenario runner" data-sheet>
+    <nldd-container layout="stack" gap="20" padding="24" sm-padding="16">
+      {/* Title, then what the reader can do with it, then the controls. Two
+          containers rather than one row: a row with a full-width title in it
+          squeezes the button group to nothing on the right. */}
+      <nldd-container layout="stack" gap="4">
+        <nldd-title size="3"><h2>Scenario runner</h2></nldd-title>
+        <nldd-text size="sm" color="secondary">
+          Change anything below and run it. The engine is compiled to WebAssembly and executes
+          here, in this browser.
+        </nldd-text>
+      </nldd-container>
+
+      <nldd-button-group orientation="horizontal">
+        <nldd-button variant="primary" size="md" start-icon="play" text="Run" data-run />
+        <nldd-button variant="secondary" size="md" text="Reset" data-reset />
+        <nldd-button
+          variant="neutral-transparent"
+          size="md"
+          start-icon="close"
+          text="Close"
+          data-close
+        />
+      </nldd-button-group>
+
+      {/* The verdict, above both columns: it is about the run, not about either
+          panel. Hidden until something has run. */}
+      <nldd-banner size="sm" variant="neutral" data-summary hidden />
+
+      <nldd-container layout="columns" column-count="2" sm-column-count="1" gap="24">
+        <nldd-container layout="stack" gap="12">
+          <nldd-title size="4"><h3>Scenario</h3></nldd-title>
+          <nldd-code-editor
+            language="gherkin"
+            variant="input-field"
+            accessible-label="Scenario"
+            line-numbers
+            resize="auto"
+            rows={16}
+            value={scenarioDemo.text}
+            data-editor
+          />
+        </nldd-container>
+
+        <nldd-container layout="stack" gap="12">
+          <nldd-title size="4"><h3>Steps</h3></nldd-title>
+          {/* Empty until something has run: there is no result to stand in for,
+              and a placeholder row would read as one. */}
+          <nldd-list dividers="always" accessible-label="Step results" data-steps></nldd-list>
+
+          <nldd-title size="4"><h3>Outputs</h3></nldd-title>
+          <nldd-list dividers="always" accessible-label="Outputs" data-outputs></nldd-list>
+        </nldd-container>
+      </nldd-container>
+    </nldd-container>
+  </nldd-sheet>
+</rr-scenario-runner>
+
+<script>
+  import '~/scripts/scenario-playground.ts';
+</script>

@@ -189,7 +189,7 @@ describe('TrajectIntegrityPane', () => {
       .findAll('nldd-inline-dialog')
       .find((d) => d.attributes('variant') === 'alert');
     expect(alert).toBeTruthy();
-    expect(alert.attributes('text')).toBe('Integriteitscontrole niet gelukt');
+    expect(alert.attributes('text')).toBe('Structuurcontrole niet gelukt');
     expect(alert.attributes('supporting-text')).toBe('GitHub is nu niet bereikbaar.');
     // Geen rapport, dus ook geen lege staat die suggereert dat alles klopt.
     expect(wrapper.html()).not.toContain('Geen problemen gevonden');

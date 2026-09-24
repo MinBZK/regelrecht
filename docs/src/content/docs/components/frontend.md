@@ -1,5 +1,5 @@
 ---
-title: "Frontend"
+title: "Editor"
 description: "The Vue 3 law editor and library browser for working with machine-readable law."
 ---
 
@@ -54,7 +54,7 @@ Edit law articles with a split-pane interface:
 
 ## Design System
 
-The frontend is built almost entirely from `@nldd/design-system` web components (custom-element prefix `nldd-`), imported in the JS entry point (`src/main.js` imports `@nldd/design-system` and its styles). A representative slice of the components in use:
+The frontend is built almost entirely from `@nldd/design-system` web components (custom-element prefix `nldd-`), imported one entry point at a time: `src/main.js` pulls in `src/nldd-components.js`, a generated list of exactly the components this app renders, plus the design system's styles. `script/check-nldd-imports.mjs` keeps that list in sync with the tags in the source. A representative slice of the components in use:
 
 | Category | Components used |
 |----------|----------------|
@@ -69,7 +69,7 @@ The Rijksoverheid brand color (`#154273`) and typography come from the design sy
 
 ## Vue components
 
-The app is split into two top-level shells, `LibraryApp.vue` (the law browser) and `EditorApp.vue` (the split-pane editor), plus ~30 components under `src/components/`. Notable ones:
+The app is split into two top-level shells, `LibraryApp.vue` (the law browser) and `EditorApp.vue` (the split-pane editor), plus 44 components under `src/components/`. Notable ones:
 
 | Component | Purpose |
 |-----------|---------|
@@ -81,7 +81,7 @@ The app is split into two top-level shells, `LibraryApp.vue` (the law browser) a
 | `ExecutionTraceView.vue` | Execution trace tree |
 | `ScenarioBuilder/Form/Gherkin/Visual/Panel.vue` | BDD scenario authoring |
 | `NoteCreator.vue` / `NoteCard.vue` | Stand-off notes (RFC-018) |
-| `TrajectMenu.vue` / `TrajectMembersDialog.vue` | Traject collaboration |
+| `TrajectMenu.vue` / `TrajectMembersPane.vue` | Traject collaboration |
 
 Composables hold the shared logic (`useLaw.js` for loading and article selection, plus others for settings and corpus URLs).
 
@@ -108,16 +108,16 @@ just dev             # Starts everything with hot reload
 The editor ships as a single Docker image (`regelrecht-editor`) that bundles the built Vue frontend together with the [editor-api](./editor-api) Rust binary, which serves the static assets and the REST API. It is deployed to RIG/ZAD:
 
 - **Production**: `editor.regelrecht.rijks.app`
-- **PR previews**: deployed for a pull request that carries the `preview` label
+- **PR previews**: deployed for a pull request that carries the `deploy:preview` label
 
-## Admin Dashboard
+## Corpusinwinning (harvester admin)
 
-A separate admin UI exists at `packages/admin/` for pipeline management:
+The harvester-admin dashboard is a section of this editor, at `frontend/src/harvester/`, not a separate app. It reaches the standalone `packages/admin/` API through the editor-api `/api/harvest-admin/*` proxy, which forwards the shared session cookie so the admin service enforces its own `harvester-*` role gates. `packages/admin/` is a Rust Axum API and serves no SPA of its own.
 
-- **Backend**: Rust (Axum) with PostgreSQL
-- **Frontend**: Vue 3 + Vite + `@nldd/design-system` (same stack as the editor)
-- **Features**: Law status overview, job management, harvest/enrich triggers
-- **Auth**: Optional OIDC integration
+- **Features**: Law status overview, job management, harvest and enrich triggers
+- **Where**: `editor.regelrecht.rijks.app` → Corpusinwinning
+
+See [Admin](/components/admin) for the service itself.
 
 See the admin API endpoints:
 - `GET /api/law_entries` - query law processing status

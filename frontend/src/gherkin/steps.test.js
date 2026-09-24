@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { parseValue, createStepDefinitions, SUPPORTED_TIERS } from './steps.js';
-import { GRAMMAR } from './grammar.generated.js';
+import {
+  parseValue,
+  createStepDefinitions,
+  SUPPORTED_TIERS,
+  matchStep,
+  typedArgs,
+} from './steps.js';
+import { GRAMMAR, VALUE_TYPING } from './grammar.generated.js';
 
 describe('parseValue', () => {
   it('parses booleans', () => {
@@ -49,6 +55,58 @@ describe('createStepDefinitions', () => {
   });
 });
 
+// `matchStep` is the one walk over the grammar, shared by every runner that is
+// handed raw step text: the editor, the demo's Dutch renderer, and both panels
+// on the docs site. It used to be hand-rolled identically in three of those, and
+// the point of moving it here is that they can no longer disagree about what a
+// step means.
+describe('matchStep', () => {
+  it('returns the entry and the raw captures', () => {
+    const match = matchStep('parameter "bsn" is "999993653"');
+    expect(match?.entry.id).toBe('set_parameter_string');
+    expect(match?.args).toEqual(['bsn', '999993653']);
+  });
+
+  it('returns null for a phrasing the grammar does not have', () => {
+    // The guarantee the language rests on: a step that is not in
+    // bdd/grammar.yaml does not exist, and no runner may invent one.
+    expect(matchStep('the vibes are good')).toBe(null);
+    expect(matchStep('output "x" is roughly 42')).toBe(null);
+  });
+
+  it('tells the two parameter forms apart by their argument, not their words', () => {
+    expect(matchStep('parameter "age" is 25')?.entry.id).toBe('set_parameter_number');
+    expect(matchStep('parameter "age" is "25"')?.entry.id).toBe('set_parameter_string');
+  });
+});
+
+// `typedArgs` applies `value_typing` from bdd/grammar.yaml to a step's captures.
+// It deliberately stops there: the grammar literals are appended by `buildArgs`
+// for the callers that dispatch, because a caller that only wants to *show* a
+// step wants the captures alone.
+describe('typedArgs', () => {
+  const entryFor = (line) => matchStep(line).entry;
+
+  it('reads a quoted capture by its content', () => {
+    const line = 'parameter "bsn" is "999993653"';
+    expect(typedArgs(entryFor(line), matchStep(line).args)).toEqual(['bsn', 999993653]);
+  });
+
+  it('reads a bare capture as a number', () => {
+    const line = 'output "hoogte" equals 133084';
+    expect(typedArgs(entryFor(line), matchStep(line).args)).toEqual(['hoogte', 133084]);
+  });
+
+  it('leaves the grammar literals out', () => {
+    // `output "x" is true` carries the boolean as a literal, not a capture.
+    // typedArgs yields one value; the dispatch path adds the literal after it.
+    const line = 'output "x" is true';
+    const entry = entryFor(line);
+    expect(entry.literals).toEqual([true]);
+    expect(typedArgs(entry, matchStep(line).args)).toEqual(['x']);
+  });
+});
+
 // Each canonical example line is parsed by exactly one core grammar pattern,
 // and that pattern carries the expected action. This is the proof that the
 // generated patterns match their canonical phrasings.
@@ -68,7 +126,7 @@ describe('core grammar patterns match their canonical example lines', () => {
     { line: 'output "x" is false', action: 'assert_boolean' },
     { line: 'output "x" equals 42', action: 'assert_equals' },
     { line: 'output "x" equals "hello"', action: 'assert_equals' },
-    { line: 'output "x" is null', action: 'assert_null' },
+    { line: 'output "x" is absent', action: 'assert_null' },
     { line: 'output "x" contains "sub"', action: 'assert_contains' },
   ];
 
@@ -109,5 +167,40 @@ describe('set_parameters_table dispatch', () => {
     expect(await runTable([['indieningsdatum', '2025-01-01']])).toEqual({
       indieningsdatum: '2025-01-01',
     });
+  });
+});
+
+// The canonical typing rule lives in bdd/grammar.yaml (`value_typing`) and is
+// carried into both dispatchers by codegen. These assertions are the editor
+// half of bdd/conformance/value_typing.feature: the same three lines, the same
+// three types. Drift here is the failure mode of issue #1160 — a scenario that
+// runs green in the editor and red in CI.
+describe('value typing follows bdd/grammar.yaml', () => {
+  const defs = createStepDefinitions({ loadDependency: async () => {} });
+
+  async function runStep(line, table = null) {
+    const ctx = { parameters: {} };
+    const def = defs.find((d) => d.pattern.test(line));
+    expect(def, `no step matches "${line}"`).toBeTruthy();
+    await def.execute(ctx, null, line.match(def.pattern), table ? { dataTable: table } : null);
+    return ctx.parameters;
+  }
+
+  it('declares the three rules', () => {
+    expect(VALUE_TYPING).toEqual({ quoted: 'inferred', bare: 'number', table_cell: 'inferred' });
+  });
+
+  it('reads a quoted value by its content, not by its quotes', async () => {
+    expect(await runStep('parameter "waarde" is "42"')).toEqual({ waarde: 42 });
+    expect(await runStep('parameter "verzekerd" is "true"')).toEqual({ verzekerd: true });
+    expect(await runStep('parameter "gemeente" is "GM0384"')).toEqual({ gemeente: 'GM0384' });
+  });
+
+  it('reads a bare value as a number', async () => {
+    expect(await runStep('parameter "waarde" is 42')).toEqual({ waarde: 42 });
+  });
+
+  it('lets the content decide in a data table cell', async () => {
+    expect(await runStep('the following parameters:', [['waarde', '42']])).toEqual({ waarde: 42 });
   });
 });

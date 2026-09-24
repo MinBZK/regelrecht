@@ -4,6 +4,10 @@ fn emit_rust(grammar: &Grammar) -> String {
     let mut s = String::new();
     s.push_str("// @generated from bdd/grammar.yaml — do not edit.\n");
     s.push_str("use cucumber::{given, when, then};\n\n");
+    s.push_str(&format!(
+        "pub const QUOTED_VALUE_TYPING: &str = {:?};\npub const BARE_VALUE_TYPING: &str = {:?};\npub const TABLE_CELL_VALUE_TYPING: &str = {:?};\n\n",
+        grammar.value_typing.quoted, grammar.value_typing.bare, grammar.value_typing.table_cell
+    ));
     for (i, step) in grammar.steps.iter().enumerate() {
         let fn_name = format!("step_{}_{}", i, step.id);
         let macro_name = step.keyword.as_str(); // given|when|then

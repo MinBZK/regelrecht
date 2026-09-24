@@ -15,8 +15,8 @@ Every execution produces an **Execution Receipt**: an output envelope that conta
 {
   "provenance": {
     "engine": "regelrecht",
-    "engine_version": "0.6.0",
-    "schema_version": "v0.5.1",
+    "engine_version": "0.3.0",
+    "schema_version": "v0.7.0",
     "regulation_id": "wet_op_de_zorgtoeslag",
     "regulation_valid_from": "2025-01-01",
     "regulation_hash": "sha256:a1b2c3..."
@@ -44,7 +44,7 @@ The receipt records which engine version and schema produced the result, which r
 
 The schema defines the regulation format. The engine interprets and executes regulations that conform to the schema. These are versioned independently:
 
-- **Schema versions** are immutable directories under `schema/` (e.g., `schema/v0.5.1/schema.json`). A published version is never modified.
+- **Schema versions** are immutable directories under `schema/` (one directory per version, such as `schema/v0.7.0/schema.json`). A published version is never modified, and `schema/latest` is a symlink to the current one.
 - **Engine versions** correspond to GitHub Release tags. Each release declares which schema versions it supports.
 
 This distinction matters because third-party organizations may build their own engine implementations. The schema is the specification; the engine is one implementation of it.
@@ -72,7 +72,7 @@ When reproducing the decision, the engine uses these **sealed accepted values** 
 
 ## What this enables
 
-A citizen can request their trace and see which rules applied. An auditor re-runs the computation and gets the same number. A court reconstructs the reasoning step by step. When a bug surfaces, every affected decision can be found by querying receipts for the engine version and regulation hash.
+A citizen can request their trace and see which rules applied. An auditor re-runs the computation and gets the same number. A court reconstructs the reasoning step by step. When a bug surfaces, every affected decision can be found by querying receipts for the engine version and regulation hash. Section 4.5 of the position paper, [The Recipient's Check](/research/rules-as-executed#sec:traceaccess), spells out what this needs in practice: the attested trace has to reach the addressee together with the decision, without a procedure of their own.
 
 ## Further reading
 
@@ -80,3 +80,4 @@ A citizen can request their trace and see which rules applied. An auditor re-run
 - [Multi-Org Execution](./multi-org-execution) - cross-organization value exchange
 - [RFC-013: Execution Provenance](/rfcs/rfc-013) - full specification
 - [RFC-014: Engine Conformance](/rfcs/rfc-014) - conformance test suite
+- [Rules as Executed, sections 4.4 and 4.5](/research/rules-as-executed#sec:attestation) - the position paper's constitutional case for attestation and the recipient's re-execution check

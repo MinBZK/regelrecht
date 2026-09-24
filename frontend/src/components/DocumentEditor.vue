@@ -234,6 +234,9 @@ function dismissDeleteNotice() {
         <!-- Document title with an integrated xs action button; its rename/delete
              menu is teleported to body and anchored to it by id. -->
         <nldd-toolbar-title v-if="paneChromeVisible(docLoading || creating)" slot="center" align="center" :text="docName">
+          <!-- Same icon as the row in the werkdocumenten list, so the title
+               echoes what you clicked. Decorative: the name is right beside it. -->
+          <nldd-icon slot="media" name="text-document" size="20"></nldd-icon>
           <nldd-icon-button
             slot="action"
             id="document-actions-btn"
@@ -422,7 +425,7 @@ function dismissDeleteNotice() {
 
   <!-- Rename in a sheet. nldd-form wraps a native <form> (framework-friendly
        mode); the submit button drives it via form association, and errors
-       surface as the form-field's own error text. -->
+       surface in the form-field's validation list. -->
   <Teleport to="body">
     <nldd-sheet ref="renameSheetEl">
       <nldd-page>
@@ -436,12 +439,14 @@ function dismissDeleteNotice() {
                   ref="renameFieldEl"
                   :value="titleDraft"
                   :invalid="titleError ? true : undefined"
-                  :error-message="titleError ? 'rename-error' : undefined"
+                  :unmet="titleError ? 'rename-error' : undefined"
                   accessible-label="Documentnaam"
                   placeholder="documentnaam"
                   @input="onTitleInput"
                 ></nldd-text-field>
-                <nldd-form-field-error-text id="rename-error">{{ titleError }}</nldd-form-field-error-text>
+                <nldd-validation-list>
+                  <nldd-validation-item id="rename-error">{{ titleError }}</nldd-validation-item>
+                </nldd-validation-list>
               </nldd-form-field>
               <nldd-form-actions>
                 <nldd-button-group>

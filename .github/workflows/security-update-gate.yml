@@ -1,0 +1,175 @@
+---
+name: Security Update Gate
+
+# Een security-update van Dependabot valt buiten de cooldown van vijf dagen uit
+# `dependabot.yml` en komt dus binnen op het moment dat de versie verschijnt.
+# Deze poort zorgt dat zo'n PR pas mergebaar is als een engineer hem heeft
+# goedgekeurd, zonder daarvoor `required_approving_review_count` op alle PR's te
+# zetten — dat kan branch protection niet per auteur.
+#
+# `pull_request_review` staat erbij omdat een goedkeuring anders geen nieuwe run
+# oplevert: de check blijft dan rood staan op de laatste `pull_request`-run,
+# hoeveel er ook is goedgekeurd.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, closed]
+  pull_request_review:
+    types: [submitted, dismissed]
+
+permissions: {}
+
+jobs:
+  # Geen `if:` — deze job moet op elke PR draaien en rapporteren, ook op forks
+  # en op PR's van mensen, want een verplichte check die soms niet rapporteert
+  # blokkeert zo'n PR voor altijd. Voor alles wat niet van Dependabot komt geeft
+  # het script meteen groen.
+  security-gate:
+    name: Security update approved
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+      security-events: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 1
+
+      # Dezelfde reden als bij de review-poort: een PR die het script naar
+      # `exit 0` verandert zou anders per definitie groen zijn. Terugvallen op
+      # de versie uit de PR is precies de bypass die dit dichtzet.
+      - name: Take the gate script from the base branch
+        id: base
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GATE: script/require-security-approval.sh
+        run: |
+          set -uo pipefail
+          fail() {
+            echo "::error title=Security update approved::$1"
+            exit 1
+          }
+          git fetch --depth=1 origin "$BASE_SHA" ||
+            fail "base-commit ${BASE_SHA} is niet op te halen, dus de versie van de poort is niet vast te stellen. Draai deze job opnieuw."
+          # Staat het script niet op de base-branch, dan is dit de pull request
+          # die de poort invoert (of een die haar weghaalt): er is dan op main
+          # nog niets wat deze check beschermt. Dat is het enige geval waarin
+          # niet-draaien juist is; overslaan bij een leesfout zou de bypass zijn
+          # die de rest van deze stap dichtzet.
+          if ! git cat-file -e "${BASE_SHA}:${GATE}" 2>/dev/null; then
+            echo "bootstrap=true" >>"$GITHUB_OUTPUT"
+            echo "::notice title=Security update approved::${GATE} staat nog niet op de base-branch (${BASE_SHA}); deze pull request voert de poort zelf in. Er valt hier niets te bewaken."
+            exit 0
+          fi
+          git checkout "$BASE_SHA" -- "$GATE" ||
+            fail "${GATE} is niet uit ${BASE_SHA} te checkouten, dus de poort zou de versie uit deze PR draaien. Draai deze job opnieuw."
+          echo "Poort draait de versie van ${BASE_SHA}."
+
+      - name: Require an engineer's approval on a security update
+        if: steps.base.outputs.bootstrap != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          # Een gesloten PR merget niet meer; de poort rapporteert daar alleen
+          # nog wat ze ziet, zodat de meldstap eronder kan draaien.
+          ENFORCE: ${{ github.event.action != 'closed' }}
+        run: script/require-security-approval.sh
+
+  # De melding draait het script zelf opnieuw in plaats van de uitkomst van de
+  # poort over te nemen: die poort staat rood zolang er niets is goedgekeurd, en
+  # juist dan valt er iets te melden.
+  notify-mattermost:
+    name: Mattermost-melding
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: >-
+      github.event_name == 'pull_request'
+      && github.event.pull_request.user.login == 'dependabot[bot]'
+      && github.event.pull_request.head.repo.full_name == github.repository
+      && (github.event.action == 'opened'
+          || github.event.action == 'reopened'
+          || (github.event.action == 'closed' && github.event.pull_request.merged))
+    permissions:
+      contents: read
+      pull-requests: read
+      security-events: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 1
+
+      - name: Take the gate script from the base branch
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GATE: script/require-security-approval.sh
+        run: |
+          set -uo pipefail
+          git fetch --depth=1 origin "$BASE_SHA" &&
+            git checkout "$BASE_SHA" -- "$GATE" || {
+            echo "::error title=Mattermost-melding::${GATE} is niet uit ${BASE_SHA} te halen; er is niets vastgesteld en er is niets gemeld."
+            exit 1
+          }
+
+      - name: Is this a security update?
+        id: detect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          ENFORCE: 'false'
+        run: script/require-security-approval.sh
+
+      # Dependabot start deze run, en dan leest `secrets.*` uit de
+      # Dependabot-secretstore, niet uit die van Actions. Staat de webhook-URL
+      # alleen bij Actions, dan is hij hier leeg en zou de melding stil
+      # wegvallen — vandaar de expliciete fout in plaats van een `curl` naar
+      # niets.
+      - name: Send the Mattermost message
+        if: steps.detect.outputs.is_security == 'true'
+        env:
+          WEBHOOK: ${{ secrets.MATTERMOST_WEBHOOK_URL }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          MERGED: ${{ github.event.action == 'closed' }}
+          ADVISORIES: ${{ steps.detect.outputs.advisories }}
+          DEPENDENCY: ${{ steps.detect.outputs.dependency }}
+        run: |
+          set -uo pipefail
+          if [ -z "${WEBHOOK}" ]; then
+            echo "::error title=Mattermost-melding::MATTERMOST_WEBHOOK_URL is leeg. Deze run is door Dependabot gestart en leest secrets uit de Dependabot-secretstore; zet de webhook-URL daar ook neer (Settings → Secrets and variables → Dependabot)."
+            exit 1
+          fi
+
+          advisories="${ADVISORIES:-geen advisory-nummer in de PR}"
+          detail=$(printf '%s\nAfhankelijkheid: `%s` · %s' "${PR_TITLE}" "${DEPENDENCY}" "${advisories}")
+          if [ "${MERGED}" = "true" ]; then
+            kop=":white_check_mark: **Security-update gemerged**"
+            slot=""
+          else
+            kop=":lock: **Security-update wacht op goedkeuring**"
+            slot=$'\n'"Deze PR valt buiten de cooldown van vijf dagen. De check \`Security update approved\` blijft rood tot een engineer met schrijfrechten hem goedkeurt."
+          fi
+          text=$(printf '%s — [%s#%s](%s)\n%s%s' \
+            "${kop}" "${REPO}" "${PR_NUMBER}" "${PR_URL}" "${detail}" "${slot}")
+
+          # De titel komt uit de PR en gaat daarom door jq de JSON in, niet via
+          # string-plakwerk.
+          jq -n --arg text "$text" '{text: $text, username: "regelrecht"}' >payload.json
+
+          code=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+            --max-time 30 --header 'Content-Type: application/json' \
+            --data @payload.json "${WEBHOOK}")
+          if [ "$code" != "200" ]; then
+            echo "::error title=Mattermost-melding::De webhook antwoordde met HTTP ${code}; er is geen bericht in het kanaal beland."
+            exit 1
+          fi
+          echo "Melding verstuurd (HTTP ${code})."

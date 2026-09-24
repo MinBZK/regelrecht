@@ -354,8 +354,9 @@ mod tests {
         file.write_all(yaml.as_bytes()).unwrap();
 
         // (strict, env, file, legacy) -> (expected token, expected origin)
+        type Case = (bool, bool, bool, bool, Option<&'static str>, TokenOrigin);
         #[rustfmt::skip]
-        let cases: &[(bool, bool, bool, bool, Option<&str>, TokenOrigin)] = &[
+        let cases: &[Case] = &[
             // Non-strict: env > file > legacy > none.
             (false, true,  true,  true,  Some("env-token"),    TokenOrigin::ServiceEnv),
             (false, true,  true,  false, Some("env-token"),    TokenOrigin::ServiceEnv),

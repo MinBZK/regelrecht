@@ -50,7 +50,7 @@ impl EngineView {
                 value: String::new(),
             }],
             param_cursor: 0,
-            date_input: chrono::Local::now().format("%Y-%m-%d").to_string(),
+            date_input: regelrecht_shared::dates::today_str(),
             editing_date: false,
             result: None,
             trace: None,
@@ -653,5 +653,7 @@ fn format_value(value: &Value) -> String {
         Value::Untranslatable { article, construct } => {
             format!("UNTRANSLATABLE(art. {article}: {construct})")
         }
+        // RFC-036: an unknown names the facts nobody supplied.
+        Value::Unknown(_) => value.to_string(),
     }
 }

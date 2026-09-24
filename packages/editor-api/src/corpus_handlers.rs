@@ -19,14 +19,14 @@ use regelrecht_corpus::annotation_schema::{
 use regelrecht_corpus::backend::{EditorUser, PersistOutcome, RepoBackend, WriteContext};
 use regelrecht_corpus::dto::{build_source_summaries, PaginationParams, SourceSummary};
 use regelrecht_corpus::source_map::{
-    collect_law_outputs, extract_law_id, validate_yaml_syntax, LoadedLaw,
+    collect_law_outputs, extract_law_id, validate_yaml_syntax, LoadedLaw, SourceMap,
 };
 use regelrecht_corpus::timing;
 use regelrecht_corpus::CorpusError;
 use regelrecht_github::GithubClient;
 
 use crate::accounts::AccountRecord;
-use crate::credentials::{self, TrajectCredentials};
+use crate::credentials::{self, TrajectCredentials, WriteAuthorization};
 use crate::state::{AppState, CorpusState};
 use crate::traject_corpus::{ScenarioListEntry, TrajectCorpus, TrajectCorpusError};
 use crate::traject_index_diagnosis::{
@@ -567,7 +567,12 @@ pub async fn list_traject_corpus_laws(
 }
 
 fn list_corpus_laws_in_scope(scope: &ReadScope, params: PaginationParams) -> Vec<CorpusLawEntry> {
-    let corpus = scope.corpus();
+    filter_corpus_laws(&scope.corpus().source_map, &params)
+}
+
+/// The pure body of [`list_corpus_laws_in_scope`], split out so the filter
+/// precedence can be tested without an axum/session/DB harness.
+fn filter_corpus_laws(source_map: &SourceMap, params: &PaginationParams) -> Vec<CorpusLawEntry> {
     let limit = params.effective_limit();
 
     // Exact-id filter (highest precedence). The library sidebar sends the
@@ -596,10 +601,25 @@ fn list_corpus_laws_in_scope(scope: &ReadScope, params: PaginationParams) -> Vec
         .map(|s| s.trim().to_lowercase())
         .filter(|s| !s.is_empty());
 
-    let mut entries: Vec<CorpusLawEntry> = corpus
-        .source_map
+    // Provenance filter. Orthogonal to `ids`/`q` — those say *which* laws,
+    // this says *whose* — so it narrows (AND) whichever of the two applies
+    // instead of competing with them (see `PaginationParams::source`). The
+    // library sidebar sends it alone to list the laws of the traject's own
+    // repo (`source_priority` 0) without the federated central corpus.
+    let source_filter = params
+        .source
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+
+    let mut entries: Vec<CorpusLawEntry> = source_map
         .laws()
         .filter(|law| {
+            if let Some(source_id) = source_filter {
+                if law.source_id != source_id {
+                    return false;
+                }
+            }
             if let Some(ids) = &id_filter {
                 return ids.contains(law.law_id.as_str());
             }
@@ -627,11 +647,11 @@ fn list_corpus_laws_in_scope(scope: &ReadScope, params: PaginationParams) -> Vec
         })
         .collect();
 
-    if id_filter.is_some() || needle.is_some() {
-        // Filtered (by ids or search): order so the grouped UI gets the
-        // highest-priority sources first (the traject's own repo before the
-        // central corpus), and the result cap can't starve a high-priority
-        // source. No offset paging — return the matching set.
+    if id_filter.is_some() || needle.is_some() || source_filter.is_some() {
+        // Filtered (by ids, search or source): order so the grouped UI gets
+        // the highest-priority sources first (the traject's own repo before
+        // the central corpus), and the result cap can't starve a
+        // high-priority source. No offset paging — return the matching set.
         entries.sort_by(|a, b| {
             a.source_priority
                 .cmp(&b.source_priority)
@@ -659,22 +679,52 @@ fn list_corpus_laws_in_scope(scope: &ReadScope, params: PaginationParams) -> Vec
 /// Goes through `require_traject_corpus_from_ref` (not `require_traject_scope`)
 /// because it needs the `TrajectCorpus` directly to reach the writable-own
 /// backend; the membership re-check is identical either way.
+///
+/// The diff is a *read* on that backend, so it resolves the same per-request
+/// token every other writable-own read does ([`resolve_own_read_token`]).
+/// Without it a traject on a private, user-supplied repo — where the server
+/// holds no token by design — could never fill this list, not even after real
+/// edits. A caller who has no GitHub link resolves to no token: the deferred
+/// 428 — and *only* that one — is swallowed here rather than raised, keeping
+/// this endpoint's "empty array, not an error" contract (the frontend then
+/// simply hides the section, and the 428 connect-flow is raised by the reads
+/// that truly need it). Any other error propagates: a failed feature-flag
+/// lookup is an outage, and a 200 with an empty array launders it into a
+/// success that no log or metric will ever flag. (The sidebar renders the same
+/// either way — `fetchChangedLawIds` hides the section on any failure — so the
+/// argument here is operator visibility, not what the user sees.)
 pub async fn list_traject_changed_laws(
     State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
     session: Session,
     Path(traject_ref): Path<String>,
+    headers: axum::http::HeaderMap,
 ) -> Result<Json<Vec<String>>, (StatusCode, String)> {
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let ids = traject.changed_law_ids().await.map_err(|e| {
-        // A GitHub round-trip failure (token, transport, unexpected status)
-        // is upstream — surface it as 502 with a generic message; details
-        // are logged for operators.
-        tracing::warn!(traject_ref = %traject_ref, error = %e, "changed-laws diff failed");
-        (
-            StatusCode::BAD_GATEWAY,
-            "Kon de gewijzigde wetten van dit traject niet ophalen".to_string(),
-        )
-    })?;
+    let own_read_token = match resolve_own_read_token(&state, account.id, &headers, &traject).await
+    {
+        Ok(token) => token,
+        // The only error this endpoint absorbs: "you have no GitHub link
+        // yet". Everything else (e.g. the feature-flag lookup failing on
+        // the database) is a real failure and propagates like it does for
+        // every other caller of this `Result` in the crate — folding it
+        // into `None` would hide a real outage behind a 200.
+        Err((StatusCode::PRECONDITION_REQUIRED, _)) => None,
+        Err(e) => return Err(e),
+    };
+    let ids = traject
+        .changed_law_ids(own_read_token.as_deref())
+        .await
+        .map_err(|e| {
+            // A GitHub round-trip failure (token, transport, unexpected status)
+            // is upstream — surface it as 502 with a generic message; details
+            // are logged for operators.
+            tracing::warn!(traject_ref = %traject_ref, error = %e, "changed-laws diff failed");
+            (
+                StatusCode::BAD_GATEWAY,
+                "Kon de gewijzigde wetten van dit traject niet ophalen".to_string(),
+            )
+        })?;
     Ok(Json(ids))
 }
 
@@ -1794,7 +1844,9 @@ async fn editor_user_from_session(session: &Session) -> Option<EditorUser> {
 /// and will hit this 403 even when the user's email *is* verified at
 /// the IdP. The message therefore nudges towards a re-login, which
 /// re-runs the OIDC callback and populates the missing claim.
-async fn require_editor_user(session: &Session) -> Result<EditorUser, (StatusCode, String)> {
+pub(crate) async fn require_editor_user(
+    session: &Session,
+) -> Result<EditorUser, (StatusCode, String)> {
     editor_user_from_session(session).await.ok_or_else(|| {
         (
             StatusCode::FORBIDDEN,
@@ -1978,8 +2030,8 @@ fn traject_write_source_id(traject: &TrajectCorpus, law: &LoadedLaw) -> String {
 /// Resolved write routing for a law in a traject: the law's index
 /// entry, the id of the source whose backend the write goes to, and an
 /// owned guard over that backend.
-struct TrajectLawWrite {
-    law: LoadedLaw,
+pub(crate) struct TrajectLawWrite {
+    pub(crate) law: LoadedLaw,
     /// Source id of the backend behind `backend`. Differs from
     /// `law.source_id` when the law comes from a federated read-only
     /// source and its writes are routed to the traject's writable-own
@@ -1990,14 +2042,14 @@ struct TrajectLawWrite {
     /// backend registration. Fed to [`TrajectCredentials::for_write`] as the
     /// explicit "has own write credential" capability instead of a runtime
     /// `is_writable()` probe.
-    write_source_writable: bool,
-    backend: tokio::sync::OwnedMutexGuard<Box<dyn RepoBackend>>,
+    pub(crate) write_source_writable: bool,
+    pub(crate) backend: tokio::sync::OwnedMutexGuard<Box<dyn RepoBackend>>,
 }
 
 /// Resolve the writable-own backend within a traject's corpus. Returns
 /// the looked-up law (for its `relative_path`), the write-target source
 /// id, and an owned guard over the traject's writable backend.
-async fn resolve_traject_law_write(
+pub(crate) async fn resolve_traject_law_write(
     traject: &Arc<TrajectCorpus>,
     law_id: &str,
 ) -> Result<TrajectLawWrite, (StatusCode, String)> {
@@ -2674,15 +2726,71 @@ pub async fn save_law(
     // supporting-text and we don't want self-XSS if the dialog ever renders
     // that attribute as markup. The path law_id is already known to the
     // caller, so the generic message is sufficient.
-    validate_yaml_syntax(&body).map_err(|e| {
-        tracing::debug!(law_id = %law_id, error = %e, "save_law received malformed YAML body");
+    validate_whole_law_body(&body, &law_id)?;
+
+    // Resolve the write target AND keep a handle on the per-traject
+    // corpus so we can mirror the saved body into its read-your-writes
+    // overlay after `persist` succeeds.
+    let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+    let write = resolve_traject_law_write(&traject, &law_id).await?;
+    let auth = TrajectCredentials::new(&state, account.id, &headers)
+        .for_write(&**write.backend, write.write_source_writable)
+        .await?;
+    let relative_path = PathBuf::from(&write.law.relative_path);
+
+    let written = write_composed_law(
+        &traject,
+        write,
+        auth,
+        &relative_path,
+        &law_id,
+        author,
+        extract_if_match(&headers),
+        false,
+        |_current| Ok((body, format!("Update law {law_id}"))),
+    )
+    .await?;
+
+    let mut response = written.response;
+    response.etag = Some(written.etag.clone());
+    Ok(([(axum::http::header::ETAG, written.etag)], Json(response)).into_response())
+}
+
+/// De poort voor elke body die als **hele wet** naar het corpus geschreven
+/// wordt: de PUT van de editor ([`save_law`]) en het overnemen van een
+/// whole-law-voorstel (`enrich_review::apply`). Beide zetten een door de
+/// client aangeleverd bestand integraal op de plaats van een bestaande wet,
+/// dus beide hebben dezelfde drie controles nodig — één plek, want een tweede
+/// schrijfpad dat er één vergeet is precies hoe een corpus stukgaat.
+///
+/// 1. De body moet geldige YAML zijn. [`extract_law_id`] is een regelscanner
+///    die `"$id: foo\n<rommel>"` gewoon accepteert, dus zonder deze controle
+///    landt een kapotte body op schijf.
+/// 2. De body moet een top-level `$id` hebben.
+/// 3. Dat `$id` moet gelijk zijn aan de wet die overschreven wordt. Een
+///    afwijking is óf een phantom-law (een nieuw id op een bestaand bestand)
+///    óf een verweesde wet (het oude id wordt onvindbaar).
+///
+/// Bewust géén volledige JSON-Schema-validatie: dat is een apart vervolg
+/// (spiegel van `just validate`).
+///
+/// De foutmelding echoot het aangeleverde `$id` niet terug: die tekst loopt
+/// via de frontend in de supporting-text van een dialoog, en een id uit de
+/// body daarin renderen zou self-XSS zijn zodra die attribuut-tekst ooit als
+/// markup gelezen wordt. De aanroeper kent `law_id` al.
+pub(crate) fn validate_whole_law_body(
+    body: &str,
+    law_id: &str,
+) -> Result<(), (StatusCode, String)> {
+    validate_yaml_syntax(body).map_err(|e| {
+        tracing::debug!(law_id = %law_id, error = %e, "law write received malformed YAML body");
         (
             StatusCode::BAD_REQUEST,
             "Body is not valid YAML".to_string(),
         )
     })?;
 
-    let body_id = extract_law_id(&body).ok_or_else(|| {
+    let body_id = extract_law_id(body).ok_or_else(|| {
         (
             StatusCode::BAD_REQUEST,
             "Body missing top-level `$id` field".to_string(),
@@ -2695,39 +2803,78 @@ pub async fn save_law(
             "Body $id does not match path law_id".to_string(),
         ));
     }
+    Ok(())
+}
 
-    // Resolve the write target AND keep a handle on the per-traject
-    // corpus so we can mirror the saved body into its read-your-writes
-    // overlay after `persist` succeeds.
-    let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let write = resolve_traject_law_write(&traject, &law_id).await?;
-    let auth = TrajectCredentials::new(&state, account.id, &headers)
-        .for_write(&**write.backend, write.write_source_writable)
-        .await?;
-    let relative_path = PathBuf::from(&write.law.relative_path);
+/// Wat een geslaagde wet-schrijfactie oplevert: het save-antwoord (inclusief
+/// een eventuele PR) en de ETag van wat er nu op de branch staat, die de
+/// client als `If-Match` van de volgende save meeneemt.
+pub(crate) struct WrittenLaw {
+    pub response: SaveResponse,
+    pub etag: String,
+}
 
+/// Schrijf een wet als **één** commit naar het schrijfdoel van een traject.
+///
+/// Gedeelde kern van de gewone wet-PUT ([`save_law`]) en het verwerken van een
+/// verrijking (`enrich_review::apply`). Wat die twee onderscheidt is alleen
+/// wát er geschreven wordt en onder welke commit-message; alles eromheen — de
+/// `If-Match`-controle onder dezelfde write-lock, de commit, de
+/// read-your-writes-overlay en de changed-laws-cache — is identiek en hoort
+/// dus één keer te bestaan.
+///
+/// `compose` krijgt de huidige inhoud van het bestand op de branch (`None`
+/// wanneer het er nog niet staat) en levert het paar (body, commit-message).
+/// Het draait *binnen* de write-lock die de aanroeper via
+/// [`resolve_traject_law_write`] vasthoudt, dus de eindstand wordt samengesteld
+/// tegen precies de bytes waartegen de `If-Match` is gecontroleerd — een
+/// concurrent save kan er niet tussen glippen.
+///
+/// De huidige inhoud wordt gelezen wanneer er een `If-Match` is óf wanneer
+/// `needs_current` dat vraagt; een blinde overschrijving die zijn body al kent
+/// (de gewone PUT zonder `If-Match`) bespaart daarmee een leesronde naar
+/// GitHub.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn write_composed_law<F>(
+    traject: &Arc<TrajectCorpus>,
+    write: TrajectLawWrite,
+    auth: WriteAuthorization,
+    relative_path: &std::path::Path,
+    law_id: &str,
+    author: Option<EditorUser>,
+    if_match: Option<String>,
+    needs_current: bool,
+    compose: F,
+) -> Result<WrittenLaw, (StatusCode, String)>
+where
+    F: FnOnce(Option<&str>) -> Result<(String, String), (StatusCode, String)>,
+{
     // Optimistic concurrency, same semantics as the document PUT: a
     // present `If-Match` must equal the current content's ETag (412 on
     // mismatch), an absent header stays a permissive blind write for
     // backward compatibility. Checked while holding the write backend's
-    // mutex (acquired by `resolve_traject_law_write` above), so a
-    // concurrent save cannot slip between the check and the write.
-    if let Some(if_match) = extract_if_match(&headers) {
-        let current =
-            current_content_for_write(&traject, &write, &relative_path, "law", auth.read_token())
-                .await?;
-        check_if_match(current.as_deref(), Some(&if_match), "Wet")?;
+    // mutex (acquired by `resolve_traject_law_write`), so a concurrent
+    // save cannot slip between the check and the write.
+    let current = if if_match.is_some() || needs_current {
+        current_content_for_write(traject, &write, relative_path, "law", auth.read_token()).await?
+    } else {
+        None
+    };
+    if if_match.is_some() {
+        check_if_match(current.as_deref(), if_match.as_deref(), "Wet")?;
     }
+
+    let (body, message) = compose(current.as_deref())?;
 
     let outcome = {
         write
             .backend
-            .write_file(&relative_path, &body)
+            .write_file(relative_path, &body)
             .await
             .map_err(corpus_write_error("law"))?;
         write
             .backend
-            .persist(&auth.into_write_context(format!("Update law {}", law_id), author))
+            .persist(&auth.into_write_context(message, author))
             .await
             .map_err(corpus_write_error("law"))?
     };
@@ -2744,18 +2891,19 @@ pub async fn save_law(
     // We DO mirror into the per-traject overlay so a subsequent GET in
     // the same traject (any session) sees the new content — that is
     // the read-your-writes follow-up that used to be punted.
-    traject.record_save(law_id.clone(), body).await;
+    traject.record_save(law_id.to_string(), body).await;
 
     // This save added (or kept) this law on the traject branch — fold it
     // into the cached changed-laws diff so the sidebar's "Bewerkt in dit
     // traject" section reflects the edit on the next load, without the
     // synchronous GitHub Compare call a cache invalidation would cost
     // that load.
-    traject.record_changed_law(&law_id).await;
+    traject.record_changed_law(law_id).await;
 
-    let mut response = save_response_from_traject(outcome);
-    response.etag = Some(new_etag.clone());
-    Ok(([(axum::http::header::ETAG, new_etag)], Json(response)).into_response())
+    Ok(WrittenLaw {
+        response: save_response_from_traject(outcome),
+        etag: new_etag,
+    })
 }
 
 /// DELETE /api/trajects/{traject_id}/corpus/laws/{law_id}/scenarios/{filename}
@@ -2881,7 +3029,11 @@ pub async fn reload_corpus(
     }
 
     let new_map = registry
-        .load_favorites_async(&law_ids, auth_file.as_deref())
+        .load_favorites_async(
+            &law_ids,
+            auth_file.as_deref(),
+            &regelrecht_shared::dates::today_str(),
+        )
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "corpus reload failed");
@@ -3077,7 +3229,7 @@ struct DocumentsWriter {
 }
 
 /// Read the `If-Match` header value, trimmed. `None` when absent or empty.
-fn extract_if_match(headers: &axum::http::HeaderMap) -> Option<String> {
+pub(crate) fn extract_if_match(headers: &axum::http::HeaderMap) -> Option<String> {
     headers
         .get(axum::http::header::IF_MATCH)
         .and_then(|v| v.to_str().ok())
@@ -3225,6 +3377,59 @@ const UPLOAD_DOCUMENT_EXTENSIONS: &[&str] = &["pdf", "doc", "docx"];
 /// upload needs no conversion: its bytes are stored as-is (pass-through) instead
 /// of going through a `document_convert` job.
 const MARKDOWN_PASSTHROUGH_EXTENSIONS: &[&str] = &["md", "markdown"];
+
+/// Welke formaten de werkdocument-upload hoe behandelt. Puur afgeleid van de
+/// twee bronnen die het gedrag ook echt bepalen — de pass-through-lijst
+/// hierboven en de convertertabel in de pipeline — zodat de editor de gebruiker
+/// per bestand kan vertellen of er AI aan te pas komt zonder daarvoor een eigen
+/// (en dus af te drijven) lijst bij te houden.
+#[derive(Debug, Serialize)]
+pub struct DocumentUploadFormats {
+    /// Wordt zonder conversie opgeslagen; er gebeurt niets met de inhoud.
+    pub passthrough: Vec<&'static str>,
+    /// Heeft een deterministische converter (pandoc/pdftotext): om te zetten
+    /// zonder taalmodel. Elk formaat dat in géén van beide lijsten staat kan
+    /// alleen met een taalmodel worden omgezet.
+    pub deterministic: Vec<&'static str>,
+}
+
+/// GET /api/document-upload-formats
+///
+/// Statische indeling voor de upload-bevestiging in de editor. Geen
+/// traject-scope en niets gevoeligs: het is dezelfde informatie die een
+/// gebruiker ook uit proberen zou afleiden.
+pub async fn list_document_upload_formats() -> Json<DocumentUploadFormats> {
+    Json(DocumentUploadFormats {
+        passthrough: MARKDOWN_PASSTHROUGH_EXTENSIONS.to_vec(),
+        deterministic: regelrecht_pipeline::document_convert::deterministic_extensions(),
+    })
+}
+
+/// Query-parameters van de werkdocument-upload.
+///
+/// Bewust een query-parameter en geen multipart-veld: [`read_upload_multipart`]
+/// breekt de veldenlus af zodra het `file`-veld voorbijkomt, dus een extra
+/// multipart-veld zou alleen werken bij de juiste veldvolgorde — een stille
+/// valstrik precies op de plek waar stilte het gevaarlijkst is.
+#[derive(Debug, Default, Deserialize)]
+pub struct UploadDocumentQuery {
+    /// `?llm=1` ⇒ de uploader staat toe dat een taalmodel het document leest.
+    /// Afwezig is nee: geen toestemming is de veilige uitkomst, ook wanneer een
+    /// oudere client de parameter niet meestuurt.
+    #[serde(default)]
+    pub llm: Option<String>,
+}
+
+impl UploadDocumentQuery {
+    /// Alleen een uitdrukkelijke bevestiging telt als toestemming; al het
+    /// andere (afwezig, leeg, `0`, onzin) is nee.
+    fn allow_llm(&self) -> bool {
+        matches!(
+            self.llm.as_deref().map(str::trim),
+            Some("1") | Some("true") | Some("yes")
+        )
+    }
+}
 
 /// Enforce the optional upload allow-list on `filename`. `None` accepts any
 /// format (the werkdocument upload — the conversion pipeline routes it), while
@@ -3407,11 +3612,18 @@ async fn write_markdown_passthrough(
 /// markdown upload needs no conversion: its bytes are written straight to the
 /// target `.md` (pass-through, responds `201 Created`). Either way the response
 /// carries the target `.md` path the document appears at.
+///
+/// `?llm=1` is de toestemming van de uploader om een taalmodel te gebruiken.
+/// Zonder die toestemming én zonder deterministische converter voor dit formaat
+/// zou er alleen een job ontstaan die niets anders kán dan falen; dat weigeren
+/// we hier meteen met een 400 die uitlegt waarom, in plaats van de gebruiker
+/// later een mislukte-conversie-taak te sturen.
 pub async fn upload_traject_document(
     State(state): State<AppState>,
     Extension(account): Extension<AccountRecord>,
     session: Session,
     Path(traject_ref): Path<String>,
+    Query(query): Query<UploadDocumentQuery>,
     headers: axum::http::HeaderMap,
     mut multipart: Multipart,
 ) -> Result<(StatusCode, Json<UploadDocumentResponse>), (StatusCode, String)> {
@@ -3430,6 +3642,37 @@ pub async fn upload_traject_document(
     // or the agentic enricher fallback otherwise, returning reviewable markdown.
     let (filename, content_type, data) = read_upload_multipart(&mut multipart, None).await?;
     let ext = lowercase_extension(&filename);
+    let allow_llm = query.allow_llm();
+
+    // Weiger vóór al het werk hieronder wat toch niet kan: geen toestemming voor
+    // een taalmodel, geen deterministische converter, en het is geen markdown
+    // (die gaat ongemoeid door). De uitleg is de belofte zelf — er is niets
+    // gelezen en niets verstuurd.
+    //
+    // De extensie komt hier uit de bestandsnaam, terwijl de pipeline bij een
+    // naam zonder extensie nog op het content-type terugvalt. Die grens loopt
+    // dus één kant op scheef: een naamloos-formaat bestand wordt hier geweigerd
+    // terwijl de conversie het misschien had gekund. Dat is de goede kant —
+    // strenger dan de pipeline, nooit ruimer — en het is dezelfde extensie die
+    // de uploadbevestiging de gebruiker liet zien.
+    if !allow_llm
+        && !MARKDOWN_PASSTHROUGH_EXTENSIONS.contains(&ext.as_str())
+        && !regelrecht_pipeline::document_convert::has_deterministic_converter(&ext)
+    {
+        let format = if ext.is_empty() {
+            "Dit bestand".to_string()
+        } else {
+            format!("Een .{ext}-bestand")
+        };
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "{format} kan alleen met AI worden omgezet. Het bestand is niet opgeslagen en \
+                 niet omgezet. Upload het opnieuw met 'Omzetten met AI toestaan' aan, of lever \
+                 het aan als PDF, Word (.docx) of markdown."
+            ),
+        ));
+    }
 
     // Derive a collision-safe target markdown path against the existing docs.
     // A failed listing must NOT be swallowed: an empty `existing` set would let
@@ -3550,6 +3793,10 @@ pub async fn upload_traject_document(
         // committen gebeurt pas bij goedkeuren in de request-context van de
         // gebruiker (met diens token wanneer enforcement aan staat).
         deliver: Some("task".to_string()),
+        // De keuze van de uploader reist mee de pipeline in; dáár wordt hij
+        // afgedwongen (de deterministische route kan óók stuklopen, en dan mag
+        // de agent alleen draaien als dit waar is).
+        allow_llm,
     };
     let payload_json = serde_json::to_value(&payload)
         .map_err(|e| upload_internal_error("serialize payload", e))?;
@@ -4468,6 +4715,9 @@ mod tests {
     /// signature assertion rather than a runtime probe — the runtime
     /// path is "session in → context out", with no body in between.
     #[test]
+    // The spelled-out fn-pointer types are the assertion: an alias would hide
+    // exactly the parameter list this test exists to pin.
+    #[allow(clippy::type_complexity)]
     fn save_handler_signatures_take_raw_body_no_author_field() {
         // Compile-time assertions: the function pointer types include
         // `body: String` as the last positional argument. If any handler
@@ -5031,5 +5281,187 @@ mod tests {
     When something else entirely
 "#;
         assert_eq!(extract_target_law_ids(content), Vec::<String>::new());
+    }
+
+    // ---- filter_corpus_laws: source / ids / q precedence ----
+
+    /// Index met twee bronnen: de eigen traject-repo (prioriteit 0) en het
+    /// gefedereerde centrale corpus. Bewust geanonimiseerde ids — dit is een
+    /// publieke repo.
+    fn two_source_map() -> SourceMap {
+        let mut map = SourceMap::new("2026-06-01");
+        for (law_id, source_id, priority) in [
+            ("wet_alpha", "own", 0),
+            ("wet_beta", "own", 0),
+            ("wet_gamma", "central", 1),
+            ("wet_delta", "central", 1),
+        ] {
+            map.load_metadata_entry(
+                law_id,
+                &format!("wet/{law_id}/2025-01-01.yaml"),
+                None,
+                source_id,
+                source_id,
+                priority,
+                None,
+            )
+            .unwrap();
+        }
+        map
+    }
+
+    fn params(source: Option<&str>, ids: Option<&str>, q: Option<&str>) -> PaginationParams {
+        PaginationParams {
+            offset: 0,
+            limit: None,
+            q: q.map(str::to_string),
+            ids: ids.map(str::to_string),
+            source: source.map(str::to_string),
+        }
+    }
+
+    fn law_ids(entries: Vec<CorpusLawEntry>) -> Vec<String> {
+        let mut ids: Vec<String> = entries.into_iter().map(|e| e.law_id).collect();
+        ids.sort();
+        ids
+    }
+
+    #[test]
+    fn source_filter_returns_only_that_sources_laws() {
+        // Wat de bibliotheek-sidebar stuurt voor de sectie "Traject":
+        // alleen de eigen bron, niet het gefedereerde corpus.
+        let map = two_source_map();
+        assert_eq!(
+            law_ids(filter_corpus_laws(&map, &params(Some("own"), None, None))),
+            vec!["wet_alpha".to_string(), "wet_beta".to_string()]
+        );
+    }
+
+    #[test]
+    fn unknown_source_matches_nothing() {
+        // Een bron-id dat niet in deze index bestaat filtert alles weg —
+        // geen stille terugval op de volledige lijst.
+        let map = two_source_map();
+        assert!(filter_corpus_laws(&map, &params(Some("bestaat-niet"), None, None)).is_empty());
+    }
+
+    #[test]
+    fn blank_source_is_no_filter_rather_than_a_filter_matching_nothing() {
+        // `?source=` (of alleen spaties) komt binnen als `Some("")`. Dat is
+        // géén bron-id dat nergens op matcht — het wordt genormaliseerd naar
+        // "geen filter", zodat een leeg queryveld de lijst niet leegt.
+        let map = two_source_map();
+        let full = law_ids(filter_corpus_laws(&map, &params(None, None, None)));
+        assert!(!full.is_empty());
+        for blank in ["", "   "] {
+            assert_eq!(
+                law_ids(filter_corpus_laws(&map, &params(Some(blank), None, None))),
+                full,
+                "een lege `source` hoort zich als een afwezige te gedragen"
+            );
+        }
+    }
+
+    #[test]
+    fn absent_source_leaves_the_existing_listing_untouched() {
+        // Regressie op de globale route: elke route erft dit veld, dus een
+        // afwezige `source` mag niets veranderen aan wat er vandaag uitkomt.
+        let map = two_source_map();
+        assert_eq!(
+            law_ids(filter_corpus_laws(&map, &params(None, None, None))),
+            vec![
+                "wet_alpha".to_string(),
+                "wet_beta".to_string(),
+                "wet_delta".to_string(),
+                "wet_gamma".to_string(),
+            ]
+        );
+        assert_eq!(
+            law_ids(filter_corpus_laws(
+                &map,
+                &params(None, Some("wet_gamma"), None)
+            )),
+            vec!["wet_gamma".to_string()]
+        );
+        assert_eq!(
+            law_ids(filter_corpus_laws(&map, &params(None, None, Some("alpha")))),
+            vec!["wet_alpha".to_string()]
+        );
+    }
+
+    #[test]
+    fn source_narrows_ids_and_q_instead_of_replacing_them() {
+        // Vastgelegde precedentie (zie `PaginationParams::source`): `source`
+        // zegt *wiens* wetten en combineert daarom met `ids`/`q`, die zeggen
+        // *welke* wetten.
+        let map = two_source_map();
+
+        // source + ids: alleen de gevraagde ids die in die bron zitten.
+        assert_eq!(
+            law_ids(filter_corpus_laws(
+                &map,
+                &params(Some("own"), Some("wet_alpha,wet_gamma"), None)
+            )),
+            vec!["wet_alpha".to_string()]
+        );
+
+        // source + q: alleen de treffers in die bron.
+        assert_eq!(
+            law_ids(filter_corpus_laws(
+                &map,
+                &params(Some("own"), None, Some("wet"))
+            )),
+            vec!["wet_alpha".to_string(), "wet_beta".to_string()]
+        );
+
+        // source + ids + q: `ids` wint nog steeds van `q` (bestaande
+        // precedentie), en het resultaat wordt daarna op bron versmald.
+        assert_eq!(
+            law_ids(filter_corpus_laws(
+                &map,
+                &params(Some("own"), Some("wet_beta"), Some("alpha"))
+            )),
+            vec!["wet_beta".to_string()]
+        );
+    }
+
+    #[test]
+    fn source_filtered_listing_is_ordered_by_priority_then_law_id() {
+        // De gefilterde tak sorteert op bronprioriteit, dan law_id — met één
+        // bron komt dat neer op alfabetisch op law_id. De frontend leunt daar
+        // niet op (die sorteert op weergavenaam), maar de volgorde moet
+        // deterministisch zijn.
+        let map = two_source_map();
+        let ids: Vec<String> = filter_corpus_laws(&map, &params(Some("own"), None, None))
+            .into_iter()
+            .map(|e| e.law_id)
+            .collect();
+        assert_eq!(ids, vec!["wet_alpha".to_string(), "wet_beta".to_string()]);
+    }
+
+    #[test]
+    fn source_and_limit_arrive_from_the_query_string() {
+        // De tests hierboven voeden `PaginationParams` rechtstreeks; deze legt
+        // de andere helft van de afspraak vast — dat de URL die de sidebar
+        // bouwt (`?source=…&limit=200`) ook echt in dat veld belandt. Zonder
+        // deze zou een hernoemd/verkeerd geserialiseerd veld stil doorglippen:
+        // de route blijft dan 200 geven, alleen ongefilterd.
+        let query: Query<PaginationParams> = Query::try_from_uri(
+            &"http://editor.test/api/trajects/t-1234abcd/corpus/laws?source=own&limit=200"
+                .parse()
+                .unwrap(),
+        )
+        .expect("query met source moet deserialiseren");
+        assert_eq!(query.source.as_deref(), Some("own"));
+        assert_eq!(query.effective_limit(), 200);
+
+        // En de bestaande vorm zonder `source` blijft een afwezig filter, niet
+        // een lege string. `filter_corpus_laws` normaliseert een lege of
+        // whitespace-only `source` bovendien terug naar "geen filter", zodat
+        // `?source=` niet stilletjes alles wegfiltert.
+        let bare: Query<PaginationParams> =
+            Query::try_from_uri(&"http://editor.test/api/corpus/laws".parse().unwrap())
+                .expect("query zonder source moet deserialiseren");
+        assert_eq!(bare.source, None);
     }
 }

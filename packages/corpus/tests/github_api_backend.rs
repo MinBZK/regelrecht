@@ -833,3 +833,68 @@ async fn a_write_after_creating_the_branch_does_not_overwrite_base_content() {
         "the message must say why the write was refused: {message}"
     );
 }
+
+#[tokio::test]
+async fn changed_files_with_token_compares_as_the_user_without_a_service_token() {
+    let server = MockServer::start().await;
+
+    // A traject on a private, user-supplied repo: the server holds no token
+    // for it at all (`self.token` is None). The override must therefore both
+    // *unblock* the Compare call and *authenticate* it — matching on the
+    // Authorization header pins that it is the user's credential going out.
+    Mock::given(method("GET"))
+        .and(path("/repos/acme/corpus/compare/main...traject/abc"))
+        .and(header("authorization", "Bearer user-token"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "files": [{ "filename": "wet/a/2025-01-01.yaml" }]
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let src = github_source("acme", "corpus", "traject/abc", None);
+    let b = GitHubApiBackend::new(&src, Some("main".to_string()), None)
+        .unwrap()
+        .with_api_base(server.uri());
+
+    let changed = b
+        .changed_files_with_token(Some("user-token"))
+        .await
+        .unwrap();
+    assert_eq!(changed, vec!["wet/a/2025-01-01.yaml".to_string()]);
+}
+
+#[tokio::test]
+async fn changed_files_with_token_prefers_the_override_over_the_backend_token() {
+    let server = MockServer::start().await;
+
+    // Same precedence as `persist` and `read_file_with_token`: the per-call
+    // token supersedes the configured one, so read and write can't
+    // authenticate as different identities.
+    Mock::given(method("GET"))
+        .and(path("/repos/acme/corpus/compare/main...traject/abc"))
+        .and(header("authorization", "Bearer user-token"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "files": [] })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let b = backend(&server);
+    assert!(b
+        .changed_files_with_token(Some("user-token"))
+        .await
+        .unwrap()
+        .is_empty());
+}
+
+#[tokio::test]
+async fn changed_files_with_no_token_at_all_stays_empty() {
+    let server = MockServer::start().await;
+    // Neither an override nor a configured token: still a short-circuit
+    // before the network (no mounted mock would answer).
+    let src = github_source("acme", "corpus", "traject/abc", None);
+    let b = GitHubApiBackend::new(&src, Some("main".to_string()), None)
+        .unwrap()
+        .with_api_base(server.uri());
+    assert!(b.changed_files_with_token(None).await.unwrap().is_empty());
+}

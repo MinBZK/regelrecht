@@ -25,21 +25,45 @@ The development stack runs infrastructure in Docker and application services nat
 
 ## One-Time Setup (build speed)
 
-Run once per machine after cloning:
+[Getting Started](./getting-started) lists the prerequisites. Then, once per
+machine after cloning:
 
 ```bash
 just dev-setup
 ```
 
-It installs the [mold](https://github.com/rui314/mold) linker (a hard
-requirement; the dev recipes won't link without it) plus `sccache`, and points
-every git worktree at a single shared cargo `target-dir` so a new worktree
-reuses the already-built dependency graph instead of cold-building from scratch.
+It installs `sccache`, plus the [mold](https://github.com/rui314/mold) linker
+on x86_64 Linux (through apt, dnf or Homebrew, whichever it finds), and points every git
+worktree at a single shared cargo `target-dir` so a new worktree reuses the
+already-built dependency graph instead of cold-building from scratch. That
+setting lands in a gitignored `.cargo/config.toml` at the root of the main
+checkout.
+
 When the repo is on a slow mount (9p/NFS/SMB, e.g. a WSL2 or Docker-Desktop
 dev container backed by a Windows drive), it relocates that target dir to fast
 local storage under `~/.cache/regelrecht/`, which is usually the biggest
 build-time win. `sccache` is installed but left off locally (it disables
 incremental compilation, which hurts the hot-reload loop); CI uses both.
+
+Sharing that target dir has a cost when two worktrees build at once. Cargo
+locks a target dir exclusively for the length of a build, so the second one
+waits: `just validate` measured 2 seconds alone and 38 seconds next to a
+45-second `just lint` in another worktree. Sharing still wins by a wide margin
+when one build runs at a time (a first `just build-check` in a fresh worktree
+took 1 second shared and 170 seconds with its own target dir). A worktree about
+to run long builds can step out of the queue with `just target-isolated`, and
+`just target-shared` puts it back. The measurements are at the top of
+`script/target-dir.sh`.
+
+sccache does not give you both. It hashes the working directory, so two
+worktrees on different paths share no Rust compilation at all: a cold
+`just build-check` with a warm cache gave 480 misses and 0 hits.
+
+mold is the configured linker on x86_64 Linux (`packages/.cargo/config.toml`),
+so builds there fail to link without it. On that platform `just dev`, and
+`just dev-frontend` whenever it starts a Rust service, refuse to start when mold
+is missing. On macOS and aarch64 Linux cargo uses the default linker, and
+neither `just dev-setup` nor the dev recipes ask for mold.
 
 ## Starting the Dev Stack
 
@@ -47,8 +71,16 @@ incremental compilation, which hurts the hot-reload loop); CI uses both.
 just dev
 ```
 
+| Service | URL | Description |
+|---------|-----|-------------|
+| Editor | http://localhost:3000 | Law editor + **Corpusinwinning** section (hot reload) |
+| Admin API | http://localhost:8000 | Harvester REST API (auto-recompile; UI is the editor's Corpusinwinning section) |
+| Grafana | http://localhost:3002 | Metrics dashboard |
+| Prometheus | http://localhost:9090 | Metrics collection |
+| PostgreSQL | localhost:5433 | Database |
+
 This command:
-1. Checks prerequisites (cargo, node, docker, cargo-watch, mold)
+1. Checks prerequisites (cargo, node, docker, cargo-watch, and mold on x86_64 Linux)
 2. Starts infrastructure containers (PostgreSQL, Prometheus, Grafana)
 3. Waits for PostgreSQL to be ready
 4. Installs frontend dependencies if needed
@@ -63,7 +95,7 @@ the Vite dev server with HMR) and skips Grafana, Prometheus, and the workers.
 ```bash
 just dev-frontend            # all frontends at once (default)
 just dev-frontend editor     # just the editor
-just dev-frontend admin      # just the admin dashboard
+just dev-frontend admin      # just the harvester-admin API
 just dev-frontend lawmaking  # just the lawmaking UI (no backend)
 just dev-down                # stop it (shared with `just dev`)
 ```
@@ -151,20 +183,34 @@ its own subscriber and reads only `RUST_LOG`.
 flattened to the top level; the enclosing spans are added as nested `span` and
 `spans` keys, so a log backend can search per field. Set it per deployment in
 ZAD; locally the text lines read better, so leave the variable unset. An
-unrecognised value falls back to text
-and warns on stderr — a typo never silences logging.
+unrecognized value falls back to text and warns on stderr, so a typo never
+silences logging.
+
+## Architecture Explorer
+
+`just arch-explore` builds and starts a local explorer of the codebase on port 7180 (override with `ARCH_EXPLORE_PORT`). It renders a model of the Rust workspace and the Vue frontends, from crate down to method and from app down to component, with the dependencies between them. The model comes from `packages/arch-extract/`, a developer tool that is not deployed. It is generated from the working tree on demand and never committed, so it cannot go stale; `just arch-generate` writes it to disk for inspection. `packages/arch-extract/README.md` explains how the edges are resolved and what the explorer misses.
 
 ## Pre-commit Hooks
 
-Install pre-commit hooks:
+Install [pre-commit](https://pre-commit.com/) (for example with
+`uv tool install pre-commit`), then register the hooks in your clone:
 
 ```bash
-pre-commit install
+pre-commit install --hook-type pre-commit --hook-type commit-msg
 ```
 
-Hooks run automatically on commit:
-- Trailing whitespace, end-of-file fixes
-- YAML linting
-- Rust formatting (`just format`)
-- Rust linting (`just lint`)
-- Schema validation (`just validate`)
+The `commit-msg` type matters. The Conventional Commits check on the commit
+message runs at that stage, and a plain `pre-commit install` registers only the
+`pre-commit` stage, so that check would never run locally.
+
+On commit the hooks run, each only when a matching file changed:
+
+- Trailing whitespace, end-of-file, merge-conflict and large-file checks
+- YAML linting (yamllint, config in `.yamllint`)
+- Rust formatting (`just format`) and clippy (`just lint`)
+- Schema validation of corpus files (`just validate`)
+- The test suites of the CI scripts and merge gates under `script/`, when that
+  script or its workflow changed
+
+`.pre-commit-config.yaml` has the full list. What to do when a hook fails is on
+[Contributing](/operations/contributing#pre-commit-hooks).

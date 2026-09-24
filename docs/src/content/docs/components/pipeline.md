@@ -40,7 +40,7 @@ flowchart LR
 | Module | Purpose |
 |--------|---------|
 | `job_queue.rs` | Job creation, claiming (`FOR UPDATE SKIP LOCKED`), completion, failure with auto-retry |
-| `law_status.rs` | Per-law status tracking through 10 states |
+| `law_status.rs` | Per-law status tracking through 11 states |
 | `harvest.rs` | Harvest execution - download XML from BWB, convert to YAML |
 | `enrich.rs` | Enrichment execution - call LLM to add `machine_readable` sections |
 | `worker.rs` | Polling loops for harvest and enrich workers |
@@ -90,7 +90,28 @@ stateDiagram-v2
     Enriching --> EnrichFailed: job retries exhausted
     EnrichFailed --> Enriching: re-queued (fail count below threshold)
     EnrichFailed --> EnrichExhausted: fail count reaches threshold
+    Harvesting --> NotHarvestable: no consolidated text
+    NotHarvestable --> [*]
 ```
+
+`NotHarvestable` is the terminal one. A work can have no consolidated text to
+harvest because it was withdrawn, is not yet in force, or has only been
+announced. The skip reason is uniform, so the status is a single value and the
+precise reason and date go into the harvest job's result. The job is completed
+rather than failed, so it is never retried; a future law can be re-harvested by
+hand once its text appears.
+
+## Pipeline API
+
+Besides the workers, the crate builds one HTTP service, `pipeline-api` (`src/bin/pipeline_api.rs`, image `regelrecht-pipeline-api`). It has no public address and no authentication of its own. The editor API forwards `/api/harvest/*` to it (see `PIPELINE_API_URL` on [Editor API](./editor-api)) and does the auth checks in front of it.
+
+| Route | Purpose |
+|-------|---------|
+| `POST /harvest` | Create a harvest job for one law |
+| `POST /harvest/batch` | Create harvest jobs for several laws |
+| `GET /harvest/status` | Job and law status |
+| `GET /harvest/search` | Search BWB for a law to harvest |
+| `GET /health` | Liveness |
 
 ## Harvest Worker
 
@@ -138,6 +159,38 @@ order, from a **worker-owned cursor**:
   independent of LLM behavior; the last chunk marks the law `enriched`.
 - Task-flow enrichments (`deliver=task`) always run whole-law (chunking off).
 
+### One session per window
+
+A window is one law and one article range: the translation pass plus the
+feedback rounds of the three gates. Every one of those calls used to be a cold
+CLI process that read the law, the context brief, the skills and the schema
+again, up to seven starts per window. `ENRICH_SESSION_REUSE` decides whether
+they share one agent session instead. It applies to the claude provider only;
+the worker picks the session id itself and passes `--session-id` on the first
+call and `--resume` after that.
+
+- `window` (default): every call in the window continues the same session.
+  Each resumed feedback prompt opens with an instruction to read the file from
+  disk before answering. A gate is meant to be a fresh look at what stands
+  there, and an agent that remembers writing it can otherwise defend its own
+  choice instead of reading the finding.
+- `repair`: the translation pass and the schema gate share a session, the
+  checks and marking gates run cold. A schema error is a fact about the file;
+  those two gates ask for judgement.
+- `off`: every call its own cold process, the behaviour before this existed.
+
+The session never crosses a window: a continuation chunk opens its own. An
+agent that kept everything it wrote would carry half a large law into the last
+chunk, which costs more than starting over.
+
+Whether reuse is cheaper has a number behind it. A resumed round pays every
+turn over the context the translation pass ended at, so it wins only if
+knowing the law already shortens the round. Every call is therefore accounted
+(`agent_calls` in the job result: step, whether it was resumed, input/output/
+cache-read tokens and cost), with the window total beside it (`usage`) and the
+mode that produced them (`session_reuse`). `enrich-once --session-reuse` runs
+the same loop locally and prints the table.
+
 ### LLM Providers
 
 The LLM provider is configurable via `LLM_PROVIDER` (default: `opencode`). Provider-specific paths and models are set via environment variables (e.g., `OPENCODE_PATH`, `OPENCODE_MODEL`).
@@ -158,6 +211,19 @@ The LLM subprocess runs with a stripped environment (allowlisted vars only) for 
 | `LLM_PROVIDER` | `opencode` | LLM provider selection |
 | `LLM_TIMEOUT_SECS` | 600 (10 min) | LLM execution timeout |
 | `ENRICH_MAX_ARTICLES_PER_RUN` | 15 | Max articles per enrich run (chunked enrichment); `0` disables chunking |
+| `ENRICH_FEEDBACK_ROUNDS` | 1 | Feedback rounds per gate; `2` or `checks=2,marking=3` |
+| `ENRICH_SESSION_REUSE` | `window` | Session sharing within one window: `window`, `repair` or `off` |
+| `ENRICH_STEPS` | every step | Which steps of the chain to run, e.g. `reconcile` for the closing pass alone |
+| `ENRICH_WINDOW_MODE` | `entries` | What a window is: `entries` counts entries, `layers` uses the dependency layers of RFC-033 |
+| `ENRICH_WINDOW_CONCURRENCY` | 1 | Windows run side by side, each in its own copy of the checkout and its own agent session |
+| `ENRICH_CONTEXT_BRIEF` | on | `0` withholds the context brief the worker writes beside the law |
+| `ENRICH_MAX_RSS_MB` | 3500 | Memory ceiling for the agent subprocess |
+
+`LLM_TIMEOUT_SECS` is a ceiling per agent call, and one run makes several: a
+translation pass, a feedback round per gate, the closing pass and the final
+schema gate. The worker lowers it when the job budget cannot hold that many,
+so raising `LLM_TIMEOUT_SECS` without raising `WORKER_JOB_TIMEOUT_SECS` buys
+nothing.
 
 ## Database Schema
 
@@ -178,7 +244,7 @@ just pipeline-integration-test   # Integration tests (Docker + testcontainers)
 
 Integration tests use `testcontainers` to spin up ephemeral PostgreSQL instances; no local database setup is required.
 
-## Further Reading
+## Further reading
 
 - [Harvester](./harvester) - the BWB law downloader used by harvest jobs
 - [Architecture](/guide/architecture) - where the pipeline fits in the system

@@ -6,6 +6,11 @@
 //! `status <> 'completed'` guard. Neither is visible from the call site, so a
 //! refactor could drop either without any caller noticing - hence these.
 
+// Allowed crate-wide: test helpers outside a `#[test]` fn may unwrap, expect and
+// panic too, because that is how a failing fixture reports itself.
+// `allow-*-in-tests` in clippy.toml only reaches `#[test]` fns.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 use serde_json::json;
 
 use regelrecht_pipeline::document_convert::cancel_traject_document_job;

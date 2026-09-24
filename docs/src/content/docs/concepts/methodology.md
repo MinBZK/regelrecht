@@ -1,6 +1,6 @@
 ---
-title: "Validation Methodology"
-description: "Short overview of RegelRecht's execution-first validation method and the generate/validate/reverse-check loop."
+title: "Execution-First Validation"
+description: "How RegelRecht validates a machine-readable interpretation by running it, and the generate, validate and reverse-check loop that follows."
 ---
 
 RegelRecht uses an **execution-first** approach to validate machine-readable law interpretations. This page is a short overview; for the research background and the full argument, see [RegelRecht Validation: From Analysis-First to Execution-First](./validation-methodology).
@@ -50,3 +50,7 @@ The MvT is the explanatory memorandum that accompanies Dutch legislation. It con
 - Edge cases the legislature considered
 
 These examples are the primary test cases for machine-readable interpretations.
+
+## Further reading
+
+- [Rules as Executed, section 5.3](/research/rules-as-executed#sec:translation) - the position paper on translating law at scale, with language models doing the labor and people doing the review

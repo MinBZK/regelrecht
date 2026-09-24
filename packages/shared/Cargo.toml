@@ -12,10 +12,15 @@ keywords = ["law", "legal", "dutch", "regelrecht", "types"]
 [dependencies]
 serde.workspace = true
 tracing-subscriber = { workspace = true, optional = true }
+chrono = { workspace = true, optional = true }
+chrono-tz = { workspace = true, optional = true }
 
 [features]
 default = []
 telemetry = ["dep:tracing-subscriber"]
+# Europe/Amsterdam calendar dates. Optional so the crates that only want the
+# domain types (law-model, and through it corpus) stay free of chrono.
+dates = ["dep:chrono", "dep:chrono-tz"]
 
 [dev-dependencies]
 serde_json.workspace = true

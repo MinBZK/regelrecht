@@ -18,7 +18,7 @@ const cards = [
   },
   {
     title: 'Delegation and IoC',
-    body: 'Higher laws delegate to lower regulations. The engine discovers implementations at runtime, matching the real legal hierarchy.',
+    body: 'Higher laws delegate to lower regulations. The engine discovers implementations when it loads the corpus, matching the real legal hierarchy.',
     href: '/concepts/inversion-of-control',
   },
   {
@@ -28,7 +28,7 @@ const cards = [
   },
   {
     title: 'Multi-Organization Execution',
-    body: 'Different government organizations handle different laws. The engine models these boundaries and can exchange signed results between organizations.',
+    body: 'Different government organizations handle different laws. The engine models these boundaries; exchanging signed results between organizations is proposed (RFC-009) but not yet built.',
     href: '/concepts/multi-org-execution',
   },
   {
@@ -45,7 +45,7 @@ const actions = [
 ];
 ---
 
-<nldd-list variant="box">
+<nldd-list variant="box-tinted">
   {
     actions.map((a) => (
       <nldd-list-item href={a.href}>
@@ -56,7 +56,7 @@ const actions = [
     ))
   }
 </nldd-list>
-<nldd-list variant="box">
+<nldd-list variant="box-tinted">
   {
     cards.map((c) => (
       <nldd-list-item href={c.href}>

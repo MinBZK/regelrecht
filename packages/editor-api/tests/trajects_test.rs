@@ -29,6 +29,9 @@ use regelrecht_editor_api::trajects::{
     self, AddMemberRequest, CreateTrajectRequest, UpdateMemberRequest, UpdateTrajectRequest,
 };
 
+use regelrecht_pipeline::job_queue::{self, CreateJobRequest};
+use regelrecht_pipeline::models::JobType;
+use regelrecht_pipeline::tasks::{self, BlobKind, NewTask, Task, TaskStatus, TaskType};
 use regelrecht_pipeline::test_utils::TestDb;
 
 // ---------------------------------------------------------------------------
@@ -949,6 +952,137 @@ async fn delete_is_owner_only_and_cascades() {
     assert_eq!(members, 0, "traject_members should cascade-delete");
     assert_eq!(sources, 0, "traject_corpus_sources should cascade-delete");
     assert_eq!(trajects_count, 0);
+}
+
+/// Een verwijderd traject mag geen open taken achterlaten: `tasks.traject_id`
+/// is `ON DELETE SET NULL`, dus zonder de expliciete afhandeling in `delete`
+/// blijft de taak staan, hangt hij in de account-brede takenlijst en wijst zijn
+/// `payload.traject_ref` naar een traject dat niet meer bestaat.
+#[tokio::test]
+async fn delete_dismisses_open_tasks_and_clears_their_blobs() {
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
+    let doomed = create_traject(&state, &alice, "Tarief").await;
+    let survivor = create_traject(&state, &alice, "Toeslag").await;
+
+    // Eén job met twee review-taken (het per-artikel-patroon) plus een blob,
+    // en een al afgehandelde taak op een eigen job.
+    let job = job_queue::create_job(&db.pool, CreateJobRequest::new(JobType::Enrich, "test_wet"))
+        .await
+        .unwrap();
+    tasks::insert_blob(
+        &db.pool,
+        job.id,
+        BlobKind::Result,
+        "corpus/regulation/nl/wet/test_wet/2025-01-01.yaml",
+        "$id: test_wet\n",
+    )
+    .await
+    .unwrap();
+    let open_a = seed_task(&db.pool, &alice, doomed, Some(job.id), "1").await;
+    let open_b = seed_task(&db.pool, &alice, doomed, Some(job.id), "2").await;
+
+    let done_job =
+        job_queue::create_job(&db.pool, CreateJobRequest::new(JobType::Enrich, "test_wet"))
+            .await
+            .unwrap();
+    let done = seed_task(&db.pool, &alice, doomed, Some(done_job.id), "3").await;
+    let done = tasks::resolve_task(&db.pool, done.id, alice.id, TaskStatus::Approved)
+        .await
+        .unwrap()
+        .expect("assignee mag resolven");
+
+    // Een open taak van een ánder traject blijft er buiten.
+    let elsewhere = seed_task(&db.pool, &alice, survivor, None, "1").await;
+
+    assert_eq!(
+        trajects::delete(State(state.clone()), Extension(alice.clone()), Path(doomed))
+            .await
+            .unwrap(),
+        StatusCode::NO_CONTENT
+    );
+
+    for id in [open_a.id, open_b.id] {
+        let (status, resolved_at, resolved_by): (TaskStatus, Option<i64>, Option<Uuid>) =
+            task_state(&db.pool, id).await;
+        assert_eq!(
+            status,
+            TaskStatus::Dismissed,
+            "open taak moet gesloten zijn"
+        );
+        assert!(resolved_at.is_some(), "resolved_at moet gestempeld zijn");
+        assert_eq!(
+            resolved_by, None,
+            "niemand heeft de taak beoordeeld; het traject verdween eronder"
+        );
+    }
+
+    let (status, _, resolved_by) = task_state(&db.pool, done.id).await;
+    assert_eq!(
+        status,
+        TaskStatus::Approved,
+        "afgehandelde taak moet onaangeroerd blijven"
+    );
+    assert_eq!(resolved_by, Some(alice.id));
+
+    let (status, _, _) = task_state(&db.pool, elsewhere.id).await;
+    assert_eq!(
+        status,
+        TaskStatus::Open,
+        "taak van een ander traject blijft open"
+    );
+
+    let blobs = tasks::load_blobs(&db.pool, job.id, BlobKind::Result)
+        .await
+        .unwrap();
+    assert!(
+        blobs.is_empty(),
+        "result-blobs van de gesloten taken moeten weg zijn"
+    );
+}
+
+/// Maak een open `job_review`-taak voor `traject_id`, met dezelfde
+/// payload-vorm als de worker die aanmaakt.
+async fn seed_task(
+    pool: &PgPool,
+    assignee: &AccountRecord,
+    traject_id: Uuid,
+    job_id: Option<Uuid>,
+    article: &str,
+) -> Task {
+    tasks::create_task(
+        pool,
+        NewTask {
+            task_type: TaskType::JobReview,
+            assignee_account_id: Some(assignee.id),
+            traject_id: Some(traject_id),
+            job_id,
+            title: format!("Verrijking beoordelen: test_wet artikel {article}"),
+            payload: Some(serde_json::json!({
+                "law_id": "test_wet",
+                "article": article,
+            })),
+        },
+    )
+    .await
+    .unwrap()
+}
+
+/// Status + audit-velden van één taak, ongeacht assignee: de store-helpers
+/// filteren op account, hier willen we de rauwe rij zien. `resolved_at` komt
+/// als unix-seconde terug — de test kijkt alleen of hij gezet is.
+async fn task_state(pool: &PgPool, task_id: Uuid) -> (TaskStatus, Option<i64>, Option<Uuid>) {
+    let row: (
+        TaskStatus,
+        Option<chrono::DateTime<chrono::Utc>>,
+        Option<Uuid>,
+    ) = sqlx::query_as("SELECT status, resolved_at, resolved_by FROM tasks WHERE id = $1")
+        .bind(task_id)
+        .fetch_one(pool)
+        .await
+        .unwrap();
+    (row.0, row.1.map(|t| t.timestamp()), row.2)
 }
 
 // ---------------------------------------------------------------------------

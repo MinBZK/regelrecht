@@ -122,6 +122,24 @@ machine_readable:
 
 The Awb does not know it is being overridden. The Vreemdelingenwet unilaterally replaces the value. This only applies when the Vreemdelingenwet is part of the execution chain (a Participatiewet case is not affected by this override).
 
+### Voiding an output
+
+An override can also say that the output does not arise at all, rather than being replaced by another value:
+
+```yaml
+machine_readable:
+  overrides:
+    - law: algemene_wet_bestuursrecht
+      article: '6:7'
+      output: bezwaartermijn_weken
+      voids: true
+      legal_text_excerpt: "geen bezwaar mogelijk"
+```
+
+This distinction is legal, not technical. *"Bestaat geen aanspraak"* is not an entitlement of zero: an entitlement of zero is still a decision, so it carries legal remedies and a ground for recovery, and no entitlement carries neither. Writing a void as `value: 0` would erase that difference. The engine reads the flag and needs no knowledge of administrative law to act on it.
+
+An override of another law's output applies only inside an execution that the overriding law started, as above. An article overriding an output of **its own** law is a different claim: there is no other law to protect from, so it applies whenever that law runs. Without that, the outcome would depend on the route in, and an amount the statute says does not arise would still be handed out when a third law read the output directly. `voids` is what exposed this, but the rule is about same-law versus cross-law and holds for a replacement too. See [RFC-041](/rfcs/rfc-041) for the amendment it makes to the contextual-law rule.
+
 ### How overrides differ from IoC
 
 | | IoC (`open_terms` + `implements`) | Overrides |
@@ -155,3 +173,4 @@ The engine yields between stages, returning accumulated outputs and indicating w
 - [Temporal Validity and Dates](./temporal-and-dates) - the date arithmetic behind the objection-deadline chain
 - [RFC-007: Cross-Law Execution](/rfcs/rfc-007) - hooks and overrides specification
 - [RFC-008: Bestuursrecht/Awb](/rfcs/rfc-008) - the administrative procedure model
+- [Rules as Executed, section 4.9](/research/rules-as-executed#sec:modes) - the position paper's four execution modes, with the hook as the declared trigger of the reactive one

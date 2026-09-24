@@ -24,7 +24,7 @@ behaviour the tests actually pin down.
 Two workflows produce them:
 
 - `.github/workflows/mutation-testing.yml` runs the full set every Monday and
-  opens an issue labelled `mutation-testing` with the counts and a report.
+  opens an issue labelled `mbot:survivors` with the counts and a report.
 - `.github/workflows/mutation-diff.yml` runs on every pull request that touches
   `packages/engine/**`, over the changed lines only. That gate is why new gaps
   should not reach this backlog.
@@ -42,9 +42,10 @@ change that was applied. `caught.txt`, `timeout.txt` and `unviable.txt` hold the
 rest. `README.md` in the same artifact has the counts and the per-file
 distribution.
 
-Working from a failing pull-request gate instead? The same files are in the
-`mutation-report-diff` artifact of that run, and the list is short by
-construction.
+Working from a failing pull-request gate instead? The gate splits its mutants
+over shards, and each shard leaves its files in its own artifact,
+`mutation-report-diff-shard-N`. Only a red shard has something to fix; the
+list is short by construction.
 
 ## Step 2: Work one file at a time
 

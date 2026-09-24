@@ -96,8 +96,11 @@ vi.mock('./composables/useDocumentUpload.js', () => ({
     fileInput: ref(null),
     uploadError: ref(null),
     uploadRetryable: ref(false),
+    pendingFile: ref(null),
     onUpload: vi.fn(),
     onFileChange: vi.fn(),
+    confirmUpload: vi.fn(),
+    cancelUpload: vi.fn(),
   }),
 }));
 

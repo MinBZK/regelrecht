@@ -62,7 +62,7 @@ pub const MAX_OPERATION_DEPTH: usize = 100;
 /// metadata in Cargo.toml.
 pub const SUPPORTED_SCHEMAS: &[&str] = &[
     "v0.2.0", "v0.3.0", "v0.3.1", "v0.3.2", "v0.4.0", "v0.5.0", "v0.5.1", "v0.5.2", "v0.5.3",
-    "v0.5.4", "v0.5.5", "v0.5.6",
+    "v0.5.4", "v0.5.5", "v0.5.6", "v0.5.7", "v0.5.8", "v0.5.9", "v0.6.0", "v0.7.0",
 ];
 
 /// Maximum quote length (in `char`s) for the fuzzy annotation scan.
@@ -100,51 +100,47 @@ pub const MAX_FUZZY_SCORED_WINDOWS: usize = 10_000;
 /// 32 levels is far beyond what any legitimate data structure would need.
 pub const MAX_PROPERTY_DEPTH: usize = 32;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+// Sanity bounds on the limits above, checked at compile time: a limit edited
+// out of range fails the build rather than a test.
+const _: () = {
+    // Sanity checks that limits are within reasonable bounds
+    assert!(MAX_LOADED_LAWS >= 10, "Should allow at least 10 laws");
+    assert!(MAX_LOADED_LAWS <= 1000, "Should not allow excessive laws");
 
-    #[test]
-    fn test_constants_are_reasonable() {
-        // Sanity checks that limits are within reasonable bounds
-        assert!(MAX_LOADED_LAWS >= 10, "Should allow at least 10 laws");
-        assert!(MAX_LOADED_LAWS <= 1000, "Should not allow excessive laws");
+    assert!(MAX_YAML_SIZE >= 100_000, "Should allow at least 100KB");
+    assert!(MAX_YAML_SIZE <= 10_000_000, "Should not allow 10MB+");
 
-        assert!(MAX_YAML_SIZE >= 100_000, "Should allow at least 100KB");
-        assert!(MAX_YAML_SIZE <= 10_000_000, "Should not allow 10MB+");
+    assert!(MAX_ARRAY_SIZE >= 100, "Should allow reasonable arrays");
+    assert!(MAX_ARRAY_SIZE <= 10_000, "Should not allow huge arrays");
 
-        assert!(MAX_ARRAY_SIZE >= 100, "Should allow reasonable arrays");
-        assert!(MAX_ARRAY_SIZE <= 10_000, "Should not allow huge arrays");
+    assert!(MAX_CROSS_LAW_DEPTH >= 5, "Should allow typical chains");
+    assert!(MAX_CROSS_LAW_DEPTH <= 50, "Should limit deep chains");
 
-        assert!(MAX_CROSS_LAW_DEPTH >= 5, "Should allow typical chains");
-        assert!(MAX_CROSS_LAW_DEPTH <= 50, "Should limit deep chains");
+    assert!(MAX_OPERATION_DEPTH >= 50, "Should allow complex ops");
+    assert!(MAX_OPERATION_DEPTH <= 500, "Should limit extreme nesting");
 
-        assert!(MAX_OPERATION_DEPTH >= 50, "Should allow complex ops");
-        assert!(MAX_OPERATION_DEPTH <= 500, "Should limit extreme nesting");
+    assert!(MAX_PROPERTY_DEPTH >= 10, "Should allow nested objects");
+    assert!(MAX_PROPERTY_DEPTH <= 100, "Should limit extreme depth");
 
-        assert!(MAX_PROPERTY_DEPTH >= 10, "Should allow nested objects");
-        assert!(MAX_PROPERTY_DEPTH <= 100, "Should limit extreme depth");
-
-        assert!(
-            MAX_FUZZY_QUOTE_CHARS >= 100,
-            "Should allow a sentence-length quote"
-        );
-        assert!(
-            MAX_FUZZY_QUOTE_CHARS <= 500,
-            "Should keep the cubic scan bounded"
-        );
-        assert!(
-            MAX_FUZZY_SCAN_CHARS >= 119_763,
-            "Should cover the Zorgverzekeringswet in one scan"
-        );
-        assert!(MAX_FUZZY_SCAN_CHARS <= 1_000_000, "Should bound the scan");
-        assert!(
-            MAX_FUZZY_SCORED_WINDOWS >= 1_000,
-            "Should score enough windows to find real fuzzy matches"
-        );
-        assert!(
-            MAX_FUZZY_SCORED_WINDOWS <= 100_000,
-            "Should bound the Levenshtein work"
-        );
-    }
-}
+    assert!(
+        MAX_FUZZY_QUOTE_CHARS >= 100,
+        "Should allow a sentence-length quote"
+    );
+    assert!(
+        MAX_FUZZY_QUOTE_CHARS <= 500,
+        "Should keep the cubic scan bounded"
+    );
+    assert!(
+        MAX_FUZZY_SCAN_CHARS >= 119_763,
+        "Should cover the Zorgverzekeringswet in one scan"
+    );
+    assert!(MAX_FUZZY_SCAN_CHARS <= 1_000_000, "Should bound the scan");
+    assert!(
+        MAX_FUZZY_SCORED_WINDOWS >= 1_000,
+        "Should score enough windows to find real fuzzy matches"
+    );
+    assert!(
+        MAX_FUZZY_SCORED_WINDOWS <= 100_000,
+        "Should bound the Levenshtein work"
+    );
+};

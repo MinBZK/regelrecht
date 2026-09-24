@@ -13,11 +13,18 @@ wet_op_de_zorgtoeslag (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ╟──Reference: algemene_wet_inkomensafhankelijke_regelingen#heeft_toeslagpartner
 ║   ║   ╟──Resolving from PARAMETERS: $BSN = '999993653'
 ║   ║   ╟──Resolving from DATA_SOURCE: $PARTNERSCHAP_TYPE = 'GEEN'
-║   ║   ╙──Computing heeft_toeslagpartner
-║   ║       ├──Compute IN(...) = False
-║   ║       │   ├──Resolving from PARAMETERS: $PARTNERSCHAP_TYPE = 'GEEN'
-║   ║       │   └──Resolving from DEFINITION: $GELDIGE_PARTNERTYPEN = ['HUWELIJK', 'GEREGISTREERD_PARTNERSCHAP', 'IB_PARTNERKEUZE', 'SAMENLEVINGSCONTRACT', 'GEMEENSCHAPPELIJK_KIND', 'ERKEND_KIND', 'PARTNER_VOORAFGAAND_JAAR', 'PENSIOENREGISTRATIE', 'GEZAMENLIJKE_EIGEN_WONING', 'GEZAMENLIJKE_HUISHOUDING']
-║   ║       └──Result: heeft_toeslagpartner = False
+║   ║   ╟──Resolving from DATA_SOURCE: $PARTNER_BSN = None
+║   ║   ╟──Computing heeft_toeslagpartner
+║   ║   ║   ├──Compute IN(...) = False
+║   ║   ║   │   ├──Resolving from PARAMETERS: $PARTNERSCHAP_TYPE = 'GEEN'
+║   ║   ║   │   └──Resolving from DEFINITION: $GELDIGE_PARTNERTYPEN = ['HUWELIJK', 'GEREGISTREERD_PARTNERSCHAP', 'IB_PARTNERKEUZE', 'SAMENLEVINGSCONTRACT', 'GEMEENSCHAPPELIJK_KIND', 'ERKEND_KIND', 'PARTNER_VOORAFGAAND_JAAR', 'PENSIOENREGISTRATIE', 'GEZAMENLIJKE_EIGEN_WONING', 'GEZAMENLIJKE_HUISHOUDING']
+║   ║   ║   └──Result: heeft_toeslagpartner = False
+║   ║   ╙──Computing bsn_toeslagpartner
+║   ║       ├──IF(no case matched, no default) = None
+║   ║       │   └──CASE 0: False
+║   ║       │       └──Compute EQUALS(...) = False
+║   ║       │           └──Resolving from OUTPUT: $HEEFT_TOESLAGPARTNER = False
+║   ║       └──Result: bsn_toeslagpartner = None
 ║   ╟──Reference: algemene_wet_inkomensafhankelijke_regelingen#toetsingsinkomen
 ║   ║   ╟──Resolving from PARAMETERS: $BSN = '999993653'
 ║   ║   ╟──Reference: wet_inkomstenbelasting_2001#toetsingsinkomen
@@ -57,6 +64,23 @@ wet_op_de_zorgtoeslag (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ║       │   ├──Resolving from PARAMETERS: $VERZAMELINKOMEN = 79547
 ║   ║       │   └──Resolving from PARAMETERS: $BUITENLANDS_INKOMEN = 0
 ║   ║       └──Result: toetsingsinkomen = 79547
+║   ╟──Reference: algemene_wet_inkomensafhankelijke_regelingen#bsn_toeslagpartner
+║   ║   ╟──Resolving from PARAMETERS: $BSN = '999993653'
+║   ║   ╟──Resolving from DATA_SOURCE: $PARTNERSCHAP_TYPE = 'GEEN'
+║   ║   ╟──Resolving from DATA_SOURCE: $PARTNER_BSN = None
+║   ║   ╟──Computing heeft_toeslagpartner
+║   ║   ║   ├──Compute IN(...) = False
+║   ║   ║   │   ├──Resolving from PARAMETERS: $PARTNERSCHAP_TYPE = 'GEEN'
+║   ║   ║   │   └──Resolving from DEFINITION: $GELDIGE_PARTNERTYPEN = ['HUWELIJK', 'GEREGISTREERD_PARTNERSCHAP', 'IB_PARTNERKEUZE', 'SAMENLEVINGSCONTRACT', 'GEMEENSCHAPPELIJK_KIND', 'ERKEND_KIND', 'PARTNER_VOORAFGAAND_JAAR', 'PENSIOENREGISTRATIE', 'GEZAMENLIJKE_EIGEN_WONING', 'GEZAMENLIJKE_HUISHOUDING']
+║   ║   ║   └──Result: heeft_toeslagpartner = False
+║   ║   ╙──Computing bsn_toeslagpartner
+║   ║       ├──IF(no case matched, no default) = None
+║   ║       │   └──CASE 0: False
+║   ║       │       └──Compute EQUALS(...) = False
+║   ║       │           └──Resolving from OUTPUT: $HEEFT_TOESLAGPARTNER = False
+║   ║       └──Result: bsn_toeslagpartner = None
+║   ╟──Parameter 'bsn' is null, so algemene_wet_inkomensafhankelijke_regelingen is not executed; input resolves to null
+║   ║   ╙──Resolving from RESOLVED_INPUT: $BSN_TOESLAGPARTNER = None
 ║   ╟──Resolving $WET_OP_DE_ZORGTOESLAG#STANDAARDPREMIE
 ║   ║   ├──Resolving from RESOLVED_INPUT: 211200
 ║   ║   ├──Delegation: Open term 'standaardpremie' implemented by regeling_standaardpremie article 1: 211200
@@ -86,57 +110,72 @@ wet_op_de_zorgtoeslag (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ║   ├──Reference: algemene_wet_inkomensafhankelijke_regelingen#heeft_toeslagpartner
 ║   ║   │   ╟──Resolving from PARAMETERS: $BSN = '999993653'
 ║   ║   │   ╙──Cached: algemene_wet_inkomensafhankelijke_regelingen#heeft_toeslagpartner: False
+║   ║   ├──Reference: algemene_wet_inkomensafhankelijke_regelingen#bsn_toeslagpartner
+║   ║   │   ╟──Resolving from PARAMETERS: $BSN = '999993653'
+║   ║   │   ╙──Cached: algemene_wet_inkomensafhankelijke_regelingen#bsn_toeslagpartner: None
+║   ║   ├──Parameter 'bsn' is null, so wet_inkomstenbelasting_2001 is not executed; input resolves to null
+║   ║   │   ╙──Resolving from RESOLVED_INPUT: $BSN_TOESLAGPARTNER = None
+║   ║   ├──Resolving from DATA_SOURCE: $HEEFT_GEHELE_BEREKENINGSJAAR_DEZELFDE_PARTNER = UNKNOWN(heeft_gehele_berekeningsjaar_dezelfde_partner)
 ║   ║   └──Computing vermogen_onder_grens
-║   ║       ├──Compute LESS_THAN_OR_EQUAL(...) = True
-║   ║       │   ├──Resolving from PARAMETERS: $VERMOGEN = 0
-║   ║       │   └──IF(took default) = 14189600
+║   ║       ├──Compute AND(...) = True
+║   ║       │   ├──Compute LESS_THAN_OR_EQUAL(...) = True
+║   ║       │   │   ├──Resolving from PARAMETERS: $VERMOGEN = 0
+║   ║       │   │   └──Resolving from DEFINITION: $VERMOGENSGRENS_VERZEKERDE = 14189600
+║   ║       │   └──IF(took default) = True
 ║   ║       │       ├──CASE 0: False
-║   ║       │       │   └──Compute EQUALS(...) = False
-║   ║       │       │       └──Resolving from PARAMETERS: $HEEFT_TOESLAGPARTNER = False
-║   ║       │       └──DEFAULT: 14189600
-║   ║       │           └──Resolving from DEFINITION: $VERMOGENSGRENS_ALLEENSTAAND = 14189600
+║   ║       │       │   └──Compute AND(...) = False
+║   ║       │       │       └──Compute EQUALS(...) = False
+║   ║       │       │           └──Resolving from PARAMETERS: $HEEFT_TOESLAGPARTNER = False
+║   ║       │       └──DEFAULT: True
 ║   ║       └──Result: vermogen_onder_grens = True
 ║   ╟──HOOK: Hook PreActions on BESCHIKKING stage BESLUIT → algemene_wet_bestuursrecht:3:46
 ║   ║   ╙──Computing motivering_vereist
 ║   ║       └──Result: motivering_vereist = True
+║   ╟──Computing in_aanmerking_genomen_toetsingsinkomen
+║   ║   ├──IF(took default) = 79547
+║   ║   │   ├──CASE 0: False
+║   ║   │   │   └──Compute AND(...) = False
+║   ║   │   │       └──Compute EQUALS(...) = False
+║   ║   │   │           └──Resolving from PARAMETERS: $HEEFT_TOESLAGPARTNER = False
+║   ║   │   └──DEFAULT: 79547
+║   ║   │       └──Resolving from PARAMETERS: $TOETSINGSINKOMEN = 79547
+║   ║   └──Result: in_aanmerking_genomen_toetsingsinkomen = 79547
 ║   ╟──Computing hoogte_zorgtoeslag
-║   ║   ├──Compute ROUND(...) = 209692
-║   ║   │   └──Compute MAX(...) = 209691.78888
-║   ║   │       └──Compute SUBTRACT(...) = 209691.78888
+║   ║   ├──Compute ROUND(...) = 157731
+║   ║   │   └──Compute MAX(...) = 157730.97984
+║   ║   │       └──Compute SUBTRACT(...) = 157730.97984
 ║   ║   │           ├──IF(took default) = 211200
 ║   ║   │           │   ├──CASE 0: False
 ║   ║   │           │   │   └──Compute EQUALS(...) = False
 ║   ║   │           │   │       └──Resolving from PARAMETERS: $HEEFT_TOESLAGPARTNER = False
 ║   ║   │           │   └──DEFAULT: 211200
 ║   ║   │           │       └──Resolving from PARAMETERS: $STANDAARDPREMIE = 211200
-║   ║   │           └──Compute ADD(...) = 1508.21112
-║   ║   │               ├──Compute MULTIPLY(...) = 1508.21112
+║   ║   │           └──Compute ADD(...) = 53469.02016
+║   ║   │               ├──Compute MULTIPLY(...) = 53469.02016
 ║   ║   │               │   ├──IF(took default) = 0.01896
 ║   ║   │               │   │   ├──CASE 0: False
 ║   ║   │               │   │   │   └──Compute EQUALS(...) = False
 ║   ║   │               │   │   │       └──Resolving from PARAMETERS: $HEEFT_TOESLAGPARTNER = False
 ║   ║   │               │   │   └──DEFAULT: 0.01896
 ║   ║   │               │   │       └──Resolving from DEFINITION: $PERCENTAGE_DREMPELINKOMEN_ALLEENSTAANDE = 0.01896
-║   ║   │               │   └──Compute MIN(...) = 79547
-║   ║   │               │       ├──Resolving from PARAMETERS: $TOETSINGSINKOMEN = 79547
-║   ║   │               │       └──IF(took default) = 3971900
-║   ║   │               │           ├──CASE 0: False
-║   ║   │               │           │   └──Compute EQUALS(...) = False
-║   ║   │               │           │       └──Resolving from PARAMETERS: $HEEFT_TOESLAGPARTNER = False
-║   ║   │               │           └──DEFAULT: 3971900
-║   ║   │               │               └──Resolving from DEFINITION: $DREMPELINKOMEN_ALLEENSTAANDE = 3971900
+║   ║   │               │   └──IF(took default) = 2820096
+║   ║   │               │       ├──CASE 0: False
+║   ║   │               │       │   └──Compute EQUALS(...) = False
+║   ║   │               │       │       └──Resolving from PARAMETERS: $HEEFT_TOESLAGPARTNER = False
+║   ║   │               │       └──DEFAULT: 2820096
+║   ║   │               │           └──Resolving from DEFINITION: $DREMPELINKOMEN_ALLEENSTAANDE = 2820096
 ║   ║   │               └──IF(took default) = 0
 ║   ║   │                   ├──CASE 0: False
 ║   ║   │                   │   └──Compute GREATER_THAN(...) = False
-║   ║   │                   │       ├──Resolving from PARAMETERS: $TOETSINGSINKOMEN = 79547
-║   ║   │                   │       └──IF(took default) = 3971900
+║   ║   │                   │       ├──Resolving from OUTPUT: $IN_AANMERKING_GENOMEN_TOETSINGSINKOMEN = 79547
+║   ║   │                   │       └──IF(took default) = 2820096
 ║   ║   │                   │           ├──CASE 0: False
 ║   ║   │                   │           │   └──Compute EQUALS(...) = False
 ║   ║   │                   │           │       └──Resolving from PARAMETERS: $HEEFT_TOESLAGPARTNER = False
-║   ║   │                   │           └──DEFAULT: 3971900
-║   ║   │                   │               └──Resolving from DEFINITION: $DREMPELINKOMEN_ALLEENSTAANDE = 3971900
+║   ║   │                   │           └──DEFAULT: 2820096
+║   ║   │                   │               └──Resolving from DEFINITION: $DREMPELINKOMEN_ALLEENSTAANDE = 2820096
 ║   ║   │                   └──DEFAULT: 0
-║   ║   └──Result: hoogte_zorgtoeslag = 209692
+║   ║   └──Result: hoogte_zorgtoeslag = 157731
 ║   ╟──Computing heeft_recht_op_zorgtoeslag
 ║   ║   ├──Compute AND(...) = True
 ║   ║   │   ├──Compute EQUALS(...) = True
@@ -144,9 +183,9 @@ wet_op_de_zorgtoeslag (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ║   │   ├──Compute EQUALS(...) = True
 ║   ║   │   │   └──Resolving from PARAMETERS: $VERMOGEN_ONDER_GRENS = True
 ║   ║   │   └──Compute GREATER_THAN(...) = True
-║   ║   │       └──Resolving from OUTPUT: $HOOGTE_ZORGTOESLAG = 209692
+║   ║   │       └──Resolving from OUTPUT: $HOOGTE_ZORGTOESLAG = 157731
 ║   ║   └──Result: heeft_recht_op_zorgtoeslag = True
 ║   ╙──HOOK: Hook PostActions on BESCHIKKING stage BESLUIT → algemene_wet_bestuursrecht:6:7
 ║       ╙──Computing bezwaartermijn_weken
 ║           └──Result: bezwaartermijn_weken = 6
-╙──Result: hoogte_zorgtoeslag = 209692
+╙──Result: hoogte_zorgtoeslag = 157731

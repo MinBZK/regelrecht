@@ -160,6 +160,11 @@ async fn main() {
         .route("/api/dashboard-stats", get(handlers::dashboard_stats))
         .route("/api/jobs/{job_id}", get(handlers::get_job))
         .route("/api/untranslatables", get(handlers::list_untranslatables))
+        .route("/api/markings", get(handlers::list_markings))
+        .route(
+            "/api/markings/clusters",
+            get(handlers::list_marking_clusters),
+        )
         .route("/api/sources", get(corpus_handlers::list_sources))
         .route("/api/corpus/laws", get(corpus_handlers::list_corpus_laws))
         .route("/api/info", get(handlers::platform_info))
@@ -310,14 +315,14 @@ fn init_corpus() -> state::CorpusState {
         regelrecht_corpus::CorpusRegistry::empty()
     };
 
-    let source_map = match registry.load_local_sources() {
+    let source_map = match registry.load_local_sources(&regelrecht_shared::dates::today_str()) {
         Ok(map) => {
             tracing::info!(laws = map.len(), "Loaded corpus laws");
             map
         }
         Err(e) => {
             tracing::warn!(error = %e, "Failed to load corpus sources");
-            regelrecht_corpus::SourceMap::new()
+            regelrecht_corpus::SourceMap::new(regelrecht_shared::dates::today_str())
         }
     };
 

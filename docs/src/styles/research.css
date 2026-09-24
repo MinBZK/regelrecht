@@ -1,0 +1,78 @@
+/*
+ * Research paper pages (/research/…): styles for the pandoc-converted paper
+ * body that nldd-rich-text does not cover — figure/table captions, the
+ * hand-built comparison table (its two-row grouped header cannot be expressed
+ * in markdown), the paper figure, footnotes and the citeproc bibliography.
+ * Imported by the paper page only, not globally.
+ */
+
+/* The paper and every block in it must be allowed to shrink below its content
+   width; otherwise the comparison table or a code block widens the page instead
+   of scrolling inside .rr-table-scroll. */
+[data-discuss-paper],
+[data-discuss-paper] > * {
+  min-width: 0;
+}
+
+/* Floats: a <figure> carries the anchor for "Figure n"/"Table n" links, so
+   the link lands on the content, not on the caption below it. */
+[data-discuss-paper] figure {
+  margin: 0 0 var(--primitives-space-16);
+}
+[data-discuss-paper] figure img {
+  display: block;
+  margin-inline: auto;
+}
+
+/* Wide content scrolls inside its own container, never the page. */
+[data-discuss-paper] .rr-table-scroll {
+  overflow-x: auto;
+}
+
+/* The prior-approaches comparison table, booktabs-style: horizontal rules
+   only, a heavier rule at top/bottom, a light rule under the header and
+   above the closing "This paper" row. */
+[data-discuss-paper] table.rr-landscape {
+  width: 100%;
+  border-collapse: collapse;
+  border-top: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+}
+[data-discuss-paper] table.rr-landscape th,
+[data-discuss-paper] table.rr-landscape td {
+  padding: var(--primitives-space-4) var(--primitives-space-8);
+  text-align: left;
+}
+[data-discuss-paper] table.rr-landscape thead {
+  border-bottom: 1px solid currentColor;
+}
+/* "Approach" spans both header rows; sit it on the baseline of the second. */
+[data-discuss-paper] table.rr-landscape thead th {
+  vertical-align: bottom;
+}
+[data-discuss-paper] table.rr-landscape tr.rr-rule td {
+  border-top: 1px solid currentColor;
+}
+
+/* The dependency-graph figure is drawn for a white page; give it a white
+   plate so it stays readable in dark mode. */
+[data-discuss-paper] img {
+  max-width: 100%;
+  height: auto;
+  background: #fff;
+  padding: var(--primitives-space-8);
+  border-radius: 4px;
+}
+
+/* Endnotes (pandoc footnotes) and the citeproc bibliography. */
+[data-discuss-paper] section.footnotes {
+  font-size: 0.9375rem;
+}
+[data-discuss-paper] .csl-bib-body .csl-entry {
+  padding-left: 1.5em;
+  text-indent: -1.5em;
+  margin-bottom: var(--primitives-space-8);
+  /* A bare URL in a reference has nothing to break on and runs out of the
+     column; rich-text's own safety net covers paragraphs, not these divs. */
+  overflow-wrap: anywhere;
+}

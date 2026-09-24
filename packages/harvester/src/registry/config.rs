@@ -4,7 +4,8 @@ use super::core::ElementRegistry;
 use super::handlers::{
     AanhefHandler, AfkondigingHandler, AlHandler, ConsideransAlHandler, ConsideransHandler,
     ExtrefHandler, IntrefHandler, LiHandler, LiNrHandler, LidHandler, LidnrHandler, LijstHandler,
-    NadrukHandler, PassthroughHandler, RedactieHandler, SkipHandler, WijHandler,
+    NadrukHandler, PassthroughHandler, RedactieHandler, SkipHandler, UnrenderableHandler,
+    WijHandler,
 };
 
 /// Create a content registry configured for Dutch law XML.
@@ -42,6 +43,18 @@ pub fn create_content_registry() -> ElementRegistry {
     registry.register("noot", SkipHandler); // Notes are skipped
     registry.register("nootref", PassthroughHandler);
 
+    // Non-text content: rendered as a marker rather than dropped, so an
+    // article whose norm is stated as a picture does not read as complete.
+    // See UnrenderableHandler.
+    registry.register("plaatje", UnrenderableHandler);
+    // Also handled, not skipped: an <illustratie> is normally wrapped in a
+    // <plaatje>, but nothing in the format guarantees it, and a bare one would
+    // vanish silently again. Now the parent renders its child's marker as text
+    // and passes it through, so a nested pair still yields exactly one marker.
+    registry.register("illustratie", UnrenderableHandler);
+    registry.register("formule", UnrenderableHandler);
+    registry.register("formule-klein", UnrenderableHandler);
+
     // Skip tags - elements that don't contribute to article text content
     //
     // Metadata elements (BWB internal):
@@ -59,20 +72,14 @@ pub fn create_content_registry() -> ElementRegistry {
     //   - slotondertekening: Closing signatures
     //   - slotformulering: Closing formula
     //
-    // Non-text elements:
-    //   - plaatje: Image placeholder
-    //   - illustratie: Illustration container
-    //   - formule/formule-klein: Mathematical formulas
+    // Non-text elements (plaatje, illustratie, formule) are NOT skipped:
+    // they leave a marker instead. See UnrenderableHandler.
     registry.skip([
         "meta-data",
         "kop",
         "jcis",
         "jci",
         "brondata",
-        "plaatje",
-        "illustratie",
-        "formule",
-        "formule-klein",
         "tussenkop",
         "adres",
         "wat",
@@ -107,6 +114,20 @@ mod tests {
         // Check skip tags
         assert!(registry.should_skip("meta-data"));
         assert!(registry.should_skip("kop"));
-        assert!(registry.should_skip("plaatje"));
+    }
+
+    #[test]
+    fn test_non_text_elements_are_marked_not_skipped() {
+        let registry = create_content_registry();
+        // A formula or picture carries part of the norm. Skipping it silently
+        // makes an incomplete article read as complete, so these get a handler
+        // that leaves a marker instead.
+        for tag in ["plaatje", "formule", "formule-klein"] {
+            assert!(
+                !registry.should_skip(tag),
+                "{tag} must not be silently dropped"
+            );
+            assert!(registry.has_handler(tag), "{tag} needs a marker handler");
+        }
     }
 }

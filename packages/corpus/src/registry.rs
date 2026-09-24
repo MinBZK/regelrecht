@@ -139,8 +139,11 @@ impl CorpusRegistry {
     ///
     /// GitHub sources are skipped — use [`index_all_sources_async`] or
     /// [`load_favorites_async`] to include them.
-    pub fn load_local_sources(&self) -> Result<SourceMap> {
-        let mut map = SourceMap::new();
+    ///
+    /// `today` is the date a law's versions are collapsed against; see
+    /// [`SourceMap::new`] for why it is passed in rather than read off a clock.
+    pub fn load_local_sources(&self, today: &str) -> Result<SourceMap> {
+        let mut map = SourceMap::new(today);
         for source in &self.sources {
             match &source.source_type {
                 SourceType::Local { .. } => {
@@ -179,8 +182,9 @@ impl CorpusRegistry {
         &self,
         law_ids: &std::collections::HashSet<String>,
         auth_file: Option<&Path>,
+        today: &str,
     ) -> Result<SourceMap> {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new(today);
         let client = regelrecht_github::GithubClient::new()?;
 
         // Determine which law_ids are NOT already covered by local sources,
@@ -210,6 +214,7 @@ impl CorpusRegistry {
                     github,
                     token.as_deref(),
                     &missing,
+                    today,
                 )
                 .await?
                 {
@@ -265,8 +270,10 @@ impl CorpusRegistry {
     pub async fn index_all_sources_async(
         &self,
         auth_file: Option<&Path>,
+        today: &str,
     ) -> Result<(SourceMap, Vec<SourceIndexFailure>)> {
-        self.index_all_sources_with_override(auth_file, None).await
+        self.index_all_sources_with_override(auth_file, None, today)
+            .await
     }
 
     /// [`Self::index_all_sources_async`] with an optional per-call
@@ -279,8 +286,9 @@ impl CorpusRegistry {
         &self,
         auth_file: Option<&Path>,
         scan_override: Option<ScanTokenOverride<'_>>,
+        today: &str,
     ) -> Result<(SourceMap, Vec<SourceIndexFailure>)> {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new(today);
         let client = regelrecht_github::GithubClient::new()?;
         let mut failed: Vec<SourceIndexFailure> = Vec::new();
 
@@ -355,8 +363,10 @@ impl CorpusRegistry {
                         token = Some(o.token.to_string());
                     }
                 }
+                let today = map.reference_date().to_string();
                 for (law_id, path, sha) in
-                    crate::github::list_source_law_paths(client, github, token.as_deref()).await?
+                    crate::github::list_source_law_paths(client, github, token.as_deref(), &today)
+                        .await?
                 {
                     map.load_metadata_entry(
                         &law_id,

@@ -18,7 +18,7 @@ path = "src/main.rs"
 [dependencies]
 axum = { workspace = true, features = ["multipart"] }
 regelrecht-auth = { path = "../auth" }
-regelrecht-shared = { path = "../shared", features = ["telemetry"] }
+regelrecht-shared = { path = "../shared", features = ["telemetry", "dates"] }
 regelrecht-corpus = { path = "../corpus", features = ["github", "annotation-validation"] }
 regelrecht-github = { path = "../github" }
 regelrecht-law-model = { path = "../law-model" }

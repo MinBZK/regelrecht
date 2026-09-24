@@ -1,0 +1,85 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.6/schema/v0.5.6/schema.json
+$id: wet_op_het_primair_onderwijs
+regulatory_layer: WET
+publication_date: '1981-07-02'
+valid_from: '2025-01-01'
+bwb_id: BWBR0003420
+url: https://wetten.overheid.nl/BWBR0003420/2025-01-01
+name: Wet op het primair onderwijs
+competent_authority:
+  name: Minister van Onderwijs, Cultuur en Wetenschap
+# Grondslag voor de aanvullende bekostiging van de eerste opvang van
+# asielzoekers en overige vreemdelingen in het basisonderwijs (casus
+# nieuwkomersbekostiging). Alleen de delegatiebepalingen zijn opgenomen:
+# artikel 116 (hoogte bekostiging, leden 1, 2, 4 en 6) en artikel 119
+# (aanvullende bekostiging bij bijzondere ontwikkelingen, leden 1 en 2).
+# De wet bevat geen rekenregels; die staan in de Regeling bekostiging WPO
+# en WEC (artikelen 34 en 35), die de open termen hieronder invult.
+articles:
+  # ---------------------------------------------------------------- 116
+  - number: '116'
+    text: >-
+      1. Onze Minister stelt jaarlijks de bekostiging voor een school vast.
+
+      2. De bekostiging voor een school bestaat uit een bedrag per school en
+      een bedrag per leerling.
+
+      (...)
+
+      4. Onze Minister kan extra bekostiging toekennen. Bij of krachtens
+      algemene maatregel van bestuur worden regels gesteld over de gevallen
+      waarin, de voorwaarden waaronder en het bedrag dat aan extra
+      bekostiging kan worden toegekend. In ieder geval wordt extra
+      bekostiging toegekend: a. aan kleine basisscholen; b. aan basisscholen
+      met een afdeling voor internationaal georiënteerd basisonderwijs; c.
+      aan basisscholen voor de groei van het aantal leerlingen gedurende het
+      schooljaar; d. voor de omstandigheid dat onderwijs wordt gegeven op
+      een of meer nevenvestigingen van een school; e. voor de bestrijding
+      van onderwijsachterstanden.
+
+      (...)
+
+      6. Bij ministeriële regeling worden jaarlijks de bedragen, bedoeld in
+      het tweede en vierde lid, vastgesteld, worden nadere regels gesteld
+      over de wijze waarop de hoogte van de bekostiging wordt berekend en
+      worden regels gesteld over de termijnen van de betaling daarvan.
+    url: https://wetten.overheid.nl/BWBR0003420/2025-01-01#HoofdstukI_TiteldeelIV_Afdeling4_Artikel116
+    machine_readable:
+      open_terms:
+        - id: bekostigingsbedragen_per_school_en_per_leerling
+          type: amount
+          required: true
+          delegated_to: regeling_bekostiging_wpo_en_wec
+          delegation_type: MINISTERIELE_REGELING
+          legal_basis: artikel 116, zesde lid, Wet op het primair onderwijs
+          description: >-
+            De jaarlijks bij ministeriële regeling vast te stellen bedragen
+            per school en per leerling (tweede lid) en de bedragen voor
+            extra bekostiging (vierde lid), met de rekenwijze en de
+            betaaltermijnen; ingevuld door de Regeling bekostiging WPO en
+            WEC.
+
+  # ---------------------------------------------------------------- 119
+  - number: '119'
+    text: >-
+      1. In geval van bijzondere ontwikkelingen in het basisonderwijs, kan
+      Onze Minister in aanvulling op de bekostiging, bedoeld in artikel 116
+      bekostiging verstrekken.
+
+      2. Bij ministeriële regeling kunnen regels worden gesteld over het
+      verstrekken van de aanvullende bekostiging, bedoeld in het eerste lid.
+    url: https://wetten.overheid.nl/BWBR0003420/2025-01-01#HoofdstukI_TiteldeelIV_Afdeling4_Artikel119
+    machine_readable:
+      open_terms:
+        - id: aanvullende_bekostiging_bijzondere_ontwikkelingen
+          type: amount
+          required: true
+          delegated_to: regeling_bekostiging_wpo_en_wec
+          delegation_type: MINISTERIELE_REGELING
+          legal_basis: artikel 119, tweede lid, Wet op het primair onderwijs
+          description: >-
+            De aanvullende bekostiging bij bijzondere ontwikkelingen in het
+            basisonderwijs, waaronder de eerste opvang van asielzoekers en
+            overige vreemdelingen; de regels over het verstrekken staan in
+            de artikelen 34 en 35 van de Regeling bekostiging WPO en WEC.

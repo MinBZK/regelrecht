@@ -53,12 +53,20 @@ repos:
         pass_filenames: false
         types: [rust]
 
+      - id: check-schema-examples
+        name: Schema-voorbeelden valideren tegen hun eigen subschema
+        entry: python3 script/check-schema-examples.py
+        language: system
+        pass_filenames: false
+        # Also on the script itself: editing the guard should re-run it.
+        files: ^(schema/v[0-9]+\.[0-9]+\.[0-9]+/schema\.json|script/check-schema-examples\.py)$
+
       - id: validate-law-yaml
         name: Validate law YAML schema
         entry: just validate
         language: system
         pass_filenames: true
-        files: ^corpus/regulation/.*\.yaml$
+        files: ^corpus/(regulation|demo/regulation)/.*\.yaml$
         # Skip dot-prefixed sidecars (.enrichment.yaml, .enrichment-result.yaml):
         # enrichment metadata/result envelopes, not law files.
         exclude: (^|/)\.[^/]*\.yaml$
@@ -69,7 +77,7 @@ repos:
         entry: script/check-tool-pins.sh
         language: system
         pass_filenames: false
-        files: (^frontend/Dockerfile$|^packages/(admin|pipeline)/Dockerfile$)
+        files: (^frontend/Dockerfile$|^packages/(admin|pipeline|poc-portal|poc-napp)/Dockerfile$)
 
       - id: review-gate-tests
         name: Merge-poort op de Claude-review doet wat hij belooft
@@ -77,6 +85,162 @@ repos:
         language: system
         pass_filenames: false
         files: ^(script/await-claude-review(\.test)?\.sh|\.github/workflows/claude-code-review\.yml)$
+
+      - id: review-comments-tests
+        name: Momentopname en opruimen van de vorige review doen wat ze beloven
+        entry: script/claude-review-comments.test.sh
+        language: system
+        pass_filenames: false
+        files: ^(script/claude-review-comments(\.test)?\.sh|\.github/workflows/claude-code-review\.yml)$
+
+      - id: security-approval-gate-tests
+        name: Merge-poort op een goedgekeurde security-update doet wat hij belooft
+        entry: script/require-security-approval.test.sh
+        language: system
+        pass_filenames: false
+        files: ^(script/require-security-approval(\.test)?\.sh|\.github/workflows/(security-update-gate|claude-dependabot)\.yml)$
+
+      - id: dev-preflight-tests
+        name: Dev-preflight eist mold alleen waar cargo ermee linkt
+        entry: script/dev-lib.test.sh
+        language: system
+        pass_filenames: false
+        files: ^(script/dev-lib(\.test)?\.sh|packages/\.cargo/config\.toml)$
+
+      - id: werkpakket-gate-tests
+        name: Merge-poort op een genoemd werkpakket doet wat hij belooft
+        entry: script/require-werkpakket.test.sh
+        language: system
+        pass_filenames: false
+        files: ^(script/require-werkpakket(\.test)?\.sh|\.github/workflows/werkpakket-gate\.yml)$
+
+      # Draait ook op de poort zelf: de herschrijving moet door de poort komen,
+      # en die test staat hier.
+      - id: werkpakket-link-tests
+        name: De werkpakket-link in de omschrijving blijft leesbaar voor de poort
+        entry: script/linkify-werkpakket.test.sh
+        language: system
+        pass_filenames: false
+        files: ^(script/(linkify|require)-werkpakket(\.test)?\.sh|\.github/workflows/werkpakket-gate\.yml)$
+
+      - id: ci-gate-tests
+        name: Test-poort in ci.yml blokkeert op een gevallen voorganger
+        entry: just ci-gate-test
+        language: system
+        pass_filenames: false
+        files: ^(\.github/workflows/ci\.yml|script/ci-gate\.test\.mjs)$
+
+      # Op élke workflow, niet alleen op die twee die de poorten dragen: een
+      # verplichte check kan uit elk bestand hier komen, en verdwijnt hij uit de
+      # rij, dan blijft elke entry hangen zonder dat er iets roods te zien is.
+      - id: merge-queue-checks-tests
+        name: Elke verplichte check rapporteert ook in de merge queue
+        entry: just merge-queue-checks-test
+        language: system
+        pass_filenames: false
+        files: ^(\.github/workflows/.*\.ya?ml|script/merge-queue-checks\.test\.mjs)$
+
+      - id: nldd-imports-tests
+        name: Ontwerpsysteem-guard telt proza niet als gebruik
+        entry: just nldd-imports-test
+        language: system
+        pass_filenames: false
+        files: ^script/(check-)?nldd-imports(\.test)?\.mjs$
+
+      - id: nldd-slots
+        name: Elke slot-toewijzing bestaat in het ontwerpsysteem
+        entry: just nldd-slots
+        language: system
+        pass_filenames: false
+        files: ^(frontend|frontend-demo|frontend-lawmaking)/src/.*\.(vue|html|js|ts)$
+
+      - id: nldd-slots-tests
+        name: Slot-guard doet wat hij belooft
+        entry: just nldd-slots-test
+        language: system
+        pass_filenames: false
+        files: ^script/(check-)?nldd-slots(\.test)?\.mjs$
+
+      - id: awb-parity
+        name: De Awb zegt in beide corpora hetzelfde
+        entry: just awb-parity-test
+        language: system
+        pass_filenames: false
+        files: ^(corpus/(regulation/nl/wet|demo/regulation/nl)/algemene_wet_bestuursrecht/.*\.yaml|script/awb-parity\.test\.mjs)$
+
+      - id: service-map
+        name: services.yaml dekt elke demowet
+        entry: just service-map-check
+        language: system
+        pass_filenames: false
+        files: ^(corpus/demo/(services\.yaml|regulation/.*\.yaml)|frontend-demo/scripts/check-service-map\.mjs)$
+
+      - id: dockerfile-consistency
+        name: Rust-Dockerfiles blijven bij de cargo-workspace
+        entry: just dockerfile-consistency-test
+        language: system
+        pass_filenames: false
+        files: ^((frontend|frontend-demo)/Dockerfile|packages/(admin|pipeline|poc-portal|poc-napp)/Dockerfile|packages/Cargo\.toml|rust-toolchain\.toml|\.github/workflows/deploy\.yml|script/dockerfile-consistency\.test\.mjs)$
+
+      - id: deploy-gate-tests
+        name: Deploy-poort op een groene CI doet wat hij belooft
+        entry: script/require-ci-green.test.sh
+        language: system
+        pass_filenames: false
+        files: ^(script/require-ci-green(\.test)?\.sh|\.github/workflows/deploy\.yml)$
+
+      - id: deployed-urls-tests
+        name: Productiecontrole na de deploy doet wat hij belooft
+        entry: script/check-deployed-urls.test.sh
+        language: system
+        pass_filenames: false
+        files: ^(script/check-deployed-urls(\.test)?\.sh|\.github/workflows/deploy\.yml)$
+      - id: preview-environments-tests
+        name: Controle op achtergebleven previews doet wat hij belooft
+        entry: script/check-preview-environments.test.sh
+        language: system
+        pass_filenames: false
+        files: ^(script/check-preview-environments(\.test)?\.sh|\.github/workflows/scheduled-cleanup\.yml)$
+
+      - id: preview-deployments-tests
+        name: Controle op achtergebleven ZAD-deployments doet wat hij belooft
+        entry: script/check-preview-deployments.test.sh
+        language: system
+        pass_filenames: false
+        files: ^(script/check-preview-deployments(\.test)?\.sh|\.github/workflows/scheduled-cleanup\.yml)$
+
+      - id: orphaned-deployments-tests
+        name: Opruimen van verweesde deployments raakt niets van een open PR
+        entry: script/prune-orphaned-deployments.test.sh
+        language: system
+        pass_filenames: false
+        files: ^(script/prune-orphaned-deployments(\.test)?\.sh|\.github/workflows/scheduled-cleanup\.yml)$
+
+      - id: ghcr-cleanup-tests
+        name: Opruimen van images laat draaiende versies en index-children staan
+        entry: just ghcr-cleanup-test
+        language: system
+        pass_filenames: false
+        files: ^(script/ghcr-cleanup(\.test)?\.mjs|\.github/workflows/(scheduled-cleanup|deploy)\.yml)$
+
+      - id: advisories-report-tests
+        name: Advisory-melding komt aan en niet dubbel
+        entry: script/report-advisories.test.sh
+        language: system
+        pass_filenames: false
+        files: ^(script/(report-advisories(\.test)?|audit-advisories)\.sh|\.github/workflows/security-advisories\.yml)$
+
+      - id: cross-law-toestand-tests
+        name: De cross-law-poort leest de toestand die geldt
+        entry: script/cross-law-integriteit.test.sh
+        # The gate imports yaml. With language: system that only works where the
+        # interpreter running pre-commit happens to carry pyyaml (CI does, a
+        # pre-commit installed through uv or pipx does not), so the hook gets its
+        # own environment and the test script finds that python3 first on PATH.
+        language: python
+        additional_dependencies: [pyyaml]
+        pass_filenames: false
+        files: ^script/cross-law-integriteit(\.test)?\.(py|sh)$
 
       - id: skills-no-casus
         name: Skills blijven dossier-agnostisch (geen casus-inhoud)
@@ -101,11 +265,11 @@ repos:
         files: ^script/target-dir(\.test)?\.sh$
 
       - id: documented-crates
-        name: CLAUDE.md noemt elke workspace-crate
+        name: De architectuurpagina noemt elke workspace-crate
         entry: script/check-documented-crates.mjs
         language: system
         pass_filenames: false
-        files: ^(CLAUDE\.md|packages/Cargo\.toml|script/check-documented-crates\.mjs)$
+        files: ^(docs/src/content/docs/guide/architecture\.md|packages/Cargo\.toml|script/check-documented-crates\.mjs)$
 
       - id: skill-references-tests
         name: De skill-poort doet wat hij belooft

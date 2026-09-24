@@ -47,11 +47,6 @@ impl PipelineConfig {
             max_connections: 5,
         }
     }
-
-    pub fn with_max_connections(mut self, max_connections: u32) -> Self {
-        self.max_connections = max_connections;
-        self
-    }
 }
 
 #[derive(Clone)]

@@ -40,6 +40,9 @@ pub struct RegelrechtWorld {
     pub note_result: Option<MatchResult>,
     /// Generic data sources for canonical steps: source name -> (key field, rows)
     pub data_sources: BTreeMap<String, (String, Vec<BTreeMap<String, Value>>)>,
+    /// Data sources bound to one law: (law id, source name, key field, rows).
+    /// Registered with `register_dict_source_for_law` at evaluation time.
+    pub scoped_data_sources: Vec<(String, String, String, Vec<BTreeMap<String, Value>>)>,
     /// Outputs requested by the last canonical `evaluate`/`evaluate_outputs`
     pub requested_outputs: Vec<String>,
 }
@@ -85,22 +88,9 @@ impl RegelrechtWorld {
             note_selector: None,
             note_result: None,
             data_sources: BTreeMap::new(),
+            scoped_data_sources: Vec::new(),
             requested_outputs: Vec::new(),
         }
-    }
-
-    /// Clear state between scenarios (but keep service loaded)
-    #[allow(dead_code)]
-    pub fn reset_scenario_state(&mut self) {
-        self.calculation_date = "2024-01-01".to_string();
-        self.parameters.clear();
-        self.result = None;
-        self.error = None;
-        self.note_articles.clear();
-        self.note_selector = None;
-        self.note_result = None;
-        self.data_sources.clear();
-        self.requested_outputs.clear();
     }
 
     /// Returns true if trace output is enabled via the `TRACE` env var.

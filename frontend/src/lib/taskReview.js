@@ -18,6 +18,32 @@
  * onvolledige taak) - de aanroeper toont dan geen/een disabled knop in
  * plaats van te crashen of naar een kapotte route te navigeren.
  */
+/**
+ * sameTraject - horen twee traject-refs (`{slug}-{8hex}`) bij hetzelfde
+ * traject?
+ *
+ * Het slug-deel is cosmetisch: het wordt afgeleid uit de naam van dát moment,
+ * dus hernoemen verandert het terwijl het traject hetzelfde blijft. Alleen de
+ * laatste 8 hex-tekens zijn de identiteit - de backend zoekt er ook uitsluitend
+ * daarop op (`resolve_traject_ref`: "renaming a traject does not break existing
+ * URLs"). Een taak draagt de ref van het moment van aanvragen, dus een
+ * letterlijke stringvergelijking laat een klaarstaand voorstel na een
+ * hernoeming stilletjes verdwijnen.
+ *
+ * Een ref zonder herkenbare 8-hex-staart (leeg, null, afgekapt) hoort nergens
+ * bij: dan `false`, niet "matcht met alles".
+ */
+export function sameTraject(a, b) {
+  const key = trajectKey(a);
+  return key !== null && key === trajectKey(b);
+}
+
+function trajectKey(ref) {
+  if (typeof ref !== 'string') return null;
+  const match = /-([0-9a-f]{8})$/i.exec(ref);
+  return match ? match[1].toLowerCase() : null;
+}
+
 export function reviewTarget(task) {
   const trajectRef = task?.payload?.traject_ref;
   if (!trajectRef) return null;

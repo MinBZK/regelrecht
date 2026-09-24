@@ -1,8 +1,8 @@
 // Single source of truth for the RFC list.
 //
-// Both the docs sidebar (via sidebar.ts) and the RFC index table
-// (RfcIndexTable.astro) are generated from src/content/rfcs/rfc-*.md, so they
-// cannot drift apart. This module is pure Node, so it runs at build time.
+// Both the docs sidebar (via sidebar.ts) and the RFC index page
+// (src/pages/rfcs/index.astro) are generated from src/content/rfcs/rfc-*.md, so
+// they cannot drift apart. This module is pure Node, so it runs at build time.
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -44,6 +44,8 @@ export interface RfcLink {
   id: string
   /** Descriptive title, e.g. "Uniform Operation Syntax" */
   title: string
+  /** `short_title` when set, else the title — the label shown in a nav list */
+  shortTitle: string
   /** Site-relative link, e.g. "/rfcs/rfc-004" */
   link: string
 }
@@ -59,6 +61,9 @@ export function rfcStatusColor(status: string): string {
   if (k.includes('propos')) return 'accent'
   if (k.includes('reject')) return 'critical'
   if (k.includes('supersed')) return 'warning'
+  // A reserved number is a placeholder, not a decision. Grey is deliberate:
+  // it should read as "nothing here yet" next to the RFCs that say something.
+  if (k.includes('reserv')) return 'neutral'
   return 'neutral'
 }
 
@@ -206,6 +211,7 @@ export function rfcRelations(): Map<
     num: r.num,
     id: r.id,
     title: r.title,
+    shortTitle: r.shortTitle,
     link: r.link,
   })
 

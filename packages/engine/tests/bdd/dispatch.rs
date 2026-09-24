@@ -69,22 +69,35 @@ impl RegelrechtWorld {
             "set_parameter" => {
                 let name = args[0].as_str().to_string();
                 let value = match &args[1] {
-                    ArgValue::Num(n) => num_to_value(*n),
-                    ArgValue::Str(s) => convert_gherkin_value(s),
+                    ArgValue::Num(n) => bare_value(*n),
+                    ArgValue::Str(s) => quoted_value(s),
                     ArgValue::Bool(b) => Value::Bool(*b),
                 };
                 self.parameters.insert(name, value);
             }
             "set_parameters_table" => {
-                for (k, v) in rows_to_params(&table.expect("parameters table")) {
+                for (k, v) in rows_to_params(&table.expect("parameters table"), table_cell_value) {
                     self.parameters.insert(k, v);
                 }
             }
             "set_data_source" => {
                 let source = args[0].as_str().to_string();
                 let key = args[1].as_str().to_string();
-                let rows = rows_to_records(&table.expect("data source table"));
+                let rows = rows_to_records(&table.expect("data source table"), table_cell_value);
                 self.data_sources.insert(source, (key, rows));
+            }
+            "set_data_source_for_law" => {
+                let source = args[0].as_str().to_string();
+                let key = args[1].as_str().to_string();
+                let law = args[2].as_str().to_string();
+                let rows = rows_to_records(&table.expect("data source table"), table_cell_value);
+                self.scoped_data_sources.push((law, source, key, rows));
+            }
+            "set_parameter_collection" => {
+                let name = args[0].as_str().to_string();
+                let records = rows_to_records(&table.expect("collection table"), table_cell_value);
+                let items = records.into_iter().map(Value::Object).collect();
+                self.parameters.insert(name, Value::Array(items));
             }
 
             // ----- core/provenance: execute -----
@@ -133,8 +146,8 @@ impl RegelrechtWorld {
             }
             "assert_equals" => {
                 let expected = match &args[1] {
-                    ArgValue::Num(n) => num_to_value(*n),
-                    ArgValue::Str(s) => convert_gherkin_value(s),
+                    ArgValue::Num(n) => bare_value(*n),
+                    ArgValue::Str(s) => quoted_value(s),
                     ArgValue::Bool(b) => Value::Bool(*b),
                 };
                 let actual = self.output_value(args[0].as_str());
@@ -147,6 +160,33 @@ impl RegelrechtWorld {
             "assert_null" => {
                 let actual = self.output_value(args[0].as_str());
                 assert_eq!(actual, Value::Null, "output {}", args[0].as_str());
+            }
+            "assert_unknown" => {
+                let actual = self.output_value(args[0].as_str());
+                assert!(
+                    actual.is_unknown(),
+                    "output {} = {actual:?}, expected unknown",
+                    args[0].as_str()
+                );
+            }
+            "assert_unknown_for" => {
+                let actual = self.output_value(args[0].as_str());
+                let name = args[1].as_str();
+                assert!(
+                    actual.is_unknown(),
+                    "output {} = {actual:?}, expected unknown for lack of {name:?}",
+                    args[0].as_str()
+                );
+                let missing: Vec<&str> = actual
+                    .missing_facts()
+                    .iter()
+                    .map(|m| m.name.as_str())
+                    .collect();
+                assert!(
+                    missing.contains(&name),
+                    "output {} is unknown for lack of {missing:?}, not {name:?}",
+                    args[0].as_str()
+                );
             }
             "assert_contains" => {
                 let actual = self.output_value(args[0].as_str());
@@ -221,6 +261,13 @@ impl RegelrechtWorld {
                     .expect("Failed to register data source");
             }
         }
+        for (law, name, key, records) in &self.scoped_data_sources {
+            if !records.is_empty() {
+                self.service
+                    .register_dict_source_for_law(law, name, key, records.clone(), 10)
+                    .expect("Failed to register scoped data source");
+            }
+        }
         self.requested_outputs = outputs.to_vec();
         let output_refs: Vec<&str> = outputs.iter().map(|s| s.as_str()).collect();
         self.execute_law_multi(law, &output_refs);
@@ -274,6 +321,10 @@ impl RegelrechtWorld {
             "direct" => matches!(prov, Some(OutputProvenance::Direct { .. })),
             "reactive" => matches!(prov, Some(OutputProvenance::Reactive { .. })),
             "override" => matches!(prov, Some(OutputProvenance::Override { .. })),
+            // A voided output is absent from `outputs` and present here with
+            // its ground, so a scenario can assert the exclusion rather than
+            // only the missing value.
+            "voided" => matches!(prov, Some(OutputProvenance::Voided { .. })),
             other => panic!("unknown provenance kind '{other}'"),
         };
         assert!(
@@ -313,7 +364,9 @@ impl RegelrechtWorld {
                 number: row[number_at].trim().to_string(),
                 text: row[text_at].trim().to_string(),
                 url: None,
+                placement: None,
                 machine_readable: None,
+                references: None,
             });
         }
     }
@@ -432,6 +485,34 @@ fn num_to_value(n: f64) -> Value {
                 .parse::<Decimal>()
                 .expect("numeric literal parses as Decimal"),
         )
+    }
+}
+
+/// Type a quoted capture. The rule lives in `bdd/grammar.yaml`
+/// (`value_typing.quoted`) and reaches both dispatchers through codegen, so
+/// neither engine can hold its own opinion about what quotes mean.
+fn quoted_value(raw: &str) -> Value {
+    match crate::generated_steps::QUOTED_VALUE_TYPING {
+        "literal" => Value::String(raw.to_string()),
+        "inferred" => convert_gherkin_value(raw),
+        other => panic!("bdd/grammar.yaml: unknown value_typing.quoted '{other}'"),
+    }
+}
+
+/// Type a bare (unquoted) capture; see [`quoted_value`] for where the rule lives.
+fn bare_value(n: f64) -> Value {
+    match crate::generated_steps::BARE_VALUE_TYPING {
+        "number" => num_to_value(n),
+        other => panic!("bdd/grammar.yaml: unknown value_typing.bare '{other}'"),
+    }
+}
+
+/// Type a data-table cell; see [`quoted_value`] for where the rule lives.
+fn table_cell_value(raw: &str) -> Value {
+    match crate::generated_steps::TABLE_CELL_VALUE_TYPING {
+        "inferred" => convert_gherkin_value(raw),
+        "literal" => Value::String(raw.trim().to_string()),
+        other => panic!("bdd/grammar.yaml: unknown value_typing.table_cell '{other}'"),
     }
 }
 

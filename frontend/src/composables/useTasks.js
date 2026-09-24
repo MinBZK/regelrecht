@@ -43,6 +43,46 @@ async function fetchTask(taskId) {
   return res.json();
 }
 
+/**
+ * De onderdelen van één verrijking: alle review-taken van dezelfde enrich-job,
+ * met per taak het artikelnummer en de status. Levert `{ job_id, law_id, tasks }`.
+ */
+async function fetchJobTasks(jobId) {
+  const res = await apiFetch(`/api/tasks/jobs/${encodeURIComponent(jobId)}`);
+  return res.json();
+}
+
+/**
+ * Verwerk een verrijking: alle oordelen in één keer, één schrijfactie, één
+ * commit. `decisions` is een lijst `{ task_id, action, content? }`; `etag` is
+ * de ETag van de wet zoals de beoordelaar hem zag en gaat als `If-Match` mee -
+ * dát is het enige moment waarop deze flow nog op verouderdheid controleert.
+ */
+async function applyEnrichment(jobId, decisions, etag) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (etag) headers['If-Match'] = etag;
+  const res = await apiFetch(`/api/tasks/jobs/${encodeURIComponent(jobId)}/apply`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ decisions }),
+    // 412 lossen we hieronder zelf op met een uitlegbare tekst; de rest gooit.
+    allowStatuses: [412],
+    // Zelfde proxy-guard als saveLaw: alleen text/plain-bodies zijn van onze
+    // eigen editor-api, al het andere is een tussenliggende proxy.
+    errorMessage: (status, body, contentType) =>
+      contentType.startsWith('text/plain') && body ? body : `Verwerken mislukt: ${status}`,
+  });
+  if (res.status === 412) {
+    throw new Error(
+      'De wet is intussen door iemand anders gewijzigd. Herlaad de pagina om de ' +
+        'nieuwste versie te zien en beoordeel de verrijking daarna opnieuw.',
+    );
+  }
+  const json = await res.json();
+  await refresh();
+  return json;
+}
+
 async function resolveTask(taskId, action) {
   await apiFetch(`/api/tasks/${encodeURIComponent(taskId)}/resolve`, {
     method: 'POST',
@@ -102,6 +142,8 @@ export function useTasks() {
     refresh,
     fetchTask,
     resolveTask,
+    fetchJobTasks,
+    applyEnrichment,
     requestEnrich,
   };
 }
@@ -118,7 +160,16 @@ export function useTaskActions() {
   // `running` is een module-level ref, gedeeld met useTasks(). Meegeven kost
   // niets en start geen poll: een view die alleen wil weten of er iets loopt,
   // leest hem en ververst zelf na een actie of bij mount.
-  return { fetchTask, resolveTask, requestEnrich, refresh, running, tasks };
+  return {
+    fetchTask,
+    resolveTask,
+    fetchJobTasks,
+    applyEnrichment,
+    requestEnrich,
+    refresh,
+    running,
+    tasks,
+  };
 }
 
 /**

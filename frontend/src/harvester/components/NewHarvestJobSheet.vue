@@ -96,10 +96,6 @@ function onInput() {
   if (networkError.value) networkError.value = '';
 }
 
-function onKeydown(e) {
-  if (e.key === 'Enter') onSubmit();
-}
-
 function onSheetClose() {
   if (isOpen.value) close();
 }
@@ -121,7 +117,10 @@ function onSheetClose() {
           @dismiss="close"
         />
         <nldd-simple-section>
-          <nldd-form>
+          <!-- Enter in the field submits through the form: nldd-form renders a
+               real <form> and the DS hands implicit submission back to it, so a
+               keydown handler of our own would fire onSubmit twice. -->
+          <nldd-form @submit.prevent="onSubmit">
             <nldd-form-field
               label="Law ID"
               supporting-label="BWB or CVDR ID (e.g. BWBR0018451, CVDR681386)"
@@ -130,22 +129,23 @@ function onSheetClose() {
                 ref="inputRef"
                 size="md"
                 :invalid="errorId ? '' : undefined"
-                :error-message="errorId || undefined"
+                :unmet="errorId || undefined"
                 @input="onInput"
-                @keydown="onKeydown"
               />
-              <nldd-form-field-error-text id="harvest-law-id-required">
-                Law ID is required.
-              </nldd-form-field-error-text>
-              <nldd-form-field-error-text id="harvest-law-id-format">
-                Expected a BWB ID (e.g. BWBR0018451) or CVDR ID (e.g. CVDR681386).
-              </nldd-form-field-error-text>
-              <nldd-form-field-error-text id="harvest-law-id-conflict">
-                A harvest job for this law is already pending or processing.
-              </nldd-form-field-error-text>
-              <nldd-form-field-error-text id="harvest-network-error">
-                Failed to submit harvest job: {{ networkError }}
-              </nldd-form-field-error-text>
+              <nldd-validation-list>
+                <nldd-validation-item id="harvest-law-id-required">
+                  Law ID is required.
+                </nldd-validation-item>
+                <nldd-validation-item id="harvest-law-id-format">
+                  Expected a BWB ID (e.g. BWBR0018451) or CVDR ID (e.g. CVDR681386).
+                </nldd-validation-item>
+                <nldd-validation-item id="harvest-law-id-conflict">
+                  A harvest job for this law is already pending or processing.
+                </nldd-validation-item>
+                <nldd-validation-item id="harvest-network-error">
+                  Failed to submit harvest job: {{ networkError }}
+                </nldd-validation-item>
+              </nldd-validation-list>
             </nldd-form-field>
             <nldd-form-actions>
               <nldd-button-group>

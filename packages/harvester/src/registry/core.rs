@@ -74,18 +74,6 @@ impl ElementRegistry {
     pub fn has_handler(&self, tag_name: &str) -> bool {
         self.handlers.contains_key(tag_name)
     }
-
-    /// Return set of all registered tag names.
-    #[must_use]
-    pub fn registered_tags(&self) -> HashSet<&str> {
-        self.handlers.keys().map(|s| s.as_str()).collect()
-    }
-
-    /// Return set of all skipped tag names.
-    #[must_use]
-    pub fn skipped_tags(&self) -> HashSet<&str> {
-        self.skip_tags.iter().map(|s| s.as_str()).collect()
-    }
 }
 
 impl Default for ElementRegistry {

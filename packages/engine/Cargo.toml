@@ -11,7 +11,7 @@ keywords = ["law", "legal", "wasm", "dutch", "regelrecht"]
 categories = ["wasm", "parsing"]
 
 [package.metadata.regelrecht]
-supported-schemas = ["v0.2.0", "v0.3.0", "v0.3.1", "v0.3.2", "v0.4.0", "v0.5.0", "v0.5.1", "v0.5.2", "v0.5.3", "v0.5.4", "v0.5.5", "v0.5.6"]
+supported-schemas = ["v0.2.0", "v0.3.0", "v0.3.1", "v0.3.2", "v0.4.0", "v0.5.0", "v0.5.1", "v0.5.2", "v0.5.3", "v0.5.4", "v0.5.5", "v0.5.6", "v0.5.7", "v0.5.8", "v0.5.9", "v0.6.0", "v0.7.0"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -41,6 +41,10 @@ optional = true
 version = "0.6"
 optional = true
 
+[dependencies.js-sys]
+version = "0.3"
+optional = true
+
 [[bin]]
 name = "validate"
 path = "src/bin/validate.rs"
@@ -58,13 +62,15 @@ path = "src/bin/evaluate.rs"
 [[test]]
 name = "bdd"
 harness = false
-# Niet meelopen in `cargo test`: de BDD-suite draait tegen het echte corpus en
-# hoort bewust niet in CI (zie docs/operations/ci-cd.md). `just bdd` roept het
-# target expliciet aan.
+# Niet meelopen in `cargo test`: het target draait standaard beide buckets, en
+# bucket A (wetvalidatie tegen het echte corpus) hoort niet in een testbaan die
+# moet blokkeren. Aanroepers kiezen hun bucket met BDD_BUCKET en noemen het
+# target expliciet — `just bdd` lokaal, `BDD_BUCKET=conformance cargo test
+# --test bdd` in CI (zie docs/operations/ci-cd.md).
 test = false
 
 [features]
-wasm = ["dep:wasm-bindgen", "dep:serde-wasm-bindgen"]
+wasm = ["dep:wasm-bindgen", "dep:serde-wasm-bindgen", "dep:js-sys"]
 validate = ["dep:jsonschema"]
 
 [build-dependencies]

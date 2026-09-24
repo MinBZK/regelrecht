@@ -139,6 +139,64 @@ function review(task) {
   router.push(target);
 }
 
+// Beoordelen is een echte link en geen knop: de bestemming is volledig
+// deep-linkbaar (alle review-logica hangt aan de URL - EditorView leest
+// `?task=` bij binnenkomst - en de klik zelf doet niets anders dan navigeren),
+// dus hoort hij ook te doen wat een link doet: middenklik, ctrl/cmd-klik,
+// "open in nieuw tabblad", "kopieer linkadres". nldd-menu-item rendert met een
+// `href` een <a> met dezelfde role="menuitem", dus de ARIA van het menu blijft
+// gelijk. Een taak zonder bruikbare bestemming krijgt geen href: `disabled`
+// houdt het item dan op de <button>-tak, dus er is geen kapotte link.
+// `router.resolve` bouwt de url, zodat de route-definitie de enige bron van
+// waarheid blijft (geen handgemaakte url-strings).
+function reviewHref(task) {
+  const target = reviewTarget(task);
+  return target ? router.resolve(target).href : undefined;
+}
+
+// Een gewone klik moet SPA-navigatie blijven; het menu-item doet zelf geen
+// preventDefault, dus zonder deze guard herlaadt de browser de hele pagina.
+// Hetzelfde patroon als router-link: alleen een onbewerkte primaire klik
+// afvangen, de rest aan de browser laten (nieuw tabblad/venster).
+//
+// The guard sits in the capture phase on the host element, so it runs before
+// the click handler inside the item's shadow root. That handler fires
+// `select`, and that path navigates too (see below): on a ctrl-click you would
+// otherwise end up both in the new tab and in the current one.
+// `pendingClick` remembers the click; while it is still being dispatched
+// (eventPhase is not NONE) a `select` belongs to that click and is skipped.
+//
+// Deliberately no flag that a second, bubble-phase listener resets. Vue skips
+// a handler when the event carries the same millisecond as the moment that
+// handler was attached (`e._vts <= invoker.attached`), and only the first Vue
+// handler an event reaches is exempt from that check. A click in the same
+// millisecond as the render left the flag set, and every later select stopped
+// navigating. The dispatch state of the event itself depends on no clock.
+let pendingClick = null;
+function onReviewClickCapture(event, task) {
+  pendingClick = event;
+  if (event.defaultPrevented || event.button !== 0) return;
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
+  review(task);
+}
+
+// `select` zonder klik erachter is een programmatische activatie door het menu
+// zelf - pointerdown op het ene item en loslaten op het andere, of een
+// aanroep van item.select(). Er is dan geen link-navigatie die het overneemt,
+// dus doen we het hier. Enter op een gefocust item loopt wél via een echte
+// click (het menu heeft geen eigen Enter-afhandeling), en dus via de guard
+// hierboven. Spatie niet: dat activeert een <a> nergens op het web, terwijl de
+// <button>-takken van de andere items er wél op reageren. Dat verschil hoort
+// bij het ontwerpsysteem (het rendert de href-tak), niet bij dit component -
+// hier het gedrag van één item nabouwen zou het juist uit de pas laten lopen
+// met elk ander link-menu-item.
+function onReviewSelect(task) {
+  if (pendingClick && pendingClick.eventPhase !== Event.NONE) return;
+  pendingClick = null;
+  review(task);
+}
+
 // "Bekijk document" op een lopende conversie: de .md bestaat nog niet, dus we
 // willen de job-weergave ("Aan het converteren…"), niet het document. Via een
 // emit i.p.v. router.push, zodat LibraryView viewingJobPath vóór de navigatie
@@ -193,10 +251,13 @@ function viewLaw(job) {
                 <nldd-menu-item text="Probeer opnieuw" @select="retry(task)"></nldd-menu-item>
               </template>
               <template v-else>
+                <!-- Echte link: zie reviewHref/onReviewClickCapture hierboven. -->
                 <nldd-menu-item
                   text="Beoordelen"
+                  :href="reviewHref(task)"
                   :disabled="!reviewTarget(task) || undefined"
-                  @select="review(task)"
+                  @click.capture="onReviewClickCapture($event, task)"
+                  @select="onReviewSelect(task)"
                 ></nldd-menu-item>
               </template>
               <nldd-menu-divider></nldd-menu-divider>

@@ -21,19 +21,25 @@
 #      deze repo noemen, aan beide kanten van de URL dezelfde.
 set -euo pipefail
 
+# Draagbaar gehouden: macOS levert bash 3.2 en BSD grep, dus geen mapfile, geen
+# associatieve arrays, geen `grep -P` en geen `find -printf`. De verzamelingen
+# staan in tijdelijke bestanden en worden met `grep -Fx` doorzocht.
+
 ROOT="${SKILL_REF_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 SKILLS="$ROOT/.claude/skills"
 EXCEPTIONS="$ROOT/script/.skill-path-exceptions"
 [ -d "$SKILLS" ] || exit 0
 
 status=0
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
 
 # Nieuwste schemaversie in deze repo. Normaal is schema/latest een symlink naar
 # die map; in een export zonder symlinks valt hij terug op de hoogste v*-map, zodat
 # een checkout-eigenaardigheid niet elke commit blokkeert.
 latest="$(basename "$(readlink "$ROOT/schema/latest" 2>/dev/null || echo "")")"
 if [ -z "$latest" ]; then
-    latest="$(find "$ROOT/schema" -maxdepth 1 -name 'v*' -printf '%f\n' 2>/dev/null | sort -V | tail -1)"
+    latest="$(for d in "$ROOT"/schema/v*; do [ -d "$d" ] && basename "$d"; done 2>/dev/null | sort -V | tail -1)"
 fi
 if [ -z "$latest" ]; then
     echo "SKILL-REFS: geen schemaversie gevonden onder $ROOT/schema" >&2
@@ -49,55 +55,50 @@ fi
 # een agent uitvoert.
 top_level='(packages|corpus|schema|docs|dev|frontend|frontend-lawmaking|bdd|script|conformance|\.claude|\.github)'
 
-mapfile -t referenced < <(
-    grep -rhoIP '`[^`]+`' "$SKILLS" 2>/dev/null |
-        tr -d '`' |
-        grep -P "^$top_level/" |
-        grep -vP '[*?{}<>[:space:]]|\.\.\.|…|X\.Y\.Z' |
-        sed 's/:[0-9-]*$//' |
-        sort -u
-)
+{ grep -rhoIE '`[^`]+`' "$SKILLS" 2>/dev/null || true; } |
+    tr -d '`' |
+    { grep -E "^$top_level/" || true; } |
+    { grep -vE '[*?{}<>[:space:]]|\.\.\.|…|X\.Y\.Z' || true; } |
+    sed -E 's/:[0-9-]*$//' |
+    sort -u > "$work/referenced"
 
-declare -A allowed=()
+: > "$work/allowed"
 if [ -f "$EXCEPTIONS" ]; then
-    while IFS= read -r line; do
+    while IFS= read -r line || [ -n "$line" ]; do
         line="${line%%#*}"
         line="${line#"${line%%[![:space:]]*}"}"
         line="${line%"${line##*[![:space:]]}"}"
-        [ -n "$line" ] && allowed["$line"]=1
+        if [ -n "$line" ]; then echo "$line" >> "$work/allowed"; fi
     done < "$EXCEPTIONS"
 fi
 
-declare -A seen=()
-missing=()
-for path in "${referenced[@]}"; do
-    seen["$path"]=1
+: > "$work/missing"
+while IFS= read -r path; do
+    [ -z "$path" ] && continue
     [ -e "$ROOT/$path" ] && continue
-    [ -n "${allowed[$path]:-}" ] && continue
-    missing+=("$path")
-done
+    grep -qFx -- "$path" "$work/allowed" && continue
+    echo "$path" >> "$work/missing"
+done < "$work/referenced"
 
-if [ ${#missing[@]} -gt 0 ]; then
+if [ -s "$work/missing" ]; then
     echo "SKILL-REFS: skills verwijzen naar paden die niet bestaan:" >&2
-    printf '  %s\n' "${missing[@]}" >&2
+    sed 's/^/  /' "$work/missing" >&2
     echo "" >&2
     echo "Corrigeer het pad, of zet het met een reden in script/.skill-path-exceptions" >&2
     echo "als het met opzet nog niet bestaat." >&2
     status=1
 fi
 
-stale=()
-for path in "${!allowed[@]}"; do
-    if [ -e "$ROOT/$path" ]; then
-        stale+=("$path")
-    elif [ -z "${seen[$path]:-}" ]; then
-        stale+=("$path")
+: > "$work/stale"
+while IFS= read -r path; do
+    if [ -e "$ROOT/$path" ] || ! grep -qFx -- "$path" "$work/referenced"; then
+        echo "$path" >> "$work/stale"
     fi
-done
+done < "$work/allowed"
 
-if [ ${#stale[@]} -gt 0 ]; then
+if [ -s "$work/stale" ]; then
     echo "SKILL-REFS: verouderde regels in script/.skill-path-exceptions:" >&2
-    printf '  %s\n' "${stale[@]}" >&2
+    sed 's/^/  /' "$work/stale" >&2
     echo "" >&2
     echo "Het pad bestaat inmiddels, of geen enkele skill noemt het nog." >&2
     status=1
@@ -105,19 +106,18 @@ fi
 
 # --- 2. Schema-URL's -------------------------------------------------------
 
-urls="$(grep -rhoP 'https://raw\.githubusercontent\.com/MinBZK/regelrecht/\S*?schema\.json' "$SKILLS" 2>/dev/null | sort -u || true)"
 expected="https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-$latest/schema/$latest/schema.json"
+# Een vX.Y.Z-vorm is een sjabloon (zie hierboven) en telt niet mee.
+url_re='https://raw\.githubusercontent\.com/MinBZK/regelrecht/[^[:space:]`"'"'"')]*schema\.json'
 
-bad=()
-while IFS= read -r url; do
-    [ -z "$url" ] && continue
-    [ "$url" = "$expected" ] && continue
-    bad+=("$url")
-done <<< "$urls"
+{ grep -rhoE "$url_re" "$SKILLS" 2>/dev/null || true; } |
+    sort -u |
+    { grep -vFx -- "$expected" || true; } |
+    { grep -vF "X.Y.Z" || true; } > "$work/bad"
 
-if [ ${#bad[@]} -gt 0 ]; then
+if [ -s "$work/bad" ]; then
     echo "SKILL-REFS: skills schrijven een \$schema-URL voor die niet de geldende is:" >&2
-    printf '  %s\n' "${bad[@]}" >&2
+    sed 's/^/  /' "$work/bad" >&2
     echo "" >&2
     echo "Verwacht (RFC-013, tag-gebonden en op de nieuwste schemaversie):" >&2
     echo "  $expected" >&2

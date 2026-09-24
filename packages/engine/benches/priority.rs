@@ -1,7 +1,8 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use regelrecht_engine::priority::{resolve_candidate, Candidate};
 use regelrecht_engine::types::RegulatoryLayer;
 use regelrecht_engine::ArticleBasedLaw;
+use std::hint::black_box;
 
 fn make_law(id: &str, layer: RegulatoryLayer, valid_from: &str) -> ArticleBasedLaw {
     ArticleBasedLaw {
@@ -18,11 +19,19 @@ fn make_law(id: &str, layer: RegulatoryLayer, valid_from: &str) -> ArticleBasedL
         url: None,
         identifiers: None,
         gemeente_code: None,
+        provincie_code: None,
         waterschap_code: None,
+        celex_nummer: None,
+        eli: None,
+        tractatenblad_id: None,
+        unts_nummer: None,
+        stcrt_id: None,
+        organisation: None,
         officiele_titel: None,
         jaar: None,
         legal_basis: None,
         procedure: None,
+        preamble: None,
         articles: vec![],
         content_hash: None,
     }

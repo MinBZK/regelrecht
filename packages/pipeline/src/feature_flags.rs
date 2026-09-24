@@ -24,21 +24,6 @@ where
     Ok(flag)
 }
 
-/// Update the enabled status of a feature flag. Returns the updated flag.
-pub async fn set_flag<'e, E>(executor: E, key: &str, enabled: bool) -> Result<Option<FeatureFlag>>
-where
-    E: sqlx::PgExecutor<'e>,
-{
-    let flag = sqlx::query_as::<_, FeatureFlag>(
-        "UPDATE feature_flags SET enabled = $2 WHERE key = $1 RETURNING *",
-    )
-    .bind(key)
-    .bind(enabled)
-    .fetch_optional(executor)
-    .await?;
-    Ok(flag)
-}
-
 /// Create or update a feature flag.
 pub async fn upsert_flag<'e, E>(
     executor: E,

@@ -13,6 +13,7 @@ import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import * as yaml from 'js-yaml';
 import { mockAuthedEditor } from './helpers.js';
+import { compareVersionsNewestFirst, pickBestVersion, todayIso, extractDateFromPath } from './corpus-version.js';
 
 // Corpus law endpoints exist in two shapes: the global read-only
 // `/api/corpus/laws/...` and the authenticated, traject-scoped
@@ -31,20 +32,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 export const CORPUS_ROOT = resolve(__dirname, '../../corpus/regulation/nl');
 
 /**
- * Recursively walk a corpus directory and pick one YAML per `$id`,
- * preferring the latest publication date. Returns a Map<lawId,
- * { content, path, pubDate }>.
+ * Recursively walk a corpus directory and pick one YAML per `$id` — the version
+ * the editor-api would serve today, per `SourceMap::pick_best_version`. Returns
+ * a Map<lawId, { content, path }>.
  *
- * NOTE: this picks by `publication_date` (lexicographic compare),
- * whereas the editor-api's `SourceMap::pick_best_version` selects by
- * `valid_from` against today's date. The two will agree as long as
- * each law in the test corpus has only one dated file (the case for
- * wet_op_de_zorgtoeslag today). If a future test fixture introduces multiple
- * dated files for the same `$id`, align this with the server logic
- * to avoid the spec serving a different version than the editor would
- * see in production.
+ * `today` is injectable so a test can pin the "in force now" boundary; it
+ * defaults to the real date, which is what the specs run on.
  */
-export function loadCorpus(rootDir = CORPUS_ROOT) {
+export function loadCorpus(rootDir = CORPUS_ROOT, today = todayIso()) {
   const byId = new Map();
 
   function visit(dir) {
@@ -57,12 +52,13 @@ export function loadCorpus(rootDir = CORPUS_ROOT) {
         const idMatch = content.match(/^\$id:\s*['"]?([^'"\n]+)['"]?$/m);
         if (!idMatch) continue;
         const lawId = idMatch[1].trim();
-        const pubMatch = content.match(/^publication_date:\s*['"]?([^'"\n]+)['"]?$/m);
-        const pubDate = pubMatch ? pubMatch[1].trim() : '';
         const existing = byId.get(lawId);
-        if (!existing || pubDate > existing.pubDate) {
-          byId.set(lawId, { content, path: full, pubDate });
-        }
+        const wins = !existing || pickBestVersion(
+          extractDateFromPath(existing.path),
+          extractDateFromPath(full),
+          today,
+        );
+        if (wins) byId.set(lawId, { content, path: full });
       }
     }
   }
@@ -73,7 +69,8 @@ export function loadCorpus(rootDir = CORPUS_ROOT) {
 
 /**
  * Recursively walk a corpus directory and collect **every** version YAML per
- * `$id` (newest publication_date first). Returns Map<lawId, string[]>.
+ * `$id`, newest filename date first (undated last) — the order the editor-api's
+ * `/versions` endpoint returns. Returns Map<lawId, string[]>.
  *
  * The engine's dependency loader fetches `/corpus/laws/{id}/versions` and loads
  * the whole version set so its date-aware resolver can pick the one in force on
@@ -94,19 +91,16 @@ export function loadCorpusVersions(rootDir = CORPUS_ROOT) {
         const idMatch = content.match(/^\$id:\s*['"]?([^'"\n]+)['"]?$/m);
         if (!idMatch) continue;
         const lawId = idMatch[1].trim();
-        const pubMatch = content.match(/^publication_date:\s*['"]?([^'"\n]+)['"]?$/m);
-        const pubDate = pubMatch ? pubMatch[1].trim() : '';
         const list = byId.get(lawId) ?? [];
-        list.push({ content, pubDate });
+        list.push({ content, path: full });
         byId.set(lawId, list);
       }
     }
   }
 
   visit(rootDir);
-  // Newest-first, matching the editor-api `/versions` contract.
   for (const [id, list] of byId) {
-    list.sort((a, b) => (a.pubDate < b.pubDate ? 1 : a.pubDate > b.pubDate ? -1 : 0));
+    list.sort((a, b) => compareVersionsNewestFirst(a.path, b.path));
     byId.set(id, list.map((e) => e.content));
   }
   return byId;
