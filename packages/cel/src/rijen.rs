@@ -14,6 +14,10 @@
 //! leveren die een latere bron als invoer gebruikt. Ontbreekt een invoer, is
 //! een bron onbereikbaar, of levert ze de waarde niet, dan blijft die kolom
 //! weg: er wordt niets aangevuld. Welke kolommen dat waren, staat in `mist`.
+//!
+//! Het blok staat onder het besluit (`behandeling.besluit.rijen`) of onder de
+//! toets (`portaal.toets.rijen`); beide voeren het uit met [`pas_toe`], vóór
+//! de engine.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -21,9 +25,10 @@ use std::sync::Arc;
 use serde::Serialize;
 use serde_json::{Map, Value};
 
-use crate::config::{Omzetting, RijBron, RijInvoer, RijenDefinitie};
+use crate::cel::Cel;
+use crate::config::{Omzetting, ProcesDefinitie, RijBron, RijInvoer, RijenDefinitie};
 use crate::reductie::Lexostatus;
-use crate::synthese::{Status, TIJDSLIMIET};
+use crate::synthese::{Herkomst, Samenvoeging, Status, TIJDSLIMIET};
 use crate::transport::{haal_binnen, Transport, TransportFout};
 
 /// Een bron die per regel wordt bevraagd, met het transport dat de runtime
@@ -245,6 +250,146 @@ pub async fn stel_samen(
         bronnen: uitslagen,
         mist: mist.into_iter().collect(),
     })
+}
+
+/// Voer de rijen-definities uit op een samenvoeging, vóór de engine: elke
+/// array-parameter komt erbij, met herkomst per regel. `eigen` zijn de
+/// lexostatussen van de zaak (bij de toets: de proefreductie van het
+/// concept); een tabel kan ook een extra veld zijn dat een synthese-bron
+/// doorgaf, en dat staat dan naast de eigen lexostatussen onder de naam van
+/// die bron. Gedeeld door de toets en het besluit.
+pub async fn pas_toe(
+    rijen: &[Rijen],
+    eigen: &[Lexostatus],
+    samen: &mut Samenvoeging,
+) -> Vec<Uitslag> {
+    let mut met_bronnen = eigen.to_vec();
+    for u in samen.bronnen.iter().filter(|u| !u.extra_velden.is_empty()) {
+        met_bronnen.push(Lexostatus {
+            naam: u.lexostatus.clone(),
+            zaakkenmerk: None,
+            op_moment: None,
+            parameters: BTreeMap::new(),
+            extra_velden: u
+                .extra_velden
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
+            niet_afgeleid: Vec::new(),
+            lijst: None,
+        });
+    }
+    let mut uitslagen = Vec::new();
+    for r in rijen {
+        let Some(uitslag) = stel_samen(r, &met_bronnen, &samen.parameters).await else {
+            continue;
+        };
+        samen.parameters.insert(
+            uitslag.parameter.clone(),
+            Value::Array(uitslag.regels.clone()),
+        );
+        samen.herkomst.insert(
+            uitslag.parameter.clone(),
+            Herkomst::PerRegel {
+                lexostatus: r.definitie.tabel.lexostatus.clone(),
+                veld: r.definitie.tabel.veld.clone(),
+            },
+        );
+        uitslagen.push(uitslag);
+    }
+    uitslagen
+}
+
+/// Controleer een rijen-definitie bij het laden: de tabel komt uit een van de
+/// `eigen` lexostatussen (die haar levert) of uit een extra veld dat een
+/// synthese-bron doorgeeft, elke kolom komt uit maar een plek, een bron is
+/// een andere cel, en elke invoer van een bron wordt gevuld. `wie` is de
+/// uitvoering (toets of besluit), `anders` zegt wat een andere lexostatus
+/// dan niet is.
+pub fn controleer(
+    wie: &str,
+    r: &RijenDefinitie,
+    eigen: &[&str],
+    anders: &str,
+    d: &ProcesDefinitie,
+    cel: &Cel,
+) -> Vec<String> {
+    let mut fouten = Vec::new();
+    let wie = format!("{wie}, rijen '{}'", r.parameter);
+    // Een tabel of invoer mag ook uit een extra veld komen dat een
+    // synthese-bron doorgeeft (bijvoorbeeld de regels van een uitslag uit een
+    // register).
+    let doorgegeven_veld = |lexostatus: &str, veld: &str| {
+        d.andere_bronnen()
+            .any(|s| s.lexostatus == lexostatus && s.extra_velden.iter().any(|e| e == veld))
+    };
+    if doorgegeven_veld(&r.tabel.lexostatus, &r.tabel.veld) {
+        // Uit een bron: de synthese controleert de bron zelf.
+    } else if !eigen.contains(&r.tabel.lexostatus.as_str()) {
+        fouten.push(format!(
+            "{wie}: de tabel komt uit lexostatus '{}', en die is {anders}",
+            r.tabel.lexostatus
+        ));
+    } else if !cel
+        .lexostatussen
+        .lexostatus(&r.tabel.lexostatus)
+        .is_some_and(|l| l.levert(&r.tabel.veld))
+    {
+        fouten.push(format!(
+            "{wie}: lexostatus '{}' levert geen '{}' (geen afleiding en geen extra veld)",
+            r.tabel.lexostatus, r.tabel.veld
+        ));
+    }
+    // Elke kolomnaam komt uit maar een plek: de tabel of een bron.
+    let mut kolommen: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+    for naam in r.kolommen.values() {
+        kolommen.entry(naam).or_default().push("de tabel".into());
+    }
+    for bron in &r.bronnen {
+        let bronwie = format!("{wie}, bron {}/{}", bron.cel, bron.lexostatus);
+        if bron.cel == cel.id() {
+            fouten.push(format!(
+                "{bronwie}: een bron is een andere cel, niet de cel zelf"
+            ));
+        }
+        for naam in bron.kolommen.values() {
+            kolommen
+                .entry(naam)
+                .or_default()
+                .push(format!("bron {}/{}", bron.cel, bron.lexostatus));
+        }
+        for (i, v) in &bron.invoer {
+            match v {
+                RijInvoer::Kolom { kolom, .. } if !kolommen.contains_key(kolom.as_str()) => {
+                    fouten.push(format!(
+                        "{bronwie}, invoer '{i}': kolom '{kolom}' wordt door niets ervoor gevuld"
+                    ));
+                }
+                RijInvoer::Eigen {
+                    lexostatus, veld, ..
+                } if !doorgegeven_veld(lexostatus, veld)
+                    && !cel
+                        .lexostatussen
+                        .lexostatus(lexostatus)
+                        .is_some_and(|l| l.levert(veld)) =>
+                {
+                    fouten.push(format!(
+                        "{bronwie}, invoer '{i}': lexostatus '{lexostatus}' levert geen '{veld}'"
+                    ));
+                }
+                _ => {}
+            }
+        }
+    }
+    for (naam, waar) in &kolommen {
+        if waar.len() > 1 {
+            fouten.push(format!(
+                "{wie}: kolom '{naam}' komt uit meer dan een plek: {}",
+                waar.join(", ")
+            ));
+        }
+    }
+    fouten
 }
 
 #[cfg(test)]

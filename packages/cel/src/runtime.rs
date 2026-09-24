@@ -20,7 +20,7 @@ use serde_json::Value;
 
 use crate::api::{self, CelState, Klok, ProcesState};
 use crate::cel::{met_cel, Cel};
-use crate::config::{celmappen, procesmappen, Config};
+use crate::config::{celmappen, procesmappen, Config, RijenDefinitie};
 use crate::kroniek::Kroniek;
 use crate::proces::{met_proces, Proces};
 use crate::sessie::Sessies;
@@ -129,20 +129,25 @@ impl Runtime {
                     transport: transport(&b.url)?,
                 });
             }
-            let mut per_regel = Vec::new();
-            for r in proces.rijen() {
-                let mut rijbronnen = Vec::new();
-                for b in &r.bronnen {
-                    rijbronnen.push(rijen::Bron {
-                        definitie: b.clone(),
-                        transport: transport(&b.url)?,
+            let per_regel = |defs: &[RijenDefinitie]| -> Result<Vec<rijen::Rijen>, Vec<String>> {
+                let mut uit = Vec::new();
+                for r in defs {
+                    let mut rijbronnen = Vec::new();
+                    for b in &r.bronnen {
+                        rijbronnen.push(rijen::Bron {
+                            definitie: b.clone(),
+                            transport: transport(&b.url)?,
+                        });
+                    }
+                    uit.push(rijen::Rijen {
+                        definitie: r.clone(),
+                        bronnen: rijbronnen,
                     });
                 }
-                per_regel.push(rijen::Rijen {
-                    definitie: r.clone(),
-                    bronnen: rijbronnen,
-                });
-            }
+                Ok(uit)
+            };
+            let besluit_rijen = per_regel(proces.rijen())?;
+            let toets_rijen = per_regel(proces.toets_rijen())?;
             processtaten.push(ProcesState {
                 proces: Arc::new(proces),
                 // De cel waarin het proces vastlegt, draait in deze runtime.
@@ -150,7 +155,8 @@ impl Runtime {
                 sessies: Arc::new(Sessies::default()),
                 klok: klok.clone(),
                 bronnen: Arc::new(bronnen),
-                rijen: Arc::new(per_regel),
+                rijen: Arc::new(besluit_rijen),
+                toets_rijen: Arc::new(toets_rijen),
                 regelingen: geladen.clone(),
             });
         }

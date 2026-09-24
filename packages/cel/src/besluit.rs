@@ -30,7 +30,7 @@ use serde_json::{Map, Value};
 use regelrecht_engine::LawExecutionService;
 
 use crate::api::{self, Besluitvelden, Vastlegverzoek};
-use crate::config::{BesluitDefinitie, RijInvoer};
+use crate::config::BesluitDefinitie;
 use crate::formulier::Veld;
 use crate::proces::Proces;
 use crate::reductie::Lexostatus;
@@ -290,84 +290,20 @@ pub fn controleer(proces: &Proces) -> Vec<String> {
         }
     }
 
-    // Synthese per regel: het tabelveld, de kolomnamen en de bronnen. Een
-    // tabel of invoer mag ook uit een extra veld komen dat een synthese-bron
-    // doorgeeft (bijvoorbeeld de regels van een uitslag uit een register).
-    let doorgegeven_veld = |lexostatus: &str, veld: &str| {
-        d.andere_bronnen()
-            .any(|s| s.lexostatus == lexostatus && s.extra_velden.iter().any(|e| e == veld))
-    };
+    // Synthese per regel: het tabelveld, de kolomnamen en de bronnen.
+    let zaak: Vec<&str> = zaak.iter().map(|z| z.as_str()).collect();
     for r in &b.rijen {
-        let wie = format!("besluit, rijen '{}'", r.parameter);
         per.entry(&r.parameter)
             .or_default()
             .push(format!("de synthese per regel uit '{}'", r.tabel.veld));
-        if doorgegeven_veld(&r.tabel.lexostatus, &r.tabel.veld) {
-            // Uit een bron: de synthese controleert de bron zelf.
-        } else if !zaak.contains(&&r.tabel.lexostatus) {
-            fouten.push(format!(
-                "{wie}: de tabel komt uit lexostatus '{}', en die is geen lexostatus van de zaak (zaak: true)",
-                r.tabel.lexostatus
-            ));
-        } else if !cel
-            .lexostatussen
-            .lexostatus(&r.tabel.lexostatus)
-            .is_some_and(|l| l.levert(&r.tabel.veld))
-        {
-            fouten.push(format!(
-                "{wie}: lexostatus '{}' levert geen '{}' (geen afleiding en geen extra veld)",
-                r.tabel.lexostatus, r.tabel.veld
-            ));
-        }
-        // Elke kolomnaam komt uit maar een plek: de tabel of een bron.
-        let mut kolommen: BTreeMap<&str, Vec<String>> = BTreeMap::new();
-        for naam in r.kolommen.values() {
-            kolommen.entry(naam).or_default().push("de tabel".into());
-        }
-        for bron in &r.bronnen {
-            let bronwie = format!("{wie}, bron {}/{}", bron.cel, bron.lexostatus);
-            if bron.cel == cel.id() {
-                fouten.push(format!(
-                    "{bronwie}: een bron is een andere cel, niet de cel zelf"
-                ));
-            }
-            for naam in bron.kolommen.values() {
-                kolommen
-                    .entry(naam)
-                    .or_default()
-                    .push(format!("bron {}/{}", bron.cel, bron.lexostatus));
-            }
-            for (i, v) in &bron.invoer {
-                match v {
-                    RijInvoer::Kolom { kolom, .. } if !kolommen.contains_key(kolom.as_str()) => {
-                        fouten.push(format!(
-                            "{bronwie}, invoer '{i}': kolom '{kolom}' wordt door niets ervoor gevuld"
-                        ));
-                    }
-                    RijInvoer::Eigen {
-                        lexostatus, veld, ..
-                    } if !doorgegeven_veld(lexostatus, veld)
-                        && !cel
-                            .lexostatussen
-                            .lexostatus(lexostatus)
-                            .is_some_and(|l| l.levert(veld)) =>
-                    {
-                        fouten.push(format!(
-                            "{bronwie}, invoer '{i}': lexostatus '{lexostatus}' levert geen '{veld}'"
-                        ));
-                    }
-                    _ => {}
-                }
-            }
-        }
-        for (naam, waar) in &kolommen {
-            if waar.len() > 1 {
-                fouten.push(format!(
-                    "{wie}: kolom '{naam}' komt uit meer dan een plek: {}",
-                    waar.join(", ")
-                ));
-            }
-        }
+        fouten.extend(rijen::controleer(
+            "besluit",
+            r,
+            &zaak,
+            "geen lexostatus van de zaak (zaak: true)",
+            d,
+            cel,
+        ));
     }
 
     // Waar het besluit wordt vastgelegd: een event met een zaak en een stage,
@@ -557,43 +493,8 @@ pub async fn proefbesluit(
         }
     }
 
-    // 3. Synthese per regel: een tabelveld wordt een array-parameter. De
-    // tabel kan ook een extra veld zijn dat een bron doorgaf; dat staat
-    // naast de eigen lexostatussen onder de naam van die bron.
-    let mut met_bronnen = eigen.clone();
-    for u in samen.bronnen.iter().filter(|u| !u.extra_velden.is_empty()) {
-        met_bronnen.push(Lexostatus {
-            naam: u.lexostatus.clone(),
-            zaakkenmerk: None,
-            op_moment: None,
-            parameters: BTreeMap::new(),
-            extra_velden: u
-                .extra_velden
-                .iter()
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect(),
-            niet_afgeleid: Vec::new(),
-            lijst: None,
-        });
-    }
-    let mut uitslagen = Vec::new();
-    for r in rijen {
-        let Some(uitslag) = rijen::stel_samen(r, &met_bronnen, &samen.parameters).await else {
-            continue;
-        };
-        samen.parameters.insert(
-            uitslag.parameter.clone(),
-            Value::Array(uitslag.regels.clone()),
-        );
-        samen.herkomst.insert(
-            uitslag.parameter.clone(),
-            Herkomst::PerRegel {
-                lexostatus: r.definitie.tabel.lexostatus.clone(),
-                veld: r.definitie.tabel.veld.clone(),
-            },
-        );
-        uitslagen.push(uitslag);
-    }
+    // 3. Synthese per regel: een tabelveld wordt een array-parameter.
+    let uitslagen = rijen::pas_toe(rijen, &eigen, &mut samen).await;
 
     // 4. De oordelen van de behandelaar; een leeg veld gaat niet mee.
     for (p, w) in formulier {

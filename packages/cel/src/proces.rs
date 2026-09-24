@@ -20,6 +20,7 @@ use crate::config::{Portaal, ProcesDefinitie, RijenDefinitie, VoorbeeldenDefinit
 use crate::controle;
 use crate::formulier::{self, Formulier};
 use crate::origin;
+use crate::rijen;
 use crate::stroom::{Binding, Event, Stroom};
 use crate::voorbeelden::{self, Voorbeelden};
 
@@ -89,6 +90,16 @@ impl Proces {
                 p,
                 &service,
             ));
+            for r in &p.toets.rijen {
+                fouten.extend(rijen::controleer(
+                    "toets",
+                    r,
+                    &[p.toets.lexostatus.as_str()],
+                    "niet de toets-lexostatus",
+                    &definitie,
+                    &cel,
+                ));
+            }
         }
         fouten.extend(vind_besluit(&mut definitie, &service));
         let formulier = match definitie
@@ -176,6 +187,13 @@ impl Proces {
     pub fn portaal_event(&self) -> Option<(&Stroom, &Event)> {
         let p = self.portaal()?;
         self.cel.event(&p.stroom, &p.event)
+    }
+
+    /// De rijen-definities van de toets (synthese per regel).
+    pub fn toets_rijen(&self) -> &[RijenDefinitie] {
+        self.portaal()
+            .map(|p| p.toets.rijen.as_slice())
+            .unwrap_or_default()
     }
 
     /// De rijen-definities van het besluit (synthese per regel).

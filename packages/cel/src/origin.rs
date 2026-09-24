@@ -206,11 +206,11 @@ struct BronLevering {
     intern: bool,
 }
 
-/// Wat het proces kan leveren, per soort leverancier.
+/// Wat het proces bij een uitvoering kan leveren, per soort leverancier.
 #[derive(Debug, Default)]
 struct Leveranciers {
     /// Afleidingen van de toets-lexostatus en de lexostatussen van de zaak,
-    /// en de synthese per regel uit een tabel van de zaak.
+    /// en de synthese per regel van deze uitvoering uit een eigen tabel.
     eigen: BTreeSet<String>,
     /// Afleidingen die alleen `$intake` lezen.
     kanaal: BTreeSet<String>,
@@ -223,7 +223,7 @@ struct Leveranciers {
 }
 
 impl Leveranciers {
-    fn van(d: &ProcesDefinitie, cel: &Cel) -> Self {
+    fn van(d: &ProcesDefinitie, cel: &Cel, uitvoering: Uitvoering) -> Self {
         let mut l = Leveranciers::default();
         let mut eigen_lexostatussen: Vec<&str> =
             d.zaakbronnen().map(|b| b.lexostatus.as_str()).collect();
@@ -264,9 +264,17 @@ impl Leveranciers {
         }
         if let Some(b) = d.behandeling.as_ref().map(|b| &b.besluit) {
             l.stand.extend(b.stand_bij_besluit.keys().cloned());
-            for r in &b.rijen {
-                l.rijen(d, r);
-            }
+        }
+        // De synthese per regel levert alleen aan de uitvoering die haar
+        // uitvoert: de toets of het besluit.
+        let rijen: &[RijenDefinitie] = match uitvoering {
+            Uitvoering::Toets => d.portaal.as_ref().map(|p| p.toets.rijen.as_slice()),
+            Uitvoering::Besluit => d.behandeling.as_ref().map(|b| b.besluit.rijen.as_slice()),
+            Uitvoering::Aanbod => None,
+        }
+        .unwrap_or_default();
+        for r in rijen {
+            l.rijen(d, r);
         }
         l
     }
@@ -360,7 +368,6 @@ pub fn controleer(
             return c;
         }
     };
-    let leveranciers = Leveranciers::van(d, cel);
     let mut uitvoeringen: Vec<(Uitvoering, &str, &str)> = Vec::new();
     if let Some(p) = &d.portaal {
         uitvoeringen.push((Uitvoering::Toets, &p.toets.regeling, &p.toets.uitkomst));
@@ -385,6 +392,7 @@ pub fn controleer(
         else {
             continue;
         };
+        let leveranciers = Leveranciers::van(d, cel, uitvoering);
         let mut lijst = Vec::new();
         for b in in_volgorde(service, regeling, artikel) {
             let Some(p) = parameter(service, &b) else {
@@ -811,6 +819,34 @@ mod tests {
             c.fouten,
             ["besluit: geen leverancier voor 'jaar' van testregeling_afnemer#3 (REGISTER, register een_ander_register, grondslag testregeling_register#3): synthese-bron test_register/registerstatus houdt geen kroniek bij met een grondslag in 'een_ander_register'"]
         );
+    }
+
+    /// De rijen van de toets leveren de tabel aan de toets; die van het
+    /// besluit niet.
+    #[test]
+    fn de_rijen_van_de_toets_leveren_aan_de_toets() {
+        let vraagt_tabel = |t: String| {
+            t.replacen(
+                "            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_afnemer#1}\n          - name: is_ingeschreven_raad",
+                "            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_afnemer#1}\n          - name: gebiedstabel\n            type: array\n            nullable: true\n            required: false\n            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_afnemer#1}\n          - name: is_ingeschreven_raad",
+                1,
+            )
+        };
+        let c = afnemer(vraagt_tabel, zo, &[]);
+        assert!(c.fouten.is_empty(), "{:?}", c.fouten);
+        assert_eq!(
+            c.waarschuwingen,
+            ["toets: geen leverancier voor 'gebiedstabel' van testregeling_afnemer#1 (BELANGHEBBENDE, grondslag testregeling_afnemer#1); required: false, dus de engine rekent zonder"]
+        );
+        let met_rijen = |t: String| {
+            t.replace(
+                "    uitkomst: aanvraag_toelaatbaar\n",
+                "    uitkomst: aanvraag_toelaatbaar\n    rijen:\n      - parameter: gebiedstabel\n        tabel: {lexostatus: aanvraag_inhoud, veld: gebieden}\n        kolommen: {gebied: gebied}\n",
+            )
+        };
+        let c = afnemer(vraagt_tabel, met_rijen, &[]);
+        assert!(c.fouten.is_empty(), "{:?}", c.fouten);
+        assert!(c.waarschuwingen.is_empty(), "{:?}", c.waarschuwingen);
     }
 
     /// Zonder origin, en een belanghebbende-parameter zonder required: false:

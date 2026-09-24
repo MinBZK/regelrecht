@@ -26,7 +26,7 @@
 //! | `GET /api/eherkenning/sessie` | wie is ingelogd |
 //! | `POST /api/eherkenning/logout` | sessie beeindigen |
 //! | `GET /api/formulier` | de velden van het aanvraagformulier, uit de stroom van de cel |
-//! | `POST /api/aanvraag/toets` | proefreductie in de cel, synthese, engine |
+//! | `POST /api/aanvraag/toets` | proefreductie in de cel, synthese, synthese per regel, engine |
 //! | `POST /api/aanvraag` | de cel legt het gram vast |
 //! | `GET /api/mogelijkheden` | wat het portaal aanbiedt volgens het beleid, per tijdvak, met trace |
 //!
@@ -69,7 +69,7 @@ use crate::kroniek::Kroniek;
 use crate::mogelijkheid;
 use crate::proces::Proces;
 use crate::reductie::{self, Lexostatus};
-use crate::rijen::Rijen;
+use crate::rijen::{self, Rijen};
 use crate::sessie::{Gebruiker, Medewerker, Sessies, COOKIE};
 use crate::stroom::{self, Binding, GeladenRegeling, Gram, Indiening, Invoer, Receipt, Zaak};
 use crate::synthese::{self, Bron};
@@ -495,6 +495,8 @@ pub struct ProcesState {
     pub bronnen: Arc<Vec<Bron>>,
     /// De synthese per regel van het besluit, met haar bronnen.
     pub rijen: Arc<Vec<Rijen>>,
+    /// De synthese per regel van de toets, met haar bronnen.
+    pub toets_rijen: Arc<Vec<Rijen>>,
     /// De geladen regelingen, voor het receipt van een besluit.
     pub regelingen: Arc<Vec<GeladenRegeling>>,
 }
@@ -715,6 +717,8 @@ struct Concepttoets<'a> {
     gram: Gram,
     lexostatus: Lexostatus,
     samen: synthese::Samenvoeging,
+    /// Wat de synthese per regel van de toets opleverde.
+    rijen: Vec<rijen::Uitslag>,
 }
 
 async fn concepttoets<'a>(
@@ -762,14 +766,22 @@ async fn concepttoets<'a>(
     let lexostatus: Lexostatus =
         serde_json::from_value(antwoord.get("lexostatus").cloned().unwrap_or_default())
             .map_err(onleesbaar)?;
-    // Synthese: de lexostatus van het concept plus die van de bronnen.
-    let samen = synthese::voeg_samen(&lexostatus, &state.bronnen).await;
+    // Synthese: de lexostatus van het concept plus die van de bronnen, en
+    // daarna de synthese per regel, vóór de engine.
+    let mut samen = synthese::voeg_samen(&lexostatus, &state.bronnen).await;
+    let rijen = rijen::pas_toe(
+        &state.toets_rijen,
+        std::slice::from_ref(&lexostatus),
+        &mut samen,
+    )
+    .await;
     Ok(Concepttoets {
         portaal,
         def,
         gram,
         lexostatus,
         samen,
+        rijen,
     })
 }
 
@@ -801,6 +813,7 @@ async fn toets_route(
         "parameters": c.samen.parameters,
         "herkomst": c.samen.herkomst,
         "bronnen": c.samen.bronnen,
+        "rijen": c.rijen,
     })))
 }
 

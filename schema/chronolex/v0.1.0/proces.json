@@ -112,9 +112,16 @@
             },
             "uitkomst": {
               "$ref": "#/definitions/identifier"
+            },
+            "rijen": {
+              "type": "array",
+              "description": "Synthese per regel, zoals bij het besluit: tabelvelden van de toets-lexostatus die een array-parameter worden, vóór de engine.",
+              "items": {
+                "$ref": "#/definitions/rijen"
+              }
             }
           },
-          "description": "De toets vóór het indienen: de cel reduceert het concept op proef tot deze lexostatus, het proces voegt samen en de engine evalueert de uitkomst."
+          "description": "De toets vóór het indienen: de cel reduceert het concept op proef tot deze lexostatus, het proces voegt samen, bouwt de rijen op en de engine evalueert de uitkomst."
         },
         "aanbod": {
           "type": "object",

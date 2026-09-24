@@ -2144,3 +2144,100 @@ fn een_tijdvak_zonder_keuzes_houdt_de_runtime_tegen() {
         ["proces 'test_afnemer_proces': aanbod: het tijdvak 'aanvraagjaar' (algemene_wet_bestuursrecht#4:2 lid 1) vraagt aanbod.keuzes: welke tijdvakken het portaal aanbiedt"]
     );
 }
+
+// --- De toets bouwt een tabel per regel op, zoals het besluit ---
+
+/// De rijen van de toets: de gebiedstabel uit de proefreductie van het
+/// concept, met een kolom die per regel uit de registercel komt.
+fn met_toets_rijen(t: String) -> String {
+    t.replace(
+        "    uitkomst: aanvraag_toelaatbaar\n",
+        "    uitkomst: aanvraag_toelaatbaar
+    rijen:
+      - parameter: gebiedstabel
+        tabel: {lexostatus: aanvraag_inhoud, veld: gebieden}
+        kolommen: {gebied: gebied}
+        bronnen:
+          - cel: test_register
+            lexostatus: registratie_per_gebied
+            invoer:
+              aanduiding: {lexostatus: aanvraag_inhoud, veld: aanduiding}
+              gebied: {kolom: gebied}
+            kolommen: {ingeschreven: ingeschreven}
+",
+    )
+}
+
+#[tokio::test]
+async fn de_toets_bouwt_een_tabel_per_regel_op() {
+    let opstelling = eigen_opstelling(
+        &[("afnemer", &zo), ("register", &zo), ("gebieden", &zo)],
+        &[("afnemer", &met_toets_rijen)],
+    );
+    let data = tempfile::tempdir().unwrap();
+    let a = runtime_op(opstelling.path(), data.path()).unwrap();
+    let body = afnemer_toets(&a.router, Some("VOORBEELD")).await;
+    // De regels komen uit het concept, de kolom `ingeschreven` per regel uit
+    // de registercel; de tabel gaat met de andere parameters naar de engine.
+    assert_eq!(
+        body["parameters"]["gebiedstabel"],
+        json!([
+            {"gebied": "Voorbeeldstad", "ingeschreven": true},
+            {"gebied": "Buurdorp", "ingeschreven": false},
+        ]),
+        "{body}"
+    );
+    assert_eq!(
+        body["herkomst"]["gebiedstabel"],
+        json!({"bron": "per_regel", "lexostatus": "aanvraag_inhoud", "veld": "gebieden"})
+    );
+    assert_eq!(body["rijen"][0]["bronnen"][0]["bevraagd"], json!(2));
+    assert!(body["rijen"][0].get("mist").is_none(), "{body}");
+    assert_eq!(body["uitslag"]["waarde"], json!(true), "{body}");
+    // Niets vastgelegd.
+    assert!(!data.path().join("test_afnemer/test_afnemer.jsonl").exists());
+
+    // Zonder aanduiding wordt de bron per regel niet bevraagd: de kolom
+    // blijft weg, er wordt niets aangevuld.
+    let body = afnemer_toets(&a.router, None).await;
+    assert_eq!(
+        body["parameters"]["gebiedstabel"],
+        json!([
+            {"gebied": "Voorbeeldstad"},
+            {"gebied": "Buurdorp"},
+        ])
+    );
+    assert_eq!(body["rijen"][0]["mist"], json!(["ingeschreven"]));
+    assert_eq!(body["rijen"][0]["bronnen"][0]["status"], "niet_bevraagd");
+}
+
+#[tokio::test]
+async fn de_toets_zonder_rijen_blijft_gelijk() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path());
+    let body = afnemer_toets(&app, Some("VOORBEELD")).await;
+    assert_eq!(body["rijen"], json!([]));
+    assert!(body["parameters"].get("gebiedstabel").is_none(), "{body}");
+    assert_eq!(body["uitslag"]["waarde"], json!(true), "{body}");
+}
+
+#[test]
+fn toets_rijen_controle_bij_het_opstarten() {
+    let uit_ander = |t: String| {
+        met_toets_rijen(t).replacen(
+            "tabel: {lexostatus: aanvraag_inhoud, veld: gebieden}",
+            "tabel: {lexostatus: zaakverloop, veld: gebieden}",
+            1,
+        )
+    };
+    let opstelling = eigen_opstelling(
+        &[("afnemer", &zo), ("register", &zo), ("gebieden", &zo)],
+        &[("afnemer", &uit_ander)],
+    );
+    let data = tempfile::tempdir().unwrap();
+    let fouten = runtime_op(opstelling.path(), data.path()).err().unwrap();
+    assert!(
+        fouten.contains(&"proces 'test_afnemer_proces': toets, rijen 'gebiedstabel': de tabel komt uit lexostatus 'zaakverloop', en die is niet de toets-lexostatus".to_string()),
+        "{fouten:?}"
+    );
+}

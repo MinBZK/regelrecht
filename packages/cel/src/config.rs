@@ -334,6 +334,10 @@ pub struct Toets {
     pub lexostatus: String,
     pub regeling: String,
     pub uitkomst: String,
+    /// Synthese per regel, zoals bij het besluit: een tabelveld van de
+    /// toets-lexostatus wordt een array-parameter.
+    #[serde(default)]
+    pub rijen: Vec<RijenDefinitie>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
