@@ -22,7 +22,7 @@ cargo run --manifest-path packages/Cargo.toml -p regelrecht-harvester -- \
 
 Leave out `--date` for the version in force today. Pass `--output` explicitly: without it the harvester quietly creates `regulation/nl/` under the directory you run from, while an explicit `--output` has to exist already. The command-line interface sits behind the crate's `cli` feature, which is on by default, so no feature flag is needed. A CVDR identifier works the same way for a municipal regulation.
 
-This produces a YAML file with the law's text but no `machine_readable` sections, at `corpus/regulation/nl/{layer}/{slug}/{date}.yaml`. The `law-download` skill in `.claude/skills/` wraps this step for a coding agent.
+This produces a YAML file with the law's text but no `machine_readable` sections, at `corpus/regulation/nl/{layer}/{slug}/{date}.yaml`. A file already at that path is replaced without a warning, `machine_readable` sections included. The Wet op de zorgtoeslag in the example is in the corpus already, so run the command with your own identifier, and check `git status` after harvesting a law that may already be there. The `law-download` skill in `.claude/skills/` wraps this step for a coding agent.
 
 ## Step 3: Add machine-readable logic
 

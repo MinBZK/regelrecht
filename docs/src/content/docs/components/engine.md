@@ -288,14 +288,14 @@ jq -n \
   --rawfile law ../../corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml \
   --rawfile regeling ../../corpus/regulation/nl/ministeriele_regeling/regeling_standaardpremie/2025-01-01.yaml \
   '{law_yaml: $law, extra_laws: [$regeling], output_names: ["standaardpremie"], params: {}, date: "2025-01-01"}' \
-  > request.json
+  > /tmp/request.json
 
-cargo run -q --bin evaluate < request.json
+cargo run -q --bin evaluate < /tmp/request.json
 # {"outputs":{"standaardpremie":211200},"resolved_inputs":{},"article_number":"4",
 #  "law_id":"wet_op_de_zorgtoeslag","engine_version":"0.3.0","schema_version":"v0.5.8",...}
 
 # The same request, printed as an Execution Receipt
-cargo run -q --bin evaluate -- --receipt --untranslatable=warn < request.json
+cargo run -q --bin evaluate -- --receipt --untranslatable=warn < /tmp/request.json
 ```
 
 On failure the binary prints `{"error": "...", "engine_version": "..."}` and exits with status 1.
