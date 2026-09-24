@@ -61,7 +61,7 @@ competent_authority: '#bevoegd_gezag'
 
 `regulatory_layer` decides more than it seems to. It fixes which official identifier the file must carry (a `bwb_id` for a national law, a `gemeente_code` for a municipal ordinance), and it ranks regulations when several of them fill the same delegated term. The rules per layer are in [Identifiers per regulatory layer](/reference/schema#identifiers-per-layer).
 
-`name` and `competent_authority` start with `#`. That is an internal reference: the value is computed by an output of this same law. Article 8 of the Wet op de zorgtoeslag reads "Deze wet wordt aangehaald als: Wet op de zorgtoeslag", so the law's name is itself law text, and the file says where that text is instead of copying it. `valid_from` accepts the same form. The full list of top-level keys, and which are required, is in [The law file](/reference/schema#law-file).
+`name` and `competent_authority` start with `#`. That is an internal reference: the value is computed by an output of this same law. Article 8 of the Wet op de zorgtoeslag reads "Deze wet wordt aangehaald als: Wet op de zorgtoeslag", so the law's name is itself law text, and the file says where that text is instead of copying it. `valid_from` accepts the same form. The full list of top-level keys, and which are required, is in [The law file](/reference/schema#law-file). `competent_authority` is not among them: the schema declares it per `machine_readable` section, where it also accepts the `#` form, and at the top of a file it is tolerated but not checked.
 
 ### Articles
 
@@ -150,9 +150,11 @@ The `execution` block separates three kinds of value by where they come from.
 
 A **parameter** is what the caller supplies: here the `bsn` of the person the question is about. An **input** is a value the article needs but does not decide. Article 3 needs the person's assets, which the Wet inkomstenbelasting 2001 defines as the rendementsgrondslag, so the input names that law and output under `source` and passes the `bsn` along. The engine runs the other law and uses its answer; [Cross-Law References](/concepts/cross-law-references) covers how. An input with `source: {}` comes from outside the corpus altogether, from a register or the person themselves.
 
+Here the model falls short of the text. For someone with a partner, the first lid tests the joint rendementsgrondslag of both, while `vermogen` holds the applicant's own. The corpus file says so in a comment above the input: fetching the partner's value is blocked by the same engine limitation that affects the joint toetsingsinkomen in article 2. Until that is solved, the article decides correctly for someone without a partner, and for a couple only when the partner has no assets of their own.
+
 An **output** is what the article decides and offers to others. Its `name` is public: another law that needs this answer asks for `vermogen_onder_grens` by name, which makes renaming an output a change other laws can see. The reference lists the fields each kind carries under [Fields](/reference/schema#fields).
 
-Values are referred to as `$name`, whether they are parameters, inputs, outputs or definitions. Dot notation reads a property, as in `$referencedate.iso`. A string that starts with `$` is always a reference, never a literal.
+Values are referred to as `$name`, whether they are parameters, inputs, outputs or definitions. Dot notation reads a property, as in `$referencedate.iso`. A string that starts with `$` is always a reference, never a literal. The `#` form from the header is not: inside an operation, `'#wet_naam'` is the literal text `#wet_naam`.
 
 ### Operations
 
