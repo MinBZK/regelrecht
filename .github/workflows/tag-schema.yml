@@ -48,6 +48,12 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Een geannoteerde tag heeft een tagger nodig, en de runner heeft
+          # geen git-identiteit: zonder deze twee regels faalt `git tag -a`
+          # met "Please tell me who you are" en komt er geen enkele tag.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
           created=0
           for dir in schema/v*/; do
             version="$(basename "$dir")"

@@ -199,7 +199,8 @@ try {
     for (const v of pending) {
       if (!tags.includes(`schema-${v}`)) {
         console.log(
-          `check-schema-version: ${v} is not on main yet; tag-schema.yml tags it when it lands`,
+          `check-schema-version: ${v} is being released (not on origin/main, or added by this ` +
+            `commit); tag-schema.yml tags it on the push to main`,
         );
       }
     }
