@@ -137,6 +137,30 @@ fn controleer_handeling(
         // Het laden meldde al waarom.
         return fouten;
     }
+    // Een bedrag in het formulier noemt zijn eenheid (`type_spec.unit`): de
+    // frontend vraagt eurocent in euro, en zonder eenheid weet zij niet of
+    // een ingevuld getal euro of eurocent is.
+    let bedrag_oordelen = benodigd(service, h).unwrap_or_default();
+    let zonder_eenheid = h
+        .feiten
+        .iter()
+        .filter(|f| f.soort.as_deref() == Some("bedrag") && f.eenheid.is_none())
+        .map(|f| f.naam.as_str())
+        .chain(
+            h.oordelen
+                .iter()
+                .filter(|o| {
+                    bedrag_oordelen.get(&o.parameter).is_some_and(|b| {
+                        b.typering.soort == ParameterType::Amount && b.typering.eenheid.is_none()
+                    })
+                })
+                .map(|o| o.parameter.as_str()),
+        );
+    for naam in zonder_eenheid {
+        fouten.push(format!(
+            "{wie}: '{naam}' is een bedrag zonder eenheid; geef de parameter in de regeling type_spec.unit (zoals eurocent)"
+        ));
+    }
     // De uitkomsten: van een artikel, bij een vervolg ook van de haken.
     let haakuitkomsten: BTreeSet<String> = h
         .haken

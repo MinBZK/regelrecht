@@ -19,7 +19,8 @@ use crate::reductie::Peil;
 use crate::reductie::Zaakstand;
 use crate::rijen::Rijen;
 use crate::synthese::{self, Bron};
-use crate::transport::Onthouden;
+use crate::transport::{Onthouden, Transport};
+use chrono::{DateTime, FixedOffset};
 
 fn behandeling(state: &ProcesState) -> Result<&crate::config::Behandeling, Fout> {
     state.proces.definitie.behandeling.as_ref().ok_or_else(|| {
@@ -98,13 +99,31 @@ fn handeling_met<'s>(
 
 fn omgeving(state: &ProcesState, i: usize) -> Omgeving<'_> {
     let h = &state.handelingen[i];
+    omgeving_met(
+        state,
+        state.cel.as_ref(),
+        &h.bronnen,
+        &h.rijen,
+        (state.klok)(),
+    )
+}
+
+/// De omgeving van een handeling met een gegeven transport naar de cel en
+/// gegeven bronnen (zoals die het zaakscherm deelt).
+fn omgeving_met<'a>(
+    state: &'a ProcesState,
+    cel: &'a dyn Transport,
+    bronnen: &'a [Bron],
+    rijen: &'a [Rijen],
+    nu: DateTime<FixedOffset>,
+) -> Omgeving<'a> {
     Omgeving {
         proces: &state.proces,
-        cel: state.cel.as_ref(),
-        bronnen: &h.bronnen,
-        rijen: &h.rijen,
+        cel,
+        bronnen,
+        rijen,
         regelingen: &state.regelingen,
-        nu: (state.klok)(),
+        nu,
     }
 }
 
@@ -158,14 +177,7 @@ pub(super) async fn zaak_route(
         .collect();
     let nu = (state.klok)();
     let proeven = join_all(b.handelingen.iter().enumerate().map(|(i, h)| {
-        let om = Omgeving {
-            proces: &state.proces,
-            cel: cel.as_ref(),
-            bronnen: &gedeeld[i].0,
-            rijen: &gedeeld[i].1,
-            regelingen: &state.regelingen,
-            nu,
-        };
+        let om = omgeving_met(&state, cel.as_ref(), &gedeeld[i].0, &gedeeld[i].1, nu);
         let stand = handeling::stand(&state.proces, h, &zaak);
         let zaak = &zaak;
         let zaakkenmerk = &zaakkenmerk;
@@ -183,7 +195,10 @@ pub(super) async fn zaak_route(
     .await;
     let mut handelingen = Vec::new();
     for (h, (stand, proef)) in b.handelingen.iter().zip(proeven) {
-        let benodigd = handeling::benodigd(&state.proces.service, h).unwrap_or_default();
+        // De controle bij het opstarten las dit al; een fout hier is er een
+        // van de runtime.
+        let benodigd = handeling::benodigd(&state.proces.service, h)
+            .map_err(|f| fout(StatusCode::INTERNAL_SERVER_ERROR, f))?;
         let proef = match proef {
             None => Value::Null,
             Some(Ok(p)) => json!(p),

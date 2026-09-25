@@ -239,6 +239,34 @@ fn datum_in(pad: &str, waarde: Option<&Value>) -> Result<Option<chrono::NaiveDat
     }
 }
 
+/// Of elk veld van een gram dat een lexostatus van zijn kroniek als datum
+/// leest (`jaar_van`, `periode_van`), een datum is of leeg. Een kroniek wordt
+/// niet herschreven: zo'n gram zou elke reductie over die kroniek laten
+/// falen, dus de cel weigert het bij het vastleggen.
+pub fn datums_in_orde<'d>(
+    definities: impl IntoIterator<Item = &'d LexostatusDefinitie>,
+    gram: &Gram,
+) -> Result<(), String> {
+    for def in definities {
+        if def.reduction.kroniek != gram.chronicle {
+            continue;
+        }
+        for (naam, a) in def.alle_afleidingen() {
+            let pad = match &a.afleiding {
+                Afleiding::JaarVan { jaar_van } | Afleiding::LaatsteJaarVan { jaar_van, .. } => {
+                    jaar_van
+                }
+                Afleiding::PeriodeVan { periode_van, .. }
+                | Afleiding::LaatstePeriodeVan { periode_van, .. } => periode_van,
+                _ => continue,
+            };
+            datum_in(pad, gram.veld(pad))
+                .map_err(|f| format!("{f} (lexostatus '{}' leidt '{naam}' eruit af)", def.name))?;
+        }
+    }
+    Ok(())
+}
+
 /// Het jaartal van de datum in het veld `pad` (zie `datum_in`).
 pub fn jaar_uit(pad: &str, waarde: Option<&Value>) -> Result<Option<Value>, String> {
     Ok(datum_in(pad, waarde)?.map(|d| Value::from(i64::from(d.year()))))
@@ -1016,6 +1044,25 @@ mod tests {
         g.besluitkenmerk = Some(k1);
         g.besluit = Some(crate::stroom::Besluit::Opent);
         assert!(!past(&filter, inputs, &g).unwrap(), "het besluit zelf");
+    }
+
+    /// Een veld dat een lexostatus als datum leest, moet bij het vastleggen
+    /// een datum of leeg zijn; een ander veld of een andere kroniek niet.
+    #[test]
+    fn een_datumveld_is_een_datum_of_leeg() {
+        let def: LexostatusDefinitie = serde_yaml_ng::from_str(
+            "name: l\ninputs: []\nreduction:\n  kroniek: test_kroniek\n  kies: laatste\n  afleidingen:\n    jaar: {jaar_van: a.datum}\n",
+        )
+        .unwrap();
+        let g = |f: Value| gram(ZAAK, "2025-03-01T09:00:00+01:00", f);
+        datums_in_orde([&def], &g(json!({"a": {"datum": "2025-03-01"}}))).unwrap();
+        datums_in_orde([&def], &g(json!({"a": {"datum": null}, "b": "geen datum"}))).unwrap();
+        let fout = datums_in_orde([&def], &g(json!({"a": {"datum": "morgen"}}))).unwrap_err();
+        assert!(fout.contains("'morgen' is geen datum"), "{fout}");
+        assert!(fout.contains("lexostatus 'l'"), "{fout}");
+        let mut ander = g(json!({"a": {"datum": "morgen"}}));
+        ander.chronicle = "andere_kroniek".into();
+        datums_in_orde([&def], &ander).unwrap();
     }
 
     /// Elke sleutel van het gram zelf heeft een waarde in `Gram::kenmerk`;

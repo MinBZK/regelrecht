@@ -256,7 +256,7 @@ impl Gram {
             "type" => Some(self.type_.as_str()),
             "soort" => self.soort.as_deref(),
             "stage" => self.stage.as_deref(),
-            "zaak" => self.zaak.heeft_kenmerk().then(|| self.zaak.als_tekst()),
+            "zaak" => Some(self.zaak.als_tekst()),
             "zaakkenmerk" => self.zaakkenmerk.as_deref(),
             "besluit" => self.besluit.map(Besluit::als_tekst),
             "besluitkenmerk" => self.besluitkenmerk.as_deref(),

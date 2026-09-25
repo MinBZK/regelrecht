@@ -138,7 +138,9 @@ pub trait Transport: Send + Sync {
 /// de zaak en dezelfde bronnen op dezelfde peildatum (het peil staat in het
 /// pad), en zo vraagt het proces elk daarvan een keer, ook als de proeven
 /// tegelijk lopen. Een `POST` (een proefreductie met een concept, het
-/// vastleggen) gaat altijd door.
+/// vastleggen) gaat altijd door. Ook een fout (een onbereikbare bron) blijft
+/// voor de duur van de vraag onthouden: dan zeggen alle proeven hetzelfde.
+/// Het geheugen hoort bij een vraag en wordt daarna weggegooid.
 #[derive(Clone, Default)]
 pub struct Onthouden(Arc<std::sync::Mutex<Geheugen>>);
 
@@ -160,6 +162,8 @@ impl Onthouden {
         pad: &str,
     ) -> Arc<OnceCell<Result<Value, TransportFout>>> {
         // Hetzelfde transport is hetzelfde doel; de sleutel is zijn adres.
+        // Dat is uniek zolang het transport leeft, en elk `Onthoudend` houdt
+        // het zijne vast zolang het geheugen gebruikt wordt.
         let wie = Arc::as_ptr(binnen).cast::<()>() as usize;
         self.0
             .lock()

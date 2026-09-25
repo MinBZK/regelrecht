@@ -155,6 +155,17 @@ impl Besluit {
     }
 }
 
+/// Wat een sleutel van het gram zelf bij een event is (zie [`Event::kenmerk`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Eventkenmerk<'a> {
+    /// Vast in de stroom; `None` als een gram van dit event het niet heeft.
+    Vast(Option<&'a str>),
+    /// Hangt van het gram af, zoals een zaak- of besluitkenmerk.
+    Vrij,
+    /// Een gram van dit event heeft het nooit.
+    Nooit,
+}
+
 /// Het `op_moment` van een event gebonden aan een ingediende waarde, met de
 /// grondslag waarom dat moment rechtens telt. Voorbeeld: de dag waarop een
 /// papieren aanvraag binnenkwam (Awb 4:13: de termijn loopt vanaf de
@@ -369,6 +380,39 @@ impl Event {
             uit
         }
         loop_(&self.fields, fields)
+    }
+
+    /// Wat een filtersleutel van het gram zelf (zie
+    /// [`crate::reductie::GRAM_SLEUTELS`]) bij een gram van dit event kan
+    /// zijn, in stroom `stroom`. `None` als `sleutel` een veldpad is. Zo
+    /// lezen de controle bij het opstarten en de reductie ([`crate::gram::Gram::kenmerk`])
+    /// dezelfde sleutels.
+    pub fn kenmerk<'a>(&'a self, stroom: &'a Stroom, sleutel: &str) -> Option<Eventkenmerk<'a>> {
+        let vrij_als = |kan: bool| {
+            if kan {
+                Eventkenmerk::Vrij
+            } else {
+                Eventkenmerk::Nooit
+            }
+        };
+        Some(match sleutel {
+            "name" => Eventkenmerk::Vast(Some(self.name.as_str())),
+            "type" => Eventkenmerk::Vast(Some(self.type_.as_str())),
+            "soort" => Eventkenmerk::Vast(self.soort.as_deref()),
+            "stage" => Eventkenmerk::Vast(self.stage.as_deref()),
+            "zaak" => Eventkenmerk::Vast(Some(self.zaak.als_tekst())),
+            "besluit" => Eventkenmerk::Vast(self.besluit.map(Besluit::als_tekst)),
+            "recording_actor" => Eventkenmerk::Vast(Some(stroom.recording_actor.as_str())),
+            "chronicle" => Eventkenmerk::Vast(Some(stroom.chronicle.as_str())),
+            "zaakkenmerk" => vrij_als(self.zaak.heeft_kenmerk()),
+            "besluitkenmerk" => vrij_als(self.besluit.is_some()),
+            "wijzigt" => vrij_als(self.besluit == Some(Besluit::Wijzigt)),
+            // De velden van een besluit die een proces meegeeft.
+            "legal_character" | "decision_type" | "regulation" | "competent_authority" => {
+                vrij_als(self.type_ == "decretogram")
+            }
+            _ => return None,
+        })
     }
 
     /// Of een pad een blad of een tak van de veldboom is.
@@ -742,6 +786,44 @@ mod tests {
     use serde_json::json;
 
     const STROOM: &str = include_str!("../tests/fixtures/chronicles/test_aanvragen.yaml");
+
+    const ZAAKVERLOOP: &str =
+        include_str!("../tests/fixtures/chronicles/test_afnemer_zaakverloop.yaml");
+
+    /// Wat een sleutel van het gram zelf bij een event is: vast in de stroom,
+    /// afhankelijk van het gram, of nooit; een andere sleutel is een veldpad.
+    #[test]
+    fn het_kenmerk_van_een_event() {
+        let s = parse(ZAAKVERLOOP, "fixture").unwrap();
+        let (besluit, bekend) = (
+            s.events
+                .iter()
+                .find(|e| e.name == "besluit_genomen")
+                .unwrap(),
+            s.events
+                .iter()
+                .find(|e| e.name == "besluit_bekendgemaakt")
+                .unwrap(),
+        );
+        assert_eq!(
+            bekend.kenmerk(&s, "besluit"),
+            Some(Eventkenmerk::Vast(Some("volgt")))
+        );
+        assert_eq!(
+            bekend.kenmerk(&s, "besluitkenmerk"),
+            Some(Eventkenmerk::Vrij)
+        );
+        assert_eq!(bekend.kenmerk(&s, "wijzigt"), Some(Eventkenmerk::Nooit));
+        assert_eq!(
+            bekend.kenmerk(&s, "zaak"),
+            Some(Eventkenmerk::Vast(Some("volgt")))
+        );
+        assert_eq!(
+            besluit.kenmerk(&s, "legal_character"),
+            Some(Eventkenmerk::Vrij)
+        );
+        assert_eq!(bekend.kenmerk(&s, "inhoud.naam"), None);
+    }
 
     const ZAAK: &str = "00000000-0000-4000-8000-000000000001";
 

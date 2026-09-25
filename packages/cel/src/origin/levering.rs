@@ -252,22 +252,18 @@ impl Leveranciers {
 /// het event het veld heeft.
 pub(super) fn kan_passen(filter: &Filter, stroom: &Stroom, event: &Event) -> bool {
     filter.iter().all(|(sleutel, waarde)| {
-        if waarde.starts_with('$') {
-            return match sleutel.as_str() {
-                "zaakkenmerk" => event.zaak.heeft_kenmerk(),
-                "name" | "type" | "soort" | "stage" | "recording_actor" | "chronicle" => true,
-                pad => event.heeft_pad(pad),
-            };
-        }
-        match sleutel.as_str() {
-            "name" => event.name == *waarde,
-            "type" => event.type_ == *waarde,
-            "soort" => event.soort.as_deref() == Some(waarde.as_str()),
-            "stage" => event.stage.as_deref() == Some(waarde.as_str()),
-            "zaakkenmerk" => event.zaak.heeft_kenmerk(),
-            "recording_actor" => stroom.recording_actor == *waarde,
-            "chronicle" => stroom.chronicle == *waarde,
-            pad => event.heeft_pad(pad),
+        let invoer = waarde.starts_with('$');
+        match event.kenmerk(stroom, sleutel) {
+            None => event.heeft_pad(sleutel),
+            Some(Eventkenmerk::Vast(w)) => {
+                if invoer {
+                    w.is_some()
+                } else {
+                    w == Some(waarde.as_str())
+                }
+            }
+            Some(Eventkenmerk::Vrij) => true,
+            Some(Eventkenmerk::Nooit) => false,
         }
     })
 }

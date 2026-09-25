@@ -39,7 +39,7 @@ use regelrecht_engine::LawExecutionService;
 use crate::config::{Aanbod, Portaal};
 use crate::reductie::{self, Filter, LexostatusDefinitie, Lexostatussen, Periode};
 use crate::regelingen;
-use crate::stroom::{Binding, Event, Stroom};
+use crate::stroom::{Binding, Event, Eventkenmerk, Stroom};
 
 /// Een event met de stroom waar het in staat.
 pub type StroomEvent<'a> = (&'a Stroom, &'a Event);
@@ -52,16 +52,13 @@ fn event_past(filter: &Filter, stroom: &Stroom, event: &Event) -> bool {
         if waarde.starts_with('$') {
             return true;
         }
-        let eigen = match sleutel.as_str() {
-            "name" => Some(event.name.as_str()),
-            "type" => Some(event.type_.as_str()),
-            "soort" => event.soort.as_deref(),
-            "stage" => event.stage.as_deref(),
-            "recording_actor" => Some(stroom.recording_actor.as_str()),
-            "chronicle" => Some(stroom.chronicle.as_str()),
-            _ => return true,
-        };
-        eigen == Some(waarde.as_str())
+        // Alleen wat vast in de stroom staat, wijst hier events aan. Een
+        // kenmerk dat een event nooit heeft (een zaakkenmerk zonder zaak)
+        // meldt een eigen controle, en die moet het event dus zien.
+        match event.kenmerk(stroom, sleutel) {
+            Some(Eventkenmerk::Vast(w)) => w == Some(waarde.as_str()),
+            Some(Eventkenmerk::Vrij | Eventkenmerk::Nooit) | None => true,
+        }
     })
 }
 

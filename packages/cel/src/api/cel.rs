@@ -205,13 +205,15 @@ fn bouw(state: &CelState, v: &Vastlegverzoek) -> Result<Gram, Fout> {
 }
 
 /// Valideer een gebouwd gram tegen `gram.json`; een 400 als het niet past.
-fn valideer(gram: &Gram) -> Result<(), Fout> {
+fn valideer(cel: &Cel, gram: &Gram) -> Result<(), Fout> {
     gram.valideer().map_err(|f| {
         fout(
             StatusCode::BAD_REQUEST,
             format!("gram valideert niet: {}", f.join("; ")),
         )
-    })
+    })?;
+    reductie::datums_in_orde(&cel.lexostatussen.lexostatus_definitions, gram)
+        .map_err(|f| fout(StatusCode::BAD_REQUEST, f))
 }
 
 /// Het gram als YAML, velden in de volgorde van de stroom.
@@ -441,7 +443,7 @@ async fn grammen_route(
             |f| fout(StatusCode::BAD_REQUEST, f),
             |g, zaak| {
                 toets_zaak(g, zaak, verwacht)?;
-                valideer(g)
+                valideer(&cel, g)
             },
         )
     })
@@ -490,7 +492,7 @@ async fn proef_route(
             None,
         )?;
     }
-    valideer(&gram)?;
+    valideer(&state.cel, &gram)?;
     let mut inputs = verzoek.inputs;
     let peil = Peil::uit_query(&mut inputs).map_err(|e| fout(StatusCode::BAD_REQUEST, e))?;
     if let Some(z) = &gram.zaakkenmerk {

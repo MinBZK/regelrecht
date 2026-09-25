@@ -47,7 +47,7 @@ use crate::config::{
 use crate::gezag;
 use crate::reductie::{Afleiding, Filter, LexostatusDefinitie};
 use crate::regelingen::{self, Benodigd};
-use crate::stroom::{Binding, Event, Stroom};
+use crate::stroom::{Binding, Event, Eventkenmerk, Stroom};
 
 mod controle;
 mod levering;

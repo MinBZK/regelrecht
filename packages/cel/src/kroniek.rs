@@ -598,6 +598,36 @@ mod tests {
         assert_eq!(aantal(&k), 1);
     }
 
+    /// De controle ziet alleen de grammen van de zaak van het gram, uit de
+    /// index per zaak; een gram zonder zaak ziet niets.
+    #[test]
+    fn de_controle_ziet_alleen_de_zaak() {
+        let dir = tempfile::tempdir().unwrap();
+        let k = open(dir.path());
+        k.voeg_toe(&gram(Z1)).unwrap();
+        k.voeg_toe(&gram(Z2)).unwrap();
+        k.voeg_toe(&gram(Z1)).unwrap();
+        let mut gezien = Vec::new();
+        k.voeg_toe_mits(&gram(Z1), K, |_, zaak| {
+            gezien = zaak.iter().map(|g| g.zaakkenmerk.clone()).collect();
+            Ok::<(), ()>(())
+        })
+        .unwrap()
+        .unwrap();
+        assert_eq!(gezien, [Some(Z1.to_string()), Some(Z1.to_string())]);
+        let mut zonder = gram(Z1);
+        zonder.zaak = Zaak::Geen;
+        zonder.zaakkenmerk = None;
+        let mut aantal_gezien = usize::MAX;
+        k.voeg_toe_mits(&zonder, K, |_, zaak| {
+            aantal_gezien = zaak.len();
+            Ok::<(), ()>(())
+        })
+        .unwrap()
+        .unwrap();
+        assert_eq!(aantal_gezien, 0);
+    }
+
     #[test]
     fn gelijktijdige_controles_laten_er_een_door() {
         let dir = tempfile::tempdir().unwrap();
