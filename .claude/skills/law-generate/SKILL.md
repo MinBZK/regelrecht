@@ -157,7 +157,7 @@ harvesting, and it does not belong in the law file. Write the binding and leave
 it standing. In round 4, 43 of the 101 norm gaps were cross-law references
 written up as gaps.
 
-**2. The law leaves the content open and a lower regulation or implementing
+**2. The law leaves the content open and another regulation or implementing
 policy fills it: `open_terms`.** "Bij ministeriële regeling wordt de
 standaardpremie vastgesteld" is a complete legal instruction that lacks a number.
 So is "voor zover dat redelijk is", "zo spoedig mogelijk" and "onverwijld": the
@@ -414,8 +414,13 @@ hardcoded as a literal.
 
 ## Open terms
 
-The higher law declares the term and references it as a `$variable`; the lower
-regulation registers as filling it.
+The law declares the term and references it as a `$variable`; the regulation
+that fills it registers as filling it. Under delegation that regulation is a
+ministeriële regeling or AMvB. A municipal ordinance in co-government
+(*medebewind*, e.g. Participatiewet art. 8) is not delegated: the municipality
+executes the act on its own authority. It is still bound by the act and yields
+to it (Gemeentewet art. 121-122). The mechanism is the same; do not call the
+ordinance delegated.
 
 ```yaml
 # wet_op_de_zorgtoeslag, article 4
@@ -452,7 +457,7 @@ machine_readable:
         value: 211200
 ```
 
-The output name in the lower regulation matches the open term `id`. Priority
+The output name in the implementing regulation matches the open term `id`. Priority
 between competing implementations follows lex superior and lex posterior.
 
 ### Who fills it

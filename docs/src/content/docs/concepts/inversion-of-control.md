@@ -1,21 +1,21 @@
 ---
 title: "Inversion of Control"
-description: "How legal delegation is modeled with open terms in higher laws and implementations in lower regulations."
+description: "How a law leaves a value to another regulation, by delegation or co-government, and how that regulation declares that it fills it."
 ---
 
-Dutch law has a hierarchy. Parliament passes a *wet* (formal law), which often delegates specifics to a minister or municipality. The Healthcare Allowance Act says the minister sets the standard premium. The Participation Act says municipalities set sanctions policy.
+A *wet* (formal law) often leaves specifics to someone else. The Healthcare Allowance Act delegates setting the standard premium to the minister, whose ministerial regulation sits below the act. The Participation Act leaves the reduction of social assistance to municipal ordinances, but that is co-government (*medebewind*): the act calls on the municipality to execute it through its own ordinance. The municipality is not administratively subordinate to the state, but its ordinance is still bound by the act and yields to it (Gemeentewet art. 121-122).
 
-In RegelRecht, this delegation is modeled through two constructs: the higher law declares an **open term** (a value it needs but does not define), and the lower regulation declares that it **implements** that term.
+In RegelRecht, both relationships are modeled through the same two constructs: the law declares an **open term** (a value it needs but does not define), and the regulation that fills it declares that it **implements** that term.
 
 ## The legal pattern
 
-A Dutch ministerial regulation typically opens with a preamble: *"Gelet op artikel 4 van de Wet op de zorgtoeslag"* ("In consideration of article 4 of the Healthcare Allowance Act"). This is the lower regulation registering itself as the authority that fills in a delegated value.
+A Dutch ministerial regulation typically opens with a preamble: *"Gelet op artikel 4 van de Wet op de zorgtoeslag"* ("In consideration of article 4 of the Healthcare Allowance Act"). The preamble records which article the regulation rests on; the power itself comes from that article of the law, not from the preamble. Consolidated texts on wetten.overheid.nl show only the preamble of the original regulation, so a later amendment on a new basis does not show there.
 
-RegelRecht mirrors this. The higher law does not need to know which lower regulation exists. The lower regulation registers itself.
+RegelRecht mirrors the direction. The law does not need to know which regulation fills its open term. The implementing regulation registers itself.
 
 ## How it works
 
-### The higher law declares an open term
+### The law declares an open term
 
 ```yaml
 # Zorgtoeslagwet, article 4
@@ -40,7 +40,7 @@ Two optional fields say more about who fills the term, and both are properties o
 - **`expected_source`** names the regulation the article itself points at, such as `Regeling zorgverzekering`, with a BWB id when the text carries one. Whether that regulation is currently in the corpus is a separate question, because that changes without the law changing.
 - **`decided_per_case_by`** names the authority that fills the norm in the individual case while no general specification exists, with the article making it competent. That answer needs a motivation under Awb 3:46 and forms part of the *besluit* rather than a ground for it, which is what separates a discretionary power from a value that is merely missing.
 
-### The lower regulation implements it
+### The implementing regulation fills it
 
 ```yaml
 # Regeling standaardpremie, article 1
@@ -69,9 +69,9 @@ The `gelet_op` field matches the real legal preamble text. The `implements` bloc
 
 When the engine loads all law files, it builds an index of all `implements` declarations. When it encounters an `open_term` during execution, it looks up the index, finds the implementing regulation, and executes it to get the value.
 
-## Municipal delegation
+## Municipal ordinances (co-government)
 
-The Participation Act delegates sanctions policy to municipalities. Each municipality can set different reduction percentages. The engine uses `gemeente_code` in the execution parameters to select the right municipal ordinance.
+The Participation Act leaves the reduction of social assistance to municipal ordinances, in co-government. The schema records this with `delegated_to` and `delegation_type`, the same fields it uses for delegation, although legally it is not delegation. Each municipality can set different reduction percentages. The engine uses `gemeente_code` in the execution parameters to select the right municipal ordinance.
 
 ### The national law declares open terms with defaults
 
@@ -113,7 +113,7 @@ When executing for a person in Diemen (parameters include `gemeente_code: GM0384
 
 When multiple regulations implement the same open term, the engine resolves conflicts using two rules from legal theory:
 
-1. **Lex superior** (higher regulatory layer wins): a *wet* takes precedence over a *ministerieel regeling*
+1. **Lex superior** (higher regulatory layer wins): a *wet* takes precedence over a *ministeriële regeling*, and an ordinance yields to the act it executes
 2. **Lex posterior** (newer wins): between two regulations at the same level, the one with the later `valid_from` date takes precedence
 
 Temporal filtering ensures the right version applies: only regulations where `valid_from <= calculation_date` are considered.
@@ -124,9 +124,9 @@ Cross-law references and IoC both let laws use values from other laws, but they 
 
 | | Cross-law reference | Inversion of Control |
 |---|---|---|
-| Who knows whom? | The referencing law names the target law | The higher law does not know which lower regulation exists |
+| Who knows whom? | The referencing law names the target law | The law does not know which regulation fills its open term |
 | Direction | Top-down: "give me this value from that law" | Bottom-up: "I fill in this value for that law" |
-| Use case | A law needs a specific value from a specific other law | A law delegates a value to whichever lower regulation fills it |
+| Use case | A law needs a specific value from a specific other law | A law leaves a value to whichever regulation fills it, by delegation or in co-government |
 | YAML construct | `source: { regulation: ..., output: ... }` | `open_terms` + `implements` |
 
 ## Further reading

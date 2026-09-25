@@ -269,10 +269,10 @@ machine_readable:
 
 ---
 
-## Example 5. Open Terms, Higher Law (IoC declaration)
+## Example 5. Open Terms, Declaring Law (IoC declaration)
 
 When a law delegates a value to a lower regulation ("bij ministeriële regeling"),
-the higher law declares an `open_term`:
+the law declares an `open_term`:
 
 ```yaml
 # wet_op_de_zorgtoeslag article 4
@@ -296,7 +296,7 @@ machine_readable:
 ```
 
 **Key points:**
-- `open_terms` declares what the higher law expects from lower regulations
+- `open_terms` declares what the law expects from the regulations that fill it
 - `$standaardpremie` references the open term as a variable
 - The engine resolves it by finding the regulation that `implements` this term
 - `delegation_type` constrains which regulatory layer may fill it
@@ -304,9 +304,9 @@ machine_readable:
 
 ---
 
-## Example 6. Open Terms, Lower Regulation (IoC implementation)
+## Example 6. Open Terms, Implementing Regulation (IoC implementation)
 
-The lower regulation registers as implementing the open term:
+The implementing regulation registers as filling the open term:
 
 ```yaml
 # regeling_standaardpremie article 1
@@ -332,7 +332,7 @@ machine_readable:
 ```
 
 **Key points:**
-- `implements` links back to the higher law, article, and open_term id
+- `implements` links back to the law, article, and open_term id
 - `gelet_op` provides legal traceability ("Considering article X of law Y")
 - The output name must match the open term `id` so the engine can resolve it
 - Priority is resolved via lex superior (regulatory layer) and lex posterior (date)

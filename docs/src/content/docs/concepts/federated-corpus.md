@@ -49,7 +49,7 @@ Each source declares:
 
 The engine merges laws from all registered sources into a single corpus at load time. Scope information is used to filter: when executing for a person in Amsterdam, only Amsterdam's municipal ordinances apply.
 
-The `implements` mechanism from [Inversion of Control](./inversion-of-control) works across repositories. Amsterdam's afstemmingsverordening (in Amsterdam's repo) can implement open terms from the Participatiewet (in the central repo). The engine does not care which repository a file came from.
+The `implements` mechanism from [Inversion of Control](./inversion-of-control) works across repositories. Diemen's afstemmingsverordening (in Diemen's repo) can implement open terms from the Participatiewet (in the central repo). The engine does not care which repository a file came from.
 
 ## Local overrides
 

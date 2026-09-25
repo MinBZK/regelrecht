@@ -18,7 +18,7 @@ This distinction determines the execution boundary.
 
 ## How the engine decides
 
-A law that produces a formal decision declares `competent_authority`. The engine reads it from the top level of the law (or from a `machine_readable` section); it is **not** a field of `execution.produces`. The JSON schema defines `competent_authority` on the `machine_readable` section, but the top-level form is accepted too (the top-level object does not reject extra keys), and that is what the corpus uses, often as a `#`-reference into the law's definitions (see `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml`):
+A law that produces a formal decision declares `competent_authority`. The engine reads it from the top level of the law (or from a `machine_readable` section); it is **not** a field of `execution.produces`. The JSON schema defines `competent_authority` on the `machine_readable` section, but the top-level form is accepted too (the top-level object does not reject extra keys), and that is what the corpus uses, often as a `#`-reference into the law's definitions (see `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml`). The top-level form is a shortcut. A law grants authority article by article, and often to more than one body, which is why [RFC-002](/rfcs/rfc-002) puts `competent_authority` on the article; the shortcut is only right for a law in which one body is competent for every decision:
 
 ```yaml
 $id: wet_op_de_zorgtoeslag
