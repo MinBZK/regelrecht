@@ -49,6 +49,7 @@ startstand: <pad>                 # optioneel: grammen voor een lege kroniek
 # <PROCESSES_PATH>/<map>/proces.yaml, schema schema/chronolex/v0.1.0/proces.json
 id: <proces-id>                   # routes onder /processen/<id>/api/
 actor: <actor>                    # recording_actor van elke stroom waarin het vastlegt
+herkomst: streng                  # optioneel; streng: een parameter zonder origin is een fout (standaard ruim)
 rollen:                           # optioneel; zonder rollen geen login
   aanvrager: eherkenning          # het portaal
   behandelaar: medewerker         # werkvoorraad, zaak en besluit
@@ -65,7 +66,7 @@ portaal:                          # optioneel, vraagt rollen.aanvrager
     regeling: <$id>
     uitkomst: <output>
     termijn: <output>             # optioneel
-    keuzes: {jaren_vanaf_nu: [0, 1]}   # als het artikel een tijdvak vraagt (Awb 4:2 lid 1)
+    keuzes: {jaren_vanaf_nu: [0, 1]}   # als het artikel een tijdvak vraagt (origin met rol: TIJDVAK)
   formulier: {pad: <pad>, scherm: <id>}   # optioneel
 synthese:                         # optioneel, alleen met een portaal of een besluit
   - {cel: <cel-id>, lexostatus: <naam>, zaak: true}   # een lexostatus van de zaak
@@ -416,8 +417,9 @@ Per proces:
    uitkomst van een artikel uit de grondslag van het event. Het aanbod noemt een
    bestaande uitkomst en een termijn uit hetzelfde artikel, en leunt alleen op
    wat vooraf vaststaat: elke parameter van zijn artikel heeft origin `KANAAL`
-   of `REGISTER`, of `BELANGHEBBENDE` met grondslag Awb 4:2 lid 1 (het
-   tijdvak, met `aanbod.keuzes`).
+   of `REGISTER`, of `BELANGHEBBENDE` met `rol: TIJDVAK` (het tijdvak, met
+   `aanbod.keuzes`). De grondslag Awb 4:2 lid 1 alleen maakt een parameter
+   geen tijdvak.
 4. Synthese: alleen met een portaal of een besluit; elke invoer komt uit een
    veld van de toets-lexostatus of een lexostatus van de zaak, of van een
    eerdere bron die het doorgeeft; elke parameter is een parameter van het
@@ -439,13 +441,25 @@ Per proces:
    event met `zaak: volgt` en een stage, waarvan de `$external`-sleutels
    precies de uitkomsten van het besluit zijn.
 7. Als synthese en besluit kloppen: elke parameter die de aanroeper van de
-   toets, het aanbod of het besluit moet leveren, heeft een leverancier die bij
-   zijn geldende origin past (RFC-043; zie `origin`). Zonder leverancier start
-   de runtime niet, behalve bij `required: false`: dan is het een waarschuwing.
-   Een parameter zonder origin, en een `BELANGHEBBENDE`-parameter zonder
-   `required: false`, geven ook een waarschuwing. `origins` in uitvoeringsbeleid
-   van de actor overschrijft de origin uit de wet; twee botsende
-   overschrijvingen zijn een fout.
+   toets, het aanbod of een uitkomst van het besluit moet leveren, heeft een
+   leverancier die bij zijn geldende origin past, en geen die er niet bij past
+   (RFC-043; zie `origin`). Een verkeerde bron is altijd een fout, ook bij
+   `required: false`. Of een afleiding van de eigen cel van de belanghebbende
+   of uit het dossier komt, volgt uit wat haar filters doorlaten: grammen van
+   type `indiening` (wat de aanvrager aanlevert) of andere grammen van de
+   actor (het verloop van de zaak). Zonder leverancier start de runtime niet,
+   behalve bij `required: false`: dan krijgt de engine hem niet en rekent ze
+   met een onbekende waarde, en is het een waarschuwing. Een parameter zonder
+   origin is een waarschuwing, en met `herkomst: streng` in `proces.yaml` een
+   fout; een `BELANGHEBBENDE`-parameter zonder `required: false` (behalve het
+   tijdvak) is een waarschuwing. Een bron met een url, of een interne cel die
+   niet draait, telt, met een waarschuwing per bron over wat niet na te gaan
+   is. Een `register` dat niet geladen is, is een fout; een grondslag in een
+   regeling die niet geladen is, een waarschuwing. `origins` in
+   uitvoeringsbeleid van de actor overschrijft de origin uit de wet; twee
+   botsende overschrijvingen zijn een fout. Al bij het laden van het corpus
+   houdt een origin die niet te lezen is, of een REGISTER zonder `register`,
+   de runtime tegen, met bestand, artikel en parameter.
 8. De voorbeelden bestaan en hebben de goede vorm, en horen bij een handeling
    die het proces heeft.
 
