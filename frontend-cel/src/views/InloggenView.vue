@@ -1,10 +1,11 @@
 <script setup>
-// Nep-eHerkenning: KvK-nummer en persoon. Het proces controleert alleen de vorm.
-// Of de persoon namens de organisatie mag handelen, zegt het handelsregister,
-// niet deze inlog. Levert het proces inlogvoorbeelden, dan staat eronder per
+// Nagebootste eHerkenning: KvK-nummer en persoon. Het proces controleert alleen
+// de vorm. Of de persoon namens de organisatie mag handelen, volgt niet uit
+// deze inlog. Levert het proces inlogvoorbeelden, dan staat eronder per
 // voorbeeld een knop om er direct mee in te loggen of het formulier ermee in
 // te vullen.
 import { inject, ref } from 'vue';
+import { veldTekst } from '../formulier.js';
 
 const api = inject('api');
 const voorbeelden = inject('voorbeelden');
@@ -16,9 +17,6 @@ const persoon = ref('');
 const fout = ref('');
 const bezig = ref(false);
 
-function tekst(e) {
-  return e.detail?.value ?? e.target?.value ?? '';
-}
 
 function invullen(v) {
   kvk.value = v.kvk;
@@ -44,15 +42,15 @@ async function inloggen() {
   <nldd-title size="2"><h1>Inloggen met eHerkenning</h1></nldd-title>
   <nldd-spacer size="8"></nldd-spacer>
   <nldd-rich-text>
-    <p>Dit is een nagebootste inlog. Vul een KvK-nummer van acht cijfers in en uw naam. Of u namens de vereniging mag handelen, haalt het portaal uit het handelsregister.</p>
+    <p>Dit is een nagebootste inlog. Vul een KvK-nummer van acht cijfers in en uw naam. Of u namens de organisatie mag handelen, volgt niet uit deze inlog.</p>
   </nldd-rich-text>
   <nldd-spacer size="16"></nldd-spacer>
   <nldd-form novalidate @submit.prevent="inloggen">
     <nldd-form-field label="KvK-nummer">
-      <nldd-text-field :value="kvk" name="kvk" keyboard="numeric" @input="kvk = tekst($event)"></nldd-text-field>
+      <nldd-text-field :value="kvk" name="kvk" keyboard="numeric" @input="kvk = veldTekst($event)"></nldd-text-field>
     </nldd-form-field>
     <nldd-form-field label="Uw naam">
-      <nldd-text-field :value="persoon" name="persoon" @input="persoon = tekst($event)"></nldd-text-field>
+      <nldd-text-field :value="persoon" name="persoon" @input="persoon = veldTekst($event)"></nldd-text-field>
     </nldd-form-field>
     <template v-if="fout">
       <nldd-inline-dialog variant="alert" text="Inloggen lukt niet" :supporting-text="fout"></nldd-inline-dialog>

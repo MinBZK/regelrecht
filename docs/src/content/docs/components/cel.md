@@ -15,6 +15,7 @@ Cells and processes are configuration, not code. The runtime loads every directo
 - **Location**: `packages/cel/` and `frontend-cel/`
 - **Schemas**: `schema/chronolex/v0.1.0/` (`cel.json`, `proces.json`, `stream.json`, `lexostatus.json`, `gram.json`)
 - **Run locally**: `just cel` starts the runtime on port 7170 with the fixture cells and processes, and the frontend on port 7171
+- **Frontend checks**: `npm test -w frontend-cel` (vitest) and `npm run build -w frontend-cel` run in CI's frontend job; `frontend-cel/src/nldd-components.js` imports only the design-system components in use and is kept in sync by `script/check-nldd-imports.mjs`
 
 ## One runtime, cells and processes as configuration
 

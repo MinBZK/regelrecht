@@ -16,6 +16,9 @@ export default defineConfig({
       },
     }),
   ],
+  test: {
+    include: ['src/**/*.test.js'],
+  },
   server: {
     host: '0.0.0.0',
     port: Number(process.env.CEL_FRONTEND_PORT ?? 7171),

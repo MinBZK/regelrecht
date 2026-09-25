@@ -5,7 +5,7 @@
 // janee is een keuze uit Ja en Nee met "Kies" als beginstand: niet
 // beantwoord blijft null en wordt niet stilzwijgend nee. Een vink is een
 // verklaring; niet aangevinkt is niet verklaard.
-import { opties } from '../formulier.js';
+import { opties, veldTekst } from '../formulier.js';
 
 const props = defineProps({
   soort: { type: String, default: 'tekst' },
@@ -15,9 +15,6 @@ const props = defineProps({
 });
 const emit = defineEmits(['update:modelValue']);
 
-function tekst(e) {
-  return e.detail?.value ?? e.target?.value ?? '';
-}
 
 function janee(e) {
   const t = e.target?.value;
@@ -33,7 +30,7 @@ function keuze(e) {
 }
 
 function getal(e) {
-  const t = String(tekst(e)).trim();
+  const t = String(veldTekst(e)).trim();
   if (t === '') return null;
   const n = Number(t);
   return Number.isFinite(n) ? n : null;
@@ -52,8 +49,8 @@ function getal(e) {
     v-else-if="soort === 'datum'"
     :value="modelValue ?? ''"
     :accessible-label="label"
-    @input="emit('update:modelValue', tekst($event))"
-    @change="emit('update:modelValue', tekst($event))"
+    @input="emit('update:modelValue', veldTekst($event))"
+    @change="emit('update:modelValue', veldTekst($event))"
   ></nldd-date-field>
   <nldd-dropdown v-else-if="soort === 'keuze'" :accessible-label="label">
     <select :value="modelValue === null ? '' : String(modelValue)" @change="emit('update:modelValue', keuze($event))">
@@ -78,6 +75,6 @@ function getal(e) {
     v-else
     :value="modelValue ?? ''"
     :accessible-label="label"
-    @input="emit('update:modelValue', tekst($event))"
+    @input="emit('update:modelValue', veldTekst($event))"
   ></nldd-text-field>
 </template>

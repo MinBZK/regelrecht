@@ -1,21 +1,28 @@
 // De routes van de runtime, van een cel en van een proces. Elke fout komt
-// terug als {fout: "..."}.
+// terug als {fout: "..."}; de gedeelde apiFetch doet de ok-check en gooit een
+// ApiError met die tekst als message en de HTTP-status als `status`.
+import { apiFetch } from '@regelrecht/frontend-shared/apiFetch.js';
+
+// De tekst onder `fout` in een foutantwoord, anders de HTTP-status.
+export function foutTekst(status, body) {
+  try {
+    const fout = JSON.parse(body)?.fout;
+    if (typeof fout === 'string' && fout) return fout;
+  } catch {
+    // Geen JSON: dan zegt de status het.
+  }
+  return `HTTP ${status}`;
+}
 
 async function vraag(methode, pad, body) {
-  const resp = await fetch(pad, {
+  const resp = await apiFetch(pad, {
     method: methode,
     credentials: 'same-origin',
     headers: body ? { 'content-type': 'application/json' } : {},
     body: body ? JSON.stringify(body) : undefined,
+    errorMessage: foutTekst,
   });
-  if (resp.status === 204) return null;
-  const data = await resp.json().catch(() => null);
-  if (!resp.ok) {
-    const fout = new Error(data?.fout ?? `${resp.status} ${resp.statusText}`);
-    fout.status = resp.status;
-    throw fout;
-  }
-  return data;
+  return resp.status === 204 ? null : resp.json();
 }
 
 // De cellen van de runtime, met per cel haar kronieken en lexostatussen.

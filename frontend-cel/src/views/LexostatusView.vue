@@ -3,6 +3,7 @@
 // en zie de parameters die de reductie oplevert.
 import { computed, inject, ref } from 'vue';
 import { waardeTekst as waarde } from '../tekst.js';
+import { veldTekst } from '../formulier.js';
 
 const props = defineProps({ lexostatussen: { type: Array, required: true } });
 // De routes van de cel: kroniek en lexostatus zijn van haar, niet van het
@@ -23,9 +24,6 @@ function kies(e) {
   uitkomst.value = null;
 }
 
-function tekst(e) {
-  return e.detail?.value ?? e.target?.value ?? '';
-}
 
 async function opvragen() {
   fout.value = '';
@@ -69,7 +67,7 @@ const rijen = computed(() => {
       <nldd-text-field
         :value="invoer[i.name] ?? ''"
         :accessible-label="i.name"
-        @input="invoer = { ...invoer, [i.name]: tekst($event) }"
+        @input="invoer = { ...invoer, [i.name]: veldTekst($event) }"
       ></nldd-text-field>
     </nldd-form-field>
     <template v-if="fout">

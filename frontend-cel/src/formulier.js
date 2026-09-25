@@ -52,3 +52,9 @@ export function opties(lijst) {
       : { waarde: o, label: String(o) },
   );
 }
+
+// De tekst uit een invoerveld: nldd-velden geven hem in `detail.value`, een
+// gewoon element in `target.value`.
+export function veldTekst(e) {
+  return e.detail?.value ?? e.target?.value ?? '';
+}
