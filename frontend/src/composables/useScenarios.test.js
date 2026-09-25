@@ -267,25 +267,86 @@ describe('useScenarios list-read failures', () => {
     expect(s.error.value.message).toMatch(/niet gevonden/);
   });
 
+  // Every list request stays pending until the test settles it, in the order
+  // the requests were made. The composable's own watcher issues them, so each
+  // test settles exactly the request it means instead of relying on when Vue
+  // flushes that watcher.
+  function holdListRequests() {
+    const pending = [];
+    globalThis.fetch = vi.fn().mockImplementation(async (url) => {
+      if (!String(url).endsWith('/scenarios')) return res({ body: 'Feature: x\n' });
+      const settled = await new Promise((resolve) => {
+        pending.push({ url: String(url), settle: resolve });
+      });
+      return settled;
+    });
+    return {
+      async request(n) {
+        await vi.waitFor(() => expect(pending.length).toBeGreaterThan(n));
+        return pending[n];
+      },
+    };
+  }
+
   it('drops a failure that arrives after the user switched law', async () => {
     const lawId = ref('wet_a');
-    let release;
-    globalThis.fetch = vi.fn().mockImplementation(async (url) => {
-      if (String(url).endsWith('/scenarios')) {
-        await new Promise((r) => { release = r; });
-        return res({ ok: false, status: 502, body: '' });
-      }
-      return res({ json: [] });
-    });
-
+    const requests = holdListRequests();
     const s = useScenarios(lawId);
-    const inFlight = s.fetchScenarios();
-    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+    const forA = await requests.request(0);
 
     lawId.value = 'wet_b';
-    release();
-    await inFlight;
+    const forB = await requests.request(1);
+    expect(forB.url).toContain('wet_b');
 
+    forA.settle(res({ ok: false, status: 502, body: '' }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(s.error.value).toBeNull();
+
+    forB.settle(res({ json: [] }));
+    await vi.waitFor(() => expect(s.loading.value).toBe(false));
+    expect(s.error.value).toBeNull();
+  });
+
+  it('keeps loading while the newer request is still on its way', async () => {
+    const lawId = ref('wet_a');
+    const requests = holdListRequests();
+    const s = useScenarios(lawId);
+    const forA = await requests.request(0);
+
+    lawId.value = 'wet_b';
+    const forB = await requests.request(1);
+
+    // The stale answer for A lands first. B has not answered, so the screen
+    // must still say it is loading rather than "no scenarios".
+    forA.settle(res({ json: [{ filename: 'a.feature' }] }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(s.loading.value).toBe(true);
+    expect(s.scenarios.value).toEqual([]);
+
+    forB.settle(res({ json: [] }));
+    await vi.waitFor(() => expect(s.loading.value).toBe(false));
+  });
+
+  it('ignores the stale request when the user switches back to the same law', async () => {
+    // A, B, A: the first and the third request share a scope, so only the
+    // order of the requests can tell them apart.
+    const lawId = ref('wet_a');
+    const requests = holdListRequests();
+    const s = useScenarios(lawId);
+    const firstA = await requests.request(0);
+
+    lawId.value = 'wet_b';
+    await requests.request(1);
+    lawId.value = 'wet_a';
+    const secondA = await requests.request(2);
+
+    firstA.settle(res({ ok: false, status: 502, body: '' }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(s.error.value).toBeNull();
+    expect(s.loading.value).toBe(true);
+
+    secondA.settle(res({ json: [] }));
+    await vi.waitFor(() => expect(s.loading.value).toBe(false));
     expect(s.error.value).toBeNull();
   });
 
