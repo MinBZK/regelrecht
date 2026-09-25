@@ -144,7 +144,7 @@
         "stage": {
           "type": "string",
           "pattern": "^[A-Z][A-Z_]*$",
-          "description": "De stage van de zaak waarvan dit event een stap is, in de woordenschat van RFC-008: bij een decretogram de stage die het besluit is (BESLUIT), bij een indiening de stage die zij opent (AANVRAAG: de aanvraag is het vastgelegde feit achter die stage), bij een handeling de stage die zij tot stand brengt (BEKENDMAKING: de toezending, Awb 3:41). Alleen op een decretogram, een indiening of een handeling, en alleen bij een event met een zaak (opent of volgt): RFC-022 par. 1.2 laat de stage-grammen van een besluit een zaakkenmerk delen, en een zaak doorloopt elke stage een keer."
+          "description": "De stage van de zaak waarvan dit event een stap is, in de woordenschat van RFC-008: bij een decretogram de stage die het besluit is (BESLUIT), bij een indiening de stage die zij opent (AANVRAAG: de aanvraag is het vastgelegde feit achter die stage), bij een handeling de stage die zij tot stand brengt (BEKENDMAKING: de toezending, Awb 3:41). Alleen op een decretogram, een indiening of een handeling, en alleen bij een event met een zaak (opent of volgt): RFC-022 par. 1.2 laat de stage-grammen van een besluit een zaakkenmerk delen. Een besluit doorloopt elke stage een keer (met besluit: volgt draagt het gram het kenmerk van dat besluit); een stage die bij geen besluit hoort, zoals de aanvraag, ligt een keer in de zaak."
         },
         "zaak": {
           "enum": [
