@@ -42,6 +42,13 @@ struct Regel {
     herkomst: String,
     #[serde(default)]
     zaakkenmerk: Option<String>,
+    /// Bij een event met `besluit`: het kenmerk van het besluit, met de hand
+    /// gezet zoals het zaakkenmerk; bij `besluit: wijzigt` ook het gewijzigde
+    /// besluit. Het schema van het gram toetst dat ze er precies dan zijn.
+    #[serde(default)]
+    besluitkenmerk: Option<String>,
+    #[serde(default)]
+    wijzigt: Option<String>,
     fields: Map<String, Value>,
 }
 
@@ -110,6 +117,9 @@ fn bouw(tekst: &str, strommen: &[Stroom]) -> Result<Gram, String> {
         vastgelegd_op: String::new(),
         zaak: event.zaak,
         zaakkenmerk: regel.zaakkenmerk,
+        besluit: event.besluit,
+        besluitkenmerk: regel.besluitkenmerk,
+        wijzigt: regel.wijzigt,
         stroom: StroomVerwijzing {
             id: stroom.id.clone(),
             sha256: stroom.sha256.clone(),

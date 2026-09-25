@@ -36,6 +36,11 @@ pub struct Vastlegverzoek {
     /// de cel het kenmerk.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub zaakkenmerk: Option<String>,
+    /// Bij `besluit: volgt` het besluit dat het gram volgt, bij `besluit:
+    /// wijzigt` het besluit dat het wijzigt. Bij `besluit: opent` geeft de
+    /// cel het kenmerk.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub besluitkenmerk: Option<String>,
     /// Alleen bij een handeling die het proces uitrekende: de invoer met
     /// herkomst en het receipt, en bij een besluit wat het tot besluit maakt.
     /// Het proces draait de engine, dus het proces stelt dit samen.

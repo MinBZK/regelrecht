@@ -65,10 +65,10 @@ use crate::gezag::{self, Bevoegdheid};
 use crate::gram::{GeladenRegeling, Gram, HandelendeActor, Invoer, Receipt, StroomVerwijzing};
 use crate::kanaal::Sessie;
 use crate::proces::Proces;
-use crate::reductie::{Lexostatus, Peil, Zaakstand};
+use crate::reductie::{Besluitstand, Lexostatus, Peil, Zaakstand};
 use crate::regelingen::{self, Benodigd};
 use crate::rijen::{self, Rijen};
-use crate::stroom::{Binding, Event, Zaak};
+use crate::stroom::{Besluit, Binding, Event, Zaak};
 use crate::synthese::{self, Bron, BronUitslag, Herkomst};
 use crate::toets;
 use crate::transport::{Transport, TransportFout};
@@ -118,17 +118,21 @@ pub struct Proefhandeling {
     pub lexostatussen: Vec<Lexostatus>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub rijen: Vec<rijen::Uitslag>,
-    /// Bij een vervolg: het vastgelegde besluit waarop de stage verdergaat.
+    /// Het vastgelegde besluit waarop de handeling handelt: bij een vervolg
+    /// het besluit waarop de stage verdergaat, bij een feit het besluit dat
+    /// het volgt (zoals de betaling die het uitvoert), bij een wijziging het
+    /// besluit dat zij wijzigt.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub besluit: Option<BesluitVerwijzing>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trace_text: Option<String>,
 }
 
-/// Het vastgelegde besluit waarop een vervolg verdergaat, zoals de cel het in
-/// de [`Zaakstand`] noemt.
+/// Een vastgelegd besluit in de zaak, zoals de cel het in de [`Zaakstand`]
+/// noemt.
 #[derive(Debug, Clone, Serialize)]
 pub struct BesluitVerwijzing {
+    pub besluitkenmerk: String,
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stage: Option<String>,
@@ -373,6 +377,7 @@ pub fn bereid_voor(
             continue;
         };
         h.stage = event.stage.clone();
+        h.besluitrol = event.besluit;
         // De regeling: genoemd, of de beschikking waarvoor het gezag van het
         // proces bevoegd is.
         let mut beschikking = None;
@@ -839,6 +844,7 @@ fn controleer_handeling(
                 event.zaak.als_tekst()
             ));
         }
+        fouten.extend(controleer_besluit(proces, h, &vl));
         let sleutels = event.external_sleutels();
         let oordelen: Vec<&str> = h.oordelen.iter().map(|o| o.parameter.as_str()).collect();
         let feiten: Vec<&str> = h.feiten.iter().map(|f| f.naam.as_str()).collect();
@@ -968,6 +974,73 @@ fn controleer_handeling(
     fouten
 }
 
+/// Of het vastleg-event past bij de soort handeling, en de handeling bij het
+/// besluit dat zij noemt. Een zaak kan meer besluiten hebben; welk gram bij
+/// welk besluit hoort, zegt de stroom (`besluit`), en welke handeling bij
+/// welk besluit, `besluit` in de handeling (bij een vervolg: het artikel).
+///
+/// - een besluit legt vast in een event dat een besluit opent of wijzigt;
+///   een wijziging noemt het besluit dat zij wijzigt, een nieuw besluit niet;
+/// - een vervolg legt vast in een event dat een besluit volgt;
+/// - een feit dat een besluit volgt, noemt het besluit; een ander feit niet;
+/// - `besluit` noemt de handeling van een besluit in dit proces.
+fn controleer_besluit(proces: &Proces, h: &HandelingDefinitie, vl: &str) -> Vec<String> {
+    let mut fouten = Vec::new();
+    let rol = h.besluitrol.map_or("geen", Besluit::als_tekst);
+    let genoemd = h.besluit.as_deref();
+    let besluit_handeling = |naam: &str| {
+        proces
+            .definitie
+            .behandeling
+            .as_ref()
+            .and_then(|b| b.handeling(naam))
+            .filter(|b| b.soort == Handelingsoort::Besluit && b.naam != h.naam)
+    };
+    match (&h.soort, h.besluitrol) {
+        (Handelingsoort::Besluit, Some(Besluit::Opent)) => {
+            if let Some(b) = genoemd {
+                fouten.push(format!(
+                    "{vl}: het event opent een besluit, en een nieuw besluit noemt geen ander (besluit: {b}); een besluit dat een ander wijzigt, legt vast in een event met besluit: wijzigt"
+                ));
+            }
+        }
+        (Handelingsoort::Besluit, Some(Besluit::Wijzigt))
+        | (Handelingsoort::Feit, Some(Besluit::Volgt)) => match genoemd {
+            None => fouten.push(format!(
+                "{vl}: het event {rol} een besluit; noem met besluit de handeling van dat besluit"
+            )),
+            Some(b) if besluit_handeling(b).is_none() => fouten.push(format!(
+                "handeling '{}': besluit '{b}' is geen andere handeling van een besluit in dit proces",
+                h.naam
+            )),
+            Some(_) => {}
+        },
+        (Handelingsoort::Besluit, _) => fouten.push(format!(
+            "{vl}: een besluit legt vast in een event met besluit: opent (of wijzigt, als het een ander besluit wijzigt), niet besluit: {rol}"
+        )),
+        (Handelingsoort::Vervolg { besluit, .. }, Some(Besluit::Volgt)) => {
+            if genoemd.is_some_and(|b| b != besluit) {
+                fouten.push(format!(
+                    "handeling '{}': een vervolg op het besluit van '{besluit}' (hetzelfde artikel) noemt besluit '{}'",
+                    h.naam,
+                    genoemd.unwrap_or_default()
+                ));
+            }
+        }
+        (Handelingsoort::Vervolg { .. }, _) => fouten.push(format!(
+            "{vl}: een vervolg is een latere stage van een besluit, en legt vast in een event met besluit: volgt, niet besluit: {rol}"
+        )),
+        (Handelingsoort::Feit, _) => {
+            if let Some(b) = genoemd {
+                fouten.push(format!(
+                    "{vl}: het event volgt geen besluit (besluit: {rol}), en de handeling noemt besluit '{b}'"
+                ));
+            }
+        }
+    }
+    fouten
+}
+
 /// De synthese-bronnen die een handeling vraagt: die een parameter van haar
 /// artikel leveren, en de bronnen die hun (of de synthese per regel) een
 /// invoer doorgeven. Welke bron een handeling nodig heeft, volgt zo uit wat
@@ -1025,6 +1098,95 @@ pub fn bronnen_voor(proces: &Proces, h: &HandelingDefinitie) -> Vec<usize> {
 }
 
 // --- In een zaak -----------------------------------------------------------
+
+/// De besluiten in de zaak van de handeling `besluit`, in de volgorde waarin
+/// de cel ze vastlegde, met de besluiten die ze wijzigen (van een handeling
+/// met `besluit: wijzigt` die `besluit` noemt). Het laatste is het besluit
+/// zoals het nu geldt.
+fn keten<'z>(proces: &Proces, besluit: &str, zaak: &'z Zaakstand) -> Vec<&'z Besluitstand> {
+    let Some(b) = &proces.definitie.behandeling else {
+        return Vec::new();
+    };
+    let events: Vec<&HandelingDefinitie> = b
+        .handelingen
+        .iter()
+        .filter(|h| {
+            h.naam == besluit
+                || (h.besluitrol == Some(Besluit::Wijzigt) && h.besluit.as_deref() == Some(besluit))
+        })
+        .collect();
+    zaak.besluiten
+        .iter()
+        .filter(|s| {
+            events
+                .iter()
+                .any(|h| s.van(&h.vastleggen.stroom, &h.vastleggen.event))
+        })
+        .collect()
+}
+
+/// De besluiten in de zaak die de handeling `besluit` zelf vastlegde.
+fn eigen<'z>(proces: &Proces, besluit: &str, zaak: &'z Zaakstand) -> Vec<&'z Besluitstand> {
+    let Some(b) = proces
+        .definitie
+        .behandeling
+        .as_ref()
+        .and_then(|b| b.handeling(besluit))
+    else {
+        return Vec::new();
+    };
+    zaak.besluiten
+        .iter()
+        .filter(|s| s.van(&b.vastleggen.stroom, &b.vastleggen.event))
+        .collect()
+}
+
+/// Het besluit in de zaak waarop een handeling handelt, uit de
+/// [`Zaakstand`]: bij een vervolg het laatste besluit van de handeling van
+/// het besluit (de stage gaat daarop verder), bij een feit dat een besluit
+/// volgt en bij een wijziging het laatste besluit van de handeling die zij
+/// noemen, een wijziging ervan meegerekend. `Ok(None)`: de handeling hoort
+/// bij geen besluit, of opent er zelf een. `Err`: het besluit ligt er nog
+/// niet.
+pub fn doel<'z>(
+    proces: &Proces,
+    h: &HandelingDefinitie,
+    zaak: &'z Zaakstand,
+) -> Result<Option<&'z Besluitstand>, String> {
+    let (lijst, van) = match (&h.soort, h.besluitrol) {
+        (Handelingsoort::Vervolg { besluit, .. }, _) => (eigen(proces, besluit, zaak), besluit),
+        (_, Some(Besluit::Volgt | Besluit::Wijzigt)) => {
+            let Some(b) = h.besluit.as_ref() else {
+                return Ok(None);
+            };
+            (keten(proces, b, zaak), b)
+        }
+        _ => return Ok(None),
+    };
+    match lijst.last() {
+        Some(b) => Ok(Some(b)),
+        None => {
+            let label = proces
+                .definitie
+                .behandeling
+                .as_ref()
+                .and_then(|b| b.handeling(van))
+                .map_or(van.as_str(), |b| b.label());
+            Err(format!("wacht op het besluit ({label})"))
+        }
+    }
+}
+
+fn verwijzing(b: &Besluitstand) -> Option<BesluitVerwijzing> {
+    let (stage, gram) = b.genomen()?;
+    Some(BesluitVerwijzing {
+        besluitkenmerk: b.besluitkenmerk.clone(),
+        name: gram.event.clone(),
+        stage: Some(stage.clone()),
+        op_moment: gram.op_moment.clone(),
+        vastgelegd_op: gram.vastgelegd_op.clone(),
+    })
+}
 
 /// Een lexostatus van de zaak, gevraagd aan de cel. Heeft de cel er geen
 /// gram voor (404), dan levert ze niets: een lege lexostatus. Met een
@@ -1192,9 +1354,29 @@ pub async fn proef(
         .filter(|f| formulier.get(&f.naam).is_none_or(Value::is_null))
         .map(|f| f.naam.clone())
         .collect();
-    let uitkomst = match &h.soort {
-        Handelingsoort::Vervolg { besluit, .. } => {
-            vervolg(om, h, besluit, zaakkenmerk, zaak, formulier, &mut p)?
+    // Het besluit waarop de handeling handelt. Ligt het er nog niet, dan is
+    // er niets uit te rekenen: dat is de vorm (de volgorde van de zaak).
+    let doel = match doel(proces, h, zaak) {
+        Ok(b) => b,
+        Err(r) => {
+            p.reden = Some(format!("niet te nemen: {r}"));
+            return Ok(p);
+        }
+    };
+    p.besluit = doel.and_then(verwijzing);
+    if let Some(r) = al_genomen(proces, h, zaak) {
+        p.reden = Some(format!("niet te nemen: {r}"));
+        return Ok(p);
+    }
+    let uitkomst = match (&h.soort, doel) {
+        (Handelingsoort::Vervolg { besluit, .. }, Some(b)) => {
+            vervolg(om, h, besluit, b, formulier, &mut p)?
+        }
+        (Handelingsoort::Vervolg { .. }, None) => {
+            return Err(Weigering::Cel(format!(
+                "handeling '{}': geen besluit",
+                h.naam
+            )))
         }
         // Een onvolledige uitkomst (een waarde mist, een bron antwoordde niet)
         // is geen conclusie over de inhoud: dan ligt er niets vast, ook niet
@@ -1264,6 +1446,7 @@ async fn op_de_zaak(
         intake: Value::Null,
         external: event_velden(event, &h.uitkomsten, formulier, &BTreeMap::new()),
         zaakkenmerk: Some(zaakkenmerk.to_string()),
+        besluitkenmerk: p.besluit.as_ref().map(|b| b.besluitkenmerk.clone()),
         besluit: None,
         zaak_grammen: None,
     });
@@ -1381,8 +1564,7 @@ fn vervolg(
     om: &Omgeving<'_>,
     h: &HandelingDefinitie,
     besluit: &str,
-    zaakkenmerk: &str,
-    zaak: &Zaakstand,
+    stand: &Besluitstand,
     formulier: &Map<String, Value>,
     p: &mut Proefhandeling,
 ) -> Result<Option<Bezwaar>, Weigering> {
@@ -1394,23 +1576,18 @@ fn vervolg(
         .as_ref()
         .and_then(|b| b.handeling(besluit))
         .ok_or_else(|| Weigering::Cel(format!("geen handeling '{besluit}'")))?;
-    let Some(gram) = b
-        .stage
-        .as_ref()
-        .and_then(|s| zaak.stages.get(s))
-        .filter(|s| s.event == b.vastleggen.event && s.stroom == b.vastleggen.stroom)
-    else {
-        return Ok(Some(Bezwaar::Vorm(format!(
-            "niet te nemen: in zaak {zaakkenmerk} ligt nog geen besluit (stage {})",
-            b.stage.as_deref().unwrap_or("-")
-        ))));
+    let Some((_, gram)) = stand.genomen() else {
+        return Err(Weigering::Cel(format!(
+            "besluit {} heeft geen stage van het besluit",
+            stand.besluitkenmerk
+        )));
     };
-    p.besluit = Some(BesluitVerwijzing {
-        name: gram.event.clone(),
-        stage: b.stage.clone(),
-        op_moment: gram.op_moment.clone(),
-        vastgelegd_op: gram.vastgelegd_op.clone(),
-    });
+    if let Some(s) = h.stage.as_ref().filter(|s| stand.stages.contains_key(*s)) {
+        return Ok(Some(Bezwaar::Vorm(format!(
+            "niet te nemen: stage {s} ligt al in besluit {}",
+            stand.besluitkenmerk
+        ))));
+    }
     let Handelingsoort::Vervolg { procedure, .. } = &h.soort else {
         return Err(Weigering::Cel("geen vervolg".into()));
     };
@@ -1682,6 +1859,14 @@ pub async fn neem(
         intake: Value::Null,
         external,
         zaakkenmerk: Some(zaakkenmerk.to_string()),
+        // Een nieuw besluit krijgt zijn kenmerk van de cel; een gram dat een
+        // besluit volgt of wijzigt, noemt dat besluit.
+        besluitkenmerk: match h.besluitrol {
+            Some(Besluit::Volgt | Besluit::Wijzigt) => {
+                proef.besluit.as_ref().map(|b| b.besluitkenmerk.clone())
+            }
+            _ => None,
+        },
         besluit: Some(Besluitvelden {
             legal_character: produces.and_then(|p| p.legal_character.clone()),
             decision_type: produces.and_then(|p| p.decision_type.clone()),
@@ -1717,9 +1902,13 @@ pub async fn neem(
     })
 }
 
-/// Of een handeling in een zaak kan, naar de stage: een besluit zolang zijn
-/// stage niet in de zaak ligt, een vervolg als het besluit er ligt en zijn
-/// eigen stage niet, een feit altijd (wat het doet, zegt de proef).
+/// Of een handeling in een zaak kan, naar de besluiten en hun stages: een
+/// besluit zolang de zaak geen besluit van die handeling heeft (een ander
+/// besluit over dezelfde aanvraag vraagt een eigen grondslag: een
+/// wijziging), een wijziging als er een besluit is om te wijzigen, een
+/// vervolg als het besluit er ligt en zijn stage nog niet, een feit dat een
+/// besluit volgt als dat besluit er ligt, en elk ander feit altijd (wat het
+/// doet, zegt de proef).
 #[derive(Debug, Clone, Serialize)]
 pub struct Stand {
     pub beschikbaar: bool,
@@ -1727,65 +1916,57 @@ pub struct Stand {
     pub reden: Option<String>,
     /// De grammen die de handeling in deze zaak al vastlegde.
     pub vastgelegd: usize,
+    /// Het besluit waarop de handeling nu zou handelen (zie [`doel`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub besluit: Option<String>,
 }
 
 /// De stand van een handeling in een zaak, uit de [`Zaakstand`] die de cel
-/// afleidt: welke stages er liggen en hoe vaak het event van de handeling.
+/// afleidt: welke besluiten er liggen, welke stages elk doorliep en hoe vaak
+/// het event van de handeling.
 pub fn stand(proces: &Proces, h: &HandelingDefinitie, zaak: &Zaakstand) -> Stand {
-    let van = |x: &HandelingDefinitie| zaak.aantal(&x.vastleggen.stroom, &x.vastleggen.event);
-    let vastgelegd = van(h);
-    let al = h
-        .stage
-        .as_ref()
-        .is_some_and(|s| zaak.stages.contains_key(s));
-    let (beschikbaar, reden) = match &h.soort {
-        Handelingsoort::Feit => (true, None),
-        Handelingsoort::Besluit => (
-            !al,
-            al.then(|| {
-                format!(
-                    "stage {} ligt al in de zaak",
-                    h.stage.as_deref().unwrap_or("-")
-                )
-            }),
-        ),
-        Handelingsoort::Vervolg { besluit, .. } => {
-            let b = proces
-                .definitie
-                .behandeling
-                .as_ref()
-                .and_then(|b| b.handeling(besluit));
-            let besloten = b.is_some_and(|b| van(b) > 0);
-            if al {
-                (
-                    false,
-                    Some(format!(
-                        "stage {} ligt al in de zaak",
-                        h.stage.as_deref().unwrap_or("-")
-                    )),
-                )
-            } else if !besloten {
-                (
-                    false,
-                    Some(format!(
-                        "wacht op het besluit (stage {})",
-                        b.and_then(|b| b.stage.as_deref()).unwrap_or("-")
-                    )),
-                )
-            } else {
-                (true, None)
+    let vastgelegd = zaak.aantal(&h.vastleggen.stroom, &h.vastleggen.event);
+    let mut besluit = None;
+    let reden = match doel(proces, h, zaak) {
+        Err(r) => Some(r),
+        Ok(b) => {
+            besluit = b.map(|b| b.besluitkenmerk.clone());
+            match (&h.soort, b) {
+                (Handelingsoort::Besluit, _) => al_genomen(proces, h, zaak),
+                (Handelingsoort::Vervolg { .. }, Some(b)) => h
+                    .stage
+                    .as_ref()
+                    .filter(|s| b.stages.contains_key(*s))
+                    .map(|s| format!("stage {s} ligt al in besluit {}", b.besluitkenmerk)),
+                _ => None,
             }
         }
     };
     Stand {
-        beschikbaar,
+        beschikbaar: reden.is_none(),
         reden,
         vastgelegd,
+        besluit,
     }
 }
 
-/// De procedure van de zaak (RFC-008): de stages van het besluit, met per
-/// stage of er een gram van ligt en welke handeling het vastlegt.
+/// Of een besluit dat geen ander wijzigt, al in de zaak ligt: de cel legt
+/// geen tweede besluit van hetzelfde event in een zaak vast. Een ander
+/// besluit over dezelfde aanvraag is een wijziging, met een eigen grondslag.
+fn al_genomen(proces: &Proces, h: &HandelingDefinitie, zaak: &Zaakstand) -> Option<String> {
+    if h.besluitrol != Some(Besluit::Opent) {
+        return None;
+    }
+    eigen(proces, &h.naam, zaak).first().map(|b| {
+        format!(
+            "besluit {} ligt al in de zaak; een ander besluit hierover vraagt een eigen grondslag (een wijziging)",
+            b.besluitkenmerk
+        )
+    })
+}
+
+/// De procedure van een besluit (RFC-008): de stages, met per stage of er
+/// een gram van ligt en welke handeling het vastlegt.
 #[derive(Debug, Clone, Serialize)]
 pub struct ProcedureStand {
     pub id: String,
@@ -1802,12 +1983,12 @@ pub struct StageStand {
     pub handeling: Option<String>,
 }
 
-/// De rechtsbescherming na de laatste stage die in de zaak ligt, afgeleid
-/// uit de procedure en de wet (RFC-022 par. 3.3): de volgende stage, als
-/// geen handeling haar vastlegt (zoals BEZWAAR, die na de bekendmaking
-/// vanzelf loopt), met de uitkomsten van de haken die de wet op de laatste
-/// stage liet vuren (zoals het einde van de bezwaartermijn, Awb 6:7 en 6:8).
-/// Niets hiervan staat per regel in de configuratie.
+/// De rechtsbescherming na de laatste stage van een besluit, afgeleid uit de
+/// procedure en de wet (RFC-022 par. 3.3): de volgende stage, als geen
+/// handeling haar vastlegt (zoals BEZWAAR, die na de bekendmaking vanzelf
+/// loopt), met de uitkomsten van de haken die de wet op de laatste stage liet
+/// vuren (zoals het einde van de bezwaartermijn, Awb 6:7 en 6:8). Niets
+/// hiervan staat per regel in de configuratie.
 #[derive(Debug, Clone, Serialize)]
 pub struct Rechtsbescherming {
     pub procedure: String,
@@ -1823,22 +2004,84 @@ pub struct Rechtsbescherming {
     pub uitkomsten: BTreeMap<String, Value>,
 }
 
-/// De procedure en de rechtsbescherming van een zaak. Welke stages er
-/// liggen en wat hun gram vastlegde, zegt de [`Zaakstand`] van de cel; de
-/// procedure en de haken komen uit de wet.
-pub fn procedure_en_route(
+/// Een besluit in de zaak, voor het zaakscherm: welke handeling het nam, de
+/// procedure met zijn stages, de rechtsbescherming die daaruit volgt, en de
+/// handelingen die nu op dit besluit handelen (zijn vervolg, de feiten die
+/// het volgen, een wijziging).
+#[derive(Debug, Clone, Serialize)]
+pub struct BesluitInZaak {
+    pub besluitkenmerk: String,
+    /// De handeling die het besluit vastlegde, en haar artikel.
+    pub handeling: String,
+    pub label: String,
+    pub artikel: String,
+    pub event: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub op_moment: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wijzigt: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub procedure: Option<ProcedureStand>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rechtsbescherming: Option<Rechtsbescherming>,
+    /// De handelingen die nu op dit besluit handelen.
+    pub handelingen: Vec<String>,
+}
+
+/// De besluiten in een zaak, elk met zijn procedure en rechtsbescherming.
+/// Welke besluiten er liggen, welke stages elk doorliep en wat hun grammen
+/// vastlegden, zegt de [`Zaakstand`] van de cel; de procedure en de haken
+/// komen uit de wet. Een stage die bij geen besluit hoort (de aanvraag),
+/// telt voor elk besluit van de zaak.
+pub fn besluiten_in_zaak(proces: &Proces, zaak: &Zaakstand) -> Vec<BesluitInZaak> {
+    let Some(behandeling) = &proces.definitie.behandeling else {
+        return Vec::new();
+    };
+    zaak.besluiten
+        .iter()
+        .filter_map(|b| {
+            let h = behandeling.handelingen.iter().find(|h| {
+                h.soort == Handelingsoort::Besluit
+                    && b.van(&h.vastleggen.stroom, &h.vastleggen.event)
+            })?;
+            let (procedure, rechtsbescherming) = procedure_en_route(proces, h, b, zaak);
+            let handelingen = behandeling
+                .handelingen
+                .iter()
+                .filter(|x| x.naam != h.naam)
+                .filter(|x| {
+                    doel(proces, x, zaak)
+                        .ok()
+                        .flatten()
+                        .is_some_and(|d| d.besluitkenmerk == b.besluitkenmerk)
+                })
+                .map(|x| x.naam.clone())
+                .collect();
+            Some(BesluitInZaak {
+                besluitkenmerk: b.besluitkenmerk.clone(),
+                handeling: h.naam.clone(),
+                label: h.label().to_string(),
+                artikel: h.artikel.clone(),
+                event: b.event.clone(),
+                op_moment: b.genomen().map(|(_, g)| g.op_moment.clone()),
+                wijzigt: b.wijzigt.clone(),
+                procedure,
+                rechtsbescherming,
+                handelingen,
+            })
+        })
+        .collect()
+}
+
+/// De procedure en de rechtsbescherming van een besluit in de zaak.
+fn procedure_en_route(
     proces: &Proces,
+    besluit: &HandelingDefinitie,
+    stand: &Besluitstand,
     zaak: &Zaakstand,
 ) -> (Option<ProcedureStand>, Option<Rechtsbescherming>) {
     let service = proces.service.as_ref();
     let Some(behandeling) = &proces.definitie.behandeling else {
-        return (None, None);
-    };
-    let Some(besluit) = behandeling
-        .handelingen
-        .iter()
-        .find(|h| h.soort == Handelingsoort::Besluit)
-    else {
         return (None, None);
     };
     let Some(p) = procedure_van(service, &besluit.artikel) else {
@@ -1850,13 +2093,14 @@ pub fn procedure_en_route(
             .iter()
             .find(|h| h.stage.as_deref() == Some(stage) && h.artikel == besluit.artikel)
     };
+    let gram = |stage: &str| stand.stages.get(stage).or_else(|| zaak.stages.get(stage));
     let stages: Vec<StageStand> = p
         .stages
         .iter()
         .map(|s| StageStand {
             name: s.name.clone(),
             description: s.description.clone(),
-            vastgelegd: zaak.stages.contains_key(&s.name),
+            vastgelegd: gram(&s.name).is_some(),
             handeling: door(&s.name).map(|h| h.naam.clone()),
         })
         .collect();
@@ -1870,7 +2114,7 @@ pub fn procedure_en_route(
         if h.haken.is_empty() {
             return None;
         }
-        let gram = zaak.stages.get(&na.name)?;
+        let gram = gram(&na.name)?;
         let uitkomsten = h
             .haken
             .iter()
@@ -1893,6 +2137,33 @@ pub fn procedure_en_route(
         }),
         route,
     )
+}
+
+/// De procedure van de zaak voor er een besluit ligt: de procedure van het
+/// eerste besluit dat het proces kent, met de stages die bij geen besluit
+/// horen (zoals de aanvraag).
+pub fn procedure_van_de_zaak(proces: &Proces, zaak: &Zaakstand) -> Option<ProcedureStand> {
+    let b = proces
+        .definitie
+        .behandeling
+        .as_ref()?
+        .handelingen
+        .iter()
+        .find(|h| h.soort == Handelingsoort::Besluit && h.besluitrol == Some(Besluit::Opent))?;
+    let p = procedure_van(proces.service.as_ref(), &b.artikel)?;
+    Some(ProcedureStand {
+        id: p.id.clone(),
+        stages: p
+            .stages
+            .iter()
+            .map(|s| StageStand {
+                name: s.name.clone(),
+                description: s.description.clone(),
+                vastgelegd: zaak.stages.contains_key(&s.name),
+                handeling: None,
+            })
+            .collect(),
+    })
 }
 
 #[cfg(test)]

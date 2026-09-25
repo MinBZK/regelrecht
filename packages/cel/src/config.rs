@@ -221,6 +221,14 @@ pub struct HandelingDefinitie {
     /// routes `behandeling`). Zonder: elke rol die de behandeling mag.
     #[serde(default)]
     pub rol: Option<String>,
+    /// De handeling van het besluit waarbij deze handeling hoort: bij een
+    /// feit dat een besluit volgt (een betaling die het uitvoert) en bij een
+    /// besluit dat een ander wijzigt. Het proces handelt dan op het laatste
+    /// besluit van die handeling in de zaak, een wijziging ervan
+    /// meegerekend. Een vervolg vindt zijn besluit zelf (zie
+    /// [`Handelingsoort::Vervolg`]).
+    #[serde(default)]
+    pub besluit: Option<String>,
     /// Leeg in `proces.yaml`: de runtime vult haar bij het laden met de
     /// regeling van de beschikking waarvoor het gezag van het proces
     /// (`namens`) bevoegd is (zie [`crate::gezag::beschikkingen_van`]).
@@ -245,6 +253,9 @@ pub struct HandelingDefinitie {
     /// De stage van het vastleg-event, als het er een heeft.
     #[serde(skip)]
     pub stage: Option<String>,
+    /// Of het vastleg-event een besluit opent, volgt of wijzigt.
+    #[serde(skip)]
+    pub besluitrol: Option<crate::stroom::Besluit>,
     /// De oordelen: de parameters van het artikel met origin `OORDEEL`
     /// (zie [`crate::origin::oordelen`]). Niet bij een vervolg: die oordelen
     /// gaf de behandelaar bij het besluit.
@@ -290,11 +301,14 @@ pub enum Handelingsoort {
     #[default]
     Feit,
     /// Het besluit: de eerste stage van de procedure van het artikel die een
-    /// handeling vastlegt.
+    /// handeling vastlegt. Een zaak kan meer besluiten hebben, elk van een
+    /// eigen artikel; een besluit dat een ander wijzigt, legt vast in een
+    /// event met `besluit: wijzigt`.
     Besluit,
     /// Een latere stage van hetzelfde besluit, zoals de bekendmaking: de
     /// engine voert die stage uit op de invoer van het vastgelegde besluit
-    /// (RFC-008, `execute_stage`).
+    /// (RFC-008, `execute_stage`). Dat is het laatste besluit in de zaak dat
+    /// de handeling van het besluit vastlegde.
     Vervolg {
         /// De handeling van het besluit.
         besluit: String,

@@ -704,7 +704,7 @@
     },
     "handeling": {
       "type": "object",
-      "description": "Een handeling in een zaak: de uitkomsten van een artikel, uitgerekend met wat de zaak, de synthese en het formulier leveren, en het event waarin de cel haar vastlegt. Het soort volgt uit het event: met een stage die de procedure van het artikel (RFC-008) kent, is de eerste zo'n handeling het besluit en elke latere stage van hetzelfde artikel een vervolg op dat besluit (de engine voert de stage uit op de invoer van het vastgelegde besluit, met de haken van die stage); zonder stage legt de handeling een feit vast dat de lexostatussen van de zaak lezen, en telt het feit op proef mee. Het formulier staat hier niet: bij een besluit de parameters met origin OORDEEL, bij een vervolg wat de stage vraagt (requires), bij een feit de $external-velden van het event die geen uitkomst zijn.",
+      "description": "Een handeling in een zaak: de uitkomsten van een artikel, uitgerekend met wat de zaak, de synthese en het formulier leveren, en het event waarin de cel haar vastlegt. Het soort volgt uit het event: met een stage die de procedure van het artikel (RFC-008) kent, is de eerste zo'n handeling het besluit en elke latere stage van hetzelfde artikel een vervolg op dat besluit (de engine voert de stage uit op de invoer van het vastgelegde besluit, met de haken van die stage); zonder stage legt de handeling een feit vast dat de lexostatussen van de zaak lezen, en telt het feit op proef mee. Een zaak kan meer besluiten hebben, elk van een eigen artikel (een voorschot, een vaststelling, een terugvordering); het vastleg-event zegt of een gram een besluit opent, volgt of wijzigt (besluit in de stroom). Het formulier staat hier niet: bij een besluit de parameters met origin OORDEEL, bij een vervolg wat de stage vraagt (requires), bij een feit de $external-velden van het event die geen uitkomst zijn.",
       "required": [
         "naam",
         "vastleggen"
@@ -723,6 +723,10 @@
         "rol": {
           "$ref": "#/definitions/identifier",
           "description": "De rol die de handeling mag doen: een sleutel van rollen, met routes behandeling. Zonder: elke rol die de behandeling mag."
+        },
+        "besluit": {
+          "$ref": "#/definitions/identifier",
+          "description": "De naam van de handeling van het besluit waarbij deze handeling hoort, als haar vastleg-event een besluit volgt of wijzigt. Bij een feit dat een besluit volgt (besluit: volgt, zoals een betaling die een besluit uitvoert: RFC-022 par. 3.3) en bij een besluit dat een ander besluit wijzigt (besluit: wijzigt, zoals een wijziging van een vaststelling op grond van Awb 4:49) verplicht; het proces handelt dan op het laatste besluit van die handeling in de zaak, een wijziging ervan meegerekend. Een vervolg (een latere stage van hetzelfde artikel) vindt zijn besluit zelf; noemt het er toch een, dan moet het dat zijn."
         },
         "regeling": {
           "$ref": "#/definitions/identifier",

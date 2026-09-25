@@ -25,7 +25,7 @@ use sha2::{Digest, Sha256};
 
 use crate::datum;
 use crate::schema::{self, Soort};
-use crate::stroom::Zaak;
+use crate::stroom::{Besluit, Zaak};
 
 /// Het vastgelegde gram (`schema/chronolex/v0.1.0/gram.json`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -79,6 +79,20 @@ pub struct Gram {
     /// Alleen bij een event met een zaak (`zaak: opent` of `volgt`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub zaakkenmerk: Option<String>,
+    /// Uit de stroom: of het gram in de zaak een besluit opent, volgt of
+    /// wijzigt. Weggelaten als het bij geen besluit hoort (zoals de
+    /// aanvraag, die de zaak opent).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub besluit: Option<Besluit>,
+    /// Alleen bij een gram met `besluit`: het kenmerk van het besluit. Bij
+    /// `opent` en `wijzigt` geeft de cel het (`<zaakkenmerk>/<volgnummer>`),
+    /// bij `volgt` is het dat van het besluit dat het gram volgt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub besluitkenmerk: Option<String>,
+    /// Alleen bij `besluit: wijzigt`: het kenmerk van het besluit dat dit
+    /// besluit wijzigt (RFC-022 par. 3.1 `is_wijziging_van`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wijzigt: Option<String>,
     pub stroom: StroomVerwijzing,
     /// Alleen als de cel het gram niet zelf vaststelde: `startstand` is bij
     /// het starten in een lege kroniek geplaatst (zie [`crate::startstand`]).

@@ -118,10 +118,11 @@ fn omgeving(state: &ProcesState, i: usize) -> Omgeving<'_> {
 }
 
 /// De zaak: haar grammen (inzage in het dossier, zonder ze te
-/// interpreteren), de procedure met de stages die er liggen, de
-/// rechtsbescherming die daaruit volgt, en per handeling of zij kan, haar
-/// formulier en een proef zonder formulier (bij een betaling: wat er nog te
-/// betalen is). Wat het proces over de zaak weet, komt uit de stand die de
+/// interpreteren), de procedure van de zaak (de stages die bij geen besluit
+/// horen, zoals de aanvraag), de besluiten met per besluit de stages die er
+/// liggen en de rechtsbescherming die daaruit volgt, en per handeling of zij
+/// kan, op welk besluit zij handelt, haar formulier en een proef zonder
+/// formulier (bij een betaling: wat er nog te betalen is). Wat het proces over de zaak weet, komt uit de stand die de
 /// cel afleidt.
 pub(super) async fn zaak_route(
     State(state): State<ProcesState>,
@@ -195,15 +196,16 @@ pub(super) async fn zaak_route(
             "beschikbaar": stand.beschikbaar,
             "reden": stand.reden,
             "vastgelegd": stand.vastgelegd,
+            "besluit": stand.besluit,
+            "besluitrol": h.besluitrol,
             "proef": proef,
         }));
     }
-    let (procedure, rechtsbescherming) = handeling::procedure_en_route(&state.proces, &zaak);
     Ok(Json(json!({
         "zaakkenmerk": zaakkenmerk,
         "grammen": grammen,
-        "procedure": procedure,
-        "rechtsbescherming": rechtsbescherming,
+        "procedure": handeling::procedure_van_de_zaak(&state.proces, &zaak),
+        "besluiten": handeling::besluiten_in_zaak(&state.proces, &zaak),
         "handelingen": handelingen,
     })))
 }

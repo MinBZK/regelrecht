@@ -5,7 +5,8 @@
 # laat een zaak met zo'n gram weg. Het op_moment van het besluit is de
 # besluitdatum. Daarna: de bekendmaking (stage BEKENDMAKING, een handeling),
 # met de bezwaartermijn die de haak op die stage uitrekent, en de betaling
-# (een executogram dat het besluit uitvoert).
+# (een executogram dat het besluit uitvoert). Het besluit opent een besluit
+# in de zaak (besluit: opent); de bekendmaking en de betaling volgen het.
 $id: test_afnemer_zaakverloop
 recording_actor: test_afnemer
 chronicle: test_afnemer
@@ -33,6 +34,7 @@ events:
     type: decretogram
     stage: BESLUIT
     zaak: volgt
+    besluit: opent                     # het besluit krijgt een eigen kenmerk in de zaak
     op_moment:                         # de dag van het besluit, niet die van het vastleggen
       bron: $external.besluitdatum
       grondslag: [testregeling_afnemer#3 lid 1]
@@ -55,6 +57,7 @@ events:
     soort: bekendmaking
     stage: BEKENDMAKING
     zaak: volgt
+    besluit: volgt                     # een stage van het besluit
     op_moment:
       bron: $external.datum_bekendmaking
       grondslag: [testregeling_awb#2]
@@ -74,6 +77,7 @@ events:
     type: executogram
     soort: betaling
     zaak: volgt
+    besluit: volgt                     # voert het besluit uit (RFC-022 par. 3.3)
     op_moment:
       bron: $external.datum_betaling
       grondslag: [testregeling_awb#3 lid 2]

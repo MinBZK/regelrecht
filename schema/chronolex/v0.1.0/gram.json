@@ -146,6 +146,24 @@
       "type": "string",
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
     },
+    "besluit": {
+      "enum": [
+        "opent",
+        "volgt",
+        "wijzigt"
+      ],
+      "description": "Uit de stroom: of het gram in de zaak een besluit opent, een besluit volgt of een besluit wijzigt. Ontbreekt het, dan hoort het gram bij de zaak zelf en bij geen besluit."
+    },
+    "besluitkenmerk": {
+      "description": "Alleen bij besluit, en dan verplicht: het kenmerk van het besluit. Bij opent en wijzigt geeft de cel het, als zaakkenmerk/volgnummer; bij volgt is het dat van het besluit dat het gram volgt.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[1-9][0-9]*$"
+    },
+    "wijzigt": {
+      "description": "Alleen bij besluit wijzigt, en dan verplicht: het kenmerk van het besluit dat dit besluit wijzigt (RFC-022 par. 3.1 is_wijziging_van).",
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[1-9][0-9]*$"
+    },
     "stroom": {
       "type": "object",
       "description": "De stroomdefinitie waarmee het gram is gebouwd, met de hash van dat bestand.",
@@ -415,6 +433,64 @@
           "type",
           "zaak"
         ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "besluit"
+        ]
+      },
+      "then": {
+        "properties": {
+          "zaak": {
+            "const": "volgt"
+          }
+        },
+        "required": [
+          "zaak",
+          "besluitkenmerk"
+        ]
+      },
+      "else": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "besluitkenmerk"
+              ]
+            },
+            {
+              "required": [
+                "wijzigt"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "besluit": {
+            "const": "wijzigt"
+          }
+        },
+        "required": [
+          "besluit"
+        ]
+      },
+      "then": {
+        "required": [
+          "wijzigt"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "wijzigt"
+          ]
+        }
       }
     }
   ]

@@ -129,6 +129,7 @@ pub(super) async fn loket_indienen(
         intake,
         external: invoer.external,
         zaakkenmerk: None,
+        besluitkenmerk: None,
         besluit: None,
         zaak_grammen: None,
     };

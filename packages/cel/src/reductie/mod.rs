@@ -600,6 +600,9 @@ mod tests {
             vastgelegd_op: moment.into(),
             zaak: Zaak::Opent,
             zaakkenmerk: Some(zaak.into()),
+            besluit: None,
+            besluitkenmerk: None,
+            wijzigt: None,
             stroom: StroomVerwijzing {
                 id: "test_aanvragen".into(),
                 sha256: "0".repeat(64),

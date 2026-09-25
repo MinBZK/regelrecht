@@ -208,7 +208,7 @@ impl Kroniek {
         &self,
         gram: &Gram,
         kronieken: &[&str],
-        controle: impl FnOnce(&Gram, &[&Gram]) -> Result<(), E>,
+        controle: impl FnOnce(&mut Gram, &[&Gram]) -> Result<(), E>,
     ) -> Result<Result<Gram, E>, String> {
         self.schrijf_mits(
             gram.clone(),
@@ -224,14 +224,16 @@ impl Kroniek {
     /// van hun `vastgelegd_op`, ook als twee verzoeken tegelijk komen. De
     /// controle ziet het gestempelde gram. Antwoord: het gram zoals het
     /// vastligt. Weigert het stempel het gram (een gebonden `op_moment` na
-    /// het vastleggen), dan maakt `weiger` daar de weigering van.
+    /// het vastleggen), dan maakt `weiger` daar de weigering van. De
+    /// controle mag het gram aanvullen met wat pas onder het slot vaststaat,
+    /// zoals het volgnummer van een besluit in de zaak.
     pub fn leg_vast_mits<E>(
         &self,
         gram: Gram,
         kronieken: &[&str],
         klok: impl FnOnce() -> DateTime<FixedOffset>,
         weiger: impl FnOnce(String) -> E,
-        controle: impl FnOnce(&Gram, &[&Gram]) -> Result<(), E>,
+        controle: impl FnOnce(&mut Gram, &[&Gram]) -> Result<(), E>,
     ) -> Result<Result<Gram, E>, String> {
         self.schrijf_mits(gram, kronieken, Some((klok, weiger)), controle)
     }
@@ -244,7 +246,7 @@ impl Kroniek {
             impl FnOnce() -> DateTime<FixedOffset>,
             impl FnOnce(String) -> E,
         )>,
-        controle: impl FnOnce(&Gram, &[&Gram]) -> Result<(), E>,
+        controle: impl FnOnce(&mut Gram, &[&Gram]) -> Result<(), E>,
     ) -> Result<Result<Gram, E>, String> {
         let pad = self.bestand(&gram.chronicle)?;
         let mut alle = kronieken.to_vec();
@@ -272,11 +274,11 @@ impl Kroniek {
                 return Ok(Err(weiger(f)));
             }
         }
-        let regel = als_regel(&gram)?;
         let zicht: Vec<&Gram> = bestaand.iter().map(|v| &v.gram).collect();
-        if let Err(w) = controle(&gram, &zicht) {
+        if let Err(w) = controle(&mut gram, &zicht) {
             return Ok(Err(w));
         }
+        let regel = als_regel(&gram)?;
         schrijf_regel(&pad, lengte, regel.as_bytes())?;
         let mut staat = self.schrijf_staat();
         let stapel = staat.entry(gram.chronicle.clone()).or_default();
@@ -488,6 +490,9 @@ mod tests {
             vastgelegd_op: "2025-03-12T10:14:05+01:00".into(),
             zaak: Zaak::Opent,
             zaakkenmerk: Some(zaak.into()),
+            besluit: None,
+            besluitkenmerk: None,
+            wijzigt: None,
             stroom: StroomVerwijzing {
                 id: "test".into(),
                 sha256: "a".repeat(64),

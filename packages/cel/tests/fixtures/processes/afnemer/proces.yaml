@@ -101,6 +101,7 @@ behandeling:
     # betaling boven het bedrag doet het proces niet uit zichzelf; gebeurde zij
     # toch, dan legt de cel haar vast en is het meerdere onverschuldigd betaald.
     - naam: betalen
+      besluit: besluit                 # de betaling voert het besluit uit
       regeling: testregeling_awb
       uitkomsten: [nog_te_betalen, onverschuldigd_betaald]
       vastleggen: {cel: test_afnemer, stroom: test_afnemer_zaakverloop, event: betaling_verricht}

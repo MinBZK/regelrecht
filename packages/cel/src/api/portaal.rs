@@ -113,6 +113,7 @@ async fn verzoek_voor(
         ),
         external: concept.external.clone(),
         zaakkenmerk: concept.zaakkenmerk.clone(),
+        besluitkenmerk: None,
         besluit: None,
         zaak_grammen: None,
     })

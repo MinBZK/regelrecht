@@ -2,15 +2,17 @@
 //! cel met een zaak, onder de naam [`ZAAKSTAND`].
 //!
 //! Een proces dat in een zaak handelt, moet weten hoe ver die zaak is: welke
-//! stages er liggen (RFC-008), hoe vaak elk event erin vastligt, wat het
-//! besluit vastlegde (de toestand waarop een latere stage verdergaat), het
-//! laatste `op_moment`, en of een aanvrager de zaak kent. Dat zijn afleidingen
+//! besluiten erin liggen en welke stages elk besluit doorliep (RFC-008), hoe
+//! vaak elk event erin vastligt, wat elk besluit vastlegde (de toestand
+//! waarop een latere stage van dat besluit verdergaat), het laatste
+//! `op_moment`, en of een aanvrager de zaak kent. Dat zijn afleidingen
 //! uit de grammen van de zaak, en afleiden is reductie: dat gebeurt in de cel
 //! (paper P:58, P:66), niet in het proces. Het proces leest deze lexostatus,
 //! geen grammen.
 //!
 //! De runtime biedt haar aan, geen `lexostatussen.yaml`: de zaak (`zaak:
-//! opent | volgt`, het zaakkenmerk en een stage per zaak) is een begrip van de
+//! opent | volgt`, het zaakkenmerk, het besluitkenmerk en een stage per
+//! besluit) is een begrip van de
 //! runtime zelf, niet van een casus, en wat een proces erover vraagt is voor
 //! elke cel hetzelfde. Een eigen definitie per cel zou in elke cel dezelfde
 //! regels herhalen, en het proces zou van hun naam en vorm afhangen. Een cel
@@ -50,9 +52,14 @@ pub struct Zaakstand {
     /// rechtens niet op een eerdere dag.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub laatste_op_moment: Option<String>,
-    /// Per stage (RFC-008) het gram dat haar vastlegde. Een zaak doorloopt
-    /// elke stage een keer; de cel dwingt dat af.
+    /// Per stage (RFC-008) het gram dat haar vastlegde, voor de stages die
+    /// bij geen besluit horen (zoals de aanvraag). Elk ligt een keer in de
+    /// zaak; de cel dwingt dat af.
     pub stages: BTreeMap<String, Stagestand>,
+    /// De besluiten in de zaak, in de volgorde waarin de cel ze vastlegde:
+    /// per besluit zijn stages en de grammen die het volgen.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub besluiten: Vec<Besluitstand>,
     /// Alleen als erom gevraagd is: of er een gram in de zaak ligt waarvan
     /// het veld dat aan het eigenaarpad bindt, de gevraagde waarde heeft.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -78,7 +85,47 @@ pub struct Stagestand {
     pub invoer: BTreeMap<String, Value>,
 }
 
+/// Een besluit in de zaak (RFC-008: het besluit is de state container): het
+/// gram dat het opende of wijzigde, de stages die het doorliep, en hoeveel
+/// grammen van elk event het volgen (zoals betalingen die het uitvoeren).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Besluitstand {
+    pub besluitkenmerk: String,
+    /// Het event dat het besluit vastlegde.
+    pub stroom: String,
+    pub event: String,
+    /// Het besluit dat dit besluit wijzigt, als het een wijziging is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wijzigt: Option<String>,
+    /// Per stage het gram dat haar voor dit besluit vastlegde; de stage van
+    /// het besluit zelf (zoals BESLUIT) draagt zijn uitkomsten en invoer.
+    pub stages: BTreeMap<String, Stagestand>,
+    /// Per event (`<stroom>/<event>`) hoeveel grammen dit besluit volgen,
+    /// het besluit zelf meegeteld.
+    pub events: BTreeMap<String, usize>,
+}
+
+impl Besluitstand {
+    /// De stage waarin het besluit werd genomen: die van het gram dat het
+    /// opende.
+    pub fn genomen(&self) -> Option<(&String, &Stagestand)> {
+        self.stages
+            .iter()
+            .find(|(_, s)| s.event == self.event && s.stroom == self.stroom)
+    }
+
+    /// Of het besluit door dit event werd vastgelegd.
+    pub fn van(&self, stroom: &str, event: &str) -> bool {
+        self.stroom == stroom && self.event == event
+    }
+}
+
 impl Zaakstand {
+    /// Het besluit met dit kenmerk.
+    pub fn besluit(&self, kenmerk: &str) -> Option<&Besluitstand> {
+        self.besluiten.iter().find(|b| b.besluitkenmerk == kenmerk)
+    }
+
     /// De sleutel van een event in [`Zaakstand::events`].
     pub fn sleutel(stroom: &str, event: &str) -> String {
         format!("{stroom}/{event}")
@@ -140,10 +187,39 @@ pub fn reduceer_zaak<'g>(
         if laatste.as_ref().is_none_or(|(l, _)| m > *l) {
             laatste = Some((m, g.op_moment.clone()));
         }
-        if let Some(s) = &g.stage {
-            // Een stage ligt een keer in een zaak; lag er toch een tweede
-            // (een oudere kroniek), dan telt de laatste in de tijd.
-            let later = match stand.stages.get(s) {
+        let stages = match (&g.besluitkenmerk, g.besluit) {
+            (Some(k), Some(rol)) => {
+                let i = stand.besluiten.iter().position(|b| &b.besluitkenmerk == k);
+                let b = match i {
+                    Some(i) => stand.besluiten.get_mut(i),
+                    None if rol.is_besluit() => {
+                        stand.besluiten.push(Besluitstand {
+                            besluitkenmerk: k.clone(),
+                            stroom: g.stroom.id.clone(),
+                            event: g.name.clone(),
+                            wijzigt: g.wijzigt.clone(),
+                            ..Besluitstand::default()
+                        });
+                        stand.besluiten.last_mut()
+                    }
+                    // Een gram dat een besluit volgt dat niet in de zaak
+                    // ligt: de cel legt dat niet vast.
+                    None => None,
+                };
+                b.map(|b| {
+                    *b.events
+                        .entry(Zaakstand::sleutel(&g.stroom.id, &g.name))
+                        .or_default() += 1;
+                    &mut b.stages
+                })
+            }
+            _ => Some(&mut stand.stages),
+        };
+        if let (Some(stages), Some(s)) = (stages, &g.stage) {
+            // Een stage ligt een keer in een besluit (of in de zaak); lag er
+            // toch een tweede (een oudere kroniek), dan telt de laatste in de
+            // tijd.
+            let later = match stages.get(s) {
                 None => true,
                 Some(eerder) => {
                     let e = crate::datum::moment(&eerder.op_moment)?;
@@ -151,7 +227,7 @@ pub fn reduceer_zaak<'g>(
                 }
             };
             if later {
-                stand.stages.insert(
+                stages.insert(
                     s.clone(),
                     Stagestand {
                         stroom: g.stroom.id.clone(),
@@ -213,6 +289,9 @@ mod tests {
             vastgelegd_op: "2025-03-12T10:00:00+01:00".into(),
             zaak: Zaak::Volgt,
             zaakkenmerk: Some("z1".into()),
+            besluit: None,
+            besluitkenmerk: None,
+            wijzigt: None,
             stroom: StroomVerwijzing {
                 id: "voorbeeldstroom".into(),
                 sha256: "0".repeat(64),

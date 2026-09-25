@@ -54,6 +54,11 @@ pub struct Event {
     /// heeft. Bepaalt of het gram een `zaakkenmerk` draagt.
     #[serde(default)]
     pub zaak: Zaak,
+    /// Of het gram binnen de zaak een besluit opent, een besluit volgt of
+    /// een besluit wijzigt (zie [`Besluit`]). Zonder hoort het bij de zaak
+    /// zelf, niet bij een besluit.
+    #[serde(default)]
+    pub besluit: Option<Besluit>,
     /// Waaraan het `op_moment` van het gram bindt, als dat niet het moment
     /// van vastleggen is.
     #[serde(default)]
@@ -107,6 +112,46 @@ impl Zaak {
             )),
             _ => Ok(()),
         }
+    }
+}
+
+/// Welk besluit een gram in een zaak betreft. Een zaak kan meer dan een
+/// besluit hebben (een voorschot, een vaststelling, een terugvordering); de
+/// stage-grammen van een besluit delen het besluitkenmerk (RFC-022 par. 1.2:
+/// de stages van een besluit horen bij elkaar, en het besluit is de state
+/// container van RFC-008). De cel geeft het kenmerk, zoals het zaakkenmerk.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Besluit {
+    /// Het gram is een besluit: de cel geeft een nieuw besluitkenmerk. Een
+    /// tweede gram van hetzelfde event in dezelfde zaak weigert de cel: een
+    /// ander besluit over dezelfde aanvraag vraagt een eigen grondslag.
+    Opent,
+    /// Het gram volgt een besluit in de zaak, zoals de bekendmaking of een
+    /// betaling die het uitvoert (RFC-022 par. 3.3 `references_decision`):
+    /// het proces geeft het besluitkenmerk mee.
+    Volgt,
+    /// Het gram is een besluit dat een ander besluit in de zaak wijzigt of
+    /// intrekt (RFC-022 par. 3.1 `modality`, RFC-008 Open Question 5): een
+    /// eigen besluit met een eigen kenmerk en een eigen grondslag, zoals Awb
+    /// 4:48 en 4:49. Het proces geeft het kenmerk van het gewijzigde besluit
+    /// mee; het gram draagt het als `wijzigt`.
+    Wijzigt,
+}
+
+impl Besluit {
+    pub fn als_tekst(self) -> &'static str {
+        match self {
+            Besluit::Opent => "opent",
+            Besluit::Volgt => "volgt",
+            Besluit::Wijzigt => "wijzigt",
+        }
+    }
+
+    /// Of een gram van dit event zelf een besluit is (en dus een eigen
+    /// besluitkenmerk krijgt).
+    pub fn is_besluit(self) -> bool {
+        self != Besluit::Volgt
     }
 }
 
@@ -502,6 +547,10 @@ pub struct Indiening<'a> {
     /// Bij `zaak: opent` het nieuwe kenmerk, bij `volgt` dat van de
     /// bestaande zaak, bij `geen` niets.
     pub zaakkenmerk: Option<&'a str>,
+    /// Bij `besluit: volgt` het besluit dat het gram volgt, bij `wijzigt`
+    /// het besluit dat het wijzigt; anders niets. Het kenmerk van een nieuw
+    /// besluit geeft de cel onder haar slot (zie [`Besluit`]).
+    pub besluitkenmerk: Option<&'a str>,
 }
 
 /// Bouw een gram uit een indiening. Het gram houdt de vorm van de stroom:
@@ -517,6 +566,7 @@ pub fn bouw_gram(
     event
         .zaak
         .toets_kenmerk(&event.name, indiening.zaakkenmerk)?;
+    let (besluitkenmerk, wijzigt) = besluit_van(event, indiening.besluitkenmerk)?;
     let vorm = event.external_vorm().map_err(|f| f.join("; "))?;
     let mut onbekend = Vec::new();
     let mut fouten = Vec::new();
@@ -580,6 +630,9 @@ pub fn bouw_gram(
         vastgelegd_op: datum::als_op_moment(&indiening.vastgelegd_op),
         zaak: event.zaak,
         zaakkenmerk: indiening.zaakkenmerk.map(str::to_string),
+        besluit: event.besluit,
+        besluitkenmerk,
+        wijzigt,
         stroom: StroomVerwijzing {
             id: stroom.id.clone(),
             sha256: stroom.sha256.clone(),
@@ -589,6 +642,33 @@ pub fn bouw_gram(
         inputs: BTreeMap::new(),
         receipt: None,
     })
+}
+
+/// Het besluitkenmerk en het gewijzigde besluit van een gram, uit wat het
+/// proces meegeeft. Bij `volgt` is het meegegeven kenmerk het besluit dat het
+/// gram volgt, bij `wijzigt` het besluit dat het wijzigt; het kenmerk van
+/// een nieuw besluit (`opent`, `wijzigt`) geeft de cel pas onder haar slot.
+fn besluit_van(
+    event: &Event,
+    meegegeven: Option<&str>,
+) -> Result<(Option<String>, Option<String>), String> {
+    let naam = &event.name;
+    match (event.besluit, meegegeven) {
+        (None, None) => Ok((None, None)),
+        (None, Some(_)) => Err(format!(
+            "event '{naam}' hoort bij geen besluit en krijgt geen besluitkenmerk"
+        )),
+        (Some(Besluit::Opent), Some(_)) => Err(format!(
+            "event '{naam}' opent een besluit: de cel geeft het besluitkenmerk"
+        )),
+        (Some(Besluit::Opent), None) => Ok((None, None)),
+        (Some(b), None) => Err(format!(
+            "event '{naam}' {} een besluit: geef het besluitkenmerk mee",
+            b.als_tekst()
+        )),
+        (Some(Besluit::Volgt), Some(k)) => Ok((Some(k.to_string()), None)),
+        (Some(Besluit::Wijzigt), Some(k)) => Ok((None, Some(k.to_string()))),
+    }
 }
 
 fn intake_waarde<'i>(indiening: &'i Indiening<'_>, pad: &str) -> Option<&'i Value> {
@@ -734,6 +814,7 @@ mod tests {
                 external: external.as_object().unwrap(),
                 vastgelegd_op: moment(),
                 zaakkenmerk: Some(ZAAK),
+                besluitkenmerk: None,
             },
         )
         .unwrap();
@@ -772,6 +853,7 @@ mod tests {
                 external: &Map::new(),
                 vastgelegd_op: moment(),
                 zaakkenmerk: Some(ZAAK),
+                besluitkenmerk: None,
             },
         )
     }
@@ -846,6 +928,7 @@ mod tests {
                 external: external.as_object().unwrap(),
                 vastgelegd_op: moment(),
                 zaakkenmerk: Some(ZAAK),
+                besluitkenmerk: None,
             },
         )
         .unwrap_err();
@@ -861,6 +944,7 @@ mod tests {
                 external: external.as_object().unwrap(),
                 vastgelegd_op: moment(),
                 zaakkenmerk: Some(ZAAK),
+                besluitkenmerk: None,
             },
         )
     }
@@ -1000,6 +1084,7 @@ mod tests {
                     external: &Map::new(),
                     vastgelegd_op: moment(),
                     zaakkenmerk: kenmerk,
+                    besluitkenmerk: None,
                 },
             );
             match fout {
@@ -1032,6 +1117,7 @@ mod tests {
                 external: &external,
                 vastgelegd_op: moment(),
                 zaakkenmerk: Some(ZAAK),
+                besluitkenmerk: None,
             },
         )
         .unwrap_err();

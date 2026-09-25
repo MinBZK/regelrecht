@@ -1976,7 +1976,7 @@ async fn besluit_nemen_legt_een_decretogram_vast() {
         f["fout"]
             .as_str()
             .unwrap()
-            .contains("ligt al een gram met stage BESLUIT"),
+            .contains("ligt al in de zaak; een ander besluit hierover vraagt een eigen grondslag"),
         "{f}"
     );
     let kroniek =
@@ -3274,7 +3274,8 @@ async fn besluit_bekendmaken_en_betalen() {
     let b = behandelaar(&app).await;
     let betaling = |bedrag: i64| json!({"bedrag": bedrag, "datum_betaling": "2025-03-12"});
 
-    // Voor het besluit: bekendmaken wacht, betalen mist het bedrag.
+    // Voor het besluit: bekendmaken en betalen wachten op het besluit dat ze
+    // volgen.
     let (status, f) = handeling(
         &app,
         &b,
@@ -3286,16 +3287,13 @@ async fn besluit_bekendmaken_en_betalen() {
     .await;
     assert_eq!(status, StatusCode::CONFLICT, "{f}");
     assert!(
-        f["fout"].as_str().unwrap().contains("nog geen besluit"),
+        f["fout"].as_str().unwrap().contains("wacht op het besluit"),
         "{f}"
     );
     let (status, f) = handeling(&app, &b, &zaak, "betalen", false, betaling(6000)).await;
     assert_eq!(status, StatusCode::CONFLICT, "{f}");
     assert!(
-        f["fout"]
-            .as_str()
-            .unwrap()
-            .contains("mist vastgesteld_bedrag"),
+        f["fout"].as_str().unwrap().contains("wacht op het besluit"),
         "{f}"
     );
 
@@ -3414,7 +3412,15 @@ async fn besluit_bekendmaken_en_betalen() {
         "{betalen}"
     );
     assert_eq!(betalen["vastgelegd"], json!(2));
-    let r = &z["rechtsbescherming"];
+    assert_eq!(betalen["besluit"], format!("{zaak}/1"));
+    let besluit = &z["besluiten"][0];
+    assert_eq!(besluit["handeling"], "besluit");
+    assert_eq!(
+        besluit["handelingen"],
+        json!(["bekendmaken", "betalen"]),
+        "{besluit}"
+    );
+    let r = &besluit["rechtsbescherming"];
     assert_eq!(r["na"], "BEKENDMAKING");
     assert_eq!(r["stage"], "BEZWAAR");
     assert_eq!(r["grondslag"], json!(["testregeling_awb#4"]));
@@ -3565,11 +3571,9 @@ async fn een_gemeld_feit_legt_de_cel_vast() {
         None,
     )
     .await;
-    assert_eq!(
-        l["rechtsbescherming"]["uitkomsten"]["einde_bezwaartermijn"],
-        Value::Null,
-        "{l}"
-    );
+    let r = &l["besluiten"][0]["rechtsbescherming"];
+    assert_eq!(r["stage"], "BEZWAAR", "{l}");
+    assert_eq!(r["uitkomsten"]["einde_bezwaartermijn"], Value::Null, "{l}");
 
     // Betalen: het bedrag, en dan een cent te veel.
     let (status, body) = handeling(&app, &b, &zaak, "betalen", false, betaling(6000)).await;
@@ -3635,6 +3639,7 @@ async fn een_moment_ligt_niet_voor_de_zaak_of_in_de_toekomst() {
             "event": "betaling_verricht",
             "external": {"bedrag": 1, "datum_betaling": "2025-03-01"},
             "zaakkenmerk": zaak,
+            "besluitkenmerk": format!("{zaak}/1"),
         }),
     )
     .await;
@@ -3691,13 +3696,19 @@ async fn de_cel_geeft_de_stand_van_een_zaak() {
         z["events"]["test_afnemer_zaakverloop/besluit_genomen"],
         json!(1)
     );
+    // Het besluit is een besluit in de zaak, met een eigen kenmerk; de
+    // aanvraag hoort bij de zaak zelf.
+    let besluit = &z["besluiten"][0];
+    assert_eq!(besluit["besluitkenmerk"], format!("{zaak}/1"), "{z}");
+    assert_eq!(besluit["event"], "besluit_genomen");
     assert_eq!(
-        z["stages"]["BESLUIT"]["velden"]["vastgesteld_bedrag"],
+        besluit["stages"]["BESLUIT"]["velden"]["vastgesteld_bedrag"],
         json!(6000),
         "{z}"
     );
-    assert!(z["stages"]["BESLUIT"]["invoer"].is_object(), "{z}");
+    assert!(besluit["stages"]["BESLUIT"]["invoer"].is_object(), "{z}");
     assert!(z["stages"]["AANVRAAG"].is_object(), "{z}");
+    assert!(z["stages"].get("BESLUIT").is_none(), "{z}");
     assert!(z.get("eigenaar").is_none());
 
     let (_, l) = lees(format!(
