@@ -265,7 +265,11 @@ en `veld`) of uit de samengevoegde parameters (`parameter`), zo nodig omgezet me
 `als: eerste_dag_van_het_jaar` (de tegenhanger van de afleiding `jaar_van`).
 Een bron levert een kolom uit haar `parameters` of haar `extra_velden`.
 Ontbreekt een invoer, is een bron onbereikbaar, of levert ze de waarde niet,
-dan blijft die kolom weg; `mist` noemt welke. Er wordt niets aangevuld.
+dan blijft die kolom weg; `mist` noemt welke. Er wordt niets aangevuld. Is
+het tabelveld geen lijst van objecten, dan komt er geen tabel (met `fout` in
+de uitslag), in plaats van een regel die stil wegvalt. De regels worden
+tegelijk bevraagd (hooguit zestien tegelijk), elk met haar bronnen na elkaar,
+en de tabel houdt de volgorde van het tabelveld.
 
 De toets kent hetzelfde blok onder `portaal.toets.rijen`. Daar komt de tabel
 uit de proefreductie van het concept (de toets-lexostatus) of uit een bron die
