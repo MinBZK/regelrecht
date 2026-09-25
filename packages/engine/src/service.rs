@@ -1810,7 +1810,8 @@ impl LawExecutionService {
             // why.
             //
             // Before the loop over the values, which overwrites this entry with
-            // `Reactive` for every name that does arrive with one. That order
+            // `Reactive` (or the `Override` a lex specialis left) for every name
+            // that does arrive with one. That order
             // is what keeps a produced output's provenance correct, so asking
             // here whether the name is absent would decide nothing — and a
             // condition that cannot change an outcome reads as a guard while
@@ -1822,10 +1823,17 @@ impl LawExecutionService {
             }
 
             for (name, value) in result.outputs {
-                let prov = OutputProvenance::Reactive {
-                    law_id: hook_law.id.clone(),
-                    article: hook_article.number.to_string(),
-                    hook_point: hook_point_str.to_string(),
+                // A lex specialis that replaced the hook's own value while the
+                // hook ran is the ground for that value: Vw art. 69 sets the
+                // four weeks, not Awb 6:7 (RFC-007). Keep its `Override`;
+                // every other value the hook produced is `Reactive`.
+                let prov = match result.output_provenance.get(&name) {
+                    Some(prov @ OutputProvenance::Override { .. }) => prov.clone(),
+                    _ => OutputProvenance::Reactive {
+                        law_id: hook_law.id.clone(),
+                        article: hook_article.number.to_string(),
+                        hook_point: hook_point_str.to_string(),
+                    },
                 };
                 if let Some(existing_law) = output_sources.get(&name) {
                     // Conflict: two hooks produce same output.
@@ -8620,6 +8628,103 @@ articles:
         assert_eq!(
             article_missing_from_version(&law, "1", "kaderwet", "1", "bedrag"),
             "the version of zonder_datum in force on this date has no article 1"
+        );
+    }
+
+    /// A hook produces two values and a lex specialis replaces one of them, as
+    /// Vw art. 69 does with the objection period of Awb 6:7. Only the replaced
+    /// value takes the override as its ground; the other stays reactive.
+    #[test]
+    fn test_hook_output_keeps_override_provenance_only_where_overridden() {
+        let besluit = r#"
+$id: wet_beschikking
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het bestuursorgaan stelt het bedrag vast
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TEST_BESCHIKKING
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 100
+  - number: '2'
+    text: In afwijking van artikel 7 van de termijnenwet bedraagt de bezwaartermijn vier weken
+    machine_readable:
+      overrides:
+        - law: wet_termijnen
+          article: '7'
+          output: bezwaartermijn_weken
+      execution:
+        output:
+          - name: bezwaartermijn_weken
+            type: number
+        actions:
+          - output: bezwaartermijn_weken
+            value: 4
+"#;
+        let termijnen = r#"
+$id: wet_termijnen
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '7'
+    text: De bezwaartermijn en de beroepstermijn bedragen zes weken
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: TEST_BESCHIKKING
+            stage: BESLUIT
+      execution:
+        output:
+          - name: bezwaartermijn_weken
+            type: number
+          - name: beroepstermijn_weken
+            type: number
+        actions:
+          - output: bezwaartermijn_weken
+            value: 6
+          - output: beroepstermijn_weken
+            value: 6
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(besluit).unwrap();
+        service.load_law(termijnen).unwrap();
+
+        let result = service
+            .evaluate_law_output("wet_beschikking", "bedrag", BTreeMap::new(), "2025-06-01")
+            .unwrap();
+
+        assert_eq!(
+            result.outputs.get("bezwaartermijn_weken"),
+            Some(&Value::Int(4))
+        );
+        assert_eq!(
+            result.output_provenance.get("bezwaartermijn_weken"),
+            Some(&OutputProvenance::Override {
+                law_id: "wet_beschikking".to_string(),
+                article: "2".to_string(),
+            })
+        );
+        assert_eq!(
+            result.outputs.get("beroepstermijn_weken"),
+            Some(&Value::Int(6))
+        );
+        assert_eq!(
+            result.output_provenance.get("beroepstermijn_weken"),
+            Some(&OutputProvenance::Reactive {
+                law_id: "wet_termijnen".to_string(),
+                article: "7".to_string(),
+                hook_point: "post_actions".to_string(),
+            })
         );
     }
 
