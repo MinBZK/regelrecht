@@ -209,6 +209,15 @@ both: `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml`.
   (see `docs/src/content/docs/reference/conformance.md`). Do not "fix" a
   divergence listed in `KNOWN_GAPS` in passing; reconciling those is tracked
   separately.
+- A mistake in a released schema version, even in a `description`, is fixed
+  with a patch release: a new `schema/vX.Y.Z` directory, wired up like the
+  previous release. Never add an overlay, correction table or build-time
+  substitution that makes the docs or any other consumer say something
+  different from the released `schema.json`. Validators and other
+  implementations download the schema itself, so a correction layer hides the
+  error instead of fixing it (PR #1579 replaced such an overlay with v0.7.1).
+  The same holds more broadly: when a source of truth is wrong, fix the
+  source, not a layer on top of it.
 
 ## De demo is meertalig
 
