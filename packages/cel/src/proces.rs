@@ -102,6 +102,9 @@ impl Proces {
             }
         }
         fouten.extend(vind_besluit(&mut definitie, &service));
+        if let Err(f) = crate::besluit::zet_stand_bij_besluit(&mut definitie, &service, &cel) {
+            fouten.push(f);
+        }
         let formulier = match definitie
             .portaal
             .as_ref()
@@ -112,6 +115,13 @@ impl Proces {
                 .ok(),
             None => None,
         };
+        // Elke grondslag in het formulier wijst een geladen artikel aan, en
+        // een lid dat het artikel heeft.
+        for (waar, g) in formulier.iter().flat_map(Formulier::grondslagen) {
+            if let Err(f) = crate::regelingen::geldig(&service, &g) {
+                fouten.push(format!("formulier, {waar}: {f}"));
+            }
+        }
         let voorbeelden = match &definitie.voorbeelden {
             Some(v) => {
                 fouten.extend(voorbeelden_zonder_handeling(&definitie, v));
@@ -417,7 +427,20 @@ mod tests {
         let afnemer = Proces::laad(&fixtures().join("processes/afnemer"), &c, s).unwrap();
         assert_eq!(afnemer.cel.id(), "test_afnemer");
         assert_eq!(afnemer.definitie.zaakbronnen().count(), 2);
-        assert_eq!(afnemer.definitie.andere_bronnen().count(), 1);
+        assert_eq!(afnemer.definitie.andere_bronnen().count(), 2);
+        // De stand bij besluit staat niet in proces.yaml: ze volgt uit de
+        // procedure van de beschikking (stage BEKENDMAKING na BESLUIT).
+        let stand = &afnemer
+            .definitie
+            .behandeling
+            .as_ref()
+            .unwrap()
+            .besluit
+            .stand_bij_besluit;
+        assert_eq!(stand["bekendgemaakt"].waarde, serde_json::json!(false));
+        assert_eq!(stand["datum_bekendmaking"].waarde, serde_json::Value::Null);
+        assert_eq!(stand["datum_bekendmaking"].stage, "BEKENDMAKING");
+        assert_eq!(stand.len(), 2);
     }
 
     #[test]

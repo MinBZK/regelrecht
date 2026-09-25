@@ -13,7 +13,9 @@
 //!    besluiten bestaan; het zijn de parameters met origin `OORDEEL`
 //!    (zie [`crate::origin::oordelen`]);
 //! 4. de stand bij besluit: feiten die pas na het besluit ontstaan, zoals de
-//!    bekendmaking, met hun stand op het moment van besluiten.
+//!    bekendmaking, met hun stand op het moment van besluiten. Ze staan niet
+//!    in de configuratie maar volgen uit de procedure van de beschikking
+//!    (RFC-008, zie [`stand_bij_besluit`]).
 //!
 //! Het proefbesluit voert het artikel uit met wat die bronnen leveren. Mist
 //! er iets, dan is het antwoord "niet te nemen: mist X"; er wordt niets
@@ -29,8 +31,9 @@ use serde_json::{Map, Value};
 
 use regelrecht_engine::LawExecutionService;
 
+use crate::cel::Cel;
 use crate::celclient::{self, Besluitvelden, Vastlegverzoek};
-use crate::config::BesluitDefinitie;
+use crate::config::{BesluitDefinitie, NogNiet};
 use crate::datum;
 use crate::formulier::Veld;
 use crate::gram::{GeladenRegeling, Gram, Invoer, Receipt, StroomVerwijzing};
@@ -101,6 +104,98 @@ fn benodigd(
     Ok(regelingen::benodigde_parameters(service, &b.regeling, a))
 }
 
+/// De stand bij besluit, uit de wet: de parameters van het besluit die de
+/// procedure van de beschikking (RFC-008, `procedure` bij het rechtskarakter
+/// dat het artikel produceert) pas vraagt in een stage na die van het
+/// vastleg-event. Bij het besluit zijn die nog niet gebeurd: een boolean is
+/// onwaar, al het andere leeg (null). Zo draagt de Awb zelf dat de
+/// bekendmaking (stage BEKENDMAKING, Awb 3:40 en 3:41) na het besluit komt,
+/// en staat er in de configuratie niets over.
+///
+/// Geen procedure bij het rechtskarakter: geen stand (de controle op de
+/// herkomst meldt dan wat er mist). Een vastleg-event zonder stage, of met een
+/// stage die de procedure niet kent, is een fout.
+pub fn stand_bij_besluit(
+    service: &LawExecutionService,
+    b: &BesluitDefinitie,
+    cel: &Cel,
+) -> Result<BTreeMap<String, NogNiet>, String> {
+    let mut uit = BTreeMap::new();
+    let Some(v) = &b.vastleggen else {
+        return Ok(uit);
+    };
+    let Some(stage) = cel
+        .event(&v.stroom, &v.event)
+        .and_then(|(_, e)| e.stage.clone())
+    else {
+        // Het vastleg-event meldt de controle op het besluit.
+        return Ok(uit);
+    };
+    let grondslag = artikel_van(service, b)?;
+    let artikel = regelingen::artikel(service, &grondslag)?;
+    let Some(produces) = artikel.get_produces() else {
+        return Ok(uit);
+    };
+    let Some(lc) = produces.legal_character.as_deref() else {
+        return Ok(uit);
+    };
+    let Some(procedure) = service
+        .resolver()
+        .find_procedure(lc, produces.procedure_id.as_deref())
+    else {
+        return Ok(uit);
+    };
+    let Some(i) = procedure.stages.iter().position(|s| s.name == stage) else {
+        return Err(format!(
+            "besluit, vastleggen {}/{}: stage '{stage}' staat niet in procedure '{}' van {lc} ({})",
+            v.stroom,
+            v.event,
+            procedure.id,
+            procedure
+                .stages
+                .iter()
+                .map(|s| s.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    };
+    let benodigd = regelingen::benodigde_parameters(service, &b.regeling, artikel);
+    for later in &procedure.stages[i + 1..] {
+        for r in later.requires.iter().flatten() {
+            let Some(p) = benodigd.get(&r.name) else {
+                continue;
+            };
+            let waarde = if p.soort.as_str() == Some("boolean") {
+                Value::Bool(false)
+            } else {
+                Value::Null
+            };
+            uit.entry(r.name.clone()).or_insert(NogNiet {
+                waarde,
+                stage: later.name.clone(),
+            });
+        }
+    }
+    Ok(uit)
+}
+
+/// Vul de stand bij besluit van een proces in uit de wet (zie
+/// [`stand_bij_besluit`]), zodra de regeling van het besluit bekend is.
+pub fn zet_stand_bij_besluit(
+    d: &mut crate::config::ProcesDefinitie,
+    service: &LawExecutionService,
+    cel: &Cel,
+) -> Result<(), String> {
+    let Some(b) = d.behandeling.as_mut().map(|b| &mut b.besluit) else {
+        return Ok(());
+    };
+    if b.regeling.is_empty() {
+        return Ok(());
+    }
+    b.stand_bij_besluit = stand_bij_besluit(service, b, cel)?;
+    Ok(())
+}
+
 /// De velden van het besluitformulier, met het type uit de regeling. Een
 /// fout als het artikel van het besluit niet te vinden is (de controle bij
 /// het opstarten vangt dat al af).
@@ -129,6 +224,7 @@ pub fn formuliervelden(
                 kolommen: None,
                 uitleg: o.uitleg.clone(),
                 groep: o.groep.clone(),
+                grondslag: Vec::new(),
             }
         })
         .collect())
@@ -252,7 +348,8 @@ pub fn controleer(proces: &Proces) -> Vec<String> {
         .collect();
     let mut invoer_uit: Vec<&str> = d
         .andere_bronnen()
-        .flat_map(|s| s.invoer.values().map(|v| v.lexostatus.as_str()))
+        .flat_map(|s| s.invoer.values().filter_map(|v| v.veld()))
+        .map(|v| v.lexostatus.as_str())
         .filter(|l| !doorgegeven.contains(l))
         .collect();
     invoer_uit.sort_unstable();
@@ -269,7 +366,7 @@ pub fn controleer(proces: &Proces) -> Vec<String> {
                 .or_default()
                 .push(format!("synthese-bron {}/{}", bron.cel, bron.lexostatus));
         }
-        for (i, v) in &bron.invoer {
+        for (i, v) in bron.invoer.iter().filter_map(|(i, v)| Some((i, v.veld()?))) {
             if !zaak.contains(&&v.lexostatus) && !doorgegeven.contains(&v.lexostatus.as_str()) {
                 fouten.push(format!(
                     "besluit: synthese-bron {}/{}, invoer '{i}': komt uit lexostatus '{}', en die is geen lexostatus van de zaak (zaak: true)",
@@ -473,7 +570,7 @@ pub async fn proefbesluit(
     let hoofd = proces
         .definitie
         .andere_bronnen()
-        .flat_map(|s| s.invoer.values())
+        .flat_map(|s| s.invoer.values().filter_map(|v| v.veld()))
         .find_map(|v| eigen.iter().position(|l| l.naam == v.lexostatus))
         .unwrap_or(0);
     let mut samen = match eigen.get(hoofd) {
@@ -496,7 +593,11 @@ pub async fn proefbesluit(
     }
 
     // 3. Synthese per regel: een tabelveld wordt een array-parameter.
-    let uitslagen = rijen::pas_toe(rijen, &eigen, &mut samen).await;
+    let wet = rijen::Wet {
+        service,
+        datum: peildatum,
+    };
+    let uitslagen = rijen::pas_toe(rijen, &eigen, &mut samen, wet).await;
 
     // 4. De oordelen van de behandelaar; een leeg veld gaat niet mee.
     for (p, w) in formulier {
@@ -506,10 +607,16 @@ pub async fn proefbesluit(
         }
     }
 
-    // 5. De stand bij besluit.
-    for (p, w) in &b.stand_bij_besluit {
-        samen.parameters.insert(p.clone(), w.clone());
-        samen.herkomst.insert(p.clone(), Herkomst::StandBijBesluit);
+    // 5. De stand bij besluit: wat de procedure pas in een latere stage
+    // vraagt, is nog niet gebeurd.
+    for (p, n) in &b.stand_bij_besluit {
+        samen.parameters.insert(p.clone(), n.waarde.clone());
+        samen.herkomst.insert(
+            p.clone(),
+            Herkomst::StandBijBesluit {
+                stage: n.stage.clone(),
+            },
+        );
     }
 
     let uitkomsten: Vec<&str> = b.uitkomsten.iter().map(String::as_str).collect();

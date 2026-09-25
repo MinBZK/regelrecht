@@ -12,7 +12,11 @@
 //! bron komt uit de regel zelf (`kolom`), uit een lexostatus van de zaak
 //! (`lexostatus` en `veld`) of uit de samengevoegde parameters
 //! (`parameter`); een bron die eerder aan de beurt was kan dus een kolom
-//! leveren die een latere bron als invoer gebruikt. Ontbreekt een invoer, is
+//! leveren die een latere bron als invoer gebruikt. Een invoer kan ook een
+//! uitkomst van een regeling zijn (`regeling` en `uitkomst`): de wet leidt
+//! haar af uit de samengevoegde parameters, zoals een peildatum uit een
+//! jaartal, in een eigen run vóór de regels; of een vaste waarde (`waarde`).
+//! Ontbreekt een invoer, is
 //! een bron onbereikbaar, of levert ze de waarde niet, dan blijft die kolom
 //! weg: er wordt niets aangevuld. Welke kolommen dat waren, staat in `mist`.
 //!
@@ -27,9 +31,10 @@ use futures_util::stream::{self, StreamExt};
 use serde::Serialize;
 use serde_json::{Map, Value};
 
+use regelrecht_engine::LawExecutionService;
+
 use crate::cel::Cel;
-use crate::config::{Omzetting, ProcesDefinitie, RijBron, RijInvoer, RijenDefinitie};
-use crate::datum;
+use crate::config::{ProcesDefinitie, RijBron, RijInvoer, RijenDefinitie};
 use crate::reductie::Lexostatus;
 use crate::synthese::{Herkomst, Samenvoeging, Status};
 use crate::transport::TransportFout;
@@ -74,6 +79,53 @@ pub struct Uitslag {
     /// Kolommen die niet in elke regel staan, zonder dubbelen.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub mist: Vec<String>,
+    /// De invoer die de wet afleidde, per `<regeling>#<uitkomst>`, met de
+    /// waarde of waarom er geen was.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub uit_de_wet: BTreeMap<String, Result<Value, String>>,
+}
+
+/// Wat een invoer uit de wet nodig heeft: het corpus en de datum waarop de
+/// engine de regeling leest (die van de toets of het besluit).
+#[derive(Clone, Copy)]
+pub struct Wet<'a> {
+    pub service: &'a LawExecutionService,
+    pub datum: &'a str,
+}
+
+/// De sleutel van een invoer uit de wet.
+fn wetsleutel(regeling: &str, uitkomst: &str) -> String {
+    format!("{regeling}#{uitkomst}")
+}
+
+/// Reken elke invoer uit de wet van deze rijen-definitie uit, een keer, met
+/// de samengevoegde parameters. Er wordt niets aangevuld: mist de uitkomst
+/// een feit, dan zegt de fout welk.
+fn uit_de_wet(
+    rijen: &Rijen,
+    parameters: &BTreeMap<String, Value>,
+    wet: Wet<'_>,
+) -> BTreeMap<String, Result<Value, String>> {
+    let mut uit = BTreeMap::new();
+    for b in rijen.bronnen.iter().map(|b| &b.definitie) {
+        for i in b.invoer.values() {
+            let RijInvoer::Wet { regeling, uitkomst } = i else {
+                continue;
+            };
+            let sleutel = wetsleutel(regeling, uitkomst);
+            if uit.contains_key(&sleutel) {
+                continue;
+            }
+            let e =
+                crate::toets::evalueer(wet.service, regeling, &[uitkomst], parameters, wet.datum);
+            let waarde = match e.waarden.get(uitkomst.as_str()) {
+                Some(w) if !w.is_null() => Ok(w.clone()),
+                _ => Err(e.reden(&format!("{sleutel} heeft geen waarde"))),
+            };
+            uit.insert(sleutel, waarde);
+        }
+    }
+    uit
 }
 
 /// De waarde die een lexostatus onder een naam levert: een parameter of een
@@ -86,52 +138,44 @@ fn uit_lexostatus<'l>(
     lexostatussen.iter().find(|l| l.naam == naam)?.veld(veld)
 }
 
-/// Zet een waarde om voor ze als invoer meegaat.
-fn zet_om(waarde: &Value, omzetting: Omzetting) -> Option<Value> {
-    match omzetting {
-        Omzetting::EersteDagVanHetJaar => {
-            let jaar = waarde.as_i64().or_else(|| waarde.as_str()?.parse().ok())?;
-            Some(Value::String(datum::eerste_dag_van_het_jaar(jaar)))
-        }
-    }
-}
-
 /// De invoer voor een bron bij een regel. Een fout noemt wat ontbreekt.
 fn invoer(
     bron: &RijBron,
     regel: &Map<String, Value>,
     lexostatussen: &[Lexostatus],
     parameters: &BTreeMap<String, Value>,
+    wet: &BTreeMap<String, Result<Value, String>>,
 ) -> Result<Map<String, Value>, String> {
     let mut uit = Map::new();
     for (naam, verwijzing) in &bron.invoer {
         let (waarde, wat) = match verwijzing {
-            RijInvoer::Kolom { kolom, .. } => (
+            RijInvoer::Kolom { kolom } => (
                 regel.get(kolom).filter(|w| !w.is_null()),
                 format!("kolom '{kolom}'"),
             ),
-            RijInvoer::Eigen {
-                lexostatus, veld, ..
-            } => (
+            RijInvoer::Eigen { lexostatus, veld } => (
                 uit_lexostatus(lexostatussen, lexostatus, veld),
                 format!("lexostatus '{lexostatus}', veld '{veld}'"),
             ),
-            RijInvoer::Parameter { parameter, .. } => (
+            RijInvoer::Parameter { parameter } => (
                 parameters.get(parameter).filter(|w| !w.is_null()),
                 format!("parameter '{parameter}'"),
             ),
+            RijInvoer::Wet { regeling, uitkomst } => {
+                match wet.get(&wetsleutel(regeling, uitkomst)) {
+                    Some(Ok(w)) => (Some(w), String::new()),
+                    Some(Err(f)) => return Err(format!("invoer '{naam}' ontbreekt: {f}")),
+                    None => (None, format!("uitkomst '{uitkomst}' van {regeling}")),
+                }
+            }
+            RijInvoer::Waarde { waarde } => (Some(waarde), String::new()),
         };
         let Some(waarde) = waarde else {
             return Err(format!(
                 "invoer '{naam}' ontbreekt: {wat} heeft geen waarde"
             ));
         };
-        let waarde = match verwijzing.omzetting() {
-            Some(o) => zet_om(waarde, o)
-                .ok_or_else(|| format!("invoer '{naam}': {wat} is niet om te zetten ({waarde})"))?,
-            None => waarde.clone(),
-        };
-        uit.insert(naam.clone(), waarde);
+        uit.insert(naam.clone(), waarde.clone());
     }
     Ok(uit)
 }
@@ -181,6 +225,7 @@ async fn stel_regel_samen(
     bron: &Map<String, Value>,
     lexostatussen: &[Lexostatus],
     parameters: &BTreeMap<String, Value>,
+    wet: &BTreeMap<String, Result<Value, String>>,
 ) -> Regeluitslag {
     let mut uit = Regeluitslag {
         regel: Map::new(),
@@ -195,7 +240,7 @@ async fn stel_regel_samen(
         }
     }
     for b in &rijen.bronnen {
-        let invoer = match invoer(&b.definitie, &uit.regel, lexostatussen, parameters) {
+        let invoer = match invoer(&b.definitie, &uit.regel, lexostatussen, parameters, wet) {
             Ok(i) => i,
             Err(f) => {
                 uit.bronnen.push(Bevraging::NietBevraagd(f));
@@ -240,6 +285,7 @@ pub async fn stel_samen(
     rijen: &Rijen,
     lexostatussen: &[Lexostatus],
     parameters: &BTreeMap<String, Value>,
+    wet: Wet<'_>,
 ) -> Option<Uitslag> {
     let d = &rijen.definitie;
     let waar = format!(
@@ -252,6 +298,7 @@ pub async fn stel_samen(
         regels: Vec::new(),
         bronnen: Vec::new(),
         mist: Vec::new(),
+        uit_de_wet: BTreeMap::new(),
     };
     let tabel = uit_lexostatus(lexostatussen, &d.tabel.lexostatus, &d.tabel.veld)?;
     let Some(tabel) = tabel.as_array() else {
@@ -291,9 +338,16 @@ pub async fn stel_samen(
     // kolom van een eerdere als invoer nemen.
     // Eerst de futures in een lijst: een stream over een closure met
     // verwijzingen maakt de future van een route niet Send.
+    let afgeleid = uit_de_wet(rijen, parameters, wet);
     let mut vragen = Vec::with_capacity(rijregels.len());
     for r in rijregels {
-        vragen.push(stel_regel_samen(rijen, r, lexostatussen, parameters));
+        vragen.push(stel_regel_samen(
+            rijen,
+            r,
+            lexostatussen,
+            parameters,
+            &afgeleid,
+        ));
     }
     let per_regel: Vec<Regeluitslag> = stream::iter(vragen).buffered(GELIJKTIJDIG).collect().await;
     for r in per_regel {
@@ -320,6 +374,7 @@ pub async fn stel_samen(
         regels,
         bronnen: uitslagen,
         mist: mist.into_iter().collect(),
+        uit_de_wet: afgeleid,
     })
 }
 
@@ -333,6 +388,7 @@ pub async fn pas_toe(
     rijen: &[Rijen],
     eigen: &[Lexostatus],
     samen: &mut Samenvoeging,
+    wet: Wet<'_>,
 ) -> Vec<Uitslag> {
     let mut met_bronnen = eigen.to_vec();
     for u in samen.bronnen.iter().filter(|u| !u.extra_velden.is_empty()) {
@@ -347,7 +403,7 @@ pub async fn pas_toe(
     }
     let mut uitslagen = Vec::new();
     for r in rijen {
-        let Some(uitslag) = stel_samen(r, &met_bronnen, &samen.parameters).await else {
+        let Some(uitslag) = stel_samen(r, &met_bronnen, &samen.parameters, wet).await else {
             continue;
         };
         if uitslag.fout.is_some() {
@@ -430,18 +486,28 @@ pub fn controleer(
         }
         for (i, v) in &bron.invoer {
             match v {
-                RijInvoer::Kolom { kolom, .. } if !kolommen.contains_key(kolom.as_str()) => {
+                RijInvoer::Kolom { kolom } if !kolommen.contains_key(kolom.as_str()) => {
                     fouten.push(format!(
                         "{bronwie}, invoer '{i}': kolom '{kolom}' wordt door niets ervoor gevuld"
                     ));
                 }
-                RijInvoer::Eigen {
-                    lexostatus, veld, ..
-                } if !doorgegeven_veld(lexostatus, veld)
-                    && !cel
-                        .lexostatussen
-                        .lexostatus(lexostatus)
-                        .is_some_and(|l| l.levert(veld)) =>
+                RijInvoer::Wet { regeling, uitkomst }
+                    if cel
+                        .service
+                        .resolver()
+                        .get_article_by_output(regeling, uitkomst, None)
+                        .is_none() =>
+                {
+                    fouten.push(format!(
+                        "{bronwie}, invoer '{i}': regeling '{regeling}' heeft geen uitkomst '{uitkomst}'"
+                    ));
+                }
+                RijInvoer::Eigen { lexostatus, veld }
+                    if !doorgegeven_veld(lexostatus, veld)
+                        && !cel
+                            .lexostatussen
+                            .lexostatus(lexostatus)
+                            .is_some_and(|l| l.levert(veld)) =>
                 {
                     fouten.push(format!(
                         "{bronwie}, invoer '{i}': lexostatus '{lexostatus}' levert geen '{veld}'"
@@ -469,6 +535,38 @@ mod tests {
     use crate::transport::proef::Vast;
     use serde_json::json;
     use std::sync::Arc;
+
+    /// Een fictieve regeling die een peildatum afleidt uit een jaartal.
+    const PEIL: &str = r#"
+$id: testregeling_peil
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het tarief geldt op 1 januari van het jaar.
+    machine_readable:
+      execution:
+        parameters:
+          - {name: jaar, type: number, required: true}
+        output:
+          - {name: peildatum, type: date}
+        actions:
+          - output: peildatum
+            value: {operation: DATE, year: $jaar, month: 1, day: 1}
+"#;
+
+    fn service() -> LawExecutionService {
+        let mut s = LawExecutionService::new();
+        s.load_law(PEIL).unwrap();
+        s
+    }
+
+    fn wet(service: &LawExecutionService) -> Wet<'_> {
+        Wet {
+            service,
+            datum: "2026-05-01",
+        }
+    }
 
     fn eigen() -> Vec<Lexostatus> {
         vec![serde_json::from_value(json!({
@@ -522,7 +620,7 @@ mod tests {
             definitie: definitie(),
             bronnen: vec![b],
         };
-        let u = stel_samen(&rijen, &eigen(), &BTreeMap::new())
+        let u = stel_samen(&rijen, &eigen(), &BTreeMap::new(), wet(&service()))
             .await
             .unwrap();
         assert_eq!(
@@ -552,7 +650,7 @@ mod tests {
             definitie: definitie(),
             bronnen: vec![b],
         };
-        let u = stel_samen(&rijen, &eigen(), &BTreeMap::new())
+        let u = stel_samen(&rijen, &eigen(), &BTreeMap::new(), wet(&service()))
             .await
             .unwrap();
         assert!(!u.regels[0].as_object().unwrap().contains_key("tarief"));
@@ -561,13 +659,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn invoer_uit_een_parameter_met_omzetting() {
+    async fn invoer_uit_de_wet_en_een_vaste_waarde() {
+        // De peildatum leidt de regeling af uit het jaartal; de configuratie
+        // zet niets om.
         let (b, t) = bron(
             Ok(json!({"naam": "per_gebied", "parameters": {"bedrag": 7}})),
             json!({
                 "gebied": {"kolom": "gebiedscode"},
-                "peildatum": {"parameter": "jaar", "als": "eerste_dag_van_het_jaar"},
+                "peildatum": {"regeling": "testregeling_peil", "uitkomst": "peildatum"},
                 "naam": {"lexostatus": "aanvraag", "veld": "aanduiding"},
+                "soort": {"waarde": "raad"},
             }),
         );
         let rijen = Rijen {
@@ -576,12 +677,40 @@ mod tests {
         };
         let mut parameters = BTreeMap::new();
         parameters.insert("jaar".to_string(), json!(2026));
-        let u = stel_samen(&rijen, &eigen(), &parameters).await.unwrap();
+        let u = stel_samen(&rijen, &eigen(), &parameters, wet(&service()))
+            .await
+            .unwrap();
         assert_eq!(
             t.vragen()[0],
-            "/cellen/register/api/lexostatus/per_gebied?gebied=A&naam=EEN+LIJST&peildatum=2026-01-01"
+            "/cellen/register/api/lexostatus/per_gebied?gebied=A&naam=EEN+LIJST&peildatum=2026-01-01&soort=raad"
         );
         assert_eq!(u.regels[0]["tarief"], json!(7));
+        assert_eq!(
+            u.uit_de_wet["testregeling_peil#peildatum"],
+            Ok(json!("2026-01-01"))
+        );
+    }
+
+    /// Kan de wet de invoer niet afleiden, dan wordt de bron niet bevraagd en
+    /// zegt de fout wat de wet miste.
+    #[tokio::test]
+    async fn invoer_uit_de_wet_die_een_feit_mist() {
+        let (b, t) = bron(
+            Ok(json!({"naam": "per_gebied", "parameters": {"bedrag": 7}})),
+            json!({"peildatum": {"regeling": "testregeling_peil", "uitkomst": "peildatum"}}),
+        );
+        let rijen = Rijen {
+            definitie: definitie(),
+            bronnen: vec![b],
+        };
+        let u = stel_samen(&rijen, &eigen(), &BTreeMap::new(), wet(&service()))
+            .await
+            .unwrap();
+        assert!(t.vragen().is_empty());
+        let fout = u.bronnen[0].fout.as_deref().unwrap();
+        assert!(fout.contains("invoer 'peildatum' ontbreekt"), "{fout}");
+        assert!(fout.contains("jaar"), "{fout}");
+        assert_eq!(u.mist, ["tarief"]);
     }
 
     #[tokio::test]
@@ -594,7 +723,7 @@ mod tests {
             definitie: definitie(),
             bronnen: vec![b],
         };
-        let u = stel_samen(&rijen, &eigen(), &BTreeMap::new())
+        let u = stel_samen(&rijen, &eigen(), &BTreeMap::new(), wet(&service()))
             .await
             .unwrap();
         assert!(t.vragen().is_empty());
@@ -618,7 +747,9 @@ mod tests {
             definitie: definitie(),
             bronnen: Vec::new(),
         };
-        let u = stel_samen(&rijen, &l, &BTreeMap::new()).await.unwrap();
+        let u = stel_samen(&rijen, &l, &BTreeMap::new(), wet(&service()))
+            .await
+            .unwrap();
         assert!(u.regels.is_empty());
         assert!(
             u.fout
@@ -633,7 +764,13 @@ mod tests {
             herkomst: BTreeMap::new(),
             bronnen: Vec::new(),
         };
-        let uit = pas_toe(std::slice::from_ref(&rijen), &l, &mut samen).await;
+        let uit = pas_toe(
+            std::slice::from_ref(&rijen),
+            &l,
+            &mut samen,
+            wet(&service()),
+        )
+        .await;
         assert!(uit[0].fout.is_some());
         assert!(!samen.parameters.contains_key("tabel"));
     }
@@ -685,7 +822,9 @@ mod tests {
             definitie: definitie(),
             bronnen: vec![b],
         };
-        let u = stel_samen(&rijen, &l, &BTreeMap::new()).await.unwrap();
+        let u = stel_samen(&rijen, &l, &BTreeMap::new(), wet(&service()))
+            .await
+            .unwrap();
         assert!(t.hoogste.load(std::sync::atomic::Ordering::SeqCst) > 1);
         // Elke regel houdt haar eigen antwoord, in de volgorde van de tabel.
         let tarieven: Vec<&str> = u
@@ -706,8 +845,10 @@ mod tests {
             definitie: d,
             bronnen: Vec::new(),
         };
-        assert!(stel_samen(&rijen, &eigen(), &BTreeMap::new())
-            .await
-            .is_none());
+        assert!(
+            stel_samen(&rijen, &eigen(), &BTreeMap::new(), wet(&service()))
+                .await
+                .is_none()
+        );
     }
 }

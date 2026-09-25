@@ -174,15 +174,28 @@ pub struct BesluitDefinitie {
     /// (zie [`crate::origin::oordelen`]).
     #[serde(skip)]
     pub formulier: Vec<Oordeel>,
-    /// Feiten die pas na het besluit ontstaan, met hun stand bij het besluit.
-    #[serde(default)]
-    pub stand_bij_besluit: BTreeMap<String, Value>,
+    /// Feiten die pas na het besluit ontstaan, met hun stand bij het besluit:
+    /// niet in `proces.yaml`, maar bij het laden afgeleid uit de procedure
+    /// van de beschikking (RFC-008). Een parameter die pas een latere stage
+    /// vraagt dan die van het vastleg-event, is bij het besluit nog niet
+    /// gebeurd: onwaar, of leeg (zie [`crate::besluit::stand_bij_besluit`]).
+    #[serde(skip)]
+    pub stand_bij_besluit: BTreeMap<String, NogNiet>,
     /// Synthese per regel: een tabelveld wordt een array-parameter.
     #[serde(default)]
     pub rijen: Vec<RijenDefinitie>,
     /// Waar het besluit als gram wordt vastgelegd.
     #[serde(default)]
     pub vastleggen: Option<Vastleggen>,
+}
+
+/// Een feit dat bij het besluit nog niet gebeurd is: de stage van de
+/// procedure waarin het pas ontstaat, en de stand bij het besluit (onwaar,
+/// of leeg).
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct NogNiet {
+    pub waarde: Value,
+    pub stage: String,
 }
 
 /// De cel en het event waarin het proces het genomen besluit laat
@@ -232,44 +245,100 @@ pub struct RijBron {
 #[serde(untagged)]
 pub enum RijInvoer {
     /// Een kolom van de regel zelf, zoals die na de kolomnamen heet.
-    Kolom {
-        kolom: String,
-        #[serde(default)]
-        als: Option<Omzetting>,
-    },
+    Kolom { kolom: String },
     /// Een veld van een lexostatus van de zaak, of van een bron die het
     /// doorgeeft (een parameter of een extra veld).
-    Eigen {
-        lexostatus: String,
-        veld: String,
-        #[serde(default)]
-        als: Option<Omzetting>,
-    },
+    Eigen { lexostatus: String, veld: String },
     /// Een parameter uit de samenvoeging: de lexostatussen van de zaak en de
     /// synthese van het proces.
-    Parameter {
-        parameter: String,
-        #[serde(default)]
-        als: Option<Omzetting>,
-    },
+    Parameter { parameter: String },
+    /// Een uitkomst van een regeling, uitgerekend met de samengevoegde
+    /// parameters: de wet leidt de invoer af, zoals een peildatum uit een
+    /// jaartal. Een keer per uitvoering, voor alle regels.
+    Wet { regeling: String, uitkomst: String },
+    /// Een vaste waarde.
+    Waarde { waarde: Value },
 }
 
-/// Een omzetting van een waarde voor ze als invoer meegaat.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Omzetting {
-    /// Van een jaartal naar de datum 1 januari van dat jaar. De tegenhanger
-    /// van de afleiding `jaar_van`.
-    EersteDagVanHetJaar,
+/// Waar de invoer van een synthese-bron vandaan komt.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum BronInvoer {
+    /// Een veld van een lexostatus van de zaak, of van een eerdere bron.
+    Veld(InvoerVerwijzing),
+    /// Een vaste waarde, zoals het orgaan waarvan het register wordt gevraagd.
+    Waarde { waarde: Value },
 }
 
-impl RijInvoer {
-    pub fn omzetting(&self) -> Option<Omzetting> {
+impl BronInvoer {
+    /// Het veld, als de invoer er een aanwijst.
+    pub fn veld(&self) -> Option<&InvoerVerwijzing> {
         match self {
-            RijInvoer::Kolom { als, .. }
-            | RijInvoer::Eigen { als, .. }
-            | RijInvoer::Parameter { als, .. } => *als,
+            BronInvoer::Veld(v) => Some(v),
+            BronInvoer::Waarde { .. } => None,
         }
+    }
+}
+
+/// De parameters die een synthese-bron levert: per naam bij de bron de naam
+/// bij de afnemer. De bron spreekt de taal van haar eigen wet; de vertaling
+/// hoort bij de afnemer. In `proces.yaml` een lijst (dezelfde naam) of een
+/// tabel (bron: afnemer).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Parameters(Vec<(String, String)>);
+
+impl Parameters {
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Paren (naam bij de bron, naam bij de afnemer).
+    pub fn paren(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.0.iter().map(|(b, a)| (b.as_str(), a.as_str()))
+    }
+
+    /// De namen bij de afnemer.
+    pub fn iter(&self) -> impl Iterator<Item = &String> {
+        self.0.iter().map(|(_, a)| a)
+    }
+
+    /// De paren waarin de afnemer het feit onder een andere naam vraagt.
+    pub fn vertaald(&self) -> BTreeMap<&str, &str> {
+        self.paren().filter(|(b, a)| b != a).collect()
+    }
+}
+
+/// Als lijst van de namen bij de afnemer: wat de bron het proces levert.
+impl serde::Serialize for Parameters {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.collect_seq(self.iter())
+    }
+}
+
+/// Over de namen bij de afnemer: de parameters die de bron het proces levert.
+impl<'a> IntoIterator for &'a Parameters {
+    type Item = &'a String;
+    type IntoIter = std::iter::Map<
+        std::slice::Iter<'a, (String, String)>,
+        fn(&'a (String, String)) -> &'a String,
+    >;
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter().map(|(_, a)| a)
+    }
+}
+
+impl<'de> Deserialize<'de> for Parameters {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Vorm {
+            Lijst(Vec<String>),
+            Tabel(BTreeMap<String, String>),
+        }
+        Ok(Parameters(match Vorm::deserialize(d)? {
+            Vorm::Lijst(l) => l.into_iter().map(|n| (n.clone(), n)).collect(),
+            Vorm::Tabel(t) => t.into_iter().collect(),
+        }))
     }
 }
 
@@ -308,26 +377,12 @@ pub struct Aanbod {
     pub uitkomst: String,
     #[serde(default)]
     pub termijn: Option<String>,
-    /// Welke tijdvakken het portaal aanbiedt, als het aanbod-artikel een
-    /// tijdvak vraagt (de parameter met origin BELANGHEBBENDE en grondslag
-    /// Awb 4:2 lid 1). Voorlopig configuratie, niet uit de wet.
+    /// Een uitkomst van dezelfde regeling: de tijdvakken die het beleid
+    /// aanbiedt, als het aanbod-artikel een tijdvak vraagt (de parameter met
+    /// origin BELANGHEBBENDE en grondslag Awb 4:2 lid 1). Het portaal rekent
+    /// haar uit in een run zonder parameters op de datum van vandaag.
     #[serde(default)]
-    pub keuzes: Option<Keuzes>,
-}
-
-/// De tijdvakken die het portaal aanbiedt.
-#[derive(Debug, Clone, Deserialize)]
-pub struct Keuzes {
-    /// Jaartallen, geteld vanaf het jaar van vandaag: `[0, 1]` is dit jaar en
-    /// het volgende.
-    pub jaren_vanaf_nu: Vec<i64>,
-}
-
-impl Keuzes {
-    /// De waarden van het tijdvak in een jaar.
-    pub fn waarden(&self, jaar: i64) -> Vec<i64> {
-        self.jaren_vanaf_nu.iter().map(|d| jaar + d).collect()
-    }
+    pub tijdvakken: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -364,12 +419,14 @@ pub struct SyntheseBron {
     #[serde(default)]
     pub zaak: bool,
     /// Per input van de bron: uit welk veld van een lexostatus van de zaak
-    /// (bij de toets: de toets-lexostatus), of van een eerdere bron.
+    /// (bij de toets: de toets-lexostatus), van een eerdere bron, of een vaste
+    /// waarde.
     #[serde(default)]
-    pub invoer: BTreeMap<String, InvoerVerwijzing>,
-    /// De parameters die deze bron levert, expliciet.
+    pub invoer: BTreeMap<String, BronInvoer>,
+    /// De parameters die deze bron levert, expliciet, met de naam bij de
+    /// afnemer.
     #[serde(default)]
-    pub parameters: Vec<String>,
+    pub parameters: Parameters,
     /// Velden uit het antwoord die geen parameter zijn, maar invoer voor een
     /// latere bron (bijvoorbeeld een naam bij een registratienummer).
     #[serde(default)]
@@ -499,6 +556,54 @@ mod tests {
         assert_eq!(d.synthese[0].url.as_deref(), Some("http://localhost:7172"));
         assert!(d.portaal.is_none());
         assert!(d.voorbeelden.is_none());
+    }
+
+    /// De parameters van een bron: een lijst (dezelfde naam) of per naam bij
+    /// de bron de naam bij de afnemer; een invoer is een veld of een vaste
+    /// waarde.
+    #[test]
+    fn parameters_met_vertaling_en_een_vaste_invoer() {
+        let d = ProcesDefinitie::parse(
+            "id: a\nactor: a\nsynthese:\n  - {cel: b, lexostatus: l, invoer: {x: {lexostatus: e, veld: x}, orgaan: {waarde: raad}}, parameters: {is_ingeschreven_in_register: is_ingeschreven_raad}}\n  - {cel: c, lexostatus: m, invoer: {}, parameters: [p]}\n",
+            "t",
+        )
+        .unwrap();
+        let b = &d.synthese[0];
+        assert_eq!(
+            b.parameters.paren().collect::<Vec<_>>(),
+            [("is_ingeschreven_in_register", "is_ingeschreven_raad")]
+        );
+        assert_eq!(
+            b.parameters.iter().collect::<Vec<_>>(),
+            ["is_ingeschreven_raad"]
+        );
+        assert!(matches!(&b.invoer["orgaan"], BronInvoer::Waarde { waarde } if waarde == "raad"));
+        assert_eq!(b.invoer["x"].veld().unwrap().lexostatus, "e");
+        assert_eq!(
+            d.synthese[1].parameters.paren().collect::<Vec<_>>(),
+            [("p", "p")]
+        );
+        assert!(d.synthese[1].parameters.vertaald().is_empty());
+    }
+
+    /// De tijdvakken en de stand bij besluit staan niet in de configuratie.
+    #[test]
+    fn keuzes_en_stand_bij_besluit_worden_geweigerd() {
+        let fout = ProcesDefinitie::parse(
+            "id: a\nactor: a\nportaal:\n  cel: a\n  stroom: s\n  event: e\n  toets: {lexostatus: l, regeling: r, uitkomst: u}\n  aanbod: {regeling: r, uitkomst: u, keuzes: {jaren_vanaf_nu: [0]}}\n",
+            "t",
+        )
+        .unwrap_err();
+        assert!(fout.iter().any(|f| f.contains("keuzes")), "{fout:?}");
+        let fout = ProcesDefinitie::parse(
+            "id: a\nactor: a\nbehandeling:\n  werkvoorraad: {cel: a, lexostatus: w}\n  besluit:\n    uitkomsten: [u]\n    stand_bij_besluit: {x: false}\n",
+            "t",
+        )
+        .unwrap_err();
+        assert!(
+            fout.iter().any(|f| f.contains("stand_bij_besluit")),
+            "{fout:?}"
+        );
     }
 
     #[test]

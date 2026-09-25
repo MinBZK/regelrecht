@@ -150,12 +150,19 @@ async fn concepttoets<'a>(
     .await
     .map_err(van_cel)?;
     // Synthese: de lexostatus van het concept plus die van de bronnen, en
-    // daarna de synthese per regel, vóór de engine.
+    // daarna de synthese per regel, vóór de engine. Een invoer uit de wet
+    // leest de regeling op de dag van het concept, zoals de toets.
     let mut samen = synthese::voeg_samen(&lexostatus, &state.bronnen).await;
+    let datum = datum::peildatum_van(&gram.op_moment).map_err(intern)?;
+    let wet = rijen::Wet {
+        service: &state.proces.service,
+        datum: &datum,
+    };
     let rijen = rijen::pas_toe(
         &state.toets_rijen,
         std::slice::from_ref(&lexostatus),
         &mut samen,
+        wet,
     )
     .await;
     Ok(Concepttoets {
@@ -201,10 +208,11 @@ pub(super) async fn toets_route(
 }
 
 /// Wat het beleid de ingelogde persoon aanbiedt (`portaal.aanbod`), per
-/// tijdvak uit `aanbod.keuzes`. Het tijdvak is de parameter van het
-/// aanbod-artikel met origin BELANGHEBBENDE en grondslag Awb 4:2 lid 1; het
-/// beleid wordt uitgevoerd op een concept met alleen dat tijdvak, plus wat de
-/// eHerkenning en de synthese weten. Uitkomst en termijn komen uit een run,
+/// tijdvak dat het beleid aanbiedt (`aanbod.tijdvakken`, een uitkomst van
+/// dezelfde regeling, uitgerekend op de datum van vandaag). Het tijdvak is de
+/// parameter van het aanbod-artikel met origin BELANGHEBBENDE en grondslag
+/// Awb 4:2 lid 1; het beleid wordt uitgevoerd op een concept met alleen dat
+/// tijdvak, plus wat de eHerkenning en de synthese weten. Uitkomst en termijn komen uit een run,
 /// met trace. Een feit dat een bron niet leverde, maakt het aanbod niet te
 /// bepalen. Niets wordt vastgelegd.
 pub(super) async fn mogelijkheden_route(
@@ -224,20 +232,22 @@ pub(super) async fn mogelijkheden_route(
         })?;
     let nu = (state.klok)();
     let datum = datum::peildatum(&nu);
-    let jaar = datum::jaar(&nu);
-    // Zonder tijdvak een run; met tijdvak een run per keuze.
-    let keuzes: Vec<Option<mogelijkheid::Keuze>> = match (&state.proces.tijdvak, &c0.keuzes) {
-        (Some(t), Some(k)) => k
-            .waarden(jaar)
-            .into_iter()
-            .map(|w| {
-                Some(mogelijkheid::Keuze {
-                    parameter: t.parameter.clone(),
-                    veld: t.veld.clone(),
-                    waarde: json!(w),
+    // Zonder tijdvak een run; met tijdvak een run per tijdvak dat het beleid
+    // aanbiedt.
+    let keuzes: Vec<Option<mogelijkheid::Keuze>> = match (&state.proces.tijdvak, &c0.tijdvakken) {
+        (Some(t), Some(u)) => {
+            mogelijkheid::tijdvakken(&state.proces.service, &c0.regeling, u, &datum)
+                .map_err(intern)?
+                .into_iter()
+                .map(|w| {
+                    Some(mogelijkheid::Keuze {
+                        parameter: t.parameter.clone(),
+                        veld: t.veld.clone(),
+                        waarde: w,
+                    })
                 })
-            })
-            .collect(),
+                .collect()
+        }
         _ => vec![None],
     };
     let mut uit = Vec::new();

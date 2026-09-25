@@ -22,10 +22,6 @@ pub struct Lexostatussen {
 pub struct LexostatusDefinitie {
     pub name: String,
     pub inputs: Vec<InputDefinitie>,
-    /// Artikelen van een afnemer (`<regeling>#<artikel>`) waarvan deze
-    /// lexostatus parameters levert.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub levert_aan: Vec<String>,
     pub reduction: Reductie,
 }
 
@@ -65,9 +61,58 @@ pub struct Reductie {
     pub zonder: Filter,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kies: Option<Kies>,
-    pub afleidingen: BTreeMap<String, Afleiding>,
+    pub afleidingen: BTreeMap<String, Afgeleid>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub extra_velden: BTreeMap<String, Afleiding>,
+    pub extra_velden: BTreeMap<String, Afgeleid>,
+}
+
+/// Een afleiding met haar grondslag: de artikelen (`<regeling>#<artikel>`,
+/// optioneel met `lid <n>`) waarop zij rust. Dat is het artikel dat het feit
+/// vraagt, of het artikel dat de lezing draagt, zoals het register dat de
+/// cel bijhoudt ("geen gram is nee"). De naam van een parameter-afleiding is
+/// een parameter van een artikel uit de grondslag van het event of uit deze
+/// grondslag; de controle bij het opstarten gaat na dat elk artikel geladen
+/// is en het lid bestaat (zie [`crate::controle`]).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Afgeleid {
+    #[serde(flatten)]
+    pub afleiding: Afleiding,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub grondslag: Vec<String>,
+}
+
+impl std::ops::Deref for Afgeleid {
+    type Target = Afleiding;
+    fn deref(&self) -> &Afleiding {
+        &self.afleiding
+    }
+}
+
+impl From<Afleiding> for Afgeleid {
+    fn from(afleiding: Afleiding) -> Self {
+        Self {
+            afleiding,
+            grondslag: Vec::new(),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Afgeleid {
+    /// `grondslag` naast de sleutels van de afleiding: eerst eraf, dan de
+    /// afleiding uit de rest (een untagged enum met `flatten` negeert
+    /// onbekende sleutels niet betrouwbaar).
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let mut v = Value::deserialize(d)?;
+        let grondslag = match v.as_object_mut().and_then(|o| o.remove("grondslag")) {
+            Some(g) => serde_json::from_value(g).map_err(serde::de::Error::custom)?,
+            None => Vec::new(),
+        };
+        let afleiding = Afleiding::deserialize(v).map_err(serde::de::Error::custom)?;
+        Ok(Self {
+            afleiding,
+            grondslag,
+        })
+    }
 }
 
 /// Waarop een lijst-lexostatus groepeert.
@@ -219,7 +264,7 @@ impl Lexostatussen {
 
 impl LexostatusDefinitie {
     /// Alle afleidingen: de parameters en de extra velden.
-    pub fn alle_afleidingen(&self) -> impl Iterator<Item = (&String, &Afleiding)> {
+    pub fn alle_afleidingen(&self) -> impl Iterator<Item = (&String, &Afgeleid)> {
         self.reduction
             .afleidingen
             .iter()

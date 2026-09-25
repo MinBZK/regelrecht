@@ -6,7 +6,12 @@
 //! formulier dat de stroom niet kent, wordt overgeslagen.
 //!
 //! Vorm: `schermen: [{id, titel, groepen: [{titel, velden: [{id, label,
-//! type, opties, kolommen, uitleg}]}]}]`.
+//! type, opties, kolommen, uitleg, grondslag}]}]}]`.
+//!
+//! `grondslag` (bij een veld of een kolom) is een grondslag of een lijst
+//! grondslagen in de vorm `<regeling>#<artikel>`, optioneel met ` lid <n>`,
+//! zoals bij een event. Het proces gaat bij het opstarten na dat elk artikel
+//! geladen is en het lid bestaat (zie [`Formulier::grondslagen`]).
 
 use std::path::Path;
 
@@ -22,6 +27,39 @@ use crate::stroom::{Event, Vorm};
 pub struct Formulier {
     pub titel: Option<String>,
     pub velden: Vec<Veld>,
+}
+
+impl Formulier {
+    /// Elke grondslag van het scherm, met waar ze staat: `veld 'x'` of
+    /// `veld 'x', kolom 'y'`.
+    pub fn grondslagen(&self) -> Vec<(String, String)> {
+        let mut uit = Vec::new();
+        for v in &self.velden {
+            for g in &v.grondslag {
+                uit.push((format!("veld '{}'", v.naam), g.clone()));
+            }
+            for k in v.kolommen.iter().filter_map(Value::as_array).flatten() {
+                let id = k.get("id").and_then(Value::as_str).unwrap_or_default();
+                for g in grondslag_uit(k.get("grondslag")) {
+                    uit.push((format!("veld '{}', kolom '{id}'", v.naam), g));
+                }
+            }
+        }
+        uit
+    }
+}
+
+/// Een grondslag of een lijst grondslagen.
+fn grondslag_uit(v: Option<&Value>) -> Vec<String> {
+    match v {
+        Some(Value::String(g)) => vec![g.clone()],
+        Some(Value::Array(l)) => l
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::to_string)
+            .collect(),
+        _ => Vec::new(),
+    }
 }
 
 /// Een veld zoals de frontend het toont.
@@ -40,6 +78,9 @@ pub struct Veld {
     pub uitleg: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub groep: Option<String>,
+    /// Waarop het veld rust, als `<regeling>#<artikel>` (optioneel met lid).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub grondslag: Vec<String>,
 }
 
 fn tekst(v: &Y, sleutel: &str) -> Option<String> {
@@ -74,6 +115,7 @@ pub fn parse(tekst_: &str, scherm: &str, bron: &str) -> Result<Formulier, String
                 kolommen: json(v, "kolommen"),
                 uitleg: tekst(v, "uitleg"),
                 groep: groep.clone(),
+                grondslag: grondslag_uit(json(v, "grondslag").as_ref()),
             });
         }
     };
@@ -124,6 +166,7 @@ pub fn velden(event: &Event, formulier: Option<&Formulier>) -> Result<Vec<Veld>,
                 kolommen: None,
                 uitleg: None,
                 groep: None,
+                grondslag: Vec::new(),
             });
         }
     }
@@ -258,6 +301,32 @@ mod tests {
         let v = velden(&s.events[0], None).unwrap();
         assert_eq!(v[0].naam, "naam");
         assert_eq!(v[0].label, "naam");
+    }
+
+    /// Een grondslag in het formulier is machineleesbaar: bij een veld en
+    /// bij een kolom, als tekst of als lijst.
+    #[test]
+    fn grondslagen_van_velden_en_kolommen() {
+        let f = parse(FORMULIER, "aanvraag", "fixture").unwrap();
+        let g = f.grondslagen();
+        assert!(
+            g.contains(&(
+                "veld 'aanvraagjaar'".into(),
+                "testregeling_aanvraag#1 lid 1".into()
+            )),
+            "{g:?}"
+        );
+        assert!(
+            g.contains(&(
+                "veld 'organen', kolom 'zetels'".into(),
+                "testregeling_aanvraag#1".into()
+            )),
+            "{g:?}"
+        );
+        let s = stroom::parse(STROOM, "fixture").unwrap();
+        let v = velden(&s.events[0], Some(&f)).unwrap();
+        let jaar = v.iter().find(|v| v.naam == "aanvraagjaar").unwrap();
+        assert_eq!(jaar.grondslag, ["testregeling_aanvraag#1 lid 1"]);
     }
 
     #[test]

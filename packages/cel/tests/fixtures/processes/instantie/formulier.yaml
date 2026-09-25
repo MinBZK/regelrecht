@@ -14,7 +14,7 @@ schermen:
           - {id: adres, label: Adres, type: tekst}
       - titel: De aanvraag
         velden:
-          - {id: aanvraagjaar, label: Aanvraagjaar, type: getal}
+          - {id: aanvraagjaar, label: Aanvraagjaar, type: getal, grondslag: testregeling_aanvraag#1 lid 1}
           - {id: dagtekening, label: Dagtekening, type: datum}
           - id: registratie
             label: Registratie
@@ -27,7 +27,7 @@ schermen:
             type: tabel
             kolommen:
               - {id: orgaan, label: Orgaan, type: tekst}
-              - {id: zetels, label: Zetels, type: getal}
+              - {id: zetels, label: Zetels, type: getal, grondslag: [testregeling_aanvraag#1]}
               - {id: samengevoegd, label: Samengevoegd, type: janee}
               - {id: aantal_aanduidingen, label: Aantal aanduidingen, type: getal}
               - {id: opmerking, label: Opmerking, type: tekst}

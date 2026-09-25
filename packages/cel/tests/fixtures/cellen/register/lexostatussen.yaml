@@ -1,25 +1,37 @@
 ---
-# Fictieve lexostatus van de registercel. Elke afleiding werkt over de
-# grammen die door haar eigen filter komen. De namen zijn die van de
-# afnemende artikelen (levert_aan); de testregeling register noemt dezelfde
-# feiten per artikel generiek.
+# Fictieve lexostatussen van de registercel, in de taal van haar eigen
+# regeling (testregeling_register). Elke afleiding werkt over de grammen die
+# door haar eigen filter komen, en draagt haar grondslag. Een afnemer die een
+# feit onder een eigen naam vraagt, vertaalt in de synthese van zijn proces.
 cel: test_register
 lexostatus_definitions:
-  - name: registerstatus
-    inputs: [{name: aanduiding, type: string}]
-    levert_aan: [testregeling_afnemer#1, testregeling_afnemer#2, testregeling_afnemer#3]
+  - name: register
+    # Het register van een orgaan: is de aanduiding ingeschreven, en is zij
+    # geschrapt? Geen gram is nee: de cel houdt het register bij (art. 1 lid 1).
+    inputs: [{name: aanduiding, type: string}, {name: orgaan, type: string}]
     reduction:
       kroniek: test_register
       afleidingen:
-        is_ingeschreven_raad: {filter: {name: aanduiding_ingeschreven, orgaan: raad, aanduiding: $aanduiding}, bestaat: true}
-        is_geschrapt_raad: {filter: {name: aanduiding_geschrapt, orgaan: raad, aanduiding: $aanduiding}, bestaat: true}
-        zetels_op_lijst: {filter: {name: uitslag_vastgesteld, lijst: $aanduiding}, som: zetels}
+        is_ingeschreven_in_register:
+          filter: {name: aanduiding_ingeschreven, orgaan: $orgaan, aanduiding: $aanduiding}
+          bestaat: true
+          grondslag: [testregeling_register#1 lid 1]
+        is_geschrapt:
+          filter: {name: aanduiding_geschrapt, orgaan: $orgaan, aanduiding: $aanduiding}
+          bestaat: true
+          grondslag: [testregeling_register#1 lid 1]
+  - name: registerstatus
+    inputs: [{name: aanduiding, type: string}]
+    reduction:
+      kroniek: test_register
+      afleidingen:
+        zetels_toegewezen: {filter: {name: uitslag_vastgesteld, lijst: $aanduiding}, som: zetels}
         datum_mededeling: {filter: {name: mededeling_gedaan, aanduiding: $aanduiding}, kies: laatste, veld: datum}
-        geblokkeerd_raad:
+        geblokkeerd:
           filter: {name: mededeling_gedaan, aanduiding: $aanduiding}
           kies: laatste
           bevat: {veld: geblokkeerd_voor, waarde: raad}
-        jaar:                            # het jaartal van een datum in de kroniek
+        jaar_van_mededeling:             # het jaartal van een datum in de kroniek
           filter: {name: mededeling_gedaan, aanduiding: $aanduiding}
           kies: laatste
           jaar_van: datum
@@ -37,3 +49,4 @@ lexostatus_definitions:
         ingeschreven:
           filter: {name: aanduiding_ingeschreven, aanduiding: $aanduiding, gebied: $gebied}
           bestaat: true
+          grondslag: [testregeling_register#1]

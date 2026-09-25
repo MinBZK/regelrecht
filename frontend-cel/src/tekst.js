@@ -22,7 +22,7 @@ export function herkomstTekst(h) {
     case 'behandelaar':
       return 'behandelaar (besluitformulier)';
     case 'stand_bij_besluit':
-      return 'stand bij besluit';
+      return h.stage ? `stand bij besluit (ontstaat pas in stage ${h.stage})` : 'stand bij besluit';
     case 'keuze':
       return 'keuze van de aanvrager (portaal)';
     default:

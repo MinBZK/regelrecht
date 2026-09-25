@@ -333,7 +333,7 @@ pub fn past(filter: &Filter, inputs: &Map<String, Value>, gram: &Gram) -> Result
 }
 
 /// Wat de afleidingen over een groep grammen opleveren.
-struct Afgeleid<'g> {
+struct Opbrengst<'g> {
     gekozen: Option<&'g Gram>,
     parameters: BTreeMap<String, Value>,
     extra_velden: BTreeMap<String, Value>,
@@ -346,7 +346,7 @@ fn leid_af_uit<'g>(
     definitie: &LexostatusDefinitie,
     inputs: &Map<String, Value>,
     door: &[&'g Gram],
-) -> Result<Option<Afgeleid<'g>>, String> {
+) -> Result<Option<Opbrengst<'g>>, String> {
     let r = &definitie.reduction;
     let gekozen = match r.kies {
         Some(Kies::Laatste) => match laatste(door)? {
@@ -355,7 +355,7 @@ fn leid_af_uit<'g>(
         },
         None => None,
     };
-    let mut uit = Afgeleid {
+    let mut uit = Opbrengst {
         gekozen,
         parameters: BTreeMap::new(),
         extra_velden: BTreeMap::new(),
@@ -916,11 +916,11 @@ mod tests {
         );
     }
 
-    fn registerstatus(aanduiding: &str) -> Lexostatus {
+    /// Een lexostatus van de registerfixture, gereduceerd met deze inputs.
+    fn register_lexostatus(naam: &str, inputs: Value) -> Lexostatus {
         let c = parse(REGISTER, "register").unwrap();
-        let inputs = json!({"aanduiding": aanduiding});
         reduceer(
-            &c.lexostatus_definitions[0],
+            c.lexostatus(naam).unwrap(),
             inputs.as_object().unwrap(),
             &register(),
         )
@@ -928,29 +928,45 @@ mod tests {
         .unwrap()
     }
 
+    fn registerstatus(aanduiding: &str) -> Lexostatus {
+        register_lexostatus("registerstatus", json!({"aanduiding": aanduiding}))
+    }
+
+    fn registerstand(aanduiding: &str) -> Lexostatus {
+        register_lexostatus(
+            "register",
+            json!({"aanduiding": aanduiding, "orgaan": "raad"}),
+        )
+    }
+
     #[test]
     fn filter_per_afleiding_bestaat_som_en_laatste() {
+        let r = registerstand("VOORBEELD");
+        assert_eq!(r.zaakkenmerk, None, "zonder kies wordt geen gram gekozen");
+        assert_eq!(r.parameters["is_ingeschreven_in_register"], json!(true));
+        assert_eq!(r.parameters["is_geschrapt"], json!(false));
         let l = registerstatus("VOORBEELD");
-        assert_eq!(l.zaakkenmerk, None, "zonder kies wordt geen gram gekozen");
-        assert_eq!(l.parameters["is_ingeschreven_raad"], json!(true));
-        assert_eq!(l.parameters["is_geschrapt_raad"], json!(false));
         // Alleen de uitslagen met deze aanduiding boven de lijst, over alle gebieden.
-        assert_eq!(l.parameters["zetels_op_lijst"], json!(6));
+        assert_eq!(l.parameters["zetels_toegewezen"], json!(6));
         assert_eq!(l.parameters["datum_mededeling"], json!("2024-12-01"));
         // Het laatste gram telt: daar staat raad wel in de lijst.
-        assert_eq!(l.parameters["geblokkeerd_raad"], json!(true));
+        assert_eq!(l.parameters["geblokkeerd"], json!(true));
         assert!(l.niet_afgeleid.is_empty(), "{:?}", l.niet_afgeleid);
     }
 
     #[test]
     fn afwezigheid_in_de_eigen_kroniek_is_nee() {
+        let r = registerstand("ONBEKEND");
+        assert_eq!(r.parameters["is_ingeschreven_in_register"], json!(false));
         let l = registerstatus("ONBEKEND");
-        assert_eq!(l.parameters["is_ingeschreven_raad"], json!(false));
-        assert_eq!(l.parameters["zetels_op_lijst"], json!(0));
-        assert_eq!(l.parameters["geblokkeerd_raad"], json!(false));
+        assert_eq!(l.parameters["zetels_toegewezen"], json!(0));
+        assert_eq!(l.parameters["geblokkeerd"], json!(false));
         // Een datum is er niet: die blijft weg, er wordt niets aangevuld.
         assert!(!l.parameters.contains_key("datum_mededeling"));
-        assert_eq!(l.niet_afgeleid, vec!["datum_mededeling", "jaar"]);
+        assert_eq!(
+            l.niet_afgeleid,
+            vec!["datum_mededeling", "jaar_van_mededeling"]
+        );
     }
 
     #[test]
@@ -1012,7 +1028,7 @@ mod tests {
         let def = &mut c.lexostatus_definitions[0];
         def.reduction
             .extra_velden
-            .insert("aanduiding".into(), afl("{veld: inhoud.aanduiding}"));
+            .insert("aanduiding".into(), afl("{veld: inhoud.aanduiding}").into());
         let g = gram(
             ZAAK,
             "2025-03-01T09:00:00+01:00",
@@ -1027,10 +1043,10 @@ mod tests {
     #[test]
     fn afleiding_op_het_gram_zonder_kies_is_een_fout() {
         let mut c = parse(REGISTER, "register").unwrap();
-        let def = &mut c.lexostatus_definitions[0];
+        let def = &mut c.lexostatus_definitions[1];
         def.reduction
             .afleidingen
-            .insert("x".into(), afl("{veld: aanduiding}"));
+            .insert("x".into(), afl("{veld: aanduiding}").into());
         let inputs = json!({"aanduiding": "VOORBEELD"});
         let fout = reduceer(def, inputs.as_object().unwrap(), &register()).unwrap_err();
         assert!(fout.contains("kiest er geen"), "{fout}");
@@ -1040,14 +1056,10 @@ mod tests {
     fn register_fixture_valideert_tegen_het_schema() {
         let c = parse(REGISTER, "register").unwrap();
         assert_eq!(c.cel, "test_register");
-        assert_eq!(
-            c.lexostatus_definitions[0].levert_aan,
-            vec![
-                "testregeling_afnemer#1",
-                "testregeling_afnemer#2",
-                "testregeling_afnemer#3"
-            ]
-        );
+        // Een afleiding draagt haar grondslag machineleesbaar.
+        let a = &c.lexostatus_definitions[0].reduction.afleidingen["is_ingeschreven_in_register"];
+        assert_eq!(a.grondslag, ["testregeling_register#1 lid 1"]);
+        assert!(matches!(a.afleiding, Afleiding::Bestaat { .. }));
     }
 
     // --- Lijst-lexostatus: groepeer en zonder ---
