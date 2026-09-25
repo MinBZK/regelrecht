@@ -50,10 +50,20 @@ startstand: <pad>                 # optioneel: grammen voor een lege kroniek
 id: <proces-id>                   # routes onder /processen/<id>/api/
 actor: <actor>                    # recording_actor van elke stroom waarin het vastlegt
 herkomst: streng                  # optioneel; streng: een parameter zonder origin is een fout (standaard ruim)
+namens: {gezag: <naam>}           # of {regeling: <$id>}: het bevoegd gezag waarvoor het proces handelt; verplicht met behandeling
+mandaten:                         # optioneel: ook handelen namens een ander gezag (Awb 10:1)
+  - {gezag: <naam>, grondslag: <regeling>#<artikel>}
+kanalen:                          # nagebootste logins; geen register, geen gecertificeerde login
+  <kanaal>:
+    label: <tekst>
+    uitleg: <tekst>               # optioneel
+    velden:
+      - {naam: <veld>, label: <tekst>, patroon: <regex>, controle: elfproef, melding: <tekst>, numeriek: true}
+    eigenaar: <veld>              # optioneel: wie een zaak volgt, moet haar met deze waarde kennen
+    intake: <pad>                 # optioneel: onder $intake.<pad>.<veld>; zonder: de id van het kanaal
 rollen:                           # optioneel; zonder rollen geen login
-  aanvrager: eherkenning          # het portaal
-  behandelaar: medewerker         # werkvoorraad, zaak en besluit
-portaal:                          # optioneel, vraagt rollen.aanvrager
+  <rol>: {kanaal: <kanaal>, routes: [portaal, behandeling, loket], label: <tekst>, grondslag: <regeling>#<artikel>}
+portaal:                          # optioneel, vraagt een rol met routes portaal
   cel: <cel-id>                   # waar de indiening wordt vastgelegd; in deze runtime
   stroom: <$id van de stroom>
   event: <event dat een indiening wordt>
@@ -80,10 +90,10 @@ synthese:                         # optioneel, alleen met een portaal of een bes
     parameters: [<naam>, ...]     # expliciet, geen wildcard; dezelfde naam bij bron en afnemer
     # of: parameters: {<naam bij de bron>: <parameter van de afnemer>}
     extra_velden: [<naam>, ...]   # optioneel: invoer voor een latere bron
-behandeling:                      # optioneel, vraagt rollen.behandelaar
+behandeling:                      # optioneel, vraagt een rol met routes behandeling
   werkvoorraad: {cel: <cel-id>, lexostatus: <lijst-lexostatus>}
   besluit:
-    regeling: <$id>               # optioneel: anders de beschikking van de actor
+    regeling: <$id>               # optioneel: anders de beschikking van het gezag van namens
     uitkomsten: [<output>, ...]   # van een en hetzelfde artikel
     rijen:                        # synthese per regel (zie hieronder)
       - parameter: <array-parameter>
@@ -132,26 +142,27 @@ het gedrag.
 | `POST /cellen/<id>/api/grammen` | alleen met het runtime-token: `{actor, stroom, event, intake, external, zaakkenmerk?, besluit?}`: de cel bouwt het gram, valideert het, controleert de actor en de zaak, en legt het vast (201); 409 als die stage al vastligt in de zaak |
 | `GET /cellen/<id>/api/stroom` | de stroomdefinities van de cel, met hun hash |
 | `GET /processen/<id>/api/voorbeelden` | de voorbeelden per handeling, zonder login |
-| `POST /processen/<id>/api/eherkenning/login`, `GET .../sessie`, `POST .../logout` | alleen met portaal |
-| `GET /processen/<id>/api/formulier` | alleen met portaal: de stroom en de formuliervelden |
-| `POST /processen/<id>/api/aanvraag/toets` | alleen met portaal: proefreductie in de cel, synthese, engine |
-| `POST /processen/<id>/api/aanvraag` | alleen met portaal: de cel legt het gram vast |
-| `GET /processen/<id>/api/mogelijkheden` | alleen met portaal: wat het aanbod zegt per tijdvak dat het beleid aanbiedt (`aanbod.tijdvakken`) |
-| `POST /processen/<id>/api/medewerker/login` (`{naam}`), `GET .../sessie`, `POST .../logout` | alleen met de rol behandelaar |
-| `GET /processen/<id>/api/werkvoorraad` | behandelaar: de werkvoorraad, een lijst uit de cel |
-| `GET /processen/<id>/api/zaken/<zaakkenmerk>` | behandelaar: de grammen van de zaak, het besluitformulier en een proefbesluit zonder oordelen |
-| `POST /processen/<id>/api/zaken/<zaakkenmerk>/proefbesluit` | behandelaar: `{formulier}` naar een proefbesluit; niets wordt vastgelegd |
-| `POST /processen/<id>/api/zaken/<zaakkenmerk>/besluit` | behandelaar: `{formulier}` naar een vastgelegd besluit (201), of een weigering (409) |
+| `POST /processen/<id>/api/kanalen/<kanaal>/login`, `GET .../sessie`, `POST .../logout` | met rollen: de velden van het kanaal (en `rol` als er langs het kanaal meer rollen inloggen) naar een sessie `{rol, kanaal, velden}` |
+| `GET /processen/<id>/api/sessie` | met rollen: wie er is ingelogd, langs welk kanaal ook |
+| `GET /processen/<id>/api/formulier` | routes `portaal`: de stroom en de formuliervelden |
+| `POST /processen/<id>/api/aanvraag/toets` | routes `portaal`: proefreductie in de cel, synthese, engine |
+| `POST /processen/<id>/api/aanvraag` | routes `portaal`: de cel legt het gram vast |
+| `GET /processen/<id>/api/mogelijkheden` | routes `portaal`: wat het aanbod zegt per tijdvak dat het beleid aanbiedt (`aanbod.tijdvakken`) |
+| `POST /processen/<id>/api/loket/aanvraag` | routes `loket`: `{aanvrager, ontvangen_op, external}`; een aanvraag die langs een andere weg binnenkwam, met de dag van ontvangst als `op_moment` (niet na vandaag, niet vóór `aanbod.openstelling`) |
+| `GET /processen/<id>/api/werkvoorraad` | routes `behandeling`: de werkvoorraad, een lijst uit de cel |
+| `GET /processen/<id>/api/zaken/<zaakkenmerk>` | routes `behandeling`: de grammen van de zaak, het besluitformulier en een proefbesluit zonder oordelen |
+| `POST /processen/<id>/api/zaken/<zaakkenmerk>/proefbesluit` | routes `behandeling`: `{formulier}` naar een proefbesluit; niets wordt vastgelegd |
+| `POST /processen/<id>/api/zaken/<zaakkenmerk>/besluit` | routes `behandeling`: `{formulier}` naar een vastgelegd besluit (201), of een weigering (409) |
 
 Een proces met rollen heeft een sessie per gebruiker (een cookie per proces);
 wie als de andere rol inlogt, vervangt de sessie. Een sessie vervalt na acht
 uur zonder gebruik, en een proces houdt er hooguit tienduizend: wie daarboven
-inlogt, verdringt de langst ongebruikte. De portaalroutes zijn alleen
-voor de aanvrager (403 voor de behandelaar), de behandelroutes alleen voor de
-behandelaar. Een cel kent geen login: haar leesroutes (kroniek, zaken,
+inlogt, verdringt de langst ongebruikte. Elke route hoort bij een
+routegroep (`portaal`, `behandeling`, `loket`); een rol noemt de groepen die
+ze mag, en een andere rol krijgt 403. Een cel kent geen login: haar leesroutes (kroniek, zaken,
 lexostatus, stroom) zijn voor elke afnemer, er is geen beveiligingscontext.
-Een aanvrager die een zaak wil volgen, moet die zaak kennen (een gram van zijn
-KvK); dat controleert het proces.
+Een aanvrager die een zaak wil volgen, moet die zaak kennen (een gram met zijn
+waarde van het `eigenaar`-veld van zijn kanaal); dat controleert het proces.
 
 Vastleggen (`POST .../grammen`) en op proef reduceren (`POST .../proef`) mag
 alleen een proces van de runtime zelf. De runtime maakt bij elke start een
@@ -387,14 +398,19 @@ hashes van de stromen komen van de cel. De cel bouwt het gram uit haar stroom
 en legt het vast met `POST /cellen/<cel>/api/grammen`.
 
 Het bevoegd gezag komt uit de regeling (het artikel, anders de regeling zelf)
-en wordt getoetst tegen de `actor` van het proces: gelijk betekent
-vastleggen, een ander gezag betekent weigeren, en noemt de regeling er geen,
-dan legt de cel vast met een waarschuwing en zonder `competent_authority`.
+en wordt letterlijk getoetst tegen het gezag van `namens`: gelijk betekent
+vastleggen, een gezag uit `mandaten` betekent vastleggen in mandaat, een ander
+gezag betekent weigeren, en noemt de regeling er geen, dan legt de cel vast
+met een waarschuwing en zonder `competent_authority`. Het gram draagt
+`handelende_actor`: rol, kanaal, identiteit, de grondslag van de rol, `namens`
+en bij mandaat `mandaat` (de grondslag). Zo blijven de drie assen van RFC-022
+par. 2 gescheiden: `recording_actor` (wie vastlegt), `competent_authority`
+(wie de wet bevoegd maakt) en de handelende actor.
 
 Drie dingen leiden tot een weigering met 409 en zonder gram: het proefbesluit
 is niet compleet ("niet te nemen: mist X"), de cel weigert omdat er al een
 gram met stage `BESLUIT` in de zaak ligt (het wijzigen van een besluit valt
-buiten deze stap), of de wet wijst een ander gezag aan. Of een stage
+buiten deze stap), of de wet wijst een ander gezag aan zonder mandaat. Of een stage
 vastlegbaar is, beslist de cel: een zaak doorloopt elke stage één keer
 (RFC-022 par. 1.2), en de cel toetst dat onder hetzelfde slot als het
 schrijven, zodat twee gelijktijdige besluiten er niet allebei door komen. Het gram wordt voor het vastleggen tegen
@@ -431,9 +447,15 @@ Per proces:
    werkvoorraad, het besluit en de bronnen van de zaak noemen een cel, dezelfde,
    en die draait in deze runtime.
 2. De `actor` is de `recording_actor` van elke stroom waarin het proces
-   vastlegt (die van het portaal en die van het besluit).
+   vastlegt (die van het portaal en die van het besluit). `namens` noemt een
+   gezag dat een geladen regeling noemt (verplicht met een behandeling); een
+   mandaat noemt zo'n gezag, niet het eigen, en een grondslag die een geladen
+   artikel aanwijst. Elk kanaal heeft unieke velden, leesbare patronen en een
+   eigenaar die een veld is; elke rol noemt een bestaand kanaal. Routes
+   `portaal` en `behandeling` passen bij de blokken; routes `loket` vragen een
+   portaal-event dat `op_moment` aan `$intake` bindt.
 3. Het portaal wijst naar een bestaand event van die cel, dat alleen
-   `$intake`-paden leest die het portaal levert, een lexostatus die dat event
+   `$intake`-paden leest die de kanalen van het portaal leveren, een lexostatus die dat event
    leest en een gram kiest (geen lijst, alleen input `zaakkenmerk`), en een
    uitkomst van een artikel uit de grondslag van het event. Het aanbod noemt een
    bestaande uitkomst en een termijn uit hetzelfde artikel, en leunt alleen op
@@ -450,14 +472,13 @@ Per proces:
    artikel van de toets, het besluit of het aanbod, of van een artikel dat een
    van die transitief aanroept (via `source`); een parameter komt uit maar een
    bron; een gewone bron is een andere cel dan die van het proces.
-5. Rollen en behandeling: een portaal vraagt de rol aanvrager (en omgekeerd),
-   een behandeling de rol behandelaar; de werkvoorraad is een lijst; een bron
+5. Behandeling: de werkvoorraad is een lijst; een bron
    van de zaak vraagt een behandeling; de uitkomsten van het besluit komen uit
    een artikel; de lexostatussen van de zaak hebben als enige input
    `zaakkenmerk`; elke parameter uit het formulier, de stand bij besluit of een
    rijen-definitie moet de aanroeper van het artikel leveren; een parameter
    komt uit maar een bron. Zonder `regeling` vindt het proces zijn besluit via
-   de `actor`: de enige beschikking waarvoor die het bevoegd gezag is.
+   `namens`: de enige beschikking waarvoor dat gezag bevoegd is.
 6. Synthese per regel: de tabel komt uit een lexostatus van de zaak of een
    bron die haar levert; elke kolomnaam komt uit maar een plek (de tabel of een
    bron); een invoer `kolom` wijst een kolom aan die ervoor gevuld wordt; een
@@ -480,7 +501,7 @@ Per proces:
    niet draait, telt, met een waarschuwing per bron over wat niet na te gaan
    is. Een `register` dat niet geladen is, is een fout; een grondslag in een
    regeling die niet geladen is, een waarschuwing. `origins` in
-   uitvoeringsbeleid van de actor overschrijft de origin uit de wet; twee
+   uitvoeringsbeleid van het gezag van `namens` overschrijft de origin uit de wet; twee
    botsende overschrijvingen zijn een fout. Al bij het laden van het corpus
    houdt een origin die niet te lezen is, of een REGISTER zonder `register`,
    de runtime tegen, met bestand, artikel en parameter.
@@ -509,10 +530,11 @@ komen.
 | `synthese` | bronnen bevragen, samenvoegen met herkomst, en de controles erop |
 | `origin` | wie een parameter levert volgens de wet (RFC-043): de controle bij het opstarten, de aanbodregel, het tijdvak en het besluitformulier |
 | `transport` | intern en HTTP |
-| `eherkenning` | nep-login (KvK en persoon; bevoegdheid komt uit het handelsregister) |
-| `sessie` | sessies per rol, en de nagebootste medewerkerslogin |
+| `kanaal` | kanalen en rollen uit `proces.yaml`: de vorm van een login, de intake, de eigenaar, de controles |
+| `gezag` | `namens` en `mandaten`: het gezag waarvoor een proces handelt, en de toets tegen de wet |
+| `sessie` | sessies per rol |
 | `toets` | parameters aan de engine, een of meer uitkomsten evalueren |
-| `besluit` | het proefbesluit op een zaak, het vastleggen ervan, en de controles op rollen en behandeling |
+| `besluit` | het proefbesluit op een zaak, het vastleggen ervan, en de controles op behandeling |
 | `rijen` | synthese per regel: een tabelveld wordt een array-parameter |
 | `api` | de routes: `api::cel` (de cel), `api::proces` (de router van een proces), `api::sessie`, `api::portaal` en `api::behandeling` |
 | `celclient` | hoe een proces de cel vraagt: zaak lezen, vastleggen, proefreductie, als typen |
