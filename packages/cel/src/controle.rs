@@ -5,8 +5,10 @@
 //!    schema (bij het laden, zie [`crate::stroom::parse`],
 //!    [`crate::reductie::parse`] en [`crate::config::CelDefinitie::parse`]).
 //! 2. Elke afleiding wijst naar iets dat bestaat: een parameter van een
-//!    artikel uit de grondslag van een event dat haar filter aanwijst (of van
-//!    een artikel uit `levert_aan`), en veldpaden van dat event. Een
+//!    artikel uit de grondslag van een event dat haar filter aanwijst (of uit
+//!    de eigen `grondslag` van de afleiding), en veldpaden van dat event. Elk
+//!    artikel uit de grondslag van een afleiding is geladen en heeft het lid
+//!    dat ze noemt, net als bij een event. Een
 //!    tabelafleiding wijst naar een tabelveld en leest alleen kolommen die de
 //!    stroom voor dat veld declareert. Een afleiding op het gekozen gram
 //!    vraagt een lexostatus die een gram kiest (`kies`).
@@ -147,18 +149,8 @@ fn grondslagen(strommen: &[Stroom], service: &LawExecutionService, fouten: &mut 
         for e in &s.events {
             let van_moment = e.op_moment.iter().flat_map(|b| &b.grondslag);
             for g in e.grondslag.iter().chain(van_moment) {
-                let waar = format!("event '{}' (stroom '{}')", e.name, s.id);
-                match regelingen::artikel(service, g) {
-                    Err(f) => fouten.push(format!("{waar}: {f}")),
-                    Ok(a) => {
-                        let lid = regelingen::ontleed(g).ok().and_then(|o| o.lid);
-                        if let Some(lid) = lid.filter(|l| !regelingen::heeft_lid(a, l)) {
-                            fouten.push(format!(
-                                "{waar}: grondslag '{g}': artikel {} heeft geen lid {lid} (geen regel die met '{lid}.' of '{lid} ' begint)",
-                                a.number
-                            ));
-                        }
-                    }
+                if let Err(f) = regelingen::geldig(service, g) {
+                    fouten.push(format!("event '{}' (stroom '{}'): {f}", e.name, s.id));
                 }
             }
         }
@@ -199,12 +191,6 @@ fn verwijzingen(
 ) {
     for def in &lexostatussen.lexostatus_definitions {
         inputs_in_filter(def, &def.reduction.filter, fouten);
-        for g in &def.levert_aan {
-            if let Err(f) = regelingen::artikel(service, g) {
-                fouten.push(format!("lexostatus '{}', levert_aan: {f}", def.name));
-            }
-        }
-        let afnemer = parameters_van(&def.levert_aan, service);
         let events = events_voor(def, None, strommen);
         if events.is_empty() {
             fouten.push(format!(
@@ -259,6 +245,16 @@ fn verwijzingen(
         for (param, afleiding) in def.alle_afleidingen() {
             // Een kolom van een lijst is geen parameter: ze gaat niet naar de engine.
             let is_parameter = def.reduction.afleidingen.contains_key(param) && !def.is_lijst();
+            // De eigen grondslag van de afleiding: geladen, met het lid.
+            for g in &afleiding.grondslag {
+                if let Err(f) = regelingen::geldig(service, g) {
+                    fouten.push(format!(
+                        "lexostatus '{}', afleiding '{param}': {f}",
+                        def.name
+                    ));
+                }
+            }
+            let eigen_grondslag = parameters_van(&afleiding.grondslag, service);
             if afleiding.op_gekozen_gram() && def.reduction.kies.is_none() {
                 fouten.push(format!(
                     "lexostatus '{}', afleiding '{param}': leest het gekozen gram, maar de lexostatus kiest er geen (kies)",
@@ -278,10 +274,13 @@ fn verwijzingen(
             for (_, event) in events {
                 if is_parameter {
                     let params = parameters_van(&event.grondslag, service);
-                    if !params.contains(param) && !afnemer.contains(param) {
+                    if !params.contains(param) && !eigen_grondslag.contains(param) {
                         let mut waar = event.grondslag.join(", ");
-                        if !def.levert_aan.is_empty() {
-                            waar = format!("{waar}; levert_aan: {}", def.levert_aan.join(", "));
+                        if !afleiding.grondslag.is_empty() {
+                            waar = format!(
+                                "{waar}; grondslag van de afleiding: {}",
+                                afleiding.grondslag.join(", ")
+                            );
                         }
                         fouten.push(format!(
                             "lexostatus '{}', afleiding '{param}': '{param}' is geen parameter van een artikel uit de grondslag van event '{}' ({waar})",
@@ -587,9 +586,39 @@ fn portaal_(
 /// Het aanbod: de uitkomst bestaat, en een termijn komt uit hetzelfde
 /// artikel. Uitkomst en termijn gaan in een run; een termijn uit een ander
 /// artikel, of een die niet bestaat, zou die run laten mislukken en daarmee
-/// ook het oordeel over de uitkomst.
+/// ook het oordeel over de uitkomst. De tijdvakken zijn een uitkomst van
+/// dezelfde regeling, in een eigen run zonder parameters.
 fn aanbod_(a: &Aanbod, service: &LawExecutionService, fouten: &mut Vec<String>) {
     let resolver = service.resolver();
+    if let Some(t) = &a.tijdvakken {
+        match resolver.get_article_by_output(&a.regeling, t, None) {
+            None => fouten.push(format!(
+                "portaal.aanbod: regeling '{}' heeft geen tijdvakken-uitkomst '{t}'",
+                a.regeling
+            )),
+            Some(art) if art.get_parameters().iter().any(|p| p.required != Some(false)) => {
+                fouten.push(format!(
+                    "portaal.aanbod: tijdvakken '{t}' komt uit {}#{}, en dat artikel vraagt een parameter; de tijdvakken staan vast voordat iemand iets invult",
+                    a.regeling, art.number
+                ))
+            }
+            Some(_) => {}
+        }
+    }
+    if let Some(b) = &a.begin {
+        if a.tijdvakken.is_none() {
+            fouten.push("portaal.aanbod: begin zonder tijdvakken".to_string());
+        }
+        if resolver
+            .get_article_by_output(&a.regeling, b, None)
+            .is_none()
+        {
+            fouten.push(format!(
+                "portaal.aanbod: regeling '{}' heeft geen begin-uitkomst '{b}'",
+                a.regeling
+            ));
+        }
+    }
     let Some(artikel) = resolver.get_article_by_output(&a.regeling, &a.uitkomst, None) else {
         fouten.push(format!(
             "portaal.aanbod: regeling '{}' heeft geen uitkomst '{}'",
@@ -903,12 +932,12 @@ mod tests {
             "lexostatus 'registerstatus': input 'zaakkenmerk', maar event",
         );
         let cel = REG_CEL.replace(
-            "{filter: {name: aanduiding_geschrapt, orgaan: raad,",
-            "{filter: {name: aanduiding_geschrapt, zaakkenmerk: 00000000-0000-4000-8000-000000000001, orgaan: raad,",
+            "filter: {name: aanduiding_geschrapt, orgaan: $orgaan,",
+            "filter: {name: aanduiding_geschrapt, zaakkenmerk: 00000000-0000-4000-8000-000000000001, orgaan: $orgaan,",
         );
         register_faalt_met(
             &cel,
-            "afleiding 'is_geschrapt_raad': filter op 'zaakkenmerk', maar event 'aanduiding_geschrapt' (stroom 'test_registers') heeft geen zaak",
+            "afleiding 'is_geschrapt': filter op 'zaakkenmerk', maar event 'aanduiding_geschrapt' (stroom 'test_registers') heeft geen zaak",
         );
     }
 
@@ -1016,27 +1045,46 @@ mod tests {
         register(REG_CEL).unwrap();
     }
 
+    /// De grondslag van een afleiding maakt een parameter geldig die niet uit
+    /// de grondslag van het event komt, en wordt zelf gecontroleerd zoals die
+    /// van een event: artikel geladen, lid bestaat.
     #[test]
-    fn levert_aan_maakt_een_parameter_van_de_afnemer_geldig() {
+    fn de_grondslag_van_een_afleiding() {
+        // Een naam die de regeling van het register niet kent.
         let cel = REG_CEL.replace(
-            "    levert_aan: [testregeling_afnemer#1, testregeling_afnemer#2, testregeling_afnemer#3]\n",
-            "",
+            "        jaar_van_mededeling:             # het jaartal van een datum in de kroniek\n",
+            "        jaar:\n",
         );
         register_faalt_met(
             &cel,
-            "'is_ingeschreven_raad' is geen parameter van een artikel uit de grondslag van event 'aanduiding_ingeschreven' (testregeling_register#1)",
+            "'jaar' is geen parameter van een artikel uit de grondslag van event 'mededeling_gedaan' (testregeling_register#3)",
         );
-        // Zonder levert_aan blijft een parameter uit de grondslag geldig.
-        let fouten = register(&cel).unwrap_err();
-        assert!(
-            !fouten
-                .iter()
-                .any(|f| f.contains("'datum_mededeling' is geen")),
-            "{fouten:?}"
+        // Met een grondslag die hem vraagt, is hij geldig.
+        let met = |grondslag: &str| {
+            cel.replace(
+                "          jaar_van: datum\n",
+                &format!("          jaar_van: datum\n          grondslag: [{grondslag}]\n"),
+            )
+        };
+        register(&met("testregeling_afnemer#5")).unwrap();
+        // Een artikel dat niet bestaat, of een lid dat het artikel niet heeft.
+        register_faalt_met(
+            &met("testregeling_afnemer#9"),
+            "afleiding 'jaar': grondslag 'testregeling_afnemer#9': regeling 'testregeling_afnemer' heeft geen artikel 9",
         );
-        // levert_aan naar een artikel dat niet bestaat.
-        let cel = REG_CEL.replace("testregeling_afnemer#3]", "testregeling_afnemer#9]");
-        register_faalt_met(&cel, "levert_aan: grondslag 'testregeling_afnemer#9'");
+        register_faalt_met(
+            &met("testregeling_afnemer#5 lid 7"),
+            "afleiding 'jaar': grondslag 'testregeling_afnemer#5 lid 7': artikel 5 heeft geen lid 7",
+        );
+        // Ook bij een extra veld wordt de grondslag gecontroleerd.
+        let cel = REG_CEL.replace(
+            "grondslag: [testregeling_register#1]\n",
+            "grondslag: [testregeling_onbekend#1]\n",
+        );
+        register_faalt_met(
+            &cel,
+            "afleiding 'ingeschreven': grondslag 'testregeling_onbekend#1': regeling 'testregeling_onbekend' is niet geladen",
+        );
     }
 
     #[test]
@@ -1047,23 +1095,23 @@ mod tests {
         );
         register_faalt_met(
             &cel,
-            "afleiding 'is_geschrapt_raad': het filter wijst geen event aan",
+            "afleiding 'is_geschrapt': het filter wijst geen event aan",
         );
     }
 
     #[test]
     fn filter_per_afleiding_op_een_veldpad_dat_bestaat() {
         let cel = REG_CEL.replace(
-            "{name: aanduiding_geschrapt, orgaan: raad,",
-            "{name: aanduiding_geschrapt, gebied: raad,",
+            "{name: aanduiding_geschrapt, orgaan: $orgaan,",
+            "{name: aanduiding_geschrapt, gebied: $orgaan,",
         );
         register_faalt_met(
             &cel,
             "veldpad 'gebied' bestaat niet in event 'aanduiding_geschrapt'",
         );
         let cel = REG_CEL.replace(
-            "aanduiding: $aanduiding}, bestaat",
-            "aanduiding: $naam}, bestaat",
+            "aanduiding: $aanduiding, gebied: $gebied}",
+            "aanduiding: $naam, gebied: $gebied}",
         );
         register_faalt_met(&cel, "'naam' is geen input");
     }
@@ -1072,7 +1120,7 @@ mod tests {
     fn filter_en_som_lezen_velden_dus_geen_weesveld() {
         // `lijst` leest alleen het filter, `zetels` alleen de som.
         let cel = REG_CEL.replace(
-            "        zetels_op_lijst: {filter: {name: uitslag_vastgesteld, lijst: $aanduiding}, som: zetels}\n",
+            "        zetels_toegewezen: {filter: {name: uitslag_vastgesteld, lijst: $aanduiding}, som: zetels}\n",
             "",
         );
         register_faalt_met(&cel, "weesveld 'lijst' in event 'uitslag_vastgesteld'");

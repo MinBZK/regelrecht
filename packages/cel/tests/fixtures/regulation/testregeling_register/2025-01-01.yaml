@@ -1,7 +1,9 @@
 ---
 # Fictieve testregeling voor een register. Geen geldend recht.
-# De parameters heten per artikel generiek (is_ingeschreven_in_register); een
-# afnemer geeft ze onder een eigen naam door (testregeling_afnemer).
+# De parameters heten per artikel generiek (is_ingeschreven_in_register), in
+# de taal van deze regeling. De registercel levert ze onder die naam; een
+# afnemer vraagt ze onder een eigen naam (testregeling_afnemer), en de
+# vertaling staat in de synthese van zijn proces.
 $schema: >-
   https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
 $id: testregeling_register
@@ -16,6 +18,7 @@ articles:
   - number: '1'
     url: https://example.com/testregeling_register/1
     text: >-
+      1. De registerhouder houdt per orgaan een register van aanduidingen bij.
       Een aanduiding is geregistreerd als zij in het register is ingeschreven
       en niet is geschrapt.
     machine_readable:
@@ -43,13 +46,18 @@ articles:
                   value: false
   - number: '2'
     url: https://example.com/testregeling_register/2
-    text: De registerhouder stelt de uitslag vast en maakt haar openbaar.
+    text: >-
+      De registerhouder stelt de uitslag vast en maakt haar openbaar: de
+      zetels die aan een lijst zijn toegewezen.
     machine_readable:
       execution:
         parameters:
           - name: uitslag_openbaar
             type: boolean
             required: true
+          - name: zetels_toegewezen
+            type: number
+            required: false
         output:
           - name: uitslag_bekend
             type: boolean
@@ -73,6 +81,9 @@ articles:
           - name: geblokkeerd
             type: boolean
             required: true
+          - name: jaar_van_mededeling
+            type: number
+            required: false
         output:
           - name: doorwerking
             type: boolean

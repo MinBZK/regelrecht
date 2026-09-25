@@ -86,6 +86,52 @@ pub fn oordeel(e: &Evaluatie, uitkomst: &str) -> Oordeel {
     }
 }
 
+/// De tijdvakken die het beleid aanbiedt: de uitkomst `tijdvakken` van de
+/// regeling van het aanbod, in een run zonder parameters op `datum`. Welke
+/// tijdvakken er zijn, is beleid (de ruimte die Awb 4:2 lid 1 de actor laat),
+/// geen configuratie. Geen lijst is een fout: dan valt er niets aan te bieden.
+pub fn tijdvakken(
+    service: &LawExecutionService,
+    regeling: &str,
+    tijdvakken: &str,
+    datum: &str,
+) -> Result<Vec<Value>, String> {
+    let e = toets::evalueer(service, regeling, &[tijdvakken], &BTreeMap::new(), datum);
+    match e.waarden.get(tijdvakken) {
+        Some(Value::Array(lijst)) => Ok(lijst.clone()),
+        Some(ander) => Err(format!(
+            "{regeling}: tijdvakken '{tijdvakken}' is geen lijst ({ander})"
+        )),
+        None => Err(e.reden(&format!(
+            "{regeling}: tijdvakken '{tijdvakken}' niet te bepalen"
+        ))),
+    }
+}
+
+/// Het begin van een tijdvak volgens het beleid: de uitkomst `begin` van de
+/// regeling van het aanbod, met alleen het gekozen tijdvak als parameter. Het
+/// aanbod voor een tijdvak dat nog moet beginnen, peilt de registers op die
+/// dag. Geen datum is een fout.
+pub fn begin(
+    service: &LawExecutionService,
+    regeling: &str,
+    begin: &str,
+    keuze: &Keuze,
+    datum: &str,
+) -> Result<chrono::NaiveDate, String> {
+    let mut p = BTreeMap::new();
+    p.insert(keuze.parameter.clone(), keuze.waarde.clone());
+    let e = toets::evalueer(service, regeling, &[begin], &p, datum);
+    match e.waarden.get(begin) {
+        Some(Value::String(d)) => chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d")
+            .map_err(|_| format!("{regeling}: begin '{begin}' is geen datum ({d})")),
+        Some(ander) => Err(format!(
+            "{regeling}: begin '{begin}' is geen datum ({ander})"
+        )),
+        None => Err(e.reden(&format!("{regeling}: begin '{begin}' niet te bepalen"))),
+    }
+}
+
 /// Voer het aanbod uit voor een tijdvak: uitkomst en termijn in een run.
 pub fn bepaal(
     service: &LawExecutionService,
@@ -247,7 +293,8 @@ articles:
             regeling: "testregeling_aanbod".into(),
             uitkomst: "aangeboden".into(),
             termijn: termijn.then(|| "termijn".into()),
-            keuzes: None,
+            tijdvakken: None,
+            begin: None,
         }
     }
 
@@ -316,6 +363,42 @@ articles:
         let m = bepaal_met(true, json!({"jaar": 2026, "registerdatum": "2026-01-01"}));
         assert_eq!(m.oordeel, Oordeel::NietTeBepalen, "{m:?}");
         assert!(m.reden.as_deref().unwrap().contains("bevoegd"), "{m:?}");
+    }
+
+    /// De tijdvakken uit het beleid: een lijst uit een run zonder parameters;
+    /// een uitkomst die geen lijst is, is een fout.
+    #[test]
+    fn tijdvakken_uit_een_run() {
+        const BELEID: &str = r#"
+$id: testbeleid_tijdvakken
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het portaal biedt het lopende jaar en het volgende aan.
+    machine_readable:
+      execution:
+        output:
+          - {name: jaren, type: array}
+          - {name: een_jaar, type: number}
+        actions:
+          - output: jaren
+            value:
+              operation: FOREACH
+              collection: [0, 1]
+              as: verder
+              body: {operation: ADD, values: [$referencedate.year, $verder]}
+          - output: een_jaar
+            value: $referencedate.year
+"#;
+        let mut s = LawExecutionService::new();
+        s.load_law(BELEID).unwrap();
+        assert_eq!(
+            tijdvakken(&s, "testbeleid_tijdvakken", "jaren", "2026-09-25").unwrap(),
+            [json!(2026), json!(2027)]
+        );
+        let fout = tijdvakken(&s, "testbeleid_tijdvakken", "een_jaar", "2026-09-25").unwrap_err();
+        assert!(fout.contains("is geen lijst"), "{fout}");
     }
 
     #[test]

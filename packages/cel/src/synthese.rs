@@ -16,7 +16,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::config::{RijBron, SyntheseBron};
+use crate::config::{BronInvoer, RijBron, SyntheseBron};
 use crate::proces::Proces;
 use crate::reductie::{Lexostatus, Peil};
 use crate::regelingen;
@@ -96,8 +96,9 @@ pub enum Herkomst {
     PerRegel { lexostatus: String, veld: String },
     /// Het besluitformulier: een oordeel van de behandelaar.
     Behandelaar,
-    /// De stand bij besluit: een feit dat pas na het besluit ontstaat.
-    StandBijBesluit,
+    /// De stand bij besluit: een feit dat de procedure pas in een latere
+    /// stage vraagt (RFC-008), en dat bij het besluit nog niet gebeurd is.
+    StandBijBesluit { stage: String },
     /// Het tijdvak dat de aanvrager in het portaal koos.
     Keuze,
 }
@@ -188,16 +189,23 @@ pub fn pad(cel: &str, lexostatus: &str, invoer: &Map<String, Value>, peil: &Peil
 }
 
 /// De invoer voor een bron: uit de eigen lexostatus (een parameter of een
-/// extra veld), of uit de extra velden die een eerdere bron doorgaf
-/// (`eerder`: lexostatus van die bron naar haar extra velden). Een fout noemt
-/// wat ontbreekt.
+/// extra veld), uit de extra velden die een eerdere bron doorgaf (`eerder`:
+/// lexostatus van die bron naar haar extra velden), of een vaste waarde. Een
+/// fout noemt wat ontbreekt.
 fn invoer(
     bron: &SyntheseBron,
     eigen: &Lexostatus,
     eerder: &BTreeMap<String, Map<String, Value>>,
 ) -> Result<Map<String, Value>, String> {
     let mut uit = Map::new();
-    for (naam, v) in &bron.invoer {
+    for (naam, i) in &bron.invoer {
+        let v = match i {
+            BronInvoer::Waarde { waarde } => {
+                uit.insert(naam.clone(), waarde.clone());
+                continue;
+            }
+            BronInvoer::Veld(v) => v,
+        };
         let waarde = if v.lexostatus == eigen.naam {
             eigen.veld(&v.veld)
         } else {
@@ -221,40 +229,79 @@ fn invoer(
     Ok(uit)
 }
 
-/// Of een bron wacht op een eerdere bron: een invoer komt niet uit de eigen
-/// lexostatus.
-fn wacht_op_eerdere(bron: &SyntheseBron, eigen: &Lexostatus) -> bool {
-    bron.invoer.values().any(|v| v.lexostatus != eigen.naam)
+/// De lexostatussen van eerdere bronnen waarop een bron wacht: elke invoer
+/// uit een veld dat niet uit de eigen lexostatus komt.
+fn wacht_op<'b>(bron: &'b SyntheseBron, eigen: &Lexostatus) -> Vec<&'b str> {
+    bron.invoer
+        .values()
+        .filter_map(BronInvoer::veld)
+        .filter(|v| v.lexostatus != eigen.naam)
+        .map(|v| v.lexostatus.as_str())
+        .collect()
 }
 
-/// Voeg de eigen lexostatus samen met die van de bronnen. Eerst worden de
-/// bronnen tegelijk bevraagd die alleen de eigen lexostatus nodig hebben,
-/// daarna de bronnen die een extra veld van een eerdere bron als invoer
-/// nemen (bijvoorbeeld een naam bij een registratienummer).
+/// Voeg de eigen lexostatus samen met die van de bronnen, in rondes. Per
+/// ronde worden de bronnen tegelijk bevraagd waarvan elke invoer er al is:
+/// uit de eigen lexostatus, of een extra veld van een bron uit een eerdere
+/// ronde (bijvoorbeeld een naam bij een registratienummer, en daarna de
+/// aanduiding bij die naam). Een bron waarop niemand meer kan wachten, komt in
+/// de laatste ronde en meldt wat ontbreekt.
 ///
 /// Elke bron reduceert op `peil`: het moment waarop het proces de stand
 /// vraagt (de peildatum van een besluit, het begin van een tijdvak).
 pub async fn voeg_samen(eigen: &Lexostatus, bronnen: &[Bron], peil: &Peil) -> Samenvoeging {
-    let (eerst, daarna): (Vec<&Bron>, Vec<&Bron>) = bronnen
-        .iter()
-        .partition(|b| !wacht_op_eerdere(&b.definitie, eigen));
-    let mut eerder = BTreeMap::new();
-    let mut s = vraag(eigen, &eerst, &eerder, peil).await;
-    for (uitslag, bron) in s.bronnen.iter().zip(&eerst) {
-        if !bron.definitie.extra_velden.is_empty() {
-            eerder.insert(uitslag.lexostatus.clone(), uitslag.extra_velden.clone());
+    let mut eerder: BTreeMap<String, Map<String, Value>> = BTreeMap::new();
+    let mut gedaan: BTreeSet<String> = BTreeSet::new();
+    let mut open: Vec<&Bron> = bronnen.iter().collect();
+    let mut s = Samenvoeging {
+        parameters: eigen.parameters.clone(),
+        herkomst: eigen
+            .parameters
+            .keys()
+            .map(|k| {
+                (
+                    k.clone(),
+                    Herkomst::Eigen {
+                        lexostatus: eigen.naam.clone(),
+                    },
+                )
+            })
+            .collect(),
+        bronnen: Vec::new(),
+    };
+    while !open.is_empty() {
+        let (klaar, wacht): (Vec<&Bron>, Vec<&Bron>) = open.into_iter().partition(|b| {
+            wacht_op(&b.definitie, eigen)
+                .iter()
+                .all(|l| gedaan.contains(*l))
+        });
+        // Niemand is klaar: wat nog wacht, wacht op een bron die er niet is
+        // of niets doorgaf. Vraag ze nu; de invoer meldt wat ontbreekt.
+        let (ronde, rest) = if klaar.is_empty() {
+            (wacht, Vec::new())
+        } else {
+            (klaar, wacht)
+        };
+        let t = vraag(eigen, &ronde, &eerder, peil).await;
+        for (uitslag, bron) in t.bronnen.iter().zip(&ronde) {
+            gedaan.insert(bron.definitie.lexostatus.clone());
+            if !bron.definitie.extra_velden.is_empty() {
+                eerder.insert(uitslag.lexostatus.clone(), uitslag.extra_velden.clone());
+            }
         }
+        for (k, v) in t.parameters {
+            if !eigen.parameters.contains_key(&k) {
+                s.parameters.insert(k, v);
+            }
+        }
+        for (k, h) in t.herkomst {
+            if !eigen.parameters.contains_key(&k) {
+                s.herkomst.insert(k, h);
+            }
+        }
+        s.bronnen.extend(t.bronnen);
+        open = rest;
     }
-    let t = vraag(eigen, &daarna, &eerder, peil).await;
-    for (k, v) in t.parameters {
-        s.parameters.entry(k).or_insert(v);
-    }
-    s.herkomst.extend(
-        t.herkomst
-            .into_iter()
-            .filter(|(k, _)| !eigen.parameters.contains_key(k)),
-    );
-    s.bronnen.extend(t.bronnen);
     s
 }
 
@@ -266,18 +313,8 @@ async fn vraag(
     eerder: &BTreeMap<String, Map<String, Value>>,
     peil: &Peil,
 ) -> Samenvoeging {
-    let mut parameters = eigen.parameters.clone();
-    let mut herkomst: BTreeMap<String, Herkomst> = parameters
-        .keys()
-        .map(|k| {
-            (
-                k.clone(),
-                Herkomst::Eigen {
-                    lexostatus: eigen.naam.clone(),
-                },
-            )
-        })
-        .collect();
+    let mut parameters = BTreeMap::new();
+    let mut herkomst: BTreeMap<String, Herkomst> = BTreeMap::new();
 
     let vragen = bronnen.iter().map(|bron| async move {
         let d = &bron.definitie;
@@ -308,7 +345,14 @@ async fn vraag(
                         uitslag.extra_velden.insert(veld.clone(), w.clone());
                     }
                 }
-                (uitslag, Some(l.parameters))
+                // Wat de afnemer als parameter vraagt, mag de bron als
+                // parameter of als extra veld leveren: welke feiten een
+                // parameter zijn, zegt de wet van de afnemer, niet de bron.
+                let mut geleverd = l.parameters;
+                for (k, v) in l.extra_velden {
+                    geleverd.entry(k).or_insert(v);
+                }
+                (uitslag, Some(geleverd))
             }
             Err(TransportFout::Onbereikbaar(r)) => {
                 uitslag.status = Status::Onbereikbaar;
@@ -327,12 +371,14 @@ async fn vraag(
     let mut uitslagen = Vec::new();
     for ((mut uitslag, geleverd), bron) in antwoorden.into_iter().zip(bronnen.iter()) {
         if let Some(geleverd) = geleverd {
-            for p in &bron.definitie.parameters {
-                match geleverd.get(p) {
+            // De bron levert onder haar eigen naam; de afnemer vraagt het
+            // onder de zijne.
+            for (bij_bron, p) in bron.definitie.parameters.paren() {
+                match geleverd.get(bij_bron) {
                     Some(w) => {
-                        parameters.insert(p.clone(), w.clone());
+                        parameters.insert(p.to_string(), w.clone());
                         herkomst.insert(
-                            p.clone(),
+                            p.to_string(),
                             Herkomst::Cel {
                                 cel: uitslag.cel.clone(),
                                 lexostatus: uitslag.lexostatus.clone(),
@@ -340,7 +386,7 @@ async fn vraag(
                             },
                         );
                     }
-                    None => uitslag.niet_geleverd.push(p.clone()),
+                    None => uitslag.niet_geleverd.push(bij_bron.to_string()),
                 }
             }
         }
@@ -359,9 +405,9 @@ async fn vraag(
 /// - een bron levert een parameter of geeft een extra veld door;
 /// - een doorgevende bron heet anders dan elke eigen lexostatus en dan elke
 ///   andere doorgevende bron, zodat een invoer maar een ding kan aanwijzen;
-/// - een invoer uit een doorgevende bron komt van een eerdere bron in de lijst,
-///   die dat veld doorgeeft en zelf niet op een andere bron wacht (de synthese
-///   kent twee rondes).
+/// - een invoer uit een doorgevende bron komt van een eerdere bron in de lijst
+///   die dat veld doorgeeft (die mag zelf ook op een eerdere bron wachten: de
+///   synthese vraagt in rondes).
 fn doorgeven(proces: &Proces) -> Vec<String> {
     let mut fouten = Vec::new();
     let bronnen: Vec<&SyntheseBron> = proces.definitie.andere_bronnen().collect();
@@ -394,7 +440,7 @@ fn doorgeven(proces: &Proces) -> Vec<String> {
                 ));
             }
         }
-        for (naam, v) in &bron.invoer {
+        for (naam, v) in bron.invoer.iter().filter_map(|(n, i)| Some((n, i.veld()?))) {
             let doorgever = bronnen
                 .iter()
                 .enumerate()
@@ -409,15 +455,6 @@ fn doorgeven(proces: &Proces) -> Vec<String> {
                 fouten.push(format!(
                     "{wie}, invoer '{naam}': bron {}/{} geeft geen extra veld '{}' door",
                     e.cel, e.lexostatus, v.veld
-                ));
-            } else if e
-                .invoer
-                .values()
-                .any(|w| !eigen.contains(&w.lexostatus.as_str()))
-            {
-                fouten.push(format!(
-                    "{wie}, invoer '{naam}': bron {}/{} wacht zelf op een eerdere bron; de synthese kent twee rondes",
-                    e.cel, e.lexostatus
                 ));
             }
         }
@@ -528,7 +565,7 @@ pub fn controleer(proces: &Proces) -> Vec<String> {
                 "{wie}: een bron uit de cel waarin het proces vastlegt, is een bron van de zaak (zaak: true)"
             ));
         }
-        for (naam, v) in &bron.invoer {
+        for (naam, v) in bron.invoer.iter().filter_map(|(n, i)| Some((n, i.veld()?))) {
             if doorgevers.contains(&v.lexostatus.as_str()) {
                 // Doorgegeven door een eerdere bron: zie `doorgeven`.
             } else if v.lexostatus != portaal.toets.lexostatus {
@@ -634,8 +671,9 @@ pub async fn waarschuwingen(proces: &str, bronnen: &[Bron]) -> Vec<String> {
                 "{wie}: de bron is een lijst (groepeer) en levert geen parameters"
             ));
         }
-        let geleverd = namen(lexo, "parameters");
-        for p in d.parameters.iter().filter(|p| !geleverd.contains(*p)) {
+        let mut geleverd = namen(lexo, "parameters");
+        geleverd.extend(namen(lexo, "extra_velden"));
+        for (p, _) in d.parameters.paren().filter(|(p, _)| !geleverd.contains(*p)) {
             uit.push(format!("{wie}: de bron levert geen parameter '{p}'"));
         }
         let inputs = namen(lexo, "inputs");
@@ -727,6 +765,102 @@ mod tests {
         assert_eq!(s.parameters.get("aantal"), Some(&json!(3)));
         assert!(!s.parameters.contains_key("naam"));
         assert_eq!(s.bronnen.len(), 2);
+    }
+
+    /// Een keten van drie: een nummer naar een naam, de naam naar een
+    /// aanduiding, de aanduiding naar een feit. De synthese vraagt in rondes;
+    /// een bron wacht tot haar invoer er is. Een vaste waarde gaat mee, en de
+    /// afnemer vraagt het feit onder zijn eigen naam.
+    #[tokio::test]
+    async fn een_keten_van_bronnen_in_rondes_met_vertaling() {
+        let t1 = vaste(json!({"naam": "x", "parameters": {}, "extra_velden": {"naam": "EEN"}}));
+        let t2 =
+            vaste(json!({"naam": "x", "parameters": {}, "extra_velden": {"aanduiding": "LIJST"}}));
+        let t3 = vaste(
+            json!({"naam": "x", "parameters": {"is_ingeschreven_in_register": true},
+                              "extra_velden": {"zetels_toegekend": 4}}),
+        );
+        let bron = |t: &Arc<Vast>, d: Value| Bron {
+            definitie: serde_json::from_value(d).unwrap(),
+            transport: t.clone(),
+        };
+        // In omgekeerde volgorde: de rondes volgen uit de invoer.
+        let bronnen = [
+            bron(
+                &t3,
+                json!({
+                    "cel": "register", "lexostatus": "register",
+                    "invoer": {"aanduiding": {"lexostatus": "op_naam", "veld": "aanduiding"}, "orgaan": {"waarde": "raad"}},
+                    "parameters": {"is_ingeschreven_in_register": "is_ingeschreven_raad", "zetels_toegekend": "zetels_op_lijst"}
+                }),
+            ),
+            bron(
+                &t2,
+                json!({
+                    "cel": "register", "lexostatus": "op_naam",
+                    "invoer": {"naam": {"lexostatus": "op_nummer", "veld": "naam"}},
+                    "parameters": [], "extra_velden": ["aanduiding"]
+                }),
+            ),
+            bron(
+                &t1,
+                json!({
+                    "cel": "handelsregister", "lexostatus": "op_nummer",
+                    "invoer": {"nummer": {"lexostatus": "eigen", "veld": "nummer"}},
+                    "parameters": [], "extra_velden": ["naam"]
+                }),
+            ),
+        ];
+        let eigen: Lexostatus = serde_json::from_value(json!({
+            "naam": "eigen", "parameters": {}, "extra_velden": {"nummer": "12345678"}
+        }))
+        .unwrap();
+        let s = voeg_samen(&eigen, &bronnen, &Peil::default()).await;
+        assert_eq!(
+            t3.vragen()[0],
+            "/cellen/register/api/lexostatus/register?aanduiding=LIJST&orgaan=raad"
+        );
+        assert_eq!(s.parameters.get("is_ingeschreven_raad"), Some(&json!(true)));
+        assert!(!s.parameters.contains_key("is_ingeschreven_in_register"));
+        // Een extra veld van de bron is voor de afnemer een parameter als zijn
+        // wet het vraagt.
+        assert_eq!(s.parameters.get("zetels_op_lijst"), Some(&json!(4)));
+        assert_eq!(
+            s.herkomst["is_ingeschreven_raad"],
+            Herkomst::Cel {
+                cel: "register".into(),
+                lexostatus: "register".into(),
+                transport: t3.soort().into()
+            }
+        );
+        let volgorde: Vec<&str> = s.bronnen.iter().map(|b| b.lexostatus.as_str()).collect();
+        assert_eq!(volgorde, ["op_nummer", "op_naam", "register"]);
+    }
+
+    /// Een bron die wacht op een bron die er niet is, wordt toch gevraagd, en
+    /// meldt wat ontbreekt; er wordt niets aangevuld.
+    #[tokio::test]
+    async fn een_bron_die_op_niets_kan_wachten() {
+        let t = vaste(json!({"naam": "x", "parameters": {"a": 1}}));
+        let b = Bron {
+            definitie: serde_json::from_value(json!({
+                "cel": "register", "lexostatus": "l",
+                "invoer": {"naam": {"lexostatus": "bestaat_niet", "veld": "naam"}},
+                "parameters": ["a"]
+            }))
+            .unwrap(),
+            transport: t.clone(),
+        };
+        let eigen = Lexostatus::leeg("eigen");
+        let s = voeg_samen(&eigen, &[b], &Peil::default()).await;
+        assert!(t.vragen().is_empty());
+        assert_eq!(s.bronnen[0].status, Status::NietBevraagd);
+        assert!(s.bronnen[0]
+            .fout
+            .as_deref()
+            .unwrap()
+            .contains("invoer 'naam' ontbreekt"));
+        assert!(!s.parameters.contains_key("a"));
     }
 
     /// Geeft de eerste bron niets door, dan wordt de volgende niet bevraagd,

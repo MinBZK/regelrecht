@@ -195,6 +195,23 @@ pub fn artikel<'s>(
     })
 }
 
+/// Het artikel achter een grondslag, en het lid dat ze noemt moet de
+/// artikeltekst hebben (zie [`heeft_lid`]). Gedeeld door de controles op de
+/// grondslag van een event, van een afleiding en van een formulierveld.
+pub fn geldig<'s>(
+    service: &'s LawExecutionService,
+    grondslag: &str,
+) -> Result<&'s Article, String> {
+    let a = artikel(service, grondslag)?;
+    if let Some(lid) = ontleed(grondslag)?.lid.filter(|l| !heeft_lid(a, l)) {
+        return Err(format!(
+            "grondslag '{grondslag}': artikel {} heeft geen lid {lid} (geen regel die met '{lid}.' of '{lid} ' begint)",
+            a.number
+        ));
+    }
+    Ok(a)
+}
+
 /// De parameters van een artikel en van elk artikel dat het via een invoer
 /// aanroept, transitief: een invoer met `source.output` wijst naar het artikel
 /// met die uitkomst, in `source.regulation` of in dezelfde regeling. Een

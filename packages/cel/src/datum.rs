@@ -105,11 +105,6 @@ pub fn jaar_van(tekst: &str) -> Option<i64> {
     }
 }
 
-/// 1 januari van een jaar, als datum: de tegenhanger van [`jaar_van`].
-pub fn eerste_dag_van_het_jaar(jaar: i64) -> String {
-    format!("{jaar:04}-01-01")
-}
-
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
@@ -158,6 +153,5 @@ mod tests {
         assert_eq!(jaar_van("2025-03-12"), Some(2025));
         assert_eq!(jaar_van("2026-01-01T00:00:00+01:00"), Some(2026));
         assert_eq!(jaar_van("geen datum"), None);
-        assert_eq!(eerste_dag_van_het_jaar(2026), "2026-01-01");
     }
 }

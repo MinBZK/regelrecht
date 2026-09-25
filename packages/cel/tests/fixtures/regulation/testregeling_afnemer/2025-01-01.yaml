@@ -10,8 +10,11 @@
 # bekendmaking, die pas na het besluit komt). Een aanroep binnen dezelfde
 # regeling deelt de parameters; een aanroep van een andere regeling krijgt
 # alleen wat `parameters` meegeeft. Artikel 4 is het aanbod: een
-# registerfeit en het jaar waarvoor de aanvraag wordt gedaan: het tijdvak van
-# de gevraagde beschikking (Awb 4:2 lid 1, `rol: TIJDVAK`).
+# registerfeit en het jaar waarvoor de aanvraag wordt gedaan (het tijdvak van
+# de gevraagde beschikking, Awb 4:2 lid 1, `rol: TIJDVAK`),
+# en welke jaren de afnemer aanbiedt. Artikel 5 leidt de peildatum van het
+# tarief af: de wet zegt het, niet de configuratie. Artikel 6 zegt wanneer een
+# aanvraagjaar begint (het peil van het aanbod voor een komend jaar).
 $schema: >-
   https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
 $id: testregeling_afnemer
@@ -267,6 +270,8 @@ articles:
       1. De afnemer biedt de aanvraag aan wie een voor de raad ingeschreven
       aanduiding heeft, voor het jaar waarvoor de aanvraag wordt gedaan.
       2. De aanvraag wordt gedaan voor 1 april van dat jaar.
+      3. De afnemer biedt de aanvraag aan voor het lopende jaar en het
+      volgende.
     machine_readable:
       execution:
         produces:
@@ -286,6 +291,8 @@ articles:
             type: boolean
           - name: aanvraagtermijn
             type: date
+          - name: aangeboden_jaren
+            type: array
         actions:
           - output: aanvraag_aangeboden
             value:
@@ -297,4 +304,55 @@ articles:
               operation: DATE
               year: $aanvraagjaar
               month: 4
+              day: 1
+          - output: aangeboden_jaren
+            legal_basis: {law: Testregeling afnemer, article: '4', paragraph: '3'}
+            value:
+              operation: FOREACH
+              collection: [0, 1]
+              as: verder
+              body:
+                operation: ADD
+                values: [$referencedate.year, $verder]
+  - number: '5'
+    url: https://example.com/testregeling_afnemer/5
+    text: >-
+      Het tarief van een gebied geldt op 1 januari van het jaar van de
+      mededeling.
+    machine_readable:
+      execution:
+        parameters:
+          - name: jaar
+            type: number
+            required: true
+            origin: {waarde: REGISTER, register: testregeling_register, grondslag: testregeling_register#3}
+        output:
+          - name: peildatum_tarief
+            type: date
+        actions:
+          - output: peildatum_tarief
+            value:
+              operation: DATE
+              year: $jaar
+              month: 1
+              day: 1
+  - number: '6'
+    url: https://example.com/testregeling_afnemer/6
+    text: Een aanvraagjaar begint op 1 januari van dat jaar.
+    machine_readable:
+      execution:
+        parameters:
+          - name: aanvraagjaar
+            type: number
+            required: false
+            origin: {waarde: BELANGHEBBENDE, grondslag: algemene_wet_bestuursrecht#4:2 lid 1, rol: TIJDVAK}
+        output:
+          - name: begin_aanvraagjaar
+            type: date
+        actions:
+          - output: begin_aanvraagjaar
+            value:
+              operation: DATE
+              year: $aanvraagjaar
+              month: 1
               day: 1

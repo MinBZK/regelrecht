@@ -93,15 +93,6 @@
             }
           }
         },
-        "levert_aan": {
-          "type": "array",
-          "description": "Artikelen van een afnemer waarvan deze lexostatus parameters levert, als <regeling>#<artikel>. Een afleiding mag dan ook een parameter van zo'n artikel noemen, naast de parameters van de artikelen uit de grondslag van het event. Nodig als de afnemer een feit onder een eigen naam vraagt.",
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_]*#[A-Za-z0-9]([A-Za-z0-9:._ -]*[A-Za-z0-9])?$"
-          }
-        },
         "reduction": {
           "$ref": "#/definitions/reductie"
         }
@@ -139,7 +130,7 @@
         },
         "afleidingen": {
           "type": "object",
-          "description": "Per parameter van een artikel onder de grondslag: hoe die uit het gram volgt. Leeg mag, als extra_velden wel iets levert: een lexostatus die alleen kolommen voor een synthese per regel levert, levert geen parameter.",
+          "description": "Per parameter van een artikel onder de grondslag van het event of van de afleiding zelf: hoe die uit het gram volgt. Leeg mag, als extra_velden wel iets levert: een lexostatus die alleen kolommen voor een synthese per regel levert, levert geen parameter.",
           "propertyNames": {
             "pattern": "^[a-z_][a-z0-9_]*$"
           },
@@ -176,6 +167,15 @@
           "properties": {
             "veld": {
               "$ref": "#/definitions/veldpad"
+            },
+            "grondslag": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
+              "items": {
+                "$ref": "#/definitions/grondslag"
+              }
             }
           }
         },
@@ -189,6 +189,15 @@
           "properties": {
             "jaar_van": {
               "$ref": "#/definitions/veldpad"
+            },
+            "grondslag": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
+              "items": {
+                "$ref": "#/definitions/grondslag"
+              }
             }
           }
         },
@@ -202,6 +211,15 @@
           "properties": {
             "gevuld": {
               "$ref": "#/definitions/veldpad"
+            },
+            "grondslag": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
+              "items": {
+                "$ref": "#/definitions/grondslag"
+              }
             }
           }
         },
@@ -232,6 +250,15 @@
                   ]
                 }
               }
+            },
+            "grondslag": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
+              "items": {
+                "$ref": "#/definitions/grondslag"
+              }
             }
           }
         },
@@ -252,6 +279,15 @@
             },
             "alleen_waar": {
               "$ref": "#/definitions/kolom"
+            },
+            "grondslag": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
+              "items": {
+                "$ref": "#/definitions/grondslag"
+              }
             }
           }
         },
@@ -269,6 +305,15 @@
             },
             "een_regel": {
               "$ref": "#/definitions/kolom"
+            },
+            "grondslag": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
+              "items": {
+                "$ref": "#/definitions/grondslag"
+              }
             }
           }
         },
@@ -285,6 +330,15 @@
                 "op_moment",
                 "vastgelegd_op"
               ]
+            },
+            "grondslag": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
+              "items": {
+                "$ref": "#/definitions/grondslag"
+              }
             }
           }
         },
@@ -304,6 +358,15 @@
             },
             "gevuld": {
               "$ref": "#/definitions/veldpad"
+            },
+            "grondslag": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
+              "items": {
+                "$ref": "#/definitions/grondslag"
+              }
             }
           }
         },
@@ -325,6 +388,15 @@
               "items": {
                 "$ref": "#/definitions/veldpad"
               }
+            },
+            "grondslag": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
+              "items": {
+                "$ref": "#/definitions/grondslag"
+              }
             }
           }
         },
@@ -341,6 +413,15 @@
             },
             "som": {
               "$ref": "#/definitions/veldpad"
+            },
+            "grondslag": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
+              "items": {
+                "$ref": "#/definitions/grondslag"
+              }
             }
           }
         },
@@ -372,6 +453,15 @@
                 "boolean"
               ],
               "description": "De waarde als geen gram door filter komt: de lezing van afwezigheid binnen de eigen kroniek, bijvoorbeeld null voor een datum van iets dat niet gebeurde. Zonder geen_gram blijft de parameter dan weg."
+            },
+            "grondslag": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
+              "items": {
+                "$ref": "#/definitions/grondslag"
+              }
             }
           }
         },
@@ -403,6 +493,15 @@
                 "boolean"
               ],
               "description": "De waarde als geen gram door filter komt: de lezing van afwezigheid binnen de eigen kroniek. Zonder geen_gram blijft de parameter dan weg."
+            },
+            "grondslag": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
+              "items": {
+                "$ref": "#/definitions/grondslag"
+              }
             }
           }
         },
@@ -442,6 +541,15 @@
                   ]
                 }
               }
+            },
+            "grondslag": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
+              "items": {
+                "$ref": "#/definitions/grondslag"
+              }
             }
           }
         }
@@ -458,6 +566,11 @@
         "minLength": 1
       },
       "minProperties": 1
+    },
+    "grondslag": {
+      "type": "string",
+      "description": "<regeling-$id>#<artikelnummer>, optioneel met ' lid <n>', zoals bij een event (stream.json).",
+      "pattern": "^[a-z][a-z0-9_]*#[A-Za-z0-9]([A-Za-z0-9:._ -]*[A-Za-z0-9])?( lid [0-9]+[a-z]?)?$"
     }
   }
 }

@@ -471,11 +471,12 @@ async fn cellen_worden_opgesomd_met_hun_mogelijkheden() {
     );
     let register = &body[3];
     assert_eq!(register["recording_actor"], "test_register");
-    assert_eq!(register["lexostatussen"][0]["name"], "registerstatus");
+    assert_eq!(register["lexostatussen"][0]["name"], "register");
     assert_eq!(
         register["lexostatussen"][0]["inputs"][0]["name"],
         "aanduiding"
     );
+    assert_eq!(register["lexostatussen"][0]["inputs"][1]["name"], "orgaan");
     assert_eq!(
         body[0]["lexostatussen"][0]["extra_velden"],
         json!(["aanduiding", "gebieden"])
@@ -573,10 +574,24 @@ async fn lexostatus_met_invoer_als_query() {
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{l}");
+    // De registercel spreekt de taal van haar eigen regeling.
     assert_eq!(
         l["parameters"],
-        json!({"is_ingeschreven_raad": true, "is_geschrapt_raad": false, "jaar": 2024,
-               "zetels_op_lijst": 6, "datum_mededeling": "2024-11-01", "geblokkeerd_raad": false})
+        json!({"jaar_van_mededeling": 2024, "zetels_toegewezen": 6,
+               "datum_mededeling": "2024-11-01", "geblokkeerd": false})
+    );
+    let (status, l, _) = vraag(
+        &app,
+        "GET",
+        "/cellen/test_register/api/lexostatus/register?aanduiding=VOORBEELD&orgaan=raad",
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{l}");
+    assert_eq!(
+        l["parameters"],
+        json!({"is_ingeschreven_in_register": true, "is_geschrapt": false})
     );
     let (status, l, _) = vraag(
         &app,
@@ -642,10 +657,20 @@ async fn synthese_intern_met_herkomst_per_parameter() {
         body["herkomst"]["zetels_op_lijst"],
         json!({"bron": "cel", "cel": "test_register", "lexostatus": "registerstatus", "transport": "intern"})
     );
+    // De afnemer vraagt het register onder zijn eigen naam; de bron levert
+    // in de taal van haar regeling, met het orgaan als vaste invoer.
+    assert_eq!(body["parameters"]["is_ingeschreven_raad"], json!(true));
+    assert_eq!(
+        body["herkomst"]["is_ingeschreven_raad"],
+        json!({"bron": "cel", "cel": "test_register", "lexostatus": "register", "transport": "intern"})
+    );
+    assert!(body["parameters"]
+        .get("is_ingeschreven_in_register")
+        .is_none());
     assert_eq!(body["bronnen"][0]["status"], "bevraagd");
     assert_eq!(
         body["bronnen"][0]["invoer"],
-        json!({"aanduiding": "VOORBEELD"})
+        json!({"aanduiding": "VOORBEELD", "orgaan": "raad"})
     );
     // De aanduiding is geen parameter: ze staat apart in de eigen lexostatus.
     assert_eq!(
@@ -669,9 +694,10 @@ async fn synthese_zonder_registratie_en_zonder_invoer() {
     let body = afnemer_toets(&app, Some("ONBEKEND")).await;
     assert_eq!(body["uitslag"]["waarde"], json!(false), "{body}");
     assert_eq!(body["herkomst"]["is_ingeschreven_raad"]["bron"], "cel");
+    // Wat de bron niet leverde, onder haar eigen naam.
     assert_eq!(
-        body["bronnen"][0]["niet_geleverd"],
-        json!(["datum_mededeling", "jaar"])
+        body["bronnen"][1]["niet_geleverd"],
+        json!(["datum_mededeling", "jaar_van_mededeling"])
     );
     assert!(body["herkomst"].get("datum_mededeling").is_none());
     // Zonder aanduiding wordt de bron niet bevraagd.
@@ -731,10 +757,14 @@ fn zo(t: String) -> String {
 
 fn met_url(url: String) -> impl Fn(String) -> String {
     move |t: String| {
-        // Alleen de synthese-bron, niet de gelijknamige bron onder rijen.
+        // Alleen de synthese-bronnen, niet de bron onder rijen.
         t.replace(
             "  - cel: test_register\n    lexostatus: registerstatus\n",
             &format!("  - cel: test_register\n    url: {url}\n    lexostatus: registerstatus\n"),
+        )
+        .replace(
+            "  - cel: test_register\n    lexostatus: register\n",
+            &format!("  - cel: test_register\n    url: {url}\n    lexostatus: register\n"),
         )
     }
 }
@@ -756,12 +786,14 @@ async fn synthese_over_http_naar_een_andere_runtime() {
     // Wat de runtime van een bron buiten haar niet kan zien, meldt ze (de
     // herkomst, RFC-043); verder niets.
     let w = a.waarschuwingen().await;
-    assert_eq!(w.len(), 1, "{w:?}");
-    assert!(
-        w[0].starts_with("proces 'test_afnemer_proces': herkomst van 'datum_mededeling', ")
-            && w[0].contains(&format!("draait buiten deze runtime (http://{adres})")),
-        "{w:?}"
-    );
+    assert_eq!(w.len(), 2, "{w:?}");
+    for w in &w {
+        assert!(
+            w.starts_with("proces 'test_afnemer_proces': herkomst van ")
+                && w.contains(&format!("draait buiten deze runtime (http://{adres})")),
+            "{w:?}"
+        );
+    }
     let body = afnemer_toets(&a.router, Some("VOORBEELD")).await;
     assert_eq!(body["uitslag"]["waarde"], json!(true), "{body}");
     assert_eq!(
@@ -824,7 +856,7 @@ async fn bron_zonder_de_verwachte_parameter_is_een_waarschuwing() {
     std::fs::write(
         &lexo,
         tekst.replace(
-            "        is_geschrapt_raad: {filter: {name: aanduiding_geschrapt, orgaan: raad, aanduiding: $aanduiding}, bestaat: true}\n",
+            "        is_geschrapt:\n          filter: {name: aanduiding_geschrapt, orgaan: $orgaan, aanduiding: $aanduiding}\n          bestaat: true\n          grondslag: [testregeling_register#1 lid 1]\n",
             "",
         ),
     )
@@ -845,7 +877,7 @@ async fn bron_zonder_de_verwachte_parameter_is_een_waarschuwing() {
     let w = a.waarschuwingen().await;
     assert!(
         w.iter()
-            .any(|w| w.contains("de bron levert geen parameter 'is_geschrapt_raad'")),
+            .any(|w| w.contains("de bron levert geen parameter 'is_geschrapt'")),
         "{w:?}"
     );
 }
@@ -872,8 +904,8 @@ fn synthese_controle_bij_het_opstarten() {
     geval(
         &|t: String| {
             t.replace(
-                "[is_ingeschreven_raad,",
-                "[uitslag_openbaar, is_ingeschreven_raad,",
+                "{is_ingeschreven_in_register: is_ingeschreven_raad,",
+                "{uitslag_openbaar: uitslag_openbaar, is_ingeschreven_in_register: is_ingeschreven_raad,",
             )
         },
         "'uitslag_openbaar' is geen parameter van testregeling_afnemer#1",
@@ -882,8 +914,8 @@ fn synthese_controle_bij_het_opstarten() {
     geval(
         &|t: String| {
             t.replace(
-                "[is_ingeschreven_raad,",
-                "[bevat_aanduiding, is_ingeschreven_raad,",
+                "{is_ingeschreven_in_register: is_ingeschreven_raad,",
+                "{bevat_aanduiding: bevat_aanduiding, is_ingeschreven_in_register: is_ingeschreven_raad,",
             )
         },
         "parameter 'bevat_aanduiding' komt uit meer dan een bron",
@@ -973,18 +1005,25 @@ fn besluit_controle_bij_het_opstarten() {
         },
         "is een bron van de zaak (zaak: true)",
     );
-    geval(
-        &|t: String| {
-            t.replace(
-                "      bekendgemaakt: false\n",
-                "      bekendgemaakt: false\n      besluitdatum: null\n",
-            )
-        },
-        "parameter 'besluitdatum' komt uit meer dan een bron",
+    // De stand bij besluit staat niet meer in de configuratie: ze volgt uit
+    // de procedure van de beschikking. Het schema weigert haar.
+    let met_stand = |t: String| {
+        t.replace(
+            "    vastleggen:\n",
+            "    stand_bij_besluit: {bekendgemaakt: false}\n    vastleggen:\n",
+        )
+    };
+    let opstelling = eigen_opstelling(
+        &[("afnemer", &zo), ("register", &zo), ("gebieden", &zo)],
+        &[("afnemer", &met_stand)],
     );
-    geval(
-        &|t: String| t.replace("      datum_bekendmaking: null\n", "      datum_bekendmaking: null\n      opgeschorte_dagen: null\n"),
-        "parameter 'opgeschorte_dagen' komt uit meer dan een bron: de eigen lexostatus 'zaakverloop', de stand bij besluit",
+    let data = tempfile::tempdir().unwrap();
+    let fouten = runtime_op(opstelling.path(), data.path()).err().unwrap();
+    assert!(
+        fouten
+            .iter()
+            .any(|f| f.contains("'stand_bij_besluit' was unexpected")),
+        "{fouten:?}"
     );
     // Synthese per regel.
     geval(
@@ -1368,10 +1407,13 @@ async fn zaak_met_proefbesluit_zonder_vastleggen() {
         p["herkomst"]["besluitdatum"],
         json!({"bron": "behandelaar"})
     );
+    // De bekendmaking komt in een latere stage van de procedure: bij het
+    // besluit is ze nog niet gebeurd.
     assert_eq!(
         p["herkomst"]["datum_bekendmaking"],
-        json!({"bron": "stand_bij_besluit"})
+        json!({"bron": "stand_bij_besluit", "stage": "BEKENDMAKING"})
     );
+    assert_eq!(p["parameters"]["bekendgemaakt"], json!(false));
     assert_eq!(
         p["herkomst"]["opgeschorte_dagen"],
         json!({"bron": "eigen", "lexostatus": "zaakverloop"})
@@ -2236,15 +2278,16 @@ fn een_aanbod_op_een_aanvraagfeit_houdt_de_runtime_tegen() {
 
 // --- Het tijdvak van het aanbod ---
 
-/// Het aanbod draait per tijdvak uit `aanbod.keuzes`; het tijdvak is de
-/// parameter met origin BELANGHEBBENDE en `rol: TIJDVAK`, niet een vaste
-/// naam.
+/// Het aanbod draait per tijdvak dat het beleid aanbiedt: de uitkomst
+/// `aanbod.tijdvakken` van de regeling, uit een run op de datum van vandaag.
+/// Het tijdvak is de parameter met origin BELANGHEBBENDE en `rol: TIJDVAK`,
+/// niet een vaste naam.
 #[tokio::test]
 async fn het_aanbod_draait_per_gekozen_tijdvak() {
     let met_aanbod = |t: String| {
         t.replace(
             "    uitkomst: aanvraag_toelaatbaar\n",
-            "    uitkomst: aanvraag_toelaatbaar\n  aanbod:\n    regeling: testregeling_afnemer\n    uitkomst: aanvraag_aangeboden\n    termijn: aanvraagtermijn\n    keuzes: {jaren_vanaf_nu: [0, 1]}\n",
+            "    uitkomst: aanvraag_toelaatbaar\n  aanbod:\n    regeling: testregeling_afnemer\n    uitkomst: aanvraag_aangeboden\n    termijn: aanvraagtermijn\n    tijdvakken: aangeboden_jaren\n    begin: begin_aanvraagjaar\n",
         )
     };
     let opstelling = eigen_opstelling(
@@ -2285,11 +2328,15 @@ async fn het_aanbod_draait_per_gekozen_tijdvak() {
             json!(format!("{jaar}-04-01"))
         );
     }
+    // Het lopende jaar peilt op vandaag, een komend jaar op het begin dat
+    // de regeling zegt (art. 6), niet op een jaar dat de code aanneemt.
+    assert_eq!(m[0]["peilmoment"], json!("2025-03-12"), "{body}");
+    assert_eq!(m[1]["peilmoment"], json!("2026-01-01"), "{body}");
 }
 
-/// Een aanbod dat een tijdvak vraagt, zonder keuzes: de runtime start niet.
+/// Een aanbod dat een tijdvak vraagt, zonder tijdvakken: de runtime start niet.
 #[test]
-fn een_tijdvak_zonder_keuzes_houdt_de_runtime_tegen() {
+fn een_tijdvak_zonder_tijdvakken_houdt_de_runtime_tegen() {
     let met_aanbod = |t: String| {
         t.replace(
             "    uitkomst: aanvraag_toelaatbaar\n",
@@ -2304,7 +2351,72 @@ fn een_tijdvak_zonder_keuzes_houdt_de_runtime_tegen() {
     let fouten = runtime_op(opstelling.path(), data.path()).err().unwrap();
     assert_eq!(
         fouten,
-        ["proces 'test_afnemer_proces': aanbod: het tijdvak 'aanvraagjaar' (rol TIJDVAK) vraagt aanbod.keuzes: welke tijdvakken het portaal aanbiedt"]
+        ["proces 'test_afnemer_proces': aanbod: het tijdvak 'aanvraagjaar' (rol TIJDVAK) vraagt aanbod.tijdvakken: de uitkomst van het beleid met de tijdvakken die het portaal aanbiedt"]
+    );
+}
+
+/// De tijdvakken komen uit de regeling van het aanbod, in een run zonder
+/// parameters: een uitkomst die niet bestaat, of uit een artikel dat een
+/// parameter vraagt, houdt de runtime tegen.
+#[test]
+fn de_tijdvakken_komen_uit_het_beleid() {
+    for (tijdvakken, verwacht) in [
+        (
+            "bestaat_niet",
+            "portaal.aanbod: regeling 'testregeling_afnemer' heeft geen tijdvakken-uitkomst 'bestaat_niet'",
+        ),
+        (
+            "gebiedsbedrag",
+            "portaal.aanbod: tijdvakken 'gebiedsbedrag' komt uit testregeling_afnemer#3, en dat artikel vraagt een parameter",
+        ),
+    ] {
+        let met_aanbod = move |t: String| {
+            t.replace(
+                "    uitkomst: aanvraag_toelaatbaar\n",
+                &format!("    uitkomst: aanvraag_toelaatbaar\n  aanbod: {{regeling: testregeling_afnemer, uitkomst: aanvraag_aangeboden, tijdvakken: {tijdvakken}}}\n"),
+            )
+        };
+        let opstelling = eigen_opstelling(
+            &[("afnemer", &zo), ("register", &zo), ("gebieden", &zo)],
+            &[("afnemer", &met_aanbod)],
+        );
+        let data = tempfile::tempdir().unwrap();
+        let fouten = runtime_op(opstelling.path(), data.path()).err().unwrap();
+        assert!(
+            fouten.iter().any(|f| f.contains(verwacht)),
+            "verwacht '{verwacht}' in {fouten:?}"
+        );
+    }
+}
+
+/// Een vastleg-event met een stage die de procedure van de beschikking niet
+/// kent: de stand bij besluit is dan niet af te leiden, en de runtime start
+/// niet.
+#[test]
+fn een_stage_buiten_de_procedure_houdt_de_runtime_tegen() {
+    let opstelling = eigen_opstelling(
+        &[("afnemer", &zo), ("register", &zo), ("gebieden", &zo)],
+        &[("afnemer", &zo)],
+    );
+    let stroom = opstelling
+        .path()
+        .join("chronicles/test_afnemer_zaakverloop.yaml");
+    let tekst = std::fs::read_to_string(&stroom).unwrap();
+    std::fs::write(
+        &stroom,
+        tekst.replace("stage: BESLUIT", "stage: BESLISSING"),
+    )
+    .unwrap();
+    let lexo = opstelling.path().join("cellen/afnemer/lexostatussen.yaml");
+    let tekst = std::fs::read_to_string(&lexo).unwrap();
+    std::fs::write(&lexo, tekst.replace("stage: BESLUIT", "stage: BESLISSING")).unwrap();
+    let data = tempfile::tempdir().unwrap();
+    let fouten = runtime_op(opstelling.path(), data.path()).err().unwrap();
+    assert!(
+        fouten.iter().any(|f| f.contains(
+            "besluit, vastleggen test_afnemer_zaakverloop/besluit_genomen: stage 'BESLISSING' staat niet in procedure 'beschikking' van BESCHIKKING (AANVRAAG, BESLUIT, BEKENDMAKING)"
+        )),
+        "{fouten:?}"
     );
 }
 
@@ -2405,6 +2517,37 @@ fn toets_rijen_controle_bij_het_opstarten() {
     );
 }
 
+/// Een grondslag in het formulier die geen artikel van een geladen regeling
+/// aanwijst, of een lid dat het artikel niet heeft: de runtime start niet.
+#[test]
+fn een_grondslag_in_het_formulier_wordt_gecontroleerd() {
+    for (grondslag, verwacht) in [
+        (
+            "testregeling_aanvraag#9",
+            "formulier, veld 'aanvraagjaar': grondslag 'testregeling_aanvraag#9': regeling 'testregeling_aanvraag' heeft geen artikel 9",
+        ),
+        (
+            "testregeling_aanvraag#1 lid 8",
+            "formulier, veld 'aanvraagjaar': grondslag 'testregeling_aanvraag#1 lid 8': artikel 1 heeft geen lid 8",
+        ),
+    ] {
+        let opstelling = eigen_opstelling(&[("instantie", &zo)], &[("instantie", &zo)]);
+        let pad = opstelling.path().join("processes/instantie/formulier.yaml");
+        let tekst = std::fs::read_to_string(&pad).unwrap();
+        std::fs::write(
+            &pad,
+            tekst.replace("grondslag: testregeling_aanvraag#1 lid 1}", &format!("grondslag: '{grondslag}'}}")),
+        )
+        .unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let fouten = runtime_op(opstelling.path(), data.path()).err().unwrap();
+        assert!(
+            fouten.iter().any(|f| f.contains(verwacht)),
+            "verwacht '{verwacht}' in {fouten:?}"
+        );
+    }
+}
+
 // --- Tijd: twee tijden per gram, en een peil op de reductie ---
 
 /// Een aanvraag die langs een andere weg binnenkwam: het loket geeft de dag
@@ -2453,10 +2596,12 @@ async fn een_eerdere_ontvangst_is_de_aanvraagdatum() {
 async fn lexostatus_op_een_peilmoment() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path());
+    // De zetels uit `registerstatus`, de inschrijving uit het register van
+    // de raad; samen in een antwoord.
     let status_op = |query: &'static str| {
         let app = app.clone();
         async move {
-            let (s, l, _) = vraag(
+            let (s, mut l, _) = vraag(
                 &app,
                 "GET",
                 &format!("/cellen/test_register/api/lexostatus/registerstatus?aanduiding=VOORBEELD{query}"),
@@ -2464,12 +2609,24 @@ async fn lexostatus_op_een_peilmoment() {
                 None,
             )
             .await;
+            if s == StatusCode::OK {
+                let (_, r, _) = vraag(
+                    &app,
+                    "GET",
+                    &format!("/cellen/test_register/api/lexostatus/register?aanduiding=VOORBEELD&orgaan=raad{query}"),
+                    None,
+                    None,
+                )
+                .await;
+                l["parameters"]["is_ingeschreven_raad"] =
+                    r["parameters"]["is_ingeschreven_in_register"].clone();
+            }
             (s, l)
         }
     };
     let (s, nu) = status_op("").await;
     assert_eq!(s, StatusCode::OK, "{nu}");
-    assert_eq!(nu["parameters"]["zetels_op_lijst"], json!(6));
+    assert_eq!(nu["parameters"]["zetels_toegewezen"], json!(6));
     assert!(nu.get("peilmoment").is_none());
 
     // Rechtens op 1 januari 2024: nog niet ingeschreven, geen uitslag.
@@ -2477,11 +2634,11 @@ async fn lexostatus_op_een_peilmoment() {
     assert_eq!(s, StatusCode::OK, "{jan}");
     assert_eq!(jan["peilmoment"], "2024-01-01");
     assert_eq!(jan["parameters"]["is_ingeschreven_raad"], json!(false));
-    assert_eq!(jan["parameters"]["zetels_op_lijst"], json!(0));
+    assert_eq!(jan["parameters"]["zetels_toegewezen"], json!(0));
     // Een moment met tijdzone kan ook (in een query als %2B voor '+').
     let (s, apr) = status_op("&peilmoment=2024-04-01T00:00:00%2B02:00").await;
     assert_eq!(s, StatusCode::OK, "{apr}");
-    assert_eq!(apr["parameters"]["zetels_op_lijst"], json!(6));
+    assert_eq!(apr["parameters"]["zetels_toegewezen"], json!(6));
     assert_eq!(apr["parameters"]["is_ingeschreven_raad"], json!(true));
 
     // Zoals bekend voor het laden van de startstand (de klok van de test):

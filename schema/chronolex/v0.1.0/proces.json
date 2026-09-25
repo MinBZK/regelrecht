@@ -149,24 +149,13 @@
             "termijn": {
               "$ref": "#/definitions/identifier"
             },
-            "keuzes": {
-              "type": "object",
-              "description": "Welke tijdvakken het portaal aanbiedt, als het aanbod-artikel een tijdvak vraagt: de parameter met origin BELANGHEBBENDE en grondslag Awb 4:2 lid 1 (RFC-043). Per tijdvak een run. Voorlopig configuratie, niet uit de wet.",
-              "required": [
-                "jaren_vanaf_nu"
-              ],
-              "additionalProperties": false,
-              "properties": {
-                "jaren_vanaf_nu": {
-                  "type": "array",
-                  "minItems": 1,
-                  "uniqueItems": true,
-                  "description": "Jaartallen, geteld vanaf het jaar van vandaag: [0, 1] is dit jaar en het volgende.",
-                  "items": {
-                    "type": "integer"
-                  }
-                }
-              }
+            "tijdvakken": {
+              "$ref": "#/definitions/identifier",
+              "description": "Een uitkomst van dezelfde regeling: de lijst tijdvakken die het beleid aanbiedt, als het aanbod-artikel een tijdvak vraagt (de parameter met origin BELANGHEBBENDE en grondslag Awb 4:2 lid 1, RFC-043). De runtime rekent haar uit in een eigen run op de datum van vandaag, zonder parameters, en doet per tijdvak een run van het aanbod. Welke tijdvakken er zijn, is beleid, geen configuratie."
+            },
+            "begin": {
+              "$ref": "#/definitions/identifier",
+              "description": "Een uitkomst van dezelfde regeling: de eerste dag van een tijdvak, uitgerekend met alleen het gekozen tijdvak als parameter. Het aanbod voor een tijdvak dat nog moet beginnen, laat de bronnen peilen op die dag (peilmoment); zonder begin peilen ze op vandaag. Vraagt tijdvakken."
             }
           }
         },
@@ -214,26 +203,47 @@
         },
         "invoer": {
           "type": "object",
-          "description": "Per input van de bron-lexostatus: uit welk veld de waarde komt. Uit een lexostatus van de zaak (bij de toets: de toets-lexostatus; een parameter of een extra veld), of uit het antwoord van een eerdere bron in de lijst die dat veld onder extra_velden doorgeeft.",
+          "description": "Per input van de bron-lexostatus: uit welk veld de waarde komt (lexostatus en veld), of een vaste waarde (waarde). Een veld komt uit een lexostatus van de zaak (bij de toets: de toets-lexostatus; een parameter of een extra veld), of uit het antwoord van een eerdere bron in de lijst die dat veld onder extra_velden doorgeeft; die mag zelf ook op een eerdere bron wachten.",
           "propertyNames": {
             "pattern": "^[a-z][a-z0-9_]*$"
           },
           "additionalProperties": {
-            "type": "object",
-            "required": [
-              "lexostatus",
-              "veld"
-            ],
-            "additionalProperties": false,
-            "properties": {
-              "lexostatus": {
-                "$ref": "#/definitions/identifier"
+            "oneOf": [
+              {
+                "type": "object",
+                "required": [
+                  "lexostatus",
+                  "veld"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "lexostatus": {
+                    "$ref": "#/definitions/identifier"
+                  },
+                  "veld": {
+                    "type": "string",
+                    "pattern": "^[a-z_][a-z0-9_]*$"
+                  }
+                }
               },
-              "veld": {
-                "type": "string",
-                "pattern": "^[a-z_][a-z0-9_]*$"
+              {
+                "type": "object",
+                "required": [
+                  "waarde"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "waarde": {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean"
+                    ],
+                    "description": "Een vaste waarde, zoals het orgaan waarvan het register wordt gevraagd."
+                  }
+                }
               }
-            }
+            ]
           }
         },
         "extra_velden": {
@@ -246,13 +256,28 @@
           }
         },
         "parameters": {
-          "type": "array",
-          "uniqueItems": true,
-          "description": "De parameters die deze bron levert, expliciet en zonder wildcard. Elke naam is een parameter van een artikel onder de toets, het besluit of het aanbod, en komt uit maar een bron. Leeg mag alleen als de bron extra_velden doorgeeft.",
-          "items": {
-            "type": "string",
-            "pattern": "^[a-z_][a-z0-9_]*$"
-          }
+          "description": "De parameters die deze bron levert, expliciet en zonder wildcard: een lijst als de bron ze onder dezelfde naam levert, of per naam bij de bron de naam bij de afnemer. Elke naam bij de afnemer is een parameter van een artikel onder de toets, het besluit of het aanbod, en komt uit maar een bron. Leeg mag alleen als de bron extra_velden doorgeeft.",
+          "oneOf": [
+            {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z_][a-z0-9_]*$"
+              }
+            },
+            {
+              "type": "object",
+              "description": "Per naam die de bron levert: onder welke parameternaam de afnemer het feit vraagt. De bron spreekt de taal van haar eigen wet en levert de naam als parameter of als extra veld; de vertaling naar de parameters van de afnemer hoort bij de afnemer (synthese bij de afnemer).",
+              "propertyNames": {
+                "pattern": "^[a-z_][a-z0-9_]*$"
+              },
+              "additionalProperties": {
+                "type": "string",
+                "pattern": "^[a-z_][a-z0-9_]*$"
+              }
+            }
+          ]
         }
       },
       "if": {
@@ -349,7 +374,7 @@
     },
     "besluit": {
       "type": "object",
-      "description": "Het besluit op een zaak: welke uitkomsten van welk artikel het besluit zijn, en waar elke parameter vandaan komt. Een parameter komt uit precies een bron: een lexostatus van de zaak (een synthese-bron met zaak: true), een andere synthese-bron, het besluitformulier, de stand bij besluit of de synthese per regel. Het besluitformulier staat hier niet: het zijn de parameters van het besluit met origin OORDEEL (RFC-043).",
+      "description": "Het besluit op een zaak: welke uitkomsten van welk artikel het besluit zijn, en waar elke parameter vandaan komt. Een parameter komt uit precies een bron: een lexostatus van de zaak (een synthese-bron met zaak: true), een andere synthese-bron, het besluitformulier, de stand bij besluit of de synthese per regel. Het besluitformulier staat hier niet: het zijn de parameters van het besluit met origin OORDEEL (RFC-043). De stand bij besluit staat hier ook niet: het zijn de parameters die de procedure van de beschikking (RFC-008) pas in een latere stage vraagt dan de stage van het vastleg-event; die zijn bij het besluit nog niet gebeurd (onwaar, of leeg).",
       "required": [
         "uitkomsten"
       ],
@@ -366,19 +391,6 @@
           "description": "Uitkomsten van een en hetzelfde artikel van de regeling.",
           "items": {
             "$ref": "#/definitions/identifier"
-          }
-        },
-        "stand_bij_besluit": {
-          "type": "object",
-          "description": "Feiten die pas na het besluit ontstaan, zoals de bekendmaking, met hun stand op het moment van besluiten (null of false: nog niet). Herkomst: stand bij besluit.",
-          "propertyNames": {
-            "pattern": "^[a-z_][a-z0-9_]*$"
-          },
-          "additionalProperties": {
-            "type": [
-              "null",
-              "boolean"
-            ]
           }
         },
         "rijen": {
@@ -480,7 +492,7 @@
               },
               "invoer": {
                 "type": "object",
-                "description": "Per input van de bron: de waarde uit de regel (kolom), uit een lexostatus van de zaak of een bron die het veld doorgeeft (lexostatus en veld) of uit de samengevoegde parameters (parameter). Met als: eerste_dag_van_het_jaar wordt een jaartal de datum 1 januari van dat jaar.",
+                "description": "Per input van de bron: de waarde uit de regel (kolom), uit een lexostatus van de zaak of een bron die het veld doorgeeft (lexostatus en veld), uit de samengevoegde parameters (parameter), een uitkomst van een regeling uitgerekend met de samengevoegde parameters (regeling en uitkomst; zo leidt de wet een invoer af, zoals een peildatum), of een vaste waarde (waarde).",
                 "propertyNames": {
                   "pattern": "^[a-z][a-z0-9_]*$"
                 },
@@ -503,9 +515,17 @@
                       "type": "string",
                       "pattern": "^[a-z_][a-z0-9_]*$"
                     },
-                    "als": {
-                      "enum": [
-                        "eerste_dag_van_het_jaar"
+                    "regeling": {
+                      "$ref": "#/definitions/identifier"
+                    },
+                    "uitkomst": {
+                      "$ref": "#/definitions/identifier"
+                    },
+                    "waarde": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean"
                       ]
                     }
                   },
@@ -524,6 +544,17 @@
                     {
                       "required": [
                         "parameter"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "regeling",
+                        "uitkomst"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "waarde"
                       ]
                     }
                   ]

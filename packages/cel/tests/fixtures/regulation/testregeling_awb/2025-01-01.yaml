@@ -1,6 +1,7 @@
 ---
 # Fictieve testregeling: een tweede regeling waaruit artikel 2 van de
-# testregeling aanvraag een invoer haalt. Geen geldend recht.
+# testregeling aanvraag een invoer haalt, en de procedure van een beschikking
+# (RFC-008): na het besluit komt de bekendmaking. Geen geldend recht.
 $schema: >-
   https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
 $id: testregeling_awb
@@ -10,6 +11,25 @@ bwb_id: BWBR9999951
 publication_date: '2025-01-01'
 valid_from: '2025-01-01'
 url: https://example.com/testregeling_awb
+
+# De procedure van een beschikking. Wat een stage pas vraagt, is in een
+# eerdere stage nog niet gebeurd: bij het besluit is de bekendmaking er nog
+# niet (zie besluit::stand_bij_besluit in de cel-runtime).
+procedure:
+  - id: beschikking
+    default: true
+    applies_to:
+      legal_character: BESCHIKKING
+    stages:
+      - name: AANVRAAG
+        description: De aanvrager dient de aanvraag in.
+      - name: BESLUIT
+        description: De instantie besluit.
+      - name: BEKENDMAKING
+        description: Het besluit wordt bekendgemaakt (artikel 2).
+        requires:
+          - {name: datum_bekendmaking, type: date}
+          - {name: bekendgemaakt, type: boolean}
 
 articles:
   - number: '1'

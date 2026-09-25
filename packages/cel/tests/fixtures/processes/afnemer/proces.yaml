@@ -22,19 +22,28 @@ synthese:
   # De zaak zelf, uit de cel waarin het proces vastlegt.
   - {cel: test_afnemer, lexostatus: aanvraag_inhoud, zaak: true}
   - {cel: test_afnemer, lexostatus: zaakverloop, zaak: true}
+  # De registercel spreekt de taal van haar eigen regeling; de afnemer
+  # vertaalt naar de namen van zijn artikelen (synthese bij de afnemer).
+  - cel: test_register
+    lexostatus: register
+    invoer:
+      aanduiding: {lexostatus: aanvraag_inhoud, veld: aanduiding}
+      orgaan: {waarde: raad}
+    parameters: {is_ingeschreven_in_register: is_ingeschreven_raad, is_geschrapt: is_geschrapt_raad}
   - cel: test_register
     lexostatus: registerstatus
     invoer:
       aanduiding: {lexostatus: aanvraag_inhoud, veld: aanduiding}
-    parameters: [is_ingeschreven_raad, is_geschrapt_raad, zetels_op_lijst, datum_mededeling, geblokkeerd_raad, jaar]
+    parameters:
+      zetels_toegewezen: zetels_op_lijst
+      datum_mededeling: datum_mededeling
+      geblokkeerd: geblokkeerd_raad
+      jaar_van_mededeling: jaar
 behandeling:
   werkvoorraad: {cel: test_afnemer, lexostatus: werkvoorraad}
   besluit:
     regeling: testregeling_afnemer
     uitkomsten: [vastgesteld_bedrag, gebiedsbedrag, besluit_tijdig, besluitdeadline, zorgvuldig]
-    stand_bij_besluit:
-      datum_bekendmaking: null
-      bekendgemaakt: false
     # Synthese per regel: de gebiedstabel. De aanvraag levert de regels, de
     # kolommen die de instantie zelf vaststelt komen per regel uit een
     # andere cel.
@@ -53,7 +62,7 @@ behandeling:
             lexostatus: tarief
             invoer:
               gebied: {kolom: gebied}
-              peildatum: {parameter: jaar, als: eerste_dag_van_het_jaar}
+              peildatum: {regeling: testregeling_afnemer, uitkomst: peildatum_tarief}   # de wet leidt haar af (art. 5)
             kolommen: {tarief: tarief}
     vastleggen:
       cel: test_afnemer

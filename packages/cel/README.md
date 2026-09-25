@@ -66,23 +66,25 @@ portaal:                          # optioneel, vraagt rollen.aanvrager
     regeling: <$id>
     uitkomst: <output>
     termijn: <output>             # optioneel
-    keuzes: {jaren_vanaf_nu: [0, 1]}   # als het artikel een tijdvak vraagt (origin met rol: TIJDVAK)
+    tijdvakken: <output>          # als het artikel een tijdvak vraagt (origin met rol: TIJDVAK): de tijdvakken uit het beleid
+    begin: <output>               # optioneel: de eerste dag van een tijdvak, het peil van het aanbod
   formulier: {pad: <pad>, scherm: <id>}   # optioneel
 synthese:                         # optioneel, alleen met een portaal of een besluit
   - {cel: <cel-id>, lexostatus: <naam>, zaak: true}   # een lexostatus van de zaak
   - cel: <id van de bron-cel>
     url: <http://host:poort>      # optioneel; zonder url: intern transport
     lexostatus: <naam bij de bron>
-    invoer: {<input van de bron>: {lexostatus: <lexostatus van de zaak of eerdere bron>, veld: <parameter of extra veld>}}
-    parameters: [<naam>, ...]     # expliciet, geen wildcard
+    invoer:
+      <input van de bron>: {lexostatus: <lexostatus van de zaak of eerdere bron>, veld: <parameter of extra veld>}
+      <input van de bron>: {waarde: <vaste waarde>}
+    parameters: [<naam>, ...]     # expliciet, geen wildcard; dezelfde naam bij bron en afnemer
+    # of: parameters: {<naam bij de bron>: <parameter van de afnemer>}
     extra_velden: [<naam>, ...]   # optioneel: invoer voor een latere bron
 behandeling:                      # optioneel, vraagt rollen.behandelaar
   werkvoorraad: {cel: <cel-id>, lexostatus: <lijst-lexostatus>}
   besluit:
     regeling: <$id>               # optioneel: anders de beschikking van de actor
     uitkomsten: [<output>, ...]   # van een en hetzelfde artikel
-    stand_bij_besluit:            # feiten van na het besluit: null of false
-      <parameter>: null
     rijen:                        # synthese per regel (zie hieronder)
       - parameter: <array-parameter>
         tabel: {lexostatus: <van de zaak of een bron>, veld: <tabelveld>}
@@ -94,7 +96,9 @@ behandeling:                      # optioneel, vraagt rollen.behandelaar
             invoer:
               <input>: {kolom: <kolom van de regel>}
               <input>: {lexostatus: <van de zaak of een bron>, veld: <naam>}
-              <input>: {parameter: <naam>, als: eerste_dag_van_het_jaar}
+              <input>: {parameter: <naam>}
+              <input>: {regeling: <$id>, uitkomst: <output>}   # de wet leidt de invoer af
+              <input>: {waarde: <vaste waarde>}
             kolommen: {<naam bij de bron>: <kolom van de parameter>}
     vastleggen:                   # optioneel: waar het besluit terechtkomt
       cel: <cel-id>
@@ -132,7 +136,7 @@ het gedrag.
 | `GET /processen/<id>/api/formulier` | alleen met portaal: de stroom en de formuliervelden |
 | `POST /processen/<id>/api/aanvraag/toets` | alleen met portaal: proefreductie in de cel, synthese, engine |
 | `POST /processen/<id>/api/aanvraag` | alleen met portaal: de cel legt het gram vast |
-| `GET /processen/<id>/api/mogelijkheden` | alleen met portaal: wat het aanbod per tijdvak uit `aanbod.keuzes` zegt |
+| `GET /processen/<id>/api/mogelijkheden` | alleen met portaal: wat het aanbod zegt per tijdvak dat het beleid aanbiedt (`aanbod.tijdvakken`) |
 | `POST /processen/<id>/api/medewerker/login` (`{naam}`), `GET .../sessie`, `POST .../logout` | alleen met de rol behandelaar |
 | `GET /processen/<id>/api/werkvoorraad` | behandelaar: de werkvoorraad, een lijst uit de cel |
 | `GET /processen/<id>/api/zaken/<zaakkenmerk>` | behandelaar: de grammen van de zaak, het besluitformulier en een proefbesluit zonder oordelen |
@@ -211,8 +215,12 @@ erboven: het leest lexostatussen en vraagt de cel vast te leggen.
    blijft weg, tenzij de definitie met `geen_gram` zegt hoe zij het ontbreken
    van een gram leest (bijvoorbeeld null: niet gebeurd); de cel vult nooit aan. `extra_velden` levert waarden die geen
    parameter zijn, zoals de invoer van een synthese-bron; ze gaan nooit naar de
-   engine. `levert_aan` noemt artikelen van een afnemer waarvan de lexostatus
-   parameters levert, als de afnemer een feit onder een eigen naam vraagt.
+   engine. Een afleiding kan haar `grondslag` dragen (een lijst
+   `<regeling>#<artikel>`, optioneel met ` lid <n>`): het artikel dat het feit
+   vraagt of de lezing draagt, zoals het register dat de cel bijhoudt (geen
+   gram is nee). De cel spreekt de taal van haar eigen regeling; vraagt een
+   afnemer het feit onder een eigen naam, dan vertaalt de synthese van zijn
+   proces (`parameters` als tabel). `levert_aan` bestaat niet meer.
 4. **Het gram** (`kroniek`, schema `gram.json`). Een JSON-regel per gram in
    `DATA_DIR/<cel>/<chronicle>.jsonl`, alleen toevoegen. Een niet-ingevuld veld
    staat erin als `null`. Wat niet in de vorm van de stroom past, weigert de
@@ -271,7 +279,10 @@ dag, of een moment met tijdzone):
 
 Het proces geeft een peil mee: een (proef)besluit leest elke cel op de
 peildatum van het besluit, de toets op vandaag, en het aanbod voor een
-tijdvak dat nog moet beginnen op de eerste dag daarvan. Geen lexostatus mag
+tijdvak dat nog moet beginnen op de eerste dag daarvan. Welke dag dat is, zegt
+het beleid: `aanbod.begin` noemt een uitkomst van de regeling van het aanbod,
+uitgerekend met alleen het gekozen tijdvak; zonder `begin` peilt het aanbod op
+vandaag. De synthese per regel geeft hetzelfde peil aan elke bron. Geen lexostatus mag
 een input `peilmoment` of `bekend_op` hebben (het schema weert ze).
 
 ## Startstand
@@ -316,8 +327,11 @@ zaak of van een bron die het doorgeeft) de regels levert, welke kolom onder welk
 met welke invoer wordt bevraagd. Per regel gaat de cel langs de bronnen, in
 volgorde, zodat een bron een kolom kan gebruiken die een eerdere leverde. De
 invoer komt uit de regel (`kolom`), uit een lexostatus van de zaak (`lexostatus`
-en `veld`) of uit de samengevoegde parameters (`parameter`), zo nodig omgezet met
-`als: eerste_dag_van_het_jaar` (de tegenhanger van de afleiding `jaar_van`).
+en `veld`), uit de samengevoegde parameters (`parameter`), uit de wet
+(`regeling` en `uitkomst`: een uitkomst die het proces een keer vóór de regels
+uitrekent met de samengevoegde parameters, zoals een peildatum; de uitslag
+noemt haar onder `uit_de_wet`) of is een vaste waarde (`waarde`). De
+configuratie zet niets om.
 Een bron levert een kolom uit haar `parameters` of haar `extra_velden`. Het
 antwoord van een bron (per regel of in de synthese) moet een lexostatus zijn,
 met ten minste `naam` en `parameters`; iets anders is een fout van de bron,
@@ -343,8 +357,13 @@ en waar elke parameter vandaan komt, uit precies een bron: een lexostatus van
 de zaak (een synthese-bron met `zaak: true`, gevraagd aan de cel), een andere
 synthese-bron (met de invoer uit die lexostatus), het besluitformulier (oordelen van de behandelaar: de parameters met origin
 `OORDEEL`, met het label na "Naam:" in hun omschrijving; herkomst
-`behandelaar`) of de stand bij besluit (feiten van na het besluit, zoals de
-bekendmaking, als null of false; herkomst `stand_bij_besluit`). Het
+`behandelaar`) of de stand bij besluit. De stand bij besluit staat niet in
+`proces.yaml`: de runtime leidt haar af uit de procedure van het rechtskarakter
+van het besluit (RFC-008, `procedure` met stages in de Awb). Wat een stage na
+die van het vastleg-event vraagt (zoals de bekendmaking in stage
+`BEKENDMAKING`), is bij het besluit nog niet gebeurd: een boolean is false, al
+het andere null; herkomst `stand_bij_besluit` met de stage. Een vastleg-event
+met een stage die de procedure niet kent, houdt de runtime tegen. Het
 proefbesluit voert het artikel uit op de datum van vandaag. Het antwoord heeft
 de uitkomsten als elk een waarde heeft, anders "niet te nemen: mist X"; per
 parameter de herkomst; en `niet_geleverd`: elke parameter die de aanroeper van
@@ -392,8 +411,10 @@ Per cel:
    de lexostatussen horen bij deze cel en elke stroom heeft haar
    `recording_actor`.
 2. Een afleiding wijst naar iets wat bestaat: een parameter van een artikel uit
-   de grondslag van een event dat haar filter aanwijst (of uit `levert_aan`), en
-   veldpaden van dat event. Een afleiding op het gekozen gram vraagt `kies`.
+   de grondslag van een event dat haar filter aanwijst (of uit haar eigen
+   `grondslag`), en veldpaden van dat event. Elk artikel uit de grondslag van
+   een afleiding is geladen en heeft het lid dat ze noemt. Een afleiding op het
+   gekozen gram vraagt `kies`.
 3. Geen weesveld: elk veld wordt door een afleiding of filter gelezen, of
    staat in `niet_gereduceerd`.
 4. Een parameter krijgt maar een afleiding.
@@ -417,12 +438,15 @@ Per proces:
    uitkomst van een artikel uit de grondslag van het event. Het aanbod noemt een
    bestaande uitkomst en een termijn uit hetzelfde artikel, en leunt alleen op
    wat vooraf vaststaat: elke parameter van zijn artikel heeft origin `KANAAL`
-   of `REGISTER`, of `BELANGHEBBENDE` met `rol: TIJDVAK` (het tijdvak, met
-   `aanbod.keuzes`). De grondslag Awb 4:2 lid 1 alleen maakt een parameter
-   geen tijdvak.
+   of `REGISTER`, of `BELANGHEBBENDE` met `rol: TIJDVAK` (het tijdvak; de
+   grondslag Awb 4:2 lid 1 alleen maakt een parameter geen tijdvak, met `aanbod.tijdvakken`: een uitkomst van dezelfde regeling uit een
+   artikel zonder verplichte parameters). Een `grondslag` in het
+   formulierbestand (bij een veld of kolom) wijst een geladen artikel aan, met
+   een lid dat het heeft.
 4. Synthese: alleen met een portaal of een besluit; elke invoer komt uit een
    veld van de toets-lexostatus of een lexostatus van de zaak, of van een
-   eerdere bron die het doorgeeft; elke parameter is een parameter van het
+   eerdere bron die het doorgeeft (in rondes, zo diep als nodig), of is een vaste
+   waarde; elke parameter (de naam bij de afnemer) is een parameter van het
    artikel van de toets, het besluit of het aanbod, of van een artikel dat een
    van die transitief aanroept (via `source`); een parameter komt uit maar een
    bron; een gewone bron is een andere cel dan die van het proces.

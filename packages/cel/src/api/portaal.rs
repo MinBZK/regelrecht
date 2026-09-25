@@ -153,13 +153,20 @@ async fn concepttoets<'a>(
     .await
     .map_err(van_cel)?;
     // Synthese: de lexostatus van het concept plus die van de bronnen, en
-    // daarna de synthese per regel, vóór de engine.
+    // daarna de synthese per regel, vóór de engine. Een invoer uit de wet
+    // leest de regeling op de dag van het concept, zoals de toets.
     let mut samen = synthese::voeg_samen(&lexostatus, &state.bronnen, peil).await;
+    let datum = datum::peildatum_van(&gram.op_moment).map_err(intern)?;
+    let wet = rijen::Omgeving {
+        service: &state.proces.service,
+        datum: &datum,
+        peil,
+    };
     let rijen = rijen::pas_toe(
         &state.toets_rijen,
         std::slice::from_ref(&lexostatus),
         &mut samen,
-        peil,
+        wet,
     )
     .await;
     Ok(Concepttoets {
@@ -207,10 +214,11 @@ pub(super) async fn toets_route(
 }
 
 /// Wat het beleid de ingelogde persoon aanbiedt (`portaal.aanbod`), per
-/// tijdvak uit `aanbod.keuzes`. Het tijdvak is de parameter van het
-/// aanbod-artikel met origin BELANGHEBBENDE en grondslag Awb 4:2 lid 1; het
-/// beleid wordt uitgevoerd op een concept met alleen dat tijdvak, plus wat de
-/// eHerkenning en de synthese weten. Uitkomst en termijn komen uit een run,
+/// tijdvak dat het beleid aanbiedt (`aanbod.tijdvakken`, een uitkomst van
+/// dezelfde regeling, uitgerekend op de datum van vandaag). Het tijdvak is de
+/// parameter van het aanbod-artikel met origin BELANGHEBBENDE en grondslag
+/// Awb 4:2 lid 1; het beleid wordt uitgevoerd op een concept met alleen dat
+/// tijdvak, plus wat de eHerkenning en de synthese weten. Uitkomst en termijn komen uit een run,
 /// met trace. Een feit dat een bron niet leverde, maakt het aanbod niet te
 /// bepalen. Niets wordt vastgelegd.
 ///
@@ -235,20 +243,22 @@ pub(super) async fn mogelijkheden_route(
         })?;
     let nu = (state.klok)();
     let datum = datum::peildatum(&nu);
-    let jaar = datum::jaar(&nu);
-    // Zonder tijdvak een run; met tijdvak een run per keuze.
-    let keuzes: Vec<Option<mogelijkheid::Keuze>> = match (&state.proces.tijdvak, &c0.keuzes) {
-        (Some(t), Some(k)) => k
-            .waarden(jaar)
-            .into_iter()
-            .map(|w| {
-                Some(mogelijkheid::Keuze {
-                    parameter: t.parameter.clone(),
-                    veld: t.veld.clone(),
-                    waarde: json!(w),
+    // Zonder tijdvak een run; met tijdvak een run per tijdvak dat het beleid
+    // aanbiedt.
+    let keuzes: Vec<Option<mogelijkheid::Keuze>> = match (&state.proces.tijdvak, &c0.tijdvakken) {
+        (Some(t), Some(u)) => {
+            mogelijkheid::tijdvakken(&state.proces.service, &c0.regeling, u, &datum)
+                .map_err(intern)?
+                .into_iter()
+                .map(|w| {
+                    Some(mogelijkheid::Keuze {
+                        parameter: t.parameter.clone(),
+                        veld: t.veld.clone(),
+                        waarde: w,
+                    })
                 })
-            })
-            .collect(),
+                .collect()
+        }
         _ => vec![None],
     };
     let mut uit = Vec::new();
@@ -263,7 +273,14 @@ pub(super) async fn mogelijkheden_route(
             external,
             zaakkenmerk: None,
         };
-        let peil = peil_voor(&nu, keuze.as_ref());
+        let begin = match (&keuze, &c0.begin) {
+            (Some(k), Some(u)) => Some(
+                mogelijkheid::begin(&state.proces.service, &c0.regeling, u, k, &datum)
+                    .map_err(intern)?,
+            ),
+            _ => None,
+        };
+        let peil = peil_voor(&nu, begin);
         let mut c = concepttoets(&state, &sessie, &concept, &peil).await?;
         // Leidt de toets-lexostatus het tijdvak niet af, dan gaat de keuze
         // zelf mee.
@@ -302,18 +319,12 @@ pub(super) async fn mogelijkheden_route(
     })))
 }
 
-/// Het peil van de bronnen voor een aanbod: de eerste dag van het gekozen
-/// tijdvak als dat nog moet beginnen, anders vandaag. Het tijdvak is hier een
-/// jaar (zie `aanbod.keuzes`); een waarde die geen jaar is, peilt op vandaag.
-fn peil_voor(
-    nu: &chrono::DateTime<chrono::FixedOffset>,
-    keuze: Option<&mogelijkheid::Keuze>,
-) -> Peil {
+/// Het peil van de bronnen voor een aanbod: het begin van het gekozen
+/// tijdvak als dat nog moet beginnen, anders vandaag. Het begin zegt het
+/// beleid (`aanbod.begin`, zie [`mogelijkheid::begin`]); zonder begin, of
+/// zonder tijdvak, peilt het aanbod op vandaag.
+fn peil_voor(nu: &chrono::DateTime<chrono::FixedOffset>, begin: Option<chrono::NaiveDate>) -> Peil {
     let vandaag = nu.date_naive();
-    let begin = keuze
-        .and_then(|k| k.waarde.as_i64())
-        .and_then(|j| i32::try_from(j).ok())
-        .and_then(|j| chrono::NaiveDate::from_ymd_opt(j, 1, 1));
     Peil::op(Tijdpunt::Datum(
         begin.filter(|b| *b > vandaag).unwrap_or(vandaag),
     ))
@@ -338,23 +349,17 @@ pub(super) async fn indienen(
 mod tests {
     use super::*;
 
-    fn keuze(jaar: i64) -> mogelijkheid::Keuze {
-        mogelijkheid::Keuze {
-            parameter: "jaar".into(),
-            veld: None,
-            waarde: json!(jaar),
-        }
-    }
-
-    /// Een tijdvak dat nog moet beginnen, peilt op zijn eerste dag; dit jaar
-    /// en zonder tijdvak op vandaag.
+    /// Een tijdvak dat nog moet beginnen, peilt op zijn begin; een begin dat
+    /// al voorbij is, en geen begin, op vandaag.
     #[test]
     fn het_aanbod_peilt_op_het_begin_van_een_komend_tijdvak() {
         let nu = datum::moment("2026-09-25T10:00:00+02:00").unwrap();
-        let op =
-            |k: Option<&mogelijkheid::Keuze>| peil_voor(&nu, k).peilmoment.unwrap().to_string();
-        assert_eq!(op(Some(&keuze(2027))), "2027-01-01");
-        assert_eq!(op(Some(&keuze(2026))), "2026-09-25");
+        let op = |b: Option<&str>| {
+            let b = b.map(|b| chrono::NaiveDate::parse_from_str(b, "%Y-%m-%d").unwrap());
+            peil_voor(&nu, b).peilmoment.unwrap().to_string()
+        };
+        assert_eq!(op(Some("2027-01-01")), "2027-01-01");
+        assert_eq!(op(Some("2026-01-01")), "2026-09-25");
         assert_eq!(op(None), "2026-09-25");
     }
 }

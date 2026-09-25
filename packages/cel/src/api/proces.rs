@@ -113,6 +113,8 @@ pub fn proces_beschrijving(state: &ProcesState) -> Value {
                 "zaak": false,
                 "transport": b.transport.soort(),
                 "parameters": b.definitie.parameters,
+                // De bron spreekt haar eigen taal; de afnemer vertaalt.
+                "vertaling": b.definitie.parameters.vertaald(),
             })
         }))
         .collect();

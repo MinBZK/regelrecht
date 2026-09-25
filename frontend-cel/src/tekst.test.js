@@ -31,6 +31,7 @@ describe('herkomstTekst', () => {
     ],
     [{ bron: 'behandelaar' }, 'behandelaar (besluitformulier)'],
     [{ bron: 'stand_bij_besluit' }, 'stand bij besluit'],
+    [{ bron: 'stand_bij_besluit', stage: 'BEKENDMAKING' }, 'stand bij besluit (ontstaat pas in stage BEKENDMAKING)'],
     [{ bron: 'keuze' }, 'keuze van de aanvrager (portaal)'],
   ];
 
