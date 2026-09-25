@@ -86,6 +86,9 @@ pub struct ProcesDefinitie {
     /// een stroom met deze `recording_actor`, en het besluit is de
     /// beschikking waarvoor deze actor bevoegd is.
     pub actor: String,
+    /// Hoe streng de controle op de herkomst is (zie [`crate::origin`]).
+    #[serde(default)]
+    pub herkomst: Herkomstcontrole,
     /// Wie er inlogt, en hoe. Zonder rollen is er geen login.
     #[serde(default)]
     pub rollen: Rollen,
@@ -98,6 +101,18 @@ pub struct ProcesDefinitie {
     /// Standaardgegevens per handeling, voor een proefopstelling.
     #[serde(default)]
     pub voorbeelden: Option<VoorbeeldenDefinitie>,
+}
+
+/// Hoe streng de controle op de herkomst (RFC-043) is.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Herkomstcontrole {
+    /// Een parameter zonder origin is een waarschuwing.
+    #[default]
+    Ruim,
+    /// Een parameter zonder origin is een fout: wie hem levert, is niet na
+    /// te gaan.
+    Streng,
 }
 
 /// Het blok `voorbeelden`: per handeling een JSON-bestand, relatief aan de

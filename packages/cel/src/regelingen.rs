@@ -72,7 +72,19 @@ pub fn laad(map: &Path) -> Result<Corpus, Vec<String>> {
             continue;
         }
         match service.load_law(&tekst) {
-            Ok(id) => geladen.push(inventariseer(&pad, &tekst, &doc, id)),
+            Ok(id) => {
+                // De engine laadt een regeling ook met een ongeldige `origin`
+                // (die leest ze niet); de runtime start dan niet, met bestand,
+                // artikel en parameter in de melding (RFC-043).
+                if let Some(law) = service.resolver().get_law(&id) {
+                    fouten.extend(
+                        crate::origin::valideer(law)
+                            .into_iter()
+                            .map(|f| format!("{}: {f}", pad.display())),
+                    );
+                }
+                geladen.push(inventariseer(&pad, &tekst, &doc, id));
+            }
             Err(e) => fouten.push(format!("{}: {e}", pad.display())),
         }
     }

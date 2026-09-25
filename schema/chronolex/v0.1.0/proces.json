@@ -24,6 +24,14 @@
       "$ref": "#/definitions/identifier",
       "description": "De actor die handelt. Een cel legt voor het proces alleen vast in een stroom met deze recording_actor, en het besluit is de beschikking waarvoor deze actor het bevoegd gezag is."
     },
+    "herkomst": {
+      "enum": [
+        "ruim",
+        "streng"
+      ],
+      "default": "ruim",
+      "description": "Hoe streng de controle op de herkomst (RFC-043) is bij het opstarten. ruim: een parameter zonder origin is een waarschuwing. streng: een parameter zonder origin is een fout, want dan is niet na te gaan wie hem levert."
+    },
     "rollen": {
       "$ref": "#/definitions/rollen"
     },

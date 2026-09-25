@@ -4,37 +4,52 @@
 //! De wet geeft per parameter de herkomst met een grondslag. Uitvoeringsbeleid
 //! van de actor van het proces kan die overschrijven. Bij het opstarten gaat
 //! het proces na dat elke parameter die de aanroeper van een uitgevoerde
-//! uitkomst (toets, aanbod, besluit) moet leveren, een leverancier heeft die
-//! bij zijn herkomst past:
+//! uitkomst (toets, aanbod, elke uitkomst van het besluit) moet leveren, een
+//! leverancier heeft die bij zijn herkomst past:
 //!
 //! | herkomst | leverancier |
 //! |---|---|
-//! | `BELANGHEBBENDE` | een afleiding van een eigen lexostatus (de reductie van de indiening), of de keuze van het tijdvak in het portaal |
-//! | `DOSSIER` | een afleiding van een eigen lexostatus, of de stand bij besluit |
-//! | `OORDEEL` | het besluitformulier, alleen bij het besluit |
+//! | `BELANGHEBBENDE` | een afleiding van een eigen lexostatus die alleen indieningen leest (`type: indiening`: wat de aanvrager aanlevert, zijn inhoud of zijn login); het tijdvak (`rol: TIJDVAK`) bij het aanbod ook de keuze in het portaal |
+//! | `DOSSIER` | een afleiding van een eigen lexostatus die alleen andere grammen van de eigen actor leest (het verloop van de zaak), of de stand bij besluit |
+//! | `OORDEEL` | het besluitformulier, alleen bij het besluit, en verder niemand |
 //! | `REGISTER` | een synthese-bron die de parameter levert, waarvan de lexostatus in `levert_aan` een artikel noemt dat hem vraagt, en die een kroniek bijhoudt met een grondslag in `register` |
 //! | `KANAAL` | een afleiding die alleen `$intake` leest |
 //!
-//! Zonder leverancier weigert de runtime te starten, behalve bij een
-//! parameter met `required: false`: dan rekent de engine zonder, en is het
-//! een waarschuwing. Een parameter zonder `origin` is een waarschuwing, en
-//! een `BELANGHEBBENDE`-parameter zonder `required: false` ook (RFC-036).
+//! Een parameter die een leverancier heeft die niet bij zijn herkomst past, is
+//! altijd een fout, ook naast een leverancier die wel past: de bron is dan
+//! verkeerd. Heeft hij geen leverancier, dan is dat een fout, behalve bij
+//! `required: false`: dan krijgt de engine hem niet, en rekent ze met een
+//! onbekende waarde (RFC-036); dat is een waarschuwing. Een parameter zonder
+//! `origin` is een waarschuwing, en in een proces met `herkomst: streng` een
+//! fout. Een `BELANGHEBBENDE`-parameter zonder `required: false` is een
+//! waarschuwing (RFC-036), behalve het tijdvak.
+//!
+//! Wat de runtime niet kan nagaan (een bron met een url, een interne cel die
+//! niet draait) telt als leverancier, met een waarschuwing die zegt waarom het
+//! niet na te gaan is.
+//!
+//! [`valideer`] controleert de vorm van `origin` en `origins` in een regeling
+//! bij het laden, met het bestand in de melding: een ongeldige waarde houdt
+//! de engine niet tegen (zie `Declared` in law-model), de runtime wel.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use regelrecht_engine::{Article, LawExecutionService, RegulatoryLayer};
-use regelrecht_law_model::{Origin, OriginValue, Parameter};
+use regelrecht_law_model::{
+    ArticleBasedLaw, Declared, Origin, OriginOverride, OriginRole, OriginValue, Parameter,
+};
 
 use crate::besluit;
 use crate::cel::Cel;
-use crate::config::{Oordeel, ProcesDefinitie, RijenDefinitie};
+use crate::config::{Herkomstcontrole, Oordeel, ProcesDefinitie, RijenDefinitie};
+use crate::reductie::{Afleiding, Filter, LexostatusDefinitie};
 use crate::regelingen::{self, Benodigd};
-use crate::stroom::Binding;
+use crate::stroom::{Binding, Event, Stroom};
 
-/// De grondslag van de gevraagde beschikking (Awb 4:2 lid 1): wat de
-/// aanvrager vraagt, zoals het tijdvak. Het aanbod mag erop leunen.
-pub const GEVRAAGDE_BESCHIKKING: &str = "algemene_wet_bestuursrecht#4:2 lid 1";
+/// Het type van een gram dat een belanghebbende indient (RFC-022 par. 1,
+/// `schema/chronolex/v0.1.0/stream.json`): wat de aanvrager aanlevert.
+const INDIENING: &str = "indiening";
 
 /// De herkomst die voor een parameter geldt, en waar ze staat.
 #[derive(Debug, Clone, PartialEq)]
@@ -52,6 +67,9 @@ impl Geldend {
         if let Some(r) = &self.origin.register {
             s.push_str(&format!(", register {r}"));
         }
+        if let Some(r) = self.origin.rol {
+            s.push_str(&format!(", rol {}", r.as_str()));
+        }
         s.push_str(&format!(", grondslag {}", self.origin.grondslag));
         if let Some(b) = &self.beleid {
             s.push_str(&format!(", uit {b}"));
@@ -59,19 +77,82 @@ impl Geldend {
         s
     }
 
-    /// Of de grondslag die van de gevraagde beschikking is (Awb 4:2 lid 1).
-    pub fn is_gevraagde_beschikking(&self) -> bool {
-        self.origin.waarde == OriginValue::Belanghebbende
-            && zelfde_grondslag(&self.origin.grondslag, GEVRAAGDE_BESCHIKKING)
+    /// Of de parameter het tijdvak van de gevraagde beschikking is
+    /// (`rol: TIJDVAK`). Los van de grondslag: Awb 4:2 lid 1 is ook de
+    /// grondslag van andere onderdelen van de aanvraag.
+    pub fn is_tijdvak(&self) -> bool {
+        self.origin.rol == Some(OriginRole::Tijdvak)
     }
 }
 
-/// Twee grondslagen wijzen hetzelfde artikel en lid aan.
-fn zelfde_grondslag(a: &str, b: &str) -> bool {
-    match (regelingen::ontleed(a), regelingen::ontleed(b)) {
-        (Ok(a), Ok(b)) => a == b,
-        _ => false,
+/// De vorm van een `origin` op zichzelf, los van het proces: de grondslag is
+/// te ontleden, `REGISTER` noemt zijn register en alleen `REGISTER` doet dat,
+/// en een tijdvak komt van de belanghebbende.
+fn vorm(o: &Origin) -> Vec<String> {
+    let mut fouten = Vec::new();
+    if let Err(f) = regelingen::ontleed(&o.grondslag) {
+        fouten.push(f);
     }
+    match (o.waarde, o.register.as_deref().map(str::trim)) {
+        (OriginValue::Register, None | Some("")) => fouten.push(
+            "origin REGISTER zonder register: welke regeling het register houdt, is niet na te gaan"
+                .into(),
+        ),
+        (OriginValue::Register, Some(_)) | (_, None) => {}
+        (w, Some(r)) => fouten.push(format!(
+            "origin {} met register '{r}': alleen REGISTER noemt een register",
+            w.as_str()
+        )),
+    }
+    if o.rol == Some(OriginRole::Tijdvak) && o.waarde != OriginValue::Belanghebbende {
+        fouten.push(format!(
+            "rol TIJDVAK bij origin {}: het tijdvak kiest de aanvrager als deel van de gevraagde beschikking (Awb 4:2 lid 1), dus BELANGHEBBENDE",
+            o.waarde.as_str()
+        ));
+    }
+    fouten
+}
+
+/// Controleer `origin` op elke parameter en `origins` op elk artikel van een
+/// geladen regeling: een waarde die niet te lezen is, of een origin die op
+/// zichzelf niet klopt (zie [`vorm`]). Elke melding noemt artikel en
+/// parameter; de aanroeper zet het bestand ervoor.
+pub fn valideer(law: &ArticleBasedLaw) -> Vec<String> {
+    let mut fouten = Vec::new();
+    for a in &law.articles {
+        for p in a.get_parameters() {
+            let Some(o) = &p.origin else { continue };
+            let waar = format!("artikel {}, parameter '{}'", a.number, p.name);
+            match o.valid() {
+                Err(e) => fouten.push(format!("{waar}: ongeldige origin: {e}")),
+                Ok(o) => fouten.extend(vorm(o).into_iter().map(|f| format!("{waar}: {f}"))),
+            }
+        }
+        let Some(origins) = a.machine_readable.as_ref().and_then(|m| m.origins.as_ref()) else {
+            continue;
+        };
+        if law.regulatory_layer != RegulatoryLayer::Uitvoeringsbeleid {
+            fouten.push(format!(
+                "artikel {}: origins staat alleen in uitvoeringsbeleid (RFC-043)",
+                a.number
+            ));
+        }
+        for (i, o) in origins.iter().enumerate() {
+            match o.valid() {
+                Err(e) => fouten.push(format!(
+                    "artikel {}, origins[{i}]: ongeldige overschrijving: {e}",
+                    a.number
+                )),
+                Ok(o) => fouten.extend(vorm(&o.origin).into_iter().map(|f| {
+                    format!(
+                        "artikel {}, origins voor '{}' van {}: {f}",
+                        a.number, o.parameter, o.regulation
+                    )
+                })),
+            }
+        }
+    }
+    fouten
 }
 
 /// De overschrijvingen door het uitvoeringsbeleid van een actor, per
@@ -107,7 +188,10 @@ pub fn overschrijvingen(
                 continue;
             }
             let artikel = format!("{id}#{}", a.number);
-            for o in origins {
+            for o in origins
+                .iter()
+                .filter_map(Declared::<OriginOverride>::as_valid)
+            {
                 if let Err(f) = regelingen::ontleed(&o.origin.grondslag) {
                     fouten.push(format!("origins in {artikel}: {f}"));
                     continue;
@@ -167,15 +251,19 @@ pub fn parameter<'s>(service: &'s LawExecutionService, b: &Benodigd) -> Option<&
 
 impl Overschrijvingen {
     /// De geldende herkomst van een parameter van een regeling: die uit het
-    /// beleid, anders die uit de wet.
+    /// beleid, anders die uit de wet. Een origin die niet te lezen is, telt
+    /// als geen; het laden van de regeling heeft hem al gemeld.
     pub fn geldend(&self, regeling: &str, p: &Parameter) -> Option<Geldend> {
         if let Some(g) = self.0.get(&(regeling.to_string(), p.name.clone())) {
             return Some(g.clone());
         }
-        p.origin.clone().map(|origin| Geldend {
-            origin,
-            beleid: None,
-        })
+        p.origin
+            .as_ref()
+            .and_then(Declared::as_valid)
+            .map(|origin| Geldend {
+                origin: origin.clone(),
+                beleid: None,
+            })
     }
 }
 
@@ -197,73 +285,165 @@ impl Uitvoering {
     }
 }
 
+/// Wat een afleiding van een eigen lexostatus leest, naar de grammen die door
+/// haar filters kunnen komen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Gelezen {
+    /// Alleen `$intake` van een indiening: de login.
+    Kanaal,
+    /// Alleen indieningen: wat de aanvrager aanlevert.
+    Indiening,
+    /// Alleen andere grammen van de eigen actor: het verloop van de zaak.
+    Verloop,
+    /// Beide, of niets dat statisch na te gaan is.
+    Onbepaald,
+}
+
+impl Gelezen {
+    fn woorden(self) -> &'static str {
+        match self {
+            Gelezen::Kanaal => "de login ($intake)",
+            Gelezen::Indiening => "wat de aanvrager indiende",
+            Gelezen::Verloop => "het verloop van de zaak",
+            Gelezen::Onbepaald => "indieningen en het verloop van de zaak door elkaar",
+        }
+    }
+}
+
 /// Een synthese-bron die een parameter levert.
 #[derive(Debug, Clone)]
 struct BronLevering {
     cel: String,
     lexostatus: String,
-    /// Zonder url: de cel draait in deze runtime en is na te gaan.
-    intern: bool,
+    /// De url van een bron buiten deze runtime; `None`: intern.
+    url: Option<String>,
 }
 
-/// Wat het proces bij een uitvoering kan leveren, per soort leverancier.
+/// Een leverancier van een parameter bij een uitvoering.
+#[derive(Debug, Clone)]
+enum Levering {
+    /// Een afleiding van een eigen lexostatus, of een tabel per regel uit een
+    /// eigen extra veld.
+    Eigen {
+        lexostatus: String,
+        gelezen: Gelezen,
+    },
+    /// De stand bij besluit.
+    Stand,
+    /// De keuze van het tijdvak in het portaal.
+    Keuze,
+    Bron(BronLevering),
+}
+
+impl Levering {
+    fn woorden(&self) -> String {
+        match self {
+            Levering::Eigen {
+                lexostatus,
+                gelezen,
+            } => format!("eigen lexostatus {lexostatus} ({})", gelezen.woorden()),
+            Levering::Stand => "de stand bij besluit".into(),
+            Levering::Keuze => "de keuze in het portaal".into(),
+            Levering::Bron(b) => format!("synthese-bron {}/{}", b.cel, b.lexostatus),
+        }
+    }
+
+    /// Of deze leverancier bij de herkomst past (een register-bron nog
+    /// zonder de controle op `levert_aan` en het register).
+    fn past(&self, g: &Geldend, uitvoering: Uitvoering) -> bool {
+        match (self, g.origin.waarde) {
+            (
+                Levering::Eigen {
+                    gelezen: Gelezen::Kanaal,
+                    ..
+                },
+                OriginValue::Kanaal | OriginValue::Belanghebbende,
+            )
+            | (
+                Levering::Eigen {
+                    gelezen: Gelezen::Indiening,
+                    ..
+                },
+                OriginValue::Belanghebbende,
+            )
+            | (
+                Levering::Eigen {
+                    gelezen: Gelezen::Verloop,
+                    ..
+                },
+                OriginValue::Dossier,
+            )
+            | (Levering::Bron(_), OriginValue::Register) => true,
+            (Levering::Stand, OriginValue::Dossier) => uitvoering == Uitvoering::Besluit,
+            (Levering::Keuze, OriginValue::Belanghebbende) => {
+                uitvoering == Uitvoering::Aanbod && g.is_tijdvak()
+            }
+            _ => false,
+        }
+    }
+}
+
+/// Wat het proces bij een uitvoering kan leveren, per parameter.
 #[derive(Debug, Default)]
 struct Leveranciers {
-    /// Afleidingen van de toets-lexostatus en de lexostatussen van de zaak,
-    /// en de synthese per regel van deze uitvoering uit een eigen tabel.
-    eigen: BTreeSet<String>,
-    /// Afleidingen die alleen `$intake` lezen.
-    kanaal: BTreeSet<String>,
-    /// De stand bij besluit.
-    stand: BTreeSet<String>,
-    /// Of het portaal tijdvakken aanbiedt (`aanbod.keuzes`).
-    keuzes: bool,
-    /// Synthese-bronnen, ook die per regel.
-    bronnen: BTreeMap<String, Vec<BronLevering>>,
+    per_parameter: BTreeMap<String, Vec<Levering>>,
+    /// Of het portaal bij het aanbod tijdvakken aanbiedt (`aanbod.keuzes`).
+    keuze: bool,
 }
 
+/// De keuze van het tijdvak, als leverancier.
+static KEUZE: Levering = Levering::Keuze;
+
 impl Leveranciers {
+    fn voeg_toe(&mut self, naam: &str, l: Levering) {
+        self.per_parameter
+            .entry(naam.to_string())
+            .or_default()
+            .push(l);
+    }
+
     fn van(d: &ProcesDefinitie, cel: &Cel, uitvoering: Uitvoering) -> Self {
         let mut l = Leveranciers::default();
-        let mut eigen_lexostatussen: Vec<&str> =
-            d.zaakbronnen().map(|b| b.lexostatus.as_str()).collect();
+        let mut eigen: Vec<&str> = d.zaakbronnen().map(|b| b.lexostatus.as_str()).collect();
         if let Some(p) = &d.portaal {
-            l.keuzes = p.aanbod.as_ref().is_some_and(|a| a.keuzes.is_some());
-            eigen_lexostatussen.push(&p.toets.lexostatus);
-            if let (Some((_, event)), Some(def)) = (
-                cel.event(&p.stroom, &p.event),
-                cel.lexostatussen.lexostatus(&p.toets.lexostatus),
-            ) {
-                let intake: BTreeSet<String> = event
-                    .bladeren()
-                    .into_iter()
-                    .filter(|b| matches!(b.binding, Binding::Intake(_)))
-                    .map(|b| b.pad)
-                    .collect();
-                for (naam, afleiding) in &def.reduction.afleidingen {
-                    let paden = afleiding.gelezen_paden();
-                    if !paden.is_empty() && paden.iter().all(|pad| intake.contains(*pad)) {
-                        l.kanaal.insert(naam.clone());
-                    }
-                }
-            }
+            l.keuze = uitvoering == Uitvoering::Aanbod
+                && p.aanbod.as_ref().is_some_and(|a| a.keuzes.is_some());
+            eigen.push(&p.toets.lexostatus);
         }
-        for naam in &eigen_lexostatussen {
-            if let Some(def) = cel.lexostatussen.lexostatus(naam) {
-                l.eigen.extend(def.reduction.afleidingen.keys().cloned());
+        eigen.sort_unstable();
+        eigen.dedup();
+        for naam in eigen {
+            let Some(def) = cel.lexostatussen.lexostatus(naam) else {
+                continue;
+            };
+            for (param, afleiding) in &def.reduction.afleidingen {
+                l.voeg_toe(
+                    param,
+                    Levering::Eigen {
+                        lexostatus: naam.to_string(),
+                        gelezen: gelezen(cel, &d.actor, def, afleiding),
+                    },
+                );
             }
         }
         for b in d.andere_bronnen() {
             for p in &b.parameters {
-                l.bronnen.entry(p.clone()).or_default().push(BronLevering {
-                    cel: b.cel.clone(),
-                    lexostatus: b.lexostatus.clone(),
-                    intern: b.url.is_none(),
-                });
+                l.voeg_toe(
+                    p,
+                    Levering::Bron(BronLevering {
+                        cel: b.cel.clone(),
+                        lexostatus: b.lexostatus.clone(),
+                        url: b.url.clone(),
+                    }),
+                );
             }
         }
-        if let Some(b) = d.behandeling.as_ref().map(|b| &b.besluit) {
-            l.stand.extend(b.stand_bij_besluit.keys().cloned());
+        if uitvoering == Uitvoering::Besluit {
+            if let Some(b) = d.behandeling.as_ref().map(|b| &b.besluit) {
+                for naam in b.stand_bij_besluit.keys() {
+                    l.voeg_toe(naam, Levering::Stand);
+                }
+            }
         }
         // De synthese per regel levert alleen aan de uitvoering die haar
         // uitvoert: de toets of het besluit.
@@ -274,49 +454,121 @@ impl Leveranciers {
         }
         .unwrap_or_default();
         for r in rijen {
-            l.rijen(d, r);
+            l.rijen(d, cel, r);
         }
         l
     }
 
-    /// De synthese per regel: uit een tabel van de zaak is het een eigen
-    /// levering, uit een extra veld van een bron een levering van die bron.
-    fn rijen(&mut self, d: &ProcesDefinitie, r: &RijenDefinitie) {
+    /// De synthese per regel: uit een extra veld van een bron een levering
+    /// van die bron, uit een eigen tabel een eigen levering, naar wat het
+    /// extra veld leest.
+    fn rijen(&mut self, d: &ProcesDefinitie, cel: &Cel, r: &RijenDefinitie) {
         let bron = d
             .andere_bronnen()
             .find(|b| b.lexostatus == r.tabel.lexostatus && b.extra_velden.contains(&r.tabel.veld));
-        match bron {
-            Some(b) => self
-                .bronnen
-                .entry(r.parameter.clone())
-                .or_default()
-                .push(BronLevering {
-                    cel: b.cel.clone(),
-                    lexostatus: b.lexostatus.clone(),
-                    intern: b.url.is_none(),
-                }),
+        let levering = match bron {
+            Some(b) => Levering::Bron(BronLevering {
+                cel: b.cel.clone(),
+                lexostatus: b.lexostatus.clone(),
+                url: b.url.clone(),
+            }),
             None => {
-                self.eigen.insert(r.parameter.clone());
+                let gelezen = cel
+                    .lexostatussen
+                    .lexostatus(&r.tabel.lexostatus)
+                    .and_then(|def| {
+                        def.alle_afleidingen()
+                            .find(|(naam, _)| **naam == r.tabel.veld)
+                            .map(|(_, a)| gelezen(cel, &d.actor, def, a))
+                    })
+                    .unwrap_or(Gelezen::Onbepaald);
+                Levering::Eigen {
+                    lexostatus: r.tabel.lexostatus.clone(),
+                    gelezen,
+                }
             }
-        }
+        };
+        self.voeg_toe(&r.parameter, levering);
     }
 
-    /// Wie deze parameter nu levert, in woorden, voor een melding.
-    fn nu(&self, naam: &str) -> Option<String> {
-        if let Some(b) = self.bronnen.get(naam).and_then(|v| v.first()) {
-            return Some(format!("synthese-bron {}/{}", b.cel, b.lexostatus));
+    /// Wie een parameter levert. De keuze in het portaal levert alleen het
+    /// tijdvak.
+    fn van_parameter(&self, naam: &str, tijdvak: bool) -> Vec<&Levering> {
+        let mut uit: Vec<&Levering> = self.per_parameter.get(naam).into_iter().flatten().collect();
+        if self.keuze && tijdvak {
+            uit.push(&KEUZE);
         }
-        if self.kanaal.contains(naam) {
-            return Some("de login ($intake)".into());
-        }
-        if self.eigen.contains(naam) {
-            return Some("een eigen lexostatus".into());
-        }
-        if self.stand.contains(naam) {
-            return Some("de stand bij besluit".into());
-        }
-        None
+        uit
     }
+}
+
+/// Of een gram van dit event door een filter kan komen, voor zover dat
+/// zonder de invoer vaststaat: een `$`-waarde past altijd, een veldpad als
+/// het event het veld heeft.
+fn kan_passen(filter: &Filter, stroom: &Stroom, event: &Event) -> bool {
+    filter.iter().all(|(sleutel, waarde)| {
+        if waarde.starts_with('$') {
+            return match sleutel.as_str() {
+                "zaakkenmerk" => event.zaak.heeft_kenmerk(),
+                "name" | "type" | "soort" | "stage" | "recording_actor" | "chronicle" => true,
+                pad => event.heeft_pad(pad),
+            };
+        }
+        match sleutel.as_str() {
+            "name" => event.name == *waarde,
+            "type" => event.type_ == *waarde,
+            "soort" => event.soort.as_deref() == Some(waarde.as_str()),
+            "stage" => event.stage.as_deref() == Some(waarde.as_str()),
+            "zaakkenmerk" => event.zaak.heeft_kenmerk(),
+            "recording_actor" => stroom.recording_actor == *waarde,
+            "chronicle" => stroom.chronicle == *waarde,
+            pad => event.heeft_pad(pad),
+        }
+    })
+}
+
+/// Wat een afleiding leest: de events van de kroniek van de lexostatus die
+/// door het filter van de lexostatus en dat van de afleiding kunnen komen.
+/// Leest ze alleen `$intake` van een indiening, dan is het de login.
+fn gelezen(cel: &Cel, actor: &str, def: &LexostatusDefinitie, a: &Afleiding) -> Gelezen {
+    let events: Vec<(&Stroom, &Event)> = cel
+        .strommen
+        .iter()
+        .filter(|s| s.chronicle == def.reduction.kroniek)
+        .flat_map(|s| s.events.iter().map(move |e| (s, e)))
+        .filter(|(s, e)| {
+            kan_passen(&def.reduction.filter, s, e)
+                && a.filter().is_none_or(|f| kan_passen(f, s, e))
+        })
+        .collect();
+    if events.is_empty() {
+        return Gelezen::Onbepaald;
+    }
+    if events.iter().all(|(_, e)| e.type_ == INDIENING) {
+        let paden = a.gelezen_paden();
+        let alleen_intake = !paden.is_empty()
+            && events.iter().all(|(_, e)| {
+                let intake: BTreeSet<String> = e
+                    .bladeren()
+                    .into_iter()
+                    .filter(|b| matches!(b.binding, Binding::Intake(_)))
+                    .map(|b| b.pad)
+                    .collect();
+                paden.iter().all(|p| intake.contains(*p))
+            });
+        return if alleen_intake {
+            Gelezen::Kanaal
+        } else {
+            Gelezen::Indiening
+        };
+    }
+    if events
+        .iter()
+        .all(|(s, e)| e.type_ != INDIENING && s.recording_actor == actor)
+    {
+        return Gelezen::Verloop;
+    }
+    Gelezen::Onbepaald
 }
 
 /// Wat de controle oplevert.
@@ -325,10 +577,10 @@ pub struct Controle {
     pub fouten: Vec<String>,
     pub waarschuwingen: Vec<String>,
     /// Per uitvoering de parameters met hun geldende herkomst, in de volgorde
-    /// van declaratie.
+    /// van declaratie; bij het besluit over alle uitkomsten samen.
     pub parameters: BTreeMap<&'static str, Vec<(Benodigd, Option<Geldend>)>>,
-    /// De parameter van het aanbod-artikel die het tijdvak is: origin
-    /// BELANGHEBBENDE met grondslag Awb 4:2 lid 1.
+    /// De parameter van het aanbod-artikel die het tijdvak is: `rol:
+    /// TIJDVAK`.
     pub tijdvak: Option<String>,
 }
 
@@ -351,6 +603,24 @@ fn in_volgorde(service: &LawExecutionService, regeling: &str, artikel: &Article)
     uit
 }
 
+/// De uitkomsten die het proces uitvoert: de toets, het aanbod en elke
+/// uitkomst van het besluit (RFC-043: "every outcome").
+fn uitvoeringen(d: &ProcesDefinitie) -> Vec<(Uitvoering, &str, &str)> {
+    let mut uit: Vec<(Uitvoering, &str, &str)> = Vec::new();
+    if let Some(p) = &d.portaal {
+        uit.push((Uitvoering::Toets, &p.toets.regeling, &p.toets.uitkomst));
+        if let Some(a) = &p.aanbod {
+            uit.push((Uitvoering::Aanbod, &a.regeling, &a.uitkomst));
+        }
+    }
+    if let Some(b) = d.behandeling.as_ref().map(|b| &b.besluit) {
+        for u in &b.uitkomsten {
+            uit.push((Uitvoering::Besluit, &b.regeling, u));
+        }
+    }
+    uit
+}
+
 /// Controleer de herkomst van elke parameter van de uitkomsten die het
 /// proces uitvoert. `cellen` zijn de cellen van de runtime, voor de
 /// register-bronnen.
@@ -368,22 +638,12 @@ pub fn controleer(
             return c;
         }
     };
-    let mut uitvoeringen: Vec<(Uitvoering, &str, &str)> = Vec::new();
-    if let Some(p) = &d.portaal {
-        uitvoeringen.push((Uitvoering::Toets, &p.toets.regeling, &p.toets.uitkomst));
-        if let Some(a) = &p.aanbod {
-            uitvoeringen.push((Uitvoering::Aanbod, &a.regeling, &a.uitkomst));
-        }
-    }
-    if let Some(b) = d.behandeling.as_ref().map(|b| &b.besluit) {
-        if let Some(u) = b.uitkomsten.first() {
-            uitvoeringen.push((Uitvoering::Besluit, &b.regeling, u));
-        }
-    }
-    // Een melding per parameter van een artikel, ook als twee uitvoeringen
+    // Een melding per parameter van een artikel, ook als meer uitvoeringen
     // hem vragen.
     let mut gemeld: BTreeSet<(String, String, &'static str)> = BTreeSet::new();
-    for (uitvoering, regeling, uitkomst) in uitvoeringen {
+    // Wat niet na te gaan is, per bron en reden: de parameters erbij.
+    let mut niet_na_te_gaan: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for (uitvoering, regeling, uitkomst) in uitvoeringen(d) {
         // Een uitkomst die niet bestaat, meldt de controle op portaal of
         // besluit.
         let Some(artikel) = service
@@ -393,8 +653,12 @@ pub fn controleer(
             continue;
         };
         let leveranciers = Leveranciers::van(d, cel, uitvoering);
-        let mut lijst = Vec::new();
+        let lijst = c.parameters.entry(uitvoering.naam()).or_default();
+        let mut nieuw = Vec::new();
         for b in in_volgorde(service, regeling, artikel) {
+            if lijst.iter().any(|(eerder, _)| *eerder == b) {
+                continue;
+            }
             let Some(p) = parameter(service, &b) else {
                 continue;
             };
@@ -404,7 +668,10 @@ pub fn controleer(
                 .map(|(r, _)| r)
                 .unwrap_or(regeling);
             let g = overschrijvingen.geldend(law, p);
-            let mut eenmaal = |soort: &'static str, tekst: String, fout: bool| {
+            nieuw.push((b, p, g));
+        }
+        for (b, p, g) in nieuw {
+            let mut meld = |soort: &'static str, tekst: String, fout: bool| {
                 if gemeld.insert((b.artikel.clone(), b.naam.clone(), soort)) {
                     if fout {
                         c.fouten.push(tekst);
@@ -413,81 +680,159 @@ pub fn controleer(
                     }
                 }
             };
-            if uitvoering == Uitvoering::Aanbod && !vooraf_bekend(g.as_ref()) {
-                let herkomst = g
-                    .as_ref()
-                    .map(Geldend::beschrijving)
-                    .unwrap_or_else(|| "geen origin".into());
-                eenmaal(
-                    "aanbod-regel",
-                    format!(
-                        "aanbod: voorwaarde leunt op '{}' ({herkomst}), dat vooraf niet bekend is",
-                        b.naam
-                    ),
-                    true,
-                );
-            }
-            match &g {
-                None => eenmaal(
-                    "zonder",
-                    format!(
-                        "herkomst: parameter '{}' van {} heeft geen origin; wie hem levert is niet na te gaan",
-                        b.naam, b.artikel
-                    ),
-                    false,
-                ),
-                Some(g) => {
-                    if let Err(f) = regelingen::ontleed(&g.origin.grondslag) {
-                        eenmaal(
-                            "grondslag",
-                            format!("herkomst: parameter '{}' van {}: {f}", b.naam, b.artikel),
-                            true,
-                        );
-                    }
-                    if g.origin.waarde == OriginValue::Belanghebbende && p.required != Some(false)
-                    {
-                        eenmaal(
-                            "required",
-                            format!(
-                                "herkomst: parameter '{}' van {} komt van de belanghebbende, maar heeft geen required: false (RFC-036)",
-                                b.naam, b.artikel
-                            ),
-                            false,
-                        );
-                    }
-                    if let Some(probleem) =
-                        geen_leverancier(uitvoering, &b, g, &leveranciers, cellen, service)
-                    {
-                        let tekst = format!(
-                            "{}: geen leverancier voor '{}' van {} ({}){probleem}",
-                            uitvoering.naam(),
-                            b.naam,
-                            b.artikel,
-                            g.beschrijving()
-                        );
-                        if p.required == Some(false) {
-                            eenmaal(
-                                "leverancier",
-                                format!("{tekst}; required: false, dus de engine rekent zonder"),
-                                false,
-                            );
-                        } else {
-                            eenmaal("leverancier", tekst, true);
-                        }
-                    }
-                }
-            }
-            lijst.push((b, g));
+            controleer_parameter(
+                Parameterplek {
+                    d,
+                    uitvoering,
+                    b: &b,
+                    p,
+                    g: g.as_ref(),
+                },
+                &leveranciers,
+                cellen,
+                service,
+                &mut meld,
+                &mut niet_na_te_gaan,
+            );
+            c.parameters
+                .entry(uitvoering.naam())
+                .or_default()
+                .push((b, g));
         }
-        c.parameters.insert(uitvoering.naam(), lijst);
+    }
+    for (reden, namen) in niet_na_te_gaan {
+        let namen: Vec<String> = namen.into_iter().map(|n| format!("'{n}'")).collect();
+        c.waarschuwingen.push(format!(
+            "herkomst van {} niet na te gaan: {reden}",
+            namen.join(", ")
+        ));
     }
     tijdvak(d, &mut c);
     c
 }
 
-/// Het tijdvak van het aanbod: hoogstens een parameter met de grondslag van
-/// de gevraagde beschikking, en die vraagt `aanbod.keuzes`; keuzes zonder
-/// zo'n parameter zijn ook een fout.
+/// Een parameter die een uitvoering vraagt, met wat de controle erover
+/// weet.
+struct Parameterplek<'a> {
+    d: &'a ProcesDefinitie,
+    uitvoering: Uitvoering,
+    b: &'a Benodigd,
+    p: &'a Parameter,
+    g: Option<&'a Geldend>,
+}
+
+/// De controles op een parameter: de aanbodregel, de herkomst zelf en zijn
+/// leverancier.
+fn controleer_parameter(
+    plek: Parameterplek<'_>,
+    l: &Leveranciers,
+    cellen: &BTreeMap<String, Arc<Cel>>,
+    service: &LawExecutionService,
+    meld: &mut impl FnMut(&'static str, String, bool),
+    niet_na_te_gaan: &mut BTreeMap<String, BTreeSet<String>>,
+) {
+    let Parameterplek {
+        d,
+        uitvoering,
+        b,
+        p,
+        g,
+    } = plek;
+    if uitvoering == Uitvoering::Aanbod && !vooraf_bekend(g) {
+        let herkomst = g
+            .map(Geldend::beschrijving)
+            .unwrap_or_else(|| "geen origin".into());
+        meld(
+            "aanbod-regel",
+            format!(
+                "aanbod: voorwaarde leunt op '{}' ({herkomst}), dat vooraf niet bekend is",
+                b.naam
+            ),
+            true,
+        );
+    }
+    let Some(g) = g else {
+        let streng = d.herkomst == Herkomstcontrole::Streng;
+        meld(
+            "zonder",
+            format!(
+                "herkomst: parameter '{}' van {} heeft geen origin; wie hem levert is niet na te gaan{}",
+                b.naam,
+                b.artikel,
+                if streng { " (herkomst: streng)" } else { "" }
+            ),
+            streng,
+        );
+        return;
+    };
+    let waar = format!(
+        "parameter '{}' van {} ({})",
+        b.naam,
+        b.artikel,
+        g.beschrijving()
+    );
+    // Een grondslag in een regeling die niet geladen is, kan kloppen; de
+    // runtime kan het alleen niet nagaan.
+    if let Err(f) = regelingen::artikel(service, &g.origin.grondslag) {
+        meld(
+            "grondslag",
+            format!("herkomst: {waar}: {f}; niet na te gaan"),
+            false,
+        );
+    }
+    if let Some(r) = &g.origin.register {
+        if service.resolver().get_law(r).is_none() {
+            meld(
+                "register",
+                format!("herkomst: {waar}: register '{r}' is geen geladen regeling"),
+                true,
+            );
+        }
+    }
+    if g.origin.waarde == OriginValue::Belanghebbende
+        && !g.is_tijdvak()
+        && p.required != Some(false)
+    {
+        meld(
+            "required",
+            format!(
+                "herkomst: parameter '{}' van {} komt van de belanghebbende, maar heeft geen required: false (RFC-036)",
+                b.naam, b.artikel
+            ),
+            false,
+        );
+    }
+    match leverancier(uitvoering, &b.naam, g, l, cellen, service) {
+        Uitslag::Past { waarschuwingen } => {
+            for w in waarschuwingen {
+                niet_na_te_gaan.entry(w).or_default().insert(b.naam.clone());
+            }
+        }
+        Uitslag::Verkeerd(reden) => meld(
+            "leverancier",
+            format!("{}: verkeerde bron voor {waar}: {reden}", uitvoering.naam()),
+            true,
+        ),
+        Uitslag::Geen(reden) => {
+            let tekst = format!("{}: geen leverancier voor {waar}{reden}", uitvoering.naam());
+            if p.required == Some(false) {
+                meld(
+                    "leverancier",
+                    format!(
+                        "{tekst}; required: false, dus de engine krijgt hem niet en rekent met een onbekende waarde (RFC-036)"
+                    ),
+                    false,
+                );
+            } else {
+                meld("leverancier", tekst, true);
+            }
+        }
+    }
+}
+
+/// Het tijdvak van het aanbod: hoogstens een parameter met `rol: TIJDVAK`,
+/// en die vraagt `aanbod.keuzes`; keuzes zonder zo'n parameter zijn ook een
+/// fout.
 fn tijdvak(d: &ProcesDefinitie, c: &mut Controle) {
     let Some(aanbod) = d.portaal.as_ref().and_then(|p| p.aanbod.as_ref()) else {
         return;
@@ -497,18 +842,18 @@ fn tijdvak(d: &ProcesDefinitie, c: &mut Controle) {
         .get(Uitvoering::Aanbod.naam())
         .into_iter()
         .flatten()
-        .filter(|(_, g)| g.as_ref().is_some_and(Geldend::is_gevraagde_beschikking))
+        .filter(|(_, g)| g.as_ref().is_some_and(Geldend::is_tijdvak))
         .map(|(b, _)| b.naam.clone())
         .collect();
     match (namen.as_slice(), aanbod.keuzes.is_some()) {
         ([], false) => {}
         ([], true) => c.fouten.push(format!(
-            "aanbod: keuzes, maar {} vraagt geen tijdvak (een parameter met origin BELANGHEBBENDE en grondslag {GEVRAAGDE_BESCHIKKING})",
+            "aanbod: keuzes, maar {} vraagt geen tijdvak (een parameter met origin BELANGHEBBENDE en rol TIJDVAK)",
             aanbod.regeling
         )),
         ([naam], true) => c.tijdvak = Some(naam.clone()),
         ([naam], false) => c.fouten.push(format!(
-            "aanbod: het tijdvak '{naam}' ({GEVRAAGDE_BESCHIKKING}) vraagt aanbod.keuzes: welke tijdvakken het portaal aanbiedt"
+            "aanbod: het tijdvak '{naam}' (rol TIJDVAK) vraagt aanbod.keuzes: welke tijdvakken het portaal aanbiedt"
         )),
         (meer, _) => c.fouten.push(format!(
             "aanbod: meer dan een tijdvak ({}); het portaal biedt er een aan",
@@ -580,77 +925,105 @@ fn leesbaar(id: &str) -> String {
 }
 
 /// Of het aanbod op een parameter mag leunen: wat vooraf vaststaat, is wie
-/// inlogt (`KANAAL`), wat een register weet (`REGISTER`) en wat de aanvrager
-/// vraagt (`BELANGHEBBENDE` met grondslag Awb 4:2 lid 1, zoals het tijdvak).
-/// Of een aanvraag volledig is, weet je pas na het invullen.
+/// inlogt (`KANAAL`), wat een register weet (`REGISTER`) en welk tijdvak de
+/// aanvrager kiest (`BELANGHEBBENDE` met `rol: TIJDVAK`). Of een aanvraag
+/// volledig is, weet je pas na het invullen.
 fn vooraf_bekend(g: Option<&Geldend>) -> bool {
     g.is_some_and(|g| {
-        matches!(g.origin.waarde, OriginValue::Kanaal | OriginValue::Register)
-            || g.is_gevraagde_beschikking()
+        matches!(g.origin.waarde, OriginValue::Kanaal | OriginValue::Register) || g.is_tijdvak()
     })
 }
 
-/// Waarom een parameter geen leverancier heeft die bij zijn herkomst past, of
-/// `None` als hij er een heeft. De tekst begint met `: ` of is leeg.
-fn geen_leverancier(
+/// Hoe het met de leverancier van een parameter zit.
+#[derive(Debug)]
+enum Uitslag {
+    /// Een leverancier past, eventueel met wat niet na te gaan is.
+    Past { waarschuwingen: Vec<String> },
+    /// Een leverancier past niet bij de herkomst, ook als een andere wel
+    /// past.
+    Verkeerd(String),
+    /// Geen leverancier; de tekst begint met `: ` of is leeg.
+    Geen(String),
+}
+
+/// Of een parameter een leverancier heeft die bij zijn herkomst past, en
+/// geen die er niet bij past.
+fn leverancier(
     uitvoering: Uitvoering,
-    b: &Benodigd,
+    naam: &str,
     g: &Geldend,
     l: &Leveranciers,
     cellen: &BTreeMap<String, Arc<Cel>>,
     service: &LawExecutionService,
-) -> Option<String> {
-    let naam = b.naam.as_str();
-    let nu = || {
-        l.nu(naam)
-            .map(|n| format!("; nu komt hij uit {n}"))
-            .unwrap_or_default()
-    };
-    let past = match g.origin.waarde {
-        OriginValue::Kanaal => l.kanaal.contains(naam),
-        OriginValue::Belanghebbende => {
-            l.eigen.contains(naam)
-                || (uitvoering == Uitvoering::Aanbod && g.is_gevraagde_beschikking() && l.keuzes)
+) -> Uitslag {
+    let leveringen = l.van_parameter(naam, g.is_tijdvak());
+    if g.origin.waarde == OriginValue::Oordeel {
+        if !leveringen.is_empty() {
+            let wie: Vec<String> = leveringen.iter().map(|lv| lv.woorden()).collect();
+            return Uitslag::Verkeerd(format!(
+                "een oordeel geeft de behandelaar in het besluitformulier, maar hij komt uit {}",
+                wie.join(" en ")
+            ));
         }
-        OriginValue::Dossier => {
-            l.eigen.contains(naam) || (uitvoering == Uitvoering::Besluit && l.stand.contains(naam))
-        }
-        OriginValue::Oordeel => uitvoering == Uitvoering::Besluit,
-        OriginValue::Register => {
-            let Some(bronnen) = l.bronnen.get(naam) else {
-                return Some(nu());
-            };
-            let mut redenen = Vec::new();
-            for bron in bronnen {
-                match register_bron(bron, naam, g, cellen, service) {
-                    Ok(()) => return None,
-                    Err(r) => redenen.push(r),
-                }
+        return if uitvoering == Uitvoering::Besluit {
+            Uitslag::Past {
+                waarschuwingen: Vec::new(),
             }
-            return Some(format!(": {}", redenen.join("; ")));
+        } else {
+            Uitslag::Geen(": een oordeel geeft de behandelaar pas bij het besluit".into())
+        };
+    }
+    let mut verkeerd = Vec::new();
+    let mut past = false;
+    let mut waarschuwingen = Vec::new();
+    for lv in leveringen {
+        if !lv.past(g, uitvoering) {
+            verkeerd.push(format!("hij komt uit {}", lv.woorden()));
+            continue;
         }
-    };
-    (!past).then(nu)
+        match lv {
+            Levering::Bron(bron) => match register_bron(bron, naam, g, cellen, service) {
+                Ok(w) => {
+                    past = true;
+                    waarschuwingen.extend(w);
+                }
+                Err(r) => verkeerd.push(r),
+            },
+            _ => past = true,
+        }
+    }
+    if !verkeerd.is_empty() {
+        Uitslag::Verkeerd(verkeerd.join("; "))
+    } else if past {
+        Uitslag::Past { waarschuwingen }
+    } else {
+        Uitslag::Geen(String::new())
+    }
 }
 
 /// Of een synthese-bron een register-parameter mag leveren: haar
 /// lexostatus noemt in `levert_aan` een artikel dat hem vraagt, en houdt een
-/// kroniek bij met een grondslag in het register van de herkomst. Een bron
-/// met een url is niet na te gaan en telt.
+/// kroniek bij met een grondslag in het register van de herkomst. `Ok` met
+/// een waarschuwing als dat niet na te gaan is: een bron met een url, of een
+/// interne cel die niet in deze runtime draait.
 fn register_bron(
     bron: &BronLevering,
     naam: &str,
     g: &Geldend,
     cellen: &BTreeMap<String, Arc<Cel>>,
     service: &LawExecutionService,
-) -> Result<(), String> {
+) -> Result<Option<String>, String> {
     let wie = format!("synthese-bron {}/{}", bron.cel, bron.lexostatus);
-    if !bron.intern {
-        return Ok(());
+    let register = g.origin.register.as_deref().unwrap_or_default();
+    if let Some(url) = &bron.url {
+        return Ok(Some(format!(
+            "{wie} draait buiten deze runtime ({url}); of haar lexostatus deze parameters in levert_aan noemt en een kroniek bijhoudt met een grondslag in '{register}', is bij het opstarten niet te zien"
+        )));
     }
     let Some(cel) = cellen.get(&bron.cel) else {
-        // Een interne bron die niet draait, meldt de runtime als waarschuwing.
-        return Ok(());
+        return Ok(Some(format!(
+            "{wie} heeft geen url en draait niet in deze runtime; of zij deze parameters levert met een grondslag in '{register}', is niet te zien"
+        )));
     };
     let Some(def) = cel.lexostatussen.lexostatus(&bron.lexostatus) else {
         return Err(format!("{wie} bestaat niet"));
@@ -664,6 +1037,7 @@ fn register_bron(
             "{wie} noemt in levert_aan geen artikel dat '{naam}' vraagt"
         ));
     }
+    // `vorm` houdt een REGISTER zonder register al tegen.
     if let Some(register) = &g.origin.register {
         let houdt_bij = cel
             .strommen
@@ -678,9 +1052,8 @@ fn register_bron(
             ));
         }
     }
-    Ok(())
+    Ok(None)
 }
-
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
@@ -744,6 +1117,16 @@ mod tests {
         t
     }
 
+    /// De origin van `jaar` (art. 3) vervangen.
+    fn jaar_met(origin: &'static str) -> impl Fn(String) -> String {
+        move |t: String| {
+            t.replace(
+                "origin: {waarde: REGISTER, register: testregeling_register, grondslag: testregeling_register#3}\n          - name: gebiedstabel",
+                &format!("origin: {origin}\n          - name: gebiedstabel"),
+            )
+        }
+    }
+
     #[test]
     fn de_fixture_van_de_afnemer_heeft_voor_alles_een_leverancier() {
         let c = afnemer(zo, zo, &[]);
@@ -768,30 +1151,46 @@ mod tests {
         );
         assert_eq!(
             c.fouten,
-            ["besluit: geen leverancier voor 'datum_bekendmaking' van testregeling_afnemer#3 (DOSSIER, grondslag testregeling_afnemer#3 lid 2)"]
+            ["besluit: geen leverancier voor parameter 'datum_bekendmaking' van testregeling_afnemer#3 (DOSSIER, grondslag testregeling_afnemer#3 lid 2)"]
         );
     }
 
-    /// Met required: false rekent de engine zonder: een waarschuwing.
+    /// Met required: false en zonder leverancier krijgt de engine de waarde
+    /// niet en rekent ze met een onbekende (RFC-036): een waarschuwing.
     #[test]
     fn zonder_leverancier_en_niet_verplicht_is_een_waarschuwing() {
         let c = afnemer(zo, |t| t.replace("      bekendgemaakt: false\n", ""), &[]);
         assert!(c.fouten.is_empty(), "{:?}", c.fouten);
         assert_eq!(
             c.waarschuwingen,
-            ["besluit: geen leverancier voor 'bekendgemaakt' van testregeling_afnemer#3 (DOSSIER, grondslag testregeling_afnemer#3 lid 2); required: false, dus de engine rekent zonder"]
+            ["besluit: geen leverancier voor parameter 'bekendgemaakt' van testregeling_afnemer#3 (DOSSIER, grondslag testregeling_afnemer#3 lid 2); required: false, dus de engine krijgt hem niet en rekent met een onbekende waarde (RFC-036)"]
         );
     }
 
-    /// Een leverancier van de verkeerde soort telt niet, en de melding zegt
+    /// Een leverancier van de verkeerde soort is een fout, en de melding zegt
     /// waar de parameter nu vandaan komt.
     #[test]
     fn een_leverancier_die_niet_bij_de_herkomst_past() {
         let c = afnemer(
+            jaar_met("{waarde: DOSSIER, grondslag: 'testregeling_afnemer#3'}"),
+            zo,
+            &[],
+        );
+        assert_eq!(
+            c.fouten,
+            ["besluit: verkeerde bron voor parameter 'jaar' van testregeling_afnemer#3 (DOSSIER, grondslag testregeling_afnemer#3): hij komt uit synthese-bron test_register/registerstatus"]
+        );
+    }
+
+    /// Een verkeerde bron is ook een fout als de parameter required: false
+    /// is: de engine zou dan rekenen met een waarde van de verkeerde partij.
+    #[test]
+    fn een_verkeerde_bron_is_ook_bij_required_false_een_fout() {
+        let c = afnemer(
             |t| {
                 t.replace(
-                    "origin: {waarde: REGISTER, register: testregeling_register, grondslag: testregeling_register#3}\n          - name: gebiedstabel",
-                    "origin: {waarde: DOSSIER, grondslag: 'testregeling_afnemer#3'}\n          - name: gebiedstabel",
+                    "          - name: bekendgemaakt\n            type: boolean\n            required: false\n            origin: {waarde: DOSSIER, grondslag: testregeling_afnemer#3 lid 2}",
+                    "          - name: bekendgemaakt\n            type: boolean\n            required: false\n            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_afnemer#3 lid 2}",
                 )
             },
             zo,
@@ -799,25 +1198,121 @@ mod tests {
         );
         assert_eq!(
             c.fouten,
-            ["besluit: geen leverancier voor 'jaar' van testregeling_afnemer#3 (DOSSIER, grondslag testregeling_afnemer#3); nu komt hij uit synthese-bron test_register/registerstatus"]
+            ["besluit: verkeerde bron voor parameter 'bekendgemaakt' van testregeling_afnemer#3 (BELANGHEBBENDE, grondslag testregeling_afnemer#3 lid 2): hij komt uit de stand bij besluit"]
         );
+        assert!(c.waarschuwingen.is_empty(), "{:?}", c.waarschuwingen);
+    }
+
+    /// Wat de aanvrager indient (een gram van type indiening) is van de
+    /// belanghebbende; wat de eigen actor verder vastlegt (het verloop van de
+    /// zaak) is dossier. Wie ze verwisselt, krijgt een fout.
+    #[test]
+    fn belanghebbende_en_dossier_volgen_uit_wat_de_afleiding_leest() {
+        let c = afnemer(
+            |t| {
+                t.replace(
+                    "          - name: aanvraagdatum\n            type: date\n            required: false\n            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_afnemer#1}",
+                    "          - name: aanvraagdatum\n            type: date\n            required: false\n            origin: {waarde: DOSSIER, grondslag: testregeling_afnemer#1}",
+                )
+                .replace(
+                    "            origin: {waarde: DOSSIER, grondslag: testregeling_afnemer#3 lid 1}\n          - name: opgeschorte_dagen",
+                    "            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_afnemer#3 lid 1}\n          - name: opgeschorte_dagen",
+                )
+            },
+            zo,
+            &[],
+        );
+        assert!(c.fouten.contains(
+            &"toets: verkeerde bron voor parameter 'aanvraagdatum' van testregeling_afnemer#1 (DOSSIER, grondslag testregeling_afnemer#1): hij komt uit eigen lexostatus aanvraag_inhoud (wat de aanvrager indiende)".to_string()
+        ), "{:?}", c.fouten);
+        assert!(c.fouten.contains(
+            &"besluit: verkeerde bron voor parameter 'datum_uitnodiging_aanvulling' van testregeling_afnemer#3 (BELANGHEBBENDE, grondslag testregeling_afnemer#3 lid 1): hij komt uit eigen lexostatus zaakverloop (het verloop van de zaak)".to_string()
+        ), "{:?}", c.fouten);
+    }
+
+    /// Een oordeel geeft de behandelaar in het besluitformulier; een oordeel
+    /// dat ook uit een lexostatus komt, heeft een verkeerde bron.
+    #[test]
+    fn een_oordeel_uit_een_lexostatus_is_een_fout() {
+        let c = afnemer(
+            |t| {
+                t.replace(
+                    "origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_afnemer#1}\n          - name: zetels_op_lijst",
+                    "origin: {waarde: OORDEEL, grondslag: testregeling_afnemer#3 lid 1}\n          - name: zetels_op_lijst",
+                )
+            },
+            zo,
+            &[],
+        );
+        assert!(c.fouten.contains(
+            &"besluit: verkeerde bron voor parameter 'aanvraagdatum' van testregeling_afnemer#3 (OORDEEL, grondslag testregeling_afnemer#3 lid 1): een oordeel geeft de behandelaar in het besluitformulier, maar hij komt uit eigen lexostatus aanvraag_inhoud (wat de aanvrager indiende)".to_string()
+        ), "{:?}", c.fouten);
     }
 
     #[test]
     fn een_register_moet_bij_de_bron_passen() {
         let c = afnemer(
-            |t| {
-                t.replace(
-                    "origin: {waarde: REGISTER, register: testregeling_register, grondslag: testregeling_register#3}\n          - name: gebiedstabel",
-                    "origin: {waarde: REGISTER, register: een_ander_register, grondslag: testregeling_register#3}\n          - name: gebiedstabel",
-                )
-            },
+            jaar_met("{waarde: REGISTER, register: testregeling_afnemer, grondslag: testregeling_register#3}"),
             zo,
             &[],
         );
         assert_eq!(
             c.fouten,
-            ["besluit: geen leverancier voor 'jaar' van testregeling_afnemer#3 (REGISTER, register een_ander_register, grondslag testregeling_register#3): synthese-bron test_register/registerstatus houdt geen kroniek bij met een grondslag in 'een_ander_register'"]
+            ["besluit: verkeerde bron voor parameter 'jaar' van testregeling_afnemer#3 (REGISTER, register testregeling_afnemer, grondslag testregeling_register#3): synthese-bron test_register/registerstatus houdt geen kroniek bij met een grondslag in 'testregeling_afnemer'"]
+        );
+    }
+
+    /// Het register van een herkomst is een geladen regeling (een fout); een
+    /// grondslag in een regeling die niet geladen is, is niet na te gaan (een
+    /// waarschuwing).
+    #[test]
+    fn register_en_grondslag_zijn_geladen() {
+        let c = afnemer(
+            jaar_met("{waarde: REGISTER, register: een_onbekend_register, grondslag: 'een_onbekende_wet#1'}"),
+            zo,
+            &[],
+        );
+        assert!(c.waarschuwingen.contains(
+            &"herkomst: parameter 'jaar' van testregeling_afnemer#3 (REGISTER, register een_onbekend_register, grondslag een_onbekende_wet#1): grondslag 'een_onbekende_wet#1': regeling 'een_onbekende_wet' is niet geladen; niet na te gaan".to_string()
+        ), "{:?}", c.waarschuwingen);
+        assert!(c.fouten.contains(
+            &"herkomst: parameter 'jaar' van testregeling_afnemer#3 (REGISTER, register een_onbekend_register, grondslag een_onbekende_wet#1): register 'een_onbekend_register' is geen geladen regeling".to_string()
+        ), "{:?}", c.fouten);
+    }
+
+    /// Een bron met een url is niet na te gaan: ze telt, met een
+    /// waarschuwing die zegt waarom.
+    #[test]
+    fn een_bron_met_een_url_telt_met_een_waarschuwing() {
+        let c = afnemer(
+            zo,
+            |t| {
+                t.replace(
+                    "  - cel: test_register\n    lexostatus: registerstatus\n",
+                    "  - cel: test_register\n    url: http://register.example\n    lexostatus: registerstatus\n",
+                )
+            },
+            &[],
+        );
+        assert!(c.fouten.is_empty(), "{:?}", c.fouten);
+        assert_eq!(
+            c.waarschuwingen,
+            ["herkomst van 'datum_mededeling', 'geblokkeerd_raad', 'is_geschrapt_raad', 'is_ingeschreven_raad', 'jaar', 'zetels_op_lijst' niet na te gaan: synthese-bron test_register/registerstatus draait buiten deze runtime (http://register.example); of haar lexostatus deze parameters in levert_aan noemt en een kroniek bijhoudt met een grondslag in 'testregeling_register', is bij het opstarten niet te zien"]
+        );
+    }
+
+    /// Een interne bron waarvan de cel niet in deze runtime draait, telt
+    /// ook, met een waarschuwing.
+    #[test]
+    fn een_interne_bron_die_niet_draait_telt_met_een_waarschuwing() {
+        let s = service(zo, &[]);
+        let mut c = cellen(&s);
+        c.remove("test_register");
+        let uit = controleer(&proces("afnemer", zo), &c["test_afnemer"], &c, &s);
+        assert!(uit.fouten.is_empty(), "{:?}", uit.fouten);
+        assert_eq!(
+            uit.waarschuwingen,
+            ["herkomst van 'datum_mededeling', 'geblokkeerd_raad', 'is_geschrapt_raad', 'is_ingeschreven_raad', 'jaar', 'zetels_op_lijst' niet na te gaan: synthese-bron test_register/registerstatus heeft geen url en draait niet in deze runtime; of zij deze parameters levert met een grondslag in 'testregeling_register', is niet te zien"]
         );
     }
 
@@ -836,7 +1331,7 @@ mod tests {
         assert!(c.fouten.is_empty(), "{:?}", c.fouten);
         assert_eq!(
             c.waarschuwingen,
-            ["toets: geen leverancier voor 'gebiedstabel' van testregeling_afnemer#1 (BELANGHEBBENDE, grondslag testregeling_afnemer#1); required: false, dus de engine rekent zonder"]
+            ["toets: geen leverancier voor parameter 'gebiedstabel' van testregeling_afnemer#1 (BELANGHEBBENDE, grondslag testregeling_afnemer#1); required: false, dus de engine krijgt hem niet en rekent met een onbekende waarde (RFC-036)"]
         );
         let met_rijen = |t: String| {
             t.replace(
@@ -867,18 +1362,48 @@ mod tests {
             .iter()
             .any(|w| w.contains("'bevat_aantal_aanduidingen'")));
 
-        let s = service(
-            |t| {
-                t.replace("            origin: {waarde: DOSSIER, grondslag: testregeling_afnemer#3 lid 1}\n          - name: opgeschorte_dagen", "          - name: opgeschorte_dagen")
-            },
-            &[],
-        );
+        let zonder = |t: String| {
+            t.replace("            origin: {waarde: DOSSIER, grondslag: testregeling_afnemer#3 lid 1}\n          - name: opgeschorte_dagen", "          - name: opgeschorte_dagen")
+        };
+        let s = service(zonder, &[]);
         let c = cellen(&s);
         let uit = controleer(&proces("afnemer", zo), &c["test_afnemer"], &c, &s);
         assert_eq!(
             uit.waarschuwingen,
             ["herkomst: parameter 'datum_uitnodiging_aanvulling' van testregeling_afnemer#3 heeft geen origin; wie hem levert is niet na te gaan"]
         );
+    }
+
+    /// In een proces met `herkomst: streng` is een parameter zonder origin
+    /// een fout.
+    #[test]
+    fn strikte_herkomst_maakt_een_parameter_zonder_origin_een_fout() {
+        let zonder = |t: String| {
+            t.replace("            origin: {waarde: DOSSIER, grondslag: testregeling_afnemer#3 lid 1}\n          - name: opgeschorte_dagen", "          - name: opgeschorte_dagen")
+        };
+        let streng = |t: String| {
+            t.replace(
+                "actor: test_afnemer\n",
+                "actor: test_afnemer\nherkomst: streng\n",
+            )
+        };
+        let c = afnemer(zonder, streng, &[]);
+        assert_eq!(
+            c.fouten,
+            ["herkomst: parameter 'datum_uitnodiging_aanvulling' van testregeling_afnemer#3 heeft geen origin; wie hem levert is niet na te gaan (herkomst: streng)"]
+        );
+        assert!(c.waarschuwingen.is_empty(), "{:?}", c.waarschuwingen);
+        // Zonder streng blijft het een waarschuwing (zie hierboven), en
+        // `ruim` is hetzelfde als niets.
+        let ruim = |t: String| {
+            t.replace(
+                "actor: test_afnemer\n",
+                "actor: test_afnemer\nherkomst: ruim\n",
+            )
+        };
+        let c = afnemer(zonder, ruim, &[]);
+        assert!(c.fouten.is_empty(), "{:?}", c.fouten);
+        assert_eq!(c.waarschuwingen.len(), 1, "{:?}", c.waarschuwingen);
     }
 
     /// Het betalingsvoorbeeld: een regeling die het vastgestelde en het
@@ -913,6 +1438,18 @@ articles:
                 - 0
                 - operation: SUBTRACT
                   values: [$vastgesteld_bedrag, $betaald_bedrag]
+  - number: '2'
+    text: |-
+      1. Een besluit vermeldt de dag waarop het is genomen.
+    machine_readable:
+      execution:
+        produces: {legal_character: BESCHIKKING, decision_type: TOEKENNING}
+        output:
+          - name: vermeldt_dag
+            type: boolean
+        actions:
+          - output: vermeldt_dag
+            value: true
 "#;
 
     #[test]
@@ -931,9 +1468,39 @@ articles:
         assert_eq!(
             c.fouten,
             [
-                "besluit: geen leverancier voor 'vastgesteld_bedrag' van testregeling_betaling#1 (DOSSIER, grondslag testregeling_betaling#1 lid 1)",
-                "besluit: geen leverancier voor 'betaald_bedrag' van testregeling_betaling#1 (DOSSIER, grondslag testregeling_betaling#1 lid 1)",
+                "besluit: geen leverancier voor parameter 'vastgesteld_bedrag' van testregeling_betaling#1 (DOSSIER, grondslag testregeling_betaling#1 lid 1)",
+                "besluit: geen leverancier voor parameter 'betaald_bedrag' van testregeling_betaling#1 (DOSSIER, grondslag testregeling_betaling#1 lid 1)",
             ]
+        );
+    }
+
+    /// Elke uitkomst van het besluit telt (RFC-043: "every outcome"), niet
+    /// alleen de eerste: de parameters van een tweede artikel ook.
+    #[test]
+    fn elke_uitkomst_van_het_besluit_telt() {
+        let met = |uitkomsten: &'static str| {
+            move |t: String| {
+                t.replace("    regeling: testregeling_afnemer\n", "    regeling: testregeling_betaling\n")
+                    .replace(
+                        "uitkomsten: [vastgesteld_bedrag, gebiedsbedrag, besluit_tijdig, besluitdeadline, zorgvuldig]",
+                        uitkomsten,
+                    )
+            }
+        };
+        // Alleen het tweede artikel: niets te leveren.
+        let c = afnemer(zo, met("uitkomsten: [vermeldt_dag]"), &[BETALING]);
+        assert!(c.fouten.is_empty(), "{:?}", c.fouten);
+        // Het artikel zonder parameters eerst: het tweede telt nog steeds.
+        let c = afnemer(
+            zo,
+            met("uitkomsten: [vermeldt_dag, nog_te_betalen]"),
+            &[BETALING],
+        );
+        assert_eq!(c.fouten.len(), 2, "{:?}", c.fouten);
+        assert!(
+            c.fouten[0].contains("'vastgesteld_bedrag'"),
+            "{:?}",
+            c.fouten
         );
     }
 
@@ -978,6 +1545,135 @@ articles:
             &[],
         );
         assert!(c.fouten.is_empty(), "{:?}", c.fouten);
+    }
+
+    /// Het tijdvak is een rol, geen grondslag: de grondslag Awb 4:2 lid 1
+    /// zonder `rol: TIJDVAK` is een deel van de aanvraag dat pas na het
+    /// invullen bekend is, dus geen tijdvak en niet vooraf bekend.
+    #[test]
+    fn het_tijdvak_is_een_rol_geen_grondslag() {
+        let met_aanbod = |t: String| {
+            t.replace(
+                "    uitkomst: aanvraag_toelaatbaar\n",
+                "    uitkomst: aanvraag_toelaatbaar\n  aanbod:\n    regeling: testregeling_afnemer\n    uitkomst: aanvraag_aangeboden\n    termijn: aanvraagtermijn\n    keuzes: {jaren_vanaf_nu: [0, 1]}\n",
+            )
+        };
+        let c = afnemer(zo, met_aanbod, &[]);
+        assert!(c.fouten.is_empty(), "{:?}", c.fouten);
+        assert_eq!(c.tijdvak.as_deref(), Some("aanvraagjaar"));
+
+        let zonder_rol = |t: String| t.replace(", rol: TIJDVAK}", "}");
+        let c = afnemer(zonder_rol, met_aanbod, &[]);
+        assert_eq!(c.tijdvak, None);
+        assert_eq!(
+            c.fouten,
+            [
+                "aanbod: voorwaarde leunt op 'aanvraagjaar' (BELANGHEBBENDE, grondslag algemene_wet_bestuursrecht#4:2 lid 1), dat vooraf niet bekend is",
+                "aanbod: keuzes, maar testregeling_afnemer vraagt geen tijdvak (een parameter met origin BELANGHEBBENDE en rol TIJDVAK)",
+            ]
+        );
+    }
+
+    /// De vorm van een origin, bij het laden van elke regeling: een REGISTER
+    /// noemt zijn register, alleen een REGISTER doet dat, een tijdvak komt
+    /// van de belanghebbende, een grondslag is te ontleden, en een waarde
+    /// die niet te lezen is, is een fout met artikel en parameter.
+    #[test]
+    fn de_vorm_van_een_origin_bij_het_laden() {
+        let wet = |origin: &str| -> ArticleBasedLaw {
+            serde_yaml_ng::from_str(&format!(
+                "$id: een_wet\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Tekst.\n    machine_readable:\n      execution:\n        parameters:\n          - name: een_feit\n            type: boolean\n            origin: {origin}\n"
+            ))
+            .unwrap()
+        };
+        let fout = |origin: &str| valideer(&wet(origin));
+        assert!(
+            fout("{waarde: REGISTER, register: een_registerwet, grondslag: 'een_wet#1'}")
+                .is_empty()
+        );
+        assert_eq!(
+            fout("{waarde: REGISTER, grondslag: 'een_wet#1'}"),
+            ["artikel 1, parameter 'een_feit': origin REGISTER zonder register: welke regeling het register houdt, is niet na te gaan"]
+        );
+        assert_eq!(
+            fout("{waarde: DOSSIER, register: een_registerwet, grondslag: 'een_wet#1'}"),
+            ["artikel 1, parameter 'een_feit': origin DOSSIER met register 'een_registerwet': alleen REGISTER noemt een register"]
+        );
+        assert_eq!(
+            fout("{waarde: DOSSIER, grondslag: 'een_wet#1', rol: TIJDVAK}"),
+            ["artikel 1, parameter 'een_feit': rol TIJDVAK bij origin DOSSIER: het tijdvak kiest de aanvrager als deel van de gevraagde beschikking (Awb 4:2 lid 1), dus BELANGHEBBENDE"]
+        );
+        assert_eq!(
+            fout("{waarde: BELANGHEBBENDE, grondslag: een_wet}"),
+            ["artikel 1, parameter 'een_feit': grondslag 'een_wet' heeft niet de vorm <regeling>#<artikel>"]
+        );
+        let f = fout("{waarde: KADER, grondslag: 'een_wet#1'}");
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert!(
+            f[0].starts_with(
+                "artikel 1, parameter 'een_feit': ongeldige origin: unknown variant `KADER`"
+            ),
+            "{f:?}"
+        );
+    }
+
+    /// `origins` staat alleen in uitvoeringsbeleid, en een overschrijving die
+    /// niet te lezen is, is een fout.
+    #[test]
+    fn de_vorm_van_origins_bij_het_laden() {
+        let wet: ArticleBasedLaw = serde_yaml_ng::from_str(&BELEID.replace(
+            "regulatory_layer: UITVOERINGSBELEID",
+            "regulatory_layer: WET",
+        ))
+        .unwrap();
+        assert_eq!(
+            valideer(&wet),
+            ["artikel 1: origins staat alleen in uitvoeringsbeleid (RFC-043)"]
+        );
+        let beleid: ArticleBasedLaw =
+            serde_yaml_ng::from_str(&BELEID.replace("parameter: jaar", "parameter_: jaar"))
+                .unwrap();
+        let f = valideer(&beleid);
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert!(
+            f[0].starts_with("artikel 1, origins[0]: ongeldige overschrijving:"),
+            "{f:?}"
+        );
+        let beleid: ArticleBasedLaw =
+            serde_yaml_ng::from_str(&BELEID.replace("waarde: DOSSIER", "waarde: REGISTER"))
+                .unwrap();
+        assert_eq!(
+            valideer(&beleid),
+            ["artikel 1, origins voor 'jaar' van testregeling_afnemer: origin REGISTER zonder register: welke regeling het register houdt, is niet na te gaan"]
+        );
+    }
+
+    /// Een ongeldige origin houdt het laden van het corpus tegen, met het
+    /// bestand, het artikel en de parameter; de engine zelf laadt de
+    /// regeling wel.
+    #[test]
+    fn een_ongeldige_origin_noemt_bestand_en_parameter() {
+        // Niet met een punt vooraan: de lader slaat verborgen mappen over.
+        let map = tempfile::Builder::new()
+            .prefix("regelingen")
+            .tempdir()
+            .unwrap();
+        let tekst = std::fs::read_to_string(
+            fixtures().join("regulation/testregeling_afnemer/2025-01-01.yaml"),
+        )
+        .unwrap()
+        .replacen("waarde: OORDEEL", "waarde: OORDEL", 1);
+        let pad = map.path().join("afnemer.yaml");
+        std::fs::write(&pad, tekst).unwrap();
+        let fouten = regelingen::laad(map.path()).err().unwrap();
+        assert_eq!(fouten.len(), 1, "{fouten:?}");
+        assert!(
+            fouten[0].starts_with(&format!(
+                "{}: artikel 3, parameter 'besluitdatum': ongeldige origin: unknown variant `OORDEL`",
+                pad.display()
+            )),
+            "{fouten:?}"
+        );
     }
 
     /// Het besluitformulier: de OORDEEL-parameters van het besluit, met het
@@ -1049,7 +1745,7 @@ articles:
         let c = afnemer(zo, zo, &[BELEID]);
         assert_eq!(
             c.fouten,
-            ["besluit: geen leverancier voor 'jaar' van testregeling_afnemer#3 (DOSSIER, grondslag testbeleid_afnemer#1 lid 1, uit testbeleid_afnemer#1); nu komt hij uit synthese-bron test_register/registerstatus"]
+            ["besluit: verkeerde bron voor parameter 'jaar' van testregeling_afnemer#3 (DOSSIER, grondslag testbeleid_afnemer#1 lid 1, uit testbeleid_afnemer#1): hij komt uit synthese-bron test_register/registerstatus"]
         );
         // Beleid van een ander gezag telt niet.
         let ander = BELEID.replace("name: Test afnemer", "name: Een ander");

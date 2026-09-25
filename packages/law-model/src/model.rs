@@ -173,14 +173,47 @@ pub struct Parameter {
     pub legal_basis: Option<ProvisionReference>,
     /// Who supplies this parameter, per the law, with the provision that says
     /// so (RFC-043). Metadata for a process runtime and an editor; the engine
-    /// does not read it.
+    /// does not read it. An `origin` that is not valid does not stop the law
+    /// from loading: it is kept as written, and a runtime that reads it
+    /// reports it with the file and the parameter.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub origin: Option<Origin>,
+    pub origin: Option<Declared<Origin>>,
+}
+
+/// A field a law declares for a process runtime and not for the engine
+/// (RFC-043): valid, or kept as written. The engine never fails to load a law
+/// because such a field is wrong; whoever reads it asks [`Declared::valid`]
+/// and reports the reason.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Declared<T> {
+    Valid(T),
+    Invalid(serde_json::Value),
+}
+
+impl<T: serde::de::DeserializeOwned> Declared<T> {
+    /// The value, or why it is not valid.
+    pub fn valid(&self) -> Result<&T, String> {
+        match self {
+            Declared::Valid(v) => Ok(v),
+            Declared::Invalid(raw) => Err(match serde_json::from_value::<T>(raw.clone()) {
+                Err(e) => e.to_string(),
+                // Unreachable: the untagged enum tried the same thing first.
+                Ok(_) => "not valid".to_string(),
+            }),
+        }
+    }
+
+    /// The value if it is valid.
+    pub fn as_valid(&self) -> Option<&T> {
+        self.valid().ok()
+    }
 }
 
 /// Who supplies a parameter, per the law (RFC-043). Always with a
 /// `grondslag`: `<regulation>#<article>`, optionally followed by ` lid <n>`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Origin {
     pub waarde: OriginValue,
     /// With `REGISTER`: the regulation by or under which the register is
@@ -188,6 +221,29 @@ pub struct Origin {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub register: Option<String>,
     pub grondslag: String,
+    /// What the parameter is within the decision requested, when that matters
+    /// to a process beyond who supplies it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rol: Option<OriginRole>,
+}
+
+/// The role of a parameter within the decision requested (RFC-043).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum OriginRole {
+    /// The period the decision covers, chosen by the applicant as part of
+    /// the decision requested (Awb 4:2, first paragraph). Known before the
+    /// application is filled in.
+    Tijdvak,
+}
+
+impl OriginRole {
+    /// The value as it is written in a law.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            OriginRole::Tijdvak => "TIJDVAK",
+        }
+    }
 }
 
 /// The five origins of a parameter (RFC-043).
@@ -223,6 +279,7 @@ impl OriginValue {
 /// An implementing policy overriding the origin that a law gives one of its
 /// parameters, with the provision of the policy as `grondslag` (RFC-043).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct OriginOverride {
     pub regulation: String,
     pub parameter: String,
@@ -1165,8 +1222,9 @@ pub struct MachineReadable {
     pub declares: Option<Vec<Declaration>>,
     /// Origins this article (of an implementing policy) gives parameters of
     /// another regulation, overriding what that regulation says (RFC-043).
+    /// Each entry is kept as written when it is not valid; see [`Declared`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub origins: Option<Vec<OriginOverride>>,
+    pub origins: Option<Vec<Declared<OriginOverride>>>,
 }
 
 /// Represents a single article in a law

@@ -10,7 +10,8 @@
 # bekendmaking, die pas na het besluit komt). Een aanroep binnen dezelfde
 # regeling deelt de parameters; een aanroep van een andere regeling krijgt
 # alleen wat `parameters` meegeeft. Artikel 4 is het aanbod: een
-# registerfeit en het jaar waarvoor de aanvraag wordt gedaan (Awb 4:2 lid 1).
+# registerfeit en het jaar waarvoor de aanvraag wordt gedaan: het tijdvak van
+# de gevraagde beschikking (Awb 4:2 lid 1, `rol: TIJDVAK`).
 $schema: >-
   https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
 $id: testregeling_afnemer
@@ -275,7 +276,7 @@ articles:
           - name: aanvraagjaar
             type: number
             required: false
-            origin: {waarde: BELANGHEBBENDE, grondslag: algemene_wet_bestuursrecht#4:2 lid 1}
+            origin: {waarde: BELANGHEBBENDE, grondslag: algemene_wet_bestuursrecht#4:2 lid 1, rol: TIJDVAK}
           - name: is_ingeschreven_raad
             type: boolean
             required: false

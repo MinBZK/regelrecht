@@ -753,10 +753,14 @@ async fn synthese_over_http_naar_een_andere_runtime() {
     let opstelling = eigen_opstelling(&[("afnemer", &zo)], &[("afnemer", &aanpassing)]);
     let data_a = tempfile::tempdir().unwrap();
     let a = runtime_op(opstelling.path(), data_a.path()).unwrap();
+    // Wat de runtime van een bron buiten haar niet kan zien, meldt ze (de
+    // herkomst, RFC-043); verder niets.
+    let w = a.waarschuwingen().await;
+    assert_eq!(w.len(), 1, "{w:?}");
     assert!(
-        a.waarschuwingen().await.is_empty(),
-        "{:?}",
-        a.waarschuwingen().await
+        w[0].starts_with("proces 'test_afnemer_proces': herkomst van 'datum_mededeling', ")
+            && w[0].contains(&format!("draait buiten deze runtime (http://{adres})")),
+        "{w:?}"
     );
     let body = afnemer_toets(&a.router, Some("VOORBEELD")).await;
     assert_eq!(body["uitslag"]["waarde"], json!(true), "{body}");
@@ -2201,8 +2205,8 @@ fn een_aanbod_op_een_aanvraagfeit_houdt_de_runtime_tegen() {
 // --- Het tijdvak van het aanbod ---
 
 /// Het aanbod draait per tijdvak uit `aanbod.keuzes`; het tijdvak is de
-/// parameter met origin BELANGHEBBENDE en grondslag Awb 4:2 lid 1, niet een
-/// vaste naam.
+/// parameter met origin BELANGHEBBENDE en `rol: TIJDVAK`, niet een vaste
+/// naam.
 #[tokio::test]
 async fn het_aanbod_draait_per_gekozen_tijdvak() {
     let met_aanbod = |t: String| {
@@ -2268,7 +2272,7 @@ fn een_tijdvak_zonder_keuzes_houdt_de_runtime_tegen() {
     let fouten = runtime_op(opstelling.path(), data.path()).err().unwrap();
     assert_eq!(
         fouten,
-        ["proces 'test_afnemer_proces': aanbod: het tijdvak 'aanvraagjaar' (algemene_wet_bestuursrecht#4:2 lid 1) vraagt aanbod.keuzes: welke tijdvakken het portaal aanbiedt"]
+        ["proces 'test_afnemer_proces': aanbod: het tijdvak 'aanvraagjaar' (rol TIJDVAK) vraagt aanbod.keuzes: welke tijdvakken het portaal aanbiedt"]
     );
 }
 
