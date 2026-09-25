@@ -473,7 +473,7 @@ pub struct Aanbod {
     pub termijn: Option<String>,
     /// Een uitkomst van dezelfde regeling: de tijdvakken die het beleid
     /// aanbiedt, als het aanbod-artikel een tijdvak vraagt (de parameter met
-    /// origin BELANGHEBBENDE en grondslag Awb 4:2 lid 1). Het portaal rekent
+    /// origin BELANGHEBBENDE en `rol: TIJDVAK`). Het portaal rekent
     /// haar uit in een run zonder parameters op de datum van vandaag.
     #[serde(default)]
     pub tijdvakken: Option<String>,

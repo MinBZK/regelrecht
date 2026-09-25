@@ -50,7 +50,7 @@ pub struct Proces {
 }
 
 /// Het tijdvak van het aanbod: de parameter met origin BELANGHEBBENDE en
-/// grondslag Awb 4:2 lid 1 (zie [`crate::origin`]).
+/// `rol: TIJDVAK` (zie [`crate::origin`]).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Tijdvak {
     pub parameter: String,

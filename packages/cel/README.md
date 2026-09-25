@@ -80,8 +80,9 @@ portaal:                          # optioneel, vraagt een rol met routes portaal
     termijn: <output>             # optioneel
     tijdvakken: <output>          # als het artikel een tijdvak vraagt (origin met rol: TIJDVAK): de tijdvakken uit het beleid
     begin: <output>               # optioneel: de eerste dag van een tijdvak, het peil van het aanbod
+    openstelling: <output>        # optioneel: de opening van een tijdvak; het loket weigert een ontvangst daarvoor
   formulier: {pad: <pad>, scherm: <id>}   # optioneel
-synthese:                         # optioneel, alleen met een portaal of een besluit
+synthese:                         # optioneel, alleen met een portaal of handelingen
   - {cel: <cel-id>, lexostatus: <naam>, zaak: true}   # een lexostatus van de zaak
   - cel: <id van de bron-cel>
     url: <http://host:poort>      # optioneel; zonder url: intern transport
@@ -210,7 +211,9 @@ erboven: het leest lexostatussen en vraagt de cel vast te leggen.
    - op het gekozen gram: `veld`, `jaar_van` (het jaartal van een datum),
      `gevuld`, `gelijk`, `tabel` met `elke_regel` of `een_regel` (en
      `alleen_waar`), `moment` (`op_moment` of `vastgelegd_op`);
-   - over de grammen die door een eigen `filter` komen: `bestaat: true`,
+   - over de grammen die door een eigen `filter` komen: `bestaat: true`
+     (optioneel met `gevuld: <veld>`: alleen een gram met dat veld gevuld
+     telt), `verzamel` (een lijst met een regel per gram),
      `som: <veld>`, `kies: laatste` met `veld: <pad>`, `jaar_van: <pad>` of
      `moment` (en optioneel `geen_gram: <waarde>`, de lezing van afwezigheid)
      of met `bevat: {veld, waarde}`.
@@ -501,7 +504,7 @@ Per proces:
    werkvoorraad, het besluit en de bronnen van de zaak noemen een cel, dezelfde,
    en die draait in deze runtime.
 2. De `actor` is de `recording_actor` van elke stroom waarin het proces
-   vastlegt (die van het portaal en die van het besluit). `namens` noemt een
+   vastlegt (die van het portaal en die van elke handeling). `namens` noemt een
    gezag dat een geladen regeling noemt (verplicht met een behandeling); een
    mandaat noemt zo'n gezag, niet het eigen, en een grondslag die een geladen
    artikel aanwijst. Elk kanaal heeft unieke velden, leesbare patronen en een
@@ -519,7 +522,7 @@ Per proces:
    artikel zonder verplichte parameters). Een `grondslag` in het
    formulierbestand (bij een veld of kolom) wijst een geladen artikel aan, met
    een lid dat het heeft.
-4. Synthese: alleen met een portaal of een besluit; elke invoer komt uit een
+4. Synthese: alleen met een portaal of handelingen; elke invoer komt uit een
    veld van de toets-lexostatus of een lexostatus van de zaak, of van een
    eerdere bron die het doorgeeft (in rondes, zo diep als nodig), of is een vaste
    waarde; elke parameter (de naam bij de afnemer) is een parameter van het
@@ -580,7 +583,7 @@ komen.
 | `proces` | een proces uit zijn map laden, en de controles op cel, actor en portaal |
 | `config` | omgeving, `cel.yaml` en `proces.yaml` |
 | `stroom` | stroomdefinitie laden en valideren, gram bouwen uit intake en external |
-| `gram` | het vastgelegde gram, met invoer en receipt van een besluit, en het lezen van een veldpad |
+| `gram` | het vastgelegde gram, met invoer en receipt van elke berekende handeling, en het lezen van een veldpad |
 | `reductie` | kroniek reduceren tot lexostatus; `reductie::definitie` laadt de lexostatus-definities, `reductie::peil` peilt op een eerder moment |
 | `startstand` | grammen voor een lege kroniek |
 | `kroniek` | append-only opslag, in het geheugen met een index per zaak, en herstel van een half geschreven regel |
@@ -594,7 +597,9 @@ komen.
 | `toets` | parameters aan de engine, een of meer uitkomsten evalueren |
 | `handeling` | de handelingen in een zaak (besluit, vervolg, feit): voorbereiden bij het laden, op proef, vastleggen, de stand per zaak en de rechtsbescherming, en de controles op behandeling |
 | `rijen` | synthese per regel: een tabelveld wordt een array-parameter |
-| `api` | de routes: `api::cel` (de cel), `api::proces` (de router van een proces), `api::sessie`, `api::portaal` en `api::behandeling` |
+| `mogelijkheid` | wat het aanbod per tijdvak zegt (`portaal.aanbod`) |
+| `voorbeelden` | de voorbeelden per handeling uit `voorbeelden` in `proces.yaml` |
+| `api` | de routes: `api::cel` (de cel), `api::proces` (de router van een proces), `api::sessie`, `api::portaal`, `api::loket` en `api::behandeling` |
 | `celclient` | hoe een proces de cel vraagt: zaak lezen, vastleggen, proefreductie, als typen |
 | `datum` | momenten lezen, peildatum, jaartal en het `Tijdpunt` van een peil |
 | `laden` | bestanden en mappen lezen, YAML valideren tegen zijn schema |
