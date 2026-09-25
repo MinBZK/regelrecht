@@ -831,6 +831,12 @@ fn controleer_handeling(
                         ontbreekt.join(", ")
                     ));
                 }
+                if !feiten.is_empty() {
+                    fouten.push(format!(
+                        "{vl}: het event legt [{}] vast, en dat is geen uitkomst en geen oordeel van het besluit",
+                        feiten.join(", ")
+                    ));
+                }
             }
             Handelingsoort::Vervolg { .. } => {
                 let ontbreekt: Vec<&str> = feiten
@@ -1447,7 +1453,6 @@ pub struct Genomen {
     pub gram: Gram,
     pub yaml: String,
     pub proef: Proefhandeling,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub waarschuwingen: Vec<String>,
 }
 

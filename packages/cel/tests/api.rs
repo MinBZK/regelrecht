@@ -503,8 +503,8 @@ async fn processen_worden_opgesomd_met_hun_cel() {
         afnemer["synthese"][0],
         json!({"cel": "test_afnemer", "lexostatus": "aanvraag_inhoud", "zaak": true, "transport": "intern", "parameters": []})
     );
-    assert_eq!(afnemer["synthese"][2]["cel"], "test_register");
-    assert_eq!(afnemer["synthese"][2]["transport"], "intern");
+    assert_eq!(afnemer["synthese"][3]["cel"], "test_register");
+    assert_eq!(afnemer["synthese"][3]["transport"], "intern");
     let instantie = &body[1];
     assert_eq!(instantie["id"], "test_instantie_proces");
     assert_eq!(instantie["behandeling"], Value::Null);
@@ -953,7 +953,7 @@ fn synthese_controle_bij_het_opstarten() {
             let (synthese, _) = synthese.split_once("behandeling:").unwrap();
             format!("{voor}synthese:{synthese}")
         },
-        "synthese zonder portaal en zonder besluit",
+        "synthese zonder portaal en zonder handelingen",
     );
 }
 
@@ -1070,9 +1070,10 @@ fn besluit_controle_bij_het_opstarten() {
     // De stand bij besluit staat niet meer in de configuratie: ze volgt uit
     // de procedure van de beschikking. Het schema weigert haar.
     let met_stand = |t: String| {
-        t.replace(
-            "    vastleggen:\n",
-            "    stand_bij_besluit: {bekendgemaakt: false}\n    vastleggen:\n",
+        t.replacen(
+            "      vastleggen: {cel: test_afnemer, stroom: test_afnemer_zaakverloop, event: besluit_genomen}",
+            "      stand_bij_besluit: {bekendgemaakt: false}\n      vastleggen: {cel: test_afnemer, stroom: test_afnemer_zaakverloop, event: besluit_genomen}",
+            1,
         )
     };
     let opstelling = eigen_opstelling(
@@ -1091,51 +1092,43 @@ fn besluit_controle_bij_het_opstarten() {
     geval(
         &|t: String| {
             t.replace(
-                "        tabel: {lexostatus: aanvraag_inhoud, veld: gebieden}",
-                "        tabel: {lexostatus: aanvraag_inhoud, veld: dorpen}",
+                "          tabel: {lexostatus: aanvraag_inhoud, veld: gebieden}",
+                "          tabel: {lexostatus: aanvraag_inhoud, veld: dorpen}",
             )
         },
         "lexostatus 'aanvraag_inhoud' levert geen 'dorpen'",
     );
     geval(
-        &|t: String| t.replace("        tabel: {lexostatus: aanvraag_inhoud, veld: gebieden}", "        tabel: {lexostatus: werkvoorraad, veld: gebieden}"),
+        &|t: String| t.replace("          tabel: {lexostatus: aanvraag_inhoud, veld: gebieden}", "          tabel: {lexostatus: werkvoorraad, veld: gebieden}"),
         "de tabel komt uit lexostatus 'werkvoorraad', en die is geen lexostatus van de zaak (zaak: true)",
     );
     geval(
         &|t: String| {
             t.replace(
-                "              gebied: {kolom: gebied}\n              peildatum:",
-                "              gebied: {kolom: gebiedje}\n              peildatum:",
+                "                gebied: {kolom: gebied}\n                peildatum:",
+                "                gebied: {kolom: gebiedje}\n                peildatum:",
             )
         },
         "kolom 'gebiedje' wordt door niets ervoor gevuld",
     );
     geval(
         &|t: String| t.replace("- parameter: gebiedstabel", "- parameter: dorpstabel"),
-        "besluit, rijen: 'dorpstabel' is geen parameter van testregeling_afnemer#3",
+        "'besluit', rijen: 'dorpstabel' is geen parameter van testregeling_afnemer#3",
     );
     geval(
         &|t: String| {
             t.replace(
-                "            kolommen: {tarief: tarief}",
-                "            kolommen: {tarief: zetels}",
+                "              kolommen: {tarief: tarief}",
+                "              kolommen: {tarief: zetels}",
             )
         },
         "kolom 'zetels' komt uit meer dan een plek: de tabel, bron test_gebieden/tarief",
     );
-    // Waar het besluit wordt vastgelegd.
+    // Waar het besluit wordt vastgelegd: elk veld van het event is een
+    // uitkomst of een oordeel.
     geval(
-        &|t: String| {
-            t.replace(
-                "      event: besluit_genomen",
-                "      event: termijn_opgeschort",
-            )
-        },
-        "het event heeft geen stage",
-    );
-    geval(
-        &|t: String| t.replace("    uitkomsten: [vastgesteld_bedrag, gebiedsbedrag,", "    uitkomsten: [vastgesteld_bedrag,"),
-        "het besluit heeft de uitkomsten [besluit_tijdig, besluitdeadline, vastgesteld_bedrag, zorgvuldig]",
+        &|t: String| t.replace("      uitkomsten: [vastgesteld_bedrag, gebiedsbedrag,", "      uitkomsten: [vastgesteld_bedrag,"),
+        "het event legt [gebiedsbedrag] vast, en dat is geen uitkomst en geen oordeel van het besluit",
     );
 }
 
@@ -1855,13 +1848,19 @@ async fn besluit_nemen_legt_een_decretogram_vast() {
     let inputs = gram["inputs"].as_object().unwrap();
     assert_eq!(
         inputs["besluitdatum"],
-        json!({"waarde": "2025-03-20", "herkomst": {"bron": "behandelaar"}})
+        json!({"waarde": "2025-03-12", "herkomst": {"bron": "behandelaar"}})
     );
     assert_eq!(inputs["zetels_op_lijst"]["herkomst"]["bron"], "cel");
     assert_eq!(inputs["gebiedstabel"]["herkomst"]["bron"], "per_regel");
     assert_eq!(
-        inputs["datum_bekendmaking"]["herkomst"]["bron"],
+        inputs["bekendgemaakt"]["herkomst"]["bron"],
         "stand_bij_besluit"
+    );
+    // Het op_moment van het besluit is de besluitdatum, met grondslag.
+    assert_eq!(gram["op_moment"], "2025-03-12T00:00:00+01:00");
+    assert_eq!(
+        gram["op_moment_grondslag"],
+        json!(["testregeling_afnemer#3 lid 1"])
     );
     assert_eq!(
         inputs["aanvraagdatum"]["herkomst"],
@@ -2137,7 +2136,12 @@ async fn voorbeelden_zonder_login() {
         body["aanvraag"],
         afnemer_concept(Some("VOORBEELD"))["external"]
     );
-    assert_eq!(body["besluit"], oordelen()["formulier"]);
+    assert_eq!(body["handelingen"]["besluit"], oordelen()["formulier"]);
+    // "$vandaag" is bij het opvragen de datum van de klok.
+    assert_eq!(
+        body["handelingen"]["bekendmaken"]["datum_bekendmaking"],
+        "2025-03-12"
+    );
 
     // Een proces zonder voorbeelden: leeg, geen fout.
     let (status, body, _) = vraag(
@@ -2151,7 +2155,7 @@ async fn voorbeelden_zonder_login() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
         body,
-        json!({"inloggen": [], "aanvraag": null, "besluit": null})
+        json!({"inloggen": [], "aanvraag": null, "handelingen": {}})
     );
 }
 
@@ -2567,7 +2571,7 @@ fn een_stage_buiten_de_procedure_houdt_de_runtime_tegen() {
     let fouten = runtime_op(opstelling.path(), data.path()).err().unwrap();
     assert!(
         fouten.iter().any(|f| f.contains(
-            "besluit, vastleggen test_afnemer_zaakverloop/besluit_genomen: stage 'BESLISSING' staat niet in procedure 'beschikking' van BESCHIKKING (AANVRAAG, BESLUIT, BEKENDMAKING)"
+            "handeling 'besluit', vastleggen test_afnemer_zaakverloop/besluit_genomen: stage 'BESLISSING' staat niet in procedure 'beschikking' van testregeling_afnemer#3 (AANVRAAG, BESLUIT, BEKENDMAKING, BEZWAAR)"
         )),
         "{fouten:?}"
     );
@@ -3159,5 +3163,246 @@ async fn het_loket_weigert_een_ontvangst_voor_de_openstelling() {
             .unwrap()
             .contains("het tijdvak (aanvraagjaar) ontbreekt"),
         "{body}"
+    );
+}
+
+// --- Handelingen na het besluit: bekendmaken, betalen, en het zaakverloop ---
+
+async fn handeling(
+    app: &Router,
+    b: &str,
+    zaak: &str,
+    naam: &str,
+    proef: bool,
+    formulier: Value,
+) -> (StatusCode, Value) {
+    let pad = if proef {
+        format!("{AFNEMER}/api/zaken/{zaak}/handelingen/{naam}/proef")
+    } else {
+        format!("{AFNEMER}/api/zaken/{zaak}/handelingen/{naam}")
+    };
+    let (status, body, _) = vraag(
+        app,
+        "POST",
+        &pad,
+        Some(b),
+        Some(json!({ "formulier": formulier })),
+    )
+    .await;
+    (status, body)
+}
+
+/// Na het besluit: de bekendmaking is een vervolg op het besluit (de
+/// engine voert stage BEKENDMAKING uit op de invoer van het vastgelegde
+/// besluit, en de haak van die stage rekent de bezwaartermijn uit); de
+/// betaling is een executogram dat alleen vastligt als de toets van zijn
+/// grondslag waar is. Een tweede betaling boven het bedrag weigert de wet.
+#[tokio::test]
+async fn besluit_bekendmaken_en_betalen() {
+    let data = tempfile::tempdir().unwrap();
+    let app = app(data.path());
+    let zaak = afnemer_indienen(&app, "12345678").await;
+    let b = behandelaar(&app).await;
+    let betaling = |bedrag: i64| json!({"bedrag": bedrag, "datum_betaling": "2025-03-12"});
+
+    // Voor het besluit: bekendmaken wacht, betalen mist het bedrag.
+    let (status, f) = handeling(
+        &app,
+        &b,
+        &zaak,
+        "bekendmaken",
+        false,
+        json!({"datum_bekendmaking": "2025-03-12", "bekendgemaakt": true}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{f}");
+    assert!(
+        f["fout"].as_str().unwrap().contains("nog geen besluit"),
+        "{f}"
+    );
+    let (status, f) = handeling(&app, &b, &zaak, "betalen", false, betaling(6000)).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{f}");
+    assert!(
+        f["fout"]
+            .as_str()
+            .unwrap()
+            .contains("mist vastgesteld_bedrag"),
+        "{f}"
+    );
+
+    let (status, body) = handeling(
+        &app,
+        &b,
+        &zaak,
+        "besluit",
+        false,
+        oordelen()["formulier"].clone(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    // Na het besluit, voor de bekendmaking: het besluit is niet in werking.
+    let (status, f) = handeling(&app, &b, &zaak, "betalen", false, betaling(6000)).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{f}");
+    assert!(
+        f["fout"].as_str().unwrap().contains("betaling_conform"),
+        "{f}"
+    );
+
+    // Het formulier van de bekendmaking is wat de stage vraagt.
+    let (_, z, _) = vraag(
+        &app,
+        "GET",
+        &format!("{AFNEMER}/api/zaken/{zaak}"),
+        Some(&b),
+        None,
+    )
+    .await;
+    let bekend = &z["handelingen"][1];
+    assert_eq!(bekend["beschikbaar"], json!(true), "{bekend}");
+    let velden: Vec<&str> = bekend["formulier"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v["naam"].as_str().unwrap())
+        .collect();
+    assert_eq!(velden, ["datum_bekendmaking", "bekendgemaakt"]);
+    assert_eq!(z["handelingen"][0]["beschikbaar"], json!(false));
+
+    // Een bekendmaking die niet op de voorgeschreven wijze is gedaan, geeft
+    // geen bezwaartermijn: niet te nemen.
+    let (status, p) = handeling(
+        &app,
+        &b,
+        &zaak,
+        "bekendmaken",
+        true,
+        json!({"datum_bekendmaking": "2025-03-12", "bekendgemaakt": false}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{p}");
+    assert_eq!(p["te_nemen"], json!(false), "{p}");
+
+    let (status, body) = handeling(
+        &app,
+        &b,
+        &zaak,
+        "bekendmaken",
+        false,
+        json!({"datum_bekendmaking": "2025-03-12", "bekendgemaakt": true}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let gram = &body["gram"];
+    assert_eq!(gram["stage"], "BEKENDMAKING");
+    assert_eq!(gram["type"], "handeling");
+    assert_eq!(gram["fields"]["aanvang_bezwaartermijn"], "2025-03-13");
+    assert_eq!(gram["fields"]["einde_bezwaartermijn"], "2025-04-23");
+    // Art. 3 in de stage BEKENDMAKING: nu is het besluit bekendgemaakt.
+    assert_eq!(gram["fields"]["besluit_tijdig"], json!(true));
+    assert_eq!(gram["op_moment"], "2025-03-12T00:00:00+01:00");
+
+    // Betalen, in twee delen; de reductie telt de betalingen op.
+    let (status, body) = handeling(&app, &b, &zaak, "betalen", false, betaling(4000)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(body["gram"]["type"], "executogram");
+    assert_eq!(body["proef"]["uitkomsten"]["nog_te_betalen"], json!(2000));
+    let (status, f) = handeling(&app, &b, &zaak, "betalen", false, betaling(2001)).await;
+    assert_eq!(status, StatusCode::CONFLICT, "boven het bedrag: {f}");
+    let (status, body) = handeling(&app, &b, &zaak, "betalen", false, betaling(2000)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(body["proef"]["uitkomsten"]["nog_te_betalen"], json!(0));
+    let (status, _) = handeling(&app, &b, &zaak, "betalen", false, betaling(1)).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    // De zaak: nog te betalen 0, en de bezwaartermijn uit de procedure.
+    let (_, z, _) = vraag(
+        &app,
+        "GET",
+        &format!("{AFNEMER}/api/zaken/{zaak}"),
+        Some(&b),
+        None,
+    )
+    .await;
+    let betalen = z["handelingen"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|h| h["naam"] == "betalen")
+        .unwrap();
+    assert_eq!(
+        betalen["proef"]["uitkomsten"]["nog_te_betalen"],
+        json!(0),
+        "{betalen}"
+    );
+    assert_eq!(betalen["vastgelegd"], json!(2));
+    let r = &z["rechtsbescherming"];
+    assert_eq!(r["na"], "BEKENDMAKING");
+    assert_eq!(r["stage"], "BEZWAAR");
+    assert_eq!(r["grondslag"], json!(["testregeling_awb#4"]));
+    assert_eq!(r["uitkomsten"]["einde_bezwaartermijn"], "2025-04-23");
+    // De lexostatus van het besluit bevat de route.
+    let (_, l, _) = vraag(
+        &app,
+        "GET",
+        &format!("{AFNEMER_CEL}/api/lexostatus/besluit?zaakkenmerk={zaak}"),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(
+        l["extra_velden"]["einde_bezwaartermijn"], "2025-04-23",
+        "{l}"
+    );
+    assert_eq!(l["parameters"]["betaald_bedrag"], json!(6000));
+}
+
+/// Een tweede handeling in het zaakverloop: een verzoek om aanvulling telt
+/// op proef mee, en na het vastleggen leest het besluit het.
+#[tokio::test]
+async fn een_aanvulling_vragen_werkt_door_in_het_besluit() {
+    let data = tempfile::tempdir().unwrap();
+    let app = app(data.path());
+    let zaak = afnemer_indienen(&app, "12345678").await;
+    let b = behandelaar(&app).await;
+    let (_, p) = handeling(&app, &b, &zaak, "aanvulling_vragen", true, json!({})).await;
+    // Zonder de datum telt het feit niet: niet te nemen.
+    assert_eq!(p["te_nemen"], json!(false), "{p}");
+    assert!(
+        p["reden"].as_str().unwrap().contains("datum_uitnodiging"),
+        "{p}"
+    );
+    let (_, p) = handeling(
+        &app,
+        &b,
+        &zaak,
+        "aanvulling_vragen",
+        true,
+        json!({"datum_uitnodiging": "2025-03-12"}),
+    )
+    .await;
+    assert_eq!(p["uitkomsten"]["termijn_opgeschort"], json!(true), "{p}");
+    let (status, body) = handeling(
+        &app,
+        &b,
+        &zaak,
+        "aanvulling_vragen",
+        false,
+        json!({"datum_uitnodiging": "2025-03-12"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let (_, p) = handeling(
+        &app,
+        &b,
+        &zaak,
+        "besluit",
+        true,
+        oordelen()["formulier"].clone(),
+    )
+    .await;
+    assert_eq!(
+        p["parameters"]["datum_uitnodiging_aanvulling"], "2025-03-12",
+        "{p}"
     );
 }
