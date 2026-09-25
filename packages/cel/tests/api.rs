@@ -3282,6 +3282,8 @@ async fn besluit_bekendmaken_en_betalen() {
     .await;
     assert_eq!(status, StatusCode::OK, "{p}");
     assert_eq!(p["te_nemen"], json!(false), "{p}");
+    // Een conclusie over de inhoud: gebeurde het toch, dan is het te melden.
+    assert_eq!(p["te_melden"], json!(true), "{p}");
 
     let (status, body) = handeling(
         &app,
@@ -3309,6 +3311,13 @@ async fn besluit_bekendmaken_en_betalen() {
     assert_eq!(body["proef"]["uitkomsten"]["nog_te_betalen"], json!(2000));
     let (status, f) = handeling(&app, &b, &zaak, "betalen", false, betaling(2001)).await;
     assert_eq!(status, StatusCode::CONFLICT, "boven het bedrag: {f}");
+    assert!(
+        f["fout"]
+            .as_str()
+            .unwrap()
+            .contains("meld het dan als gebeurd"),
+        "{f}"
+    );
     let (status, body) = handeling(&app, &b, &zaak, "betalen", false, betaling(2000)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
     assert_eq!(body["proef"]["uitkomsten"]["nog_te_betalen"], json!(0));
@@ -3404,5 +3413,253 @@ async fn een_aanvulling_vragen_werkt_door_in_het_besluit() {
     assert_eq!(
         p["parameters"]["datum_uitnodiging_aanvulling"], "2025-03-12",
         "{p}"
+    );
+}
+
+/// Een handeling nemen met `gebeurd`: de behandelaar meldt een feit dat
+/// gebeurde terwijl de proef om de inhoud nee zei.
+async fn melden(
+    app: &Router,
+    b: &str,
+    zaak: &str,
+    naam: &str,
+    formulier: Value,
+) -> (StatusCode, Value) {
+    let (status, body, _) = vraag(
+        app,
+        "POST",
+        &format!("{AFNEMER}/api/zaken/{zaak}/handelingen/{naam}"),
+        Some(b),
+        Some(json!({"formulier": formulier, "gebeurd": true})),
+    )
+    .await;
+    (status, body)
+}
+
+/// Het proces concludeert voor het handelt; wat gebeurde, legt de cel toch
+/// vast. Een betaling boven het bedrag doet het proces niet uit zichzelf,
+/// maar gemeld als gebeurd ligt zij vast, en dan is het meerdere
+/// onverschuldigd betaald. Een bekendmaking die niet aan de wet voldoet,
+/// ligt gemeld vast zonder bezwaartermijn. Een besluit wordt niet gemeld, en
+/// een onvolledig formulier niet vastgelegd.
+#[tokio::test]
+async fn een_gemeld_feit_legt_de_cel_vast() {
+    let data = tempfile::tempdir().unwrap();
+    let app = app(data.path());
+    let b = behandelaar(&app).await;
+    let betaling = |bedrag: i64| json!({"bedrag": bedrag, "datum_betaling": "2025-03-12"});
+
+    // Een besluit meldt men niet.
+    let zaak = afnemer_indienen(&app, "12345678").await;
+    let (status, f) = melden(&app, &b, &zaak, "besluit", oordelen()["formulier"].clone()).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{f}");
+    let (status, _) = handeling(
+        &app,
+        &b,
+        &zaak,
+        "besluit",
+        false,
+        oordelen()["formulier"].clone(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    // Een bekendmaking die niet op de voorgeschreven wijze is gedaan: gemeld
+    // ligt zij vast, zonder bezwaartermijn.
+    let (status, body) = melden(
+        &app,
+        &b,
+        &zaak,
+        "bekendmaken",
+        json!({"datum_bekendmaking": "2025-03-12", "bekendgemaakt": false}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(body["gram"]["stage"], "BEKENDMAKING");
+    assert_eq!(
+        body["gram"]["fields"]["aanvang_bezwaartermijn"],
+        Value::Null
+    );
+    assert_eq!(body["gram"]["fields"]["einde_bezwaartermijn"], Value::Null);
+    assert!(
+        body["waarschuwingen"][0]
+            .as_str()
+            .unwrap()
+            .contains("gemeld als gebeurd"),
+        "{body}"
+    );
+    let (_, l, _) = vraag(
+        &app,
+        "GET",
+        &format!("{AFNEMER}/api/zaken/{zaak}"),
+        Some(&b),
+        None,
+    )
+    .await;
+    assert_eq!(
+        l["rechtsbescherming"]["uitkomsten"]["einde_bezwaartermijn"],
+        Value::Null,
+        "{l}"
+    );
+
+    // Betalen: het bedrag, en dan een cent te veel.
+    let (status, body) = handeling(&app, &b, &zaak, "betalen", false, betaling(6000)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let (status, p) = handeling(&app, &b, &zaak, "betalen", true, betaling(1)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(p["te_nemen"], json!(false), "{p}");
+    assert_eq!(p["te_melden"], json!(true), "{p}");
+    assert_eq!(p["toetsen"]["betaling_conform"], json!(false), "{p}");
+    let (status, body) = melden(&app, &b, &zaak, "betalen", betaling(1)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(body["gram"]["type"], "executogram");
+    assert_eq!(body["gram"]["fields"]["bedrag"], json!(1));
+    // De gevolgen: de cel telt de betalingen op, de wet zegt wat
+    // onverschuldigd is betaald.
+    let (_, p) = handeling(&app, &b, &zaak, "betalen", true, betaling(0)).await;
+    assert_eq!(p["parameters"]["betaald_bedrag"], json!(6001), "{p}");
+    assert_eq!(p["uitkomsten"]["onverschuldigd_betaald"], json!(1), "{p}");
+
+    // Een feit zonder ingevuld formulier legt niemand vast, ook gemeld niet.
+    let (status, f) = melden(&app, &b, &zaak, "aanvulling_vragen", json!({})).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{f}");
+    assert!(f["fout"].as_str().unwrap().contains("vul in"), "{f}");
+}
+
+/// Het moment van een handeling: niet in de toekomst en niet voor de zaak.
+/// Het proces zegt het op proef; de cel weigert zo'n gram ook zelf.
+#[tokio::test]
+async fn een_moment_ligt_niet_voor_de_zaak_of_in_de_toekomst() {
+    let data = tempfile::tempdir().unwrap();
+    let rt = runtime_op(&fixtures(), data.path()).unwrap();
+    let app = rt.router.clone();
+    let b = behandelaar(&app).await;
+    let zaak = afnemer_indienen(&app, "12345678").await;
+    let besluit = |datum: &str| json!({"besluitdatum": datum, "feiten_vergaard": true});
+
+    let (_, p) = handeling(&app, &b, &zaak, "besluit", true, besluit("2025-03-11")).await;
+    assert_eq!(p["te_nemen"], json!(false), "{p}");
+    assert_eq!(p["te_melden"], json!(false), "{p}");
+    assert!(
+        p["reden"].as_str().unwrap().contains("ligt voor de zaak"),
+        "{p}"
+    );
+    let (status, f) = handeling(&app, &b, &zaak, "besluit", false, besluit("2025-03-11")).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{f}");
+    let (_, p) = handeling(&app, &b, &zaak, "besluit", true, besluit("2025-03-13")).await;
+    assert!(
+        p["reden"].as_str().unwrap().contains("ligt na vandaag"),
+        "{p}"
+    );
+    // Dezelfde dag als de aanvraag mag: het gaat om de dag.
+    let (_, p) = handeling(&app, &b, &zaak, "besluit", true, besluit("2025-03-12")).await;
+    assert_eq!(p["te_nemen"], json!(true), "{p}");
+
+    // De cel zelf: een gram dat de zaak volgt met een eerdere dag.
+    let (status, f) = als_runtime(
+        &rt,
+        "POST",
+        &format!("{AFNEMER_CEL}/api/grammen"),
+        json!({
+            "actor": "test_afnemer",
+            "stroom": "test_afnemer_zaakverloop",
+            "event": "betaling_verricht",
+            "external": {"bedrag": 1, "datum_betaling": "2025-03-01"},
+            "zaakkenmerk": zaak,
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{f}");
+    assert!(
+        f["fout"].as_str().unwrap().contains("ligt voor de zaak"),
+        "{f}"
+    );
+}
+
+/// De stand van een zaak is een lexostatus van de cel, die de runtime
+/// aanbiedt: de stages met wat hun gram vastlegde, het aantal per event, en
+/// op vraag of iemand de zaak kent.
+#[tokio::test]
+async fn de_cel_geeft_de_stand_van_een_zaak() {
+    let data = tempfile::tempdir().unwrap();
+    let rt = runtime_op(&fixtures(), data.path()).unwrap();
+    let app = rt.router.clone();
+    let b = behandelaar(&app).await;
+    let zaak = afnemer_indienen(&app, "12345678").await;
+    let (status, _) = handeling(
+        &app,
+        &b,
+        &zaak,
+        "besluit",
+        false,
+        oordelen()["formulier"].clone(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let lees = |q: String| {
+        let rt = &rt;
+        async move {
+            let headers = [(RUNTIME_TOKEN_HEADER, rt.runtime_token.als_str())];
+            let (status, body, _) = vraag_met(
+                &rt.router,
+                "GET",
+                &format!("{AFNEMER_CEL}/api/lexostatus/zaakstand?{q}"),
+                &headers,
+                None,
+            )
+            .await;
+            (status, body)
+        }
+    };
+    let (status, l) = lees(format!("zaakkenmerk={zaak}")).await;
+    assert_eq!(status, StatusCode::OK, "{l}");
+    assert_eq!(l["naam"], "zaakstand");
+    assert_eq!(l["parameters"], json!({}), "gaat nooit naar de engine");
+    let z = &l["extra_velden"];
+    assert_eq!(z["grammen"], json!(2), "{z}");
+    assert_eq!(
+        z["events"]["test_afnemer_zaakverloop/besluit_genomen"],
+        json!(1)
+    );
+    assert_eq!(
+        z["stages"]["BESLUIT"]["velden"]["vastgesteld_bedrag"],
+        json!(6000),
+        "{z}"
+    );
+    assert!(z["stages"]["BESLUIT"]["invoer"].is_object(), "{z}");
+    assert!(z["stages"]["AANVRAAG"].is_object(), "{z}");
+    assert!(z.get("eigenaar").is_none());
+
+    let (_, l) = lees(format!(
+        "zaakkenmerk={zaak}&eigenaar_pad=eherkenning.kvk&eigenaar=12345678"
+    ))
+    .await;
+    assert_eq!(l["extra_velden"]["eigenaar"], json!(true), "{l}");
+    let (_, l) = lees(format!(
+        "zaakkenmerk={zaak}&eigenaar_pad=eherkenning.kvk&eigenaar=87654321"
+    ))
+    .await;
+    assert_eq!(l["extra_velden"]["eigenaar"], json!(false), "{l}");
+    let (status, _) = lees("zaakkenmerk=bestaat-niet".into()).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = lees(format!("zaakkenmerk={zaak}&eigenaar=12345678")).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // De cel noemt haar bij haar lexostatussen, als lexostatus van de runtime.
+    let (_, cellen, _) = vraag(&app, "GET", "/api/cellen", None, None).await;
+    let afnemer = cellen
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["id"] == "test_afnemer")
+        .unwrap();
+    assert!(
+        afnemer["lexostatussen"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|l| l["name"] == "zaakstand" && l["runtime"] == json!(true)),
+        "{afnemer}"
     );
 }

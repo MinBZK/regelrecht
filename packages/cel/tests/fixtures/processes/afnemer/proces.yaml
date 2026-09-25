@@ -97,10 +97,12 @@ behandeling:
       uitkomsten: [besluit_tijdig]
       regeling: testregeling_afnemer
       vastleggen: {cel: test_afnemer, stroom: test_afnemer_zaakverloop, event: besluit_bekendgemaakt}
-    # De betaling: een executogram, getoetst aan artikel 3 lid 1.
+    # De betaling: een executogram, getoetst aan artikel 3 lid 1. Een
+    # betaling boven het bedrag doet het proces niet uit zichzelf; gebeurde zij
+    # toch, dan legt de cel haar vast en is het meerdere onverschuldigd betaald.
     - naam: betalen
       regeling: testregeling_awb
-      uitkomsten: [nog_te_betalen]
+      uitkomsten: [nog_te_betalen, onverschuldigd_betaald]
       vastleggen: {cel: test_afnemer, stroom: test_afnemer_zaakverloop, event: betaling_verricht}
     # Een feit uit het verloop van de zaak.
     - naam: aanvulling_vragen

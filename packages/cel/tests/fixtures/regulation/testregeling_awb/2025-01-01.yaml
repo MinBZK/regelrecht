@@ -85,6 +85,7 @@ articles:
     text: |-
       1. Het vastgestelde bedrag wordt betaald, niet meer dan dat, en niet voordat het besluit in werking is.
       2. De dag van betaling telt.
+      3. Wat boven het vastgestelde bedrag is betaald, is onverschuldigd betaald.
     machine_readable:
       execution:
         produces:
@@ -117,6 +118,8 @@ articles:
           - name: betaling_conform
             type: boolean
             legal_basis: {article: '3', paragraph: '1'}
+          - name: onverschuldigd_betaald
+            type: number
         actions:
           - output: nog_te_betalen
             value:
@@ -127,6 +130,15 @@ articles:
                   values:
                     - $vastgesteld_bedrag
                     - $betaald_bedrag
+          - output: onverschuldigd_betaald
+            value:
+              operation: MAX
+              values:
+                - 0
+                - operation: SUBTRACT
+                  values:
+                    - $betaald_bedrag
+                    - $vastgesteld_bedrag
           - output: betaling_conform
             value:
               operation: AND
