@@ -438,7 +438,8 @@ find what the author wrote.
 The frontmatter is not the design. `status` moving to `Superseded` or
 `Rejected`, and `implementation` tracking what is built, are records *about* the
 document and are expected to change; that is what those fields are for. What
-stays put is the body: the claim the author made.
+stays put is the body: the claim the author made, apart from the factual
+corrections described below.
 
 What else needs no supersede: updating a reference when another document is
 renamed, and *adding* a note about what a later RFC did with the old decision.
@@ -453,6 +454,29 @@ point at a document about a different field, while a law file on schema v0.5.x
 still carries `untranslatables` and the engine still reads it. The RFC keeps its
 text and goes to `Superseded` instead, and the RFC introducing the new channel
 carries the new design.
+
+A factual error in the body may be corrected in place: a wrong article or lid,
+a wrong body or organization, an example that relies on a regulation that had
+already lapsed when the RFC was accepted, a citation that points at the wrong
+source, an example filed under the wrong category because the facts about it
+were wrong. The rule protects the decision, and a wrong article number is not a
+decision the author made. A fact that was true when the RFC was accepted and
+changed later (a regulation that lapsed since, a deadline that moved) is not an
+error; it gets a note, not a correction. Two conditions. The correction names
+its source: the statute, or the review that found it, as a link to the pull
+request or issue. And every corrected RFC ends with a `## Corrections` section
+that lists each one: the date, what changed, and where the correction came
+from, so a reader who cited the old text can see what moved. A correction that
+changes what a concept means, what a category contains, or what the design does
+is not a factual correction; it gets an issue or a new RFC. When anyone disputes
+that a change is factual, treat it as a design change.
+
+Questions from a linked review (a pull request or issue) may be appended to an
+accepted RFC as a clearly labeled section of open questions: like a note, they
+change no decision. A reviewer whose text substantially lands in the body may
+be added to `authors`. Open questions and small corrections credit the reviewer
+in their own section instead, because `authors` reads as endorsement of the
+design and a reviewer who questions it should not be listed as its author.
 
 ## Code Reviews
 
