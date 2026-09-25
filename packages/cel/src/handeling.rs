@@ -53,7 +53,9 @@ use chrono::{DateTime, FixedOffset};
 use serde::Serialize;
 use serde_json::{Map, Value};
 
-use regelrecht_engine::{ExecutionOutcome, LawExecutionService, StageState, Value as EngineValue};
+use regelrecht_engine::{
+    ExecutionOutcome, HookPoint, LawExecutionService, StageState, Value as EngineValue,
+};
 use regelrecht_law_model::ProcedureDefinition;
 
 use crate::cel::Cel;
@@ -203,30 +205,26 @@ pub fn procedure_van<'s>(
         .find_procedure(p.legal_character.as_deref()?, p.procedure_id.as_deref())
 }
 
-/// De haken die de wet laat vuren op een stage van een rechtskarakter
-/// (RFC-007, RFC-008), als `<regeling>#<artikel>`, gesorteerd.
-pub fn haken_op(service: &LawExecutionService, legal_character: &str, stage: &str) -> Vec<String> {
-    let mut uit = Vec::new();
-    for id in service.list_laws() {
-        let Some(law) = service.resolver().get_law(id) else {
-            continue;
-        };
-        for a in &law.articles {
-            let vuurt = a
-                .machine_readable
-                .as_ref()
-                .and_then(|m| m.hooks.as_ref())
-                .is_some_and(|hooks| {
-                    hooks.iter().any(|h| {
-                        h.applies_to.legal_character.as_deref() == Some(legal_character)
-                            && h.applies_to.stage.as_deref().unwrap_or("BESLUIT") == stage
-                    })
-                });
-            if vuurt {
-                uit.push(format!("{id}#{}", a.number));
-            }
-        }
-    }
+/// De haken die de wet laat vuren op een stage van het besluit dat een
+/// artikel produceert (RFC-007, RFC-008), als `<regeling>#<artikel>`,
+/// gesorteerd. De engine zoekt ze, met haar eigen regels: het rechtskarakter,
+/// het soort besluit en de stage, op elk haakpunt.
+pub fn haken_op(service: &LawExecutionService, artikel: &str, stage: &str) -> Vec<String> {
+    let Some(produces) = regelingen::artikel(service, artikel)
+        .ok()
+        .and_then(|a| a.get_produces())
+    else {
+        return Vec::new();
+    };
+    let Some(lc) = produces.legal_character.as_deref() else {
+        return Vec::new();
+    };
+    let dt = produces.decision_type.as_deref();
+    let mut uit: Vec<String> = [HookPoint::PreActions, HookPoint::PostActions]
+        .into_iter()
+        .flat_map(|punt| service.resolver().find_hooks(punt, lc, dt, stage))
+        .map(|h| format!("{}#{}", h.law_id, h.article_number))
+        .collect();
     uit.sort();
     uit.dedup();
     uit
@@ -488,12 +486,7 @@ pub fn bereid_voor(
                 besluit,
                 procedure: p.id.clone(),
             };
-            let lc = regelingen::artikel(service, &h.artikel)
-                .ok()
-                .and_then(|a| a.get_produces())
-                .and_then(|p| p.legal_character.clone())
-                .unwrap_or_default();
-            h.haken = haken_op(service, &lc, &stage);
+            h.haken = haken_op(service, &h.artikel, &stage);
             for haak in &h.haken {
                 for u in uitkomsten_van(service, haak) {
                     if !h.uitkomsten.contains(&u) {
@@ -2223,10 +2216,65 @@ articles:
         actions: [{output: bedrag, value: $x}]
 "#;
 
+    /// Haken op de beschikking van [`REGELING`]: een zonder soort besluit, een
+    /// voor een afwijzing (vuurt niet op een toekenning), en een zonder stage
+    /// (dan de stage BESLUIT).
+    const HAKEN: &str = r#"
+$id: testregeling_haken
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Termijn
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to: {legal_character: BESCHIKKING, stage: BEKENDMAKING}
+      execution:
+        output: [{name: termijn, type: number}]
+        actions: [{output: termijn, value: 6}]
+  - number: '2'
+    text: Alleen bij afwijzing
+    machine_readable:
+      hooks:
+        - hook_point: pre_actions
+          applies_to: {legal_character: BESCHIKKING, decision_type: AFWIJZING, stage: BEKENDMAKING}
+      execution:
+        output: [{name: afgewezen, type: boolean}]
+        actions: [{output: afgewezen, value: true}]
+  - number: '3'
+    text: Bij het besluit
+    machine_readable:
+      hooks:
+        - hook_point: pre_actions
+          applies_to: {legal_character: BESCHIKKING}
+      execution:
+        output: [{name: gemotiveerd, type: boolean}]
+        actions: [{output: gemotiveerd, value: true}]
+"#;
+
     fn service() -> LawExecutionService {
         let mut s = LawExecutionService::new();
         s.load_law(REGELING).unwrap();
+        s.load_law(HAKEN).unwrap();
         s
+    }
+
+    /// De haken van een stage komen uit de engine: het soort besluit telt
+    /// mee, een haak zonder stage vuurt op het besluit, en elk haakpunt telt.
+    #[test]
+    fn haken_uit_de_engine() {
+        let s = service();
+        assert_eq!(
+            haken_op(&s, "testregeling_bevoegd#2", "BEKENDMAKING"),
+            ["testregeling_haken#1"]
+        );
+        assert_eq!(
+            haken_op(&s, "testregeling_bevoegd#2", "BESLUIT"),
+            ["testregeling_haken#3"]
+        );
+        // Een TOETS is geen beschikking: geen haken.
+        assert!(haken_op(&s, "testregeling_bevoegd#1", "BESLUIT").is_empty());
     }
 
     /// Een toets telt alleen als het artikel in de grondslag van het event
