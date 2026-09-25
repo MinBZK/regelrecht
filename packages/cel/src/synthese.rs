@@ -477,6 +477,67 @@ fn doorgeven(proces: &Proces) -> Vec<String> {
 /// - een parameter komt uit maar een bron: de eigen reductie of een bron.
 ///
 /// Wat het besluit verder vraagt, staat in [`crate::besluit::controleer`].
+/// De grondslag van de vertalingen in de synthese, bij het opstarten: elke
+/// grondslag van een synthese-bron of van een bron per regel wijst een
+/// geladen artikel aan, met het lid dat ze noemt. Met `herkomst: streng`
+/// draagt elke bron die vertaalt (een naam bij de afnemer die anders is dan
+/// bij de bron, of een vaste waarde in de invoer) een grondslag: de
+/// vertaling is een lezing van de wet, net als een afleiding in een cel.
+pub fn grondslagen(
+    d: &crate::config::ProcesDefinitie,
+    service: &regelrecht_engine::LawExecutionService,
+) -> Vec<String> {
+    let streng = d.herkomst == crate::config::Herkomstcontrole::Streng;
+    let synthese = d.andere_bronnen().map(|b| {
+        (
+            format!("synthese-bron {}/{}", b.cel, b.lexostatus),
+            &b.grondslag,
+            b.vertaalt(),
+        )
+    });
+    let rijen = d
+        .portaal
+        .iter()
+        .flat_map(|p| p.toets.rijen.iter().map(|r| ("toets".to_string(), r)))
+        .chain(
+            d.behandeling
+                .iter()
+                .flat_map(|b| &b.handelingen)
+                .flat_map(|h| {
+                    h.rijen
+                        .iter()
+                        .map(move |r| (format!("handeling '{}'", h.naam), r))
+                }),
+        )
+        .flat_map(|(waar, r)| {
+            r.bronnen.iter().map(move |b| {
+                (
+                    format!(
+                        "{waar}, rijen '{}', bron {}/{}",
+                        r.parameter, b.cel, b.lexostatus
+                    ),
+                    &b.grondslag,
+                    b.vertaalt(),
+                )
+            })
+        });
+    let mut fouten = BTreeSet::new();
+    for (wie, grondslag, vertaalt) in synthese.chain(rijen) {
+        for g in grondslag {
+            if let Err(f) = regelingen::geldig(service, g) {
+                fouten.insert(format!("{wie}: {f}"));
+            }
+        }
+        if streng && grondslag.is_empty() && !vertaalt.is_empty() {
+            fouten.insert(format!(
+                "{wie}: vertaalt ({}) zonder grondslag; met herkomst: streng zegt de afnemer op welk artikel een vertaling rust",
+                vertaalt.join("; ")
+            ));
+        }
+    }
+    fouten.into_iter().collect()
+}
+
 pub fn controleer(proces: &Proces) -> Vec<String> {
     let mut fouten = Vec::new();
     if proces.definitie.synthese.is_empty() {

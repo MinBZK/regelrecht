@@ -44,6 +44,10 @@ pub struct KanaalDefinitie {
     /// `$intake.x.kvk`.
     #[serde(default)]
     pub intake: Option<String>,
+    /// Waarop het kanaal en zijn eigenaar rusten, zoals de regel die zegt met
+    /// welk middel en namens wie iemand inlogt (`<regeling>#<artikel>`).
+    #[serde(default)]
+    pub grondslag: Vec<String>,
 }
 
 /// Een identificatieveld van een kanaal.
@@ -64,6 +68,10 @@ pub struct Identificatieveld {
     /// Alleen cijfers: de frontend toont een numeriek toetsenbord.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub numeriek: bool,
+    /// Waarop het veld rust: de regel die het gegeven en zijn vorm kent,
+    /// zoals het nummer dat een register toekent.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub grondslag: Vec<String>,
 }
 
 /// Een controle op een identificatieveld die een patroon niet kan uitdrukken.
@@ -324,7 +332,9 @@ pub fn ontvangstpad(event: &Event) -> Option<String> {
 
 /// De controles op `kanalen` en `rollen` van een proces bij het opstarten:
 ///
-/// - elk kanaal is in orde ([`KanaalDefinitie::controleer`]);
+/// - elk kanaal is in orde ([`KanaalDefinitie::controleer`]), en elke
+///   grondslag van een kanaal of van een veld wijst een geladen artikel aan,
+///   met het lid dat ze noemt;
 /// - elke rol noemt een kanaal dat bestaat, en een grondslag die een geladen
 ///   artikel aanwijst;
 /// - een portaal vraagt een rol met routes `portaal`, en zo'n rol een
@@ -341,6 +351,21 @@ pub fn controleer_proces(
     let mut fouten = Vec::new();
     for (id, k) in &d.kanalen {
         fouten.extend(k.controleer(id));
+        let velden = k.velden.iter().flat_map(|v| {
+            v.grondslag
+                .iter()
+                .map(move |g| (format!("kanaal '{id}', veld '{}'", v.naam), g))
+        });
+        for (waar, g) in k
+            .grondslag
+            .iter()
+            .map(|g| (format!("kanaal '{id}'"), g))
+            .chain(velden)
+        {
+            if let Err(f) = crate::regelingen::geldig(service, g) {
+                fouten.push(format!("{waar}: {f}"));
+            }
+        }
     }
     for (id, rol) in &d.rollen {
         if !d.kanalen.contains_key(&rol.kanaal) {
