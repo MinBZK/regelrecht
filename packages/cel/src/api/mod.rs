@@ -9,7 +9,7 @@
 //! | `GET /api/zaken/{zaakkenmerk}` | de grammen van een zaak, elk met YAML; 404 als de cel de zaak niet kent |
 //! | `GET /api/lexostatus/{naam}?<input>=...` | een reductie, met de inputs als query |
 //! | `POST /api/lexostatus/{naam}/proef` | alleen met het runtime-token: `{concept, inputs}`: bouwt het gram in het geheugen en reduceert de kroniek mét dat gram; legt niets vast |
-//! | `POST /api/grammen` | alleen met het runtime-token: `{actor, stroom, event, intake, external, zaakkenmerk?, besluit?}`: bouwt het gram, valideert het, controleert de actor en de zaak en legt het vast |
+//! | `POST /api/grammen` | alleen met het runtime-token: `{actor, stroom, event, intake, external, zaakkenmerk?, besluit?, zaak_grammen?}`: bouwt het gram, valideert het, controleert de actor en de zaak en legt het vast |
 //! | `GET /api/stroom` | de stroomdefinities van de cel, met hun hash |
 //!
 //! Een proces handelt: het informeert, concludeert en laat een cel
@@ -52,9 +52,9 @@
 //! | Route | Doet |
 //! |---|---|
 //! | `GET /api/werkvoorraad` | de lijst-lexostatus van de werkvoorraad, uit de cel |
-//! | `GET /api/zaken/{zaakkenmerk}` | de grammen van de zaak, het besluitformulier en een proefbesluit zonder oordelen |
-//! | `POST /api/zaken/{zaakkenmerk}/proefbesluit` | `{formulier}` naar een proefbesluit; niets wordt vastgelegd |
-//! | `POST /api/zaken/{zaakkenmerk}/besluit` | het besluit nemen; de cel legt het vast |
+//! | `GET /api/zaken/{zaakkenmerk}` | de grammen van de zaak, de procedure, de rechtsbescherming, en per handeling haar formulier, of zij kan, en een proef zonder formulier |
+//! | `POST /api/zaken/{zaakkenmerk}/handelingen/{naam}/proef` | `{formulier}` naar een handeling op proef; niets wordt vastgelegd |
+//! | `POST /api/zaken/{zaakkenmerk}/handelingen/{naam}` | de handeling nemen; de cel legt haar vast |
 //!
 //! Tussen proces en cel is geen beveiligingscontext: de leesroutes van een
 //! cel vragen geen login, net als een bron van een andere organisatie.
