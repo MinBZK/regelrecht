@@ -221,6 +221,48 @@ impl Http {
     }
 }
 
+/// Een transport voor tests: elke vraag krijgt hetzelfde antwoord, en de
+/// vragen worden onthouden.
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+pub(crate) mod proef {
+    use super::*;
+    use std::sync::Mutex;
+
+    pub(crate) struct Vast {
+        antwoord: Result<Value, TransportFout>,
+        vragen: Mutex<Vec<String>>,
+    }
+
+    impl Vast {
+        pub(crate) fn new(antwoord: Result<Value, TransportFout>) -> Self {
+            Self {
+                antwoord,
+                vragen: Mutex::new(Vec::new()),
+            }
+        }
+
+        /// De gevraagde paden, in volgorde.
+        pub(crate) fn vragen(&self) -> Vec<String> {
+            self.vragen.lock().unwrap().clone()
+        }
+    }
+
+    impl Transport for Vast {
+        fn soort(&self) -> &'static str {
+            "intern"
+        }
+        fn haal<'a>(&'a self, pad: &'a str) -> Antwoord<'a> {
+            self.vragen.lock().unwrap().push(pad.to_string());
+            let a = self.antwoord.clone();
+            Box::pin(async move { a })
+        }
+        fn stuur<'a>(&'a self, pad: &'a str, _body: &'a Value) -> Antwoord<'a> {
+            self.haal(pad)
+        }
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {

@@ -20,24 +20,20 @@
 //! de engine.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::Arc;
 
 use serde::Serialize;
 use serde_json::{Map, Value};
 
 use crate::cel::Cel;
 use crate::config::{Omzetting, ProcesDefinitie, RijBron, RijInvoer, RijenDefinitie};
+use crate::datum;
 use crate::reductie::Lexostatus;
-use crate::synthese::{Herkomst, Samenvoeging, Status, TIJDSLIMIET};
-use crate::transport::{haal_binnen, Transport, TransportFout};
+use crate::synthese::{Herkomst, Samenvoeging, Status};
+use crate::transport::TransportFout;
 
 /// Een bron die per regel wordt bevraagd, met het transport dat de runtime
 /// ervoor koos.
-#[derive(Clone)]
-pub struct Bron {
-    pub definitie: RijBron,
-    pub transport: Arc<dyn Transport>,
-}
+pub type Bron = crate::synthese::Bron<RijBron>;
 
 /// Een rijen-definitie met haar bronnen.
 #[derive(Clone)]
@@ -79,11 +75,7 @@ fn uit_lexostatus<'l>(
     naam: &str,
     veld: &str,
 ) -> Option<&'l Value> {
-    let l = lexostatussen.iter().find(|l| l.naam == naam)?;
-    l.parameters
-        .get(veld)
-        .or_else(|| l.extra_velden.get(veld))
-        .filter(|w| !w.is_null())
+    lexostatussen.iter().find(|l| l.naam == naam)?.veld(veld)
 }
 
 /// Zet een waarde om voor ze als invoer meegaat.
@@ -91,7 +83,7 @@ fn zet_om(waarde: &Value, omzetting: Omzetting) -> Option<Value> {
     match omzetting {
         Omzetting::EersteDagVanHetJaar => {
             let jaar = waarde.as_i64().or_else(|| waarde.as_str()?.parse().ok())?;
-            Some(Value::String(format!("{jaar:04}-01-01")))
+            Some(Value::String(datum::eerste_dag_van_het_jaar(jaar)))
         }
     }
 }
@@ -206,17 +198,10 @@ pub async fn stel_samen(
                 }
             };
             uitslag.bevraagd += 1;
-            let pad = crate::synthese::pad(&b.definitie.cel, &b.definitie.lexostatus, &invoer);
-            let geleverd = match haal_binnen(b.transport.as_ref(), &pad, TIJDSLIMIET).await {
-                Ok(v) => {
-                    let lees = |sleutel: &str| {
-                        v.get(sleutel)
-                            .and_then(Value::as_object)
-                            .cloned()
-                            .unwrap_or_default()
-                    };
-                    let mut samen = lees("parameters");
-                    samen.extend(lees("extra_velden"));
+            let geleverd = match b.vraag(&invoer).await {
+                Ok(l) => {
+                    let mut samen = l.parameters;
+                    samen.extend(l.extra_velden);
                     samen
                 }
                 Err(f) => {
@@ -228,7 +213,7 @@ pub async fn stel_samen(
                         },
                     );
                     uitslag.fout.get_or_insert_with(|| f.to_string());
-                    Map::new()
+                    BTreeMap::new()
                 }
             };
             for (van, naar) in &b.definitie.kolommen {
@@ -266,17 +251,12 @@ pub async fn pas_toe(
     let mut met_bronnen = eigen.to_vec();
     for u in samen.bronnen.iter().filter(|u| !u.extra_velden.is_empty()) {
         met_bronnen.push(Lexostatus {
-            naam: u.lexostatus.clone(),
-            zaakkenmerk: None,
-            op_moment: None,
-            parameters: BTreeMap::new(),
             extra_velden: u
                 .extra_velden
                 .iter()
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect(),
-            niet_afgeleid: Vec::new(),
-            lijst: None,
+            ..Lexostatus::leeg(&u.lexostatus)
         });
     }
     let mut uitslagen = Vec::new();
@@ -396,30 +376,9 @@ pub fn controleer(
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use crate::transport::Antwoord;
+    use crate::transport::proef::Vast;
     use serde_json::json;
-    use std::sync::Mutex;
-
-    /// Een transport dat per vraag een vast antwoord geeft en de vragen
-    /// onthoudt.
-    struct Vast {
-        antwoord: Result<Value, TransportFout>,
-        vragen: Mutex<Vec<String>>,
-    }
-
-    impl Transport for Vast {
-        fn soort(&self) -> &'static str {
-            "intern"
-        }
-        fn haal<'a>(&'a self, pad: &'a str) -> Antwoord<'a> {
-            self.vragen.lock().unwrap().push(pad.to_string());
-            let a = self.antwoord.clone();
-            Box::pin(async move { a })
-        }
-        fn stuur<'a>(&'a self, pad: &'a str, _body: &'a Value) -> Antwoord<'a> {
-            self.haal(pad)
-        }
-    }
+    use std::sync::Arc;
 
     fn eigen() -> Vec<Lexostatus> {
         vec![serde_json::from_value(json!({
@@ -446,10 +405,7 @@ mod tests {
     }
 
     fn bron(antwoord: Result<Value, TransportFout>, invoer: Value) -> (Bron, Arc<Vast>) {
-        let t = Arc::new(Vast {
-            antwoord,
-            vragen: Mutex::new(Vec::new()),
-        });
+        let t = Arc::new(Vast::new(antwoord));
         let definitie: RijBron = serde_json::from_value(json!({
             "cel": "register",
             "lexostatus": "per_gebied",
@@ -469,7 +425,7 @@ mod tests {
     #[tokio::test]
     async fn elke_regel_krijgt_haar_kolommen() {
         let (b, t) = bron(
-            Ok(json!({"extra_velden": {"bedrag": 5}})),
+            Ok(json!({"naam": "per_gebied", "parameters": {}, "extra_velden": {"bedrag": 5}})),
             json!({"gebied": {"kolom": "gebiedscode"}}),
         );
         let rijen = Rijen {
@@ -480,7 +436,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(
-            t.vragen.lock().unwrap().as_slice(),
+            t.vragen().as_slice(),
             [
                 "/cellen/register/api/lexostatus/per_gebied?gebied=A",
                 "/cellen/register/api/lexostatus/per_gebied?gebied=B"
@@ -517,7 +473,7 @@ mod tests {
     #[tokio::test]
     async fn invoer_uit_een_parameter_met_omzetting() {
         let (b, t) = bron(
-            Ok(json!({"parameters": {"bedrag": 7}})),
+            Ok(json!({"naam": "per_gebied", "parameters": {"bedrag": 7}})),
             json!({
                 "gebied": {"kolom": "gebiedscode"},
                 "peildatum": {"parameter": "jaar", "als": "eerste_dag_van_het_jaar"},
@@ -532,7 +488,7 @@ mod tests {
         parameters.insert("jaar".to_string(), json!(2026));
         let u = stel_samen(&rijen, &eigen(), &parameters).await.unwrap();
         assert_eq!(
-            t.vragen.lock().unwrap()[0],
+            t.vragen()[0],
             "/cellen/register/api/lexostatus/per_gebied?gebied=A&naam=EEN+LIJST&peildatum=2026-01-01"
         );
         assert_eq!(u.regels[0]["tarief"], json!(7));
@@ -541,7 +497,7 @@ mod tests {
     #[tokio::test]
     async fn zonder_invoer_wordt_de_bron_niet_bevraagd() {
         let (b, t) = bron(
-            Ok(json!({"parameters": {"bedrag": 7}})),
+            Ok(json!({"naam": "per_gebied", "parameters": {"bedrag": 7}})),
             json!({"peildatum": {"parameter": "ontbreekt"}}),
         );
         let rijen = Rijen {
@@ -551,7 +507,7 @@ mod tests {
         let u = stel_samen(&rijen, &eigen(), &BTreeMap::new())
             .await
             .unwrap();
-        assert!(t.vragen.lock().unwrap().is_empty());
+        assert!(t.vragen().is_empty());
         assert_eq!(u.bronnen[0].status, Status::NietBevraagd);
         assert!(u.bronnen[0]
             .fout

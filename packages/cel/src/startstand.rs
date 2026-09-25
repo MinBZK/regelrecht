@@ -17,7 +17,8 @@ use std::path::Path;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 
-use crate::stroom::{Event, Gram, Stroom, StroomVerwijzing};
+use crate::laden;
+use crate::stroom::{op_pad, Event, Gram, Stroom, StroomVerwijzing};
 
 /// De enige herkomst die een regel van de startstand mag hebben.
 pub const HERKOMST: &str = "startstand";
@@ -36,9 +37,7 @@ struct Regel {
 
 /// Lees de startstand en bouw de grammen. Elke fout noemt de regel.
 pub fn laad(pad: &Path, strommen: &[Stroom]) -> Result<Vec<Gram>, Vec<String>> {
-    let bron = pad.display().to_string();
-    let tekst = std::fs::read_to_string(pad).map_err(|e| vec![format!("{bron}: {e}")])?;
-    parse(&tekst, &bron, strommen)
+    laden::laad(pad, |tekst, bron| parse(tekst, bron, strommen))
 }
 
 /// Bouw de grammen uit de tekst van een startstand.
@@ -127,14 +126,8 @@ fn velden_passen(event: &Event, velden: &Map<String, Value>, prefix: &str) -> Re
         }
     }
     if prefix.is_empty() {
-        let gram_velden = Value::Object(velden.clone());
         for blad in event.bladeren() {
-            let aanwezig = blad
-                .pad
-                .split('.')
-                .try_fold(&gram_velden, |w, deel| w.as_object()?.get(deel))
-                .is_some();
-            if !aanwezig {
+            if op_pad(velden, &blad.pad).is_none() {
                 return Err(format!(
                     "veld '{}' van event '{}' ontbreekt",
                     blad.pad, event.name

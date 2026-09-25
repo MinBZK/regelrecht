@@ -31,6 +31,7 @@ use regelrecht_engine::LawExecutionService;
 
 use crate::celclient::{self, Besluitvelden, Vastlegverzoek};
 use crate::config::BesluitDefinitie;
+use crate::datum;
 use crate::formulier::Veld;
 use crate::proces::Proces;
 use crate::reductie::Lexostatus;
@@ -414,13 +415,8 @@ async fn zaaklexostatus(
         }),
         // Kiest de definitie een gram en is er geen, dan levert zij niets.
         Err(TransportFout::Antwoord { status: 404, .. }) => Ok(Lexostatus {
-            naam: def.name.clone(),
-            zaakkenmerk: None,
-            op_moment: None,
-            parameters: BTreeMap::new(),
-            extra_velden: BTreeMap::new(),
             niet_afgeleid: def.reduction.afleidingen.keys().cloned().collect(),
-            lijst: None,
+            ..Lexostatus::leeg(&def.name)
         }),
         Err(f) => Err(Weigering::Cel(format!(
             "cel '{}', lexostatus '{}': {f}",
@@ -476,7 +472,7 @@ pub async fn proefbesluit(
         .unwrap_or(0);
     let mut samen = match eigen.get(hoofd) {
         Some(l) => synthese::voeg_samen(l, bronnen).await,
-        None => synthese::voeg_samen(&leeg(), bronnen).await,
+        None => synthese::voeg_samen(&Lexostatus::leeg(""), bronnen).await,
     };
     for (i, l) in eigen.iter().enumerate() {
         if i == hoofd {
@@ -672,7 +668,7 @@ pub async fn neem_besluit(
         .as_ref()
         .ok_or_else(|| Weigering::Cel("het besluit zegt niet waar het wordt vastgelegd".into()))?;
 
-    let peildatum = op_moment.format("%Y-%m-%d").to_string();
+    let peildatum = datum::peildatum(&op_moment);
     let proef = proefbesluit(
         proces,
         cel,
@@ -780,18 +776,6 @@ pub async fn neem_besluit(
         proefbesluit: proef,
         waarschuwingen,
     })
-}
-
-fn leeg() -> Lexostatus {
-    Lexostatus {
-        naam: String::new(),
-        zaakkenmerk: None,
-        op_moment: None,
-        parameters: BTreeMap::new(),
-        extra_velden: BTreeMap::new(),
-        niet_afgeleid: Vec::new(),
-        lijst: None,
-    }
 }
 
 #[cfg(test)]

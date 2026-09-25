@@ -11,6 +11,7 @@ use super::sessie::behandelaar;
 use super::{fout, van_cel, Fout, ProcesState};
 use crate::besluit::{self, Weigering};
 use crate::celclient::{self, MetYaml};
+use crate::datum;
 use crate::synthese;
 
 fn behandeling(state: &ProcesState) -> Result<&crate::config::Behandeling, Fout> {
@@ -40,7 +41,7 @@ pub(super) async fn werkvoorraad_route(
 /// De datum van vandaag volgens de klok van de runtime: de peildatum van een
 /// proefbesluit.
 fn vandaag(state: &ProcesState) -> String {
-    (state.klok)().format("%Y-%m-%d").to_string()
+    datum::peildatum(&(state.klok)())
 }
 
 #[derive(Deserialize, Default)]

@@ -19,6 +19,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
+use crate::datum;
+use crate::laden;
 use crate::schema::{self, Soort};
 
 /// Een geladen stroomdefinitie.
@@ -261,26 +263,19 @@ impl Gram {
 
     /// De waarde op een pad onder `fields`.
     pub fn veld(&self, pad: &str) -> Option<&Value> {
-        let mut delen = pad.split('.');
-        let mut huidig = self.fields.get(delen.next()?)?;
-        for deel in delen {
-            huidig = huidig.as_object()?.get(deel)?;
-        }
-        Some(huidig)
+        op_pad(&self.fields, pad)
+    }
+
+    /// Het `op_moment`, gelezen; een ongeldig moment is een fout.
+    pub fn moment(&self) -> Result<DateTime<FixedOffset>, String> {
+        datum::moment(&self.op_moment).map_err(|e| format!("gram '{}': {e}", self.name))
     }
 }
 
 /// Lees een stroomdefinitie uit tekst. `bron` noemt het bestand in meldingen.
 pub fn parse(tekst: &str, bron: &str) -> Result<Stroom, Vec<String>> {
-    let yaml: serde_yaml_ng::Value = serde_yaml_ng::from_str(tekst)
-        .map_err(|e| vec![format!("{bron}: geen geldige YAML: {e}")])?;
-    let document: Value = serde_json::to_value(&yaml).map_err(|e| vec![format!("{bron}: {e}")])?;
-    schema::valideer(Soort::Stroom, &document).map_err(|fouten| {
-        fouten
-            .into_iter()
-            .map(|f| format!("{bron}: {f}"))
-            .collect::<Vec<_>>()
-    })?;
+    // De YAML-boom houdt de volgorde van de velden vast; zie `Event::fields`.
+    let (yaml, document) = laden::yaml_document(tekst, bron, Soort::Stroom)?;
 
     #[derive(Deserialize)]
     struct Ruw {
@@ -315,26 +310,16 @@ pub fn parse(tekst: &str, bron: &str) -> Result<Stroom, Vec<String>> {
 /// een map.
 pub fn laad(pad: &Path) -> Result<Vec<Stroom>, Vec<String>> {
     let bestanden: Vec<std::path::PathBuf> = if pad.is_dir() {
-        let mut v: Vec<_> = std::fs::read_dir(pad)
-            .map_err(|e| vec![format!("{}: {e}", pad.display())])?
-            .filter_map(|e| e.ok().map(|e| e.path()))
-            .filter(|p| p.extension().is_some_and(|x| x == "yaml" || x == "yml"))
-            .collect();
-        v.sort();
-        v
+        laden::yaml_bestanden(pad).map_err(|e| vec![e])?
     } else {
         vec![pad.to_path_buf()]
     };
     let mut strommen = Vec::new();
     let mut fouten = Vec::new();
     for bestand in &bestanden {
-        let bron = bestand.display().to_string();
-        match std::fs::read_to_string(bestand) {
-            Ok(tekst) => match parse(&tekst, &bron) {
-                Ok(s) => strommen.push(s),
-                Err(f) => fouten.extend(f),
-            },
-            Err(e) => fouten.push(format!("{bron}: {e}")),
+        match laden::laad(bestand, parse) {
+            Ok(s) => strommen.push(s),
+            Err(f) => fouten.extend(f),
         }
     }
     if strommen.is_empty() && fouten.is_empty() {
@@ -609,9 +594,15 @@ pub struct Indiening<'a> {
     pub zaakkenmerk: Option<&'a str>,
 }
 
-fn waarde_op<'v>(wortel: &'v Value, pad: &str) -> Option<&'v Value> {
-    pad.split('.')
-        .try_fold(wortel, |huidig, deel| huidig.as_object()?.get(deel))
+/// De waarde op een veldpad met punten (`inhoud.organen`) in een object;
+/// `None` als een deel van het pad er niet is of geen object is.
+pub fn op_pad<'v>(velden: &'v Map<String, Value>, pad: &str) -> Option<&'v Value> {
+    let mut delen = pad.split('.');
+    let mut huidig = velden.get(delen.next()?)?;
+    for deel in delen {
+        huidig = huidig.as_object()?.get(deel)?;
+    }
+    Some(huidig)
 }
 
 /// Bouw een gram uit een indiening. Het gram houdt de vorm van de stroom:
@@ -647,24 +638,26 @@ pub fn bouw_gram(
         return Err(fouten.join("; "));
     }
 
-    let external = Value::Object(indiening.external.clone());
     let mut fields = Map::new();
     for blad in event.bladeren() {
         let waarde = match &blad.binding {
-            Binding::Intake(bronpad) => {
-                waarde_op(indiening.intake, bronpad)
-                    .cloned()
-                    .ok_or_else(|| {
-                        format!(
-                            "het ontvangstkanaal levert '$intake.{bronpad}' niet (veld '{}')",
-                            blad.pad
-                        )
-                    })?
-            }
-            Binding::External(bronpad) => waarde_op(&external, bronpad)
+            Binding::Intake(bronpad) => indiening
+                .intake
+                .as_object()
+                .and_then(|i| op_pad(i, bronpad))
+                .cloned()
+                .ok_or_else(|| {
+                    format!(
+                        "het ontvangstkanaal levert '$intake.{bronpad}' niet (veld '{}')",
+                        blad.pad
+                    )
+                })?,
+            Binding::External(bronpad) => op_pad(indiening.external, bronpad)
                 .cloned()
                 .unwrap_or(Value::Null),
-            Binding::Tabel { bron, kolommen } => als_tabel(waarde_op(&external, bron), kolommen),
+            Binding::Tabel { bron, kolommen } => {
+                als_tabel(op_pad(indiening.external, bron), kolommen)
+            }
             Binding::Constante(w) => w.clone(),
         };
         zet(&mut fields, &blad.pad, waarde);
@@ -684,9 +677,7 @@ pub fn bouw_gram(
         regulation: None,
         regulation_valid_from: None,
         competent_authority: None,
-        op_moment: indiening
-            .op_moment
-            .to_rfc3339_opts(chrono::SecondsFormat::Secs, false),
+        op_moment: datum::als_op_moment(&indiening.op_moment),
         zaak: event.zaak,
         zaakkenmerk: indiening.zaakkenmerk.map(str::to_string),
         stroom: StroomVerwijzing {

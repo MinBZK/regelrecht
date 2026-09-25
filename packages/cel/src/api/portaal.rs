@@ -11,6 +11,7 @@ use super::sessie::ingelogd;
 use super::{fout, van_cel, Fout, ProcesState};
 use crate::cel::Cel;
 use crate::celclient::{self, Vastlegverzoek};
+use crate::datum;
 use crate::eherkenning::Sessie;
 use crate::mogelijkheid;
 use crate::reductie::{self, Lexostatus};
@@ -221,8 +222,8 @@ pub(super) async fn mogelijkheden_route(
             )
         })?;
     let nu = (state.klok)();
-    let datum = nu.format("%Y-%m-%d").to_string();
-    let jaar = i64::from(chrono::Datelike::year(&nu));
+    let datum = datum::peildatum(&nu);
+    let jaar = datum::jaar(&nu);
     // Zonder tijdvak een run; met tijdvak een run per keuze.
     let keuzes: Vec<Option<mogelijkheid::Keuze>> = match (&state.proces.tijdvak, &c0.keuzes) {
         (Some(t), Some(k)) => k

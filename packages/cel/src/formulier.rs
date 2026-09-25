@@ -14,6 +14,7 @@ use serde::Serialize;
 use serde_json::Value;
 use serde_yaml_ng::Value as Y;
 
+use crate::laden;
 use crate::stroom::{Event, Vorm};
 
 /// Een scherm uit een formulierbestand.
@@ -93,8 +94,7 @@ pub fn parse(tekst_: &str, scherm: &str, bron: &str) -> Result<Formulier, String
 
 /// Laad een scherm uit een formulierbestand.
 pub fn laad(pad: &Path, scherm: &str) -> Result<Formulier, String> {
-    let bron = pad.display().to_string();
-    let t = std::fs::read_to_string(pad).map_err(|e| format!("{bron}: {e}"))?;
+    let (t, bron) = laden::lees(pad)?;
     parse(&t, scherm, &bron)
 }
 

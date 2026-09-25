@@ -29,11 +29,13 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use chrono::{DateTime, Datelike};
+use chrono::DateTime;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::schema::{self, Soort};
+use crate::datum;
+use crate::laden;
+use crate::schema::Soort;
 use crate::stroom::Gram;
 
 /// De lexostatus-definities van een cel (`schema/chronolex/v0.1.0/lexostatus.json`).
@@ -228,22 +230,12 @@ pub enum Moment {
 
 /// Lees lexostatus-definities uit tekst en valideer ze tegen het schema.
 pub fn parse(tekst: &str, bron: &str) -> Result<Lexostatussen, Vec<String>> {
-    let yaml: serde_yaml_ng::Value = serde_yaml_ng::from_str(tekst)
-        .map_err(|e| vec![format!("{bron}: geen geldige YAML: {e}")])?;
-    let document: Value = serde_json::to_value(&yaml).map_err(|e| vec![format!("{bron}: {e}")])?;
-    schema::valideer(Soort::Lexostatus, &document).map_err(|f| {
-        f.into_iter()
-            .map(|f| format!("{bron}: {f}"))
-            .collect::<Vec<_>>()
-    })?;
-    serde_json::from_value(document).map_err(|e| vec![format!("{bron}: {e}")])
+    laden::definitie(tekst, bron, Soort::Lexostatus)
 }
 
 /// Laad de lexostatus-definities uit een bestand.
 pub fn laad(pad: &Path) -> Result<Lexostatussen, Vec<String>> {
-    let bron = pad.display().to_string();
-    let tekst = std::fs::read_to_string(pad).map_err(|e| vec![format!("{bron}: {e}")])?;
-    parse(&tekst, &bron)
+    laden::laad(pad, parse)
 }
 
 impl Lexostatussen {
@@ -394,9 +386,10 @@ impl Afleiding {
             )),
             Afleiding::Moment {
                 moment: Moment::OpMoment,
-            } => DateTime::parse_from_rfc3339(&gram.op_moment)
+            } => gram
+                .moment()
                 .ok()
-                .map(|m| Value::String(m.date_naive().format("%Y-%m-%d").to_string())),
+                .map(|m| Value::String(datum::peildatum(&m))),
             Afleiding::LaatsteVeld { .. }
             | Afleiding::LaatsteJaarVan { .. }
             | Afleiding::LaatsteBevat { .. }
@@ -488,8 +481,7 @@ impl Afleiding {
 fn laatste<'g>(grammen: &[&'g Gram]) -> Result<Option<&'g Gram>, String> {
     let mut gekozen: Option<(DateTime<chrono::FixedOffset>, &Gram)> = None;
     for gram in grammen {
-        let moment = DateTime::parse_from_rfc3339(&gram.op_moment)
-            .map_err(|e| format!("gram met ongeldig op_moment '{}': {e}", gram.op_moment))?;
+        let moment = gram.moment()?;
         if gekozen.as_ref().is_none_or(|(m, _)| moment >= *m) {
             gekozen = Some((moment, gram));
         }
@@ -500,12 +492,7 @@ fn laatste<'g>(grammen: &[&'g Gram]) -> Result<Option<&'g Gram>, String> {
 /// Het jaartal van een datum (`JJJJ-MM-DD`, of een moment met tijdzone).
 /// Geen datum: niets, en de parameter blijft weg.
 pub fn jaar_uit(waarde: &Value) -> Option<Value> {
-    let tekst = waarde.as_str()?;
-    let jaar = match chrono::NaiveDate::parse_from_str(tekst, "%Y-%m-%d") {
-        Ok(d) => d.year(),
-        Err(_) => DateTime::parse_from_rfc3339(tekst).ok()?.year(),
-    };
-    Some(Value::from(jaar))
+    datum::jaar_van(waarde.as_str()?).map(Value::from)
 }
 
 /// Gevuld: niet null, geen lege tekst, geen lege lijst of leeg object.
@@ -546,6 +533,30 @@ pub struct Lexostatus {
     /// afnemer en gaat nooit naar de engine; `parameters` is dan leeg.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lijst: Option<Vec<Regel>>,
+}
+
+impl Lexostatus {
+    /// Een lexostatus zonder waarden: de kroniek zegt er niets over.
+    pub fn leeg(naam: impl Into<String>) -> Self {
+        Self {
+            naam: naam.into(),
+            zaakkenmerk: None,
+            op_moment: None,
+            parameters: BTreeMap::new(),
+            extra_velden: BTreeMap::new(),
+            niet_afgeleid: Vec::new(),
+            lijst: None,
+        }
+    }
+
+    /// De waarde die de lexostatus onder een naam levert, als parameter of
+    /// als extra veld; `None` als die er niet is of null is.
+    pub fn veld(&self, naam: &str) -> Option<&Value> {
+        self.parameters
+            .get(naam)
+            .or_else(|| self.extra_velden.get(naam))
+            .filter(|w| !w.is_null())
+    }
 }
 
 /// Een regel van een lijst-lexostatus: een zaak.
@@ -704,13 +715,12 @@ pub fn reduceer(
         return Ok(None);
     };
     Ok(Some(Lexostatus {
-        naam: definitie.name.clone(),
         zaakkenmerk: a.gekozen.and_then(|g| g.zaakkenmerk.clone()),
         op_moment: a.gekozen.map(|g| g.op_moment.clone()),
         parameters: a.parameters,
         extra_velden: a.extra_velden,
         niet_afgeleid: a.niet_afgeleid,
-        lijst: None,
+        ..Lexostatus::leeg(&definitie.name)
     }))
 }
 
@@ -744,11 +754,7 @@ fn reduceer_lijst<'g>(
         let Some(a) = leid_af_uit(definitie, inputs, &door)? else {
             continue;
         };
-        let moment = a
-            .gekozen
-            .map(|g| DateTime::parse_from_rfc3339(&g.op_moment))
-            .transpose()
-            .map_err(|e| format!("gram met ongeldig op_moment: {e}"))?;
+        let moment = a.gekozen.map(Gram::moment).transpose()?;
         let mut velden = a.parameters;
         velden.extend(a.extra_velden);
         regels.push((
@@ -763,13 +769,8 @@ fn reduceer_lijst<'g>(
     }
     regels.sort_by(|(a, ra), (b, rb)| a.cmp(b).then_with(|| ra.zaakkenmerk.cmp(&rb.zaakkenmerk)));
     Ok(Lexostatus {
-        naam: definitie.name.clone(),
-        zaakkenmerk: None,
-        op_moment: None,
-        parameters: BTreeMap::new(),
-        extra_velden: BTreeMap::new(),
-        niet_afgeleid: Vec::new(),
         lijst: Some(regels.into_iter().map(|(_, r)| r).collect()),
+        ..Lexostatus::leeg(&definitie.name)
     })
 }
 

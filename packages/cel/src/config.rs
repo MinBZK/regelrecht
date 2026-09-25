@@ -11,7 +11,8 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::schema::{self, Soort};
+use crate::laden;
+use crate::schema::Soort;
 
 /// Standaardpoort, binnen 7100-7300.
 pub const STANDAARD_POORT: u16 = 7170;
@@ -381,56 +382,27 @@ pub struct InvoerVerwijzing {
     pub veld: String,
 }
 
-/// Lees een YAML-definitie, valideer haar tegen haar schema en zet haar om.
-fn lees_definitie<T: serde::de::DeserializeOwned>(
-    tekst: &str,
-    bron: &str,
-    soort: Soort,
-) -> Result<T, Vec<String>> {
-    let yaml: serde_yaml_ng::Value = serde_yaml_ng::from_str(tekst)
-        .map_err(|e| vec![format!("{bron}: geen geldige YAML: {e}")])?;
-    let document: Value = serde_json::to_value(&yaml).map_err(|e| vec![format!("{bron}: {e}")])?;
-    schema::valideer(soort, &document).map_err(|f| {
-        f.into_iter()
-            .map(|f| format!("{bron}: {f}"))
-            .collect::<Vec<_>>()
-    })?;
-    serde_json::from_value(document).map_err(|e| vec![format!("{bron}: {e}")])
-}
-
-/// Lees een bestand uit een map en zet het om met `parse`.
-fn laad_uit<T>(
-    map: &Path,
-    bestand: &str,
-    parse: impl Fn(&str, &str) -> Result<T, Vec<String>>,
-) -> Result<T, Vec<String>> {
-    let pad = map.join(bestand);
-    let bron = pad.display().to_string();
-    let tekst = std::fs::read_to_string(&pad).map_err(|e| vec![format!("{bron}: {e}")])?;
-    parse(&tekst, &bron)
-}
-
 impl CelDefinitie {
     /// Lees een celdefinitie uit tekst en valideer haar tegen het schema.
     pub fn parse(tekst: &str, bron: &str) -> Result<Self, Vec<String>> {
-        lees_definitie(tekst, bron, Soort::Cel)
+        laden::definitie(tekst, bron, Soort::Cel)
     }
 
     /// Laad `cel.yaml` uit de map van een cel.
     pub fn laad(map: &Path) -> Result<Self, Vec<String>> {
-        laad_uit(map, CEL_BESTAND, Self::parse)
+        laden::laad(&map.join(CEL_BESTAND), Self::parse)
     }
 }
 
 impl ProcesDefinitie {
     /// Lees een procesdefinitie uit tekst en valideer haar tegen het schema.
     pub fn parse(tekst: &str, bron: &str) -> Result<Self, Vec<String>> {
-        lees_definitie(tekst, bron, Soort::Proces)
+        laden::definitie(tekst, bron, Soort::Proces)
     }
 
     /// Laad `proces.yaml` uit de map van een proces.
     pub fn laad(map: &Path) -> Result<Self, Vec<String>> {
-        laad_uit(map, PROCES_BESTAND, Self::parse)
+        laden::laad(&map.join(PROCES_BESTAND), Self::parse)
     }
 
     /// De bronnen van de zaak (`zaak: true`), in de volgorde van de synthese.
@@ -444,26 +416,15 @@ impl ProcesDefinitie {
     }
 }
 
-/// De submappen van `pad` met een `bestand`, gesorteerd.
-fn mappen_met(pad: &Path, bestand: &str) -> Result<Vec<PathBuf>, String> {
-    let mut mappen: Vec<PathBuf> = std::fs::read_dir(pad)
-        .map_err(|e| format!("{}: {e}", pad.display()))?
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.join(bestand).is_file())
-        .collect();
-    mappen.sort();
-    Ok(mappen)
-}
-
 /// De mappen onder `PROCESSES_PATH` met een `proces.yaml`, gesorteerd. Een
 /// lege map mag: een runtime met alleen registercellen heeft geen proces.
 pub fn procesmappen(processes_path: &Path) -> Result<Vec<PathBuf>, String> {
-    mappen_met(processes_path, PROCES_BESTAND)
+    laden::mappen_met(processes_path, PROCES_BESTAND)
 }
 
 /// De mappen onder `CELLS_PATH` met een `cel.yaml`, gesorteerd.
 pub fn celmappen(cells_path: &Path) -> Result<Vec<PathBuf>, String> {
-    let mappen = mappen_met(cells_path, CEL_BESTAND)?;
+    let mappen = laden::mappen_met(cells_path, CEL_BESTAND)?;
     if mappen.is_empty() {
         return Err(format!(
             "{}: geen submap met een {CEL_BESTAND}",

@@ -1,4 +1,13 @@
 //! Het lexogram: de regelingen uit `REGULATION_PATH`, geladen in de engine.
+//!
+//! Waarom een eigen lader en niet `RuleResolver::load_from_directory` van de
+//! engine: die is ruimhartig (een regeling die niet laadt wordt een
+//! waarschuwing en overgeslagen), terwijl de runtime dan niet mag starten,
+//! want een besluit zou anders op een onvolledig corpus rusten. Ook houdt de
+//! runtime per regeling de tekst vast voor de hash in het receipt (RFC-013),
+//! en slaat ze YAML-bestanden over die geen regeling zijn (scenario's,
+//! notities) in plaats van ze als mislukte regeling te melden. Het laden van
+//! een enkele regeling is wel die van de engine (`load_law`).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
