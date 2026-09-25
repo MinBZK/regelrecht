@@ -274,7 +274,7 @@ async fn vraag(
                 uitslag.fout = Some(r);
                 (uitslag, None)
             }
-            Err(f @ TransportFout::Antwoord { .. }) => {
+            Err(f @ (TransportFout::Antwoord { .. } | TransportFout::Json(_))) => {
                 uitslag.status = Status::Fout;
                 uitslag.fout = Some(f.to_string());
                 (uitslag, None)

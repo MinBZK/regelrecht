@@ -29,7 +29,7 @@ use serde_json::{Map, Value};
 
 use regelrecht_engine::LawExecutionService;
 
-use crate::api::{self, Besluitvelden, Vastlegverzoek};
+use crate::celclient::{self, Besluitvelden, Vastlegverzoek};
 use crate::config::BesluitDefinitie;
 use crate::formulier::Veld;
 use crate::proces::Proces;
@@ -639,7 +639,7 @@ pub(crate) fn gezag_van(
 ///
 /// Het proefbesluit moet compleet zijn; is het dat niet, dan komt er geen
 /// gram en zegt het proces wat er mist. Ligt de stage van het besluit al vast
-/// in de zaak, dan weigert de cel (zie `api::toets_zaak`): een tweede besluit
+/// in de zaak, dan weigert de cel (zie `api::cel::toets_zaak`): een tweede besluit
 /// is een wijziging, en die valt buiten deze stap. Wijst de wet een ander bevoegd
 /// gezag aan dan de actor van het proces, dan weigert het ook; noemt de wet
 /// er geen, dan laat het vastleggen met een waarschuwing.
@@ -766,11 +766,7 @@ pub async fn neem_besluit(
             receipt: Some(Receipt::nieuw(regelingen.to_vec(), stromen)),
         }),
     };
-    let antwoord = cel
-        .stuur(
-            &api::celpad(&v.cel, "grammen"),
-            &serde_json::to_value(&verzoek).unwrap_or_default(),
-        )
+    let celclient::MetYaml { gram, yaml } = celclient::leg_vast(cel, &v.cel, &verzoek)
         .await
         .map_err(|f| match f {
             // De cel weigert: in deze zaak ligt die stage al vast. Of een
@@ -778,13 +774,6 @@ pub async fn neem_besluit(
             TransportFout::Antwoord { status: 409, fout } => Weigering::AlBesloten(fout),
             f => Weigering::Cel(format!("het besluit is niet vastgelegd: {f}")),
         })?;
-    let gram: Gram = serde_json::from_value(antwoord.get("gram").cloned().unwrap_or_default())
-        .map_err(|e| Weigering::Cel(format!("het vastgelegde gram is onleesbaar: {e}")))?;
-    let yaml = antwoord
-        .get("yaml")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
     Ok(Besluit {
         gram,
         yaml,

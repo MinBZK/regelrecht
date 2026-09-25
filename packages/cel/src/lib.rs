@@ -23,6 +23,7 @@
 pub mod api;
 pub mod besluit;
 pub mod cel;
+pub mod celclient;
 pub mod config;
 pub mod controle;
 pub mod eherkenning;

@@ -224,7 +224,7 @@ pub async fn stel_samen(
                         uitslag.status,
                         match f {
                             TransportFout::Onbereikbaar(_) => Status::Onbereikbaar,
-                            TransportFout::Antwoord { .. } => Status::Fout,
+                            TransportFout::Antwoord { .. } | TransportFout::Json(_) => Status::Fout,
                         },
                     );
                     uitslag.fout.get_or_insert_with(|| f.to_string());

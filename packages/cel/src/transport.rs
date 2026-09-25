@@ -27,6 +27,9 @@ pub enum TransportFout {
     Onbereikbaar(String),
     /// Wel een antwoord, maar geen lexostatus (een HTTP-foutstatus).
     Antwoord { status: u16, fout: String },
+    /// Een antwoord met een goede status, maar geen JSON of niet de vorm die
+    /// de vrager verwacht; of een verzoek dat niet als JSON te schrijven is.
+    Json(String),
 }
 
 impl std::fmt::Display for TransportFout {
@@ -34,6 +37,7 @@ impl std::fmt::Display for TransportFout {
         match self {
             TransportFout::Onbereikbaar(r) => write!(f, "onbereikbaar: {r}"),
             TransportFout::Antwoord { status, fout } => write!(f, "status {status}: {fout}"),
+            TransportFout::Json(r) => write!(f, "onleesbaar: {r}"),
         }
     }
 }
@@ -142,10 +146,7 @@ impl Intern {
         if !status.is_success() {
             return Err(fouttekst(status, &body));
         }
-        serde_json::from_slice(&body).map_err(|e| TransportFout::Antwoord {
-            status: status.as_u16(),
-            fout: format!("geen JSON: {e}"),
-        })
+        serde_json::from_slice(&body).map_err(|e| TransportFout::Json(format!("geen JSON: {e}")))
     }
 }
 
@@ -216,10 +217,7 @@ impl Http {
         if !status.is_success() {
             return Err(fouttekst(status, &body));
         }
-        serde_json::from_slice(&body).map_err(|e| TransportFout::Antwoord {
-            status: status.as_u16(),
-            fout: format!("geen JSON: {e}"),
-        })
+        serde_json::from_slice(&body).map_err(|e| TransportFout::Json(format!("geen JSON: {e}")))
     }
 }
 
@@ -238,6 +236,7 @@ mod tests {
                 "/fout",
                 get(|| async { (StatusCode::NOT_FOUND, Json(json!({"fout": "weg"}))) }),
             )
+            .route("/geen-json", get(|| async { "geen json" }))
             .route(
                 "/traag",
                 get(|| async {
@@ -276,6 +275,11 @@ mod tests {
         assert!(matches!(
             t.haal("/fout").await,
             Err(TransportFout::Antwoord { status: 404, .. })
+        ));
+        // Een goede status met een onleesbaar antwoord is geen lege waarde.
+        assert!(matches!(
+            t.haal("/geen-json").await,
+            Err(TransportFout::Json(r)) if r.contains("geen JSON")
         ));
         let fout = haal_binnen(&t, "/traag", Duration::from_millis(200))
             .await
