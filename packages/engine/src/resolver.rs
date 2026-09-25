@@ -1684,7 +1684,7 @@ impl RuleResolver {
     ///
     /// Returns matching (law_id, article_number, filter) entries.
     /// Filters by stage: if the hook has a stage, it must match; if not, it defaults to "BESLUIT".
-    pub(crate) fn find_hooks(
+    pub fn find_hooks(
         &self,
         hook_point: HookPoint,
         legal_character: &str,
@@ -1861,7 +1861,7 @@ impl RuleResolver {
 ///
 /// An absent stage means BESLUIT (backward compatibility per RFC-008); an
 /// absent decision type admits every decision type.
-pub(crate) fn hook_filter_admits(
+pub fn hook_filter_admits(
     filter: &HookFilter,
     decision_type: Option<&str>,
     stage: &str,
