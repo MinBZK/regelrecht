@@ -74,6 +74,7 @@ use crate::transport::TransportFout;
 
 pub mod behandeling;
 pub mod cel;
+pub mod inzage;
 pub mod loket;
 pub mod portaal;
 pub mod proces;

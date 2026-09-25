@@ -14,7 +14,7 @@ use regelrecht_cel::api::Klok;
 use regelrecht_cel::config::{Config, STANDAARD_POORT};
 use regelrecht_cel::runtime::Runtime;
 use regelrecht_cel::schema::{self, Soort};
-use regelrecht_cel::transport::RUNTIME_TOKEN_HEADER;
+use regelrecht_cel::transport::{LEES_TOKEN_HEADER, RUNTIME_TOKEN_HEADER};
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
@@ -38,12 +38,48 @@ fn runtime_op(opstelling: &Path, data: &Path) -> Result<Runtime, Vec<String>> {
         regulation_path: fixtures().join("regulation"),
         data_dir: data.to_path_buf(),
         port: STANDAARD_POORT,
+        lees_token: None,
     };
     Runtime::laad(&config, klok())
 }
 
+/// Een runtime zoals [`runtime_op`], met een leestoken.
+fn runtime_met_leestoken(opstelling: &Path, data: &Path, token: &str) -> Runtime {
+    let config = Config {
+        cells_path: opstelling.join("cellen"),
+        processes_path: Some(opstelling.join("processes")),
+        regulation_path: fixtures().join("regulation"),
+        data_dir: data.to_path_buf(),
+        port: STANDAARD_POORT,
+        lees_token: Some(token.to_string()),
+    };
+    Runtime::laad(&config, klok()).unwrap()
+}
+
 fn app(data: &Path) -> Router {
-    runtime_op(&fixtures(), data).unwrap().router
+    als_lezer(&runtime_op(&fixtures(), data).unwrap())
+}
+
+/// De router van een runtime waarvan de tests de leesroutes van een cel
+/// lezen zoals een proces van die runtime: een `GET` onder `/cellen/`
+/// krijgt het runtime-token mee. De leesroutes zijn niet open (zie
+/// `de_leesroutes_van_een_cel_zijn_niet_open`).
+fn als_lezer(rt: &Runtime) -> Router {
+    let token = rt.runtime_token.als_str().to_string();
+    rt.router.clone().layer(axum::middleware::map_request(
+        move |mut req: Request<Body>| {
+            let token = token.clone();
+            async move {
+                if req.method() == axum::http::Method::GET
+                    && req.uri().path().starts_with("/cellen/")
+                {
+                    req.headers_mut()
+                        .insert(RUNTIME_TOKEN_HEADER, token.parse().unwrap());
+                }
+                req
+            }
+        },
+    ))
 }
 
 async fn vraag(
@@ -791,9 +827,11 @@ fn met_url(url: String) -> impl Fn(String) -> String {
 
 #[tokio::test]
 async fn synthese_over_http_naar_een_andere_runtime() {
-    // Runtime B: de fixtures, op een echte poort.
+    // Runtime B: de fixtures, op een echte poort. A leest B met het gedeelde
+    // leestoken; zonder leest alleen B zelf.
+    let token = "gedeeld-leestoken-van-de-test";
     let data_b = tempfile::tempdir().unwrap();
-    let b = app(data_b.path());
+    let b = runtime_met_leestoken(&fixtures(), data_b.path(), token).router;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let adres = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, b).await });
@@ -802,7 +840,7 @@ async fn synthese_over_http_naar_een_andere_runtime() {
     let aanpassing = met_url(format!("http://{adres}"));
     let opstelling = eigen_opstelling(&[("afnemer", &zo)], &[("afnemer", &aanpassing)]);
     let data_a = tempfile::tempdir().unwrap();
-    let a = runtime_op(opstelling.path(), data_a.path()).unwrap();
+    let a = runtime_met_leestoken(opstelling.path(), data_a.path(), token);
     // Wat de runtime van een bron buiten haar niet kan zien, meldt ze (de
     // herkomst, RFC-043); verder niets.
     let w = a.waarschuwingen().await;
@@ -1320,7 +1358,7 @@ async fn rollen_bepalen_wie_wat_mag() {
 async fn werkvoorraad_is_een_lijst_van_zaken_zonder_besluit() {
     let data = tempfile::tempdir().unwrap();
     let rt = runtime_op(&fixtures(), data.path()).unwrap();
-    let app = rt.router.clone();
+    let app = als_lezer(&rt);
     let een = afnemer_indienen(&app, "12345678").await;
     let twee = afnemer_indienen(&app, "87654321").await;
     let b = behandelaar(&app).await;
@@ -1404,7 +1442,7 @@ async fn werkvoorraad_is_een_lijst_van_zaken_zonder_besluit() {
 async fn zaak_met_proefbesluit_zonder_vastleggen() {
     let data = tempfile::tempdir().unwrap();
     let rt = runtime_op(&fixtures(), data.path()).unwrap();
-    let app = rt.router.clone();
+    let app = als_lezer(&rt);
     let zaak = afnemer_indienen(&app, "12345678").await;
     let b = behandelaar(&app).await;
     let kroniek = data.path().join("test_afnemer/test_afnemer.jsonl");
@@ -1683,6 +1721,7 @@ fn zonder_processen_draaien_alleen_de_cellen() {
         regulation_path: fixtures().join("regulation"),
         data_dir: data.path().to_path_buf(),
         port: STANDAARD_POORT,
+        lees_token: None,
     };
     let r = Runtime::laad(&config, klok()).unwrap();
     assert_eq!(r.cellen.len(), 4);
@@ -2037,6 +2076,7 @@ fn met_ander_gezag(
         regulation_path: cellen.path().join("regulation"),
         data_dir: data.path().to_path_buf(),
         port: 0,
+        lees_token: None,
     };
     let app = Runtime::laad(&config, klok()).unwrap().router;
     (cellen, data, app)
@@ -2275,7 +2315,7 @@ async fn de_cel_legt_een_gram_vast_voor_haar_actor() {
 async fn de_cel_reduceert_op_proef_zonder_vast_te_leggen() {
     let dir = tempfile::tempdir().unwrap();
     let rt = runtime_op(&fixtures(), dir.path()).unwrap();
-    let app = rt.router.clone();
+    let app = als_lezer(&rt);
     let proef = format!("{INSTANTIE_CEL}/api/lexostatus/aanvraag_inhoud/proef");
     let (status, body) = als_runtime(
         &rt,
@@ -2322,7 +2362,7 @@ async fn een_proefreductie_reduceert_de_kroniek_met_het_concept() {
     // over.
     let data = tempfile::tempdir().unwrap();
     let rt = runtime_op(&fixtures(), data.path()).unwrap();
-    let app = rt.router.clone();
+    let app = als_lezer(&rt);
     afnemer_indienen(&app, "12345678").await;
     let concept = json!({
         "actor": "test_afnemer",
@@ -2352,7 +2392,7 @@ async fn een_proefreductie_reduceert_de_kroniek_met_het_concept() {
 }
 
 #[tokio::test]
-async fn alleen_de_runtime_legt_vast_en_lezen_blijft_open() {
+async fn alleen_de_runtime_legt_vast_en_leest() {
     let dir = tempfile::tempdir().unwrap();
     let rt = runtime_op(&fixtures(), dir.path()).unwrap();
     let grammen = format!("{INSTANTIE_CEL}/api/grammen");
@@ -2385,18 +2425,33 @@ async fn alleen_de_runtime_legt_vast_en_lezen_blijft_open() {
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
-    // Er is niets vastgelegd, en lezen vraagt geen token.
-    for pad in ["kroniek", "stroom"] {
-        let (status, _, _) = vraag(
-            &rt.router,
-            "GET",
-            &format!("{INSTANTIE_CEL}/api/{pad}"),
-            None,
-            None,
-        )
-        .await;
-        assert_eq!(status, StatusCode::OK, "{pad}");
+    // Er is niets vastgelegd. Lezen vraagt een token: de grammen dragen de
+    // identiteit en de intake van wie indiende. Alleen de stroomdefinities
+    // zijn open.
+    for pad in [
+        "kroniek",
+        "zaken/z",
+        "lexostatus/aanvraag_inhoud?zaakkenmerk=z",
+    ] {
+        let uri = format!("{INSTANTIE_CEL}/api/{pad}");
+        let (status, fout, _) = vraag(&rt.router, "GET", &uri, None, None).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{pad}: {fout}");
+        let (status, _, _) = vraag_met(&rt.router, "GET", &uri, &vreemd, None).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{pad}");
+        // Zonder leestoken in de runtime telt een leestoken niet.
+        let lees = [(LEES_TOKEN_HEADER, "gedeeld-leestoken-van-de-test")];
+        let (status, _, _) = vraag_met(&rt.router, "GET", &uri, &lees, None).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{pad}");
     }
+    let (status, _, _) = vraag(
+        &rt.router,
+        "GET",
+        &format!("{INSTANTIE_CEL}/api/stroom"),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
     assert!(!dir
         .path()
         .join("test_instantie/test_kroniek.jsonl")
@@ -2714,7 +2769,7 @@ fn een_grondslag_in_het_formulier_wordt_gecontroleerd() {
 async fn een_eerdere_ontvangst_is_de_aanvraagdatum() {
     let dir = tempfile::tempdir().unwrap();
     let rt = runtime_op(&fixtures(), dir.path()).unwrap();
-    let app = rt.router.clone();
+    let app = als_lezer(&rt);
     let mut v = verzoek("test_instantie");
     v["intake"] = json!({"kanaal": "loket", "ontvangen_op": "2025-03-05",
                          "eherkenning": {"kvk": "12345678", "persoon": "A. Tester"},
@@ -3532,7 +3587,7 @@ async fn een_gemeld_feit_legt_de_cel_vast() {
 async fn een_moment_ligt_niet_voor_de_zaak_of_in_de_toekomst() {
     let data = tempfile::tempdir().unwrap();
     let rt = runtime_op(&fixtures(), data.path()).unwrap();
-    let app = rt.router.clone();
+    let app = als_lezer(&rt);
     let b = behandelaar(&app).await;
     let zaak = afnemer_indienen(&app, "12345678").await;
     let besluit = |datum: &str| json!({"besluitdatum": datum, "feiten_vergaard": true});
@@ -3583,7 +3638,7 @@ async fn een_moment_ligt_niet_voor_de_zaak_of_in_de_toekomst() {
 async fn de_cel_geeft_de_stand_van_een_zaak() {
     let data = tempfile::tempdir().unwrap();
     let rt = runtime_op(&fixtures(), data.path()).unwrap();
-    let app = rt.router.clone();
+    let app = als_lezer(&rt);
     let b = behandelaar(&app).await;
     let zaak = afnemer_indienen(&app, "12345678").await;
     let (status, _) = handeling(
@@ -3661,5 +3716,102 @@ async fn de_cel_geeft_de_stand_van_een_zaak() {
             .iter()
             .any(|l| l["name"] == "zaakstand" && l["runtime"] == json!(true)),
         "{afnemer}"
+    );
+}
+
+/// Het leestoken geeft lezen, geen vastleggen.
+#[tokio::test]
+async fn het_leestoken_geeft_alleen_lezen() {
+    let data = tempfile::tempdir().unwrap();
+    let token = "gedeeld-leestoken-van-de-test";
+    let rt = runtime_met_leestoken(&fixtures(), data.path(), token);
+    let lees = [(LEES_TOKEN_HEADER, token)];
+    let (status, body, _) = vraag_met(
+        &rt.router,
+        "GET",
+        &format!("{INSTANTIE_CEL}/api/kroniek"),
+        &lees,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, _, _) = vraag_met(
+        &rt.router,
+        "POST",
+        &format!("{INSTANTIE_CEL}/api/grammen"),
+        &lees,
+        Some(verzoek("test_instantie")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+/// Een behandelaar ziet de kroniek en de lexostatussen van de cellen die zijn
+/// proces leest, via het proces; een aanvrager en wie niet inlogde niet.
+#[tokio::test]
+async fn inzage_in_de_cellen_via_het_proces() {
+    let data = tempfile::tempdir().unwrap();
+    let rt = runtime_op(&fixtures(), data.path()).unwrap();
+    let app = rt.router.clone();
+    let zaak = afnemer_indienen(&app, "12345678").await;
+    let b = behandelaar(&app).await;
+    let kroniek = format!("{AFNEMER}/api/inzage/test_afnemer/kroniek");
+
+    let (status, grammen, _) = vraag(&app, "GET", &kroniek, Some(&b), None).await;
+    assert_eq!(status, StatusCode::OK, "{grammen}");
+    assert_eq!(grammen.as_array().unwrap().len(), 1);
+    let (status, l, _) = vraag(
+        &app,
+        "GET",
+        &format!("{AFNEMER}/api/inzage/test_afnemer/lexostatus/aanvraag_inhoud?zaakkenmerk={zaak}"),
+        Some(&b),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{l}");
+    assert_eq!(l["zaakkenmerk"], json!(zaak));
+    // Een bron van het proces in deze runtime mag ook; een andere cel niet.
+    let (status, _, _) = vraag(
+        &app,
+        "GET",
+        &format!("{AFNEMER}/api/inzage/test_register/kroniek"),
+        Some(&b),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _, _) = vraag(
+        &app,
+        "GET",
+        &format!("{AFNEMER}/api/inzage/test_instantie/kroniek"),
+        Some(&b),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    // Zonder login 401, als aanvrager 403.
+    let (status, _, _) = vraag(&app, "GET", &kroniek, None, None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (_, _, a) = vraag(
+        &app,
+        "POST",
+        &format!("{AFNEMER}/api/kanalen/eherkenning/login"),
+        None,
+        Some(json!({"kvk": "12345678", "persoon": "A. Tester"})),
+    )
+    .await;
+    let (status, _, _) = vraag(&app, "GET", &kroniek, a.as_deref(), None).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    // Het proces noemt de cellen die een behandelaar kan inzien.
+    let (_, processen, _) = vraag(&app, "GET", "/api/processen", None, None).await;
+    let p = processen
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["id"] == "test_afnemer_proces")
+        .unwrap();
+    assert_eq!(
+        p["inzage"],
+        json!(["test_afnemer", "test_gebieden", "test_register"])
     );
 }

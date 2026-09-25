@@ -11,7 +11,10 @@
 //! Vastleggen en op proef reduceren mag alleen een proces van de runtime zelf
 //! (zie [`RuntimeToken`]). Het interne transport stuurt daarom het token van
 //! de runtime mee; een HTTP-transport alleen als het er een meekreeg, en de
-//! runtime geeft het nooit aan een transport naar een andere runtime.
+//! runtime geeft het nooit aan een transport naar een andere runtime. Lezen
+//! (de kroniek, een zaak, een lexostatus) mag ook een andere runtime met het
+//! gedeelde leestoken ([`LeesToken`], `CEL_LEES_TOKEN`); een HTTP-transport
+//! stuurt het mee als de runtime er een heeft.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -28,12 +31,16 @@ use tower::ServiceExt;
 /// De header waarin een proces het runtime-token meestuurt.
 pub const RUNTIME_TOKEN_HEADER: &str = "x-cel-runtime-token";
 
+/// De header waarin een andere runtime het leestoken meestuurt.
+pub const LEES_TOKEN_HEADER: &str = "x-cel-lees-token";
+
 /// Een geheim dat de runtime bij elke start nieuw maakt, en dat alleen haar
 /// eigen processen kennen: het interne transport stuurt het mee, en een cel
 /// legt alleen vast (of reduceert op proef) op een verzoek dat het draagt.
-/// Lezen vraagt geen token. Dit is geen beveiligingscontext tussen
-/// organisaties (RFC-022 par. 2); het voorkomt alleen dat iedereen die de
-/// poort bereikt een gram in een kroniek kan zetten.
+/// Lezen vraagt het token ook, of het leestoken ([`LeesToken`]). Dit is geen
+/// beveiligingscontext tussen organisaties (RFC-022 par. 2); het voorkomt
+/// alleen dat iedereen die de poort bereikt een gram in een kroniek kan
+/// zetten of de identiteit en de intake in een kroniek kan lezen.
 #[derive(Clone)]
 pub struct RuntimeToken(Arc<str>);
 
@@ -48,6 +55,12 @@ impl RuntimeToken {
             )
             .into(),
         )
+    }
+
+    /// Een token met een gegeven waarde, zoals het leestoken uit de
+    /// omgeving.
+    pub fn uit(tekst: &str) -> Self {
+        Self(tekst.into())
     }
 
     pub fn als_str(&self) -> &str {
@@ -66,6 +79,12 @@ impl RuntimeToken {
                 == 0
     }
 }
+
+/// Het leestoken: een geheim dat runtimes die elkaar vertrouwen delen
+/// (`CEL_LEES_TOKEN`), zodat een proces in de ene runtime een lexostatus
+/// van een cel in de andere kan lezen. Het geeft alleen lezen, nooit
+/// vastleggen. Zonder leestoken leest alleen de eigen runtime.
+pub type LeesToken = RuntimeToken;
 
 impl std::fmt::Debug for RuntimeToken {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -231,6 +250,7 @@ pub struct Http {
     basis: String,
     client: reqwest::Client,
     token: Option<RuntimeToken>,
+    lees_token: Option<LeesToken>,
 }
 
 impl Http {
@@ -243,6 +263,7 @@ impl Http {
             basis: basis.trim_end_matches('/').to_string(),
             client,
             token: None,
+            lees_token: None,
         })
     }
 
@@ -250,6 +271,13 @@ impl Http {
     /// runtime, nooit naar die van een ander.
     pub fn met_runtime_token(mut self, token: RuntimeToken) -> Self {
         self.token = Some(token);
+        self
+    }
+
+    /// Stuur het leestoken mee: lezen bij een runtime die hetzelfde
+    /// leestoken heeft.
+    pub fn met_lees_token(mut self, token: Option<LeesToken>) -> Self {
+        self.lees_token = token;
         self
     }
 }
@@ -289,6 +317,9 @@ impl Http {
     ) -> Result<Value, TransportFout> {
         if let Some(t) = &self.token {
             verzoek = verzoek.header(RUNTIME_TOKEN_HEADER, t.als_str());
+        }
+        if let Some(t) = &self.lees_token {
+            verzoek = verzoek.header(LEES_TOKEN_HEADER, t.als_str());
         }
         let resp = verzoek
             .send()

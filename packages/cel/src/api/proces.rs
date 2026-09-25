@@ -10,6 +10,7 @@ use axum::{Json, Router};
 use serde_json::{json, Value};
 
 use super::behandeling::{handeling_route, proefhandeling_route, werkvoorraad_route, zaak_route};
+use super::inzage;
 use super::loket::loket_indienen;
 use super::portaal::{formulier_route, indienen, mogelijkheden_route, toets_route};
 use super::sessie::{kanaalsessie, login, logout, sessie};
@@ -83,6 +84,11 @@ pub fn proces_router(state: ProcesState) -> Router {
     }
     if d.behandeling.is_some() {
         r = r
+            .route("/api/inzage/{cel}/kroniek", get(inzage::kroniek_route))
+            .route(
+                "/api/inzage/{cel}/lexostatus/{naam}",
+                get(inzage::lexostatus_route),
+            )
             .route("/api/werkvoorraad", get(werkvoorraad_route))
             .route("/api/zaken/{zaakkenmerk}", get(zaak_route))
             .route(
@@ -172,5 +178,7 @@ pub fn proces_beschrijving(state: &ProcesState) -> Value {
         })),
         "titel": p.formulier.as_ref().and_then(|f| f.titel.clone()),
         "synthese": synthese,
+        // De cellen die een behandelaar via dit proces mag inzien.
+        "inzage": if d.behandeling.is_some() { state.inzage_cellen().into_iter().collect() } else { Vec::new() },
     })
 }

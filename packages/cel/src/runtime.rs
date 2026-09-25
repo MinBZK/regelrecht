@@ -25,7 +25,7 @@ use crate::kroniek::Kroniek;
 use crate::proces::{met_proces, Proces};
 use crate::sessie::Sessies;
 use crate::synthese::{self, Bron, TIJDSLIMIET};
-use crate::transport::{Http, Intern, RuntimeToken, Transport};
+use crate::transport::{Http, Intern, LeesToken, RuntimeToken, Transport};
 use crate::{handeling, regelingen, rijen, startstand};
 
 /// Een geladen runtime: de cellen, de processen en de router over allemaal.
@@ -103,6 +103,7 @@ impl Runtime {
         }
 
         let runtime_token = RuntimeToken::nieuw();
+        let lees_token = config.lees_token.as_deref().map(LeesToken::uit);
         let mut celstaten = Vec::new();
         for cel in cellen {
             let kroniek = open_kroniek(&config.data_dir, &cel, &klok)
@@ -112,6 +113,7 @@ impl Runtime {
                 kroniek: Arc::new(kroniek),
                 klok: klok.clone(),
                 runtime_token: runtime_token.clone(),
+                lees_token: lees_token.clone(),
             });
         }
 
@@ -122,9 +124,11 @@ impl Runtime {
             let id = proces.id().to_string();
             let transport = |url: &Option<String>| -> Result<Arc<dyn Transport>, Vec<String>> {
                 Ok(match url {
-                    Some(url) => {
-                        Arc::new(Http::new(url, TIJDSLIMIET).map_err(|e| met_proces(&id, vec![e]))?)
-                    }
+                    Some(url) => Arc::new(
+                        Http::new(url, TIJDSLIMIET)
+                            .map_err(|e| met_proces(&id, vec![e]))?
+                            .met_lees_token(lees_token.clone()),
+                    ),
                     None => intern.clone(),
                 })
             };

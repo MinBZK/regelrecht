@@ -37,6 +37,9 @@ pub struct Config {
     /// Map voor de kronieken: per cel een submap `<id>/`.
     pub data_dir: PathBuf,
     pub port: u16,
+    /// Het leestoken (`CEL_LEES_TOKEN`) dat runtimes delen die elkaars
+    /// cellen mogen lezen; zonder leest alleen de eigen runtime.
+    pub lees_token: Option<String>,
 }
 
 impl Config {
@@ -60,6 +63,13 @@ impl Config {
             regulation_path: pad("REGULATION_PATH")?,
             data_dir: pad("DATA_DIR")?,
             port,
+            lees_token: match std::env::var("CEL_LEES_TOKEN") {
+                Ok(t) if t.trim().len() >= 16 => Some(t.trim().to_string()),
+                Ok(t) if !t.trim().is_empty() => {
+                    return Err("CEL_LEES_TOKEN is korter dan 16 tekens".into())
+                }
+                _ => None,
+            },
         })
     }
 }

@@ -20,7 +20,7 @@ use crate::gram::Gram;
 use crate::kroniek::{Kroniek, Vastgelegd};
 use crate::reductie::{self, Lexostatus, Peil};
 use crate::stroom::{self, Indiening, Zaak};
-use crate::transport::{RuntimeToken, RUNTIME_TOKEN_HEADER};
+use crate::transport::{LeesToken, RuntimeToken, LEES_TOKEN_HEADER, RUNTIME_TOKEN_HEADER};
 
 /// De toestand van een cel in de runtime.
 #[derive(Clone)]
@@ -31,11 +31,17 @@ pub struct CelState {
     /// Wie dit token meestuurt, is een proces van deze runtime; alleen die
     /// mag vastleggen of op proef reduceren.
     pub runtime_token: RuntimeToken,
+    /// Wie dit token meestuurt, mag lezen (een andere runtime met hetzelfde
+    /// `CEL_LEES_TOKEN`). Zonder leest alleen de eigen runtime.
+    pub lees_token: Option<LeesToken>,
 }
 
-/// De routes van een cel, relatief aan `/cellen/<id>`. Lezen is open;
-/// vastleggen en op proef reduceren vragen het runtime-token (zie
-/// [`alleen_de_runtime`]).
+/// De routes van een cel, relatief aan `/cellen/<id>`. Vastleggen en op
+/// proef reduceren vragen het runtime-token (zie [`alleen_de_runtime`]);
+/// lezen (de kroniek, een zaak, een lexostatus) het runtime-token of het
+/// leestoken (zie [`alleen_lezers`]), want de grammen dragen de identiteit
+/// en de intake van wie indiende. Alleen de stroomdefinities zijn open: die
+/// zeggen niets over iemand.
 pub fn cel_router(state: CelState) -> Router {
     let schrijven = Router::new()
         .route("/api/lexostatus/{naam}/proef", post(proef_route))
@@ -44,13 +50,52 @@ pub fn cel_router(state: CelState) -> Router {
             state.clone(),
             alleen_de_runtime,
         ));
-    Router::new()
+    let lezen = Router::new()
         .route("/api/kroniek", get(kroniek_route))
         .route("/api/zaken/{zaakkenmerk}", get(zaak_van_cel_route))
         .route("/api/lexostatus/{naam}", get(lexostatus_route))
+        .route_layer(middleware::from_fn_with_state(state.clone(), alleen_lezers));
+    Router::new()
         .route("/api/stroom", get(stroom_route))
+        .merge(lezen)
         .merge(schrijven)
         .with_state(state)
+}
+
+/// Of een verzoek een token draagt dat toegang geeft: het runtime-token, of
+/// bij lezen ook het leestoken. Zonder token 401, met een verkeerd 403.
+fn toegang(state: &CelState, verzoek: &Request, lezen: bool) -> Result<(), Fout> {
+    let h = verzoek.headers();
+    let runtime = h.get(RUNTIME_TOKEN_HEADER);
+    let lees = h.get(LEES_TOKEN_HEADER).filter(|_| lezen);
+    if runtime.is_some_and(|t| state.runtime_token.klopt(t.as_bytes()))
+        || lees.is_some_and(|t| {
+            state
+                .lees_token
+                .as_ref()
+                .is_some_and(|l| l.klopt(t.as_bytes()))
+        })
+    {
+        return Ok(());
+    }
+    let wat = if lezen {
+        "alleen een proces van deze runtime, of een runtime met het leestoken, leest een kroniek, een zaak of een lexostatus"
+    } else {
+        "alleen een proces van deze runtime legt vast of reduceert op proef"
+    };
+    let token = if lezen {
+        "het runtime-token of het leestoken"
+    } else {
+        "het runtime-token"
+    };
+    Err(if runtime.is_none() && lees.is_none() {
+        fout(
+            StatusCode::UNAUTHORIZED,
+            format!("{wat}: {token} ontbreekt"),
+        )
+    } else {
+        fout(StatusCode::FORBIDDEN, format!("{wat}: {token} klopt niet"))
+    })
 }
 
 /// Laat een verzoek alleen door als het het token van de runtime draagt:
@@ -61,17 +106,20 @@ async fn alleen_de_runtime(
     verzoek: Request,
     verder: Next,
 ) -> Result<Response, Fout> {
-    match verzoek.headers().get(RUNTIME_TOKEN_HEADER) {
-        None => Err(fout(
-            StatusCode::UNAUTHORIZED,
-            "alleen een proces van deze runtime legt vast of reduceert op proef: het runtime-token ontbreekt",
-        )),
-        Some(t) if state.runtime_token.klopt(t.as_bytes()) => Ok(verder.run(verzoek).await),
-        Some(_) => Err(fout(
-            StatusCode::FORBIDDEN,
-            "alleen een proces van deze runtime legt vast of reduceert op proef: het runtime-token klopt niet",
-        )),
-    }
+    toegang(&state, &verzoek, false)?;
+    Ok(verder.run(verzoek).await)
+}
+
+/// Laat een leesverzoek alleen door met het runtime-token of het leestoken.
+/// Een behandelaar of beheerder leest via een proces (zie
+/// [`super::proces`], de inzage), niet rechtstreeks.
+async fn alleen_lezers(
+    State(state): State<CelState>,
+    verzoek: Request,
+    verder: Next,
+) -> Result<Response, Fout> {
+    toegang(&state, &verzoek, true)?;
+    Ok(verder.run(verzoek).await)
 }
 
 /// Het zaakkenmerk van een gram. `zaak: opent` geeft een nieuw kenmerk;
