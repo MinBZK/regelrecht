@@ -29,14 +29,16 @@ use serde_json::{Map, Value};
 
 use regelrecht_engine::LawExecutionService;
 
-use crate::api::{self, Besluitvelden, Vastlegverzoek};
+use crate::celclient::{self, Besluitvelden, Vastlegverzoek};
 use crate::config::BesluitDefinitie;
+use crate::datum;
 use crate::formulier::Veld;
+use crate::gram::{GeladenRegeling, Gram, Invoer, Receipt, StroomVerwijzing};
 use crate::proces::Proces;
 use crate::reductie::Lexostatus;
 use crate::regelingen::{self, Benodigd};
 use crate::rijen::{self, Rijen};
-use crate::stroom::{GeladenRegeling, Gram, Invoer, Receipt, StroomVerwijzing, Zaak};
+use crate::stroom::Zaak;
 use crate::synthese::{self, Bron, BronUitslag, Herkomst};
 use crate::toets;
 use crate::transport::{Transport, TransportFout};
@@ -99,10 +101,15 @@ fn benodigd(
     Ok(regelingen::benodigde_parameters(service, &b.regeling, a))
 }
 
-/// De velden van het besluitformulier, met het type uit de regeling.
-pub fn formuliervelden(service: &LawExecutionService, b: &BesluitDefinitie) -> Vec<Veld> {
-    let benodigd = benodigd(service, b).unwrap_or_default();
-    b.formulier
+/// De velden van het besluitformulier, met het type uit de regeling. Een
+/// fout als het artikel van het besluit niet te vinden is (de controle bij
+/// het opstarten vangt dat al af).
+pub fn formuliervelden(
+    service: &LawExecutionService,
+    b: &BesluitDefinitie,
+) -> Result<Vec<Veld>, String> {
+    let benodigd = benodigd(service, b)?;
+    Ok(b.formulier
         .iter()
         .map(|o| {
             let soort = benodigd
@@ -124,7 +131,7 @@ pub fn formuliervelden(service: &LawExecutionService, b: &BesluitDefinitie) -> V
                 groep: o.groep.clone(),
             }
         })
-        .collect()
+        .collect())
 }
 
 /// De controles op `rollen` en `behandeling` van een proces bij het
@@ -414,13 +421,8 @@ async fn zaaklexostatus(
         }),
         // Kiest de definitie een gram en is er geen, dan levert zij niets.
         Err(TransportFout::Antwoord { status: 404, .. }) => Ok(Lexostatus {
-            naam: def.name.clone(),
-            zaakkenmerk: None,
-            op_moment: None,
-            parameters: BTreeMap::new(),
-            extra_velden: BTreeMap::new(),
             niet_afgeleid: def.reduction.afleidingen.keys().cloned().collect(),
-            lijst: None,
+            ..Lexostatus::leeg(&def.name)
         }),
         Err(f) => Err(Weigering::Cel(format!(
             "cel '{}', lexostatus '{}': {f}",
@@ -476,7 +478,7 @@ pub async fn proefbesluit(
         .unwrap_or(0);
     let mut samen = match eigen.get(hoofd) {
         Some(l) => synthese::voeg_samen(l, bronnen).await,
-        None => synthese::voeg_samen(&leeg(), bronnen).await,
+        None => synthese::voeg_samen(&Lexostatus::leeg(""), bronnen).await,
     };
     for (i, l) in eigen.iter().enumerate() {
         if i == hoofd {
@@ -639,7 +641,7 @@ pub(crate) fn gezag_van(
 ///
 /// Het proefbesluit moet compleet zijn; is het dat niet, dan komt er geen
 /// gram en zegt het proces wat er mist. Ligt de stage van het besluit al vast
-/// in de zaak, dan weigert de cel (zie `api::toets_zaak`): een tweede besluit
+/// in de zaak, dan weigert de cel (zie `api::cel::toets_zaak`): een tweede besluit
 /// is een wijziging, en die valt buiten deze stap. Wijst de wet een ander bevoegd
 /// gezag aan dan de actor van het proces, dan weigert het ook; noemt de wet
 /// er geen, dan laat het vastleggen met een waarschuwing.
@@ -672,7 +674,7 @@ pub async fn neem_besluit(
         .as_ref()
         .ok_or_else(|| Weigering::Cel("het besluit zegt niet waar het wordt vastgelegd".into()))?;
 
-    let peildatum = op_moment.format("%Y-%m-%d").to_string();
+    let peildatum = datum::peildatum(&op_moment);
     let proef = proefbesluit(
         proces,
         cel,
@@ -695,7 +697,9 @@ pub async fn neem_besluit(
     // Het bevoegd gezag: gelijk is vastleggen, ongelijk is weigeren,
     // ontbrekend is een waarschuwing.
     let mut waarschuwingen = Vec::new();
-    let nummer = proef.artikel.split_once('#').map(|(_, n)| n).unwrap_or("");
+    let nummer = regelingen::ontleed(&proef.artikel)
+        .map_err(Weigering::Cel)?
+        .artikel;
     let gezag = gezag_van(service, &b.regeling, nummer);
     match &gezag {
         Some(g) if genormaliseerd(g) != genormaliseerd(actor) => {
@@ -721,19 +725,22 @@ pub async fn neem_besluit(
     let produces = artikel
         .get_execution_spec()
         .and_then(|e| e.produces.as_ref());
-    let inputs: BTreeMap<String, Invoer> = proef
-        .parameters
-        .iter()
-        .filter_map(|(naam, waarde)| {
-            Some((
-                naam.clone(),
-                Invoer {
-                    waarde: waarde.clone(),
-                    herkomst: proef.herkomst.get(naam)?.clone(),
-                },
-            ))
-        })
-        .collect();
+    // Elke parameter die meedeed gaat mee, met zijn herkomst; een parameter
+    // zonder herkomst is een fout in het proces, geen reden hem weg te laten.
+    let mut inputs: BTreeMap<String, Invoer> = BTreeMap::new();
+    for (naam, waarde) in &proef.parameters {
+        let herkomst = proef
+            .herkomst
+            .get(naam)
+            .ok_or_else(|| Weigering::Cel(format!("parameter '{naam}' heeft geen herkomst")))?;
+        inputs.insert(
+            naam.clone(),
+            Invoer {
+                waarde: waarde.clone(),
+                herkomst: herkomst.clone(),
+            },
+        );
+    }
     // De stromen van de cel, met de hash die de cel voor elk bijhoudt.
     let mut stromen: Vec<StroomVerwijzing> = proces
         .cel
@@ -766,11 +773,7 @@ pub async fn neem_besluit(
             receipt: Some(Receipt::nieuw(regelingen.to_vec(), stromen)),
         }),
     };
-    let antwoord = cel
-        .stuur(
-            &api::celpad(&v.cel, "grammen"),
-            &serde_json::to_value(&verzoek).unwrap_or_default(),
-        )
+    let celclient::MetYaml { gram, yaml } = celclient::leg_vast(cel, &v.cel, &verzoek)
         .await
         .map_err(|f| match f {
             // De cel weigert: in deze zaak ligt die stage al vast. Of een
@@ -778,31 +781,12 @@ pub async fn neem_besluit(
             TransportFout::Antwoord { status: 409, fout } => Weigering::AlBesloten(fout),
             f => Weigering::Cel(format!("het besluit is niet vastgelegd: {f}")),
         })?;
-    let gram: Gram = serde_json::from_value(antwoord.get("gram").cloned().unwrap_or_default())
-        .map_err(|e| Weigering::Cel(format!("het vastgelegde gram is onleesbaar: {e}")))?;
-    let yaml = antwoord
-        .get("yaml")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
     Ok(Besluit {
         gram,
         yaml,
         proefbesluit: proef,
         waarschuwingen,
     })
-}
-
-fn leeg() -> Lexostatus {
-    Lexostatus {
-        naam: String::new(),
-        zaakkenmerk: None,
-        op_moment: None,
-        parameters: BTreeMap::new(),
-        extra_velden: BTreeMap::new(),
-        niet_afgeleid: Vec::new(),
-        lijst: None,
-    }
 }
 
 #[cfg(test)]

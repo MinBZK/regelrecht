@@ -14,6 +14,7 @@ use regelrecht_cel::api::Klok;
 use regelrecht_cel::config::{Config, STANDAARD_POORT};
 use regelrecht_cel::runtime::Runtime;
 use regelrecht_cel::schema::{self, Soort};
+use regelrecht_cel::transport::RUNTIME_TOKEN_HEADER;
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
@@ -52,9 +53,28 @@ async fn vraag(
     cookie: Option<&str>,
     body: Option<Value>,
 ) -> (StatusCode, Value, Option<String>) {
+    let headers: Vec<(&str, &str)> = cookie.map(|c| ("cookie", c)).into_iter().collect();
+    vraag_met(app, methode, uri, &headers, body).await
+}
+
+/// Een verzoek aan een cel zoals een proces van de runtime het doet: met het
+/// runtime-token.
+async fn als_runtime(rt: &Runtime, methode: &str, uri: &str, body: Value) -> (StatusCode, Value) {
+    let headers = [(RUNTIME_TOKEN_HEADER, rt.runtime_token.als_str())];
+    let (status, body, _) = vraag_met(&rt.router, methode, uri, &headers, Some(body)).await;
+    (status, body)
+}
+
+async fn vraag_met(
+    app: &Router,
+    methode: &str,
+    uri: &str,
+    headers: &[(&str, &str)],
+    body: Option<Value>,
+) -> (StatusCode, Value, Option<String>) {
     let mut req = Request::builder().method(methode).uri(uri);
-    if let Some(c) = cookie {
-        req = req.header(header::COOKIE, c);
+    for (naam, waarde) in headers {
+        req = req.header(*naam, *waarde);
     }
     let req = match body {
         Some(b) => req
@@ -1058,8 +1078,10 @@ async fn behandelaar(app: &Router) -> String {
 }
 
 /// Voeg een gram toe aan de kroniek van de afnemer, zoals stap voor stap
-/// vastleggen dat later zal doen. De runtime leest de kroniek bij elke vraag.
-fn voeg_gram_toe(data: &Path, name: &str, zaak: &str, fields: Value) {
+/// vastleggen dat later zal doen. Langs de kroniek van de runtime: die houdt
+/// de grammen in het geheugen, dus een regel die iemand anders in het bestand
+/// schrijft, ziet zij niet.
+fn voeg_gram_toe(rt: &Runtime, name: &str, zaak: &str, fields: Value) {
     let (type_, stage) = if name == "besluit_genomen" {
         ("decretogram", Some("BESLUIT"))
     } else {
@@ -1077,10 +1099,13 @@ fn voeg_gram_toe(data: &Path, name: &str, zaak: &str, fields: Value) {
         gram["stage"] = json!(s);
     }
     schema::valideer(Soort::Gram, &gram).unwrap();
-    let pad = data.join("test_afnemer/test_afnemer.jsonl");
-    let mut tekst = std::fs::read_to_string(&pad).unwrap();
-    tekst.push_str(&format!("{gram}\n"));
-    std::fs::write(&pad, tekst).unwrap();
+    rt.cellen
+        .iter()
+        .find(|c| c.cel.id() == "test_afnemer")
+        .unwrap()
+        .kroniek
+        .voeg_toe(&serde_json::from_value(gram).unwrap())
+        .unwrap();
 }
 
 #[tokio::test]
@@ -1184,7 +1209,8 @@ async fn rollen_bepalen_wie_wat_mag() {
 #[tokio::test]
 async fn werkvoorraad_is_een_lijst_van_zaken_zonder_besluit() {
     let data = tempfile::tempdir().unwrap();
-    let app = app(data.path());
+    let rt = runtime_op(&fixtures(), data.path()).unwrap();
+    let app = rt.router.clone();
     let een = afnemer_indienen(&app, "12345678").await;
     let twee = afnemer_indienen(&app, "87654321").await;
     let b = behandelaar(&app).await;
@@ -1216,7 +1242,7 @@ async fn werkvoorraad_is_een_lijst_van_zaken_zonder_besluit() {
     );
 
     // Een verloopgram laat de zaak staan; een besluit haalt haar eraf.
-    voeg_gram_toe(data.path(), "termijn_opgeschort", &een, json!({"dagen": 5}));
+    voeg_gram_toe(&rt, "termijn_opgeschort", &een, json!({"dagen": 5}));
     let (_, w, _) = vraag(
         &app,
         "GET",
@@ -1227,7 +1253,7 @@ async fn werkvoorraad_is_een_lijst_van_zaken_zonder_besluit() {
     .await;
     assert_eq!(w["lijst"].as_array().unwrap().len(), 2);
     voeg_gram_toe(
-        data.path(),
+        &rt,
         "besluit_genomen",
         &een,
         json!({"vastgesteld_bedrag": 6000, "gebiedsbedrag": 5000, "besluit_tijdig": false,
@@ -1267,7 +1293,8 @@ async fn werkvoorraad_is_een_lijst_van_zaken_zonder_besluit() {
 #[tokio::test]
 async fn zaak_met_proefbesluit_zonder_vastleggen() {
     let data = tempfile::tempdir().unwrap();
-    let app = app(data.path());
+    let rt = runtime_op(&fixtures(), data.path()).unwrap();
+    let app = rt.router.clone();
     let zaak = afnemer_indienen(&app, "12345678").await;
     let b = behandelaar(&app).await;
     let kroniek = data.path().join("test_afnemer/test_afnemer.jsonl");
@@ -1348,12 +1375,7 @@ async fn zaak_met_proefbesluit_zonder_vastleggen() {
     assert_eq!(p["niet_geleverd"], json!([]));
 
     // Een opschorting in de zaak schuift de uiterste datum op.
-    voeg_gram_toe(
-        data.path(),
-        "termijn_opgeschort",
-        &zaak,
-        json!({"dagen": 5}),
-    );
+    voeg_gram_toe(&rt, "termijn_opgeschort", &zaak, json!({"dagen": 5}));
     let (_, p, _) = vraag(
         &app,
         "POST",
@@ -1976,16 +1998,9 @@ fn verzoek(actor: &str) -> Value {
 #[tokio::test]
 async fn de_cel_legt_een_gram_vast_voor_haar_actor() {
     let dir = tempfile::tempdir().unwrap();
-    let app = app(dir.path());
+    let rt = runtime_op(&fixtures(), dir.path()).unwrap();
     let grammen = format!("{INSTANTIE_CEL}/api/grammen");
-    let (status, body, _) = vraag(
-        &app,
-        "POST",
-        &grammen,
-        None,
-        Some(verzoek("test_instantie")),
-    )
-    .await;
+    let (status, body) = als_runtime(&rt, "POST", &grammen, verzoek("test_instantie")).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
     schema::valideer(Soort::Gram, &body["gram"]).unwrap();
     // De cel bouwt het gram uit haar stroom: zij geeft het zaakkenmerk en het
@@ -2002,8 +2017,7 @@ async fn de_cel_legt_een_gram_vast_voor_haar_actor() {
     assert_eq!(std::fs::read_to_string(&pad).unwrap().lines().count(), 1);
 
     // Een actor die niet de recording_actor van de stroom is: geen gram.
-    let (status, body, _) =
-        vraag(&app, "POST", &grammen, None, Some(verzoek("test_afnemer"))).await;
+    let (status, body) = als_runtime(&rt, "POST", &grammen, verzoek("test_afnemer")).await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
     assert_eq!(
         body["fout"],
@@ -2012,11 +2026,11 @@ async fn de_cel_legt_een_gram_vast_voor_haar_actor() {
     // Een event dat de cel niet heeft, en een veld dat de stroom niet kent.
     let mut onbekend = verzoek("test_instantie");
     onbekend["event"] = json!("bestaat_niet");
-    let (status, _, _) = vraag(&app, "POST", &grammen, None, Some(onbekend)).await;
+    let (status, _) = als_runtime(&rt, "POST", &grammen, onbekend).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     let mut veld = verzoek("test_instantie");
     veld["external"]["schoenmaat"] = json!(44);
-    let (status, body, _) = vraag(&app, "POST", &grammen, None, Some(veld)).await;
+    let (status, body) = als_runtime(&rt, "POST", &grammen, veld).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(body["fout"].as_str().unwrap().contains("schoenmaat"));
     assert_eq!(std::fs::read_to_string(&pad).unwrap().lines().count(), 1);
@@ -2025,14 +2039,14 @@ async fn de_cel_legt_een_gram_vast_voor_haar_actor() {
 #[tokio::test]
 async fn de_cel_reduceert_op_proef_zonder_vast_te_leggen() {
     let dir = tempfile::tempdir().unwrap();
-    let app = app(dir.path());
+    let rt = runtime_op(&fixtures(), dir.path()).unwrap();
+    let app = rt.router.clone();
     let proef = format!("{INSTANTIE_CEL}/api/lexostatus/aanvraag_inhoud/proef");
-    let (status, body, _) = vraag(
-        &app,
+    let (status, body) = als_runtime(
+        &rt,
         "POST",
         &proef,
-        None,
-        Some(json!({"concept": verzoek("test_instantie"), "inputs": {}})),
+        json!({"concept": verzoek("test_instantie"), "inputs": {}}),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -2056,12 +2070,11 @@ async fn de_cel_reduceert_op_proef_zonder_vast_te_leggen() {
     .await;
     assert_eq!(kroniek, json!([]));
     // Ook op proef legt alleen de actor van de stroom iets voor.
-    let (status, _, _) = vraag(
-        &app,
+    let (status, _) = als_runtime(
+        &rt,
         "POST",
         &proef,
-        None,
-        Some(json!({"concept": verzoek("iemand_anders")})),
+        json!({"concept": verzoek("iemand_anders")}),
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
@@ -2073,7 +2086,8 @@ async fn een_proefreductie_reduceert_de_kroniek_met_het_concept() {
     // proef telt het concept mee naast wat er al ligt, en er blijft niets van
     // over.
     let data = tempfile::tempdir().unwrap();
-    let app = app(data.path());
+    let rt = runtime_op(&fixtures(), data.path()).unwrap();
+    let app = rt.router.clone();
     afnemer_indienen(&app, "12345678").await;
     let concept = json!({
         "actor": "test_afnemer",
@@ -2082,12 +2096,11 @@ async fn een_proefreductie_reduceert_de_kroniek_met_het_concept() {
         "intake": {"kanaal": "portaal", "eherkenning": {"kvk": "87654321", "persoon": "B. Tester"}},
         "external": afnemer_concept(Some("VOORBEELD"))["external"],
     });
-    let (status, body, _) = vraag(
-        &app,
+    let (status, body) = als_runtime(
+        &rt,
         "POST",
         &format!("{AFNEMER_CEL}/api/lexostatus/werkvoorraad/proef"),
-        None,
-        Some(json!({"concept": concept})),
+        json!({"concept": concept}),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -2101,6 +2114,69 @@ async fn een_proefreductie_reduceert_de_kroniek_met_het_concept() {
     )
     .await;
     assert_eq!(w["lijst"].as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn alleen_de_runtime_legt_vast_en_lezen_blijft_open() {
+    let dir = tempfile::tempdir().unwrap();
+    let rt = runtime_op(&fixtures(), dir.path()).unwrap();
+    let grammen = format!("{INSTANTIE_CEL}/api/grammen");
+    let proef = format!("{INSTANTIE_CEL}/api/lexostatus/aanvraag_inhoud/proef");
+    // Zonder token: 401, met een ander token: 403, voor vastleggen en proef.
+    for (pad, body) in [
+        (&grammen, verzoek("test_instantie")),
+        (&proef, json!({"concept": verzoek("test_instantie")})),
+    ] {
+        let (status, fout, _) = vraag(&rt.router, "POST", pad, None, Some(body.clone())).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{pad}: {fout}");
+        assert!(fout["fout"]
+            .as_str()
+            .unwrap()
+            .contains("runtime-token ontbreekt"));
+        let vals = [(RUNTIME_TOKEN_HEADER, "0".repeat(64))];
+        let vals: Vec<(&str, &str)> = vals.iter().map(|(n, w)| (*n, w.as_str())).collect();
+        let (status, _, _) = vraag_met(&rt.router, "POST", pad, &vals, Some(body)).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{pad}");
+    }
+    // Het token van een andere runtime telt ook niet.
+    let ander = runtime_op(&fixtures(), tempfile::tempdir().unwrap().path()).unwrap();
+    let vreemd = [(RUNTIME_TOKEN_HEADER, ander.runtime_token.als_str())];
+    let (status, _, _) = vraag_met(
+        &rt.router,
+        "POST",
+        &grammen,
+        &vreemd,
+        Some(verzoek("test_instantie")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    // Er is niets vastgelegd, en lezen vraagt geen token.
+    for pad in ["kroniek", "stroom"] {
+        let (status, _, _) = vraag(
+            &rt.router,
+            "GET",
+            &format!("{INSTANTIE_CEL}/api/{pad}"),
+            None,
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{pad}");
+    }
+    assert!(!dir
+        .path()
+        .join("test_instantie/test_kroniek.jsonl")
+        .exists());
+    // Het proces zelf legt wel vast: het interne transport draagt het token.
+    let c = inloggen(&rt.router, "12345678").await;
+    let (status, body, _) = vraag(
+        &rt.router,
+        "POST",
+        &format!("{INSTANTIE}/api/aanvraag"),
+        Some(&c),
+        Some(volledig()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
 }
 
 // --- Het aanbod toetst alleen wat vooraf vaststaat ---

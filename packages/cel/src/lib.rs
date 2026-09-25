@@ -23,11 +23,15 @@
 pub mod api;
 pub mod besluit;
 pub mod cel;
+pub mod celclient;
 pub mod config;
 pub mod controle;
+pub mod datum;
 pub mod eherkenning;
 pub mod formulier;
+pub mod gram;
 pub mod kroniek;
+pub mod laden;
 pub mod mogelijkheid;
 pub mod origin;
 pub mod proces;

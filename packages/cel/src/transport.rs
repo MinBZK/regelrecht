@@ -7,6 +7,11 @@
 //! transport (RFC-022 par. 4.3): draait de cel in dezelfde runtime, dan gaat
 //! de vraag intern door de router, zonder netwerk; staat er een url, dan over
 //! HTTP. Beide leveren hetzelfde antwoord.
+//!
+//! Vastleggen en op proef reduceren mag alleen een proces van de runtime zelf
+//! (zie [`RuntimeToken`]). Het interne transport stuurt daarom het token van
+//! de runtime mee; een HTTP-transport alleen als het er een meekreeg, en de
+//! runtime geeft het nooit aan een transport naar een andere runtime.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -20,6 +25,54 @@ use http_body_util::BodyExt;
 use serde_json::Value;
 use tower::ServiceExt;
 
+/// De header waarin een proces het runtime-token meestuurt.
+pub const RUNTIME_TOKEN_HEADER: &str = "x-cel-runtime-token";
+
+/// Een geheim dat de runtime bij elke start nieuw maakt, en dat alleen haar
+/// eigen processen kennen: het interne transport stuurt het mee, en een cel
+/// legt alleen vast (of reduceert op proef) op een verzoek dat het draagt.
+/// Lezen vraagt geen token. Dit is geen beveiligingscontext tussen
+/// organisaties (RFC-022 par. 2); het voorkomt alleen dat iedereen die de
+/// poort bereikt een gram in een kroniek kan zetten.
+#[derive(Clone)]
+pub struct RuntimeToken(Arc<str>);
+
+impl RuntimeToken {
+    /// Een nieuw token: 244 willekeurige bits uit twee UUID's (v4).
+    pub fn nieuw() -> Self {
+        Self(
+            format!(
+                "{}{}",
+                uuid::Uuid::new_v4().simple(),
+                uuid::Uuid::new_v4().simple()
+            )
+            .into(),
+        )
+    }
+
+    pub fn als_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Of `aangeboden` dit token is. De vergelijking kijkt naar elke byte,
+    /// ook na het eerste verschil.
+    pub fn klopt(&self, aangeboden: &[u8]) -> bool {
+        let eigen = self.0.as_bytes();
+        eigen.len() == aangeboden.len()
+            && eigen
+                .iter()
+                .zip(aangeboden)
+                .fold(0u8, |v, (a, b)| v | (a ^ b))
+                == 0
+    }
+}
+
+impl std::fmt::Debug for RuntimeToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("RuntimeToken(..)")
+    }
+}
+
 /// Waarom een vraag geen lexostatus opleverde.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TransportFout {
@@ -27,6 +80,9 @@ pub enum TransportFout {
     Onbereikbaar(String),
     /// Wel een antwoord, maar geen lexostatus (een HTTP-foutstatus).
     Antwoord { status: u16, fout: String },
+    /// Een antwoord met een goede status, maar geen JSON of niet de vorm die
+    /// de vrager verwacht; of een verzoek dat niet als JSON te schrijven is.
+    Json(String),
 }
 
 impl std::fmt::Display for TransportFout {
@@ -34,6 +90,7 @@ impl std::fmt::Display for TransportFout {
         match self {
             TransportFout::Onbereikbaar(r) => write!(f, "onbereikbaar: {r}"),
             TransportFout::Antwoord { status, fout } => write!(f, "status {status}: {fout}"),
+            TransportFout::Json(r) => write!(f, "onleesbaar: {r}"),
         }
     }
 }
@@ -70,12 +127,28 @@ pub async fn haal_binnen(
     }
 }
 
-/// Een fout-antwoord `{"fout": "..."}` in woorden.
+/// Een fout-antwoord `{"fout": "..."}` in woorden. Een antwoord zonder die
+/// vorm gaat mee zoals het is (ingekort), met de reden van de status ervoor.
 fn fouttekst(status: StatusCode, body: &[u8]) -> TransportFout {
-    let fout = serde_json::from_slice::<Value>(body)
+    let reden = status.canonical_reason().unwrap_or("fout");
+    let als_fout = serde_json::from_slice::<Value>(body)
         .ok()
-        .and_then(|v| v.get("fout").and_then(Value::as_str).map(str::to_string))
-        .unwrap_or_else(|| status.canonical_reason().unwrap_or("fout").to_string());
+        .and_then(|v| v.get("fout")?.as_str().map(str::to_string));
+    let fout = match als_fout {
+        Some(f) => f,
+        None => {
+            let tekst: String = String::from_utf8_lossy(body)
+                .trim()
+                .chars()
+                .take(200)
+                .collect();
+            if tekst.is_empty() {
+                reden.to_string()
+            } else {
+                format!("{reden}: {tekst}")
+            }
+        }
+    };
     TransportFout::Antwoord {
         status: status.as_u16(),
         fout,
@@ -83,16 +156,17 @@ fn fouttekst(status: StatusCode, body: &[u8]) -> TransportFout {
 }
 
 /// Intern: dezelfde aanroep als de HTTP-route, door de router van de eigen
-/// runtime, zonder netwerk. De router bestaat pas als alle cellen geladen
-/// zijn; tot dan is de bron onbereikbaar.
-#[derive(Clone, Default)]
+/// runtime, zonder netwerk, met het token van de runtime. De router bestaat
+/// pas als alle cellen geladen zijn; tot dan is de bron onbereikbaar.
+#[derive(Clone)]
 pub struct Intern {
     router: Arc<OnceLock<Router>>,
+    token: RuntimeToken,
 }
 
 impl Intern {
-    pub fn new(router: Arc<OnceLock<Router>>) -> Self {
-        Self { router }
+    pub fn new(router: Arc<OnceLock<Router>>, token: RuntimeToken) -> Self {
+        Self { router, token }
     }
 }
 
@@ -104,6 +178,7 @@ impl Transport for Intern {
     fn haal<'a>(&'a self, pad: &'a str) -> Antwoord<'a> {
         Box::pin(async move {
             let req = Request::get(pad)
+                .header(RUNTIME_TOKEN_HEADER, self.token.als_str())
                 .body(Body::empty())
                 .map_err(|e| TransportFout::Onbereikbaar(e.to_string()))?;
             self.vraag(req).await
@@ -114,6 +189,7 @@ impl Transport for Intern {
         Box::pin(async move {
             let req = Request::post(pad)
                 .header(header::CONTENT_TYPE, "application/json")
+                .header(RUNTIME_TOKEN_HEADER, self.token.als_str())
                 .body(Body::from(body.to_string()))
                 .map_err(|e| TransportFout::Onbereikbaar(e.to_string()))?;
             self.vraag(req).await
@@ -142,19 +218,19 @@ impl Intern {
         if !status.is_success() {
             return Err(fouttekst(status, &body));
         }
-        serde_json::from_slice(&body).map_err(|e| TransportFout::Antwoord {
-            status: status.as_u16(),
-            fout: format!("geen JSON: {e}"),
-        })
+        serde_json::from_slice(&body).map_err(|e| TransportFout::Json(format!("geen JSON: {e}")))
     }
 }
 
 /// Over HTTP naar een runtime op `basis` (bijvoorbeeld `http://host:7172`).
 /// Er is geen veiligheidscontext: geen ondertekening en geen autorisatie.
+/// Alleen naar de eigen runtime gaat een runtime-token mee
+/// ([`Http::met_runtime_token`]).
 #[derive(Clone)]
 pub struct Http {
     basis: String,
     client: reqwest::Client,
+    token: Option<RuntimeToken>,
 }
 
 impl Http {
@@ -166,7 +242,15 @@ impl Http {
         Ok(Self {
             basis: basis.trim_end_matches('/').to_string(),
             client,
+            token: None,
         })
+    }
+
+    /// Stuur het runtime-token mee: alleen voor een transport naar de eigen
+    /// runtime, nooit naar die van een ander.
+    pub fn met_runtime_token(mut self, token: RuntimeToken) -> Self {
+        self.token = Some(token);
+        self
     }
 }
 
@@ -201,8 +285,11 @@ impl Http {
     async fn antwoord(
         &self,
         url: &str,
-        verzoek: reqwest::RequestBuilder,
+        mut verzoek: reqwest::RequestBuilder,
     ) -> Result<Value, TransportFout> {
+        if let Some(t) = &self.token {
+            verzoek = verzoek.header(RUNTIME_TOKEN_HEADER, t.als_str());
+        }
         let resp = verzoek
             .send()
             .await
@@ -216,10 +303,49 @@ impl Http {
         if !status.is_success() {
             return Err(fouttekst(status, &body));
         }
-        serde_json::from_slice(&body).map_err(|e| TransportFout::Antwoord {
-            status: status.as_u16(),
-            fout: format!("geen JSON: {e}"),
-        })
+        serde_json::from_slice(&body).map_err(|e| TransportFout::Json(format!("geen JSON: {e}")))
+    }
+}
+
+/// Een transport voor tests: elke vraag krijgt hetzelfde antwoord, en de
+/// vragen worden onthouden.
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+pub(crate) mod proef {
+    use super::*;
+    use std::sync::Mutex;
+
+    pub(crate) struct Vast {
+        antwoord: Result<Value, TransportFout>,
+        vragen: Mutex<Vec<String>>,
+    }
+
+    impl Vast {
+        pub(crate) fn new(antwoord: Result<Value, TransportFout>) -> Self {
+            Self {
+                antwoord,
+                vragen: Mutex::new(Vec::new()),
+            }
+        }
+
+        /// De gevraagde paden, in volgorde.
+        pub(crate) fn vragen(&self) -> Vec<String> {
+            self.vragen.lock().unwrap().clone()
+        }
+    }
+
+    impl Transport for Vast {
+        fn soort(&self) -> &'static str {
+            "intern"
+        }
+        fn haal<'a>(&'a self, pad: &'a str) -> Antwoord<'a> {
+            self.vragen.lock().unwrap().push(pad.to_string());
+            let a = self.antwoord.clone();
+            Box::pin(async move { a })
+        }
+        fn stuur<'a>(&'a self, pad: &'a str, _body: &'a Value) -> Antwoord<'a> {
+            self.haal(pad)
+        }
     }
 }
 
@@ -238,6 +364,7 @@ mod tests {
                 "/fout",
                 get(|| async { (StatusCode::NOT_FOUND, Json(json!({"fout": "weg"}))) }),
             )
+            .route("/geen-json", get(|| async { "geen json" }))
             .route(
                 "/traag",
                 get(|| async {
@@ -250,7 +377,7 @@ mod tests {
     #[tokio::test]
     async fn intern_door_de_router() {
         let lock = Arc::new(OnceLock::new());
-        let t = Intern::new(lock.clone());
+        let t = Intern::new(lock.clone(), RuntimeToken::nieuw());
         assert!(matches!(
             t.haal("/goed").await,
             Err(TransportFout::Onbereikbaar(_))
@@ -277,10 +404,55 @@ mod tests {
             t.haal("/fout").await,
             Err(TransportFout::Antwoord { status: 404, .. })
         ));
+        // Een goede status met een onleesbaar antwoord is geen lege waarde.
+        assert!(matches!(
+            t.haal("/geen-json").await,
+            Err(TransportFout::Json(r)) if r.contains("geen JSON")
+        ));
         let fout = haal_binnen(&t, "/traag", Duration::from_millis(200))
             .await
             .unwrap_err();
         assert!(matches!(fout, TransportFout::Onbereikbaar(r) if r.contains("binnen")));
+    }
+
+    /// Een route die de header met het runtime-token teruggeeft.
+    fn echo() -> Router {
+        Router::new().route(
+            "/token",
+            get(|h: axum::http::HeaderMap| async move {
+                Json(json!(h
+                    .get(RUNTIME_TOKEN_HEADER)
+                    .and_then(|v| v.to_str().ok())))
+            }),
+        )
+    }
+
+    #[tokio::test]
+    async fn het_runtime_token_gaat_alleen_mee_als_het_er_is() {
+        let token = RuntimeToken::nieuw();
+        let lock = Arc::new(OnceLock::new());
+        lock.set(echo()).ok();
+        let intern = Intern::new(lock, token.clone());
+        assert_eq!(intern.haal("/token").await.unwrap(), json!(token.als_str()));
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let adres = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, echo()).await });
+        let url = format!("http://{adres}");
+        let vreemd = Http::new(&url, Duration::from_secs(5)).unwrap();
+        assert_eq!(vreemd.haal("/token").await.unwrap(), Value::Null);
+        let eigen = vreemd.met_runtime_token(token.clone());
+        assert_eq!(eigen.haal("/token").await.unwrap(), json!(token.als_str()));
+    }
+
+    #[test]
+    fn het_token_klopt_alleen_precies() {
+        let t = RuntimeToken::nieuw();
+        assert_eq!(t.als_str().len(), 64);
+        assert!(t.klopt(t.als_str().as_bytes()));
+        assert!(!t.klopt(&t.als_str().as_bytes()[..63]));
+        assert!(!t.klopt(RuntimeToken::nieuw().als_str().as_bytes()));
+        assert!(!format!("{t:?}").contains(t.als_str()));
     }
 
     #[tokio::test]

@@ -16,7 +16,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::config::SyntheseBron;
+use crate::config::{RijBron, SyntheseBron};
 use crate::proces::Proces;
 use crate::reductie::Lexostatus;
 use crate::regelingen;
@@ -25,11 +25,53 @@ use crate::transport::{haal_binnen, Transport, TransportFout};
 /// Hoe lang een bron mag doen over een antwoord.
 pub const TIJDSLIMIET: Duration = Duration::from_secs(3);
 
-/// Een synthese-bron met het transport dat de runtime ervoor koos.
+/// Een bron met het transport dat de runtime ervoor koos: een
+/// synthese-bron ([`SyntheseBron`]) of een bron die per regel wordt bevraagd
+/// ([`RijBron`], zie [`crate::rijen`]).
 #[derive(Clone)]
-pub struct Bron {
-    pub definitie: SyntheseBron,
+pub struct Bron<D = SyntheseBron> {
+    pub definitie: D,
     pub transport: Arc<dyn Transport>,
+}
+
+/// Welke lexostatus van welke cel een bron is.
+pub trait Bronverwijzing {
+    fn cel(&self) -> &str;
+    fn lexostatus(&self) -> &str;
+}
+
+impl Bronverwijzing for SyntheseBron {
+    fn cel(&self) -> &str {
+        &self.cel
+    }
+    fn lexostatus(&self) -> &str {
+        &self.lexostatus
+    }
+}
+
+impl Bronverwijzing for RijBron {
+    fn cel(&self) -> &str {
+        &self.cel
+    }
+    fn lexostatus(&self) -> &str {
+        &self.lexostatus
+    }
+}
+
+impl<D: Bronverwijzing> Bron<D> {
+    /// Vraag de lexostatus van de bron met deze invoer, binnen de
+    /// tijdslimiet. Een antwoord dat geen lexostatus is, is een fout en geen
+    /// lege lexostatus.
+    pub async fn vraag(&self, invoer: &Map<String, Value>) -> Result<Lexostatus, TransportFout> {
+        let d = &self.definitie;
+        let v = haal_binnen(
+            self.transport.as_ref(),
+            &pad(d.cel(), d.lexostatus(), invoer),
+            TIJDSLIMIET,
+        )
+        .await?;
+        serde_json::from_value(v).map_err(|e| TransportFout::Json(format!("geen lexostatus: {e}")))
+    }
 }
 
 /// Waar een parameter vandaan kwam.
@@ -151,14 +193,13 @@ fn invoer(
     let mut uit = Map::new();
     for (naam, v) in &bron.invoer {
         let waarde = if v.lexostatus == eigen.naam {
-            eigen
-                .parameters
-                .get(&v.veld)
-                .or_else(|| eigen.extra_velden.get(&v.veld))
+            eigen.veld(&v.veld)
         } else {
-            eerder.get(&v.lexostatus).and_then(|m| m.get(&v.veld))
-        }
-        .filter(|w| !w.is_null());
+            eerder
+                .get(&v.lexostatus)
+                .and_then(|m| m.get(&v.veld))
+                .filter(|w| !w.is_null())
+        };
         match waarde {
             Some(w) => {
                 uit.insert(naam.clone(), w.clone());
@@ -247,34 +288,24 @@ async fn vraag(
                 return (uitslag, None);
             }
         };
-        uitslag.invoer = invoer.clone();
-        let antwoord = haal_binnen(
-            bron.transport.as_ref(),
-            &pad(&d.cel, &d.lexostatus, &invoer),
-            TIJDSLIMIET,
-        )
-        .await;
+        let antwoord = bron.vraag(&invoer).await;
+        uitslag.invoer = invoer;
         match antwoord {
-            Ok(v) => {
+            Ok(l) => {
                 uitslag.status = Status::Bevraagd;
-                if let Some(extra) = v.get("extra_velden").and_then(Value::as_object) {
-                    for veld in &d.extra_velden {
-                        if let Some(w) = extra.get(veld) {
-                            uitslag.extra_velden.insert(veld.clone(), w.clone());
-                        }
+                for veld in &d.extra_velden {
+                    if let Some(w) = l.extra_velden.get(veld) {
+                        uitslag.extra_velden.insert(veld.clone(), w.clone());
                     }
                 }
-                (
-                    uitslag,
-                    v.get("parameters").and_then(Value::as_object).cloned(),
-                )
+                (uitslag, Some(l.parameters))
             }
             Err(TransportFout::Onbereikbaar(r)) => {
                 uitslag.status = Status::Onbereikbaar;
                 uitslag.fout = Some(r);
                 (uitslag, None)
             }
-            Err(f @ TransportFout::Antwoord { .. }) => {
+            Err(f @ (TransportFout::Antwoord { .. } | TransportFout::Json(_))) => {
                 uitslag.status = Status::Fout;
                 uitslag.fout = Some(f.to_string());
                 (uitslag, None)
@@ -614,35 +645,11 @@ pub async fn waarschuwingen(proces: &str, bronnen: &[Bron]) -> Vec<String> {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use crate::transport::Antwoord;
+    use crate::transport::proef::Vast;
     use serde_json::json;
-    use std::sync::Mutex;
-
-    /// Een transport dat een vast antwoord geeft en de vragen onthoudt.
-    struct Vast {
-        antwoord: Result<Value, TransportFout>,
-        vragen: Mutex<Vec<String>>,
-    }
-
-    impl Transport for Vast {
-        fn soort(&self) -> &'static str {
-            "intern"
-        }
-        fn haal<'a>(&'a self, pad: &'a str) -> Antwoord<'a> {
-            self.vragen.lock().unwrap().push(pad.to_string());
-            let a = self.antwoord.clone();
-            Box::pin(async move { a })
-        }
-        fn stuur<'a>(&'a self, pad: &'a str, _body: &'a Value) -> Antwoord<'a> {
-            self.haal(pad)
-        }
-    }
 
     fn bron(antwoord: Result<Value, TransportFout>) -> (Bron, Arc<Vast>) {
-        let t = Arc::new(Vast {
-            antwoord,
-            vragen: Mutex::new(Vec::new()),
-        });
+        let t = Arc::new(Vast::new(antwoord));
         let definitie: SyntheseBron = serde_json::from_value(json!({
             "cel": "register", "lexostatus": "status",
             "invoer": {"aanduiding": {"lexostatus": "eigen", "veld": "aanduiding"}},
@@ -668,10 +675,7 @@ mod tests {
     }
 
     fn vaste(antwoord: Value) -> Arc<Vast> {
-        Arc::new(Vast {
-            antwoord: Ok(antwoord),
-            vragen: Mutex::new(Vec::new()),
-        })
+        Arc::new(Vast::new(Ok(antwoord)))
     }
 
     /// Een bron geeft een extra veld door aan een latere bron: eerst een
@@ -679,8 +683,8 @@ mod tests {
     /// is geen parameter.
     #[tokio::test]
     async fn een_extra_veld_gaat_naar_de_volgende_bron() {
-        let t1 = vaste(json!({"parameters": {}, "extra_velden": {"naam": "EEN"}}));
-        let t2 = vaste(json!({"parameters": {"aantal": 3}}));
+        let t1 = vaste(json!({"naam": "bron", "parameters": {}, "extra_velden": {"naam": "EEN"}}));
+        let t2 = vaste(json!({"naam": "bron", "parameters": {"aantal": 3}}));
         let b1 = Bron {
             definitie: serde_json::from_value(json!({
                 "cel": "register", "lexostatus": "op_nummer",
@@ -707,7 +711,7 @@ mod tests {
         // dat de doorgevende bron eerder in de lijst staat.
         let s = voeg_samen(&eigen, &[b1, b2]).await;
         assert_eq!(
-            t2.vragen.lock().unwrap()[0],
+            t2.vragen()[0],
             "/cellen/register/api/lexostatus/op_naam?naam=EEN"
         );
         assert_eq!(s.parameters.get("aantal"), Some(&json!(3)));
@@ -719,8 +723,8 @@ mod tests {
     /// en er wordt niets aangevuld.
     #[tokio::test]
     async fn zonder_doorgegeven_veld_geen_vraag() {
-        let t1 = vaste(json!({"parameters": {}}));
-        let t2 = vaste(json!({"parameters": {"aantal": 3}}));
+        let t1 = vaste(json!({"naam": "bron", "parameters": {}}));
+        let t2 = vaste(json!({"naam": "bron", "parameters": {"aantal": 3}}));
         let b1 = Bron {
             definitie: serde_json::from_value(json!({
                 "cel": "register", "lexostatus": "op_nummer",
@@ -744,7 +748,7 @@ mod tests {
         }))
         .unwrap();
         let s = voeg_samen(&eigen, &[b1, b2]).await;
-        assert!(t2.vragen.lock().unwrap().is_empty());
+        assert!(t2.vragen().is_empty());
         assert!(!s.parameters.contains_key("aantal"));
         assert_eq!(s.bronnen[1].status, Status::NietBevraagd);
     }
@@ -752,11 +756,11 @@ mod tests {
     #[tokio::test]
     async fn samenvoegen_met_herkomst() {
         let (b, t) = bron(Ok(
-            json!({"parameters": {"ingeschreven": true, "zetels": 6, "anders": 1}}),
+            json!({"naam": "bron", "parameters": {"ingeschreven": true, "zetels": 6, "anders": 1}}),
         ));
         let s = voeg_samen(&eigen(Some("EEN & ANDER")), &[b]).await;
         assert_eq!(
-            t.vragen.lock().unwrap()[0],
+            t.vragen()[0],
             "/cellen/register/api/lexostatus/status?aanduiding=EEN+%26+ANDER"
         );
         assert_eq!(s.parameters["zetels"], json!(6));
@@ -795,16 +799,18 @@ mod tests {
 
     #[tokio::test]
     async fn ontbrekende_invoer_vraagt_de_bron_niet() {
-        let (b, t) = bron(Ok(json!({"parameters": {}})));
+        let (b, t) = bron(Ok(json!({"naam": "bron", "parameters": {}})));
         let s = voeg_samen(&eigen(None), &[b]).await;
-        assert!(t.vragen.lock().unwrap().is_empty());
+        assert!(t.vragen().is_empty());
         assert_eq!(s.bronnen[0].status, Status::NietBevraagd);
         assert!(s.reden().unwrap().contains("invoer 'aanduiding' ontbreekt"));
     }
 
     #[tokio::test]
     async fn niet_geleverde_parameter_wordt_genoemd() {
-        let (b, _) = bron(Ok(json!({"parameters": {"ingeschreven": false}})));
+        let (b, _) = bron(Ok(
+            json!({"naam": "bron", "parameters": {"ingeschreven": false}}),
+        ));
         let s = voeg_samen(&eigen(Some("X")), &[b]).await;
         assert_eq!(s.bronnen[0].niet_geleverd, ["zetels"]);
         assert!(!s.parameters.contains_key("zetels"));

@@ -14,6 +14,7 @@ use serde::Serialize;
 use serde_json::Value;
 use serde_yaml_ng::Value as Y;
 
+use crate::laden;
 use crate::stroom::{Event, Vorm};
 
 /// Een scherm uit een formulierbestand.
@@ -93,8 +94,7 @@ pub fn parse(tekst_: &str, scherm: &str, bron: &str) -> Result<Formulier, String
 
 /// Laad een scherm uit een formulierbestand.
 pub fn laad(pad: &Path, scherm: &str) -> Result<Formulier, String> {
-    let bron = pad.display().to_string();
-    let t = std::fs::read_to_string(pad).map_err(|e| format!("{bron}: {e}"))?;
+    let (t, bron) = laden::lees(pad)?;
     parse(&t, scherm, &bron)
 }
 
@@ -102,9 +102,9 @@ pub fn laad(pad: &Path, scherm: &str) -> Result<Formulier, String> {
 /// het formulier, daarna wat het formulier niet kent in de volgorde van de
 /// stroom. Voor een tabelveld geldt hetzelfde per kolom: de kolommen van
 /// de stroom, met label en volgorde uit het formulier.
-pub fn velden(event: &Event, formulier: Option<&Formulier>) -> Vec<Veld> {
+pub fn velden(event: &Event, formulier: Option<&Formulier>) -> Result<Vec<Veld>, String> {
     let sleutels = event.external_sleutels();
-    let vorm = event.external_vorm().unwrap_or_default();
+    let vorm = event.external_vorm().map_err(|f| f.join("; "))?;
     let mut uit: Vec<Veld> = formulier
         .map(|f| {
             f.velden
@@ -140,7 +140,7 @@ pub fn velden(event: &Event, formulier: Option<&Formulier>) -> Vec<Veld> {
             veld.kolommen = None;
         }
     }
-    uit
+    Ok(uit)
 }
 
 /// De kolommen van een tabelveld: de kolommen van het formulier die de
@@ -182,7 +182,7 @@ mod tests {
     fn volgorde_en_labels_uit_het_formulier() {
         let s = stroom::parse(STROOM, "fixture").unwrap();
         let f = parse(FORMULIER, "aanvraag", "fixture").unwrap();
-        let v = velden(&s.events[0], Some(&f));
+        let v = velden(&s.events[0], Some(&f)).unwrap();
         let namen: Vec<&str> = v.iter().map(|v| v.naam.as_str()).collect();
         // `telefoon` kent de stroom niet; `rekeningnummer` kent het formulier niet.
         assert_eq!(
@@ -232,7 +232,7 @@ mod tests {
             "fixture",
         )
         .unwrap();
-        let v = velden(&s.events[0], Some(&f));
+        let v = velden(&s.events[0], Some(&f)).unwrap();
         let veld = |naam: &str| v.iter().find(|v| v.naam == naam).unwrap();
         assert_eq!(veld("organen").soort.as_deref(), Some("tabel"));
         assert!(veld("organen").kolommen.is_some());
@@ -243,7 +243,7 @@ mod tests {
     #[test]
     fn tabelkolommen_zonder_formulier() {
         let s = stroom::parse(STROOM, "fixture").unwrap();
-        let v = velden(&s.events[0], None);
+        let v = velden(&s.events[0], None).unwrap();
         let organen = v.iter().find(|v| v.naam == "organen").unwrap();
         assert_eq!(organen.soort.as_deref(), Some("tabel"));
         assert_eq!(
@@ -255,7 +255,7 @@ mod tests {
     #[test]
     fn zonder_formulier_de_veldnaam() {
         let s = stroom::parse(STROOM, "fixture").unwrap();
-        let v = velden(&s.events[0], None);
+        let v = velden(&s.events[0], None).unwrap();
         assert_eq!(v[0].naam, "naam");
         assert_eq!(v[0].label, "naam");
     }

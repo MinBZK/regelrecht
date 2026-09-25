@@ -25,7 +25,7 @@ use crate::kroniek::Kroniek;
 use crate::proces::{met_proces, Proces};
 use crate::sessie::Sessies;
 use crate::synthese::{self, Bron, TIJDSLIMIET};
-use crate::transport::{Http, Intern, Transport};
+use crate::transport::{Http, Intern, RuntimeToken, Transport};
 use crate::{besluit, regelingen, rijen};
 
 /// Een geladen runtime: de cellen, de processen en de router over allemaal.
@@ -33,6 +33,9 @@ pub struct Runtime {
     pub cellen: Vec<CelState>,
     pub processen: Vec<ProcesState>,
     pub router: Router,
+    /// Het token waarmee de processen van deze runtime vastleggen; bij elke
+    /// start nieuw (zie [`RuntimeToken`]).
+    pub runtime_token: RuntimeToken,
 }
 
 impl Runtime {
@@ -98,6 +101,7 @@ impl Runtime {
             return Err(fouten);
         }
 
+        let runtime_token = RuntimeToken::nieuw();
         let mut celstaten = Vec::new();
         for cel in cellen {
             let kroniek =
@@ -106,11 +110,12 @@ impl Runtime {
                 cel,
                 kroniek: Arc::new(kroniek),
                 klok: klok.clone(),
+                runtime_token: runtime_token.clone(),
             });
         }
 
         let slot: Arc<OnceLock<Router>> = Arc::new(OnceLock::new());
-        let intern: Arc<dyn Transport> = Arc::new(Intern::new(slot.clone()));
+        let intern: Arc<dyn Transport> = Arc::new(Intern::new(slot.clone(), runtime_token.clone()));
         let mut processtaten = Vec::new();
         for proces in processen {
             let id = proces.id().to_string();
@@ -167,6 +172,7 @@ impl Runtime {
             cellen: celstaten,
             processen: processtaten,
             router,
+            runtime_token,
         })
     }
 
@@ -198,18 +204,8 @@ impl Runtime {
 /// Open de kroniek van een cel. Is elke kroniek van de cel leeg, dan komt de
 /// startstand erin.
 fn open_kroniek(data_dir: &Path, cel: &Cel) -> Result<Kroniek, String> {
-    let kroniek = Kroniek::open(&data_dir.join(cel.id()))?;
-    if cel.startstand.is_empty() {
-        return Ok(kroniek);
-    }
-    let mut leeg = true;
-    for k in cel.kronieken() {
-        leeg &= kroniek.lees(k)?.is_empty();
-    }
-    if leeg {
-        for gram in &cel.startstand {
-            kroniek.voeg_toe(gram)?;
-        }
+    let kroniek = Kroniek::open(&data_dir.join(cel.id()), &cel.kronieken())?;
+    if !cel.startstand.is_empty() && kroniek.zet_startstand(&cel.kronieken(), &cel.startstand)? {
         tracing::info!(cel = %cel.id(), grammen = cel.startstand.len(), "startstand in lege kroniek gezet");
     }
     Ok(kroniek)

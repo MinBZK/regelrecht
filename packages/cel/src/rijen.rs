@@ -7,7 +7,8 @@
 //! in `proces.yaml` staat welk tabelveld de regels levert, welke kolom onder welke
 //! naam meegaat, en welke bron per regel met welke invoer wordt bevraagd.
 //!
-//! Per regel gaat het proces langs de bronnen, in volgorde. De invoer van een
+//! De regels worden tegelijk bevraagd, in de volgorde van het tabelveld
+//! teruggegeven. Per regel gaat het proces langs de bronnen, in volgorde. De invoer van een
 //! bron komt uit de regel zelf (`kolom`), uit een lexostatus van de zaak
 //! (`lexostatus` en `veld`) of uit de samengevoegde parameters
 //! (`parameter`); een bron die eerder aan de beurt was kan dus een kolom
@@ -20,24 +21,22 @@
 //! de engine.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::Arc;
+
+use futures_util::stream::{self, StreamExt};
 
 use serde::Serialize;
 use serde_json::{Map, Value};
 
 use crate::cel::Cel;
 use crate::config::{Omzetting, ProcesDefinitie, RijBron, RijInvoer, RijenDefinitie};
+use crate::datum;
 use crate::reductie::Lexostatus;
-use crate::synthese::{Herkomst, Samenvoeging, Status, TIJDSLIMIET};
-use crate::transport::{haal_binnen, Transport, TransportFout};
+use crate::synthese::{Herkomst, Samenvoeging, Status};
+use crate::transport::TransportFout;
 
 /// Een bron die per regel wordt bevraagd, met het transport dat de runtime
 /// ervoor koos.
-#[derive(Clone)]
-pub struct Bron {
-    pub definitie: RijBron,
-    pub transport: Arc<dyn Transport>,
-}
+pub type Bron = crate::synthese::Bron<RijBron>;
 
 /// Een rijen-definitie met haar bronnen.
 #[derive(Clone)]
@@ -64,6 +63,11 @@ pub struct BronUitslag {
 #[derive(Debug, Clone, Serialize)]
 pub struct Uitslag {
     pub parameter: String,
+    /// Waarom de tabel niet is opgebouwd: het tabelveld is geen lijst van
+    /// regels. Dan gaat de parameter niet naar de engine; een regel
+    /// weglaten zou de uitkomst stil veranderen.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fout: Option<String>,
     /// De regels, elk met de kolommen die een bron leverde.
     pub regels: Vec<Value>,
     pub bronnen: Vec<BronUitslag>,
@@ -79,11 +83,7 @@ fn uit_lexostatus<'l>(
     naam: &str,
     veld: &str,
 ) -> Option<&'l Value> {
-    let l = lexostatussen.iter().find(|l| l.naam == naam)?;
-    l.parameters
-        .get(veld)
-        .or_else(|| l.extra_velden.get(veld))
-        .filter(|w| !w.is_null())
+    lexostatussen.iter().find(|l| l.naam == naam)?.veld(veld)
 }
 
 /// Zet een waarde om voor ze als invoer meegaat.
@@ -91,7 +91,7 @@ fn zet_om(waarde: &Value, omzetting: Omzetting) -> Option<Value> {
     match omzetting {
         Omzetting::EersteDagVanHetJaar => {
             let jaar = waarde.as_i64().or_else(|| waarde.as_str()?.parse().ok())?;
-            Some(Value::String(format!("{jaar:04}-01-01")))
+            Some(Value::String(datum::eerste_dag_van_het_jaar(jaar)))
         }
     }
 }
@@ -154,6 +154,85 @@ fn slechtste(a: Status, b: Status) -> Status {
     }
 }
 
+/// Hoeveel regels tegelijk hun bronnen bevragen.
+const GELIJKTIJDIG: usize = 16;
+
+/// Hoe het bevragen van een bron bij een regel verliep.
+enum Bevraging {
+    Bevraagd,
+    /// Niet gevraagd: een invoer ontbrak.
+    NietBevraagd(String),
+    /// Gevraagd, zonder lexostatus.
+    Mislukt(Status, String),
+}
+
+/// Wat een regel opleverde: de regel, de kolommen die ontbreken, en per bron
+/// (in de volgorde van de definitie) hoe het bevragen verliep.
+struct Regeluitslag {
+    regel: Map<String, Value>,
+    mist: BTreeSet<String>,
+    bronnen: Vec<Bevraging>,
+}
+
+/// Stel een regel samen: de kolommen uit de tabel, en daarna die van elke
+/// bron, na elkaar.
+async fn stel_regel_samen(
+    rijen: &Rijen,
+    bron: &Map<String, Value>,
+    lexostatussen: &[Lexostatus],
+    parameters: &BTreeMap<String, Value>,
+) -> Regeluitslag {
+    let mut uit = Regeluitslag {
+        regel: Map::new(),
+        mist: BTreeSet::new(),
+        bronnen: Vec::new(),
+    };
+    for (kolom, naam) in &rijen.definitie.kolommen {
+        if let Some(w) = bron.get(kolom) {
+            uit.regel.insert(naam.clone(), w.clone());
+        } else {
+            uit.mist.insert(naam.clone());
+        }
+    }
+    for b in &rijen.bronnen {
+        let invoer = match invoer(&b.definitie, &uit.regel, lexostatussen, parameters) {
+            Ok(i) => i,
+            Err(f) => {
+                uit.bronnen.push(Bevraging::NietBevraagd(f));
+                uit.mist.extend(b.definitie.kolommen.values().cloned());
+                continue;
+            }
+        };
+        let geleverd = match b.vraag(&invoer).await {
+            Ok(l) => {
+                uit.bronnen.push(Bevraging::Bevraagd);
+                let mut samen = l.parameters;
+                samen.extend(l.extra_velden);
+                samen
+            }
+            Err(f) => {
+                let status = match f {
+                    TransportFout::Onbereikbaar(_) => Status::Onbereikbaar,
+                    TransportFout::Antwoord { .. } | TransportFout::Json(_) => Status::Fout,
+                };
+                uit.bronnen.push(Bevraging::Mislukt(status, f.to_string()));
+                BTreeMap::new()
+            }
+        };
+        for (van, naar) in &b.definitie.kolommen {
+            match geleverd.get(van).filter(|w| !w.is_null()) {
+                Some(w) => {
+                    uit.regel.insert(naar.clone(), w.clone());
+                }
+                None => {
+                    uit.mist.insert(naar.clone());
+                }
+            }
+        }
+    }
+    uit
+}
+
 /// Bouw de array-parameter op. Voor elke regel van het tabelveld gaan de
 /// kolommen uit de configuratie mee, en daarna de kolommen die de bronnen
 /// per regel leveren. Ontbreekt er iets, dan blijft die kolom weg.
@@ -163,9 +242,34 @@ pub async fn stel_samen(
     parameters: &BTreeMap<String, Value>,
 ) -> Option<Uitslag> {
     let d = &rijen.definitie;
-    let tabel = uit_lexostatus(lexostatussen, &d.tabel.lexostatus, &d.tabel.veld)?
-        .as_array()?
-        .clone();
+    let waar = format!(
+        "lexostatus '{}', veld '{}'",
+        d.tabel.lexostatus, d.tabel.veld
+    );
+    let niet_op_te_bouwen = |fout: String| Uitslag {
+        parameter: d.parameter.clone(),
+        fout: Some(fout),
+        regels: Vec::new(),
+        bronnen: Vec::new(),
+        mist: Vec::new(),
+    };
+    let tabel = uit_lexostatus(lexostatussen, &d.tabel.lexostatus, &d.tabel.veld)?;
+    let Some(tabel) = tabel.as_array() else {
+        return Some(niet_op_te_bouwen(format!(
+            "{waar} is geen lijst van regels"
+        )));
+    };
+    let mut rijregels = Vec::new();
+    for (i, r) in tabel.iter().enumerate() {
+        match r.as_object() {
+            Some(r) => rijregels.push(r),
+            None => {
+                return Some(niet_op_te_bouwen(format!(
+                    "{waar}: regel {i} is geen object met kolommen"
+                )))
+            }
+        }
+    }
 
     let mut uitslagen: Vec<BronUitslag> = rijen
         .bronnen
@@ -182,70 +286,37 @@ pub async fn stel_samen(
     let mut regels = Vec::new();
     let mut mist: BTreeSet<String> = BTreeSet::new();
 
-    for bron in &tabel {
-        let Some(bron) = bron.as_object() else {
-            continue;
-        };
-        let mut regel = Map::new();
-        for (kolom, naam) in &d.kolommen {
-            if let Some(w) = bron.get(kolom) {
-                regel.insert(naam.clone(), w.clone());
-            } else {
-                mist.insert(naam.clone());
-            }
-        }
-        for (i, b) in rijen.bronnen.iter().enumerate() {
-            let uitslag = &mut uitslagen[i];
-            let invoer = match invoer(&b.definitie, &regel, lexostatussen, parameters) {
-                Ok(i) => i,
-                Err(f) => {
+    // De regels tegelijk (hooguit GELIJKTIJDIG), in de volgorde van de
+    // tabel; binnen een regel de bronnen na elkaar, want een bron kan een
+    // kolom van een eerdere als invoer nemen.
+    // Eerst de futures in een lijst: een stream over een closure met
+    // verwijzingen maakt de future van een route niet Send.
+    let mut vragen = Vec::with_capacity(rijregels.len());
+    for r in rijregels {
+        vragen.push(stel_regel_samen(rijen, r, lexostatussen, parameters));
+    }
+    let per_regel: Vec<Regeluitslag> = stream::iter(vragen).buffered(GELIJKTIJDIG).collect().await;
+    for r in per_regel {
+        for (uitslag, bevraging) in uitslagen.iter_mut().zip(r.bronnen) {
+            match bevraging {
+                Bevraging::Bevraagd => uitslag.bevraagd += 1,
+                Bevraging::NietBevraagd(f) => {
                     uitslag.status = slechtste(uitslag.status, Status::NietBevraagd);
                     uitslag.fout.get_or_insert(f);
-                    mist.extend(b.definitie.kolommen.values().cloned());
-                    continue;
                 }
-            };
-            uitslag.bevraagd += 1;
-            let pad = crate::synthese::pad(&b.definitie.cel, &b.definitie.lexostatus, &invoer);
-            let geleverd = match haal_binnen(b.transport.as_ref(), &pad, TIJDSLIMIET).await {
-                Ok(v) => {
-                    let lees = |sleutel: &str| {
-                        v.get(sleutel)
-                            .and_then(Value::as_object)
-                            .cloned()
-                            .unwrap_or_default()
-                    };
-                    let mut samen = lees("parameters");
-                    samen.extend(lees("extra_velden"));
-                    samen
-                }
-                Err(f) => {
-                    uitslag.status = slechtste(
-                        uitslag.status,
-                        match f {
-                            TransportFout::Onbereikbaar(_) => Status::Onbereikbaar,
-                            TransportFout::Antwoord { .. } => Status::Fout,
-                        },
-                    );
-                    uitslag.fout.get_or_insert_with(|| f.to_string());
-                    Map::new()
-                }
-            };
-            for (van, naar) in &b.definitie.kolommen {
-                match geleverd.get(van).filter(|w| !w.is_null()) {
-                    Some(w) => {
-                        regel.insert(naar.clone(), w.clone());
-                    }
-                    None => {
-                        mist.insert(naar.clone());
-                    }
+                Bevraging::Mislukt(status, f) => {
+                    uitslag.bevraagd += 1;
+                    uitslag.status = slechtste(uitslag.status, status);
+                    uitslag.fout.get_or_insert(f);
                 }
             }
         }
-        regels.push(Value::Object(regel));
+        mist.extend(r.mist);
+        regels.push(Value::Object(r.regel));
     }
     Some(Uitslag {
         parameter: d.parameter.clone(),
+        fout: None,
         regels,
         bronnen: uitslagen,
         mist: mist.into_iter().collect(),
@@ -266,17 +337,12 @@ pub async fn pas_toe(
     let mut met_bronnen = eigen.to_vec();
     for u in samen.bronnen.iter().filter(|u| !u.extra_velden.is_empty()) {
         met_bronnen.push(Lexostatus {
-            naam: u.lexostatus.clone(),
-            zaakkenmerk: None,
-            op_moment: None,
-            parameters: BTreeMap::new(),
             extra_velden: u
                 .extra_velden
                 .iter()
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect(),
-            niet_afgeleid: Vec::new(),
-            lijst: None,
+            ..Lexostatus::leeg(&u.lexostatus)
         });
     }
     let mut uitslagen = Vec::new();
@@ -284,6 +350,10 @@ pub async fn pas_toe(
         let Some(uitslag) = stel_samen(r, &met_bronnen, &samen.parameters).await else {
             continue;
         };
+        if uitslag.fout.is_some() {
+            uitslagen.push(uitslag);
+            continue;
+        }
         samen.parameters.insert(
             uitslag.parameter.clone(),
             Value::Array(uitslag.regels.clone()),
@@ -396,30 +466,9 @@ pub fn controleer(
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use crate::transport::Antwoord;
+    use crate::transport::proef::Vast;
     use serde_json::json;
-    use std::sync::Mutex;
-
-    /// Een transport dat per vraag een vast antwoord geeft en de vragen
-    /// onthoudt.
-    struct Vast {
-        antwoord: Result<Value, TransportFout>,
-        vragen: Mutex<Vec<String>>,
-    }
-
-    impl Transport for Vast {
-        fn soort(&self) -> &'static str {
-            "intern"
-        }
-        fn haal<'a>(&'a self, pad: &'a str) -> Antwoord<'a> {
-            self.vragen.lock().unwrap().push(pad.to_string());
-            let a = self.antwoord.clone();
-            Box::pin(async move { a })
-        }
-        fn stuur<'a>(&'a self, pad: &'a str, _body: &'a Value) -> Antwoord<'a> {
-            self.haal(pad)
-        }
-    }
+    use std::sync::Arc;
 
     fn eigen() -> Vec<Lexostatus> {
         vec![serde_json::from_value(json!({
@@ -446,10 +495,7 @@ mod tests {
     }
 
     fn bron(antwoord: Result<Value, TransportFout>, invoer: Value) -> (Bron, Arc<Vast>) {
-        let t = Arc::new(Vast {
-            antwoord,
-            vragen: Mutex::new(Vec::new()),
-        });
+        let t = Arc::new(Vast::new(antwoord));
         let definitie: RijBron = serde_json::from_value(json!({
             "cel": "register",
             "lexostatus": "per_gebied",
@@ -469,7 +515,7 @@ mod tests {
     #[tokio::test]
     async fn elke_regel_krijgt_haar_kolommen() {
         let (b, t) = bron(
-            Ok(json!({"extra_velden": {"bedrag": 5}})),
+            Ok(json!({"naam": "per_gebied", "parameters": {}, "extra_velden": {"bedrag": 5}})),
             json!({"gebied": {"kolom": "gebiedscode"}}),
         );
         let rijen = Rijen {
@@ -480,7 +526,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(
-            t.vragen.lock().unwrap().as_slice(),
+            t.vragen().as_slice(),
             [
                 "/cellen/register/api/lexostatus/per_gebied?gebied=A",
                 "/cellen/register/api/lexostatus/per_gebied?gebied=B"
@@ -517,7 +563,7 @@ mod tests {
     #[tokio::test]
     async fn invoer_uit_een_parameter_met_omzetting() {
         let (b, t) = bron(
-            Ok(json!({"parameters": {"bedrag": 7}})),
+            Ok(json!({"naam": "per_gebied", "parameters": {"bedrag": 7}})),
             json!({
                 "gebied": {"kolom": "gebiedscode"},
                 "peildatum": {"parameter": "jaar", "als": "eerste_dag_van_het_jaar"},
@@ -532,7 +578,7 @@ mod tests {
         parameters.insert("jaar".to_string(), json!(2026));
         let u = stel_samen(&rijen, &eigen(), &parameters).await.unwrap();
         assert_eq!(
-            t.vragen.lock().unwrap()[0],
+            t.vragen()[0],
             "/cellen/register/api/lexostatus/per_gebied?gebied=A&naam=EEN+LIJST&peildatum=2026-01-01"
         );
         assert_eq!(u.regels[0]["tarief"], json!(7));
@@ -541,7 +587,7 @@ mod tests {
     #[tokio::test]
     async fn zonder_invoer_wordt_de_bron_niet_bevraagd() {
         let (b, t) = bron(
-            Ok(json!({"parameters": {"bedrag": 7}})),
+            Ok(json!({"naam": "per_gebied", "parameters": {"bedrag": 7}})),
             json!({"peildatum": {"parameter": "ontbreekt"}}),
         );
         let rijen = Rijen {
@@ -551,7 +597,7 @@ mod tests {
         let u = stel_samen(&rijen, &eigen(), &BTreeMap::new())
             .await
             .unwrap();
-        assert!(t.vragen.lock().unwrap().is_empty());
+        assert!(t.vragen().is_empty());
         assert_eq!(u.bronnen[0].status, Status::NietBevraagd);
         assert!(u.bronnen[0]
             .fout
@@ -559,6 +605,97 @@ mod tests {
             .unwrap()
             .contains("invoer 'peildatum' ontbreekt"));
         assert_eq!(u.mist, ["tarief"]);
+    }
+
+    #[tokio::test]
+    async fn een_regel_die_geen_object_is_bouwt_geen_tabel_op() {
+        let mut l = eigen();
+        l[0].extra_velden.insert(
+            "organen".into(),
+            json!([{"orgaan": "raad", "gebied": "A", "zetels": 1}, "raad B"]),
+        );
+        let rijen = Rijen {
+            definitie: definitie(),
+            bronnen: Vec::new(),
+        };
+        let u = stel_samen(&rijen, &l, &BTreeMap::new()).await.unwrap();
+        assert!(u.regels.is_empty());
+        assert!(
+            u.fout
+                .as_deref()
+                .unwrap()
+                .contains("regel 1 is geen object"),
+            "{u:?}"
+        );
+        // Dan gaat de parameter niet naar de engine.
+        let mut samen = Samenvoeging {
+            parameters: BTreeMap::new(),
+            herkomst: BTreeMap::new(),
+            bronnen: Vec::new(),
+        };
+        let uit = pas_toe(std::slice::from_ref(&rijen), &l, &mut samen).await;
+        assert!(uit[0].fout.is_some());
+        assert!(!samen.parameters.contains_key("tabel"));
+    }
+
+    /// Een bron die even wacht, telt hoeveel vragen er tegelijk lopen, en
+    /// het gebied uit de vraag als bedrag teruggeeft.
+    struct Traag {
+        bezig: std::sync::atomic::AtomicUsize,
+        hoogste: std::sync::atomic::AtomicUsize,
+    }
+
+    impl crate::transport::Transport for Traag {
+        fn soort(&self) -> &'static str {
+            "intern"
+        }
+        fn haal<'a>(&'a self, pad: &'a str) -> crate::transport::Antwoord<'a> {
+            use std::sync::atomic::Ordering::SeqCst;
+            Box::pin(async move {
+                let nu = self.bezig.fetch_add(1, SeqCst) + 1;
+                self.hoogste.fetch_max(nu, SeqCst);
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                self.bezig.fetch_sub(1, SeqCst);
+                let gebied = pad.rsplit_once("gebied=").unwrap().1.to_string();
+                Ok(
+                    json!({"naam": "per_gebied", "parameters": {}, "extra_velden": {"bedrag": gebied}}),
+                )
+            })
+        }
+        fn stuur<'a>(&'a self, pad: &'a str, _body: &'a Value) -> crate::transport::Antwoord<'a> {
+            self.haal(pad)
+        }
+    }
+
+    #[tokio::test]
+    async fn de_regels_worden_tegelijk_bevraagd_in_hun_eigen_volgorde() {
+        let organen: Vec<Value> = (0..8)
+            .map(|i| json!({"orgaan": "raad", "gebied": format!("G{i}"), "zetels": i}))
+            .collect();
+        let mut l = eigen();
+        l[0].extra_velden
+            .insert("organen".into(), Value::Array(organen));
+        let t = Arc::new(Traag {
+            bezig: 0.into(),
+            hoogste: 0.into(),
+        });
+        let (mut b, _) = bron(Ok(Value::Null), json!({"gebied": {"kolom": "gebiedscode"}}));
+        b.transport = t.clone();
+        let rijen = Rijen {
+            definitie: definitie(),
+            bronnen: vec![b],
+        };
+        let u = stel_samen(&rijen, &l, &BTreeMap::new()).await.unwrap();
+        assert!(t.hoogste.load(std::sync::atomic::Ordering::SeqCst) > 1);
+        // Elke regel houdt haar eigen antwoord, in de volgorde van de tabel.
+        let tarieven: Vec<&str> = u
+            .regels
+            .iter()
+            .map(|r| r["tarief"].as_str().unwrap())
+            .collect();
+        assert_eq!(tarieven, ["G0", "G1", "G2", "G3", "G4", "G5", "G6", "G7"]);
+        assert_eq!(u.bronnen[0].bevraagd, 8);
+        assert_eq!(u.bronnen[0].status, Status::Bevraagd);
     }
 
     #[tokio::test]

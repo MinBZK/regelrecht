@@ -123,8 +123,8 @@ het gedrag.
 | `GET /cellen/<id>/api/kroniek` | de grammen, elk met YAML |
 | `GET /cellen/<id>/api/zaken/<zaakkenmerk>` | de grammen van één zaak, elk met YAML; de cel filtert, 404 als ze de zaak niet kent |
 | `GET /cellen/<id>/api/lexostatus/<naam>?<input>=...` | een reductie; de inputs als query |
-| `POST /cellen/<id>/api/lexostatus/<naam>/proef` | `{concept, inputs}`: de cel bouwt het gram van het concept in het geheugen en reduceert de kroniek mét dat gram; er wordt niets vastgelegd |
-| `POST /cellen/<id>/api/grammen` | `{actor, stroom, event, intake, external, zaakkenmerk?, besluit?}`: de cel bouwt het gram, valideert het, controleert de actor en de zaak, en legt het vast (201); 409 als die stage al vastligt in de zaak |
+| `POST /cellen/<id>/api/lexostatus/<naam>/proef` | alleen met het runtime-token: `{concept, inputs}`: de cel bouwt het gram van het concept in het geheugen en reduceert de kroniek mét dat gram; er wordt niets vastgelegd |
+| `POST /cellen/<id>/api/grammen` | alleen met het runtime-token: `{actor, stroom, event, intake, external, zaakkenmerk?, besluit?}`: de cel bouwt het gram, valideert het, controleert de actor en de zaak, en legt het vast (201); 409 als die stage al vastligt in de zaak |
 | `GET /cellen/<id>/api/stroom` | de stroomdefinities van de cel, met hun hash |
 | `GET /processen/<id>/api/voorbeelden` | de voorbeelden per handeling, zonder login |
 | `POST /processen/<id>/api/eherkenning/login`, `GET .../sessie`, `POST .../logout` | alleen met portaal |
@@ -139,11 +139,29 @@ het gedrag.
 | `POST /processen/<id>/api/zaken/<zaakkenmerk>/besluit` | behandelaar: `{formulier}` naar een vastgelegd besluit (201), of een weigering (409) |
 
 Een proces met rollen heeft een sessie per gebruiker (een cookie per proces);
-wie als de andere rol inlogt, vervangt de sessie. De portaalroutes zijn alleen
+wie als de andere rol inlogt, vervangt de sessie. Een sessie vervalt na acht
+uur zonder gebruik, en een proces houdt er hooguit tienduizend: wie daarboven
+inlogt, verdringt de langst ongebruikte. De portaalroutes zijn alleen
 voor de aanvrager (403 voor de behandelaar), de behandelroutes alleen voor de
-behandelaar. Een cel kent geen login: haar routes zijn voor elke afnemer, er is
-geen beveiligingscontext. Een aanvrager die een zaak wil volgen, moet die zaak
-kennen (een gram van zijn KvK); dat controleert het proces.
+behandelaar. Een cel kent geen login: haar leesroutes (kroniek, zaken,
+lexostatus, stroom) zijn voor elke afnemer, er is geen beveiligingscontext.
+Een aanvrager die een zaak wil volgen, moet die zaak kennen (een gram van zijn
+KvK); dat controleert het proces.
+
+Vastleggen (`POST .../grammen`) en op proef reduceren (`POST .../proef`) mag
+alleen een proces van de runtime zelf. De runtime maakt bij elke start een
+willekeurig runtime-token dat alleen in haar geheugen staat; het interne
+transport stuurt het mee in de header `x-cel-runtime-token`, en de cel
+antwoordt zonder token 401 en met een ander token 403. Een HTTP-transport
+stuurt het alleen mee als het er uitdrukkelijk een kreeg
+(`Http::met_runtime_token`; de runtime zelf doet dat nu nergens, want een
+proces legt alleen vast in een cel van dezelfde runtime), en de runtime geeft
+het nooit aan een transport naar een andere runtime. Dit is geen autorisatie tussen organisaties (RFC-022
+par. 2 laat die aan de beveiligingscontext); het voorkomt alleen dat iedereen
+die de poort bereikt een gram met een willekeurige actor en intake in een
+kroniek zet. Het maakt de processen zelf niet veiliger: wie de poort bereikt,
+kan nog steeds via de nep-logins van een proces een aanvraag indienen of een
+besluit laten nemen, en dat proces legt dan vast.
 
 De cel weigert een gram (403) als de `actor` van het verzoek niet de
 `recording_actor` van de stroom is.
@@ -199,7 +217,20 @@ erboven: het leest lexostatussen en vraagt de cel vast te leggen.
    `herkomst: startstand`. Een gram van een besluit dat een proces nam draagt
    daarnaast `legal_character`, `decision_type`, `regulation`,
    `regulation_valid_from`, zo nodig `competent_authority`, `inputs` (elke
-   parameter met haar waarde en herkomst) en `receipt`.
+   parameter met haar waarde en herkomst) en `receipt`. Een gram met een
+   `op_moment` dat geen moment met tijdzone is, valideert niet.
+
+   Het bestand is de bron; de runtime houdt de grammen daarnaast in het
+   geheugen, met een index per zaak, en maakt de YAML van een gram een keer.
+   Een reductie of een zaakvraag leest het bestand dus niet opnieuw, en wie
+   de runtime draait schrijft niet zelf in het bestand. Een regel telt pas
+   als ze met een regeleinde eindigt: een onvolledige laatste regel (de
+   runtime stopte tijdens het schrijven) wordt bij het openen afgekapt en
+   gemeld, een onleesbare regel daarvoor houdt de runtime tegen (en dan
+   wordt er niets afgekapt). Elke schrijfactie begint op de lengte die de
+   cel kent, dus de rest van een eerder mislukte schrijfactie wordt
+   overschreven. Lezers wachten niet op de schijf: alleen het schrijven
+   wacht op fsync.
 
 ## Startstand
 
@@ -207,7 +238,12 @@ erboven: het leest lexostatussen en vraagt de cel vast te leggen.
 `herkomst: startstand`, `fields` en optioneel `zaakkenmerk`. De rest volgt uit
 de stroom. De velden moeten precies die van het event zijn. De runtime zet de
 startstand in de kroniek als elke kroniek van de cel leeg is, en daarna nooit
-meer. Zo'n gram is geplaatst, niet berekend: er is geen engine-trace bij.
+meer. Elk bestand wordt in een keer geschreven (een tijdelijk bestand, dan
+hernoemd), zodat een onderbroken start geen half bestand achterlaat; een
+achtergebleven tijdelijk bestand ruimt de volgende start op. Beslaat de
+startstand meer dan een kroniek, dan geldt dat per bestand: een start die
+tussen twee hernoemingen stopt, laat de andere kronieken leeg, en die vult de
+runtime daarna niet meer aan. Zo'n gram is geplaatst, niet berekend: er is geen engine-trace bij.
 
 ## Synthese en transport
 
@@ -238,9 +274,16 @@ volgorde, zodat een bron een kolom kan gebruiken die een eerdere leverde. De
 invoer komt uit de regel (`kolom`), uit een lexostatus van de zaak (`lexostatus`
 en `veld`) of uit de samengevoegde parameters (`parameter`), zo nodig omgezet met
 `als: eerste_dag_van_het_jaar` (de tegenhanger van de afleiding `jaar_van`).
-Een bron levert een kolom uit haar `parameters` of haar `extra_velden`.
+Een bron levert een kolom uit haar `parameters` of haar `extra_velden`. Het
+antwoord van een bron (per regel of in de synthese) moet een lexostatus zijn,
+met ten minste `naam` en `parameters`; iets anders is een fout van de bron,
+geen lege lexostatus.
 Ontbreekt een invoer, is een bron onbereikbaar, of levert ze de waarde niet,
-dan blijft die kolom weg; `mist` noemt welke. Er wordt niets aangevuld.
+dan blijft die kolom weg; `mist` noemt welke. Er wordt niets aangevuld. Is
+het tabelveld geen lijst van objecten, dan komt er geen tabel (met `fout` in
+de uitslag), in plaats van een regel die stil wegvalt. De regels worden
+tegelijk bevraagd (hooguit zestien tegelijk), elk met haar bronnen na elkaar,
+en de tabel houdt de volgorde van het tabelveld.
 
 De toets kent hetzelfde blok onder `portaal.toets.rijen`. Daar komt de tabel
 uit de proefreductie van het concept (de toets-lexostatus) of uit een bron die
@@ -377,9 +420,10 @@ komen.
 | `proces` | een proces uit zijn map laden, en de controles op cel, actor en portaal |
 | `config` | omgeving, `cel.yaml` en `proces.yaml` |
 | `stroom` | stroomdefinitie laden en valideren, gram bouwen uit intake en external |
-| `reductie` | lexostatus-definities laden, kroniek reduceren tot lexostatus |
+| `gram` | het vastgelegde gram, met invoer en receipt van een besluit, en het lezen van een veldpad |
+| `reductie` | kroniek reduceren tot lexostatus; `reductie::definitie` laadt de lexostatus-definities |
 | `startstand` | grammen voor een lege kroniek |
-| `kroniek` | append-only opslag |
+| `kroniek` | append-only opslag, in het geheugen met een index per zaak, en herstel van een half geschreven regel |
 | `controle` | de controles bij het opstarten |
 | `synthese` | bronnen bevragen, samenvoegen met herkomst, en de controles erop |
 | `origin` | wie een parameter levert volgens de wet (RFC-043): de controle bij het opstarten, de aanbodregel, het tijdvak en het besluitformulier |
@@ -389,7 +433,10 @@ komen.
 | `toets` | parameters aan de engine, een of meer uitkomsten evalueren |
 | `besluit` | het proefbesluit op een zaak, het vastleggen ervan, en de controles op rollen en behandeling |
 | `rijen` | synthese per regel: een tabelveld wordt een array-parameter |
-| `api` | de routes van een cel en van een proces |
+| `api` | de routes: `api::cel` (de cel), `api::proces` (de router van een proces), `api::sessie`, `api::portaal` en `api::behandeling` |
+| `celclient` | hoe een proces de cel vraagt: zaak lezen, vastleggen, proefreductie, als typen |
+| `datum` | `op_moment` lezen, peildatum en jaartal |
+| `laden` | bestanden en mappen lezen, YAML valideren tegen zijn schema |
 | `regelingen`, `formulier`, `schema` | laden en valideren |
 
 ## De engine en een losse uitkomst

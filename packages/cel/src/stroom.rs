@@ -19,7 +19,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
-use crate::schema::{self, Soort};
+use crate::datum;
+use crate::gram::{op_pad, Gram, StroomVerwijzing};
+use crate::laden;
+use crate::schema::Soort;
 
 /// Een geladen stroomdefinitie.
 #[derive(Debug, Clone)]
@@ -144,143 +147,10 @@ pub struct Blad {
     pub binding: Binding,
 }
 
-/// Het vastgelegde gram (`schema/chronolex/v0.1.0/gram.json`).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Gram {
-    pub kind: String,
-    #[serde(rename = "type")]
-    pub type_: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub soort: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub stage: Option<String>,
-    pub name: String,
-    pub chronicle: String,
-    pub recording_actor: String,
-    pub grondslag: Vec<String>,
-    /// Alleen bij een besluit dat een proces nam: het rechtskarakter en de
-    /// soort beslissing uit `produces` van het artikel (RFC-008).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub legal_character: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub decision_type: Option<String>,
-    /// De regeling waarop het besluit rust, met de versie ervan.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub regulation: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub regulation_valid_from: Option<String>,
-    /// Het bevoegd gezag volgens de wet. Ontbreekt het in de regeling, dan
-    /// staat het er niet: de cel verzint geen gezag.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub competent_authority: Option<String>,
-    pub op_moment: String,
-    /// Uit de stroom: of het gram een zaak opent of volgt. Weggelaten als
-    /// het event geen zaak heeft.
-    #[serde(default, skip_serializing_if = "zonder_zaak")]
-    pub zaak: Zaak,
-    /// Alleen bij een event met een zaak (`zaak: opent` of `volgt`).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub zaakkenmerk: Option<String>,
-    pub stroom: StroomVerwijzing,
-    /// Alleen als de cel het gram niet zelf vaststelde: `startstand` is bij
-    /// het starten in een lege kroniek geplaatst (zie [`crate::startstand`]).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub herkomst: Option<String>,
-    pub fields: Map<String, Value>,
-    /// Alleen bij een besluit: elke parameter die meedeed, met haar waarde en
-    /// haar herkomst (RFC-013 `accepted_values`).
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub inputs: BTreeMap<String, Invoer>,
-    /// Alleen bij een besluit: wat er meedeed, met de hash erover (RFC-013,
-    /// RFC-022 par. 1.3).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub receipt: Option<Receipt>,
-}
-
-/// Een geaccepteerde invoer van een besluit: een waarde met haar herkomst.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Invoer {
-    pub waarde: Value,
-    pub herkomst: crate::synthese::Herkomst,
-}
-
-/// Wat er bij een besluit meedeed, zodat het te herhalen is: de geladen
-/// regelingen en de stroomdefinities, met een hash over beide.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Receipt {
-    pub regelingen: Vec<GeladenRegeling>,
-    pub stromen: Vec<StroomVerwijzing>,
-    /// SHA-256 over de twee lijsten hierboven, als canonieke JSON.
-    pub sha256: String,
-}
-
-/// Een regeling zoals de runtime haar laadde.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct GeladenRegeling {
-    pub id: String,
-    pub valid_from: String,
-    pub sha256: String,
-}
-
-impl Receipt {
-    /// Bouw het receipt en reken de hash uit.
-    pub fn nieuw(regelingen: Vec<GeladenRegeling>, stromen: Vec<StroomVerwijzing>) -> Self {
-        let canoniek = serde_json::to_string(
-            &serde_json::json!({"regelingen": regelingen, "stromen": stromen}),
-        )
-        .unwrap_or_default();
-        Self {
-            regelingen,
-            stromen,
-            sha256: hex::encode(Sha256::digest(canoniek.as_bytes())),
-        }
-    }
-}
-
-fn zonder_zaak(z: &Zaak) -> bool {
-    !z.heeft_kenmerk()
-}
-
-/// Welke stroomdefinitie een gram bouwde, en welke versie ervan.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct StroomVerwijzing {
-    pub id: String,
-    pub sha256: String,
-}
-
-impl Gram {
-    /// Het gram als JSON-waarde.
-    pub fn als_json(&self) -> Value {
-        serde_json::to_value(self).unwrap_or(Value::Null)
-    }
-
-    /// Valideer het gram tegen `gram.json`.
-    pub fn valideer(&self) -> Result<(), Vec<String>> {
-        schema::valideer(Soort::Gram, &self.als_json())
-    }
-
-    /// De waarde op een pad onder `fields`.
-    pub fn veld(&self, pad: &str) -> Option<&Value> {
-        let mut delen = pad.split('.');
-        let mut huidig = self.fields.get(delen.next()?)?;
-        for deel in delen {
-            huidig = huidig.as_object()?.get(deel)?;
-        }
-        Some(huidig)
-    }
-}
-
 /// Lees een stroomdefinitie uit tekst. `bron` noemt het bestand in meldingen.
 pub fn parse(tekst: &str, bron: &str) -> Result<Stroom, Vec<String>> {
-    let yaml: serde_yaml_ng::Value = serde_yaml_ng::from_str(tekst)
-        .map_err(|e| vec![format!("{bron}: geen geldige YAML: {e}")])?;
-    let document: Value = serde_json::to_value(&yaml).map_err(|e| vec![format!("{bron}: {e}")])?;
-    schema::valideer(Soort::Stroom, &document).map_err(|fouten| {
-        fouten
-            .into_iter()
-            .map(|f| format!("{bron}: {f}"))
-            .collect::<Vec<_>>()
-    })?;
+    // De YAML-boom houdt de volgorde van de velden vast; zie `Event::fields`.
+    let (yaml, document) = laden::yaml_document(tekst, bron, Soort::Stroom)?;
 
     #[derive(Deserialize)]
     struct Ruw {
@@ -315,26 +185,16 @@ pub fn parse(tekst: &str, bron: &str) -> Result<Stroom, Vec<String>> {
 /// een map.
 pub fn laad(pad: &Path) -> Result<Vec<Stroom>, Vec<String>> {
     let bestanden: Vec<std::path::PathBuf> = if pad.is_dir() {
-        let mut v: Vec<_> = std::fs::read_dir(pad)
-            .map_err(|e| vec![format!("{}: {e}", pad.display())])?
-            .filter_map(|e| e.ok().map(|e| e.path()))
-            .filter(|p| p.extension().is_some_and(|x| x == "yaml" || x == "yml"))
-            .collect();
-        v.sort();
-        v
+        laden::yaml_bestanden(pad).map_err(|e| vec![e])?
     } else {
         vec![pad.to_path_buf()]
     };
     let mut strommen = Vec::new();
     let mut fouten = Vec::new();
     for bestand in &bestanden {
-        let bron = bestand.display().to_string();
-        match std::fs::read_to_string(bestand) {
-            Ok(tekst) => match parse(&tekst, &bron) {
-                Ok(s) => strommen.push(s),
-                Err(f) => fouten.extend(f),
-            },
-            Err(e) => fouten.push(format!("{bron}: {e}")),
+        match laden::laad(bestand, parse) {
+            Ok(s) => strommen.push(s),
+            Err(f) => fouten.extend(f),
         }
     }
     if strommen.is_empty() && fouten.is_empty() {
@@ -609,11 +469,6 @@ pub struct Indiening<'a> {
     pub zaakkenmerk: Option<&'a str>,
 }
 
-fn waarde_op<'v>(wortel: &'v Value, pad: &str) -> Option<&'v Value> {
-    pad.split('.')
-        .try_fold(wortel, |huidig, deel| huidig.as_object()?.get(deel))
-}
-
 /// Bouw een gram uit een indiening. Het gram houdt de vorm van de stroom:
 /// een veld dat niet is ingevuld staat erin als null, want ook een
 /// onvolledige indiening wordt vastgelegd. Een veld of tabelkolom dat de
@@ -647,24 +502,26 @@ pub fn bouw_gram(
         return Err(fouten.join("; "));
     }
 
-    let external = Value::Object(indiening.external.clone());
     let mut fields = Map::new();
     for blad in event.bladeren() {
         let waarde = match &blad.binding {
-            Binding::Intake(bronpad) => {
-                waarde_op(indiening.intake, bronpad)
-                    .cloned()
-                    .ok_or_else(|| {
-                        format!(
-                            "het ontvangstkanaal levert '$intake.{bronpad}' niet (veld '{}')",
-                            blad.pad
-                        )
-                    })?
-            }
-            Binding::External(bronpad) => waarde_op(&external, bronpad)
+            Binding::Intake(bronpad) => indiening
+                .intake
+                .as_object()
+                .and_then(|i| op_pad(i, bronpad))
+                .cloned()
+                .ok_or_else(|| {
+                    format!(
+                        "het ontvangstkanaal levert '$intake.{bronpad}' niet (veld '{}')",
+                        blad.pad
+                    )
+                })?,
+            Binding::External(bronpad) => op_pad(indiening.external, bronpad)
                 .cloned()
                 .unwrap_or(Value::Null),
-            Binding::Tabel { bron, kolommen } => als_tabel(waarde_op(&external, bron), kolommen),
+            Binding::Tabel { bron, kolommen } => {
+                als_tabel(op_pad(indiening.external, bron), kolommen)
+            }
             Binding::Constante(w) => w.clone(),
         };
         zet(&mut fields, &blad.pad, waarde);
@@ -684,9 +541,7 @@ pub fn bouw_gram(
         regulation: None,
         regulation_valid_from: None,
         competent_authority: None,
-        op_moment: indiening
-            .op_moment
-            .to_rfc3339_opts(chrono::SecondsFormat::Secs, false),
+        op_moment: datum::als_op_moment(&indiening.op_moment),
         zaak: event.zaak,
         zaakkenmerk: indiening.zaakkenmerk.map(str::to_string),
         stroom: StroomVerwijzing {
