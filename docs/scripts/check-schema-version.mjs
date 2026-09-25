@@ -143,16 +143,47 @@ if (!existsSync(SNAPSHOT)) {
 //    list is not evidence of a missing tag: skip when there are none at all
 //    rather than fail a shallow clone. Use `fetch-depth: 0` in CI, or fetch the
 //    tags locally, to make this check meaningful.
+//
+//    A version that is being released right now has no tag yet, and cannot
+//    have one: `.github/workflows/tag-schema.yml` sets it on the push to main,
+//    because a tag on a pull request's test merge would point at a commit that
+//    never becomes main. So a version counts as released, and must be tagged,
+//    only once it is on main and was already there before the commit under
+//    test. That is "present at origin/main" (a pull request, the merge queue,
+//    a local branch) and "present at HEAD^" (the push to main that releases
+//    it, where tag-schema runs in parallel with this check). A version
+//    missing from either is the release in progress.
 try {
   const { execFileSync } = await import('node:child_process');
-  const tags = execFileSync('git', ['tag', '--list', 'schema-v*'], {
-    cwd: SCHEMA_DIR,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'ignore'],
-  })
+  const git = (args) =>
+    execFileSync('git', args, {
+      cwd: SCHEMA_DIR,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+  const tags = git(['tag', '--list', 'schema-v*'])
     .split('\n')
     .map((t) => t.trim())
     .filter(Boolean);
+
+  // The schema versions present at a ref, or null when the ref cannot be read
+  // (a shallow clone without HEAD^, a checkout without origin/main).
+  const versionsAt = (ref) => {
+    try {
+      return new Set(
+        git(['ls-tree', '--full-tree', '--name-only', `${ref}:schema`])
+          .split('\n')
+          .map((n) => n.trim())
+          .filter((n) => /^v\d+\.\d+\.\d+$/.test(n)),
+      );
+    } catch {
+      return null;
+    }
+  };
+  const onMain = versionsAt('refs/remotes/origin/main');
+  const beforeHead = versionsAt('HEAD^');
+  const inRelease = (v) =>
+    (onMain !== null && !onMain.has(v)) || (beforeHead !== null && !beforeHead.has(v));
 
   if (tags.length === 0) {
     console.warn(
@@ -161,8 +192,18 @@ try {
   } else {
     // Report every untagged released version, not just the latest: the gap is
     // historical (v0.5.7 onwards) and a law file may cite any of them.
-    const released = readdirSync(SCHEMA_DIR).filter((n) => /^v\d+\.\d+\.\d+$/.test(n));
+    const present = readdirSync(SCHEMA_DIR).filter((n) => /^v\d+\.\d+\.\d+$/.test(n));
+    const pending = present.filter(inRelease);
+    const released = present.filter((v) => !inRelease(v));
     const untagged = released.filter((v) => !tags.includes(`schema-${v}`)).sort();
+    for (const v of pending) {
+      if (!tags.includes(`schema-${v}`)) {
+        console.log(
+          `check-schema-version: ${v} is being released (not on origin/main, or added by this ` +
+            `commit); tag-schema.yml tags it on the push to main`,
+        );
+      }
+    }
     if (untagged.length) {
       problems.push(
         `${untagged.length} released schema version(s) have no tag, so the $schema URL a law ` +

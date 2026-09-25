@@ -1,4 +1,10 @@
-//! Lift a law file to schema v0.7.0.
+//! Lift a law file to schema v0.7.1.
+//!
+//! v0.7.1 is v0.7.0 with six field descriptions corrected and nothing else, so
+//! every statement below about v0.7.0's shape holds for the target unchanged.
+//! The target is the newest release rather than v0.7.0 itself because the
+//! harvester stamps v0.7.1 on new files: migrating one of those must not move
+//! its `$schema` back a version.
 //!
 //! Two jobs, and they are deliberately unequal in ambition.
 //!
@@ -49,10 +55,10 @@ use serde_yaml_ng::{Mapping, Value};
 
 /// `$schema` URL a migrated file declares.
 pub const SCHEMA_URL: &str =
-    "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json";
+    "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.1/schema/v0.7.1/schema.json";
 
 /// The schema version this module migrates to.
-pub const TARGET_VERSION: &str = "v0.7.0";
+pub const TARGET_VERSION: &str = "v0.7.1";
 
 /// A place where the conversion could not proceed without inventing a value.
 ///
@@ -98,7 +104,7 @@ pub struct Migration {
     pub blockers: Vec<Blocker>,
     /// Old fields with no counterpart in v0.7.0.
     pub dropped: Vec<Dropped>,
-    /// Schema errors of the *migrated* file, against v0.7.0.
+    /// Schema errors of the *migrated* file, against [`TARGET_VERSION`].
     pub schema_errors: Vec<String>,
 }
 
@@ -110,7 +116,7 @@ impl Migration {
     }
 }
 
-/// Migrate one law file to v0.7.0.
+/// Migrate one law file to [`TARGET_VERSION`].
 ///
 /// `Err` is reserved for a file this module cannot read at all — unparseable
 /// YAML, or a document that is not a mapping. Everything else, including a
@@ -628,7 +634,7 @@ articles:
         assert_eq!(
             regelrecht_engine::schema::detect_version(&json),
             Some(TARGET_VERSION),
-            "a second run must see v0.7.0, not the old version"
+            "a second run must see the target version, not the old one"
         );
     }
 

@@ -12,19 +12,20 @@ A law version declares `valid_from`, and optionally `valid_to`: the first and la
 `valid_to` lets a law expire without a successor. A version with `valid_to: 2024-12-31` resolves on its last day:
 
 ```gherkin
-Given the calculation date is "2024-12-31"
-When the law "test_einddatum" is executed for outputs "normbedrag"
-Then the execution succeeds
-And the output "normbedrag" is "500"
+Scenario: A law still resolves on its last day in force (inclusive bound)
+  Given the calculation date is "2024-12-31"
+  When I evaluate "normbedrag" of "test_einddatum"
+  Then the execution succeeds
+  Then output "normbedrag" equals 500
 ```
 
 and the day after, it is gone. Selection does **not** fall through to an older version once the in-force one has ended: an expired law is expired, and its predecessor does not take over. A reference to a law that has ended fails with the concrete dates:
 
 ```gherkin
-Given the calculation date is "2025-06-01"
-When the law "test_einddatum" is executed for outputs "normbedrag"
-Then the execution fails with
-  "No version of law 'test_einddatum' in force on 2025-06-01; last in force until 2024-12-31"
+Scenario: A law no longer resolves after its end date
+  Given the calculation date is "2025-06-01"
+  When I evaluate "normbedrag" of "test_einddatum"
+  Then the execution fails with "No version of law 'test_einddatum' in force on 2025-06-01; last in force until 2024-12-31"
 ```
 
 The same applies across a cross-law reference: a law that reads an ended law reports which law ended and when, and does not compute on rules that are no longer valid. The selection outcome is one of in force, not yet in force, or ended on a date (`SelectionReason` in `packages/engine/src/resolver.rs`), and both `valid_from` and `valid_to` are recorded in the [Execution Receipt](./execution-provenance) so the choice is reproducible. The scenarios above come from `bdd/conformance/einddatum.feature`.
@@ -47,11 +48,12 @@ in: days        # or: months, years
 It is signed: positive when `to` is on or after `from`, negative otherwise. For a request filed on 2025-01-01 against a peildatum of 2025-07-01, the span is `181` days; flip the two dates and it is `-181`. Months and years count whole calendar units, reusing the same arithmetic as `AGE` (BW art. 1:2), so end-of-month and leap-year cases stay consistent: 31 January to 28 February is one whole month, because January has no 31st counterpart in February.
 
 ```gherkin
-Given the calculation date is "2025-02-28"
-And a query with the following data:
-  | indieningsdatum | 2025-01-31 |
-When the law "test_date_operations" is executed for outputs "doorlooptijd_maanden"
-Then the output "doorlooptijd_maanden" is "1"
+Scenario: An end-of-month span counts as a whole month
+  Given the calculation date is "2025-02-28"
+  Given the following parameters:
+    | indieningsdatum | 2025-01-31 |
+  When I evaluate "doorlooptijd_maanden" of "test_date_operations"
+  Then output "doorlooptijd_maanden" equals 1
 ```
 
 Dates must be in canonical `YYYY-MM-DD` form, zero-padded. `2025-1-1` is rejected; the engine does not guess. These scenarios come from `bdd/conformance/date_operations.feature`, and the related operations `AGE`, `DATE_ADD` and `DATE` are specified in the [Schema Reference](/reference/schema#operations).

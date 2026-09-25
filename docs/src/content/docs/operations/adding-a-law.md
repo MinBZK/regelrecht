@@ -13,26 +13,26 @@ For example, the Zorgtoeslagwet is `BWBR0018451`.
 
 ## Step 2: Harvest the legal text
 
-Use the harvester to download and convert the law from BWB XML to YAML:
+Use the harvester to download and convert the law from BWB XML to YAML. There is no installed binary to call; run it through cargo, from the repository root:
 
 ```bash
-# Download today's version
-regelrecht-harvester download BWBR0018451
-
-# Download for a specific date
-regelrecht-harvester download BWBR0018451 --date 2025-01-01 --output corpus/regulation/nl
+cargo run --manifest-path packages/Cargo.toml -p regelrecht-harvester -- \
+    download BWBR0018451 --date 2025-01-01 --output corpus/regulation/nl
 ```
 
-This produces a YAML file with the law's text but no `machine_readable` sections. The output path follows the convention: `corpus/regulation/nl/{layer}/{slug}/{date}.yaml`.
+Leave out `--date` for the version in force today. Pass `--output` explicitly: without it the harvester quietly creates `regulation/nl/` under the directory you run from, while an explicit `--output` has to exist already. The command-line interface sits behind the crate's `cli` feature, which is on by default, so no feature flag is needed. A CVDR identifier works the same way for a municipal regulation.
+
+This produces a YAML file with the law's text but no `machine_readable` sections, at `corpus/regulation/nl/{layer}/{slug}/{date}.yaml`. A file already at that path is replaced without a warning, `machine_readable` sections included. The Wet op de zorgtoeslag in the example is in the corpus already, so run the command with your own identifier, and check `git status` after harvesting a law that may already be there. The `law-download` skill in `.claude/skills/` wraps this step for a coding agent.
 
 ## Step 3: Add machine-readable logic
 
 Each article that contains executable logic needs a `machine_readable` section. This can be done:
 
 - **Manually** - write the `machine_readable` YAML by hand following the [law format](/concepts/law-format)
-- **Via the pipeline** - trigger an enrichment job through the admin dashboard, which uses an LLM to generate candidate interpretations
+- **With a coding agent** - the repository carries skills for this in `.claude/skills/`. `law-interpret` runs the whole sequence: `law-mvt-research` looks up the Memorie van Toelichting and turns its worked examples into scenarios, `law-generate` writes the `machine_readable` sections and runs validation and the scenarios until they pass, and `law-reverse-validate` checks that every element of the result traces back to the legal text. Each can also run on its own. Claude Code loads them by name; other agents can read the `SKILL.md` files as instructions.
+- **Via the pipeline** - trigger an enrichment job in the editor's Corpusinwinning section, which uses an LLM to generate candidate interpretations
 
-If using LLM-generated interpretations, always validate the output (step 5).
+Whoever or whatever wrote the logic, validate it (step 4) and test it against the MvT examples (step 5).
 
 ## Step 4: Validate against the schema
 
@@ -79,15 +79,25 @@ Laws that need source data (BRP, Belastingdienst, and the like) provide it with 
 
 See `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/scenarios/eligibility.feature` for a complete, data-driven example.
 
-Run the tests:
+Run your law's scenarios. `BDD_BUCKET=corpus` limits the run to bucket A, the scenarios next to the laws, and skips the engine-conformance suite:
 
 ```bash
-just bdd
+BDD_BUCKET=corpus just bdd
 ```
+
+To see how the engine reached a result, run the same scenarios with traces:
+
+```bash
+BDD_BUCKET=corpus just bdd-trace
+```
+
+This writes one box-drawing trace per successful evaluation to `trace_output/` in the repository root, named `<sequence>_<law>_<output>_<date>.txt`, so `ls trace_output | grep your_law` finds yours. A trace shows each input and where it came from (parameter, data-source table, another law, a definition), every operation with its result, and each output. The data tables in your scenario appear there as `DATA_SOURCE` lines, which makes a trace the quickest way to check that a scenario feeds the law what you meant it to.
+
+**CI does not run these scenarios.** It runs bucket B, the engine-conformance suite, and blocks on it, but bucket A stays out on purpose: a failure there means a law changed or a scenario went stale, and a human has to decide which. (The **BDD demo** job does run bucket A, but over `corpus/demo/`, not over `corpus/regulation/`.) So a scenario that fails on your branch will not stop the merge, and nobody else will see it fail. Run bucket A yourself before opening the PR, and again after any change to a law your law reads from.
 
 ## Step 6: Open a pull request
 
-Commit the new law file, any BDD scenarios, and open a PR. CI will run schema validation, BDD tests, and all other checks automatically. Add the `deploy:preview` label to the PR if reviewers should be able to try the law in a running editor.
+Commit the new law file and its scenarios, and open a PR. CI validates the law against the schema and runs the engine tests and the engine-conformance BDD suite, but not your law's own scenarios (see step 5): their result is whatever you saw locally, so say in the PR description that they pass. Add the `deploy:preview` label to the PR if reviewers should be able to try the law in a running editor.
 
 End the PR body with a `Werkpakket:` line, which a required check enforces, and add a `Wet:` line naming the law's `$id`:
 
