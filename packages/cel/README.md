@@ -60,9 +60,10 @@ kanalen:                          # nagebootste logins; geen register, geen gece
     label: <tekst>
     uitleg: <tekst>               # optioneel
     velden:
-      - {naam: <veld>, label: <tekst>, patroon: <regex>, controle: elfproef, melding: <tekst>, numeriek: true}
+      - {naam: <veld>, label: <tekst>, patroon: <regex>, controle: elfproef, melding: <tekst>, numeriek: true, grondslag: [...]}
     eigenaar: <veld>              # optioneel: wie een zaak volgt, moet haar met deze waarde kennen
     intake: <pad>                 # optioneel: onder $intake.<pad>.<veld>; zonder: de id van het kanaal
+    grondslag: [<regeling>#<artikel>, ...]   # optioneel: waarop kanaal en eigenaar rusten
 rollen:                           # optioneel; zonder rollen geen login
   <rol>: {kanaal: <kanaal>, routes: [portaal, behandeling, loket], label: <tekst>, grondslag: <regeling>#<artikel>}
 portaal:                          # optioneel, vraagt een rol met routes portaal
@@ -93,6 +94,7 @@ synthese:                         # optioneel, alleen met een portaal of handeli
     parameters: [<naam>, ...]     # expliciet, geen wildcard; dezelfde naam bij bron en afnemer
     # of: parameters: {<naam bij de bron>: <parameter van de afnemer>}
     extra_velden: [<naam>, ...]   # optioneel: invoer voor een latere bron
+    grondslag: [<regeling>#<artikel>, ...]   # waarop de vertaling rust; met herkomst: streng verplicht als de bron vertaalt
 behandeling:                      # optioneel, vraagt een rol met routes behandeling
   werkvoorraad: {cel: <cel-id>, lexostatus: <lijst-lexostatus>}
   handelingen:                    # de handelingen in een zaak (zie "Handelingen in een zaak")
@@ -116,6 +118,7 @@ behandeling:                      # optioneel, vraagt een rol met routes behande
                 <input>: {regeling: <$id>, uitkomst: <output>}   # de wet leidt de invoer af
                 <input>: {waarde: <vaste waarde>}
               kolommen: {<naam bij de bron>: <kolom van de parameter>}
+              grondslag: [...]    # als bij een synthese-bron
       vastleggen: {cel: <cel-id>, stroom: <$id>, event: <event met zaak: volgt>}
 voorbeelden:                      # optioneel: standaardgegevens per handeling
   inloggen: [<pad>, ...]
@@ -508,7 +511,8 @@ Per proces:
    gezag dat een geladen regeling noemt (verplicht met een behandeling); een
    mandaat noemt zo'n gezag, niet het eigen, en een grondslag die een geladen
    artikel aanwijst. Elk kanaal heeft unieke velden, leesbare patronen en een
-   eigenaar die een veld is; elke rol noemt een bestaand kanaal. Routes
+   eigenaar die een veld is; de grondslag van een kanaal of veld wijst geladen
+   artikelen aan; elke rol noemt een bestaand kanaal. Routes
    `portaal` en `behandeling` passen bij de blokken; routes `loket` vragen een
    portaal-event dat `op_moment` aan `$intake` bindt.
 3. Het portaal wijst naar een bestaand event van die cel, dat alleen
@@ -528,7 +532,11 @@ Per proces:
    waarde; elke parameter (de naam bij de afnemer) is een parameter van het
    artikel van de toets, het besluit of het aanbod, of van een artikel dat een
    van die transitief aanroept (via `source`); een parameter komt uit maar een
-   bron; een gewone bron is een andere cel dan die van het proces.
+   bron; een gewone bron is een andere cel dan die van het proces. De
+   `grondslag` van een bron (ook per regel) wijst geladen artikelen aan; met
+   `herkomst: streng` draagt elke bron die vertaalt (een andere naam bij de
+   afnemer, of een vaste waarde in de invoer) er een: de vertaling is een
+   lezing van de wet.
 5. Behandeling: de werkvoorraad is een lijst; een bron van de zaak vraagt een
    behandeling; de lexostatussen van de zaak hebben als enige input
    `zaakkenmerk`. Per handeling: een unieke naam; een rol die ze noemt, mag

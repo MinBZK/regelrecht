@@ -23,8 +23,10 @@ kanalen:
         patroon: '[0-9]{8}'
         melding: een organisatienummer heeft acht cijfers
         numeriek: true
+        grondslag: [testregeling_register#1]   # het register kent de organisatie
       - {naam: persoon, label: Uw naam}
     eigenaar: kvk
+    grondslag: [testregeling_afnemer#1]
   medewerker:
     label: Inloggen als medewerker
     velden:
@@ -46,13 +48,16 @@ synthese:
   - {cel: test_afnemer, lexostatus: zaakverloop, zaak: true}
   - {cel: test_afnemer, lexostatus: besluit, zaak: true}
   # De registercel spreekt de taal van haar eigen regeling; de afnemer
-  # vertaalt naar de namen van zijn artikelen (synthese bij de afnemer).
+  # vertaalt naar de namen van zijn artikelen (synthese bij de afnemer), met
+  # de grondslag van die vertaling: het artikel dat het feit vraagt en het
+  # register dat het levert, voor het orgaan dat de invoer vast noemt.
   - cel: test_register
     lexostatus: register
     invoer:
       aanduiding: {lexostatus: aanvraag_inhoud, veld: aanduiding}
       orgaan: {waarde: raad}
     parameters: {is_ingeschreven_in_register: is_ingeschreven_raad, is_geschrapt: is_geschrapt_raad}
+    grondslag: [testregeling_afnemer#1, testregeling_register#1]
   - cel: test_register
     lexostatus: registerstatus
     invoer:

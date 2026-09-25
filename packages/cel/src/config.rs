@@ -332,6 +332,29 @@ pub struct RijBron {
     pub invoer: BTreeMap<String, RijInvoer>,
     /// Per naam die de bron levert: onder welke kolomnaam ze in de regel komt.
     pub kolommen: BTreeMap<String, String>,
+    /// Waarop de vertaling rust: de artikelen die de kolom bij de afnemer
+    /// vragen en die de bron haar feit laten leveren, en een vaste waarde in
+    /// de invoer (zie [`vertaalt`](RijBron::vertaalt)).
+    #[serde(default)]
+    pub grondslag: Vec<String>,
+}
+
+impl RijBron {
+    /// Wat deze bron vertaalt: een kolom die bij de afnemer anders heet dan
+    /// bij de bron, en een vaste waarde in de invoer. Leeg: niets.
+    pub fn vertaalt(&self) -> Vec<String> {
+        let mut uit: Vec<String> = self
+            .kolommen
+            .iter()
+            .filter(|(b, a)| b != a)
+            .map(|(b, a)| format!("{b} -> {a}"))
+            .collect();
+        uit.extend(self.invoer.iter().filter_map(|(n, i)| match i {
+            RijInvoer::Waarde { waarde } => Some(format!("{n} = {waarde}")),
+            _ => None,
+        }));
+        uit
+    }
 }
 
 /// Waar de invoer van een bron per regel vandaan komt.
@@ -535,6 +558,29 @@ pub struct SyntheseBron {
     /// latere bron (bijvoorbeeld een naam bij een registratienummer).
     #[serde(default)]
     pub extra_velden: Vec<String>,
+    /// Waarop de vertaling rust: de artikelen die het feit bij de afnemer
+    /// onder zijn naam vragen en die de bron het laten leveren, en die een
+    /// vaste waarde in de invoer dragen (zie [`vertaalt`](SyntheseBron::vertaalt)).
+    #[serde(default)]
+    pub grondslag: Vec<String>,
+}
+
+impl SyntheseBron {
+    /// Wat deze bron vertaalt: een parameter die bij de afnemer anders heet
+    /// dan bij de bron, en een vaste waarde in de invoer. Leeg: niets.
+    pub fn vertaalt(&self) -> Vec<String> {
+        let mut uit: Vec<String> = self
+            .parameters
+            .vertaald()
+            .into_iter()
+            .map(|(b, a)| format!("{b} -> {a}"))
+            .collect();
+        uit.extend(self.invoer.iter().filter_map(|(n, i)| match i {
+            BronInvoer::Waarde { waarde } => Some(format!("{n} = {waarde}")),
+            BronInvoer::Veld(_) => None,
+        }));
+        uit
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

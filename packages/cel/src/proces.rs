@@ -102,6 +102,7 @@ impl Proces {
             portaal_event,
             &service,
         ));
+        fouten.extend(crate::synthese::grondslagen(&definitie, &service));
         if let Some(p) = &definitie.portaal {
             fouten.extend(controle::portaal(
                 &cel.strommen,
@@ -460,6 +461,78 @@ mod tests {
         let betalen = b.handeling("betalen").unwrap();
         assert_eq!(betalen.soort, crate::config::Handelingsoort::Feit);
         assert_eq!(betalen.toetsen, ["betaling_conform"]);
+    }
+
+    /// Een vertaling in de synthese rust op een grondslag: elke grondslag
+    /// wijst een geladen artikel aan, en met `herkomst: streng` heeft elke
+    /// bron die vertaalt er een. De fixture vertaalt met grondslag bij het
+    /// register, en zonder bij de registerstatus.
+    #[test]
+    fn de_grondslag_van_een_vertaling() {
+        let streng = |t: String| {
+            t.replace(
+                "actor: test_afnemer\n",
+                "actor: test_afnemer\nherkomst: streng\n",
+            )
+        };
+        let f = fouten("afnemer", streng);
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert!(
+            f[0].contains("synthese-bron test_register/registerstatus: vertaalt (")
+                && f[0].contains("geblokkeerd -> geblokkeerd_raad")
+                && f[0].contains("zonder grondslag"),
+            "{f:?}"
+        );
+        // Een grondslag die niet bestaat, ook buiten streng.
+        let f = fouten("afnemer", |t| {
+            t.replace(
+                "grondslag: [testregeling_afnemer#1, testregeling_register#1]",
+                "grondslag: [testregeling_afnemer#1, testregeling_register#9]",
+            )
+        });
+        assert_eq!(
+            f,
+            ["proces 'test_afnemer_proces': synthese-bron test_register/register: grondslag 'testregeling_register#9': regeling 'testregeling_register' heeft geen artikel 9"]
+        );
+        // Een vaste waarde in de invoer van een bron per regel is ook een
+        // vertaling.
+        let f = fouten("afnemer", |t| {
+            streng(t).replace(
+                "gebied: {kolom: gebied}\n                peildatum",
+                "gebied: {waarde: noord}\n                peildatum",
+            )
+        });
+        assert!(
+            f.iter().any(|m| m.contains("handeling 'besluit', rijen 'gebiedstabel', bron test_gebieden/tarief: vertaalt (gebied = \"noord\") zonder grondslag")),
+            "{f:?}"
+        );
+    }
+
+    /// De grondslag van een kanaal en van een veld wijst een geladen artikel
+    /// aan, met het lid dat ze noemt.
+    #[test]
+    fn de_grondslag_van_een_kanaal() {
+        let f = fouten("afnemer", |t| {
+            t.replace(
+                "grondslag: [testregeling_afnemer#1]",
+                "grondslag: [testregeling_afnemer#1 lid 4]",
+            )
+        });
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert!(
+            f[0].contains("kanaal 'eherkenning': grondslag 'testregeling_afnemer#1 lid 4': artikel 1 heeft geen lid 4"),
+            "{f:?}"
+        );
+        let f = fouten("afnemer", |t| {
+            t.replace(
+                "grondslag: [testregeling_register#1]",
+                "grondslag: [testregeling_onbekend#1]",
+            )
+        });
+        assert_eq!(
+            f,
+            ["proces 'test_afnemer_proces': kanaal 'eherkenning', veld 'kvk': grondslag 'testregeling_onbekend#1': regeling 'testregeling_onbekend' is niet geladen"]
+        );
     }
 
     #[test]
