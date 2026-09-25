@@ -159,7 +159,7 @@ nldd-imports-test:
 # maar zag niemand ze. Deze guard laat de build erop omvallen.
 [doc("Check that every nldd slot assignment exists")]
 nldd-slots:
-    node script/check-nldd-slots.mjs frontend-demo/src frontend/src frontend-lawmaking/src
+    node script/check-nldd-slots.mjs frontend-demo/src frontend/src frontend-lawmaking/src frontend-cel/src
 
 [doc("Check the design-system slot guard")]
 nldd-slots-test:

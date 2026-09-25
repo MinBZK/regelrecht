@@ -145,7 +145,7 @@ repos:
         entry: just nldd-slots
         language: system
         pass_filenames: false
-        files: ^(frontend|frontend-demo|frontend-lawmaking)/src/.*\.(vue|html|js|ts)$
+        files: ^(frontend|frontend-demo|frontend-lawmaking|frontend-cel)/src/.*\.(vue|html|js|ts)$
 
       - id: nldd-slots-tests
         name: Slot-guard doet wat hij belooft

@@ -63,6 +63,7 @@ jobs:
               - frontend-poc-terugbetaalregimes/**
               - frontend-poc-nieuwkomersbekostiging/**
               - frontend-poc-napp/**
+              - frontend-cel/**
               - corpus-poc/**
               - pocs/**
               - packages/frontend-shared/**
@@ -656,11 +657,11 @@ jobs:
   nldd-imports:
     name: Ontwerpsysteem-imports
     needs: changes
-    # Deze guard bewaakt frontend/src en docs/src, maar stond als stap in
-    # frontend-tests en draaide dus alleen bij `ci`. Een docs-only PR liet hem
-    # over en kon docs/src/nldd-components.js ongemerkt uit de pas laten lopen;
-    # de volgende PR die wel frontend raakte, kreeg de rekening. Vandaar een
-    # eigen baan op beide filters.
+    # Deze guard bewaakt frontend/src, docs/src en frontend-cel/src, maar stond
+    # als stap in frontend-tests en draaide dus alleen bij `ci`. Een docs-only
+    # PR liet hem over en kon docs/src/nldd-components.js ongemerkt uit de pas
+    # laten lopen; de volgende PR die wel frontend raakte, kreeg de rekening.
+    # Vandaar een eigen baan op beide filters.
     if: needs.changes.outputs.ci == 'true' || needs.changes.outputs.docs == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -691,6 +692,7 @@ jobs:
         run: |
           node script/check-nldd-imports.mjs frontend/src frontend/src/nldd-components.js
           node script/check-nldd-imports.mjs docs/src docs/src/nldd-components.js
+          node script/check-nldd-imports.mjs frontend-cel/src frontend-cel/src/nldd-components.js
 
   frontend-tests:
     name: Frontend tests
@@ -737,6 +739,9 @@ jobs:
       - name: Run demo tests
         run: npm test -w frontend-demo
 
+      - name: Run cel frontend tests
+        run: npm test -w frontend-cel
+
       # packages/arch-extract/ui is geen workspace-member (eigen package.json en
       # lockfile), dus `npm test -w` bereikt het niet en de test die er ligt
       # draaide nergens.
@@ -768,6 +773,11 @@ jobs:
       # de bundel zonder engine: het gaat om de Vue-build en de corpuskopie.
       - name: Build demo bundle
         run: npm run build -w frontend-demo
+
+      # De frontend bij packages/cel. Zonder deze stap viel een kapotte build
+      # of een root-import van het ontwerpsysteem pas op bij `just cel`.
+      - name: Build cel frontend bundle
+        run: npm run build -w frontend-cel
 
   # Verplichte check op main. De benen hierboven dragen nieuwe namen en mogen
   # dus van vorm veranderen; deze naam moet blijven bestaan, want een required
