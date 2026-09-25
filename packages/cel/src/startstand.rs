@@ -17,8 +17,9 @@ use std::path::Path;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 
+use crate::gram::{op_pad, Gram, StroomVerwijzing};
 use crate::laden;
-use crate::stroom::{op_pad, Event, Gram, Stroom, StroomVerwijzing};
+use crate::stroom::{Event, Stroom};
 
 /// De enige herkomst die een regel van de startstand mag hebben.
 pub const HERKOMST: &str = "startstand";

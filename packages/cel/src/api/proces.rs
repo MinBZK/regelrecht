@@ -13,10 +13,10 @@ use super::behandeling::{besluit_route, proefbesluit_route, werkvoorraad_route, 
 use super::portaal::{formulier_route, indienen, mogelijkheden_route, toets_route};
 use super::sessie::{login, logout, medewerker_login, medewerker_sessie, sessie};
 use super::Klok;
+use crate::gram::GeladenRegeling;
 use crate::proces::Proces;
 use crate::rijen::Rijen;
 use crate::sessie::Sessies;
-use crate::stroom::GeladenRegeling;
 use crate::synthese::Bron;
 use crate::transport::Transport;
 

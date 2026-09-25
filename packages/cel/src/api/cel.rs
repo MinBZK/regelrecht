@@ -15,9 +15,10 @@ use serde_json::{json, Map, Value};
 use super::{fout, intern, Fout, Klok};
 use crate::cel::Cel;
 use crate::celclient::Vastlegverzoek;
+use crate::gram::Gram;
 use crate::kroniek::{Kroniek, Vastgelegd};
 use crate::reductie::{self, Lexostatus};
-use crate::stroom::{self, Gram, Indiening, Zaak};
+use crate::stroom::{self, Indiening, Zaak};
 use crate::transport::{RuntimeToken, RUNTIME_TOKEN_HEADER};
 
 /// De toestand van een cel in de runtime.

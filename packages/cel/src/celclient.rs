@@ -12,8 +12,8 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
+use crate::gram::{Gram, Invoer, Receipt};
 use crate::reductie::Lexostatus;
-use crate::stroom::{Gram, Invoer, Receipt};
 use crate::transport::{Transport, TransportFout};
 
 /// Wat een proces de cel vraagt vast te leggen (`POST /api/grammen`), of op

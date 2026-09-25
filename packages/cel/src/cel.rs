@@ -10,8 +10,9 @@ use std::sync::Arc;
 use regelrecht_engine::LawExecutionService;
 
 use crate::config::CelDefinitie;
+use crate::gram::Gram;
 use crate::reductie::{self, Lexostatussen};
-use crate::stroom::{self, Event, Gram, Stroom};
+use crate::stroom::{self, Event, Stroom};
 use crate::{controle, startstand};
 
 /// Een geladen cel die de controles bij het opstarten doorstond.

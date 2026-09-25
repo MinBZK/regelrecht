@@ -22,7 +22,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
-use crate::stroom::Gram;
+use crate::gram::Gram;
 
 /// Een vastgelegd gram, met zijn YAML zodra iemand die vroeg: het gram
 /// verandert niet meer, dus de YAML hoeft maar een keer gemaakt te worden.
@@ -332,7 +332,8 @@ fn schrijf_bestand(pad: &Path, inhoud: &[u8]) -> Result<(), String> {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use crate::stroom::{StroomVerwijzing, Zaak};
+    use crate::gram::StroomVerwijzing;
+    use crate::stroom::Zaak;
     use serde_json::json;
     use std::collections::BTreeMap;
 

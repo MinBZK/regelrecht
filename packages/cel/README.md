@@ -408,7 +408,8 @@ komen.
 | `proces` | een proces uit zijn map laden, en de controles op cel, actor en portaal |
 | `config` | omgeving, `cel.yaml` en `proces.yaml` |
 | `stroom` | stroomdefinitie laden en valideren, gram bouwen uit intake en external |
-| `reductie` | lexostatus-definities laden, kroniek reduceren tot lexostatus |
+| `gram` | het vastgelegde gram, met invoer en receipt van een besluit, en het lezen van een veldpad |
+| `reductie` | kroniek reduceren tot lexostatus; `reductie::definitie` laadt de lexostatus-definities |
 | `startstand` | grammen voor een lege kroniek |
 | `kroniek` | append-only opslag, in het geheugen met een index per zaak, en herstel van een half geschreven regel |
 | `controle` | de controles bij het opstarten |

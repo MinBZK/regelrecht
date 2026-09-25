@@ -29,6 +29,7 @@ pub mod controle;
 pub mod datum;
 pub mod eherkenning;
 pub mod formulier;
+pub mod gram;
 pub mod kroniek;
 pub mod laden;
 pub mod mogelijkheid;

@@ -18,7 +18,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
-use crate::stroom::GeladenRegeling;
+use crate::gram::GeladenRegeling;
 
 /// Het corpus zoals de runtime het laadde: de engine met alle regelingen, en
 /// de inventaris ervan voor het receipt van een besluit (RFC-013).
