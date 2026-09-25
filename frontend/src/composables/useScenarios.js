@@ -45,22 +45,29 @@ export function useScenarios(lawId, trajectRef = ref(null)) {
   // and EditorApp's "Bekijk op GitHub" badge stays in sync regardless of
   // which pane the user pressed Save in.
 
+  // Sequence number of the most recent fetchScenarios call. Only that call may
+  // write `scenarios`, `error` or `loading`: a slow response for law A must not
+  // paint law B's screen, and must not clear `loading` while B is still on its
+  // way. Comparing the scope is not enough, because switching A, B, A gives the
+  // stale and the fresh request for A the same scope.
+  let latestFetch = 0;
+
   async function fetchScenarios() {
+    const fetchId = ++latestFetch;
+    const isLatest = () => fetchId === latestFetch;
+
     // Clear before the early return, not after: navigating from a failed law
     // to "no law selected" would otherwise leave the banner up.
     error.value = null;
     // Drop any stale save error from a previously selected law so the
     // banner does not linger after navigating to a different law.
     saveError.value = null;
-    if (!lawId.value) return;
-
-    // Snapshot the scope before the await, like saveScenario does. The read
-    // failure is now rendered, so a slow 502 for law A must not paint law B's
-    // screen with A's error after the user navigated away.
-    const savedLawId = lawId.value;
-    const savedTrajectRef = trajectRef.value;
-    const stillInScope = () =>
-      lawId.value === savedLawId && trajectRef.value === savedTrajectRef;
+    if (!lawId.value) {
+      // A request for the previous law may still be in flight; it no longer
+      // counts, so nothing is loading any more.
+      loading.value = false;
+      return;
+    }
 
     loading.value = true;
 
@@ -79,7 +86,7 @@ export function useScenarios(lawId, trajectRef = ref(null)) {
             : `Scenario's konden niet worden geladen: ${status}`,
       });
       const listed = await res.json();
-      if (!stillInScope()) return;
+      if (!isLatest()) return;
       scenarios.value = listed;
 
       // Auto-select the first scenario that explicitly targets this law;
@@ -95,11 +102,11 @@ export function useScenarios(lawId, trajectRef = ref(null)) {
         await selectScenario(preferred.filename);
       }
     } catch (e) {
-      if (!stillInScope()) return;
+      if (!isLatest()) return;
       error.value = e;
       scenarios.value = [];
     } finally {
-      loading.value = false;
+      if (isLatest()) loading.value = false;
     }
   }
 
