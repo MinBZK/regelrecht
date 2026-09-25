@@ -62,7 +62,7 @@ use crate::cel::Cel;
 use crate::celclient::{self, Besluitvelden, MetYaml, Vastlegverzoek};
 use crate::config::{HandelingDefinitie, Handelingsoort, NogNiet, ProcesDefinitie};
 use crate::datum::{self, Tijdpunt};
-use crate::formulier::Veld;
+use crate::formulier::{leesbaar, Veld};
 use crate::gezag::{self, Bevoegdheid};
 use crate::gram::{GeladenRegeling, Gram, HandelendeActor, Invoer, Receipt, StroomVerwijzing};
 use crate::kanaal::Sessie;
@@ -516,16 +516,6 @@ pub fn veldsoort(soort: &Value) -> Option<String> {
     })
 }
 
-/// Een naam leesbaar: `datum_betaling` wordt "Datum betaling".
-fn leesbaar(naam: &str) -> String {
-    let tekst = naam.replace('_', " ");
-    let mut tekens = tekst.chars();
-    match tekens.next() {
-        Some(eerste) => eerste.to_uppercase().chain(tekens).collect(),
-        None => tekst,
-    }
-}
-
 /// Zet het formulier van elke handeling, na de controle op de herkomst: de
 /// oordelen komen daaruit (zie [`crate::origin::oordelen`]). De feiten zijn
 /// bij een vervolg wat de stage vraagt (`requires`), en anders de velden van
@@ -839,7 +829,6 @@ fn controleer_handeling(
         }
         fouten.extend(controleer_besluit(proces, h, &vl));
         let sleutels = event.external_sleutels();
-        let oordelen: Vec<&str> = h.oordelen.iter().map(|o| o.parameter.as_str()).collect();
         let feiten: Vec<&str> = h.feiten.iter().map(|f| f.naam.as_str()).collect();
         match &h.soort {
             Handelingsoort::Besluit => {
@@ -889,7 +878,6 @@ fn controleer_handeling(
             }
             Handelingsoort::Feit => {}
         }
-        let _ = oordelen;
     }
 
     if matches!(h.soort, Handelingsoort::Vervolg { .. }) {
@@ -1249,38 +1237,35 @@ fn peildatum(
     nu: &DateTime<FixedOffset>,
     zaak: &Zaakstand,
 ) -> Result<(String, String, Option<String>), Weigering> {
-    if let Some(b) = &event.op_moment {
-        if let Binding::External(pad) = b.binding() {
-            if let Some(Value::String(t)) = formulier.get(&pad) {
-                let tp = Tijdpunt::lees(&pad, t).map_err(Weigering::Ongeldig)?;
-                let moment = tp.als_moment(*nu.offset());
-                let dag = datum::peildatum(&moment);
-                let laatste = zaak
-                    .laatste_op_moment
-                    .as_deref()
-                    .map(datum::peildatum_van)
-                    .transpose()
-                    .map_err(Weigering::Cel)?;
-                let bezwaar = if moment > *nu {
-                    Some(format!(
-                        "{pad} {dag} ligt na vandaag: wat nog moet gebeuren, is geen feit"
-                    ))
-                } else {
-                    laatste.filter(|l| dag < *l).map(|l| {
-                        format!(
-                            "{pad} {dag} ligt voor de zaak: het laatste feit erin geldt op {l}; een zaak loopt vooruit in de tijd"
-                        )
-                    })
-                };
-                return Ok((
-                    dag,
-                    format!("{pad} (op_moment, {})", b.grondslag.join(", ")),
-                    bezwaar,
-                ));
-            }
-        }
-    }
-    Ok((datum::peildatum(nu), "vandaag".to_string(), None))
+    let gebonden = crate::stroom::gebonden_moment(event, None, formulier, *nu.offset())
+        .map_err(Weigering::Ongeldig)?;
+    let Some((moment, b)) = gebonden else {
+        return Ok((datum::peildatum(nu), "vandaag".to_string(), None));
+    };
+    let pad = b.bron.strip_prefix("$external.").unwrap_or(&b.bron);
+    let dag = datum::peildatum(&moment);
+    let laatste = zaak
+        .laatste_op_moment
+        .as_deref()
+        .map(datum::peildatum_van)
+        .transpose()
+        .map_err(Weigering::Cel)?;
+    let bezwaar = if moment > *nu {
+        Some(format!(
+            "{pad} {dag} ligt na vandaag: wat nog moet gebeuren, is geen feit"
+        ))
+    } else {
+        laatste.filter(|l| dag < *l).map(|l| {
+            format!(
+                "{pad} {dag} ligt voor de zaak: het laatste feit erin geldt op {l}; een zaak loopt vooruit in de tijd"
+            )
+        })
+    };
+    Ok((
+        dag,
+        format!("{pad} (op_moment, {})", b.grondslag.join(", ")),
+        bezwaar,
+    ))
 }
 
 /// Waarom een handeling niet uit zichzelf genomen wordt.
@@ -1469,19 +1454,20 @@ async fn op_de_zaak(
     }
 
     // 2. Synthese, met de invoer uit de lexostatus van de zaak die haar
-    // levert.
+    // levert (de controle bij het laden zegt: hooguit een). Vraagt geen bron
+    // een invoer uit de zaak, dan begint de synthese leeg; de parameters van
+    // de zaak komen er daarna bij.
     let hoofd = om
         .bronnen
         .iter()
         .flat_map(|s| s.definitie.invoer.values().filter_map(|v| v.veld()))
-        .find_map(|v| eigen.iter().position(|l| l.naam == v.lexostatus))
-        .unwrap_or(0);
-    let mut samen = match eigen.get(hoofd) {
+        .find_map(|v| eigen.iter().position(|l| l.naam == v.lexostatus));
+    let mut samen = match hoofd.and_then(|i| eigen.get(i)) {
         Some(l) => synthese::voeg_samen(l, om.bronnen, &peil).await,
         None => synthese::voeg_samen(&Lexostatus::leeg(""), om.bronnen, &peil).await,
     };
     for (i, l) in eigen.iter().enumerate() {
-        if i == hoofd {
+        if Some(i) == hoofd {
             continue;
         }
         for (naam, w) in &l.parameters {
@@ -1601,10 +1587,13 @@ fn vervolg(
             stand.besluitkenmerk
         ))));
     }
-    let Handelingsoort::Vervolg { procedure, .. } = &h.soort else {
-        return Err(Weigering::Cel("geen vervolg".into()));
+    let (Handelingsoort::Vervolg { procedure, .. }, Some(stage)) = (&h.soort, h.stage.clone())
+    else {
+        return Err(Weigering::Cel(format!(
+            "handeling '{}' is geen vervolg met een stage",
+            h.naam
+        )));
     };
-    let stage = h.stage.clone().unwrap_or_default();
     let state = StageState {
         procedure_id: procedure.clone(),
         contextual_law: gram
@@ -1865,6 +1854,26 @@ pub async fn neem(
         .get_execution_spec()
         .and_then(|e| e.produces.as_ref())
         .filter(|_| decretogram);
+    // De versie van de regeling: haar `valid_from`. Noemt zij die niet, dan
+    // de publicatiedatum, met een waarschuwing: de versie is dan een
+    // aanname.
+    let mut regulation_valid_from = None;
+    if decretogram {
+        let law = service
+            .resolver()
+            .get_law(&h.regeling)
+            .ok_or_else(|| Weigering::Cel(format!("regeling '{}' is niet geladen", h.regeling)))?;
+        regulation_valid_from = Some(match &law.valid_from {
+            Some(v) => v.clone(),
+            None => {
+                waarschuwingen.push(format!(
+                    "regeling '{}' noemt geen valid_from; regulation_valid_from is haar publicatiedatum ({})",
+                    h.regeling, law.publication_date
+                ));
+                law.publication_date.clone()
+            }
+        });
+    }
     let verzoek = Vastlegverzoek {
         actor: actor.clone(),
         stroom: stroom.id.clone(),
@@ -1884,14 +1893,7 @@ pub async fn neem(
             legal_character: produces.and_then(|p| p.legal_character.clone()),
             decision_type: produces.and_then(|p| p.decision_type.clone()),
             regulation: decretogram.then(|| h.regeling.clone()),
-            regulation_valid_from: decretogram
-                .then(|| service.resolver().get_law(&h.regeling))
-                .flatten()
-                .and_then(|l| {
-                    l.valid_from
-                        .clone()
-                        .or_else(|| Some(l.publication_date.clone()))
-                }),
+            regulation_valid_from,
             competent_authority: gezag.filter(|_| decretogram),
             handelende_actor: Some(handelende_actor),
             inputs,

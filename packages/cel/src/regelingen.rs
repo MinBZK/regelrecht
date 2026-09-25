@@ -118,12 +118,15 @@ fn inventariseer(
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
         .filter(|s| s.len() == 10 && s.split('-').count() == 3);
+    let valid_from = stam
+        .or_else(|| lees("valid_from"))
+        .or_else(|| lees("publication_date"));
+    if valid_from.is_none() {
+        tracing::warn!(regeling = %id, bestand = %pad.display(), "regeling zonder datum in bestandsnaam, valid_from of publication_date: het receipt noemt geen versie");
+    }
     GeladenRegeling {
         id,
-        valid_from: stam
-            .or_else(|| lees("valid_from"))
-            .or_else(|| lees("publication_date"))
-            .unwrap_or_default(),
+        valid_from: valid_from.unwrap_or_default(),
         sha256: hex::encode(Sha256::digest(tekst.as_bytes())),
     }
 }

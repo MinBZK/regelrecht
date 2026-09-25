@@ -20,7 +20,7 @@ use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
 use crate::datum;
-use crate::gram::{op_pad, Gram, StroomVerwijzing};
+use crate::gram::{op_pad, zet_pad, Gram, StroomVerwijzing};
 use crate::laden;
 use crate::schema::Soort;
 
@@ -606,7 +606,7 @@ pub fn bouw_gram(
             }
             Binding::Constante(w) => w.clone(),
         };
-        zet(&mut fields, &blad.pad, waarde);
+        zet_pad(&mut fields, &blad.pad, waarde);
     }
     let (op_moment, op_moment_grondslag) = op_moment_van(event, indiening)?;
 
@@ -641,6 +641,7 @@ pub fn bouw_gram(
         fields,
         inputs: BTreeMap::new(),
         receipt: None,
+        tijden: Default::default(),
     })
 }
 
@@ -675,6 +676,40 @@ fn intake_waarde<'i>(indiening: &'i Indiening<'_>, pad: &str) -> Option<&'i Valu
     indiening.intake.as_object().and_then(|i| op_pad(i, pad))
 }
 
+/// Het moment waaraan het `op_moment` van een event een ingediende waarde
+/// bindt (`$intake.<pad>` of `$external.<pad>`), gelezen, met die binding.
+/// `None` als het event niets bindt of de waarde er niet is (of null). Een
+/// waarde die geen datum of moment is, is een fout; een datum is het begin
+/// van die dag in de tijdzone `offset`. Het proces leest zo de peildatum van
+/// een handeling uit zijn formulier, en de cel het `op_moment` van een gram.
+pub fn gebonden_moment<'e>(
+    event: &'e Event,
+    intake: Option<&Map<String, Value>>,
+    external: &Map<String, Value>,
+    offset: FixedOffset,
+) -> Result<Option<(DateTime<FixedOffset>, &'e OpMomentBinding)>, String> {
+    let Some(b) = &event.op_moment else {
+        return Ok(None);
+    };
+    let waarde = match b.binding() {
+        Binding::Intake(pad) => intake.and_then(|i| op_pad(i, &pad)),
+        Binding::External(pad) => op_pad(external, &pad),
+        _ => None,
+    };
+    let Some(tekst) = waarde.filter(|w| !w.is_null()) else {
+        return Ok(None);
+    };
+    let tekst = tekst.as_str().ok_or_else(|| {
+        format!(
+            "'{}' (op_moment van event '{}') is geen datum of moment",
+            b.bron, event.name
+        )
+    })?;
+    let moment =
+        datum::Tijdpunt::lees(&format!("op_moment uit '{}'", b.bron), tekst)?.als_moment(offset);
+    Ok(Some((moment, b)))
+}
+
 /// Het `op_moment` van een gram en, als het event het aan een ingediende
 /// waarde bond en die er was, de grondslag daarvan. Zonder waarde (of zonder
 /// binding) is het het moment van vastleggen. Een gebonden moment na het
@@ -684,25 +719,11 @@ fn op_moment_van(
     indiening: &Indiening<'_>,
 ) -> Result<(DateTime<FixedOffset>, Option<Vec<String>>), String> {
     let nu = indiening.vastgelegd_op;
-    let Some(b) = &event.op_moment else {
+    let intake = indiening.intake.as_object();
+    let Some((moment, b)) = gebonden_moment(event, intake, indiening.external, *nu.offset())?
+    else {
         return Ok((nu, None));
     };
-    let waarde = match b.binding() {
-        Binding::Intake(pad) => intake_waarde(indiening, &pad),
-        Binding::External(pad) => op_pad(indiening.external, &pad),
-        _ => None,
-    };
-    let Some(tekst) = waarde.filter(|w| !w.is_null()) else {
-        return Ok((nu, None));
-    };
-    let tekst = tekst.as_str().ok_or_else(|| {
-        format!(
-            "'{}' (op_moment van event '{}') is geen datum of moment",
-            b.bron, event.name
-        )
-    })?;
-    let moment = datum::Tijdpunt::lees(&format!("op_moment uit '{}'", b.bron), tekst)?
-        .als_moment(*nu.offset());
     if moment > nu {
         return Err(format!(
             "op_moment {} uit '{}' ligt na het vastleggen ({}): wat nog moet gebeuren, wordt niet vastgelegd",
@@ -712,24 +733,6 @@ fn op_moment_van(
         ));
     }
     Ok((moment, Some(b.grondslag.clone())))
-}
-
-fn zet(wortel: &mut Map<String, Value>, pad: &str, waarde: Value) {
-    let delen: Vec<&str> = pad.split('.').collect();
-    let mut huidig = wortel;
-    for deel in &delen[..delen.len() - 1] {
-        let volgende = huidig
-            .entry((*deel).to_string())
-            .or_insert_with(|| Value::Object(Map::new()));
-        if !volgende.is_object() {
-            *volgende = Value::Object(Map::new());
-        }
-        let Value::Object(m) = volgende else { return };
-        huidig = m;
-    }
-    if let Some(laatste) = delen.last() {
-        huidig.insert((*laatste).to_string(), waarde);
-    }
 }
 
 #[cfg(test)]

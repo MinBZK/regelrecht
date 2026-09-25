@@ -27,6 +27,12 @@ pub fn laad<T>(
     parse(&tekst, &bron)
 }
 
+/// Een YAML-document zonder schema, omgezet naar `T`. Elke melding noemt
+/// `bron`.
+pub fn yaml<T: DeserializeOwned>(tekst: &str, bron: &str) -> Result<T, Vec<String>> {
+    serde_yaml_ng::from_str(tekst).map_err(|e| vec![format!("{bron}: geen geldige YAML: {e}")])
+}
+
 /// Een YAML-document, gevalideerd tegen zijn schema: de YAML-boom (die de
 /// volgorde van het document houdt) en hetzelfde als JSON. Elke melding noemt
 /// `bron`.
@@ -35,8 +41,7 @@ pub fn yaml_document(
     bron: &str,
     soort: Soort,
 ) -> Result<(serde_yaml_ng::Value, Value), Vec<String>> {
-    let yaml: serde_yaml_ng::Value = serde_yaml_ng::from_str(tekst)
-        .map_err(|e| vec![format!("{bron}: geen geldige YAML: {e}")])?;
+    let yaml: serde_yaml_ng::Value = self::yaml(tekst, bron)?;
     let document: Value = serde_json::to_value(&yaml).map_err(|e| vec![format!("{bron}: {e}")])?;
     schema::valideer(soort, &document).map_err(|f| {
         f.into_iter()

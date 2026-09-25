@@ -368,19 +368,22 @@ fn toets_besluit(gram: &mut Gram, z: &str, zaak: &[&Gram]) -> Result<(), Fout> {
     }
     if rol.is_besluit() {
         // Het hoogste volgnummer plus een: een startstand mag nummers
-        // overslaan, en een kenmerk is uniek in de zaak.
-        let hoogste = besluiten
-            .iter()
-            .filter_map(|g| {
-                g.besluitkenmerk
-                    .as_deref()?
-                    .rsplit('/')
-                    .next()?
-                    .parse::<u64>()
-                    .ok()
-            })
-            .max()
-            .unwrap_or(0);
+        // overslaan, en een kenmerk is uniek in de zaak. Een besluit zonder
+        // kenmerk (een oudere kroniek) telt niet; een kenmerk dat niet
+        // `<zaakkenmerk>/<volgnummer>` is, is een fout in de kroniek.
+        let mut hoogste = 0_u64;
+        for k in besluiten.iter().filter_map(|g| g.besluitkenmerk.as_deref()) {
+            let n = k
+                .strip_prefix(z)
+                .and_then(|r| r.strip_prefix('/'))
+                .and_then(|n| n.parse::<u64>().ok())
+                .ok_or_else(|| {
+                    intern(format!(
+                        "besluitkenmerk '{k}' in zaak {z} is niet <zaakkenmerk>/<volgnummer>"
+                    ))
+                })?;
+            hoogste = hoogste.max(n);
+        }
         gram.besluitkenmerk = Some(format!("{z}/{}", hoogste + 1));
     }
     Ok(())

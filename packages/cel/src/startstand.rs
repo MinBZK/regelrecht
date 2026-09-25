@@ -128,6 +128,7 @@ fn bouw(tekst: &str, strommen: &[Stroom]) -> Result<Gram, String> {
         fields: regel.fields,
         inputs: BTreeMap::new(),
         receipt: None,
+        tijden: Default::default(),
     };
     // Valideren kan al: met het op_moment op de plaats van de laadtijd.
     Gram {

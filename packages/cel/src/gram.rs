@@ -17,6 +17,7 @@
 //!   niet: dan geldt het `op_moment` (zie [`Gram::vul_vastgelegd_op`]).
 
 use std::collections::BTreeMap;
+use std::sync::OnceLock;
 
 use chrono::{DateTime, FixedOffset};
 use serde::{Deserialize, Serialize};
@@ -108,6 +109,44 @@ pub struct Gram {
     /// hash erover (RFC-013, RFC-022 par. 1.3).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub receipt: Option<Receipt>,
+    /// `op_moment` en `vastgelegd_op`, gelezen: een keer per gram, niet bij
+    /// elke reductie of elk peil. Geen deel van het gram.
+    #[serde(skip)]
+    pub tijden: Tijden,
+}
+
+/// De gelezen tijden van een gram, elk met de tekst waaruit het gelezen is.
+/// Verandert de tekst (het stempel zet `vastgelegd_op`), dan leest het gram
+/// haar opnieuw; de cache telt niet mee in een vergelijking.
+#[derive(Debug, Clone, Default)]
+pub struct Tijden {
+    moment: OnceLock<(String, DateTime<FixedOffset>)>,
+    vastgelegd: OnceLock<(String, DateTime<FixedOffset>)>,
+}
+
+impl PartialEq for Tijden {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+/// Een tijd uit `cache` als die uit `tekst` gelezen is, anders `lees`, en
+/// dat bewaard als er nog niets lag.
+fn gelezen(
+    cache: &OnceLock<(String, DateTime<FixedOffset>)>,
+    tekst: &str,
+    lees: impl FnOnce() -> Result<DateTime<FixedOffset>, String>,
+) -> Result<DateTime<FixedOffset>, String> {
+    if let Some((t, m)) = cache.get() {
+        if t == tekst {
+            return Ok(*m);
+        }
+    }
+    let m = lees()?;
+    // Lag er al een tijd van een eerdere tekst, dan blijft die liggen en
+    // leest deze tekst elke keer opnieuw: juist, alleen niet gecachet.
+    let _ = cache.set((tekst.to_string(), m));
+    Ok(m)
 }
 
 /// Wie een besluit nam: de rol en het kanaal waarlangs de gebruiker inlogde,
@@ -214,13 +253,17 @@ impl Gram {
 
     /// Het `op_moment`, gelezen; een ongeldig moment is een fout.
     pub fn moment(&self) -> Result<DateTime<FixedOffset>, String> {
-        datum::moment(&self.op_moment).map_err(|e| format!("gram '{}': {e}", self.name))
+        gelezen(&self.tijden.moment, &self.op_moment, || {
+            datum::moment(&self.op_moment).map_err(|e| format!("gram '{}': {e}", self.name))
+        })
     }
 
     /// Het `vastgelegd_op`, gelezen; een ongeldig moment is een fout.
     pub fn vastgelegd(&self) -> Result<DateTime<FixedOffset>, String> {
-        datum::moment_van("vastgelegd_op", &self.vastgelegd_op)
-            .map_err(|e| format!("gram '{}': {e}", self.name))
+        gelezen(&self.tijden.vastgelegd, &self.vastgelegd_op, || {
+            datum::moment_van("vastgelegd_op", &self.vastgelegd_op)
+                .map_err(|e| format!("gram '{}': {e}", self.name))
+        })
     }
 
     /// Zet het moment van vastleggen: de cel doet dat onder haar schrijfslot,
@@ -284,6 +327,29 @@ pub fn op_pad<'v>(velden: &'v Map<String, Value>, pad: &str) -> Option<&'v Value
     }
     Some(huidig)
 }
+/// Zet een waarde op een veldpad met punten, en maak de tussenliggende
+/// objecten; wat op de weg geen object is, wordt er een.
+pub fn zet_pad(doel: &mut Map<String, Value>, pad: &str, waarde: Value) {
+    let mut delen = pad.split('.').peekable();
+    let mut hier = doel;
+    while let Some(deel) = delen.next() {
+        if delen.peek().is_none() {
+            hier.insert(deel.to_string(), waarde);
+            return;
+        }
+        let volgend = hier
+            .entry(deel.to_string())
+            .or_insert_with(|| Value::Object(Map::new()));
+        if !volgend.is_object() {
+            *volgend = Value::Object(Map::new());
+        }
+        let Value::Object(m) = volgend else {
+            return;
+        };
+        hier = m;
+    }
+}
+
 /// Een gram voor tests: een melding in `test_kroniek` die een zaak opent.
 #[cfg(test)]
 pub(crate) fn testgram(zaak: &str) -> Gram {
@@ -321,5 +387,41 @@ pub(crate) fn testgram(zaak: &str) -> Gram {
             .unwrap_or_default(),
         inputs: BTreeMap::new(),
         receipt: None,
+        tijden: Tijden::default(),
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn zet_pad_maakt_de_objecten() {
+        let mut m = Map::new();
+        zet_pad(&mut m, "a.b.c", json!(1));
+        zet_pad(&mut m, "a.d", json!(2));
+        assert_eq!(op_pad(&m, "a.b.c"), Some(&json!(1)));
+        assert_eq!(Value::Object(m), json!({"a": {"b": {"c": 1}, "d": 2}}));
+    }
+
+    /// De tijden van een gram worden een keer gelezen, en opnieuw als de
+    /// tekst verandert (zoals bij het stempel).
+    #[test]
+    fn de_gelezen_tijd_volgt_de_tekst() {
+        let mut g = testgram("z");
+        let eerst = g.vastgelegd().unwrap();
+        assert_eq!(g.vastgelegd().unwrap(), eerst);
+        let later = DateTime::parse_from_rfc3339("2025-03-13T09:00:00+01:00").unwrap();
+        g.stempel(later, None).unwrap();
+        assert_eq!(g.vastgelegd().unwrap(), later);
+        assert_eq!(
+            g.moment().unwrap(),
+            later,
+            "een ongebonden op_moment schuift mee"
+        );
+        g.op_moment = "geen moment".into();
+        assert!(g.moment().is_err());
     }
 }

@@ -15,9 +15,8 @@
 
 use std::path::Path;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use serde_yaml_ng::Value as Y;
 
 use crate::laden;
 use crate::stroom::{Event, Vorm};
@@ -83,61 +82,101 @@ pub struct Veld {
     pub grondslag: Vec<String>,
 }
 
-fn tekst(v: &Y, sleutel: &str) -> Option<String> {
-    v.get(sleutel).and_then(Y::as_str).map(str::to_string)
+/// Een naam leesbaar, als label van een veld zonder label of een regeling
+/// zonder naam: `datum_betaling` wordt "Datum betaling".
+pub fn leesbaar(naam: &str) -> String {
+    let tekst = naam.replace('_', " ");
+    let mut tekens = tekst.chars();
+    match tekens.next() {
+        Some(eerste) => eerste.to_uppercase().chain(tekens).collect(),
+        None => tekst,
+    }
 }
 
-fn json(v: &Y, sleutel: &str) -> Option<Value> {
-    v.get(sleutel).and_then(|w| serde_json::to_value(w).ok())
+/// Een formulierbestand zoals de runtime het leest.
+#[derive(Deserialize)]
+struct Bestand {
+    #[serde(default)]
+    schermen: Vec<SchermDoc>,
 }
 
-/// Lees een scherm uit een formulierbestand.
-pub fn parse(tekst_: &str, scherm: &str, bron: &str) -> Result<Formulier, String> {
-    let doc: Y =
-        serde_yaml_ng::from_str(tekst_).map_err(|e| format!("{bron}: geen geldige YAML: {e}"))?;
-    let scherm_doc = doc
-        .get("schermen")
-        .and_then(Y::as_sequence)
-        .and_then(|s| {
-            s.iter()
-                .find(|s| s.get("id").and_then(Y::as_str) == Some(scherm))
-        })
-        .ok_or_else(|| format!("{bron}: geen scherm '{scherm}'"))?;
-    let mut velden = Vec::new();
-    let mut voeg_toe = |groep: Option<String>, lijst: Option<&Y>| {
-        for v in lijst.and_then(Y::as_sequence).into_iter().flatten() {
-            let Some(id) = tekst(v, "id") else { continue };
-            velden.push(Veld {
-                label: tekst(v, "label").unwrap_or_else(|| id.clone()),
-                naam: id,
-                soort: tekst(v, "type"),
-                opties: json(v, "opties"),
-                kolommen: json(v, "kolommen"),
-                uitleg: tekst(v, "uitleg"),
-                groep: groep.clone(),
-                grondslag: grondslag_uit(json(v, "grondslag").as_ref()),
-            });
+#[derive(Deserialize)]
+struct SchermDoc {
+    id: String,
+    #[serde(default)]
+    titel: Option<String>,
+    #[serde(default)]
+    velden: Vec<VeldDoc>,
+    #[serde(default)]
+    groepen: Vec<GroepDoc>,
+}
+
+#[derive(Deserialize)]
+struct GroepDoc {
+    #[serde(default)]
+    titel: Option<String>,
+    #[serde(default)]
+    velden: Vec<VeldDoc>,
+}
+
+#[derive(Deserialize)]
+struct VeldDoc {
+    id: String,
+    #[serde(default)]
+    label: Option<String>,
+    #[serde(default, rename = "type")]
+    soort: Option<String>,
+    #[serde(default)]
+    opties: Option<Value>,
+    #[serde(default)]
+    kolommen: Option<Value>,
+    #[serde(default)]
+    uitleg: Option<String>,
+    #[serde(default)]
+    grondslag: Option<Value>,
+}
+
+impl VeldDoc {
+    fn veld(self, groep: Option<&String>) -> Veld {
+        Veld {
+            label: self.label.unwrap_or_else(|| self.id.clone()),
+            naam: self.id,
+            soort: self.soort,
+            opties: self.opties,
+            kolommen: self.kolommen,
+            uitleg: self.uitleg,
+            groep: groep.cloned(),
+            grondslag: grondslag_uit(self.grondslag.as_ref()),
         }
-    };
-    voeg_toe(None, scherm_doc.get("velden"));
-    for groep in scherm_doc
-        .get("groepen")
-        .and_then(Y::as_sequence)
+    }
+}
+
+/// Lees een scherm uit een formulierbestand. Een veld zonder `id`, of een
+/// sleutel met een andere vorm dan hier, is een fout: het formulier wordt niet
+/// half gelezen. Andere sleutels (een formulierbestand kan meer dienen dan
+/// de runtime) blijven buiten beschouwing.
+pub fn parse(tekst: &str, scherm: &str, bron: &str) -> Result<Formulier, String> {
+    let bestand: Bestand = laden::yaml(tekst, bron).map_err(|f| f.join("; "))?;
+    let s = bestand
+        .schermen
         .into_iter()
-        .flatten()
-    {
-        voeg_toe(tekst(groep, "titel"), groep.get("velden"));
+        .find(|s| s.id == scherm)
+        .ok_or_else(|| format!("{bron}: geen scherm '{scherm}'"))?;
+    let mut velden: Vec<Veld> = s.velden.into_iter().map(|v| v.veld(None)).collect();
+    for groep in s.groepen {
+        let titel = groep.titel;
+        velden.extend(groep.velden.into_iter().map(|v| v.veld(titel.as_ref())));
     }
     Ok(Formulier {
-        titel: tekst(scherm_doc, "titel"),
+        titel: s.titel,
         velden,
     })
 }
 
 /// Laad een scherm uit een formulierbestand.
 pub fn laad(pad: &Path, scherm: &str) -> Result<Formulier, String> {
-    let (t, bron) = laden::lees(pad)?;
-    parse(&t, scherm, &bron)
+    laden::laad(pad, |t, bron| parse(t, scherm, bron).map_err(|f| vec![f]))
+        .map_err(|f| f.join("; "))
 }
 
 /// De velden die een indiening voor dit event meegeeft: in de volgorde van

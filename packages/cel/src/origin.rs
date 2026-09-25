@@ -932,19 +932,8 @@ fn groep(service: &LawExecutionService, grondslag: &str) -> Option<String> {
         .resolver()
         .get_law(g.regeling)
         .and_then(|l| l.name.clone())
-        .unwrap_or_else(|| leesbaar(g.regeling));
+        .unwrap_or_else(|| crate::formulier::leesbaar(g.regeling));
     Some(format!("{naam}, artikel {}", g.artikel))
-}
-
-/// Een `$id` als naam, voor een regeling zonder `name`:
-/// `een_regeling` wordt "Een regeling".
-fn leesbaar(id: &str) -> String {
-    let tekst = id.replace('_', " ");
-    let mut tekens = tekst.chars();
-    match tekens.next() {
-        Some(eerste) => eerste.to_uppercase().chain(tekens).collect(),
-        None => tekst,
-    }
 }
 
 /// Of het aanbod op een parameter mag leunen: wat vooraf vaststaat, is wie
@@ -1777,7 +1766,7 @@ articles:
             "De dag van het besluit"
         );
         assert_eq!(
-            leesbaar("een_regeling_zonder_naam"),
+            crate::formulier::leesbaar("een_regeling_zonder_naam"),
             "Een regeling zonder naam"
         );
     }

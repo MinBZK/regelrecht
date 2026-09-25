@@ -656,6 +656,7 @@ mod tests {
             fields: fields.as_object().unwrap().clone(),
             inputs: BTreeMap::new(),
             receipt: None,
+            tijden: Default::default(),
         }
     }
 

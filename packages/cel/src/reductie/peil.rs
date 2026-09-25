@@ -31,10 +31,6 @@ use serde_json::{Map, Value};
 use crate::datum::Tijdpunt;
 use crate::gram::Gram;
 
-/// De query-parameters van een peil; geen lexostatus heeft een input met
-/// deze naam.
-pub const PEIL_SLEUTELS: [&str; 2] = ["peilmoment", "bekend_op"];
-
 /// Waarop een reductie peilt. De standaard is geen peil: elk gram telt.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Peil {
@@ -70,7 +66,8 @@ impl Peil {
         })
     }
 
-    /// Het peil als query-parameters, in de volgorde van [`PEIL_SLEUTELS`].
+    /// Het peil als query-parameters: `peilmoment`, dan `bekend_op`. Het
+    /// schema van `lexostatus.json` weert die namen als input.
     pub fn query(&self) -> Vec<(&'static str, String)> {
         [
             ("peilmoment", self.peilmoment),

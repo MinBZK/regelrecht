@@ -14,6 +14,7 @@
 //! ze mag gebruiken, de configuratie.
 
 use std::collections::BTreeMap;
+use std::sync::OnceLock;
 
 use regelrecht_engine::LawExecutionService;
 use regex::Regex;
@@ -21,6 +22,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::config::ProcesDefinitie;
+use crate::gram::zet_pad;
 use crate::stroom::{Binding, Event, Zaak};
 
 /// Een kanaal (`kanalen.<id>` in `proces.yaml`).
@@ -72,6 +74,10 @@ pub struct Identificatieveld {
     /// zoals het nummer dat een register toekent.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub grondslag: Vec<String>,
+    /// Het patroon, gecompileerd: bij het laden (zie
+    /// [`KanaalDefinitie::controleer`]), niet bij elke login.
+    #[serde(skip)]
+    regex: OnceLock<Regex>,
 }
 
 /// Een controle op een identificatieveld die een patroon niet kan uitdrukken.
@@ -205,7 +211,7 @@ impl KanaalDefinitie {
             }
             namen.push(&v.naam);
             if let Some(p) = &v.patroon {
-                if let Err(e) = Regex::new(p) {
+                if let Some(Err(e)) = v.regex() {
                     fouten.push(format!(
                         "kanaal '{id}': veld '{}' heeft een ongeldig patroon '{p}': {e}",
                         v.naam
@@ -226,10 +232,19 @@ impl KanaalDefinitie {
 }
 
 impl Identificatieveld {
+    /// Het patroon als reguliere expressie voor het hele veld (niet een stuk
+    /// ervan), een keer gecompileerd. `None` zonder patroon.
+    fn regex(&self) -> Option<Result<&Regex, regex::Error>> {
+        let p = self.patroon.as_ref()?;
+        if let Some(r) = self.regex.get() {
+            return Some(Ok(r));
+        }
+        Some(Regex::new(&format!("^(?:{p})$")).map(|r| self.regex.get_or_init(|| r)))
+    }
+
     fn voldoet(&self, waarde: &str) -> bool {
-        let patroon = match &self.patroon {
-            // Het hele veld, niet een stuk ervan.
-            Some(p) => Regex::new(&format!("^(?:{p})$")).is_ok_and(|r| r.is_match(waarde)),
+        let patroon = match self.regex() {
+            Some(r) => r.is_ok_and(|r| r.is_match(waarde)),
             None => true,
         };
         patroon
@@ -286,28 +301,6 @@ pub fn intake<'a>(
         zet_pad(&mut uit, k.intake_prefix(id), Value::Object(velden));
     }
     Value::Object(uit)
-}
-
-/// Zet een waarde op een pad met punten, en maak de tussenliggende objecten.
-pub fn zet_pad(doel: &mut Map<String, Value>, pad: &str, waarde: Value) {
-    let mut delen = pad.split('.').peekable();
-    let mut hier = doel;
-    while let Some(deel) = delen.next() {
-        if delen.peek().is_none() {
-            hier.insert(deel.to_string(), waarde);
-            return;
-        }
-        let volgend = hier
-            .entry(deel.to_string())
-            .or_insert_with(|| Value::Object(Map::new()));
-        if !volgend.is_object() {
-            *volgend = Value::Object(Map::new());
-        }
-        let Value::Object(m) = volgend else {
-            return;
-        };
-        hier = m;
-    }
 }
 
 /// De paden onder `$intake` die het portaal levert: `kanaal` en de velden
@@ -523,13 +516,5 @@ mod tests {
         assert!(f[1].contains("twee keer"));
         assert!(f[2].contains("eigenaar 'c'"));
         assert!(organisatie().controleer("o").is_empty());
-    }
-
-    #[test]
-    fn zet_pad_maakt_de_objecten() {
-        let mut m = Map::new();
-        zet_pad(&mut m, "a.b.c", json!(1));
-        zet_pad(&mut m, "a.d", json!(2));
-        assert_eq!(Value::Object(m), json!({"a": {"b": {"c": 1}, "d": 2}}));
     }
 }

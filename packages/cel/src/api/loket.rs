@@ -116,7 +116,7 @@ pub(super) async fn loket_indienen(
 
     let mut intake = kanaal::intake("loket", kanalen.iter().copied(), Some((kid, &velden)));
     if let Value::Object(m) = &mut intake {
-        kanaal::zet_pad(m, &pad, Value::String(invoer.ontvangen_op.clone()));
+        crate::gram::zet_pad(m, &pad, Value::String(invoer.ontvangen_op.clone()));
         m.insert(
             "ingevoerd_door".into(),
             json!({"rol": wie.rol, "kanaal": wie.kanaal, "identiteit": wie.velden}),
