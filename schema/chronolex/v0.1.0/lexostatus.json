@@ -275,7 +275,7 @@
           }
         },
         {
-          "description": "Over de grammen die door filter komen: waar als er ten minste een is. Geen gram is onwaar: de cel spreekt alleen over haar eigen kroniek.",
+          "description": "Over de grammen die door filter komen: waar als er ten minste een is. Geen gram is onwaar: de cel spreekt alleen over haar eigen kroniek. Met gevuld telt alleen een gram waarin dat veld gevuld is (niet afwezig, niet null, geen lege tekst, geen lege lijst).",
           "type": "object",
           "required": [
             "bestaat"
@@ -287,6 +287,9 @@
             },
             "bestaat": {
               "const": true
+            },
+            "gevuld": {
+              "$ref": "#/definitions/veldpad"
             }
           }
         },

@@ -107,7 +107,12 @@ impl Afleiding {
             }
         }
         Ok(match self {
-            Afleiding::Bestaat { .. } => Some(Value::Bool(!door.is_empty())),
+            Afleiding::Bestaat { gevuld: None, .. } => Some(Value::Bool(!door.is_empty())),
+            Afleiding::Bestaat {
+                gevuld: Some(veld), ..
+            } => Some(Value::Bool(
+                door.iter().any(|g| g.veld(veld).is_some_and(gevuld)),
+            )),
             Afleiding::Verzamel { verzamel, .. } => Some(Value::Array(
                 door.iter()
                     .map(|g| {
@@ -913,6 +918,35 @@ mod tests {
                 {"gebied": "A", "zetels": 4, "samengevoegd": null},
                 {"gebied": "B", "zetels": 2, "samengevoegd": null}
             ]))
+        );
+    }
+
+    /// `bestaat` met `gevuld`: alleen een gram waarin dat veld een waarde
+    /// heeft telt. Een filter vergelijkt op gelijkheid en kan dat niet.
+    #[test]
+    fn bestaat_met_gevuld_telt_alleen_een_gram_met_een_waarde() {
+        let a = afl("{filter: {name: uitslag_vastgesteld, lijst: $aanduiding}, bestaat: true, gevuld: samengevoegd}");
+        assert_eq!(a.gelezen_paden(), vec!["samengevoegd", "lijst"]);
+        let inputs = json!({"aanduiding": "VOORBEELD"});
+        let grammen = register();
+        let refs: Vec<&Gram> = grammen.iter().collect();
+        // De uitslagen van de fixture hebben geen samengevoegde aanduiding.
+        assert_eq!(
+            a.pas_toe_op_verzameling(inputs.as_object().unwrap(), &refs)
+                .unwrap(),
+            Some(json!(false))
+        );
+        let met = besluit(
+            "uitslag_vastgesteld",
+            "2024-03-20T09:00:00+01:00",
+            json!({"lijst": "VOORBEELD", "samengevoegd": 2}),
+        );
+        let mut refs = refs;
+        refs.push(&met);
+        assert_eq!(
+            a.pas_toe_op_verzameling(inputs.as_object().unwrap(), &refs)
+                .unwrap(),
+            Some(json!(true))
         );
     }
 

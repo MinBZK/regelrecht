@@ -130,11 +130,16 @@ pub enum Afleiding {
         kies: Kies,
         bevat: Bevat,
     },
-    /// Over de grammen door `filter`: of er ten minste een is.
+    /// Over de grammen door `filter`: of er ten minste een is. Met `gevuld`
+    /// telt alleen een gram waarin dat veld gevuld is (zie
+    /// [`super::gevuld`]): een filter vergelijkt op gelijkheid, en "heeft
+    /// een waarde" is geen waarde.
     Bestaat {
         #[serde(default, skip_serializing_if = "Filter::is_empty")]
         filter: Filter,
         bestaat: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gevuld: Option<String>,
     },
     /// Over de grammen door `filter`: de som van een getalveld.
     Som {
@@ -288,7 +293,8 @@ impl Afleiding {
             Afleiding::Som { som, .. } => vec![som.as_str()],
             Afleiding::Verzamel { verzamel, .. } => verzamel.iter().map(String::as_str).collect(),
             Afleiding::LaatsteBevat { bevat, .. } => vec![bevat.veld.as_str()],
-            Afleiding::Bestaat { .. } | Afleiding::Moment { .. } => vec![],
+            Afleiding::Bestaat { gevuld, .. } => gevuld.iter().map(String::as_str).collect(),
+            Afleiding::Moment { .. } => vec![],
         };
         if let Some(f) = self.filter() {
             paden.extend(filter_paden(f));
