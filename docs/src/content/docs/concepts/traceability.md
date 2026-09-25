@@ -44,13 +44,23 @@ Here is the engine computing `hoogte_zorgtoeslag` (the healthcare allowance amou
 ```text
 ║   ╟──Reference: algemene_wet_inkomensafhankelijke_regelingen#toetsingsinkomen
 ║   ║   ╟──Resolving from PARAMETERS: $BSN = '999993653'
-║   ║   ╟──Reference: wet_inkomstenbelasting_2001#toetsingsinkomen
+║   ║   ╟──Resolving $ALGEMENE_WET_INKOMENSAFHANKELIJKE_REGELINGEN#BEREKENINGSJAAR
+║   ║   ║   ├──Resolving from RESOLVED_INPUT: 2025
+║   ║   ║   └──Computing berekeningsjaar
+║   ║   ║       ├──Resolving from CONTEXT: $REFERENCEDATE.YEAR = 2025
+║   ║   ║       └──Result: berekeningsjaar = 2025
+║   ║   ╟──Reference: algemene_wet_inzake_rijksbelastingen#inkomensgegeven
 ║   ║   ║   ╟──Resolving from PARAMETERS: $BSN = '999993653'
-║   ║   ║   ╟──Reference: wet_inkomstenbelasting_2001#box1_inkomen
-║   ║   ║   ║   ╟──Resolving from DATA_SOURCE: $LOON_UIT_DIENSTBETREKKING = 79547
+║   ║   ║   ╟──Resolving from RESOLVED_INPUT: $BEREKENINGSJAAR = 2025
+║   ║   ║   ╟──Resolving from DATA_SOURCE: $AANSLAG_OF_NAVORDERINGSAANSLAG_VASTGESTELD = True
+║   ║   ║   ╟──Reference: wet_inkomstenbelasting_2001#verzamelinkomen
+║   ║   ║   ║   ╟──Resolving from PARAMETERS: $BSN = '999993653'
+║   ║   ║   ║   ╟──Reference: wet_inkomstenbelasting_2001#box1_inkomen
+║   ║   ║   ║   ║   ╟──Resolving from PARAMETERS: $BSN = '999993653'
+║   ║   ║   ║   ║   ╟──Resolving from DATA_SOURCE: $LOON_UIT_DIENSTBETREKKING = 79547
 ```
 
-The zorgtoeslag law needs `toetsingsinkomen`. The Awir provides it, but to do so the Awir itself calls the Wet inkomstenbelasting 2001, which in turn reads `loon_uit_dienstbetrekking` from a data source. Each new `║` column is one law deeper. The zorgtoeslag YAML asks only the Awir for this value; the step into the income-tax law is the Awir's own reference, which the engine follows transitively.
+The zorgtoeslag law needs `toetsingsinkomen`. The Awir provides it: article 8 takes the inkomensgegeven, which the Algemene wet inzake rijksbelastingen defines. That law in turn calls the Wet inkomstenbelasting 2001 for the `verzamelinkomen`, which reads `loon_uit_dienstbetrekking` from a data source. Each new `║` column is one law deeper. The zorgtoeslag YAML asks only the Awir for this value; the steps into the other two laws are references of the Awir and the AWR, which the engine follows transitively.
 
 ### IoC delegation
 

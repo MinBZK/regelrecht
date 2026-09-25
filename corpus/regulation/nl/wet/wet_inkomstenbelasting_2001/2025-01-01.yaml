@@ -128,8 +128,13 @@ articles:
 
   - number: '2.18'
     text: |-
-      Verzamelinkomen is het gezamenlijke bedrag van het inkomen uit werk en woning, het inkomen uit aanmerkelijk
-      belang en het belastbaar inkomen uit sparen en beleggen.
+      Verzamelinkomen is het gezamenlijke bedrag van:
+
+      a. het inkomen uit werk en woning;
+
+      b. het inkomen uit aanmerkelijk belang en
+
+      c. het belastbare inkomen uit sparen en beleggen, verminderd met daarin begrepen te conserveren inkomen
     url: https://wetten.overheid.nl/BWBR0011353/2025-01-01#Artikel2.18
     machine_readable:
       execution:
@@ -159,15 +164,16 @@ articles:
         # TODO: box3_inkomen requires Art 5.2a (forfaitair rendement) and
         # Art 5.5 (heffingsvrij vermogen) to be implemented — see #383
         output:
-          - name: toetsingsinkomen
+          - name: verzamelinkomen
             type: amount
             type_spec:
               unit: eurocent
         actions:
-          # Art 2.18: "het gezamenlijke bedrag van het inkomen uit werk en woning,
-          # het inkomen uit aanmerkelijk belang en het belastbaar inkomen uit sparen
-          # en beleggen". Box 3 temporarily excluded until Art 5.2a/5.5 exist (#383).
-          - output: toetsingsinkomen
+          # Art 2.18: the sum of onderdeel a (inkomen uit werk en woning) and
+          # onderdeel b (inkomen uit aanmerkelijk belang). Onderdeel c (belastbare
+          # inkomen uit sparen en beleggen, verminderd met te conserveren inkomen)
+          # is temporarily excluded until Art 5.2a/5.5 exist (#383).
+          - output: verzamelinkomen
             value:
               operation: ADD
               values:

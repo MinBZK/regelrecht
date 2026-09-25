@@ -27,42 +27,59 @@ wet_op_de_zorgtoeslag (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ║       └──Result: bsn_toeslagpartner = None
 ║   ╟──Reference: algemene_wet_inkomensafhankelijke_regelingen#toetsingsinkomen
 ║   ║   ╟──Resolving from PARAMETERS: $BSN = '999993653'
-║   ║   ╟──Reference: wet_inkomstenbelasting_2001#toetsingsinkomen
+║   ║   ╟──Resolving $ALGEMENE_WET_INKOMENSAFHANKELIJKE_REGELINGEN#BEREKENINGSJAAR
+║   ║   ║   ├──Resolving from RESOLVED_INPUT: 2025
+║   ║   ║   └──Computing berekeningsjaar
+║   ║   ║       ├──Resolving from CONTEXT: $REFERENCEDATE.YEAR = 2025
+║   ║   ║       └──Result: berekeningsjaar = 2025
+║   ║   ╟──Reference: algemene_wet_inzake_rijksbelastingen#inkomensgegeven
 ║   ║   ║   ╟──Resolving from PARAMETERS: $BSN = '999993653'
-║   ║   ║   ╟──Reference: wet_inkomstenbelasting_2001#box1_inkomen
+║   ║   ║   ╟──Resolving from RESOLVED_INPUT: $BEREKENINGSJAAR = 2025
+║   ║   ║   ╟──Resolving from DATA_SOURCE: $AANSLAG_OF_NAVORDERINGSAANSLAG_VASTGESTELD = True
+║   ║   ║   ╟──Reference: wet_inkomstenbelasting_2001#verzamelinkomen
 ║   ║   ║   ║   ╟──Resolving from PARAMETERS: $BSN = '999993653'
-║   ║   ║   ║   ╟──Resolving from DATA_SOURCE: $LOON_UIT_DIENSTBETREKKING = 79547
-║   ║   ║   ║   ╟──Resolving from DATA_SOURCE: $UITKERINGEN_EN_PENSIOENEN = 0
-║   ║   ║   ║   ╟──Resolving from DATA_SOURCE: $WINST_UIT_ONDERNEMING = 0
-║   ║   ║   ║   ╟──Resolving from DATA_SOURCE: $RESULTAAT_OVERIGE_WERKZAAMHEDEN = 0
-║   ║   ║   ║   ╟──Resolving from DATA_SOURCE: $EIGEN_WONING = 0
-║   ║   ║   ║   ╙──Computing box1_inkomen
+║   ║   ║   ║   ╟──Reference: wet_inkomstenbelasting_2001#box1_inkomen
+║   ║   ║   ║   ║   ╟──Resolving from PARAMETERS: $BSN = '999993653'
+║   ║   ║   ║   ║   ╟──Resolving from DATA_SOURCE: $LOON_UIT_DIENSTBETREKKING = 79547
+║   ║   ║   ║   ║   ╟──Resolving from DATA_SOURCE: $UITKERINGEN_EN_PENSIOENEN = 0
+║   ║   ║   ║   ║   ╟──Resolving from DATA_SOURCE: $WINST_UIT_ONDERNEMING = 0
+║   ║   ║   ║   ║   ╟──Resolving from DATA_SOURCE: $RESULTAAT_OVERIGE_WERKZAAMHEDEN = 0
+║   ║   ║   ║   ║   ╟──Resolving from DATA_SOURCE: $EIGEN_WONING = 0
+║   ║   ║   ║   ║   ╙──Computing box1_inkomen
+║   ║   ║   ║   ║       ├──Compute ADD(...) = 79547
+║   ║   ║   ║   ║       │   ├──Resolving from PARAMETERS: $LOON_UIT_DIENSTBETREKKING = 79547
+║   ║   ║   ║   ║       │   ├──Resolving from PARAMETERS: $UITKERINGEN_EN_PENSIOENEN = 0
+║   ║   ║   ║   ║       │   ├──Resolving from PARAMETERS: $WINST_UIT_ONDERNEMING = 0
+║   ║   ║   ║   ║       │   ├──Resolving from PARAMETERS: $RESULTAAT_OVERIGE_WERKZAAMHEDEN = 0
+║   ║   ║   ║   ║       │   └──Resolving from PARAMETERS: $EIGEN_WONING = 0
+║   ║   ║   ║   ║       └──Result: box1_inkomen = 79547
+║   ║   ║   ║   ╟──Reference: wet_inkomstenbelasting_2001#box2_inkomen
+║   ║   ║   ║   ║   ╟──Resolving from PARAMETERS: $BSN = '999993653'
+║   ║   ║   ║   ║   ╟──Resolving from DATA_SOURCE: $REGULIERE_VOORDELEN = 0
+║   ║   ║   ║   ║   ╟──Resolving from DATA_SOURCE: $VERVREEMDINGSVOORDELEN = 0
+║   ║   ║   ║   ║   ╙──Computing box2_inkomen
+║   ║   ║   ║   ║       ├──Compute ADD(...) = 0
+║   ║   ║   ║   ║       │   ├──Resolving from PARAMETERS: $REGULIERE_VOORDELEN = 0
+║   ║   ║   ║   ║       │   └──Resolving from PARAMETERS: $VERVREEMDINGSVOORDELEN = 0
+║   ║   ║   ║   ║       └──Result: box2_inkomen = 0
+║   ║   ║   ║   ╙──Computing verzamelinkomen
 ║   ║   ║   ║       ├──Compute ADD(...) = 79547
-║   ║   ║   ║       │   ├──Resolving from PARAMETERS: $LOON_UIT_DIENSTBETREKKING = 79547
-║   ║   ║   ║       │   ├──Resolving from PARAMETERS: $UITKERINGEN_EN_PENSIOENEN = 0
-║   ║   ║   ║       │   ├──Resolving from PARAMETERS: $WINST_UIT_ONDERNEMING = 0
-║   ║   ║   ║       │   ├──Resolving from PARAMETERS: $RESULTAAT_OVERIGE_WERKZAAMHEDEN = 0
-║   ║   ║   ║       │   └──Resolving from PARAMETERS: $EIGEN_WONING = 0
-║   ║   ║   ║       └──Result: box1_inkomen = 79547
-║   ║   ║   ╟──Reference: wet_inkomstenbelasting_2001#box2_inkomen
-║   ║   ║   ║   ╟──Resolving from PARAMETERS: $BSN = '999993653'
-║   ║   ║   ║   ╟──Resolving from DATA_SOURCE: $REGULIERE_VOORDELEN = 0
-║   ║   ║   ║   ╟──Resolving from DATA_SOURCE: $VERVREEMDINGSVOORDELEN = 0
-║   ║   ║   ║   ╙──Computing box2_inkomen
-║   ║   ║   ║       ├──Compute ADD(...) = 0
-║   ║   ║   ║       │   ├──Resolving from PARAMETERS: $REGULIERE_VOORDELEN = 0
-║   ║   ║   ║       │   └──Resolving from PARAMETERS: $VERVREEMDINGSVOORDELEN = 0
-║   ║   ║   ║       └──Result: box2_inkomen = 0
-║   ║   ║   ╙──Computing toetsingsinkomen
-║   ║   ║       ├──Compute ADD(...) = 79547
-║   ║   ║       │   ├──Resolving from PARAMETERS: $BOX1_INKOMEN = 79547
-║   ║   ║       │   └──Resolving from PARAMETERS: $BOX2_INKOMEN = 0
-║   ║   ║       └──Result: toetsingsinkomen = 79547
-║   ║   ╟──Resolving from DATA_SOURCE: $BUITENLANDS_INKOMEN = 0
+║   ║   ║   ║       │   ├──Resolving from PARAMETERS: $BOX1_INKOMEN = 79547
+║   ║   ║   ║       │   └──Resolving from PARAMETERS: $BOX2_INKOMEN = 0
+║   ║   ║   ║       └──Result: verzamelinkomen = 79547
+║   ║   ║   ╟──Resolving from DATA_SOURCE: $BELASTBAAR_LOON = 79547
+║   ║   ║   ╙──Computing inkomensgegeven
+║   ║   ║       ├──IF(case 0 matched) = 79547
+║   ║   ║       │   ├──CASE 0: True
+║   ║   ║       │   │   └──Resolving from PARAMETERS: $AANSLAG_OF_NAVORDERINGSAANSLAG_VASTGESTELD = True
+║   ║   ║       │   └──THEN: 79547
+║   ║   ║       │       └──Resolving from PARAMETERS: $VERZAMELINKOMEN = 79547
+║   ║   ║       └──Result: inkomensgegeven = 79547
+║   ║   ╟──Resolving from DATA_SOURCE: $NIET_IN_NEDERLAND_BELASTBAAR_INKOMEN = 0
 ║   ║   ╙──Computing toetsingsinkomen
 ║   ║       ├──Compute ADD(...) = 79547
-║   ║       │   ├──Resolving from PARAMETERS: $VERZAMELINKOMEN = 79547
-║   ║       │   └──Resolving from PARAMETERS: $BUITENLANDS_INKOMEN = 0
+║   ║       │   ├──Resolving from PARAMETERS: $INKOMENSGEGEVEN = 79547
+║   ║       │   └──Resolving from PARAMETERS: $NIET_IN_NEDERLAND_BELASTBAAR_INKOMEN = 0
 ║   ║       └──Result: toetsingsinkomen = 79547
 ║   ╟──Reference: algemene_wet_inkomensafhankelijke_regelingen#bsn_toeslagpartner
 ║   ║   ╟──Resolving from PARAMETERS: $BSN = '999993653'

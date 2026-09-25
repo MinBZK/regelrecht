@@ -7,6 +7,7 @@ Feature: Zorgtoeslag eligibility
     Given law "penitentiaire_beginselenwet" is loaded
     Given law "regeling_standaardpremie" is loaded
     Given law "algemene_wet_inkomensafhankelijke_regelingen" is loaded
+    Given law "algemene_wet_inzake_rijksbelastingen" is loaded
     Given law "wet_inkomstenbelasting_2001" is loaded
     Given law "wet_forensische_zorg" is loaded
 
@@ -21,8 +22,11 @@ Feature: Zorgtoeslag eligibility
       | bsn       | polis_status | verdragsinschrijving |
       | 999993653 | ACTIEF       | false                |
     Given the following "box1" data with key "bsn":
-      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
-      | 999993653 | 79547                     | 0                         | 0                     | 0                               | 0            | 0                   |
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning |
+      | 999993653 | 79547                     | 0                         | 0                     | 0                               | 0            |
+    Given the following "inkomensgegevens" data with key "bsn":
+      | bsn       | aanslag_of_navorderingsaanslag_vastgesteld | belastbaar_loon | niet_in_nederland_belastbaar_inkomen |
+      | 999993653 | true                                       | 79547           | 0                                    |
     Given the following "box2" data with key "bsn":
       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
       | 999993653 | 0                   | 0                      |
@@ -53,8 +57,11 @@ Feature: Zorgtoeslag eligibility
       | bsn       | polis_status | verdragsinschrijving |
       | 999993653 | ACTIEF       | false                |
     Given the following "box1" data with key "bsn":
-      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
-      | 999993653 | 0                         | 0                         | 0                     | 0                               | 0            | 0                   |
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning |
+      | 999993653 | 0                         | 0                         | 0                     | 0                               | 0            |
+    Given the following "inkomensgegevens" data with key "bsn":
+      | bsn       | aanslag_of_navorderingsaanslag_vastgesteld | belastbaar_loon | niet_in_nederland_belastbaar_inkomen |
+      | 999993653 | true                                       | 0               | 0                                    |
     Given the following "box2" data with key "bsn":
       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
       | 999993653 | 0                   | 0                      |
@@ -80,8 +87,11 @@ Feature: Zorgtoeslag eligibility
       | bsn       | polis_status | verdragsinschrijving |
       | 999993653 | ACTIEF       | false                |
     Given the following "box1" data with key "bsn":
-      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
-      | 999993653 | 20000                     | 0                         | 0                     | 0                               | 0            | 0                   |
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning |
+      | 999993653 | 20000                     | 0                         | 0                     | 0                               | 0            |
+    Given the following "inkomensgegevens" data with key "bsn":
+      | bsn       | aanslag_of_navorderingsaanslag_vastgesteld | belastbaar_loon | niet_in_nederland_belastbaar_inkomen |
+      | 999993653 | true                                       | 20000           | 0                                    |
     Given the following "box2" data with key "bsn":
       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
       | 999993653 | 0                   | 0                      |
@@ -108,8 +118,11 @@ Feature: Zorgtoeslag eligibility
       | bsn       | polis_status | verdragsinschrijving |
       | 999993653 | ACTIEF       | false                |
     Given the following "box1" data with key "bsn":
-      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
-      | 999993653 | 15000                     | 0                         | 0                     | 0                               | 0            | 0                   |
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning |
+      | 999993653 | 15000                     | 0                         | 0                     | 0                               | 0            |
+    Given the following "inkomensgegevens" data with key "bsn":
+      | bsn       | aanslag_of_navorderingsaanslag_vastgesteld | belastbaar_loon | niet_in_nederland_belastbaar_inkomen |
+      | 999993653 | true                                       | 15000           | 0                                    |
     Given the following "box2" data with key "bsn":
       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
       | 999993653 | 0                   | 0                      |
@@ -149,9 +162,13 @@ Feature: Zorgtoeslag eligibility
       | bsn       | polis_status | verdragsinschrijving |
       | 999993653 | ACTIEF       | false                |
     Given the following "box1" data with key "bsn":
-      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
-      | 999993653 | 3500000                   | 0                         | 0                     | 0                               | 0            | 0                   |
-      | 999993654 | 2000000                   | 0                         | 0                     | 0                               | 0            | 0                   |
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning |
+      | 999993653 | 3500000                   | 0                         | 0                     | 0                               | 0            |
+      | 999993654 | 2000000                   | 0                         | 0                     | 0                               | 0            |
+    Given the following "inkomensgegevens" data with key "bsn":
+      | bsn       | aanslag_of_navorderingsaanslag_vastgesteld | belastbaar_loon | niet_in_nederland_belastbaar_inkomen |
+      | 999993653 | true                                       | 3500000         | 0                                    |
+      | 999993654 | true                                       | 2000000         | 0                                    |
     Given the following "box2" data with key "bsn":
       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
       | 999993653 | 0                   | 0                      |
@@ -186,9 +203,13 @@ Feature: Zorgtoeslag eligibility
       | bsn       | polis_status | verdragsinschrijving |
       | 999993653 | ACTIEF       | false                |
     Given the following "box1" data with key "bsn":
-      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
-      | 999993653 | 2500000                   | 0                         | 0                     | 0                               | 0            | 0                   |
-      | 999993654 | 1500000                   | 0                         | 0                     | 0                               | 0            | 0                   |
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning |
+      | 999993653 | 2500000                   | 0                         | 0                     | 0                               | 0            |
+      | 999993654 | 1500000                   | 0                         | 0                     | 0                               | 0            |
+    Given the following "inkomensgegevens" data with key "bsn":
+      | bsn       | aanslag_of_navorderingsaanslag_vastgesteld | belastbaar_loon | niet_in_nederland_belastbaar_inkomen |
+      | 999993653 | true                                       | 2500000         | 0                                    |
+      | 999993654 | true                                       | 1500000         | 0                                    |
     Given the following "box2" data with key "bsn":
       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
       | 999993653 | 0                   | 0                      |
@@ -222,9 +243,13 @@ Feature: Zorgtoeslag eligibility
       | bsn       | polis_status | verdragsinschrijving |
       | 999993653 | ACTIEF       | false                |
     Given the following "box1" data with key "bsn":
-      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
-      | 999993653 | 2000000                   | 0                         | 0                     | 0                               | 0            | 0                   |
-      | 999993654 | 0                         | 0                         | 0                     | 0                               | 0            | 0                   |
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning |
+      | 999993653 | 2000000                   | 0                         | 0                     | 0                               | 0            |
+      | 999993654 | 0                         | 0                         | 0                     | 0                               | 0            |
+    Given the following "inkomensgegevens" data with key "bsn":
+      | bsn       | aanslag_of_navorderingsaanslag_vastgesteld | belastbaar_loon | niet_in_nederland_belastbaar_inkomen |
+      | 999993653 | true                                       | 2000000         | 0                                    |
+      | 999993654 | true                                       | 0               | 0                                    |
     Given the following "box2" data with key "bsn":
       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
       | 999993653 | 0                   | 0                      |
@@ -258,9 +283,13 @@ Feature: Zorgtoeslag eligibility
       | bsn       | polis_status | verdragsinschrijving |
       | 999993653 | ACTIEF       | false                |
     Given the following "box1" data with key "bsn":
-      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
-      | 999993653 | 2000000                   | 0                         | 0                     | 0                               | 0            | 0                   |
-      | 999993654 | 0                         | 0                         | 0                     | 0                               | 0            | 0                   |
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning |
+      | 999993653 | 2000000                   | 0                         | 0                     | 0                               | 0            |
+      | 999993654 | 0                         | 0                         | 0                     | 0                               | 0            |
+    Given the following "inkomensgegevens" data with key "bsn":
+      | bsn       | aanslag_of_navorderingsaanslag_vastgesteld | belastbaar_loon | niet_in_nederland_belastbaar_inkomen |
+      | 999993653 | true                                       | 2000000         | 0                                    |
+      | 999993654 | true                                       | 0               | 0                                    |
     Given the following "box2" data with key "bsn":
       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
       | 999993653 | 0                   | 0                      |
@@ -295,9 +324,13 @@ Feature: Zorgtoeslag eligibility
       | bsn       | polis_status | verdragsinschrijving |
       | 999993653 | ACTIEF       | false                |
     Given the following "box1" data with key "bsn":
-      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
-      | 999993653 | 2000000                   | 0                         | 0                     | 0                               | 0            | 0                   |
-      | 999993654 | 0                         | 0                         | 0                     | 0                               | 0            | 0                   |
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning |
+      | 999993653 | 2000000                   | 0                         | 0                     | 0                               | 0            |
+      | 999993654 | 0                         | 0                         | 0                     | 0                               | 0            |
+    Given the following "inkomensgegevens" data with key "bsn":
+      | bsn       | aanslag_of_navorderingsaanslag_vastgesteld | belastbaar_loon | niet_in_nederland_belastbaar_inkomen |
+      | 999993653 | true                                       | 2000000         | 0                                    |
+      | 999993654 | true                                       | 0               | 0                                    |
     Given the following "box2" data with key "bsn":
       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
       | 999993653 | 0                   | 0                      |
@@ -329,8 +362,11 @@ Feature: Zorgtoeslag eligibility
       | bsn       | polis_status | verdragsinschrijving |
       | 999993653 | ACTIEF       | false                |
     Given the following "box1" data with key "bsn":
-      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
-      | 999993653 | 2000000                   | 0                         | 0                     | 0                               | 0            | 0                   |
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning |
+      | 999993653 | 2000000                   | 0                         | 0                     | 0                               | 0            |
+    Given the following "inkomensgegevens" data with key "bsn":
+      | bsn       | aanslag_of_navorderingsaanslag_vastgesteld | belastbaar_loon | niet_in_nederland_belastbaar_inkomen |
+      | 999993653 | true                                       | 2000000         | 0                                    |
     Given the following "box2" data with key "bsn":
       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
       | 999993653 | 0                   | 0                      |
@@ -358,8 +394,11 @@ Feature: Zorgtoeslag eligibility
       | bsn       | polis_status | verdragsinschrijving |
       | 999993653 | ACTIEF       | false                |
     Given the following "box1" data with key "bsn":
-      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
-      | 999993653 | 2000000                   | 0                         | 0                     | 0                               | 0            | 0                   |
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning |
+      | 999993653 | 2000000                   | 0                         | 0                     | 0                               | 0            |
+    Given the following "inkomensgegevens" data with key "bsn":
+      | bsn       | aanslag_of_navorderingsaanslag_vastgesteld | belastbaar_loon | niet_in_nederland_belastbaar_inkomen |
+      | 999993653 | true                                       | 2000000         | 0                                    |
     Given the following "box2" data with key "bsn":
       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
       | 999993653 | 0                   | 0                      |
@@ -386,8 +425,11 @@ Feature: Zorgtoeslag eligibility
       | bsn       | polis_status | verdragsinschrijving |
       | 999993653 | VERLOPEN     | true                 |
     Given the following "box1" data with key "bsn":
-      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
-      | 999993653 | 25000                     | 0                         | 0                     | 0                               | 0            | 0                   |
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning |
+      | 999993653 | 25000                     | 0                         | 0                     | 0                               | 0            |
+    Given the following "inkomensgegevens" data with key "bsn":
+      | bsn       | aanslag_of_navorderingsaanslag_vastgesteld | belastbaar_loon | niet_in_nederland_belastbaar_inkomen |
+      | 999993653 | true                                       | 25000           | 0                                    |
     Given the following "box2" data with key "bsn":
       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
       | 999993653 | 0                   | 0                      |
@@ -431,8 +473,11 @@ Feature: Zorgtoeslag eligibility
       | bsn       | polis_status | verdragsinschrijving |
       | 999993653 | ACTIEF       | false                |
     Given the following "box1" data with key "bsn":
-      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
-      | 999993653 | 79547                     | 0                         | 0                     | 0                               | 0            | 0                   |
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning |
+      | 999993653 | 79547                     | 0                         | 0                     | 0                               | 0            |
+    Given the following "inkomensgegevens" data with key "bsn":
+      | bsn       | aanslag_of_navorderingsaanslag_vastgesteld | belastbaar_loon | niet_in_nederland_belastbaar_inkomen |
+      | 999993653 | true                                       | 79547           | 0                                    |
     Given the following "box2" data with key "bsn":
       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
       | 999993653 | 0                   | 0                      |
@@ -470,9 +515,13 @@ Feature: Zorgtoeslag eligibility
       | bsn       | polis_status | verdragsinschrijving |
       | 999993653 | ACTIEF       | false                |
     Given the following "box1" data with key "bsn":
-      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
-      | 999993653 | 2500000                   | 0                         | 0                     | 0                               | 0            | 0                   |
-      | 999993654 | 1500000                   | 0                         | 0                     | 0                               | 0            | 0                   |
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning |
+      | 999993653 | 2500000                   | 0                         | 0                     | 0                               | 0            |
+      | 999993654 | 1500000                   | 0                         | 0                     | 0                               | 0            |
+    Given the following "inkomensgegevens" data with key "bsn":
+      | bsn       | aanslag_of_navorderingsaanslag_vastgesteld | belastbaar_loon | niet_in_nederland_belastbaar_inkomen |
+      | 999993653 | true                                       | 2500000         | 0                                    |
+      | 999993654 | true                                       | 1500000         | 0                                    |
     Given the following "box2" data with key "bsn":
       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
       | 999993653 | 0                   | 0                      |
@@ -507,8 +556,11 @@ Feature: Zorgtoeslag eligibility
       | bsn       | polis_status | verdragsinschrijving |
       | 999993653 | ACTIEF       | false                |
     Given the following "box1" data with key "bsn":
-      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
-      | 999993653 | 0                         | 0                         | 0                     | 0                               | 0            | 0                   |
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning |
+      | 999993653 | 0                         | 0                         | 0                     | 0                               | 0            |
+    Given the following "inkomensgegevens" data with key "bsn":
+      | bsn       | aanslag_of_navorderingsaanslag_vastgesteld | belastbaar_loon | niet_in_nederland_belastbaar_inkomen |
+      | 999993653 | true                                       | 0               | 0                                    |
     Given the following "box2" data with key "bsn":
       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
       | 999993653 | 0                   | 0                      |
@@ -538,8 +590,11 @@ Feature: Zorgtoeslag eligibility
       | bsn       | polis_status | verdragsinschrijving |
       | 999993653 | ACTIEF       | false                |
     Given the following "box1" data with key "bsn":
-      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
-      | 999993653 | 25000                     | 0                         | 0                     | 0                               | 0            | 0                   |
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning |
+      | 999993653 | 25000                     | 0                         | 0                     | 0                               | 0            |
+    Given the following "inkomensgegevens" data with key "bsn":
+      | bsn       | aanslag_of_navorderingsaanslag_vastgesteld | belastbaar_loon | niet_in_nederland_belastbaar_inkomen |
+      | 999993653 | true                                       | 25000           | 0                                    |
     Given the following "box2" data with key "bsn":
       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
       | 999993653 | 0                   | 0                      |
@@ -571,8 +626,11 @@ Feature: Zorgtoeslag eligibility
       | bsn       | polis_status | verdragsinschrijving |
       | 999993653 | ACTIEF       | false                |
     Given the following "box1" data with key "bsn":
-      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
-      | 999993653 | 3000000                   | 0                         | 0                     | 0                               | 0            | 0                   |
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning |
+      | 999993653 | 3000000                   | 0                         | 0                     | 0                               | 0            |
+    Given the following "inkomensgegevens" data with key "bsn":
+      | bsn       | aanslag_of_navorderingsaanslag_vastgesteld | belastbaar_loon | niet_in_nederland_belastbaar_inkomen |
+      | 999993653 | true                                       | 3000000         | 0                                    |
     Given the following "box2" data with key "bsn":
       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
       | 999993653 | 0                   | 0                      |
@@ -591,6 +649,9 @@ Feature: Zorgtoeslag eligibility
   # Bij de inkomensgrens is de normpremie gelijk aan de standaardpremie en
   # houdt het recht op. Voor 2025 ligt die grens op 39.719 euro, het bedrag dat
   # VWS publiceert; dat de berekening daar op nul uitkomt is de controle.
+  # Er is een aanslag, dus het toetsingsinkomen is het verzamelinkomen
+  # (artikel 21, onderdeel e, 1°, AWR); het lage belastbare loon mag de
+  # uitkomst niet raken.
   Scenario: Boven de inkomensgrens bestaat geen recht op zorgtoeslag
     Given the following "personal_data" data with key "bsn":
       | bsn       | geboortedatum | verblijfsadres | land_verblijf |
@@ -602,8 +663,83 @@ Feature: Zorgtoeslag eligibility
       | bsn       | polis_status | verdragsinschrijving |
       | 999993653 | ACTIEF       | false                |
     Given the following "box1" data with key "bsn":
-      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
-      | 999993653 | 4500000                   | 0                         | 0                     | 0                               | 0            | 0                   |
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning |
+      | 999993653 | 4500000                   | 0                         | 0                     | 0                               | 0            |
+    Given the following "inkomensgegevens" data with key "bsn":
+      | bsn       | aanslag_of_navorderingsaanslag_vastgesteld | belastbaar_loon | niet_in_nederland_belastbaar_inkomen |
+      | 999993653 | true                                       | 79547           | 0                                    |
+    Given the following "box2" data with key "bsn":
+      | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
+      | 999993653 | 0                   | 0                      |
+    Given the following "box3" data with key "bsn":
+      | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
+      | 999993653 | 0         | 0           | 0              | 0        |
+    Given the following "detenties" data with key "bsn":
+      | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
+      | 999993653 | null           | null            | null     | null                 |
+    Given parameter "bsn" is "999993653"
+    When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
+    Then the execution succeeds
+    Then output "heeft_recht_op_zorgtoeslag" is false
+    Then output "hoogte_zorgtoeslag" equals 0
+
+  # Artikel 8, eerste lid, Awir: het toetsingsinkomen is het inkomensgegeven.
+  # Zonder aanslag of navorderingsaanslag inkomstenbelasting is dat het
+  # belastbare loon (artikel 21, onderdeel e, 2°, AWR), niet het
+  # verzamelinkomen. De box 1-gegevens staan hier boven de inkomensgrens en
+  # zouden tot nul leiden; het belastbare loon is dat van het eerste scenario,
+  # en de uitkomst is daarom ook die van het eerste scenario.
+  Scenario: Zonder aanslag inkomstenbelasting telt het belastbare loon als toetsingsinkomen
+    Given the following "personal_data" data with key "bsn":
+      | bsn       | geboortedatum | verblijfsadres | land_verblijf |
+      | 999993653 | 2005-01-01    | Amsterdam      | NEDERLAND     |
+    Given the following "relationship_data" data with key "bsn":
+      | bsn       | partnerschap_type | partner_bsn |
+      | 999993653 | GEEN              | null        |
+    Given the following "insurance" data with key "bsn":
+      | bsn       | polis_status | verdragsinschrijving |
+      | 999993653 | ACTIEF       | false                |
+    Given the following "box1" data with key "bsn":
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning |
+      | 999993653 | 4500000                   | 0                         | 0                     | 0                               | 0            |
+    Given the following "inkomensgegevens" data with key "bsn":
+      | bsn       | aanslag_of_navorderingsaanslag_vastgesteld | belastbaar_loon | niet_in_nederland_belastbaar_inkomen |
+      | 999993653 | false                                      | 79547           | 0                                    |
+    Given the following "box2" data with key "bsn":
+      | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
+      | 999993653 | 0                   | 0                      |
+    Given the following "box3" data with key "bsn":
+      | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
+      | 999993653 | 0         | 0           | 0              | 0        |
+    Given the following "detenties" data with key "bsn":
+      | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
+      | 999993653 | null           | null            | null     | null                 |
+    Given parameter "bsn" is "999993653"
+    When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
+    Then the execution succeeds
+    Then output "heeft_recht_op_zorgtoeslag" is true
+    Then output "hoogte_zorgtoeslag" equals 157731
+
+  # Artikel 8, tweede lid, Awir: niet in Nederland belastbaar inkomen, zoals
+  # dat bij beschikking is vastgesteld, telt mee. 795,47 euro inkomensgegeven
+  # plus 44.204,53 euro van die beschikking is 45.000 euro, het inkomen van het
+  # scenario hierboven dat boven de grens valt.
+  Scenario: Niet in Nederland belastbaar inkomen telt mee in het toetsingsinkomen
+    Given the following "personal_data" data with key "bsn":
+      | bsn       | geboortedatum | verblijfsadres | land_verblijf |
+      | 999993653 | 1990-01-01    | Amsterdam      | NEDERLAND     |
+    Given the following "relationship_data" data with key "bsn":
+      | bsn       | partnerschap_type | partner_bsn |
+      | 999993653 | GEEN              | null        |
+    Given the following "insurance" data with key "bsn":
+      | bsn       | polis_status | verdragsinschrijving |
+      | 999993653 | ACTIEF       | false                |
+    Given the following "box1" data with key "bsn":
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning |
+      | 999993653 | 79547                     | 0                         | 0                     | 0                               | 0            |
+    Given the following "inkomensgegevens" data with key "bsn":
+      | bsn       | aanslag_of_navorderingsaanslag_vastgesteld | belastbaar_loon | niet_in_nederland_belastbaar_inkomen |
+      | 999993653 | true                                       | 79547           | 4420453                              |
     Given the following "box2" data with key "bsn":
       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
       | 999993653 | 0                   | 0                      |
