@@ -26,7 +26,7 @@ use crate::proces::{met_proces, Proces};
 use crate::sessie::Sessies;
 use crate::synthese::{self, Bron, TIJDSLIMIET};
 use crate::transport::{Http, Intern, RuntimeToken, Transport};
-use crate::{besluit, regelingen, rijen};
+use crate::{besluit, regelingen, rijen, startstand};
 
 /// Een geladen runtime: de cellen, de processen en de router over allemaal.
 pub struct Runtime {
@@ -104,8 +104,8 @@ impl Runtime {
         let runtime_token = RuntimeToken::nieuw();
         let mut celstaten = Vec::new();
         for cel in cellen {
-            let kroniek =
-                open_kroniek(&config.data_dir, &cel).map_err(|f| met_cel(cel.id(), vec![f]))?;
+            let kroniek = open_kroniek(&config.data_dir, &cel, &klok)
+                .map_err(|f| met_cel(cel.id(), vec![f]))?;
             celstaten.push(CelState {
                 cel,
                 kroniek: Arc::new(kroniek),
@@ -202,10 +202,15 @@ impl Runtime {
 }
 
 /// Open de kroniek van een cel. Is elke kroniek van de cel leeg, dan komt de
-/// startstand erin.
-fn open_kroniek(data_dir: &Path, cel: &Cel) -> Result<Kroniek, String> {
+/// startstand erin, met de laadtijd als `vastgelegd_op`.
+fn open_kroniek(data_dir: &Path, cel: &Cel, klok: &Klok) -> Result<Kroniek, String> {
     let kroniek = Kroniek::open(&data_dir.join(cel.id()), &cel.kronieken())?;
-    if !cel.startstand.is_empty() && kroniek.zet_startstand(&cel.kronieken(), &cel.startstand)? {
+    if !cel.startstand.is_empty()
+        && kroniek.zet_startstand(
+            &cel.kronieken(),
+            &startstand::geplaatst(&cel.startstand, &klok()),
+        )?
+    {
         tracing::info!(cel = %cel.id(), grammen = cel.startstand.len(), "startstand in lege kroniek gezet");
     }
     Ok(kroniek)

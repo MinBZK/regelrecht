@@ -17,7 +17,7 @@ use crate::cel::Cel;
 use crate::celclient::Vastlegverzoek;
 use crate::gram::Gram;
 use crate::kroniek::{Kroniek, Vastgelegd};
-use crate::reductie::{self, Lexostatus};
+use crate::reductie::{self, Lexostatus, Peil};
 use crate::stroom::{self, Indiening, Zaak};
 use crate::transport::{RuntimeToken, RUNTIME_TOKEN_HEADER};
 
@@ -135,7 +135,7 @@ fn bouw(state: &CelState, v: &Vastlegverzoek) -> Result<Gram, Fout> {
         &Indiening {
             intake: &v.intake,
             external: &v.external,
-            op_moment: (state.klok)(),
+            vastgelegd_op: (state.klok)(),
             zaakkenmerk: zaakkenmerk.as_deref(),
         },
     )
@@ -239,13 +239,17 @@ async fn grammen_route(
 #[derive(Deserialize)]
 struct Proefverzoek {
     concept: Vastlegverzoek,
+    /// De inputs van de lexostatus, en zo nodig het peil (`peilmoment`,
+    /// `bekend_op`), zoals bij `GET lexostatus`.
     #[serde(default)]
     inputs: Map<String, Value>,
 }
 
 /// Een proefreductie: het gram van het concept in het geheugen, de kroniek
 /// mét dat gram gereduceerd. Zonder input `zaakkenmerk` telt dat van het
-/// concept. Een concept is geen feit: niets wordt vastgelegd.
+/// concept. Een concept is geen feit: niets wordt vastgelegd. Het concept
+/// telt als vastgelegd op de klok van nu; met een peil geldt voor het concept
+/// hetzelfde als voor elk ander gram.
 async fn proef_route(
     State(state): State<CelState>,
     Path(naam): Path<String>,
@@ -261,6 +265,7 @@ async fn proef_route(
         toets_zaak(&gram, &zaak.iter().map(|v| &v.gram).collect::<Vec<_>>())?;
     }
     let mut inputs = verzoek.inputs;
+    let peil = Peil::uit_query(&mut inputs).map_err(|e| fout(StatusCode::BAD_REQUEST, e))?;
     if let Some(z) = &gram.zaakkenmerk {
         if def.inputs.iter().any(|i| i.name == "zaakkenmerk") && !inputs.contains_key("zaakkenmerk")
         {
@@ -269,12 +274,14 @@ async fn proef_route(
     }
     inputs_compleet(def, &inputs)?;
     let kroniek = state.kroniek.lees(&def.reduction.kroniek).map_err(intern)?;
-    // Het concept als laatste: bij gelijk moment kiest `kies: laatste` het.
+    // Het concept als laatste: bij gelijke momenten kiest `kies: laatste`
+    // het. Een concept met een eerder op_moment (een eerdere ontvangst) is
+    // niet vanzelf het laatste.
     let grammen = kroniek
         .iter()
         .map(|v| &v.gram)
         .chain(std::iter::once(&gram));
-    let lexostatus = reductie::reduceer(def, &inputs, grammen)
+    let lexostatus = reductie::reduceer_op(def, &inputs, grammen, &peil)
         .map_err(|e| fout(StatusCode::BAD_REQUEST, e))?
         .ok_or_else(|| fout(StatusCode::NOT_FOUND, "geen gram voor deze vraag"))?;
     Ok(Json(json!({"gram": gram, "lexostatus": lexostatus})))
@@ -343,15 +350,19 @@ async fn zaak_van_cel_route(
     Ok(Json(met_yaml(&state, &grammen)?))
 }
 
+/// Een lexostatus: de kroniek gereduceerd, met de inputs als query. Met
+/// `peilmoment` en/of `bekend_op` (een datum of een moment) op een eerder
+/// moment: zie [`Peil`].
 async fn lexostatus_route(
     State(state): State<CelState>,
     Path(naam): Path<String>,
-    Query(inputs): Query<Map<String, Value>>,
+    Query(mut inputs): Query<Map<String, Value>>,
 ) -> Result<Json<Lexostatus>, Fout> {
     let def = lexostatus_def(&state, &naam)?;
+    let peil = Peil::uit_query(&mut inputs).map_err(|e| fout(StatusCode::BAD_REQUEST, e))?;
     inputs_compleet(def, &inputs)?;
     let grammen = state.kroniek.lees(&def.reduction.kroniek).map_err(intern)?;
-    reductie::reduceer(def, &inputs, grammen.iter().map(|v| &v.gram))
+    reductie::reduceer_op(def, &inputs, grammen.iter().map(|v| &v.gram), &peil)
         .map_err(|e| fout(StatusCode::BAD_REQUEST, e))?
         .map(Json)
         .ok_or_else(|| fout(StatusCode::NOT_FOUND, "geen gram voor deze vraag"))

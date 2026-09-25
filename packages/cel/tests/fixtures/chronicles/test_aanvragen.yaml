@@ -11,6 +11,11 @@ events:
     type: indiening
     soort: aanvraag
     zaak: opent
+    # Een loket kan een eerdere ontvangst opgeven (een datumstempel); via het
+    # portaal is de ontvangst het vastleggen zelf.
+    op_moment:
+      bron: $intake.ontvangen_op
+      grondslag: [testregeling_aanvraag#1]
     fields:
       kern:
         aanvrager:

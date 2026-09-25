@@ -122,8 +122,8 @@ het gedrag.
 | `GET /api/processen` | de processen, met per proces de actor, de cel, portaal, rollen, behandeling en de synthese-bronnen |
 | `GET /cellen/<id>/api/kroniek` | de grammen, elk met YAML |
 | `GET /cellen/<id>/api/zaken/<zaakkenmerk>` | de grammen van één zaak, elk met YAML; de cel filtert, 404 als ze de zaak niet kent |
-| `GET /cellen/<id>/api/lexostatus/<naam>?<input>=...` | een reductie; de inputs als query |
-| `POST /cellen/<id>/api/lexostatus/<naam>/proef` | alleen met het runtime-token: `{concept, inputs}`: de cel bouwt het gram van het concept in het geheugen en reduceert de kroniek mét dat gram; er wordt niets vastgelegd |
+| `GET /cellen/<id>/api/lexostatus/<naam>?<input>=...` | een reductie; de inputs als query, en optioneel `peilmoment` en `bekend_op` (zie "Tijd") |
+| `POST /cellen/<id>/api/lexostatus/<naam>/proef` | alleen met het runtime-token: `{concept, inputs}`: de cel bouwt het gram van het concept in het geheugen en reduceert de kroniek mét dat gram (`inputs` mag een peil dragen); er wordt niets vastgelegd |
 | `POST /cellen/<id>/api/grammen` | alleen met het runtime-token: `{actor, stroom, event, intake, external, zaakkenmerk?, besluit?}`: de cel bouwt het gram, valideert het, controleert de actor en de zaak, en legt het vast (201); 409 als die stage al vastligt in de zaak |
 | `GET /cellen/<id>/api/stroom` | de stroomdefinities van de cel, met hun hash |
 | `GET /processen/<id>/api/voorbeelden` | de voorbeelden per handeling, zonder login |
@@ -182,13 +182,15 @@ erboven: het leest lexostatussen en vraagt de cel vast te leggen.
    `fields.inhoud`. `niet_gereduceerd` noemt met reden de velden die geen
    afleiding of filter leest. Een event met een zaak mag een RFC-008-stage
    dragen: een besluit `BESLUIT`, een aanvraag `AANVRAAG`; alleen op een
-   decretogram of een indiening.
+   decretogram of een indiening. `op_moment: {bron, grondslag}` bindt het
+   moment waarop het feit rechtens geldt aan een ingediende waarde (zie
+   "Tijd").
 3. **Reductie tot lexostatus** (`reductie`, schema `lexostatus.json`). Een
    definitie beperkt de kroniek met `filter` en kiest met `kies: laatste` zo
    nodig een gram. Per parameter een afleiding:
    - op het gekozen gram: `veld`, `jaar_van` (het jaartal van een datum),
      `gevuld`, `gelijk`, `tabel` met `elke_regel` of `een_regel` (en
-     `alleen_waar`), `moment`;
+     `alleen_waar`), `moment` (`op_moment` of `vastgelegd_op`);
    - over de grammen die door een eigen `filter` komen: `bestaat: true`,
      `som: <veld>`, `kies: laatste` met `veld: <pad>` of `jaar_van: <pad>` (en
      optioneel `geen_gram: <waarde>`, de lezing van afwezigheid) of met
@@ -217,8 +219,11 @@ erboven: het leest lexostatussen en vraagt de cel vast te leggen.
    `herkomst: startstand`. Een gram van een besluit dat een proces nam draagt
    daarnaast `legal_character`, `decision_type`, `regulation`,
    `regulation_valid_from`, zo nodig `competent_authority`, `inputs` (elke
-   parameter met haar waarde en herkomst) en `receipt`. Een gram met een
-   `op_moment` dat geen moment met tijdzone is, valideert niet.
+   parameter met haar waarde en herkomst) en `receipt`. Elk gram heeft twee
+   tijden, `op_moment` en `vastgelegd_op` (zie "Tijd"); een gram waarvan een
+   van beide geen moment met tijdzone is, valideert niet. Een regel van voor
+   `vastgelegd_op` laadt nog: die krijgt zijn `op_moment`, met een
+   waarschuwing.
 
    Het bestand is de bron; de runtime houdt de grammen daarnaast in het
    geheugen, met een index per zaak, en maakt de YAML van een gram een keer.
@@ -232,11 +237,49 @@ erboven: het leest lexostatussen en vraagt de cel vast te leggen.
    overschreven. Lezers wachten niet op de schijf: alleen het schrijven
    wacht op fsync.
 
+## Tijd
+
+Een gram heeft twee tijden (paper, "Het chronolexogram": "Op 3 april heeft de
+gemeente-ambtenaar vastgesteld dat ... per 2 april"):
+
+- `op_moment`: wanneer het feit rechtens geldt of plaatsvond. Standaard het
+  moment van vastleggen. Een event kan het binden aan een ingediende waarde,
+  met grondslag: `op_moment: {bron: $intake.ontvangen_op, grondslag: [...]}`.
+  De waarde is een datum (het begin van die dag) of een moment met tijdzone,
+  niet later dan het vastleggen; het gram draagt de grondslag als
+  `op_moment_grondslag`. Zo krijgt een aanvraag die langs een andere weg
+  binnenkwam de dag van ontvangst die het loket opgeeft (Awb 4:1, 4:13). Bind
+  aan `$intake` als de indiener het moment niet zelf mag kiezen: het portaal
+  levert `ontvangen_op` niet.
+- `vastgelegd_op`: wanneer de cel het vastlegde, altijd haar eigen klok; bij
+  een startstand de laadtijd.
+
+`kies: laatste` kiest het laatste `op_moment`, bij gelijk moment het laatste
+`vastgelegd_op`, en daarna het laatst toegevoegde.
+
+Een reductie kan op een eerder moment peilen ("tijdreizen", paper P:94), met
+de query-parameters `peilmoment` en `bekend_op` (een datum, dan telt de hele
+dag, of een moment met tijdzone):
+
+- `peilmoment`: de stand zoals die rechtens gold op T, met wat nu bekend is
+  (grammen met `op_moment` op of voor T);
+- `bekend_op`: de stand zoals de cel die kende op T (grammen met
+  `vastgelegd_op` op of voor T);
+- samen: bitemporeel. Zonder peil telt elk gram, ook een feit dat pas later
+  ingaat.
+
+Het proces geeft een peil mee: een (proef)besluit leest elke cel op de
+peildatum van het besluit, de toets op vandaag, en het aanbod voor een
+tijdvak dat nog moet beginnen op de eerste dag daarvan. Geen lexostatus mag
+een input `peilmoment` of `bekend_op` hebben (het schema weert ze).
+
 ## Startstand
 
-`startstand.jsonl` heeft per regel `stroom`, `name`, `op_moment`,
-`herkomst: startstand`, `fields` en optioneel `zaakkenmerk`. De rest volgt uit
-de stroom. De velden moeten precies die van het event zijn. De runtime zet de
+`startstand.jsonl` heeft per regel `stroom`, `name`, `op_moment` (met de
+hand gezet: wanneer het besluit of de vaststelling rechtens geldt),
+`herkomst: startstand`, `fields` en optioneel `zaakkenmerk`. Geen
+`vastgelegd_op`: dat is de laadtijd, het moment waarop de runtime de
+startstand in de lege kroniek zet. De rest volgt uit de stroom. De velden moeten precies die van het event zijn. De runtime zet de
 startstand in de kroniek als elke kroniek van de cel leeg is, en daarna nooit
 meer. Elk bestand wordt in een keer geschreven (een tijdelijk bestand, dan
 hernoemd), zodat een onderbroken start geen half bestand achterlaat; een
@@ -421,7 +464,7 @@ komen.
 | `config` | omgeving, `cel.yaml` en `proces.yaml` |
 | `stroom` | stroomdefinitie laden en valideren, gram bouwen uit intake en external |
 | `gram` | het vastgelegde gram, met invoer en receipt van een besluit, en het lezen van een veldpad |
-| `reductie` | kroniek reduceren tot lexostatus; `reductie::definitie` laadt de lexostatus-definities |
+| `reductie` | kroniek reduceren tot lexostatus; `reductie::definitie` laadt de lexostatus-definities, `reductie::peil` peilt op een eerder moment |
 | `startstand` | grammen voor een lege kroniek |
 | `kroniek` | append-only opslag, in het geheugen met een index per zaak, en herstel van een half geschreven regel |
 | `controle` | de controles bij het opstarten |
@@ -435,7 +478,7 @@ komen.
 | `rijen` | synthese per regel: een tabelveld wordt een array-parameter |
 | `api` | de routes: `api::cel` (de cel), `api::proces` (de router van een proces), `api::sessie`, `api::portaal` en `api::behandeling` |
 | `celclient` | hoe een proces de cel vraagt: zaak lezen, vastleggen, proefreductie, als typen |
-| `datum` | `op_moment` lezen, peildatum en jaartal |
+| `datum` | momenten lezen, peildatum, jaartal en het `Tijdpunt` van een peil |
 | `laden` | bestanden en mappen lezen, YAML valideren tegen zijn schema |
 | `regelingen`, `formulier`, `schema` | laden en valideren |
 
