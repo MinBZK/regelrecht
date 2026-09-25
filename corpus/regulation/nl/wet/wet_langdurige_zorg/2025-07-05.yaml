@@ -356,16 +356,6 @@ articles:
       krachtens het derde lid vast te stellen algemene maatregel van bestuur wordt niet eerder gedaan dan
       vier weken nadat het ontwerp aan beide kamers der Staten-Generaal is overgelegd.
     url: https://wetten.overheid.nl/BWBR0035917/2025-07-05#Artikel4.2.1
-    machine_readable:
-      competent_authority:
-        name: Wlz-uitvoerder
-      execution:
-        output:
-          - name: bevoegd_gezag
-            type: string
-        actions:
-          - output: bevoegd_gezag
-            value: Wlz-uitvoerder
   - number: 4.2.4
     text: |-
       1. De Wlz-uitvoerder is verantwoordelijk voor de uitvoering van hetgeen bij en krachtens deze wet is
@@ -436,16 +426,6 @@ articles:
       bepalingen van titel 10 van Boek 7 van het Burgerlijk Wetboek zijn op deze overeenkomst van
       toepassing.
     url: https://wetten.overheid.nl/BWBR0035917/2025-07-05#Artikel6.1.1
-    machine_readable:
-      competent_authority:
-        name: CAK
-      execution:
-        output:
-          - name: bevoegd_gezag
-            type: string
-        actions:
-          - output: bevoegd_gezag
-            value: CAK
   - number: 7.1.1
     text: |-
       1. Er is een CIZ, dat rechtspersoonlijkheid bezit. 2. Het CIZ is gevestigd in een door Onze Minister
@@ -459,16 +439,6 @@ articles:
       bepalingen van titel 10 van Boek 7 van het Burgerlijk Wetboek zijn op deze overeenkomst van
       toepassing.
     url: https://wetten.overheid.nl/BWBR0035917/2025-07-05#Artikel7.1.1
-    machine_readable:
-      competent_authority:
-        name: CIZ
-      execution:
-        output:
-          - name: bevoegd_gezag
-            type: string
-        actions:
-          - output: bevoegd_gezag
-            value: CIZ
   - number: 14.1.1
     text: |-
       Deze wet wordt aangehaald als: Wet langdurige zorg.
