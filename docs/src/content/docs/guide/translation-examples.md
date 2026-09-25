@@ -206,11 +206,11 @@ No article hardcodes values from another article, so no scope is violated. The d
 
 ### The general pattern: "tenzij verordening"
 
-This pattern applies whenever a higher law sets defaults that lower regulations may override:
+This pattern applies whenever a law sets a default and itself allows a regulation to depart from it ("tenzij verordening"). A regulation cannot depart from a law that does not allow it.
 
-1. The higher law declares an **optional open_term** for the override.
-2. That term carries the higher law's **own rule** in its `default:` block.
-3. The lower regulation **only returns values where it deviates**; null otherwise.
+1. The law declares an **optional open_term** for the departure.
+2. That term carries the law's **own rule** in its `default:` block.
+3. The regulation **only returns values where it departs**; null otherwise.
 4. The engine takes the term's default whenever the implementation is silent, and marks it `OpenTermSilent` in the trace.
 
 The "tenzij" in the law text is the signal that this pattern applies. The word means "unless": the rule applies unless the exception is triggered.
