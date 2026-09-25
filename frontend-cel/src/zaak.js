@@ -31,7 +31,8 @@ export function indeling(zaak) {
   const handelingen = zaak?.handelingen ?? [];
   const besluiten = (zaak?.besluiten ?? []).map((b, i) => {
     const eigen = handelingen.filter((h) => hoortBij(h, b));
-    return { ...b, nummer: i + 1, handelingen: eigen, betaalstand: betaalstand(eigen) };
+    const nummer = b.besluitkenmerk.split('/').pop() || String(i + 1);
+    return { ...b, nummer, handelingen: eigen, betaalstand: betaalstand(eigen) };
   });
   const overig = handelingen.filter((h) => !besluiten.some((b) => hoortBij(h, b)));
   return { besluiten, overig, betaalstand: betaalstand(overig) };

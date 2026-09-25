@@ -1385,9 +1385,10 @@ pub async fn proef(
             .await?
             .map(Bezwaar::Vorm),
     };
-    // Een besluit waarvan de wet een uitkomst leeg laat, neemt het proces
-    // niet: de wet besluit dan niets (zoals een wijziging zonder grond voor
-    // een wijziging). Net als een haak die geen waarde geeft bij een vervolg.
+    // Een wijziging waarvan de wet een uitkomst leeg laat, neemt het proces
+    // niet: de wet wijzigt dan niets (er is geen grond voor een wijziging).
+    // Net als een haak die geen waarde geeft bij een vervolg. Een besluit dat
+    // niets wijzigt, kan een leeg hulpgegeven (een termijn) wel hebben.
     let leeg: Vec<&str> = h
         .uitkomsten
         .iter()
@@ -1395,7 +1396,7 @@ pub async fn proef(
         .map(String::as_str)
         .collect();
     let uitkomst = match uitkomst {
-        None if h.soort == Handelingsoort::Besluit && !leeg.is_empty() => {
+        None if h.besluitrol == Some(Besluit::Wijzigt) && !leeg.is_empty() => {
             Some(Bezwaar::Inhoud(format!(
                 "niet te nemen: {} geeft geen waarde voor {}",
                 h.artikel,

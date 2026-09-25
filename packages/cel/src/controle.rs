@@ -124,6 +124,9 @@ pub fn perioden(
             .iter_mut()
             .chain(def.reduction.extra_velden.iter_mut());
         for (naam, a) in afleidingen {
+            if a.afleiding.periode_mut().is_none_or(|p| p.is_some()) {
+                continue;
+            }
             let events = events_voor(&kopie, a.afleiding.filter(), strommen);
             let grondslag: Vec<String> = a
                 .grondslag

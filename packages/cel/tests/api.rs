@@ -4109,6 +4109,34 @@ async fn meer_besluiten_in_een_zaak() {
         f["fout"].as_str().unwrap().contains("besluit: wijzigt"),
         "{f}"
     );
+    // Een gram dat een besluit volgt, noemt een besluit dat in de zaak ligt.
+    let bekendmaking_van = |besluit: Option<String>| {
+        let mut v = json!({
+            "actor": "test_toeslagdienst",
+            "stroom": "test_toeslag_zaakverloop",
+            "event": "besluit_bekendgemaakt",
+            "external": {"datum_bekendmaking": "2025-03-12", "bekendgemaakt": true},
+            "zaakkenmerk": zaak,
+        });
+        if let Some(b) = besluit {
+            v["besluitkenmerk"] = json!(b);
+        }
+        v
+    };
+    for (besluit, melding) in [
+        (Some(kenmerk(9)), "geen besluit"),
+        (None, "geef het besluitkenmerk mee"),
+    ] {
+        let (status, f) = als_runtime(
+            &rt,
+            "POST",
+            &format!("{TOESLAG_CEL}/api/grammen"),
+            bekendmaking_van(besluit),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{f}");
+        assert!(f["fout"].as_str().unwrap().contains(melding), "{f}");
+    }
     let (status, bm) = toeslag(
         &app,
         &b,

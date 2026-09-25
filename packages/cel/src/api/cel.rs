@@ -287,6 +287,21 @@ fn toets_zaak(gram: &mut Gram, bestaand: &[&Gram], verwacht: Option<usize>) -> R
     // Een nieuw besluit heeft nog geen stage; een gram dat een besluit volgt,
     // deelt de stage met de grammen van dat besluit, een ander met de zaak.
     if gram.besluit.is_some_and(Besluit::is_besluit) {
+        // Een kroniek van voor het besluitkenmerk: een besluit van hetzelfde
+        // event zonder kenmerk telt als besluit van de zaak.
+        if let Some(eerder) = zaak.iter().find(|g| {
+            g.besluitkenmerk.is_none()
+                && g.stage.as_deref() == Some(stage.as_str())
+                && g.name == gram.name
+        }) {
+            return Err(fout(
+                StatusCode::CONFLICT,
+                format!(
+                    "in zaak {z} ligt al een besluit '{}' zonder besluitkenmerk (een oudere kroniek); een ander besluit hierover vraagt een event met besluit: wijzigt",
+                    eerder.name
+                ),
+            ));
+        }
         return Ok(());
     }
     let scope = gram.besluitkenmerk.as_deref();
@@ -355,7 +370,21 @@ fn toets_besluit(gram: &mut Gram, z: &str, zaak: &[&&Gram]) -> Result<(), Fout> 
         }
     }
     if rol.is_besluit() {
-        gram.besluitkenmerk = Some(format!("{z}/{}", besluiten.len() + 1));
+        // Het hoogste volgnummer plus een: een startstand mag nummers
+        // overslaan, en een kenmerk is uniek in de zaak.
+        let hoogste = besluiten
+            .iter()
+            .filter_map(|g| {
+                g.besluitkenmerk
+                    .as_deref()?
+                    .rsplit('/')
+                    .next()?
+                    .parse::<u64>()
+                    .ok()
+            })
+            .max()
+            .unwrap_or(0);
+        gram.besluitkenmerk = Some(format!("{z}/{}", hoogste + 1));
     }
     Ok(())
 }

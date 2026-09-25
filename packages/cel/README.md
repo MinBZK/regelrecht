@@ -448,8 +448,8 @@ routes per soort besluit. Het event zegt welke soort een handeling is:
   (een voorschot, een vaststelling, een terugvordering); het event opent een
   besluit (`besluit: opent`). Een besluit dat een ander wijzigt, legt vast in
   een event met `besluit: wijzigt` en noemt met `besluit` de handeling van
-  het gewijzigde besluit. Laat de wet een uitkomst leeg (null), dan neemt het
-  proces het besluit niet. Het formulier zijn de parameters met origin `OORDEEL` (met het
+  het gewijzigde besluit. Laat de wet een uitkomst van een wijziging leeg
+  (null), dan neemt het proces haar niet. Het formulier zijn de parameters met origin `OORDEEL` (met het
   label na "Naam:" in hun omschrijving; herkomst `behandelaar`). Wat een
   latere stage pas vraagt (zoals de bekendmaking in stage `BEKENDMAKING`), is
   bij het besluit nog niet gebeurd: een boolean is false, al het andere null,
