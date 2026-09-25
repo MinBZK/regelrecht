@@ -37,31 +37,44 @@ pub fn laad(map: &Path) -> Result<Corpus, Vec<String>> {
     let mut service = LawExecutionService::new();
     let mut geladen: Vec<GeladenRegeling> = Vec::new();
     let mut fouten = Vec::new();
-    let mut bestanden: Vec<_> = WalkDir::new(map)
+    let mut bestanden = Vec::new();
+    for item in WalkDir::new(map)
         .into_iter()
         .filter_entry(|e| !e.file_name().to_string_lossy().starts_with('.'))
-        .filter_map(Result::ok)
-        .filter(|e| e.file_type().is_file())
-        .map(|e| e.into_path())
-        .filter(|p| p.extension().is_some_and(|x| x == "yaml" || x == "yml"))
-        .collect();
+    {
+        match item {
+            Ok(e) if e.file_type().is_file() => bestanden.push(e.into_path()),
+            Ok(_) => {}
+            // Een map of bestand dat niet te lezen is: een regeling kan er
+            // ontbreken, dus dat is een fout.
+            Err(e) => fouten.push(format!("{}: {e}", map.display())),
+        }
+    }
+    bestanden.retain(|p| p.extension().is_some_and(|x| x == "yaml" || x == "yml"));
     bestanden.sort();
     for pad in bestanden {
-        let Ok(tekst) = std::fs::read_to_string(&pad) else {
-            fouten.push(format!("{}: niet te lezen", pad.display()));
-            continue;
+        let tekst = match std::fs::read_to_string(&pad) {
+            Ok(t) => t,
+            Err(e) => {
+                fouten.push(format!("{}: {e}", pad.display()));
+                continue;
+            }
         };
-        let is_regeling = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&tekst)
-            .ok()
-            .is_some_and(|d| d.get("$id").is_some() && d.get("articles").is_some());
-        if !is_regeling {
+        let doc = match serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&tekst) {
+            Ok(d) => d,
+            Err(e) => {
+                // Geen YAML, dus geen regeling; wel het melden waard.
+                tracing::warn!(pad = %pad.display(), "geen geldige YAML, overgeslagen: {e}");
+                continue;
+            }
+        };
+        if doc.get("$id").is_none() || doc.get("articles").is_none() {
             continue;
         }
-        if let Err(e) = service.load_law(&tekst) {
-            fouten.push(format!("{}: {e}", pad.display()));
-            continue;
+        match service.load_law(&tekst) {
+            Ok(id) => geladen.push(inventariseer(&pad, &tekst, &doc, id)),
+            Err(e) => fouten.push(format!("{}: {e}", pad.display())),
         }
-        geladen.push(inventariseer(&pad, &tekst));
     }
     geladen.sort();
     if fouten.is_empty() {
@@ -78,8 +91,12 @@ pub fn laad(map: &Path) -> Result<Corpus, Vec<String>> {
 /// versie geldt en de hash van het bestand zoals gelezen. De bestandsnaam is
 /// in het corpus de ingangsdatum; staat die er niet, dan telt `valid_from` of
 /// `publication_date` uit het bestand zelf.
-fn inventariseer(pad: &Path, tekst: &str) -> GeladenRegeling {
-    let doc: serde_yaml_ng::Value = serde_yaml_ng::from_str(tekst).unwrap_or_default();
+fn inventariseer(
+    pad: &Path,
+    tekst: &str,
+    doc: &serde_yaml_ng::Value,
+    id: String,
+) -> GeladenRegeling {
     let lees = |sleutel: &str| {
         doc.get(sleutel)
             .and_then(serde_yaml_ng::Value::as_str)
@@ -90,7 +107,7 @@ fn inventariseer(pad: &Path, tekst: &str) -> GeladenRegeling {
         .map(|s| s.to_string_lossy().to_string())
         .filter(|s| s.len() == 10 && s.split('-').count() == 3);
     GeladenRegeling {
-        id: lees("$id").unwrap_or_default(),
+        id,
         valid_from: stam
             .or_else(|| lees("valid_from"))
             .or_else(|| lees("publication_date"))

@@ -227,10 +227,8 @@ pub struct GeladenRegeling {
 impl Receipt {
     /// Bouw het receipt en reken de hash uit.
     pub fn nieuw(regelingen: Vec<GeladenRegeling>, stromen: Vec<StroomVerwijzing>) -> Self {
-        let canoniek = serde_json::to_string(
-            &serde_json::json!({"regelingen": regelingen, "stromen": stromen}),
-        )
-        .unwrap_or_default();
+        let canoniek =
+            serde_json::json!({"regelingen": regelingen, "stromen": stromen}).to_string();
         Self {
             regelingen,
             stromen,
@@ -256,9 +254,21 @@ impl Gram {
         serde_json::to_value(self).unwrap_or(Value::Null)
     }
 
-    /// Valideer het gram tegen `gram.json`.
+    /// Valideer het gram tegen `gram.json`, en zijn `op_moment` als moment
+    /// met tijdzone (het schema zegt alleen dat het tekst is).
     pub fn valideer(&self) -> Result<(), Vec<String>> {
-        schema::valideer(Soort::Gram, &self.als_json())
+        let json = serde_json::to_value(self).map_err(|e| vec![e.to_string()])?;
+        let mut fouten = schema::valideer(Soort::Gram, &json)
+            .err()
+            .unwrap_or_default();
+        if let Err(f) = datum::moment(&self.op_moment) {
+            fouten.push(f);
+        }
+        if fouten.is_empty() {
+            Ok(())
+        } else {
+            Err(fouten)
+        }
     }
 
     /// De waarde op een pad onder `fields`.

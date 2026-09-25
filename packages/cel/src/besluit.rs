@@ -100,10 +100,15 @@ fn benodigd(
     Ok(regelingen::benodigde_parameters(service, &b.regeling, a))
 }
 
-/// De velden van het besluitformulier, met het type uit de regeling.
-pub fn formuliervelden(service: &LawExecutionService, b: &BesluitDefinitie) -> Vec<Veld> {
-    let benodigd = benodigd(service, b).unwrap_or_default();
-    b.formulier
+/// De velden van het besluitformulier, met het type uit de regeling. Een
+/// fout als het artikel van het besluit niet te vinden is (de controle bij
+/// het opstarten vangt dat al af).
+pub fn formuliervelden(
+    service: &LawExecutionService,
+    b: &BesluitDefinitie,
+) -> Result<Vec<Veld>, String> {
+    let benodigd = benodigd(service, b)?;
+    Ok(b.formulier
         .iter()
         .map(|o| {
             let soort = benodigd
@@ -125,7 +130,7 @@ pub fn formuliervelden(service: &LawExecutionService, b: &BesluitDefinitie) -> V
                 groep: o.groep.clone(),
             }
         })
-        .collect()
+        .collect())
 }
 
 /// De controles op `rollen` en `behandeling` van een proces bij het
@@ -691,7 +696,9 @@ pub async fn neem_besluit(
     // Het bevoegd gezag: gelijk is vastleggen, ongelijk is weigeren,
     // ontbrekend is een waarschuwing.
     let mut waarschuwingen = Vec::new();
-    let nummer = proef.artikel.split_once('#').map(|(_, n)| n).unwrap_or("");
+    let nummer = regelingen::ontleed(&proef.artikel)
+        .map_err(Weigering::Cel)?
+        .artikel;
     let gezag = gezag_van(service, &b.regeling, nummer);
     match &gezag {
         Some(g) if genormaliseerd(g) != genormaliseerd(actor) => {
@@ -717,19 +724,22 @@ pub async fn neem_besluit(
     let produces = artikel
         .get_execution_spec()
         .and_then(|e| e.produces.as_ref());
-    let inputs: BTreeMap<String, Invoer> = proef
-        .parameters
-        .iter()
-        .filter_map(|(naam, waarde)| {
-            Some((
-                naam.clone(),
-                Invoer {
-                    waarde: waarde.clone(),
-                    herkomst: proef.herkomst.get(naam)?.clone(),
-                },
-            ))
-        })
-        .collect();
+    // Elke parameter die meedeed gaat mee, met zijn herkomst; een parameter
+    // zonder herkomst is een fout in het proces, geen reden hem weg te laten.
+    let mut inputs: BTreeMap<String, Invoer> = BTreeMap::new();
+    for (naam, waarde) in &proef.parameters {
+        let herkomst = proef
+            .herkomst
+            .get(naam)
+            .ok_or_else(|| Weigering::Cel(format!("parameter '{naam}' heeft geen herkomst")))?;
+        inputs.insert(
+            naam.clone(),
+            Invoer {
+                waarde: waarde.clone(),
+                herkomst: herkomst.clone(),
+            },
+        );
+    }
     // De stromen van de cel, met de hash die de cel voor elk bijhoudt.
     let mut stromen: Vec<StroomVerwijzing> = proces
         .cel

@@ -215,6 +215,17 @@ mod tests {
     }
 
     #[test]
+    fn een_gram_met_een_ongeldig_op_moment_wordt_niet_vastgelegd() {
+        let dir = tempfile::tempdir().unwrap();
+        let k = Kroniek::open(dir.path()).unwrap();
+        let mut g = gram(Z1);
+        g.op_moment = "2025-03-12 10:14".into();
+        let f = k.voeg_toe(&g).unwrap_err();
+        assert!(f.contains("ongeldig op_moment '2025-03-12 10:14'"), "{f}");
+        assert!(k.lees("test_kroniek").unwrap().is_empty());
+    }
+
+    #[test]
     fn een_weigering_van_de_controle_legt_niets_vast() {
         let dir = tempfile::tempdir().unwrap();
         let k = Kroniek::open(dir.path()).unwrap();

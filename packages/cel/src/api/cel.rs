@@ -10,7 +10,7 @@ use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
-use super::{fout, Fout, Klok};
+use super::{fout, intern, Fout, Klok};
 use crate::cel::Cel;
 use crate::celclient::Vastlegverzoek;
 use crate::kroniek::Kroniek;
@@ -123,10 +123,12 @@ fn bouw(state: &CelState, v: &Vastlegverzoek) -> Result<Gram, Fout> {
 }
 
 /// Het gram als YAML, velden in de volgorde van de stroom.
-pub fn als_yaml(cel: &Cel, gram: &Gram) -> String {
+pub fn als_yaml(cel: &Cel, gram: &Gram) -> Result<String, String> {
+    let niet = |e: String| format!("gram '{}' is niet als YAML te schrijven: {e}", gram.name);
     let mut doc = match serde_yaml_ng::to_value(gram) {
         Ok(serde_yaml_ng::Value::Mapping(m)) => m,
-        _ => return String::new(),
+        Ok(_) => return Err(niet("geen mapping".into())),
+        Err(e) => return Err(niet(e.to_string())),
     };
     if let Some((_, event)) = cel.event(&gram.stroom.id, &gram.name) {
         doc.insert(
@@ -134,7 +136,7 @@ pub fn als_yaml(cel: &Cel, gram: &Gram) -> String {
             serde_yaml_ng::Value::Mapping(event.geordend(&gram.fields)),
         );
     }
-    serde_yaml_ng::to_string(&doc).unwrap_or_default()
+    serde_yaml_ng::to_string(&doc).map_err(|e| niet(e.to_string()))
 }
 
 /// Of een gram vastlegbaar is in de zaak die het draagt, gegeven wat de
@@ -189,7 +191,7 @@ async fn grammen_route(
         })
         .map_err(|e| fout(StatusCode::INTERNAL_SERVER_ERROR, e))??;
     tracing::info!(cel = %state.cel.id(), zaakkenmerk = gram.zaakkenmerk.as_deref().unwrap_or("-"), name = %gram.name, "gram vastgelegd");
-    let yaml = als_yaml(&state.cel, &gram);
+    let yaml = als_yaml(&state.cel, &gram).map_err(intern)?;
     Ok((
         StatusCode::CREATED,
         Json(json!({"gram": gram, "yaml": yaml})),
@@ -274,17 +276,17 @@ fn alle_grammen(state: &CelState) -> Result<Vec<Gram>, Fout> {
     Ok(uit)
 }
 
-fn met_yaml(state: &CelState, grammen: &[Gram]) -> Value {
-    Value::Array(
-        grammen
-            .iter()
-            .map(|g| json!({"gram": g, "yaml": als_yaml(&state.cel, g)}))
-            .collect(),
-    )
+fn met_yaml(state: &CelState, grammen: &[Gram]) -> Result<Value, Fout> {
+    let mut uit = Vec::with_capacity(grammen.len());
+    for g in grammen {
+        let yaml = als_yaml(&state.cel, g).map_err(intern)?;
+        uit.push(json!({"gram": g, "yaml": yaml}));
+    }
+    Ok(Value::Array(uit))
 }
 
 async fn kroniek_route(State(state): State<CelState>) -> Result<Json<Value>, Fout> {
-    Ok(Json(met_yaml(&state, &alle_grammen(&state)?)))
+    Ok(Json(met_yaml(&state, &alle_grammen(&state)?)?))
 }
 
 /// De grammen van één zaak, over alle kronieken van de cel. Het filteren op
@@ -304,7 +306,7 @@ async fn zaak_van_cel_route(
             format!("geen zaak '{zaakkenmerk}' in de kroniek"),
         ));
     }
-    Ok(Json(met_yaml(&state, &grammen)))
+    Ok(Json(met_yaml(&state, &grammen)?))
 }
 
 async fn lexostatus_route(

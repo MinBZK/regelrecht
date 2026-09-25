@@ -8,7 +8,7 @@ use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
 use super::sessie::behandelaar;
-use super::{fout, van_cel, Fout, ProcesState};
+use super::{fout, intern, van_cel, Fout, ProcesState};
 use crate::besluit::{self, Weigering};
 use crate::celclient::{self, MetYaml};
 use crate::datum;
@@ -145,7 +145,7 @@ pub(super) async fn zaak_route(
             "regeling": b.regeling,
             "artikel": proef.artikel,
             "uitkomsten": b.uitkomsten,
-            "formulier": besluit::formuliervelden(&state.proces.service, b),
+            "formulier": besluit::formuliervelden(&state.proces.service, b).map_err(intern)?,
             "stand_bij_besluit": b.stand_bij_besluit,
         },
         "proefbesluit": proef,

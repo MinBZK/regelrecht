@@ -139,11 +139,16 @@ fn evalueer_als(
                             }
                         }
                     }
-                    Some(w) => {
-                        if let Ok(v) = serde_json::to_value(w) {
+                    Some(w) => match serde_json::to_value(w) {
+                        Ok(v) => {
                             uit.waarden.insert((*u).to_string(), v);
                         }
-                    }
+                        Err(e) => {
+                            uit.fout.get_or_insert_with(|| {
+                                format!("de waarde van '{u}' is niet als JSON te lezen: {e}")
+                            });
+                        }
+                    },
                     None => {
                         uit.fout
                             .get_or_insert_with(|| format!("de engine gaf geen waarde voor '{u}'"));

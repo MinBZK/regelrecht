@@ -8,7 +8,7 @@ use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
 use super::sessie::ingelogd;
-use super::{fout, van_cel, Fout, ProcesState};
+use super::{fout, intern, van_cel, Fout, ProcesState};
 use crate::cel::Cel;
 use crate::celclient::{self, Vastlegverzoek};
 use crate::datum;
@@ -36,7 +36,7 @@ fn portaal_event(state: &ProcesState) -> Result<(&stroom::Stroom, &stroom::Event
 pub(super) async fn formulier_route(State(state): State<ProcesState>) -> Result<Json<Value>, Fout> {
     let (stroom, event) = portaal_event(&state)?;
     let formulier = state.proces.formulier.as_ref();
-    let velden = crate::formulier::velden(event, formulier);
+    let velden = crate::formulier::velden(event, formulier).map_err(intern)?;
     Ok(Json(json!({
         "cel": state.cel_id(),
         "stroom": stroom.document,
@@ -174,7 +174,7 @@ pub(super) async fn toets_route(
 ) -> Result<Json<Value>, Fout> {
     let sessie = ingelogd(&state, &headers)?;
     let c = concepttoets(&state, &sessie, &concept).await?;
-    let datum = c.gram.op_moment.get(..10).unwrap_or_default().to_string();
+    let datum = datum::peildatum_van(&c.gram.op_moment).map_err(intern)?;
     let mut uitslag = toets::toets(
         &state.proces.service,
         &c.portaal.toets.regeling,

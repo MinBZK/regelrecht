@@ -351,9 +351,11 @@ impl Afleiding {
     /// Pas een afleiding op het gekozen gram toe. `None`: het gram zegt er
     /// niets over en de parameter blijft weg; er wordt niets aangevuld. Een
     /// afleiding over een verzameling grammen geeft hier `None`; zie
-    /// [`Afleiding::pas_toe_op_verzameling`].
-    pub fn pas_toe(&self, gram: &Gram) -> Option<Value> {
-        match self {
+    /// [`Afleiding::pas_toe_op_verzameling`]. Een gram dat niet de vorm heeft
+    /// die de afleiding leest (een ongeldig `op_moment`, een tabelregel die
+    /// geen object is) is een fout, geen ontbrekende waarde.
+    pub fn pas_toe(&self, gram: &Gram) -> Result<Option<Value>, String> {
+        Ok(match self {
             Afleiding::Veld { veld } => gram.veld(veld).filter(|w| gevuld(w)).cloned(),
             Afleiding::JaarVan { jaar_van } => gram.veld(jaar_van).and_then(jaar_uit),
             Afleiding::Gevuld { gevuld: pad } => {
@@ -368,7 +370,7 @@ impl Afleiding {
                 elke_regel,
                 alleen_waar,
             } => {
-                let rijen = rijen(gram, tabel);
+                let rijen = rijen(gram, tabel)?;
                 let elk = rijen
                     .iter()
                     .filter(|r| {
@@ -380,23 +382,20 @@ impl Afleiding {
                 Some(Value::Bool(!rijen.is_empty() && elk))
             }
             Afleiding::EenRegel { tabel, een_regel } => Some(Value::Bool(
-                rijen(gram, tabel)
+                rijen(gram, tabel)?
                     .iter()
                     .any(|r| r.get(een_regel) == Some(&Value::Bool(true))),
             )),
             Afleiding::Moment {
                 moment: Moment::OpMoment,
-            } => gram
-                .moment()
-                .ok()
-                .map(|m| Value::String(datum::peildatum(&m))),
+            } => Some(Value::String(datum::peildatum(&gram.moment()?))),
             Afleiding::LaatsteVeld { .. }
             | Afleiding::LaatsteJaarVan { .. }
             | Afleiding::LaatsteBevat { .. }
             | Afleiding::Bestaat { .. }
             | Afleiding::Som { .. }
             | Afleiding::Verzamel { .. } => None,
-        }
+        })
     }
 
     /// Pas een afleiding over een verzameling toe op de grammen die al door
@@ -506,11 +505,31 @@ pub fn gevuld(w: &Value) -> bool {
     }
 }
 
-fn rijen<'g>(gram: &'g Gram, tabel: &str) -> Vec<&'g Map<String, Value>> {
-    gram.veld(tabel)
-        .and_then(Value::as_array)
-        .map(|a| a.iter().filter_map(Value::as_object).collect())
-        .unwrap_or_default()
+/// De regels van een tabelveld. Geen tabel (of null): geen regels. Een
+/// waarde die geen lijst van objecten is, is een fout.
+fn rijen<'g>(gram: &'g Gram, tabel: &str) -> Result<Vec<&'g Map<String, Value>>, String> {
+    let regels = match gram.veld(tabel) {
+        None | Some(Value::Null) => return Ok(Vec::new()),
+        Some(Value::Array(a)) => a,
+        Some(_) => {
+            return Err(format!(
+                "gram '{}': tabelveld '{tabel}' is geen lijst van regels",
+                gram.name
+            ))
+        }
+    };
+    regels
+        .iter()
+        .enumerate()
+        .map(|(i, r)| {
+            r.as_object().ok_or_else(|| {
+                format!(
+                    "gram '{}': regel {tabel}[{i}] is geen object met kolommen",
+                    gram.name
+                )
+            })
+        })
+        .collect()
 }
 
 /// Een lexostatus: de parameters die een reductie oplevert.
@@ -663,7 +682,7 @@ fn leid_af_uit<'g>(
                     definitie.name
                 )
             })?;
-            afleiding.pas_toe(gram)
+            afleiding.pas_toe(gram)?
         } else {
             afleiding.pas_toe_op_verzameling(inputs, door)?
         };
@@ -828,7 +847,9 @@ mod tests {
     }
 
     fn een(yaml: &str, fields: Value) -> Option<Value> {
-        afl(yaml).pas_toe(&gram("z", "2025-03-12T10:14:03+01:00", fields))
+        afl(yaml)
+            .pas_toe(&gram("z", "2025-03-12T10:14:03+01:00", fields))
+            .unwrap()
     }
 
     const ZAAK: &str = "00000000-0000-4000-8000-000000000001";
@@ -979,8 +1000,59 @@ mod tests {
         // De datum in de eigen tijdzone van het moment.
         let g = gram("z", "2025-03-12T00:30:00+01:00", json!({}));
         assert_eq!(
-            afl("{moment: op_moment}").pas_toe(&g),
+            afl("{moment: op_moment}").pas_toe(&g).unwrap(),
             Some(json!("2025-03-12"))
+        );
+    }
+
+    #[test]
+    fn een_ongeldig_op_moment_is_een_fout_en_geen_lege_waarde() {
+        let g = gram("z", "12 maart 2025", json!({}));
+        let f = afl("{moment: op_moment}").pas_toe(&g).unwrap_err();
+        assert!(f.contains("ongeldig op_moment '12 maart 2025'"), "{f}");
+        // Ook `kies: laatste` kiest niet stil om zo'n gram heen.
+        let def: LexostatusDefinitie = serde_yaml_ng::from_str(
+            "{name: l, inputs: [], reduction: {kroniek: test_kroniek, kies: laatste, afleidingen: {x: {veld: a}}}}",
+        )
+        .unwrap();
+        let goed = gram("z", "2025-03-12T10:14:03+01:00", json!({"a": 1}));
+        assert!(reduceer(&def, &Map::new(), &[goed, g])
+            .unwrap_err()
+            .contains("ongeldig op_moment"));
+    }
+
+    #[test]
+    fn kies_laatste_vergelijkt_momenten_over_tijdzones_heen() {
+        // Op de klok van hun eigen tijdzone lijkt de volgorde anders dan ze
+        // is: 10:15+02:00 is 08:15 UTC, 10:00+01:00 is 09:00 UTC en
+        // 09:30+00:00 is 09:30 UTC, het laatst.
+        let def: LexostatusDefinitie = serde_yaml_ng::from_str(
+            "{name: l, inputs: [], reduction: {kroniek: test_kroniek, kies: laatste, afleidingen: {x: {veld: a}}}}",
+        )
+        .unwrap();
+        let grammen = [
+            gram("z", "2025-03-12T09:30:00+00:00", json!({"a": "utc"})),
+            gram("z", "2025-03-12T10:15:00+02:00", json!({"a": "oost"})),
+            gram("z", "2025-03-12T10:00:00+01:00", json!({"a": "nl"})),
+        ];
+        let l = reduceer(&def, &Map::new(), &grammen).unwrap().unwrap();
+        assert_eq!(l.parameters["x"], json!("utc"));
+        assert_eq!(l.op_moment.as_deref(), Some("2025-03-12T09:30:00+00:00"));
+    }
+
+    #[test]
+    fn een_tabelregel_die_geen_object_is_is_een_fout() {
+        let g = gram(
+            "z",
+            "2025-03-12T10:14:03+01:00",
+            json!({"t": [{"k": true}, 3]}),
+        );
+        let f = afl("{tabel: t, een_regel: k}").pas_toe(&g).unwrap_err();
+        assert!(f.contains("regel t[1] is geen object"), "{f}");
+        let g = gram("z", "2025-03-12T10:14:03+01:00", json!({"t": null}));
+        assert_eq!(
+            afl("{tabel: t, een_regel: k}").pas_toe(&g).unwrap(),
+            Some(json!(false))
         );
     }
 

@@ -74,12 +74,28 @@ pub async fn haal_binnen(
     }
 }
 
-/// Een fout-antwoord `{"fout": "..."}` in woorden.
+/// Een fout-antwoord `{"fout": "..."}` in woorden. Een antwoord zonder die
+/// vorm gaat mee zoals het is (ingekort), met de reden van de status ervoor.
 fn fouttekst(status: StatusCode, body: &[u8]) -> TransportFout {
-    let fout = serde_json::from_slice::<Value>(body)
+    let reden = status.canonical_reason().unwrap_or("fout");
+    let als_fout = serde_json::from_slice::<Value>(body)
         .ok()
-        .and_then(|v| v.get("fout").and_then(Value::as_str).map(str::to_string))
-        .unwrap_or_else(|| status.canonical_reason().unwrap_or("fout").to_string());
+        .and_then(|v| v.get("fout")?.as_str().map(str::to_string));
+    let fout = match als_fout {
+        Some(f) => f,
+        None => {
+            let tekst: String = String::from_utf8_lossy(body)
+                .trim()
+                .chars()
+                .take(200)
+                .collect();
+            if tekst.is_empty() {
+                reden.to_string()
+            } else {
+                format!("{reden}: {tekst}")
+            }
+        }
+    };
     TransportFout::Antwoord {
         status: status.as_u16(),
         fout,

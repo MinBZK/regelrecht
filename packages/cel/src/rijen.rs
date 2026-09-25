@@ -60,6 +60,11 @@ pub struct BronUitslag {
 #[derive(Debug, Clone, Serialize)]
 pub struct Uitslag {
     pub parameter: String,
+    /// Waarom de tabel niet is opgebouwd: het tabelveld is geen lijst van
+    /// regels. Dan gaat de parameter niet naar de engine; een regel
+    /// weglaten zou de uitkomst stil veranderen.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fout: Option<String>,
     /// De regels, elk met de kolommen die een bron leverde.
     pub regels: Vec<Value>,
     pub bronnen: Vec<BronUitslag>,
@@ -155,9 +160,34 @@ pub async fn stel_samen(
     parameters: &BTreeMap<String, Value>,
 ) -> Option<Uitslag> {
     let d = &rijen.definitie;
-    let tabel = uit_lexostatus(lexostatussen, &d.tabel.lexostatus, &d.tabel.veld)?
-        .as_array()?
-        .clone();
+    let waar = format!(
+        "lexostatus '{}', veld '{}'",
+        d.tabel.lexostatus, d.tabel.veld
+    );
+    let niet_op_te_bouwen = |fout: String| Uitslag {
+        parameter: d.parameter.clone(),
+        fout: Some(fout),
+        regels: Vec::new(),
+        bronnen: Vec::new(),
+        mist: Vec::new(),
+    };
+    let tabel = uit_lexostatus(lexostatussen, &d.tabel.lexostatus, &d.tabel.veld)?;
+    let Some(tabel) = tabel.as_array() else {
+        return Some(niet_op_te_bouwen(format!(
+            "{waar} is geen lijst van regels"
+        )));
+    };
+    let mut rijregels = Vec::new();
+    for (i, r) in tabel.iter().enumerate() {
+        match r.as_object() {
+            Some(r) => rijregels.push(r),
+            None => {
+                return Some(niet_op_te_bouwen(format!(
+                    "{waar}: regel {i} is geen object met kolommen"
+                )))
+            }
+        }
+    }
 
     let mut uitslagen: Vec<BronUitslag> = rijen
         .bronnen
@@ -174,10 +204,7 @@ pub async fn stel_samen(
     let mut regels = Vec::new();
     let mut mist: BTreeSet<String> = BTreeSet::new();
 
-    for bron in &tabel {
-        let Some(bron) = bron.as_object() else {
-            continue;
-        };
+    for bron in rijregels {
         let mut regel = Map::new();
         for (kolom, naam) in &d.kolommen {
             if let Some(w) = bron.get(kolom) {
@@ -231,6 +258,7 @@ pub async fn stel_samen(
     }
     Some(Uitslag {
         parameter: d.parameter.clone(),
+        fout: None,
         regels,
         bronnen: uitslagen,
         mist: mist.into_iter().collect(),
@@ -264,6 +292,10 @@ pub async fn pas_toe(
         let Some(uitslag) = stel_samen(r, &met_bronnen, &samen.parameters).await else {
             continue;
         };
+        if uitslag.fout.is_some() {
+            uitslagen.push(uitslag);
+            continue;
+        }
         samen.parameters.insert(
             uitslag.parameter.clone(),
             Value::Array(uitslag.regels.clone()),
@@ -515,6 +547,37 @@ mod tests {
             .unwrap()
             .contains("invoer 'peildatum' ontbreekt"));
         assert_eq!(u.mist, ["tarief"]);
+    }
+
+    #[tokio::test]
+    async fn een_regel_die_geen_object_is_bouwt_geen_tabel_op() {
+        let mut l = eigen();
+        l[0].extra_velden.insert(
+            "organen".into(),
+            json!([{"orgaan": "raad", "gebied": "A", "zetels": 1}, "raad B"]),
+        );
+        let rijen = Rijen {
+            definitie: definitie(),
+            bronnen: Vec::new(),
+        };
+        let u = stel_samen(&rijen, &l, &BTreeMap::new()).await.unwrap();
+        assert!(u.regels.is_empty());
+        assert!(
+            u.fout
+                .as_deref()
+                .unwrap()
+                .contains("regel 1 is geen object"),
+            "{u:?}"
+        );
+        // Dan gaat de parameter niet naar de engine.
+        let mut samen = Samenvoeging {
+            parameters: BTreeMap::new(),
+            herkomst: BTreeMap::new(),
+            bronnen: Vec::new(),
+        };
+        let uit = pas_toe(std::slice::from_ref(&rijen), &l, &mut samen).await;
+        assert!(uit[0].fout.is_some());
+        assert!(!samen.parameters.contains_key("tabel"));
     }
 
     #[tokio::test]
