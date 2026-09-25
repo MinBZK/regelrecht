@@ -50,6 +50,7 @@ A reader meets these constructs in a law file or a running service whatever the 
 | RFC-038 | Callable is not presentable | Backlog: [Schema](./schema) lists the `RECHTSPOSITIE` value it added; the entry-point rule itself has no page |
 | RFC-040 | The schema documents itself | [Schema](./schema) |
 | RFC-041 | A void is not scoped like a replacement | [Voiding an output](../concepts/hooks-and-reactive-execution#voiding-an-output) |
+| RFC-043 | Who supplies a parameter (partially built, still Draft) | [Cel: who supplies a parameter](../components/cel#who-supplies-a-parameter) |
 
 ## Backlog
 
