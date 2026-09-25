@@ -169,6 +169,14 @@ fn reject_literal_operations(law: &ArticleBasedLaw) -> Result<()> {
         match v {
             regelrecht_law_model::Value::Object(map) => {
                 if let Some(regelrecht_law_model::Value::String(op)) = map.get("operation") {
+                    // Experiment A (exp/reductie-als-engine): a record literal
+                    // may hold an operation as a field value; a well-formed one
+                    // is walked like any other operation.
+                    if let Ok(parsed) = serde_json::to_value(v)
+                        .and_then(serde_json::from_value::<regelrecht_law_model::ActionOperation>)
+                    {
+                        return walk_operation(&parsed, where_);
+                    }
                     return Err(EngineError::LoadError(format!(
                         "{where_}: operation {op} could not be read as an operation and was \
                          taken as a literal value. It is missing a field the operation needs, \
