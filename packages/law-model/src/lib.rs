@@ -21,12 +21,12 @@ mod value;
 pub use header::{parse_law_header, LawHeader};
 pub use model::{
     Action, ActionOperation, ActionValue, Article, ArticleBasedLaw, ArticleReference,
-    ArticleRequirement, AuthorityType, Case, CombineOp, CompetentAuthority, Declaration,
+    ArticleRequirement, AuthorityType, Case, CombineOp, CompetentAuthority, Declaration, Declared,
     DeclaredProperty, Definition, Execution, HookDeclaration, HookFilter, HookPoint,
     ImplementsDeclaration, Input, LegalBasis, MachineReadable, Marking, MarkingResolution,
-    OpenTerm, OpenTermDefault, Origin, OriginOverride, OriginValue, Output, OverrideDeclaration,
-    Parameter, Placement, PlacementContainer, Preamble, ProcedureAppliesTo, ProcedureDefinition,
-    Produces, ProvisionReference, ResolveSpec, Source, Stage, StageRequirement, Temporal, TypeSpec,
-    UntranslatableEntry,
+    OpenTerm, OpenTermDefault, Origin, OriginOverride, OriginRole, OriginValue, Output,
+    OverrideDeclaration, Parameter, Placement, PlacementContainer, Preamble, ProcedureAppliesTo,
+    ProcedureDefinition, Produces, ProvisionReference, ResolveSpec, Source, Stage,
+    StageRequirement, Temporal, TypeSpec, UntranslatableEntry,
 };
 pub use value::{MissingFact, MissingKind, Operation, ParameterType, RegulatoryLayer, Value};
