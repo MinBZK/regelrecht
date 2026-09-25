@@ -15,13 +15,12 @@
 //! 4. het gram zelf, append-only in de kroniek ([`kroniek`]).
 //!
 //! Het proces ([`proces`]) staat daarboven: het informeert (de synthese bij
-//! de afnemer, [`synthese`], en de toets), concludeert (het besluit,
-//! [`besluit`]) en vraagt een cel vast te leggen, langs dezelfde routes als
-//! elke afnemer ([`transport`]). De runtime ([`runtime`]) draait beide. Niets
-//! hier noemt een casus.
+//! de afnemer, [`synthese`], en de toets), concludeert (de handelingen in een
+//! zaak, zoals het besluit, [`handeling`]) en vraagt een cel vast te leggen,
+//! langs dezelfde routes als elke afnemer ([`transport`]). De runtime
+//! ([`runtime`]) draait beide. Niets hier noemt een casus.
 
 pub mod api;
-pub mod besluit;
 pub mod cel;
 pub mod celclient;
 pub mod config;
@@ -30,6 +29,7 @@ pub mod datum;
 pub mod formulier;
 pub mod gezag;
 pub mod gram;
+pub mod handeling;
 pub mod kanaal;
 pub mod kroniek;
 pub mod laden;

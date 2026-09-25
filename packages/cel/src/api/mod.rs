@@ -80,7 +80,7 @@ pub mod proces;
 pub mod sessie;
 
 pub use cel::{als_yaml, cel_beschrijving, cel_router, CelState};
-pub use proces::{proces_beschrijving, proces_router, ProcesState};
+pub use proces::{proces_beschrijving, proces_router, HandelingState, ProcesState};
 
 /// Levert het moment waarop iets tot feit wordt gemaakt.
 pub type Klok = Arc<dyn Fn() -> DateTime<FixedOffset> + Send + Sync>;

@@ -18,7 +18,7 @@ use axum::routing::get;
 use axum::{Json, Router};
 use serde_json::Value;
 
-use crate::api::{self, CelState, Klok, ProcesState};
+use crate::api::{self, CelState, HandelingState, Klok, ProcesState};
 use crate::cel::{met_cel, Cel};
 use crate::config::{celmappen, procesmappen, Config, RijenDefinitie};
 use crate::kroniek::Kroniek;
@@ -26,7 +26,7 @@ use crate::proces::{met_proces, Proces};
 use crate::sessie::Sessies;
 use crate::synthese::{self, Bron, TIJDSLIMIET};
 use crate::transport::{Http, Intern, RuntimeToken, Transport};
-use crate::{besluit, regelingen, rijen, startstand};
+use crate::{handeling, regelingen, rijen, startstand};
 
 /// Een geladen runtime: de cellen, de processen en de router over allemaal.
 pub struct Runtime {
@@ -87,11 +87,12 @@ impl Runtime {
                     p.map.display()
                 ));
             }
-            // Eerst de herkomst: daaruit volgt het besluitformulier. Haar
-            // fouten tellen pas als synthese en besluit kloppen.
+            // Eerst de herkomst: daaruit volgt het formulier van elke
+            // handeling. Haar fouten tellen pas als synthese en handelingen
+            // kloppen.
             let herkomst = p.controleer_herkomst(&per_id);
             let mut eigen = synthese::controleer(p);
-            eigen.extend(besluit::controleer(p));
+            eigen.extend(handeling::controleer(p));
             if eigen.is_empty() {
                 eigen = herkomst;
             }
@@ -151,7 +152,16 @@ impl Runtime {
                 }
                 Ok(uit)
             };
-            let besluit_rijen = per_regel(proces.rijen())?;
+            // Per handeling de bronnen die haar artikel vraagt en haar
+            // synthese per regel.
+            let mut handelingen = Vec::new();
+            for h in proces.handelingen() {
+                let kies = handeling::bronnen_voor(&proces, h);
+                handelingen.push(HandelingState {
+                    bronnen: kies.iter().map(|i| bronnen[*i].clone()).collect(),
+                    rijen: per_regel(&h.rijen)?,
+                });
+            }
             let toets_rijen = per_regel(proces.toets_rijen())?;
             processtaten.push(ProcesState {
                 proces: Arc::new(proces),
@@ -160,7 +170,7 @@ impl Runtime {
                 sessies: Arc::new(Sessies::default()),
                 klok: klok.clone(),
                 bronnen: Arc::new(bronnen),
-                rijen: Arc::new(besluit_rijen),
+                handelingen: Arc::new(handelingen),
                 toets_rijen: Arc::new(toets_rijen),
                 regelingen: geladen.clone(),
             });

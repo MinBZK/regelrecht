@@ -2,7 +2,9 @@
 # Fictieve lexostatussen van de afnemer. De aanduiding zelf is geen
 # parameter: ze is de invoer voor de registercel, en gaat niet naar de engine.
 # De werkvoorraad is een lijst: een regel per zaak met een aanvraag en zonder
-# besluit. Het verloop van de zaak leest afwezigheid als "niet gebeurd".
+# besluit. Het verloop van de zaak leest afwezigheid als "niet gebeurd". Het
+# besluit: het vastgestelde bedrag, wat betaald is, de bekendmaking en de
+# bezwaartermijn.
 cel: test_afnemer
 lexostatus_definitions:
   - name: aanvraag_inhoud
@@ -41,3 +43,21 @@ lexostatus_definitions:
           veld: datum_uitnodiging
           geen_gram: null
         opgeschorte_dagen: {filter: {name: termijn_opgeschort}, som: dagen}
+  - name: besluit
+    inputs: [{name: zaakkenmerk, type: string}]
+    reduction:
+      kroniek: test_afnemer
+      filter: {zaakkenmerk: $zaakkenmerk}
+      afleidingen:
+        vastgesteld_bedrag:
+          {filter: {stage: BESLUIT}, kies: laatste, veld: vastgesteld_bedrag, grondslag: [testregeling_awb#3 lid 1]}
+        betaald_bedrag: {filter: {name: betaling_verricht}, som: bedrag, grondslag: [testregeling_awb#3 lid 1]}
+        datum_bekendmaking:
+          filter: {stage: BEKENDMAKING}
+          kies: laatste
+          veld: datum_bekendmaking
+          geen_gram: null
+          grondslag: [testregeling_awb#2]
+      extra_velden:
+        aanvang_bezwaartermijn: {filter: {stage: BEKENDMAKING}, kies: laatste, veld: aanvang_bezwaartermijn, geen_gram: null}
+        einde_bezwaartermijn: {filter: {stage: BEKENDMAKING}, kies: laatste, veld: einde_bezwaartermijn, geen_gram: null}

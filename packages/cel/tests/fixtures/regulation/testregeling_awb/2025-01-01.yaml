@@ -1,7 +1,9 @@
 ---
 # Fictieve testregeling: een tweede regeling waaruit artikel 2 van de
-# testregeling aanvraag een invoer haalt, en de procedure van een beschikking
-# (RFC-008): na het besluit komt de bekendmaking. Geen geldend recht.
+# testregeling aanvraag een invoer haalt, de procedure van een beschikking
+# (RFC-008): na het besluit komt de bekendmaking, en daarna de bezwaartermijn
+# (een haak op die stage), en een betaling die een besluit uitvoert. Geen
+# geldend recht.
 $schema: >-
   https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
 $id: testregeling_awb
@@ -30,6 +32,8 @@ procedure:
         requires:
           - {name: datum_bekendmaking, type: date}
           - {name: bekendgemaakt, type: boolean}
+      - name: BEZWAAR
+        description: De bezwaartermijn loopt (artikel 4).
 
 articles:
   - number: '1'
@@ -50,3 +54,154 @@ articles:
               operation: GREATER_THAN
               subject: $verzuimdagen
               value: 0
+  - number: '2'
+    url: https://example.com/testregeling_awb/2
+    text: Een besluit is in werking als het is bekendgemaakt.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TOETS
+          decision_type: GEEN_BESLUIT
+        parameters:
+          - name: datum_bekendmaking
+            type: date
+            nullable: true
+            required: true
+            origin: {waarde: DOSSIER, grondslag: testregeling_awb#2}
+        output:
+          - name: besluit_in_werking
+            type: boolean
+            legal_basis: {article: '2'}
+        actions:
+          - output: besluit_in_werking
+            value:
+              operation: NOT
+              value:
+                operation: EQUALS
+                subject: $datum_bekendmaking
+                value: null
+  - number: '3'
+    url: https://example.com/testregeling_awb/3
+    text: |-
+      1. Het vastgestelde bedrag wordt betaald, niet meer dan dat, en niet voordat het besluit in werking is.
+      2. De dag van betaling telt.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TOETS
+          decision_type: GEEN_BESLUIT
+        parameters:
+          - name: vastgesteld_bedrag
+            type: number
+            required: true
+            origin: {waarde: DOSSIER, grondslag: testregeling_awb#3 lid 1}
+          - name: betaald_bedrag
+            type: number
+            required: true
+            origin: {waarde: DOSSIER, grondslag: testregeling_awb#3 lid 1}
+          - name: datum_bekendmaking
+            type: date
+            nullable: true
+            required: true
+            origin: {waarde: DOSSIER, grondslag: testregeling_awb#2}
+        input:
+          - name: besluit_in_werking
+            type: boolean
+            source:
+              output: besluit_in_werking
+              parameters:
+                datum_bekendmaking: $datum_bekendmaking
+        output:
+          - name: nog_te_betalen
+            type: number
+          - name: betaling_conform
+            type: boolean
+            legal_basis: {article: '3', paragraph: '1'}
+        actions:
+          - output: nog_te_betalen
+            value:
+              operation: MAX
+              values:
+                - 0
+                - operation: SUBTRACT
+                  values:
+                    - $vastgesteld_bedrag
+                    - $betaald_bedrag
+          - output: betaling_conform
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $besluit_in_werking
+                  value: true
+                - operation: LESS_THAN_OR_EQUAL
+                  subject: $betaald_bedrag
+                  value: $vastgesteld_bedrag
+  - number: '4'
+    url: https://example.com/testregeling_awb/4
+    text: |-
+      1. De bezwaartermijn vangt aan op de dag na de bekendmaking van een beschikking en duurt zes weken.
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: BEKENDMAKING
+      execution:
+        produces:
+          legal_character: TOETS
+          decision_type: GEEN_BESLUIT
+        parameters:
+          - name: datum_bekendmaking
+            type: date
+            required: true
+          - name: bekendgemaakt
+            type: boolean
+            required: true
+        output:
+          - name: aanvang_bezwaartermijn
+            type: date
+            nullable: true
+          - name: einde_bezwaartermijn
+            type: date
+            nullable: true
+        actions:
+          - output: aanvang_bezwaartermijn
+            value:
+              operation: IF
+              cases:
+                - when: {operation: EQUALS, subject: $bekendgemaakt, value: true}
+                  then: {operation: DATE_ADD, date: $datum_bekendmaking, days: 1}
+              default: null
+          - output: einde_bezwaartermijn
+            value:
+              operation: IF
+              cases:
+                - when: {operation: EQUALS, subject: $bekendgemaakt, value: true}
+                  then: {operation: DATE_ADD, date: $datum_bekendmaking, days: 42}
+              default: null
+  - number: '5'
+    url: https://example.com/testregeling_awb/5
+    text: De termijn is opgeschort zolang de instantie om een aanvulling heeft gevraagd.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TOETS
+          decision_type: GEEN_BESLUIT
+        parameters:
+          - name: datum_uitnodiging_aanvulling
+            type: date
+            nullable: true
+            required: true
+            origin: {waarde: DOSSIER, grondslag: testregeling_awb#5}
+        output:
+          - name: termijn_opgeschort
+            type: boolean
+        actions:
+          - output: termijn_opgeschort
+            value:
+              operation: NOT
+              value:
+                operation: EQUALS
+                subject: $datum_uitnodiging_aanvulling
+                value: null

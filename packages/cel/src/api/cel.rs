@@ -185,20 +185,37 @@ pub fn als_yaml(cel: &Cel, gram: &Gram) -> Result<String, String> {
 ///   besluit delen een zaakkenmerk, elk als eigen elementair gram (RFC-022
 ///   par. 1.2, RFC-008). Een tweede gram met dezelfde stage is een wijziging
 ///   van wat al vastligt, en die hoort in een eigen stap.
-fn toets_zaak(gram: &Gram, bestaand: &[&Gram]) -> Result<(), Fout> {
+/// - Zegt het verzoek hoeveel grammen de zaak had toen het proces haar las
+///   (`zaak_grammen`), dan legt de cel alleen vast als dat nog zo is. Wat het
+///   proces uitrekende (zoals wat er nog te betalen is), gold voor de zaak
+///   zoals die toen was; twee gelijktijdige betalingen komen zo niet allebei
+///   door.
+fn toets_zaak(gram: &Gram, bestaand: &[&Gram], verwacht: Option<usize>) -> Result<(), Fout> {
     let Some(z) = gram.zaakkenmerk.as_deref() else {
         return Ok(());
     };
-    let mut zaak = bestaand
+    let zaak: Vec<&&Gram> = bestaand
         .iter()
         .filter(|g| g.zaakkenmerk.as_deref() == Some(z))
-        .peekable();
-    if gram.zaak == Zaak::Volgt && zaak.peek().is_none() {
+        .collect();
+    if gram.zaak == Zaak::Volgt && zaak.is_empty() {
         return Err(fout(
             StatusCode::BAD_REQUEST,
             format!("geen zaak '{z}' in de kroniek"),
         ));
     }
+    if let Some(n) = verwacht {
+        if zaak.len() != n {
+            return Err(fout(
+                StatusCode::CONFLICT,
+                format!(
+                    "zaak {z} veranderde sinds het proces haar las ({n} grammen, nu {}); reken de handeling opnieuw uit",
+                    zaak.len()
+                ),
+            ));
+        }
+    }
+    let mut zaak = zaak.into_iter();
     if let Some(stage) = gram.stage.as_deref() {
         if let Some(eerder) = zaak.find(|g| g.stage.as_deref() == Some(stage)) {
             return Err(fout(
@@ -223,8 +240,11 @@ async fn grammen_route(
 ) -> Result<(StatusCode, Json<Value>), Fout> {
     let gram = bouw(&state, &verzoek)?;
     let (kroniek, cel, g) = (state.kroniek.clone(), state.cel.clone(), gram.clone());
+    let verwacht = verzoek.zaak_grammen;
     tokio::task::spawn_blocking(move || {
-        kroniek.voeg_toe_mits(&g, &cel.kronieken(), |bestaand| toets_zaak(&g, bestaand))
+        kroniek.voeg_toe_mits(&g, &cel.kronieken(), |bestaand| {
+            toets_zaak(&g, bestaand, verwacht)
+        })
     })
     .await
     .map_err(|e| intern(format!("het vastleggen brak af: {e}")))?
@@ -263,7 +283,11 @@ async fn proef_route(
             .kroniek
             .lees_zaak(&state.cel.kronieken(), z)
             .map_err(intern)?;
-        toets_zaak(&gram, &zaak.iter().map(|v| &v.gram).collect::<Vec<_>>())?;
+        toets_zaak(
+            &gram,
+            &zaak.iter().map(|v| &v.gram).collect::<Vec<_>>(),
+            None,
+        )?;
     }
     let mut inputs = verzoek.inputs;
     let peil = Peil::uit_query(&mut inputs).map_err(|e| fout(StatusCode::BAD_REQUEST, e))?;

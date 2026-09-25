@@ -1,18 +1,22 @@
 //! Voorbeelden: standaardgegevens per handeling, voor een proefopstelling.
 //!
 //! `proces.yaml` kan per handeling een JSON-bestand noemen (zie
-//! [`crate::config::VoorbeeldenDefinitie`]): logins langs een kanaal,
-//! een aanvraag en een besluitformulier. De frontend biedt ze aan om een
-//! formulier voor in te vullen of de handeling er direct mee te doen. Het
-//! zijn gewone invoer, geen feiten: de runtime legt ze niet vast en de
-//! handeling toetst ze zoals elke andere invoer.
+//! [`crate::config::VoorbeeldenDefinitie`]): logins langs een kanaal, een
+//! aanvraag en per handeling in een zaak een formulier. De frontend biedt ze
+//! aan om een formulier voor in te vullen of de handeling er direct mee te
+//! doen. Het zijn gewone invoer, geen feiten: de runtime legt ze niet vast en
+//! de handeling toetst ze zoals elke andere invoer.
+//!
+//! Een waarde `"$vandaag"` in een formulier wordt bij het opvragen de datum
+//! van vandaag ([`Voorbeelden::op`]). Een besluit, een bekendmaking of een
+//! betaling in de toekomst is geen feit (de cel weigert een `op_moment` na
+//! het vastleggen), en een voorbeeld met een vaste datum veroudert.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use serde::Serialize;
 use serde_json::{Map, Value};
-
-use std::collections::BTreeMap;
 
 use crate::config::{ProcesDefinitie, VoorbeeldenDefinitie};
 use crate::kanaal::Routes;
@@ -23,8 +27,27 @@ pub struct Voorbeelden {
     pub inloggen: Vec<InlogVoorbeeld>,
     /// De `external` van een aanvraag.
     pub aanvraag: Option<Map<String, Value>>,
-    /// Het `formulier` van een besluit.
-    pub besluit: Option<Map<String, Value>>,
+    /// Per handeling het `formulier`.
+    pub handelingen: BTreeMap<String, Map<String, Value>>,
+}
+
+/// De waarde die in een voorbeeld de datum van vandaag wordt.
+pub const VANDAAG: &str = "$vandaag";
+
+impl Voorbeelden {
+    /// De voorbeelden zoals de frontend ze krijgt: `"$vandaag"` wordt
+    /// `vandaag` (JJJJ-MM-DD).
+    pub fn op(&self, vandaag: &str) -> Self {
+        let mut uit = self.clone();
+        for f in uit.handelingen.values_mut() {
+            for w in f.values_mut() {
+                if w.as_str() == Some(VANDAAG) {
+                    *w = Value::String(vandaag.to_string());
+                }
+            }
+        }
+        uit
+    }
 }
 
 /// Een login, met als label de bestandsnaam zonder extensie: het kanaal, de
@@ -70,10 +93,10 @@ pub fn laad(
             .map_err(|f| fouten.push(f))
             .ok();
     }
-    if let Some(pad) = &definitie.besluit {
-        uit.besluit = object_onder(map, pad, "formulier")
-            .map_err(|f| fouten.push(f))
-            .ok();
+    for (naam, pad) in &definitie.handelingen {
+        if let Ok(f) = object_onder(map, pad, "formulier").map_err(|f| fouten.push(f)) {
+            uit.handelingen.insert(naam.clone(), f);
+        }
     }
     if fouten.is_empty() {
         Ok(uit)
@@ -185,7 +208,9 @@ mod tests {
         VoorbeeldenDefinitie {
             inloggen: inloggen.iter().map(|s| s.to_string()).collect(),
             aanvraag: aanvraag.map(str::to_string),
-            besluit: besluit.map(str::to_string),
+            handelingen: besluit
+                .map(|b| BTreeMap::from([("besluit".to_string(), b.to_string())]))
+                .unwrap_or_default(),
         }
     }
 
@@ -199,7 +224,7 @@ mod tests {
             ("aanvraag.json", r#"{"external": {"naam": "Voorbeeld"}}"#),
             (
                 "besluit.json",
-                r#"{"formulier": {"feiten_vergaard": true}}"#,
+                r#"{"formulier": {"feiten_vergaard": true, "besluitdatum": "$vandaag"}}"#,
             ),
         ]);
         let v = laad(
@@ -225,15 +250,21 @@ mod tests {
                 .into(),
             }]
         );
-        assert_eq!(v.aanvraag.unwrap()["naam"], "Voorbeeld");
-        assert_eq!(v.besluit.unwrap()["feiten_vergaard"], true);
+        assert_eq!(v.aanvraag.as_ref().unwrap()["naam"], "Voorbeeld");
+        assert_eq!(v.handelingen["besluit"]["feiten_vergaard"], true);
+        // "$vandaag" wordt bij het opvragen de datum van vandaag.
+        assert_eq!(v.handelingen["besluit"]["besluitdatum"], "$vandaag");
+        assert_eq!(
+            v.op("2025-03-20").handelingen["besluit"]["besluitdatum"],
+            "2025-03-20"
+        );
     }
 
     #[test]
     fn zonder_voorbeelden_is_alles_leeg() {
         let dir = map_met(&[]);
         let v = laad(dir.path(), &VoorbeeldenDefinitie::default(), &proces()).unwrap();
-        assert!(v.inloggen.is_empty() && v.aanvraag.is_none() && v.besluit.is_none());
+        assert!(v.inloggen.is_empty() && v.aanvraag.is_none() && v.handelingen.is_empty());
     }
 
     #[test]

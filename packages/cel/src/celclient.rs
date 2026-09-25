@@ -36,14 +36,20 @@ pub struct Vastlegverzoek {
     /// de cel het kenmerk.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub zaakkenmerk: Option<String>,
-    /// Alleen bij een besluit dat het proces nam: wat het besluit tot besluit
-    /// maakt. Het proces draait de engine, dus het proces stelt dit samen.
+    /// Alleen bij een handeling die het proces uitrekende: de invoer met
+    /// herkomst en het receipt, en bij een besluit wat het tot besluit maakt.
+    /// Het proces draait de engine, dus het proces stelt dit samen.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub besluit: Option<Besluitvelden>,
+    /// Hoeveel grammen de zaak had toen het proces haar las. De cel legt
+    /// alleen vast als dat onder haar slot nog zo is: wat het proces
+    /// uitrekende, gold voor de zaak zoals die toen was.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zaak_grammen: Option<usize>,
 }
 
-/// De velden van een besluit op een gram, naast de stroomvorm (zie
-/// [`crate::besluit::neem_besluit`]).
+/// De velden van een handeling op een gram, naast de stroomvorm (zie
+/// [`crate::handeling::neem`]).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Besluitvelden {
     #[serde(default)]
@@ -124,14 +130,16 @@ pub async fn leg_vast(
 }
 
 /// Laat de cel een concept op proef reduceren tot `lexostatus`
-/// (`POST lexostatus/<naam>/proef`); er wordt niets vastgelegd.
+/// (`POST lexostatus/<naam>/proef`), met `inputs` (en zo nodig het peil); er
+/// wordt niets vastgelegd.
 pub async fn proef(
     cel: &dyn Transport,
     id: &str,
     lexostatus: &str,
     concept: &Vastlegverzoek,
+    inputs: &Map<String, Value>,
 ) -> Result<Proefreductie, TransportFout> {
-    let body = json!({"concept": schrijf(concept)?, "inputs": {}});
+    let body = json!({"concept": schrijf(concept)?, "inputs": inputs});
     let v = cel
         .stuur(
             &celpad(id, &format!("lexostatus/{lexostatus}/proef")),

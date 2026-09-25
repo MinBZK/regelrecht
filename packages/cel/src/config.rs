@@ -140,9 +140,9 @@ pub struct VoorbeeldenDefinitie {
     /// Een aanvraag: `{external: {...}}`.
     #[serde(default)]
     pub aanvraag: Option<String>,
-    /// Een besluitformulier: `{formulier: {...}}`.
+    /// Per handeling een formulier: `{formulier: {...}}`.
     #[serde(default)]
-    pub besluit: Option<String>,
+    pub handelingen: BTreeMap<String, String>,
 }
 
 /// Namens welk bevoegd gezag het proces handelt: een naam zoals een
@@ -163,12 +163,20 @@ pub struct Mandaat {
     pub grondslag: String,
 }
 
-/// Wat de behandelaar in het proces doet: een werkvoorraad en een besluit.
+/// Wat de behandelaar in het proces doet: een werkvoorraad, en handelingen
+/// in een zaak.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Behandeling {
     /// Een lijst-lexostatus van de cel van het proces.
     pub werkvoorraad: LexostatusVerwijzing,
-    pub besluit: BesluitDefinitie,
+    pub handelingen: Vec<HandelingDefinitie>,
+}
+
+impl Behandeling {
+    /// De handeling met deze naam.
+    pub fn handeling(&self, naam: &str) -> Option<&HandelingDefinitie> {
+        self.handelingen.iter().find(|h| h.naam == naam)
+    }
 }
 
 /// Een lexostatus van een cel.
@@ -178,34 +186,101 @@ pub struct LexostatusVerwijzing {
     pub lexostatus: String,
 }
 
-/// Het besluit op een zaak: de uitkomsten van een artikel, en per parameter
-/// de bron (zie [`crate::besluit`]).
+/// Een handeling in een zaak (zie [`crate::handeling`]): de uitkomsten van
+/// een artikel, en het event waarin de cel haar vastlegt. Wat de handeling
+/// nodig heeft en van wie, staat niet in `proces.yaml`: het volgt bij het
+/// laden uit de stage van het event (RFC-008) en uit de origin van de
+/// parameters (RFC-043); zie de velden zonder serde hieronder.
 #[derive(Debug, Clone, Deserialize)]
-pub struct BesluitDefinitie {
+pub struct HandelingDefinitie {
+    /// Uniek in het proces; de route is `zaken/<z>/handelingen/<naam>`.
+    pub naam: String,
+    #[serde(default)]
+    pub label: Option<String>,
+    /// De rol die de handeling mag doen (een sleutel van `rollen`, met
+    /// routes `behandeling`). Zonder: elke rol die de behandeling mag.
+    #[serde(default)]
+    pub rol: Option<String>,
     /// Leeg in `proces.yaml`: de runtime vult haar bij het laden met de
-    /// regeling van de beschikking waarvoor de actor van het proces bevoegd
-    /// is (zie [`crate::besluit::beschikkingen_van`]).
+    /// regeling van de beschikking waarvoor het gezag van het proces
+    /// (`namens`) bevoegd is (zie [`crate::gezag::beschikkingen_van`]).
     #[serde(default)]
     pub regeling: String,
+    /// Uitkomsten van een artikel. Bij een vervolg komen de uitkomsten van
+    /// de haken van die stage er bij het laden bij.
+    #[serde(default)]
     pub uitkomsten: Vec<String>,
-    /// De oordelen van de behandelaar: niet in `proces.yaml`, maar bij het
-    /// laden afgeleid uit de parameters van het besluit met origin `OORDEEL`
-    /// (zie [`crate::origin::oordelen`]).
-    #[serde(skip)]
-    pub formulier: Vec<Oordeel>,
-    /// Feiten die pas na het besluit ontstaan, met hun stand bij het besluit:
-    /// niet in `proces.yaml`, maar bij het laden afgeleid uit de procedure
-    /// van de beschikking (RFC-008). Een parameter die pas een latere stage
-    /// vraagt dan die van het vastleg-event, is bij het besluit nog niet
-    /// gebeurd: onwaar, of leeg (zie [`crate::besluit::stand_bij_besluit`]).
-    #[serde(skip)]
-    pub stand_bij_besluit: BTreeMap<String, NogNiet>,
     /// Synthese per regel: een tabelveld wordt een array-parameter.
     #[serde(default)]
     pub rijen: Vec<RijenDefinitie>,
-    /// Waar het besluit als gram wordt vastgelegd.
-    #[serde(default)]
-    pub vastleggen: Option<Vastleggen>,
+    /// Waar de handeling als gram wordt vastgelegd.
+    pub vastleggen: Vastleggen,
+    /// Het artikel van de uitkomsten, als `<regeling>#<artikel>`; bij het
+    /// laden gezet.
+    #[serde(skip)]
+    pub artikel: String,
+    /// Wat voor handeling het is; afgeleid uit het event en de procedure.
+    #[serde(skip)]
+    pub soort: Handelingsoort,
+    /// De stage van het vastleg-event, als het er een heeft.
+    #[serde(skip)]
+    pub stage: Option<String>,
+    /// De oordelen: de parameters van het artikel met origin `OORDEEL`
+    /// (zie [`crate::origin::oordelen`]). Niet bij een vervolg: die oordelen
+    /// gaf de behandelaar bij het besluit.
+    #[serde(skip)]
+    pub oordelen: Vec<Oordeel>,
+    /// De feiten die de handeling vastlegt en die de behandelaar invult: bij
+    /// een feit de `$external`-velden van het event die geen uitkomst zijn,
+    /// bij een vervolg wat de stage vraagt (`requires`).
+    #[serde(skip)]
+    pub feiten: Vec<crate::formulier::Veld>,
+    /// Feiten die pas in een latere stage ontstaan, met hun stand bij deze
+    /// handeling: afgeleid uit de procedure (RFC-008), alleen bij een besluit
+    /// en alleen voor wat geen lexostatus van de zaak levert (zie
+    /// [`crate::handeling::nog_niet`]).
+    #[serde(skip)]
+    pub nog_niet: BTreeMap<String, NogNiet>,
+    /// De booleaanse uitkomsten van een TOETS-artikel dat in de grondslag
+    /// van het event staat: onwaar is niet te nemen (zie
+    /// [`crate::handeling::toetsen`]).
+    #[serde(skip)]
+    pub toetsen: Vec<String>,
+    /// Bij een vervolg: de haken die de wet op die stage laat vuren, als
+    /// `<regeling>#<artikel>` (RFC-008).
+    #[serde(skip)]
+    pub haken: Vec<String>,
+}
+
+impl HandelingDefinitie {
+    /// Hoe de frontend haar noemt.
+    pub fn label(&self) -> &str {
+        self.label.as_deref().unwrap_or(&self.naam)
+    }
+}
+
+/// Wat voor handeling het is. Het volgt uit het vastleg-event: met een stage
+/// is het een besluit of een vervolg op een besluit, zonder een feit.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "soort", rename_all = "lowercase")]
+pub enum Handelingsoort {
+    /// Een feit uit het verloop van de zaak (een verzoek, een ontvangst, een
+    /// betaling): het event heeft geen stage. De lexostatussen van de zaak
+    /// lezen het; op proef telt het concept mee.
+    #[default]
+    Feit,
+    /// Het besluit: de eerste stage van de procedure van het artikel die een
+    /// handeling vastlegt.
+    Besluit,
+    /// Een latere stage van hetzelfde besluit, zoals de bekendmaking: de
+    /// engine voert die stage uit op de invoer van het vastgelegde besluit
+    /// (RFC-008, `execute_stage`).
+    Vervolg {
+        /// De handeling van het besluit.
+        besluit: String,
+        /// De procedure (RFC-008) waarvan beide stages zijn.
+        procedure: String,
+    },
 }
 
 /// Een feit dat bij het besluit nog niet gebeurd is: de stage van de
@@ -217,9 +292,9 @@ pub struct NogNiet {
     pub stage: String,
 }
 
-/// De cel en het event waarin het proces het genomen besluit laat
-/// vastleggen. Het event heeft `zaak: volgt` en een stage, en zijn
-/// `$external`-sleutels zijn precies de uitkomsten van het besluit.
+/// De cel en het event waarin het proces een handeling laat vastleggen. Het
+/// event heeft `zaak: volgt`; zijn `$external`-sleutels zijn uitkomsten van
+/// de handeling of velden van haar formulier.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Vastleggen {
     pub cel: String,
@@ -644,7 +719,7 @@ mod tests {
         .unwrap_err();
         assert!(fout.iter().any(|f| f.contains("keuzes")), "{fout:?}");
         let fout = ProcesDefinitie::parse(
-            "id: a\nactor: a\nbehandeling:\n  werkvoorraad: {cel: a, lexostatus: w}\n  besluit:\n    uitkomsten: [u]\n    stand_bij_besluit: {x: false}\n",
+            "id: a\nactor: a\nbehandeling:\n  werkvoorraad: {cel: a, lexostatus: w}\n  handelingen:\n    - naam: b\n      uitkomsten: [u]\n      vastleggen: {cel: a, stroom: s, event: e}\n      stand_bij_besluit: {x: false}\n",
             "t",
         )
         .unwrap_err();
@@ -682,7 +757,7 @@ mod tests {
     #[test]
     fn een_besluitformulier_in_de_configuratie_wordt_geweigerd() {
         let fout = ProcesDefinitie::parse(
-            "id: a\nactor: a\nbehandeling:\n  werkvoorraad: {cel: a, lexostatus: w}\n  besluit:\n    uitkomsten: [u]\n    formulier: [{parameter: p, label: P}]\n",
+            "id: a\nactor: a\nbehandeling:\n  werkvoorraad: {cel: a, lexostatus: w}\n  handelingen:\n    - naam: b\n      uitkomsten: [u]\n      vastleggen: {cel: a, stroom: s, event: e}\n      formulier: [{parameter: p, label: P}]\n",
             "t",
         )
         .unwrap_err();
@@ -692,14 +767,14 @@ mod tests {
     #[test]
     fn voorbeelden_blok() {
         let d = ProcesDefinitie::parse(
-            "id: a\nactor: a\nvoorbeelden:\n  inloggen: [login.json]\n  besluit: besluit.json\n",
+            "id: a\nactor: a\nvoorbeelden:\n  inloggen: [login.json]\n  handelingen: {besluit: besluit.json}\n",
             "t",
         )
         .unwrap();
         let v = d.voorbeelden.unwrap();
         assert_eq!(v.inloggen, ["login.json"]);
         assert_eq!(v.aanvraag, None);
-        assert_eq!(v.besluit.as_deref(), Some("besluit.json"));
+        assert_eq!(v.handelingen["besluit"], "besluit.json");
         let fout = ProcesDefinitie::parse(
             "id: a\nactor: a\nvoorbeelden:\n  inlog: [login.json]\n",
             "t",

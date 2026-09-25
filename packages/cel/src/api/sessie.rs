@@ -54,6 +54,23 @@ pub(super) fn behandelaar(state: &ProcesState, headers: &HeaderMap) -> Result<Se
     met_routes(state, headers, Routes::Behandeling)
 }
 
+/// De ingelogde gebruiker die een handeling mag doen: een rol die de
+/// behandeling mag, en als de handeling een rol noemt, die rol.
+pub(super) fn voor_handeling(
+    state: &ProcesState,
+    headers: &HeaderMap,
+    rol: Option<&str>,
+) -> Result<Sessie, Fout> {
+    let s = behandelaar(state, headers)?;
+    match rol {
+        Some(r) if s.rol != r => Err(fout(
+            StatusCode::FORBIDDEN,
+            format!("alleen voor de rol {r}, en u bent ingelogd als {}", s.rol),
+        )),
+        _ => Ok(s),
+    }
+}
+
 /// De cookie geldt alleen onder het pad van dit proces.
 fn cookie(state: &ProcesState, waarde: &str, extra: &str) -> String {
     format!(

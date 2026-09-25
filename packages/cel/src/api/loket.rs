@@ -130,6 +130,7 @@ pub(super) async fn loket_indienen(
         external: invoer.external,
         zaakkenmerk: None,
         besluit: None,
+        zaak_grammen: None,
     };
     let vastgelegd = celclient::leg_vast(state.cel.as_ref(), state.cel_id(), &verzoek)
         .await

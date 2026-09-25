@@ -113,6 +113,7 @@ async fn verzoek_voor(
         external: concept.external.clone(),
         zaakkenmerk: concept.zaakkenmerk.clone(),
         besluit: None,
+        zaak_grammen: None,
     })
 }
 
@@ -160,6 +161,7 @@ async fn concepttoets<'a>(
         state.cel_id(),
         &portaal.toets.lexostatus,
         &verzoek,
+        &serde_json::Map::new(),
     )
     .await
     .map_err(van_cel)?;

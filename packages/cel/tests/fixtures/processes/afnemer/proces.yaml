@@ -3,8 +3,9 @@
 # voegt de lexostatus van het concept (een proefreductie in de cel) samen
 # met de registerstatus van de registercel (zonder url is het transport
 # intern); de behandelaar ziet de werkvoorraad en rekent per zaak een
-# proefbesluit uit. Het besluitformulier volgt uit de regeling: de parameters
-# van het besluit met origin OORDEEL.
+# proefbesluit uit, en doet de handelingen in een zaak: het besluit, de
+# bekendmaking, een betaling en een verzoek om aanvulling. Het formulier van
+# het besluit volgt uit de regeling: de parameters met origin OORDEEL.
 id: test_afnemer_proces
 # De actor legt vast (recording_actor); het proces handelt namens het
 # bevoegd gezag van de testregeling ('Test afnemer').
@@ -43,6 +44,7 @@ synthese:
   # De zaak zelf, uit de cel waarin het proces vastlegt.
   - {cel: test_afnemer, lexostatus: aanvraag_inhoud, zaak: true}
   - {cel: test_afnemer, lexostatus: zaakverloop, zaak: true}
+  - {cel: test_afnemer, lexostatus: besluit, zaak: true}
   # De registercel spreekt de taal van haar eigen regeling; de afnemer
   # vertaalt naar de namen van zijn artikelen (synthese bij de afnemer).
   - cel: test_register
@@ -62,35 +64,53 @@ synthese:
       jaar_van_mededeling: jaar
 behandeling:
   werkvoorraad: {cel: test_afnemer, lexostatus: werkvoorraad}
-  besluit:
-    regeling: testregeling_afnemer
-    uitkomsten: [vastgesteld_bedrag, gebiedsbedrag, besluit_tijdig, besluitdeadline, zorgvuldig]
-    # Synthese per regel: de gebiedstabel. De aanvraag levert de regels, de
-    # kolommen die de instantie zelf vaststelt komen per regel uit een
-    # andere cel.
-    rijen:
-      - parameter: gebiedstabel
-        tabel: {lexostatus: aanvraag_inhoud, veld: gebieden}
-        kolommen: {gebied: gebied, zetels: zetels}
-        bronnen:
-          - cel: test_register
-            lexostatus: registratie_per_gebied
-            invoer:
-              aanduiding: {lexostatus: aanvraag_inhoud, veld: aanduiding}
-              gebied: {kolom: gebied}
-            kolommen: {ingeschreven: ingeschreven}
-          - cel: test_gebieden
-            lexostatus: tarief
-            invoer:
-              gebied: {kolom: gebied}
-              peildatum: {regeling: testregeling_afnemer, uitkomst: peildatum_tarief}   # de wet leidt haar af (art. 5)
-            kolommen: {tarief: tarief}
-    vastleggen:
-      cel: test_afnemer
-      stroom: test_afnemer_zaakverloop
-      event: besluit_genomen
+  handelingen:
+    # Het besluit: een stage-decretogram (stage BESLUIT). Het formulier zijn
+    # de parameters met origin OORDEEL.
+    - naam: besluit
+      regeling: testregeling_afnemer
+      uitkomsten: [vastgesteld_bedrag, gebiedsbedrag, besluit_tijdig, besluitdeadline, zorgvuldig]
+      # Synthese per regel: de gebiedstabel. De aanvraag levert de regels, de
+      # kolommen die de instantie zelf vaststelt komen per regel uit een
+      # andere cel.
+      rijen:
+        - parameter: gebiedstabel
+          tabel: {lexostatus: aanvraag_inhoud, veld: gebieden}
+          kolommen: {gebied: gebied, zetels: zetels}
+          bronnen:
+            - cel: test_register
+              lexostatus: registratie_per_gebied
+              invoer:
+                aanduiding: {lexostatus: aanvraag_inhoud, veld: aanduiding}
+                gebied: {kolom: gebied}
+              kolommen: {ingeschreven: ingeschreven}
+            - cel: test_gebieden
+              lexostatus: tarief
+              invoer:
+                gebied: {kolom: gebied}
+                peildatum: {regeling: testregeling_afnemer, uitkomst: peildatum_tarief}   # de wet leidt haar af (art. 5)
+              kolommen: {tarief: tarief}
+      vastleggen: {cel: test_afnemer, stroom: test_afnemer_zaakverloop, event: besluit_genomen}
+    # De bekendmaking: een latere stage van hetzelfde besluit. Het formulier
+    # is wat de stage vraagt; de haak op die stage rekent de bezwaartermijn uit.
+    - naam: bekendmaken
+      uitkomsten: [besluit_tijdig]
+      regeling: testregeling_afnemer
+      vastleggen: {cel: test_afnemer, stroom: test_afnemer_zaakverloop, event: besluit_bekendgemaakt}
+    # De betaling: een executogram, getoetst aan artikel 3 lid 1.
+    - naam: betalen
+      regeling: testregeling_awb
+      uitkomsten: [nog_te_betalen]
+      vastleggen: {cel: test_afnemer, stroom: test_afnemer_zaakverloop, event: betaling_verricht}
+    # Een feit uit het verloop van de zaak.
+    - naam: aanvulling_vragen
+      regeling: testregeling_awb
+      uitkomsten: [termijn_opgeschort]
+      vastleggen: {cel: test_afnemer, stroom: test_afnemer_zaakverloop, event: aanvulling_gevraagd}
 # Standaardgegevens per handeling, voor een proefopstelling.
 voorbeelden:
   inloggen: [voorbeeld-login.json, voorbeeld-login-ander.json]
   aanvraag: voorbeeld-aanvraag.json
-  besluit: voorbeeld-besluit.json
+  handelingen:
+    besluit: voorbeeld-besluit.json
+    bekendmaken: voorbeeld-bekendmaking.json

@@ -63,8 +63,8 @@ pub struct Tijdvak {
 impl Proces {
     /// Laad een proces uit zijn map en controleer het tegen de cellen van de
     /// runtime. Elke fout komt terug, en elke fout noemt het proces. De
-    /// controles op synthese en besluit staan in [`crate::synthese::controleer`]
-    /// en [`crate::besluit::controleer`]; de runtime roept ze aan.
+    /// controles op synthese en handelingen staan in [`crate::synthese::controleer`]
+    /// en [`crate::handeling::controleer`]; de runtime roept ze aan.
     pub fn laad(
         map: &Path,
         cellen: &BTreeMap<String, Arc<Cel>>,
@@ -121,10 +121,12 @@ impl Proces {
                 ));
             }
         }
-        fouten.extend(vind_besluit(&mut definitie, gezag.as_deref(), &service));
-        if let Err(f) = crate::besluit::zet_stand_bij_besluit(&mut definitie, &service, &cel) {
-            fouten.push(f);
-        }
+        fouten.extend(crate::handeling::bereid_voor(
+            &mut definitie,
+            gezag.as_deref(),
+            &service,
+            &cel,
+        ));
         let formulier = match definitie
             .portaal
             .as_ref()
@@ -172,14 +174,16 @@ impl Proces {
     }
 
     /// De controle op de herkomst van de parameters (zie [`crate::origin`]).
-    /// Het besluitformulier volgt eruit, en de waarschuwingen bewaart het
-    /// proces; de fouten komen terug.
+    /// Het formulier van elke handeling volgt eruit, en de waarschuwingen
+    /// bewaart het proces; de fouten komen terug.
     pub fn controleer_herkomst(&mut self, cellen: &BTreeMap<String, Arc<Cel>>) -> Vec<String> {
         let c = origin::controleer(&self.definitie, &self.cel, cellen, &self.service);
-        let oordelen = origin::oordelen(&c, &self.service);
         if let Some(b) = self.definitie.behandeling.as_mut() {
-            b.besluit.formulier = oordelen;
+            for h in &mut b.handelingen {
+                h.oordelen = origin::oordelen(&c, &self.service, &h.naam);
+            }
         }
+        crate::handeling::zet_formulier(&mut self.definitie, &self.service, &self.cel);
         self.waarschuwingen = c.waarschuwingen;
         self.tijdvak = c.tijdvak.map(|parameter| Tijdvak {
             veld: self.concept_veld(&parameter),
@@ -227,12 +231,12 @@ impl Proces {
             .unwrap_or_default()
     }
 
-    /// De rijen-definities van het besluit (synthese per regel).
-    pub fn rijen(&self) -> &[RijenDefinitie] {
+    /// De handelingen van de behandeling, in de volgorde van `proces.yaml`.
+    pub fn handelingen(&self) -> &[crate::config::HandelingDefinitie] {
         self.definitie
             .behandeling
             .as_ref()
-            .map(|b| b.besluit.rijen.as_slice())
+            .map(|b| b.handelingen.as_slice())
             .unwrap_or_default()
     }
 }
@@ -251,8 +255,11 @@ fn de_cel(
     }
     if let Some(b) = &definitie.behandeling {
         genoemd.push(("behandeling.werkvoorraad".into(), &b.werkvoorraad.cel));
-        if let Some(v) = &b.besluit.vastleggen {
-            genoemd.push(("besluit.vastleggen".into(), &v.cel));
+        for h in &b.handelingen {
+            genoemd.push((
+                format!("handeling '{}', vastleggen", h.naam),
+                &h.vastleggen.cel,
+            ));
         }
     }
     for b in definitie.zaakbronnen() {
@@ -288,16 +295,19 @@ fn de_cel(
 /// het vastlegt: die van het portaal en die van het besluit. Wat een stroom
 /// niet noemt, bestaat niet: dat meldt de controle op portaal en besluit.
 fn actor_legt_vast(definitie: &ProcesDefinitie, cel: &Cel) -> Vec<String> {
-    let mut stromen: Vec<(&str, &str)> = Vec::new();
+    let mut stromen: Vec<(String, &str)> = Vec::new();
     if let Some(p) = &definitie.portaal {
-        stromen.push(("portaal", &p.stroom));
+        stromen.push(("portaal".into(), &p.stroom));
     }
-    if let Some(v) = definitie
+    for h in definitie
         .behandeling
-        .as_ref()
-        .and_then(|b| b.besluit.vastleggen.as_ref())
+        .iter()
+        .flat_map(|b| b.handelingen.iter())
     {
-        stromen.push(("besluit, vastleggen", &v.stroom));
+        stromen.push((
+            format!("handeling '{}', vastleggen", h.naam),
+            &h.vastleggen.stroom,
+        ));
     }
     let mut fouten = Vec::new();
     for (waar, id) in stromen {
@@ -314,9 +324,9 @@ fn actor_legt_vast(definitie: &ProcesDefinitie, cel: &Cel) -> Vec<String> {
 }
 
 /// Een voorbeeld voor een handeling die het proces niet heeft, is een fout:
-/// logins zonder rollen, een aanvraag zonder portaal, een besluit zonder
-/// behandeling. (Dat een portaal een rol heeft die het mag, controleert
-/// [`crate::kanaal::controleer_proces`].)
+/// logins zonder rollen, een aanvraag zonder portaal, een formulier voor een
+/// handeling die er niet is. (Dat een portaal een rol heeft die het mag,
+/// controleert [`crate::kanaal::controleer_proces`].)
 fn voorbeelden_zonder_handeling(
     definitie: &ProcesDefinitie,
     v: &VoorbeeldenDefinitie,
@@ -328,58 +338,18 @@ fn voorbeelden_zonder_handeling(
     if v.aanvraag.is_some() && definitie.portaal.is_none() {
         fouten.push("voorbeelden.aanvraag: het proces heeft geen portaal".to_string());
     }
-    if v.besluit.is_some() && definitie.behandeling.is_none() {
-        fouten.push("voorbeelden.besluit: het proces heeft geen behandeling".to_string());
-    }
-    fouten
-}
-
-/// Vul de regeling van het besluit in uit de wet, als `proces.yaml` haar niet
-/// noemt: de beschikking waarvoor het bevoegd gezag de `actor` van het proces
-/// is. Precies een zo'n beschikking, en de uitkomsten van het besluit komen
-/// uit dat artikel; anders een fout die de kandidaten noemt.
-fn vind_besluit(
-    definitie: &mut ProcesDefinitie,
-    gezag: Option<&str>,
-    service: &LawExecutionService,
-) -> Vec<String> {
-    let Some(b) = definitie.behandeling.as_mut().map(|b| &mut b.besluit) else {
-        return Vec::new();
-    };
-    if !b.regeling.is_empty() {
-        return Vec::new();
-    }
-    // Zonder gezag meldt de controle op `namens` het al.
-    let Some(actor) = gezag else {
-        return Vec::new();
-    };
-    let kandidaten = gezag::beschikkingen_van(service, actor);
-    let [(regeling, artikel)] = kandidaten.as_slice() else {
-        let lijst: Vec<String> = kandidaten.iter().map(|(r, a)| format!("{r}#{a}")).collect();
-        return vec![if lijst.is_empty() {
-            format!(
-                "besluit: geen regeling noemt '{actor}' als bevoegd gezag bij een BESCHIKKING; noem de regeling in behandeling.besluit.regeling"
-            )
-        } else {
-            format!(
-                "besluit: '{actor}' is bevoegd voor meer dan een beschikking ({}); kies er een met behandeling.besluit.regeling",
-                lijst.join(", ")
-            )
-        }];
-    };
-    let mut fouten = Vec::new();
-    for u in &b.uitkomsten {
-        let van = service
-            .resolver()
-            .get_article_by_output(regeling, u, None)
-            .map(|a| a.number.clone());
-        if van.as_deref() != Some(artikel.as_str()) {
+    for naam in v.handelingen.keys() {
+        if definitie
+            .behandeling
+            .as_ref()
+            .and_then(|b| b.handeling(naam))
+            .is_none()
+        {
             fouten.push(format!(
-                "besluit: uitkomst '{u}' komt niet uit {regeling}#{artikel}, de beschikking waarvoor '{actor}' bevoegd is"
+                "voorbeelden.handelingen: het proces heeft geen handeling '{naam}'"
             ));
         }
     }
-    b.regeling = regeling.clone();
     fouten
 }
 
@@ -454,21 +424,42 @@ mod tests {
         assert!(instantie.formulier.is_some());
         let afnemer = Proces::laad(&fixtures().join("processes/afnemer"), &c, s).unwrap();
         assert_eq!(afnemer.cel.id(), "test_afnemer");
-        assert_eq!(afnemer.definitie.zaakbronnen().count(), 2);
+        assert_eq!(afnemer.definitie.zaakbronnen().count(), 3);
         assert_eq!(afnemer.definitie.andere_bronnen().count(), 2);
-        // De stand bij besluit staat niet in proces.yaml: ze volgt uit de
-        // procedure van de beschikking (stage BEKENDMAKING na BESLUIT).
-        let stand = &afnemer
-            .definitie
-            .behandeling
-            .as_ref()
-            .unwrap()
-            .besluit
-            .stand_bij_besluit;
+        // Wat bij het besluit nog niet gebeurd is, staat niet in proces.yaml:
+        // het volgt uit de procedure van de beschikking (stage BEKENDMAKING na
+        // BESLUIT). De dag van bekendmaking leidt de lexostatus besluit af
+        // (geen gram: leeg), dus die staat er niet bij.
+        let b = afnemer.definitie.behandeling.as_ref().unwrap();
+        let besluit = b.handeling("besluit").unwrap();
+        assert_eq!(besluit.soort, crate::config::Handelingsoort::Besluit);
+        assert_eq!(besluit.stage.as_deref(), Some("BESLUIT"));
+        let stand = &besluit.nog_niet;
         assert_eq!(stand["bekendgemaakt"].waarde, serde_json::json!(false));
-        assert_eq!(stand["datum_bekendmaking"].waarde, serde_json::Value::Null);
-        assert_eq!(stand["datum_bekendmaking"].stage, "BEKENDMAKING");
-        assert_eq!(stand.len(), 2);
+        assert_eq!(stand["bekendgemaakt"].stage, "BEKENDMAKING");
+        assert_eq!(stand.len(), 1);
+        // De bekendmaking is een vervolg op het besluit, met de haak van de
+        // bezwaartermijn; de betaling een feit met een toets.
+        let bekend = b.handeling("bekendmaken").unwrap();
+        assert_eq!(
+            bekend.soort,
+            crate::config::Handelingsoort::Vervolg {
+                besluit: "besluit".into(),
+                procedure: "beschikking".into()
+            }
+        );
+        assert_eq!(bekend.haken, ["testregeling_awb#4"]);
+        assert_eq!(
+            bekend.uitkomsten,
+            [
+                "besluit_tijdig",
+                "aanvang_bezwaartermijn",
+                "einde_bezwaartermijn"
+            ]
+        );
+        let betalen = b.handeling("betalen").unwrap();
+        assert_eq!(betalen.soort, crate::config::Handelingsoort::Feit);
+        assert_eq!(betalen.toetsen, ["betaling_conform"]);
     }
 
     #[test]
@@ -521,8 +512,8 @@ mod tests {
             "{f:?}"
         );
         assert!(
-            f.iter()
-                .any(|f| f.contains("besluit, vastleggen: stroom 'test_afnemer_zaakverloop'")),
+            f.iter().any(|f| f
+                .contains("handeling 'besluit', vastleggen: stroom 'test_afnemer_zaakverloop'")),
             "{f:?}"
         );
     }
@@ -551,16 +542,16 @@ mod tests {
             .collect();
         assert_eq!(labels, ["voorbeeld-login", "voorbeeld-login-ander"]);
         assert!(afnemer.voorbeelden.aanvraag.is_some());
-        assert!(afnemer.voorbeelden.besluit.is_some());
+        assert!(afnemer.voorbeelden.handelingen.contains_key("besluit"));
     }
 
     #[test]
     fn voorbeeld_voor_een_handeling_die_het_proces_niet_heeft() {
         let f = fouten("instantie", |t| {
-            format!("{t}\nvoorbeelden:\n  besluit: weg.json\n")
+            format!("{t}\nvoorbeelden:\n  handelingen: {{besluit: weg.json}}\n")
         });
         assert_eq!(f.len(), 2, "{f:?}");
-        assert!(f[0].contains("voorbeelden.besluit: het proces heeft geen behandeling"));
+        assert!(f[0].contains("voorbeelden.handelingen: het proces heeft geen handeling 'besluit'"));
         assert!(f[1].contains("weg.json"), "{f:?}");
     }
 }

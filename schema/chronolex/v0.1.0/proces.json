@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.1.0/proces.json",
   "title": "Procesdefinitie (proces.yaml) v0.1.0",
-  "description": "Een proces is een map met configuratie; proces.yaml zegt wie er handelt (actor) en hoe: namens welk gezag (namens, mandaten), langs welke kanalen en in welke rollen er wordt ingelogd (kanalen, rollen), of er een portaal is dat een indiening in een cel laat vastleggen, van welke cellen het lexostatussen samenvoegt (synthese), en of een behandelaar een werkvoorraad en een besluit heeft (behandeling). Een proces legt zelf niets vast en reduceert zelf niets: dat doet een cel, op verzoek van het proces. Paden zijn relatief aan de map van proces.yaml.",
+  "description": "Een proces is een map met configuratie; proces.yaml zegt wie er handelt (actor) en hoe: namens welk gezag (namens, mandaten), langs welke kanalen en in welke rollen er wordt ingelogd (kanalen, rollen), of er een portaal is dat een indiening in een cel laat vastleggen, van welke cellen het lexostatussen samenvoegt (synthese), en welke handelingen een behandelaar in een zaak doet (behandeling). Een proces legt zelf niets vast en reduceert zelf niets: dat doet een cel, op verzoek van het proces. Paden zijn relatief aan de map van proces.yaml.",
   "type": "object",
   "required": [
     "id",
@@ -103,10 +103,13 @@
           "minLength": 1,
           "description": "Een aanvraag: een object met external, zoals het portaal het ontvangt."
         },
-        "besluit": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Een besluitformulier: een object met formulier, zoals het besluit het ontvangt."
+        "handelingen": {
+          "type": "object",
+          "description": "Per handeling (de naam in behandeling.handelingen) een formulier: een object met formulier, zoals de handeling het ontvangt. Een waarde \"$vandaag\" wordt bij het opvragen de datum van vandaag, zodat een voorbeeld niet veroudert (een besluit of betaling in de toekomst is geen feit).",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       }
     }
@@ -408,10 +411,10 @@
     },
     "behandeling": {
       "type": "object",
-      "description": "Wat de behandelaar in het proces doet: de werkvoorraad bekijken, een zaak openen, een proefbesluit laten uitrekenen en het besluit laten vastleggen. Vraagt rollen.behandelaar.",
+      "description": "Wat de behandelaar in het proces doet: de werkvoorraad bekijken, een zaak openen en er handelingen in doen: op proef, en dan vastleggen. Wat een handeling nodig heeft en van wie, volgt uit de stage van haar vastleg-event (RFC-008) en uit de origin van de parameters van haar artikel (RFC-043), niet uit deze configuratie. Vraagt een rol met routes behandeling.",
       "required": [
         "werkvoorraad",
-        "besluit"
+        "handelingen"
       ],
       "additionalProperties": false,
       "properties": {
@@ -432,58 +435,12 @@
             }
           }
         },
-        "besluit": {
-          "$ref": "#/definitions/besluit"
-        }
-      }
-    },
-    "besluit": {
-      "type": "object",
-      "description": "Het besluit op een zaak: welke uitkomsten van welk artikel het besluit zijn, en waar elke parameter vandaan komt. Een parameter komt uit precies een bron: een lexostatus van de zaak (een synthese-bron met zaak: true), een andere synthese-bron, het besluitformulier, de stand bij besluit of de synthese per regel. Het besluitformulier staat hier niet: het zijn de parameters van het besluit met origin OORDEEL (RFC-043). De stand bij besluit staat hier ook niet: het zijn de parameters die de procedure van de beschikking (RFC-008) pas in een latere stage vraagt dan de stage van het vastleg-event; die zijn bij het besluit nog niet gebeurd (onwaar, of leeg).",
-      "required": [
-        "uitkomsten"
-      ],
-      "additionalProperties": false,
-      "properties": {
-        "regeling": {
-          "$ref": "#/definitions/identifier",
-          "description": "Optioneel. Zonder deze sleutel zoekt de runtime de regeling zelf: de beschikking (produces: BESCHIKKING) waarvoor het bevoegd gezag gelijk is aan de actor van het proces. Nodig alleen als de wet geen bevoegd gezag noemt of als er meer dan een zo'n beschikking is."
-        },
-        "uitkomsten": {
+        "handelingen": {
           "type": "array",
           "minItems": 1,
-          "uniqueItems": true,
-          "description": "Uitkomsten van een en hetzelfde artikel van de regeling.",
+          "description": "De handelingen die in een zaak kunnen: het besluit, de stages erna (zoals de bekendmaking) en de feiten van het zaakverloop (een verzoek, een ontvangst, een betaling).",
           "items": {
-            "$ref": "#/definitions/identifier"
-          }
-        },
-        "rijen": {
-          "type": "array",
-          "description": "Synthese per regel: tabelvelden die een array-parameter worden.",
-          "items": {
-            "$ref": "#/definitions/rijen"
-          }
-        },
-        "vastleggen": {
-          "type": "object",
-          "description": "In welke cel en welk event het proces het genomen besluit laat vastleggen. Het event heeft zaak: volgt en een stage, en zijn $external-sleutels zijn precies de uitkomsten van het besluit. Zonder dit blok kan het proces wel een proefbesluit uitrekenen, maar geen besluit laten vastleggen.",
-          "required": [
-            "cel",
-            "stroom",
-            "event"
-          ],
-          "additionalProperties": false,
-          "properties": {
-            "cel": {
-              "$ref": "#/definitions/identifier"
-            },
-            "stroom": {
-              "$ref": "#/definitions/identifier"
-            },
-            "event": {
-              "$ref": "#/definitions/identifier"
-            }
+            "$ref": "#/definitions/handeling"
           }
         }
       }
@@ -744,6 +701,70 @@
     "grondslag": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9_]*#[A-Za-z0-9]([A-Za-z0-9:._ -]*[A-Za-z0-9])?( lid [0-9]+[a-z]?)?$"
+    },
+    "handeling": {
+      "type": "object",
+      "description": "Een handeling in een zaak: de uitkomsten van een artikel, uitgerekend met wat de zaak, de synthese en het formulier leveren, en het event waarin de cel haar vastlegt. Het soort volgt uit het event: met een stage die de procedure van het artikel (RFC-008) kent, is de eerste zo'n handeling het besluit en elke latere stage van hetzelfde artikel een vervolg op dat besluit (de engine voert de stage uit op de invoer van het vastgelegde besluit, met de haken van die stage); zonder stage legt de handeling een feit vast dat de lexostatussen van de zaak lezen, en telt het feit op proef mee. Het formulier staat hier niet: bij een besluit de parameters met origin OORDEEL, bij een vervolg wat de stage vraagt (requires), bij een feit de $external-velden van het event die geen uitkomst zijn.",
+      "required": [
+        "naam",
+        "vastleggen"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "naam": {
+          "$ref": "#/definitions/identifier",
+          "description": "De naam van de handeling, uniek in het proces; de route is zaken/<zaakkenmerk>/handelingen/<naam>."
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Hoe de frontend de handeling noemt; zonder de naam."
+        },
+        "rol": {
+          "$ref": "#/definitions/identifier",
+          "description": "De rol die de handeling mag doen: een sleutel van rollen, met routes behandeling. Zonder: elke rol die de behandeling mag."
+        },
+        "regeling": {
+          "$ref": "#/definitions/identifier",
+          "description": "Optioneel. Zonder deze sleutel is het artikel de beschikking (produces: BESCHIKKING) waarvoor het bevoegd gezag gelijk is aan het gezag waarvoor het proces handelt (namens)."
+        },
+        "uitkomsten": {
+          "type": "array",
+          "uniqueItems": true,
+          "description": "Uitkomsten van een en hetzelfde artikel van de regeling. Bij een vervolg komen daar de uitkomsten bij van de haken die de wet op die stage laat vuren (zoals de bezwaartermijn, Awb 6:8); die staan hier niet, en zonder regeling mag de lijst dan leeg zijn. Legt het event een executogram vast en staat het artikel in zijn grondslag als TOETS, dan telt elke booleaanse uitkomst met de norm van die bepaling als legal_basis: onwaar is niet te nemen.",
+          "items": {
+            "$ref": "#/definitions/identifier"
+          }
+        },
+        "rijen": {
+          "type": "array",
+          "description": "Synthese per regel: tabelvelden die een array-parameter worden.",
+          "items": {
+            "$ref": "#/definitions/rijen"
+          }
+        },
+        "vastleggen": {
+          "type": "object",
+          "description": "In welke cel en welk event het proces de handeling laat vastleggen. Het event heeft zaak: volgt; zijn $external-sleutels zijn uitkomsten of velden van het formulier.",
+          "required": [
+            "cel",
+            "stroom",
+            "event"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "cel": {
+              "$ref": "#/definitions/identifier"
+            },
+            "stroom": {
+              "$ref": "#/definitions/identifier"
+            },
+            "event": {
+              "$ref": "#/definitions/identifier"
+            }
+          }
+        }
+      }
     }
   }
 }

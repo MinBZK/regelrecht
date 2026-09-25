@@ -92,6 +92,7 @@ impl Afleiding {
                 moment: Moment::VastgelegdOp,
             } => Some(Value::String(datum::peildatum(&gram.vastgelegd()?))),
             Afleiding::LaatsteVeld { .. }
+            | Afleiding::LaatsteMoment { .. }
             | Afleiding::LaatsteJaarVan { .. }
             | Afleiding::LaatsteBevat { .. }
             | Afleiding::Bestaat { .. }
@@ -161,6 +162,15 @@ impl Afleiding {
                 veld, geen_gram, ..
             } => match laatste(&door)? {
                 Some(g) => g.veld(veld).filter(|w| gevuld(w)).cloned(),
+                None => geen_gram.clone(),
+            },
+            Afleiding::LaatsteMoment {
+                moment, geen_gram, ..
+            } => match laatste(&door)? {
+                Some(g) => Some(Value::String(datum::peildatum(&match moment {
+                    Moment::OpMoment => g.moment()?,
+                    Moment::VastgelegdOp => g.vastgelegd()?,
+                }))),
                 None => geen_gram.clone(),
             },
             Afleiding::LaatsteJaarVan {
@@ -488,7 +498,8 @@ pub fn reduceer_op<'g>(
 
 /// Een lijst-lexostatus: groepeer per zaakkenmerk, houd de zaken met een gram
 /// door `filter` en zonder gram door `zonder`, en leid per zaak af. De regels
-/// staan op het moment van het gekozen gram, de oudste eerst.
+/// staan op het moment van het gekozen gram (zonder `kies`: het eerste gram
+/// van de zaak), de oudste eerst.
 fn reduceer_lijst<'g>(
     definitie: &LexostatusDefinitie,
     inputs: &Map<String, Value>,
@@ -516,7 +527,16 @@ fn reduceer_lijst<'g>(
         let Some(a) = leid_af_uit(definitie, inputs, &door)? else {
             continue;
         };
-        let moment = a.gekozen.map(Gram::moment).transpose()?;
+        // Zonder gekozen gram staat de zaak op haar eerste gram: de opening.
+        let moment = match a.gekozen {
+            Some(g) => Some(g.moment()?),
+            None => door
+                .iter()
+                .map(|g| g.moment())
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter()
+                .min(),
+        };
         let mut velden = a.parameters;
         velden.extend(a.extra_velden);
         regels.push((

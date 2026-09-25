@@ -1253,7 +1253,10 @@ async fn rollen_bepalen_wie_wat_mag() {
     for (methode, pad) in [
         ("GET", format!("{AFNEMER}/api/werkvoorraad")),
         ("GET", format!("{AFNEMER}/api/zaken/{een}")),
-        ("POST", format!("{AFNEMER}/api/zaken/{een}/proefbesluit")),
+        (
+            "POST",
+            format!("{AFNEMER}/api/zaken/{een}/handelingen/besluit/proef"),
+        ),
         ("GET", format!("{AFNEMER}/api/kanalen/medewerker/sessie")),
     ] {
         let (status, body, _) = vraag(&app, methode, &pad, aanvrager, Some(json!({}))).await;
@@ -1425,15 +1428,31 @@ async fn zaak_met_proefbesluit_zonder_vastleggen() {
     .await;
     assert_eq!(status, StatusCode::OK, "{z}");
     assert_eq!(z["grammen"].as_array().unwrap().len(), 1);
-    assert_eq!(z["besluit"]["artikel"], "testregeling_afnemer#3");
+    // De handelingen van het proces, in de volgorde van proces.yaml; het
+    // besluit eerst.
+    let namen: Vec<&str> = z["handelingen"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|h| h["naam"].as_str().unwrap())
+        .collect();
     assert_eq!(
-        z["besluit"]["formulier"],
+        namen,
+        ["besluit", "bekendmaken", "betalen", "aanvulling_vragen"]
+    );
+    let besluit = &z["handelingen"][0];
+    assert_eq!(besluit["artikel"], "testregeling_afnemer#3");
+    assert_eq!(besluit["soort"], json!({"soort": "besluit"}));
+    assert_eq!(besluit["stage"], "BESLUIT");
+    assert_eq!(besluit["beschikbaar"], json!(true));
+    assert_eq!(
+        besluit["formulier"],
         json!([
-            {"naam": "besluitdatum", "label": "Besluitdatum", "type": "datum", "groep": "Testregeling afnemer, artikel 3"},
-            {"naam": "feiten_vergaard", "label": "De relevante feiten zijn vergaard", "type": "janee", "groep": "Testregeling afnemer, artikel 3"}
+            {"naam": "besluitdatum", "label": "Besluitdatum", "type": "datum", "groep": "Testregeling afnemer, artikel 3", "soort": "oordeel"},
+            {"naam": "feiten_vergaard", "label": "De relevante feiten zijn vergaard", "type": "janee", "groep": "Testregeling afnemer, artikel 3", "soort": "oordeel"}
         ])
     );
-    let p = &z["proefbesluit"];
+    let p = &besluit["proef"];
     assert_eq!(p["te_nemen"], json!(false), "{p}");
     assert!(p.get("uitkomsten").is_none());
     assert!(
@@ -1455,9 +1474,9 @@ async fn zaak_met_proefbesluit_zonder_vastleggen() {
     let (status, p, _) = vraag(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/zaken/{zaak}/proefbesluit"),
+        &format!("{AFNEMER}/api/zaken/{zaak}/handelingen/besluit/proef"),
         Some(&b),
-        Some(json!({"formulier": {"besluitdatum": "2025-03-20", "feiten_vergaard": true}})),
+        Some(json!({"formulier": {"besluitdatum": "2025-03-12", "feiten_vergaard": true}})),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{p}");
@@ -1471,12 +1490,28 @@ async fn zaak_met_proefbesluit_zonder_vastleggen() {
         json!({"bron": "behandelaar"})
     );
     // De bekendmaking komt in een latere stage van de procedure: bij het
-    // besluit is ze nog niet gebeurd.
+    // besluit is ze nog niet gebeurd. De dag leest de lexostatus besluit
+    // (geen gram: leeg); de rest volgt uit de procedure.
     assert_eq!(
         p["herkomst"]["datum_bekendmaking"],
+        json!({"bron": "eigen", "lexostatus": "besluit"})
+    );
+    assert_eq!(p["parameters"]["datum_bekendmaking"], Value::Null);
+    assert_eq!(
+        p["herkomst"]["bekendgemaakt"],
         json!({"bron": "stand_bij_besluit", "stage": "BEKENDMAKING"})
     );
     assert_eq!(p["parameters"]["bekendgemaakt"], json!(false));
+    // De peildatum is de besluitdatum: het op_moment dat het event aan het
+    // formulier bindt.
+    assert_eq!(p["peildatum"], "2025-03-12");
+    assert!(
+        p["peildatum_uit"]
+            .as_str()
+            .unwrap()
+            .starts_with("besluitdatum"),
+        "{p}"
+    );
     assert_eq!(
         p["herkomst"]["opgeschorte_dagen"],
         json!({"bron": "eigen", "lexostatus": "zaakverloop"})
@@ -1496,9 +1531,9 @@ async fn zaak_met_proefbesluit_zonder_vastleggen() {
     let (_, p, _) = vraag(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/zaken/{zaak}/proefbesluit"),
+        &format!("{AFNEMER}/api/zaken/{zaak}/handelingen/besluit/proef"),
         Some(&b),
-        Some(json!({"formulier": {"besluitdatum": "2025-03-20", "feiten_vergaard": true}})),
+        Some(json!({"formulier": {"besluitdatum": "2025-03-12", "feiten_vergaard": true}})),
     )
     .await;
     assert_eq!(p["uitkomsten"]["besluitdeadline"], json!("2025-04-16"));
@@ -1515,9 +1550,9 @@ async fn zaak_met_proefbesluit_zonder_vastleggen() {
     let (_, p, _) = vraag(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/zaken/{zaak}/proefbesluit"),
+        &format!("{AFNEMER}/api/zaken/{zaak}/handelingen/besluit/proef"),
         Some(&b),
-        Some(json!({"formulier": {"besluitdatum": "2025-03-20", "feiten_vergaard": true}})),
+        Some(json!({"formulier": {"besluitdatum": "2025-03-12", "feiten_vergaard": true}})),
     )
     .await;
     assert_eq!(p["uitkomsten"]["besluitdeadline"], json!("2025-04-16"));
@@ -1535,7 +1570,7 @@ async fn zaak_met_proefbesluit_zonder_vastleggen() {
     let (status, f, _) = vraag(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/zaken/{zaak}/proefbesluit"),
+        &format!("{AFNEMER}/api/zaken/{zaak}/handelingen/besluit/proef"),
         Some(&b),
         Some(json!({"formulier": {"bekendgemaakt": true}})),
     )
@@ -1665,7 +1700,7 @@ fn zonder_processen_draaien_alleen_de_cellen() {
 
 /// Het besluitformulier van de afnemer, volledig ingevuld.
 fn oordelen() -> Value {
-    json!({"formulier": {"besluitdatum": "2025-03-20", "feiten_vergaard": true}})
+    json!({"formulier": {"besluitdatum": "2025-03-12", "feiten_vergaard": true}})
 }
 
 #[tokio::test]
@@ -1677,7 +1712,7 @@ async fn synthese_per_regel_vult_de_tabel_aan() {
     let (status, p, _) = vraag(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/zaken/{zaak}/proefbesluit"),
+        &format!("{AFNEMER}/api/zaken/{zaak}/handelingen/besluit/proef"),
         Some(&b),
         Some(oordelen()),
     )
@@ -1743,7 +1778,7 @@ async fn een_gebied_zonder_tarief_blijft_leeg() {
     let (_, p, _) = vraag(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/zaken/{zaak}/proefbesluit"),
+        &format!("{AFNEMER}/api/zaken/{zaak}/handelingen/besluit/proef"),
         Some(&b),
         Some(oordelen()),
     )
@@ -1759,7 +1794,7 @@ async fn een_gebied_zonder_tarief_blijft_leeg() {
     let (status, f, _) = vraag(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/zaken/{zaak}/besluit"),
+        &format!("{AFNEMER}/api/zaken/{zaak}/handelingen/besluit"),
         Some(&b),
         Some(oordelen()),
     )
@@ -1782,7 +1817,7 @@ async fn besluit_nemen_legt_een_decretogram_vast() {
     let (status, body, _) = vraag(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/zaken/{zaak}/besluit"),
+        &format!("{AFNEMER}/api/zaken/{zaak}/handelingen/besluit"),
         Some(&b),
         Some(oordelen()),
     )
@@ -1880,7 +1915,7 @@ async fn besluit_nemen_legt_een_decretogram_vast() {
     let (status, f, _) = vraag(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/zaken/{zaak}/besluit"),
+        &format!("{AFNEMER}/api/zaken/{zaak}/handelingen/besluit"),
         Some(&b),
         Some(oordelen()),
     )
@@ -1909,7 +1944,7 @@ async fn besluit_nemen_legt_een_decretogram_vast() {
     let (status, _, _) = vraag(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/zaken/{twee}/besluit"),
+        &format!("{AFNEMER}/api/zaken/{twee}/handelingen/besluit"),
         aanvrager.as_deref(),
         Some(oordelen()),
     )
@@ -1942,7 +1977,7 @@ async fn besluit_nemen_legt_een_decretogram_vast() {
 
     // Twee gelijktijdige besluiten op de andere zaak: de cel legt er één
     // vast, want de toets op de stage en het schrijven delen één slot.
-    let pad = format!("{AFNEMER}/api/zaken/{twee}/besluit");
+    let pad = format!("{AFNEMER}/api/zaken/{twee}/handelingen/besluit");
     let (een, ander) = tokio::join!(
         vraag(&app, "POST", &pad, Some(&b), Some(oordelen())),
         vraag(&app, "POST", &pad, Some(&b), Some(oordelen())),
@@ -2019,7 +2054,7 @@ async fn een_ander_bevoegd_gezag_weigert_het_besluit() {
     let (status, f, _) = vraag(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/zaken/{zaak}/besluit"),
+        &format!("{AFNEMER}/api/zaken/{zaak}/handelingen/besluit"),
         Some(&b),
         Some(oordelen()),
     )
@@ -2055,7 +2090,7 @@ async fn een_mandaat_laat_besluiten_namens_een_ander_gezag() {
     let (status, body, _) = vraag(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/zaken/{zaak}/besluit"),
+        &format!("{AFNEMER}/api/zaken/{zaak}/handelingen/besluit"),
         Some(&b),
         Some(oordelen()),
     )

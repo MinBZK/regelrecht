@@ -491,20 +491,20 @@ pub fn controleer(proces: &Proces) -> Vec<String> {
         .filter(|b| !b.extra_velden.is_empty())
         .map(|b| b.lexostatus.as_str())
         .collect();
-    let besluit = proces.definitie.behandeling.as_ref().map(|b| &b.besluit);
-    let onder_besluit = besluit
-        .and_then(|b| {
-            let u = b.uitkomsten.first()?;
-            let a = service
-                .resolver()
-                .get_article_by_output(&b.regeling, u, None)?;
-            Some(regelingen::transitieve_parameters(service, &b.regeling, a))
+    // Wat de handelingen vragen: de parameters van hun artikelen, samen.
+    let handelingen = proces.handelingen();
+    let onder_besluit: BTreeSet<String> = handelingen
+        .iter()
+        .filter_map(|h| {
+            let a = regelingen::artikel(service, &h.artikel).ok()?;
+            Some(regelingen::transitieve_parameters(service, &h.regeling, a))
         })
-        .unwrap_or_default();
+        .flatten()
+        .collect();
     let Some(portaal) = proces.portaal() else {
-        if besluit.is_none() {
+        if handelingen.is_empty() {
             fouten.push(
-                "synthese zonder portaal en zonder besluit: alleen de toets van een portaal en het proefbesluit gebruiken haar"
+                "synthese zonder portaal en zonder handelingen: alleen de toets van een portaal en de handelingen in een zaak gebruiken haar"
                     .into(),
             );
             return fouten;
@@ -522,7 +522,7 @@ pub fn controleer(proces: &Proces) -> Vec<String> {
                 .filter(|p| !onder_besluit.contains(*p))
             {
                 fouten.push(format!(
-                    "{wie}: '{p}' is geen parameter van het besluit of van een artikel dat het aanroept"
+                    "{wie}: '{p}' is geen parameter van een handeling of van een artikel dat zij aanroept"
                 ));
             }
         }
@@ -583,7 +583,7 @@ pub fn controleer(proces: &Proces) -> Vec<String> {
         for p in &bron.parameters {
             if !onder_toets.contains(p) && !onder_besluit.contains(p) && !onder_aanbod.contains(p) {
                 fouten.push(format!(
-                    "{wie}: '{p}' is geen parameter van {}#{} (de toets, '{}'), het besluit of het aanbod, of van een artikel dat een van die aanroept",
+                    "{wie}: '{p}' is geen parameter van {}#{} (de toets, '{}'), een handeling of het aanbod, of van een artikel dat een van die aanroept",
                     portaal.toets.regeling,
                     service
                         .resolver()

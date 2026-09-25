@@ -144,7 +144,7 @@
         "stage": {
           "type": "string",
           "pattern": "^[A-Z][A-Z_]*$",
-          "description": "De stage van de zaak waarvan dit event een stap is, in de woordenschat van RFC-008: bij een stage-decretogram de stage van het besluit (bijvoorbeeld BESLUIT of BEKENDMAKING), bij een indiening de stage die zij opent (AANVRAAG: de aanvraag is het vastgelegde feit achter die stage). Alleen op een decretogram of een indiening, en alleen bij een event met een zaak (opent of volgt): RFC-022 par. 1.2 laat de stages van een zaak een zaakkenmerk delen."
+          "description": "De stage van de zaak waarvan dit event een stap is, in de woordenschat van RFC-008: bij een stage-decretogram de stage van het besluit (bijvoorbeeld BESLUIT of BEKENDMAKING), bij een indiening de stage die zij opent (AANVRAAG: de aanvraag is het vastgelegde feit achter die stage), bij een handeling de stage die zij tot stand brengt (BEKENDMAKING: de toezending, Awb 3:41). Alleen op een decretogram, een indiening of een handeling, en alleen bij een event met een zaak (opent of volgt): RFC-022 par. 1.2 laat de stages van een zaak een zaakkenmerk delen."
         },
         "zaak": {
           "enum": [
@@ -267,7 +267,8 @@
               "type": {
                 "enum": [
                   "decretogram",
-                  "indiening"
+                  "indiening",
+                  "handeling"
                 ]
               },
               "zaak": {

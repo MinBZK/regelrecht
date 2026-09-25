@@ -41,7 +41,9 @@ use regelrecht_law_model::{
 };
 
 use crate::cel::Cel;
-use crate::config::{Herkomstcontrole, Oordeel, ProcesDefinitie, RijenDefinitie};
+use crate::config::{
+    HandelingDefinitie, Handelingsoort, Herkomstcontrole, Oordeel, ProcesDefinitie, RijenDefinitie,
+};
 use crate::gezag;
 use crate::reductie::{Afleiding, Filter, LexostatusDefinitie};
 use crate::regelingen::{self, Benodigd};
@@ -269,20 +271,30 @@ impl Overschrijvingen {
 }
 
 /// Een uitkomst die het proces uitvoert.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Uitvoering {
+#[derive(Debug, Clone, Copy)]
+pub enum Uitvoering<'a> {
     Toets,
     Aanbod,
-    Besluit,
+    /// Een handeling in een zaak (geen vervolg: dat rekent op de invoer van
+    /// het vastgelegde besluit).
+    Handeling(&'a HandelingDefinitie),
 }
 
-impl Uitvoering {
-    fn naam(self) -> &'static str {
+impl Uitvoering<'_> {
+    fn naam(self) -> String {
         match self {
-            Uitvoering::Toets => "toets",
-            Uitvoering::Aanbod => "aanbod",
-            Uitvoering::Besluit => "besluit",
+            Uitvoering::Toets => "toets".into(),
+            Uitvoering::Aanbod => "aanbod".into(),
+            Uitvoering::Handeling(h) => h.naam.clone(),
         }
+    }
+
+    fn is_aanbod(self) -> bool {
+        matches!(self, Uitvoering::Aanbod)
+    }
+
+    fn is_handeling(self) -> bool {
+        matches!(self, Uitvoering::Handeling(_))
     }
 }
 
@@ -351,7 +363,7 @@ impl Levering {
 
     /// Of deze leverancier bij de herkomst past (een register-bron nog
     /// zonder de controle op het register).
-    fn past(&self, g: &Geldend, uitvoering: Uitvoering) -> bool {
+    fn past(&self, g: &Geldend, uitvoering: Uitvoering<'_>) -> bool {
         match (self, g.origin.waarde) {
             (
                 Levering::Eigen {
@@ -375,9 +387,9 @@ impl Levering {
                 OriginValue::Dossier,
             )
             | (Levering::Bron(_), OriginValue::Register) => true,
-            (Levering::Stand, OriginValue::Dossier) => uitvoering == Uitvoering::Besluit,
+            (Levering::Stand, OriginValue::Dossier) => uitvoering.is_handeling(),
             (Levering::Keuze, OriginValue::Belanghebbende) => {
-                uitvoering == Uitvoering::Aanbod && g.is_tijdvak()
+                uitvoering.is_aanbod() && g.is_tijdvak()
             }
             _ => false,
         }
@@ -403,12 +415,12 @@ impl Leveranciers {
             .push(l);
     }
 
-    fn van(d: &ProcesDefinitie, cel: &Cel, uitvoering: Uitvoering) -> Self {
+    fn van(d: &ProcesDefinitie, cel: &Cel, uitvoering: Uitvoering<'_>) -> Self {
         let mut l = Leveranciers::default();
         let mut eigen: Vec<&str> = d.zaakbronnen().map(|b| b.lexostatus.as_str()).collect();
         if let Some(p) = &d.portaal {
-            l.keuze = uitvoering == Uitvoering::Aanbod
-                && p.aanbod.as_ref().is_some_and(|a| a.tijdvakken.is_some());
+            l.keuze =
+                uitvoering.is_aanbod() && p.aanbod.as_ref().is_some_and(|a| a.tijdvakken.is_some());
             eigen.push(&p.toets.lexostatus);
         }
         eigen.sort_unstable();
@@ -439,18 +451,16 @@ impl Leveranciers {
                 );
             }
         }
-        if uitvoering == Uitvoering::Besluit {
-            if let Some(b) = d.behandeling.as_ref().map(|b| &b.besluit) {
-                for naam in b.stand_bij_besluit.keys() {
-                    l.voeg_toe(naam, Levering::Stand);
-                }
+        if let Uitvoering::Handeling(h) = uitvoering {
+            for naam in h.nog_niet.keys() {
+                l.voeg_toe(naam, Levering::Stand);
             }
         }
         // De synthese per regel levert alleen aan de uitvoering die haar
         // uitvoert: de toets of het besluit.
         let rijen: &[RijenDefinitie] = match uitvoering {
             Uitvoering::Toets => d.portaal.as_ref().map(|p| p.toets.rijen.as_slice()),
-            Uitvoering::Besluit => d.behandeling.as_ref().map(|b| b.besluit.rijen.as_slice()),
+            Uitvoering::Handeling(h) => Some(h.rijen.as_slice()),
             Uitvoering::Aanbod => None,
         }
         .unwrap_or_default();
@@ -578,8 +588,9 @@ pub struct Controle {
     pub fouten: Vec<String>,
     pub waarschuwingen: Vec<String>,
     /// Per uitvoering de parameters met hun geldende herkomst, in de volgorde
-    /// van declaratie; bij het besluit over alle uitkomsten samen.
-    pub parameters: BTreeMap<&'static str, Vec<(Benodigd, Option<Geldend>)>>,
+    /// van declaratie; bij een handeling over alle uitkomsten samen,
+    /// onder de naam van de handeling.
+    pub parameters: BTreeMap<String, Vec<(Benodigd, Option<Geldend>)>>,
     /// De parameter van het aanbod-artikel die het tijdvak is: `rol:
     /// TIJDVAK`.
     pub tijdvak: Option<String>,
@@ -606,17 +617,20 @@ fn in_volgorde(service: &LawExecutionService, regeling: &str, artikel: &Article)
 
 /// De uitkomsten die het proces uitvoert: de toets, het aanbod en elke
 /// uitkomst van het besluit (RFC-043: "every outcome").
-fn uitvoeringen(d: &ProcesDefinitie) -> Vec<(Uitvoering, &str, &str)> {
-    let mut uit: Vec<(Uitvoering, &str, &str)> = Vec::new();
+fn uitvoeringen(d: &ProcesDefinitie) -> Vec<(Uitvoering<'_>, &str, &str)> {
+    let mut uit: Vec<(Uitvoering<'_>, &str, &str)> = Vec::new();
     if let Some(p) = &d.portaal {
         uit.push((Uitvoering::Toets, &p.toets.regeling, &p.toets.uitkomst));
         if let Some(a) = &p.aanbod {
             uit.push((Uitvoering::Aanbod, &a.regeling, &a.uitkomst));
         }
     }
-    if let Some(b) = d.behandeling.as_ref().map(|b| &b.besluit) {
-        for u in &b.uitkomsten {
-            uit.push((Uitvoering::Besluit, &b.regeling, u));
+    for h in d.behandeling.iter().flat_map(|b| b.handelingen.iter()) {
+        if matches!(h.soort, Handelingsoort::Vervolg { .. }) {
+            continue;
+        }
+        for u in h.uitkomsten.iter().chain(h.toetsen.iter()) {
+            uit.push((Uitvoering::Handeling(h), &h.regeling, u));
         }
     }
     uit
@@ -717,7 +731,7 @@ pub fn controleer(
 /// weet.
 struct Parameterplek<'a> {
     d: &'a ProcesDefinitie,
-    uitvoering: Uitvoering,
+    uitvoering: Uitvoering<'a>,
     b: &'a Benodigd,
     p: &'a Parameter,
     g: Option<&'a Geldend>,
@@ -740,7 +754,7 @@ fn controleer_parameter(
         p,
         g,
     } = plek;
-    if uitvoering == Uitvoering::Aanbod && !vooraf_bekend(g) {
+    if uitvoering.is_aanbod() && !vooraf_bekend(g) {
         let herkomst = g
             .map(Geldend::beschrijving)
             .unwrap_or_else(|| "geen origin".into());
@@ -841,7 +855,7 @@ fn tijdvak(d: &ProcesDefinitie, c: &mut Controle) {
     };
     let namen: Vec<String> = c
         .parameters
-        .get(Uitvoering::Aanbod.naam())
+        .get(&Uitvoering::Aanbod.naam())
         .into_iter()
         .flatten()
         .filter(|(_, g)| g.as_ref().is_some_and(Geldend::is_tijdvak))
@@ -868,9 +882,9 @@ fn tijdvak(d: &ProcesDefinitie, c: &mut Controle) {
 /// `OORDEEL`, in de volgorde van declaratie. Het label is de omschrijving van
 /// de parameter, of het deel na "Naam:" als dat er staat, en anders de naam;
 /// de groep is het artikel van de grondslag.
-pub fn oordelen(c: &Controle, service: &LawExecutionService) -> Vec<Oordeel> {
+pub fn oordelen(c: &Controle, service: &LawExecutionService, handeling: &str) -> Vec<Oordeel> {
     c.parameters
-        .get(Uitvoering::Besluit.naam())
+        .get(handeling)
         .into_iter()
         .flatten()
         .filter_map(|(b, g)| {
@@ -891,17 +905,24 @@ pub fn oordelen(c: &Controle, service: &LawExecutionService) -> Vec<Oordeel> {
 /// Het label van een parameter: het deel van de omschrijving na "Naam:",
 /// anders de hele omschrijving, anders de naam.
 fn label(p: &Parameter) -> String {
-    let tekst = p.description.as_deref().map(str::trim).unwrap_or_default();
+    let tekst = label_uit(p.description.as_deref().unwrap_or_default());
+    if tekst.is_empty() {
+        p.name.clone()
+    } else {
+        tekst
+    }
+}
+
+/// Het label uit een omschrijving: het deel na "Naam:", anders de hele
+/// omschrijving, zonder punt aan het eind.
+pub fn label_uit(omschrijving: &str) -> String {
+    let tekst = omschrijving.trim();
     let tekst = match tekst.rsplit_once("Naam:") {
         Some((_, naam)) => naam.trim(),
         None => tekst,
     };
     let tekst = tekst.strip_suffix('.').unwrap_or(tekst).trim();
-    if tekst.is_empty() {
-        p.name.clone()
-    } else {
-        tekst.split_whitespace().collect::<Vec<_>>().join(" ")
-    }
+    tekst.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// De groep van een oordeel: de regeling en het artikel van zijn grondslag.
@@ -951,7 +972,7 @@ enum Uitslag {
 /// Of een parameter een leverancier heeft die bij zijn herkomst past, en
 /// geen die er niet bij past.
 fn leverancier(
-    uitvoering: Uitvoering,
+    uitvoering: Uitvoering<'_>,
     naam: &str,
     g: &Geldend,
     l: &Leveranciers,
@@ -962,16 +983,18 @@ fn leverancier(
         if !leveringen.is_empty() {
             let wie: Vec<String> = leveringen.iter().map(|lv| lv.woorden()).collect();
             return Uitslag::Verkeerd(format!(
-                "een oordeel geeft de behandelaar in het besluitformulier, maar hij komt uit {}",
+                "een oordeel geeft de behandelaar in het formulier van de handeling, maar hij komt uit {}",
                 wie.join(" en ")
             ));
         }
-        return if uitvoering == Uitvoering::Besluit {
+        return if uitvoering.is_handeling() {
             Uitslag::Past {
                 waarschuwingen: Vec::new(),
             }
         } else {
-            Uitslag::Geen(": een oordeel geeft de behandelaar pas bij het besluit".into())
+            Uitslag::Geen(
+                ": een oordeel geeft de behandelaar pas bij een handeling in de zaak".into(),
+            )
         };
     }
     let mut verkeerd = Vec::new();
@@ -1107,14 +1130,16 @@ mod tests {
         controleer_met_stand(d, &c, &s)
     }
 
-    /// Zoals bij het laden van een proces: de stand bij besluit uit de
-    /// procedure van de beschikking, dan de controle.
+    /// Zoals bij het laden van een proces: de handelingen voorbereiden (de
+    /// soort en wat nog niet gebeurd is, uit de procedure), dan de controle.
     fn controleer_met_stand(
         mut d: ProcesDefinitie,
         c: &BTreeMap<String, Arc<Cel>>,
         s: &Arc<LawExecutionService>,
     ) -> Controle {
-        crate::besluit::zet_stand_bij_besluit(&mut d, s, &c["test_afnemer"]).unwrap();
+        let gezag = crate::gezag::eigen(&d, s);
+        let f = crate::handeling::bereid_voor(&mut d, gezag.as_deref(), s, &c["test_afnemer"]);
+        assert!(f.is_empty(), "{f:?}");
         controleer(&d, &c["test_afnemer"], c, s)
     }
 
@@ -1150,16 +1175,29 @@ mod tests {
     #[test]
     fn een_ontbrekende_leverancier_is_een_fout() {
         // De procedure vraagt de datum van bekendmaking niet meer in een
-        // latere stage: dan levert niets haar.
+        // latere stage, en de lexostatus die haar leest is geen bron: dan
+        // levert niets haar.
         let c = afnemer(
             |t| t.replace("          - {name: datum_bekendmaking, type: date}\n", ""),
-            zo,
+            |t| {
+                alleen_het_besluit(t).replace(
+                    "  - {cel: test_afnemer, lexostatus: besluit, zaak: true}\n",
+                    "",
+                )
+            },
             &[],
         );
         assert_eq!(
             c.fouten,
             ["besluit: geen leverancier voor parameter 'datum_bekendmaking' van testregeling_afnemer#3 (DOSSIER, grondslag testregeling_afnemer#3 lid 2)"]
         );
+    }
+
+    /// Het proces van de afnemer met alleen de handeling van het besluit.
+    fn alleen_het_besluit(t: String) -> String {
+        let begin = t.find("    # De bekendmaking").unwrap();
+        let eind = t.find("# Standaardgegevens").unwrap();
+        format!("{}{}", &t[..begin], &t[eind..])
     }
 
     /// Met required: false en zonder leverancier krijgt de engine de waarde
@@ -1256,7 +1294,7 @@ mod tests {
             &[],
         );
         assert!(c.fouten.contains(
-            &"besluit: verkeerde bron voor parameter 'aanvraagdatum' van testregeling_afnemer#3 (OORDEEL, grondslag testregeling_afnemer#3 lid 1): een oordeel geeft de behandelaar in het besluitformulier, maar hij komt uit eigen lexostatus aanvraag_inhoud (wat de aanvrager indiende)".to_string()
+            &"besluit: verkeerde bron voor parameter 'aanvraagdatum' van testregeling_afnemer#3 (OORDEEL, grondslag testregeling_afnemer#3 lid 1): een oordeel geeft de behandelaar in het formulier van de handeling, maar hij komt uit eigen lexostatus aanvraag_inhoud (wat de aanvrager indiende)".to_string()
         ), "{:?}", c.fouten);
     }
 
@@ -1471,7 +1509,9 @@ articles:
         let c = afnemer(
             zo,
             |t| {
-                t.replace("    regeling: testregeling_afnemer\n", "    regeling: testregeling_betaling\n")
+                alleen_het_besluit(t)
+                    .replace("  - {cel: test_afnemer, lexostatus: besluit, zaak: true}\n", "")
+                    .replace("      regeling: testregeling_afnemer\n", "      regeling: testregeling_betaling\n")
                     .replace(
                         "uitkomsten: [vastgesteld_bedrag, gebiedsbedrag, besluit_tijdig, besluitdeadline, zorgvuldig]",
                         "uitkomsten: [nog_te_betalen]",
@@ -1494,7 +1534,9 @@ articles:
     fn elke_uitkomst_van_het_besluit_telt() {
         let met = |uitkomsten: &'static str| {
             move |t: String| {
-                t.replace("    regeling: testregeling_afnemer\n", "    regeling: testregeling_betaling\n")
+                alleen_het_besluit(t)
+                    .replace("  - {cel: test_afnemer, lexostatus: besluit, zaak: true}\n", "")
+                    .replace("      regeling: testregeling_afnemer\n", "      regeling: testregeling_betaling\n")
                     .replace(
                         "uitkomsten: [vastgesteld_bedrag, gebiedsbedrag, besluit_tijdig, besluitdeadline, zorgvuldig]",
                         uitkomsten,
@@ -1697,7 +1739,7 @@ articles:
         let s = service(zo, &[]);
         let c = cellen(&s);
         let uit = controleer_met_stand(proces("afnemer", zo), &c, &s);
-        let o = oordelen(&uit, &s);
+        let o = oordelen(&uit, &s, "besluit");
         let velden: Vec<(&str, &str, Option<&str>)> = o
             .iter()
             .map(|o| (o.parameter.as_str(), o.label.as_str(), o.groep.as_deref()))
@@ -1730,7 +1772,10 @@ articles:
         );
         let c = cellen(&s);
         let uit = controleer_met_stand(proces("afnemer", zo), &c, &s);
-        assert_eq!(oordelen(&uit, &s)[0].label, "De dag van het besluit");
+        assert_eq!(
+            oordelen(&uit, &s, "besluit")[0].label,
+            "De dag van het besluit"
+        );
         assert_eq!(
             leesbaar("een_regeling_zonder_naam"),
             "Een regeling zonder naam"

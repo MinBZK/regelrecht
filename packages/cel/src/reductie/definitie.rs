@@ -140,6 +140,22 @@ pub enum Kies {
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum Afleiding {
+    /// Over de grammen door `filter`: de datum van een moment van het
+    /// laatste (zoals de ontvangst van de aanvraag, in een lijst die ook de
+    /// andere grammen van een zaak leest). Geen gram: `geen_gram`, als dat er
+    /// is.
+    LaatsteMoment {
+        #[serde(default, skip_serializing_if = "Filter::is_empty")]
+        filter: Filter,
+        kies: Kies,
+        moment: Moment,
+        #[serde(
+            default,
+            deserialize_with = "aanwezig",
+            skip_serializing_if = "Option::is_none"
+        )]
+        geen_gram: Option<Value>,
+    },
     /// Over de grammen door `filter`: de waarde van `veld` in het laatste.
     /// Komt geen gram door het filter, dan `geen_gram`, als dat er is.
     LaatsteVeld {
@@ -313,6 +329,7 @@ impl Afleiding {
     pub fn filter(&self) -> Option<&Filter> {
         match self {
             Afleiding::LaatsteVeld { filter, .. }
+            | Afleiding::LaatsteMoment { filter, .. }
             | Afleiding::LaatsteJaarVan { filter, .. }
             | Afleiding::LaatsteBevat { filter, .. }
             | Afleiding::Bestaat { filter, .. }
@@ -343,7 +360,7 @@ impl Afleiding {
             Afleiding::Verzamel { verzamel, .. } => verzamel.iter().map(String::as_str).collect(),
             Afleiding::LaatsteBevat { bevat, .. } => vec![bevat.veld.as_str()],
             Afleiding::Bestaat { gevuld, .. } => gevuld.iter().map(String::as_str).collect(),
-            Afleiding::Moment { .. } => vec![],
+            Afleiding::Moment { .. } | Afleiding::LaatsteMoment { .. } => vec![],
         };
         if let Some(f) = self.filter() {
             paden.extend(filter_paden(f));

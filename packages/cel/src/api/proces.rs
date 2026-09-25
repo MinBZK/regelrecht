@@ -9,7 +9,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde_json::{json, Value};
 
-use super::behandeling::{besluit_route, proefbesluit_route, werkvoorraad_route, zaak_route};
+use super::behandeling::{handeling_route, proefhandeling_route, werkvoorraad_route, zaak_route};
 use super::loket::loket_indienen;
 use super::portaal::{formulier_route, indienen, mogelijkheden_route, toets_route};
 use super::sessie::{kanaalsessie, login, logout, sessie};
@@ -33,12 +33,22 @@ pub struct ProcesState {
     /// De synthese-bronnen die geen lexostatus van de zaak zijn, met het
     /// transport dat de runtime koos.
     pub bronnen: Arc<Vec<Bron>>,
-    /// De synthese per regel van het besluit, met haar bronnen.
-    pub rijen: Arc<Vec<Rijen>>,
+    /// Per handeling (in de volgorde van `proces.yaml`) de bronnen die haar
+    /// artikel vraagt en haar synthese per regel.
+    pub handelingen: Arc<Vec<HandelingState>>,
     /// De synthese per regel van de toets, met haar bronnen.
     pub toets_rijen: Arc<Vec<Rijen>>,
     /// De geladen regelingen, voor het receipt van een besluit.
     pub regelingen: Arc<Vec<GeladenRegeling>>,
+}
+
+/// Wat de runtime per handeling klaarzet: de synthese-bronnen die haar
+/// artikel vraagt (zie [`crate::handeling::bronnen_voor`]) en haar synthese
+/// per regel, met het transport dat de runtime koos.
+#[derive(Clone)]
+pub struct HandelingState {
+    pub bronnen: Vec<Bron>,
+    pub rijen: Vec<Rijen>,
 }
 
 impl ProcesState {
@@ -76,10 +86,13 @@ pub fn proces_router(state: ProcesState) -> Router {
             .route("/api/werkvoorraad", get(werkvoorraad_route))
             .route("/api/zaken/{zaakkenmerk}", get(zaak_route))
             .route(
-                "/api/zaken/{zaakkenmerk}/proefbesluit",
-                post(proefbesluit_route),
+                "/api/zaken/{zaakkenmerk}/handelingen/{naam}",
+                post(handeling_route),
             )
-            .route("/api/zaken/{zaakkenmerk}/besluit", post(besluit_route));
+            .route(
+                "/api/zaken/{zaakkenmerk}/handelingen/{naam}/proef",
+                post(proefhandeling_route),
+            );
     }
     r.with_state(state)
 }
@@ -89,7 +102,12 @@ pub fn proces_router(state: ProcesState) -> Router {
 async fn voorbeelden_route(
     State(state): State<ProcesState>,
 ) -> Json<crate::voorbeelden::Voorbeelden> {
-    Json(state.proces.voorbeelden.clone())
+    Json(
+        state
+            .proces
+            .voorbeelden
+            .op(&crate::datum::peildatum(&(state.klok)())),
+    )
 }
 
 /// Wat `GET /api/processen` over een proces zegt: wie handelt, in welke cel,
@@ -141,8 +159,16 @@ pub fn proces_beschrijving(state: &ProcesState) -> Value {
         "loket": d.rollen_met(Routes::Loket).next().is_some(),
         "behandeling": d.behandeling.as_ref().map(|b| json!({
             "werkvoorraad": b.werkvoorraad.lexostatus,
-            "regeling": b.besluit.regeling,
-            "uitkomsten": b.besluit.uitkomsten,
+            "handelingen": b.handelingen.iter().map(|h| json!({
+                "naam": h.naam,
+                "label": h.label(),
+                "rol": h.rol,
+                "soort": h.soort,
+                "stage": h.stage,
+                "regeling": h.regeling,
+                "artikel": h.artikel,
+                "uitkomsten": h.uitkomsten,
+            })).collect::<Vec<_>>(),
         })),
         "titel": p.formulier.as_ref().and_then(|f| f.titel.clone()),
         "synthese": synthese,
