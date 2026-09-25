@@ -32,7 +32,20 @@ body="$out/advisories.md"
 label="${LABEL:-security-advisory}"
 nag_days="${NAG_DAYS:-7}"
 run_url="${RUN_URL:-}"
-now_epoch=$(date -u -d "${NOW:-now}" +%s)
+# GNU date kent -d, BSD date (macOS) niet; deze twee helpers werken op allebei.
+naar_epoch() { # 'now', '@epoch' of ISO-8601 in UTC ('...Z') -> seconden
+    case "$1" in
+        now) date -u +%s ;;
+        @*) echo "${1#@}" ;;
+        *) date -u -d "$1" +%s 2>/dev/null ||
+            date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$1" +%s 2>/dev/null ;;
+    esac
+}
+epoch_naar_dag() { # seconden -> JJJJ-MM-DD in UTC
+    date -u -d "@$1" +%Y-%m-%d 2>/dev/null || date -u -r "$1" +%Y-%m-%d
+}
+
+now_epoch=$(naar_epoch "${NOW:-now}")
 
 for f in "$ids" "$body"; do
     if [ ! -f "$f" ]; then
@@ -46,11 +59,11 @@ fout() {
     exit 1
 }
 
-vandaag=$(date -u -d "@$now_epoch" +%Y-%m-%d)
+vandaag=$(epoch_naar_dag "$now_epoch")
 
 dagen_sinds() { # ISO-8601 tijdstip -> hele dagen tot nu
     local t
-    t=$(date -u -d "$1" +%s 2>/dev/null) || { echo 0; return; }
+    t=$(naar_epoch "$1") || { echo 0; return; }
     echo $(((now_epoch - t) / 86400))
 }
 

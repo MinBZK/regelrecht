@@ -5,6 +5,7 @@
 #
 # check-preview-deployments.sh stelt daarna vast wat er werkelijk overblijft.
 set -uo pipefail
+# Geen mapfile en geen lege "${arr[@]}" onder set -u: macOS levert bash 3.2.
 
 : "${REPO:?REPO is verplicht}"
 : "${ZAD_API_KEY:?ZAD_API_KEY is verplicht}"
@@ -28,7 +29,8 @@ if ! jq -e 'has("deployments")' <<<"$deployments_json" >/dev/null 2>&1; then
     exit 1
 fi
 
-mapfile -t previews < <(
+previews=()
+while IFS= read -r line; do previews+=("$line"); done < <(
     jq -r '.deployments[]?.name // empty' <<<"$deployments_json" |
         grep -E '^pr[0-9]+$' | sort -u
 )
@@ -41,7 +43,8 @@ fi
 # Nul open PR's kan kloppen, maar het is ook wat een mislukte aanroep oplevert.
 # Zonder die lijst zou dit script elk preview-deployment verwijderen, inclusief
 # die van pull requests waar iemand op dat moment naar kijkt.
-mapfile -t open_prs < <(
+open_prs=()
+while IFS= read -r line; do open_prs+=("$line"); done < <(
     gh pr list --repo "${REPO}" --state open --limit 1000 --json number \
         --jq '.[] | "pr\(.number)"' 2>/dev/null | sort -u
 )
@@ -52,9 +55,9 @@ if [ "${#open_prs[@]}" -eq 0 ]; then
 fi
 
 removed=0
-for preview in "${previews[@]}"; do
+for preview in ${previews[@]+"${previews[@]}"}; do
     keep=false
-    for open in "${open_prs[@]}"; do
+    for open in ${open_prs[@]+"${open_prs[@]}"}; do
         [ "$preview" = "$open" ] && keep=true && break
     done
     [ "$keep" = true ] && continue

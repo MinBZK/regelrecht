@@ -14,18 +14,21 @@
 # admin-token mist repo-admin, en `DELETE /repos/{owner}/{repo}/environments/…`
 # antwoordt dan met 404 in plaats van 403.
 set -uo pipefail
+# Geen mapfile en geen lege "${arr[@]}" onder set -u: macOS levert bash 3.2.
 
 : "${REPO:?REPO is verplicht}"
 
 # Alle environments met de naamvorm die de previews gebruiken.
-mapfile -t envs < <(
+envs=()
+while IFS= read -r line; do envs+=("$line"); done < <(
     gh api "repos/${REPO}/environments" --paginate \
         --jq '.environments[].name' 2>/dev/null | grep -E '^pr[0-9]+$' | sort -u
 )
 
 # Eén aanroep in plaats van één per environment. Open PR's zijn precies degene
 # waarvan de preview mag blijven staan.
-mapfile -t open_prs < <(
+open_prs=()
+while IFS= read -r line; do open_prs+=("$line"); done < <(
     gh pr list --repo "${REPO}" --state open --limit 1000 --json number \
         --jq '.[] | "pr\(.number)"' 2>/dev/null | sort -u
 )
@@ -39,9 +42,9 @@ if [ "${#open_prs[@]}" -eq 0 ]; then
 fi
 
 stale=()
-for env in "${envs[@]}"; do
+for env in ${envs[@]+"${envs[@]}"}; do
     keep=false
-    for open in "${open_prs[@]}"; do
+    for open in ${open_prs[@]+"${open_prs[@]}"}; do
         [ "$env" = "$open" ] && keep=true && break
     done
     [ "$keep" = false ] && stale+=("$env")
