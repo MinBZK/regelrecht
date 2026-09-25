@@ -8,8 +8,8 @@
 //! | `GET /api/kroniek` | de grammen, elk met YAML |
 //! | `GET /api/zaken/{zaakkenmerk}` | de grammen van een zaak, elk met YAML; 404 als de cel de zaak niet kent |
 //! | `GET /api/lexostatus/{naam}?<input>=...` | een reductie, met de inputs als query |
-//! | `POST /api/lexostatus/{naam}/proef` | `{concept, inputs}`: bouwt het gram in het geheugen en reduceert de kroniek mét dat gram; legt niets vast |
-//! | `POST /api/grammen` | `{actor, stroom, event, intake, external, zaakkenmerk?, besluit?}`: bouwt het gram, valideert het, controleert de actor en de zaak en legt het vast |
+//! | `POST /api/lexostatus/{naam}/proef` | alleen met het runtime-token: `{concept, inputs}`: bouwt het gram in het geheugen en reduceert de kroniek mét dat gram; legt niets vast |
+//! | `POST /api/grammen` | alleen met het runtime-token: `{actor, stroom, event, intake, external, zaakkenmerk?, besluit?}`: bouwt het gram, valideert het, controleert de actor en de zaak en legt het vast |
 //! | `GET /api/stroom` | de stroomdefinities van de cel, met hun hash |
 //!
 //! Een proces handelt: het informeert, concludeert en laat een cel
@@ -49,8 +49,11 @@
 //! | `POST /api/zaken/{zaakkenmerk}/proefbesluit` | `{formulier}` naar een proefbesluit; niets wordt vastgelegd |
 //! | `POST /api/zaken/{zaakkenmerk}/besluit` | het besluit nemen; de cel legt het vast |
 //!
-//! Tussen proces en cel is geen beveiligingscontext: de routes van een cel
-//! vragen geen login, net als een bron van een andere organisatie.
+//! Tussen proces en cel is geen beveiligingscontext: de leesroutes van een
+//! cel vragen geen login, net als een bron van een andere organisatie.
+//! Vastleggen en op proef reduceren mag alleen een proces van deze runtime:
+//! het interne transport stuurt het runtime-token mee
+//! ([`crate::transport::RuntimeToken`]); zonder token 401, met een ander 403.
 
 use std::sync::Arc;
 

@@ -123,8 +123,8 @@ het gedrag.
 | `GET /cellen/<id>/api/kroniek` | de grammen, elk met YAML |
 | `GET /cellen/<id>/api/zaken/<zaakkenmerk>` | de grammen van één zaak, elk met YAML; de cel filtert, 404 als ze de zaak niet kent |
 | `GET /cellen/<id>/api/lexostatus/<naam>?<input>=...` | een reductie; de inputs als query |
-| `POST /cellen/<id>/api/lexostatus/<naam>/proef` | `{concept, inputs}`: de cel bouwt het gram van het concept in het geheugen en reduceert de kroniek mét dat gram; er wordt niets vastgelegd |
-| `POST /cellen/<id>/api/grammen` | `{actor, stroom, event, intake, external, zaakkenmerk?, besluit?}`: de cel bouwt het gram, valideert het, controleert de actor en de zaak, en legt het vast (201); 409 als die stage al vastligt in de zaak |
+| `POST /cellen/<id>/api/lexostatus/<naam>/proef` | alleen met het runtime-token: `{concept, inputs}`: de cel bouwt het gram van het concept in het geheugen en reduceert de kroniek mét dat gram; er wordt niets vastgelegd |
+| `POST /cellen/<id>/api/grammen` | alleen met het runtime-token: `{actor, stroom, event, intake, external, zaakkenmerk?, besluit?}`: de cel bouwt het gram, valideert het, controleert de actor en de zaak, en legt het vast (201); 409 als die stage al vastligt in de zaak |
 | `GET /cellen/<id>/api/stroom` | de stroomdefinities van de cel, met hun hash |
 | `GET /processen/<id>/api/voorbeelden` | de voorbeelden per handeling, zonder login |
 | `POST /processen/<id>/api/eherkenning/login`, `GET .../sessie`, `POST .../logout` | alleen met portaal |
@@ -141,9 +141,22 @@ het gedrag.
 Een proces met rollen heeft een sessie per gebruiker (een cookie per proces);
 wie als de andere rol inlogt, vervangt de sessie. De portaalroutes zijn alleen
 voor de aanvrager (403 voor de behandelaar), de behandelroutes alleen voor de
-behandelaar. Een cel kent geen login: haar routes zijn voor elke afnemer, er is
-geen beveiligingscontext. Een aanvrager die een zaak wil volgen, moet die zaak
-kennen (een gram van zijn KvK); dat controleert het proces.
+behandelaar. Een cel kent geen login: haar leesroutes (kroniek, zaken,
+lexostatus, stroom) zijn voor elke afnemer, er is geen beveiligingscontext.
+Een aanvrager die een zaak wil volgen, moet die zaak kennen (een gram van zijn
+KvK); dat controleert het proces.
+
+Vastleggen (`POST .../grammen`) en op proef reduceren (`POST .../proef`) mag
+alleen een proces van de runtime zelf. De runtime maakt bij elke start een
+willekeurig runtime-token dat alleen in haar geheugen staat; het interne
+transport stuurt het mee in de header `x-cel-runtime-token`, en de cel
+antwoordt zonder token 401 en met een ander token 403. Een HTTP-transport
+stuurt het alleen mee als het er uitdrukkelijk een kreeg
+(`Http::met_runtime_token`), en de runtime geeft het nooit aan een transport
+naar een andere runtime. Dit is geen autorisatie tussen organisaties (RFC-022
+par. 2 laat die aan de beveiligingscontext); het voorkomt alleen dat iedereen
+die de poort bereikt een gram met een willekeurige actor en intake in een
+kroniek zet.
 
 De cel weigert een gram (403) als de `actor` van het verzoek niet de
 `recording_actor` van de stroom is.

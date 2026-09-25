@@ -3,8 +3,10 @@
 
 use std::sync::Arc;
 
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, Query, Request, State};
 use axum::http::StatusCode;
+use axum::middleware::{self, Next};
+use axum::response::Response;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
@@ -16,6 +18,7 @@ use crate::celclient::Vastlegverzoek;
 use crate::kroniek::{Kroniek, Vastgelegd};
 use crate::reductie::{self, Lexostatus};
 use crate::stroom::{self, Gram, Indiening, Zaak};
+use crate::transport::{RuntimeToken, RUNTIME_TOKEN_HEADER};
 
 /// De toestand van een cel in de runtime.
 #[derive(Clone)]
@@ -23,18 +26,50 @@ pub struct CelState {
     pub cel: Arc<Cel>,
     pub kroniek: Arc<Kroniek>,
     pub klok: Klok,
+    /// Wie dit token meestuurt, is een proces van deze runtime; alleen die
+    /// mag vastleggen of op proef reduceren.
+    pub runtime_token: RuntimeToken,
 }
 
-/// De routes van een cel, relatief aan `/cellen/<id>`.
+/// De routes van een cel, relatief aan `/cellen/<id>`. Lezen is open;
+/// vastleggen en op proef reduceren vragen het runtime-token (zie
+/// [`alleen_de_runtime`]).
 pub fn cel_router(state: CelState) -> Router {
+    let schrijven = Router::new()
+        .route("/api/lexostatus/{naam}/proef", post(proef_route))
+        .route("/api/grammen", post(grammen_route))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            alleen_de_runtime,
+        ));
     Router::new()
         .route("/api/kroniek", get(kroniek_route))
         .route("/api/zaken/{zaakkenmerk}", get(zaak_van_cel_route))
         .route("/api/lexostatus/{naam}", get(lexostatus_route))
-        .route("/api/lexostatus/{naam}/proef", post(proef_route))
-        .route("/api/grammen", post(grammen_route))
         .route("/api/stroom", get(stroom_route))
+        .merge(schrijven)
         .with_state(state)
+}
+
+/// Laat een verzoek alleen door als het het token van de runtime draagt:
+/// zonder token 401, met een ander token 403. Zo legt alleen een proces van
+/// deze runtime vast, en niet iedereen die de poort bereikt.
+async fn alleen_de_runtime(
+    State(state): State<CelState>,
+    verzoek: Request,
+    verder: Next,
+) -> Result<Response, Fout> {
+    match verzoek.headers().get(RUNTIME_TOKEN_HEADER) {
+        None => Err(fout(
+            StatusCode::UNAUTHORIZED,
+            "alleen een proces van deze runtime legt vast of reduceert op proef: het runtime-token ontbreekt",
+        )),
+        Some(t) if state.runtime_token.klopt(t.as_bytes()) => Ok(verder.run(verzoek).await),
+        Some(_) => Err(fout(
+            StatusCode::FORBIDDEN,
+            "alleen een proces van deze runtime legt vast of reduceert op proef: het runtime-token klopt niet",
+        )),
+    }
 }
 
 /// Het zaakkenmerk van een gram. `zaak: opent` geeft een nieuw kenmerk;
