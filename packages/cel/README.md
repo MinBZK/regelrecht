@@ -139,7 +139,9 @@ het gedrag.
 | `POST /processen/<id>/api/zaken/<zaakkenmerk>/besluit` | behandelaar: `{formulier}` naar een vastgelegd besluit (201), of een weigering (409) |
 
 Een proces met rollen heeft een sessie per gebruiker (een cookie per proces);
-wie als de andere rol inlogt, vervangt de sessie. De portaalroutes zijn alleen
+wie als de andere rol inlogt, vervangt de sessie. Een sessie vervalt na acht
+uur zonder gebruik, en een proces houdt er hooguit tienduizend: wie daarboven
+inlogt, verdringt de langst ongebruikte. De portaalroutes zijn alleen
 voor de aanvrager (403 voor de behandelaar), de behandelroutes alleen voor de
 behandelaar. Een cel kent geen login: haar leesroutes (kroniek, zaken,
 lexostatus, stroom) zijn voor elke afnemer, er is geen beveiligingscontext.

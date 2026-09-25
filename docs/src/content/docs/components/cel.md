@@ -57,7 +57,7 @@ A decision of a register keeper (an entry, a removal, an established result) is 
 
 ## Roles and the trial decision
 
-`rollen` in `proces.yaml` says who logs in: `aanvrager: eherkenning` for the portal and `behandelaar: medewerker` for case handling. The employee login is simulated like the eHerkenning one; it asks for a name and checks nothing else. A process has one session cookie, so logging in as the other role replaces the session. The portal routes answer 403 to a case handler, and the case routes answer 403 to an applicant. An applicant who follows up on a case must know it, which means a gram of their KvK number with that case identifier; the process checks that before it asks the cell. A process without roles has no login at all.
+`rollen` in `proces.yaml` says who logs in: `aanvrager: eherkenning` for the portal and `behandelaar: medewerker` for case handling. The employee login is simulated like the eHerkenning one; it asks for a name and checks nothing else. A process has one session cookie, so logging in as the other role replaces the session. A session expires after eight hours without use, and a process keeps at most ten thousand; a login beyond that pushes out the one unused the longest. The portal routes answer 403 to a case handler, and the case routes answer 403 to an applicant. An applicant who follows up on a case must know it, which means a gram of their KvK number with that case identifier; the process checks that before it asks the cell. A process without roles has no login at all.
 
 `behandeling` names the work queue, a list lexostatus of the cell, and the decision:
 
