@@ -1,6 +1,7 @@
-//! Tijd in de cel-runtime, op een plek: het `op_moment` van een gram (een
-//! moment met tijdzone, RFC 3339) en de peildatum waarop de engine een
-//! regeling leest (`JJJJ-MM-DD`).
+//! Tijd in de cel-runtime, op een plek: de twee tijden van een gram
+//! (`op_moment` en `vastgelegd_op`, elk een moment met tijdzone, RFC 3339),
+//! de peildatum waarop de engine een regeling leest (`JJJJ-MM-DD`) en het
+//! [`Tijdpunt`] waarop een reductie peilt.
 //!
 //! De peildatum van een moment is de kalenderdatum in de tijdzone van dat
 //! moment: `2025-03-12T00:30:00+01:00` is 12 maart, ook al is het dan in UTC
@@ -11,7 +12,68 @@ use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, SecondsFormat};
 /// Een `op_moment` gelezen. Een moment zonder tijdzone of in een andere vorm
 /// is een fout, met het moment erbij.
 pub fn moment(tekst: &str) -> Result<DateTime<FixedOffset>, String> {
-    DateTime::parse_from_rfc3339(tekst).map_err(|e| format!("ongeldig op_moment '{tekst}': {e}"))
+    moment_van("op_moment", tekst)
+}
+
+/// Een moment gelezen; een fout noemt het veld (`op_moment`,
+/// `vastgelegd_op`, `peilmoment`) en het moment.
+pub fn moment_van(veld: &str, tekst: &str) -> Result<DateTime<FixedOffset>, String> {
+    DateTime::parse_from_rfc3339(tekst).map_err(|e| format!("ongeldig {veld} '{tekst}': {e}"))
+}
+
+/// Een punt op de tijdas: een datum (`JJJJ-MM-DD`) of een moment met
+/// tijdzone. Een peilmoment is er een, en een `op_moment` dat een event aan
+/// een ingediende waarde bindt (zoals een datumstempel) ook.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Tijdpunt {
+    /// Een hele kalenderdag.
+    Datum(NaiveDate),
+    Moment(DateTime<FixedOffset>),
+}
+
+impl Tijdpunt {
+    /// Lees een datum of een moment; `veld` noemt wat het is in de fout.
+    pub fn lees(veld: &str, tekst: &str) -> Result<Self, String> {
+        match NaiveDate::parse_from_str(tekst, "%Y-%m-%d") {
+            Ok(d) => Ok(Self::Datum(d)),
+            Err(_) => DateTime::parse_from_rfc3339(tekst)
+                .map(Self::Moment)
+                .map_err(|_| {
+                    format!("ongeldig {veld} '{tekst}': geen datum (JJJJ-MM-DD) en geen moment met tijdzone (RFC 3339)")
+                }),
+        }
+    }
+
+    /// Of een moment op of voor dit tijdpunt ligt. Een datum telt de hele
+    /// dag, in de tijdzone van het moment (zoals [`peildatum`]).
+    pub fn omvat(&self, m: &DateTime<FixedOffset>) -> bool {
+        match self {
+            Self::Datum(d) => m.date_naive() <= *d,
+            Self::Moment(t) => m <= t,
+        }
+    }
+
+    /// Het tijdpunt als moment: een datum is het begin van die dag, in de
+    /// tijdzone `zone`.
+    pub fn als_moment(&self, zone: FixedOffset) -> DateTime<FixedOffset> {
+        match self {
+            Self::Moment(m) => *m,
+            Self::Datum(d) => {
+                let lokaal = d.and_time(chrono::NaiveTime::MIN);
+                let utc = lokaal - chrono::Duration::seconds(i64::from(zone.local_minus_utc()));
+                DateTime::from_naive_utc_and_offset(utc, zone)
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for Tijdpunt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Datum(d) => write!(f, "{}", d.format("%Y-%m-%d")),
+            Self::Moment(m) => f.write_str(&als_op_moment(m)),
+        }
+    }
 }
 
 /// Een moment zoals een gram het vastlegt: op de seconde, met tijdzone.
@@ -65,6 +127,25 @@ mod tests {
         assert!(f.contains("ongeldig op_moment '12 maart 2025'"), "{f}");
         // Een datum zonder tijd is geen moment.
         assert!(moment("2025-03-12").is_err());
+    }
+
+    #[test]
+    fn een_tijdpunt_is_een_datum_of_een_moment() {
+        let d = Tijdpunt::lees("peilmoment", "2026-01-01").unwrap();
+        assert_eq!(d.to_string(), "2026-01-01");
+        // Een datum telt de hele dag, in de tijdzone van het moment.
+        assert!(d.omvat(&moment("2026-01-01T23:59:59+01:00").unwrap()));
+        assert!(!d.omvat(&moment("2026-01-02T00:00:00+01:00").unwrap()));
+        let m = Tijdpunt::lees("peilmoment", "2026-01-01T12:00:00+01:00").unwrap();
+        assert!(m.omvat(&moment("2026-01-01T11:00:00Z").unwrap()));
+        assert!(!m.omvat(&moment("2026-01-01T11:00:01Z").unwrap()));
+        let zone = FixedOffset::east_opt(3600).unwrap();
+        assert_eq!(
+            als_op_moment(&d.als_moment(zone)),
+            "2026-01-01T00:00:00+01:00"
+        );
+        let f = Tijdpunt::lees("peilmoment", "gisteren").unwrap_err();
+        assert!(f.contains("ongeldig peilmoment 'gisteren'"), "{f}");
     }
 
     #[test]

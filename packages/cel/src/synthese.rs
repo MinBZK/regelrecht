@@ -18,7 +18,7 @@ use serde_json::{Map, Value};
 
 use crate::config::{BronInvoer, RijBron, SyntheseBron};
 use crate::proces::Proces;
-use crate::reductie::Lexostatus;
+use crate::reductie::{Lexostatus, Peil};
 use crate::regelingen;
 use crate::transport::{haal_binnen, Transport, TransportFout};
 
@@ -62,11 +62,15 @@ impl<D: Bronverwijzing> Bron<D> {
     /// Vraag de lexostatus van de bron met deze invoer, binnen de
     /// tijdslimiet. Een antwoord dat geen lexostatus is, is een fout en geen
     /// lege lexostatus.
-    pub async fn vraag(&self, invoer: &Map<String, Value>) -> Result<Lexostatus, TransportFout> {
+    pub async fn vraag(
+        &self,
+        invoer: &Map<String, Value>,
+        peil: &Peil,
+    ) -> Result<Lexostatus, TransportFout> {
         let d = &self.definitie;
         let v = haal_binnen(
             self.transport.as_ref(),
-            &pad(d.cel(), d.lexostatus(), invoer),
+            &pad(d.cel(), d.lexostatus(), invoer, peil),
             TIJDSLIMIET,
         )
         .await?;
@@ -162,9 +166,10 @@ impl Samenvoeging {
     }
 }
 
-/// Het pad van een lexostatus op een runtime, met de invoer als query.
-pub fn pad(cel: &str, lexostatus: &str, invoer: &Map<String, Value>) -> String {
-    let paren: BTreeMap<&str, String> = invoer
+/// Het pad van een lexostatus op een runtime, met de invoer en het peil (zie
+/// [`Peil`]) als query.
+pub fn pad(cel: &str, lexostatus: &str, invoer: &Map<String, Value>, peil: &Peil) -> String {
+    let mut paren: BTreeMap<&str, String> = invoer
         .iter()
         .map(|(k, v)| {
             let tekst = match v {
@@ -174,6 +179,7 @@ pub fn pad(cel: &str, lexostatus: &str, invoer: &Map<String, Value>) -> String {
             (k.as_str(), tekst)
         })
         .collect();
+    paren.extend(peil.query());
     let query = serde_urlencoded::to_string(&paren).unwrap_or_default();
     if query.is_empty() {
         format!("/cellen/{cel}/api/lexostatus/{lexostatus}")
@@ -240,7 +246,10 @@ fn wacht_op<'b>(bron: &'b SyntheseBron, eigen: &Lexostatus) -> Vec<&'b str> {
 /// ronde (bijvoorbeeld een naam bij een registratienummer, en daarna de
 /// aanduiding bij die naam). Een bron waarop niemand meer kan wachten, komt in
 /// de laatste ronde en meldt wat ontbreekt.
-pub async fn voeg_samen(eigen: &Lexostatus, bronnen: &[Bron]) -> Samenvoeging {
+///
+/// Elke bron reduceert op `peil`: het moment waarop het proces de stand
+/// vraagt (de peildatum van een besluit, het begin van een tijdvak).
+pub async fn voeg_samen(eigen: &Lexostatus, bronnen: &[Bron], peil: &Peil) -> Samenvoeging {
     let mut eerder: BTreeMap<String, Map<String, Value>> = BTreeMap::new();
     let mut gedaan: BTreeSet<String> = BTreeSet::new();
     let mut open: Vec<&Bron> = bronnen.iter().collect();
@@ -273,7 +282,7 @@ pub async fn voeg_samen(eigen: &Lexostatus, bronnen: &[Bron]) -> Samenvoeging {
         } else {
             (klaar, wacht)
         };
-        let t = vraag(eigen, &ronde, &eerder).await;
+        let t = vraag(eigen, &ronde, &eerder, peil).await;
         for (uitslag, bron) in t.bronnen.iter().zip(&ronde) {
             gedaan.insert(bron.definitie.lexostatus.clone());
             if !bron.definitie.extra_velden.is_empty() {
@@ -302,6 +311,7 @@ async fn vraag(
     eigen: &Lexostatus,
     bronnen: &[&Bron],
     eerder: &BTreeMap<String, Map<String, Value>>,
+    peil: &Peil,
 ) -> Samenvoeging {
     let mut parameters = BTreeMap::new();
     let mut herkomst: BTreeMap<String, Herkomst> = BTreeMap::new();
@@ -325,7 +335,7 @@ async fn vraag(
                 return (uitslag, None);
             }
         };
-        let antwoord = bron.vraag(&invoer).await;
+        let antwoord = bron.vraag(&invoer, peil).await;
         uitslag.invoer = invoer;
         match antwoord {
             Ok(l) => {
@@ -747,7 +757,7 @@ mod tests {
         .unwrap();
         // De wachtende bron komt in de tweede ronde; de opstartcontrole eist
         // dat de doorgevende bron eerder in de lijst staat.
-        let s = voeg_samen(&eigen, &[b1, b2]).await;
+        let s = voeg_samen(&eigen, &[b1, b2], &Peil::default()).await;
         assert_eq!(
             t2.vragen()[0],
             "/cellen/register/api/lexostatus/op_naam?naam=EEN"
@@ -805,7 +815,7 @@ mod tests {
             "naam": "eigen", "parameters": {}, "extra_velden": {"nummer": "12345678"}
         }))
         .unwrap();
-        let s = voeg_samen(&eigen, &bronnen).await;
+        let s = voeg_samen(&eigen, &bronnen, &Peil::default()).await;
         assert_eq!(
             t3.vragen()[0],
             "/cellen/register/api/lexostatus/register?aanduiding=LIJST&orgaan=raad"
@@ -842,7 +852,7 @@ mod tests {
             transport: t.clone(),
         };
         let eigen = Lexostatus::leeg("eigen");
-        let s = voeg_samen(&eigen, &[b]).await;
+        let s = voeg_samen(&eigen, &[b], &Peil::default()).await;
         assert!(t.vragen().is_empty());
         assert_eq!(s.bronnen[0].status, Status::NietBevraagd);
         assert!(s.bronnen[0]
@@ -881,7 +891,7 @@ mod tests {
             "naam": "eigen", "parameters": {}, "extra_velden": {"nummer": "12345678"}
         }))
         .unwrap();
-        let s = voeg_samen(&eigen, &[b1, b2]).await;
+        let s = voeg_samen(&eigen, &[b1, b2], &Peil::default()).await;
         assert!(t2.vragen().is_empty());
         assert!(!s.parameters.contains_key("aantal"));
         assert_eq!(s.bronnen[1].status, Status::NietBevraagd);
@@ -892,7 +902,7 @@ mod tests {
         let (b, t) = bron(Ok(
             json!({"naam": "bron", "parameters": {"ingeschreven": true, "zetels": 6, "anders": 1}}),
         ));
-        let s = voeg_samen(&eigen(Some("EEN & ANDER")), &[b]).await;
+        let s = voeg_samen(&eigen(Some("EEN & ANDER")), &[b], &Peil::default()).await;
         assert_eq!(
             t.vragen()[0],
             "/cellen/register/api/lexostatus/status?aanduiding=EEN+%26+ANDER"
@@ -919,7 +929,7 @@ mod tests {
     #[tokio::test]
     async fn onbereikbare_bron_vult_niets_aan() {
         let (b, _) = bron(Err(TransportFout::Onbereikbaar("weg".into())));
-        let s = voeg_samen(&eigen(Some("X")), &[b]).await;
+        let s = voeg_samen(&eigen(Some("X")), &[b], &Peil::default()).await;
         assert_eq!(
             s.parameters.keys().collect::<Vec<_>>(),
             ["bevat_aanduiding"]
@@ -934,7 +944,7 @@ mod tests {
     #[tokio::test]
     async fn ontbrekende_invoer_vraagt_de_bron_niet() {
         let (b, t) = bron(Ok(json!({"naam": "bron", "parameters": {}})));
-        let s = voeg_samen(&eigen(None), &[b]).await;
+        let s = voeg_samen(&eigen(None), &[b], &Peil::default()).await;
         assert!(t.vragen().is_empty());
         assert_eq!(s.bronnen[0].status, Status::NietBevraagd);
         assert!(s.reden().unwrap().contains("invoer 'aanduiding' ontbreekt"));
@@ -945,15 +955,37 @@ mod tests {
         let (b, _) = bron(Ok(
             json!({"naam": "bron", "parameters": {"ingeschreven": false}}),
         ));
-        let s = voeg_samen(&eigen(Some("X")), &[b]).await;
+        let s = voeg_samen(&eigen(Some("X")), &[b], &Peil::default()).await;
         assert_eq!(s.bronnen[0].niet_geleverd, ["zetels"]);
         assert!(!s.parameters.contains_key("zetels"));
     }
 
     #[test]
     fn pad_zonder_invoer() {
-        assert_eq!(pad("a", "b", &Map::new()), "/cellen/a/api/lexostatus/b");
+        let nu = Peil::default();
+        assert_eq!(
+            pad("a", "b", &Map::new(), &nu),
+            "/cellen/a/api/lexostatus/b"
+        );
         let i = json!({"jaar": 2025}).as_object().unwrap().clone();
-        assert_eq!(pad("a", "b", &i), "/cellen/a/api/lexostatus/b?jaar=2025");
+        assert_eq!(
+            pad("a", "b", &i, &nu),
+            "/cellen/a/api/lexostatus/b?jaar=2025"
+        );
+    }
+
+    #[test]
+    fn pad_met_peil() {
+        let peil = Peil {
+            peilmoment: Some(crate::datum::Tijdpunt::lees("p", "2027-01-01").unwrap()),
+            bekend_op: Some(
+                crate::datum::Tijdpunt::lees("b", "2026-09-25T10:00:00+02:00").unwrap(),
+            ),
+        };
+        let i = json!({"jaar": 2025}).as_object().unwrap().clone();
+        assert_eq!(
+            pad("a", "b", &i, &peil),
+            "/cellen/a/api/lexostatus/b?bekend_op=2026-09-25T10%3A00%3A00%2B02%3A00&jaar=2025&peilmoment=2027-01-01"
+        );
     }
 }

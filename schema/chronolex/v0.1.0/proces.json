@@ -144,6 +144,10 @@
             "tijdvakken": {
               "$ref": "#/definitions/identifier",
               "description": "Een uitkomst van dezelfde regeling: de lijst tijdvakken die het beleid aanbiedt, als het aanbod-artikel een tijdvak vraagt (de parameter met origin BELANGHEBBENDE en grondslag Awb 4:2 lid 1, RFC-043). De runtime rekent haar uit in een eigen run op de datum van vandaag, zonder parameters, en doet per tijdvak een run van het aanbod. Welke tijdvakken er zijn, is beleid, geen configuratie."
+            },
+            "begin": {
+              "$ref": "#/definitions/identifier",
+              "description": "Een uitkomst van dezelfde regeling: de eerste dag van een tijdvak, uitgerekend met alleen het gekozen tijdvak als parameter. Het aanbod voor een tijdvak dat nog moet beginnen, laat de bronnen peilen op die dag (peilmoment); zonder begin peilen ze op vandaag. Vraagt tijdvakken."
             }
           }
         },

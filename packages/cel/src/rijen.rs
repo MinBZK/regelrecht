@@ -35,7 +35,7 @@ use regelrecht_engine::LawExecutionService;
 
 use crate::cel::Cel;
 use crate::config::{ProcesDefinitie, RijBron, RijInvoer, RijenDefinitie};
-use crate::reductie::Lexostatus;
+use crate::reductie::{Lexostatus, Peil};
 use crate::synthese::{Herkomst, Samenvoeging, Status};
 use crate::transport::TransportFout;
 
@@ -85,12 +85,15 @@ pub struct Uitslag {
     pub uit_de_wet: BTreeMap<String, Result<Value, String>>,
 }
 
-/// Wat een invoer uit de wet nodig heeft: het corpus en de datum waarop de
-/// engine de regeling leest (die van de toets of het besluit).
+/// Waartegen de rijen worden opgebouwd: het corpus en de datum waarop de
+/// engine de regeling leest voor een invoer uit de wet (die van de toets of
+/// het besluit), en het peil waarop elke bron haar kroniek reduceert (zie
+/// [`Peil`]).
 #[derive(Clone, Copy)]
-pub struct Wet<'a> {
+pub struct Omgeving<'a> {
     pub service: &'a LawExecutionService,
     pub datum: &'a str,
+    pub peil: &'a Peil,
 }
 
 /// De sleutel van een invoer uit de wet.
@@ -104,7 +107,7 @@ fn wetsleutel(regeling: &str, uitkomst: &str) -> String {
 fn uit_de_wet(
     rijen: &Rijen,
     parameters: &BTreeMap<String, Value>,
-    wet: Wet<'_>,
+    wet: Omgeving<'_>,
 ) -> BTreeMap<String, Result<Value, String>> {
     let mut uit = BTreeMap::new();
     for b in rijen.bronnen.iter().map(|b| &b.definitie) {
@@ -226,6 +229,7 @@ async fn stel_regel_samen(
     lexostatussen: &[Lexostatus],
     parameters: &BTreeMap<String, Value>,
     wet: &BTreeMap<String, Result<Value, String>>,
+    peil: &Peil,
 ) -> Regeluitslag {
     let mut uit = Regeluitslag {
         regel: Map::new(),
@@ -248,7 +252,7 @@ async fn stel_regel_samen(
                 continue;
             }
         };
-        let geleverd = match b.vraag(&invoer).await {
+        let geleverd = match b.vraag(&invoer, peil).await {
             Ok(l) => {
                 uit.bronnen.push(Bevraging::Bevraagd);
                 let mut samen = l.parameters;
@@ -285,7 +289,7 @@ pub async fn stel_samen(
     rijen: &Rijen,
     lexostatussen: &[Lexostatus],
     parameters: &BTreeMap<String, Value>,
-    wet: Wet<'_>,
+    wet: Omgeving<'_>,
 ) -> Option<Uitslag> {
     let d = &rijen.definitie;
     let waar = format!(
@@ -347,6 +351,7 @@ pub async fn stel_samen(
             lexostatussen,
             parameters,
             &afgeleid,
+            wet.peil,
         ));
     }
     let per_regel: Vec<Regeluitslag> = stream::iter(vragen).buffered(GELIJKTIJDIG).collect().await;
@@ -388,7 +393,7 @@ pub async fn pas_toe(
     rijen: &[Rijen],
     eigen: &[Lexostatus],
     samen: &mut Samenvoeging,
-    wet: Wet<'_>,
+    wet: Omgeving<'_>,
 ) -> Vec<Uitslag> {
     let mut met_bronnen = eigen.to_vec();
     for u in samen.bronnen.iter().filter(|u| !u.extra_velden.is_empty()) {
@@ -555,16 +560,22 @@ articles:
             value: {operation: DATE, year: $jaar, month: 1, day: 1}
 "#;
 
+    const GEEN_PEIL: Peil = Peil {
+        peilmoment: None,
+        bekend_op: None,
+    };
+
     fn service() -> LawExecutionService {
         let mut s = LawExecutionService::new();
         s.load_law(PEIL).unwrap();
         s
     }
 
-    fn wet(service: &LawExecutionService) -> Wet<'_> {
-        Wet {
+    fn wet(service: &LawExecutionService) -> Omgeving<'_> {
+        Omgeving {
             service,
             datum: "2026-05-01",
+            peil: &GEEN_PEIL,
         }
     }
 

@@ -2,6 +2,19 @@
 //! (`schema/chronolex/v0.1.0/gram.json`), met wat een besluit erbij draagt.
 //! Hoe een gram uit een stroom en een indiening ontstaat, staat in
 //! [`crate::stroom`].
+//!
+//! Een gram heeft twee tijden (paper P:46: "op 3 april heeft de ambtenaar
+//! vastgesteld dat ... per 2 april"):
+//!
+//! - `op_moment`: wanneer het feit rechtens geldt of plaatsvond. Standaard is
+//!   dat het moment van vastleggen; een event kan het aan een ingediende
+//!   waarde binden, met grondslag (`op_moment_grondslag`), zoals de dag van
+//!   ontvangst van een aanvraag die langs een andere weg binnenkwam (Awb 4:1,
+//!   4:13). In een startstand is het met de hand gezet (de datum van een
+//!   besluit, of van een vaststelling).
+//! - `vastgelegd_op`: wanneer de cel het vastlegde, altijd haar eigen klok;
+//!   bij een startstand de laadtijd. Een gram van voor dit veld heeft het
+//!   niet: dan geldt het `op_moment` (zie [`Gram::vul_vastgelegd_op`]).
 
 use std::collections::BTreeMap;
 
@@ -43,7 +56,16 @@ pub struct Gram {
     /// staat het er niet: de cel verzint geen gezag.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub competent_authority: Option<String>,
+    /// Wanneer het feit rechtens geldt of plaatsvond.
     pub op_moment: String,
+    /// Alleen als het event `op_moment` aan een ingediende waarde bond en die
+    /// waarde er was: de grondslag daarvan, uit de stroom.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_moment_grondslag: Option<Vec<String>>,
+    /// Wanneer de cel het gram vastlegde: haar eigen klok. Leeg bij een gram
+    /// van voor dit veld, tot [`Gram::vul_vastgelegd_op`] het invult.
+    #[serde(default)]
+    pub vastgelegd_op: String,
     /// Uit de stroom: of het gram een zaak opent of volgt. Weggelaten als
     /// het event geen zaak heeft.
     #[serde(default, skip_serializing_if = "zonder_zaak")]
@@ -122,14 +144,18 @@ impl Gram {
         serde_json::to_value(self).unwrap_or(Value::Null)
     }
 
-    /// Valideer het gram tegen `gram.json`, en zijn `op_moment` als moment
-    /// met tijdzone (het schema zegt alleen dat het tekst is).
+    /// Valideer het gram tegen `gram.json`, en zijn `op_moment` en
+    /// `vastgelegd_op` als moment met tijdzone (het schema toetst alleen de
+    /// vorm).
     pub fn valideer(&self) -> Result<(), Vec<String>> {
         let json = serde_json::to_value(self).map_err(|e| vec![e.to_string()])?;
         let mut fouten = schema::valideer(Soort::Gram, &json)
             .err()
             .unwrap_or_default();
         if let Err(f) = datum::moment(&self.op_moment) {
+            fouten.push(f);
+        }
+        if let Err(f) = datum::moment_van("vastgelegd_op", &self.vastgelegd_op) {
             fouten.push(f);
         }
         if fouten.is_empty() {
@@ -147,6 +173,33 @@ impl Gram {
     /// Het `op_moment`, gelezen; een ongeldig moment is een fout.
     pub fn moment(&self) -> Result<DateTime<FixedOffset>, String> {
         datum::moment(&self.op_moment).map_err(|e| format!("gram '{}': {e}", self.name))
+    }
+
+    /// Het `vastgelegd_op`, gelezen; een ongeldig moment is een fout.
+    pub fn vastgelegd(&self) -> Result<DateTime<FixedOffset>, String> {
+        datum::moment_van("vastgelegd_op", &self.vastgelegd_op)
+            .map_err(|e| format!("gram '{}': {e}", self.name))
+    }
+
+    /// Een gram van voor `vastgelegd_op` (gelezen uit een oudere kroniek)
+    /// krijgt zijn `op_moment` als registratietijd: iets beters is er niet.
+    /// Waar als het ontbrak, zodat de lezer het kan melden.
+    pub fn vul_vastgelegd_op(&mut self) -> bool {
+        if !self.vastgelegd_op.is_empty() {
+            return false;
+        }
+        self.vastgelegd_op = self.op_moment.clone();
+        true
+    }
+
+    /// De volgorde van twee grammen in de tijd: eerst op `op_moment`, bij
+    /// gelijk moment op `vastgelegd_op`. `Equal` laat de volgorde in de
+    /// kroniek beslissen.
+    pub fn tijdvolgorde(&self, ander: &Gram) -> Result<std::cmp::Ordering, String> {
+        Ok(self
+            .moment()?
+            .cmp(&ander.moment()?)
+            .then(self.vastgelegd()?.cmp(&ander.vastgelegd()?)))
     }
 }
 

@@ -34,11 +34,11 @@ use regelrecht_engine::LawExecutionService;
 use crate::cel::Cel;
 use crate::celclient::{self, Besluitvelden, Vastlegverzoek};
 use crate::config::{BesluitDefinitie, NogNiet};
-use crate::datum;
+use crate::datum::{self, Tijdpunt};
 use crate::formulier::Veld;
 use crate::gram::{GeladenRegeling, Gram, Invoer, Receipt, StroomVerwijzing};
 use crate::proces::Proces;
-use crate::reductie::Lexostatus;
+use crate::reductie::{Lexostatus, Peil};
 use crate::regelingen::{self, Benodigd};
 use crate::rijen::{self, Rijen};
 use crate::stroom::Zaak;
@@ -500,6 +500,7 @@ async fn zaaklexostatus(
     cel: &dyn Transport,
     bron: &crate::config::SyntheseBron,
     inputs: &Map<String, Value>,
+    peil: &Peil,
 ) -> Result<Lexostatus, Weigering> {
     let def = proces
         .cel
@@ -507,7 +508,7 @@ async fn zaaklexostatus(
         .lexostatus(&bron.lexostatus)
         .ok_or_else(|| Weigering::Cel(format!("lexostatus '{}' bestaat niet", bron.lexostatus)))?;
     match cel
-        .haal(&synthese::pad(&bron.cel, &bron.lexostatus, inputs))
+        .haal(&synthese::pad(&bron.cel, &bron.lexostatus, inputs, peil))
         .await
     {
         Ok(v) => serde_json::from_value(v).map_err(|e| {
@@ -529,7 +530,10 @@ async fn zaaklexostatus(
 }
 
 /// Reken het besluit op een zaak uit, zonder iets vast te leggen. `peildatum`
-/// (JJJJ-MM-DD) is de datum waarop de engine de regeling leest. De
+/// (JJJJ-MM-DD) is de datum waarop de engine de regeling leest, en ook het
+/// peilmoment waarop elke cel haar kroniek reduceert: de stand zoals die
+/// rechtens gold op die dag (zie [`Peil`]). Zo telt een feit dat pas later
+/// ingaat niet mee, en geeft hetzelfde proefbesluit later dezelfde stand. De
 /// lexostatussen van de zaak komen van de cel, via `cel`.
 pub async fn proefbesluit(
     proces: &Proces,
@@ -555,13 +559,14 @@ pub async fn proefbesluit(
         }
     }
     let artikel = artikel_van(service, b).map_err(Weigering::Cel)?;
+    let peil = Peil::op(Tijdpunt::lees("peildatum", peildatum).map_err(Weigering::Cel)?);
 
     // 1. De lexostatussen van de zaak, uit de cel.
     let mut inputs = Map::new();
     inputs.insert("zaakkenmerk".into(), Value::String(zaakkenmerk.to_string()));
     let mut eigen = Vec::new();
     for bron in proces.definitie.zaakbronnen() {
-        eigen.push(zaaklexostatus(proces, cel, bron, &inputs).await?);
+        eigen.push(zaaklexostatus(proces, cel, bron, &inputs, &peil).await?);
     }
 
     // 2. Synthese, met de invoer uit de lexostatus van de zaak die haar
@@ -574,8 +579,8 @@ pub async fn proefbesluit(
         .find_map(|v| eigen.iter().position(|l| l.naam == v.lexostatus))
         .unwrap_or(0);
     let mut samen = match eigen.get(hoofd) {
-        Some(l) => synthese::voeg_samen(l, bronnen).await,
-        None => synthese::voeg_samen(&Lexostatus::leeg(""), bronnen).await,
+        Some(l) => synthese::voeg_samen(l, bronnen, &peil).await,
+        None => synthese::voeg_samen(&Lexostatus::leeg(""), bronnen, &peil).await,
     };
     for (i, l) in eigen.iter().enumerate() {
         if i == hoofd {
@@ -593,9 +598,10 @@ pub async fn proefbesluit(
     }
 
     // 3. Synthese per regel: een tabelveld wordt een array-parameter.
-    let wet = rijen::Wet {
+    let wet = rijen::Omgeving {
         service,
         datum: peildatum,
+        peil: &peil,
     };
     let uitslagen = rijen::pas_toe(rijen, &eigen, &mut samen, wet).await;
 

@@ -54,6 +54,10 @@ pub struct Event {
     /// heeft. Bepaalt of het gram een `zaakkenmerk` draagt.
     #[serde(default)]
     pub zaak: Zaak,
+    /// Waaraan het `op_moment` van het gram bindt, als dat niet het moment
+    /// van vastleggen is.
+    #[serde(default)]
+    pub op_moment: Option<OpMomentBinding>,
     /// De veldboom, in documentvolgorde (een YAML-mapping houdt die vast).
     pub fields: serde_yaml_ng::Mapping,
     #[serde(default)]
@@ -102,6 +106,33 @@ impl Zaak {
                 "event '{event}' heeft geen zaak (zaak: geen) en krijgt geen zaakkenmerk"
             )),
             _ => Ok(()),
+        }
+    }
+}
+
+/// Het `op_moment` van een event gebonden aan een ingediende waarde, met de
+/// grondslag waarom dat moment rechtens telt. Voorbeeld: de dag waarop een
+/// papieren aanvraag binnenkwam (Awb 4:13: de termijn loopt vanaf de
+/// ontvangst), vastgelegd op een latere dag.
+#[derive(Debug, Clone, Deserialize)]
+pub struct OpMomentBinding {
+    /// `$intake.<pad>` of `$external.<pad>`.
+    pub bron: String,
+    pub grondslag: Vec<String>,
+}
+
+impl OpMomentBinding {
+    /// De bron als [`Binding`]: het schema laat alleen `$intake` en
+    /// `$external` toe.
+    pub fn binding(&self) -> Binding {
+        match self.bron.strip_prefix("$intake.") {
+            Some(r) => Binding::Intake(r.to_string()),
+            None => Binding::External(
+                self.bron
+                    .strip_prefix("$external.")
+                    .unwrap_or(&self.bron)
+                    .to_string(),
+            ),
         }
     }
 }
@@ -315,11 +346,14 @@ impl Event {
         })
     }
 
-    /// De `$external`-bindingen: het bronpad en de vorm van de waarde.
+    /// De `$external`-bindingen: het bronpad en de vorm van de waarde, ook
+    /// die van `op_moment`.
     fn external_bronnen(&self) -> Vec<(String, Vorm)> {
         self.bladeren()
             .into_iter()
-            .filter_map(|b| match b.binding {
+            .map(|b| b.binding)
+            .chain(self.op_moment.as_ref().map(OpMomentBinding::binding))
+            .filter_map(|b| match b {
                 Binding::External(bron) => Some((bron, Vorm::Waarde)),
                 Binding::Tabel { bron, kolommen } => Some((bron, Vorm::Tabel(kolommen))),
                 _ => None,
@@ -463,7 +497,8 @@ pub struct Indiening<'a> {
     pub intake: &'a Value,
     /// De inhoud zoals ingediend.
     pub external: &'a Map<String, Value>,
-    pub op_moment: DateTime<FixedOffset>,
+    /// Het moment van vastleggen: de klok van de cel.
+    pub vastgelegd_op: DateTime<FixedOffset>,
     /// Bij `zaak: opent` het nieuwe kenmerk, bij `volgt` dat van de
     /// bestaande zaak, bij `geen` niets.
     pub zaakkenmerk: Option<&'a str>,
@@ -505,17 +540,14 @@ pub fn bouw_gram(
     let mut fields = Map::new();
     for blad in event.bladeren() {
         let waarde = match &blad.binding {
-            Binding::Intake(bronpad) => indiening
-                .intake
-                .as_object()
-                .and_then(|i| op_pad(i, bronpad))
-                .cloned()
-                .ok_or_else(|| {
+            Binding::Intake(bronpad) => {
+                intake_waarde(indiening, bronpad).cloned().ok_or_else(|| {
                     format!(
                         "het ontvangstkanaal levert '$intake.{bronpad}' niet (veld '{}')",
                         blad.pad
                     )
-                })?,
+                })?
+            }
             Binding::External(bronpad) => op_pad(indiening.external, bronpad)
                 .cloned()
                 .unwrap_or(Value::Null),
@@ -526,6 +558,7 @@ pub fn bouw_gram(
         };
         zet(&mut fields, &blad.pad, waarde);
     }
+    let (op_moment, op_moment_grondslag) = op_moment_van(event, indiening)?;
 
     Ok(Gram {
         kind: "chronolexogram".to_string(),
@@ -541,7 +574,9 @@ pub fn bouw_gram(
         regulation: None,
         regulation_valid_from: None,
         competent_authority: None,
-        op_moment: datum::als_op_moment(&indiening.op_moment),
+        op_moment: datum::als_op_moment(&op_moment),
+        op_moment_grondslag,
+        vastgelegd_op: datum::als_op_moment(&indiening.vastgelegd_op),
         zaak: event.zaak,
         zaakkenmerk: indiening.zaakkenmerk.map(str::to_string),
         stroom: StroomVerwijzing {
@@ -553,6 +588,49 @@ pub fn bouw_gram(
         inputs: BTreeMap::new(),
         receipt: None,
     })
+}
+
+fn intake_waarde<'i>(indiening: &'i Indiening<'_>, pad: &str) -> Option<&'i Value> {
+    indiening.intake.as_object().and_then(|i| op_pad(i, pad))
+}
+
+/// Het `op_moment` van een gram en, als het event het aan een ingediende
+/// waarde bond en die er was, de grondslag daarvan. Zonder waarde (of zonder
+/// binding) is het het moment van vastleggen. Een gebonden moment na het
+/// vastleggen wordt geweigerd: wat nog moet gebeuren, is geen feit.
+fn op_moment_van(
+    event: &Event,
+    indiening: &Indiening<'_>,
+) -> Result<(DateTime<FixedOffset>, Option<Vec<String>>), String> {
+    let nu = indiening.vastgelegd_op;
+    let Some(b) = &event.op_moment else {
+        return Ok((nu, None));
+    };
+    let waarde = match b.binding() {
+        Binding::Intake(pad) => intake_waarde(indiening, &pad),
+        Binding::External(pad) => op_pad(indiening.external, &pad),
+        _ => None,
+    };
+    let Some(tekst) = waarde.filter(|w| !w.is_null()) else {
+        return Ok((nu, None));
+    };
+    let tekst = tekst.as_str().ok_or_else(|| {
+        format!(
+            "'{}' (op_moment van event '{}') is geen datum of moment",
+            b.bron, event.name
+        )
+    })?;
+    let moment = datum::Tijdpunt::lees(&format!("op_moment uit '{}'", b.bron), tekst)?
+        .als_moment(*nu.offset());
+    if moment > nu {
+        return Err(format!(
+            "op_moment {} uit '{}' ligt na het vastleggen ({}): wat nog moet gebeuren, wordt niet vastgelegd",
+            datum::als_op_moment(&moment),
+            b.bron,
+            datum::als_op_moment(&nu)
+        ));
+    }
+    Ok((moment, Some(b.grondslag.clone())))
 }
 
 fn zet(wortel: &mut Map<String, Value>, pad: &str, waarde: Value) {
@@ -653,7 +731,7 @@ mod tests {
             &Indiening {
                 intake: &intake(),
                 external: external.as_object().unwrap(),
-                op_moment: moment(),
+                vastgelegd_op: moment(),
                 zaakkenmerk: Some(ZAAK),
             },
         )
@@ -684,6 +762,77 @@ mod tests {
         gram.valideer().unwrap();
     }
 
+    fn met_intake(s: &Stroom, intake: Value) -> Result<Gram, String> {
+        bouw_gram(
+            s,
+            &s.events[0],
+            &Indiening {
+                intake: &intake,
+                external: &Map::new(),
+                vastgelegd_op: moment(),
+                zaakkenmerk: Some(ZAAK),
+            },
+        )
+    }
+
+    /// Twee tijden: zonder opgegeven ontvangst is het op_moment het
+    /// vastleggen; met een datumstempel van het loket is het die dag, met de
+    /// grondslag uit de stroom, en blijft vastgelegd_op de klok.
+    #[test]
+    fn op_moment_uit_een_opgegeven_ontvangst() {
+        let s = parse(STROOM, "fixture").unwrap();
+        let g = met_intake(&s, intake()).unwrap();
+        assert_eq!(g.op_moment, "2025-03-12T10:14:03+01:00");
+        assert_eq!(g.vastgelegd_op, "2025-03-12T10:14:03+01:00");
+        assert_eq!(g.op_moment_grondslag, None);
+
+        let mut loket = intake();
+        loket["ontvangen_op"] = json!("2025-03-05");
+        let g = met_intake(&s, loket.clone()).unwrap();
+        assert_eq!(g.op_moment, "2025-03-05T00:00:00+01:00");
+        assert_eq!(g.vastgelegd_op, "2025-03-12T10:14:03+01:00");
+        assert_eq!(
+            g.op_moment_grondslag,
+            Some(vec!["testregeling_aanvraag#1".to_string()])
+        );
+        g.valideer().unwrap();
+
+        // Een moment met tijdzone mag ook; null is: niet opgegeven.
+        loket["ontvangen_op"] = json!("2025-03-05T16:45:00+01:00");
+        assert_eq!(
+            met_intake(&s, loket.clone()).unwrap().op_moment,
+            "2025-03-05T16:45:00+01:00"
+        );
+        loket["ontvangen_op"] = Value::Null;
+        assert_eq!(
+            met_intake(&s, loket.clone()).unwrap().op_moment_grondslag,
+            None
+        );
+
+        // Na het vastleggen, of geen datum: geweigerd.
+        loket["ontvangen_op"] = json!("2025-03-13");
+        let f = met_intake(&s, loket.clone()).unwrap_err();
+        assert!(f.contains("ligt na het vastleggen"), "{f}");
+        loket["ontvangen_op"] = json!("vorige week");
+        let f = met_intake(&s, loket.clone()).unwrap_err();
+        assert!(
+            f.contains("ongeldig op_moment uit '$intake.ontvangen_op'"),
+            "{f}"
+        );
+        loket["ontvangen_op"] = json!(20250305);
+        let f = met_intake(&s, loket).unwrap_err();
+        assert!(f.contains("geen datum of moment"), "{f}");
+    }
+
+    /// Wat het ontvangstmoment niet zelf mag kiezen, bindt aan `$intake`: een
+    /// `ontvangen_op` onder `external` is een onbekend veld.
+    #[test]
+    fn de_indiener_kiest_de_ontvangst_niet() {
+        let s = parse(STROOM, "fixture").unwrap();
+        let f = bouw(&s, json!({"ontvangen_op": "2025-03-01"})).unwrap_err();
+        assert!(f.contains("onbekend veld 'ontvangen_op'"), "{f}");
+    }
+
     #[test]
     fn onbekend_veld_wordt_geweigerd() {
         let s = parse(STROOM, "fixture").unwrap();
@@ -694,7 +843,7 @@ mod tests {
             &Indiening {
                 intake: &intake(),
                 external: external.as_object().unwrap(),
-                op_moment: moment(),
+                vastgelegd_op: moment(),
                 zaakkenmerk: Some(ZAAK),
             },
         )
@@ -709,7 +858,7 @@ mod tests {
             &Indiening {
                 intake: &intake(),
                 external: external.as_object().unwrap(),
-                op_moment: moment(),
+                vastgelegd_op: moment(),
                 zaakkenmerk: Some(ZAAK),
             },
         )
@@ -848,7 +997,7 @@ mod tests {
                 &Indiening {
                     intake: &intake(),
                     external: &Map::new(),
-                    op_moment: moment(),
+                    vastgelegd_op: moment(),
                     zaakkenmerk: kenmerk,
                 },
             );
@@ -880,7 +1029,7 @@ mod tests {
             &Indiening {
                 intake: &json!({"kanaal": "portaal"}),
                 external: &external,
-                op_moment: moment(),
+                vastgelegd_op: moment(),
                 zaakkenmerk: Some(ZAAK),
             },
         )

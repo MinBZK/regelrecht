@@ -142,11 +142,13 @@ fn uniek(strommen: &[Stroom], lexostatussen: &Lexostatussen, fouten: &mut Vec<St
 }
 
 /// Elke grondslag wijst een geladen artikel aan, en een lid dat de
-/// artikeltekst heeft (een regel die met `<n>.` of `<n> ` begint).
+/// artikeltekst heeft (een regel die met `<n>.` of `<n> ` begint). Ook de
+/// grondslag van een gebonden `op_moment`.
 fn grondslagen(strommen: &[Stroom], service: &LawExecutionService, fouten: &mut Vec<String>) {
     for s in strommen {
         for e in &s.events {
-            for g in &e.grondslag {
+            let van_moment = e.op_moment.iter().flat_map(|b| &b.grondslag);
+            for g in e.grondslag.iter().chain(van_moment) {
                 if let Err(f) = regelingen::geldig(service, g) {
                     fouten.push(format!("event '{}' (stroom '{}'): {f}", e.name, s.id));
                 }
@@ -603,6 +605,20 @@ fn aanbod_(a: &Aanbod, service: &LawExecutionService, fouten: &mut Vec<String>) 
             Some(_) => {}
         }
     }
+    if let Some(b) = &a.begin {
+        if a.tijdvakken.is_none() {
+            fouten.push("portaal.aanbod: begin zonder tijdvakken".to_string());
+        }
+        if resolver
+            .get_article_by_output(&a.regeling, b, None)
+            .is_none()
+        {
+            fouten.push(format!(
+                "portaal.aanbod: regeling '{}' heeft geen begin-uitkomst '{b}'",
+                a.regeling
+            ));
+        }
+    }
     let Some(artikel) = resolver.get_article_by_output(&a.regeling, &a.uitkomst, None) else {
         fouten.push(format!(
             "portaal.aanbod: regeling '{}' heeft geen uitkomst '{}'",
@@ -813,6 +829,16 @@ mod tests {
             "- testregeling_aanvraag#1\n      - testregeling_aanvraag#7",
         );
         faalt_met(&stroom, CEL, "heeft geen artikel 7");
+    }
+
+    #[test]
+    fn grondslag_van_een_gebonden_op_moment_bestaat() {
+        let stroom = STROOM.replace(
+            "grondslag: [testregeling_aanvraag#1]",
+            "grondslag: [testregeling_aanvraag#8]",
+        );
+        assert_ne!(stroom, STROOM);
+        faalt_met(&stroom, CEL, "heeft geen artikel 8");
     }
 
     // 3. Geen weesveld.

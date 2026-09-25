@@ -1118,7 +1118,14 @@ async fn behandelaar(app: &Router) -> String {
 /// vastleggen dat later zal doen. Langs de kroniek van de runtime: die houdt
 /// de grammen in het geheugen, dus een regel die iemand anders in het bestand
 /// schrijft, ziet zij niet.
+/// Leg een verloopgram vast op de klok van de test.
 fn voeg_gram_toe(rt: &Runtime, name: &str, zaak: &str, fields: Value) {
+    voeg_gram_toe_op(rt, name, zaak, fields, "2025-03-12T10:14:03+01:00");
+}
+
+/// Leg een verloopgram vast dat rechtens geldt op `op_moment`, vastgelegd op
+/// de klok van de test.
+fn voeg_gram_toe_op(rt: &Runtime, name: &str, zaak: &str, fields: Value, op_moment: &str) {
     let (type_, stage) = if name == "besluit_genomen" {
         ("decretogram", Some("BESLUIT"))
     } else {
@@ -1127,7 +1134,8 @@ fn voeg_gram_toe(rt: &Runtime, name: &str, zaak: &str, fields: Value) {
     let mut gram = json!({
         "kind": "chronolexogram", "type": type_, "name": name,
         "chronicle": "test_afnemer", "recording_actor": "test_afnemer",
-        "grondslag": ["testregeling_afnemer#3"], "op_moment": "2025-03-13T09:00:00+01:00",
+        "grondslag": ["testregeling_afnemer#3"], "op_moment": op_moment,
+        "vastgelegd_op": "2025-03-12T10:14:03+01:00",
         "zaak": "volgt", "zaakkenmerk": zaak,
         "stroom": {"id": "test_afnemer_zaakverloop", "sha256": "0".repeat(64)},
         "fields": fields,
@@ -1426,9 +1434,33 @@ async fn zaak_met_proefbesluit_zonder_vastleggen() {
     .await;
     assert_eq!(p["uitkomsten"]["besluitdeadline"], json!("2025-04-16"));
 
-    // Er is niets vastgelegd, behalve het verloopgram van deze test.
+    // Een opschorting die pas na de peildatum ingaat, telt bij dit besluit
+    // niet mee: de cel reduceert op de peildatum van het besluit.
+    voeg_gram_toe_op(
+        &rt,
+        "termijn_opgeschort",
+        &zaak,
+        json!({"dagen": 30}),
+        "2025-04-01T09:00:00+02:00",
+    );
+    let (_, p, _) = vraag(
+        &app,
+        "POST",
+        &format!("{AFNEMER}/api/zaken/{zaak}/proefbesluit"),
+        Some(&b),
+        Some(json!({"formulier": {"besluitdatum": "2025-03-20", "feiten_vergaard": true}})),
+    )
+    .await;
+    assert_eq!(p["uitkomsten"]["besluitdeadline"], json!("2025-04-16"));
+    assert_eq!(
+        p["lexostatussen"][1]["peilmoment"],
+        json!("2025-03-12"),
+        "{p}"
+    );
+
+    // Er is niets vastgelegd, behalve de verloopgrammen van deze test.
     let na = std::fs::read_to_string(&kroniek).unwrap();
-    assert_eq!(na.lines().count(), voor.lines().count() + 1);
+    assert_eq!(na.lines().count(), voor.lines().count() + 2);
 
     // Een oordeel dat het formulier niet kent, en een onbekende zaak.
     let (status, f, _) = vraag(
@@ -2249,7 +2281,7 @@ async fn het_aanbod_draait_per_gekozen_tijdvak() {
     let met_aanbod = |t: String| {
         t.replace(
             "    uitkomst: aanvraag_toelaatbaar\n",
-            "    uitkomst: aanvraag_toelaatbaar\n  aanbod:\n    regeling: testregeling_afnemer\n    uitkomst: aanvraag_aangeboden\n    termijn: aanvraagtermijn\n    tijdvakken: aangeboden_jaren\n",
+            "    uitkomst: aanvraag_toelaatbaar\n  aanbod:\n    regeling: testregeling_afnemer\n    uitkomst: aanvraag_aangeboden\n    termijn: aanvraagtermijn\n    tijdvakken: aangeboden_jaren\n    begin: begin_aanvraagjaar\n",
         )
     };
     let opstelling = eigen_opstelling(
@@ -2290,6 +2322,10 @@ async fn het_aanbod_draait_per_gekozen_tijdvak() {
             json!(format!("{jaar}-04-01"))
         );
     }
+    // Het lopende jaar peilt op vandaag, een komend jaar op het begin dat
+    // de regeling zegt (art. 6), niet op een jaar dat de code aanneemt.
+    assert_eq!(m[0]["peilmoment"], json!("2025-03-12"), "{body}");
+    assert_eq!(m[1]["peilmoment"], json!("2026-01-01"), "{body}");
 }
 
 /// Een aanbod dat een tijdvak vraagt, zonder tijdvakken: de runtime start niet.
@@ -2504,4 +2540,173 @@ fn een_grondslag_in_het_formulier_wordt_gecontroleerd() {
             "verwacht '{verwacht}' in {fouten:?}"
         );
     }
+}
+
+// --- Tijd: twee tijden per gram, en een peil op de reductie ---
+
+/// Een aanvraag die langs een andere weg binnenkwam: het loket geeft de dag
+/// van ontvangst op (`$intake.ontvangen_op`). Rechtens telt die dag (de
+/// aanvraagdatum), vastgelegd wordt op de klok van de cel.
+#[tokio::test]
+async fn een_eerdere_ontvangst_is_de_aanvraagdatum() {
+    let dir = tempfile::tempdir().unwrap();
+    let rt = runtime_op(&fixtures(), dir.path()).unwrap();
+    let app = rt.router.clone();
+    let mut v = verzoek("test_instantie");
+    v["intake"] = json!({"kanaal": "loket", "ontvangen_op": "2025-03-05",
+                         "eherkenning": {"kvk": "12345678", "persoon": "A. Tester"}});
+    let (status, body) = als_runtime(&rt, "POST", &format!("{INSTANTIE_CEL}/api/grammen"), v).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let g = &body["gram"];
+    schema::valideer(Soort::Gram, g).unwrap();
+    assert_eq!(g["op_moment"], "2025-03-05T00:00:00+01:00");
+    assert_eq!(g["vastgelegd_op"], "2025-03-12T10:14:03+01:00");
+    assert_eq!(g["op_moment_grondslag"], json!(["testregeling_aanvraag#1"]));
+    let zaak = g["zaakkenmerk"].as_str().unwrap();
+    let (status, l, _) = vraag(
+        &app,
+        "GET",
+        &format!("{INSTANTIE_CEL}/api/lexostatus/aanvraag_inhoud?zaakkenmerk={zaak}"),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{l}");
+    assert_eq!(l["parameters"]["aanvraagdatum"], "2025-03-05");
+    assert_eq!(l["vastgelegd_op"], "2025-03-12T10:14:03+01:00");
+
+    // Een ontvangst na het vastleggen is geen feit.
+    let mut v = verzoek("test_instantie");
+    v["intake"]["ontvangen_op"] = json!("2025-03-20");
+    let (status, body) = als_runtime(&rt, "POST", &format!("{INSTANTIE_CEL}/api/grammen"), v).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert!(body["fout"].as_str().unwrap().contains("na het vastleggen"));
+}
+
+/// `GET lexostatus` met een peil: dezelfde kroniek geeft op een ander moment
+/// een andere lexostatus. De startstand geldt rechtens op haar eigen
+/// momenten, maar is pas bekend sinds ze geladen is.
+#[tokio::test]
+async fn lexostatus_op_een_peilmoment() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path());
+    // De zetels uit `registerstatus`, de inschrijving uit het register van
+    // de raad; samen in een antwoord.
+    let status_op = |query: &'static str| {
+        let app = app.clone();
+        async move {
+            let (s, mut l, _) = vraag(
+                &app,
+                "GET",
+                &format!("/cellen/test_register/api/lexostatus/registerstatus?aanduiding=VOORBEELD{query}"),
+                None,
+                None,
+            )
+            .await;
+            if s == StatusCode::OK {
+                let (_, r, _) = vraag(
+                    &app,
+                    "GET",
+                    &format!("/cellen/test_register/api/lexostatus/register?aanduiding=VOORBEELD&orgaan=raad{query}"),
+                    None,
+                    None,
+                )
+                .await;
+                l["parameters"]["is_ingeschreven_raad"] =
+                    r["parameters"]["is_ingeschreven_in_register"].clone();
+            }
+            (s, l)
+        }
+    };
+    let (s, nu) = status_op("").await;
+    assert_eq!(s, StatusCode::OK, "{nu}");
+    assert_eq!(nu["parameters"]["zetels_toegewezen"], json!(6));
+    assert!(nu.get("peilmoment").is_none());
+
+    // Rechtens op 1 januari 2024: nog niet ingeschreven, geen uitslag.
+    let (s, jan) = status_op("&peilmoment=2024-01-01").await;
+    assert_eq!(s, StatusCode::OK, "{jan}");
+    assert_eq!(jan["peilmoment"], "2024-01-01");
+    assert_eq!(jan["parameters"]["is_ingeschreven_raad"], json!(false));
+    assert_eq!(jan["parameters"]["zetels_toegewezen"], json!(0));
+    // Een moment met tijdzone kan ook (in een query als %2B voor '+').
+    let (s, apr) = status_op("&peilmoment=2024-04-01T00:00:00%2B02:00").await;
+    assert_eq!(s, StatusCode::OK, "{apr}");
+    assert_eq!(apr["parameters"]["zetels_toegewezen"], json!(6));
+    assert_eq!(apr["parameters"]["is_ingeschreven_raad"], json!(true));
+
+    // Zoals bekend voor het laden van de startstand (de klok van de test):
+    // de cel wist toen nog niets.
+    let (s, eerder) = status_op("&bekend_op=2025-03-11").await;
+    assert_eq!(s, StatusCode::OK, "{eerder}");
+    assert_eq!(eerder["parameters"]["is_ingeschreven_raad"], json!(false));
+    let (_, toen) = status_op("&bekend_op=2025-03-12").await;
+    assert_eq!(toen["parameters"], nu["parameters"]);
+
+    let (s, f) = status_op("&peilmoment=morgen").await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+    assert!(f["fout"].as_str().unwrap().contains("ongeldig peilmoment"));
+}
+
+/// Ook de proefroute peilt: een concept telt als vastgelegd op de klok van
+/// nu, dus zoals bekend op een eerdere dag ligt het er niet.
+#[tokio::test]
+async fn de_proefroute_peilt_ook() {
+    let dir = tempfile::tempdir().unwrap();
+    let rt = runtime_op(&fixtures(), dir.path()).unwrap();
+    let proef = format!("{INSTANTIE_CEL}/api/lexostatus/aanvraag_inhoud/proef");
+    let (status, body) = als_runtime(
+        &rt,
+        "POST",
+        &proef,
+        json!({"concept": verzoek("test_instantie"), "inputs": {"peilmoment": "2025-03-12"}}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["lexostatus"]["peilmoment"], "2025-03-12");
+    let (status, _) = als_runtime(
+        &rt,
+        "POST",
+        &proef,
+        json!({"concept": verzoek("test_instantie"), "inputs": {"bekend_op": "2025-03-11"}}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+/// Een kroniek van voor `vastgelegd_op` laadt: het gram krijgt zijn
+/// `op_moment` als registratietijd.
+#[tokio::test]
+async fn een_oude_kroniek_zonder_vastgelegd_op_laadt() {
+    let dir = tempfile::tempdir().unwrap();
+    let rt = runtime_op(&fixtures(), dir.path()).unwrap();
+    let (status, body) = als_runtime(
+        &rt,
+        "POST",
+        &format!("{INSTANTIE_CEL}/api/grammen"),
+        verzoek("test_instantie"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    drop(rt);
+    // Het gram zoals een eerdere versie van de runtime het schreef.
+    let pad = dir.path().join("test_instantie/test_kroniek.jsonl");
+    let mut oud: Value =
+        serde_json::from_str(std::fs::read_to_string(&pad).unwrap().trim()).unwrap();
+    oud.as_object_mut().unwrap().remove("vastgelegd_op");
+    oud["op_moment"] = json!("2025-03-01T09:00:00+01:00");
+    std::fs::write(&pad, format!("{oud}\n")).unwrap();
+
+    let app = app(dir.path());
+    let (status, k, _) = vraag(
+        &app,
+        "GET",
+        &format!("{INSTANTIE_CEL}/api/kroniek"),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{k}");
+    assert_eq!(k[0]["gram"]["vastgelegd_op"], "2025-03-01T09:00:00+01:00");
+    schema::valideer(Soort::Gram, &k[0]["gram"]).unwrap();
 }

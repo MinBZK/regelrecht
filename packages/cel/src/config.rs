@@ -383,6 +383,11 @@ pub struct Aanbod {
     /// haar uit in een run zonder parameters op de datum van vandaag.
     #[serde(default)]
     pub tijdvakken: Option<String>,
+    /// Een uitkomst van dezelfde regeling: de eerste dag van een tijdvak, met
+    /// het tijdvak als enige parameter. Het aanbod voor een tijdvak dat nog
+    /// moet beginnen, peilt de registers op die dag; zonder op vandaag.
+    #[serde(default)]
+    pub begin: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

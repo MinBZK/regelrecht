@@ -108,6 +108,30 @@ pub fn tijdvakken(
     }
 }
 
+/// Het begin van een tijdvak volgens het beleid: de uitkomst `begin` van de
+/// regeling van het aanbod, met alleen het gekozen tijdvak als parameter. Het
+/// aanbod voor een tijdvak dat nog moet beginnen, peilt de registers op die
+/// dag. Geen datum is een fout.
+pub fn begin(
+    service: &LawExecutionService,
+    regeling: &str,
+    begin: &str,
+    keuze: &Keuze,
+    datum: &str,
+) -> Result<chrono::NaiveDate, String> {
+    let mut p = BTreeMap::new();
+    p.insert(keuze.parameter.clone(), keuze.waarde.clone());
+    let e = toets::evalueer(service, regeling, &[begin], &p, datum);
+    match e.waarden.get(begin) {
+        Some(Value::String(d)) => chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d")
+            .map_err(|_| format!("{regeling}: begin '{begin}' is geen datum ({d})")),
+        Some(ander) => Err(format!(
+            "{regeling}: begin '{begin}' is geen datum ({ander})"
+        )),
+        None => Err(e.reden(&format!("{regeling}: begin '{begin}' niet te bepalen"))),
+    }
+}
+
 /// Voer het aanbod uit voor een tijdvak: uitkomst en termijn in een run.
 pub fn bepaal(
     service: &LawExecutionService,
@@ -270,6 +294,7 @@ articles:
             uitkomst: "aangeboden".into(),
             termijn: termijn.then(|| "termijn".into()),
             tijdvakken: None,
+            begin: None,
         }
     }
 
