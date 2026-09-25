@@ -64,3 +64,12 @@ What other approaches did we consider and why did we reject them?
 (Optional) Links to related issues, PRs, documentation, or external resources.
 
 - [Glossary of Dutch Legal Terms](/reference/glossary)
+
+<!--
+## Corrections
+
+Only on an accepted RFC, and only for factual errors (see "An accepted RFC is
+not rewritten" in AGENTS.md). Open the section with one sentence saying the
+decision is unchanged, then one bullet per correction: the date in bold, what
+changed, and the source as a link to the statute or the review.
+-->
