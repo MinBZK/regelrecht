@@ -38,6 +38,7 @@ A reader meets these constructs in a law file or a running service whatever the 
 
 | RFC | Topic | Prose coverage |
 |-----|-------|----------------|
+| RFC-022 | Chronolexogram types and the cell (partially built: the cell runtime; `decision_type` is still closed, `modality` and `extensions` are not built) | [Cel](../components/cel) |
 | RFC-023 | Quantities (money, percentages, units) | [Law Format](../concepts/law-format), [Schema](./schema) |
 | RFC-024 | Precision and rounding | [Law Format](../concepts/law-format), [Temporal Validity and Dates](../concepts/temporal-and-dates) |
 | RFC-026 | Enricher work queue (partially built) | Backlog: no prose page |
@@ -51,6 +52,7 @@ A reader meets these constructs in a law file or a running service whatever the 
 | RFC-040 | The schema documents itself | [Schema](./schema) |
 | RFC-041 | A void is not scoped like a replacement | [Voiding an output](../concepts/hooks-and-reactive-execution#voiding-an-output) |
 | RFC-043 | Who supplies a parameter (partially built, still Draft) | [Cel: who supplies a parameter](../components/cel#who-supplies-a-parameter) |
+| RFC-044 | Cells and processes in a chronolex runtime (partially built, still Draft) | [Cel](../components/cel) |
 
 ## Backlog
 
