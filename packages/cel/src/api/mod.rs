@@ -19,28 +19,35 @@
 //! |---|---|
 //! | `GET /api/voorbeelden` | standaardgegevens per handeling (`voorbeelden` in `proces.yaml`), ook zonder login |
 //!
-//! Een proces met een portaal (rol aanvrager, nep-eHerkenning) heeft daarnaast
-//! ([`sessie`], [`portaal`]):
+//! Een proces met rollen heeft de routes van zijn kanalen ([`sessie`]); elk
+//! kanaal is nagebootst en staat in `kanalen` in `proces.yaml`:
 //!
 //! | Route | Doet |
 //! |---|---|
-//! | `POST /api/eherkenning/login` | `{kvk, persoon}` naar een sessie |
-//! | `GET /api/eherkenning/sessie` | wie is ingelogd |
-//! | `POST /api/eherkenning/logout` | sessie beeindigen |
+//! | `POST /api/kanalen/{kanaal}/login` | de velden van het kanaal (en `rol` als er langs het kanaal meer dan een rol inlogt) naar een sessie |
+//! | `GET /api/kanalen/{kanaal}/sessie` | wie langs dit kanaal is ingelogd |
+//! | `POST /api/kanalen/{kanaal}/logout` | sessie beeindigen |
+//! | `GET /api/sessie` | wie er is ingelogd, langs welk kanaal ook |
+//!
+//! Elke andere route hoort bij een routegroep; een rol noemt de groepen die
+//! ze mag gebruiken (`rollen.<rol>.routes`). Een proces met een portaal, voor
+//! een rol met routes `portaal` ([`portaal`]):
+//!
+//! | Route | Doet |
+//! |---|---|
 //! | `GET /api/formulier` | de velden van het aanvraagformulier, uit de stroom van de cel |
 //! | `POST /api/aanvraag/toets` | proefreductie in de cel, synthese, synthese per regel, engine |
 //! | `POST /api/aanvraag` | de cel legt het gram vast |
 //! | `GET /api/mogelijkheden` | wat het portaal aanbiedt volgens het beleid, per tijdvak, met trace |
 //!
-//! Een proces met de rol behandelaar (nagebootste medewerkerslogin) heeft:
+//! Met een rol met routes `loket` ([`loket`]):
 //!
 //! | Route | Doet |
 //! |---|---|
-//! | `POST /api/medewerker/login` | `{naam}` naar een sessie |
-//! | `GET /api/medewerker/sessie` | wie is ingelogd |
-//! | `POST /api/medewerker/logout` | sessie beeindigen |
+//! | `POST /api/loket/aanvraag` | `{aanvrager, ontvangen_op, external}`: een aanvraag die langs een andere weg binnenkwam, met de dag van ontvangst |
 //!
-//! en met een `behandeling`, alleen voor de behandelaar ([`behandeling`]):
+//! En met een `behandeling`, voor een rol met routes `behandeling`
+//! ([`behandeling`]):
 //!
 //! | Route | Doet |
 //! |---|---|
@@ -67,6 +74,7 @@ use crate::transport::TransportFout;
 
 pub mod behandeling;
 pub mod cel;
+pub mod loket;
 pub mod portaal;
 pub mod proces;
 pub mod sessie;

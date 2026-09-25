@@ -10,10 +10,12 @@ use axum::{Json, Router};
 use serde_json::{json, Value};
 
 use super::behandeling::{besluit_route, proefbesluit_route, werkvoorraad_route, zaak_route};
+use super::loket::loket_indienen;
 use super::portaal::{formulier_route, indienen, mogelijkheden_route, toets_route};
-use super::sessie::{login, logout, medewerker_login, medewerker_sessie, sessie};
+use super::sessie::{kanaalsessie, login, logout, sessie};
 use super::Klok;
 use crate::gram::GeladenRegeling;
+use crate::kanaal::Routes;
 use crate::proces::Proces;
 use crate::rijen::Rijen;
 use crate::sessie::Sessies;
@@ -45,15 +47,19 @@ impl ProcesState {
     }
 }
 
-/// De routes van een proces, relatief aan `/processen/<id>`.
+/// De routes van een proces, relatief aan `/processen/<id>`. Een proces met
+/// rollen heeft de routes van zijn kanalen; de routegroepen staan er als het
+/// proces ze heeft, en elke route controleert of de rol van de ingelogde
+/// gebruiker die groep mag gebruiken.
 pub fn proces_router(state: ProcesState) -> Router {
     let mut r = Router::new().route("/api/voorbeelden", get(voorbeelden_route));
-    let rollen = &state.proces.definitie.rollen;
-    if rollen.aanvrager.is_some() {
+    let d = &state.proces.definitie;
+    if !d.rollen.is_empty() {
         r = r
-            .route("/api/eherkenning/login", post(login))
-            .route("/api/eherkenning/sessie", get(sessie))
-            .route("/api/eherkenning/logout", post(logout));
+            .route("/api/kanalen/{kanaal}/login", post(login))
+            .route("/api/kanalen/{kanaal}/sessie", get(kanaalsessie))
+            .route("/api/kanalen/{kanaal}/logout", post(logout))
+            .route("/api/sessie", get(sessie));
     }
     if state.proces.portaal().is_some() {
         r = r
@@ -62,13 +68,10 @@ pub fn proces_router(state: ProcesState) -> Router {
             .route("/api/aanvraag", post(indienen))
             .route("/api/mogelijkheden", get(mogelijkheden_route));
     }
-    if rollen.behandelaar.is_some() {
-        r = r
-            .route("/api/medewerker/login", post(medewerker_login))
-            .route("/api/medewerker/sessie", get(medewerker_sessie))
-            .route("/api/medewerker/logout", post(logout));
+    if d.rollen_met(Routes::Loket).next().is_some() {
+        r = r.route("/api/loket/aanvraag", post(loket_indienen));
     }
-    if state.proces.definitie.behandeling.is_some() {
+    if d.behandeling.is_some() {
         r = r
             .route("/api/werkvoorraad", get(werkvoorraad_route))
             .route("/api/zaken/{zaakkenmerk}", get(zaak_route))
@@ -123,10 +126,19 @@ pub fn proces_beschrijving(state: &ProcesState) -> Value {
         "actor": d.actor,
         "cel": p.cel.id(),
         "portaal": p.portaal().is_some(),
-        "rollen": {
-            "aanvrager": d.rollen.aanvrager.is_some(),
-            "behandelaar": d.rollen.behandelaar.is_some(),
-        },
+        "gezag": p.gezag,
+        "kanalen": d.kanalen.iter().map(|(id, k)| (id.clone(), json!({
+            "label": k.label,
+            "uitleg": k.uitleg,
+            "velden": k.velden,
+            "eigenaar": k.eigenaar,
+        }))).collect::<serde_json::Map<String, Value>>(),
+        "rollen": d.rollen.iter().map(|(id, r)| (id.clone(), json!({
+            "kanaal": r.kanaal,
+            "routes": r.routes,
+            "label": r.label.as_deref().unwrap_or(id),
+        }))).collect::<serde_json::Map<String, Value>>(),
+        "loket": d.rollen_met(Routes::Loket).next().is_some(),
         "behandeling": d.behandeling.as_ref().map(|b| json!({
             "werkvoorraad": b.werkvoorraad.lexostatus,
             "regeling": b.besluit.regeling,

@@ -574,6 +574,7 @@ pub fn bouw_gram(
         regulation: None,
         regulation_valid_from: None,
         competent_authority: None,
+        handelende_actor: None,
         op_moment: datum::als_op_moment(&op_moment),
         op_moment_grondslag,
         vastgelegd_op: datum::als_op_moment(&indiening.vastgelegd_op),
@@ -666,7 +667,7 @@ mod tests {
     }
 
     fn intake() -> Value {
-        json!({"kanaal": "portaal", "eherkenning": {"kvk": "12345678", "persoon": "A. Tester"}})
+        json!({"kanaal": "portaal", "eherkenning": {"kvk": "12345678", "persoon": "A. Tester"}, "burger": {"nummer": null}})
     }
 
     #[test]

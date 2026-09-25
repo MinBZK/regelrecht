@@ -146,6 +146,7 @@ fn bouw(state: &CelState, v: &Vastlegverzoek) -> Result<Gram, Fout> {
         gram.regulation = b.regulation.clone();
         gram.regulation_valid_from = b.regulation_valid_from.clone();
         gram.competent_authority = b.competent_authority.clone();
+        gram.handelende_actor = b.handelende_actor.clone();
         gram.inputs = b.inputs.clone();
         gram.receipt = b.receipt.clone();
     }

@@ -98,7 +98,7 @@ async fn inloggen(app: &Router, kvk: &str) -> String {
     let (status, _, cookie) = vraag(
         app,
         "POST",
-        &format!("{INSTANTIE}/api/eherkenning/login"),
+        &format!("{INSTANTIE}/api/kanalen/eherkenning/login"),
         None,
         Some(json!({"kvk": kvk, "persoon": "A. Tester"})),
     )
@@ -130,7 +130,7 @@ async fn login_weigert_ongeldige_kvk() {
     let (status, body, _) = vraag(
         &app,
         "POST",
-        &format!("{INSTANTIE}/api/eherkenning/login"),
+        &format!("{INSTANTIE}/api/kanalen/eherkenning/login"),
         None,
         Some(json!({"kvk": "123", "persoon": "A"})),
     )
@@ -510,8 +510,22 @@ async fn processen_worden_opgesomd_met_hun_cel() {
     assert_eq!(instantie["behandeling"], Value::Null);
     assert_eq!(
         instantie["rollen"],
-        json!({"aanvrager": true, "behandelaar": false})
+        json!({
+            "aanvrager": {"kanaal": "eherkenning", "routes": ["portaal"], "label": "aanvrager"},
+            "burger": {"kanaal": "burger", "routes": ["portaal"], "label": "burger"},
+            "loket": {"kanaal": "medewerker", "routes": ["loket"], "label": "Loketmedewerker"},
+        })
     );
+    assert_eq!(instantie["loket"], json!(true));
+    assert_eq!(instantie["gezag"], Value::Null);
+    // De kanalen met hun velden: de frontend bouwt er het inlogscherm uit.
+    assert_eq!(
+        instantie["kanalen"]["burger"]["velden"][0]["controle"],
+        "elfproef"
+    );
+    assert_eq!(instantie["kanalen"]["burger"]["eigenaar"], "nummer");
+    assert_eq!(afnemer["gezag"], "Test afnemer");
+    assert_eq!(afnemer["loket"], json!(false));
 }
 
 #[tokio::test]
@@ -519,10 +533,16 @@ async fn een_cel_heeft_geen_login_of_aanvraag() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path());
     for (methode, pad) in [
-        ("POST", "/cellen/test_register/api/eherkenning/login"),
+        (
+            "POST",
+            "/cellen/test_register/api/kanalen/eherkenning/login",
+        ),
         ("POST", "/cellen/test_register/api/aanvraag/toets"),
         ("POST", "/cellen/test_register/api/aanvraag"),
-        ("POST", "/cellen/test_instantie/api/eherkenning/login"),
+        (
+            "POST",
+            "/cellen/test_instantie/api/kanalen/eherkenning/login",
+        ),
         ("GET", "/cellen/test_instantie/api/voorbeelden"),
         ("GET", "/cellen/test_afnemer/api/werkvoorraad"),
     ] {
@@ -625,7 +645,7 @@ async fn afnemer_toets(app: &Router, aanduiding: Option<&str>) -> Value {
     let (status, _, cookie) = vraag(
         app,
         "POST",
-        &format!("{AFNEMER}/api/eherkenning/login"),
+        &format!("{AFNEMER}/api/kanalen/eherkenning/login"),
         None,
         Some(json!({"kvk": "12345678", "persoon": "A. Tester"})),
     )
@@ -956,12 +976,54 @@ fn besluit_controle_bij_het_opstarten() {
         );
     };
     geval(
-        &|t: String| t.replace("  behandelaar: medewerker\n", ""),
-        "behandeling zonder rol behandelaar",
+        &|t: String| t.replace("routes: [behandeling]", "routes: [loket]"),
+        "behandeling zonder rol die het mag",
     );
     geval(
-        &|t: String| t.replace("  aanvrager: eherkenning\n", ""),
-        "portaal zonder rol aanvrager",
+        &|t: String| {
+            t.replace(
+                "  aanvrager: {kanaal: eherkenning, routes: [portaal]}\n",
+                "",
+            )
+        },
+        "portaal zonder rol die het mag",
+    );
+    geval(
+        &|t: String| {
+            t.replace(
+                "{kanaal: medewerker, routes: [behandeling]",
+                "{kanaal: balie, routes: [behandeling]",
+            )
+        },
+        "rol 'behandelaar': kanaal 'balie' staat niet onder kanalen",
+    );
+    // Het portaal-event bindt op_moment niet aan $intake: geen loket.
+    geval(
+        &|t: String| t.replace("routes: [behandeling]", "routes: [behandeling, loket]"),
+        "loket: event 'aanvraag_ontvangen' bindt op_moment niet aan $intake",
+    );
+    // Namens een gezag dat de wet niet kent, of geen gezag bij een besluit.
+    geval(
+        &|t: String| {
+            t.replace(
+                "namens: {regeling: testregeling_afnemer}",
+                "namens: {gezag: test_afnemer}",
+            )
+        },
+        "namens: geen geladen regeling noemt 'test_afnemer' als bevoegd gezag",
+    );
+    geval(
+        &|t: String| t.replace("namens: {regeling: testregeling_afnemer}\n", ""),
+        "behandeling zonder namens",
+    );
+    geval(
+        &|t: String| {
+            t.replace(
+                "namens: {regeling: testregeling_afnemer}\n",
+                "namens: {regeling: testregeling_afnemer}\nmandaten:\n  - {gezag: Test afnemer, grondslag: 'testregeling_afnemer#9'}\n",
+            )
+        },
+        "mandaat: 'Test afnemer' is het gezag waarvoor het proces zelf handelt",
     );
     geval(
         &|t: String| t.replace("lexostatus: werkvoorraad}", "lexostatus: aanvraag_inhoud}"),
@@ -1086,7 +1148,7 @@ async fn afnemer_indienen(app: &Router, kvk: &str) -> String {
     let (_, _, cookie) = vraag(
         app,
         "POST",
-        &format!("{AFNEMER}/api/eherkenning/login"),
+        &format!("{AFNEMER}/api/kanalen/eherkenning/login"),
         None,
         Some(json!({"kvk": kvk, "persoon": "A. Tester"})),
     )
@@ -1110,13 +1172,14 @@ async fn behandelaar(app: &Router) -> String {
     let (status, body, cookie) = vraag(
         app,
         "POST",
-        &format!("{AFNEMER}/api/medewerker/login"),
+        &format!("{AFNEMER}/api/kanalen/medewerker/login"),
         None,
         Some(json!({"naam": "B. Behandelaar"})),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    assert_eq!(body["naam"], "B. Behandelaar");
+    assert_eq!(body["velden"]["naam"], "B. Behandelaar");
+    assert_eq!(body["rol"], "behandelaar");
     cookie.unwrap()
 }
 
@@ -1181,7 +1244,7 @@ async fn rollen_bepalen_wie_wat_mag() {
     let (_, _, aanvrager) = vraag(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/eherkenning/login"),
+        &format!("{AFNEMER}/api/kanalen/eherkenning/login"),
         None,
         Some(json!({"kvk": "12345678", "persoon": "A"})),
     )
@@ -1191,7 +1254,7 @@ async fn rollen_bepalen_wie_wat_mag() {
         ("GET", format!("{AFNEMER}/api/werkvoorraad")),
         ("GET", format!("{AFNEMER}/api/zaken/{een}")),
         ("POST", format!("{AFNEMER}/api/zaken/{een}/proefbesluit")),
-        ("GET", format!("{AFNEMER}/api/medewerker/sessie")),
+        ("GET", format!("{AFNEMER}/api/kanalen/medewerker/sessie")),
     ] {
         let (status, body, _) = vraag(&app, methode, &pad, aanvrager, Some(json!({}))).await;
         assert_eq!(status, StatusCode::FORBIDDEN, "{methode} {pad}: {body}");
@@ -1223,25 +1286,25 @@ async fn rollen_bepalen_wie_wat_mag() {
     let (status, _, _) = vraag(
         &app,
         "GET",
-        &format!("{AFNEMER}/api/eherkenning/sessie"),
+        &format!("{AFNEMER}/api/kanalen/eherkenning/sessie"),
         Some(&b),
         None,
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
 
-    // Een lege naam is geen medewerker; een cel zonder rol behandelaar heeft
-    // geen medewerkerslogin en geen werkvoorraad.
+    // Een lege naam is geen medewerker; een proces zonder behandeling heeft
+    // geen werkvoorraad, en een kanaal dat het niet noemt bestaat niet.
     let (status, _, _) = vraag(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/medewerker/login"),
+        &format!("{AFNEMER}/api/kanalen/medewerker/login"),
         None,
         Some(json!({"naam": " "})),
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
-    for pad in ["/api/medewerker/login", "/api/werkvoorraad"] {
+    for pad in ["/api/kanalen/bestaat_niet/login", "/api/werkvoorraad"] {
         let (status, _, _) = vraag(
             &app,
             "POST",
@@ -1335,8 +1398,8 @@ async fn werkvoorraad_is_een_lijst_van_zaken_zonder_besluit() {
     assert_eq!(werkvoorraad["parameters"], json!([]));
     let (_, processen, _) = vraag(&app, "GET", "/api/processen", None, None).await;
     assert_eq!(
-        processen[0]["rollen"],
-        json!({"aanvrager": true, "behandelaar": true})
+        processen[0]["rollen"]["behandelaar"],
+        json!({"kanaal": "medewerker", "routes": ["behandeling"], "label": "Behandelaar"})
     );
     assert_eq!(processen[0]["behandeling"]["werkvoorraad"], "werkvoorraad");
 }
@@ -1659,7 +1722,7 @@ async fn een_gebied_zonder_tarief_blijft_leeg() {
     let (_, _, cookie) = vraag(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/eherkenning/login"),
+        &format!("{AFNEMER}/api/kanalen/eherkenning/login"),
         None,
         Some(json!({"kvk": "12345678", "persoon": "A. Tester"})),
     )
@@ -1736,14 +1799,16 @@ async fn besluit_nemen_legt_een_decretogram_vast() {
     assert_eq!(gram["decision_type"], "TOEKENNING");
     assert_eq!(gram["regulation"], "testregeling_afnemer");
     assert_eq!(gram["regulation_valid_from"], "2025-01-01");
-    // De testregeling noemt geen bevoegd gezag: vastleggen met een
-    // waarschuwing, en zonder een verzonnen gezag.
-    assert!(gram.get("competent_authority").is_none(), "{gram}");
-    assert_eq!(body["waarschuwingen"].as_array().unwrap().len(), 1);
-    assert!(body["waarschuwingen"][0]
-        .as_str()
-        .unwrap()
-        .contains("geen bevoegd gezag"));
+    // Drie assen: wie vastlegt (de actor van het proces), wie de wet bevoegd
+    // maakt (letterlijk uit de regeling), en wie handelde, namens dat gezag.
+    assert_eq!(gram["recording_actor"], "test_afnemer");
+    assert_eq!(gram["competent_authority"], "Test afnemer");
+    assert_eq!(
+        gram["handelende_actor"],
+        json!({"rol": "behandelaar", "kanaal": "medewerker",
+               "identiteit": {"naam": "B. Behandelaar"}, "namens": "Test afnemer"})
+    );
+    assert_eq!(body["waarschuwingen"], json!([]), "{body}");
 
     // De velden zijn de uitkomsten van het artikel.
     assert_eq!(
@@ -1836,7 +1901,7 @@ async fn besluit_nemen_legt_een_decretogram_vast() {
     let (_, _, aanvrager) = vraag(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/eherkenning/login"),
+        &format!("{AFNEMER}/api/kanalen/eherkenning/login"),
         None,
         Some(json!({"kvk": "12345678", "persoon": "A"})),
     )
@@ -1900,31 +1965,36 @@ async fn besluit_nemen_legt_een_decretogram_vast() {
     );
 }
 
-#[tokio::test]
-async fn een_ander_bevoegd_gezag_weigert_het_besluit() {
-    // De regeling wijst een ander gezag aan dan de actor van het proces:
-    // geen gram.
+/// Een opstelling waarin artikel 3 (de beschikking) een ander gezag noemt
+/// dan het gezag waarvoor het proces handelt ('Test afnemer'), met een
+/// aanpassing aan het proces.
+fn met_ander_gezag(
+    proces: &dyn Fn(String) -> String,
+) -> (tempfile::TempDir, tempfile::TempDir, Router) {
     let cellen = eigen_opstelling(
         &[("afnemer", &zo), ("register", &zo), ("gebieden", &zo)],
-        &[("afnemer", &zo)],
+        &[("afnemer", proces)],
     );
-    let doel = cellen.path().join("regulation/testregeling_afnemer");
-    std::fs::create_dir_all(&doel).unwrap();
-    let tekst =
-        std::fs::read_to_string(fixtures().join("regulation/testregeling_afnemer/2025-01-01.yaml"))
-            .unwrap();
-    // Alleen artikel 3 is een BESCHIKKING; daar komt het gezag bij te staan.
-    let met_gezag = tekst.replace(
-        "    machine_readable:\n      execution:\n        produces:\n          legal_character: BESCHIKKING",
-        "    machine_readable:\n      competent_authority:\n        name: Een andere instantie\n      execution:\n        produces:\n          legal_character: BESCHIKKING",
-    );
-    assert_ne!(met_gezag, tekst, "het gezag is niet in de regeling gezet");
-    std::fs::write(doel.join("2025-01-01.yaml"), met_gezag).unwrap();
-    for naam in ["testregeling_register", "testregeling_awb"] {
-        let van = fixtures().join(format!("regulation/{naam}/2025-01-01.yaml"));
-        let naar = cellen.path().join(format!("regulation/{naam}"));
+    for e in std::fs::read_dir(fixtures().join("regulation")).unwrap() {
+        let van = e.unwrap().path();
+        let naar = cellen
+            .path()
+            .join("regulation")
+            .join(van.file_name().unwrap());
         std::fs::create_dir_all(&naar).unwrap();
-        std::fs::copy(van, naar.join("2025-01-01.yaml")).unwrap();
+        let tekst = std::fs::read_to_string(van.join("2025-01-01.yaml")).unwrap();
+        let tekst = if van.ends_with("testregeling_afnemer") {
+            // Alleen artikel 3 is een BESCHIKKING; daar komt het gezag bij.
+            let met_gezag = tekst.replace(
+                "    machine_readable:\n      execution:\n        produces:\n          legal_character: BESCHIKKING",
+                "    machine_readable:\n      competent_authority:\n        name: Een andere instantie\n      execution:\n        produces:\n          legal_character: BESCHIKKING",
+            );
+            assert_ne!(met_gezag, tekst, "het gezag is niet in de regeling gezet");
+            met_gezag
+        } else {
+            tekst
+        };
+        std::fs::write(naar.join("2025-01-01.yaml"), tekst).unwrap();
     }
     let data = tempfile::tempdir().unwrap();
     let config = Config {
@@ -1935,6 +2005,15 @@ async fn een_ander_bevoegd_gezag_weigert_het_besluit() {
         port: 0,
     };
     let app = Runtime::laad(&config, klok()).unwrap().router;
+    (cellen, data, app)
+}
+
+#[tokio::test]
+async fn een_ander_bevoegd_gezag_weigert_het_besluit() {
+    // De wet wijst een ander gezag aan dan dat waarvoor het proces handelt,
+    // en het proces heeft geen mandaat: geen gram. Namen worden letterlijk
+    // vergeleken, niet genormaliseerd.
+    let (_cellen, data, app) = met_ander_gezag(&zo);
     let zaak = afnemer_indienen(&app, "12345678").await;
     let b = behandelaar(&app).await;
     let (status, f, _) = vraag(
@@ -1950,12 +2029,51 @@ async fn een_ander_bevoegd_gezag_weigert_het_besluit() {
         f["fout"]
             .as_str()
             .unwrap()
-            .contains("'Een andere instantie' aan als bevoegd gezag"),
+            .contains("de wet wijst 'Een andere instantie' aan als bevoegd gezag, en het proces handelt namens 'Test afnemer' zonder mandaat"),
         "{f}"
     );
     let kroniek =
         std::fs::read_to_string(data.path().join("test_afnemer/test_afnemer.jsonl")).unwrap();
     assert_eq!(kroniek.lines().count(), 1, "alleen de aanvraag");
+}
+
+/// Met een mandaat van dat gezag (Awb 10:1) legt de cel het besluit wel vast:
+/// `competent_authority` is het gezag van de wet, `recording_actor` de actor
+/// van het proces, en de handelende actor noemt de behandelaar, namens wie
+/// en op welk mandaat.
+#[tokio::test]
+async fn een_mandaat_laat_besluiten_namens_een_ander_gezag() {
+    let met_mandaat = |t: String| {
+        t.replace(
+            "namens: {regeling: testregeling_afnemer}\n",
+            "namens: {regeling: testregeling_afnemer}\nmandaten:\n  - {gezag: Een andere instantie, grondslag: 'testregeling_afnemer#7'}\n",
+        )
+    };
+    let (_cellen, _data, app) = met_ander_gezag(&met_mandaat);
+    let zaak = afnemer_indienen(&app, "12345678").await;
+    let b = behandelaar(&app).await;
+    let (status, body, _) = vraag(
+        &app,
+        "POST",
+        &format!("{AFNEMER}/api/zaken/{zaak}/besluit"),
+        Some(&b),
+        Some(oordelen()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let g = &body["gram"];
+    assert_eq!(g["recording_actor"], "test_afnemer");
+    assert_eq!(g["competent_authority"], "Een andere instantie");
+    assert_eq!(
+        g["handelende_actor"],
+        json!({
+            "rol": "behandelaar",
+            "kanaal": "medewerker",
+            "identiteit": {"naam": "B. Behandelaar"},
+            "namens": "Een andere instantie",
+            "mandaat": "testregeling_afnemer#7",
+        })
+    );
 }
 
 // --- Voorbeelden per handeling ---
@@ -1976,8 +2094,8 @@ async fn voorbeelden_zonder_login() {
     assert_eq!(
         body["inloggen"],
         json!([
-            {"label": "voorbeeld-login", "kvk": "12345678", "persoon": "A. Tester"},
-            {"label": "voorbeeld-login-ander", "kvk": "87654321", "persoon": "B. Tester"},
+            {"label": "voorbeeld-login", "kanaal": "eherkenning", "velden": {"kvk": "12345678", "persoon": "A. Tester"}},
+            {"label": "voorbeeld-login-ander", "kanaal": "eherkenning", "velden": {"kvk": "87654321", "persoon": "B. Tester"}},
         ])
     );
     assert_eq!(
@@ -2017,9 +2135,9 @@ async fn het_aanvraagvoorbeeld_is_in_te_dienen() {
     let (status, _, cookie) = vraag(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/eherkenning/login"),
+        &format!("{AFNEMER}/api/kanalen/eherkenning/login"),
         None,
-        Some(json!({"kvk": v["inloggen"][0]["kvk"], "persoon": v["inloggen"][0]["persoon"]})),
+        Some(v["inloggen"][0]["velden"].clone()),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
@@ -2068,7 +2186,7 @@ fn verzoek(actor: &str) -> Value {
         "actor": actor,
         "stroom": "test_aanvragen",
         "event": "aanvraag_ontvangen",
-        "intake": {"kanaal": "portaal", "eherkenning": {"kvk": "12345678", "persoon": "A. Tester"}},
+        "intake": {"kanaal": "portaal", "eherkenning": {"kvk": "12345678", "persoon": "A. Tester"}, "burger": {"nummer": null}},
         "external": volledig()["external"],
     })
 }
@@ -2171,7 +2289,7 @@ async fn een_proefreductie_reduceert_de_kroniek_met_het_concept() {
         "actor": "test_afnemer",
         "stroom": "test_afnemer_aanvragen",
         "event": "aanvraag_ontvangen",
-        "intake": {"kanaal": "portaal", "eherkenning": {"kvk": "87654321", "persoon": "B. Tester"}},
+        "intake": {"kanaal": "portaal", "eherkenning": {"kvk": "87654321", "persoon": "B. Tester"}, "burger": {"nummer": null}},
         "external": afnemer_concept(Some("VOORBEELD"))["external"],
     });
     let (status, body) = als_runtime(
@@ -2299,7 +2417,7 @@ async fn het_aanbod_draait_per_gekozen_tijdvak() {
     let (_, _, cookie) = vraag(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/eherkenning/login"),
+        &format!("{AFNEMER}/api/kanalen/eherkenning/login"),
         None,
         Some(json!({"kvk": "12345678", "persoon": "A. Tester"})),
     )
@@ -2560,7 +2678,8 @@ async fn een_eerdere_ontvangst_is_de_aanvraagdatum() {
     let app = rt.router.clone();
     let mut v = verzoek("test_instantie");
     v["intake"] = json!({"kanaal": "loket", "ontvangen_op": "2025-03-05",
-                         "eherkenning": {"kvk": "12345678", "persoon": "A. Tester"}});
+                         "eherkenning": {"kvk": "12345678", "persoon": "A. Tester"},
+                         "burger": {"nummer": null}});
     let (status, body) = als_runtime(&rt, "POST", &format!("{INSTANTIE_CEL}/api/grammen"), v).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
     let g = &body["gram"];
@@ -2715,4 +2834,295 @@ async fn een_oude_kroniek_zonder_vastgelegd_op_laadt() {
     assert_eq!(status, StatusCode::OK, "{k}");
     assert_eq!(k[0]["gram"]["vastgelegd_op"], "2025-03-01T09:00:00+01:00");
     schema::valideer(Soort::Gram, &k[0]["gram"]).unwrap();
+}
+
+// --- Kanalen en rollen als configuratie ---
+
+/// Een tweede kanaal van hetzelfde portaal: een burger logt in met een
+/// nummer van negen cijfers dat de elfproef doorstaat. Zijn nummer komt onder
+/// het intake-pad van zijn kanaal in het gram; wat het andere kanaal levert,
+/// blijft leeg.
+#[tokio::test]
+async fn een_tweede_kanaal_met_de_elfproef() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path());
+    let login = format!("{INSTANTIE}/api/kanalen/burger/login");
+    for fout in ["123456789", "12345678", "1234567890"] {
+        let (status, body, _) =
+            vraag(&app, "POST", &login, None, Some(json!({"nummer": fout}))).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{fout}: {body}");
+        assert_eq!(body["fout"], "dit is geen geldig burgernummer");
+    }
+    let (status, sessie, cookie) = vraag(
+        &app,
+        "POST",
+        &login,
+        None,
+        Some(json!({"nummer": "123456782"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{sessie}");
+    assert_eq!(
+        sessie,
+        json!({"rol": "burger", "kanaal": "burger", "velden": {"nummer": "123456782"}})
+    );
+    let cookie = cookie.unwrap();
+    // De sessie is van dit kanaal, niet van het andere.
+    let (status, _, _) = vraag(
+        &app,
+        "GET",
+        &format!("{INSTANTIE}/api/kanalen/eherkenning/sessie"),
+        Some(&cookie),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, s, _) = vraag(
+        &app,
+        "GET",
+        &format!("{INSTANTIE}/api/sessie"),
+        Some(&cookie),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(s["kanaal"], "burger");
+    // Het portaal is van beide kanalen.
+    let (status, body, _) = vraag(
+        &app,
+        "POST",
+        &format!("{INSTANTIE}/api/aanvraag"),
+        Some(&cookie),
+        Some(volledig()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let o = &body["gram"]["fields"]["kern"]["ondertekend_via"];
+    assert_eq!(
+        o,
+        &json!({"kanaal": "portaal", "kvk_nummer": null, "gemachtigde": null, "burgernummer": "123456782"})
+    );
+    // Een onbekend kanaal bestaat niet.
+    let (status, _, _) = vraag(
+        &app,
+        "POST",
+        &format!("{INSTANTIE}/api/kanalen/digid/login"),
+        None,
+        Some(json!({})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+/// Een rol noemt haar kanaal en haar routes. Langs het medewerkerskanaal
+/// van de instantie logt alleen de rol loket in; die mag het loket en niet
+/// het portaal, en de aanvrager het portaal en niet het loket.
+#[tokio::test]
+async fn een_rol_mag_alleen_haar_routes() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path());
+    let medewerker = format!("{INSTANTIE}/api/kanalen/medewerker/login");
+    let (status, body, _) = vraag(
+        &app,
+        "POST",
+        &medewerker,
+        None,
+        Some(json!({"naam": "L. Loket", "rol": "aanvrager"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    let (status, sessie, loket) = vraag(
+        &app,
+        "POST",
+        &medewerker,
+        None,
+        Some(json!({"naam": "L. Loket"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{sessie}");
+    assert_eq!(sessie["rol"], "loket");
+    let loket = loket.unwrap();
+    let (status, body, _) = vraag(
+        &app,
+        "POST",
+        &format!("{INSTANTIE}/api/aanvraag"),
+        Some(&loket),
+        Some(volledig()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    assert!(
+        body["fout"]
+            .as_str()
+            .unwrap()
+            .contains("alleen voor de rol aanvrager of burger"),
+        "{body}"
+    );
+    let aanvrager = inloggen(&app, "12345678").await;
+    let (status, _, _) = vraag(
+        &app,
+        "POST",
+        &format!("{INSTANTIE}/api/loket/aanvraag"),
+        Some(&aanvrager),
+        Some(json!({})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let (status, _, _) = vraag(
+        &app,
+        "POST",
+        &format!("{INSTANTIE}/api/loket/aanvraag"),
+        Some(&aanvrager),
+        Some(loketinvoer("2025-03-05")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    // Het afnemerproces heeft geen loket.
+    let (status, _, _) = vraag(
+        &app,
+        "POST",
+        &format!("{AFNEMER}/api/loket/aanvraag"),
+        None,
+        Some(loketinvoer("2025-03-05")),
+    )
+    .await;
+    assert!(status == StatusCode::NOT_FOUND || status == StatusCode::METHOD_NOT_ALLOWED);
+}
+
+fn loketinvoer(ontvangen_op: &str) -> Value {
+    json!({
+        "aanvrager": {"kanaal": "eherkenning", "kvk": "12345678", "persoon": "A. Tester"},
+        "ontvangen_op": ontvangen_op,
+        "external": volledig()["external"],
+    })
+}
+
+async fn loket(app: &Router) -> String {
+    let (status, body, cookie) = vraag(
+        app,
+        "POST",
+        &format!("{INSTANTIE}/api/kanalen/medewerker/login"),
+        None,
+        Some(json!({"naam": "L. Loket"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    cookie.unwrap()
+}
+
+/// Het loket voert een aanvraag in die langs een andere weg binnenkwam,
+/// namens de aanvrager, met de dag van ontvangst (Awb 4:1, 4:13). Die dag is
+/// het `op_moment`, het invoeren `vastgelegd_op`. Een dag na vandaag weigert
+/// het loket; de aanvrager duidt het loket aan met de velden van een
+/// portaalkanaal.
+#[tokio::test]
+async fn het_loket_voert_een_eerdere_ontvangst_in() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path());
+    let l = loket(&app).await;
+    let pad = format!("{INSTANTIE}/api/loket/aanvraag");
+    let (status, body, _) = vraag(
+        &app,
+        "POST",
+        &pad,
+        Some(&l),
+        Some(loketinvoer("2025-03-05")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let g = &body["gram"];
+    assert_eq!(g["op_moment"], "2025-03-05T00:00:00+01:00");
+    assert_eq!(g["vastgelegd_op"], "2025-03-12T10:14:03+01:00");
+    assert_eq!(
+        g["fields"]["kern"]["ondertekend_via"],
+        json!({"kanaal": "loket", "kvk_nummer": "12345678", "gemachtigde": "A. Tester", "burgernummer": null})
+    );
+    // De aanvrager volgt zijn papieren aanvraag: het nummer is van hem.
+    let zaak = g["zaakkenmerk"].as_str().unwrap();
+    let (status, l2, _) = vraag(
+        &app,
+        "GET",
+        &format!("{INSTANTIE_CEL}/api/lexostatus/aanvraag_inhoud?zaakkenmerk={zaak}"),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(l2["parameters"]["aanvraagdatum"], "2025-03-05");
+
+    for (invoer, fout) in [
+        (loketinvoer("2025-03-13"), "ligt na vandaag"),
+        (loketinvoer("vorige week"), "ongeldig ontvangen_op"),
+        (
+            json!({"aanvrager": {"kvk": "12345678", "persoon": "A"}, "ontvangen_op": "2025-03-05"}),
+            "aanvrager: noem het kanaal",
+        ),
+        (
+            json!({"aanvrager": {"kanaal": "eherkenning", "kvk": "1", "persoon": "A"}, "ontvangen_op": "2025-03-05"}),
+            "aanvrager: een organisatienummer heeft acht cijfers",
+        ),
+    ] {
+        let (status, body, _) = vraag(&app, "POST", &pad, Some(&l), Some(invoer)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert!(
+            body["fout"].as_str().unwrap().contains(fout),
+            "{fout}: {body}"
+        );
+    }
+}
+
+/// Noemt het beleid een openstelling van het tijdvak
+/// (`aanbod.openstelling`), dan voert het loket geen ontvangst in van vóór
+/// die dag. Het tijdvak komt uit het veld van de aanvraag.
+#[tokio::test]
+async fn het_loket_weigert_een_ontvangst_voor_de_openstelling() {
+    let met_aanbod = |t: String| {
+        t.replace(
+            "  formulier:",
+            "  aanbod:\n    regeling: testregeling_aanvraag\n    uitkomst: aanvraag_aangeboden\n    tijdvakken: aangeboden_jaren\n    openstelling: openstelling_aanvraagjaar\n  formulier:",
+        )
+    };
+    let opstelling = eigen_opstelling(&[("instantie", &zo)], &[("instantie", &met_aanbod)]);
+    let data = tempfile::tempdir().unwrap();
+    let app = runtime_op(opstelling.path(), data.path()).unwrap().router;
+    let l = loket(&app).await;
+    let pad = format!("{INSTANTIE}/api/loket/aanvraag");
+    // Aanvraagjaar 2025 is open vanaf 1 januari 2025.
+    let (status, body, _) = vraag(
+        &app,
+        "POST",
+        &pad,
+        Some(&l),
+        Some(loketinvoer("2024-12-20")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert!(
+        body["fout"]
+            .as_str()
+            .unwrap()
+            .contains("vóór de openstelling van het tijdvak (2025-01-01)"),
+        "{body}"
+    );
+    let (status, body, _) = vraag(
+        &app,
+        "POST",
+        &pad,
+        Some(&l),
+        Some(loketinvoer("2025-01-02")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    // Zonder tijdvak is de openstelling niet te toetsen.
+    let mut zonder = loketinvoer("2025-01-02");
+    zonder["external"]["aanvraagjaar"] = Value::Null;
+    let (status, body, _) = vraag(&app, "POST", &pad, Some(&l), Some(zonder)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert!(
+        body["fout"]
+            .as_str()
+            .unwrap()
+            .contains("het tijdvak (aanvraagjaar) ontbreekt"),
+        "{body}"
+    );
 }

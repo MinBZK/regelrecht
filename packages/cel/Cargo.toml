@@ -27,6 +27,7 @@ serde_yaml_ng.workspace = true
 jsonschema.workspace = true
 sha2.workspace = true
 hex = "0.4"
+regex.workspace = true
 chrono.workspace = true
 chrono-tz.workspace = true
 uuid = { workspace = true, features = ["v4"] }

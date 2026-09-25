@@ -572,6 +572,7 @@ mod tests {
             regulation: None,
             regulation_valid_from: None,
             competent_authority: None,
+            handelende_actor: None,
             op_moment: moment.into(),
             op_moment_grondslag: None,
             vastgelegd_op: moment.into(),

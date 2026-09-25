@@ -435,6 +435,7 @@ mod tests {
             regulation: None,
             regulation_valid_from: None,
             competent_authority: None,
+            handelende_actor: None,
             op_moment: "2025-03-12T10:14:03+01:00".into(),
             op_moment_grondslag: None,
             vastgelegd_op: "2025-03-12T10:14:05+01:00".into(),

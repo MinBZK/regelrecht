@@ -15,6 +15,8 @@
 # en welke jaren de afnemer aanbiedt. Artikel 5 leidt de peildatum van het
 # tarief af: de wet zegt het, niet de configuratie. Artikel 6 zegt wanneer een
 # aanvraagjaar begint (het peil van het aanbod voor een komend jaar).
+# Artikel 7 is de grondslag van een mandaat: de afnemer mag de besluiten van
+# artikel 3 ook nemen namens een ander gezag, als de wet dat aanwijst.
 $schema: >-
   https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
 $id: testregeling_afnemer
@@ -24,6 +26,8 @@ bwb_id: BWBR9999953
 publication_date: '2025-01-01'
 valid_from: '2025-01-01'
 url: https://example.com/testregeling_afnemer
+competent_authority:
+  name: Test afnemer
 
 articles:
   - number: '1'
@@ -356,3 +360,8 @@ articles:
               year: $aanvraagjaar
               month: 1
               day: 1
+  - number: '7'
+    url: https://example.com/testregeling_afnemer/7
+    text: >-
+      Wijst deze regeling voor het besluit van artikel 3 een ander gezag aan,
+      dan kan de afnemer dat besluit in mandaat namens dat gezag nemen.

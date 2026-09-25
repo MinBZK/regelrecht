@@ -295,6 +295,7 @@ articles:
             termijn: termijn.then(|| "termijn".into()),
             tijdvakken: None,
             begin: None,
+            openstelling: None,
         }
     }
 

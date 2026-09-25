@@ -6,10 +6,31 @@
 # proefbesluit uit. Het besluitformulier volgt uit de regeling: de parameters
 # van het besluit met origin OORDEEL.
 id: test_afnemer_proces
+# De actor legt vast (recording_actor); het proces handelt namens het
+# bevoegd gezag van de testregeling ('Test afnemer').
 actor: test_afnemer
+namens: {regeling: testregeling_afnemer}
+# Twee nagebootste kanalen: een organisatie logt in met een nummer van acht
+# cijfers en een naam, een medewerker met een naam.
+kanalen:
+  eherkenning:
+    label: Inloggen namens een organisatie
+    uitleg: Vul een organisatienummer van acht cijfers in en uw naam.
+    velden:
+      - naam: kvk
+        label: Organisatienummer
+        patroon: '[0-9]{8}'
+        melding: een organisatienummer heeft acht cijfers
+        numeriek: true
+      - {naam: persoon, label: Uw naam}
+    eigenaar: kvk
+  medewerker:
+    label: Inloggen als medewerker
+    velden:
+      - {naam: naam, label: Naam}
 rollen:
-  aanvrager: eherkenning
-  behandelaar: medewerker
+  aanvrager: {kanaal: eherkenning, routes: [portaal]}
+  behandelaar: {kanaal: medewerker, routes: [behandeling], label: Behandelaar}
 portaal:
   cel: test_afnemer
   stroom: test_afnemer_aanvragen

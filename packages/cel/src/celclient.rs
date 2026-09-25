@@ -57,6 +57,8 @@ pub struct Besluitvelden {
     #[serde(default)]
     pub competent_authority: Option<String>,
     #[serde(default)]
+    pub handelende_actor: Option<crate::gram::HandelendeActor>,
+    #[serde(default)]
     pub inputs: BTreeMap<String, Invoer>,
     #[serde(default)]
     pub receipt: Option<Receipt>,

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.1.0/proces.json",
   "title": "Procesdefinitie (proces.yaml) v0.1.0",
-  "description": "Een proces is een map met configuratie; proces.yaml zegt wie er handelt (actor) en hoe: wie er inlogt (rollen), of er een portaal is dat een indiening in een cel laat vastleggen, van welke cellen het lexostatussen samenvoegt (synthese), en of een behandelaar een werkvoorraad en een besluit heeft (behandeling). Een proces legt zelf niets vast en reduceert zelf niets: dat doet een cel, op verzoek van het proces. Paden zijn relatief aan de map van proces.yaml.",
+  "description": "Een proces is een map met configuratie; proces.yaml zegt wie er handelt (actor) en hoe: namens welk gezag (namens, mandaten), langs welke kanalen en in welke rollen er wordt ingelogd (kanalen, rollen), of er een portaal is dat een indiening in een cel laat vastleggen, van welke cellen het lexostatussen samenvoegt (synthese), en of een behandelaar een werkvoorraad en een besluit heeft (behandeling). Een proces legt zelf niets vast en reduceert zelf niets: dat doet een cel, op verzoek van het proces. Paden zijn relatief aan de map van proces.yaml.",
   "type": "object",
   "required": [
     "id",
@@ -22,7 +22,7 @@
     },
     "actor": {
       "$ref": "#/definitions/identifier",
-      "description": "De actor die handelt. Een cel legt voor het proces alleen vast in een stroom met deze recording_actor, en het besluit is de beschikking waarvoor deze actor het bevoegd gezag is."
+      "description": "De actor die vastlegt (recording_actor): een cel legt voor het proces alleen vast in een stroom met deze recording_actor. Namens welk bevoegd gezag het proces handelt, zegt namens, niet de actor."
     },
     "herkomst": {
       "enum": [
@@ -31,6 +31,42 @@
       ],
       "default": "ruim",
       "description": "Hoe streng de controle op de herkomst (RFC-043) is bij het opstarten. ruim: een parameter zonder origin is een waarschuwing. streng: een parameter zonder origin is een fout, want dan is niet na te gaan wie hem levert."
+    },
+    "namens": {
+      "$ref": "#/definitions/namens"
+    },
+    "mandaten": {
+      "type": "array",
+      "description": "Gezagen waarvoor het proces in mandaat handelt (Awb 10:1 e.v.). Wijst de wet bij een besluit een ander gezag aan dan namens, dan legt de cel het besluit alleen vast als hier een mandaat van dat gezag staat; het gram noemt dan de grondslag bij de handelende actor.",
+      "items": {
+        "type": "object",
+        "required": [
+          "gezag",
+          "grondslag"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "gezag": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Het mandaatgevende gezag, zoals een geladen regeling het in competent_authority noemt."
+          },
+          "grondslag": {
+            "$ref": "#/definitions/grondslag",
+            "description": "Waar het mandaat op rust: <regeling>#<artikel>, optioneel met ' lid <n>'. Het artikel moet geladen zijn."
+          }
+        }
+      }
+    },
+    "kanalen": {
+      "type": "object",
+      "description": "Langs welke kanalen iemand bij het proces inlogt, per id. Elk kanaal is nagebootst: identificatievelden met een vormcontrole, geen gecertificeerde login en geen register. De routes zijn /api/kanalen/<id>/login, /sessie en /logout.",
+      "propertyNames": {
+        "$ref": "#/definitions/identifier"
+      },
+      "additionalProperties": {
+        "$ref": "#/definitions/kanaal"
+      }
     },
     "rollen": {
       "$ref": "#/definitions/rollen"
@@ -56,7 +92,7 @@
         "inloggen": {
           "type": "array",
           "uniqueItems": true,
-          "description": "Logins voor de nep-eHerkenning, elk een object met kvk en persoon. Het label is de bestandsnaam zonder extensie.",
+          "description": "Logins, elk een object met de velden van een kanaal, en optioneel kanaal (zonder: het enige kanaal van het portaal) en rol. Het label is de bestandsnaam zonder extensie.",
           "items": {
             "type": "string",
             "minLength": 1
@@ -156,6 +192,10 @@
             "begin": {
               "$ref": "#/definitions/identifier",
               "description": "Een uitkomst van dezelfde regeling: de eerste dag van een tijdvak, uitgerekend met alleen het gekozen tijdvak als parameter. Het aanbod voor een tijdvak dat nog moet beginnen, laat de bronnen peilen op die dag (peilmoment); zonder begin peilen ze op vandaag. Vraagt tijdvakken."
+            },
+            "openstelling": {
+              "$ref": "#/definitions/identifier",
+              "description": "Een uitkomst van dezelfde regeling: de eerste dag waarop een aanvraag voor een tijdvak kan binnenkomen, uitgerekend met alleen het tijdvak als parameter. Het loket voert geen ontvangst in van vóór die dag. Vraagt tijdvakken."
             }
           }
         },
@@ -325,19 +365,44 @@
     },
     "rollen": {
       "type": "object",
-      "description": "Wie er in het proces inlogt, en hoe. aanvrager: eherkenning (nagebootst) voor het portaal; behandelaar: medewerker (een nagebootste login van een medewerker, alleen een naam) voor de werkvoorraad, de zaak en het besluit. Zonder rollen is er geen login.",
+      "description": "Wie er in het proces inlogt, per rol: langs welk kanaal, en welke routegroepen de rol mag gebruiken (portaal: formulier, toets, aanbod en indienen; behandeling: werkvoorraad, zaak, proefbesluit en besluit; loket: een aanvraag invoeren die langs een andere weg binnenkwam). Zonder rollen is er geen login.",
       "minProperties": 1,
-      "additionalProperties": false,
-      "properties": {
-        "aanvrager": {
-          "enum": [
-            "eherkenning"
-          ]
-        },
-        "behandelaar": {
-          "enum": [
-            "medewerker"
-          ]
+      "propertyNames": {
+        "$ref": "#/definitions/identifier"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "kanaal",
+          "routes"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "kanaal": {
+            "$ref": "#/definitions/identifier",
+            "description": "Een kanaal uit kanalen."
+          },
+          "routes": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "portaal",
+                "behandeling",
+                "loket"
+              ]
+            }
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Hoe de frontend de rol noemt; zonder: de id."
+          },
+          "grondslag": {
+            "$ref": "#/definitions/grondslag",
+            "description": "Waarom deze rol dit mag, zoals een mandaat- of dienstverleningsregeling. Een besluit draagt haar bij de handelende actor."
+          }
         }
       }
     },
@@ -576,6 +641,109 @@
           }
         }
       }
+    },
+    "kanaal": {
+      "type": "object",
+      "required": [
+        "label",
+        "velden"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "description": "De naam van het kanaal op het inlogscherm."
+        },
+        "uitleg": {
+          "type": "string",
+          "description": "Uitleg op het inlogscherm. De frontend zegt er zelf bij dat de login nagebootst is."
+        },
+        "velden": {
+          "type": "array",
+          "minItems": 1,
+          "description": "De identificatievelden, in de volgorde van het inlogscherm.",
+          "items": {
+            "type": "object",
+            "required": [
+              "naam",
+              "label"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "naam": {
+                "$ref": "#/definitions/identifier"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "patroon": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Een reguliere expressie waaraan de hele waarde voldoet; zonder: niet leeg."
+              },
+              "controle": {
+                "enum": [
+                  "elfproef"
+                ],
+                "description": "elfproef: negen cijfers, gewogen 9 tot en met 2 en -1, de som deelbaar door 11 (zoals een burgerservicenummer)."
+              },
+              "melding": {
+                "type": "string",
+                "minLength": 1,
+                "description": "De melding bij een waarde die niet voldoet."
+              },
+              "numeriek": {
+                "type": "boolean",
+                "description": "De frontend toont een numeriek toetsenbord."
+              }
+            }
+          }
+        },
+        "eigenaar": {
+          "$ref": "#/definitions/identifier",
+          "description": "Het veld dat de eigenaar van een zaak aanwijst: wie een zaak volgt, moet een gram in die zaak hebben met zijn waarde van dit veld."
+        },
+        "intake": {
+          "$ref": "#/definitions/identifier",
+          "description": "Het pad onder $intake waaronder de velden bij de cel aankomen; zonder: de id van het kanaal."
+        }
+      }
+    },
+    "namens": {
+      "description": "Het bevoegd gezag waarvoor het proces handelt: de naam zoals een regeling haar in competent_authority noemt, of een regeling waarvan het het bevoegd gezag is. De runtime controleert bij het opstarten dat het gezag in een geladen regeling voorkomt, zoekt er het besluit mee als behandeling.besluit geen regeling noemt, en toetst het bij het besluit aan het gezag van de wet. Verplicht met een behandeling.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "gezag"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "gezag": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "regeling"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "regeling": {
+              "$ref": "#/definitions/identifier"
+            }
+          }
+        }
+      ]
+    },
+    "grondslag": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*#[A-Za-z0-9]([A-Za-z0-9:._ -]*[A-Za-z0-9])?( lid [0-9]+[a-z]?)?$"
     }
   }
 }

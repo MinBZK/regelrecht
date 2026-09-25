@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use serde_json::Value;
 
+use crate::kanaal::{KanaalDefinitie, RolDefinitie, Routes};
 use crate::laden;
 use crate::schema::Soort;
 
@@ -89,9 +90,22 @@ pub struct ProcesDefinitie {
     /// Hoe streng de controle op de herkomst is (zie [`crate::origin`]).
     #[serde(default)]
     pub herkomst: Herkomstcontrole,
-    /// Wie er inlogt, en hoe. Zonder rollen is er geen login.
+    /// Namens welk bevoegd gezag het proces handelt (zie [`crate::gezag`]).
+    /// Nodig voor een besluit; zonder telt geen uitvoeringsbeleid als dat van
+    /// de actor.
     #[serde(default)]
-    pub rollen: Rollen,
+    pub namens: Option<Namens>,
+    /// Gezagen waarvoor het proces in mandaat handelt (Awb 10:1), elk met
+    /// een grondslag.
+    #[serde(default)]
+    pub mandaten: Vec<Mandaat>,
+    /// Langs welke kanalen iemand inlogt (zie [`crate::kanaal`]).
+    #[serde(default)]
+    pub kanalen: BTreeMap<String, KanaalDefinitie>,
+    /// Wie er inlogt, langs welk kanaal, en welke routes die rol mag. Zonder
+    /// rollen is er geen login.
+    #[serde(default)]
+    pub rollen: BTreeMap<String, RolDefinitie>,
     #[serde(default)]
     pub portaal: Option<Portaal>,
     #[serde(default)]
@@ -119,7 +133,8 @@ pub enum Herkomstcontrole {
 /// map van het proces (zie [`crate::voorbeelden`]).
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct VoorbeeldenDefinitie {
-    /// Logins voor de nep-eHerkenning, elk `{kvk, persoon}`.
+    /// Logins, elk een object met de velden van een kanaal en optioneel
+    /// `kanaal` en `rol`.
     #[serde(default)]
     pub inloggen: Vec<String>,
     /// Een aanvraag: `{external: {...}}`.
@@ -130,33 +145,22 @@ pub struct VoorbeeldenDefinitie {
     pub besluit: Option<String>,
 }
 
-/// De rollen van een proces, elk met een (nagebootste) login.
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct Rollen {
-    /// Wie via het portaal indient.
-    #[serde(default)]
-    pub aanvrager: Option<AanvragerLogin>,
-    /// Wie de werkvoorraad, de zaken en het besluit ziet.
-    #[serde(default)]
-    pub behandelaar: Option<BehandelaarLogin>,
+/// Namens welk bevoegd gezag het proces handelt: een naam zoals een
+/// regeling hem in `competent_authority` noemt, of een regeling waarvan het
+/// bevoegd gezag het is.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum Namens {
+    Gezag { gezag: String },
+    Regeling { regeling: String },
 }
 
-impl Rollen {
-    pub fn is_leeg(&self) -> bool {
-        self.aanvrager.is_none() && self.behandelaar.is_none()
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum AanvragerLogin {
-    Eherkenning,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum BehandelaarLogin {
-    Medewerker,
+/// Een mandaat (Awb 10:1): het proces handelt ook namens dit gezag, op grond
+/// van `grondslag` (`<regeling>#<artikel>`).
+#[derive(Debug, Clone, Deserialize, serde::Serialize, PartialEq, Eq)]
+pub struct Mandaat {
+    pub gezag: String,
+    pub grondslag: String,
 }
 
 /// Wat de behandelaar in het proces doet: een werkvoorraad en een besluit.
@@ -403,6 +407,11 @@ pub struct Aanbod {
     /// moet beginnen, peilt de registers op die dag; zonder op vandaag.
     #[serde(default)]
     pub begin: Option<String>,
+    /// Een uitkomst van dezelfde regeling: de eerste dag waarop een aanvraag
+    /// voor een tijdvak kan binnenkomen, met het tijdvak als enige parameter.
+    /// Een loket voert geen ontvangst in van vóór die dag.
+    #[serde(default)]
+    pub openstelling: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -482,6 +491,25 @@ impl ProcesDefinitie {
         laden::laad(&map.join(PROCES_BESTAND), Self::parse)
     }
 
+    /// De rollen die een routegroep mogen gebruiken.
+    pub fn rollen_met(&self, r: Routes) -> impl Iterator<Item = (&String, &RolDefinitie)> {
+        self.rollen.iter().filter(move |(_, d)| d.mag(r))
+    }
+
+    /// De kanalen van de rollen die een routegroep mogen gebruiken, elk een
+    /// keer, met hun id.
+    pub fn kanalen_met(&self, r: Routes) -> Vec<(&str, &KanaalDefinitie)> {
+        let mut uit: Vec<(&str, &KanaalDefinitie)> = Vec::new();
+        for (_, rol) in self.rollen_met(r) {
+            if let Some((id, k)) = self.kanalen.get_key_value(&rol.kanaal) {
+                if !uit.iter().any(|(i, _)| *i == id) {
+                    uit.push((id, k));
+                }
+            }
+        }
+        uit
+    }
+
     /// De bronnen van de zaak (`zaak: true`), in de volgorde van de synthese.
     pub fn zaakbronnen(&self) -> impl Iterator<Item = &SyntheseBron> {
         self.synthese.iter().filter(|b| b.zaak)
@@ -559,7 +587,7 @@ mod tests {
     #[test]
     fn een_cel_heeft_geen_procesblokken() {
         let fout = CelDefinitie::parse(
-            "id: a\nrecording_actor: a\nstromen: [s.yaml]\nlexostatussen: l.yaml\nrollen: {aanvrager: eherkenning}\n",
+            "id: a\nrecording_actor: a\nstromen: [s.yaml]\nlexostatussen: l.yaml\nrollen: {aanvrager: {kanaal: k, routes: [portaal]}}\n",
             "t",
         )
         .unwrap_err();

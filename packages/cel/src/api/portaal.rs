@@ -9,11 +9,10 @@ use serde_json::{json, Map, Value};
 
 use super::sessie::ingelogd;
 use super::{fout, intern, van_cel, Fout, ProcesState};
-use crate::cel::Cel;
 use crate::celclient::{self, Vastlegverzoek};
 use crate::datum::{self, Tijdpunt};
-use crate::eherkenning::Sessie;
 use crate::gram::Gram;
+use crate::kanaal::{self, Routes, Sessie};
 use crate::mogelijkheid;
 use crate::reductie::{self, Lexostatus, Peil};
 use crate::rijen;
@@ -56,21 +55,31 @@ pub(super) struct Concept {
     zaakkenmerk: Option<String>,
 }
 
-/// Of een gram van deze KvK is: het veld dat aan `$intake.eherkenning.kvk`
-/// bindt, heeft dat nummer.
-fn van_kvk(cel: &Cel, gram: &Gram, kvk: &str) -> bool {
-    let Some((_, event)) = cel.event(&gram.stroom.id, &gram.name) else {
+/// Of een gram van deze gebruiker is: het veld dat aan het eigenaarpad van
+/// zijn kanaal bindt (`kanalen.<id>.eigenaar`), heeft zijn waarde. Een
+/// kanaal zonder eigenaar is van niemand de eigenaar.
+pub(super) fn van_eigenaar(state: &ProcesState, gram: &Gram, sessie: &Sessie) -> bool {
+    let Some(k) = state.proces.definitie.kanalen.get(&sessie.kanaal) else {
+        return false;
+    };
+    let (Some(pad), Some(veld)) = (k.eigenaar_pad(&sessie.kanaal), k.eigenaar.as_ref()) else {
+        return false;
+    };
+    let Some(waarde) = sessie.velden.get(veld) else {
+        return false;
+    };
+    let Some((_, event)) = state.proces.cel.event(&gram.stroom.id, &gram.name) else {
         return false;
     };
     event.bladeren().iter().any(|b| {
-        b.binding == Binding::Intake("eherkenning.kvk".into())
-            && gram.veld(&b.pad).and_then(Value::as_str) == Some(kvk)
+        b.binding == Binding::Intake(pad.clone())
+            && gram.veld(&b.pad).and_then(Value::as_str) == Some(waarde.as_str())
     })
 }
 
 /// Het verzoek aan de cel voor een concept van de aanvrager. Volgt het event
-/// een zaak, dan moet de aanvrager die zaak kennen: een gram van zijn KvK
-/// met dat zaakkenmerk. De cel controleert de rest (zie
+/// een zaak, dan moet de aanvrager die zaak kennen: een gram met dat
+/// zaakkenmerk waarvan hij de eigenaar is ([`van_eigenaar`]). De cel controleert de rest (zie
 /// [`zaakkenmerk_voor`]).
 async fn verzoek_voor(
     state: &ProcesState,
@@ -84,9 +93,7 @@ async fn verzoek_voor(
             Err(TransportFout::Antwoord { status: 404, .. }) => Vec::new(),
             anders => anders.map_err(van_cel)?,
         };
-        let bekend = zaak
-            .iter()
-            .any(|g| van_kvk(&state.proces.cel, &g.gram, &sessie.kvk));
+        let bekend = zaak.iter().any(|g| van_eigenaar(state, &g.gram, sessie));
         if !bekend {
             return Err(fout(
                 StatusCode::BAD_REQUEST,
@@ -98,7 +105,11 @@ async fn verzoek_voor(
         actor: state.proces.definitie.actor.clone(),
         stroom: stroom.id.clone(),
         event: event.name.clone(),
-        intake: sessie.intake(&event.intake),
+        intake: kanaal::intake(
+            &event.intake,
+            state.proces.definitie.kanalen_met(Routes::Portaal),
+            Some((&sessie.kanaal, &sessie.velden)),
+        ),
         external: concept.external.clone(),
         zaakkenmerk: concept.zaakkenmerk.clone(),
         besluit: None,
@@ -218,7 +229,7 @@ pub(super) async fn toets_route(
 /// dezelfde regeling, uitgerekend op de datum van vandaag). Het tijdvak is de
 /// parameter van het aanbod-artikel met origin BELANGHEBBENDE en grondslag
 /// Awb 4:2 lid 1; het beleid wordt uitgevoerd op een concept met alleen dat
-/// tijdvak, plus wat de eHerkenning en de synthese weten. Uitkomst en termijn komen uit een run,
+/// tijdvak, plus wat het kanaal en de synthese weten. Uitkomst en termijn komen uit een run,
 /// met trace. Een feit dat een bron niet leverde, maakt het aanbod niet te
 /// bepalen. Niets wordt vastgelegd.
 ///
@@ -310,8 +321,7 @@ pub(super) async fn mogelijkheden_route(
         }));
     }
     Ok(Json(json!({
-        "kvk": sessie.kvk,
-        "persoon": sessie.persoon,
+        "sessie": sessie,
         // De datum van de runtime, zodat de frontend "verstreken" niet op de
         // klok van de browser beoordeelt.
         "datum": datum,

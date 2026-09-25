@@ -35,7 +35,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use regelrecht_engine::LawExecutionService;
 
 use crate::config::{Aanbod, Portaal};
-use crate::eherkenning::INTAKE_PADEN;
 use crate::reductie::{self, Filter, LexostatusDefinitie, Lexostatussen};
 use crate::regelingen;
 use crate::stroom::{Binding, Event, Stroom};
@@ -469,8 +468,9 @@ fn zaakkenmerken(strommen: &[Stroom], lexostatussen: &Lexostatussen, fouten: &mu
 }
 
 /// De controles op het portaal van een proces, tegen de stromen en
-/// lexostatussen van de cel waarin het vastlegt: het event bestaat, levert
-/// alleen `$intake`-paden die het portaal kent, de toets-lexostatus leest het
+/// lexostatussen van de cel waarin het vastlegt: het event bestaat, bindt
+/// alleen `$intake`-paden die de kanalen van het portaal leveren
+/// (`intake_paden`, zie [`crate::kanaal`]), de toets-lexostatus leest het
 /// event en kiest een gram, de toetsuitkomst komt uit de grondslag van het
 /// event, en het aanbod klopt.
 pub fn portaal(
@@ -478,9 +478,17 @@ pub fn portaal(
     lexostatussen: &Lexostatussen,
     p: &Portaal,
     service: &LawExecutionService,
+    intake_paden: &[String],
 ) -> Vec<String> {
     let mut fouten = Vec::new();
-    portaal_(strommen, lexostatussen, p, service, &mut fouten);
+    portaal_(
+        strommen,
+        lexostatussen,
+        p,
+        service,
+        intake_paden,
+        &mut fouten,
+    );
     fouten
 }
 
@@ -489,6 +497,7 @@ fn portaal_(
     lexostatussen: &Lexostatussen,
     p: &Portaal,
     service: &LawExecutionService,
+    intake_paden: &[String],
     fouten: &mut Vec<String>,
 ) {
     let Some(stroom) = strommen.iter().find(|s| s.id == p.stroom) else {
@@ -507,11 +516,11 @@ fn portaal_(
     };
     for blad in event.bladeren() {
         if let Binding::Intake(pad) = &blad.binding {
-            if !INTAKE_PADEN.contains(&pad.as_str()) {
+            if !intake_paden.contains(pad) {
                 fouten.push(format!(
-                    "portaal: veld '{}' bindt aan '$intake.{pad}', maar het portaal levert alleen {}",
+                    "portaal: veld '{}' bindt aan '$intake.{pad}', maar de kanalen van het portaal leveren alleen {}",
                     blad.pad,
-                    INTAKE_PADEN.join(", ")
+                    intake_paden.join(", ")
                 ));
             }
         }
@@ -605,16 +614,21 @@ fn aanbod_(a: &Aanbod, service: &LawExecutionService, fouten: &mut Vec<String>) 
             Some(_) => {}
         }
     }
-    if let Some(b) = &a.begin {
+    // Het begin en de openstelling van een tijdvak: een uitkomst van
+    // dezelfde regeling, met het tijdvak als parameter.
+    for (soort, u) in [("begin", &a.begin), ("openstelling", &a.openstelling)] {
+        let Some(u) = u else {
+            continue;
+        };
         if a.tijdvakken.is_none() {
-            fouten.push("portaal.aanbod: begin zonder tijdvakken".to_string());
+            fouten.push(format!("portaal.aanbod: {soort} zonder tijdvakken"));
         }
         if resolver
-            .get_article_by_output(&a.regeling, b, None)
+            .get_article_by_output(&a.regeling, u, None)
             .is_none()
         {
             fouten.push(format!(
-                "portaal.aanbod: regeling '{}' heeft geen begin-uitkomst '{b}'",
+                "portaal.aanbod: regeling '{}' heeft geen {soort}-uitkomst '{u}'",
                 a.regeling
             ));
         }
@@ -679,7 +693,8 @@ mod tests {
             .err()
             .unwrap_or_default();
         if let Some(p) = &d.portaal {
-            fouten.extend(portaal(&strommen, &c, p, &service()));
+            let paden = crate::kanaal::portaal_intake_paden(&d);
+            fouten.extend(portaal(&strommen, &c, p, &service(), &paden));
         }
         if fouten.is_empty() {
             Ok(())

@@ -73,7 +73,48 @@
     "competent_authority": {
       "type": "string",
       "minLength": 1,
-      "description": "Alleen bij een besluit, en alleen als de regeling een bevoegd gezag noemt: dat gezag. De cel toetst het tegen haar eigen identiteit en weigert bij een ander gezag; noemt de regeling er geen, dan staat dit veld er niet en waarschuwt de cel."
+      "description": "Alleen bij een besluit, en alleen als de regeling een bevoegd gezag noemt: dat gezag. Het proces toetst het tegen het gezag waarvoor het handelt (namens) en zijn mandaten, en legt bij een ander gezag niets vast; noemt de regeling er geen, dan staat dit veld er niet en waarschuwt het proces."
+    },
+    "handelende_actor": {
+      "type": "object",
+      "description": "Alleen bij een besluit dat een proces nam: wie handelde. Naast recording_actor (wie vastlegt) en competent_authority (wie de wet bevoegd maakt) de derde as van RFC-022 par. 2. Het kanaal is nagebootst: de identiteit is wat de gebruiker invulde.",
+      "required": [
+        "rol",
+        "kanaal",
+        "identiteit"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "rol": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kanaal": {
+          "type": "string",
+          "minLength": 1
+        },
+        "identiteit": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "grondslag": {
+          "type": "string",
+          "minLength": 1,
+          "description": "De grondslag van de rol, als de procesconfiguratie er een noemt."
+        },
+        "namens": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Het gezag in wiens naam is gehandeld."
+        },
+        "mandaat": {
+          "type": "string",
+          "minLength": 1,
+          "description": "De grondslag van het mandaat (Awb 10:1), als dat gezag niet het eigen gezag van het proces is."
+        }
+      }
     },
     "op_moment": {
       "$ref": "#/definitions/moment",

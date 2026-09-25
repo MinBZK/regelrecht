@@ -36,7 +36,9 @@ use crate::celclient::{self, Besluitvelden, Vastlegverzoek};
 use crate::config::{BesluitDefinitie, NogNiet};
 use crate::datum::{self, Tijdpunt};
 use crate::formulier::Veld;
-use crate::gram::{GeladenRegeling, Gram, Invoer, Receipt, StroomVerwijzing};
+use crate::gezag::{self, Bevoegdheid};
+use crate::gram::{GeladenRegeling, Gram, HandelendeActor, Invoer, Receipt, StroomVerwijzing};
+use crate::kanaal::Sessie;
 use crate::proces::Proces;
 use crate::reductie::{Lexostatus, Peil};
 use crate::regelingen::{self, Benodigd};
@@ -230,11 +232,9 @@ pub fn formuliervelden(
         .collect())
 }
 
-/// De controles op `rollen` en `behandeling` van een proces bij het
+/// De controles op `behandeling` van een proces bij het
 /// opstarten. Een fout hier houdt de runtime tegen:
 ///
-/// - een portaal vraagt de rol aanvrager, en de rol aanvrager een portaal;
-/// - een behandeling vraagt de rol behandelaar;
 /// - de werkvoorraad is een lijst-lexostatus van de cel;
 /// - een bron van de zaak vraagt een besluit;
 /// - de uitkomsten van het besluit zijn uitkomsten van een en hetzelfde
@@ -250,14 +250,6 @@ pub fn controleer(proces: &Proces) -> Vec<String> {
     let d = &proces.definitie;
     let cel = &proces.cel;
     let service = proces.service.as_ref();
-    match (d.portaal.is_some(), d.rollen.aanvrager.is_some()) {
-        (true, false) => fouten
-            .push("portaal zonder rol aanvrager: zet rollen: {aanvrager: eherkenning}".to_string()),
-        (false, true) => {
-            fouten.push("rol aanvrager zonder portaal: de aanvrager heeft niets te doen".into())
-        }
-        _ => {}
-    }
     let Some(behandeling) = &d.behandeling else {
         for b in d.zaakbronnen() {
             fouten.push(format!(
@@ -267,11 +259,6 @@ pub fn controleer(proces: &Proces) -> Vec<String> {
         }
         return fouten;
     };
-    if d.rollen.behandelaar.is_none() {
-        fouten.push(
-            "behandeling zonder rol behandelaar: zet rollen: {behandelaar: medewerker}".into(),
-        );
-    }
     match cel
         .lexostatussen
         .lexostatus(&behandeling.werkvoorraad.lexostatus)
@@ -676,79 +663,6 @@ pub struct Besluit {
     pub waarschuwingen: Vec<String>,
 }
 
-/// Een naam vergelijkbaar maken: kleine letters, en alles wat geen letter of
-/// cijfer is wordt een liggend streepje. Zo is een gezag dat de regeling
-/// voluit noemt ("De Raad van Voorbeeld") te vergelijken met de id van een
-/// cel (`de_raad_van_voorbeeld`).
-pub(crate) fn genormaliseerd(naam: &str) -> String {
-    let mut uit = String::new();
-    for c in naam.to_lowercase().chars() {
-        if c.is_alphanumeric() {
-            uit.push(c);
-        } else if !uit.ends_with('_') {
-            uit.push('_');
-        }
-    }
-    uit.trim_matches('_').to_string()
-}
-
-/// De beschikkingen waarvoor `gezag` bevoegd is, als (regeling, artikel):
-/// elk artikel dat een `BESCHIKKING` produceert en waarvan het bevoegd gezag
-/// (van het artikel, anders van de regeling) na normalisatie gelijk is aan
-/// `gezag`. Zo vindt een proces zijn besluit in de wet, zonder dat de
-/// configuratie het aanwijst.
-pub fn beschikkingen_van(
-    service: &regelrecht_engine::LawExecutionService,
-    gezag: &str,
-) -> Vec<(String, String)> {
-    let mut uit = Vec::new();
-    for id in service.list_laws() {
-        let Some(law) = service.resolver().get_law(id) else {
-            continue;
-        };
-        for a in &law.articles {
-            let beschikking = a
-                .get_execution_spec()
-                .and_then(|e| e.produces.as_ref())
-                .and_then(|p| p.legal_character.as_deref())
-                == Some("BESCHIKKING");
-            if beschikking
-                && gezag_van(service, id, &a.number)
-                    .is_some_and(|g| genormaliseerd(&g) == genormaliseerd(gezag))
-            {
-                uit.push((id.to_string(), a.number.clone()));
-            }
-        }
-    }
-    uit.sort();
-    uit.dedup();
-    uit
-}
-
-/// Het bevoegd gezag volgens de wet: van het artikel zelf, anders van de
-/// regeling. Een verwijzing (`#bevoegd_gezag`) telt niet als een naam.
-pub(crate) fn gezag_van(
-    service: &regelrecht_engine::LawExecutionService,
-    regeling: &str,
-    artikel: &str,
-) -> Option<String> {
-    fn naam(a: &Value) -> Option<String> {
-        match a {
-            // Een verwijzing zoals '#bevoegd_gezag' is geen naam.
-            Value::String(s) => s.strip_prefix('#').is_none().then(|| s.clone()),
-            Value::Object(o) => o.get("name").and_then(Value::as_str).map(str::to_string),
-            _ => None,
-        }
-    }
-    let law = service.resolver().get_law(regeling)?;
-    let gezag = law
-        .find_article_by_number(artikel)
-        .and_then(|a| a.machine_readable.as_ref())
-        .and_then(|m| m.competent_authority.as_ref())
-        .or(law.competent_authority.as_ref())?;
-    naam(&serde_json::to_value(gezag).ok()?)
-}
-
 /// Neem het besluit op een zaak en laat de cel het vastleggen als
 /// stage-decretogram.
 ///
@@ -756,8 +670,11 @@ pub(crate) fn gezag_van(
 /// gram en zegt het proces wat er mist. Ligt de stage van het besluit al vast
 /// in de zaak, dan weigert de cel (zie `api::cel::toets_zaak`): een tweede besluit
 /// is een wijziging, en die valt buiten deze stap. Wijst de wet een ander bevoegd
-/// gezag aan dan de actor van het proces, dan weigert het ook; noemt de wet
-/// er geen, dan laat het vastleggen met een waarschuwing.
+/// gezag aan dan het gezag waarvoor het proces handelt (`namens`), en noemt het
+/// proces geen mandaat van dat gezag, dan weigert het ook; noemt de wet er
+/// geen, dan laat het vastleggen met een waarschuwing (zie [`crate::gezag`]).
+/// Het gram draagt wie handelde: de rol, het kanaal en de identiteit van de
+/// ingelogde gebruiker, namens welk gezag en, bij mandaat, op welke grondslag.
 ///
 /// Het proces draait de engine, dus het proces stelt samen wat het besluit
 /// tot besluit maakt: rechtskarakter, regeling, invoer met herkomst en het
@@ -773,6 +690,7 @@ pub async fn neem_besluit(
     zaakkenmerk: &str,
     formulier: &Map<String, Value>,
     op_moment: DateTime<FixedOffset>,
+    handelend: &Sessie,
 ) -> Result<Besluit, Weigering> {
     let service = proces.service.as_ref();
     let actor = &proces.definitie.actor;
@@ -813,20 +731,36 @@ pub async fn neem_besluit(
     let nummer = regelingen::ontleed(&proef.artikel)
         .map_err(Weigering::Cel)?
         .artikel;
-    let gezag = gezag_van(service, &b.regeling, nummer);
-    match &gezag {
-        Some(g) if genormaliseerd(g) != genormaliseerd(actor) => {
-            return Err(Weigering::Onbevoegd(format!(
-                "{} wijst '{g}' aan als bevoegd gezag, en deze cel is '{actor}'",
-                proef.artikel
-            )))
+    let gezag = gezag::gezag_van(service, &b.regeling, nummer);
+    let eigen = proces.gezag.as_deref();
+    let (namens, mandaat) = match &gezag {
+        Some(g) => match gezag::toets(eigen, &proces.definitie.mandaten, g) {
+            Ok(Bevoegdheid::Eigen) => (Some(g.clone()), None),
+            Ok(Bevoegdheid::Mandaat(m)) => (Some(g.clone()), Some(m.grondslag.clone())),
+            Err(reden) => {
+                return Err(Weigering::Onbevoegd(format!("{}: {reden}", proef.artikel)));
+            }
+        },
+        None => {
+            waarschuwingen.push(format!(
+                "regeling '{}' noemt geen bevoegd gezag bij {}; het besluit is vastgelegd zonder competent_authority",
+                b.regeling, proef.artikel
+            ));
+            (eigen.map(str::to_string), None)
         }
-        Some(_) => {}
-        None => waarschuwingen.push(format!(
-            "regeling '{}' noemt geen bevoegd gezag bij {}; het besluit is vastgelegd zonder competent_authority",
-            b.regeling, proef.artikel
-        )),
-    }
+    };
+    let handelende_actor = HandelendeActor {
+        rol: handelend.rol.clone(),
+        kanaal: handelend.kanaal.clone(),
+        identiteit: handelend.velden.clone(),
+        grondslag: proces
+            .definitie
+            .rollen
+            .get(&handelend.rol)
+            .and_then(|r| r.grondslag.clone()),
+        namens,
+        mandaat,
+    };
 
     // De uitkomsten worden de velden van het gram, elk onder zijn eigen naam.
     let external: Map<String, Value> = proef
@@ -882,6 +816,7 @@ pub async fn neem_besluit(
                     .or_else(|| Some(l.publication_date.clone()))
             }),
             competent_authority: gezag,
+            handelende_actor: Some(handelende_actor),
             inputs,
             receipt: Some(Receipt::nieuw(regelingen.to_vec(), stromen)),
         }),
@@ -900,58 +835,4 @@ pub async fn neem_besluit(
         proefbesluit: proef,
         waarschuwingen,
     })
-}
-
-#[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
-mod tests {
-    use super::*;
-    use regelrecht_engine::LawExecutionService;
-
-    /// Een fictieve regeling met twee artikelen: een beschikking van "De
-    /// Instantie van Voorbeeld" en een toets van hetzelfde gezag.
-    const REGELING: &str = r#"
-$id: testregeling_bevoegd
-regulatory_layer: WET
-publication_date: '2025-01-01'
-competent_authority:
-  name: De Instantie van Voorbeeld
-articles:
-  - number: '1'
-    text: Toets
-    machine_readable:
-      execution:
-        produces: {legal_character: TOETS, decision_type: GEEN_BESLUIT}
-        parameters: [{name: x, type: number, required: false}]
-        output: [{name: toets, type: boolean}]
-        actions: [{output: toets, value: {operation: GREATER_THAN, subject: $x, value: 0}}]
-  - number: '2'
-    text: Besluit
-    machine_readable:
-      execution:
-        produces: {legal_character: BESCHIKKING, decision_type: TOEKENNING}
-        parameters: [{name: x, type: number, required: false}]
-        output: [{name: bedrag, type: number}]
-        actions: [{output: bedrag, value: $x}]
-"#;
-
-    fn service() -> LawExecutionService {
-        let mut s = LawExecutionService::new();
-        s.load_law(REGELING).unwrap();
-        s
-    }
-
-    #[test]
-    fn de_beschikking_van_het_bevoegd_gezag_wordt_gevonden() {
-        let s = service();
-        assert_eq!(
-            beschikkingen_van(&s, "de_instantie_van_voorbeeld"),
-            vec![("testregeling_bevoegd".to_string(), "2".to_string())]
-        );
-    }
-
-    #[test]
-    fn een_ander_gezag_vindt_niets() {
-        assert!(beschikkingen_van(&service(), "een_ander_orgaan").is_empty());
-    }
 }

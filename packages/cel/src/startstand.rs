@@ -103,6 +103,7 @@ fn bouw(tekst: &str, strommen: &[Stroom]) -> Result<Gram, String> {
         regulation: None,
         regulation_valid_from: None,
         competent_authority: None,
+        handelende_actor: None,
         op_moment: regel.op_moment,
         op_moment_grondslag: None,
         // De laadtijd komt bij het plaatsen, zie `geplaatst`.

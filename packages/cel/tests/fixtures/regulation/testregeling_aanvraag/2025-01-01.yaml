@@ -185,3 +185,44 @@ articles:
               operation: EQUALS
               subject: $eigen_feit_behandelaar
               value: true
+  - number: '3'
+    url: https://example.com/testregeling_aanvraag/3
+    text: >-
+      1. De instantie biedt de aanvraag aan voor het lopende jaar en het
+      volgende.
+      2. Een aanvraag voor een aanvraagjaar kan binnenkomen vanaf 1 januari
+      van dat jaar.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TOETS
+          decision_type: GEEN_BESLUIT
+        parameters:
+          - name: aanvraagjaar
+            type: number
+            required: false
+            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_aanvraag#1 lid 1, rol: TIJDVAK}
+        output:
+          - name: aanvraag_aangeboden
+            type: boolean
+          - name: aangeboden_jaren
+            type: array
+          - name: openstelling_aanvraagjaar
+            type: date
+        actions:
+          - output: aanvraag_aangeboden
+            value: true
+          - output: aangeboden_jaren
+            value:
+              operation: FOREACH
+              collection: [0, 1]
+              as: verder
+              body:
+                operation: ADD
+                values: [$referencedate.year, $verder]
+          - output: openstelling_aanvraagjaar
+            value:
+              operation: DATE
+              year: $aanvraagjaar
+              month: 1
+              day: 1

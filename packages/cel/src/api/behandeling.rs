@@ -96,7 +96,7 @@ pub(super) async fn besluit_route(
     Path(zaakkenmerk): Path<String>,
     Json(invoer): Json<Besluitformulier>,
 ) -> Result<(StatusCode, Json<Value>), Fout> {
-    behandelaar(&state, &headers)?;
+    let wie = behandelaar(&state, &headers)?;
     zaakgrammen(&state, &zaakkenmerk).await?;
     let genomen = besluit::neem_besluit(
         &state.proces,
@@ -107,6 +107,7 @@ pub(super) async fn besluit_route(
         &zaakkenmerk,
         &invoer.formulier,
         (state.klok)(),
+        &wie,
     )
     .await
     .map_err(weigering)?;

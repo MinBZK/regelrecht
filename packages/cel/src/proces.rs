@@ -19,6 +19,8 @@ use crate::cel::Cel;
 use crate::config::{Portaal, ProcesDefinitie, RijenDefinitie, VoorbeeldenDefinitie};
 use crate::controle;
 use crate::formulier::{self, Formulier};
+use crate::gezag;
+use crate::kanaal;
 use crate::origin;
 use crate::rijen;
 use crate::stroom::{Binding, Event, Stroom};
@@ -42,6 +44,9 @@ pub struct Proces {
     pub waarschuwingen: Vec<String>,
     /// Het tijdvak dat het portaal laat kiezen, als het aanbod er een vraagt.
     pub tijdvak: Option<Tijdvak>,
+    /// Het bevoegd gezag waarvoor het proces handelt, uit `namens` (zie
+    /// [`crate::gezag`]).
+    pub gezag: Option<String>,
 }
 
 /// Het tijdvak van het aanbod: de parameter met origin BELANGHEBBENDE en
@@ -83,12 +88,27 @@ impl Proces {
         let cel = de_cel(&definitie, cellen)?;
         let mut fouten = Vec::new();
         fouten.extend(actor_legt_vast(&definitie, &cel));
+        let gezag = gezag::los_op(&definitie, &service)
+            .map_err(|f| fouten.extend(f))
+            .ok()
+            .flatten();
+        let portaal_event = definitie
+            .portaal
+            .as_ref()
+            .and_then(|p| cel.event(&p.stroom, &p.event))
+            .map(|(_, e)| e);
+        fouten.extend(kanaal::controleer_proces(
+            &definitie,
+            portaal_event,
+            &service,
+        ));
         if let Some(p) = &definitie.portaal {
             fouten.extend(controle::portaal(
                 &cel.strommen,
                 &cel.lexostatussen,
                 p,
                 &service,
+                &kanaal::portaal_intake_paden(&definitie),
             ));
             for r in &p.toets.rijen {
                 fouten.extend(rijen::controleer(
@@ -101,7 +121,7 @@ impl Proces {
                 ));
             }
         }
-        fouten.extend(vind_besluit(&mut definitie, &service));
+        fouten.extend(vind_besluit(&mut definitie, gezag.as_deref(), &service));
         if let Err(f) = crate::besluit::zet_stand_bij_besluit(&mut definitie, &service, &cel) {
             fouten.push(f);
         }
@@ -125,7 +145,7 @@ impl Proces {
         let voorbeelden = match &definitie.voorbeelden {
             Some(v) => {
                 fouten.extend(voorbeelden_zonder_handeling(&definitie, v));
-                voorbeelden::laad(map, v)
+                voorbeelden::laad(map, v, &definitie)
                     .map_err(|f| fouten.extend(f))
                     .unwrap_or_default()
             }
@@ -143,6 +163,7 @@ impl Proces {
             voorbeelden,
             waarschuwingen: Vec::new(),
             tijdvak: None,
+            gezag,
         })
     }
 
@@ -293,16 +314,16 @@ fn actor_legt_vast(definitie: &ProcesDefinitie, cel: &Cel) -> Vec<String> {
 }
 
 /// Een voorbeeld voor een handeling die het proces niet heeft, is een fout:
-/// logins of een aanvraag zonder portaal, een besluit zonder behandeling.
-/// (Dat een portaal de rol aanvrager heeft, controleert
-/// [`crate::besluit::controleer`].)
+/// logins zonder rollen, een aanvraag zonder portaal, een besluit zonder
+/// behandeling. (Dat een portaal een rol heeft die het mag, controleert
+/// [`crate::kanaal::controleer_proces`].)
 fn voorbeelden_zonder_handeling(
     definitie: &ProcesDefinitie,
     v: &VoorbeeldenDefinitie,
 ) -> Vec<String> {
     let mut fouten = Vec::new();
-    if !v.inloggen.is_empty() && definitie.portaal.is_none() {
-        fouten.push("voorbeelden.inloggen: het proces heeft geen portaal".to_string());
+    if !v.inloggen.is_empty() && definitie.rollen.is_empty() {
+        fouten.push("voorbeelden.inloggen: het proces heeft geen rollen".to_string());
     }
     if v.aanvraag.is_some() && definitie.portaal.is_none() {
         fouten.push("voorbeelden.aanvraag: het proces heeft geen portaal".to_string());
@@ -317,15 +338,22 @@ fn voorbeelden_zonder_handeling(
 /// noemt: de beschikking waarvoor het bevoegd gezag de `actor` van het proces
 /// is. Precies een zo'n beschikking, en de uitkomsten van het besluit komen
 /// uit dat artikel; anders een fout die de kandidaten noemt.
-fn vind_besluit(definitie: &mut ProcesDefinitie, service: &LawExecutionService) -> Vec<String> {
-    let actor = definitie.actor.clone();
+fn vind_besluit(
+    definitie: &mut ProcesDefinitie,
+    gezag: Option<&str>,
+    service: &LawExecutionService,
+) -> Vec<String> {
     let Some(b) = definitie.behandeling.as_mut().map(|b| &mut b.besluit) else {
         return Vec::new();
     };
     if !b.regeling.is_empty() {
         return Vec::new();
     }
-    let kandidaten = crate::besluit::beschikkingen_van(service, &actor);
+    // Zonder gezag meldt de controle op `namens` het al.
+    let Some(actor) = gezag else {
+        return Vec::new();
+    };
+    let kandidaten = gezag::beschikkingen_van(service, actor);
     let [(regeling, artikel)] = kandidaten.as_slice() else {
         let lijst: Vec<String> = kandidaten.iter().map(|(r, a)| format!("{r}#{a}")).collect();
         return vec![if lijst.is_empty() {

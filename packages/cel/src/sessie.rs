@@ -1,9 +1,7 @@
-//! Sessies van de rollen van een proces (`rollen` in `proces.yaml`): de
-//! aanvrager logt in met nep-eHerkenning ([`crate::eherkenning`]), de
-//! behandelaar met een nagebootste medewerkerslogin ([`Medewerker`]). Een
-//! cookie per proces,
-//! een gebruiker per sessie: wie als de andere rol inlogt, vervangt de sessie.
-//! Er is geen register en geen databasecontrole.
+//! Sessies van de rollen van een proces (`rollen` in `proces.yaml`): elke rol
+//! logt in langs een nagebootst kanaal ([`crate::kanaal`]). Een cookie per
+//! proces, een gebruiker per sessie: wie in een andere rol inlogt, vervangt
+//! de sessie. Er is geen register en geen databasecontrole.
 //!
 //! Een sessie vervalt na [`VERVAL`] zonder gebruik, en er zijn er hooguit
 //! [`MAXIMUM`] tegelijk: wie dan inlogt, verdringt de langst ongebruikte. Zo
@@ -14,55 +12,11 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 use axum::http::HeaderMap;
-use serde::{Deserialize, Serialize};
 
-use crate::eherkenning::Sessie;
+pub use crate::kanaal::Sessie as Gebruiker;
 
 /// Naam van de sessiecookie.
 pub const COOKIE: &str = "cel_sessie";
-
-/// Een medewerker van de cel, alleen met een naam. Geen register: wie een
-/// naam invult, is voor deze PoC medewerker.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Medewerker {
-    pub naam: String,
-}
-
-impl Medewerker {
-    /// Een naam, niet leeg.
-    pub fn valideer(self) -> Result<Self, String> {
-        let naam = self.naam.trim();
-        if naam.is_empty() {
-            return Err("de naam van de medewerker ontbreekt".into());
-        }
-        Ok(Self {
-            naam: naam.to_string(),
-        })
-    }
-}
-
-/// Wie er is ingelogd, in welke rol.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Gebruiker {
-    Aanvrager(Sessie),
-    Behandelaar(Medewerker),
-}
-
-impl Gebruiker {
-    pub fn aanvrager(&self) -> Option<&Sessie> {
-        match self {
-            Gebruiker::Aanvrager(s) => Some(s),
-            Gebruiker::Behandelaar(_) => None,
-        }
-    }
-
-    pub fn behandelaar(&self) -> Option<&Medewerker> {
-        match self {
-            Gebruiker::Behandelaar(m) => Some(m),
-            Gebruiker::Aanvrager(_) => None,
-        }
-    }
-}
 
 /// Hoe lang een sessie zonder gebruik geldig blijft.
 pub const VERVAL: Duration = Duration::from_secs(8 * 60 * 60);
@@ -177,35 +131,33 @@ fn token(headers: &HeaderMap) -> Option<String> {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use crate::eherkenning::Login;
+
+    fn gebruiker(rol: &str, naam: &str) -> Gebruiker {
+        Gebruiker {
+            rol: rol.into(),
+            kanaal: "medewerker".into(),
+            velden: [("naam".to_string(), naam.to_string())].into(),
+        }
+    }
+
+    fn medewerker(naam: &str) -> Gebruiker {
+        gebruiker("behandelaar", naam)
+    }
 
     #[test]
     fn sessie_via_cookie() {
         let sessies = Sessies::default();
-        let sessie = Login {
-            kvk: "12345678".into(),
-            persoon: "A".into(),
-        }
-        .valideer()
-        .unwrap();
-        let token = sessies.nieuw(Gebruiker::Aanvrager(sessie));
+        let token = sessies.nieuw(gebruiker("aanvrager", "A"));
         let mut h = HeaderMap::new();
         h.insert(
             axum::http::header::COOKIE,
             format!("ander=1; {COOKIE}={token}").parse().unwrap(),
         );
-        assert_eq!(
-            sessies.zoek(&h).unwrap().aanvrager().unwrap().kvk,
-            "12345678"
-        );
-        assert!(sessies.zoek(&h).unwrap().behandelaar().is_none());
+        assert_eq!(sessies.zoek(&h).unwrap().rol, "aanvrager");
+        assert_eq!(sessies.zoek(&h).unwrap().velden["naam"], "A");
         sessies.verwijder(&h);
         assert!(sessies.zoek(&h).is_none());
         assert!(sessies.zoek(&HeaderMap::new()).is_none());
-    }
-
-    fn medewerker(naam: &str) -> Gebruiker {
-        Gebruiker::Behandelaar(Medewerker { naam: naam.into() })
     }
 
     #[test]
@@ -255,16 +207,5 @@ mod tests {
         for t in [&a, &c, &d] {
             assert!(sessies.zoek_op(t, s(5)).is_some());
         }
-    }
-
-    #[test]
-    fn medewerker_heeft_een_naam() {
-        let m = Medewerker {
-            naam: " B. Behandelaar ".into(),
-        }
-        .valideer()
-        .unwrap();
-        assert_eq!(m.naam, "B. Behandelaar");
-        assert!(Medewerker { naam: "  ".into() }.valideer().is_err());
     }
 }

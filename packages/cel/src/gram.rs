@@ -56,6 +56,12 @@ pub struct Gram {
     /// staat het er niet: de cel verzint geen gezag.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub competent_authority: Option<String>,
+    /// Alleen bij een besluit dat een proces nam: wie handelde (zie
+    /// [`HandelendeActor`]). Naast `recording_actor` (wie vastlegt) en
+    /// `competent_authority` (wie de wet bevoegd maakt) de derde as van
+    /// RFC-022 §2.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub handelende_actor: Option<HandelendeActor>,
     /// Wanneer het feit rechtens geldt of plaatsvond.
     pub op_moment: String,
     /// Alleen als het event `op_moment` aan een ingediende waarde bond en die
@@ -87,6 +93,27 @@ pub struct Gram {
     /// RFC-022 par. 1.3).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub receipt: Option<Receipt>,
+}
+
+/// Wie een besluit nam: de rol en het kanaal waarlangs de gebruiker inlogde,
+/// met de waarden van de identificatievelden, en namens welk gezag. Handelt
+/// het proces in mandaat (Awb 10:1), dan noemt `mandaat` de grondslag. Het
+/// kanaal is nagebootst: de identiteit is wat de gebruiker invulde.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HandelendeActor {
+    pub rol: String,
+    pub kanaal: String,
+    pub identiteit: BTreeMap<String, String>,
+    /// De grondslag van de rol, als de configuratie er een noemt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grondslag: Option<String>,
+    /// Het gezag in wiens naam is gehandeld.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub namens: Option<String>,
+    /// De grondslag van het mandaat, als het gezag niet het eigen gezag van
+    /// het proces is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mandaat: Option<String>,
 }
 
 /// Een geaccepteerde invoer van een besluit: een waarde met haar herkomst.

@@ -40,9 +40,9 @@ use regelrecht_law_model::{
     ArticleBasedLaw, Declared, Origin, OriginOverride, OriginRole, OriginValue, Parameter,
 };
 
-use crate::besluit;
 use crate::cel::Cel;
 use crate::config::{Herkomstcontrole, Oordeel, ProcesDefinitie, RijenDefinitie};
+use crate::gezag;
 use crate::reductie::{Afleiding, Filter, LexostatusDefinitie};
 use crate::regelingen::{self, Benodigd};
 use crate::stroom::{Binding, Event, Stroom};
@@ -161,11 +161,12 @@ pub fn valideer(law: &ArticleBasedLaw) -> Vec<String> {
 pub struct Overschrijvingen(BTreeMap<(String, String), Geldend>);
 
 /// Lees `origins` uit elk geladen uitvoeringsbeleid waarvan het bevoegd
-/// gezag (van het artikel, anders van de regeling) de actor is. Twee
+/// gezag (van het artikel, anders van de regeling) het gezag is waarvoor het
+/// proces handelt (`namens`, zie [`crate::gezag`]); zonder dat gezag geen. Twee
 /// artikelen die dezelfde parameter een andere herkomst geven, zijn een fout.
 pub fn overschrijvingen(
     service: &LawExecutionService,
-    actor: &str,
+    gezag: Option<&str>,
 ) -> Result<Overschrijvingen, Vec<String>> {
     let mut uit: BTreeMap<(String, String), Geldend> = BTreeMap::new();
     let mut fouten = Vec::new();
@@ -182,8 +183,8 @@ pub fn overschrijvingen(
             let Some(origins) = a.machine_readable.as_ref().and_then(|m| m.origins.as_ref()) else {
                 continue;
             };
-            let van_actor = besluit::gezag_van(service, id, &a.number)
-                .is_some_and(|g| besluit::genormaliseerd(&g) == besluit::genormaliseerd(actor));
+            let van_actor =
+                gezag.is_some() && gezag::gezag_van(service, id, &a.number).as_deref() == gezag;
             if !van_actor {
                 continue;
             }
@@ -631,7 +632,8 @@ pub fn controleer(
     service: &LawExecutionService,
 ) -> Controle {
     let mut c = Controle::default();
-    let overschrijvingen = match overschrijvingen(service, &d.actor) {
+    let gezag = gezag::eigen(d, service);
+    let overschrijvingen = match overschrijvingen(service, gezag.as_deref()) {
         Ok(o) => o,
         Err(f) => {
             c.fouten.extend(f);

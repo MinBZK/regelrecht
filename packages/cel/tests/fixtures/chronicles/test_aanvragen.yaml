@@ -27,6 +27,7 @@ events:
           kanaal: $intake.kanaal
           kvk_nummer: $intake.eherkenning.kvk
           gemachtigde: $intake.eherkenning.persoon
+          burgernummer: $intake.burger.nummer
       inhoud:
         aanvraagjaar: $external.aanvraagjaar
         naam: $external.naam

@@ -4047,6 +4047,7 @@ dependencies = [
  "regelrecht-engine",
  "regelrecht-law-model",
  "regelrecht-shared",
+ "regex",
  "reqwest 0.13.2",
  "serde",
  "serde_json",

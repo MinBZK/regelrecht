@@ -1,7 +1,7 @@
 //! Voorbeelden: standaardgegevens per handeling, voor een proefopstelling.
 //!
 //! `proces.yaml` kan per handeling een JSON-bestand noemen (zie
-//! [`crate::config::VoorbeeldenDefinitie`]): logins voor de nep-eHerkenning,
+//! [`crate::config::VoorbeeldenDefinitie`]): logins langs een kanaal,
 //! een aanvraag en een besluitformulier. De frontend biedt ze aan om een
 //! formulier voor in te vullen of de handeling er direct mee te doen. Het
 //! zijn gewone invoer, geen feiten: de runtime legt ze niet vast en de
@@ -12,8 +12,10 @@ use std::path::Path;
 use serde::Serialize;
 use serde_json::{Map, Value};
 
-use crate::config::VoorbeeldenDefinitie;
-use crate::eherkenning::Login;
+use std::collections::BTreeMap;
+
+use crate::config::{ProcesDefinitie, VoorbeeldenDefinitie};
+use crate::kanaal::Routes;
 
 /// De geladen voorbeelden van een proces. Zonder blok `voorbeelden`: leeg.
 #[derive(Debug, Clone, Default, Serialize)]
@@ -25,23 +27,30 @@ pub struct Voorbeelden {
     pub besluit: Option<Map<String, Value>>,
 }
 
-/// Een login, met als label de bestandsnaam zonder extensie.
+/// Een login, met als label de bestandsnaam zonder extensie: het kanaal, de
+/// rol als het bestand er een noemt, en de velden van het kanaal.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct InlogVoorbeeld {
     pub label: String,
-    pub kvk: String,
-    pub persoon: String,
+    pub kanaal: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rol: Option<String>,
+    pub velden: BTreeMap<String, String>,
 }
 
 /// Lees de voorbeelden; paden zijn relatief aan de map van het proces. Elke fout
 /// komt terug en noemt het pad.
-pub fn laad(map: &Path, definitie: &VoorbeeldenDefinitie) -> Result<Voorbeelden, Vec<String>> {
+pub fn laad(
+    map: &Path,
+    definitie: &VoorbeeldenDefinitie,
+    proces: &ProcesDefinitie,
+) -> Result<Voorbeelden, Vec<String>> {
     let mut fouten = Vec::new();
     let mut uit = Voorbeelden::default();
     // Het label is de sleutel waarmee de frontend een login kiest: uniek.
     let mut labels: Vec<(String, &str)> = Vec::new();
     for pad in &definitie.inloggen {
-        match inlog(map, pad) {
+        match inlog(map, pad, proces) {
             Ok(v) => {
                 if let Some((_, eerder)) = labels.iter().find(|(l, _)| *l == v.label) {
                     fouten.push(format!(
@@ -79,21 +88,54 @@ fn lees(map: &Path, pad: &str) -> Result<Value, String> {
     serde_json::from_str(&tekst).map_err(|e| format!("voorbeeld {pad}: geen geldige JSON: {e}"))
 }
 
-/// Een login zoals de nep-eHerkenning haar aanneemt, en geldig.
-fn inlog(map: &Path, pad: &str) -> Result<InlogVoorbeeld, String> {
-    let login: Login = serde_json::from_value(lees(map, pad)?)
-        .map_err(|e| format!("voorbeeld {pad}: geen login met kvk en persoon: {e}"))?;
-    let sessie = login
-        .valideer()
+/// Een login zoals een kanaal haar aanneemt, en geldig. Het kanaal staat in
+/// het bestand (`kanaal`), of is het enige kanaal van het portaal.
+fn inlog(map: &Path, pad: &str, proces: &ProcesDefinitie) -> Result<InlogVoorbeeld, String> {
+    let Value::Object(invoer) = lees(map, pad)? else {
+        return Err(format!(
+            "voorbeeld {pad}: verwacht een object met de velden van een kanaal"
+        ));
+    };
+    let portaal = proces.kanalen_met(Routes::Portaal);
+    let kanaal = match invoer.get("kanaal").and_then(Value::as_str) {
+        Some(k) => k.to_string(),
+        None => match portaal.as_slice() {
+            [(id, _)] => id.to_string(),
+            _ => {
+                return Err(format!(
+                    "voorbeeld {pad}: noem het kanaal; het portaal heeft er {}",
+                    portaal.len()
+                ))
+            }
+        },
+    };
+    let k = proces
+        .kanalen
+        .get(&kanaal)
+        .ok_or_else(|| format!("voorbeeld {pad}: kanaal '{kanaal}' staat niet onder kanalen"))?;
+    let velden = k
+        .valideer(&invoer)
         .map_err(|e| format!("voorbeeld {pad}: {e}"))?;
+    let rol = invoer
+        .get("rol")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    if let Some(r) = &rol {
+        if proces.rollen.get(r).is_none_or(|d| d.kanaal != kanaal) {
+            return Err(format!(
+                "voorbeeld {pad}: rol '{r}' logt niet in langs kanaal '{kanaal}'"
+            ));
+        }
+    }
     let label = Path::new(pad)
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| pad.to_string());
     Ok(InlogVoorbeeld {
         label,
-        kvk: sessie.kvk,
-        persoon: sessie.persoon,
+        kanaal,
+        rol,
+        velden,
     })
 }
 
@@ -123,6 +165,16 @@ mod tests {
             std::fs::write(dir.path().join(naam), inhoud).unwrap();
         }
         dir
+    }
+
+    /// Een proces met een portaalkanaal: een organisatienummer van acht
+    /// cijfers en een naam.
+    fn proces() -> ProcesDefinitie {
+        ProcesDefinitie::parse(
+            "id: p\nactor: a\nkanalen:\n  org:\n    label: Organisatie\n    velden:\n      - {naam: kvk, label: Nummer, patroon: '[0-9]{8}', melding: een nummer heeft acht cijfers}\n      - {naam: persoon, label: Naam}\nrollen:\n  aanvrager: {kanaal: org, routes: [portaal]}\n",
+            "t",
+        )
+        .unwrap()
     }
 
     fn definitie(
@@ -157,14 +209,20 @@ mod tests {
                 Some("aanvraag.json"),
                 Some("besluit.json"),
             ),
+            &proces(),
         )
         .unwrap();
         assert_eq!(
             v.inloggen,
             [InlogVoorbeeld {
                 label: "login-een".into(),
-                kvk: "12345678".into(),
-                persoon: "A. Tester".into(),
+                kanaal: "org".into(),
+                rol: None,
+                velden: [
+                    ("kvk".to_string(), "12345678".to_string()),
+                    ("persoon".to_string(), "A. Tester".to_string())
+                ]
+                .into(),
             }]
         );
         assert_eq!(v.aanvraag.unwrap()["naam"], "Voorbeeld");
@@ -174,7 +232,7 @@ mod tests {
     #[test]
     fn zonder_voorbeelden_is_alles_leeg() {
         let dir = map_met(&[]);
-        let v = laad(dir.path(), &VoorbeeldenDefinitie::default()).unwrap();
+        let v = laad(dir.path(), &VoorbeeldenDefinitie::default(), &proces()).unwrap();
         assert!(v.inloggen.is_empty() && v.aanvraag.is_none() && v.besluit.is_none());
     }
 
@@ -184,6 +242,7 @@ mod tests {
         let fouten = laad(
             dir.path(),
             &definitie(&["weg.json"], Some("ook-weg.json"), None),
+            &proces(),
         )
         .unwrap_err();
         assert_eq!(fouten.len(), 2, "{fouten:?}");
@@ -207,6 +266,7 @@ mod tests {
                 Some("aanvraag.json"),
                 Some("besluit.json"),
             ),
+            &proces(),
         )
         .unwrap_err();
         assert_eq!(fouten.len(), 5, "{fouten:?}");
@@ -215,11 +275,11 @@ mod tests {
             "{fouten:?}"
         );
         assert!(
-            fouten[1].contains("zonder-persoon.json: geen login"),
+            fouten[1].contains("zonder-persoon.json: Naam ontbreekt"),
             "{fouten:?}"
         );
         assert!(
-            fouten[2].contains("korte-kvk.json: een KvK-nummer"),
+            fouten[2].contains("korte-kvk.json: een nummer heeft acht cijfers"),
             "{fouten:?}"
         );
         assert!(
@@ -244,6 +304,7 @@ mod tests {
         let fouten = laad(
             dir.path(),
             &definitie(&["login.json", "ander/login.json"], None, None),
+            &proces(),
         )
         .unwrap_err();
         assert_eq!(fouten.len(), 1, "{fouten:?}");
