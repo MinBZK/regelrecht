@@ -85,12 +85,13 @@ pub struct Gram {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub herkomst: Option<String>,
     pub fields: Map<String, Value>,
-    /// Alleen bij een besluit: elke parameter die meedeed, met haar waarde en
-    /// haar herkomst (RFC-013 `accepted_values`).
+    /// Bij elke handeling die de engine uitrekende (een besluit, een vervolg
+    /// of een feit met uitkomsten): elke parameter die meedeed, met haar
+    /// waarde en haar herkomst (RFC-013 `accepted_values`).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub inputs: BTreeMap<String, Invoer>,
-    /// Alleen bij een besluit: wat er meedeed, met de hash erover (RFC-013,
-    /// RFC-022 par. 1.3).
+    /// Bij elke handeling die de engine uitrekende: wat er meedeed, met de
+    /// hash erover (RFC-013, RFC-022 par. 1.3).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub receipt: Option<Receipt>,
 }
@@ -206,6 +207,35 @@ impl Gram {
     pub fn vastgelegd(&self) -> Result<DateTime<FixedOffset>, String> {
         datum::moment_van("vastgelegd_op", &self.vastgelegd_op)
             .map_err(|e| format!("gram '{}': {e}", self.name))
+    }
+
+    /// Zet het moment van vastleggen: de cel doet dat onder haar schrijfslot,
+    /// zodat de volgorde van de regels in de kroniek die van `vastgelegd_op`
+    /// is. `niet_voor` is het `vastgelegd_op` van de laatste regel van de
+    /// kroniek: loopt de klok terug, dan krijgt het gram dat moment, niet een
+    /// eerder. Een `op_moment` dat het event niet aan een waarde bond
+    /// (zonder `op_moment_grondslag`), is het moment van vastleggen en
+    /// schuift mee; een gebonden `op_moment` mag er niet na liggen.
+    pub fn stempel(
+        &mut self,
+        nu: DateTime<FixedOffset>,
+        niet_voor: Option<DateTime<FixedOffset>>,
+    ) -> Result<(), String> {
+        let moment = match niet_voor {
+            Some(v) if v > nu => v,
+            _ => nu,
+        };
+        let tekst = datum::als_op_moment(&moment);
+        if self.op_moment_grondslag.is_none() && self.herkomst.is_none() {
+            self.op_moment = tekst.clone();
+        } else if self.moment()? > moment {
+            return Err(format!(
+                "op_moment {} ligt na het vastleggen ({tekst}): wat nog moet gebeuren, wordt niet vastgelegd",
+                self.op_moment
+            ));
+        }
+        self.vastgelegd_op = tekst;
+        Ok(())
     }
 
     /// Een gram van voor `vastgelegd_op` (gelezen uit een oudere kroniek)

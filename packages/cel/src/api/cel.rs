@@ -230,21 +230,25 @@ fn toets_zaak(gram: &Gram, bestaand: &[&Gram], verwacht: Option<usize>) -> Resul
     Ok(())
 }
 
-/// Leg een gram vast. Antwoord: het gram, met YAML. De toets op de zaak en
-/// het schrijven gebeuren onder één slot, zodat twee gelijktijdige verzoeken
-/// niet allebei dezelfde stage vastleggen. Het schrijven wacht op de schijf,
-/// dus het draait buiten de async-draden.
+/// Leg een gram vast. Antwoord: het gram, met YAML. Het stempelen
+/// (`vastgelegd_op`), de toets op de zaak en het schrijven gebeuren onder één
+/// slot: twee gelijktijdige verzoeken leggen niet allebei dezelfde stage vast,
+/// en de volgorde in het bestand is die van `vastgelegd_op`. Het schrijven
+/// wacht op de schijf, dus het draait buiten de async-draden.
 async fn grammen_route(
     State(state): State<CelState>,
     Json(verzoek): Json<Vastlegverzoek>,
 ) -> Result<(StatusCode, Json<Value>), Fout> {
     let gram = bouw(&state, &verzoek)?;
-    let (kroniek, cel, g) = (state.kroniek.clone(), state.cel.clone(), gram.clone());
+    let (kroniek, cel, klok) = (state.kroniek.clone(), state.cel.clone(), state.klok.clone());
     let verwacht = verzoek.zaak_grammen;
-    tokio::task::spawn_blocking(move || {
-        kroniek.voeg_toe_mits(&g, &cel.kronieken(), |bestaand| {
-            toets_zaak(&g, bestaand, verwacht)
-        })
+    let gram = tokio::task::spawn_blocking(move || {
+        kroniek.leg_vast_mits(
+            gram,
+            &cel.kronieken(),
+            || klok(),
+            |g, bestaand| toets_zaak(g, bestaand, verwacht),
+        )
     })
     .await
     .map_err(|e| intern(format!("het vastleggen brak af: {e}")))?

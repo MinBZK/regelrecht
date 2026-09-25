@@ -24,6 +24,8 @@ use std::sync::{
     Arc, Mutex, MutexGuard, OnceLock, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard,
 };
 
+use chrono::{DateTime, FixedOffset};
+
 use crate::gram::Gram;
 
 /// Een vastgelegd gram, met zijn YAML zodra iemand die vroeg: het gram
@@ -189,7 +191,8 @@ impl Kroniek {
 
     /// Voeg een gram toe. Het gram moet valideren tegen `gram.json`.
     pub fn voeg_toe(&self, gram: &Gram) -> Result<(), String> {
-        self.voeg_toe_mits(gram, &[], |_| Ok::<(), std::convert::Infallible>(()))?
+        self.voeg_toe_mits(gram, &[], |_, _| Ok::<(), std::convert::Infallible>(()))?
+            .map(|_| ())
             .map_err(|never| match never {})
     }
 
@@ -205,9 +208,34 @@ impl Kroniek {
         &self,
         gram: &Gram,
         kronieken: &[&str],
-        controle: impl FnOnce(&[&Gram]) -> Result<(), E>,
-    ) -> Result<Result<(), E>, String> {
-        let regel = als_regel(gram)?;
+        controle: impl FnOnce(&Gram, &[&Gram]) -> Result<(), E>,
+    ) -> Result<Result<Gram, E>, String> {
+        self.schrijf_mits(gram.clone(), kronieken, None::<fn() -> _>, controle)
+    }
+
+    /// Leg een gram vast zoals [`Kroniek::voeg_toe_mits`], en zet eerst,
+    /// onder het schrijfslot, het moment van vastleggen uit `klok` (zie
+    /// [`Gram::stempel`]). Zo is de volgorde van de regels in het bestand die
+    /// van hun `vastgelegd_op`, ook als twee verzoeken tegelijk komen. De
+    /// controle ziet het gestempelde gram. Antwoord: het gram zoals het
+    /// vastligt.
+    pub fn leg_vast_mits<E>(
+        &self,
+        gram: Gram,
+        kronieken: &[&str],
+        klok: impl FnOnce() -> DateTime<FixedOffset>,
+        controle: impl FnOnce(&Gram, &[&Gram]) -> Result<(), E>,
+    ) -> Result<Result<Gram, E>, String> {
+        self.schrijf_mits(gram, kronieken, Some(klok), controle)
+    }
+
+    fn schrijf_mits<E>(
+        &self,
+        mut gram: Gram,
+        kronieken: &[&str],
+        klok: Option<impl FnOnce() -> DateTime<FixedOffset>>,
+        controle: impl FnOnce(&Gram, &[&Gram]) -> Result<(), E>,
+    ) -> Result<Result<Gram, E>, String> {
         let pad = self.bestand(&gram.chronicle)?;
         let mut alle = kronieken.to_vec();
         alle.push(gram.chronicle.as_str());
@@ -215,7 +243,7 @@ impl Kroniek {
         let _schrijver = self.schrijfslot();
         // Zolang wij het schrijfslot hebben, verandert `staat` niet: de
         // controle ziet wat er ligt, ook nadat het leesslot weer los is.
-        let (bestaand, lengte) = {
+        let (bestaand, lengte, laatst) = {
             let staat = self.lees_staat();
             let mut bestaand = Vec::new();
             for k in kronieken {
@@ -223,11 +251,18 @@ impl Kroniek {
                     bestaand.extend(s.grammen.iter().cloned());
                 }
             }
-            let lengte = staat.get(&gram.chronicle).map_or(0, |s| s.lengte);
-            (bestaand, lengte)
+            let stapel = staat.get(&gram.chronicle);
+            let lengte = stapel.map_or(0, |s| s.lengte);
+            let laatst = stapel.and_then(|s| s.grammen.last()).cloned();
+            (bestaand, lengte, laatst)
         };
+        if let Some(klok) = klok {
+            let niet_voor = laatst.map(|v| v.gram.vastgelegd()).transpose()?;
+            gram.stempel(klok(), niet_voor)?;
+        }
+        let regel = als_regel(&gram)?;
         let zicht: Vec<&Gram> = bestaand.iter().map(|v| &v.gram).collect();
-        if let Err(w) = controle(&zicht) {
+        if let Err(w) = controle(&gram, &zicht) {
             return Ok(Err(w));
         }
         schrijf_regel(&pad, lengte, regel.as_bytes())?;
@@ -235,7 +270,7 @@ impl Kroniek {
         let stapel = staat.entry(gram.chronicle.clone()).or_default();
         stapel.lengte = lengte + regel.len() as u64;
         stapel.voeg_toe(gram.clone());
-        Ok(Ok(()))
+        Ok(Ok(gram))
     }
 
     /// Zet de startstand in de kroniek, als elke kroniek van `kronieken` leeg
@@ -558,7 +593,7 @@ mod tests {
         let k = open(dir.path());
         k.voeg_toe(&gram(Z1)).unwrap();
         let uitkomst = k
-            .voeg_toe_mits(&gram(Z1), K, |bestaand| {
+            .voeg_toe_mits(&gram(Z1), K, |_, bestaand| {
                 if bestaand.is_empty() {
                     Ok(())
                 } else {
@@ -578,7 +613,7 @@ mod tests {
             .map(|_| {
                 let k = k.clone();
                 std::thread::spawn(move || {
-                    k.voeg_toe_mits(&gram(Z1), K, |bestaand| {
+                    k.voeg_toe_mits(&gram(Z1), K, |_, bestaand| {
                         if bestaand.is_empty() {
                             Ok(())
                         } else {
@@ -599,6 +634,96 @@ mod tests {
         assert_eq!(aantal(&k), 1);
         let pad = dir.path().join("test_kroniek.jsonl");
         assert_eq!(std::fs::read_to_string(pad).unwrap().lines().count(), 1);
+    }
+
+    /// Het stempel `vastgelegd_op` komt onder het schrijfslot: bij
+    /// gelijktijdige verzoeken is de volgorde van de regels in het bestand die
+    /// van hun `vastgelegd_op`. De klok telt hier op per aanroep, maar de
+    /// draden komen in willekeurige volgorde bij het slot; zonder stempel
+    /// onder het slot liepen bestand en tijd dan uiteen.
+    #[test]
+    fn het_stempel_komt_onder_het_slot() {
+        use std::sync::atomic::{AtomicI64, Ordering};
+        let dir = tempfile::tempdir().unwrap();
+        let k = Arc::new(open(dir.path()));
+        let teller = Arc::new(AtomicI64::new(0));
+        let draden: Vec<_> = (0..16)
+            .map(|i| {
+                let (k, teller) = (k.clone(), teller.clone());
+                std::thread::spawn(move || {
+                    let mut g = gram(if i % 2 == 0 { Z1 } else { Z2 });
+                    g.vastgelegd_op = "2000-01-01T00:00:00+01:00".into();
+                    let klok = || {
+                        let s = teller.fetch_add(1, Ordering::SeqCst);
+                        DateTime::parse_from_rfc3339("2025-03-12T10:00:00+01:00").unwrap()
+                            + chrono::Duration::seconds(s)
+                    };
+                    k.leg_vast_mits(g, &[], klok, |_, _| Ok::<(), ()>(()))
+                        .unwrap()
+                        .unwrap()
+                })
+            })
+            .collect();
+        for d in draden {
+            d.join().unwrap();
+        }
+        let tekst = std::fs::read_to_string(dir.path().join("test_kroniek.jsonl")).unwrap();
+        let momenten: Vec<String> = tekst
+            .lines()
+            .map(|r| serde_json::from_str::<Gram>(r).unwrap().vastgelegd_op)
+            .collect();
+        assert_eq!(momenten.len(), 16);
+        let mut gesorteerd = momenten.clone();
+        gesorteerd.sort();
+        assert_eq!(
+            momenten, gesorteerd,
+            "de bestandsvolgorde is die van vastgelegd_op"
+        );
+        // Zonder gebonden op_moment schuift het op_moment mee.
+        let g: Gram = serde_json::from_str(tekst.lines().next().unwrap()).unwrap();
+        assert_eq!(g.op_moment, g.vastgelegd_op);
+    }
+
+    /// Loopt de klok terug, dan krijgt een gram niet een eerder
+    /// `vastgelegd_op` dan de regel ervoor. Een gebonden `op_moment` na dat
+    /// stempel wordt geweigerd.
+    #[test]
+    fn het_stempel_loopt_niet_terug() {
+        let dir = tempfile::tempdir().unwrap();
+        let k = open(dir.path());
+        let t = |s: &str| DateTime::parse_from_rfc3339(s).unwrap();
+        let eerst = k
+            .leg_vast_mits(
+                gram(Z1),
+                &[],
+                || t("2025-03-12T10:00:00+01:00"),
+                |_, _| Ok::<(), ()>(()),
+            )
+            .unwrap()
+            .unwrap();
+        let daarna = k
+            .leg_vast_mits(
+                gram(Z1),
+                &[],
+                || t("2025-03-12T09:00:00+01:00"),
+                |_, _| Ok::<(), ()>(()),
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(daarna.vastgelegd_op, eerst.vastgelegd_op);
+        let mut gebonden = gram(Z1);
+        gebonden.op_moment = "2025-03-13T00:00:00+01:00".into();
+        gebonden.op_moment_grondslag = Some(vec!["testregeling_aanvraag#1".into()]);
+        let f = k
+            .leg_vast_mits(
+                gebonden,
+                &[],
+                || t("2025-03-12T11:00:00+01:00"),
+                |_, _| Ok::<(), ()>(()),
+            )
+            .unwrap_err();
+        assert!(f.contains("na het vastleggen"), "{f}");
+        assert_eq!(aantal(&k), 2);
     }
 
     #[test]
