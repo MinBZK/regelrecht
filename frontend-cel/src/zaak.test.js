@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { euroTekst } from './tekst.js';
+import { bedragTekst } from './tekst.js';
 import { besluitKop, indeling, statusTekst } from './zaak.js';
 
 const h = (naam, extra = {}) => ({
@@ -25,7 +25,8 @@ const zaak = {
     h('bekendmaken', { soort: { soort: 'vervolg' }, stage: 'BEKENDMAKING', besluit: 'z/1' }),
     h('betalen', {
       besluit: 'z/1',
-      formulier: [{ naam: 'bedrag', type: 'bedrag' }],
+      formulier: [{ naam: 'bedrag', type: 'bedrag', eenheid: 'eurocent' }],
+      typen: { nog_te_betalen: { type: 'amount', eenheid: 'eurocent' } },
       proef: { uitkomsten: { nog_te_betalen: 1200 } },
     }),
     h('wijzigen', { soort: { soort: 'besluit' }, stage: 'BESLUIT', besluit: 'z/2', vastgelegd: 1 }),
@@ -44,10 +45,10 @@ describe('indeling', () => {
     expect(d.overig.map((x) => x.naam)).toEqual(['terugvorderen', 'aanvulling_vragen']);
   });
 
-  it('geeft de betaalstand per besluit, in euro', () => {
+  it('geeft de betaalstand per besluit, in de eenheid van de regeling', () => {
     const d = indeling(zaak);
     expect(d.besluiten[0].betaalstand).toEqual([
-      { sleutel: 'betalennog_te_betalen', handeling: 'betalen', naam: 'nog_te_betalen', waarde: euroTekst(1200) },
+      { sleutel: 'betalennog_te_betalen', handeling: 'betalen', naam: 'nog_te_betalen', waarde: bedragTekst(1200, 'eurocent') },
     ]);
     expect(d.besluiten[1].betaalstand).toEqual([]);
   });

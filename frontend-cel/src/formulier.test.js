@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { external, leeg, leesPad, opties, veldTekst, zetPad } from './formulier.js';
+import { external, inEuro, leeg, leesPad, naarFormulier, naarWet, opties, veldLabel, veldTekst, zetPad } from './formulier.js';
 
 describe('leeg', () => {
   it('ziet null, lege tekst en lege lijst als leeg', () => {
@@ -68,5 +68,29 @@ describe('veldTekst', () => {
     expect(veldTekst({ detail: { value: 'a' }, target: { value: 'b' } })).toBe('a');
     expect(veldTekst({ target: { value: 'b' } })).toBe('b');
     expect(veldTekst({})).toBe('');
+  });
+});
+
+describe('een bedrag in de eenheid van de regeling', () => {
+  const cent = { naam: 'bedrag', label: 'Bedrag', type: 'bedrag', eenheid: 'eurocent' };
+  const euro = { ...cent, eenheid: 'euro' };
+  const kaal = { ...cent, eenheid: undefined };
+
+  it('vraagt eurocent en euro in euro', () => {
+    expect(inEuro(cent)).toBe(true);
+    expect(inEuro(euro)).toBe(true);
+    expect(inEuro(kaal)).toBe(false);
+    expect(veldLabel(cent)).toBe('Bedrag (euro)');
+    expect(veldLabel({ ...cent, eenheid: 'punten' })).toBe('Bedrag (punten)');
+    expect(veldLabel(kaal)).toBe('Bedrag');
+  });
+
+  it('rekent alleen eurocent om', () => {
+    expect(naarWet(cent, 12.34)).toBe(1234);
+    expect(naarFormulier(cent, 1234)).toBe(12.34);
+    expect(naarWet(euro, 12.34)).toBe(12.34);
+    expect(naarWet(kaal, 12)).toBe(12);
+    expect(naarWet(cent, null)).toBe(null);
+    expect(naarWet({ naam: 'n', type: 'getal', eenheid: 'eurocent' }, 5)).toBe(5);
   });
 });

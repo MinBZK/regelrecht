@@ -221,10 +221,12 @@ articles:
         parameters:
           - name: betaald_voorschot
             type: amount
+            type_spec: {unit: eurocent}
             required: true
             origin: {waarde: DOSSIER, grondslag: testregeling_toeslag#5 lid 1}
           - name: vastgestelde_toeslag
             type: amount
+            type_spec: {unit: eurocent}
             required: true
             origin: {waarde: DOSSIER, grondslag: testregeling_toeslag#5 lid 1}
           - name: terugvorderingsdatum
@@ -283,10 +285,12 @@ articles:
         parameters:
           - name: voorschot
             type: amount
+            type_spec: {unit: eurocent}
             required: true
             origin: {waarde: DOSSIER, grondslag: testregeling_toeslag#8 lid 1}
           - name: betaald_voorschot
             type: amount
+            type_spec: {unit: eurocent}
             required: true
             origin: {waarde: DOSSIER, grondslag: testregeling_toeslag#8 lid 1}
         output:

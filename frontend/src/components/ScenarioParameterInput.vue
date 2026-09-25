@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue';
-import { centsToEuros, eurosToCents } from '../utils/currency.js';
+import { centsToEuros, eurosToCents } from '@regelrecht/frontend-shared/currency.js';
 import { isNullText } from '../utils/nullability.js';
 
 // Generic, datatype-driven scenario input control. Given a declared datatype

@@ -167,6 +167,11 @@ pub struct Parameter {
     pub nullable: Option<bool>,
     #[serde(default)]
     pub description: Option<String>,
+    /// The schema allows `type_spec` on every field (`baseField`); a
+    /// parameter carries its unit here, such as `eurocent` for an amount
+    /// (RFC-023). The engine does not compute with it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub type_spec: Option<TypeSpec>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temporal: Option<Temporal>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

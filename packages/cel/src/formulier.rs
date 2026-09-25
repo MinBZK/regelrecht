@@ -69,6 +69,10 @@ pub struct Veld {
     pub label: String,
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     pub soort: Option<String>,
+    /// De eenheid uit de regeling (`type_spec.unit`), zoals `eurocent` bij
+    /// een bedrag: de frontend rekent een invoer in euro ermee om.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eenheid: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub opties: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -142,6 +146,7 @@ impl VeldDoc {
             label: self.label.unwrap_or_else(|| self.id.clone()),
             naam: self.id,
             soort: self.soort,
+            eenheid: None,
             opties: self.opties,
             kolommen: self.kolommen,
             uitleg: self.uitleg,
@@ -201,6 +206,7 @@ pub fn velden(event: &Event, formulier: Option<&Formulier>) -> Result<Vec<Veld>,
                 label: sleutel.clone(),
                 naam: sleutel,
                 soort: None,
+                eenheid: None,
                 opties: None,
                 kolommen: None,
                 uitleg: None,

@@ -18,7 +18,7 @@ export function betaalstand(handelingen) {
   for (const h of handelingen) {
     if (!h.formulier.some((v) => v.type === 'bedrag')) continue;
     for (const [naam, w] of Object.entries(h.proef?.uitkomsten ?? {})) {
-      uit.push({ sleutel: h.naam + naam, handeling: h.label, naam, waarde: uitkomstTekst(naam, w) });
+      uit.push({ sleutel: h.naam + naam, handeling: h.label, naam, waarde: uitkomstTekst(w, h.typen?.[naam]) });
     }
   }
   return uit;

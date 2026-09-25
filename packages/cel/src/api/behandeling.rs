@@ -153,6 +153,7 @@ pub(super) async fn zaak_route(
     .await;
     let mut handelingen = Vec::new();
     for (h, (stand, proef)) in b.handelingen.iter().zip(proeven) {
+        let benodigd = handeling::benodigd(&state.proces.service, h).unwrap_or_default();
         let proef = match proef {
             None => Value::Null,
             Some(Ok(p)) => json!(p),
@@ -162,17 +163,18 @@ pub(super) async fn zaak_route(
             .oordelen
             .iter()
             .map(|o| {
-                let soort = handeling::benodigd(&state.proces.service, h)
-                    .ok()
-                    .and_then(|b| b.get(&o.parameter).cloned())
-                    .and_then(|b| handeling::veldsoort(&b.soort));
-                json!({
+                let typering = benodigd.get(&o.parameter).map(|b| &b.typering);
+                let mut v = json!({
                     "naam": o.parameter,
                     "label": o.label,
-                    "type": soort,
+                    "type": typering.map(|t| handeling::veldsoort(t.soort)),
                     "groep": o.groep,
                     "soort": "oordeel",
-                })
+                });
+                if let Some(e) = typering.and_then(|t| t.eenheid.as_deref()) {
+                    v["eenheid"] = json!(e);
+                }
+                v
             })
             .chain(h.feiten.iter().map(|f| {
                 let mut v = json!(f);
@@ -190,6 +192,7 @@ pub(super) async fn zaak_route(
             "artikel": h.artikel,
             "uitkomsten": h.uitkomsten,
             "toetsen": h.toetsen,
+            "typen": h.typen,
             "haken": h.haken,
             "nog_niet": h.nog_niet,
             "formulier": formulier,

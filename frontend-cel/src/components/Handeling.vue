@@ -10,6 +10,7 @@
 import { computed, inject, ref } from 'vue';
 import Invoer from './Invoer.vue';
 import { herkomstRijen, soortVan, uitkomstTekst } from '../tekst.js';
+import { naarFormulier, naarWet, veldLabel } from '../formulier.js';
 import TraceKnop from '@regelrecht/frontend-shared/components/TraceKnop.vue';
 
 const props = defineProps({
@@ -23,9 +24,9 @@ const voorbeelden = inject('voorbeelden');
 // Het voorbeeldformulier van deze handeling, of null.
 const voorbeeld = computed(() => voorbeelden.value.handelingen?.[props.handeling.naam] ?? null);
 
-// Een bedrag vraagt het formulier in euro; de wet rekent in eurocent.
-const bedrag = (v) => v.type === 'bedrag';
-const invoersoort = (v) => (bedrag(v) ? 'getal' : v.type);
+// Een bedrag is een getal in het formulier; in welke eenheid, zegt de
+// regeling (zie formulier.js).
+const invoersoort = (v) => (v.type === 'bedrag' ? 'getal' : v.type);
 
 const waarden = ref(Object.fromEntries(props.handeling.formulier.map((v) => [v.naam, null])));
 const proef = ref(props.handeling.proef?.fout ? null : props.handeling.proef);
@@ -48,13 +49,13 @@ function zet(naam, waarde) {
   waarden.value = { ...waarden.value, [naam]: waarde === '' ? null : waarde };
 }
 
-// Wat is ingevuld, met bedragen in eurocent.
+// Wat is ingevuld, met bedragen in de eenheid van de wet.
 function formulier(bron) {
   const uit = {};
   for (const v of props.handeling.formulier) {
     const w = bron[v.naam];
     if (w === null || w === undefined) continue;
-    uit[v.naam] = bedrag(v) && typeof w === 'number' ? Math.round(w * 100) : w;
+    uit[v.naam] = naarWet(v, w);
   }
   return uit;
 }
@@ -64,13 +65,10 @@ function formulier(bron) {
 // opnieuw op.
 const versie = ref(0);
 
-// Het voorbeeld in de eenheden van het formulier (een bedrag in euro).
+// Het voorbeeld in de eenheden van het formulier.
 function voorbeeldWaarden() {
   return Object.fromEntries(
-    props.handeling.formulier.map((v) => {
-      const w = voorbeeld.value?.[v.naam] ?? null;
-      return [v.naam, bedrag(v) && typeof w === 'number' ? w / 100 : w];
-    }),
+    props.handeling.formulier.map((v) => [v.naam, naarFormulier(v, voorbeeld.value?.[v.naam] ?? null)]),
   );
 }
 
@@ -115,7 +113,7 @@ async function vastleggen(metVoorbeeld = false, gebeurd = false) {
 const uitkomsten = computed(() =>
   Object.entries({ ...(proef.value?.uitkomsten ?? {}), ...(proef.value?.toetsen ?? {}) }).map(([naam, w]) => ({
     naam,
-    waarde: uitkomstTekst(naam, w),
+    waarde: uitkomstTekst(w, proef.value?.typen?.[naam]),
   })),
 );
 const herkomst = computed(() => herkomstRijen(proef.value?.parameters, proef.value?.herkomst));
@@ -163,7 +161,7 @@ const soortTekst = computed(() => {
         <nldd-form-field
           v-for="v in g.velden"
           :key="v.naam"
-          :label="bedrag(v) ? `${v.label} (euro)` : v.label"
+          :label="veldLabel(v)"
           :supporting-label="v.naam"
         >
           <Invoer :soort="invoersoort(v)" :label="v.label" :model-value="waarden[v.naam]" @update:model-value="zet(v.naam, $event)" />

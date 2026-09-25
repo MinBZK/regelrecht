@@ -234,10 +234,12 @@ articles:
         parameters:
           - name: terug_te_betalen
             type: amount
+            type_spec: {unit: eurocent}
             required: true
             origin: {waarde: DOSSIER, grondslag: testregeling_awb#6 lid 2}
           - name: terugbetaald
             type: amount
+            type_spec: {unit: eurocent}
             required: true
             origin: {waarde: DOSSIER, grondslag: testregeling_awb#6 lid 2}
         output:

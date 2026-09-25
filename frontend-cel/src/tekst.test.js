@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { euroTekst, herkomstRijen, herkomstTekst, uitkomstTekst, waardeTekst } from './tekst.js';
+import { bedragTekst, herkomstRijen, herkomstTekst, uitkomstTekst, waardeTekst } from './tekst.js';
 
 describe('waardeTekst', () => {
   it('schrijft ja/nee, leeg en null uit', () => {
@@ -67,14 +67,32 @@ describe('herkomstRijen', () => {
   });
 });
 
-describe('euroTekst en uitkomstTekst', () => {
-  it('schrijft eurocent als euro', () => {
-    expect(euroTekst(1913600).replace(/\s/g, ' ')).toBe('€ 19.136,00');
-    expect(euroTekst(0).replace(/\s/g, ' ')).toBe('€ 0,00');
+describe('bedragTekst en uitkomstTekst', () => {
+  const tekst = (t) => t.replace(/\s/g, ' ');
+
+  it('schrijft een bedrag in de eenheid van de regeling', () => {
+    expect(tekst(bedragTekst(1913600, 'eurocent'))).toBe('€ 19.136,00');
+    expect(tekst(bedragTekst(0, 'eurocent'))).toBe('€ 0,00');
+    expect(tekst(bedragTekst(19136, 'euro'))).toBe('€ 19.136,00');
+    expect(bedragTekst(5, 'punten')).toBe('5 punten');
+    expect(bedragTekst(5)).toBe('5');
+    expect(bedragTekst(null, 'eurocent')).toBe('geen (null)');
   });
 
-  it('herkent een bedrag aan zijn naam', () => {
-    expect(uitkomstTekst('nog_te_betalen_awb4_52', 100).replace(/\s/g, ' ')).toBe('€ 1,00');
-    expect(uitkomstTekst('besluit_tijdig', true)).toBe('ja');
+  it('kent het type van een uitkomst uit de regeling, niet uit haar naam', () => {
+    const bedrag = { type: 'amount', eenheid: 'eurocent' };
+    expect(tekst(uitkomstTekst(100, bedrag))).toBe('€ 1,00');
+    // Een naam die op een bedrag lijkt, zonder type: een getal.
+    expect(uitkomstTekst(100, undefined)).toBe('100');
+    expect(uitkomstTekst(100, { type: 'number' })).toBe('100');
+    expect(uitkomstTekst(true, { type: 'boolean' })).toBe('ja');
+  });
+});
+
+describe('waardeTekst en een onbekende waarde', () => {
+  it('noemt wat er mist', () => {
+    const onbekend = { __unknown: true, missing: [{ law: 'w', name: 'inkomen', kind: 'parameter' }] };
+    expect(waardeTekst(onbekend)).toBe('onbekend (mist inkomen)');
+    expect(waardeTekst({ __unknown: true })).toBe('onbekend');
   });
 });

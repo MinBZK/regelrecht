@@ -1,4 +1,5 @@
 // Van wat er in het formulier staat naar `external` bij het indienen.
+import { centsToEuros, eurosToCents } from '@regelrecht/frontend-shared/currency.js';
 //
 // Een leeg veld gaat niet mee: de cel legt het dan vast als null, en een
 // afleiding als `gevuld` ziet het als niet ingevuld. Een naam met een punt
@@ -57,4 +58,28 @@ export function opties(lijst) {
 // gewoon element in `target.value`.
 export function veldTekst(e) {
   return e.detail?.value ?? e.target?.value ?? '';
+}
+
+// Een bedrag vraagt het formulier in euro als de regeling het in eurocent of
+// in euro rekent (`eenheid`, uit `type_spec.unit`); de wet krijgt het in haar
+// eigen eenheid terug. Een bedrag in een andere eenheid, of zonder, vraagt het
+// formulier zoals het is.
+export function inEuro(v) {
+  return v.type === 'bedrag' && (v.eenheid === 'eurocent' || v.eenheid === 'euro');
+}
+
+// Een ingevulde waarde in de eenheid van de wet.
+export function naarWet(v, w) {
+  return v.type === 'bedrag' && v.eenheid === 'eurocent' && typeof w === 'number' ? eurosToCents(w) : w;
+}
+
+// Een waarde van de wet in de eenheid van het formulier.
+export function naarFormulier(v, w) {
+  return v.type === 'bedrag' && v.eenheid === 'eurocent' && typeof w === 'number' ? centsToEuros(w) : w;
+}
+
+// Het label van een veld, met de eenheid waarin het formulier vraagt.
+export function veldLabel(v) {
+  if (inEuro(v)) return `${v.label} (euro)`;
+  return v.type === 'bedrag' && v.eenheid ? `${v.label} (${v.eenheid})` : v.label;
 }

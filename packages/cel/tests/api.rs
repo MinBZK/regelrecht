@@ -4293,6 +4293,15 @@ async fn meer_besluiten_in_een_zaak() {
         tb["proef"]["uitkomsten"]["nog_terug_te_betalen"],
         json!(7000)
     );
+    // Het type en de eenheid komen uit de regeling, niet uit de naam.
+    assert_eq!(
+        tb["proef"]["typen"]["nog_terug_te_betalen"],
+        json!({"type": "amount", "eenheid": "eurocent"})
+    );
+    assert_eq!(
+        tb["proef"]["typen"]["terugbetaling_conform"],
+        json!({"type": "boolean"})
+    );
     let (status, f) = toeslag(&app, &b, &zaak, "terugbetalen", terug(7001), false).await;
     assert_eq!(
         status,
@@ -4373,6 +4382,14 @@ async fn meer_besluiten_in_een_zaak() {
         .unwrap();
     assert_eq!(terugbetalen["besluit"], kenmerk(4));
     assert_eq!(terugbetalen["vastgelegd"], json!(2));
+    let bedrag = terugbetalen["formulier"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|v| v["naam"] == "bedrag")
+        .unwrap();
+    assert_eq!(bedrag["type"], "bedrag", "{bedrag}");
+    assert_eq!(bedrag["eenheid"], "eurocent", "{bedrag}");
     assert_eq!(
         terugbetalen["proef"]["uitkomsten"]["nog_terug_te_betalen"],
         json!(0),

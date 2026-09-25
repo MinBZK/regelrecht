@@ -281,6 +281,10 @@ pub struct HandelingDefinitie {
     /// `<regeling>#<artikel>` (RFC-008).
     #[serde(skip)]
     pub haken: Vec<String>,
+    /// Het type en de eenheid van elke uitkomst en toets, uit de regeling
+    /// (zie [`crate::regelingen::Waardetype`]).
+    #[serde(skip)]
+    pub typen: BTreeMap<String, crate::regelingen::Waardetype>,
 }
 
 impl HandelingDefinitie {

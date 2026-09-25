@@ -13,8 +13,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use regelrecht_engine::{Article, LawExecutionService};
+use regelrecht_law_model::{ParameterType, TypeSpec};
 use serde::Serialize;
-use serde_json::Value;
 use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
@@ -248,6 +248,45 @@ pub fn transitieve_parameters(
     parameters
 }
 
+/// Het type van een waarde volgens de regeling: `type` en de eenheid
+/// (`type_spec.unit`, zoals `eurocent`). Een frontend toont en vraagt een
+/// waarde daarmee, niet naar haar naam.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Waardetype {
+    #[serde(rename = "type")]
+    pub soort: ParameterType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eenheid: Option<String>,
+}
+
+impl Waardetype {
+    pub fn nieuw(soort: ParameterType, type_spec: Option<&TypeSpec>) -> Self {
+        Self {
+            soort,
+            eenheid: type_spec.and_then(|t| t.unit.clone()),
+        }
+    }
+}
+
+/// De typen van de uitkomsten van een artikel, per naam.
+pub fn uitkomsttypen(service: &LawExecutionService, artikel: &str) -> BTreeMap<String, Waardetype> {
+    self::artikel(service, artikel)
+        .ok()
+        .and_then(|a| a.get_execution_spec())
+        .and_then(|e| e.output.as_ref())
+        .map(|o| {
+            o.iter()
+                .map(|o| {
+                    (
+                        o.name.clone(),
+                        Waardetype::nieuw(o.output_type, o.type_spec.as_ref()),
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Een parameter die de aanroeper van een artikel moet leveren, met het
 /// artikel dat hem declareert.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -255,8 +294,8 @@ pub struct Benodigd {
     pub naam: String,
     /// `<regeling>#<artikel>`.
     pub artikel: String,
-    #[serde(rename = "type")]
-    pub soort: Value,
+    #[serde(flatten)]
+    pub typering: Waardetype,
     pub nullable: bool,
     /// De omschrijving uit de regeling, met de herkomst volgens het model.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -286,7 +325,7 @@ pub fn benodigde_parameters(
             uit.entry(p.name.clone()).or_insert_with(|| Benodigd {
                 naam: p.name.clone(),
                 artikel: format!("{law}#{}", a.number),
-                soort: serde_json::to_value(p.param_type).unwrap_or(Value::Null),
+                typering: Waardetype::nieuw(p.param_type, p.type_spec.as_ref()),
                 nullable: p.is_nullable(),
                 omschrijving: p.description.clone(),
             });
@@ -399,7 +438,7 @@ mod tests {
         let p = benodigde_parameters(&s, "testregeling_afnemer", a);
         // Artikel 2 wordt zonder parameters aangeroepen: zijn parameter telt.
         assert_eq!(p["zetels_op_lijst"].artikel, "testregeling_afnemer#2");
-        assert_eq!(p["datum_mededeling"].soort, serde_json::json!("date"));
+        assert_eq!(p["datum_mededeling"].typering.soort, ParameterType::Date);
         // De testregeling register krijgt haar parameters van artikel 1.
         assert!(!p.contains_key("is_ingeschreven_in_register"));
     }

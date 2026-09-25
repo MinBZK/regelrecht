@@ -56,7 +56,7 @@ use serde_json::{Map, Value};
 use regelrecht_engine::{
     ExecutionOutcome, HookPoint, LawExecutionService, StageState, Value as EngineValue,
 };
-use regelrecht_law_model::ProcedureDefinition;
+use regelrecht_law_model::{ParameterType, ProcedureDefinition};
 
 use crate::cel::Cel;
 use crate::celclient::{self, Besluitvelden, MetYaml, Vastlegverzoek};
@@ -68,7 +68,7 @@ use crate::gram::{GeladenRegeling, Gram, HandelendeActor, Invoer, Receipt, Stroo
 use crate::kanaal::Sessie;
 use crate::proces::Proces;
 use crate::reductie::{Besluitstand, Lexostatus, Peil, Zaakstand};
-use crate::regelingen::{self, Benodigd};
+use crate::regelingen::{self, Benodigd, Waardetype};
 use crate::rijen::{self, Rijen};
 use crate::stroom::{Besluit, Binding, Event, Zaak};
 use crate::synthese::{self, Bron, BronUitslag, Herkomst};
@@ -104,6 +104,9 @@ pub struct Proefhandeling {
     /// De toetsen van het artikel (zie [`toetsen`]) met hun waarde.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub toetsen: BTreeMap<String, Value>,
+    /// Het type en de eenheid van elke uitkomst en toets, uit de regeling:
+    /// een bedrag in eurocent toont de frontend in euro.
+    pub typen: BTreeMap<String, Waardetype>,
     /// Wat de engine miste.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub mist: Vec<String>,
@@ -278,9 +281,7 @@ pub fn toetsen(service: &LawExecutionService, artikel: &str, event: &Event) -> V
         .and_then(|e| e.output.as_ref())
         .map(|o| {
             o.iter()
-                .filter(|o| {
-                    serde_json::to_value(o.output_type).ok() == Some(Value::from("boolean"))
-                })
+                .filter(|o| o.output_type == ParameterType::Boolean)
                 .filter(|o| {
                     let Some(lb) = &o.legal_basis else {
                         return false;
@@ -326,7 +327,7 @@ pub fn nog_niet(
             if uit_de_zaak.contains(&r.name) {
                 continue;
             }
-            let waarde = if p.soort.as_str() == Some("boolean") {
+            let waarde = if p.typering.soort == ParameterType::Boolean {
                 Value::Bool(false)
             } else {
                 Value::Null
@@ -497,23 +498,29 @@ pub fn bereid_voor(
             h.toetsen.clear();
         }
     }
+    for h in lijst.iter_mut() {
+        let mut typen = regelingen::uitkomsttypen(service, &h.artikel);
+        for haak in &h.haken {
+            typen.extend(regelingen::uitkomsttypen(service, haak));
+        }
+        typen.retain(|naam, _| h.uitkomsten.contains(naam) || h.toetsen.contains(naam));
+        h.typen = typen;
+    }
     fouten
 }
 
 /// Het soort veld van een formulier bij een type uit de regeling. Een
-/// `amount` is een bedrag in eurocent, zoals de corpora het met
-/// `type_spec.unit: eurocent` declareren; de frontend vraagt het in euro.
-pub fn veldsoort(soort: &Value) -> Option<String> {
-    soort.as_str().map(|t| {
-        match t {
-            "boolean" => "janee",
-            "date" => "datum",
-            "amount" => "bedrag",
-            "number" => "getal",
-            _ => "tekst",
-        }
-        .to_string()
-    })
+/// `amount` is een bedrag; in welke eenheid (zoals `eurocent`), zegt de
+/// regeling met `type_spec.unit`, en dat krijgt het veld mee als `eenheid`.
+pub fn veldsoort(soort: ParameterType) -> String {
+    match soort {
+        ParameterType::Boolean => "janee",
+        ParameterType::Date => "datum",
+        ParameterType::Amount => "bedrag",
+        ParameterType::Number => "getal",
+        _ => "tekst",
+    }
+    .to_string()
 }
 
 /// Zet het formulier van elke handeling, na de controle op de herkomst: de
@@ -556,9 +563,8 @@ pub fn zet_formulier(d: &mut ProcesDefinitie, service: &LawExecutionService, cel
                                 .and_then(|b| b.omschrijving.as_deref())
                                 .map(crate::origin::label_uit)
                                 .unwrap_or_else(|| leesbaar(&r.name)),
-                            soort: veldsoort(
-                                &serde_json::to_value(r.req_type).unwrap_or(Value::Null),
-                            ),
+                            soort: Some(veldsoort(r.req_type)),
+                            eenheid: b.and_then(|b| b.typering.eenheid.clone()),
                             opties: None,
                             kolommen: None,
                             uitleg: None,
@@ -592,6 +598,7 @@ fn feitveld(
     sleutel: &str,
 ) -> Veld {
     let mut soort = None;
+    let mut eenheid = None;
     let mut uitleg = None;
     // Welk veld van het gram bindt aan deze sleutel?
     let paden: Vec<String> = event
@@ -619,7 +626,8 @@ fn feitveld(
                     continue;
                 };
                 if let Some(p) = art.get_parameters().iter().find(|p| &p.name == naam) {
-                    soort = veldsoort(&serde_json::to_value(p.param_type).unwrap_or(Value::Null));
+                    soort = Some(veldsoort(p.param_type));
+                    eenheid = p.type_spec.as_ref().and_then(|t| t.unit.clone());
                     uitleg = p.description.clone();
                     break 'zoek;
                 }
@@ -643,6 +651,7 @@ fn feitveld(
         naam: sleutel.to_string(),
         label: leesbaar(sleutel),
         soort,
+        eenheid,
         opties: None,
         kolommen: None,
         uitleg,
@@ -1315,6 +1324,7 @@ pub async fn proef(
         te_melden: false,
         uitkomsten: BTreeMap::new(),
         toetsen: BTreeMap::new(),
+        typen: h.typen.clone(),
         mist: Vec::new(),
         reden: None,
         parameters: BTreeMap::new(),

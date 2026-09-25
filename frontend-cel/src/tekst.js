@@ -1,31 +1,39 @@
 // Waarden en herkomst als tekst, voor tabellen.
+import { centsToEuros } from '@regelrecht/frontend-shared/currency.js';
+import { isUnknown, missingFacts } from '@regelrecht/frontend-shared/values.js';
 
-// Een waarde uit een lexostatus of een uitkomst van de engine.
+// Een waarde uit een lexostatus of een uitkomst van de engine. Een onbekende
+// waarde (RFC-036) noemt wat er mist.
 export function waardeTekst(w) {
   if (w === true) return 'ja';
   if (w === false) return 'nee';
   if (w === undefined) return '';
   if (w === null) return 'geen (null)';
+  if (isUnknown(w)) {
+    const mist = missingFacts(w).map((f) => f.name);
+    return mist.length > 0 ? `onbekend (mist ${mist.join(', ')})` : 'onbekend';
+  }
   return typeof w === 'string' ? w : JSON.stringify(w);
 }
 
-// Een bedrag in eurocent als euro's, zoals een Nederlands overheidsscherm
-// het noteert: "€ 19.136,00".
-export function euroTekst(centen) {
-  if (typeof centen !== 'number') return waardeTekst(centen);
-  return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(centen / 100);
+const euro = new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' });
+
+// Een bedrag in de eenheid die de regeling noemt (`type_spec.unit`): eurocent
+// en euro als euro's, zoals een Nederlands overheidsscherm het noteert
+// ("€ 19.136,00"); een andere eenheid achter het getal, en zonder eenheid
+// het getal zelf.
+export function bedragTekst(w, eenheid) {
+  if (typeof w !== 'number') return waardeTekst(w);
+  if (eenheid === 'eurocent') return euro.format(centsToEuros(w));
+  if (eenheid === 'euro') return euro.format(w);
+  return eenheid ? `${w} ${eenheid}` : String(w);
 }
 
-// Of een uitkomst een bedrag is. De engine geeft geen type mee in de proef;
-// een bedrag herkennen we aan zijn naam (de corpora rekenen bedragen in
-// eurocent).
-export function isBedrag(naam) {
-  return /bedrag|te_betalen|betaald/.test(naam);
-}
-
-// Een uitkomst als tekst: een bedrag in euro, de rest als waarde.
-export function uitkomstTekst(naam, w) {
-  return isBedrag(naam) && typeof w === 'number' ? euroTekst(w) : waardeTekst(w);
+// Een uitkomst als tekst, naar haar type uit de regeling (`{type, eenheid}`,
+// zoals de runtime het per uitkomst meegeeft): een bedrag in zijn eenheid,
+// de rest als waarde.
+export function uitkomstTekst(w, type) {
+  return type?.type === 'amount' ? bedragTekst(w, type.eenheid) : waardeTekst(w);
 }
 
 // Waar een parameter vandaan kwam: één tekst per variant van Herkomst in
