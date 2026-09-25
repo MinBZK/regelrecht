@@ -7,6 +7,7 @@
 # Deze poort telt wat er staat, niet wat er is gemeld, en draait dus ná de
 # opruiming. Het verwijderen bij ZAD is asynchroon, vandaar de wachtlus.
 set -uo pipefail
+# Geen mapfile en geen lege "${arr[@]}" onder set -u: macOS levert bash 3.2.
 
 : "${REPO:?REPO is verplicht}"
 : "${ZAD_API_KEY:?ZAD_API_KEY is verplicht}"
@@ -18,7 +19,8 @@ POLL_INTERVAL="${POLL_INTERVAL:-15}"
 
 # Nul open PR's kan kloppen, maar het is ook wat een mislukte aanroep oplevert,
 # en dan zou elk deployment hieronder ten onrechte als achtergebleven gelden.
-mapfile -t open_prs < <(
+open_prs=()
+while IFS= read -r line; do open_prs+=("$line"); done < <(
     gh pr list --repo "${REPO}" --state open --limit 1000 --json number \
         --jq '.[] | "pr\(.number)"' 2>/dev/null | sort -u
 )
@@ -44,16 +46,17 @@ read_state() {
     # "niets achtergebleven" gelden.
     jq -e 'has("deployments")' <<<"$json" >/dev/null 2>&1 || return 3
 
-    mapfile -t previews < <(
+    previews=()
+    while IFS= read -r line; do previews+=("$line"); done < <(
         jq -r '.deployments[]?.name // empty' <<<"$json" |
             grep -E '^pr[0-9]+$' | sort -u
     )
 
     seen=${#previews[@]}
     stale=()
-    for preview in "${previews[@]}"; do
+    for preview in ${previews[@]+"${previews[@]}"}; do
         keep=false
-        for open in "${open_prs[@]}"; do
+        for open in ${open_prs[@]+"${open_prs[@]}"}; do
             [ "$preview" = "$open" ] && keep=true && break
         done
         [ "$keep" = false ] && stale+=("$preview")
