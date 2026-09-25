@@ -48,7 +48,7 @@ flowchart LR
 | `enrich_v2/` | The model-free parts of enrichment: checks, capability plan, reference graph, closing pass |
 | `document_convert.rs` | Uploaded document (docx, PDF and others) to a markdown werkdocument |
 | `law_convert.rs` | Uploaded PDF or Word document to a base-law YAML, followed by a task-flow enrich |
-| `law_migrate.rs` | Lift a law file to schema v0.7.0 |
+| `law_migrate.rs` | Lift a law file to schema v0.7.1, the current release (structurally v0.7.0) |
 | `markings.rs`, `untranslatables.rs` | Persist the markings and untranslatables the enrichment agent reports |
 | `tasks.rs` | Personal review tasks that tie a finished job to the account that requested it |
 | `feature_flags.rs` | Read and write the shared `feature_flags` table |
@@ -69,7 +69,7 @@ flowchart LR
 | `regelrecht-pipeline-api` | `src/bin/pipeline_api.rs` | Internal HTTP service, see [Pipeline API](#pipeline-api) |
 | `law-check` | `src/bin/law_check.rs` | Runs the deterministic enrichment checks over law files, without database, git or model. Exits 1 on schema errors; `--strict` fails on every finding; `--corpus` adds the cross-law binding check |
 | `law-source` | `src/bin/law_source.rs` | Compares a law file's text with the official BWB toestand. Exits 1 when an article drifts, is missing or is fabricated. `--rewrite` replaces the text with the official one and keeps `machine_readable` per article |
-| `law-migrate` | `src/bin/law_migrate.rs` | Lifts law files to schema v0.7.0 and validates the result. A required field it cannot fill is reported, never guessed; it writes only with `--write` |
+| `law-migrate` | `src/bin/law_migrate.rs` | Lifts law files to schema v0.7.1 (the v0.7.0 shape; v0.7.1 changed only descriptions) and validates the result. A required field it cannot fill is reported, never guessed; it writes only with `--write` |
 | `enrich-once` | `src/bin/enrich_once.rs` | Runs the real enrichment loop against a directory on disk, without database or git, so a worker change can be tried on one law locally |
 
 Run the four tools from `packages/` with
