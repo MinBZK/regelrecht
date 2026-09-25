@@ -45,6 +45,7 @@ export function celApi(id) {
 // De routes van een proces, onder /processen/<id>.
 export function procesApi(id) {
   const p = `/processen/${encodeURIComponent(id)}/api`;
+  const handeling = (z, naam) => `${p}/zaken/${encodeURIComponent(z)}/handelingen/${encodeURIComponent(naam)}`;
   return {
     // Inloggen langs een kanaal uit `kanalen` in proces.yaml: de velden van
     // het kanaal, en `rol` als er langs het kanaal meer dan een rol inlogt.
@@ -63,9 +64,11 @@ export function procesApi(id) {
     loketIndienen: (invoer) => vraag('POST', `${p}/loket/aanvraag`, invoer),
     werkvoorraad: () => vraag('GET', `${p}/werkvoorraad`),
     zaak: (zaakkenmerk) => vraag('GET', `${p}/zaken/${encodeURIComponent(zaakkenmerk)}`),
-    proefbesluit: (zaakkenmerk, formulier) =>
-      vraag('POST', `${p}/zaken/${encodeURIComponent(zaakkenmerk)}/proefbesluit`, { formulier }),
-    besluit: (zaakkenmerk, formulier) =>
-      vraag('POST', `${p}/zaken/${encodeURIComponent(zaakkenmerk)}/besluit`, { formulier }),
+    // Een handeling in een zaak (het besluit, een latere stage, een feit uit
+    // het verloop): op proef, of genomen en vastgelegd. Een route voor elke
+    // handeling; welke er zijn, zegt de zaak.
+    proefhandeling: (zaakkenmerk, naam, formulier) =>
+      vraag('POST', `${handeling(zaakkenmerk, naam)}/proef`, { formulier }),
+    handeling: (zaakkenmerk, naam, formulier) => vraag('POST', handeling(zaakkenmerk, naam), { formulier }),
   };
 }

@@ -52,9 +52,19 @@ describe('vraag', () => {
     );
   });
 
+  it('stuurt een handeling naar haar eigen route', async () => {
+    const fetch = vi.fn().mockResolvedValue(antwoord(200, { te_nemen: true }));
+    vi.stubGlobal('fetch', fetch);
+    await procesApi('p').proefhandeling('Z 1', 'betalen', { bedrag: 100 });
+    expect(fetch).toHaveBeenCalledWith(
+      '/processen/p/api/zaken/Z%201/handelingen/betalen/proef',
+      expect.objectContaining({ method: 'POST', body: '{"formulier":{"bedrag":100}}' }),
+    );
+  });
+
   it('gooit een ApiError met de tekst uit `fout` en de status', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(antwoord(409, { fout: 'al besloten' })));
-    const fout = await procesApi('p').besluit('Z-1', {}).catch((e) => e);
+    const fout = await procesApi('p').handeling('Z-1', 'besluit', {}).catch((e) => e);
     expect(fout).toBeInstanceOf(ApiError);
     expect(fout.message).toBe('al besloten');
     expect(fout.status).toBe(409);

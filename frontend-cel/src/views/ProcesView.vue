@@ -3,7 +3,8 @@
 // schermen ze hebben, zegt GET /api/processen (`kanalen` en `rollen` in
 // proces.yaml): een rol met routes portaal ziet wat het beleid aanbiedt en
 // dient in, een rol met routes behandeling ziet de werkvoorraad, een zaak
-// met een proefbesluit en het besluit, een rol met routes loket voert een
+// met haar handelingen (het besluit, de bekendmaking, een betaling, een
+// feit uit het verloop), een rol met routes loket voert een
 // aanvraag in die langs een andere weg binnenkwam. De kroniek en de
 // lexostatussen zijn van de cel waarin het proces vastlegt; die komen van
 // /cellen/<id>, zonder login.
@@ -28,8 +29,9 @@ const props = defineProps({
 const api = procesApi(props.proces.id);
 provide('api', api);
 provide('celApi', celApi(props.cel.id));
-// De voorbeelden van het proces (inloggen, aanvraag, besluit); zonder: leeg.
-const voorbeelden = ref({ inloggen: [], aanvraag: null, besluit: null });
+// De voorbeelden van het proces (inloggen, aanvraag, en per handeling een
+// formulier); zonder: leeg.
+const voorbeelden = ref({ inloggen: [], aanvraag: null, handelingen: {} });
 provide('voorbeelden', voorbeelden);
 provide('proces', props.proces);
 

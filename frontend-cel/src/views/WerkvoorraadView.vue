@@ -1,6 +1,6 @@
 <script setup>
-// De werkvoorraad: een lijst-lexostatus met een regel per zaak waarover nog
-// besloten moet worden. De kolommen komen uit de lexostatus, niet uit code.
+// De werkvoorraad: een lijst-lexostatus met een regel per zaak. Welke zaken
+// erin staan en met welke kolommen, zegt de lexostatus, niet de code.
 import { computed, inject, onMounted, ref } from 'vue';
 import { waardeTekst } from '../tekst.js';
 
@@ -29,7 +29,7 @@ const sjabloon = computed(() => ['minmax(280px,1.4fr)', ...kolommen.value.map(()
 <template>
   <nldd-title size="2">
     <h1>Werkvoorraad</h1>
-    <span slot="subtitle">Aanvragen waarover nog besloten moet worden</span>
+    <span slot="subtitle">De zaken van de lijst-lexostatus van de werkvoorraad</span>
   </nldd-title>
   <nldd-spacer size="16"></nldd-spacer>
   <template v-if="fout">

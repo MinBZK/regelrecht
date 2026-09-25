@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { herkomstRijen, herkomstTekst, waardeTekst } from './tekst.js';
+import { euroTekst, herkomstRijen, herkomstTekst, uitkomstTekst, waardeTekst } from './tekst.js';
 
 describe('waardeTekst', () => {
   it('schrijft ja/nee, leeg en null uit', () => {
@@ -29,7 +29,7 @@ describe('herkomstTekst', () => {
       { bron: 'per_regel', lexostatus: 'aanvraag', veld: 'leden' },
       'per regel uit leden van eigen lexostatus aanvraag',
     ],
-    [{ bron: 'behandelaar' }, 'behandelaar (besluitformulier)'],
+    [{ bron: 'behandelaar' }, 'behandelaar (formulier van de handeling)'],
     [{ bron: 'stand_bij_besluit' }, 'stand bij besluit'],
     [{ bron: 'stand_bij_besluit', stage: 'BEKENDMAKING' }, 'stand bij besluit (ontstaat pas in stage BEKENDMAKING)'],
     [{ bron: 'keuze' }, 'keuze van de aanvrager (portaal)'],
@@ -57,12 +57,24 @@ describe('herkomstRijen', () => {
       ok: { bron: 'keuze' },
     });
     expect(rijen).toEqual([
-      { naam: 'bedrag', waarde: '10', bron: 'behandelaar (besluitformulier)' },
+      { naam: 'bedrag', waarde: '10', bron: 'behandelaar (formulier van de handeling)' },
       { naam: 'ok', waarde: 'ja', bron: 'keuze van de aanvrager (portaal)' },
     ]);
   });
 
   it('is leeg zonder herkomst', () => {
     expect(herkomstRijen(undefined, undefined)).toEqual([]);
+  });
+});
+
+describe('euroTekst en uitkomstTekst', () => {
+  it('schrijft eurocent als euro', () => {
+    expect(euroTekst(1913600).replace(/\s/g, ' ')).toBe('€ 19.136,00');
+    expect(euroTekst(0).replace(/\s/g, ' ')).toBe('€ 0,00');
+  });
+
+  it('herkent een bedrag aan zijn naam', () => {
+    expect(uitkomstTekst('nog_te_betalen_awb4_52', 100).replace(/\s/g, ' ')).toBe('€ 1,00');
+    expect(uitkomstTekst('besluit_tijdig', true)).toBe('ja');
   });
 });

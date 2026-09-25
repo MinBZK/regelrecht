@@ -1,7 +1,7 @@
 <script setup>
 // De processen en de cellen van de runtime. Een proces met een portaal laat
 // inloggen en indienen, een proces met een behandeling laat een behandelaar
-// een zaak openen, een proefbesluit uitrekenen en het besluit nemen. Een cel
+// een zaak openen en er handelingen in doen, op proef en vastgelegd. Een cel
 // toont haar kroniek en haar lexostatussen. De frontend kent geen casus:
 // welke processen en cellen er zijn, komt van GET /api/processen en
 // GET /api/cellen.
@@ -41,7 +41,7 @@ function tab(e) {
 
 function procesTekst(p) {
   const delen = [`cel ${p.cel}`, p.portaal ? 'portaal' : 'geen portaal'];
-  if (p.behandeling) delen.push(`behandeling (werkvoorraad, besluit ${p.behandeling.regeling})`);
+  if (p.behandeling) delen.push(`behandeling (werkvoorraad, ${p.behandeling.handelingen?.length ?? 0} handelingen)`);
   const bronnen = [...new Set(p.synthese.filter((s) => !s.zaak).map((s) => s.cel))];
   if (bronnen.length) delen.push(`synthese uit ${bronnen.join(', ')}`);
   return delen.join('; ');
