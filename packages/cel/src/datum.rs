@@ -96,12 +96,6 @@ pub fn jaar(m: &DateTime<FixedOffset>) -> i64 {
     i64::from(m.year())
 }
 
-/// Het jaartal van een datum (`JJJJ-MM-DD`) of een moment met tijdzone.
-/// `None` als de tekst geen van beide is.
-pub fn jaar_van(tekst: &str) -> Option<i64> {
-    datum_van(tekst).map(|d| i64::from(d.year()))
-}
-
 /// De dag van een datum (`JJJJ-MM-DD`) of van een moment met tijdzone (in
 /// zijn eigen tijdzone). `None` als de tekst geen van beide is.
 pub fn datum_van(tekst: &str) -> Option<NaiveDate> {
@@ -154,9 +148,12 @@ mod tests {
     }
 
     #[test]
-    fn jaar_van_een_datum_of_een_moment() {
-        assert_eq!(jaar_van("2025-03-12"), Some(2025));
-        assert_eq!(jaar_van("2026-01-01T00:00:00+01:00"), Some(2026));
-        assert_eq!(jaar_van("geen datum"), None);
+    fn datum_van_een_datum_of_een_moment() {
+        assert_eq!(datum_van("2025-03-12").map(|d| d.year()), Some(2025));
+        assert_eq!(
+            datum_van("2026-01-01T00:00:00+01:00").map(|d| d.year()),
+            Some(2026)
+        );
+        assert_eq!(datum_van("geen datum"), None);
     }
 }

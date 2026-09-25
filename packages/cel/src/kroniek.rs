@@ -68,15 +68,32 @@ struct Stapel {
 }
 
 impl Stapel {
-    fn voeg_toe(&mut self, gram: Gram) {
+    fn voeg_toe(&mut self, gram: Gram) -> Arc<Vastgelegd> {
         if let Some(z) = &gram.zaakkenmerk {
             self.per_zaak
                 .entry(z.clone())
                 .or_default()
                 .push(self.grammen.len());
         }
-        self.grammen.push(Vastgelegd::nieuw(gram));
+        let v = Vastgelegd::nieuw(gram);
+        self.grammen.push(v.clone());
+        v
     }
+}
+
+/// De grammen van een zaak in deze stapels, uit de index `per_zaak`, per
+/// stapel in de volgorde van vastleggen.
+fn van_de_zaak<'s>(
+    stapels: impl IntoIterator<Item = &'s Stapel>,
+    zaakkenmerk: &str,
+) -> Vec<Arc<Vastgelegd>> {
+    let mut uit = Vec::new();
+    for s in stapels {
+        if let Some(posities) = s.per_zaak.get(zaakkenmerk) {
+            uit.extend(posities.iter().map(|&i| s.grammen[i].clone()));
+        }
+    }
+    uit
 }
 
 pub struct Kroniek {
@@ -170,20 +187,23 @@ impl Kroniek {
         Ok(())
     }
 
-    /// Lees uit de stapels van `kronieken`, geladen.
+    /// Lees uit de stapels van `kronieken`. Lezen gaat nooit naar de schijf:
+    /// [`Kroniek::open`] laadt de kronieken van de cel, en een lezer (vaak op
+    /// een async-draad) wacht zo niet op een bestand. Een kroniek die niet
+    /// geopend is, is een fout.
     fn met_stapels<T>(
         &self,
         kronieken: &[&str],
         f: impl FnOnce(Vec<&Stapel>) -> T,
     ) -> Result<T, String> {
-        self.laad(kronieken)?;
         let staat = self.lees_staat();
         let mut stapels = Vec::with_capacity(kronieken.len());
         for k in kronieken {
+            self.bestand(k)?;
             stapels.push(
                 staat
                     .get(*k)
-                    .ok_or_else(|| format!("kroniek '{k}' niet geladen"))?,
+                    .ok_or_else(|| format!("kroniek '{k}' is niet geopend"))?,
             );
         }
         Ok(f(stapels))
@@ -197,10 +217,11 @@ impl Kroniek {
     }
 
     /// Voeg een gram toe als `controle` dat toelaat. De controle ziet de
-    /// grammen van `kronieken` zoals ze op dat moment vastliggen, onder
-    /// hetzelfde slot als het schrijven. Zo kunnen twee gelijktijdige
-    /// verzoeken niet allebei door een controle komen die op het andere had
-    /// moeten stuiten.
+    /// grammen van de zaak van het gram in `kronieken` (uit de index per
+    /// zaak, zonder de rest van de kroniek te kopiëren; geen zaak, geen
+    /// grammen), zoals ze op dat moment vastliggen, onder hetzelfde slot als
+    /// het schrijven. Zo kunnen twee gelijktijdige verzoeken niet allebei
+    /// door een controle komen die op het andere had moeten stuiten.
     ///
     /// De buitenste fout is een fout van de opslag; de binnenste is de
     /// weigering van de controle, en dan is er niets vastgelegd.
@@ -209,7 +230,7 @@ impl Kroniek {
         gram: &Gram,
         kronieken: &[&str],
         controle: impl FnOnce(&mut Gram, &[&Gram]) -> Result<(), E>,
-    ) -> Result<Result<Gram, E>, String> {
+    ) -> Result<Result<Arc<Vastgelegd>, E>, String> {
         self.schrijf_mits(
             gram.clone(),
             kronieken,
@@ -234,7 +255,7 @@ impl Kroniek {
         klok: impl FnOnce() -> DateTime<FixedOffset>,
         weiger: impl FnOnce(String) -> E,
         controle: impl FnOnce(&mut Gram, &[&Gram]) -> Result<(), E>,
-    ) -> Result<Result<Gram, E>, String> {
+    ) -> Result<Result<Arc<Vastgelegd>, E>, String> {
         self.schrijf_mits(gram, kronieken, Some((klok, weiger)), controle)
     }
 
@@ -247,7 +268,7 @@ impl Kroniek {
             impl FnOnce(String) -> E,
         )>,
         controle: impl FnOnce(&mut Gram, &[&Gram]) -> Result<(), E>,
-    ) -> Result<Result<Gram, E>, String> {
+    ) -> Result<Result<Arc<Vastgelegd>, E>, String> {
         let pad = self.bestand(&gram.chronicle)?;
         let mut alle = kronieken.to_vec();
         alle.push(gram.chronicle.as_str());
@@ -255,18 +276,16 @@ impl Kroniek {
         let _schrijver = self.schrijfslot();
         // Zolang wij het schrijfslot hebben, verandert `staat` niet: de
         // controle ziet wat er ligt, ook nadat het leesslot weer los is.
-        let (bestaand, lengte, laatst) = {
+        let (zaak, lengte, laatst) = {
             let staat = self.lees_staat();
-            let mut bestaand = Vec::new();
-            for k in kronieken {
-                if let Some(s) = staat.get(*k) {
-                    bestaand.extend(s.grammen.iter().cloned());
-                }
-            }
+            let zaak = match &gram.zaakkenmerk {
+                Some(z) => van_de_zaak(kronieken.iter().filter_map(|k| staat.get(*k)), z),
+                None => Vec::new(),
+            };
             let stapel = staat.get(&gram.chronicle);
             let lengte = stapel.map_or(0, |s| s.lengte);
             let laatst = stapel.and_then(|s| s.grammen.last()).cloned();
-            (bestaand, lengte, laatst)
+            (zaak, lengte, laatst)
         };
         if let Some((klok, weiger)) = klok {
             let niet_voor = laatst.map(|v| v.gram.vastgelegd()).transpose()?;
@@ -274,7 +293,7 @@ impl Kroniek {
                 return Ok(Err(weiger(f)));
             }
         }
-        let zicht: Vec<&Gram> = bestaand.iter().map(|v| &v.gram).collect();
+        let zicht: Vec<&Gram> = zaak.iter().map(|v| &v.gram).collect();
         if let Err(w) = controle(&mut gram, &zicht) {
             return Ok(Err(w));
         }
@@ -283,8 +302,7 @@ impl Kroniek {
         let mut staat = self.schrijf_staat();
         let stapel = staat.entry(gram.chronicle.clone()).or_default();
         stapel.lengte = lengte + regel.len() as u64;
-        stapel.voeg_toe(gram.clone());
-        Ok(Ok(gram))
+        Ok(Ok(stapel.voeg_toe(gram)))
     }
 
     /// Zet de startstand in de kroniek, als elke kroniek van `kronieken` leeg
@@ -364,15 +382,7 @@ impl Kroniek {
         kronieken: &[&str],
         zaakkenmerk: &str,
     ) -> Result<Vec<Arc<Vastgelegd>>, String> {
-        self.met_stapels(kronieken, |stapels| {
-            let mut uit = Vec::new();
-            for s in stapels {
-                if let Some(posities) = s.per_zaak.get(zaakkenmerk) {
-                    uit.extend(posities.iter().map(|&i| s.grammen[i].clone()));
-                }
-            }
-            uit
-        })
+        self.met_stapels(kronieken, |stapels| van_de_zaak(stapels, zaakkenmerk))
     }
 }
 
@@ -464,44 +474,10 @@ fn schrijf_bestand(pad: &Path, inhoud: &[u8]) -> Result<(), String> {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use crate::gram::StroomVerwijzing;
     use crate::stroom::Zaak;
-    use serde_json::json;
-    use std::collections::BTreeMap;
 
     fn gram(zaak: &str) -> Gram {
-        Gram {
-            kind: "chronolexogram".into(),
-            type_: "indiening".into(),
-            soort: Some("melding".into()),
-            stage: None,
-            name: "melding_ontvangen".into(),
-            chronicle: "test_kroniek".into(),
-            recording_actor: "test_instantie".into(),
-            grondslag: vec!["testregeling_aanvraag#1".into()],
-            legal_character: None,
-            decision_type: None,
-            regulation: None,
-            regulation_valid_from: None,
-            competent_authority: None,
-            handelende_actor: None,
-            op_moment: "2025-03-12T10:14:03+01:00".into(),
-            op_moment_grondslag: None,
-            vastgelegd_op: "2025-03-12T10:14:05+01:00".into(),
-            zaak: Zaak::Opent,
-            zaakkenmerk: Some(zaak.into()),
-            besluit: None,
-            besluitkenmerk: None,
-            wijzigt: None,
-            stroom: StroomVerwijzing {
-                id: "test".into(),
-                sha256: "a".repeat(64),
-            },
-            herkomst: None,
-            fields: json!({"x": 1}).as_object().unwrap().clone(),
-            inputs: BTreeMap::new(),
-            receipt: None,
-        }
+        crate::gram::testgram(zaak)
     }
 
     const Z1: &str = "00000000-0000-4000-8000-000000000001";
@@ -618,7 +594,7 @@ mod tests {
                 }
             })
             .unwrap();
-        assert_eq!(uitkomst, Err("er ligt al iets"));
+        assert_eq!(uitkomst.err(), Some("er ligt al iets"));
         assert_eq!(aantal(&k), 1);
     }
 
@@ -729,7 +705,7 @@ mod tests {
             )
             .unwrap()
             .unwrap();
-        assert_eq!(daarna.vastgelegd_op, eerst.vastgelegd_op);
+        assert_eq!(daarna.gram.vastgelegd_op, eerst.gram.vastgelegd_op);
         let mut gebonden = gram(Z1);
         gebonden.op_moment = "2025-03-13T00:00:00+01:00".into();
         gebonden.op_moment_grondslag = Some(vec!["testregeling_aanvraag#1".into()]);

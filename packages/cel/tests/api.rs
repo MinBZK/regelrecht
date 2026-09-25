@@ -3463,6 +3463,61 @@ async fn besluit_bekendmaken_en_betalen() {
     assert_eq!(l["parameters"]["betaald_bedrag"], json!(6000));
 }
 
+/// Twee gelijktijdige betalingen die samen boven het vastgestelde bedrag
+/// komen: elk rekent uit wat er nog te betalen is op de zaak zoals het proces
+/// haar las, en de cel legt alleen vast als de zaak sindsdien niet veranderde
+/// (`zaak_grammen`, onder het schrijfslot). Er komt er een door.
+#[tokio::test]
+async fn twee_gelijktijdige_betalingen() {
+    let data = tempfile::tempdir().unwrap();
+    let app = app(data.path());
+    let zaak = afnemer_indienen(&app, "12345678").await;
+    let b = behandelaar(&app).await;
+    let (status, body) = handeling(
+        &app,
+        &b,
+        &zaak,
+        "besluit",
+        false,
+        oordelen()["formulier"].clone(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let (status, body) = handeling(
+        &app,
+        &b,
+        &zaak,
+        "bekendmaken",
+        false,
+        json!({"datum_bekendmaking": "2025-03-12", "bekendgemaakt": true}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let betaling = json!({"bedrag": 4000, "datum_betaling": "2025-03-12"});
+    let (een, ander) = tokio::join!(
+        handeling(&app, &b, &zaak, "betalen", false, betaling.clone()),
+        handeling(&app, &b, &zaak, "betalen", false, betaling.clone()),
+    );
+    let mut statussen = [een.0, ander.0];
+    statussen.sort();
+    assert_eq!(
+        statussen,
+        [StatusCode::CREATED, StatusCode::CONFLICT],
+        "{} / {}",
+        een.1,
+        ander.1
+    );
+    let (_, l, _) = vraag(
+        &app,
+        "GET",
+        &format!("{AFNEMER_CEL}/api/lexostatus/besluit?zaakkenmerk={zaak}"),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(l["parameters"]["betaald_bedrag"], json!(4000), "{l}");
+}
+
 /// Een tweede handeling in het zaakverloop: een verzoek om aanvulling telt
 /// op proef mee, en na het vastleggen leest het besluit het.
 #[tokio::test]

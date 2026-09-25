@@ -37,6 +37,8 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+use chrono::Datelike;
+
 use crate::datum;
 use crate::gram::Gram;
 
@@ -58,13 +60,11 @@ impl Afleiding {
     pub fn pas_toe(&self, gram: &Gram) -> Result<Option<Value>, String> {
         Ok(match self {
             Afleiding::Veld { veld } => gram.veld(veld).filter(|w| gevuld(w)).cloned(),
-            Afleiding::JaarVan { jaar_van } => gram.veld(jaar_van).and_then(jaar_uit),
+            Afleiding::JaarVan { jaar_van } => jaar_uit(jaar_van, gram.veld(jaar_van))?,
             Afleiding::PeriodeVan {
                 periode_van,
                 periode,
-            } => gram
-                .veld(periode_van)
-                .and_then(|w| periode_uit(w, (*periode)?)),
+            } => periode_uit(periode_van, gram.veld(periode_van), *periode)?,
             Afleiding::Gevuld { gevuld: pad } => {
                 Some(Value::Bool(gram.veld(pad).is_some_and(gevuld)))
             }
@@ -187,7 +187,7 @@ impl Afleiding {
                 geen_gram,
                 ..
             } => match laatste(&door)? {
-                Some(g) => g.veld(jaar_van).and_then(jaar_uit),
+                Some(g) => jaar_uit(jaar_van, g.veld(jaar_van))?,
                 None => geen_gram.clone(),
             },
             Afleiding::LaatstePeriodeVan {
@@ -196,9 +196,7 @@ impl Afleiding {
                 geen_gram,
                 ..
             } => match laatste(&door)? {
-                Some(g) => g
-                    .veld(periode_van)
-                    .and_then(|w| periode_uit(w, (*periode)?)),
+                Some(g) => periode_uit(periode_van, g.veld(periode_van), *periode)?,
                 None => geen_gram.clone(),
             },
             Afleiding::LaatsteBevat { bevat, .. } => Some(Value::Bool(
@@ -227,19 +225,39 @@ fn laatste<'g>(grammen: &[&'g Gram]) -> Result<Option<&'g Gram>, String> {
     Ok(gekozen)
 }
 
-/// Het jaartal van een datum (`JJJJ-MM-DD`, of een moment met tijdzone).
-/// Geen datum: niets, en de parameter blijft weg.
-pub fn jaar_uit(waarde: &Value) -> Option<Value> {
-    datum::jaar_van(waarde.as_str()?).map(Value::from)
+/// De datum in het veld `pad` van een gram (`JJJJ-MM-DD`, of een moment
+/// met tijdzone). Geen waarde (het veld ontbreekt of is null): niets, en de
+/// parameter blijft weg. Een waarde die geen datum is, is een fout: het gram
+/// heeft niet de vorm die de afleiding leest.
+fn datum_in(pad: &str, waarde: Option<&Value>) -> Result<Option<chrono::NaiveDate>, String> {
+    match waarde {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(t)) => datum::datum_van(t)
+            .map(Some)
+            .ok_or_else(|| format!("veld '{pad}': '{t}' is geen datum")),
+        Some(w) => Err(format!("veld '{pad}': {w} is geen datum")),
+    }
 }
 
-/// De eerste dag van de periode waarin een datum (`JJJJ-MM-DD`, of een
-/// moment met tijdzone) valt, als `JJJJ-MM-DD`. Geen datum: niets.
-pub fn periode_uit(waarde: &Value, periode: Periode) -> Option<Value> {
-    let d = datum::datum_van(waarde.as_str()?)?;
-    periode
-        .begin(d)
-        .map(|b| Value::String(b.format("%Y-%m-%d").to_string()))
+/// Het jaartal van de datum in het veld `pad` (zie [`datum_in`]).
+pub fn jaar_uit(pad: &str, waarde: Option<&Value>) -> Result<Option<Value>, String> {
+    Ok(datum_in(pad, waarde)?.map(|d| Value::from(i64::from(d.year()))))
+}
+
+/// De eerste dag van de periode waarin de datum in het veld `pad` valt (zie
+/// [`datum_in`]), als `JJJJ-MM-DD`. Een afleiding zonder periode is een
+/// fout: het laden zet haar uit de regeling, en lukte dat niet, dan is er
+/// geen periode om te kiezen.
+pub fn periode_uit(
+    pad: &str,
+    waarde: Option<&Value>,
+    periode: Option<Periode>,
+) -> Result<Option<Value>, String> {
+    let periode = periode
+        .ok_or_else(|| format!("periode_van '{pad}' zonder periode (jaar, kwartaal of maand)"))?;
+    Ok(datum_in(pad, waarde)?
+        .and_then(|d| periode.begin(d))
+        .map(|b| Value::String(b.format("%Y-%m-%d").to_string())))
 }
 
 /// Gevuld: niet null, geen lege tekst, geen lege lijst of leeg object.
@@ -756,13 +774,18 @@ mod tests {
         let f = json!({"a": {"datum": "2026-03-18", "leeg": null, "tekst": "geen datum"}});
         assert_eq!(een("{jaar_van: a.datum}", f.clone()), Some(json!(2026)));
         assert_eq!(een("{jaar_van: a.leeg}", f.clone()), None);
-        assert_eq!(een("{jaar_van: a.tekst}", f.clone()), None);
-        assert_eq!(een("{jaar_van: a.ontbreekt}", f), None);
+        assert_eq!(een("{jaar_van: a.ontbreekt}", f.clone()), None);
+        // Een waarde die geen datum is, is een fout, geen ontbrekende waarde.
+        let fout = afl("{jaar_van: a.tekst}")
+            .pas_toe(&gram("z", "2025-03-12T10:14:03+01:00", f))
+            .unwrap_err();
+        assert!(fout.contains("'geen datum' is geen datum"), "{fout}");
         assert_eq!(afl("{jaar_van: a.datum}").gelezen_paden(), vec!["a.datum"]);
     }
 
     /// Een periode heet naar haar eerste dag: een maand, een kwartaal, een
-    /// jaar. Zonder periode (nog niet uit de regeling gezet) geen waarde.
+    /// jaar. Een waarde die geen datum is, en een afleiding zonder periode
+    /// (niet uit de regeling gezet), zijn een fout.
     #[test]
     fn afleiding_periode_van() {
         let f = json!({"a": {"datum": "2026-08-18", "moment": "2026-11-30T23:30:00+01:00", "tekst": "geen datum"}});
@@ -773,8 +796,13 @@ mod tests {
         assert_eq!(per("jaar", "a.datum"), Some(json!("2026-01-01")));
         assert_eq!(per("maand", "a.moment"), Some(json!("2026-11-01")));
         assert_eq!(per("kwartaal", "a.moment"), Some(json!("2026-10-01")));
-        assert_eq!(per("maand", "a.tekst"), None);
-        assert_eq!(een("{periode_van: a.datum}", f.clone()), None);
+        let fout = |yaml: &str| {
+            afl(yaml)
+                .pas_toe(&gram("z", "2025-03-12T10:14:03+01:00", f.clone()))
+                .unwrap_err()
+        };
+        assert!(fout("{periode_van: a.tekst, periode: maand}").contains("geen datum"));
+        assert!(fout("{periode_van: a.datum}").contains("zonder periode"));
         assert_eq!(
             afl("{periode_van: a.datum}").gelezen_paden(),
             vec!["a.datum"]

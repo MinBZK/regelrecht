@@ -284,3 +284,42 @@ pub fn op_pad<'v>(velden: &'v Map<String, Value>, pad: &str) -> Option<&'v Value
     }
     Some(huidig)
 }
+/// Een gram voor tests: een melding in `test_kroniek` die een zaak opent.
+#[cfg(test)]
+pub(crate) fn testgram(zaak: &str) -> Gram {
+    Gram {
+        kind: "chronolexogram".into(),
+        type_: "indiening".into(),
+        soort: Some("melding".into()),
+        stage: None,
+        name: "melding_ontvangen".into(),
+        chronicle: "test_kroniek".into(),
+        recording_actor: "test_instantie".into(),
+        grondslag: vec!["testregeling_aanvraag#1".into()],
+        legal_character: None,
+        decision_type: None,
+        regulation: None,
+        regulation_valid_from: None,
+        competent_authority: None,
+        handelende_actor: None,
+        op_moment: "2025-03-12T10:14:03+01:00".into(),
+        op_moment_grondslag: None,
+        vastgelegd_op: "2025-03-12T10:14:05+01:00".into(),
+        zaak: Zaak::Opent,
+        zaakkenmerk: Some(zaak.into()),
+        besluit: None,
+        besluitkenmerk: None,
+        wijzigt: None,
+        stroom: StroomVerwijzing {
+            id: "test".into(),
+            sha256: "a".repeat(64),
+        },
+        herkomst: None,
+        fields: serde_json::json!({"x": 1})
+            .as_object()
+            .cloned()
+            .unwrap_or_default(),
+        inputs: BTreeMap::new(),
+        receipt: None,
+    }
+}
