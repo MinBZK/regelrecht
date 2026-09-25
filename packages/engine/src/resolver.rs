@@ -2957,6 +2957,70 @@ articles:
         );
     }
 
+    /// An unauthorised candidate on a higher layer must not shadow the
+    /// authorised one. When the gate ran after priority, a WET claiming a term
+    /// reserved for a ministeriële regeling won on lex superior and was then
+    /// refused, which left the valid regeling unreachable (RFC-036 draft, §7).
+    /// The gate filters first, so the regeling wins and the WET is on record.
+    #[test]
+    fn test_find_implementations_refused_higher_layer_does_not_shadow_the_authorised_one() {
+        let mut resolver = RuleResolver::new();
+
+        resolver.load_from_yaml(make_law_with_open_term()).unwrap();
+        resolver
+            .load_from_yaml(make_implementing_regulation())
+            .unwrap();
+        resolver
+            .load_from_yaml(
+                r#"
+$id: wet_die_de_premie_claimt
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: De standaardpremie bedraagt 9999
+    machine_readable:
+      implements:
+        - law: wet_op_de_zorgtoeslag
+          article: '4'
+          open_term: standaardpremie
+      execution:
+        output:
+          - name: standaardpremie
+            type: number
+        actions:
+          - output: standaardpremie
+            value: 9999
+"#,
+            )
+            .unwrap();
+
+        let lookup = resolver
+            .find_implementations(
+                "wet_op_de_zorgtoeslag",
+                "4",
+                open_term(&resolver, "wet_op_de_zorgtoeslag", "4", "standaardpremie"),
+                None,
+                &HashMap::new(),
+            )
+            .unwrap();
+
+        let ids: Vec<&str> = lookup
+            .implementations
+            .iter()
+            .map(|(law, _)| law.id.as_str())
+            .collect();
+        assert_eq!(
+            ids,
+            vec!["regeling_standaardpremie"],
+            "only the authorised regeling is a candidate"
+        );
+        assert_eq!(lookup.refusals.len(), 1);
+        assert_eq!(lookup.refusals[0].refused_law, "wet_die_de_premie_claimt");
+        assert_eq!(lookup.refusals[0].refused_layer, "WET");
+    }
+
     /// A refused candidate is skipped, but not without a word: the lookup
     /// hands the caller what was offered, by whom, and which layer the law
     /// reserves the term for.
