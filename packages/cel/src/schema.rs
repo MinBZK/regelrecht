@@ -105,6 +105,7 @@ mod tests {
             "kind": "chronolexogram", "type": "decretogram", "name": "x",
             "chronicle": "k", "recording_actor": "a", "grondslag": ["r#1"],
             "op_moment": "2025-03-12T10:14:03+01:00",
+            "vastgelegd_op": "2025-03-12T10:14:03+01:00",
             "stroom": {"id": "s", "sha256": "0".repeat(64)}, "fields": {}
         });
         if let Some(z) = zaak {

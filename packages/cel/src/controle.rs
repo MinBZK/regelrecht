@@ -140,11 +140,13 @@ fn uniek(strommen: &[Stroom], lexostatussen: &Lexostatussen, fouten: &mut Vec<St
 }
 
 /// Elke grondslag wijst een geladen artikel aan, en een lid dat de
-/// artikeltekst heeft (een regel die met `<n>.` of `<n> ` begint).
+/// artikeltekst heeft (een regel die met `<n>.` of `<n> ` begint). Ook de
+/// grondslag van een gebonden `op_moment`.
 fn grondslagen(strommen: &[Stroom], service: &LawExecutionService, fouten: &mut Vec<String>) {
     for s in strommen {
         for e in &s.events {
-            for g in &e.grondslag {
+            let van_moment = e.op_moment.iter().flat_map(|b| &b.grondslag);
+            for g in e.grondslag.iter().chain(van_moment) {
                 let waar = format!("event '{}' (stroom '{}')", e.name, s.id);
                 match regelingen::artikel(service, g) {
                     Err(f) => fouten.push(format!("{waar}: {f}")),
@@ -798,6 +800,16 @@ mod tests {
             "- testregeling_aanvraag#1\n      - testregeling_aanvraag#7",
         );
         faalt_met(&stroom, CEL, "heeft geen artikel 7");
+    }
+
+    #[test]
+    fn grondslag_van_een_gebonden_op_moment_bestaat() {
+        let stroom = STROOM.replace(
+            "grondslag: [testregeling_aanvraag#1]",
+            "grondslag: [testregeling_aanvraag#8]",
+        );
+        assert_ne!(stroom, STROOM);
+        faalt_met(&stroom, CEL, "heeft geen artikel 8");
     }
 
     // 3. Geen weesveld.

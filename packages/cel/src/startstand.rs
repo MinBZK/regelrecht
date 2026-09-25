@@ -10,13 +10,22 @@
 //!
 //! Een startstand-gram is geplaatst, niet berekend: er is geen engine-trace
 //! bij. Daarom draagt het `herkomst: startstand`.
+//!
+//! Het `op_moment` van een regel is met de hand gezet: wanneer het feit
+//! rechtens geldt of plaatsvond, zoals de dag van een besluit of van een
+//! vaststelling. `vastgelegd_op` staat er niet in: dat is de laadtijd, het
+//! moment waarop de runtime de startstand in de lege kroniek zet
+//! ([`geplaatst`]). Zo zegt een startstand nooit dat de cel iets eerder wist
+//! dan ze het had.
 
 use std::collections::BTreeMap;
 use std::path::Path;
 
+use chrono::{DateTime, FixedOffset};
 use serde::Deserialize;
 use serde_json::{Map, Value};
 
+use crate::datum;
 use crate::gram::{op_pad, Gram, StroomVerwijzing};
 use crate::laden;
 use crate::stroom::{Event, Stroom};
@@ -95,6 +104,9 @@ fn bouw(tekst: &str, strommen: &[Stroom]) -> Result<Gram, String> {
         regulation_valid_from: None,
         competent_authority: None,
         op_moment: regel.op_moment,
+        op_moment_grondslag: None,
+        // De laadtijd komt bij het plaatsen, zie `geplaatst`.
+        vastgelegd_op: String::new(),
         zaak: event.zaak,
         zaakkenmerk: regel.zaakkenmerk,
         stroom: StroomVerwijzing {
@@ -106,9 +118,27 @@ fn bouw(tekst: &str, strommen: &[Stroom]) -> Result<Gram, String> {
         inputs: BTreeMap::new(),
         receipt: None,
     };
-    gram.valideer()
-        .map_err(|f| format!("gram valideert niet: {}", f.join("; ")))?;
+    // Valideren kan al: met het op_moment op de plaats van de laadtijd.
+    Gram {
+        vastgelegd_op: gram.op_moment.clone(),
+        ..gram.clone()
+    }
+    .valideer()
+    .map_err(|f| format!("gram valideert niet: {}", f.join("; ")))?;
     Ok(gram)
+}
+
+/// De startstand zoals de runtime haar in een lege kroniek zet: elk gram
+/// met de laadtijd als `vastgelegd_op`.
+pub fn geplaatst(grammen: &[Gram], laadtijd: &DateTime<FixedOffset>) -> Vec<Gram> {
+    let op = datum::als_op_moment(laadtijd);
+    grammen
+        .iter()
+        .map(|g| Gram {
+            vastgelegd_op: op.clone(),
+            ..g.clone()
+        })
+        .collect()
 }
 
 /// De velden zijn precies die van het event: geen onbekend veld, en elk
@@ -159,13 +189,26 @@ mod tests {
     fn fixture_startstand() {
         let grammen = parse(STARTSTAND, "s", &strommen()).unwrap();
         assert_eq!(grammen.len(), 4);
-        for g in &grammen {
+        let laadtijd = datum::moment("2025-03-12T10:14:03+01:00").unwrap();
+        for (g, geplaatst) in grammen.iter().zip(geplaatst(&grammen, &laadtijd)) {
             assert_eq!(g.herkomst.as_deref(), Some("startstand"));
             assert_eq!(g.type_, "decretogram");
             assert_eq!(g.chronicle, "test_register");
-            g.valideer().unwrap();
+            // Twee tijden: het op_moment van de regel, de laadtijd als
+            // vastgelegd_op.
+            assert_eq!(geplaatst.op_moment, g.op_moment);
+            assert_eq!(geplaatst.vastgelegd_op, "2025-03-12T10:14:03+01:00");
+            geplaatst.valideer().unwrap();
         }
         assert_eq!(grammen[0].grondslag, ["testregeling_register#1"]);
+    }
+
+    #[test]
+    fn een_startstand_zet_geen_vastgelegd_op() {
+        // Dat is de laadtijd: een startstand zegt niet wanneer de cel het
+        // wist.
+        let r = r#"{"stroom": "test_registers", "name": "aanduiding_geschrapt", "op_moment": "2024-01-10T09:00:00+01:00", "vastgelegd_op": "2024-01-10T09:00:00+01:00", "herkomst": "startstand", "fields": {"aanduiding": "X", "orgaan": "raad"}}"#;
+        assert!(fout(r).contains("vastgelegd_op"), "{}", fout(r));
     }
 
     #[test]
@@ -228,7 +271,8 @@ mod tests {
                 Some("00000000-0000-4000-8000-000000000001")
             );
             assert_eq!(g.als_json()["zaak"], zaak);
-            g.valideer().unwrap();
+            let laadtijd = datum::moment("2025-03-12T10:14:03+01:00").unwrap();
+            geplaatst(&[g], &laadtijd)[0].valideer().unwrap();
         }
     }
 }

@@ -350,13 +350,24 @@ fn lees_bestand(pad: &Path) -> Result<Stapel, String> {
         lengte: heel as u64,
         ..Stapel::default()
     };
+    let mut zonder_vastgelegd_op = 0_usize;
     for (i, regel) in tekst.lines().enumerate() {
         if regel.trim().is_empty() {
             continue;
         }
-        let gram: Gram = serde_json::from_str(regel)
+        let mut gram: Gram = serde_json::from_str(regel)
             .map_err(|e| format!("{} regel {}: {e}", pad.display(), i + 1))?;
+        if gram.vul_vastgelegd_op() {
+            zonder_vastgelegd_op += 1;
+        }
         stapel.voeg_toe(gram);
+    }
+    if zonder_vastgelegd_op > 0 {
+        tracing::warn!(
+            kroniek = %pad.display(),
+            grammen = zonder_vastgelegd_op,
+            "grammen zonder vastgelegd_op (van voor dat veld): gelezen alsof ze op hun op_moment zijn vastgelegd"
+        );
     }
     if heel < bytes.len() {
         tracing::warn!(
@@ -425,6 +436,8 @@ mod tests {
             regulation_valid_from: None,
             competent_authority: None,
             op_moment: "2025-03-12T10:14:03+01:00".into(),
+            op_moment_grondslag: None,
+            vastgelegd_op: "2025-03-12T10:14:05+01:00".into(),
             zaak: Zaak::Opent,
             zaakkenmerk: Some(zaak.into()),
             stroom: StroomVerwijzing {
@@ -505,6 +518,37 @@ mod tests {
         let f = k.voeg_toe(&g).unwrap_err();
         assert!(f.contains("ongeldig op_moment '2025-03-12 10:14'"), "{f}");
         assert_eq!(aantal(&k), 0);
+    }
+
+    #[test]
+    fn een_gram_zonder_vastgelegd_op_wordt_niet_vastgelegd() {
+        let dir = tempfile::tempdir().unwrap();
+        let k = open(dir.path());
+        let mut g = gram(Z1);
+        g.vastgelegd_op = String::new();
+        let f = k.voeg_toe(&g).unwrap_err();
+        assert!(f.contains("vastgelegd_op"), "{f}");
+        assert_eq!(aantal(&k), 0);
+    }
+
+    /// Een kroniek van voor `vastgelegd_op` laadt nog: het gram krijgt zijn
+    /// `op_moment` als registratietijd. Een gram met het veld houdt het zijne.
+    #[test]
+    fn een_oud_gram_zonder_vastgelegd_op_laadt_met_zijn_op_moment() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut oud = serde_json::to_value(gram(Z1)).unwrap();
+        oud.as_object_mut().unwrap().remove("vastgelegd_op");
+        let nieuw = serde_json::to_string(&gram(Z2)).unwrap();
+        std::fs::write(
+            dir.path().join("test_kroniek.jsonl"),
+            format!("{oud}\n{nieuw}\n"),
+        )
+        .unwrap();
+        let k = open(dir.path());
+        let grammen = k.lees("test_kroniek").unwrap();
+        assert_eq!(grammen[0].gram.vastgelegd_op, "2025-03-12T10:14:03+01:00");
+        assert_eq!(grammen[1].gram.vastgelegd_op, "2025-03-12T10:14:05+01:00");
+        grammen[0].gram.valideer().unwrap();
     }
 
     #[test]

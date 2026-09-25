@@ -67,7 +67,20 @@
             "additionalProperties": false,
             "properties": {
               "name": {
-                "$ref": "#/definitions/identifier"
+                "description": "peilmoment en bekend_op zijn het peil van een vraag (GET lexostatus), geen input.",
+                "allOf": [
+                  {
+                    "$ref": "#/definitions/identifier"
+                  },
+                  {
+                    "not": {
+                      "enum": [
+                        "peilmoment",
+                        "bekend_op"
+                      ]
+                    }
+                  }
+                ]
               },
               "type": {
                 "enum": [
@@ -122,7 +135,7 @@
           "enum": [
             "laatste"
           ],
-          "description": "Welk gram telt als er meer zijn: laatste is het gram met het laatste op_moment (een herstel is een nieuw gram). Zonder kies wordt geen gram gekozen, en kan elke afleiding alleen over een verzameling grammen werken."
+          "description": "Welk gram telt als er meer zijn: laatste is het gram met het laatste op_moment, bij gelijk op_moment het laatste vastgelegd_op (een herstel is een nieuw gram). Zonder kies wordt geen gram gekozen, en kan elke afleiding alleen over een verzameling grammen werken."
         },
         "afleidingen": {
           "type": "object",
@@ -260,7 +273,7 @@
           }
         },
         {
-          "description": "De datum van een moment van het gram zelf; op_moment is het moment waarop het tot feit werd gemaakt.",
+          "description": "De datum van een moment van het gram zelf: op_moment is wanneer het feit rechtens geldt of plaatsvond (bij een aanvraag de ontvangst), vastgelegd_op wanneer de cel het vastlegde.",
           "type": "object",
           "required": [
             "moment"
@@ -269,7 +282,8 @@
           "properties": {
             "moment": {
               "enum": [
-                "op_moment"
+                "op_moment",
+                "vastgelegd_op"
               ]
             }
           }

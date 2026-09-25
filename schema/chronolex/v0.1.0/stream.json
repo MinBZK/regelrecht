@@ -155,6 +155,29 @@
           "default": "geen",
           "description": "Of een gram van dit event bij een zaak hoort. opent: de cel geeft bij vastleggen een nieuw zaakkenmerk. volgt: het gram draagt het zaakkenmerk van een bestaande zaak, meegegeven in de invoer. geen (standaard): het gram heeft geen zaakkenmerk. Een uitbreiding van RFC-022 par. 1.2, dat een zaakkenmerk alleen gebruikt om de stage-decretogrammen van een besluit te groeperen."
         },
+        "op_moment": {
+          "type": "object",
+          "description": "Bindt het op_moment van het gram (wanneer het feit rechtens geldt of plaatsvond) aan een ingediende waarde: een datum (JJJJ-MM-DD, het begin van die dag) of een moment met tijdzone, niet later dan het vastleggen. Is de waarde er niet, dan is op_moment het moment van vastleggen (vastgelegd_op). Zonder deze binding is dat altijd zo. Bind aan $intake als wie het feit indient het moment niet zelf mag kiezen: een datumstempel zet het loket, niet de aanvrager.",
+          "required": [
+            "bron",
+            "grondslag"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "bron": {
+              "$ref": "#/definitions/binding"
+            },
+            "grondslag": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "Waarom dit moment rechtens telt, bijvoorbeeld de ontvangst van de aanvraag (Awb 4:13). Het gram draagt haar als op_moment_grondslag.",
+              "items": {
+                "$ref": "#/definitions/grondslag"
+              }
+            }
+          }
+        },
         "fields": {
           "$ref": "#/definitions/velden"
         },

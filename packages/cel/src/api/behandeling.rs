@@ -12,6 +12,7 @@ use super::{fout, intern, van_cel, Fout, ProcesState};
 use crate::besluit::{self, Weigering};
 use crate::celclient::{self, MetYaml};
 use crate::datum;
+use crate::reductie::Peil;
 use crate::synthese;
 
 fn behandeling(state: &ProcesState) -> Result<&crate::config::Behandeling, Fout> {
@@ -32,7 +33,12 @@ pub(super) async fn werkvoorraad_route(
     let w = &behandeling(&state)?.werkvoorraad;
     let v = state
         .cel
-        .haal(&synthese::pad(&w.cel, &w.lexostatus, &Map::new()))
+        .haal(&synthese::pad(
+            &w.cel,
+            &w.lexostatus,
+            &Map::new(),
+            &Peil::default(),
+        ))
         .await
         .map_err(van_cel)?;
     Ok(Json(v))

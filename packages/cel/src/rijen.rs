@@ -30,7 +30,7 @@ use serde_json::{Map, Value};
 use crate::cel::Cel;
 use crate::config::{Omzetting, ProcesDefinitie, RijBron, RijInvoer, RijenDefinitie};
 use crate::datum;
-use crate::reductie::Lexostatus;
+use crate::reductie::{Lexostatus, Peil};
 use crate::synthese::{Herkomst, Samenvoeging, Status};
 use crate::transport::TransportFout;
 
@@ -181,6 +181,7 @@ async fn stel_regel_samen(
     bron: &Map<String, Value>,
     lexostatussen: &[Lexostatus],
     parameters: &BTreeMap<String, Value>,
+    peil: &Peil,
 ) -> Regeluitslag {
     let mut uit = Regeluitslag {
         regel: Map::new(),
@@ -203,7 +204,7 @@ async fn stel_regel_samen(
                 continue;
             }
         };
-        let geleverd = match b.vraag(&invoer).await {
+        let geleverd = match b.vraag(&invoer, peil).await {
             Ok(l) => {
                 uit.bronnen.push(Bevraging::Bevraagd);
                 let mut samen = l.parameters;
@@ -240,6 +241,7 @@ pub async fn stel_samen(
     rijen: &Rijen,
     lexostatussen: &[Lexostatus],
     parameters: &BTreeMap<String, Value>,
+    peil: &Peil,
 ) -> Option<Uitslag> {
     let d = &rijen.definitie;
     let waar = format!(
@@ -293,7 +295,7 @@ pub async fn stel_samen(
     // verwijzingen maakt de future van een route niet Send.
     let mut vragen = Vec::with_capacity(rijregels.len());
     for r in rijregels {
-        vragen.push(stel_regel_samen(rijen, r, lexostatussen, parameters));
+        vragen.push(stel_regel_samen(rijen, r, lexostatussen, parameters, peil));
     }
     let per_regel: Vec<Regeluitslag> = stream::iter(vragen).buffered(GELIJKTIJDIG).collect().await;
     for r in per_regel {
@@ -333,6 +335,7 @@ pub async fn pas_toe(
     rijen: &[Rijen],
     eigen: &[Lexostatus],
     samen: &mut Samenvoeging,
+    peil: &Peil,
 ) -> Vec<Uitslag> {
     let mut met_bronnen = eigen.to_vec();
     for u in samen.bronnen.iter().filter(|u| !u.extra_velden.is_empty()) {
@@ -347,7 +350,7 @@ pub async fn pas_toe(
     }
     let mut uitslagen = Vec::new();
     for r in rijen {
-        let Some(uitslag) = stel_samen(r, &met_bronnen, &samen.parameters).await else {
+        let Some(uitslag) = stel_samen(r, &met_bronnen, &samen.parameters, peil).await else {
             continue;
         };
         if uitslag.fout.is_some() {
@@ -522,7 +525,7 @@ mod tests {
             definitie: definitie(),
             bronnen: vec![b],
         };
-        let u = stel_samen(&rijen, &eigen(), &BTreeMap::new())
+        let u = stel_samen(&rijen, &eigen(), &BTreeMap::new(), &Peil::default())
             .await
             .unwrap();
         assert_eq!(
@@ -552,7 +555,7 @@ mod tests {
             definitie: definitie(),
             bronnen: vec![b],
         };
-        let u = stel_samen(&rijen, &eigen(), &BTreeMap::new())
+        let u = stel_samen(&rijen, &eigen(), &BTreeMap::new(), &Peil::default())
             .await
             .unwrap();
         assert!(!u.regels[0].as_object().unwrap().contains_key("tarief"));
@@ -576,7 +579,9 @@ mod tests {
         };
         let mut parameters = BTreeMap::new();
         parameters.insert("jaar".to_string(), json!(2026));
-        let u = stel_samen(&rijen, &eigen(), &parameters).await.unwrap();
+        let u = stel_samen(&rijen, &eigen(), &parameters, &Peil::default())
+            .await
+            .unwrap();
         assert_eq!(
             t.vragen()[0],
             "/cellen/register/api/lexostatus/per_gebied?gebied=A&naam=EEN+LIJST&peildatum=2026-01-01"
@@ -594,7 +599,7 @@ mod tests {
             definitie: definitie(),
             bronnen: vec![b],
         };
-        let u = stel_samen(&rijen, &eigen(), &BTreeMap::new())
+        let u = stel_samen(&rijen, &eigen(), &BTreeMap::new(), &Peil::default())
             .await
             .unwrap();
         assert!(t.vragen().is_empty());
@@ -618,7 +623,9 @@ mod tests {
             definitie: definitie(),
             bronnen: Vec::new(),
         };
-        let u = stel_samen(&rijen, &l, &BTreeMap::new()).await.unwrap();
+        let u = stel_samen(&rijen, &l, &BTreeMap::new(), &Peil::default())
+            .await
+            .unwrap();
         assert!(u.regels.is_empty());
         assert!(
             u.fout
@@ -633,7 +640,13 @@ mod tests {
             herkomst: BTreeMap::new(),
             bronnen: Vec::new(),
         };
-        let uit = pas_toe(std::slice::from_ref(&rijen), &l, &mut samen).await;
+        let uit = pas_toe(
+            std::slice::from_ref(&rijen),
+            &l,
+            &mut samen,
+            &Peil::default(),
+        )
+        .await;
         assert!(uit[0].fout.is_some());
         assert!(!samen.parameters.contains_key("tabel"));
     }
@@ -685,7 +698,9 @@ mod tests {
             definitie: definitie(),
             bronnen: vec![b],
         };
-        let u = stel_samen(&rijen, &l, &BTreeMap::new()).await.unwrap();
+        let u = stel_samen(&rijen, &l, &BTreeMap::new(), &Peil::default())
+            .await
+            .unwrap();
         assert!(t.hoogste.load(std::sync::atomic::Ordering::SeqCst) > 1);
         // Elke regel houdt haar eigen antwoord, in de volgorde van de tabel.
         let tarieven: Vec<&str> = u
@@ -706,8 +721,10 @@ mod tests {
             definitie: d,
             bronnen: Vec::new(),
         };
-        assert!(stel_samen(&rijen, &eigen(), &BTreeMap::new())
-            .await
-            .is_none());
+        assert!(
+            stel_samen(&rijen, &eigen(), &BTreeMap::new(), &Peil::default())
+                .await
+                .is_none()
+        );
     }
 }

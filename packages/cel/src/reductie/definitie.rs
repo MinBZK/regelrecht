@@ -82,7 +82,8 @@ pub enum Groepeer {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Kies {
-    /// Het gram met het laatste `op_moment`; een herstel is een nieuw gram.
+    /// Het laatste gram in de tijd: het laatste `op_moment`, bij gelijk
+    /// moment het laatste `vastgelegd_op`. Een herstel is een nieuw gram.
     Laatste,
 }
 
@@ -198,7 +199,10 @@ pub struct Bevat {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Moment {
+    /// Wanneer het feit rechtens geldt of plaatsvond.
     OpMoment,
+    /// Wanneer de cel het vastlegde.
+    VastgelegdOp,
 }
 
 /// Lees lexostatus-definities uit tekst en valideer ze tegen het schema.

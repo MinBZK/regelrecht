@@ -25,10 +25,15 @@
 //! `extra_velden` leidt waarden af die geen parameter zijn, zoals de invoer
 //! van een synthese-bron. Ze staan apart in de lexostatus en gaan nooit naar
 //! de engine. Veldpaden zijn relatief aan `fields` van het gram, met punten.
+//!
+//! `kies: laatste` kiest in de tijd: het gram met het laatste `op_moment`
+//! (wanneer het feit rechtens geldt), bij gelijk moment het laatst
+//! vastgelegde (`vastgelegd_op`), en daarna het laatst toegevoegde. Een
+//! reductie kan op een eerder moment peilen ([`Peil`]): dan tellen alleen de
+//! grammen van dat moment.
 
 use std::collections::BTreeMap;
 
-use chrono::DateTime;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -36,8 +41,10 @@ use crate::datum;
 use crate::gram::Gram;
 
 mod definitie;
+mod peil;
 
 pub use definitie::*;
+pub use peil::*;
 
 impl Afleiding {
     /// Pas een afleiding op het gekozen gram toe. `None`: het gram zegt er
@@ -81,6 +88,9 @@ impl Afleiding {
             Afleiding::Moment {
                 moment: Moment::OpMoment,
             } => Some(Value::String(datum::peildatum(&gram.moment()?))),
+            Afleiding::Moment {
+                moment: Moment::VastgelegdOp,
+            } => Some(Value::String(datum::peildatum(&gram.vastgelegd()?))),
             Afleiding::LaatsteVeld { .. }
             | Afleiding::LaatsteJaarVan { .. }
             | Afleiding::LaatsteBevat { .. }
@@ -167,17 +177,19 @@ impl Afleiding {
     }
 }
 
-/// Het gram met het laatste `op_moment`; bij gelijk moment het later
-/// toegevoegde.
+/// Het laatste gram in de tijd: het laatste `op_moment`, bij gelijk moment
+/// het laatste `vastgelegd_op`, en daarna het later toegevoegde.
 fn laatste<'g>(grammen: &[&'g Gram]) -> Result<Option<&'g Gram>, String> {
-    let mut gekozen: Option<(DateTime<chrono::FixedOffset>, &Gram)> = None;
+    let mut gekozen: Option<&Gram> = None;
     for gram in grammen {
-        let moment = gram.moment()?;
-        if gekozen.as_ref().is_none_or(|(m, _)| moment >= *m) {
-            gekozen = Some((moment, gram));
+        // Ook een enkel gram wordt gelezen: een ongeldig moment is een fout.
+        gram.moment()?;
+        gram.vastgelegd()?;
+        if gekozen.map_or(Ok(true), |g| gram.tijdvolgorde(g).map(|o| o.is_ge()))? {
+            gekozen = Some(gram);
         }
     }
-    Ok(gekozen.map(|(_, g)| g))
+    Ok(gekozen)
 }
 
 /// Het jaartal van een datum (`JJJJ-MM-DD`, of een moment met tijdzone).
@@ -233,6 +245,14 @@ pub struct Lexostatus {
     pub zaakkenmerk: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub op_moment: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vastgelegd_op: Option<String>,
+    /// Het peil waarop gereduceerd is (zie [`Peil`]); weggelaten zonder
+    /// peil.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub peilmoment: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bekend_op: Option<String>,
     pub parameters: BTreeMap<String, Value>,
     /// Waarden die geen parameter zijn; ze gaan nooit naar de engine.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -253,6 +273,9 @@ impl Lexostatus {
             naam: naam.into(),
             zaakkenmerk: None,
             op_moment: None,
+            vastgelegd_op: None,
+            peilmoment: None,
+            bekend_op: None,
             parameters: BTreeMap::new(),
             extra_velden: BTreeMap::new(),
             niet_afgeleid: Vec::new(),
@@ -407,32 +430,55 @@ fn door_filter<'g>(
     Ok(door)
 }
 
-/// Reduceer de grammen van een kroniek tot een lexostatus. `None`: de
-/// definitie kiest een gram (`kies`) en geen gram komt door het filter. Een
-/// lijst-lexostatus (`groepeer`) geeft altijd een lexostatus, met een lege
-/// lijst als geen zaak past.
+/// Reduceer de grammen van een kroniek tot een lexostatus, zonder peil: elk
+/// gram telt. Zie [`reduceer_op`].
 pub fn reduceer<'g>(
     definitie: &LexostatusDefinitie,
     inputs: &Map<String, Value>,
     grammen: impl IntoIterator<Item = &'g Gram>,
 ) -> Result<Option<Lexostatus>, String> {
+    reduceer_op(definitie, inputs, grammen, &Peil::default())
+}
+
+/// Reduceer de grammen van een kroniek tot een lexostatus, op een peil: alleen
+/// de grammen die bij het peil tellen doen mee. `None`: de definitie kiest
+/// een gram (`kies`) en geen gram komt door het filter. Een lijst-lexostatus
+/// (`groepeer`) geeft altijd een lexostatus, met een lege lijst als geen zaak
+/// past.
+pub fn reduceer_op<'g>(
+    definitie: &LexostatusDefinitie,
+    inputs: &Map<String, Value>,
+    grammen: impl IntoIterator<Item = &'g Gram>,
+    peil: &Peil,
+) -> Result<Option<Lexostatus>, String> {
     let r = &definitie.reduction;
-    let in_kroniek = grammen.into_iter().filter(|g| g.chronicle == r.kroniek);
+    let mut in_kroniek = Vec::new();
+    for g in grammen {
+        if g.chronicle == r.kroniek && peil.laat_door(g)? {
+            in_kroniek.push(g);
+        }
+    }
+    let gepeild = |l: Lexostatus| Lexostatus {
+        peilmoment: peil.peilmoment.map(|t| t.to_string()),
+        bekend_op: peil.bekend_op.map(|t| t.to_string()),
+        ..l
+    };
     if r.groepeer.is_some() {
-        return reduceer_lijst(definitie, inputs, in_kroniek).map(Some);
+        return reduceer_lijst(definitie, inputs, in_kroniek).map(|l| Some(gepeild(l)));
     }
     let door = door_filter(&r.filter, inputs, in_kroniek)?;
     let Some(a) = leid_af_uit(definitie, inputs, &door)? else {
         return Ok(None);
     };
-    Ok(Some(Lexostatus {
+    Ok(Some(gepeild(Lexostatus {
         zaakkenmerk: a.gekozen.and_then(|g| g.zaakkenmerk.clone()),
         op_moment: a.gekozen.map(|g| g.op_moment.clone()),
+        vastgelegd_op: a.gekozen.map(|g| g.vastgelegd_op.clone()),
         parameters: a.parameters,
         extra_velden: a.extra_velden,
         niet_afgeleid: a.niet_afgeleid,
         ..Lexostatus::leeg(&definitie.name)
-    }))
+    })))
 }
 
 /// Een lijst-lexostatus: groepeer per zaakkenmerk, houd de zaken met een gram
@@ -522,6 +568,8 @@ mod tests {
             regulation_valid_from: None,
             competent_authority: None,
             op_moment: moment.into(),
+            op_moment_grondslag: None,
+            vastgelegd_op: moment.into(),
             zaak: Zaak::Opent,
             zaakkenmerk: Some(zaak.into()),
             stroom: StroomVerwijzing {
@@ -1204,5 +1252,175 @@ mod tests {
             &gram(z, "2025-03-04T09:00:00+01:00", json!({}))
         )
         .unwrap());
+    }
+
+    // --- Tijd: twee tijden per gram en een peil (paper P:46, P:94) ---
+
+    /// Een gram dat rechtens geldt op `op`, vastgelegd op `vastgelegd`.
+    fn getijd(op: &str, vastgelegd: &str, fields: Value) -> Gram {
+        let mut g = gram("z", op, fields);
+        g.vastgelegd_op = vastgelegd.into();
+        g
+    }
+
+    fn kies_a() -> LexostatusDefinitie {
+        serde_yaml_ng::from_str(
+            "{name: l, inputs: [], reduction: {kroniek: test_kroniek, kies: laatste, afleidingen: {a: {veld: a}, sinds: {moment: op_moment}, bekend: {moment: vastgelegd_op}}}}",
+        )
+        .unwrap()
+    }
+
+    fn peil(peilmoment: Option<&str>, bekend_op: Option<&str>) -> Peil {
+        let lees = |t: Option<&str>| t.map(|t| crate::datum::Tijdpunt::lees("t", t).unwrap());
+        Peil {
+            peilmoment: lees(peilmoment),
+            bekend_op: lees(bekend_op),
+        }
+    }
+
+    /// Dezelfde kroniek op twee peilmomenten: twee lexostatussen. Wat na het
+    /// peilmoment geldt, telt niet mee.
+    #[test]
+    fn dezelfde_kroniek_op_twee_peilmomenten() {
+        let def = parse(REGISTER, "register").unwrap().lexostatus_definitions[0].clone();
+        let grammen = register();
+        let mut inputs = Map::new();
+        inputs.insert("aanduiding".into(), json!("VOORBEELD"));
+        let op = |p: &Peil| reduceer_op(&def, &inputs, &grammen, p).unwrap().unwrap();
+        let november = op(&peil(Some("2024-11-15"), None));
+        let december = op(&peil(Some("2024-12-15"), None));
+        assert_eq!(november.parameters["datum_mededeling"], json!("2024-11-01"));
+        assert_eq!(november.parameters["geblokkeerd_raad"], json!(false));
+        assert_eq!(december.parameters["datum_mededeling"], json!("2024-12-01"));
+        assert_eq!(december.parameters["geblokkeerd_raad"], json!(true));
+        assert_eq!(november.peilmoment.as_deref(), Some("2024-11-15"));
+        // Voor de uitslag was er niets: geen zetels, niet ingeschreven.
+        let januari = op(&peil(Some("2024-01-01"), None));
+        assert_eq!(januari.parameters["zetels_op_lijst"], json!(0));
+        assert_eq!(januari.parameters["is_ingeschreven_raad"], json!(false));
+        // Zonder peil telt alles.
+        let nu = reduceer(&def, &inputs, &grammen).unwrap().unwrap();
+        assert_eq!(nu.parameters, december.parameters);
+        assert_eq!(nu.peilmoment, None);
+    }
+
+    /// Een papieren aanvraag die op 5 maart binnenkwam en op 12 maart werd
+    /// ingevoerd: rechtens geldt 5 maart, bekend is ze pas op 12 maart.
+    #[test]
+    fn een_laat_vastgelegd_feit_met_een_eerder_op_moment() {
+        let def = kies_a();
+        let grammen = [
+            getijd(
+                "2025-03-10T09:00:00+01:00",
+                "2025-03-10T09:00:00+01:00",
+                json!({"a": "portaal"}),
+            ),
+            getijd(
+                "2025-03-05T00:00:00+01:00",
+                "2025-03-12T14:00:00+01:00",
+                json!({"a": "papier"}),
+            ),
+        ];
+        let op = |p: Peil| reduceer_op(&def, &Map::new(), &grammen, &p).unwrap();
+        // Nu: het laatste in de tijd is het gram van 10 maart, ook al is het
+        // papieren gram later vastgelegd.
+        let nu = op(Peil::default()).unwrap();
+        assert_eq!(nu.parameters["a"], json!("portaal"));
+        // Rechtens op 6 maart, met wat nu bekend is: de papieren aanvraag.
+        let l = op(peil(Some("2025-03-06"), None)).unwrap();
+        assert_eq!(l.parameters["a"], json!("papier"));
+        assert_eq!(l.parameters["sinds"], json!("2025-03-05"));
+        assert_eq!(l.parameters["bekend"], json!("2025-03-12"));
+        assert_eq!(
+            l.vastgelegd_op.as_deref(),
+            Some("2025-03-12T14:00:00+01:00")
+        );
+        // Zoals bekend op 11 maart: de papieren aanvraag lag er nog niet.
+        let l = op(peil(None, Some("2025-03-11"))).unwrap();
+        assert_eq!(l.parameters["a"], json!("portaal"));
+        // Bitemporeel: rechtens op 6 maart, zoals bekend op 11 maart: niets.
+        assert!(op(peil(Some("2025-03-06"), Some("2025-03-11"))).is_none());
+    }
+
+    /// Een gram van voor `vastgelegd_op` (uit een oudere kroniek) krijgt
+    /// zijn op_moment, en telt daarna gewoon mee.
+    #[test]
+    fn een_oud_gram_zonder_vastgelegd_op() {
+        let mut oud =
+            serde_json::to_value(gram("z", "2025-03-05T09:00:00+01:00", json!({"a": 1}))).unwrap();
+        oud.as_object_mut().unwrap().remove("vastgelegd_op");
+        let mut g: Gram = serde_json::from_value(oud).unwrap();
+        assert_eq!(g.vastgelegd_op, "");
+        assert!(g.vul_vastgelegd_op());
+        assert!(!g.vul_vastgelegd_op());
+        assert_eq!(g.vastgelegd_op, g.op_moment);
+        let l = reduceer_op(
+            &kies_a(),
+            &Map::new(),
+            [&g],
+            &peil(None, Some("2025-03-05")),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(l.parameters["bekend"], json!("2025-03-05"));
+    }
+
+    /// `kies: laatste` kiest op op_moment; bij gelijk op_moment op
+    /// vastgelegd_op; en als ook dat gelijk is, het later toegevoegde.
+    #[test]
+    fn kies_laatste_op_op_moment_dan_vastgelegd_op() {
+        let def = kies_a();
+        let kies = |grammen: &[Gram]| {
+            reduceer(&def, &Map::new(), grammen)
+                .unwrap()
+                .unwrap()
+                .parameters["a"]
+                .clone()
+        };
+        let m = "2025-03-10T09:00:00+01:00";
+        // Gelijk op_moment: het later vastgelegde, ongeacht de volgorde.
+        let later = getijd(m, "2025-03-11T09:00:00+01:00", json!({"a": "later"}));
+        let eerder = getijd(m, "2025-03-10T09:00:00+01:00", json!({"a": "eerder"}));
+        assert_eq!(kies(&[later.clone(), eerder.clone()]), json!("later"));
+        assert_eq!(kies(&[eerder.clone(), later.clone()]), json!("later"));
+        // Het op_moment gaat voor: een eerder feit dat later is vastgelegd,
+        // is niet het laatste.
+        let laat_vastgelegd = getijd(
+            "2025-03-09T09:00:00+01:00",
+            "2025-03-20T09:00:00+01:00",
+            json!({"a": "laat"}),
+        );
+        assert_eq!(kies(&[eerder.clone(), laat_vastgelegd]), json!("eerder"));
+        // Alles gelijk: het later toegevoegde.
+        let tweede = getijd(m, "2025-03-10T09:00:00+01:00", json!({"a": "tweede"}));
+        assert_eq!(kies(&[eerder, tweede]), json!("tweede"));
+    }
+
+    #[test]
+    fn een_ongeldig_peil_is_een_fout() {
+        let mut q = Map::new();
+        q.insert("peilmoment".into(), json!("morgen"));
+        q.insert("aanduiding".into(), json!("X"));
+        let f = Peil::uit_query(&mut q).unwrap_err();
+        assert!(f.contains("ongeldig peilmoment 'morgen'"), "{f}");
+        let mut q = Map::new();
+        q.insert("bekend_op".into(), json!("2025-03-10"));
+        q.insert("aanduiding".into(), json!("X"));
+        let p = Peil::uit_query(&mut q).unwrap();
+        assert!(p.peilmoment.is_none());
+        assert_eq!(p.query(), vec![("bekend_op", "2025-03-10".to_string())]);
+        // Wat overblijft, zijn de inputs.
+        assert_eq!(q.keys().collect::<Vec<_>>(), ["aanduiding"]);
+    }
+
+    #[test]
+    fn peilmoment_is_geen_input_van_een_lexostatus() {
+        let f = parse(
+            "cel: c\nlexostatus_definitions:\n  - name: l\n    inputs: [{name: peilmoment, type: date}]\n    reduction: {kroniek: k, afleidingen: {}}\n",
+            "l",
+        )
+        .unwrap_err()
+        .join("; ");
+        assert!(f.contains("peilmoment"), "{f}");
     }
 }

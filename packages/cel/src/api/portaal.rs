@@ -11,11 +11,11 @@ use super::sessie::ingelogd;
 use super::{fout, intern, van_cel, Fout, ProcesState};
 use crate::cel::Cel;
 use crate::celclient::{self, Vastlegverzoek};
-use crate::datum;
+use crate::datum::{self, Tijdpunt};
 use crate::eherkenning::Sessie;
 use crate::gram::Gram;
 use crate::mogelijkheid;
-use crate::reductie::{self, Lexostatus};
+use crate::reductie::{self, Lexostatus, Peil};
 use crate::rijen;
 use crate::stroom::{self, Binding, Zaak};
 use crate::synthese;
@@ -118,10 +118,13 @@ struct Concepttoets<'a> {
     rijen: Vec<rijen::Uitslag>,
 }
 
+/// `peil`: waarop de bronnen hun kroniek reduceren (zie [`Peil`]); het
+/// concept zelf reduceert de cel zoals het nu zou vastliggen.
 async fn concepttoets<'a>(
     state: &'a ProcesState,
     sessie: &Sessie,
     concept: &Concept,
+    peil: &Peil,
 ) -> Result<Concepttoets<'a>, Fout> {
     let portaal = state.proces.portaal().ok_or_else(|| {
         fout(
@@ -151,11 +154,12 @@ async fn concepttoets<'a>(
     .map_err(van_cel)?;
     // Synthese: de lexostatus van het concept plus die van de bronnen, en
     // daarna de synthese per regel, vóór de engine.
-    let mut samen = synthese::voeg_samen(&lexostatus, &state.bronnen).await;
+    let mut samen = synthese::voeg_samen(&lexostatus, &state.bronnen, peil).await;
     let rijen = rijen::pas_toe(
         &state.toets_rijen,
         std::slice::from_ref(&lexostatus),
         &mut samen,
+        peil,
     )
     .await;
     Ok(Concepttoets {
@@ -174,7 +178,9 @@ pub(super) async fn toets_route(
     Json(concept): Json<Concept>,
 ) -> Result<Json<Value>, Fout> {
     let sessie = ingelogd(&state, &headers)?;
-    let c = concepttoets(&state, &sessie, &concept).await?;
+    // De bronnen peilen op vandaag, de dag waarop de engine de wet leest.
+    let vandaag = Peil::op(Tijdpunt::Datum((state.klok)().date_naive()));
+    let c = concepttoets(&state, &sessie, &concept, &vandaag).await?;
     let datum = datum::peildatum_van(&c.gram.op_moment).map_err(intern)?;
     let mut uitslag = toets::toets(
         &state.proces.service,
@@ -207,6 +213,11 @@ pub(super) async fn toets_route(
 /// eHerkenning en de synthese weten. Uitkomst en termijn komen uit een run,
 /// met trace. Een feit dat een bron niet leverde, maakt het aanbod niet te
 /// bepalen. Niets wordt vastgelegd.
+///
+/// De bronnen peilen per tijdvak (zie [`peil_voor`]): voor een tijdvak dat
+/// nog moet beginnen op de eerste dag ervan, zodat een feit dat vóór dat
+/// tijdvak ingaat (een schrapping per 1 januari) meetelt en de registers niet
+/// de stand van vandaag geven voor een jaar dat nog komt.
 pub(super) async fn mogelijkheden_route(
     State(state): State<ProcesState>,
     headers: HeaderMap,
@@ -252,7 +263,8 @@ pub(super) async fn mogelijkheden_route(
             external,
             zaakkenmerk: None,
         };
-        let mut c = concepttoets(&state, &sessie, &concept).await?;
+        let peil = peil_voor(&nu, keuze.as_ref());
+        let mut c = concepttoets(&state, &sessie, &concept, &peil).await?;
         // Leidt de toets-lexostatus het tijdvak niet af, dan gaat de keuze
         // zelf mee.
         if let Some(k) = &keuze {
@@ -274,6 +286,7 @@ pub(super) async fn mogelijkheden_route(
         );
         uit.push(json!({
             "mogelijkheid": m,
+            "peilmoment": peil.peilmoment.map(|t| t.to_string()),
             "parameters": c.samen.parameters,
             "herkomst": c.samen.herkomst,
             "bronnen": c.samen.bronnen,
@@ -289,6 +302,23 @@ pub(super) async fn mogelijkheden_route(
     })))
 }
 
+/// Het peil van de bronnen voor een aanbod: de eerste dag van het gekozen
+/// tijdvak als dat nog moet beginnen, anders vandaag. Het tijdvak is hier een
+/// jaar (zie `aanbod.keuzes`); een waarde die geen jaar is, peilt op vandaag.
+fn peil_voor(
+    nu: &chrono::DateTime<chrono::FixedOffset>,
+    keuze: Option<&mogelijkheid::Keuze>,
+) -> Peil {
+    let vandaag = nu.date_naive();
+    let begin = keuze
+        .and_then(|k| k.waarde.as_i64())
+        .and_then(|j| i32::try_from(j).ok())
+        .and_then(|j| chrono::NaiveDate::from_ymd_opt(j, 1, 1));
+    Peil::op(Tijdpunt::Datum(
+        begin.filter(|b| *b > vandaag).unwrap_or(vandaag),
+    ))
+}
+
 /// Indienen: de cel bouwt het gram en legt het vast.
 pub(super) async fn indienen(
     State(state): State<ProcesState>,
@@ -301,4 +331,30 @@ pub(super) async fn indienen(
         .await
         .map_err(van_cel)?;
     Ok((StatusCode::CREATED, Json(vastgelegd)))
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    fn keuze(jaar: i64) -> mogelijkheid::Keuze {
+        mogelijkheid::Keuze {
+            parameter: "jaar".into(),
+            veld: None,
+            waarde: json!(jaar),
+        }
+    }
+
+    /// Een tijdvak dat nog moet beginnen, peilt op zijn eerste dag; dit jaar
+    /// en zonder tijdvak op vandaag.
+    #[test]
+    fn het_aanbod_peilt_op_het_begin_van_een_komend_tijdvak() {
+        let nu = datum::moment("2026-09-25T10:00:00+02:00").unwrap();
+        let op =
+            |k: Option<&mogelijkheid::Keuze>| peil_voor(&nu, k).peilmoment.unwrap().to_string();
+        assert_eq!(op(Some(&keuze(2027))), "2027-01-01");
+        assert_eq!(op(Some(&keuze(2026))), "2026-09-25");
+        assert_eq!(op(None), "2026-09-25");
+    }
 }
