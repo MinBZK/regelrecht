@@ -46,18 +46,21 @@ export function celApi(id) {
 export function procesApi(id) {
   const p = `/processen/${encodeURIComponent(id)}/api`;
   return {
-    inloggen: (login) => vraag('POST', `${p}/eherkenning/login`, login),
-    sessie: () => vraag('GET', `${p}/eherkenning/sessie`),
-    uitloggen: () => vraag('POST', `${p}/eherkenning/logout`),
+    // Inloggen langs een kanaal uit `kanalen` in proces.yaml: de velden van
+    // het kanaal, en `rol` als er langs het kanaal meer dan een rol inlogt.
+    inloggen: (kanaal, invoer) => vraag('POST', `${p}/kanalen/${encodeURIComponent(kanaal)}/login`, invoer),
+    // Wie er is ingelogd, langs welk kanaal ook.
+    sessie: () => vraag('GET', `${p}/sessie`),
+    uitloggen: (kanaal) => vraag('POST', `${p}/kanalen/${encodeURIComponent(kanaal)}/logout`),
     formulier: () => vraag('GET', `${p}/formulier`),
     toets: (external) => vraag('POST', `${p}/aanvraag/toets`, { external }),
     indienen: (external) => vraag('POST', `${p}/aanvraag`, { external }),
     mogelijkheden: () => vraag('GET', `${p}/mogelijkheden`),
     // Standaardgegevens per handeling; ook zonder login.
     voorbeelden: () => vraag('GET', `${p}/voorbeelden`),
-    medewerkerInloggen: (naam) => vraag('POST', `${p}/medewerker/login`, { naam }),
-    medewerkerSessie: () => vraag('GET', `${p}/medewerker/sessie`),
-    medewerkerUitloggen: () => vraag('POST', `${p}/medewerker/logout`),
+    // Het loket: een aanvraag die langs een andere weg binnenkwam,
+    // {aanvrager, ontvangen_op, external}.
+    loketIndienen: (invoer) => vraag('POST', `${p}/loket/aanvraag`, invoer),
     werkvoorraad: () => vraag('GET', `${p}/werkvoorraad`),
     zaak: (zaakkenmerk) => vraag('GET', `${p}/zaken/${encodeURIComponent(zaakkenmerk)}`),
     proefbesluit: (zaakkenmerk, formulier) =>

@@ -17,7 +17,16 @@ const voorbeeld = computed(() => voorbeelden.value.aanvraag);
 
 // Waarden die al vaststaan, bijvoorbeeld het tijdvak van de gekozen
 // aanvraagmogelijkheid.
-const props = defineProps({ vooraf: { type: Object, default: () => ({}) } });
+const props = defineProps({
+  vooraf: { type: Object, default: () => ({}) },
+  // Hoe het formulier wordt ingediend: standaard door de ingelogde aanvrager
+  // (POST /api/aanvraag); het loket geeft zijn eigen route mee.
+  verstuur: { type: Function, default: null },
+  // Of de toets voor het indienen er is: die toetst het concept van de
+  // ingelogde aanvrager, dus niet aan het loket.
+  toetsen: { type: Boolean, default: true },
+  titel: { type: String, default: null },
+});
 
 const emit = defineEmits(['ingediend']);
 
@@ -96,7 +105,8 @@ async function indienen(metVoorbeeld = false) {
   fout.value = '';
   bezig.value = metVoorbeeld ? 'voorbeeld' : 'indienen';
   try {
-    const r = await api.indienen(metVoorbeeld ? voorbeeldExternal() : external(waarden.value));
+    const verstuur = props.verstuur ?? api.indienen;
+    const r = await verstuur(metVoorbeeld ? voorbeeldExternal() : external(waarden.value));
     emit('ingediend', r.gram);
   } catch (e) {
     fout.value = e.message;
@@ -133,7 +143,7 @@ const uitslagToelichting = computed(() => {
 
 <template>
   <nldd-title size="2">
-    <h1>{{ stroom?.titel ?? 'Indienen' }}</h1>
+    <h1>{{ titel ?? stroom?.titel ?? 'Indienen' }}</h1>
     <span slot="subtitle" v-if="stroom">{{ stroom.event }} in stroom {{ stroom.stroom?.$id }}</span>
   </nldd-title>
   <nldd-spacer size="16"></nldd-spacer>
@@ -151,6 +161,7 @@ const uitslagToelichting = computed(() => {
   </template>
   <template v-if="stroom">
     <nldd-form :key="versie" novalidate @submit.prevent="indienen()">
+      <slot name="voor"></slot>
       <template v-for="g in groepen" :key="g.titel">
         <nldd-form-section v-if="g.titel" :text="g.titel"></nldd-form-section>
         <template v-for="v in g.velden" :key="v.naam">
@@ -214,6 +225,7 @@ const uitslagToelichting = computed(() => {
       <nldd-form-actions>
         <nldd-button-group>
           <nldd-button
+            v-if="toetsen"
             variant="secondary"
             text="Controleer"
             :loading="bezig === 'toets' || undefined"

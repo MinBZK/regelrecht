@@ -15,8 +15,8 @@ afterEach(() => {
 
 describe('foutTekst', () => {
   it('leest `fout` uit het antwoord', () => {
-    expect(foutTekst(400, '{"fout":"een KvK-nummer heeft acht cijfers"}')).toBe(
-      'een KvK-nummer heeft acht cijfers',
+    expect(foutTekst(400, '{"fout":"een nummer heeft acht cijfers"}')).toBe(
+      'een nummer heeft acht cijfers',
     );
   });
 
@@ -32,14 +32,24 @@ describe('vraag', () => {
     vi.stubGlobal('fetch', fetch);
     await expect(procesApi('p 1').sessie()).resolves.toEqual({ rol: 'aanvrager' });
     expect(fetch).toHaveBeenCalledWith(
-      '/processen/p%201/api/eherkenning/sessie',
+      '/processen/p%201/api/sessie',
       expect.objectContaining({ method: 'GET', credentials: 'same-origin' }),
     );
   });
 
   it('geeft null bij 204', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(antwoord(204)));
-    await expect(procesApi('p').uitloggen()).resolves.toBeNull();
+    await expect(procesApi('p').uitloggen('k')).resolves.toBeNull();
+  });
+
+  it('logt in langs het kanaal', async () => {
+    const fetch = vi.fn().mockResolvedValue(antwoord(200, { rol: 'r' }));
+    vi.stubGlobal('fetch', fetch);
+    await procesApi('p').inloggen('k 1', { nummer: '1' });
+    expect(fetch).toHaveBeenCalledWith(
+      '/processen/p/api/kanalen/k%201/login',
+      expect.objectContaining({ method: 'POST', body: '{"nummer":"1"}' }),
+    );
   });
 
   it('gooit een ApiError met de tekst uit `fout` en de status', async () => {

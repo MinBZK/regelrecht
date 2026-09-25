@@ -11,8 +11,10 @@
 // met een (?) die de redenen en de trace toont.
 import { computed, inject, onMounted, ref } from 'vue';
 import TraceKnop from '@regelrecht/frontend-shared/components/TraceKnop.vue';
+import { sessieTekst } from '../kanaal.js';
 
 const api = inject('api');
+const proces = inject('proces');
 const emit = defineEmits(['aanvragen', 'geladen']);
 
 const data = ref(null);
@@ -67,7 +69,7 @@ function grond(m) {
 <template>
   <nldd-title size="2">
     <h1>Wat kunt u aanvragen?</h1>
-    <span slot="subtitle" v-if="data">KvK {{ data.kvk }}, ingelogd als {{ data.persoon }}</span>
+    <span slot="subtitle" v-if="data">Ingelogd als {{ sessieTekst(proces, data.sessie) }}</span>
   </nldd-title>
   <nldd-spacer size="8"></nldd-spacer>
   <nldd-rich-text>

@@ -1,16 +1,19 @@
 <script setup>
-// Een proces. Met de rol aanvrager (een portaal): inloggen met eHerkenning,
-// zien wat het beleid aanbiedt en indienen. Met de rol behandelaar: inloggen
-// als medewerker, de werkvoorraad, een zaak met een proefbesluit en het
-// besluit. Welke rollen er zijn, zegt GET /api/processen. De kroniek en de
+// Een proces. Welke rollen er zijn, langs welk kanaal ze inloggen en welke
+// schermen ze hebben, zegt GET /api/processen (`kanalen` en `rollen` in
+// proces.yaml): een rol met routes portaal ziet wat het beleid aanbiedt en
+// dient in, een rol met routes behandeling ziet de werkvoorraad, een zaak
+// met een proefbesluit en het besluit, een rol met routes loket voert een
+// aanvraag in die langs een andere weg binnenkwam. De kroniek en de
 // lexostatussen zijn van de cel waarin het proces vastlegt; die komen van
 // /cellen/<id>, zonder login.
 import { computed, onMounted, provide, ref } from 'vue';
 import { celApi, procesApi } from '../api.js';
+import { beginscherm as beginVan, rollenVan, sessieTekst } from '../kanaal.js';
 import InloggenView from './InloggenView.vue';
 import MogelijkhedenView from './MogelijkhedenView.vue';
-import MedewerkerView from './MedewerkerView.vue';
 import AanvraagView from './AanvraagView.vue';
+import LoketView from './LoketView.vue';
 import KroniekView from './KroniekView.vue';
 import LexostatusView from './LexostatusView.vue';
 import WerkvoorraadView from './WerkvoorraadView.vue';
@@ -28,10 +31,11 @@ provide('celApi', celApi(props.cel.id));
 // De voorbeelden van het proces (inloggen, aanvraag, besluit); zonder: leeg.
 const voorbeelden = ref({ inloggen: [], aanvraag: null, besluit: null });
 provide('voorbeelden', voorbeelden);
+provide('proces', props.proces);
 
-const rollen = computed(() => ['aanvrager', 'behandelaar'].filter((r) => props.proces.rollen?.[r]));
-const rol = ref(rollen.value[0] ?? null);
-// Een sessie per proces: wie als de andere rol inlogt, vervangt haar.
+const rollen = computed(() => rollenVan(props.proces));
+const rol = ref(rollen.value[0]?.id ?? null);
+// Een sessie per proces: wie in een andere rol inlogt, vervangt haar.
 const sessie = ref(null);
 const geladen = ref(rol.value === null);
 const scherm = ref(beginscherm(rol.value));
@@ -44,10 +48,17 @@ const mogelijk = ref([]);
 const vooraf = ref({});
 
 function beginscherm(r) {
-  if (r === 'aanvrager' && props.proces.portaal) return 'mogelijkheden';
-  if (r === 'behandelaar' && props.proces.behandeling) return 'werkvoorraad';
-  return 'kroniek';
+  return beginVan(props.proces, r);
 }
+
+// De routegroepen van de gekozen rol.
+const mag = (routes) => props.proces.rollen?.[rol.value]?.routes?.includes(routes) ?? false;
+
+// Het kanaal van de gekozen rol, en of de login de rol moet noemen (als er
+// langs dat kanaal meer dan een rol inlogt).
+const kanaalId = computed(() => props.proces.rollen?.[rol.value]?.kanaal ?? null);
+const kanaal = computed(() => props.proces.kanalen?.[kanaalId.value] ?? null);
+const rolMeesturen = computed(() => rollen.value.filter((r) => r.kanaal === kanaalId.value).length > 1);
 
 onMounted(async () => {
   if (rol.value === null) return;
@@ -56,17 +67,10 @@ onMounted(async () => {
     .then((v) => (voorbeelden.value = v))
     .catch(() => {});
   try {
-    if (props.proces.rollen.behandelaar) {
-      const m = await api.medewerkerSessie().catch(() => null);
-      if (m) {
-        sessie.value = { rol: 'behandelaar', naam: m.naam };
-        kiesRol('behandelaar');
-        return;
-      }
-    }
-    if (props.proces.rollen.aanvrager) {
-      const s = await api.sessie().catch(() => null);
-      if (s) sessie.value = { rol: 'aanvrager', ...s };
+    const s = await api.sessie().catch(() => null);
+    if (s && props.proces.rollen?.[s.rol]) {
+      sessie.value = s;
+      kiesRol(s.rol);
     }
   } finally {
     geladen.value = true;
@@ -100,8 +104,7 @@ function ingediend(gram) {
 }
 
 async function uitloggen() {
-  const weg = sessie.value?.rol === 'behandelaar' ? api.medewerkerUitloggen : api.uitloggen;
-  await weg().catch(() => {});
+  await api.uitloggen(sessie.value.kanaal).catch(() => {});
   sessie.value = null;
   mogelijk.value = [];
   vooraf.value = {};
@@ -116,47 +119,52 @@ function tab(e) {
   }
 }
 
-const wie = computed(() => {
-  const s = sessie.value;
-  if (!s) return '';
-  return s.rol === 'behandelaar' ? `${s.naam}, behandelaar` : `${s.persoon}, KvK ${s.kvk}`;
-});
+const wie = computed(() => sessieTekst(props.proces, sessie.value));
 </script>
 
 <template>
   <template v-if="rollen.length > 1">
     <nldd-segmented-control accessible-label="Rol" :value="rol" @change="kiesRol($event.detail.value)">
-      <nldd-segmented-control-item value="aanvrager" text="Aanvrager"></nldd-segmented-control-item>
-      <nldd-segmented-control-item value="behandelaar" text="Behandelaar"></nldd-segmented-control-item>
+      <nldd-segmented-control-item v-for="r in rollen" :key="r.id" :value="r.id" :text="r.label"></nldd-segmented-control-item>
     </nldd-segmented-control>
     <nldd-spacer size="16"></nldd-spacer>
   </template>
-  <template v-if="geladen && rol === 'aanvrager' && !ingelogd">
-    <InloggenView @ingelogd="sessie = { rol: 'aanvrager', ...$event }" />
-  </template>
-  <template v-else-if="geladen && rol === 'behandelaar' && !ingelogd">
-    <MedewerkerView @ingelogd="sessie = { rol: 'behandelaar', naam: $event.naam }" />
+  <template v-if="geladen && rol !== null && !ingelogd && kanaal">
+    <InloggenView
+      :key="rol"
+      :kanaal-id="kanaalId"
+      :kanaal="kanaal"
+      :rol="rol"
+      :rol-meesturen="rolMeesturen"
+      @ingelogd="sessie = $event"
+    />
   </template>
   <template v-else-if="geladen">
     <nldd-container layout="row" horizontal-alignment="space-between" vertical-alignment="center">
       <nldd-tab-bar size="md" accessible-label="Scherm" @tabchange="tab">
         <nldd-tab-bar-item
-          v-if="rol === 'aanvrager' && proces.portaal"
+          v-if="mag('portaal') && proces.portaal"
           data-scherm="mogelijkheden"
           text="Wat kan ik aanvragen"
           :current="scherm === 'mogelijkheden' || undefined"
         ></nldd-tab-bar-item>
         <nldd-tab-bar-item
-          v-if="rol === 'aanvrager' && proces.portaal && mogelijk.length"
+          v-if="mag('portaal') && proces.portaal && mogelijk.length"
           data-scherm="aanvraag"
           text="Indienen"
           :current="scherm === 'aanvraag' || undefined"
         ></nldd-tab-bar-item>
         <nldd-tab-bar-item
-          v-if="rol === 'behandelaar' && proces.behandeling"
+          v-if="mag('behandeling') && proces.behandeling"
           data-scherm="werkvoorraad"
           text="Werkvoorraad"
           :current="scherm === 'werkvoorraad' || undefined"
+        ></nldd-tab-bar-item>
+        <nldd-tab-bar-item
+          v-if="mag('loket') && proces.loket"
+          data-scherm="loket"
+          text="Loket"
+          :current="scherm === 'loket' || undefined"
         ></nldd-tab-bar-item>
         <nldd-tab-bar-item data-scherm="kroniek" text="Kroniek" :current="scherm === 'kroniek' || undefined"></nldd-tab-bar-item>
         <nldd-tab-bar-item
@@ -177,6 +185,7 @@ const wie = computed(() => {
     <nldd-spacer size="24"></nldd-spacer>
     <MogelijkhedenView v-if="scherm === 'mogelijkheden'" @geladen="mogelijkhedenGeladen" @aanvragen="aanvragen" />
     <AanvraagView v-else-if="scherm === 'aanvraag'" :key="JSON.stringify(vooraf)" :vooraf="vooraf" @ingediend="ingediend" />
+    <LoketView v-else-if="scherm === 'loket'" @ingediend="ingediend" />
     <template v-else-if="scherm === 'werkvoorraad'">
       <ZaakView v-if="zaak" :key="zaak" :zaakkenmerk="zaak" @terug="zaak = null" />
       <WerkvoorraadView v-else :kolommen="werkvoorraadKolommen" @open="zaak = $event" />
