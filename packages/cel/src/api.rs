@@ -6,9 +6,10 @@
 //! | Route | Doet |
 //! |---|---|
 //! | `GET /api/kroniek` | de grammen, elk met YAML |
+//! | `GET /api/zaken/{zaakkenmerk}` | de grammen van een zaak, elk met YAML; 404 als de cel de zaak niet kent |
 //! | `GET /api/lexostatus/{naam}?<input>=...` | een reductie, met de inputs als query |
 //! | `POST /api/lexostatus/{naam}/proef` | `{concept, inputs}`: bouwt het gram in het geheugen en reduceert de kroniek mét dat gram; legt niets vast |
-//! | `POST /api/grammen` | `{actor, stroom, event, intake, external, zaakkenmerk?, besluit?}`: bouwt het gram, valideert het, controleert de actor en legt het vast |
+//! | `POST /api/grammen` | `{actor, stroom, event, intake, external, zaakkenmerk?, besluit?}`: bouwt het gram, valideert het, controleert de actor en de zaak (zie [`toets_zaak`]) en legt het vast |
 //! | `GET /api/stroom` | de stroomdefinities van de cel, met hun hash |
 //!
 //! Een proces handelt: het informeert, concludeert en laat een cel
@@ -117,6 +118,7 @@ pub struct CelState {
 pub fn cel_router(state: CelState) -> Router {
     Router::new()
         .route("/api/kroniek", get(kroniek_route))
+        .route("/api/zaken/{zaakkenmerk}", get(zaak_van_cel_route))
         .route("/api/lexostatus/{naam}", get(lexostatus_route))
         .route("/api/lexostatus/{naam}/proef", post(proef_route))
         .route("/api/grammen", post(grammen_route))
@@ -171,10 +173,9 @@ pub struct Besluitvelden {
 }
 
 /// Het zaakkenmerk van een gram. `zaak: opent` geeft een nieuw kenmerk;
-/// `volgt` neemt dat uit het verzoek, van een zaak die de kroniek kent;
-/// `geen` geeft er geen.
+/// `volgt` neemt dat uit het verzoek (of de kroniek die zaak kent, toetst
+/// [`toets_zaak`]); `geen` geeft er geen.
 fn zaakkenmerk_voor(
-    state: &CelState,
     event: &stroom::Event,
     meegegeven: Option<String>,
 ) -> Result<Option<String>, Fout> {
@@ -197,17 +198,7 @@ fn zaakkenmerk_voor(
                     ),
                 ));
             };
-            if alle_grammen(state)?
-                .iter()
-                .any(|g| g.zaakkenmerk.as_deref() == Some(z.as_str()))
-            {
-                Ok(Some(z))
-            } else {
-                Err(fout(
-                    StatusCode::BAD_REQUEST,
-                    format!("geen zaak '{z}' in de kroniek"),
-                ))
-            }
+            Ok(Some(z))
         }
         Zaak::Geen => Ok(meegegeven),
     }
@@ -236,7 +227,7 @@ fn bouw(state: &CelState, v: &Vastlegverzoek) -> Result<Gram, Fout> {
             ),
         ));
     }
-    let zaakkenmerk = zaakkenmerk_voor(state, event, v.zaakkenmerk.clone())?;
+    let zaakkenmerk = zaakkenmerk_voor(event, v.zaakkenmerk.clone())?;
     let mut gram = stroom::bouw_gram(
         stroom,
         event,
@@ -281,7 +272,46 @@ pub fn als_yaml(cel: &Cel, gram: &Gram) -> String {
     serde_yaml_ng::to_string(&doc).unwrap_or_default()
 }
 
-/// Leg een gram vast. Antwoord: het gram, met YAML.
+/// Of een gram vastlegbaar is in de zaak die het draagt, gegeven wat de
+/// kronieken van de cel al bevatten. Dat beslist de cel, niet het proces
+/// (paper: de cel bepaalt welke feiten vastlegbaar zijn).
+///
+/// - Een gram dat een zaak volgt, volgt een zaak die de kroniek kent.
+/// - Een zaak doorloopt elke stage één keer: de stage-decretogrammen van één
+///   besluit delen een zaakkenmerk, elk als eigen elementair gram (RFC-022
+///   par. 1.2, RFC-008). Een tweede gram met dezelfde stage is een wijziging
+///   van wat al vastligt, en die hoort in een eigen stap.
+fn toets_zaak(gram: &Gram, bestaand: &[Gram]) -> Result<(), Fout> {
+    let Some(z) = gram.zaakkenmerk.as_deref() else {
+        return Ok(());
+    };
+    let mut zaak = bestaand
+        .iter()
+        .filter(|g| g.zaakkenmerk.as_deref() == Some(z))
+        .peekable();
+    if gram.zaak == Zaak::Volgt && zaak.peek().is_none() {
+        return Err(fout(
+            StatusCode::BAD_REQUEST,
+            format!("geen zaak '{z}' in de kroniek"),
+        ));
+    }
+    if let Some(stage) = gram.stage.as_deref() {
+        if let Some(eerder) = zaak.find(|g| g.stage.as_deref() == Some(stage)) {
+            return Err(fout(
+                StatusCode::CONFLICT,
+                format!(
+                    "in zaak {z} ligt al een gram met stage {stage} ('{}'); een zaak doorloopt elke stage één keer (RFC-022 par. 1.2)",
+                    eerder.name
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Leg een gram vast. Antwoord: het gram, met YAML. De toets op de zaak en
+/// het schrijven gebeuren onder één slot, zodat twee gelijktijdige verzoeken
+/// niet allebei dezelfde stage vastleggen.
 async fn grammen_route(
     State(state): State<CelState>,
     Json(verzoek): Json<Vastlegverzoek>,
@@ -289,8 +319,10 @@ async fn grammen_route(
     let gram = bouw(&state, &verzoek)?;
     state
         .kroniek
-        .voeg_toe(&gram)
-        .map_err(|e| fout(StatusCode::INTERNAL_SERVER_ERROR, e))?;
+        .voeg_toe_mits(&gram, &state.cel.kronieken(), |bestaand| {
+            toets_zaak(&gram, bestaand)
+        })
+        .map_err(|e| fout(StatusCode::INTERNAL_SERVER_ERROR, e))??;
     tracing::info!(cel = %state.cel.id(), zaakkenmerk = gram.zaakkenmerk.as_deref().unwrap_or("-"), name = %gram.name, "gram vastgelegd");
     let yaml = als_yaml(&state.cel, &gram);
     Ok((
@@ -316,6 +348,7 @@ async fn proef_route(
 ) -> Result<Json<Value>, Fout> {
     let def = lexostatus_def(&state, &naam)?;
     let gram = bouw(&state, &verzoek.concept)?;
+    toets_zaak(&gram, &alle_grammen(&state)?)?;
     let mut inputs = verzoek.inputs;
     if let Some(z) = &gram.zaakkenmerk {
         if def.inputs.iter().any(|i| i.name == "zaakkenmerk") && !inputs.contains_key("zaakkenmerk")
@@ -376,12 +409,37 @@ fn alle_grammen(state: &CelState) -> Result<Vec<Gram>, Fout> {
     Ok(uit)
 }
 
+fn met_yaml(state: &CelState, grammen: &[Gram]) -> Value {
+    Value::Array(
+        grammen
+            .iter()
+            .map(|g| json!({"gram": g, "yaml": als_yaml(&state.cel, g)}))
+            .collect(),
+    )
+}
+
 async fn kroniek_route(State(state): State<CelState>) -> Result<Json<Value>, Fout> {
-    let uit: Vec<Value> = alle_grammen(&state)?
-        .iter()
-        .map(|g| json!({"gram": g, "yaml": als_yaml(&state.cel, g)}))
-        .collect();
-    Ok(Json(Value::Array(uit)))
+    Ok(Json(met_yaml(&state, &alle_grammen(&state)?)))
+}
+
+/// De grammen van één zaak, over alle kronieken van de cel. Het filteren op
+/// de zaak gebeurt hier, in de cel; een proces krijgt alleen de zaak die het
+/// vraagt.
+async fn zaak_van_cel_route(
+    State(state): State<CelState>,
+    Path(zaakkenmerk): Path<String>,
+) -> Result<Json<Value>, Fout> {
+    let grammen = state
+        .kroniek
+        .lees_zaak(&state.cel.kronieken(), &zaakkenmerk)
+        .map_err(|e| fout(StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    if grammen.is_empty() {
+        return Err(fout(
+            StatusCode::NOT_FOUND,
+            format!("geen zaak '{zaakkenmerk}' in de kroniek"),
+        ));
+    }
+    Ok(Json(met_yaml(&state, &grammen)))
 }
 
 async fn lexostatus_route(
@@ -467,15 +525,30 @@ fn van_cel(f: TransportFout) -> Fout {
     }
 }
 
-/// De grammen in de kroniek van een cel (`GET kroniek`), elk met YAML.
-pub async fn lees_kroniek(cel: &dyn Transport, id: &str) -> Result<Vec<Value>, TransportFout> {
-    let v = cel.haal(&celpad(id, "kroniek")).await?;
-    Ok(v.as_array().cloned().unwrap_or_default())
+/// De grammen van een zaak, elk met YAML, zoals de cel ze filtert
+/// (`GET zaken/{zaakkenmerk}`). Een proces leest nooit de hele kroniek: het
+/// filteren is werk van de cel.
+pub async fn lees_zaak(
+    cel: &dyn Transport,
+    id: &str,
+    zaakkenmerk: &str,
+) -> Result<Vec<Value>, TransportFout> {
+    match cel
+        .haal(&celpad(id, &format!("zaken/{zaakkenmerk}")))
+        .await?
+    {
+        Value::Array(v) => Ok(v),
+        ander => Err(TransportFout::Antwoord {
+            status: 500,
+            fout: format!("de cel gaf geen lijst grammen voor zaak {zaakkenmerk}: {ander}"),
+        }),
+    }
 }
 
-/// Het gram van een regel uit [`lees_kroniek`].
-pub fn gram_van(item: &Value) -> Option<Gram> {
-    serde_json::from_value(item.get("gram")?.clone()).ok()
+/// Het gram van een regel uit [`lees_zaak`].
+pub fn gram_van(item: &Value) -> Result<Gram, String> {
+    serde_json::from_value(item.get("gram").cloned().unwrap_or_default())
+        .map_err(|e| format!("onleesbaar gram van de cel: {e}"))
 }
 
 // ---------------------------------------------------------------------------
@@ -683,13 +756,16 @@ async fn verzoek_voor(
 ) -> Result<Vastlegverzoek, Fout> {
     let (stroom, event) = portaal_event(state)?;
     if let (Zaak::Volgt, Some(z)) = (event.zaak, &concept.zaakkenmerk) {
-        let kroniek = lees_kroniek(state.cel.as_ref(), state.cel_id())
-            .await
-            .map_err(van_cel)?;
-        let bekend = kroniek.iter().filter_map(gram_van).any(|g| {
-            g.zaakkenmerk.as_deref() == Some(z.as_str())
-                && van_kvk(&state.proces.cel, &g, &sessie.kvk)
-        });
+        // Een zaak die de cel niet kent, kent de aanvrager ook niet.
+        let zaak = match lees_zaak(state.cel.as_ref(), state.cel_id(), z).await {
+            Err(TransportFout::Antwoord { status: 404, .. }) => Vec::new(),
+            anders => anders.map_err(van_cel)?,
+        };
+        let mut bekend = false;
+        for item in &zaak {
+            let g = gram_van(item).map_err(|e| fout(StatusCode::INTERNAL_SERVER_ERROR, e))?;
+            bekend |= van_kvk(&state.proces.cel, &g, &sessie.kvk);
+        }
         if !bekend {
             return Err(fout(
                 StatusCode::BAD_REQUEST,
@@ -945,7 +1021,7 @@ async fn werkvoorraad_route(
         .cel
         .haal(&synthese::pad(&w.cel, &w.lexostatus, &Map::new()))
         .await
-        .map_err(|f| fout(StatusCode::INTERNAL_SERVER_ERROR, f.to_string()))?;
+        .map_err(van_cel)?;
     Ok(Json(v))
 }
 
@@ -1032,22 +1108,12 @@ async fn besluit_route(
     ))
 }
 
-/// De grammen van een zaak, elk met YAML, uit de kroniek van de cel; een 404
-/// als de kroniek de zaak niet kent.
+/// De grammen van een zaak, elk met YAML, zoals de cel ze geeft; een 404
+/// als de cel de zaak niet kent.
 async fn zaakgrammen(state: &ProcesState, zaakkenmerk: &str) -> Result<Vec<Value>, Fout> {
-    let grammen: Vec<Value> = lees_kroniek(state.cel.as_ref(), state.cel_id())
+    lees_zaak(state.cel.as_ref(), state.cel_id(), zaakkenmerk)
         .await
-        .map_err(van_cel)?
-        .into_iter()
-        .filter(|i| i["gram"]["zaakkenmerk"].as_str() == Some(zaakkenmerk))
-        .collect();
-    if grammen.is_empty() {
-        return Err(fout(
-            StatusCode::NOT_FOUND,
-            format!("geen zaak '{zaakkenmerk}' in de kroniek"),
-        ));
-    }
-    Ok(grammen)
+        .map_err(van_cel)
 }
 
 async fn zaak_route(

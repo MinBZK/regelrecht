@@ -1722,7 +1722,10 @@ async fn besluit_nemen_legt_een_decretogram_vast() {
     .await;
     assert_eq!(status, StatusCode::CONFLICT, "{f}");
     assert!(
-        f["fout"].as_str().unwrap().contains("ligt al een besluit"),
+        f["fout"]
+            .as_str()
+            .unwrap()
+            .contains("ligt al een gram met stage BESLUIT"),
         "{f}"
     );
     let kroniek =
@@ -1747,6 +1750,54 @@ async fn besluit_nemen_legt_een_decretogram_vast() {
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // De cel geeft een proces alleen de zaak die het vraagt, en kent een
+    // onbekende zaak niet.
+    let (status, g, _) = vraag(
+        &app,
+        "GET",
+        &format!("{AFNEMER_CEL}/api/zaken/{zaak}"),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{g}");
+    let g = g.as_array().unwrap();
+    assert_eq!(g.len(), 2);
+    assert!(g.iter().all(|i| i["gram"]["zaakkenmerk"] == zaak.as_str()));
+    let (status, _, _) = vraag(
+        &app,
+        "GET",
+        &format!("{AFNEMER_CEL}/api/zaken/00000000-0000-4000-8000-000000000009"),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // Twee gelijktijdige besluiten op de andere zaak: de cel legt er één
+    // vast, want de toets op de stage en het schrijven delen één slot.
+    let pad = format!("{AFNEMER}/api/zaken/{twee}/besluit");
+    let (een, ander) = tokio::join!(
+        vraag(&app, "POST", &pad, Some(&b), Some(oordelen())),
+        vraag(&app, "POST", &pad, Some(&b), Some(oordelen())),
+    );
+    let mut statussen = [een.0, ander.0];
+    statussen.sort();
+    assert_eq!(
+        statussen,
+        [StatusCode::CREATED, StatusCode::CONFLICT],
+        "{} / {}",
+        een.1,
+        ander.1
+    );
+    let kroniek =
+        std::fs::read_to_string(data.path().join("test_afnemer/test_afnemer.jsonl")).unwrap();
+    assert_eq!(
+        kroniek.lines().count(),
+        4,
+        "twee aanvragen en twee besluiten"
+    );
 }
 
 #[tokio::test]

@@ -43,15 +43,37 @@ impl Kroniek {
 
     /// Voeg een gram toe. Het gram moet valideren tegen `gram.json`.
     pub fn voeg_toe(&self, gram: &Gram) -> Result<(), String> {
+        self.voeg_toe_mits(gram, &[], |_| Ok::<(), std::convert::Infallible>(()))?
+            .map_err(|never| match never {})
+    }
+
+    /// Voeg een gram toe als `controle` dat toelaat. De controle ziet de
+    /// grammen van `kronieken` zoals ze op dat moment vastliggen, onder
+    /// hetzelfde slot als het schrijven. Zo kunnen twee gelijktijdige
+    /// verzoeken niet allebei door een controle komen die op het andere had
+    /// moeten stuiten.
+    ///
+    /// De buitenste fout is een fout van de opslag; de binnenste is de
+    /// weigering van de controle, en dan is er niets vastgelegd.
+    pub fn voeg_toe_mits<E>(
+        &self,
+        gram: &Gram,
+        kronieken: &[&str],
+        controle: impl FnOnce(&[Gram]) -> Result<(), E>,
+    ) -> Result<Result<(), E>, String> {
         gram.valideer()
             .map_err(|f| format!("gram valideert niet: {}", f.join("; ")))?;
         let pad = self.bestand(&gram.chronicle)?;
         let mut regel = serde_json::to_string(gram).map_err(|e| e.to_string())?;
         regel.push('\n');
-        let _slot = self
-            .schrijver
-            .lock()
-            .map_err(|_| "kroniek vergrendeld".to_string())?;
+        let _slot = self.slot()?;
+        let mut bestaand = Vec::new();
+        for k in kronieken {
+            bestaand.extend(self.lees_onvergrendeld(k)?);
+        }
+        if let Err(w) = controle(&bestaand) {
+            return Ok(Err(w));
+        }
         let mut f = OpenOptions::new()
             .create(true)
             .append(true)
@@ -59,16 +81,24 @@ impl Kroniek {
             .map_err(|e| format!("{}: {e}", pad.display()))?;
         f.write_all(regel.as_bytes())
             .and_then(|()| f.sync_data())
-            .map_err(|e| format!("{}: {e}", pad.display()))
+            .map_err(|e| format!("{}: {e}", pad.display()))?;
+        Ok(Ok(()))
+    }
+
+    fn slot(&self) -> Result<std::sync::MutexGuard<'_, ()>, String> {
+        self.schrijver
+            .lock()
+            .map_err(|_| "kroniek vergrendeld".to_string())
     }
 
     /// Alle grammen van een kroniek, in de volgorde van vastleggen.
     pub fn lees(&self, chronicle: &str) -> Result<Vec<Gram>, String> {
+        let _slot = self.slot()?;
+        self.lees_onvergrendeld(chronicle)
+    }
+
+    fn lees_onvergrendeld(&self, chronicle: &str) -> Result<Vec<Gram>, String> {
         let pad = self.bestand(chronicle)?;
-        let _slot = self
-            .schrijver
-            .lock()
-            .map_err(|_| "kroniek vergrendeld".to_string())?;
         let f = match std::fs::File::open(&pad) {
             Ok(f) => f,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
@@ -87,13 +117,19 @@ impl Kroniek {
         Ok(grammen)
     }
 
-    /// De grammen van een zaak.
-    pub fn lees_zaak(&self, chronicle: &str, zaakkenmerk: &str) -> Result<Vec<Gram>, String> {
-        Ok(self
-            .lees(chronicle)?
-            .into_iter()
-            .filter(|g| g.zaakkenmerk.as_deref() == Some(zaakkenmerk))
-            .collect())
+    /// De grammen van een zaak, over de gegeven kronieken, in de volgorde
+    /// van vastleggen per kroniek.
+    pub fn lees_zaak(&self, kronieken: &[&str], zaakkenmerk: &str) -> Result<Vec<Gram>, String> {
+        let _slot = self.slot()?;
+        let mut uit = Vec::new();
+        for k in kronieken {
+            uit.extend(
+                self.lees_onvergrendeld(k)?
+                    .into_iter()
+                    .filter(|g| g.zaakkenmerk.as_deref() == Some(zaakkenmerk)),
+            );
+        }
+        Ok(uit)
     }
 }
 
@@ -146,7 +182,7 @@ mod tests {
         k.voeg_toe(&gram(Z2)).unwrap();
         k.voeg_toe(&gram(Z1)).unwrap();
         assert_eq!(k.lees("test_kroniek").unwrap().len(), 3);
-        assert_eq!(k.lees_zaak("test_kroniek", Z1).unwrap().len(), 2);
+        assert_eq!(k.lees_zaak(&["test_kroniek"], Z1).unwrap().len(), 2);
     }
 
     #[test]
@@ -176,6 +212,53 @@ mod tests {
         g.zaakkenmerk = Some(Z1.into());
         assert!(k.voeg_toe(&g).is_err());
         assert!(k.lees("test_kroniek").unwrap().is_empty());
+    }
+
+    #[test]
+    fn een_weigering_van_de_controle_legt_niets_vast() {
+        let dir = tempfile::tempdir().unwrap();
+        let k = Kroniek::open(dir.path()).unwrap();
+        k.voeg_toe(&gram(Z1)).unwrap();
+        let uitkomst = k
+            .voeg_toe_mits(&gram(Z1), &["test_kroniek"], |bestaand| {
+                if bestaand.is_empty() {
+                    Ok(())
+                } else {
+                    Err("er ligt al iets")
+                }
+            })
+            .unwrap();
+        assert_eq!(uitkomst, Err("er ligt al iets"));
+        assert_eq!(k.lees("test_kroniek").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn gelijktijdige_controles_laten_er_een_door() {
+        let dir = tempfile::tempdir().unwrap();
+        let k = std::sync::Arc::new(Kroniek::open(dir.path()).unwrap());
+        let draden: Vec<_> = (0..8)
+            .map(|_| {
+                let k = k.clone();
+                std::thread::spawn(move || {
+                    k.voeg_toe_mits(&gram(Z1), &["test_kroniek"], |bestaand| {
+                        if bestaand.is_empty() {
+                            Ok(())
+                        } else {
+                            Err(())
+                        }
+                    })
+                    .unwrap()
+                    .is_ok()
+                })
+            })
+            .collect();
+        let gelukt = draden
+            .into_iter()
+            .map(|d| d.join().unwrap())
+            .filter(|ok| *ok)
+            .count();
+        assert_eq!(gelukt, 1);
+        assert_eq!(k.lees("test_kroniek").unwrap().len(), 1);
     }
 
     #[test]

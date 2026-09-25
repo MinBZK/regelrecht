@@ -121,9 +121,10 @@ het gedrag.
 | `GET /api/cellen` | de cellen, met per cel haar kronieken en haar lexostatussen (inputs, parameters, extra velden) |
 | `GET /api/processen` | de processen, met per proces de actor, de cel, portaal, rollen, behandeling en de synthese-bronnen |
 | `GET /cellen/<id>/api/kroniek` | de grammen, elk met YAML |
+| `GET /cellen/<id>/api/zaken/<zaakkenmerk>` | de grammen van één zaak, elk met YAML; de cel filtert, 404 als ze de zaak niet kent |
 | `GET /cellen/<id>/api/lexostatus/<naam>?<input>=...` | een reductie; de inputs als query |
 | `POST /cellen/<id>/api/lexostatus/<naam>/proef` | `{concept, inputs}`: de cel bouwt het gram van het concept in het geheugen en reduceert de kroniek mét dat gram; er wordt niets vastgelegd |
-| `POST /cellen/<id>/api/grammen` | `{actor, stroom, event, intake, external, zaakkenmerk?, besluit?}`: de cel bouwt het gram, valideert het, controleert de actor en legt het vast (201) |
+| `POST /cellen/<id>/api/grammen` | `{actor, stroom, event, intake, external, zaakkenmerk?, besluit?}`: de cel bouwt het gram, valideert het, controleert de actor en de zaak, en legt het vast (201); 409 als die stage al vastligt in de zaak |
 | `GET /cellen/<id>/api/stroom` | de stroomdefinities van de cel, met hun hash |
 | `GET /processen/<id>/api/voorbeelden` | de voorbeelden per handeling, zonder login |
 | `POST /processen/<id>/api/eherkenning/login`, `GET .../sessie`, `POST .../logout` | alleen met portaal |
@@ -285,9 +286,12 @@ vastleggen, een ander gezag betekent weigeren, en noemt de regeling er geen,
 dan legt de cel vast met een waarschuwing en zonder `competent_authority`.
 
 Drie dingen leiden tot een weigering met 409 en zonder gram: het proefbesluit
-is niet compleet ("niet te nemen: mist X"), er ligt al een gram met stage
-`BESLUIT` in de zaak (het wijzigen van een besluit valt buiten deze stap), of
-de wet wijst een ander gezag aan. Het gram wordt voor het vastleggen tegen
+is niet compleet ("niet te nemen: mist X"), de cel weigert omdat er al een
+gram met stage `BESLUIT` in de zaak ligt (het wijzigen van een besluit valt
+buiten deze stap), of de wet wijst een ander gezag aan. Of een stage
+vastlegbaar is, beslist de cel: een zaak doorloopt elke stage één keer
+(RFC-022 par. 1.2), en de cel toetst dat onder hetzelfde slot als het
+schrijven, zodat twee gelijktijdige besluiten er niet allebei door komen. Het gram wordt voor het vastleggen tegen
 `gram.json` gevalideerd.
 
 ## Controles bij het opstarten

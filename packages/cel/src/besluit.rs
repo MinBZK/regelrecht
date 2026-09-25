@@ -561,9 +561,6 @@ pub struct Besluit {
     pub waarschuwingen: Vec<String>,
 }
 
-/// De stage van een gram dat zegt dat er al een besluit ligt.
-const STAGE_BESLUIT: &str = "BESLUIT";
-
 /// Een naam vergelijkbaar maken: kleine letters, en alles wat geen letter of
 /// cijfer is wordt een liggend streepje. Zo is een gezag dat de regeling
 /// voluit noemt ("De Raad van Voorbeeld") te vergelijken met de id van een
@@ -641,9 +638,9 @@ pub(crate) fn gezag_van(
 /// stage-decretogram.
 ///
 /// Het proefbesluit moet compleet zijn; is het dat niet, dan komt er geen
-/// gram en zegt het proces wat er mist. Ligt er al een gram met stage
-/// `BESLUIT` in de zaak, dan weigert het proces: een tweede besluit is een
-/// wijziging, en die valt buiten deze stap. Wijst de wet een ander bevoegd
+/// gram en zegt het proces wat er mist. Ligt de stage van het besluit al vast
+/// in de zaak, dan weigert de cel (zie `api::toets_zaak`): een tweede besluit
+/// is een wijziging, en die valt buiten deze stap. Wijst de wet een ander bevoegd
 /// gezag aan dan de actor van het proces, dan weigert het ook; noemt de wet
 /// er geen, dan laat het vastleggen met een waarschuwing.
 ///
@@ -674,18 +671,6 @@ pub async fn neem_besluit(
         .vastleggen
         .as_ref()
         .ok_or_else(|| Weigering::Cel("het besluit zegt niet waar het wordt vastgelegd".into()))?;
-
-    // Een tweede besluit in dezelfde zaak is een wijziging: buiten scope.
-    let kroniek = api::lees_kroniek(cel, &v.cel)
-        .await
-        .map_err(|f| Weigering::Cel(format!("cel '{}': {f}", v.cel)))?;
-    if kroniek.iter().filter_map(api::gram_van).any(|g| {
-        g.zaakkenmerk.as_deref() == Some(zaakkenmerk) && g.stage.as_deref() == Some(STAGE_BESLUIT)
-    }) {
-        return Err(Weigering::AlBesloten(format!(
-            "in zaak {zaakkenmerk} ligt al een besluit; het wijzigen van een besluit valt buiten deze stap"
-        )));
-    }
 
     let peildatum = op_moment.format("%Y-%m-%d").to_string();
     let proef = proefbesluit(
@@ -787,7 +772,12 @@ pub async fn neem_besluit(
             &serde_json::to_value(&verzoek).unwrap_or_default(),
         )
         .await
-        .map_err(|f| Weigering::Cel(format!("het besluit is niet vastgelegd: {f}")))?;
+        .map_err(|f| match f {
+            // De cel weigert: in deze zaak ligt die stage al vast. Of een
+            // besluit vastlegbaar is, beslist de cel, onder haar slot.
+            TransportFout::Antwoord { status: 409, fout } => Weigering::AlBesloten(fout),
+            f => Weigering::Cel(format!("het besluit is niet vastgelegd: {f}")),
+        })?;
     let gram: Gram = serde_json::from_value(antwoord.get("gram").cloned().unwrap_or_default())
         .map_err(|e| Weigering::Cel(format!("het vastgelegde gram is onleesbaar: {e}")))?;
     let yaml = antwoord
