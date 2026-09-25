@@ -34,6 +34,17 @@ pub struct Bron<D = SyntheseBron> {
     pub transport: Arc<dyn Transport>,
 }
 
+impl<D: Clone> Bron<D> {
+    /// Dezelfde bron, langs een ander transport naar dezelfde cel (zoals een
+    /// dat antwoorden onthoudt, zie [`crate::transport::Onthouden`]).
+    pub fn langs(&self, transport: impl FnOnce(Arc<dyn Transport>) -> Arc<dyn Transport>) -> Self {
+        Self {
+            definitie: self.definitie.clone(),
+            transport: transport(self.transport.clone()),
+        }
+    }
+}
+
 /// Welke lexostatus van welke cel een bron is.
 pub trait Bronverwijzing {
     fn cel(&self) -> &str;

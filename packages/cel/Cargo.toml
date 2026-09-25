@@ -20,7 +20,7 @@ regelrecht-engine = { path = "../engine" }
 regelrecht-law-model = { path = "../law-model" }
 regelrecht-shared = { path = "../shared", features = ["telemetry"] }
 axum.workspace = true
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "time"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "time", "sync"] }
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml_ng.workspace = true

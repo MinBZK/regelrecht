@@ -17,7 +17,9 @@ use crate::config::HandelingDefinitie;
 use crate::handeling::{self, Omgeving, Opgave, Weigering};
 use crate::reductie::Peil;
 use crate::reductie::Zaakstand;
-use crate::synthese;
+use crate::rijen::Rijen;
+use crate::synthese::{self, Bron};
+use crate::transport::Onthouden;
 
 fn behandeling(state: &ProcesState) -> Result<&crate::config::Behandeling, Fout> {
     state.proces.definitie.behandeling.as_ref().ok_or_else(|| {
@@ -123,8 +125,47 @@ pub(super) async fn zaak_route(
     let grammen = zaakgrammen(&state, &zaakkenmerk).await?;
     let b = behandeling(&state)?;
     let leeg = Opgave::default();
+    // De zaakcontext (de lexostatussen van de zaak, de synthese en de
+    // synthese per regel) is voor elke handeling op dezelfde peildatum
+    // dezelfde: de proeven delen een geheugen voor wat ze lezen, zodat het
+    // proces elke lexostatus en elke bron een keer vraagt. Een feit dat op
+    // proef als concept meetelt, reduceert de cel per handeling.
+    let geheugen = Onthouden::default();
+    let cel = geheugen.om(state.cel.clone());
+    let gedeeld: Vec<(Vec<Bron>, Vec<Rijen>)> = state
+        .handelingen
+        .iter()
+        .map(|hs| {
+            let bronnen = hs
+                .bronnen
+                .iter()
+                .map(|b| b.langs(|t| geheugen.om(t)))
+                .collect();
+            let rijen = hs
+                .rijen
+                .iter()
+                .map(|r| Rijen {
+                    definitie: r.definitie.clone(),
+                    bronnen: r
+                        .bronnen
+                        .iter()
+                        .map(|b| b.langs(|t| geheugen.om(t)))
+                        .collect(),
+                })
+                .collect();
+            (bronnen, rijen)
+        })
+        .collect();
+    let nu = (state.klok)();
     let proeven = join_all(b.handelingen.iter().enumerate().map(|(i, h)| {
-        let om = omgeving(&state, i);
+        let om = Omgeving {
+            proces: &state.proces,
+            cel: cel.as_ref(),
+            bronnen: &gedeeld[i].0,
+            rijen: &gedeeld[i].1,
+            regelingen: &state.regelingen,
+            nu,
+        };
         let stand = handeling::stand(&state.proces, h, &zaak);
         let zaak = &zaak;
         let zaakkenmerk = &zaakkenmerk;

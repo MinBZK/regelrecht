@@ -26,6 +26,7 @@ use axum::http::{header, Request, StatusCode};
 use axum::Router;
 use http_body_util::BodyExt;
 use serde_json::Value;
+use tokio::sync::OnceCell;
 use tower::ServiceExt;
 
 /// De header waarin een proces het runtime-token meestuurt.
@@ -129,6 +130,66 @@ pub trait Transport: Send + Sync {
     /// `POST` met een JSON-body op een pad van de runtime, zoals
     /// `/cellen/<id>/api/grammen`, met JSON terug.
     fn stuur<'a>(&'a self, pad: &'a str, body: &'a Value) -> Antwoord<'a>;
+}
+
+/// Onthoudt de antwoorden op `GET` van een of meer transporten, per
+/// transport en pad, voor de duur van een vraag. Het zaakscherm rekent elke
+/// handeling van een zaak op proef uit; die lezen dezelfde lexostatussen van
+/// de zaak en dezelfde bronnen op dezelfde peildatum (het peil staat in het
+/// pad), en zo vraagt het proces elk daarvan een keer, ook als de proeven
+/// tegelijk lopen. Een `POST` (een proefreductie met een concept, het
+/// vastleggen) gaat altijd door.
+#[derive(Clone, Default)]
+pub struct Onthouden(Arc<std::sync::Mutex<Geheugen>>);
+
+type Geheugen =
+    std::collections::HashMap<(usize, String), Arc<OnceCell<Result<Value, TransportFout>>>>;
+
+impl Onthouden {
+    /// `binnen`, met de antwoorden op `GET` onthouden.
+    pub fn om(&self, binnen: Arc<dyn Transport>) -> Arc<dyn Transport> {
+        Arc::new(Onthoudend {
+            binnen,
+            geheugen: self.clone(),
+        })
+    }
+
+    fn plek(
+        &self,
+        binnen: &Arc<dyn Transport>,
+        pad: &str,
+    ) -> Arc<OnceCell<Result<Value, TransportFout>>> {
+        // Hetzelfde transport is hetzelfde doel; de sleutel is zijn adres.
+        let wie = Arc::as_ptr(binnen).cast::<()>() as usize;
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .entry((wie, pad.to_string()))
+            .or_default()
+            .clone()
+    }
+}
+
+struct Onthoudend {
+    binnen: Arc<dyn Transport>,
+    geheugen: Onthouden,
+}
+
+impl Transport for Onthoudend {
+    fn soort(&self) -> &'static str {
+        self.binnen.soort()
+    }
+
+    fn haal<'a>(&'a self, pad: &'a str) -> Antwoord<'a> {
+        Box::pin(async move {
+            let plek = self.geheugen.plek(&self.binnen, pad);
+            plek.get_or_init(|| self.binnen.haal(pad)).await.clone()
+        })
+    }
+
+    fn stuur<'a>(&'a self, pad: &'a str, body: &'a Value) -> Antwoord<'a> {
+        self.binnen.stuur(pad, body)
+    }
 }
 
 /// Vraag binnen een tijdslimiet. Te laat is onbereikbaar.
@@ -403,6 +464,25 @@ mod tests {
                     Json(json!({}))
                 }),
             )
+    }
+
+    /// Het geheugen vraagt elk pad een keer per transport, ook bij
+    /// gelijktijdige vragen; een ander transport of een POST gaat door.
+    #[tokio::test]
+    async fn onthouden_vraagt_elk_pad_een_keer() {
+        let a = Arc::new(proef::Vast::new(Ok(json!({"a": 1}))));
+        let b = Arc::new(proef::Vast::new(Ok(json!({"b": 2}))));
+        let geheugen = Onthouden::default();
+        let (ta, tb) = (geheugen.om(a.clone()), geheugen.om(b.clone()));
+        let (x, y) = tokio::join!(ta.haal("/l?p=1"), ta.haal("/l?p=1"));
+        assert_eq!((x.unwrap(), y.unwrap()), (json!({"a": 1}), json!({"a": 1})));
+        assert_eq!(tb.haal("/l?p=1").await.unwrap(), json!({"b": 2}));
+        ta.haal("/l?p=2").await.unwrap();
+        assert_eq!(a.vragen(), ["/l?p=1", "/l?p=2"]);
+        assert_eq!(b.vragen(), ["/l?p=1"]);
+        ta.stuur("/l?p=1", &json!({})).await.unwrap();
+        ta.stuur("/l?p=1", &json!({})).await.unwrap();
+        assert_eq!(a.vragen().len(), 4);
     }
 
     #[tokio::test]
