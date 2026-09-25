@@ -6,8 +6,7 @@ import { waardeTekst as waarde } from '../tekst.js';
 import { veldTekst } from '../formulier.js';
 
 const props = defineProps({ lexostatussen: { type: Array, required: true } });
-// De routes van de cel: kroniek en lexostatus zijn van haar, niet van het
-// proces.
+// De kroniek en de lexostatussen van de cel, via de inzage van een proces.
 const api = inject('celApi');
 
 const naam = ref(props.lexostatussen[0]?.name ?? '');

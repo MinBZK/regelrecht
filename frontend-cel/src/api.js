@@ -31,10 +31,12 @@ export const cellen = () => vraag('GET', '/api/cellen');
 // De processen van de runtime, met per proces zijn cel en mogelijkheden.
 export const processen = () => vraag('GET', '/api/processen');
 
-// De routes van een cel, onder /cellen/<id>: wat ze vastlegde en wat haar
-// reducties opleveren. Zonder login.
-export function celApi(id) {
-  const p = `/cellen/${encodeURIComponent(id)}/api`;
+// Wat een cel vastlegde en wat haar reducties opleveren. De leesroutes van
+// een cel zijn niet open (de grammen dragen de identiteit van wie indiende);
+// een behandelaar ziet ze via zijn proces, onder
+// /processen/<proces>/api/inzage/<cel>.
+export function inzageApi(proces, cel) {
+  const p = `/processen/${encodeURIComponent(proces)}/api/inzage/${encodeURIComponent(cel)}`;
   return {
     kroniek: () => vraag('GET', `${p}/kroniek`),
     lexostatus: (naam, invoer) =>
@@ -69,6 +71,9 @@ export function procesApi(id) {
     // handeling; welke er zijn, zegt de zaak.
     proefhandeling: (zaakkenmerk, naam, formulier) =>
       vraag('POST', `${handeling(zaakkenmerk, naam)}/proef`, { formulier }),
-    handeling: (zaakkenmerk, naam, formulier) => vraag('POST', handeling(zaakkenmerk, naam), { formulier }),
+    // Met `gebeurd` meldt de behandelaar een feit dat gebeurde terwijl de
+    // proef om de inhoud nee zei.
+    handeling: (zaakkenmerk, naam, formulier, gebeurd = false) =>
+      vraag('POST', handeling(zaakkenmerk, naam), gebeurd ? { formulier, gebeurd } : { formulier }),
   };
 }

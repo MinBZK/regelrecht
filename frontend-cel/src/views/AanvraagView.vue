@@ -107,7 +107,8 @@ async function indienen(metVoorbeeld = false) {
   try {
     const verstuur = props.verstuur ?? api.indienen;
     const r = await verstuur(metVoorbeeld ? voorbeeldExternal() : external(waarden.value));
-    emit('ingediend', r.gram);
+    // Het vastgelegde gram met zijn YAML: {gram, yaml}.
+    emit('ingediend', r);
   } catch (e) {
     fout.value = e.message;
   } finally {

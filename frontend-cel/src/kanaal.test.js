@@ -27,7 +27,7 @@ describe('kanalen en rollen', () => {
   it('kiest het beginscherm uit de routes van de rol', () => {
     expect(beginscherm(proces, 'aanvrager')).toBe('mogelijkheden');
     expect(beginscherm(proces, 'loket')).toBe('loket');
-    expect(beginscherm(proces, 'onbekend')).toBe('kroniek');
+    expect(beginscherm(proces, 'onbekend')).toBeNull();
   });
 
   it('geeft de kanalen van het portaal, elk een keer', () => {

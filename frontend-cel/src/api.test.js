@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@regelrecht/frontend-shared/apiFetch.js';
-import { foutTekst, procesApi } from './api.js';
+import { foutTekst, inzageApi, procesApi } from './api.js';
 
 function antwoord(status, body) {
   return new Response(body === undefined ? null : JSON.stringify(body), {
@@ -59,6 +59,28 @@ describe('vraag', () => {
     expect(fetch).toHaveBeenCalledWith(
       '/processen/p/api/zaken/Z%201/handelingen/betalen/proef',
       expect.objectContaining({ method: 'POST', body: '{"formulier":{"bedrag":100}}' }),
+    );
+  });
+
+  it('meldt een gebeurd feit met gebeurd: true', async () => {
+    const fetch = vi.fn().mockResolvedValue(antwoord(201, { gram: {} }));
+    vi.stubGlobal('fetch', fetch);
+    await procesApi('p').handeling('Z', 'betalen', { bedrag: 1 }, true);
+    expect(fetch).toHaveBeenCalledWith(
+      '/processen/p/api/zaken/Z/handelingen/betalen',
+      expect.objectContaining({ body: '{"formulier":{"bedrag":1},"gebeurd":true}' }),
+    );
+  });
+
+  it('leest een cel via de inzage van een proces', async () => {
+    const fetch = vi.fn().mockImplementation(async () => antwoord(200, []));
+    vi.stubGlobal('fetch', fetch);
+    await inzageApi('p 1', 'c').kroniek();
+    expect(fetch).toHaveBeenCalledWith('/processen/p%201/api/inzage/c/kroniek', expect.anything());
+    await inzageApi('p', 'c').lexostatus('zaakstand', { zaakkenmerk: 'Z 1' });
+    expect(fetch).toHaveBeenLastCalledWith(
+      '/processen/p/api/inzage/c/lexostatus/zaakstand?zaakkenmerk=Z+1',
+      expect.anything(),
     );
   });
 

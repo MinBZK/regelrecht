@@ -8,13 +8,15 @@ export function rollenVan(proces) {
   return Object.entries(proces?.rollen ?? {}).map(([id, r]) => ({ id, ...r }));
 }
 
-// Het eerste scherm van een rol: wat haar eerste routegroep laat zien.
+// Het eerste scherm van een rol: wat haar eerste routegroep laat zien. Een
+// rol zonder scherm heeft geen beginscherm (null): de kroniek van de cel is
+// niet open, alleen een behandelaar ziet haar.
 export function beginscherm(proces, rol) {
   const routes = proces?.rollen?.[rol]?.routes ?? [];
   if (routes.includes('portaal') && proces.portaal) return 'mogelijkheden';
   if (routes.includes('behandeling') && proces.behandeling) return 'werkvoorraad';
   if (routes.includes('loket') && proces.loket) return 'loket';
-  return 'kroniek';
+  return null;
 }
 
 // De kanalen waarlangs het portaal inlogt: die van de rollen met routes

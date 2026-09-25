@@ -2,7 +2,8 @@
 // De processen en de cellen van de runtime. Een proces met een portaal laat
 // inloggen en indienen, een proces met een behandeling laat een behandelaar
 // een zaak openen en er handelingen in doen, op proef en vastgelegd. Een cel
-// toont haar kroniek en haar lexostatussen. De frontend kent geen casus:
+// toont haar kroniek en haar lexostatussen aan wie als behandelaar is
+// ingelogd in een proces dat haar leest. De frontend kent geen casus:
 // welke processen en cellen er zijn, komt van GET /api/processen en
 // GET /api/cellen.
 import { computed, onMounted, ref } from 'vue';
@@ -85,7 +86,13 @@ function celTekst(c) {
         </nldd-tab-bar>
         <nldd-spacer size="24"></nldd-spacer>
         <ProcesView v-if="proces && celVan(proces)" :key="gekozen" :proces="proces" :cel="celVan(proces)" />
-        <CelView v-else-if="cel" :key="gekozen" :cel="cel" />
+        <CelView
+          v-else-if="cel"
+          :key="gekozen"
+          :cel="cel"
+          :processen="processen.filter((p) => (p.inzage ?? []).includes(cel.id))"
+          @open="gekozen = `proces:${$event}`"
+        />
         <template v-else>
           <nldd-title size="2"><h1>Processen in deze runtime</h1></nldd-title>
           <nldd-spacer size="16"></nldd-spacer>

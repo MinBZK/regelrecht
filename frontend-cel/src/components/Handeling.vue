@@ -4,7 +4,9 @@
 // stage vraagt, of de velden van het event), niet uit code. Een proef legt
 // niets vast: zij zegt welke uitkomsten de engine geeft, of wat er nog mist,
 // en per parameter waar hij vandaan kwam. Vastleggen doet de cel; weigert
-// zij, dan blijft de kroniek zoals hij was.
+// zij, dan blijft de kroniek zoals hij was. Zegt de proef om de inhoud nee
+// (`te_melden`), dan doet het proces de handeling niet uit zichzelf; is het
+// feit toch gebeurd, dan meldt de behandelaar het en legt de cel het vast.
 import { computed, inject, ref } from 'vue';
 import Invoer from './Invoer.vue';
 import { herkomstRijen, soortVan, uitkomstTekst } from '../tekst.js';
@@ -90,14 +92,15 @@ async function opProef() {
   }
 }
 
-async function vastleggen(metVoorbeeld = false) {
+async function vastleggen(metVoorbeeld = false, gebeurd = false) {
   fout.value = '';
-  bezig.value = metVoorbeeld ? 'voorbeeld' : 'vastleggen';
+  bezig.value = metVoorbeeld ? 'voorbeeld' : gebeurd ? 'melden' : 'vastleggen';
   try {
     const uitslag = await api.handeling(
       props.zaakkenmerk,
       props.handeling.naam,
       formulier(metVoorbeeld ? voorbeeldWaarden() : waarden.value),
+      gebeurd,
     );
     genomen.value = uitslag;
     proef.value = uitslag.proef;
@@ -197,6 +200,21 @@ const soortTekst = computed(() => {
       ></nldd-inline-dialog>
       <TraceKnop v-if="proef.trace_text" :trace-text="proef.trace_text" :titel="proef.artikel" />
     </nldd-container>
+    <template v-if="proef.te_melden && !genomen">
+      <nldd-spacer size="8"></nldd-spacer>
+      <nldd-inline-dialog
+        icon="info"
+        text="Het proces doet dit niet uit zichzelf"
+        supporting-text="Is het toch gebeurd, meld het dan: de cel legt het vast, en de zaak toont de gevolgen."
+      ></nldd-inline-dialog>
+      <nldd-spacer size="8"></nldd-spacer>
+      <nldd-button
+        variant="secondary"
+        text="Het is gebeurd: vastleggen"
+        :loading="bezig === 'melden' || undefined"
+        @click="vastleggen(false, true)"
+      ></nldd-button>
+    </template>
     <template v-if="uitkomsten.length">
       <nldd-spacer size="16"></nldd-spacer>
       <nldd-table columns="minmax(240px,1fr) minmax(160px,1fr)" accessible-label="Uitkomsten">

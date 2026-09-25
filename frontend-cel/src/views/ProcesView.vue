@@ -6,10 +6,11 @@
 // met haar handelingen (het besluit, de bekendmaking, een betaling, een
 // feit uit het verloop), een rol met routes loket voert een
 // aanvraag in die langs een andere weg binnenkwam. De kroniek en de
-// lexostatussen zijn van de cel waarin het proces vastlegt; die komen van
-// /cellen/<id>, zonder login.
+// lexostatussen zijn van de cel waarin het proces vastlegt; alleen een rol
+// met routes behandeling ziet ze, via de inzage van het proces. Wie indient,
+// ziet het gram van zijn eigen indiening.
 import { computed, onMounted, provide, ref } from 'vue';
-import { celApi, procesApi } from '../api.js';
+import { inzageApi, procesApi } from '../api.js';
 import { beginscherm as beginVan, rollenVan, sessieTekst } from '../kanaal.js';
 import InloggenView from './InloggenView.vue';
 import MogelijkhedenView from './MogelijkhedenView.vue';
@@ -19,6 +20,7 @@ import KroniekView from './KroniekView.vue';
 import LexostatusView from './LexostatusView.vue';
 import WerkvoorraadView from './WerkvoorraadView.vue';
 import ZaakView from './ZaakView.vue';
+import Grammen from '../components/Grammen.vue';
 
 const props = defineProps({
   proces: { type: Object, required: true },
@@ -28,7 +30,7 @@ const props = defineProps({
 
 const api = procesApi(props.proces.id);
 provide('api', api);
-provide('celApi', celApi(props.cel.id));
+provide('celApi', inzageApi(props.proces.id, props.cel.id));
 // De voorbeelden van het proces (inloggen, aanvraag, en per handeling een
 // formulier); zonder: leeg.
 const voorbeelden = ref({ inloggen: [], aanvraag: null, handelingen: {} });
@@ -83,6 +85,7 @@ function kiesRol(r) {
   rol.value = r;
   scherm.value = beginscherm(r);
   zaak.value = null;
+  nieuw.value = null;
 }
 
 const ingelogd = computed(() => sessie.value !== null && sessie.value.rol === rol.value);
@@ -100,14 +103,17 @@ function aanvragen(velden) {
   scherm.value = 'aanvraag';
 }
 
-function ingediend(gram) {
-  nieuw.value = gram;
-  scherm.value = 'kroniek';
+// Het zojuist ingediende gram, {gram, yaml}: wie indient, ziet zijn eigen
+// indiening, niet de kroniek.
+function ingediend(item) {
+  nieuw.value = item;
+  scherm.value = 'ingediend';
 }
 
 async function uitloggen() {
   await api.uitloggen(sessie.value.kanaal).catch(() => {});
   sessie.value = null;
+  nieuw.value = null;
   mogelijk.value = [];
   vooraf.value = {};
   scherm.value = beginscherm(rol.value);
@@ -168,9 +174,20 @@ const wie = computed(() => sessieTekst(props.proces, sessie.value));
           text="Loket"
           :current="scherm === 'loket' || undefined"
         ></nldd-tab-bar-item>
-        <nldd-tab-bar-item data-scherm="kroniek" text="Kroniek" :current="scherm === 'kroniek' || undefined"></nldd-tab-bar-item>
         <nldd-tab-bar-item
-          v-if="cel.lexostatussen.length"
+          v-if="nieuw"
+          data-scherm="ingediend"
+          text="Ingediend"
+          :current="scherm === 'ingediend' || undefined"
+        ></nldd-tab-bar-item>
+        <nldd-tab-bar-item
+          v-if="mag('behandeling') && proces.behandeling"
+          data-scherm="kroniek"
+          text="Kroniek"
+          :current="scherm === 'kroniek' || undefined"
+        ></nldd-tab-bar-item>
+        <nldd-tab-bar-item
+          v-if="mag('behandeling') && proces.behandeling && cel.lexostatussen.length"
           data-scherm="lexostatus"
           text="Lexostatus"
           :current="scherm === 'lexostatus' || undefined"
@@ -192,7 +209,17 @@ const wie = computed(() => sessieTekst(props.proces, sessie.value));
       <ZaakView v-if="zaak" :key="zaak" :zaakkenmerk="zaak" @terug="zaak = null" />
       <WerkvoorraadView v-else :kolommen="werkvoorraadKolommen" @open="zaak = $event" />
     </template>
-    <KroniekView v-else-if="scherm === 'kroniek'" :nieuw="nieuw" :portaal="proces.portaal" />
-    <LexostatusView v-else :lexostatussen="cel.lexostatussen" />
+    <template v-else-if="scherm === 'ingediend' && nieuw">
+      <nldd-title size="2"><h1>Ingediend</h1></nldd-title>
+      <nldd-spacer size="16"></nldd-spacer>
+      <Grammen :items="[nieuw]" :nieuw="nieuw.gram" />
+    </template>
+    <KroniekView v-else-if="scherm === 'kroniek' && mag('behandeling')" :portaal="proces.portaal" />
+    <LexostatusView v-else-if="scherm === 'lexostatus' && mag('behandeling')" :lexostatussen="cel.lexostatussen" />
+    <nldd-inline-dialog
+      v-else
+      text="Geen scherm voor deze rol"
+      supporting-text="De kroniek en de lexostatussen van een cel zijn niet open; een behandelaar ziet ze in het proces."
+    ></nldd-inline-dialog>
   </template>
 </template>

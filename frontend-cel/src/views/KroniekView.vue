@@ -1,11 +1,11 @@
 <script setup>
-// De grammen van de cel. De cel kent geen login en geen rollen: iedereen
-// ziet ze allemaal (er is geen beveiligingscontext tussen cel en afnemer).
+// De grammen van de cel. De cel kent geen login en geen rollen, maar haar
+// kroniek is niet open: de frontend leest haar via de inzage van een proces,
+// als behandelaar (zie api.js, inzageApi).
 import { inject, onMounted, ref } from 'vue';
 import Grammen from '../components/Grammen.vue';
 
-// De routes van de cel: kroniek en lexostatus zijn van haar, niet van het
-// proces.
+// De kroniek en de lexostatussen van de cel, via de inzage van een proces.
 const api = inject('celApi');
 
 const props = defineProps({
