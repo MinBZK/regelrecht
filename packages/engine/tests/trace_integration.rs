@@ -79,7 +79,15 @@ fn setup_zorgtoeslag_service() -> LawExecutionService {
         ("winst_uit_onderneming", Value::Int(0)),
         ("resultaat_overige_werkzaamheden", Value::Int(0)),
         ("eigen_woning", Value::Int(0)),
-        ("buitenlands_inkomen", Value::Int(0)),
+    ]);
+    let inkomensgegevens = record(vec![
+        ("bsn", Value::String("999993653".to_string())),
+        (
+            "aanslag_of_navorderingsaanslag_vastgesteld",
+            Value::Bool(true),
+        ),
+        ("belastbaar_loon", Value::Int(79547)),
+        ("niet_in_nederland_belastbaar_inkomen", Value::Int(0)),
     ]);
     let box2 = record(vec![
         ("bsn", Value::String("999993653".to_string())),
@@ -113,6 +121,9 @@ fn setup_zorgtoeslag_service() -> LawExecutionService {
     service
         .register_dict_source("box1", "bsn", vec![box1])
         .expect("Failed to register box1");
+    service
+        .register_dict_source("inkomensgegevens", "bsn", vec![inkomensgegevens])
+        .expect("Failed to register inkomensgegevens");
     service
         .register_dict_source("box2", "bsn", vec![box2])
         .expect("Failed to register box2");
