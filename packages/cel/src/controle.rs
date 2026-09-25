@@ -30,7 +30,7 @@
 //! bestaande lexostatus en een bestaande uitkomst, van een artikel uit de
 //! grondslag van dat event ([`portaal`], aangeroepen vanuit
 //! [`crate::proces`]). De controles op de synthese staan in
-//! [`crate::synthese`], die op het besluit in [`crate::besluit`].
+//! [`crate::synthese`], die op de handelingen in [`crate::handeling`].
 
 use std::collections::{BTreeMap, BTreeSet};
 

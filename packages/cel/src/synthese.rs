@@ -487,7 +487,7 @@ fn doorgeven(proces: &Proces) -> Vec<String> {
 ///   van die transitief aanroept;
 /// - een parameter komt uit maar een bron: de eigen reductie of een bron.
 ///
-/// Wat het besluit verder vraagt, staat in [`crate::besluit::controleer`].
+/// Wat het besluit verder vraagt, staat in [`crate::handeling::controleer`].
 /// De grondslag van de vertalingen in de synthese, bij het opstarten: elke
 /// grondslag van een synthese-bron of van een bron per regel wijst een
 /// geladen artikel aan, met het lid dat ze noemt. Met `herkomst: streng`

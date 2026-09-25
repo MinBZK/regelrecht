@@ -239,13 +239,13 @@ fn datum_in(pad: &str, waarde: Option<&Value>) -> Result<Option<chrono::NaiveDat
     }
 }
 
-/// Het jaartal van de datum in het veld `pad` (zie [`datum_in`]).
+/// Het jaartal van de datum in het veld `pad` (zie `datum_in`).
 pub fn jaar_uit(pad: &str, waarde: Option<&Value>) -> Result<Option<Value>, String> {
     Ok(datum_in(pad, waarde)?.map(|d| Value::from(i64::from(d.year()))))
 }
 
 /// De eerste dag van de periode waarin de datum in het veld `pad` valt (zie
-/// [`datum_in`]), als `JJJJ-MM-DD`. Een afleiding zonder periode is een
+/// `datum_in`), als `JJJJ-MM-DD`. Een afleiding zonder periode is een
 /// fout: het laden zet haar uit de regeling, en lukte dat niet, dan is er
 /// geen periode om te kiezen.
 pub fn periode_uit(
