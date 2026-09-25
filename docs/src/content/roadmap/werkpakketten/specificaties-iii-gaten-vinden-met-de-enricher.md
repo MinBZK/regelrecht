@@ -63,4 +63,5 @@ samenhangIds:
   - specificaties-ii-enrichment-overhaul-landen
   - specificaties-iv-de-ontbrekende-delen-bouwen
   - infrastructuur-voor-lokale-ai
+  - referentie-casus-i
 ---

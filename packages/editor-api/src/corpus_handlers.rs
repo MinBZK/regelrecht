@@ -2265,7 +2265,7 @@ async fn read_traject_scenario_cached(
 /// sidecar by law id, independent of where the law file lives. Routing
 /// and writability come from `resolve_traject_law_write` (same backend
 /// the law/scenario writes use), so notes land in the same traject
-/// branch/PR as the rest of the edits in the session.
+/// branch as the rest of the edits in the session.
 async fn resolve_traject_annotation_target(
     traject: &Arc<TrajectCorpus>,
     law_id: &str,
@@ -2439,7 +2439,7 @@ fn partition_notes_by_visibility(
 ///   never git), marker and all other handling server-side;
 /// - `"public"` or absent → the stand-off sidecar in the traject's
 ///   writable backend (its branch), so a note and a law edit made in the
-///   same session ride the same PR.
+///   same session land on the same branch.
 ///
 /// A personal-marked note can therefore never end up in git, even when a
 /// client naively round-trips the merged GET document back into a save.
@@ -2548,8 +2548,8 @@ pub async fn save_annotations(
         .for_write(&**backend, writable)
         .await?;
 
-    // Read the current sidecar from the traject backend (the branch this
-    // traject's PR is built on — read-your-writes within the traject).
+    // Read the current sidecar from the traject backend (the traject
+    // branch — read-your-writes within the traject).
     // Absent file = first notes for this law. Uses the write's token: on a
     // token-less writable-own backend this read would otherwise 404 on a
     // private repo and silently drop the existing notes from the append
@@ -3069,7 +3069,7 @@ pub struct ReloadResponse {
 //
 // Documents live alongside laws in the writable-own backend's source
 // root under `documents/<traject-ref>/<rest>` so they share the
-// traject's branch, PR review and access control with the laws
+// traject's branch and access control with the laws
 // themselves. The MVP allows two text-based extensions (`.md` and
 // `.txt`); binary uploads (PDF/images) and canvas-style collaboration
 // are explicit out-of-scope for fase 1.
@@ -4715,6 +4715,9 @@ mod tests {
     /// signature assertion rather than a runtime probe — the runtime
     /// path is "session in → context out", with no body in between.
     #[test]
+    // The spelled-out fn-pointer types are the assertion: an alias would hide
+    // exactly the parameter list this test exists to pin.
+    #[allow(clippy::type_complexity)]
     fn save_handler_signatures_take_raw_body_no_author_field() {
         // Compile-time assertions: the function pointer types include
         // `body: String` as the last positional argument. If any handler

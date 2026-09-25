@@ -134,6 +134,8 @@ export function loadScenario(lawPath, filename) {
  * @param {string} scenarioFile - raw .feature text returned by the scenario fetch
  */
 export async function mockCorpusApi(page, corpus, scenarioLaw, scenarioFile) {
+  assertKeyedByLawId(corpus);
+
   // Authenticated `/auth/status` + `/api/trajects` list/detail so the
   // traject-scoped, `requiresAuth` editor route mounts. (Kept in the shared
   // helper so every corpus-driven spec gets the same signed-in shape.)
@@ -270,6 +272,30 @@ export async function mockCorpusApi(page, corpus, scenarioLaw, scenarioFile) {
       ]),
     }),
   );
+}
+
+/**
+ * Fail loudly when a corpus map keys a law under anything but its own `$id`.
+ *
+ * The backend cannot serve such a body: `SourceMap` indexes laws by `$id`, so
+ * a fetch under another id is a 404. The editor takes the mismatch at face
+ * value instead — `lawId` is `law.$id || routeParam`, so it silently switches
+ * to the document's id once the YAML lands, and every follow-up call asks for
+ * an id the mock does not serve. That surfaces as an unexplained 30-second
+ * timeout on a missing element, so catch it here where the cause is still
+ * visible.
+ */
+function assertKeyedByLawId(corpus) {
+  for (const [key, entry] of corpus) {
+    const idMatch = entry?.content?.match(/^\$id:\s*['"]?([^'"\n]+)['"]?$/m);
+    const lawId = idMatch?.[1].trim();
+    if (lawId && lawId !== key) {
+      throw new Error(
+        `mockCorpusApi: law keyed as '${key}' but its YAML declares $id '${lawId}'. ` +
+        'Key the corpus map on the document\'s own $id.',
+      );
+    }
+  }
 }
 
 /**

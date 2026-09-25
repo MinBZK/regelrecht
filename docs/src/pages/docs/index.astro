@@ -23,7 +23,7 @@ const title = 'Documentation · RegelRecht';
       <nldd-list type="navigation" variant="box-tinted">
         {
           categories.map((c) => (
-            <nldd-list-item href={c.match ?? c.link}>
+            <nldd-list-item href={c.link}>
               <nldd-text-cell
                 text={c.text}
                 supporting-text={c.summary}

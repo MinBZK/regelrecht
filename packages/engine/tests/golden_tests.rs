@@ -3,6 +3,11 @@
 //! These tests verify that the Rust engine produces the correct outputs
 //! for a comprehensive set of test cases using pre-generated fixtures.
 
+// Allowed crate-wide: test helpers outside a `#[test]` fn may unwrap, expect and
+// panic too, because that is how a failing fixture reports itself.
+// `allow-*-in-tests` in clippy.toml only reaches `#[test]` fns.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 use regelrecht_engine::{LawExecutionService, Value};
 use rust_decimal::prelude::ToPrimitive;
 use serde::Deserialize;

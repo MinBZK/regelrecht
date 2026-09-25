@@ -317,9 +317,32 @@ describe('TasksListPane', () => {
     // En het overslaan geldt alleen voor die klik: een select zónder klik
     // erachter (het menu activeert een item programmatisch als je op het ene
     // item indrukt en op het andere loslaat) moet daarna gewoon weer
-    // navigeren. Zonder de terugzetter zou dat pad hierna dood blijven.
+    // navigeren. Bleef het overslaan hangen, dan was dat pad hierna dood.
     await selectItem(wrapper, 'Beoordelen');
     expect(pushMock).toHaveBeenCalledTimes(1);
+  });
+
+  // Vue's event invoker skips a handler when the event's timestamp is not
+  // later than the moment that handler was attached (`e._vts <=
+  // invoker.attached`, millisecond resolution). The first Vue handler an event
+  // reaches stamps it and always runs; every later one is subject to the
+  // check. So when a click lands in the same millisecond as the render that
+  // attached the listeners, only the first of two Vue handlers on that click
+  // runs. Pinning Date.now forces that ordering; without the pin it happened
+  // in about one run in four, and it failed a merge-queue run.
+  it('laat een select na een ctrl-klik ook navigeren als de klik in dezelfde milliseconde valt als de render', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(Date.now());
+    try {
+      const wrapper = await mountPane([LAW_TASK]);
+      const event = clickItem(findItem(wrapper, 'Beoordelen'), { ctrlKey: true });
+      expect(event.defaultPrevented).toBe(false);
+      expect(pushMock).not.toHaveBeenCalled();
+
+      await selectItem(wrapper, 'Beoordelen');
+      expect(pushMock).toHaveBeenCalledTimes(1);
+    } finally {
+      now.mockRestore();
+    }
   });
 
   // --- Probeer opnieuw: één bedoeling, twee mechanieken ---

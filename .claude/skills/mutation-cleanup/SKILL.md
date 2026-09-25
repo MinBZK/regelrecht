@@ -42,9 +42,10 @@ change that was applied. `caught.txt`, `timeout.txt` and `unviable.txt` hold the
 rest. `README.md` in the same artifact has the counts and the per-file
 distribution.
 
-Working from a failing pull-request gate instead? The same files are in the
-`mutation-report-diff` artifact of that run, and the list is short by
-construction.
+Working from a failing pull-request gate instead? The gate splits its mutants
+over shards, and each shard leaves its files in its own artifact,
+`mutation-report-diff-shard-N`. Only a red shard has something to fix; the
+list is short by construction.
 
 ## Step 2: Work one file at a time
 

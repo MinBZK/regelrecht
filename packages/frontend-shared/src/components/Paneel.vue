@@ -1,5 +1,5 @@
 <template>
-  <details class="paneel" :open="open ? true : undefined" @toggle="isOpen = $event.target.open">
+  <details ref="el" class="paneel" :open="open ? true : undefined" @toggle="isOpen = $event.target.open">
     <summary class="paneel-kop">
       <span class="paneel-titel">{{ titel }}</span>
       <nldd-badge v-if="badge" size="sm" color="warning" :text="badge"></nldd-badge>
@@ -17,7 +17,7 @@
 -->
 
 <script setup>
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 
 const props = defineProps({
   titel: { type: String, required: true },
@@ -25,9 +25,22 @@ const props = defineProps({
   /** Eén regel die staat als de sectie dicht is (huidige stand van de knoppen). */
   samenvatting: { type: String, default: '' },
   badge: { type: String, default: '' },
+  /**
+   * Openen. Gaat dit van onwaar naar waar terwijl de sectie dichtstaat, dan
+   * klapt hij open: er is iets te zien waar de bezoeker voor kwam.
+   */
   open: { type: Boolean, default: false },
 });
 const isOpen = ref(props.open);
+const el = ref(null);
+
+// Alleen op de omslag naar waar, en alleen openen. Een `open` die waar blijft
+// mag een sectie die de bezoeker zelf dichtklapte niet telkens weer
+// openduwen; dan vecht het paneel met wie het bedient.
+watch(() => props.open, (nu, was) => {
+  if (!nu || was) return;
+  if (el.value && !el.value.open) el.value.open = true;
+});
 </script>
 
 <style scoped>

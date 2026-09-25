@@ -13,7 +13,10 @@ The TUI is an interactive terminal dashboard for developers working with the reg
 
 ## What it does
 
-A full-screen terminal application that lets you browse the corpus, run the execution engine, execute BDD tests, validate regulations, inspect execution traces, view pipeline status, and monitor logs. Uses the engine crate directly for execution.
+A full-screen terminal application for the local checkout: browse the corpus,
+run the engine and the BDD suites, validate regulations, inspect execution
+traces and follow log output. It links the engine crate directly, so it needs
+no running service.
 
 ## Screens
 
@@ -21,26 +24,35 @@ There are ten tabs, in the order the tab bar shows them:
 
 | Screen | Purpose |
 |--------|---------|
-| Dashboard | Overview of corpus and pipeline status |
+| Dashboard | Corpus statistics: laws, articles, features and scenarios, laws per regulatory layer, the most referenced laws and the laws with most implementations |
 | BDD | Run and view BDD test results |
 | Engine | Execute laws with custom parameters |
 | Corpus | Browse and search law files |
-| Pipeline | Monitor harvest/enrich job status |
+| Pipeline | Placeholder, see below |
 | Validation | Run schema validation |
 | Trace | Inspect execution trace trees |
 | Dependencies | Which laws reference which, both ways, plus declared and implemented open terms |
 | Logs | View log output |
 | Actions | Run the `just` quality targets (format, lint, and the rest) and watch their output |
 
+The Pipeline tab is a stub. `packages/tui/src/views/pipeline.rs` never connects
+to a database: it always shows "Not connected" with a hint to set
+`DATABASE_URL`, and setting that variable changes nothing. Job and law status
+from the [pipeline](./pipeline) are visible in the harvester admin (the
+Corpusinwinning section of the editor) and in [Grafana](./grafana), not here.
+
 ## Running
 
 ```bash
+cd packages
 cargo run -p regelrecht-tui
 ```
 
-No configuration needed. Reads the corpus from local filesystem paths.
+No configuration needed. The TUI walks up from the working directory to the
+first directory with a `justfile` and treats that as the repository root, then
+reads the corpus from `corpus/regulation/` below it.
 
 ## Further reading
 
 - [Execution Engine](./engine) - the engine the TUI runs
-- [Getting Started](/guide/getting-started) - setting up the development environment
+- [Development Environment](/guide/dev-environment) - setting up the development environment

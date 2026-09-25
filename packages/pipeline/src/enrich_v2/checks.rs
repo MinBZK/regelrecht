@@ -21,6 +21,9 @@
 //!   appear in the statutory text of the same file.
 //! - [`binding_integrity`] — L1. Every `$variable` resolves, and every
 //!   cross-law `source` names a law and output that exist.
+//!   [`dangling_bindings`] is its hard core: the intra-law references the
+//!   engine will certainly fail on, which the worker refuses to commit once
+//!   the whole law has been walked.
 //!
 //! A word about the two channels a translation may use to say something does
 //! not fit. A `marking` says the format cannot express a construct; an
@@ -1140,7 +1143,7 @@ pub fn binding_integrity(doc: &Value, corpus_root: Option<&Path>) -> Vec<Finding
                 findings.push(Finding::new(
                     "binding",
                     Some(&number),
-                    format!("${name} is referenced but never defined in this law"),
+                    undefined_variable_detail(&name),
                 ));
             }
         }
@@ -1174,7 +1177,7 @@ pub fn binding_integrity(doc: &Value, corpus_root: Option<&Path>) -> Vec<Finding
                     findings.push(Finding::new(
                         "binding",
                         Some(&number),
-                        format!("source resolves to \"{output}\" within this law, which produces no such output"),
+                        missing_own_output_detail(&output),
                     ));
                 }
                 continue;
@@ -1224,6 +1227,95 @@ pub fn binding_integrity(doc: &Value, corpus_root: Option<&Path>) -> Vec<Finding
         }
     }
     findings
+}
+
+fn undefined_variable_detail(name: &str) -> String {
+    format!("${name} is referenced but never defined in this law")
+}
+
+fn missing_own_output_detail(output: &str) -> String {
+    format!("source resolves to \"{output}\" within this law, which produces no such output")
+}
+
+/// Names the engine resolves from its own context, whatever the law declares:
+/// `$referencedate` is the calculation date (`RuleContext::resolve_variable`).
+const ENGINE_CONTEXT_NAMES: &[&str] = &["referencedate"];
+
+/// The part of [`binding_integrity`] that is an execution defect within this
+/// law: a reference the engine fails on unless a caller or a data source
+/// happens to supply a value under that very name, whatever other law is
+/// loaded, and whatever a marking says. A law that only runs because a caller
+/// passes an undeclared name is not a law that declares its inputs.
+///
+/// Two shapes qualify. A `$name` that nothing in this law defines, outside
+/// the places where the engine binds names this file cannot see. And a
+/// `source` without `regulation` whose `output` no entry of this law
+/// produces: the engine resolves that as an internal reference and fails with
+/// `OutputNotFound`.
+///
+/// What [`binding_integrity`] also reports and this leaves out, each for a
+/// reason:
+///
+/// - An empty `source: {}` without a description. That is how the corpus
+///   declares an external data input (the demo corpus feeds every one of them
+///   from its register bindings), so it is a question about the record, not a
+///   reference to nothing.
+/// - A cross-law output the target does not produce. That is about another
+///   file, and whether the target is even in the checkout depends on the
+///   sparse paths; it stays with the soft gate.
+/// - `$referencedate`, which the engine supplies itself. The soft check keeps
+///   asking for a declaration, because the `law-generate` skill wants one.
+/// - A name inside the `filter` or `body` of a `FOREACH`. The engine exposes
+///   the fields of each element as bare locals there, so `$status` may be a
+///   field of the collection's records, and the records are data.
+/// - A name in an entry that declares `produces`. A `pre_actions` hook from
+///   another law (the AWB's motiveringsplicht is one) injects its outputs into
+///   such an entry before the actions run, under names this file never
+///   declares, and which hooks fire depends on the corpus loaded.
+///
+/// Whole-law by construction: a name defined in a later entry counts, so a
+/// forward reference that a later window resolved is not a finding.
+pub fn dangling_bindings(doc: &Value) -> Vec<Finding> {
+    let mut findings = Vec::new();
+    let defined = defined_names_with(doc, false);
+    let own_outputs = declared_outputs(doc);
+
+    for article in articles(doc).iter() {
+        let number = article_number(article).unwrap_or_default();
+        let Some(mr) = article.get("machine_readable") else {
+            continue;
+        };
+        if !receives_hook_outputs(mr) {
+            for name in referenced_variables_outside_foreach(mr) {
+                if !defined.contains(&name) && !ENGINE_CONTEXT_NAMES.contains(&name.as_str()) {
+                    findings.push(Finding::new(
+                        "binding",
+                        Some(&number),
+                        undefined_variable_detail(&name),
+                    ));
+                }
+            }
+        }
+        for (regulation, output, _) in cross_law_sources(mr) {
+            if regulation.is_empty() && !output.is_empty() && !own_outputs.contains(&output) {
+                findings.push(Finding::new(
+                    "binding",
+                    Some(&number),
+                    missing_own_output_detail(&output),
+                ));
+            }
+        }
+    }
+    findings
+}
+
+/// Whether the engine may fire hooks on this entry: `fire_hooks` returns
+/// early unless `execution.produces` carries a `legal_character`.
+fn receives_hook_outputs(mr: &Value) -> bool {
+    mr.get("execution")
+        .and_then(|e| e.get("produces"))
+        .and_then(|p| p.get("legal_character"))
+        .is_some()
 }
 
 // --- traversal helpers -------------------------------------------------
@@ -1385,10 +1477,33 @@ fn collect_enum_values(v: &Value) -> Vec<String> {
 }
 
 /// Names defined anywhere in the law: `definitions` keys, `parameters`,
-/// `inputs` and `outputs` entries with a `name`.
+/// `inputs` and `outputs` entries with a `name`, the `id` of an open term
+/// (the engine binds the resolved value under it), and the loop variable of a
+/// `FOREACH` (its `as`, or `item` when it has none, as the law model
+/// defaults it).
 fn defined_names(doc: &Value) -> BTreeSet<String> {
+    defined_names_with(doc, true)
+}
+
+/// [`defined_names`], optionally without the `FOREACH` loop variables. Those
+/// are bound only inside the loop's own `filter` and `body`, so a check that
+/// skips that scope must not count them: outside it, `$kind` fails the same
+/// way any undefined name does, and one `FOREACH` without `as` would
+/// otherwise excuse every `$item` in the law.
+fn defined_names_with(doc: &Value, loop_variables: bool) -> BTreeSet<String> {
     let mut names = BTreeSet::new();
     walk_outside_sources(doc, &mut |key, node| {
+        if loop_variables && node.get("operation").and_then(Value::as_str) == Some("FOREACH") {
+            let bound = node.get("as").and_then(Value::as_str).unwrap_or("item");
+            names.insert(bound.to_string());
+        }
+        if key == Some("open_terms") {
+            for term in node.as_sequence().map(Vec::as_slice).unwrap_or(&[]) {
+                if let Some(id) = term.get("id").and_then(Value::as_str) {
+                    names.insert(id.to_string());
+                }
+            }
+        }
         if key == Some("definitions") {
             if let Some(map) = node.as_mapping() {
                 for k in map.keys() {
@@ -1449,14 +1564,50 @@ fn declared_outputs(doc: &Value) -> BTreeSet<String> {
 fn referenced_variables(v: &Value) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     walk(v, &mut |_, node| {
-        if let Some(s) = node.as_str() {
-            if let Some(name) = s.strip_prefix('$') {
-                if !name.is_empty() && name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+        if let Some(name) = node.as_str().and_then(variable_name) {
+            out.insert(name.to_string());
+        }
+    });
+    out
+}
+
+/// The name in a `$name` scalar. A dotted path (`$record.field`) is not one:
+/// it reads a field of a value, and is left alone here.
+fn variable_name(s: &str) -> Option<&str> {
+    let name = s.strip_prefix('$')?;
+    (!name.is_empty() && name.chars().all(|c| c.is_alphanumeric() || c == '_')).then_some(name)
+}
+
+/// Like [`referenced_variables`], but without the `filter` and `body` of a
+/// `FOREACH`: the engine exposes each element's fields there as bare locals,
+/// so a name in that scope may be data rather than a declaration.
+fn referenced_variables_outside_foreach(v: &Value) -> BTreeSet<String> {
+    fn inner(v: &Value, out: &mut BTreeSet<String>) {
+        match v {
+            Value::String(s) => {
+                if let Some(name) = variable_name(s) {
                     out.insert(name.to_string());
                 }
             }
+            Value::Mapping(map) => {
+                let foreach = map.get("operation").and_then(Value::as_str) == Some("FOREACH");
+                for (k, val) in map {
+                    if foreach && matches!(k.as_str(), Some("filter" | "body")) {
+                        continue;
+                    }
+                    inner(val, out);
+                }
+            }
+            Value::Sequence(seq) => {
+                for item in seq {
+                    inner(item, out);
+                }
+            }
+            _ => {}
         }
-    });
+    }
+    let mut out = BTreeSet::new();
+    inner(v, &mut out);
     out
 }
 
@@ -5434,6 +5585,212 @@ articles:
         let findings = binding_integrity(&doc, None);
         assert!(findings.iter().any(|f| f.detail.contains("$onbekend")));
         assert!(!findings.iter().any(|f| f.detail.contains("$drempel")));
+    }
+
+    /// The two shapes the engine certainly fails on, and nothing else.
+    #[test]
+    fn dangling_bindings_flags_a_name_and_an_own_output_that_resolve_to_nothing() {
+        let yaml = r#"
+articles:
+  - number: '1'
+    machine_readable:
+      execution:
+        input:
+          - name: premie
+            source: {output: standaardpremie}
+        output:
+          - name: bedrag
+        actions:
+          - output: bedrag
+            value: $onbekend
+"#;
+        let doc: Value = serde_yaml_ng::from_str(yaml).unwrap();
+        let details: Vec<String> = dangling_bindings(&doc)
+            .into_iter()
+            .map(|f| {
+                assert_eq!(f.check, "binding");
+                assert_eq!(f.article.as_deref(), Some("1"));
+                f.detail
+            })
+            .collect();
+        assert_eq!(
+            details,
+            vec![
+                "$onbekend is referenced but never defined in this law".to_string(),
+                "source resolves to \"standaardpremie\" within this law, which produces no such \
+                 output"
+                    .to_string(),
+            ]
+        );
+        // The same text the soft gate shows, so the finding reads the same in
+        // both places.
+        let soft: Vec<String> = binding_integrity(&doc, None)
+            .into_iter()
+            .map(|f| f.detail)
+            .collect();
+        assert!(details.iter().all(|d| soft.contains(d)), "{soft:?}");
+    }
+
+    /// Everything the engine resolves without a declaration in this file, and
+    /// the references a later entry satisfies. None of it may fail a job.
+    #[test]
+    fn dangling_bindings_leaves_what_the_engine_can_resolve() {
+        let yaml = r#"
+articles:
+  - number: '1'
+    machine_readable:
+      open_terms:
+        - id: drempel
+      execution:
+        parameters:
+          - name: bsn
+        input:
+          - name: premie
+            source: {output: standaardpremie, parameters: {bsn: $bsn}}
+          - name: register
+            source: {}
+          - name: elders
+            source: {regulation: andere_wet, output: iets_wat_niet_bestaat}
+          - name: kinderen
+            source: {}
+        output:
+          - name: bedrag
+          - name: aantal
+          - name: namen
+        actions:
+          - output: bedrag
+            value: $drempel
+          - output: aantal
+            value:
+              operation: FOREACH
+              collection: $kinderen
+              filter:
+                operation: EQUALS
+                subject: $woonland
+                value: NL
+              body: 1
+              combine: ADD
+          - output: namen
+            value:
+              operation: FOREACH
+              collection: $kinderen
+              as: kind
+              body: $kind
+          - output: peildatum
+            value: $referencedate
+  - number: '2'
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+        output:
+          - name: besluit
+        actions:
+          - output: besluit
+            value: $motivering_vereist
+  - number: '3'
+    machine_readable:
+      execution:
+        output:
+          - name: standaardpremie
+        actions:
+          - output: standaardpremie
+            value: 1000
+"#;
+        let doc: Value = serde_yaml_ng::from_str(yaml).unwrap();
+        assert_eq!(dangling_bindings(&doc), Vec::<Finding>::new());
+        // The open term and the loop variable are declarations, so the soft
+        // check stopped reporting them too. `$referencedate` it still asks
+        // for, because the skill wants it declared.
+        let soft: Vec<String> = binding_integrity(&doc, None)
+            .into_iter()
+            .map(|f| f.detail)
+            .collect();
+        assert!(!soft.iter().any(|d| d.contains("$drempel")), "{soft:?}");
+        assert!(!soft.iter().any(|d| d.contains("$kind ")), "{soft:?}");
+        assert!(
+            soft.iter().any(|d| d.contains("$referencedate")),
+            "{soft:?}"
+        );
+    }
+
+    /// A loop variable exists inside its own loop and nowhere else, and a
+    /// `FOREACH` without `as` excuses no `$item` outside it.
+    #[test]
+    fn dangling_bindings_flags_a_loop_variable_read_outside_its_loop() {
+        let yaml = r#"
+articles:
+  - number: '1'
+    machine_readable:
+      execution:
+        input:
+          - name: kinderen
+            source: {}
+        output:
+          - name: namen
+          - name: eerste
+          - name: laatste
+        actions:
+          - output: namen
+            value:
+              operation: FOREACH
+              collection: $kinderen
+              as: kind
+              body: $kind
+          - output: eerste
+            value: $kind
+          - output: laatste
+            value: $item
+"#;
+        let doc: Value = serde_yaml_ng::from_str(yaml).unwrap();
+        let details: Vec<String> = dangling_bindings(&doc)
+            .into_iter()
+            .map(|f| f.detail)
+            .collect();
+        assert_eq!(
+            details,
+            vec![
+                "$item is referenced but never defined in this law".to_string(),
+                "$kind is referenced but never defined in this law".to_string(),
+            ]
+        );
+    }
+
+    /// Only a loop's own `filter` and `body` are element scope. Its
+    /// `collection` is read in the scope around it, a field path reads a
+    /// declared record, and a name is a name with or without underscores.
+    #[test]
+    fn dangling_bindings_reads_what_a_loop_does_not_scope() {
+        let yaml = r#"
+articles:
+  - number: '1'
+    machine_readable:
+      execution:
+        input:
+          - name: aanvrager
+            source: {}
+        output:
+          - name: aantal
+          - name: leeftijd
+        actions:
+          - output: aantal
+            value:
+              operation: FOREACH
+              collection: $geen_lijst
+              body: 1
+              combine: ADD
+          - output: leeftijd
+            value: $aanvrager.leeftijd
+"#;
+        let doc: Value = serde_yaml_ng::from_str(yaml).unwrap();
+        let details: Vec<String> = dangling_bindings(&doc)
+            .into_iter()
+            .map(|f| f.detail)
+            .collect();
+        assert_eq!(
+            details,
+            vec!["$geen_lijst is referenced but never defined in this law".to_string()]
+        );
     }
 
     #[test]

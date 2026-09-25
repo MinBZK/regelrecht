@@ -2,6 +2,7 @@
 title: "RFC-NNN: Title"
 status: Proposed # Draft | Proposed | Accepted | Rejected | Superseded
 implementation: Not implemented # Implemented | Partially implemented | Not implemented
+topic: language # language | execution | time | corpus | trust | process (see docs/src/lib/rfc-topics.ts)
 date: YYYY-MM-DD
 authors:
   - Your Name

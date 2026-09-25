@@ -108,6 +108,31 @@ const discussionUrl =
     </nldd-rich-text>
     <nldd-spacer size="24" />
     {/*
+     * The paper is frozen (see AGENTS.md, "Published papers are frozen"); this
+     * note is where its divergence from the current code is recorded instead.
+     * It sits outside the data-discuss-paper rich-text on purpose: it is the
+     * site's text, not the authors', and a selection in it is not a passage of
+     * the paper. It gives a few examples, not a changelog: the RFCs and the
+     * schema version history are where changes are recorded. Never edit the
+     * paper to match.
+     */}
+    <nldd-rich-text centered>
+      <h2 id="since-publication">Since publication</h2>
+      <p>
+        This paper is published as written on {meta.date_display}, and it stays
+        that way. The format and the engine have kept developing since, so the
+        paper no longer describes their current state in full. The format now
+        aggregates over collections with <code>FOREACH</code>
+        (<a href="/rfcs/rfc-016">RFC-016</a>), untranslatables became
+        <a href="/concepts/markings">markings</a>, which a discretionary
+        provision no longer needs (<a href="/rfcs/rfc-031">RFC-031</a>), and the engine tells an absent
+        value apart from an unknown one
+        (<a href="/rfcs/rfc-036">RFC-036</a>). For the current design, read the
+        <a href="/docs/">documentation</a> and the <a href="/rfcs/">RFCs</a>.
+      </p>
+    </nldd-rich-text>
+    <nldd-spacer size="24" />
+    {/*
      * The paper body is a rich-text of its own, so it carries the whole of the
      * paper and nothing else: data-discuss-paper turns on the selection
      * affordance in Base.astro, where selecting text offers "Discuss this

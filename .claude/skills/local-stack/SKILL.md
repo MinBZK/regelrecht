@@ -70,7 +70,7 @@ Tell the user: "Reset broken Docker credsStore (backup at config.json.bak)."
 
 ### 4. (start only) Fetch + worktree
 
-Per project CLAUDE.md, **always** fetch before working with any branch:
+Per project AGENTS.md, **always** fetch before working with any branch:
 
 ```bash
 git -C /workspace/regelrecht fetch origin <branch>

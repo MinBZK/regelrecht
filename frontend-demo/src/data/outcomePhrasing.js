@@ -1,11 +1,11 @@
 /**
  * How a tile tells its outcome.
  *
- * Without this every tile says the same thing: "U voldoet aan de voorwaarden",
+ * Without this every tile says the same thing: "Je voldoet aan de voorwaarden",
  * the amount, and the field name underneath. That is a label, not an answer —
  * the citizen has to work out for themselves what it means for them. The POC
- * wrote a sentence around the number instead ("Uw huurtoeslag is waarschijnlijk
- * € 302,96 per jaar", "Voor de verkiezingen van 29 oktober 2025 heeft u
+ * wrote a sentence around the number instead ("Je huurtoeslag is waarschijnlijk
+ * € 302,96 per jaar", "Voor de verkiezingen van 29 oktober 2025 heb je
  * STEMRECHT"), and that reads as something addressed to this person.
  *
  * The wording is content, not code: it lives in `demo-config.yaml` under
@@ -52,12 +52,12 @@ export function phraseOutcome(phrasing, { met, value, isYesNo = false, date = nu
  * Put the date the outcome is about into the lead.
  *
  * Without a date the whole clause around the placeholder goes, not just the
- * placeholder: "Voor de verkiezingen van {date} heeft u" has to become "Voor
- * de verkiezingen heeft u", never "Voor de verkiezingen van heeft u". A
+ * placeholder: "Voor de verkiezingen van {date} heb je" has to become "Voor
+ * de verkiezingen heb je", never "Voor de verkiezingen van heb je". A
  * `lead_no_date` in the config says what to fall back to, because only the
  * author of the sentence knows which words belonged to the date. Without one
  * the placeholder is dropped and the whitespace collapsed, which is right for
- * a lead that ends on the date ("Per {date} heeft u" → "Per heeft u" is still
+ * a lead that ends on the date ("Per {date} heb je" → "Per heb je" is still
  * wrong, so such a lead should carry `lead_no_date`).
  */
 function fillDate(lead, date, fallback = null) {

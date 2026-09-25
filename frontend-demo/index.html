@@ -4,8 +4,48 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Demo &middot; RegelRecht</title>
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="icon" type="image/svg+xml" href="/regelrecht-icon.svg">
   <link rel="stylesheet" href="/src/css/main.css">
+  <script>
+    // Wie eerder Engels koos, komt op `/` in het Engels binnen. Dit staat vóór
+    // de app en niet erin, zodat er geen Nederlandse flits is voordat de router
+    // zijn werk doet.
+    //
+    // Alleen de kale voorpagina wordt omgeleid. Een gedeelde `/en/...`- of
+    // `/wetten`-link houdt zijn eigen taal: een adres dat iemand doorstuurt
+    // hoort niet af te hangen van wat de ontvanger ooit in een menu koos.
+    // Dezelfde regel als op de landingspagina.
+    //
+    // De prefixen staan hier als letterlijke lijst en niet uit de talentabel:
+    // dit script draait vóór de bundle en kan niets importeren. `index.test.js`
+    // leest deze regel terug en vergelijkt hem met `LOCALES`, zodat de twee niet
+    // uit elkaar kunnen lopen zonder dat er iets rood wordt.
+    var PREFIXED = [['en', '/en'], ['fy', '/fy']];
+    try {
+      var path = location.pathname;
+      var here = null;
+      for (var i = 0; i < PREFIXED.length; i++) {
+        var prefix = PREFIXED[i][1];
+        if (path === prefix || path.indexOf(prefix + '/') === 0) { here = PREFIXED[i]; break; }
+      }
+      var stored = localStorage.getItem('rr-lang');
+      var wanted = null;
+      for (var j = 0; j < PREFIXED.length; j++) {
+        if (PREFIXED[j][0] === stored) { wanted = PREFIXED[j]; break; }
+      }
+      if (path === '/' && wanted) {
+        location.replace(wanted[1] + location.search + location.hash);
+      } else if (here) {
+        // `lang` staat statisch op "nl" en wordt pas gezet als de router
+        // langskomt. Zonder deze regel kondigt een anderstalige pagina zich in
+        // dat venster als Nederlands aan bij een schermlezer.
+        document.documentElement.lang = here[0];
+      }
+    } catch (e) {
+      // Private mode of storage uit: dan is er geen voorkeur, en is Nederlands
+      // de juiste uitkomst.
+    }
+  </script>
 </head>
 <body>
   <div id="app" style="height: 100%;"></div>

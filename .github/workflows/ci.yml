@@ -381,10 +381,16 @@ jobs:
       - name: Install just
         uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3  # v4.0.0
 
+      # Het target moet mee, ook al bouwt deze baan geen wasm: de hooks roepen
+      # cargo aan, rustup leest dan rust-toolchain.toml, en een ontbrekend target
+      # laat het de toolchain als half geïnstalleerd behandelen. De reparatie die
+      # daarop volgt strandt op een component die er al staat ("detected
+      # conflict: bin/cargo-clippy") en neemt de hook mee die cargo nodig heeft.
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
         with:
           components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
 
       - name: Install mold linker
         run: |
@@ -919,7 +925,7 @@ jobs:
 
       - name: Set up Docker Buildx
         if: needs.changes.outputs.rust-image == 'true'
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e  # v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4
 
       # Nodig om de buildcache uit GHCR te mogen lezen; zonder login bouwt hij
       # alles koud en loopt de job richting het kwartier.
@@ -936,7 +942,7 @@ jobs:
       # wordt; script/dockerfile-consistency.test.mjs bewaakt de namen.
       - name: Build pipeline-api image
         if: needs.changes.outputs.rust-image == 'true'
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
         with:
           context: .
           file: packages/pipeline/Dockerfile
@@ -1091,6 +1097,10 @@ jobs:
         run: |
           npm test -w frontend-poc-terugbetaalregimes
           npm test -w frontend-poc-nieuwkomersbekostiging
+          # De assistent-backend is geen workspace-member (het is een server,
+          # geen frontend), dus `npm test -w` bereikt hem niet. De vitest uit
+          # de root draait zijn tests wel.
+          npx vitest run --root packages/poc-assistent
 
       - name: Upload Playwright report
         if: failure() && needs.changes.outputs.ci == 'true'

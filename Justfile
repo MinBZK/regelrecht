@@ -10,10 +10,11 @@ set dotenv-load := true
 # would fall back to the slow default linker. (dev has no RUSTFLAGS, so it picks
 # up mold straight from .cargo/config.toml.)
 #
-# The mold link-arg is Linux-only, mirroring the [target.x86_64-unknown-linux-gnu]
-# scoping in packages/.cargo/config.toml — otherwise quality/test recipes would
-# force `-fuse-ld=mold` on macOS where mold typically isn't installed.
-ci_flags := if os() == "linux" {
+# The mold link-arg is x86_64-Linux-only, mirroring the [target.x86_64-unknown-linux-gnu]
+# scoping in packages/.cargo/config.toml (and dev_needs_mold in script/dev-lib.sh)
+# — otherwise quality/test recipes would force `-fuse-ld=mold` on macOS or
+# aarch64 Linux, where nothing else asks for mold to be installed.
+ci_flags := if os() + "-" + arch() == "linux-x86_64" {
     "RUSTFLAGS='-Dwarnings -C link-arg=-fuse-ld=mold'"
 } else {
     "RUSTFLAGS=-Dwarnings"
@@ -27,12 +28,40 @@ default:
 
 # Build WASM module for browser use
 wasm-build:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Find wasm-bindgen and check its version BEFORE the minutes-long cargo
+    # build. `cargo install` puts it in $CARGO_HOME/bin, which is not always on
+    # the PATH a recipe gets (cargo itself may be reachable through a symlink
+    # elsewhere). The CLI must match the wasm-bindgen crate in Cargo.lock
+    # exactly; the Docker build and CI enforce the same pin.
+    locked=$(grep -A1 '^name = "wasm-bindgen"$' packages/Cargo.lock \
+      | sed -n '/^version = /{s/^version = "\(.*\)"$/\1/p;q;}' || true)
+    if [ -z "$locked" ]; then
+      echo "could not read the wasm-bindgen version from packages/Cargo.lock" >&2
+      exit 1
+    fi
+    bindgen=$(command -v wasm-bindgen || true)
+    if [ -z "$bindgen" ] && [ -x "${CARGO_HOME:-$HOME/.cargo}/bin/wasm-bindgen" ]; then
+      bindgen="${CARGO_HOME:-$HOME/.cargo}/bin/wasm-bindgen"
+    fi
+    if [ -z "$bindgen" ]; then
+      echo "wasm-bindgen not found. Install the version packages/Cargo.lock uses:" >&2
+      echo "  cargo install wasm-bindgen-cli --version $locked --locked" >&2
+      exit 1
+    fi
+    have=$("$bindgen" --version | awk '{print $2}')
+    if [ "$have" != "$locked" ]; then
+      echo "wasm-bindgen $have found at $bindgen, but packages/Cargo.lock uses $locked. Install the matching version:" >&2
+      echo "  cargo install wasm-bindgen-cli --version $locked --locked --force" >&2
+      exit 1
+    fi
     # Pin the target dir explicitly. A CLI --target-dir overrides any shared
     # [build] target-dir from `just dev-setup` (root .cargo/config.toml), so the
     # artifact always lands at packages/target — no metadata lookup (and no jq/
     # python3 dependency) needed, and it works with or without dev-setup.
     cargo build --manifest-path packages/engine/Cargo.toml --target wasm32-unknown-unknown --release --features wasm --target-dir packages/target
-    wasm-bindgen --target web --out-dir frontend/public/wasm/pkg packages/target/wasm32-unknown-unknown/release/regelrecht_engine.wasm
+    "$bindgen" --target web --out-dir frontend/public/wasm/pkg packages/target/wasm32-unknown-unknown/release/regelrecht_engine.wasm
     # The demo runs the same engine in the browser; keep the two copies identical.
     mkdir -p frontend-demo/public/wasm/pkg && cp frontend/public/wasm/pkg/* frontend-demo/public/wasm/pkg/
     # The landing page runs the zorgtoeslag scenario in the visitor's browser
@@ -53,16 +82,15 @@ format:
     cd packages && cargo fmt --check --all
 
 # The features a deployed artefact or a `just` recipe actually turns on.
-# Deliberately not --all-features: that also builds `engine/otel` (the whole
-# OpenTelemetry stack, enabled by no Dockerfile, CI job or recipe),
-# `engine/wasm` and the two `test-utils` features, together 46 crates. Those
-# three still get compiled by `just test`, which does run --all-features, so
-# leaving them out here costs clippy coverage on that code and nothing else.
+# Deliberately not --all-features: that also builds `engine/wasm` and the two
+# `test-utils` features. Those still get compiled by `just test`, which does run
+# --all-features, so leaving them out here costs clippy coverage on that code
+# and nothing else.
 check_features := "regelrecht-engine/validate,regelrecht-corpus/annotation-validation"
 
 # Run clippy lints
 lint:
-    cd packages && {{ci_flags}} cargo clippy --workspace --features {{check_features}}
+    cd packages && {{ci_flags}} cargo clippy --workspace --all-targets --features {{check_features}}
 
 # Run cargo check
 build-check:
@@ -212,7 +240,7 @@ preview-environments-test:
 # container-backed suites; on a machine without a daemon, swap `test` for
 # `test-no-docker`.
 [doc("Run all quality checks, exactly what CI runs (needs Docker)")]
-check: format lint build-check validate validate-annotations deploy-filters-test ghcr-cleanup-test precompress-test security-headers-test first-load-test ci-gate-test merge-queue-checks-test nldd-imports-test nldd-slots nldd-slots-test dockerfile-consistency-test deploy-gate-test deployed-urls-test preview-environments-test advisories-report-test test
+check: format lint build-check validate validate-annotations deploy-filters-test ghcr-cleanup-test precompress-test security-headers-test first-load-test ci-gate-test merge-queue-checks-test nldd-imports-test nldd-slots nldd-slots-test dockerfile-consistency-test deploy-gate-test deployed-urls-test preview-environments-test advisories-report-test dev-preflight-test test
 
 # --- Tests ---
 
@@ -400,18 +428,24 @@ mutants *ARGS:
 # Driepunts (`BASE...HEAD`), niet tweepunts: tweepunts vergelijkt twee bomen,
 # dus alles wat main na jouw aftakking veranderde komt in de diff terecht als
 # jouw wijziging. Op een branch die achterloopt muteer je dan andermans regels.
+#
+# Pakketten, werkmap en timeout volgen `.github/workflows/mutation-diff.yml`.
+# Dit recept keek eerst alleen naar engine, terwijl de poort ook pipeline
+# muteert; een pipeline-PR was hier dan groen zonder één mutant te zien en
+# viel pas in CI om (#1549, 14 overlevers). Verander je het één, verander dan
+# het ander mee.
 [doc("Mutation testing on your own changed lines only")]
 mutants-diff BASE="origin/main":
     #!/usr/bin/env bash
     set -euo pipefail
     diff_file="$(mktemp -t mutants-diff-XXXXXX.diff)"
-    git -C packages diff --relative "{{BASE}}...HEAD" -- engine > "$diff_file"
+    git -C packages diff --relative "{{BASE}}...HEAD" -- engine pipeline > "$diff_file"
     if [ ! -s "$diff_file" ]; then
-        echo "Geen gewijzigde regels in packages/engine ten opzichte van {{BASE}}."
+        echo "Geen gewijzigde regels in packages/engine of packages/pipeline ten opzichte van {{BASE}}."
         exit 0
     fi
-    cd packages/engine
-    cargo mutants --in-place --timeout-multiplier 3 --in-diff "$diff_file"
+    cd packages
+    cargo mutants --in-place --timeout 120 --in-diff "$diff_file"
 
 # --- Benchmarks ---
 
@@ -452,6 +486,11 @@ audit-advisories:
 # De meldlogica van de advisory-controle
 advisories-report-test:
     script/report-advisories.test.sh
+
+# De preflight van `just dev`: mold alleen eisen waar cargo ermee linkt
+[doc("Check that the dev preflight only requires mold on x86_64 Linux")]
+dev-preflight-test:
+    script/dev-lib.test.sh
 
 # --- Admin ---
 
@@ -522,7 +561,20 @@ compose-local := compose + " -f dev/compose.local.yaml"
 compose-native := compose + " -f dev/compose.native.yaml"
 pidfile := ".dev-pids"
 
-# One-time build-speed setup: install mold + sccache, share one target dir across worktrees
+# Geef deze worktree een eigen cargo-target-dir. Kost een koude build (~40 s voor
+# `just validate`, ~170 s voor `just build-check`) en levert op dat een lange build
+# hier geen andere worktree meer laat wachten op de build-lock. De meting waarop
+# die afweging rust staat bovenin script/target-dir.sh.
+[doc("Geef deze worktree een eigen cargo-target-dir (geen gedeelde build-lock)")]
+target-isolated:
+    script/target-dir.sh isolated
+
+# Terug naar de gedeelde target-dir van de hoofdcheckout.
+[doc("Zet deze worktree terug op de gedeelde cargo-target-dir")]
+target-shared:
+    script/target-dir.sh shared
+
+# One-time build-speed setup: install mold (x86_64 Linux) + sccache, share one target dir across worktrees
 dev-setup:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -538,27 +590,32 @@ dev-setup:
         if "$@" >/dev/null 2>&1; then printf "${green}done${reset}\n"; return 0; else printf "${red}failed${reset} (install %s manually)\n" "$bin"; return 1; fi
     }
 
-    # Track whether mold ended up available — the shared-target setup is harmless
-    # without it, but mold linking (the headline feature) needs it on PATH.
-    mold_ok=false
+    # mold is only the linker on x86_64 Linux (dev_needs_mold, shared with the
+    # dev recipes' preflight). Elsewhere it is neither installed nor asked for.
+    source script/dev-lib.sh
+    needs_mold=false
+    if dev_needs_mold; then needs_mold=true; fi
+    # install_mold <installer…>: install mold where cargo links with it, no-op elsewhere.
+    install_mold() { [ "$needs_mold" = true ] || return 0; install_one mold "$@" || true; }
+
     if command -v apt-get >/dev/null 2>&1; then
         sudo_if_needed apt-get update -qq || true
-        if install_one mold sudo_if_needed apt-get install -y mold; then mold_ok=true; fi
+        install_mold sudo_if_needed apt-get install -y mold
         install_one sccache sudo_if_needed apt-get install -y sccache || true
     elif command -v dnf >/dev/null 2>&1; then
-        if install_one mold sudo_if_needed dnf install -y mold; then mold_ok=true; fi
+        install_mold sudo_if_needed dnf install -y mold
         install_one sccache sudo_if_needed dnf install -y sccache || true
     elif command -v brew >/dev/null 2>&1; then
-        if install_one mold brew install mold; then mold_ok=true; fi
+        install_mold brew install mold
         install_one sccache brew install sccache || true
     else
         printf "${yellow}No supported package manager found.${reset}\n"
-        printf "  Install mold:    https://github.com/rui314/mold\n"
+        if [ "$needs_mold" = true ]; then printf "  Install mold:    https://github.com/rui314/mold\n"; fi
         printf "  Install sccache: cargo install sccache --locked\n"
     fi
-    # `install_one` returns 0 when the binary is already present, so a pre-existing
-    # mold also counts as OK regardless of which package-manager branch ran.
-    command -v mold >/dev/null 2>&1 && mold_ok=true
+    # Decided by what is on PATH afterwards, so a pre-existing mold counts too.
+    mold_ok=true
+    if [ "$needs_mold" = true ] && ! command -v mold >/dev/null 2>&1; then mold_ok=false; fi
     # sccache may not be packaged everywhere — fall back to cargo install.
     command -v sccache >/dev/null 2>&1 || install_one sccache cargo install sccache --locked
 
@@ -566,6 +623,13 @@ dev-setup:
     # checkout, so cargo's upward config search finds this root .cargo/config.toml
     # from every worktree. It is gitignored (machine-specific absolute path), so
     # CI keeps its own packages/target.
+    #
+    # The sharing is worth it — a first `just build-check` in a fresh worktree
+    # takes 1 second instead of 170 — but cargo locks a target dir exclusively
+    # for the length of a build, so concurrent worktrees serialize: a `just
+    # validate` measured 2 s alone and 38 s next to a 45 s `just lint`. A worktree
+    # that runs long builds can opt out with `just target-isolated`; the numbers
+    # behind the trade-off are in script/target-dir.sh.
     root="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
 
     # A Rust build writes tens of thousands of small files. On a slow/remote
@@ -592,7 +656,9 @@ dev-setup:
     printf "${green}=> Shared target dir:${reset} %s\n" "$shared"
 
     printf "\n"
-    if [ "$mold_ok" = true ]; then
+    if [ "$needs_mold" = false ]; then
+        printf "${bold}${green}Done.${reset} Shared target is active for all worktrees (mold only links on x86_64 Linux, not needed here).\n"
+    elif [ "$mold_ok" = true ]; then
         printf "${bold}${green}Done.${reset} Mold linking + shared target are active for all worktrees.\n"
     else
         printf "${bold}${yellow}Partly done.${reset} Shared target is set up, but ${red}mold is missing${reset} — dev builds will fail to link.\n"

@@ -173,7 +173,6 @@ impl<'a> ArticleEngine<'a> {
     /// # Returns
     /// * `Ok(ArticleResult)` - Execution result with outputs and metadata
     /// * `Err(EngineError)` - If execution fails
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, parameters), fields(law_id = %self.law.id, article = %self.article.number)))]
     pub fn evaluate(
         &self,
         parameters: BTreeMap<String, Value>,
@@ -1290,12 +1289,20 @@ articles:
             let article = article.unwrap();
             let engine = ArticleEngine::new(article, &law);
 
-            // Test with vermogen under threshold for single person
-            // The article requires: vermogen, heeft_toeslagpartner
-            // Thresholds: €161.329 single, €203.643 with partner
+            // Test with vermogen under threshold for a person without a partner.
+            // Without a service no other law runs, so every input is passed in;
+            // no partner means the partner's bsn and rendementsgrondslag are
+            // absent (null), which both inputs declare nullable (RFC-036).
+            // Thresholds: €141.896 own, €179.429 joint.
             let mut params = BTreeMap::new();
-            params.insert("vermogen".to_string(), Value::Int(100000)); // €1000 in cents, well under €161.329
+            params.insert("vermogen".to_string(), Value::Int(100000)); // €1000 in cents, well under €141.896
             params.insert("heeft_toeslagpartner".to_string(), Value::Bool(false));
+            params.insert("bsn_toeslagpartner".to_string(), Value::Null);
+            params.insert("vermogen_toeslagpartner".to_string(), Value::Null);
+            params.insert(
+                "heeft_gehele_berekeningsjaar_dezelfde_partner".to_string(),
+                Value::Bool(false),
+            );
 
             let result = engine.evaluate(params, "2025-01-01").unwrap();
 

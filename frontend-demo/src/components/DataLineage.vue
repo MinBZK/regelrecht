@@ -3,6 +3,9 @@ import { computed, reactive } from 'vue';
 import OrgLogo from './OrgLogo.vue';
 import { fieldSpec, formatMissing, formatValue, humanize, isUnknown } from '../data/format.js';
 import { useDemo } from '../store/demoStore.js';
+import { useI18n } from '../i18n/index.js';
+
+const { t } = useI18n();
 
 // The rows of the "Gebruikte gegevens" tree of one tile: every register value
 // the law used, and under each law that supplied a computed value the values
@@ -49,12 +52,16 @@ function pending(node) {
  * "Nog niet bekend"; an unknown that misses other facts names them.
  */
 function supportingText(node) {
-  if (node.corrected) return 'Gecorrigeerd door u';
+  if (node.corrected) return t('wet.lineage.corrected_by_you');
   if (isUnknown(node.value)) {
     const missing = formatMissing(node.value, { ownLaw: node.law, lawName });
-    return missing === `ontbreekt: ${humanize(node.name).toLowerCase()}` ? 'Nog niet bekend' : missing;
+    // De vergelijking loopt via dezelfde sleutel als `formatMissing`, anders
+    // zou een Engelse zin nooit gelijk zijn aan een Nederlandse en stond er
+    // "missing: income" waar "Not known yet" hoort te staan.
+    const onlyItself = t('format.missing', { facts: humanize(node.name).toLowerCase() });
+    return missing === onlyItself ? t('wet.lineage.not_yet_known') : missing;
   }
-  return node.service ? undefined : 'Nog niet bekend';
+  return node.service ? undefined : t('wet.lineage.not_yet_known');
 }
 
 const open = reactive({});
@@ -71,7 +78,7 @@ const slotName = computed(() => (props.nested ? 'children' : undefined));
     <nldd-icon-cell v-else-if="node.corrected" icon="edit" size="16" color="accent"></nldd-icon-cell>
     <nldd-icon-cell v-else icon="question-mark-circle" size="16" color="secondary"></nldd-icon-cell>
     <nldd-spacer-cell size="8"></nldd-spacer-cell>
-    <nldd-text-cell size="sm" min-width="120px" :text="humanize(node.name)" :supporting-text="pending(node) ? `${supportingText(node) ? supportingText(node) + ' · ' : ''}meegerekend, nog te beoordelen` : supportingText(node)"></nldd-text-cell>
+    <nldd-text-cell size="sm" min-width="120px" :text="humanize(node.name)" :supporting-text="pending(node) ? (supportingText(node) ? t('wet.lineage.with_pending', { text: supportingText(node) }) : t('wet.lineage.counted_pending')) : supportingText(node)"></nldd-text-cell>
     <nldd-text-cell size="sm" width="fit-content" max-width="55%" horizontal-alignment="right" :color="pending(node) ? 'warning' : isUnknown(node.value) ? 'secondary' : 'content'">
       <!-- Doorgestreept staat de waarde van vóór de correctie, en die komt van
            de correctie zelf. Niet `node.value`: de engine rekent de burger zijn
@@ -111,10 +118,10 @@ const slotName = computed(() => (props.nested ? 'children' : undefined));
     <nldd-spacer-cell v-for="i in depth" :key="i" size="20"></nldd-spacer-cell>
     <nldd-cell v-if="lawService(node.law)"><OrgLogo :service="lawService(node.law)" size="sm" /></nldd-cell>
     <nldd-spacer-cell v-if="lawService(node.law)" size="8"></nldd-spacer-cell>
-    <nldd-text-cell size="sm" :text="humanize(node.name)" :supporting-text="isUnknown(node.value) ? `berekend door ${lawName(node.law)} · ${formatMissing(node.value, { ownLaw: node.law, lawName })}` : `berekend door ${lawName(node.law)}`"></nldd-text-cell>
+    <nldd-text-cell size="sm" :text="humanize(node.name)" :supporting-text="isUnknown(node.value) ? t('wet.lineage.computed_by_missing', { law: lawName(node.law), missing: formatMissing(node.value, { ownLaw: node.law, lawName }) }) : t('wet.lineage.computed_by', { law: lawName(node.law) })"></nldd-text-cell>
     <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :color="isUnknown(node.value) ? 'secondary' : 'content'" :text="formatValue(node.value, specFor(node))"></nldd-text-cell>
     <nldd-spacer-cell size="8"></nldd-spacer-cell>
-    <nldd-icon-cell v-if="canSubmitClaims" icon="edit" size="16" color="secondary" role="button" tabindex="0" accessible-label="Corrigeren" @click.stop="emit('edit', node)" @keydown.enter.stop="emit('edit', node)"></nldd-icon-cell>
+    <nldd-icon-cell v-if="canSubmitClaims" icon="edit" size="16" color="secondary" role="button" tabindex="0" :accessible-label="t('wet.lineage.correct')" @click.stop="emit('edit', node)" @keydown.enter.stop="emit('edit', node)"></nldd-icon-cell>
     <nldd-spacer-cell v-if="node.children?.length" size="8"></nldd-spacer-cell>
     <nldd-icon-cell v-if="node.children?.length" disclosure icon="chevron-right" size="16" color="secondary"></nldd-icon-cell>
     <DataLineage v-if="node.children?.length" :nodes="node.children" :depth="depth + 1" nested @edit="emit('edit', $event)" />

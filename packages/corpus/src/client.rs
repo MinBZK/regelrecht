@@ -2068,7 +2068,7 @@ mod tests {
             .commit_and_push_to_branch(
                 "editor/session-test1",
                 "development",
-                &[edit.clone()],
+                std::slice::from_ref(&edit),
                 "Update article.md",
                 Some(("Anne Schuth", "anne@example.gov")),
             )
@@ -2194,7 +2194,7 @@ mod tests {
             .commit_and_push_to_branch(
                 "editor/session-rolled",
                 "development",
-                &[seed.clone()],
+                std::slice::from_ref(&seed),
                 "first edit",
                 None,
             )
@@ -2221,7 +2221,7 @@ mod tests {
             .commit_and_push_to_branch(
                 "editor/session-rolled",
                 "development",
-                &[seed.clone()],
+                std::slice::from_ref(&seed),
                 "second edit",
                 None,
             )
@@ -2333,7 +2333,7 @@ mod tests {
             .commit_and_push_to_branch(
                 "editor/session-unchanged",
                 "development",
-                &[seed.clone()],
+                std::slice::from_ref(&seed),
                 "no-op save",
                 None,
             )

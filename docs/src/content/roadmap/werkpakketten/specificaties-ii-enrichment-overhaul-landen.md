@@ -9,6 +9,10 @@ categorie: bet
 capability: basis
 capaciteit: conceptueel schrijver, engineer
 toelichting: |-
+  **Stand**: geland in acht stukken (#1448 tot en met #1453, en #1457), als
+  schema v0.7.0 met `placement` op artikelen en `markings` als één kanaal dat
+  `untranslatables` en `norm_gaps` vervangt (RFC-031). Open blijft de meting.
+
   Het ontwerp en de implementatie van een herziene enrichment-keten liggen klaar
   in één pull request, met vier documenten die van buiten naar binnen lopen: de
   werkvoorraad (welke artikelen verrijkt worden en in welke volgorde), de
@@ -51,7 +55,7 @@ onderzoeksvragen:
       juridisch verantwoord te kunnen adopteren?
     paper: sec:translation
 onderzoek: loopt
-bouw: deels
+bouw: wel
 rfcs:
   - 26
   - 27
@@ -62,4 +66,5 @@ afhankelijkVan: []
 samenhangIds:
   - specificaties-i-documentatie-op-orde
   - specificaties-iii-gaten-vinden-met-de-enricher
+  - referentie-casus-i
 ---

@@ -6248,7 +6248,8 @@ mod tests {
         #[test]
         fn arithmetic_propagates_unknown_and_rejects_absence() {
             let r = resolver();
-            let cases: Vec<(&str, fn(Vec<ActionValue>) -> ActionOperation)> = vec![
+            type Case = (&'static str, fn(Vec<ActionValue>) -> ActionOperation);
+            let cases: Vec<Case> = vec![
                 ("ADD", |values| ActionOperation::Add { values }),
                 ("SUBTRACT", |values| ActionOperation::Subtract { values }),
                 ("MULTIPLY", |values| ActionOperation::Multiply { values }),
@@ -6277,7 +6278,8 @@ mod tests {
         #[test]
         fn rounding_propagates_unknown_and_rejects_absence() {
             let r = resolver();
-            let cases: Vec<(&str, fn(ActionValue) -> ActionOperation)> = vec![
+            type Case = (&'static str, fn(ActionValue) -> ActionOperation);
+            let cases: Vec<Case> = vec![
                 ("ROUND", |value| ActionOperation::Round {
                     value,
                     precision: 0,
@@ -6740,7 +6742,8 @@ mod tests {
         #[test]
         fn date_operations_propagate_unknown_and_reject_absence() {
             let r = resolver().with_var("datum", "2025-01-01");
-            let cases: Vec<(&str, fn(ActionValue) -> ActionOperation)> = vec![
+            type Case = (&'static str, fn(ActionValue) -> ActionOperation);
+            let cases: Vec<Case> = vec![
                 ("AGE", |v| ActionOperation::Age {
                     date_of_birth: v,
                     reference_date: lit("2025-01-01"),

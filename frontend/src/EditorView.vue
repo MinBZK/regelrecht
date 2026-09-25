@@ -401,8 +401,8 @@ const { draftNotesForArticle } = useResolvedDraftNotes(
 // Authoring is part of the notes pane (the old separate `notes.create` flag is
 // folded in): wherever the pane is available, you can create notes in it.
 // Note creation is a writer action (it persists to the traject sidecar), so it
-// follows the same write-access gate as law-text editing. The old panel.notes
-// flag is gone - notes now live in the Tekst editor itself.
+// follows the same write-access gate as law-text editing. Whether the pane is
+// offered at all is the panel.notes flag (VIEW_DEFINITIONS above).
 const canCreateNotes = computed(() => canEdit.value);
 // Committed + draft notes share the highlight path. Draft entries already
 // carry __draft so the popover can mark them unsaved.

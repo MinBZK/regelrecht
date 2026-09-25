@@ -33,7 +33,10 @@
               </details>
             </paneel>
 
-            <paneel titel="Beleidsassistent" subtitel="Een instructie of doel in gewone taal; de assistent wijzigt de werkversie en rekent door." samenvatting="instructie of doel">
+            <!-- Loopt er een gesprek, dan staat dit paneel open. Je komt terug op
+                 deze pagina om te zien wat de assistent doet; dan is dichtgeklapt
+                 precies het verkeerde. -->
+            <paneel titel="Beleidsassistent" subtitel="Een instructie of doel in gewone taal; de assistent wijzigt de werkversie en rekent door." samenvatting="instructie of doel" :badge="assistentLoopt ? 'bezig' : ''" :open="assistentLoopt">
               <assistent-panel />
             </paneel>
 
@@ -109,6 +112,7 @@ import PopulationControls from '../components/beleid/PopulationControls.vue';
 import DoorrekenKnop from '../components/beleid/DoorrekenKnop.vue';
 import RegimeMetricsChart from '../components/beleid/RegimeMetricsChart.vue';
 import AssistentPanel from '../components/beleid/AssistentPanel.vue';
+import { useAssistent } from '../composables/useAssistent.js';
 import HandelingenPanel from '../components/beleid/HandelingenPanel.vue';
 import VariantenLijst from '../components/beleid/VariantenLijst.vue';
 
@@ -117,6 +121,14 @@ const { initStore, hasChanges, changeCount, editableDocs, werkversie, werkversie
 const { fetchPersonas } = usePersonas();
 const { metrics, baselineMetrics, columns, metricsByColumn, running, simVersion, recompute, n, handelingenGewijzigd } = usePopulation();
 const { totaalDebiteuren } = usePopulatieAannames();
+
+/**
+ * Loopt er een gesprek, of staat er een antwoord dat nog niet gezien is? Dan
+ * staat het assistentpaneel open: je komt terug op deze pagina om te zien wat
+ * hij doet, en dan is dichtgeklapt precies het verkeerde.
+ */
+const { streaming: assistentStreamt, gesprekId: assistentGesprek } = useAssistent();
+const assistentLoopt = computed(() => assistentStreamt.value || !!assistentGesprek.value);
 
 const yamlOpen = ref(false);
 const yamlPath = ref(null);

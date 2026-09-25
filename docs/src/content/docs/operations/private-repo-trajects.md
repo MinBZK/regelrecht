@@ -1,137 +1,143 @@
 ---
 title: "Private-repo trajects"
-description: "Hoe een traject aan een eigen (private) GitHub-repo gekoppeld wordt in plaats van de centrale corpus-repo."
-lang: nl
+description: "How a traject in the editor is linked to its own (private) GitHub repository instead of the central corpus repository, and which token writes to it."
 ---
 
-Vanaf [PR #704](https://github.com/MinBZK/regelrecht/pull/704) kan een traject in de editor gekoppeld worden aan een **eigen GitHub-repo** in plaats van de centrale `MinBZK/regelrecht-corpus`. Handig voor organisaties of teams die hun regelgeving in een private repo willen beheren, met behoud van RegelRecht's editor- en attributie-eigenschappen.
+A *traject* (a working context in the editor, with its own members and branch) can be linked to **its own GitHub repository** instead of the central `MinBZK/regelrecht-corpus`. This suits organizations and teams that want to keep their regulations in a private repository while keeping the editor and its commit attribution.
 
-Wat je moet doen hangt af van je rol: eindgebruiker, traject-eigenaar of operator.
+What you need to do depends on your role: participant, traject owner, or operator of the RegelRecht deployment. It also depends on which of two write modes the deployment runs in.
 
-## Hoe het werkt op hoofdlijnen
+## The two write modes
 
-- Bij het aanmaken van een traject kies je **of** de centrale MinBZK-repo (default), **of** een eigen `owner/repo` + base branch.
-- Authenticatie naar de eigen repo gebeurt met een **GitHub Personal Access Token** (fine-grained) die door de **operator van het RegelRecht-deployment** als environment variable wordt geconfigureerd. Tokens leven dus niet in de database en niet in de browser, alleen in de runtime-omgeving van de editor.
-- Commits in de repo verschijnen onder **de naam en het email-adres van de echte gebruiker** (afkomstig uit de OIDC-sessie, mits geverifieerd door de IdP). Niet onder een service-account.
+The editor writes to a traject repository with one of two kinds of token.
 
-## Wie doet wat
+- **Service token.** A fine-grained GitHub Personal Access Token (PAT) per repository, configured by the operator as an environment variable (or as an entry in the `corpus-auth.yaml` file that `CORPUS_AUTH_FILE` points to). Every participant writes through that one token. This is the default.
+- **Personal GitHub account.** Each user links their own GitHub account in the editor (Settings, under "Koppelingen", button "Koppelen") and writes with that. This needs a GitHub OAuth App on the deployment and is switched on for the whole environment, either with `GITHUB_USER_TOKEN_REQUIRED=true` or with the switch "Met eigen GitHub-account schrijven" in the editor settings (the feature flag `github.user_oauth`, off by default).
 
-| Rol | Actie |
+A configured service token always wins. The personal token is only used for a repository that has no service token. In personal mode a traject on a repository without a service token therefore needs no operator at all: a user who has push rights on the repository and has linked their account can create the traject and save to it. Without a linked account, or with an expired link, a save returns HTTP 428 and the editor sends the user through the linking flow.
+
+Neither token is stored in the database. The service token lives only in the editor's runtime environment. The personal token is sealed (encrypted and authenticated with `GITHUB_TOKEN_ENC_KEY`) into an HttpOnly cookie that lasts for the browser session and is bound to the editor account, so the browser holds it but page scripts cannot read it.
+
+## Who does what
+
+With a service token:
+
+| Role | Action |
 |---|---|
-| Repo-eigenaar (of admin) | Maakt een GitHub-PAT met schrijfrechten op de target-repo |
-| Operator | Configureert de PAT als env var op het editor-deployment (eenmalig per repo) |
-| Traject-eigenaar | Maakt het traject aan in de editor met de eigen repo-velden |
-| Deelnemers | Loggen in via SSO; saves verschijnen automatisch onder hun eigen naam |
+| Repository owner (or admin) | Creates a GitHub PAT with write access to the target repository |
+| Operator | Configures the PAT as an environment variable on the editor deployment (once per repository) |
+| Traject owner | Creates the traject in the editor with the repository fields filled in |
+| Participants | Log in through SSO; saves are attributed to their own name |
 
-## Stap 1: Bereid de GitHub-repo voor
+In personal mode the first two rows fall away for repositories without a service token, and every participant links their own GitHub account instead.
 
-De target-repo moet aan twee voorwaarden voldoen vóór je 'm kunt koppelen:
+## Step 1: Prepare the GitHub repository
 
-1. **De `base branch` bestaat al** (met minstens één commit). De editor maakt een eigen feature-branch áf van deze base, als de base nog niet bestaat (bv. een leeg gestelde `main`), faalt de validatie. Maak desnoods een lege README-commit op `main` om de branch te initialiseren.
-2. **Het PAT-account heeft push-rechten op de repo**. Voor private repo's: de PAT moet voor die specifieke repo aangevraagd zijn met de juiste scopes (zie stap 2).
+The target repository must meet two conditions before it can be linked:
 
-> De repo mag publiek of private zijn. Voor publieke repos gelden GitHub's rate-limits van het tokenless API-endpoint zonder PAT, voor private repo's is een PAT verplicht voor zowel reads als writes.
+1. **The base branch already exists**, with at least one commit. When the traject is created, the editor creates its own branch (`traject/<slug>-<id>`) from that base on GitHub. If the base does not exist yet (for example an empty `main`), validation fails. If needed, push an empty README commit to `main` to initialize it.
+2. **The token has push rights** on the repository: the PAT account for a service token, or the user's own account in personal mode.
 
-## Stap 2: Maak een GitHub PAT aan
+The repository can be public or private. Creating a traject always requires a token with push rights, also for a public repository. Afterwards, without a service token and outside personal mode, reads of a public repository go out unauthenticated, with GitHub's lower rate limits. Writes always need a token.
 
-Genereer een **fine-grained PAT** op [github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new):
+## Step 2: Create a GitHub PAT (service-token mode)
 
-- **Resource owner**: de owner van de target-repo (persoonlijk account of organisatie)
-- **Repository access**: "Only select repositories" → kies precies de target-repo (_niet_ "all repositories", houd de schade bij een lek klein)
+Generate a **fine-grained PAT** at [github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new):
+
+- **Resource owner**: the owner of the target repository (a personal account or an organization)
+- **Repository access**: "Only select repositories", and pick exactly the target repository. Do not choose "All repositories"; it keeps the damage of a leak small.
 - **Repository permissions**:
-  - `Contents`: **Read and write**, nodig voor commits + branch-creatie
-  - `Pull requests`: **Read and write**, nodig om de session-PR te openen en bij te werken
-  - `Metadata`: **Read** (verplicht en auto-geselecteerd)
-- **Expiration**: kies een termijn die past bij je security-beleid. PAT's verlopen, bij verloop weigert de editor nieuwe saves en moet de operator de env var verversen.
+  - `Contents`: **Read and write**, for commits and for creating the traject branch
+  - `Metadata`: **Read** (required and selected automatically)
+- **Expiration**: choose a period that fits your security policy. When the PAT expires, the editor refuses reads and writes and the operator has to replace the environment variable.
 
-Sla de waarde van de PAT direct op een veilige plek op (GitHub toont 'm maar één keer).
+The editor commits directly to the traject branch through the GitHub Contents API and opens no pull request, so the `Pull requests` permission is not needed.
 
-> Classic PATs werken ook, maar geven veel te brede toegang (alle repo's waar je toegang toe hebt). Fine-grained is sterk aanbevolen.
+Store the PAT value somewhere safe right away; GitHub shows it only once.
 
-## Stap 3: Operator configureert de env var
+Classic PATs work too, but they grant far too much (every repository the account can reach). Fine-grained is strongly recommended.
 
-Geef je operator deze drie dingen:
+## Step 3: The operator configures the environment variable
 
-1. De `owner/repo` van de target-repo (bv. `acme/regelrecht-lokaal`)
-2. De gegenereerde PAT-waarde
-3. Een korte beschrijving van het doel (voor audit-doeleinden)
+Give your operator three things:
 
-De operator zet de PAT als environment variable op het editor-deployment met de naam:
+1. The `owner/repo` of the target repository (for example `acme/regelrecht-lokaal`)
+2. The PAT value
+3. A short description of its purpose, for the audit trail
+
+The operator sets the PAT as an environment variable on the editor deployment, named:
 
 ```
 CORPUS_AUTH_<OWNER>_<REPO>_TOKEN
 ```
 
-waarbij `<OWNER>_<REPO>` een **deterministische slug** is van de coordinates: lowercase, elke aaneengesloten reeks niet-alfanumerieke tekens wordt één `-` (leidende/sluitende dashes worden weggesneden), vervolgens hoofdletters en dashes naar underscores. Voorbeelden:
+where `<OWNER>_<REPO>` is a **deterministic slug** of the coordinates: lowercased, every run of non-alphanumeric characters becomes a single `-` (leading and trailing dashes are dropped), and the result is uppercased with dashes turned into underscores. Examples:
 
-| owner/repo | env var |
+| owner/repo | Environment variable |
 |---|---|
-| `MinBZK/regelrecht-corpus` (de centrale repo) | `CORPUS_AUTH_MINBZK_CENTRAL_TOKEN` |
+| `MinBZK/regelrecht-corpus` (the central repository) | `CORPUS_AUTH_MINBZK_CENTRAL_TOKEN` |
 | `acme/regels` | `CORPUS_AUTH_ACME_REGELS_TOKEN` |
 | `acme/regelrecht-private-test` | `CORPUS_AUTH_ACME_REGELRECHT_PRIVATE_TEST_TOKEN` |
 
-> **Let op:** de centrale schrijfbare repo (`MinBZK/regelrecht-corpus`) gebruikt **niet** de afgeleide slug maar de vaste auth-ref `minbzk-central`, dus de env var heet `CORPUS_AUTH_MINBZK_CENTRAL_TOKEN` (niet `CORPUS_AUTH_MINBZK_REGELRECHT_CORPUS_TOKEN`).
+The central writable repository (`MinBZK/regelrecht-corpus`) does **not** use the derived slug but the fixed auth ref `minbzk-central`, so its variable is `CORPUS_AUTH_MINBZK_CENTRAL_TOKEN`, not `CORPUS_AUTH_MINBZK_REGELRECHT_CORPUS_TOKEN`. A user repository whose name would slug to `minbzk-central` is refused. Writable sources resolve their token strictly, without falling back to the shared `CORPUS_GIT_TOKEN`: a deployment that only sets `CORPUS_GIT_TOKEN` cannot push to the central repository. When no token is found, the editor log names the variable it looked for.
 
-De operator weet hoe ze env vars op het cluster moeten zetten, dat is omgevings-specifiek (ZAD, Kubernetes, docker-compose). Na de wijziging moet de editor-pod herstart worden zodat de nieuwe var wordt opgepikt. **Eén env var per repo**, als meerdere trajects naar dezelfde repo wijzen, is één configuratie genoeg.
+How to set an environment variable depends on the platform (ZAD, Kubernetes, docker-compose). After the change the editor pod has to restart to pick up the new variable. **One variable per repository**: when several trajects point at the same repository, one configuration covers them all.
 
-> Wanneer je het traject probeert aan te maken vóórdat de env var bestaat, krijg je een nette foutmelding die exact de verwachte env-var-naam toont. Geef die naam letterlijk door aan je operator.
+If you create the traject before the variable exists, and the deployment is not in personal mode, the error message shows the exact variable name the editor expects. Pass that name to your operator verbatim.
 
-## Stap 4: Maak het traject aan
+## Step 4: Create the traject
 
-In de editor:
+In the editor:
 
-1. Klik **"Nieuw traject"** in het traject-menu.
-2. Vul **naam**, **beschrijving** en **scope** in.
-3. Zet de schakelaar **"Eigen GitHub-repo gebruiken"** aan.
-4. Vul `repo_owner`, `repo_name` en `base_branch` in. Eventueel `repo_path` als je YAML-bestanden in een subdirectory zitten (default: repo root).
-5. Klik **"Aanmaken"**.
+1. Choose **"Nieuw traject…"** in the traject menu.
+2. Fill in **Naam** (name) and, optionally, **Beschrijving** (description).
+3. Turn on the switch **"Eigen GitHub-repo (i.p.v. standaard MinBZK-repo)"**.
+4. Fill in **Repo owner**, **Repo** and **Base branch** (prefilled with `main`). Set **Subpath** if the YAML files live in a subdirectory; leave it empty for the repository root.
+5. Click **"Maak traject aan"**.
 
-De editor doet vóór het aanmaken een **pre-flight check** tegen de GitHub-API:
-- Bestaat de repo en is 'ie zichtbaar voor de geconfigureerde token?
-- Heeft de token push-rechten?
-- Bestaat de opgegeven base-branch?
+Before anything is stored, the editor runs a **preflight check** against the GitHub API:
 
-Faalt één van deze checks, dan zie je een gerichte foutmelding (zie [foutmeldingen](#foutmeldingen-en-wat-ze-betekenen) hieronder). Geen rij in de database, je kunt direct opnieuw proberen na correctie.
+- Does the repository exist, and can the token see it?
+- Does the token have push rights?
+- Does the base branch exist?
 
-## Hoe commit-attributie werkt
+It then creates the traject branch on GitHub. If any of these steps fails you get a specific error (see [error messages](#error-messages-and-what-they-mean) below), no row is written to the database, and you can retry straight after fixing the cause. If the database write fails after the branch was created, the branch stays behind on GitHub; the editor logs it but does not remove it.
 
-Elke save in een traject produceert een commit op de session-branch met:
+## How commit attribution works
 
-- **Author**: `<jouw OIDC-naam> <jouw OIDC email>` (uit Keycloak)
-- **Committer**: het service-account dat het deployment runt (dit is wat GitHub als "pushed by" registreert in de Push Events)
-- **`Co-authored-by:` trailer**: identiek aan de author, dubbele credit zodat GitHub de commit ook in jouw Contributions-graph laat zien
+Every save in a traject produces a commit on the traject branch. Who it is attributed to depends on the token:
 
-Voor de UI-weergave op GitHub geldt: als jouw OIDC-email een verified email is op je GitHub-account, dan toont GitHub jouw avatar en naam bij elke commit, en linkt 'ie naar je profile. Geen mapping verified? Dan wordt de email als string getoond, zonder profile-link, maar nog steeds met de juiste naam.
+- **Service token**: author and committer are both set to your name and email from the SSO session (Keycloak). GitHub still records the token's account as the pusher.
+- **Personal token**: the editor sets no author or committer, so GitHub attributes the commit to your linked GitHub account.
 
-> De editor weigert saves wanneer Keycloak's `email_verified` claim niet `true` is. Dit voorkomt dat een gebruiker met een ongeverifieerd email-claim onder die naam zou kunnen committen. Krijg je hiervan een 403, log dan opnieuw in (refresht de claim) of vraag je beheerder om je account-instellingen te controleren.
+For the display on GitHub: if the email from your SSO session is a verified address on your GitHub account, GitHub shows your avatar and name on the commit and links to your profile. If it is not, GitHub shows the email as plain text, without a profile link, but still with the correct name.
 
-## Foutmeldingen en wat ze betekenen
+The editor refuses saves when Keycloak's `email_verified` claim is not `true`. This prevents a user with an unverified email claim from committing under that name. If you get a 403 for this, log in again (which refreshes the claim) or ask your administrator to check your account settings.
 
-Wanneer je traject-create faalt, toont de UI een specifieke melding. De belangrijkste:
+## Error messages and what they mean
 
-| Statuscode | Melding | Wat je moet doen |
+When creating a traject fails, the editor shows a specific message. The messages are in Dutch; the most important ones:
+
+| Status | Message | What to do |
 |---|---|---|
-| 503 | "deze repo is nog niet door je beheerder geconfigureerd (verwacht env var X)" | Vraag de operator de getoonde env-var-naam te configureren |
-| 502 | "het token van je beheerder wordt door GitHub geweigerd" | PAT is verlopen of ongeldig, vraag operator om verversing |
-| 403 | "het geconfigureerde token heeft geen schrijftoegang tot deze repo" | PAT mist `Contents: write` of de PAT-account is geen collaborator op de repo |
-| 404 | "repo X bestaat niet of het token kan 'm niet zien" | Tikfout in owner/repo, of de fine-grained PAT is niet aan deze repo gekoppeld |
-| 404 | "branch 'X' bestaat niet op owner/repo" | De `base_branch` bestaat nog niet op de repo, initialiseer 'm met minstens één commit |
-| 400 | "alleen letters, cijfers, en '-', '_', '.'" | owner, repo of subpath bevat ongeldige karakters |
-| 400 | "moeten alle drie worden meegegeven" | Eigen-repo-toggle staat aan maar één van owner/repo/base_branch is leeg |
-| 502 | "onverwacht antwoord van GitHub bij repo-validatie" | Tijdelijke GitHub-issue; probeer opnieuw |
+| 503 | "deze repo is nog niet door je beheerder geconfigureerd (verwacht env var X)" | No service token and not in personal mode. Ask the operator to configure the variable named in the message |
+| 428 | "Koppel je GitHub-account …" or "Je GitHub-koppeling is verlopen …" | Personal mode: link (or relink) your GitHub account |
+| 502 | "het token van je beheerder wordt door GitHub geweigerd" | The token is expired or invalid; ask the operator to replace it |
+| 403 | "het geconfigureerde token heeft geen schrijftoegang tot deze repo" | The PAT lacks `Contents: write`, or its account is not a collaborator on the repository |
+| 404 | "repo X bestaat niet of het token kan 'm niet zien" | A typo in owner or repo, or the fine-grained PAT is not linked to this repository |
+| 404 | "branch 'X' bestaat niet op owner/repo" | The base branch does not exist yet; initialize it with at least one commit |
+| 400 | "repo_owner / repo_name mogen alleen letters, cijfers, en de tekens '-', '_' en '.' bevatten" | Owner or repository name contains invalid characters (the subpath has a similar rule, and may not contain `..`) |
+| 400 | "base_branch bevat tekens die niet zijn toegestaan in een git branch-naam" | The base branch is not a valid git branch name |
+| 400 | "… moeten alle drie worden meegegeven …" | The own-repository switch is on but owner, repository or base branch is empty |
+| 502 | "kon de traject-branch 'X' niet aanmaken op owner/repo …" | The traject branch could not be created; nothing was stored |
+| 502 | "onverwacht antwoord van GitHub bij repo-validatie" | A temporary GitHub problem; try again |
+| 503 | "kon GitHub niet bereiken om de repo te valideren" | GitHub could not be reached; try again |
 
-Tijdens het bewerken kunnen ook saves falen. De meeste meldingen zijn vergelijkbaar; bij een 403 over "geverifieerd e-mailadres" is opnieuw inloggen meestal de oplossing.
+Saves can fail while editing as well. Most messages are the same; for a 403 about a verified email address (*geverifieerd e-mailadres*), logging in again usually fixes it.
 
-## Beperkingen en aandachtspunten
+## Limitations
 
-- **Per-repo PAT, niet per-user**. Alle deelnemers aan het traject committen via dezelfde token, maar onder hun eigen naam (via Author/Co-authored-by). GitHub Push Events tonen altijd het service-account als "pushed by", voor harde per-user audit is dat niet voldoende; gebruik daarvoor de editor-API's audit-logs of de PR's commit-graaf.
-- **PAT-verloop is operator-werk**. De editor weigert reads/writes zodra de PAT door GitHub geweigerd wordt; de operator moet 'm dan verversen. Plan dit in.
-- **Geen self-service**. Voor elke nieuwe repo moet een operator een env var configureren. Voor occasioneel gebruik is dat prima; voor schaalbare zelfbediening is een **GitHub App** een betere richting (geparkeerd voor latere fase).
-- **Geen tokens in DB of browser**. Ontwerpkeuze: een bug, breach of insider met DB-toegang kan geen tokens exfiltreren. Wel betekent dit dat tokens niet "even snel" zelf zijn in te stellen.
-
-## Rollout-aandachtspunten (alleen relevant bij de eerste deploy)
-
-De eerste deploy met deze feature scherpt twee oude paden aan; controleer onderstaande punten op je deployment vóór je de release uitrolt.
-
-- **De writable-own source gebruikt voortaan strikte token-resolutie** (geen `CORPUS_GIT_TOKEN`-fallback). Bestaande trajects die via de central MinBZK-repo committen, hebben dus `CORPUS_AUTH_MINBZK_CENTRAL_TOKEN` nodig als losse env var. Deployments die tot nu toe leunden op alleen `CORPUS_GIT_TOKEN` voor het centrale schrijfpad, zien stille push-failures na de release als die env var ontbreekt. Zet 'm vóór deploy en check de editor-logs op de eerste run; de diagnostic-log toont expliciet de verwachte env-var-naam wanneer de resolver `None` returnt voor de writable-own source.
-- **Bestaande SSO-sessies missen de nieuwe `email_verified`-claim**. Eerste save na deploy levert dan een 403 op met de melding "log opnieuw in". Eenmalig opnieuw inloggen lost het op; onderhoud of migratie is niet nodig.
+- **A service token is per repository, not per user.** All participants in a traject commit through the same token, under their own name. GitHub's push events always show the token's account as the pusher, which is not enough for a strict per-user audit; use the editor API's audit logs or the commit history of the traject branch for that. Personal mode does not have this limitation.
+- **Replacing an expired service token is operator work.** The editor refuses reads and writes once GitHub rejects the PAT, and the operator has to replace it. Plan for this. An expired personal link is fixed by the user relinking.
+- **Service-token mode is not self-service.** Every new repository needs an operator to configure a variable. Personal mode removes that step, at the cost of every user needing their own GitHub account with push rights.
+- **No tokens in the database.** A deliberate design choice: a bug, breach or insider with database access cannot exfiltrate tokens.

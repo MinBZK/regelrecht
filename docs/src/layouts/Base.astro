@@ -19,7 +19,7 @@ interface Props {
   description?: string;
   kind: 'landing' | 'docs' | 'notfound';
   pathname: string;
-  // Docs pages without a sidebar group (e.g. /auth-and-roles) render in the
+  // Docs pages without a sidebar group render in the
   // narrower centered layout instead of the 3-column grid. Defaults to true
   // so the common sidebar'd docs pages need not pass it.
   hasSidebar?: boolean;
@@ -576,7 +576,7 @@ const legalLinks = [
                     {t.footer.partOf.map((o, i) => (
                       <Fragment>
                         {i > 0 && <br />}
-                        {o}
+                        {o.href ? <a href={o.href}>{o.label}</a> : o.label}
                       </Fragment>
                     ))}
                   </p>

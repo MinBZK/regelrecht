@@ -174,6 +174,59 @@ async fn persist_without_override_keeps_the_backend_token() {
     b.persist(&ctx()).await.unwrap();
 }
 
+/// A traject save commits to the traject branch and opens no pull request,
+/// with either kind of token. The operator docs rest on this: a
+/// fine-grained PAT for a traject repository needs `Contents` and
+/// `Metadata`, not `Pull requests` (docs/src/content/docs/operations/
+/// private-repo-trajects.md). If `persist` ever starts touching the pulls
+/// API, that page and the PAT instructions have to change with it.
+#[tokio::test]
+async fn persist_opens_no_pull_request_with_either_token() {
+    for token_override in [None, Some("user-token".to_string())] {
+        let server = MockServer::start().await;
+        mount_branch_exists(&server).await;
+
+        Mock::given(method("PUT"))
+            .and(path("/repos/acme/corpus/contents/laws/x.yaml"))
+            .respond_with(ResponseTemplate::new(201).set_body_json(json!({
+                "content": { "sha": "sha-new" }
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let b = backend(&server);
+        b.write_file(Path::new("laws/x.yaml"), "inhoud\n")
+            .await
+            .unwrap();
+        let outcome = b
+            .persist(&WriteContext {
+                message: "save".to_string(),
+                author: None,
+                token_override: token_override.clone(),
+            })
+            .await
+            .unwrap();
+
+        assert!(
+            outcome.pr.is_none(),
+            "persist returned a PR (token_override = {token_override:?})"
+        );
+        let touched_pulls: Vec<String> = server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .map(|r| r.url.path().to_string())
+            .filter(|p| p.contains("/pulls"))
+            .collect();
+        assert!(
+            touched_pulls.is_empty(),
+            "persist called the pulls API: {touched_pulls:?} (token_override = {token_override:?})"
+        );
+    }
+}
+
 #[tokio::test]
 async fn write_without_prior_read_resolves_sha_lazily_at_persist() {
     let server = MockServer::start().await;

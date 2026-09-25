@@ -13,10 +13,18 @@
 bold="\033[1m"  dim="\033[2m"  reset="\033[0m"
 green="\033[32m"  red="\033[31m"  yellow="\033[33m"
 
+# dev_needs_mold — succeeds when cargo links with mold on this machine. That is
+# only x86_64 Linux: packages/.cargo/config.toml scopes the mold link-arg to
+# [target.x86_64-unknown-linux-gnu], so elsewhere (macOS, aarch64 Linux) the
+# default linker is used and mold is dead weight. Keep the two in step.
+dev_needs_mold() {
+    [ "$(uname -s)" = "Linux" ] && [ "$(uname -m)" = "x86_64" ]
+}
+
 # dev_preflight [--rust] [--node] [--watch]
 # Verify the tools the recipe needs. Always checks docker. --node also checks
-# node; --rust also checks cargo and requires mold (the linker configured in
-# packages/.cargo/config.toml); --watch additionally auto-installs cargo-watch
+# node; --rust also checks cargo, and mold where cargo links with it (see
+# dev_needs_mold); --watch additionally auto-installs cargo-watch
 # (only `just dev` hot-reloads the backend). Exits 1 listing every missing dep.
 dev_preflight() {
     local want_rust=false want_node=false want_watch=false arg
@@ -34,9 +42,10 @@ dev_preflight() {
 
     if [ "$want_rust" = true ]; then
         command -v cargo >/dev/null || missing+=("cargo (rustup.rs)")
-        # mold is the linker in packages/.cargo/config.toml; without it dev
-        # builds fail to link.
-        command -v mold >/dev/null 2>&1 || missing+=("mold (run 'just dev-setup')")
+        # Where mold is the configured linker, dev builds fail to link without it.
+        if dev_needs_mold; then
+            command -v mold >/dev/null 2>&1 || missing+=("mold (run 'just dev-setup')")
+        fi
     fi
 
     if [ "$want_watch" = true ] && ! cargo watch --version >/dev/null 2>&1; then

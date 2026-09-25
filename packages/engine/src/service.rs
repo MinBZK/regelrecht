@@ -34,8 +34,8 @@ use crate::error::{EngineError, Result};
 use crate::operations::ValueResolver;
 use crate::priority;
 use crate::resolver::{
-    DeclarationKind, DeclarationNotInForce, DeclarationsFromOtherVersion, DelegationRefusal,
-    ProcedureMiss, RuleResolver, SelectionReason,
+    hook_filter_admits, missing_article_reason, DeclarationKind, DeclarationNotInForce,
+    DeclarationsFromOtherVersion, DelegationRefusal, ProcedureMiss, RuleResolver, SelectionReason,
 };
 use crate::trace::{LegalAnchor, TraceBuilder, ValueSource};
 use crate::types::{
@@ -129,6 +129,37 @@ struct ResolutionContext<'a> {
 fn parse_calculation_date(calculation_date: &str) -> Result<NaiveDate> {
     NaiveDate::parse_from_str(calculation_date, "%Y-%m-%d")
         .map_err(|e| EngineError::InvalidDate(format!("{calculation_date}: {e}")))
+}
+
+/// Why an override whose law is in force still is not applied: the version
+/// selected for the reference date has no article with the indexed number.
+///
+/// When another article of that same version declares an override of the same
+/// output, the reason says so: that is the renumbering case, where the special
+/// rule *is* in force under another number and the undated overrides index
+/// misses it. The engine does not apply it (that would change the outcome and
+/// is a separate question), but the receipt must not let it pass for a rule
+/// that does not exist yet. The wording is shared with hooks and
+/// implementations through [`missing_article_reason`].
+fn article_missing_from_version(
+    law: &ArticleBasedLaw,
+    article_number: &str,
+    target_law: &str,
+    target_article: &str,
+    output_name: &str,
+) -> String {
+    missing_article_reason(
+        law,
+        article_number,
+        "an override of the same output",
+        |candidate| {
+            candidate.get_overrides().is_some_and(|decls| {
+                decls.iter().any(|d| {
+                    d.law == target_law && d.article == target_article && d.output == output_name
+                })
+            })
+        },
+    )
 }
 
 /// Map a failed version selection to an honest engine error (RFC-019 §3):
@@ -273,7 +304,8 @@ impl<'a> ResolutionContext<'a> {
     }
 
     /// Record a hook, override or implementation that the indexes offered but
-    /// that has no version in force on the reference date.
+    /// that is not in force on the reference date: its law has no version for
+    /// that date, or the version it has lacks the indexed article.
     ///
     /// It is skipped either way — a regulation that is not in force does not
     /// apply — but the skip leaves no mark on the outcome, so it is stated
@@ -287,7 +319,7 @@ impl<'a> ResolutionContext<'a> {
             article = %note.article,
             subject = %note.subject,
             reason = %note.reason,
-            "Declaration not applied: no version in force on the reference date"
+            "Declaration not applied: not in force on the reference date"
         );
         let node_type = match note.kind {
             DeclarationKind::Hook => PathNodeType::HookResolution,
@@ -1028,7 +1060,6 @@ impl LawExecutionService {
     ///
     /// Convenience wrapper around [`evaluate_law`](Self::evaluate_law).
     /// Returns the requested output plus any causally-entailed outputs (hooks, overrides).
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, parameters), fields(law_id = %law_id, output = %output_name)))]
     pub fn evaluate_law_output(
         &self,
         law_id: &str,
@@ -1112,7 +1143,6 @@ impl LawExecutionService {
     /// # Returns
     /// `ExecutionOutcome::Complete` if all stages are done, or
     /// `ExecutionOutcome::Yielded` if waiting for external input.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, state, parameters), fields(law_id = %law_id, output = %output_name)))]
     pub fn execute_stage(
         &self,
         law_id: &str,
@@ -1473,7 +1503,6 @@ impl LawExecutionService {
     }
 
     /// Internal method with cycle tracking (single-output).
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, parameters, res_ctx), fields(law_id = %law_id, output = %output_name, depth = res_ctx.depth)))]
     fn evaluate_law_output_internal(
         &self,
         law_id: &str,
@@ -1620,7 +1649,6 @@ impl LawExecutionService {
     /// * `stage` - The lifecycle stage (e.g., "BESLUIT", "BEKENDMAKING")
     /// * `parameters` - Parameters available to hook articles
     /// * `res_ctx` - Resolution context for cycle detection and tracing
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, article, _law, parameters, res_ctx), fields(hook_point = ?hook_point, law_id = %_law.id, article = %article.number)))]
     fn fire_hooks(
         &self,
         hook_point: HookPoint,
@@ -1666,7 +1694,7 @@ impl LawExecutionService {
             "Firing hooks"
         );
 
-        for hook_entry in matching_hooks {
+        for hook_entry in &matching_hooks {
             let hook_law_id = &hook_entry.law_id;
             let hook_article_number = &hook_entry.article_number;
             // Cycle detection: don't re-enter a hook we're already executing
@@ -1702,12 +1730,44 @@ impl LawExecutionService {
                     continue;
                 }
             };
+            // The law is in force, but the version selected for this date need
+            // not carry the article the hooks index points at: that index is
+            // built from the newest version. The hook still does not fire (an
+            // article inserted later is not in force yet, and a renumbered one
+            // is missed by the undated index), but the same safeguards go
+            // missing as above, so the skip is recorded the same way.
             let Some(hook_article) = hook_law.find_article_by_number(hook_article_number) else {
-                tracing::warn!(
-                    hook_law_id = %hook_law_id,
-                    hook_article = %hook_article_number,
-                    "Hook article not found"
-                );
+                res_ctx.note_not_in_force(DeclarationNotInForce {
+                    kind: DeclarationKind::Hook,
+                    law_id: hook_law_id.clone(),
+                    article: hook_article_number.clone(),
+                    subject: format!(
+                        "hook point {hook_point_str} on {legal_character} at stage {stage}"
+                    ),
+                    reason: missing_article_reason(
+                        hook_law,
+                        hook_article_number,
+                        "a hook that fires at the same point on this decision",
+                        |candidate| {
+                            let offered = matching_hooks.iter().any(|h| {
+                                h.law_id == *hook_law_id && h.article_number == candidate.number
+                            });
+                            !offered
+                                && candidate.get_hooks().is_some_and(|decls| {
+                                    decls.iter().any(|d| {
+                                        d.hook_point == hook_point
+                                            && d.applies_to.legal_character.as_deref()
+                                                == Some(legal_character)
+                                            && hook_filter_admits(
+                                                &d.applies_to,
+                                                decision_type,
+                                                stage,
+                                            )
+                                    })
+                                })
+                        },
+                    ),
+                });
                 continue;
             };
 
@@ -1866,7 +1926,6 @@ impl LawExecutionService {
     ///
     /// For each output in the result, checks if an override exists from the contextual law.
     /// If found, executes the overriding article and replaces the output value.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, result, article, law, parameters, res_ctx), fields(law_id = %law.id, article = %article.number)))]
     fn apply_overrides(
         &self,
         result: &mut ArticleResult,
@@ -1969,7 +2028,33 @@ impl LawExecutionService {
                     continue;
                 }
             };
+            // The law is in force, but the version selected for this date need
+            // not carry the article the index points at: the index is built
+            // from the newest version. An article inserted later is genuinely
+            // not in force today. A renumbering is a known limitation of that
+            // undated index: the special rule is in force under another number
+            // and is still not applied. Either way the general rule's value
+            // stands, unchanged from before; what changes is that the skip is
+            // recorded like the one above, so "no lex specialis" never reads as
+            // a finding about the case (and the reason names a renumbered
+            // declaration when that version has one).
             let Some(ovr_article) = ovr_law.find_article_by_number(ovr_article_number) else {
+                res_ctx.note_not_in_force(DeclarationNotInForce {
+                    kind: DeclarationKind::Override,
+                    law_id: ovr_law_id.clone(),
+                    article: ovr_article_number.clone(),
+                    subject: format!(
+                        "output '{}' of {} article {}",
+                        output_name, law.id, article.number
+                    ),
+                    reason: article_missing_from_version(
+                        ovr_law,
+                        ovr_article_number,
+                        &law.id,
+                        &article.number,
+                        &output_name,
+                    ),
+                });
                 continue;
             };
 
@@ -2306,7 +2391,6 @@ impl LawExecutionService {
     ///    own rule (its default) applies (RFC-003, RFC-036).
     /// 4. If not found + required + no default: error
     /// 5. If not found + not required + no default: skip
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, article, law, context, res_ctx), fields(law_id = %law.id, article = %article.number)))]
     fn resolve_open_terms(
         &self,
         article: &Article,
@@ -3437,7 +3521,6 @@ impl ServiceProvider for LawExecutionService {
         self.resolver.get_law(law_id)
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, source_parameters, context), fields(regulation = %regulation, output = %output)))]
     fn resolve_external_input(
         &self,
         regulation: &str,
@@ -4981,7 +5064,7 @@ articles:
         let kvk = ("kvk_nummer", Value::String("85234567".to_string()));
         let article = fill_permit_article("required: true");
         assert_eq!(
-            required_parameter_not_passed(&article, &params(&[kvk.clone()])),
+            required_parameter_not_passed(&article, &params(std::slice::from_ref(&kvk))),
             Some("terras_oppervlakte".to_string())
         );
         assert_eq!(
@@ -4999,7 +5082,7 @@ articles:
         // means the caller may leave it out.
         let implicit = fill_permit_article("");
         assert_eq!(
-            required_parameter_not_passed(&implicit, &params(&[kvk.clone()])),
+            required_parameter_not_passed(&implicit, &params(std::slice::from_ref(&kvk))),
             Some("terras_oppervlakte".to_string())
         );
         let optional = fill_permit_article("required: false");
@@ -8291,6 +8374,255 @@ articles:
         }
     }
 
+    /// The special rule is in force, but the version in force today does not
+    /// yet carry the article the overrides index points at: it arrives with a
+    /// later version (or the article was renumbered). The general rule stands,
+    /// and it used to stand with a trace that showed nothing else: the skip was
+    /// a bare `continue`, before the trace node was even pushed.
+    #[test]
+    fn test_an_override_whose_article_is_missing_on_the_date_is_recorded() {
+        let kaderwet = r#"
+$id: kaderwet_bedrag
+regulatory_layer: WET
+publication_date: '2020-01-01'
+valid_from: '2020-01-01'
+procedure:
+  - id: beschikking_procedure
+    default: true
+    applies_to:
+      legal_character: TEST_BESCHIKKING
+    stages:
+      - name: BESLUIT
+articles:
+  - number: '1'
+    text: Het bedrag bedraagt 100
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TEST_BESCHIKKING
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 100
+"#;
+        let bijzondere_oud = r#"
+$id: bijzondere_regeling
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+articles:
+  - number: '2'
+    text: Deze regeling treedt in werking op 1 januari 2024
+"#;
+        let bijzondere_nieuw = r#"
+$id: bijzondere_regeling
+regulatory_layer: WET
+publication_date: '2026-01-01'
+valid_from: '2027-01-01'
+articles:
+  - number: '1'
+    text: In afwijking van artikel 1 van de kaderwet bedraagt het bedrag 250
+    machine_readable:
+      overrides:
+        - law: kaderwet_bedrag
+          article: '1'
+          output: bedrag
+      execution:
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 250
+  - number: '2'
+    text: Deze regeling treedt in werking op 1 januari 2024
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(kaderwet).unwrap();
+        service.load_law(bijzondere_oud).unwrap();
+        service.load_law(bijzondere_nieuw).unwrap();
+
+        let state = || StageState {
+            procedure_id: "beschikking_procedure".to_string(),
+            contextual_law: "bijzondere_regeling".to_string(),
+            current_stage: "BESLUIT".to_string(),
+            accumulated_outputs: BTreeMap::new(),
+            parameters: BTreeMap::new(),
+        };
+
+        let outcome = service
+            .execute_stage(
+                "kaderwet_bedrag",
+                "bedrag",
+                Some(state()),
+                BTreeMap::new(),
+                "2025-06-01",
+            )
+            .expect("the general rule is in force and executes");
+        let result = match outcome {
+            ExecutionOutcome::Complete(result) => result,
+            other => panic!("expected a completed execution, got: {other:?}"),
+        };
+        assert_eq!(
+            result.outputs.get("bedrag"),
+            Some(&Value::Int(100)),
+            "the article is not there on this date, so the general rule stands"
+        );
+        assert_eq!(
+            result.declarations_not_in_force,
+            vec![DeclarationNotInForce {
+                kind: DeclarationKind::Override,
+                law_id: "bijzondere_regeling".to_string(),
+                article: "1".to_string(),
+                subject: "output 'bedrag' of kaderwet_bedrag article 1".to_string(),
+                reason: "the version of bijzondere_regeling in force on this date (valid_from 2024-01-01) \
+                         has no article 1"
+                    .to_string(),
+            }],
+            "the skipped lex specialis must leave a mark naming the version that lacks it"
+        );
+        assert!(
+            result
+                .declaration_version_notes
+                .iter()
+                .any(|n| n.law_id == "bijzondere_regeling"),
+            "the receipt also says the indexes read another version of the special rule: {:?}",
+            result.declaration_version_notes
+        );
+
+        let trace = Rc::new(RefCell::new(TraceBuilder::new()));
+        trace
+            .borrow_mut()
+            .push("test harness".to_string(), PathNodeType::Article);
+        service
+            .execute_stage_internal(
+                "kaderwet_bedrag",
+                "bedrag",
+                Some(state()),
+                BTreeMap::new(),
+                "2025-06-01",
+                Some(Rc::clone(&trace)),
+            )
+            .unwrap();
+        let root = trace.borrow_mut().pop().expect("a traced run has a trace");
+        fn find_override(node: &crate::trace::PathNode) -> Option<&crate::trace::PathNode> {
+            if node.node_type == PathNodeType::OverrideResolution {
+                return Some(node);
+            }
+            node.children.iter().find_map(find_override)
+        }
+        let node = find_override(&root).unwrap_or_else(|| {
+            panic!(
+                "the trace must carry the skipped override:\n{}",
+                root.render_box_drawing()
+            )
+        });
+        assert_eq!(node.name, "bijzondere_regeling:1");
+        assert_eq!(
+            node.message.as_deref(),
+            Some(
+                "Not applied: override bijzondere_regeling article 1 would have applied to \
+                 output 'bedrag' of kaderwet_bedrag article 1, but the version of bijzondere_regeling in \
+                 force on this date (valid_from 2024-01-01) has no article 1"
+            )
+        );
+
+        // Once the version carrying the article is in force, it applies.
+        match service
+            .execute_stage(
+                "kaderwet_bedrag",
+                "bedrag",
+                Some(state()),
+                BTreeMap::new(),
+                "2027-06-01",
+            )
+            .unwrap()
+        {
+            ExecutionOutcome::Complete(result) => {
+                assert_eq!(result.outputs.get("bedrag"), Some(&Value::Int(250)));
+                assert!(result.declarations_not_in_force.is_empty());
+            }
+            other => panic!("expected a completed execution, got: {other:?}"),
+        }
+    }
+
+    /// After a renumbering the special rule is in force under another number.
+    /// The engine still does not apply it, but the reason must not let it pass
+    /// for a rule that does not exist yet: it names the article that carries
+    /// the declaration now. Only a declaration of exactly the same output of
+    /// exactly the same article counts.
+    #[test]
+    fn test_article_missing_from_version_names_a_renumbered_declaration() {
+        let law = ArticleBasedLaw::from_yaml_str(
+            r#"
+$id: bijzondere_regeling
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+articles:
+  - number: '3'
+    text: Hernummerd
+    machine_readable:
+      overrides:
+        - law: kaderwet_bedrag
+          article: '1'
+          output: bedrag
+  - number: '4'
+    text: Ander output
+    machine_readable:
+      overrides:
+        - law: kaderwet_bedrag
+          article: '1'
+          output: iets_anders
+  - number: '5'
+    text: Ander artikel
+    machine_readable:
+      overrides:
+        - law: kaderwet_bedrag
+          article: '2'
+          output: bedrag
+  - number: '6'
+    text: Andere wet
+    machine_readable:
+      overrides:
+        - law: andere_wet
+          article: '1'
+          output: bedrag
+  - number: '7'
+    text: Geen machine_readable
+"#,
+        )
+        .unwrap();
+        assert_eq!(
+            article_missing_from_version(&law, "1", "kaderwet_bedrag", "1", "bedrag"),
+            "the version of bijzondere_regeling in force on this date (valid_from 2024-01-01) has no \
+             article 1; article 3 of that version declares an override of the same output"
+        );
+    }
+
+    /// A law without a `valid_from` is in force on any date; the note then
+    /// names no version date rather than an empty one.
+    #[test]
+    fn test_article_missing_from_version_without_valid_from() {
+        let law = ArticleBasedLaw::from_yaml_str(
+            r#"
+$id: zonder_datum
+regulatory_layer: WET
+publication_date: '2024-01-01'
+articles:
+  - number: '2'
+    text: Tekst
+"#,
+        )
+        .unwrap();
+        assert_eq!(
+            article_missing_from_version(&law, "1", "kaderwet", "1", "bedrag"),
+            "the version of zonder_datum in force on this date has no article 1"
+        );
+    }
+
     /// The motiveringsplicht commences next year. Today the beschikking comes
     /// out without a motivering, and the engine used to log "Hook law not
     /// found" — untrue, the law is loaded — and say nothing anywhere else.
@@ -8497,6 +8829,460 @@ articles:
                 "afstand",
                 BTreeMap::new(),
                 "2026-06-01",
+            )
+            .unwrap();
+        assert_eq!(after.outputs.get("afstand"), Some(&Value::Int(50)));
+        assert!(after.declarations_not_in_force.is_empty());
+    }
+
+    /// The hook law is in force, but the motiveringsplicht is an article that a
+    /// later version inserts. Today the beschikking comes out without a
+    /// motivering, and the skip used to leave a log line and nothing else: no
+    /// trace node, no note, nothing on the receipt.
+    #[test]
+    fn test_a_hook_whose_article_is_missing_on_the_date_is_recorded() {
+        let besluit = r#"
+$id: wet_beschikking
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het bestuursorgaan stelt het bedrag vast
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TEST_BESCHIKKING
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 100
+"#;
+        let motivering_oud = r#"
+$id: wet_motiveringsplicht
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+articles:
+  - number: '2'
+    text: Deze wet treedt in werking op 1 januari 2024
+"#;
+        let motivering_nieuw = r#"
+$id: wet_motiveringsplicht
+regulatory_layer: WET
+publication_date: '2026-06-01'
+valid_from: '2027-01-01'
+articles:
+  - number: '2'
+    text: Deze wet treedt in werking op 1 januari 2024
+  - number: '3'
+    text: Een beschikking wordt gemotiveerd
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: TEST_BESCHIKKING
+            stage: BESLUIT
+      execution:
+        output:
+          - name: motivering
+            type: string
+        actions:
+          - output: motivering
+            value: "gemotiveerd"
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(besluit).unwrap();
+        service.load_law(motivering_oud).unwrap();
+        service.load_law(motivering_nieuw).unwrap();
+
+        let before = service
+            .evaluate_law_output("wet_beschikking", "bedrag", BTreeMap::new(), "2025-06-01")
+            .unwrap();
+        assert_eq!(before.outputs.get("bedrag"), Some(&Value::Int(100)));
+        assert!(
+            !before.outputs.contains_key("motivering"),
+            "the article is not in the version in force, so the hook does not fire"
+        );
+        assert_eq!(
+            before.declarations_not_in_force,
+            vec![DeclarationNotInForce {
+                kind: DeclarationKind::Hook,
+                law_id: "wet_motiveringsplicht".to_string(),
+                article: "3".to_string(),
+                subject: "hook point post_actions on TEST_BESCHIKKING at stage BESLUIT".to_string(),
+                reason: "the version of wet_motiveringsplicht in force on this date (valid_from 2024-01-01) \
+                         has no article 3"
+                    .to_string(),
+            }],
+            "the hook that did not fire must leave a note naming the version that lacks it"
+        );
+
+        let receipt =
+            service.build_receipt_with_outputs(&before, &BTreeMap::new(), "2025-06-01", &[]);
+        assert_eq!(
+            receipt.results.declarations_not_in_force, before.declarations_not_in_force,
+            "a beschikking without its motivering must say so on the receipt"
+        );
+
+        let traced = service
+            .evaluate_law_output_with_trace(
+                "wet_beschikking",
+                "bedrag",
+                BTreeMap::new(),
+                "2025-06-01",
+            )
+            .unwrap();
+        let root = traced.trace.as_ref().expect("a traced run has a trace");
+        fn find_hook(node: &crate::trace::PathNode) -> Option<&crate::trace::PathNode> {
+            if node.node_type == PathNodeType::HookResolution {
+                return Some(node);
+            }
+            node.children.iter().find_map(find_hook)
+        }
+        let node = find_hook(root).unwrap_or_else(|| {
+            panic!(
+                "the trace must carry the hook that did not fire:\n{}",
+                root.render_box_drawing()
+            )
+        });
+        assert_eq!(node.name, "wet_motiveringsplicht:3");
+        assert_eq!(
+            node.message.as_deref(),
+            Some(
+                "Not applied: hook wet_motiveringsplicht article 3 would have applied to \
+                 hook point post_actions on TEST_BESCHIKKING at stage BESLUIT, but the \
+                 version of wet_motiveringsplicht in force on this date (valid_from 2024-01-01) has no article 3"
+            )
+        );
+
+        // Once the version carrying the article is in force, the hook fires.
+        let after = service
+            .evaluate_law_output("wet_beschikking", "bedrag", BTreeMap::new(), "2027-06-01")
+            .unwrap();
+        assert_eq!(
+            after.outputs.get("motivering"),
+            Some(&Value::String("gemotiveerd".to_string()))
+        );
+        assert!(after.declarations_not_in_force.is_empty());
+    }
+
+    /// After a renumbering the hook exists on this date under another number.
+    /// It still does not fire (the undated index misses it, a separate
+    /// question), but the reason names the article that carries it, so the skip
+    /// does not pass for a safeguard that does not exist yet. What counts is a
+    /// hook that would fire on this decision by the rules `find_hooks` applies
+    /// (an absent stage is BESLUIT), and not an article the index offered
+    /// itself, which was tried on its own and fired.
+    #[test]
+    fn test_a_renumbered_hook_is_named_in_the_reason() {
+        let besluit = r#"
+$id: wet_beschikking
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het bestuursorgaan stelt het bedrag vast
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TEST_BESCHIKKING
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 100
+"#;
+        let hook = |number: &str, hook_point: &str, filter: &str| {
+            format!(
+                r#"
+  - number: '{number}'
+    text: Een beschikking wordt gemotiveerd
+    machine_readable:
+      hooks:
+        - hook_point: {hook_point}
+          applies_to:
+            {filter}
+      execution:
+        output:
+          - name: motivering_{number}
+            type: string
+        actions:
+          - output: motivering_{number}
+            value: "gemotiveerd"
+"#
+            )
+        };
+        let header = |valid_from: &str| {
+            format!(
+                "$id: wet_motiveringsplicht\nregulatory_layer: WET\n\
+                 publication_date: '{valid_from}'\nvalid_from: '{valid_from}'\narticles:"
+            )
+        };
+        let besluit_filter = "legal_character: TEST_BESCHIKKING\n            stage: BESLUIT";
+        let oud = [
+            header("2024-01-01"),
+            // Offered by the index itself, and fires: no renumbering.
+            hook("4", "post_actions", besluit_filter),
+            // Stage left out, which means BESLUIT: this one would fire here.
+            hook("5", "post_actions", "legal_character: TEST_BESCHIKKING"),
+            hook("6", "pre_actions", besluit_filter),
+            hook(
+                "7",
+                "post_actions",
+                "legal_character: TEST_BESCHIKKING\n            stage: BEKENDMAKING",
+            ),
+            hook(
+                "8",
+                "post_actions",
+                "legal_character: ANDERE_BESCHIKKING\n            stage: BESLUIT",
+            ),
+            hook(
+                "9",
+                "post_actions",
+                "legal_character: TEST_BESCHIKKING\n            decision_type: AFWIJZING",
+            ),
+        ]
+        .concat();
+        let nieuw = [
+            header("2027-01-01"),
+            hook("3", "post_actions", besluit_filter),
+            hook("4", "post_actions", besluit_filter),
+        ]
+        .concat();
+        let mut service = LawExecutionService::new();
+        service.load_law(besluit).unwrap();
+        service.load_law(&oud).unwrap();
+        service.load_law(&nieuw).unwrap();
+
+        let result = service
+            .evaluate_law_output("wet_beschikking", "bedrag", BTreeMap::new(), "2025-06-01")
+            .unwrap();
+        assert!(!result.outputs.contains_key("motivering_3"));
+        assert_eq!(
+            result.outputs.get("motivering_4"),
+            Some(&Value::String("gemotiveerd".to_string())),
+            "the article both versions carry fires as before"
+        );
+        assert_eq!(
+            result
+                .declarations_not_in_force
+                .iter()
+                .map(|n| (n.article.as_str(), n.reason.as_str()))
+                .collect::<Vec<_>>(),
+            vec![(
+                "3",
+                "the version of wet_motiveringsplicht in force on this date (valid_from \
+                 2024-01-01) has no article 3; article 5 of that version declares a hook \
+                 that fires at the same point on this decision"
+            )]
+        );
+    }
+
+    /// The regeling fills the open term in both versions, but the newest one
+    /// renumbered the article. The implements index is built from the newest
+    /// version, so on an earlier date it points at an article that version does
+    /// not have and the term falls through to its default. That outcome is
+    /// unchanged (applying the renumbered article is a separate question); the
+    /// skip used to be a log line, and now stands in the record naming the
+    /// article that carries the filling on this date.
+    #[test]
+    fn test_an_implementation_whose_article_is_missing_on_the_date_is_recorded() {
+        let wet = r#"
+$id: wet_met_open_term
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '2'
+    text: Bij ministeriele regeling kan een afwijkende afstand worden vastgesteld
+    machine_readable:
+      open_terms:
+        - id: afwijkende_afstand
+          type: number
+          required: false
+          delegated_to: minister
+          delegation_type: MINISTERIELE_REGELING
+      execution:
+        output:
+          - name: afstand
+            type: number
+        actions:
+          - output: afstand
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: NOT_NULL
+                    subject: $afwijkende_afstand
+                  then: $afwijkende_afstand
+              default: 200
+"#;
+        // Only an article that fills exactly this open term of exactly this
+        // article counts as the renumbered filling; the others are decoys.
+        let decoys = r#"
+  - number: '5'
+    text: Andere wet
+    machine_readable:
+      implements:
+        - law: andere_wet
+          article: '2'
+          open_term: afwijkende_afstand
+  - number: '6'
+    text: Ander artikel
+    machine_readable:
+      implements:
+        - law: wet_met_open_term
+          article: '3'
+          open_term: afwijkende_afstand
+  - number: '7'
+    text: Andere open term
+    machine_readable:
+      implements:
+        - law: wet_met_open_term
+          article: '2'
+          open_term: andere_term
+  - number: '8'
+    text: Geen machine_readable
+"#;
+        let regeling = |valid_from: &str, number: &str, extra: &str| {
+            format!(
+                r#"
+$id: regeling_afstand
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '{valid_from}'
+valid_from: '{valid_from}'
+articles:
+  - number: '{number}'
+    text: De afwijkende afstand bedraagt 50
+    machine_readable:
+      implements:
+        - law: wet_met_open_term
+          article: '2'
+          open_term: afwijkende_afstand
+      execution:
+        output:
+          - name: afwijkende_afstand
+            type: number
+        actions:
+          - output: afwijkende_afstand
+            value: 50
+{extra}"#
+            )
+        };
+        let mut service = LawExecutionService::new();
+        service.load_law(wet).unwrap();
+        service
+            .load_law(&regeling("2025-01-01", "4", decoys))
+            .unwrap();
+        service.load_law(&regeling("2027-01-01", "1", "")).unwrap();
+        // Another regeling, scoped to a gemeente this execution is not about,
+        // fills the same term under the renumbered article's number. It is
+        // offered by the index but is another law, so it does not hide
+        // article 4 of regeling_afstand from the reason.
+        service
+            .load_law(
+                r#"
+$id: regeling_elders
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+gemeente_code: GM0363
+articles:
+  - number: '4'
+    text: De afwijkende afstand bedraagt 75
+    machine_readable:
+      implements:
+        - law: wet_met_open_term
+          article: '2'
+          open_term: afwijkende_afstand
+      execution:
+        output:
+          - name: afwijkende_afstand
+            type: number
+        actions:
+          - output: afwijkende_afstand
+            value: 75
+"#,
+            )
+            .unwrap();
+
+        let before = service
+            .evaluate_law_output(
+                "wet_met_open_term",
+                "afstand",
+                BTreeMap::new(),
+                "2025-06-01",
+            )
+            .unwrap();
+        assert_eq!(
+            before.outputs.get("afstand"),
+            Some(&Value::Int(200)),
+            "the outcome is unchanged: the indexed article is not in this version"
+        );
+        assert_eq!(
+            before.declarations_not_in_force,
+            vec![DeclarationNotInForce {
+                kind: DeclarationKind::Implementation,
+                law_id: "regeling_afstand".to_string(),
+                article: "1".to_string(),
+                subject: "open term 'afwijkende_afstand' of wet_met_open_term article 2"
+                    .to_string(),
+                reason:
+                    "the version of regeling_afstand in force on this date (valid_from 2025-01-01) \
+                         has no article 1; article 4 of that version declares an \
+                         implementation of the same open term"
+                        .to_string(),
+            }],
+            "the skipped filling must be recorded, naming the renumbered article"
+        );
+
+        let receipt =
+            service.build_receipt_with_outputs(&before, &BTreeMap::new(), "2025-06-01", &[]);
+        assert_eq!(
+            receipt.results.declarations_not_in_force,
+            before.declarations_not_in_force
+        );
+
+        let traced = service
+            .evaluate_law_output_with_trace(
+                "wet_met_open_term",
+                "afstand",
+                BTreeMap::new(),
+                "2025-06-01",
+            )
+            .unwrap();
+        let root = traced.trace.as_ref().expect("a traced run has a trace");
+        fn find_named<'a>(
+            node: &'a crate::trace::PathNode,
+            name: &str,
+        ) -> Option<&'a crate::trace::PathNode> {
+            if node.node_type == PathNodeType::OpenTermResolution && node.name == name {
+                return Some(node);
+            }
+            node.children.iter().find_map(|c| find_named(c, name))
+        }
+        let node = find_named(root, "regeling_afstand:1").unwrap_or_else(|| {
+            panic!(
+                "the trace must carry the skipped filling:\n{}",
+                root.render_box_drawing()
+            )
+        });
+        assert_eq!(
+            node.message.as_deref(),
+            Some(before.declarations_not_in_force[0].message().as_str())
+        );
+
+        let after = service
+            .evaluate_law_output(
+                "wet_met_open_term",
+                "afstand",
+                BTreeMap::new(),
+                "2027-06-01",
             )
             .unwrap();
         assert_eq!(after.outputs.get("afstand"), Some(&Value::Int(50)));

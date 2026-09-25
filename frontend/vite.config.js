@@ -95,7 +95,7 @@ export default defineConfig({
           groups: [
             {
               name: 'echarts',
-              test: /node_modules[\\/](echarts|zrender|vue-echarts)[\\/]/,
+              test: /node_modules[\\/](echarts|zrender|vue-echarts|tslib)[\\/]/,
               includeDependenciesRecursively: false,
             },
           ],

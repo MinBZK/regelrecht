@@ -378,6 +378,13 @@ jobs:
           domain-format: component-deployment-project
           clone-from: regelrecht
           force-clone: false
+          # De standaard van 300 seconden lag midden in de normale duur van
+          # een preview-deploy: geslaagde runs duurden tot 568s, gefaalde
+          # vielen al om na 251s (#1144). Een verlopen wachttijd zegt alleen
+          # dat ZAD trager was dan het venster, de deploy loopt door, maar
+          # de job werd rood en de preview-URL kwam niet in de PR. 900s
+          # blijft binnen de timeout-minutes van de job.
+          task-timeout: '900'
           comment-on-pr: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
           comment-header: '## Preview Deployment'
@@ -398,7 +405,7 @@ jobs:
           echo "'status: superseded' in de output hierboven betekent dat een nieuwere taak"
           echo "voor dit deployment (een nieuwe push, of het opruimen van een gesloten PR)"
           echo "het werk heeft overgenomen. Deze job opnieuw draaien is dan veilig."
-          echo "Iets anders? Zie 'Debugging deploy-preview failures' in CLAUDE.md."
+          echo "Iets anders? Zie 'Debugging a failed preview deploy' in docs/src/content/docs/operations/deployment.md."
 
   # -- Deploy production --
   deploy-production:
@@ -562,7 +569,7 @@ jobs:
           echo "'status: superseded' in de output hierboven betekent dat een nieuwere taak"
           echo "voor dit deployment (een volgende merge naar main) het werk heeft overgenomen."
           echo "Deze job opnieuw draaien is dan veilig."
-          echo "Iets anders? Zie 'Debugging deploy-preview failures' in CLAUDE.md."
+          echo "Iets anders? Zie 'Debugging a failed preview deploy' in docs/src/content/docs/operations/deployment.md."
 
   # -- Cleanup preview --
   cleanup-preview:

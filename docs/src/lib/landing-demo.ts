@@ -12,22 +12,13 @@
  * that had to be kept saying the same thing, on a page whose whole argument is
  * that one law should have one execution.
  */
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-
-// Everything read here lives outside the docs project, in the corpus. Deriving
-// the root from `import.meta.url` does not survive the build: this module is
-// bundled, so at build time it no longer sits where its source does.
-// `process.cwd()` is the docs project in `astro dev`, in `astro build` and in
-// the image, and the repository is one level above it.
-const repo = join(process.cwd(), '..');
-
-/** A file elsewhere in the repository, chiefly the corpus. */
-const read = (...parts: string[]) => readFileSync(join(repo, ...parts), 'utf8');
+import { read } from './corpus';
+// The feature file has an owner of its own, because the runner on
+// /concepts/scenarios wants a different cut of the same scenario. See
+// ~/lib/scenario-demo.ts.
+import { scenarioDemo } from './scenario-demo';
 
 const LAW = 'corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml';
-const SCENARIO =
-  'corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/scenarios/eligibility.feature';
 const ANNOTATIONS = 'corpus/annotations/wet_op_de_zorgtoeslag/annotations.yaml';
 
 /**
@@ -70,7 +61,7 @@ function articleThreeLidOne(yaml: string): string {
  * file verbatim. Indentation is normalized so it reads on its own.
  *
  * The whole block rather than just the action that carries the rule: without
- * the declarations around it, `$vermogen` and `$vermogensgrens_alleenstaand`
+ * the declarations around it, `$vermogen` and `$vermogensgrens_verzekerde`
  * arrive out of nowhere. With them, the panel shows the two things that make
  * this an interesting comparison -- the amounts from the statute appear
  * literally (141.896 euro as 14189600 eurocent), and the capital being tested
@@ -100,33 +91,6 @@ function computationYaml(yaml: string): string {
       .join('\n')
       .trimEnd()
   );
-}
-
-/**
- * The scenario that CI runs, from `Scenario:` to the end of its Then block.
- *
- * The taper one, because it is the scenario the memorandum panel above it
- * quotes: an income above the threshold, where the allowance runs down. A
- * scenario below the threshold produces a flat amount and shows nothing of the
- * rule the legislature works out.
- */
-function scenario(feature: string): string {
-  const start = feature.indexOf('  Scenario: Inkomen boven het drempelinkomen');
-  if (start === -1) throw new Error(`${SCENARIO}: the demo scenario is missing`);
-  // Stop at the blank line that ends this scenario's block. Looking for the
-  // next `Scenario:` is not enough: the one after this is introduced by a
-  // comment, so the search ran past it and the panel showed two scenarios
-  // where the text promises one.
-  const lines = feature.slice(start).split('\n');
-  const body: string[] = [];
-  for (const line of lines) {
-    if (body.length > 0 && line.trim() === '') break;
-    body.push(line);
-  }
-  return body
-    .map((line) => line.slice(2))
-    .join('\n')
-    .trimEnd();
 }
 
 /**
@@ -200,8 +164,8 @@ export const demo = {
   // under that name in the official record.
   memorandumCitation: memorandumFrom.citation,
   memorandumUrl: memorandumFrom.url,
-  gherkin: scenario(read(SCENARIO)),
-  scenarioPath: SCENARIO,
+  gherkin: scenarioDemo.scenario,
+  scenarioPath: scenarioDemo.path,
   lawPath: LAW,
   lawUrl: 'https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel3',
 };

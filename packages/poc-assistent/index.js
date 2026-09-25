@@ -36,6 +36,7 @@ import os from 'os';
 import path from 'path';
 import { spawn, execFile } from 'child_process';
 import { fileURLToPath } from 'url';
+import { maakKanaal } from './kanaal.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3600;
@@ -166,6 +167,20 @@ const gesprekken = new Map();
 const GESPREK_MAX_MS = 30 * 60 * 1000;
 
 /**
+ * Hoe lang een gesprek doorloopt terwijl er niemand naar kijkt.
+ *
+ * Dit vervangt de oude regel dat een weggevallen verbinding het CLI-proces
+ * meteen doodde. Die regel bestond met reden: een weggeklikt tabblad liet
+ * anders zijn proces staan, en na vier daarvan zat de grens vol. Maar hij
+ * maakte het onmogelijk om naar een ander tabblad te lopen terwijl de
+ * assistent rekent, en een doel-run mag 120 beurten doen.
+ *
+ * Dus: wie wegloopt houdt zijn gesprek, maar niet eindeloos. Komt er binnen
+ * dit venster niemand terug kijken, dan gaat het proces alsnog weg.
+ */
+const LOSGEKOPPELD_MAX_MS = Number(process.env.POC_LOSGEKOPPELD_MAX_MS ?? 5 * 60 * 1000);
+
+/**
  * Hoeveel gesprekken er tegelijk mogen lopen. Elk gesprek is een CLI-proces
  * op hetzelfde abonnement; zonder grens legt één drukke middag de assistent
  * voor iedereen plat.
@@ -175,8 +190,15 @@ const MAX_GESPREKKEN = Number(process.env.POC_MAX_GESPREKKEN ?? 4);
 setInterval(() => {
   const nu = Date.now();
   for (const [id, g] of gesprekken) {
-    if (nu - g.begonnen > GESPREK_MAX_MS) {
+    const teOud = nu - g.begonnen > GESPREK_MAX_MS;
+    // Losgekoppeld: de browser kijkt niet meer mee. Even mag dat (je loopt
+    // naar een ander tabblad), maar niet tot de halfuursgrens, want dan houdt
+    // een weggeklikt tabblad alsnog een plek bezet.
+    const teLangAlleen = g.losgekoppeldSinds !== null
+      && nu - g.losgekoppeldSinds > LOSGEKOPPELD_MAX_MS;
+    if (teOud || teLangAlleen) {
       try { g.child.kill('SIGTERM'); } catch { /* al weg */ }
+      try { g.ruimOp?.(); } catch { /* best effort */ }
       gesprekken.delete(id);
     }
   }
@@ -222,12 +244,9 @@ async function handleAssistent(req, res) {
     return;
   }
 
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    Connection: 'keep-alive',
-  });
-  const send = (event) => res.write(`data: ${JSON.stringify(event)}\n\n`);
+  const kanaal = maakKanaal();
+  kanaal.koppel(res);
+  const send = kanaal.send;
 
   const sessieDir = maakSessieMap();
   const beginstand = new Map();
@@ -403,9 +422,19 @@ async function handleAssistent(req, res) {
   // De opdracht is nu het eerste bericht in plaats van een argument.
   stuurNaarAssistent(opdracht);
 
-  // Het gesprek staat in het register zolang de stream openstaat, zodat
-  // /bericht en /antwoord erbij kunnen.
-  gesprekken.set(gesprekId, { child, sessieDir, stuurNaarAssistent, send, begonnen: Date.now() });
+  // Het gesprek staat in het register zolang het loopt, ook als er even
+  // niemand naar kijkt: /bericht, /antwoord en /stream moeten erbij kunnen.
+  gesprekken.set(gesprekId, {
+    child,
+    sessieDir,
+    stuurNaarAssistent,
+    send,
+    kanaal,
+    begonnen: Date.now(),
+    // Sinds wanneer kijkt er niemand mee; null zolang er wel iemand is.
+    losgekoppeldSinds: null,
+    ruimOp: () => ruimSessieOp(sessieDir),
+  });
 
   let afgerond = false;
   const rond_af = (foutmelding) => {
@@ -440,23 +469,30 @@ async function handleAssistent(req, res) {
     }
     gesprekken.delete(gesprekId);
     ruimSessieOp(sessieDir);
-    res.end();
+    kanaal.sluit();
   };
 
-  // Kill het childproces als de browser de SSE-verbinding sluit.
+  // De browser sluit de SSE-verbinding: het gesprek loopt door, maar er kijkt
+  // even niemand mee.
+  //
+  // Dit doodde vroeger het CLI-proces. Dat was er met reden, want een
+  // weggeklikt tabblad liet anders zijn proces staan en na vier daarvan zat de
+  // grens vol. Maar het maakte ook onmogelijk om naar een ander tabblad te
+  // lopen terwijl de assistent rekent, en een doel-run mag 120 beurten doen.
+  // De bescherming zit nu in `LOSGEKOPPELD_MAX_MS`: wie wegloopt houdt zijn
+  // gesprek, maar komt er niemand terug kijken, dan wordt het alsnog opgeruimd.
   //
   // Op `res` en niet op `req`: de request-body is hierboven al helemaal
   // uitgelezen (`for await (const chunk of req)`), dus die stream is dan al
   // geëindigd en zijn 'close' is allang geweest voordat we hem hier zouden
-  // kunnen aanhaken. Het gevolg was dat een weggeklikt tabblad zijn CLI-proces
-  // liet staan: na vier van die tabbladen zat de grens vol en kreeg iedereen
-  // "er lopen al 4 gesprekken", tot de opruimer na een halfuur langskwam.
-  // `res` blijft wel open zolang de SSE-stream loopt.
+  // kunnen aanhaken. `res` blijft wel open zolang de SSE-stream loopt.
   res.on('close', () => {
-    if (!afgerond) {
-      child.kill('SIGTERM');
-      rond_af(null);
-    }
+    if (afgerond) return;
+    // Alleen loslaten als deze verbinding nog de luisteraar is; iemand kan
+    // ondertussen via /stream opnieuw hebben aangehaakt.
+    if (!kanaal.ontkoppel(res)) return;
+    const g = gesprekken.get(gesprekId);
+    if (g) g.losgekoppeldSinds = Date.now();
   });
 
   let stdoutBuf = '';
@@ -586,6 +622,34 @@ function verwerkStreamRegel(line, send, voortgang) {
  * vraag_beleidsmaker-tool op staat te wachten. Niet via stdin, want de
  * assistent staat op dat moment stil in een toolaanroep en leest niets.
  */
+/**
+ * Haak opnieuw aan op een lopend gesprek.
+ *
+ * Voor wie terugkomt: een ander tabblad in de app, of een ververste pagina.
+ * Eerst wat er gemist is, daarna live verder. Loopt het gesprek niet meer, dan
+ * is 404 het eerlijke antwoord; de app weet dan dat er niets meer te volgen is
+ * in plaats van te wachten op een stream die nooit iets stuurt.
+ */
+function handleGesprekStream(req, res) {
+  const [, , , id] = (req.url ?? '').split('/');
+  const gesprek = gesprekken.get(id);
+  if (!gesprek) {
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ fout: 'Dit gesprek loopt niet (meer).' }));
+    return;
+  }
+
+  const deze = gesprek.kanaal.koppel(res);
+  gesprek.losgekoppeldSinds = null;
+  // Zodat de app weet waar hij weer op zit, net als bij een verse run.
+  gesprek.kanaal.send({ type: 'gesprek', gesprek_id: id });
+
+  res.on('close', () => {
+    if (!gesprek.kanaal.ontkoppel(deze)) return;
+    gesprek.losgekoppeldSinds = Date.now();
+  });
+}
+
 async function handleGesprekInvoer(req, res) {
   const [, , , id, soort] = (req.url ?? '').split('/');
   const antwoord = (status, obj) => {
@@ -766,6 +830,12 @@ const server = http.createServer((req, res) => {
   // Beide gaan naar hetzelfde CLI-proces: een bericht via stdin (dat pakt hij
   // bij zijn volgende beurt op, ook als hij nu nog bezig is), een antwoord via
   // een bestand waar de wachtende tool op staat te kijken.
+  // Opnieuw aanhaken op een lopend gesprek: een ander tabblad in de app, of
+  // een ververste pagina. GET, want er gaat niets heen; alleen terug.
+  if (req.method === 'GET' && /^\/api\/gesprek\/[^/]+\/stream$/.test(req.url ?? '')) {
+    handleGesprekStream(req, res);
+    return;
+  }
   if (req.method === 'POST' && /^\/api\/gesprek\/[^/]+\/(bericht|antwoord)$/.test(req.url ?? '')) {
     handleGesprekInvoer(req, res).catch((e) => {
       console.error(e);

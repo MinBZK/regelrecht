@@ -33,7 +33,7 @@ path = "src/bin/law_check.rs"
 name = "law-source"
 path = "src/bin/law_source.rs"
 
-# Tilt een wetsbestand naar schema v0.7.0 en valideert het resultaat. Een
+# Tilt een wetsbestand naar schema v0.7.1 en valideert het resultaat. Een
 # verplicht veld dat de oude vorm niet draagt wordt gemeld, niet ingevuld.
 [[bin]]
 name = "law-migrate"
@@ -89,6 +89,8 @@ test-utils = ["dep:testcontainers", "dep:testcontainers-modules"]
 regelrecht-pipeline = { path = ".", features = ["test-utils"] }
 pretty_assertions.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "process", "time", "fs"] }
+# Lokale SRU-server voor de statuspoort in api/bwb_search.rs.
+wiremock.workspace = true
 
 [lints]
 workspace = true

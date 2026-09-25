@@ -5,9 +5,9 @@ import * as yaml from 'js-yaml';
 import { dateInputFor, phraseOutcome, phrasingFor } from './outcomePhrasing.js';
 
 /**
- * A tile that says "U voldoet aan de voorwaarden" over a bare number tells the
+ * A tile that says "Je voldoet aan de voorwaarden" over a bare number tells the
  * citizen nothing they did not already have to work out. The phrasing turns it
- * into a sentence addressed to them ("Uw huurtoeslag is waarschijnlijk € 302,96
+ * into a sentence addressed to them ("Je huurtoeslag is waarschijnlijk € 302,96
  * per jaar"). Everything below guards the ways that sentence can come out wrong
  * on screen: a placeholder that leaks, a lead without a number, a law whose
  * wording nobody wrote yet.
@@ -18,15 +18,15 @@ const config = yaml.load(fs.readFileSync(path.join(root, 'corpus/demo/demo-confi
 
 /** An amount law: a lead, a unit, and a sentence for when nothing is granted. */
 const huurtoeslag = {
-  lead: 'Uw huurtoeslag is waarschijnlijk',
+  lead: 'Je huurtoeslag is waarschijnlijk',
   unit: 'per jaar',
-  none: 'U krijgt waarschijnlijk geen huurtoeslag.',
+  none: 'Je krijgt waarschijnlijk geen huurtoeslag.',
 };
 
 /** A yes/no law: a verdict instead of an amount, and a date in the lead. */
 const kieswet = {
-  lead: 'Voor de verkiezingen van {date} heeft u',
-  lead_no_date: 'Voor de verkiezingen heeft u',
+  lead: 'Voor de verkiezingen van {date} heb je',
+  lead_no_date: 'Voor de verkiezingen heb je',
   date_input: 'verkiezingsdatum',
   yes: 'STEMRECHT',
   no: 'GEEN stemrecht',
@@ -34,7 +34,7 @@ const kieswet = {
 
 describe('phrasingFor', () => {
   it('finds a law by service and path, as the config keys it', () => {
-    expect(phrasingFor(config, 'TOESLAGEN', 'wet_op_de_huurtoeslag').lead).toBe('Uw huurtoeslag is waarschijnlijk');
+    expect(phrasingFor(config, 'TOESLAGEN', 'wet_op_de_huurtoeslag').lead).toBe('Je huurtoeslag is waarschijnlijk');
     // A nested path is part of the key, so two bijstand variants stay distinct.
     expect(phrasingFor(config, 'SZW', 'participatiewet/bijstand').unit).toBe('per maand');
   });
@@ -48,7 +48,7 @@ describe('phrasingFor', () => {
 describe('an amount law', () => {
   it('wraps the amount in a sentence with its unit', () => {
     expect(phraseOutcome(huurtoeslag, { met: true, value: '€ 302,96' })).toEqual({
-      lead: 'Uw huurtoeslag is waarschijnlijk',
+      lead: 'Je huurtoeslag is waarschijnlijk',
       headline: '€ 302,96',
       unit: 'per jaar',
     });
@@ -59,7 +59,7 @@ describe('an amount law', () => {
     // means for them, which is that they get nothing.
     expect(phraseOutcome(huurtoeslag, { met: false, value: '€ 302,96' })).toEqual({
       lead: '',
-      headline: 'U krijgt waarschijnlijk geen huurtoeslag.',
+      headline: 'Je krijgt waarschijnlijk geen huurtoeslag.',
       unit: null,
     });
   });
@@ -67,17 +67,17 @@ describe('an amount law', () => {
   it('does the same when the law granted nothing at all', () => {
     // A met law with no amount would otherwise put a lead over an empty space.
     expect(phraseOutcome(huurtoeslag, { met: true, value: null }).headline).toBe(
-      'U krijgt waarschijnlijk geen huurtoeslag.',
+      'Je krijgt waarschijnlijk geen huurtoeslag.',
     );
     expect(phraseOutcome(huurtoeslag, { met: true, value: undefined }).headline).toBe(
-      'U krijgt waarschijnlijk geen huurtoeslag.',
+      'Je krijgt waarschijnlijk geen huurtoeslag.',
     );
   });
 
   it('falls back rather than showing half a sentence', () => {
     // Wording that is missing the piece it needs must not reach the screen; the
     // tile keeps its general rendering instead.
-    expect(phraseOutcome({ lead: 'Uw huurtoeslag is waarschijnlijk' }, { met: false, value: null })).toBeNull();
+    expect(phraseOutcome({ lead: 'Je huurtoeslag is waarschijnlijk' }, { met: false, value: null })).toBeNull();
     expect(phraseOutcome({ unit: 'per jaar' }, { met: true, value: '€ 302,96' })).toBeNull();
   });
 });
@@ -85,7 +85,7 @@ describe('an amount law', () => {
 describe('a yes/no law', () => {
   it('states the verdict, in both directions, with no unit after it', () => {
     expect(phraseOutcome(kieswet, { met: true, isYesNo: true, value: 'Ja', date: '29 oktober 2025' })).toEqual({
-      lead: 'Voor de verkiezingen van 29 oktober 2025 heeft u',
+      lead: 'Voor de verkiezingen van 29 oktober 2025 heb je',
       headline: 'STEMRECHT',
       unit: null,
     });
@@ -108,27 +108,27 @@ describe('a yes/no law', () => {
 
   it('falls back to the lead written for a missing date', () => {
     // The date comes out of the evaluation and can be absent. Dropping only the
-    // placeholder would strand the preposition ("Voor de verkiezingen van heeft
-    // u"), so the whole date clause goes: `lead_no_date` says what is left.
+    // placeholder would strand the preposition ("Voor de verkiezingen van heb
+    // je"), so the whole date clause goes: `lead_no_date` says what is left.
     // Only whoever wrote the sentence knows which words belonged to the date.
     for (const outcome of [{ met: true, isYesNo: true }, { met: true, isYesNo: true, date: null }]) {
-      expect(phraseOutcome(kieswet, outcome).lead).toBe('Voor de verkiezingen heeft u');
+      expect(phraseOutcome(kieswet, outcome).lead).toBe('Voor de verkiezingen heb je');
     }
   });
 
   it('drops the placeholder when no lead_no_date is written, leaking no literal {date}', () => {
     // A lead that ends on the date needs no second wording; whatever happens,
     // a literal "{date}" must never reach the screen.
-    const noFallback = { lead: 'U heeft op {date}', 'yes': 'STEMRECHT', 'no': 'GEEN stemrecht' };
+    const noFallback = { lead: 'Je hebt op {date}', 'yes': 'STEMRECHT', 'no': 'GEEN stemrecht' };
     const lead = phraseOutcome(noFallback, { met: true, isYesNo: true }).lead;
-    expect(lead).toBe('U heeft op');
+    expect(lead).toBe('Je hebt op');
     expect(lead).not.toContain('{date}');
   });
 
   it('leaves a lead without a placeholder untouched', () => {
     const kinderbijslag = phrasingFor(config, 'SVB', 'algemene_kinderbijslagwet');
     expect(phraseOutcome(kinderbijslag, { met: true, isYesNo: true })).toEqual({
-      lead: 'U heeft',
+      lead: 'Je hebt',
       headline: 'RECHT OP KINDERBIJSLAG',
       unit: null,
     });

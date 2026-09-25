@@ -45,25 +45,49 @@ export function useScenarios(lawId, trajectRef = ref(null)) {
   // and EditorApp's "Bekijk op GitHub" badge stays in sync regardless of
   // which pane the user pressed Save in.
 
-  async function fetchScenarios() {
-    if (!lawId.value) return;
+  // Sequence number of the most recent fetchScenarios call. Only that call may
+  // write `scenarios`, `error` or `loading`: a slow response for law A must not
+  // paint law B's screen, and must not clear `loading` while B is still on its
+  // way. Comparing the scope is not enough, because switching A, B, A gives the
+  // stale and the fresh request for A the same scope.
+  let latestFetch = 0;
 
-    loading.value = true;
+  async function fetchScenarios() {
+    const fetchId = ++latestFetch;
+    const isLatest = () => fetchId === latestFetch;
+
+    // Clear before the early return, not after: navigating from a failed law
+    // to "no law selected" would otherwise leave the banner up.
     error.value = null;
     // Drop any stale save error from a previously selected law so the
     // banner does not linger after navigating to a different law.
     saveError.value = null;
+    if (!lawId.value) {
+      // A request for the previous law may still be in flight; it no longer
+      // counts, so nothing is loading any more.
+      loading.value = false;
+      return;
+    }
+
+    loading.value = true;
 
     try {
-      const res = await fetch(scenariosListUrl(trajectRef.value, lawId.value));
-      if (!res.ok) {
-        // Deliberately raw fetch + silent branch: a law without scenarios
-        // is normal, not an error - every non-ok status maps to an empty
-        // list without surfacing anything.
-        scenarios.value = [];
-        return;
-      }
-      scenarios.value = await res.json();
+      // A law without scenarios is already a 200 with `[]` (the backend's
+      // `list_scenarios_in_scope` returns that for a missing directory), so no
+      // status needs to be read as "empty" here. Every non-ok status is a real
+      // failure: 404 means the law is not in this scope at all, 500 a broken
+      // traject scan, 502 an unreachable corpus backend. They used to become
+      // the same empty list, so "we could not read the scenarios" and "this
+      // law has none" were one screen.
+      const res = await apiFetch(scenariosListUrl(trajectRef.value, lawId.value), {
+        errorMessage: (status) =>
+          status === 404
+            ? `Deze wet is niet gevonden in deze scope (${status})`
+            : `Scenario's konden niet worden geladen: ${status}`,
+      });
+      const listed = await res.json();
+      if (!isLatest()) return;
+      scenarios.value = listed;
 
       // Auto-select the first scenario that explicitly targets this law;
       // then prefer files whose targets are unknown (no parseable
@@ -78,10 +102,11 @@ export function useScenarios(lawId, trajectRef = ref(null)) {
         await selectScenario(preferred.filename);
       }
     } catch (e) {
+      if (!isLatest()) return;
       error.value = e;
       scenarios.value = [];
     } finally {
-      loading.value = false;
+      if (isLatest()) loading.value = false;
     }
   }
 
