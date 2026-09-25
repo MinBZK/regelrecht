@@ -210,7 +210,12 @@ impl Kroniek {
         kronieken: &[&str],
         controle: impl FnOnce(&Gram, &[&Gram]) -> Result<(), E>,
     ) -> Result<Result<Gram, E>, String> {
-        self.schrijf_mits(gram.clone(), kronieken, None::<fn() -> _>, controle)
+        self.schrijf_mits(
+            gram.clone(),
+            kronieken,
+            None::<(fn() -> _, fn(String) -> E)>,
+            controle,
+        )
     }
 
     /// Leg een gram vast zoals [`Kroniek::voeg_toe_mits`], en zet eerst,
@@ -218,22 +223,27 @@ impl Kroniek {
     /// [`Gram::stempel`]). Zo is de volgorde van de regels in het bestand die
     /// van hun `vastgelegd_op`, ook als twee verzoeken tegelijk komen. De
     /// controle ziet het gestempelde gram. Antwoord: het gram zoals het
-    /// vastligt.
+    /// vastligt. Weigert het stempel het gram (een gebonden `op_moment` na
+    /// het vastleggen), dan maakt `weiger` daar de weigering van.
     pub fn leg_vast_mits<E>(
         &self,
         gram: Gram,
         kronieken: &[&str],
         klok: impl FnOnce() -> DateTime<FixedOffset>,
+        weiger: impl FnOnce(String) -> E,
         controle: impl FnOnce(&Gram, &[&Gram]) -> Result<(), E>,
     ) -> Result<Result<Gram, E>, String> {
-        self.schrijf_mits(gram, kronieken, Some(klok), controle)
+        self.schrijf_mits(gram, kronieken, Some((klok, weiger)), controle)
     }
 
     fn schrijf_mits<E>(
         &self,
         mut gram: Gram,
         kronieken: &[&str],
-        klok: Option<impl FnOnce() -> DateTime<FixedOffset>>,
+        klok: Option<(
+            impl FnOnce() -> DateTime<FixedOffset>,
+            impl FnOnce(String) -> E,
+        )>,
         controle: impl FnOnce(&Gram, &[&Gram]) -> Result<(), E>,
     ) -> Result<Result<Gram, E>, String> {
         let pad = self.bestand(&gram.chronicle)?;
@@ -256,9 +266,11 @@ impl Kroniek {
             let laatst = stapel.and_then(|s| s.grammen.last()).cloned();
             (bestaand, lengte, laatst)
         };
-        if let Some(klok) = klok {
+        if let Some((klok, weiger)) = klok {
             let niet_voor = laatst.map(|v| v.gram.vastgelegd()).transpose()?;
-            gram.stempel(klok(), niet_voor)?;
+            if let Err(f) = gram.stempel(klok(), niet_voor) {
+                return Ok(Err(weiger(f)));
+            }
         }
         let regel = als_regel(&gram)?;
         let zicht: Vec<&Gram> = bestaand.iter().map(|v| &v.gram).collect();
@@ -658,7 +670,7 @@ mod tests {
                         DateTime::parse_from_rfc3339("2025-03-12T10:00:00+01:00").unwrap()
                             + chrono::Duration::seconds(s)
                     };
-                    k.leg_vast_mits(g, &[], klok, |_, _| Ok::<(), ()>(()))
+                    k.leg_vast_mits(g, &[], klok, |_| (), |_, _| Ok::<(), ()>(()))
                         .unwrap()
                         .unwrap()
                 })
@@ -697,7 +709,8 @@ mod tests {
                 gram(Z1),
                 &[],
                 || t("2025-03-12T10:00:00+01:00"),
-                |_, _| Ok::<(), ()>(()),
+                |f| f,
+                |_, _| Ok::<(), String>(()),
             )
             .unwrap()
             .unwrap();
@@ -706,7 +719,8 @@ mod tests {
                 gram(Z1),
                 &[],
                 || t("2025-03-12T09:00:00+01:00"),
-                |_, _| Ok::<(), ()>(()),
+                |f| f,
+                |_, _| Ok::<(), String>(()),
             )
             .unwrap()
             .unwrap();
@@ -719,8 +733,10 @@ mod tests {
                 gebonden,
                 &[],
                 || t("2025-03-12T11:00:00+01:00"),
-                |_, _| Ok::<(), ()>(()),
+                |f| f,
+                |_, _| Ok::<(), String>(()),
             )
+            .unwrap()
             .unwrap_err();
         assert!(f.contains("na het vastleggen"), "{f}");
         assert_eq!(aantal(&k), 2);

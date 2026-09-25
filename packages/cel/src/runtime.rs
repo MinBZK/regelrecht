@@ -127,7 +127,14 @@ impl Runtime {
                     Some(url) => Arc::new(
                         Http::new(url, TIJDSLIMIET)
                             .map_err(|e| met_proces(&id, vec![e]))?
-                            .met_lees_token(lees_token.clone()),
+                            .met_lees_token(lees_token.clone().filter(|_| {
+                                // Alleen een runtime die het token deelt,
+                                // krijgt het: het geeft lezen in deze runtime.
+                                config
+                                    .lees_token_bronnen
+                                    .iter()
+                                    .any(|b| b == url.trim_end_matches('/'))
+                            })),
                     ),
                     None => intern.clone(),
                 })

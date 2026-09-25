@@ -32,14 +32,15 @@
 //!
 //! Het proces concludeert voor het handelt, en weigert niets wat gebeurd is.
 //! Zegt de proef inhoudelijk nee (een toets is onwaar, een haak geeft geen
-//! waarde, de wet kan niet uitrekenen wat een feit doet), dan doet het
+//! waarde), dan doet het
 //! proces de handeling niet uit zichzelf (`te_nemen` is onwaar). Meldt de
 //! behandelaar dat het feit toch gebeurde (`gebeurd: true`), dan legt de cel
 //! het vast, en tonen de lexostatussen de gevolgen: een betaling boven het
 //! bedrag is onverschuldigd betaald, een bekendmaking die niet aan de wet
 //! voldoet laat geen bezwaartermijn lopen. Alleen wat de vorm raakt, houdt
-//! het vastleggen tegen: een formulier dat niet is ingevuld, een vervolg
-//! zonder besluit, een moment in de toekomst of voor de zaak. Een besluit
+//! het vastleggen tegen: een formulier dat niet is ingevuld, een uitkomst
+//! die de wet niet volledig kan uitrekenen (een waarde of een bron mist),
+//! een vervolg zonder besluit, een moment in de toekomst of voor de zaak. Een besluit
 //! neemt het proces zelf; dat wordt niet gemeld.
 //!
 //! Het proces leest de zaak niet: wat het over de zaak weet (welke stages er
@@ -1195,9 +1196,12 @@ pub async fn proef(
         Handelingsoort::Vervolg { besluit, .. } => {
             vervolg(om, h, besluit, zaakkenmerk, zaak, formulier, &mut p)?
         }
+        // Een onvolledige uitkomst (een waarde mist, een bron antwoordde niet)
+        // is geen conclusie over de inhoud: dan ligt er niets vast, ook niet
+        // gemeld, want de invoer en het receipt zouden niet kloppen.
         _ => op_de_zaak(om, h, event, zaakkenmerk, formulier, &mut p)
             .await?
-            .map(Bezwaar::Inhoud),
+            .map(Bezwaar::Vorm),
     };
     let onwaar: Vec<&String> = p
         .toetsen
@@ -1218,12 +1222,12 @@ pub async fn proef(
     });
     let vorm = tijd
         .map(|t| format!("niet te nemen: {t}"))
+        .or((!ontbrekend.is_empty())
+            .then(|| format!("niet te nemen: vul in: {}", ontbrekend.join(", "))))
         .or(match &uitkomst {
             Some(Bezwaar::Vorm(r)) => Some(r.clone()),
             _ => None,
-        })
-        .or((!ontbrekend.is_empty())
-            .then(|| format!("niet te nemen: vul in: {}", ontbrekend.join(", "))));
+        });
     let inhoud = match uitkomst {
         Some(Bezwaar::Inhoud(r)) => Some(r),
         _ => None,

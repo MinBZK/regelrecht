@@ -67,9 +67,9 @@ pub fn cel_router(state: CelState) -> Router {
 fn toegang(state: &CelState, verzoek: &Request, lezen: bool) -> Result<(), Fout> {
     let h = verzoek.headers();
     let runtime = h.get(RUNTIME_TOKEN_HEADER);
-    let lees = h.get(LEES_TOKEN_HEADER).filter(|_| lezen);
+    let lees = h.get(LEES_TOKEN_HEADER);
     if runtime.is_some_and(|t| state.runtime_token.klopt(t.as_bytes()))
-        || lees.is_some_and(|t| {
+        || lees.filter(|_| lezen).is_some_and(|t| {
             state
                 .lees_token
                 .as_ref()
@@ -333,6 +333,7 @@ async fn grammen_route(
             gram,
             &cel.kronieken(),
             || klok(),
+            |f| fout(StatusCode::BAD_REQUEST, f),
             |g, bestaand| toets_zaak(g, bestaand, verwacht),
         )
     })

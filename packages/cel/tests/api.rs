@@ -39,12 +39,13 @@ fn runtime_op(opstelling: &Path, data: &Path) -> Result<Runtime, Vec<String>> {
         data_dir: data.to_path_buf(),
         port: STANDAARD_POORT,
         lees_token: None,
+        lees_token_bronnen: Vec::new(),
     };
     Runtime::laad(&config, klok())
 }
 
 /// Een runtime zoals [`runtime_op`], met een leestoken.
-fn runtime_met_leestoken(opstelling: &Path, data: &Path, token: &str) -> Runtime {
+fn runtime_met_leestoken(opstelling: &Path, data: &Path, token: &str, bronnen: &[&str]) -> Runtime {
     let config = Config {
         cells_path: opstelling.join("cellen"),
         processes_path: Some(opstelling.join("processes")),
@@ -52,6 +53,7 @@ fn runtime_met_leestoken(opstelling: &Path, data: &Path, token: &str) -> Runtime
         data_dir: data.to_path_buf(),
         port: STANDAARD_POORT,
         lees_token: Some(token.to_string()),
+        lees_token_bronnen: bronnen.iter().map(|b| b.to_string()).collect(),
     };
     Runtime::laad(&config, klok()).unwrap()
 }
@@ -831,7 +833,7 @@ async fn synthese_over_http_naar_een_andere_runtime() {
     // leestoken; zonder leest alleen B zelf.
     let token = "gedeeld-leestoken-van-de-test";
     let data_b = tempfile::tempdir().unwrap();
-    let b = runtime_met_leestoken(&fixtures(), data_b.path(), token).router;
+    let b = runtime_met_leestoken(&fixtures(), data_b.path(), token, &[]).router;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let adres = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, b).await });
@@ -840,7 +842,17 @@ async fn synthese_over_http_naar_een_andere_runtime() {
     let aanpassing = met_url(format!("http://{adres}"));
     let opstelling = eigen_opstelling(&[("afnemer", &zo)], &[("afnemer", &aanpassing)]);
     let data_a = tempfile::tempdir().unwrap();
-    let a = runtime_met_leestoken(opstelling.path(), data_a.path(), token);
+    // Zonder B onder de bronnen van het leestoken krijgt B het niet mee.
+    let data_z = tempfile::tempdir().unwrap();
+    let zonder = runtime_met_leestoken(opstelling.path(), data_z.path(), token, &[]);
+    let body = afnemer_toets(&zonder.router, Some("VOORBEELD")).await;
+    assert_ne!(body["uitslag"]["waarde"], json!(true), "{body}");
+    let a = runtime_met_leestoken(
+        opstelling.path(),
+        data_a.path(),
+        token,
+        &[&format!("http://{adres}")],
+    );
     // Wat de runtime van een bron buiten haar niet kan zien, meldt ze (de
     // herkomst, RFC-043); verder niets.
     let w = a.waarschuwingen().await;
@@ -1722,6 +1734,7 @@ fn zonder_processen_draaien_alleen_de_cellen() {
         data_dir: data.path().to_path_buf(),
         port: STANDAARD_POORT,
         lees_token: None,
+        lees_token_bronnen: Vec::new(),
     };
     let r = Runtime::laad(&config, klok()).unwrap();
     assert_eq!(r.cellen.len(), 4);
@@ -2077,6 +2090,7 @@ fn met_ander_gezag(
         data_dir: data.path().to_path_buf(),
         port: 0,
         lees_token: None,
+        lees_token_bronnen: Vec::new(),
     };
     let app = Runtime::laad(&config, klok()).unwrap().router;
     (cellen, data, app)
@@ -3724,7 +3738,7 @@ async fn de_cel_geeft_de_stand_van_een_zaak() {
 async fn het_leestoken_geeft_alleen_lezen() {
     let data = tempfile::tempdir().unwrap();
     let token = "gedeeld-leestoken-van-de-test";
-    let rt = runtime_met_leestoken(&fixtures(), data.path(), token);
+    let rt = runtime_met_leestoken(&fixtures(), data.path(), token, &[]);
     let lees = [(LEES_TOKEN_HEADER, token)];
     let (status, body, _) = vraag_met(
         &rt.router,
@@ -3743,7 +3757,7 @@ async fn het_leestoken_geeft_alleen_lezen() {
         Some(verzoek("test_instantie")),
     )
     .await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(status, StatusCode::FORBIDDEN);
 }
 
 /// Een behandelaar ziet de kroniek en de lexostatussen van de cellen die zijn

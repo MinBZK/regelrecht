@@ -37,7 +37,8 @@ just cel          # runtime op :7170, frontend op :7171, op de fixtures
 | `REGULATION_PATH` | Map met regelingen, gedeeld door de hele runtime; elk YAML-bestand met `$id` en `articles` wordt geladen. |
 | `DATA_DIR` | Map voor de kronieken: per cel een submap `<id>/`. |
 | `CEL_PORT` | Poort, standaard 7170. De runtime luistert op `0.0.0.0`. |
-| `CEL_LEES_TOKEN` | Optioneel leestoken (minstens 16 tekens) dat runtimes delen die elkaars cellen mogen lezen: een cel neemt het aan in `x-cel-lees-token`, een HTTP-transport stuurt het mee. Zonder leest alleen de runtime zelf haar cellen. |
+| `CEL_LEES_TOKEN` | Optioneel leestoken (minstens 16 tekens) dat runtimes delen die elkaars cellen mogen lezen: een cel neemt het aan in `x-cel-lees-token`. Zonder leest alleen de runtime zelf haar cellen. |
+| `CEL_LEES_TOKEN_BRONNEN` | Optioneel: de basis-urls (komma's ertussen) van de runtimes die het leestoken delen; alleen een bron met zo'n url krijgt het mee over HTTP. |
 
 ```yaml
 # <CELLS_PATH>/<map>/cel.yaml, schema schema/chronolex/v0.1.0/cel.json
@@ -459,8 +460,9 @@ samen met de eerdere boven het vastgestelde bedrag komt, niet overeenkomstig
 de vaststelling is; de configuratie noemt die toets niet.
 
 Het proces concludeert voor het handelt, en weigert niet wat gebeurd is. Zegt
-de proef om de inhoud nee (een toets, een haak zonder waarde, of de wet kan
-niet uitrekenen wat een feit doet), dan staat in het antwoord `te_melden`.
+de proef om de inhoud nee (een toets, of een haak zonder waarde), dan staat in
+het antwoord `te_melden`. Een uitkomst die de wet niet volledig kan uitrekenen
+(een waarde of een bron mist) raakt de vorm: die ligt ook gemeld niet vast.
 Meldt de behandelaar dat het feit toch gebeurde (`{formulier, gebeurd:
 true}`), dan legt de cel het vast, gaat de reden mee als waarschuwing, en
 tonen de lexostatussen de gevolgen: een betaling boven het bedrag telt mee in

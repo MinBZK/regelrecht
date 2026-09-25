@@ -40,6 +40,10 @@ pub struct Config {
     /// Het leestoken (`CEL_LEES_TOKEN`) dat runtimes delen die elkaars
     /// cellen mogen lezen; zonder leest alleen de eigen runtime.
     pub lees_token: Option<String>,
+    /// De runtimes (basis-urls) die het leestoken meekrijgen
+    /// (`CEL_LEES_TOKEN_BRONNEN`, komma's ertussen). Een bron met een andere
+    /// url krijgt het niet: het token geeft lezen in deze runtime.
+    pub lees_token_bronnen: Vec<String>,
 }
 
 impl Config {
@@ -70,6 +74,12 @@ impl Config {
                 }
                 _ => None,
             },
+            lees_token_bronnen: std::env::var("CEL_LEES_TOKEN_BRONNEN")
+                .unwrap_or_default()
+                .split(',')
+                .map(|u| u.trim().trim_end_matches('/').to_string())
+                .filter(|u| !u.is_empty())
+                .collect(),
         })
     }
 }

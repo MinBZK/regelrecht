@@ -80,6 +80,12 @@ pub(super) async fn lexostatus_route(
     RawQuery(query): RawQuery,
 ) -> Result<Json<Value>, Fout> {
     toegestaan(&state, &headers, &cel)?;
+    if naam.is_empty() || naam.chars().all(|c| c == '.') {
+        return Err(fout(
+            StatusCode::BAD_REQUEST,
+            format!("geen lexostatus '{naam}'"),
+        ));
+    }
     let naam: String = url_segment(&naam);
     let pad = match query {
         Some(q) if !q.is_empty() => format!("lexostatus/{naam}?{q}"),
