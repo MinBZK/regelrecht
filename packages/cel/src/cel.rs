@@ -114,6 +114,15 @@ impl Cel {
         v.dedup();
         v
     }
+
+    /// Of een event van de cel een zaak opent of volgt. Zo'n cel biedt de
+    /// lexostatus [`crate::reductie::ZAAKSTAND`] aan.
+    pub fn heeft_zaken(&self) -> bool {
+        self.strommen
+            .iter()
+            .flat_map(|s| s.events.iter())
+            .any(|e| e.zaak.heeft_kenmerk())
+    }
 }
 
 /// Zet de cel voor elke melding.

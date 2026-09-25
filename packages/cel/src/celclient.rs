@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 use crate::gram::{Gram, Invoer, Receipt};
-use crate::reductie::Lexostatus;
+use crate::reductie::{Lexostatus, Zaakstand, EIGENAAR, EIGENAAR_PAD, ZAAKSTAND};
 use crate::transport::{Transport, TransportFout};
 
 /// Wat een proces de cel vraagt vast te leggen (`POST /api/grammen`), of op
@@ -114,6 +114,30 @@ pub async fn lees_zaak(
         v,
         &format!("de cel gaf geen lijst grammen voor zaak {zaakkenmerk}"),
     )
+}
+
+/// De stand van een zaak, zoals de cel haar afleidt (de lexostatus
+/// [`ZAAKSTAND`], zie [`Zaakstand`]). Met `eigenaar` (een `$intake`-pad zonder
+/// `$intake.` en een waarde) zegt de cel ook of iemand met die waarde de zaak
+/// kent. Een 404: de cel kent de zaak niet.
+pub async fn zaakstand(
+    cel: &dyn Transport,
+    id: &str,
+    zaakkenmerk: &str,
+    eigenaar: Option<(&str, &str)>,
+) -> Result<Zaakstand, TransportFout> {
+    let mut query = vec![("zaakkenmerk", zaakkenmerk)];
+    if let Some((pad, waarde)) = eigenaar {
+        query.push((EIGENAAR_PAD, pad));
+        query.push((EIGENAAR, waarde));
+    }
+    let query = serde_urlencoded::to_string(&query)
+        .map_err(|e| TransportFout::Json(format!("de vraag is niet te schrijven: {e}")))?;
+    let v = cel
+        .haal(&celpad(id, &format!("lexostatus/{ZAAKSTAND}?{query}")))
+        .await?;
+    let l: Lexostatus = lees(v, "de cel gaf geen lexostatus voor de zaak")?;
+    Zaakstand::uit(&l).map_err(TransportFout::Json)
 }
 
 /// Laat de cel een gram vastleggen (`POST grammen`). Antwoord: het

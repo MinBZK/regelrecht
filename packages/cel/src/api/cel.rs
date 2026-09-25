@@ -15,6 +15,7 @@ use serde_json::{json, Map, Value};
 use super::{fout, intern, Fout, Klok};
 use crate::cel::Cel;
 use crate::celclient::Vastlegverzoek;
+use crate::datum;
 use crate::gram::Gram;
 use crate::kroniek::{Kroniek, Vastgelegd};
 use crate::reductie::{self, Lexostatus, Peil};
@@ -204,6 +205,7 @@ fn toets_zaak(gram: &Gram, bestaand: &[&Gram], verwacht: Option<usize>) -> Resul
             format!("geen zaak '{z}' in de kroniek"),
         ));
     }
+    niet_voor_de_zaak(gram, &zaak)?;
     if let Some(n) = verwacht {
         if zaak.len() != n {
             return Err(fout(
@@ -228,6 +230,38 @@ fn toets_zaak(gram: &Gram, bestaand: &[&Gram], verwacht: Option<usize>) -> Resul
         }
     }
     Ok(())
+}
+
+/// Een gram dat een zaak volgt, ligt rechtens niet voor de zaak: de dag van
+/// zijn `op_moment` ligt niet voor die van het laatste `op_moment` in de zaak.
+/// Een zaak loopt vooruit in de tijd: een besluit van voor de aanvraag, of
+/// een bekendmaking van voor het besluit, is geen feit van deze zaak. Het
+/// gaat om de dag, omdat een gebonden moment vaak een datum is (het begin
+/// van die dag) en het feit ervoor op dezelfde dag later kan zijn
+/// vastgelegd. Een ongebonden `op_moment` is het moment van vastleggen en
+/// ligt daarom nooit voor de zaak.
+fn niet_voor_de_zaak(gram: &Gram, zaak: &[&&Gram]) -> Result<(), Fout> {
+    if gram.zaak != Zaak::Volgt {
+        return Ok(());
+    }
+    let dag =
+        datum::peildatum_van(&gram.op_moment).map_err(|e| fout(StatusCode::BAD_REQUEST, e))?;
+    let mut laatste: Option<(String, &str)> = None;
+    for g in zaak {
+        let d = datum::peildatum_van(&g.op_moment).map_err(intern)?;
+        if laatste.as_ref().is_none_or(|(l, _)| d > *l) {
+            laatste = Some((d, g.name.as_str()));
+        }
+    }
+    match laatste {
+        Some((l, naam)) if dag < l => Err(fout(
+            StatusCode::CONFLICT,
+            format!(
+                "op_moment {dag} ligt voor de zaak: het laatste feit erin ('{naam}') geldt op {l}; een zaak loopt vooruit in de tijd"
+            ),
+        )),
+        _ => Ok(()),
+    }
 }
 
 /// Leg een gram vast. Antwoord: het gram, met YAML. Het stempelen
@@ -381,20 +415,80 @@ async fn zaak_van_cel_route(
 
 /// Een lexostatus: de kroniek gereduceerd, met de inputs als query. Met
 /// `peilmoment` en/of `bekend_op` (een datum of een moment) op een eerder
-/// moment: zie [`Peil`].
+/// moment: zie [`Peil`]. De lexostatus [`reductie::ZAAKSTAND`] biedt de
+/// runtime zelf aan, voor elke cel met een zaak (zie [`zaakstand`]).
 async fn lexostatus_route(
     State(state): State<CelState>,
     Path(naam): Path<String>,
     Query(mut inputs): Query<Map<String, Value>>,
 ) -> Result<Json<Lexostatus>, Fout> {
-    let def = lexostatus_def(&state, &naam)?;
     let peil = Peil::uit_query(&mut inputs).map_err(|e| fout(StatusCode::BAD_REQUEST, e))?;
+    if naam == reductie::ZAAKSTAND && state.cel.heeft_zaken() {
+        return zaakstand(&state, &inputs, &peil).map(Json);
+    }
+    let def = lexostatus_def(&state, &naam)?;
     inputs_compleet(def, &inputs)?;
     let grammen = state.kroniek.lees(&def.reduction.kroniek).map_err(intern)?;
     reductie::reduceer_op(def, &inputs, grammen.iter().map(|v| &v.gram), &peil)
         .map_err(|e| fout(StatusCode::BAD_REQUEST, e))?
         .map(Json)
         .ok_or_else(|| fout(StatusCode::NOT_FOUND, "geen gram voor deze vraag"))
+}
+
+/// De stand van een zaak (zie [`reductie::Zaakstand`]): de cel filtert de
+/// grammen van de zaak en leidt af wat een proces erover vraagt. Input
+/// `zaakkenmerk`; met `eigenaar_pad` (een `$intake`-pad zonder `$intake.`)
+/// en `eigenaar` ook of iemand met die waarde de zaak kent. 404 als de cel
+/// de zaak niet kent.
+fn zaakstand(
+    state: &CelState,
+    inputs: &Map<String, Value>,
+    peil: &Peil,
+) -> Result<Lexostatus, Fout> {
+    let tekst = |k: &str| {
+        inputs
+            .get(k)
+            .and_then(Value::as_str)
+            .filter(|t| !t.is_empty())
+    };
+    let z = tekst("zaakkenmerk")
+        .ok_or_else(|| fout(StatusCode::BAD_REQUEST, "input 'zaakkenmerk' ontbreekt"))?;
+    let eigenaar = match (tekst(reductie::EIGENAAR_PAD), tekst(reductie::EIGENAAR)) {
+        (Some(p), Some(w)) => Some((p, w)),
+        (None, None) => None,
+        _ => {
+            return Err(fout(
+                StatusCode::BAD_REQUEST,
+                "vraag naar de eigenaar met eigenaar_pad en eigenaar samen",
+            ))
+        }
+    };
+    let grammen = state
+        .kroniek
+        .lees_zaak(&state.cel.kronieken(), z)
+        .map_err(intern)?;
+    let cel = &state.cel;
+    let bindt = |g: &Gram, pad: &str| -> Vec<String> {
+        let Some((_, event)) = cel.event(&g.stroom.id, &g.name) else {
+            return Vec::new();
+        };
+        event
+            .bladeren()
+            .into_iter()
+            .filter(|b| b.binding == stroom::Binding::Intake(pad.to_string()))
+            .map(|b| b.pad)
+            .collect()
+    };
+    reductie::reduceer_zaak(grammen.iter().map(|v| &v.gram), peil, eigenaar, bindt)
+        .map_err(intern)?
+        .ok_or_else(|| {
+            fout(
+                StatusCode::NOT_FOUND,
+                format!("geen zaak '{z}' in de kroniek"),
+            )
+        })?
+        .als_lexostatus(z, peil)
+        .map_err(intern)
 }
 
 /// De stroomdefinities van de cel, elk met de hash die in haar grammen en in
@@ -413,7 +507,7 @@ async fn stroom_route(State(state): State<CelState>) -> Json<Value> {
 /// bijhoudt en welke lexostatussen ze aanbiedt.
 pub fn cel_beschrijving(state: &CelState) -> Value {
     let cel = &state.cel;
-    let lexostatussen: Vec<Value> = cel
+    let mut lexostatussen: Vec<Value> = cel
         .lexostatussen
         .lexostatus_definitions
         .iter()
@@ -428,6 +522,18 @@ pub fn cel_beschrijving(state: &CelState) -> Value {
             })
         })
         .collect();
+    if cel.heeft_zaken() {
+        // De stand van een zaak biedt de runtime aan, niet de configuratie.
+        lexostatussen.push(json!({
+            "name": reductie::ZAAKSTAND,
+            "inputs": [{"name": "zaakkenmerk", "type": "string"}],
+            "lijst": false,
+            "parameters": [],
+            "kolommen": [],
+            "extra_velden": ["grammen", "events", "laatste_op_moment", "stages", "eigenaar"],
+            "runtime": true,
+        }));
+    }
     json!({
         "id": cel.id(),
         "recording_actor": cel.definitie.recording_actor,

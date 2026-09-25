@@ -15,9 +15,9 @@ use super::sessie::{behandelaar, voor_handeling};
 use super::{fout, van_cel, Fout, ProcesState};
 use crate::celclient;
 use crate::config::HandelingDefinitie;
-use crate::gram::Gram;
 use crate::handeling::{self, Omgeving, Weigering};
 use crate::reductie::Peil;
+use crate::reductie::Zaakstand;
 use crate::synthese;
 
 fn behandeling(state: &ProcesState) -> Result<&crate::config::Behandeling, Fout> {
@@ -53,6 +53,10 @@ pub(super) async fn werkvoorraad_route(
 pub(super) struct Formulier {
     #[serde(default)]
     formulier: Map<String, Value>,
+    /// Alleen bij het nemen: de behandelaar meldt dat het feit gebeurde, ook
+    /// al zegt de proef om de inhoud nee (zie [`handeling::neem`]).
+    #[serde(default)]
+    gebeurd: bool,
 }
 
 /// Een weigering als HTTP-antwoord. Wat de stand van de zaak niet toelaat
@@ -68,12 +72,21 @@ fn weigering(w: Weigering) -> Fout {
 }
 
 /// De grammen van een zaak, zoals de cel ze geeft; een 404 als de cel de
-/// zaak niet kent.
+/// zaak niet kent. Alleen voor inzage in het dossier: het proces leidt er
+/// niets uit af.
 async fn zaakgrammen(
     state: &ProcesState,
     zaakkenmerk: &str,
 ) -> Result<Vec<celclient::MetYaml>, Fout> {
     celclient::lees_zaak(state.cel.as_ref(), state.cel_id(), zaakkenmerk)
+        .await
+        .map_err(van_cel)
+}
+
+/// De stand van een zaak, zoals de cel haar afleidt; een 404 als de cel de
+/// zaak niet kent.
+async fn zaakstand(state: &ProcesState, zaakkenmerk: &str) -> Result<Zaakstand, Fout> {
+    celclient::zaakstand(state.cel.as_ref(), state.cel_id(), zaakkenmerk, None)
         .await
         .map_err(van_cel)
 }
@@ -104,18 +117,20 @@ fn omgeving(state: &ProcesState, i: usize) -> Omgeving<'_> {
     }
 }
 
-/// De zaak: haar grammen, de procedure met de stages die er liggen, de
+/// De zaak: haar grammen (inzage in het dossier, zonder ze te
+/// interpreteren), de procedure met de stages die er liggen, de
 /// rechtsbescherming die daaruit volgt, en per handeling of zij kan, haar
 /// formulier en een proef zonder formulier (bij een betaling: wat er nog te
-/// betalen is).
+/// betalen is). Wat het proces over de zaak weet, komt uit de stand die de
+/// cel afleidt.
 pub(super) async fn zaak_route(
     State(state): State<ProcesState>,
     headers: HeaderMap,
     Path(zaakkenmerk): Path<String>,
 ) -> Result<Json<Value>, Fout> {
     behandelaar(&state, &headers)?;
+    let zaak = zaakstand(&state, &zaakkenmerk).await?;
     let grammen = zaakgrammen(&state, &zaakkenmerk).await?;
-    let zaak: Vec<Gram> = grammen.iter().map(|m| m.gram.clone()).collect();
     let b = behandeling(&state)?;
     let leeg = Map::new();
     let proeven = join_all(b.handelingen.iter().enumerate().map(|(i, h)| {
@@ -212,11 +227,7 @@ pub(super) async fn proefhandeling_route(
 ) -> Result<Json<handeling::Proefhandeling>, Fout> {
     let (i, h) = handeling_met(&state, &naam)?;
     voor_handeling(&state, &headers, h.rol.as_deref())?;
-    let zaak: Vec<Gram> = zaakgrammen(&state, &zaakkenmerk)
-        .await?
-        .into_iter()
-        .map(|m| m.gram)
-        .collect();
+    let zaak = zaakstand(&state, &zaakkenmerk).await?;
     handeling::proef(
         &omgeving(&state, i),
         h,
@@ -231,7 +242,9 @@ pub(super) async fn proefhandeling_route(
 
 /// Een handeling nemen en laten vastleggen (201), of een weigering (409):
 /// niet te nemen, de stage ligt al in de zaak, de zaak veranderde, of de
-/// wet wijst een ander bevoegd gezag aan.
+/// wet wijst een ander bevoegd gezag aan. Met `gebeurd: true` meldt de
+/// behandelaar een feit dat gebeurde terwijl de proef om de inhoud nee zei;
+/// de cel legt het dan vast (zie [`handeling::neem`]).
 pub(super) async fn handeling_route(
     State(state): State<ProcesState>,
     headers: HeaderMap,
@@ -240,17 +253,14 @@ pub(super) async fn handeling_route(
 ) -> Result<(StatusCode, Json<handeling::Genomen>), Fout> {
     let (i, h) = handeling_met(&state, &naam)?;
     let wie = voor_handeling(&state, &headers, h.rol.as_deref())?;
-    let zaak: Vec<Gram> = zaakgrammen(&state, &zaakkenmerk)
-        .await?
-        .into_iter()
-        .map(|m| m.gram)
-        .collect();
+    let zaak = zaakstand(&state, &zaakkenmerk).await?;
     let genomen = handeling::neem(
         &omgeving(&state, i),
         h,
         &zaakkenmerk,
         &zaak,
         &invoer.formulier,
+        invoer.gebeurd,
         &wie,
     )
     .await

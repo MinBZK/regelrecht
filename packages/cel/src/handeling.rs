@@ -25,9 +25,26 @@
 //! andere synthese-bron, de synthese per regel, het formulier of de stand van
 //! wat nog niet gebeurd is. Er wordt niets aangevuld. Staat het artikel van
 //! de handeling in de grondslag van het event en is het een TOETS, dan telt
-//! elke booleaanse uitkomst: onwaar is niet te nemen ([`toetsen`]). Zo weigert
-//! de wet een tweede betaling boven het vastgestelde bedrag (Awb 4:52), niet
-//! de configuratie.
+//! elke booleaanse uitkomst: onwaar is een conclusie van het proces
+//! ([`toetsen`]). Zo zegt de wet dat een betaling boven het vastgestelde
+//! bedrag niet overeenkomstig de vaststelling is (Awb 4:52), niet de
+//! configuratie.
+//!
+//! Het proces concludeert voor het handelt, en weigert niets wat gebeurd is.
+//! Zegt de proef inhoudelijk nee (een toets is onwaar, een haak geeft geen
+//! waarde, de wet kan niet uitrekenen wat een feit doet), dan doet het
+//! proces de handeling niet uit zichzelf (`te_nemen` is onwaar). Meldt de
+//! behandelaar dat het feit toch gebeurde (`gebeurd: true`), dan legt de cel
+//! het vast, en tonen de lexostatussen de gevolgen: een betaling boven het
+//! bedrag is onverschuldigd betaald, een bekendmaking die niet aan de wet
+//! voldoet laat geen bezwaartermijn lopen. Alleen wat de vorm raakt, houdt
+//! het vastleggen tegen: een formulier dat niet is ingevuld, een vervolg
+//! zonder besluit, een moment in de toekomst of voor de zaak. Een besluit
+//! neemt het proces zelf; dat wordt niet gemeld.
+//!
+//! Het proces leest de zaak niet: wat het over de zaak weet (welke stages er
+//! liggen, wat het besluit vastlegde, hoeveel grammen), leidt de cel af in
+//! haar lexostatus [`Zaakstand`].
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -47,7 +64,7 @@ use crate::gezag::{self, Bevoegdheid};
 use crate::gram::{GeladenRegeling, Gram, HandelendeActor, Invoer, Receipt, StroomVerwijzing};
 use crate::kanaal::Sessie;
 use crate::proces::Proces;
-use crate::reductie::{Lexostatus, Peil};
+use crate::reductie::{Lexostatus, Peil, Zaakstand};
 use crate::regelingen::{self, Benodigd};
 use crate::rijen::{self, Rijen};
 use crate::stroom::{Binding, Event, Zaak};
@@ -71,9 +88,13 @@ pub struct Proefhandeling {
     /// Waar de peildatum vandaan komt: het `op_moment` van het event, met
     /// zijn grondslag, of vandaag.
     pub peildatum_uit: String,
-    /// Of de handeling te nemen is: elke uitkomst heeft een waarde, elke
-    /// toets is waar en elk feit is ingevuld.
+    /// Of het proces de handeling uit zichzelf neemt: elke uitkomst heeft een
+    /// waarde, elke toets is waar en elk feit is ingevuld.
     pub te_nemen: bool,
+    /// Niet te nemen om de inhoud, niet om de vorm: meldt de behandelaar dat
+    /// het feit toch gebeurde (`gebeurd: true`), dan legt de cel het vast.
+    /// Nooit bij een besluit.
+    pub te_melden: bool,
     /// De uitkomsten met een waarde, ook als de handeling niet te nemen is.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub uitkomsten: BTreeMap<String, Value>,
@@ -103,7 +124,8 @@ pub struct Proefhandeling {
     pub trace_text: Option<String>,
 }
 
-/// Het vastgelegde besluit waarop een vervolg verdergaat.
+/// Het vastgelegde besluit waarop een vervolg verdergaat, zoals de cel het in
+/// de [`Zaakstand`] noemt.
 #[derive(Debug, Clone, Serialize)]
 pub struct BesluitVerwijzing {
     pub name: String,
@@ -218,13 +240,15 @@ fn uitkomsten_van(service: &LawExecutionService, artikel: &str) -> Vec<String> {
 /// De toetsen van een handeling die een besluit uitvoert: de booleaanse
 /// uitkomsten van een TOETS-artikel die de norm zijn van de grondslag van
 /// het event. Alleen bij een executogram: dat is de levering of afhandeling
-/// die een besluit uitvoert (positionpaper), en een uitvoering gebeurt op
-/// haar grondslag of niet. Zegt de toets van precies die bepaling nee, dan
-/// gebeurde zij niet op die grondslag, en de cel legt haar niet vast. Een
-/// betaling boven de subsidievaststelling is zo geen betaling "overeenkomstig
-/// de subsidievaststelling" (Awb 4:52 lid 1). Een uitkomst is de norm van een
-/// grondslag als haar `legal_basis` het artikel noemt, en het lid als de
-/// grondslag er een noemt. Een vaststelling of een oordeel (zoals over
+/// die een besluit uitvoert (positionpaper, P:54). Zegt de toets van precies
+/// die bepaling nee, dan zou de levering niet op die grondslag gebeuren, en
+/// het proces doet haar dan niet uit zichzelf: een betaling boven de
+/// subsidievaststelling is geen betaling "overeenkomstig de
+/// subsidievaststelling" (Awb 4:52 lid 1). Het is een conclusie van het
+/// proces voor het handelt, geen weigering van de cel: gebeurde de levering
+/// toch, dan legt de cel haar vast (zie [`neem`]). Een uitkomst is de norm
+/// van een grondslag als haar `legal_basis` het artikel noemt, en het lid als
+/// de grondslag er een noemt. Een vaststelling of een oordeel (zoals over
 /// verzuim) is geen uitvoering: wat die op haar grondslag uitwerkt, is juist
 /// wat zij vastlegt.
 pub fn toetsen(service: &LawExecutionService, artikel: &str, event: &Event) -> Vec<String> {
@@ -1059,32 +1083,67 @@ async fn zaaklexostatus(
 /// bekendmaking, de betaling), met de grondslag die de stroom daarvoor
 /// geeft; anders vandaag. Een besluit leest de wet en de cellen zo op de dag
 /// waarop het genomen wordt, ook als de behandelaar het later vastlegt.
+/// Het derde deel is een bezwaar tegen dat moment: het ligt na vandaag (wat
+/// nog moet gebeuren, is geen feit), of op een dag voor het laatste feit van
+/// de zaak (een zaak loopt vooruit in de tijd). De cel weigert zo'n gram ook;
+/// het proces zegt het vooraf.
 fn peildatum(
     event: &Event,
     formulier: &Map<String, Value>,
     nu: &DateTime<FixedOffset>,
-) -> Result<(String, String), Weigering> {
+    zaak: &Zaakstand,
+) -> Result<(String, String, Option<String>), Weigering> {
     if let Some(b) = &event.op_moment {
         if let Binding::External(pad) = b.binding() {
             if let Some(Value::String(t)) = formulier.get(&pad) {
                 let tp = Tijdpunt::lees(&pad, t).map_err(Weigering::Ongeldig)?;
+                let moment = tp.als_moment(*nu.offset());
+                let dag = datum::peildatum(&moment);
+                let laatste = zaak
+                    .laatste_op_moment
+                    .as_deref()
+                    .map(datum::peildatum_van)
+                    .transpose()
+                    .map_err(Weigering::Cel)?;
+                let bezwaar = if moment > *nu {
+                    Some(format!(
+                        "{pad} {dag} ligt na vandaag: wat nog moet gebeuren, is geen feit"
+                    ))
+                } else {
+                    laatste.filter(|l| dag < *l).map(|l| {
+                        format!(
+                            "{pad} {dag} ligt voor de zaak: het laatste feit erin geldt op {l}; een zaak loopt vooruit in de tijd"
+                        )
+                    })
+                };
                 return Ok((
-                    datum::peildatum(&tp.als_moment(*nu.offset())),
+                    dag,
                     format!("{pad} (op_moment, {})", b.grondslag.join(", ")),
+                    bezwaar,
                 ));
             }
         }
     }
-    Ok((datum::peildatum(nu), "vandaag".to_string()))
+    Ok((datum::peildatum(nu), "vandaag".to_string(), None))
+}
+
+/// Waarom een handeling niet uit zichzelf genomen wordt.
+enum Bezwaar {
+    /// De vorm: het formulier, de volgorde van de zaak, het moment. Dan
+    /// wordt er ook niets gemeld.
+    Vorm(String),
+    /// De inhoud: de wet zegt nee, of kan niet zeggen wat het feit doet.
+    /// Een gebeurd feit legt de cel dan toch vast.
+    Inhoud(String),
 }
 
 /// Reken een handeling in een zaak uit, zonder iets vast te leggen. `zaak`
-/// zijn de grammen van de zaak, zoals de cel ze gaf.
+/// is de stand van de zaak zoals de cel haar afleidt.
 pub async fn proef(
     om: &Omgeving<'_>,
     h: &HandelingDefinitie,
     zaakkenmerk: &str,
-    zaak: &[Gram],
+    zaak: &Zaakstand,
     formulier: &Map<String, Value>,
 ) -> Result<Proefhandeling, Weigering> {
     let proces = om.proces;
@@ -1102,7 +1161,7 @@ pub async fn proef(
         .cel
         .event(&h.vastleggen.stroom, &h.vastleggen.event)
         .ok_or_else(|| Weigering::Cel(format!("handeling '{}': geen vastleg-event", h.naam)))?;
-    let (peildatum, peildatum_uit) = peildatum(event, formulier, &om.nu)?;
+    let (peildatum, peildatum_uit, tijd) = peildatum(event, formulier, &om.nu, zaak)?;
     let mut p = Proefhandeling {
         handeling: h.naam.clone(),
         soort: h.soort.clone(),
@@ -1112,6 +1171,7 @@ pub async fn proef(
         peildatum: peildatum.clone(),
         peildatum_uit,
         te_nemen: false,
+        te_melden: false,
         uitkomsten: BTreeMap::new(),
         toetsen: BTreeMap::new(),
         mist: Vec::new(),
@@ -1131,11 +1191,13 @@ pub async fn proef(
         .filter(|f| formulier.get(&f.naam).is_none_or(Value::is_null))
         .map(|f| f.naam.clone())
         .collect();
-    let reden = match &h.soort {
+    let uitkomst = match &h.soort {
         Handelingsoort::Vervolg { besluit, .. } => {
             vervolg(om, h, besluit, zaakkenmerk, zaak, formulier, &mut p)?
         }
-        _ => op_de_zaak(om, h, event, zaakkenmerk, formulier, &mut p).await?,
+        _ => op_de_zaak(om, h, event, zaakkenmerk, formulier, &mut p)
+            .await?
+            .map(Bezwaar::Inhoud),
     };
     let onwaar: Vec<&String> = p
         .toetsen
@@ -1143,10 +1205,8 @@ pub async fn proef(
         .filter(|(_, w)| **w == Value::Bool(false))
         .map(|(n, _)| n)
         .collect();
-    p.reden = if let Some(r) = reden {
-        Some(r)
-    } else if !onwaar.is_empty() {
-        Some(format!(
+    let toets = (!onwaar.is_empty()).then(|| {
+        format!(
             "niet te nemen: {} zegt nee ({})",
             h.artikel,
             onwaar
@@ -1154,13 +1214,24 @@ pub async fn proef(
                 .map(|s| s.as_str())
                 .collect::<Vec<_>>()
                 .join(", ")
-        ))
-    } else if !ontbrekend.is_empty() {
-        Some(format!("niet te nemen: vul in: {}", ontbrekend.join(", ")))
-    } else {
-        None
-    };
-    p.te_nemen = p.reden.is_none();
+        )
+    });
+    let vorm = tijd
+        .map(|t| format!("niet te nemen: {t}"))
+        .or(match &uitkomst {
+            Some(Bezwaar::Vorm(r)) => Some(r.clone()),
+            _ => None,
+        })
+        .or((!ontbrekend.is_empty())
+            .then(|| format!("niet te nemen: vul in: {}", ontbrekend.join(", "))));
+    let inhoud = match uitkomst {
+        Some(Bezwaar::Inhoud(r)) => Some(r),
+        _ => None,
+    }
+    .or(toets);
+    p.te_nemen = vorm.is_none() && inhoud.is_none();
+    p.te_melden = vorm.is_none() && inhoud.is_some() && h.soort != Handelingsoort::Besluit;
+    p.reden = vorm.or(inhoud);
     Ok(p)
 }
 
@@ -1297,18 +1368,20 @@ async fn op_de_zaak(
 
 /// Een vervolg: de engine voert de stage van de handeling uit op de invoer
 /// en de uitkomsten van het vastgelegde besluit (RFC-008: het besluit is de
-/// toestand, de orkestratie bewaart haar en levert wat de stage vraagt). Wat
-/// de stage vraagt, komt uit het formulier. De haken van die stage vuren
-/// (RFC-007), zoals de aanvang en het einde van de bezwaartermijn.
+/// toestand, de orkestratie bewaart haar en levert wat de stage vraagt). Die
+/// toestand leidt de cel af (de stage van het besluit in de [`Zaakstand`]);
+/// het proces leest geen gram. Wat de stage vraagt, komt uit het formulier.
+/// De haken van die stage vuren (RFC-007), zoals de aanvang en het einde van
+/// de bezwaartermijn.
 fn vervolg(
     om: &Omgeving<'_>,
     h: &HandelingDefinitie,
     besluit: &str,
     zaakkenmerk: &str,
-    zaak: &[Gram],
+    zaak: &Zaakstand,
     formulier: &Map<String, Value>,
     p: &mut Proefhandeling,
-) -> Result<Option<String>, Weigering> {
+) -> Result<Option<Bezwaar>, Weigering> {
     let proces = om.proces;
     let service = proces.service.as_ref();
     let b = proces
@@ -1317,18 +1390,20 @@ fn vervolg(
         .as_ref()
         .and_then(|b| b.handeling(besluit))
         .ok_or_else(|| Weigering::Cel(format!("geen handeling '{besluit}'")))?;
-    let Some(gram) = zaak
-        .iter()
-        .rfind(|g| g.name == b.vastleggen.event && g.stage == b.stage)
+    let Some(gram) = b
+        .stage
+        .as_ref()
+        .and_then(|s| zaak.stages.get(s))
+        .filter(|s| s.event == b.vastleggen.event && s.stroom == b.vastleggen.stroom)
     else {
-        return Ok(Some(format!(
+        return Ok(Some(Bezwaar::Vorm(format!(
             "niet te nemen: in zaak {zaakkenmerk} ligt nog geen besluit (stage {})",
             b.stage.as_deref().unwrap_or("-")
-        )));
+        ))));
     };
     p.besluit = Some(BesluitVerwijzing {
-        name: gram.name.clone(),
-        stage: gram.stage.clone(),
+        name: gram.event.clone(),
+        stage: b.stage.clone(),
         op_moment: gram.op_moment.clone(),
         vastgelegd_op: gram.vastgelegd_op.clone(),
     });
@@ -1344,14 +1419,14 @@ fn vervolg(
             .unwrap_or_else(|| h.regeling.clone()),
         current_stage: stage.clone(),
         accumulated_outputs: gram
-            .fields
+            .velden
             .iter()
             .map(|(k, v)| (k.clone(), EngineValue::from(v)))
             .collect(),
         parameters: gram
-            .inputs
+            .invoer
             .iter()
-            .map(|(k, i)| (k.clone(), EngineValue::from(&i.waarde)))
+            .map(|(k, w)| (k.clone(), EngineValue::from(w)))
             .collect(),
     };
     let mut invoer = BTreeMap::new();
@@ -1376,14 +1451,14 @@ fn vervolg(
             }) => {
                 if state.current_stage == stage {
                     p.mist = pending_inputs;
-                    return Ok(Some(format!(
+                    return Ok(Some(Bezwaar::Vorm(format!(
                         "niet te nemen: stage {stage} vraagt {}",
                         p.mist.join(", ")
-                    )));
+                    ))));
                 }
                 outputs
             }
-            Err(e) => return Ok(Some(format!("niet te nemen: {e}"))),
+            Err(e) => return Ok(Some(Bezwaar::Vorm(format!("niet te nemen: {e}")))),
         };
     for u in &h.uitkomsten {
         match outputs.get(u) {
@@ -1409,17 +1484,22 @@ fn vervolg(
         .map(String::as_str)
         .collect();
     if !p.mist.is_empty() {
-        return Ok(Some(format!("niet te nemen: mist {}", p.mist.join(", "))));
+        return Ok(Some(Bezwaar::Vorm(format!(
+            "niet te nemen: mist {}",
+            p.mist.join(", ")
+        ))));
     }
     if !leeg.is_empty() {
         // Een haak die geen waarde geeft, zegt dat de stage niet op de
         // voorgeschreven wijze plaatsvond (zoals een bekendmaking die niet
-        // aan Awb 3:41 voldoet: de bezwaartermijn vangt dan niet aan).
-        return Ok(Some(format!(
+        // aan Awb 3:41 voldoet: de bezwaartermijn vangt dan niet aan). Een
+        // conclusie over de inhoud: gebeurde het toch, dan ligt het vast, met
+        // een lege termijn.
+        return Ok(Some(Bezwaar::Inhoud(format!(
             "niet te nemen: geen waarde voor {} ({})",
             leeg.join(", "),
             h.haken.join(", ")
-        )));
+        ))));
     }
     Ok(None)
 }
@@ -1458,7 +1538,13 @@ pub struct Genomen {
 
 /// Neem een handeling in een zaak en laat de cel haar vastleggen.
 ///
-/// De proef moet te nemen zijn. Bij een besluit en een vervolg toetst het
+/// De proef moet te nemen zijn: dan handelt het proces uit zichzelf. Is zij
+/// dat om de inhoud niet (`te_melden`), dan legt de cel het feit alleen vast
+/// als de behandelaar meldt dat het gebeurde (`gebeurd`): een executogram
+/// legt een daadwerkelijke levering vast (paper P:54), en wat gebeurd is,
+/// weigert het proces niet om wat het ervan vindt. De reden gaat mee als
+/// waarschuwing, en de lexostatussen van de zaak tonen de gevolgen. Een
+/// besluit wordt niet gemeld. Bij een besluit en een vervolg toetst het
 /// proces het bevoegd gezag van de wet aan het gezag waarvoor het handelt
 /// (`namens`), of een mandaat van dat gezag (zie [`crate::gezag`]): anders
 /// weigert het; noemt de wet geen gezag, dan legt het vast met een
@@ -1472,20 +1558,36 @@ pub async fn neem(
     om: &Omgeving<'_>,
     h: &HandelingDefinitie,
     zaakkenmerk: &str,
-    zaak: &[Gram],
+    zaak: &Zaakstand,
     formulier: &Map<String, Value>,
+    gebeurd: bool,
     handelend: &Sessie,
 ) -> Result<Genomen, Weigering> {
     let proces = om.proces;
     let service = proces.service.as_ref();
     let actor = &proces.definitie.actor;
+    if gebeurd && h.soort == Handelingsoort::Besluit {
+        return Err(Weigering::Ongeldig(format!(
+            "handeling '{}' is een besluit: dat neemt het proces zelf, het wordt niet als gebeurd gemeld",
+            h.naam
+        )));
+    }
     let proef = proef(om, h, zaakkenmerk, zaak, formulier).await?;
+    let mut waarschuwingen = Vec::new();
     if !proef.te_nemen {
-        return Err(Weigering::NietTeNemen(
-            proef
-                .reden
-                .clone()
-                .unwrap_or_else(|| "niet te nemen".to_string()),
+        let reden = proef
+            .reden
+            .clone()
+            .unwrap_or_else(|| "niet te nemen".to_string());
+        if !(gebeurd && proef.te_melden) {
+            return Err(Weigering::NietTeNemen(if proef.te_melden {
+                format!("{reden}; is het toch gebeurd, meld het dan als gebeurd (gebeurd: true)")
+            } else {
+                reden
+            }));
+        }
+        waarschuwingen.push(format!(
+            "gemeld als gebeurd, tegen de conclusie van het proces in: {reden}"
         ));
     }
     let (stroom, event) = proces
@@ -1493,7 +1595,6 @@ pub async fn neem(
         .event(&h.vastleggen.stroom, &h.vastleggen.event)
         .ok_or_else(|| Weigering::Cel(format!("handeling '{}': geen vastleg-event", h.naam)))?;
 
-    let mut waarschuwingen = Vec::new();
     let eigen = proces.gezag.as_deref();
     let mut gezag = None;
     let (mut namens, mut mandaat) = (None, None);
@@ -1594,7 +1695,7 @@ pub async fn neem(
             inputs,
             receipt: Some(Receipt::nieuw(om.regelingen.to_vec(), stromen)),
         }),
-        zaak_grammen: Some(zaak.len()),
+        zaak_grammen: Some(zaak.grammen),
     };
     let MetYaml { gram, yaml } = celclient::leg_vast(om.cel, &h.vastleggen.cel, &verzoek)
         .await
@@ -1624,30 +1725,26 @@ pub struct Stand {
     pub vastgelegd: usize,
 }
 
-pub fn stand(proces: &Proces, h: &HandelingDefinitie, zaak: &[Gram]) -> Stand {
-    let van = |x: &HandelingDefinitie| {
-        zaak.iter()
-            .filter(|g| g.name == x.vastleggen.event && g.stroom.id == x.vastleggen.stroom)
-            .count()
-    };
+/// De stand van een handeling in een zaak, uit de [`Zaakstand`] die de cel
+/// afleidt: welke stages er liggen en hoe vaak het event van de handeling.
+pub fn stand(proces: &Proces, h: &HandelingDefinitie, zaak: &Zaakstand) -> Stand {
+    let van = |x: &HandelingDefinitie| zaak.aantal(&x.vastleggen.stroom, &x.vastleggen.event);
     let vastgelegd = van(h);
+    let al = h
+        .stage
+        .as_ref()
+        .is_some_and(|s| zaak.stages.contains_key(s));
     let (beschikbaar, reden) = match &h.soort {
         Handelingsoort::Feit => (true, None),
-        Handelingsoort::Besluit => {
-            let al = h
-                .stage
-                .as_ref()
-                .is_some_and(|s| zaak.iter().any(|g| g.stage.as_ref() == Some(s)));
-            (
-                !al,
-                al.then(|| {
-                    format!(
-                        "stage {} ligt al in de zaak",
-                        h.stage.as_deref().unwrap_or("-")
-                    )
-                }),
-            )
-        }
+        Handelingsoort::Besluit => (
+            !al,
+            al.then(|| {
+                format!(
+                    "stage {} ligt al in de zaak",
+                    h.stage.as_deref().unwrap_or("-")
+                )
+            }),
+        ),
         Handelingsoort::Vervolg { besluit, .. } => {
             let b = proces
                 .definitie
@@ -1655,10 +1752,6 @@ pub fn stand(proces: &Proces, h: &HandelingDefinitie, zaak: &[Gram]) -> Stand {
                 .as_ref()
                 .and_then(|b| b.handeling(besluit));
             let besloten = b.is_some_and(|b| van(b) > 0);
-            let al = h
-                .stage
-                .as_ref()
-                .is_some_and(|s| zaak.iter().any(|g| g.stage.as_ref() == Some(s)));
             if al {
                 (
                     false,
@@ -1726,10 +1819,12 @@ pub struct Rechtsbescherming {
     pub uitkomsten: BTreeMap<String, Value>,
 }
 
-/// De procedure en de rechtsbescherming van een zaak.
+/// De procedure en de rechtsbescherming van een zaak. Welke stages er
+/// liggen en wat hun gram vastlegde, zegt de [`Zaakstand`] van de cel; de
+/// procedure en de haken komen uit de wet.
 pub fn procedure_en_route(
     proces: &Proces,
-    zaak: &[Gram],
+    zaak: &Zaakstand,
 ) -> (Option<ProcedureStand>, Option<Rechtsbescherming>) {
     let service = proces.service.as_ref();
     let Some(behandeling) = &proces.definitie.behandeling else {
@@ -1757,7 +1852,7 @@ pub fn procedure_en_route(
         .map(|s| StageStand {
             name: s.name.clone(),
             description: s.description.clone(),
-            vastgelegd: zaak.iter().any(|g| g.stage.as_deref() == Some(&s.name)),
+            vastgelegd: zaak.stages.contains_key(&s.name),
             handeling: door(&s.name).map(|h| h.naam.clone()),
         })
         .collect();
@@ -1771,14 +1866,12 @@ pub fn procedure_en_route(
         if h.haken.is_empty() {
             return None;
         }
-        let gram = zaak
-            .iter()
-            .rfind(|g| g.stage.as_deref() == Some(&na.name))?;
+        let gram = zaak.stages.get(&na.name)?;
         let uitkomsten = h
             .haken
             .iter()
             .flat_map(|a| uitkomsten_van(service, a))
-            .filter_map(|u| gram.fields.get(&u).map(|w| (u, w.clone())))
+            .filter_map(|u| gram.velden.get(&u).map(|w| (u, w.clone())))
             .collect();
         Some(Rechtsbescherming {
             procedure: p.id.clone(),

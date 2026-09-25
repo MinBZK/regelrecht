@@ -23,6 +23,8 @@
 //!    afleidingen hoeven geen parameter van een artikel te zijn en botsen niet
 //!    met die van andere lexostatussen. Haar `zonder` wijst een event aan in
 //!    haar kroniek, anders zou het nooit iets weglaten.
+//! 7. Geen lexostatus heet [`crate::reductie::ZAAKSTAND`]: die biedt de
+//!    runtime aan.
 //!
 //! Een proces met een portaal wijst naar een bestaand event van zijn cel, een
 //! bestaande lexostatus en een bestaande uitkomst, van een artikel uit de
@@ -131,6 +133,12 @@ fn uniek(strommen: &[Stroom], lexostatussen: &Lexostatussen, fouten: &mut Vec<St
     }
     let mut gezien = BTreeSet::new();
     for d in &lexostatussen.lexostatus_definitions {
+        if d.name == reductie::ZAAKSTAND {
+            fouten.push(format!(
+                "lexostatus '{}': die naam is van de runtime, die haar voor elke cel met een zaak aanbiedt",
+                d.name
+            ));
+        }
         if !gezien.insert(&d.name) {
             fouten.push(format!(
                 "lexostatus '{}' staat er meer dan een keer",
@@ -881,6 +889,16 @@ mod tests {
     fn niet_gereduceerd_naar_onbekend_veld() {
         let stroom = STROOM.replace("{veld: inhoud.rekeningnummer,", "{veld: inhoud.rekening,");
         faalt_met(&stroom, CEL, "niet_gereduceerd noemt 'inhoud.rekening'");
+    }
+
+    // 7. De naam van de zaakstand is van de runtime.
+    #[test]
+    fn de_zaakstand_is_van_de_runtime() {
+        // De eerste definitie heet nu zaakstand.
+        let i = CEL.find("- name: ").unwrap() + "- name: ".len();
+        let eind = CEL[i..].find('\n').unwrap() + i;
+        let cel = format!("{}zaakstand{}", &CEL[..i], &CEL[eind..]);
+        faalt_met(STROOM, &cel, "die naam is van de runtime");
     }
 
     // 4. Geen naamsbotsing.

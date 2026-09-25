@@ -9,8 +9,11 @@
 //!   met alles wat de cel nu weet. Een gram telt als zijn `op_moment` op of
 //!   voor T ligt. Een feit dat later werd vastgelegd maar eerder gold (een
 //!   papieren aanvraag, ontvangen op dag 1 en ingevoerd op dag 5) telt dus
-//!   mee voor T = dag 3; een feit dat pas na T geldt (een schrapping met
-//!   ingang van volgend jaar) niet.
+//!   mee voor T = dag 3; een feit van na T (een schrapping op dag 4) niet.
+//!   Een `op_moment` ligt nooit na het vastleggen: wat nog moet gebeuren,
+//!   is geen feit. Een besluit met werking vanaf een latere dag staat er op
+//!   de dag waarop het genomen is, met de dag van ingang als veld; op die dag
+//!   van ingang peilen kan een reductie (nog) niet.
 //! - `bekend_op` (registratietijd): de stand zoals de cel haar kende op T.
 //!   Een gram telt als zijn `vastgelegd_op` op of voor T ligt. Zo is terug
 //!   te zien waarop een eerder besluit rustte.

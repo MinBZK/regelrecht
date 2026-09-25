@@ -42,9 +42,11 @@ use crate::gram::Gram;
 
 mod definitie;
 mod peil;
+mod zaakstand;
 
 pub use definitie::*;
 pub use peil::*;
+pub use zaakstand::*;
 
 impl Afleiding {
     /// Pas een afleiding op het gekozen gram toe. `None`: het gram zegt er

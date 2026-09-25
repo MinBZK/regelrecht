@@ -218,7 +218,7 @@ fn open_kroniek(data_dir: &Path, cel: &Cel, klok: &Klok) -> Result<Kroniek, Stri
     if !cel.startstand.is_empty()
         && kroniek.zet_startstand(
             &cel.kronieken(),
-            &startstand::geplaatst(&cel.startstand, &klok()),
+            &startstand::geplaatst(&cel.startstand, &klok())?,
         )?
     {
         tracing::info!(cel = %cel.id(), grammen = cel.startstand.len(), "startstand in lege kroniek gezet");

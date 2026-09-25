@@ -16,7 +16,7 @@ use crate::kanaal::{self, Routes, Sessie};
 use crate::mogelijkheid;
 use crate::reductie::{self, Lexostatus, Peil};
 use crate::rijen;
-use crate::stroom::{self, Binding, Zaak};
+use crate::stroom::{self, Zaak};
 use crate::synthese;
 use crate::toets;
 use crate::transport::TransportFout;
@@ -55,31 +55,21 @@ pub(super) struct Concept {
     zaakkenmerk: Option<String>,
 }
 
-/// Of een gram van deze gebruiker is: het veld dat aan het eigenaarpad van
-/// zijn kanaal bindt (`kanalen.<id>.eigenaar`), heeft zijn waarde. Een
-/// kanaal zonder eigenaar is van niemand de eigenaar.
-pub(super) fn van_eigenaar(state: &ProcesState, gram: &Gram, sessie: &Sessie) -> bool {
-    let Some(k) = state.proces.definitie.kanalen.get(&sessie.kanaal) else {
-        return false;
-    };
-    let (Some(pad), Some(veld)) = (k.eigenaar_pad(&sessie.kanaal), k.eigenaar.as_ref()) else {
-        return false;
-    };
-    let Some(waarde) = sessie.velden.get(veld) else {
-        return false;
-    };
-    let Some((_, event)) = state.proces.cel.event(&gram.stroom.id, &gram.name) else {
-        return false;
-    };
-    event.bladeren().iter().any(|b| {
-        b.binding == Binding::Intake(pad.clone())
-            && gram.veld(&b.pad).and_then(Value::as_str) == Some(waarde.as_str())
-    })
+/// Het eigenaarpad van het kanaal van de gebruiker (`kanalen.<id>.eigenaar`,
+/// onder `$intake`) en zijn waarde daar. Een kanaal zonder eigenaar maakt
+/// niemand eigenaar.
+fn eigenaar_van<'s>(state: &ProcesState, sessie: &'s Sessie) -> Option<(String, &'s str)> {
+    let k = state.proces.definitie.kanalen.get(&sessie.kanaal)?;
+    let pad = k.eigenaar_pad(&sessie.kanaal)?;
+    let waarde = sessie.velden.get(k.eigenaar.as_ref()?)?;
+    Some((pad, waarde.as_str()))
 }
 
 /// Het verzoek aan de cel voor een concept van de aanvrager. Volgt het event
-/// een zaak, dan moet de aanvrager die zaak kennen: een gram met dat
-/// zaakkenmerk waarvan hij de eigenaar is ([`van_eigenaar`]). De cel controleert de rest (zie
+/// een zaak, dan moet de aanvrager die zaak kennen. Of hij dat doet, zegt de
+/// cel: haar [`crate::reductie::Zaakstand`] leidt af of er een gram in de zaak
+/// ligt waarvan het veld dat aan zijn eigenaarpad bindt, zijn waarde heeft.
+/// Het proces leest daarvoor geen grammen. De cel controleert de rest (zie
 /// [`zaakkenmerk_voor`]).
 async fn verzoek_voor(
     state: &ProcesState,
@@ -88,12 +78,23 @@ async fn verzoek_voor(
 ) -> Result<Vastlegverzoek, Fout> {
     let (stroom, event) = portaal_event(state)?;
     if let (Zaak::Volgt, Some(z)) = (event.zaak, &concept.zaakkenmerk) {
-        // Een zaak die de cel niet kent, kent de aanvrager ook niet.
-        let zaak = match celclient::lees_zaak(state.cel.as_ref(), state.cel_id(), z).await {
-            Err(TransportFout::Antwoord { status: 404, .. }) => Vec::new(),
-            anders => anders.map_err(van_cel)?,
+        let bekend = match eigenaar_van(state, sessie) {
+            None => false,
+            Some((pad, waarde)) => {
+                // Een zaak die de cel niet kent, kent de aanvrager ook niet.
+                match celclient::zaakstand(
+                    state.cel.as_ref(),
+                    state.cel_id(),
+                    z,
+                    Some((&pad, waarde)),
+                )
+                .await
+                {
+                    Err(TransportFout::Antwoord { status: 404, .. }) => false,
+                    anders => anders.map_err(van_cel)?.eigenaar == Some(true),
+                }
+            }
         };
-        let bekend = zaak.iter().any(|g| van_eigenaar(state, &g.gram, sessie));
         if !bekend {
             return Err(fout(
                 StatusCode::BAD_REQUEST,

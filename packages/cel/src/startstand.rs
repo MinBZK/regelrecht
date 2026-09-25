@@ -130,16 +130,27 @@ fn bouw(tekst: &str, strommen: &[Stroom]) -> Result<Gram, String> {
 }
 
 /// De startstand zoals de runtime haar in een lege kroniek zet: elk gram
-/// met de laadtijd als `vastgelegd_op`.
-pub fn geplaatst(grammen: &[Gram], laadtijd: &DateTime<FixedOffset>) -> Vec<Gram> {
+/// met de laadtijd als `vastgelegd_op`. Een regel met een `op_moment` na de
+/// laadtijd wordt geweigerd, zoals bij elk ander gram: wat nog moet gebeuren,
+/// is geen feit. Een besluit met werking vanaf een latere dag (een schrapping
+/// met ingang van volgend jaar) staat er op de dag waarop het genomen is; de
+/// dag van ingang is dan een veld van het gram.
+pub fn geplaatst(grammen: &[Gram], laadtijd: &DateTime<FixedOffset>) -> Result<Vec<Gram>, String> {
     let op = datum::als_op_moment(laadtijd);
-    grammen
-        .iter()
-        .map(|g| Gram {
+    let mut uit = Vec::with_capacity(grammen.len());
+    for g in grammen {
+        if g.moment()? > *laadtijd {
+            return Err(format!(
+                "startstand: '{}' heeft op_moment {}, na de laadtijd ({op}); wat nog moet gebeuren, wordt niet vastgelegd",
+                g.name, g.op_moment
+            ));
+        }
+        uit.push(Gram {
             vastgelegd_op: op.clone(),
             ..g.clone()
-        })
-        .collect()
+        });
+    }
+    Ok(uit)
 }
 
 /// De velden zijn precies die van het event: geen onbekend veld, en elk
@@ -191,7 +202,7 @@ mod tests {
         let grammen = parse(STARTSTAND, "s", &strommen()).unwrap();
         assert_eq!(grammen.len(), 4);
         let laadtijd = datum::moment("2025-03-12T10:14:03+01:00").unwrap();
-        for (g, geplaatst) in grammen.iter().zip(geplaatst(&grammen, &laadtijd)) {
+        for (g, geplaatst) in grammen.iter().zip(geplaatst(&grammen, &laadtijd).unwrap()) {
             assert_eq!(g.herkomst.as_deref(), Some("startstand"));
             assert_eq!(g.type_, "decretogram");
             assert_eq!(g.chronicle, "test_register");
@@ -202,6 +213,15 @@ mod tests {
             geplaatst.valideer().unwrap();
         }
         assert_eq!(grammen[0].grondslag, ["testregeling_register#1"]);
+    }
+
+    /// Een regel met een op_moment na de laadtijd wordt niet geplaatst.
+    #[test]
+    fn een_startstand_uit_de_toekomst_wordt_geweigerd() {
+        let grammen = parse(STARTSTAND, "s", &strommen()).unwrap();
+        let eerder = datum::moment("2024-02-01T00:00:00+01:00").unwrap();
+        let f = geplaatst(&grammen, &eerder).unwrap_err();
+        assert!(f.contains("na de laadtijd"), "{f}");
     }
 
     #[test]
@@ -273,7 +293,7 @@ mod tests {
             );
             assert_eq!(g.als_json()["zaak"], zaak);
             let laadtijd = datum::moment("2025-03-12T10:14:03+01:00").unwrap();
-            geplaatst(&[g], &laadtijd)[0].valideer().unwrap();
+            geplaatst(&[g], &laadtijd).unwrap()[0].valideer().unwrap();
         }
     }
 }
