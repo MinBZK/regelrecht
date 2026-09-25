@@ -11111,4 +11111,52 @@ articles:
             other => panic!("expected NullForNonNullable, got {other:?}"),
         }
     }
+
+    /// A FOREACH over a literal list of exactly three values iterates those
+    /// values. `[0, 1, 2]` used to parse as an operation: serde reads a
+    /// sequence as an internally tagged enum with the variant index first,
+    /// so it became `EQUALS {subject: 1, value: 2}` and the collection
+    /// `[false]`.
+    #[test]
+    fn test_foreach_over_a_literal_list_of_three_values() {
+        let law = r#"
+$id: foreach_letterlijk
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Som
+    machine_readable:
+      execution:
+        output:
+          - name: som
+            type: number
+          - name: aantal
+            type: number
+        actions:
+          - output: som
+            value:
+              operation: FOREACH
+              collection: [0, 1, 2]
+              as: i
+              body:
+                operation: ADD
+                values: [$i, 10]
+              combine: ADD
+          - output: aantal
+            value:
+              operation: FOREACH
+              collection: [0, 1, 2]
+              as: i
+              body: 1
+              combine: ADD
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+        let som = service
+            .evaluate_law_output("foreach_letterlijk", "som", BTreeMap::new(), "2025-01-01")
+            .unwrap();
+        assert_eq!(som.outputs.get("som"), Some(&Value::Int(33)));
+        assert_eq!(som.outputs.get("aantal"), Some(&Value::Int(3)));
+    }
 }

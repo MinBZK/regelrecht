@@ -3947,7 +3947,14 @@ async fn een_maand_als_tijdvak() {
         .iter()
         .map(|m| &m["mogelijkheid"]["tijdvak"]["waarde"])
         .collect();
-    assert_eq!(maanden, [&json!("2025-03-01"), &json!("2025-04-01")]);
+    assert_eq!(
+        maanden,
+        [
+            &json!("2025-03-01"),
+            &json!("2025-04-01"),
+            &json!("2025-05-01")
+        ]
+    );
     assert_eq!(m[0]["mogelijkheid"]["tijdvak"]["parameter"], "maand");
     assert_eq!(m[0]["mogelijkheid"]["tijdvak"]["veld"], "maand");
     assert_eq!(m[0]["mogelijkheid"]["oordeel"], "mogelijk", "{body}");

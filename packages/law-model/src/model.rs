@@ -388,14 +388,48 @@ pub struct Case {
 /// Uses `#[serde(untagged)]` for flexible YAML parsing. The Operation variant is tried first,
 /// but this is safe because `ActionOperation` is an internally-tagged enum keyed on `"operation"` -
 /// any YAML object lacking an `operation` key will fail to deserialize as ActionOperation and
-/// fall through to the Literal variant.
+/// fall through to the Literal variant. Only a mapping can be an operation (see
+/// [`operation_from_map`]): a list is always a literal.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ActionValue {
     /// Nested operation (tried first; requires `operation` field to match)
-    Operation(Box<ActionOperation>),
+    Operation(#[serde(deserialize_with = "operation_from_map")] Box<ActionOperation>),
     /// Literal value (number, string, boolean, variable reference like "$var", etc.)
     Literal(Value),
+}
+
+/// Deserialize an operation from a mapping only.
+///
+/// Serde lets an internally tagged enum deserialize from a sequence too, with
+/// the tag first, and it accepts a variant index for the tag. A literal list
+/// such as `[0, 1, 2]` then parses as the operation with index 0 (`EQUALS`,
+/// with subject 1 and value 2), and a FOREACH over it iterates `[false]`.
+/// Refusing anything but a mapping here lets such a list fall through to
+/// [`ActionValue::Literal`].
+fn operation_from_map<'de, D>(deserializer: D) -> Result<Box<ActionOperation>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct MapOnly;
+
+    impl<'de> serde::de::Visitor<'de> for MapOnly {
+        type Value = Box<ActionOperation>;
+
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("a mapping with an `operation` key")
+        }
+
+        fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error>
+        where
+            A: serde::de::MapAccess<'de>,
+        {
+            ActionOperation::deserialize(serde::de::value::MapAccessDeserializer::new(map))
+                .map(Box::new)
+        }
+    }
+
+    deserializer.deserialize_map(MapOnly)
 }
 
 /// Represents an operation within an action.

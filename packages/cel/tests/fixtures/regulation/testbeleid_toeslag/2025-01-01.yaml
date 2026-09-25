@@ -53,7 +53,7 @@ articles:
   - number: '2'
     url: https://example.com/testbeleid_toeslag/2
     text: >-
-      Het portaal biedt de lopende maand aan en de maand die erop volgt.
+      Het portaal biedt de lopende maand aan en de twee maanden die erop volgen.
     machine_readable:
       execution:
         output:
@@ -63,7 +63,7 @@ articles:
           - output: aangeboden_maanden
             value:
               operation: FOREACH
-              collection: [0, 1]
+              collection: [0, 1, 2]
               as: verder
               body:
                 operation: DATE_ADD
