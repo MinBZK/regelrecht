@@ -18,9 +18,11 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::fs::OpenOptions;
-use std::io::Write;
+use std::io::{Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
+use std::sync::{
+    Arc, Mutex, MutexGuard, OnceLock, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard,
+};
 
 use crate::gram::Gram;
 
@@ -77,9 +79,13 @@ impl Stapel {
 
 pub struct Kroniek {
     map: PathBuf,
-    /// Per kroniek de grammen. Een schrijver tegelijk, zodat regels niet
-    /// door elkaar lopen en een controle ziet wat er werkelijk ligt.
-    staat: Mutex<BTreeMap<String, Stapel>>,
+    /// Een schrijver tegelijk, zodat regels niet door elkaar lopen en een
+    /// controle ziet wat er werkelijk ligt. Lezers wachten niet op hem: de
+    /// schijf (fsync) gebeurt zonder `staat` vast te houden, en alleen
+    /// schrijvers veranderen `staat`.
+    schrijver: Mutex<()>,
+    /// Per kroniek de grammen.
+    staat: RwLock<BTreeMap<String, Stapel>>,
 }
 
 /// Een regel als JSONL, met regeleinde.
@@ -98,14 +104,10 @@ impl Kroniek {
         std::fs::create_dir_all(map).map_err(|e| format!("{}: {e}", map.display()))?;
         let k = Self {
             map: map.to_path_buf(),
-            staat: Mutex::new(BTreeMap::new()),
+            schrijver: Mutex::new(()),
+            staat: RwLock::new(BTreeMap::new()),
         };
-        {
-            let mut staat = k.slot()?;
-            for c in kronieken {
-                k.stapel(&mut staat, c)?;
-            }
-        }
+        k.laad(kronieken)?;
         Ok(k)
     }
 
@@ -122,25 +124,67 @@ impl Kroniek {
         Ok(self.map.join(format!("{chronicle}.jsonl")))
     }
 
-    fn slot(&self) -> Result<MutexGuard<'_, BTreeMap<String, Stapel>>, String> {
-        self.staat
+    // Een slot dat vergiftigd is (een draad paniekte eronder) blijft
+    // bruikbaar: `staat` verandert alleen na een geslaagde schrijfactie, in
+    // een stap, dus er is nooit iets half bijgewerkt.
+    fn schrijfslot(&self) -> MutexGuard<'_, ()> {
+        self.schrijver
             .lock()
-            .map_err(|_| "kroniek vergrendeld: een eerdere schrijver brak af".to_string())
+            .unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// De stapel van een kroniek; bij de eerste vraag gelezen van schijf.
-    fn stapel<'s>(
-        &self,
-        staat: &'s mut BTreeMap<String, Stapel>,
-        chronicle: &str,
-    ) -> Result<&'s mut Stapel, String> {
-        if !staat.contains_key(chronicle) {
-            let s = lees_bestand(&self.bestand(chronicle)?)?;
-            staat.insert(chronicle.to_string(), s);
+    fn lees_staat(&self) -> RwLockReadGuard<'_, BTreeMap<String, Stapel>> {
+        self.staat.read().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn schrijf_staat(&self) -> RwLockWriteGuard<'_, BTreeMap<String, Stapel>> {
+        self.staat.write().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Zorg dat deze kronieken in het geheugen staan; een kroniek die er nog
+    /// niet is, wordt van schijf gelezen.
+    fn laad(&self, kronieken: &[&str]) -> Result<(), String> {
+        let ontbreekt: Vec<&str> = {
+            let staat = self.lees_staat();
+            kronieken
+                .iter()
+                .copied()
+                .filter(|k| !staat.contains_key(*k))
+                .collect()
+        };
+        if ontbreekt.is_empty() {
+            return Ok(());
         }
-        staat
-            .get_mut(chronicle)
-            .ok_or_else(|| format!("kroniek '{chronicle}' niet geladen"))
+        // Onder het schrijfslot, zodat niemand tegelijk aan het bestand
+        // schrijft terwijl het gelezen (en zo nodig afgekapt) wordt.
+        let _schrijver = self.schrijfslot();
+        for k in ontbreekt {
+            if self.lees_staat().contains_key(k) {
+                continue;
+            }
+            let s = lees_bestand(&self.bestand(k)?)?;
+            self.schrijf_staat().insert(k.to_string(), s);
+        }
+        Ok(())
+    }
+
+    /// Lees uit de stapels van `kronieken`, geladen.
+    fn met_stapels<T>(
+        &self,
+        kronieken: &[&str],
+        f: impl FnOnce(Vec<&Stapel>) -> T,
+    ) -> Result<T, String> {
+        self.laad(kronieken)?;
+        let staat = self.lees_staat();
+        let mut stapels = Vec::with_capacity(kronieken.len());
+        for k in kronieken {
+            stapels.push(
+                staat
+                    .get(*k)
+                    .ok_or_else(|| format!("kroniek '{k}' niet geladen"))?,
+            );
+        }
+        Ok(f(stapels))
     }
 
     /// Voeg een gram toe. Het gram moet valideren tegen `gram.json`.
@@ -165,18 +209,31 @@ impl Kroniek {
     ) -> Result<Result<(), E>, String> {
         let regel = als_regel(gram)?;
         let pad = self.bestand(&gram.chronicle)?;
-        let mut staat = self.slot()?;
-        let mut bestaand = Vec::new();
-        for k in kronieken {
-            bestaand.extend(self.stapel(&mut staat, k)?.grammen.iter().cloned());
-        }
+        let mut alle = kronieken.to_vec();
+        alle.push(gram.chronicle.as_str());
+        self.laad(&alle)?;
+        let _schrijver = self.schrijfslot();
+        // Zolang wij het schrijfslot hebben, verandert `staat` niet: de
+        // controle ziet wat er ligt, ook nadat het leesslot weer los is.
+        let (bestaand, lengte) = {
+            let staat = self.lees_staat();
+            let mut bestaand = Vec::new();
+            for k in kronieken {
+                if let Some(s) = staat.get(*k) {
+                    bestaand.extend(s.grammen.iter().cloned());
+                }
+            }
+            let lengte = staat.get(&gram.chronicle).map_or(0, |s| s.lengte);
+            (bestaand, lengte)
+        };
         let zicht: Vec<&Gram> = bestaand.iter().map(|v| &v.gram).collect();
         if let Err(w) = controle(&zicht) {
             return Ok(Err(w));
         }
-        let stapel = self.stapel(&mut staat, &gram.chronicle)?;
-        schrijf_regel(&pad, stapel.lengte, regel.as_bytes())?;
-        stapel.lengte += regel.len() as u64;
+        schrijf_regel(&pad, lengte, regel.as_bytes())?;
+        let mut staat = self.schrijf_staat();
+        let stapel = staat.entry(gram.chronicle.clone()).or_default();
+        stapel.lengte = lengte + regel.len() as u64;
         stapel.voeg_toe(gram.clone());
         Ok(Ok(()))
     }
@@ -184,7 +241,8 @@ impl Kroniek {
     /// Zet de startstand in de kroniek, als elke kroniek van `kronieken` leeg
     /// is; onwaar als er al iets lag. Elk bestand wordt in een keer geschreven
     /// (een tijdelijk bestand, dan hernoemd), zodat een onderbroken start
-    /// geen halve startstand achterlaat.
+    /// geen half bestand achterlaat. Beslaat de startstand meer dan een
+    /// kroniek, dan is dat per bestand, niet over de bestanden heen.
     pub fn zet_startstand(&self, kronieken: &[&str], grammen: &[Gram]) -> Result<bool, String> {
         let mut per_kroniek: BTreeMap<&str, String> = BTreeMap::new();
         for g in grammen {
@@ -193,9 +251,16 @@ impl Kroniek {
                 .or_default()
                 .push_str(&als_regel(g)?);
         }
-        let mut staat = self.slot()?;
-        for k in kronieken.iter().chain(per_kroniek.keys()) {
-            if !self.stapel(&mut staat, k)?.grammen.is_empty() {
+        let mut alle: Vec<&str> = kronieken.to_vec();
+        alle.extend(per_kroniek.keys());
+        self.laad(&alle)?;
+        let _schrijver = self.schrijfslot();
+        {
+            let staat = self.lees_staat();
+            if alle
+                .iter()
+                .any(|k| staat.get(*k).is_some_and(|s| !s.grammen.is_empty()))
+            {
                 return Ok(false);
             }
         }
@@ -208,20 +273,21 @@ impl Kroniek {
             schrijf_bestand(&tijdelijk, tekst.as_bytes())?;
             klaar.push((tijdelijk, pad));
         }
-        for (tijdelijk, pad) in &klaar {
+        let mut staat = self.schrijf_staat();
+        for ((tijdelijk, pad), (k, tekst)) in klaar.iter().zip(&per_kroniek) {
             std::fs::rename(tijdelijk, pad).map_err(|e| format!("{}: {e}", pad.display()))?;
+            // Wat hernoemd is, staat ook in het geheugen, ook als een
+            // volgende hernoeming mislukt.
+            let stapel = staat.entry((*k).to_string()).or_default();
+            stapel.lengte = tekst.len() as u64;
+            for g in grammen.iter().filter(|g| g.chronicle == *k) {
+                stapel.voeg_toe(g.clone());
+            }
         }
         if let Ok(d) = std::fs::File::open(&self.map) {
             // De hernoeming zelf duurzaam maken; lukt dat niet, dan staat het
             // bestand er toch al.
             let _ = d.sync_all();
-        }
-        for (k, tekst) in &per_kroniek {
-            let stapel = self.stapel(&mut staat, k)?;
-            stapel.lengte = tekst.len() as u64;
-        }
-        for g in grammen {
-            self.stapel(&mut staat, &g.chronicle)?.voeg_toe(g.clone());
         }
         Ok(true)
     }
@@ -234,12 +300,12 @@ impl Kroniek {
     /// Alle grammen van deze kronieken, per kroniek in de volgorde van
     /// vastleggen.
     pub fn alle(&self, kronieken: &[&str]) -> Result<Vec<Arc<Vastgelegd>>, String> {
-        let mut staat = self.slot()?;
-        let mut uit = Vec::new();
-        for k in kronieken {
-            uit.extend(self.stapel(&mut staat, k)?.grammen.iter().cloned());
-        }
-        Ok(uit)
+        self.met_stapels(kronieken, |stapels| {
+            stapels
+                .iter()
+                .flat_map(|s| s.grammen.iter().cloned())
+                .collect()
+        })
     }
 
     /// De grammen van een zaak, over de gegeven kronieken, in de volgorde
@@ -249,39 +315,35 @@ impl Kroniek {
         kronieken: &[&str],
         zaakkenmerk: &str,
     ) -> Result<Vec<Arc<Vastgelegd>>, String> {
-        let mut staat = self.slot()?;
-        let mut uit = Vec::new();
-        for k in kronieken {
-            let s = self.stapel(&mut staat, k)?;
-            if let Some(posities) = s.per_zaak.get(zaakkenmerk) {
-                uit.extend(posities.iter().map(|&i| s.grammen[i].clone()));
+        self.met_stapels(kronieken, |stapels| {
+            let mut uit = Vec::new();
+            for s in stapels {
+                if let Some(posities) = s.per_zaak.get(zaakkenmerk) {
+                    uit.extend(posities.iter().map(|&i| s.grammen[i].clone()));
+                }
             }
-        }
-        Ok(uit)
+            uit
+        })
     }
 }
 
 /// Lees een kroniek van schijf. Een laatste regel zonder regeleinde is
-/// onvolledig geschreven: die wordt afgekapt, met een melding.
+/// onvolledig geschreven: die wordt afgekapt, met een melding, maar pas als
+/// de rest leesbaar is. Een tijdelijk bestand van een onderbroken startstand
+/// wordt weggehaald.
 fn lees_bestand(pad: &Path) -> Result<Stapel, String> {
     let fout = |e: std::io::Error| format!("{}: {e}", pad.display());
+    let tijdelijk = pad.with_extension("jsonl.nieuw");
+    if tijdelijk.exists() {
+        tracing::warn!(bestand = %tijdelijk.display(), "resten van een onderbroken startstand weggehaald");
+        std::fs::remove_file(&tijdelijk).map_err(fout)?;
+    }
     let bytes = match std::fs::read(pad) {
         Ok(b) => b,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Stapel::default()),
         Err(e) => return Err(fout(e)),
     };
     let heel = bytes.iter().rposition(|b| *b == b'\n').map_or(0, |i| i + 1);
-    if heel < bytes.len() {
-        tracing::warn!(
-            kroniek = %pad.display(),
-            bytes = bytes.len() - heel,
-            "onvolledige laatste regel afgekapt: de runtime stopte tijdens het schrijven, en dat gram is nooit bevestigd"
-        );
-        let f = OpenOptions::new().write(true).open(pad).map_err(fout)?;
-        f.set_len(heel as u64)
-            .and_then(|()| f.sync_all())
-            .map_err(fout)?;
-    }
     let tekst = std::str::from_utf8(&bytes[..heel])
         .map_err(|e| format!("{}: geen UTF-8: {e}", pad.display()))?;
     let mut stapel = Stapel {
@@ -296,27 +358,37 @@ fn lees_bestand(pad: &Path) -> Result<Stapel, String> {
             .map_err(|e| format!("{} regel {}: {e}", pad.display(), i + 1))?;
         stapel.voeg_toe(gram);
     }
+    if heel < bytes.len() {
+        tracing::warn!(
+            kroniek = %pad.display(),
+            bytes = bytes.len() - heel,
+            "onvolledige laatste regel afgekapt: de runtime stopte tijdens het schrijven, en dat gram is nooit bevestigd"
+        );
+        let f = OpenOptions::new().write(true).open(pad).map_err(fout)?;
+        f.set_len(heel as u64)
+            .and_then(|()| f.sync_all())
+            .map_err(fout)?;
+    }
     Ok(stapel)
 }
 
-/// Schrijf een regel aan het einde van een kroniek van `lengte` bytes, en
-/// wacht tot hij op schijf staat. Mislukt dat halverwege, dan wordt het
-/// bestand teruggezet op `lengte`, zodat het volgende gram niet achter een
-/// halve regel komt.
+/// Schrijf een regel achter de eerste `lengte` bytes van een kroniek, en
+/// wacht tot hij op schijf staat. Wat daarna nog in het bestand stond (de
+/// rest van een eerder mislukte schrijfactie) wordt eerst weggehaald, zodat
+/// een regel nooit achter een halve regel komt.
 fn schrijf_regel(pad: &Path, lengte: u64, regel: &[u8]) -> Result<(), String> {
     let fout = |e: std::io::Error| format!("{}: {e}", pad.display());
     let mut f = OpenOptions::new()
         .create(true)
-        .append(true)
+        .truncate(false)
+        .write(true)
         .open(pad)
         .map_err(fout)?;
-    if let Err(e) = f.write_all(regel).and_then(|()| f.sync_data()) {
-        if let Err(h) = f.set_len(lengte) {
-            tracing::error!(kroniek = %pad.display(), "terugzetten na een mislukte schrijfactie mislukte ook: {h}");
-        }
-        return Err(fout(e));
-    }
-    Ok(())
+    f.set_len(lengte).map_err(fout)?;
+    f.seek(SeekFrom::Start(lengte)).map_err(fout)?;
+    f.write_all(regel)
+        .and_then(|()| f.sync_data())
+        .map_err(fout)
 }
 
 /// Schrijf een heel bestand en wacht tot het op schijf staat.
@@ -524,6 +596,39 @@ mod tests {
         assert!(fout.contains("test_kroniek.jsonl regel 2"), "{fout}");
         // Het bestand is niet aangeraakt.
         assert_eq!(std::fs::read_to_string(&pad).unwrap().lines().count(), 3);
+        // Ook niet als er daarbij een halve laatste regel staat: eerst lezen,
+        // dan pas afkappen.
+        let met_staart = format!("{g}\n{{\"kind\": \n{g}\n{{\"ki");
+        std::fs::write(&pad, &met_staart).unwrap();
+        assert!(Kroniek::open(dir.path(), K).is_err());
+        assert_eq!(std::fs::read_to_string(&pad).unwrap(), met_staart);
+    }
+
+    #[test]
+    fn een_rest_van_een_mislukte_schrijfactie_wordt_overschreven() {
+        let dir = tempfile::tempdir().unwrap();
+        let k = open(dir.path());
+        k.voeg_toe(&gram(Z1)).unwrap();
+        // Een eerdere schrijfactie liet een halve regel achter die niet
+        // teruggezet kon worden; de kroniek weet nog de goede lengte.
+        let pad = dir.path().join("test_kroniek.jsonl");
+        let heel = std::fs::read_to_string(&pad).unwrap();
+        std::fs::write(&pad, format!("{heel}{{\"half")).unwrap();
+        k.voeg_toe(&gram(Z2)).unwrap();
+        drop(k);
+        let k = open(dir.path());
+        assert_eq!(aantal(&k), 2);
+    }
+
+    #[test]
+    fn resten_van_een_onderbroken_startstand_worden_opgeruimd() {
+        let dir = tempfile::tempdir().unwrap();
+        let rest = dir.path().join("test_kroniek.jsonl.nieuw");
+        std::fs::write(&rest, "{\"half").unwrap();
+        let k = open(dir.path());
+        assert!(!rest.exists());
+        assert!(k.zet_startstand(K, &[gram(Z1)]).unwrap());
+        assert_eq!(aantal(&k), 1);
     }
 
     #[test]

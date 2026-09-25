@@ -154,11 +154,14 @@ willekeurig runtime-token dat alleen in haar geheugen staat; het interne
 transport stuurt het mee in de header `x-cel-runtime-token`, en de cel
 antwoordt zonder token 401 en met een ander token 403. Een HTTP-transport
 stuurt het alleen mee als het er uitdrukkelijk een kreeg
-(`Http::met_runtime_token`), en de runtime geeft het nooit aan een transport
-naar een andere runtime. Dit is geen autorisatie tussen organisaties (RFC-022
+(`Http::met_runtime_token`; de runtime zelf doet dat nu nergens, want een
+proces legt alleen vast in een cel van dezelfde runtime), en de runtime geeft
+het nooit aan een transport naar een andere runtime. Dit is geen autorisatie tussen organisaties (RFC-022
 par. 2 laat die aan de beveiligingscontext); het voorkomt alleen dat iedereen
 die de poort bereikt een gram met een willekeurige actor en intake in een
-kroniek zet.
+kroniek zet. Het maakt de processen zelf niet veiliger: wie de poort bereikt,
+kan nog steeds via de nep-logins van een proces een aanvraag indienen of een
+besluit laten nemen, en dat proces legt dan vast.
 
 De cel weigert een gram (403) als de `actor` van het verzoek niet de
 `recording_actor` van de stroom is.
@@ -223,9 +226,11 @@ erboven: het leest lexostatussen en vraagt de cel vast te leggen.
    de runtime draait schrijft niet zelf in het bestand. Een regel telt pas
    als ze met een regeleinde eindigt: een onvolledige laatste regel (de
    runtime stopte tijdens het schrijven) wordt bij het openen afgekapt en
-   gemeld, een onleesbare regel daarvoor houdt de runtime tegen. Mislukt het
-   schrijven halverwege, dan zet de cel het bestand terug op de vorige
-   lengte.
+   gemeld, een onleesbare regel daarvoor houdt de runtime tegen (en dan
+   wordt er niets afgekapt). Elke schrijfactie begint op de lengte die de
+   cel kent, dus de rest van een eerder mislukte schrijfactie wordt
+   overschreven. Lezers wachten niet op de schijf: alleen het schrijven
+   wacht op fsync.
 
 ## Startstand
 
@@ -234,7 +239,11 @@ erboven: het leest lexostatussen en vraagt de cel vast te leggen.
 de stroom. De velden moeten precies die van het event zijn. De runtime zet de
 startstand in de kroniek als elke kroniek van de cel leeg is, en daarna nooit
 meer. Elk bestand wordt in een keer geschreven (een tijdelijk bestand, dan
-hernoemd), zodat een onderbroken start geen halve startstand achterlaat. Zo'n gram is geplaatst, niet berekend: er is geen engine-trace bij.
+hernoemd), zodat een onderbroken start geen half bestand achterlaat; een
+achtergebleven tijdelijk bestand ruimt de volgende start op. Beslaat de
+startstand meer dan een kroniek, dan geldt dat per bestand: een start die
+tussen twee hernoemingen stopt, laat de andere kronieken leeg, en die vult de
+runtime daarna niet meer aan. Zo'n gram is geplaatst, niet berekend: er is geen engine-trace bij.
 
 ## Synthese en transport
 
@@ -265,7 +274,10 @@ volgorde, zodat een bron een kolom kan gebruiken die een eerdere leverde. De
 invoer komt uit de regel (`kolom`), uit een lexostatus van de zaak (`lexostatus`
 en `veld`) of uit de samengevoegde parameters (`parameter`), zo nodig omgezet met
 `als: eerste_dag_van_het_jaar` (de tegenhanger van de afleiding `jaar_van`).
-Een bron levert een kolom uit haar `parameters` of haar `extra_velden`.
+Een bron levert een kolom uit haar `parameters` of haar `extra_velden`. Het
+antwoord van een bron (per regel of in de synthese) moet een lexostatus zijn,
+met ten minste `naam` en `parameters`; iets anders is een fout van de bron,
+geen lege lexostatus.
 Ontbreekt een invoer, is een bron onbereikbaar, of levert ze de waarde niet,
 dan blijft die kolom weg; `mist` noemt welke. Er wordt niets aangevuld. Is
 het tabelveld geen lijst van objecten, dan komt er geen tabel (met `fout` in
