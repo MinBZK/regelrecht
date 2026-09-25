@@ -1,8 +1,10 @@
 <script setup>
 // Grammen als tabel, met de ruwe YAML eronder. Alleen een gram van een event
-// met een zaak heeft een zaakkenmerk. Elk gram heeft twee tijden: op_moment,
-// wanneer het feit rechtens geldt (bij een aanvraag van het loket de dag van
-// ontvangst), en vastgelegd_op, wanneer de cel het vastlegde.
+// met een zaak heeft een zaakkenmerk, en alleen een gram dat een besluit in
+// de zaak opent, volgt of wijzigt een besluitkenmerk. Elk gram heeft twee
+// tijden: op_moment, wanneer het feit rechtens geldt (bij een aanvraag van
+// het loket de dag van ontvangst), en vastgelegd_op, wanneer de cel het
+// vastlegde.
 const props = defineProps({
   // [{gram, yaml}], in de volgorde waarin ze getoond worden.
   items: { type: Array, required: true },
@@ -38,7 +40,10 @@ const isNieuw = (g) => props.nieuw !== null && sleutel(g) === sleutel(props.nieu
       <nldd-text-cell :text="i.gram.chronicle"></nldd-text-cell>
       <nldd-text-cell :text="i.gram.name"></nldd-text-cell>
       <nldd-text-cell :text="[i.gram.type, i.gram.soort, i.gram.stage].filter(Boolean).join(' / ')"></nldd-text-cell>
-      <nldd-text-cell :text="i.gram.zaakkenmerk ?? 'geen zaak'"></nldd-text-cell>
+      <nldd-text-cell
+        :text="i.gram.zaakkenmerk ?? 'geen zaak'"
+        :supporting-text="i.gram.besluitkenmerk ? `besluit ${i.gram.besluitkenmerk.split('/').pop()} (${i.gram.besluit})` : undefined"
+      ></nldd-text-cell>
       <nldd-text-cell :text="i.gram.herkomst ?? 'vastgesteld'"></nldd-text-cell>
     </nldd-table-row>
   </nldd-table>

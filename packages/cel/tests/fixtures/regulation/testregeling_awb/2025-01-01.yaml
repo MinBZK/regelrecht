@@ -233,11 +233,11 @@ articles:
           decision_type: GEEN_BESLUIT
         parameters:
           - name: terug_te_betalen
-            type: number
+            type: amount
             required: true
             origin: {waarde: DOSSIER, grondslag: testregeling_awb#6 lid 2}
           - name: terugbetaald
-            type: number
+            type: amount
             required: true
             origin: {waarde: DOSSIER, grondslag: testregeling_awb#6 lid 2}
         output:

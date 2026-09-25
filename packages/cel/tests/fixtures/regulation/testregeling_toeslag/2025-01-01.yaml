@@ -220,11 +220,11 @@ articles:
           decision_type: BETALINGSVERPLICHTING
         parameters:
           - name: betaald_voorschot
-            type: number
+            type: amount
             required: true
             origin: {waarde: DOSSIER, grondslag: testregeling_toeslag#5 lid 1}
           - name: vastgestelde_toeslag
-            type: number
+            type: amount
             required: true
             origin: {waarde: DOSSIER, grondslag: testregeling_toeslag#5 lid 1}
           - name: terugvorderingsdatum
@@ -282,11 +282,11 @@ articles:
           decision_type: GEEN_BESLUIT
         parameters:
           - name: voorschot
-            type: number
+            type: amount
             required: true
             origin: {waarde: DOSSIER, grondslag: testregeling_toeslag#8 lid 1}
           - name: betaald_voorschot
-            type: number
+            type: amount
             required: true
             origin: {waarde: DOSSIER, grondslag: testregeling_toeslag#8 lid 1}
         output:
