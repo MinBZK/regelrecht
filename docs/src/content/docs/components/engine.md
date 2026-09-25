@@ -163,7 +163,7 @@ The engine automatically loads the referenced law, executes it with the specifie
 
 ### Open Term Resolution (IoC)
 
-Higher laws declare `open_terms` that lower regulations fill via `implements`. At execution time, the engine:
+Laws declare `open_terms` that other regulations fill via `implements`, by delegation or in co-government. At execution time, the engine:
 
 1. Indexes all `implements` declarations at law load time
 2. Looks up implementations for each `open_term`

@@ -151,7 +151,7 @@ value of `in` on `DATE_PART`) or by changing the format (`resolution: model`, e.
 quantification over persons, a rule about a set rather than a value, a legal
 fiction).
 
-An **open term** says the law leaves the content open and a lower regulation or
+An **open term** says the law leaves the content open and another regulation or
 implementing policy fills it. The language expresses it fine; the content sits
 elsewhere. `delegated_to` and `delegation_type` say who may fill it and with what
 kind of regulation, and `expected_source` names the filling regulation where the
@@ -470,12 +470,14 @@ source:
 
 ### Open Terms (IoC, Inversion of Control)
 
-When a law leaves a value to a lower regulation ("bij ministeriële regeling",
-"bij gemeentelijke verordening"), use the `open_terms` + `implements` pattern.
+When a law leaves a value to another regulation ("bij ministeriële regeling",
+delegation; "bij gemeentelijke verordening", often co-government, where the
+municipality executes the act through its own ordinance), use the `open_terms` +
+`implements` pattern.
 An open term whose article names no filler works the same way, with
 `delegated_to` and `delegation_type` left out.
 
-**Higher law** declares an open term:
+**The law** declares an open term:
 ```yaml
 machine_readable:
   open_terms:
@@ -496,7 +498,7 @@ machine_readable:
         value: $standaardpremie   # Engine resolves via implements_index
 ```
 
-**Lower regulation** registers as implementing:
+**The implementing regulation** registers as filling it:
 ```yaml
 machine_readable:
   implements:

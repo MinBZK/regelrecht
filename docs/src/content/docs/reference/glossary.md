@@ -112,9 +112,9 @@ The values of `decision_type`, saying what kind of decision an output is within 
 | Term | Dutch | Description |
 |------|-------|-------------|
 | **Corpus** | Corpus | The git-versioned collection of machine-readable laws. A [federated corpus](/concepts/federated-corpus) spans more than one repository |
-| **Open term** | Open term | The schema construct (`open_terms`) for a value an article leaves to be filled outside itself: by a lower regulation it delegates to, or per case by the authority `decided_per_case_by` names. See [Inversion of Control](/concepts/inversion-of-control) |
+| **Open term** | Open term | The schema construct (`open_terms`) for a value an article leaves to be filled outside itself: by a regulation, under delegation or in co-government, or per case by the authority `decided_per_case_by` names. See [Inversion of Control](/concepts/inversion-of-control) |
 | **Open norm** | Open norm | A standard the law leaves vague on purpose, such as *redelijkerwijs* or *in bijzondere gevallen*, so that its content is decided case by case. Not the same thing as a delegated value, though the format records it in the same place: as an open term with `decided_per_case_by`. It is not a marking, because the language can express it. See [RFC-031](/rfcs/rfc-031) |
-| **Implements** | Gelet op | A lower regulation declaring which open terms of a higher law it fills. The schema field carries `gelet_op`, the citation the Dutch instrument itself opens with |
+| **Implements** | Gelet op | A regulation declaring which open terms of a law it fills. The schema field carries `gelet_op`, the citation the Dutch instrument opens with in its preamble. The preamble records the basis; the power itself comes from the article of the law |
 | **Cross-law reference** | Verwijzing | A law reading an output of another law through a `source` block. See [Cross-Law References](/concepts/cross-law-references) |
 | **Parameter** | Parameter | A value the caller supplies with the question, such as the `bsn` of the person it is about. See [Law Format](/concepts/law-format#parameters-inputs-and-outputs) |
 | **Input** | Invoer | A value an article needs but does not decide itself. It comes from another law through `source`, or from outside the corpus |

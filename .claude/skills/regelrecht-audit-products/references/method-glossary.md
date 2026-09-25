@@ -78,12 +78,14 @@ wat je voorleest tijdens een walk-through: *"De YAML zegt: '{quote}'. Klopt dat?
 ## Stelsel-lagen (voor scope-analyse)
 
 Dossiers vallen vaak in lagen. Generiek patroon:
-- **Laag A — grondslag**: de formele wet die delegeert (vaak niet zelf
+- **Laag A (grondslag)**: de formele wet die delegeert (vaak niet zelf
   machine-leesbaar, alleen `legal_basis`-doel).
-- **Laag B — uitwerking**: lagere regeling(en) waar de kern-berekening leeft.
-- **Laag C — lokale/uitvoerende laag**: de orchestrator die scope kiest en
+- **Laag B (uitwerking)**: uitwerkende regeling(en) waar de kern-berekening leeft:
+  gedelegeerd (een ministeriële regeling of AMvB) of, bij medebewind, een
+  gemeentelijke verordening die de wet uitvoert en er wel aan gebonden is.
+- **Laag C (lokale/uitvoerende laag)**: de orchestrator die scope kiest en
   bovenliggende lagen inpakt via `source:`-calls.
-- **Laag D — databronnen**: wetten die alleen *data* leveren (persoonsgegevens,
+- **Laag D (databronnen)**: wetten die alleen *data* leveren (persoonsgegevens,
   normen), geen formules in de keten.
 
 Drie relatie-types in de wet-graph:

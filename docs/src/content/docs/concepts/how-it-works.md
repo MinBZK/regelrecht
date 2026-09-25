@@ -95,11 +95,11 @@ These ideas show up throughout the system. Each has a dedicated page with exampl
 
 Dutch laws reference each other constantly. The healthcare allowance law needs your income (defined by the Awir), your insurance status (from the Zorgverzekeringswet), and your allowance-partner status (also from the Awir). An article declares each of those as an input with a `source` block naming the other law and the output it wants, as `toetsingsinkomen` does in the example file above. The engine follows these chains automatically. See [Cross-Law References](./cross-law-references) for the full picture.
 
-### Delegation from higher to lower law
+### Delegation and co-government
 
-A *wet* often says "the minister determines the standard premium" or "the municipality sets the sanctions policy." The higher law leaves a blank: it names a value it needs (like `standaardpremie`) but leaves the actual number open (`open_terms`). A lower regulation then says "I provide that value" (`implements`). The engine discovers these connections at load time, matching the real legal hierarchy where a ministerial regulation opens with *"Gelet op artikel 4 van de Wet op de zorgtoeslag."*
+A *wet* often says "the minister determines the standard premium" or "the municipal council sets rules on reducing social assistance." The first is delegation to a lower regulation; the second is co-government (*medebewind*), where the municipality executes the act through its own ordinance, which is still bound by the act. In both cases the law leaves a blank: it names a value it needs (like `standaardpremie`) but leaves the actual number open (`open_terms`). The regulation that fills it then says "I provide that value" (`implements`). The engine discovers these connections at load time, matching the way a ministerial regulation opens with *"Gelet op artikel 4 van de Wet op de zorgtoeslag."*
 
-This also means that different authorities can each provide their own version of the same value. The Participatiewet delegates sanctions policy to municipalities. Each of the 342 municipalities can write its own ordinance with different percentages. When the engine runs, it uses the `gemeente_code` in the execution scope to pick the right municipality's ordinance. Amsterdam gets Amsterdam's rules, Rotterdam gets Rotterdam's.
+This also means that different authorities can each provide their own version of the same value. The Participatiewet leaves the reduction of social assistance to municipal ordinances. Each of the 342 municipalities can write its own ordinance with different percentages. When the engine runs, it uses the `gemeente_code` in the execution scope to pick the right municipality's ordinance. Amsterdam gets Amsterdam's rules, Rotterdam gets Rotterdam's.
 
 See [Inversion of Control](./inversion-of-control).
 
@@ -119,11 +119,11 @@ The engine's operation set is small by design. When a legal construct cannot yet
 
 ### Execution provenance
 
-Every execution produces a receipt: a sealed envelope containing the engine version, schema version, all loaded regulations (with content hashes), input parameters, outputs, and trace. This makes every decision reproducible and auditable, as required by the Awb, the AERIUS rulings, and the EU AI Act. For cross-organization decisions, the receipt also captures the provenance of accepted values from other authorities. See [Execution Provenance](./execution-provenance).
+Every execution produces a receipt: a sealed envelope containing the engine version, schema version, all loaded regulations (with content hashes), input parameters, outputs, and trace. This makes every decision reproducible and auditable, as the Awb and the AERIUS rulings require. The EU AI Act would require it too for a high-risk AI system, though a deterministic engine executing adopted rules is arguably not an AI system under the Act ([Rules as Executed, section 7.3](/research/rules-as-executed#sec:european)). For cross-organization decisions, the receipt also captures the provenance of accepted values from other authorities. See [Execution Provenance](./execution-provenance).
 
 ### Organizational boundaries and federated corpus
 
-Different government organizations handle different parts of the law chain. The Tax Authority determines income, the Allowances Service determines healthcare allowance, municipalities handle social assistance. An article records which body may issue a binding decision in `competent_authority` (see [Competent Authority](./competent-authority)), and the engine uses that to model these boundaries. Today it runs in simulation mode (compute everything locally); the authoritative mode that exchanges signed results between organizations is the proposed end state, not yet implemented. See [Multi-Org Execution](./multi-org-execution).
+Different government organizations handle different parts of the law chain. The tax inspector (*inspecteur*) determines income, the Allowances Service determines healthcare allowance, municipalities handle social assistance. An article records which body may issue a binding decision in `competent_authority` (see [Competent Authority](./competent-authority)), and the engine uses that to model these boundaries. Today it runs in simulation mode (compute everything locally); the authoritative mode that exchanges signed results between organizations is the proposed end state, not yet implemented. See [Multi-Org Execution](./multi-org-execution).
 
 On the data side, 342 municipalities, 12 provinces, and 21 water boards all produce their own regulations. The [federated corpus](./federated-corpus) model lets each authority maintain their own law files in their own Git repository while the engine discovers and loads them through a registry.
 
