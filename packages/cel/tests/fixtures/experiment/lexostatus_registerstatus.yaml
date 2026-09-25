@@ -1,0 +1,133 @@
+---
+# Experiment A (niet voor productie): de lexostatus `registerstatus` van de
+# fictieve registercel (cellen/register/lexostatussen.yaml), geschreven als
+# engine-artikel. De kroniek komt binnen als parameter `grammen`: een lijst
+# grammen van een kroniek, door de cel oplopend op op_moment gezet, elk met
+# een `volgorde` (0, 1, ...). De engine kent geen tijdstip met tijdzone, dus
+# "het laatste gram" is het gram met de hoogste volgorde.
+#
+# Vergelijk: packages/cel/tests/exp_reductie_als_engine.rs.
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
+$id: lexostatus_registerstatus
+name: Lexostatus registerstatus (experiment)
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/lexostatus_registerstatus
+
+articles:
+  - number: '1'
+    url: https://example.com/lexostatus_registerstatus/1
+    text: >-
+      De registerstatus van een aanduiding volgt uit de grammen van de kroniek
+      van het register.
+    machine_readable:
+      execution:
+        parameters:
+          - name: grammen
+            type: array
+            required: true
+          - name: aanduiding
+            type: string
+            required: true
+        output:
+          - {name: is_ingeschreven_raad, type: boolean}
+          - {name: is_geschrapt_raad, type: boolean}
+          - {name: zetels_op_lijst, type: number}
+          # Hulpuitvoer: de volgorde van het laatste mededeling-gram (null:
+          # geen). De reductie-DSL heeft hier `kies: laatste`.
+          - {name: laatste_mededeling, type: number, nullable: true}
+          - {name: datum_mededeling, type: date, nullable: true}
+          - {name: geblokkeerd_raad, type: boolean}
+          - {name: jaar, type: number, nullable: true}
+        actions:
+          # bestaat: FOREACH met filter, combine OR (leeg = false: "geen gram = nee").
+          - output: is_ingeschreven_raad
+            value:
+              operation: FOREACH
+              collection: $grammen
+              as: g
+              filter:
+                operation: AND
+                conditions:
+                  - {operation: EQUALS, subject: $g.name, value: aanduiding_ingeschreven}
+                  - {operation: EQUALS, subject: $g.fields.orgaan, value: raad}
+                  - {operation: EQUALS, subject: $g.fields.aanduiding, value: $aanduiding}
+              body: true
+              combine: OR
+          - output: is_geschrapt_raad
+            value:
+              operation: FOREACH
+              collection: $grammen
+              as: g
+              filter:
+                operation: AND
+                conditions:
+                  - {operation: EQUALS, subject: $g.name, value: aanduiding_geschrapt}
+                  - {operation: EQUALS, subject: $g.fields.orgaan, value: raad}
+                  - {operation: EQUALS, subject: $g.fields.aanduiding, value: $aanduiding}
+              body: true
+              combine: OR
+          # som: combine ADD (leeg = 0).
+          - output: zetels_op_lijst
+            value:
+              operation: FOREACH
+              collection: $grammen
+              as: g
+              filter:
+                operation: AND
+                conditions:
+                  - {operation: EQUALS, subject: $g.name, value: uitslag_vastgesteld}
+                  - {operation: EQUALS, subject: $g.fields.lijst, value: $aanduiding}
+              body: $g.fields.zetels
+              combine: ADD
+          # kies: laatste, stap 1: de hoogste volgorde (leeg = null).
+          - output: laatste_mededeling
+            value:
+              operation: FOREACH
+              collection: $grammen
+              as: g
+              filter:
+                operation: AND
+                conditions:
+                  - {operation: EQUALS, subject: $g.name, value: mededeling_gedaan}
+                  - {operation: EQUALS, subject: $g.fields.aanduiding, value: $aanduiding}
+              body: $g.volgorde
+              combine: MAX
+          # kies: laatste, stap 2: het veld van dat ene gram. Er is geen
+          # combine die "het enige element" geeft; ADD over een element van
+          # een tekst geeft die tekst. Leeg zou 0 geven, dus eerst de IF.
+          - output: datum_mededeling
+            value:
+              operation: IF
+              cases:
+                - when: {operation: EQUALS, subject: $laatste_mededeling, value: null}
+                  then: null
+              default:
+                operation: FOREACH
+                collection: $grammen
+                as: g
+                filter: {operation: EQUALS, subject: $g.volgorde, value: $laatste_mededeling}
+                body: $g.fields.datum
+                combine: ADD
+          # kies: laatste + bevat: IN over het lijstveld, combine OR (leeg = false).
+          - output: geblokkeerd_raad
+            value:
+              operation: FOREACH
+              collection: $grammen
+              as: g
+              filter: {operation: EQUALS, subject: $g.volgorde, value: $laatste_mededeling}
+              body: {operation: IN, subject: raad, value: $g.fields.geblokkeerd_voor}
+              combine: OR
+          # kies: laatste + jaar_van.
+          - output: jaar
+            value:
+              operation: IF
+              cases:
+                - when: {operation: EQUALS, subject: $datum_mededeling, value: null}
+                  then: null
+              default:
+                operation: DATE_PART
+                date: $datum_mededeling
+                in: year

@@ -33,6 +33,7 @@ pub mod handeling;
 pub mod kanaal;
 pub mod kroniek;
 pub mod laden;
+pub mod lexostatus_engine;
 pub mod mogelijkheid;
 pub mod origin;
 pub mod proces;
