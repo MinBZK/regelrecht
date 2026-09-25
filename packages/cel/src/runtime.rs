@@ -198,18 +198,8 @@ impl Runtime {
 /// Open de kroniek van een cel. Is elke kroniek van de cel leeg, dan komt de
 /// startstand erin.
 fn open_kroniek(data_dir: &Path, cel: &Cel) -> Result<Kroniek, String> {
-    let kroniek = Kroniek::open(&data_dir.join(cel.id()))?;
-    if cel.startstand.is_empty() {
-        return Ok(kroniek);
-    }
-    let mut leeg = true;
-    for k in cel.kronieken() {
-        leeg &= kroniek.lees(k)?.is_empty();
-    }
-    if leeg {
-        for gram in &cel.startstand {
-            kroniek.voeg_toe(gram)?;
-        }
+    let kroniek = Kroniek::open(&data_dir.join(cel.id()), &cel.kronieken())?;
+    if !cel.startstand.is_empty() && kroniek.zet_startstand(&cel.kronieken(), &cel.startstand)? {
         tracing::info!(cel = %cel.id(), grammen = cel.startstand.len(), "startstand in lege kroniek gezet");
     }
     Ok(kroniek)

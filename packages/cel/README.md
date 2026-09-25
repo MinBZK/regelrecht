@@ -199,7 +199,18 @@ erboven: het leest lexostatussen en vraagt de cel vast te leggen.
    `herkomst: startstand`. Een gram van een besluit dat een proces nam draagt
    daarnaast `legal_character`, `decision_type`, `regulation`,
    `regulation_valid_from`, zo nodig `competent_authority`, `inputs` (elke
-   parameter met haar waarde en herkomst) en `receipt`.
+   parameter met haar waarde en herkomst) en `receipt`. Een gram met een
+   `op_moment` dat geen moment met tijdzone is, valideert niet.
+
+   Het bestand is de bron; de runtime houdt de grammen daarnaast in het
+   geheugen, met een index per zaak, en maakt de YAML van een gram een keer.
+   Een reductie of een zaakvraag leest het bestand dus niet opnieuw, en wie
+   de runtime draait schrijft niet zelf in het bestand. Een regel telt pas
+   als ze met een regeleinde eindigt: een onvolledige laatste regel (de
+   runtime stopte tijdens het schrijven) wordt bij het openen afgekapt en
+   gemeld, een onleesbare regel daarvoor houdt de runtime tegen. Mislukt het
+   schrijven halverwege, dan zet de cel het bestand terug op de vorige
+   lengte.
 
 ## Startstand
 
@@ -207,7 +218,8 @@ erboven: het leest lexostatussen en vraagt de cel vast te leggen.
 `herkomst: startstand`, `fields` en optioneel `zaakkenmerk`. De rest volgt uit
 de stroom. De velden moeten precies die van het event zijn. De runtime zet de
 startstand in de kroniek als elke kroniek van de cel leeg is, en daarna nooit
-meer. Zo'n gram is geplaatst, niet berekend: er is geen engine-trace bij.
+meer. Elk bestand wordt in een keer geschreven (een tijdelijk bestand, dan
+hernoemd), zodat een onderbroken start geen halve startstand achterlaat. Zo'n gram is geplaatst, niet berekend: er is geen engine-trace bij.
 
 ## Synthese en transport
 
@@ -379,7 +391,7 @@ komen.
 | `stroom` | stroomdefinitie laden en valideren, gram bouwen uit intake en external |
 | `reductie` | lexostatus-definities laden, kroniek reduceren tot lexostatus |
 | `startstand` | grammen voor een lege kroniek |
-| `kroniek` | append-only opslag |
+| `kroniek` | append-only opslag, in het geheugen met een index per zaak, en herstel van een half geschreven regel |
 | `controle` | de controles bij het opstarten |
 | `synthese` | bronnen bevragen, samenvoegen met herkomst, en de controles erop |
 | `origin` | wie een parameter levert volgens de wet (RFC-043): de controle bij het opstarten, de aanbodregel, het tijdvak en het besluitformulier |
@@ -389,7 +401,10 @@ komen.
 | `toets` | parameters aan de engine, een of meer uitkomsten evalueren |
 | `besluit` | het proefbesluit op een zaak, het vastleggen ervan, en de controles op rollen en behandeling |
 | `rijen` | synthese per regel: een tabelveld wordt een array-parameter |
-| `api` | de routes van een cel en van een proces |
+| `api` | de routes: `api::cel` (de cel), `api::proces` (de router van een proces), `api::sessie`, `api::portaal` en `api::behandeling` |
+| `celclient` | hoe een proces de cel vraagt: zaak lezen, vastleggen, proefreductie, als typen |
+| `datum` | `op_moment` lezen, peildatum en jaartal |
+| `laden` | bestanden en mappen lezen, YAML valideren tegen zijn schema |
 | `regelingen`, `formulier`, `schema` | laden en valideren |
 
 ## De engine en een losse uitkomst

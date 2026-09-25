@@ -1058,8 +1058,10 @@ async fn behandelaar(app: &Router) -> String {
 }
 
 /// Voeg een gram toe aan de kroniek van de afnemer, zoals stap voor stap
-/// vastleggen dat later zal doen. De runtime leest de kroniek bij elke vraag.
-fn voeg_gram_toe(data: &Path, name: &str, zaak: &str, fields: Value) {
+/// vastleggen dat later zal doen. Langs de kroniek van de runtime: die houdt
+/// de grammen in het geheugen, dus een regel die iemand anders in het bestand
+/// schrijft, ziet zij niet.
+fn voeg_gram_toe(rt: &Runtime, name: &str, zaak: &str, fields: Value) {
     let (type_, stage) = if name == "besluit_genomen" {
         ("decretogram", Some("BESLUIT"))
     } else {
@@ -1077,10 +1079,13 @@ fn voeg_gram_toe(data: &Path, name: &str, zaak: &str, fields: Value) {
         gram["stage"] = json!(s);
     }
     schema::valideer(Soort::Gram, &gram).unwrap();
-    let pad = data.join("test_afnemer/test_afnemer.jsonl");
-    let mut tekst = std::fs::read_to_string(&pad).unwrap();
-    tekst.push_str(&format!("{gram}\n"));
-    std::fs::write(&pad, tekst).unwrap();
+    rt.cellen
+        .iter()
+        .find(|c| c.cel.id() == "test_afnemer")
+        .unwrap()
+        .kroniek
+        .voeg_toe(&serde_json::from_value(gram).unwrap())
+        .unwrap();
 }
 
 #[tokio::test]
@@ -1184,7 +1189,8 @@ async fn rollen_bepalen_wie_wat_mag() {
 #[tokio::test]
 async fn werkvoorraad_is_een_lijst_van_zaken_zonder_besluit() {
     let data = tempfile::tempdir().unwrap();
-    let app = app(data.path());
+    let rt = runtime_op(&fixtures(), data.path()).unwrap();
+    let app = rt.router.clone();
     let een = afnemer_indienen(&app, "12345678").await;
     let twee = afnemer_indienen(&app, "87654321").await;
     let b = behandelaar(&app).await;
@@ -1216,7 +1222,7 @@ async fn werkvoorraad_is_een_lijst_van_zaken_zonder_besluit() {
     );
 
     // Een verloopgram laat de zaak staan; een besluit haalt haar eraf.
-    voeg_gram_toe(data.path(), "termijn_opgeschort", &een, json!({"dagen": 5}));
+    voeg_gram_toe(&rt, "termijn_opgeschort", &een, json!({"dagen": 5}));
     let (_, w, _) = vraag(
         &app,
         "GET",
@@ -1227,7 +1233,7 @@ async fn werkvoorraad_is_een_lijst_van_zaken_zonder_besluit() {
     .await;
     assert_eq!(w["lijst"].as_array().unwrap().len(), 2);
     voeg_gram_toe(
-        data.path(),
+        &rt,
         "besluit_genomen",
         &een,
         json!({"vastgesteld_bedrag": 6000, "gebiedsbedrag": 5000, "besluit_tijdig": false,
@@ -1267,7 +1273,8 @@ async fn werkvoorraad_is_een_lijst_van_zaken_zonder_besluit() {
 #[tokio::test]
 async fn zaak_met_proefbesluit_zonder_vastleggen() {
     let data = tempfile::tempdir().unwrap();
-    let app = app(data.path());
+    let rt = runtime_op(&fixtures(), data.path()).unwrap();
+    let app = rt.router.clone();
     let zaak = afnemer_indienen(&app, "12345678").await;
     let b = behandelaar(&app).await;
     let kroniek = data.path().join("test_afnemer/test_afnemer.jsonl");
@@ -1348,12 +1355,7 @@ async fn zaak_met_proefbesluit_zonder_vastleggen() {
     assert_eq!(p["niet_geleverd"], json!([]));
 
     // Een opschorting in de zaak schuift de uiterste datum op.
-    voeg_gram_toe(
-        data.path(),
-        "termijn_opgeschort",
-        &zaak,
-        json!({"dagen": 5}),
-    );
+    voeg_gram_toe(&rt, "termijn_opgeschort", &zaak, json!({"dagen": 5}));
     let (_, p, _) = vraag(
         &app,
         "POST",

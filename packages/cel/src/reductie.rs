@@ -719,13 +719,13 @@ fn door_filter<'g>(
 /// definitie kiest een gram (`kies`) en geen gram komt door het filter. Een
 /// lijst-lexostatus (`groepeer`) geeft altijd een lexostatus, met een lege
 /// lijst als geen zaak past.
-pub fn reduceer(
+pub fn reduceer<'g>(
     definitie: &LexostatusDefinitie,
     inputs: &Map<String, Value>,
-    grammen: &[Gram],
+    grammen: impl IntoIterator<Item = &'g Gram>,
 ) -> Result<Option<Lexostatus>, String> {
     let r = &definitie.reduction;
-    let in_kroniek = grammen.iter().filter(|g| g.chronicle == r.kroniek);
+    let in_kroniek = grammen.into_iter().filter(|g| g.chronicle == r.kroniek);
     if r.groepeer.is_some() {
         return reduceer_lijst(definitie, inputs, in_kroniek).map(Some);
     }

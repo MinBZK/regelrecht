@@ -14,7 +14,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // De controles bij het opstarten: faalt er een cel of een proces, dan
     // start de runtime niet, en elke fout wordt genoemd met de cel of het
     // proces erbij.
-    let runtime = match Runtime::laad(&config, systeemklok()) {
+    // Laden leest het corpus en de kronieken van schijf: buiten de
+    // async-draden.
+    let c = config.clone();
+    let geladen = tokio::task::spawn_blocking(move || Runtime::laad(&c, systeemklok())).await?;
+    let runtime = match geladen {
         Ok(r) => r,
         Err(fouten) => {
             for f in &fouten {

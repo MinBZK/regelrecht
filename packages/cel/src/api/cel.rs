@@ -13,7 +13,7 @@ use serde_json::{json, Map, Value};
 use super::{fout, intern, Fout, Klok};
 use crate::cel::Cel;
 use crate::celclient::Vastlegverzoek;
-use crate::kroniek::Kroniek;
+use crate::kroniek::{Kroniek, Vastgelegd};
 use crate::reductie::{self, Lexostatus};
 use crate::stroom::{self, Gram, Indiening, Zaak};
 
@@ -148,7 +148,7 @@ pub fn als_yaml(cel: &Cel, gram: &Gram) -> Result<String, String> {
 ///   besluit delen een zaakkenmerk, elk als eigen elementair gram (RFC-022
 ///   par. 1.2, RFC-008). Een tweede gram met dezelfde stage is een wijziging
 ///   van wat al vastligt, en die hoort in een eigen stap.
-fn toets_zaak(gram: &Gram, bestaand: &[Gram]) -> Result<(), Fout> {
+fn toets_zaak(gram: &Gram, bestaand: &[&Gram]) -> Result<(), Fout> {
     let Some(z) = gram.zaakkenmerk.as_deref() else {
         return Ok(());
     };
@@ -178,18 +178,20 @@ fn toets_zaak(gram: &Gram, bestaand: &[Gram]) -> Result<(), Fout> {
 
 /// Leg een gram vast. Antwoord: het gram, met YAML. De toets op de zaak en
 /// het schrijven gebeuren onder één slot, zodat twee gelijktijdige verzoeken
-/// niet allebei dezelfde stage vastleggen.
+/// niet allebei dezelfde stage vastleggen. Het schrijven wacht op de schijf,
+/// dus het draait buiten de async-draden.
 async fn grammen_route(
     State(state): State<CelState>,
     Json(verzoek): Json<Vastlegverzoek>,
 ) -> Result<(StatusCode, Json<Value>), Fout> {
     let gram = bouw(&state, &verzoek)?;
-    state
-        .kroniek
-        .voeg_toe_mits(&gram, &state.cel.kronieken(), |bestaand| {
-            toets_zaak(&gram, bestaand)
-        })
-        .map_err(|e| fout(StatusCode::INTERNAL_SERVER_ERROR, e))??;
+    let (kroniek, cel, g) = (state.kroniek.clone(), state.cel.clone(), gram.clone());
+    tokio::task::spawn_blocking(move || {
+        kroniek.voeg_toe_mits(&g, &cel.kronieken(), |bestaand| toets_zaak(&g, bestaand))
+    })
+    .await
+    .map_err(|e| intern(format!("het vastleggen brak af: {e}")))?
+    .map_err(intern)??;
     tracing::info!(cel = %state.cel.id(), zaakkenmerk = gram.zaakkenmerk.as_deref().unwrap_or("-"), name = %gram.name, "gram vastgelegd");
     let yaml = als_yaml(&state.cel, &gram).map_err(intern)?;
     Ok((
@@ -215,7 +217,13 @@ async fn proef_route(
 ) -> Result<Json<Value>, Fout> {
     let def = lexostatus_def(&state, &naam)?;
     let gram = bouw(&state, &verzoek.concept)?;
-    toets_zaak(&gram, &alle_grammen(&state)?)?;
+    if let Some(z) = &gram.zaakkenmerk {
+        let zaak = state
+            .kroniek
+            .lees_zaak(&state.cel.kronieken(), z)
+            .map_err(intern)?;
+        toets_zaak(&gram, &zaak.iter().map(|v| &v.gram).collect::<Vec<_>>())?;
+    }
     let mut inputs = verzoek.inputs;
     if let Some(z) = &gram.zaakkenmerk {
         if def.inputs.iter().any(|i| i.name == "zaakkenmerk") && !inputs.contains_key("zaakkenmerk")
@@ -224,13 +232,13 @@ async fn proef_route(
         }
     }
     inputs_compleet(def, &inputs)?;
-    let mut grammen = state
-        .kroniek
-        .lees(&def.reduction.kroniek)
-        .map_err(|e| fout(StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    let kroniek = state.kroniek.lees(&def.reduction.kroniek).map_err(intern)?;
     // Het concept als laatste: bij gelijk moment kiest `kies: laatste` het.
-    grammen.push(gram.clone());
-    let lexostatus = reductie::reduceer(def, &inputs, &grammen)
+    let grammen = kroniek
+        .iter()
+        .map(|v| &v.gram)
+        .chain(std::iter::once(&gram));
+    let lexostatus = reductie::reduceer(def, &inputs, grammen)
         .map_err(|e| fout(StatusCode::BAD_REQUEST, e))?
         .ok_or_else(|| fout(StatusCode::NOT_FOUND, "geen gram voor deze vraag"))?;
     Ok(Json(json!({"gram": gram, "lexostatus": lexostatus})))
@@ -262,31 +270,21 @@ fn inputs_compleet(
     Ok(())
 }
 
-/// De kroniek van de cel, alle grammen, over al haar kronieken.
-fn alle_grammen(state: &CelState) -> Result<Vec<Gram>, Fout> {
-    let mut uit = Vec::new();
-    for chronicle in state.cel.kronieken() {
-        uit.extend(
-            state
-                .kroniek
-                .lees(chronicle)
-                .map_err(|e| fout(StatusCode::INTERNAL_SERVER_ERROR, e))?,
-        );
-    }
-    Ok(uit)
-}
-
-fn met_yaml(state: &CelState, grammen: &[Gram]) -> Result<Value, Fout> {
+/// De grammen met hun YAML. De YAML van een gram wordt een keer gemaakt en
+/// daarna bewaard.
+fn met_yaml(state: &CelState, grammen: &[Arc<Vastgelegd>]) -> Result<Value, Fout> {
     let mut uit = Vec::with_capacity(grammen.len());
-    for g in grammen {
-        let yaml = als_yaml(&state.cel, g).map_err(intern)?;
-        uit.push(json!({"gram": g, "yaml": yaml}));
+    for v in grammen {
+        let yaml = v.yaml(|g| als_yaml(&state.cel, g)).map_err(intern)?;
+        uit.push(json!({"gram": v.gram, "yaml": yaml}));
     }
     Ok(Value::Array(uit))
 }
 
+/// De kroniek van de cel: alle grammen, over al haar kronieken.
 async fn kroniek_route(State(state): State<CelState>) -> Result<Json<Value>, Fout> {
-    Ok(Json(met_yaml(&state, &alle_grammen(&state)?)?))
+    let grammen = state.kroniek.alle(&state.cel.kronieken()).map_err(intern)?;
+    Ok(Json(met_yaml(&state, &grammen)?))
 }
 
 /// De grammen van één zaak, over alle kronieken van de cel. Het filteren op
@@ -299,7 +297,7 @@ async fn zaak_van_cel_route(
     let grammen = state
         .kroniek
         .lees_zaak(&state.cel.kronieken(), &zaakkenmerk)
-        .map_err(|e| fout(StatusCode::INTERNAL_SERVER_ERROR, e))?;
+        .map_err(intern)?;
     if grammen.is_empty() {
         return Err(fout(
             StatusCode::NOT_FOUND,
@@ -316,11 +314,8 @@ async fn lexostatus_route(
 ) -> Result<Json<Lexostatus>, Fout> {
     let def = lexostatus_def(&state, &naam)?;
     inputs_compleet(def, &inputs)?;
-    let grammen = state
-        .kroniek
-        .lees(&def.reduction.kroniek)
-        .map_err(|e| fout(StatusCode::INTERNAL_SERVER_ERROR, e))?;
-    reductie::reduceer(def, &inputs, &grammen)
+    let grammen = state.kroniek.lees(&def.reduction.kroniek).map_err(intern)?;
+    reductie::reduceer(def, &inputs, grammen.iter().map(|v| &v.gram))
         .map_err(|e| fout(StatusCode::BAD_REQUEST, e))?
         .map(Json)
         .ok_or_else(|| fout(StatusCode::NOT_FOUND, "geen gram voor deze vraag"))
