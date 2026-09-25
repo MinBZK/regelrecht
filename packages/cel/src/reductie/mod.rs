@@ -396,15 +396,9 @@ pub fn past(filter: &Filter, inputs: &Map<String, Value>, gram: &Gram) -> Result
                 .ok_or_else(|| format!("input '{input}' ontbreekt"))?,
             None => verwacht.as_str(),
         };
-        let gelijk = match sleutel.as_str() {
-            "name" => gram.name == verwacht,
-            "type" => gram.type_ == verwacht,
-            "soort" => gram.soort.as_deref() == Some(verwacht),
-            "stage" => gram.stage.as_deref() == Some(verwacht),
-            "zaakkenmerk" => gram.zaakkenmerk.as_deref() == Some(verwacht),
-            "recording_actor" => gram.recording_actor == verwacht,
-            "chronicle" => gram.chronicle == verwacht,
-            pad => match gram.veld(pad) {
+        let gelijk = match gram.kenmerk(sleutel) {
+            Some(waarde) => waarde == Some(verwacht),
+            None => match gram.veld(sleutel) {
                 Some(Value::String(s)) => s == verwacht,
                 Some(w @ (Value::Number(_) | Value::Bool(_))) => *w.to_string() == *verwacht,
                 _ => false,
@@ -1000,6 +994,39 @@ mod tests {
         g.zaak = Zaak::Geen;
         g.zaakkenmerk = None;
         assert!(!past(&filter, inputs, &g).unwrap());
+    }
+
+    /// Een filter kan per besluit in de zaak selecteren: op het besluit
+    /// (opent, volgt, wijzigt) en op het besluitkenmerk, ook uit een input.
+    #[test]
+    fn filter_op_besluit_en_besluitkenmerk() {
+        let mut filter = Filter::new();
+        filter.insert("besluit".into(), "volgt".into());
+        filter.insert("besluitkenmerk".into(), "$besluitkenmerk".into());
+        let k1 = format!("{ZAAK}/1");
+        let inputs = json!({"besluitkenmerk": k1});
+        let inputs = inputs.as_object().unwrap();
+        let mut g = gram(ZAAK, "2025-03-01T09:00:00+01:00", json!({}));
+        assert!(!past(&filter, inputs, &g).unwrap(), "zonder besluit");
+        g.besluit = Some(crate::stroom::Besluit::Volgt);
+        g.besluitkenmerk = Some(k1.clone());
+        assert!(past(&filter, inputs, &g).unwrap());
+        g.besluitkenmerk = Some(format!("{ZAAK}/2"));
+        assert!(!past(&filter, inputs, &g).unwrap(), "een ander besluit");
+        g.besluitkenmerk = Some(k1);
+        g.besluit = Some(crate::stroom::Besluit::Opent);
+        assert!(!past(&filter, inputs, &g).unwrap(), "het besluit zelf");
+    }
+
+    /// Elke sleutel van het gram zelf heeft een waarde in `Gram::kenmerk`;
+    /// een andere sleutel is een veldpad.
+    #[test]
+    fn elke_gramsleutel_is_een_kenmerk() {
+        let g = gram(ZAAK, "2025-03-01T09:00:00+01:00", json!({}));
+        for k in GRAM_SLEUTELS {
+            assert!(g.kenmerk(k).is_some(), "{k}");
+        }
+        assert!(g.kenmerk("inhoud.naam").is_none());
     }
 
     const REGISTER: &str = include_str!("../../tests/fixtures/cellen/register/lexostatussen.yaml");

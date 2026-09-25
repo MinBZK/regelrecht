@@ -249,8 +249,11 @@ erboven: het leest lexostatussen en vraagt de cel vast te leggen.
    (`bestaat` op een stage, `som` van de betalingen).
 
    Een filtersleutel is een veld van het gram zelf (`name`, `type`, `soort`,
-   `stage`, `zaakkenmerk`, `recording_actor`, `chronicle`) of een veldpad onder
-   `fields`; `$x` komt uit de inputs. Geen gram is "nee" bij `bestaat` en
+   `stage`, `zaak`, `zaakkenmerk`, `besluit`, `besluitkenmerk`, `wijzigt`,
+   `recording_actor`, `chronicle`, `legal_character`, `decision_type`,
+   `regulation`, `competent_authority`) of een veldpad onder `fields`; `$x`
+   komt uit de inputs. Met `besluitkenmerk` filtert een lexostatus per besluit
+   in een zaak. Geen gram is "nee" bij `bestaat` en
    `bevat`, en nul bij `som`: de cel spreekt alleen over haar eigen kroniek.
    Een waarde die er niet is (`veld` op een leeg veld, `kies` zonder gram)
    blijft weg, tenzij de definitie met `geen_gram` zegt hoe zij het ontbreken
@@ -459,7 +462,8 @@ routes per soort besluit. Het event zegt welke soort een handeling is:
   `op_moment`).
 - **Vervolg**: een latere stage van hetzelfde artikel, zoals de bekendmaking,
   op het laatste besluit dat de handeling van dat artikel in de zaak
-  vastlegde (`besluit: volgt`). De engine voert die stage uit (`execute_stage`) op de invoer en de
+  vastlegde (`besluit: volgt`), tenzij de behandelaar er een noemt
+  (`besluitkenmerk` naast het formulier; zo ook bij een feit of wijziging). De engine voert die stage uit (`execute_stage`) op de invoer en de
   uitkomsten van het vastgelegde besluit: het gram van het besluit is de
   toestand van RFC-008. Het formulier is wat de stage vraagt (`requires`,
   met het label van de parameter van het besluit). De haken die de wet op die

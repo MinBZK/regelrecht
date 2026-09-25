@@ -246,6 +246,31 @@ impl Gram {
         }
     }
 
+    /// Een veld van het gram zelf waarop een filter selecteert (een sleutel
+    /// uit [`crate::reductie::GRAM_SLEUTELS`]), als tekst. `None` als
+    /// `sleutel` geen zo'n veld is: dan is het een veldpad onder `fields`.
+    /// `Some(None)` als het gram het veld niet heeft.
+    pub fn kenmerk(&self, sleutel: &str) -> Option<Option<&str>> {
+        Some(match sleutel {
+            "name" => Some(self.name.as_str()),
+            "type" => Some(self.type_.as_str()),
+            "soort" => self.soort.as_deref(),
+            "stage" => self.stage.as_deref(),
+            "zaak" => self.zaak.heeft_kenmerk().then(|| self.zaak.als_tekst()),
+            "zaakkenmerk" => self.zaakkenmerk.as_deref(),
+            "besluit" => self.besluit.map(Besluit::als_tekst),
+            "besluitkenmerk" => self.besluitkenmerk.as_deref(),
+            "wijzigt" => self.wijzigt.as_deref(),
+            "recording_actor" => Some(self.recording_actor.as_str()),
+            "chronicle" => Some(self.chronicle.as_str()),
+            "legal_character" => self.legal_character.as_deref(),
+            "decision_type" => self.decision_type.as_deref(),
+            "regulation" => self.regulation.as_deref(),
+            "competent_authority" => self.competent_authority.as_deref(),
+            _ => return None,
+        })
+    }
+
     /// De waarde op een pad onder `fields`.
     pub fn veld(&self, pad: &str) -> Option<&Value> {
         op_pad(&self.fields, pad)

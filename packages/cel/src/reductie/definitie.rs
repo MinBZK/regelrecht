@@ -37,15 +37,26 @@ pub struct InputDefinitie {
 /// komt uit de inputs.
 pub type Filter = BTreeMap<String, String>;
 
-/// De filtersleutels die een veld van het gram zelf zijn, geen veldpad.
+/// De filtersleutels die een veld van het gram zelf zijn, geen veldpad: elk
+/// veld met een tekst als waarde (zie [`crate::gram::Gram::kenmerk`]). Zo kan
+/// een lexostatus ook per besluit in een zaak filteren (`besluit`,
+/// `besluitkenmerk`, `wijzigt`).
 pub const GRAM_SLEUTELS: &[&str] = &[
     "name",
     "type",
     "soort",
     "stage",
+    "zaak",
     "zaakkenmerk",
+    "besluit",
+    "besluitkenmerk",
+    "wijzigt",
     "recording_actor",
     "chronicle",
+    "legal_character",
+    "decision_type",
+    "regulation",
+    "competent_authority",
 ];
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

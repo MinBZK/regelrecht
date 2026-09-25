@@ -50,7 +50,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::{DateTime, FixedOffset};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use regelrecht_engine::{
@@ -162,6 +162,19 @@ pub enum Weigering {
     /// De configuratie, of de cel: haar kroniek, een reductie of het
     /// vastleggen.
     Cel(String),
+}
+
+/// Wat de behandelaar bij een handeling opgeeft: het formulier, zo nodig
+/// het besluit waarop zij handelt (een besluitkenmerk; zonder het laatste,
+/// zie [`doel`]), en bij het nemen of het feit toch gebeurde (zie [`neem`]).
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct Opgave {
+    #[serde(default)]
+    pub formulier: Map<String, Value>,
+    #[serde(default)]
+    pub besluitkenmerk: Option<String>,
+    #[serde(default)]
+    pub gebeurd: bool,
 }
 
 /// Wat een handeling nodig heeft van de runtime: de cel, de bronnen en de
@@ -1132,16 +1145,19 @@ fn eigen<'z>(proces: &Proces, besluit: &str, zaak: &'z Zaakstand) -> Vec<&'z Bes
 }
 
 /// Het besluit in de zaak waarop een handeling handelt, uit de
-/// [`Zaakstand`]: bij een vervolg het laatste besluit van de handeling van
-/// het besluit (de stage gaat daarop verder), bij een feit dat een besluit
-/// volgt en bij een wijziging het laatste besluit van de handeling die zij
-/// noemen, een wijziging ervan meegerekend. `Ok(None)`: de handeling hoort
-/// bij geen besluit, of opent er zelf een. `Err`: het besluit ligt er nog
-/// niet.
+/// [`Zaakstand`]: bij een vervolg een besluit van de handeling van het
+/// besluit (de stage gaat daarop verder), bij een feit dat een besluit volgt
+/// en bij een wijziging een besluit van de handeling die zij noemen, een
+/// wijziging ervan meegerekend. Noemt de behandelaar een besluitkenmerk
+/// (`gekozen`), dan dat besluit, als het er een van is; anders het laatste.
+/// `Ok(None)`: de handeling hoort bij geen besluit, of opent er zelf een.
+/// `Err`: het besluit ligt er nog niet, of het gekozen besluit is er geen
+/// waarop de handeling handelt.
 pub fn doel<'z>(
     proces: &Proces,
     h: &HandelingDefinitie,
     zaak: &'z Zaakstand,
+    gekozen: Option<&str>,
 ) -> Result<Option<&'z Besluitstand>, String> {
     let (lijst, van) = match (&h.soort, h.besluitrol) {
         (Handelingsoort::Vervolg { besluit, .. }, _) => (eigen(proces, besluit, zaak), besluit),
@@ -1151,8 +1167,34 @@ pub fn doel<'z>(
             };
             (keten(proces, b, zaak), b)
         }
-        _ => return Ok(None),
+        _ => {
+            return match gekozen {
+                Some(k) => Err(format!(
+                    "handeling '{}' handelt op geen besluit, en er is besluit {k} genoemd",
+                    h.naam
+                )),
+                None => Ok(None),
+            }
+        }
     };
+    if let Some(k) = gekozen {
+        return lijst
+            .iter()
+            .find(|b| b.besluitkenmerk == k)
+            .map(|b| Some(*b))
+            .ok_or_else(|| {
+                let kan: Vec<&str> = lijst.iter().map(|b| b.besluitkenmerk.as_str()).collect();
+                format!(
+                    "besluit {k} is geen besluit waarop handeling '{}' handelt (wel: {})",
+                    h.naam,
+                    if kan.is_empty() {
+                        "geen".to_string()
+                    } else {
+                        kan.join(", ")
+                    }
+                )
+            });
+    }
     match lijst.last() {
         Some(b) => Ok(Some(b)),
         None => {
@@ -1294,9 +1336,10 @@ pub async fn proef(
     h: &HandelingDefinitie,
     zaakkenmerk: &str,
     zaak: &Zaakstand,
-    formulier: &Map<String, Value>,
+    opgave: &Opgave,
 ) -> Result<Proefhandeling, Weigering> {
     let proces = om.proces;
+    let formulier = &opgave.formulier;
     for naam in formulier.keys() {
         if !h.oordelen.iter().any(|o| &o.parameter == naam)
             && !h.feiten.iter().any(|f| &f.naam == naam)
@@ -1344,7 +1387,7 @@ pub async fn proef(
         .collect();
     // Het besluit waarop de handeling handelt. Ligt het er nog niet, dan is
     // er niets uit te rekenen: dat is de vorm (de volgorde van de zaak).
-    let doel = match doel(proces, h, zaak) {
+    let doel = match doel(proces, h, zaak, opgave.besluitkenmerk.as_deref()) {
         Ok(b) => b,
         Err(r) => {
             p.reden = Some(format!("niet te nemen: {r}"));
@@ -1752,10 +1795,10 @@ pub async fn neem(
     h: &HandelingDefinitie,
     zaakkenmerk: &str,
     zaak: &Zaakstand,
-    formulier: &Map<String, Value>,
-    gebeurd: bool,
+    opgave: &Opgave,
     handelend: &Sessie,
 ) -> Result<Genomen, Weigering> {
+    let (formulier, gebeurd) = (&opgave.formulier, opgave.gebeurd);
     let proces = om.proces;
     let service = proces.service.as_ref();
     let actor = &proces.definitie.actor;
@@ -1765,7 +1808,7 @@ pub async fn neem(
             h.naam
         )));
     }
-    let proef = proef(om, h, zaakkenmerk, zaak, formulier).await?;
+    let proef = proef(om, h, zaakkenmerk, zaak, opgave).await?;
     let mut waarschuwingen = Vec::new();
     if !proef.te_nemen {
         let reden = proef
@@ -1952,7 +1995,7 @@ pub struct Stand {
 pub fn stand(proces: &Proces, h: &HandelingDefinitie, zaak: &Zaakstand) -> Stand {
     let vastgelegd = zaak.aantal(&h.vastleggen.stroom, &h.vastleggen.event);
     let mut besluit = None;
-    let reden = match doel(proces, h, zaak) {
+    let reden = match doel(proces, h, zaak, None) {
         Err(r) => Some(r),
         Ok(b) => {
             besluit = b.map(|b| b.besluitkenmerk.clone());
@@ -2075,7 +2118,7 @@ pub fn besluiten_in_zaak(proces: &Proces, zaak: &Zaakstand) -> Vec<BesluitInZaak
                 .iter()
                 .filter(|x| x.naam != h.naam)
                 .filter(|x| {
-                    doel(proces, x, zaak)
+                    doel(proces, x, zaak, None)
                         .ok()
                         .flatten()
                         .is_some_and(|d| d.besluitkenmerk == b.besluitkenmerk)

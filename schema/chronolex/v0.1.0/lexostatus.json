@@ -678,7 +678,7 @@
     },
     "filter": {
       "type": "object",
-      "description": "Gelijkheid op het gram. De sleutels name, type, soort, stage, zaakkenmerk, recording_actor en chronicle zijn velden van het gram zelf; elke andere sleutel is een veldpad onder fields. Een waarde $<input> komt uit de inputs van de lexostatus. De vaste waarden van name, type en soort wijzen het event of de events aan.",
+      "description": "Gelijkheid op het gram. De sleutels name, type, soort, stage, zaak, zaakkenmerk, besluit, besluitkenmerk, wijzigt, recording_actor, chronicle, legal_character, decision_type, regulation en competent_authority zijn velden van het gram zelf; elke andere sleutel is een veldpad onder fields. Met besluit en besluitkenmerk filtert een lexostatus per besluit in een zaak. Een waarde $<input> komt uit de inputs van de lexostatus. De vaste waarden van name, type en soort wijzen het event of de events aan.",
       "propertyNames": {
         "$ref": "#/definitions/veldpad"
       },

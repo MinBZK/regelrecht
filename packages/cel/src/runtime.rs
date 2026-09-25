@@ -198,9 +198,13 @@ impl Runtime {
     }
 
     /// De waarschuwingen over synthese-bronnen: onbereikbaar, of zonder de
-    /// verwachte lexostatus of parameters. Geen reden om niet te starten.
+    /// verwachte lexostatus of parameters, en over een kroniek van voor het
+    /// besluitkenmerk. Geen reden om niet te starten.
     pub async fn waarschuwingen(&self) -> Vec<String> {
         let mut uit = Vec::new();
+        for c in &self.cellen {
+            uit.extend(zonder_besluitkenmerk(c));
+        }
         for s in &self.processen {
             uit.extend(met_proces(s.proces.id(), s.proces.waarschuwingen.clone()));
             for b in s.bronnen.iter() {
@@ -220,6 +224,42 @@ impl Runtime {
         uit.dedup();
         uit
     }
+}
+
+/// Een kroniek van voor het besluitkenmerk (RFC-044): grammen van een event
+/// dat een besluit opent, volgt of wijzigt, zonder `besluitkenmerk`. De cel
+/// leest zo'n gram als stage van de zaak, niet van een besluit: een vervolg
+/// of een betaling vindt het besluit niet, en een nieuw besluit van hetzelfde
+/// event weigert zij. De runtime start wel; de melding zegt hoe de kroniek
+/// bij te werken is.
+fn zonder_besluitkenmerk(c: &CelState) -> Option<String> {
+    let grammen = match c.kroniek.alle(&c.cel.kronieken()) {
+        Ok(g) => g,
+        Err(f) => return Some(format!("cel '{}': kroniek niet te lezen: {f}", c.cel.id())),
+    };
+    let oud: BTreeSet<&str> = grammen
+        .iter()
+        .map(|v| &v.gram)
+        .filter(|g| {
+            g.besluitkenmerk.is_none()
+                && c.cel
+                    .event(&g.stroom.id, &g.name)
+                    .is_some_and(|(_, e)| e.besluit.is_some())
+        })
+        .map(|g| g.name.as_str())
+        .collect();
+    if oud.is_empty() {
+        return None;
+    }
+    let aantal = grammen
+        .iter()
+        .filter(|v| v.gram.besluitkenmerk.is_none() && oud.contains(v.gram.name.as_str()))
+        .count();
+    Some(format!(
+        "cel '{}': {aantal} grammen van een besluit-event ({}) zonder besluitkenmerk, uit een kroniek van voor RFC-044. De cel leest ze als stage van de zaak, niet van een besluit: een vervolg of betaling vindt dat besluit niet, en een nieuw besluit van hetzelfde event weigert zij. Bijwerken: geef in de .jsonl elk gram dat een besluit opent besluit: opent en besluitkenmerk <zaakkenmerk>/<volgnummer>, en elk gram dat het volgt besluit: volgt met hetzelfde kenmerk; of begin met een lege DATA_DIR voor deze cel.",
+        c.cel.id(),
+        oud.into_iter().collect::<Vec<_>>().join(", ")
+    ))
 }
 
 /// Open de kroniek van een cel. Is elke kroniek van de cel leeg, dan komt de

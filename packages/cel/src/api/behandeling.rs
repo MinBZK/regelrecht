@@ -8,14 +8,13 @@ use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
 use futures_util::future::join_all;
-use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
 use super::sessie::{behandelaar, voor_handeling};
 use super::{fout, van_cel, Fout, ProcesState};
 use crate::celclient;
 use crate::config::HandelingDefinitie;
-use crate::handeling::{self, Omgeving, Weigering};
+use crate::handeling::{self, Omgeving, Opgave, Weigering};
 use crate::reductie::Peil;
 use crate::reductie::Zaakstand;
 use crate::synthese;
@@ -47,16 +46,6 @@ pub(super) async fn werkvoorraad_route(
         .await
         .map_err(van_cel)?;
     Ok(Json(v))
-}
-
-#[derive(Deserialize, Default)]
-pub(super) struct Formulier {
-    #[serde(default)]
-    formulier: Map<String, Value>,
-    /// Alleen bij het nemen: de behandelaar meldt dat het feit gebeurde, ook
-    /// al zegt de proef om de inhoud nee (zie [`handeling::neem`]).
-    #[serde(default)]
-    gebeurd: bool,
 }
 
 /// Een weigering als HTTP-antwoord. Wat de stand van de zaak niet toelaat
@@ -133,7 +122,7 @@ pub(super) async fn zaak_route(
     let zaak = zaakstand(&state, &zaakkenmerk).await?;
     let grammen = zaakgrammen(&state, &zaakkenmerk).await?;
     let b = behandeling(&state)?;
-    let leeg = Map::new();
+    let leeg = Opgave::default();
     let proeven = join_all(b.handelingen.iter().enumerate().map(|(i, h)| {
         let om = omgeving(&state, i);
         let stand = handeling::stand(&state.proces, h, &zaak);
@@ -228,21 +217,15 @@ pub(super) async fn proefhandeling_route(
     State(state): State<ProcesState>,
     headers: HeaderMap,
     Path((zaakkenmerk, naam)): Path<(String, String)>,
-    Json(invoer): Json<Formulier>,
+    Json(opgave): Json<Opgave>,
 ) -> Result<Json<handeling::Proefhandeling>, Fout> {
     let (i, h) = handeling_met(&state, &naam)?;
     voor_handeling(&state, &headers, h.rol.as_deref())?;
     let zaak = zaakstand(&state, &zaakkenmerk).await?;
-    handeling::proef(
-        &omgeving(&state, i),
-        h,
-        &zaakkenmerk,
-        &zaak,
-        &invoer.formulier,
-    )
-    .await
-    .map(Json)
-    .map_err(weigering)
+    handeling::proef(&omgeving(&state, i), h, &zaakkenmerk, &zaak, &opgave)
+        .await
+        .map(Json)
+        .map_err(weigering)
 }
 
 /// Een handeling nemen en laten vastleggen (201), of een weigering (409):
@@ -254,22 +237,14 @@ pub(super) async fn handeling_route(
     State(state): State<ProcesState>,
     headers: HeaderMap,
     Path((zaakkenmerk, naam)): Path<(String, String)>,
-    Json(invoer): Json<Formulier>,
+    Json(opgave): Json<Opgave>,
 ) -> Result<(StatusCode, Json<handeling::Genomen>), Fout> {
     let (i, h) = handeling_met(&state, &naam)?;
     let wie = voor_handeling(&state, &headers, h.rol.as_deref())?;
     let zaak = zaakstand(&state, &zaakkenmerk).await?;
-    let genomen = handeling::neem(
-        &omgeving(&state, i),
-        h,
-        &zaakkenmerk,
-        &zaak,
-        &invoer.formulier,
-        invoer.gebeurd,
-        &wie,
-    )
-    .await
-    .map_err(weigering)?;
+    let genomen = handeling::neem(&omgeving(&state, i), h, &zaakkenmerk, &zaak, &opgave, &wie)
+        .await
+        .map_err(weigering)?;
     tracing::info!(
         proces = %state.proces.id(),
         zaakkenmerk = %zaakkenmerk,

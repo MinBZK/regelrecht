@@ -2950,6 +2950,63 @@ async fn een_oude_kroniek_zonder_vastgelegd_op_laadt() {
     schema::valideer(Soort::Gram, &k[0]["gram"]).unwrap();
 }
 
+/// Een kroniek van voor het besluitkenmerk: een besluit zonder kenmerk laadt,
+/// en de runtime meldt bij het opstarten hoe de kroniek bij te werken is.
+#[tokio::test]
+async fn een_oud_besluit_zonder_kenmerk_geeft_een_opstartwaarschuwing() {
+    let data = tempfile::tempdir().unwrap();
+    {
+        let app = app(data.path());
+        let zaak = afnemer_indienen(&app, "12345678").await;
+        let b = behandelaar(&app).await;
+        let (status, body) = handeling(
+            &app,
+            &b,
+            &zaak,
+            "besluit",
+            false,
+            oordelen()["formulier"].clone(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+    }
+    let schoon = runtime_op(&fixtures(), data.path()).unwrap();
+    assert!(
+        !schoon
+            .waarschuwingen()
+            .await
+            .iter()
+            .any(|w| w.contains("zonder besluitkenmerk")),
+        "een kroniek met kenmerken geeft geen waarschuwing"
+    );
+    drop(schoon);
+    // Het besluit zoals een runtime van voor het besluitkenmerk het schreef.
+    let pad = data.path().join("test_afnemer/test_afnemer.jsonl");
+    let regels: Vec<String> = std::fs::read_to_string(&pad)
+        .unwrap()
+        .lines()
+        .map(|r| {
+            let mut g: Value = serde_json::from_str(r).unwrap();
+            let o = g.as_object_mut().unwrap();
+            o.remove("besluit");
+            o.remove("besluitkenmerk");
+            g.to_string()
+        })
+        .collect();
+    std::fs::write(&pad, regels.join("\n") + "\n").unwrap();
+    let rt = runtime_op(&fixtures(), data.path()).unwrap();
+    let w = rt.waarschuwingen().await;
+    let oud = w
+        .iter()
+        .find(|w| w.contains("zonder besluitkenmerk"))
+        .unwrap_or_else(|| panic!("{w:?}"));
+    assert!(oud.contains("cel 'test_afnemer': 1 grammen"), "{oud}");
+    assert!(
+        oud.contains("besluitkenmerk <zaakkenmerk>/<volgnummer>"),
+        "{oud}"
+    );
+}
+
 // --- Kanalen en rollen als configuratie ---
 
 /// Een tweede kanaal van hetzelfde portaal: een burger logt in met een
@@ -4257,6 +4314,55 @@ async fn meer_besluiten_in_een_zaak() {
     .await;
     assert_eq!(status, StatusCode::CREATED, "{bm}");
     assert_eq!(bm["gram"]["besluitkenmerk"], kenmerk(3));
+
+    // Een handeling handelt op het laatste besluit, tenzij de behandelaar er
+    // een noemt: een tweede wijziging kan de oorspronkelijke vaststelling
+    // wijzigen. Een besluit waarop zij niet handelt, weigert het proces.
+    let wijzigen =
+        |kenmerk: String| json!({"formulier": wijziging(true), "besluitkenmerk": kenmerk});
+    let (status, p) = handeling_in(
+        &app,
+        TOESLAG,
+        &b,
+        &zaak,
+        "vaststelling_wijzigen",
+        true,
+        json!({"formulier": wijziging(true)}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{p}");
+    assert_eq!(p["besluit"]["besluitkenmerk"], kenmerk(3));
+    let (status, p) = handeling_in(
+        &app,
+        TOESLAG,
+        &b,
+        &zaak,
+        "vaststelling_wijzigen",
+        true,
+        wijzigen(kenmerk(2)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{p}");
+    assert_eq!(p["besluit"]["besluitkenmerk"], kenmerk(2));
+    let (status, p) = handeling_in(
+        &app,
+        TOESLAG,
+        &b,
+        &zaak,
+        "vaststelling_wijzigen",
+        true,
+        wijzigen(kenmerk(1)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{p}");
+    assert_eq!(p["te_nemen"], json!(false), "{p}");
+    assert!(
+        p["reden"]
+            .as_str()
+            .unwrap()
+            .contains("is geen besluit waarop handeling 'vaststelling_wijzigen' handelt"),
+        "{p}"
+    );
 
     // 4. De terugvordering: het voorschot min de toeslag zoals die nu is
     // vastgesteld.
