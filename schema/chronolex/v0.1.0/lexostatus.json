@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.1.0/lexostatus.json",
   "title": "Celconfiguratie met lexostatus-definities v0.1.0",
-  "description": "De lexostatussen die een cel aanbiedt en hoe elk uit de eigen kroniek wordt gereduceerd (RFC-022 par. 4.1, daar voorlopig). reduction kiest met filter en kies zo nodig een gram en leidt met afleidingen de parameters van een artikel af: een afleiding op het gekozen gram (veld, jaar_van, gevuld, gelijk, tabel, moment), of een afleiding over de grammen die door haar eigen filter komen (bestaat, som, kies met veld, jaar_van of bevat). Met groepeer: zaakkenmerk (en zo nodig zonder) is de lexostatus een lijst met een regel per zaak. extra_velden levert waarden die geen parameter zijn en niet naar de engine gaan.",
+  "description": "De lexostatussen die een cel aanbiedt en hoe elk uit de eigen kroniek wordt gereduceerd (RFC-022 par. 4.1, daar voorlopig). reduction kiest met filter en kies zo nodig een gram en leidt met afleidingen de parameters van een artikel af: een afleiding op het gekozen gram (veld, jaar_van, periode_van, gevuld, gelijk, tabel, moment), of een afleiding over de grammen die door haar eigen filter komen (bestaat, som, kies met veld, jaar_van, periode_van of bevat). Met groepeer: zaakkenmerk (en zo nodig zonder) is de lexostatus een lijst met een regel per zaak. extra_velden levert waarden die geen parameter zijn en niet naar de engine gaan.",
   "type": "object",
   "required": [
     "cel",
@@ -189,6 +189,36 @@
           "properties": {
             "jaar_van": {
               "$ref": "#/definitions/veldpad"
+            },
+            "grondslag": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
+              "items": {
+                "$ref": "#/definitions/grondslag"
+              }
+            }
+          }
+        },
+        {
+          "description": "De periode waarin een datumveld (JJJJ-MM-DD) van het gekozen gram valt, als de eerste dag van die periode (JJJJ-MM-DD): een maand, een kwartaal of een jaar. Zo is een tijdvak een datum die de engine kan lezen. Geen datum: de parameter blijft weg.",
+          "type": "object",
+          "required": [
+            "periode_van"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "periode_van": {
+              "$ref": "#/definitions/veldpad"
+            },
+            "periode": {
+              "enum": [
+                "jaar",
+                "kwartaal",
+                "maand"
+              ],
+              "description": "De periode: jaar, kwartaal of maand. Zonder neemt de runtime bij het opstarten de temporal.period_type (year, month) van de parameter met de naam van de afleiding uit de grondslag (RFC-001): de regeling zegt dan welke periode het is."
             },
             "grondslag": {
               "type": "array",
@@ -527,6 +557,54 @@
             },
             "jaar_van": {
               "$ref": "#/definitions/veldpad"
+            },
+            "geen_gram": {
+              "type": [
+                "null",
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "De waarde als geen gram door filter komt: de lezing van afwezigheid binnen de eigen kroniek. Zonder geen_gram blijft de parameter dan weg."
+            },
+            "grondslag": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
+              "items": {
+                "$ref": "#/definitions/grondslag"
+              }
+            }
+          }
+        },
+        {
+          "description": "Over de grammen die door filter komen: de periode waarin een datumveld van het laatste gram valt, als de eerste dag van die periode (zie periode_van op het gekozen gram).",
+          "type": "object",
+          "required": [
+            "kies",
+            "periode_van"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "filter": {
+              "$ref": "#/definitions/filter"
+            },
+            "kies": {
+              "enum": [
+                "laatste"
+              ]
+            },
+            "periode_van": {
+              "$ref": "#/definitions/veldpad"
+            },
+            "periode": {
+              "enum": [
+                "jaar",
+                "kwartaal",
+                "maand"
+              ],
+              "description": "De periode: jaar, kwartaal of maand. Zonder neemt de runtime bij het opstarten de temporal.period_type (year, month) van de parameter met de naam van de afleiding uit de grondslag (RFC-001): de regeling zegt dan welke periode het is."
             },
             "geen_gram": {
               "type": [

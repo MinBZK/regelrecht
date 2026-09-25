@@ -58,9 +58,10 @@ impl Cel {
         let lexostatussen = reductie::laad(&map.join(&definitie.lexostatussen))
             .map_err(|f| fouten.extend(f))
             .ok();
-        let Some(lexostatussen) = lexostatussen.filter(|_| fouten.is_empty()) else {
+        let Some(mut lexostatussen) = lexostatussen.filter(|_| fouten.is_empty()) else {
             return Err(fout(fouten));
         };
+        fouten.extend(controle::perioden(&strommen, &mut lexostatussen, &service));
         if lexostatussen.cel != definitie.id {
             fouten.push(format!(
                 "{}: cel '{}' is niet de id van deze cel",

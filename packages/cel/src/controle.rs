@@ -37,7 +37,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use regelrecht_engine::LawExecutionService;
 
 use crate::config::{Aanbod, Portaal};
-use crate::reductie::{self, Filter, LexostatusDefinitie, Lexostatussen};
+use crate::reductie::{self, Filter, LexostatusDefinitie, Lexostatussen, Periode};
 use crate::regelingen;
 use crate::stroom::{Binding, Event, Stroom};
 
@@ -102,6 +102,64 @@ pub fn events_in<'a>(
         .flat_map(|s| s.events.iter().map(move |e| (s, e)))
         .filter(|(s, e)| event_past(filter, s, e))
         .collect()
+}
+
+/// Zet de periode van elke periode-afleiding zonder `periode` uit de
+/// regeling: de `temporal.period_type` (RFC-001) van de parameter met de naam
+/// van de afleiding, in een artikel uit de grondslag van de afleiding of van
+/// een event dat zij leest. Welke periode een tijdvak is, zegt zo de wet (een
+/// maand, een jaar), niet de celconfiguratie. Geen of twee verschillende
+/// perioden is een fout: noem de periode dan in de afleiding.
+pub fn perioden(
+    strommen: &[Stroom],
+    lexostatussen: &mut Lexostatussen,
+    service: &LawExecutionService,
+) -> Vec<String> {
+    let mut fouten = Vec::new();
+    for def in &mut lexostatussen.lexostatus_definitions {
+        let kopie = def.clone();
+        let afleidingen = def
+            .reduction
+            .afleidingen
+            .iter_mut()
+            .chain(def.reduction.extra_velden.iter_mut());
+        for (naam, a) in afleidingen {
+            let events = events_voor(&kopie, a.afleiding.filter(), strommen);
+            let grondslag: Vec<String> = a
+                .grondslag
+                .iter()
+                .chain(events.iter().flat_map(|(_, e)| e.grondslag.iter()))
+                .cloned()
+                .collect();
+            let Some(periode) = a.afleiding.periode_mut().filter(|p| p.is_none()) else {
+                continue;
+            };
+            let gevonden: BTreeSet<String> = grondslag
+                .iter()
+                .filter_map(|g| regelingen::artikel(service, g).ok())
+                .flat_map(|art| art.get_parameters().iter())
+                .filter(|p| &p.name == naam)
+                .filter_map(|p| p.temporal.as_ref()?.period_type.clone())
+                .collect();
+            let perioden: Vec<Periode> = gevonden
+                .iter()
+                .filter_map(|t| Periode::uit_period_type(t))
+                .collect();
+            match perioden.as_slice() {
+                [p] if gevonden.len() == 1 => *periode = Some(*p),
+                _ => fouten.push(format!(
+                    "lexostatus '{}', afleiding '{naam}': periode_van zonder periode, en {}; noem de periode (jaar, kwartaal, maand)",
+                    kopie.name,
+                    if gevonden.is_empty() {
+                        format!("geen parameter '{naam}' in de grondslag ({}) noemt een temporal.period_type", grondslag.join(", "))
+                    } else {
+                        format!("de grondslag noemt voor '{naam}' de period_type {}", gevonden.into_iter().collect::<Vec<_>>().join(", "))
+                    }
+                )),
+            }
+        }
+    }
+    fouten
 }
 
 /// Alle controles op een cel. `Ok` als de cel mag starten.

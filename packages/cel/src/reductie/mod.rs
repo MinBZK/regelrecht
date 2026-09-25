@@ -59,6 +59,12 @@ impl Afleiding {
         Ok(match self {
             Afleiding::Veld { veld } => gram.veld(veld).filter(|w| gevuld(w)).cloned(),
             Afleiding::JaarVan { jaar_van } => gram.veld(jaar_van).and_then(jaar_uit),
+            Afleiding::PeriodeVan {
+                periode_van,
+                periode,
+            } => gram
+                .veld(periode_van)
+                .and_then(|w| periode_uit(w, (*periode)?)),
             Afleiding::Gevuld { gevuld: pad } => {
                 Some(Value::Bool(gram.veld(pad).is_some_and(gevuld)))
             }
@@ -96,6 +102,7 @@ impl Afleiding {
             Afleiding::LaatsteVeld { .. }
             | Afleiding::LaatsteMoment { .. }
             | Afleiding::LaatsteJaarVan { .. }
+            | Afleiding::LaatstePeriodeVan { .. }
             | Afleiding::LaatsteBevat { .. }
             | Afleiding::Bestaat { .. }
             | Afleiding::Som { .. }
@@ -183,6 +190,17 @@ impl Afleiding {
                 Some(g) => g.veld(jaar_van).and_then(jaar_uit),
                 None => geen_gram.clone(),
             },
+            Afleiding::LaatstePeriodeVan {
+                periode_van,
+                periode,
+                geen_gram,
+                ..
+            } => match laatste(&door)? {
+                Some(g) => g
+                    .veld(periode_van)
+                    .and_then(|w| periode_uit(w, (*periode)?)),
+                None => geen_gram.clone(),
+            },
             Afleiding::LaatsteBevat { bevat, .. } => Some(Value::Bool(
                 laatste(&door)?
                     .and_then(|g| g.veld(&bevat.veld))
@@ -213,6 +231,15 @@ fn laatste<'g>(grammen: &[&'g Gram]) -> Result<Option<&'g Gram>, String> {
 /// Geen datum: niets, en de parameter blijft weg.
 pub fn jaar_uit(waarde: &Value) -> Option<Value> {
     datum::jaar_van(waarde.as_str()?).map(Value::from)
+}
+
+/// De eerste dag van de periode waarin een datum (`JJJJ-MM-DD`, of een
+/// moment met tijdzone) valt, als `JJJJ-MM-DD`. Geen datum: niets.
+pub fn periode_uit(waarde: &Value, periode: Periode) -> Option<Value> {
+    let d = datum::datum_van(waarde.as_str()?)?;
+    periode
+        .begin(d)
+        .map(|b| Value::String(b.format("%Y-%m-%d").to_string()))
 }
 
 /// Gevuld: niet null, geen lege tekst, geen lege lijst of leeg object.
@@ -732,6 +759,28 @@ mod tests {
         assert_eq!(een("{jaar_van: a.tekst}", f.clone()), None);
         assert_eq!(een("{jaar_van: a.ontbreekt}", f), None);
         assert_eq!(afl("{jaar_van: a.datum}").gelezen_paden(), vec!["a.datum"]);
+    }
+
+    /// Een periode heet naar haar eerste dag: een maand, een kwartaal, een
+    /// jaar. Zonder periode (nog niet uit de regeling gezet) geen waarde.
+    #[test]
+    fn afleiding_periode_van() {
+        let f = json!({"a": {"datum": "2026-08-18", "moment": "2026-11-30T23:30:00+01:00", "tekst": "geen datum"}});
+        let per =
+            |p: &str, veld: &str| een(&format!("{{periode_van: {veld}, periode: {p}}}"), f.clone());
+        assert_eq!(per("maand", "a.datum"), Some(json!("2026-08-01")));
+        assert_eq!(per("kwartaal", "a.datum"), Some(json!("2026-07-01")));
+        assert_eq!(per("jaar", "a.datum"), Some(json!("2026-01-01")));
+        assert_eq!(per("maand", "a.moment"), Some(json!("2026-11-01")));
+        assert_eq!(per("kwartaal", "a.moment"), Some(json!("2026-10-01")));
+        assert_eq!(per("maand", "a.tekst"), None);
+        assert_eq!(een("{periode_van: a.datum}", f.clone()), None);
+        assert_eq!(
+            afl("{periode_van: a.datum}").gelezen_paden(),
+            vec!["a.datum"]
+        );
+        let a = afl("{filter: {name: x}, kies: laatste, periode_van: datum, periode: maand, geen_gram: null}");
+        assert!(matches!(a, Afleiding::LaatstePeriodeVan { .. }));
     }
 
     #[test]

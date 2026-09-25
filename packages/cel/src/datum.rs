@@ -99,10 +99,15 @@ pub fn jaar(m: &DateTime<FixedOffset>) -> i64 {
 /// Het jaartal van een datum (`JJJJ-MM-DD`) of een moment met tijdzone.
 /// `None` als de tekst geen van beide is.
 pub fn jaar_van(tekst: &str) -> Option<i64> {
-    match NaiveDate::parse_from_str(tekst, "%Y-%m-%d") {
-        Ok(d) => Some(i64::from(d.year())),
-        Err(_) => moment(tekst).ok().map(|m| jaar(&m)),
-    }
+    datum_van(tekst).map(|d| i64::from(d.year()))
+}
+
+/// De dag van een datum (`JJJJ-MM-DD`) of van een moment met tijdzone (in
+/// zijn eigen tijdzone). `None` als de tekst geen van beide is.
+pub fn datum_van(tekst: &str) -> Option<NaiveDate> {
+    NaiveDate::parse_from_str(tekst, "%Y-%m-%d")
+        .ok()
+        .or_else(|| moment(tekst).ok().map(|m| m.date_naive()))
 }
 
 #[cfg(test)]

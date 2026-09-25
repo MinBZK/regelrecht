@@ -184,6 +184,23 @@ pub enum Afleiding {
         )]
         geen_gram: Option<Value>,
     },
+    /// Over de grammen door `filter`: de periode waarin de datum in
+    /// `periode_van` in het laatste gram valt (zie [`Afleiding::PeriodeVan`]).
+    /// Geen gram: `geen_gram`, als dat er is.
+    LaatstePeriodeVan {
+        #[serde(default, skip_serializing_if = "Filter::is_empty")]
+        filter: Filter,
+        kies: Kies,
+        periode_van: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        periode: Option<Periode>,
+        #[serde(
+            default,
+            deserialize_with = "aanwezig",
+            skip_serializing_if = "Option::is_none"
+        )]
+        geen_gram: Option<Value>,
+    },
     /// Over de grammen door `filter`: of het lijstveld in het laatste de
     /// waarde bevat.
     LaatsteBevat {
@@ -224,6 +241,15 @@ pub enum Afleiding {
     JaarVan {
         jaar_van: String,
     },
+    /// De periode (jaar, kwartaal of maand) waarin een datumveld van het
+    /// gekozen gram valt, als de eerste dag ervan: een tijdvak als datum die
+    /// de engine kan lezen. Zonder `periode` zet de runtime bij het laden de
+    /// periode die de regeling noemt (zie [`Periode`]).
+    PeriodeVan {
+        periode_van: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        periode: Option<Periode>,
+    },
     Gevuld {
         gevuld: String,
     },
@@ -260,6 +286,41 @@ pub struct Gelijk {
 pub struct Bevat {
     pub veld: String,
     pub waarde: Value,
+}
+
+/// Een periode van de kalender. Een tijdvak (de periode waarvoor een
+/// beschikking wordt gevraagd) kan een jaar zijn, een kwartaal of een maand;
+/// de regeling zegt welke met `temporal.period_type` van de parameter
+/// (RFC-001: `year`, `month`). Een periode heet naar haar eerste dag.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Periode {
+    Jaar,
+    Kwartaal,
+    Maand,
+}
+
+impl Periode {
+    /// De periode die een regeling met `temporal.period_type` noemt.
+    pub fn uit_period_type(t: &str) -> Option<Self> {
+        match t {
+            "year" => Some(Periode::Jaar),
+            "quarter" => Some(Periode::Kwartaal),
+            "month" => Some(Periode::Maand),
+            _ => None,
+        }
+    }
+
+    /// De eerste dag van de periode waarin een datum valt.
+    pub fn begin(self, d: chrono::NaiveDate) -> Option<chrono::NaiveDate> {
+        use chrono::Datelike;
+        let maand = match self {
+            Periode::Jaar => 1,
+            Periode::Kwartaal => (d.month0() / 3) * 3 + 1,
+            Periode::Maand => d.month(),
+        };
+        chrono::NaiveDate::from_ymd_opt(d.year(), maand, 1)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -331,6 +392,7 @@ impl Afleiding {
             Afleiding::LaatsteVeld { filter, .. }
             | Afleiding::LaatsteMoment { filter, .. }
             | Afleiding::LaatsteJaarVan { filter, .. }
+            | Afleiding::LaatstePeriodeVan { filter, .. }
             | Afleiding::LaatsteBevat { filter, .. }
             | Afleiding::Bestaat { filter, .. }
             | Afleiding::Som { filter, .. }
@@ -351,6 +413,8 @@ impl Afleiding {
             Afleiding::JaarVan { jaar_van } | Afleiding::LaatsteJaarVan { jaar_van, .. } => {
                 vec![jaar_van.as_str()]
             }
+            Afleiding::PeriodeVan { periode_van, .. }
+            | Afleiding::LaatstePeriodeVan { periode_van, .. } => vec![periode_van.as_str()],
             Afleiding::Gevuld { gevuld } => vec![gevuld.as_str()],
             Afleiding::Gelijk { gelijk } => vec![gelijk.veld.as_str()],
             Afleiding::ElkeRegel { tabel, .. } | Afleiding::EenRegel { tabel, .. } => {
@@ -366,6 +430,16 @@ impl Afleiding {
             paden.extend(filter_paden(f));
         }
         paden
+    }
+
+    /// Bij een periode-afleiding: de periode, die de runtime zo nodig bij
+    /// het laden uit de regeling zet.
+    pub fn periode_mut(&mut self) -> Option<&mut Option<Periode>> {
+        match self {
+            Afleiding::PeriodeVan { periode, .. }
+            | Afleiding::LaatstePeriodeVan { periode, .. } => Some(periode),
+            _ => None,
+        }
     }
 
     /// Bij een tabelafleiding: het tabelveld en de kolommen die ze leest
