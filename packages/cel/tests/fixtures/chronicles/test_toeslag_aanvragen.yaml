@@ -1,0 +1,31 @@
+---
+# Fictieve teststroom: de aanvraag van een maandelijkse toeslag. De aanvrager
+# noemt de maand (het tijdvak) en het inkomen dat hij over die maand
+# verwacht. De aanvraag opent de zaak; de besluiten volgen haar.
+$id: test_toeslag_aanvragen
+recording_actor: test_toeslagdienst
+chronicle: test_toeslag
+events:
+  - name: aanvraag_ontvangen
+    intake: portaal
+    grondslag:
+      - testregeling_toeslag#1
+    type: indiening
+    soort: aanvraag
+    stage: AANVRAAG
+    zaak: opent
+    fields:
+      kern:
+        aanvrager:
+          naam: $external.naam
+          adres: $external.adres
+        dagtekening: $external.dagtekening
+        gevraagde_beschikking: maandtoeslag, testregeling maandtoeslag artikel 2 en 3
+        ondertekend_via:
+          kanaal: $intake.kanaal
+          persoonsnummer: $intake.persoon.nummer
+      inhoud:
+        maand: $external.maand
+        geschat_inkomen: $external.geschat_inkomen
+    niet_gereduceerd:
+      - {veld: kern, reden: de vaste kern van een aanvraag; geen artikel van de testregeling leest haar}

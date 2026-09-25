@@ -1,0 +1,129 @@
+---
+# Fictief tweede proces: een maandelijkse toeslag, met meer dan een besluit
+# in een zaak. Het draait op dezelfde runtime en dezelfde frontend als het
+# proces van de afnemer; alleen deze configuratie en de regelingen
+# verschillen. Het portaal biedt per maand een aanvraag aan (het tijdvak,
+# uit het beleid). In de zaak neemt de behandelaar een voorschot, stelt na
+# afloop de toeslag vast, wijzigt zo nodig die vaststelling (een eigen
+# besluit, op grond van artikel 7 van de testregeling awb) en vordert terug
+# wat te veel is betaald. Elk besluit wordt bekendgemaakt, met een eigen
+# bezwaartermijn; het voorschot wordt betaald en het teruggevorderde
+# terugbetaald. Welke handeling bij welk besluit hoort, volgt uit het
+# artikel (een vervolg) of uit besluit (een feit, een wijziging).
+id: test_toeslag_proces
+actor: test_toeslagdienst
+namens: {regeling: testregeling_toeslag}
+kanalen:
+  persoon:
+    label: Inloggen als persoon
+    uitleg: Vul een persoonsnummer van negen cijfers in.
+    velden:
+      - naam: nummer
+        label: Persoonsnummer
+        patroon: '[0-9]{9}'
+        melding: een persoonsnummer heeft negen cijfers
+        numeriek: true
+    eigenaar: nummer
+  medewerker:
+    label: Inloggen als medewerker
+    velden:
+      - {naam: naam, label: Naam}
+rollen:
+  aanvrager: {kanaal: persoon, routes: [portaal]}
+  behandelaar: {kanaal: medewerker, routes: [behandeling], label: Behandelaar}
+portaal:
+  cel: test_toeslag
+  stroom: test_toeslag_aanvragen
+  event: aanvraag_ontvangen
+  toets:
+    lexostatus: aanvraag
+    regeling: testregeling_toeslag
+    uitkomst: aanvraag_toelaatbaar
+  aanbod:
+    regeling: testbeleid_toeslag
+    uitkomst: aanvraag_aangeboden
+    termijn: aanvraagtermijn
+    tijdvakken: aangeboden_maanden
+    begin: begin_maand
+synthese:
+  - {cel: test_toeslag, lexostatus: aanvraag, zaak: true}
+  - {cel: test_toeslag, lexostatus: besluiten, zaak: true}
+behandeling:
+  werkvoorraad: {cel: test_toeslag, lexostatus: werkvoorraad}
+  handelingen:
+    # Het voorschot: een besluit (stage BESLUIT, besluit: opent).
+    - naam: voorschot
+      label: Voorschot verlenen
+      regeling: testregeling_toeslag
+      uitkomsten: [voorschot]
+      vastleggen: {cel: test_toeslag, stroom: test_toeslag_zaakverloop, event: voorschot_verleend}
+    # Een latere stage van hetzelfde artikel: de bekendmaking van het
+    # voorschot, met de bezwaartermijn die de haak op die stage uitrekent.
+    - naam: voorschot_bekendmaken
+      label: Voorschot bekendmaken
+      regeling: testregeling_toeslag
+      uitkomsten: [voorschot]
+      vastleggen: {cel: test_toeslag, stroom: test_toeslag_zaakverloop, event: besluit_bekendgemaakt}
+    # De betaling voert het voorschot uit.
+    - naam: voorschot_betalen
+      label: Voorschot betalen
+      besluit: voorschot
+      regeling: testregeling_toeslag
+      uitkomsten: [nog_te_betalen_voorschot]
+      vastleggen: {cel: test_toeslag, stroom: test_toeslag_zaakverloop, event: voorschot_betaald}
+    # De vaststelling: een tweede besluit in de zaak, van een eigen artikel.
+    - naam: vaststellen
+      label: Toeslag vaststellen
+      regeling: testregeling_toeslag
+      uitkomsten: [vastgestelde_toeslag]
+      vastleggen: {cel: test_toeslag, stroom: test_toeslag_zaakverloop, event: toeslag_vastgesteld}
+    - naam: vaststelling_bekendmaken
+      label: Vaststelling bekendmaken
+      regeling: testregeling_toeslag
+      uitkomsten: [vastgestelde_toeslag]
+      vastleggen: {cel: test_toeslag, stroom: test_toeslag_zaakverloop, event: besluit_bekendgemaakt}
+    # De wijziging van de vaststelling: een eigen besluit met een eigen
+    # grondslag, dat de vaststelling wijzigt (besluit: wijzigt).
+    - naam: vaststelling_wijzigen
+      label: Vaststelling wijzigen
+      besluit: vaststellen
+      regeling: testregeling_toeslag
+      uitkomsten: [gewijzigde_toeslag]
+      vastleggen: {cel: test_toeslag, stroom: test_toeslag_zaakverloop, event: vaststelling_gewijzigd}
+    - naam: wijziging_bekendmaken
+      label: Wijziging bekendmaken
+      regeling: testregeling_toeslag
+      uitkomsten: [gewijzigde_toeslag]
+      vastleggen: {cel: test_toeslag, stroom: test_toeslag_zaakverloop, event: besluit_bekendgemaakt}
+    # De terugvordering: een derde besluit in de zaak.
+    - naam: terugvorderen
+      label: Terugvorderen
+      regeling: testregeling_toeslag
+      uitkomsten: [terug_te_vorderen]
+      vastleggen: {cel: test_toeslag, stroom: test_toeslag_zaakverloop, event: terugvordering_vastgesteld}
+    - naam: terugvordering_bekendmaken
+      label: Terugvordering bekendmaken
+      regeling: testregeling_toeslag
+      uitkomsten: [terug_te_vorderen]
+      vastleggen: {cel: test_toeslag, stroom: test_toeslag_zaakverloop, event: besluit_bekendgemaakt}
+    # De terugbetaling voert de terugvordering uit (naar Awb 4:57).
+    - naam: terugbetalen
+      label: Terugbetaling ontvangen
+      besluit: terugvorderen
+      regeling: testregeling_awb
+      uitkomsten: [nog_terug_te_betalen]
+      vastleggen: {cel: test_toeslag, stroom: test_toeslag_zaakverloop, event: terugbetaling_ontvangen}
+voorbeelden:
+  inloggen: [voorbeeld-login.json]
+  aanvraag: voorbeeld-aanvraag.json
+  handelingen:
+    voorschot: voorbeeld-voorschot.json
+    voorschot_bekendmaken: voorbeeld-bekendmaking.json
+    voorschot_betalen: voorbeeld-voorschot-betalen.json
+    vaststellen: voorbeeld-vaststelling.json
+    vaststelling_bekendmaken: voorbeeld-bekendmaking.json
+    vaststelling_wijzigen: voorbeeld-wijziging.json
+    wijziging_bekendmaken: voorbeeld-bekendmaking.json
+    terugvorderen: voorbeeld-terugvordering.json
+    terugvordering_bekendmaken: voorbeeld-bekendmaking.json
+    terugbetalen: voorbeeld-terugbetaling.json

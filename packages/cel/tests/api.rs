@@ -504,7 +504,8 @@ async fn cellen_worden_opgesomd_met_hun_mogelijkheden() {
             "test_afnemer",
             "test_gebieden",
             "test_instantie",
-            "test_register"
+            "test_register",
+            "test_toeslag"
         ]
     );
     let register = &body[3];
@@ -1212,10 +1213,15 @@ async fn afnemer_indienen(app: &Router, kvk: &str) -> String {
 }
 
 async fn behandelaar(app: &Router) -> String {
+    behandelaar_in(app, AFNEMER).await
+}
+
+/// Log in als behandelaar van een proces.
+async fn behandelaar_in(app: &Router, proces: &str) -> String {
     let (status, body, cookie) = vraag(
         app,
         "POST",
-        &format!("{AFNEMER}/api/kanalen/medewerker/login"),
+        &format!("{proces}/api/kanalen/medewerker/login"),
         None,
         Some(json!({"naam": "B. Behandelaar"})),
     )
@@ -1737,7 +1743,7 @@ fn zonder_processen_draaien_alleen_de_cellen() {
         lees_token_bronnen: Vec::new(),
     };
     let r = Runtime::laad(&config, klok()).unwrap();
-    assert_eq!(r.cellen.len(), 4);
+    assert_eq!(r.cellen.len(), 5);
     assert!(r.processen.is_empty());
 }
 
@@ -3245,19 +3251,35 @@ async fn handeling(
     proef: bool,
     formulier: Value,
 ) -> (StatusCode, Value) {
-    let pad = if proef {
-        format!("{AFNEMER}/api/zaken/{zaak}/handelingen/{naam}/proef")
-    } else {
-        format!("{AFNEMER}/api/zaken/{zaak}/handelingen/{naam}")
-    };
-    let (status, body, _) = vraag(
+    handeling_in(
         app,
-        "POST",
-        &pad,
-        Some(b),
-        Some(json!({ "formulier": formulier })),
+        AFNEMER,
+        b,
+        zaak,
+        naam,
+        proef,
+        json!({ "formulier": formulier }),
     )
-    .await;
+    .await
+}
+
+/// Een handeling in een zaak van een proces, op proef of genomen, met de
+/// body zoals de route hem leest (`formulier`, en zo nodig `gebeurd`).
+async fn handeling_in(
+    app: &Router,
+    proces: &str,
+    b: &str,
+    zaak: &str,
+    naam: &str,
+    proef: bool,
+    body: Value,
+) -> (StatusCode, Value) {
+    let pad = if proef {
+        format!("{proces}/api/zaken/{zaak}/handelingen/{naam}/proef")
+    } else {
+        format!("{proces}/api/zaken/{zaak}/handelingen/{naam}")
+    };
+    let (status, body, _) = vraag(app, "POST", &pad, Some(b), Some(body)).await;
     (status, body)
 }
 
@@ -3838,5 +3860,468 @@ async fn inzage_in_de_cellen_via_het_proces() {
     assert_eq!(
         p["inzage"],
         json!(["test_afnemer", "test_gebieden", "test_register"])
+    );
+}
+
+// --- Een tweede casus: een maandtoeslag, met meer besluiten in een zaak ---
+//
+// Hetzelfde binaire programma, dezelfde routes: alleen de configuratie en de
+// regelingen verschillen (processes/toeslag, cellen/toeslag,
+// regulation/testregeling_toeslag en testbeleid_toeslag).
+
+const TOESLAG: &str = "/processen/test_toeslag_proces";
+const TOESLAG_CEL: &str = "/cellen/test_toeslag";
+
+async fn toeslag_inloggen(app: &Router) -> String {
+    let (status, body, cookie) = vraag(
+        app,
+        "POST",
+        &format!("{TOESLAG}/api/kanalen/persoon/login"),
+        None,
+        Some(json!({"nummer": "123456789"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    cookie.unwrap()
+}
+
+/// Dien een aanvraag voor een maandtoeslag in; de zaak die zij opent.
+async fn toeslag_indienen(app: &Router, maand: &str, geschat_inkomen: i64) -> String {
+    let a = toeslag_inloggen(app).await;
+    let (status, body, _) = vraag(
+        app,
+        "POST",
+        &format!("{TOESLAG}/api/aanvraag"),
+        Some(&a),
+        Some(json!({"external": {
+            "naam": "A. Voorbeeld",
+            "adres": "Voorbeeldstraat 1, 1234 AB Voorbeeld",
+            "dagtekening": "2025-03-12",
+            "maand": maand,
+            "geschat_inkomen": geschat_inkomen,
+        }})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    body["gram"]["zaakkenmerk"].as_str().unwrap().to_string()
+}
+
+/// Een handeling in een toeslagzaak; `gebeurd` meldt een feit dat toch
+/// gebeurde.
+async fn toeslag(
+    app: &Router,
+    b: &str,
+    zaak: &str,
+    naam: &str,
+    formulier: Value,
+    gebeurd: bool,
+) -> (StatusCode, Value) {
+    let body = json!({"formulier": formulier, "gebeurd": gebeurd});
+    handeling_in(app, TOESLAG, b, zaak, naam, false, body).await
+}
+
+fn bekendmaking() -> Value {
+    json!({"datum_bekendmaking": "2025-03-12", "bekendgemaakt": true})
+}
+
+/// Het tijdvak is een maand: het beleid biedt maanden aan (als de eerste dag
+/// ervan), een maand die nog moet beginnen peilt op haar begin, en de cel
+/// leidt de maand van de aanvraag af met periode_van, met de periode die de
+/// regeling noemt (temporal.period_type: month).
+#[tokio::test]
+async fn een_maand_als_tijdvak() {
+    let data = tempfile::tempdir().unwrap();
+    let app = app(data.path());
+    let a = toeslag_inloggen(&app).await;
+    let (status, body, _) = vraag(
+        &app,
+        "GET",
+        &format!("{TOESLAG}/api/mogelijkheden"),
+        Some(&a),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let m = body["mogelijkheden"].as_array().unwrap();
+    let maanden: Vec<&Value> = m
+        .iter()
+        .map(|m| &m["mogelijkheid"]["tijdvak"]["waarde"])
+        .collect();
+    assert_eq!(maanden, [&json!("2025-03-01"), &json!("2025-04-01")]);
+    assert_eq!(m[0]["mogelijkheid"]["tijdvak"]["parameter"], "maand");
+    assert_eq!(m[0]["mogelijkheid"]["tijdvak"]["veld"], "maand");
+    assert_eq!(m[0]["mogelijkheid"]["oordeel"], "mogelijk", "{body}");
+    assert_eq!(m[0]["mogelijkheid"]["termijn"], "2025-04-30");
+    // De lopende maand peilt op vandaag, een komende op haar eerste dag.
+    assert_eq!(m[0]["peilmoment"], "2025-03-12", "{}", m[0]);
+    assert!(
+        m[1]["peilmoment"]
+            .as_str()
+            .unwrap()
+            .starts_with("2025-04-01"),
+        "{}",
+        m[1]
+    );
+    // De cel leidt de maand af uit het formulier: een dag in de maand is de
+    // maand, als haar eerste dag.
+    assert_eq!(m[1]["parameters"]["maand"], "2025-04-01");
+
+    let zaak = toeslag_indienen(&app, "2025-03-17", 90000).await;
+    let b = behandelaar_in(&app, TOESLAG).await;
+    let (status, p) = handeling_in(
+        &app,
+        TOESLAG,
+        &b,
+        &zaak,
+        "voorschot",
+        true,
+        json!({"formulier": {"voorschotdatum": "2025-03-12"}}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{p}");
+    assert_eq!(p["parameters"]["maand"], "2025-03-01", "{p}");
+    assert_eq!(p["herkomst"]["maand"]["bron"], "eigen", "{p}");
+}
+
+/// Een zaak met vier besluiten: een voorschot, een vaststelling, een
+/// wijziging van die vaststelling en een terugvordering, elk bekendgemaakt
+/// met een eigen bezwaartermijn, met de betaling van het voorschot en de
+/// terugbetaling van wat is teruggevorderd. Een tweede vaststelling zonder
+/// wijzigingsgrond weigert de cel. Geen regel code verschilt van de afnemer.
+#[tokio::test]
+async fn meer_besluiten_in_een_zaak() {
+    let data = tempfile::tempdir().unwrap();
+    let rt = runtime_op(&fixtures(), data.path()).unwrap();
+    let app = als_lezer(&rt);
+    let zaak = toeslag_indienen(&app, "2025-03-01", 90000).await;
+    let b = behandelaar_in(&app, TOESLAG).await;
+    let kenmerk = |n: usize| format!("{zaak}/{n}");
+
+    // Voor het voorschot: bekendmaken en betalen wachten op het besluit.
+    let (status, f) = toeslag(
+        &app,
+        &b,
+        &zaak,
+        "voorschot_bekendmaken",
+        bekendmaking(),
+        false,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{f}");
+    assert!(
+        f["fout"]
+            .as_str()
+            .unwrap()
+            .contains("wacht op het besluit (Voorschot verlenen)"),
+        "{f}"
+    );
+
+    // 1. Het voorschot: het eerste besluit in de zaak.
+    let (status, v) = toeslag(
+        &app,
+        &b,
+        &zaak,
+        "voorschot",
+        json!({"voorschotdatum": "2025-03-12"}),
+        false,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{v}");
+    assert_eq!(v["gram"]["besluit"], "opent");
+    assert_eq!(v["gram"]["besluitkenmerk"], kenmerk(1));
+    assert_eq!(v["gram"]["fields"]["voorschot"], json!(12000));
+    // Een tweede voorschot in dezelfde zaak: geen eigen grondslag.
+    let (status, f) = toeslag(
+        &app,
+        &b,
+        &zaak,
+        "voorschot",
+        json!({"voorschotdatum": "2025-03-12"}),
+        false,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{f}");
+    let (status, bm) = toeslag(
+        &app,
+        &b,
+        &zaak,
+        "voorschot_bekendmaken",
+        bekendmaking(),
+        false,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{bm}");
+    assert_eq!(bm["gram"]["besluitkenmerk"], kenmerk(1));
+    assert_eq!(bm["gram"]["fields"]["einde_bezwaartermijn"], "2025-04-23");
+    // Een besluit wordt een keer bekendgemaakt.
+    let (status, f) = toeslag(
+        &app,
+        &b,
+        &zaak,
+        "voorschot_bekendmaken",
+        bekendmaking(),
+        false,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{f}");
+    assert!(
+        f["fout"].as_str().unwrap().contains("ligt al in besluit"),
+        "{f}"
+    );
+    let betaling = json!({"bedrag": 12000, "datum_betaling": "2025-03-12"});
+    let (status, bt) = toeslag(&app, &b, &zaak, "voorschot_betalen", betaling, false).await;
+    assert_eq!(status, StatusCode::CREATED, "{bt}");
+    assert_eq!(bt["gram"]["besluitkenmerk"], kenmerk(1));
+    assert_eq!(
+        bt["proef"]["uitkomsten"]["nog_te_betalen_voorschot"],
+        json!(0)
+    );
+
+    // 2. De vaststelling: een tweede besluit, van een eigen artikel.
+    let vaststelling = json!({"vastgesteld_inkomen": 150000, "vaststellingsdatum": "2025-03-12"});
+    let (status, vs) = toeslag(&app, &b, &zaak, "vaststellen", vaststelling.clone(), false).await;
+    assert_eq!(status, StatusCode::CREATED, "{vs}");
+    assert_eq!(vs["gram"]["besluitkenmerk"], kenmerk(2));
+    assert_eq!(vs["gram"]["fields"]["vastgestelde_toeslag"], json!(6000));
+    // Een tweede vaststelling zonder wijzigingsgrond: de proef zegt het, en
+    // de cel weigert zo'n gram zelf ook.
+    let (status, f) = toeslag(&app, &b, &zaak, "vaststellen", vaststelling, false).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{f}");
+    assert!(
+        f["fout"].as_str().unwrap().contains("eigen grondslag"),
+        "{f}"
+    );
+    let (status, f) = als_runtime(
+        &rt,
+        "POST",
+        &format!("{TOESLAG_CEL}/api/grammen"),
+        json!({
+            "actor": "test_toeslagdienst",
+            "stroom": "test_toeslag_zaakverloop",
+            "event": "toeslag_vastgesteld",
+            "external": {"vastgestelde_toeslag": 1, "vaststellingsdatum": "2025-03-12"},
+            "zaakkenmerk": zaak,
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{f}");
+    assert!(
+        f["fout"].as_str().unwrap().contains("besluit: wijzigt"),
+        "{f}"
+    );
+    let (status, bm) = toeslag(
+        &app,
+        &b,
+        &zaak,
+        "vaststelling_bekendmaken",
+        bekendmaking(),
+        false,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{bm}");
+    assert_eq!(bm["gram"]["besluitkenmerk"], kenmerk(2));
+
+    // 3. De wijziging van de vaststelling: een eigen besluit met een eigen
+    // grondslag. Zonder nieuwe feiten is er niets te wijzigen.
+    let wijziging = |nieuw: bool| json!({"gecorrigeerd_inkomen": 250000, "nieuwe_feiten": nieuw, "wijzigingsdatum": "2025-03-12"});
+    let (status, f) = toeslag(
+        &app,
+        &b,
+        &zaak,
+        "vaststelling_wijzigen",
+        wijziging(false),
+        false,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{f}");
+    assert!(
+        f["fout"]
+            .as_str()
+            .unwrap()
+            .contains("geeft geen waarde voor gewijzigde_toeslag"),
+        "{f}"
+    );
+    let (status, w) = toeslag(
+        &app,
+        &b,
+        &zaak,
+        "vaststelling_wijzigen",
+        wijziging(true),
+        false,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{w}");
+    assert_eq!(w["gram"]["besluit"], "wijzigt");
+    assert_eq!(w["gram"]["besluitkenmerk"], kenmerk(3));
+    assert_eq!(w["gram"]["wijzigt"], kenmerk(2));
+    assert_eq!(w["gram"]["fields"]["vastgestelde_toeslag"], json!(0));
+    assert_eq!(w["proef"]["besluit"]["besluitkenmerk"], kenmerk(2));
+    let (status, bm) = toeslag(
+        &app,
+        &b,
+        &zaak,
+        "wijziging_bekendmaken",
+        bekendmaking(),
+        false,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{bm}");
+    assert_eq!(bm["gram"]["besluitkenmerk"], kenmerk(3));
+
+    // 4. De terugvordering: het voorschot min de toeslag zoals die nu is
+    // vastgesteld.
+    let (status, t) = toeslag(
+        &app,
+        &b,
+        &zaak,
+        "terugvorderen",
+        json!({"terugvorderingsdatum": "2025-03-12"}),
+        false,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{t}");
+    assert_eq!(t["gram"]["besluitkenmerk"], kenmerk(4));
+    assert_eq!(t["gram"]["decision_type"], "BETALINGSVERPLICHTING");
+    assert_eq!(t["gram"]["fields"]["terug_te_vorderen"], json!(12000));
+    let (status, bm) = toeslag(
+        &app,
+        &b,
+        &zaak,
+        "terugvordering_bekendmaken",
+        bekendmaking(),
+        false,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{bm}");
+
+    // De terugbetaling voert de terugvordering uit (naar Awb 4:57).
+    let terug = |bedrag: i64| json!({"bedrag": bedrag, "datum_terugbetaling": "2025-03-12"});
+    let (status, tb) = toeslag(&app, &b, &zaak, "terugbetalen", terug(5000), false).await;
+    assert_eq!(status, StatusCode::CREATED, "{tb}");
+    assert_eq!(tb["gram"]["besluitkenmerk"], kenmerk(4));
+    assert_eq!(
+        tb["proef"]["uitkomsten"]["nog_terug_te_betalen"],
+        json!(7000)
+    );
+    let (status, f) = toeslag(&app, &b, &zaak, "terugbetalen", terug(7001), false).await;
+    assert_eq!(
+        status,
+        StatusCode::CONFLICT,
+        "boven het teruggevorderde: {f}"
+    );
+    let (status, tb) = toeslag(&app, &b, &zaak, "terugbetalen", terug(7001), true).await;
+    assert_eq!(status, StatusCode::CREATED, "gemeld als gebeurd: {tb}");
+
+    // Het zaakscherm: vier besluiten, elk met zijn stages, zijn route en
+    // zijn handelingen.
+    let (status, z, _) = vraag(
+        &app,
+        "GET",
+        &format!("{TOESLAG}/api/zaken/{zaak}"),
+        Some(&b),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{z}");
+    let besluiten = z["besluiten"].as_array().unwrap();
+    let handelingen: Vec<&str> = besluiten
+        .iter()
+        .map(|b| b["handeling"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        handelingen,
+        [
+            "voorschot",
+            "vaststellen",
+            "vaststelling_wijzigen",
+            "terugvorderen"
+        ]
+    );
+    for (i, besluit) in besluiten.iter().enumerate() {
+        assert_eq!(besluit["besluitkenmerk"], kenmerk(i + 1));
+        let r = &besluit["rechtsbescherming"];
+        assert_eq!(r["stage"], "BEZWAAR", "{besluit}");
+        assert_eq!(
+            r["uitkomsten"]["einde_bezwaartermijn"], "2025-04-23",
+            "{besluit}"
+        );
+        let stages: Vec<(&str, bool)> = besluit["procedure"]["stages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|s| {
+                (
+                    s["name"].as_str().unwrap(),
+                    s["vastgelegd"].as_bool().unwrap(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            stages,
+            [
+                ("AANVRAAG", true),
+                ("BESLUIT", true),
+                ("BEKENDMAKING", true),
+                ("BEZWAAR", false)
+            ]
+        );
+    }
+    assert_eq!(besluiten[2]["wijzigt"], kenmerk(2));
+    assert_eq!(
+        besluiten[0]["handelingen"],
+        json!(["voorschot_bekendmaken", "voorschot_betalen"])
+    );
+    assert_eq!(
+        besluiten[3]["handelingen"],
+        json!(["terugvordering_bekendmaken", "terugbetalen"])
+    );
+    let terugbetalen = z["handelingen"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|h| h["naam"] == "terugbetalen")
+        .unwrap();
+    assert_eq!(terugbetalen["besluit"], kenmerk(4));
+    assert_eq!(terugbetalen["vastgelegd"], json!(2));
+    assert_eq!(
+        terugbetalen["proef"]["uitkomsten"]["nog_terug_te_betalen"],
+        json!(0),
+        "{terugbetalen}"
+    );
+    let vaststellen = z["handelingen"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|h| h["naam"] == "vaststellen")
+        .unwrap();
+    assert_eq!(vaststellen["beschikbaar"], json!(false));
+
+    // De zaakstand van de cel: de besluiten, elk met zijn stages.
+    let (status, l, _) = vraag(
+        &app,
+        "GET",
+        &format!("{TOESLAG_CEL}/api/lexostatus/zaakstand?zaakkenmerk={zaak}"),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{l}");
+    let zs = &l["extra_velden"];
+    assert_eq!(zs["besluiten"].as_array().unwrap().len(), 4, "{zs}");
+    assert_eq!(
+        zs["besluiten"][0]["events"]["test_toeslag_zaakverloop/voorschot_betaald"],
+        json!(1)
+    );
+    assert_eq!(
+        zs["besluiten"][3]["events"]["test_toeslag_zaakverloop/terugbetaling_ontvangen"],
+        json!(2)
+    );
+    assert_eq!(
+        zs["besluiten"][1]["stages"]["BEKENDMAKING"]["velden"]["einde_bezwaartermijn"],
+        "2025-04-23"
+    );
+    assert_eq!(
+        zs["stages"].as_object().unwrap().keys().collect::<Vec<_>>(),
+        ["AANVRAAG"]
     );
 }

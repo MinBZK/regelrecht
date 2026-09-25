@@ -1,0 +1,120 @@
+---
+# Fictieve teststroom: het verloop van een toeslagzaak. Een zaak heeft hier
+# meer dan een besluit, elk een eigen event met een eigen grondslag en elk
+# met een eigen besluitkenmerk (besluit: opent): het voorschot, de
+# vaststelling en de terugvordering. Een tweede vaststelling in dezelfde
+# zaak weigert de cel; de wijziging van een vaststelling is een eigen besluit
+# met een eigen grondslag (besluit: wijzigt, naar Awb 4:49). De bekendmaking
+# is een event voor elk besluit: het besluitkenmerk zegt welk besluit zij
+# bekendmaakt, en elk besluit wordt een keer bekendgemaakt. De betaling van
+# het voorschot en de terugbetaling volgen het besluit dat zij uitvoeren.
+$id: test_toeslag_zaakverloop
+recording_actor: test_toeslagdienst
+chronicle: test_toeslag
+events:
+  - name: voorschot_verleend
+    intake: behandelaar
+    grondslag:
+      - testregeling_toeslag#2 lid 1
+    type: decretogram
+    soort: voorschot
+    stage: BESLUIT
+    zaak: volgt
+    besluit: opent
+    op_moment:
+      bron: $external.voorschotdatum
+      grondslag: [testregeling_toeslag#2 lid 1]
+    fields:
+      voorschot: $external.voorschot
+  - name: toeslag_vastgesteld
+    intake: behandelaar
+    grondslag:
+      - testregeling_toeslag#3 lid 1
+    type: decretogram
+    soort: vaststelling
+    stage: BESLUIT
+    zaak: volgt
+    besluit: opent
+    op_moment:
+      bron: $external.vaststellingsdatum
+      grondslag: [testregeling_toeslag#3 lid 1]
+    fields:
+      vastgestelde_toeslag: $external.vastgestelde_toeslag
+  - name: vaststelling_gewijzigd
+    intake: behandelaar
+    grondslag:
+      - testregeling_toeslag#4 lid 1
+      - testregeling_awb#7 lid 1
+    type: decretogram
+    soort: vaststelling
+    stage: BESLUIT
+    zaak: volgt
+    besluit: wijzigt
+    op_moment:
+      bron: $external.wijzigingsdatum
+      grondslag: [testregeling_toeslag#4 lid 1]
+    fields:
+      vastgestelde_toeslag: $external.gewijzigde_toeslag   # de toeslag zoals zij nu is vastgesteld
+  - name: terugvordering_vastgesteld
+    intake: behandelaar
+    grondslag:
+      - testregeling_toeslag#5 lid 1
+      - testregeling_awb#6 lid 1
+    type: decretogram
+    soort: terugvordering
+    stage: BESLUIT
+    zaak: volgt
+    besluit: opent
+    op_moment:
+      bron: $external.terugvorderingsdatum
+      grondslag: [testregeling_toeslag#5 lid 1]
+    fields:
+      terug_te_vorderen: $external.terug_te_vorderen
+  - name: besluit_bekendgemaakt
+    intake: behandelaar
+    grondslag:
+      - testregeling_awb#2
+    type: handeling
+    soort: bekendmaking
+    stage: BEKENDMAKING
+    zaak: volgt
+    besluit: volgt
+    op_moment:
+      bron: $external.datum_bekendmaking
+      grondslag: [testregeling_awb#2]
+    fields:
+      datum_bekendmaking: $external.datum_bekendmaking
+      bekendgemaakt: $external.bekendgemaakt
+      aanvang_bezwaartermijn: $external.aanvang_bezwaartermijn
+      einde_bezwaartermijn: $external.einde_bezwaartermijn
+    niet_gereduceerd:
+      - {veld: datum_bekendmaking, reden: feit van de bekendmaking; het vervolg leest het uit het formulier}
+      - {veld: bekendgemaakt, reden: feit van de bekendmaking; het vervolg leest het uit het formulier}
+      - {veld: aanvang_bezwaartermijn, reden: uitkomst van de haak op de bekendmaking; het zaakscherm leest haar per besluit}
+      - {veld: einde_bezwaartermijn, reden: uitkomst van de haak op de bekendmaking; het zaakscherm leest haar per besluit}
+  - name: voorschot_betaald
+    intake: behandelaar
+    grondslag:
+      - testregeling_toeslag#8 lid 1
+    type: executogram
+    soort: betaling
+    zaak: volgt
+    besluit: volgt
+    op_moment:
+      bron: $external.datum_betaling
+      grondslag: [testregeling_toeslag#8 lid 2]
+    fields:
+      bedrag: $external.bedrag
+  - name: terugbetaling_ontvangen
+    intake: behandelaar
+    grondslag:
+      - testregeling_awb#6 lid 2
+    type: executogram
+    soort: terugbetaling
+    zaak: volgt
+    besluit: volgt
+    op_moment:
+      bron: $external.datum_terugbetaling
+      grondslag: [testregeling_awb#6 lid 3]
+    fields:
+      bedrag: $external.bedrag

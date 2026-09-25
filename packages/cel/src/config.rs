@@ -716,7 +716,8 @@ mod tests {
                 "test_afnemer",
                 "test_gebieden",
                 "test_instantie",
-                "test_register"
+                "test_register",
+                "test_toeslag"
             ]
         );
     }
@@ -728,7 +729,14 @@ mod tests {
             .iter()
             .map(|m| ProcesDefinitie::laad(m).unwrap().id)
             .collect();
-        assert_eq!(ids, ["test_afnemer_proces", "test_instantie_proces"]);
+        assert_eq!(
+            ids,
+            [
+                "test_afnemer_proces",
+                "test_instantie_proces",
+                "test_toeslag_proces"
+            ]
+        );
     }
 
     #[test]

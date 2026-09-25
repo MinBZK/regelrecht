@@ -2,8 +2,11 @@
 # Fictieve testregeling: een tweede regeling waaruit artikel 2 van de
 # testregeling aanvraag een invoer haalt, de procedure van een beschikking
 # (RFC-008): na het besluit komt de bekendmaking, en daarna de bezwaartermijn
-# (een haak op die stage), en een betaling die een besluit uitvoert. Geen
-# geldend recht.
+# (een haak op die stage), en een betaling die een besluit uitvoert.
+# Artikel 6 gaat over de terugbetaling van wat bij beschikking is
+# teruggevorderd (naar Awb 4:57), artikel 7 over de wijziging van een
+# vaststelling (naar Awb 4:49): een eigen besluit met een eigen grondslag.
+# Geen geldend recht.
 $schema: >-
   https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
 $id: testregeling_awb
@@ -217,3 +220,62 @@ articles:
                 operation: EQUALS
                 subject: $datum_uitnodiging_aanvulling
                 value: null
+  - number: '6'
+    url: https://example.com/testregeling_awb/6
+    text: |-
+      1. Wat onverschuldigd is betaald, kan bij beschikking worden teruggevorderd.
+      2. De terugbetaling geschiedt overeenkomstig die beschikking, niet meer dan het teruggevorderde bedrag.
+      3. De dag van terugbetaling telt.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TOETS
+          decision_type: GEEN_BESLUIT
+        parameters:
+          - name: terug_te_betalen
+            type: number
+            required: true
+            origin: {waarde: DOSSIER, grondslag: testregeling_awb#6 lid 2}
+          - name: terugbetaald
+            type: number
+            required: true
+            origin: {waarde: DOSSIER, grondslag: testregeling_awb#6 lid 2}
+        output:
+          - name: nog_terug_te_betalen
+            type: amount
+            type_spec: {unit: eurocent}
+          - name: terugbetaling_conform
+            type: boolean
+            legal_basis: {article: '6', paragraph: '2'}
+        actions:
+          - output: nog_terug_te_betalen
+            value:
+              operation: MAX
+              values:
+                - 0
+                - operation: SUBTRACT
+                  values: [$terug_te_betalen, $terugbetaald]
+          - output: terugbetaling_conform
+            value: {operation: LESS_THAN_OR_EQUAL, subject: $terugbetaald, value: $terug_te_betalen}
+  - number: '7'
+    url: https://example.com/testregeling_awb/7
+    text: >-
+      1. Een vaststelling kan worden gewijzigd op grond van feiten of
+      omstandigheden waarvan het bestuursorgaan bij de vaststelling
+      redelijkerwijs geen kennis kon hebben.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TOETS
+          decision_type: GEEN_BESLUIT
+        parameters:
+          - name: nieuwe_feiten
+            type: boolean
+            required: false
+        output:
+          - name: vaststelling_te_wijzigen
+            type: boolean
+            legal_basis: {article: '7', paragraph: '1'}
+        actions:
+          - output: vaststelling_te_wijzigen
+            value: {operation: EQUALS, subject: $nieuwe_feiten, value: true}
