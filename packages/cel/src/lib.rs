@@ -28,6 +28,7 @@ pub mod controle;
 pub mod eherkenning;
 pub mod formulier;
 pub mod kroniek;
+pub mod lexostatus_engine;
 pub mod mogelijkheid;
 pub mod origin;
 pub mod proces;
