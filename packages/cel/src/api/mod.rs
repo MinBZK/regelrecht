@@ -5,9 +5,9 @@
 //!
 //! | Route | Doet |
 //! |---|---|
-//! | `GET /api/kroniek` | de grammen, elk met YAML |
-//! | `GET /api/zaken/{zaakkenmerk}` | de grammen van een zaak, elk met YAML; 404 als de cel de zaak niet kent |
-//! | `GET /api/lexostatus/{naam}?<input>=...` | een reductie, met de inputs als query |
+//! | `GET /api/kroniek` | met het runtime- of leestoken: de grammen, elk met YAML |
+//! | `GET /api/zaken/{zaakkenmerk}` | met het runtime- of leestoken: de grammen van een zaak, elk met YAML; 404 als de cel de zaak niet kent |
+//! | `GET /api/lexostatus/{naam}?<input>=...` | met het runtime- of leestoken: een reductie, met de inputs als query; `zaakstand` biedt de runtime aan voor elke cel met een zaak |
 //! | `POST /api/lexostatus/{naam}/proef` | alleen met het runtime-token: `{concept, inputs}`: bouwt het gram in het geheugen en reduceert de kroniek mét dat gram; legt niets vast |
 //! | `POST /api/grammen` | alleen met het runtime-token: `{actor, stroom, event, intake, external, zaakkenmerk?, besluit?, zaak_grammen?}`: bouwt het gram, valideert het, controleert de actor en de zaak en legt het vast |
 //! | `GET /api/stroom` | de stroomdefinities van de cel, met hun hash |
@@ -52,15 +52,19 @@
 //! | Route | Doet |
 //! |---|---|
 //! | `GET /api/werkvoorraad` | de lijst-lexostatus van de werkvoorraad, uit de cel |
+//! | `GET /api/inzage/{cel}/kroniek` | de kroniek van een cel die het proces leest ([`inzage`]) |
+//! | `GET /api/inzage/{cel}/lexostatus/{naam}?...` | een lexostatus van zo'n cel |
 //! | `GET /api/zaken/{zaakkenmerk}` | de grammen van de zaak, de procedure, de rechtsbescherming, en per handeling haar formulier, of zij kan, en een proef zonder formulier |
 //! | `POST /api/zaken/{zaakkenmerk}/handelingen/{naam}/proef` | `{formulier}` naar een handeling op proef; niets wordt vastgelegd |
-//! | `POST /api/zaken/{zaakkenmerk}/handelingen/{naam}` | de handeling nemen; de cel legt haar vast |
+//! | `POST /api/zaken/{zaakkenmerk}/handelingen/{naam}` | `{formulier, gebeurd?}`: de handeling nemen, of een gebeurd feit melden; de cel legt haar vast |
 //!
-//! Tussen proces en cel is geen beveiligingscontext: de leesroutes van een
-//! cel vragen geen login, net als een bron van een andere organisatie.
-//! Vastleggen en op proef reduceren mag alleen een proces van deze runtime:
-//! het interne transport stuurt het runtime-token mee
-//! ([`crate::transport::RuntimeToken`]); zonder token 401, met een ander 403.
+//! Tussen proces en cel is geen beveiligingscontext. Vastleggen en op proef
+//! reduceren mag alleen een proces van deze runtime: het interne transport
+//! stuurt het runtime-token mee ([`crate::transport::RuntimeToken`]); zonder
+//! token 401, met een ander 403. Lezen (kroniek, zaak, lexostatus) vraagt
+//! datzelfde token of het leestoken dat runtimes delen die elkaar mogen
+//! lezen (`CEL_LEES_TOKEN`), want een gram draagt de identiteit en de
+//! intake van wie indiende. Alleen de stroomdefinities zijn open.
 
 use std::sync::Arc;
 

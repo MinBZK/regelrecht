@@ -1700,7 +1700,7 @@ pub async fn neem(
     let MetYaml { gram, yaml } = celclient::leg_vast(om.cel, &h.vastleggen.cel, &verzoek)
         .await
         .map_err(|f| match f {
-            // Of een gram vastlegbaar is, beslist de cel, onder haar slot.
+            // De vorm (de stage, de zaak, het moment) toetst de cel, onder haar slot.
             TransportFout::Antwoord { status: 409, fout } => Weigering::Conflict(fout),
             TransportFout::Antwoord { status: 400, fout } => Weigering::Ongeldig(fout),
             f => Weigering::Cel(format!("de handeling is niet vastgelegd: {f}")),

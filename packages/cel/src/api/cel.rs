@@ -225,12 +225,16 @@ pub fn als_yaml(cel: &Cel, gram: &Gram) -> Result<String, String> {
     serde_yaml_ng::to_string(&doc).map_err(|e| niet(e.to_string()))
 }
 
-/// Of een gram vastlegbaar is in de zaak die het draagt, gegeven wat de
-/// kronieken van de cel al bevatten. Dat beslist de cel, niet het proces
-/// (paper: de cel bepaalt welke feiten vastlegbaar zijn).
+/// Of een gram past in de zaak die het draagt, gegeven wat de kronieken van
+/// de cel al bevatten. De cel dwingt de vorm af, nooit de inhoud: wat een
+/// handeling waard is, concludeert het proces voor het handelt. Welke feiten
+/// vastlegbaar zijn, laat de paper open (P:110, een vraag voor verder
+/// onderzoek: eisen aan de vorm zonder de inhoud te beperken); deze grens is
+/// een eigen keuze (RFC-044 par. 1).
 ///
-/// - Een gram dat een zaak volgt, volgt een zaak die de kroniek kent.
-/// - Een zaak doorloopt elke stage één keer: de stage-decretogrammen van één
+/// - Een gram dat een zaak volgt, volgt een zaak die de kroniek kent, en ligt
+///   rechtens niet voor die zaak (zie [`niet_voor_de_zaak`]).
+/// - Een zaak doorloopt elke stage één keer: de stage-grammen van één
 ///   besluit delen een zaakkenmerk, elk als eigen elementair gram (RFC-022
 ///   par. 1.2, RFC-008). Een tweede gram met dezelfde stage is een wijziging
 ///   van wat al vastligt, en die hoort in een eigen stap.

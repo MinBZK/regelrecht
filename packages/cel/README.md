@@ -37,6 +37,7 @@ just cel          # runtime op :7170, frontend op :7171, op de fixtures
 | `REGULATION_PATH` | Map met regelingen, gedeeld door de hele runtime; elk YAML-bestand met `$id` en `articles` wordt geladen. |
 | `DATA_DIR` | Map voor de kronieken: per cel een submap `<id>/`. |
 | `CEL_PORT` | Poort, standaard 7170. De runtime luistert op `0.0.0.0`. |
+| `CEL_LEES_TOKEN` | Optioneel leestoken (minstens 16 tekens) dat runtimes delen die elkaars cellen mogen lezen: een cel neemt het aan in `x-cel-lees-token`, een HTTP-transport stuurt het mee. Zonder leest alleen de runtime zelf haar cellen. |
 
 ```yaml
 # <CELLS_PATH>/<map>/cel.yaml, schema schema/chronolex/v0.1.0/cel.json
@@ -138,12 +139,12 @@ het gedrag.
 |---|---|
 | `GET /api/cellen` | de cellen, met per cel haar kronieken en haar lexostatussen (inputs, parameters, extra velden) |
 | `GET /api/processen` | de processen, met per proces de actor, de cel, portaal, rollen, behandeling en de synthese-bronnen |
-| `GET /cellen/<id>/api/kroniek` | de grammen, elk met YAML |
-| `GET /cellen/<id>/api/zaken/<zaakkenmerk>` | de grammen van één zaak, elk met YAML; de cel filtert, 404 als ze de zaak niet kent |
-| `GET /cellen/<id>/api/lexostatus/<naam>?<input>=...` | een reductie; de inputs als query, en optioneel `peilmoment` en `bekend_op` (zie "Tijd") |
+| `GET /cellen/<id>/api/kroniek` | runtime- of leestoken: de grammen, elk met YAML |
+| `GET /cellen/<id>/api/zaken/<zaakkenmerk>` | runtime- of leestoken: de grammen van één zaak, elk met YAML; de cel filtert, 404 als ze de zaak niet kent |
+| `GET /cellen/<id>/api/lexostatus/<naam>?<input>=...` | runtime- of leestoken: een reductie; de inputs als query, en optioneel `peilmoment` en `bekend_op` (zie "Tijd"); `zaakstand` biedt de runtime aan (zie "De stand van een zaak") |
 | `POST /cellen/<id>/api/lexostatus/<naam>/proef` | alleen met het runtime-token: `{concept, inputs}`: de cel bouwt het gram van het concept in het geheugen en reduceert de kroniek mét dat gram (`inputs` mag een peil dragen); er wordt niets vastgelegd |
-| `POST /cellen/<id>/api/grammen` | alleen met het runtime-token: `{actor, stroom, event, intake, external, zaakkenmerk?, besluit?, zaak_grammen?}`: de cel bouwt het gram, valideert het, controleert de actor en de zaak, en legt het vast (201); 409 als die stage al vastligt in de zaak, of als de zaak niet meer `zaak_grammen` grammen heeft |
-| `GET /cellen/<id>/api/stroom` | de stroomdefinities van de cel, met hun hash |
+| `POST /cellen/<id>/api/grammen` | alleen met het runtime-token: `{actor, stroom, event, intake, external, zaakkenmerk?, besluit?, zaak_grammen?}`: de cel bouwt het gram, valideert het, controleert de actor en de zaak, en legt het vast (201); 409 als die stage al vastligt in de zaak, als het `op_moment` op een dag voor de zaak ligt, of als de zaak niet meer `zaak_grammen` grammen heeft |
+| `GET /cellen/<id>/api/stroom` | de stroomdefinities van de cel, met hun hash; open |
 | `GET /processen/<id>/api/voorbeelden` | de voorbeelden per handeling, zonder login |
 | `POST /processen/<id>/api/kanalen/<kanaal>/login`, `GET .../sessie`, `POST .../logout` | met rollen: de velden van het kanaal (en `rol` als er langs het kanaal meer rollen inloggen) naar een sessie `{rol, kanaal, velden}` |
 | `GET /processen/<id>/api/sessie` | met rollen: wie er is ingelogd, langs welk kanaal ook |
@@ -153,19 +154,26 @@ het gedrag.
 | `GET /processen/<id>/api/mogelijkheden` | routes `portaal`: wat het aanbod zegt per tijdvak dat het beleid aanbiedt (`aanbod.tijdvakken`) |
 | `POST /processen/<id>/api/loket/aanvraag` | routes `loket`: `{aanvrager, ontvangen_op, external}`; een aanvraag die langs een andere weg binnenkwam, met de dag van ontvangst als `op_moment` (niet na vandaag, niet vóór `aanbod.openstelling`) |
 | `GET /processen/<id>/api/werkvoorraad` | routes `behandeling`: de werkvoorraad, een lijst uit de cel |
+| `GET /processen/<id>/api/inzage/<cel>/kroniek`, `.../lexostatus/<naam>?...` | routes `behandeling`: inzage in een cel die het proces leest (de eigen cel en de bronnen zonder url); het proces geeft door wat de cel antwoordt |
 | `GET /processen/<id>/api/zaken/<zaakkenmerk>` | routes `behandeling`: de grammen van de zaak, de procedure met de stages die er liggen, de rechtsbescherming die daaruit volgt, en per handeling of zij kan, haar formulier en een proef zonder formulier |
 | `POST /processen/<id>/api/zaken/<zaakkenmerk>/handelingen/<naam>/proef` | routes `behandeling` (en de rol van de handeling): `{formulier}` naar een handeling op proef; niets wordt vastgelegd |
-| `POST /processen/<id>/api/zaken/<zaakkenmerk>/handelingen/<naam>` | idem: `{formulier}` naar een vastgelegde handeling (201), of een weigering (409) |
+| `POST /processen/<id>/api/zaken/<zaakkenmerk>/handelingen/<naam>` | idem: `{formulier, gebeurd?}` naar een vastgelegde handeling (201), of een weigering (409); met `gebeurd: true` een gebeurd feit dat de proef om de inhoud tegenhield |
 
 Een proces met rollen heeft een sessie per gebruiker (een cookie per proces);
 wie als de andere rol inlogt, vervangt de sessie. Een sessie vervalt na acht
 uur zonder gebruik, en een proces houdt er hooguit tienduizend: wie daarboven
 inlogt, verdringt de langst ongebruikte. Elke route hoort bij een
 routegroep (`portaal`, `behandeling`, `loket`); een rol noemt de groepen die
-ze mag, en een andere rol krijgt 403. Een cel kent geen login: haar leesroutes (kroniek, zaken,
-lexostatus, stroom) zijn voor elke afnemer, er is geen beveiligingscontext.
-Een aanvrager die een zaak wil volgen, moet die zaak kennen (een gram met zijn
-waarde van het `eigenaar`-veld van zijn kanaal); dat controleert het proces.
+ze mag, en een andere rol krijgt 403. Een cel kent geen login, maar haar
+leesroutes (kroniek, zaken, lexostatus) zijn niet open: een gram draagt de
+identiteit en de intake van wie indiende. Ze vragen het runtime-token, of het
+leestoken van `CEL_LEES_TOKEN` (header `x-cel-lees-token`) dat runtimes delen
+die elkaars cellen mogen lezen; alleen de stroomdefinities zijn open. Een
+behandelaar ziet de cellen van zijn proces via `.../api/inzage`, een aanvrager
+alleen zijn eigen indiening. Een aanvrager die een zaak wil volgen, moet die
+zaak kennen (een gram met zijn waarde van het `eigenaar`-veld van zijn
+kanaal); dat leidt de cel af (`eigenaar` in de zaakstand), en het proces
+leest het.
 
 Vastleggen (`POST .../grammen`) en op proef reduceren (`POST .../proef`) mag
 alleen een proces van de runtime zelf. De runtime maakt bij elke start een
@@ -273,15 +281,23 @@ gemeente-ambtenaar vastgesteld dat ... per 2 april"):
 
 - `op_moment`: wanneer het feit rechtens geldt of plaatsvond. Standaard het
   moment van vastleggen. Een event kan het binden aan een ingediende waarde,
-  met grondslag: `op_moment: {bron: $intake.ontvangen_op, grondslag: [...]}`.
-  De waarde is een datum (het begin van die dag) of een moment met tijdzone,
-  niet later dan het vastleggen; het gram draagt de grondslag als
-  `op_moment_grondslag`. Zo krijgt een aanvraag die langs een andere weg
-  binnenkwam de dag van ontvangst die het loket opgeeft (Awb 4:1, 4:13). Bind
-  aan `$intake` als de indiener het moment niet zelf mag kiezen: het portaal
-  levert `ontvangen_op` niet.
-- `vastgelegd_op`: wanneer de cel het vastlegde, altijd haar eigen klok; bij
-  een startstand de laadtijd.
+  altijd met grondslag: `op_moment: {bron: $intake.<pad> | $external.<pad>,
+  grondslag: [...]}`; het gram draagt de grondslag als `op_moment_grondslag`.
+  Zo zegt de stroom per event wie het rechtsmoment opgeeft. Aan `$external`:
+  de handelende actor, als deel van de handeling (de besluitdatum, de dag van
+  bekendmaking volgens Awb 3:41, de dag van betaling of van een mededeling);
+  de behandelaar kan zo later vastleggen dan het gebeurde. Aan `$intake`: het
+  ontvangstkanaal, als de indiener het moment niet zelf mag kiezen; zo krijgt
+  een aanvraag die langs een andere weg binnenkwam de dag van ontvangst die
+  het loket opgeeft (Awb 4:1, 4:13), en het portaal levert die niet. De
+  waarde is een datum (het begin van die dag) of een moment met tijdzone,
+  binnen twee grenzen die de cel afdwingt: niet later dan het vastleggen, en
+  bij een gram dat een zaak volgt niet op een dag voor het laatste
+  `op_moment` in die zaak (409). De proef van een handeling noemt beide
+  vooraf.
+- `vastgelegd_op`: wanneer de cel het vastlegde, altijd haar eigen klok,
+  gezet onder het schrijfslot en nooit voor de regel ervoor: de volgorde in
+  het bestand is die van `vastgelegd_op`. Bij een startstand de laadtijd.
 
 `kies: laatste` kiest het laatste `op_moment`, bij gelijk moment het laatste
 `vastgelegd_op`, en daarna het laatst toegevoegde.
@@ -313,7 +329,9 @@ een input `peilmoment` of `bekend_op` hebben (het schema weert ze).
 hand gezet: wanneer het besluit of de vaststelling rechtens geldt),
 `herkomst: startstand`, `fields` en optioneel `zaakkenmerk`. Geen
 `vastgelegd_op`: dat is de laadtijd, het moment waarop de runtime de
-startstand in de lege kroniek zet. De rest volgt uit de stroom. De velden moeten precies die van het event zijn. De runtime zet de
+startstand in de lege kroniek zet. Een regel met een `op_moment` na de
+laadtijd houdt de start tegen, zoals bij elk gram: wat nog moet gebeuren, is
+geen feit. De rest volgt uit de stroom. De velden moeten precies die van het event zijn. De runtime zet de
 startstand in de kroniek als elke kroniek van de cel leeg is, en daarna nooit
 meer. Elk bestand wordt in een keer geschreven (een tijdelijk bestand, dan
 hernoemd), zodat een onderbroken start geen half bestand achterlaat; een
@@ -372,6 +390,23 @@ Een rijen-blok levert alleen aan de uitvoering waar het staat: de rijen van
 de toets gelden in de controle op herkomst voor de toets, die van het besluit
 voor het besluit.
 
+## De stand van een zaak
+
+Elke cel met een event dat een zaak opent of volgt, biedt een lexostatus die
+geen `lexostatussen.yaml` noemt: `zaakstand`, met input `zaakkenmerk`. De cel
+filtert de grammen van de zaak en leidt af, als extra velden die nooit naar de
+engine gaan: `grammen` (het aantal; het proces stuurt het terug als
+`zaak_grammen`), `events` (per `<stroom>/<event>` het aantal),
+`laatste_op_moment`, `stages` (per stage het gram dat haar tot stand bracht:
+event, tijden, regeling, velden en de waarden van de invoer) en, met de inputs
+`eigenaar_pad` en `eigenaar`, `eigenaar`. Het proces leest de zaak alleen zo:
+welke handelingen kunnen, het besluit waarop een vervolg verdergaat, de
+rechtsbescherming, de ondergrens van een nieuw `op_moment` en of een aanvrager
+de zaak kent. De grammen die het een behandelaar toont, zijn het dossier en
+geen invoer. De runtime biedt haar aan, niet de configuratie: de zaak, het
+zaakkenmerk en een stage per zaak zijn begrippen van de runtime, niet van een
+corpus. Een cel mag de naam daarom niet zelf gebruiken.
+
 ## Handelingen in een zaak
 
 `behandeling.handelingen` noemt per handeling een artikel (een regeling en
@@ -398,7 +433,9 @@ routes per soort besluit. Het event zegt welke soort een handeling is:
   met het label van de parameter van het besluit). De haken die de wet op die
   stage laat vuren (RFC-007, zoals Awb 6:8 op `BEKENDMAKING`) rekenen mee; hun
   uitkomsten komen bij de uitkomsten van de handeling, en het event legt ze
-  vast. Geeft een haak geen waarde, dan is het vervolg niet te nemen.
+  vast. Geeft een haak geen waarde, dan neemt het proces het vervolg niet
+  uit zichzelf; gemeld als gebeurd legt de cel het vast, met een lege
+  termijn.
 - **Feit**: het event heeft geen stage, zoals een verzoek om aanvulling, een
   ontvangst of een betaling. Het formulier zijn de `$external`-velden van het
   event die geen uitkomst zijn, met het type van de parameter die een
@@ -416,9 +453,21 @@ doorgeven); een betaling vraagt de registers van de aanvraag niet.
 Legt het event een executogram vast (de uitvoering van een besluit), en staat
 het artikel in zijn grondslag als `TOETS`, dan telt elke booleaanse uitkomst
 waarvan de `legal_basis` die bepaling is (het artikel, en het lid als de
-grondslag er een noemt): onwaar is niet te nemen. Zo weigert Awb 4:52 lid 1
-een betaling die samen met de eerdere boven het vastgestelde bedrag komt;
-de configuratie noemt die toets niet.
+grondslag er een noemt): onwaar is een conclusie van het proces, en dan
+betaalt het niet uit zichzelf. Zo zegt Awb 4:52 lid 1 dat een betaling die
+samen met de eerdere boven het vastgestelde bedrag komt, niet overeenkomstig
+de vaststelling is; de configuratie noemt die toets niet.
+
+Het proces concludeert voor het handelt, en weigert niet wat gebeurd is. Zegt
+de proef om de inhoud nee (een toets, een haak zonder waarde, of de wet kan
+niet uitrekenen wat een feit doet), dan staat in het antwoord `te_melden`.
+Meldt de behandelaar dat het feit toch gebeurde (`{formulier, gebeurd:
+true}`), dan legt de cel het vast, gaat de reden mee als waarschuwing, en
+tonen de lexostatussen de gevolgen: een betaling boven het bedrag telt mee in
+wat betaald is, en de wet zegt wat onverschuldigd is betaald. Wat de vorm
+raakt (een leeg formulier, een vervolg zonder besluit, een moment na vandaag
+of voor de zaak) houdt ook een melding tegen. Een besluit wordt niet gemeld
+(400): dat neemt het proces zelf.
 
 De peildatum van een handeling is de dag van het `op_moment` dat haar event
 aan een veld van het formulier bindt, met de grondslag uit de stroom (de
@@ -451,11 +500,12 @@ dan legt de cel vast met een waarschuwing en zonder `competent_authority`. Zo
 blijven de drie assen van RFC-022 par. 2 gescheiden: `recording_actor`,
 `competent_authority` en de handelende actor.
 
-Vier dingen leiden tot een weigering met 409 en zonder gram: de proef is niet
-te nemen, de cel weigert omdat de stage al in de zaak ligt (het wijzigen van
-een besluit valt buiten deze stap), de cel weigert omdat de zaak veranderde
-sinds het proces haar las, of de wet wijst een ander gezag aan zonder
-mandaat. Het proces geeft de cel mee hoeveel grammen de zaak had
+Deze leiden tot een weigering met 409 en zonder gram: de proef is niet te
+nemen en het feit is niet als gebeurd gemeld (of kan dat niet, om de vorm),
+de cel weigert omdat de stage al in de zaak ligt (het wijzigen van een besluit
+valt buiten deze stap), omdat het `op_moment` voor de zaak ligt of omdat de
+zaak veranderde sinds het proces haar las, of de wet wijst een ander gezag
+aan zonder mandaat. Het proces geeft de cel mee hoeveel grammen de zaak had
 (`zaak_grammen`); de cel legt alleen vast als dat onder haar slot nog zo is.
 Wat het proces uitrekende (zoals wat er nog te betalen is), gold voor de zaak
 zoals die toen was: twee gelijktijdige betalingen komen er niet allebei door,
