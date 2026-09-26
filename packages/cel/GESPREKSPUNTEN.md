@@ -1,7 +1,8 @@
 # Gesprekspunten chronolexografie
 
-Drie vragen die de cel-runtime oproept en die de positionpaper open laat of
-anders beantwoordt dan wij nu doen. Ze zijn bedoeld voor een gesprek met de
+Vijf vragen die de cel-runtime oproept en die de positionpaper open laat of
+anders beantwoordt dan wij nu doen. Daarna een lijst keuzes die we zelf hebben
+gemaakt en gebouwd, ter bevestiging. Ze zijn bedoeld voor een gesprek met de
 bedenkers van chronolexografie. Paperverwijzingen noemen de sectie van de
 [positionpaper](https://chronolexografie.nl/position-paper/). Waar de runtime
 een keuze maakt die de paper niet draagt, staat dat als eigen keuze in
@@ -143,3 +144,120 @@ beperken."
 
 **Ons voorstel.** Deze driedeling als standpunt hanteren. RFC-044 §1 legt haar
 nu vast als eigen keuze, niet als lezing van de paper.
+
+## 4. Welke soorten chronolexogrammen zijn er?
+
+**De paper** ("Het chronolexogram"): "we zien tenminste drie klassen (typen)
+van chronolexogrammen voor ons": het lexogram, het decretogram ("de
+vastlegging van een concreet besluit of beschikking") en het executogram ("de
+vastlegging van daadwerkelijke levering of afhandeling (fulfillment) van een
+zaak of dienst"). Een chronolexogram is "de vastlegging van één handeling of
+besluit in de tijd". De paper vraagt zelf ("Typering en modelering van
+chronolexogrammen"): "Is deze indeling exclusief of zijn er andere relevante
+typeringen?"
+
+**Wat wij doen (eigen keuze).** Twee typen erbij, binnen het open vocabulaire
+van RFC-022 §1 (RFC-044 §3):
+
+- **indiening**: wat een ander bij de vastleggende actor indient, zoals een
+  aanvraag, een aanvulling of bescheiden. Vastgelegd wordt de ontvangst, in de
+  vorm van het voorbeeld uit de paper: "Op 3 april heeft de gemeente-ambtenaar
+  vastgesteld dat diezelfde dag door Lotje aangifte is gedaan". De inhoud is
+  een bewering van de indiener; een besluit rekent met het feit uit de bron.
+- **handeling**: wat de vastleggende actor zelf doet en geen besluit en geen
+  levering is, zoals een verzoek om aanvulling, een bekendmaking, een
+  mededeling of een statistiek.
+
+Het decretogram is alleen een besluit in de zin van de Awb (1:3), het
+executogram alleen een levering, zoals een betaling. Een gebeurtenis die een
+handeling en een besluit tegelijk droeg, is gesplitst in twee grammen.
+
+**Waar het wringt**
+
+- De bekendmaking van een besluit is hier een handeling, geen executogram:
+  er wordt niets geleverd. Maar zij brengt wel een stage van het besluit tot
+  stand (RFC-008 BEKENDMAKING) en laat de bezwaartermijn lopen.
+- Een indiening ligt in de cel van wie ontvangt. De paper zegt "elke actor
+  houdt eigen feiten bij in een eigen cel". Dat de aanvrager iets indiende, is
+  ook een feit van de aanvrager.
+
+**Vragen**
+
+1. Zijn indiening en handeling een legitieme uitbreiding van de drie klassen,
+   of zijn het soorten van het executogram ("afhandeling")?
+2. Hoort een indiening ook in een cel van de indiener, en hoe verhouden de twee
+   grammen zich dan?
+
+**Ons voorstel.** De twee typen houden als open uitbreiding, met `soort` voor
+de fijnere indeling. De cel van de indiener blijft buiten deze proof of
+concept.
+
+## 5. Zaak, besluit en kroniek: hoe groepeer je feiten?
+
+**De paper** ("Cel & Kroniek"): "Een chronolexocel kan één of meerdere
+chronolexokronieken beheren, wat chronolexocellen in staat stelt feiten te
+groeperen (vergelijk het bijhouden van meerdere ordners in een kast of meerdere
+tabellen in een database). Bovendien bepaalt een chronolexokroniek de
+segmentering van de tijdsas waarin chronolexogrammen elkaar opvolgen. Elke
+chronolexokroniek heeft een eigen tijdsas."
+
+**Wat wij doen (eigen keuze).** Een cel heeft een kroniek per soort feiten,
+bijvoorbeeld een kroniek voor alle aanvragen en hun verloop. Binnen die kroniek
+groeperen twee kenmerken (RFC-044 §4):
+
+- het **zaakkenmerk**: de aanvraag opent een zaak, en alles wat volgt
+  (aanvulling, besluit, bekendmaking, betaling) draagt het;
+- het **besluitkenmerk**: een zaak kan meer besluiten hebben, zoals een
+  voorschot, een vaststelling en een terugvordering, elk met eigen stages en
+  een eigen bezwaartermijn.
+
+Beide zijn een groepering in de registratie, geen toestand. De levensloop van
+een besluit staat in de Awb (RFC-008, de procedure van een beschikking), de
+stand van een zaak is een lexostatus van de cel (`zaakstand`). Binnen een zaak
+gaat de tijd vooruit: een gram mag niet vóór het laatste rechtsmoment in die
+zaak liggen.
+
+**Waar het wringt**
+
+- Een zaak heeft in de runtime een eigen ordening (de tijd gaat vooruit), maar
+  is geen kroniek. In de paper bepaalt juist de kroniek de tijdsas.
+- De paper kent geen zaak. RFC-008 wijst een aparte zaak als toestandsdrager
+  af; het besluit is dat.
+
+**Vragen**
+
+1. Is een zaak in de termen van de paper een kroniek (een ordner per zaak, met
+   een eigen tijdsas), of een groepering binnen een kroniek?
+2. Moet de ordening binnen een zaak dan ook een eis van de kroniek zijn, of
+   blijft het een regel van de runtime?
+
+**Ons voorstel.** De zaak als groepering binnen een kroniek houden: dan blijft
+reductie over alle zaken heen mogelijk (een werkvoorraad), en de kroniek
+behoudt één tijdsas.
+
+## Zelf besloten, ter bevestiging
+
+Deze keuzes hebben we gemaakt en gebouwd. Ze staan in RFC-043, RFC-044 en de
+docs van de cel. We leggen ze voor om te horen of ze in de geest van de paper
+zijn, niet om er lang over te praten.
+
+- **Cel en proces gescheiden.** De cel legt vast, bewaart en reduceert; het
+  proces informeert, concludeert en laat vastleggen ("reductie vindt altijd
+  plaats ín de cel", "synthese gebeurt bij de afnemer").
+- **De wet noemt geen cel.** Een regeling zegt per parameter wie hem levert en
+  onder welke regeling een register wordt bijgehouden (`origin`, RFC-043). Welke
+  cel dat register bijhoudt, is configuratie van het proces.
+- **Twee tijden per gram.** `op_moment` (wanneer het feit rechtens geldt) en
+  `vastgelegd_op` (wanneer de cel het vastlegde), met peilen op beide: het
+  "tijdreizen" van de paper, en de vorm van het voorbeeld van Lotje ("op 3
+  april … per 2 april").
+- **De levensloop van een besluit komt uit de Awb.** De stages AANVRAAG,
+  BESLUIT, BEKENDMAKING en BEZWAAR staan als procedure in de Awb-regeling
+  (RFC-008). De cel legt per stage een gram vast; de bezwaartermijn rekent de
+  Awb uit.
+- **Een fout wordt niet gewist.** Een correctie of een wijziging is een nieuw
+  gram, een wijziging van een besluit een nieuw besluit met een eigen
+  grondslag ("feiten worden nooit verwijderd, ook niet bij correcties").
+- **Eén regeltaal is een wens, geen eis van de paper.** Reductie en synthese
+  hebben nu een eigen configuratietaal. RFC-045 stelt voor ze als gewone
+  engine-run te draaien; dat is een RegelRecht-vraag, geen chronolexografie.
