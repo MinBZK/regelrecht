@@ -70,3 +70,7 @@ Built features that work but are thin or absent in the docs, roughly in priority
 - **TUI screens**, the **`evaluate`/`validate` CLI binaries**, the harvester's **CVDR** source, and the pipeline's **LLM-provider** selection are each implemented and lightly or never documented.
 
 When one of these gets a page, move it up into the table above.
+
+Drafts that will owe prose once built:
+
+- **RFC-045 (reduction and synthesis as engine runs)** is a draft and not built. When it lands, [Collections](../concepts/collections) needs the new scope rule, `let`, `empty`, `FIRST`/`LAST` and `RECORD`, and [Cel](../components/cel) needs lexostatuses as regulations in place of the reduction language.
