@@ -3564,18 +3564,19 @@ async fn twee_gelijktijdige_betalingen() {
         een.1,
         ander.1
     );
-    // Beide proeven lazen de zaak voor de eerste vastlag: de cel weigert de
-    // tweede op de optimistische toets, niet op de inhoud.
+    // Welke weigering de tweede krijgt, hangt af van de volgorde. Lazen
+    // beide proeven de zaak voor de eerste vastlag, dan weigert de cel op de
+    // optimistische toets. Las de tweede haar erna, dan zegt de wet nee (er
+    // is al betaald) en neemt het proces de handeling niet. Twee keer
+    // vastleggen gebeurt in geen van beide gevallen.
     let geweigerd = if een.0 == StatusCode::CONFLICT {
         &een.1
     } else {
         &ander.1
     };
+    let fout = geweigerd["fout"].as_str().unwrap();
     assert!(
-        geweigerd["fout"]
-            .as_str()
-            .unwrap()
-            .contains("veranderde sinds het proces haar las"),
+        fout.contains("veranderde sinds het proces haar las") || fout.contains("zegt nee"),
         "{geweigerd}"
     );
     let (_, l, _) = vraag(
