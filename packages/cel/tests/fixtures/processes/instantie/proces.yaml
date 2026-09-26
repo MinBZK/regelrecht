@@ -1,0 +1,47 @@
+---
+# Fictief proces met een portaal: de instantie toetst vóór het indienen of
+# een aanvraag volledig is. Geen synthese: de toets leest alleen de
+# proefreductie van het concept in de cel.
+id: test_instantie_proces
+actor: test_instantie
+# Het portaal heeft twee kanalen: een organisatie (een nummer van acht
+# cijfers) en een burger (een nummer van negen cijfers dat de elfproef
+# doorstaat). Een medewerker aan het loket voert een aanvraag in die langs
+# een andere weg binnenkwam, met de dag van ontvangst.
+kanalen:
+  eherkenning:
+    label: Inloggen namens een organisatie
+    velden:
+      - {naam: kvk, label: Organisatienummer, patroon: '[0-9]{8}', melding: een organisatienummer heeft acht cijfers}
+      - {naam: persoon, label: Uw naam}
+    eigenaar: kvk
+  burger:
+    label: Inloggen als burger
+    uitleg: Vul een burgernummer van negen cijfers in.
+    velden:
+      - naam: nummer
+        label: Burgernummer
+        patroon: '[0-9]{9}'
+        controle: elfproef
+        melding: dit is geen geldig burgernummer
+        numeriek: true
+    eigenaar: nummer
+  medewerker:
+    label: Inloggen als medewerker
+    velden:
+      - {naam: naam, label: Naam}
+rollen:
+  aanvrager: {kanaal: eherkenning, routes: [portaal]}
+  burger: {kanaal: burger, routes: [portaal]}
+  loket: {kanaal: medewerker, routes: [loket], label: Loketmedewerker}
+portaal:
+  cel: test_instantie
+  stroom: test_aanvragen
+  event: aanvraag_ontvangen
+  toets:
+    lexostatus: aanvraag_inhoud
+    regeling: testregeling_aanvraag
+    uitkomst: aanvraag_volledig
+  formulier:
+    pad: formulier.yaml
+    scherm: aanvraag

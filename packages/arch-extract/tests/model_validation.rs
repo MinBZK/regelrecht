@@ -97,6 +97,7 @@ fn product_crates_present() {
     let expected: std::collections::BTreeSet<String> = [
         "admin",
         "auth",
+        "cel",
         "corpus",
         "editor-api",
         "engine",
@@ -292,6 +293,7 @@ fn frontend_apps_extracted() {
     let apps = ids_of_kind(model, "app");
     let expected_apps: std::collections::BTreeSet<String> = [
         "app:frontend",
+        "app:frontend-cel",
         "app:frontend-demo",
         "app:frontend-lawmaking",
         "app:frontend-poc-napp",

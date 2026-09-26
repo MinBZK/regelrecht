@@ -376,9 +376,10 @@ pub(crate) struct LawArticleRef {
 }
 
 /// A hook index entry linking a hook declaration to the law and article that defined it.
-pub(crate) struct HookEntry {
-    pub(crate) law_id: String,
-    pub(crate) article_number: String,
+#[derive(Debug)]
+pub struct HookEntry {
+    pub law_id: String,
+    pub article_number: String,
     filter: HookFilter,
 }
 
@@ -1591,7 +1592,9 @@ impl RuleResolver {
     ///
     /// Returns matching (law_id, article_number, filter) entries.
     /// Filters by stage: if the hook has a stage, it must match; if not, it defaults to "BESLUIT".
-    pub(crate) fn find_hooks(
+    /// Public so that an orchestration layer can ask which hooks a stage fires
+    /// by the same rules the engine applies, instead of rebuilding them.
+    pub fn find_hooks(
         &self,
         hook_point: HookPoint,
         legal_character: &str,
@@ -1726,11 +1729,7 @@ impl RuleResolver {
 ///
 /// An absent stage means BESLUIT (backward compatibility per RFC-008); an
 /// absent decision type admits every decision type.
-pub(crate) fn hook_filter_admits(
-    filter: &HookFilter,
-    decision_type: Option<&str>,
-    stage: &str,
-) -> bool {
+pub fn hook_filter_admits(filter: &HookFilter, decision_type: Option<&str>, stage: &str) -> bool {
     if filter.stage.as_deref().unwrap_or("BESLUIT") != stage {
         return false;
     }

@@ -1,0 +1,92 @@
+---
+# Fictief uitvoeringsbeleid bij de testregeling maandtoeslag: welke maanden
+# het portaal aanbiedt en wanneer een maand begint. Wat het portaal aanbiedt
+# is beleid (de ruimte die Awb 4:2 lid 1 de dienst laat), geen configuratie.
+# Het tijdvak is een maand, als de eerste dag ervan (RFC-001:
+# temporal.period_type month). Geen geldend recht.
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
+$id: testbeleid_toeslag
+name: Testbeleid maandtoeslag
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/testbeleid_toeslag
+competent_authority:
+  name: De Toeslagdienst van Voorbeeld
+
+articles:
+  - number: '1'
+    url: https://example.com/testbeleid_toeslag/1
+    text: >-
+      1. De dienst biedt de aanvraag aan voor een maand vanaf januari 2025.
+      2. De aanvraag wordt gedaan voor het einde van de maand die op die
+      maand volgt.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TOETS
+          decision_type: GEEN_BESLUIT
+        parameters:
+          - name: maand
+            type: date
+            required: false
+            temporal: {type: period, period_type: month}
+            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_toeslag#1, rol: TIJDVAK}
+        output:
+          - name: aanvraag_aangeboden
+            type: boolean
+          - name: aanvraagtermijn
+            type: date
+        actions:
+          - output: aanvraag_aangeboden
+            value:
+              operation: GREATER_THAN_OR_EQUAL
+              subject: $maand
+              value: {operation: DATE, year: 2025, month: 1, day: 1}
+          - output: aanvraagtermijn
+            value:
+              operation: DATE_ADD
+              date: $maand
+              months: 2
+              days: -1
+  - number: '2'
+    url: https://example.com/testbeleid_toeslag/2
+    text: >-
+      Het portaal biedt de lopende maand aan en de twee maanden die erop volgen.
+    machine_readable:
+      execution:
+        output:
+          - name: aangeboden_maanden
+            type: array
+        actions:
+          - output: aangeboden_maanden
+            value:
+              operation: FOREACH
+              collection: [0, 1, 2]
+              as: verder
+              body:
+                operation: DATE_ADD
+                date:
+                  operation: DATE
+                  year: $referencedate.year
+                  month: $referencedate.month
+                  day: 1
+                months: $verder
+  - number: '3'
+    url: https://example.com/testbeleid_toeslag/3
+    text: Een maand begint op de eerste dag ervan.
+    machine_readable:
+      execution:
+        parameters:
+          - name: maand
+            type: date
+            required: false
+            temporal: {type: period, period_type: month}
+            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_toeslag#1, rol: TIJDVAK}
+        output:
+          - name: begin_maand
+            type: date
+        actions:
+          - output: begin_maand
+            value: $maand

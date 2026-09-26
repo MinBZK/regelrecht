@@ -1,0 +1,312 @@
+---
+# Fictieve testregeling voor een maandelijkse toeslag. Geen geldend recht,
+# en geen naam van een bestaande regeling. De casus heeft meer dan een
+# beschikking in een zaak: een voorschot (artikel 2), de vaststelling na
+# afloop van de maand (artikel 3), een wijziging van die vaststelling als
+# later blijkt dat het inkomen anders was (artikel 4, op grond van artikel 7
+# van de testregeling awb), en de terugvordering van wat aan voorschot te
+# veel is betaald (artikel 5). Elk is een eigen besluit met een eigen
+# artikel; de stroom geeft elk besluit een eigen kenmerk in de zaak, en de
+# bekendmaking en de bezwaartermijn gelden per besluit. Artikel 1 is de
+# toets van de aanvraag, met de maand als tijdvak (Awb 4:2 lid 1: het
+# tijdvak is deel van de gevraagde beschikking), een maand volgens RFC-001
+# (temporal.period_type: month). Artikel 6 zegt hoe hoog de toeslag is bij
+# een inkomen; artikel 8 hoe het voorschot wordt betaald.
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
+$id: testregeling_toeslag
+name: Testregeling maandtoeslag
+regulatory_layer: WET
+bwb_id: BWBR9999954
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/testregeling_toeslag
+competent_authority:
+  name: De Toeslagdienst van Voorbeeld
+
+articles:
+  - number: '1'
+    url: https://example.com/testregeling_toeslag/1
+    text: >-
+      Een aanvraag noemt de maand waarvoor de toeslag wordt gevraagd en het
+      inkomen dat de aanvrager over die maand verwacht.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TOETS
+          decision_type: GEEN_BESLUIT
+        parameters:
+          - name: maand
+            type: date
+            nullable: true
+            required: false
+            temporal: {type: period, period_type: month}
+            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_toeslag#1, rol: TIJDVAK}
+          - name: geschat_inkomen
+            type: number
+            nullable: true
+            required: false
+            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_toeslag#1}
+        output:
+          - name: aanvraag_toelaatbaar
+            type: boolean
+        actions:
+          - output: aanvraag_toelaatbaar
+            value:
+              operation: AND
+              conditions:
+                - operation: NOT
+                  value: {operation: EQUALS, subject: $maand, value: null}
+                - operation: NOT
+                  value: {operation: EQUALS, subject: $geschat_inkomen, value: null}
+  - number: '2'
+    url: https://example.com/testregeling_toeslag/2
+    text: >-
+      1. De dienst verleent op een toelaatbare aanvraag een voorschot ter
+      hoogte van de toeslag bij het verwachte inkomen (artikel 6).
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: maand
+            type: date
+            nullable: true
+            required: false
+            temporal: {type: period, period_type: month}
+            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_toeslag#1, rol: TIJDVAK}
+          - name: geschat_inkomen
+            type: number
+            required: false
+            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_toeslag#1}
+          - name: voorschotdatum
+            type: date
+            nullable: true
+            required: true
+            description: 'Het oordeel van de dienst bij het besluiten. Naam: Datum van het voorschot.'
+            origin: {waarde: OORDEEL, grondslag: testregeling_toeslag#2 lid 1}
+        input:
+          - name: toelaatbaar
+            type: boolean
+            source:
+              output: aanvraag_toelaatbaar
+          - name: toeslag_bij_verwacht_inkomen
+            type: number
+            source:
+              regulation: testregeling_toeslag
+              output: toeslag
+              parameters:
+                inkomen: $geschat_inkomen
+        output:
+          - name: voorschot
+            type: amount
+            type_spec: {unit: eurocent}
+        actions:
+          - output: voorschot
+            value:
+              operation: IF
+              cases:
+                - when: {operation: EQUALS, subject: $toelaatbaar, value: true}
+                  then: $toeslag_bij_verwacht_inkomen
+              default: 0
+  - number: '3'
+    url: https://example.com/testregeling_toeslag/3
+    text: >-
+      1. Na afloop van de maand stelt de dienst de toeslag vast bij het
+      inkomen dat zij over die maand vaststelt (artikel 6).
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: vastgesteld_inkomen
+            type: number
+            required: true
+            description: 'Het oordeel van de dienst bij het vaststellen. Naam: Inkomen over de maand.'
+            origin: {waarde: OORDEEL, grondslag: testregeling_toeslag#3 lid 1}
+          - name: vaststellingsdatum
+            type: date
+            nullable: true
+            required: true
+            description: 'Het oordeel van de dienst bij het vaststellen. Naam: Datum van de vaststelling.'
+            origin: {waarde: OORDEEL, grondslag: testregeling_toeslag#3 lid 1}
+        input:
+          - name: toeslag_bij_vastgesteld_inkomen
+            type: number
+            source:
+              regulation: testregeling_toeslag
+              output: toeslag
+              parameters:
+                inkomen: $vastgesteld_inkomen
+        output:
+          - name: vastgestelde_toeslag
+            type: amount
+            type_spec: {unit: eurocent}
+        actions:
+          - output: vastgestelde_toeslag
+            value: $toeslag_bij_vastgesteld_inkomen
+  - number: '4'
+    url: https://example.com/testregeling_toeslag/4
+    text: >-
+      1. De dienst wijzigt de vaststelling als blijkt dat het inkomen over de
+      maand anders was, op grond van artikel 7 van de testregeling awb, en
+      stelt de toeslag opnieuw vast bij het juiste inkomen.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: gecorrigeerd_inkomen
+            type: number
+            required: true
+            description: 'Het oordeel van de dienst bij het wijzigen. Naam: Het juiste inkomen over de maand.'
+            origin: {waarde: OORDEEL, grondslag: testregeling_toeslag#4 lid 1}
+          - name: nieuwe_feiten
+            type: boolean
+            required: false
+            description: >-
+              Het oordeel van de dienst bij het wijzigen. Naam: Er zijn feiten
+              waarvan de dienst bij de vaststelling geen kennis had.
+            origin: {waarde: OORDEEL, grondslag: testregeling_awb#7 lid 1}
+          - name: wijzigingsdatum
+            type: date
+            nullable: true
+            required: true
+            description: 'Het oordeel van de dienst bij het wijzigen. Naam: Datum van de wijziging.'
+            origin: {waarde: OORDEEL, grondslag: testregeling_toeslag#4 lid 1}
+        input:
+          - name: wijziging_toegestaan
+            type: boolean
+            source:
+              regulation: testregeling_awb
+              output: vaststelling_te_wijzigen
+              parameters:
+                nieuwe_feiten: $nieuwe_feiten
+          - name: toeslag_bij_gecorrigeerd_inkomen
+            type: number
+            source:
+              regulation: testregeling_toeslag
+              output: toeslag
+              parameters:
+                inkomen: $gecorrigeerd_inkomen
+        output:
+          - name: gewijzigde_toeslag
+            type: amount
+            nullable: true
+            type_spec: {unit: eurocent}
+        actions:
+          # Zonder grond voor een wijziging (artikel 7 van de testregeling awb)
+          # stelt dit artikel niets vast: de toeslag blijft leeg.
+          - output: gewijzigde_toeslag
+            value:
+              operation: IF
+              cases:
+                - when: {operation: EQUALS, subject: $wijziging_toegestaan, value: true}
+                  then: $toeslag_bij_gecorrigeerd_inkomen
+              default: null
+  - number: '5'
+    url: https://example.com/testregeling_toeslag/5
+    text: >-
+      1. Wat aan voorschot is betaald boven de vastgestelde toeslag, is
+      onverschuldigd betaald; de dienst vordert het terug (artikel 6 van de
+      testregeling awb).
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: BETALINGSVERPLICHTING
+        parameters:
+          - name: betaald_voorschot
+            type: amount
+            type_spec: {unit: eurocent}
+            required: true
+            origin: {waarde: DOSSIER, grondslag: testregeling_toeslag#5 lid 1}
+          - name: vastgestelde_toeslag
+            type: amount
+            type_spec: {unit: eurocent}
+            required: true
+            origin: {waarde: DOSSIER, grondslag: testregeling_toeslag#5 lid 1}
+          - name: terugvorderingsdatum
+            type: date
+            nullable: true
+            required: true
+            description: 'Het oordeel van de dienst bij het terugvorderen. Naam: Datum van de terugvordering.'
+            origin: {waarde: OORDEEL, grondslag: testregeling_toeslag#5 lid 1}
+        output:
+          - name: terug_te_vorderen
+            type: amount
+            type_spec: {unit: eurocent}
+        actions:
+          - output: terug_te_vorderen
+            value:
+              operation: MAX
+              values:
+                - 0
+                - operation: SUBTRACT
+                  values: [$betaald_voorschot, $vastgestelde_toeslag]
+  - number: '6'
+    url: https://example.com/testregeling_toeslag/6
+    text: >-
+      De toeslag over een maand is 120 euro bij een inkomen tot en met 1.000
+      euro, 60 euro bij een inkomen tot en met 2.000 euro, en anders nihil.
+    machine_readable:
+      execution:
+        parameters:
+          - name: inkomen
+            type: number
+            required: true
+        output:
+          - name: toeslag
+            type: amount
+            type_spec: {unit: eurocent}
+        actions:
+          - output: toeslag
+            value:
+              operation: IF
+              cases:
+                - when: {operation: LESS_THAN_OR_EQUAL, subject: $inkomen, value: 100000}
+                  then: 12000
+                - when: {operation: LESS_THAN_OR_EQUAL, subject: $inkomen, value: 200000}
+                  then: 6000
+              default: 0
+  - number: '8'
+    url: https://example.com/testregeling_toeslag/8
+    text: |-
+      1. Het voorschot wordt betaald, niet meer dan het voorschot.
+      2. De dag van betaling telt.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TOETS
+          decision_type: GEEN_BESLUIT
+        parameters:
+          - name: voorschot
+            type: amount
+            type_spec: {unit: eurocent}
+            required: true
+            origin: {waarde: DOSSIER, grondslag: testregeling_toeslag#8 lid 1}
+          - name: betaald_voorschot
+            type: amount
+            type_spec: {unit: eurocent}
+            required: true
+            origin: {waarde: DOSSIER, grondslag: testregeling_toeslag#8 lid 1}
+        output:
+          - name: nog_te_betalen_voorschot
+            type: amount
+            type_spec: {unit: eurocent}
+          - name: betaling_voorschot_conform
+            type: boolean
+            legal_basis: {article: '8', paragraph: '1'}
+        actions:
+          - output: nog_te_betalen_voorschot
+            value:
+              operation: MAX
+              values:
+                - 0
+                - operation: SUBTRACT
+                  values: [$voorschot, $betaald_voorschot]
+          - output: betaling_voorschot_conform
+            value: {operation: LESS_THAN_OR_EQUAL, subject: $betaald_voorschot, value: $voorschot}

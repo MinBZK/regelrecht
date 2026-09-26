@@ -3964,6 +3964,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "regelrecht-cel"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "chrono-tz",
+ "futures-util",
+ "hex",
+ "http-body-util",
+ "jsonschema",
+ "regelrecht-engine",
+ "regelrecht-law-model",
+ "regelrecht-shared",
+ "regex",
+ "reqwest 0.13.2",
+ "serde",
+ "serde_json",
+ "serde_urlencoded",
+ "serde_yaml_ng",
+ "sha2",
+ "tempfile",
+ "tokio",
+ "tower",
+ "tracing",
+ "uuid",
+ "walkdir",
+]
+
+[[package]]
 name = "regelrecht-corpus"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,13 @@
+---
+# Fictieve cel van een toeslagdienst: de aanvraag van een maandelijkse
+# toeslag en het verloop van de zaak, met meer dan een besluit per zaak (een
+# voorschot, een vaststelling, een wijziging daarvan, een terugvordering).
+# Wie er handelt, staat in het proces processes/toeslag/proces.yaml. De cel
+# en het proces gebruiken dezelfde runtime en dezelfde code als de afnemer:
+# alleen de configuratie en de regelingen verschillen.
+id: test_toeslag
+recording_actor: test_toeslagdienst
+stromen:
+  - ../../chronicles/test_toeslag_aanvragen.yaml
+  - ../../chronicles/test_toeslag_zaakverloop.yaml
+lexostatussen: lexostatussen.yaml

@@ -1,0 +1,115 @@
+<script setup>
+// Wat kan de ingelogde persoon hier aanvragen? Niemand somt dat op: het
+// proces voert het dienstverleningsbeleid uit voor deze persoon en organisatie, met
+// alleen wat de inlog en de andere cellen al weten (GET /api/mogelijkheden):
+// alleen voorwaarden die vooraf vaststaan; onbekend is geen aanbod.
+// Per tijdvak geeft het beleid één aanbod: mogelijk, uitgesloten of niet te
+// bepalen, met de uiterste indieningsdatum. Het tijdvak is de parameter die de
+// wet als gevraagde beschikking aanwijst (Awb 4:2 lid 1), met de waarden die
+// het proces aanbiedt; de runtime zegt welke parameter en welk veld van de
+// aanvraag. Per tijdvak is er een knop die alleen bij "mogelijk" actief is,
+// met een (?) die de redenen en de trace toont.
+import { computed, inject, onMounted, ref } from 'vue';
+import TraceKnop from '@regelrecht/frontend-shared/components/TraceKnop.vue';
+import { sessieTekst } from '../kanaal.js';
+
+const api = inject('api');
+const proces = inject('proces');
+const emit = defineEmits(['aanvragen', 'geladen']);
+
+const data = ref(null);
+const fout = ref('');
+
+onMounted(async () => {
+  try {
+    data.value = await api.mogelijkheden();
+    emit('geladen', data.value.mogelijkheden.map((m) => m.mogelijkheid));
+  } catch (e) {
+    fout.value = e.message;
+  }
+});
+
+const mogelijkheden = computed(() => (data.value?.mogelijkheden ?? []).map((m) => m.mogelijkheid));
+
+// De datum van de runtime, niet van de browser: "verstreken" hoort bij dezelfde
+// klok als het aanbod.
+const vandaag = computed(() => data.value?.datum ?? '');
+
+function antwoord(m) {
+  if (m.oordeel === 'uitgesloten') return 'Nee';
+  if (m.oordeel === 'niet_te_bepalen') return 'Niet te bepalen';
+  return 'Ja';
+}
+
+function termijnTekst(m) {
+  if (m.termijn == null) return 'Onbekend';
+  return vandaag.value && m.termijn < vandaag.value ? `${m.termijn} (verstreken)` : m.termijn;
+}
+
+// Het gekozen tijdvak in woorden, of niets zonder tijdvak.
+function tijdvak(m) {
+  return m.tijdvak ? `${m.tijdvak.waarde}` : '';
+}
+
+function titel(m) {
+  return m.tijdvak ? `Aanvraag voor ${tijdvak(m)}` : 'Aanvraag';
+}
+
+// Wat het aanvraagformulier vooraf invult: het veld van het tijdvak.
+function vooraf(m) {
+  return m.tijdvak?.veld ? { [m.tijdvak.veld]: m.tijdvak.waarde } : {};
+}
+
+function grond(m) {
+  if (m.reden) return m.reden;
+  return `${m.regeling}: ${m.uitkomst}`;
+}
+</script>
+
+<template>
+  <nldd-title size="2">
+    <h1>Wat kunt u aanvragen?</h1>
+    <span slot="subtitle" v-if="data">Ingelogd als {{ sessieTekst(proces, data.sessie) }}</span>
+  </nldd-title>
+  <nldd-spacer size="8"></nldd-spacer>
+  <nldd-rich-text>
+    <p>Dit volgt uit het dienstverleningsbeleid, voor u en uw organisatie. Het vraagteken naast een knop zegt waarom.</p>
+  </nldd-rich-text>
+  <nldd-spacer size="16"></nldd-spacer>
+  <template v-if="fout">
+    <nldd-inline-dialog variant="alert" text="De mogelijkheden zijn niet te bepalen" :supporting-text="fout"></nldd-inline-dialog>
+  </template>
+  <template v-for="m in mogelijkheden" :key="tijdvak(m)">
+    <nldd-container layout="row" gap="8" vertical-alignment="center">
+      <nldd-button
+        variant="primary"
+        :text="m.tijdvak ? `Aanvraag doen voor ${tijdvak(m)}` : 'Aanvraag doen'"
+        :disabled="m.oordeel !== 'mogelijk' || undefined"
+        @click="emit('aanvragen', vooraf(m))"
+      ></nldd-button>
+      <TraceKnop
+        icon="help"
+        overline="Waarom"
+        :titel="titel(m)"
+        :accessible-label="`Waarom: ${titel(m).toLowerCase()}`"
+        :trace-text="m.trace_text"
+      >
+        <nldd-table columns="minmax(180px,1fr) minmax(240px,2fr)" :accessible-label="titel(m)">
+          <nldd-table-row>
+            <nldd-text-cell text="Kunt u deze aanvraag doen?"></nldd-text-cell>
+            <nldd-text-cell :text="antwoord(m)"></nldd-text-cell>
+          </nldd-table-row>
+          <nldd-table-row>
+            <nldd-text-cell text="Waarom"></nldd-text-cell>
+            <nldd-text-cell :text="grond(m)"></nldd-text-cell>
+          </nldd-table-row>
+          <nldd-table-row>
+            <nldd-text-cell text="Indienen vóór"></nldd-text-cell>
+            <nldd-text-cell :text="termijnTekst(m)" :supporting-text="m.regeling"></nldd-text-cell>
+          </nldd-table-row>
+        </nldd-table>
+      </TraceKnop>
+    </nldd-container>
+    <nldd-spacer size="12"></nldd-spacer>
+  </template>
+</template>

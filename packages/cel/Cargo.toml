@@ -1,0 +1,46 @@
+[package]
+name = "regelrecht-cel"
+version = "0.1.0"
+edition = "2021"
+authors = ["MinBZK <noreply@minbzk.nl>"]
+description = "PoC: een runtime voor cellen die feiten vastleggen als chronolexogram, ze reduceren tot een lexostatus en lexostatussen van andere cellen samenvoegen"
+license = "EUPL-1.2"
+repository = "https://github.com/MinBZK/regelrecht"
+
+[lib]
+name = "regelrecht_cel"
+path = "src/lib.rs"
+
+[[bin]]
+name = "regelrecht-cel"
+path = "src/main.rs"
+
+[dependencies]
+regelrecht-engine = { path = "../engine" }
+regelrecht-law-model = { path = "../law-model" }
+regelrecht-shared = { path = "../shared", features = ["telemetry"] }
+axum.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "time", "sync"] }
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml_ng.workspace = true
+jsonschema.workspace = true
+sha2.workspace = true
+hex = "0.4"
+regex.workspace = true
+chrono.workspace = true
+chrono-tz.workspace = true
+uuid = { workspace = true, features = ["v4"] }
+walkdir.workspace = true
+tracing.workspace = true
+tower = { workspace = true, features = ["util"] }
+http-body-util.workspace = true
+futures-util = "0.3"
+serde_urlencoded = "0.7"
+reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

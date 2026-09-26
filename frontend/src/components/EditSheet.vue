@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, watch, watchEffect, nextTick } from 'vue';
 import { collectAvailableVariables } from '../utils/operationTree.js';
-import { centsToEuros, eurosToCents } from '../utils/currency.js';
+import { centsToEuros, eurosToCents } from '@regelrecht/frontend-shared/currency.js';
 import { lawsListUrl } from '../composables/corpusUrls.js';
 import { apiFetchJson } from '../lib/apiFetch.js';
 

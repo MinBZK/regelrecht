@@ -1,0 +1,52 @@
+---
+# Fictieve lexostatussen van de registercel, in de taal van haar eigen
+# regeling (testregeling_register). Elke afleiding werkt over de grammen die
+# door haar eigen filter komen, en draagt haar grondslag. Een afnemer die een
+# feit onder een eigen naam vraagt, vertaalt in de synthese van zijn proces.
+cel: test_register
+lexostatus_definitions:
+  - name: register
+    # Het register van een orgaan: is de aanduiding ingeschreven, en is zij
+    # geschrapt? Geen gram is nee: de cel houdt het register bij (art. 1 lid 1).
+    inputs: [{name: aanduiding, type: string}, {name: orgaan, type: string}]
+    reduction:
+      kroniek: test_register
+      afleidingen:
+        is_ingeschreven_in_register:
+          filter: {name: aanduiding_ingeschreven, orgaan: $orgaan, aanduiding: $aanduiding}
+          bestaat: true
+          grondslag: [testregeling_register#1 lid 1]
+        is_geschrapt:
+          filter: {name: aanduiding_geschrapt, orgaan: $orgaan, aanduiding: $aanduiding}
+          bestaat: true
+          grondslag: [testregeling_register#1 lid 1]
+  - name: registerstatus
+    inputs: [{name: aanduiding, type: string}]
+    reduction:
+      kroniek: test_register
+      afleidingen:
+        zetels_toegewezen: {filter: {name: uitslag_vastgesteld, lijst: $aanduiding}, som: zetels}
+        datum_mededeling: {filter: {name: mededeling_gedaan, aanduiding: $aanduiding}, kies: laatste, veld: datum}
+        geblokkeerd:
+          filter: {name: mededeling_gedaan, aanduiding: $aanduiding}
+          kies: laatste
+          bevat: {veld: geblokkeerd_voor, waarde: raad}
+        jaar_van_mededeling:             # het jaartal van een datum in de kroniek
+          filter: {name: mededeling_gedaan, aanduiding: $aanduiding}
+          kies: laatste
+          jaar_van: datum
+  - name: registratie_per_gebied
+    # Een kolom van de gebiedstabel van de afnemer, per regel bevraagd. Geen
+    # parameter van een artikel, dus een extra veld: het gaat nooit
+    # rechtstreeks naar de engine.
+    inputs:
+      - {name: aanduiding, type: string}
+      - {name: gebied, type: string}
+    reduction:
+      kroniek: test_register
+      afleidingen: {}
+      extra_velden:
+        ingeschreven:
+          filter: {name: aanduiding_ingeschreven, aanduiding: $aanduiding, gebied: $gebied}
+          bestaat: true
+          grondslag: [testregeling_register#1]

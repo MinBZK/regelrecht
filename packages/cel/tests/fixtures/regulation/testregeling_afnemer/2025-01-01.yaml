@@ -1,0 +1,367 @@
+---
+# Fictieve testregeling voor een afnemer van registerfeiten. Geen geldend
+# recht. Artikel 1 is een TOETS die feiten uit de aanvraag combineert met
+# feiten uit een register: via een invoer uit de testregeling register en via
+# artikel 2, dat artikel 1 zonder parameterbinding aanroept.
+# Artikel 3 is het besluit op de aanvraag (een BESCHIKKING). Zijn parameters
+# komen uit vier bronnen: de aanvraag en het verloop van de zaak (eigen
+# lexostatussen), het register (synthese, via artikel 1 en 2 in dezelfde
+# regeling), de oordelen van de behandelaar, en de stand bij besluit (de
+# bekendmaking, die pas na het besluit komt). Een aanroep binnen dezelfde
+# regeling deelt de parameters; een aanroep van een andere regeling krijgt
+# alleen wat `parameters` meegeeft. Artikel 4 is het aanbod: een
+# registerfeit en het jaar waarvoor de aanvraag wordt gedaan (het tijdvak van
+# de gevraagde beschikking, Awb 4:2 lid 1, `rol: TIJDVAK`),
+# en welke jaren de afnemer aanbiedt. Artikel 5 leidt de peildatum van het
+# tarief af: de wet zegt het, niet de configuratie. Artikel 6 zegt wanneer een
+# aanvraagjaar begint (het peil van het aanbod voor een komend jaar).
+# Artikel 7 is de grondslag van een mandaat: de afnemer mag de besluiten van
+# artikel 3 ook nemen namens een ander gezag, als de wet dat aanwijst.
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
+$id: testregeling_afnemer
+name: Testregeling afnemer
+regulatory_layer: WET
+bwb_id: BWBR9999953
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/testregeling_afnemer
+competent_authority:
+  name: Test afnemer
+
+articles:
+  - number: '1'
+    url: https://example.com/testregeling_afnemer/1
+    text: >-
+      Een aanvraag is toelaatbaar als zij de aanduiding bevat, de aanduiding
+      voor de raad is geregistreerd, de lijst zetels heeft, de doorwerking
+      voor de raad niet is geblokkeerd, en de registraties voor de aanvraag
+      zijn meegedeeld.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TOETS
+          decision_type: GEEN_BESLUIT
+        parameters:
+          - name: aanvraagdatum
+            type: date
+            required: false
+            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_afnemer#1}
+          - name: bevat_aanduiding
+            type: boolean
+            required: false
+            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_afnemer#1}
+          - name: is_ingeschreven_raad
+            type: boolean
+            required: true
+            origin: {waarde: REGISTER, register: testregeling_register, grondslag: testregeling_register#1}
+          - name: is_geschrapt_raad
+            type: boolean
+            required: true
+            origin: {waarde: REGISTER, register: testregeling_register, grondslag: testregeling_register#1}
+          - name: geblokkeerd_raad
+            type: boolean
+            required: true
+            origin: {waarde: REGISTER, register: testregeling_register, grondslag: testregeling_register#3}
+          - name: datum_mededeling
+            type: date
+            required: true
+            origin: {waarde: REGISTER, register: testregeling_register, grondslag: testregeling_register#3}
+        input:
+          - name: aanduiding_geregistreerd_raad
+            type: boolean
+            source:
+              regulation: testregeling_register
+              output: aanduiding_geregistreerd
+              parameters:
+                is_ingeschreven_in_register: $is_ingeschreven_raad
+                is_geschrapt: $is_geschrapt_raad
+          - name: lijst_heeft_zetels
+            type: boolean
+            source:
+              output: lijst_heeft_zetels
+        output:
+          - name: aanvraag_toelaatbaar
+            type: boolean
+        actions:
+          - output: aanvraag_toelaatbaar
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $bevat_aanduiding
+                  value: true
+                - operation: EQUALS
+                  subject: $aanduiding_geregistreerd_raad
+                  value: true
+                - operation: EQUALS
+                  subject: $lijst_heeft_zetels
+                  value: true
+                - operation: EQUALS
+                  subject: $geblokkeerd_raad
+                  value: false
+                - operation: LESS_THAN
+                  subject: $datum_mededeling
+                  value: $aanvraagdatum
+  - number: '2'
+    url: https://example.com/testregeling_afnemer/2
+    text: Een lijst heeft zetels als haar ten minste een zetel is toegewezen.
+    machine_readable:
+      execution:
+        parameters:
+          - name: zetels_op_lijst
+            type: number
+            required: true
+            origin: {waarde: REGISTER, register: testregeling_register, grondslag: testregeling_register#2}
+        output:
+          - name: lijst_heeft_zetels
+            type: boolean
+        actions:
+          - output: lijst_heeft_zetels
+            value:
+              operation: GREATER_THAN
+              subject: $zetels_op_lijst
+              value: 0
+  - number: '3'
+    url: https://example.com/testregeling_afnemer/3
+    text: >-
+      1. De instantie besluit op een toelaatbare aanvraag binnen dertig dagen,
+      verlengd met de dagen waarin de termijn was opgeschort, en stelt de
+      subsidie vast op duizend euro per zetel op de lijst. Per gebied telt
+      zij de zetels maal het tarief van dat gebied in het jaar van de
+      mededeling.
+      2. Het besluit is tijdig als het binnen die termijn is bekendgemaakt.
+      3. De instantie vergaart de relevante feiten.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: aanvraagdatum
+            type: date
+            required: false
+            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_afnemer#1}
+          - name: zetels_op_lijst
+            type: number
+            required: true
+            origin: {waarde: REGISTER, register: testregeling_register, grondslag: testregeling_register#2}
+          - name: besluitdatum
+            type: date
+            nullable: true
+            required: true
+            description: 'Het oordeel van de instantie bij het besluiten. Naam: Besluitdatum.'
+            origin: {waarde: OORDEEL, grondslag: testregeling_afnemer#3 lid 1}
+          - name: feiten_vergaard
+            type: boolean
+            required: false
+            description: 'Het oordeel van de instantie bij het besluiten. Naam: De relevante feiten zijn vergaard.'
+            origin: {waarde: OORDEEL, grondslag: testregeling_afnemer#3 lid 3}
+          - name: datum_bekendmaking
+            type: date
+            nullable: true
+            required: true
+            origin: {waarde: DOSSIER, grondslag: testregeling_afnemer#3 lid 2}
+          - name: bekendgemaakt
+            type: boolean
+            required: false
+            origin: {waarde: DOSSIER, grondslag: testregeling_afnemer#3 lid 2}
+          - name: datum_uitnodiging_aanvulling
+            type: date
+            nullable: true
+            required: true
+            origin: {waarde: DOSSIER, grondslag: testregeling_afnemer#3 lid 1}
+          - name: opgeschorte_dagen
+            type: number
+            required: true
+            origin: {waarde: DOSSIER, grondslag: testregeling_afnemer#3 lid 1}
+          - name: jaar
+            type: number
+            required: true
+            origin: {waarde: REGISTER, register: testregeling_register, grondslag: testregeling_register#3}
+          - name: gebiedstabel
+            type: array
+            nullable: true
+            required: false
+            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_afnemer#3 lid 1}
+        input:
+          - name: toelaatbaar
+            type: boolean
+            source:
+              output: aanvraag_toelaatbaar
+        output:
+          - name: gebiedsbedrag
+            type: number
+          - name: besluitdeadline
+            type: date
+          - name: aanvulling_gevraagd
+            type: boolean
+          - name: vastgesteld_bedrag
+            type: number
+          - name: besluit_tijdig
+            type: boolean
+          - name: zorgvuldig
+            type: boolean
+        actions:
+          - output: gebiedsbedrag
+            value:
+              operation: FOREACH
+              collection: $gebiedstabel
+              as: rij
+              body:
+                operation: MULTIPLY
+                values:
+                  - $rij.zetels
+                  - $rij.tarief
+              combine: ADD
+          - output: besluitdeadline
+            value:
+              operation: DATE_ADD
+              date: $aanvraagdatum
+              days:
+                operation: ADD
+                values:
+                  - 30
+                  - $opgeschorte_dagen
+          - output: aanvulling_gevraagd
+            value:
+              operation: NOT
+              value:
+                operation: EQUALS
+                subject: $datum_uitnodiging_aanvulling
+                value: null
+          - output: vastgesteld_bedrag
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $besluitdatum
+                          value: null
+                      - operation: EQUALS
+                        subject: $toelaatbaar
+                        value: true
+                  then:
+                    operation: MULTIPLY
+                    values:
+                      - $zetels_op_lijst
+                      - 1000
+              default: 0
+          - output: besluit_tijdig
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $bekendgemaakt
+                  value: true
+                - operation: NOT
+                  value:
+                    operation: EQUALS
+                    subject: $datum_bekendmaking
+                    value: null
+          - output: zorgvuldig
+            value:
+              operation: EQUALS
+              subject: $feiten_vergaard
+              value: true
+  - number: '4'
+    url: https://example.com/testregeling_afnemer/4
+    text: >-
+      1. De afnemer biedt de aanvraag aan wie een voor de raad ingeschreven
+      aanduiding heeft, voor het jaar waarvoor de aanvraag wordt gedaan.
+      2. De aanvraag wordt gedaan voor 1 april van dat jaar.
+      3. De afnemer biedt de aanvraag aan voor het lopende jaar en het
+      volgende.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TOETS
+          decision_type: GEEN_BESLUIT
+        parameters:
+          - name: aanvraagjaar
+            type: number
+            required: false
+            origin: {waarde: BELANGHEBBENDE, grondslag: algemene_wet_bestuursrecht#4:2 lid 1, rol: TIJDVAK}
+          - name: is_ingeschreven_raad
+            type: boolean
+            required: false
+            origin: {waarde: REGISTER, register: testregeling_register, grondslag: testregeling_register#1}
+        output:
+          - name: aanvraag_aangeboden
+            type: boolean
+          - name: aanvraagtermijn
+            type: date
+          - name: aangeboden_jaren
+            type: array
+        actions:
+          - output: aanvraag_aangeboden
+            value:
+              operation: EQUALS
+              subject: $is_ingeschreven_raad
+              value: true
+          - output: aanvraagtermijn
+            value:
+              operation: DATE
+              year: $aanvraagjaar
+              month: 4
+              day: 1
+          - output: aangeboden_jaren
+            legal_basis: {law: Testregeling afnemer, article: '4', paragraph: '3'}
+            value:
+              operation: FOREACH
+              collection: [0, 1]
+              as: verder
+              body:
+                operation: ADD
+                values: [$referencedate.year, $verder]
+  - number: '5'
+    url: https://example.com/testregeling_afnemer/5
+    text: >-
+      Het tarief van een gebied geldt op 1 januari van het jaar van de
+      mededeling.
+    machine_readable:
+      execution:
+        parameters:
+          - name: jaar
+            type: number
+            required: true
+            origin: {waarde: REGISTER, register: testregeling_register, grondslag: testregeling_register#3}
+        output:
+          - name: peildatum_tarief
+            type: date
+        actions:
+          - output: peildatum_tarief
+            value:
+              operation: DATE
+              year: $jaar
+              month: 1
+              day: 1
+  - number: '6'
+    url: https://example.com/testregeling_afnemer/6
+    text: Een aanvraagjaar begint op 1 januari van dat jaar.
+    machine_readable:
+      execution:
+        parameters:
+          - name: aanvraagjaar
+            type: number
+            required: false
+            origin: {waarde: BELANGHEBBENDE, grondslag: algemene_wet_bestuursrecht#4:2 lid 1, rol: TIJDVAK}
+        output:
+          - name: begin_aanvraagjaar
+            type: date
+        actions:
+          - output: begin_aanvraagjaar
+            value:
+              operation: DATE
+              year: $aanvraagjaar
+              month: 1
+              day: 1
+  - number: '7'
+    url: https://example.com/testregeling_afnemer/7
+    text: >-
+      Wijst deze regeling voor het besluit van artikel 3 een ander gezag aan,
+      dan kan de afnemer dat besluit in mandaat namens dat gezag nemen.

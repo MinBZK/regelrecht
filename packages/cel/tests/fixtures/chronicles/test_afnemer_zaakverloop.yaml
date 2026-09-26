@@ -1,0 +1,85 @@
+---
+# Fictieve teststroom: het verloop van een zaak bij de afnemer, in dezelfde
+# kroniek als de aanvraag. Elk event volgt de zaak die de aanvraag opende.
+# Het besluit zelf is een stage-decretogram (stage BESLUIT); de werkvoorraad
+# laat een zaak met zo'n gram weg. Het op_moment van het besluit is de
+# besluitdatum. Daarna: de bekendmaking (stage BEKENDMAKING, een handeling),
+# met de bezwaartermijn die de haak op die stage uitrekent, en de betaling
+# (een executogram dat het besluit uitvoert). Het besluit opent een besluit
+# in de zaak (besluit: opent); de bekendmaking en de betaling volgen het.
+$id: test_afnemer_zaakverloop
+recording_actor: test_afnemer
+chronicle: test_afnemer
+events:
+  - name: aanvulling_gevraagd
+    intake: behandelaar
+    grondslag:
+      - testregeling_afnemer#3
+    type: executogram
+    zaak: volgt
+    fields:
+      datum_uitnodiging: $external.datum_uitnodiging
+  - name: termijn_opgeschort
+    intake: behandelaar
+    grondslag:
+      - testregeling_afnemer#3
+    type: executogram
+    zaak: volgt
+    fields:
+      dagen: $external.dagen
+  - name: besluit_genomen
+    intake: behandelaar
+    grondslag:
+      - testregeling_afnemer#3 lid 1   # het besluit, niet de tijdigheid (lid 2)
+    type: decretogram
+    stage: BESLUIT
+    zaak: volgt
+    besluit: opent                     # het besluit krijgt een eigen kenmerk in de zaak
+    op_moment:                         # de dag van het besluit, niet die van het vastleggen
+      bron: $external.besluitdatum
+      grondslag: [testregeling_afnemer#3 lid 1]
+    fields:                            # de uitkomsten van het besluit
+      vastgesteld_bedrag: $external.vastgesteld_bedrag
+      gebiedsbedrag: $external.gebiedsbedrag
+      besluit_tijdig: $external.besluit_tijdig
+      besluitdeadline: $external.besluitdeadline
+      zorgvuldig: $external.zorgvuldig
+    niet_gereduceerd:
+      - {veld: gebiedsbedrag, reden: uitkomst van het besluit}
+      - {veld: besluit_tijdig, reden: uitkomst van het besluit}
+      - {veld: besluitdeadline, reden: uitkomst van het besluit}
+      - {veld: zorgvuldig, reden: uitkomst van het besluit}
+  - name: besluit_bekendgemaakt
+    intake: behandelaar
+    grondslag:
+      - testregeling_awb#2
+    type: handeling
+    soort: bekendmaking
+    stage: BEKENDMAKING
+    zaak: volgt
+    besluit: volgt                     # een stage van het besluit
+    op_moment:
+      bron: $external.datum_bekendmaking
+      grondslag: [testregeling_awb#2]
+    fields:                            # wat de stage vraagt, en wat zij uitrekent
+      datum_bekendmaking: $external.datum_bekendmaking
+      bekendgemaakt: $external.bekendgemaakt
+      besluit_tijdig: $external.besluit_tijdig
+      aanvang_bezwaartermijn: $external.aanvang_bezwaartermijn
+      einde_bezwaartermijn: $external.einde_bezwaartermijn
+    niet_gereduceerd:
+      - {veld: bekendgemaakt, reden: feit van de bekendmaking; het vervolg leest het uit het formulier}
+      - {veld: besluit_tijdig, reden: uitkomst van het besluit in de stage BEKENDMAKING}
+  - name: betaling_verricht
+    intake: behandelaar
+    grondslag:
+      - testregeling_awb#3 lid 1
+    type: executogram
+    soort: betaling
+    zaak: volgt
+    besluit: volgt                     # voert het besluit uit (RFC-022 par. 3.3)
+    op_moment:
+      bron: $external.datum_betaling
+      grondslag: [testregeling_awb#3 lid 2]
+    fields:
+      bedrag: $external.bedrag

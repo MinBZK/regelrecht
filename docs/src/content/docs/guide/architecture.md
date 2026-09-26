@@ -90,12 +90,14 @@ regelrecht/
 │   ├── poc-portal/       # Password-gated portal for the PoCs
 │   ├── poc-napp/         # Backend of the napp PoC
 │   ├── poc-assistent/    # Policy assistant for the PoCs
+│   ├── cel/              # Chronolex cell runtime of the aanvraag-cel PoC (RFC-022)
 │   ├── arch-extract/     # Architecture explorer (developer tool)
 │   └── grafana/          # Provisioned dashboards
 ├── frontend/             # Law editor (Vue 3 + Vite)
 ├── frontend-lawmaking/   # Law-making process visualization
 ├── frontend-demo/        # The demo, engine as WASM in the browser
 ├── frontend-poc-*/       # The proof-of-concepts behind the portal
+├── frontend-cel/         # Portal and case screens on top of the cell runtime
 ├── corpus-poc/           # Case corpora of the PoCs, not law in force
 ├── pocs/                 # The PoC register
 ├── corpus/               # Machine-readable laws (YAML), plus the demo corpus

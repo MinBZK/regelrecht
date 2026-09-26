@@ -161,3 +161,30 @@ articles:
     assert!(bounds["min"].is_number(), "min: {}", bounds["min"]);
     assert!(bounds["max"].is_number(), "max: {}", bounds["max"]);
 }
+
+/// A literal list is a literal, whatever its length. Serde reads a sequence as
+/// an internally tagged enum with a variant index for the tag, so `[0, 1, 2]`
+/// used to parse as `EQUALS {subject: 1, value: 2}`, and `[4, [1]]` as an
+/// operation too.
+#[test]
+fn a_literal_list_is_never_an_operation() {
+    use regelrecht_law_model::{ActionValue, Value};
+    for (yaml, lijst) in [
+        (
+            "[0, 1, 2]",
+            vec![Value::Int(0), Value::Int(1), Value::Int(2)],
+        ),
+        (
+            "[6, [1]]",
+            vec![Value::Int(6), Value::Array(vec![Value::Int(1)])],
+        ),
+        ("[1]", vec![Value::Int(1)]),
+    ] {
+        let v: ActionValue = serde_yaml_ng::from_str(yaml).unwrap();
+        assert_eq!(v, ActionValue::Literal(Value::Array(lijst)), "{yaml}");
+    }
+    // A mapping with an `operation` key is still an operation.
+    let op: ActionValue =
+        serde_yaml_ng::from_str("{operation: EQUALS, subject: 1, value: 2}").unwrap();
+    assert!(matches!(op, ActionValue::Operation(_)));
+}

@@ -121,6 +121,12 @@ export const sidebar: Record<string, SidebarGroup[]> = {
       ],
     },
     {
+      text: 'Proofs of Concept',
+      items: [
+        { text: 'Cel', link: '/components/cel' },
+      ],
+    },
+    {
       text: 'Observability',
       items: [
         { text: 'Grafana Monitoring', link: '/components/grafana' },

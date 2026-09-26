@@ -1,0 +1,497 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.1.0/gram.json",
+  "title": "Vastgelegd chronolexogram v0.1.0",
+  "description": "Een feit zoals een cel het vastlegt: op vastgelegd_op legde recording_actor vast dat dit event met deze velden plaatsvond, op deze grondslag, en dat het rechtens geldt of plaatsvond op op_moment (paper P:46: twee tijden). Een gram wordt alleen toegevoegd, nooit bewerkt; een correctie is een nieuw gram. Een veld dat niet is ingevuld staat erin als null: het gram houdt de vorm van de stroom.",
+  "type": "object",
+  "required": [
+    "kind",
+    "type",
+    "name",
+    "chronicle",
+    "recording_actor",
+    "grondslag",
+    "op_moment",
+    "vastgelegd_op",
+    "stroom",
+    "fields"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "const": "chronolexogram"
+    },
+    "type": {
+      "$ref": "#/definitions/identifier",
+      "description": "Open woordenschat (RFC-022 par. 1), bijvoorbeeld executogram of indiening."
+    },
+    "soort": {
+      "$ref": "#/definitions/identifier",
+      "description": "De soort binnen het type, bijvoorbeeld aanvraag bij een indiening."
+    },
+    "stage": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z_]*$",
+      "description": "Uit de stroom: de stage van de zaak (RFC-008), bij een stage-decretogram, een indiening (AANVRAAG) of een handeling (BEKENDMAKING). Alleen bij een gram met een zaak."
+    },
+    "name": {
+      "$ref": "#/definitions/identifier"
+    },
+    "chronicle": {
+      "$ref": "#/definitions/identifier"
+    },
+    "recording_actor": {
+      "$ref": "#/definitions/identifier"
+    },
+    "grondslag": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*#[A-Za-z0-9]([A-Za-z0-9:._ -]*[A-Za-z0-9])?( lid [0-9]+[a-z]?)?$"
+      }
+    },
+    "legal_character": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z_]*$",
+      "description": "Alleen bij een besluit dat de cel zelf nam: het rechtskarakter uit produces van het artikel (RFC-008), bijvoorbeeld BESCHIKKING."
+    },
+    "decision_type": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z_]*$",
+      "description": "Alleen bij een besluit: de soort beslissing uit produces, bijvoorbeeld TOEKENNING."
+    },
+    "regulation": {
+      "$ref": "#/definitions/identifier",
+      "description": "Alleen bij een besluit: de regeling waarop het rust."
+    },
+    "regulation_valid_from": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "description": "Alleen bij een besluit: vanaf wanneer die versie van de regeling geldt."
+    },
+    "competent_authority": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Alleen bij een besluit, en alleen als de regeling een bevoegd gezag noemt: dat gezag. Het proces toetst het tegen het gezag waarvoor het handelt (namens) en zijn mandaten, en legt bij een ander gezag niets vast; noemt de regeling er geen, dan staat dit veld er niet en waarschuwt het proces."
+    },
+    "handelende_actor": {
+      "type": "object",
+      "description": "Alleen bij een besluit dat een proces nam: wie handelde. Naast recording_actor (wie vastlegt) en competent_authority (wie de wet bevoegd maakt) de derde as van RFC-022 par. 2. Het kanaal is nagebootst: de identiteit is wat de gebruiker invulde.",
+      "required": [
+        "rol",
+        "kanaal",
+        "identiteit"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "rol": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kanaal": {
+          "type": "string",
+          "minLength": 1
+        },
+        "identiteit": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "grondslag": {
+          "type": "string",
+          "minLength": 1,
+          "description": "De grondslag van de rol, als de procesconfiguratie er een noemt."
+        },
+        "namens": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Het gezag in wiens naam is gehandeld."
+        },
+        "mandaat": {
+          "type": "string",
+          "minLength": 1,
+          "description": "De grondslag van het mandaat (Awb 10:1), als dat gezag niet het eigen gezag van het proces is."
+        }
+      }
+    },
+    "op_moment": {
+      "$ref": "#/definitions/moment",
+      "description": "Het moment waarop het feit rechtens geldt of plaatsvond (RFC 3339, met tijdzone). Standaard gelijk aan vastgelegd_op; een event kan het aan een ingediende waarde binden (zie op_moment_grondslag), en in een startstand is het met de hand gezet, zoals de datum van een besluit."
+    },
+    "op_moment_grondslag": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Alleen als het event op_moment aan een ingediende waarde bond en die waarde er was: waarom dat moment rechtens telt, uit de stroom. Bijvoorbeeld de dag van ontvangst van een aanvraag die langs een andere weg binnenkwam (Awb 4:1, 4:13).",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*#[A-Za-z0-9]([A-Za-z0-9:._ -]*[A-Za-z0-9])?( lid [0-9]+[a-z]?)?$"
+      }
+    },
+    "vastgelegd_op": {
+      "$ref": "#/definitions/moment",
+      "description": "Het moment waarop de cel het gram vastlegde: altijd haar eigen klok, bij een startstand de laadtijd. Een gram in een kroniek van voor dit veld heeft het niet; de runtime leest het dan als op_moment, met een waarschuwing."
+    },
+    "zaak": {
+      "enum": [
+        "opent",
+        "volgt",
+        "geen"
+      ],
+      "description": "Uit de stroom: of het gram een zaak opent of volgt. Ontbreekt het, dan is het geen: het gram hoort bij geen zaak."
+    },
+    "zaakkenmerk": {
+      "description": "Alleen bij zaak opent of volgt, en dan verplicht.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "besluit": {
+      "enum": [
+        "opent",
+        "volgt",
+        "wijzigt"
+      ],
+      "description": "Uit de stroom: of het gram in de zaak een besluit opent, een besluit volgt of een besluit wijzigt. Ontbreekt het, dan hoort het gram bij de zaak zelf en bij geen besluit."
+    },
+    "besluitkenmerk": {
+      "description": "Alleen bij besluit, en dan verplicht: het kenmerk van het besluit. Bij opent en wijzigt geeft de cel het, als zaakkenmerk/volgnummer; bij volgt is het dat van het besluit dat het gram volgt.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[1-9][0-9]*$"
+    },
+    "wijzigt": {
+      "description": "Alleen bij besluit wijzigt, en dan verplicht: het kenmerk van het besluit dat dit besluit wijzigt (RFC-022 par. 3.1 is_wijziging_van).",
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[1-9][0-9]*$"
+    },
+    "stroom": {
+      "type": "object",
+      "description": "De stroomdefinitie waarmee het gram is gebouwd, met de hash van dat bestand.",
+      "required": [
+        "id",
+        "sha256"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/identifier"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "herkomst": {
+      "enum": [
+        "startstand"
+      ],
+      "description": "Alleen als het gram niet door de cel zelf is vastgesteld. startstand: bij het starten in een lege kroniek geplaatst, niet berekend (geen engine-trace)."
+    },
+    "fields": {
+      "type": "object"
+    },
+    "inputs": {
+      "type": "object",
+      "description": "Alleen bij een handeling die een proces uitrekende (een besluit, een vervolg of een feit uit het verloop van de zaak): per parameter die meedeed de waarde en de herkomst (RFC-013 accepted_values). Niets hiervan is een eigen feit van de cel; het staat erbij zodat het besluit navolgbaar is.",
+      "propertyNames": {
+        "pattern": "^[a-z_][a-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "waarde",
+          "herkomst"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "waarde": {},
+          "herkomst": {
+            "type": "object",
+            "required": [
+              "bron"
+            ],
+            "properties": {
+              "bron": {
+                "enum": [
+                  "eigen",
+                  "cel",
+                  "per_regel",
+                  "behandelaar",
+                  "stand_bij_besluit"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "receipt": {
+      "type": "object",
+      "description": "Alleen bij een handeling die een proces uitrekende: wat er meedeed, zodat het te herhalen is (RFC-013 execution receipt, RFC-022 par. 1.3 voor de stromen).",
+      "required": [
+        "regelingen",
+        "stromen",
+        "sha256"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "regelingen": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "valid_from",
+              "sha256"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "$ref": "#/definitions/identifier"
+              },
+              "valid_from": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            }
+          }
+        },
+        "stromen": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "sha256"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "$ref": "#/definitions/identifier"
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            }
+          }
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    }
+  },
+  "definitions": {
+    "moment": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
+    },
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "kern_aanvraag": {
+      "description": "De vaste kern van een aanvraag (Awb 4:2 lid 1). Een waarde mag null zijn: ook een onvolledige aanvraag wordt vastgelegd.",
+      "type": "object",
+      "required": [
+        "aanvrager",
+        "dagtekening",
+        "gevraagde_beschikking",
+        "ondertekend_via"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "aanvrager": {
+          "type": "object",
+          "required": [
+            "naam",
+            "adres"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "naam": {},
+            "adres": {}
+          }
+        },
+        "dagtekening": {},
+        "gevraagde_beschikking": {},
+        "ondertekend_via": {
+          "type": "object"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "zaak": {
+            "enum": [
+              "opent",
+              "volgt"
+            ]
+          }
+        },
+        "required": [
+          "zaak"
+        ]
+      },
+      "then": {
+        "required": [
+          "zaakkenmerk"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "zaakkenmerk"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "indiening"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "required": [
+          "soort"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "indiening"
+          },
+          "soort": {
+            "const": "aanvraag"
+          }
+        },
+        "required": [
+          "type",
+          "soort"
+        ]
+      },
+      "then": {
+        "properties": {
+          "fields": {
+            "required": [
+              "kern",
+              "inhoud"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "kern": {
+                "$ref": "#/definitions/kern_aanvraag"
+              },
+              "inhoud": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "stage"
+        ]
+      },
+      "then": {
+        "properties": {
+          "type": {
+            "enum": [
+              "decretogram",
+              "indiening",
+              "handeling"
+            ]
+          },
+          "zaak": {
+            "enum": [
+              "opent",
+              "volgt"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "zaak"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "besluit"
+        ]
+      },
+      "then": {
+        "properties": {
+          "zaak": {
+            "const": "volgt"
+          }
+        },
+        "required": [
+          "zaak",
+          "besluitkenmerk"
+        ]
+      },
+      "else": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "besluitkenmerk"
+              ]
+            },
+            {
+              "required": [
+                "wijzigt"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "besluit": {
+            "const": "wijzigt"
+          }
+        },
+        "required": [
+          "besluit"
+        ]
+      },
+      "then": {
+        "required": [
+          "wijzigt"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "wijzigt"
+          ]
+        }
+      }
+    }
+  ]
+}

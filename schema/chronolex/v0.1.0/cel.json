@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.1.0/cel.json",
+  "title": "Celdefinitie (cel.yaml) v0.1.0",
+  "description": "Een cel is een map met configuratie; cel.yaml zegt wie de cel is, welke stromen ze vastlegt, welke lexostatussen ze aanbiedt en met welke grammen een lege kroniek begint (startstand). Een cel legt vast, bewaart en reduceert; wie er handelt, staat in een proces (proces.json). Paden zijn relatief aan de map van cel.yaml.",
+  "type": "object",
+  "required": [
+    "id",
+    "recording_actor",
+    "stromen",
+    "lexostatussen"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "id": {
+      "$ref": "#/definitions/identifier",
+      "description": "De naam van de cel. De runtime biedt haar aan onder /cellen/<id>/api/ en schrijft haar kroniek in DATA_DIR/<id>/."
+    },
+    "description": {
+      "type": "string"
+    },
+    "recording_actor": {
+      "$ref": "#/definitions/identifier",
+      "description": "De actor die in deze cel vastlegt. Elke stroom van de cel heeft deze recording_actor."
+    },
+    "stromen": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Stroomdefinities (stream.json): een bestand of een map met bestanden.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "lexostatussen": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Het bestand met de lexostatus-definities (lexostatus.json)."
+    },
+    "startstand": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Een JSONL-bestand met grammen die de cel bij het starten in een lege kroniek zet. Elke regel heeft stroom, name, op_moment, herkomst: startstand en fields, en een zaakkenmerk als het event een zaak heeft (zaak: opent of volgt), en alleen dan; de rest volgt uit de stroom."
+    }
+  },
+  "definitions": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    }
+  }
+}

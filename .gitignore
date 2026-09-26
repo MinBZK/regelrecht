@@ -28,6 +28,9 @@ node_modules/
 frontend/dist/
 frontend/public/wasm/pkg/
 frontend-poc-portal/dist/
+frontend-cel/dist/
+# De kronieken van `just cel` (DATA_DIR).
+.cel/
 packages/admin/static/
 
 # Landing page: the engine and the laws it needs are copied in by

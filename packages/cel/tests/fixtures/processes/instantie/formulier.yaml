@@ -1,0 +1,33 @@
+---
+# Fictief formulierbestand: labels en volgorde voor het scherm `aanvraag`.
+# Velden en kolommen die de stroom niet kent (hier `telefoon` en
+# `opmerking`) slaat de cel over.
+schermen:
+  - id: aanvraag
+    titel: Testaanvraag
+    groepen:
+      - titel: De aanvrager
+        velden:
+          - {id: naam, label: Naam van de aanvrager, type: tekst}
+          - {id: telefoon, label: Telefoonnummer, type: tekst}
+          - {id: aanduiding, label: Aanduiding, type: tekst}
+          - {id: adres, label: Adres, type: tekst}
+      - titel: De aanvraag
+        velden:
+          - {id: aanvraagjaar, label: Aanvraagjaar, type: getal, grondslag: testregeling_aanvraag#1 lid 1}
+          - {id: dagtekening, label: Dagtekening, type: datum}
+          - id: registratie
+            label: Registratie
+            type: keuze
+            opties:
+              - {waarde: a, label: Categorie A}
+              - {waarde: b, label: Categorie B}
+          - id: organen
+            label: Organen
+            type: tabel
+            kolommen:
+              - {id: orgaan, label: Orgaan, type: tekst}
+              - {id: zetels, label: Zetels, type: getal, grondslag: [testregeling_aanvraag#1]}
+              - {id: samengevoegd, label: Samengevoegd, type: janee}
+              - {id: aantal_aanduidingen, label: Aantal aanduidingen, type: getal}
+              - {id: opmerking, label: Opmerking, type: tekst}

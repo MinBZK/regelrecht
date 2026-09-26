@@ -1,0 +1,42 @@
+---
+# Fictieve teststroom: een instantie legt een ontvangen aanvraag vast.
+$id: test_aanvragen
+recording_actor: test_instantie
+chronicle: test_kroniek
+events:
+  - name: aanvraag_ontvangen
+    intake: portaal
+    grondslag:
+      - testregeling_aanvraag#1
+    type: indiening
+    soort: aanvraag
+    zaak: opent
+    # Een loket kan een eerdere ontvangst opgeven (een datumstempel); via het
+    # portaal is de ontvangst het vastleggen zelf.
+    op_moment:
+      bron: $intake.ontvangen_op
+      grondslag: [testregeling_aanvraag#1]
+    fields:
+      kern:
+        aanvrager:
+          naam: $external.naam
+          adres: $external.adres
+        dagtekening: $external.dagtekening
+        gevraagde_beschikking: testbeschikking, testregeling artikel 1
+        ondertekend_via:
+          kanaal: $intake.kanaal
+          kvk_nummer: $intake.eherkenning.kvk
+          gemachtigde: $intake.eherkenning.persoon
+          burgernummer: $intake.burger.nummer
+      inhoud:
+        aanvraagjaar: $external.aanvraagjaar
+        naam: $external.naam
+        aanduiding: $external.aanduiding
+        registratie: $external.registratie
+        organen:
+          tabel: $external.organen
+          kolommen: [orgaan, zetels, samengevoegd, aantal_aanduidingen]
+        rekeningnummer: $external.rekeningnummer
+    niet_gereduceerd:
+      - {veld: kern, reden: de vaste kern van een aanvraag; geen artikel van de testregeling leest haar}
+      - {veld: inhoud.rekeningnummer, reden: voor de betaling}

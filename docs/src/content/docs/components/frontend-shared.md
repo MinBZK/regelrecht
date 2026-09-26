@@ -18,10 +18,11 @@ The editor is the reference for what lives here, and the other apps conform to i
 
 | App | Imports |
 |-----|---------|
-| Editor (`frontend/`) | API calls, sign-in state, the GitHub link status, the color scheme, value helpers, the Gherkin runner |
+| Editor (`frontend/`) | API calls, sign-in state, the GitHub link status, the color scheme, value helpers, the eurocent conversion, the Gherkin runner |
 | Demo (`frontend-demo/`) | The color scheme, value helpers, the Gherkin runner |
 | The two static PoCs (`frontend-poc-*`) | The Gherkin runner, saved state, browser variants, the line diff, the reload-on-stale-bundle handler, the shared components |
 | Lawmaking (`frontend-lawmaking/`) | Lists the package as a dependency, imports nothing from it today |
+| Cel frontend (`frontend-cel/`) | Value helpers, the eurocent conversion |
 
 ## Architecture
 
@@ -36,6 +37,12 @@ The package root (`src/index.js`) exports only the small primitives. Everything 
 | `useGithubAuth.js` | Whether the user has linked a GitHub account, from the editor API's `/auth/github/status`. When the endpoint is missing or fails, the controls are hidden |
 | `useColorScheme.js` | The light/dark/auto picker. It sets `data-scheme` on `<html>`, which the design system keys its dark tokens on, and leaves it off for `auto`. Persistence is injected: the editor stores the choice server-side, other apps use `localStorage` |
 | `values.js` | `isUnknown` and `missingFacts`: one definition of how the engine's Unknown value ([RFC-036](/rfcs/rfc-036)) arrives in JavaScript |
+
+### Other modules
+
+| Module | Purpose |
+|--------|---------|
+| `currency.js` | `centsToEuros` and `eurosToCents`: an amount the law declares in eurocent (`type_spec.unit: eurocent`) is shown and entered in euros |
 
 ### The Gherkin runner (`./gherkin`)
 

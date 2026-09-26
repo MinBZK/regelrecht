@@ -167,10 +167,128 @@ pub struct Parameter {
     pub nullable: Option<bool>,
     #[serde(default)]
     pub description: Option<String>,
+    /// The schema allows `type_spec` on every field (`baseField`); a
+    /// parameter carries its unit here, such as `eurocent` for an amount
+    /// (RFC-023). The engine does not compute with it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub type_spec: Option<TypeSpec>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temporal: Option<Temporal>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub legal_basis: Option<ProvisionReference>,
+    /// Who supplies this parameter, per the law, with the provision that says
+    /// so (RFC-043). Metadata for a process runtime and an editor; the engine
+    /// does not read it. An `origin` that is not valid does not stop the law
+    /// from loading: it is kept as written, and a runtime that reads it
+    /// reports it with the file and the parameter.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<Declared<Origin>>,
+}
+
+/// A field a law declares for a process runtime and not for the engine
+/// (RFC-043): valid, or kept as written. The engine never fails to load a law
+/// because such a field is wrong; whoever reads it asks [`Declared::valid`]
+/// and reports the reason.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Declared<T> {
+    Valid(T),
+    Invalid(serde_json::Value),
+}
+
+impl<T: serde::de::DeserializeOwned> Declared<T> {
+    /// The value, or why it is not valid.
+    pub fn valid(&self) -> Result<&T, String> {
+        match self {
+            Declared::Valid(v) => Ok(v),
+            Declared::Invalid(raw) => Err(match serde_json::from_value::<T>(raw.clone()) {
+                Err(e) => e.to_string(),
+                // Unreachable: the untagged enum tried the same thing first.
+                Ok(_) => "not valid".to_string(),
+            }),
+        }
+    }
+
+    /// The value if it is valid.
+    pub fn as_valid(&self) -> Option<&T> {
+        self.valid().ok()
+    }
+}
+
+/// Who supplies a parameter, per the law (RFC-043). Always with a
+/// `grondslag`: `<regulation>#<article>`, optionally followed by ` lid <n>`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Origin {
+    pub waarde: OriginValue,
+    /// With `REGISTER`: the regulation by or under which the register is
+    /// kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub register: Option<String>,
+    pub grondslag: String,
+    /// What the parameter is within the decision requested, when that matters
+    /// to a process beyond who supplies it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rol: Option<OriginRole>,
+}
+
+/// The role of a parameter within the decision requested (RFC-043).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum OriginRole {
+    /// The period the decision covers, chosen by the applicant as part of
+    /// the decision requested (Awb 4:2, first paragraph). Known before the
+    /// application is filled in.
+    Tijdvak,
+}
+
+impl OriginRole {
+    /// The value as it is written in a law.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            OriginRole::Tijdvak => "TIJDVAK",
+        }
+    }
+}
+
+/// The five origins of a parameter (RFC-043).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum OriginValue {
+    /// What the applicant supplies or chooses: the content of the
+    /// application, the decision requested, the period.
+    Belanghebbende,
+    /// A fact from the course of the case at the administrative body.
+    Dossier,
+    /// A judgement the administrative body gives when it decides.
+    Oordeel,
+    /// A fact from a register kept by or under a regulation.
+    Register,
+    /// What the intake channel says: who logs in, and on whose behalf.
+    Kanaal,
+}
+
+impl OriginValue {
+    /// The value as it is written in a law.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            OriginValue::Belanghebbende => "BELANGHEBBENDE",
+            OriginValue::Dossier => "DOSSIER",
+            OriginValue::Oordeel => "OORDEEL",
+            OriginValue::Register => "REGISTER",
+            OriginValue::Kanaal => "KANAAL",
+        }
+    }
+}
+
+/// An implementing policy overriding the origin that a law gives one of its
+/// parameters, with the provision of the policy as `grondslag` (RFC-043).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OriginOverride {
+    pub regulation: String,
+    pub parameter: String,
+    pub origin: Origin,
 }
 
 impl Parameter {
@@ -275,14 +393,48 @@ pub struct Case {
 /// Uses `#[serde(untagged)]` for flexible YAML parsing. The Operation variant is tried first,
 /// but this is safe because `ActionOperation` is an internally-tagged enum keyed on `"operation"` -
 /// any YAML object lacking an `operation` key will fail to deserialize as ActionOperation and
-/// fall through to the Literal variant.
+/// fall through to the Literal variant. Only a mapping can be an operation (see
+/// [`operation_from_map`]): a list is always a literal.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ActionValue {
     /// Nested operation (tried first; requires `operation` field to match)
-    Operation(Box<ActionOperation>),
+    Operation(#[serde(deserialize_with = "operation_from_map")] Box<ActionOperation>),
     /// Literal value (number, string, boolean, variable reference like "$var", etc.)
     Literal(Value),
+}
+
+/// Deserialize an operation from a mapping only.
+///
+/// Serde lets an internally tagged enum deserialize from a sequence too, with
+/// the tag first, and it accepts a variant index for the tag. A literal list
+/// such as `[0, 1, 2]` then parses as the operation with index 0 (`EQUALS`,
+/// with subject 1 and value 2), and a FOREACH over it iterates `[false]`.
+/// Refusing anything but a mapping here lets such a list fall through to
+/// [`ActionValue::Literal`].
+fn operation_from_map<'de, D>(deserializer: D) -> Result<Box<ActionOperation>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct MapOnly;
+
+    impl<'de> serde::de::Visitor<'de> for MapOnly {
+        type Value = Box<ActionOperation>;
+
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("a mapping with an `operation` key")
+        }
+
+        fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error>
+        where
+            A: serde::de::MapAccess<'de>,
+        {
+            ActionOperation::deserialize(serde::de::value::MapAccessDeserializer::new(map))
+                .map(Box::new)
+        }
+    }
+
+    deserializer.deserialize_map(MapOnly)
 }
 
 /// Represents an operation within an action.
@@ -1107,6 +1259,11 @@ pub struct MachineReadable {
     /// Document properties this article establishes (schema v0.7.0)
     #[serde(default)]
     pub declares: Option<Vec<Declaration>>,
+    /// Origins this article (of an implementing policy) gives parameters of
+    /// another regulation, overriding what that regulation says (RFC-043).
+    /// Each entry is kept as written when it is not valid; see [`Declared`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origins: Option<Vec<Declared<OriginOverride>>>,
 }
 
 /// Represents a single article in a law

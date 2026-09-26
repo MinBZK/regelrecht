@@ -1,0 +1,798 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.1.0/proces.json",
+  "title": "Procesdefinitie (proces.yaml) v0.1.0",
+  "description": "Een proces is een map met configuratie; proces.yaml zegt wie er handelt (actor) en hoe: namens welk gezag (namens, mandaten), langs welke kanalen en in welke rollen er wordt ingelogd (kanalen, rollen), of er een portaal is dat een indiening in een cel laat vastleggen, van welke cellen het lexostatussen samenvoegt (synthese), en welke handelingen een behandelaar in een zaak doet (behandeling). Een proces legt zelf niets vast en reduceert zelf niets: dat doet een cel, op verzoek van het proces. Paden zijn relatief aan de map van proces.yaml.",
+  "type": "object",
+  "required": [
+    "id",
+    "actor"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "id": {
+      "$ref": "#/definitions/identifier",
+      "description": "De naam van het proces. De runtime biedt het aan onder /processen/<id>/api/."
+    },
+    "description": {
+      "type": "string"
+    },
+    "actor": {
+      "$ref": "#/definitions/identifier",
+      "description": "De actor die vastlegt (recording_actor): een cel legt voor het proces alleen vast in een stroom met deze recording_actor. Namens welk bevoegd gezag het proces handelt, zegt namens, niet de actor."
+    },
+    "herkomst": {
+      "enum": [
+        "ruim",
+        "streng"
+      ],
+      "default": "ruim",
+      "description": "Hoe streng de controle op de herkomst (RFC-043) is bij het opstarten. ruim: een parameter zonder origin is een waarschuwing. streng: een parameter zonder origin is een fout, want dan is niet na te gaan wie hem levert. Met streng draagt ook elke synthese-bron die vertaalt een grondslag (zie bron.grondslag)."
+    },
+    "namens": {
+      "$ref": "#/definitions/namens"
+    },
+    "mandaten": {
+      "type": "array",
+      "description": "Gezagen waarvoor het proces in mandaat handelt (Awb 10:1 e.v.). Wijst de wet bij een besluit een ander gezag aan dan namens, dan legt de cel het besluit alleen vast als hier een mandaat van dat gezag staat; het gram noemt dan de grondslag bij de handelende actor.",
+      "items": {
+        "type": "object",
+        "required": [
+          "gezag",
+          "grondslag"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "gezag": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Het mandaatgevende gezag, zoals een geladen regeling het in competent_authority noemt."
+          },
+          "grondslag": {
+            "$ref": "#/definitions/grondslag",
+            "description": "Waar het mandaat op rust: <regeling>#<artikel>, optioneel met ' lid <n>'. Het artikel moet geladen zijn."
+          }
+        }
+      }
+    },
+    "kanalen": {
+      "type": "object",
+      "description": "Langs welke kanalen iemand bij het proces inlogt, per id. Elk kanaal is nagebootst: identificatievelden met een vormcontrole, geen gecertificeerde login en geen register. De routes zijn /api/kanalen/<id>/login, /sessie en /logout.",
+      "propertyNames": {
+        "$ref": "#/definitions/identifier"
+      },
+      "additionalProperties": {
+        "$ref": "#/definitions/kanaal"
+      }
+    },
+    "rollen": {
+      "$ref": "#/definitions/rollen"
+    },
+    "portaal": {
+      "$ref": "#/definitions/portaal"
+    },
+    "synthese": {
+      "type": "array",
+      "description": "Lexostatussen van cellen die het proces samenvoegt: de toets van het portaal, het aanbod en het proefbesluit. Een bron met zaak: true is een lexostatus van de zaak zelf; de andere bronnen noemen hun invoer en parameters. Niets hiervan wordt vastgelegd.",
+      "items": {
+        "$ref": "#/definitions/bron"
+      }
+    },
+    "behandeling": {
+      "$ref": "#/definitions/behandeling"
+    },
+    "voorbeelden": {
+      "type": "object",
+      "description": "Standaardgegevens per handeling, voor een proefopstelling: de frontend biedt ze aan om een formulier voor in te vullen of de handeling er direct mee te doen. Elk bestand is JSON; de runtime controleert bij het opstarten de vorm. Niets hiervan wordt vastgelegd.",
+      "additionalProperties": false,
+      "properties": {
+        "inloggen": {
+          "type": "array",
+          "uniqueItems": true,
+          "description": "Logins, elk een object met de velden van een kanaal, en optioneel kanaal (zonder: het enige kanaal van het portaal) en rol. Het label is de bestandsnaam zonder extensie.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "aanvraag": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Een aanvraag: een object met external, zoals het portaal het ontvangt."
+        },
+        "handelingen": {
+          "type": "object",
+          "description": "Per handeling (de naam in behandeling.handelingen) een formulier: een object met formulier, zoals de handeling het ontvangt. Een waarde \"$vandaag\" wordt bij het opvragen de datum van vandaag, zodat een voorbeeld niet veroudert (een besluit of betaling in de toekomst is geen feit).",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "portaal": {
+      "type": "object",
+      "description": "Een proces met een portaal laat inloggen (nep-eHerkenning), een concept toetsen en een indiening in een cel vastleggen. Zonder portaal heeft het proces die routes niet.",
+      "required": [
+        "cel",
+        "stroom",
+        "event",
+        "toets"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "cel": {
+          "$ref": "#/definitions/identifier",
+          "description": "De cel waarin de indiening wordt vastgelegd. Ze draait in dezelfde runtime."
+        },
+        "stroom": {
+          "$ref": "#/definitions/identifier",
+          "description": "De $id van de stroom van die cel waarin het portaal vastlegt."
+        },
+        "event": {
+          "$ref": "#/definitions/identifier",
+          "description": "Het event uit die stroom dat een indiening wordt."
+        },
+        "toets": {
+          "type": "object",
+          "required": [
+            "lexostatus",
+            "regeling",
+            "uitkomst"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "lexostatus": {
+              "$ref": "#/definitions/identifier"
+            },
+            "regeling": {
+              "$ref": "#/definitions/identifier"
+            },
+            "uitkomst": {
+              "$ref": "#/definitions/identifier"
+            },
+            "rijen": {
+              "type": "array",
+              "description": "Synthese per regel, zoals bij het besluit: tabelvelden van de toets-lexostatus die een array-parameter worden, vóór de engine.",
+              "items": {
+                "$ref": "#/definitions/rijen"
+              }
+            }
+          },
+          "description": "De toets vóór het indienen: de cel reduceert het concept op proef tot deze lexostatus, het proces voegt samen, bouwt de rijen op en de engine evalueert de uitkomst."
+        },
+        "aanbod": {
+          "type": "object",
+          "description": "Wat het portaal aanbiedt: een uitkomst van het beleid (bijvoorbeeld 'aanvraag aangeboden'), uitgevoerd in een run, en optioneel de uitkomst van dezelfde regeling die de termijn geeft. Het portaal toont het aanbod; het weigert niets.",
+          "required": [
+            "regeling",
+            "uitkomst"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "regeling": {
+              "$ref": "#/definitions/identifier"
+            },
+            "uitkomst": {
+              "$ref": "#/definitions/identifier"
+            },
+            "termijn": {
+              "$ref": "#/definitions/identifier"
+            },
+            "tijdvakken": {
+              "$ref": "#/definitions/identifier",
+              "description": "Een uitkomst van dezelfde regeling: de lijst tijdvakken die het beleid aanbiedt, als het aanbod-artikel een tijdvak vraagt (de parameter met origin BELANGHEBBENDE en grondslag Awb 4:2 lid 1, RFC-043). De runtime rekent haar uit in een eigen run op de datum van vandaag, zonder parameters, en doet per tijdvak een run van het aanbod. Welke tijdvakken er zijn, is beleid, geen configuratie."
+            },
+            "begin": {
+              "$ref": "#/definitions/identifier",
+              "description": "Een uitkomst van dezelfde regeling: de eerste dag van een tijdvak, uitgerekend met alleen het gekozen tijdvak als parameter. Het aanbod voor een tijdvak dat nog moet beginnen, laat de bronnen peilen op die dag (peilmoment); zonder begin peilen ze op vandaag. Vraagt tijdvakken."
+            },
+            "openstelling": {
+              "$ref": "#/definitions/identifier",
+              "description": "Een uitkomst van dezelfde regeling: de eerste dag waarop een aanvraag voor een tijdvak kan binnenkomen, uitgerekend met alleen het tijdvak als parameter. Het loket voert geen ontvangst in van vóór die dag. Vraagt tijdvakken."
+            }
+          }
+        },
+        "formulier": {
+          "type": "object",
+          "description": "Optioneel formulierbestand voor labels en volgorde. Het bepaalt nooit het gedrag.",
+          "required": [
+            "pad",
+            "scherm"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "pad": {
+              "type": "string"
+            },
+            "scherm": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "bron": {
+      "type": "object",
+      "description": "Een lexostatus van een cel. Zonder url is het transport intern: de cel draait in dezelfde runtime. Met url gaat de vraag over HTTP naar <url>/cellen/<cel>/api/lexostatus/<lexostatus>. Met zaak: true is het een lexostatus van de zaak zelf, in de cel waarin het proces vastlegt, met als enige input zaakkenmerk: het besluit bevraagt haar met het zaakkenmerk en neemt al haar parameters en extra velden over. Zo'n bron noemt geen invoer, parameters of extra velden.",
+      "required": [
+        "cel",
+        "lexostatus"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "cel": {
+          "$ref": "#/definitions/identifier"
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^https?://[^\\s/]+(/[^\\s]*)?$"
+        },
+        "lexostatus": {
+          "$ref": "#/definitions/identifier"
+        },
+        "zaak": {
+          "type": "boolean",
+          "description": "Een lexostatus van de zaak zelf (zie boven)."
+        },
+        "invoer": {
+          "type": "object",
+          "description": "Per input van de bron-lexostatus: uit welk veld de waarde komt (lexostatus en veld), of een vaste waarde (waarde). Een veld komt uit een lexostatus van de zaak (bij de toets: de toets-lexostatus; een parameter of een extra veld), of uit het antwoord van een eerdere bron in de lijst die dat veld onder extra_velden doorgeeft; die mag zelf ook op een eerdere bron wachten.",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": [
+                  "lexostatus",
+                  "veld"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "lexostatus": {
+                    "$ref": "#/definitions/identifier"
+                  },
+                  "veld": {
+                    "type": "string",
+                    "pattern": "^[a-z_][a-z0-9_]*$"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "waarde"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "waarde": {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean"
+                    ],
+                    "description": "Een vaste waarde, zoals het orgaan waarvan het register wordt gevraagd."
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "extra_velden": {
+          "type": "array",
+          "uniqueItems": true,
+          "description": "Extra velden uit het antwoord van deze bron die geen parameter zijn, maar invoer voor een latere bron in de lijst (bijvoorbeeld een naam bij een registratienummer). Ze gaan niet naar de engine.",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_][a-z0-9_]*$"
+          }
+        },
+        "parameters": {
+          "description": "De parameters die deze bron levert, expliciet en zonder wildcard: een lijst als de bron ze onder dezelfde naam levert, of per naam bij de bron de naam bij de afnemer. Elke naam bij de afnemer is een parameter van een artikel onder de toets, het besluit of het aanbod, en komt uit maar een bron. Leeg mag alleen als de bron extra_velden doorgeeft.",
+          "oneOf": [
+            {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z_][a-z0-9_]*$"
+              }
+            },
+            {
+              "type": "object",
+              "description": "Per naam die de bron levert: onder welke parameternaam de afnemer het feit vraagt. De bron spreekt de taal van haar eigen wet en levert de naam als parameter of als extra veld; de vertaling naar de parameters van de afnemer hoort bij de afnemer (synthese bij de afnemer).",
+              "propertyNames": {
+                "pattern": "^[a-z_][a-z0-9_]*$"
+              },
+              "additionalProperties": {
+                "type": "string",
+                "pattern": "^[a-z_][a-z0-9_]*$"
+              }
+            }
+          ]
+        },
+        "grondslag": {
+          "$ref": "#/definitions/grondslagen",
+          "description": "Waarop de vertaling van deze bron rust: de artikelen die het feit bij de afnemer onder zijn naam vragen en die de bron het laten leveren, en die een vaste waarde in de invoer dragen (zoals het register van welk orgaan). Bij het opstarten: elk artikel geladen, het lid bestaat. Met herkomst: streng heeft elke bron die vertaalt (een naam bij de afnemer die anders is dan bij de bron, of een vaste waarde) een grondslag."
+        }
+      },
+      "if": {
+        "properties": {
+          "zaak": {
+            "const": true
+          }
+        },
+        "required": [
+          "zaak"
+        ]
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "invoer"
+              ]
+            },
+            {
+              "required": [
+                "parameters"
+              ]
+            },
+            {
+              "required": [
+                "extra_velden"
+              ]
+            },
+            {
+              "required": [
+                "url"
+              ]
+            }
+          ]
+        }
+      },
+      "else": {
+        "required": [
+          "invoer",
+          "parameters"
+        ]
+      }
+    },
+    "rollen": {
+      "type": "object",
+      "description": "Wie er in het proces inlogt, per rol: langs welk kanaal, en welke routegroepen de rol mag gebruiken (portaal: formulier, toets, aanbod en indienen; behandeling: werkvoorraad, zaak, proefbesluit en besluit; loket: een aanvraag invoeren die langs een andere weg binnenkwam). Zonder rollen is er geen login.",
+      "minProperties": 1,
+      "propertyNames": {
+        "$ref": "#/definitions/identifier"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "kanaal",
+          "routes"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "kanaal": {
+            "$ref": "#/definitions/identifier",
+            "description": "Een kanaal uit kanalen."
+          },
+          "routes": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "portaal",
+                "behandeling",
+                "loket"
+              ]
+            }
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Hoe de frontend de rol noemt; zonder: de id."
+          },
+          "grondslag": {
+            "$ref": "#/definitions/grondslag",
+            "description": "Waarom deze rol dit mag, zoals een mandaat- of dienstverleningsregeling. Een besluit draagt haar bij de handelende actor."
+          }
+        }
+      }
+    },
+    "behandeling": {
+      "type": "object",
+      "description": "Wat de behandelaar in het proces doet: de werkvoorraad bekijken, een zaak openen en er handelingen in doen: op proef, en dan vastleggen. Wat een handeling nodig heeft en van wie, volgt uit de stage van haar vastleg-event (RFC-008) en uit de origin van de parameters van haar artikel (RFC-043), niet uit deze configuratie. Vraagt een rol met routes behandeling.",
+      "required": [
+        "werkvoorraad",
+        "handelingen"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "werkvoorraad": {
+          "type": "object",
+          "description": "Een lijst-lexostatus (groepeer: zaakkenmerk) van de cel waarin het proces vastlegt.",
+          "required": [
+            "cel",
+            "lexostatus"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "cel": {
+              "$ref": "#/definitions/identifier"
+            },
+            "lexostatus": {
+              "$ref": "#/definitions/identifier"
+            }
+          }
+        },
+        "handelingen": {
+          "type": "array",
+          "minItems": 1,
+          "description": "De handelingen die in een zaak kunnen: het besluit, de stages erna (zoals de bekendmaking) en de feiten van het zaakverloop (een verzoek, een ontvangst, een betaling).",
+          "items": {
+            "$ref": "#/definitions/handeling"
+          }
+        }
+      }
+    },
+    "rijen": {
+      "type": "object",
+      "description": "Synthese per regel: voor elke regel van een tabelveld bevraagt het proces bronnen met waarden uit die regel, en de kolommen samen vormen een array-parameter. Zo vult de actor de kolommen die hij zelf vaststelt, zonder ze in code te zetten.",
+      "required": [
+        "parameter",
+        "tabel",
+        "kolommen"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "parameter": {
+          "$ref": "#/definitions/identifier",
+          "description": "De array-parameter die de regels samen vormen."
+        },
+        "tabel": {
+          "type": "object",
+          "description": "Het tabelveld dat de regels levert: een lexostatus van de zaak, of een bron die het veld doorgeeft, en de naam waaronder zij de tabel levert (een parameter of een extra veld).",
+          "required": [
+            "lexostatus",
+            "veld"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "lexostatus": {
+              "$ref": "#/definitions/identifier"
+            },
+            "veld": {
+              "type": "string",
+              "pattern": "^[a-z_][a-z0-9_]*$"
+            }
+          }
+        },
+        "kolommen": {
+          "type": "object",
+          "description": "Per kolom van de tabel: onder welke naam ze in de parameter komt. Een kolom die hier niet staat gaat niet mee.",
+          "propertyNames": {
+            "pattern": "^[a-z_][a-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[a-z_][a-z0-9_]*$"
+          },
+          "minProperties": 1
+        },
+        "bronnen": {
+          "type": "array",
+          "description": "Bronnen die per regel worden bevraagd, in volgorde: een bron kan een kolom gebruiken die een eerdere bron leverde.",
+          "items": {
+            "type": "object",
+            "required": [
+              "cel",
+              "lexostatus",
+              "invoer",
+              "kolommen"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "cel": {
+                "$ref": "#/definitions/identifier"
+              },
+              "url": {
+                "type": "string",
+                "pattern": "^https?://[^\\s/]+(/[^\\s]*)?$"
+              },
+              "lexostatus": {
+                "$ref": "#/definitions/identifier"
+              },
+              "invoer": {
+                "type": "object",
+                "description": "Per input van de bron: de waarde uit de regel (kolom), uit een lexostatus van de zaak of een bron die het veld doorgeeft (lexostatus en veld), uit de samengevoegde parameters (parameter), een uitkomst van een regeling uitgerekend met de samengevoegde parameters (regeling en uitkomst; zo leidt de wet een invoer af, zoals een peildatum), of een vaste waarde (waarde).",
+                "propertyNames": {
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "kolom": {
+                      "type": "string",
+                      "pattern": "^[a-z_][a-z0-9_]*$"
+                    },
+                    "lexostatus": {
+                      "$ref": "#/definitions/identifier"
+                    },
+                    "veld": {
+                      "type": "string",
+                      "pattern": "^[a-z_][a-z0-9_]*$"
+                    },
+                    "parameter": {
+                      "type": "string",
+                      "pattern": "^[a-z_][a-z0-9_]*$"
+                    },
+                    "regeling": {
+                      "$ref": "#/definitions/identifier"
+                    },
+                    "uitkomst": {
+                      "$ref": "#/definitions/identifier"
+                    },
+                    "waarde": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean"
+                      ]
+                    }
+                  },
+                  "oneOf": [
+                    {
+                      "required": [
+                        "kolom"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "lexostatus",
+                        "veld"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "parameter"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "regeling",
+                        "uitkomst"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "waarde"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "kolommen": {
+                "type": "object",
+                "description": "Per naam die de bron levert (een parameter of een extra veld): onder welke kolomnaam ze in de regel komt.",
+                "propertyNames": {
+                  "pattern": "^[a-z_][a-z0-9_]*$"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "pattern": "^[a-z_][a-z0-9_]*$"
+                },
+                "minProperties": 1
+              },
+              "grondslag": {
+                "$ref": "#/definitions/grondslagen",
+                "description": "Waarop de vertaling van deze bron rust, als bij een synthese-bron: een kolom die bij de afnemer anders heet dan bij de bron, of een vaste waarde in de invoer. Met herkomst: streng verplicht zodra de bron vertaalt."
+              }
+            }
+          }
+        }
+      }
+    },
+    "kanaal": {
+      "type": "object",
+      "required": [
+        "label",
+        "velden"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "description": "De naam van het kanaal op het inlogscherm."
+        },
+        "uitleg": {
+          "type": "string",
+          "description": "Uitleg op het inlogscherm. De frontend zegt er zelf bij dat de login nagebootst is."
+        },
+        "velden": {
+          "type": "array",
+          "minItems": 1,
+          "description": "De identificatievelden, in de volgorde van het inlogscherm.",
+          "items": {
+            "type": "object",
+            "required": [
+              "naam",
+              "label"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "naam": {
+                "$ref": "#/definitions/identifier"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "patroon": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Een reguliere expressie waaraan de hele waarde voldoet; zonder: niet leeg."
+              },
+              "controle": {
+                "enum": [
+                  "elfproef"
+                ],
+                "description": "elfproef: negen cijfers, gewogen 9 tot en met 2 en -1, de som deelbaar door 11 (zoals een burgerservicenummer)."
+              },
+              "melding": {
+                "type": "string",
+                "minLength": 1,
+                "description": "De melding bij een waarde die niet voldoet."
+              },
+              "numeriek": {
+                "type": "boolean",
+                "description": "De frontend toont een numeriek toetsenbord."
+              },
+              "grondslag": {
+                "$ref": "#/definitions/grondslagen",
+                "description": "Waarop het veld rust: de regel die het gegeven en zijn vorm kent, zoals het nummer dat een register toekent. Bij het opstarten: elk artikel geladen, het lid bestaat."
+              }
+            }
+          }
+        },
+        "eigenaar": {
+          "$ref": "#/definitions/identifier",
+          "description": "Het veld dat de eigenaar van een zaak aanwijst: wie een zaak volgt, moet een gram in die zaak hebben met zijn waarde van dit veld."
+        },
+        "intake": {
+          "$ref": "#/definitions/identifier",
+          "description": "Het pad onder $intake waaronder de velden bij de cel aankomen; zonder: de id van het kanaal."
+        },
+        "grondslag": {
+          "$ref": "#/definitions/grondslagen",
+          "description": "Waarop het kanaal en zijn eigenaar rusten: de regel die zegt met welk middel en namens wie iemand inlogt. Bij het opstarten: elk artikel geladen, het lid bestaat."
+        }
+      }
+    },
+    "namens": {
+      "description": "Het bevoegd gezag waarvoor het proces handelt: de naam zoals een regeling haar in competent_authority noemt, of een regeling waarvan het het bevoegd gezag is. De runtime controleert bij het opstarten dat het gezag in een geladen regeling voorkomt, zoekt er het besluit mee als behandeling.besluit geen regeling noemt, en toetst het bij het besluit aan het gezag van de wet. Verplicht met een behandeling.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "gezag"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "gezag": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "regeling"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "regeling": {
+              "$ref": "#/definitions/identifier"
+            }
+          }
+        }
+      ]
+    },
+    "grondslag": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*#[A-Za-z0-9]([A-Za-z0-9:._ -]*[A-Za-z0-9])?( lid [0-9]+[a-z]?)?$"
+    },
+    "handeling": {
+      "type": "object",
+      "description": "Een handeling in een zaak: de uitkomsten van een artikel, uitgerekend met wat de zaak, de synthese en het formulier leveren, en het event waarin de cel haar vastlegt. Het soort volgt uit het event: met een stage die de procedure van het artikel (RFC-008) kent, is de eerste zo'n handeling het besluit en elke latere stage van hetzelfde artikel een vervolg op dat besluit (de engine voert de stage uit op de invoer van het vastgelegde besluit, met de haken van die stage); zonder stage legt de handeling een feit vast dat de lexostatussen van de zaak lezen, en telt het feit op proef mee. Een zaak kan meer besluiten hebben, elk van een eigen artikel (een voorschot, een vaststelling, een terugvordering); het vastleg-event zegt of een gram een besluit opent, volgt of wijzigt (besluit in de stroom). Het formulier staat hier niet: bij een besluit de parameters met origin OORDEEL, bij een vervolg wat de stage vraagt (requires), bij een feit de $external-velden van het event die geen uitkomst zijn.",
+      "required": [
+        "naam",
+        "vastleggen"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "naam": {
+          "$ref": "#/definitions/identifier",
+          "description": "De naam van de handeling, uniek in het proces; de route is zaken/<zaakkenmerk>/handelingen/<naam>."
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Hoe de frontend de handeling noemt; zonder de naam."
+        },
+        "rol": {
+          "$ref": "#/definitions/identifier",
+          "description": "De rol die de handeling mag doen: een sleutel van rollen, met routes behandeling. Zonder: elke rol die de behandeling mag."
+        },
+        "besluit": {
+          "$ref": "#/definitions/identifier",
+          "description": "De naam van de handeling van het besluit waarbij deze handeling hoort, als haar vastleg-event een besluit volgt of wijzigt. Bij een feit dat een besluit volgt (besluit: volgt, zoals een betaling die een besluit uitvoert: RFC-022 par. 3.3) en bij een besluit dat een ander besluit wijzigt (besluit: wijzigt, zoals een wijziging van een vaststelling op grond van Awb 4:49) verplicht; het proces handelt dan op het laatste besluit van die handeling in de zaak, een wijziging ervan meegerekend. Een vervolg (een latere stage van hetzelfde artikel) vindt zijn besluit zelf; noemt het er toch een, dan moet het dat zijn."
+        },
+        "regeling": {
+          "$ref": "#/definitions/identifier",
+          "description": "Optioneel. Zonder deze sleutel is het artikel de beschikking (produces: BESCHIKKING) waarvoor het bevoegd gezag gelijk is aan het gezag waarvoor het proces handelt (namens)."
+        },
+        "uitkomsten": {
+          "type": "array",
+          "uniqueItems": true,
+          "description": "Uitkomsten van een en hetzelfde artikel van de regeling. Bij een vervolg komen daar de uitkomsten bij van de haken die de wet op die stage laat vuren (zoals de bezwaartermijn, Awb 6:8); die staan hier niet, en zonder regeling mag de lijst dan leeg zijn. Legt het event een executogram vast en staat het artikel in zijn grondslag als TOETS, dan telt elke booleaanse uitkomst met de norm van die bepaling als legal_basis: onwaar is niet te nemen.",
+          "items": {
+            "$ref": "#/definitions/identifier"
+          }
+        },
+        "rijen": {
+          "type": "array",
+          "description": "Synthese per regel: tabelvelden die een array-parameter worden.",
+          "items": {
+            "$ref": "#/definitions/rijen"
+          }
+        },
+        "vastleggen": {
+          "type": "object",
+          "description": "In welke cel en welk event het proces de handeling laat vastleggen. Het event heeft zaak: volgt; zijn $external-sleutels zijn uitkomsten of velden van het formulier.",
+          "required": [
+            "cel",
+            "stroom",
+            "event"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "cel": {
+              "$ref": "#/definitions/identifier"
+            },
+            "stroom": {
+              "$ref": "#/definitions/identifier"
+            },
+            "event": {
+              "$ref": "#/definitions/identifier"
+            }
+          }
+        }
+      }
+    },
+    "grondslagen": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/definitions/grondslag"
+      }
+    }
+  }
+}

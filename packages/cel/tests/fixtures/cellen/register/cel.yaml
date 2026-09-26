@@ -1,0 +1,9 @@
+---
+# Fictieve registercel zonder portaal: ze legt besluiten over een register
+# vast en biedt daarvan een lexostatus aan. Een lege kroniek begint met de
+# startstand.
+id: test_register
+recording_actor: test_register
+stromen: [../../chronicles/test_registers.yaml]
+lexostatussen: lexostatussen.yaml
+startstand: startstand.jsonl
