@@ -22,6 +22,10 @@ generieke fixtures in `tests/fixtures/`. De docs-pagina
 `docs/src/content/docs/components/cel.md` beschrijft dezelfde opzet, met de
 afwijkingen van RFC-022 en de open vragen.
 
+
+Open vragen over de lezing van de positionpaper, voor een gesprek met de
+bedenkers van chronolexografie, staan in [GESPREKSPUNTEN.md](GESPREKSPUNTEN.md).
+
 ## Starten
 
 ```bash
