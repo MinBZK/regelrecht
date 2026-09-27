@@ -83,9 +83,8 @@ async function inloggen() {
     <nldd-spacer size="32"></nldd-spacer>
     <nldd-title size="4"><h2>Voorbeelden</h2></nldd-title>
     <nldd-spacer size="8"></nldd-spacer>
-    <nldd-table columns="minmax(240px,1fr) auto" accessible-label="Inlogvoorbeelden">
+    <nldd-table columns="auto minmax(240px,1fr)" accessible-label="Inlogvoorbeelden">
       <nldd-table-row v-for="v in eigen" :key="v.label">
-        <nldd-text-cell :text="v.label" :supporting-text="omschrijving(v)"></nldd-text-cell>
         <nldd-cell>
           <nldd-button-group orientation="horizontal">
             <nldd-button variant="secondary" size="sm" text="Vul in" :disabled="bezig || undefined" :accessible-label="`Vul in met ${v.label}`" @click="invullen(v)"></nldd-button>
@@ -100,6 +99,7 @@ async function inloggen() {
             ></nldd-button>
           </nldd-button-group>
         </nldd-cell>
+        <nldd-text-cell :text="v.label" :supporting-text="omschrijving(v)"></nldd-text-cell>
       </nldd-table-row>
     </nldd-table>
   </template>

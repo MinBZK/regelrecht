@@ -96,35 +96,35 @@ function celTekst(c) {
         <template v-else>
           <nldd-title size="2"><h1>Processen in deze runtime</h1></nldd-title>
           <nldd-spacer size="16"></nldd-spacer>
-          <nldd-table columns="minmax(200px,1fr) minmax(200px,2fr) 120px" accessible-label="Processen" empty-text="Geen processen">
+          <nldd-table columns="120px minmax(200px,1fr) minmax(200px,2fr)" accessible-label="Processen" empty-text="Geen processen">
             <nldd-table-row slot="header">
+              <nldd-text-cell text=""></nldd-text-cell>
               <nldd-text-cell text="Proces"></nldd-text-cell>
               <nldd-text-cell text="Mogelijkheden"></nldd-text-cell>
-              <nldd-text-cell text=""></nldd-text-cell>
             </nldd-table-row>
             <nldd-table-row v-for="p in processen" :key="p.id">
+              <nldd-cell>
+                <nldd-button variant="secondary" text="Open" :accessible-label="`Open proces ${p.id}`" @click="gekozen = `proces:${p.id}`"></nldd-button>
+              </nldd-cell>
               <nldd-text-cell :text="p.id" :supporting-text="p.titel ?? undefined"></nldd-text-cell>
               <nldd-text-cell :text="procesTekst(p)"></nldd-text-cell>
-              <nldd-cell>
-                <nldd-button variant="secondary" text="Open" @click="gekozen = `proces:${p.id}`"></nldd-button>
-              </nldd-cell>
             </nldd-table-row>
           </nldd-table>
           <nldd-spacer size="32"></nldd-spacer>
           <nldd-title size="2"><h2>Cellen in deze runtime</h2></nldd-title>
           <nldd-spacer size="16"></nldd-spacer>
-          <nldd-table columns="minmax(200px,1fr) minmax(200px,2fr) 120px" accessible-label="Cellen" empty-text="Geen cellen">
+          <nldd-table columns="120px minmax(200px,1fr) minmax(200px,2fr)" accessible-label="Cellen" empty-text="Geen cellen">
             <nldd-table-row slot="header">
+              <nldd-text-cell text=""></nldd-text-cell>
               <nldd-text-cell text="Cel"></nldd-text-cell>
               <nldd-text-cell text="Kronieken en lexostatussen"></nldd-text-cell>
-              <nldd-text-cell text=""></nldd-text-cell>
             </nldd-table-row>
             <nldd-table-row v-for="c in cellen" :key="c.id">
+              <nldd-cell>
+                <nldd-button variant="secondary" text="Open" :accessible-label="`Open cel ${c.id}`" @click="gekozen = `cel:${c.id}`"></nldd-button>
+              </nldd-cell>
               <nldd-text-cell :text="c.id" :supporting-text="c.recording_actor"></nldd-text-cell>
               <nldd-text-cell :text="celTekst(c)"></nldd-text-cell>
-              <nldd-cell>
-                <nldd-button variant="secondary" text="Open" @click="gekozen = `cel:${c.id}`"></nldd-button>
-              </nldd-cell>
             </nldd-table-row>
           </nldd-table>
         </template>

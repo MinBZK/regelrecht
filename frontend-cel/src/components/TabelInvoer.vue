@@ -23,16 +23,24 @@ function weg(i) {
   emit('update:modelValue', props.modelValue.filter((_, j) => j !== i));
 }
 
-const kolomBreedtes = () => [...props.kolommen.map(() => 'minmax(120px,1fr)'), '56px'].join(' ');
+const kolomBreedtes = () => ['56px', ...props.kolommen.map(() => 'minmax(120px,1fr)')].join(' ');
 </script>
 
 <template>
   <nldd-table :columns="kolomBreedtes()" :accessible-label="label" empty-text="Nog geen regels">
     <nldd-table-row slot="header">
-      <nldd-text-cell v-for="k in kolommen" :key="k.id" :text="k.label ?? k.id"></nldd-text-cell>
       <nldd-text-cell text=""></nldd-text-cell>
+      <nldd-text-cell v-for="k in kolommen" :key="k.id" :text="k.label ?? k.id"></nldd-text-cell>
     </nldd-table-row>
     <nldd-table-row v-for="(r, i) in modelValue" :key="i">
+      <nldd-cell>
+        <nldd-icon-button
+          icon="delete"
+          variant="neutral-transparent"
+          :text="`Regel ${i + 1} verwijderen`"
+          @click="weg(i)"
+        ></nldd-icon-button>
+      </nldd-cell>
       <nldd-cell v-for="k in kolommen" :key="k.id">
         <Invoer
           :soort="k.type"
@@ -41,14 +49,6 @@ const kolomBreedtes = () => [...props.kolommen.map(() => 'minmax(120px,1fr)'), '
           :model-value="r[k.id] ?? null"
           @update:model-value="zet(i, k.id, $event)"
         />
-      </nldd-cell>
-      <nldd-cell>
-        <nldd-icon-button
-          icon="delete"
-          variant="neutral-transparent"
-          :text="`Regel ${i + 1} verwijderen`"
-          @click="weg(i)"
-        ></nldd-icon-button>
       </nldd-cell>
     </nldd-table-row>
   </nldd-table>

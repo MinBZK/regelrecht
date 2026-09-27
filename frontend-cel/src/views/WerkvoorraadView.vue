@@ -23,7 +23,7 @@ onMounted(async () => {
 });
 
 const kolommen = computed(() => props.kolommen);
-const sjabloon = computed(() => ['minmax(280px,1.4fr)', ...kolommen.value.map(() => 'minmax(120px,1fr)'), '100px'].join(' '));
+const sjabloon = computed(() => ['90px', 'minmax(280px,1.4fr)', ...kolommen.value.map(() => 'minmax(120px,1fr)')].join(' '));
 </script>
 
 <template>
@@ -37,16 +37,16 @@ const sjabloon = computed(() => ['minmax(280px,1.4fr)', ...kolommen.value.map(()
   </template>
   <nldd-table v-else-if="geladen" :columns="sjabloon" accessible-label="Werkvoorraad" empty-text="Geen zaken in de werkvoorraad">
     <nldd-table-row slot="header">
+      <nldd-text-cell text=""></nldd-text-cell>
       <nldd-text-cell text="Zaakkenmerk"></nldd-text-cell>
       <nldd-text-cell v-for="k in kolommen" :key="k" :text="k"></nldd-text-cell>
-      <nldd-text-cell text=""></nldd-text-cell>
     </nldd-table-row>
     <nldd-table-row v-for="r in lijst" :key="r.zaakkenmerk">
+      <nldd-cell>
+        <nldd-button variant="secondary" text="Open" :accessible-label="`Open zaak ${r.zaakkenmerk}`" @click="emit('open', r.zaakkenmerk)"></nldd-button>
+      </nldd-cell>
       <nldd-text-cell :text="r.zaakkenmerk"></nldd-text-cell>
       <nldd-text-cell v-for="k in kolommen" :key="k" :text="waardeTekst(r.velden[k])"></nldd-text-cell>
-      <nldd-cell>
-        <nldd-button variant="secondary" text="Open" @click="emit('open', r.zaakkenmerk)"></nldd-button>
-      </nldd-cell>
     </nldd-table-row>
   </nldd-table>
 </template>
