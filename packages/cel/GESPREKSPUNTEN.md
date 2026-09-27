@@ -162,50 +162,65 @@ nu vast als eigen keuze, niet als lezing van de paper.
 
 ## 4. Welke soorten chronolexogrammen zijn er?
 
-**De paper** ("Het chronolexogram"): "we zien tenminste drie klassen (typen)
-van chronolexogrammen voor ons": het lexogram, het decretogram ("de
-vastlegging van een concreet besluit of beschikking") en het executogram ("de
-vastlegging van daadwerkelijke levering of afhandeling (fulfillment) van een
-zaak of dienst"). Een chronolexogram is "de vastlegging van één handeling of
-besluit in de tijd". De paper vraagt zelf ("Typering en modelering van
-chronolexogrammen"): "Is deze indeling exclusief of zijn er andere relevante
-typeringen?"
+**De paper** ("Het chronolexogram") noemt "tenminste drie klassen (typen)" en
+vraagt zelf ("Typering en modelering van chronolexogrammen"): "Is deze
+indeling exclusief of zijn er andere relevante typeringen?" Een aanvraag past
+in geen van de drie:
+
+| Klasse | Definitie in de paper | Past een aanvraag? |
+|---|---|---|
+| lexogram | "de vastlegging van een (mogelijke, toekomstige) wijziging in wet- of regelgeving" | nee |
+| decretogram | "de vastlegging van een concreet besluit of beschikking bij de toepassing/werking van wetgeving" | nee: een aanvraag vraagt om een besluit, maar is er zelf geen |
+| executogram | "de vastlegging van daadwerkelijke levering of afhandeling (fulfillment) van een zaak of dienst" | nee: er wordt niets geleverd of afgehandeld; de zaak begint pas |
+
+**Wel een feit, niet de inhoud.** De paper zegt niet dat een aanvraag geen
+feit is: alles wat is vastgelegd, is "tot feit gemaakt". Het onderscheid zit
+in wát het feit is. Het voorbeeld van de verhuizing: vastgelegd wordt "dat een
+burger een verhuizing heeft doorgegeven (wat alleen bevestigt wat met
+zekerheid is vastgesteld: de aangifte zelf)", in de vorm "Op 3 april heeft de
+gemeente-ambtenaar vastgesteld dat diezelfde dag door Lotje aangifte is
+gedaan". Voor een aanvraag betekent dat: de ontvangst is het feit; wat de
+aanvraag vermeldt, is een bewering van de aanvrager. Een besluit rekent daarom
+met het feit uit de bron, niet met de vermelding.
 
 **Wat wij doen (eigen keuze).** Twee typen erbij, binnen het open vocabulaire
 van RFC-022 §1 (RFC-044 §3):
 
-- **indiening**: wat een ander bij de vastleggende actor indient, zoals een
-  aanvraag, een aanvulling of bescheiden. Vastgelegd wordt de ontvangst, in de
-  vorm van het voorbeeld uit de paper: "Op 3 april heeft de gemeente-ambtenaar
-  vastgesteld dat diezelfde dag door Lotje aangifte is gedaan". De inhoud is
-  een bewering van de indiener; een besluit rekent met het feit uit de bron.
+- **indiening**: wat een ander bij de vastleggende actor indient (een
+  aanvraag, een aanvulling, bescheiden), vastgelegd als ontvangst. De inhoud
+  staat erin zoals ingediend; een leeg veld wordt `null`, want volledigheid is
+  een oordeel en een gram bevat geen oordeel.
 - **handeling**: wat de vastleggende actor zelf doet en geen besluit en geen
-  levering is, zoals een verzoek om aanvulling, een bekendmaking, een
-  mededeling of een statistiek.
+  levering is: een verzoek om aanvulling, een bekendmaking, een mededeling, een
+  statistiek.
 
 Het decretogram is alleen een besluit in de zin van de Awb (1:3), het
-executogram alleen een levering, zoals een betaling. Een gebeurtenis die een
-handeling en een besluit tegelijk droeg, is gesplitst in twee grammen.
+executogram alleen een levering, zoals een betaling.
 
 **Waar het wringt**
 
-- De bekendmaking van een besluit is hier een handeling, geen executogram:
-  er wordt niets geleverd. Maar zij brengt wel een stage van het besluit tot
-  stand (RFC-008 BEKENDMAKING) en laat de bezwaartermijn lopen.
-- Een indiening ligt in de cel van wie ontvangt. De paper zegt "elke actor
-  houdt eigen feiten bij in een eigen cel". Dat de aanvrager iets indiende, is
-  ook een feit van de aanvrager.
+- Een ruime lezing van executogram ("afhandeling van een zaak") zou de
+  ontvangst van een aanvraag kunnen dekken: het loket handelt iets af. Dan is
+  `indiening` een soort executogram en geen eigen klasse.
+- De bekendmaking van een besluit levert niets, maar brengt wel een stage van
+  het besluit tot stand en laat de bezwaartermijn lopen. Is dat een handeling,
+  of hoort ze bij het decretogram?
+- Een indiening ligt in de cel van wie ontvangt. Dat de aanvrager iets indiende,
+  is ook een feit van de aanvrager ("elke actor houdt eigen feiten bij in een
+  eigen cel").
 
 **Vragen**
 
-1. Zijn indiening en handeling een legitieme uitbreiding van de drie klassen,
-   of zijn het soorten van het executogram ("afhandeling")?
-2. Hoort een indiening ook in een cel van de indiener, en hoe verhouden de twee
+1. Is de ontvangst van een aanvraag een executogram ("afhandeling"), of een
+   eigen klasse naast de drie?
+2. Is een handeling van een bestuursorgaan die geen besluit en geen levering is
+   (een verzoek, een bekendmaking) een eigen klasse?
+3. Hoort een indiening ook in een cel van de indiener, en hoe verhouden de twee
    grammen zich dan?
 
-**Ons voorstel.** De twee typen houden als open uitbreiding, met `soort` voor
-de fijnere indeling. De cel van de indiener blijft buiten deze proof of
-concept.
+**Ons voorstel.** `indiening` en `handeling` houden als open uitbreiding, met
+`soort` voor de fijnere indeling. De cel van de indiener blijft buiten deze
+proof of concept.
 
 ## 5. Zaak, besluit en kroniek: hoe groepeer je feiten?
 
