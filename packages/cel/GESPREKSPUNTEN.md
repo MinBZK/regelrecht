@@ -132,6 +132,18 @@ beperken."
   grondslag per event.
 - Een besluit kan niet worden gemeld als gebeurd; het proces moet het nemen.
   Ook dat is een keuze tussen vorm en inhoud.
+- **Registers als cellen.** De registers die een besluit raadpleegt (een
+  register van aanduidingen, een vastgestelde verkiezingsuitslag, een
+  handelsregister, een statistiek) bestaan in de wet, en de wet verplicht hun
+  houders soms tot verstrekking. Dat elke houder een eigen cel heeft, volgt uit
+  de paper ("elke actor houdt eigen feiten bij in een eigen cel"). Hoe zo'n
+  cel eruitziet, hebben wij bedacht: haar stromen, haar lexostatussen in de taal
+  van haar eigen wet, en in de proof of concept een verzonnen startstand, met
+  gegevens die het echte register misschien niet heeft (gemarkeerd als
+  aangevuld). De regeling zegt met `origin: REGISTER` alleen onder welke wet het
+  register wordt bijgehouden (RFC-043), niet welke cel het is. Wie bepaalt dan
+  wat zo'n registercel vastlegt en aanbiedt: de houder, de wet van het
+  register, of de afnemer die haar nodig heeft?
 
 **Vragen**
 
@@ -141,6 +153,9 @@ beperken."
    de afspraken voor een chronolexosfeer beheert?
 3. Klopt de verdeling "vorm bij de cel, inhoud bij het proces, en wat gebeurd is
    wordt altijd vastgelegd"?
+4. Is een bestaand register (van een andere actor) in de termen van de paper een
+   cel, en wie beschrijft dan haar stromen en lexostatussen: de houder of de
+   afnemer?
 
 **Ons voorstel.** Deze driedeling als standpunt hanteren. RFC-044 §1 legt haar
 nu vast als eigen keuze, niet als lezing van de paper.
