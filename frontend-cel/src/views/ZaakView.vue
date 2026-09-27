@@ -7,7 +7,7 @@
 // handelingen, wat ze vragen en of ze nu kunnen, zegt de runtime (uit de
 // stage en de wet); deze pagina kent geen besluit, bekendmaking of betaling
 // bij naam.
-import { computed, inject, onMounted, ref } from 'vue';
+import { computed, inject, nextTick, onMounted, ref } from 'vue';
 import Betaalstand from '../components/Betaalstand.vue';
 import Grammen from '../components/Grammen.vue';
 import Handeling from '../components/Handeling.vue';
@@ -22,6 +22,16 @@ const api = inject('api');
 const zaak = ref(null);
 const fout = ref('');
 const gekozen = ref(null);
+// Het formulier van de gekozen handeling staat onder de tabellen, meestal
+// buiten beeld. Bij openen gaat het in beeld, ook als dezelfde handeling al
+// open stond; anders lijkt de knop niets te doen.
+const handelingEl = ref(null);
+async function open(naam) {
+  gekozen.value = naam;
+  await nextTick();
+  const rustig = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  handelingEl.value?.scrollIntoView({ behavior: rustig ? 'auto' : 'smooth', block: 'start' });
+}
 // Een nieuwe sleutel na het vastleggen: het paneel toont dan de nieuwe stand.
 const versie = ref(0);
 
@@ -109,7 +119,7 @@ async function vastgelegd() {
         <Betaalstand :stand="b.betaalstand" />
         <nldd-spacer size="8"></nldd-spacer>
       </template>
-      <Handelingen :handelingen="b.handelingen" :label="`Handelingen bij besluit ${b.nummer}`" @open="gekozen = $event" />
+      <Handelingen :handelingen="b.handelingen" :label="`Handelingen bij besluit ${b.nummer}`" @open="open" />
       <nldd-spacer size="24"></nldd-spacer>
     </template>
 
@@ -137,10 +147,11 @@ async function vastgelegd() {
       <Betaalstand :stand="delen.betaalstand" />
       <nldd-spacer size="8"></nldd-spacer>
     </template>
-    <Handelingen v-if="delen.overig.length" :handelingen="delen.overig" label="Handelingen in de zaak" @open="gekozen = $event" />
+    <Handelingen v-if="delen.overig.length" :handelingen="delen.overig" label="Handelingen in de zaak" @open="open" />
 
     <template v-if="handeling">
       <nldd-spacer size="24"></nldd-spacer>
+      <div ref="handelingEl"></div>
       <Handeling :key="`${handeling.naam}-${versie}`" :zaakkenmerk="zaakkenmerk" :handeling="handeling" @vastgelegd="vastgelegd" />
     </template>
 
