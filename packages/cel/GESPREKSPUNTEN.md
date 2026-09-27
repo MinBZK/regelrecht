@@ -20,7 +20,7 @@ een cel: "elk chronolexogram wordt in een specifiek domein gecreëerd (tot feit
 gemaakt) en daar ook opgeslagen".
 
 **Wat wij doen.** Het lexogram is de geconsolideerde regeling-YAML in het
-corpus, bijvoorbeeld de Wet op de politieke partijen per 1 januari 2026. Dat
+corpus, bijvoorbeeld de wet van de casus zoals die per 1 januari geldt. Dat
 bestand geeft de tekst zoals die op een datum geldt. Het hoort bij geen enkele
 cel: elke cel en elk proces leest het. Zo legt RFC-022 §1.1 het vast.
 
