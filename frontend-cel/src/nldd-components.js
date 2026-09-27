@@ -26,6 +26,7 @@ import '@nldd/design-system/number-field';
 import '@nldd/design-system/page';
 import '@nldd/design-system/rich-text';
 import '@nldd/design-system/segmented-control';
+import '@nldd/design-system/sheet';
 import '@nldd/design-system/simple-section';
 import '@nldd/design-system/spacer';
 import '@nldd/design-system/tab-bar';

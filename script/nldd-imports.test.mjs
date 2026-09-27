@@ -182,3 +182,26 @@ test('een subcomponent valt onder het langste entry point dat hem bevat', () => 
   assert.deepEqual(needed, ['button-bar']);
   assert.deepEqual(unresolved, []);
 });
+
+test('een component uit het gedeelde pakket telt mee voor de site die hem importeert', (t) => {
+  // Een site rendert ook de markup van gedeelde componenten die hij
+  // importeert. Scant de guard alleen de eigen bron, dan ontbreekt de import
+  // van een tag die alleen in zo'n component staat, en die tag wordt nooit een
+  // component: de knop in de trace-sheet deed niets, en de inhoud van de sheet
+  // stond los in de pagina.
+  const shared = sourceTree(t, {
+    'src/components/Knop.vue': '<nldd-icon-button></nldd-icon-button><nldd-sheet></nldd-sheet>',
+    'src/components/Ongebruikt.vue': '<nldd-chart></nldd-chart>',
+    'src/lib/helper.js': "export const tag = 'nldd-tooltip';",
+    'src/index.js': "export { tag } from './lib/helper.js';",
+  });
+  const site = sourceTree(t, {
+    'App.vue': [
+      "<script setup>import Knop from '@regelrecht/frontend-shared/components/Knop.vue';</script>",
+      '<template><nldd-button></nldd-button><Knop /></template>',
+    ].join('\n'),
+    'main.js': "import { tag } from '@regelrecht/frontend-shared';",
+  });
+  const { rendered } = usedTags(site, EXTENSIONS, shared);
+  assert.deepEqual([...rendered].sort(), ['button', 'icon-button', 'sheet', 'tooltip']);
+});

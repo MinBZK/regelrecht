@@ -17,8 +17,8 @@
 // Used by check-nldd-imports.mjs, which fails the build when the import list
 // in the source has drifted from what the markup uses.
 
-import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, extname } from 'node:path';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { join, extname, dirname, resolve } from 'node:path';
 
 import { fileURLToPath } from 'node:url';
 
@@ -59,14 +59,59 @@ function* sourceFiles(dir, extensions) {
   }
 }
 
+/** Het gedeelde pakket van de Vue-frontends, naast deze scripts. */
+const SHARED_ROOT = fileURLToPath(new URL('../packages/frontend-shared', import.meta.url));
+const SHARED = '@regelrecht/frontend-shared';
+
+/** Een bestand van het gedeelde pakket bij een specifier, of null. */
+function resolveShared(sharedRoot, sub) {
+  const path = join(sharedRoot, 'src', sub);
+  if (sub && existsSync(path) && statSync(path).isFile()) return path;
+  const index = join(path, 'index.js');
+  return existsSync(index) ? index : null;
+}
+
+/**
+ * De bestanden van het gedeelde pakket die de bron in `dir` importeert,
+ * transitief: ook wat die bestanden zelf importeren, uit het pakket of
+ * relatief binnen het pakket. Een site rendert de markup van een gedeelde
+ * component die hij importeert, dus die tags horen bij zijn imports. Wat hij
+ * niet importeert, telt niet mee.
+ */
+function* sharedFiles(dir, extensions, sharedRoot) {
+  if (!sharedRoot || !existsSync(sharedRoot)) return;
+  const specifiers = new RegExp(`['"](${SHARED.replace('/', '\\/')}(?:\\/[^'"]*)?|\\.{1,2}\\/[^'"]+)['"]`, 'g');
+  const seen = new Set();
+  const queue = [];
+  const follow = (text, from) => {
+    for (const [, spec] of text.matchAll(specifiers)) {
+      let path = null;
+      if (spec.startsWith(SHARED)) path = resolveShared(sharedRoot, spec.slice(SHARED.length + 1));
+      else if (from) path = resolve(dirname(from), spec);
+      if (path && existsSync(path) && statSync(path).isFile() && extensions.has(extname(path).slice(1)) && !seen.has(path)) {
+        seen.add(path);
+        queue.push(path);
+      }
+    }
+  };
+  // Relatieve imports van de site zelf zitten al in de scan; alleen de
+  // pakketimports leiden naar buiten.
+  for (const file of sourceFiles(dir, extensions)) follow(readFileSync(file, 'utf8'), null);
+  while (queue.length) {
+    const file = queue.shift();
+    yield file;
+    follow(readFileSync(file, 'utf8'), file);
+  }
+}
+
 /**
  * Tag names (without the `nldd-` prefix) found in `dir`, split by what the use
  * implies: `rendered` needs an import, `mentioned` only has to exist.
  */
-export function usedTags(dir, extensions) {
+export function usedTags(dir, extensions, sharedRoot = SHARED_ROOT) {
   const rendered = new Set();
   const mentioned = new Set();
-  for (const file of sourceFiles(dir, extensions)) {
+  for (const file of [...sourceFiles(dir, extensions), ...sharedFiles(dir, extensions, sharedRoot)]) {
     const text = readFileSync(file, 'utf8');
     for (const [, tag] of text.matchAll(/<(nldd-[a-z0-9-]+)/g)) rendered.add(tag.slice(5));
     // The quoted form used by createElement/querySelector — the org picker
