@@ -22,6 +22,7 @@ export default {
   "app.features.CHANGE_WIZARD": "b17c",
   "app.features.DELEGATION": "ec2f",
   "app.features.HARMONIZE": "1645",
+  "app.features.autoAnnounce": "d2ea",
   "app.features.label": "6c47",
   "app.features.manualReview": "97a4",
   "app.features.reset": "f969",

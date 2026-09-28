@@ -255,6 +255,9 @@ function confirmReset() {
 function toggleManualReview() {
   state.manualReview = !state.manualReview;
 }
+function toggleAutoAnnounce() {
+  state.autoAnnounce = !state.autoAnnounce;
+}
 
 const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVIEW').length);
 </script>
@@ -434,6 +437,13 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
               icon="checklist"
               :selected="state.manualReview || undefined"
               @select="toggleManualReview"
+            ></nldd-menu-item>
+            <nldd-menu-item
+              type="checkbox"
+              :text="t('app.features.autoAnnounce')"
+              icon="paper-plane"
+              :selected="state.autoAnnounce || undefined"
+              @select="toggleAutoAnnounce"
             ></nldd-menu-item>
             <nldd-menu-item
               v-if="hasFeatureOverrides"

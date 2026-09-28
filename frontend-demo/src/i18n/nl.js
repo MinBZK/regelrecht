@@ -38,6 +38,7 @@ export default {
   'app.features.HARMONIZE': 'Harmonisatie',
   'app.features.AUTO_APPROVE_CLAIMS': 'Correcties direct goedkeuren',
   'app.features.manualReview': 'Alle aanvragen handmatig beoordelen',
+  'app.features.autoAnnounce': 'Besluiten direct bekendmaken',
   'app.features.reset': 'Terug naar het profiel',
 
   'app.appearance.label': 'Weergave',

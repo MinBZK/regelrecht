@@ -41,6 +41,7 @@ export default {
   'app.features.HARMONIZE': 'Harmonisation',
   'app.features.AUTO_APPROVE_CLAIMS': 'Approve corrections immediately',
   'app.features.manualReview': 'Review every application by hand',
+  'app.features.autoAnnounce': 'Announce decisions straight away',
   'app.features.reset': 'Back to the profile',
 
   'app.appearance.label': 'Appearance',

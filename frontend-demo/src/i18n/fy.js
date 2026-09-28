@@ -41,6 +41,7 @@ export default {
   "app.features.HARMONIZE": "Harmonisaasje",
   "app.features.AUTO_APPROVE_CLAIMS": "Korreksjes daliks goedkarre",
   "app.features.manualReview": "Alle oanfragen mei de hân beoardielje",
+  "app.features.autoAnnounce": "Beslúten daliks bekendmeitsje",
   "app.features.reset": "Werom nei it profyl",
   "app.appearance.label": "Werjefte",
   "app.appearance.auto": "Systeem",
