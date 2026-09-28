@@ -310,8 +310,7 @@ fn a_loop_variable_is_not_a_lookup_key() {
 
 #[test]
 /// While an input is being resolved, a reference to it is not the article's
-/// to answer, as when inputs were resolved one by one in declaration order:
-/// two inputs keyed on each other find neither.
+/// to answer: two inputs keyed on each other find neither.
 fn inputs_that_look_each_other_up_find_neither() {
     let cycle = r#"
 $id: lazy_cycle
@@ -581,7 +580,7 @@ articles:
 }
 
 // ---------------------------------------------------------------------------
-// Precedence between names, as it was when inputs were resolved up front
+// Precedence between names (engine.md, "Variable Resolution Priority")
 // ---------------------------------------------------------------------------
 
 const ECHO: &str = r#"
@@ -1237,8 +1236,7 @@ articles:
 #[test]
 fn a_pre_hook_output_wins_over_an_input_the_hook_itself_read() {
     // The hook declares `x`, so `x` is resolved before it fires; its output
-    // `x` then still wins for the actions, as when hook outputs were merged
-    // over the resolved inputs.
+    // `x` then wins for the actions over the resolved input.
     let hook = r#"
 $id: lazy_pre_reads
 regulatory_layer: WET
@@ -1523,12 +1521,134 @@ fn an_open_term_default_reads_an_earlier_term() {
 
 #[test]
 fn an_open_term_default_does_not_read_a_later_term() {
-    // A default reads the terms declared before it, as when terms were
-    // resolved one by one in order; a later one is not there yet.
+    // A default reads the terms declared before it, not the ones after it.
     let law = two_terms("$opslag", "5", "basis");
     let mut service = LawExecutionService::new();
     service.load_law(&law).unwrap();
     assert!(service
         .evaluate_law_output("lazy_two_terms", "uitkomst", BTreeMap::new(), "2025-01-01")
         .is_err());
+}
+
+#[test]
+fn a_source_key_is_fetched_only_for_a_call_to_another_law() {
+    // The partner's income comes from the register; the key the cross-law
+    // call would have been made with (the partner's bsn, from another law) is
+    // then not needed and not fetched.
+    let law = r#"
+$id: lazy_keyed
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het inkomen van de partner.
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: partner_bsn
+            type: string
+            source:
+              regulation: lazy_brp
+              output: leeftijd
+              parameters:
+                bsn: $bsn
+          - name: partner_inkomen
+            type: number
+            source:
+              regulation: lazy_belasting
+              output: inkomen
+              parameters:
+                bsn: $partner_bsn
+        output:
+          - name: uitkomst
+            type: number
+        actions:
+          - output: uitkomst
+            value: $partner_inkomen
+"#;
+    let mut service = service(30, Some(50));
+    service.load_law(law).unwrap();
+    service
+        .register_dict_source_for_law(
+            "lazy_keyed",
+            "register",
+            "bsn",
+            vec![record("1", "partner_inkomen", Some(80))],
+            10,
+        )
+        .unwrap();
+    let (uitkomst, trace) = traced(&service, "lazy_keyed", "uitkomst");
+    assert_eq!(uitkomst, Value::Int(80));
+    assert!(!trace.contains("lazy_brp"), "{trace}");
+}
+
+#[test]
+fn an_earlier_term_is_resolved_only_when_the_default_applies() {
+    // `opslag` is filled by the regeling, so its default (which reads
+    // `basis`) does not apply, and `basis` is not resolved.
+    let law = two_terms(
+        "10",
+        "\n                  operation: ADD\n                  values: [$basis, 5]",
+        "opslag",
+    );
+    let regeling = r#"
+$id: lazy_two_terms_regeling
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: De opslag.
+    machine_readable:
+      implements:
+        - law: lazy_two_terms
+          article: '1'
+          open_term: opslag
+      execution:
+        output:
+          - name: opslag
+            type: number
+        actions:
+          - output: opslag
+            value: 500
+  - number: '2'
+    text: De basis.
+    machine_readable:
+      implements:
+        - law: lazy_two_terms
+          article: '1'
+          open_term: basis
+      execution:
+        output:
+          - name: basis
+            type: number
+        actions:
+          - output: basis
+            value: 7
+"#;
+    let mut service = LawExecutionService::new();
+    service.load_law(&law).unwrap();
+    service.load_law(regeling).unwrap();
+    let result = service
+        .evaluate_law_output_with_trace("lazy_two_terms", "uitkomst", BTreeMap::new(), "2025-01-01")
+        .unwrap();
+    assert_eq!(result.outputs["uitkomst"], Value::Int(500));
+    let trace = result.trace.as_ref().unwrap().render_box_drawing();
+    assert!(!trace.contains("basis"), "{trace}");
+}
+
+#[test]
+fn the_result_lists_the_inputs_the_article_consulted() {
+    let result = service(17, Some(50))
+        .evaluate_law_output("lazy_toeslag", "voldoet", bsn(), "2025-01-01")
+        .unwrap();
+    assert_eq!(
+        result.resolved_inputs.keys().collect::<Vec<_>>(),
+        vec!["leeftijd"],
+        "a minor's income is not consulted"
+    );
 }

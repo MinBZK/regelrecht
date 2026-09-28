@@ -490,8 +490,8 @@ fn voided_output_error(
 /// What an article execution needs, settled before its actions run (RFC-043).
 #[derive(Debug)]
 struct Demand {
-    /// The outputs whose dependency closure runs; `None` runs every action.
-    outputs: Option<Vec<String>>,
+    /// The outputs to compute, closed over what they read; `None` for all.
+    outputs: Option<BTreeSet<String>>,
     /// Requested outputs a `voids` excludes: not computed, their ground is
     /// recorded by `apply_overrides`.
     voided: Vec<String>,
@@ -540,15 +540,15 @@ struct OverridePlan {
 /// An article's inputs and open terms, each resolved the first time it is
 /// read and kept for the rest of the execution (RFC-043).
 ///
-/// Resolving takes the resolution context mutably, and the parameters of a
-/// cross-law call can read other inputs of the same article (`bsn:
-/// $partner_bsn`). Those are resolved first, so the nested read finds them in
-/// the memo and never needs the context itself.
+/// Resolving takes the resolution context mutably. What a resolution reads of
+/// the same article is therefore resolved before the context is taken (the
+/// inputs a cross-law call is keyed on, `bsn: $partner_bsn`), or with the
+/// context in hand (the earlier terms an open term's default reads).
 ///
-/// A name being resolved is not this article's to answer while it is: it falls
-/// through to the parameters, as when inputs were resolved one by one. So a
-/// source keyed on its own name reads the parameter of that name, and two
-/// inputs keyed on each other find neither.
+/// A name being resolved is not this article's to answer while it is: it
+/// falls through to the parameters. So a source keyed on its own name reads
+/// the parameter of that name, and two inputs keyed on each other find
+/// neither.
 struct LazyArticleInputs<'a, 'r, 'c> {
     service: &'a LawExecutionService,
     article: &'a Article,
@@ -557,9 +557,16 @@ struct LazyArticleInputs<'a, 'r, 'c> {
     /// The article-level scope a source's parameters are read in, built once.
     scope: RuleContext<'static>,
     res_ctx: RefCell<&'r mut ResolutionContext<'c>>,
-    /// Every name looked at: its value, or `None` when it stays unresolved.
-    memo: RefCell<BTreeMap<String, Option<Value>>>,
-    resolving: RefCell<BTreeSet<String>>,
+    memo: RefCell<BTreeMap<String, Slot>>,
+}
+
+/// What the memo knows about a name.
+#[derive(Clone)]
+enum Slot {
+    Resolving,
+    /// Resolved, with where it came from, or `None`: not this article's to
+    /// resolve, or left unresolved.
+    Done(Option<(Value, ResolveType)>),
 }
 
 /// What a name read in an article refers to, when the article resolves it.
@@ -571,24 +578,19 @@ enum LazyName<'a> {
 }
 
 /// The actions' view of an article's inputs after its pre_actions hooks ran:
-/// a name a hook produced a value under is read from that value, as when hook
-/// outputs were merged over the resolved inputs. What the article resolves
-/// for its own sources is unaffected, as it was then.
+/// a name a hook produced a value under is read from that value. Where the
+/// article's sources read their parameters the inputs themselves count.
 struct AfterPreHooks<'x> {
     inputs: &'x dyn LazyInputs,
     hook_outputs: &'x BTreeMap<String, Value>,
 }
 
 impl LazyInputs for AfterPreHooks<'_> {
-    fn resolve_input(&self, name: &str) -> Option<Result<Value>> {
+    fn resolve_input(&self, name: &str) -> Option<Result<(Value, ResolveType)>> {
         if self.hook_outputs.contains_key(name) {
             return None;
         }
         self.inputs.resolve_input(name)
-    }
-
-    fn resolve_type(&self, name: &str) -> ResolveType {
-        self.inputs.resolve_type(name)
     }
 }
 
@@ -603,6 +605,14 @@ fn override_key(reference: &LawArticleRef) -> String {
 /// The key a hook is entered under, for cycle detection.
 fn hook_key(hook: &HookEntry) -> String {
     format!("hook:{}\0{}", hook.law_id, hook.article_number)
+}
+
+/// A hook that fires on an article: its entry, and its law and article in
+/// force on the date.
+struct FireableHook<'s> {
+    entry: &'s HookEntry,
+    law: &'s ArticleBasedLaw,
+    article: &'s Article,
 }
 
 /// The parameters an article declares: the names it receives from a caller.
@@ -638,16 +648,18 @@ impl<'a, 'r, 'c> LazyArticleInputs<'a, 'r, 'c> {
             scope,
             res_ctx: RefCell::new(res_ctx),
             memo: RefCell::new(BTreeMap::new()),
-            resolving: RefCell::new(BTreeSet::new()),
         })
     }
 
-    /// Everything resolved so far.
+    /// Everything resolved so far: what this article consulted.
     fn resolved(&self) -> BTreeMap<String, Value> {
         self.memo
             .borrow()
             .iter()
-            .filter_map(|(name, value)| Some((name.clone(), value.clone()?)))
+            .filter_map(|(name, slot)| match slot {
+                Slot::Done(Some((value, _))) => Some((name.clone(), value.clone())),
+                _ => None,
+            })
             .collect()
     }
 
@@ -676,14 +688,41 @@ impl<'a, 'r, 'c> LazyArticleInputs<'a, 'r, 'c> {
         Ok(())
     }
 
-    /// What `name` refers to, if this article resolves it now. An open term
-    /// comes before an input and a parameter of the same name, as its value
-    /// was merged over them; of two inputs with one name the last declared
-    /// counts; a value passed under an input's name wins over its source.
-    fn owner(&self, name: &str) -> Option<LazyName<'a>> {
-        if self.resolving.borrow().contains(name) {
-            return None;
+    /// Answer `name` from the memo, or with `resolve` and remember the
+    /// answer. `None` while `name` is being resolved.
+    fn memoized(
+        &self,
+        name: &str,
+        resolve: impl FnOnce() -> Result<Option<(Value, ResolveType)>>,
+    ) -> Option<Result<(Value, ResolveType)>> {
+        let known = self.memo.borrow().get(name).cloned();
+        match known {
+            Some(Slot::Done(answer)) => return answer.map(Ok),
+            Some(Slot::Resolving) => return None,
+            None => {}
         }
+        self.memo
+            .borrow_mut()
+            .insert(name.to_string(), Slot::Resolving);
+        match resolve() {
+            Ok(answer) => {
+                self.memo
+                    .borrow_mut()
+                    .insert(name.to_string(), Slot::Done(answer.clone()));
+                answer.map(Ok)
+            }
+            Err(e) => {
+                self.memo.borrow_mut().remove(name);
+                Some(Err(e))
+            }
+        }
+    }
+
+    /// What `name` refers to, if this article resolves it. An open term
+    /// comes before an input and a parameter of the same name; of two inputs
+    /// with one name the last declared counts; a value passed under an
+    /// input's name wins over its source.
+    fn owner(&self, name: &str) -> Option<LazyName<'a>> {
         let article: &'a Article = self.article;
         if let Some(term) = article
             .get_open_terms()
@@ -708,34 +747,8 @@ impl<'a, 'r, 'c> LazyArticleInputs<'a, 'r, 'c> {
         context
     }
 
-    /// Resolve what `name` refers to. `Ok(None)` leaves it unresolved.
-    fn resolve_owned(&self, name: LazyName<'a>) -> Result<Option<Value>> {
-        let context = self.article_context();
-        // What the resolution reads of this article is resolved first, each
-        // as its own step, so the resolution itself never needs a second one.
-        let dependencies: BTreeSet<String> = match name {
-            LazyName::Input(input) => input
-                .source
-                .iter()
-                .flat_map(|source| source.parameters.iter().flat_map(|p| p.values()))
-                .filter_map(|reference| crate::demand::reference_base(reference))
-                .map(str::to_string)
-                .collect(),
-            // A default reads the caller's parameters and the terms before it.
-            LazyName::OpenTerm(term) => term
-                .default
-                .iter()
-                .flat_map(|default| default.actions.iter().flatten())
-                .flat_map(crate::demand::referenced_names)
-                .filter(|reference| self.is_earlier_term(term, reference))
-                .collect(),
-            LazyName::Passed(_) => BTreeSet::new(),
-        };
-        for dependency in &dependencies {
-            if self.owner(dependency).is_some() {
-                context.resolve(dependency)?;
-            }
-        }
+    /// Resolve what a name refers to. `Ok(None)` leaves it unresolved.
+    fn resolve_owned(&self, name: LazyName<'a>) -> Result<Option<(Value, ResolveType)>> {
         match name {
             // A value handed in under the input's name bypasses its source,
             // not its declaration: a null for an input that is never absent is
@@ -755,83 +768,96 @@ impl<'a, 'r, 'c> LazyArticleInputs<'a, 'r, 'c> {
                 }
                 Ok(None)
             }
-            LazyName::Input(input) => self.with_resolution_context(|res_ctx| {
-                self.service.resolve_input(
-                    self.article,
-                    self.law,
-                    input,
-                    &context,
-                    self.parameters,
-                    res_ctx,
-                )
-            }),
-            LazyName::OpenTerm(term) => {
-                let earlier: BTreeMap<String, Value> = {
-                    let memo = self.memo.borrow();
-                    dependencies
-                        .into_iter()
-                        .filter_map(|id| {
-                            let value = memo.get(&id)?.clone()?;
-                            Some((id, value))
-                        })
-                        .collect()
-                };
-                self.with_resolution_context(|res_ctx| {
-                    self.service.resolve_open_term(
+            LazyName::Input(input) => {
+                let context = self.article_context();
+                // A call to another law is keyed on the source's parameters,
+                // which may read other inputs of this article: those are
+                // resolved first, each as its own step. No other way of
+                // resolving an input reads them.
+                if self
+                    .service
+                    .calls_other_law(self.law, input, self.parameters)
+                {
+                    let keys = input
+                        .source
+                        .iter()
+                        .flat_map(|source| source.parameters.iter().flat_map(|p| p.values()))
+                        .filter_map(|reference| crate::demand::reference_base(reference));
+                    for key in keys {
+                        if self.owner(key).is_some() {
+                            context.resolve(key)?;
+                        }
+                    }
+                }
+                let value = self.with_resolution_context(|res_ctx| {
+                    self.service.resolve_input(
                         self.article,
                         self.law,
-                        term,
+                        input,
+                        &context,
                         self.parameters,
-                        &earlier,
                         res_ctx,
                     )
-                })
-                .map(Some)
+                })?;
+                Ok(value.map(|value| (value, ResolveType::ResolvedInput)))
+            }
+            LazyName::OpenTerm(term) => {
+                let value =
+                    self.with_resolution_context(|res_ctx| self.resolve_term(term, res_ctx))?;
+                Ok(Some((value, ResolveType::OpenTerm)))
             }
         }
     }
 
-    /// Whether `id` names an open term declared before `term` in this article.
-    fn is_earlier_term(&self, term: &crate::article::OpenTerm, id: &str) -> bool {
-        self.article.get_open_terms().is_some_and(|terms| {
+    /// Resolve an open term with the context in hand. Its default, when it
+    /// applies, reads the terms declared before it through [`Self::earlier_term`].
+    fn resolve_term(
+        &self,
+        term: &'a crate::article::OpenTerm,
+        res_ctx: &mut ResolutionContext<'c>,
+    ) -> Result<Value> {
+        self.service.resolve_open_term(
+            self.article,
+            self.law,
+            term,
+            self.parameters,
+            &mut |id, res_ctx| self.earlier_term(term, id, res_ctx),
+            res_ctx,
+        )
+    }
+
+    /// The value of `id` if it is an open term declared before `term`.
+    fn earlier_term(
+        &self,
+        term: &crate::article::OpenTerm,
+        id: &str,
+        res_ctx: &mut ResolutionContext<'c>,
+    ) -> Result<Option<Value>> {
+        let article: &'a Article = self.article;
+        let Some(earlier) = article.get_open_terms().and_then(|terms| {
             terms
                 .iter()
                 .take_while(|t| t.id != term.id)
-                .any(|t| t.id == id)
-        })
+                .find(|t| t.id == id)
+        }) else {
+            return Ok(None);
+        };
+        let answer = self.memoized(id, || {
+            let value = self.resolve_term(earlier, res_ctx)?;
+            Ok(Some((value, ResolveType::OpenTerm)))
+        });
+        answer
+            .transpose()
+            .map(|found| found.map(|(value, _)| value))
     }
 }
 
 impl LazyInputs for LazyArticleInputs<'_, '_, '_> {
-    fn resolve_input(&self, name: &str) -> Option<Result<Value>> {
-        if let Some(value) = self.memo.borrow().get(name) {
-            return value.clone().map(Ok);
-        }
-        let owned = self.owner(name)?;
-        self.resolving.borrow_mut().insert(name.to_string());
-        let outcome = self.resolve_owned(owned);
-        self.resolving.borrow_mut().remove(name);
-        match outcome {
-            Ok(value) => {
-                self.memo
-                    .borrow_mut()
-                    .insert(name.to_string(), value.clone());
-                value.map(Ok)
-            }
-            Err(e) => Some(Err(e)),
-        }
-    }
-
-    fn resolve_type(&self, name: &str) -> ResolveType {
-        let is_open_term = self
-            .article
-            .get_open_terms()
-            .is_some_and(|terms| terms.iter().any(|t| t.id == name));
-        if is_open_term {
-            ResolveType::OpenTerm
-        } else {
-            ResolveType::ResolvedInput
-        }
+    fn resolve_input(&self, name: &str) -> Option<Result<(Value, ResolveType)>> {
+        self.memoized(name, || match self.owner(name) {
+            Some(owned) => self.resolve_owned(owned),
+            None => Ok(None),
+        })
     }
 }
 
@@ -2001,28 +2027,110 @@ impl LawExecutionService {
         Ok(result)
     }
 
-    /// The hooks at `hook_point` that fire on this article at this stage,
-    /// with what the article produces. `None` when it declares nothing a hook
-    /// can attach to.
-    fn matching_hooks<'s, 'x>(
+    /// The hooks at `hook_point` that fire on `article` at this stage, as
+    /// [`Self::fire_hooks`] runs them and [`Self::hook_parameter_names`] reads
+    /// them, with the legal character they attach to. A hook not in force on
+    /// the date comes back as the record of why; one already executing is
+    /// left out. `None` when the article produces nothing a hook attaches to.
+    #[allow(clippy::type_complexity)]
+    fn fireable_hooks<'s, 'x>(
         &'s self,
         hook_point: HookPoint,
         article: &'x Article,
         stage: &str,
-    ) -> Option<(&'x str, Option<&'x str>, Vec<&'s HookEntry>)> {
+        res_ctx: &ResolutionContext<'_>,
+    ) -> Option<(
+        &'x str,
+        Vec<std::result::Result<FireableHook<'s>, DeclarationNotInForce>>,
+    )> {
         let produces = article.get_produces()?;
         let legal_character = produces.legal_character.as_deref()?;
         let decision_type = produces.decision_type.as_deref();
-        let hooks = self
-            .resolver
-            .find_hooks(hook_point, legal_character, decision_type, stage);
-        Some((legal_character, decision_type, hooks))
+        let matching_hooks =
+            self.resolver
+                .find_hooks(hook_point, legal_character, decision_type, stage);
+        let subject = format!(
+            "hook point {} on {legal_character} at stage {stage}",
+            hook_point.as_str()
+        );
+        let ref_date = res_ctx.reference_date();
+        let hooks = matching_hooks
+            .iter()
+            .filter(|hook_entry| {
+                // Cycle detection: don't re-enter a hook we're already executing
+                let key = hook_key(hook_entry);
+                let visited = res_ctx.is_visited(&key);
+                if visited {
+                    tracing::debug!(hook_key = %key, "Skipping hook: cycle detected");
+                }
+                !visited
+            })
+            .map(|hook_entry| {
+                let not_in_force = |reason: String| DeclarationNotInForce {
+                    kind: DeclarationKind::Hook,
+                    law_id: hook_entry.law_id.clone(),
+                    article: hook_entry.article_number.clone(),
+                    subject: subject.clone(),
+                    reason,
+                };
+                // A hook that does not fire leaves nothing behind: the decision
+                // simply comes out without its motivering, its bekendmaking or
+                // its bezwaartermijn, and nothing in the outcome says one was
+                // owed. "Hook law not found" was moreover untrue for the common
+                // case (the law is loaded, it is this date it has no version
+                // for), so the reason travels along, to the trace and to the
+                // receipt.
+                let law = self
+                    .resolver
+                    .get_law_for_date_reported(&hook_entry.law_id, ref_date)
+                    .map_err(|reason| not_in_force(reason.describe()))?;
+                // The law is in force, but the version selected for this date
+                // need not carry the article the hooks index points at: that
+                // index is built from the newest version. The hook still does
+                // not fire (an article inserted later is not in force yet, and
+                // a renumbered one is missed by the undated index), but the
+                // same safeguards go missing as above, so the skip is recorded
+                // the same way.
+                let article = law
+                    .find_article_by_number(&hook_entry.article_number)
+                    .ok_or_else(|| {
+                        not_in_force(missing_article_reason(
+                            law,
+                            &hook_entry.article_number,
+                            "a hook that fires at the same point on this decision",
+                            |candidate| {
+                                let offered = matching_hooks.iter().any(|h| {
+                                    h.law_id == hook_entry.law_id
+                                        && h.article_number == candidate.number
+                                });
+                                !offered
+                                    && candidate.get_hooks().is_some_and(|decls| {
+                                        decls.iter().any(|d| {
+                                            d.hook_point == hook_point
+                                                && d.applies_to.legal_character.as_deref()
+                                                    == Some(legal_character)
+                                                && hook_filter_admits(
+                                                    &d.applies_to,
+                                                    decision_type,
+                                                    stage,
+                                                )
+                                        })
+                                    })
+                            },
+                        ))
+                    })?;
+                Ok(FireableHook {
+                    entry: hook_entry,
+                    law,
+                    article,
+                })
+            })
+            .collect();
+        Some((legal_character, hooks))
     }
 
     /// The parameters the hooks at `hook_point` on this article declare: the
-    /// names they receive from it (RFC-043). A hook that does not fire (not in
-    /// force on this date, or already executing) declares nothing here;
-    /// `fire_hooks` records why.
+    /// names they receive from it (RFC-043).
     fn hook_parameter_names(
         &self,
         hook_point: HookPoint,
@@ -2030,20 +2138,15 @@ impl LawExecutionService {
         stage: &str,
         res_ctx: &ResolutionContext<'_>,
     ) -> BTreeSet<String> {
-        let Some((_, _, hooks)) = self.matching_hooks(hook_point, article, stage) else {
-            return BTreeSet::new();
-        };
-        hooks
-            .into_iter()
-            .filter(|hook| !res_ctx.is_visited(&hook_key(hook)))
-            .filter_map(|hook| {
-                self.resolver
-                    .get_law_for_date_reported(&hook.law_id, res_ctx.reference_date())
-                    .ok()?
-                    .find_article_by_number(&hook.article_number)
+        self.fireable_hooks(hook_point, article, stage, res_ctx)
+            .map(|(_, hooks)| {
+                hooks
+                    .into_iter()
+                    .flatten()
+                    .flat_map(|hook| declared_parameter_names(hook.article))
+                    .collect()
             })
-            .flat_map(declared_parameter_names)
-            .collect()
+            .unwrap_or_default()
     }
 
     /// What an execution of `article` needs, before any of its actions runs
@@ -2080,32 +2183,29 @@ impl LawExecutionService {
                 read_after_actions: read_after(None),
             };
         };
-        // The requested outputs a void does not exclude, grown by every output
-        // of this article that a post hook or the replacing override of a
-        // computed output reads, until nothing more is added.
+        // The requested outputs a void does not exclude, closed over what they
+        // read, and grown by every output of this article that a post hook or
+        // the replacing override of a computed output reads, until nothing
+        // more is added.
         let actions = article
             .get_execution_spec()
             .and_then(|e| e.actions.as_deref())
             .unwrap_or_default();
-        let produced: BTreeSet<&str> = crate::demand::action_outputs(article).collect();
-        let mut outputs: Vec<String> = requested
+        let mut wanted: BTreeSet<&str> = requested
             .iter()
-            .filter(|name| !plan.voided.contains(**name))
-            .map(|name| name.to_string())
+            .copied()
+            .filter(|name| !plan.voided.contains(*name))
             .collect();
-        let read_after_actions = loop {
-            let names: Vec<&str> = outputs.iter().map(String::as_str).collect();
+        let (outputs, read_after_actions) = loop {
+            let names: Vec<&str> = wanted.iter().copied().collect();
             let computed = crate::demand::required_outputs(actions, &names);
-            let read = read_after(computed.as_ref());
-            let more: Vec<String> = read
-                .iter()
-                .filter(|name| produced.contains(name.as_str()) && !outputs.contains(name))
-                .cloned()
-                .collect();
-            if more.is_empty() {
-                break read;
+            let read = read_after(Some(&computed));
+            let before = wanted.len();
+            wanted
+                .extend(crate::demand::action_outputs(article).filter(|name| read.contains(*name)));
+            if wanted.len() == before {
+                break (computed, read);
             }
-            outputs.extend(more);
         };
         Demand {
             outputs: Some(outputs),
@@ -2180,13 +2280,13 @@ impl LawExecutionService {
         let hook_point_str = hook_point.as_str();
 
         // Only fire hooks if the article declares what it produces
-        let Some((legal_character, decision_type, matching_hooks)) =
-            self.matching_hooks(hook_point, article, stage)
+        let Some((legal_character, hooks)) =
+            self.fireable_hooks(hook_point, article, stage, res_ctx)
         else {
             return Ok((hook_outputs, hook_provenance));
         };
 
-        if matching_hooks.is_empty() {
+        if hooks.is_empty() {
             return Ok((hook_outputs, hook_provenance));
         }
 
@@ -2194,86 +2294,25 @@ impl LawExecutionService {
             hook_point = ?hook_point,
             legal_character = legal_character,
             stage = stage,
-            matches = matching_hooks.len(),
+            matches = hooks.len(),
             "Firing hooks"
         );
 
-        for hook_entry in &matching_hooks {
-            let hook_law_id = &hook_entry.law_id;
-            let hook_article_number = &hook_entry.article_number;
-            // Cycle detection: don't re-enter a hook we're already executing
-            let hook_key = hook_key(hook_entry);
-            if res_ctx.is_visited(&hook_key) {
-                tracing::debug!(hook_key = %hook_key, "Skipping hook: cycle detected");
-                continue;
-            }
-
-            // Look up the hook article
-            let ref_date = res_ctx.reference_date();
-            // A hook that does not fire leaves nothing behind: the decision
-            // simply comes out without its motivering, its bekendmaking or its
-            // bezwaartermijn, and nothing in the outcome says one was owed.
-            // "Hook law not found" was moreover untrue for the common case —
-            // the law is loaded, it is this date it has no version for — so the
-            // reason travels along, to the trace and to the receipt.
-            let hook_law = match self
-                .resolver
-                .get_law_for_date_reported(hook_law_id, ref_date)
-            {
-                Ok(law) => law,
-                Err(reason) => {
-                    res_ctx.note_not_in_force(DeclarationNotInForce {
-                        kind: DeclarationKind::Hook,
-                        law_id: hook_law_id.clone(),
-                        article: hook_article_number.clone(),
-                        subject: format!(
-                            "hook point {hook_point_str} on {legal_character} at stage {stage}"
-                        ),
-                        reason: reason.describe(),
-                    });
+        for hook in hooks {
+            let FireableHook {
+                entry: hook_entry,
+                law: hook_law,
+                article: hook_article,
+            } = match hook {
+                Ok(hook) => hook,
+                Err(not_in_force) => {
+                    res_ctx.note_not_in_force(not_in_force);
                     continue;
                 }
             };
-            // The law is in force, but the version selected for this date need
-            // not carry the article the hooks index points at: that index is
-            // built from the newest version. The hook still does not fire (an
-            // article inserted later is not in force yet, and a renumbered one
-            // is missed by the undated index), but the same safeguards go
-            // missing as above, so the skip is recorded the same way.
-            let Some(hook_article) = hook_law.find_article_by_number(hook_article_number) else {
-                res_ctx.note_not_in_force(DeclarationNotInForce {
-                    kind: DeclarationKind::Hook,
-                    law_id: hook_law_id.clone(),
-                    article: hook_article_number.clone(),
-                    subject: format!(
-                        "hook point {hook_point_str} on {legal_character} at stage {stage}"
-                    ),
-                    reason: missing_article_reason(
-                        hook_law,
-                        hook_article_number,
-                        "a hook that fires at the same point on this decision",
-                        |candidate| {
-                            let offered = matching_hooks.iter().any(|h| {
-                                h.law_id == *hook_law_id && h.article_number == candidate.number
-                            });
-                            !offered
-                                && candidate.get_hooks().is_some_and(|decls| {
-                                    decls.iter().any(|d| {
-                                        d.hook_point == hook_point
-                                            && d.applies_to.legal_character.as_deref()
-                                                == Some(legal_character)
-                                            && hook_filter_admits(
-                                                &d.applies_to,
-                                                decision_type,
-                                                stage,
-                                            )
-                                    })
-                                })
-                        },
-                    ),
-                });
-                continue;
-            };
+            let hook_law_id = &hook_entry.law_id;
+            let hook_article_number = &hook_entry.article_number;
+            let hook_key = hook_key(hook_entry);
 
             // Filter parameters: only pass parameters declared by the hook article (least privilege)
             let hook_params = Self::filter_parameters_for_article(hook_article, parameters);
@@ -2774,14 +2813,10 @@ impl LawExecutionService {
 
         let mut engine_params = parameters.clone();
         engine_params.extend(pre_hook_outputs.clone());
-        let outputs: Option<Vec<&str>> = demand
-            .outputs
-            .as_ref()
-            .map(|names| names.iter().map(String::as_str).collect());
         let mut result = engine.evaluate_outputs(
-            engine_params.clone(),
+            engine_params,
             calculation_date,
-            outputs.as_deref(),
+            demand.outputs.as_ref(),
             trace,
             Some(&AfterPreHooks {
                 inputs: &lazy,
@@ -2795,12 +2830,13 @@ impl LawExecutionService {
                 .filter(|name| !pre_hook_outputs.contains_key(*name)),
         )?;
 
-        // What the post-action steps receive, as they did when every input was
-        // resolved up front: the parameters, what was resolved, and over those
-        // what a pre hook produced.
-        let mut post_params = parameters.clone();
-        post_params.extend(lazy.resolved());
+        // What the post-action steps receive: the parameters, what was
+        // resolved, and over those what a pre hook produced. What was resolved
+        // is also what this article consulted.
+        result.resolved_inputs = lazy.resolved();
         drop(lazy);
+        let mut post_params = parameters.clone();
+        post_params.extend(result.resolved_inputs.clone());
         post_params.extend(pre_hook_outputs.clone());
 
         // Fire post_actions hooks (between action execution and result return).
@@ -2915,16 +2951,17 @@ impl LawExecutionService {
     /// 4. If not found + required + no default: error
     /// 5. If not found + not required + no default: skip
     ///
-    /// `earlier` are the terms of this article resolved before it, which a
-    /// default may read.
-    fn resolve_open_term(
+    /// A default reads the caller's parameters and, through `earlier`, the
+    /// terms of this article declared before it, resolved only when the
+    /// default applies.
+    fn resolve_open_term<'c>(
         &self,
         article: &Article,
         law: &ArticleBasedLaw,
         term: &crate::article::OpenTerm,
         parameters: &BTreeMap<String, Value>,
-        earlier: &BTreeMap<String, Value>,
-        res_ctx: &mut ResolutionContext<'_>,
+        earlier: &mut dyn FnMut(&str, &mut ResolutionContext<'c>) -> Result<Option<Value>>,
+        res_ctx: &mut ResolutionContext<'c>,
     ) -> Result<Value> {
         // Cycle detection: check if we're already resolving this open term
         // Use \0 as separator to prevent key collisions when IDs contain #
@@ -3143,11 +3180,24 @@ impl LawExecutionService {
                 let engine = ArticleEngine::new(&synthetic_article, law);
 
                 // Pass current context parameters so default actions can
-                // reference variables like $type_beplanting
+                // reference variables like $type_beplanting, and the earlier
+                // terms the default reads.
                 let mut default_params = parameters.clone();
-                // Include already-resolved open terms from this evaluation
-                for (k, v) in earlier {
-                    default_params.insert(k.clone(), v.clone());
+                let reads: BTreeSet<String> = actions
+                    .iter()
+                    .flat_map(crate::demand::referenced_names)
+                    .collect();
+                for name in reads {
+                    match earlier(&name, res_ctx) {
+                        Ok(Some(value)) => {
+                            default_params.insert(name, value);
+                        }
+                        Ok(None) => {}
+                        Err(e) => {
+                            res_ctx.leave(&ot_key);
+                            return Err(e);
+                        }
+                    }
                 }
 
                 let default_result = match engine.evaluate_with_output(
@@ -3247,6 +3297,25 @@ impl LawExecutionService {
 
         res_ctx.leave(&ot_key);
         Ok(value)
+    }
+
+    /// Whether resolving `input` calls another law: it names a regulation and
+    /// no data source answers for it first, the order [`Self::resolve_input`]
+    /// follows.
+    fn calls_other_law(
+        &self,
+        law: &ArticleBasedLaw,
+        input: &Input,
+        parameters: &BTreeMap<String, Value>,
+    ) -> bool {
+        input
+            .source
+            .as_ref()
+            .is_some_and(|source| source.regulation.is_some())
+            && self
+                .data_registry
+                .resolve_for_law(&input.name, parameters, Some(&law.id))
+                .is_none()
     }
 
     /// Resolve one input from its source, the first time an action reads it

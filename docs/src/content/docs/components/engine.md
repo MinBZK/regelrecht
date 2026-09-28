@@ -80,7 +80,7 @@ When the engine resolves a `$variable`, it checks these sources in order:
 4. **Resolved inputs** - values set on the context directly (the service does not use this layer)
 5. **Definitions** - article-level constants
 6. **Inputs and open terms** - resolved on first read and kept for the execution; an open term comes before an input and a parameter of the same name, also where a source's parameters are read
-7. **Parameters** - direct input parameters, and the outputs of a `pre_actions` hook. Both win over an input of the same name: a value the caller passed replaces the input's source, and a hook output replaces the input
+7. **Parameters** - direct input parameters, and the outputs of a `pre_actions` hook. A value the caller passed replaces the source of an input of the same name. A hook output replaces an input or open term of the same name for the actions and the post-action steps, but not where a source's parameters are read
 8. **Unpassed optional parameters** - a parameter the article declares optional and the caller left out is unknown for lack of it
 
 ## Multi-Output Evaluation
@@ -91,7 +91,7 @@ Articles can define multiple outputs (e.g., `heeft_recht_op_zorgtoeslag` and `ho
 
 Callers name the outputs they need, and there is no "run the whole law" mode: the engine executes only the articles that produce those outputs, and in each article only the actions those outputs depend on ([RFC-043](/rfcs/rfc-043)). The dependency closure follows `$name` references between the article's own outputs. An action outside it does not run, so it cannot fail the call, and its output is not in the result.
 
-What hooks and overrides add stays in. A beschikking is legally indivisible (Awb 1:3), so consequences such as the motivering and the bezwaartermijn are never stripped from it. A hook, or an override that replaces an output, receives only the parameters it declares, so the engine resolves and computes exactly those names for it and leaves the rest of the article demand-driven. A `voids` that excludes a requested output is checked before that output is computed. A receipt records which outputs were requested in `requested_outputs`, next to the set that came back.
+What hooks and overrides add stays in. A beschikking is legally indivisible (Awb 1:3), so consequences such as the motivering and the bezwaartermijn are never stripped from it. A hook, or an override that replaces an output, receives only the parameters it declares, so the engine resolves and computes exactly those names for it and leaves the rest of the article demand-driven. A `voids` that excludes a requested output is checked before that output is computed. A receipt records which outputs were requested in `requested_outputs`, next to the set that came back, and the result's `resolved_inputs` lists the inputs and open terms the article consulted.
 
 The same rule makes a missing required parameter, or a null the caller passed for an input that is never absent, an error only for the outputs that read it. Asking for an output that does not need it succeeds.
 

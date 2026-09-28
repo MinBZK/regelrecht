@@ -24,8 +24,6 @@ fn make_context() -> RuleContext<'static> {
     ctx.set_output("is_verzekerd", Value::Bool(true));
     ctx.set_output("toetsingsinkomen", Value::Int(35000));
 
-    ctx.set_resolved_input("standaardpremie", Value::Int(211200));
-
     ctx.set_local("item", Value::String("test_item".to_string()));
 
     ctx
@@ -52,11 +50,6 @@ fn bench_resolve_variable(c: &mut Criterion) {
     // Outputs
     group.bench_function("output_lookup", |b| {
         b.iter(|| ctx.resolve(black_box("is_verzekerd")))
-    });
-
-    // Resolved inputs (cross-law cache)
-    group.bench_function("resolved_input", |b| {
-        b.iter(|| ctx.resolve(black_box("standaardpremie")))
     });
 
     // Definitions

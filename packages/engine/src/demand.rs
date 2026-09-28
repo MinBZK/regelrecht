@@ -7,9 +7,8 @@
 //!
 //! Over-including is always safe: an action that runs without being needed
 //! costs work, never a wrong value. Under-including is what must not happen,
-//! so the walk goes through [`ActionOperation::operands`], which is exhaustive
-//! over the operation variants, and a requested name no action produces makes
-//! the article run in full.
+//! so the walk goes through [`crate::article::ActionOperation::operands`], which is exhaustive
+//! over the operation variants.
 
 use crate::article::{Action, ActionValue, Article};
 use crate::types::Value;
@@ -25,12 +24,10 @@ pub(crate) fn action_outputs(article: &Article) -> impl Iterator<Item = &str> {
         .filter_map(|a| a.output.as_deref())
 }
 
-/// The outputs to compute for `requested`, or `None` when every action must run.
-///
-/// `None` is returned when a requested name is not produced by any action of
-/// the article: whatever produces it (a hook, an override) is outside what
-/// this closure can see, and running everything keeps the old behavior there.
-pub(crate) fn required_outputs(actions: &[Action], requested: &[&str]) -> Option<BTreeSet<String>> {
+/// The outputs of `actions` that computing `requested` needs: those requested
+/// and everything they read, transitively. A requested name no action
+/// produces (a hook output) adds nothing: no action can produce it.
+pub(crate) fn required_outputs(actions: &[Action], requested: &[&str]) -> BTreeSet<String> {
     // Every action that writes a name counts: an output assigned twice reads
     // what both assignments read.
     let mut produced: BTreeMap<&str, Vec<&Action>> = BTreeMap::new();
@@ -39,12 +36,12 @@ pub(crate) fn required_outputs(actions: &[Action], requested: &[&str]) -> Option
             produced.entry(name).or_default().push(action);
         }
     }
-    if requested.iter().any(|name| !produced.contains_key(name)) {
-        return None;
-    }
-
     let mut required = BTreeSet::new();
-    let mut pending: Vec<&str> = requested.to_vec();
+    let mut pending: Vec<&str> = requested
+        .iter()
+        .copied()
+        .filter(|name| produced.contains_key(name))
+        .collect();
     while let Some(name) = pending.pop() {
         if !required.insert(name.to_string()) {
             continue;
@@ -57,7 +54,7 @@ pub(crate) fn required_outputs(actions: &[Action], requested: &[&str]) -> Option
             }
         }
     }
-    Some(required)
+    required
 }
 
 /// The name a `$reference` reads, by its base (`$a.b` gives `a`); `None` for
@@ -134,7 +131,7 @@ mod tests {
     #[test]
     fn closure_follows_output_references_only() {
         let acts = actions(CHAIN);
-        let required = required_outputs(&acts, &["voldoet"]).unwrap();
+        let required = required_outputs(&acts, &["voldoet"]);
         assert_eq!(
             required.into_iter().collect::<Vec<_>>(),
             vec!["leeftijd_ok".to_string(), "voldoet".to_string()]
@@ -144,7 +141,7 @@ mod tests {
     #[test]
     fn closure_is_transitive_through_nested_operations() {
         let acts = actions(CHAIN);
-        let required = required_outputs(&acts, &["hoogte"]).unwrap();
+        let required = required_outputs(&acts, &["hoogte"]);
         assert_eq!(
             required.into_iter().collect::<Vec<_>>(),
             vec![
@@ -158,7 +155,7 @@ mod tests {
     #[test]
     fn several_requested_outputs_union_their_closures() {
         let acts = actions(CHAIN);
-        let required = required_outputs(&acts, &["leeftijd_ok", "los"]).unwrap();
+        let required = required_outputs(&acts, &["leeftijd_ok", "los"]);
         assert_eq!(
             required.into_iter().collect::<Vec<_>>(),
             vec!["leeftijd_ok".to_string(), "los".to_string()]
@@ -166,9 +163,15 @@ mod tests {
     }
 
     #[test]
-    fn a_name_no_action_produces_runs_everything() {
+    fn a_name_no_action_produces_adds_nothing() {
         let acts = actions(CHAIN);
-        assert!(required_outputs(&acts, &["van_een_hook"]).is_none());
+        assert!(required_outputs(&acts, &["van_een_hook"]).is_empty());
+        assert_eq!(
+            required_outputs(&acts, &["van_een_hook", "leeftijd_ok"])
+                .into_iter()
+                .collect::<Vec<_>>(),
+            vec!["leeftijd_ok".to_string()]
+        );
     }
 
     #[test]
@@ -187,7 +190,7 @@ mod tests {
   value: 2
 "#,
         );
-        let required = required_outputs(&acts, &["x"]).unwrap();
+        let required = required_outputs(&acts, &["x"]);
         assert_eq!(
             required.into_iter().collect::<Vec<_>>(),
             vec!["a".to_string(), "x".to_string()]
@@ -206,7 +209,7 @@ mod tests {
   value: [$a, {veld: $b}]
 "#,
         );
-        let required = required_outputs(&acts, &["lijst"]).unwrap();
+        let required = required_outputs(&acts, &["lijst"]);
         assert_eq!(
             required.into_iter().collect::<Vec<_>>(),
             vec!["a".to_string(), "b".to_string(), "lijst".to_string()]
@@ -239,7 +242,7 @@ mod tests {
   conditions: [$c, $d]
 "#,
         );
-        let required = required_outputs(&acts, &["vergelijk", "som", "en"]).unwrap();
+        let required = required_outputs(&acts, &["vergelijk", "som", "en"]);
         assert_eq!(
             required.into_iter().collect::<Vec<_>>(),
             ["a", "b", "c", "d", "en", "som", "vergelijk"]

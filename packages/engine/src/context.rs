@@ -8,11 +8,10 @@
 //! 1. **Context variables** - Built-in variables like `referencedate`
 //! 2. **Local scope** - Loop variables from FOREACH operations
 //! 3. **Outputs** - Previously calculated output values
-//! 4. **Resolved inputs** - Values set on the context directly
-//! 5. **Definitions** - Article-level constants
-//! 6. **Inputs and open terms** - Resolved on first read by the service (RFC-043)
-//! 7. **Parameters** - Direct input parameters (e.g., BSN)
-//! 8. **Unpassed optional parameters** - Unknown for lack of them (RFC-036)
+//! 4. **Definitions** - Article-level constants
+//! 5. **Inputs and open terms** - Resolved on first read by the service (RFC-043)
+//! 6. **Parameters** - Direct input parameters (e.g., BSN)
+//! 7. **Unpassed optional parameters** - Unknown for lack of them (RFC-036)
 //!
 //! # Dot Notation
 //!
@@ -52,8 +51,8 @@ use std::rc::Rc;
 ///
 /// Variables in higher-priority scopes shadow those in lower scopes.
 /// For example, a local variable named "x" will shadow a parameter "x".
-/// The priority order is: local > outputs > resolved_inputs > definitions >
-/// inputs and open terms > parameters.
+/// The priority order is: local > outputs > definitions > inputs and open
+/// terms > parameters.
 #[derive(Debug, Clone)]
 pub struct RuleContext<'l> {
     /// Article-level definitions (constants)
@@ -67,9 +66,6 @@ pub struct RuleContext<'l> {
 
     /// Local scope variables (for FOREACH loops)
     local: BTreeMap<String, Value>,
-
-    /// Cached resolved inputs from cross-law references
-    resolved_inputs: Rc<BTreeMap<String, Value>>,
 
     /// Reference date for calculations
     reference_date: NaiveDate,
@@ -96,8 +92,8 @@ pub struct RuleContext<'l> {
     anchor: Option<LegalAnchor>,
 
     /// Resolves a declared input or open term the first time an operation
-    /// reads it (RFC-043). Absent for a bare context, and for an article whose
-    /// inputs were resolved up front.
+    /// reads it (RFC-043). Absent for a bare context, whose inputs are its
+    /// parameters.
     lazy: Option<LazyHook<'l>>,
 }
 
@@ -108,10 +104,8 @@ pub(crate) trait LazyInputs {
     /// The value of `name` if it is an input or open term this article
     /// resolves itself; `None` if it is not, or if it stays unresolved (a
     /// reference to it then fails like any unknown variable).
-    fn resolve_input(&self, name: &str) -> Option<Result<Value>>;
-
-    /// How the trace names where a value `resolve_input` answered came from.
-    fn resolve_type(&self, name: &str) -> ResolveType;
+    /// The value comes with how the trace names where it came from.
+    fn resolve_input(&self, name: &str) -> Option<Result<(Value, ResolveType)>>;
 }
 
 /// The hook as a context field: a reference, copied into every child scope,
@@ -142,7 +136,6 @@ impl<'l> RuleContext<'l> {
             parameters: Rc::new(parameters),
             outputs: Rc::new(BTreeMap::new()),
             local: BTreeMap::new(),
-            resolved_inputs: Rc::new(BTreeMap::new()),
             reference_date,
             reference_date_value,
             trace: None,
@@ -217,16 +210,6 @@ impl<'l> RuleContext<'l> {
         self.local.clear();
     }
 
-    /// Set a resolved input value (cached cross-law result).
-    pub fn set_resolved_input(&mut self, name: impl Into<String>, value: Value) {
-        Rc::make_mut(&mut self.resolved_inputs).insert(name.into(), value);
-    }
-
-    /// Get all resolved inputs (cached cross-law results).
-    pub fn resolved_inputs(&self) -> &BTreeMap<String, Value> {
-        &self.resolved_inputs
-    }
-
     /// Get all input parameters.
     pub fn parameters(&self) -> &BTreeMap<String, Value> {
         &self.parameters
@@ -252,7 +235,7 @@ impl<'l> RuleContext<'l> {
 
     /// Create a child context for nested evaluation (e.g., FOREACH).
     ///
-    /// The child inherits definitions, parameters, resolved_inputs, and outputs,
+    /// The child inherits definitions, parameters, and outputs,
     /// but starts with an **empty local scope**. This ensures that FOREACH loop
     /// variables from a parent context don't leak into child iterations.
     ///
@@ -276,7 +259,6 @@ impl<'l> RuleContext<'l> {
             parameters: Rc::clone(&self.parameters),
             outputs: Rc::clone(&self.outputs),
             local: BTreeMap::new(), // Child starts with empty local scope
-            resolved_inputs: Rc::clone(&self.resolved_inputs),
             reference_date: self.reference_date,
             reference_date_value: self.reference_date_value.clone(),
             trace: self.trace.clone(), // Share the same trace builder
@@ -389,11 +371,10 @@ impl<'l> RuleContext<'l> {
     /// 1. Context variables (referencedate)
     /// 2. Local scope (loop variables)
     /// 3. Outputs (calculated values)
-    /// 4. Resolved inputs (set on the context directly)
-    /// 5. Definitions (constants)
-    /// 6. Inputs and open terms (resolved on first read, RFC-043)
-    /// 7. Parameters (direct inputs)
-    /// 8. Unpassed optional parameters (unknown, RFC-036)
+    /// 4. Definitions (constants)
+    /// 5. Inputs and open terms (resolved on first read, RFC-043)
+    /// 6. Parameters (direct inputs)
+    /// 7. Unpassed optional parameters (unknown, RFC-036)
     ///
     /// # Dot Notation
     /// Supports nested property access: `referencedate.year`, `person.name`
@@ -475,36 +456,31 @@ impl<'l> RuleContext<'l> {
             return Ok(value.clone());
         }
 
-        // 4. Resolved inputs (cached cross-law results)
-        if let Some(value) = self.resolved_inputs.get(path) {
-            self.trace_set_resolve_type(ResolveType::ResolvedInput);
-            return Ok(value.clone());
-        }
-
-        // 5. Definitions (constants)
+        // 4. Definitions (constants)
         if let Some(value) = self.definitions.get(path) {
             self.trace_set_resolve_type(ResolveType::Definition);
             return Ok(value.clone());
         }
 
-        // 6. An input or open term of this article, resolved on its first
+        // 5. An input or open term of this article, resolved on its first
         // read (RFC-043). Where a value was passed under the input's name the
-        // hook answers `None`, and the parameter below wins, as it did when
-        // inputs were resolved up front.
+        // hook answers `None`, and the parameter below wins.
         if let Some(LazyHook(lazy)) = self.lazy {
             if let Some(result) = lazy.resolve_input(path) {
-                self.trace_set_resolve_type(lazy.resolve_type(path));
-                return result;
+                return result.map(|(value, resolve_type)| {
+                    self.trace_set_resolve_type(resolve_type);
+                    value
+                });
             }
         }
 
-        // 7. Parameters (direct inputs)
+        // 6. Parameters (direct inputs)
         if let Some(value) = self.parameters.get(path) {
             self.trace_set_resolve_type(ResolveType::Parameter);
             return Ok(value.clone());
         }
 
-        // 8. An optional parameter the caller did not pass (RFC-036). The
+        // 7. An optional parameter the caller did not pass (RFC-036). The
         // article said it can do without, so the fact is unknown rather than
         // the reference being an error; the Unknown names it, so whoever
         // completes the case knows what to ask for. Top-level and cross-law
@@ -958,28 +934,6 @@ mod tests {
         let ctx = RuleContext::new(BTreeMap::new(), "2025-01-01").unwrap();
         let result = ctx.resolve("anything");
         assert!(matches!(result, Err(EngineError::VariableNotFound(_))));
-    }
-
-    #[test]
-    fn test_resolved_inputs() {
-        let mut ctx = make_context();
-        ctx.set_resolved_input("external_value", Value::Int(12345));
-
-        let value = ctx.resolve("external_value").unwrap();
-        assert_eq!(value, Value::Int(12345));
-    }
-
-    #[test]
-    fn test_priority_resolved_input_over_definition() {
-        let mut ctx = make_context();
-        let mut defs = BTreeMap::new();
-        defs.insert("x".to_string(), Value::Int(100));
-        ctx.set_definitions_raw(defs);
-        ctx.set_resolved_input("x", Value::Int(200));
-
-        // Resolved input should win over definition
-        let x = ctx.resolve("x").unwrap();
-        assert_eq!(x, Value::Int(200));
     }
 
     // -------------------------------------------------------------------------

@@ -223,13 +223,8 @@ impl<'a> ArticleEngine<'a> {
         calculation_date: &str,
         requested_output: Option<&str>,
     ) -> Result<ArticleResult> {
-        self.evaluate_outputs(
-            parameters,
-            calculation_date,
-            requested_output.as_ref().map(std::slice::from_ref),
-            None,
-            None,
-        )
+        let required = self.required_for(requested_output);
+        self.evaluate_outputs(parameters, calculation_date, required.as_ref(), None, None)
     }
 
     /// Execute this article's logic with trace support.
@@ -242,18 +237,24 @@ impl<'a> ArticleEngine<'a> {
         requested_output: Option<&str>,
         trace: Rc<RefCell<TraceBuilder>>,
     ) -> Result<ArticleResult> {
+        let required = self.required_for(requested_output);
         self.evaluate_outputs(
             parameters,
             calculation_date,
-            requested_output.as_ref().map(std::slice::from_ref),
+            required.as_ref(),
             Some(trace),
             None,
         )
     }
 
-    /// Execute this article for the requested outputs: the actions in the
-    /// union of their dependency closures run (RFC-043), `None` runs every
-    /// action. With `lazy`, an input or open term is resolved when an
+    /// The outputs `requested_output` depends on (RFC-043); `None` for all.
+    fn required_for(&self, requested_output: Option<&str>) -> Option<BTreeSet<String>> {
+        requested_output.map(|name| crate::demand::required_outputs(self.get_actions(), &[name]))
+    }
+
+    /// Execute the actions producing `outputs` (a dependency closure, see
+    /// [`crate::demand::required_outputs`]); `None` runs every action
+    /// (RFC-043). With `lazy`, an input or open term is resolved when an
     /// operation first reads it; without it, `parameters` must already
     /// contain every value this article needs (cross-article and cross-law
     /// resolution is [`crate::LawExecutionService`]'s job).
@@ -261,14 +262,14 @@ impl<'a> ArticleEngine<'a> {
         &self,
         parameters: BTreeMap<String, Value>,
         calculation_date: &str,
-        requested_outputs: Option<&[&str]>,
+        outputs: Option<&BTreeSet<String>>,
         trace: Option<Rc<RefCell<TraceBuilder>>>,
         lazy: Option<&dyn LazyInputs>,
     ) -> Result<ArticleResult> {
         tracing::debug!(
             law_id = %self.law.id,
             article = %self.article.number,
-            requested_outputs = ?requested_outputs,
+            outputs = ?outputs,
             "Starting article evaluation"
         );
 
@@ -288,7 +289,7 @@ impl<'a> ArticleEngine<'a> {
         }
 
         // Execute actions (with trace instrumentation)
-        self.execute_actions_traced(&mut context, requested_outputs)?;
+        self.execute_actions_traced(&mut context, outputs)?;
 
         // Build result
         // Tag all outputs as Direct (hooks/overrides are tagged by the service layer)
@@ -309,7 +310,8 @@ impl<'a> ArticleEngine<'a> {
         let result = ArticleResult {
             outputs: context.outputs().clone(),
             output_provenance,
-            resolved_inputs: context.resolved_inputs().clone(),
+            // Filled by the service with what it resolved for the article.
+            resolved_inputs: BTreeMap::new(),
             article_number: self.article.number.clone(),
             law_id: self.law.id.clone(),
             law_uuid: self.law.uuid.clone(),
@@ -378,16 +380,14 @@ impl<'a> ArticleEngine<'a> {
     fn execute_actions_traced(
         &self,
         context: &mut RuleContext,
-        requested_outputs: Option<&[&str]>,
+        outputs: Option<&BTreeSet<String>>,
     ) -> Result<()> {
         let actions = self.get_actions();
         let tracing_active = context.has_trace();
-        let required =
-            requested_outputs.and_then(|names| crate::demand::required_outputs(actions, names));
 
         for action in actions {
-            if let (Some(required), Some(name)) = (&required, &action.output) {
-                if !required.contains(name) {
+            if let (Some(outputs), Some(name)) = (outputs, &action.output) {
+                if !outputs.contains(name) {
                     continue;
                 }
             }
