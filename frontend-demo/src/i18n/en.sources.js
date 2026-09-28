@@ -411,6 +411,7 @@ export default {
   "sim.cancelled": "14b9",
   "sim.cancelled.body": "38e3",
   "sim.comparison.default": "ae4f",
+  "sim.comparison.income": "5501",
   "sim.comparison.label": "39ae",
   "sim.comparison.law": "7df5",
   "sim.comparison.lead": "a383",

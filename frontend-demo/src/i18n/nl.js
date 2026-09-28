@@ -893,4 +893,5 @@ export default {
   'trace.nav.next': 'Volgende wet',
   'trace.nav.position': '{n} van {total}',
   'sim.params.supporting': 'Regelingen waar deze wetten op steunen',
+  'sim.comparison.income': 'Besteedbaar inkomen per maand',
 };

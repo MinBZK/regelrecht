@@ -875,4 +875,5 @@ export default {
   'trace.nav.next': 'Next law',
   'trace.nav.position': '{n} of {total}',
   'sim.params.supporting': 'Regulations these laws rely on',
+  'sim.comparison.income': 'Disposable income per month',
 };

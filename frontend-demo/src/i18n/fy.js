@@ -770,4 +770,5 @@ export default {
   "trace.nav.next": "Folgjende wet",
   "trace.nav.position": "{n} fan {total}",
   "sim.params.supporting": "Regelingen dêr't dizze wetten op stypje",
+  "sim.comparison.income": "Besteedber ynkommen per moanne",
 };

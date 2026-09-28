@@ -375,6 +375,36 @@ const comparisonLaws = computed(() => {
   for (const r of comparable.value) for (const law of r.laws) ids.set(law.id, law);
   return [...ids.values()].sort((a, b) => a.name.localeCompare(b.name));
 });
+/**
+ * Disposable income per run, side by side: the number a changed constant is
+ * meant to move. Leading the comparison, because "who qualifies" hardly
+ * changes when an amount does (a higher standaardpremie raises the zorgtoeslag
+ * of everyone who already had it) while what people keep does.
+ */
+const comparisonIncome = computed(() => {
+  if (!incomeComponents.value.length || comparable.value[0]?.kind !== 'burgers') return null;
+  const per = comparable.value.map((r) => summariseDisposableIncome(r.results, incomeComponents.value));
+  const rows = [
+    ['sim.disposable.avg', 'avgDisposable'],
+    ['sim.disposable.median', 'medianDisposable'],
+    ['sim.disposable.after_housing', 'avgAfterHousing'],
+  ];
+  return rows.map(([label, key]) => ({
+    label,
+    cells: per.map((sum, i) => {
+      const value = sum?.[key] ?? null;
+      const base = per[0]?.[key] ?? null;
+      const delta = i === 0 || value === null || base === null ? null : value - base;
+      return { value, delta };
+    }),
+  }));
+});
+/** "+ € 31" or "− € 12" against the first run; nothing when there is no change. */
+function signedMoney(delta) {
+  if (delta === null || Math.round(delta) === 0) return '';
+  return `${delta > 0 ? '+' : '−'} ${money(Math.abs(delta))}`;
+}
+
 const comparisonChart = computed(() => ({
   categories: comparisonLaws.value.map((l) => l.name),
   series: comparable.value.map((r) => ({ name: r.label, values: comparisonLaws.value.map((l) => r.summary[l.id]?.eligiblePct ?? null) })),
@@ -461,7 +491,9 @@ function exportJson() {
             </nldd-list-item>
           </nldd-list>
           <template v-if="open.wetgeving && supporting.length">
-            <nldd-text-cell size="sm" color="secondary" :text="t('sim.params.supporting')"></nldd-text-cell>
+            <!-- nldd-text and not a text-cell: a cell outside a list keeps its
+                 one-line row height, and this heading wraps in the sidebar. -->
+            <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">{{ t('sim.params.supporting') }}</nldd-text></nldd-container>
             <nldd-list variant="box-tinted" :accessible-label="t('sim.params.supporting')">
               <nldd-list-item v-for="law in supporting" :key="law.id" size="sm" button @click="editParameters(law)">
                 <nldd-cell><OrgLogo :service="law.service" size="sm" /></nldd-cell>
@@ -794,6 +826,16 @@ function exportJson() {
         <!-- Comparison -->
         <nldd-simple-section v-else width="full">
           <nldd-container gap="16">
+            <nldd-table v-if="comparisonIncome" :columns="`minmax(160px, 1fr) repeat(${comparable.length}, 150px)`" :accessible-label="t('sim.comparison.income')">
+              <nldd-table-row slot="header">
+                <nldd-text-cell size="sm" :text="t('sim.comparison.income')"></nldd-text-cell>
+                <nldd-text-cell v-for="r in comparable" :key="r.id" size="sm" :text="r.label" :supporting-text="t(Object.keys(r.overrides).length ? 'sim.comparison.overridden' : 'sim.comparison.default')" horizontal-alignment="right"></nldd-text-cell>
+              </nldd-table-row>
+              <nldd-table-row v-for="row in comparisonIncome" :key="row.label">
+                <nldd-text-cell size="sm" :text="t(row.label)"></nldd-text-cell>
+                <nldd-text-cell v-for="(cell, i) in row.cells" :key="comparable[i].id" size="sm" :text="money(cell.value)" :supporting-text="signedMoney(cell.delta)" horizontal-alignment="right"></nldd-text-cell>
+              </nldd-table-row>
+            </nldd-table>
             <nldd-card :accessible-label="t('sim.comparison.label')">
               <nldd-container slot="header" padding="12" layout="row" gap="12" vertical-alignment="center"><nldd-title-cell size="5" :text="t('sim.comparison.title')" :supporting-text="t('sim.comparison.lead', { n: comparable.length })"></nldd-title-cell></nldd-container>
               <nldd-container padding="12">
