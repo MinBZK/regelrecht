@@ -73,6 +73,7 @@ export default {
   'format.items.one': '{n} item',
   'format.items.other': '{n} items',
   'format.missing': 'missing: {facts}',
+  'format.missing_from_law': 'details from {law}',
 
   // ---- simulation: dimensions and groups ----------------------------------
   // The group names themselves are keys in stats.js and stay Dutch; this is

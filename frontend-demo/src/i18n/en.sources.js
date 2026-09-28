@@ -97,6 +97,7 @@ export default {
   "format.items.one": "aac6",
   "format.items.other": "a7ac",
   "format.missing": "1cc5",
+  "format.missing_from_law": "7d19",
   "format.no": "9924",
   "format.none": "8710",
   "format.unknown": "8638",

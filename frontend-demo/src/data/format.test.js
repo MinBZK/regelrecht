@@ -57,9 +57,11 @@ describe('formatValue', () => {
 });
 
 describe('formatMissing / verdictOf', () => {
-  it('names the missing facts, with the law when it is another one', () => {
-    expect(formatMissing(UNKNOWN, { ownLaw: 'zorgtoeslagwet', lawName: (id) => (id === 'wet_inkomstenbelasting' ? 'Wet IB' : id) })).toBe('ontbreekt: huurprijs, spaargeld (Wet IB)');
-    expect(formatMissing(UNKNOWN)).toBe('ontbreekt: huurprijs (zorgtoeslagwet), spaargeld (wet_inkomstenbelasting)');
+  it('names its own missing facts, and another law once for all the facts it misses', () => {
+    expect(formatMissing(UNKNOWN, { ownLaw: 'zorgtoeslagwet', lawName: (id) => (id === 'wet_inkomstenbelasting' ? 'Wet IB' : id) })).toBe('ontbreekt: huurprijs, gegevens uit Wet IB');
+    expect(formatMissing(UNKNOWN)).toBe('ontbreekt: gegevens uit zorgtoeslagwet, gegevens uit wet_inkomstenbelasting');
+    const terrace = { __unknown: true, missing: ['obstakelvrije_ruimte', 'terras_oppervlakte', 'beschikbare_oppervlakte'].map((name) => ({ law: 'terrassen', name, kind: 'no_data' })) };
+    expect(formatMissing(terrace, { ownLaw: 'precario', lawName: () => 'Terrasvergunning' })).toBe('ontbreekt: gegevens uit Terrasvergunning');
     expect(formatMissing(null)).toBe('');
     expect(formatMissing(42)).toBe('');
   });
@@ -144,7 +146,7 @@ describe('in English', () => {
     // generated module reaches `humanize` rather than the empty default.
     adoptLocale('en');
     expect(formatMissing(UNKNOWN, { ownLaw: 'zorgtoeslagwet', lawName: (id) => id })).toBe(
-      'missing: rent, savings (wet_inkomstenbelasting)',
+      'missing: rent, details from wet_inkomstenbelasting',
     );
   });
 

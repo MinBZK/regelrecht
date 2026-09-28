@@ -64,6 +64,7 @@ export default {
   "format.items.one": "{n} item",
   "format.items.other": "{n} items",
   "format.missing": "ûntbrekt: {facts}",
+  "format.missing_from_law": "gegevens út {law}",
   "sim.dimension.age": "Leeftyd",
   "sim.dimension.income": "Ynkommen",
   "sim.dimension.partner": "Partner",

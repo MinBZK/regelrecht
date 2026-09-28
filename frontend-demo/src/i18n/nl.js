@@ -74,6 +74,7 @@ export default {
   'format.items.one': '{n} item',
   'format.items.other': '{n} items',
   'format.missing': 'ontbreekt: {facts}',
+  'format.missing_from_law': 'gegevens uit {law}',
 
   // ---- simulatie: dimensies en groepen ------------------------------------
   // De groepsnamen zelf zijn sleutels in stats.js en blijven Nederlands; dit

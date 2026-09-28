@@ -118,8 +118,11 @@ export function formatValue(value, spec = null) {
 export function formatMissing(value, { ownLaw = null, lawName = (id) => id } = {}) {
   const parts = [];
   for (const fact of missingFacts(value)) {
-    const label = humanize(fact.name).toLowerCase();
-    const part = fact.law && fact.law !== ownLaw ? `${label} (${lawName(fact.law)})` : label;
+    // What another law misses is that law's business: one reference to it, not
+    // every fact it lacks. Claudia's precario tile listed eight terrace facts,
+    // each followed by the terrace law's name, half of them register values she
+    // cannot supply; what she needs to know is that the terrace permit comes first.
+    const part = fact.law && fact.law !== ownLaw ? t('format.missing_from_law', { law: lawName(fact.law) }) : humanize(fact.name).toLowerCase();
     if (!parts.includes(part)) parts.push(part);
   }
   return parts.length ? t('format.missing', { facts: parts.join(', ') }) : '';
