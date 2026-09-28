@@ -29,6 +29,7 @@ CI keeps the list complete, not correct. `docs/scripts/check-rfc-coverage.mjs` f
 | RFC-019 | Law end dates | [Temporal Validity and Dates](../concepts/temporal-and-dates) |
 | RFC-021 | Date comparison | [Temporal Validity and Dates](../concepts/temporal-and-dates) |
 | RFC-039 | Addressable execution traces | [Traceability](../concepts/traceability), which still describes the pre-RFC-039 shape; see the backlog |
+| RFC-043 | Lazy evaluation (not built yet) | Backlog: [Engine](../components/engine) still describes resolving every input before the actions run; the page changes with the implementation |
 
 RFC-000 (the RFC process) is documented by [rfc-000](/rfcs/rfc-000) itself; the contributing guide links to it.
 
