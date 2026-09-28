@@ -79,8 +79,9 @@ When the engine resolves a `$variable`, it checks these sources in order:
 3. **Outputs** - values calculated by previous actions in the same article
 4. **Resolved inputs** - values set on the context directly (the service does not use this layer)
 5. **Definitions** - article-level constants
-6. **Inputs and open terms** - resolved on first read and kept for the execution; an open term comes before an input of the same name
+6. **Inputs and open terms** - resolved on first read and kept for the execution; an open term comes before an input and a parameter of the same name, also where a source's parameters are read
 7. **Parameters** - direct input parameters, and the outputs of a `pre_actions` hook. Both win over an input of the same name: a value the caller passed replaces the input's source, and a hook output replaces the input
+8. **Unpassed optional parameters** - a parameter the article declares optional and the caller left out is unknown for lack of it
 
 ## Multi-Output Evaluation
 

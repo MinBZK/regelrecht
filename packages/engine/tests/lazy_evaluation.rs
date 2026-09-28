@@ -1233,3 +1233,235 @@ articles:
         other => panic!("expected OutputVoided, got {other:?}"),
     }
 }
+
+#[test]
+fn a_pre_hook_output_wins_over_an_input_the_hook_itself_read() {
+    // The hook declares `x`, so `x` is resolved before it fires; its output
+    // `x` then still wins for the actions, as when hook outputs were merged
+    // over the resolved inputs.
+    let hook = r#"
+$id: lazy_pre_reads
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Vooraf verhoogd.
+    machine_readable:
+      hooks:
+        - hook_point: pre_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: BESLUIT
+      execution:
+        parameters:
+          - name: x
+            type: number
+            required: true
+        output:
+          - name: x
+            type: number
+        actions:
+          - output: x
+            value:
+              operation: ADD
+              values: [$x, 1]
+"#;
+    let trigger = r#"
+$id: lazy_pre_reads_trigger
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het besluit.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: x
+            type: number
+            source: {}
+        output:
+          - name: y
+            type: number
+        actions:
+          - output: y
+            value: $x
+"#;
+    let mut service = LawExecutionService::new();
+    service.load_law(hook).unwrap();
+    service.load_law(trigger).unwrap();
+    service
+        .register_dict_source_for_law(
+            "lazy_pre_reads_trigger",
+            "register",
+            "bsn",
+            vec![record("1", "x", Some(5))],
+            10,
+        )
+        .unwrap();
+    let result = service
+        .evaluate_law_output("lazy_pre_reads_trigger", "y", bsn(), "2025-01-01")
+        .unwrap();
+    assert_eq!(result.outputs["x"], Value::Int(6));
+    assert_eq!(result.outputs["y"], Value::Int(6));
+}
+
+#[test]
+fn an_override_of_an_output_nobody_computes_fetches_nothing() {
+    // `b` has a replacing override that declares the income, but only `a` is
+    // asked for: the override does not run, so the income is not fetched.
+    let law = r#"
+$id: lazy_unrun_override
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Twee uitkomsten.
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: inkomen
+            type: number
+            source:
+              regulation: lazy_belasting
+              output: inkomen
+              parameters:
+                bsn: $bsn
+        output:
+          - name: a
+            type: number
+          - name: b
+            type: number
+        actions:
+          - output: a
+            value: 1
+          - output: b
+            value: $inkomen
+"#;
+    let special = r#"
+$id: lazy_unrun_special
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: In afwijking daarvan is b het dubbele inkomen.
+    machine_readable:
+      overrides:
+        - law: lazy_unrun_override
+          article: '1'
+          output: b
+      execution:
+        parameters:
+          - name: inkomen
+            type: number
+            required: true
+        output:
+          - name: b
+            type: number
+        actions:
+          - output: b
+            value:
+              operation: MULTIPLY
+              values: [$inkomen, 2]
+  - number: '2'
+    text: Het gevolg is a.
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: a
+            type: number
+            source:
+              regulation: lazy_unrun_override
+              output: a
+              parameters:
+                bsn: $bsn
+        output:
+          - name: gevolg
+            type: number
+        actions:
+          - output: gevolg
+            value: $a
+"#;
+    let mut service = service(30, Some(50));
+    service.load_law(law).unwrap();
+    service.load_law(special).unwrap();
+    let result = service
+        .evaluate_law_output_with_trace("lazy_unrun_special", "gevolg", bsn(), "2025-01-01")
+        .unwrap();
+    assert_eq!(result.outputs["gevolg"], Value::Int(1));
+    let trace = result.trace.as_ref().unwrap().render_box_drawing();
+    assert!(!trace.contains("lazy_belasting"), "{trace}");
+}
+
+#[test]
+fn an_open_term_comes_before_a_passed_parameter_in_a_source_too() {
+    // The actions read the open term over a parameter of the same name; a
+    // source's parameters read it the same way.
+    let law = r#"
+$id: lazy_term_key
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Een sleutel die een open term is.
+    machine_readable:
+      open_terms:
+        - id: k
+          type: number
+          required: false
+          delegation_type: MINISTERIELE_REGELING
+          default:
+            actions:
+              - output: k
+                value: 2
+      execution:
+        parameters:
+          - name: k
+            type: number
+            required: false
+        input:
+          - name: uit
+            type: number
+            source:
+              regulation: lazy_echo
+              output: echo
+              parameters:
+                v: $k
+        output:
+          - name: via_bron
+            type: number
+          - name: direct
+            type: number
+        actions:
+          - output: via_bron
+            value: $uit
+          - output: direct
+            value: $k
+"#;
+    let mut service = LawExecutionService::new();
+    service.load_law(ECHO).unwrap();
+    service.load_law(law).unwrap();
+    let mut params = BTreeMap::new();
+    params.insert("k".to_string(), Value::Int(1));
+    assert_eq!(
+        value_of(&service, "lazy_term_key", "direct", params.clone()),
+        Value::Int(2)
+    );
+    assert_eq!(
+        value_of(&service, "lazy_term_key", "via_bron", params),
+        Value::Int(2)
+    );
+}

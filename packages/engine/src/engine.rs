@@ -124,14 +124,6 @@ pub struct ArticleEngine<'a> {
     symbols: crate::units::SymbolUnits,
 }
 
-/// The parameters `article` declares with `required: false` that `parameters`
-/// does not carry (RFC-036).
-///
-/// A reference to one of these resolves to an Unknown for lack of that
-/// parameter: the article said it can do without, so the caller leaving it out
-/// is not an error, but the fact is missing and the outcome has to say so. A
-/// required parameter is never in this set; a misspelled key in `parameters:`
-/// stays the `VariableNotFound` it always was.
 /// The scope an article's rules execute in: the caller's parameters, the
 /// optional parameters left out (RFC-036), the article's definitions, and,
 /// when tracing, the provision every step is anchored to (RFC-039).
@@ -157,6 +149,14 @@ pub(crate) fn article_context<'l>(
     Ok(context)
 }
 
+/// The parameters `article` declares with `required: false` that `parameters`
+/// does not carry (RFC-036).
+///
+/// A reference to one of these resolves to an Unknown for lack of that
+/// parameter: the article said it can do without, so the caller leaving it out
+/// is not an error, but the fact is missing and the outcome has to say so. A
+/// required parameter is never in this set; a misspelled key in `parameters:`
+/// stays the `VariableNotFound` it always was.
 pub(crate) fn unpassed_optional_parameters(
     article: &Article,
     parameters: &BTreeMap<String, Value>,
@@ -223,7 +223,7 @@ impl<'a> ArticleEngine<'a> {
         calculation_date: &str,
         requested_output: Option<&str>,
     ) -> Result<ArticleResult> {
-        self.evaluate_internal_traced(
+        self.evaluate_outputs(
             parameters,
             calculation_date,
             requested_output.as_ref().map(std::slice::from_ref),
@@ -242,7 +242,7 @@ impl<'a> ArticleEngine<'a> {
         requested_output: Option<&str>,
         trace: Rc<RefCell<TraceBuilder>>,
     ) -> Result<ArticleResult> {
-        self.evaluate_internal_traced(
+        self.evaluate_outputs(
             parameters,
             calculation_date,
             requested_output.as_ref().map(std::slice::from_ref),
@@ -251,26 +251,13 @@ impl<'a> ArticleEngine<'a> {
         )
     }
 
-    /// Execute this article for several requested outputs at once: the actions
-    /// in the union of their dependency closures run (RFC-043), `None` runs
-    /// every action. With `lazy`, an input or open term is resolved when an
-    /// operation first reads it instead of being expected in `parameters`.
+    /// Execute this article for the requested outputs: the actions in the
+    /// union of their dependency closures run (RFC-043), `None` runs every
+    /// action. With `lazy`, an input or open term is resolved when an
+    /// operation first reads it; without it, `parameters` must already
+    /// contain every value this article needs (cross-article and cross-law
+    /// resolution is [`crate::LawExecutionService`]'s job).
     pub(crate) fn evaluate_outputs(
-        &self,
-        parameters: BTreeMap<String, Value>,
-        calculation_date: &str,
-        requested_outputs: Option<&[&str]>,
-        trace: Option<Rc<RefCell<TraceBuilder>>>,
-        lazy: Option<&dyn LazyInputs>,
-    ) -> Result<ArticleResult> {
-        self.evaluate_internal_traced(parameters, calculation_date, requested_outputs, trace, lazy)
-    }
-
-    /// Internal evaluation, optionally tracing.
-    ///
-    /// `parameters` must already contain every value this article needs;
-    /// cross-article/cross-law resolution is [`crate::LawExecutionService`]'s job.
-    fn evaluate_internal_traced(
         &self,
         parameters: BTreeMap<String, Value>,
         calculation_date: &str,

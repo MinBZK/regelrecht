@@ -7,11 +7,11 @@
 //!
 //! Over-including is always safe: an action that runs without being needed
 //! costs work, never a wrong value. Under-including is what must not happen,
-//! so the walker below is exhaustive over the operation variants, and a
-//! reference the walker cannot place (a requested name no action produces)
-//! makes the article run in full.
+//! so the walk goes through [`ActionOperation::operands`], which is exhaustive
+//! over the operation variants, and a requested name no action produces makes
+//! the article run in full.
 
-use crate::article::{Action, ActionOperation, ActionValue, Article};
+use crate::article::{Action, ActionValue, Article};
 use crate::types::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -60,128 +60,40 @@ pub(crate) fn required_outputs(actions: &[Action], requested: &[&str]) -> Option
     Some(required)
 }
 
-/// Every `$name` an action refers to, by its base name (`$a.b` gives `a`).
+/// The name a `$reference` reads, by its base (`$a.b` gives `a`); `None` for
+/// a string that is not a reference.
+pub(crate) fn reference_base(reference: &str) -> Option<&str> {
+    let path = reference.strip_prefix('$')?;
+    Some(path.split('.').next().unwrap_or(path))
+}
+
+/// Every `$name` an action refers to, by its base name.
 pub(crate) fn referenced_names(action: &Action) -> BTreeSet<String> {
     let mut names = BTreeSet::new();
-    let operands = action
-        .value
-        .iter()
-        .chain(action.subject.iter())
-        .chain(action.values.iter().flatten())
-        .chain(action.conditions.iter().flatten());
-    for operand in operands {
-        visit_value(operand, &mut names);
-    }
+    action
+        .operands()
+        .for_each(|operand| visit_value(operand, &mut names));
     names
 }
 
 fn visit_value(value: &ActionValue, names: &mut BTreeSet<String>) {
     match value {
         ActionValue::Literal(literal) => visit_literal(literal, names),
-        ActionValue::Operation(op) => visit_operation(op, names),
+        ActionValue::Operation(op) => op
+            .operands()
+            .into_iter()
+            .for_each(|operand| visit_value(operand, names)),
     }
 }
 
 fn visit_literal(literal: &Value, names: &mut BTreeSet<String>) {
     match literal {
-        Value::String(s) => {
-            if let Some(reference) = s.strip_prefix('$') {
-                let base = reference.split('.').next().unwrap_or(reference);
-                names.insert(base.to_string());
-            }
-        }
+        Value::String(s) => names.extend(reference_base(s).map(str::to_string)),
         Value::Array(items) => items.iter().for_each(|item| visit_literal(item, names)),
         Value::Object(fields) => fields
             .values()
             .for_each(|field| visit_literal(field, names)),
         _ => {}
-    }
-}
-
-/// Exhaustive over the operation variants, so a new operation cannot hide a
-/// reference from the closure.
-fn visit_operation(op: &ActionOperation, names: &mut BTreeSet<String>) {
-    let mut each = |values: &[&ActionValue]| values.iter().for_each(|v| visit_value(v, names));
-    match op {
-        ActionOperation::Equals { subject, value }
-        | ActionOperation::NotEquals { subject, value }
-        | ActionOperation::GreaterThan { subject, value }
-        | ActionOperation::LessThan { subject, value }
-        | ActionOperation::GreaterThanOrEqual { subject, value }
-        | ActionOperation::LessThanOrEqual { subject, value } => each(&[subject, value]),
-        ActionOperation::Add { values }
-        | ActionOperation::Subtract { values }
-        | ActionOperation::Multiply { values }
-        | ActionOperation::Divide { values }
-        | ActionOperation::Max { values }
-        | ActionOperation::Min { values } => values.iter().for_each(|v| visit_value(v, names)),
-        ActionOperation::Round { value, .. }
-        | ActionOperation::Ceil { value, .. }
-        | ActionOperation::Floor { value, .. }
-        | ActionOperation::Not { value } => each(&[value]),
-        ActionOperation::And { conditions } | ActionOperation::Or { conditions } => {
-            conditions.iter().for_each(|v| visit_value(v, names))
-        }
-        ActionOperation::If { cases, default } => {
-            for case in cases {
-                each(&[&case.when, &case.then]);
-            }
-            if let Some(default) = default {
-                visit_value(default, names);
-            }
-        }
-        ActionOperation::IsNull { subject } | ActionOperation::NotNull { subject } => {
-            each(&[subject])
-        }
-        ActionOperation::In {
-            subject,
-            value,
-            values,
-        }
-        | ActionOperation::NotIn {
-            subject,
-            value,
-            values,
-        } => {
-            visit_value(subject, names);
-            if let Some(value) = value {
-                visit_value(value, names);
-            }
-            values.iter().flatten().for_each(|v| visit_value(v, names));
-        }
-        ActionOperation::List { items } => items.iter().for_each(|v| visit_value(v, names)),
-        ActionOperation::Foreach {
-            collection,
-            body,
-            filter,
-            ..
-        } => {
-            each(&[collection, body]);
-            if let Some(filter) = filter {
-                visit_value(filter, names);
-            }
-        }
-        ActionOperation::Age {
-            date_of_birth,
-            reference_date,
-        } => each(&[date_of_birth, reference_date]),
-        ActionOperation::DateAdd {
-            date,
-            years,
-            months,
-            weeks,
-            days,
-        } => {
-            visit_value(date, names);
-            for part in [years, months, weeks, days].into_iter().flatten() {
-                visit_value(part, names);
-            }
-        }
-        ActionOperation::Date { year, month, day } => each(&[year, month, day]),
-        ActionOperation::DayOfWeek { date }
-        | ActionOperation::DatePart { date, .. }
-        | ActionOperation::StartOf { date, .. } => each(&[date]),
-        ActionOperation::DateDiff { from, to, unit } => each(&[from, to, unit]),
     }
 }
 
