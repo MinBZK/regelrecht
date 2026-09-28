@@ -178,6 +178,9 @@ dashboard_outputs:
   GEMEENTE_ROTTERDAM/verordening_precariobelasting/gemeenten: belasting_per_jaar
   GEMEENTE_ROTTERDAM/algemene_plaatselijke_verordening/terrassen: heeft_recht_op_terrasvergunning
   GEMEENTE_ROTTERDAM/alcoholwet/vergunning/gemeenten: heeft_recht_op_vergunning
+  # Claudia heeft deze vergunning al; zonder regel hier kopte de tegel de
+  # bezwaartermijn (6 weken) als uitkomst.
+  GEMEENTE_ROTTERDAM/algemene_plaatselijke_verordening/exploitatievergunning/gemeenten: heeft_actieve_vergunning
   NVWA/warenwet/haccp: heeft_haccp_verplichting
   RVO/omgevingswet/energiebesparing/informatieplicht: heeft_informatieplicht
   NVWA/warenwet/meldplicht: heeft_meldplicht

@@ -400,7 +400,7 @@ articles:
               explanation: >-
                 Alle voorwaarden moeten worden vervuld voor een terrasvergunning
           - output: heeft_actieve_vergunning
-            value: true
+            value: $voldoet_aan_voorwaarden
             legal_basis:
               law: Algemene plaatselijke verordening Rotterdam 2012
               article: 2:30b

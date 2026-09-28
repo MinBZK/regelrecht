@@ -4122,10 +4122,6 @@ profiles:
             postcode: 3032TL
             woonplaats: Rotterdam
             type: WOONADRES
-        personen_vog:
-          - bsn: '999999990'
-            heeft_geldige_vog: true
-            afgiftedatum: '2024-12-01'
       BELASTINGDIENST:
         box1:
           - bsn: '999999990'
@@ -4280,6 +4276,13 @@ profiles:
             is_geregistreerd: true
             registratiedatum: '2024-06-15'
       GEMEENTE_ROTTERDAM:
+        # De VOG die Claudia bij haar aanvraag inleverde; de exploitatievergunning
+        # leest hem hier (bindings.yaml). Onder RvIG vond de binding hem niet, en
+        # zonder VOG voldeed ze niet en was haar vergunning "niet van toepassing".
+        personen_vog:
+          - bsn: '999999990'
+            heeft_geldige_vog: true
+            afgiftedatum: '2024-12-01'
         vestigingen:
           - kvk_nummer: '85234567'
             adres: Nieuwe Binnenweg 225A, 3021GC Rotterdam
@@ -4298,6 +4301,10 @@ profiles:
             vergunde_activiteiten:
               - Verstrekken van etenswaren
               - Alcoholvrije dranken
+            # Art. 2:28 lid 5 onder i t/m k, getoetst bij de verlening op 2025-08-01.
+            kvk_inschrijving_geldig: true
+            feitelijke_toestand_conform_aanvraag: true
+            voldoet_aan_horecabeleid: true
         ontheffingen_geluid_historie:
           - kvk_nummer: '85234567'
             datum: '2026-01-05'
@@ -4363,6 +4370,9 @@ profiles:
             intrekkingsreden: null
             handhavingsacties: []
             ingetrokken_slecht_levensgedrag: false
+            # Art. 2:28 lid 5 onder h: geen handhavingsacties, dus geen overtreden voorschriften.
+            kvk_nummer: '85234567'
+            voorschriften_overtreden: false
         omgevingsplan_toetsingen:
           - adres: Nieuwe Binnenweg 225A, 3021GC Rotterdam
             categorie: licht
