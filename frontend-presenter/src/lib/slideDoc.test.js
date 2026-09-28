@@ -95,6 +95,14 @@ describe('frontmatter edits', () => {
     expect(out).toBe("presenter: 'ja: nee'\n");
   });
 
+  it('rewrites a value that contains | or > in place instead of adding a duplicate key', () => {
+    expect(setYamlKey('presenter: A > B\ntitle: T\n', 'presenter', 'C | D')).toBe("presenter: C | D\ntitle: T\n");
+  });
+
+  it('leaves a block scalar alone', () => {
+    expect(setYamlKey('note: |\n  lang\n', 'title', 'T')).toBe('note: |\n  lang\ntitle: T\n');
+  });
+
   it('creates a deck.yaml from nothing', () => {
     expect(setYamlKey('', 'presenter', 'Jan Jansen')).toBe('presenter: Jan Jansen\n');
   });

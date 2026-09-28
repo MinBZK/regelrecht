@@ -41,7 +41,9 @@ export function splitFrontmatter(src) {
  */
 export function setYamlKey(text, key, value) {
   const line = yaml.dump({ [key]: value }, { lineWidth: -1 }).trimEnd();
-  const re = new RegExp(`^${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:[ \\t]*[^\\n|>]*$`, 'm');
+  // Only a value that *starts* with `|` or `>` is a block scalar; a `|` or `>`
+  // later in a plain value ("A > B") is ordinary text and is rewritten in place.
+  const re = new RegExp(`^${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:(?![ \\t]*[|>])[^\\n]*$`, 'm');
   if (re.test(text)) return text.replace(re, () => line);
   const sep = text === '' || text.endsWith('\n') ? '' : '\n';
   return `${text}${sep}${line}\n`;
