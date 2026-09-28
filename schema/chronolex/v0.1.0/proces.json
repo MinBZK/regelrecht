@@ -152,7 +152,7 @@
           "additionalProperties": false,
           "properties": {
             "lexostatus": {
-              "$ref": "#/definitions/identifier"
+              "$ref": "#/definitions/lexostatusnaam"
             },
             "regeling": {
               "$ref": "#/definitions/identifier"
@@ -238,7 +238,7 @@
           "pattern": "^https?://[^\\s/]+(/[^\\s]*)?$"
         },
         "lexostatus": {
-          "$ref": "#/definitions/identifier"
+          "$ref": "#/definitions/lexostatusnaam"
         },
         "zaak": {
           "type": "boolean",
@@ -261,7 +261,7 @@
                 "additionalProperties": false,
                 "properties": {
                   "lexostatus": {
-                    "$ref": "#/definitions/identifier"
+                    "$ref": "#/definitions/lexostatusnaam"
                   },
                   "veld": {
                     "type": "string",
@@ -435,7 +435,7 @@
               "$ref": "#/definitions/identifier"
             },
             "lexostatus": {
-              "$ref": "#/definitions/identifier"
+              "$ref": "#/definitions/lexostatusnaam"
             }
           }
         },
@@ -473,7 +473,7 @@
           "additionalProperties": false,
           "properties": {
             "lexostatus": {
-              "$ref": "#/definitions/identifier"
+              "$ref": "#/definitions/lexostatusnaam"
             },
             "veld": {
               "type": "string",
@@ -514,7 +514,7 @@
                 "pattern": "^https?://[^\\s/]+(/[^\\s]*)?$"
               },
               "lexostatus": {
-                "$ref": "#/definitions/identifier"
+                "$ref": "#/definitions/lexostatusnaam"
               },
               "invoer": {
                 "type": "object",
@@ -531,7 +531,7 @@
                       "pattern": "^[a-z_][a-z0-9_]*$"
                     },
                     "lexostatus": {
-                      "$ref": "#/definitions/identifier"
+                      "$ref": "#/definitions/lexostatusnaam"
                     },
                     "veld": {
                       "type": "string",
@@ -793,6 +793,18 @@
       "items": {
         "$ref": "#/definitions/grondslag"
       }
+    },
+    "lexostatusnaam": {
+      "description": "De naam van een lexostatus: een naam uit lexostatussen.yaml, of het lezende artikel van een lexostatus uit de wet (<regeling>#<artikel>, optioneel met ' lid <n>').",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/identifier"
+        },
+        {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*#[A-Za-z0-9]([A-Za-z0-9:._ -]*[A-Za-z0-9])?$"
+        }
+      ]
     }
   }
 }

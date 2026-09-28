@@ -45,7 +45,26 @@ pub struct Chronolex {
     #[serde(default)]
     pub vestigt: Vec<Vestiging>,
     #[serde(default)]
-    pub leest: Option<Lezing>,
+    pub leest: Option<Leest>,
+}
+
+/// Een lezing, of meer: een artikel kan per lid anders lezen (lid 2 leest
+/// het verzuimoordeel, lid 3 tot 5 de aanvraag). Elke lezing wordt een eigen
+/// lexostatus.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum Leest {
+    Een(Lezing),
+    Meer(Vec<Lezing>),
+}
+
+impl Leest {
+    pub fn lezingen(&self) -> Vec<&Lezing> {
+        match self {
+            Leest::Een(l) => vec![l],
+            Leest::Meer(v) => v.iter().collect(),
+        }
+    }
 }
 
 /// Een feit dat een artikel vestigt, of de uitbreiding van een feit dat een
@@ -118,6 +137,10 @@ pub enum Velden {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Lezing {
+    /// Het lid dat deze lezing draagt, als een artikel meer lezingen heeft;
+    /// de lexostatus heet dan `<regeling>#<artikel> lid <n>`.
+    #[serde(default)]
+    pub lid: Option<Value>,
     /// Welk gram het artikel leest, als het er een kiest (met `kies`).
     #[serde(default)]
     pub uit: Option<Map<String, Value>>,
@@ -658,23 +681,31 @@ pub fn lexostatussen(
     let mut fouten = Vec::new();
     let mut geleverd: BTreeMap<String, String> = BTreeMap::new();
     for wa in wet.values() {
-        let Some(lezing) = &wa.chronolex.leest else {
+        let Some(leest) = &wa.chronolex.leest else {
             continue;
         };
-        match definitie(wa, lezing, &events, aanvullingen) {
-            Ok(None) => {}
-            Ok(Some(d)) => {
-                for p in d.reduction.afleidingen.keys() {
-                    if let Some(ander) = geleverd.insert(p.clone(), d.name.clone()) {
+        for lezing in leest.lezingen() {
+            match definitie(wa, lezing, &events, aanvullingen) {
+                Ok(None) => {}
+                Ok(Some(d)) => {
+                    for p in d.reduction.afleidingen.keys() {
+                        if let Some(ander) = geleverd.insert(p.clone(), d.name.clone()) {
+                            fouten.push(format!(
+                                "parameter '{p}' komt uit twee lexostatussen uit de wet: {ander} en {}",
+                                d.name
+                            ));
+                        }
+                    }
+                    if uit.iter().any(|u: &LexostatusDefinitie| u.name == d.name) {
                         fouten.push(format!(
-                            "parameter '{p}' komt uit twee lexostatussen uit de wet: {ander} en {}",
+                            "{}: twee lezingen met dezelfde naam; geef elke lezing een eigen lid",
                             d.name
                         ));
                     }
+                    uit.push(d);
                 }
-                uit.push(d);
+                Err(f) => fouten.extend(f),
             }
-            Err(f) => fouten.extend(f),
         }
     }
     for a in aanvullingen {
@@ -698,7 +729,13 @@ fn definitie(
     events: &[Celevent<'_>],
     aanvullingen: &[WetAanvulling],
 ) -> Result<Option<LexostatusDefinitie>, Vec<String>> {
-    let waar = format!("{} (leest)", wa.verwijzing);
+    // De naam: het artikel, of het lid als de lezing er een noemt.
+    let lexonaam = match &lezing.lid {
+        None => wa.verwijzing.clone(),
+        Some(Value::String(l)) => format!("{} lid {l}", wa.verwijzing),
+        Some(l) => format!("{} lid {l}", wa.verwijzing),
+    };
+    let waar = format!("{lexonaam} (leest)");
     let mut fouten = Vec::new();
     let typen = parametertypen(wa.artikel);
     // Per filter: waar het in de cel landt. Geen: niet deze cel.
@@ -769,7 +806,7 @@ fn definitie(
             o.insert("filter".into(), Value::Object(filter));
         }
         if !o.contains_key("grondslag") {
-            o.insert("grondslag".into(), serde_json::json!([wa.verwijzing]));
+            o.insert("grondslag".into(), serde_json::json!([lexonaam]));
         }
         match serde_json::from_value::<Afgeleid>(Value::Object(o)) {
             Ok(a) => {
@@ -831,11 +868,11 @@ fn definitie(
     }
     let extra_velden = aanvullingen
         .iter()
-        .filter(|a| a.artikel == wa.verwijzing)
+        .filter(|a| a.artikel == lexonaam)
         .flat_map(|a| a.extra_velden.clone())
         .collect();
     Ok(Some(LexostatusDefinitie {
-        name: wa.verwijzing.clone(),
+        name: lexonaam.clone(),
         inputs: vec![InputDefinitie {
             name: "zaakkenmerk".into(),
             soort: "string".into(),
@@ -850,7 +887,7 @@ fn definitie(
             extra_velden,
         },
         wet: Some(Wetlezing {
-            artikel: wa.verwijzing.clone(),
+            artikel: lexonaam,
             typen,
             besluit_dit: lezing.besluit.as_deref() == Some("dit"),
         }),
@@ -1029,6 +1066,11 @@ events:
             a => panic!("{a:?}"),
         }
         assert!(d.wet.as_ref().unwrap().besluit_dit);
+        // Zonder eigen grondslag rust een afleiding op het lezende artikel.
+        assert_eq!(
+            d.reduction.afleidingen["betaald_bedrag"].grondslag,
+            ["testwet_lezing#2"]
+        );
 
         let grammen = vec![
             gram(
@@ -1088,6 +1130,25 @@ events:
                 Some("testwet_lezing#2")
             );
         }
+    }
+
+    #[test]
+    fn een_lezing_per_lid_is_een_eigen_lexostatus() {
+        let wet = WET.replace(
+            "              leest:\n                besluit: dit\n                parameters:\n                  vastgesteld_bedrag: {uit: {stage: BESLUIT}, kies: laatste, veld: vastgesteld_bedrag}\n                  betaald_bedrag: {uit: {gevestigd_door: 'testwet_lezing#2'}, som: bedrag}\n",
+            "              leest:\n                - parameters:\n                    vastgesteld_bedrag: {uit: {stage: BESLUIT}, kies: laatste, veld: vastgesteld_bedrag}\n                - lid: 2\n                  parameters:\n                    betaald_bedrag: {uit: {gevestigd_door: 'testwet_lezing#2'}, som: bedrag}\n",
+        );
+        assert_ne!(wet, WET, "de vervanging raakte niets");
+        let mut s = LawExecutionService::new();
+        s.load_law(&wet).unwrap();
+        let mut strommen = vec![stroom("bedrag_art1: $external.bedrag_art1")];
+        assert!(vestig(&mut strommen, &s).is_empty());
+        let namen: Vec<String> = lexostatussen(&strommen, &s, &[])
+            .unwrap()
+            .into_iter()
+            .map(|d| d.name)
+            .collect();
+        assert_eq!(namen, ["testwet_lezing#2", "testwet_lezing#2 lid 2"]);
     }
 
     #[test]
