@@ -8,7 +8,7 @@ use regelrecht_engine::{RuleContext, Value, ValueResolver};
 use std::collections::BTreeMap;
 use std::hint::black_box;
 
-fn make_context() -> RuleContext {
+fn make_context() -> RuleContext<'static> {
     let mut parameters = BTreeMap::new();
     parameters.insert("bsn".to_string(), Value::String("999993653".to_string()));
     parameters.insert("inkomen".to_string(), Value::Int(35000));

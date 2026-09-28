@@ -55,14 +55,18 @@ The types a law file deserializes into are not defined in the engine. They live 
 flowchart TD
     A[Load Law YAML] --> B[Parse Articles]
     B --> C[Build Output Index]
-    C --> D[Resolve Inputs]
-    D --> E{Cross-Law Reference?}
-    E -->|Yes| F[Load & Execute Referenced Law]
-    F --> D
-    E -->|No| G[Resolve Open Terms via IoC]
-    G --> H[Execute Operations]
-    H --> I[Produce Outputs with Trace]
+    C --> D[Select the actions the requested outputs need]
+    D --> E[Execute Operations]
+    E --> F{Reads an input or open term?}
+    F -->|First read| G[Resolve it: register, other law, or IoC]
+    G --> H[Remember it for this execution]
+    H --> E
+    F -->|No| I[Produce Outputs with Trace]
 ```
+
+An article does not resolve its inputs before it runs. An operation that reads `$inkomen` resolves the input `inkomen` at that moment, from a register or by executing the other law, and the value is kept for the rest of the execution ([RFC-043](/rfcs/rfc-043)). An input no operation reads is never fetched. Because `AND`, `OR` and `IF` stop at the operand that decides, a condition that settles the outcome early also stops the retrieval behind it: for a minor, the zorgtoeslag reads the date of birth and nothing else.
+
+The order of operands decides what is fetched, never the result. `AND` and `OR` keep evaluating past an unknown operand to look for one that decides ([RFC-036](/rfcs/rfc-036)), so reordering conditions gives the same outcome.
 
 ### Variable Resolution Priority
 
@@ -81,7 +85,13 @@ Articles can define multiple outputs (e.g., `heeft_recht_op_zorgtoeslag` and `ho
 
 ### Which outputs come back
 
-Callers name the outputs they need, and there is no "run the whole law" mode: the engine executes only the articles that produce those outputs. It does not filter what those articles produce, though. The result holds every output of each executed article, including outputs the caller did not ask for, plus the outputs that hooks and overrides add to them. A beschikking is legally indivisible (Awb 1:3), so consequences such as the motivering and the bezwaartermijn are never stripped from it. A receipt records which outputs were actually requested in `requested_outputs`, next to the full set that came back.
+Callers name the outputs they need, and there is no "run the whole law" mode: the engine executes only the articles that produce those outputs, and in each article only the actions those outputs depend on ([RFC-043](/rfcs/rfc-043)). The dependency closure follows `$name` references between the article's own outputs. An action outside it does not run, so it cannot fail the call, and its output is not in the result. Asking whether the conditions are met does not also compute the amount.
+
+What hooks and overrides add stays in. A beschikking is legally indivisible (Awb 1:3), so consequences such as the motivering and the bezwaartermijn are never stripped from it. When a `post_actions` hook fires on an article, that article runs in full, because the hook receives its outputs and the engine cannot see which of them it reads. A receipt records which outputs were requested in `requested_outputs`, next to the set that came back.
+
+A hook or an override that replaces an output receives only the parameters it declares. The engine resolves and computes those names for it and leaves the rest of the article demand-driven. A `voids` that excludes a requested output is checked before that output is computed.
+
+The same rule makes a missing required parameter an error only for the outputs that read it. Asking for an output that does not need the parameter succeeds without it.
 
 If a requested output is missing because the law itself excludes it (a `voids` in schema v0.7.0), the call fails with an error that quotes the excluding article, instead of returning success with the output silently absent.
 
@@ -95,7 +105,7 @@ let result = service.evaluate_law(
     params,
     "2025-01-01",
 )?;
-// result.outputs holds every output of the executed articles, plus hook/override outputs
+// result.outputs holds the requested outputs and what they depend on, plus hook/override outputs
 // result.output_provenance tags each output as Direct, Reactive, or Override
 
 // Single-output convenience (equivalent to evaluate_law with one output)

@@ -586,9 +586,10 @@ now tests the month rule of art. 1 lid 1 onder c itself, and
   missing key errors. The POC gave None in all cases. Rule 3 above and the
   wet_brp guards cover the cases the scenarios hit; other persona data may hit
   more.
-- The engine evaluates every action of an article for any requested output; the
-  POC computed outputs only when its `requirements` held. Constant-true outputs
-  therefore read differently in negative cases (see wet_kinderopvang).
+- The engine evaluates only the actions a requested output depends on
+  (RFC-043), but it has no `requirements` gate: the POC computed outputs only
+  when its `requirements` held. Constant-true outputs therefore read differently
+  in negative cases (see wet_kinderopvang).
 
 ## Getrouwheid aan de wettekst
 

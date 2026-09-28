@@ -20,7 +20,7 @@
 //! ```
 
 use crate::article::{Action, ActionOperation, Article, ArticleBasedLaw};
-use crate::context::RuleContext;
+use crate::context::{LazyInputs, RuleContext};
 use crate::error::{EngineError, Result};
 use crate::operations::{evaluate_value, execute_operation};
 use crate::resolver::{DeclarationNotInForce, DeclarationsFromOtherVersion, DelegationRefusal};
@@ -186,7 +186,8 @@ impl<'a> ArticleEngine<'a> {
     /// # Arguments
     /// * `parameters` - Input parameters (e.g., {"BSN": "123456789"})
     /// * `calculation_date` - Date for which calculations are performed (YYYY-MM-DD)
-    /// * `requested_output` - Specific output to calculate (optional, calculates all if None)
+    /// * `requested_output` - Output to calculate. Only the actions it depends on
+    ///   run (RFC-043); `None` runs every action.
     ///
     /// # Returns
     /// * `Ok(ArticleResult)` - Execution result with outputs and metadata
@@ -197,7 +198,13 @@ impl<'a> ArticleEngine<'a> {
         calculation_date: &str,
         requested_output: Option<&str>,
     ) -> Result<ArticleResult> {
-        self.evaluate_internal_traced(parameters, calculation_date, requested_output, None)
+        self.evaluate_internal_traced(
+            parameters,
+            calculation_date,
+            requested_output.as_ref().map(std::slice::from_ref),
+            None,
+            None,
+        )
     }
 
     /// Execute this article's logic with trace support.
@@ -210,7 +217,28 @@ impl<'a> ArticleEngine<'a> {
         requested_output: Option<&str>,
         trace: Rc<RefCell<TraceBuilder>>,
     ) -> Result<ArticleResult> {
-        self.evaluate_internal_traced(parameters, calculation_date, requested_output, Some(trace))
+        self.evaluate_internal_traced(
+            parameters,
+            calculation_date,
+            requested_output.as_ref().map(std::slice::from_ref),
+            Some(trace),
+            None,
+        )
+    }
+
+    /// Execute this article for several requested outputs at once: the actions
+    /// in the union of their dependency closures run (RFC-043), `None` runs
+    /// every action. With `lazy`, an input or open term is resolved when an
+    /// operation first reads it instead of being expected in `parameters`.
+    pub(crate) fn evaluate_outputs(
+        &self,
+        parameters: BTreeMap<String, Value>,
+        calculation_date: &str,
+        requested_outputs: Option<&[&str]>,
+        trace: Option<Rc<RefCell<TraceBuilder>>>,
+        lazy: Option<&dyn LazyInputs>,
+    ) -> Result<ArticleResult> {
+        self.evaluate_internal_traced(parameters, calculation_date, requested_outputs, trace, lazy)
     }
 
     /// Internal evaluation, optionally tracing.
@@ -221,13 +249,14 @@ impl<'a> ArticleEngine<'a> {
         &self,
         parameters: BTreeMap<String, Value>,
         calculation_date: &str,
-        requested_output: Option<&str>,
+        requested_outputs: Option<&[&str]>,
         trace: Option<Rc<RefCell<TraceBuilder>>>,
+        lazy: Option<&dyn LazyInputs>,
     ) -> Result<ArticleResult> {
         tracing::debug!(
             law_id = %self.law.id,
             article = %self.article.number,
-            requested_output = ?requested_output,
+            requested_outputs = ?requested_outputs,
             "Starting article evaluation"
         );
 
@@ -252,11 +281,15 @@ impl<'a> ArticleEngine<'a> {
             context.set_definitions(definitions);
         }
 
-        // Guard against any input that still carries an unresolved external source.
-        self.check_input_sources(&parameters)?;
+        // Guard against any input that still carries an unresolved external
+        // source, unless inputs resolve on first read (RFC-043).
+        match lazy {
+            Some(lazy) => context.set_lazy(lazy),
+            None => self.check_input_sources(&parameters)?,
+        }
 
         // Execute actions (with trace instrumentation)
-        self.execute_actions_traced(&mut context, requested_output)?;
+        self.execute_actions_traced(&mut context, requested_outputs)?;
 
         // Build result
         // Tag all outputs as Direct (hooks/overrides are tagged by the service layer)
@@ -339,16 +372,27 @@ impl<'a> ArticleEngine<'a> {
         Ok(())
     }
 
-    /// Execute all actions in order, with optional trace instrumentation.
+    /// Execute the actions the requested outputs depend on, in declaration
+    /// order, with optional trace instrumentation (RFC-043). An action outside
+    /// that closure does not run: it fetches nothing, computes nothing, and
+    /// cannot fail the article.
     fn execute_actions_traced(
         &self,
         context: &mut RuleContext,
-        _requested_output: Option<&str>,
+        requested_outputs: Option<&[&str]>,
     ) -> Result<()> {
         let actions = self.get_actions();
         let tracing_active = context.has_trace();
+        let required =
+            requested_outputs.and_then(|names| crate::demand::required_outputs(actions, names));
 
         for action in actions {
+            if let (Some(required), Some(name)) = (&required, &action.output) {
+                if !required.contains(name) {
+                    continue;
+                }
+            }
+
             // An action without `output` is a computation with nowhere to
             // land. The schema requires the field and the model has it as an
             // `Option`, because the model must also read files written before
@@ -1096,15 +1140,63 @@ articles:
         let mut params = BTreeMap::new();
         params.insert("age".to_string(), Value::Int(25));
 
-        // Request specific output (used for article lookup)
         let result = engine
-            .evaluate_with_output(params, "2025-01-01", Some("is_adult"))
+            .evaluate_with_output(params.clone(), "2025-01-01", Some("is_adult"))
             .unwrap();
 
-        // All outputs are calculated (matches Python behavior)
-        // Later actions may depend on earlier outputs
+        // Only the requested output and what it depends on are computed
+        // (RFC-043); `age_check_result` does not read `is_adult`.
         assert!(result.outputs.contains_key("is_adult"));
-        assert!(result.outputs.contains_key("age_check_result"));
+        assert!(!result.outputs.contains_key("age_check_result"));
+
+        // Without a requested output, every action runs.
+        let all = engine.evaluate(params, "2025-01-01").unwrap();
+        assert!(all.outputs.contains_key("is_adult"));
+        assert!(all.outputs.contains_key("age_check_result"));
+    }
+
+    /// An action outside the closure of the requested output cannot fail the
+    /// article (RFC-043): here it reads a variable nobody passed.
+    #[test]
+    fn an_action_nobody_asked_for_does_not_fail_the_article() {
+        let yaml = r#"
+$id: demand_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: t
+    machine_readable:
+      execution:
+        output:
+          - name: gevraagd
+            type: number
+          - name: tussen
+            type: number
+          - name: niet_gevraagd
+            type: number
+        actions:
+          - output: tussen
+            value: 2
+          - output: niet_gevraagd
+            value: $bestaat_niet
+          - output: gevraagd
+            value:
+              operation: MULTIPLY
+              values: [$tussen, 3]
+"#;
+        let law = ArticleBasedLaw::from_yaml_str(yaml).unwrap();
+        let article = law.find_article_by_number("1").unwrap();
+        let engine = ArticleEngine::new(article, &law);
+
+        let result = engine
+            .evaluate_with_output(BTreeMap::new(), "2025-01-01", Some("gevraagd"))
+            .unwrap();
+        assert_eq!(result.outputs.get("gevraagd"), Some(&Value::Int(6)));
+        assert_eq!(result.outputs.get("tussen"), Some(&Value::Int(2)));
+        assert!(!result.outputs.contains_key("niet_gevraagd"));
+
+        assert!(engine.evaluate(BTreeMap::new(), "2025-01-01").is_err());
     }
 
     // -------------------------------------------------------------------------

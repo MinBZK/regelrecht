@@ -79,8 +79,15 @@ function collect(node, lawId, key, seen) {
         children: collect(child, refLaw, childKey, seen),
         ...childKey,
       });
-    } else if (child.node_type === 'article' || child.node_type === 'action' || child.node_type === 'operation') {
-      // Descend: nested resolutions inside an action tree still count.
+    } else if (
+      child.node_type === 'article' ||
+      child.node_type === 'action' ||
+      child.node_type === 'operation' ||
+      child.node_type === 'resolve'
+    ) {
+      // Descend: nested resolutions inside an action tree still count. An
+      // input is resolved where an operation first reads it (RFC-043), so its
+      // register value or cross-law call sits under that `resolve` step.
       out.push(...collect(child, lawId, key, seen));
     }
   }
