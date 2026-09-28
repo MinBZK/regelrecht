@@ -2,9 +2,10 @@
 # Experiment A (niet voor productie): de lexostatus `registerstatus` van de
 # fictieve registercel (cellen/register/lexostatussen.yaml), geschreven als
 # engine-artikel. De kroniek komt binnen als parameter `grammen`: een lijst
-# grammen van een kroniek, door de cel oplopend op op_moment gezet, elk met
-# een `volgorde` (0, 1, ...). De engine kent geen tijdstip met tijdzone, dus
-# "het laatste gram" is het gram met de hoogste volgorde.
+# grammen van een kroniek, in de volgorde van de kroniek, elk met een
+# `volgorde` (0, 1, ...): zijn plaats in de tijd, door de cel gezet. De engine
+# kent geen tijdstip met tijdzone, dus "het laatste gram" is het gram met de
+# hoogste volgorde.
 #
 # Vergelijk: packages/cel/tests/exp_reductie_als_engine.rs.
 $schema: >-
@@ -32,45 +33,16 @@ articles:
             type: string
             required: true
         output:
-          - {name: is_ingeschreven_raad, type: boolean}
-          - {name: is_geschrapt_raad, type: boolean}
-          - {name: zetels_op_lijst, type: number}
+          - {name: zetels_toegewezen, type: number}
           # Hulpuitvoer: de volgorde van het laatste mededeling-gram (null:
           # geen). De reductie-DSL heeft hier `kies: laatste`.
           - {name: laatste_mededeling, type: number, nullable: true}
           - {name: datum_mededeling, type: date, nullable: true}
-          - {name: geblokkeerd_raad, type: boolean}
-          - {name: jaar, type: number, nullable: true}
+          - {name: geblokkeerd, type: boolean}
+          - {name: jaar_van_mededeling, type: number, nullable: true}
         actions:
-          # bestaat: FOREACH met filter, combine OR (leeg = false: "geen gram = nee").
-          - output: is_ingeschreven_raad
-            value:
-              operation: FOREACH
-              collection: $grammen
-              as: g
-              filter:
-                operation: AND
-                conditions:
-                  - {operation: EQUALS, subject: $g.name, value: aanduiding_ingeschreven}
-                  - {operation: EQUALS, subject: $g.fields.orgaan, value: raad}
-                  - {operation: EQUALS, subject: $g.fields.aanduiding, value: $aanduiding}
-              body: true
-              combine: OR
-          - output: is_geschrapt_raad
-            value:
-              operation: FOREACH
-              collection: $grammen
-              as: g
-              filter:
-                operation: AND
-                conditions:
-                  - {operation: EQUALS, subject: $g.name, value: aanduiding_geschrapt}
-                  - {operation: EQUALS, subject: $g.fields.orgaan, value: raad}
-                  - {operation: EQUALS, subject: $g.fields.aanduiding, value: $aanduiding}
-              body: true
-              combine: OR
           # som: combine ADD (leeg = 0).
-          - output: zetels_op_lijst
+          - output: zetels_toegewezen
             value:
               operation: FOREACH
               collection: $grammen
@@ -112,7 +84,7 @@ articles:
                 body: $g.fields.datum
                 combine: ADD
           # kies: laatste + bevat: IN over het lijstveld, combine OR (leeg = false).
-          - output: geblokkeerd_raad
+          - output: geblokkeerd
             value:
               operation: FOREACH
               collection: $grammen
@@ -121,7 +93,7 @@ articles:
               body: {operation: IN, subject: raad, value: $g.fields.geblokkeerd_voor}
               combine: OR
           # kies: laatste + jaar_van.
-          - output: jaar
+          - output: jaar_van_mededeling
             value:
               operation: IF
               cases:

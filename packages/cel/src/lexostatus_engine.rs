@@ -3,40 +3,50 @@
 //!
 //! De lexostatus is dan een artikel (een engine-regeling) met de kroniek als
 //! parameter: een lijst grammen. Deze module doet alleen wat de engine niet
-//! kan: de grammen van een kroniek oplopend op `op_moment` zetten (de engine
-//! kent geen tijdstip met tijdzone) en elk gram een `volgorde` geven, zodat
-//! "het laatste gram" het gram met de hoogste volgorde is. De rest staat in
-//! het artikel. Niet in gebruik door de runtime; zie het verslag in de
+//! kan: elk gram een `volgorde` geven, zijn plaats in de tijd (de engine kent
+//! geen tijdstip met tijdzone), zodat "het laatste gram" het gram met de
+//! hoogste volgorde is. De rest staat in het artikel. Niet in gebruik door de runtime; zie het verslag in de
 //! superpowers-specs.
 
 use std::collections::BTreeMap;
 
-use chrono::DateTime;
 use regelrecht_engine::LawExecutionService;
 use serde_json::{json, Map, Value};
 
-use crate::stroom::Gram;
+use crate::gram::Gram;
 use crate::toets;
 
-/// De grammen van `kroniek` als parameter voor de engine: oplopend op
-/// `op_moment` (bij gelijk moment in de volgorde van de kroniek, zoals
-/// `kies: laatste`), elk met `volgorde`, `name`, `type`, `op_moment`,
-/// `zaakkenmerk` (als het er is) en `fields`.
+/// De grammen van `kroniek` als parameter voor de engine, in de volgorde van
+/// de kroniek, elk met `volgorde`, `name`, `type`, `op_moment`,
+/// `zaakkenmerk` (als het er is) en `fields`. `volgorde` is de plaats in de
+/// tijd, zoals `kies: laatste` die leest ([`Gram::tijdvolgorde`]: eerst
+/// `op_moment`, dan `vastgelegd_op`, en bij gelijke tijden de volgorde van de
+/// kroniek). Zo is "het laatste gram" het gram met de hoogste volgorde, en
+/// blijft een verzameling (`verzamel`) in de volgorde van de kroniek.
 pub fn als_kroniek(grammen: &[Gram], kroniek: &str) -> Result<Value, String> {
-    let mut door: Vec<(DateTime<chrono::FixedOffset>, &Gram)> = Vec::new();
-    for g in grammen.iter().filter(|g| g.chronicle == kroniek) {
-        let m = DateTime::parse_from_rfc3339(&g.op_moment)
-            .map_err(|e| format!("gram met ongeldig op_moment '{}': {e}", g.op_moment))?;
-        door.push((m, g));
+    let door: Vec<&Gram> = grammen.iter().filter(|g| g.chronicle == kroniek).collect();
+    for g in &door {
+        // Een ongeldig moment is een fout, geen plaats achteraan.
+        g.moment()?;
+        g.vastgelegd()?;
     }
-    // Stabiel: bij gelijk moment blijft de volgorde van de kroniek.
-    door.sort_by_key(|a| a.0);
+    let mut in_de_tijd: Vec<usize> = (0..door.len()).collect();
+    // Stabiel: bij gelijke tijden blijft de volgorde van de kroniek.
+    in_de_tijd.sort_by(|&a, &b| {
+        door[a]
+            .tijdvolgorde(door[b])
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let mut volgorde = vec![0; door.len()];
+    for (plaats, i) in in_de_tijd.into_iter().enumerate() {
+        volgorde[i] = plaats;
+    }
     Ok(Value::Array(
         door.into_iter()
-            .enumerate()
-            .map(|(i, (_, g))| {
+            .zip(volgorde)
+            .map(|(g, v)| {
                 let mut o = Map::new();
-                o.insert("volgorde".into(), json!(i));
+                o.insert("volgorde".into(), json!(v));
                 o.insert("name".into(), json!(g.name));
                 o.insert("type".into(), json!(g.type_));
                 o.insert("op_moment".into(), json!(g.op_moment));

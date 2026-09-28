@@ -2,9 +2,10 @@
 //! op dezelfde grammen. De uitkomsten moeten gelijk zijn.
 //!
 //! De eerste tests draaien op de fictieve registercel. De test
-//! `vergelijk_uit_omgeving` doet hetzelfde voor een cel en een artikel
-//! buiten deze repo (bijvoorbeeld een ander corpus), met paden uit de
-//! omgeving; zonder die variabelen slaat hij over.
+//! `vergelijk_uit_omgeving` doet hetzelfde voor cellen en artikelen buiten
+//! deze repo (bijvoorbeeld een ander corpus), met paden uit de omgeving;
+//! zonder die variabelen slaat hij over. De afleidingen en de extra velden
+//! van een lexostatus worden beide vergeleken.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -13,19 +14,23 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use regelrecht_cel::config::CelDefinitie;
-use regelrecht_cel::stroom::{self, Gram};
+use regelrecht_cel::gram::Gram;
+use regelrecht_cel::stroom;
 use regelrecht_cel::{lexostatus_engine, reductie, startstand};
 use regelrecht_engine::LawExecutionService;
 use serde_json::{json, Map, Value};
 
 const DATUM: &str = "2025-03-12";
+/// De laadtijd van de startstand: na elk gram in de startstanden.
+const LAADTIJD: &str = "2026-09-28T12:00:00+02:00";
 
 fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
 }
 
 /// De grammen van een cel: de startstand, plus `extra` (json-regels in de
-/// vorm van de startstand).
+/// vorm van de startstand), geplaatst zoals de runtime dat doet (met een
+/// vaste laadtijd als `vastgelegd_op`).
 fn grammen_van(cel_map: &Path, extra: &[Value]) -> (CelDefinitie, Vec<Gram>) {
     let def = CelDefinitie::laad(cel_map).unwrap();
     let mut strommen = Vec::new();
@@ -39,7 +44,8 @@ fn grammen_van(cel_map: &Path, extra: &[Value]) -> (CelDefinitie, Vec<Gram>) {
         tekst.push_str(&e.to_string());
     }
     let grammen = startstand::parse(&tekst, "startstand", &strommen).unwrap();
-    (def, grammen)
+    let laadtijd = chrono::DateTime::parse_from_rfc3339(LAADTIJD).unwrap();
+    (def, startstand::geplaatst(&grammen, &laadtijd).unwrap())
 }
 
 fn service_met(artikel: &Path) -> (LawExecutionService, String) {
@@ -50,8 +56,20 @@ fn service_met(artikel: &Path) -> (LawExecutionService, String) {
     (s, id)
 }
 
-/// Vergelijk per input: de parameters van de reductie tegen de uitkomsten
-/// van de engine. Geeft de verschillen terug.
+/// De namen die een lexostatus oplevert: haar afleidingen (parameters) en
+/// haar extra velden. Het engine-artikel heeft voor elk een uitkomst met
+/// dezelfde naam.
+fn uitkomsten_van(def: &reductie::LexostatusDefinitie) -> Vec<&str> {
+    def.reduction
+        .afleidingen
+        .keys()
+        .chain(def.reduction.extra_velden.keys())
+        .map(String::as_str)
+        .collect()
+}
+
+/// Vergelijk per input: de parameters en extra velden van de reductie tegen
+/// de uitkomsten van de engine. Geeft de verschillen terug.
 fn vergelijk(
     def: &reductie::LexostatusDefinitie,
     service: &LawExecutionService,
@@ -59,17 +77,16 @@ fn vergelijk(
     grammen: &[Gram],
     inputs: &[Map<String, Value>],
 ) -> Vec<String> {
-    let uitkomsten: Vec<&str> = def
-        .reduction
-        .afleidingen
-        .keys()
-        .map(String::as_str)
-        .collect();
+    let uitkomsten = uitkomsten_van(def);
     let mut verschillen = Vec::new();
     for i in inputs {
         let dsl = reductie::reduceer(def, i, grammen)
             .unwrap()
-            .map(|l| l.parameters)
+            .map(|l| {
+                let mut v = l.parameters;
+                v.extend(l.extra_velden);
+                v
+            })
             .unwrap_or_default();
         let engine = lexostatus_engine::reduceer(
             service,
@@ -138,7 +155,7 @@ fn laatste_is_op_moment_niet_op_toevoegen() {
     let uit = lexostatus_engine::reduceer(
         &service,
         &id,
-        &["datum_mededeling", "geblokkeerd_raad", "jaar"],
+        &["datum_mededeling", "geblokkeerd", "jaar_van_mededeling"],
         i,
         &grammen,
         &def.reduction.kroniek,
@@ -146,20 +163,15 @@ fn laatste_is_op_moment_niet_op_toevoegen() {
     )
     .unwrap();
     assert_eq!(uit["datum_mededeling"], json!("2024-12-02"));
-    assert_eq!(uit["geblokkeerd_raad"], json!(true));
-    assert_eq!(uit["jaar"], json!(2024));
+    assert_eq!(uit["geblokkeerd"], json!(true));
+    assert_eq!(uit["jaar_van_mededeling"], json!(2024));
 }
 
 #[test]
 fn geen_gram_is_nee_nul_of_weg() {
     let (def, grammen) = register();
     let (service, id) = service_met(&fixtures().join("experiment/lexostatus_registerstatus.yaml"));
-    let uitkomsten: Vec<&str> = def
-        .reduction
-        .afleidingen
-        .keys()
-        .map(String::as_str)
-        .collect();
+    let uitkomsten = uitkomsten_van(&def);
     let uit = lexostatus_engine::reduceer(
         &service,
         &id,
@@ -170,11 +182,10 @@ fn geen_gram_is_nee_nul_of_weg() {
         DATUM,
     )
     .unwrap();
-    assert_eq!(uit["is_ingeschreven_raad"], json!(false));
-    assert_eq!(uit["zetels_op_lijst"], json!(0));
-    assert_eq!(uit["geblokkeerd_raad"], json!(false));
+    assert_eq!(uit["zetels_toegewezen"], json!(0));
+    assert_eq!(uit["geblokkeerd"], json!(false));
     assert!(!uit.contains_key("datum_mededeling"));
-    assert!(!uit.contains_key("jaar"));
+    assert!(!uit.contains_key("jaar_van_mededeling"));
 }
 
 /// Tijd per reductie, DSL tegen engine, bij een groeiende kroniek. Draai met
@@ -205,12 +216,7 @@ fn meet(
     i: &Map<String, Value>,
 ) {
     let n = 200;
-    let uitkomsten: Vec<&str> = def
-        .reduction
-        .afleidingen
-        .keys()
-        .map(String::as_str)
-        .collect();
+    let uitkomsten = uitkomsten_van(def);
     let t = Instant::now();
     for _ in 0..n {
         reductie::reduceer(def, i, grammen).unwrap();
@@ -231,56 +237,87 @@ fn meet(
     }
     let engine = t.elapsed();
     println!(
-        "{} grammen, {n}x: dsl {:?}/run, engine {:?}/run",
+        "{}: {} grammen, {n}x: dsl {:?}/run, engine {:?}/run",
+        def.name,
         grammen.len(),
         dsl / n,
         engine / n
     );
 }
 
-/// Dezelfde vergelijking voor een cel en een artikel van buiten deze repo.
+/// Dezelfde vergelijking voor cellen en artikelen van buiten deze repo.
 ///
-/// - `EXP_CEL_MAP`: de map van de cel (met `cel.yaml`);
-/// - `EXP_ARTIKEL`: het engine-artikel met de lexostatus;
-/// - `EXP_LEXOSTATUS`: de naam van de lexostatus in de cel;
-/// - `EXP_INPUTS`: een json-lijst van inputs, een object per geval.
+/// `EXP_VERGELIJK`: een json-lijst, een object per vergelijking, met
+///
+/// - `cel_map`: de map van de cel (met `cel.yaml`);
+/// - `extra` (optioneel): een bestand met json-regels in de vorm van de
+///   startstand, die erachter komen;
+/// - `artikel`: het engine-artikel met de lexostatus;
+/// - `lexostatus`: de naam van de lexostatus in de cel;
+/// - `inputs`: een lijst inputs, een object per geval.
+///
+/// Zonder die variabele slaat de test over.
 #[test]
 fn vergelijk_uit_omgeving() {
-    let (Ok(map), Ok(artikel), Ok(naam), Ok(invoer)) = (
-        std::env::var("EXP_CEL_MAP"),
-        std::env::var("EXP_ARTIKEL"),
-        std::env::var("EXP_LEXOSTATUS"),
-        std::env::var("EXP_INPUTS"),
-    ) else {
-        eprintln!("EXP_* niet gezet: overgeslagen");
+    let Ok(invoer) = std::env::var("EXP_VERGELIJK") else {
+        eprintln!("EXP_VERGELIJK niet gezet: overgeslagen");
         return;
     };
-    let map = PathBuf::from(map);
-    let (def, grammen) = grammen_van(&map, &[]);
-    let lexo = reductie::laad(&map.join(&def.lexostatussen)).unwrap();
-    let def = lexo.lexostatus(&naam).unwrap().clone();
-    let (service, id) = service_met(Path::new(&artikel));
-    let gevallen: Vec<Map<String, Value>> = serde_json::from_str(&invoer).unwrap();
-    for i in &gevallen {
-        let uit: BTreeMap<String, Value> = lexostatus_engine::reduceer(
-            &service,
-            &id,
-            &def.reduction
-                .afleidingen
-                .keys()
-                .map(String::as_str)
-                .collect::<Vec<_>>(),
-            i,
-            &grammen,
-            &def.reduction.kroniek,
-            DATUM,
-        )
-        .unwrap();
-        println!("{i:?}: {uit:?}");
+    let lijst: Vec<Value> = serde_json::from_str(&invoer).unwrap();
+    let (mut gevallen, mut waarden) = (0, 0);
+    let mut verschillen = Vec::new();
+    for v in &lijst {
+        let map = PathBuf::from(v["cel_map"].as_str().unwrap());
+        let extra: Vec<Value> = match v.get("extra").and_then(Value::as_str) {
+            Some(pad) => std::fs::read_to_string(pad)
+                .unwrap()
+                .lines()
+                .filter(|r| !r.trim().is_empty())
+                .map(|r| serde_json::from_str(r).unwrap())
+                .collect(),
+            None => Vec::new(),
+        };
+        let (def, grammen) = grammen_van(&map, &extra);
+        let lexo = reductie::laad(&map.join(&def.lexostatussen)).unwrap();
+        let naam = v["lexostatus"].as_str().unwrap();
+        let def = lexo.lexostatus(naam).unwrap().clone();
+        let (service, id) = service_met(Path::new(v["artikel"].as_str().unwrap()));
+        let inputs: Vec<Map<String, Value>> = serde_json::from_value(v["inputs"].clone()).unwrap();
+        let uitkomsten = uitkomsten_van(&def);
+        println!(
+            "{naam} ({} grammen, {} extra): {} gevallen x {} uitkomsten {uitkomsten:?}",
+            grammen.len(),
+            extra.len(),
+            inputs.len(),
+            uitkomsten.len()
+        );
+        for i in &inputs {
+            let uit = lexostatus_engine::reduceer(
+                &service,
+                &id,
+                &uitkomsten,
+                i,
+                &grammen,
+                &def.reduction.kroniek,
+                DATUM,
+            )
+            .unwrap();
+            println!("  {i:?}: {uit:?}");
+        }
+        verschillen.extend(
+            vergelijk(&def, &service, &id, &grammen, &inputs)
+                .into_iter()
+                .map(|f| format!("{naam}: {f}")),
+        );
+        gevallen += inputs.len();
+        waarden += inputs.len() * uitkomsten.len();
+        meet(&def, &service, &id, &grammen, &inputs[0]);
     }
-    let v = vergelijk(&def, &service, &id, &grammen, &gevallen);
-    assert!(v.is_empty(), "{v:#?}");
-    meet(&def, &service, &id, &grammen, &gevallen[0]);
+    println!(
+        "vergeleken: {} lexostatus-runs, {gevallen} gevallen, {waarden} waarden",
+        lijst.len()
+    );
+    assert!(verschillen.is_empty(), "{verschillen:#?}");
 }
 
 /// Stap 2: de synthese per regel als engine-run, voor een corpus van buiten
@@ -292,7 +329,10 @@ fn vergelijk_uit_omgeving() {
 /// - `EXP_SYNTHESE_MAP`: de map met de lexostatus- en synthese-regelingen;
 /// - `EXP_KOPPELING`: json-lijst `{regeling, cel_map, kroniek}` (welke
 ///   lexostatus-regeling welke kroniek leest: de deploymentconfiguratie);
-/// - `EXP_SYNTHESE`: json `{regeling, uitkomst, inputs}` van de synthese;
+/// - `EXP_SYNTHESE`: json `{regeling, uitkomst, jaar, inputs, verwacht}` van
+///   de synthese; `verwacht` (optioneel) geeft per uitkomst de waarde die de
+///   synthese van de cel-runtime oplevert (de tabel, de vertaalde
+///   parameters);
 /// - `EXP_AFNEMER`: json `{regeling, uitkomst, tabel, jaar, verwacht}`: de
 ///   afnemer krijgt de tabel als parameter `tabel` en het jaar als `jaar`.
 #[test]
@@ -339,11 +379,20 @@ fn synthese_uit_omgeving() {
     let s: Value = serde_json::from_str(&synthese).unwrap();
     let a: Value = serde_json::from_str(&afnemer).unwrap();
     let invoer: BTreeMap<String, Value> = serde_json::from_value(s["inputs"].clone()).unwrap();
+    let verwacht: Map<String, Value> = s
+        .get("verwacht")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    let mut uitkomsten = vec![s["uitkomst"].as_str().unwrap(), s["jaar"].as_str().unwrap()];
+    uitkomsten.extend(verwacht.keys().map(String::as_str));
+    uitkomsten.sort_unstable();
+    uitkomsten.dedup();
     let t = Instant::now();
     let e = regelrecht_cel::toets::evalueer_met_trace(
         &service,
         s["regeling"].as_str().unwrap(),
-        &[s["uitkomst"].as_str().unwrap(), s["jaar"].as_str().unwrap()],
+        &uitkomsten,
         &invoer,
         DATUM,
     );
@@ -355,6 +404,17 @@ fn synthese_uit_omgeving() {
         e.mist,
         e.trace_text.unwrap_or_default()
     );
+    let verschillen: Vec<String> = verwacht
+        .iter()
+        .filter(|(u, w)| e.waarden.get(*u) != Some(*w))
+        .map(|(u, w)| format!("{u}: runtime {w}, engine {:?}", e.waarden.get(u)))
+        .collect();
+    println!(
+        "synthese: {} van {} uitkomsten gelijk aan de runtime",
+        verwacht.len() - verschillen.len(),
+        verwacht.len()
+    );
+    assert!(verschillen.is_empty(), "{verschillen:#?}");
     let tabel = e.waarden[s["uitkomst"].as_str().unwrap()].clone();
     let jaar = e.waarden[s["jaar"].as_str().unwrap()].clone();
     println!("tabel: {tabel}\njaar: {jaar}");
