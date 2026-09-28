@@ -49,7 +49,7 @@ const lawSet = computed(() => (corpus.value ? simulationLaws(corpus.value, kind.
 // The regelingen those laws lean on and whose constants can be changed too:
 // the standaardpremie sits in its own ministeriële regeling, not in the
 // zorgtoeslag law (see supportingLaws).
-const supporting = computed(() => (corpus.value ? supportingLaws(corpus.value, lawSet.value.runnable, overridableDefinitions) : []));
+const supporting = computed(() => (corpus.value ? supportingLaws(corpus.value, lawSet.value.runnable, overridableDefinitions, notHidden) : []));
 const tunable = computed(() => [...lawSet.value.runnable, ...supporting.value]);
 const definitionsByLaw = computed(() => Object.fromEntries(tunable.value.map((law) => [law.id, overridableDefinitions(law.doc)])));
 function overrideCount(lawId) {

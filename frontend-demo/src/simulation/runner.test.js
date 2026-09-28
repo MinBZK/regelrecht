@@ -110,6 +110,14 @@ describe('supportingLaws', () => {
     expect(supportingLaws(corpus, [top], constants).map((l) => l.id)).toEqual(['onder']);
   });
 
+  it('volgt de zichtbaarheidskeuze van de demo, zoals simulationLaws', () => {
+    const top = entry('top', doc({ reads: ['verborgen', 'zichtbaar'] }));
+    const verborgen = entry('verborgen', doc({ defs: { x: 1 } }));
+    const zichtbaar = entry('zichtbaar', doc({ defs: { y: 2 } }));
+    const corpus = corpusOf(top, verborgen, zichtbaar);
+    expect(supportingLaws(corpus, [top], constants, (l) => l.id !== 'verborgen').map((l) => l.id)).toEqual(['zichtbaar']);
+  });
+
   it('noemt een gesimuleerde wet niet nog eens, en overleeft een kring', () => {
     const a = entry('a', doc({ defs: { x: 1 }, reads: ['b'] }));
     const b = entry('b', doc({ defs: { y: 2 }, reads: ['a'] }));

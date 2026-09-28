@@ -57,9 +57,11 @@ export function simulationLaws(corpus, kind, isLawEnabled = () => true) {
  * @param {{latestById: Map<string, object>}} corpus
  * @param {object[]} runnable  the laws the simulation runs
  * @param {(doc: object) => unknown[]} hasConstants  a law's tunable constants
+ * @param {(law: object) => boolean} [isLawEnabled]  the demo's visibility
+ *   choice, as for `simulationLaws`: a hidden law is not offered here either
  * @returns {object[]} sorted by name, without the runnable laws themselves
  */
-export function supportingLaws(corpus, runnable, hasConstants) {
+export function supportingLaws(corpus, runnable, hasConstants, isLawEnabled = () => true) {
   const implementers = new Map();
   for (const law of corpus.latestById.values()) {
     for (const article of law.doc?.articles ?? []) {
@@ -90,7 +92,7 @@ export function supportingLaws(corpus, runnable, hasConstants) {
   return [...seen]
     .filter((id) => !runIds.has(id))
     .map((id) => corpus.latestById.get(id))
-    .filter((law) => hasConstants(law.doc).length > 0)
+    .filter((law) => isLawEnabled(law) && hasConstants(law.doc).length > 0)
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -157,19 +159,21 @@ export async function runSimulation({ engine, corpus, kind, params, overrides = 
   const population = kind === 'ondernemers' ? generateBusinesses(params, referenceDate, templateRow) : generateCitizens(params, referenceDate, templateRow);
   const { runnable: laws, skipped } = simulationLaws(corpus, kind, isLawEnabled);
 
-  // Law constants for this run, also those of the regelingen the laws lean on.
   const applied = {};
-  for (const law of [...laws, ...supportingLaws(corpus, laws, overridableDefinitions)]) {
-    const eff = effectiveOverrides(law.doc, overrides[law.id]);
-    if (Object.keys(eff).length) {
-      engine.loadLaw(applyOverrides(law.doc, eff));
-      applied[law.id] = eff;
-    }
-  }
-
   const results = [];
   const primaries = new Map(laws.map((law) => [law.id, primaryOutputName(corpus, law)]));
   try {
+    // Law constants for this run, also those of the regelingen the laws lean
+    // on. Inside the `try`: if one of them fails to load, the `finally` still
+    // puts back the ones that were already swapped in.
+    for (const law of [...laws, ...supportingLaws(corpus, laws, overridableDefinitions, isLawEnabled)]) {
+      const eff = effectiveOverrides(law.doc, overrides[law.id]);
+      if (Object.keys(eff).length) {
+        engine.loadLaw(applyOverrides(law.doc, eff));
+        applied[law.id] = eff;
+      }
+    }
+
     // Register data: the generated rows, plus the shared tables every persona has.
     const shared = {};
     for (const [service, byTable] of Object.entries(corpus.profiles.globalServices ?? {})) shared[service] = byTable;
