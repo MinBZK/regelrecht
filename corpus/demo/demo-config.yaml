@@ -455,6 +455,10 @@ expanded_paths:
     # the two requirements: age and insured
     - articles.*.machine_readable.execution.actions.voldoet_aan_voorwaarden.value.conditions.0
     - articles.*.machine_readable.execution.actions.voldoet_aan_voorwaarden.value.conditions.1
+    # the age test is a calculation (art. 1 lid 1 onder c: from the month after
+    # the eighteenth birthday), at position 0 in 2025 and 1 in 2024
+    - articles.*.machine_readable.execution.actions.voldoet_aan_voorwaarden.value.conditions.0.subject.reference_date
+    - articles.*.machine_readable.execution.actions.voldoet_aan_voorwaarden.value.conditions.1.subject.reference_date
     # the calculation for a partner: joint income against the threshold
     - articles.*.machine_readable.execution.actions.hoogte_toeslag.value.value.cases.0.then.cases.0.when.subject.values
   zvw:

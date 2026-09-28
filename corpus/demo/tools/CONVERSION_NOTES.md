@@ -30,9 +30,9 @@ reproduced by a regeneration.
 | skipped as non-engine (`integratie/`, `web/`, `synthesize.feature`) | 5 |
 | converted feature files | 41 |
 | scenarios converted | 331 |
-| `@wip` (skipped by the runner) | 1 |
-| run by `just bdd-demo` | 330 |
-| passing | 330 |
+| `@wip` (skipped by the runner) | 0 |
+| run by `just bdd-demo` | 331 |
+| passing | 331 |
 | failing | 0 |
 
 ## Rules applied
@@ -228,6 +228,12 @@ and would otherwise fail here.
   read a date or `$adres.*` that was None in the POC for a person without
   register data; the engine raises on a path on null or a null date, so the
   actions test for a value first (null / false otherwise).
+- `zorgtoeslagwet` (2024 and 2025): the age test read `wet_brp#leeftijd` on the
+  calculation date. Wzt art. 1 lid 1 onder c makes a person a verzekerde from the
+  month after the month of the eighteenth birthday, so the law now reads
+  `wet_brp#geboortedatum` and tests the age on the last day of the month before
+  the calculation month. The edge cases are in
+  `zorgtoeslagwet_verzekerde_vanaf_18-2025-01-01.feature`.
 - `burgerlijk_wetboek_handelingsonbekwaamheid.curator_bsn`: the one SWITCH-shaped
   site the tool reports; rewritten by hand to the same count + FOREACH form.
 - `wet_structuur_uitvoeringsorganisatie_werk_en_inkomen`: a dienstverband without
@@ -559,9 +565,14 @@ alone.
 
 ## `@wip`
 
-- `zorgtoeslagwet_TOESLAGEN-2025-01-01 :: Persoon onder 18 heeft geen recht op zorgtoeslag`:
-  POC data problem. Born 2007-01-01, calculation date 2025-02-01: the person is 18,
-  the engine says voldoet_aan_voorwaarden true, the POC asserted "onder 18".
+None. The one scenario that was here, `zorgtoeslagwet_TOESLAGEN-2025-01-01 ::
+Persoon onder 18 heeft geen recht op zorgtoeslag`, had POC data that contradicted
+its name: born 2007-01-01, the person is 18 on the calculation date 2025-02-01 and
+a verzekerde from that date (Wzt art. 1 lid 1 onder c). `CORRECTED` in
+`convert_features.mjs` moves the birth date to 2008-01-01. The POC tested the age
+on `$prev_january_first`, which is not the date the law names either; the demo law
+now tests the month rule of art. 1 lid 1 onder c itself, and
+`zorgtoeslagwet_verzekerde_vanaf_18-2025-01-01.feature` holds the edge cases.
 
 ## Worth knowing
 

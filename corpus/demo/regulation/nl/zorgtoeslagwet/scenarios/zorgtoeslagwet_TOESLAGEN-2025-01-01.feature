@@ -9,15 +9,14 @@ Feature: Berekening Zorgtoeslag 2025
     Given the calculation date is "2025-02-01"
     And parameter "bsn" is "999993653"
 
-  # @wip: POC data: born 2007-01-01, so 18 on the calculation date 2025-02-01; the engine finds voldoet_aan_voorwaarden true (leeftijd 18), the POC asserted "onder 18"
-  @wip
   Scenario: Persoon onder 18 heeft geen recht op zorgtoeslag
+    # corrected: POC data: born 2007-01-01, the person is 18 on the calculation date 2025-02-01 and a verzekerde from that date (Wzt art. 1 lid 1 onder c); born 2008-01-01 makes the person the minor the scenario names
     Given the following "DJI" data with key "bsn" for law "penitentiaire_beginselenwet":
       | bsn       | status | inrichting_type |
       | 999993653 | VRIJ   | GEEN            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 2007-01-01    | GEEN              | null        | []                | Amsterdam      | []             | NEDERLAND     |               | null  | []           |                       |
+      | 999993653 | 2008-01-01    | GEEN              | null        | []                | Amsterdam      | []             | NEDERLAND     |               | null  | []           |                       |
     And the following "BELASTINGDIENST" data with key "bsn" for law "wet_inkomstenbelasting":
       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | reguliere_voordelen | vervreemdingsvoordelen | spaargeld | beleggingen | onroerend_goed | schulden | persoonsgebonden_aftrek | partner_loon_uit_dienstbetrekking | partner_uitkeringen_en_pensioenen | partner_winst_uit_onderneming | partner_resultaat_overige_werkzaamheden | partner_eigen_woning | partner_reguliere_voordelen | partner_vervreemdingsvoordelen | partner_spaargeld | partner_beleggingen | partner_onroerend_goed | partner_schulden | partner_buitenlands_inkomen | buitenlands_inkomen |
       | 999993653 | 0                         | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 0         | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
