@@ -5,7 +5,7 @@
  * next to the migrated demo laws as `corpus/demo/regulation/nl/<law dir>/scenarios/<name>.feature`.
  *
  * The conversion is deterministic and re-runnable: every judgement call lives in
- * this file as a rule (the step tables below, `ADOPTED`, `WIP`), never in the
+ * this file as a rule (the step tables below, `ADOPTED`, `WIP`, `CORRECTED`), never in the
  * generated output. Regenerate with:
  *
  *     node corpus/demo/tools/convert_features.mjs <poc>/features corpus/demo/regulation/nl
@@ -88,9 +88,19 @@ const ADOPTED = {
  * for a reason that is not a conversion bug: key `<poc path>::<scenario>` -> reason.
  * They are emitted with `@wip` and the reason as a comment.
  */
-const WIP = {
-  'toeslagen/zorgtoeslagwet_TOESLAGEN-2025-01-01.feature::Persoon onder 18 heeft geen recht op zorgtoeslag':
-    'POC data: born 2007-01-01, so 18 on the calculation date 2025-02-01; the engine finds voldoet_aan_voorwaarden true (leeftijd 18), the POC asserted "onder 18"',
+const WIP = {};
+
+/**
+ * POC register data that contradicts the scenario's own intent, corrected before
+ * materialising: key `<poc path>::<scenario>` -> { table: `<SERVICE> <table>`,
+ * field, from, to, reason }. Every row of that table whose field equals `from`
+ * gets `to`. The reason is emitted as a comment on the scenario.
+ */
+const CORRECTED = {
+  'toeslagen/zorgtoeslagwet_TOESLAGEN-2025-01-01.feature::Persoon onder 18 heeft geen recht op zorgtoeslag': {
+    table: 'RvIG personen', field: 'geboortedatum', from: '2007-01-01', to: '2008-01-01',
+    reason: 'POC data: born 2007-01-01, the person is 18 on the calculation date 2025-02-01 and a verzekerde from that date (Wzt art. 1 lid 1 onder c); born 2008-01-01 makes the person the minor the scenario names',
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -891,6 +901,13 @@ function convertScenario(scenario, base, pocRel, versions, bindings, allKeyField
   if (totalAssertions === 0) wipReasons.push('no engine-checkable assertion');
   const wipKey = `${pocRel}::${scenario.name}`;
   if (WIP[wipKey]) wipReasons.push(WIP[wipKey]);
+  const correction = CORRECTED[wipKey];
+  if (correction) {
+    const rows = tables.get(correction.table);
+    if (!rows?.some((r) => r[correction.field] === correction.from)) throw new Error(`${wipKey}: correction does not apply`);
+    tables.set(correction.table, rows.map((r) => (r[correction.field] === correction.from ? { ...r, [correction.field]: correction.to } : r)));
+    scenarioGiven.comments.push(`corrected: ${correction.reason}`);
+  }
 
   // ----- materialise register data for every law reachable from any phase -----
   const allParams = params.map((p) => ({ ...p }));

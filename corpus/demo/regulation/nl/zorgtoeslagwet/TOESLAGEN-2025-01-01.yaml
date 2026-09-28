@@ -63,15 +63,11 @@ articles:
             type: string
             required: true
         input:
-          - name: leeftijd
-            type: number
-            type_spec:
-              unit: years
-              precision: 0
-              min: 0
+          - name: geboortedatum
+            type: date
             source:
               regulation: wet_brp
-              output: leeftijd
+              output: geboortedatum
               parameters:
                 bsn: $bsn
                 referentiedatum: $referencedate
@@ -205,7 +201,22 @@ articles:
             value:
               operation: AND
               conditions:
-                - subject: $leeftijd
+                # Art. 1 lid 1 onder c: verzekerde "vanaf de eerste dag van de kalendermaand
+                # volgende op de maand waarin hij achttien jaar wordt". Niet de leeftijd op
+                # de rekendatum dus: wie in de maand van de rekendatum 18 wordt, telt pas
+                # mee vanaf de maand erna. Achttien geworden in een eerdere maand is
+                # hetzelfde als achttien zijn op de laatste dag van de vorige maand.
+                - subject:
+                    operation: AGE
+                    date_of_birth: $geboortedatum
+                    reference_date:
+                      operation: DATE_ADD
+                      date:
+                        operation: DATE
+                        year: $referencedate.year
+                        month: $referencedate.month
+                        day: 1
+                      days: -1
                   operation: GREATER_THAN_OR_EQUAL
                   value: $minimum_leeftijd
                 - subject: $is_verzekerde
