@@ -203,6 +203,14 @@ dashboard_outputs:
 # lege lijst betekent: alleen de uitkomst, verder niets. Een wet die hier niet
 # in staat houdt de oude weergave, dus dit kan wet voor wet groeien.
 tile_details:
+  # Waarom het niet mag en wat er vergund wordt. De precario-uitvoer van deze
+  # wet blijft weg: die rekent de precarioverordening, en hier stond hij als
+  # "verschuldigd: Ja" naast een afgewezen terras.
+  GEMEENTE_ROTTERDAM/algemene_plaatselijke_verordening/terrassen:
+    - weigeringsgrond
+    - vergunde_oppervlakte
+    - vergunde_sluitingstijd_doordeweeks
+    - vergunde_sluitingstijd_weekend
   # De uitspraak is het hele antwoord; het uitzonderingsvinkje is een tussenstap.
   KIESRAAD/kieswet: []
   # Het bedrag is het antwoord. Waar het uit is opgebouwd staat in de berekening.

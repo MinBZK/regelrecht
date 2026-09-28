@@ -67,6 +67,15 @@ const primaryName = computed(() => corpus.value?.config?.dashboard_outputs?.[`${
 const outcomeRows = computed(() => {
   const o = props.evaluation?.ok ? props.evaluation.outputs : {};
   const rows = Object.entries(o).filter(([k]) => k !== 'voldoet_aan_voorwaarden');
+  // Dezelfde keuze als de tegel (`tile_details`), anders hing het af van de
+  // volgorde van de uitvoer wat er in beeld kwam: bij de terrasvergunning viel
+  // de weigeringsgrond als zevende weg, en stond er "Aanvragen heeft geen zin"
+  // zonder te zeggen waarom. Een lege tekst is geen grond en blijft weg.
+  const wanted = corpus.value?.config?.tile_details?.[`${props.law?.service}/${props.law?.law_path}`];
+  if (wanted) {
+    const pick = (name) => rows.find(([k, v]) => k === name && v !== '');
+    return [primaryName.value, ...wanted].map(pick).filter(Boolean);
+  }
   rows.sort(([a], [b]) => (a === primaryName.value ? -1 : b === primaryName.value ? 1 : 0));
   return rows.slice(0, 6);
 });
