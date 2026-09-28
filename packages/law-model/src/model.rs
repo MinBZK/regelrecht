@@ -377,6 +377,14 @@ pub struct Produces {
     /// When absent, the default procedure for the legal_character is used.
     #[serde(default)]
     pub procedure_id: Option<String>,
+    /// Namespaced integration blocks (RFC-022 §3.2): each integration owns
+    /// one key and the shape inside it. The engine does not read them; a
+    /// runtime that knows the namespace does (for instance `chronolex`: which
+    /// facts this article establishes and how it reads them back from a
+    /// chronicle). Kept as written, so a namespace this crate does not know
+    /// is not silently dropped.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extensions: Option<serde_json::Value>,
 }
 
 /// A single case in an IF operation (cases/default syntax)
