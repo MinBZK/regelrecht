@@ -430,3 +430,54 @@ body {
 .graph-canvas .vue-flow__node.graph-dim {
   opacity: 0.25;
 }
+
+/* De trace (TraceView.vue): de tekst van de engine, met per wet een kleur.
+ * Een presentator loopt hem wet voor wet door op een zaalscherm; de streep
+ * links en het label waar een andere wet het overneemt maken die overgang
+ * vindbaar. nldd-code-viewer kleurt alleen zijn eigen grammatica's, niet een
+ * regel naar de wet waarin hij draait. */
+.trace-view__nav {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--semantics-surfaces-base-background-color, Canvas);
+}
+
+.trace-view__law {
+  box-shadow: inset 0 -3px 0 var(--law-color);
+  border-radius: var(--primitives-radius-8, 8px);
+}
+
+.trace-view__lines {
+  font-family: var(--primitives-font-family-monospace, monospace);
+  font-size: 1rem;
+  line-height: 1.45;
+  white-space: pre;
+  overflow-x: auto;
+  padding-block: 8px;
+}
+
+.trace-view__line {
+  border-left: 4px solid var(--law-color, transparent);
+  padding-left: 8px;
+}
+
+.trace-view__line--start {
+  background: color-mix(in srgb, var(--law-color) 18%, transparent);
+  font-weight: 600;
+}
+
+.trace-view__line--current {
+  outline: 2px solid var(--law-color);
+  outline-offset: -2px;
+}
+
+.trace-view__badge {
+  margin-left: 12px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--law-color);
+  color: #fff;
+  font-family: var(--primitives-font-family-sans, sans-serif);
+  font-weight: 600;
+}

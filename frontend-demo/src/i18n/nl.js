@@ -888,4 +888,8 @@ export default {
   'scenario.outputs': 'Uitkomsten',
   'app.toolbar.label': 'Werkruimte',
   'scenario.trace': 'Trace',
+  'trace.nav.label': 'Wetten in deze berekening',
+  'trace.nav.prev': 'Vorige wet',
+  'trace.nav.next': 'Volgende wet',
+  'trace.nav.position': '{n} van {total}',
 };

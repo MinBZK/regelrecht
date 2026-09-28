@@ -870,4 +870,8 @@ export default {
   'scenario.outputs': 'Outcomes',
   'app.toolbar.label': 'Workspace',
   'scenario.trace': 'Trace',
+  'trace.nav.label': 'Laws in this calculation',
+  'trace.nav.prev': 'Previous law',
+  'trace.nav.next': 'Next law',
+  'trace.nav.position': '{n} of {total}',
 };

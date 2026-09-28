@@ -765,4 +765,8 @@ export default {
   "scenario.outputs": "Útkomsten",
   "app.toolbar.label": "Wurkromte",
   "scenario.trace": "Trace",
+  "trace.nav.label": "Wetten yn dizze berekkening",
+  "trace.nav.prev": "Foarige wet",
+  "trace.nav.next": "Folgjende wet",
+  "trace.nav.position": "{n} fan {total}",
 };

@@ -8,6 +8,7 @@ import { loadFailureFor, loadFailures, prepareScenarioEngine } from '../engine/u
 import { useDemo } from '../store/demoStore.js';
 import { useLocalePath } from '../i18n/useLocalePath.js';
 import { useI18n } from '../i18n/index.js';
+import TraceView from '../components/TraceView.vue';
 
 // Naar een ander tabblad op naam, niet op pad: onder `/en/` leidt een
 // letterlijk Nederlands pad de bezoeker ongemerkt het Nederlandse tabblad in.
@@ -259,6 +260,16 @@ function renderTraceFallback(err) {
 }
 
 
+/**
+ * One scenario run by hand opens its trace straight away: that is what the
+ * presenter clicks through next. "Run all" does not, it would open one sheet
+ * after the other.
+ */
+async function runAndShow(index) {
+  await run(index);
+  if (runs[index]?.traceText) activeTrace.value = index;
+}
+
 async function runAll() {
   if (runningAll.value) return;
   runningAll.value = true;
@@ -384,7 +395,7 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
               <!-- One height across the action row: an md tag and xs buttons are both
                    24px; no tag size matches an sm button. -->
               <nldd-tag v-if="resultTag(index)" :color="resultTag(index).color" :text="resultTag(index).text"></nldd-tag>
-              <nldd-button size="xs" variant="secondary" start-icon="play" :text="t('scenario.run')" :loading="runs[index]?.status === 'running' || undefined" :disabled="(anyRunning && runs[index]?.status !== 'running') || undefined" @click="run(index)"></nldd-button>
+              <nldd-button size="xs" variant="secondary" start-icon="play" :text="t('scenario.run')" :loading="runs[index]?.status === 'running' || undefined" :disabled="(anyRunning && runs[index]?.status !== 'running') || undefined" @click="runAndShow(index)"></nldd-button>
               <nldd-button v-if="runs[index]?.traceText" size="xs" variant="neutral-tinted" start-icon="list" :text="t('scenario.trace')" @click="activeTrace = index"></nldd-button>
               <nldd-icon-button size="xs" variant="neutral-transparent" :icon="open[index] ? 'chevron-up' : 'chevron-down'" :text="open[index] ? 'Stappen verbergen' : 'Stappen tonen'" :expanded="open[index] || undefined" @click="open[index] = !open[index]"></nldd-icon-button>
             </nldd-container>
@@ -414,9 +425,10 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
     </nldd-split-view-pane>
 
     <!-- The engine's trace is wide; a 320px inspector column cuts every line,
-         so it opens in a broad sheet, as the tile's "Berekening" does. -->
+         so it opens in a broad sheet, as the tile's "Berekening" does. As wide
+         as a hall screen allows: the sheet clamps it to the viewport. -->
     <Teleport to="body">
-      <nldd-sheet ref="traceSheet" placement="right" width="760px" :accessible-label="t('scenario.trace.label')" @close="activeTrace = null">
+      <nldd-sheet ref="traceSheet" placement="right" width="1400px" :accessible-label="t('scenario.trace.label')" @close="activeTrace = null">
         <nldd-page v-if="traceScenario">
           <nldd-container slot="header" padding="12">
             <nldd-top-title-bar :text="t('scenario.trace.label')" :supporting-text="parsed?.scenarios[activeTrace]?.name" :dismiss-text="t('scenario.close')" @dismiss="activeTrace = null"></nldd-top-title-bar>
@@ -429,7 +441,7 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
                 <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="JSON.stringify(v)"></nldd-text-cell>
               </nldd-list-item>
             </nldd-list>
-            <nldd-code-viewer variant="box-tinted" no-copy>{{ traceScenario.traceText }}</nldd-code-viewer>
+            <TraceView :text="traceScenario.traceText" />
           </nldd-container>
         </nldd-page>
       </nldd-sheet>
