@@ -73,6 +73,23 @@ body {
   padding-left: 1.25em;
 }
 
+/* Op een telefoon: de zaalmaat en de volle inspringing lieten tien niveaus
+ * diep een kolom van een paar tekens over, en `overflow-wrap: anywhere` brak
+ * daarin elk woord letter voor letter af. Hier kleiner en minder diep, en
+ * een woord blijft heel: wat dan nog niet past schuift horizontaal, zoals in
+ * een code-viewer. */
+@media (max-width: 640px) {
+  .yaml-tree {
+    font-size: 0.875rem;
+    overflow-wrap: normal;
+    overflow-x: auto;
+  }
+
+  .yaml-tree .yaml-node {
+    padding-left: 0.75em;
+  }
+}
+
 .yaml-tree .yaml-key {
   color: var(--primitives-color-donkerblauw-700);
 }
