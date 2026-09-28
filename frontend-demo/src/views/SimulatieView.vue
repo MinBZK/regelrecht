@@ -559,7 +559,12 @@ function exportJson() {
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="start" v-if="runs.length">
               <nldd-tab-bar size="sm" @tabchange="onTab">
-                <nldd-tab-bar-item v-for="r in runs" :key="r.id" class="sim-run-tab" :style="{ '--run-color': runColor(r) }" :data-run="r.id" :current="activeTab === r.id || undefined" :text="runLabel(r)"></nldd-tab-bar-item>
+                <!-- De kleur van de run als bolletje in de icoonplek: een streep
+                     onder de tab hing aan de rechthoek van het element en
+                     sneed door de afgeronde hover- en huidige-achtergrond. -->
+                <nldd-tab-bar-item v-for="r in runs" :key="r.id" :data-run="r.id" :current="activeTab === r.id || undefined" :text="runLabel(r)">
+                  <nldd-icon slot="icon" name="circle-filled-small" :style="{ color: runColor(r) }"></nldd-icon>
+                </nldd-tab-bar-item>
                 <nldd-tab-bar-item v-if="runs.length > 1" data-run="vergelijking" :current="activeTab === 'vergelijking' || undefined" :text="t('sim.tab.comparison')" icon="arrow-left-right"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
