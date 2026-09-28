@@ -95,6 +95,7 @@ regelrecht/
 ├── frontend/             # Law editor (Vue 3 + Vite)
 ├── frontend-lawmaking/   # Law-making process visualization
 ├── frontend-demo/        # The demo, engine as WASM in the browser
+├── frontend-presenter/   # Slides from a folder of markdown files (local dev tool)
 ├── frontend-poc-*/       # The proof-of-concepts behind the portal
 ├── corpus-poc/           # Case corpora of the PoCs, not law in force
 ├── pocs/                 # The PoC register
