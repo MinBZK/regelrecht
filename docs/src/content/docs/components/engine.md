@@ -77,11 +77,10 @@ When the engine resolves a `$variable`, it checks these sources in order:
 1. **Context variables** - `referencedate`, `referencedate.year`, etc.
 2. **Local scope** - loop variables from `FOREACH`
 3. **Outputs** - values calculated by previous actions in the same article
-4. **Resolved inputs** - values set on the context directly (the service does not use this layer)
-5. **Definitions** - article-level constants
-6. **Inputs and open terms** - resolved on first read and kept for the execution; an open term comes before an input and a parameter of the same name, also where a source's parameters are read
-7. **Parameters** - direct input parameters, and the outputs of a `pre_actions` hook. A value the caller passed replaces the source of an input of the same name. A hook output replaces an input or open term of the same name for the actions and the post-action steps, but not where a source's parameters are read
-8. **Unpassed optional parameters** - a parameter the article declares optional and the caller left out is unknown for lack of it
+4. **Definitions** - article-level constants
+5. **Inputs and open terms** - resolved on first read and kept for the execution; an open term comes before an input and a parameter of the same name, also where a source's parameters are read
+6. **Parameters** - direct input parameters, and the outputs of a `pre_actions` hook. A value the caller passed replaces the source of an input of the same name. A hook output replaces an input or open term of the same name for the actions and the post-action steps, but not where a source's parameters are read
+7. **Unpassed optional parameters** - a parameter the article declares optional and the caller left out is unknown for lack of it
 
 ## Multi-Output Evaluation
 
@@ -178,10 +177,10 @@ The engine automatically loads the referenced law, executes it with the specifie
 Higher laws declare `open_terms` that lower regulations fill via `implements`. At execution time, the engine:
 
 1. Indexes all `implements` declarations at law load time
-2. Looks up implementations for each `open_term`
+2. Looks up the implementations of an `open_term` when an operation first reads it
 3. Filters by temporal validity (`calculation_date`) and scope (`gemeente_code`, etc.)
 4. Resolves conflicts via **lex superior** (higher layer wins) then **lex posterior** (newer date wins)
-5. Falls back to the `default` if no implementation found
+5. Falls back to the `default` if no implementation found; a default reads the earlier terms of its article as it reaches them
 
 See [RFC-003](/rfcs/rfc-003) for the full pattern.
 

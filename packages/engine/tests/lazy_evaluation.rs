@@ -1707,3 +1707,26 @@ articles:
     }
     assert_eq!(cached(result.trace.as_ref().unwrap()), 1);
 }
+
+#[test]
+fn a_default_resolves_an_earlier_term_only_where_it_reads_it() {
+    // The default of `opslag` names `basis` only in a branch it does not
+    // take, so `basis` is not resolved.
+    let law = two_terms(
+        "10",
+        "\n                  operation: IF\n                  cases:\n                    - when: false\n                      then: $basis\n                  default: 3",
+        "opslag",
+    );
+    let mut service = LawExecutionService::new();
+    service.load_law(&law).unwrap();
+    let result = service
+        .evaluate_law_output_with_trace("lazy_two_terms", "uitkomst", BTreeMap::new(), "2025-01-01")
+        .unwrap();
+    assert_eq!(result.outputs["uitkomst"], Value::Int(3));
+    assert_eq!(
+        result.resolved_inputs.keys().collect::<Vec<_>>(),
+        vec!["opslag"]
+    );
+    let trace = result.trace.as_ref().unwrap().render_box_drawing();
+    assert!(!trace.contains("Open term 'basis'"), "{trace}");
+}

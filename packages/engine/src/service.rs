@@ -594,6 +594,33 @@ impl LazyInputs for AfterPreHooks<'_> {
     }
 }
 
+/// Resolves an open term declared before the one being resolved, by name:
+/// `None` when the name is not one.
+type EarlierTerm<'x, 'c> =
+    dyn FnMut(&str, &mut ResolutionContext<'c>) -> Result<Option<Value>> + 'x;
+
+/// The open terms declared before the one whose default is being evaluated,
+/// resolved when an operation of that default reads one (RFC-043).
+struct EarlierTerms<'x, 'c> {
+    earlier: RefCell<&'x mut EarlierTerm<'x, 'c>>,
+    res_ctx: RefCell<&'x mut ResolutionContext<'c>>,
+}
+
+impl LazyInputs for EarlierTerms<'_, '_> {
+    fn resolve_input(&self, name: &str) -> Option<Result<(Value, ResolveType)>> {
+        let (Ok(mut earlier), Ok(mut res_ctx)) =
+            (self.earlier.try_borrow_mut(), self.res_ctx.try_borrow_mut())
+        else {
+            return Some(Err(EngineError::InvalidOperation(format!(
+                "open term '{name}' was read while another one was being resolved"
+            ))));
+        };
+        (*earlier)(name, &mut res_ctx)
+            .transpose()
+            .map(|value| value.map(|value| (value, ResolveType::OpenTerm)))
+    }
+}
+
 /// The key the override in `law_id` article `article` is entered under, for
 /// cycle detection.
 fn override_key(law_id: &str, article: &str) -> String {
@@ -808,8 +835,8 @@ impl<'a, 'r, 'c> LazyArticleInputs<'a, 'r, 'c> {
         }
     }
 
-    /// Resolve an open term with the context in hand. Its default, when it
-    /// applies, reads the terms declared before it through [`Self::earlier_term`].
+    /// Resolve an open term with the context in hand. Its default reads the
+    /// terms declared before it through [`Self::earlier_term`].
     fn resolve_term(
         &self,
         term: &'a crate::article::OpenTerm,
@@ -2951,15 +2978,15 @@ impl LawExecutionService {
     /// 5. If not found + not required + no default: skip
     ///
     /// A default reads the caller's parameters and, through `earlier`, the
-    /// terms of this article declared before it, resolved only when the
-    /// default applies.
+    /// terms of this article declared before it, each resolved when the
+    /// default reads it.
     fn resolve_open_term<'c>(
         &self,
         article: &Article,
         law: &ArticleBasedLaw,
         term: &crate::article::OpenTerm,
         parameters: &BTreeMap<String, Value>,
-        earlier: &mut dyn FnMut(&str, &mut ResolutionContext<'c>) -> Result<Option<Value>>,
+        earlier: &mut EarlierTerm<'_, 'c>,
         res_ctx: &mut ResolutionContext<'c>,
     ) -> Result<Value> {
         // Cycle detection: check if we're already resolving this open term
@@ -3178,32 +3205,26 @@ impl LawExecutionService {
 
                 let engine = ArticleEngine::new(&synthetic_article, law);
 
-                // Pass current context parameters so default actions can
-                // reference variables like $type_beplanting, and the earlier
-                // terms the default reads.
-                let mut default_params = parameters.clone();
-                let reads: BTreeSet<String> = actions
-                    .iter()
-                    .flat_map(crate::demand::referenced_names)
-                    .collect();
-                for name in reads {
-                    match earlier(&name, res_ctx) {
-                        Ok(Some(value)) => {
-                            default_params.insert(name, value);
-                        }
-                        Ok(None) => {}
-                        Err(e) => {
-                            res_ctx.leave(&ot_key);
-                            return Err(e);
-                        }
-                    }
-                }
+                // The default reads the current context parameters (variables
+                // like $type_beplanting) and an earlier term when one of its
+                // operations reaches it (RFC-043).
+                let calculation_date = res_ctx.calculation_date;
+                let evaluated = {
+                    let earlier_terms = EarlierTerms {
+                        earlier: RefCell::new(&mut *earlier),
+                        res_ctx: RefCell::new(&mut *res_ctx),
+                    };
+                    let required = crate::demand::required_outputs(actions, &[term.id.as_str()]);
+                    engine.evaluate_outputs(
+                        parameters.clone(),
+                        calculation_date,
+                        Some(&required),
+                        None,
+                        Some(&earlier_terms),
+                    )
+                };
 
-                let default_result = match engine.evaluate_with_output(
-                    default_params,
-                    res_ctx.calculation_date,
-                    Some(&term.id),
-                ) {
+                let default_result = match evaluated {
                     Ok(r) => r,
                     Err(e) => {
                         res_ctx.trace_set_message(format!(
@@ -4100,6 +4121,8 @@ impl ServiceProvider for LawExecutionService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::article::LawLoad;
+    use crate::types::MissingFact;
 
     /// Cycle detection enters every hook and override under its own key: a
     /// shared one would read a second, different hook nested in a first as
@@ -4117,8 +4140,6 @@ mod tests {
         let distinct: std::collections::BTreeSet<&String> = keys.iter().collect();
         assert_eq!(distinct.len(), keys.len(), "{keys:?}");
     }
-    use crate::article::LawLoad;
-    use crate::types::MissingFact;
 
     fn make_base_law() -> &'static str {
         r#"
