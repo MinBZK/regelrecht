@@ -1,0 +1,120 @@
+// @vitest-environment node
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { createSlide, indexCorpus, listDecks, lookupArticle, pickVersion, readDeck, resolveDeckFile, writeDeckFile } from './presenterApi.js';
+
+let tmp;
+let decks;
+beforeEach(() => {
+  tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'presenter-'));
+  decks = path.join(tmp, 'decks');
+  fs.mkdirSync(path.join(decks, 'demo'), { recursive: true });
+  fs.writeFileSync(path.join(decks, 'demo', '01-titel.md'), '# Titel\n');
+  fs.writeFileSync(path.join(decks, 'demo', '02-verder.md'), '# Verder\n');
+  fs.writeFileSync(path.join(tmp, 'geheim.md'), 'niet aankomen\n');
+});
+afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+describe('resolveDeckFile', () => {
+  it('accepts slide files and deck.yaml inside the deck', () => {
+    expect(resolveDeckFile(decks, 'demo', '01-titel.md')).toBe(path.join(decks, 'demo', '01-titel.md'));
+    expect(resolveDeckFile(decks, 'demo', 'deck.yaml')).toBe(path.join(decks, 'demo', 'deck.yaml'));
+  });
+
+  it.each([
+    ['demo', '../../geheim.md'],
+    ['demo', '../01-titel.md'],
+    ['demo', '/etc/passwd.md'],
+    ['demo', 'sub/x.md'],
+    ['demo', 'script.js'],
+    ['demo', 'other.yaml'],
+    ['..', 'geheim.md'],
+    ['.hidden', 'x.md'],
+    ['a/b', 'x.md'],
+  ])('refuses deck %s file %s', (deck, file) => {
+    expect(() => resolveDeckFile(decks, deck, file)).toThrow(expect.objectContaining({ status: 400 }));
+  });
+});
+
+describe('readDeck / writeDeckFile', () => {
+  it('reads the slides in name order with their mtime', () => {
+    const d = readDeck(decks, 'demo');
+    expect(d.slides.map((s) => s.file)).toEqual(['01-titel.md', '02-verder.md']);
+    expect(typeof d.slides[0].mtime).toBe('number');
+    expect(d.metaMtime).toBeNull();
+  });
+
+  it('writes when the mtime matches and refuses with 409 when it does not', () => {
+    const { mtime } = readDeck(decks, 'demo').slides[0];
+    writeDeckFile(decks, 'demo', '01-titel.md', '# Nieuw\n', mtime);
+    expect(fs.readFileSync(path.join(decks, 'demo', '01-titel.md'), 'utf8')).toBe('# Nieuw\n');
+    expect(() => writeDeckFile(decks, 'demo', '01-titel.md', '# Oud\n', mtime - 1000)).toThrow(expect.objectContaining({ status: 409 }));
+  });
+
+  it('creates deck.yaml only when the client expected it not to exist', () => {
+    writeDeckFile(decks, 'demo', 'deck.yaml', 'presenter: A\n', null);
+    expect(() => writeDeckFile(decks, 'demo', 'deck.yaml', 'presenter: B\n', null)).toThrow(expect.objectContaining({ status: 409 }));
+  });
+
+  it('inserts a new slide right after the current one, also when inserting there again', () => {
+    const { file: a } = createSlide(decks, 'demo', '01-titel.md');
+    expect(readDeck(decks, 'demo').slides.map((s) => s.file)).toEqual(['01-titel.md', a, '02-verder.md']);
+    const { file: b } = createSlide(decks, 'demo', '01-titel.md');
+    expect(readDeck(decks, 'demo').slides.map((s) => s.file)).toEqual(['01-titel.md', b, a, '02-verder.md']);
+    const { file: c } = createSlide(decks, 'demo', b);
+    expect(readDeck(decks, 'demo').slides.map((s) => s.file)).toEqual(['01-titel.md', b, c, a, '02-verder.md']);
+  });
+
+  it('refuses to insert after something that is not a slide of the deck', () => {
+    expect(() => createSlide(decks, 'demo', 'deck.yaml')).toThrow(expect.objectContaining({ status: 400 }));
+    expect(() => createSlide(decks, 'demo', 'bestaatniet.md')).toThrow(expect.objectContaining({ status: 400 }));
+  });
+
+  it('still lists and opens a deck whose deck.yaml is broken', () => {
+    fs.writeFileSync(path.join(decks, 'demo', 'deck.yaml'), 'title: [\n');
+    expect(listDecks(decks)).toEqual([{ name: 'demo', title: 'demo', slides: 2 }]);
+    expect(readDeck(decks, 'demo').meta).toEqual({});
+  });
+});
+
+describe('corpus lookup', () => {
+  beforeEach(() => {
+    const dir = path.join(tmp, 'corpus', 'nl', 'wet', 'voorbeeldwet');
+    fs.mkdirSync(dir, { recursive: true });
+    for (const [date, text] of [['2024-01-01', 'oud'], ['2025-01-01', 'nieuw']]) {
+      fs.writeFileSync(
+        path.join(dir, `${date}.yaml`),
+        `$id: voorbeeldwet\nname: Voorbeeldwet\nvalid_from: '${date}'\narticles:\n  - number: '2'\n    text: ${text}\n`,
+      );
+    }
+  });
+
+  it('picks the newest version on or before the date', () => {
+    expect(pickVersion(['2024-01-01', '2025-01-01'], '2024-06-01')).toBe('2024-01-01');
+    expect(pickVersion(['2024-01-01', '2025-01-01'], '2025-01-01')).toBe('2025-01-01');
+    expect(pickVersion(['2024-01-01', '2025-01-01'], '2023-01-01')).toBe('2024-01-01');
+  });
+
+  it('finds an article by law id and date', () => {
+    const index = indexCorpus([path.join(tmp, 'corpus')]);
+    expect(lookupArticle(index, { law: 'voorbeeldwet', article: '2', date: '2024-03-01' }).article.text).toBe('oud');
+    expect(lookupArticle(index, { law: 'voorbeeldwet', article: '2', date: '2026-01-01' })).toMatchObject({
+      law: { name: 'Voorbeeldwet', valid_from: '2025-01-01' },
+      article: { text: 'nieuw' },
+    });
+  });
+
+  it('reports a missing law or article as 404', () => {
+    const index = indexCorpus([path.join(tmp, 'corpus')]);
+    expect(() => lookupArticle(index, { law: 'bestaatniet', article: '1' })).toThrow(expect.objectContaining({ status: 404 }));
+    expect(() => lookupArticle(index, { law: 'voorbeeldwet', article: '99' })).toThrow(expect.objectContaining({ status: 404 }));
+  });
+
+  it('finds the real zorgtoeslag law in the repository corpus', () => {
+    const index = indexCorpus([path.resolve(import.meta.dirname, '../../corpus/regulation')]);
+    const { article } = lookupArticle(index, { law: 'wet_op_de_zorgtoeslag', article: '2', date: '2025-01-01' });
+    expect(article.machine_readable.execution.input.length).toBeGreaterThan(0);
+  });
+});
