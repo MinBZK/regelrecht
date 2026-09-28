@@ -83,8 +83,10 @@ body {
  * daarin elk woord letter voor letter af. Hier kleiner en minder diep, en de
  * structuur wrapt niet: een sleutel, een operatie of een variabele is code en
  * blijft op zijn regel; wat niet past schuift horizontaal, zoals in een
- * code-viewer. Alleen een lange tekst (de wettekst, met "meer") is proza en
- * wrapt wel, want op één regel is die niet te lezen. */
+ * code-viewer. Wat geen code is wrapt wel: de wettekst (proza, op één regel
+ * niet te lezen), een URL, en de velden bovenaan die het document beschrijven
+ * (`yaml-wrap`, zie YamlNode.vue). Anders scrolde de boom al zijwaarts
+ * voordat er iets open was. */
 @media (max-width: 640px) {
   .yaml-tree {
     font-size: 0.875rem;
@@ -97,11 +99,11 @@ body {
     padding-left: 0.75em;
   }
 
-  .yaml-tree .yaml-value:not(.yaml-prose) {
+  .yaml-tree .yaml-value:not(.yaml-wrap) {
     white-space: pre;
   }
 
-  .yaml-tree .yaml-prose {
+  .yaml-tree .yaml-value.yaml-wrap {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }

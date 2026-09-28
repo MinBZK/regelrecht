@@ -1,5 +1,28 @@
 import { describe, expect, it } from 'vitest';
-import { initiallyOpen, onPath } from './yamlExpand.js';
+import { followScroll, initiallyOpen, onPath } from './yamlExpand.js';
+
+// Een telefoon: de boom begint op x=16 en is 330px breed.
+describe('de boom schuift mee met wat je aantikt', () => {
+  const at = (buttonLeft, overflows = true) => followScroll({ treeLeft: 16, treeWidth: 330, buttonLeft, overflows });
+
+  it('schuift nooit zonder zijwaartse overflow, dus nooit op desktop', () => {
+    expect(at(300, false)).toBe(0);
+    expect(at(-50, false)).toBe(0);
+  });
+
+  it('laat een knoop in de linkerhelft staan, zodat het beeld niet onder je vinger verspringt', () => {
+    expect(at(16)).toBe(0);
+    expect(at(16 + 165)).toBe(0);
+  });
+
+  it('haalt een knoop voorbij het midden terug naar links, met een kleine marge', () => {
+    expect(at(16 + 200)).toBe(192);
+  });
+
+  it('haalt een knoop links buiten beeld terug', () => {
+    expect(at(16 - 40)).toBe(-48);
+  });
+});
 
 // De paden zoals ze voor de zorgtoeslagwet in demo-config.yaml staan.
 const paths = [

@@ -50,6 +50,26 @@ function matches(pattern, path) {
 }
 
 /**
+ * How far the tree slides sideways after a node is opened or closed, so the
+ * node that was tapped stays in view (in px, 0 for not at all).
+ *
+ * Only where the tree scrolls sideways at all, which is on a phone
+ * (main.css); on desktop it never does and this is always 0. A node that sits
+ * past the middle, or off the left edge, is brought back to the left with a
+ * small margin: ten levels deep its contents would otherwise open off the
+ * right edge, and a tap would seem to do nothing. A node in the left half is
+ * left where it is, so the view does not jump under the finger.
+ *
+ * @param {{treeLeft: number, treeWidth: number, buttonLeft: number, overflows: boolean}} geometry
+ */
+export function followScroll({ treeLeft, treeWidth, buttonLeft, overflows }, margin = 8) {
+  if (!overflows) return 0;
+  const offset = buttonLeft - treeLeft;
+  if (offset >= 0 && offset <= treeWidth / 2) return 0;
+  return offset - margin;
+}
+
+/**
  * @param {{path: string, depth: number, all: boolean|null, paths: string[], folded?: string[]}} node
  * @returns {boolean}
  */

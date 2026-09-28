@@ -1,6 +1,6 @@
 <script setup>
-import { computed, ref, watch } from 'vue';
-import { initiallyOpen } from './yamlExpand.js';
+import { computed, nextTick, ref, watch } from 'vue';
+import { followScroll, initiallyOpen } from './yamlExpand.js';
 
 // One node of a parsed YAML document rendered as a collapsible tree. Mappings
 // and sequences fold; scalars show typed. A `source.regulation: <law>` value
@@ -78,6 +78,38 @@ const isLawLink = computed(
 // sentence; the audience came for the machine-readable part.
 const LONG = 220;
 const isLong = computed(() => typeof props.value === 'string' && props.value.length > LONG);
+/**
+ * May this value wrap on a phone, where the rest of the tree does not (main.css)?
+ * Long legal text is prose and unreadable on one line. A URL is an address,
+ * not a token anyone reads. The fields at the top of the law (`$schema`, `url`,
+ * `uuid`, the dates) describe the document rather than the rules. Without
+ * this, those few lines made the whole tree scroll sideways before anything
+ * was opened.
+ */
+const wraps = computed(() => {
+  const v = props.value;
+  if (typeof v !== 'string') return props.depth <= 1;
+  return isLong.value || /^https?:\/\//.test(v) || props.depth <= 1;
+});
+
+const root = ref(null);
+/**
+ * Open or close, and keep the node that was tapped in view. On a phone the
+ * tree scrolls sideways (main.css), and a node ten levels deep would open its
+ * contents off the right edge: nothing seems to happen. When the tapped node
+ * sits past the middle, or off the left edge, the tree slides so it starts at
+ * the left again. Without sideways overflow (desktop) nothing moves.
+ */
+async function toggle() {
+  open.value = !open.value;
+  await nextTick();
+  const tree = root.value?.closest('.yaml-tree');
+  const button = root.value?.querySelector(':scope > .yaml-toggle');
+  if (!tree || !button) return;
+  const t = tree.getBoundingClientRect();
+  const left = followScroll({ treeLeft: t.left, treeWidth: t.width, buttonLeft: button.getBoundingClientRect().left, overflows: tree.scrollWidth > tree.clientWidth });
+  if (left) tree.scrollBy({ left, behavior: 'smooth' });
+}
 const showAll = ref(false);
 
 function scalarText() {
@@ -92,9 +124,9 @@ function scalarText() {
 </script>
 
 <template>
-  <div class="yaml-node" :data-path="path">
+  <div ref="root" class="yaml-node" :data-path="path">
     <template v-if="isContainer">
-      <button type="button" class="yaml-toggle" :aria-expanded="open ? 'true' : 'false'" @click="open = !open">
+      <button type="button" class="yaml-toggle" :aria-expanded="open ? 'true' : 'false'" @click="toggle">
         <span class="yaml-key">{{ name === null ? '' : typeof name === 'number' ? '-' : name }}</span><span v-if="name !== null && typeof name !== 'number'">:</span>
         <span v-if="!open" class="yaml-scalar"> {{ summary() }}</span>
       </button>
@@ -120,7 +152,7 @@ function scalarText() {
       </button>
       <!-- `yaml-value` draagt de witruimte (main.css): een lange tekst is
            proza en wrapt overal, de rest is code en wrapt op een telefoon niet. -->
-      <span v-else :class="[scalarClass, 'yaml-value', { 'yaml-prose': isLong }]"> {{ scalarText() }}</span>
+      <span v-else :class="[scalarClass, 'yaml-value', { 'yaml-wrap': wraps }]"> {{ scalarText() }}</span>
       <button v-if="isLong" type="button" class="yaml-link" @click="showAll = !showAll">{{ showAll ? 'minder' : 'meer' }}</button>
     </template>
   </div>
