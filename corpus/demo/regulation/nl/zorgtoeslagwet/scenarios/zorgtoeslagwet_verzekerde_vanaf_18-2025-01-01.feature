@@ -51,7 +51,7 @@ Feature: Zorgtoeslag vanaf de maand na de achttiende verjaardag
   Scenario: Over de jaargrens: wie in december 18 werd, telt in januari mee
     # Rekendatum 1 januari: de vorige maand is december van het jaar ervoor.
     Given the calculation date is "2025-01-01"
-    Given the following "DJI" data with key "bsn" for law "penitentiaire_beginselenwet":
+    And the following "DJI" data with key "bsn" for law "penitentiaire_beginselenwet":
       | bsn       | status | inrichting_type |
       | 999993653 | VRIJ   | GEEN            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
