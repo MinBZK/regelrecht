@@ -259,6 +259,21 @@ describe('materialiseRecord', () => {
     const { record } = materialiseRecord(shape, bindings, { bsn: '100000001' }, rowsFor, { cases });
     expect(record.kinderen.map((c) => c.id)).toEqual(['a']);
   });
+
+  it('reads one value from the latest matching case when the binding names a field', () => {
+    // The permit the municipality granted and the area it granted it for.
+    const bindings = {
+      oppervlakte: { kind: 'cases', service: 'GEMEENTE', field: 'terras_oppervlakte', absent: 0, select_on: [{ name: 'status', value: 'DECIDED' }, { name: 'bsn', value: '$bsn' }] },
+    };
+    const cases = [
+      { status: 'DECIDED', bsn: '100000001', terras_oppervlakte: 40 },
+      { status: 'DECIDED', bsn: '100000001', terras_oppervlakte: 60 },
+      { status: 'SUBMITTED', bsn: '100000001', terras_oppervlakte: 90 },
+    ];
+    expect(materialiseRecord(shape, bindings, { bsn: '100000001' }, rowsFor, { cases }).record.oppervlakte).toBe(60);
+    // No granted case: what `absent` says, as for a register without a row.
+    expect(materialiseRecord(shape, bindings, { bsn: '2' }, rowsFor, { cases }).record.oppervlakte).toBe(0);
+  });
 });
 
 describe('materialiseAll', () => {

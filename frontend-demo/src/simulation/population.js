@@ -436,6 +436,7 @@ export function generateBusinesses(userParams, referenceDate, templateRow = () =
   const subjects = [];
   const formValues = {};
   const kvks = [];
+  const cases = [];
   const bsns = [];
 
   for (let i = 1; i <= count; i += 1) {
@@ -487,13 +488,18 @@ export function generateBusinesses(userParams, referenceDate, templateRow = () =
 
     // The business at the municipality.
     T('GEMEENTE_ROTTERDAM', 'vestigingen', { kvk_nummer: kvk, adres: address, schenkt_alcohol: alcohol, heeft_terras: terrace });
-    T('GEMEENTE_ROTTERDAM', 'vergunningen', { kvk_nummer: kvk, heeft_exploitatievergunning: horeca && rng.chance(0.8), categorie: '1', heeft_alcoholvergunning: alcohol && rng.chance(0.7) });
+    // Art. 2:28 lid 5 onder i t/m k: getoetst bij de verlening. Zonder deze
+    // velden bleef de exploitatievergunning voor bijna iedereen onbekend.
+    T('GEMEENTE_ROTTERDAM', 'vergunningen', { kvk_nummer: kvk, heeft_exploitatievergunning: horeca && rng.chance(0.8), categorie: '1', heeft_alcoholvergunning: alcohol && rng.chance(0.7), kvk_inschrijving_geldig: true, feitelijke_toestand_conform_aanvraag: true, voldoet_aan_horecabeleid: true });
     T('GEMEENTE_ROTTERDAM', 'inrichtingen', { kvk_nummer: kvk, vloeroppervlakte_horecalokaliteit: floor, type_bedrijf: type });
     T('GEMEENTE_ROTTERDAM', 'beheerders', { kvk_nummer: kvk, schenkt_alcohol: alcohol, bsn, heeft_vog: vog, leeftijd: ownerAge, is_onder_curatele: curatele, heeft_svh_diploma: svh, alle_hebben_vog: vog, alle_voldoen_leeftijd: ownerAge >= 21, geen_onder_curatele: !curatele });
     T('GEMEENTE_ROTTERDAM', 'leidinggevenden', { kvk_nummer: kvk, bsn, naam: `Eigenaar ${i}`, leeftijd: ownerAge, is_onder_curatele: curatele, heeft_svh_diploma: svh, is_van_slecht_levensgedrag: false, is_ingeschreven_svh_register: svh, aantal_voldoet_alle_eisen: ownerAge >= 21 && !curatele && svh ? 1 : 0 });
     T('GEMEENTE_ROTTERDAM', 'exploitatie_inschrijvingen', { kvk_nummer: kvk, bsn_eigenaar: bsn, aangevraagde_categorie: 'licht' });
     T('GEMEENTE_ROTTERDAM', 'geluidsklachten', { kvk_nummer: kvk, heeft_actieve_klachten: rng.chance(0.1) });
-    T('GEMEENTE_ROTTERDAM', 'vergunningen_historie', { adres: address, bsn, vergunning_type: 'exploitatievergunning', intrekkingsdatum: null, intrekkingsreden: null, ingetrokken_slecht_levensgedrag: false });
+    T('GEMEENTE_ROTTERDAM', 'vergunningen_historie', { adres: address, bsn, kvk_nummer: kvk, vergunning_type: 'exploitatievergunning', intrekkingsdatum: null, intrekkingsreden: null, ingetrokken_slecht_levensgedrag: false, voorschriften_overtreden: false });
+    // Een bedrijf met een terras heeft er een vergunning voor: de verleende zaak
+    // waaruit de precarioverordening de vergunde oppervlakte leest.
+    if (terrace) cases.push({ law: 'algemene_plaatselijke_verordening/terrassen', service: 'GEMEENTE_ROTTERDAM', status: 'DECIDED', approved: true, kvk_nummer: kvk, terras_oppervlakte: terraceArea });
     T('GEMEENTE_ROTTERDAM', 'personen_vog', { bsn, heeft_geldige_vog: vog });
 
     // Inspectorates and registers.
@@ -544,7 +550,7 @@ export function generateBusinesses(userParams, referenceDate, templateRow = () =
       leeftijd_eigenaar: ownerAge,
     });
   }
-  return { subjects, tables: t.tables, claims: [], keyValues: { kvk_nummer: kvks, bsn: bsns }, formValues };
+  return { subjects, tables: t.tables, claims: [], cases, keyValues: { kvk_nummer: kvks, bsn: bsns }, formValues };
 }
 
 /** Merge the demo's shared tables (CBS, KIESRAAD, JenV) with generated ones into a `rowsFor`. */

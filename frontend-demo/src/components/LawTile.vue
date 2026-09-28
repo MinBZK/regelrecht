@@ -82,7 +82,8 @@ const primary = computed(() => {
  * the old behaviour, so this grows law by law.
  */
 const secondary = computed(() => {
-  const rest = outputs.value.filter(([k]) => k !== primary.value?.name);
+  // Een lege tekst ("geen weigeringsgrond") zegt niets en blijft weg, net als in de aanvraag.
+  const rest = outputs.value.filter(([k, v]) => k !== primary.value?.name && v !== '');
   const wanted = corpus.value?.config?.tile_details?.[`${props.law.service}/${props.law.law_path}`];
   if (!wanted) return rest.slice(0, 6);
   return wanted.map((name) => rest.find(([k]) => k === name)).filter(Boolean);
@@ -193,8 +194,10 @@ const produces = computed(() => {
   return null;
 });
 // Een machtiging zonder het recht om aanvragen in te dienen mag alleen kijken:
-// dan verdwijnen de knoppen, niet alleen hun werking.
-const canApply = computed(() => canSubmitClaims.value && evaluation.value?.ok && verdict.value === true && !currentCase.value && produces.value?.legal_character === 'BESCHIKKING');
+// dan verdwijnen de knoppen, niet alleen hun werking. Een aanslag vraag je niet
+// aan, die legt de overheid op: de precariotegel bood Claudia eerst aan om haar
+// eigen belasting aan te vragen.
+const canApply = computed(() => canSubmitClaims.value && evaluation.value?.ok && verdict.value === true && !currentCase.value && produces.value?.legal_character === 'BESCHIKKING' && produces.value?.decision_type !== 'AANSLAG');
 /** A decided-and-rejected case the citizen has not objected to yet (Awb art. 6:5). */
 // Bezwaar pas als de termijn loopt: die begint de dag ná de bekendmaking
 // (Awb 6:8), dus een besluit dat nog niet is verstuurd geeft nog geen knop.

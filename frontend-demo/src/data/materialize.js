@@ -242,7 +242,11 @@ export function materialiseRecord(shape, lawBindings, params, rowsFor, context =
         if (wanted === UNRESOLVED) continue;
         // A case list keyed on nothing usable is simply empty.
         const matched = Array.isArray(wanted) ? (context.cases ?? []).filter((c) => rowMatches(c, wanted)) : [];
-        set(name, matched, binding.service);
+        // With a `field` the binding reads one value from the latest matching
+        // case, like a register row: the permit the municipality granted and the
+        // area it granted it for. No such case follows `absent`.
+        if (binding.field || binding.fields) set(name, matched.length ? project(matched.at(-1), binding) : absentValue(binding), binding.service);
+        else set(name, matched, binding.service);
         progressed = true;
       } else if (binding.kind === 'table') {
         const wanted = resolveSelector(binding.select_on, params, record, pending, context, shape);

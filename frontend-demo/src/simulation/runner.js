@@ -149,7 +149,7 @@ export async function runSimulation({ engine, corpus, kind, params, overrides = 
         }
       }
     };
-    register(materialiseAll(lawsById, corpus.bindings, rowsFor, keyValues, { referencedate: referenceDate, paramsFor }));
+    register(materialiseAll(lawsById, corpus.bindings, rowsFor, keyValues, { referencedate: referenceDate, cases: population.cases ?? [], paramsFor }));
     // Second pass for bindings that select on a cross-law input (the KVK address).
     const cache = new Map();
     const resolveRef = (lawId, inputName, callerParams) => {
@@ -174,7 +174,7 @@ export async function runSimulation({ engine, corpus, kind, params, overrides = 
       cache.set(key, value);
       return value;
     };
-    const sources = materialiseAll(lawsById, corpus.bindings, rowsFor, keyValues, { referencedate: referenceDate, resolveRef, paramsFor });
+    const sources = materialiseAll(lawsById, corpus.bindings, rowsFor, keyValues, { referencedate: referenceDate, cases: population.cases ?? [], resolveRef, paramsFor });
     engine.clearDataSources();
     register(sources);
     // Form answers (`kind: claim` inputs) as a higher-priority source. A claim

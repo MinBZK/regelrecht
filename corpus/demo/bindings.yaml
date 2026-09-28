@@ -1232,6 +1232,37 @@ uwv_werkgegevens:
     # unknown
     absent: unknown
 verordening_precariobelasting:
+  # De terrasvergunning die de gemeente verleende: een besloten, toegekende zaak
+  # in de demo. Geen verleende vergunning is geen vergunning en geen vergunde
+  # oppervlakte.
+  heeft_actieve_vergunning:
+    select_on:
+      - name: law
+        value: algemene_plaatselijke_verordening/terrassen
+      - name: status
+        value: DECIDED
+      - name: approved
+        value: true
+      - name: kvk_nummer
+        value: $kvk_nummer
+    field: approved
+    kind: cases
+    service: GEMEENTE_ROTTERDAM
+    absent: false
+  vergunde_oppervlakte:
+    select_on:
+      - name: law
+        value: algemene_plaatselijke_verordening/terrassen
+      - name: status
+        value: DECIDED
+      - name: approved
+        value: true
+      - name: kvk_nummer
+        value: $kvk_nummer
+    field: terras_oppervlakte
+    kind: cases
+    service: GEMEENTE_ROTTERDAM
+    absent: 0
   heeft_terras:
     table: vestigingen
     field: heeft_terras
