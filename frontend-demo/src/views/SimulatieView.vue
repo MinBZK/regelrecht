@@ -6,6 +6,7 @@ import { fieldSpec, formatValue, humanize, intlLocale } from '../data/format.js'
 import { serviceInfo } from '../data/loadCorpus.js';
 import { BUSINESS_DEFAULTS, CITIZEN_DEFAULTS, MAX_POPULATION } from '../simulation/population.js';
 import { definitionKind, overridableDefinitions } from '../simulation/lawParameters.js';
+import { NEUTRAL, paletteColor } from '../data/palette.js';
 import { runSimulation, simulationLaws, supportingLaws } from '../simulation/runner.js';
 import { BUSINESS_DIMENSIONS, CITIZEN_DIMENSIONS, breakdown, dimensionLabel, flattenResults, toCsv } from '../simulation/stats.js';
 import { disposableIncomeBreakdown, summariseDisposableIncome } from '../simulation/income.js';
@@ -135,7 +136,12 @@ async function run() {
       },
       signal,
     });
-    result.label = `${runs.value.length + 1}. ${t(kind.value === 'ondernemers' ? 'sim.kind.businesses' : 'sim.kind.citizens')} (${result.subjects.length})`;
+    // A number that is never handed out twice, also after a run is closed,
+    // and a colour only for a run that changed something: runs on the
+    // standard law are the baseline and stay neutral.
+    runNumber += 1;
+    result.number = runNumber;
+    result.colorIndex = Object.keys(result.overrides ?? {}).length ? variantNumber++ : -1;
     runs.value = [...runs.value, result];
     activeTab.value = result.id;
     mainView.value = 'overzicht';
@@ -150,6 +156,27 @@ async function run() {
 function cancel() {
   signal.cancelled = true;
 }
+let runNumber = 0;
+let variantNumber = 0;
+
+/**
+ * What a run is called: its number and what it changed. "Burgers (50)" said
+ * the same thing on every tab; the difference between runs is the point.
+ */
+function runLabel(r) {
+  const changes = Object.values(r.overrides ?? {}).flatMap((byKey) => Object.entries(byKey));
+  if (!changes.length) return `${r.number} · ${t('sim.run.label.default')}`;
+  const [key, value] = changes[0];
+  const kindOf = definitionKind(key, value);
+  const shown = kindOf === 'eurocent' ? formatValue(value, { type: 'amount' }) : kindOf === 'percentage' ? `${num(value * 100, 3)}%` : num(value, 3);
+  const more = changes.length > 1 ? ` +${changes.length - 1}` : '';
+  return `${r.number} · ${humanize(key)} ${shown}${more}`;
+}
+/** The run's colour as a CSS expression: neutral for a baseline, else its own. */
+function runColor(r) {
+  return r.colorIndex >= 0 ? paletteColor(r.colorIndex) : NEUTRAL;
+}
+
 function removeRun(id) {
   runs.value = runs.value.filter((r) => r.id !== id);
   if (activeTab.value === id) activeTab.value = runs.value.at(-1)?.id ?? null;
@@ -407,7 +434,7 @@ function signedMoney(delta) {
 
 const comparisonChart = computed(() => ({
   categories: comparisonLaws.value.map((l) => l.name),
-  series: comparable.value.map((r) => ({ name: r.label, values: comparisonLaws.value.map((l) => r.summary[l.id]?.eligiblePct ?? null) })),
+  series: comparable.value.map((r) => ({ name: runLabel(r), color: runColor(r), values: comparisonLaws.value.map((l) => r.summary[l.id]?.eligiblePct ?? null) })),
 }));
 
 // ---- export -------------------------------------------------------------------
@@ -532,7 +559,7 @@ function exportJson() {
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="start" v-if="runs.length">
               <nldd-tab-bar size="sm" @tabchange="onTab">
-                <nldd-tab-bar-item v-for="r in runs" :key="r.id" :data-run="r.id" :current="activeTab === r.id || undefined" :text="r.label"></nldd-tab-bar-item>
+                <nldd-tab-bar-item v-for="r in runs" :key="r.id" class="sim-run-tab" :style="{ '--run-color': runColor(r) }" :data-run="r.id" :current="activeTab === r.id || undefined" :text="runLabel(r)"></nldd-tab-bar-item>
                 <nldd-tab-bar-item v-if="runs.length > 1" data-run="vergelijking" :current="activeTab === 'vergelijking' || undefined" :text="t('sim.tab.comparison')" icon="arrow-left-right"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
@@ -544,6 +571,9 @@ function exportJson() {
                   <nldd-segmented-control-item value="populatie" :text="t('sim.view.population')"></nldd-segmented-control-item>
                   <nldd-segmented-control-item v-if="harmonizeEnabled" value="harmonisatie" :text="t('sim.view.harmonisation')"></nldd-segmented-control-item>
                 </nldd-segmented-control>
+              </nldd-toolbar-item>
+              <nldd-toolbar-item slot="end">
+                <nldd-icon-button size="sm" variant="neutral-tinted" icon="close" :text="t('sim.run.close')" @click="removeRun(activeRun.id)"></nldd-icon-button>
               </nldd-toolbar-item>
               <nldd-toolbar-item slot="end">
                 <nldd-icon-button size="sm" variant="neutral-tinted" icon="menu" :text="t('sim.export')" tooltip-timing="never" expandable>
@@ -829,7 +859,7 @@ function exportJson() {
             <nldd-table v-if="comparisonIncome" :columns="`minmax(160px, 1fr) repeat(${comparable.length}, 150px)`" :accessible-label="t('sim.comparison.income')">
               <nldd-table-row slot="header">
                 <nldd-text-cell size="sm" :text="t('sim.comparison.income')"></nldd-text-cell>
-                <nldd-text-cell v-for="r in comparable" :key="r.id" size="sm" :text="r.label" :supporting-text="t(Object.keys(r.overrides).length ? 'sim.comparison.overridden' : 'sim.comparison.default')" horizontal-alignment="right"></nldd-text-cell>
+                <nldd-text-cell v-for="r in comparable" :key="r.id" size="sm" :text="runLabel(r)" :supporting-text="t(Object.keys(r.overrides).length ? 'sim.comparison.overridden' : 'sim.comparison.default')" horizontal-alignment="right"></nldd-text-cell>
               </nldd-table-row>
               <nldd-table-row v-for="row in comparisonIncome" :key="row.label">
                 <nldd-text-cell size="sm" :text="t(row.label)"></nldd-text-cell>
@@ -845,7 +875,7 @@ function exportJson() {
             <nldd-table :columns="`minmax(160px, 1fr) repeat(${comparable.length}, 150px)`" :accessible-label="t('sim.comparison.table_label')">
               <nldd-table-row slot="header">
                 <nldd-text-cell size="sm" :text="t('sim.comparison.law')"></nldd-text-cell>
-                <nldd-text-cell v-for="r in comparable" :key="r.id" size="sm" :text="r.label" :supporting-text="t(Object.keys(r.overrides).length ? 'sim.comparison.overridden' : 'sim.comparison.default')" horizontal-alignment="right"></nldd-text-cell>
+                <nldd-text-cell v-for="r in comparable" :key="r.id" size="sm" :text="runLabel(r)" :supporting-text="t(Object.keys(r.overrides).length ? 'sim.comparison.overridden' : 'sim.comparison.default')" horizontal-alignment="right"></nldd-text-cell>
               </nldd-table-row>
               <nldd-table-row v-for="law in comparisonLaws" :key="law.id">
                 <nldd-text-cell size="sm" :text="law.name"></nldd-text-cell>
@@ -867,7 +897,8 @@ function exportJson() {
         <nldd-container v-if="inspector.type === 'params'" padding="12" gap="12">
           <!-- De zin staat in twee stukken in het woordenboek, met het
                <code>-element ertussen: dat scheelt een v-html voor één tag. -->
-          <nldd-rich-text><p>{{ t('sim.inspector.definitions.lead') }} (<code>definitions</code>). {{ t('sim.inspector.definitions.scope') }}</p></nldd-rich-text>
+          <!-- Klein en secundair: een toelichting, niet waar het paneel om draait. -->
+          <nldd-text size="sm" color="secondary">{{ t('sim.inspector.definitions.lead') }} (<code>definitions</code>). {{ t('sim.inspector.definitions.scope') }}</nldd-text>
           <nldd-form-field v-for="def in definitionsByLaw[inspectorLaw.id]" :key="def.key" :label="humanize(def.key)">
             <!-- Op `input` én `change`: `change` kwam in de praktijk niet aan
                  (gemeten: wel `input` met { value }, geen `change` na Enter of

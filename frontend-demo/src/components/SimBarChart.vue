@@ -11,14 +11,14 @@ import { CanvasRenderer } from 'echarts/renderers';
 import { BarChart } from 'echarts/charts';
 import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components';
 import VChart from 'vue-echarts';
-import { resolveChartColors, SERIES_KEYS } from '../simulation/chartColors.js';
+import { resolveChartColors, resolveCssColor, SERIES_KEYS } from '../simulation/chartColors.js';
 import { intlLocale } from '../data/format.js';
 
 use([CanvasRenderer, BarChart, GridComponent, LegendComponent, TooltipComponent]);
 
 const props = defineProps({
   categories: { type: Array, required: true },
-  /** [{ name, values: number[] }] */
+  /** [{ name, values: number[], color?: string }]; `color` is a CSS expression, such as a design token. */
   series: { type: Array, required: true },
   /** 'percent' | 'euro' | 'number' */
   unit: { type: String, default: 'number' },
@@ -90,7 +90,7 @@ const option = computed(() => {
       name: s.name,
       type: 'bar',
       data: s.values.map((v) => (v === null || v === undefined ? null : Math.round(v * 100) / 100)),
-      itemStyle: { color: c[SERIES_KEYS[i % SERIES_KEYS.length]], borderRadius: 3 },
+      itemStyle: { color: (s.color && resolveCssColor(s.color)) || c[SERIES_KEYS[i % SERIES_KEYS.length]], borderRadius: 3 },
       barMaxWidth: 28,
       label: props.series.length === 1 ? { show: true, position: props.horizontal ? 'right' : 'top', color: c.textSecondary, formatter: (p) => fmt(p.value) } : undefined,
     })),

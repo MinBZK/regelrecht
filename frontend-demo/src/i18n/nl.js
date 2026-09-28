@@ -894,4 +894,6 @@ export default {
   'trace.nav.position': '{n} van {total}',
   'sim.params.supporting': 'Regelingen waar deze wetten op steunen',
   'sim.comparison.income': 'Besteedbaar inkomen per maand',
+  'sim.run.label.default': 'Standaard',
+  'sim.run.close': 'Deze simulatie sluiten',
 };

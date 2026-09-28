@@ -1,6 +1,7 @@
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue';
 import { traceLaws } from '../data/traceLaws.js';
+import { paletteColor } from '../data/palette.js';
 import { useDemo } from '../store/demoStore.js';
 import { useI18n } from '../i18n/index.js';
 
@@ -16,12 +17,6 @@ const props = defineProps({
 const { t } = useI18n();
 const { corpus } = useDemo();
 
-/**
- * Rijkshuisstijl colours, in the order the laws first appear. Order and not a
- * hash of the id: five laws in one trace must never share a colour.
- */
-const PALETTE = ['hemelblauw', 'oranje', 'paars', 'groen', 'robijnrood', 'donkergeel', 'mintgroen', 'bruin', 'violet', 'donkerblauw'];
-
 const parsed = computed(() => traceLaws(props.text, (id) => !!corpus.value?.lawById(id)));
 /**
  * The law's colour as CSS variables: -500 for the stripe and the tint, -700
@@ -31,8 +26,7 @@ const parsed = computed(() => traceLaws(props.text, (id) => !!corpus.value?.lawB
 const colorOf = (law) => {
   const i = parsed.value.laws.indexOf(law);
   if (i < 0) return undefined;
-  const c = `--primitives-color-${PALETTE[i % PALETTE.length]}`;
-  return { '--law-color': `var(${c}-500)`, '--law-ink': `var(${c}-700)` };
+  return { '--law-color': paletteColor(i), '--law-ink': paletteColor(i, 700) };
 };
 const nameOf = (law) => corpus.value?.lawById(law)?.name ?? law;
 

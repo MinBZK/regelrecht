@@ -876,4 +876,6 @@ export default {
   'trace.nav.position': '{n} of {total}',
   'sim.params.supporting': 'Regulations these laws rely on',
   'sim.comparison.income': 'Disposable income per month',
+  'sim.run.label.default': 'Standard',
+  'sim.run.close': 'Close this simulation',
 };

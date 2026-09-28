@@ -771,4 +771,6 @@ export default {
   "trace.nav.position": "{n} fan {total}",
   "sim.params.supporting": "Regelingen dêr't dizze wetten op stypje",
   "sim.comparison.income": "Besteedber ynkommen per moanne",
+  "sim.run.label.default": "Standert",
+  "sim.run.close": "Dizze simulaasje slute",
 };

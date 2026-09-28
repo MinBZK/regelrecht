@@ -483,3 +483,10 @@ body {
   font-family: var(--primitives-font-family-sans, sans-serif);
   font-weight: 600;
 }
+
+/* De kleur van een simulatierun op zijn tab, dezelfde als in de grafiek van
+ * de vergelijking: een run zonder aanpassing is grijs, een variant heeft een
+ * eigen kleur (src/data/palette.js). nldd-tab-bar-item heeft geen kleur-attribuut. */
+.sim-run-tab {
+  box-shadow: inset 0 -3px 0 var(--run-color);
+}

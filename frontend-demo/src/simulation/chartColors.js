@@ -25,6 +25,33 @@ const TOKEN_EXPRESSIONS = {
 
 export const SERIES_KEYS = ['primary', 'secondary', 'tertiary', 'quaternary'];
 
+/**
+ * One CSS colour expression (`var(--primitives-color-oranje-500)`) as rgb(),
+ * for a series that brings its own colour. Same probe as below, so it follows
+ * the colour scheme the same way.
+ */
+export function resolveCssColor(expr) {
+  if (typeof document === 'undefined') return null;
+  const probe = document.createElement('span');
+  probe.style.display = 'none';
+  probe.style.color = expr;
+  document.body.appendChild(probe);
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const resolved = getComputedStyle(probe).color;
+    if (!ctx) return resolved;
+    ctx.fillStyle = resolved;
+    ctx.fillRect(0, 0, 1, 1);
+    const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+    return `rgb(${r}, ${g}, ${b})`;
+  } finally {
+    probe.remove();
+  }
+}
+
 /** @returns {object|null} null while the colour scheme has not been applied yet. */
 export function resolveChartColors() {
   if (typeof document === 'undefined') return null;
