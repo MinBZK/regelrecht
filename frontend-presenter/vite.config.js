@@ -30,6 +30,8 @@ export default defineConfig({
   resolve: {
     // The editor's operation labels and value formatting, shared rather than
     // copied, so a wet block reads the same as the editor's Machine pane.
+    // outputFormat.js imports @regelrecht/frontend-shared, which is why this
+    // package declares that dependency without importing it itself.
     alias: { '@editor-utils': here('../frontend/src/utils') },
   },
   test: {
