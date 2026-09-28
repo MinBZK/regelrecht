@@ -14,9 +14,10 @@
  */
 
 const CONNECTOR = /[├└╟╙]/;
-const OPENS = /(?:Evaluating rules for|Reference:) ([A-Za-z0-9_]+)/;
+// A law id can have path segments: `algemene_ouderdomswet/leeftijdsbepaling`.
+const OPENS = /(?:Evaluating rules for|Reference:) ([A-Za-z0-9_/]+)/;
 /** The root header, `zorgtoeslagwet (2024-02-01 {bsn: …} hoogte_toeslag)`. */
-const HEADER = /^([A-Za-z0-9_]+) \(/;
+const HEADER = /^([A-Za-z0-9_/]+) \(/;
 
 /**
  * @param {string} text

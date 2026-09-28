@@ -62,6 +62,15 @@ describe('traceLaws', () => {
     expect(r.lines[3].law).toBe('zvw');
   });
 
+  it('leest een wet-id met padsegmenten helemaal, niet tot de eerste slash', () => {
+    const text = [
+      'zorgtoeslagwet (2024-01-01 {bsn: 1} x)',
+      '╟──Evaluating rules for zorgtoeslagwet (x)',
+      '║   ╟──Reference: algemene_ouderdomswet/leeftijdsbepaling#pensioenleeftijd',
+    ].join('\n');
+    expect(traceLaws(text).laws).toEqual(['zorgtoeslagwet', 'algemene_ouderdomswet/leeftijdsbepaling']);
+  });
+
   it('overleeft een lege trace', () => {
     expect(traceLaws('')).toEqual({ lines: [{ text: '', law: null, start: false }], sections: [], laws: [] });
     expect(traceLaws(undefined).laws).toEqual([]);
