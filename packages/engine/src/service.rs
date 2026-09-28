@@ -594,17 +594,16 @@ impl LazyInputs for AfterPreHooks<'_> {
     }
 }
 
-/// The key an override is entered under, for cycle detection.
-fn override_key(reference: &LawArticleRef) -> String {
-    format!(
-        "override:{}\0{}",
-        reference.law_id, reference.article_number
-    )
+/// The key the override in `law_id` article `article` is entered under, for
+/// cycle detection.
+fn override_key(law_id: &str, article: &str) -> String {
+    format!("override:{law_id}\0{article}")
 }
 
-/// The key a hook is entered under, for cycle detection.
-fn hook_key(hook: &HookEntry) -> String {
-    format!("hook:{}\0{}", hook.law_id, hook.article_number)
+/// The key the hook in `law_id` article `article` is entered under, for cycle
+/// detection.
+fn hook_key(law_id: &str, article: &str) -> String {
+    format!("hook:{law_id}\0{article}")
 }
 
 /// A hook that fires on an article: its entry, and its law and article in
@@ -2058,7 +2057,7 @@ impl LawExecutionService {
             .iter()
             .filter(|hook_entry| {
                 // Cycle detection: don't re-enter a hook we're already executing
-                let key = hook_key(hook_entry);
+                let key = hook_key(&hook_entry.law_id, &hook_entry.article_number);
                 let visited = res_ctx.is_visited(&key);
                 if visited {
                     tracing::debug!(hook_key = %key, "Skipping hook: cycle detected");
@@ -2312,7 +2311,7 @@ impl LawExecutionService {
             };
             let hook_law_id = &hook_entry.law_id;
             let hook_article_number = &hook_entry.article_number;
-            let hook_key = hook_key(hook_entry);
+            let hook_key = hook_key(&hook_entry.law_id, &hook_entry.article_number);
 
             // Filter parameters: only pass parameters declared by the hook article (least privilege)
             let hook_params = Self::filter_parameters_for_article(hook_article, parameters);
@@ -2518,7 +2517,7 @@ impl LawExecutionService {
         let reference = *reference;
 
         // An override that is already executing does not apply again.
-        if res_ctx.is_visited(&override_key(reference)) {
+        if res_ctx.is_visited(&override_key(&reference.law_id, &reference.article_number)) {
             tracing::debug!(
                 law = %reference.law_id,
                 article = %reference.article_number,
@@ -2619,7 +2618,7 @@ impl LawExecutionService {
             };
             let ovr_law_id = &selected.reference().law_id;
             let ovr_article_number = &selected.reference().article_number;
-            let ovr_key = override_key(selected.reference());
+            let ovr_key = override_key(ovr_law_id, ovr_article_number);
 
             let (ovr_law, ovr_article, declaration) = match selected {
                 SelectedOverride::InForce {
@@ -4101,6 +4100,23 @@ impl ServiceProvider for LawExecutionService {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Cycle detection enters every hook and override under its own key: a
+    /// shared one would read a second, different hook nested in a first as
+    /// the first one again, and skip it.
+    #[test]
+    fn every_hook_and_override_has_its_own_cycle_key() {
+        let keys = [
+            hook_key("wet_a", "1"),
+            hook_key("wet_a", "2"),
+            hook_key("wet_b", "1"),
+            override_key("wet_a", "1"),
+            override_key("wet_a", "2"),
+            override_key("wet_b", "1"),
+        ];
+        let distinct: std::collections::BTreeSet<&String> = keys.iter().collect();
+        assert_eq!(distinct.len(), keys.len(), "{keys:?}");
+    }
     use crate::article::LawLoad;
     use crate::types::MissingFact;
 

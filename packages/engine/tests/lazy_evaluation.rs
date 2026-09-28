@@ -8,7 +8,7 @@
 // panic too, because that is how a failing fixture reports itself.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use regelrecht_engine::{EngineError, LawExecutionService, Value};
+use regelrecht_engine::{EngineError, LawExecutionService, PathNodeType, Value};
 use std::collections::BTreeMap;
 
 const BRP: &str = r#"
@@ -1651,4 +1651,59 @@ fn the_result_lists_the_inputs_the_article_consulted() {
         vec!["leeftijd"],
         "a minor's income is not consulted"
     );
+}
+
+#[test]
+fn the_same_cross_law_value_is_computed_once_per_execution() {
+    // Two inputs read the same output of the same law with the same
+    // parameters: the second is served from the execution's cache.
+    let law = r#"
+$id: lazy_cached
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Twee keer dezelfde leeftijd.
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: leeftijd
+            type: number
+            source:
+              regulation: lazy_brp
+              output: leeftijd
+              parameters:
+                bsn: $bsn
+          - name: ook_leeftijd
+            type: number
+            source:
+              regulation: lazy_brp
+              output: leeftijd
+              parameters:
+                bsn: $bsn
+        output:
+          - name: som
+            type: number
+        actions:
+          - output: som
+            value:
+              operation: ADD
+              values: [$leeftijd, $ook_leeftijd]
+"#;
+    let mut service = service(30, Some(50));
+    service.load_law(law).unwrap();
+    let result = service
+        .evaluate_law_output_with_trace("lazy_cached", "som", bsn(), "2025-01-01")
+        .unwrap();
+    assert_eq!(result.outputs["som"], Value::Int(60));
+
+    fn cached(node: &regelrecht_engine::trace::PathNode) -> usize {
+        usize::from(node.node_type == PathNodeType::Cached)
+            + node.children.iter().map(cached).sum::<usize>()
+    }
+    assert_eq!(cached(result.trace.as_ref().unwrap()), 1);
 }
