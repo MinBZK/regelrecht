@@ -106,9 +106,8 @@ const phrased = computed(() => {
   if (!primary.value) return null;
   return phraseOutcome(phrasing.value, {
     met: requirementsMet.value,
-    // An unknown amount is not a number to put in a sentence; the general
-    // rendering names what is missing, so leave it to that.
-    value: isUnknown(primary.value.value) ? null : formatValue(primary.value.value, primary.value.spec),
+    value: formatValue(primary.value.value, primary.value.spec),
+    unknown: isUnknown(primary.value.value),
     isYesNo: typeof primary.value.value === 'boolean',
     date: outcomeDate.value,
   });
