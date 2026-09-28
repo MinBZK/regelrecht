@@ -11,7 +11,7 @@ use axum::Router;
 use chrono::DateTime;
 use http_body_util::BodyExt;
 use regelrecht_cel::api::Klok;
-use regelrecht_cel::config::{Config, STANDAARD_POORT};
+use regelrecht_cel::config::{Config, Reductiemodus, STANDAARD_POORT};
 use regelrecht_cel::runtime::Runtime;
 use regelrecht_cel::schema::{self, Soort};
 use regelrecht_cel::transport::{LEES_TOKEN_HEADER, RUNTIME_TOKEN_HEADER};
@@ -40,6 +40,7 @@ fn runtime_op(opstelling: &Path, data: &Path) -> Result<Runtime, Vec<String>> {
         port: STANDAARD_POORT,
         lees_token: None,
         lees_token_bronnen: Vec::new(),
+        reductie: Default::default(),
     };
     Runtime::laad(&config, klok())
 }
@@ -54,6 +55,7 @@ fn runtime_met_leestoken(opstelling: &Path, data: &Path, token: &str, bronnen: &
         port: STANDAARD_POORT,
         lees_token: Some(token.to_string()),
         lees_token_bronnen: bronnen.iter().map(|b| b.to_string()).collect(),
+        reductie: Default::default(),
     };
     Runtime::laad(&config, klok()).unwrap()
 }
@@ -1741,6 +1743,7 @@ fn zonder_processen_draaien_alleen_de_cellen() {
         port: STANDAARD_POORT,
         lees_token: None,
         lees_token_bronnen: Vec::new(),
+        reductie: Default::default(),
     };
     let r = Runtime::laad(&config, klok()).unwrap();
     assert_eq!(r.cellen.len(), 5);
@@ -2097,6 +2100,7 @@ fn met_ander_gezag(
         port: 0,
         lees_token: None,
         lees_token_bronnen: Vec::new(),
+        reductie: Default::default(),
     };
     let app = Runtime::laad(&config, klok()).unwrap().router;
     (cellen, data, app)
@@ -4552,4 +4556,355 @@ async fn meer_besluiten_in_een_zaak() {
         zs["stages"].as_object().unwrap().keys().collect::<Vec<_>>(),
         ["AANVRAAG"]
     );
+}
+
+// --- Experiment A: de engine-route (CEL_REDUCTIE) ---
+
+/// Een runtime over de fixtures met deze reductiemodus.
+fn runtime_met_reductie(data: &Path, reductie: Reductiemodus) -> Result<Runtime, Vec<String>> {
+    let config = Config {
+        cells_path: fixtures().join("cellen"),
+        processes_path: Some(fixtures().join("processes")),
+        regulation_path: fixtures().join("regulation"),
+        data_dir: data.to_path_buf(),
+        port: STANDAARD_POORT,
+        lees_token: None,
+        lees_token_bronnen: Vec::new(),
+        reductie,
+    };
+    Runtime::laad(&config, klok())
+}
+
+fn koppeling() -> PathBuf {
+    fixtures().join("experiment/engine/koppeling.yaml")
+}
+
+/// Wat een antwoord zegt, zonder wat per run verschilt (zaak- en
+/// besluitkenmerken, tijdstippen, hashes) en zonder de route van de
+/// reductie.
+fn zonder_run(w: &Value) -> Value {
+    const WEG: &[&str] = &[
+        "zaakkenmerk",
+        "besluitkenmerk",
+        "op_moment",
+        "vastgelegd_op",
+        "reductie",
+        "yaml",
+        "sha256",
+        "receipt",
+        "trace_text",
+    ];
+    match w {
+        Value::Object(o) => Value::Object(
+            o.iter()
+                .filter(|(k, _)| !WEG.contains(&k.as_str()))
+                .map(|(k, v)| (k.clone(), zonder_run(v)))
+                .collect(),
+        ),
+        Value::Array(a) => Value::Array(a.iter().map(zonder_run).collect()),
+        Value::String(t) => Value::String(zonder_uuid(t)),
+        _ => w.clone(),
+    }
+}
+
+/// Een tekst met elk kenmerk (een uuid van 36 tekens) als `<kenmerk>`.
+fn zonder_uuid(t: &str) -> String {
+    let is_uuid = |w: &str| {
+        w.len() == 36
+            && w.char_indices().all(|(i, c)| {
+                if [8, 13, 18, 23].contains(&i) {
+                    c == '-'
+                } else {
+                    c.is_ascii_hexdigit()
+                }
+            })
+    };
+    let mut uit = String::new();
+    let mut i = 0;
+    while i < t.len() {
+        if t.is_char_boundary(i)
+            && t.len() - i >= 36
+            && t.is_char_boundary(i + 36)
+            && is_uuid(&t[i..i + 36])
+        {
+            uit.push_str("<kenmerk>");
+            i += 36;
+        } else {
+            let c = t[i..].chars().next().unwrap();
+            uit.push(c);
+            i += c.len_utf8();
+        }
+    }
+    uit
+}
+
+/// De hele weg door de fixtures: toets en indienen bij de instantie en de
+/// afnemer, en bij de afnemer het besluit (met de synthese per regel), de
+/// bekendmaking, de betaling en de zaak. Elk antwoord, zonder wat per run
+/// verschilt.
+async fn fixtureflow(rt: &Runtime) -> Vec<(String, StatusCode, Value)> {
+    let app = als_lezer(rt);
+    let mut uit = Vec::new();
+    let mut noteer = |stap: &str, status: StatusCode, w: &Value| {
+        uit.push((stap.to_string(), status, zonder_run(w)));
+    };
+    let c = inloggen(&app, "12345678").await;
+    let (s, w, _) = vraag(
+        &app,
+        "POST",
+        &format!("{INSTANTIE}/api/aanvraag/toets"),
+        Some(&c),
+        Some(volledig()),
+    )
+    .await;
+    noteer("toets instantie", s, &w);
+    for a in [Some("VOORBEELD"), None] {
+        let w = afnemer_toets(&app, a).await;
+        noteer("toets afnemer", StatusCode::OK, &w);
+    }
+    let zaak = afnemer_indienen(&app, "12345678").await;
+    let b = behandelaar(&app).await;
+    let (s, w) = handeling(&app, &b, &zaak, "aanvulling_vragen", true, json!({})).await;
+    noteer("aanvulling op proef", s, &w);
+    let (s, w) = handeling(
+        &app,
+        &b,
+        &zaak,
+        "besluit",
+        true,
+        oordelen()["formulier"].clone(),
+    )
+    .await;
+    noteer("besluit op proef", s, &w);
+    let (s, w) = handeling(
+        &app,
+        &b,
+        &zaak,
+        "besluit",
+        false,
+        oordelen()["formulier"].clone(),
+    )
+    .await;
+    noteer("besluit", s, &w);
+    let (s, w) = handeling(
+        &app,
+        &b,
+        &zaak,
+        "bekendmaken",
+        false,
+        json!({"datum_bekendmaking": "2025-03-12", "bekendgemaakt": true}),
+    )
+    .await;
+    noteer("bekendmaken", s, &w);
+    let (s, w) = handeling(
+        &app,
+        &b,
+        &zaak,
+        "betalen",
+        false,
+        json!({"bedrag": 6000, "datum_betaling": "2025-03-12"}),
+    )
+    .await;
+    noteer("betalen", s, &w);
+    let (s, w, _) = vraag(
+        &app,
+        "GET",
+        &format!("{AFNEMER}/api/zaken/{zaak}"),
+        Some(&b),
+        None,
+    )
+    .await;
+    noteer("zaak", s, &w);
+    let (s, w, _) = vraag(
+        &app,
+        "GET",
+        &format!("{AFNEMER}/api/werkvoorraad"),
+        Some(&b),
+        None,
+    )
+    .await;
+    noteer("werkvoorraad", s, &w);
+    uit
+}
+
+/// De engine-route geeft langs de hele weg dezelfde antwoorden als de
+/// reductie-DSL. In `vergelijk` reduceert elke cel ook langs de DSL en is
+/// elk verschil een fout, dus een verschil in een bron die de synthese stil
+/// als fout zou tonen, valt hier ook op.
+#[tokio::test]
+async fn de_engine_route_geeft_dezelfde_uitkomsten_als_de_dsl() {
+    let (d1, d2, d3) = (
+        tempfile::tempdir().unwrap(),
+        tempfile::tempdir().unwrap(),
+        tempfile::tempdir().unwrap(),
+    );
+    let dsl = fixtureflow(&runtime_met_reductie(d1.path(), Reductiemodus::Dsl).unwrap()).await;
+    for (d, vergelijk) in [(&d2, false), (&d3, true)] {
+        let rt = runtime_met_reductie(
+            d.path(),
+            Reductiemodus::Engine {
+                koppeling: koppeling(),
+                vergelijk,
+            },
+        )
+        .unwrap();
+        let engine = fixtureflow(&rt).await;
+        for ((stap, s1, w1), (_, s2, w2)) in dsl.iter().zip(&engine) {
+            assert_eq!((s1, w1), (s2, w2), "{stap} (vergelijk: {vergelijk})");
+        }
+    }
+    // Het besluit van de afnemer: 4 x 1000 + 2 x 500 en de rest, ook hier.
+    let besluit = &dsl
+        .iter()
+        .find(|(s, _, _)| s == "besluit op proef")
+        .unwrap()
+        .2;
+    assert_eq!(
+        besluit["uitkomsten"]["gebiedsbedrag"],
+        json!(5000),
+        "{besluit}"
+    );
+}
+
+/// In een runtime met de engine-route zegt elke lexostatus langs welke route
+/// zij kwam, met de regeling; de beschrijving van de cel zegt het per
+/// lexostatus, ook voor een lexostatus die bewust langs de DSL gaat; op
+/// verzoek komt de trace van de engine-run mee.
+#[tokio::test]
+async fn de_engine_route_is_zichtbaar() {
+    let data = tempfile::tempdir().unwrap();
+    let rt = runtime_met_reductie(
+        data.path(),
+        Reductiemodus::Engine {
+            koppeling: koppeling(),
+            vergelijk: false,
+        },
+    )
+    .unwrap();
+    let app = als_lezer(&rt);
+    let (_, l, _) = vraag(
+        &app,
+        "GET",
+        "/cellen/test_register/api/lexostatus/registerstatus?aanduiding=VOORBEELD&engine_trace=1",
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(l["reductie"]["route"], "engine", "{l}");
+    assert_eq!(l["reductie"]["regeling"], "lexostatus_registerstatus");
+    assert!(
+        l["reductie"]["trace_text"]
+            .as_str()
+            .is_some_and(|t| !t.is_empty()),
+        "{l}"
+    );
+    assert_eq!(l["parameters"]["zetels_toegewezen"], json!(6));
+    let (_, cellen, _) = vraag(&app, "GET", "/api/cellen", None, None).await;
+    let afnemer = cellen
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["id"] == "test_afnemer")
+        .unwrap();
+    assert_eq!(afnemer["reductie"], "engine");
+    let werkvoorraad = afnemer["lexostatussen"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|l| l["name"] == "werkvoorraad")
+        .unwrap();
+    assert_eq!(werkvoorraad["reductie"]["route"], "dsl");
+    // De zaakstand is code van de runtime, geen reductie: ook dat staat er.
+    let zaakstand = afnemer["lexostatussen"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|l| l["runtime"] == json!(true))
+        .unwrap();
+    assert_eq!(zaakstand["reductie"]["route"], "runtime");
+    // Zonder de engine-route zegt de beschrijving er niets over.
+    let d = tempfile::tempdir().unwrap();
+    let (_, cellen, _) = vraag(&app_dsl(d.path()), "GET", "/api/cellen", None, None).await;
+    assert!(cellen[0].get("reductie").is_none(), "{cellen}");
+}
+
+fn app_dsl(data: &Path) -> Router {
+    als_lezer(&runtime_met_reductie(data, Reductiemodus::Dsl).unwrap())
+}
+
+/// Geen stille terugval: een lexostatus zonder koppeling, een regeling
+/// zonder de uitkomst van een afleiding, of een lijst via de engine houdt de
+/// runtime tegen, met elke fout.
+#[test]
+fn een_onvolledige_koppeling_houdt_de_runtime_tegen() {
+    let map = tempfile::tempdir().unwrap();
+    let bron = std::fs::read_to_string(koppeling()).unwrap();
+    let kapot = bron
+        .replace("    tarief: gebieden_tarief.yaml\n", "    {}\n")
+        .replace(
+            "registratie_per_gebied: register_registratie_per_gebied.yaml",
+            "registratie_per_gebied: register_register.yaml",
+        )
+        .replace(
+            "    werkvoorraad:\n      dsl: een lijst met een regel per zaak (groepeer); de engine kent geen groeperen\n",
+            "    werkvoorraad: afnemer_besluit.yaml\n",
+        );
+    // De regelingen blijven waar ze staan: hun paden worden absoluut.
+    let bij = koppeling().parent().unwrap().display().to_string();
+    let kapot = kapot
+        .replace("  test_gebieden:\n    {}\n", "  test_gebieden: {}\n")
+        .replace(": ../", &format!(": {bij}/../"))
+        .lines()
+        .map(|r| match r.split_once(": ") {
+            Some((k, v)) if v.ends_with(".yaml") && !v.starts_with('/') => {
+                format!("{k}: {bij}/{v}")
+            }
+            _ => r.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let pad = map.path().join("koppeling.yaml");
+    std::fs::write(&pad, kapot).unwrap();
+    let data = tempfile::tempdir().unwrap();
+    let fouten = runtime_met_reductie(
+        data.path(),
+        Reductiemodus::Engine {
+            koppeling: pad,
+            vergelijk: false,
+        },
+    )
+    .err()
+    .unwrap()
+    .join("\n");
+    assert!(
+        fouten.contains("cel 'test_gebieden', lexostatus 'tarief': geen koppeling"),
+        "{fouten}"
+    );
+    assert!(
+        fouten.contains("heeft geen uitkomst 'ingeschreven'"),
+        "{fouten}"
+    );
+    assert!(
+        fouten.contains("lexostatus 'werkvoorraad': een lijst-lexostatus"),
+        "{fouten}"
+    );
+}
+
+#[test]
+fn de_reductiemodus_komt_uit_de_omgeving() {
+    assert_eq!(Reductiemodus::uit(None, None), Ok(Reductiemodus::Dsl));
+    assert_eq!(
+        Reductiemodus::uit(Some("dsl"), None),
+        Ok(Reductiemodus::Dsl)
+    );
+    assert_eq!(
+        Reductiemodus::uit(Some("engine"), Some("k.yaml")),
+        Ok(Reductiemodus::Engine {
+            koppeling: PathBuf::from("k.yaml"),
+            vergelijk: false
+        })
+    );
+    assert!(Reductiemodus::uit(Some("engine"), None).is_err());
+    assert!(Reductiemodus::uit(None, Some("k.yaml")).is_err());
+    assert!(Reductiemodus::uit(Some("anders"), Some("k.yaml")).is_err());
 }

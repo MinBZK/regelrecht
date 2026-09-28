@@ -11,10 +11,13 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Instant;
 
 use regelrecht_cel::config::CelDefinitie;
 use regelrecht_cel::gram::Gram;
+use regelrecht_cel::lexostatus_engine::{uitkomsten_van, CelRoute, Wijze};
+use regelrecht_cel::reductie::Peil;
 use regelrecht_cel::stroom;
 use regelrecht_cel::{lexostatus_engine, reductie, startstand};
 use regelrecht_engine::LawExecutionService;
@@ -48,64 +51,51 @@ fn grammen_van(cel_map: &Path, extra: &[Value]) -> (CelDefinitie, Vec<Gram>) {
     (def, startstand::geplaatst(&grammen, &laadtijd).unwrap())
 }
 
-fn service_met(artikel: &Path) -> (LawExecutionService, String) {
+fn service_met(artikel: &Path) -> (Arc<LawExecutionService>, String) {
     let mut s = LawExecutionService::new();
     let id = s
         .load_law(&std::fs::read_to_string(artikel).unwrap())
         .unwrap();
-    (s, id)
+    (Arc::new(s), id)
 }
 
-/// De namen die een lexostatus oplevert: haar afleidingen (parameters) en
-/// haar extra velden. Het engine-artikel heeft voor elk een uitkomst met
-/// dezelfde naam.
-fn uitkomsten_van(def: &reductie::LexostatusDefinitie) -> Vec<&str> {
-    def.reduction
-        .afleidingen
-        .keys()
-        .chain(def.reduction.extra_velden.keys())
-        .map(String::as_str)
-        .collect()
-}
-
-/// Vergelijk per input: de parameters en extra velden van de reductie tegen
-/// de uitkomsten van de engine. Geeft de verschillen terug.
+/// Vergelijk per input: de lexostatus via de reductie-DSL tegen die via de
+/// engine, langs dezelfde route als de runtime met `CEL_REDUCTIE=vergelijk`
+/// (afleidingen, extra velden, niet afgeleid en het gekozen gram). Geeft
+/// de verschillen terug.
 fn vergelijk(
     def: &reductie::LexostatusDefinitie,
-    service: &LawExecutionService,
+    service: &Arc<LawExecutionService>,
     regeling: &str,
     grammen: &[Gram],
     inputs: &[Map<String, Value>],
 ) -> Vec<String> {
-    let uitkomsten = uitkomsten_van(def);
-    let mut verschillen = Vec::new();
-    for i in inputs {
-        let dsl = reductie::reduceer(def, i, grammen)
-            .unwrap()
-            .map(|l| {
-                let mut v = l.parameters;
-                v.extend(l.extra_velden);
-                v
-            })
-            .unwrap_or_default();
-        let engine = lexostatus_engine::reduceer(
-            service,
-            regeling,
-            &uitkomsten,
-            i,
-            grammen,
-            &def.reduction.kroniek,
-            DATUM,
-        )
-        .unwrap();
-        for u in &uitkomsten {
-            let (a, b) = (dsl.get(*u), engine.get(*u));
-            if a != b {
-                verschillen.push(format!("{i:?} {u}: dsl {a:?}, engine {b:?}"));
-            }
-        }
-    }
-    verschillen
+    let route = CelRoute {
+        service: service.clone(),
+        wijzen: BTreeMap::from([(
+            def.name.clone(),
+            Wijze::Engine {
+                regeling: regeling.to_string(),
+            },
+        )]),
+        vergelijk: true,
+    };
+    inputs
+        .iter()
+        .filter_map(|i| {
+            lexostatus_engine::reduceer_lexostatus(
+                &route,
+                def,
+                i,
+                grammen,
+                &Peil::default(),
+                DATUM,
+                false,
+            )
+            .err()
+            .map(|f| format!("{i:?}: {f}"))
+        })
+        .collect()
 }
 
 fn register() -> (reductie::LexostatusDefinitie, Vec<Gram>) {
@@ -171,7 +161,8 @@ fn laatste_is_op_moment_niet_op_toevoegen() {
 fn geen_gram_is_nee_nul_of_weg() {
     let (def, grammen) = register();
     let (service, id) = service_met(&fixtures().join("experiment/lexostatus_registerstatus.yaml"));
-    let uitkomsten = uitkomsten_van(&def);
+    let namen = uitkomsten_van(&def);
+    let uitkomsten: Vec<&str> = namen.iter().map(String::as_str).collect();
     let uit = lexostatus_engine::reduceer(
         &service,
         &id,
@@ -216,7 +207,8 @@ fn meet(
     i: &Map<String, Value>,
 ) {
     let n = 200;
-    let uitkomsten = uitkomsten_van(def);
+    let namen = uitkomsten_van(def);
+    let uitkomsten: Vec<&str> = namen.iter().map(String::as_str).collect();
     let t = Instant::now();
     for _ in 0..n {
         reductie::reduceer(def, i, grammen).unwrap();
@@ -283,7 +275,8 @@ fn vergelijk_uit_omgeving() {
         let def = lexo.lexostatus(naam).unwrap().clone();
         let (service, id) = service_met(Path::new(v["artikel"].as_str().unwrap()));
         let inputs: Vec<Map<String, Value>> = serde_json::from_value(v["inputs"].clone()).unwrap();
-        let uitkomsten = uitkomsten_van(&def);
+        let namen = uitkomsten_van(&def);
+        let uitkomsten: Vec<&str> = namen.iter().map(String::as_str).collect();
         println!(
             "{naam} ({} grammen, {} extra): {} gevallen x {} uitkomsten {uitkomsten:?}",
             grammen.len(),
@@ -326,7 +319,8 @@ fn vergelijk_uit_omgeving() {
 /// op met `source` en bouwt de tabel; daarna rekent de afnemende regeling.
 ///
 /// - `EXP_REGULATION`: de map met de regelingen van het corpus;
-/// - `EXP_SYNTHESE_MAP`: de map met de lexostatus- en synthese-regelingen;
+/// - `EXP_SYNTHESE_MAP`: de map met de lexostatus- en synthese-regelingen
+///   (een `koppeling.yaml` erin, voor de runtime, telt niet mee);
 /// - `EXP_KOPPELING`: json-lijst `{regeling, cel_map, kroniek}` (welke
 ///   lexostatus-regeling welke kroniek leest: de deploymentconfiguratie);
 /// - `EXP_SYNTHESE`: json `{regeling, uitkomst, jaar, inputs, verwacht}` van
@@ -351,13 +345,13 @@ fn synthese_uit_omgeving() {
     let mut service = regelrecht_cel::regelingen::laad(Path::new(&corpus))
         .unwrap()
         .service;
-    let mut bestanden: Vec<PathBuf> = std::fs::read_dir(&map)
-        .unwrap()
-        .map(|e| e.unwrap().path())
-        .filter(|p| p.extension().is_some_and(|x| x == "yaml"))
-        .collect();
-    bestanden.sort();
-    for b in &bestanden {
+    // De regelingen in de map; het koppelbestand van de runtime
+    // (`koppeling.yaml`) is geen regeling.
+    let bestanden = regelrecht_cel::laden::yaml_bestanden(Path::new(&map)).unwrap();
+    for b in bestanden
+        .iter()
+        .filter(|b| b.file_name().is_some_and(|n| n != "koppeling.yaml"))
+    {
         service
             .load_law(&std::fs::read_to_string(b).unwrap())
             .map_err(|e| format!("{}: {e}", b.display()))

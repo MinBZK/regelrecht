@@ -1,0 +1,28 @@
+---
+# Experiment A (niet voor productie): de koppeling van de engine-route van de
+# cel-runtime voor de fictieve cellen (CEL_REDUCTIE=engine). Per cel en per
+# lexostatus de engine-regeling (een pad relatief aan dit bestand), of bewust
+# de reductie-DSL met een reden. Een lexostatus zonder koppeling houdt de
+# runtime tegen.
+cellen:
+  test_afnemer:
+    aanvraag_inhoud: afnemer_aanvraag_inhoud.yaml
+    zaakverloop: afnemer_zaakverloop.yaml
+    besluit: afnemer_besluit.yaml
+    werkvoorraad:
+      dsl: een lijst met een regel per zaak (groepeer); de engine kent geen groeperen
+  test_gebieden:
+    tarief: gebieden_tarief.yaml
+  test_instantie:
+    aanvraag_inhoud: instantie_aanvraag_inhoud.yaml
+  test_register:
+    register: register_register.yaml
+    registerstatus: ../lexostatus_registerstatus.yaml
+    registratie_per_gebied: register_registratie_per_gebied.yaml
+  test_toeslag:
+    aanvraag:
+      dsl: periode_van (de eerste dag van de maand van een datum) is in dit experiment niet nagebouwd
+    werkvoorraad:
+      dsl: een lijst met een regel per zaak (groepeer); de engine kent geen groeperen
+    besluiten:
+      dsl: niet nagebouwd; dezelfde patronen als besluit van test_afnemer

@@ -44,6 +44,51 @@ pub struct Config {
     /// (`CEL_LEES_TOKEN_BRONNEN`, komma's ertussen). Een bron met een andere
     /// url krijgt het niet: het token geeft lezen in deze runtime.
     pub lees_token_bronnen: Vec<String>,
+    /// Langs welke route de cellen reduceren (`CEL_REDUCTIE`, experiment A).
+    pub reductie: Reductiemodus,
+}
+
+/// Hoe de cellen van de runtime een lexostatus reduceren (`CEL_REDUCTIE`).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum Reductiemodus {
+    /// De reductie-DSL (`dsl`, de standaard).
+    #[default]
+    Dsl,
+    /// Elke lexostatus als engine-run van de regeling die het koppelbestand
+    /// (`CEL_ENGINE_KOPPELING`) noemt (`engine`); zie
+    /// [`crate::lexostatus_engine`]. Met `vergelijk` reduceert de cel ook
+    /// langs de DSL en is elk verschil een fout.
+    Engine { koppeling: PathBuf, vergelijk: bool },
+}
+
+impl Reductiemodus {
+    /// Uit `CEL_REDUCTIE` en `CEL_ENGINE_KOPPELING`. Een koppelbestand zonder
+    /// engine-route, of de engine-route zonder koppelbestand, is een fout:
+    /// geen stille terugval.
+    pub fn uit(reductie: Option<&str>, koppeling: Option<&str>) -> Result<Self, String> {
+        let koppeling = koppeling.map(str::trim).filter(|k| !k.is_empty());
+        let engine = |vergelijk| match koppeling {
+            Some(k) => Ok(Self::Engine {
+                koppeling: PathBuf::from(k),
+                vergelijk,
+            }),
+            None => Err(
+                "CEL_REDUCTIE vraagt de engine, maar CEL_ENGINE_KOPPELING is niet gezet"
+                    .to_string(),
+            ),
+        };
+        match reductie.map(str::trim).unwrap_or("") {
+            "" | "dsl" => match koppeling {
+                None => Ok(Self::Dsl),
+                Some(_) => Err("CEL_ENGINE_KOPPELING is gezet, maar CEL_REDUCTIE is niet 'engine' of 'vergelijk'".into()),
+            },
+            "engine" => engine(false),
+            "vergelijk" => engine(true),
+            anders => Err(format!(
+                "CEL_REDUCTIE '{anders}' is geen 'dsl', 'engine' of 'vergelijk'"
+            )),
+        }
+    }
 }
 
 impl Config {
@@ -80,6 +125,10 @@ impl Config {
                 .map(|u| u.trim().trim_end_matches('/').to_string())
                 .filter(|u| !u.is_empty())
                 .collect(),
+            reductie: Reductiemodus::uit(
+                std::env::var("CEL_REDUCTIE").ok().as_deref(),
+                std::env::var("CEL_ENGINE_KOPPELING").ok().as_deref(),
+            )?,
         })
     }
 }

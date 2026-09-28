@@ -18,7 +18,7 @@ use serde_json::{Map, Value};
 
 use crate::config::{BronInvoer, RijBron, SyntheseBron};
 use crate::proces::Proces;
-use crate::reductie::{Lexostatus, Peil};
+use crate::reductie::{Lexostatus, Peil, Reductieroute};
 use crate::regelingen;
 use crate::transport::{haal_binnen, Transport, TransportFout};
 
@@ -143,6 +143,10 @@ pub struct BronUitslag {
     /// De extra velden die deze bron doorgaf aan een latere bron.
     #[serde(skip_serializing_if = "Map::is_empty")]
     pub extra_velden: Map<String, Value>,
+    /// Langs welke route de bron reduceerde, als zij dat zegt (een runtime
+    /// met de engine-route, experiment A).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reductie: Option<Reductieroute>,
 }
 
 /// De samengevoegde parameters, met hun herkomst.
@@ -338,6 +342,7 @@ async fn vraag(
             invoer: Map::new(),
             niet_geleverd: Vec::new(),
             extra_velden: Map::new(),
+            reductie: None,
         };
         let invoer = match invoer(d, eigen, eerder) {
             Ok(i) => i,
@@ -351,6 +356,7 @@ async fn vraag(
         match antwoord {
             Ok(l) => {
                 uitslag.status = Status::Bevraagd;
+                uitslag.reductie = l.reductie.clone();
                 for veld in &d.extra_velden {
                     if let Some(w) = l.extra_velden.get(veld) {
                         uitslag.extra_velden.insert(veld.clone(), w.clone());

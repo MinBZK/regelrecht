@@ -5,7 +5,7 @@
 // het label de veldnaam en elk veld tekst.
 import { computed, inject, onMounted, ref } from 'vue';
 import { external, leesPad, zetPad } from '../formulier.js';
-import { herkomstRijen } from '../tekst.js';
+import { herkomstRijen, routesUit } from '../tekst.js';
 import Invoer from '../components/Invoer.vue';
 import TabelInvoer from '../components/TabelInvoer.vue';
 import TraceKnop from '@regelrecht/frontend-shared/components/TraceKnop.vue';
@@ -120,7 +120,9 @@ const uitslag = computed(() => toets.value?.uitslag ?? null);
 
 // Per parameter die naar de engine ging: de waarde en waar hij vandaan kwam,
 // de eigen lexostatus of een andere cel.
-const herkomst = computed(() => herkomstRijen(toets.value?.parameters, toets.value?.herkomst));
+const herkomst = computed(() =>
+  herkomstRijen(toets.value?.parameters, toets.value?.herkomst, routesUit(toets.value)),
+);
 
 const bronnen = computed(() => toets.value?.bronnen ?? []);
 

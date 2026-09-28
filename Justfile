@@ -931,6 +931,10 @@ docs-a11y:
 # PROCESSES_PATH draaien alleen de cellen. De kronieken komen in .cel/<cel-id>/
 # (DATA_DIR), en blijven staan tussen twee runs. De controles bij het
 # opstarten falen luid; lees dan de regels boven "de runtime start niet".
+# Experiment A: met CEL_REDUCTIE=engine (of vergelijk) en CEL_ENGINE_KOPPELING
+# (een koppelbestand, zie packages/cel/src/lexostatus_engine.rs) reduceren de
+# cellen als engine-run; de frontend toont de route. Op de fixtures:
+# CEL_REDUCTIE=engine CEL_ENGINE_KOPPELING=packages/cel/tests/fixtures/experiment/engine/koppeling.yaml just cel
 [doc("Start de cel-runtime en de frontend lokaal")]
 cel:
     #!/usr/bin/env bash

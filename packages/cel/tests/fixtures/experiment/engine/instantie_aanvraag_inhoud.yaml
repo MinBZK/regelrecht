@@ -1,0 +1,239 @@
+---
+# Experiment A (niet voor productie): de lexostatus `aanvraag_inhoud` van de fictieve
+# cel test_instantie (cellen/instantie/lexostatussen.yaml) als engine-regeling, voor de
+# engine-route van de cel-runtime (koppeling.yaml naast dit bestand).
+# Opgesteld met een hulpscript volgens vaste patronen per afleiding: `kies:
+# laatste` is een hulpuitvoer met de hoogste `volgorde`, een veld van dat gram
+# een FOREACH erop, met een IF waar een lege combine anders 0 of onwaar zou
+# geven.
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
+$id: lexostatus_test_instantie_aanvraag_inhoud
+name: Lexostatus aanvraag inhoud, instantie (experiment)
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/lexostatus_test_instantie_aanvraag_inhoud
+articles:
+  - number: '1'
+    url: https://example.com/lexostatus_test_instantie_aanvraag_inhoud/1
+    text: De inhoud van de laatste aanvraag in een zaak.
+    machine_readable:
+      execution:
+        parameters:
+          - {name: zaakkenmerk, type: string, required: true}
+        input:
+          - name: grammen
+            type: array
+            source: {}
+        output:
+          - {name: laatste, type: number, nullable: true}
+          - {name: aanvraagjaar, type: number, nullable: true}
+          - {name: aanvraagdatum, type: date, nullable: true}
+          - {name: bevat_naam, type: boolean}
+          - {name: bevat_aanduiding, type: boolean}
+          - {name: bevat_naam_orgaan, type: boolean}
+          - {name: bevat_aantal_zetels, type: boolean}
+          - {name: is_samengevoegd, type: boolean}
+          - {name: bevat_aantal_aanduidingen, type: boolean}
+          - {name: registratie_categorie_a, type: boolean, nullable: true}
+        actions:
+          - output: laatste
+            value:
+              operation: FOREACH
+              collection: $grammen
+              as: g
+              filter:
+                operation: AND
+                conditions:
+                  - {operation: EQUALS, subject: $g.type, value: indiening}
+                  - {operation: EQUALS, subject: $g.soort, value: aanvraag}
+                  - {operation: EQUALS, subject: $g.zaakkenmerk, value: $zaakkenmerk}
+              body: $g.volgorde
+              combine: MAX
+          - output: aanvraagjaar
+            value:
+              operation: FOREACH
+              collection: $grammen
+              as: g
+              filter:
+                operation: AND
+                conditions:
+                  - {operation: EQUALS, subject: $g.volgorde, value: $laatste}
+                  - operation: NOT
+                    value: {operation: EQUALS, subject: $g.fields.inhoud.aanvraagjaar, value: null}
+              body: $g.fields.inhoud.aanvraagjaar
+              combine: MAX
+          - output: aanvraagdatum
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: FOREACH
+                    collection: $grammen
+                    as: g
+                    filter:
+                      operation: AND
+                      conditions:
+                        - {operation: EQUALS, subject: $g.volgorde, value: $laatste}
+                        - operation: NOT
+                          value: {operation: EQUALS, subject: $g.op_datum, value: null}
+                        - operation: NOT
+                          value: {operation: EQUALS, subject: $g.op_datum, value: ''}
+                    body: true
+                    combine: OR
+                  then:
+                    operation: FOREACH
+                    collection: $grammen
+                    as: g
+                    filter:
+                      operation: AND
+                      conditions:
+                        - {operation: EQUALS, subject: $g.volgorde, value: $laatste}
+                        - operation: NOT
+                          value: {operation: EQUALS, subject: $g.op_datum, value: null}
+                        - operation: NOT
+                          value: {operation: EQUALS, subject: $g.op_datum, value: ''}
+                    body: $g.op_datum
+                    combine: ADD
+          - output: bevat_naam
+            value:
+              operation: FOREACH
+              collection: $grammen
+              as: g
+              filter:
+                operation: AND
+                conditions:
+                  - {operation: EQUALS, subject: $g.volgorde, value: $laatste}
+                  - operation: NOT
+                    value: {operation: EQUALS, subject: $g.fields.inhoud.naam, value: null}
+                  - operation: NOT
+                    value: {operation: EQUALS, subject: $g.fields.inhoud.naam, value: ''}
+              body: true
+              combine: OR
+          - output: bevat_aanduiding
+            value:
+              operation: FOREACH
+              collection: $grammen
+              as: g
+              filter:
+                operation: AND
+                conditions:
+                  - {operation: EQUALS, subject: $g.volgorde, value: $laatste}
+                  - operation: NOT
+                    value: {operation: EQUALS, subject: $g.fields.inhoud.aanduiding, value: null}
+                  - operation: NOT
+                    value: {operation: EQUALS, subject: $g.fields.inhoud.aanduiding, value: ''}
+              body: true
+              combine: OR
+          - output: bevat_naam_orgaan
+            value:
+              operation: FOREACH
+              collection: $grammen
+              as: g
+              filter: {operation: EQUALS, subject: $g.volgorde, value: $laatste}
+              body:
+                operation: AND
+                conditions:
+                  - operation: FOREACH
+                    collection: $g.fields.inhoud.organen
+                    as: r
+                    body: true
+                    combine: OR
+                  - operation: FOREACH
+                    collection: $g.fields.inhoud.organen
+                    as: r
+                    body:
+                      operation: AND
+                      conditions:
+                        - operation: NOT
+                          value: {operation: EQUALS, subject: $r.orgaan, value: null}
+                        - operation: NOT
+                          value: {operation: EQUALS, subject: $r.orgaan, value: ''}
+                    combine: AND
+              combine: OR
+          - output: bevat_aantal_zetels
+            value:
+              operation: FOREACH
+              collection: $grammen
+              as: g
+              filter: {operation: EQUALS, subject: $g.volgorde, value: $laatste}
+              body:
+                operation: AND
+                conditions:
+                  - operation: FOREACH
+                    collection: $g.fields.inhoud.organen
+                    as: r
+                    body: true
+                    combine: OR
+                  - operation: FOREACH
+                    collection: $g.fields.inhoud.organen
+                    as: r
+                    body:
+                      operation: NOT
+                      value: {operation: EQUALS, subject: $r.zetels, value: null}
+                    combine: AND
+              combine: OR
+          - output: is_samengevoegd
+            value:
+              operation: FOREACH
+              collection: $grammen
+              as: g
+              filter: {operation: EQUALS, subject: $g.volgorde, value: $laatste}
+              body:
+                operation: FOREACH
+                collection: $g.fields.inhoud.organen
+                as: r
+                body: {operation: EQUALS, subject: $r.samengevoegd, value: true}
+                combine: OR
+              combine: OR
+          - output: bevat_aantal_aanduidingen
+            value:
+              operation: FOREACH
+              collection: $grammen
+              as: g
+              filter: {operation: EQUALS, subject: $g.volgorde, value: $laatste}
+              body:
+                operation: AND
+                conditions:
+                  - operation: FOREACH
+                    collection: $g.fields.inhoud.organen
+                    as: r
+                    body: true
+                    combine: OR
+                  - operation: FOREACH
+                    collection: $g.fields.inhoud.organen
+                    as: r
+                    filter: {operation: EQUALS, subject: $r.samengevoegd, value: true}
+                    body:
+                      operation: NOT
+                      value: {operation: EQUALS, subject: $r.aantal_aanduidingen, value: null}
+                    combine: AND
+              combine: OR
+          - output: registratie_categorie_a
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: FOREACH
+                    collection: $grammen
+                    as: g
+                    filter:
+                      operation: AND
+                      conditions:
+                        - {operation: EQUALS, subject: $g.volgorde, value: $laatste}
+                        - operation: NOT
+                          value: {operation: EQUALS, subject: $g.fields.inhoud.registratie, value: null}
+                    body: true
+                    combine: OR
+                  then:
+                    operation: FOREACH
+                    collection: $grammen
+                    as: g
+                    filter:
+                      operation: AND
+                      conditions:
+                        - {operation: EQUALS, subject: $g.volgorde, value: $laatste}
+                        - operation: NOT
+                          value: {operation: EQUALS, subject: $g.fields.inhoud.registratie, value: null}
+                    body: {operation: EQUALS, subject: $g.fields.inhoud.registratie, value: a}
+                    combine: OR

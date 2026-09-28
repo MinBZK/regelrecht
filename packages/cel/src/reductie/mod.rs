@@ -354,6 +354,35 @@ pub struct Lexostatus {
     /// afnemer en gaat nooit naar de engine; `parameters` is dan leeg.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lijst: Option<Vec<Regel>>,
+    /// Langs welke route de cel reduceerde: alleen in een runtime met de
+    /// engine-route (`CEL_REDUCTIE`, zie [`crate::lexostatus_engine`]).
+    /// Weggelaten bij de reductie-DSL zonder schakelaar, zodat die
+    /// uitvoer gelijk blijft.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reductie: Option<Reductieroute>,
+}
+
+/// De route van een reductie: de reductie-DSL of een engine-run van een
+/// regeling (experiment A).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Reductieroute {
+    /// `engine` of `dsl`.
+    pub route: String,
+    /// Bij `engine`: de regeling die de lexostatus is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub regeling: Option<String>,
+    /// Bij `dsl` in een runtime met de engine-route: waarom deze lexostatus
+    /// toch langs de DSL gaat (uit het koppelbestand).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reden: Option<String>,
+    /// Hoe lang de reductie duurde, in microseconden.
+    pub duur_us: u64,
+    /// Bij `vergelijk`: hoe lang dezelfde reductie langs de DSL duurde.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dsl_duur_us: Option<u64>,
+    /// De trace van de engine-run, als die gevraagd was.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trace_text: Option<String>,
 }
 
 impl Lexostatus {
@@ -370,6 +399,7 @@ impl Lexostatus {
             extra_velden: BTreeMap::new(),
             niet_afgeleid: Vec::new(),
             lijst: None,
+            reductie: None,
         }
     }
 

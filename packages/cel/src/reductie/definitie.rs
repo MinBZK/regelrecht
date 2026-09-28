@@ -477,4 +477,15 @@ impl Afleiding {
     pub fn toetst_aanwezigheid(&self) -> bool {
         matches!(self, Afleiding::Gevuld { .. } | Afleiding::ElkeRegel { .. })
     }
+
+    /// Hoe de afleiding afwezigheid leest (`geen_gram`), als zij dat zegt.
+    pub fn geen_gram(&self) -> Option<&Value> {
+        match self {
+            Afleiding::LaatsteMoment { geen_gram, .. }
+            | Afleiding::LaatsteVeld { geen_gram, .. }
+            | Afleiding::LaatsteJaarVan { geen_gram, .. }
+            | Afleiding::LaatstePeriodeVan { geen_gram, .. } => geen_gram.as_ref(),
+            _ => None,
+        }
+    }
 }

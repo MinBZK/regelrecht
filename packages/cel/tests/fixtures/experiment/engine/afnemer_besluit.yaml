@@ -1,0 +1,220 @@
+---
+# Experiment A (niet voor productie): de lexostatus `besluit` van de fictieve
+# cel test_afnemer (cellen/afnemer/lexostatussen.yaml) als engine-regeling, voor de
+# engine-route van de cel-runtime (koppeling.yaml naast dit bestand).
+# Opgesteld met een hulpscript volgens vaste patronen per afleiding: `kies:
+# laatste` is een hulpuitvoer met de hoogste `volgorde`, een veld van dat gram
+# een FOREACH erop, met een IF waar een lege combine anders 0 of onwaar zou
+# geven.
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
+$id: lexostatus_test_afnemer_besluit
+name: Lexostatus besluit, afnemer (experiment)
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/lexostatus_test_afnemer_besluit
+articles:
+  - number: '1'
+    url: https://example.com/lexostatus_test_afnemer_besluit/1
+    text: Het besluit in een zaak, de betalingen en de bekendmaking.
+    machine_readable:
+      execution:
+        parameters:
+          - {name: zaakkenmerk, type: string, required: true}
+        input:
+          - name: grammen
+            type: array
+            source: {}
+        output:
+          - {name: laatste_vastgesteld_bedrag, type: number, nullable: true}
+          - {name: vastgesteld_bedrag, type: number, nullable: true}
+          - {name: betaald_bedrag, type: number}
+          - {name: laatste_datum_bekendmaking, type: number, nullable: true}
+          - {name: datum_bekendmaking, type: date, nullable: true}
+          - {name: laatste_aanvang_bezwaartermijn, type: number, nullable: true}
+          - {name: aanvang_bezwaartermijn, type: date, nullable: true}
+          - {name: laatste_einde_bezwaartermijn, type: number, nullable: true}
+          - {name: einde_bezwaartermijn, type: date, nullable: true}
+        actions:
+          - output: laatste_vastgesteld_bedrag
+            value:
+              operation: FOREACH
+              collection: $grammen
+              as: g
+              filter:
+                operation: AND
+                conditions:
+                  - {operation: EQUALS, subject: $g.zaakkenmerk, value: $zaakkenmerk}
+                  - {operation: EQUALS, subject: $g.stage, value: BESLUIT}
+              body: $g.volgorde
+              combine: MAX
+          - output: vastgesteld_bedrag
+            legal_basis: {law: Testregeling, article: '3', paragraph: '1'}
+            value:
+              operation: FOREACH
+              collection: $grammen
+              as: g
+              filter:
+                operation: AND
+                conditions:
+                  - {operation: EQUALS, subject: $g.volgorde, value: $laatste_vastgesteld_bedrag}
+                  - operation: NOT
+                    value: {operation: EQUALS, subject: $g.fields.vastgesteld_bedrag, value: null}
+              body: $g.fields.vastgesteld_bedrag
+              combine: MAX
+          - output: betaald_bedrag
+            legal_basis: {law: Testregeling, article: '3', paragraph: '1'}
+            value:
+              operation: FOREACH
+              collection: $grammen
+              as: g
+              filter:
+                operation: AND
+                conditions:
+                  - {operation: EQUALS, subject: $g.name, value: betaling_verricht}
+                  - {operation: EQUALS, subject: $g.zaakkenmerk, value: $zaakkenmerk}
+                  - operation: NOT
+                    value: {operation: EQUALS, subject: $g.fields.bedrag, value: null}
+              body: $g.fields.bedrag
+              combine: ADD
+          - output: laatste_datum_bekendmaking
+            value:
+              operation: FOREACH
+              collection: $grammen
+              as: g
+              filter:
+                operation: AND
+                conditions:
+                  - {operation: EQUALS, subject: $g.zaakkenmerk, value: $zaakkenmerk}
+                  - {operation: EQUALS, subject: $g.stage, value: BEKENDMAKING}
+              body: $g.volgorde
+              combine: MAX
+          - output: datum_bekendmaking
+            legal_basis: {law: Testregeling, article: '2'}
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: FOREACH
+                    collection: $grammen
+                    as: g
+                    filter:
+                      operation: AND
+                      conditions:
+                        - {operation: EQUALS, subject: $g.volgorde, value: $laatste_datum_bekendmaking}
+                        - operation: NOT
+                          value: {operation: EQUALS, subject: $g.fields.datum_bekendmaking, value: null}
+                        - operation: NOT
+                          value: {operation: EQUALS, subject: $g.fields.datum_bekendmaking, value: ''}
+                    body: true
+                    combine: OR
+                  then:
+                    operation: FOREACH
+                    collection: $grammen
+                    as: g
+                    filter:
+                      operation: AND
+                      conditions:
+                        - {operation: EQUALS, subject: $g.volgorde, value: $laatste_datum_bekendmaking}
+                        - operation: NOT
+                          value: {operation: EQUALS, subject: $g.fields.datum_bekendmaking, value: null}
+                        - operation: NOT
+                          value: {operation: EQUALS, subject: $g.fields.datum_bekendmaking, value: ''}
+                    body: $g.fields.datum_bekendmaking
+                    combine: ADD
+          - output: laatste_aanvang_bezwaartermijn
+            value:
+              operation: FOREACH
+              collection: $grammen
+              as: g
+              filter:
+                operation: AND
+                conditions:
+                  - {operation: EQUALS, subject: $g.zaakkenmerk, value: $zaakkenmerk}
+                  - {operation: EQUALS, subject: $g.stage, value: BEKENDMAKING}
+              body: $g.volgorde
+              combine: MAX
+          - output: aanvang_bezwaartermijn
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: FOREACH
+                    collection: $grammen
+                    as: g
+                    filter:
+                      operation: AND
+                      conditions:
+                        - operation: EQUALS
+                          subject: $g.volgorde
+                          value: $laatste_aanvang_bezwaartermijn
+                        - operation: NOT
+                          value: {operation: EQUALS, subject: $g.fields.aanvang_bezwaartermijn, value: null}
+                        - operation: NOT
+                          value: {operation: EQUALS, subject: $g.fields.aanvang_bezwaartermijn, value: ''}
+                    body: true
+                    combine: OR
+                  then:
+                    operation: FOREACH
+                    collection: $grammen
+                    as: g
+                    filter:
+                      operation: AND
+                      conditions:
+                        - operation: EQUALS
+                          subject: $g.volgorde
+                          value: $laatste_aanvang_bezwaartermijn
+                        - operation: NOT
+                          value: {operation: EQUALS, subject: $g.fields.aanvang_bezwaartermijn, value: null}
+                        - operation: NOT
+                          value: {operation: EQUALS, subject: $g.fields.aanvang_bezwaartermijn, value: ''}
+                    body: $g.fields.aanvang_bezwaartermijn
+                    combine: ADD
+          - output: laatste_einde_bezwaartermijn
+            value:
+              operation: FOREACH
+              collection: $grammen
+              as: g
+              filter:
+                operation: AND
+                conditions:
+                  - {operation: EQUALS, subject: $g.zaakkenmerk, value: $zaakkenmerk}
+                  - {operation: EQUALS, subject: $g.stage, value: BEKENDMAKING}
+              body: $g.volgorde
+              combine: MAX
+          - output: einde_bezwaartermijn
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: FOREACH
+                    collection: $grammen
+                    as: g
+                    filter:
+                      operation: AND
+                      conditions:
+                        - operation: EQUALS
+                          subject: $g.volgorde
+                          value: $laatste_einde_bezwaartermijn
+                        - operation: NOT
+                          value: {operation: EQUALS, subject: $g.fields.einde_bezwaartermijn, value: null}
+                        - operation: NOT
+                          value: {operation: EQUALS, subject: $g.fields.einde_bezwaartermijn, value: ''}
+                    body: true
+                    combine: OR
+                  then:
+                    operation: FOREACH
+                    collection: $grammen
+                    as: g
+                    filter:
+                      operation: AND
+                      conditions:
+                        - operation: EQUALS
+                          subject: $g.volgorde
+                          value: $laatste_einde_bezwaartermijn
+                        - operation: NOT
+                          value: {operation: EQUALS, subject: $g.fields.einde_bezwaartermijn, value: null}
+                        - operation: NOT
+                          value: {operation: EQUALS, subject: $g.fields.einde_bezwaartermijn, value: ''}
+                    body: $g.fields.einde_bezwaartermijn
+                    combine: ADD

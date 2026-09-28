@@ -1,0 +1,58 @@
+---
+# Experiment A (niet voor productie): de lexostatus `tarief` van de fictieve
+# cel test_gebieden (cellen/gebieden/lexostatussen.yaml) als engine-regeling, voor de
+# engine-route van de cel-runtime (koppeling.yaml naast dit bestand).
+# Opgesteld met een hulpscript volgens vaste patronen per afleiding: `kies:
+# laatste` is een hulpuitvoer met de hoogste `volgorde`, een veld van dat gram
+# een FOREACH erop, met een IF waar een lege combine anders 0 of onwaar zou
+# geven.
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
+$id: lexostatus_test_gebieden_tarief
+name: Lexostatus tarief (experiment)
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/lexostatus_test_gebieden_tarief
+articles:
+  - number: '1'
+    url: https://example.com/lexostatus_test_gebieden_tarief/1
+    text: Het tarief van een gebied op een peildatum.
+    machine_readable:
+      execution:
+        parameters:
+          - {name: gebied, type: string, required: true}
+          - {name: peildatum, type: date, required: true}
+        input:
+          - name: grammen
+            type: array
+            source: {}
+        output:
+          - {name: laatste_tarief, type: number, nullable: true}
+          - {name: tarief, type: number, nullable: true}
+        actions:
+          - output: laatste_tarief
+            value:
+              operation: FOREACH
+              collection: $grammen
+              as: g
+              filter:
+                operation: AND
+                conditions:
+                  - {operation: EQUALS, subject: $g.name, value: tarief_vastgesteld}
+                  - {operation: EQUALS, subject: $g.fields.gebied, value: $gebied}
+                  - {operation: EQUALS, subject: $g.fields.peildatum, value: $peildatum}
+              body: $g.volgorde
+              combine: MAX
+          - output: tarief
+            value:
+              operation: FOREACH
+              collection: $grammen
+              as: g
+              filter:
+                operation: AND
+                conditions:
+                  - {operation: EQUALS, subject: $g.volgorde, value: $laatste_tarief}
+                  - operation: NOT
+                    value: {operation: EQUALS, subject: $g.fields.tarief, value: null}
+              body: $g.fields.tarief
+              combine: MAX

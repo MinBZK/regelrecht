@@ -20,13 +20,13 @@ use serde_json::Value;
 
 use crate::api::{self, CelState, HandelingState, Klok, ProcesState};
 use crate::cel::{met_cel, Cel};
-use crate::config::{celmappen, procesmappen, Config, RijenDefinitie};
+use crate::config::{celmappen, procesmappen, Config, Reductiemodus, RijenDefinitie};
 use crate::kroniek::Kroniek;
 use crate::proces::{met_proces, Proces};
 use crate::sessie::Sessies;
 use crate::synthese::{self, Bron, TIJDSLIMIET};
 use crate::transport::{Http, Intern, LeesToken, RuntimeToken, Transport};
-use crate::{handeling, regelingen, rijen, startstand};
+use crate::{handeling, lexostatus_engine, reductie, regelingen, rijen, startstand};
 
 /// Een geladen runtime: de cellen, de processen en de router over allemaal.
 pub struct Runtime {
@@ -48,14 +48,38 @@ impl Runtime {
         let service = Arc::new(corpus.service);
         let geladen = Arc::new(corpus.regelingen);
         let mappen = celmappen(&config.cells_path).map_err(|e| vec![e])?;
-        let mut cellen: Vec<Arc<Cel>> = Vec::new();
+        let mut geladen_cellen: Vec<Cel> = Vec::new();
         let mut fouten = Vec::new();
         for map in &mappen {
             match Cel::laad(map, service.clone()) {
-                Ok(c) => cellen.push(Arc::new(c)),
+                Ok(c) => geladen_cellen.push(c),
                 Err(f) => fouten.extend(f),
             }
         }
+        // De engine-route (experiment A): elke lexostatus van elke cel heeft
+        // een koppeling, of de runtime start niet.
+        if let (
+            Reductiemodus::Engine {
+                koppeling,
+                vergelijk,
+            },
+            true,
+        ) = (&config.reductie, fouten.is_empty())
+        {
+            let per_cel: Vec<(&str, &reductie::Lexostatussen)> = geladen_cellen
+                .iter()
+                .map(|c| (c.id(), &c.lexostatussen))
+                .collect();
+            match lexostatus_engine::laad_koppeling(koppeling, *vergelijk, &per_cel) {
+                Ok(mut routes) => {
+                    for c in &mut geladen_cellen {
+                        c.route = routes.remove(c.id()).map(Arc::new);
+                    }
+                }
+                Err(f) => fouten.extend(f),
+            }
+        }
+        let cellen: Vec<Arc<Cel>> = geladen_cellen.into_iter().map(Arc::new).collect();
         let mut per_id: BTreeMap<String, Arc<Cel>> = BTreeMap::new();
         for c in &cellen {
             if per_id.insert(c.id().to_string(), c.clone()).is_some() {

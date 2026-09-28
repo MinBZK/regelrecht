@@ -9,7 +9,7 @@
 // feit toch gebeurd, dan meldt de behandelaar het en legt de cel het vast.
 import { computed, inject, ref } from 'vue';
 import Invoer from './Invoer.vue';
-import { herkomstRijen, soortVan, uitkomstTekst } from '../tekst.js';
+import { herkomstRijen, routesUit, soortVan, uitkomstTekst } from '../tekst.js';
 import { naarFormulier, naarWet, veldLabel } from '../formulier.js';
 import TraceKnop from '@regelrecht/frontend-shared/components/TraceKnop.vue';
 
@@ -116,7 +116,9 @@ const uitkomsten = computed(() =>
     waarde: uitkomstTekst(w, proef.value?.typen?.[naam]),
   })),
 );
-const herkomst = computed(() => herkomstRijen(proef.value?.parameters, proef.value?.herkomst));
+const herkomst = computed(() =>
+  herkomstRijen(proef.value?.parameters, proef.value?.herkomst, routesUit(proef.value)),
+);
 const nietGeleverd = computed(() => proef.value?.niet_geleverd ?? []);
 // De soort komt als {soort, ...} (bij een vervolg met de handeling van het
 // besluit erbij).
@@ -239,7 +241,10 @@ const soortTekst = computed(() => {
         </nldd-table-row>
         <nldd-table-row v-for="b in r.bronnen" :key="b.cel + b.lexostatus">
           <nldd-text-cell :text="b.cel" :supporting-text="b.transport"></nldd-text-cell>
-          <nldd-text-cell :text="b.lexostatus"></nldd-text-cell>
+          <nldd-text-cell
+            :text="b.lexostatus"
+            :supporting-text="b.reductie ? `reductie via ${b.reductie === 'engine' ? 'de engine' : b.reductie}` : undefined"
+          ></nldd-text-cell>
           <nldd-text-cell :text="String(b.bevraagd)"></nldd-text-cell>
           <nldd-text-cell :text="b.status.replace('_', ' ')" :supporting-text="b.fout"></nldd-text-cell>
         </nldd-table-row>

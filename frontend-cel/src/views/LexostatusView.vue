@@ -2,8 +2,9 @@
 // Een lexostatus van de cel opvragen: kies de lexostatus, vul de inputs in,
 // en zie de parameters die de reductie oplevert.
 import { computed, inject, ref } from 'vue';
-import { waardeTekst as waarde } from '../tekst.js';
+import { routeTekst, waardeTekst as waarde } from '../tekst.js';
 import { veldTekst } from '../formulier.js';
+import TraceKnop from '@regelrecht/frontend-shared/components/TraceKnop.vue';
 
 const props = defineProps({ lexostatussen: { type: Array, required: true } });
 // De kroniek en de lexostatussen van de cel, via de inzage van een proces.
@@ -28,7 +29,9 @@ async function opvragen() {
   fout.value = '';
   bezig.value = true;
   try {
-    uitkomst.value = await api.lexostatus(naam.value, invoer.value);
+    // Via de engine (experiment A): vraag de trace van de engine-run mee.
+    const trace = definitie.value?.reductie?.route === 'engine' ? { engine_trace: '1' } : {};
+    uitkomst.value = await api.lexostatus(naam.value, { ...invoer.value, ...trace });
   } catch (e) {
     uitkomst.value = null;
     fout.value = e.message;
@@ -36,6 +39,9 @@ async function opvragen() {
     bezig.value = false;
   }
 }
+
+// Langs welke route de cel reduceerde, als de runtime dat zegt.
+const route = computed(() => routeTekst(uitkomst.value?.reductie ?? definitie.value?.reductie));
 
 // Een lijst-lexostatus: een regel per zaak, met de kolommen als velden.
 const lijst = computed(() => uitkomst.value?.lijst ?? null);
@@ -54,6 +60,10 @@ const rijen = computed(() => {
 <template>
   <nldd-title size="2"><h1>Lexostatus</h1></nldd-title>
   <nldd-spacer size="16"></nldd-spacer>
+  <template v-if="route">
+    <nldd-inline-dialog icon="info" text="Route van de reductie" :supporting-text="route"></nldd-inline-dialog>
+    <nldd-spacer size="16"></nldd-spacer>
+  </template>
   <nldd-form novalidate @submit.prevent="opvragen">
     <nldd-form-field label="Lexostatus">
       <nldd-dropdown accessible-label="Lexostatus">
@@ -96,6 +106,10 @@ const rijen = computed(() => {
   </template>
   <template v-else-if="uitkomst">
     <nldd-spacer size="24"></nldd-spacer>
+    <template v-if="uitkomst.reductie?.trace_text">
+      <TraceKnop :trace-text="uitkomst.reductie.trace_text" :titel="`${naam} (${uitkomst.reductie.regeling})`" />
+      <nldd-spacer size="16"></nldd-spacer>
+    </template>
     <nldd-table columns="minmax(200px,1fr) minmax(160px,1fr) minmax(200px,1fr)" accessible-label="Parameters van de lexostatus">
       <nldd-table-row slot="header">
         <nldd-text-cell text="Naam"></nldd-text-cell>

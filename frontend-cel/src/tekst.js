@@ -59,13 +59,43 @@ export function herkomstTekst(h) {
   }
 }
 
-// De parameters die naar de engine gingen, met waarde en herkomst.
-export function herkomstRijen(parameters, herkomst) {
-  return Object.entries(herkomst ?? {}).map(([naam, bron]) => ({
-    naam,
-    waarde: waardeTekst((parameters ?? {})[naam]),
-    bron: herkomstTekst(bron),
-  }));
+// Langs welke route een cel een lexostatus reduceerde (experiment A, alleen
+// in een runtime met CEL_REDUCTIE): `{route, regeling, reden, duur_us}` als
+// tekst; leeg zonder route.
+export function routeTekst(r) {
+  if (!r?.route) return '';
+  const duur = typeof r.duur_us === 'number' ? `, ${(r.duur_us / 1000).toFixed(2)} ms` : '';
+  if (r.route === 'engine') return `reductie via de engine (${r.regeling}${duur})`;
+  if (r.route === 'runtime') return `door de runtime zelf${r.reden ? ` (${r.reden})` : ''}`;
+  return `reductie via de DSL${r.reden ? ` (bewust: ${r.reden})` : ''}${duur}`;
+}
+
+// De route per lexostatus uit een antwoord van een toets of een handeling:
+// de eigen lexostatussen (`lexostatussen`, bij de toets `lexostatus`) en de
+// bronnen van de synthese (`bronnen`, met hun cel). Een functie (bron uit de
+// herkomst) -> route.
+export function routesUit(antwoord) {
+  const lexostatussen = antwoord?.lexostatussen ?? (antwoord?.lexostatus ? [antwoord.lexostatus] : []);
+  const eigen = new Map(lexostatussen.map((l) => [l.naam, l.reductie]));
+  const bronnen = new Map((antwoord?.bronnen ?? []).map((b) => [`${b.cel}/${b.lexostatus}`, b.reductie]));
+  return (h) => {
+    if (h?.bron === 'eigen' || h?.bron === 'per_regel') return eigen.get(h.lexostatus) ?? null;
+    if (h?.bron === 'cel') return bronnen.get(`${h.cel}/${h.lexostatus}`) ?? null;
+    return null;
+  };
+}
+
+// De parameters die naar de engine gingen, met waarde en herkomst; met
+// `routeVan` (zie routesUit) ook langs welke route de lexostatus kwam.
+export function herkomstRijen(parameters, herkomst, routeVan = () => null) {
+  return Object.entries(herkomst ?? {}).map(([naam, bron]) => {
+    const route = routeTekst(routeVan(bron));
+    return {
+      naam,
+      waarde: waardeTekst((parameters ?? {})[naam]),
+      bron: route ? `${herkomstTekst(bron)}; ${route}` : herkomstTekst(bron),
+    };
+  });
 }
 
 // De soort van een handeling: de runtime geeft haar als {soort, ...}.

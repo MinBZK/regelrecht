@@ -23,6 +23,30 @@ const proces = computed(() => processen.value.find((p) => `proces:${p.id}` === g
 const cel = computed(() => cellen.value.find((c) => `cel:${c.id}` === gekozen.value) ?? null);
 const celVan = (p) => cellen.value.find((c) => c.id === p.cel) ?? null;
 
+// Langs welke route de cellen reduceren (experiment A): `engine` of
+// `vergelijk` als de runtime met CEL_REDUCTIE draait, anders null (de
+// reductie-DSL). De lexostatussen die bewust langs de DSL gaan, met reden.
+const reductie = computed(() => {
+  const r = cellen.value.map((c) => c.reductie).filter(Boolean);
+  if (!r.length) return null;
+  return r.includes('vergelijk') ? 'vergelijk' : 'engine';
+});
+const langsDeDsl = computed(() =>
+  cellen.value.flatMap((c) =>
+    (c.lexostatussen ?? [])
+      .filter((l) => l.reductie?.route === 'dsl')
+      .map((l) => `${c.id}/${l.name} (${l.reductie.reden})`),
+  ),
+);
+const reductieUitleg = computed(() => {
+  const n = cellen.value.flatMap((c) => c.lexostatussen ?? []).filter((l) => l.reductie?.route === 'engine').length;
+  const vergelijk = reductie.value === 'vergelijk' ? ' Elke reductie gaat ook langs de DSL; een verschil is een fout.' : '';
+  const dsl = langsDeDsl.value.length ? ` Bewust langs de DSL: ${langsDeDsl.value.join('; ')}.` : '';
+  const runtime = [...new Set(cellen.value.flatMap((c) => (c.lexostatussen ?? []).filter((l) => l.reductie?.route === 'runtime').map((l) => l.name)))];
+  const zelf = runtime.length ? ` Door de runtime zelf: ${runtime.join(', ')}.` : '';
+  return `${n} lexostatussen reduceren als engine-run van een regeling (experiment A).${vergelijk}${dsl}${zelf}`;
+});
+
 onMounted(async () => {
   try {
     [cellen.value, processen.value] = await Promise.all([haalCellen(), haalProcessen()]);
@@ -50,15 +74,26 @@ function procesTekst(p) {
 
 function celTekst(c) {
   const delen = [`kroniek ${c.kronieken.join(', ')}`];
-  if (c.lexostatussen.length) delen.push(`lexostatus ${c.lexostatussen.map((l) => l.name).join(', ')}`);
+  if (c.lexostatussen.length) {
+    const naam = (l) => (l.reductie?.route ? `${l.name} (${l.reductie.route})` : l.name);
+    delen.push(`lexostatus ${c.lexostatussen.map(naam).join(', ')}`);
+  }
   return delen.join('; ');
 }
 </script>
 
 <template>
   <nldd-page>
-    <nldd-top-navigation-bar slot="header" no-logo website-title="Cellen en processen"></nldd-top-navigation-bar>
+    <nldd-top-navigation-bar
+      slot="header"
+      no-logo
+      :website-title="reductie ? `Cellen en processen · reductie: ${reductie}` : 'Cellen en processen'"
+    ></nldd-top-navigation-bar>
     <nldd-simple-section>
+      <template v-if="reductie">
+        <nldd-inline-dialog icon="info" :text="`Reductie: ${reductie}`" :supporting-text="reductieUitleg"></nldd-inline-dialog>
+        <nldd-spacer size="16"></nldd-spacer>
+      </template>
       <template v-if="fout">
         <nldd-inline-dialog
           variant="alert"

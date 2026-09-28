@@ -11,6 +11,7 @@ use regelrecht_engine::LawExecutionService;
 
 use crate::config::CelDefinitie;
 use crate::gram::Gram;
+use crate::lexostatus_engine::CelRoute;
 use crate::reductie::{self, Lexostatussen};
 use crate::stroom::{self, Event, Stroom};
 use crate::{controle, startstand};
@@ -26,6 +27,9 @@ pub struct Cel {
     pub service: Arc<LawExecutionService>,
     /// De grammen voor een lege kroniek (leeg zonder `startstand`).
     pub startstand: Vec<Gram>,
+    /// De engine-route van de cel (experiment A, `CEL_REDUCTIE`); zonder
+    /// reduceert de cel langs de reductie-DSL.
+    pub route: Option<Arc<CelRoute>>,
 }
 
 impl Cel {
@@ -95,6 +99,7 @@ impl Cel {
             lexostatussen,
             service,
             startstand,
+            route: None,
         })
     }
 

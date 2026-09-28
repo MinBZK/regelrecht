@@ -1,0 +1,60 @@
+---
+# Experiment A (niet voor productie): de lexostatus `register` van de fictieve
+# cel test_register (cellen/register/lexostatussen.yaml) als engine-regeling, voor de
+# engine-route van de cel-runtime (koppeling.yaml naast dit bestand).
+# Opgesteld met een hulpscript volgens vaste patronen per afleiding: `kies:
+# laatste` is een hulpuitvoer met de hoogste `volgorde`, een veld van dat gram
+# een FOREACH erop, met een IF waar een lege combine anders 0 of onwaar zou
+# geven.
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
+$id: lexostatus_test_register_register
+name: Lexostatus register (experiment)
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/lexostatus_test_register_register
+articles:
+  - number: '1'
+    url: https://example.com/lexostatus_test_register_register/1
+    text: Is de aanduiding bij dit orgaan ingeschreven, en is zij geschrapt?
+    machine_readable:
+      execution:
+        parameters:
+          - {name: aanduiding, type: string, required: true}
+          - {name: orgaan, type: string, required: true}
+        input:
+          - name: grammen
+            type: array
+            source: {}
+        output:
+          - {name: is_ingeschreven_in_register, type: boolean}
+          - {name: is_geschrapt, type: boolean}
+        actions:
+          - output: is_ingeschreven_in_register
+            legal_basis: {law: Testregeling, article: '1', paragraph: '1'}
+            value:
+              operation: FOREACH
+              collection: $grammen
+              as: g
+              filter:
+                operation: AND
+                conditions:
+                  - {operation: EQUALS, subject: $g.name, value: aanduiding_ingeschreven}
+                  - {operation: EQUALS, subject: $g.fields.orgaan, value: $orgaan}
+                  - {operation: EQUALS, subject: $g.fields.aanduiding, value: $aanduiding}
+              body: true
+              combine: OR
+          - output: is_geschrapt
+            legal_basis: {law: Testregeling, article: '1', paragraph: '1'}
+            value:
+              operation: FOREACH
+              collection: $grammen
+              as: g
+              filter:
+                operation: AND
+                conditions:
+                  - {operation: EQUALS, subject: $g.name, value: aanduiding_geschrapt}
+                  - {operation: EQUALS, subject: $g.fields.orgaan, value: $orgaan}
+                  - {operation: EQUALS, subject: $g.fields.aanduiding, value: $aanduiding}
+              body: true
+              combine: OR

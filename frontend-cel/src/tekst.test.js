@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bedragTekst, herkomstRijen, herkomstTekst, uitkomstTekst, waardeTekst } from './tekst.js';
+import { bedragTekst, herkomstRijen, herkomstTekst, routesUit, routeTekst, uitkomstTekst, waardeTekst } from './tekst.js';
 
 describe('waardeTekst', () => {
   it('schrijft ja/nee, leeg en null uit', () => {
@@ -94,5 +94,37 @@ describe('waardeTekst en een onbekende waarde', () => {
     const onbekend = { __unknown: true, missing: [{ law: 'w', name: 'inkomen', kind: 'parameter' }] };
     expect(waardeTekst(onbekend)).toBe('onbekend (mist inkomen)');
     expect(waardeTekst({ __unknown: true })).toBe('onbekend');
+  });
+});
+
+describe('route van de reductie (experiment A)', () => {
+  it('noemt de engine met de regeling, en de DSL met de reden', () => {
+    expect(routeTekst(null)).toBe('');
+    expect(routeTekst({ route: 'engine', regeling: 'lexostatus_x', duur_us: 1500 })).toBe(
+      'reductie via de engine (lexostatus_x, 1.50 ms)',
+    );
+    expect(routeTekst({ route: 'dsl', reden: 'een lijst' })).toBe('reductie via de DSL (bewust: een lijst)');
+    expect(routeTekst({ route: 'runtime', reden: 'de stand' })).toBe('door de runtime zelf (de stand)');
+  });
+
+  it('zet de route achter de herkomst, per eigen lexostatus en per bron', () => {
+    const antwoord = {
+      lexostatussen: [{ naam: 'aanvraag', reductie: { route: 'engine', regeling: 'lexostatus_aanvraag' } }],
+      bronnen: [{ cel: 'register', lexostatus: 'stand', reductie: { route: 'dsl' } }],
+    };
+    const rijen = herkomstRijen(
+      { a: 1, b: true, c: 2 },
+      {
+        a: { bron: 'eigen', lexostatus: 'aanvraag' },
+        b: { bron: 'cel', cel: 'register', lexostatus: 'stand', transport: 'intern' },
+        c: { bron: 'behandelaar' },
+      },
+      routesUit(antwoord),
+    );
+    expect(rijen.map((r) => r.bron)).toEqual([
+      'eigen lexostatus aanvraag; reductie via de engine (lexostatus_aanvraag)',
+      'cel register, lexostatus stand (intern); reductie via de DSL',
+      'behandelaar (formulier van de handeling)',
+    ]);
   });
 });

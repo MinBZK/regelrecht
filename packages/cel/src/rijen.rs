@@ -62,6 +62,11 @@ pub struct BronUitslag {
     pub status: Status,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fout: Option<String>,
+    /// Langs welke route(s) de bron reduceerde, als zij dat zegt (een
+    /// runtime met de engine-route, experiment A): `engine`, `dsl`, of beide
+    /// met een komma.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reductie: Option<String>,
 }
 
 /// Wat een rijen-definitie opleverde.
@@ -206,7 +211,8 @@ const GELIJKTIJDIG: usize = 16;
 
 /// Hoe het bevragen van een bron bij een regel verliep.
 enum Bevraging {
-    Bevraagd,
+    /// Met de route van de reductie, als de bron die noemde.
+    Bevraagd(Option<String>),
     /// Niet gevraagd: een invoer ontbrak.
     NietBevraagd(String),
     /// Gevraagd, zonder lexostatus.
@@ -254,7 +260,8 @@ async fn stel_regel_samen(
         };
         let geleverd = match b.vraag(&invoer, peil).await {
             Ok(l) => {
-                uit.bronnen.push(Bevraging::Bevraagd);
+                uit.bronnen
+                    .push(Bevraging::Bevraagd(l.reductie.map(|r| r.route)));
                 let mut samen = l.parameters;
                 samen.extend(l.extra_velden);
                 samen
@@ -332,6 +339,7 @@ pub async fn stel_samen(
             bevraagd: 0,
             status: Status::Bevraagd,
             fout: None,
+            reductie: None,
         })
         .collect();
     let mut regels = Vec::new();
@@ -358,7 +366,18 @@ pub async fn stel_samen(
     for r in per_regel {
         for (uitslag, bevraging) in uitslagen.iter_mut().zip(r.bronnen) {
             match bevraging {
-                Bevraging::Bevraagd => uitslag.bevraagd += 1,
+                Bevraging::Bevraagd(route) => {
+                    uitslag.bevraagd += 1;
+                    if let Some(route) = route {
+                        let r = uitslag.reductie.get_or_insert_with(String::new);
+                        if !r.split(", ").any(|x| x == route) {
+                            if !r.is_empty() {
+                                r.push_str(", ");
+                            }
+                            r.push_str(&route);
+                        }
+                    }
+                }
                 Bevraging::NietBevraagd(f) => {
                     uitslag.status = slechtste(uitslag.status, Status::NietBevraagd);
                     uitslag.fout.get_or_insert(f);

@@ -18,7 +18,8 @@ use crate::celclient::Vastlegverzoek;
 use crate::datum;
 use crate::gram::Gram;
 use crate::kroniek::{Kroniek, Vastgelegd};
-use crate::reductie::{self, Lexostatus, Peil};
+use crate::lexostatus_engine;
+use crate::reductie::{self, Lexostatus, Peil, Reductieroute};
 use crate::stroom::{self, Besluit, Indiening, Zaak};
 use crate::transport::{LeesToken, RuntimeToken, LEES_TOKEN_HEADER, RUNTIME_TOKEN_HEADER};
 
@@ -510,9 +511,7 @@ async fn proef_route(
         .iter()
         .map(|v| &v.gram)
         .chain(std::iter::once(&gram));
-    let lexostatus = reductie::reduceer_op(def, &inputs, grammen, &peil)
-        .map_err(|e| fout(StatusCode::BAD_REQUEST, e))?
-        .ok_or_else(|| fout(StatusCode::NOT_FOUND, "geen gram voor deze vraag"))?;
+    let lexostatus = reduceer(&state, def, &inputs, grammen, &peil, false)?;
     Ok(Json(json!({"gram": gram, "lexostatus": lexostatus})))
 }
 
@@ -615,16 +614,81 @@ async fn lexostatus_route(
     Query(mut inputs): Query<Map<String, Value>>,
 ) -> Result<Json<Lexostatus>, Fout> {
     let peil = Peil::uit_query(&mut inputs).map_err(|e| fout(StatusCode::BAD_REQUEST, e))?;
+    // Alleen met de engine-route is `engine_trace` geen input.
+    let met_trace = state.cel.route.is_some() && inputs.remove(ENGINE_TRACE).is_some();
     if naam == reductie::ZAAKSTAND && state.cel.heeft_zaken() {
-        return zaakstand(&state, &inputs, &peil).map(Json);
+        // Geen reductie van een lexostatus-definitie maar code van de
+        // runtime; met de engine-route zegt de lexostatus dat ook.
+        return zaakstand(&state, &inputs, &peil)
+            .map(|l| Lexostatus {
+                reductie: state.cel.route.as_ref().map(|_| Reductieroute {
+                    route: "runtime".into(),
+                    regeling: None,
+                    reden: Some(ZAAKSTAND_REDEN.into()),
+                    duur_us: 0,
+                    dsl_duur_us: None,
+                    trace_text: None,
+                }),
+                ..l
+            })
+            .map(Json);
     }
     let def = lexostatus_def(&state, &naam)?;
     inputs_compleet(def, &inputs)?;
     let grammen = grammen_voor(&state, def, &inputs)?;
-    reductie::reduceer_op(def, &inputs, grammen.iter().map(|v| &v.gram), &peil)
-        .map_err(|e| fout(StatusCode::BAD_REQUEST, e))?
-        .map(Json)
-        .ok_or_else(|| fout(StatusCode::NOT_FOUND, "geen gram voor deze vraag"))
+    reduceer(
+        &state,
+        def,
+        &inputs,
+        grammen.iter().map(|v| &v.gram),
+        &peil,
+        met_trace,
+    )
+    .map(Json)
+}
+
+/// De query-parameter die bij de engine-route de trace van de engine-run
+/// vraagt (`?engine_trace=1`); geen input van de lexostatus.
+pub const ENGINE_TRACE: &str = "engine_trace";
+
+/// Waarom de zaakstand niet via de engine gaat, in de route.
+const ZAAKSTAND_REDEN: &str = "de stand van een zaak biedt de runtime zelf aan";
+
+/// De dag waarop de engine de regeling van een lexostatus leest: die van het
+/// peilmoment, zonder peilmoment vandaag.
+fn engine_datum(state: &CelState, peil: &Peil) -> String {
+    peil.peilmoment
+        .and_then(|t| datum::datum_van(&t.to_string()))
+        .map(|d| d.format("%Y-%m-%d").to_string())
+        .unwrap_or_else(|| datum::peildatum(&(state.klok)()))
+}
+
+/// Reduceer een lexostatus, op de ene plek waar de cel dat doet: langs de
+/// reductie-DSL, of, in een runtime met de engine-route, langs de route van
+/// de cel (zie [`lexostatus_engine`]). 404: de lexostatus kiest een gram en
+/// er is er geen.
+fn reduceer<'g>(
+    state: &CelState,
+    def: &reductie::LexostatusDefinitie,
+    inputs: &Map<String, Value>,
+    grammen: impl IntoIterator<Item = &'g Gram>,
+    peil: &Peil,
+    met_trace: bool,
+) -> Result<Lexostatus, Fout> {
+    match &state.cel.route {
+        None => reductie::reduceer_op(def, inputs, grammen, peil),
+        Some(route) => lexostatus_engine::reduceer_lexostatus(
+            route,
+            def,
+            inputs,
+            grammen,
+            peil,
+            &engine_datum(state, peil),
+            met_trace,
+        ),
+    }
+    .map_err(|e| fout(StatusCode::BAD_REQUEST, e))?
+    .ok_or_else(|| fout(StatusCode::NOT_FOUND, "geen gram voor deze vraag"))
 }
 
 /// De stand van een zaak (zie [`reductie::Zaakstand`]): de cel filtert de
@@ -704,14 +768,19 @@ pub fn cel_beschrijving(state: &CelState) -> Value {
         .lexostatus_definitions
         .iter()
         .map(|d| {
-            json!({
+            let mut l = json!({
                 "name": d.name,
                 "inputs": d.inputs,
                 "lijst": d.is_lijst(),
                 "parameters": if d.is_lijst() { Vec::new() } else { d.reduction.afleidingen.keys().collect::<Vec<_>>() },
                 "kolommen": if d.is_lijst() { d.reduction.afleidingen.keys().collect::<Vec<_>>() } else { Vec::new() },
                 "extra_velden": d.reduction.extra_velden.keys().collect::<Vec<_>>(),
-            })
+            });
+            let r = reductie_van(cel, &d.name);
+            if !r.is_null() {
+                l["reductie"] = r;
+            }
+            l
         })
         .collect();
     if cel.heeft_zaken() {
@@ -725,13 +794,39 @@ pub fn cel_beschrijving(state: &CelState) -> Value {
             "extra_velden": ["grammen", "events", "laatste_op_moment", "stages", "eigenaar"],
             "runtime": true,
         }));
+        if cel.route.is_some() {
+            if let Some(l) = lexostatussen.last_mut() {
+                l["reductie"] = json!({"route": "runtime", "reden": ZAAKSTAND_REDEN});
+            }
+        }
     }
-    json!({
+    let mut uit = json!({
         "id": cel.id(),
         "recording_actor": cel.definitie.recording_actor,
         "kronieken": cel.kronieken(),
         "lexostatussen": lexostatussen,
-    })
+    });
+    // Alleen met de engine-route: zonder blijft de beschrijving gelijk.
+    if let Some(route) = &cel.route {
+        uit["reductie"] = json!(if route.vergelijk {
+            "vergelijk"
+        } else {
+            "engine"
+        });
+    }
+    uit
+}
+
+/// Langs welke route de cel een lexostatus reduceert, voor de beschrijving:
+/// null zonder engine-route.
+fn reductie_van(cel: &Cel, naam: &str) -> Value {
+    match cel.route.as_ref().and_then(|r| r.wijzen.get(naam)) {
+        None => Value::Null,
+        Some(lexostatus_engine::Wijze::Engine { regeling }) => {
+            json!({"route": "engine", "regeling": regeling})
+        }
+        Some(lexostatus_engine::Wijze::Dsl { reden }) => json!({"route": "dsl", "reden": reden}),
+    }
 }
 
 #[cfg(test)]
