@@ -73,39 +73,16 @@ body {
   padding-left: 1.25em;
 }
 
-/* Een waarde houdt zijn eigen regeleinden (een wettekst heeft er lid voor lid). */
-.yaml-tree .yaml-value {
-  white-space: pre-wrap;
-}
-
-/* Op een telefoon: de zaalmaat en de volle inspringing lieten tien niveaus
- * diep een kolom van een paar tekens over, en `overflow-wrap: anywhere` brak
- * daarin elk woord letter voor letter af. Hier kleiner en minder diep, en de
- * structuur wrapt niet: een sleutel, een operatie of een variabele is code en
- * blijft op zijn regel; wat niet past schuift horizontaal, zoals in een
- * code-viewer. Wat geen code is wrapt wel: de wettekst (proza, op één regel
- * niet te lezen), een URL, en de velden bovenaan die het document beschrijven
- * (`yaml-wrap`, zie YamlNode.vue). Anders scrolde de boom al zijwaarts
- * voordat er iets open was. */
+/* Op een telefoon liet de zaalmaat met de volle inspringing tien niveaus diep
+ * een kolom van een paar tekens over, en brak daarin elk woord letter voor
+ * letter af. Kleiner en minder diep past een berekening wel. */
 @media (max-width: 640px) {
   .yaml-tree {
     font-size: 0.875rem;
-    overflow-wrap: normal;
-    overflow-x: auto;
-    white-space: nowrap;
   }
 
   .yaml-tree .yaml-node {
-    padding-left: 0.75em;
-  }
-
-  .yaml-tree .yaml-value:not(.yaml-wrap) {
-    white-space: pre;
-  }
-
-  .yaml-tree .yaml-value.yaml-wrap {
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
+    padding-left: 0.5em;
   }
 }
 
