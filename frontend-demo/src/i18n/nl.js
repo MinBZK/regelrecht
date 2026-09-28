@@ -38,6 +38,7 @@ export default {
   'app.features.HARMONIZE': 'Harmonisatie',
   'app.features.AUTO_APPROVE_CLAIMS': 'Correcties direct goedkeuren',
   'app.features.manualReview': 'Alle aanvragen handmatig beoordelen',
+  'app.features.autoAnnounce': 'Besluiten direct bekendmaken',
   'app.features.reset': 'Terug naar het profiel',
 
   'app.appearance.label': 'Weergave',
@@ -888,4 +889,12 @@ export default {
   'scenario.outputs': 'Uitkomsten',
   'app.toolbar.label': 'Werkruimte',
   'scenario.trace': 'Trace',
+  'trace.nav.label': 'Wetten in deze berekening',
+  'trace.nav.prev': 'Vorige wet',
+  'trace.nav.next': 'Volgende wet',
+  'trace.nav.position': '{n} van {total}',
+  'sim.params.supporting': 'Regelingen waar deze wetten op steunen',
+  'sim.comparison.income': 'Besteedbaar inkomen per maand',
+  'sim.run.label.default': 'Standaard',
+  'sim.run.close': 'Deze simulatie sluiten',
 };

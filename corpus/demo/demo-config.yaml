@@ -441,12 +441,14 @@ simulation:
 # POC's DEMO_COLLAPSE_CONFIG). A path opens the way down to itself and itself;
 # what hangs below it stays folded, and so do its siblings. The article is the
 # one node the presenter opens by hand, so a single click reveals the right
-# lines instead of scrolling. Keep a path as deep as the line you want to land
+# lines instead of scrolling; naming the article itself (`articles.1`) opens it
+# too. Keep a path as deep as the line you want to land
 # on: one that stops at a block (`…execution.actions`) opens that block, not
 # the calculation inside it. `*` matches any article number; list items are
 # addressed by their `name`/`output` or, without one, by their index.
 expanded_paths:
   zorgtoeslagwet:
+    - articles.*.machine_readable.execution.parameters
     # the insured-status input and where it comes from
     - articles.*.machine_readable.execution.input.is_verzekerde.source
     - articles.*.machine_readable.execution.output
@@ -454,15 +456,18 @@ expanded_paths:
     - articles.*.machine_readable.execution.actions.voldoet_aan_voorwaarden.value.conditions.0
     - articles.*.machine_readable.execution.actions.voldoet_aan_voorwaarden.value.conditions.1
     # the calculation for a partner: joint income against the threshold
-    - articles.*.machine_readable.execution.actions.hoogte_toeslag.value.default.value.cases.1.when
-    - articles.*.machine_readable.execution.actions.hoogte_toeslag.value.default.value.cases.1.then.cases.0.when.subject.values
-    - articles.*.machine_readable.execution.actions.hoogte_toeslag.value.default.value.cases.1.then.default.values.1.values.0.values.1.values.0.values
+    - articles.*.machine_readable.execution.actions.hoogte_toeslag.value.value.cases.0.then.cases.0.when.subject.values
   zvw:
+    # the only article, so it opens straight away
+    - articles.1
     - articles.*.machine_readable.execution.input.is_gedetineerd.source
     - articles.*.machine_readable.execution.output
-    - articles.*.machine_readable.execution.actions.is_verzekerde.value.conditions.0.conditions
+    - articles.*.machine_readable.execution.actions.is_verzekerde.value.conditions.0.conditions.0
+    - articles.*.machine_readable.execution.actions.is_verzekerde.value.conditions.0.conditions.1
     - articles.*.machine_readable.execution.actions.is_verzekerde.value.conditions.1.value
   penitentiaire_beginselenwet:
+    # the only article, so it opens straight away
+    - articles.2
     - articles.*.machine_readable.execution.input
     - articles.*.machine_readable.execution.output
     - articles.*.machine_readable.execution.actions.is_gedetineerd.value.conditions.0.values
@@ -479,6 +484,24 @@ expanded_paths:
     - articles.*.machine_readable.execution.input
     - articles.*.machine_readable.execution.output
   algemene_plaatselijke_verordening/exploitatievergunning:
+    - articles.*.machine_readable.execution.output
+
+# Nodes on a prepared path that still start folded, because the presenter opens
+# them by hand at that point in the story. What lies below them is prepared all
+# the same: one click on `actions` shows the two requirements, one click on
+# `hoogte_toeslag` the partner calculation. Same path language as above, but a
+# pattern matches only the node itself.
+folded_paths:
+  zorgtoeslagwet:
+    - articles.*.machine_readable.execution.input
+    - articles.*.machine_readable.execution.output
+    - articles.*.machine_readable.execution.actions
+    - articles.*.machine_readable.execution.actions.hoogte_toeslag
+  zvw:
+    - articles.*.machine_readable.execution.input
+    - articles.*.machine_readable.execution.output
+  penitentiaire_beginselenwet:
+    - articles.*.machine_readable.execution.input
     - articles.*.machine_readable.execution.output
 
 # The presentation slides (Presentatie tab). A slide without `route` covers the
@@ -521,7 +544,8 @@ slides:
       - 'Elk artikel heeft een **machine_readable**-deel: welke gegevens erin gaan, wat eruit komt en hoe.'
       - Een verwijzing naar een andere wet is expliciet, geen kopie van een bedrag.
       - Dezelfde YAML draait in de editor, in dit portaal en in de simulatie.
-    route: /wetten
+    # with the law in the path: a bare /wetten reopens whatever law was left open
+    route: /wetten/zorgtoeslagwet
     highlight: .yaml-tree
   - kind: demo
     overline: Samenhang

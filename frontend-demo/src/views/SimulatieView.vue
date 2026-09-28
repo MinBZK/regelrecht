@@ -6,7 +6,8 @@ import { fieldSpec, formatValue, humanize, intlLocale } from '../data/format.js'
 import { serviceInfo } from '../data/loadCorpus.js';
 import { BUSINESS_DEFAULTS, CITIZEN_DEFAULTS, MAX_POPULATION } from '../simulation/population.js';
 import { definitionKind, overridableDefinitions } from '../simulation/lawParameters.js';
-import { runSimulation, simulationLaws } from '../simulation/runner.js';
+import { NEUTRAL, paletteColor } from '../data/palette.js';
+import { runSimulation, simulationLaws, supportingLaws } from '../simulation/runner.js';
 import { BUSINESS_DIMENSIONS, CITIZEN_DIMENSIONS, breakdown, dimensionLabel, flattenResults, toCsv } from '../simulation/stats.js';
 import { disposableIncomeBreakdown, summariseDisposableIncome } from '../simulation/income.js';
 import { describeModel, featureLabel, featuresFor, taxLawIds, trainBracketModel, trainingData } from '../simulation/harmonize.js';
@@ -45,12 +46,17 @@ function notHidden(law) {
   return !(hidden[law.service] ?? []).some((p) => law.law_path === p || law.law_path.startsWith(`${p}/`));
 }
 const lawSet = computed(() => (corpus.value ? simulationLaws(corpus.value, kind.value, notHidden) : { runnable: [], skipped: [] }));
-const definitionsByLaw = computed(() => Object.fromEntries(lawSet.value.runnable.map((law) => [law.id, overridableDefinitions(law.doc)])));
+// The regelingen those laws lean on and whose constants can be changed too:
+// the standaardpremie sits in its own ministeriële regeling, not in the
+// zorgtoeslag law (see supportingLaws).
+const supporting = computed(() => (corpus.value ? supportingLaws(corpus.value, lawSet.value.runnable, overridableDefinitions, notHidden) : []));
+const tunable = computed(() => [...lawSet.value.runnable, ...supporting.value]);
+const definitionsByLaw = computed(() => Object.fromEntries(tunable.value.map((law) => [law.id, overridableDefinitions(law.doc)])));
 function overrideCount(lawId) {
   const own = Object.fromEntries((definitionsByLaw.value[lawId] ?? []).map((d) => [d.key, d.value]));
   return Object.entries(overrides[lawId] ?? {}).filter(([k, v]) => k in own && v !== own[k]).length;
 }
-const totalOverrides = computed(() => lawSet.value.runnable.reduce((n, law) => n + overrideCount(law.id), 0));
+const totalOverrides = computed(() => tunable.value.reduce((n, law) => n + overrideCount(law.id), 0));
 
 // ---- sections in the sidebar ------------------------------------------------
 const open = reactive({ populatie: false, wetgeving: false });
@@ -130,7 +136,12 @@ async function run() {
       },
       signal,
     });
-    result.label = `${runs.value.length + 1}. ${t(kind.value === 'ondernemers' ? 'sim.kind.businesses' : 'sim.kind.citizens')} (${result.subjects.length})`;
+    // A number that is never handed out twice, also after a run is closed,
+    // and a colour only for a run that changed something: runs on the
+    // standard law are the baseline and stay neutral.
+    runNumber += 1;
+    result.number = runNumber;
+    result.colorIndex = Object.keys(result.overrides ?? {}).length ? variantNumber++ : -1;
     runs.value = [...runs.value, result];
     activeTab.value = result.id;
     mainView.value = 'overzicht';
@@ -145,6 +156,27 @@ async function run() {
 function cancel() {
   signal.cancelled = true;
 }
+let runNumber = 0;
+let variantNumber = 0;
+
+/**
+ * What a run is called: its number and what it changed. "Burgers (50)" said
+ * the same thing on every tab; the difference between runs is the point.
+ */
+function runLabel(r) {
+  const changes = Object.values(r.overrides ?? {}).flatMap((byKey) => Object.entries(byKey));
+  if (!changes.length) return `${r.number} · ${t('sim.run.label.default')}`;
+  const [key, value] = changes[0];
+  const kindOf = definitionKind(key, value);
+  const shown = kindOf === 'eurocent' ? formatValue(value, { type: 'amount' }) : kindOf === 'percentage' ? `${num(value * 100, 3)}%` : num(value, 3);
+  const more = changes.length > 1 ? ` +${changes.length - 1}` : '';
+  return `${r.number} · ${humanize(key)} ${shown}${more}`;
+}
+/** The run's colour as a CSS expression: neutral for a baseline, else its own. */
+function runColor(r) {
+  return r.colorIndex >= 0 ? paletteColor(r.colorIndex) : NEUTRAL;
+}
+
 function removeRun(id) {
   runs.value = runs.value.filter((r) => r.id !== id);
   if (activeTab.value === id) activeTab.value = runs.value.at(-1)?.id ?? null;
@@ -370,9 +402,39 @@ const comparisonLaws = computed(() => {
   for (const r of comparable.value) for (const law of r.laws) ids.set(law.id, law);
   return [...ids.values()].sort((a, b) => a.name.localeCompare(b.name));
 });
+/**
+ * Disposable income per run, side by side: the number a changed constant is
+ * meant to move. Leading the comparison, because "who qualifies" hardly
+ * changes when an amount does (a higher standaardpremie raises the zorgtoeslag
+ * of everyone who already had it) while what people keep does.
+ */
+const comparisonIncome = computed(() => {
+  if (!incomeComponents.value.length || comparable.value[0]?.kind !== 'burgers') return null;
+  const per = comparable.value.map((r) => summariseDisposableIncome(r.results, incomeComponents.value));
+  const rows = [
+    ['sim.disposable.avg', 'avgDisposable'],
+    ['sim.disposable.median', 'medianDisposable'],
+    ['sim.disposable.after_housing', 'avgAfterHousing'],
+  ];
+  return rows.map(([label, key]) => ({
+    label,
+    cells: per.map((sum, i) => {
+      const value = sum?.[key] ?? null;
+      const base = per[0]?.[key] ?? null;
+      const delta = i === 0 || value === null || base === null ? null : value - base;
+      return { value, delta };
+    }),
+  }));
+});
+/** "+ € 31" or "− € 12" against the first run; nothing when there is no change. */
+function signedMoney(delta) {
+  if (delta === null || Math.round(delta) === 0) return '';
+  return `${delta > 0 ? '+' : '−'} ${money(Math.abs(delta))}`;
+}
+
 const comparisonChart = computed(() => ({
   categories: comparisonLaws.value.map((l) => l.name),
-  series: comparable.value.map((r) => ({ name: r.label, values: comparisonLaws.value.map((l) => r.summary[l.id]?.eligiblePct ?? null) })),
+  series: comparable.value.map((r) => ({ name: runLabel(r), color: runColor(r), values: comparisonLaws.value.map((l) => r.summary[l.id]?.eligiblePct ?? null) })),
 }));
 
 // ---- export -------------------------------------------------------------------
@@ -425,7 +487,7 @@ function exportJson() {
         </nldd-container>
         <nldd-container padding="12" gap="12">
           <nldd-form-field :label="t(kind === 'ondernemers' ? 'sim.count.businesses' : 'sim.count.citizens')">
-            <nldd-number-field :value="params.count" min="1" :max="MAX_POPULATION" step="10" width="full" @change="params.count = numberFrom($event) ?? params.count"></nldd-number-field>
+            <nldd-number-field :value="params.count" min="1" :max="MAX_POPULATION" step="10" width="full" @input="params.count = numberFrom($event) ?? params.count" @change="params.count = numberFrom($event) ?? params.count"></nldd-number-field>
           </nldd-form-field>
           <nldd-form-field :label="t('sim.reference_date')">
             <nldd-date-field :value="referenceDate" width="full" @change="referenceDate = $event.detail?.value || referenceDate"></nldd-date-field>
@@ -434,13 +496,13 @@ function exportJson() {
           <nldd-button width="full" variant="neutral-transparent" horizontal-alignment="left" :end-icon="open.populatie ? 'chevron-up' : 'chevron-down'" :text="t(kind === 'ondernemers' ? 'sim.population.businesses' : 'sim.population.citizens')" :expanded="open.populatie || undefined" @click="open.populatie = !open.populatie"></nldd-button>
           <template v-if="open.populatie">
             <nldd-form-field :label="t('sim.seed')">
-              <nldd-number-field size="sm" :value="params.seed" min="1" step="1" width="full" hide-spin-buttons @change="params.seed = numberFrom($event) ?? params.seed"></nldd-number-field>
+              <nldd-number-field size="sm" :value="params.seed" min="1" step="1" width="full" hide-spin-buttons @input="params.seed = numberFrom($event) ?? params.seed" @change="params.seed = numberFrom($event) ?? params.seed"></nldd-number-field>
               <nldd-form-field-help-text>{{ t('sim.seed.help') }}</nldd-form-field-help-text>
             </nldd-form-field>
             <nldd-container v-for="group in knobs" :key="group.key" gap="8">
               <nldd-text-cell size="sm" color="secondary" :text="group.group"></nldd-text-cell>
               <nldd-form-field v-for="field in group.fields" :key="field.path.join('.')" :label="field.label">
-                <nldd-number-field size="sm" :value="getKnob(field.path)" min="0" max="100" step="5" width="full" hide-spin-buttons @change="setKnob(field.path, numberFrom($event))"></nldd-number-field>
+                <nldd-number-field size="sm" :value="getKnob(field.path)" min="0" max="100" step="5" width="full" hide-spin-buttons @input="setKnob(field.path, numberFrom($event))" @change="setKnob(field.path, numberFrom($event))"></nldd-number-field>
               </nldd-form-field>
             </nldd-container>
           </template>
@@ -455,6 +517,20 @@ function exportJson() {
               <nldd-icon-cell v-else-if="definitionsByLaw[law.id].length" icon="chevron-right" color="secondary"></nldd-icon-cell>
             </nldd-list-item>
           </nldd-list>
+          <template v-if="open.wetgeving && supporting.length">
+            <!-- nldd-text and not a text-cell: a cell outside a list keeps its
+                 one-line row height, and this heading wraps in the sidebar. -->
+            <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">{{ t('sim.params.supporting') }}</nldd-text></nldd-container>
+            <nldd-list variant="box-tinted" :accessible-label="t('sim.params.supporting')">
+              <nldd-list-item v-for="law in supporting" :key="law.id" size="sm" button @click="editParameters(law)">
+                <nldd-cell><OrgLogo :service="law.service" size="sm" /></nldd-cell>
+                <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                <nldd-text-cell size="sm" :text="law.name" :supporting-text="t('sim.params.count', { n: definitionsByLaw[law.id].length })"></nldd-text-cell>
+                <nldd-cell v-if="overrideCount(law.id)"><nldd-tag size="sm" color="warning" :text="t('sim.params.changed', { n: overrideCount(law.id) })"></nldd-tag></nldd-cell>
+                <nldd-icon-cell v-else icon="chevron-right" color="secondary"></nldd-icon-cell>
+              </nldd-list-item>
+            </nldd-list>
+          </template>
 
           <nldd-button width="full" variant="primary" start-icon="play" :text="t(running ? 'sim.run.busy' : 'sim.run')" :disabled="!ready || running || undefined" @click="run"></nldd-button>
           <template v-if="running">
@@ -483,7 +559,12 @@ function exportJson() {
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="start" v-if="runs.length">
               <nldd-tab-bar size="sm" @tabchange="onTab">
-                <nldd-tab-bar-item v-for="r in runs" :key="r.id" :data-run="r.id" :current="activeTab === r.id || undefined" :text="r.label"></nldd-tab-bar-item>
+                <!-- De kleur van de run als bolletje in de icoonplek: een streep
+                     onder de tab hing aan de rechthoek van het element en
+                     sneed door de afgeronde hover- en huidige-achtergrond. -->
+                <nldd-tab-bar-item v-for="r in runs" :key="r.id" :data-run="r.id" :current="activeTab === r.id || undefined" :text="runLabel(r)">
+                  <nldd-icon slot="icon" name="circle-filled-small" :style="{ color: runColor(r) }"></nldd-icon>
+                </nldd-tab-bar-item>
                 <nldd-tab-bar-item v-if="runs.length > 1" data-run="vergelijking" :current="activeTab === 'vergelijking' || undefined" :text="t('sim.tab.comparison')" icon="arrow-left-right"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
@@ -495,6 +576,9 @@ function exportJson() {
                   <nldd-segmented-control-item value="populatie" :text="t('sim.view.population')"></nldd-segmented-control-item>
                   <nldd-segmented-control-item v-if="harmonizeEnabled" value="harmonisatie" :text="t('sim.view.harmonisation')"></nldd-segmented-control-item>
                 </nldd-segmented-control>
+              </nldd-toolbar-item>
+              <nldd-toolbar-item slot="end">
+                <nldd-icon-button size="sm" variant="neutral-tinted" icon="close" :text="t('sim.run.close')" @click="removeRun(activeRun.id)"></nldd-icon-button>
               </nldd-toolbar-item>
               <nldd-toolbar-item slot="end">
                 <nldd-icon-button size="sm" variant="neutral-tinted" icon="menu" :text="t('sim.export')" tooltip-timing="never" expandable>
@@ -777,6 +861,16 @@ function exportJson() {
         <!-- Comparison -->
         <nldd-simple-section v-else width="full">
           <nldd-container gap="16">
+            <nldd-table v-if="comparisonIncome" :columns="`minmax(160px, 1fr) repeat(${comparable.length}, 150px)`" :accessible-label="t('sim.comparison.income')">
+              <nldd-table-row slot="header">
+                <nldd-text-cell size="sm" :text="t('sim.comparison.income')"></nldd-text-cell>
+                <nldd-text-cell v-for="r in comparable" :key="r.id" size="sm" :text="runLabel(r)" :supporting-text="t(Object.keys(r.overrides).length ? 'sim.comparison.overridden' : 'sim.comparison.default')" horizontal-alignment="right"></nldd-text-cell>
+              </nldd-table-row>
+              <nldd-table-row v-for="row in comparisonIncome" :key="row.label">
+                <nldd-text-cell size="sm" :text="t(row.label)"></nldd-text-cell>
+                <nldd-text-cell v-for="(cell, i) in row.cells" :key="comparable[i].id" size="sm" :text="money(cell.value)" :supporting-text="signedMoney(cell.delta)" horizontal-alignment="right"></nldd-text-cell>
+              </nldd-table-row>
+            </nldd-table>
             <nldd-card :accessible-label="t('sim.comparison.label')">
               <nldd-container slot="header" padding="12" layout="row" gap="12" vertical-alignment="center"><nldd-title-cell size="5" :text="t('sim.comparison.title')" :supporting-text="t('sim.comparison.lead', { n: comparable.length })"></nldd-title-cell></nldd-container>
               <nldd-container padding="12">
@@ -786,7 +880,7 @@ function exportJson() {
             <nldd-table :columns="`minmax(160px, 1fr) repeat(${comparable.length}, 150px)`" :accessible-label="t('sim.comparison.table_label')">
               <nldd-table-row slot="header">
                 <nldd-text-cell size="sm" :text="t('sim.comparison.law')"></nldd-text-cell>
-                <nldd-text-cell v-for="r in comparable" :key="r.id" size="sm" :text="r.label" :supporting-text="t(Object.keys(r.overrides).length ? 'sim.comparison.overridden' : 'sim.comparison.default')" horizontal-alignment="right"></nldd-text-cell>
+                <nldd-text-cell v-for="r in comparable" :key="r.id" size="sm" :text="runLabel(r)" :supporting-text="t(Object.keys(r.overrides).length ? 'sim.comparison.overridden' : 'sim.comparison.default')" horizontal-alignment="right"></nldd-text-cell>
               </nldd-table-row>
               <nldd-table-row v-for="law in comparisonLaws" :key="law.id">
                 <nldd-text-cell size="sm" :text="law.name"></nldd-text-cell>
@@ -808,9 +902,14 @@ function exportJson() {
         <nldd-container v-if="inspector.type === 'params'" padding="12" gap="12">
           <!-- De zin staat in twee stukken in het woordenboek, met het
                <code>-element ertussen: dat scheelt een v-html voor één tag. -->
-          <nldd-rich-text><p>{{ t('sim.inspector.definitions.lead') }} (<code>definitions</code>). {{ t('sim.inspector.definitions.scope') }}</p></nldd-rich-text>
+          <!-- Klein en secundair: een toelichting, niet waar het paneel om draait. -->
+          <nldd-text size="sm" color="secondary">{{ t('sim.inspector.definitions.lead') }} (<code>definitions</code>). {{ t('sim.inspector.definitions.scope') }}</nldd-text>
           <nldd-form-field v-for="def in definitionsByLaw[inspectorLaw.id]" :key="def.key" :label="humanize(def.key)">
-            <nldd-number-field :value="overrides[inspectorLaw.id]?.[def.key] ?? def.value" :step="Number.isInteger(def.value) ? '1' : '0.001'" width="full" hide-spin-buttons @change="setOverride(inspectorLaw.id, def.key, numberFrom($event))"></nldd-number-field>
+            <!-- Op `input` én `change`: `change` kwam in de praktijk niet aan
+                 (gemeten: wel `input` met { value }, geen `change` na Enter of
+                 blur), waardoor een getypt bedrag bij het starten van de run
+                 terugsprong naar de standaardwaarde. -->
+            <nldd-number-field :value="overrides[inspectorLaw.id]?.[def.key] ?? def.value" :step="Number.isInteger(def.value) ? '1' : '0.001'" width="full" hide-spin-buttons @input="setOverride(inspectorLaw.id, def.key, numberFrom($event))" @change="setOverride(inspectorLaw.id, def.key, numberFrom($event))"></nldd-number-field>
             <nldd-form-field-help-text>{{ t('sim.inspector.definition_help', { article: def.article, value: def.value, hint: definitionHint(def) }) }}</nldd-form-field-help-text>
           </nldd-form-field>
           <nldd-button v-if="overrideCount(inspectorLaw.id)" variant="secondary" start-icon="arrow-2-counter-clockwise" :text="t('sim.inspector.reset')" @click="resetOverrides(inspectorLaw.id)"></nldd-button>

@@ -42,6 +42,10 @@ function defaultState() {
     // toegekend. De presentator kan het aanzetten om te laten zien hoe een
     // behandelaar dezelfde zaak ziet.
     manualReview: false,
+    // Aan: een besluit gaat meteen de deur uit, zoals bij een geautomatiseerde
+    // toekenning in de praktijk. Uit laat de presentator de bekendmaking als
+    // eigen stap tonen (Awb 3:41), met de bezwaartermijn die pas dan begint.
+    autoAnnounce: true,
     cases: [],
     claims: [],
     presenterName: '',
@@ -548,8 +552,18 @@ function submitCase(lawEntry, evaluation, params = personaParams()) {
     advanceLifecycle(c, { besluit_datum: vandaag });
   }
   c.status = statusOf(c);
+  announceIfAutomatic(c);
   reregister();
   return c;
+}
+
+/**
+ * Een genomen besluit meteen bekendmaken, als de presentator dat zo heeft
+ * staan. Bekendmaken blijft een eigen handeling (publishCase); deze schakelaar
+ * slaat alleen de knop over.
+ */
+function announceIfAutomatic(c) {
+  if (state.autoAnnounce && statusOf(c) === 'DECIDED' && !c.publishedAt) publishCase(c.id);
 }
 
 /**
@@ -663,6 +677,7 @@ function resubmitCase(caseId, evaluation, params = personaParams()) {
   advanceLifecycle(c, { aanvraag_datum: opnieuw, beslistermijn_start: opnieuw });
   if (!needsReview) advanceLifecycle(c, { besluit_datum: opnieuw });
   c.status = statusOf(c);
+  announceIfAutomatic(c);
   reregister();
   return c;
 }
@@ -684,6 +699,7 @@ function decideCase(caseId, approved, reason, verifiedResult = null) {
   // Het besluit is genomen: dat is de datum waar de fase BESLUIT op wachtte.
   advanceLifecycle(c, { besluit_datum: isoDate(c.decidedAt) });
   c.status = statusOf(c);
+  announceIfAutomatic(c);
   reregister();
 }
 

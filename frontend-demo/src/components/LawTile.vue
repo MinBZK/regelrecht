@@ -2,6 +2,7 @@
 import { computed, nextTick, ref, watch } from 'vue';
 import OrgLogo from './OrgLogo.vue';
 import DataLineage from './DataLineage.vue';
+import TraceView from './TraceView.vue';
 import { fieldSpec, formatMissing, formatValue, humanize, isUnknown, verdictOf } from '../data/format.js';
 import { lineageFromTrace, leafValues } from '../data/lineage.js';
 import { askedInputsFor, claimKeyFor, evaluationParamsFor, nextQuestions } from '../data/askedInputs.js';
@@ -369,7 +370,7 @@ const statusTag = computed(() => {
     </nldd-container>
 
     <Teleport to="body">
-      <nldd-sheet ref="traceSheet" placement="right" width="720px" :accessible-label="t('wet.tile.trace.title')" @close="showTrace = false">
+      <nldd-sheet ref="traceSheet" placement="right" width="1400px" :accessible-label="t('wet.tile.trace.title')" @close="showTrace = false">
         <nldd-page>
           <nldd-container slot="header" padding="12">
             <nldd-top-title-bar :text="t('wet.tile.trace.title')" :supporting-text="law.name" :dismiss-text="t('wet.tile.trace.close')" @dismiss="showTrace = false"></nldd-top-title-bar>
@@ -377,7 +378,7 @@ const statusTag = computed(() => {
           <nldd-container padding="16">
             <nldd-rich-text spacing="tight"><p>{{ t('wet.tile.trace.intro') }}</p></nldd-rich-text>
             <nldd-spacer size="12"></nldd-spacer>
-            <nldd-code-viewer v-if="showTrace" variant="box-tinted" no-copy>{{ evaluation?.traceText }}</nldd-code-viewer>
+            <TraceView v-if="showTrace" :text="evaluation?.traceText" />
           </nldd-container>
         </nldd-page>
       </nldd-sheet>

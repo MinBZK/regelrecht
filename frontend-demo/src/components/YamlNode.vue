@@ -12,7 +12,7 @@ const props = defineProps({
   path: { type: String, default: '' },
   depth: { type: Number, default: 0 },
   /** Dotted paths that start expanded, together with the nodes above them; '*' matches any segment. */
-  expanded: { type: Object, default: () => ({ paths: [], version: 0, all: null }) },
+  expanded: { type: Object, default: () => ({ paths: [], folded: [], version: 0, all: null }) },
   lawIds: { type: Object, default: () => new Set() },
   parentKey: { type: String, default: '' },
 });
@@ -24,7 +24,7 @@ const isContainer = computed(() => isMap.value || isList.value);
 
 /** De voorbereide stand: zie yamlExpand.js voor waarom die zo staat. */
 function openHere() {
-  return initiallyOpen({ path: props.path, depth: props.depth, all: props.expanded.all, paths: props.expanded.paths });
+  return initiallyOpen({ path: props.path, depth: props.depth, all: props.expanded.all, paths: props.expanded.paths, folded: props.expanded.folded });
 }
 
 const open = ref(openHere());

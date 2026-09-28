@@ -141,6 +141,12 @@ describe('usePresentation in het Engels', () => {
     expect(router.currentRoute.value.path).toBe('/en/laws');
   });
 
+  it('neemt de wet uit het dia-pad mee naar het Engelse tabblad', async () => {
+    p.init({ slides: [SLIDES[0], { kind: 'demo', title: 'De wet', route: '/wetten/zorgtoeslagwet' }] });
+    await p.start(1);
+    expect(router.currentRoute.value.path).toBe('/en/laws/zorgtoeslagwet');
+  });
+
   it('houdt de toetsen vast op het Engelse tabblad dat de dia opende', async () => {
     // Het dek vergelijkt op de pagina en niet op de routenaam; zou het dat wel
     // doen, dan was het doof op precies de dia die dit tabblad zojuist opende.
@@ -183,6 +189,13 @@ describe('usePresentation toetsafvang', () => {
     expect(router.currentRoute.value.path).toBe('/wetten');
     expect(press('ArrowRight')).toBe(true);
     expect(p.index.value).toBe(2);
+  });
+
+  it('landt op de wet uit het dia-pad, ook als er een andere open stond', async () => {
+    router.goTo('/wetten/zvw');
+    p.init({ slides: [SLIDES[0], { kind: 'demo', title: 'De wet', route: '/wetten/zorgtoeslagwet' }] });
+    await p.start(1);
+    expect(router.currentRoute.value.path).toBe('/wetten/zorgtoeslagwet');
   });
 
   it('laat de toetsen los zodra de presentator zelf een ander tabblad opent', async () => {

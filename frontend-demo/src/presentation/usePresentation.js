@@ -25,7 +25,13 @@ function slideTarget(path) {
   if (!path || !router) return null;
   const page = pageForConfigPath(path);
   if (!page) return path;
-  return router.resolve({ name: localeRouteName(page, currentLocale()) }).path;
+  // Wat na het tabblad komt (`/wetten/zorgtoeslagwet`: de wet) gaat mee. Anders
+  // opent de dia het tabblad op de wet die er toevallig nog open stond, en
+  // landt de presentator na een oefenronde op de verkeerde.
+  const root = router.resolve({ name: page }).path;
+  const rest = path.startsWith(root) ? path.slice(root.length) : '';
+  const base = router.resolve({ name: localeRouteName(page, currentLocale()) }).path;
+  return rest ? `${base.replace(/\/$/, '')}${rest}` : base;
 }
 
 const active = ref(false);

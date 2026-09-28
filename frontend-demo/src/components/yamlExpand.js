@@ -12,7 +12,14 @@
  * hangt blijft dicht omdat het pad daar ophoudt: dat laatste is wat een ondiep
  * pad als `…execution.actions` anders alsnog in één klap zou uitklappen.
  *
- * De paden komen uit `expanded_paths` in `corpus/demo/demo-config.yaml`.
+ * Soms moet ook een knoop onderweg dicht beginnen, omdat de presentator die
+ * er bewust bij openklapt (`actions`, of één berekening daarin). Zo'n knoop
+ * staat in `folded`: hij begint dicht, maar wat eronder klaarligt staat open
+ * zodra hij wordt opengeklapt. Dat werkt omdat een kind pas bij het openen
+ * wordt aangemaakt en dan zijn eigen voorbereide stand opzoekt.
+ *
+ * De paden komen uit `expanded_paths` en `folded_paths` in
+ * `corpus/demo/demo-config.yaml`.
  */
 
 /** `articles.2` — het enige knooppunt dat de presentator zelf openklapt. */
@@ -37,11 +44,16 @@ export function onPath(pattern, path) {
   return true;
 }
 
+/** Is `path` precies `pattern`? `*` matcht elk segment. */
+function matches(pattern, path) {
+  return pattern.split('.').length === path.split('.').length && onPath(pattern, path);
+}
+
 /**
- * @param {{path: string, depth: number, all: boolean|null, paths: string[]}} node
+ * @param {{path: string, depth: number, all: boolean|null, paths: string[], folded?: string[]}} node
  * @returns {boolean}
  */
-export function initiallyOpen({ path, depth, all, paths }) {
+export function initiallyOpen({ path, depth, all, paths, folded }) {
   // De knoppen "alles open" en "alles dicht" overrulen de voorbereide stand.
   if (all === true) return true;
   if (all === false) return false;
@@ -49,7 +61,10 @@ export function initiallyOpen({ path, depth, all, paths }) {
   // Eerder stond elk artikel én zijn machine_readable-blok hier
   // onvoorwaardelijk open, waardoor de hele boom in één keer uitklapte en er
   // niets meer te onthullen viel.
-  if (ARTICLE.test(path)) return false;
+  // Een wet die het artikel zelf als pad noemt (`articles.1`) opent het wel:
+  // bij een wet met één artikel valt er niets te kiezen.
+  if (ARTICLE.test(path)) return (paths ?? []).some((pattern) => matches(pattern, path));
   if (path === 'articles') return true;
+  if ((folded ?? []).some((pattern) => matches(pattern, path))) return false;
   return (paths ?? []).some((pattern) => onPath(pattern, path));
 }
