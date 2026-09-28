@@ -554,8 +554,8 @@ struct LazyArticleInputs<'a, 'r, 'c> {
     article: &'a Article,
     law: &'a ArticleBasedLaw,
     parameters: &'a BTreeMap<String, Value>,
-    calculation_date: &'c str,
-    trace: Option<Rc<RefCell<TraceBuilder>>>,
+    /// The article-level scope a source's parameters are read in, built once.
+    scope: RuleContext<'static>,
     res_ctx: RefCell<&'r mut ResolutionContext<'c>>,
     resolved: RefCell<BTreeMap<String, Value>>,
     unresolved: RefCell<BTreeSet<String>>,
@@ -566,6 +566,8 @@ struct LazyArticleInputs<'a, 'r, 'c> {
 /// What a name read in an article refers to, when the article resolves it.
 enum LazyName<'a> {
     Input(&'a Input),
+    /// An input the caller passed a value for: the value wins over the source.
+    Passed(&'a Input),
     OpenTerm(&'a crate::article::OpenTerm),
 }
 
@@ -594,20 +596,26 @@ impl<'a, 'r, 'c> LazyArticleInputs<'a, 'r, 'c> {
         law: &'a ArticleBasedLaw,
         parameters: &'a BTreeMap<String, Value>,
         res_ctx: &'r mut ResolutionContext<'c>,
-    ) -> Self {
-        Self {
+    ) -> Result<Self> {
+        let scope = crate::engine::article_context(
+            law,
+            article,
+            parameters,
+            res_ctx.calculation_date,
+            res_ctx.trace.as_ref(),
+        )?;
+        Ok(Self {
             service,
             article,
             law,
             parameters,
-            calculation_date: res_ctx.calculation_date,
-            trace: res_ctx.trace.as_ref().map(Rc::clone),
+            scope,
             res_ctx: RefCell::new(res_ctx),
             resolved: RefCell::new(BTreeMap::new()),
             unresolved: RefCell::new(BTreeSet::new()),
             resolving: RefCell::new(BTreeSet::new()),
             shadowed: RefCell::new(BTreeSet::new()),
-        }
+        })
     }
 
     /// Everything resolved so far.
@@ -668,29 +676,25 @@ impl<'a, 'r, 'c> LazyArticleInputs<'a, 'r, 'c> {
             return Some(LazyName::OpenTerm(term));
         }
         let input = article.get_inputs().iter().rev().find(|i| i.name == name)?;
-        (input.source.is_some() && !self.parameters.contains_key(name))
-            .then_some(LazyName::Input(input))
+        if self.parameters.contains_key(name) {
+            return Some(LazyName::Passed(input));
+        }
+        input.source.is_some().then_some(LazyName::Input(input))
     }
 
     /// The article-level scope a source's parameters are read in: the
     /// caller's parameters, the article's definitions and its other inputs,
     /// never the scope of the operation that happened to read the input (a
     /// FOREACH variable must not become a lookup key).
-    fn article_context(&self) -> Result<RuleContext<'_>> {
-        let mut context = crate::engine::article_context(
-            self.law,
-            self.article,
-            self.parameters,
-            self.calculation_date,
-            self.trace.as_ref(),
-        )?;
+    fn article_context(&self) -> RuleContext<'_> {
+        let mut context: RuleContext<'_> = self.scope.clone();
         context.set_lazy(self);
-        Ok(context)
+        context
     }
 
     /// Resolve what `name` refers to. `Ok(None)` leaves it unresolved.
     fn resolve_owned(&self, name: LazyName<'a>) -> Result<Option<Value>> {
-        let context = self.article_context()?;
+        let context = self.article_context();
         // What the resolution reads of this article is resolved first, each
         // as its own step, so the resolution itself never needs a second one.
         let dependencies: BTreeSet<String> = match name {
@@ -708,6 +712,7 @@ impl<'a, 'r, 'c> LazyArticleInputs<'a, 'r, 'c> {
                 .flat_map(crate::demand::referenced_names)
                 .filter(|reference| self.is_earlier_term(term, reference))
                 .collect(),
+            LazyName::Passed(_) => BTreeSet::new(),
         };
         for dependency in &dependencies {
             if self.owner(dependency).is_some() {
@@ -715,6 +720,24 @@ impl<'a, 'r, 'c> LazyArticleInputs<'a, 'r, 'c> {
             }
         }
         match name {
+            // A value handed in under the input's name bypasses its source,
+            // not its declaration: a null for an input that is never absent is
+            // refused like a null cell would be, whoever passed it (a caller,
+            // a scenario, an editor form). Otherwise it would surface later as
+            // an absent operand without an origin (RFC-036). The value itself
+            // is read from the parameters.
+            LazyName::Passed(input) => {
+                if self.parameters.get(&input.name).is_some_and(Value::is_null)
+                    && !input.is_nullable()
+                {
+                    return Err(null_for_non_nullable(
+                        self.law,
+                        input,
+                        "parameter from caller".to_string(),
+                    ));
+                }
+                Ok(None)
+            }
             LazyName::Input(input) => self.with_resolution_context(|res_ctx| {
                 self.service.resolve_input(
                     self.article,
@@ -797,30 +820,6 @@ impl LazyInputs for LazyArticleInputs<'_, '_, '_> {
             ResolveType::ResolvedInput
         }
     }
-}
-
-/// A value handed in under an input's name bypasses its source, not its
-/// declaration: a null for an input that is never absent is refused at this
-/// boundary like a null cell would be, whoever passed it (a top-level caller, a
-/// scenario parameter, an editor form). Otherwise it would surface three
-/// operations later as an absent operand without an origin (RFC-036). Checked
-/// for every input up front: it reads only what the caller passed, so it
-/// fetches nothing.
-fn check_passed_inputs(
-    article: &Article,
-    law: &ArticleBasedLaw,
-    parameters: &BTreeMap<String, Value>,
-) -> Result<()> {
-    for input in article.get_inputs() {
-        if parameters.get(&input.name).is_some_and(Value::is_null) && !input.is_nullable() {
-            return Err(null_for_non_nullable(
-                law,
-                input,
-                "parameter from caller".to_string(),
-            ));
-        }
-    }
-    Ok(())
 }
 
 /// The error for a `null` that reached `input` of `law` although the input is
@@ -2722,14 +2721,13 @@ impl LawExecutionService {
 
         // What this execution needs, settled before any action runs (RFC-043).
         let demand = self.plan_demand(article, law, requested_outputs, stage, res_ctx);
-        check_passed_inputs(article, law, &parameters)?;
 
         // Inputs and open terms are resolved when they are first read: by an
         // action, or by a hook or override that declares them as parameters.
         let engine = ArticleEngine::new(article, law);
         let calculation_date = res_ctx.calculation_date;
         let trace = res_ctx.trace.as_ref().map(Rc::clone);
-        let lazy = LazyArticleInputs::new(self, article, law, &parameters, res_ctx);
+        let lazy = LazyArticleInputs::new(self, article, law, &parameters, res_ctx)?;
         let executed = (|| -> Result<_> {
             lazy.resolve_names(&demand.read_before_actions)?;
             let mut hook_params = parameters.clone();
@@ -8207,13 +8205,12 @@ articles:
         }
     }
 
-    /// A `post_actions` hook receives the article's outputs as parameters, and
-    /// the article cannot see which of them it reads. So an article a post hook
-    /// fires on runs in full, even when the caller asks for one output
-    /// (RFC-043): here the hook reads `grondslag`, which the requested `bedrag`
-    /// does not depend on.
+    /// A `post_actions` hook receives the parameters it declares from the
+    /// article, so an output it declares is computed even when the caller asks
+    /// for another one (RFC-043): here the hook reads `grondslag`, which the
+    /// requested `bedrag` does not depend on.
     #[test]
-    fn an_article_a_post_hook_reads_runs_in_full() {
+    fn an_output_a_post_hook_declares_is_computed() {
         let triggering = r#"
 $id: demand_hook_trigger_law
 regulatory_layer: WET

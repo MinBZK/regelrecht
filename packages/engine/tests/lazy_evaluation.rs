@@ -861,3 +861,375 @@ articles:
     service.load_law(law).unwrap();
     assert!(value_of(&service, "lazy_self_keyed", "y", BTreeMap::new()).is_unknown());
 }
+
+// ---------------------------------------------------------------------------
+// What a hook or an override declares, and voids before computing
+// ---------------------------------------------------------------------------
+
+/// The income register with an explicit null: reading `inkomen` then fails.
+fn with_null_income(mut service: LawExecutionService) -> LawExecutionService {
+    service
+        .register_dict_source_for_law(
+            "lazy_belasting",
+            "aanslagen",
+            "bsn",
+            vec![record("1", "inkomen_register", None)],
+            10,
+        )
+        .unwrap();
+    service
+}
+
+#[test]
+fn a_passed_null_is_refused_only_where_the_input_is_read() {
+    let law = r#"
+$id: lazy_passed
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Een input die de aanroeper kan meegeven.
+    machine_readable:
+      execution:
+        input:
+          - name: bedrag
+            type: number
+            source: {}
+        output:
+          - name: vast
+            type: number
+          - name: dubbel
+            type: number
+        actions:
+          - output: vast
+            value: 1
+          - output: dubbel
+            value:
+              operation: MULTIPLY
+              values: [$bedrag, 2]
+"#;
+    let mut service = LawExecutionService::new();
+    service.load_law(law).unwrap();
+    let mut params = BTreeMap::new();
+    params.insert("bedrag".to_string(), Value::Null);
+    assert_eq!(
+        value_of(&service, "lazy_passed", "vast", params.clone()),
+        Value::Int(1)
+    );
+    let error = service
+        .evaluate_law_output("lazy_passed", "dubbel", params, "2025-01-01")
+        .unwrap_err();
+    assert!(error.to_string().contains("bedrag"), "{error}");
+}
+
+#[test]
+fn a_post_hook_gets_the_inputs_it_declares_and_nothing_else_runs() {
+    let trigger = r#"
+$id: lazy_post_trigger
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het besluit.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: leeftijd
+            type: number
+            source:
+              regulation: lazy_brp
+              output: leeftijd
+              parameters:
+                bsn: $bsn
+          - name: inkomen
+            type: number
+            source:
+              regulation: lazy_belasting
+              output: inkomen
+              parameters:
+                bsn: $bsn
+        output:
+          - name: bedrag
+            type: number
+          - name: los
+            type: number
+        actions:
+          - output: bedrag
+            value: 100
+          - output: los
+            value: $inkomen
+"#;
+    // The hook declares the lookup key and an input: neither is an output of
+    // the article, so neither makes it run in full.
+    let hook = r#"
+$id: lazy_post_reader
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Bij het besluit wordt de leeftijd vermeld.
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: BESLUIT
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: leeftijd
+            type: number
+            required: true
+        output:
+          - name: vermelde_leeftijd
+            type: number
+        actions:
+          - output: vermelde_leeftijd
+            value: $leeftijd
+"#;
+    let mut service = with_null_income(service(30, None));
+    service.load_law(trigger).unwrap();
+    service.load_law(hook).unwrap();
+    let result = service
+        .evaluate_law_output("lazy_post_trigger", "bedrag", bsn(), "2025-01-01")
+        .expect("the income nobody asked for is not read");
+    assert_eq!(result.outputs["bedrag"], Value::Int(100));
+    assert_eq!(result.outputs["vermelde_leeftijd"], Value::Int(30));
+    assert!(!result.outputs.contains_key("los"));
+}
+
+#[test]
+fn a_replacing_override_gets_the_input_it_declares() {
+    // The general rule never reads the age; the special rule, applying within
+    // the execution its law starts (RFC-007), does. The age is resolved for it.
+    let general = r#"
+$id: lazy_replace
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het bedrag.
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: leeftijd
+            type: number
+            source:
+              regulation: lazy_brp
+              output: leeftijd
+              parameters:
+                bsn: $bsn
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 100
+"#;
+    let special = r#"
+$id: lazy_replace_special
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: In afwijking daarvan is het bedrag twee keer de leeftijd.
+    machine_readable:
+      overrides:
+        - law: lazy_replace
+          article: '1'
+          output: bedrag
+      execution:
+        parameters:
+          - name: leeftijd
+            type: number
+            required: true
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value:
+              operation: MULTIPLY
+              values: [$leeftijd, 2]
+  - number: '2'
+    text: Het gevolg is het bedrag.
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: bedrag
+            type: number
+            source:
+              regulation: lazy_replace
+              output: bedrag
+              parameters:
+                bsn: $bsn
+        output:
+          - name: gevolg
+            type: number
+        actions:
+          - output: gevolg
+            value: $bedrag
+"#;
+    let mut service = service(30, Some(50));
+    service.load_law(general).unwrap();
+    service.load_law(special).unwrap();
+    assert_eq!(
+        value_of(&service, "lazy_replace", "bedrag", bsn()),
+        Value::Int(100)
+    );
+    assert_eq!(
+        value_of(&service, "lazy_replace_special", "gevolg", bsn()),
+        Value::Int(60)
+    );
+}
+
+const VOIDED: &str = r#"
+$id: lazy_void_two
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Aanspraak naar inkomen, en een vaste toelichting.
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: inkomen
+            type: number
+            source:
+              regulation: lazy_belasting
+              output: inkomen
+              parameters:
+                bsn: $bsn
+        output:
+          - name: aanspraak
+            type: number
+          - name: toelichting
+            type: number
+        actions:
+          - output: aanspraak
+            value: $inkomen
+          - output: toelichting
+            value: 1
+"#;
+
+#[test]
+fn another_laws_void_does_not_apply_standalone() {
+    let voiding = r#"
+$id: lazy_void_two_rule
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Er bestaat geen aanspraak.
+    machine_readable:
+      overrides:
+        - law: lazy_void_two
+          article: '1'
+          output: aanspraak
+          voids: true
+          legal_text_excerpt: bestaat geen aanspraak
+"#;
+    let mut service = with_null_income(service(30, None));
+    service.load_law(VOIDED).unwrap();
+    // An override from another law applies within the execution it starts
+    // (RFC-007), so this one only applies when its law is the contextual law;
+    // standalone, the entitlement stands and reading it fails on the null.
+    service.load_law(voiding).unwrap();
+    for requested in [["toelichting", "aanspraak"], ["aanspraak", "toelichting"]] {
+        let error = service
+            .evaluate_law("lazy_void_two", &requested, bsn(), "2025-01-01")
+            .unwrap_err();
+        assert!(
+            !matches!(error, EngineError::OutputVoided { .. }),
+            "another law's void does not apply standalone: {error:?}"
+        );
+    }
+}
+
+#[test]
+fn a_void_of_the_same_law_among_several_requested_outputs_is_checked_first() {
+    let law = VOIDED.replace(
+        "          - output: toelichting\n            value: 1\n",
+        "          - output: toelichting\n            value: 1\n  - number: '2'\n    text: Er bestaat geen aanspraak.\n    machine_readable:\n      overrides:\n        - law: lazy_void_two\n          article: '1'\n          output: aanspraak\n          voids: true\n          legal_text_excerpt: bestaat geen aanspraak\n",
+    );
+    let mut service = with_null_income(service(30, None));
+    service.load_law(&law).unwrap();
+    for requested in [["toelichting", "aanspraak"], ["aanspraak", "toelichting"]] {
+        match service.evaluate_law("lazy_void_two", &requested, bsn(), "2025-01-01") {
+            Err(EngineError::OutputVoided { grounds, .. }) => {
+                assert_eq!(grounds, "bestaat geen aanspraak");
+            }
+            other => panic!("expected OutputVoided for {requested:?}, got {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn a_void_from_the_contextual_law_is_checked_first() {
+    // The voiding law starts the execution and reads the entitlement across
+    // laws: its void applies, so the entitlement is not computed (reading the
+    // income would fail) and the read gets the ground.
+    let contextual = r#"
+$id: lazy_void_context
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Voor deze regeling bestaat geen aanspraak.
+    machine_readable:
+      overrides:
+        - law: lazy_void_two
+          article: '1'
+          output: aanspraak
+          voids: true
+          legal_text_excerpt: bestaat geen aanspraak
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: aanspraak
+            type: number
+            source:
+              regulation: lazy_void_two
+              output: aanspraak
+              parameters:
+                bsn: $bsn
+        output:
+          - name: gevolg
+            type: number
+        actions:
+          - output: gevolg
+            value: $aanspraak
+"#;
+    let mut service = with_null_income(service(30, None));
+    service.load_law(VOIDED).unwrap();
+    service.load_law(contextual).unwrap();
+    match service.evaluate_law_output("lazy_void_context", "gevolg", bsn(), "2025-01-01") {
+        Err(EngineError::OutputVoided { grounds, .. }) => {
+            assert_eq!(grounds, "bestaat geen aanspraak");
+        }
+        other => panic!("expected OutputVoided, got {other:?}"),
+    }
+}

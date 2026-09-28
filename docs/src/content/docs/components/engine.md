@@ -64,7 +64,9 @@ flowchart TD
     F -->|No| I[Produce Outputs with Trace]
 ```
 
-An article does not resolve its inputs before it runs. An operation that reads `$inkomen` resolves the input `inkomen` at that moment, from a register or by executing the other law, and the value is kept for the rest of the execution ([RFC-043](/rfcs/rfc-043)). An input no operation reads is never fetched. Because `AND`, `OR` and `IF` stop at the operand that decides, a condition that settles the outcome early also stops the retrieval behind it: for a minor, the zorgtoeslag reads the date of birth and nothing else.
+An article does not resolve its inputs before it runs. An operation that reads `$inkomen` resolves the input `inkomen` at that moment, from a register or by executing the other law, and the value is kept for the rest of the execution ([RFC-043](/rfcs/rfc-043)). An input no operation reads is never fetched. Because `AND`, `OR` and `IF` stop at the operand that decides, a condition that settles the outcome early also stops the retrieval behind it. For a minor, the demo's zorgtoeslag reads the date of birth and nothing else, because its conditions are one `AND` with the age first.
+
+That saving happens inside one expression. An action the requested output depends on still runs in full: in the main corpus, `heeft_recht_op_zorgtoeslag` reads `hoogte_zorgtoeslag`, so asking for the entitlement computes the amount, income included, whatever the insurance test says. Whether a condition stops the calculation is the law's structure (RFC-043), not something the engine adds.
 
 The order of operands decides what is fetched, never the result. `AND` and `OR` keep evaluating past an unknown operand to look for one that decides ([RFC-036](/rfcs/rfc-036)), so reordering conditions gives the same outcome.
 
@@ -75,9 +77,10 @@ When the engine resolves a `$variable`, it checks these sources in order:
 1. **Context variables** - `referencedate`, `referencedate.year`, etc.
 2. **Local scope** - loop variables from `FOREACH`
 3. **Outputs** - values calculated by previous actions in the same article
-4. **Resolved inputs** - cached results from cross-law references
+4. **Resolved inputs** - values set on the context directly (the service does not use this layer)
 5. **Definitions** - article-level constants
-6. **Parameters** - direct input parameters
+6. **Inputs and open terms** - resolved on first read and kept for the execution; an open term comes before an input of the same name
+7. **Parameters** - direct input parameters, and the outputs of a `pre_actions` hook. Both win over an input of the same name: a value the caller passed replaces the input's source, and a hook output replaces the input
 
 ## Multi-Output Evaluation
 
@@ -85,13 +88,11 @@ Articles can define multiple outputs (e.g., `heeft_recht_op_zorgtoeslag` and `ho
 
 ### Which outputs come back
 
-Callers name the outputs they need, and there is no "run the whole law" mode: the engine executes only the articles that produce those outputs, and in each article only the actions those outputs depend on ([RFC-043](/rfcs/rfc-043)). The dependency closure follows `$name` references between the article's own outputs. An action outside it does not run, so it cannot fail the call, and its output is not in the result. Asking whether the conditions are met does not also compute the amount.
+Callers name the outputs they need, and there is no "run the whole law" mode: the engine executes only the articles that produce those outputs, and in each article only the actions those outputs depend on ([RFC-043](/rfcs/rfc-043)). The dependency closure follows `$name` references between the article's own outputs. An action outside it does not run, so it cannot fail the call, and its output is not in the result.
 
-What hooks and overrides add stays in. A beschikking is legally indivisible (Awb 1:3), so consequences such as the motivering and the bezwaartermijn are never stripped from it. When a `post_actions` hook fires on an article, that article runs in full, because the hook receives its outputs and the engine cannot see which of them it reads. A receipt records which outputs were requested in `requested_outputs`, next to the set that came back.
+What hooks and overrides add stays in. A beschikking is legally indivisible (Awb 1:3), so consequences such as the motivering and the bezwaartermijn are never stripped from it. A hook, or an override that replaces an output, receives only the parameters it declares, so the engine resolves and computes exactly those names for it and leaves the rest of the article demand-driven. A `voids` that excludes a requested output is checked before that output is computed. A receipt records which outputs were requested in `requested_outputs`, next to the set that came back.
 
-A hook or an override that replaces an output receives only the parameters it declares. The engine resolves and computes those names for it and leaves the rest of the article demand-driven. A `voids` that excludes a requested output is checked before that output is computed.
-
-The same rule makes a missing required parameter an error only for the outputs that read it. Asking for an output that does not need the parameter succeeds without it.
+The same rule makes a missing required parameter, or a null the caller passed for an input that is never absent, an error only for the outputs that read it. Asking for an output that does not need it succeeds.
 
 If a requested output is missing because the law itself excludes it (a `voids` in schema v0.7.0), the call fails with an error that quotes the excluding article, instead of returning success with the output silently absent.
 
