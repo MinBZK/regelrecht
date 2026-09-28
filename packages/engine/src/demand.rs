@@ -28,6 +28,16 @@ pub(crate) fn action_outputs(article: &Article) -> impl Iterator<Item = &str> {
 /// and everything they read, transitively. A requested name no action
 /// produces (a hook output) adds nothing: no action can produce it.
 pub(crate) fn required_outputs(actions: &[Action], requested: &[&str]) -> BTreeSet<String> {
+    required_outputs_with(actions, requested, &BTreeMap::new())
+}
+
+/// [`required_outputs`], where computing an output also reads the names
+/// `also_reads` gives for it (the parameters of an override that replaces it).
+pub(crate) fn required_outputs_with(
+    actions: &[Action],
+    requested: &[&str],
+    also_reads: &BTreeMap<String, BTreeSet<String>>,
+) -> BTreeSet<String> {
     // Every action that writes a name counts: an output assigned twice reads
     // what both assignments read.
     let mut produced: BTreeMap<&str, Vec<&Action>> = BTreeMap::new();
@@ -46,11 +56,15 @@ pub(crate) fn required_outputs(actions: &[Action], requested: &[&str]) -> BTreeS
         if !required.insert(name.to_string()) {
             continue;
         }
-        for action in produced.get(name).into_iter().flatten() {
-            for reference in referenced_names(action) {
-                if let Some((key, _)) = produced.get_key_value(reference.as_str()) {
-                    pending.push(key);
-                }
+        let reads = produced
+            .get(name)
+            .into_iter()
+            .flatten()
+            .flat_map(|action| referenced_names(action))
+            .chain(also_reads.get(name).into_iter().flatten().cloned());
+        for reference in reads {
+            if let Some((key, _)) = produced.get_key_value(reference.as_str()) {
+                pending.push(key);
             }
         }
     }
@@ -249,6 +263,18 @@ mod tests {
                 .map(String::from)
                 .to_vec()
         );
+    }
+
+    #[test]
+    fn what_a_replacing_override_reads_is_part_of_the_closure() {
+        // `los` reads nothing and nobody reads it, but the override replacing
+        // `hoogte` declares it as a parameter.
+        let acts = actions(CHAIN);
+        let mut also_reads = BTreeMap::new();
+        also_reads.insert("hoogte".to_string(), BTreeSet::from(["los".to_string()]));
+        let required = required_outputs_with(&acts, &["hoogte"], &also_reads);
+        assert!(required.contains("los"), "{required:?}");
+        assert!(!required_outputs(&acts, &["hoogte"]).contains("los"));
     }
 
     #[test]

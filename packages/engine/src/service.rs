@@ -2209,30 +2209,21 @@ impl LawExecutionService {
                 read_after_actions: read_after(None),
             };
         };
-        // The requested outputs a void does not exclude, closed over what they
-        // read, and grown by every output of this article that a post hook or
-        // the replacing override of a computed output reads, until nothing
-        // more is added.
+        // The requested outputs a void does not exclude, and the outputs a post
+        // hook reads, closed over what they read, where computing an output
+        // also reads what its replacing override declares.
         let actions = article
             .get_execution_spec()
             .and_then(|e| e.actions.as_deref())
             .unwrap_or_default();
-        let mut wanted: BTreeSet<&str> = requested
+        let wanted: Vec<&str> = requested
             .iter()
             .copied()
             .filter(|name| !plan.voided.contains(*name))
+            .chain(post_hooks.iter().map(String::as_str))
             .collect();
-        let (outputs, read_after_actions) = loop {
-            let names: Vec<&str> = wanted.iter().copied().collect();
-            let computed = crate::demand::required_outputs(actions, &names);
-            let read = read_after(Some(&computed));
-            let before = wanted.len();
-            wanted
-                .extend(crate::demand::action_outputs(article).filter(|name| read.contains(*name)));
-            if wanted.len() == before {
-                break (computed, read);
-            }
-        };
+        let outputs = crate::demand::required_outputs_with(actions, &wanted, &plan.replacing);
+        let read_after_actions = read_after(Some(&outputs));
         Demand {
             outputs: Some(outputs),
             voided: requested
