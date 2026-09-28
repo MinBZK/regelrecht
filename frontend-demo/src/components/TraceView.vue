@@ -23,9 +23,16 @@ const { corpus } = useDemo();
 const PALETTE = ['hemelblauw', 'oranje', 'paars', 'groen', 'robijnrood', 'donkergeel', 'mintgroen', 'bruin', 'violet', 'donkerblauw'];
 
 const parsed = computed(() => traceLaws(props.text, (id) => !!corpus.value?.lawById(id)));
+/**
+ * The law's colour as CSS variables: -500 for the stripe and the tint, -700
+ * for text. The primitives flip in the dark scheme, so -700 is a dark ink on
+ * white and a light one on the dark surface without a rule per scheme.
+ */
 const colorOf = (law) => {
   const i = parsed.value.laws.indexOf(law);
-  return i < 0 ? null : `var(--primitives-color-${PALETTE[i % PALETTE.length]}-500)`;
+  if (i < 0) return undefined;
+  const c = `--primitives-color-${PALETTE[i % PALETTE.length]}`;
+  return { '--law-color': `var(${c}-500)`, '--law-ink': `var(${c}-700)` };
 };
 const nameOf = (law) => corpus.value?.lawById(law)?.name ?? law;
 
@@ -72,10 +79,10 @@ const currentLine = computed(() => (current.value < 0 ? -1 : parsed.value.sectio
         v-for="law in parsed.laws"
         :key="law"
         class="trace-view__law"
-        size="sm"
-        variant="neutral-tinted"
+        size="xs"
+        variant="inherit-tinted"
         :text="nameOf(law)"
-        :style="{ '--law-color': colorOf(law) }"
+        :style="colorOf(law)"
         @click="jumpTo(law)"
       ></nldd-button>
     </nldd-container>
@@ -85,7 +92,7 @@ const currentLine = computed(() => (current.value < 0 ? -1 : parsed.value.sectio
         :key="i"
         :ref="(el) => (lineEls[i] = el)"
         :class="['trace-view__line', { 'trace-view__line--start': line.start, 'trace-view__line--current': i === currentLine }]"
-        :style="line.law ? { '--law-color': colorOf(line.law) } : undefined"
+        :style="line.law ? colorOf(line.law) : undefined"
       >{{ line.text }}<span v-if="line.start" class="trace-view__badge">{{ nameOf(line.law) }}</span></div>
     </div>
   </div>
