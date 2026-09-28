@@ -106,6 +106,9 @@ pub(crate) trait LazyInputs {
     /// resolves itself; `None` if it is not, or if it stays unresolved (a
     /// reference to it then fails like any unknown variable).
     fn resolve_input(&self, name: &str) -> Option<Result<Value>>;
+
+    /// How the trace names where a value `resolve_input` answered came from.
+    fn resolve_type(&self, name: &str) -> ResolveType;
 }
 
 /// The hook as a context field: a reference, copied into every child scope,
@@ -485,7 +488,7 @@ impl<'l> RuleContext<'l> {
         // inputs were resolved up front.
         if let Some(LazyHook(lazy)) = self.lazy {
             if let Some(result) = lazy.resolve_input(path) {
-                self.trace_set_resolve_type(ResolveType::ResolvedInput);
+                self.trace_set_resolve_type(lazy.resolve_type(path));
                 return result;
             }
         }

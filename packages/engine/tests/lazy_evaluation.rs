@@ -309,7 +309,10 @@ fn a_loop_variable_is_not_a_lookup_key() {
 }
 
 #[test]
-fn inputs_that_look_each_other_up_are_a_cycle() {
+/// While an input is being resolved, a reference to it is not the article's
+/// to answer, as when inputs were resolved one by one in declaration order:
+/// two inputs keyed on each other find neither.
+fn inputs_that_look_each_other_up_find_neither() {
     let cycle = r#"
 $id: lazy_cycle
 regulatory_layer: WET
@@ -347,8 +350,8 @@ articles:
         .evaluate_law_output("lazy_cycle", "uitkomst", BTreeMap::new(), "2025-01-01")
         .unwrap_err();
     assert!(
-        matches!(error, EngineError::CircularReference(_)),
-        "expected a circular reference, got {error:?}"
+        matches!(error, EngineError::VariableNotFound(_)),
+        "expected the other input to be missing, got {error:?}"
     );
 }
 
@@ -575,4 +578,286 @@ articles:
         .unwrap();
     assert_eq!(result.outputs["bedrag"], Value::Int(100));
     assert_eq!(result.outputs["vastgelegde_leeftijd"], Value::Int(30));
+}
+
+// ---------------------------------------------------------------------------
+// Precedence between names, as it was when inputs were resolved up front
+// ---------------------------------------------------------------------------
+
+const ECHO: &str = r#"
+$id: lazy_echo
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Geeft terug wat het krijgt.
+    machine_readable:
+      execution:
+        parameters:
+          - name: v
+            type: number
+            required: true
+        output:
+          - name: echo
+            type: number
+        actions:
+          - output: echo
+            value: $v
+"#;
+
+fn constant(law_id: &str, output: &str, value: i64) -> String {
+    format!(
+        r#"
+$id: {law_id}
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Een vaste waarde.
+    machine_readable:
+      execution:
+        output:
+          - name: {output}
+            type: number
+        actions:
+          - output: {output}
+            value: {value}
+"#
+    )
+}
+
+fn value_of(
+    service: &LawExecutionService,
+    law_id: &str,
+    output: &str,
+    params: BTreeMap<String, Value>,
+) -> Value {
+    service
+        .evaluate_law_output(law_id, output, params, "2025-01-01")
+        .unwrap()
+        .outputs[output]
+        .clone()
+}
+
+#[test]
+fn a_pre_hook_output_shadows_an_input_for_the_actions_and_the_post_hook_alike() {
+    let pre_hook = r#"
+$id: lazy_pre
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Vooraf vastgesteld.
+    machine_readable:
+      hooks:
+        - hook_point: pre_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: BESLUIT
+      execution:
+        output:
+          - name: x
+            type: number
+        actions:
+          - output: x
+            value: 99
+"#;
+    let post_hook = r#"
+$id: lazy_post
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Achteraf vermeld.
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: BESLUIT
+      execution:
+        parameters:
+          - name: x
+            type: number
+            required: true
+        output:
+          - name: vermeld
+            type: number
+        actions:
+          - output: vermeld
+            value: $x
+"#;
+    let trigger = r#"
+$id: lazy_shadow
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het besluit.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: x
+            type: number
+            source: {}
+        output:
+          - name: y
+            type: number
+        actions:
+          - output: y
+            value: $x
+"#;
+    let mut service = LawExecutionService::new();
+    service.load_law(pre_hook).unwrap();
+    service.load_law(post_hook).unwrap();
+    service.load_law(trigger).unwrap();
+    service
+        .register_dict_source_for_law(
+            "lazy_shadow",
+            "register",
+            "bsn",
+            vec![record("1", "x", Some(5))],
+            10,
+        )
+        .unwrap();
+    let result = service
+        .evaluate_law_output("lazy_shadow", "y", bsn(), "2025-01-01")
+        .unwrap();
+    assert_eq!(result.outputs["y"], Value::Int(99));
+    assert_eq!(result.outputs["vermeld"], Value::Int(99));
+}
+
+#[test]
+fn an_open_term_comes_before_an_input_of_the_same_name() {
+    let law = r#"
+$id: lazy_term_input
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Twee bronnen voor een naam.
+    machine_readable:
+      open_terms:
+        - id: x
+          type: number
+          required: false
+          delegation_type: MINISTERIELE_REGELING
+          default:
+            actions:
+              - output: x
+                value: 7
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: x
+            type: number
+            source: {}
+        output:
+          - name: y
+            type: number
+        actions:
+          - output: y
+            value: $x
+"#;
+    let mut service = LawExecutionService::new();
+    service.load_law(law).unwrap();
+    service
+        .register_dict_source_for_law(
+            "lazy_term_input",
+            "register",
+            "bsn",
+            vec![record("1", "x", Some(5))],
+            10,
+        )
+        .unwrap();
+    assert_eq!(
+        value_of(&service, "lazy_term_input", "y", bsn()),
+        Value::Int(7)
+    );
+}
+
+#[test]
+fn of_two_inputs_with_one_name_the_last_declared_counts() {
+    let law = r#"
+$id: lazy_duplicate
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Twee keer dezelfde input.
+    machine_readable:
+      execution:
+        input:
+          - name: x
+            type: number
+            source:
+              regulation: lazy_een
+              output: een
+          - name: x
+            type: number
+            source:
+              regulation: lazy_twee
+              output: twee
+        output:
+          - name: y
+            type: number
+        actions:
+          - output: y
+            value: $x
+"#;
+    let mut service = LawExecutionService::new();
+    service.load_law(&constant("lazy_een", "een", 1)).unwrap();
+    service.load_law(&constant("lazy_twee", "twee", 2)).unwrap();
+    service.load_law(law).unwrap();
+    assert_eq!(
+        value_of(&service, "lazy_duplicate", "y", BTreeMap::new()),
+        Value::Int(2)
+    );
+}
+
+#[test]
+fn an_input_keyed_on_its_own_name_reads_the_parameter() {
+    // `v: $v` names the parameter `v`, which the caller left out: the key is
+    // unknown, the target is not run, and the input is unknown (RFC-036).
+    let law = r#"
+$id: lazy_self_keyed
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Een input op zijn eigen naam.
+    machine_readable:
+      execution:
+        parameters:
+          - name: v
+            type: number
+            required: false
+        input:
+          - name: v
+            type: number
+            source:
+              regulation: lazy_echo
+              output: echo
+              parameters:
+                v: $v
+        output:
+          - name: y
+            type: number
+        actions:
+          - output: y
+            value: $v
+"#;
+    let mut service = LawExecutionService::new();
+    service.load_law(ECHO).unwrap();
+    service.load_law(law).unwrap();
+    assert!(value_of(&service, "lazy_self_keyed", "y", BTreeMap::new()).is_unknown());
 }

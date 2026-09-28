@@ -536,14 +536,19 @@ struct OverridePlan {
     replacing_parameters: BTreeSet<String>,
 }
 
-/// An article's inputs and open terms, each resolved the first time an
-/// operation reads it and kept for the rest of the execution (RFC-043).
+/// An article's inputs and open terms, each resolved the first time it is
+/// read and kept for the rest of the execution (RFC-043).
 ///
-/// A resolution takes the resolution context mutably, and building the
-/// parameters of a cross-law call reads other inputs of the same article
-/// (`bsn: $partner_bsn`). Those are resolved first, before the context is
-/// taken, so the nested read finds them in the memo and never needs the
-/// context itself.
+/// Resolving takes the resolution context mutably, and the parameters of a
+/// cross-law call can read other inputs of the same article (`bsn:
+/// $partner_bsn`). Those are resolved first, so the nested read finds them in
+/// the memo and never needs the context itself.
+///
+/// A name this article does not answer for falls through to the parameters,
+/// as it did when inputs were resolved up front: a name being resolved (so a
+/// source keyed on itself reads the parameter of that name, and two inputs
+/// keyed on each other find neither), and a name a pre_actions hook produced
+/// a value under.
 struct LazyArticleInputs<'a, 'r, 'c> {
     service: &'a LawExecutionService,
     article: &'a Article,
@@ -555,6 +560,13 @@ struct LazyArticleInputs<'a, 'r, 'c> {
     resolved: RefCell<BTreeMap<String, Value>>,
     unresolved: RefCell<BTreeSet<String>>,
     resolving: RefCell<BTreeSet<String>>,
+    shadowed: RefCell<BTreeSet<String>>,
+}
+
+/// What a name read in an article refers to, when the article resolves it.
+enum LazyName<'a> {
+    Input(&'a Input),
+    OpenTerm(&'a crate::article::OpenTerm),
 }
 
 /// The parameters an article declares: the names it receives from a caller.
@@ -565,6 +577,14 @@ fn declared_parameter_names(article: &Article) -> impl Iterator<Item = String> +
         .into_iter()
         .flatten()
         .map(|p| p.name.clone())
+}
+
+/// The base names `$references` read (`$a.b` gives `a`).
+fn reference_bases<'v>(references: impl Iterator<Item = &'v String>) -> BTreeSet<String> {
+    references
+        .filter_map(|reference| reference.strip_prefix('$'))
+        .map(|reference| reference.split('.').next().unwrap_or(reference).to_string())
+        .collect()
 }
 
 impl<'a, 'r, 'c> LazyArticleInputs<'a, 'r, 'c> {
@@ -586,6 +606,7 @@ impl<'a, 'r, 'c> LazyArticleInputs<'a, 'r, 'c> {
             resolved: RefCell::new(BTreeMap::new()),
             unresolved: RefCell::new(BTreeSet::new()),
             resolving: RefCell::new(BTreeSet::new()),
+            shadowed: RefCell::new(BTreeSet::new()),
         }
     }
 
@@ -598,6 +619,12 @@ impl<'a, 'r, 'c> LazyArticleInputs<'a, 'r, 'c> {
     /// context back to the caller.
     fn into_resolved(self) -> BTreeMap<String, Value> {
         self.resolved.into_inner()
+    }
+
+    /// Names a pre_actions hook produced a value under: that value wins, as
+    /// it did when hook outputs were merged over the resolved inputs.
+    fn shadow(&self, names: impl IntoIterator<Item = String>) {
+        self.shadowed.borrow_mut().extend(names);
     }
 
     /// Lend the resolution context out for a step between resolutions (firing
@@ -625,6 +652,26 @@ impl<'a, 'r, 'c> LazyArticleInputs<'a, 'r, 'c> {
         Ok(())
     }
 
+    /// What `name` refers to, if this article resolves it now. An open term
+    /// comes before an input and a parameter of the same name, as its value
+    /// was merged over them; of two inputs with one name the last declared
+    /// counts; a value passed under an input's name wins over its source.
+    fn owner(&self, name: &str) -> Option<LazyName<'a>> {
+        if self.resolving.borrow().contains(name) || self.shadowed.borrow().contains(name) {
+            return None;
+        }
+        let article: &'a Article = self.article;
+        if let Some(term) = article
+            .get_open_terms()
+            .and_then(|terms| terms.iter().find(|t| t.id == name))
+        {
+            return Some(LazyName::OpenTerm(term));
+        }
+        let input = article.get_inputs().iter().rev().find(|i| i.name == name)?;
+        (input.source.is_some() && !self.parameters.contains_key(name))
+            .then_some(LazyName::Input(input))
+    }
+
     /// The article-level scope a source's parameters are read in: the
     /// caller's parameters, the article's definitions and its other inputs,
     /// never the scope of the operation that happened to read the input (a
@@ -641,28 +688,88 @@ impl<'a, 'r, 'c> LazyArticleInputs<'a, 'r, 'c> {
         Ok(context)
     }
 
-    /// Resolve `name` with `resolve`, after `dependencies`, and memoize it.
-    fn resolve_once(
-        &self,
-        name: &str,
-        dependencies: &[&str],
-        resolve: impl FnOnce(&RuleContext<'_>, &mut ResolutionContext<'c>) -> Result<Option<Value>>,
-    ) -> Option<Result<Value>> {
-        if !self.resolving.borrow_mut().insert(name.to_string()) {
-            return Some(Err(EngineError::CircularReference(format!(
-                "'{name}' of {} article {} depends on itself",
-                self.law.id, self.article.number
-            ))));
-        }
-        let outcome = (|| {
-            for dependency in dependencies {
-                if let Some(Err(e)) = self.resolve_input(dependency) {
-                    return Err(e);
-                }
+    /// Resolve what `name` refers to. `Ok(None)` leaves it unresolved.
+    fn resolve_owned(&self, name: LazyName<'a>) -> Result<Option<Value>> {
+        let context = self.article_context()?;
+        // What the resolution reads of this article is resolved first, each
+        // as its own step, so the resolution itself never needs a second one.
+        let dependencies: BTreeSet<String> = match name {
+            LazyName::Input(input) => reference_bases(
+                input
+                    .source
+                    .iter()
+                    .flat_map(|source| source.parameters.iter().flat_map(|p| p.values())),
+            ),
+            // A default reads the caller's parameters and the terms before it.
+            LazyName::OpenTerm(term) => term
+                .default
+                .iter()
+                .flat_map(|default| default.actions.iter().flatten())
+                .flat_map(crate::demand::referenced_names)
+                .filter(|reference| self.is_earlier_term(term, reference))
+                .collect(),
+        };
+        for dependency in &dependencies {
+            if self.owner(dependency).is_some() {
+                context.resolve(dependency)?;
             }
-            let context = self.article_context()?;
-            self.with_resolution_context(|res_ctx| resolve(&context, res_ctx))
-        })();
+        }
+        match name {
+            LazyName::Input(input) => self.with_resolution_context(|res_ctx| {
+                self.service.resolve_input(
+                    self.article,
+                    self.law,
+                    input,
+                    &context,
+                    self.parameters,
+                    res_ctx,
+                )
+            }),
+            LazyName::OpenTerm(term) => {
+                let earlier: BTreeMap<String, Value> = self
+                    .resolved
+                    .borrow()
+                    .iter()
+                    .filter(|(id, _)| self.is_earlier_term(term, id))
+                    .map(|(id, value)| (id.clone(), value.clone()))
+                    .collect();
+                self.with_resolution_context(|res_ctx| {
+                    self.service.resolve_open_term(
+                        self.article,
+                        self.law,
+                        term,
+                        self.parameters,
+                        &earlier,
+                        res_ctx,
+                    )
+                })
+                .map(Some)
+            }
+        }
+    }
+
+    /// Whether `id` names an open term declared before `term` in this article.
+    fn is_earlier_term(&self, term: &crate::article::OpenTerm, id: &str) -> bool {
+        self.article.get_open_terms().is_some_and(|terms| {
+            terms
+                .iter()
+                .take_while(|t| t.id != term.id)
+                .any(|t| t.id == id)
+        })
+    }
+}
+
+impl LazyInputs for LazyArticleInputs<'_, '_, '_> {
+    fn resolve_input(&self, name: &str) -> Option<Result<Value>> {
+        if let Some(value) = self.resolved.borrow().get(name) {
+            return Some(Ok(value.clone()));
+        }
+        if self.unresolved.borrow().contains(name) {
+            return None;
+        }
+        let owned = self.owner(name)?;
+        self.resolving.borrow_mut().insert(name.to_string());
+        let outcome = self.resolve_owned(owned);
         self.resolving.borrow_mut().remove(name);
         match outcome {
             Ok(Some(value)) => {
@@ -678,67 +785,17 @@ impl<'a, 'r, 'c> LazyArticleInputs<'a, 'r, 'c> {
             Err(e) => Some(Err(e)),
         }
     }
-}
 
-impl LazyInputs for LazyArticleInputs<'_, '_, '_> {
-    fn resolve_input(&self, name: &str) -> Option<Result<Value>> {
-        if let Some(value) = self.resolved.borrow().get(name) {
-            return Some(Ok(value.clone()));
+    fn resolve_type(&self, name: &str) -> ResolveType {
+        let is_open_term = self
+            .article
+            .get_open_terms()
+            .is_some_and(|terms| terms.iter().any(|t| t.id == name));
+        if is_open_term {
+            ResolveType::OpenTerm
+        } else {
+            ResolveType::ResolvedInput
         }
-        if self.unresolved.borrow().contains(name) {
-            return None;
-        }
-
-        if let Some(input) = self.article.get_inputs().iter().find(|i| i.name == name) {
-            // A value passed under the input's name wins over its source.
-            if self.parameters.contains_key(name) || input.source.is_none() {
-                return None;
-            }
-            let dependencies: Vec<&str> = input
-                .source
-                .as_ref()
-                .and_then(|source| source.parameters.as_ref())
-                .into_iter()
-                .flat_map(|params| params.values())
-                .filter_map(|reference| reference.strip_prefix('$'))
-                .map(|reference| reference.split('.').next().unwrap_or(reference))
-                .collect();
-            return self.resolve_once(name, &dependencies, |context, res_ctx| {
-                self.service.resolve_input(
-                    self.article,
-                    self.law,
-                    input,
-                    context,
-                    self.parameters,
-                    res_ctx,
-                )
-            });
-        }
-
-        let terms = self.article.get_open_terms()?;
-        let position = terms.iter().position(|t| t.id == name)?;
-        let term = &terms[position];
-        // A default may read the terms declared before it, as it did when
-        // every term was resolved in order.
-        let earlier: Vec<&str> = terms[..position].iter().map(|t| t.id.as_str()).collect();
-        self.resolve_once(name, &earlier, |_, res_ctx| {
-            let resolved = self.resolved.borrow();
-            let earlier_values: BTreeMap<String, Value> = earlier
-                .iter()
-                .filter_map(|id| resolved.get(*id).map(|v| (id.to_string(), v.clone())))
-                .collect();
-            drop(resolved);
-            self.service
-                .resolve_open_term(
-                    self.article,
-                    self.law,
-                    term,
-                    self.parameters,
-                    &earlier_values,
-                    res_ctx,
-                )
-                .map(Some)
-        })
     }
 }
 
@@ -2688,6 +2745,7 @@ impl LawExecutionService {
                         res_ctx,
                     )
                 })?;
+            lazy.shadow(pre_hook_outputs.keys().cloned());
             let mut engine_params = parameters.clone();
             engine_params.extend(pre_hook_outputs.clone());
             let outputs: Option<Vec<&str>> = demand

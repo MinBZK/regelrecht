@@ -88,7 +88,7 @@ wet_op_de_zorgtoeslag (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ║   │           │               ├──Resolving from RESOLVED_INPUT: 211200
 ║   ║   │           │               └──Computing standaardpremie
 ║   ║   │           │                   ├──Resolving $STANDAARDPREMIE
-║   ║   │           │                   │   ├──Resolving from RESOLVED_INPUT: 211200
+║   ║   │           │                   │   ├──Resolving from OPEN_TERM: 211200
 ║   ║   │           │                   │   └──Delegation: Open term 'standaardpremie' implemented by regeling_standaardpremie article 1: 211200
 ║   ║   │           │                   │       ╙──Computing standaardpremie
 ║   ║   │           │                   │           └──Result: standaardpremie = 211200
