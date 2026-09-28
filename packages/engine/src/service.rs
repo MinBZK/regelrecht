@@ -35,7 +35,8 @@ use crate::operations::ValueResolver;
 use crate::priority;
 use crate::resolver::{
     hook_filter_admits, missing_article_reason, DeclarationKind, DeclarationNotInForce,
-    DeclarationsFromOtherVersion, DelegationRefusal, ProcedureMiss, RuleResolver, SelectionReason,
+    DeclarationsFromOtherVersion, DelegationRefusal, LawArticleRef, ProcedureMiss, RuleResolver,
+    SelectionReason,
 };
 use crate::trace::{LegalAnchor, TraceBuilder, ValueSource};
 use crate::types::{
@@ -486,6 +487,44 @@ fn voided_output_error(
     }
 }
 
+/// What an article execution needs, settled before its actions run (RFC-043).
+#[derive(Debug)]
+struct Demand {
+    /// The outputs whose dependency closure runs; `None` runs every action.
+    outputs: Option<Vec<String>>,
+    /// Requested outputs a `voids` excludes: not computed, their ground is
+    /// recorded by `apply_overrides`.
+    voided: Vec<String>,
+    /// What the pre_actions hooks declare as parameters.
+    read_before_actions: BTreeSet<String>,
+    /// What the post_actions hooks and replacing overrides declare.
+    read_after_actions: BTreeSet<String>,
+}
+
+/// The one override of an output that applies (RFC-007, RFC-041).
+enum SelectedOverride<'s> {
+    /// In force on this date, with the declaration that addresses the output.
+    InForce {
+        reference: &'s LawArticleRef,
+        law: &'s ArticleBasedLaw,
+        article: &'s Article,
+        declaration: Option<&'s crate::article::OverrideDeclaration>,
+    },
+    /// Addressed, but not in force on this date, and why.
+    NotInForce {
+        reference: &'s LawArticleRef,
+        reason: String,
+    },
+}
+
+impl<'s> SelectedOverride<'s> {
+    fn reference(&self) -> &'s LawArticleRef {
+        match self {
+            Self::InForce { reference, .. } | Self::NotInForce { reference, .. } => reference,
+        }
+    }
+}
+
 /// Which overrides of an article's outputs apply, read before its actions
 /// run (RFC-043).
 #[derive(Debug, Default)]
@@ -518,14 +557,6 @@ struct LazyArticleInputs<'a, 'r, 'c> {
     resolving: RefCell<BTreeSet<String>>,
 }
 
-/// What an article execution resolved so far, carried between the steps that
-/// need the resolution context for something else (firing a hook).
-#[derive(Debug, Default)]
-struct LazyMemo {
-    resolved: BTreeMap<String, Value>,
-    unresolved: BTreeSet<String>,
-}
-
 /// The parameters an article declares: the names it receives from a caller.
 fn declared_parameter_names(article: &Article) -> impl Iterator<Item = String> + '_ {
     article
@@ -543,7 +574,6 @@ impl<'a, 'r, 'c> LazyArticleInputs<'a, 'r, 'c> {
         law: &'a ArticleBasedLaw,
         parameters: &'a BTreeMap<String, Value>,
         res_ctx: &'r mut ResolutionContext<'c>,
-        memo: LazyMemo,
     ) -> Self {
         Self {
             service,
@@ -553,18 +583,36 @@ impl<'a, 'r, 'c> LazyArticleInputs<'a, 'r, 'c> {
             calculation_date: res_ctx.calculation_date,
             trace: res_ctx.trace.as_ref().map(Rc::clone),
             res_ctx: RefCell::new(res_ctx),
-            resolved: RefCell::new(memo.resolved),
-            unresolved: RefCell::new(memo.unresolved),
+            resolved: RefCell::new(BTreeMap::new()),
+            unresolved: RefCell::new(BTreeSet::new()),
             resolving: RefCell::new(BTreeSet::new()),
         }
     }
 
-    /// What was resolved, to carry into the next step.
-    fn into_memo(self) -> LazyMemo {
-        LazyMemo {
-            resolved: self.resolved.into_inner(),
-            unresolved: self.unresolved.into_inner(),
-        }
+    /// Everything resolved so far.
+    fn resolved(&self) -> BTreeMap<String, Value> {
+        self.resolved.borrow().clone()
+    }
+
+    /// Everything resolved during the execution, handing the resolution
+    /// context back to the caller.
+    fn into_resolved(self) -> BTreeMap<String, Value> {
+        self.resolved.into_inner()
+    }
+
+    /// Lend the resolution context out for a step between resolutions (firing
+    /// a hook). Nothing resolves lazily while it is lent.
+    fn with_resolution_context<T>(
+        &self,
+        step: impl FnOnce(&mut ResolutionContext<'c>) -> Result<T>,
+    ) -> Result<T> {
+        let mut res_ctx = self.res_ctx.try_borrow_mut().map_err(|_| {
+            EngineError::InvalidOperation(format!(
+                "the resolution context of {} article {} is already in use",
+                self.law.id, self.article.number
+            ))
+        })?;
+        step(&mut res_ctx)
     }
 
     /// Resolve each of `names` that is an input or open term of this article.
@@ -582,18 +630,13 @@ impl<'a, 'r, 'c> LazyArticleInputs<'a, 'r, 'c> {
     /// never the scope of the operation that happened to read the input (a
     /// FOREACH variable must not become a lookup key).
     fn article_context(&self) -> Result<RuleContext<'_>> {
-        let mut context = RuleContext::new(self.parameters.clone(), self.calculation_date)?;
-        context.set_law_scope(
-            &self.law.id,
-            crate::engine::unpassed_optional_parameters(self.article, self.parameters),
-        );
-        if let Some(ref tb) = self.trace {
-            context.set_trace(Rc::clone(tb));
-            context.set_anchor(LegalAnchor::from_article(self.law, self.article));
-        }
-        if let Some(definitions) = self.article.get_definitions() {
-            context.set_definitions(definitions);
-        }
+        let mut context = crate::engine::article_context(
+            self.law,
+            self.article,
+            self.parameters,
+            self.calculation_date,
+            self.trace.as_ref(),
+        )?;
         context.set_lazy(self);
         Ok(context)
     }
@@ -618,13 +661,7 @@ impl<'a, 'r, 'c> LazyArticleInputs<'a, 'r, 'c> {
                 }
             }
             let context = self.article_context()?;
-            let mut res_ctx = self.res_ctx.try_borrow_mut().map_err(|_| {
-                EngineError::InvalidOperation(format!(
-                    "'{name}' of {} article {} was read while another value was being resolved",
-                    self.law.id, self.article.number
-                ))
-            })?;
-            resolve(&context, &mut res_ctx)
+            self.with_resolution_context(|res_ctx| resolve(&context, res_ctx))
         })();
         self.resolving.borrow_mut().remove(name);
         match outcome {
@@ -1943,10 +1980,57 @@ impl LawExecutionService {
         names
     }
 
+    /// What an execution of `article` needs, before any of its actions runs
+    /// (RFC-043): which actions, and which inputs a hook or a replacing
+    /// override reads.
+    fn plan_demand(
+        &self,
+        article: &Article,
+        law: &ArticleBasedLaw,
+        requested_outputs: Option<&[&str]>,
+        stage: &str,
+        res_ctx: &ResolutionContext<'_>,
+    ) -> Demand {
+        let plan = self.override_plan(article, law, res_ctx);
+        let reference_date = res_ctx.reference_date();
+        let read_before_actions =
+            self.hook_parameter_names(HookPoint::PreActions, article, stage, reference_date);
+        let mut read_after_actions =
+            self.hook_parameter_names(HookPoint::PostActions, article, stage, reference_date);
+        read_after_actions.extend(plan.replacing_parameters);
+
+        // The requested outputs a void does not exclude, and every output of
+        // this article that a post hook or a replacing override reads.
+        let outputs = requested_outputs.map(|names| {
+            let produced: BTreeSet<&str> = crate::demand::action_outputs(article).collect();
+            let mut outputs: Vec<String> = names
+                .iter()
+                .filter(|name| !plan.voided.contains(**name))
+                .map(|name| name.to_string())
+                .collect();
+            for name in &read_after_actions {
+                if produced.contains(name.as_str()) && !outputs.contains(name) {
+                    outputs.push(name.clone());
+                }
+            }
+            outputs
+        });
+        let voided = requested_outputs
+            .unwrap_or_default()
+            .iter()
+            .filter(|name| plan.voided.contains(**name))
+            .map(|name| name.to_string())
+            .collect();
+        Demand {
+            outputs,
+            voided,
+            read_before_actions,
+            read_after_actions,
+        }
+    }
+
     /// Which overrides of this article's outputs apply, read before any action
-    /// runs (RFC-043). Mirrors the selection in [`Self::apply_overrides`]: an
-    /// override from this law or the contextual law, in force on this date,
-    /// whose article is in the selected version.
+    /// runs (RFC-043), with the selection [`Self::apply_overrides`] uses.
     fn override_plan(
         &self,
         article: &Article,
@@ -1954,50 +2038,22 @@ impl LawExecutionService {
         res_ctx: &ResolutionContext<'_>,
     ) -> OverridePlan {
         let mut plan = OverridePlan::default();
-        let contextual_law_id = res_ctx.contextual_law_id.as_ref();
-        let outputs = article
-            .get_execution_spec()
-            .and_then(|e| e.actions.as_ref())
-            .into_iter()
-            .flatten()
-            .filter_map(|a| a.output.as_deref());
-        for output in outputs {
-            let applicable: Vec<_> = self
-                .resolver
-                .find_overrides(&law.id, &article.number, output)
-                .iter()
-                .filter(|ovr| ovr.law_id == law.id || Some(&ovr.law_id) == contextual_law_id)
-                .collect();
-            match applicable.as_slice() {
-                [] => {}
-                [ovr] => {
-                    let Ok(ovr_law) = self
-                        .resolver
-                        .get_law_for_date_reported(&ovr.law_id, res_ctx.reference_date())
-                    else {
-                        continue;
-                    };
-                    let Some(ovr_article) = ovr_law.find_article_by_number(&ovr.article_number)
-                    else {
-                        continue;
-                    };
-                    let voids = ovr_article.get_overrides().is_some_and(|decls| {
-                        decls.iter().any(|d| {
-                            d.law == law.id
-                                && d.article == article.number
-                                && d.output == output
-                                && d.voids
-                        })
-                    });
-                    if voids {
-                        plan.voided.insert(output.to_string());
-                    } else {
-                        plan.replacing_parameters
-                            .extend(declared_parameter_names(ovr_article));
-                    }
-                }
-                // More than one: `apply_overrides` reports the conflict.
-                _ => {}
+        for output in crate::demand::action_outputs(article) {
+            // Not in force, more than one, or none: nothing to plan for;
+            // `apply_overrides` records or reports it.
+            let Ok(Some(SelectedOverride::InForce {
+                article: ovr_article,
+                declaration,
+                ..
+            })) = self.select_override(law, article, output, res_ctx)
+            else {
+                continue;
+            };
+            if declaration.is_some_and(|d| d.voids) {
+                plan.voided.insert(output.to_string());
+            } else {
+                plan.replacing_parameters
+                    .extend(declared_parameter_names(ovr_article));
             }
         }
         plan
@@ -2293,6 +2349,119 @@ impl LawExecutionService {
     ///
     /// For each output in the result, checks if an override exists from the contextual law.
     /// If found, executes the overriding article and replaces the output value.
+    /// The override of `output_name` that applies, if any, as both
+    /// [`Self::override_plan`] and [`Self::apply_overrides`] read it. An
+    /// error when more than one applies.
+    fn select_override(
+        &self,
+        law: &ArticleBasedLaw,
+        article: &Article,
+        output_name: &str,
+        res_ctx: &ResolutionContext<'_>,
+    ) -> Result<Option<SelectedOverride<'_>>> {
+        let overrides = self
+            .resolver
+            .find_overrides(&law.id, &article.number, output_name);
+
+        // An override from another law applies only within the execution
+        // that law started: a Vreemdelingenwet exclusion on Awb 6:7 is not
+        // a Participatiewet case (RFC-007, "contextual law").
+        //
+        // An article overriding an output of its own law is a different
+        // claim. There is no other law to be protected from, and the
+        // scoping made the outcome depend on the route in: asked through
+        // the law itself the exclusion applied, asked through a third law
+        // reading that output it did not, and the amount the statute says
+        // does not arise was handed out anyway. Zorgtoeslag article 3
+        // voiding article 2 of the same law is exactly that shape, and it
+        // is the case RFC-027 works out, and RFC-041 records the
+        // amendment to RFC-007's contextual-law rule that this is.
+        let applicable: Vec<_> = overrides
+            .iter()
+            .filter(|ovr| {
+                ovr.law_id == law.id || Some(&ovr.law_id) == res_ctx.contextual_law_id.as_ref()
+            })
+            .collect();
+
+        let [reference] = applicable.as_slice() else {
+            if applicable.is_empty() {
+                return Ok(None);
+            }
+            return Err(EngineError::InvalidOperation(format!(
+                "Multiple overrides for output '{}' on '{}:{}' (from {})",
+                output_name,
+                law.id,
+                article.number,
+                applicable
+                    .iter()
+                    .map(|o| o.law_id.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )));
+        };
+        let reference = *reference;
+
+        // Look up overriding article
+        let ref_date = res_ctx.reference_date();
+        // The overrides index is built from the newest version of each law,
+        // so it offers a lex specialis that may not be in force on this
+        // date. Skipping it is right, staying silent about it is not: the
+        // output then carries the general rule's value and neither the
+        // provenance nor the trace mentions that a special rule addresses
+        // exactly this output. Same ground as the `voids` branch of
+        // `apply_overrides`, where an absence with a ground stays
+        // distinguishable from an absence nobody asked about.
+        let ovr_law = match self
+            .resolver
+            .get_law_for_date_reported(&reference.law_id, ref_date)
+        {
+            Ok(law) => law,
+            Err(reason) => {
+                return Ok(Some(SelectedOverride::NotInForce {
+                    reference,
+                    reason: reason.describe(),
+                }));
+            }
+        };
+        // The law is in force, but the version selected for this date need
+        // not carry the article the index points at: the index is built
+        // from the newest version. An article inserted later is genuinely
+        // not in force today. A renumbering is a known limitation of that
+        // undated index: the special rule is in force under another number
+        // and is still not applied. Either way the general rule's value
+        // stands, unchanged from before; what changes is that the skip is
+        // recorded like the one above, so "no lex specialis" never reads as
+        // a finding about the case (and the reason names a renumbered
+        // declaration when that version has one).
+        let Some(ovr_article) = ovr_law.find_article_by_number(&reference.article_number) else {
+            return Ok(Some(SelectedOverride::NotInForce {
+                reference,
+                reason: article_missing_from_version(
+                    ovr_law,
+                    &reference.article_number,
+                    &law.id,
+                    &article.number,
+                    output_name,
+                ),
+            }));
+        };
+
+        // The declaration itself says whether this override replaces the value
+        // or removes it. Read it from the overriding article rather than from
+        // the index, which carries only the addressing.
+        let declaration = ovr_article.get_overrides().and_then(|decls| {
+            decls
+                .iter()
+                .find(|d| d.law == law.id && d.article == article.number && d.output == output_name)
+        });
+        Ok(Some(SelectedOverride::InForce {
+            reference,
+            law: ovr_law,
+            article: ovr_article,
+            declaration,
+        }))
+    }
+
     fn apply_overrides(
         &self,
         result: &mut ArticleResult,
@@ -2303,10 +2472,9 @@ impl LawExecutionService {
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<()> {
         // A law overriding its own output needs no contextual law, so a
-        // standalone call is no longer a reason to stop here. The filter below
+        // standalone call is no longer a reason to stop here: the selection
         // still drops every override from another law when there is none.
-        let contextual_law_id = res_ctx.contextual_law_id.clone();
-
+        //
         // Check each output for overrides, and each requested output a void
         // kept from being computed (RFC-043): its ground is recorded the same.
         let mut output_names: Vec<String> = result.outputs.keys().cloned().collect();
@@ -2316,55 +2484,11 @@ impl LawExecutionService {
             }
         }
         for output_name in output_names {
-            let overrides = self
-                .resolver
-                .find_overrides(&law.id, &article.number, &output_name);
-
-            if overrides.is_empty() {
+            let Some(selected) = self.select_override(law, article, &output_name, res_ctx)? else {
                 continue;
-            }
-
-            // An override from another law applies only within the execution
-            // that law started: a Vreemdelingenwet exclusion on Awb 6:7 is not
-            // a Participatiewet case (RFC-007, "contextual law").
-            //
-            // An article overriding an output of its own law is a different
-            // claim. There is no other law to be protected from, and the
-            // scoping made the outcome depend on the route in: asked through
-            // the law itself the exclusion applied, asked through a third law
-            // reading that output it did not, and the amount the statute says
-            // does not arise was handed out anyway. Zorgtoeslag article 3
-            // voiding article 2 of the same law is exactly that shape, and it
-            // is the case RFC-027 works out, and RFC-041 records the
-            // amendment to RFC-007's contextual-law rule that this is.
-            let applicable: Vec<_> = overrides
-                .iter()
-                .filter(|ovr| {
-                    ovr.law_id == law.id || Some(&ovr.law_id) == contextual_law_id.as_ref()
-                })
-                .collect();
-
-            if applicable.is_empty() {
-                continue;
-            }
-
-            if applicable.len() > 1 {
-                return Err(EngineError::InvalidOperation(format!(
-                    "Multiple overrides for output '{}' on '{}:{}' (from {})",
-                    output_name,
-                    law.id,
-                    article.number,
-                    applicable
-                        .iter()
-                        .map(|o| o.law_id.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )));
-            }
-
-            let ovr_ref = applicable[0];
-            let ovr_law_id = &ovr_ref.law_id;
-            let ovr_article_number = &ovr_ref.article_number;
+            };
+            let ovr_law_id = &selected.reference().law_id;
+            let ovr_article_number = &selected.reference().article_number;
 
             // Cycle detection
             let ovr_key = format!("override:{}\0{}", ovr_law_id, ovr_article_number);
@@ -2373,22 +2497,14 @@ impl LawExecutionService {
                 continue;
             }
 
-            // Look up overriding article
-            let ref_date = res_ctx.reference_date();
-            // The overrides index is built from the newest version of each law,
-            // so it offers a lex specialis that may not be in force on this
-            // date. Skipping it is right, staying silent about it is not: the
-            // output then carries the general rule's value and neither the
-            // provenance nor the trace mentions that a special rule addresses
-            // exactly this output. Same ground as the `voids` branch below,
-            // where an absence with a ground stays distinguishable from an
-            // absence nobody asked about.
-            let ovr_law = match self
-                .resolver
-                .get_law_for_date_reported(ovr_law_id, ref_date)
-            {
-                Ok(law) => law,
-                Err(reason) => {
+            let (ovr_law, ovr_article, declaration) = match selected {
+                SelectedOverride::InForce {
+                    law,
+                    article,
+                    declaration,
+                    ..
+                } => (law, article, declaration),
+                SelectedOverride::NotInForce { reason, .. } => {
                     res_ctx.note_not_in_force(DeclarationNotInForce {
                         kind: DeclarationKind::Override,
                         law_id: ovr_law_id.clone(),
@@ -2397,39 +2513,10 @@ impl LawExecutionService {
                             "output '{}' of {} article {}",
                             output_name, law.id, article.number
                         ),
-                        reason: reason.describe(),
+                        reason,
                     });
                     continue;
                 }
-            };
-            // The law is in force, but the version selected for this date need
-            // not carry the article the index points at: the index is built
-            // from the newest version. An article inserted later is genuinely
-            // not in force today. A renumbering is a known limitation of that
-            // undated index: the special rule is in force under another number
-            // and is still not applied. Either way the general rule's value
-            // stands, unchanged from before; what changes is that the skip is
-            // recorded like the one above, so "no lex specialis" never reads as
-            // a finding about the case (and the reason names a renumbered
-            // declaration when that version has one).
-            let Some(ovr_article) = ovr_law.find_article_by_number(ovr_article_number) else {
-                res_ctx.note_not_in_force(DeclarationNotInForce {
-                    kind: DeclarationKind::Override,
-                    law_id: ovr_law_id.clone(),
-                    article: ovr_article_number.clone(),
-                    subject: format!(
-                        "output '{}' of {} article {}",
-                        output_name, law.id, article.number
-                    ),
-                    reason: article_missing_from_version(
-                        ovr_law,
-                        ovr_article_number,
-                        &law.id,
-                        &article.number,
-                        &output_name,
-                    ),
-                });
-                continue;
             };
 
             // Trace (guard auto-pops on all exit paths)
@@ -2442,15 +2529,6 @@ impl LawExecutionService {
                 ovr_law_id, ovr_article_number, law.id, article.number, output_name
             ));
 
-            // Execute overriding article
-            // The declaration itself says whether this override replaces the
-            // value or removes it. Read it from the overriding article rather
-            // than from the index, which carries only the addressing.
-            let declaration = ovr_article.get_overrides().and_then(|decls| {
-                decls.iter().find(|d| {
-                    d.law == law.id && d.article == article.number && d.output == output_name
-                })
-            });
             if let Some(decl) = declaration.filter(|d| d.voids) {
                 // "Bestaat geen aanspraak": the entitlement does not arise, so
                 // there is no value to compute or replace. The output leaves
@@ -2585,101 +2663,56 @@ impl LawExecutionService {
             }
         }
 
-        // What the law itself settles before anything is computed (RFC-043):
-        // a requested output an applicable `voids` excludes is not computed at
-        // all, and `apply_overrides` records the ground for it below.
-        let plan = self.override_plan(article, law, res_ctx);
-        let voided_requested: Vec<String> = requested_outputs
-            .unwrap_or_default()
-            .iter()
-            .filter(|name| plan.voided.contains(**name))
-            .map(|name| name.to_string())
-            .collect();
-
-        // A hook or a replacing override receives only the parameters it
-        // declares. Those names are resolved and computed for it; the rest of
-        // the article stays demand-driven.
-        let reference_date = res_ctx.reference_date();
-        let pre_hook_names =
-            self.hook_parameter_names(HookPoint::PreActions, article, stage, reference_date);
-        let mut after_names =
-            self.hook_parameter_names(HookPoint::PostActions, article, stage, reference_date);
-        after_names.extend(plan.replacing_parameters.iter().cloned());
-
-        // Only the actions the requested outputs depend on run (RFC-043),
-        // plus the outputs a post hook or a replacing override reads.
-        let action_outputs: BTreeSet<&str> = article
-            .get_execution_spec()
-            .and_then(|e| e.actions.as_ref())
-            .into_iter()
-            .flatten()
-            .filter_map(|a| a.output.as_deref())
-            .collect();
-        let kept: Option<Vec<&str>> = requested_outputs.map(|names| {
-            let mut kept: Vec<&str> = names
-                .iter()
-                .copied()
-                .filter(|name| !plan.voided.contains(*name))
-                .collect();
-            for name in &after_names {
-                if action_outputs.contains(name.as_str()) && !kept.contains(&name.as_str()) {
-                    kept.push(name.as_str());
-                }
-            }
-            kept
-        });
-
+        // What this execution needs, settled before any action runs (RFC-043).
+        let demand = self.plan_demand(article, law, requested_outputs, stage, res_ctx);
         check_passed_inputs(article, law, &parameters)?;
+
+        // Inputs and open terms are resolved when they are first read: by an
+        // action, or by a hook or override that declares them as parameters.
         let engine = ArticleEngine::new(article, law);
-
-        // Inputs and open terms a pre_actions hook reads, before it fires.
-        let mut memo = LazyMemo::default();
-        if !pre_hook_names.is_empty() {
-            let lazy = LazyArticleInputs::new(self, article, law, &parameters, res_ctx, memo);
-            let resolved = lazy.resolve_names(&pre_hook_names);
-            memo = lazy.into_memo();
-            resolved?;
-        }
-        let mut pre_params = parameters.clone();
-        pre_params.extend(memo.resolved.clone());
-        let (pre_hook_outputs, pre_hook_provenance) = self.fire_hooks(
-            HookPoint::PreActions,
-            article,
-            law,
-            stage,
-            &pre_params,
-            res_ctx,
-        )?;
-        let mut engine_params = parameters.clone();
-        for (name, value) in &pre_hook_outputs {
-            engine_params.insert(name.clone(), value.clone());
-        }
-
-        // The actions, resolving what they read as they read it; then whatever
-        // a post hook or a replacing override reads that they did not.
         let calculation_date = res_ctx.calculation_date;
         let trace = res_ctx.trace.as_ref().map(Rc::clone);
-        let lazy = LazyArticleInputs::new(self, article, law, &parameters, res_ctx, memo);
-        let evaluated = engine
-            .evaluate_outputs(
-                engine_params.clone(),
+        let lazy = LazyArticleInputs::new(self, article, law, &parameters, res_ctx);
+        let executed = (|| -> Result<_> {
+            lazy.resolve_names(&demand.read_before_actions)?;
+            let mut hook_params = parameters.clone();
+            hook_params.extend(lazy.resolved());
+            let (pre_hook_outputs, pre_hook_provenance) =
+                lazy.with_resolution_context(|res_ctx| {
+                    self.fire_hooks(
+                        HookPoint::PreActions,
+                        article,
+                        law,
+                        stage,
+                        &hook_params,
+                        res_ctx,
+                    )
+                })?;
+            let mut engine_params = parameters.clone();
+            engine_params.extend(pre_hook_outputs.clone());
+            let outputs: Option<Vec<&str>> = demand
+                .outputs
+                .as_ref()
+                .map(|names| names.iter().map(String::as_str).collect());
+            let result = engine.evaluate_outputs(
+                engine_params,
                 calculation_date,
-                kept.as_deref(),
+                outputs.as_deref(),
                 trace,
                 Some(&lazy),
-            )
-            .and_then(|result| lazy.resolve_names(&after_names).map(|()| result));
-        let memo = lazy.into_memo();
-        let mut result = evaluated?;
+            )?;
+            lazy.resolve_names(&demand.read_after_actions)?;
+            Ok((result, pre_hook_outputs, pre_hook_provenance))
+        })();
+        let resolved = lazy.into_resolved();
+        let (mut result, pre_hook_outputs, pre_hook_provenance) = executed?;
 
         // What the post-action steps receive, as they did when every input was
         // resolved up front: the parameters, what was resolved, what a pre
         // hook produced.
         let mut post_params = parameters;
-        post_params.extend(memo.resolved);
-        for (name, value) in &pre_hook_outputs {
-            post_params.insert(name.clone(), value.clone());
-        }
+        post_params.extend(resolved);
+        post_params.extend(pre_hook_outputs.clone());
 
         // Fire post_actions hooks (between action execution and result return).
         // Post-hooks receive both parameters and article outputs.
@@ -2745,7 +2778,7 @@ impl LawExecutionService {
             article,
             law,
             &post_params,
-            &voided_requested,
+            &demand.voided,
             res_ctx,
         )?;
 

@@ -11,9 +11,19 @@
 //! reference the walker cannot place (a requested name no action produces)
 //! makes the article run in full.
 
-use crate::article::{Action, ActionOperation, ActionValue};
+use crate::article::{Action, ActionOperation, ActionValue, Article};
 use crate::types::Value;
 use std::collections::{BTreeMap, BTreeSet};
+
+/// The outputs an article's actions produce, in declaration order.
+pub(crate) fn action_outputs(article: &Article) -> impl Iterator<Item = &str> {
+    article
+        .get_execution_spec()
+        .and_then(|e| e.actions.as_ref())
+        .into_iter()
+        .flatten()
+        .filter_map(|a| a.output.as_deref())
+}
 
 /// The outputs to compute for `requested`, or `None` when every action must run.
 ///

@@ -132,6 +132,31 @@ pub struct ArticleEngine<'a> {
 /// is not an error, but the fact is missing and the outcome has to say so. A
 /// required parameter is never in this set; a misspelled key in `parameters:`
 /// stays the `VariableNotFound` it always was.
+/// The scope an article's rules execute in: the caller's parameters, the
+/// optional parameters left out (RFC-036), the article's definitions, and,
+/// when tracing, the provision every step is anchored to (RFC-039).
+pub(crate) fn article_context<'l>(
+    law: &ArticleBasedLaw,
+    article: &Article,
+    parameters: &BTreeMap<String, Value>,
+    calculation_date: &str,
+    trace: Option<&Rc<RefCell<TraceBuilder>>>,
+) -> Result<RuleContext<'l>> {
+    let mut context = RuleContext::new(parameters.clone(), calculation_date)?;
+    context.set_law_scope(&law.id, unpassed_optional_parameters(article, parameters));
+    if let Some(tb) = trace {
+        context.set_trace(Rc::clone(tb));
+        // This is where the engine knows both the law and the article, so it
+        // is where the provision gets attached. Every step the rules push from
+        // here carries it (RFC-039).
+        context.set_anchor(LegalAnchor::from_article(law, article));
+    }
+    if let Some(definitions) = article.get_definitions() {
+        context.set_definitions(definitions);
+    }
+    Ok(context)
+}
+
 pub(crate) fn unpassed_optional_parameters(
     article: &Article,
     parameters: &BTreeMap<String, Value>,
@@ -260,26 +285,13 @@ impl<'a> ArticleEngine<'a> {
             "Starting article evaluation"
         );
 
-        // Create execution context
-        let mut context = RuleContext::new(parameters.clone(), calculation_date)?;
-        context.set_law_scope(
-            &self.law.id,
-            unpassed_optional_parameters(self.article, &parameters),
-        );
-
-        // Attach trace builder if provided
-        if let Some(ref tb) = trace {
-            context.set_trace(Rc::clone(tb));
-            // This is where the engine knows both the law and the article, so
-            // it is where the provision gets attached. Every step the rules
-            // push from here carries it (RFC-039).
-            context.set_anchor(LegalAnchor::from_article(self.law, self.article));
-        }
-
-        // Set definitions from article
-        if let Some(definitions) = self.article.get_definitions() {
-            context.set_definitions(definitions);
-        }
+        let mut context = article_context(
+            self.law,
+            self.article,
+            &parameters,
+            calculation_date,
+            trace.as_ref(),
+        )?;
 
         // Guard against any input that still carries an unresolved external
         // source, unless inputs resolve on first read (RFC-043).
