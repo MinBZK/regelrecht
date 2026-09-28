@@ -8,7 +8,7 @@
  * op nul wetten.
  */
 import { describe, expect, it } from 'vitest';
-import { simulationLaws } from './runner.js';
+import { simulationLaws, supportingLaws } from './runner.js';
 
 const law = (id, legalCharacter, params = ['bsn'], outputs = ['bedrag']) => ({
   id,
@@ -74,5 +74,46 @@ describe('simulationLaws', () => {
     const { runnable, skipped } = simulationLaws(corpus, 'burgers');
     expect(runnable).toEqual([]);
     expect(skipped).toEqual([expect.objectContaining({ missing: ['lievelingskleur'] })]);
+  });
+});
+
+describe('supportingLaws', () => {
+  // Een wet met constanten, en een wet waar een andere wet naar verwijst.
+  const doc = ({ defs, reads = [], implementsLaw } = {}) => ({
+    articles: [
+      {
+        machine_readable: {
+          ...(implementsLaw ? { implements: [{ law: implementsLaw, article: '4', open_term: 'standaardpremie' }] } : {}),
+          ...(defs ? { definitions: defs } : {}),
+          execution: { input: reads.map((regulation) => ({ name: regulation, source: { regulation } })) },
+        },
+      },
+    ],
+  });
+  const entry = (id, d) => ({ id, name: id, doc: d });
+  const constants = (d) => Object.values(d?.articles?.[0]?.machine_readable?.definitions ?? {});
+
+  it('vindt de regeling die een open term van de wet invult', () => {
+    // De standaardpremie: geen constante van de zorgtoeslagwet, wel van de
+    // ministeriële regeling die hem elk jaar vaststelt.
+    const zorgtoeslag = entry('zorgtoeslagwet', doc({ defs: { drempel: 1 } }));
+    const regeling = entry('standaardpremie', doc({ defs: { standaardpremie_2025: 211200 }, implementsLaw: 'zorgtoeslagwet' }));
+    const corpus = corpusOf(zorgtoeslag, regeling);
+    expect(supportingLaws(corpus, [zorgtoeslag], constants).map((l) => l.id)).toEqual(['standaardpremie']);
+  });
+
+  it('volgt verwijzingen door, en laat wetten zonder constanten weg', () => {
+    const top = entry('top', doc({ reads: ['midden'] }));
+    const midden = entry('midden', doc({ reads: ['onder'] }));
+    const onder = entry('onder', doc({ defs: { grens: 5 } }));
+    const corpus = corpusOf(top, midden, onder);
+    expect(supportingLaws(corpus, [top], constants).map((l) => l.id)).toEqual(['onder']);
+  });
+
+  it('noemt een gesimuleerde wet niet nog eens, en overleeft een kring', () => {
+    const a = entry('a', doc({ defs: { x: 1 }, reads: ['b'] }));
+    const b = entry('b', doc({ defs: { y: 2 }, reads: ['a'] }));
+    const corpus = corpusOf(a, b);
+    expect(supportingLaws(corpus, [a], constants).map((l) => l.id)).toEqual(['b']);
   });
 });

@@ -874,4 +874,5 @@ export default {
   'trace.nav.prev': 'Previous law',
   'trace.nav.next': 'Next law',
   'trace.nav.position': '{n} of {total}',
+  'sim.params.supporting': 'Regulations these laws rely on',
 };

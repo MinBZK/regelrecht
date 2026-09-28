@@ -769,4 +769,5 @@ export default {
   "trace.nav.prev": "Foarige wet",
   "trace.nav.next": "Folgjende wet",
   "trace.nav.position": "{n} fan {total}",
+  "sim.params.supporting": "Regelingen dêr't dizze wetten op stypje",
 };

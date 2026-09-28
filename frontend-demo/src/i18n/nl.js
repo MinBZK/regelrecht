@@ -892,4 +892,5 @@ export default {
   'trace.nav.prev': 'Vorige wet',
   'trace.nav.next': 'Volgende wet',
   'trace.nav.position': '{n} van {total}',
+  'sim.params.supporting': 'Regelingen waar deze wetten op steunen',
 };

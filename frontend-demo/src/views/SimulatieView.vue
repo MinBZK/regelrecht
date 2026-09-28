@@ -6,7 +6,7 @@ import { fieldSpec, formatValue, humanize, intlLocale } from '../data/format.js'
 import { serviceInfo } from '../data/loadCorpus.js';
 import { BUSINESS_DEFAULTS, CITIZEN_DEFAULTS, MAX_POPULATION } from '../simulation/population.js';
 import { definitionKind, overridableDefinitions } from '../simulation/lawParameters.js';
-import { runSimulation, simulationLaws } from '../simulation/runner.js';
+import { runSimulation, simulationLaws, supportingLaws } from '../simulation/runner.js';
 import { BUSINESS_DIMENSIONS, CITIZEN_DIMENSIONS, breakdown, dimensionLabel, flattenResults, toCsv } from '../simulation/stats.js';
 import { disposableIncomeBreakdown, summariseDisposableIncome } from '../simulation/income.js';
 import { describeModel, featureLabel, featuresFor, taxLawIds, trainBracketModel, trainingData } from '../simulation/harmonize.js';
@@ -45,12 +45,17 @@ function notHidden(law) {
   return !(hidden[law.service] ?? []).some((p) => law.law_path === p || law.law_path.startsWith(`${p}/`));
 }
 const lawSet = computed(() => (corpus.value ? simulationLaws(corpus.value, kind.value, notHidden) : { runnable: [], skipped: [] }));
-const definitionsByLaw = computed(() => Object.fromEntries(lawSet.value.runnable.map((law) => [law.id, overridableDefinitions(law.doc)])));
+// The regelingen those laws lean on and whose constants can be changed too:
+// the standaardpremie sits in its own ministeriële regeling, not in the
+// zorgtoeslag law (see supportingLaws).
+const supporting = computed(() => (corpus.value ? supportingLaws(corpus.value, lawSet.value.runnable, overridableDefinitions) : []));
+const tunable = computed(() => [...lawSet.value.runnable, ...supporting.value]);
+const definitionsByLaw = computed(() => Object.fromEntries(tunable.value.map((law) => [law.id, overridableDefinitions(law.doc)])));
 function overrideCount(lawId) {
   const own = Object.fromEntries((definitionsByLaw.value[lawId] ?? []).map((d) => [d.key, d.value]));
   return Object.entries(overrides[lawId] ?? {}).filter(([k, v]) => k in own && v !== own[k]).length;
 }
-const totalOverrides = computed(() => lawSet.value.runnable.reduce((n, law) => n + overrideCount(law.id), 0));
+const totalOverrides = computed(() => tunable.value.reduce((n, law) => n + overrideCount(law.id), 0));
 
 // ---- sections in the sidebar ------------------------------------------------
 const open = reactive({ populatie: false, wetgeving: false });
@@ -455,6 +460,18 @@ function exportJson() {
               <nldd-icon-cell v-else-if="definitionsByLaw[law.id].length" icon="chevron-right" color="secondary"></nldd-icon-cell>
             </nldd-list-item>
           </nldd-list>
+          <template v-if="open.wetgeving && supporting.length">
+            <nldd-text-cell size="sm" color="secondary" :text="t('sim.params.supporting')"></nldd-text-cell>
+            <nldd-list variant="box-tinted" :accessible-label="t('sim.params.supporting')">
+              <nldd-list-item v-for="law in supporting" :key="law.id" size="sm" button @click="editParameters(law)">
+                <nldd-cell><OrgLogo :service="law.service" size="sm" /></nldd-cell>
+                <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                <nldd-text-cell size="sm" :text="law.name" :supporting-text="t('sim.params.count', { n: definitionsByLaw[law.id].length })"></nldd-text-cell>
+                <nldd-cell v-if="overrideCount(law.id)"><nldd-tag size="sm" color="warning" :text="t('sim.params.changed', { n: overrideCount(law.id) })"></nldd-tag></nldd-cell>
+                <nldd-icon-cell v-else icon="chevron-right" color="secondary"></nldd-icon-cell>
+              </nldd-list-item>
+            </nldd-list>
+          </template>
 
           <nldd-button width="full" variant="primary" start-icon="play" :text="t(running ? 'sim.run.busy' : 'sim.run')" :disabled="!ready || running || undefined" @click="run"></nldd-button>
           <template v-if="running">

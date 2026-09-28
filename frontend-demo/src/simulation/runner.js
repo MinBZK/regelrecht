@@ -15,7 +15,7 @@ import { collectKeyValues, lawShape, materialiseAll } from '../data/materialize.
 import { fieldSpec, isAmountSpec, verdictOf } from '../data/format.js';
 import { isEntrypointFor } from '../data/entrypoints.js';
 import { evaluateLaw } from '../engine/useDemoEngine.js';
-import { applyOverrides, effectiveOverrides } from './lawParameters.js';
+import { applyOverrides, effectiveOverrides, overridableDefinitions } from './lawParameters.js';
 import { generateBusinesses, generateCitizens, rowsForTables, templatesFromProfiles } from './population.js';
 import { describePopulation, summariseLaw } from './stats.js';
 
@@ -41,6 +41,57 @@ export function simulationLaws(corpus, kind, isLawEnabled = () => true) {
   }
   runnable.sort((a, b) => a.name.localeCompare(b.name));
   return { runnable, skipped };
+}
+
+/**
+ * The laws the simulated laws lean on and that carry tunable constants: what
+ * they read through `source.regulation`, and what fills one of their open
+ * terms through `implements`, followed all the way down.
+ *
+ * The standaardpremie is the reason. It used to be a constant of the
+ * zorgtoeslag law itself; it now lives in the ministeriële regeling that
+ * fixes it each year and fills the law's open term. Changing it is still the
+ * first "what if" a presenter reaches for, and it is not a constant of any law
+ * the simulation runs.
+ *
+ * @param {{latestById: Map<string, object>}} corpus
+ * @param {object[]} runnable  the laws the simulation runs
+ * @param {(doc: object) => unknown[]} hasConstants  a law's tunable constants
+ * @returns {object[]} sorted by name, without the runnable laws themselves
+ */
+export function supportingLaws(corpus, runnable, hasConstants) {
+  const implementers = new Map();
+  for (const law of corpus.latestById.values()) {
+    for (const article of law.doc?.articles ?? []) {
+      for (const impl of article.machine_readable?.implements ?? []) {
+        if (!impl?.law) continue;
+        if (!implementers.has(impl.law)) implementers.set(impl.law, new Set());
+        implementers.get(impl.law).add(law.id);
+      }
+    }
+  }
+  const runIds = new Set(runnable.map((law) => law.id));
+  const seen = new Set(runIds);
+  const queue = [...runIds];
+  while (queue.length) {
+    const law = corpus.latestById.get(queue.shift());
+    const next = new Set(implementers.get(law?.id) ?? []);
+    for (const article of law?.doc?.articles ?? []) {
+      for (const input of article.machine_readable?.execution?.input ?? []) {
+        if (input?.source?.regulation) next.add(input.source.regulation);
+      }
+    }
+    for (const id of next) {
+      if (seen.has(id) || !corpus.latestById.has(id)) continue;
+      seen.add(id);
+      queue.push(id);
+    }
+  }
+  return [...seen]
+    .filter((id) => !runIds.has(id))
+    .map((id) => corpus.latestById.get(id))
+    .filter((law) => hasConstants(law.doc).length > 0)
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /** Application-form parameters the business generator supplies (see population.js). */
@@ -106,9 +157,9 @@ export async function runSimulation({ engine, corpus, kind, params, overrides = 
   const population = kind === 'ondernemers' ? generateBusinesses(params, referenceDate, templateRow) : generateCitizens(params, referenceDate, templateRow);
   const { runnable: laws, skipped } = simulationLaws(corpus, kind, isLawEnabled);
 
-  // Law constants for this run.
+  // Law constants for this run, also those of the regelingen the laws lean on.
   const applied = {};
-  for (const law of laws) {
+  for (const law of [...laws, ...supportingLaws(corpus, laws, overridableDefinitions)]) {
     const eff = effectiveOverrides(law.doc, overrides[law.id]);
     if (Object.keys(eff).length) {
       engine.loadLaw(applyOverrides(law.doc, eff));
