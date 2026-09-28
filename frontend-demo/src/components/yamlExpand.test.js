@@ -99,3 +99,52 @@ describe('onPath', () => {
     expect(onPath('a.*.c', 'a.7.x')).toBe(false);
   });
 });
+
+// Zoals folded_paths voor de zorgtoeslagwet: actions en de berekening daarin
+// klapt de presentator zelf open, maar wat eronder ligt staat al klaar.
+describe('een ingeklapte knoop op de weg begint dicht, met zijn inhoud voorbereid', () => {
+  const zorgPaths = [
+    'articles.*.machine_readable.execution.parameters',
+    'articles.*.machine_readable.execution.actions.voldoet_aan_voorwaarden.value.conditions.0',
+    'articles.*.machine_readable.execution.actions.hoogte_toeslag.value.value.cases.0.then.cases.0.when.subject.values',
+  ];
+  const folded = [
+    'articles.*.machine_readable.execution.actions',
+    'articles.*.machine_readable.execution.actions.hoogte_toeslag',
+  ];
+  const open = (path) => initiallyOpen({ path, depth: path.split('.').length, all: null, paths: zorgPaths, folded });
+  const actions = 'articles.2.machine_readable.execution.actions';
+
+  it('laat actions en hoogte_toeslag dicht beginnen', () => {
+    expect(open(actions)).toBe(false);
+    expect(open(`${actions}.hoogte_toeslag`)).toBe(false);
+  });
+
+  it('zet wat eronder ligt klaar voor de klik', () => {
+    expect(open(`${actions}.voldoet_aan_voorwaarden`)).toBe(true);
+    expect(open(`${actions}.voldoet_aan_voorwaarden.value.conditions.0`)).toBe(true);
+    expect(open(`${actions}.hoogte_toeslag.value.value.cases.0.then`)).toBe(true);
+    expect(open(`${actions}.hoogte_toeslag.value.value.cases.0.then.cases.0.when.subject.values`)).toBe(true);
+  });
+
+  it('matcht alleen de knoop zelf, niet wat erboven of eronder ligt', () => {
+    expect(open('articles.2.machine_readable.execution')).toBe(true);
+    expect(open('articles.2.machine_readable.execution.parameters')).toBe(true);
+    expect(open(`${actions}.hoogte_toeslag.value.value.cases.0.when`)).toBe(false);
+    expect(open(`${actions}.hoogte_toeslag.value.value.default`)).toBe(false);
+  });
+
+  it('wijkt voor alles-open', () => {
+    expect(initiallyOpen({ path: actions, depth: 4, all: true, paths: zorgPaths, folded })).toBe(true);
+  });
+});
+
+describe('een artikel dat zelf als pad genoemd is', () => {
+  const paths = ['articles.1', 'articles.*.machine_readable.execution.output'];
+  const open = (path) => initiallyOpen({ path, depth: path.split('.').length, all: null, paths });
+
+  it('staat meteen open, de andere artikelen niet', () => {
+    expect(open('articles.1')).toBe(true);
+    expect(open('articles.2')).toBe(false);
+  });
+});
