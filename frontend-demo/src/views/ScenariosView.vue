@@ -22,7 +22,7 @@ const { t } = useI18n();
 
 const route = useRoute();
 const router = useRouter();
-const { corpus, profile } = useDemo();
+const { corpus, profile, profileKey } = useDemo();
 
 const features = computed(() => corpus.value?.scenarios ?? []);
 // The list of test files is a sheet, closed until asked for.
@@ -91,10 +91,15 @@ watch(
   // Op `meta.page` en niet op `route.name`: zie WettenView. Onder
   // /en/scenarios heet de route `scenarios:en`, en op de naam vergelijken laat
   // dit tabblad leeg achter.
-  () => [route.meta?.page, route.params.featurePath, corpus.value, profile.value],
-  ([page, featurePath]) => {
+  () => [route.meta?.page, route.params.featurePath, corpus.value, profileKey.value],
+  ([page, featurePath, , key], old) => {
+    // Een ander persona begint bij de scenario's van zijn eigen wet, ook als
+    // dit tabblad (via <keep-alive>) nog op die van het vorige persona stond.
+    // Zie WettenView.
+    const switched = old?.[3] != null && old[3] !== key;
+    if (switched) selectedPath.value = null;
     if (page !== 'scenarios' || !corpus.value) return;
-    if (featurePath) {
+    if (featurePath && !(switched && featurePath === old[1])) {
       const path = `/data/laws/${featurePath}`;
       if (path !== selectedPath.value) select(path, { replaceRoute: true });
     } else if (!selectedPath.value) {

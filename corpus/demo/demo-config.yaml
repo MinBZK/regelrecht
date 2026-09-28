@@ -67,7 +67,9 @@ profiles:
     default_law:
       law_path: verordening_precariobelasting/gemeenten
       service: GEMEENTE_ROTTERDAM
-    default_feature: verordening_precariobelasting
+    # Matched against a feature's law_path, so the full path: the bare law name
+    # matched nothing and the runner fell back to the first feature (Alcoholwet).
+    default_feature: verordening_precariobelasting/gemeenten
     # Graaf: the horeca chain in Rotterdam
     graph_laws:
       - alcoholwet/vergunning/rotterdam
@@ -78,6 +80,9 @@ profiles:
       - wet_bag
       - handelsregisterwet
       - handelsregisterwet/bedrijfsgegevens
+    # Graaf: the law in focus when this persona is chosen; the graph zooms in
+    # on it instead of the whole horeca chain.
+    graph_focus: verordening_precariobelasting
     zaaksysteem_service: GEMEENTE_ROTTERDAM
     portal_tab_label: Mijn onderneming
     portal_heading: Welke regelingen passen bij mijn bedrijf?
