@@ -203,9 +203,9 @@ function onPaneClick() {
 }
 /**
  * Everything shown, or only the profile's focus law. Not the focus law plus its
- * neighbours: the layout runs left to right along the chain, so the terrace
- * permit sits at the far left and the precario at the far right, and their
- * bounds are nearly the whole graph again.
+ * neighbours: the layout runs left to right along the chain, so a law and its
+ * neighbours can sit at opposite ends, and their bounds are nearly the whole
+ * graph again.
  */
 function refit() {
   const onFocus = focusFromProfile.value && focus.value && shownIds.value.has(focus.value);

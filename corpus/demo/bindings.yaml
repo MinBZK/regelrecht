@@ -304,7 +304,7 @@ algemene_plaatselijke_verordening/exploitatievergunning:
         value: $kvk_nummer
     kind: table
     service: GEMEENTE_ROTTERDAM
-    # art. 2:28 lid 5 onder h: alleen Claudia's verleende vergunning staat erin; absent
+    # art. 2:28 lid 5 onder h: Claudia's vergunning en de simulatie vullen het; absent
     # betekent onbekend, niet "niet overtreden"
     absent: unknown
   kvk_inschrijving_geldig:
@@ -315,7 +315,7 @@ algemene_plaatselijke_verordening/exploitatievergunning:
         value: $kvk_nummer
     kind: table
     service: GEMEENTE_ROTTERDAM
-    # art. 2:28 lid 5 onder i: alleen Claudia's verleende vergunning staat erin; absent
+    # art. 2:28 lid 5 onder i: Claudia's vergunning en de simulatie vullen het; absent
     # betekent onbekend
     absent: unknown
   feitelijke_toestand_conform_aanvraag:
@@ -326,7 +326,7 @@ algemene_plaatselijke_verordening/exploitatievergunning:
         value: $kvk_nummer
     kind: table
     service: GEMEENTE_ROTTERDAM
-    # art. 2:28 lid 5 onder j: alleen Claudia's verleende vergunning staat erin; absent
+    # art. 2:28 lid 5 onder j: Claudia's vergunning en de simulatie vullen het; absent
     # betekent onbekend
     absent: unknown
   voldoet_aan_horecabeleid:
@@ -337,7 +337,7 @@ algemene_plaatselijke_verordening/exploitatievergunning:
         value: $kvk_nummer
     kind: table
     service: GEMEENTE_ROTTERDAM
-    # art. 2:28 lid 5 onder k: alleen Claudia's verleende vergunning staat erin; absent
+    # art. 2:28 lid 5 onder k: Claudia's vergunning en de simulatie vullen het; absent
     # betekent onbekend
     absent: unknown
 algemene_plaatselijke_verordening/ontheffingspas_geluid:

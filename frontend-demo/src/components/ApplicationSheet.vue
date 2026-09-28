@@ -6,7 +6,7 @@ import { lineageFromTrace, leafValues } from '../data/lineage.js';
 import { askedInputsFor, claimKeyFor, evaluationParamsFor, inputKind, nextQuestions, parseAnswer } from '../data/askedInputs.js';
 import { caseReason, eventText, useDemo } from '../store/demoStore.js';
 import { t } from '../i18n/index.js';
-import { awbOutcomes, objectionOpen, statusOf } from '../data/lifecycle.js';
+import { awbOutcomes, canBeApplied, objectionOpen, statusOf } from '../data/lifecycle.js';
 import { driftRows, driftSentence } from '../data/caseDrift.js';
 
 // The citizen's side of an application, inside the portal. The flow the POC
@@ -188,7 +188,10 @@ watch(
 );
 
 // ---- step 2/3: check and submit --------------------------------------------------
-const canSubmit = computed(() => props.evaluation?.ok && verdict.value === true && declared.value && missing.value.length === 0);
+// Een aanslag vraag je niet aan: via "Aanvullen" komt ook de accijns hier, en
+// dan rekent de aanvraag mee maar dient niets in.
+const applicable = computed(() => canBeApplied((props.law?.doc?.articles ?? []).map((a) => a.machine_readable?.execution?.produces).find(Boolean) ?? null));
+const canSubmit = computed(() => applicable.value && props.evaluation?.ok && verdict.value === true && declared.value && missing.value.length === 0);
 function submitApplication() {
   const c = demo.submitCase(props.law, props.evaluation, evaluationParamsFor(personaParams(), asked.value));
   if (c) {
@@ -390,7 +393,7 @@ function claimStatus(cl) {
               </nldd-list>
               <nldd-rich-text spacing="tight"><p><small>{{ t('sheet.application.basis.hint') }}</small></p></nldd-rich-text>
 
-              <template v-if="requirementsMet">
+              <template v-if="requirementsMet && applicable">
                 <nldd-checkbox-field :label="t('sheet.application.declaration')" :checked="declared || undefined" @change="declared = !!($event.detail?.checked ?? $event.target?.checked)"></nldd-checkbox-field>
                 <nldd-form-actions>
                   <nldd-button variant="primary" start-icon="paper-plane" :text="t('sheet.application.submit')" :disabled="!canSubmit || undefined" @click="submitApplication"></nldd-button>

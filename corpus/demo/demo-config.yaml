@@ -602,7 +602,7 @@ slides:
     lead: Eigenaar van koffiezaak Noon in Rotterdam-West, met een terras.
     bullets:
       - 'Dezelfde engine, andere wetten: APV, Alcoholwet, Warenwet, precario.'
-      - De terrasvergunning vraagt om locatie en oppervlakte; de precariobelasting rekent er meteen mee.
+      - De terrasvergunning vraagt om locatie en oppervlakte; is die verleend, dan rekent de precariobelasting ermee.
       - Gemeente, NVWA en RVO in één overzicht, zonder dat zij iets aan elkaar hoeven te vragen.
     route: /portaal
     profile: claudia

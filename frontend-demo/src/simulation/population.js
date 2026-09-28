@@ -436,7 +436,6 @@ export function generateBusinesses(userParams, referenceDate, templateRow = () =
   const subjects = [];
   const formValues = {};
   const kvks = [];
-  const cases = [];
   const bsns = [];
 
   for (let i = 1; i <= count; i += 1) {
@@ -497,9 +496,6 @@ export function generateBusinesses(userParams, referenceDate, templateRow = () =
     T('GEMEENTE_ROTTERDAM', 'exploitatie_inschrijvingen', { kvk_nummer: kvk, bsn_eigenaar: bsn, aangevraagde_categorie: 'licht' });
     T('GEMEENTE_ROTTERDAM', 'geluidsklachten', { kvk_nummer: kvk, heeft_actieve_klachten: rng.chance(0.1) });
     T('GEMEENTE_ROTTERDAM', 'vergunningen_historie', { adres: address, bsn, kvk_nummer: kvk, vergunning_type: 'exploitatievergunning', intrekkingsdatum: null, intrekkingsreden: null, ingetrokken_slecht_levensgedrag: false, voorschriften_overtreden: false });
-    // Een bedrijf met een terras heeft er een vergunning voor: de verleende zaak
-    // waaruit de precarioverordening de vergunde oppervlakte leest.
-    if (terrace) cases.push({ law: 'algemene_plaatselijke_verordening/terrassen', service: 'GEMEENTE_ROTTERDAM', status: 'DECIDED', approved: true, kvk_nummer: kvk, terras_oppervlakte: terraceArea });
     T('GEMEENTE_ROTTERDAM', 'personen_vog', { bsn, heeft_geldige_vog: vog });
 
     // Inspectorates and registers.
@@ -523,6 +519,9 @@ export function generateBusinesses(userParams, referenceDate, templateRow = () =
       aangevraagde_categorie: 'licht',
       activiteiten: horeca ? ['eten_en_drinken'] : ['detailhandel'],
       bereidt_of_serveert_voedsel: food,
+      // Wie een terras heeft, vraagt er een vergunning voor. Wat de APV
+      // toekent, wordt in de runner een verleende zaak (zie caseSourceLaws).
+      aanvragen: terrace ? ['algemene_plaatselijke_verordening/terrassen'] : [],
       terras_locatie: 'voor',
       terras_oppervlakte: terraceArea,
       obstakelvrije_ruimte: 1.8,
@@ -550,7 +549,7 @@ export function generateBusinesses(userParams, referenceDate, templateRow = () =
       leeftijd_eigenaar: ownerAge,
     });
   }
-  return { subjects, tables: t.tables, claims: [], cases, keyValues: { kvk_nummer: kvks, bsn: bsns }, formValues };
+  return { subjects, tables: t.tables, claims: [], keyValues: { kvk_nummer: kvks, bsn: bsns }, formValues };
 }
 
 /** Merge the demo's shared tables (CBS, KIESRAAD, JenV) with generated ones into a `rowsFor`. */

@@ -55,7 +55,10 @@ scenario-runner, simulatie, burger-/ondernemersportaal en zaaksysteem. Opvolger 
   `definitions` van een wet zijn per run aan te passen (`lawParameters.js`): de
   wet wordt met gewijzigde waarden herladen en na de run teruggezet. De
   simulatie vervangt tijdelijk de persona-data in de engine en zet die daarna
-  terug. Grafieken met echarts, zoals in de editor.
+  terug. Een wet die een andere wet als besloten zaak leest (`kind: cases`,
+  zoals precario de terrasvergunning), krijgt eerst de aanvragen van de
+  populatie (`aanvragen` in de formulierwaarden); wat die wet toekent, wordt een
+  zaak. Grafieken met echarts, zoals in de editor.
 
 ## Draaien
 

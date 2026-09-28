@@ -36,6 +36,20 @@ describe('askedInputsFor', () => {
     expect(asked[2]).toMatchObject({ isParameter: true, required: true });
   });
 
+  it('knows which register inputs a parameter is the lookup key for', () => {
+    const keyed = {
+      bindings: {
+        terras: {
+          beschikbare_oppervlakte: { kind: 'table', service: 'GEMEENTE', table: 'bgt', select_on: [{ name: 'adres', value: '$adres' }, { name: 'oppervlakte', value: '$terras_oppervlakte' }] },
+          huurprijs: { kind: 'claim', service: 'TOESLAGEN' },
+        },
+      },
+    };
+    const asked = askedInputsFor(keyed, law, () => null);
+    expect(asked.find((a) => a.name === 'terras_oppervlakte').feeds).toEqual(['beschikbare_oppervlakte']);
+    expect(asked.find((a) => a.name === 'bereidt_voedsel').feeds).toEqual([]);
+  });
+
   it('builds evaluation parameters from the answered form parameters and leaves the rest out', () => {
     const asked = askedInputsFor(corpus, law, (lawId, name) => (name === 'terras_oppervlakte' ? { newValue: 18 } : null));
     expect(evaluationParamsFor({ bsn: '1', kvk_nummer: '2' }, asked)).toEqual({ bsn: '1', kvk_nummer: '2', terras_oppervlakte: 18 });

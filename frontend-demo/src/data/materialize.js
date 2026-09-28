@@ -244,8 +244,9 @@ export function materialiseRecord(shape, lawBindings, params, rowsFor, context =
         const matched = Array.isArray(wanted) ? (context.cases ?? []).filter((c) => rowMatches(c, wanted)) : [];
         // With a `field` the binding reads one value from the latest matching
         // case, like a register row: the permit the municipality granted and the
-        // area it granted it for. No such case follows `absent`.
-        if (binding.field || binding.fields) set(name, matched.length ? project(matched.at(-1), binding) : absentValue(binding), binding.service);
+        // area it granted it for. The case store keeps the newest first. No such
+        // case follows `absent`.
+        if (binding.field || binding.fields) set(name, matched.length ? project(matched[0], binding) : absentValue(binding), binding.service);
         else set(name, matched, binding.service);
         progressed = true;
       } else if (binding.kind === 'table') {

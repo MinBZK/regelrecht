@@ -8,7 +8,7 @@
  * op nul wetten.
  */
 import { describe, expect, it } from 'vitest';
-import { simulationLaws } from './runner.js';
+import { caseSourceLaws, simulationLaws } from './runner.js';
 
 const law = (id, legalCharacter, params = ['bsn'], outputs = ['bedrag']) => ({
   id,
@@ -74,5 +74,18 @@ describe('simulationLaws', () => {
     const { runnable, skipped } = simulationLaws(corpus, 'burgers');
     expect(runnable).toEqual([]);
     expect(skipped).toEqual([expect.objectContaining({ missing: ['lievelingskleur'] })]);
+  });
+});
+
+describe('caseSourceLaws', () => {
+  it('names the laws other laws read as decided cases, so the simulation applies for them first', () => {
+    const bindings = {
+      precario: {
+        vergunde_oppervlakte: { kind: 'cases', select_on: [{ name: 'law', value: 'apv/terrassen' }, { name: 'kvk_nummer', value: '$kvk_nummer' }] },
+        heeft_terras: { kind: 'table', table: 'vestigingen', select_on: [] },
+      },
+      awb: { zaak: { kind: 'cases' } },
+    };
+    expect([...caseSourceLaws(bindings)]).toEqual(['apv/terrassen']);
   });
 });

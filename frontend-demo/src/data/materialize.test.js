@@ -265,10 +265,11 @@ describe('materialiseRecord', () => {
     const bindings = {
       oppervlakte: { kind: 'cases', service: 'GEMEENTE', field: 'terras_oppervlakte', absent: 0, select_on: [{ name: 'status', value: 'DECIDED' }, { name: 'bsn', value: '$bsn' }] },
     };
+    // Newest first, as the demo store keeps them (`state.cases.unshift`).
     const cases = [
-      { status: 'DECIDED', bsn: '100000001', terras_oppervlakte: 40 },
-      { status: 'DECIDED', bsn: '100000001', terras_oppervlakte: 60 },
       { status: 'SUBMITTED', bsn: '100000001', terras_oppervlakte: 90 },
+      { status: 'DECIDED', bsn: '100000001', terras_oppervlakte: 60 },
+      { status: 'DECIDED', bsn: '100000001', terras_oppervlakte: 40 },
     ];
     expect(materialiseRecord(shape, bindings, { bsn: '100000001' }, rowsFor, { cases }).record.oppervlakte).toBe(60);
     // No granted case: what `absent` says, as for a register without a row.

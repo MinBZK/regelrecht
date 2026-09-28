@@ -8,7 +8,7 @@ import { askedInputsFor, claimKeyFor, evaluationParamsFor, nextQuestions } from 
 import { dateInputFor, phraseOutcome, phrasingFor } from '../data/outcomePhrasing.js';
 import { driftSentence } from '../data/caseDrift.js';
 import { useDemo } from '../store/demoStore.js';
-import { objectionOpen, statusOf } from '../data/lifecycle.js';
+import { canBeApplied, objectionOpen, statusOf } from '../data/lifecycle.js';
 import { useLocalePath } from '../i18n/useLocalePath.js';
 import { useI18n } from '../i18n/index.js';
 
@@ -195,9 +195,9 @@ const produces = computed(() => {
 });
 // Een machtiging zonder het recht om aanvragen in te dienen mag alleen kijken:
 // dan verdwijnen de knoppen, niet alleen hun werking. Een aanslag vraag je niet
-// aan, die legt de overheid op: de precariotegel bood Claudia eerst aan om haar
-// eigen belasting aan te vragen.
-const canApply = computed(() => canSubmitClaims.value && evaluation.value?.ok && verdict.value === true && !currentCase.value && produces.value?.legal_character === 'BESCHIKKING' && produces.value?.decision_type !== 'AANSLAG');
+// aan (`canBeApplied`): de precariotegel bood Claudia eerst aan om haar eigen
+// belasting aan te vragen.
+const canApply = computed(() => canSubmitClaims.value && evaluation.value?.ok && verdict.value === true && !currentCase.value && canBeApplied(produces.value));
 /** A decided-and-rejected case the citizen has not objected to yet (Awb art. 6:5). */
 // Bezwaar pas als de termijn loopt: die begint de dag ná de bekendmaking
 // (Awb 6:8), dus een besluit dat nog niet is verstuurd geeft nog geen knop.

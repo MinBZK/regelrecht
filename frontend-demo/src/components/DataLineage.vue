@@ -54,7 +54,7 @@ function pending(node) {
 function supportingText(node) {
   if (node.corrected) return t('wet.lineage.corrected_by_you');
   if (isUnknown(node.value)) {
-    const missing = formatMissing(node.value, { ownLaw: node.law, lawName });
+    const missing = formatMissing(node.value, { ownLaw: node.law, lawName, group: false });
     // De vergelijking loopt via dezelfde sleutel als `formatMissing`, anders
     // zou een Engelse zin nooit gelijk zijn aan een Nederlandse en stond er
     // "missing: income" waar "Not known yet" hoort te staan.
@@ -118,7 +118,7 @@ const slotName = computed(() => (props.nested ? 'children' : undefined));
     <nldd-spacer-cell v-for="i in depth" :key="i" size="20"></nldd-spacer-cell>
     <nldd-cell v-if="lawService(node.law)"><OrgLogo :service="lawService(node.law)" size="sm" /></nldd-cell>
     <nldd-spacer-cell v-if="lawService(node.law)" size="8"></nldd-spacer-cell>
-    <nldd-text-cell size="sm" :text="humanize(node.name)" :supporting-text="isUnknown(node.value) ? t('wet.lineage.computed_by_missing', { law: lawName(node.law), missing: formatMissing(node.value, { ownLaw: node.law, lawName }) }) : t('wet.lineage.computed_by', { law: lawName(node.law) })"></nldd-text-cell>
+    <nldd-text-cell size="sm" :text="humanize(node.name)" :supporting-text="isUnknown(node.value) ? t('wet.lineage.computed_by_missing', { law: lawName(node.law), missing: formatMissing(node.value, { ownLaw: node.law, lawName, group: false }) }) : t('wet.lineage.computed_by', { law: lawName(node.law) })"></nldd-text-cell>
     <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :color="isUnknown(node.value) ? 'secondary' : 'content'" :text="formatValue(node.value, specFor(node))"></nldd-text-cell>
     <nldd-spacer-cell size="8"></nldd-spacer-cell>
     <nldd-icon-cell v-if="canSubmitClaims" icon="edit" size="16" color="secondary" role="button" tabindex="0" :accessible-label="t('wet.lineage.correct')" @click.stop="emit('edit', node)" @keydown.enter.stop="emit('edit', node)"></nldd-icon-cell>

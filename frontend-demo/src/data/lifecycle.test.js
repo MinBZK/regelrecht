@@ -7,7 +7,17 @@
  * besluit, want daar zat het verschil dat de demo eerder niet liet zien.
  */
 import { describe, expect, it } from 'vitest';
-import { awbOutcomes, objectionOpen, reachedStage, statusOf } from './lifecycle.js';
+import { awbOutcomes, canBeApplied, objectionOpen, reachedStage, statusOf } from './lifecycle.js';
+
+describe('canBeApplied', () => {
+  it('lets a beschikking be applied for, but not an aanslag or a non-decision', () => {
+    expect(canBeApplied({ legal_character: 'BESCHIKKING', decision_type: 'TOEKENNING' })).toBe(true);
+    // Precario, IB, accijns: the government imposes it.
+    expect(canBeApplied({ legal_character: 'BESCHIKKING', decision_type: 'AANSLAG' })).toBe(false);
+    expect(canBeApplied({ legal_character: 'BESLUIT_VAN_ALGEMENE_STREKKING' })).toBe(false);
+    expect(canBeApplied(null)).toBe(false);
+  });
+});
 
 const atStage = (stage, extra = {}) => ({
   stageState: { current_stage: stage, accumulated_outputs: {} },

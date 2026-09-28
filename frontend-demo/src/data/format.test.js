@@ -62,6 +62,8 @@ describe('formatMissing / verdictOf', () => {
     expect(formatMissing(UNKNOWN)).toBe('ontbreekt: gegevens uit zorgtoeslagwet, gegevens uit wet_inkomstenbelasting');
     const terrace = { __unknown: true, missing: ['obstakelvrije_ruimte', 'terras_oppervlakte', 'beschikbare_oppervlakte'].map((name) => ({ law: 'terrassen', name, kind: 'no_data' })) };
     expect(formatMissing(terrace, { ownLaw: 'precario', lawName: () => 'Terrasvergunning' })).toBe('ontbreekt: gegevens uit Terrasvergunning');
+    // The data lineage is about the detail and keeps every fact.
+    expect(formatMissing(UNKNOWN, { ownLaw: 'zorgtoeslagwet', lawName: () => 'Wet IB', group: false })).toBe('ontbreekt: huurprijs, spaargeld (Wet IB)');
     expect(formatMissing(null)).toBe('');
     expect(formatMissing(42)).toBe('');
   });
