@@ -98,6 +98,12 @@ describe('nextQuestions / claimKeyFor', () => {
     expect(nextQuestions(asked, wrongKind, 'terras')).toEqual([]);
   });
 
+  it('asks a form parameter when a register input it is the lookup key for is missing', () => {
+    const keyed = asked.map((a) => (a.name === 'terras_locatie' ? { ...a, feeds: ['beschikbare_oppervlakte'] } : a));
+    const evaluation = { ok: true, outputs: { voldoet: unknown(['beschikbare_oppervlakte', 'no_data']) } };
+    expect(nextQuestions(keyed, evaluation, 'terras').map((a) => a.name)).toEqual(['terras_locatie']);
+  });
+
   it('ignores facts another law misses', () => {
     const evaluation = { ok: true, outputs: { voldoet: unknown(['huurprijs', 'no_data', 'andere_wet']) } };
     expect(nextQuestions(asked, evaluation, 'terras')).toEqual([]);
