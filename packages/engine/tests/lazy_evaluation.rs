@@ -1465,3 +1465,70 @@ articles:
         Value::Int(2)
     );
 }
+
+/// Two open terms without implementation, the second's default built on the
+/// first; `uitkomst` reads the term named by `reads`.
+fn two_terms(first_default: &str, second_default: &str, reads: &str) -> String {
+    format!(
+        r#"
+$id: lazy_two_terms
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Twee open termen.
+    machine_readable:
+      open_terms:
+        - id: basis
+          type: number
+          required: false
+          delegation_type: MINISTERIELE_REGELING
+          default:
+            actions:
+              - output: basis
+                value: {first_default}
+        - id: opslag
+          type: number
+          required: false
+          delegation_type: MINISTERIELE_REGELING
+          default:
+            actions:
+              - output: opslag
+                value: {second_default}
+      execution:
+        output:
+          - name: uitkomst
+            type: number
+        actions:
+          - output: uitkomst
+            value: ${reads}
+"#
+    )
+}
+
+#[test]
+fn an_open_term_default_reads_an_earlier_term() {
+    let law = two_terms(
+        "10",
+        "\n                  operation: ADD\n                  values: [$basis, 5]",
+        "opslag",
+    );
+    let mut service = LawExecutionService::new();
+    service.load_law(&law).unwrap();
+    assert_eq!(
+        value_of(&service, "lazy_two_terms", "uitkomst", BTreeMap::new()),
+        Value::Int(15)
+    );
+}
+
+#[test]
+fn an_open_term_default_does_not_read_a_later_term() {
+    // A default reads the terms declared before it, as when terms were
+    // resolved one by one in order; a later one is not there yet.
+    let law = two_terms("$opslag", "5", "basis");
+    let mut service = LawExecutionService::new();
+    service.load_law(&law).unwrap();
+    assert!(service
+        .evaluate_law_output("lazy_two_terms", "uitkomst", BTreeMap::new(), "2025-01-01")
+        .is_err());
+}
