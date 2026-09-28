@@ -73,20 +73,37 @@ body {
   padding-left: 1.25em;
 }
 
+/* Een waarde houdt zijn eigen regeleinden (een wettekst heeft er lid voor lid). */
+.yaml-tree .yaml-value {
+  white-space: pre-wrap;
+}
+
 /* Op een telefoon: de zaalmaat en de volle inspringing lieten tien niveaus
  * diep een kolom van een paar tekens over, en `overflow-wrap: anywhere` brak
- * daarin elk woord letter voor letter af. Hier kleiner en minder diep, en
- * een woord blijft heel: wat dan nog niet past schuift horizontaal, zoals in
- * een code-viewer. */
+ * daarin elk woord letter voor letter af. Hier kleiner en minder diep, en de
+ * structuur wrapt niet: een sleutel, een operatie of een variabele is code en
+ * blijft op zijn regel; wat niet past schuift horizontaal, zoals in een
+ * code-viewer. Alleen een lange tekst (de wettekst, met "meer") is proza en
+ * wrapt wel, want op één regel is die niet te lezen. */
 @media (max-width: 640px) {
   .yaml-tree {
     font-size: 0.875rem;
     overflow-wrap: normal;
     overflow-x: auto;
+    white-space: nowrap;
   }
 
   .yaml-tree .yaml-node {
     padding-left: 0.75em;
+  }
+
+  .yaml-tree .yaml-value:not(.yaml-prose) {
+    white-space: pre;
+  }
+
+  .yaml-tree .yaml-prose {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 }
 

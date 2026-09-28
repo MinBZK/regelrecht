@@ -118,7 +118,9 @@ function scalarText() {
       <button v-if="isLawLink && lawIds.has(value)" type="button" class="yaml-link" :title="`Open ${value}`" @click="emit('open-law', value)">
         {{ value }}
       </button>
-      <span v-else :class="scalarClass" style="white-space: pre-wrap"> {{ scalarText() }}</span>
+      <!-- `yaml-value` draagt de witruimte (main.css): een lange tekst is
+           proza en wrapt overal, de rest is code en wrapt op een telefoon niet. -->
+      <span v-else :class="[scalarClass, 'yaml-value', { 'yaml-prose': isLong }]"> {{ scalarText() }}</span>
       <button v-if="isLong" type="button" class="yaml-link" @click="showAll = !showAll">{{ showAll ? 'minder' : 'meer' }}</button>
     </template>
   </div>
