@@ -15,7 +15,22 @@ use crate::schema::Soort;
 #[derive(Debug, Clone, Deserialize)]
 pub struct Lexostatussen {
     pub cel: String,
+    /// Aanvullingen op de lexostatussen die de wet in deze cel leest (zie
+    /// [`crate::wet`]): extra velden voor de synthese, geen parameters.
+    #[serde(default)]
+    pub wet: Vec<WetAanvulling>,
     pub lexostatus_definitions: Vec<LexostatusDefinitie>,
+}
+
+/// Extra velden bij een lexostatus uit de wet: wat de cel meegeeft als
+/// invoer voor een latere bron (een KvK-nummer, een aanduiding), geen
+/// parameter van een artikel. Dat is registratie, dus configuratie van de
+/// cel, niet de wet.
+#[derive(Debug, Clone, Deserialize)]
+pub struct WetAanvulling {
+    /// `<regeling>#<artikel>`: het lezende artikel.
+    pub artikel: String,
+    pub extra_velden: BTreeMap<String, Afgeleid>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -23,6 +38,10 @@ pub struct LexostatusDefinitie {
     pub name: String,
     pub inputs: Vec<InputDefinitie>,
     pub reduction: Reductie,
+    /// Uit de wet (`produces.extensions.chronolex.leest`, zie
+    /// [`crate::wet`]): het lezende artikel. Zonder: uit `lexostatussen.yaml`.
+    #[serde(skip)]
+    pub wet: Option<crate::wet::Wetlezing>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

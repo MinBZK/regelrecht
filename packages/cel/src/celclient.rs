@@ -171,11 +171,25 @@ pub async fn proef(
     let body = json!({"concept": schrijf(concept)?, "inputs": inputs});
     let v = cel
         .stuur(
-            &celpad(id, &format!("lexostatus/{lexostatus}/proef")),
+            &celpad(id, &format!("lexostatus/{}/proef", url_segment(lexostatus))),
             &body,
         )
         .await?;
     lees(v, "de proefreductie van de cel is onleesbaar")
+}
+
+/// Een padsegment zoals het in een url staat: alleen letters, cijfers en
+/// `_-.` blijven staan.
+pub fn url_segment(t: &str) -> String {
+    t.bytes()
+        .map(|b| {
+            if b.is_ascii_alphanumeric() || b"_-.".contains(&b) {
+                (b as char).to_string()
+            } else {
+                format!("%{b:02X}")
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]

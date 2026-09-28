@@ -19,6 +19,34 @@
     "description": {
       "type": "string"
     },
+    "wet": {
+      "type": "array",
+      "description": "Aanvullingen op de lexostatussen die de wet in deze cel leest (produces.extensions.chronolex.leest van een artikel; de lexostatus heet naar het artikel). Alleen extra velden: wat de cel meegeeft als invoer voor een latere bron, geen parameter. De parameters staan in de wet.",
+      "items": {
+        "type": "object",
+        "required": [
+          "artikel",
+          "extra_velden"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "artikel": {
+            "$ref": "#/definitions/grondslag",
+            "description": "Het lezende artikel, <regeling>#<artikel>."
+          },
+          "extra_velden": {
+            "type": "object",
+            "description": "Waarden die geen parameter zijn, zoals een invoer voor een synthese-bron. Ze staan apart in de lexostatus en gaan nooit naar de engine.",
+            "propertyNames": {
+              "pattern": "^[a-z_][a-z0-9_]*$"
+            },
+            "additionalProperties": {
+              "$ref": "#/definitions/afleiding"
+            }
+          }
+        }
+      }
+    },
     "lexostatus_definitions": {
       "type": "array",
       "minItems": 1,

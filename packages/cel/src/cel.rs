@@ -14,7 +14,7 @@ use crate::gram::Gram;
 use crate::lexostatus_engine::CelRoute;
 use crate::reductie::{self, Lexostatussen};
 use crate::stroom::{self, Event, Stroom};
-use crate::{controle, startstand};
+use crate::{controle, startstand, wet};
 
 /// Een geladen cel die de controles bij het opstarten doorstond.
 pub struct Cel {
@@ -59,12 +59,29 @@ impl Cel {
                 Err(f) => fouten.extend(f),
             }
         }
+        // Wat de wet over de events zegt (`vestigt`), vóór alles wat de
+        // events leest.
+        if fouten.is_empty() {
+            fouten.extend(wet::vestig(&mut strommen, &service));
+        }
         let lexostatussen = reductie::laad(&map.join(&definitie.lexostatussen))
             .map_err(|f| fouten.extend(f))
             .ok();
         let Some(mut lexostatussen) = lexostatussen.filter(|_| fouten.is_empty()) else {
             return Err(fout(fouten));
         };
+        // De lexostatussen die de wet in deze cel leest, naast die van de cel.
+        match wet::lexostatussen(&strommen, &service, &lexostatussen.wet) {
+            Ok(uit_de_wet) => {
+                for d in uit_de_wet {
+                    if lexostatussen.lexostatus(&d.name).is_some() {
+                        fouten.push(format!("lexostatus '{}' staat ook in de wet", d.name));
+                    }
+                    lexostatussen.lexostatus_definitions.push(d);
+                }
+            }
+            Err(f) => fouten.extend(f),
+        }
         fouten.extend(controle::perioden(&strommen, &mut lexostatussen, &service));
         if lexostatussen.cel != definitie.id {
             fouten.push(format!(

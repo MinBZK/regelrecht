@@ -822,8 +822,8 @@ pub fn cel_beschrijving(state: &CelState) -> Value {
 fn reductie_van(cel: &Cel, naam: &str) -> Value {
     match cel.route.as_ref().and_then(|r| r.wijzen.get(naam)) {
         None => Value::Null,
-        Some(lexostatus_engine::Wijze::Engine { regeling }) => {
-            json!({"route": "engine", "regeling": regeling})
+        Some(lexostatus_engine::Wijze::Engine { regeling, artikel }) => {
+            json!({"route": "engine", "regeling": artikel.as_ref().unwrap_or(regeling)})
         }
         Some(lexostatus_engine::Wijze::Dsl { reden }) => json!({"route": "dsl", "reden": reden}),
     }

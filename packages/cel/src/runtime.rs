@@ -70,7 +70,7 @@ impl Runtime {
                 .iter()
                 .map(|c| (c.id(), &c.lexostatussen))
                 .collect();
-            match lexostatus_engine::laad_koppeling(koppeling, *vergelijk, &per_cel) {
+            match lexostatus_engine::laad_koppeling(koppeling, *vergelijk, &per_cel, &service) {
                 Ok(mut routes) => {
                     for c in &mut geladen_cellen {
                         c.route = routes.remove(c.id()).map(Arc::new);

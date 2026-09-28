@@ -86,7 +86,7 @@ pub(super) async fn lexostatus_route(
             format!("geen lexostatus '{naam}'"),
         ));
     }
-    let naam: String = url_segment(&naam);
+    let naam: String = crate::celclient::url_segment(&naam);
     let pad = match query {
         Some(q) if !q.is_empty() => format!("lexostatus/{naam}?{q}"),
         _ => format!("lexostatus/{naam}"),
@@ -97,18 +97,4 @@ pub(super) async fn lexostatus_route(
         .await
         .map(Json)
         .map_err(van_cel)
-}
-
-/// Een padsegment zoals het in een url staat: alleen letters, cijfers en
-/// `_-.` blijven staan.
-fn url_segment(t: &str) -> String {
-    t.bytes()
-        .map(|b| {
-            if b.is_ascii_alphanumeric() || b"_-.".contains(&b) {
-                (b as char).to_string()
-            } else {
-                format!("%{b:02X}")
-            }
-        })
-        .collect()
 }

@@ -76,6 +76,7 @@ fn vergelijk(
             def.name.clone(),
             Wijze::Engine {
                 regeling: regeling.to_string(),
+                artikel: None,
             },
         )]),
         vergelijk: true,

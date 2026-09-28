@@ -16,7 +16,7 @@ use std::sync::Arc;
 use regelrecht_engine::LawExecutionService;
 
 use crate::cel::Cel;
-use crate::config::{Portaal, ProcesDefinitie, RijenDefinitie, VoorbeeldenDefinitie};
+use crate::config::{Portaal, ProcesDefinitie, RijenDefinitie, SyntheseBron, VoorbeeldenDefinitie};
 use crate::controle;
 use crate::formulier::{self, Formulier};
 use crate::gezag;
@@ -86,6 +86,7 @@ impl Proces {
         service: Arc<LawExecutionService>,
     ) -> Result<Self, Vec<String>> {
         let cel = de_cel(&definitie, cellen)?;
+        voeg_wetbronnen_toe(&mut definitie, &cel);
         let mut fouten = Vec::new();
         fouten.extend(actor_legt_vast(&definitie, &cel));
         let gezag = gezag::los_op(&definitie, &service)
@@ -240,6 +241,42 @@ impl Proces {
             .map(|b| b.handelingen.as_slice())
             .unwrap_or_default()
     }
+}
+
+/// De lexostatussen die de wet leest in de cel waarin het proces vastlegt,
+/// als bronnen van de zaak (`zaak: true`), na de bronnen van de zaak die
+/// `proces.yaml` zelf noemt. Welk artikel welk feit leest, staat in de wet
+/// (`produces.extensions.chronolex.leest`); het proces hoeft ze niet op te
+/// sommen. Een bron die er al staat, blijft staan.
+fn voeg_wetbronnen_toe(definitie: &mut ProcesDefinitie, cel: &Cel) {
+    let na = definitie
+        .synthese
+        .iter()
+        .position(|b| !b.zaak)
+        .unwrap_or(definitie.synthese.len());
+    let nieuw: Vec<SyntheseBron> = cel
+        .lexostatussen
+        .lexostatus_definitions
+        .iter()
+        .filter(|d| d.wet.is_some())
+        .filter(|d| {
+            !definitie
+                .synthese
+                .iter()
+                .any(|b| b.zaak && b.lexostatus == d.name)
+        })
+        .map(|d| SyntheseBron {
+            cel: cel.id().to_string(),
+            url: None,
+            lexostatus: d.name.clone(),
+            zaak: true,
+            invoer: Default::default(),
+            parameters: Default::default(),
+            extra_velden: Vec::new(),
+            grondslag: Vec::new(),
+        })
+        .collect();
+    definitie.synthese.splice(na..na, nieuw);
 }
 
 /// De cel waarin het proces vastlegt. Het portaal, de werkvoorraad, het

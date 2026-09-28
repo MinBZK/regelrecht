@@ -196,6 +196,8 @@ pub fn pad(cel: &str, lexostatus: &str, invoer: &Map<String, Value>, peil: &Peil
         .collect();
     paren.extend(peil.query());
     let query = serde_urlencoded::to_string(&paren).unwrap_or_default();
+    // Een lexostatus uit de wet heet naar haar artikel (`<regeling>#<artikel>`).
+    let lexostatus = crate::celclient::url_segment(lexostatus);
     if query.is_empty() {
         format!("/cellen/{cel}/api/lexostatus/{lexostatus}")
     } else {

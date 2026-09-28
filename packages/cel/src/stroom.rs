@@ -42,8 +42,16 @@ pub struct Stroom {
 pub struct Event {
     pub name: String,
     pub intake: String,
+    /// De artikelen die dit event vestigen (`produces.extensions.chronolex`
+    /// in de wet, zie [`crate::wet`]). Dan komen `type`, `soort`, `stage`,
+    /// `zaak`, `besluit`, `grondslag` en de grondslag van `op_moment` uit de
+    /// wet; de runtime vult ze in bij het laden van de cel, voordat iets
+    /// anders het event leest.
+    #[serde(default)]
+    pub vestigt: Vec<String>,
+    #[serde(default)]
     pub grondslag: Vec<String>,
-    #[serde(rename = "type")]
+    #[serde(rename = "type", default)]
     pub type_: String,
     #[serde(default)]
     pub soort: Option<String>,
@@ -67,6 +75,10 @@ pub struct Event {
     pub fields: serde_yaml_ng::Mapping,
     #[serde(default)]
     pub niet_gereduceerd: Vec<NietGereduceerd>,
+    /// De naamsbrug uit de wet (zie [`crate::wet::Vestiging::als`]):
+    /// `<naam bij de lezer>: <veld van dit event>`.
+    #[serde(skip)]
+    pub als: BTreeMap<String, String>,
 }
 
 /// De zaak van een event. Een zaakkenmerk groepeert grammen van een zaak
@@ -174,6 +186,8 @@ pub enum Eventkenmerk<'a> {
 pub struct OpMomentBinding {
     /// `$intake.<pad>` of `$external.<pad>`.
     pub bron: String,
+    /// Uit de wet als het event `vestigt` heeft.
+    #[serde(default)]
     pub grondslag: Vec<String>,
 }
 

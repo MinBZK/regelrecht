@@ -206,8 +206,13 @@ pub fn hulp_van(afleiding: &str) -> String {
 /// Hoe een cel een lexostatus reduceert in een runtime met de engine-route.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Wijze {
-    /// Een engine-run van deze regeling.
-    Engine { regeling: String },
+    /// Een engine-run van deze regeling. `artikel`: bij een lexostatus uit
+    /// de wet het lezende artikel; de regeling is dan in het geheugen
+    /// gemaakt uit zijn `leest` ([`crate::engine_regeling`]).
+    Engine {
+        regeling: String,
+        artikel: Option<String>,
+    },
     /// Bewust langs de reductie-DSL, met de reden uit het koppelbestand.
     Dsl { reden: String },
 }
@@ -240,12 +245,30 @@ enum Koppeling {
 /// (id en lexostatussen): elke lexostatus van elke cel heeft een koppeling,
 /// elke koppeling een lexostatus, elke regeling laadt en heeft de uitkomsten
 /// van [`uitkomsten_van`], en een lijst-lexostatus (`groepeer`) gaat niet
-/// via de engine. Elke fout komt terug, niet alleen de eerste.
+/// via de engine. Een lexostatus uit de wet ([`crate::wet`]) heeft geen
+/// koppeling nodig: haar regeling maakt de runtime uit het lezende artikel
+/// ([`crate::engine_regeling`]); het koppelbestand kan haar alleen bewust op
+/// `dsl` zetten. `corpus` geeft de namen van de regelingen voor de
+/// `legal_basis` van zo'n regeling. Elke fout komt terug, niet alleen de
+/// eerste.
 pub fn laad_koppeling(
     pad: &Path,
     vergelijk: bool,
     cellen: &[(&str, &Lexostatussen)],
+    corpus: &LawExecutionService,
 ) -> Result<BTreeMap<String, CelRoute>, Vec<String>> {
+    let namen: BTreeMap<String, String> = corpus
+        .resolver()
+        .list_laws()
+        .into_iter()
+        .filter_map(|id| {
+            let law = corpus.resolver().get_law(id)?;
+            Some((
+                id.to_string(),
+                law.name.clone().unwrap_or_else(|| id.to_string()),
+            ))
+        })
+        .collect();
     let bron = pad.display().to_string();
     let bestand: Koppelbestand = laden::laad(pad, laden::yaml)?;
     let map = pad.parent().map(Path::to_path_buf).unwrap_or_default();
@@ -259,12 +282,23 @@ pub fn laad_koppeling(
         }
     }
     for (id, lexostatussen) in cellen {
-        let koppelingen = bestand.cellen.get(*id);
-        let Some(koppelingen) = koppelingen else {
-            fouten.push(format!(
-                "{bron}: cel '{id}' heeft geen koppeling; zet elke lexostatus op een regeling of op dsl"
-            ));
-            continue;
+        let leeg = BTreeMap::new();
+        let koppelingen = match bestand.cellen.get(*id) {
+            Some(k) => k,
+            // Alleen lexostatussen uit de wet: die hebben geen koppeling nodig.
+            None if lexostatussen
+                .lexostatus_definitions
+                .iter()
+                .all(|d| d.wet.is_some()) =>
+            {
+                &leeg
+            }
+            None => {
+                fouten.push(format!(
+                    "{bron}: cel '{id}' heeft geen koppeling; zet elke lexostatus op een regeling of op dsl"
+                ));
+                continue;
+            }
         };
         for naam in koppelingen.keys() {
             if lexostatussen.lexostatus(naam).is_none() {
@@ -275,6 +309,40 @@ pub fn laad_koppeling(
         for def in &lexostatussen.lexostatus_definitions {
             let waar = format!("{bron}: cel '{id}', lexostatus '{}'", def.name);
             let wijze = match koppelingen.get(&def.name) {
+                None if def.wet.is_some() => {
+                    let regeling = format!(
+                        "lexostatus_{}_{}",
+                        id,
+                        def.name
+                            .chars()
+                            .map(|c| if c.is_ascii_alphanumeric() {
+                                c.to_ascii_lowercase()
+                            } else {
+                                '_'
+                            })
+                            .collect::<String>()
+                    );
+                    let geladen = crate::engine_regeling::regeling(def, &regeling, &namen)
+                        .and_then(|tekst| service.load_law(&tekst).map_err(|e| e.to_string()));
+                    match geladen {
+                        Ok(r) => Wijze::Engine {
+                            regeling: r,
+                            artikel: Some(def.name.clone()),
+                        },
+                        Err(e) => {
+                            fouten.push(format!(
+                                "{waar}: uit de wet, maar niet naar de engine te vertalen: {e}; zet haar bewust op dsl"
+                            ));
+                            continue;
+                        }
+                    }
+                }
+                Some(Koppeling::Regeling(_)) if def.wet.is_some() => {
+                    fouten.push(format!(
+                        "{waar}: komt uit de wet; haar engine-regeling maakt de runtime uit het artikel, dus geen bestand (alleen dsl met een reden kan)"
+                    ));
+                    continue;
+                }
                 None => {
                     fouten.push(format!(
                         "{waar}: geen koppeling (een regeling, of dsl met een reden)"
@@ -338,7 +406,10 @@ pub fn laad_koppeling(
                             ));
                         }
                     }
-                    Wijze::Engine { regeling }
+                    Wijze::Engine {
+                        regeling,
+                        artikel: None,
+                    }
                 }
             };
             wijzen.insert(def.name.clone(), wijze);
@@ -397,8 +468,9 @@ pub fn reduceer_lexostatus<'g>(
                 ..l
             }));
         }
-        Some(Wijze::Engine { regeling }) => regeling,
+        Some(Wijze::Engine { regeling, artikel }) => (regeling, artikel),
     };
+    let (regeling, artikel) = regeling;
     let engine = via_engine(
         route, regeling, def, inputs, &grammen, peil, datum, met_trace,
     )?;
@@ -427,7 +499,7 @@ pub fn reduceer_lexostatus<'g>(
     Ok(engine.map(|(l, trace_text)| Lexostatus {
         reductie: Some(Reductieroute {
             route: "engine".into(),
-            regeling: Some(regeling.clone()),
+            regeling: Some(artikel.clone().unwrap_or_else(|| regeling.clone())),
             reden: None,
             duur_us,
             dsl_duur_us,
