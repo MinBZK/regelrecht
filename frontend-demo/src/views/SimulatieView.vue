@@ -460,7 +460,7 @@ function exportJson() {
         </nldd-container>
         <nldd-container padding="12" gap="12">
           <nldd-form-field :label="t(kind === 'ondernemers' ? 'sim.count.businesses' : 'sim.count.citizens')">
-            <nldd-number-field :value="params.count" min="1" :max="MAX_POPULATION" step="10" width="full" @change="params.count = numberFrom($event) ?? params.count"></nldd-number-field>
+            <nldd-number-field :value="params.count" min="1" :max="MAX_POPULATION" step="10" width="full" @input="params.count = numberFrom($event) ?? params.count" @change="params.count = numberFrom($event) ?? params.count"></nldd-number-field>
           </nldd-form-field>
           <nldd-form-field :label="t('sim.reference_date')">
             <nldd-date-field :value="referenceDate" width="full" @change="referenceDate = $event.detail?.value || referenceDate"></nldd-date-field>
@@ -469,13 +469,13 @@ function exportJson() {
           <nldd-button width="full" variant="neutral-transparent" horizontal-alignment="left" :end-icon="open.populatie ? 'chevron-up' : 'chevron-down'" :text="t(kind === 'ondernemers' ? 'sim.population.businesses' : 'sim.population.citizens')" :expanded="open.populatie || undefined" @click="open.populatie = !open.populatie"></nldd-button>
           <template v-if="open.populatie">
             <nldd-form-field :label="t('sim.seed')">
-              <nldd-number-field size="sm" :value="params.seed" min="1" step="1" width="full" hide-spin-buttons @change="params.seed = numberFrom($event) ?? params.seed"></nldd-number-field>
+              <nldd-number-field size="sm" :value="params.seed" min="1" step="1" width="full" hide-spin-buttons @input="params.seed = numberFrom($event) ?? params.seed" @change="params.seed = numberFrom($event) ?? params.seed"></nldd-number-field>
               <nldd-form-field-help-text>{{ t('sim.seed.help') }}</nldd-form-field-help-text>
             </nldd-form-field>
             <nldd-container v-for="group in knobs" :key="group.key" gap="8">
               <nldd-text-cell size="sm" color="secondary" :text="group.group"></nldd-text-cell>
               <nldd-form-field v-for="field in group.fields" :key="field.path.join('.')" :label="field.label">
-                <nldd-number-field size="sm" :value="getKnob(field.path)" min="0" max="100" step="5" width="full" hide-spin-buttons @change="setKnob(field.path, numberFrom($event))"></nldd-number-field>
+                <nldd-number-field size="sm" :value="getKnob(field.path)" min="0" max="100" step="5" width="full" hide-spin-buttons @input="setKnob(field.path, numberFrom($event))" @change="setKnob(field.path, numberFrom($event))"></nldd-number-field>
               </nldd-form-field>
             </nldd-container>
           </template>
@@ -869,7 +869,11 @@ function exportJson() {
                <code>-element ertussen: dat scheelt een v-html voor één tag. -->
           <nldd-rich-text><p>{{ t('sim.inspector.definitions.lead') }} (<code>definitions</code>). {{ t('sim.inspector.definitions.scope') }}</p></nldd-rich-text>
           <nldd-form-field v-for="def in definitionsByLaw[inspectorLaw.id]" :key="def.key" :label="humanize(def.key)">
-            <nldd-number-field :value="overrides[inspectorLaw.id]?.[def.key] ?? def.value" :step="Number.isInteger(def.value) ? '1' : '0.001'" width="full" hide-spin-buttons @change="setOverride(inspectorLaw.id, def.key, numberFrom($event))"></nldd-number-field>
+            <!-- Op `input` én `change`: `change` kwam in de praktijk niet aan
+                 (gemeten: wel `input` met { value }, geen `change` na Enter of
+                 blur), waardoor een getypt bedrag bij het starten van de run
+                 terugsprong naar de standaardwaarde. -->
+            <nldd-number-field :value="overrides[inspectorLaw.id]?.[def.key] ?? def.value" :step="Number.isInteger(def.value) ? '1' : '0.001'" width="full" hide-spin-buttons @input="setOverride(inspectorLaw.id, def.key, numberFrom($event))" @change="setOverride(inspectorLaw.id, def.key, numberFrom($event))"></nldd-number-field>
             <nldd-form-field-help-text>{{ t('sim.inspector.definition_help', { article: def.article, value: def.value, hint: definitionHint(def) }) }}</nldd-form-field-help-text>
           </nldd-form-field>
           <nldd-button v-if="overrideCount(inspectorLaw.id)" variant="secondary" start-icon="arrow-2-counter-clockwise" :text="t('sim.inspector.reset')" @click="resetOverrides(inspectorLaw.id)"></nldd-button>
