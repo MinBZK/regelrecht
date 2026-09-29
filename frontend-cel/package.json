@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "PoC: de cellen van een cel-runtime bekijken, en indienen bij een cel met een portaal (frontend bij packages/cel)",
+  "description": "PoC: view the cells of a cell runtime, and submit to a cell with a portal (frontend for packages/cel)",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

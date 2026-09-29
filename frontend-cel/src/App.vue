@@ -1,84 +1,85 @@
 <script setup>
-// De processen en de cellen van de runtime. Een proces met een portaal laat
-// inloggen en indienen, een proces met een behandeling laat een behandelaar
-// een zaak openen en er handelingen in doen, op proef en vastgelegd. Een cel
-// toont haar kroniek en haar lexostatussen aan wie als behandelaar is
-// ingelogd in een proces dat haar leest. De frontend kent geen casus:
-// welke processen en cellen er zijn, komt van GET /api/processes en
-// GET /api/cells.
+// The processes and the cells of the runtime. A process with a portal lets
+// people log in and submit, a process with handling lets a handler open a
+// case and take actions in it, on trial and recorded. A cell shows its
+// chronicle and its lexostatuses to whoever is logged in as a handler in a
+// process that reads it. The frontend knows no scenario: which processes and
+// cells there are comes from GET /api/processes and GET /api/cells.
 import { computed, onMounted, ref } from 'vue';
-import { cellen as haalCellen, processen as haalProcessen } from './api.js';
-import CelView from './views/CelView.vue';
-import ProcesView from './views/ProcesView.vue';
+import { fetchCells, fetchProcesses } from './api.js';
+import CellView from './views/CellView.vue';
+import ProcessView from './views/ProcessView.vue';
 
-const cellen = ref([]);
-const processen = ref([]);
-// Wat open staat: `proces:<id>` of `cel:<id>`, of null voor het overzicht.
-const gekozen = ref(null);
-const fout = ref('');
-const geladen = ref(false);
+const cells = ref([]);
+const processes = ref([]);
+// What is open: `process:<id>` or `cell:<id>`, or null for the overview.
+const chosen = ref(null);
+const error = ref('');
+const loaded = ref(false);
 
-const portalen = computed(() => processen.value.filter((p) => p.portal));
-const proces = computed(() => processen.value.find((p) => `proces:${p.id}` === gekozen.value) ?? null);
-const cel = computed(() => cellen.value.find((c) => `cel:${c.id}` === gekozen.value) ?? null);
-const celVan = (p) => cellen.value.find((c) => c.id === p.cell) ?? null;
+const portals = computed(() => processes.value.filter((p) => p.portal));
+const process = computed(() => processes.value.find((p) => `process:${p.id}` === chosen.value) ?? null);
+const cell = computed(() => cells.value.find((c) => `cell:${c.id}` === chosen.value) ?? null);
+const cellOf = (p) => cells.value.find((c) => c.id === p.cell) ?? null;
 
-// Langs welke route de cellen reduceren (experiment A): `engine` of
-// `vergelijk` (runtime: `compare`) als de runtime met CELL_REDUCTION draait, anders null (de
-// reductie-DSL). De lexostatussen die bewust langs de DSL gaan, met reden.
-const reductie = computed(() => {
-  const r = cellen.value.map((c) => c.reduction).filter(Boolean);
+// Along which route the cells reduce (experiment A): `engine` or `compare`
+// when the runtime runs with CELL_REDUCTION, otherwise null (the reduction
+// DSL). The lexostatuses that deliberately go through the DSL, with reason.
+const reduction = computed(() => {
+  const r = cells.value.map((c) => c.reduction).filter(Boolean);
   if (!r.length) return null;
-  return r.includes('compare') ? 'vergelijk' : 'engine';
+  return r.includes('compare') ? 'compare' : 'engine';
 });
-const langsDeDsl = computed(() =>
-  cellen.value.flatMap((c) =>
+// The route as the user sees it (Dutch).
+const reductionLabel = computed(() => (reduction.value === 'compare' ? 'vergelijk' : reduction.value));
+const throughDsl = computed(() =>
+  cells.value.flatMap((c) =>
     (c.lexostatuses ?? [])
       .filter((l) => l.reduction?.route === 'dsl')
       .map((l) => `${c.id}/${l.name} (${l.reduction.reason})`),
   ),
 );
-const reductieUitleg = computed(() => {
-  const n = cellen.value.flatMap((c) => c.lexostatuses ?? []).filter((l) => l.reduction?.route === 'engine').length;
-  const vergelijk = reductie.value === 'vergelijk' ? ' Elke reductie gaat ook langs de DSL; een verschil is een fout.' : '';
-  const dsl = langsDeDsl.value.length ? ` Bewust langs de DSL: ${langsDeDsl.value.join('; ')}.` : '';
-  const runtime = [...new Set(cellen.value.flatMap((c) => (c.lexostatuses ?? []).filter((l) => l.reduction?.route === 'runtime').map((l) => l.name)))];
-  const zelf = runtime.length ? ` Door de runtime zelf: ${runtime.join(', ')}.` : '';
-  return `${n} lexostatussen reduceren als engine-run van een regeling (experiment A).${vergelijk}${dsl}${zelf}`;
+const reductionExplanation = computed(() => {
+  const n = cells.value.flatMap((c) => c.lexostatuses ?? []).filter((l) => l.reduction?.route === 'engine').length;
+  const compare = reduction.value === 'compare' ? ' Elke reductie gaat ook langs de DSL; een verschil is een fout.' : '';
+  const dsl = throughDsl.value.length ? ` Bewust langs de DSL: ${throughDsl.value.join('; ')}.` : '';
+  const runtime = [...new Set(cells.value.flatMap((c) => (c.lexostatuses ?? []).filter((l) => l.reduction?.route === 'runtime').map((l) => l.name)))];
+  const itself = runtime.length ? ` Door de runtime zelf: ${runtime.join(', ')}.` : '';
+  return `${n} lexostatussen reduceren als engine-run van een regeling (experiment A).${compare}${dsl}${itself}`;
 });
 
 onMounted(async () => {
   try {
-    [cellen.value, processen.value] = await Promise.all([haalCellen(), haalProcessen()]);
-    // Is er maar een proces met een portaal, dan opent dat direct.
-    if (portalen.value.length === 1) gekozen.value = `proces:${portalen.value[0].id}`;
+    [cells.value, processes.value] = await Promise.all([fetchCells(), fetchProcesses()]);
+    // If there is only one process with a portal, it opens directly.
+    if (portals.value.length === 1) chosen.value = `process:${portals.value[0].id}`;
   } catch (e) {
-    fout.value = e.message;
+    error.value = e.message;
   } finally {
-    geladen.value = true;
+    loaded.value = true;
   }
 });
 
 function tab(e) {
-  const naar = e.detail?.item?.dataset?.item;
-  gekozen.value = naar === '' ? null : (naar ?? gekozen.value);
+  const to = e.detail?.item?.dataset?.item;
+  chosen.value = to === '' ? null : (to ?? chosen.value);
 }
 
-function procesTekst(p) {
-  const delen = [`cel ${p.cell}`, p.portal ? 'portaal' : 'geen portaal'];
-  if (p.handling) delen.push(`behandeling (werkvoorraad, ${p.handling.actions?.length ?? 0} handelingen)`);
-  const bronnen = [...new Set(p.synthesis.filter((s) => !s.case).map((s) => s.cell))];
-  if (bronnen.length) delen.push(`synthese uit ${bronnen.join(', ')}`);
-  return delen.join('; ');
+function processText(p) {
+  const parts = [`cel ${p.cell}`, p.portal ? 'portaal' : 'geen portaal'];
+  if (p.handling) parts.push(`behandeling (werkvoorraad, ${p.handling.actions?.length ?? 0} handelingen)`);
+  const sources = [...new Set(p.synthesis.filter((s) => !s.case).map((s) => s.cell))];
+  if (sources.length) parts.push(`synthese uit ${sources.join(', ')}`);
+  return parts.join('; ');
 }
 
-function celTekst(c) {
-  const delen = [`kroniek ${c.chronicles.join(', ')}`];
+function cellText(c) {
+  const parts = [`kroniek ${c.chronicles.join(', ')}`];
   if (c.lexostatuses.length) {
-    const naam = (l) => (l.reduction?.route ? `${l.name} (${l.reduction.route})` : l.name);
-    delen.push(`lexostatus ${c.lexostatuses.map(naam).join(', ')}`);
+    const name = (l) => (l.reduction?.route ? `${l.name} (${l.reduction.route})` : l.name);
+    parts.push(`lexostatus ${c.lexostatuses.map(name).join(', ')}`);
   }
-  return delen.join('; ');
+  return parts.join('; ');
 }
 </script>
 
@@ -87,46 +88,46 @@ function celTekst(c) {
     <nldd-top-navigation-bar
       slot="header"
       no-logo
-      :website-title="reductie ? `Cellen en processen · reductie: ${reductie}` : 'Cellen en processen'"
+      :website-title="reduction ? `Cellen en processen · reductie: ${reductionLabel}` : 'Cellen en processen'"
     ></nldd-top-navigation-bar>
     <nldd-simple-section>
-      <template v-if="reductie">
-        <nldd-inline-dialog icon="info" :text="`Reductie: ${reductie}`" :supporting-text="reductieUitleg"></nldd-inline-dialog>
+      <template v-if="reduction">
+        <nldd-inline-dialog icon="info" :text="`Reductie: ${reductionLabel}`" :supporting-text="reductionExplanation"></nldd-inline-dialog>
         <nldd-spacer size="16"></nldd-spacer>
       </template>
-      <template v-if="fout">
+      <template v-if="error">
         <nldd-inline-dialog
           variant="alert"
           text="De processen en cellen zijn niet te laden"
-          :supporting-text="fout"
+          :supporting-text="error"
         ></nldd-inline-dialog>
       </template>
-      <template v-else-if="geladen">
+      <template v-else-if="loaded">
         <nldd-tab-bar size="md" accessible-label="Proces of cel" @tabchange="tab">
-          <nldd-tab-bar-item data-item="" text="Overzicht" :current="gekozen === null || undefined"></nldd-tab-bar-item>
+          <nldd-tab-bar-item data-item="" text="Overzicht" :current="chosen === null || undefined"></nldd-tab-bar-item>
           <nldd-tab-bar-item
-            v-for="p in processen"
-            :key="`proces:${p.id}`"
-            :data-item="`proces:${p.id}`"
+            v-for="p in processes"
+            :key="`process:${p.id}`"
+            :data-item="`process:${p.id}`"
             :text="p.id"
-            :current="gekozen === `proces:${p.id}` || undefined"
+            :current="chosen === `process:${p.id}` || undefined"
           ></nldd-tab-bar-item>
           <nldd-tab-bar-item
-            v-for="c in cellen"
-            :key="`cel:${c.id}`"
-            :data-item="`cel:${c.id}`"
+            v-for="c in cells"
+            :key="`cell:${c.id}`"
+            :data-item="`cell:${c.id}`"
             :text="c.id"
-            :current="gekozen === `cel:${c.id}` || undefined"
+            :current="chosen === `cell:${c.id}` || undefined"
           ></nldd-tab-bar-item>
         </nldd-tab-bar>
         <nldd-spacer size="24"></nldd-spacer>
-        <ProcesView v-if="proces && celVan(proces)" :key="gekozen" :proces="proces" :cel="celVan(proces)" />
-        <CelView
-          v-else-if="cel"
-          :key="gekozen"
-          :cel="cel"
-          :processen="processen.filter((p) => (p.inspection ?? []).includes(cel.id))"
-          @open="gekozen = `proces:${$event}`"
+        <ProcessView v-if="process && cellOf(process)" :key="chosen" :process="process" :cell="cellOf(process)" />
+        <CellView
+          v-else-if="cell"
+          :key="chosen"
+          :cell="cell"
+          :processes="processes.filter((p) => (p.inspection ?? []).includes(cell.id))"
+          @open="chosen = `process:${$event}`"
         />
         <template v-else>
           <nldd-title size="2"><h1>Processen in deze runtime</h1></nldd-title>
@@ -137,12 +138,12 @@ function celTekst(c) {
               <nldd-text-cell text="Proces"></nldd-text-cell>
               <nldd-text-cell text="Mogelijkheden"></nldd-text-cell>
             </nldd-table-row>
-            <nldd-table-row v-for="p in processen" :key="p.id">
+            <nldd-table-row v-for="p in processes" :key="p.id">
               <nldd-cell>
-                <nldd-button variant="secondary" text="Open" :accessible-label="`Open proces ${p.id}`" @click="gekozen = `proces:${p.id}`"></nldd-button>
+                <nldd-button variant="secondary" text="Open" :accessible-label="`Open proces ${p.id}`" @click="chosen = `process:${p.id}`"></nldd-button>
               </nldd-cell>
               <nldd-text-cell :text="p.id" :supporting-text="p.title ?? undefined"></nldd-text-cell>
-              <nldd-text-cell :text="procesTekst(p)"></nldd-text-cell>
+              <nldd-text-cell :text="processText(p)"></nldd-text-cell>
             </nldd-table-row>
           </nldd-table>
           <nldd-spacer size="32"></nldd-spacer>
@@ -154,12 +155,12 @@ function celTekst(c) {
               <nldd-text-cell text="Cel"></nldd-text-cell>
               <nldd-text-cell text="Kronieken en lexostatussen"></nldd-text-cell>
             </nldd-table-row>
-            <nldd-table-row v-for="c in cellen" :key="c.id">
+            <nldd-table-row v-for="c in cells" :key="c.id">
               <nldd-cell>
-                <nldd-button variant="secondary" text="Open" :accessible-label="`Open cel ${c.id}`" @click="gekozen = `cel:${c.id}`"></nldd-button>
+                <nldd-button variant="secondary" text="Open" :accessible-label="`Open cel ${c.id}`" @click="chosen = `cell:${c.id}`"></nldd-button>
               </nldd-cell>
               <nldd-text-cell :text="c.id" :supporting-text="c.recording_actor"></nldd-text-cell>
-              <nldd-text-cell :text="celTekst(c)"></nldd-text-cell>
+              <nldd-text-cell :text="cellText(c)"></nldd-text-cell>
             </nldd-table-row>
           </nldd-table>
         </template>

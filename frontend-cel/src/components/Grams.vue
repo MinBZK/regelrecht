@@ -1,25 +1,24 @@
 <script setup>
-// Grammen als tabel, met de ruwe YAML eronder. Elk gram heeft een eigen id,
-// en verwijst met een naam uit de wet naar het gram waar het bij hoort (een
-// besluit op_aanvraag, een betaling naar het besluit). Elk gram heeft twee
-// tijden: effective_at, wanneer het feit rechtens geldt (bij een aanvraag van
-// het loket de dag van ontvangst), en recorded_at, wanneer de cel het
-// vastlegde.
+// Grams as a table, with the raw YAML below. Every gram has its own id, and
+// refers with a name from the law to the gram it belongs to (a decision
+// on_application, a payment to the decision). Every gram has two times:
+// effective_at, when the fact holds in law (for an application from the
+// counter the day of receipt), and recorded_at, when the cell recorded it.
 const props = defineProps({
-  // [{gram, yaml}], in de volgorde waarin ze getoond worden.
+  // [{gram, yaml}], in the order in which they are shown.
   items: { type: Array, required: true },
-  // Het zojuist vastgelegde gram, om het in de tabel aan te wijzen.
-  nieuw: { type: Object, default: null },
-  leegTekst: { type: String, default: undefined },
+  // The gram just recorded, to point it out in the table.
+  highlighted: { type: Object, default: null },
+  emptyText: { type: String, default: undefined },
 });
 
-// Het id van de cel wijst het gram aan.
-const sleutel = (g) => g.id;
-const verwijzingen = (g) =>
+// The id from the cell identifies the gram.
+const key = (g) => g.id;
+const references = (g) =>
   Object.entries(g.refers_to ?? {})
-    .map(([naam, id]) => `${naam}: ${id}`)
+    .map(([name, id]) => `${name}: ${id}`)
     .join(', ') || undefined;
-const isNieuw = (g) => props.nieuw !== null && sleutel(g) === sleutel(props.nieuw);
+const isHighlighted = (g) => props.highlighted !== null && key(g) === key(props.highlighted);
 </script>
 
 <template>
@@ -27,7 +26,7 @@ const isNieuw = (g) => props.nieuw !== null && sleutel(g) === sleutel(props.nieu
     columns="190px 190px minmax(110px,1fr) minmax(150px,1fr) 130px minmax(180px,1fr) 110px"
     accessible-label="Vastgelegde grammen"
     empty-text="Nog niets vastgelegd"
-    :empty-supporting-text="leegTekst"
+    :empty-supporting-text="emptyText"
   >
     <nldd-table-row slot="header">
       <nldd-text-cell text="Op moment"></nldd-text-cell>
@@ -38,7 +37,7 @@ const isNieuw = (g) => props.nieuw !== null && sleutel(g) === sleutel(props.nieu
       <nldd-text-cell text="Id en verwijzingen"></nldd-text-cell>
       <nldd-text-cell text="Herkomst"></nldd-text-cell>
     </nldd-table-row>
-    <nldd-table-row v-for="(i, n) in items" :key="n + sleutel(i.gram)" :selected="isNieuw(i.gram) || undefined">
+    <nldd-table-row v-for="(i, n) in items" :key="n + key(i.gram)" :selected="isHighlighted(i.gram) || undefined">
       <nldd-text-cell :text="i.gram.effective_at"></nldd-text-cell>
       <nldd-text-cell :text="i.gram.recorded_at || i.gram.effective_at"></nldd-text-cell>
       <nldd-text-cell :text="i.gram.chronicle"></nldd-text-cell>
@@ -46,12 +45,12 @@ const isNieuw = (g) => props.nieuw !== null && sleutel(g) === sleutel(props.nieu
       <nldd-text-cell :text="[i.gram.type, i.gram.subtype, i.gram.stage].filter(Boolean).join(' / ')"></nldd-text-cell>
       <nldd-text-cell
         :text="i.gram.id"
-        :supporting-text="verwijzingen(i.gram)"
+        :supporting-text="references(i.gram)"
       ></nldd-text-cell>
       <nldd-text-cell :text="i.gram.provenance ?? 'vastgesteld'"></nldd-text-cell>
     </nldd-table-row>
   </nldd-table>
-  <template v-for="(i, n) in items" :key="'yaml-' + n + sleutel(i.gram)">
+  <template v-for="(i, n) in items" :key="'yaml-' + n + key(i.gram)">
     <nldd-spacer size="24"></nldd-spacer>
     <nldd-title size="5"><h2>{{ i.gram.name }}, {{ i.gram.id }}</h2></nldd-title>
     <nldd-spacer size="8"></nldd-spacer>

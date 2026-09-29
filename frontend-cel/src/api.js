@@ -1,79 +1,78 @@
-// De routes van de runtime, van een cel en van een proces. Elke fout komt
-// terug als {error: "..."}; de gedeelde apiFetch doet de ok-check en gooit een
-// ApiError met die tekst als message en de HTTP-status als `status`.
+// The routes of the runtime, of a cell and of a process. Every error comes
+// back as {error: "..."}; the shared apiFetch does the ok check and throws an
+// ApiError with that text as its message and the HTTP status as `status`.
 import { apiFetch } from '@regelrecht/frontend-shared/apiFetch.js';
 
-// De tekst onder `error` in een foutantwoord, anders de HTTP-status.
-export function foutTekst(status, body) {
+// The text under `error` in an error response, otherwise the HTTP status.
+export function errorText(status, body) {
   try {
-    const fout = JSON.parse(body)?.error;
-    if (typeof fout === 'string' && fout) return fout;
+    const error = JSON.parse(body)?.error;
+    if (typeof error === 'string' && error) return error;
   } catch {
-    // Geen JSON: dan zegt de status het.
+    // Not JSON: then the status says it.
   }
   return `HTTP ${status}`;
 }
 
-async function vraag(methode, pad, body) {
-  const resp = await apiFetch(pad, {
-    method: methode,
+async function request(method, path, body) {
+  const resp = await apiFetch(path, {
+    method,
     credentials: 'same-origin',
     headers: body ? { 'content-type': 'application/json' } : {},
     body: body ? JSON.stringify(body) : undefined,
-    errorMessage: foutTekst,
+    errorMessage: errorText,
   });
   return resp.status === 204 ? null : resp.json();
 }
 
-// De cellen van de runtime, met per cel haar kronieken en lexostatussen.
-export const cellen = () => vraag('GET', '/api/cells');
+// The cells of the runtime, each with its chronicles and lexostatuses.
+export const fetchCells = () => request('GET', '/api/cells');
 
-// De processen van de runtime, met per proces zijn cel en mogelijkheden.
-export const processen = () => vraag('GET', '/api/processes');
+// The processes of the runtime, each with its cell and possibilities.
+export const fetchProcesses = () => request('GET', '/api/processes');
 
-// Wat een cel vastlegde en wat haar reducties opleveren. De leesroutes van
-// een cel zijn niet open (de grammen dragen de identiteit van wie indiende);
-// een behandelaar ziet ze via zijn proces, onder
-// /processes/<proces>/api/inspection/<cel>.
-export function inzageApi(proces, cel) {
-  const p = `/processes/${encodeURIComponent(proces)}/api/inspection/${encodeURIComponent(cel)}`;
+// What a cell recorded and what its reductions yield. The read routes of a
+// cell are not open (the grams carry the identity of whoever submitted);
+// a handler sees them through their process, under
+// /processes/<process>/api/inspection/<cell>.
+export function inspectionApi(process, cell) {
+  const p = `/processes/${encodeURIComponent(process)}/api/inspection/${encodeURIComponent(cell)}`;
   return {
-    kroniek: () => vraag('GET', `${p}/chronicle`),
-    lexostatus: (naam, invoer) =>
-      vraag('GET', `${p}/lexostatus/${encodeURIComponent(naam)}?${new URLSearchParams(invoer)}`),
+    chronicle: () => request('GET', `${p}/chronicle`),
+    lexostatus: (name, input) =>
+      request('GET', `${p}/lexostatus/${encodeURIComponent(name)}?${new URLSearchParams(input)}`),
   };
 }
 
-// De routes van een proces, onder /processes/<id>.
-export function procesApi(id) {
+// The routes of a process, under /processes/<id>.
+export function processApi(id) {
   const p = `/processes/${encodeURIComponent(id)}/api`;
-  const handeling = (z, naam) => `${p}/cases/${encodeURIComponent(z)}/actions/${encodeURIComponent(naam)}`;
+  const actionPath = (root, name) => `${p}/cases/${encodeURIComponent(root)}/actions/${encodeURIComponent(name)}`;
   return {
-    // Inloggen langs een kanaal uit `channels` in process.yaml: de velden van
-    // het kanaal, en `role` als er langs het kanaal meer dan een rol inlogt.
-    inloggen: (kanaal, invoer) => vraag('POST', `${p}/channels/${encodeURIComponent(kanaal)}/login`, invoer),
-    // Wie er is ingelogd, langs welk kanaal ook.
-    sessie: () => vraag('GET', `${p}/session`),
-    uitloggen: (kanaal) => vraag('POST', `${p}/channels/${encodeURIComponent(kanaal)}/logout`),
-    formulier: () => vraag('GET', `${p}/form`),
-    toets: (external) => vraag('POST', `${p}/application/assessment`, { external }),
-    indienen: (external) => vraag('POST', `${p}/application`, { external }),
-    mogelijkheden: () => vraag('GET', `${p}/possibilities`),
-    // Standaardgegevens per handeling; ook zonder login.
-    voorbeelden: () => vraag('GET', `${p}/examples`),
-    // Het loket: een aanvraag die langs een andere weg binnenkwam,
+    // Log in through a channel from `channels` in process.yaml: the fields of
+    // the channel, and `role` when more than one role logs in through it.
+    login: (channel, input) => request('POST', `${p}/channels/${encodeURIComponent(channel)}/login`, input),
+    // Who is logged in, through whichever channel.
+    session: () => request('GET', `${p}/session`),
+    logout: (channel) => request('POST', `${p}/channels/${encodeURIComponent(channel)}/logout`),
+    form: () => request('GET', `${p}/form`),
+    assess: (external) => request('POST', `${p}/application/assessment`, { external }),
+    submit: (external) => request('POST', `${p}/application`, { external }),
+    possibilities: () => request('GET', `${p}/possibilities`),
+    // Default data per action; also without a login.
+    examples: () => request('GET', `${p}/examples`),
+    // The counter: an application that came in some other way,
     // {applicant, received_at, external}.
-    loketIndienen: (invoer) => vraag('POST', `${p}/counter/application`, invoer),
-    werkvoorraad: () => vraag('GET', `${p}/worklist`),
-    zaak: (wortel) => vraag('GET', `${p}/cases/${encodeURIComponent(wortel)}`),
-    // Een handeling in een zaak (het besluit, een latere stage, een feit uit
-    // het verloop): op proef, of genomen en vastgelegd. Een route voor elke
-    // handeling; welke er zijn, zegt de zaak.
-    proefhandeling: (wortel, naam, formulier) =>
-      vraag('POST', `${handeling(wortel, naam)}/trial`, { form: formulier }),
-    // Met `happened` meldt de behandelaar een feit dat gebeurde terwijl de
-    // proef om de inhoud nee zei.
-    handeling: (wortel, naam, formulier, gebeurd = false) =>
-      vraag('POST', handeling(wortel, naam), gebeurd ? { form: formulier, happened: gebeurd } : { form: formulier }),
+    submitAtCounter: (input) => request('POST', `${p}/counter/application`, input),
+    worklist: () => request('GET', `${p}/worklist`),
+    fetchCase: (root) => request('GET', `${p}/cases/${encodeURIComponent(root)}`),
+    // An action in a case (the decision, a later stage, a fact from its
+    // course): on trial, or taken and recorded. One route per action; which
+    // ones there are, the case says.
+    trialAction: (root, name, form) => request('POST', `${actionPath(root, name)}/trial`, { form }),
+    // With `happened` the handler reports a fact that happened while the
+    // trial said no on its content.
+    takeAction: (root, name, form, happened = false) =>
+      request('POST', actionPath(root, name), happened ? { form, happened } : { form }),
   };
 }

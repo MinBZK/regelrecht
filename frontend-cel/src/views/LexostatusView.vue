@@ -1,59 +1,58 @@
 <script setup>
-// Een lexostatus van de cel opvragen: kies de lexostatus, vul de inputs in,
-// en zie de parameters die de reductie oplevert.
+// Query a lexostatus of the cell: pick the lexostatus, fill in the inputs,
+// and see the parameters the reduction yields.
 import { computed, inject, ref } from 'vue';
-import { routeTekst, waardeTekst as waarde } from '../tekst.js';
-import { veldTekst } from '../formulier.js';
+import { routeText, valueText } from '../text.js';
+import { fieldText } from '../form.js';
 import TraceKnop from '@regelrecht/frontend-shared/components/TraceKnop.vue';
 
-const props = defineProps({ lexostatussen: { type: Array, required: true } });
-// De kroniek en de lexostatussen van de cel, via de inzage van een proces.
-const api = inject('celApi');
+const props = defineProps({ lexostatuses: { type: Array, required: true } });
+// The chronicle and the lexostatuses of the cell, through the inspection of a process.
+const api = inject('cellApi');
 
-const naam = ref(props.lexostatussen[0]?.name ?? '');
-const invoer = ref({});
-const uitkomst = ref(null);
-const fout = ref('');
-const bezig = ref(false);
+const name = ref(props.lexostatuses[0]?.name ?? '');
+const input = ref({});
+const result = ref(null);
+const error = ref('');
+const busy = ref(false);
 
-const definitie = computed(() => props.lexostatussen.find((l) => l.name === naam.value) ?? null);
+const definition = computed(() => props.lexostatuses.find((l) => l.name === name.value) ?? null);
 
-function kies(e) {
-  naam.value = e.target.value;
-  invoer.value = {};
-  uitkomst.value = null;
+function choose(e) {
+  name.value = e.target.value;
+  input.value = {};
+  result.value = null;
 }
 
-
-async function opvragen() {
-  fout.value = '';
-  bezig.value = true;
+async function query() {
+  error.value = '';
+  busy.value = true;
   try {
-    // Via de engine (experiment A): vraag de trace van de engine-run mee.
-    const trace = definitie.value?.reduction?.route === 'engine' ? { engine_trace: '1' } : {};
-    uitkomst.value = await api.lexostatus(naam.value, { ...invoer.value, ...trace });
+    // Through the engine (experiment A): ask for the trace of the engine run too.
+    const trace = definition.value?.reduction?.route === 'engine' ? { engine_trace: '1' } : {};
+    result.value = await api.lexostatus(name.value, { ...input.value, ...trace });
   } catch (e) {
-    uitkomst.value = null;
-    fout.value = e.message;
+    result.value = null;
+    error.value = e.message;
   } finally {
-    bezig.value = false;
+    busy.value = false;
   }
 }
 
-// Langs welke route de cel reduceerde, als de runtime dat zegt.
-const route = computed(() => routeTekst(uitkomst.value?.reduction ?? definitie.value?.reduction));
+// Along which route the cell reduced, if the runtime says so.
+const route = computed(() => routeText(result.value?.reduction ?? definition.value?.reduction));
 
-// Een lijst-lexostatus: een regel per zaak, met de kolommen als velden.
-const lijst = computed(() => uitkomst.value?.list ?? null);
-const kolommen = computed(() => definitie.value?.columns ?? []);
+// A list lexostatus: a row per case, with the columns as fields.
+const list = computed(() => result.value?.list ?? null);
+const columns = computed(() => definition.value?.columns ?? []);
 
-const rijen = computed(() => {
-  const u = uitkomst.value;
-  if (!u) return [];
-  const uit = Object.entries(u.parameters ?? {}).map(([n, w]) => ({ naam: n, waarde: waarde(w), soort: 'parameter' }));
-  for (const [n, w] of Object.entries(u.extra_fields ?? {})) uit.push({ naam: n, waarde: waarde(w), soort: 'extra veld (niet naar de engine)' });
-  for (const n of u.not_derived ?? []) uit.push({ naam: n, waarde: '', soort: 'niet af te leiden' });
-  return uit;
+const rows = computed(() => {
+  const r = result.value;
+  if (!r) return [];
+  const out = Object.entries(r.parameters ?? {}).map(([n, v]) => ({ name: n, value: valueText(v), kind: 'parameter' }));
+  for (const [n, v] of Object.entries(r.extra_fields ?? {})) out.push({ name: n, value: valueText(v), kind: 'extra veld (niet naar de engine)' });
+  for (const n of r.not_derived ?? []) out.push({ name: n, value: '', kind: 'niet af te leiden' });
+  return out;
 });
 </script>
 
@@ -64,50 +63,50 @@ const rijen = computed(() => {
     <nldd-inline-dialog icon="info" text="Route van de reductie" :supporting-text="route"></nldd-inline-dialog>
     <nldd-spacer size="16"></nldd-spacer>
   </template>
-  <nldd-form novalidate @submit.prevent="opvragen">
+  <nldd-form novalidate @submit.prevent="query">
     <nldd-form-field label="Lexostatus">
       <nldd-dropdown accessible-label="Lexostatus">
-        <select :value="naam" @change="kies">
-          <option v-for="l in lexostatussen" :key="l.name" :value="l.name">{{ l.name }}</option>
+        <select :value="name" @change="choose">
+          <option v-for="l in lexostatuses" :key="l.name" :value="l.name">{{ l.name }}</option>
         </select>
       </nldd-dropdown>
     </nldd-form-field>
-    <nldd-form-field v-for="i in definitie?.inputs ?? []" :key="i.name" :label="i.name" :supporting-label="i.type">
+    <nldd-form-field v-for="i in definition?.inputs ?? []" :key="i.name" :label="i.name" :supporting-label="i.type">
       <nldd-text-field
-        :value="invoer[i.name] ?? ''"
+        :value="input[i.name] ?? ''"
         :accessible-label="i.name"
-        @input="invoer = { ...invoer, [i.name]: veldTekst($event) }"
+        @input="input = { ...input, [i.name]: fieldText($event) }"
       ></nldd-text-field>
     </nldd-form-field>
-    <template v-if="fout">
-      <nldd-inline-dialog variant="alert" text="De lexostatus is niet op te vragen" :supporting-text="fout"></nldd-inline-dialog>
+    <template v-if="error">
+      <nldd-inline-dialog variant="alert" text="De lexostatus is niet op te vragen" :supporting-text="error"></nldd-inline-dialog>
     </template>
     <nldd-form-actions>
-      <nldd-button variant="primary" type="submit" text="Opvragen" :loading="bezig || undefined"></nldd-button>
+      <nldd-button variant="primary" type="submit" text="Opvragen" :loading="busy || undefined"></nldd-button>
     </nldd-form-actions>
   </nldd-form>
-  <template v-if="lijst">
+  <template v-if="list">
     <nldd-spacer size="24"></nldd-spacer>
     <nldd-table
-      :columns="['minmax(280px,1.4fr)', ...kolommen.map(() => 'minmax(120px,1fr)')].join(' ')"
+      :columns="['minmax(280px,1.4fr)', ...columns.map(() => 'minmax(120px,1fr)')].join(' ')"
       accessible-label="Regels van de lijst"
       empty-text="Geen regels"
       empty-supporting-text="Een lijst gaat nooit naar de engine."
     >
       <nldd-table-row slot="header">
         <nldd-text-cell text="Zaakkenmerk"></nldd-text-cell>
-        <nldd-text-cell v-for="k in kolommen" :key="k" :text="k"></nldd-text-cell>
+        <nldd-text-cell v-for="c in columns" :key="c" :text="c"></nldd-text-cell>
       </nldd-table-row>
-      <nldd-table-row v-for="r in lijst" :key="r.root">
+      <nldd-table-row v-for="r in list" :key="r.root">
         <nldd-text-cell :text="r.root"></nldd-text-cell>
-        <nldd-text-cell v-for="k in kolommen" :key="k" :text="waarde(r.fields[k])"></nldd-text-cell>
+        <nldd-text-cell v-for="c in columns" :key="c" :text="valueText(r.fields[c])"></nldd-text-cell>
       </nldd-table-row>
     </nldd-table>
   </template>
-  <template v-else-if="uitkomst">
+  <template v-else-if="result">
     <nldd-spacer size="24"></nldd-spacer>
-    <template v-if="uitkomst.reduction?.trace_text">
-      <TraceKnop :trace-text="uitkomst.reduction.trace_text" :titel="`${naam} (${uitkomst.reduction.regulation})`" />
+    <template v-if="result.reduction?.trace_text">
+      <TraceKnop :trace-text="result.reduction.trace_text" :titel="`${name} (${result.reduction.regulation})`" />
       <nldd-spacer size="16"></nldd-spacer>
     </template>
     <nldd-table columns="minmax(200px,1fr) minmax(160px,1fr) minmax(200px,1fr)" accessible-label="Parameters van de lexostatus">
@@ -116,10 +115,10 @@ const rijen = computed(() => {
         <nldd-text-cell text="Waarde"></nldd-text-cell>
         <nldd-text-cell text="Soort"></nldd-text-cell>
       </nldd-table-row>
-      <nldd-table-row v-for="r in rijen" :key="r.naam">
-        <nldd-text-cell :text="r.naam"></nldd-text-cell>
-        <nldd-text-cell :text="r.waarde"></nldd-text-cell>
-        <nldd-text-cell :text="r.soort"></nldd-text-cell>
+      <nldd-table-row v-for="r in rows" :key="r.name">
+        <nldd-text-cell :text="r.name"></nldd-text-cell>
+        <nldd-text-cell :text="r.value"></nldd-text-cell>
+        <nldd-text-cell :text="r.kind"></nldd-text-cell>
       </nldd-table-row>
     </nldd-table>
   </template>
