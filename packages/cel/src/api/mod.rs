@@ -1,70 +1,70 @@
-//! De routes van een cel en van een proces. De runtime biedt ze aan onder
-//! `/cellen/<id>` en `/processen/<id>` (zie [`crate::runtime`]).
+//! The routes of a cell and of a process. The runtime serves them under
+//! `/cells/<id>` and `/processes/<id>` (see [`crate::runtime`]).
 //!
-//! Een cel legt vast, bewaart en reduceert ([`cel`]). Elke cel:
+//! A cell records, stores and reduces ([`cell`]). Every cell:
 //!
-//! | Route | Doet |
+//! | Route | Does |
 //! |---|---|
-//! | `GET /api/kroniek` | met het runtime- of leestoken: de grammen, elk met YAML |
-//! | `GET /api/zaken/{wortel}` | met het runtime- of leestoken: de grammen van een zaak, elk met YAML; 404 als de cel de zaak niet kent |
-//! | `GET /api/lexostatus/{naam}?<input>=...` | met het runtime- of leestoken: een reductie, met de inputs als query; `zaakstand` biedt de runtime aan voor elke cel met een zaak |
-//! | `POST /api/lexostatus/{naam}/proef` | alleen met het runtime-token: `{concept, inputs}`: bouwt het gram in het geheugen en reduceert de kroniek mét dat gram; legt niets vast |
-//! | `POST /api/grammen` | alleen met het runtime-token: `{actor, stroom, event, intake, external, verwijst?, besluit?, wortel_grammen?}`: bouwt het gram, geeft het een id, valideert het, controleert de actor en de verwijzingen en legt het vast |
-//! | `GET /api/stroom` | de stroomdefinities van de cel, met hun hash |
+//! | `GET /api/chronicle` | with the runtime or read token: the grams, each with YAML |
+//! | `GET /api/cases/{root}` | with the runtime or read token: the grams of a case, each with YAML; 404 if the cell does not know the case |
+//! | `GET /api/lexostatus/{name}?<input>=...` | with the runtime or read token: a reduction, with the inputs as query; the runtime offers `case_state` for every cell with a case |
+//! | `POST /api/lexostatus/{name}/trial` | only with the runtime token: `{draft, inputs}`: builds the gram in memory and reduces the chronicle with that gram; records nothing |
+//! | `POST /api/grams` | only with the runtime token: `{actor, stream, event, intake, external, refers_to?, decision?, root_grams?}`: builds the gram, gives it an id, validates it, checks the actor and the references and records it |
+//! | `GET /api/stream` | the stream definitions of the cell, with their hash |
 //!
-//! Een proces handelt: het informeert, concludeert en laat een cel
-//! vastleggen ([`proces`]). Elk proces:
+//! A process acts: it informs, concludes and has a cell record
+//! ([`process`]). Every process:
 //!
-//! | Route | Doet |
+//! | Route | Does |
 //! |---|---|
-//! | `GET /api/voorbeelden` | standaardgegevens per handeling (`voorbeelden` in `proces.yaml`), ook zonder login |
+//! | `GET /api/examples` | default data per action (`examples` in `process.yaml`), also without login |
 //!
-//! Een proces met rollen heeft de routes van zijn kanalen ([`sessie`]); elk
-//! kanaal is nagebootst en staat in `kanalen` in `proces.yaml`:
+//! A process with roles has the routes of its channels ([`session`]); every
+//! channel is simulated and is listed under `channels` in `process.yaml`:
 //!
-//! | Route | Doet |
+//! | Route | Does |
 //! |---|---|
-//! | `POST /api/kanalen/{kanaal}/login` | de velden van het kanaal (en `rol` als er langs het kanaal meer dan een rol inlogt) naar een sessie |
-//! | `GET /api/kanalen/{kanaal}/sessie` | wie langs dit kanaal is ingelogd |
-//! | `POST /api/kanalen/{kanaal}/logout` | sessie beeindigen |
-//! | `GET /api/sessie` | wie er is ingelogd, langs welk kanaal ook |
+//! | `POST /api/channels/{channel}/login` | the fields of the channel (and `role` if more than one role logs in through the channel) to a session |
+//! | `GET /api/channels/{channel}/session` | who is logged in through this channel |
+//! | `POST /api/channels/{channel}/logout` | end the session |
+//! | `GET /api/session` | who is logged in, through any channel |
 //!
-//! Elke andere route hoort bij een routegroep; een rol noemt de groepen die
-//! ze mag gebruiken (`rollen.<rol>.routes`). Een proces met een portaal, voor
-//! een rol met routes `portaal` ([`portaal`]):
+//! Every other route belongs to a route group; a role names the groups it
+//! may use (`roles.<role>.routes`). A process with a portal, for a role with
+//! routes `portal` ([`portal`]):
 //!
-//! | Route | Doet |
+//! | Route | Does |
 //! |---|---|
-//! | `GET /api/formulier` | de velden van het aanvraagformulier, uit de stroom van de cel |
-//! | `POST /api/aanvraag/toets` | proefreductie in de cel, synthese, synthese per regel, engine |
-//! | `POST /api/aanvraag` | de cel legt het gram vast |
-//! | `GET /api/mogelijkheden` | wat het portaal aanbiedt volgens het beleid, per tijdvak, met trace |
+//! | `GET /api/form` | the fields of the application form, from the stream of the cell |
+//! | `POST /api/application/assessment` | trial reduction in the cell, synthesis, synthesis per row, engine |
+//! | `POST /api/application` | the cell records the gram |
+//! | `GET /api/possibilities` | what the portal offers according to the policy, per window, with trace |
 //!
-//! Met een rol met routes `loket` ([`loket`]):
+//! With a role with routes `counter` ([`counter`]):
 //!
-//! | Route | Doet |
+//! | Route | Does |
 //! |---|---|
-//! | `POST /api/loket/aanvraag` | `{aanvrager, ontvangen_op, external}`: een aanvraag die langs een andere weg binnenkwam, met de dag van ontvangst |
+//! | `POST /api/counter/application` | `{applicant, received_at, external}`: an application that came in another way, with the day of receipt |
 //!
-//! En met een `behandeling`, voor een rol met routes `behandeling`
-//! ([`behandeling`]):
+//! And with a `handling`, for a role with routes `handling`
+//! ([`handling`]):
 //!
-//! | Route | Doet |
+//! | Route | Does |
 //! |---|---|
-//! | `GET /api/werkvoorraad` | de lijst-lexostatus van de werkvoorraad, uit de cel |
-//! | `GET /api/inzage/{cel}/kroniek` | de kroniek van een cel die het proces leest ([`inzage`]) |
-//! | `GET /api/inzage/{cel}/lexostatus/{naam}?...` | een lexostatus van zo'n cel |
-//! | `GET /api/zaken/{wortel}` | de grammen van de zaak, de procedure, de rechtsbescherming, en per handeling haar formulier, of zij kan, en een proef zonder formulier |
-//! | `POST /api/zaken/{wortel}/handelingen/{naam}/proef` | `{formulier}` naar een handeling op proef; niets wordt vastgelegd |
-//! | `POST /api/zaken/{wortel}/handelingen/{naam}` | `{formulier, gebeurd?}`: de handeling nemen, of een gebeurd feit melden; de cel legt haar vast |
+//! | `GET /api/worklist` | the list lexostatus of the worklist, from the cell |
+//! | `GET /api/inspection/{cell}/chronicle` | the chronicle of a cell the process reads ([`inspection`]) |
+//! | `GET /api/inspection/{cell}/lexostatus/{name}?...` | a lexostatus of such a cell |
+//! | `GET /api/cases/{root}` | the grams of the case, the procedure, the legal protection, and per action its form, whether it can be taken, and a trial without form |
+//! | `POST /api/cases/{root}/actions/{name}/trial` | `{form}` to an action on trial; nothing is recorded |
+//! | `POST /api/cases/{root}/actions/{name}` | `{form, happened?}`: take the action, or report a fact that happened; the cell records it |
 //!
-//! Tussen proces en cel is geen beveiligingscontext. Vastleggen en op proef
-//! reduceren mag alleen een proces van deze runtime: het interne transport
-//! stuurt het runtime-token mee ([`crate::transport::RuntimeToken`]); zonder
-//! token 401, met een ander 403. Lezen (kroniek, zaak, lexostatus) vraagt
-//! datzelfde token of het leestoken dat runtimes delen die elkaar mogen
-//! lezen (`CEL_LEES_TOKEN`), want een gram draagt de identiteit en de
-//! intake van wie indiende. Alleen de stroomdefinities zijn open.
+//! There is no security context between process and cell. Only a process of
+//! this runtime may record and reduce on trial: the internal transport
+//! sends the runtime token along ([`crate::transport::RuntimeToken`]); without
+//! a token 401, with a different one 403. Reading (chronicle, case, lexostatus)
+//! asks for that same token or the read token shared by runtimes that may
+//! read each other (`CELL_READ_TOKEN`), because a gram carries the identity
+//! and the intake of whoever submitted. Only the stream definitions are open.
 
 use std::sync::Arc;
 
@@ -74,24 +74,24 @@ use axum::Json;
 use chrono::{DateTime, FixedOffset};
 use serde_json::json;
 
-use crate::transport::TransportFout;
+use crate::transport::TransportError;
 
-pub mod behandeling;
-pub mod cel;
-pub mod inzage;
-pub mod loket;
-pub mod portaal;
-pub mod proces;
-pub mod sessie;
+pub mod cell;
+pub mod counter;
+pub mod handling;
+pub mod inspection;
+pub mod portal;
+pub mod process;
+pub mod session;
 
-pub use cel::{als_yaml, cel_beschrijving, cel_router, CelState};
-pub use proces::{proces_beschrijving, proces_router, HandelingState, ProcesState};
+pub use cell::{as_yaml, cell_description, cell_router, CellState};
+pub use process::{process_description, process_router, ActionState, ProcessState};
 
-/// Levert het moment waarop iets tot feit wordt gemaakt.
-pub type Klok = Arc<dyn Fn() -> DateTime<FixedOffset> + Send + Sync>;
+/// Supplies the moment at which something is made a fact.
+pub type Clock = Arc<dyn Fn() -> DateTime<FixedOffset> + Send + Sync>;
 
-/// De klok van de runtime: nu, in Nederlandse tijd.
-pub fn systeemklok() -> Klok {
+/// The clock of the runtime: now, in Dutch time.
+pub fn system_clock() -> Clock {
     Arc::new(|| {
         chrono::Utc::now()
             .with_timezone(&chrono_tz::Europe::Amsterdam)
@@ -99,7 +99,7 @@ pub fn systeemklok() -> Klok {
     })
 }
 
-/// Een fout als `{"fout": "..."}` met een status.
+/// An error as `{"error": "..."}` with a status.
 pub struct Error(StatusCode, String);
 
 impl IntoResponse for Error {
@@ -108,28 +108,28 @@ impl IntoResponse for Error {
     }
 }
 
-fn error(status: StatusCode, tekst: impl Into<String>) -> Error {
-    Error(status, tekst.into())
+fn error(status: StatusCode, text: impl Into<String>) -> Error {
+    Error(status, text.into())
 }
 
-/// Een fout van de runtime zelf (500).
-fn intern(tekst: impl Into<String>) -> Error {
-    error(StatusCode::INTERNAL_SERVER_ERROR, tekst)
+/// An error of the runtime itself (500).
+fn internal(text: impl Into<String>) -> Error {
+    error(StatusCode::INTERNAL_SERVER_ERROR, text)
 }
 
-/// Een fout van de cel als antwoord van het proces: dezelfde status en
-/// dezelfde tekst. Een cel die niet antwoordt, of onleesbaar, is een fout van
-/// de runtime.
-fn van_cel(f: TransportFout) -> Error {
+/// An error of the cell as the process's response: the same status and
+/// the same text. A cell that does not respond, or responds unreadably, is an
+/// error of the runtime.
+fn of_cell(f: TransportError) -> Error {
     match f {
-        TransportFout::Antwoord {
+        TransportError::Response {
             status,
-            error: tekst,
+            error: text,
         } => Error(
             StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-            tekst,
+            text,
         ),
-        TransportFout::Unreachable(r) => intern(format!("de cel is onbereikbaar: {r}")),
-        TransportFout::Json(r) => intern(format!("de cel antwoordde onleesbaar: {r}")),
+        TransportError::Unreachable(r) => internal(format!("the cell is unreachable: {r}")),
+        TransportError::Json(r) => internal(format!("the cell responded unreadably: {r}")),
     }
 }

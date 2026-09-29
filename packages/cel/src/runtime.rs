@@ -1,14 +1,14 @@
-//! De runtime: alle cellen onder `CELLS_PATH` en alle processen onder
-//! `PROCESSES_PATH`, in een programma.
+//! The runtime: all cells under `CELLS_PATH` and all processes under
+//! `PROCESSES_PATH`, in one program.
 //!
-//! Elke cel krijgt haar eigen kroniek (`DATA_DIR/<id>/`) en haar eigen
-//! routes (`/cellen/<id>/api/...`); elk proces zijn eigen routes
-//! (`/processen/<id>/api/...`). `GET /api/cellen` en `GET /api/processen`
-//! zeggen welke er zijn. Een cel ziet alleen haar eigen grammen. Een proces
-//! ziet er geen: het bevraagt cellen via een
-//! [`Transport`](crate::transport::Transport), intern als de cel in deze
-//! runtime draait en over HTTP als de synthese-bron een url heeft. Ook de cel
-//! waarin het proces vastlegt, bevraagt het zo.
+//! Every cell gets its own chronicle (`DATA_DIR/<id>/`) and its own
+//! routes (`/cells/<id>/api/...`); every process its own routes
+//! (`/processes/<id>/api/...`). `GET /api/cells` and `GET /api/processes`
+//! say which ones exist. A cell sees only its own grams. A process
+//! sees none: it queries cells through a
+//! [`Transport`](crate::transport::Transport), internally if the cell runs in
+//! this runtime and over HTTP if the synthesis source has a url. It queries
+//! the cell in which the process records the same way.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -18,273 +18,269 @@ use axum::routing::get;
 use axum::{Json, Router};
 use serde_json::Value;
 
-use crate::api::{self, CelState, HandelingState, Klok, ProcesState};
-use crate::cel::{met_cel, Cell};
-use crate::config::{celmappen, procesmappen, Config, Reductiemodus, RijenDefinitie};
-use crate::kroniek::Kroniek;
-use crate::proces::{met_proces, Proces};
-use crate::sessie::Sessies;
-use crate::synthese::{self, Bron, TIJDSLIMIET};
-use crate::transport::{Http, Intern, LeesToken, RuntimeToken, Transport};
-use crate::{handeling, lexostatus_engine, reductie, regelingen, rijen, startstand};
+use crate::api::{self, ActionState, CellState, Clock, ProcessState};
+use crate::cell::{with_cell, Cell};
+use crate::chronicle::Chronicle;
+use crate::config::{cell_dirs, process_dirs, Config, ReductionMode, RowsDefinition};
+use crate::process::{with_process, Process};
+use crate::session::Sessions;
+use crate::synthesis::{self, Source, TIME_LIMIT};
+use crate::transport::{Http, Internal, ReadToken, RuntimeToken, Transport};
+use crate::{action, initial_state, lexostatus_engine, reduction, regulations, rows};
 
-/// Een geladen runtime: de cellen, de processen en de router over allemaal.
+/// A loaded runtime: the cells, the processes and the router over all of them.
 pub struct Runtime {
-    pub cells: Vec<CelState>,
-    pub processen: Vec<ProcesState>,
+    pub cells: Vec<CellState>,
+    pub processes: Vec<ProcessState>,
     pub router: Router,
-    /// Het token waarmee de processen van deze runtime vastleggen; bij elke
-    /// start nieuw (zie [`RuntimeToken`]).
+    /// The token with which the processes of this runtime record; new at
+    /// every start (see [`RuntimeToken`]).
     pub runtime_token: RuntimeToken,
 }
 
 impl Runtime {
-    /// Laad het corpus, elke cel en elk proces, controleer ze, open de
-    /// kronieken (met de startstand als een kroniek leeg is) en bouw de
-    /// router. Faalt een cel of een proces, dan start de runtime niet; elke
-    /// melding noemt de cel of het proces.
-    pub fn laad(config: &Config, klok: Klok) -> Result<Self, Vec<String>> {
-        let mut corpus = regelingen::laad(&config.regulation_path)?;
-        // De registers die het beleid bevraagt, als bron in het corpus
-        // (notitie bron en gram-id); hun kronieken komen erbij als de cellen
-        // ze openen.
-        let registers = crate::register::laad(
+    /// Load the corpus, every cell and every process, check them, open the
+    /// chronicles (with the initial state if a chronicle is empty) and build
+    /// the router. If a cell or a process fails, the runtime does not start;
+    /// every message names the cell or the process.
+    pub fn load(config: &Config, clock: Clock) -> Result<Self, Vec<String>> {
+        let mut corpus = regulations::load(&config.regulation_path)?;
+        // The registers the policy queries, as a source in the corpus
+        // (note on source and gram id); their chronicles are added when the
+        // cells open them.
+        let registers = crate::register::load(
             config.registers.as_deref(),
             &mut corpus.service,
-            &crate::datum::reference_date(&klok()),
+            &crate::date::reference_date(&clock()),
         )?;
         let service = Arc::new(corpus.service);
-        let geladen = Arc::new(corpus.regulations);
-        let mappen = celmappen(&config.cells_path).map_err(|e| vec![e])?;
-        let mut geladen_cellen: Vec<Cell> = Vec::new();
-        let mut fouten = Vec::new();
-        for map in &mappen {
-            match Cell::laad(map, service.clone()) {
-                Ok(c) => geladen_cellen.push(c),
-                Err(f) => fouten.extend(f),
+        let loaded = Arc::new(corpus.regulations);
+        let dirs = cell_dirs(&config.cells_path).map_err(|e| vec![e])?;
+        let mut loaded_cells: Vec<Cell> = Vec::new();
+        let mut errors = Vec::new();
+        for map in &dirs {
+            match Cell::load(map, service.clone()) {
+                Ok(c) => loaded_cells.push(c),
+                Err(f) => errors.extend(f),
             }
         }
-        // De engine-route (experiment A): elke lexostatus van elke cel heeft
-        // een koppeling, of de runtime start niet.
-        if let (
-            Reductiemodus::Engine {
-                koppeling,
-                vergelijk,
-            },
-            true,
-        ) = (&config.reduction, fouten.is_empty())
+        // The engine route (experiment A): every lexostatus of every cell has
+        // a binding, or the runtime does not start.
+        if let (ReductionMode::Engine { binding, compare }, true) =
+            (&config.reduction, errors.is_empty())
         {
-            let per_cel: Vec<(&str, &reductie::Lexostatussen)> = geladen_cellen
+            let per_cell: Vec<(&str, &reduction::Lexostatuses)> = loaded_cells
                 .iter()
                 .map(|c| (c.id(), &c.lexostatuses))
                 .collect();
-            match lexostatus_engine::laad_koppeling(koppeling, *vergelijk, &per_cel, &service) {
+            match lexostatus_engine::load_binding(binding, *compare, &per_cell, &service) {
                 Ok(mut routes) => {
-                    for c in &mut geladen_cellen {
+                    for c in &mut loaded_cells {
                         c.route = routes.remove(c.id()).map(Arc::new);
                     }
                 }
-                Err(f) => fouten.extend(f),
+                Err(f) => errors.extend(f),
             }
         }
-        let per_kroniek: Vec<(&str, Vec<&str>)> = geladen_cellen
+        let per_chronicle: Vec<(&str, Vec<&str>)> = loaded_cells
             .iter()
             .map(|c| (c.id(), c.chronicles()))
             .collect();
-        fouten.extend(registers.controleer(&per_kroniek));
-        let cells: Vec<Arc<Cell>> = geladen_cellen.into_iter().map(Arc::new).collect();
+        errors.extend(registers.check(&per_chronicle));
+        let cells: Vec<Arc<Cell>> = loaded_cells.into_iter().map(Arc::new).collect();
         let mut per_id: BTreeMap<String, Arc<Cell>> = BTreeMap::new();
         for c in &cells {
             if per_id.insert(c.id().to_string(), c.clone()).is_some() {
-                fouten.push(format!(
-                    "cel '{}': de id staat er meer dan een keer ({})",
+                errors.push(format!(
+                    "cell '{}': the id occurs more than once ({})",
                     c.id(),
-                    c.map.display()
+                    c.dir.display()
                 ));
             }
         }
 
-        let procesmappen = match &config.processes_path {
-            Some(p) => procesmappen(p).map_err(|e| vec![e])?,
+        let process_dirs = match &config.processes_path {
+            Some(p) => process_dirs(p).map_err(|e| vec![e])?,
             None => Vec::new(),
         };
-        let mut processen: Vec<Proces> = Vec::new();
-        for map in &procesmappen {
-            match Proces::laad(map, &per_id, service.clone()) {
-                Ok(p) => processen.push(p),
-                Err(f) => fouten.extend(f),
+        let mut processes: Vec<Process> = Vec::new();
+        for map in &process_dirs {
+            match Process::load(map, &per_id, service.clone()) {
+                Ok(p) => processes.push(p),
+                Err(f) => errors.extend(f),
             }
         }
         let mut ids = BTreeSet::new();
-        for p in &mut processen {
+        for p in &mut processes {
             if !ids.insert(p.id().to_string()) {
-                fouten.push(format!(
-                    "proces '{}': de id staat er meer dan een keer ({})",
+                errors.push(format!(
+                    "process '{}': the id occurs more than once ({})",
                     p.id(),
-                    p.map.display()
+                    p.dir.display()
                 ));
             }
-            // Eerst de herkomst: daaruit volgt het formulier van elke
-            // handeling. Haar fouten tellen pas als synthese en handelingen
-            // kloppen.
-            let provenance = p.controleer_herkomst(&per_id);
-            let mut eigen = synthese::controleer(p);
-            eigen.extend(handeling::controleer(p));
-            if eigen.is_empty() {
-                eigen = provenance;
+            // Provenance first: the form of every action follows from
+            // it. Its errors only count once synthesis and actions are
+            // correct.
+            let provenance = p.check_provenance(&per_id);
+            let mut own = synthesis::check(p);
+            own.extend(action::check(p));
+            if own.is_empty() {
+                own = provenance;
             }
-            fouten.extend(met_proces(p.id(), eigen));
+            errors.extend(with_process(p.id(), own));
         }
-        if !fouten.is_empty() {
-            return Err(fouten);
+        if !errors.is_empty() {
+            return Err(errors);
         }
 
-        let runtime_token = RuntimeToken::nieuw();
-        let lees_token = config.lees_token.as_deref().map(LeesToken::uit);
-        let mut celstaten = Vec::new();
+        let runtime_token = RuntimeToken::generate();
+        let read_token = config.read_token.as_deref().map(ReadToken::out);
+        let mut cell_states = Vec::new();
         for cell in cells {
             let chronicle = Arc::new(
-                open_kroniek(&config.data_dir, &cell, &klok)
-                    .map_err(|f| met_cel(cell.id(), vec![f]))?,
+                open_chronicle(&config.data_dir, &cell, &clock)
+                    .map_err(|f| with_cell(cell.id(), vec![f]))?,
             );
             registers.open(cell.id(), &chronicle);
-            celstaten.push(CelState {
+            cell_states.push(CellState {
                 cell,
                 chronicle,
-                klok: klok.clone(),
+                clock: clock.clone(),
                 runtime_token: runtime_token.clone(),
-                lees_token: lees_token.clone(),
+                read_token: read_token.clone(),
             });
         }
 
-        let slot: Arc<OnceLock<Router>> = Arc::new(OnceLock::new());
-        let intern: Arc<dyn Transport> = Arc::new(Intern::new(slot.clone(), runtime_token.clone()));
-        let mut processtaten = Vec::new();
-        for proces in processen {
-            let id = proces.id().to_string();
+        let lock: Arc<OnceLock<Router>> = Arc::new(OnceLock::new());
+        let internal: Arc<dyn Transport> =
+            Arc::new(Internal::new(lock.clone(), runtime_token.clone()));
+        let mut process_states = Vec::new();
+        for process in processes {
+            let id = process.id().to_string();
             let transport = |url: &Option<String>| -> Result<Arc<dyn Transport>, Vec<String>> {
                 Ok(match url {
                     Some(url) => Arc::new(
-                        Http::new(url, TIJDSLIMIET)
-                            .map_err(|e| met_proces(&id, vec![e]))?
-                            .met_lees_token(lees_token.clone().filter(|_| {
-                                // Alleen een runtime die het token deelt,
-                                // krijgt het: het geeft lezen in deze runtime.
+                        Http::new(url, TIME_LIMIT)
+                            .map_err(|e| with_process(&id, vec![e]))?
+                            .with_read_token(read_token.clone().filter(|_| {
+                                // Only a runtime that shares the token gets
+                                // it: it grants reading in this runtime.
                                 config
-                                    .lees_token_bronnen
+                                    .read_token_sources
                                     .iter()
                                     .any(|b| b == url.trim_end_matches('/'))
                             })),
                     ),
-                    None => intern.clone(),
+                    None => internal.clone(),
                 })
             };
             let mut sources = Vec::new();
-            for b in proces.definitie.andere_bronnen() {
-                sources.push(Bron {
-                    definitie: b.clone(),
-                    // Het eigen beleid van de afnemer rekent de engine uit
-                    // (notitie bron en gram-id); een cel vraagt het proces.
+            for b in process.definition.other_sources() {
+                sources.push(Source {
+                    definition: b.clone(),
+                    // The engine computes the consumer's own policy (note on
+                    // source and gram id); the process queries a cell.
                     transport: match &b.regulation {
-                        Some(_) => Arc::new(synthese::Beleidsbron::nieuw(service.clone(), b)),
+                        Some(_) => Arc::new(synthesis::PolicySource::new(service.clone(), b)),
                         None => transport(&b.url)?,
                     },
                 });
             }
-            let per_regel = |defs: &[RijenDefinitie]| -> Result<Vec<rijen::Rijen>, Vec<String>> {
-                let mut uit = Vec::new();
+            let per_row = |defs: &[RowsDefinition]| -> Result<Vec<rows::Rows>, Vec<String>> {
+                let mut out = Vec::new();
                 for r in defs {
-                    let mut rijbronnen = Vec::new();
+                    let mut row_sources = Vec::new();
                     for b in &r.sources {
-                        rijbronnen.push(rijen::Bron {
-                            definitie: b.clone(),
+                        row_sources.push(rows::Source {
+                            definition: b.clone(),
                             transport: transport(&b.url)?,
                         });
                     }
-                    uit.push(rijen::Rijen {
-                        definitie: r.clone(),
-                        sources: rijbronnen,
+                    out.push(rows::Rows {
+                        definition: r.clone(),
+                        sources: row_sources,
                     });
                 }
-                Ok(uit)
+                Ok(out)
             };
-            // Per handeling de bronnen die haar artikel vraagt en haar
-            // synthese per regel.
+            // Per action the sources its article asks for and its
+            // synthesis per row.
             let mut actions = Vec::new();
-            for h in proces.actions() {
-                let pick = handeling::bronnen_voor(&proces, h);
-                actions.push(HandelingState {
+            for h in process.actions() {
+                let pick = action::sources_for(&process, h);
+                actions.push(ActionState {
                     sources: pick.iter().map(|i| sources[*i].clone()).collect(),
-                    rows: per_regel(&h.rows)?,
+                    rows: per_row(&h.rows)?,
                 });
             }
-            let toets_rijen = per_regel(proces.toets_rijen())?;
-            processtaten.push(ProcesState {
-                proces: Arc::new(proces),
-                // De cel waarin het proces vastlegt, draait in deze runtime.
-                cell: intern.clone(),
-                sessies: Arc::new(Sessies::default()),
-                klok: klok.clone(),
+            let assessment_rows = per_row(process.assessment_rows())?;
+            process_states.push(ProcessState {
+                process: Arc::new(process),
+                // The cell in which the process records runs in this runtime.
+                cell: internal.clone(),
+                sessions: Arc::new(Sessions::default()),
+                clock: clock.clone(),
                 sources: Arc::new(sources),
                 actions: Arc::new(actions),
-                toets_rijen: Arc::new(toets_rijen),
-                regulations: geladen.clone(),
+                assessment_rows: Arc::new(assessment_rows),
+                regulations: loaded.clone(),
             });
         }
-        let router = bouw_router(&celstaten, &processtaten);
-        // Pas nu bestaat de router, en daarmee het interne transport.
-        let _ = slot.set(router.clone());
+        let router = build_router(&cell_states, &process_states);
+        // Only now does the router exist, and with it the internal transport.
+        let _ = lock.set(router.clone());
         Ok(Self {
-            cells: celstaten,
-            processen: processtaten,
+            cells: cell_states,
+            processes: process_states,
             router,
             runtime_token,
         })
     }
 
-    /// De waarschuwingen over synthese-bronnen: onbereikbaar, of zonder de
-    /// verwachte lexostatus of parameters. Geen reden om niet te starten.
+    /// The warnings about synthesis sources: unreachable, or without the
+    /// expected lexostatus or parameters. No reason not to start.
     pub async fn warnings(&self) -> Vec<String> {
-        let mut uit = Vec::new();
-        for s in &self.processen {
-            uit.extend(met_proces(s.proces.id(), s.proces.warnings.clone()));
+        let mut out = Vec::new();
+        for s in &self.processes {
+            out.extend(with_process(s.process.id(), s.process.warnings.clone()));
             for b in s.sources.iter() {
-                // Een intern transport naar een cel die hier niet draait.
-                if b.definitie.url.is_none()
-                    && b.definitie.regulation.is_none()
-                    && !self.cells.iter().any(|c| c.cell.id() == b.definitie.cell)
+                // An internal transport to a cell that does not run here.
+                if b.definition.url.is_none()
+                    && b.definition.regulation.is_none()
+                    && !self.cells.iter().any(|c| c.cell.id() == b.definition.cell)
                 {
-                    uit.push(format!(
-                        "proces '{}': synthese-bron '{}' draait niet in deze runtime en heeft geen url; de toets meldt haar onbereikbaar",
-                        s.proces.id(),
-                        b.definitie.cell
+                    out.push(format!(
+                        "process '{}': synthesis source '{}' does not run in this runtime and has no url; the assessment reports it unreachable",
+                        s.process.id(),
+                        b.definition.cell
                     ));
                 }
             }
-            uit.extend(synthese::warnings(s.proces.id(), &s.sources).await);
+            out.extend(synthesis::warnings(s.process.id(), &s.sources).await);
         }
-        uit.dedup();
-        uit
+        out.dedup();
+        out
     }
 }
 
-/// Open de kroniek van een cel. Is elke kroniek van de cel leeg, dan komt de
-/// startstand erin, met de laadtijd als `vastgelegd_op`.
-fn open_kroniek(data_dir: &Path, cell: &Cell, klok: &Klok) -> Result<Kroniek, String> {
-    let chronicle = Kroniek::open(&data_dir.join(cell.id()), &cell.chronicles())?;
+/// Open the chronicle of a cell. If every chronicle of the cell is empty, the
+/// initial state goes in, with the load time as `recorded_at`.
+fn open_chronicle(data_dir: &Path, cell: &Cell, clock: &Clock) -> Result<Chronicle, String> {
+    let chronicle = Chronicle::open(&data_dir.join(cell.id()), &cell.chronicles())?;
     if !cell.initial_state.is_empty()
-        && chronicle.zet_startstand(
+        && chronicle.set_initial_state(
             &cell.chronicles(),
-            &startstand::geplaatst(&cell.initial_state, &klok())?,
+            &initial_state::placed(&cell.initial_state, &clock())?,
         )?
     {
-        tracing::info!(cell = %cell.id(), grams = cell.initial_state.len(), "startstand in lege kroniek gezet");
+        tracing::info!(cell = %cell.id(), grams = cell.initial_state.len(), "initial state placed in empty chronicle");
     }
     Ok(chronicle)
 }
 
-/// Een lijst als route.
-fn lijst_route(list: Vec<Value>) -> axum::routing::MethodRouter {
+/// A list as a route.
+fn list_route(list: Vec<Value>) -> axum::routing::MethodRouter {
     let list = Arc::new(Value::Array(list));
     get(move || {
         let list = list.clone();
@@ -292,28 +288,28 @@ fn lijst_route(list: Vec<Value>) -> axum::routing::MethodRouter {
     })
 }
 
-/// `GET /api/cellen`, `GET /api/processen`, per cel haar routes onder
-/// `/cellen/<id>` en per proces zijn routes onder `/processen/<id>`.
-fn bouw_router(cells: &[CelState], processen: &[ProcesState]) -> Router {
+/// `GET /api/cells`, `GET /api/processes`, per cell its routes under
+/// `/cells/<id>` and per process its routes under `/processes/<id>`.
+fn build_router(cells: &[CellState], processes: &[ProcessState]) -> Router {
     let mut router = Router::new()
         .route(
             "/api/cells",
-            lijst_route(cells.iter().map(api::cel_beschrijving).collect()),
+            list_route(cells.iter().map(api::cell_description).collect()),
         )
         .route(
             "/api/processes",
-            lijst_route(processen.iter().map(api::proces_beschrijving).collect()),
+            list_route(processes.iter().map(api::process_description).collect()),
         );
     for s in cells {
         router = router.nest(
             &format!("/cells/{}", s.cell.id()),
-            api::cel_router(s.clone()),
+            api::cell_router(s.clone()),
         );
     }
-    for s in processen {
+    for s in processes {
         router = router.nest(
-            &format!("/processes/{}", s.proces.id()),
-            api::proces_router(s.clone()),
+            &format!("/processes/{}", s.process.id()),
+            api::process_router(s.clone()),
         );
     }
     router

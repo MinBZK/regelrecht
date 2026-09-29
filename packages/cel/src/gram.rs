@@ -1,30 +1,30 @@
-//! Het gram: een feit zoals een cel het vastlegt
-//! (`schema/chronolex/v0.2.0/gram.json`), met wat een besluit erbij draagt.
+//! The gram: a fact as a cell records it
+//! (`schema/chronolex/v0.2.0/gram.json`), with what a decision carries along.
 //!
-//! Een gram heeft een eigen id (een uuid v7, dat de cel bij het vastleggen
-//! geeft) en verwijst met een naam uit de wettekst naar het gram waar het bij
-//! hoort (`verwijst`: een besluit `op_aanvraag`, een betaling naar het
-//! `besluit`). Er is geen zaak- of besluitkenmerk: een groep volgt uit de
-//! verwijzingen. De wortel van een gram (het gram zonder verwijzing waar het
-//! via zijn verwijzingen op uitkomt, zoals de aanvraag) houdt de kroniek bij in
-//! een index; zij staat niet in het gram.
-//! Hoe een gram uit een stroom en een indiening ontstaat, staat in
-//! [`crate::stroom`].
+//! A gram has its own id (a uuid v7, which the cell assigns when recording)
+//! and refers, with a name from the law text, to the gram it belongs to
+//! (`refers_to`: a decision `op_aanvraag`, a payment to the `besluit`). There
+//! is no case or decision identifier: a group follows from the references.
+//! The root of a gram (the gram without a reference that it leads to through
+//! its references, such as the application) is kept by the chronicle in an
+//! index; it is not in the gram.
+//! How a gram arises from a stream and a submission is described in
+//! [`crate::stream`].
 //!
-//! Een gram heeft twee tijden (paper P:46: "op 3 april heeft de ambtenaar
+//! A gram has two times (paper P:46: "op 3 april heeft de ambtenaar
 //! vastgesteld dat ... per 2 april"):
 //!
-//! - `op_moment`: wanneer het feit rechtens geldt of plaatsvond. Standaard is
-//!   dat het moment van vastleggen; een event kan het aan een ingediende
-//!   waarde binden, met grondslag (`op_moment_grondslag`), zoals de dag van
-//!   ontvangst van een aanvraag die langs een andere weg binnenkwam (Awb 4:1,
-//!   4:13). In een startstand is het met de hand gezet (de datum van een
-//!   besluit, of van een vaststelling).
-//! - `vastgelegd_op`: wanneer de cel het vastlegde, altijd haar eigen klok;
-//!   bij een startstand de laadtijd.
+//! - `effective_at`: when the fact legally holds or took place. By default
+//!   that is the moment of recording; an event can bind it to a submitted
+//!   value, with a legal basis (`effective_at_legal_basis`), such as the day of
+//!   receipt of an application that came in by another route (Awb 4:1,
+//!   4:13). In an initial state it is set by hand (the date of a decision, or
+//!   of a determination).
+//! - `recorded_at`: when the cell recorded it, always its own clock; for an
+//!   initial state, the load time.
 //!
-//! Een kroniek van voor chronolex v0.2.0 (zonder id, met zaak- en
-//! besluitkenmerk) wordt niet omgezet: de cel weigert haar te laden.
+//! A chronicle from before chronolex v0.2.0 (without id, with case and
+//! decision identifiers) is not converted: the cell refuses to load it.
 
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
@@ -34,15 +34,15 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
-use crate::datum;
-use crate::schema::{self, Soort};
+use crate::date;
+use crate::schema::{self, Kind};
 
-/// Het vastgelegde gram (`schema/chronolex/v0.2.0/gram.json`).
+/// The recorded gram (`schema/chronolex/v0.2.0/gram.json`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Gram {
     pub kind: String,
-    /// Het eigen id: een uuid v7, dat de cel bij het vastleggen geeft (onder
-    /// hetzelfde slot als `vastgelegd_op`).
+    /// Its own id: a uuid v7, which the cell assigns when recording (under
+    /// the same lock as `recorded_at`).
     pub id: String,
     #[serde(rename = "type")]
     pub type_: String,
@@ -54,223 +54,224 @@ pub struct Gram {
     pub chronicle: String,
     pub recording_actor: String,
     pub legal_basis: Vec<String>,
-    /// Alleen bij een besluit dat een proces nam: het rechtskarakter en de
-    /// soort beslissing uit `produces` van het artikel (RFC-008).
+    /// Only for a decision that a process took: the legal character and the
+    /// decision type from `produces` of the article (RFC-008).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub legal_character: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub decision_type: Option<String>,
-    /// De regeling waarop het besluit rust, met de versie ervan.
+    /// The regulation the decision rests on, with its version.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub regulation: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub regulation_valid_from: Option<String>,
-    /// Het bevoegd gezag volgens de wet. Ontbreekt het in de regeling, dan
-    /// staat het er niet: de cel verzint geen gezag.
+    /// The competent authority according to the law. If the regulation lacks
+    /// it, it is not there: the cell does not invent an authority.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub competent_authority: Option<String>,
-    /// Alleen bij een besluit dat een proces nam: wie handelde (zie
-    /// [`HandelendeActor`]). Naast `recording_actor` (wie vastlegt) en
-    /// `competent_authority` (wie de wet bevoegd maakt) de derde as van
+    /// Only for a decision that a process took: who acted (see
+    /// [`ActingActor`]). Next to `recording_actor` (who records) and
+    /// `competent_authority` (whom the law makes competent), the third axis of
     /// RFC-022 §2.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub acting_actor: Option<HandelendeActor>,
-    /// Wanneer het feit rechtens geldt of plaatsvond.
+    pub acting_actor: Option<ActingActor>,
+    /// When the fact legally holds or took place.
     pub effective_at: String,
-    /// Alleen als het event `op_moment` aan een ingediende waarde bond en die
-    /// waarde er was: de grondslag daarvan, uit de stroom.
+    /// Only if the event bound `effective_at` to a submitted value and that
+    /// value was present: its legal basis, from the stream.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effective_at_legal_basis: Option<Vec<String>>,
-    /// Wanneer de cel het gram vastlegde: haar eigen klok.
+    /// When the cell recorded the gram: its own clock.
     pub recorded_at: String,
-    /// Naar welke grammen dit gram verwijst, per naam uit de wettekst
-    /// (`op_aanvraag`, `besluit`, `wijzigt`, ...): het id van dat gram.
+    /// Which grams this gram refers to, per name from the law text
+    /// (`op_aanvraag`, `besluit`, `amends`, ...): the id of that gram.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub refers_to: BTreeMap<String, String>,
-    pub stream: StroomVerwijzing,
-    /// Alleen als de cel het gram niet zelf vaststelde: `startstand` is bij
-    /// het starten in een lege kroniek geplaatst (zie [`crate::startstand`]).
+    pub stream: StreamReference,
+    /// Only if the cell did not establish the gram itself: `initial_state` was
+    /// placed into an empty chronicle at startup (see [`crate::initial_state`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provenance: Option<String>,
     pub fields: Map<String, Value>,
-    /// Bij elke handeling die de engine uitrekende (een besluit, een vervolg
-    /// of een feit met uitkomsten): elke parameter die meedeed, met haar
-    /// waarde en haar herkomst (RFC-013 `accepted_values`).
+    /// For every action the engine computed (a decision, a follow-up or a
+    /// fact with outputs): every parameter that took part, with its value and
+    /// its provenance (RFC-013 `accepted_values`).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub inputs: BTreeMap<String, Invoer>,
-    /// Bij elke handeling die de engine uitrekende: wat er meedeed, met de
-    /// hash erover (RFC-013, RFC-022 par. 1.3).
+    pub inputs: BTreeMap<String, Input>,
+    /// For every action the engine computed: what took part, with the hash
+    /// over it (RFC-013, RFC-022 par. 1.3).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub receipt: Option<Receipt>,
-    /// `op_moment` en `vastgelegd_op`, gelezen: een keer per gram, niet bij
-    /// elke reductie of elk peil. Geen deel van het gram.
+    /// `effective_at` and `recorded_at`, parsed: once per gram, not on every
+    /// reduction or as-of point. Not part of the gram.
     #[serde(skip)]
-    pub tijden: Tijden,
-    /// De wortel van het gram, uit de index van de kroniek: het id van het
-    /// gram zonder verwijzing waarop het via zijn verwijzingen uitkomt (een
-    /// gram zonder verwijzing is zijn eigen wortel). Geen deel van het gram:
-    /// de kroniek vult het in bij het laden en het vastleggen.
+    pub times: Times,
+    /// The root of the gram, from the index of the chronicle: the id of the
+    /// gram without a reference that it leads to through its references (a
+    /// gram without a reference is its own root). Not part of the gram: the
+    /// chronicle fills it in when loading and recording.
     #[serde(skip)]
     pub root: Option<String>,
 }
 
-/// De gelezen tijden van een gram, elk met de tekst waaruit het gelezen is.
-/// Verandert de tekst (het stempel zet `vastgelegd_op`), dan leest het gram
-/// haar opnieuw; de cache telt niet mee in een vergelijking.
+/// The parsed times of a gram, each with the text it was parsed from. If the
+/// text changes (the stamp sets `recorded_at`), the gram parses it again; the
+/// cache does not count in a comparison.
 #[derive(Debug, Clone, Default)]
-pub struct Tijden {
+pub struct Times {
     moment: OnceLock<(String, DateTime<FixedOffset>)>,
     recorded: OnceLock<(String, DateTime<FixedOffset>)>,
 }
 
-impl PartialEq for Tijden {
+impl PartialEq for Times {
     fn eq(&self, _: &Self) -> bool {
         true
     }
 }
 
-/// Een tijd uit `cache` als die uit `tekst` gelezen is, anders `lees`, en
-/// dat bewaard als er nog niets lag.
-fn gelezen(
+/// A time from `cache` if it was parsed from `text`, otherwise `read`, and
+/// that stored if nothing was there yet.
+fn read(
     cache: &OnceLock<(String, DateTime<FixedOffset>)>,
-    tekst: &str,
-    lees: impl FnOnce() -> Result<DateTime<FixedOffset>, String>,
+    text: &str,
+    read: impl FnOnce() -> Result<DateTime<FixedOffset>, String>,
 ) -> Result<DateTime<FixedOffset>, String> {
     if let Some((t, m)) = cache.get() {
-        if t == tekst {
+        if t == text {
             return Ok(*m);
         }
     }
-    let m = lees()?;
-    // Lag er al een tijd van een eerdere tekst, dan blijft die liggen en
-    // leest deze tekst elke keer opnieuw: juist, alleen niet gecachet.
-    let _ = cache.set((tekst.to_string(), m));
+    let m = read()?;
+    // If a time from an earlier text was already there, it stays and this
+    // text is parsed again every time: correct, just not cached.
+    let _ = cache.set((text.to_string(), m));
     Ok(m)
 }
 
-/// Wie een besluit nam: de rol en het kanaal waarlangs de gebruiker inlogde,
-/// met de waarden van de identificatievelden, en namens welk gezag. Handelt
-/// het proces in mandaat (Awb 10:1), dan noemt `mandaat` de grondslag. Het
-/// kanaal is nagebootst: de identiteit is wat de gebruiker invulde.
+/// Who took a decision: the role and the channel through which the user
+/// logged in, with the values of the identification fields, and on behalf of
+/// which authority. If the process acts under mandate (Awb 10:1), `mandate`
+/// names the legal basis. The channel is simulated: the identity is what the
+/// user entered.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct HandelendeActor {
+pub struct ActingActor {
     pub role: String,
     pub channel: String,
     pub identity: BTreeMap<String, String>,
-    /// De grondslag van de rol, als de configuratie er een noemt.
+    /// The legal basis of the role, if the configuration names one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub legal_basis: Option<String>,
-    /// Het gezag in wiens naam is gehandeld.
+    /// The authority on whose behalf the action was taken.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub on_behalf_of: Option<String>,
-    /// De grondslag van het mandaat, als het gezag niet het eigen gezag van
-    /// het proces is.
+    /// The legal basis of the mandate, if the authority is not the process's
+    /// own authority.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mandate: Option<String>,
 }
 
-/// Een geaccepteerde invoer van een besluit: een waarde met haar herkomst.
+/// An accepted input of a decision: a value with its provenance.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Invoer {
+pub struct Input {
     pub value: Value,
-    pub provenance: crate::synthese::Herkomst,
+    pub provenance: crate::synthesis::Provenance,
 }
 
-/// Wat er bij een besluit meedeed, zodat het te herhalen is: de geladen
-/// regelingen en de stroomdefinities, met een hash over beide.
+/// What took part in a decision, so it can be repeated: the loaded
+/// regulations and the stream definitions, with a hash over both.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Receipt {
-    pub regulations: Vec<GeladenRegeling>,
-    pub streams: Vec<StroomVerwijzing>,
-    /// SHA-256 over de twee lijsten hierboven, als canonieke JSON.
+    pub regulations: Vec<LoadedRegulation>,
+    pub streams: Vec<StreamReference>,
+    /// SHA-256 over the two lists above, as canonical JSON.
     pub sha256: String,
 }
 
-/// Een regeling zoals de runtime haar laadde.
+/// A regulation as the runtime loaded it.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct GeladenRegeling {
+pub struct LoadedRegulation {
     pub id: String,
     pub valid_from: String,
     pub sha256: String,
 }
 
 impl Receipt {
-    /// Bouw het receipt en reken de hash uit.
-    pub fn nieuw(regulations: Vec<GeladenRegeling>, streams: Vec<StroomVerwijzing>) -> Self {
-        let canoniek =
+    /// Build the receipt and compute the hash.
+    pub fn new(regulations: Vec<LoadedRegulation>, streams: Vec<StreamReference>) -> Self {
+        let canonical =
             serde_json::json!({"regulations": regulations, "streams": streams}).to_string();
         Self {
             regulations,
             streams,
-            sha256: hex::encode(Sha256::digest(canoniek.as_bytes())),
+            sha256: hex::encode(Sha256::digest(canonical.as_bytes())),
         }
     }
 }
 
-/// Welke stroomdefinitie een gram bouwde, en welke versie ervan.
+/// Which stream definition built a gram, and which version of it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct StroomVerwijzing {
+pub struct StreamReference {
     pub id: String,
     pub sha256: String,
 }
 
-/// Het voorvoegsel van een filtersleutel op een verwijzing:
-/// `verwijst.<naam>` is het id waarnaar het gram onder die naam verwijst.
-pub const VERWIJST: &str = "refers_to.";
+/// The prefix of a filter key on a reference: `refers_to.<name>` is the id
+/// the gram refers to under that name.
+pub const REFERS_TO: &str = "refers_to.";
 
-/// Een nieuw id voor een gram: een uuid v7 op het moment `nu` (de klok van
-/// de cel), zodat ids in de tijd oplopen.
-pub fn nieuw_id(nu: DateTime<FixedOffset>) -> String {
+/// A new id for a gram: a uuid v7 at the moment `now` (the clock of the
+/// cell), so ids increase over time.
+pub fn new_id(now: DateTime<FixedOffset>) -> String {
     let ts = uuid::Timestamp::from_unix(
         uuid::NoContext,
-        u64::try_from(nu.timestamp()).unwrap_or(0),
-        nu.timestamp_subsec_nanos(),
+        u64::try_from(now.timestamp()).unwrap_or(0),
+        now.timestamp_subsec_nanos(),
     );
     uuid::Uuid::new_v7(ts).to_string()
 }
 
-/// Een vast id: een uuid v5 over `sleutel`, zodat elke lezing hetzelfde id
-/// geeft (voor een regel van een startstand zonder eigen id).
-pub fn vast_id(sleutel: &str) -> String {
-    uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, sleutel.as_bytes()).to_string()
+/// A fixed id: a uuid v5 over `key`, so every read gives the same id (for a
+/// line of an initial state without its own id).
+pub fn fixed_id(key: &str) -> String {
+    uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, key.as_bytes()).to_string()
 }
 
 impl Gram {
-    /// Het gram als JSON-waarde.
-    pub fn als_json(&self) -> Value {
+    /// The gram as a JSON value.
+    pub fn as_json(&self) -> Value {
         serde_json::to_value(self).unwrap_or(Value::Null)
     }
 
-    /// Valideer het gram tegen `gram.json`, en zijn `op_moment` en
-    /// `vastgelegd_op` als moment met tijdzone (het schema toetst alleen de
-    /// vorm).
-    pub fn valideer(&self) -> Result<(), Vec<String>> {
+    /// Validate the gram against `gram.json`, and its `effective_at` and
+    /// `recorded_at` as a moment with a time zone (the schema only checks the
+    /// shape).
+    pub fn validate(&self) -> Result<(), Vec<String>> {
         let json = serde_json::to_value(self).map_err(|e| vec![e.to_string()])?;
-        let mut fouten = schema::valideer(Soort::Gram, &json)
+        let mut errors = schema::validate(Kind::Gram, &json)
             .err()
             .unwrap_or_default();
-        if let Err(f) = datum::moment(&self.effective_at) {
-            fouten.push(f);
+        if let Err(f) = date::moment(&self.effective_at) {
+            errors.push(f);
         }
-        if let Err(f) = datum::moment_van("recorded_at", &self.recorded_at) {
-            fouten.push(f);
+        if let Err(f) = date::moment_of("recorded_at", &self.recorded_at) {
+            errors.push(f);
         }
-        if fouten.is_empty() {
+        if errors.is_empty() {
             Ok(())
         } else {
-            Err(fouten)
+            Err(errors)
         }
     }
 
-    /// Een veld van het gram zelf waarop een filter selecteert (een sleutel
-    /// uit [`crate::reductie::GRAM_SLEUTELS`]), als tekst. `None` als
-    /// `sleutel` geen zo'n veld is: dan is het een veldpad onder `fields`.
-    /// `Some(None)` als het gram het veld niet heeft.
-    pub fn kenmerk(&self, sleutel: &str) -> Option<Option<&str>> {
-        if let Some(name) = sleutel.strip_prefix(VERWIJST) {
+    /// A field of the gram itself that a filter selects on (a key from
+    /// [`crate::reduction::GRAM_KEYS`]), as text. `None` if `key` is not such
+    /// a field: then it is a field path under `fields`. `Some(None)` if the
+    /// gram does not have the field.
+    pub fn attribute(&self, key: &str) -> Option<Option<&str>> {
+        if let Some(name) = key.strip_prefix(REFERS_TO) {
             return Some(self.refers_to.get(name).map(String::as_str));
         }
-        Some(match sleutel {
+        Some(match key {
             "id" => Some(self.id.as_str()),
             "root" => self.root.as_deref(),
             "name" => Some(self.name.as_str()),
@@ -287,103 +288,103 @@ impl Gram {
         })
     }
 
-    /// De waarde op een pad onder `fields`.
+    /// The value at a path under `fields`.
     pub fn field(&self, path: &str) -> Option<&Value> {
-        op_pad(&self.fields, path)
+        at_path(&self.fields, path)
     }
 
-    /// Het `op_moment`, gelezen; een ongeldig moment is een fout.
+    /// The `effective_at`, parsed; an invalid moment is an error.
     pub fn moment(&self) -> Result<DateTime<FixedOffset>, String> {
-        gelezen(&self.tijden.moment, &self.effective_at, || {
-            datum::moment(&self.effective_at).map_err(|e| format!("gram '{}': {e}", self.name))
+        read(&self.times.moment, &self.effective_at, || {
+            date::moment(&self.effective_at).map_err(|e| format!("gram '{}': {e}", self.name))
         })
     }
 
-    /// Het `vastgelegd_op`, gelezen; een ongeldig moment is een fout.
+    /// The `recorded_at`, parsed; an invalid moment is an error.
     pub fn recorded(&self) -> Result<DateTime<FixedOffset>, String> {
-        gelezen(&self.tijden.recorded, &self.recorded_at, || {
-            datum::moment_van("recorded_at", &self.recorded_at)
+        read(&self.times.recorded, &self.recorded_at, || {
+            date::moment_of("recorded_at", &self.recorded_at)
                 .map_err(|e| format!("gram '{}': {e}", self.name))
         })
     }
 
-    /// Zet het moment van vastleggen: de cel doet dat onder haar schrijfslot,
-    /// zodat de volgorde van de regels in de kroniek die van `vastgelegd_op`
-    /// is. `niet_voor` is het `vastgelegd_op` van de laatste regel van de
-    /// kroniek: loopt de klok terug, dan krijgt het gram dat moment, niet een
-    /// eerder. Een `op_moment` dat het event niet aan een waarde bond
-    /// (zonder `op_moment_grondslag`), is het moment van vastleggen en
-    /// schuift mee; een gebonden `op_moment` mag er niet na liggen.
-    pub fn stempel(
+    /// Set the moment of recording: the cell does this under its write lock,
+    /// so the order of the lines in the chronicle is that of `recorded_at`.
+    /// `not_for` is the `recorded_at` of the last line of the chronicle: if the
+    /// clock runs backwards, the gram gets that moment, not an earlier one. An
+    /// `effective_at` that the event did not bind to a value (without
+    /// `effective_at_legal_basis`) is the moment of recording and moves along;
+    /// a bound `effective_at` may not lie after it.
+    pub fn stamp(
         &mut self,
-        nu: DateTime<FixedOffset>,
-        niet_voor: Option<DateTime<FixedOffset>>,
+        now: DateTime<FixedOffset>,
+        not_for: Option<DateTime<FixedOffset>>,
     ) -> Result<(), String> {
-        let moment = match niet_voor {
-            Some(v) if v > nu => v,
-            _ => nu,
+        let moment = match not_for {
+            Some(v) if v > now => v,
+            _ => now,
         };
-        let tekst = datum::als_op_moment(&moment);
+        let text = date::as_effective_at(&moment);
         if self.effective_at_legal_basis.is_none() && self.provenance.is_none() {
-            self.effective_at = tekst.clone();
+            self.effective_at = text.clone();
         } else if self.moment()? > moment {
             return Err(format!(
-                "op_moment {} ligt na het vastleggen ({tekst}): wat nog moet gebeuren, wordt niet vastgelegd",
+                "effective_at {} lies after the recording ({text}): what has yet to happen is not recorded",
                 self.effective_at
             ));
         }
-        self.recorded_at = tekst;
+        self.recorded_at = text;
         Ok(())
     }
 
-    /// De volgorde van twee grammen in de tijd: eerst op `op_moment`, bij
-    /// gelijk moment op `vastgelegd_op`. `Equal` laat de volgorde in de
-    /// kroniek beslissen.
-    pub fn tijdvolgorde(&self, ander: &Gram) -> Result<std::cmp::Ordering, String> {
+    /// The order of two grams in time: first by `effective_at`, on an equal
+    /// moment by `recorded_at`. `Equal` lets the order in the chronicle
+    /// decide.
+    pub fn time_order(&self, other: &Gram) -> Result<std::cmp::Ordering, String> {
         Ok(self
             .moment()?
-            .cmp(&ander.moment()?)
-            .then(self.recorded()?.cmp(&ander.recorded()?)))
+            .cmp(&other.moment()?)
+            .then(self.recorded()?.cmp(&other.recorded()?)))
     }
 }
 
-/// De waarde op een veldpad met punten (`inhoud.organen`) in een object;
-/// `None` als een deel van het pad er niet is of geen object is.
-pub fn op_pad<'v>(fields: &'v Map<String, Value>, path: &str) -> Option<&'v Value> {
-    let mut delen = path.split('.');
-    let mut huidig = fields.get(delen.next()?)?;
-    for deel in delen {
-        huidig = huidig.as_object()?.get(deel)?;
+/// The value at a dotted field path (`inhoud.organen`) in an object; `None`
+/// if a part of the path is not there or is not an object.
+pub fn at_path<'v>(fields: &'v Map<String, Value>, path: &str) -> Option<&'v Value> {
+    let mut parts = path.split('.');
+    let mut current = fields.get(parts.next()?)?;
+    for part in parts {
+        current = current.as_object()?.get(part)?;
     }
-    Some(huidig)
+    Some(current)
 }
-/// Zet een waarde op een veldpad met punten, en maak de tussenliggende
-/// objecten; wat op de weg geen object is, wordt er een.
-pub fn zet_pad(doel: &mut Map<String, Value>, path: &str, value: Value) {
-    let mut delen = path.split('.').peekable();
-    let mut hier = doel;
-    while let Some(deel) = delen.next() {
-        if delen.peek().is_none() {
-            hier.insert(deel.to_string(), value);
+/// Set a value at a dotted field path, and create the intermediate objects;
+/// whatever on the way is not an object becomes one.
+pub fn set_path(target: &mut Map<String, Value>, path: &str, value: Value) {
+    let mut parts = path.split('.').peekable();
+    let mut here = target;
+    while let Some(part) = parts.next() {
+        if parts.peek().is_none() {
+            here.insert(part.to_string(), value);
             return;
         }
-        let volgend = hier
-            .entry(deel.to_string())
+        let next = here
+            .entry(part.to_string())
             .or_insert_with(|| Value::Object(Map::new()));
-        if !volgend.is_object() {
-            *volgend = Value::Object(Map::new());
+        if !next.is_object() {
+            *next = Value::Object(Map::new());
         }
-        let Value::Object(m) = volgend else {
+        let Value::Object(m) = next else {
             return;
         };
-        hier = m;
+        here = m;
     }
 }
 
-/// Een gram voor tests: een melding in `test_kroniek` met dit id, zonder
-/// verwijzing (dus zijn eigen wortel).
+/// A gram for tests: a notification in `test_kroniek` with this id, without
+/// a reference (so its own root).
 #[cfg(test)]
-pub(crate) fn testgram(id: &str) -> Gram {
+pub(crate) fn test_gram(id: &str) -> Gram {
     Gram {
         kind: "chronolexogram".into(),
         id: id.into(),
@@ -404,7 +405,7 @@ pub(crate) fn testgram(id: &str) -> Gram {
         effective_at_legal_basis: None,
         recorded_at: "2025-03-12T10:14:05+01:00".into(),
         refers_to: BTreeMap::new(),
-        stream: StroomVerwijzing {
+        stream: StreamReference {
             id: "test".into(),
             sha256: "a".repeat(64),
         },
@@ -415,18 +416,18 @@ pub(crate) fn testgram(id: &str) -> Gram {
             .unwrap_or_default(),
         inputs: BTreeMap::new(),
         receipt: None,
-        tijden: Tijden::default(),
+        times: Times::default(),
         root: Some(id.into()),
     }
 }
 
-/// Een gram voor tests dat met `naam` naar `doel` verwijst, met een nieuw
-/// id; de wortel is die van het doel.
+/// A gram for tests that refers with `name` to `target`, with a new id; the
+/// root is that of the target.
 #[cfg(test)]
-pub(crate) fn testvolger(name: &str, doel: &Gram) -> Gram {
-    let mut g = testgram(&uuid::Uuid::now_v7().to_string());
-    g.refers_to.insert(name.into(), doel.id.clone());
-    g.root = doel.root.clone();
+pub(crate) fn test_follower(name: &str, target: &Gram) -> Gram {
+    let mut g = test_gram(&uuid::Uuid::now_v7().to_string());
+    g.refers_to.insert(name.into(), target.id.clone());
+    g.root = target.root.clone();
     g
 }
 
@@ -437,30 +438,30 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn zet_pad_maakt_de_objecten() {
+    fn set_path_creates_the_objects() {
         let mut m = Map::new();
-        zet_pad(&mut m, "a.b.c", json!(1));
-        zet_pad(&mut m, "a.d", json!(2));
-        assert_eq!(op_pad(&m, "a.b.c"), Some(&json!(1)));
+        set_path(&mut m, "a.b.c", json!(1));
+        set_path(&mut m, "a.d", json!(2));
+        assert_eq!(at_path(&m, "a.b.c"), Some(&json!(1)));
         assert_eq!(Value::Object(m), json!({"a": {"b": {"c": 1}, "d": 2}}));
     }
 
-    /// De tijden van een gram worden een keer gelezen, en opnieuw als de
-    /// tekst verandert (zoals bij het stempel).
+    /// The times of a gram are parsed once, and again when the text changes
+    /// (as with the stamp).
     #[test]
-    fn de_gelezen_tijd_volgt_de_tekst() {
-        let mut g = testgram("z");
-        let eerst = g.recorded().unwrap();
-        assert_eq!(g.recorded().unwrap(), eerst);
+    fn the_parsed_time_follows_the_text() {
+        let mut g = test_gram("z");
+        let first = g.recorded().unwrap();
+        assert_eq!(g.recorded().unwrap(), first);
         let later = DateTime::parse_from_rfc3339("2025-03-13T09:00:00+01:00").unwrap();
-        g.stempel(later, None).unwrap();
+        g.stamp(later, None).unwrap();
         assert_eq!(g.recorded().unwrap(), later);
         assert_eq!(
             g.moment().unwrap(),
             later,
-            "een ongebonden op_moment schuift mee"
+            "an unbound effective_at moves along"
         );
-        g.effective_at = "geen moment".into();
+        g.effective_at = "not a moment".into();
         assert!(g.moment().is_err());
     }
 }

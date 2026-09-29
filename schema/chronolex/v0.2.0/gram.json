@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.2.0/gram.json",
-  "title": "Vastgelegd chronolexogram v0.2.0",
-  "description": "Een feit zoals een cel het vastlegt: op vastgelegd_op legde recording_actor vast dat dit event met deze velden plaatsvond, op deze grondslag, en dat het rechtens geldt of plaatsvond op op_moment (paper P:46: twee tijden). Een gram wordt alleen toegevoegd, nooit bewerkt; een correctie is een nieuw gram. Een veld dat niet is ingevuld staat erin als null: het gram houdt de vorm van de stroom. Sinds v0.2.0 heeft een gram een eigen id (uuid v7, door de cel gegeven) en verwijst het met een naam uit de wet naar het gram waar het bij hoort (verwijst); er is geen zaak- of besluitkenmerk meer. Groepen volgen uit die verwijzingen: de wortel van een gram is de wortel van het gram waarnaar het verwijst.",
+  "title": "Recorded chronolexogram v0.2.0",
+  "description": "A fact as a cell records it: at recorded_at, recording_actor recorded that this event took place with these fields, on this legal basis, and that it legally applies or took place at effective_at (paper P:46: two times). A gram is only ever appended, never edited; a correction is a new gram. A field that was not filled in is present as null: the gram keeps the shape of the stream. Since v0.2.0 a gram has its own id (uuid v7, assigned by the cell) and refers, with a name from the law, to the gram it belongs to (refers_to); there is no case or decision identifier anymore. Groups follow from those references: the root of a gram is the root of the gram it refers to.",
   "type": "object",
   "required": [
     "kind",
@@ -24,20 +24,20 @@
     },
     "id": {
       "$ref": "#/definitions/uuid",
-      "description": "Het eigen id van het gram: een uuid (v7, oplopend in de tijd), dat de cel bij het vastleggen geeft, onder hetzelfde slot als vastgelegd_op. Een kroniek van voor v0.2.0 wordt niet omgezet."
+      "description": "The gram's own id: a uuid (v7, increasing over time) that the cell assigns on recording, under the same lock as recorded_at. A chronicle from before v0.2.0 is not converted."
     },
     "type": {
       "$ref": "#/definitions/identifier",
-      "description": "Open woordenschat (RFC-022 par. 1), bijvoorbeeld executogram of indiening."
+      "description": "Open vocabulary (RFC-022 sec. 1), for example executogram or submission."
     },
     "subtype": {
       "$ref": "#/definitions/identifier",
-      "description": "De soort binnen het type, bijvoorbeeld aanvraag bij een indiening."
+      "description": "The subtype within the type, for example aanvraag for a submission."
     },
     "stage": {
       "type": "string",
       "pattern": "^[A-Z][A-Z_]*$",
-      "description": "Uit de wet of de stroom: de stage (RFC-008), bij een stage-decretogram, een indiening (AANVRAAG) of een handeling (BEKENDMAKING)."
+      "description": "From the law or the stream: the stage (RFC-008), for a stage decretogram, a submission (AANVRAAG) or an act (BEKENDMAKING)."
     },
     "name": {
       "$ref": "#/definitions/identifier"
@@ -59,30 +59,30 @@
     "legal_character": {
       "type": "string",
       "pattern": "^[A-Z][A-Z_]*$",
-      "description": "Alleen bij een besluit dat de cel zelf nam: het rechtskarakter uit produces van het artikel (RFC-008), bijvoorbeeld BESCHIKKING."
+      "description": "Only for a decision the cell itself made: the legal character from the article's produces (RFC-008), for example BESCHIKKING."
     },
     "decision_type": {
       "type": "string",
       "pattern": "^[A-Z][A-Z_]*$",
-      "description": "Alleen bij een besluit: de soort beslissing uit produces, bijvoorbeeld TOEKENNING."
+      "description": "Only for a decision: the kind of decision from produces, for example TOEKENNING."
     },
     "regulation": {
       "$ref": "#/definitions/identifier",
-      "description": "Alleen bij een besluit: de regeling waarop het rust."
+      "description": "Only for a decision: the regulation it rests on."
     },
     "regulation_valid_from": {
       "type": "string",
       "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-      "description": "Alleen bij een besluit: vanaf wanneer die versie van de regeling geldt."
+      "description": "Only for a decision: the date from which that version of the regulation applies."
     },
     "competent_authority": {
       "type": "string",
       "minLength": 1,
-      "description": "Alleen bij een besluit, en alleen als de regeling een bevoegd gezag noemt: dat gezag. Het proces toetst het tegen het gezag waarvoor het handelt (namens) en zijn mandaten, en legt bij een ander gezag niets vast; noemt de regeling er geen, dan staat dit veld er niet en waarschuwt het proces."
+      "description": "Only for a decision, and only if the regulation names a competent authority: that authority. The process checks it against the authority it acts for (on_behalf_of) and its mandates, and records nothing for a different authority; if the regulation names none, this field is absent and the process issues a warning."
     },
     "acting_actor": {
       "type": "object",
-      "description": "Alleen bij een besluit dat een proces nam: wie handelde. Naast recording_actor (wie vastlegt) en competent_authority (wie de wet bevoegd maakt) de derde as van RFC-022 par. 2. Het kanaal is nagebootst: de identiteit is wat de gebruiker invulde.",
+      "description": "Only for a decision a process made: who acted. Alongside recording_actor (who records) and competent_authority (who the law empowers), the third axis of RFC-022 sec. 2. The channel is simulated: the identity is what the user entered.",
       "required": [
         "role",
         "channel",
@@ -107,28 +107,28 @@
         "legal_basis": {
           "type": "string",
           "minLength": 1,
-          "description": "De grondslag van de rol, als de procesconfiguratie er een noemt."
+          "description": "The legal basis of the role, if the process configuration names one."
         },
         "on_behalf_of": {
           "type": "string",
           "minLength": 1,
-          "description": "Het gezag in wiens naam is gehandeld."
+          "description": "The authority on whose behalf the action was taken."
         },
         "mandate": {
           "type": "string",
           "minLength": 1,
-          "description": "De grondslag van het mandaat (Awb 10:1), als dat gezag niet het eigen gezag van het proces is."
+          "description": "The legal basis of the mandate (Awb 10:1), if that authority is not the process's own authority."
         }
       }
     },
     "effective_at": {
       "$ref": "#/definitions/moment",
-      "description": "Het moment waarop het feit rechtens geldt of plaatsvond (RFC 3339, met tijdzone). Standaard gelijk aan vastgelegd_op; een event kan het aan een ingediende waarde binden (zie op_moment_grondslag), en in een startstand is het met de hand gezet, zoals de datum van een besluit."
+      "description": "The moment at which the fact legally applies or took place (RFC 3339, with time zone). Defaults to recorded_at; an event can bind it to a submitted value (see effective_at_legal_basis), and in an initial state it is set by hand, such as the date of a decision."
     },
     "effective_at_legal_basis": {
       "type": "array",
       "minItems": 1,
-      "description": "Alleen als het event op_moment aan een ingediende waarde bond en die waarde er was: waarom dat moment rechtens telt, uit de stroom. Bijvoorbeeld de dag van ontvangst van een aanvraag die langs een andere weg binnenkwam (Awb 4:1, 4:13).",
+      "description": "Only if the event bound effective_at to a submitted value and that value was present: why that moment legally counts, from the stream. For example the day of receipt of an application that arrived by another route (Awb 4:1, 4:13).",
       "items": {
         "type": "string",
         "pattern": "^[a-z][a-z0-9_]*#[A-Za-z0-9]([A-Za-z0-9:._ -]*[A-Za-z0-9])?( lid [0-9]+[a-z]?)?$"
@@ -136,11 +136,11 @@
     },
     "recorded_at": {
       "$ref": "#/definitions/moment",
-      "description": "Het moment waarop de cel het gram vastlegde: altijd haar eigen klok, bij een startstand de laadtijd. Een gram in een kroniek van voor dit veld heeft het niet; de runtime leest het dan als op_moment, met een waarschuwing."
+      "description": "The moment at which the cell recorded the gram: always its own clock, for an initial state the load time. A gram in a chronicle from before this field lacks it; the runtime then reads it as effective_at, with a warning."
     },
     "refers_to": {
       "type": "object",
-      "description": "Naar welke grammen dit gram verwijst, per naam uit de wettekst (op_aanvraag, aanvraag, besluit, wijzigt, betreft). De namen en wat elk mag aanwijzen, zegt het vestigende artikel (produces.extensions.chronolex.vestigt[].verwijst) of de stroom; de cel controleert bij het vastleggen dat het gram bestaat en past. Geen verwijzing: het gram is zelf een wortel.",
+      "description": "Which grams this gram refers to, per name from the law text (on_application, application, decision, amends, concerns). The names, and what each may point to, are given by the establishing article (produces.extensions.chronolex.establishes[].refers_to) or the stream; on recording, the cell checks that the gram exists and matches. No reference: the gram is itself a root.",
       "propertyNames": {
         "pattern": "^[a-z][a-z0-9_]*$"
       },
@@ -150,7 +150,7 @@
     },
     "stream": {
       "type": "object",
-      "description": "De stroomdefinitie waarmee het gram is gebouwd, met de hash van dat bestand.",
+      "description": "The stream definition the gram was built with, with the hash of that file.",
       "required": [
         "id",
         "sha256"
@@ -170,14 +170,14 @@
       "enum": [
         "initial_state"
       ],
-      "description": "Alleen als het gram niet door de cel zelf is vastgesteld. startstand: bij het starten in een lege kroniek geplaatst, niet berekend (geen engine-trace)."
+      "description": "Only if the gram was not established by the cell itself. initial_state: placed into an empty chronicle on startup, not computed (no engine trace)."
     },
     "fields": {
       "type": "object"
     },
     "inputs": {
       "type": "object",
-      "description": "Alleen bij een handeling die een proces uitrekende (een besluit, een vervolg of een feit uit het verloop van de zaak): per parameter die meedeed de waarde en de herkomst (RFC-013 accepted_values). Niets hiervan is een eigen feit van de cel; het staat erbij zodat het besluit navolgbaar is.",
+      "description": "Only for an action a process computed (a decision, a follow-up, or a fact from the course of the case): for each parameter that took part, the value and its provenance (RFC-013 accepted_values). None of this is a fact of the cell itself; it is included so the decision can be traced.",
       "propertyNames": {
         "pattern": "^[a-z_][a-z0-9_]*$"
       },
@@ -213,7 +213,7 @@
     },
     "receipt": {
       "type": "object",
-      "description": "Alleen bij een handeling die een proces uitrekende: wat er meedeed, zodat het te herhalen is (RFC-013 execution receipt, RFC-022 par. 1.3 voor de stromen).",
+      "description": "Only for an action a process computed: what took part, so it can be repeated (RFC-013 execution receipt, RFC-022 sec. 1.3 for the streams).",
       "required": [
         "regulations",
         "streams",
@@ -282,7 +282,7 @@
       "pattern": "^[a-z][a-z0-9_]*$"
     },
     "core_application": {
-      "description": "De vaste kern van een aanvraag (Awb 4:2 lid 1). Een waarde mag null zijn: ook een onvolledige aanvraag wordt vastgelegd.",
+      "description": "The fixed core of an application (Awb 4:2 lid 1). A value may be null: an incomplete application is recorded too.",
       "type": "object",
       "required": [
         "aanvrager",

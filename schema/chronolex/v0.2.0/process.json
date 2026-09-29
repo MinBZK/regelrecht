@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.2.0/proces.json",
-  "title": "Procesdefinitie (proces.yaml) v0.2.0",
-  "description": "Een proces is een map met configuratie; proces.yaml zegt wie er handelt (actor) en hoe: namens welk gezag (namens, mandaten), langs welke kanalen en in welke rollen er wordt ingelogd (kanalen, rollen), of er een portaal is dat een indiening in een cel laat vastleggen, van welke cellen het lexostatussen samenvoegt (synthese), en welke handelingen een behandelaar in een zaak doet (behandeling). Een proces legt zelf niets vast en reduceert zelf niets: dat doet een cel, op verzoek van het proces. Paden zijn relatief aan de map van proces.yaml.",
+  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.2.0/process.json",
+  "title": "Process definition (process.yaml) v0.2.0",
+  "description": "A process is a directory of configuration; process.yaml says who acts (actor) and how: on behalf of which authority (on_behalf_of, mandates), through which channels and in which roles people log in (channels, roles), whether there is a portal that has a submission recorded in a cell, which cells it merges lexostatuses from (synthesis), and which actions a handler performs in a case (handling). A process records nothing and reduces nothing itself: a cell does that, at the process's request. Paths are relative to the directory of process.yaml.",
   "type": "object",
   "required": [
     "id",
@@ -15,29 +15,29 @@
     },
     "id": {
       "$ref": "#/definitions/identifier",
-      "description": "De naam van het proces. De runtime biedt het aan onder /processen/<id>/api/."
+      "description": "The name of the process. The runtime serves it under /processes/<id>/api/."
     },
     "description": {
       "type": "string"
     },
     "actor": {
       "$ref": "#/definitions/identifier",
-      "description": "De actor die vastlegt (recording_actor): een cel legt voor het proces alleen vast in een stroom met deze recording_actor. Namens welk bevoegd gezag het proces handelt, zegt namens, niet de actor."
+      "description": "The recording actor (recording_actor): a cell records for the process only in a stream with this recording_actor. On behalf of which competent authority the process acts is given by on_behalf_of, not by the actor."
     },
     "origin_check": {
       "enum": [
         "lenient",
         "strict"
       ],
-      "default": "ruim",
-      "description": "Hoe streng de controle op de herkomst (RFC-043) is bij het opstarten. ruim: een parameter zonder origin is een waarschuwing. streng: een parameter zonder origin is een fout, want dan is niet na te gaan wie hem levert. Met streng draagt ook elke synthese-bron die vertaalt een grondslag (zie bron.grondslag)."
+      "default": "lenient",
+      "description": "How strict the origin check (RFC-043) is on startup. lenient: a parameter without origin is a warning. strict: a parameter without origin is an error, because then it cannot be traced who supplies it. With strict, every synthesis source that translates also carries a legal_basis (see source.legal_basis)."
     },
     "on_behalf_of": {
       "$ref": "#/definitions/on_behalf_of"
     },
     "mandates": {
       "type": "array",
-      "description": "Gezagen waarvoor het proces in mandaat handelt (Awb 10:1 e.v.). Wijst de wet bij een besluit een ander gezag aan dan namens, dan legt de cel het besluit alleen vast als hier een mandaat van dat gezag staat; het gram noemt dan de grondslag bij de handelende actor.",
+      "description": "Authorities for which the process acts under mandate (Awb 10:1 ff.). If, for a decision, the law designates an authority other than on_behalf_of, the cell records the decision only if a mandate from that authority is listed here; the gram then names the legal basis with the acting actor.",
       "items": {
         "type": "object",
         "required": [
@@ -49,18 +49,18 @@
           "authority": {
             "type": "string",
             "minLength": 1,
-            "description": "Het mandaatgevende gezag, zoals een geladen regeling het in competent_authority noemt."
+            "description": "The mandating authority, as a loaded regulation names it in competent_authority."
           },
           "legal_basis": {
             "$ref": "#/definitions/legal_basis",
-            "description": "Waar het mandaat op rust: <regeling>#<artikel>, optioneel met ' lid <n>'. Het artikel moet geladen zijn."
+            "description": "What the mandate rests on: <regulation>#<article>, optionally with ' lid <n>'. The article must be loaded."
           }
         }
       }
     },
     "channels": {
       "type": "object",
-      "description": "Langs welke kanalen iemand bij het proces inlogt, per id. Elk kanaal is nagebootst: identificatievelden met een vormcontrole, geen gecertificeerde login en geen register. De routes zijn /api/kanalen/<id>/login, /sessie en /logout.",
+      "description": "The channels through which someone logs in to the process, per id. Each channel is simulated: identification fields with a format check, no certified login and no register. The routes are /api/channels/<id>/login, /session and /logout.",
       "propertyNames": {
         "$ref": "#/definitions/identifier"
       },
@@ -76,7 +76,7 @@
     },
     "synthesis": {
       "type": "array",
-      "description": "Lexostatussen van cellen die het proces samenvoegt: de toets van het portaal, het aanbod en het proefbesluit. Een bron met zaak: true is een lexostatus van de zaak zelf; de andere bronnen noemen hun invoer en parameters. Niets hiervan wordt vastgelegd.",
+      "description": "Lexostatuses from cells that the process merges: the portal's assessment, the offer and the trial decision. A source with case: true is a lexostatus of the case itself; the other sources name their input and parameters. None of this is recorded.",
       "items": {
         "$ref": "#/definitions/source"
       }
@@ -86,13 +86,13 @@
     },
     "examples": {
       "type": "object",
-      "description": "Standaardgegevens per handeling, voor een proefopstelling: de frontend biedt ze aan om een formulier voor in te vullen of de handeling er direct mee te doen. Elk bestand is JSON; de runtime controleert bij het opstarten de vorm. Niets hiervan wordt vastgelegd.",
+      "description": "Default data per action, for a trial setup: the frontend offers them to prefill a form or to perform the action with them directly. Each file is JSON; the runtime checks the shape on startup. None of this is recorded.",
       "additionalProperties": false,
       "properties": {
         "logins": {
           "type": "array",
           "uniqueItems": true,
-          "description": "Logins, elk een object met de velden van een kanaal, en optioneel kanaal (zonder: het enige kanaal van het portaal) en rol. Het label is de bestandsnaam zonder extensie.",
+          "description": "Logins, each an object with the fields of a channel, and optionally channel (without it: the portal's only channel) and role. The label is the file name without extension.",
           "items": {
             "type": "string",
             "minLength": 1
@@ -101,11 +101,11 @@
         "application": {
           "type": "string",
           "minLength": 1,
-          "description": "Een aanvraag: een object met external, zoals het portaal het ontvangt."
+          "description": "An application: an object with external, as the portal receives it."
         },
         "actions": {
           "type": "object",
-          "description": "Per handeling (de naam in behandeling.handelingen) een formulier: een object met formulier, zoals de handeling het ontvangt. Een waarde \"$vandaag\" wordt bij het opvragen de datum van vandaag, zodat een voorbeeld niet veroudert (een besluit of betaling in de toekomst is geen feit).",
+          "description": "Per action (the name in handling.actions) a form: an object with form, as the action receives it. A value \"$today\" becomes today's date when requested, so an example does not go stale (a decision or payment in the future is not a fact).",
           "additionalProperties": {
             "type": "string",
             "minLength": 1
@@ -121,7 +121,7 @@
     },
     "portal": {
       "type": "object",
-      "description": "Een proces met een portaal laat inloggen (nep-eHerkenning), een concept toetsen en een indiening in een cel vastleggen. Zonder portaal heeft het proces die routes niet.",
+      "description": "A process with a portal allows logging in (fake eHerkenning), assessing a draft and recording a submission in a cell. Without a portal, the process does not have those routes.",
       "required": [
         "cell",
         "stream",
@@ -132,15 +132,15 @@
       "properties": {
         "cell": {
           "$ref": "#/definitions/identifier",
-          "description": "De cel waarin de indiening wordt vastgelegd. Ze draait in dezelfde runtime."
+          "description": "The cell in which the submission is recorded. It runs in the same runtime."
         },
         "stream": {
           "$ref": "#/definitions/identifier",
-          "description": "De $id van de stroom van die cel waarin het portaal vastlegt."
+          "description": "The $id of the stream of that cell in which the portal records."
         },
         "event": {
           "$ref": "#/definitions/identifier",
-          "description": "Het event uit die stroom dat een indiening wordt."
+          "description": "The event from that stream that becomes a submission."
         },
         "assessment": {
           "type": "object",
@@ -162,17 +162,17 @@
             },
             "rows": {
               "type": "array",
-              "description": "Synthese per regel, zoals bij het besluit: tabelvelden van de toets-lexostatus die een array-parameter worden, vóór de engine.",
+              "description": "Per-row synthesis, as for the decision: table fields of the assessment lexostatus that become an array parameter, before the engine.",
               "items": {
                 "$ref": "#/definitions/rows"
               }
             }
           },
-          "description": "De toets vóór het indienen: de cel reduceert het concept op proef tot deze lexostatus, het proces voegt samen, bouwt de rijen op en de engine evalueert de uitkomst."
+          "description": "The assessment before submitting: the cell reduces the draft on trial to this lexostatus, the process merges, builds the rows, and the engine evaluates the output."
         },
         "offer": {
           "type": "object",
-          "description": "Wat het portaal aanbiedt: een uitkomst van het beleid (bijvoorbeeld 'aanvraag aangeboden'), uitgevoerd in een run, en optioneel de uitkomst van dezelfde regeling die de termijn geeft. Het portaal toont het aanbod; het weigert niets.",
+          "description": "What the portal offers: an output of the policy (for example 'aanvraag aangeboden'), executed in a run, and optionally the output of the same regulation that gives the deadline. The portal shows the offer; it rejects nothing.",
           "required": [
             "regulation",
             "output"
@@ -190,21 +190,21 @@
             },
             "windows": {
               "$ref": "#/definitions/identifier",
-              "description": "Een uitkomst van dezelfde regeling: de lijst tijdvakken die het beleid aanbiedt, als het aanbod-artikel een tijdvak vraagt (de parameter met origin BELANGHEBBENDE en grondslag Awb 4:2 lid 1, RFC-043). De runtime rekent haar uit in een eigen run op de datum van vandaag, zonder parameters, en doet per tijdvak een run van het aanbod. Welke tijdvakken er zijn, is beleid, geen configuratie."
+              "description": "An output of the same regulation: the list of windows the policy offers, if the offer article asks for a window (the parameter with origin BELANGHEBBENDE and legal basis Awb 4:2 lid 1, RFC-043). The runtime computes it in a separate run on today's date, without parameters, and runs the offer once per window. Which windows exist is policy, not configuration."
             },
             "start": {
               "$ref": "#/definitions/identifier",
-              "description": "Een uitkomst van dezelfde regeling: de eerste dag van een tijdvak, uitgerekend met alleen het gekozen tijdvak als parameter. Het aanbod voor een tijdvak dat nog moet beginnen, laat de bronnen peilen op die dag (peilmoment); zonder begin peilen ze op vandaag. Vraagt tijdvakken."
+              "description": "An output of the same regulation: the first day of a window, computed with only the chosen window as parameter. The offer for a window that has yet to start has the sources evaluated as of that day (as_of); without start, they are evaluated as of today. Requires windows."
             },
             "opening": {
               "$ref": "#/definitions/identifier",
-              "description": "Een uitkomst van dezelfde regeling: de eerste dag waarop een aanvraag voor een tijdvak kan binnenkomen, uitgerekend met alleen het tijdvak als parameter. Het loket voert geen ontvangst in van vóór die dag. Vraagt tijdvakken."
+              "description": "An output of the same regulation: the first day on which an application for a window can come in, computed with only the window as parameter. The counter does not accept a receipt date before that day. Requires windows."
             }
           }
         },
         "form": {
           "type": "object",
-          "description": "Optioneel formulierbestand voor labels en volgorde. Het bepaalt nooit het gedrag.",
+          "description": "Optional form file for labels and order. It never determines behavior.",
           "required": [
             "path",
             "screen"
@@ -223,7 +223,7 @@
     },
     "source": {
       "type": "object",
-      "description": "Een lexostatus van een cel. Zonder url is het transport intern: de cel draait in dezelfde runtime. Met url gaat de vraag over HTTP naar <url>/cellen/<cel>/api/lexostatus/<lexostatus>. Met zaak: true is het een lexostatus van de zaak zelf, in de cel waarin het proces vastlegt, met als enige input zaakkenmerk: het besluit bevraagt haar met het zaakkenmerk en neemt al haar parameters en extra velden over. Zo'n bron noemt geen invoer, parameters of extra velden.",
+      "description": "A lexostatus of a cell. Without url, the transport is internal: the cell runs in the same runtime. With url, the query goes over HTTP to <url>/cells/<cell>/api/lexostatus/<lexostatus>. With case: true, it is a lexostatus of the case itself, in the cell in which the process records, with root as its only input: the decision queries it with the root and takes over all its parameters and extra fields. Such a source names no input, parameters or extra fields.",
       "required": [
         "lexostatus"
       ],
@@ -234,7 +234,7 @@
         },
         "regulation": {
           "$ref": "#/definitions/identifier",
-          "description": "In plaats van cel: het eigen beleid van de afnemer, door de engine uitgerekend (notitie bron en gram-id). lexostatus is dan het artikel (<regeling>#<artikel>), invoer zijn de parameters en extra_velden de uitkomsten; een register dat dat beleid bevraagt, levert de deployment (CEL_REGISTERS)."
+          "description": "Instead of cell: the consumer's own policy, computed by the engine (note on source and gram id). lexostatus is then the article (<regulation>#<article>), input are the parameters and extra_fields the outputs; a register that queries that policy is provided by the deployment (CELL_REGISTERS)."
         },
         "url": {
           "type": "string",
@@ -245,11 +245,11 @@
         },
         "case": {
           "type": "boolean",
-          "description": "Een lexostatus van de zaak zelf (zie boven)."
+          "description": "A lexostatus of the case itself (see above)."
         },
         "input": {
           "type": "object",
-          "description": "Per input van de bron-lexostatus: uit welk veld de waarde komt (lexostatus en veld), of een vaste waarde (waarde). Een veld komt uit een lexostatus van de zaak (bij de toets: de toets-lexostatus; een parameter of een extra veld), of uit het antwoord van een eerdere bron in de lijst die dat veld onder extra_velden doorgeeft; die mag zelf ook op een eerdere bron wachten.",
+          "description": "Per input of the source lexostatus: which field the value comes from (lexostatus and field), or a fixed value (value). A field comes from a lexostatus of the case (for the assessment: the assessment lexostatus; a parameter or an extra field), or from the response of an earlier source in the list that passes that field on under extra_fields; that source may itself wait for an earlier source.",
           "propertyNames": {
             "pattern": "^[a-z][a-z0-9_]*$"
           },
@@ -285,7 +285,7 @@
                       "number",
                       "boolean"
                     ],
-                    "description": "Een vaste waarde, zoals het orgaan waarvan het register wordt gevraagd."
+                    "description": "A fixed value, such as the body whose register is queried."
                   }
                 }
               }
@@ -295,14 +295,14 @@
         "extra_fields": {
           "type": "array",
           "uniqueItems": true,
-          "description": "Extra velden uit het antwoord van deze bron die geen parameter zijn, maar invoer voor een latere bron in de lijst (bijvoorbeeld een naam bij een registratienummer). Ze gaan niet naar de engine.",
+          "description": "Extra fields from this source's response that are not parameters but input for a later source in the list (for example a name for a registration number). They do not go to the engine.",
           "items": {
             "type": "string",
             "pattern": "^[a-z_][a-z0-9_]*$"
           }
         },
         "parameters": {
-          "description": "De parameters die deze bron levert, expliciet en zonder wildcard: een lijst als de bron ze onder dezelfde naam levert, of per naam bij de bron de naam bij de afnemer. Elke naam bij de afnemer is een parameter van een artikel onder de toets, het besluit of het aanbod, en komt uit maar een bron. Leeg mag alleen als de bron extra_velden doorgeeft.",
+          "description": "The parameters this source supplies, explicitly and without wildcards: a list if the source supplies them under the same name, or, per name at the source, the name at the consumer. Each name at the consumer is a parameter of an article under the assessment, the decision or the offer, and comes from only one source. May be empty only if the source passes on extra_fields.",
           "oneOf": [
             {
               "type": "array",
@@ -314,7 +314,7 @@
             },
             {
               "type": "object",
-              "description": "Per naam die de bron levert: onder welke parameternaam de afnemer het feit vraagt. De bron spreekt de taal van haar eigen wet en levert de naam als parameter of als extra veld; de vertaling naar de parameters van de afnemer hoort bij de afnemer (synthese bij de afnemer).",
+              "description": "Per name the source supplies: the parameter name under which the consumer asks for the fact. The source speaks the language of its own law and supplies the name as a parameter or as an extra field; the translation to the consumer's parameters belongs with the consumer (synthesis at the consumer).",
               "propertyNames": {
                 "pattern": "^[a-z_][a-z0-9_]*$"
               },
@@ -327,7 +327,7 @@
         },
         "legal_basis": {
           "$ref": "#/definitions/legal_bases",
-          "description": "Waarop de vertaling van deze bron rust: de artikelen die het feit bij de afnemer onder zijn naam vragen en die de bron het laten leveren, en die een vaste waarde in de invoer dragen (zoals het register van welk orgaan). Bij het opstarten: elk artikel geladen, het lid bestaat. Met herkomst: streng heeft elke bron die vertaalt (een naam bij de afnemer die anders is dan bij de bron, of een vaste waarde) een grondslag."
+          "description": "What the translation of this source rests on: the articles that ask for the fact at the consumer under its name and have the source supply it, and that carry a fixed value in the input (such as which body's register). On startup: every article is loaded and the paragraph (lid) exists. With origin_check: strict, every source that translates (a name at the consumer that differs from the name at the source, or a fixed value) has a legal_basis."
         }
       },
       "if": {
@@ -387,7 +387,7 @@
     },
     "roles": {
       "type": "object",
-      "description": "Wie er in het proces inlogt, per rol: langs welk kanaal, en welke routegroepen de rol mag gebruiken (portaal: formulier, toets, aanbod en indienen; behandeling: werkvoorraad, zaak, proefbesluit en besluit; loket: een aanvraag invoeren die langs een andere weg binnenkwam). Zonder rollen is er geen login.",
+      "description": "Who logs in to the process, per role: through which channel, and which route groups the role may use (portal: form, assessment, offer and submit; handling: worklist, case, trial decision and decision; counter: enter an application that came in by another route). Without roles there is no login.",
       "minProperties": 1,
       "propertyNames": {
         "$ref": "#/definitions/identifier"
@@ -402,7 +402,7 @@
         "properties": {
           "channel": {
             "$ref": "#/definitions/identifier",
-            "description": "Een kanaal uit kanalen."
+            "description": "A channel from channels."
           },
           "routes": {
             "type": "array",
@@ -419,18 +419,18 @@
           "label": {
             "type": "string",
             "minLength": 1,
-            "description": "Hoe de frontend de rol noemt; zonder: de id."
+            "description": "How the frontend names the role; without it: the id."
           },
           "legal_basis": {
             "$ref": "#/definitions/legal_basis",
-            "description": "Waarom deze rol dit mag, zoals een mandaat- of dienstverleningsregeling. Een besluit draagt haar bij de handelende actor."
+            "description": "Why this role is allowed to do this, such as a mandate or service regulation. A decision carries it with the acting actor."
           }
         }
       }
     },
     "handling": {
       "type": "object",
-      "description": "Wat de behandelaar in het proces doet: de werkvoorraad bekijken, een zaak openen en er handelingen in doen: op proef, en dan vastleggen. Wat een handeling nodig heeft en van wie, volgt uit de stage van haar vastleg-event (RFC-008) en uit de origin van de parameters van haar artikel (RFC-043), niet uit deze configuratie. Vraagt een rol met routes behandeling.",
+      "description": "What the handler does in the process: view the worklist, open a case and perform actions in it: on trial, and then record. What an action needs, and from whom, follows from the stage of its record event (RFC-008) and from the origin of the parameters of its article (RFC-043), not from this configuration. Requires a role with the handling route.",
       "required": [
         "worklist",
         "actions"
@@ -439,7 +439,7 @@
       "properties": {
         "worklist": {
           "type": "object",
-          "description": "Een lijst-lexostatus (groepeer: zaakkenmerk) van de cel waarin het proces vastlegt.",
+          "description": "A list lexostatus (group_by: root) of the cell in which the process records.",
           "required": [
             "cell",
             "lexostatus"
@@ -457,7 +457,7 @@
         "actions": {
           "type": "array",
           "minItems": 1,
-          "description": "De handelingen die in een zaak kunnen: het besluit, de stages erna (zoals de bekendmaking) en de feiten van het zaakverloop (een verzoek, een ontvangst, een betaling).",
+          "description": "The actions possible in a case: the decision, the stages after it (such as the notification) and the facts of the course of the case (a request, a receipt, a payment).",
           "items": {
             "$ref": "#/definitions/action"
           }
@@ -466,7 +466,7 @@
     },
     "rows": {
       "type": "object",
-      "description": "Synthese per regel: voor elke regel van een tabelveld bevraagt het proces bronnen met waarden uit die regel, en de kolommen samen vormen een array-parameter. Zo vult de actor de kolommen die hij zelf vaststelt, zonder ze in code te zetten.",
+      "description": "Per-row synthesis: for each row of a table field, the process queries sources with values from that row, and the columns together form an array parameter. This way the actor fills the columns it determines itself, without putting them in code.",
       "required": [
         "parameter",
         "table",
@@ -476,11 +476,11 @@
       "properties": {
         "parameter": {
           "$ref": "#/definitions/identifier",
-          "description": "De array-parameter die de regels samen vormen."
+          "description": "The array parameter that the rows together form."
         },
         "table": {
           "type": "object",
-          "description": "Het tabelveld dat de regels levert: een lexostatus van de zaak, of een bron die het veld doorgeeft, en de naam waaronder zij de tabel levert (een parameter of een extra veld).",
+          "description": "The table field that supplies the rows: a lexostatus of the case, or a source that passes the field on, and the name under which it supplies the table (a parameter or an extra field).",
           "required": [
             "lexostatus",
             "field"
@@ -498,7 +498,7 @@
         },
         "columns": {
           "type": "object",
-          "description": "Per kolom van de tabel: onder welke naam ze in de parameter komt. Een kolom die hier niet staat gaat niet mee.",
+          "description": "Per column of the table: the name under which it goes into the parameter. A column not listed here is left out.",
           "propertyNames": {
             "pattern": "^[a-z_][a-z0-9_]*$"
           },
@@ -510,7 +510,7 @@
         },
         "sources": {
           "type": "array",
-          "description": "Bronnen die per regel worden bevraagd, in volgorde: een bron kan een kolom gebruiken die een eerdere bron leverde.",
+          "description": "Sources queried per row, in order: a source can use a column that an earlier source supplied.",
           "items": {
             "type": "object",
             "required": [
@@ -533,7 +533,7 @@
               },
               "input": {
                 "type": "object",
-                "description": "Per input van de bron: de waarde uit de regel (kolom), uit een lexostatus van de zaak of een bron die het veld doorgeeft (lexostatus en veld), uit de samengevoegde parameters (parameter), een uitkomst van een regeling uitgerekend met de samengevoegde parameters (regeling en uitkomst; zo leidt de wet een invoer af, zoals een peildatum), of een vaste waarde (waarde).",
+                "description": "Per input of the source: the value from the row (column), from a lexostatus of the case or a source that passes the field on (lexostatus and field), from the merged parameters (parameter), an output of a regulation computed with the merged parameters (regulation and output; this is how the law derives an input, such as a reference date), or a fixed value (value).",
                 "propertyNames": {
                   "pattern": "^[a-z][a-z0-9_]*$"
                 },
@@ -603,7 +603,7 @@
               },
               "columns": {
                 "type": "object",
-                "description": "Per naam die de bron levert (een parameter of een extra veld): onder welke kolomnaam ze in de regel komt.",
+                "description": "Per name the source supplies (a parameter or an extra field): the column name under which it goes into the row.",
                 "propertyNames": {
                   "pattern": "^[a-z_][a-z0-9_]*$"
                 },
@@ -615,7 +615,7 @@
               },
               "legal_basis": {
                 "$ref": "#/definitions/legal_bases",
-                "description": "Waarop de vertaling van deze bron rust, als bij een synthese-bron: een kolom die bij de afnemer anders heet dan bij de bron, of een vaste waarde in de invoer. Met herkomst: streng verplicht zodra de bron vertaalt."
+                "description": "What the translation of this source rests on, as for a synthesis source: a column named differently at the consumer than at the source, or a fixed value in the input. With origin_check: strict, required as soon as the source translates."
               }
             }
           }
@@ -633,16 +633,16 @@
         "label": {
           "type": "string",
           "minLength": 1,
-          "description": "De naam van het kanaal op het inlogscherm."
+          "description": "The name of the channel on the login screen."
         },
         "explanation": {
           "type": "string",
-          "description": "Uitleg op het inlogscherm. De frontend zegt er zelf bij dat de login nagebootst is."
+          "description": "Explanation on the login screen. The frontend itself adds that the login is simulated."
         },
         "fields": {
           "type": "array",
           "minItems": 1,
-          "description": "De identificatievelden, in de volgorde van het inlogscherm.",
+          "description": "The identification fields, in the order of the login screen.",
           "items": {
             "type": "object",
             "required": [
@@ -661,46 +661,46 @@
               "pattern": {
                 "type": "string",
                 "minLength": 1,
-                "description": "Een reguliere expressie waaraan de hele waarde voldoet; zonder: niet leeg."
+                "description": "A regular expression the whole value must match; without it: not empty."
               },
               "check": {
                 "enum": [
                   "elfproef"
                 ],
-                "description": "elfproef: negen cijfers, gewogen 9 tot en met 2 en -1, de som deelbaar door 11 (zoals een burgerservicenummer)."
+                "description": "elfproef: nine digits, weighted 9 through 2 and -1, with the sum divisible by 11 (like a burgerservicenummer)."
               },
               "message": {
                 "type": "string",
                 "minLength": 1,
-                "description": "De melding bij een waarde die niet voldoet."
+                "description": "The message for a value that does not match."
               },
               "numeric": {
                 "type": "boolean",
-                "description": "De frontend toont een numeriek toetsenbord."
+                "description": "The frontend shows a numeric keyboard."
               },
               "legal_basis": {
                 "$ref": "#/definitions/legal_bases",
-                "description": "Waarop het veld rust: de regel die het gegeven en zijn vorm kent, zoals het nummer dat een register toekent. Bij het opstarten: elk artikel geladen, het lid bestaat."
+                "description": "What the field rests on: the rule that defines the data item and its format, such as the number a register assigns. On startup: every article is loaded and the paragraph (lid) exists."
               }
             }
           }
         },
         "owner": {
           "$ref": "#/definitions/identifier",
-          "description": "Het veld dat de eigenaar van een zaak aanwijst: wie een zaak volgt, moet een gram in die zaak hebben met zijn waarde van dit veld."
+          "description": "The field that identifies the owner of a case: whoever follows a case must have a gram in that case with their value of this field."
         },
         "intake": {
           "$ref": "#/definitions/identifier",
-          "description": "Het pad onder $intake waaronder de velden bij de cel aankomen; zonder: de id van het kanaal."
+          "description": "The path under $intake at which the fields arrive at the cell; without it: the id of the channel."
         },
         "legal_basis": {
           "$ref": "#/definitions/legal_bases",
-          "description": "Waarop het kanaal en zijn eigenaar rusten: de regel die zegt met welk middel en namens wie iemand inlogt. Bij het opstarten: elk artikel geladen, het lid bestaat."
+          "description": "What the channel and its owner rest on: the rule that says by which means and on whose behalf someone logs in. On startup: every article is loaded and the paragraph (lid) exists."
         }
       }
     },
     "on_behalf_of": {
-      "description": "Het bevoegd gezag waarvoor het proces handelt: de naam zoals een regeling haar in competent_authority noemt, of een regeling waarvan het het bevoegd gezag is. De runtime controleert bij het opstarten dat het gezag in een geladen regeling voorkomt, zoekt er het besluit mee als behandeling.besluit geen regeling noemt, en toetst het bij het besluit aan het gezag van de wet. Verplicht met een behandeling.",
+      "description": "The competent authority on whose behalf the process acts: the name as a regulation gives it in competent_authority, or a regulation of which it is the competent authority. On startup, the runtime checks that the authority occurs in a loaded regulation, uses it to find the decision if handling.decision names no regulation, and checks it against the law's authority at the decision. Required with handling.",
       "oneOf": [
         {
           "type": "object",
@@ -735,7 +735,7 @@
     },
     "action": {
       "type": "object",
-      "description": "Een handeling in een zaak: de uitkomsten van een artikel, uitgerekend met wat de zaak, de synthese en het formulier leveren, en het event waarin de cel haar vastlegt. Het soort volgt uit het event: met een stage die de procedure van het artikel (RFC-008) kent, is de eerste zo'n handeling het besluit en elke latere stage van hetzelfde artikel een vervolg op dat besluit (de engine voert de stage uit op de invoer van het vastgelegde besluit, met de haken van die stage); zonder stage legt de handeling een feit vast dat de lexostatussen van de zaak lezen, en telt het feit op proef mee. Een zaak kan meer besluiten hebben, elk van een eigen artikel (een voorschot, een vaststelling, een terugvordering); het vastleg-event zegt of een gram een besluit opent, volgt of wijzigt (besluit in de stroom). Het formulier staat hier niet: bij een besluit de parameters met origin OORDEEL, bij een vervolg wat de stage vraagt (requires), bij een feit de $external-velden van het event die geen uitkomst zijn.",
+      "description": "An action in a case: the outputs of an article, computed with what the case, the synthesis and the form supply, and the event in which the cell records it. The kind follows from the event: with a stage known to the article's procedure (RFC-008), the first such action is the decision and every later stage of the same article is a follow-up to that decision (the engine executes the stage on the input of the recorded decision, with that stage's hooks); without a stage, the action records a fact that the case's lexostatuses read, and the fact counts on trial. A case can have several decisions, each from its own article (an advance, a determination, a recovery); the record event says whether a gram opens, follows or amends a decision (decision in the stream). The form is not listed here: for a decision the parameters with origin OORDEEL, for a follow-up what the stage asks for (requires), for a fact the event's $external fields that are not outputs.",
       "required": [
         "name",
         "record"
@@ -744,48 +744,48 @@
       "properties": {
         "name": {
           "$ref": "#/definitions/identifier",
-          "description": "De naam van de handeling, uniek in het proces; de route is zaken/<zaakkenmerk>/handelingen/<naam>."
+          "description": "The name of the action, unique within the process; the route is cases/<root>/actions/<name>."
         },
         "label": {
           "type": "string",
           "minLength": 1,
-          "description": "Hoe de frontend de handeling noemt; zonder de naam."
+          "description": "How the frontend names the action; without it, the name."
         },
         "role": {
           "$ref": "#/definitions/identifier",
-          "description": "De rol die de handeling mag doen: een sleutel van rollen, met routes behandeling. Zonder: elke rol die de behandeling mag."
+          "description": "The role allowed to perform the action: a key of roles, with the handling route. Without it: every role allowed to use handling."
         },
         "decision": {
           "$ref": "#/definitions/identifier",
-          "description": "De naam van de handeling van het besluit waarbij deze handeling hoort, als haar vastleg-event een besluit volgt of wijzigt. Bij een feit dat een besluit volgt (besluit: volgt, zoals een betaling die een besluit uitvoert: RFC-022 par. 3.3) en bij een besluit dat een ander besluit wijzigt (besluit: wijzigt, zoals een wijziging van een vaststelling op grond van Awb 4:49) verplicht; het proces handelt dan op het laatste besluit van die handeling in de zaak, een wijziging ervan meegerekend. Een vervolg (een latere stage van hetzelfde artikel) vindt zijn besluit zelf; noemt het er toch een, dan moet het dat zijn."
+          "description": "The name of the decision's action that this action belongs to, if its record event follows or amends a decision. Required for a fact that follows a decision (decision: follows, such as a payment that executes a decision: RFC-022 sec. 3.3) and for a decision that amends another decision (decision: amends, such as an amendment of a determination under Awb 4:49); the process then acts on the latest decision of that action in the case, including any amendment of it. A follow-up (a later stage of the same article) finds its decision itself; if it names one anyway, it must be that one."
         },
         "decision_parameter": {
           "type": "string",
           "pattern": "^[a-z_][a-z0-9_]*$",
-          "description": "De parameter van het artikel die het id krijgt van het besluit waarop de handeling handelt (notitie bron en gram-id): zo roept het proces eigen beleid aan dat per besluit leest, zoals de betalingsadministratie. Bedrading, geen wet."
+          "description": "The article parameter that receives the id of the decision the action acts on (note on source and gram id): this is how the process calls its own policy that reads per decision, such as the payment administration. Wiring, not law."
         },
         "regulation": {
           "$ref": "#/definitions/identifier",
-          "description": "Optioneel. Zonder deze sleutel is het artikel de beschikking (produces: BESCHIKKING) waarvoor het bevoegd gezag gelijk is aan het gezag waarvoor het proces handelt (namens)."
+          "description": "Optional. Without this key, the article is the beschikking (produces: BESCHIKKING) for which the competent authority equals the authority the process acts for (on_behalf_of)."
         },
         "outputs": {
           "type": "array",
           "uniqueItems": true,
-          "description": "Uitkomsten van een en hetzelfde artikel van de regeling. Bij een vervolg komen daar de uitkomsten bij van de haken die de wet op die stage laat vuren (zoals de bezwaartermijn, Awb 6:8); die staan hier niet, en zonder regeling mag de lijst dan leeg zijn. Legt het event een executogram vast en staat het artikel in zijn grondslag als TOETS, dan telt elke booleaanse uitkomst met de norm van die bepaling als legal_basis: onwaar is niet te nemen.",
+          "description": "Outputs of one and the same article of the regulation. For a follow-up, these are joined by the outputs of the hooks the law fires at that stage (such as the objection period, Awb 6:8); those are not listed here, and without regulation the list may then be empty. If the event records an executogram and the article is in its legal_basis as TOETS, every boolean output counts, with the norm of that provision as legal_basis: false means it cannot be taken.",
           "items": {
             "$ref": "#/definitions/identifier"
           }
         },
         "rows": {
           "type": "array",
-          "description": "Synthese per regel: tabelvelden die een array-parameter worden.",
+          "description": "Per-row synthesis: table fields that become an array parameter.",
           "items": {
             "$ref": "#/definitions/rows"
           }
         },
         "record": {
           "type": "object",
-          "description": "In welke cel en welk event het proces de handeling laat vastleggen. Het event heeft zaak: volgt; zijn $external-sleutels zijn uitkomsten of velden van het formulier.",
+          "description": "The cell and event in which the process has the action recorded. The event follows the case; its $external keys are outputs or fields of the form.",
           "required": [
             "cell",
             "stream",
@@ -815,7 +815,7 @@
       }
     },
     "lexostatus_name": {
-      "description": "De naam van een lexostatus: een naam uit lexostatussen.yaml, of het lezende artikel van een lexostatus uit de wet (<regeling>#<artikel>, optioneel met ' lid <n>').",
+      "description": "The name of a lexostatus: a name from lexostatuses.yaml, or the reading article of a lexostatus from the law (<regulation>#<article>, optionally with ' lid <n>').",
       "anyOf": [
         {
           "$ref": "#/definitions/identifier"

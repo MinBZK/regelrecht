@@ -3,7 +3,7 @@ name = "regelrecht-cel"
 version = "0.1.0"
 edition = "2021"
 authors = ["MinBZK <noreply@minbzk.nl>"]
-description = "PoC: een runtime voor cellen die feiten vastleggen als chronolexogram, ze reduceren tot een lexostatus en lexostatussen van andere cellen samenvoegen"
+description = "PoC: a runtime for cells that record facts as chronolexograms, reduce them to a lexostatus and combine lexostatuses of other cells"
 license = "EUPL-1.2"
 repository = "https://github.com/MinBZK/regelrecht"
 

@@ -1,4 +1,4 @@
-//! De routes, door de echte router, op de generieke fixtures.
+//! The routes, through the real router, on the generic fixtures.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -10,68 +10,68 @@ use axum::http::{header, Request, StatusCode};
 use axum::Router;
 use chrono::DateTime;
 use http_body_util::BodyExt;
-use regelrecht_cel::api::Klok;
-use regelrecht_cel::config::{Config, Reductiemodus, STANDAARD_POORT};
+use regelrecht_cel::api::Clock;
+use regelrecht_cel::config::{Config, ReductionMode, DEFAULT_PORT};
 use regelrecht_cel::runtime::Runtime;
-use regelrecht_cel::schema::{self, Soort};
-use regelrecht_cel::transport::{LEES_TOKEN_HEADER, RUNTIME_TOKEN_HEADER};
+use regelrecht_cel::schema::{self, Kind};
+use regelrecht_cel::transport::{READ_TOKEN_HEADER, RUNTIME_TOKEN_HEADER};
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
-/// Het proces met een portaal, en de cel waarin het vastlegt.
-const INSTANTIE: &str = "/processes/test_instantie_proces";
-const INSTANTIE_CEL: &str = "/cells/test_instantie";
+/// The process with a portal, and the cell it records in.
+const AGENCY: &str = "/processes/test_instantie_proces";
+const AGENCY_CELL: &str = "/cells/test_instantie";
 
 fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
 }
 
-fn klok() -> Klok {
+fn clock() -> Clock {
     Arc::new(|| DateTime::parse_from_rfc3339("2025-03-12T10:14:03+01:00").unwrap())
 }
 
-/// Een runtime over `<opstelling>/cellen` en `<opstelling>/processes`.
-fn runtime_op(opstelling: &Path, data: &Path) -> Result<Runtime, Vec<String>> {
+/// A runtime over `<setup>/cells` and `<setup>/processes`.
+fn runtime_at(setup: &Path, data: &Path) -> Result<Runtime, Vec<String>> {
     let config = Config {
-        cells_path: opstelling.join("cells"),
-        processes_path: Some(opstelling.join("processes")),
+        cells_path: setup.join("cells"),
+        processes_path: Some(setup.join("processes")),
         regulation_path: fixtures().join("regulation"),
         data_dir: data.to_path_buf(),
-        port: STANDAARD_POORT,
-        lees_token: None,
-        lees_token_bronnen: Vec::new(),
+        port: DEFAULT_PORT,
+        read_token: None,
+        read_token_sources: Vec::new(),
         reduction: Default::default(),
         registers: None,
     };
-    Runtime::laad(&config, klok())
+    Runtime::load(&config, clock())
 }
 
-/// Een runtime zoals [`runtime_op`], met een leestoken.
-fn runtime_met_leestoken(opstelling: &Path, data: &Path, token: &str, sources: &[&str]) -> Runtime {
+/// A runtime like [`runtime_at`], with a read token.
+fn runtime_with_read_token(setup: &Path, data: &Path, token: &str, sources: &[&str]) -> Runtime {
     let config = Config {
-        cells_path: opstelling.join("cells"),
-        processes_path: Some(opstelling.join("processes")),
+        cells_path: setup.join("cells"),
+        processes_path: Some(setup.join("processes")),
         regulation_path: fixtures().join("regulation"),
         data_dir: data.to_path_buf(),
-        port: STANDAARD_POORT,
-        lees_token: Some(token.to_string()),
-        lees_token_bronnen: sources.iter().map(|b| b.to_string()).collect(),
+        port: DEFAULT_PORT,
+        read_token: Some(token.to_string()),
+        read_token_sources: sources.iter().map(|b| b.to_string()).collect(),
         reduction: Default::default(),
         registers: None,
     };
-    Runtime::laad(&config, klok()).unwrap()
+    Runtime::load(&config, clock()).unwrap()
 }
 
 fn app(data: &Path) -> Router {
-    als_lezer(&runtime_op(&fixtures(), data).unwrap())
+    as_reader(&runtime_at(&fixtures(), data).unwrap())
 }
 
-/// De router van een runtime waarvan de tests de leesroutes van een cel
-/// lezen zoals een proces van die runtime: een `GET` onder `/cellen/`
-/// krijgt het runtime-token mee. De leesroutes zijn niet open (zie
-/// `de_leesroutes_van_een_cel_zijn_niet_open`).
-fn als_lezer(rt: &Runtime) -> Router {
-    let token = rt.runtime_token.als_str().to_string();
+/// The router of a runtime whose tests read the read routes of a cell the
+/// way a process of that runtime does: a `GET` under `/cells/` carries the
+/// runtime token. The read routes are not open (see
+/// `only_the_runtime_records_and_reads`).
+fn as_reader(rt: &Runtime) -> Router {
+    let token = rt.runtime_token.as_str().to_string();
     rt.router.clone().layer(axum::middleware::map_request(
         move |mut req: Request<Body>| {
             let token = token.clone();
@@ -88,33 +88,33 @@ fn als_lezer(rt: &Runtime) -> Router {
     ))
 }
 
-async fn vraag(
+async fn call(
     app: &Router,
-    methode: &str,
+    method: &str,
     uri: &str,
     cookie: Option<&str>,
     body: Option<Value>,
 ) -> (StatusCode, Value, Option<String>) {
     let headers: Vec<(&str, &str)> = cookie.map(|c| ("cookie", c)).into_iter().collect();
-    vraag_met(app, methode, uri, &headers, body).await
+    call_with(app, method, uri, &headers, body).await
 }
 
-/// Een verzoek aan een cel zoals een proces van de runtime het doet: met het
-/// runtime-token.
-async fn als_runtime(rt: &Runtime, methode: &str, uri: &str, body: Value) -> (StatusCode, Value) {
-    let headers = [(RUNTIME_TOKEN_HEADER, rt.runtime_token.als_str())];
-    let (status, body, _) = vraag_met(&rt.router, methode, uri, &headers, Some(body)).await;
+/// A request to a cell the way a process of the runtime makes it: with the
+/// runtime token.
+async fn as_runtime(rt: &Runtime, method: &str, uri: &str, body: Value) -> (StatusCode, Value) {
+    let headers = [(RUNTIME_TOKEN_HEADER, rt.runtime_token.as_str())];
+    let (status, body, _) = call_with(&rt.router, method, uri, &headers, Some(body)).await;
     (status, body)
 }
 
-async fn vraag_met(
+async fn call_with(
     app: &Router,
-    methode: &str,
+    method: &str,
     uri: &str,
     headers: &[(&str, &str)],
     body: Option<Value>,
 ) -> (StatusCode, Value, Option<String>) {
-    let mut req = Request::builder().method(methode).uri(uri);
+    let mut req = Request::builder().method(method).uri(uri);
     for (name, value) in headers {
         req = req.header(*name, *value);
     }
@@ -137,10 +137,10 @@ async fn vraag_met(
 }
 
 async fn logins(app: &Router, kvk: &str) -> String {
-    let (status, _, cookie) = vraag(
+    let (status, _, cookie) = call(
         app,
         "POST",
-        &format!("{INSTANTIE}/api/channels/eherkenning/login"),
+        &format!("{AGENCY}/api/channels/eherkenning/login"),
         None,
         Some(json!({"kvk": kvk, "persoon": "A. Tester"})),
     )
@@ -149,7 +149,7 @@ async fn logins(app: &Router, kvk: &str) -> String {
     cookie.unwrap()
 }
 
-fn volledig() -> Value {
+fn complete() -> Value {
     json!({"external": {
         "naam": "Vereniging Voorbeeld",
         "adres": "Voorbeeldstraat 1, 1234 AB Voorbeeld",
@@ -166,13 +166,13 @@ fn volledig() -> Value {
 }
 
 #[tokio::test]
-async fn login_weigert_ongeldige_kvk() {
+async fn login_rejects_an_invalid_kvk() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path());
-    let (status, body, _) = vraag(
+    let (status, body, _) = call(
         &app,
         "POST",
-        &format!("{INSTANTIE}/api/channels/eherkenning/login"),
+        &format!("{AGENCY}/api/channels/eherkenning/login"),
         None,
         Some(json!({"kvk": "123", "persoon": "A"})),
     )
@@ -182,22 +182,22 @@ async fn login_weigert_ongeldige_kvk() {
 }
 
 #[tokio::test]
-async fn formulier_geeft_velden_met_labels() {
+async fn form_gives_fields_with_labels() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path());
-    let (status, body, _) = vraag(&app, "GET", &format!("{INSTANTIE}/api/form"), None, None).await;
+    let (status, body, _) = call(&app, "GET", &format!("{AGENCY}/api/form"), None, None).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["cell"], "test_instantie");
     assert_eq!(body["event"], "aanvraag_ontvangen");
     assert_eq!(body["fields"][0]["label"], "Naam van de aanvrager");
-    schema::valideer(Soort::Stroom, &body["stream"]).unwrap();
+    schema::validate(Kind::Stream, &body["stream"]).unwrap();
 }
 
 #[tokio::test]
-async fn de_cel_geeft_haar_stromen_met_hun_hash() {
+async fn the_cell_gives_its_streams_with_their_hash() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path());
-    let (status, body, _) = vraag(&app, "GET", "/cells/test_afnemer/api/stream", None, None).await;
+    let (status, body, _) = call(&app, "GET", "/cells/test_afnemer/api/stream", None, None).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     let ids: Vec<&str> = body["streams"]
         .as_array()
@@ -208,37 +208,37 @@ async fn de_cel_geeft_haar_stromen_met_hun_hash() {
     assert_eq!(ids, ["test_afnemer_aanvragen", "test_afnemer_zaakverloop"]);
     for s in body["streams"].as_array().unwrap() {
         assert_eq!(s["sha256"].as_str().unwrap().len(), 64);
-        schema::valideer(Soort::Stroom, &s["stream"]).unwrap();
+        schema::validate(Kind::Stream, &s["stream"]).unwrap();
     }
 }
 
 #[tokio::test]
-async fn toets_zonder_login_mag_niet() {
+async fn assessment_without_login_is_not_allowed() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path());
-    let (status, _, _) = vraag(
+    let (status, _, _) = call(
         &app,
         "POST",
-        &format!("{INSTANTIE}/api/application/assessment"),
+        &format!("{AGENCY}/api/application/assessment"),
         None,
-        Some(volledig()),
+        Some(complete()),
     )
     .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
-async fn toets_volledig_en_onvolledig_zonder_vastleggen() {
+async fn assessment_complete_and_incomplete_without_recording() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path());
     let c = logins(&app, "12345678").await;
 
-    let (status, body, _) = vraag(
+    let (status, body, _) = call(
         &app,
         "POST",
-        &format!("{INSTANTIE}/api/application/assessment"),
+        &format!("{AGENCY}/api/application/assessment"),
         Some(&c),
-        Some(volledig()),
+        Some(complete()),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -248,46 +248,46 @@ async fn toets_volledig_en_onvolledig_zonder_vastleggen() {
         "2025-03-12"
     );
 
-    let mut onvolledig = volledig();
-    onvolledig["external"]
+    let mut incomplete = complete();
+    incomplete["external"]
         .as_object_mut()
         .unwrap()
         .remove("aanduiding");
-    let (_, body, _) = vraag(
+    let (_, body, _) = call(
         &app,
         "POST",
-        &format!("{INSTANTIE}/api/application/assessment"),
+        &format!("{AGENCY}/api/application/assessment"),
         Some(&c),
-        Some(onvolledig),
+        Some(incomplete),
     )
     .await;
     assert_eq!(body["result"]["value"], json!(false), "{body}");
     assert_eq!(body["result"]["absent"], json!(["bevat_aanduiding"]));
 
-    let mut zonder_jaar = volledig();
-    zonder_jaar["external"]
+    let mut without_year = complete();
+    without_year["external"]
         .as_object_mut()
         .unwrap()
         .remove("aanvraagjaar");
-    let (_, body, _) = vraag(
+    let (_, body, _) = call(
         &app,
         "POST",
-        &format!("{INSTANTIE}/api/application/assessment"),
+        &format!("{AGENCY}/api/application/assessment"),
         Some(&c),
-        Some(zonder_jaar),
+        Some(without_year),
     )
     .await;
     assert_eq!(body["result"]["to_assess"], json!(false));
     assert_eq!(
         body["result"]["reason"],
-        "niet te beoordelen: mist aanvraagjaar"
+        "cannot be judged: missing aanvraagjaar"
     );
 
-    // Een toets legt niets vast.
-    let (_, chronicle, _) = vraag(
+    // An assessment records nothing.
+    let (_, chronicle, _) = call(
         &app,
         "GET",
-        &format!("{INSTANTIE_CEL}/api/chronicle"),
+        &format!("{AGENCY_CELL}/api/chronicle"),
         None,
         None,
     )
@@ -296,14 +296,14 @@ async fn toets_volledig_en_onvolledig_zonder_vastleggen() {
 }
 
 #[tokio::test]
-async fn onbekend_veld_wordt_geweigerd() {
+async fn unknown_field_is_rejected() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path());
     let c = logins(&app, "12345678").await;
-    let (status, body, _) = vraag(
+    let (status, body, _) = call(
         &app,
         "POST",
-        &format!("{INSTANTIE}/api/application"),
+        &format!("{AGENCY}/api/application"),
         Some(&c),
         Some(json!({"external": {"schoenmaat": 44}})),
     )
@@ -313,33 +313,32 @@ async fn onbekend_veld_wordt_geweigerd() {
 }
 
 #[tokio::test]
-async fn onbekende_tabelkolom_wordt_geweigerd() {
+async fn unknown_table_column_is_rejected() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path());
     let c = logins(&app, "12345678").await;
-    let mut body = volledig();
+    let mut body = complete();
     body["external"]["organen"][1]["kleur"] = json!("rood");
-    let (status, antwoord, _) = vraag(
+    let (status, response, _) = call(
         &app,
         "POST",
-        &format!("{INSTANTIE}/api/application"),
+        &format!("{AGENCY}/api/application"),
         Some(&c),
         Some(body),
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(
-        antwoord["error"]
-            .as_str()
-            .unwrap()
-            .contains("onbekend veld 'organen[1].kleur'"),
-        "{antwoord}"
+        response["error"].as_str().unwrap().contains(
+            "unknown field 'organen[1].kleur': the event 'aanvraag_ontvangen' does not record it"
+        ),
+        "{response}"
     );
-    // Er is niets vastgelegd.
-    let (_, chronicle, _) = vraag(
+    // Nothing was recorded.
+    let (_, chronicle, _) = call(
         &app,
         "GET",
-        &format!("{INSTANTIE_CEL}/api/chronicle"),
+        &format!("{AGENCY_CELL}/api/chronicle"),
         None,
         None,
     )
@@ -348,22 +347,22 @@ async fn onbekende_tabelkolom_wordt_geweigerd() {
 }
 
 #[tokio::test]
-async fn indienen_legt_een_gram_vast_per_kvk() {
+async fn submitting_records_a_gram_per_kvk() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path());
     let c = logins(&app, "12345678").await;
 
-    let (status, body, _) = vraag(
+    let (status, body, _) = call(
         &app,
         "POST",
-        &format!("{INSTANTIE}/api/application"),
+        &format!("{AGENCY}/api/application"),
         Some(&c),
-        Some(volledig()),
+        Some(complete()),
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
     let gram = &body["gram"];
-    schema::valideer(Soort::Gram, gram).unwrap();
+    schema::validate(Kind::Gram, gram).unwrap();
     assert_eq!(gram["type"], "submission");
     assert_eq!(gram["subtype"], "aanvraag");
     assert_eq!(
@@ -376,22 +375,22 @@ async fn indienen_legt_een_gram_vast_per_kvk() {
             && yaml.contains("\ntype: submission\nsubtype: aanvraag\n"),
         "{yaml}"
     );
-    // Velden in de volgorde van de stroom: kern voor inhoud.
+    // Fields in the order of the stream: core before content.
     assert!(yaml.find("core:").unwrap() < yaml.find("content:").unwrap());
     let case = gram["id"].as_str().unwrap().to_string();
 
-    // Een onvolledige aanvraag wordt ook vastgelegd, in een nieuwe zaak.
-    let mut onvolledig = volledig();
-    onvolledig["external"]
+    // An incomplete application is recorded too, in a new case.
+    let mut incomplete = complete();
+    incomplete["external"]
         .as_object_mut()
         .unwrap()
         .remove("adres");
-    let (status, body, _) = vraag(
+    let (status, body, _) = call(
         &app,
         "POST",
-        &format!("{INSTANTIE}/api/application"),
+        &format!("{AGENCY}/api/application"),
         Some(&c),
-        Some(onvolledig),
+        Some(incomplete),
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
@@ -401,28 +400,28 @@ async fn indienen_legt_een_gram_vast_per_kvk() {
     );
     assert_ne!(body["gram"]["id"], json!(case));
 
-    // De kroniek en de lexostatussen zijn van de cel, zonder login: tussen
-    // een afnemer en de cel is geen beveiligingscontext.
-    let (_, chronicle, _) = vraag(
+    // The chronicle and the lexostatuses belong to the cell, without login:
+    // between a consumer and the cell there is no security context.
+    let (_, chronicle, _) = call(
         &app,
         "GET",
-        &format!("{INSTANTIE_CEL}/api/chronicle"),
+        &format!("{AGENCY_CELL}/api/chronicle"),
         None,
         None,
     )
     .await;
     assert_eq!(chronicle.as_array().unwrap().len(), 2);
     for item in chronicle.as_array().unwrap() {
-        schema::valideer(Soort::Gram, &item["gram"]).unwrap();
+        schema::validate(Kind::Gram, &item["gram"]).unwrap();
     }
     let rows =
         std::fs::read_to_string(dir.path().join("test_instantie/test_kroniek.jsonl")).unwrap();
     assert_eq!(rows.lines().count(), 2);
 
-    let (status, lexo, _) = vraag(
+    let (status, lexo, _) = call(
         &app,
         "GET",
-        &format!("{INSTANTIE_CEL}/api/lexostatus/aanvraag_inhoud?root={case}"),
+        &format!("{AGENCY_CELL}/api/lexostatus/aanvraag_inhoud?root={case}"),
         None,
         None,
     )
@@ -430,11 +429,11 @@ async fn indienen_legt_een_gram_vast_per_kvk() {
     assert_eq!(status, StatusCode::OK, "{lexo}");
     assert_eq!(lexo["parameters"]["bevat_naam"], json!(true));
 
-    // Het proces heeft geen kroniek en geen lexostatus.
-    let (status, _, _) = vraag(
+    // The process has no chronicle and no lexostatus.
+    let (status, _, _) = call(
         &app,
         "GET",
-        &format!("{INSTANTIE}/api/chronicle"),
+        &format!("{AGENCY}/api/chronicle"),
         Some(&c),
         None,
     )
@@ -443,14 +442,14 @@ async fn indienen_legt_een_gram_vast_per_kvk() {
 }
 
 #[tokio::test]
-async fn onbekende_lexostatus() {
+async fn unknown_lexostatus() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path());
     let c = logins(&app, "12345678").await;
-    let (status, _, _) = vraag(
+    let (status, _, _) = call(
         &app,
         "GET",
-        &format!("{INSTANTIE_CEL}/api/lexostatus/bestaat_niet?root=x"),
+        &format!("{AGENCY_CELL}/api/lexostatus/bestaat_niet?root=x"),
         Some(&c),
         None,
     )
@@ -459,36 +458,36 @@ async fn onbekende_lexostatus() {
 }
 
 #[test]
-fn fixtures_valideren_tegen_de_schemas() {
+fn fixtures_validate_against_the_schemas() {
     let f = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
-    for (bestand, soort) in [
-        ("chronicles/test_aanvragen.yaml", Soort::Stroom),
-        ("chronicles/test_registers.yaml", Soort::Stroom),
-        ("chronicles/test_afnemer_aanvragen.yaml", Soort::Stroom),
-        ("cells/instantie/lexostatuses.yaml", Soort::Lexostatus),
-        ("cells/register/lexostatuses.yaml", Soort::Lexostatus),
-        ("cells/afnemer/lexostatuses.yaml", Soort::Lexostatus),
-        ("cells/instantie/cell.yaml", Soort::Cell),
-        ("cells/register/cell.yaml", Soort::Cell),
-        ("cells/afnemer/cell.yaml", Soort::Cell),
-        ("cells/gebieden/cell.yaml", Soort::Cell),
-        ("processes/instantie/process.yaml", Soort::Proces),
-        ("processes/afnemer/process.yaml", Soort::Proces),
+    for (file, kind) in [
+        ("chronicles/test_aanvragen.yaml", Kind::Stream),
+        ("chronicles/test_registers.yaml", Kind::Stream),
+        ("chronicles/test_afnemer_aanvragen.yaml", Kind::Stream),
+        ("cells/instantie/lexostatuses.yaml", Kind::Lexostatus),
+        ("cells/register/lexostatuses.yaml", Kind::Lexostatus),
+        ("cells/afnemer/lexostatuses.yaml", Kind::Lexostatus),
+        ("cells/instantie/cell.yaml", Kind::Cell),
+        ("cells/register/cell.yaml", Kind::Cell),
+        ("cells/afnemer/cell.yaml", Kind::Cell),
+        ("cells/gebieden/cell.yaml", Kind::Cell),
+        ("processes/instantie/process.yaml", Kind::Process),
+        ("processes/afnemer/process.yaml", Kind::Process),
     ] {
         let doc: Value =
-            serde_yaml_ng::from_str(&std::fs::read_to_string(f.join(bestand)).unwrap()).unwrap();
-        let result = schema::valideer(soort, &doc);
-        assert!(result.is_ok(), "{bestand}: {result:?}");
+            serde_yaml_ng::from_str(&std::fs::read_to_string(f.join(file)).unwrap()).unwrap();
+        let result = schema::validate(kind, &doc);
+        assert!(result.is_ok(), "{file}: {result:?}");
     }
 }
 
-// --- De runtime: meer cellen, elk met een eigen kroniek ---
+// --- The runtime: several cells, each with its own chronicle ---
 
 #[tokio::test]
-async fn cellen_worden_opgesomd_met_hun_mogelijkheden() {
+async fn cells_are_listed_with_their_possibilities() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path());
-    let (status, body, _) = vraag(&app, "GET", "/api/cells", None, None).await;
+    let (status, body, _) = call(&app, "GET", "/api/cells", None, None).await;
     assert_eq!(status, StatusCode::OK);
     let ids: Vec<&str> = body
         .as_array()
@@ -518,58 +517,58 @@ async fn cellen_worden_opgesomd_met_hun_mogelijkheden() {
         body[0]["lexostatuses"][0]["extra_fields"],
         json!(["aanduiding", "gebieden"])
     );
-    // Een cel zegt niets over wie er handelt: dat staat bij het proces.
-    for sleutel in ["portal", "rollen", "behandeling", "synthese"] {
-        assert!(body[0].get(sleutel).is_none(), "{sleutel}");
+    // A cell says nothing about who acts: that is in the process.
+    for key in ["portal", "rollen", "behandeling", "synthese"] {
+        assert!(body[0].get(key).is_none(), "{key}");
     }
 }
 
 #[tokio::test]
-async fn processen_worden_opgesomd_met_hun_cel() {
+async fn processes_are_listed_with_their_cell() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path());
-    let (status, body, _) = vraag(&app, "GET", "/api/processes", None, None).await;
+    let (status, body, _) = call(&app, "GET", "/api/processes", None, None).await;
     assert_eq!(status, StatusCode::OK);
-    let afnemer = &body[0];
-    assert_eq!(afnemer["id"], "test_afnemer_proces");
-    assert_eq!(afnemer["actor"], "test_afnemer");
-    assert_eq!(afnemer["cell"], "test_afnemer");
-    assert_eq!(afnemer["portal"], json!(true));
-    // De eigen cel is een bron zoals de andere, voor de zaak.
+    let consumer = &body[0];
+    assert_eq!(consumer["id"], "test_afnemer_proces");
+    assert_eq!(consumer["actor"], "test_afnemer");
+    assert_eq!(consumer["cell"], "test_afnemer");
+    assert_eq!(consumer["portal"], json!(true));
+    // The own cell is a source like the others, for the case.
     assert_eq!(
-        afnemer["synthesis"][0],
+        consumer["synthesis"][0],
         json!({"cell": "test_afnemer", "lexostatus": "aanvraag_inhoud", "case": true, "transport": "internal", "parameters": []})
     );
-    assert_eq!(afnemer["synthesis"][3]["cell"], "test_register");
-    assert_eq!(afnemer["synthesis"][3]["transport"], "internal");
-    let instantie = &body[1];
-    assert_eq!(instantie["id"], "test_instantie_proces");
-    assert_eq!(instantie["handling"], Value::Null);
+    assert_eq!(consumer["synthesis"][3]["cell"], "test_register");
+    assert_eq!(consumer["synthesis"][3]["transport"], "internal");
+    let agency = &body[1];
+    assert_eq!(agency["id"], "test_instantie_proces");
+    assert_eq!(agency["handling"], Value::Null);
     assert_eq!(
-        instantie["roles"],
+        agency["roles"],
         json!({
             "aanvrager": {"channel": "eherkenning", "routes": ["portal"], "label": "aanvrager"},
             "burger": {"channel": "burger", "routes": ["portal"], "label": "burger"},
             "loket": {"channel": "medewerker", "routes": ["counter"], "label": "Loketmedewerker"},
         })
     );
-    assert_eq!(instantie["counter"], json!(true));
-    assert_eq!(instantie["authority"], Value::Null);
-    // De kanalen met hun velden: de frontend bouwt er het inlogscherm uit.
+    assert_eq!(agency["counter"], json!(true));
+    assert_eq!(agency["authority"], Value::Null);
+    // The channels with their fields: the frontend builds the login screen from them.
     assert_eq!(
-        instantie["channels"]["burger"]["fields"][0]["check"],
+        agency["channels"]["burger"]["fields"][0]["check"],
         "elfproef"
     );
-    assert_eq!(instantie["channels"]["burger"]["owner"], "nummer");
-    assert_eq!(afnemer["authority"], "Test afnemer");
-    assert_eq!(afnemer["counter"], json!(false));
+    assert_eq!(agency["channels"]["burger"]["owner"], "nummer");
+    assert_eq!(consumer["authority"], "Test afnemer");
+    assert_eq!(consumer["counter"], json!(false));
 }
 
 #[tokio::test]
-async fn een_cel_heeft_geen_login_of_aanvraag() {
+async fn a_cell_has_no_login_or_application() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path());
-    for (methode, path) in [
+    for (method, path) in [
         (
             "POST",
             "/cells/test_register/api/channels/eherkenning/login",
@@ -583,16 +582,16 @@ async fn een_cel_heeft_geen_login_of_aanvraag() {
         ("GET", "/cells/test_instantie/api/examples"),
         ("GET", "/cells/test_afnemer/api/worklist"),
     ] {
-        let (status, _, _) = vraag(&app, methode, path, None, Some(json!({}))).await;
-        assert_eq!(status, StatusCode::NOT_FOUND, "{methode} {path}");
+        let (status, _, _) = call(&app, method, path, None, Some(json!({}))).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{method} {path}");
     }
 }
 
 #[tokio::test]
-async fn startstand_in_een_lege_kroniek_en_niet_nog_eens() {
+async fn initial_state_in_an_empty_chronicle_and_not_again() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path());
-    let (status, chronicle, _) = vraag(
+    let (status, chronicle, _) = call(
         &app,
         "GET",
         "/cells/test_register/api/chronicle",
@@ -605,19 +604,19 @@ async fn startstand_in_een_lege_kroniek_en_niet_nog_eens() {
     assert_eq!(grams.len(), 4);
     for g in grams {
         assert_eq!(g["gram"]["provenance"], "initial_state");
-        // Een registerbesluit hoort bij geen zaak.
+        // A register decision belongs to no case.
         assert!(g["gram"].get("zaakkenmerk").is_none(), "{g}");
         assert!(!g["yaml"].as_str().unwrap().contains("zaakkenmerk"));
-        schema::valideer(Soort::Gram, &g["gram"]).unwrap();
+        schema::validate(Kind::Gram, &g["gram"]).unwrap();
     }
-    // De kroniek staat in de eigen map van de cel.
+    // The chronicle is in the cell's own directory.
     let path = dir.path().join("test_register/test_register.jsonl");
     assert_eq!(std::fs::read_to_string(&path).unwrap().lines().count(), 4);
-    // Een tweede start voegt niets toe: de kroniek is niet meer leeg.
+    // A second start adds nothing: the chronicle is no longer empty.
     drop(app);
     let _ = self::app(dir.path());
     assert_eq!(std::fs::read_to_string(&path).unwrap().lines().count(), 4);
-    // De andere cellen hebben een eigen, lege kroniek.
+    // The other cells have their own, empty chronicle.
     assert!(!dir
         .path()
         .join("test_instantie/test_register.jsonl")
@@ -625,10 +624,10 @@ async fn startstand_in_een_lege_kroniek_en_niet_nog_eens() {
 }
 
 #[tokio::test]
-async fn lexostatus_met_invoer_als_query() {
+async fn lexostatus_with_input_as_query() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path());
-    let (status, l, _) = vraag(
+    let (status, l, _) = call(
         &app,
         "GET",
         "/cells/test_register/api/lexostatus/registerstatus?aanduiding=VOORBEELD",
@@ -637,13 +636,13 @@ async fn lexostatus_met_invoer_als_query() {
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{l}");
-    // De registercel spreekt de taal van haar eigen regeling.
+    // The register cell speaks the language of its own regulation.
     assert_eq!(
         l["parameters"],
         json!({"jaar_van_mededeling": 2024, "zetels_toegewezen": 6,
                "datum_mededeling": "2024-11-01", "geblokkeerd": false})
     );
-    let (status, l, _) = vraag(
+    let (status, l, _) = call(
         &app,
         "GET",
         "/cells/test_register/api/lexostatus/register?aanduiding=VOORBEELD&orgaan=raad",
@@ -656,7 +655,7 @@ async fn lexostatus_met_invoer_als_query() {
         l["parameters"],
         json!({"is_ingeschreven_in_register": true, "is_geschrapt": false})
     );
-    let (status, l, _) = vraag(
+    let (status, l, _) = call(
         &app,
         "GET",
         "/cells/test_register/api/lexostatus/registerstatus",
@@ -665,10 +664,10 @@ async fn lexostatus_met_invoer_als_query() {
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert_eq!(l["error"], "input 'aanduiding' ontbreekt");
+    assert_eq!(l["error"], "input 'aanduiding' is absent");
 }
 
-fn afnemer_concept(aanduiding: Option<&str>) -> Value {
+fn consumer_concept(aanduiding: Option<&str>) -> Value {
     let mut external = json!({
         "naam": "Vereniging Voorbeeld",
         "adres": "Voorbeeldstraat 1, 1234 AB Voorbeeld",
@@ -684,22 +683,22 @@ fn afnemer_concept(aanduiding: Option<&str>) -> Value {
     json!({"external": external})
 }
 
-async fn afnemer_toets(app: &Router, aanduiding: Option<&str>) -> Value {
-    let (status, _, cookie) = vraag(
+async fn consumer_assessment(app: &Router, aanduiding: Option<&str>) -> Value {
+    let (status, _, cookie) = call(
         app,
         "POST",
-        &format!("{AFNEMER}/api/channels/eherkenning/login"),
+        &format!("{CONSUMER}/api/channels/eherkenning/login"),
         None,
         Some(json!({"kvk": "12345678", "persoon": "A. Tester"})),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    let (status, body, _) = vraag(
+    let (status, body, _) = call(
         app,
         "POST",
-        &format!("{AFNEMER}/api/application/assessment"),
+        &format!("{CONSUMER}/api/application/assessment"),
         cookie.as_deref(),
-        Some(afnemer_concept(aanduiding)),
+        Some(consumer_concept(aanduiding)),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -707,10 +706,10 @@ async fn afnemer_toets(app: &Router, aanduiding: Option<&str>) -> Value {
 }
 
 #[tokio::test]
-async fn synthese_intern_met_herkomst_per_parameter() {
+async fn internal_synthesis_with_provenance_per_parameter() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path());
-    let body = afnemer_toets(&app, Some("VOORBEELD")).await;
+    let body = consumer_assessment(&app, Some("VOORBEELD")).await;
     assert_eq!(body["result"]["value"], json!(true), "{body}");
     assert_eq!(
         body["provenance"]["bevat_aanduiding"],
@@ -720,8 +719,8 @@ async fn synthese_intern_met_herkomst_per_parameter() {
         body["provenance"]["zetels_op_lijst"],
         json!({"source": "cell", "cell": "test_register", "lexostatus": "registerstatus", "transport": "internal"})
     );
-    // De afnemer vraagt het register onder zijn eigen naam; de bron levert
-    // in de taal van haar regeling, met het orgaan als vaste invoer.
+    // The consumer asks the register under its own name; the source delivers
+    // in the language of its regulation, with the orgaan as a fixed input.
     assert_eq!(body["parameters"]["is_ingeschreven_raad"], json!(true));
     assert_eq!(
         body["provenance"]["is_ingeschreven_raad"],
@@ -735,51 +734,51 @@ async fn synthese_intern_met_herkomst_per_parameter() {
         body["sources"][0]["input"],
         json!({"aanduiding": "VOORBEELD", "orgaan": "raad"})
     );
-    // De aanduiding is geen parameter: ze staat apart in de eigen lexostatus.
+    // The aanduiding is not a parameter: it is kept apart in the own lexostatus.
     assert_eq!(
         body["lexostatus"]["extra_fields"]["aanduiding"],
         "VOORBEELD"
     );
     assert!(body["provenance"].get("aanduiding").is_none());
-    // Niets uit de synthese wordt vastgelegd, niet bij de afnemer en niet bij
-    // het register.
+    // Nothing from the synthesis is recorded, not at the consumer and not at
+    // the register.
     assert!(!dir.path().join("test_afnemer/test_afnemer.jsonl").exists());
     let rows = std::fs::read_to_string(dir.path().join("test_register/test_register.jsonl"));
     assert_eq!(rows.unwrap().lines().count(), 4);
 }
 
 #[tokio::test]
-async fn synthese_zonder_registratie_en_zonder_invoer() {
+async fn synthesis_without_registration_and_without_input() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path());
-    // Een onbekende aanduiding: niet ingeschreven en geen zetels, dus niet
-    // toelaatbaar. Een mededeling is er niet; die datum vult niemand aan.
-    let body = afnemer_toets(&app, Some("ONBEKEND")).await;
+    // An unknown aanduiding: not registered and no seats, so not admissible.
+    // There is no notice; nobody fills in that date.
+    let body = consumer_assessment(&app, Some("ONBEKEND")).await;
     assert_eq!(body["result"]["value"], json!(false), "{body}");
     assert_eq!(body["provenance"]["is_ingeschreven_raad"]["source"], "cell");
-    // Wat de bron niet leverde, onder haar eigen naam.
+    // What the source did not deliver, under its own name.
     assert_eq!(
         body["sources"][1]["not_delivered"],
         json!(["datum_mededeling", "jaar_van_mededeling"])
     );
     assert!(body["provenance"].get("datum_mededeling").is_none());
-    // Zonder aanduiding wordt de bron niet bevraagd.
-    let body = afnemer_toets(&app, None).await;
+    // Without an aanduiding the source is not queried.
+    let body = consumer_assessment(&app, None).await;
     assert_eq!(body["sources"][0]["status"], "not_queried");
     assert_eq!(body["result"]["absent"], json!(["bevat_aanduiding"]));
     assert!(body["result"]["reason"]
         .as_str()
         .unwrap()
-        .starts_with("niet te beoordelen: bron test_register niet bevraagd"));
+        .starts_with("cannot be judged: source test_register not queried"));
 }
 
-/// Een aanpassing aan een `cel.yaml` of `proces.yaml`.
-type Aanpassing<'a> = (&'a str, &'a dyn Fn(String) -> String);
+/// An adjustment to a `cell.yaml` or `process.yaml`.
+type Adjustment<'a> = (&'a str, &'a dyn Fn(String) -> String);
 
-/// Kopieer fixture-cellen, fixture-processen en alle stromen naar een eigen
-/// opstelling (`cellen/`, `processes/`, `chronicles/`), met een aanpassing
-/// aan elke `cel.yaml` en `proces.yaml`.
-fn eigen_opstelling(cells: &[Aanpassing], processen: &[Aanpassing]) -> tempfile::TempDir {
+/// Copy fixture cells, fixture processes and all streams to a setup of its
+/// own (`cells/`, `processes/`, `chronicles/`), with an adjustment to each
+/// `cell.yaml` and `process.yaml`.
+fn own_setup(cells: &[Adjustment], processes: &[Adjustment]) -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
     let f = fixtures();
     std::fs::create_dir_all(dir.path().join("chronicles")).unwrap();
@@ -792,35 +791,35 @@ fn eigen_opstelling(cells: &[Aanpassing], processen: &[Aanpassing]) -> tempfile:
         )
         .unwrap();
     }
-    for (soort, list, bestand) in [
+    for (kind, list, file) in [
         ("cells", cells, "cell.yaml"),
-        ("processes", processen, "process.yaml"),
+        ("processes", processes, "process.yaml"),
     ] {
-        for (name, pas_aan) in list {
-            let doel = dir.path().join(soort).join(name);
-            std::fs::create_dir_all(&doel).unwrap();
-            for e in std::fs::read_dir(f.join(soort).join(name)).unwrap() {
+        for (name, adjust) in list {
+            let target = dir.path().join(kind).join(name);
+            std::fs::create_dir_all(&target).unwrap();
+            for e in std::fs::read_dir(f.join(kind).join(name)).unwrap() {
                 let p = e.unwrap().path();
-                let tekst = std::fs::read_to_string(&p).unwrap();
-                let tekst = if p.file_name().unwrap() == bestand {
-                    pas_aan(tekst)
+                let text = std::fs::read_to_string(&p).unwrap();
+                let text = if p.file_name().unwrap() == file {
+                    adjust(text)
                 } else {
-                    tekst
+                    text
                 };
-                std::fs::write(doel.join(p.file_name().unwrap()), tekst).unwrap();
+                std::fs::write(target.join(p.file_name().unwrap()), text).unwrap();
             }
         }
     }
     dir
 }
 
-fn zo(t: String) -> String {
+fn as_is(t: String) -> String {
     t
 }
 
-fn met_url(url: String) -> impl Fn(String) -> String {
+fn with_url(url: String) -> impl Fn(String) -> String {
     move |t: String| {
-        // Alleen de synthese-bronnen, niet de bron onder rijen.
+        // Only the synthesis sources, not the source under rows.
         t.replace(
             "  - cell: test_register\n    lexostatus: registerstatus\n",
             &format!("  - cell: test_register\n    url: {url}\n    lexostatus: registerstatus\n"),
@@ -833,43 +832,43 @@ fn met_url(url: String) -> impl Fn(String) -> String {
 }
 
 #[tokio::test]
-async fn synthese_over_http_naar_een_andere_runtime() {
-    // Runtime B: de fixtures, op een echte poort. A leest B met het gedeelde
-    // leestoken; zonder leest alleen B zelf.
+async fn synthesis_over_http_to_another_runtime() {
+    // Runtime B: the fixtures, on a real port. A reads B with the shared read
+    // token; without it only B itself reads.
     let token = "gedeeld-leestoken-van-de-test";
     let data_b = tempfile::tempdir().unwrap();
-    let b = runtime_met_leestoken(&fixtures(), data_b.path(), token, &[]).router;
+    let b = runtime_with_read_token(&fixtures(), data_b.path(), token, &[]).router;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let adres = listener.local_addr().unwrap();
+    let address = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, b).await });
 
-    // Runtime A: alleen de afnemer, met een url naar B.
-    let aanpassing = met_url(format!("http://{adres}"));
-    let opstelling = eigen_opstelling(&[("afnemer", &zo)], &[("afnemer", &aanpassing)]);
+    // Runtime A: only the consumer, with a url to B.
+    let adjustment = with_url(format!("http://{address}"));
+    let setup = own_setup(&[("afnemer", &as_is)], &[("afnemer", &adjustment)]);
     let data_a = tempfile::tempdir().unwrap();
-    // Zonder B onder de bronnen van het leestoken krijgt B het niet mee.
+    // Without B among the read-token sources, B does not get it.
     let data_z = tempfile::tempdir().unwrap();
-    let without = runtime_met_leestoken(opstelling.path(), data_z.path(), token, &[]);
-    let body = afnemer_toets(&without.router, Some("VOORBEELD")).await;
+    let without = runtime_with_read_token(setup.path(), data_z.path(), token, &[]);
+    let body = consumer_assessment(&without.router, Some("VOORBEELD")).await;
     assert_ne!(body["result"]["value"], json!(true), "{body}");
-    let a = runtime_met_leestoken(
-        opstelling.path(),
+    let a = runtime_with_read_token(
+        setup.path(),
         data_a.path(),
         token,
-        &[&format!("http://{adres}")],
+        &[&format!("http://{address}")],
     );
-    // Wat de runtime van een bron buiten haar niet kan zien, meldt ze (de
-    // herkomst, RFC-043); verder niets.
+    // What the runtime cannot see of a source outside it, it reports (the
+    // provenance, RFC-043); nothing else.
     let w = a.warnings().await;
     assert_eq!(w.len(), 2, "{w:?}");
     for w in &w {
         assert!(
-            w.starts_with("proces 'test_afnemer_proces': herkomst van ")
-                && w.contains(&format!("draait buiten deze runtime (http://{adres})")),
+            w.starts_with("process 'test_afnemer_proces': origin of ")
+                && w.contains(&format!("runs outside this runtime (http://{address})")),
             "{w:?}"
         );
     }
-    let body = afnemer_toets(&a.router, Some("VOORBEELD")).await;
+    let body = consumer_assessment(&a.router, Some("VOORBEELD")).await;
     assert_eq!(body["result"]["value"], json!(true), "{body}");
     assert_eq!(
         body["provenance"]["is_ingeschreven_raad"]["transport"],
@@ -879,348 +878,363 @@ async fn synthese_over_http_naar_een_andere_runtime() {
 }
 
 #[tokio::test]
-async fn onbereikbare_bron_maakt_de_toets_niet_te_beoordelen() {
+async fn unreachable_source_makes_the_assessment_not_judgeable() {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let adres = listener.local_addr().unwrap();
+    let address = listener.local_addr().unwrap();
     drop(listener);
-    let aanpassing = met_url(format!("http://{adres}"));
-    let opstelling = eigen_opstelling(&[("afnemer", &zo)], &[("afnemer", &aanpassing)]);
+    let adjustment = with_url(format!("http://{address}"));
+    let setup = own_setup(&[("afnemer", &as_is)], &[("afnemer", &adjustment)]);
     let data = tempfile::tempdir().unwrap();
-    // De bron mag later komen: de runtime start wel, met een waarschuwing.
-    let a = runtime_op(opstelling.path(), data.path()).unwrap();
+    // The source may come later: the runtime does start, with a warning.
+    let a = runtime_at(setup.path(), data.path()).unwrap();
     let w = a.warnings().await;
     assert!(
-        w.iter().any(|w| w.contains("nu niet te controleren")),
+        w.iter().any(|w| w.contains("cannot be checked now")),
         "{w:?}"
     );
-    let body = afnemer_toets(&a.router, Some("VOORBEELD")).await;
+    let body = consumer_assessment(&a.router, Some("VOORBEELD")).await;
     assert_eq!(body["result"]["to_assess"], json!(false));
     assert_eq!(
         body["result"]["reason"],
-        "niet te beoordelen: bron test_register onbereikbaar"
+        "cannot be judged: source test_register unreachable"
     );
     assert_eq!(body["sources"][0]["status"], "unreachable");
-    // Er is niets aangevuld.
+    // Nothing was filled in.
     assert!(body["provenance"].get("is_ingeschreven_raad").is_none());
 }
 
 #[tokio::test]
-async fn interne_bron_die_niet_draait_is_een_waarschuwing() {
-    let opstelling = eigen_opstelling(&[("afnemer", &zo)], &[("afnemer", &zo)]);
+async fn internal_source_that_does_not_run_is_a_warning() {
+    let setup = own_setup(&[("afnemer", &as_is)], &[("afnemer", &as_is)]);
     let data = tempfile::tempdir().unwrap();
-    let a = runtime_op(opstelling.path(), data.path()).unwrap();
+    let a = runtime_at(setup.path(), data.path()).unwrap();
     let w = a.warnings().await;
     assert!(
         w.iter()
-            .any(|w| w.contains("draait niet in deze runtime en heeft geen url")),
+            .any(|w| w.contains("does not run in this runtime and has no url")),
         "{w:?}"
     );
     assert!(
-        w.iter().any(|w| w.contains("geen cel 'test_register'")),
+        w.iter().any(|w| w.contains("no cell 'test_register'")),
         "{w:?}"
     );
 }
 
 #[tokio::test]
-async fn bron_zonder_de_verwachte_parameter_is_een_waarschuwing() {
-    // Een parameter die de afnemer verwacht maar de bron niet levert: haal
-    // hem weg uit de lexostatus van de bron.
-    let cells = eigen_opstelling(&[("afnemer", &zo), ("register", &zo)], &[("afnemer", &zo)]);
+async fn source_without_the_expected_parameter_is_a_warning() {
+    // A parameter the consumer expects but the source does not deliver:
+    // remove it from the source's lexostatus.
+    let cells = own_setup(
+        &[("afnemer", &as_is), ("register", &as_is)],
+        &[("afnemer", &as_is)],
+    );
     let lexo = cells.path().join("cells/register/lexostatuses.yaml");
-    let tekst = std::fs::read_to_string(&lexo).unwrap();
+    let text = std::fs::read_to_string(&lexo).unwrap();
     std::fs::write(
         &lexo,
-        tekst.replace(
+        text.replace(
             "        is_geschrapt:\n          filter: {name: aanduiding_geschrapt, orgaan: $orgaan, aanduiding: $aanduiding}\n          exists: true\n          legal_basis: [testregeling_register#1 lid 1]\n",
             "",
         ),
     )
     .unwrap();
-    // `aanduiding_geschrapt` leest dan niemand meer: markeer het event.
+    // Then nobody reads `aanduiding_geschrapt` any more: mark the event.
     let stream = cells.path().join("chronicles/test_registers.yaml");
-    let tekst = std::fs::read_to_string(&stream).unwrap();
+    let text = std::fs::read_to_string(&stream).unwrap();
     std::fs::write(
         &stream,
-        tekst.replace(
+        text.replace(
             "      orgaan: $external.orgaan\n  - name: uitslag_vastgesteld",
             "      orgaan: $external.orgaan\n    not_reduced:\n      - {field: aanduiding, reason: test}\n      - {field: orgaan, reason: test}\n  - name: uitslag_vastgesteld",
         ),
     )
     .unwrap();
     let data = tempfile::tempdir().unwrap();
-    let a = runtime_op(cells.path(), data.path()).unwrap();
+    let a = runtime_at(cells.path(), data.path()).unwrap();
     let w = a.warnings().await;
     assert!(
         w.iter()
-            .any(|w| w.contains("de bron levert geen parameter 'is_geschrapt'")),
+            .any(|w| w.contains("the source delivers no parameter 'is_geschrapt'")),
         "{w:?}"
     );
 }
 
 #[test]
-fn synthese_controle_bij_het_opstarten() {
-    let geval = |aanpassing: &dyn Fn(String) -> String, verwacht: &str| {
-        let opstelling = eigen_opstelling(
-            &[("afnemer", &zo), ("register", &zo), ("gebieden", &zo)],
-            &[("afnemer", aanpassing)],
+fn synthesis_check_at_startup() {
+    let case = |adjustment: &dyn Fn(String) -> String, expected: &str| {
+        let setup = own_setup(
+            &[
+                ("afnemer", &as_is),
+                ("register", &as_is),
+                ("gebieden", &as_is),
+            ],
+            &[("afnemer", adjustment)],
         );
         let data = tempfile::tempdir().unwrap();
-        let fouten = runtime_op(opstelling.path(), data.path())
+        let errors = runtime_at(setup.path(), data.path())
             .map(|_| ())
-            .expect_err(verwacht);
+            .expect_err(expected);
         assert!(
-            fouten
+            errors
                 .iter()
-                .any(|f| f.starts_with("proces 'test_afnemer_proces': ") && f.contains(verwacht)),
-            "verwacht '{verwacht}' in {fouten:?}"
+                .any(|f| f.starts_with("process 'test_afnemer_proces': ") && f.contains(expected)),
+            "expected '{expected}' in {errors:?}"
         );
     };
-    // Een parameter die niet onder de toets valt.
-    geval(
+    // A parameter that does not fall under the assessment.
+    case(
         &|t: String| {
             t.replace(
                 "{is_ingeschreven_in_register: is_ingeschreven_raad,",
                 "{uitslag_openbaar: uitslag_openbaar, is_ingeschreven_in_register: is_ingeschreven_raad,",
             )
         },
-        "'uitslag_openbaar' is geen parameter van testregeling_afnemer#1",
+        "'uitslag_openbaar' is not a parameter of testregeling_afnemer#1",
     );
-    // Een parameter uit twee bronnen: de eigen reductie en de synthese.
-    geval(
+    // A parameter from two sources: the own reduction and the synthesis.
+    case(
         &|t: String| {
             t.replace(
                 "{is_ingeschreven_in_register: is_ingeschreven_raad,",
                 "{bevat_aanduiding: bevat_aanduiding, is_ingeschreven_in_register: is_ingeschreven_raad,",
             )
         },
-        "parameter 'bevat_aanduiding' komt uit meer dan een bron",
+        "parameter 'bevat_aanduiding' comes from more than one source",
     );
-    // Een invoer uit een veld dat de toets-lexostatus niet levert.
-    geval(
+    // An input from a field the assessment lexostatus does not deliver.
+    case(
         &|t: String| t.replace("field: aanduiding}", "field: aanduiding_x}"),
-        "levert geen 'aanduiding_x'",
+        "does not deliver 'aanduiding_x'",
     );
-    // Synthese zonder portaal en zonder besluit.
-    geval(
+    // Synthesis without a portal and without a decision.
+    case(
         &|t: String| {
-            let (voor, after) = t.split_once("roles:").unwrap();
+            let (before, after) = t.split_once("roles:").unwrap();
             let (_, synthesis) = after.split_once("synthesis:").unwrap();
             let (synthesis, _) = synthesis.split_once("handling:").unwrap();
-            format!("{voor}synthesis:{synthesis}")
+            format!("{before}synthesis:{synthesis}")
         },
-        "synthese zonder portaal en zonder handelingen",
+        "synthesis without portal and without actions",
     );
 }
 
 #[test]
-fn besluit_controle_bij_het_opstarten() {
-    let geval = |aanpassing: &dyn Fn(String) -> String, verwacht: &str| {
-        let opstelling = eigen_opstelling(
-            &[("afnemer", &zo), ("register", &zo), ("gebieden", &zo)],
-            &[("afnemer", aanpassing)],
+fn decision_check_at_startup() {
+    let case = |adjustment: &dyn Fn(String) -> String, expected: &str| {
+        let setup = own_setup(
+            &[
+                ("afnemer", &as_is),
+                ("register", &as_is),
+                ("gebieden", &as_is),
+            ],
+            &[("afnemer", adjustment)],
         );
         let data = tempfile::tempdir().unwrap();
-        let fouten = runtime_op(opstelling.path(), data.path())
+        let errors = runtime_at(setup.path(), data.path())
             .map(|_| ())
-            .expect_err(verwacht);
+            .expect_err(expected);
         assert!(
-            fouten
+            errors
                 .iter()
-                .any(|f| f.starts_with("proces 'test_afnemer_proces': ") && f.contains(verwacht)),
-            "verwacht '{verwacht}' in {fouten:?}"
+                .any(|f| f.starts_with("process 'test_afnemer_proces': ") && f.contains(expected)),
+            "expected '{expected}' in {errors:?}"
         );
     };
-    geval(
+    case(
         &|t: String| t.replace("routes: [handling]", "routes: [counter]"),
-        "behandeling zonder rol die het mag",
+        "handling without a role that may use it",
     );
-    geval(
+    case(
         &|t: String| {
             t.replace(
                 "  aanvrager: {channel: eherkenning, routes: [portal]}\n",
                 "",
             )
         },
-        "portaal zonder rol die het mag",
+        "portal without a role that may use it",
     );
-    geval(
+    case(
         &|t: String| {
             t.replace(
                 "{channel: medewerker, routes: [handling]",
                 "{channel: balie, routes: [handling]",
             )
         },
-        "rol 'behandelaar': kanaal 'balie' staat niet onder kanalen",
+        "role 'behandelaar': channel 'balie' is not listed under channels",
     );
-    // Het portaal-event bindt op_moment niet aan $intake: geen loket.
-    geval(
+    // The portal event does not bind effective_at to $intake: no counter.
+    case(
         &|t: String| t.replace("routes: [handling]", "routes: [handling, counter]"),
-        "loket: event 'aanvraag_ontvangen' bindt op_moment niet aan $intake",
+        "counter: event 'aanvraag_ontvangen' does not bind effective_at to $intake",
     );
-    // Namens een gezag dat de wet niet kent, of geen gezag bij een besluit.
-    geval(
+    // On behalf of an authority the law does not know, or no authority for a decision.
+    case(
         &|t: String| {
             t.replace(
                 "on_behalf_of: {regulation: testregeling_afnemer}",
                 "on_behalf_of: {authority: test_afnemer}",
             )
         },
-        "on_behalf_of: geen geladen regeling noemt 'test_afnemer' als bevoegd gezag",
+        "on_behalf_of: no loaded regulation names 'test_afnemer' as competent authority",
     );
-    geval(
+    case(
         &|t: String| t.replace("on_behalf_of: {regulation: testregeling_afnemer}\n", ""),
-        "behandeling zonder on_behalf_of",
+        "handling without on_behalf_of",
     );
-    geval(
+    case(
         &|t: String| {
             t.replace(
                 "on_behalf_of: {regulation: testregeling_afnemer}\n",
                 "on_behalf_of: {regulation: testregeling_afnemer}\nmandates:\n  - {authority: Test afnemer, legal_basis: 'testregeling_afnemer#9'}\n",
             )
         },
-        "mandaat: 'Test afnemer' is het gezag waarvoor het proces zelf handelt",
+        "mandate: 'Test afnemer' is the authority the process itself acts for",
     );
-    geval(
+    case(
         &|t: String| t.replace("lexostatus: werkvoorraad}", "lexostatus: aanvraag_inhoud}"),
-        "werkvoorraad 'aanvraag_inhoud' is geen lijst",
+        "worklist 'aanvraag_inhoud' is not a list",
     );
-    geval(
+    case(
         &|t: String| t.replace("outputs: [vastgesteld_bedrag,", "outputs: [bestaat_niet,"),
-        "heeft geen uitkomst 'bestaat_niet'",
+        "has no output 'bestaat_niet'",
     );
-    geval(
+    case(
         &|t: String| {
             t.replace(
                 "lexostatus: zaakverloop, case: true}",
                 "lexostatus: werkvoorraad, case: true}",
             )
         },
-        "lexostatus 'werkvoorraad' is een lijst",
+        "lexostatus 'werkvoorraad' is a list",
     );
-    // Een bron van de zaak in een andere cel dan die van het proces.
-    geval(
+    // A source of the case in a cell other than the process's.
+    case(
         &|t: String| {
             t.replace(
                 "{cell: test_afnemer, lexostatus: zaakverloop, case: true}",
                 "{cell: test_register, lexostatus: zaakverloop, case: true}",
             )
         },
-        "cel 'test_register', en het proces legt vast in cel 'test_afnemer'",
+        "cell 'test_register', and the process records in cell 'test_afnemer'",
     );
-    // Een gewone bron uit de eigen cel: dat is een bron van de zaak.
-    geval(
+    // An ordinary source from the own cell: that is a source of the case.
+    case(
         &|t: String| {
             t.replace(
                 "  - cell: test_register\n    lexostatus: registerstatus\n",
                 "  - cell: test_afnemer\n    lexostatus: registerstatus\n",
             )
         },
-        "is een bron van de zaak (zaak: true)",
+        "is a source of the case (case: true)",
     );
-    // De stand bij besluit staat niet meer in de configuratie: ze volgt uit
-    // de procedure van de beschikking. Het schema weigert haar.
-    let met_stand = |t: String| {
+    // The state at decision is no longer in the configuration: it follows from
+    // the procedure of the beschikking. The schema rejects it.
+    let with_state = |t: String| {
         t.replacen(
             "      record: {cell: test_afnemer, stream: test_afnemer_zaakverloop, event: besluit_genomen}",
             "      stand_bij_besluit: {bekendgemaakt: false}\n      record: {cell: test_afnemer, stream: test_afnemer_zaakverloop, event: besluit_genomen}",
             1,
         )
     };
-    let opstelling = eigen_opstelling(
-        &[("afnemer", &zo), ("register", &zo), ("gebieden", &zo)],
-        &[("afnemer", &met_stand)],
+    let setup = own_setup(
+        &[
+            ("afnemer", &as_is),
+            ("register", &as_is),
+            ("gebieden", &as_is),
+        ],
+        &[("afnemer", &with_state)],
     );
     let data = tempfile::tempdir().unwrap();
-    let fouten = runtime_op(opstelling.path(), data.path()).err().unwrap();
+    let errors = runtime_at(setup.path(), data.path()).err().unwrap();
     assert!(
-        fouten
+        errors
             .iter()
             .any(|f| f.contains("'stand_bij_besluit' was unexpected")),
-        "{fouten:?}"
+        "{errors:?}"
     );
-    // Synthese per regel.
-    geval(
+    // Synthesis per row.
+    case(
         &|t: String| {
             t.replace(
                 "          table: {lexostatus: aanvraag_inhoud, field: gebieden}",
                 "          table: {lexostatus: aanvraag_inhoud, field: dorpen}",
             )
         },
-        "lexostatus 'aanvraag_inhoud' levert geen 'dorpen'",
+        "lexostatus 'aanvraag_inhoud' does not deliver 'dorpen'",
     );
-    geval(
+    case(
         &|t: String| t.replace("          table: {lexostatus: aanvraag_inhoud, field: gebieden}", "          table: {lexostatus: werkvoorraad, field: gebieden}"),
-        "de tabel komt uit lexostatus 'werkvoorraad', en die is geen lexostatus van de zaak (zaak: true)",
+        "the table comes from lexostatus 'werkvoorraad', and that is not a lexostatus of the case (case: true)",
     );
-    geval(
+    case(
         &|t: String| {
             t.replace(
                 "                gebied: {column: gebied}\n                peildatum:",
                 "                gebied: {column: gebiedje}\n                peildatum:",
             )
         },
-        "kolom 'gebiedje' wordt door niets ervoor gevuld",
+        "column 'gebiedje' is not filled by anything before it",
     );
-    geval(
+    case(
         &|t: String| t.replace("- parameter: gebiedstabel", "- parameter: dorpstabel"),
-        "'besluit', rijen: 'dorpstabel' is geen parameter van testregeling_afnemer#3",
+        "'besluit', rows: 'dorpstabel' is not a parameter of testregeling_afnemer#3",
     );
-    geval(
+    case(
         &|t: String| {
             t.replace(
                 "              columns: {tarief: tarief}",
                 "              columns: {tarief: zetels}",
             )
         },
-        "kolom 'zetels' komt uit meer dan een plek: de tabel, bron test_gebieden/tarief",
+        "column 'zetels' comes from more than one place: the table, source test_gebieden/tarief",
     );
-    // Waar het besluit wordt vastgelegd: elk veld van het event is een
-    // uitkomst of een oordeel.
-    geval(
+    // Where the decision is recorded: every field of the event is an output
+    // or a verdict.
+    case(
         &|t: String| t.replace("      outputs: [vastgesteld_bedrag, gebiedsbedrag,", "      outputs: [vastgesteld_bedrag,"),
-        "het event legt [gebiedsbedrag] vast, en dat is geen uitkomst en geen oordeel van het besluit",
+        "the event records [gebiedsbedrag], and that is neither an output nor a verdict of the decision",
     );
 }
 
-// --- De behandelaar: werkvoorraad, zaak en proefbesluit ---
+// --- The handler: worklist, case and trial decision ---
 
-const AFNEMER: &str = "/processes/test_afnemer_proces";
-const AFNEMER_CEL: &str = "/cells/test_afnemer";
+const CONSUMER: &str = "/processes/test_afnemer_proces";
+const CONSUMER_CELL: &str = "/cells/test_afnemer";
 
-async fn afnemer_indienen(app: &Router, kvk: &str) -> String {
-    let (_, _, cookie) = vraag(
+async fn consumer_submit(app: &Router, kvk: &str) -> String {
+    let (_, _, cookie) = call(
         app,
         "POST",
-        &format!("{AFNEMER}/api/channels/eherkenning/login"),
+        &format!("{CONSUMER}/api/channels/eherkenning/login"),
         None,
         Some(json!({"kvk": kvk, "persoon": "A. Tester"})),
     )
     .await;
-    let (status, body, _) = vraag(
+    let (status, body, _) = call(
         app,
         "POST",
-        &format!("{AFNEMER}/api/application"),
+        &format!("{CONSUMER}/api/application"),
         cookie.as_deref(),
-        Some(afnemer_concept(Some("VOORBEELD"))),
+        Some(consumer_concept(Some("VOORBEELD"))),
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
-    // De aanvraag opent de zaak in stage AANVRAAG (RFC-008); de werkvoorraad
-    // laat alleen een zaak met stage BESLUIT weg.
+    // The application opens the case in stage AANVRAAG (RFC-008); the worklist
+    // leaves out only a case with stage BESLUIT.
     assert_eq!(body["gram"]["stage"], "AANVRAAG");
     body["gram"]["id"].as_str().unwrap().to_string()
 }
 
-async fn behandelaar(app: &Router) -> String {
-    behandelaar_in(app, AFNEMER).await
+async fn handler(app: &Router) -> String {
+    handler_in(app, CONSUMER).await
 }
 
-/// Log in als behandelaar van een proces.
-async fn behandelaar_in(app: &Router, proces: &str) -> String {
-    let (status, body, cookie) = vraag(
+/// Log in as handler of a process.
+async fn handler_in(app: &Router, process: &str) -> String {
+    let (status, body, cookie) = call(
         app,
         "POST",
-        &format!("{proces}/api/channels/medewerker/login"),
+        &format!("{process}/api/channels/medewerker/login"),
         None,
         Some(json!({"naam": "B. Behandelaar"})),
     )
@@ -1231,18 +1245,17 @@ async fn behandelaar_in(app: &Router, proces: &str) -> String {
     cookie.unwrap()
 }
 
-/// Voeg een gram toe aan de kroniek van de afnemer, zoals stap voor stap
-/// vastleggen dat later zal doen. Langs de kroniek van de runtime: die houdt
-/// de grammen in het geheugen, dus een regel die iemand anders in het bestand
-/// schrijft, ziet zij niet.
-/// Leg een verloopgram vast op de klok van de test.
-fn voeg_gram_toe(rt: &Runtime, name: &str, case: &str, fields: Value) {
-    voeg_gram_toe_op(rt, name, case, fields, "2025-03-12T10:14:03+01:00");
+/// Add a gram to the consumer's chronicle, as recording step by step will do
+/// later. Via the runtime's chronicle: it keeps the grams in memory, so a
+/// line someone else writes to the file is not seen by it.
+/// Record a case-progress gram on the test's clock.
+fn add_gram_to(rt: &Runtime, name: &str, case: &str, fields: Value) {
+    add_gram_to_at(rt, name, case, fields, "2025-03-12T10:14:03+01:00");
 }
 
-/// Leg een verloopgram vast dat rechtens geldt op `op_moment`, vastgelegd op
-/// de klok van de test.
-fn voeg_gram_toe_op(rt: &Runtime, name: &str, case: &str, fields: Value, effective_at: &str) {
+/// Record a case-progress gram that legally applies at `effective_at`,
+/// recorded on the test's clock.
+fn add_gram_to_at(rt: &Runtime, name: &str, case: &str, fields: Value, effective_at: &str) {
     let (type_, stage) = if name == "besluit_genomen" {
         ("decretogram", Some("BESLUIT"))
     } else {
@@ -1261,55 +1274,55 @@ fn voeg_gram_toe_op(rt: &Runtime, name: &str, case: &str, fields: Value, effecti
     if let Some(s) = stage {
         gram["stage"] = json!(s);
     }
-    schema::valideer(Soort::Gram, &gram).unwrap();
+    schema::validate(Kind::Gram, &gram).unwrap();
     rt.cells
         .iter()
         .find(|c| c.cell.id() == "test_afnemer")
         .unwrap()
         .chronicle
-        .voeg_toe(&serde_json::from_value(gram).unwrap())
+        .add(&serde_json::from_value(gram).unwrap())
         .unwrap();
 }
 
 #[tokio::test]
-async fn rollen_bepalen_wie_wat_mag() {
+async fn roles_decide_who_may_do_what() {
     let data = tempfile::tempdir().unwrap();
     let app = app(data.path());
-    let een = afnemer_indienen(&app, "12345678").await;
-    let _twee = afnemer_indienen(&app, "87654321").await;
+    let a = consumer_submit(&app, "12345678").await;
+    let _two = consumer_submit(&app, "87654321").await;
 
-    // Zonder login: niets.
-    let (status, _, _) = vraag(&app, "GET", &format!("{AFNEMER}/api/worklist"), None, None).await;
+    // Without login: nothing.
+    let (status, _, _) = call(&app, "GET", &format!("{CONSUMER}/api/worklist"), None, None).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 
-    // De aanvrager: zijn eigen grammen, geen werkvoorraad en geen zaak.
-    let (_, _, aanvrager) = vraag(
+    // The applicant: their own grams, no worklist and no case.
+    let (_, _, aanvrager) = call(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/channels/eherkenning/login"),
+        &format!("{CONSUMER}/api/channels/eherkenning/login"),
         None,
         Some(json!({"kvk": "12345678", "persoon": "A"})),
     )
     .await;
     let aanvrager = aanvrager.as_deref();
-    for (methode, path) in [
-        ("GET", format!("{AFNEMER}/api/worklist")),
-        ("GET", format!("{AFNEMER}/api/cases/{een}")),
+    for (method, path) in [
+        ("GET", format!("{CONSUMER}/api/worklist")),
+        ("GET", format!("{CONSUMER}/api/cases/{a}")),
         (
             "POST",
-            format!("{AFNEMER}/api/cases/{een}/actions/besluit/trial"),
+            format!("{CONSUMER}/api/cases/{a}/actions/besluit/trial"),
         ),
-        ("GET", format!("{AFNEMER}/api/channels/medewerker/session")),
+        ("GET", format!("{CONSUMER}/api/channels/medewerker/session")),
     ] {
-        let (status, body, _) = vraag(&app, methode, &path, aanvrager, Some(json!({}))).await;
-        assert_eq!(status, StatusCode::FORBIDDEN, "{methode} {path}: {body}");
+        let (status, body, _) = call(&app, method, &path, aanvrager, Some(json!({}))).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{method} {path}: {body}");
     }
-    // De kroniek is van de cel, zonder login en zonder rollen: de cel kent
-    // geen aanvrager en geen behandelaar.
-    let (status, chronicle, _) = vraag(
+    // The chronicle belongs to the cell, without login and without roles: the
+    // cell knows no applicant and no handler.
+    let (status, chronicle, _) = call(
         &app,
         "GET",
-        &format!("{AFNEMER_CEL}/api/chronicle"),
+        &format!("{CONSUMER_CELL}/api/chronicle"),
         None,
         None,
     )
@@ -1317,43 +1330,43 @@ async fn rollen_bepalen_wie_wat_mag() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(chronicle.as_array().unwrap().len(), 2);
 
-    // De behandelaar: het portaal niet.
-    let b = behandelaar(&app).await;
-    let (status, _, _) = vraag(
+    // The handler: not the portal.
+    let b = handler(&app).await;
+    let (status, _, _) = call(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/application/assessment"),
+        &format!("{CONSUMER}/api/application/assessment"),
         Some(&b),
-        Some(afnemer_concept(Some("VOORBEELD"))),
+        Some(consumer_concept(Some("VOORBEELD"))),
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
-    let (status, _, _) = vraag(
+    let (status, _, _) = call(
         &app,
         "GET",
-        &format!("{AFNEMER}/api/channels/eherkenning/session"),
+        &format!("{CONSUMER}/api/channels/eherkenning/session"),
         Some(&b),
         None,
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
 
-    // Een lege naam is geen medewerker; een proces zonder behandeling heeft
-    // geen werkvoorraad, en een kanaal dat het niet noemt bestaat niet.
-    let (status, _, _) = vraag(
+    // An empty name is no employee; a process without handling has no
+    // worklist, and a channel it does not name does not exist.
+    let (status, _, _) = call(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/channels/medewerker/login"),
+        &format!("{CONSUMER}/api/channels/medewerker/login"),
         None,
         Some(json!({"naam": " "})),
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     for path in ["/api/channels/bestaat_niet/login", "/api/worklist"] {
-        let (status, _, _) = vraag(
+        let (status, _, _) = call(
             &app,
             "POST",
-            &format!("{INSTANTIE}{path}"),
+            &format!("{AGENCY}{path}"),
             None,
             Some(json!({})),
         )
@@ -1366,70 +1379,66 @@ async fn rollen_bepalen_wie_wat_mag() {
 }
 
 #[tokio::test]
-async fn werkvoorraad_is_een_lijst_van_zaken_zonder_besluit() {
+async fn worklist_is_a_list_of_cases_without_a_decision() {
     let data = tempfile::tempdir().unwrap();
-    let rt = runtime_op(&fixtures(), data.path()).unwrap();
-    let app = als_lezer(&rt);
-    let een = afnemer_indienen(&app, "12345678").await;
-    let twee = afnemer_indienen(&app, "87654321").await;
-    let b = behandelaar(&app).await;
+    let rt = runtime_at(&fixtures(), data.path()).unwrap();
+    let app = as_reader(&rt);
+    let a = consumer_submit(&app, "12345678").await;
+    let two = consumer_submit(&app, "87654321").await;
+    let b = handler(&app).await;
 
-    let (status, w, _) = vraag(
+    let (status, w, _) = call(
         &app,
         "GET",
-        &format!("{AFNEMER}/api/worklist"),
+        &format!("{CONSUMER}/api/worklist"),
         Some(&b),
         None,
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{w}");
     assert_eq!(w["name"], "werkvoorraad");
-    assert_eq!(
-        w["parameters"],
-        json!({}),
-        "een lijst heeft geen parameters"
-    );
+    assert_eq!(w["parameters"], json!({}), "a list has no parameters");
     let list = w["list"].as_array().unwrap();
     assert_eq!(list.len(), 2);
-    let regel = list.iter().find(|r| r["root"] == een.as_str()).unwrap();
+    let row = list.iter().find(|r| r["root"] == a.as_str()).unwrap();
     assert_eq!(
-        regel["fields"],
+        row["fields"],
         json!({"ontvangen_op": "2025-03-12", "aanvrager": "Vereniging Voorbeeld", "kvk": "12345678"})
     );
 
-    // Een verloopgram laat de zaak staan; een besluit haalt haar eraf.
-    voeg_gram_toe(&rt, "termijn_opgeschort", &een, json!({"dagen": 5}));
-    let (_, w, _) = vraag(
+    // A case-progress gram leaves the case in place; a decision takes it off.
+    add_gram_to(&rt, "termijn_opgeschort", &a, json!({"dagen": 5}));
+    let (_, w, _) = call(
         &app,
         "GET",
-        &format!("{AFNEMER}/api/worklist"),
+        &format!("{CONSUMER}/api/worklist"),
         Some(&b),
         None,
     )
     .await;
     assert_eq!(w["list"].as_array().unwrap().len(), 2);
-    voeg_gram_toe(
+    add_gram_to(
         &rt,
         "besluit_genomen",
-        &een,
+        &a,
         json!({"vastgesteld_bedrag": 6000, "gebiedsbedrag": 5000, "besluit_tijdig": false,
                "besluitdeadline": "2025-04-11", "zorgvuldig": true}),
     );
-    let (_, w, _) = vraag(
+    let (_, w, _) = call(
         &app,
         "GET",
-        &format!("{AFNEMER}/api/worklist"),
+        &format!("{CONSUMER}/api/worklist"),
         Some(&b),
         None,
     )
     .await;
     let list = w["list"].as_array().unwrap();
     assert_eq!(list.len(), 1);
-    assert_eq!(list[0]["root"], twee.as_str());
+    assert_eq!(list[0]["root"], two.as_str());
 
-    // De cellenlijst noemt de werkvoorraad een lijst, met kolommen; de
-    // processenlijst zegt wie haar ziet.
-    let (_, cells, _) = vraag(&app, "GET", "/api/cells", None, None).await;
+    // The cell list calls the worklist a list, with columns; the process list
+    // says who sees it.
+    let (_, cells, _) = call(&app, "GET", "/api/cells", None, None).await;
     let worklist = cells[0]["lexostatuses"]
         .as_array()
         .unwrap()
@@ -1438,45 +1447,45 @@ async fn werkvoorraad_is_een_lijst_van_zaken_zonder_besluit() {
         .unwrap();
     assert_eq!(worklist["list"], json!(true));
     assert_eq!(worklist["parameters"], json!([]));
-    let (_, processen, _) = vraag(&app, "GET", "/api/processes", None, None).await;
+    let (_, processes, _) = call(&app, "GET", "/api/processes", None, None).await;
     assert_eq!(
-        processen[0]["roles"]["behandelaar"],
+        processes[0]["roles"]["behandelaar"],
         json!({"channel": "medewerker", "routes": ["handling"], "label": "Behandelaar"})
     );
-    assert_eq!(processen[0]["handling"]["worklist"], "werkvoorraad");
+    assert_eq!(processes[0]["handling"]["worklist"], "werkvoorraad");
 }
 
 #[tokio::test]
-async fn zaak_met_proefbesluit_zonder_vastleggen() {
+async fn case_with_trial_decision_without_recording() {
     let data = tempfile::tempdir().unwrap();
-    let rt = runtime_op(&fixtures(), data.path()).unwrap();
-    let app = als_lezer(&rt);
-    let case = afnemer_indienen(&app, "12345678").await;
-    let b = behandelaar(&app).await;
+    let rt = runtime_at(&fixtures(), data.path()).unwrap();
+    let app = as_reader(&rt);
+    let case = consumer_submit(&app, "12345678").await;
+    let b = handler(&app).await;
     let chronicle = data.path().join("test_afnemer/test_afnemer.jsonl");
-    let voor = std::fs::read_to_string(&chronicle).unwrap();
+    let before = std::fs::read_to_string(&chronicle).unwrap();
 
-    // Zonder oordelen: niet te nemen, en het proefbesluit zegt wat er mist.
-    let (status, z, _) = vraag(
+    // Without verdicts: not takeable, and the trial decision says what is missing.
+    let (status, z, _) = call(
         &app,
         "GET",
-        &format!("{AFNEMER}/api/cases/{case}"),
+        &format!("{CONSUMER}/api/cases/{case}"),
         Some(&b),
         None,
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{z}");
     assert_eq!(z["grams"].as_array().unwrap().len(), 1);
-    // De handelingen van het proces, in de volgorde van proces.yaml; het
-    // besluit eerst.
-    let namen: Vec<&str> = z["actions"]
+    // The actions of the process, in the order of process.yaml; the decision
+    // first.
+    let names: Vec<&str> = z["actions"]
         .as_array()
         .unwrap()
         .iter()
         .map(|h| h["name"].as_str().unwrap())
         .collect();
     assert_eq!(
-        namen,
+        names,
         ["besluit", "bekendmaken", "betalen", "aanvulling_vragen"]
     );
     let decision = &z["actions"][0];
@@ -1498,22 +1507,22 @@ async fn zaak_met_proefbesluit_zonder_vastleggen() {
         p["reason"]
             .as_str()
             .unwrap()
-            .starts_with("niet te nemen: mist "),
+            .starts_with("not takeable: missing "),
         "{p}"
     );
-    let niet: Vec<&str> = p["not_delivered"]
+    let not: Vec<&str> = p["not_delivered"]
         .as_array()
         .unwrap()
         .iter()
         .map(|n| n["name"].as_str().unwrap())
         .collect();
-    assert_eq!(niet, ["besluitdatum", "feiten_vergaard"]);
+    assert_eq!(not, ["besluitdatum", "feiten_vergaard"]);
 
-    // Met oordelen: te nemen, met herkomst per parameter.
-    let (status, p, _) = vraag(
+    // With verdicts: takeable, with provenance per parameter.
+    let (status, p, _) = call(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/cases/{case}/actions/besluit/trial"),
+        &format!("{CONSUMER}/api/cases/{case}/actions/besluit/trial"),
         Some(&b),
         Some(json!({"form": {"besluitdatum": "2025-03-12", "feiten_vergaard": true}})),
     )
@@ -1528,9 +1537,9 @@ async fn zaak_met_proefbesluit_zonder_vastleggen() {
         p["provenance"]["besluitdatum"],
         json!({"source": "handler"})
     );
-    // De bekendmaking komt in een latere stage van de procedure: bij het
-    // besluit is ze nog niet gebeurd. De dag leest de lexostatus besluit
-    // (geen gram: leeg); de rest volgt uit de procedure.
+    // The announcement comes in a later stage of the procedure: at the
+    // decision it has not happened yet. The day is read by the lexostatus
+    // besluit (no gram: empty); the rest follows from the procedure.
     assert_eq!(
         p["provenance"]["datum_bekendmaking"],
         json!({"source": "own", "lexostatus": "besluit"})
@@ -1541,8 +1550,8 @@ async fn zaak_met_proefbesluit_zonder_vastleggen() {
         json!({"source": "state_at_decision", "stage": "BEKENDMAKING"})
     );
     assert_eq!(p["parameters"]["bekendgemaakt"], json!(false));
-    // De peildatum is de besluitdatum: het op_moment dat het event aan het
-    // formulier bindt.
+    // The reference date is the besluitdatum: the effective_at the event binds
+    // to the form.
     assert_eq!(p["reference_date"], "2025-03-12");
     assert!(
         p["reference_date_from"]
@@ -1560,36 +1569,36 @@ async fn zaak_met_proefbesluit_zonder_vastleggen() {
         json!({"source": "own", "lexostatus": "aanvraag_inhoud"})
     );
     assert_eq!(p["provenance"]["zetels_op_lijst"]["cell"], "test_register");
-    // Geen aanvulling gevraagd: de reductie leest het ontbreken als null.
+    // No supplement requested: the reduction reads the absence as null.
     assert_eq!(p["parameters"]["datum_uitnodiging_aanvulling"], Value::Null);
     assert_eq!(p["parameters"]["opgeschorte_dagen"], json!(0));
     assert_eq!(p["not_delivered"], json!([]));
 
-    // Een opschorting in de zaak schuift de uiterste datum op.
-    voeg_gram_toe(&rt, "termijn_opgeschort", &case, json!({"dagen": 5}));
-    let (_, p, _) = vraag(
+    // A suspension in the case moves the deadline.
+    add_gram_to(&rt, "termijn_opgeschort", &case, json!({"dagen": 5}));
+    let (_, p, _) = call(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/cases/{case}/actions/besluit/trial"),
+        &format!("{CONSUMER}/api/cases/{case}/actions/besluit/trial"),
         Some(&b),
         Some(json!({"form": {"besluitdatum": "2025-03-12", "feiten_vergaard": true}})),
     )
     .await;
     assert_eq!(p["outputs"]["besluitdeadline"], json!("2025-04-16"));
 
-    // Een opschorting die pas na de peildatum ingaat, telt bij dit besluit
-    // niet mee: de cel reduceert op de peildatum van het besluit.
-    voeg_gram_toe_op(
+    // A suspension that only starts after the reference date does not count
+    // for this decision: the cell reduces at the decision's reference date.
+    add_gram_to_at(
         &rt,
         "termijn_opgeschort",
         &case,
         json!({"dagen": 30}),
         "2025-04-01T09:00:00+02:00",
     );
-    let (_, p, _) = vraag(
+    let (_, p, _) = call(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/cases/{case}/actions/besluit/trial"),
+        &format!("{CONSUMER}/api/cases/{case}/actions/besluit/trial"),
         Some(&b),
         Some(json!({"form": {"besluitdatum": "2025-03-12", "feiten_vergaard": true}})),
     )
@@ -1597,25 +1606,25 @@ async fn zaak_met_proefbesluit_zonder_vastleggen() {
     assert_eq!(p["outputs"]["besluitdeadline"], json!("2025-04-16"));
     assert_eq!(p["lexostatuses"][1]["as_of"], json!("2025-03-12"), "{p}");
 
-    // Er is niets vastgelegd, behalve de verloopgrammen van deze test.
+    // Nothing was recorded, except the case-progress grams of this test.
     let after = std::fs::read_to_string(&chronicle).unwrap();
-    assert_eq!(after.lines().count(), voor.lines().count() + 2);
+    assert_eq!(after.lines().count(), before.lines().count() + 2);
 
-    // Een oordeel dat het formulier niet kent, en een onbekende zaak.
-    let (status, f, _) = vraag(
+    // A verdict the form does not know, and an unknown case.
+    let (status, f, _) = call(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/cases/{case}/actions/besluit/trial"),
+        &format!("{CONSUMER}/api/cases/{case}/actions/besluit/trial"),
         Some(&b),
         Some(json!({"form": {"bekendgemaakt": true}})),
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(f["error"].as_str().unwrap().contains("'bekendgemaakt'"));
-    let (status, _, _) = vraag(
+    let (status, _, _) = call(
         &app,
         "GET",
-        &format!("{AFNEMER}/api/cases/00000000-0000-4000-8000-000000000009"),
+        &format!("{CONSUMER}/api/cases/00000000-0000-4000-8000-000000000009"),
         Some(&b),
         None,
     )
@@ -1623,144 +1632,147 @@ async fn zaak_met_proefbesluit_zonder_vastleggen() {
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
-/// Een gram zonder verwijzing is zijn eigen wortel; het id geeft de cel.
-/// Een event met een verwijzing laat het portaal alleen verwijzen naar een
-/// gram waarvan de aanvrager de groep kent, en de cel toetst dat het gram
-/// bestaat.
+/// A gram without a reference is its own root; the cell gives the id.
+/// For an event with a reference, the portal only lets it refer to a gram
+/// whose group the applicant knows, and the cell checks that the gram
+/// exists.
 #[tokio::test]
-async fn een_wortel_en_een_verwijzing() {
+async fn a_root_and_a_reference() {
     let data = tempfile::tempdir().unwrap();
     let app = app(data.path());
     let c = logins(&app, "12345678").await;
-    let application = format!("{INSTANTIE}/api/application");
-    // Een verwijzing die het event niet heeft, weigert de cel.
-    let mut met = volledig();
-    met["refers_to"] = json!({"vorige": "00000000-0000-4000-8000-000000000009"});
-    let (status, body, _) = vraag(&app, "POST", &application, Some(&c), Some(met)).await;
+    let application = format!("{AGENCY}/api/application");
+    // A reference the event does not have is rejected by the cell.
+    let mut with = complete();
+    with["refers_to"] = json!({"vorige": "00000000-0000-4000-8000-000000000009"});
+    let (status, body, _) = call(&app, "POST", &application, Some(&c), Some(with)).await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
-    let (status, body, _) = vraag(&app, "POST", &application, Some(&c), Some(volledig())).await;
+    let (status, body, _) = call(&app, "POST", &application, Some(&c), Some(complete())).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
     assert!(body["gram"].get("refers_to").is_none());
     let case = body["gram"]["id"].as_str().unwrap().to_string();
     drop(app);
 
-    // Dezelfde kroniek, nu met een stroom waarin de aanvraag mag verwijzen
-    // naar een eerdere aanvraag.
-    let opstelling = eigen_opstelling(&[("instantie", &zo)], &[("instantie", &zo)]);
-    let stream = opstelling.path().join("chronicles/test_aanvragen.yaml");
-    let tekst = std::fs::read_to_string(&stream).unwrap();
+    // The same chronicle, now with a stream in which the application may
+    // refer to an earlier application.
+    let setup = own_setup(&[("instantie", &as_is)], &[("instantie", &as_is)]);
+    let stream = setup.path().join("chronicles/test_aanvragen.yaml");
+    let text = std::fs::read_to_string(&stream).unwrap();
     std::fs::write(
         &stream,
-        tekst.replace(
+        text.replace(
             "  - name: aanvraag_ontvangen\n",
             "  - name: aanvraag_ontvangen\n    refers_to: {vorige: {to: aanvraag_ontvangen}}\n",
         ),
     )
     .unwrap();
-    let app = runtime_op(opstelling.path(), data.path()).unwrap().router;
+    let app = runtime_at(setup.path(), data.path()).unwrap().router;
     let c = logins(&app, "12345678").await;
-    let mut onbekend = volledig();
-    onbekend["refers_to"] = json!({"vorige": "00000000-0000-4000-8000-000000000009"});
-    let (status, body, _) = vraag(&app, "POST", &application, Some(&c), Some(onbekend)).await;
+    let mut unknown = complete();
+    unknown["refers_to"] = json!({"vorige": "00000000-0000-4000-8000-000000000009"});
+    let (status, body, _) = call(&app, "POST", &application, Some(&c), Some(unknown)).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(
-        body["error"].as_str().unwrap().contains("geen wortel"),
+        body["error"].as_str().unwrap().contains("no root"),
         "{body}"
     );
-    let mut volgt = volledig();
-    volgt["refers_to"] = json!({"vorige": case});
-    // Een andere KvK kent deze groep niet: dat weet het proces, niet de cel.
-    let ander = logins(&app, "87654321").await;
-    let (status, body, _) = vraag(
+    let mut follows = complete();
+    follows["refers_to"] = json!({"vorige": case});
+    // Another KvK does not know this group: the process knows that, not the cell.
+    let other = logins(&app, "87654321").await;
+    let (status, body, _) = call(
         &app,
         "POST",
         &application,
-        Some(&ander),
-        Some(volgt.clone()),
+        Some(&other),
+        Some(follows.clone()),
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(
-        body["error"].as_str().unwrap().contains("geen wortel"),
+        body["error"].as_str().unwrap().contains("no root"),
         "{body}"
     );
-    let (status, body, _) = vraag(&app, "POST", &application, Some(&c), Some(volgt)).await;
+    let (status, body, _) = call(&app, "POST", &application, Some(&c), Some(follows)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
     assert_eq!(body["gram"]["refers_to"]["vorige"], json!(case));
     assert_ne!(body["gram"]["id"], json!(case));
-    schema::valideer(Soort::Gram, &body["gram"]).unwrap();
+    schema::validate(Kind::Gram, &body["gram"]).unwrap();
 }
 
 #[test]
-fn een_falende_cel_houdt_de_runtime_tegen() {
-    let kapot = |t: String| t.replace("lexostatuses: lexostatuses.yaml", "lexostatuses: weg.yaml");
-    let opstelling = eigen_opstelling(
-        &[("instantie", &zo), ("register", &kapot)],
-        &[("instantie", &zo)],
+fn a_failing_cell_stops_the_runtime() {
+    let broken = |t: String| t.replace("lexostatuses: lexostatuses.yaml", "lexostatuses: weg.yaml");
+    let setup = own_setup(
+        &[("instantie", &as_is), ("register", &broken)],
+        &[("instantie", &as_is)],
     );
     let data = tempfile::tempdir().unwrap();
-    let fouten = runtime_op(opstelling.path(), data.path()).err().unwrap();
-    assert_eq!(fouten.len(), 1, "{fouten:?}");
-    assert!(fouten[0].starts_with("cel 'test_register': "), "{fouten:?}");
-}
-
-#[test]
-fn een_falend_proces_houdt_de_runtime_tegen() {
-    let kapot = |t: String| t.replace("actor: test_instantie", "actor: iemand_anders");
-    let opstelling = eigen_opstelling(&[("instantie", &zo)], &[("instantie", &kapot)]);
-    let data = tempfile::tempdir().unwrap();
-    let fouten = runtime_op(opstelling.path(), data.path()).err().unwrap();
-    assert_eq!(fouten.len(), 1, "{fouten:?}");
+    let errors = runtime_at(setup.path(), data.path()).err().unwrap();
+    assert_eq!(errors.len(), 1, "{errors:?}");
     assert!(
-        fouten[0].starts_with("proces 'test_instantie_proces': portaal: stroom 'test_aanvragen' heeft recording_actor 'test_instantie'"),
-        "{fouten:?}"
+        errors[0].starts_with("cell 'test_register': "),
+        "{errors:?}"
     );
 }
 
 #[test]
-fn zonder_processen_draaien_alleen_de_cellen() {
+fn a_failing_process_stops_the_runtime() {
+    let broken = |t: String| t.replace("actor: test_instantie", "actor: iemand_anders");
+    let setup = own_setup(&[("instantie", &as_is)], &[("instantie", &broken)]);
+    let data = tempfile::tempdir().unwrap();
+    let errors = runtime_at(setup.path(), data.path()).err().unwrap();
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert!(
+        errors[0].starts_with("process 'test_instantie_proces': portal: stream 'test_aanvragen' has recording_actor 'test_instantie'"),
+        "{errors:?}"
+    );
+}
+
+#[test]
+fn without_processes_only_the_cells_run() {
     let data = tempfile::tempdir().unwrap();
     let config = Config {
         cells_path: fixtures().join("cells"),
         processes_path: None,
         regulation_path: fixtures().join("regulation"),
         data_dir: data.path().to_path_buf(),
-        port: STANDAARD_POORT,
-        lees_token: None,
-        lees_token_bronnen: Vec::new(),
+        port: DEFAULT_PORT,
+        read_token: None,
+        read_token_sources: Vec::new(),
         reduction: Default::default(),
         registers: None,
     };
-    let r = Runtime::laad(&config, klok()).unwrap();
+    let r = Runtime::load(&config, clock()).unwrap();
     assert_eq!(r.cells.len(), 5);
-    assert!(r.processen.is_empty());
+    assert!(r.processes.is_empty());
 }
 
-// --- Synthese per regel en het vastleggen van het besluit ---
+// --- Synthesis per row and recording the decision ---
 
-/// Het besluitformulier van de afnemer, volledig ingevuld.
+/// The consumer's decision form, fully filled in.
 fn verdicts() -> Value {
     json!({"form": {"besluitdatum": "2025-03-12", "feiten_vergaard": true}})
 }
 
 #[tokio::test]
-async fn synthese_per_regel_vult_de_tabel_aan() {
+async fn synthesis_per_row_fills_in_the_table() {
     let data = tempfile::tempdir().unwrap();
     let app = app(data.path());
-    let case = afnemer_indienen(&app, "12345678").await;
-    let b = behandelaar(&app).await;
-    let (status, p, _) = vraag(
+    let case = consumer_submit(&app, "12345678").await;
+    let b = handler(&app).await;
+    let (status, p, _) = call(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/cases/{case}/actions/besluit/trial"),
+        &format!("{CONSUMER}/api/cases/{case}/actions/besluit/trial"),
         Some(&b),
         Some(verdicts()),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{p}");
 
-    // De regels komen uit de aanvraag; de kolommen `ingeschreven` en
-    // `tarief` uit twee andere cellen, per regel bevraagd.
+    // The rows come from the application; the columns `ingeschreven` and
+    // `tarief` from two other cells, queried per row.
     assert_eq!(
         p["parameters"]["gebiedstabel"],
         json!([
@@ -1782,43 +1794,43 @@ async fn synthese_per_regel_vult_de_tabel_aan() {
     assert_eq!(rows["sources"][1]["status"], "queried");
     assert!(rows.get("missing").is_none(), "{rows}");
 
-    // De peildatum is het jaartal uit de registercel (jaar_van), omgezet
-    // naar 1 januari van dat jaar.
+    // The reference date is the year from the register cell (jaar_van),
+    // converted to January 1 of that year.
     assert_eq!(p["parameters"]["jaar"], json!(2024));
     assert_eq!(p["provenance"]["jaar"]["cell"], "test_register");
 }
 
 #[tokio::test]
-async fn een_gebied_zonder_tarief_blijft_leeg() {
+async fn an_area_without_a_rate_stays_empty() {
     let data = tempfile::tempdir().unwrap();
     let app = app(data.path());
-    // Een gebied waarvoor geen tarief is vastgesteld: die kolom blijft weg,
-    // en de engine kan de uitkomst dan niet geven.
-    let (_, _, cookie) = vraag(
+    // An area for which no rate has been set: that column stays out, and
+    // then the engine cannot give the output.
+    let (_, _, cookie) = call(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/channels/eherkenning/login"),
+        &format!("{CONSUMER}/api/channels/eherkenning/login"),
         None,
         Some(json!({"kvk": "12345678", "persoon": "A. Tester"})),
     )
     .await;
-    let mut concept = afnemer_concept(Some("VOORBEELD"));
+    let mut concept = consumer_concept(Some("VOORBEELD"));
     concept["external"]["gebieden"] = json!([{"gebied": "Onbekendstad", "zetels": 1}]);
-    let (status, body, _) = vraag(
+    let (status, body, _) = call(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/application"),
+        &format!("{CONSUMER}/api/application"),
         cookie.as_deref(),
         Some(concept),
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
     let case = body["gram"]["id"].as_str().unwrap().to_string();
-    let b = behandelaar(&app).await;
-    let (_, p, _) = vraag(
+    let b = handler(&app).await;
+    let (_, p, _) = call(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/cases/{case}/actions/besluit/trial"),
+        &format!("{CONSUMER}/api/cases/{case}/actions/besluit/trial"),
         Some(&b),
         Some(verdicts()),
     )
@@ -1830,41 +1842,41 @@ async fn een_gebied_zonder_tarief_blijft_leeg() {
     );
     assert_eq!(p["takeable"], json!(false), "{p}");
 
-    // En dan legt de cel niets vast.
-    let (status, f, _) = vraag(
+    // And then the cell records nothing.
+    let (status, f, _) = call(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/cases/{case}/actions/besluit"),
+        &format!("{CONSUMER}/api/cases/{case}/actions/besluit"),
         Some(&b),
         Some(verdicts()),
     )
     .await;
     assert_eq!(status, StatusCode::CONFLICT, "{f}");
-    assert!(f["error"].as_str().unwrap().starts_with("niet te nemen"));
+    assert!(f["error"].as_str().unwrap().starts_with("not takeable"));
     let chronicle =
         std::fs::read_to_string(data.path().join("test_afnemer/test_afnemer.jsonl")).unwrap();
-    assert_eq!(chronicle.lines().count(), 1, "alleen de aanvraag");
+    assert_eq!(chronicle.lines().count(), 1, "only the application");
 }
 
 #[tokio::test]
-async fn besluit_nemen_legt_een_decretogram_vast() {
+async fn taking_a_decision_records_a_decretogram() {
     let data = tempfile::tempdir().unwrap();
     let app = app(data.path());
-    let case = afnemer_indienen(&app, "12345678").await;
-    let twee = afnemer_indienen(&app, "87654321").await;
-    let b = behandelaar(&app).await;
+    let case = consumer_submit(&app, "12345678").await;
+    let two = consumer_submit(&app, "87654321").await;
+    let b = handler(&app).await;
 
-    let (status, body, _) = vraag(
+    let (status, body, _) = call(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/cases/{case}/actions/besluit"),
+        &format!("{CONSUMER}/api/cases/{case}/actions/besluit"),
         Some(&b),
         Some(verdicts()),
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
     let gram = &body["gram"];
-    schema::valideer(Soort::Gram, gram).unwrap();
+    schema::validate(Kind::Gram, gram).unwrap();
     assert_eq!(gram["type"], "decretogram");
     assert_eq!(gram["stage"], "BESLUIT");
     assert_eq!(gram["refers_to"], json!({"on_application": case}));
@@ -1874,8 +1886,9 @@ async fn besluit_nemen_legt_een_decretogram_vast() {
     assert_eq!(gram["decision_type"], "TOEKENNING");
     assert_eq!(gram["regulation"], "testregeling_afnemer");
     assert_eq!(gram["regulation_valid_from"], "2025-01-01");
-    // Drie assen: wie vastlegt (de actor van het proces), wie de wet bevoegd
-    // maakt (letterlijk uit de regeling), en wie handelde, namens dat gezag.
+    // Three axes: who records (the actor of the process), who the law makes
+    // competent (literally from the regulation), and who acted, on behalf of
+    // that authority.
     assert_eq!(gram["recording_actor"], "test_afnemer");
     assert_eq!(gram["competent_authority"], "Test afnemer");
     assert_eq!(
@@ -1885,13 +1898,13 @@ async fn besluit_nemen_legt_een_decretogram_vast() {
     );
     assert_eq!(body["warnings"], json!([]), "{body}");
 
-    // De velden zijn de uitkomsten van het artikel.
+    // The fields are the outputs of the article.
     assert_eq!(
         gram["fields"],
         json!({"vastgesteld_bedrag": 6000, "gebiedsbedrag": 5000, "besluit_tijdig": false,
                "besluitdeadline": "2025-04-11", "zorgvuldig": true})
     );
-    // De invoer, elk met haar herkomst.
+    // The inputs, each with its provenance.
     let inputs = gram["inputs"].as_object().unwrap();
     assert_eq!(
         inputs["besluitdatum"],
@@ -1903,7 +1916,7 @@ async fn besluit_nemen_legt_een_decretogram_vast() {
         inputs["bekendgemaakt"]["provenance"]["source"],
         "state_at_decision"
     );
-    // Het op_moment van het besluit is de besluitdatum, met grondslag.
+    // The effective_at of the decision is the besluitdatum, with legal basis.
     assert_eq!(gram["effective_at"], "2025-03-12T00:00:00+01:00");
     assert_eq!(
         gram["effective_at_legal_basis"],
@@ -1913,7 +1926,7 @@ async fn besluit_nemen_legt_een_decretogram_vast() {
         inputs["aanvraagdatum"]["provenance"],
         json!({"source": "own", "lexostatus": "aanvraag_inhoud"})
     );
-    // Het receipt: de geladen regelingen en de stromen, met een hash erover.
+    // The receipt: the loaded regulations and the streams, with a hash over them.
     let receipt = &gram["receipt"];
     let regulations: Vec<&str> = receipt["regulations"]
         .as_array()
@@ -1935,43 +1948,42 @@ async fn besluit_nemen_legt_een_decretogram_vast() {
     );
     assert_eq!(receipt["sha256"].as_str().unwrap().len(), 64);
 
-    // De zaak verdwijnt uit de werkvoorraad, en het gram staat in de zaak.
-    let (_, w, _) = vraag(
+    // The case disappears from the worklist, and the gram is in the case.
+    let (_, w, _) = call(
         &app,
         "GET",
-        &format!("{AFNEMER}/api/worklist"),
+        &format!("{CONSUMER}/api/worklist"),
         Some(&b),
         None,
     )
     .await;
     let list = w["list"].as_array().unwrap();
     assert_eq!(list.len(), 1);
-    assert_eq!(list[0]["root"], twee.as_str());
-    let (_, z, _) = vraag(
+    assert_eq!(list[0]["root"], two.as_str());
+    let (_, z, _) = call(
         &app,
         "GET",
-        &format!("{AFNEMER}/api/cases/{case}"),
+        &format!("{CONSUMER}/api/cases/{case}"),
         Some(&b),
         None,
     )
     .await;
     assert_eq!(z["grams"].as_array().unwrap().len(), 2);
 
-    // Een tweede besluit in dezelfde zaak: dat is een wijziging.
-    let (status, f, _) = vraag(
+    // A second decision in the same case: that is an amendment.
+    let (status, f, _) = call(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/cases/{case}/actions/besluit"),
+        &format!("{CONSUMER}/api/cases/{case}/actions/besluit"),
         Some(&b),
         Some(verdicts()),
     )
     .await;
     assert_eq!(status, StatusCode::CONFLICT, "{f}");
     assert!(
-        f["error"]
-            .as_str()
-            .unwrap()
-            .contains("ligt al in de zaak; een ander besluit hierover vraagt een eigen grondslag"),
+        f["error"].as_str().unwrap().contains(
+            "is already in the case; another decision on it requires its own legal basis"
+        ),
         "{f}"
     );
     let chronicle =
@@ -1979,34 +1991,34 @@ async fn besluit_nemen_legt_een_decretogram_vast() {
     assert_eq!(
         chronicle.lines().count(),
         3,
-        "twee aanvragen en een besluit"
+        "two applications and one decision"
     );
 
-    // De aanvrager mag niet besluiten.
-    let (_, _, aanvrager) = vraag(
+    // The applicant may not decide.
+    let (_, _, aanvrager) = call(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/channels/eherkenning/login"),
+        &format!("{CONSUMER}/api/channels/eherkenning/login"),
         None,
         Some(json!({"kvk": "12345678", "persoon": "A"})),
     )
     .await;
-    let (status, _, _) = vraag(
+    let (status, _, _) = call(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/cases/{twee}/actions/besluit"),
+        &format!("{CONSUMER}/api/cases/{two}/actions/besluit"),
         aanvrager.as_deref(),
         Some(verdicts()),
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
 
-    // De cel geeft een proces alleen de zaak die het vraagt, en kent een
-    // onbekende zaak niet.
-    let (status, g, _) = vraag(
+    // The cell gives a process only the case it asks for, and does not know an
+    // unknown case.
+    let (status, g, _) = call(
         &app,
         "GET",
-        &format!("{AFNEMER_CEL}/api/cases/{case}"),
+        &format!("{CONSUMER_CELL}/api/cases/{case}"),
         None,
         None,
     )
@@ -2016,71 +2028,78 @@ async fn besluit_nemen_legt_een_decretogram_vast() {
     assert_eq!(g.len(), 2);
     assert_eq!(g[0]["gram"]["id"], case.as_str());
     assert_eq!(g[1]["gram"]["refers_to"]["on_application"], case.as_str());
-    let (status, _, _) = vraag(
+    let (status, _, _) = call(
         &app,
         "GET",
-        &format!("{AFNEMER_CEL}/api/cases/00000000-0000-4000-8000-000000000009"),
+        &format!("{CONSUMER_CELL}/api/cases/00000000-0000-4000-8000-000000000009"),
         None,
         None,
     )
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 
-    // Twee gelijktijdige besluiten op de andere zaak: de cel legt er één
-    // vast, want de toets op de stage en het schrijven delen één slot.
-    let path = format!("{AFNEMER}/api/cases/{twee}/actions/besluit");
-    let (een, ander) = tokio::join!(
-        vraag(&app, "POST", &path, Some(&b), Some(verdicts())),
-        vraag(&app, "POST", &path, Some(&b), Some(verdicts())),
+    // Two concurrent decisions on the other case: the cell records one,
+    // because the stage check and the write share one lock.
+    let path = format!("{CONSUMER}/api/cases/{two}/actions/besluit");
+    let (a, other) = tokio::join!(
+        call(&app, "POST", &path, Some(&b), Some(verdicts())),
+        call(&app, "POST", &path, Some(&b), Some(verdicts())),
     );
-    let mut statussen = [een.0, ander.0];
-    statussen.sort();
+    let mut statuses = [a.0, other.0];
+    statuses.sort();
     assert_eq!(
-        statussen,
+        statuses,
         [StatusCode::CREATED, StatusCode::CONFLICT],
         "{} / {}",
-        een.1,
-        ander.1
+        a.1,
+        other.1
     );
     let chronicle =
         std::fs::read_to_string(data.path().join("test_afnemer/test_afnemer.jsonl")).unwrap();
     assert_eq!(
         chronicle.lines().count(),
         4,
-        "twee aanvragen en twee besluiten"
+        "two applications and two decisions"
     );
 }
 
-/// Een opstelling waarin artikel 3 (de beschikking) een ander gezag noemt
-/// dan het gezag waarvoor het proces handelt ('Test afnemer'), met een
-/// aanpassing aan het proces.
-fn met_ander_gezag(
-    proces: &dyn Fn(String) -> String,
+/// A setup in which article 3 (the beschikking) names an authority other
+/// than the one the process acts for ('Test afnemer'), with an adjustment to
+/// the process.
+fn with_other_authority(
+    process: &dyn Fn(String) -> String,
 ) -> (tempfile::TempDir, tempfile::TempDir, Router) {
-    let cells = eigen_opstelling(
-        &[("afnemer", &zo), ("register", &zo), ("gebieden", &zo)],
-        &[("afnemer", proces)],
+    let cells = own_setup(
+        &[
+            ("afnemer", &as_is),
+            ("register", &as_is),
+            ("gebieden", &as_is),
+        ],
+        &[("afnemer", process)],
     );
     for e in std::fs::read_dir(fixtures().join("regulation")).unwrap() {
-        let van = e.unwrap().path();
+        let of = e.unwrap().path();
         let to = cells
             .path()
             .join("regulation")
-            .join(van.file_name().unwrap());
+            .join(of.file_name().unwrap());
         std::fs::create_dir_all(&to).unwrap();
-        let tekst = std::fs::read_to_string(van.join("2025-01-01.yaml")).unwrap();
-        let tekst = if van.ends_with("testregeling_afnemer") {
-            // Alleen artikel 3 is een BESCHIKKING; daar komt het gezag bij.
-            let met_gezag = tekst.replace(
+        let text = std::fs::read_to_string(of.join("2025-01-01.yaml")).unwrap();
+        let text = if of.ends_with("testregeling_afnemer") {
+            // Only article 3 is a BESCHIKKING; the authority is added there.
+            let with_authority = text.replace(
                 "    machine_readable:\n      execution:\n        produces:\n          legal_character: BESCHIKKING",
                 "    machine_readable:\n      competent_authority:\n        name: Een andere instantie\n      execution:\n        produces:\n          legal_character: BESCHIKKING",
             );
-            assert_ne!(met_gezag, tekst, "het gezag is niet in de regeling gezet");
-            met_gezag
+            assert_ne!(
+                with_authority, text,
+                "the authority was not put into the regulation"
+            );
+            with_authority
         } else {
-            tekst
+            text
         };
-        std::fs::write(to.join("2025-01-01.yaml"), tekst).unwrap();
+        std::fs::write(to.join("2025-01-01.yaml"), text).unwrap();
     }
     let data = tempfile::tempdir().unwrap();
     let config = Config {
@@ -2089,27 +2108,27 @@ fn met_ander_gezag(
         regulation_path: cells.path().join("regulation"),
         data_dir: data.path().to_path_buf(),
         port: 0,
-        lees_token: None,
-        lees_token_bronnen: Vec::new(),
+        read_token: None,
+        read_token_sources: Vec::new(),
         reduction: Default::default(),
         registers: None,
     };
-    let app = Runtime::laad(&config, klok()).unwrap().router;
+    let app = Runtime::load(&config, clock()).unwrap().router;
     (cells, data, app)
 }
 
 #[tokio::test]
-async fn een_ander_bevoegd_gezag_weigert_het_besluit() {
-    // De wet wijst een ander gezag aan dan dat waarvoor het proces handelt,
-    // en het proces heeft geen mandaat: geen gram. Namen worden letterlijk
-    // vergeleken, niet genormaliseerd.
-    let (_cellen, data, app) = met_ander_gezag(&zo);
-    let case = afnemer_indienen(&app, "12345678").await;
-    let b = behandelaar(&app).await;
-    let (status, f, _) = vraag(
+async fn another_competent_authority_refuses_the_decision() {
+    // The law designates an authority other than the one the process acts
+    // for, and the process has no mandate: no gram. Names are compared
+    // literally, not normalized.
+    let (_cells, data, app) = with_other_authority(&as_is);
+    let case = consumer_submit(&app, "12345678").await;
+    let b = handler(&app).await;
+    let (status, f, _) = call(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/cases/{case}/actions/besluit"),
+        &format!("{CONSUMER}/api/cases/{case}/actions/besluit"),
         Some(&b),
         Some(verdicts()),
     )
@@ -2119,33 +2138,33 @@ async fn een_ander_bevoegd_gezag_weigert_het_besluit() {
         f["error"]
             .as_str()
             .unwrap()
-            .contains("de wet wijst 'Een andere instantie' aan als bevoegd gezag, en het proces handelt namens 'Test afnemer' zonder mandaat"),
+            .contains("the law designates 'Een andere instantie' as competent authority, and the process acts on behalf of 'Test afnemer' without a mandate"),
         "{f}"
     );
     let chronicle =
         std::fs::read_to_string(data.path().join("test_afnemer/test_afnemer.jsonl")).unwrap();
-    assert_eq!(chronicle.lines().count(), 1, "alleen de aanvraag");
+    assert_eq!(chronicle.lines().count(), 1, "only the application");
 }
 
-/// Met een mandaat van dat gezag (Awb 10:1) legt de cel het besluit wel vast:
-/// `competent_authority` is het gezag van de wet, `recording_actor` de actor
-/// van het proces, en de handelende actor noemt de behandelaar, namens wie
-/// en op welk mandaat.
+/// With a mandate from that authority (Awb 10:1) the cell does record the
+/// decision: `competent_authority` is the authority of the law,
+/// `recording_actor` the actor of the process, and the acting actor names the
+/// handler, on whose behalf, and on which mandate.
 #[tokio::test]
-async fn een_mandaat_laat_besluiten_namens_een_ander_gezag() {
-    let met_mandaat = |t: String| {
+async fn a_mandate_allows_deciding_on_behalf_of_another_authority() {
+    let with_mandate = |t: String| {
         t.replace(
             "on_behalf_of: {regulation: testregeling_afnemer}\n",
             "on_behalf_of: {regulation: testregeling_afnemer}\nmandates:\n  - {authority: Een andere instantie, legal_basis: 'testregeling_afnemer#7'}\n",
         )
     };
-    let (_cellen, _data, app) = met_ander_gezag(&met_mandaat);
-    let case = afnemer_indienen(&app, "12345678").await;
-    let b = behandelaar(&app).await;
-    let (status, body, _) = vraag(
+    let (_cells, _data, app) = with_other_authority(&with_mandate);
+    let case = consumer_submit(&app, "12345678").await;
+    let b = handler(&app).await;
+    let (status, body, _) = call(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/cases/{case}/actions/besluit"),
+        &format!("{CONSUMER}/api/cases/{case}/actions/besluit"),
         Some(&b),
         Some(verdicts()),
     )
@@ -2166,14 +2185,14 @@ async fn een_mandaat_laat_besluiten_namens_een_ander_gezag() {
     );
 }
 
-// --- Voorbeelden per handeling ---
+// --- Examples per action ---
 
 #[tokio::test]
-async fn voorbeelden_zonder_login() {
+async fn examples_without_login() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path());
     let (status, body, _) =
-        vraag(&app, "GET", &format!("{AFNEMER}/api/examples"), None, None).await;
+        call(&app, "GET", &format!("{CONSUMER}/api/examples"), None, None).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(
         body["logins"],
@@ -2184,24 +2203,17 @@ async fn voorbeelden_zonder_login() {
     );
     assert_eq!(
         body["application"],
-        afnemer_concept(Some("VOORBEELD"))["external"]
+        consumer_concept(Some("VOORBEELD"))["external"]
     );
     assert_eq!(body["actions"]["besluit"], verdicts()["form"]);
-    // "$vandaag" is bij het opvragen de datum van de klok.
+    // "$vandaag" is the date of the clock when requested.
     assert_eq!(
         body["actions"]["bekendmaken"]["datum_bekendmaking"],
         "2025-03-12"
     );
 
-    // Een proces zonder voorbeelden: leeg, geen fout.
-    let (status, body, _) = vraag(
-        &app,
-        "GET",
-        &format!("{INSTANTIE}/api/examples"),
-        None,
-        None,
-    )
-    .await;
+    // A process without examples: empty, no error.
+    let (status, body, _) = call(&app, "GET", &format!("{AGENCY}/api/examples"), None, None).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
         body,
@@ -2210,23 +2222,23 @@ async fn voorbeelden_zonder_login() {
 }
 
 #[tokio::test]
-async fn het_aanvraagvoorbeeld_is_in_te_dienen() {
+async fn the_application_example_can_be_submitted() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path());
-    let (_, v, _) = vraag(&app, "GET", &format!("{AFNEMER}/api/examples"), None, None).await;
-    let (status, _, cookie) = vraag(
+    let (_, v, _) = call(&app, "GET", &format!("{CONSUMER}/api/examples"), None, None).await;
+    let (status, _, cookie) = call(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/channels/eherkenning/login"),
+        &format!("{CONSUMER}/api/channels/eherkenning/login"),
         None,
         Some(v["logins"][0]["fields"].clone()),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    let (status, body, _) = vraag(
+    let (status, body, _) = call(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/application"),
+        &format!("{CONSUMER}/api/application"),
         cookie.as_deref(),
         Some(json!({"external": v["application"]})),
     )
@@ -2235,53 +2247,53 @@ async fn het_aanvraagvoorbeeld_is_in_te_dienen() {
 }
 
 #[test]
-fn voorbeelden_controle_bij_het_opstarten() {
-    let weg = |t: String| t.replace("voorbeeld-besluit.json", "weg.json");
-    let alle = [
-        ("afnemer", &zo as &dyn Fn(String) -> String),
-        ("register", &zo),
-        ("gebieden", &zo),
+fn examples_check_at_startup() {
+    let gone = |t: String| t.replace("voorbeeld-besluit.json", "weg.json");
+    let all = [
+        ("afnemer", &as_is as &dyn Fn(String) -> String),
+        ("register", &as_is),
+        ("gebieden", &as_is),
     ];
-    let opstelling = eigen_opstelling(&alle, &[("afnemer", &weg)]);
+    let setup = own_setup(&all, &[("afnemer", &gone)]);
     let data = tempfile::tempdir().unwrap();
-    let fouten = runtime_op(opstelling.path(), data.path()).err().unwrap();
-    assert_eq!(fouten.len(), 1, "{fouten:?}");
+    let errors = runtime_at(setup.path(), data.path()).err().unwrap();
+    assert_eq!(errors.len(), 1, "{errors:?}");
     assert!(
-        fouten[0].starts_with("proces 'test_afnemer_proces': voorbeeld weg.json"),
-        "{fouten:?}"
+        errors[0].starts_with("process 'test_afnemer_proces': example weg.json"),
+        "{errors:?}"
     );
 
-    let verkeerd = |t: String| t.replace("voorbeeld-besluit.json", "voorbeeld-login.json");
-    let opstelling = eigen_opstelling(&alle, &[("afnemer", &verkeerd)]);
-    let fouten = runtime_op(opstelling.path(), data.path()).err().unwrap();
+    let wrong = |t: String| t.replace("voorbeeld-besluit.json", "voorbeeld-login.json");
+    let setup = own_setup(&all, &[("afnemer", &wrong)]);
+    let errors = runtime_at(setup.path(), data.path()).err().unwrap();
     assert!(
-        fouten[0].contains("voorbeeld-login.json: verwacht een object met 'form'"),
-        "{fouten:?}"
+        errors[0].contains("voorbeeld-login.json: expected an object with 'form'"),
+        "{errors:?}"
     );
 }
 
-// --- De cel legt vast en reduceert op proef, op verzoek van een proces ---
+// --- The cell records and reduces on trial, at the request of a process ---
 
-/// Een verzoek aan de instantie-cel voor het portaal-event.
-fn verzoek(actor: &str) -> Value {
+/// A request to the agency cell for the portal event.
+fn record_request(actor: &str) -> Value {
     json!({
         "actor": actor,
         "stream": "test_aanvragen",
         "event": "aanvraag_ontvangen",
         "intake": {"channel": "portaal", "eherkenning": {"kvk": "12345678", "persoon": "A. Tester"}, "burger": {"nummer": null}},
-        "external": volledig()["external"],
+        "external": complete()["external"],
     })
 }
 
 #[tokio::test]
-async fn de_cel_legt_een_gram_vast_voor_haar_actor() {
+async fn the_cell_records_a_gram_for_its_actor() {
     let dir = tempfile::tempdir().unwrap();
-    let rt = runtime_op(&fixtures(), dir.path()).unwrap();
-    let grams = format!("{INSTANTIE_CEL}/api/grams");
-    let (status, body) = als_runtime(&rt, "POST", &grams, verzoek("test_instantie")).await;
+    let rt = runtime_at(&fixtures(), dir.path()).unwrap();
+    let grams = format!("{AGENCY_CELL}/api/grams");
+    let (status, body) = as_runtime(&rt, "POST", &grams, record_request("test_instantie")).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
-    schema::valideer(Soort::Gram, &body["gram"]).unwrap();
-    // De cel bouwt het gram uit haar stroom: zij geeft het id en het
+    schema::validate(Kind::Gram, &body["gram"]).unwrap();
+    // The cell builds the gram from its stream: it gives the id and the
     // moment.
     assert!(body["gram"].get("refers_to").is_none());
     assert!(body["gram"]["id"].is_string());
@@ -2294,42 +2306,42 @@ async fn de_cel_legt_een_gram_vast_voor_haar_actor() {
     let path = dir.path().join("test_instantie/test_kroniek.jsonl");
     assert_eq!(std::fs::read_to_string(&path).unwrap().lines().count(), 1);
 
-    // Een actor die niet de recording_actor van de stroom is: geen gram.
-    let (status, body) = als_runtime(&rt, "POST", &grams, verzoek("test_afnemer")).await;
+    // An actor that is not the recording_actor of the stream: no gram.
+    let (status, body) = as_runtime(&rt, "POST", &grams, record_request("test_afnemer")).await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
     assert_eq!(
         body["error"],
-        "actor 'test_afnemer' legt niet vast in stroom 'test_aanvragen': de recording_actor is 'test_instantie'"
+        "actor 'test_afnemer' does not record in stream 'test_aanvragen': the recording_actor is 'test_instantie'"
     );
-    // Een event dat de cel niet heeft, en een veld dat de stroom niet kent.
-    let mut onbekend = verzoek("test_instantie");
-    onbekend["event"] = json!("bestaat_niet");
-    let (status, _) = als_runtime(&rt, "POST", &grams, onbekend).await;
+    // An event the cell does not have, and a field the stream does not know.
+    let mut unknown = record_request("test_instantie");
+    unknown["event"] = json!("bestaat_niet");
+    let (status, _) = as_runtime(&rt, "POST", &grams, unknown).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
-    let mut field = verzoek("test_instantie");
+    let mut field = record_request("test_instantie");
     field["external"]["schoenmaat"] = json!(44);
-    let (status, body) = als_runtime(&rt, "POST", &grams, field).await;
+    let (status, body) = as_runtime(&rt, "POST", &grams, field).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(body["error"].as_str().unwrap().contains("schoenmaat"));
     assert_eq!(std::fs::read_to_string(&path).unwrap().lines().count(), 1);
 }
 
 #[tokio::test]
-async fn de_cel_reduceert_op_proef_zonder_vast_te_leggen() {
+async fn the_cell_reduces_on_trial_without_recording() {
     let dir = tempfile::tempdir().unwrap();
-    let rt = runtime_op(&fixtures(), dir.path()).unwrap();
-    let app = als_lezer(&rt);
-    let trial = format!("{INSTANTIE_CEL}/api/lexostatus/aanvraag_inhoud/trial");
-    let (status, body) = als_runtime(
+    let rt = runtime_at(&fixtures(), dir.path()).unwrap();
+    let app = as_reader(&rt);
+    let trial = format!("{AGENCY_CELL}/api/lexostatus/aanvraag_inhoud/trial");
+    let (status, body) = as_runtime(
         &rt,
         "POST",
         &trial,
-        json!({"draft": verzoek("test_instantie"), "inputs": {}}),
+        json!({"draft": record_request("test_instantie"), "inputs": {}}),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    // Het gram van het concept, en de reductie met dat gram: het zaakkenmerk
-    // van het concept is de input.
+    // The gram of the draft, and the reduction with that gram: the case
+    // reference of the draft is the input.
     let case = body["gram"]["id"].as_str().unwrap();
     assert_eq!(body["lexostatus"]["root"], case);
     assert_eq!(body["lexostatus"]["parameters"]["bevat_naam"], json!(true));
@@ -2337,56 +2349,56 @@ async fn de_cel_reduceert_op_proef_zonder_vast_te_leggen() {
         body["lexostatus"]["parameters"]["aanvraagdatum"],
         "2025-03-12"
     );
-    // Niets vastgelegd.
-    let (_, chronicle, _) = vraag(
+    // Nothing recorded.
+    let (_, chronicle, _) = call(
         &app,
         "GET",
-        &format!("{INSTANTIE_CEL}/api/chronicle"),
+        &format!("{AGENCY_CELL}/api/chronicle"),
         None,
         None,
     )
     .await;
     assert_eq!(chronicle, json!([]));
-    // Ook op proef legt alleen de actor van de stroom iets voor.
-    let (status, _) = als_runtime(
+    // On trial, too, only the actor of the stream submits anything.
+    let (status, _) = as_runtime(
         &rt,
         "POST",
         &trial,
-        json!({"draft": verzoek("iemand_anders")}),
+        json!({"draft": record_request("iemand_anders")}),
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]
-async fn een_proefreductie_reduceert_de_kroniek_met_het_concept() {
-    // De werkvoorraad van de afnemer: een lijst over de hele kroniek. Op
-    // proef telt het concept mee naast wat er al ligt, en er blijft niets van
-    // over.
+async fn a_trial_reduction_reduces_the_chronicle_with_the_draft() {
+    // The consumer's worklist: a list over the whole chronicle. On trial the
+    // draft counts alongside what is already there, and nothing of it
+    // remains.
     let data = tempfile::tempdir().unwrap();
-    let rt = runtime_op(&fixtures(), data.path()).unwrap();
-    let app = als_lezer(&rt);
-    afnemer_indienen(&app, "12345678").await;
+    let rt = runtime_at(&fixtures(), data.path()).unwrap();
+    let app = as_reader(&rt);
+    consumer_submit(&app, "12345678").await;
     let concept = json!({
         "actor": "test_afnemer",
         "stream": "test_afnemer_aanvragen",
         "event": "aanvraag_ontvangen",
         "intake": {"channel": "portaal", "eherkenning": {"kvk": "87654321", "persoon": "B. Tester"}, "burger": {"nummer": null}},
-        "external": afnemer_concept(Some("VOORBEELD"))["external"],
+        "external": consumer_concept(Some("VOORBEELD"))["external"],
     });
-    let (status, body) = als_runtime(
+    let (status, body) = as_runtime(
         &rt,
         "POST",
-        &format!("{AFNEMER_CEL}/api/lexostatus/werkvoorraad/trial"),
+        &format!("{CONSUMER_CELL}/api/lexostatus/werkvoorraad/trial"),
         json!({"draft": concept}),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["lexostatus"]["list"].as_array().unwrap().len(), 2);
-    let (_, w, _) = vraag(
+    let (_, w, _) = call(
         &app,
         "GET",
-        &format!("{AFNEMER_CEL}/api/lexostatus/werkvoorraad"),
+        &format!("{CONSUMER_CELL}/api/lexostatus/werkvoorraad"),
         None,
         None,
     )
@@ -2395,57 +2407,57 @@ async fn een_proefreductie_reduceert_de_kroniek_met_het_concept() {
 }
 
 #[tokio::test]
-async fn alleen_de_runtime_legt_vast_en_leest() {
+async fn only_the_runtime_records_and_reads() {
     let dir = tempfile::tempdir().unwrap();
-    let rt = runtime_op(&fixtures(), dir.path()).unwrap();
-    let grams = format!("{INSTANTIE_CEL}/api/grams");
-    let trial = format!("{INSTANTIE_CEL}/api/lexostatus/aanvraag_inhoud/trial");
-    // Zonder token: 401, met een ander token: 403, voor vastleggen en proef.
+    let rt = runtime_at(&fixtures(), dir.path()).unwrap();
+    let grams = format!("{AGENCY_CELL}/api/grams");
+    let trial = format!("{AGENCY_CELL}/api/lexostatus/aanvraag_inhoud/trial");
+    // Without a token: 401, with a different token: 403, for recording and trial.
     for (path, body) in [
-        (&grams, verzoek("test_instantie")),
-        (&trial, json!({"draft": verzoek("test_instantie")})),
+        (&grams, record_request("test_instantie")),
+        (&trial, json!({"draft": record_request("test_instantie")})),
     ] {
-        let (status, error, _) = vraag(&rt.router, "POST", path, None, Some(body.clone())).await;
+        let (status, error, _) = call(&rt.router, "POST", path, None, Some(body.clone())).await;
         assert_eq!(status, StatusCode::UNAUTHORIZED, "{path}: {error}");
         assert!(error["error"]
             .as_str()
             .unwrap()
-            .contains("runtime-token ontbreekt"));
-        let vals = [(RUNTIME_TOKEN_HEADER, "0".repeat(64))];
-        let vals: Vec<(&str, &str)> = vals.iter().map(|(n, w)| (*n, w.as_str())).collect();
-        let (status, _, _) = vraag_met(&rt.router, "POST", path, &vals, Some(body)).await;
+            .contains("the runtime token is absent"));
+        let false_ = [(RUNTIME_TOKEN_HEADER, "0".repeat(64))];
+        let false_: Vec<(&str, &str)> = false_.iter().map(|(n, w)| (*n, w.as_str())).collect();
+        let (status, _, _) = call_with(&rt.router, "POST", path, &false_, Some(body)).await;
         assert_eq!(status, StatusCode::FORBIDDEN, "{path}");
     }
-    // Het token van een andere runtime telt ook niet.
-    let ander = runtime_op(&fixtures(), tempfile::tempdir().unwrap().path()).unwrap();
-    let vreemd = [(RUNTIME_TOKEN_HEADER, ander.runtime_token.als_str())];
-    let (status, _, _) = vraag_met(
+    // The token of another runtime does not count either.
+    let other = runtime_at(&fixtures(), tempfile::tempdir().unwrap().path()).unwrap();
+    let foreign = [(RUNTIME_TOKEN_HEADER, other.runtime_token.as_str())];
+    let (status, _, _) = call_with(
         &rt.router,
         "POST",
         &grams,
-        &vreemd,
-        Some(verzoek("test_instantie")),
+        &foreign,
+        Some(record_request("test_instantie")),
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
-    // Er is niets vastgelegd. Lezen vraagt een token: de grammen dragen de
-    // identiteit en de intake van wie indiende. Alleen de stroomdefinities
-    // zijn open.
+    // Nothing was recorded. Reading requires a token: the grams carry the
+    // identity and the intake of the submitter. Only the stream definitions
+    // are open.
     for path in ["chronicle", "cases/z", "lexostatus/aanvraag_inhoud?root=z"] {
-        let uri = format!("{INSTANTIE_CEL}/api/{path}");
-        let (status, error, _) = vraag(&rt.router, "GET", &uri, None, None).await;
+        let uri = format!("{AGENCY_CELL}/api/{path}");
+        let (status, error, _) = call(&rt.router, "GET", &uri, None, None).await;
         assert_eq!(status, StatusCode::UNAUTHORIZED, "{path}: {error}");
-        let (status, _, _) = vraag_met(&rt.router, "GET", &uri, &vreemd, None).await;
+        let (status, _, _) = call_with(&rt.router, "GET", &uri, &foreign, None).await;
         assert_eq!(status, StatusCode::FORBIDDEN, "{path}");
-        // Zonder leestoken in de runtime telt een leestoken niet.
-        let lees = [(LEES_TOKEN_HEADER, "gedeeld-leestoken-van-de-test")];
-        let (status, _, _) = vraag_met(&rt.router, "GET", &uri, &lees, None).await;
+        // Without a read token in the runtime, a read token does not count.
+        let read = [(READ_TOKEN_HEADER, "gedeeld-leestoken-van-de-test")];
+        let (status, _, _) = call_with(&rt.router, "GET", &uri, &read, None).await;
         assert_eq!(status, StatusCode::FORBIDDEN, "{path}");
     }
-    let (status, _, _) = vraag(
+    let (status, _, _) = call(
         &rt.router,
         "GET",
-        &format!("{INSTANTIE_CEL}/api/stream"),
+        &format!("{AGENCY_CELL}/api/stream"),
         None,
         None,
     )
@@ -2455,70 +2467,73 @@ async fn alleen_de_runtime_legt_vast_en_leest() {
         .path()
         .join("test_instantie/test_kroniek.jsonl")
         .exists());
-    // Het proces zelf legt wel vast: het interne transport draagt het token.
+    // The process itself does record: the internal transport carries the token.
     let c = logins(&rt.router, "12345678").await;
-    let (status, body, _) = vraag(
+    let (status, body, _) = call(
         &rt.router,
         "POST",
-        &format!("{INSTANTIE}/api/application"),
+        &format!("{AGENCY}/api/application"),
         Some(&c),
-        Some(volledig()),
+        Some(complete()),
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
 }
 
-// --- Het aanbod toetst alleen wat vooraf vaststaat ---
+// --- The offer assesses only what is fixed beforehand ---
 
 #[test]
-fn een_aanbod_op_een_aanvraagfeit_houdt_de_runtime_tegen() {
-    let met_aanbod = |t: String| {
+fn an_offer_on_an_application_fact_stops_the_runtime() {
+    let with_offer = |t: String| {
         t.replace(
             "  form:",
             "  offer: {regulation: testregeling_aanvraag, output: aanvraag_volledig}\n  form:",
         )
     };
-    let opstelling = eigen_opstelling(&[("instantie", &zo)], &[("instantie", &met_aanbod)]);
+    let setup = own_setup(&[("instantie", &as_is)], &[("instantie", &with_offer)]);
     let data = tempfile::tempdir().unwrap();
-    let fouten = runtime_op(opstelling.path(), data.path()).err().unwrap();
+    let errors = runtime_at(setup.path(), data.path()).err().unwrap();
     assert!(
-        fouten.contains(&"proces 'test_instantie_proces': offer: voorwaarde leunt op 'aanvraagdatum' (BELANGHEBBENDE, grondslag testregeling_aanvraag#1 lid 1), dat vooraf niet bekend is".to_string()),
-        "{fouten:?}"
+        errors.contains(&"process 'test_instantie_proces': offer: condition relies on 'aanvraagdatum' (BELANGHEBBENDE, grondslag testregeling_aanvraag#1 lid 1), which is not known beforehand".to_string()),
+        "{errors:?}"
     );
 }
 
-// --- Het tijdvak van het aanbod ---
+// --- The window of the offer ---
 
-/// Het aanbod draait per tijdvak dat het beleid aanbiedt: de uitkomst
-/// `aanbod.tijdvakken` van de regeling, uit een run op de datum van vandaag.
-/// Het tijdvak is de parameter met origin BELANGHEBBENDE en `rol: TIJDVAK`,
-/// niet een vaste naam.
+/// The offer runs per window the policy offers: the output `offer.windows` of
+/// the regulation, from a run on today's date. The window is the parameter
+/// with origin BELANGHEBBENDE and `rol: TIJDVAK`, not a fixed name.
 #[tokio::test]
-async fn het_aanbod_draait_per_gekozen_tijdvak() {
-    let met_aanbod = |t: String| {
+async fn the_offer_runs_per_chosen_window() {
+    let with_offer = |t: String| {
         t.replace(
             "    output: aanvraag_toelaatbaar\n",
             "    output: aanvraag_toelaatbaar\n  offer:\n    regulation: testregeling_afnemer\n    output: aanvraag_aangeboden\n    deadline: aanvraagtermijn\n    windows: aangeboden_jaren\n    start: begin_aanvraagjaar\n",
         )
     };
-    let opstelling = eigen_opstelling(
-        &[("afnemer", &zo), ("register", &zo), ("gebieden", &zo)],
-        &[("afnemer", &met_aanbod)],
+    let setup = own_setup(
+        &[
+            ("afnemer", &as_is),
+            ("register", &as_is),
+            ("gebieden", &as_is),
+        ],
+        &[("afnemer", &with_offer)],
     );
     let data = tempfile::tempdir().unwrap();
-    let app = runtime_op(opstelling.path(), data.path()).unwrap().router;
-    let (_, _, cookie) = vraag(
+    let app = runtime_at(setup.path(), data.path()).unwrap().router;
+    let (_, _, cookie) = call(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/channels/eherkenning/login"),
+        &format!("{CONSUMER}/api/channels/eherkenning/login"),
         None,
         Some(json!({"kvk": "12345678", "persoon": "A. Tester"})),
     )
     .await;
-    let (status, body, _) = vraag(
+    let (status, body, _) = call(
         &app,
         "GET",
-        &format!("{AFNEMER}/api/possibilities"),
+        &format!("{CONSUMER}/api/possibilities"),
         cookie.as_deref(),
         None,
     )
@@ -2526,119 +2541,123 @@ async fn het_aanbod_draait_per_gekozen_tijdvak() {
     assert_eq!(status, StatusCode::OK, "{body}");
     let m = body["possibilities"].as_array().unwrap();
     assert_eq!(m.len(), 2, "{body}");
-    for (i, jaar) in [(0, 2025), (1, 2026)] {
+    for (i, year) in [(0, 2025), (1, 2026)] {
         assert_eq!(
             m[i]["possibility"]["window"],
-            json!({"parameter": "aanvraagjaar", "value": jaar}),
+            json!({"parameter": "aanvraagjaar", "value": year}),
             "{body}"
         );
-        assert_eq!(m[i]["parameters"]["aanvraagjaar"], json!(jaar));
+        assert_eq!(m[i]["parameters"]["aanvraagjaar"], json!(year));
         assert_eq!(
             m[i]["provenance"]["aanvraagjaar"],
             json!({"source": "choice"})
         );
         assert_eq!(
             m[i]["possibility"]["deadline"],
-            json!(format!("{jaar}-04-01"))
+            json!(format!("{year}-04-01"))
         );
     }
-    // Het lopende jaar peilt op vandaag, een komend jaar op het begin dat
-    // de regeling zegt (art. 6), niet op een jaar dat de code aanneemt.
+    // The current year is taken as of today, a coming year as of the start the
+    // regulation states (art. 6), not as of a year the code assumes.
     assert_eq!(m[0]["as_of"], json!("2025-03-12"), "{body}");
     assert_eq!(m[1]["as_of"], json!("2026-01-01"), "{body}");
 }
 
-/// Een aanbod dat een tijdvak vraagt, zonder tijdvakken: de runtime start niet.
+/// An offer that asks for a window, without windows: the runtime does not start.
 #[test]
-fn een_tijdvak_zonder_tijdvakken_houdt_de_runtime_tegen() {
-    let met_aanbod = |t: String| {
+fn a_window_without_windows_stops_the_runtime() {
+    let with_offer = |t: String| {
         t.replace(
             "    output: aanvraag_toelaatbaar\n",
             "    output: aanvraag_toelaatbaar\n  offer: {regulation: testregeling_afnemer, output: aanvraag_aangeboden}\n",
         )
     };
-    let opstelling = eigen_opstelling(
-        &[("afnemer", &zo), ("register", &zo), ("gebieden", &zo)],
-        &[("afnemer", &met_aanbod)],
+    let setup = own_setup(
+        &[
+            ("afnemer", &as_is),
+            ("register", &as_is),
+            ("gebieden", &as_is),
+        ],
+        &[("afnemer", &with_offer)],
     );
     let data = tempfile::tempdir().unwrap();
-    let fouten = runtime_op(opstelling.path(), data.path()).err().unwrap();
+    let errors = runtime_at(setup.path(), data.path()).err().unwrap();
     assert_eq!(
-        fouten,
-        ["proces 'test_afnemer_proces': offer: het tijdvak 'aanvraagjaar' (rol TIJDVAK) vraagt aanbod.tijdvakken: de uitkomst van het beleid met de tijdvakken die het portaal aanbiedt"]
+        errors,
+        ["process 'test_afnemer_proces': offer: the window 'aanvraagjaar' (rol TIJDVAK) asks for offer.windows: the output of the policy with the windows the portal offers"]
     );
 }
 
-/// De tijdvakken komen uit de regeling van het aanbod, in een run zonder
-/// parameters: een uitkomst die niet bestaat, of uit een artikel dat een
-/// parameter vraagt, houdt de runtime tegen.
+/// The windows come from the regulation of the offer, in a run without
+/// parameters: an output that does not exist, or one from an article that
+/// asks for a parameter, stops the runtime.
 #[test]
-fn de_tijdvakken_komen_uit_het_beleid() {
-    for (windows, verwacht) in [
+fn the_windows_come_from_the_policy() {
+    for (windows, expected) in [
         (
             "bestaat_niet",
-            "portaal.aanbod: regeling 'testregeling_afnemer' heeft geen tijdvakken-uitkomst 'bestaat_niet'",
+            "portal.offer: regulation 'testregeling_afnemer' has no windows output 'bestaat_niet'",
         ),
         (
             "gebiedsbedrag",
-            "portaal.aanbod: tijdvakken 'gebiedsbedrag' komt uit testregeling_afnemer#3, en dat artikel vraagt een parameter",
+            "portal.offer: windows 'gebiedsbedrag' comes from testregeling_afnemer#3, and that article requires a parameter",
         ),
     ] {
-        let met_aanbod = move |t: String| {
+        let with_offer = move |t: String| {
             t.replace(
                 "    output: aanvraag_toelaatbaar\n",
                 &format!("    output: aanvraag_toelaatbaar\n  offer: {{regulation: testregeling_afnemer, output: aanvraag_aangeboden, windows: {windows}}}\n"),
             )
         };
-        let opstelling = eigen_opstelling(
-            &[("afnemer", &zo), ("register", &zo), ("gebieden", &zo)],
-            &[("afnemer", &met_aanbod)],
+        let setup = own_setup(
+            &[("afnemer", &as_is), ("register", &as_is), ("gebieden", &as_is)],
+            &[("afnemer", &with_offer)],
         );
         let data = tempfile::tempdir().unwrap();
-        let fouten = runtime_op(opstelling.path(), data.path()).err().unwrap();
+        let errors = runtime_at(setup.path(), data.path()).err().unwrap();
         assert!(
-            fouten.iter().any(|f| f.contains(verwacht)),
-            "verwacht '{verwacht}' in {fouten:?}"
+            errors.iter().any(|f| f.contains(expected)),
+            "expected '{expected}' in {errors:?}"
         );
     }
 }
 
-/// Een vastleg-event met een stage die de procedure van de beschikking niet
-/// kent: de stand bij besluit is dan niet af te leiden, en de runtime start
-/// niet.
+/// A record event with a stage the procedure of the beschikking does not
+/// know: the state at decision cannot be derived then, and the runtime does
+/// not start.
 #[test]
-fn een_stage_buiten_de_procedure_houdt_de_runtime_tegen() {
-    let opstelling = eigen_opstelling(
-        &[("afnemer", &zo), ("register", &zo), ("gebieden", &zo)],
-        &[("afnemer", &zo)],
+fn a_stage_outside_the_procedure_stops_the_runtime() {
+    let setup = own_setup(
+        &[
+            ("afnemer", &as_is),
+            ("register", &as_is),
+            ("gebieden", &as_is),
+        ],
+        &[("afnemer", &as_is)],
     );
-    let stream = opstelling
+    let stream = setup
         .path()
         .join("chronicles/test_afnemer_zaakverloop.yaml");
-    let tekst = std::fs::read_to_string(&stream).unwrap();
-    std::fs::write(
-        &stream,
-        tekst.replace("stage: BESLUIT", "stage: BESLISSING"),
-    )
-    .unwrap();
-    let lexo = opstelling.path().join("cells/afnemer/lexostatuses.yaml");
-    let tekst = std::fs::read_to_string(&lexo).unwrap();
-    std::fs::write(&lexo, tekst.replace("stage: BESLUIT", "stage: BESLISSING")).unwrap();
+    let text = std::fs::read_to_string(&stream).unwrap();
+    std::fs::write(&stream, text.replace("stage: BESLUIT", "stage: BESLISSING")).unwrap();
+    let lexo = setup.path().join("cells/afnemer/lexostatuses.yaml");
+    let text = std::fs::read_to_string(&lexo).unwrap();
+    std::fs::write(&lexo, text.replace("stage: BESLUIT", "stage: BESLISSING")).unwrap();
     let data = tempfile::tempdir().unwrap();
-    let fouten = runtime_op(opstelling.path(), data.path()).err().unwrap();
+    let errors = runtime_at(setup.path(), data.path()).err().unwrap();
     assert!(
-        fouten.iter().any(|f| f.contains(
-            "handeling 'besluit', vastleggen test_afnemer_zaakverloop/besluit_genomen: stage 'BESLISSING' staat niet in procedure 'beschikking' van testregeling_afnemer#3 (AANVRAAG, BESLUIT, BEKENDMAKING, BEZWAAR)"
+        errors.iter().any(|f| f.contains(
+            "action 'besluit', record test_afnemer_zaakverloop/besluit_genomen: stage 'BESLISSING' is not in procedure 'beschikking' of testregeling_afnemer#3 (AANVRAAG, BESLUIT, BEKENDMAKING, BEZWAAR)"
         )),
-        "{fouten:?}"
+        "{errors:?}"
     );
 }
 
-// --- De toets bouwt een tabel per regel op, zoals het besluit ---
+// --- The assessment builds a table per row, like the decision ---
 
-/// De rijen van de toets: de gebiedstabel uit de proefreductie van het
-/// concept, met een kolom die per regel uit de registercel komt.
-fn met_toets_rijen(t: String) -> String {
+/// The rows of the assessment: the gebiedstabel from the trial reduction of
+/// the draft, with a column that comes per row from the register cell.
+fn with_assessment_rows(t: String) -> String {
     t.replace(
         "    output: aanvraag_toelaatbaar\n",
         "    output: aanvraag_toelaatbaar
@@ -2658,16 +2677,20 @@ fn met_toets_rijen(t: String) -> String {
 }
 
 #[tokio::test]
-async fn de_toets_bouwt_een_tabel_per_regel_op() {
-    let opstelling = eigen_opstelling(
-        &[("afnemer", &zo), ("register", &zo), ("gebieden", &zo)],
-        &[("afnemer", &met_toets_rijen)],
+async fn the_assessment_builds_a_table_per_row() {
+    let setup = own_setup(
+        &[
+            ("afnemer", &as_is),
+            ("register", &as_is),
+            ("gebieden", &as_is),
+        ],
+        &[("afnemer", &with_assessment_rows)],
     );
     let data = tempfile::tempdir().unwrap();
-    let a = runtime_op(opstelling.path(), data.path()).unwrap();
-    let body = afnemer_toets(&a.router, Some("VOORBEELD")).await;
-    // De regels komen uit het concept, de kolom `ingeschreven` per regel uit
-    // de registercel; de tabel gaat met de andere parameters naar de engine.
+    let a = runtime_at(setup.path(), data.path()).unwrap();
+    let body = consumer_assessment(&a.router, Some("VOORBEELD")).await;
+    // The rows come from the draft, the column `ingeschreven` per row from the
+    // register cell; the table goes to the engine with the other parameters.
     assert_eq!(
         body["parameters"]["gebiedstabel"],
         json!([
@@ -2683,12 +2706,12 @@ async fn de_toets_bouwt_een_tabel_per_regel_op() {
     assert_eq!(body["rows"][0]["sources"][0]["queried"], json!(2));
     assert!(body["rows"][0].get("missing").is_none(), "{body}");
     assert_eq!(body["result"]["value"], json!(true), "{body}");
-    // Niets vastgelegd.
+    // Nothing recorded.
     assert!(!data.path().join("test_afnemer/test_afnemer.jsonl").exists());
 
-    // Zonder aanduiding wordt de bron per regel niet bevraagd: de kolom
-    // blijft weg, er wordt niets aangevuld.
-    let body = afnemer_toets(&a.router, None).await;
+    // Without an aanduiding the per-row source is not queried: the column
+    // stays out, nothing is filled in.
+    let body = consumer_assessment(&a.router, None).await;
     assert_eq!(
         body["parameters"]["gebiedstabel"],
         json!([
@@ -2701,85 +2724,90 @@ async fn de_toets_bouwt_een_tabel_per_regel_op() {
 }
 
 #[tokio::test]
-async fn de_toets_zonder_rijen_blijft_gelijk() {
+async fn the_assessment_without_rows_stays_the_same() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path());
-    let body = afnemer_toets(&app, Some("VOORBEELD")).await;
+    let body = consumer_assessment(&app, Some("VOORBEELD")).await;
     assert_eq!(body["rows"], json!([]));
     assert!(body["parameters"].get("gebiedstabel").is_none(), "{body}");
     assert_eq!(body["result"]["value"], json!(true), "{body}");
 }
 
 #[test]
-fn toets_rijen_controle_bij_het_opstarten() {
-    let uit_ander = |t: String| {
-        met_toets_rijen(t).replacen(
+fn assessment_rows_check_at_startup() {
+    let from_other = |t: String| {
+        with_assessment_rows(t).replacen(
             "table: {lexostatus: aanvraag_inhoud, field: gebieden}",
             "table: {lexostatus: zaakverloop, field: gebieden}",
             1,
         )
     };
-    let opstelling = eigen_opstelling(
-        &[("afnemer", &zo), ("register", &zo), ("gebieden", &zo)],
-        &[("afnemer", &uit_ander)],
+    let setup = own_setup(
+        &[
+            ("afnemer", &as_is),
+            ("register", &as_is),
+            ("gebieden", &as_is),
+        ],
+        &[("afnemer", &from_other)],
     );
     let data = tempfile::tempdir().unwrap();
-    let fouten = runtime_op(opstelling.path(), data.path()).err().unwrap();
+    let errors = runtime_at(setup.path(), data.path()).err().unwrap();
     assert!(
-        fouten.contains(&"proces 'test_afnemer_proces': assessment, rijen 'gebiedstabel': de tabel komt uit lexostatus 'zaakverloop', en die is niet de toets-lexostatus".to_string()),
-        "{fouten:?}"
+        errors.contains(&"process 'test_afnemer_proces': assessment, rows 'gebiedstabel': the table comes from lexostatus 'zaakverloop', and that is not the assessment lexostatus".to_string()),
+        "{errors:?}"
     );
 }
 
-/// Een grondslag in het formulier die geen artikel van een geladen regeling
-/// aanwijst, of een lid dat het artikel niet heeft: de runtime start niet.
+/// A legal basis in the form that points to no article of a loaded
+/// regulation, or a paragraph the article does not have: the runtime does not
+/// start.
 #[test]
-fn een_grondslag_in_het_formulier_wordt_gecontroleerd() {
-    for (legal_basis, verwacht) in [
+fn a_legal_basis_in_the_form_is_checked() {
+    for (legal_basis, expected) in [
         (
             "testregeling_aanvraag#9",
-            "formulier, veld 'aanvraagjaar': grondslag 'testregeling_aanvraag#9': regeling 'testregeling_aanvraag' heeft geen artikel 9",
+            "form, field 'aanvraagjaar': legal basis 'testregeling_aanvraag#9': regulation 'testregeling_aanvraag' has no article 9",
         ),
         (
             "testregeling_aanvraag#1 lid 8",
-            "formulier, veld 'aanvraagjaar': grondslag 'testregeling_aanvraag#1 lid 8': artikel 1 heeft geen lid 8",
+            "form, field 'aanvraagjaar': legal basis 'testregeling_aanvraag#1 lid 8': article 1 has no paragraph 8",
         ),
     ] {
-        let opstelling = eigen_opstelling(&[("instantie", &zo)], &[("instantie", &zo)]);
-        let path = opstelling.path().join("processes/instantie/formulier.yaml");
-        let tekst = std::fs::read_to_string(&path).unwrap();
+        let setup = own_setup(&[("instantie", &as_is)], &[("instantie", &as_is)]);
+        let path = setup.path().join("processes/instantie/formulier.yaml");
+        let text = std::fs::read_to_string(&path).unwrap();
         std::fs::write(
             &path,
-            tekst.replace("grondslag: testregeling_aanvraag#1 lid 1}", &format!("grondslag: '{legal_basis}'}}")),
+            text.replace("grondslag: testregeling_aanvraag#1 lid 1}", &format!("grondslag: '{legal_basis}'}}")),
         )
         .unwrap();
         let data = tempfile::tempdir().unwrap();
-        let fouten = runtime_op(opstelling.path(), data.path()).err().unwrap();
+        let errors = runtime_at(setup.path(), data.path()).err().unwrap();
         assert!(
-            fouten.iter().any(|f| f.contains(verwacht)),
-            "verwacht '{verwacht}' in {fouten:?}"
+            errors.iter().any(|f| f.contains(expected)),
+            "expected '{expected}' in {errors:?}"
         );
     }
 }
 
-// --- Tijd: twee tijden per gram, en een peil op de reductie ---
+// --- Time: two times per gram, and an as-of on the reduction ---
 
-/// Een aanvraag die langs een andere weg binnenkwam: het loket geeft de dag
-/// van ontvangst op (`$intake.ontvangen_op`). Rechtens telt die dag (de
-/// aanvraagdatum), vastgelegd wordt op de klok van de cel.
+/// An application that came in by another route: the counter states the day
+/// of receipt (`$intake.received_at`). Legally that day counts (the
+/// aanvraagdatum); recording happens on the cell's clock.
 #[tokio::test]
-async fn een_eerdere_ontvangst_is_de_aanvraagdatum() {
+async fn an_earlier_receipt_is_the_application_date() {
     let dir = tempfile::tempdir().unwrap();
-    let rt = runtime_op(&fixtures(), dir.path()).unwrap();
-    let app = als_lezer(&rt);
-    let mut v = verzoek("test_instantie");
+    let rt = runtime_at(&fixtures(), dir.path()).unwrap();
+    let app = as_reader(&rt);
+    let mut v = record_request("test_instantie");
     v["intake"] = json!({"channel": "counter", "received_at": "2025-03-05",
                          "eherkenning": {"kvk": "12345678", "persoon": "A. Tester"},
                          "burger": {"nummer": null}});
-    let (status, body) = als_runtime(&rt, "POST", &format!("{INSTANTIE_CEL}/api/grams"), v).await;
+    let (status, body) = as_runtime(&rt, "POST", &format!("{AGENCY_CELL}/api/grams"), v).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
     let g = &body["gram"];
-    schema::valideer(Soort::Gram, g).unwrap();
+    schema::validate(Kind::Gram, g).unwrap();
     assert_eq!(g["effective_at"], "2025-03-05T00:00:00+01:00");
     assert_eq!(g["recorded_at"], "2025-03-12T10:14:03+01:00");
     assert_eq!(
@@ -2787,10 +2815,10 @@ async fn een_eerdere_ontvangst_is_de_aanvraagdatum() {
         json!(["testregeling_aanvraag#1"])
     );
     let case = g["id"].as_str().unwrap();
-    let (status, l, _) = vraag(
+    let (status, l, _) = call(
         &app,
         "GET",
-        &format!("{INSTANTIE_CEL}/api/lexostatus/aanvraag_inhoud?root={case}"),
+        &format!("{AGENCY_CELL}/api/lexostatus/aanvraag_inhoud?root={case}"),
         None,
         None,
     )
@@ -2799,30 +2827,30 @@ async fn een_eerdere_ontvangst_is_de_aanvraagdatum() {
     assert_eq!(l["parameters"]["aanvraagdatum"], "2025-03-05");
     assert_eq!(l["recorded_at"], "2025-03-12T10:14:03+01:00");
 
-    // Een ontvangst na het vastleggen is geen feit.
-    let mut v = verzoek("test_instantie");
+    // A receipt after the recording is not a fact.
+    let mut v = record_request("test_instantie");
     v["intake"]["received_at"] = json!("2025-03-20");
-    let (status, body) = als_runtime(&rt, "POST", &format!("{INSTANTIE_CEL}/api/grams"), v).await;
+    let (status, body) = as_runtime(&rt, "POST", &format!("{AGENCY_CELL}/api/grams"), v).await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
     assert!(body["error"]
         .as_str()
         .unwrap()
-        .contains("na het vastleggen"));
+        .contains("lies after the recording"));
 }
 
-/// `GET lexostatus` met een peil: dezelfde kroniek geeft op een ander moment
-/// een andere lexostatus. De startstand geldt rechtens op haar eigen
-/// momenten, maar is pas bekend sinds ze geladen is.
+/// `GET lexostatus` with an as-of: the same chronicle gives a different
+/// lexostatus at a different moment. The initial state legally applies at its
+/// own moments, but is only known since it was loaded.
 #[tokio::test]
-async fn lexostatus_op_een_peilmoment() {
+async fn lexostatus_at_an_as_of_moment() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path());
-    // De zetels uit `registerstatus`, de inschrijving uit het register van
-    // de raad; samen in een antwoord.
-    let status_op = |query: &'static str| {
+    // The seats from `registerstatus`, the registration from the register of
+    // the raad; together in one answer.
+    let status_at = |query: &'static str| {
         let app = app.clone();
         async move {
-            let (s, mut l, _) = vraag(
+            let (s, mut l, _) = call(
                 &app,
                 "GET",
                 &format!("/cells/test_register/api/lexostatus/registerstatus?aanduiding=VOORBEELD{query}"),
@@ -2831,7 +2859,7 @@ async fn lexostatus_op_een_peilmoment() {
             )
             .await;
             if s == StatusCode::OK {
-                let (_, r, _) = vraag(
+                let (_, r, _) = call(
                     &app,
                     "GET",
                     &format!("/cells/test_register/api/lexostatus/register?aanduiding=VOORBEELD&orgaan=raad{query}"),
@@ -2845,70 +2873,70 @@ async fn lexostatus_op_een_peilmoment() {
             (s, l)
         }
     };
-    let (s, nu) = status_op("").await;
-    assert_eq!(s, StatusCode::OK, "{nu}");
-    assert_eq!(nu["parameters"]["zetels_toegewezen"], json!(6));
-    assert!(nu.get("as_of").is_none());
+    let (s, now) = status_at("").await;
+    assert_eq!(s, StatusCode::OK, "{now}");
+    assert_eq!(now["parameters"]["zetels_toegewezen"], json!(6));
+    assert!(now.get("as_of").is_none());
 
-    // Rechtens op 1 januari 2024: nog niet ingeschreven, geen uitslag.
-    let (s, jan) = status_op("&as_of=2024-01-01").await;
+    // Legally on January 1, 2024: not yet registered, no result.
+    let (s, jan) = status_at("&as_of=2024-01-01").await;
     assert_eq!(s, StatusCode::OK, "{jan}");
     assert_eq!(jan["as_of"], "2024-01-01");
     assert_eq!(jan["parameters"]["is_ingeschreven_raad"], json!(false));
     assert_eq!(jan["parameters"]["zetels_toegewezen"], json!(0));
-    // Een moment met tijdzone kan ook (in een query als %2B voor '+').
-    let (s, apr) = status_op("&as_of=2024-04-01T00:00:00%2B02:00").await;
+    // A moment with a time zone works too (in a query as %2B for '+').
+    let (s, apr) = status_at("&as_of=2024-04-01T00:00:00%2B02:00").await;
     assert_eq!(s, StatusCode::OK, "{apr}");
     assert_eq!(apr["parameters"]["zetels_toegewezen"], json!(6));
     assert_eq!(apr["parameters"]["is_ingeschreven_raad"], json!(true));
 
-    // Zoals bekend voor het laden van de startstand (de klok van de test):
-    // de cel wist toen nog niets.
-    let (s, eerder) = status_op("&known_at=2025-03-11").await;
-    assert_eq!(s, StatusCode::OK, "{eerder}");
-    assert_eq!(eerder["parameters"]["is_ingeschreven_raad"], json!(false));
-    let (_, toen) = status_op("&known_at=2025-03-12").await;
-    assert_eq!(toen["parameters"], nu["parameters"]);
+    // As known before loading the initial state (the test's clock): the cell
+    // did not know anything yet.
+    let (s, earlier) = status_at("&known_at=2025-03-11").await;
+    assert_eq!(s, StatusCode::OK, "{earlier}");
+    assert_eq!(earlier["parameters"]["is_ingeschreven_raad"], json!(false));
+    let (_, then) = status_at("&known_at=2025-03-12").await;
+    assert_eq!(then["parameters"], now["parameters"]);
 
-    let (s, f) = status_op("&as_of=morgen").await;
+    let (s, f) = status_at("&as_of=morgen").await;
     assert_eq!(s, StatusCode::BAD_REQUEST);
-    assert!(f["error"].as_str().unwrap().contains("ongeldig as_of"));
+    assert!(f["error"].as_str().unwrap().contains("invalid as_of"));
 }
 
-/// Ook de proefroute peilt: een concept telt als vastgelegd op de klok van
-/// nu, dus zoals bekend op een eerdere dag ligt het er niet.
+/// The trial route takes an as-of too: a draft counts as recorded on the
+/// clock of now, so as known on an earlier day it is not there.
 #[tokio::test]
-async fn de_proefroute_peilt_ook() {
+async fn the_trial_route_also_takes_an_as_of() {
     let dir = tempfile::tempdir().unwrap();
-    let rt = runtime_op(&fixtures(), dir.path()).unwrap();
-    let trial = format!("{INSTANTIE_CEL}/api/lexostatus/aanvraag_inhoud/trial");
-    let (status, body) = als_runtime(
+    let rt = runtime_at(&fixtures(), dir.path()).unwrap();
+    let trial = format!("{AGENCY_CELL}/api/lexostatus/aanvraag_inhoud/trial");
+    let (status, body) = as_runtime(
         &rt,
         "POST",
         &trial,
-        json!({"draft": verzoek("test_instantie"), "inputs": {"as_of": "2025-03-12"}}),
+        json!({"draft": record_request("test_instantie"), "inputs": {"as_of": "2025-03-12"}}),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["lexostatus"]["as_of"], "2025-03-12");
-    let (status, _) = als_runtime(
+    let (status, _) = as_runtime(
         &rt,
         "POST",
         &trial,
-        json!({"draft": verzoek("test_instantie"), "inputs": {"known_at": "2025-03-11"}}),
+        json!({"draft": record_request("test_instantie"), "inputs": {"known_at": "2025-03-11"}}),
     )
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
-/// Een kroniek van voor chronolex v0.2.0 (zonder id, met zaakkenmerk) wordt
-/// niet omgezet: de runtime start niet, en zegt waarom.
+/// A chronicle from before chronolex v0.2.0 (without id, with zaakkenmerk) is
+/// not converted: the runtime does not start, and says why.
 #[tokio::test]
-async fn een_oude_kroniek_start_niet() {
+async fn an_old_chronicle_does_not_start() {
     let data = tempfile::tempdir().unwrap();
     let case = {
         let app = app(data.path());
-        afnemer_indienen(&app, "12345678").await
+        consumer_submit(&app, "12345678").await
     };
     let path = data.path().join("test_afnemer/test_afnemer.jsonl");
     let rows: Vec<String> = std::fs::read_to_string(&path)
@@ -2924,32 +2952,32 @@ async fn een_oude_kroniek_start_niet() {
         })
         .collect();
     std::fs::write(&path, rows.join("\n") + "\n").unwrap();
-    let f = runtime_op(&fixtures(), data.path())
+    let f = runtime_at(&fixtures(), data.path())
         .err()
         .unwrap()
         .join("\n");
-    assert!(f.contains("van voor chronolex v0.2.0"), "{f}");
-    assert!(f.contains("lege DATA_DIR"), "{f}");
+    assert!(f.contains("from before chronolex v0.2.0"), "{f}");
+    assert!(f.contains("empty DATA_DIR"), "{f}");
 }
 
-// --- Kanalen en rollen als configuratie ---
+// --- Channels and roles as configuration ---
 
-/// Een tweede kanaal van hetzelfde portaal: een burger logt in met een
-/// nummer van negen cijfers dat de elfproef doorstaat. Zijn nummer komt onder
-/// het intake-pad van zijn kanaal in het gram; wat het andere kanaal levert,
-/// blijft leeg.
+/// A second channel of the same portal: a citizen logs in with a nine-digit
+/// number that passes the elfproef. Their number goes into the gram under the
+/// intake path of their channel; what the other channel delivers stays
+/// empty.
 #[tokio::test]
-async fn een_tweede_kanaal_met_de_elfproef() {
+async fn a_second_channel_with_the_elfproef() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path());
-    let login = format!("{INSTANTIE}/api/channels/burger/login");
+    let login = format!("{AGENCY}/api/channels/burger/login");
     for error in ["123456789", "12345678", "1234567890"] {
         let (status, body, _) =
-            vraag(&app, "POST", &login, None, Some(json!({"nummer": error}))).await;
+            call(&app, "POST", &login, None, Some(json!({"nummer": error}))).await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "{error}: {body}");
         assert_eq!(body["error"], "dit is geen geldig burgernummer");
     }
-    let (status, session, cookie) = vraag(
+    let (status, session, cookie) = call(
         &app,
         "POST",
         &login,
@@ -2963,33 +2991,33 @@ async fn een_tweede_kanaal_met_de_elfproef() {
         json!({"role": "burger", "channel": "burger", "fields": {"nummer": "123456782"}})
     );
     let cookie = cookie.unwrap();
-    // De sessie is van dit kanaal, niet van het andere.
-    let (status, _, _) = vraag(
+    // The session belongs to this channel, not to the other.
+    let (status, _, _) = call(
         &app,
         "GET",
-        &format!("{INSTANTIE}/api/channels/eherkenning/session"),
+        &format!("{AGENCY}/api/channels/eherkenning/session"),
         Some(&cookie),
         None,
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
-    let (status, s, _) = vraag(
+    let (status, s, _) = call(
         &app,
         "GET",
-        &format!("{INSTANTIE}/api/session"),
+        &format!("{AGENCY}/api/session"),
         Some(&cookie),
         None,
     )
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(s["channel"], "burger");
-    // Het portaal is van beide kanalen.
-    let (status, body, _) = vraag(
+    // The portal belongs to both channels.
+    let (status, body, _) = call(
         &app,
         "POST",
-        &format!("{INSTANTIE}/api/application"),
+        &format!("{AGENCY}/api/application"),
         Some(&cookie),
-        Some(volledig()),
+        Some(complete()),
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
@@ -2998,11 +3026,11 @@ async fn een_tweede_kanaal_met_de_elfproef() {
         o,
         &json!({"kanaal": "portaal", "kvk_nummer": null, "gemachtigde": null, "burgernummer": "123456782"})
     );
-    // Een onbekend kanaal bestaat niet.
-    let (status, _, _) = vraag(
+    // An unknown channel does not exist.
+    let (status, _, _) = call(
         &app,
         "POST",
-        &format!("{INSTANTIE}/api/channels/digid/login"),
+        &format!("{AGENCY}/api/channels/digid/login"),
         None,
         Some(json!({})),
     )
@@ -3010,27 +3038,27 @@ async fn een_tweede_kanaal_met_de_elfproef() {
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
-/// Een rol noemt haar kanaal en haar routes. Langs het medewerkerskanaal
-/// van de instantie logt alleen de rol loket in; die mag het loket en niet
-/// het portaal, en de aanvrager het portaal en niet het loket.
+/// A role names its channel and its routes. Through the agency's employee
+/// channel only the role loket logs in; it may use the counter and not the
+/// portal, and the applicant the portal and not the counter.
 #[tokio::test]
-async fn een_rol_mag_alleen_haar_routes() {
+async fn a_role_may_only_use_its_routes() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path());
-    let medewerker = format!("{INSTANTIE}/api/channels/medewerker/login");
-    let (status, body, _) = vraag(
+    let employee = format!("{AGENCY}/api/channels/medewerker/login");
+    let (status, body, _) = call(
         &app,
         "POST",
-        &medewerker,
+        &employee,
         None,
         Some(json!({"naam": "L. Loket", "role": "aanvrager"})),
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
-    let (status, session, counter) = vraag(
+    let (status, session, counter) = call(
         &app,
         "POST",
-        &medewerker,
+        &employee,
         None,
         Some(json!({"naam": "L. Loket"})),
     )
@@ -3038,12 +3066,12 @@ async fn een_rol_mag_alleen_haar_routes() {
     assert_eq!(status, StatusCode::OK, "{session}");
     assert_eq!(session["role"], "loket");
     let counter = counter.unwrap();
-    let (status, body, _) = vraag(
+    let (status, body, _) = call(
         &app,
         "POST",
-        &format!("{INSTANTIE}/api/application"),
+        &format!("{AGENCY}/api/application"),
         Some(&counter),
-        Some(volledig()),
+        Some(complete()),
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
@@ -3051,53 +3079,53 @@ async fn een_rol_mag_alleen_haar_routes() {
         body["error"]
             .as_str()
             .unwrap()
-            .contains("alleen voor de rol aanvrager of burger"),
+            .contains("only for the role aanvrager or burger"),
         "{body}"
     );
     let aanvrager = logins(&app, "12345678").await;
-    let (status, _, _) = vraag(
+    let (status, _, _) = call(
         &app,
         "POST",
-        &format!("{INSTANTIE}/api/counter/application"),
+        &format!("{AGENCY}/api/counter/application"),
         Some(&aanvrager),
         Some(json!({})),
     )
     .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-    let (status, _, _) = vraag(
+    let (status, _, _) = call(
         &app,
         "POST",
-        &format!("{INSTANTIE}/api/counter/application"),
+        &format!("{AGENCY}/api/counter/application"),
         Some(&aanvrager),
-        Some(loketinvoer("2025-03-05")),
+        Some(counter_input("2025-03-05")),
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
-    // Het afnemerproces heeft geen loket.
-    let (status, _, _) = vraag(
+    // The consumer process has no counter.
+    let (status, _, _) = call(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/counter/application"),
+        &format!("{CONSUMER}/api/counter/application"),
         None,
-        Some(loketinvoer("2025-03-05")),
+        Some(counter_input("2025-03-05")),
     )
     .await;
     assert!(status == StatusCode::NOT_FOUND || status == StatusCode::METHOD_NOT_ALLOWED);
 }
 
-fn loketinvoer(received_at: &str) -> Value {
+fn counter_input(received_at: &str) -> Value {
     json!({
         "applicant": {"channel": "eherkenning", "kvk": "12345678", "persoon": "A. Tester"},
         "received_at": received_at,
-        "external": volledig()["external"],
+        "external": complete()["external"],
     })
 }
 
 async fn counter(app: &Router) -> String {
-    let (status, body, cookie) = vraag(
+    let (status, body, cookie) = call(
         app,
         "POST",
-        &format!("{INSTANTIE}/api/channels/medewerker/login"),
+        &format!("{AGENCY}/api/channels/medewerker/login"),
         None,
         Some(json!({"naam": "L. Loket"})),
     )
@@ -3106,23 +3134,23 @@ async fn counter(app: &Router) -> String {
     cookie.unwrap()
 }
 
-/// Het loket voert een aanvraag in die langs een andere weg binnenkwam,
-/// namens de aanvrager, met de dag van ontvangst (Awb 4:1, 4:13). Die dag is
-/// het `op_moment`, het invoeren `vastgelegd_op`. Een dag na vandaag weigert
-/// het loket; de aanvrager duidt het loket aan met de velden van een
-/// portaalkanaal.
+/// The counter enters an application that came in by another route, on
+/// behalf of the applicant, with the day of receipt (Awb 4:1, 4:13). That day
+/// is the `effective_at`, the entry `recorded_at`. The counter refuses a day
+/// after today; the counter identifies the applicant with the fields of a
+/// portal channel.
 #[tokio::test]
-async fn het_loket_voert_een_eerdere_ontvangst_in() {
+async fn the_counter_enters_an_earlier_receipt() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path());
     let l = counter(&app).await;
-    let path = format!("{INSTANTIE}/api/counter/application");
-    let (status, body, _) = vraag(
+    let path = format!("{AGENCY}/api/counter/application");
+    let (status, body, _) = call(
         &app,
         "POST",
         &path,
         Some(&l),
-        Some(loketinvoer("2025-03-05")),
+        Some(counter_input("2025-03-05")),
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
@@ -3133,12 +3161,12 @@ async fn het_loket_voert_een_eerdere_ontvangst_in() {
         g["fields"]["core"]["signed_via"],
         json!({"kanaal": "counter", "kvk_nummer": "12345678", "gemachtigde": "A. Tester", "burgernummer": null})
     );
-    // De aanvrager volgt zijn papieren aanvraag: het nummer is van hem.
+    // The applicant follows their paper application: the number is theirs.
     let case = g["id"].as_str().unwrap();
-    let (status, l2, _) = vraag(
+    let (status, l2, _) = call(
         &app,
         "GET",
-        &format!("{INSTANTIE_CEL}/api/lexostatus/aanvraag_inhoud?root={case}"),
+        &format!("{AGENCY_CELL}/api/lexostatus/aanvraag_inhoud?root={case}"),
         None,
         None,
     )
@@ -3147,18 +3175,18 @@ async fn het_loket_voert_een_eerdere_ontvangst_in() {
     assert_eq!(l2["parameters"]["aanvraagdatum"], "2025-03-05");
 
     for (input, error) in [
-        (loketinvoer("2025-03-13"), "ligt na vandaag"),
-        (loketinvoer("vorige week"), "ongeldig ontvangen_op"),
+        (counter_input("2025-03-13"), "is after today"),
+        (counter_input("vorige week"), "invalid received_at"),
         (
             json!({"applicant": {"kvk": "12345678", "persoon": "A"}, "received_at": "2025-03-05"}),
-            "aanvrager: noem het kanaal",
+            "applicant: name the channel",
         ),
         (
             json!({"applicant": {"channel": "eherkenning", "kvk": "1", "persoon": "A"}, "received_at": "2025-03-05"}),
-            "aanvrager: een organisatienummer heeft acht cijfers",
+            "applicant: een organisatienummer heeft acht cijfers",
         ),
     ] {
-        let (status, body, _) = vraag(&app, "POST", &path, Some(&l), Some(input)).await;
+        let (status, body, _) = call(&app, "POST", &path, Some(&l), Some(input)).await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
         assert!(
             body["error"].as_str().unwrap().contains(error),
@@ -3167,29 +3195,29 @@ async fn het_loket_voert_een_eerdere_ontvangst_in() {
     }
 }
 
-/// Noemt het beleid een openstelling van het tijdvak
-/// (`aanbod.openstelling`), dan voert het loket geen ontvangst in van vóór
-/// die dag. Het tijdvak komt uit het veld van de aanvraag.
+/// If the policy names an opening of the window (`offer.opening`), the
+/// counter enters no receipt from before that day. The window comes from the
+/// field of the application.
 #[tokio::test]
-async fn het_loket_weigert_een_ontvangst_voor_de_openstelling() {
-    let met_aanbod = |t: String| {
+async fn the_counter_refuses_a_receipt_before_the_opening() {
+    let with_offer = |t: String| {
         t.replace(
             "  form:",
             "  offer:\n    regulation: testregeling_aanvraag\n    output: aanvraag_aangeboden\n    windows: aangeboden_jaren\n    opening: openstelling_aanvraagjaar\n  form:",
         )
     };
-    let opstelling = eigen_opstelling(&[("instantie", &zo)], &[("instantie", &met_aanbod)]);
+    let setup = own_setup(&[("instantie", &as_is)], &[("instantie", &with_offer)]);
     let data = tempfile::tempdir().unwrap();
-    let app = runtime_op(opstelling.path(), data.path()).unwrap().router;
+    let app = runtime_at(setup.path(), data.path()).unwrap().router;
     let l = counter(&app).await;
-    let path = format!("{INSTANTIE}/api/counter/application");
-    // Aanvraagjaar 2025 is open vanaf 1 januari 2025.
-    let (status, body, _) = vraag(
+    let path = format!("{AGENCY}/api/counter/application");
+    // Aanvraagjaar 2025 is open from January 1, 2025.
+    let (status, body, _) = call(
         &app,
         "POST",
         &path,
         Some(&l),
-        Some(loketinvoer("2024-12-20")),
+        Some(counter_input("2024-12-20")),
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
@@ -3197,33 +3225,33 @@ async fn het_loket_weigert_een_ontvangst_voor_de_openstelling() {
         body["error"]
             .as_str()
             .unwrap()
-            .contains("vóór de openstelling van het tijdvak (2025-01-01)"),
+            .contains("is before the opening of the window (2025-01-01)"),
         "{body}"
     );
-    let (status, body, _) = vraag(
+    let (status, body, _) = call(
         &app,
         "POST",
         &path,
         Some(&l),
-        Some(loketinvoer("2025-01-02")),
+        Some(counter_input("2025-01-02")),
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
-    // Zonder tijdvak is de openstelling niet te toetsen.
-    let mut without = loketinvoer("2025-01-02");
+    // Without a window the opening cannot be assessed.
+    let mut without = counter_input("2025-01-02");
     without["external"]["aanvraagjaar"] = Value::Null;
-    let (status, body, _) = vraag(&app, "POST", &path, Some(&l), Some(without)).await;
+    let (status, body, _) = call(&app, "POST", &path, Some(&l), Some(without)).await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
     assert!(
         body["error"]
             .as_str()
             .unwrap()
-            .contains("het tijdvak (aanvraagjaar) ontbreekt"),
+            .contains("the window (aanvraagjaar) is absent"),
         "{body}"
     );
 }
 
-// --- Handelingen na het besluit: bekendmaken, betalen, en het zaakverloop ---
+// --- Actions after the decision: announcing, paying, and the case progress ---
 
 async fn action(
     app: &Router,
@@ -3233,14 +3261,14 @@ async fn action(
     trial: bool,
     form: Value,
 ) -> (StatusCode, Value) {
-    handeling_in(app, AFNEMER, b, case, name, trial, json!({ "form": form })).await
+    action_in(app, CONSUMER, b, case, name, trial, json!({ "form": form })).await
 }
 
-/// Een handeling in een zaak van een proces, op proef of genomen, met de
-/// body zoals de route hem leest (`formulier`, en zo nodig `gebeurd`).
-async fn handeling_in(
+/// An action in a case of a process, on trial or taken, with the body as the
+/// route reads it (`form`, and if needed `happened`).
+async fn action_in(
     app: &Router,
-    proces: &str,
+    process: &str,
     b: &str,
     case: &str,
     name: &str,
@@ -3248,29 +3276,29 @@ async fn handeling_in(
     body: Value,
 ) -> (StatusCode, Value) {
     let path = if trial {
-        format!("{proces}/api/cases/{case}/actions/{name}/trial")
+        format!("{process}/api/cases/{case}/actions/{name}/trial")
     } else {
-        format!("{proces}/api/cases/{case}/actions/{name}")
+        format!("{process}/api/cases/{case}/actions/{name}")
     };
-    let (status, body, _) = vraag(app, "POST", &path, Some(b), Some(body)).await;
+    let (status, body, _) = call(app, "POST", &path, Some(b), Some(body)).await;
     (status, body)
 }
 
-/// Na het besluit: de bekendmaking is een vervolg op het besluit (de
-/// engine voert stage BEKENDMAKING uit op de invoer van het vastgelegde
-/// besluit, en de haak van die stage rekent de bezwaartermijn uit); de
-/// betaling is een executogram dat alleen vastligt als de toets van zijn
-/// grondslag waar is. Een tweede betaling boven het bedrag weigert de wet.
+/// After the decision: the announcement is a follow-up to the decision (the
+/// engine runs stage BEKENDMAKING on the inputs of the recorded decision, and
+/// the hook of that stage computes the objection period); the payment is an
+/// executogram that is only recorded if the assessment of its legal basis is
+/// true. The law refuses a second payment above the amount.
 #[tokio::test]
-async fn besluit_bekendmaken_en_betalen() {
+async fn decision_announce_and_pay() {
     let data = tempfile::tempdir().unwrap();
     let app = app(data.path());
-    let case = afnemer_indienen(&app, "12345678").await;
-    let b = behandelaar(&app).await;
-    let betaling = |bedrag: i64| json!({"bedrag": bedrag, "datum_betaling": "2025-03-12"});
+    let case = consumer_submit(&app, "12345678").await;
+    let b = handler(&app).await;
+    let payment = |amount: i64| json!({"bedrag": amount, "datum_betaling": "2025-03-12"});
 
-    // Voor het besluit: bekendmaken en betalen wachten op het besluit dat ze
-    // volgen.
+    // Before the decision: announcing and paying wait for the decision they
+    // follow.
     let (status, f) = action(
         &app,
         &b,
@@ -3285,16 +3313,16 @@ async fn besluit_bekendmaken_en_betalen() {
         f["error"]
             .as_str()
             .unwrap()
-            .contains("wacht op het besluit"),
+            .contains("waiting for the decision"),
         "{f}"
     );
-    let (status, f) = action(&app, &b, &case, "betalen", false, betaling(6000)).await;
+    let (status, f) = action(&app, &b, &case, "betalen", false, payment(6000)).await;
     assert_eq!(status, StatusCode::CONFLICT, "{f}");
     assert!(
         f["error"]
             .as_str()
             .unwrap()
-            .contains("wacht op het besluit"),
+            .contains("waiting for the decision"),
         "{f}"
     );
 
@@ -3309,26 +3337,26 @@ async fn besluit_bekendmaken_en_betalen() {
     .await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
 
-    // Na het besluit, voor de bekendmaking: het besluit is niet in werking.
-    let (status, f) = action(&app, &b, &case, "betalen", false, betaling(6000)).await;
+    // After the decision, before the announcement: the decision is not in force.
+    let (status, f) = action(&app, &b, &case, "betalen", false, payment(6000)).await;
     assert_eq!(status, StatusCode::CONFLICT, "{f}");
     assert!(
         f["error"].as_str().unwrap().contains("betaling_conform"),
         "{f}"
     );
 
-    // Het formulier van de bekendmaking is wat de stage vraagt.
-    let (_, z, _) = vraag(
+    // The form of the announcement is what the stage asks for.
+    let (_, z, _) = call(
         &app,
         "GET",
-        &format!("{AFNEMER}/api/cases/{case}"),
+        &format!("{CONSUMER}/api/cases/{case}"),
         Some(&b),
         None,
     )
     .await;
-    let bekend = &z["actions"][1];
-    assert_eq!(bekend["available"], json!(true), "{bekend}");
-    let fields: Vec<&str> = bekend["form"]
+    let known = &z["actions"][1];
+    assert_eq!(known["available"], json!(true), "{known}");
+    let fields: Vec<&str> = known["form"]
         .as_array()
         .unwrap()
         .iter()
@@ -3337,8 +3365,8 @@ async fn besluit_bekendmaken_en_betalen() {
     assert_eq!(fields, ["datum_bekendmaking", "bekendgemaakt"]);
     assert_eq!(z["actions"][0]["available"], json!(false));
 
-    // Een bekendmaking die niet op de voorgeschreven wijze is gedaan, geeft
-    // geen bezwaartermijn: niet te nemen.
+    // An announcement not made in the prescribed manner gives no objection
+    // period: not takeable.
     let (status, p) = action(
         &app,
         &b,
@@ -3350,7 +3378,7 @@ async fn besluit_bekendmaken_en_betalen() {
     .await;
     assert_eq!(status, StatusCode::OK, "{p}");
     assert_eq!(p["takeable"], json!(false), "{p}");
-    // Een conclusie over de inhoud: gebeurde het toch, dan is het te melden.
+    // A conclusion about the content: if it happened anyway, it can be reported.
     assert_eq!(p["reportable"], json!(true), "{p}");
 
     let (status, body) = action(
@@ -3368,52 +3396,48 @@ async fn besluit_bekendmaken_en_betalen() {
     assert_eq!(gram["type"], "act");
     assert_eq!(gram["fields"]["aanvang_bezwaartermijn"], "2025-03-13");
     assert_eq!(gram["fields"]["einde_bezwaartermijn"], "2025-04-23");
-    // Art. 3 in de stage BEKENDMAKING: nu is het besluit bekendgemaakt.
+    // Art. 3 in the stage BEKENDMAKING: now the decision is announced.
     assert_eq!(gram["fields"]["besluit_tijdig"], json!(true));
     assert_eq!(gram["effective_at"], "2025-03-12T00:00:00+01:00");
 
-    // Betalen, in twee delen; de reductie telt de betalingen op.
-    let (status, body) = action(&app, &b, &case, "betalen", false, betaling(4000)).await;
+    // Paying, in two parts; the reduction adds up the payments.
+    let (status, body) = action(&app, &b, &case, "betalen", false, payment(4000)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
     assert_eq!(body["gram"]["type"], "executogram");
     assert_eq!(body["trial"]["outputs"]["nog_te_betalen"], json!(2000));
-    let (status, f) = action(&app, &b, &case, "betalen", false, betaling(2001)).await;
-    assert_eq!(status, StatusCode::CONFLICT, "boven het bedrag: {f}");
+    let (status, f) = action(&app, &b, &case, "betalen", false, payment(2001)).await;
+    assert_eq!(status, StatusCode::CONFLICT, "above the amount: {f}");
     assert!(
         f["error"]
             .as_str()
             .unwrap()
-            .contains("meld het dan als gebeurd"),
+            .contains("report it as happened"),
         "{f}"
     );
-    let (status, body) = action(&app, &b, &case, "betalen", false, betaling(2000)).await;
+    let (status, body) = action(&app, &b, &case, "betalen", false, payment(2000)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
     assert_eq!(body["trial"]["outputs"]["nog_te_betalen"], json!(0));
-    let (status, _) = action(&app, &b, &case, "betalen", false, betaling(1)).await;
+    let (status, _) = action(&app, &b, &case, "betalen", false, payment(1)).await;
     assert_eq!(status, StatusCode::CONFLICT);
 
-    // De zaak: nog te betalen 0, en de bezwaartermijn uit de procedure.
-    let (_, z, _) = vraag(
+    // The case: 0 still to pay, and the objection period from the procedure.
+    let (_, z, _) = call(
         &app,
         "GET",
-        &format!("{AFNEMER}/api/cases/{case}"),
+        &format!("{CONSUMER}/api/cases/{case}"),
         Some(&b),
         None,
     )
     .await;
-    let betalen = z["actions"]
+    let pay = z["actions"]
         .as_array()
         .unwrap()
         .iter()
         .find(|h| h["name"] == "betalen")
         .unwrap();
-    assert_eq!(
-        betalen["trial"]["outputs"]["nog_te_betalen"],
-        json!(0),
-        "{betalen}"
-    );
-    assert_eq!(betalen["recorded"], json!(2));
-    assert_eq!(betalen["decision"], z["decisions"][0]["id"]);
+    assert_eq!(pay["trial"]["outputs"]["nog_te_betalen"], json!(0), "{pay}");
+    assert_eq!(pay["recorded"], json!(2));
+    assert_eq!(pay["decision"], z["decisions"][0]["id"]);
     let decision = &z["decisions"][0];
     assert_eq!(decision["action"], "besluit");
     assert_eq!(
@@ -3426,11 +3450,11 @@ async fn besluit_bekendmaken_en_betalen() {
     assert_eq!(r["stage"], "BEZWAAR");
     assert_eq!(r["legal_basis"], json!(["testregeling_awb#4"]));
     assert_eq!(r["outputs"]["einde_bezwaartermijn"], "2025-04-23");
-    // De lexostatus van het besluit bevat de route.
-    let (_, l, _) = vraag(
+    // The lexostatus of the decision contains the route.
+    let (_, l, _) = call(
         &app,
         "GET",
-        &format!("{AFNEMER_CEL}/api/lexostatus/besluit?root={case}"),
+        &format!("{CONSUMER_CELL}/api/lexostatus/besluit?root={case}"),
         None,
         None,
     )
@@ -3442,16 +3466,16 @@ async fn besluit_bekendmaken_en_betalen() {
     assert_eq!(l["parameters"]["betaald_bedrag"], json!(6000));
 }
 
-/// Twee gelijktijdige betalingen die samen boven het vastgestelde bedrag
-/// komen: elk rekent uit wat er nog te betalen is op de zaak zoals het proces
-/// haar las, en de cel legt alleen vast als de zaak sindsdien niet veranderde
-/// (`zaak_grammen`, onder het schrijfslot). Er komt er een door.
+/// Two concurrent payments that together exceed the set amount: each computes
+/// what is still to be paid on the case as the process read it, and the cell
+/// only records if the case has not changed since (`case_grams`, under the
+/// write lock). One gets through.
 #[tokio::test]
-async fn twee_gelijktijdige_betalingen() {
+async fn two_concurrent_payments() {
     let data = tempfile::tempdir().unwrap();
     let app = app(data.path());
-    let case = afnemer_indienen(&app, "12345678").await;
-    let b = behandelaar(&app).await;
+    let case = consumer_submit(&app, "12345678").await;
+    let b = handler(&app).await;
     let (status, body) = action(
         &app,
         &b,
@@ -3472,39 +3496,39 @@ async fn twee_gelijktijdige_betalingen() {
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
-    let betaling = json!({"bedrag": 4000, "datum_betaling": "2025-03-12"});
-    let (een, ander) = tokio::join!(
-        action(&app, &b, &case, "betalen", false, betaling.clone()),
-        action(&app, &b, &case, "betalen", false, betaling.clone()),
+    let payment = json!({"bedrag": 4000, "datum_betaling": "2025-03-12"});
+    let (a, other) = tokio::join!(
+        action(&app, &b, &case, "betalen", false, payment.clone()),
+        action(&app, &b, &case, "betalen", false, payment.clone()),
     );
-    let mut statussen = [een.0, ander.0];
-    statussen.sort();
+    let mut statuses = [a.0, other.0];
+    statuses.sort();
     assert_eq!(
-        statussen,
+        statuses,
         [StatusCode::CREATED, StatusCode::CONFLICT],
         "{} / {}",
-        een.1,
-        ander.1
+        a.1,
+        other.1
     );
-    // Welke weigering de tweede krijgt, hangt af van de volgorde. Lazen
-    // beide proeven de zaak voor de eerste vastlag, dan weigert de cel op de
-    // optimistische toets. Las de tweede haar erna, dan zegt de wet nee (er
-    // is al betaald) en neemt het proces de handeling niet. Twee keer
-    // vastleggen gebeurt in geen van beide gevallen.
-    let geweigerd = if een.0 == StatusCode::CONFLICT {
-        &een.1
+    // Which refusal the second one gets depends on the order. If both trials
+    // read the case before the first was recorded, the cell refuses on the
+    // optimistic check. If the second read it afterwards, the law says no
+    // (it has already been paid) and the process does not take the action.
+    // Recording twice happens in neither case.
+    let refused = if a.0 == StatusCode::CONFLICT {
+        &a.1
     } else {
-        &ander.1
+        &other.1
     };
-    let error = geweigerd["error"].as_str().unwrap();
+    let error = refused["error"].as_str().unwrap();
     assert!(
-        error.contains("veranderde sinds het proces haar las") || error.contains("zegt nee"),
-        "{geweigerd}"
+        error.contains("changed since the process read it") || error.contains("says no"),
+        "{refused}"
     );
-    let (_, l, _) = vraag(
+    let (_, l, _) = call(
         &app,
         "GET",
-        &format!("{AFNEMER_CEL}/api/lexostatus/besluit?root={case}"),
+        &format!("{CONSUMER_CELL}/api/lexostatus/besluit?root={case}"),
         None,
         None,
     )
@@ -3512,16 +3536,16 @@ async fn twee_gelijktijdige_betalingen() {
     assert_eq!(l["parameters"]["betaald_bedrag"], json!(4000), "{l}");
 }
 
-/// Een tweede handeling in het zaakverloop: een verzoek om aanvulling telt
-/// op proef mee, en na het vastleggen leest het besluit het.
+/// A second action in the case progress: a request for a supplement counts on
+/// trial, and after recording the decision reads it.
 #[tokio::test]
-async fn een_aanvulling_vragen_werkt_door_in_het_besluit() {
+async fn requesting_a_supplement_carries_into_the_decision() {
     let data = tempfile::tempdir().unwrap();
     let app = app(data.path());
-    let case = afnemer_indienen(&app, "12345678").await;
-    let b = behandelaar(&app).await;
+    let case = consumer_submit(&app, "12345678").await;
+    let b = handler(&app).await;
     let (_, p) = action(&app, &b, &case, "aanvulling_vragen", true, json!({})).await;
-    // Zonder de datum telt het feit niet: niet te nemen.
+    // Without the date the fact does not count: not takeable.
     assert_eq!(p["takeable"], json!(false), "{p}");
     assert!(
         p["reason"].as_str().unwrap().contains("datum_uitnodiging"),
@@ -3554,13 +3578,13 @@ async fn een_aanvulling_vragen_werkt_door_in_het_besluit() {
     );
 }
 
-/// Een handeling nemen met `gebeurd`: de behandelaar meldt een feit dat
-/// gebeurde terwijl de proef om de inhoud nee zei.
-async fn melden(app: &Router, b: &str, case: &str, name: &str, form: Value) -> (StatusCode, Value) {
-    let (status, body, _) = vraag(
+/// Take an action with `happened`: the handler reports a fact that happened
+/// while the trial said no on the content.
+async fn report(app: &Router, b: &str, case: &str, name: &str, form: Value) -> (StatusCode, Value) {
+    let (status, body, _) = call(
         app,
         "POST",
-        &format!("{AFNEMER}/api/cases/{case}/actions/{name}"),
+        &format!("{CONSUMER}/api/cases/{case}/actions/{name}"),
         Some(b),
         Some(json!({"form": form, "happened": true})),
     )
@@ -3568,22 +3592,22 @@ async fn melden(app: &Router, b: &str, case: &str, name: &str, form: Value) -> (
     (status, body)
 }
 
-/// Het proces concludeert voor het handelt; wat gebeurde, legt de cel toch
-/// vast. Een betaling boven het bedrag doet het proces niet uit zichzelf,
-/// maar gemeld als gebeurd ligt zij vast, en dan is het meerdere
-/// onverschuldigd betaald. Een bekendmaking die niet aan de wet voldoet,
-/// ligt gemeld vast zonder bezwaartermijn. Een besluit wordt niet gemeld, en
-/// een onvolledig formulier niet vastgelegd.
+/// The process concludes before it acts; what happened, the cell records
+/// anyway. The process does not make a payment above the amount on its own,
+/// but reported as happened it is recorded, and then the excess is paid
+/// unduly. An announcement that does not comply with the law is recorded, as
+/// reported, without an objection period. A decision is not reported, and an
+/// incomplete form is not recorded.
 #[tokio::test]
-async fn een_gemeld_feit_legt_de_cel_vast() {
+async fn a_reported_fact_is_recorded_by_the_cell() {
     let data = tempfile::tempdir().unwrap();
     let app = app(data.path());
-    let b = behandelaar(&app).await;
-    let betaling = |bedrag: i64| json!({"bedrag": bedrag, "datum_betaling": "2025-03-12"});
+    let b = handler(&app).await;
+    let payment = |amount: i64| json!({"bedrag": amount, "datum_betaling": "2025-03-12"});
 
-    // Een besluit meldt men niet.
-    let case = afnemer_indienen(&app, "12345678").await;
-    let (status, f) = melden(&app, &b, &case, "besluit", verdicts()["form"].clone()).await;
+    // A decision is not reported.
+    let case = consumer_submit(&app, "12345678").await;
+    let (status, f) = report(&app, &b, &case, "besluit", verdicts()["form"].clone()).await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{f}");
     let (status, _) = action(
         &app,
@@ -3596,9 +3620,9 @@ async fn een_gemeld_feit_legt_de_cel_vast() {
     .await;
     assert_eq!(status, StatusCode::CREATED);
 
-    // Een bekendmaking die niet op de voorgeschreven wijze is gedaan: gemeld
-    // ligt zij vast, zonder bezwaartermijn.
-    let (status, body) = melden(
+    // An announcement not made in the prescribed manner: reported, it is
+    // recorded, without an objection period.
+    let (status, body) = report(
         &app,
         &b,
         &case,
@@ -3617,13 +3641,13 @@ async fn een_gemeld_feit_legt_de_cel_vast() {
         body["warnings"][0]
             .as_str()
             .unwrap()
-            .contains("gemeld als gebeurd"),
+            .contains("reported as happened"),
         "{body}"
     );
-    let (_, l, _) = vraag(
+    let (_, l, _) = call(
         &app,
         "GET",
-        &format!("{AFNEMER}/api/cases/{case}"),
+        &format!("{CONSUMER}/api/cases/{case}"),
         Some(&b),
         None,
     )
@@ -3632,65 +3656,68 @@ async fn een_gemeld_feit_legt_de_cel_vast() {
     assert_eq!(r["stage"], "BEZWAAR", "{l}");
     assert_eq!(r["outputs"]["einde_bezwaartermijn"], Value::Null, "{l}");
 
-    // Betalen: het bedrag, en dan een cent te veel.
-    let (status, body) = action(&app, &b, &case, "betalen", false, betaling(6000)).await;
+    // Paying: the amount, and then one cent too much.
+    let (status, body) = action(&app, &b, &case, "betalen", false, payment(6000)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
-    let (status, p) = action(&app, &b, &case, "betalen", true, betaling(1)).await;
+    let (status, p) = action(&app, &b, &case, "betalen", true, payment(1)).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(p["takeable"], json!(false), "{p}");
     assert_eq!(p["reportable"], json!(true), "{p}");
     assert_eq!(p["assessments"]["betaling_conform"], json!(false), "{p}");
-    let (status, body) = melden(&app, &b, &case, "betalen", betaling(1)).await;
+    let (status, body) = report(&app, &b, &case, "betalen", payment(1)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
     assert_eq!(body["gram"]["type"], "executogram");
     assert_eq!(body["gram"]["fields"]["bedrag"], json!(1));
-    // De gevolgen: de cel telt de betalingen op, de wet zegt wat
-    // onverschuldigd is betaald.
-    let (_, p) = action(&app, &b, &case, "betalen", true, betaling(0)).await;
+    // The consequences: the cell adds up the payments, the law says what was
+    // paid unduly.
+    let (_, p) = action(&app, &b, &case, "betalen", true, payment(0)).await;
     assert_eq!(p["parameters"]["betaald_bedrag"], json!(6001), "{p}");
     assert_eq!(p["outputs"]["onverschuldigd_betaald"], json!(1), "{p}");
 
-    // Een feit zonder ingevuld formulier legt niemand vast, ook gemeld niet.
-    let (status, f) = melden(&app, &b, &case, "aanvulling_vragen", json!({})).await;
+    // Nobody records a fact without a filled-in form, not even when reported.
+    let (status, f) = report(&app, &b, &case, "aanvulling_vragen", json!({})).await;
     assert_eq!(status, StatusCode::CONFLICT, "{f}");
-    assert!(f["error"].as_str().unwrap().contains("vul in"), "{f}");
+    assert!(f["error"].as_str().unwrap().contains("fill in"), "{f}");
 }
 
-/// Het moment van een handeling: niet in de toekomst en niet voor de zaak.
-/// Het proces zegt het op proef; de cel weigert zo'n gram ook zelf.
+/// The moment of an action: not in the future and not before the case. The
+/// process says so on trial; the cell also refuses such a gram itself.
 #[tokio::test]
-async fn een_moment_ligt_niet_voor_de_zaak_of_in_de_toekomst() {
+async fn a_moment_does_not_lie_before_the_case_or_in_the_future() {
     let data = tempfile::tempdir().unwrap();
-    let rt = runtime_op(&fixtures(), data.path()).unwrap();
-    let app = als_lezer(&rt);
-    let b = behandelaar(&app).await;
-    let case = afnemer_indienen(&app, "12345678").await;
+    let rt = runtime_at(&fixtures(), data.path()).unwrap();
+    let app = as_reader(&rt);
+    let b = handler(&app).await;
+    let case = consumer_submit(&app, "12345678").await;
     let decision = |date: &str| json!({"besluitdatum": date, "feiten_vergaard": true});
 
     let (_, p) = action(&app, &b, &case, "besluit", true, decision("2025-03-11")).await;
     assert_eq!(p["takeable"], json!(false), "{p}");
     assert_eq!(p["reportable"], json!(false), "{p}");
     assert!(
-        p["reason"].as_str().unwrap().contains("ligt voor de zaak"),
+        p["reason"]
+            .as_str()
+            .unwrap()
+            .contains("lies before the case"),
         "{p}"
     );
     let (status, f) = action(&app, &b, &case, "besluit", false, decision("2025-03-11")).await;
     assert_eq!(status, StatusCode::CONFLICT, "{f}");
     let (_, p) = action(&app, &b, &case, "besluit", true, decision("2025-03-13")).await;
     assert!(
-        p["reason"].as_str().unwrap().contains("ligt na vandaag"),
+        p["reason"].as_str().unwrap().contains("lies after today"),
         "{p}"
     );
-    // Dezelfde dag als de aanvraag mag: het gaat om de dag.
+    // The same day as the application is allowed: it is about the day.
     let (_, p) = action(&app, &b, &case, "besluit", true, decision("2025-03-12")).await;
     assert_eq!(p["takeable"], json!(true), "{p}");
 
-    // De cel zelf: een besluit dat naar de aanvraag verwijst, met een
-    // eerdere dag dan de aanvraag.
-    let (status, f) = als_runtime(
+    // The cell itself: a decision that refers to the application, with an
+    // earlier day than the application.
+    let (status, f) = as_runtime(
         &rt,
         "POST",
-        &format!("{AFNEMER_CEL}/api/grams"),
+        &format!("{CONSUMER_CELL}/api/grams"),
         json!({
             "actor": "test_afnemer",
             "stream": "test_afnemer_zaakverloop",
@@ -3705,21 +3732,21 @@ async fn een_moment_ligt_niet_voor_de_zaak_of_in_de_toekomst() {
         f["error"]
             .as_str()
             .unwrap()
-            .contains("ligt voor het gram waarnaar het verwijst"),
+            .contains("is before the gram it refers to"),
         "{f}"
     );
 }
 
-/// De stand van een zaak is een lexostatus van de cel, die de runtime
-/// aanbiedt: de stages met wat hun gram vastlegde, het aantal per event, en
-/// op vraag of iemand de zaak kent.
+/// The state of a case is a lexostatus of the cell that the runtime offers:
+/// the stages with what their gram recorded, the count per event, and on
+/// request whether someone knows the case.
 #[tokio::test]
-async fn de_cel_geeft_de_stand_van_een_zaak() {
+async fn the_cell_gives_the_state_of_a_case() {
     let data = tempfile::tempdir().unwrap();
-    let rt = runtime_op(&fixtures(), data.path()).unwrap();
-    let app = als_lezer(&rt);
-    let b = behandelaar(&app).await;
-    let case = afnemer_indienen(&app, "12345678").await;
+    let rt = runtime_at(&fixtures(), data.path()).unwrap();
+    let app = as_reader(&rt);
+    let b = handler(&app).await;
+    let case = consumer_submit(&app, "12345678").await;
     let (status, _) = action(
         &app,
         &b,
@@ -3731,14 +3758,14 @@ async fn de_cel_geeft_de_stand_van_een_zaak() {
     .await;
     assert_eq!(status, StatusCode::CREATED);
 
-    let lees = |q: String| {
+    let read = |q: String| {
         let rt = &rt;
         async move {
-            let headers = [(RUNTIME_TOKEN_HEADER, rt.runtime_token.als_str())];
-            let (status, body, _) = vraag_met(
+            let headers = [(RUNTIME_TOKEN_HEADER, rt.runtime_token.as_str())];
+            let (status, body, _) = call_with(
                 &rt.router,
                 "GET",
-                &format!("{AFNEMER_CEL}/api/lexostatus/case_state?{q}"),
+                &format!("{CONSUMER_CELL}/api/lexostatus/case_state?{q}"),
                 &headers,
                 None,
             )
@@ -3746,18 +3773,18 @@ async fn de_cel_geeft_de_stand_van_een_zaak() {
             (status, body)
         }
     };
-    let (status, l) = lees(format!("root={case}")).await;
+    let (status, l) = read(format!("root={case}")).await;
     assert_eq!(status, StatusCode::OK, "{l}");
     assert_eq!(l["name"], "case_state");
-    assert_eq!(l["parameters"], json!({}), "gaat nooit naar de engine");
+    assert_eq!(l["parameters"], json!({}), "never goes to the engine");
     let z = &l["extra_fields"];
     assert_eq!(z["grams"], json!(2), "{z}");
     assert_eq!(
         z["events"]["test_afnemer_zaakverloop/besluit_genomen"],
         json!(1)
     );
-    // Het besluit is een eigen gram dat naar de aanvraag verwijst; de
-    // aanvraag is de wortel.
+    // The decision is a gram of its own that refers to the application; the
+    // application is the root.
     let decision = &z["decisions"][0];
     assert!(
         decision["id"].is_string() && decision["id"] != case.as_str(),
@@ -3774,125 +3801,126 @@ async fn de_cel_geeft_de_stand_van_een_zaak() {
     assert!(z["stages"].get("BESLUIT").is_none(), "{z}");
     assert!(z.get("owner").is_none());
 
-    let (_, l) = lees(format!(
+    let (_, l) = read(format!(
         "root={case}&owner_path=eherkenning.kvk&owner=12345678"
     ))
     .await;
     assert_eq!(l["extra_fields"]["owner"], json!(true), "{l}");
-    let (_, l) = lees(format!(
+    let (_, l) = read(format!(
         "root={case}&owner_path=eherkenning.kvk&owner=87654321"
     ))
     .await;
     assert_eq!(l["extra_fields"]["owner"], json!(false), "{l}");
-    let (status, _) = lees("root=bestaat-niet".into()).await;
+    let (status, _) = read("root=bestaat-niet".into()).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
-    let (status, _) = lees(format!("root={case}&owner=12345678")).await;
+    let (status, _) = read(format!("root={case}&owner=12345678")).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 
-    // De cel noemt haar bij haar lexostatussen, als lexostatus van de runtime.
-    let (_, cells, _) = vraag(&app, "GET", "/api/cells", None, None).await;
-    let afnemer = cells
+    // The cell lists it among its lexostatuses, as a lexostatus of the runtime.
+    let (_, cells, _) = call(&app, "GET", "/api/cells", None, None).await;
+    let consumer = cells
         .as_array()
         .unwrap()
         .iter()
         .find(|c| c["id"] == "test_afnemer")
         .unwrap();
     assert!(
-        afnemer["lexostatuses"]
+        consumer["lexostatuses"]
             .as_array()
             .unwrap()
             .iter()
             .any(|l| l["name"] == "case_state" && l["runtime"] == json!(true)),
-        "{afnemer}"
+        "{consumer}"
     );
 }
 
-/// Het leestoken geeft lezen, geen vastleggen.
+/// The read token gives reading, not recording.
 #[tokio::test]
-async fn het_leestoken_geeft_alleen_lezen() {
+async fn the_read_token_gives_only_reading() {
     let data = tempfile::tempdir().unwrap();
     let token = "gedeeld-leestoken-van-de-test";
-    let rt = runtime_met_leestoken(&fixtures(), data.path(), token, &[]);
-    let lees = [(LEES_TOKEN_HEADER, token)];
-    let (status, body, _) = vraag_met(
+    let rt = runtime_with_read_token(&fixtures(), data.path(), token, &[]);
+    let read = [(READ_TOKEN_HEADER, token)];
+    let (status, body, _) = call_with(
         &rt.router,
         "GET",
-        &format!("{INSTANTIE_CEL}/api/chronicle"),
-        &lees,
+        &format!("{AGENCY_CELL}/api/chronicle"),
+        &read,
         None,
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    let (status, _, _) = vraag_met(
+    let (status, _, _) = call_with(
         &rt.router,
         "POST",
-        &format!("{INSTANTIE_CEL}/api/grams"),
-        &lees,
-        Some(verzoek("test_instantie")),
+        &format!("{AGENCY_CELL}/api/grams"),
+        &read,
+        Some(record_request("test_instantie")),
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
 }
 
-/// Een behandelaar ziet de kroniek en de lexostatussen van de cellen die zijn
-/// proces leest, via het proces; een aanvrager en wie niet inlogde niet.
+/// A handler sees the chronicle and the lexostatuses of the cells their
+/// process reads, via the process; an applicant and someone not logged in do
+/// not.
 #[tokio::test]
-async fn inzage_in_de_cellen_via_het_proces() {
+async fn inspection_of_the_cells_via_the_process() {
     let data = tempfile::tempdir().unwrap();
-    let rt = runtime_op(&fixtures(), data.path()).unwrap();
+    let rt = runtime_at(&fixtures(), data.path()).unwrap();
     let app = rt.router.clone();
-    let case = afnemer_indienen(&app, "12345678").await;
-    let b = behandelaar(&app).await;
-    let chronicle = format!("{AFNEMER}/api/inspection/test_afnemer/chronicle");
+    let case = consumer_submit(&app, "12345678").await;
+    let b = handler(&app).await;
+    let chronicle = format!("{CONSUMER}/api/inspection/test_afnemer/chronicle");
 
-    let (status, grams, _) = vraag(&app, "GET", &chronicle, Some(&b), None).await;
+    let (status, grams, _) = call(&app, "GET", &chronicle, Some(&b), None).await;
     assert_eq!(status, StatusCode::OK, "{grams}");
     assert_eq!(grams.as_array().unwrap().len(), 1);
-    let (status, l, _) = vraag(
+    let (status, l, _) = call(
         &app,
         "GET",
-        &format!("{AFNEMER}/api/inspection/test_afnemer/lexostatus/aanvraag_inhoud?root={case}"),
+        &format!("{CONSUMER}/api/inspection/test_afnemer/lexostatus/aanvraag_inhoud?root={case}"),
         Some(&b),
         None,
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{l}");
     assert_eq!(l["root"], json!(case));
-    // Een bron van het proces in deze runtime mag ook; een andere cel niet.
-    let (status, _, _) = vraag(
+    // A source of the process in this runtime is allowed too; another cell is not.
+    let (status, _, _) = call(
         &app,
         "GET",
-        &format!("{AFNEMER}/api/inspection/test_register/chronicle"),
+        &format!("{CONSUMER}/api/inspection/test_register/chronicle"),
         Some(&b),
         None,
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    let (status, _, _) = vraag(
+    let (status, _, _) = call(
         &app,
         "GET",
-        &format!("{AFNEMER}/api/inspection/test_instantie/chronicle"),
+        &format!("{CONSUMER}/api/inspection/test_instantie/chronicle"),
         Some(&b),
         None,
     )
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
-    // Zonder login 401, als aanvrager 403.
-    let (status, _, _) = vraag(&app, "GET", &chronicle, None, None).await;
+    // Without login 401, as applicant 403.
+    let (status, _, _) = call(&app, "GET", &chronicle, None, None).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
-    let (_, _, a) = vraag(
+    let (_, _, a) = call(
         &app,
         "POST",
-        &format!("{AFNEMER}/api/channels/eherkenning/login"),
+        &format!("{CONSUMER}/api/channels/eherkenning/login"),
         None,
         Some(json!({"kvk": "12345678", "persoon": "A. Tester"})),
     )
     .await;
-    let (status, _, _) = vraag(&app, "GET", &chronicle, a.as_deref(), None).await;
+    let (status, _, _) = call(&app, "GET", &chronicle, a.as_deref(), None).await;
     assert_eq!(status, StatusCode::FORBIDDEN);
-    // Het proces noemt de cellen die een behandelaar kan inzien.
-    let (_, processen, _) = vraag(&app, "GET", "/api/processes", None, None).await;
-    let p = processen
+    // The process names the cells a handler can inspect.
+    let (_, processes, _) = call(&app, "GET", "/api/processes", None, None).await;
+    let p = processes
         .as_array()
         .unwrap()
         .iter()
@@ -3904,17 +3932,17 @@ async fn inzage_in_de_cellen_via_het_proces() {
     );
 }
 
-// --- Een tweede casus: een maandtoeslag, met meer besluiten in een zaak ---
+// --- A second case study: a monthly allowance, with several decisions in a case ---
 //
-// Hetzelfde binaire programma, dezelfde routes: alleen de configuratie en de
-// regelingen verschillen (processes/toeslag, cellen/toeslag,
-// regulation/testregeling_toeslag en testbeleid_toeslag).
+// The same binary, the same routes: only the configuration and the
+// regulations differ (processes/toeslag, cells/toeslag,
+// regulation/testregeling_toeslag and testbeleid_toeslag).
 
 const TOESLAG: &str = "/processes/test_toeslag_proces";
-const TOESLAG_CEL: &str = "/cells/test_toeslag";
+const TOESLAG_CELL: &str = "/cells/test_toeslag";
 
-async fn toeslag_inloggen(app: &Router) -> String {
-    let (status, body, cookie) = vraag(
+async fn toeslag_logins(app: &Router) -> String {
+    let (status, body, cookie) = call(
         app,
         "POST",
         &format!("{TOESLAG}/api/channels/persoon/login"),
@@ -3926,10 +3954,10 @@ async fn toeslag_inloggen(app: &Router) -> String {
     cookie.unwrap()
 }
 
-/// Dien een aanvraag voor een maandtoeslag in; de zaak die zij opent.
-async fn toeslag_indienen(app: &Router, month: &str, geschat_inkomen: i64) -> String {
-    let a = toeslag_inloggen(app).await;
-    let (status, body, _) = vraag(
+/// Submit an application for a monthly allowance; returns the case it opens.
+async fn toeslag_submit(app: &Router, month: &str, estimated_income: i64) -> String {
+    let a = toeslag_logins(app).await;
+    let (status, body, _) = call(
         app,
         "POST",
         &format!("{TOESLAG}/api/application"),
@@ -3939,7 +3967,7 @@ async fn toeslag_indienen(app: &Router, month: &str, geschat_inkomen: i64) -> St
             "adres": "Voorbeeldstraat 1, 1234 AB Voorbeeld",
             "dagtekening": "2025-03-12",
             "maand": month,
-            "geschat_inkomen": geschat_inkomen,
+            "geschat_inkomen": estimated_income,
         }})),
     )
     .await;
@@ -3947,8 +3975,8 @@ async fn toeslag_indienen(app: &Router, month: &str, geschat_inkomen: i64) -> St
     body["gram"]["id"].as_str().unwrap().to_string()
 }
 
-/// Een handeling in een toeslagzaak; `gebeurd` meldt een feit dat toch
-/// gebeurde.
+/// An action in an allowance case; `happened` reports a fact that happened
+/// anyway.
 async fn toeslag(
     app: &Router,
     b: &str,
@@ -3958,23 +3986,23 @@ async fn toeslag(
     happened: bool,
 ) -> (StatusCode, Value) {
     let body = json!({"form": form, "happened": happened});
-    handeling_in(app, TOESLAG, b, case, name, false, body).await
+    action_in(app, TOESLAG, b, case, name, false, body).await
 }
 
-fn bekendmaking() -> Value {
+fn notification() -> Value {
     json!({"datum_bekendmaking": "2025-03-12", "bekendgemaakt": true})
 }
 
-/// Het tijdvak is een maand: het beleid biedt maanden aan (als de eerste dag
-/// ervan), een maand die nog moet beginnen peilt op haar begin, en de cel
-/// leidt de maand van de aanvraag af met periode_van, met de periode die de
-/// regeling noemt (temporal.period_type: month).
+/// The window is a month: the policy offers months (as their first day), a
+/// month that has yet to begin is taken as of its start, and the cell derives
+/// the month of the application with periode_van, with the period the
+/// regulation names (temporal.period_type: month).
 #[tokio::test]
-async fn een_maand_als_tijdvak() {
+async fn a_month_as_window() {
     let data = tempfile::tempdir().unwrap();
     let app = app(data.path());
-    let a = toeslag_inloggen(&app).await;
-    let (status, body, _) = vraag(
+    let a = toeslag_logins(&app).await;
+    let (status, body, _) = call(
         &app,
         "GET",
         &format!("{TOESLAG}/api/possibilities"),
@@ -3984,12 +4012,12 @@ async fn een_maand_als_tijdvak() {
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
     let m = body["possibilities"].as_array().unwrap();
-    let maanden: Vec<&Value> = m
+    let months: Vec<&Value> = m
         .iter()
         .map(|m| &m["possibility"]["window"]["value"])
         .collect();
     assert_eq!(
-        maanden,
+        months,
         [
             &json!("2025-03-01"),
             &json!("2025-04-01"),
@@ -4000,20 +4028,20 @@ async fn een_maand_als_tijdvak() {
     assert_eq!(m[0]["possibility"]["window"]["field"], "maand");
     assert_eq!(m[0]["possibility"]["verdict"], "possible", "{body}");
     assert_eq!(m[0]["possibility"]["deadline"], "2025-04-30");
-    // De lopende maand peilt op vandaag, een komende op haar eerste dag.
+    // The current month is taken as of today, a coming one as of its first day.
     assert_eq!(m[0]["as_of"], "2025-03-12", "{}", m[0]);
     assert!(
         m[1]["as_of"].as_str().unwrap().starts_with("2025-04-01"),
         "{}",
         m[1]
     );
-    // De cel leidt de maand af uit het formulier: een dag in de maand is de
-    // maand, als haar eerste dag.
+    // The cell derives the month from the form: a day in the month is the
+    // month, as its first day.
     assert_eq!(m[1]["parameters"]["maand"], "2025-04-01");
 
-    let case = toeslag_indienen(&app, "2025-03-17", 90000).await;
-    let b = behandelaar_in(&app, TOESLAG).await;
-    let (status, p) = handeling_in(
+    let case = toeslag_submit(&app, "2025-03-17", 90000).await;
+    let b = handler_in(&app, TOESLAG).await;
+    let (status, p) = action_in(
         &app,
         TOESLAG,
         &b,
@@ -4028,26 +4056,26 @@ async fn een_maand_als_tijdvak() {
     assert_eq!(p["provenance"]["maand"]["source"], "own", "{p}");
 }
 
-/// Een zaak met vier besluiten: een voorschot, een vaststelling, een
-/// wijziging van die vaststelling en een terugvordering, elk bekendgemaakt
-/// met een eigen bezwaartermijn, met de betaling van het voorschot en de
-/// terugbetaling van wat is teruggevorderd. Een tweede vaststelling zonder
-/// wijzigingsgrond weigert de cel. Geen regel code verschilt van de afnemer.
+/// A case with four decisions: an advance, a determination, an amendment of
+/// that determination and a recovery, each announced with its own objection
+/// period, with the payment of the advance and the repayment of what was
+/// recovered. The cell refuses a second determination without grounds for
+/// amendment. Not a line of code differs from the consumer.
 #[tokio::test]
-async fn meer_besluiten_in_een_zaak() {
+async fn several_decisions_in_one_case() {
     let data = tempfile::tempdir().unwrap();
-    let rt = runtime_op(&fixtures(), data.path()).unwrap();
-    let app = als_lezer(&rt);
-    let case = toeslag_indienen(&app, "2025-03-01", 90000).await;
-    let b = behandelaar_in(&app, TOESLAG).await;
+    let rt = runtime_at(&fixtures(), data.path()).unwrap();
+    let app = as_reader(&rt);
+    let case = toeslag_submit(&app, "2025-03-01", 90000).await;
+    let b = handler_in(&app, TOESLAG).await;
 
-    // Voor het voorschot: bekendmaken en betalen wachten op het besluit.
+    // Before the advance: announcing and paying wait for the decision.
     let (status, f) = toeslag(
         &app,
         &b,
         &case,
         "voorschot_bekendmaken",
-        bekendmaking(),
+        notification(),
         false,
     )
     .await;
@@ -4056,11 +4084,11 @@ async fn meer_besluiten_in_een_zaak() {
         f["error"]
             .as_str()
             .unwrap()
-            .contains("wacht op het besluit (Voorschot verlenen)"),
+            .contains("waiting for the decision (Voorschot verlenen)"),
         "{f}"
     );
 
-    // 1. Het voorschot: het eerste besluit in de zaak.
+    // 1. The advance: the first decision in the case.
     let (status, v) = toeslag(
         &app,
         &b,
@@ -4074,7 +4102,7 @@ async fn meer_besluiten_in_een_zaak() {
     assert_eq!(v["gram"]["refers_to"], json!({"on_application": case}));
     let k1 = v["gram"]["id"].as_str().unwrap().to_string();
     assert_eq!(v["gram"]["fields"]["voorschot"], json!(12000));
-    // Een tweede voorschot in dezelfde zaak: geen eigen grondslag.
+    // A second advance in the same case: no legal basis of its own.
     let (status, f) = toeslag(
         &app,
         &b,
@@ -4090,53 +4118,56 @@ async fn meer_besluiten_in_een_zaak() {
         &b,
         &case,
         "voorschot_bekendmaken",
-        bekendmaking(),
+        notification(),
         false,
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{bm}");
     assert_eq!(bm["gram"]["refers_to"]["decision"], k1.as_str());
     assert_eq!(bm["gram"]["fields"]["einde_bezwaartermijn"], "2025-04-23");
-    // Een besluit wordt een keer bekendgemaakt.
+    // A decision is announced once.
     let (status, f) = toeslag(
         &app,
         &b,
         &case,
         "voorschot_bekendmaken",
-        bekendmaking(),
+        notification(),
         false,
     )
     .await;
     assert_eq!(status, StatusCode::CONFLICT, "{f}");
     assert!(
-        f["error"].as_str().unwrap().contains("ligt al in besluit"),
+        f["error"]
+            .as_str()
+            .unwrap()
+            .contains("is already in decision"),
         "{f}"
     );
-    let betaling = json!({"bedrag": 12000, "datum_betaling": "2025-03-12"});
-    let (status, bt) = toeslag(&app, &b, &case, "voorschot_betalen", betaling, false).await;
+    let payment = json!({"bedrag": 12000, "datum_betaling": "2025-03-12"});
+    let (status, bt) = toeslag(&app, &b, &case, "voorschot_betalen", payment, false).await;
     assert_eq!(status, StatusCode::CREATED, "{bt}");
     assert_eq!(bt["gram"]["refers_to"]["decision"], k1.as_str());
     assert_eq!(bt["trial"]["outputs"]["nog_te_betalen_voorschot"], json!(0));
 
-    // 2. De vaststelling: een tweede besluit, van een eigen artikel.
-    let vaststelling = json!({"vastgesteld_inkomen": 150000, "vaststellingsdatum": "2025-03-12"});
-    let (status, vs) = toeslag(&app, &b, &case, "vaststellen", vaststelling.clone(), false).await;
+    // 2. The determination: a second decision, from an article of its own.
+    let determination = json!({"vastgesteld_inkomen": 150000, "vaststellingsdatum": "2025-03-12"});
+    let (status, vs) = toeslag(&app, &b, &case, "vaststellen", determination.clone(), false).await;
     assert_eq!(status, StatusCode::CREATED, "{vs}");
     let k2 = vs["gram"]["id"].as_str().unwrap().to_string();
     assert_eq!(vs["gram"]["refers_to"]["on_application"], case.as_str());
     assert_eq!(vs["gram"]["fields"]["vastgestelde_toeslag"], json!(6000));
-    // Een tweede vaststelling zonder wijzigingsgrond: de proef zegt het, en
-    // de cel weigert zo'n gram zelf ook.
-    let (status, f) = toeslag(&app, &b, &case, "vaststellen", vaststelling, false).await;
+    // A second determination without grounds for amendment: the trial says
+    // so, and the cell also refuses such a gram itself.
+    let (status, f) = toeslag(&app, &b, &case, "vaststellen", determination, false).await;
     assert_eq!(status, StatusCode::CONFLICT, "{f}");
     assert!(
-        f["error"].as_str().unwrap().contains("eigen grondslag"),
+        f["error"].as_str().unwrap().contains("its own legal basis"),
         "{f}"
     );
-    let (status, f) = als_runtime(
+    let (status, f) = as_runtime(
         &rt,
         "POST",
-        &format!("{TOESLAG_CEL}/api/grams"),
+        &format!("{TOESLAG_CELL}/api/grams"),
         json!({
             "actor": "test_toeslagdienst",
             "stream": "test_toeslag_zaakverloop",
@@ -4148,11 +4179,11 @@ async fn meer_besluiten_in_een_zaak() {
     .await;
     assert_eq!(status, StatusCode::CONFLICT, "{f}");
     assert!(
-        f["error"].as_str().unwrap().contains("verwijzing wijzigt"),
+        f["error"].as_str().unwrap().contains("an amends reference"),
         "{f}"
     );
-    // Een gram dat een besluit volgt, noemt een besluit dat in de zaak ligt.
-    let bekendmaking_van = |decision: Option<String>| {
+    // A gram that follows a decision names a decision that is in the case.
+    let notification_of = |decision: Option<String>| {
         let mut v = json!({
             "actor": "test_toeslagdienst",
             "stream": "test_toeslag_zaakverloop",
@@ -4167,15 +4198,15 @@ async fn meer_besluiten_in_een_zaak() {
     for (decision, message) in [
         (
             Some("00000000-0000-4000-8000-000000000009".to_string()),
-            "geen gram",
+            "no gram",
         ),
-        (None, "verplicht met 'decision'"),
+        (None, "must refer with 'decision'"),
     ] {
-        let (status, f) = als_runtime(
+        let (status, f) = as_runtime(
             &rt,
             "POST",
-            &format!("{TOESLAG_CEL}/api/grams"),
-            bekendmaking_van(decision),
+            &format!("{TOESLAG_CELL}/api/grams"),
+            notification_of(decision),
         )
         .await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "{f}");
@@ -4186,22 +4217,22 @@ async fn meer_besluiten_in_een_zaak() {
         &b,
         &case,
         "vaststelling_bekendmaken",
-        bekendmaking(),
+        notification(),
         false,
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{bm}");
     assert_eq!(bm["gram"]["refers_to"]["decision"], k2.as_str());
 
-    // 3. De wijziging van de vaststelling: een eigen besluit met een eigen
-    // grondslag. Zonder nieuwe feiten is er niets te wijzigen.
-    let wijziging = |nieuw: bool| json!({"gecorrigeerd_inkomen": 250000, "nieuwe_feiten": nieuw, "wijzigingsdatum": "2025-03-12"});
+    // 3. The amendment of the determination: a decision of its own with its
+    // own legal basis. Without new facts there is nothing to amend.
+    let amendment = |new: bool| json!({"gecorrigeerd_inkomen": 250000, "nieuwe_feiten": new, "wijzigingsdatum": "2025-03-12"});
     let (status, f) = toeslag(
         &app,
         &b,
         &case,
         "vaststelling_wijzigen",
-        wijziging(false),
+        amendment(false),
         false,
     )
     .await;
@@ -4210,7 +4241,7 @@ async fn meer_besluiten_in_een_zaak() {
         f["error"]
             .as_str()
             .unwrap()
-            .contains("geeft geen waarde voor gewijzigde_toeslag"),
+            .contains("gives no value for gewijzigde_toeslag"),
         "{f}"
     );
     let (status, w) = toeslag(
@@ -4218,7 +4249,7 @@ async fn meer_besluiten_in_een_zaak() {
         &b,
         &case,
         "vaststelling_wijzigen",
-        wijziging(true),
+        amendment(true),
         false,
     )
     .await;
@@ -4232,49 +4263,49 @@ async fn meer_besluiten_in_een_zaak() {
         &b,
         &case,
         "wijziging_bekendmaken",
-        bekendmaking(),
+        notification(),
         false,
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{bm}");
     assert_eq!(bm["gram"]["refers_to"]["decision"], k3.as_str());
 
-    // Een handeling handelt op het laatste besluit, tenzij de behandelaar er
-    // een noemt: een tweede wijziging kan de oorspronkelijke vaststelling
-    // wijzigen. Een besluit waarop zij niet handelt, weigert het proces.
-    let wijzigen = |id: &str| json!({"form": wijziging(true), "decision": id});
-    let (status, p) = handeling_in(
+    // An action acts on the latest decision, unless the handler names one: a
+    // second amendment can amend the original determination. The process
+    // refuses a decision the action does not act on.
+    let amend = |id: &str| json!({"form": amendment(true), "decision": id});
+    let (status, p) = action_in(
         &app,
         TOESLAG,
         &b,
         &case,
         "vaststelling_wijzigen",
         true,
-        json!({"form": wijziging(true)}),
+        json!({"form": amendment(true)}),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{p}");
     assert_eq!(p["decision"]["id"], k3.as_str());
-    let (status, p) = handeling_in(
+    let (status, p) = action_in(
         &app,
         TOESLAG,
         &b,
         &case,
         "vaststelling_wijzigen",
         true,
-        wijzigen(&k2),
+        amend(&k2),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{p}");
     assert_eq!(p["decision"]["id"], k2.as_str());
-    let (status, p) = handeling_in(
+    let (status, p) = action_in(
         &app,
         TOESLAG,
         &b,
         &case,
         "vaststelling_wijzigen",
         true,
-        wijzigen(&k1),
+        amend(&k1),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{p}");
@@ -4283,12 +4314,12 @@ async fn meer_besluiten_in_een_zaak() {
         p["reason"]
             .as_str()
             .unwrap()
-            .contains("is geen besluit waarop handeling 'vaststelling_wijzigen' handelt"),
+            .contains("is not a decision that action 'vaststelling_wijzigen' acts on"),
         "{p}"
     );
 
-    // 4. De terugvordering: het voorschot min de toeslag zoals die nu is
-    // vastgesteld.
+    // 4. The recovery: the advance minus the allowance as currently
+    // determined.
     let (status, t) = toeslag(
         &app,
         &b,
@@ -4308,19 +4339,19 @@ async fn meer_besluiten_in_een_zaak() {
         &b,
         &case,
         "terugvordering_bekendmaken",
-        bekendmaking(),
+        notification(),
         false,
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{bm}");
 
-    // De terugbetaling voert de terugvordering uit (naar Awb 4:57).
-    let terug = |bedrag: i64| json!({"bedrag": bedrag, "datum_terugbetaling": "2025-03-12"});
-    let (status, tb) = toeslag(&app, &b, &case, "terugbetalen", terug(5000), false).await;
+    // The repayment executes the recovery (after Awb 4:57).
+    let back = |amount: i64| json!({"bedrag": amount, "datum_terugbetaling": "2025-03-12"});
+    let (status, tb) = toeslag(&app, &b, &case, "terugbetalen", back(5000), false).await;
     assert_eq!(status, StatusCode::CREATED, "{tb}");
     assert_eq!(tb["gram"]["refers_to"]["decision"], k4.as_str());
     assert_eq!(tb["trial"]["outputs"]["nog_terug_te_betalen"], json!(7000));
-    // Het type en de eenheid komen uit de regeling, niet uit de naam.
+    // The type and the unit come from the regulation, not from the name.
     assert_eq!(
         tb["trial"]["types"]["nog_terug_te_betalen"],
         json!({"type": "amount", "unit": "eurocent"})
@@ -4329,18 +4360,18 @@ async fn meer_besluiten_in_een_zaak() {
         tb["trial"]["types"]["terugbetaling_conform"],
         json!({"type": "boolean"})
     );
-    let (status, f) = toeslag(&app, &b, &case, "terugbetalen", terug(7001), false).await;
+    let (status, f) = toeslag(&app, &b, &case, "terugbetalen", back(7001), false).await;
     assert_eq!(
         status,
         StatusCode::CONFLICT,
-        "boven het teruggevorderde: {f}"
+        "above the recovered amount: {f}"
     );
-    let (status, tb) = toeslag(&app, &b, &case, "terugbetalen", terug(7001), true).await;
-    assert_eq!(status, StatusCode::CREATED, "gemeld als gebeurd: {tb}");
+    let (status, tb) = toeslag(&app, &b, &case, "terugbetalen", back(7001), true).await;
+    assert_eq!(status, StatusCode::CREATED, "reported as happened: {tb}");
 
-    // Het zaakscherm: vier besluiten, elk met zijn stages, zijn route en
-    // zijn handelingen.
-    let (status, z, _) = vraag(
+    // The case screen: four decisions, each with its stages, its route and
+    // its actions.
+    let (status, z, _) = call(
         &app,
         "GET",
         &format!("{TOESLAG}/api/cases/{case}"),
@@ -4401,40 +4432,40 @@ async fn meer_besluiten_in_een_zaak() {
         decisions[3]["actions"],
         json!(["terugvordering_bekendmaken", "terugbetalen"])
     );
-    let terugbetalen = z["actions"]
+    let repay = z["actions"]
         .as_array()
         .unwrap()
         .iter()
         .find(|h| h["name"] == "terugbetalen")
         .unwrap();
-    assert_eq!(terugbetalen["decision"], k4.as_str());
-    assert_eq!(terugbetalen["recorded"], json!(2));
-    let bedrag = terugbetalen["form"]
+    assert_eq!(repay["decision"], k4.as_str());
+    assert_eq!(repay["recorded"], json!(2));
+    let amount = repay["form"]
         .as_array()
         .unwrap()
         .iter()
         .find(|v| v["name"] == "bedrag")
         .unwrap();
-    assert_eq!(bedrag["type"], "amount", "{bedrag}");
-    assert_eq!(bedrag["unit"], "eurocent", "{bedrag}");
+    assert_eq!(amount["type"], "amount", "{amount}");
+    assert_eq!(amount["unit"], "eurocent", "{amount}");
     assert_eq!(
-        terugbetalen["trial"]["outputs"]["nog_terug_te_betalen"],
+        repay["trial"]["outputs"]["nog_terug_te_betalen"],
         json!(0),
-        "{terugbetalen}"
+        "{repay}"
     );
-    let vaststellen = z["actions"]
+    let determine = z["actions"]
         .as_array()
         .unwrap()
         .iter()
         .find(|h| h["name"] == "vaststellen")
         .unwrap();
-    assert_eq!(vaststellen["available"], json!(false));
+    assert_eq!(determine["available"], json!(false));
 
-    // De zaakstand van de cel: de besluiten, elk met zijn stages.
-    let (status, l, _) = vraag(
+    // The case state of the cell: the decisions, each with its stages.
+    let (status, l, _) = call(
         &app,
         "GET",
-        &format!("{TOESLAG_CEL}/api/lexostatus/case_state?root={case}"),
+        &format!("{TOESLAG_CELL}/api/lexostatus/case_state?root={case}"),
         None,
         None,
     )
@@ -4460,32 +4491,32 @@ async fn meer_besluiten_in_een_zaak() {
     );
 }
 
-// --- Experiment A: de engine-route (CEL_REDUCTIE) ---
+// --- Experiment A: the engine route (CELL_REDUCTION) ---
 
-/// Een runtime over de fixtures met deze reductiemodus.
-fn runtime_met_reductie(data: &Path, reduction: Reductiemodus) -> Result<Runtime, Vec<String>> {
+/// A runtime over the fixtures with this reduction mode.
+fn runtime_with_reduction(data: &Path, reduction: ReductionMode) -> Result<Runtime, Vec<String>> {
     let config = Config {
         cells_path: fixtures().join("cells"),
         processes_path: Some(fixtures().join("processes")),
         regulation_path: fixtures().join("regulation"),
         data_dir: data.to_path_buf(),
-        port: STANDAARD_POORT,
-        lees_token: None,
-        lees_token_bronnen: Vec::new(),
+        port: DEFAULT_PORT,
+        read_token: None,
+        read_token_sources: Vec::new(),
         reduction,
         registers: None,
     };
-    Runtime::laad(&config, klok())
+    Runtime::load(&config, clock())
 }
 
-fn koppeling() -> PathBuf {
+fn binding() -> PathBuf {
     fixtures().join("experiment/engine/koppeling.yaml")
 }
 
-/// Wat een antwoord zegt, zonder wat per run verschilt (tijdstippen,
-/// hashes) en zonder de route van de reductie.
-fn zonder_run(w: &Value) -> Value {
-    const WEG: &[&str] = &[
+/// What a response says, without what differs per run (timestamps, hashes)
+/// and without the route of the reduction.
+fn without_run(w: &Value) -> Value {
+    const GONE: &[&str] = &[
         "effective_at",
         "recorded_at",
         "reduction",
@@ -4497,18 +4528,18 @@ fn zonder_run(w: &Value) -> Value {
     match w {
         Value::Object(o) => Value::Object(
             o.iter()
-                .filter(|(k, _)| !WEG.contains(&k.as_str()))
-                .map(|(k, v)| (k.clone(), zonder_run(v)))
+                .filter(|(k, _)| !GONE.contains(&k.as_str()))
+                .map(|(k, v)| (k.clone(), without_run(v)))
                 .collect(),
         ),
-        Value::Array(a) => Value::Array(a.iter().map(zonder_run).collect()),
-        Value::String(t) => Value::String(zonder_uuid(t)),
+        Value::Array(a) => Value::Array(a.iter().map(without_run).collect()),
+        Value::String(t) => Value::String(without_uuid(t)),
         _ => w.clone(),
     }
 }
 
-/// Een tekst met elk kenmerk (een uuid van 36 tekens) als `<kenmerk>`.
-fn zonder_uuid(t: &str) -> String {
+/// A text with every reference (a 36-character uuid) as `<kenmerk>`.
+fn without_uuid(t: &str) -> String {
     let is_uuid = |w: &str| {
         w.len() == 36
             && w.char_indices().all(|(i, c)| {
@@ -4519,7 +4550,7 @@ fn zonder_uuid(t: &str) -> String {
                 }
             })
     };
-    let mut uit = String::new();
+    let mut out = String::new();
     let mut i = 0;
     while i < t.len() {
         if t.is_char_boundary(i)
@@ -4527,47 +4558,47 @@ fn zonder_uuid(t: &str) -> String {
             && t.is_char_boundary(i + 36)
             && is_uuid(&t[i..i + 36])
         {
-            uit.push_str("<kenmerk>");
+            out.push_str("<kenmerk>");
             i += 36;
         } else {
             let c = t[i..].chars().next().unwrap();
-            uit.push(c);
+            out.push(c);
             i += c.len_utf8();
         }
     }
-    uit
+    out
 }
 
-/// De hele weg door de fixtures: toets en indienen bij de instantie en de
-/// afnemer, en bij de afnemer het besluit (met de synthese per regel), de
-/// bekendmaking, de betaling en de zaak. Elk antwoord, zonder wat per run
-/// verschilt.
+/// The whole way through the fixtures: assessment and submission at the agency
+/// and the consumer, and at the consumer the decision (with the synthesis per
+/// row), the announcement, the payment and the case. Every response, without
+/// what differs per run.
 async fn fixtureflow(rt: &Runtime) -> Vec<(String, StatusCode, Value)> {
-    let app = als_lezer(rt);
-    let mut uit = Vec::new();
-    let mut noteer = |stap: &str, status: StatusCode, w: &Value| {
-        uit.push((stap.to_string(), status, zonder_run(w)));
+    let app = as_reader(rt);
+    let mut out = Vec::new();
+    let mut note = |step: &str, status: StatusCode, w: &Value| {
+        out.push((step.to_string(), status, without_run(w)));
     };
     let c = logins(&app, "12345678").await;
-    let (s, w, _) = vraag(
+    let (s, w, _) = call(
         &app,
         "POST",
-        &format!("{INSTANTIE}/api/application/assessment"),
+        &format!("{AGENCY}/api/application/assessment"),
         Some(&c),
-        Some(volledig()),
+        Some(complete()),
     )
     .await;
-    noteer("toets instantie", s, &w);
+    note("assessment agency", s, &w);
     for a in [Some("VOORBEELD"), None] {
-        let w = afnemer_toets(&app, a).await;
-        noteer("toets afnemer", StatusCode::OK, &w);
+        let w = consumer_assessment(&app, a).await;
+        note("assessment consumer", StatusCode::OK, &w);
     }
-    let case = afnemer_indienen(&app, "12345678").await;
-    let b = behandelaar(&app).await;
+    let case = consumer_submit(&app, "12345678").await;
+    let b = handler(&app).await;
     let (s, w) = action(&app, &b, &case, "aanvulling_vragen", true, json!({})).await;
-    noteer("aanvulling op proef", s, &w);
+    note("supplement on trial", s, &w);
     let (s, w) = action(&app, &b, &case, "besluit", true, verdicts()["form"].clone()).await;
-    noteer("besluit op proef", s, &w);
+    note("decision on trial", s, &w);
     let (s, w) = action(
         &app,
         &b,
@@ -4577,7 +4608,7 @@ async fn fixtureflow(rt: &Runtime) -> Vec<(String, StatusCode, Value)> {
         verdicts()["form"].clone(),
     )
     .await;
-    noteer("besluit", s, &w);
+    note("decision", s, &w);
     let (s, w) = action(
         &app,
         &b,
@@ -4587,7 +4618,7 @@ async fn fixtureflow(rt: &Runtime) -> Vec<(String, StatusCode, Value)> {
         json!({"datum_bekendmaking": "2025-03-12", "bekendgemaakt": true}),
     )
     .await;
-    noteer("bekendmaken", s, &w);
+    note("announce", s, &w);
     let (s, w) = action(
         &app,
         &b,
@@ -4597,58 +4628,58 @@ async fn fixtureflow(rt: &Runtime) -> Vec<(String, StatusCode, Value)> {
         json!({"bedrag": 6000, "datum_betaling": "2025-03-12"}),
     )
     .await;
-    noteer("betalen", s, &w);
-    let (s, w, _) = vraag(
+    note("pay", s, &w);
+    let (s, w, _) = call(
         &app,
         "GET",
-        &format!("{AFNEMER}/api/cases/{case}"),
+        &format!("{CONSUMER}/api/cases/{case}"),
         Some(&b),
         None,
     )
     .await;
-    noteer("zaak", s, &w);
-    let (s, w, _) = vraag(
+    note("case", s, &w);
+    let (s, w, _) = call(
         &app,
         "GET",
-        &format!("{AFNEMER}/api/worklist"),
+        &format!("{CONSUMER}/api/worklist"),
         Some(&b),
         None,
     )
     .await;
-    noteer("werkvoorraad", s, &w);
-    uit
+    note("worklist", s, &w);
+    out
 }
 
-/// De engine-route geeft langs de hele weg dezelfde antwoorden als de
-/// reductie-DSL. In `vergelijk` reduceert elke cel ook langs de DSL en is
-/// elk verschil een fout, dus een verschil in een bron die de synthese stil
-/// als fout zou tonen, valt hier ook op.
+/// The engine route gives the same responses as the reduction DSL all the
+/// way. In `compare` every cell also reduces via the DSL and every
+/// difference is an error, so a difference in a source that the synthesis
+/// would silently show as an error stands out here too.
 #[tokio::test]
-async fn de_engine_route_geeft_dezelfde_uitkomsten_als_de_dsl() {
+async fn the_engine_route_gives_the_same_outputs_as_the_dsl() {
     let (d1, d2, d3) = (
         tempfile::tempdir().unwrap(),
         tempfile::tempdir().unwrap(),
         tempfile::tempdir().unwrap(),
     );
-    let dsl = fixtureflow(&runtime_met_reductie(d1.path(), Reductiemodus::Dsl).unwrap()).await;
-    for (d, vergelijk) in [(&d2, false), (&d3, true)] {
-        let rt = runtime_met_reductie(
+    let dsl = fixtureflow(&runtime_with_reduction(d1.path(), ReductionMode::Dsl).unwrap()).await;
+    for (d, compare) in [(&d2, false), (&d3, true)] {
+        let rt = runtime_with_reduction(
             d.path(),
-            Reductiemodus::Engine {
-                koppeling: koppeling(),
-                vergelijk,
+            ReductionMode::Engine {
+                binding: binding(),
+                compare,
             },
         )
         .unwrap();
         let engine = fixtureflow(&rt).await;
-        for ((stap, s1, w1), (_, s2, w2)) in dsl.iter().zip(&engine) {
-            assert_eq!((s1, w1), (s2, w2), "{stap} (vergelijk: {vergelijk})");
+        for ((step, s1, w1), (_, s2, w2)) in dsl.iter().zip(&engine) {
+            assert_eq!((s1, w1), (s2, w2), "{step} (compare: {compare})");
         }
     }
-    // Het besluit van de afnemer: 4 x 1000 + 2 x 500 en de rest, ook hier.
+    // The consumer's decision: 4 x 1000 + 2 x 500 and the rest, here too.
     let decision = &dsl
         .iter()
-        .find(|(s, _, _)| s == "besluit op proef")
+        .find(|(s, _, _)| s == "decision on trial")
         .unwrap()
         .2;
     assert_eq!(
@@ -4658,23 +4689,23 @@ async fn de_engine_route_geeft_dezelfde_uitkomsten_als_de_dsl() {
     );
 }
 
-/// In een runtime met de engine-route zegt elke lexostatus langs welke route
-/// zij kwam, met de regeling; de beschrijving van de cel zegt het per
-/// lexostatus, ook voor een lexostatus die bewust langs de DSL gaat; op
-/// verzoek komt de trace van de engine-run mee.
+/// In a runtime with the engine route every lexostatus says which route it
+/// came by, with the regulation; the description of the cell says it per
+/// lexostatus, also for a lexostatus that deliberately goes via the DSL; on
+/// request the trace of the engine run comes along.
 #[tokio::test]
-async fn de_engine_route_is_zichtbaar() {
+async fn the_engine_route_is_visible() {
     let data = tempfile::tempdir().unwrap();
-    let rt = runtime_met_reductie(
+    let rt = runtime_with_reduction(
         data.path(),
-        Reductiemodus::Engine {
-            koppeling: koppeling(),
-            vergelijk: false,
+        ReductionMode::Engine {
+            binding: binding(),
+            compare: false,
         },
     )
     .unwrap();
-    let app = als_lezer(&rt);
-    let (_, l, _) = vraag(
+    let app = as_reader(&rt);
+    let (_, l, _) = call(
         &app,
         "GET",
         "/cells/test_register/api/lexostatus/registerstatus?aanduiding=VOORBEELD&engine_trace=1",
@@ -4691,47 +4722,47 @@ async fn de_engine_route_is_zichtbaar() {
         "{l}"
     );
     assert_eq!(l["parameters"]["zetels_toegewezen"], json!(6));
-    let (_, cells, _) = vraag(&app, "GET", "/api/cells", None, None).await;
-    let afnemer = cells
+    let (_, cells, _) = call(&app, "GET", "/api/cells", None, None).await;
+    let consumer = cells
         .as_array()
         .unwrap()
         .iter()
         .find(|c| c["id"] == "test_afnemer")
         .unwrap();
-    assert_eq!(afnemer["reduction"], "engine");
-    let worklist = afnemer["lexostatuses"]
+    assert_eq!(consumer["reduction"], "engine");
+    let worklist = consumer["lexostatuses"]
         .as_array()
         .unwrap()
         .iter()
         .find(|l| l["name"] == "werkvoorraad")
         .unwrap();
     assert_eq!(worklist["reduction"]["route"], "dsl");
-    // De zaakstand is code van de runtime, geen reductie: ook dat staat er.
-    let zaakstand = afnemer["lexostatuses"]
+    // The case state is runtime code, not a reduction: that is shown too.
+    let case_state = consumer["lexostatuses"]
         .as_array()
         .unwrap()
         .iter()
         .find(|l| l["runtime"] == json!(true))
         .unwrap();
-    assert_eq!(zaakstand["reduction"]["route"], "runtime");
-    // Zonder de engine-route zegt de beschrijving er niets over.
+    assert_eq!(case_state["reduction"]["route"], "runtime");
+    // Without the engine route the description says nothing about it.
     let d = tempfile::tempdir().unwrap();
-    let (_, cells, _) = vraag(&app_dsl(d.path()), "GET", "/api/cells", None, None).await;
+    let (_, cells, _) = call(&app_dsl(d.path()), "GET", "/api/cells", None, None).await;
     assert!(cells[0].get("reduction").is_none(), "{cells}");
 }
 
 fn app_dsl(data: &Path) -> Router {
-    als_lezer(&runtime_met_reductie(data, Reductiemodus::Dsl).unwrap())
+    as_reader(&runtime_with_reduction(data, ReductionMode::Dsl).unwrap())
 }
 
-/// Geen stille terugval: een lexostatus zonder koppeling, een regeling
-/// zonder de uitkomst van een afleiding, of een lijst via de engine houdt de
-/// runtime tegen, met elke fout.
+/// No silent fallback: a lexostatus without a binding, a regulation without
+/// the output of a derivation, or a list via the engine stops the runtime,
+/// with every error.
 #[test]
-fn een_onvolledige_koppeling_houdt_de_runtime_tegen() {
+fn an_incomplete_binding_stops_the_runtime() {
     let map = tempfile::tempdir().unwrap();
-    let source = std::fs::read_to_string(koppeling()).unwrap();
-    let kapot = source
+    let source = std::fs::read_to_string(binding()).unwrap();
+    let broken = source
         .replace("    tarief: gebieden_tarief.yaml\n", "    {}\n")
         .replace(
             "registratie_per_gebied: register_registratie_per_gebied.yaml",
@@ -4741,62 +4772,59 @@ fn een_onvolledige_koppeling_houdt_de_runtime_tegen() {
             "    werkvoorraad:\n      dsl: een lijst met een regel per zaak (groepeer); de engine kent geen groeperen\n",
             "    werkvoorraad: afnemer_besluit.yaml\n",
         );
-    // De regelingen blijven waar ze staan: hun paden worden absoluut.
-    let bij = koppeling().parent().unwrap().display().to_string();
-    let kapot = kapot
+    // The regulations stay where they are: their paths become absolute.
+    let at = binding().parent().unwrap().display().to_string();
+    let broken = broken
         .replace("  test_gebieden:\n    {}\n", "  test_gebieden: {}\n")
-        .replace(": ../", &format!(": {bij}/../"))
+        .replace(": ../", &format!(": {at}/../"))
         .lines()
         .map(|r| match r.split_once(": ") {
             Some((k, v)) if v.ends_with(".yaml") && !v.starts_with('/') => {
-                format!("{k}: {bij}/{v}")
+                format!("{k}: {at}/{v}")
             }
             _ => r.to_string(),
         })
         .collect::<Vec<_>>()
         .join("\n");
     let path = map.path().join("koppeling.yaml");
-    std::fs::write(&path, kapot).unwrap();
+    std::fs::write(&path, broken).unwrap();
     let data = tempfile::tempdir().unwrap();
-    let fouten = runtime_met_reductie(
+    let errors = runtime_with_reduction(
         data.path(),
-        Reductiemodus::Engine {
-            koppeling: path,
-            vergelijk: false,
+        ReductionMode::Engine {
+            binding: path,
+            compare: false,
         },
     )
     .err()
     .unwrap()
     .join("\n");
     assert!(
-        fouten.contains("cel 'test_gebieden', lexostatus 'tarief': geen koppeling"),
-        "{fouten}"
+        errors.contains("cell 'test_gebieden', lexostatus 'tarief': no binding"),
+        "{errors}"
     );
+    assert!(errors.contains("has no output 'ingeschreven'"), "{errors}");
     assert!(
-        fouten.contains("heeft geen uitkomst 'ingeschreven'"),
-        "{fouten}"
-    );
-    assert!(
-        fouten.contains("lexostatus 'werkvoorraad': een lijst-lexostatus"),
-        "{fouten}"
+        errors.contains("lexostatus 'werkvoorraad': a list lexostatus"),
+        "{errors}"
     );
 }
 
 #[test]
-fn de_reductiemodus_komt_uit_de_omgeving() {
-    assert_eq!(Reductiemodus::uit(None, None), Ok(Reductiemodus::Dsl));
+fn the_reduction_mode_comes_from_the_environment() {
+    assert_eq!(ReductionMode::out(None, None), Ok(ReductionMode::Dsl));
     assert_eq!(
-        Reductiemodus::uit(Some("dsl"), None),
-        Ok(Reductiemodus::Dsl)
+        ReductionMode::out(Some("dsl"), None),
+        Ok(ReductionMode::Dsl)
     );
     assert_eq!(
-        Reductiemodus::uit(Some("engine"), Some("k.yaml")),
-        Ok(Reductiemodus::Engine {
-            koppeling: PathBuf::from("k.yaml"),
-            vergelijk: false
+        ReductionMode::out(Some("engine"), Some("k.yaml")),
+        Ok(ReductionMode::Engine {
+            binding: PathBuf::from("k.yaml"),
+            compare: false
         })
     );
-    assert!(Reductiemodus::uit(Some("engine"), None).is_err());
-    assert!(Reductiemodus::uit(None, Some("k.yaml")).is_err());
-    assert!(Reductiemodus::uit(Some("anders"), Some("k.yaml")).is_err());
+    assert!(ReductionMode::out(Some("engine"), None).is_err());
+    assert!(ReductionMode::out(None, Some("k.yaml")).is_err());
+    assert!(ReductionMode::out(Some("anders"), Some("k.yaml")).is_err());
 }

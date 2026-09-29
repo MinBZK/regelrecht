@@ -1,36 +1,36 @@
-//! Wie een parameter levert, volgens de wet: `origin` op een parameter en
-//! `origins` in uitvoeringsbeleid (RFC-043).
+//! Who supplies a parameter, according to the law: `origin` on a parameter and
+//! `origins` in implementing policy (RFC-043).
 //!
-//! De wet geeft per parameter de herkomst met een grondslag. Uitvoeringsbeleid
-//! van de actor van het proces kan die overschrijven. Bij het opstarten gaat
-//! het proces na dat elke parameter die de aanroeper van een uitgevoerde
-//! uitkomst (toets, aanbod, elke uitkomst van het besluit) moet leveren, een
-//! leverancier heeft die bij zijn herkomst past:
+//! The law gives the origin of each parameter with a legal basis. Implementing
+//! policy of the process's actor can override it. At startup the
+//! process checks that every parameter the caller of an executed
+//! output (assessment, offer, every output of the decision) must supply has a
+//! supplier that fits its origin:
 //!
-//! | herkomst | leverancier |
+//! | origin | supplier |
 //! |---|---|
-//! | `BELANGHEBBENDE` | een afleiding van een eigen lexostatus die alleen indieningen leest (`type: indiening`: wat de aanvrager aanlevert, zijn inhoud of zijn login); het tijdvak (`rol: TIJDVAK`) bij het aanbod ook de keuze in het portaal |
-//! | `DOSSIER` | een afleiding van een eigen lexostatus die alleen andere grammen van de eigen actor leest (het verloop van de zaak), of de stand bij besluit |
-//! | `OORDEEL` | het besluitformulier, alleen bij het besluit, en verder niemand |
-//! | `REGISTER` | een synthese-bron die de parameter levert (onder de naam die de synthese van het proces eraan geeft), en die een kroniek bijhoudt met een grondslag in `register` |
-//! | `KANAAL` | een afleiding die alleen `$intake` leest |
+//! | `BELANGHEBBENDE` | a derivation of an own lexostatus that reads only submissions (`type: submission`: what the applicant provides, its content or its login); the window (`rol: TIJDVAK`) for the offer also the choice in the portal |
+//! | `DOSSIER` | a derivation of an own lexostatus that reads only other grams of the own actor (the course of the case), or the state at decision |
+//! | `OORDEEL` | the decision form, only for the decision, and no one else |
+//! | `REGISTER` | a synthesis source that supplies the parameter (under the name the process's synthesis gives it), and that keeps a chronicle with a legal basis in `register` |
+//! | `KANAAL` | a derivation that reads only `$intake` |
 //!
-//! Een parameter die een leverancier heeft die niet bij zijn herkomst past, is
-//! altijd een fout, ook naast een leverancier die wel past: de bron is dan
-//! verkeerd. Heeft hij geen leverancier, dan is dat een fout, behalve bij
-//! `required: false`: dan krijgt de engine hem niet, en rekent ze met een
-//! onbekende waarde (RFC-036); dat is een waarschuwing. Een parameter zonder
-//! `origin` is een waarschuwing, en in een proces met `herkomst: streng` een
-//! fout. Een `BELANGHEBBENDE`-parameter zonder `required: false` is een
-//! waarschuwing (RFC-036), behalve het tijdvak.
+//! A parameter that has a supplier that does not fit its origin is
+//! always an error, also next to a supplier that does fit: the source is then
+//! wrong. If it has no supplier, that is an error, except with
+//! `required: false`: then the engine does not get it, and computes with an
+//! unknown value (RFC-036); that is a warning. A parameter without
+//! `origin` is a warning, and in a process with `origin_check: strict` an
+//! error. A `BELANGHEBBENDE` parameter without `required: false` is a
+//! warning (RFC-036), except the window.
 //!
-//! Wat de runtime niet kan nagaan (een bron met een url, een interne cel die
-//! niet draait) telt als leverancier, met een waarschuwing die zegt waarom het
-//! niet na te gaan is.
+//! What the runtime cannot verify (a source with a url, an internal cell that
+//! is not running) counts as a supplier, with a warning that says why it
+//! cannot be verified.
 //!
-//! [`valideer`] controleert de vorm van `origin` en `origins` in een regeling
-//! bij het laden, met het bestand in de melding: een ongeldige waarde houdt
-//! de engine niet tegen (zie `Declared` in law-model), de runtime wel.
+//! [`validate`] checks the shape of `origin` and `origins` in a regulation
+//! at load time, with the file in the message: an invalid value does not stop
+//! the engine (see `Declared` in law-model), but it does stop the runtime.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -40,45 +40,45 @@ use regelrecht_law_model::{
     ArticleBasedLaw, Declared, Origin, OriginOverride, OriginRole, OriginValue, Parameter,
 };
 
-use crate::cel::Cell;
+use crate::authority;
+use crate::cell::Cell;
 use crate::config::{
-    HandelingDefinitie, Handelingsoort, Herkomstcontrole, Oordeel, ProcesDefinitie, RijenDefinitie,
+    ActionDefinition, ActionKind, OriginCheck, ProcessDefinition, RowsDefinition, Verdict,
 };
-use crate::gezag;
-use crate::reductie::{Afleiding, Filter, LexostatusDefinitie};
-use crate::regelingen::{self, Benodigd};
-use crate::stroom::{Binding, Event, Eventkenmerk, Stroom};
+use crate::reduction::{Derivation, Filter, LexostatusDefinition};
+use crate::regulations::{self, Required};
+use crate::stream::{Binding, Event, EventAttribute, Stream};
 
-mod controle;
-mod levering;
-mod vorm;
+mod check;
+mod delivery;
+mod shape;
 
 #[cfg(test)]
 mod tests;
 
-pub use controle::{controleer, label_uit, verdicts};
-pub use levering::Uitvoering;
+pub use check::{check, label_from, verdicts};
+pub use delivery::Execution;
 
-// Wat de controle van de levering gebruikt.
-use levering::{leverancier, vooraf_bekend, Leveranciers, Uitslag};
-pub use vorm::{overschrijvingen, parameter, valideer, Overschrijvingen};
+// What the delivery check uses.
+use delivery::{beforehand_known, supplier, SupplierOutcome, Suppliers};
+pub use shape::{overwrites, parameter, validate, Overwrites};
 
-/// Het type van een gram dat een belanghebbende indient (RFC-022 par. 1,
-/// `schema/chronolex/v0.2.0/stream.json`): wat de aanvrager aanlevert.
-const INDIENING: &str = "submission";
+/// The type of a gram an interested party submits (RFC-022 par. 1,
+/// `schema/chronolex/v0.2.0/stream.json`): what the applicant provides.
+const SUBMISSION: &str = "submission";
 
-/// De herkomst die voor een parameter geldt, en waar ze staat.
+/// The origin in force for a parameter, and where it is stated.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Geldend {
+pub struct InForce {
     pub origin: Origin,
-    /// Het artikel van het beleid dat haar overschrijft; `None` als ze uit
-    /// de wet komt.
-    pub beleid: Option<String>,
+    /// The article of the policy that overrides it; `None` if it comes from
+    /// the law.
+    pub policy: Option<String>,
 }
 
-impl Geldend {
-    /// Voor een melding: `REGISTER, register een_registerwet, grondslag x#1`.
-    pub fn beschrijving(&self) -> String {
+impl InForce {
+    /// For a message: `REGISTER, register een_registerwet, grondslag x#1`.
+    pub fn description(&self) -> String {
         let mut s = self.origin.waarde.as_str().to_string();
         if let Some(r) = &self.origin.register {
             s.push_str(&format!(", register {r}"));
@@ -87,30 +87,30 @@ impl Geldend {
             s.push_str(&format!(", rol {}", r.as_str()));
         }
         s.push_str(&format!(", grondslag {}", self.origin.grondslag));
-        if let Some(b) = &self.beleid {
-            s.push_str(&format!(", uit {b}"));
+        if let Some(b) = &self.policy {
+            s.push_str(&format!(", from {b}"));
         }
         s
     }
 
-    /// Of de parameter het tijdvak van de gevraagde beschikking is
-    /// (`rol: TIJDVAK`). Los van de grondslag: Awb 4:2 lid 1 is ook de
-    /// grondslag van andere onderdelen van de aanvraag.
-    pub fn is_tijdvak(&self) -> bool {
+    /// Whether the parameter is the window of the requested decision order
+    /// (`rol: TIJDVAK`). Apart from the legal basis: Awb 4:2 lid 1 is also the
+    /// legal basis of other parts of the application.
+    pub fn is_window(&self) -> bool {
         self.origin.rol == Some(OriginRole::Tijdvak)
     }
 }
 
-/// Wat de controle oplevert.
+/// What the check yields.
 #[derive(Debug, Default)]
-pub struct Controle {
-    pub fouten: Vec<String>,
+pub struct Check {
+    pub errors: Vec<String>,
     pub warnings: Vec<String>,
-    /// Per uitvoering de parameters met hun geldende herkomst, in de volgorde
-    /// van declaratie; bij een handeling over alle uitkomsten samen,
-    /// onder de naam van de handeling.
-    pub parameters: BTreeMap<String, Vec<(Benodigd, Option<Geldend>)>>,
-    /// De parameter van het aanbod-artikel die het tijdvak is: `rol:
+    /// Per execution the parameters with their origin in force, in the order
+    /// of declaration; for an action over all outputs together,
+    /// under the name of the action.
+    pub parameters: BTreeMap<String, Vec<(Required, Option<InForce>)>>,
+    /// The parameter of the offer article that is the window: `rol:
     /// TIJDVAK`.
     pub window: Option<String>,
 }

@@ -1,9 +1,9 @@
-//! Configuratie: de omgeving van de runtime, de celdefinitie (`cel.yaml`) en
-//! de procesdefinitie (`proces.yaml`).
+//! Configuration: the runtime environment, the cell definition (`cell.yaml`)
+//! and the process definition (`process.yaml`).
 //!
-//! Een cel is een map onder `CELLS_PATH` met een `cel.yaml`, een proces een
-//! map onder `PROCESSES_PATH` met een `proces.yaml`. Paden daarin zijn
-//! relatief aan die map.
+//! A cell is a directory under `CELLS_PATH` with a `cell.yaml`, a process a
+//! directory under `PROCESSES_PATH` with a `process.yaml`. Paths inside are
+//! relative to that directory.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -11,86 +11,89 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::kanaal::{KanaalDefinitie, RolDefinitie, Routes};
-use crate::laden;
-use crate::schema::Soort;
+use crate::channel::{ChannelDefinition, RoleDefinition, Routes};
+use crate::load;
+use crate::schema::Kind;
 
-/// Standaardpoort, binnen 7100-7300.
-pub const STANDAARD_POORT: u16 = 7170;
+/// Default port, within 7100-7300.
+pub const DEFAULT_PORT: u16 = 7170;
 
-/// De naam van het bestand dat van een map een cel maakt.
-pub const CEL_BESTAND: &str = "cell.yaml";
+/// The name of the file that makes a directory a cell.
+pub const CELL_FILE: &str = "cell.yaml";
 
-/// De naam van het bestand dat van een map een proces maakt.
-pub const PROCES_BESTAND: &str = "process.yaml";
+/// The name of the file that makes a directory a process.
+pub const PROCESS_FILE: &str = "process.yaml";
 
-/// De omgeving van de runtime.
+/// The runtime environment.
 #[derive(Debug, Clone)]
 pub struct Config {
-    /// Map met een submap per cel, elk met een `cel.yaml`.
+    /// Directory with a subdirectory per cell, each with a `cell.yaml`.
     pub cells_path: PathBuf,
-    /// Map met een submap per proces, elk met een `proces.yaml`. Zonder:
-    /// geen processen, alleen cellen.
+    /// Directory with a subdirectory per process, each with a `process.yaml`.
+    /// Without it: no processes, only cells.
     pub processes_path: Option<PathBuf>,
-    /// Map met de regelingen (het corpus), gedeeld door alle cellen.
+    /// Directory with the regulations (the corpus), shared by all cells.
     pub regulation_path: PathBuf,
-    /// Map voor de kronieken: per cel een submap `<id>/`.
+    /// Directory for the chronicles: a subdirectory `<id>/` per cell.
     pub data_dir: PathBuf,
     pub port: u16,
-    /// Het leestoken (`CEL_LEES_TOKEN`) dat runtimes delen die elkaars
-    /// cellen mogen lezen; zonder leest alleen de eigen runtime.
-    pub lees_token: Option<String>,
-    /// De runtimes (basis-urls) die het leestoken meekrijgen
-    /// (`CEL_LEES_TOKEN_BRONNEN`, komma's ertussen). Een bron met een andere
-    /// url krijgt het niet: het token geeft lezen in deze runtime.
-    pub lees_token_bronnen: Vec<String>,
-    /// Langs welke route de cellen reduceren (`CEL_REDUCTIE`, experiment A).
-    pub reduction: Reductiemodus,
-    /// Het koppelbestand van de registers (`CEL_REGISTERS`): welk systeem
-    /// het register levert dat een beleid bevraagt (zie
-    /// [`crate::register`]). Zonder: geen registers, en een beleid dat er een
-    /// bevraagt houdt de runtime tegen.
+    /// The read token (`CELL_READ_TOKEN`) shared by runtimes that may read
+    /// each other's cells; without it only the runtime itself reads.
+    pub read_token: Option<String>,
+    /// The runtimes (base urls) that are sent the read token
+    /// (`CELL_READ_TOKEN_SOURCES`, comma-separated). A source with another
+    /// url does not get it: the token grants reading in this runtime.
+    pub read_token_sources: Vec<String>,
+    /// Along which route the cells reduce (`CELL_REDUCTION`, experiment A).
+    pub reduction: ReductionMode,
+    /// The binding file of the registers (`CELL_REGISTERS`): which system
+    /// supplies the register a policy queries (see
+    /// [`crate::register`]). Without it: no registers, and a policy that
+    /// queries one stops the runtime.
     pub registers: Option<PathBuf>,
 }
 
-/// Hoe de cellen van de runtime een lexostatus reduceren (`CEL_REDUCTIE`).
+/// How the cells of the runtime reduce a lexostatus (`CELL_REDUCTION`).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub enum Reductiemodus {
-    /// De reductie-DSL (`dsl`, de standaard).
+pub enum ReductionMode {
+    /// The reduction DSL (`dsl`, the default).
     #[default]
     Dsl,
-    /// Elke lexostatus als engine-run van de regeling die het koppelbestand
-    /// (`CEL_ENGINE_KOPPELING`) noemt (`engine`); zie
-    /// [`crate::lexostatus_engine`]. Met `vergelijk` reduceert de cel ook
-    /// langs de DSL en is elk verschil een fout.
-    Engine { koppeling: PathBuf, vergelijk: bool },
+    /// Each lexostatus as an engine run of the regulation the binding file
+    /// (`CELL_ENGINE_BINDING`) names (`engine`); see
+    /// [`crate::lexostatus_engine`]. With `compare` the cell also reduces
+    /// along the DSL and every difference is an error.
+    Engine { binding: PathBuf, compare: bool },
 }
 
-impl Reductiemodus {
-    /// Uit `CEL_REDUCTIE` en `CEL_ENGINE_KOPPELING`. Een koppelbestand zonder
-    /// engine-route, of de engine-route zonder koppelbestand, is een fout:
-    /// geen stille terugval.
-    pub fn uit(reduction: Option<&str>, koppeling: Option<&str>) -> Result<Self, String> {
-        let koppeling = koppeling.map(str::trim).filter(|k| !k.is_empty());
-        let engine = |vergelijk| match koppeling {
+impl ReductionMode {
+    /// From `CELL_REDUCTION` and `CELL_ENGINE_BINDING`. A binding file without
+    /// the engine route, or the engine route without a binding file, is an
+    /// error: no silent fallback.
+    pub fn out(reduction: Option<&str>, binding: Option<&str>) -> Result<Self, String> {
+        let binding = binding.map(str::trim).filter(|k| !k.is_empty());
+        let engine = |compare| match binding {
             Some(k) => Ok(Self::Engine {
-                koppeling: PathBuf::from(k),
-                vergelijk,
+                binding: PathBuf::from(k),
+                compare,
             }),
             None => Err(
-                "CELL_REDUCTION vraagt de engine, maar CELL_ENGINE_BINDING is niet gezet"
+                "CELL_REDUCTION asks for the engine, but CELL_ENGINE_BINDING is not set"
                     .to_string(),
             ),
         };
         match reduction.map(str::trim).unwrap_or("") {
-            "" | "dsl" => match koppeling {
+            "" | "dsl" => match binding {
                 None => Ok(Self::Dsl),
-                Some(_) => Err("CELL_ENGINE_BINDING is gezet, maar CELL_REDUCTION is niet 'engine' of 'compare'".into()),
+                Some(_) => Err(
+                    "CELL_ENGINE_BINDING is set, but CELL_REDUCTION is not 'engine' or 'compare'"
+                        .into(),
+                ),
             },
             "engine" => engine(false),
             "compare" => engine(true),
-            anders => Err(format!(
-                "CELL_REDUCTION '{anders}' is geen 'dsl', 'engine' of 'compare'"
+            otherwise => Err(format!(
+                "CELL_REDUCTION '{otherwise}' is not 'dsl', 'engine' or 'compare'"
             )),
         }
     }
@@ -103,13 +106,13 @@ impl Config {
                 .ok()
                 .filter(|v| !v.trim().is_empty())
                 .map(PathBuf::from)
-                .ok_or_else(|| format!("{name} is niet gezet"))
+                .ok_or_else(|| format!("{name} is not set"))
         }
         let port = match std::env::var("CELL_PORT") {
             Ok(v) => v
                 .parse()
-                .map_err(|_| format!("CELL_PORT '{v}' is geen poortnummer"))?,
-            Err(_) => STANDAARD_POORT,
+                .map_err(|_| format!("CELL_PORT '{v}' is not a port number"))?,
+            Err(_) => DEFAULT_PORT,
         };
         Ok(Self {
             cells_path: path("CELLS_PATH")?,
@@ -117,20 +120,20 @@ impl Config {
             regulation_path: path("REGULATION_PATH")?,
             data_dir: path("DATA_DIR")?,
             port,
-            lees_token: match std::env::var("CELL_READ_TOKEN") {
+            read_token: match std::env::var("CELL_READ_TOKEN") {
                 Ok(t) if t.trim().len() >= 16 => Some(t.trim().to_string()),
                 Ok(t) if !t.trim().is_empty() => {
-                    return Err("CELL_READ_TOKEN is korter dan 16 tekens".into())
+                    return Err("CELL_READ_TOKEN is shorter than 16 characters".into())
                 }
                 _ => None,
             },
-            lees_token_bronnen: std::env::var("CELL_READ_TOKEN_SOURCES")
+            read_token_sources: std::env::var("CELL_READ_TOKEN_SOURCES")
                 .unwrap_or_default()
                 .split(',')
                 .map(|u| u.trim().trim_end_matches('/').to_string())
                 .filter(|u| !u.is_empty())
                 .collect(),
-            reduction: Reductiemodus::uit(
+            reduction: ReductionMode::out(
                 std::env::var("CELL_REDUCTION").ok().as_deref(),
                 std::env::var("CELL_ENGINE_BINDING").ok().as_deref(),
             )?,
@@ -139,11 +142,11 @@ impl Config {
     }
 }
 
-/// Een celdefinitie (`schema/chronolex/v0.2.0/cel.json`): alleen wat de
-/// cel zelf doet. Vastleggen (de stromen), bewaren (de kronieken) en
-/// reduceren (de lexostatussen).
+/// A cell definition (`schema/chronolex/v0.2.0/cell.json`): only what the
+/// cell itself does. Recording (the streams), keeping (the chronicles) and
+/// reducing (the lexostatuses).
 #[derive(Debug, Clone, Deserialize)]
-pub struct CelDefinitie {
+pub struct CellDefinition {
     pub id: String,
     pub recording_actor: String,
     pub streams: Vec<String>,
@@ -152,355 +155,355 @@ pub struct CelDefinitie {
     pub initial_state: Option<String>,
 }
 
-/// Een procesdefinitie (`schema/chronolex/v0.2.0/proces.json`): wie er
-/// handelt en hoe. Informeren (synthese, toets, aanbod), concluderen (het
-/// besluit) en een cel laten vastleggen.
+/// A process definition (`schema/chronolex/v0.2.0/process.json`): who acts
+/// and how. Informing (synthesis, assessment, offer), concluding (the
+/// decision) and having a cell record.
 #[derive(Debug, Clone, Deserialize)]
-pub struct ProcesDefinitie {
+pub struct ProcessDefinition {
     pub id: String,
-    /// De actor van het proces. Een cel legt voor het proces alleen vast in
-    /// een stroom met deze `recording_actor`, en het besluit is de
-    /// beschikking waarvoor deze actor bevoegd is.
+    /// The actor of the process. A cell records for the process only in
+    /// a stream with this `recording_actor`, and the decision is the
+    /// decision order ("beschikking") this actor is competent for.
     pub actor: String,
-    /// Hoe streng de controle op de herkomst is (zie [`crate::origin`]).
+    /// How strict the origin check is (see [`crate::origin`]).
     #[serde(default)]
-    pub origin_check: Herkomstcontrole,
-    /// Namens welk bevoegd gezag het proces handelt (zie [`crate::gezag`]).
-    /// Nodig voor een besluit; zonder telt geen uitvoeringsbeleid als dat van
-    /// de actor.
+    pub origin_check: OriginCheck,
+    /// On behalf of which competent authority the process acts (see
+    /// [`crate::authority`]). Needed for a decision; without it no
+    /// implementing policy counts as the actor's.
     #[serde(default)]
-    pub on_behalf_of: Option<Namens>,
-    /// Gezagen waarvoor het proces in mandaat handelt (Awb 10:1), elk met
-    /// een grondslag.
+    pub on_behalf_of: Option<OnBehalfOf>,
+    /// Authorities for which the process acts under mandate (Awb 10:1), each
+    /// with a legal basis.
     #[serde(default)]
-    pub mandates: Vec<Mandaat>,
-    /// Langs welke kanalen iemand inlogt (zie [`crate::kanaal`]).
+    pub mandates: Vec<Mandate>,
+    /// Along which channels someone logs in (see [`crate::channel`]).
     #[serde(default)]
-    pub channels: BTreeMap<String, KanaalDefinitie>,
-    /// Wie er inlogt, langs welk kanaal, en welke routes die rol mag. Zonder
-    /// rollen is er geen login.
+    pub channels: BTreeMap<String, ChannelDefinition>,
+    /// Who logs in, along which channel, and which routes that role may use.
+    /// Without roles there is no login.
     #[serde(default)]
-    pub roles: BTreeMap<String, RolDefinitie>,
+    pub roles: BTreeMap<String, RoleDefinition>,
     #[serde(default)]
     pub portal: Option<Portal>,
     #[serde(default)]
-    pub synthesis: Vec<SyntheseBron>,
+    pub synthesis: Vec<SynthesisSource>,
     #[serde(default)]
     pub handling: Option<Handling>,
-    /// Standaardgegevens per handeling, voor een proefopstelling.
+    /// Default data per action, for a trial setup.
     #[serde(default)]
-    pub examples: Option<VoorbeeldenDefinitie>,
+    pub examples: Option<ExamplesDefinition>,
 }
 
-/// Hoe streng de controle op de herkomst (RFC-043) is.
+/// How strict the origin check (RFC-043) is.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum Herkomstcontrole {
-    /// Een parameter zonder origin is een waarschuwing.
+pub enum OriginCheck {
+    /// A parameter without origin is a warning.
     #[default]
     Lenient,
-    /// Een parameter zonder origin is een fout: wie hem levert, is niet na
-    /// te gaan.
+    /// A parameter without origin is an error: who supplies it cannot be
+    /// traced.
     Strict,
 }
 
-/// Het blok `voorbeelden`: per handeling een JSON-bestand, relatief aan de
-/// map van het proces (zie [`crate::voorbeelden`]).
+/// The `examples` block: a JSON file per action, relative to the
+/// directory of the process (see [`crate::examples`]).
 #[derive(Debug, Clone, Default, Deserialize)]
-pub struct VoorbeeldenDefinitie {
-    /// Logins, elk een object met de velden van een kanaal en optioneel
-    /// `kanaal` en `rol`.
+pub struct ExamplesDefinition {
+    /// Logins, each an object with the fields of a channel and optionally
+    /// `channel` and `role`.
     #[serde(default)]
     pub logins: Vec<String>,
-    /// Een aanvraag: `{external: {...}}`.
+    /// An application: `{external: {...}}`.
     #[serde(default)]
     pub application: Option<String>,
-    /// Per handeling een formulier: `{formulier: {...}}`.
+    /// A form per action: `{form: {...}}`.
     #[serde(default)]
     pub actions: BTreeMap<String, String>,
 }
 
-/// Namens welk bevoegd gezag het proces handelt: een naam zoals een
-/// regeling hem in `competent_authority` noemt, of een regeling waarvan het
-/// bevoegd gezag het is.
+/// On behalf of which competent authority the process acts: a name as a
+/// regulation gives it in `competent_authority`, or a regulation whose
+/// competent authority it is.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
-pub enum Namens {
-    Gezag { authority: String },
-    Regeling { regulation: String },
+pub enum OnBehalfOf {
+    Authority { authority: String },
+    Regulation { regulation: String },
 }
 
-/// Een mandaat (Awb 10:1): het proces handelt ook namens dit gezag, op grond
-/// van `grondslag` (`<regeling>#<artikel>`).
+/// A mandate (Awb 10:1): the process also acts on behalf of this authority,
+/// on the basis of `legal_basis` (`<regulation>#<article>`).
 #[derive(Debug, Clone, Deserialize, serde::Serialize, PartialEq, Eq)]
-pub struct Mandaat {
+pub struct Mandate {
     pub authority: String,
     pub legal_basis: String,
 }
 
-/// Wat de behandelaar in het proces doet: een werkvoorraad, en handelingen
-/// in een zaak.
+/// What the handler does in the process: a worklist, and actions in a
+/// case.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Handling {
-    /// Een lijst-lexostatus van de cel van het proces.
-    pub worklist: LexostatusVerwijzing,
-    pub actions: Vec<HandelingDefinitie>,
+    /// A list lexostatus of the process's cell.
+    pub worklist: LexostatusReference,
+    pub actions: Vec<ActionDefinition>,
 }
 
 impl Handling {
-    /// De handeling met deze naam.
-    pub fn action(&self, name: &str) -> Option<&HandelingDefinitie> {
+    /// The action with this name.
+    pub fn action(&self, name: &str) -> Option<&ActionDefinition> {
         self.actions.iter().find(|h| h.name == name)
     }
 }
 
-/// Een lexostatus van een cel.
+/// A lexostatus of a cell.
 #[derive(Debug, Clone, Deserialize)]
-pub struct LexostatusVerwijzing {
+pub struct LexostatusReference {
     pub cell: String,
     pub lexostatus: String,
 }
 
-/// Een handeling in een zaak (zie [`crate::handeling`]): de uitkomsten van
-/// een artikel, en het event waarin de cel haar vastlegt. Wat de handeling
-/// nodig heeft en van wie, staat niet in `proces.yaml`: het volgt bij het
-/// laden uit de stage van het event (RFC-008) en uit de origin van de
-/// parameters (RFC-043); zie de velden zonder serde hieronder.
+/// An action in a case (see [`crate::action`]): the outputs of an
+/// article, and the event in which the cell records it. What the action
+/// needs and from whom is not in `process.yaml`: it follows at load time
+/// from the stage of the event (RFC-008) and from the origin of the
+/// parameters (RFC-043); see the fields without serde below.
 #[derive(Debug, Clone, Deserialize)]
-pub struct HandelingDefinitie {
-    /// Uniek in het proces; de route is `zaken/<z>/handelingen/<naam>`.
+pub struct ActionDefinition {
+    /// Unique in the process; the route is `cases/<c>/actions/<name>`.
     pub name: String,
     #[serde(default)]
     pub label: Option<String>,
-    /// De rol die de handeling mag doen (een sleutel van `rollen`, met
-    /// routes `behandeling`). Zonder: elke rol die de behandeling mag.
+    /// The role that may take the action (a key of `roles`, with
+    /// routes `handling`). Without it: every role that may use the handling.
     #[serde(default)]
     pub role: Option<String>,
-    /// De handeling van het besluit waarbij deze handeling hoort: bij een
-    /// feit dat een besluit volgt (een betaling die het uitvoert) en bij een
-    /// besluit dat een ander wijzigt. Het proces handelt dan op het laatste
-    /// besluit van die handeling in de zaak, een wijziging ervan
-    /// meegerekend. Een vervolg vindt zijn besluit zelf (zie
-    /// [`Handelingsoort::Vervolg`]).
+    /// The action of the decision this action belongs to: for a
+    /// fact that follows a decision (a payment that executes it) and for a
+    /// decision that amends another. The process then acts on the latest
+    /// decision of that action in the case, an amendment of it
+    /// included. A follow-up finds its decision itself (see
+    /// [`ActionKind::FollowUp`]).
     #[serde(default)]
     pub decision: Option<String>,
-    /// De parameter van het artikel die het id krijgt van het besluit
-    /// waarop de handeling handelt (notitie bron en gram-id): zo roept het
-    /// proces het eigen beleid aan dat per besluit leest, zoals de
-    /// betalingsadministratie. Bedrading, geen wet: welke parameter het is,
-    /// zegt het proces.
+    /// The parameter of the article that receives the id of the decision
+    /// the action acts on (note on source and gram id): this is how the
+    /// process calls its own policy that reads per decision, such as the
+    /// payment administration. Wiring, not law: which parameter it is,
+    /// the process says.
     #[serde(default)]
     pub decision_parameter: Option<String>,
-    /// Leeg in `proces.yaml`: de runtime vult haar bij het laden met de
-    /// regeling van de beschikking waarvoor het gezag van het proces
-    /// (`namens`) bevoegd is (zie [`crate::gezag::beschikkingen_van`]).
+    /// Empty in `process.yaml`: the runtime fills it at load time with the
+    /// regulation of the decision order for which the process's authority
+    /// (`on_behalf_of`) is competent (see [`crate::authority::decision_orders_of`]).
     #[serde(default)]
     pub regulation: String,
-    /// Uitkomsten van een artikel. Bij een vervolg komen de uitkomsten van
-    /// de haken van die stage er bij het laden bij.
+    /// Outputs of an article. For a follow-up, the outputs of the hooks
+    /// of that stage are added at load time.
     #[serde(default)]
     pub outputs: Vec<String>,
-    /// Synthese per regel: een tabelveld wordt een array-parameter.
+    /// Synthesis per row: a table field becomes an array parameter.
     #[serde(default)]
-    pub rows: Vec<RijenDefinitie>,
-    /// Waar de handeling als gram wordt vastgelegd.
-    pub record: Vastleggen,
-    /// Het artikel van de uitkomsten, als `<regeling>#<artikel>`; bij het
-    /// laden gezet.
+    pub rows: Vec<RowsDefinition>,
+    /// Where the action is recorded as a gram.
+    pub record: Record,
+    /// The article of the outputs, as `<regulation>#<article>`; set at load
+    /// time.
     #[serde(skip)]
     pub article: String,
-    /// Wat voor handeling het is; afgeleid uit het event en de procedure.
+    /// What kind of action it is; derived from the event and the procedure.
     #[serde(skip)]
-    pub soort: Handelingsoort,
-    /// De stage van het vastleg-event, als het er een heeft.
+    pub kind: ActionKind,
+    /// The stage of the recording event, if it has one.
     #[serde(skip)]
     pub stage: Option<String>,
-    /// Of het vastleg-event een besluit opent, volgt of wijzigt.
+    /// Whether the recording event opens, follows or amends a decision.
     #[serde(skip)]
-    pub decision_role: Option<crate::stroom::Decision>,
-    /// De oordelen: de parameters van het artikel met origin `OORDEEL`
-    /// (zie [`crate::origin::oordelen`]). Niet bij een vervolg: die oordelen
-    /// gaf de behandelaar bij het besluit.
+    pub decision_role: Option<crate::stream::Decision>,
+    /// The verdicts: the parameters of the article with origin `OORDEEL`
+    /// (see [`crate::origin::verdicts`]). Not for a follow-up: those verdicts
+    /// the handler gave at the decision.
     #[serde(skip)]
-    pub verdicts: Vec<Oordeel>,
-    /// De feiten die de handeling vastlegt en die de behandelaar invult: bij
-    /// een feit de `$external`-velden van het event die geen uitkomst zijn,
-    /// bij een vervolg wat de stage vraagt (`requires`).
+    pub verdicts: Vec<Verdict>,
+    /// The facts the action records and the handler fills in: for
+    /// a fact the `$external` fields of the event that are not an output,
+    /// for a follow-up what the stage asks for (`requires`).
     #[serde(skip)]
-    pub feiten: Vec<crate::formulier::Veld>,
-    /// Feiten die pas in een latere stage ontstaan, met hun stand bij deze
-    /// handeling: afgeleid uit de procedure (RFC-008), alleen bij een besluit
-    /// en alleen voor wat geen lexostatus van de zaak levert (zie
-    /// [`crate::handeling::nog_niet`]).
+    pub facts: Vec<crate::form::Field>,
+    /// Facts that only arise in a later stage, with their state at this
+    /// action: derived from the procedure (RFC-008), only for a decision
+    /// and only for what no lexostatus of the case supplies (see
+    /// [`crate::action::load::not_yet`]).
     #[serde(skip)]
-    pub not_yet: BTreeMap<String, NogNiet>,
-    /// De booleaanse uitkomsten van een TOETS-artikel dat in de grondslag
-    /// van het event staat: onwaar is niet te nemen (zie
-    /// [`crate::handeling::toetsen`]).
+    pub not_yet: BTreeMap<String, NotYet>,
+    /// The boolean outputs of an assessment article ("TOETS") that is in the
+    /// legal basis of the event: false means it cannot be taken (see
+    /// [`crate::action::load::assessments`]).
     #[serde(skip)]
     pub assessments: Vec<String>,
-    /// Bij een vervolg: de haken die de wet op die stage laat vuren, als
-    /// `<regeling>#<artikel>` (RFC-008).
+    /// For a follow-up: the hooks the law fires on that stage, as
+    /// `<regulation>#<article>` (RFC-008).
     #[serde(skip)]
     pub hooks: Vec<String>,
-    /// Het type en de eenheid van elke uitkomst en toets, uit de regeling
-    /// (zie [`crate::regelingen::Waardetype`]).
+    /// The type and unit of each output and assessment, from the regulation
+    /// (see [`crate::regulations::ValueType`]).
     #[serde(skip)]
-    pub types: BTreeMap<String, crate::regelingen::Waardetype>,
+    pub types: BTreeMap<String, crate::regulations::ValueType>,
 }
 
-impl HandelingDefinitie {
-    /// Hoe de frontend haar noemt.
+impl ActionDefinition {
+    /// What the frontend calls it.
     pub fn label(&self) -> &str {
         self.label.as_deref().unwrap_or(&self.name)
     }
 }
 
-/// Wat voor handeling het is. Het volgt uit het vastleg-event: met een stage
-/// is het een besluit of een vervolg op een besluit, zonder een feit.
+/// What kind of action it is. It follows from the recording event: with a
+/// stage it is a decision or a follow-up on a decision, without one a fact.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub enum Handelingsoort {
-    /// Een feit uit het verloop van de zaak (een verzoek, een ontvangst, een
-    /// betaling): het event heeft geen stage. De lexostatussen van de zaak
-    /// lezen het; op proef telt het concept mee.
+pub enum ActionKind {
+    /// A fact from the course of the case (a request, a receipt, a
+    /// payment): the event has no stage. The lexostatuses of the case
+    /// read it; on trial the draft counts.
     #[default]
     Fact,
-    /// Het besluit: de eerste stage van de procedure van het artikel die een
-    /// handeling vastlegt. Een zaak kan meer besluiten hebben, elk van een
-    /// eigen artikel; een besluit dat een ander wijzigt, legt vast in een
-    /// event met `besluit: wijzigt`.
+    /// The decision: the first stage of the procedure of the article that
+    /// an action records. A case can have more decisions, each from its
+    /// own article; a decision that amends another records in an
+    /// event with `decision: amends`.
     Decision,
-    /// Een latere stage van hetzelfde besluit, zoals de bekendmaking: de
-    /// engine voert die stage uit op de invoer van het vastgelegde besluit
-    /// (RFC-008, `execute_stage`). Dat is het laatste besluit in de zaak dat
-    /// de handeling van het besluit vastlegde.
+    /// A later stage of the same decision, such as the publication: the
+    /// engine executes that stage on the input of the recorded decision
+    /// (RFC-008, `execute_stage`). That is the latest decision in the case
+    /// that the decision's action recorded.
     FollowUp {
-        /// De handeling van het besluit.
+        /// The action of the decision.
         decision: String,
-        /// De procedure (RFC-008) waarvan beide stages zijn.
+        /// The procedure (RFC-008) both stages belong to.
         procedure: String,
     },
 }
 
-/// Een feit dat bij het besluit nog niet gebeurd is: de stage van de
-/// procedure waarin het pas ontstaat, en de stand bij het besluit (onwaar,
-/// of leeg).
+/// A fact that has not happened yet at the decision: the stage of the
+/// procedure in which it only arises, and the state at the decision (false,
+/// or empty).
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
-pub struct NogNiet {
+pub struct NotYet {
     pub value: Value,
     pub stage: String,
 }
 
-/// De cel en het event waarin het proces een handeling laat vastleggen. Het
-/// event heeft `zaak: volgt`; zijn `$external`-sleutels zijn uitkomsten van
-/// de handeling of velden van haar formulier.
+/// The cell and the event in which the process has an action recorded. The
+/// event has `case: follows`; its `$external` keys are outputs of the
+/// action or fields of its form.
 #[derive(Debug, Clone, Deserialize)]
-pub struct Vastleggen {
+pub struct Record {
     pub cell: String,
     pub stream: String,
     pub event: String,
 }
 
-/// Synthese per regel: voor elke regel van een tabelveld uit een eigen
-/// lexostatus bevraagt de cel bronnen met waarden uit die regel, en voegt de
-/// kolommen samen tot een array-parameter.
+/// Synthesis per row: for each row of a table field from an own
+/// lexostatus the cell queries sources with values from that row, and merges
+/// the columns into an array parameter.
 #[derive(Debug, Clone, Deserialize)]
-pub struct RijenDefinitie {
-    /// De array-parameter die de regels samen vormen.
+pub struct RowsDefinition {
+    /// The array parameter the rows form together.
     pub parameter: String,
-    /// Het tabelveld van een lexostatus van de zaak of van een bron die het
-    /// doorgeeft (een extra veld of parameter).
-    pub table: InvoerVerwijzing,
-    /// Per kolom van de tabel: onder welke naam ze in de parameter komt.
-    /// Een kolom die hier niet staat, gaat niet mee.
+    /// The table field of a lexostatus of the case or of a source that
+    /// passes it on (an extra field or parameter).
+    pub table: InputReference,
+    /// Per column of the table: under which name it goes into the parameter.
+    /// A column not listed here is left out.
     pub columns: BTreeMap<String, String>,
-    /// Bronnen die per regel worden bevraagd.
+    /// Sources queried per row.
     #[serde(default)]
-    pub sources: Vec<RijBron>,
+    pub sources: Vec<RowSource>,
 }
 
-/// Een bron die per regel wordt bevraagd.
+/// A source queried per row.
 #[derive(Debug, Clone, Deserialize)]
-pub struct RijBron {
+pub struct RowSource {
     pub cell: String,
-    /// Zonder url: de bron-cel draait in dezelfde runtime (intern transport).
+    /// Without url: the source cell runs in the same runtime (internal transport).
     #[serde(default)]
     pub url: Option<String>,
     pub lexostatus: String,
-    /// Per input van de bron: waar de waarde vandaan komt.
-    pub input: BTreeMap<String, RijInvoer>,
-    /// Per naam die de bron levert: onder welke kolomnaam ze in de regel komt.
+    /// Per input of the source: where the value comes from.
+    pub input: BTreeMap<String, RowInput>,
+    /// Per name the source supplies: under which column name it goes into the row.
     pub columns: BTreeMap<String, String>,
-    /// Waarop de vertaling rust: de artikelen die de kolom bij de afnemer
-    /// vragen en die de bron haar feit laten leveren, en een vaste waarde in
-    /// de invoer (zie [`vertaalt`](RijBron::vertaalt)).
+    /// What the translation rests on: the articles that ask for the column at
+    /// the consumer and that have the source supply its fact, and a fixed value
+    /// in the input (see [`translates`](RowSource::translates)).
     #[serde(default)]
     pub legal_basis: Vec<String>,
 }
 
-impl RijBron {
-    /// Wat deze bron vertaalt: een kolom die bij de afnemer anders heet dan
-    /// bij de bron, en een vaste waarde in de invoer. Leeg: niets.
-    pub fn vertaalt(&self) -> Vec<String> {
-        let mut uit: Vec<String> = self
+impl RowSource {
+    /// What this source translates: a column that has a different name at the
+    /// consumer than at the source, and a fixed value in the input. Empty: nothing.
+    pub fn translates(&self) -> Vec<String> {
+        let mut out: Vec<String> = self
             .columns
             .iter()
             .filter(|(b, a)| b != a)
             .map(|(b, a)| format!("{b} -> {a}"))
             .collect();
-        uit.extend(self.input.iter().filter_map(|(n, i)| match i {
-            RijInvoer::Waarde { value } => Some(format!("{n} = {value}")),
+        out.extend(self.input.iter().filter_map(|(n, i)| match i {
+            RowInput::Value { value } => Some(format!("{n} = {value}")),
             _ => None,
         }));
-        uit
+        out
     }
 }
 
-/// Waar de invoer van een bron per regel vandaan komt.
+/// Where the input of a source per row comes from.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
-pub enum RijInvoer {
-    /// Een kolom van de regel zelf, zoals die na de kolomnamen heet.
-    Kolom { column: String },
-    /// Een veld van een lexostatus van de zaak, of van een bron die het
-    /// doorgeeft (een parameter of een extra veld).
+pub enum RowInput {
+    /// A column of the row itself, as it is named after the column names.
+    Column { column: String },
+    /// A field of a lexostatus of the case, or of a source that passes it
+    /// on (a parameter or an extra field).
     Own { lexostatus: String, field: String },
-    /// Een parameter uit de samenvoeging: de lexostatussen van de zaak en de
-    /// synthese van het proces.
+    /// A parameter from the combination: the lexostatuses of the case and the
+    /// synthesis of the process.
     Parameter { parameter: String },
-    /// Een uitkomst van een regeling, uitgerekend met de samengevoegde
-    /// parameters: de wet leidt de invoer af, zoals een peildatum uit een
-    /// jaartal. Een keer per uitvoering, voor alle regels.
-    Wet { regulation: String, output: String },
-    /// Een vaste waarde.
-    Waarde { value: Value },
+    /// An output of a regulation, computed with the combined
+    /// parameters: the law derives the input, such as a reference date from a
+    /// year. Once per execution, for all rows.
+    Law { regulation: String, output: String },
+    /// A fixed value.
+    Value { value: Value },
 }
 
-/// Waar de invoer van een synthese-bron vandaan komt.
+/// Where the input of a synthesis source comes from.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
-pub enum BronInvoer {
-    /// Een veld van een lexostatus van de zaak, of van een eerdere bron.
-    Veld(InvoerVerwijzing),
-    /// Een vaste waarde, zoals het orgaan waarvan het register wordt gevraagd.
-    Waarde { value: Value },
+pub enum SourceInput {
+    /// A field of a lexostatus of the case, or of an earlier source.
+    Field(InputReference),
+    /// A fixed value, such as the body whose register is requested.
+    Value { value: Value },
 }
 
-impl BronInvoer {
-    /// Het veld, als de invoer er een aanwijst.
-    pub fn field(&self) -> Option<&InvoerVerwijzing> {
+impl SourceInput {
+    /// The field, if the input points at one.
+    pub fn field(&self) -> Option<&InputReference> {
         match self {
-            BronInvoer::Veld(v) => Some(v),
-            BronInvoer::Waarde { .. } => None,
+            SourceInput::Field(v) => Some(v),
+            SourceInput::Value { .. } => None,
         }
     }
 }
 
-/// De parameters die een synthese-bron levert: per naam bij de bron de naam
-/// bij de afnemer. De bron spreekt de taal van haar eigen wet; de vertaling
-/// hoort bij de afnemer. In `proces.yaml` een lijst (dezelfde naam) of een
-/// tabel (bron: afnemer).
+/// The parameters a synthesis source supplies: per name at the source the name
+/// at the consumer. The source speaks the language of its own law; the
+/// translation belongs to the consumer. In `process.yaml` a list (the same
+/// name) or a table (source: consumer).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Parameters(Vec<(String, String)>);
 
@@ -509,30 +512,30 @@ impl Parameters {
         self.0.is_empty()
     }
 
-    /// Paren (naam bij de bron, naam bij de afnemer).
-    pub fn paren(&self) -> impl Iterator<Item = (&str, &str)> {
+    /// Pairs (name at the source, name at the consumer).
+    pub fn pairs(&self) -> impl Iterator<Item = (&str, &str)> {
         self.0.iter().map(|(b, a)| (b.as_str(), a.as_str()))
     }
 
-    /// De namen bij de afnemer.
+    /// The names at the consumer.
     pub fn iter(&self) -> impl Iterator<Item = &String> {
         self.0.iter().map(|(_, a)| a)
     }
 
-    /// De paren waarin de afnemer het feit onder een andere naam vraagt.
-    pub fn vertaald(&self) -> BTreeMap<&str, &str> {
-        self.paren().filter(|(b, a)| b != a).collect()
+    /// The pairs in which the consumer asks for the fact under another name.
+    pub fn translated(&self) -> BTreeMap<&str, &str> {
+        self.pairs().filter(|(b, a)| b != a).collect()
     }
 }
 
-/// Als lijst van de namen bij de afnemer: wat de bron het proces levert.
+/// As a list of the names at the consumer: what the source supplies to the process.
 impl serde::Serialize for Parameters {
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         s.collect_seq(self.iter())
     }
 }
 
-/// Over de namen bij de afnemer: de parameters die de bron het proces levert.
+/// Over the names at the consumer: the parameters the source supplies to the process.
 impl<'a> IntoIterator for &'a Parameters {
     type Item = &'a String;
     type IntoIter = std::iter::Map<
@@ -548,224 +551,224 @@ impl<'de> Deserialize<'de> for Parameters {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         #[derive(Deserialize)]
         #[serde(untagged)]
-        enum Vorm {
-            Lijst(Vec<String>),
-            Tabel(BTreeMap<String, String>),
+        enum Shape {
+            List(Vec<String>),
+            Table(BTreeMap<String, String>),
         }
-        Ok(Parameters(match Vorm::deserialize(d)? {
-            Vorm::Lijst(l) => l.into_iter().map(|n| (n.clone(), n)).collect(),
-            Vorm::Tabel(t) => t.into_iter().collect(),
+        Ok(Parameters(match Shape::deserialize(d)? {
+            Shape::List(l) => l.into_iter().map(|n| (n.clone(), n)).collect(),
+            Shape::Table(t) => t.into_iter().collect(),
         }))
     }
 }
 
-/// Een veld van het besluitformulier: een parameter met een label, uit de
-/// regeling.
+/// A field of the decision form: a parameter with a label, from the
+/// regulation.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Oordeel {
+pub struct Verdict {
     pub parameter: String,
     pub label: String,
     pub group: Option<String>,
     pub explanation: Option<String>,
 }
 
-/// Het portaalblok: in welke cel en welk event een indiening wordt, en welke
-/// uitkomst de toets vraagt.
+/// The portal block: in which cell and which event a submission goes, and which
+/// output the assessment asks for.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Portal {
     pub cell: String,
     pub stream: String,
     pub event: String,
-    pub assessment: Toets,
-    /// Wat het portaal aanbiedt: een uitkomst van het beleid van de actor,
-    /// met optioneel de termijn die erbij getoond wordt.
+    pub assessment: Assessment,
+    /// What the portal offers: an output of the actor's policy,
+    /// optionally with the deadline shown with it.
     #[serde(default)]
-    pub offer: Option<Aanbod>,
+    pub offer: Option<Offer>,
     #[serde(default)]
-    pub form: Option<FormulierVerwijzing>,
+    pub form: Option<FormReference>,
 }
 
-/// Het aanbod van een portaal: een uitkomst van een regeling, uitgevoerd in
-/// een run, en optioneel een tweede uitkomst van dezelfde regeling die de
-/// termijn geeft.
+/// The offer of a portal: an output of a regulation, executed in
+/// a run, and optionally a second output of the same regulation that gives the
+/// deadline.
 #[derive(Debug, Clone, Deserialize)]
-pub struct Aanbod {
+pub struct Offer {
     pub regulation: String,
     pub output: String,
     #[serde(default)]
     pub deadline: Option<String>,
-    /// Een uitkomst van dezelfde regeling: de tijdvakken die het beleid
-    /// aanbiedt, als het aanbod-artikel een tijdvak vraagt (de parameter met
-    /// origin BELANGHEBBENDE en `rol: TIJDVAK`). Het portaal rekent
-    /// haar uit in een run zonder parameters op de datum van vandaag.
+    /// An output of the same regulation: the windows the policy
+    /// offers, if the offer article asks for a window (the parameter with
+    /// origin BELANGHEBBENDE and `rol: TIJDVAK`). The portal computes
+    /// it in a run without parameters on today's date.
     #[serde(default)]
     pub windows: Option<String>,
-    /// Een uitkomst van dezelfde regeling: de eerste dag van een tijdvak, met
-    /// het tijdvak als enige parameter. Het aanbod voor een tijdvak dat nog
-    /// moet beginnen, peilt de registers op die dag; zonder op vandaag.
+    /// An output of the same regulation: the first day of a window, with
+    /// the window as its only parameter. The offer for a window that has yet
+    /// to begin queries the registers on that day; without it, on today.
     #[serde(default)]
     pub start: Option<String>,
-    /// Een uitkomst van dezelfde regeling: de eerste dag waarop een aanvraag
-    /// voor een tijdvak kan binnenkomen, met het tijdvak als enige parameter.
-    /// Een loket voert geen ontvangst in van vóór die dag.
+    /// An output of the same regulation: the first day on which an application
+    /// for a window can come in, with the window as its only parameter.
+    /// A counter does not enter a receipt from before that day.
     #[serde(default)]
     pub opening: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct Toets {
+pub struct Assessment {
     pub lexostatus: String,
     pub regulation: String,
     pub output: String,
-    /// Synthese per regel, zoals bij het besluit: een tabelveld van de
-    /// toets-lexostatus wordt een array-parameter.
+    /// Synthesis per row, as for the decision: a table field of the
+    /// assessment lexostatus becomes an array parameter.
     #[serde(default)]
-    pub rows: Vec<RijenDefinitie>,
+    pub rows: Vec<RowsDefinition>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct FormulierVerwijzing {
+pub struct FormReference {
     pub path: String,
     pub screen: String,
 }
 
-/// Een lexostatus van een cel die het proces samenvoegt (synthese).
+/// A lexostatus of a cell that the process combines (synthesis).
 ///
-/// Een bron met `zaak: true` is een lexostatus van de zaak zelf, in de cel
-/// waarin het proces vastlegt: het proces bevraagt haar met het wortel,
-/// en ze levert al haar parameters en extra velden. Elke andere bron noemt
-/// haar invoer en haar parameters.
+/// A source with `case: true` is a lexostatus of the case itself, in the cell
+/// in which the process records: the process queries it with the root,
+/// and it supplies all its parameters and extra fields. Every other source names
+/// its input and its parameters.
 #[derive(Debug, Clone, Deserialize)]
-pub struct SyntheseBron {
-    /// De cel die de lexostatus levert. Leeg bij een bron met `regeling`.
+pub struct SynthesisSource {
+    /// The cell that supplies the lexostatus. Empty for a source with `regulation`.
     #[serde(default)]
     pub cell: String,
-    /// In plaats van een cel: het eigen beleid van de afnemer, door de
-    /// engine uitgerekend (notitie bron en gram-id; zie
-    /// [`crate::synthese::Beleidsbron`]). `lexostatus` is dan het artikel,
-    /// de invoer zijn de parameters en `extra_velden` de uitkomsten.
+    /// Instead of a cell: the consumer's own policy, computed by the
+    /// engine (note on source and gram id; see
+    /// [`crate::synthesis::PolicySource`]). `lexostatus` is then the article,
+    /// the input is the parameters and `extra_fields` the outputs.
     #[serde(default)]
     pub regulation: Option<String>,
-    /// Zonder url: de bron-cel draait in dezelfde runtime (intern transport).
+    /// Without url: the source cell runs in the same runtime (internal transport).
     #[serde(default)]
     pub url: Option<String>,
     pub lexostatus: String,
-    /// Een lexostatus van de zaak, met als enige input `wortel`.
+    /// A lexostatus of the case, with `root` as its only input.
     #[serde(default)]
     pub case: bool,
-    /// Per input van de bron: uit welk veld van een lexostatus van de zaak
-    /// (bij de toets: de toets-lexostatus), van een eerdere bron, of een vaste
-    /// waarde.
+    /// Per input of the source: from which field of a lexostatus of the case
+    /// (for the assessment: the assessment lexostatus), of an earlier source, or
+    /// a fixed value.
     #[serde(default)]
-    pub input: BTreeMap<String, BronInvoer>,
-    /// De parameters die deze bron levert, expliciet, met de naam bij de
-    /// afnemer.
+    pub input: BTreeMap<String, SourceInput>,
+    /// The parameters this source supplies, explicitly, with the name at the
+    /// consumer.
     #[serde(default)]
     pub parameters: Parameters,
-    /// Velden uit het antwoord die geen parameter zijn, maar invoer voor een
-    /// latere bron (bijvoorbeeld een naam bij een registratienummer).
+    /// Fields from the response that are not a parameter, but input for a
+    /// later source (for example a name for a registration number).
     #[serde(default)]
     pub extra_fields: Vec<String>,
-    /// Waarop de vertaling rust: de artikelen die het feit bij de afnemer
-    /// onder zijn naam vragen en die de bron het laten leveren, en die een
-    /// vaste waarde in de invoer dragen (zie [`vertaalt`](SyntheseBron::vertaalt)).
+    /// What the translation rests on: the articles that ask for the fact at
+    /// the consumer under its name and that have the source supply it, and that
+    /// carry a fixed value in the input (see [`translates`](SynthesisSource::translates)).
     #[serde(default)]
     pub legal_basis: Vec<String>,
 }
 
-impl SyntheseBron {
-    /// Wat deze bron vertaalt: een parameter die bij de afnemer anders heet
-    /// dan bij de bron, en een vaste waarde in de invoer. Leeg: niets.
-    pub fn vertaalt(&self) -> Vec<String> {
-        let mut uit: Vec<String> = self
+impl SynthesisSource {
+    /// What this source translates: a parameter that has a different name at
+    /// the consumer than at the source, and a fixed value in the input. Empty: nothing.
+    pub fn translates(&self) -> Vec<String> {
+        let mut out: Vec<String> = self
             .parameters
-            .vertaald()
+            .translated()
             .into_iter()
             .map(|(b, a)| format!("{b} -> {a}"))
             .collect();
-        uit.extend(self.input.iter().filter_map(|(n, i)| match i {
-            BronInvoer::Waarde { value } => Some(format!("{n} = {value}")),
-            BronInvoer::Veld(_) => None,
+        out.extend(self.input.iter().filter_map(|(n, i)| match i {
+            SourceInput::Value { value } => Some(format!("{n} = {value}")),
+            SourceInput::Field(_) => None,
         }));
-        uit
+        out
     }
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct InvoerVerwijzing {
+pub struct InputReference {
     pub lexostatus: String,
     pub field: String,
 }
 
-impl CelDefinitie {
-    /// Lees een celdefinitie uit tekst en valideer haar tegen het schema.
-    pub fn parse(tekst: &str, source: &str) -> Result<Self, Vec<String>> {
-        laden::definitie(tekst, source, Soort::Cell)
+impl CellDefinition {
+    /// Read a cell definition from text and validate it against the schema.
+    pub fn parse(text: &str, source: &str) -> Result<Self, Vec<String>> {
+        load::definition(text, source, Kind::Cell)
     }
 
-    /// Laad `cel.yaml` uit de map van een cel.
-    pub fn laad(map: &Path) -> Result<Self, Vec<String>> {
-        laden::laad(&map.join(CEL_BESTAND), Self::parse)
+    /// Load `cell.yaml` from the directory of a cell.
+    pub fn load(map: &Path) -> Result<Self, Vec<String>> {
+        load::load(&map.join(CELL_FILE), Self::parse)
     }
 }
 
-impl ProcesDefinitie {
-    /// Lees een procesdefinitie uit tekst en valideer haar tegen het schema.
-    pub fn parse(tekst: &str, source: &str) -> Result<Self, Vec<String>> {
-        laden::definitie(tekst, source, Soort::Proces)
+impl ProcessDefinition {
+    /// Read a process definition from text and validate it against the schema.
+    pub fn parse(text: &str, source: &str) -> Result<Self, Vec<String>> {
+        load::definition(text, source, Kind::Process)
     }
 
-    /// Laad `proces.yaml` uit de map van een proces.
-    pub fn laad(map: &Path) -> Result<Self, Vec<String>> {
-        laden::laad(&map.join(PROCES_BESTAND), Self::parse)
+    /// Load `process.yaml` from the directory of a process.
+    pub fn load(map: &Path) -> Result<Self, Vec<String>> {
+        load::load(&map.join(PROCESS_FILE), Self::parse)
     }
 
-    /// De rollen die een routegroep mogen gebruiken.
-    pub fn rollen_met(&self, r: Routes) -> impl Iterator<Item = (&String, &RolDefinitie)> {
-        self.roles.iter().filter(move |(_, d)| d.mag(r))
+    /// The roles that may use a route group.
+    pub fn roles_with(&self, r: Routes) -> impl Iterator<Item = (&String, &RoleDefinition)> {
+        self.roles.iter().filter(move |(_, d)| d.may(r))
     }
 
-    /// De kanalen van de rollen die een routegroep mogen gebruiken, elk een
-    /// keer, met hun id.
-    pub fn kanalen_met(&self, r: Routes) -> Vec<(&str, &KanaalDefinitie)> {
-        let mut uit: Vec<(&str, &KanaalDefinitie)> = Vec::new();
-        for (_, role) in self.rollen_met(r) {
+    /// The channels of the roles that may use a route group, each once,
+    /// with their id.
+    pub fn channels_with(&self, r: Routes) -> Vec<(&str, &ChannelDefinition)> {
+        let mut out: Vec<(&str, &ChannelDefinition)> = Vec::new();
+        for (_, role) in self.roles_with(r) {
             if let Some((id, k)) = self.channels.get_key_value(&role.channel) {
-                if !uit.iter().any(|(i, _)| *i == id) {
-                    uit.push((id, k));
+                if !out.iter().any(|(i, _)| *i == id) {
+                    out.push((id, k));
                 }
             }
         }
-        uit
+        out
     }
 
-    /// De bronnen van de zaak (`zaak: true`), in de volgorde van de synthese.
-    pub fn zaakbronnen(&self) -> impl Iterator<Item = &SyntheseBron> {
+    /// The sources of the case (`case: true`), in the order of the synthesis.
+    pub fn case_sources(&self) -> impl Iterator<Item = &SynthesisSource> {
         self.synthesis.iter().filter(|b| b.case)
     }
 
-    /// De bronnen die geen lexostatus van de zaak zijn.
-    pub fn andere_bronnen(&self) -> impl Iterator<Item = &SyntheseBron> {
+    /// The sources that are not a lexostatus of the case.
+    pub fn other_sources(&self) -> impl Iterator<Item = &SynthesisSource> {
         self.synthesis.iter().filter(|b| !b.case)
     }
 }
 
-/// De mappen onder `PROCESSES_PATH` met een `proces.yaml`, gesorteerd. Een
-/// lege map mag: een runtime met alleen registercellen heeft geen proces.
-pub fn procesmappen(processes_path: &Path) -> Result<Vec<PathBuf>, String> {
-    laden::mappen_met(processes_path, PROCES_BESTAND)
+/// The directories under `PROCESSES_PATH` with a `process.yaml`, sorted. An
+/// empty directory is allowed: a runtime with only register cells has no process.
+pub fn process_dirs(processes_path: &Path) -> Result<Vec<PathBuf>, String> {
+    load::dirs_with(processes_path, PROCESS_FILE)
 }
 
-/// De mappen onder `CELLS_PATH` met een `cel.yaml`, gesorteerd.
-pub fn celmappen(cells_path: &Path) -> Result<Vec<PathBuf>, String> {
-    let mappen = laden::mappen_met(cells_path, CEL_BESTAND)?;
-    if mappen.is_empty() {
+/// The directories under `CELLS_PATH` with a `cell.yaml`, sorted.
+pub fn cell_dirs(cells_path: &Path) -> Result<Vec<PathBuf>, String> {
+    let dirs = load::dirs_with(cells_path, CELL_FILE)?;
+    if dirs.is_empty() {
         return Err(format!(
-            "{}: geen submap met een {CEL_BESTAND}",
+            "{}: no subdirectory with a {CELL_FILE}",
             cells_path.display()
         ));
     }
-    Ok(mappen)
+    Ok(dirs)
 }
 
 #[cfg(test)]
@@ -778,11 +781,11 @@ mod tests {
     }
 
     #[test]
-    fn fixture_cellen_laden() {
-        let mappen = celmappen(&fixtures().join("cells")).unwrap();
-        let ids: Vec<String> = mappen
+    fn fixture_cells_load() {
+        let dirs = cell_dirs(&fixtures().join("cells")).unwrap();
+        let ids: Vec<String> = dirs
             .iter()
-            .map(|m| CelDefinitie::laad(m).unwrap().id)
+            .map(|m| CellDefinition::load(m).unwrap().id)
             .collect();
         assert_eq!(
             ids,
@@ -797,11 +800,11 @@ mod tests {
     }
 
     #[test]
-    fn fixture_processen_laden() {
-        let mappen = procesmappen(&fixtures().join("processes")).unwrap();
-        let ids: Vec<String> = mappen
+    fn fixture_processes_load() {
+        let dirs = process_dirs(&fixtures().join("processes")).unwrap();
+        let ids: Vec<String> = dirs
             .iter()
-            .map(|m| ProcesDefinitie::laad(m).unwrap().id)
+            .map(|m| ProcessDefinition::load(m).unwrap().id)
             .collect();
         assert_eq!(
             ids,
@@ -814,9 +817,9 @@ mod tests {
     }
 
     #[test]
-    fn celdefinitie_valideert_tegen_het_schema() {
+    fn cell_definition_validates_against_the_schema() {
         let error =
-            CelDefinitie::parse("id: x\nrecording_actor: x\nstreams: []\n", "t").unwrap_err();
+            CellDefinition::parse("id: x\nrecording_actor: x\nstreams: []\n", "t").unwrap_err();
         assert!(
             error.iter().any(|f| f.contains("lexostatuses")),
             "{error:?}"
@@ -825,8 +828,8 @@ mod tests {
     }
 
     #[test]
-    fn een_cel_heeft_geen_procesblokken() {
-        let error = CelDefinitie::parse(
+    fn a_cell_has_no_process_blocks() {
+        let error = CellDefinition::parse(
             "id: a\nrecording_actor: a\nstreams: [s.yaml]\nlexostatuses: l.yaml\nroles: {aanvrager: {channel: k, routes: [portal]}}\n",
             "t",
         )
@@ -835,8 +838,8 @@ mod tests {
     }
 
     #[test]
-    fn synthese_bron_met_url() {
-        let d = ProcesDefinitie::parse(
+    fn synthesis_source_with_url() {
+        let d = ProcessDefinition::parse(
             "id: a\nactor: a\nsynthesis:\n  - {cell: b, url: 'http://localhost:7172', lexostatus: l, input: {}, parameters: [p]}\n",
             "t",
         )
@@ -846,44 +849,44 @@ mod tests {
         assert!(d.examples.is_none());
     }
 
-    /// De parameters van een bron: een lijst (dezelfde naam) of per naam bij
-    /// de bron de naam bij de afnemer; een invoer is een veld of een vaste
-    /// waarde.
+    /// The parameters of a source: a list (the same name) or per name at
+    /// the source the name at the consumer; an input is a field or a fixed
+    /// value.
     #[test]
-    fn parameters_met_vertaling_en_een_vaste_invoer() {
-        let d = ProcesDefinitie::parse(
+    fn parameters_with_translation_and_a_fixed_input() {
+        let d = ProcessDefinition::parse(
             "id: a\nactor: a\nsynthesis:\n  - {cell: b, lexostatus: l, input: {x: {lexostatus: e, field: x}, orgaan: {value: raad}}, parameters: {is_ingeschreven_in_register: is_ingeschreven_raad}}\n  - {cell: c, lexostatus: m, input: {}, parameters: [p]}\n",
             "t",
         )
         .unwrap();
         let b = &d.synthesis[0];
         assert_eq!(
-            b.parameters.paren().collect::<Vec<_>>(),
+            b.parameters.pairs().collect::<Vec<_>>(),
             [("is_ingeschreven_in_register", "is_ingeschreven_raad")]
         );
         assert_eq!(
             b.parameters.iter().collect::<Vec<_>>(),
             ["is_ingeschreven_raad"]
         );
-        assert!(matches!(&b.input["orgaan"], BronInvoer::Waarde { value } if value == "raad"));
+        assert!(matches!(&b.input["orgaan"], SourceInput::Value { value } if value == "raad"));
         assert_eq!(b.input["x"].field().unwrap().lexostatus, "e");
         assert_eq!(
-            d.synthesis[1].parameters.paren().collect::<Vec<_>>(),
+            d.synthesis[1].parameters.pairs().collect::<Vec<_>>(),
             [("p", "p")]
         );
-        assert!(d.synthesis[1].parameters.vertaald().is_empty());
+        assert!(d.synthesis[1].parameters.translated().is_empty());
     }
 
-    /// De tijdvakken en de stand bij besluit staan niet in de configuratie.
+    /// The windows and the state at decision are not in the configuration.
     #[test]
-    fn keuzes_en_stand_bij_besluit_worden_geweigerd() {
-        let error = ProcesDefinitie::parse(
+    fn choices_and_state_at_decision_are_rejected() {
+        let error = ProcessDefinition::parse(
             "id: a\nactor: a\nportal:\n  cell: a\n  stream: s\n  event: e\n  assessment: {lexostatus: l, regulation: r, output: u}\n  offer: {regulation: r, output: u, keuzes: {jaren_vanaf_nu: [0]}}\n",
             "t",
         )
         .unwrap_err();
         assert!(error.iter().any(|f| f.contains("keuzes")), "{error:?}");
-        let error = ProcesDefinitie::parse(
+        let error = ProcessDefinition::parse(
             "id: a\nactor: a\nhandling:\n  worklist: {cell: a, lexostatus: w}\n  actions:\n    - name: b\n      outputs: [u]\n      record: {cell: a, stream: s, event: e}\n      stand_bij_besluit: {x: false}\n",
             "t",
         )
@@ -895,15 +898,15 @@ mod tests {
     }
 
     #[test]
-    fn een_bron_van_de_zaak_noemt_geen_invoer_of_parameters() {
-        let d = ProcesDefinitie::parse(
+    fn a_case_source_names_no_input_or_parameters() {
+        let d = ProcessDefinition::parse(
             "id: a\nactor: a\nsynthesis:\n  - {cell: b, lexostatus: l, case: true}\n  - {cell: c, lexostatus: m, input: {x: {lexostatus: l, field: x}}, parameters: [p]}\n",
             "t",
         )
         .unwrap();
-        assert_eq!(d.zaakbronnen().count(), 1);
-        assert_eq!(d.andere_bronnen().count(), 1);
-        let error = ProcesDefinitie::parse(
+        assert_eq!(d.case_sources().count(), 1);
+        assert_eq!(d.other_sources().count(), 1);
+        let error = ProcessDefinition::parse(
             "id: a\nactor: a\nsynthesis:\n  - {cell: b, lexostatus: l, case: true, parameters: [p]}\n",
             "t",
         )
@@ -912,7 +915,7 @@ mod tests {
             error.iter().any(|f| f.contains("/synthesis/0")),
             "{error:?}"
         );
-        let error = ProcesDefinitie::parse(
+        let error = ProcessDefinition::parse(
             "id: a\nactor: a\nsynthesis:\n  - {cell: b, lexostatus: l}\n",
             "t",
         )
@@ -923,11 +926,11 @@ mod tests {
         );
     }
 
-    /// Het besluitformulier staat niet in `proces.yaml`: het volgt uit de
-    /// parameters met origin OORDEEL.
+    /// The decision form is not in `process.yaml`: it follows from the
+    /// parameters with origin OORDEEL.
     #[test]
-    fn een_besluitformulier_in_de_configuratie_wordt_geweigerd() {
-        let error = ProcesDefinitie::parse(
+    fn a_decision_form_in_the_configuration_is_rejected() {
+        let error = ProcessDefinition::parse(
             "id: a\nactor: a\nhandling:\n  worklist: {cell: a, lexostatus: w}\n  actions:\n    - name: b\n      outputs: [u]\n      record: {cell: a, stream: s, event: e}\n      form: [{parameter: p, label: P}]\n",
             "t",
         )
@@ -936,8 +939,8 @@ mod tests {
     }
 
     #[test]
-    fn voorbeelden_blok() {
-        let d = ProcesDefinitie::parse(
+    fn examples_block() {
+        let d = ProcessDefinition::parse(
             "id: a\nactor: a\nexamples:\n  logins: [login.json]\n  actions: {besluit: besluit.json}\n",
             "t",
         )
@@ -947,16 +950,18 @@ mod tests {
         assert_eq!(v.application, None);
         assert_eq!(v.actions["besluit"], "besluit.json");
         let error =
-            ProcesDefinitie::parse("id: a\nactor: a\nexamples:\n  inlog: [login.json]\n", "t")
+            ProcessDefinition::parse("id: a\nactor: a\nexamples:\n  inlog: [login.json]\n", "t")
                 .unwrap_err();
         assert!(error.iter().any(|f| f.contains("inlog")), "{error:?}");
     }
 
     #[test]
-    fn map_zonder_cellen() {
+    fn directory_without_cells() {
         let dir = tempfile::tempdir().unwrap();
-        assert!(celmappen(dir.path()).unwrap_err().contains("geen submap"));
-        // Zonder processen: geen fout.
-        assert!(procesmappen(dir.path()).unwrap().is_empty());
+        assert!(cell_dirs(dir.path())
+            .unwrap_err()
+            .contains("no subdirectory"));
+        // Without processes: no error.
+        assert!(process_dirs(dir.path()).unwrap().is_empty());
     }
 }

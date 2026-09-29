@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.2.0/lexostatus.json",
-  "title": "Celconfiguratie met lexostatus-definities v0.2.0",
-  "description": "De lexostatussen die een cel aanbiedt en hoe elk uit de eigen kroniek wordt gereduceerd (RFC-022 par. 4.1, daar voorlopig). reduction kiest met filter en kies zo nodig een gram en leidt met afleidingen de parameters van een artikel af: een afleiding op het gekozen gram (veld, jaar_van, periode_van, gevuld, gelijk, tabel, moment), of een afleiding over de grammen die door haar eigen filter komen (bestaat, som, kies met veld, jaar_van, periode_van of bevat). Met groepeer: zaakkenmerk (en zo nodig zonder) is de lexostatus een lijst met een regel per zaak. extra_velden levert waarden die geen parameter zijn en niet naar de engine gaan.",
+  "title": "Cell configuration with lexostatus definitions v0.2.0",
+  "description": "The lexostatuses a cell offers and how each is reduced from the cell's own chronicle (RFC-022 sec. 4.1, provisional there). reduction uses filter and, where needed, pick to choose a gram, and uses derivations to derive the parameters of an article: a derivation on the chosen gram (field, year_of, period_of, filled, equals, table, moment), or a derivation over the grams that pass its own filter (exists, sum, pick with field, year_of, period_of or contains). With group_by: root (and, where needed, without) the lexostatus is a list with one row per root. extra_fields supplies values that are not parameters and do not go to the engine.",
   "type": "object",
   "required": [
     "cell",
@@ -21,7 +21,7 @@
     },
     "law": {
       "type": "array",
-      "description": "Aanvullingen op de lexostatussen die de wet in deze cel leest (produces.extensions.chronolex.leest van een artikel; de lexostatus heet naar het artikel). Alleen extra velden: wat de cel meegeeft als invoer voor een latere bron, geen parameter. De parameters staan in de wet.",
+      "description": "Additions to the lexostatuses that the law reads in this cell (produces.extensions.chronolex.reads of an article; the lexostatus is named after the article). Only extra fields: what the cell passes along as input for a later source, not a parameter. The parameters are in the law.",
       "items": {
         "type": "object",
         "required": [
@@ -32,11 +32,11 @@
         "properties": {
           "article": {
             "$ref": "#/definitions/legal_basis",
-            "description": "Het lezende artikel, <regeling>#<artikel>."
+            "description": "The reading article, <regulation>#<article>."
           },
           "extra_fields": {
             "type": "object",
-            "description": "Waarden die geen parameter zijn, zoals een invoer voor een synthese-bron. Ze staan apart in de lexostatus en gaan nooit naar de engine.",
+            "description": "Values that are not parameters, such as an input for a synthesis source. They are kept separately in the lexostatus and never go to the engine.",
             "propertyNames": {
               "pattern": "^[a-z_][a-z0-9_]*$"
             },
@@ -62,7 +62,7 @@
     },
     "field_path": {
       "type": "string",
-      "description": "Pad naar een veld onder fields van het gram, met punten tussen de niveaus.",
+      "description": "Path to a field under the gram's fields, with dots between the levels.",
       "pattern": "^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)*$"
     },
     "column": {
@@ -95,7 +95,7 @@
             "additionalProperties": false,
             "properties": {
               "name": {
-                "description": "peilmoment en bekend_op zijn het peil van een vraag (GET lexostatus), geen input.",
+                "description": "as_of and known_at are the reference point of a query (GET lexostatus), not inputs.",
                 "allOf": [
                   {
                     "$ref": "#/definitions/identifier"
@@ -144,21 +144,21 @@
           "enum": [
             "root"
           ],
-          "description": "Maakt van de lexostatus een lijst: een regel per wortel (het gram zonder verwijzing waar de andere via verwijst naar toe leiden, zoals de aanvraag). Een wortel telt als ten minste een van haar grammen door filter komt; kies en de afleidingen werken dan per wortel, over haar grammen. Een lijst is voor de afnemer en gaat nooit naar de engine; de afleidingen zijn dan kolommen, geen parameters."
+          "description": "Turns the lexostatus into a list: one row per root (the gram without a reference that the others lead to via refers_to, such as the application). A root counts if at least one of its grams passes the filter; pick and the derivations then work per root, over its grams. A list is for the consumer and never goes to the engine; the derivations are then columns, not parameters."
         },
         "without": {
           "$ref": "#/definitions/filter",
-          "description": "Alleen met groepeer: een wortel blijft alleen in de lijst als geen van haar grammen door dit filter komt, bijvoorbeeld zonder gram van stage BESLUIT."
+          "description": "Only with group_by: a root stays in the list only if none of its grams passes this filter, for example without a gram of stage BESLUIT."
         },
         "pick": {
           "enum": [
             "latest"
           ],
-          "description": "Welk gram telt als er meer zijn: laatste is het gram met het laatste op_moment, bij gelijk op_moment het laatste vastgelegd_op (een herstel is een nieuw gram). Zonder kies wordt geen gram gekozen, en kan elke afleiding alleen over een verzameling grammen werken."
+          "description": "Which gram counts if there are several: latest is the gram with the latest effective_at, and with equal effective_at the latest recorded_at (a correction is a new gram). Without pick, no gram is chosen, and every derivation can only work over a set of grams."
         },
         "derivations": {
           "type": "object",
-          "description": "Per parameter van een artikel onder de grondslag van het event of van de afleiding zelf: hoe die uit het gram volgt. Leeg mag, als extra_velden wel iets levert: een lexostatus die alleen kolommen voor een synthese per regel levert, levert geen parameter.",
+          "description": "Per parameter of an article under the legal_basis of the event or of the derivation itself: how it follows from the gram. May be empty if extra_fields does supply something: a lexostatus that only supplies columns for a per-row synthesis supplies no parameter.",
           "propertyNames": {
             "pattern": "^[a-z_][a-z0-9_]*$"
           },
@@ -168,7 +168,7 @@
         },
         "extra_fields": {
           "type": "object",
-          "description": "Waarden die geen parameter zijn, zoals een invoer voor een synthese-bron. Ze staan apart in de lexostatus en gaan nooit naar de engine.",
+          "description": "Values that are not parameters, such as an input for a synthesis source. They are kept separately in the lexostatus and never go to the engine.",
           "propertyNames": {
             "pattern": "^[a-z_][a-z0-9_]*$"
           },
@@ -186,7 +186,7 @@
     "derivation": {
       "oneOf": [
         {
-          "description": "De waarde van het veld. Leeg of afwezig: de parameter blijft weg.",
+          "description": "The value of the field. Empty or absent: the parameter is omitted.",
           "type": "object",
           "required": [
             "field"
@@ -200,7 +200,7 @@
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
-              "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
+              "description": "What this derivation rests on: the article that asks for the fact, or the article that carries the reading (such as the register the cell keeps: no gram means no). The name of a parameter derivation is a parameter of an article from the event's legal_basis or from this legal_basis. On startup: every article is loaded and the paragraph (lid) exists.",
               "items": {
                 "$ref": "#/definitions/legal_basis"
               }
@@ -208,7 +208,7 @@
           }
         },
         {
-          "description": "Het jaartal van een datumveld (JJJJ-MM-DD). Geen datum: de parameter blijft weg.",
+          "description": "The year of a date field (YYYY-MM-DD). No date: the parameter is omitted.",
           "type": "object",
           "required": [
             "year_of"
@@ -222,7 +222,7 @@
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
-              "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
+              "description": "What this derivation rests on: the article that asks for the fact, or the article that carries the reading (such as the register the cell keeps: no gram means no). The name of a parameter derivation is a parameter of an article from the event's legal_basis or from this legal_basis. On startup: every article is loaded and the paragraph (lid) exists.",
               "items": {
                 "$ref": "#/definitions/legal_basis"
               }
@@ -230,7 +230,7 @@
           }
         },
         {
-          "description": "De periode waarin een datumveld (JJJJ-MM-DD) van het gekozen gram valt, als de eerste dag van die periode (JJJJ-MM-DD): een maand, een kwartaal of een jaar. Zo is een tijdvak een datum die de engine kan lezen. Geen datum: de parameter blijft weg.",
+          "description": "The period in which a date field (YYYY-MM-DD) of the chosen gram falls, as the first day of that period (YYYY-MM-DD): a month, a quarter or a year. This makes a window a date the engine can read. No date: the parameter is omitted.",
           "type": "object",
           "required": [
             "period_of"
@@ -246,13 +246,13 @@
                 "quarter",
                 "month"
               ],
-              "description": "De periode: jaar, kwartaal of maand. Zonder neemt de runtime bij het opstarten de temporal.period_type (year, month) van de parameter met de naam van de afleiding uit de grondslag (RFC-001): de regeling zegt dan welke periode het is."
+              "description": "The period: year, quarter or month. Without it, the runtime takes, on startup, the temporal.period_type (year, month) of the parameter named after the derivation from the legal_basis (RFC-001): the regulation then says which period it is."
             },
             "legal_basis": {
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
-              "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
+              "description": "What this derivation rests on: the article that asks for the fact, or the article that carries the reading (such as the register the cell keeps: no gram means no). The name of a parameter derivation is a parameter of an article from the event's legal_basis or from this legal_basis. On startup: every article is loaded and the paragraph (lid) exists.",
               "items": {
                 "$ref": "#/definitions/legal_basis"
               }
@@ -260,7 +260,7 @@
           }
         },
         {
-          "description": "Waar als het veld gevuld is (niet afwezig, niet null, geen lege tekst, geen lege lijst).",
+          "description": "True if the field is filled (not absent, not null, not an empty string, not an empty list).",
           "type": "object",
           "required": [
             "filled"
@@ -274,7 +274,7 @@
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
-              "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
+              "description": "What this derivation rests on: the article that asks for the fact, or the article that carries the reading (such as the register the cell keeps: no gram means no). The name of a parameter derivation is a parameter of an article from the event's legal_basis or from this legal_basis. On startup: every article is loaded and the paragraph (lid) exists.",
               "items": {
                 "$ref": "#/definitions/legal_basis"
               }
@@ -282,7 +282,7 @@
           }
         },
         {
-          "description": "Waar als het veld die waarde heeft. Leeg of afwezig: de parameter blijft weg.",
+          "description": "True if the field has that value. Empty or absent: the parameter is omitted.",
           "type": "object",
           "required": [
             "equals"
@@ -313,7 +313,7 @@
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
-              "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
+              "description": "What this derivation rests on: the article that asks for the fact, or the article that carries the reading (such as the register the cell keeps: no gram means no). The name of a parameter derivation is a parameter of an article from the event's legal_basis or from this legal_basis. On startup: every article is loaded and the paragraph (lid) exists.",
               "items": {
                 "$ref": "#/definitions/legal_basis"
               }
@@ -321,7 +321,7 @@
           }
         },
         {
-          "description": "Waar als de tabel ten minste een regel heeft en elke regel die kolom gevuld heeft; met alleen_waar tellen alleen de regels waarin die kolom waar is.",
+          "description": "True if the table has at least one row and every row has that column filled; with only_where, only the rows in which that column is true count.",
           "type": "object",
           "required": [
             "table",
@@ -342,7 +342,7 @@
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
-              "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
+              "description": "What this derivation rests on: the article that asks for the fact, or the article that carries the reading (such as the register the cell keeps: no gram means no). The name of a parameter derivation is a parameter of an article from the event's legal_basis or from this legal_basis. On startup: every article is loaded and the paragraph (lid) exists.",
               "items": {
                 "$ref": "#/definitions/legal_basis"
               }
@@ -350,7 +350,7 @@
           }
         },
         {
-          "description": "Waar als ten minste een regel van de tabel die kolom op waar heeft.",
+          "description": "True if at least one row of the table has that column set to true.",
           "type": "object",
           "required": [
             "table",
@@ -368,7 +368,7 @@
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
-              "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
+              "description": "What this derivation rests on: the article that asks for the fact, or the article that carries the reading (such as the register the cell keeps: no gram means no). The name of a parameter derivation is a parameter of an article from the event's legal_basis or from this legal_basis. On startup: every article is loaded and the paragraph (lid) exists.",
               "items": {
                 "$ref": "#/definitions/legal_basis"
               }
@@ -376,7 +376,7 @@
           }
         },
         {
-          "description": "De datum van een moment van het gram zelf: op_moment is wanneer het feit rechtens geldt of plaatsvond (bij een aanvraag de ontvangst), vastgelegd_op wanneer de cel het vastlegde.",
+          "description": "The date of a moment of the gram itself: effective_at is when the fact legally applies or took place (for an application, the receipt), recorded_at is when the cell recorded it.",
           "type": "object",
           "required": [
             "moment"
@@ -393,7 +393,7 @@
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
-              "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
+              "description": "What this derivation rests on: the article that asks for the fact, or the article that carries the reading (such as the register the cell keeps: no gram means no). The name of a parameter derivation is a parameter of an article from the event's legal_basis or from this legal_basis. On startup: every article is loaded and the paragraph (lid) exists.",
               "items": {
                 "$ref": "#/definitions/legal_basis"
               }
@@ -401,7 +401,7 @@
           }
         },
         {
-          "description": "Over de grammen die door filter komen: waar als er ten minste een is. Geen gram is onwaar: de cel spreekt alleen over haar eigen kroniek. Met gevuld telt alleen een gram waarin dat veld gevuld is (niet afwezig, niet null, geen lege tekst, geen lege lijst).",
+          "description": "Over the grams that pass the filter: true if there is at least one. No gram is false: the cell speaks only about its own chronicle. With filled, only a gram in which that field is filled counts (not absent, not null, not an empty string, not an empty list).",
           "type": "object",
           "required": [
             "exists"
@@ -421,7 +421,7 @@
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
-              "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
+              "description": "What this derivation rests on: the article that asks for the fact, or the article that carries the reading (such as the register the cell keeps: no gram means no). The name of a parameter derivation is a parameter of an article from the event's legal_basis or from this legal_basis. On startup: every article is loaded and the paragraph (lid) exists.",
               "items": {
                 "$ref": "#/definitions/legal_basis"
               }
@@ -429,7 +429,7 @@
           }
         },
         {
-          "description": "Over de grammen die door filter komen: per gram een regel met deze velden, in de volgorde van de kroniek. Een veld dat een gram niet heeft, is null. Geen gram is een lege lijst. Voor een tabel, zoals de regels van een uitslag; gebruik het als extra veld, niet als parameter.",
+          "description": "Over the grams that pass the filter: one row per gram with these fields, in chronicle order. A field a gram lacks is null. No gram is an empty list. For a table, such as the rows of an election result; use it as an extra field, not as a parameter.",
           "type": "object",
           "required": [
             "collect"
@@ -451,7 +451,7 @@
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
-              "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
+              "description": "What this derivation rests on: the article that asks for the fact, or the article that carries the reading (such as the register the cell keeps: no gram means no). The name of a parameter derivation is a parameter of an article from the event's legal_basis or from this legal_basis. On startup: every article is loaded and the paragraph (lid) exists.",
               "items": {
                 "$ref": "#/definitions/legal_basis"
               }
@@ -459,7 +459,7 @@
           }
         },
         {
-          "description": "Over de grammen die door filter komen: de som van dit getalveld. Geen gram is nul.",
+          "description": "Over the grams that pass the filter: the sum of this numeric field. No gram is zero.",
           "type": "object",
           "required": [
             "sum"
@@ -476,7 +476,7 @@
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
-              "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
+              "description": "What this derivation rests on: the article that asks for the fact, or the article that carries the reading (such as the register the cell keeps: no gram means no). The name of a parameter derivation is a parameter of an article from the event's legal_basis or from this legal_basis. On startup: every article is loaded and the paragraph (lid) exists.",
               "items": {
                 "$ref": "#/definitions/legal_basis"
               }
@@ -484,7 +484,7 @@
           }
         },
         {
-          "description": "Over de grammen die door filter komen: de datum van een moment (op_moment of vastgelegd_op) van het gram met het laatste op_moment. Geen gram: de waarde van geen_gram, en zonder geen_gram blijft de parameter weg. Zo leest een lijst per zaak het moment van een bepaald gram, zoals de ontvangst van de aanvraag, terwijl zij andere grammen van de zaak ook leest.",
+          "description": "Over the grams that pass the filter: the date of a moment (effective_at or recorded_at) of the gram with the latest effective_at. No gram: the value of no_gram, and without no_gram the parameter is omitted. This lets a per-case list read the moment of a specific gram, such as the receipt of the application, while it also reads other grams of the case.",
           "type": "object",
           "required": [
             "pick",
@@ -513,13 +513,13 @@
                 "number",
                 "boolean"
               ],
-              "description": "De waarde als geen gram door filter komt: de lezing van afwezigheid binnen de eigen kroniek, bijvoorbeeld null voor een datum van iets dat niet gebeurde. Zonder geen_gram blijft de parameter dan weg."
+              "description": "The value if no gram passes the filter: the reading of absence within the cell's own chronicle, for example null for the date of something that did not happen. Without no_gram, the parameter is then omitted."
             },
             "legal_basis": {
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
-              "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
+              "description": "What this derivation rests on: the article that asks for the fact, or the article that carries the reading (such as the register the cell keeps: no gram means no). The name of a parameter derivation is a parameter of an article from the event's legal_basis or from this legal_basis. On startup: every article is loaded and the paragraph (lid) exists.",
               "items": {
                 "$ref": "#/definitions/legal_basis"
               }
@@ -527,7 +527,7 @@
           }
         },
         {
-          "description": "Over de grammen die door filter komen: de waarde van veld in het gram met het laatste op_moment. Een leeg veld: de parameter blijft weg. Geen gram: de waarde van geen_gram, en zonder geen_gram blijft de parameter weg.",
+          "description": "Over the grams that pass the filter: the value of field in the gram with the latest effective_at. An empty field: the parameter is omitted. No gram: the value of no_gram, and without no_gram the parameter is omitted.",
           "type": "object",
           "required": [
             "pick",
@@ -553,13 +553,13 @@
                 "number",
                 "boolean"
               ],
-              "description": "De waarde als geen gram door filter komt: de lezing van afwezigheid binnen de eigen kroniek, bijvoorbeeld null voor een datum van iets dat niet gebeurde. Zonder geen_gram blijft de parameter dan weg."
+              "description": "The value if no gram passes the filter: the reading of absence within the cell's own chronicle, for example null for the date of something that did not happen. Without no_gram, the parameter is then omitted."
             },
             "legal_basis": {
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
-              "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
+              "description": "What this derivation rests on: the article that asks for the fact, or the article that carries the reading (such as the register the cell keeps: no gram means no). The name of a parameter derivation is a parameter of an article from the event's legal_basis or from this legal_basis. On startup: every article is loaded and the paragraph (lid) exists.",
               "items": {
                 "$ref": "#/definitions/legal_basis"
               }
@@ -567,7 +567,7 @@
           }
         },
         {
-          "description": "Over de grammen die door filter komen: het jaartal van het datumveld in het gram met het laatste op_moment. Geen datum: de parameter blijft weg. Geen gram: de waarde van geen_gram, en zonder geen_gram blijft de parameter weg.",
+          "description": "Over the grams that pass the filter: the year of the date field in the gram with the latest effective_at. No date: the parameter is omitted. No gram: the value of no_gram, and without no_gram the parameter is omitted.",
           "type": "object",
           "required": [
             "pick",
@@ -593,13 +593,13 @@
                 "number",
                 "boolean"
               ],
-              "description": "De waarde als geen gram door filter komt: de lezing van afwezigheid binnen de eigen kroniek. Zonder geen_gram blijft de parameter dan weg."
+              "description": "The value if no gram passes the filter: the reading of absence within the cell's own chronicle. Without no_gram, the parameter is then omitted."
             },
             "legal_basis": {
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
-              "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
+              "description": "What this derivation rests on: the article that asks for the fact, or the article that carries the reading (such as the register the cell keeps: no gram means no). The name of a parameter derivation is a parameter of an article from the event's legal_basis or from this legal_basis. On startup: every article is loaded and the paragraph (lid) exists.",
               "items": {
                 "$ref": "#/definitions/legal_basis"
               }
@@ -607,7 +607,7 @@
           }
         },
         {
-          "description": "Over de grammen die door filter komen: de periode waarin een datumveld van het laatste gram valt, als de eerste dag van die periode (zie periode_van op het gekozen gram).",
+          "description": "Over the grams that pass the filter: the period in which a date field of the latest gram falls, as the first day of that period (see period_of on the chosen gram).",
           "type": "object",
           "required": [
             "pick",
@@ -632,7 +632,7 @@
                 "quarter",
                 "month"
               ],
-              "description": "De periode: jaar, kwartaal of maand. Zonder neemt de runtime bij het opstarten de temporal.period_type (year, month) van de parameter met de naam van de afleiding uit de grondslag (RFC-001): de regeling zegt dan welke periode het is."
+              "description": "The period: year, quarter or month. Without it, the runtime takes, on startup, the temporal.period_type (year, month) of the parameter named after the derivation from the legal_basis (RFC-001): the regulation then says which period it is."
             },
             "no_gram": {
               "type": [
@@ -641,13 +641,13 @@
                 "number",
                 "boolean"
               ],
-              "description": "De waarde als geen gram door filter komt: de lezing van afwezigheid binnen de eigen kroniek. Zonder geen_gram blijft de parameter dan weg."
+              "description": "The value if no gram passes the filter: the reading of absence within the cell's own chronicle. Without no_gram, the parameter is then omitted."
             },
             "legal_basis": {
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
-              "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
+              "description": "What this derivation rests on: the article that asks for the fact, or the article that carries the reading (such as the register the cell keeps: no gram means no). The name of a parameter derivation is a parameter of an article from the event's legal_basis or from this legal_basis. On startup: every article is loaded and the paragraph (lid) exists.",
               "items": {
                 "$ref": "#/definitions/legal_basis"
               }
@@ -655,7 +655,7 @@
           }
         },
         {
-          "description": "Over de grammen die door filter komen: waar als het lijstveld bevat.veld in het laatste gram de waarde bevat. Geen gram is onwaar.",
+          "description": "Over the grams that pass the filter: true if the list field contains.field in the latest gram contains the value. No gram is false.",
           "type": "object",
           "required": [
             "pick",
@@ -695,7 +695,7 @@
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
-              "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
+              "description": "What this derivation rests on: the article that asks for the fact, or the article that carries the reading (such as the register the cell keeps: no gram means no). The name of a parameter derivation is a parameter of an article from the event's legal_basis or from this legal_basis. On startup: every article is loaded and the paragraph (lid) exists.",
               "items": {
                 "$ref": "#/definitions/legal_basis"
               }
@@ -706,7 +706,7 @@
     },
     "filter": {
       "type": "object",
-      "description": "Gelijkheid op het gram. De sleutels id, wortel, name, type, soort, stage, recording_actor, chronicle, legal_character, decision_type, regulation en competent_authority zijn velden van het gram zelf (wortel uit de index van de cel), en verwijst.<naam> is het id waarnaar het gram onder die naam verwijst; elke andere sleutel is een veldpad onder fields. Een waarde $<input> komt uit de inputs van de lexostatus. De vaste waarden van name, type en soort wijzen het event of de events aan.",
+      "description": "Equality on the gram. The keys id, root, name, type, subtype, stage, recording_actor, chronicle, legal_character, decision_type, regulation and competent_authority are fields of the gram itself (root from the cell's index), and refers_to.<name> is the id the gram refers to under that name; any other key is a field path under fields. A value $<input> comes from the lexostatus inputs. The fixed values of name, type and subtype identify the event or events.",
       "propertyNames": {
         "$ref": "#/definitions/field_path"
       },
@@ -718,7 +718,7 @@
     },
     "legal_basis": {
       "type": "string",
-      "description": "<regeling-$id>#<artikelnummer>, optioneel met ' lid <n>', zoals bij een event (stream.json).",
+      "description": "<regulation-$id>#<article-number>, optionally with ' lid <n>', as for an event (stream.json).",
       "pattern": "^[a-z][a-z0-9_]*#[A-Za-z0-9]([A-Za-z0-9:._ -]*[A-Za-z0-9])?( lid [0-9]+[a-z]?)?$"
     }
   }

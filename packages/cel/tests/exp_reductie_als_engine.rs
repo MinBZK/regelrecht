@@ -1,11 +1,11 @@
-//! Experiment A: dezelfde lexostatus via de reductie-DSL en via de engine,
-//! op dezelfde grammen. De uitkomsten moeten gelijk zijn.
+//! Experiment A: the same lexostatus via the reduction DSL and via the engine,
+//! on the same grams. The outputs must be equal.
 //!
-//! De eerste tests draaien op de fictieve registercel. De test
-//! `vergelijk_uit_omgeving` doet hetzelfde voor cellen en artikelen buiten
-//! deze repo (bijvoorbeeld een ander corpus), met paden uit de omgeving;
-//! zonder die variabelen slaat hij over. De afleidingen en de extra velden
-//! van een lexostatus worden beide vergeleken.
+//! The first tests run on the fictional register cell. The test
+//! `compare_from_env` does the same for cells and articles outside this repo
+//! (for example another corpus), with paths from the environment; without
+//! those variables it skips. The derivations and the extra fields of a
+//! lexostatus are both compared.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -14,52 +14,52 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
-use regelrecht_cel::config::CelDefinitie;
+use regelrecht_cel::config::CellDefinition;
 use regelrecht_cel::gram::Gram;
-use regelrecht_cel::lexostatus_engine::{uitkomsten_van, CelRoute, Wijze};
-use regelrecht_cel::reductie::Peil;
-use regelrecht_cel::stroom;
-use regelrecht_cel::{lexostatus_engine, reductie, startstand};
+use regelrecht_cel::lexostatus_engine::{outputs_of, CellRoute, Mode};
+use regelrecht_cel::reduction::AsOf;
+use regelrecht_cel::stream;
+use regelrecht_cel::{initial_state, lexostatus_engine, reduction};
 use regelrecht_engine::LawExecutionService;
 use serde_json::{json, Map, Value};
 
-const DATUM: &str = "2025-03-12";
-/// De laadtijd van de startstand: na elk gram in de startstanden.
-const LAADTIJD: &str = "2026-09-28T12:00:00+02:00";
+const DATE: &str = "2025-03-12";
+/// The load time of the initial state: after every gram in the initial states.
+const LOAD_TIME: &str = "2026-09-28T12:00:00+02:00";
 
 fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
 }
 
-/// De grammen van een cel: de startstand, plus `extra` (json-regels in de
-/// vorm van de startstand), geplaatst zoals de runtime dat doet (met een
-/// vaste laadtijd als `vastgelegd_op`).
-fn grammen_van(cel_map: &Path, extra: &[Value]) -> (CelDefinitie, Vec<Gram>) {
-    let def = CelDefinitie::laad(cel_map).unwrap();
+/// The grams of a cell: the initial state, plus `extra` (json lines in the
+/// shape of the initial state), placed as the runtime does (with a fixed load
+/// time as `recorded_at`).
+fn grams_of(cell_dir: &Path, extra: &[Value]) -> (CellDefinition, Vec<Gram>) {
+    let def = CellDefinition::load(cell_dir).unwrap();
     let mut streams = Vec::new();
     for s in &def.streams {
-        streams.extend(stroom::laad(&cel_map.join(s)).unwrap());
+        streams.extend(stream::load(&cell_dir.join(s)).unwrap());
     }
-    // Een stroom met `vestigt` krijgt zijn vorm uit de wet: met
-    // `EXP_REGULATION` het corpus waarin die wet staat.
+    // A stream with `establishes` gets its shape from the law: with
+    // `EXP_REGULATION` the corpus that contains that law.
     if let Ok(path) = std::env::var("EXP_REGULATION") {
-        let corpus = regelrecht_cel::regelingen::laad(Path::new(&path)).unwrap();
-        let fouten = regelrecht_cel::wet::vestig(&mut streams, &corpus.service);
-        assert!(fouten.is_empty(), "{fouten:?}");
+        let corpus = regelrecht_cel::regulations::load(Path::new(&path)).unwrap();
+        let errors = regelrecht_cel::law::establish(&mut streams, &corpus.service);
+        assert!(errors.is_empty(), "{errors:?}");
     }
-    stroom::leid_rollen_af(&mut streams);
-    let mut tekst =
-        std::fs::read_to_string(cel_map.join(def.initial_state.as_ref().unwrap())).unwrap();
+    stream::derive_roles(&mut streams);
+    let mut text =
+        std::fs::read_to_string(cell_dir.join(def.initial_state.as_ref().unwrap())).unwrap();
     for e in extra {
-        tekst.push('\n');
-        tekst.push_str(&e.to_string());
+        text.push('\n');
+        text.push_str(&e.to_string());
     }
-    let grams = startstand::parse(&tekst, "startstand", &streams).unwrap();
-    let laadtijd = chrono::DateTime::parse_from_rfc3339(LAADTIJD).unwrap();
-    (def, startstand::geplaatst(&grams, &laadtijd).unwrap())
+    let grams = initial_state::parse(&text, "initial_state", &streams).unwrap();
+    let load_time = chrono::DateTime::parse_from_rfc3339(LOAD_TIME).unwrap();
+    (def, initial_state::placed(&grams, &load_time).unwrap())
 }
 
-fn service_met(article: &Path) -> (Arc<LawExecutionService>, String) {
+fn service_with(article: &Path) -> (Arc<LawExecutionService>, String) {
     let mut s = LawExecutionService::new();
     let id = s
         .load_law(&std::fs::read_to_string(article).unwrap())
@@ -67,38 +67,38 @@ fn service_met(article: &Path) -> (Arc<LawExecutionService>, String) {
     (Arc::new(s), id)
 }
 
-/// Vergelijk per input: de lexostatus via de reductie-DSL tegen die via de
-/// engine, langs dezelfde route als de runtime met `CEL_REDUCTIE=vergelijk`
-/// (afleidingen, extra velden, niet afgeleid en het gekozen gram). Geeft
-/// de verschillen terug.
-fn vergelijk(
-    def: &reductie::LexostatusDefinitie,
+/// Compare per input: the lexostatus via the reduction DSL against the one via
+/// the engine, along the same route as the runtime with
+/// `CELL_REDUCTION=compare` (derivations, extra fields, not derived and the
+/// picked gram). Returns the differences.
+fn compare(
+    def: &reduction::LexostatusDefinition,
     service: &Arc<LawExecutionService>,
     regulation: &str,
     grams: &[Gram],
     inputs: &[Map<String, Value>],
 ) -> Vec<String> {
-    let route = CelRoute {
+    let route = CellRoute {
         service: service.clone(),
-        wijzen: BTreeMap::from([(
+        modes: BTreeMap::from([(
             def.name.clone(),
-            Wijze::Engine {
+            Mode::Engine {
                 regulation: regulation.to_string(),
                 article: None,
             },
         )]),
-        vergelijk: true,
+        compare: true,
     };
     inputs
         .iter()
         .filter_map(|i| {
-            lexostatus_engine::reduceer_lexostatus(
+            lexostatus_engine::reduce_lexostatus(
                 &route,
                 def,
                 i,
                 grams,
-                &Peil::default(),
-                DATUM,
+                &AsOf::default(),
+                DATE,
                 false,
             )
             .err()
@@ -107,12 +107,12 @@ fn vergelijk(
         .collect()
 }
 
-fn register() -> (reductie::LexostatusDefinitie, Vec<Gram>) {
+fn register() -> (reduction::LexostatusDefinition, Vec<Gram>) {
     let map = fixtures().join("cells/register");
-    // Meer dan de startstand: een schrapping, een tweede uitslag, en twee
-    // mededelingen waarvan de laatste in een andere tijdzone staat (08:30Z is
-    // later dan 09:00+01:00). Zo telt `kies: laatste` op het moment, niet op
-    // de tekst of de volgorde van toevoegen.
+    // More than the initial state: a removal, a second result, and two
+    // notices of which the latest is in another time zone (08:30Z is later
+    // than 09:00+01:00). That way `pick: latest` counts by the moment, not by
+    // the text or the order of adding.
     let extra = [
         json!({"stream": "test_registers", "name": "aanduiding_ingeschreven", "effective_at": "2024-01-11T09:00:00+01:00", "provenance": "initial_state", "fields": {"aanduiding": "ANDERS", "orgaan": "raad", "gebied": "Buurdorp"}}),
         json!({"stream": "test_registers", "name": "aanduiding_geschrapt", "effective_at": "2024-06-01T09:00:00+01:00", "provenance": "initial_state", "fields": {"aanduiding": "ANDERS", "orgaan": "raad"}}),
@@ -120,41 +120,41 @@ fn register() -> (reductie::LexostatusDefinitie, Vec<Gram>) {
         json!({"stream": "test_registers", "name": "mededeling_gedaan", "effective_at": "2024-12-02T08:30:00+00:00", "provenance": "initial_state", "fields": {"aanduiding": "VOORBEELD", "datum": "2024-12-02", "geblokkeerd_voor": ["raad"]}}),
         json!({"stream": "test_registers", "name": "mededeling_gedaan", "effective_at": "2024-12-02T09:00:00+01:00", "provenance": "initial_state", "fields": {"aanduiding": "VOORBEELD", "datum": "2024-12-01", "geblokkeerd_voor": []}}),
     ];
-    let (def, grams) = grammen_van(&map, &extra);
-    let lexo = reductie::laad(&map.join(&def.lexostatuses)).unwrap();
+    let (def, grams) = grams_of(&map, &extra);
+    let lexo = reduction::load(&map.join(&def.lexostatuses)).unwrap();
     (lexo.lexostatus("registerstatus").unwrap().clone(), grams)
 }
 
-/// Notitie "bron en gram-id", stap 4: de bevraging van een register staat in
-/// het beleid van de beheerder; welke bron het register levert, zegt de
-/// deployment. Hetzelfde beleidsartikel, een keer met de kroniek van de cel
-/// als bron ([`lexostatus_engine::KroniekBron`]) en een keer met een oude API
-/// ([`DictDataSource`], die per gevraagde aanduiding de passende records
-/// teruggeeft): de uitkomst is dezelfde. Het beleid weet niet wat erachter
-/// zit.
+/// Note "bron en gram-id", step 4: querying a register is in the policy of
+/// the register keeper; which source delivers the register is up to the
+/// deployment. The same policy article, once with the cell's chronicle as the
+/// source ([`lexostatus_engine::ChronicleSource`]) and once with a legacy API
+/// ([`DictDataSource`], which returns the matching records per requested
+/// aanduiding): the output is the same. The policy does not know what is
+/// behind it.
 #[test]
-fn een_register_uit_de_kroniek_en_uit_een_legacy_adapter_geeft_hetzelfde() {
+fn a_register_from_the_chronicle_and_from_a_legacy_adapter_gives_the_same() {
     use regelrecht_engine::DictDataSource;
-    const BELEID: &str = "testbeleid_registerhouder";
+    const POLICY: &str = "testbeleid_registerhouder";
     let (_, grams) = register();
-    let tekst =
+    let text =
         std::fs::read_to_string(fixtures().join("beleid/testbeleid_registerhouder.yaml")).unwrap();
     let mut chronicle = LawExecutionService::new();
-    chronicle.load_law(&tekst).unwrap();
+    chronicle.load_law(&text).unwrap();
     chronicle.add_data_source(Box::new(
-        lexostatus_engine::KroniekBron::new(BELEID, &grams, "test_register").unwrap(),
+        lexostatus_engine::ChronicleSource::new(POLICY, &grams, "test_register").unwrap(),
     ));
-    // De oude API: per aanduiding de records van die aanduiding, in de vorm
-    // die het beleid leest.
+    // The legacy API: per aanduiding the records of that aanduiding, in the
+    // shape the policy reads.
     let aanduidingen = ["VOORBEELD", "ANDERS", "ONBEKEND"];
     let records: Vec<BTreeMap<String, regelrecht_engine::Value>> = aanduidingen
         .iter()
         .map(|a| {
-            let eigen: Vec<&Gram> = grams
+            let own: Vec<&Gram> = grams
                 .iter()
                 .filter(|g| g.fields.get("aanduiding").and_then(Value::as_str) == Some(*a))
                 .collect();
-            let list = lexostatus_engine::als_kroniek(eigen, "test_register").unwrap();
+            let list = lexostatus_engine::as_chronicle(own, "test_register").unwrap();
             BTreeMap::from([
                 (
                     "aanduiding".to_string(),
@@ -165,31 +165,28 @@ fn een_register_uit_de_kroniek_en_uit_een_legacy_adapter_geeft_hetzelfde() {
         })
         .collect();
     let mut api = LawExecutionService::new();
-    api.load_law(&tekst).unwrap();
+    api.load_law(&text).unwrap();
     api.add_data_source(Box::new(
         DictDataSource::from_records("register_api", 10, "aanduiding", records)
             .unwrap()
-            .with_law_scope(BELEID),
+            .with_law_scope(POLICY),
     ));
     let outputs = ["is_ingeschreven_in_register", "is_geschrapt"];
-    let mut gezien = 0;
+    let mut seen = 0;
     for a in aanduidingen {
         for orgaan in ["raad", "staten"] {
             let p: BTreeMap<String, Value> = BTreeMap::from([
                 ("aanduiding".into(), json!(a)),
                 ("orgaan".into(), json!(orgaan)),
             ]);
-            let k = regelrecht_cel::toets::evalueer(&chronicle, BELEID, &outputs, &p, DATUM);
-            let d = regelrecht_cel::toets::evalueer(&api, BELEID, &outputs, &p, DATUM);
-            assert!(k.volledig(&outputs), "{a} {orgaan}: {k:?}");
-            assert_eq!(k.waarden, d.waarden, "{a} {orgaan}");
-            gezien += usize::from(k.waarden["is_ingeschreven_in_register"] == json!(true));
+            let k = regelrecht_cel::assessment::evaluate(&chronicle, POLICY, &outputs, &p, DATE);
+            let d = regelrecht_cel::assessment::evaluate(&api, POLICY, &outputs, &p, DATE);
+            assert!(k.complete(&outputs), "{a} {orgaan}: {k:?}");
+            assert_eq!(k.values, d.values, "{a} {orgaan}");
+            seen += usize::from(k.values["is_ingeschreven_in_register"] == json!(true));
         }
     }
-    assert_eq!(
-        gezien, 2,
-        "VOORBEELD en ANDERS staan bij de raad ingeschreven"
-    );
+    assert_eq!(seen, 2, "VOORBEELD and ANDERS are registered with the raad");
 }
 
 fn inputs(aanduidingen: &[&str]) -> Vec<Map<String, Value>> {
@@ -200,10 +197,10 @@ fn inputs(aanduidingen: &[&str]) -> Vec<Map<String, Value>> {
 }
 
 #[test]
-fn registerstatus_via_engine_gelijk_aan_reductie() {
+fn registerstatus_via_engine_equals_reduction() {
     let (def, grams) = register();
-    let (service, id) = service_met(&fixtures().join("experiment/lexostatus_registerstatus.yaml"));
-    let v = vergelijk(
+    let (service, id) = service_with(&fixtures().join("experiment/lexostatus_registerstatus.yaml"));
+    let v = compare(
         &def,
         &service,
         &id,
@@ -214,55 +211,55 @@ fn registerstatus_via_engine_gelijk_aan_reductie() {
 }
 
 #[test]
-fn laatste_is_op_moment_niet_op_toevoegen() {
+fn latest_is_by_moment_not_by_adding() {
     let (def, grams) = register();
-    let (service, id) = service_met(&fixtures().join("experiment/lexostatus_registerstatus.yaml"));
+    let (service, id) = service_with(&fixtures().join("experiment/lexostatus_registerstatus.yaml"));
     let i = &inputs(&["VOORBEELD"])[0];
-    let uit = lexostatus_engine::reduceer(
+    let out = lexostatus_engine::reduce(
         &service,
         &id,
         &["datum_mededeling", "geblokkeerd", "jaar_van_mededeling"],
         i,
         &grams,
         &def.reduction.chronicle,
-        DATUM,
+        DATE,
     )
     .unwrap();
-    assert_eq!(uit["datum_mededeling"], json!("2024-12-02"));
-    assert_eq!(uit["geblokkeerd"], json!(true));
-    assert_eq!(uit["jaar_van_mededeling"], json!(2024));
+    assert_eq!(out["datum_mededeling"], json!("2024-12-02"));
+    assert_eq!(out["geblokkeerd"], json!(true));
+    assert_eq!(out["jaar_van_mededeling"], json!(2024));
 }
 
 #[test]
-fn geen_gram_is_nee_nul_of_weg() {
+fn no_gram_is_no_zero_or_absent() {
     let (def, grams) = register();
-    let (service, id) = service_met(&fixtures().join("experiment/lexostatus_registerstatus.yaml"));
-    let namen = uitkomsten_van(&def);
-    let outputs: Vec<&str> = namen.iter().map(String::as_str).collect();
-    let uit = lexostatus_engine::reduceer(
+    let (service, id) = service_with(&fixtures().join("experiment/lexostatus_registerstatus.yaml"));
+    let names = outputs_of(&def);
+    let outputs: Vec<&str> = names.iter().map(String::as_str).collect();
+    let out = lexostatus_engine::reduce(
         &service,
         &id,
         &outputs,
         &inputs(&["ONBEKEND"])[0],
         &grams,
         &def.reduction.chronicle,
-        DATUM,
+        DATE,
     )
     .unwrap();
-    assert_eq!(uit["zetels_toegewezen"], json!(0));
-    assert_eq!(uit["geblokkeerd"], json!(false));
-    assert!(!uit.contains_key("datum_mededeling"));
-    assert!(!uit.contains_key("jaar_van_mededeling"));
+    assert_eq!(out["zetels_toegewezen"], json!(0));
+    assert_eq!(out["geblokkeerd"], json!(false));
+    assert!(!out.contains_key("datum_mededeling"));
+    assert!(!out.contains_key("jaar_van_mededeling"));
 }
 
-/// Tijd per reductie, DSL tegen engine, bij een groeiende kroniek. Draai met
-/// `cargo test --release -- --ignored --nocapture meet_tijd`. Boven 1000
-/// grammen weigert FOREACH (MAX_ARRAY_SIZE).
+/// Time per reduction, DSL against engine, with a growing chronicle. Run with
+/// `cargo test --release -- --ignored --nocapture measure_time`. Above 1000
+/// grams FOREACH refuses (MAX_ARRAY_SIZE).
 #[test]
-#[ignore = "meting, geen test"]
-fn meet_tijd() {
+#[ignore = "measurement, not a test"]
+fn measure_time() {
     let (def, basis) = register();
-    let (service, id) = service_met(&fixtures().join("experiment/lexostatus_registerstatus.yaml"));
+    let (service, id) = service_with(&fixtures().join("experiment/lexostatus_registerstatus.yaml"));
     for extra in [0usize, 100, 990] {
         let mut grams = basis.clone();
         for i in 0..extra {
@@ -271,41 +268,41 @@ fn meet_tijd() {
                 .insert("aanduiding".into(), json!(format!("ANDER{i}")));
             grams.push(g);
         }
-        meet(&def, &service, &id, &grams, &inputs(&["VOORBEELD"])[0]);
+        measure(&def, &service, &id, &grams, &inputs(&["VOORBEELD"])[0]);
     }
 }
 
-fn meet(
-    def: &reductie::LexostatusDefinitie,
+fn measure(
+    def: &reduction::LexostatusDefinition,
     service: &LawExecutionService,
     id: &str,
     grams: &[Gram],
     i: &Map<String, Value>,
 ) {
     let n = 200;
-    let namen = uitkomsten_van(def);
-    let outputs: Vec<&str> = namen.iter().map(String::as_str).collect();
+    let names = outputs_of(def);
+    let outputs: Vec<&str> = names.iter().map(String::as_str).collect();
     let t = Instant::now();
     for _ in 0..n {
-        reductie::reduceer(def, i, grams).unwrap();
+        reduction::reduce(def, i, grams).unwrap();
     }
     let dsl = t.elapsed();
     let t = Instant::now();
     for _ in 0..n {
-        lexostatus_engine::reduceer(
+        lexostatus_engine::reduce(
             service,
             id,
             &outputs,
             i,
             grams,
             &def.reduction.chronicle,
-            DATUM,
+            DATE,
         )
         .unwrap();
     }
     let engine = t.elapsed();
     println!(
-        "{}: {} grammen, {n}x: dsl {:?}/run, engine {:?}/run",
+        "{}: {} grams, {n}x: dsl {:?}/run, engine {:?}/run",
         def.name,
         grams.len(),
         dsl / n,
@@ -313,27 +310,27 @@ fn meet(
     );
 }
 
-/// Dezelfde vergelijking voor cellen en artikelen van buiten deze repo.
+/// The same comparison for cells and articles from outside this repo.
 ///
-/// `EXP_VERGELIJK`: een json-lijst, een object per vergelijking, met
+/// `EXP_COMPARE`: a json list, one object per comparison, with
 ///
-/// - `cel_map`: de map van de cel (met `cel.yaml`);
-/// - `extra` (optioneel): een bestand met json-regels in de vorm van de
-///   startstand, die erachter komen;
-/// - `artikel`: het engine-artikel met de lexostatus;
-/// - `lexostatus`: de naam van de lexostatus in de cel;
-/// - `inputs`: een lijst inputs, een object per geval.
+/// - `cell_dir`: the directory of the cell (with `cell.yaml`);
+/// - `extra` (optional): a file with json lines in the shape of the initial
+///   state, appended after it;
+/// - `article`: the engine article with the lexostatus;
+/// - `lexostatus`: the name of the lexostatus in the cell;
+/// - `inputs`: a list of inputs, one object per case.
 ///
-/// Zonder die variabele slaat de test over.
+/// Without that variable the test skips.
 #[test]
 fn compare_from_env() {
     let Ok(input) = std::env::var("EXP_COMPARE") else {
-        eprintln!("EXP_VERGELIJK niet gezet: overgeslagen");
+        eprintln!("EXP_COMPARE not set: skipped");
         return;
     };
     let list: Vec<Value> = serde_json::from_str(&input).unwrap();
-    let (mut gevallen, mut waarden) = (0, 0);
-    let mut verschillen = Vec::new();
+    let (mut cases, mut values) = (0, 0);
+    let mut differences = Vec::new();
     for v in &list {
         let map = PathBuf::from(v["cell_dir"].as_str().unwrap());
         let extra: Vec<Value> = match v.get("extra").and_then(Value::as_str) {
@@ -345,86 +342,89 @@ fn compare_from_env() {
                 .collect(),
             None => Vec::new(),
         };
-        let (def, grams) = grammen_van(&map, &extra);
-        let lexo = reductie::laad(&map.join(&def.lexostatuses)).unwrap();
+        let (def, grams) = grams_of(&map, &extra);
+        let lexo = reduction::load(&map.join(&def.lexostatuses)).unwrap();
         let name = v["lexostatus"].as_str().unwrap();
         let def = lexo.lexostatus(name).unwrap().clone();
-        let (service, id) = service_met(Path::new(v["article"].as_str().unwrap()));
+        let (service, id) = service_with(Path::new(v["article"].as_str().unwrap()));
         let inputs: Vec<Map<String, Value>> = serde_json::from_value(v["inputs"].clone()).unwrap();
-        let namen = uitkomsten_van(&def);
-        let outputs: Vec<&str> = namen.iter().map(String::as_str).collect();
+        let names = outputs_of(&def);
+        let outputs: Vec<&str> = names.iter().map(String::as_str).collect();
         println!(
-            "{name} ({} grammen, {} extra): {} gevallen x {} uitkomsten {outputs:?}",
+            "{name} ({} grams, {} extra): {} cases x {} outputs {outputs:?}",
             grams.len(),
             extra.len(),
             inputs.len(),
             outputs.len()
         );
         for i in &inputs {
-            let uit = lexostatus_engine::reduceer(
+            let out = lexostatus_engine::reduce(
                 &service,
                 &id,
                 &outputs,
                 i,
                 &grams,
                 &def.reduction.chronicle,
-                DATUM,
+                DATE,
             )
             .unwrap();
-            println!("  {i:?}: {uit:?}");
+            println!("  {i:?}: {out:?}");
         }
-        verschillen.extend(
-            vergelijk(&def, &service, &id, &grams, &inputs)
+        differences.extend(
+            compare(&def, &service, &id, &grams, &inputs)
                 .into_iter()
                 .map(|f| format!("{name}: {f}")),
         );
-        gevallen += inputs.len();
-        waarden += inputs.len() * outputs.len();
-        meet(&def, &service, &id, &grams, &inputs[0]);
+        cases += inputs.len();
+        values += inputs.len() * outputs.len();
+        measure(&def, &service, &id, &grams, &inputs[0]);
     }
     println!(
-        "vergeleken: {} lexostatus-runs, {gevallen} gevallen, {waarden} waarden",
+        "compared: {} lexostatus runs, {cases} cases, {values} values",
         list.len()
     );
-    assert!(verschillen.is_empty(), "{verschillen:#?}");
+    assert!(differences.is_empty(), "{differences:#?}");
 }
 
-/// Stap 2: de synthese per regel als engine-run, voor een corpus van buiten
-/// deze repo. Elke lexostatus is een regeling die haar kroniek via een
-/// [`lexostatus_engine::KroniekBron`] krijgt; de synthese-regeling haalt ze
-/// op met `source` en bouwt de tabel; daarna rekent de afnemende regeling.
+/// Step 2: the synthesis per row as an engine run, for a corpus from outside
+/// this repo. Every lexostatus is a regulation that gets its chronicle via a
+/// [`lexostatus_engine::ChronicleSource`]; the synthesis regulation fetches
+/// them with `source` and builds the table; then the consuming regulation
+/// computes.
 ///
-/// - `EXP_REGULATION`: de map met de regelingen van het corpus;
-/// - `EXP_SYNTHESE_MAP`: de map met de lexostatus- en synthese-regelingen
-///   (een `koppeling.yaml` erin, voor de runtime, telt niet mee);
-/// - `EXP_KOPPELING`: json-lijst `{regeling, cel_map, kroniek}` (welke
-///   lexostatus-regeling welke kroniek leest: de deploymentconfiguratie);
-/// - `EXP_SYNTHESE`: json `{regeling, uitkomst, jaar, inputs, verwacht}` van
-///   de synthese; `verwacht` (optioneel) geeft per uitkomst de waarde die de
-///   synthese van de cel-runtime oplevert (de tabel, de vertaalde
+/// - `EXP_REGULATION`: the directory with the regulations of the corpus;
+/// - `EXP_SYNTHESIS_DIR`: the directory with the lexostatus and synthesis
+///   regulations (a `koppeling.yaml` in it, for the runtime, does not count);
+/// - `EXP_BINDING`: json list `{regulation, cell_dir, chronicle}` (which
+///   lexostatus regulation reads which chronicle: the deployment
+///   configuration);
+/// - `EXP_SYNTHESIS`: json `{regulation, output, year, inputs, expected}` of
+///   the synthesis; `expected` (optional) gives per output the value the
+///   synthesis of the cell runtime produces (the table, the translated
 ///   parameters);
-/// - `EXP_AFNEMER`: json `{regeling, uitkomst, tabel, jaar, verwacht}`: de
-///   afnemer krijgt de tabel als parameter `tabel` en het jaar als `jaar`.
+/// - `EXP_CONSUMER`: json `{regulation, output, table, year, expected}`: the
+///   consumer gets the synthesis output as the parameter named by `table`
+///   and the year as the parameter named by `year`.
 #[test]
 fn synthesis_from_env() {
-    let (Ok(corpus), Ok(map), Ok(koppeling), Ok(synthesis), Ok(afnemer)) = (
+    let (Ok(corpus), Ok(map), Ok(binding), Ok(synthesis), Ok(consumer)) = (
         std::env::var("EXP_REGULATION"),
         std::env::var("EXP_SYNTHESIS_DIR"),
         std::env::var("EXP_BINDING"),
         std::env::var("EXP_SYNTHESIS"),
         std::env::var("EXP_CONSUMER"),
     ) else {
-        eprintln!("EXP_* niet gezet: overgeslagen");
+        eprintln!("EXP_* not set: skipped");
         return;
     };
     let t = Instant::now();
-    let mut service = regelrecht_cel::regelingen::laad(Path::new(&corpus))
+    let mut service = regelrecht_cel::regulations::load(Path::new(&corpus))
         .unwrap()
         .service;
-    // De regelingen in de map; het koppelbestand van de runtime
-    // (`koppeling.yaml`) is geen regeling.
-    let bestanden = regelrecht_cel::laden::yaml_bestanden(Path::new(&map)).unwrap();
-    for b in bestanden
+    // The regulations in the directory; the runtime's binding file
+    // (`koppeling.yaml`) is not a regulation.
+    let files = regelrecht_cel::load::yaml_files(Path::new(&map)).unwrap();
+    for b in files
         .iter()
         .filter(|b| b.file_name().is_some_and(|n| n != "koppeling.yaml"))
     {
@@ -433,11 +433,11 @@ fn synthesis_from_env() {
             .map_err(|e| format!("{}: {e}", b.display()))
             .unwrap();
     }
-    let koppeling: Vec<Value> = serde_json::from_str(&koppeling).unwrap();
-    for k in &koppeling {
-        let (_, grams) = grammen_van(Path::new(k["cell_dir"].as_str().unwrap()), &[]);
+    let binding: Vec<Value> = serde_json::from_str(&binding).unwrap();
+    for k in &binding {
+        let (_, grams) = grams_of(Path::new(k["cell_dir"].as_str().unwrap()), &[]);
         service.add_data_source(Box::new(
-            lexostatus_engine::KroniekBron::new(
+            lexostatus_engine::ChronicleSource::new(
                 k["regulation"].as_str().unwrap(),
                 &grams,
                 k["chronicle"].as_str().unwrap(),
@@ -445,26 +445,26 @@ fn synthesis_from_env() {
             .unwrap(),
         ));
     }
-    println!("laden: {:?}", t.elapsed());
+    println!("loading: {:?}", t.elapsed());
     let s: Value = serde_json::from_str(&synthesis).unwrap();
-    let a: Value = serde_json::from_str(&afnemer).unwrap();
+    let a: Value = serde_json::from_str(&consumer).unwrap();
     let input: BTreeMap<String, Value> = serde_json::from_value(s["inputs"].clone()).unwrap();
-    let verwacht: Map<String, Value> = s
+    let expected: Map<String, Value> = s
         .get("expected")
         .and_then(Value::as_object)
         .cloned()
         .unwrap_or_default();
     let mut outputs = vec![s["output"].as_str().unwrap(), s["year"].as_str().unwrap()];
-    outputs.extend(verwacht.keys().map(String::as_str));
+    outputs.extend(expected.keys().map(String::as_str));
     outputs.sort_unstable();
     outputs.dedup();
     let t = Instant::now();
-    let e = regelrecht_cel::toets::evalueer_met_trace(
+    let e = regelrecht_cel::assessment::evaluate_with_trace(
         &service,
         s["regulation"].as_str().unwrap(),
         &outputs,
         &input,
-        DATUM,
+        DATE,
     );
     println!("synthesis: {:?}", t.elapsed());
     assert!(
@@ -474,29 +474,29 @@ fn synthesis_from_env() {
         e.missing,
         e.trace_text.unwrap_or_default()
     );
-    let verschillen: Vec<String> = verwacht
+    let differences: Vec<String> = expected
         .iter()
-        .filter(|(u, w)| e.waarden.get(*u) != Some(*w))
-        .map(|(u, w)| format!("{u}: runtime {w}, engine {:?}", e.waarden.get(u)))
+        .filter(|(u, w)| e.values.get(*u) != Some(*w))
+        .map(|(u, w)| format!("{u}: runtime {w}, engine {:?}", e.values.get(u)))
         .collect();
     println!(
-        "synthesis: {} van {} uitkomsten gelijk aan de runtime",
-        verwacht.len() - verschillen.len(),
-        verwacht.len()
+        "synthesis: {} of {} outputs equal to the runtime",
+        expected.len() - differences.len(),
+        expected.len()
     );
-    assert!(verschillen.is_empty(), "{verschillen:#?}");
-    let table = e.waarden[s["output"].as_str().unwrap()].clone();
-    let jaar = e.waarden[s["year"].as_str().unwrap()].clone();
-    println!("table: {table}\njaar: {jaar}");
+    assert!(differences.is_empty(), "{differences:#?}");
+    let table = e.values[s["output"].as_str().unwrap()].clone();
+    let year = e.values[s["year"].as_str().unwrap()].clone();
+    println!("table: {table}\nyear: {year}");
     let mut p = BTreeMap::new();
     p.insert(a["table"].as_str().unwrap().to_string(), table);
-    p.insert(a["year"].as_str().unwrap().to_string(), jaar);
-    let r = regelrecht_cel::toets::evalueer(
+    p.insert(a["year"].as_str().unwrap().to_string(), year);
+    let r = regelrecht_cel::assessment::evaluate(
         &service,
         a["regulation"].as_str().unwrap(),
         &[a["output"].as_str().unwrap()],
         &p,
-        DATUM,
+        DATE,
     );
     assert!(
         r.error.is_none() && r.missing.is_empty(),
@@ -504,26 +504,26 @@ fn synthesis_from_env() {
         r.error,
         r.missing
     );
-    let bedrag = &r.waarden[a["output"].as_str().unwrap()];
-    println!("{}: {bedrag}", a["output"]);
-    assert_eq!(bedrag, &a["expected"]);
+    let amount = &r.values[a["output"].as_str().unwrap()];
+    println!("{}: {amount}", a["output"]);
+    assert_eq!(amount, &a["expected"]);
 }
 
-/// Een gram voor de toets van stap 8, zoals een cel het vastlegde.
-fn stap8_gram(
+/// A gram for the step 8 check, as a cell recorded it.
+fn step8_gram(
     id: &str,
     name: &str,
-    soort: &str,
+    kind: &str,
     stage: Option<&str>,
     refers_to: Value,
     fields: Value,
-    dag: &str,
+    day: &str,
 ) -> Gram {
     let mut g = json!({
         "kind": "chronolexogram", "id": id, "type": if stage.is_some() { "decretogram" } else { "executogram" },
-        "subtype": soort, "name": name, "chronicle": "test_toeslag", "recording_actor": "test_toeslagdienst",
-        "legal_basis": ["testregeling_toeslag#1"], "effective_at": format!("{dag}T10:00:00+01:00"),
-        "recorded_at": format!("{dag}T10:00:00+01:00"), "refers_to": refers_to,
+        "subtype": kind, "name": name, "chronicle": "test_toeslag", "recording_actor": "test_toeslagdienst",
+        "legal_basis": ["testregeling_toeslag#1"], "effective_at": format!("{day}T10:00:00+01:00"),
+        "recorded_at": format!("{day}T10:00:00+01:00"), "refers_to": refers_to,
         "stream": {"id": "test_toeslag_zaakverloop", "sha256": "0".repeat(64)}, "fields": fields,
     });
     if let Some(s) = stage {
@@ -532,24 +532,24 @@ fn stap8_gram(
     serde_json::from_value(g).unwrap()
 }
 
-/// Notitie "bron en gram-id", stap 8, naar de echte tekst: Awb 4:52 lid 1
-/// ("overeenkomstig de subsidievaststelling") leest per besluit, en Awb 4:95
+/// Note "bron en gram-id", step 8, after the actual text: Awb 4:52 lid 1
+/// ("overeenkomstig de subsidievaststelling") reads per decision, and Awb 4:95
 /// lid 4 ("Betaalde voorschotten worden verrekend met de te betalen
-/// geldsom") verrekent de voorschotten. Een fictieve toeslag: voorschot 500
-/// (betaald), vaststelling 300. Per besluit is op de vaststelling niets
-/// betaald; met de verrekening is er niets meer te betalen en is 200
-/// onverschuldigd, en dat is wat de terugvordering (die naar de vaststelling
-/// verwijst, en zo bij dezelfde aanvraag hoort) terugvordert. Het beleid van
-/// de toeslagdienst voert beide artikelen uit met een gewone source; de
-/// betalingen komen uit zijn eigen administratie (een kroniek als bron).
+/// geldsom") offsets the advances. A fictional allowance: advance 500 (paid),
+/// determination 300. Per decision nothing has been paid on the
+/// determination; with the offset there is nothing left to pay and 200 is
+/// undue, and that is what the recovery (which refers to the determination,
+/// and so belongs to the same application) recovers. The policy of the
+/// allowance service executes both articles with an ordinary source; the
+/// payments come from its own records (a chronicle as the source).
 #[test]
-fn voorschot_en_vaststelling_per_besluit_met_verrekening() {
-    const BELEID: &str = "testbeleid_toeslagdienst";
+fn advance_and_determination_per_decision_with_offset() {
+    const POLICY: &str = "testbeleid_toeslagdienst";
     let id = |n: u32| format!("00000000-0000-4000-8000-{n:012}");
     let (g101, g110, g111, g120, g130, g131) =
         (id(101), id(110), id(111), id(120), id(130), id(131));
     let grams = vec![
-        stap8_gram(
+        step8_gram(
             &g101,
             "aanvraag_ontvangen",
             "aanvraag",
@@ -558,7 +558,7 @@ fn voorschot_en_vaststelling_per_besluit_met_verrekening() {
             json!({}),
             "2025-03-01",
         ),
-        stap8_gram(
+        step8_gram(
             &g110,
             "voorschot_verleend",
             "voorschot",
@@ -567,7 +567,7 @@ fn voorschot_en_vaststelling_per_besluit_met_verrekening() {
             json!({"voorschot": 500}),
             "2025-03-02",
         ),
-        stap8_gram(
+        step8_gram(
             &g111,
             "voorschot_betaald",
             "betaling",
@@ -576,7 +576,7 @@ fn voorschot_en_vaststelling_per_besluit_met_verrekening() {
             json!({"bedrag": 500}),
             "2025-03-03",
         ),
-        stap8_gram(
+        step8_gram(
             &g120,
             "toeslag_vastgesteld",
             "vaststelling",
@@ -586,22 +586,20 @@ fn voorschot_en_vaststelling_per_besluit_met_verrekening() {
             "2025-03-10",
         ),
     ];
-    // De kroniek: de vaststelling hoort via haar verwijzing bij de aanvraag.
+    // The chronicle: the determination belongs to the application through its reference.
     let dir = tempfile::tempdir().unwrap();
-    let chronicle = regelrecht_cel::kroniek::Kroniek::open(dir.path(), &["test_toeslag"]).unwrap();
+    let chronicle =
+        regelrecht_cel::chronicle::Chronicle::open(dir.path(), &["test_toeslag"]).unwrap();
     for g in &grams {
-        chronicle.voeg_toe(g).unwrap();
+        chronicle.add(g).unwrap();
     }
     assert_eq!(
-        chronicle
-            .lees_wortel(&["test_toeslag"], &g101)
-            .unwrap()
-            .len(),
+        chronicle.read_root(&["test_toeslag"], &g101).unwrap().len(),
         4
     );
 
-    let evalueer = |grams: &[Gram], regulation: &str, outputs: &[&str], p: Value| {
-        let mut corpus = regelrecht_cel::regelingen::laad(&fixtures().join("regulation")).unwrap();
+    let evaluate = |grams: &[Gram], regulation: &str, outputs: &[&str], p: Value| {
+        let mut corpus = regelrecht_cel::regulations::load(&fixtures().join("regulation")).unwrap();
         corpus
             .service
             .load_law(
@@ -610,61 +608,61 @@ fn voorschot_en_vaststelling_per_besluit_met_verrekening() {
             )
             .unwrap();
         corpus.service.add_data_source(Box::new(
-            lexostatus_engine::KroniekBron::new(BELEID, grams, "test_toeslag").unwrap(),
+            lexostatus_engine::ChronicleSource::new(POLICY, grams, "test_toeslag").unwrap(),
         ));
         let p: BTreeMap<String, Value> = serde_json::from_value(p).unwrap();
-        let e = regelrecht_cel::toets::evalueer(&corpus.service, regulation, outputs, &p, DATUM);
-        assert!(e.volledig(outputs), "{e:?}");
-        e.waarden
+        let e =
+            regelrecht_cel::assessment::evaluate(&corpus.service, regulation, outputs, &p, DATE);
+        assert!(e.complete(outputs), "{e:?}");
+        e.values
     };
-    // De administratie: per besluit, en de voorschotten op dezelfde aanvraag.
-    let a = evalueer(
+    // The records: per decision, and the advances on the same application.
+    let a = evaluate(
         &grams,
-        BELEID,
+        POLICY,
         &["betaald_bij_besluit", "betaalde_voorschotten"],
         json!({"besluit": g120}),
     );
     assert_eq!(
         a["betaald_bij_besluit"],
         json!(0),
-        "op de vaststelling zelf is niets betaald (4:52 lid 1)"
+        "nothing has been paid on the determination itself (4:52 lid 1)"
     );
     assert_eq!(
         a["betaalde_voorschotten"],
         json!(500),
-        "het voorschot op dezelfde aanvraag (4:95 lid 4)"
+        "the advance on the same application (4:95 lid 4)"
     );
-    // De verplichting: niets meer te betalen, 200 onverschuldigd.
-    let vaststelling =
+    // The obligation: nothing left to pay, 200 undue.
+    let determination =
         json!({"besluit": g120, "vastgesteld_bedrag": 300, "datum_bekendmaking": "2025-03-11"});
-    let v = evalueer(
+    let v = evaluate(
         &grams,
-        BELEID,
+        POLICY,
         &[
             "nog_te_betalen_verstrekker",
             "onverschuldigd_betaald_verstrekker",
         ],
-        vaststelling.clone(),
+        determination.clone(),
     );
     assert_eq!(v["nog_te_betalen_verstrekker"], json!(0));
     assert_eq!(v["onverschuldigd_betaald_verstrekker"], json!(200));
-    // Alleen 4:52 per besluit, zonder verrekening, zou 300 te betalen geven:
-    // de dienst zou dan dubbel betalen.
-    let alleen = evalueer(
+    // Only 4:52 per decision, without offset, would give 300 to pay: the
+    // service would then pay twice.
+    let only = evaluate(
         &grams,
         "testregeling_awb",
         &["nog_te_betalen"],
         json!({"vastgesteld_bedrag": 300, "betaald_bedrag": 0, "datum_bekendmaking": "2025-03-11"}),
     );
-    assert_eq!(alleen["nog_te_betalen"], json!(300));
+    assert_eq!(only["nog_te_betalen"], json!(300));
 
-    // De terugvordering: een ambtshalve besluit zonder aanvraag, dat met
-    // betreft naar de vaststelling verwijst en zo bij dezelfde aanvraag
-    // hoort; zij vordert terug wat onverschuldigd is. De terugbetaling
-    // verwijst naar de terugvordering en telt niet als betaling op de
-    // vaststelling.
-    let mut verder = grams.clone();
-    verder.push(stap8_gram(
+    // The recovery: an ex officio decision without an application, which
+    // refers to the determination with `concerns` and so belongs to the same
+    // application; it recovers what is undue. The repayment refers to the
+    // recovery and does not count as a payment on the determination.
+    let mut further = grams.clone();
+    further.push(step8_gram(
         &g130,
         "terugvordering_vastgesteld",
         "terugvordering",
@@ -673,7 +671,7 @@ fn voorschot_en_vaststelling_per_besluit_met_verrekening() {
         json!({"terug_te_vorderen": v["onverschuldigd_betaald_verstrekker"].clone()}),
         "2025-03-12",
     ));
-    verder.push(stap8_gram(
+    further.push(step8_gram(
         &g131,
         "terugbetaling_ontvangen",
         "terugbetaling",
@@ -682,28 +680,28 @@ fn voorschot_en_vaststelling_per_besluit_met_verrekening() {
         json!({"bedrag": 200}),
         "2025-03-12",
     ));
-    for g in &verder[4..] {
-        chronicle.voeg_toe(g).unwrap();
+    for g in &further[4..] {
+        chronicle.add(g).unwrap();
     }
-    let group = chronicle.lees_wortel(&["test_toeslag"], &g101).unwrap();
+    let group = chronicle.read_root(&["test_toeslag"], &g101).unwrap();
     assert_eq!(
         group.len(),
         6,
-        "de terugvordering hoort via betreft bij de aanvraag"
+        "the recovery belongs to the application through concerns"
     );
     assert_eq!(group[4].gram.root.as_deref(), Some(g101.as_str()));
-    let after = evalueer(
-        &verder,
-        BELEID,
+    let after = evaluate(
+        &further,
+        POLICY,
         &["betaald_bij_besluit", "betaalde_voorschotten"],
         json!({"besluit": g120}),
     );
     assert_eq!(after["betaald_bij_besluit"], json!(0));
     assert_eq!(after["betaalde_voorschotten"], json!(500));
-    // Een ambtshalve besluit zonder voorganger is zijn eigen wortel.
+    // An ex officio decision without a predecessor is its own root.
     let g300 = id(300);
     chronicle
-        .voeg_toe(&stap8_gram(
+        .add(&step8_gram(
             &g300,
             "terugvordering_vastgesteld",
             "terugvordering",
@@ -714,29 +712,26 @@ fn voorschot_en_vaststelling_per_besluit_met_verrekening() {
         ))
         .unwrap();
     assert_eq!(
-        chronicle
-            .lees_wortel(&["test_toeslag"], &g300)
-            .unwrap()
-            .len(),
+        chronicle.read_root(&["test_toeslag"], &g300).unwrap().len(),
         1
     );
 }
 
-/// Stap 8 voor een corpus buiten deze repo (bijvoorbeeld de variant van een
-/// echte casus), met paden uit de omgeving; zonder `EXP_BETALING` slaat hij
-/// over. `EXP_BETALING`: json `{regulation, grammen (jsonl), beleid,
-/// kroniek, gevallen: [{regeling, uitkomsten, parameters, datum,
-/// verwacht}]}`: het beleid krijgt de grammen als bron van zijn register, en
-/// elk geval moet zijn verwachte uitkomsten geven.
+/// Step 8 for a corpus outside this repo (for example the variant of a real
+/// case), with paths from the environment; without `EXP_PAYMENT` it skips.
+/// `EXP_PAYMENT`: json `{regulation, grams (jsonl), policy, chronicle,
+/// cases: [{regulation, outputs, parameters, date, expected}]}`: the policy
+/// gets the grams as the source of its register, and every case must give
+/// its expected outputs.
 #[test]
 fn payment_from_env() {
     let Ok(input) = std::env::var("EXP_PAYMENT") else {
-        eprintln!("EXP_BETALING niet gezet: overgeslagen");
+        eprintln!("EXP_PAYMENT not set: skipped");
         return;
     };
     let v: Value = serde_json::from_str(&input).unwrap();
     let mut corpus =
-        regelrecht_cel::regelingen::laad(Path::new(v["regulation"].as_str().unwrap())).unwrap();
+        regelrecht_cel::regulations::load(Path::new(v["regulation"].as_str().unwrap())).unwrap();
     let grams: Vec<Gram> = std::fs::read_to_string(v["grams"].as_str().unwrap())
         .unwrap()
         .lines()
@@ -744,7 +739,7 @@ fn payment_from_env() {
         .map(|r| serde_json::from_str(r).unwrap())
         .collect();
     corpus.service.add_data_source(Box::new(
-        lexostatus_engine::KroniekBron::new(
+        lexostatus_engine::ChronicleSource::new(
             v["policy"].as_str().unwrap(),
             &grams,
             v["chronicle"].as_str().unwrap(),
@@ -759,17 +754,17 @@ fn payment_from_env() {
             .map(|u| u.as_str().unwrap())
             .collect();
         let p: BTreeMap<String, Value> = serde_json::from_value(g["parameters"].clone()).unwrap();
-        let e = regelrecht_cel::toets::evalueer(
+        let e = regelrecht_cel::assessment::evaluate(
             &corpus.service,
             g["regulation"].as_str().unwrap(),
             &outputs,
             &p,
             g["date"].as_str().unwrap(),
         );
-        println!("{} {:?}: {:?}", g["regulation"], outputs, e.waarden);
-        assert!(e.volledig(&outputs), "{e:?}");
+        println!("{} {:?}: {:?}", g["regulation"], outputs, e.values);
+        assert!(e.complete(&outputs), "{e:?}");
         for (k, w) in g["expected"].as_object().unwrap() {
-            assert_eq!(&e.waarden[k], w, "{k}");
+            assert_eq!(&e.values[k], w, "{k}");
         }
     }
 }

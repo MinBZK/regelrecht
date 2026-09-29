@@ -1,31 +1,30 @@
-//! Registers als bron van het beleid dat ze bevraagt (notitie "bron en
+//! Registers as the source of the policy that queries them (note "bron en
 //! gram-id", 29-09-2026).
 //!
-//! Een gegeven van buiten volgt vier lagen: een wet stelt het register in en
-//! zegt wat erin komt (`vestigt`), een wet geeft de afnemer de grondslag om
-//! op te vragen, en het beleid van de beheerder geeft het register een naam
-//! en beschrijft de bevraging, als artikel met een invoer zonder bron
-//! (`source: {}`). De afnemer haalt het gegeven op met een gewone `source`
-//! naar dat beleid. Welk systeem het register levert (de kroniek van een
-//! cel, een oude API), zegt alleen de deployment, in een koppelbestand
-//! (`CEL_REGISTERS`):
+//! A piece of data from outside follows four layers: a law establishes the
+//! register and says what goes into it (`establishes`), a law gives the
+//! consumer the legal basis to request it, and the policy of the keeper gives
+//! the register a name and describes the query, as an article with an input
+//! without a source (`source: {}`). The consumer fetches the data with an
+//! ordinary `source` to that policy. Which system supplies the register (the
+//! chronicle of a cell, a legacy API) is stated only by the deployment, in a
+//! binding file (`CELL_REGISTERS`):
 //!
 //! ```yaml
 //! registers:
-//!   <beleid>#<naam van het register>: {cel: <cel-id>, kroniek: <kroniek>}
+//!   <policy>#<name of the register>: {cell: <cell-id>, chronicle: <chronicle>}
 //! ```
 //!
-//! De runtime registreert per regel een [`Registerbron`]: een databron met
-//! `law_scope` het beleid, die de invoer zonder bron van dat beleid vult met
-//! de grammen van de kroniek, zoals ze nu vastliggen. Opstartcontrole: elk
-//! beleid met zo'n invoer heeft een bron, elke bron een beleid met zo'n
-//! invoer, een cel en een kroniek van die cel; noemt het beleid de naam van
-//! het register (uitkomst `naam_register`), dan is dat de naam in de
-//! koppeling.
+//! The runtime registers a [`RegisterSource`] per line: a data source with
+//! the policy as `law_scope`, which fills that policy's source-less input
+//! with the grams of the chronicle, as they are recorded now. Startup check:
+//! every policy with such an input has a source, every source a policy with
+//! such an input, a cell and a chronicle of that cell; if the policy names
+//! the register (output `naam_register`), that is the name in the binding.
 //!
-//! Een proef (een handeling die nog niet vastligt) telt mee zoals bij een
-//! reductie op proef: [`met_proef`] zet het gram van het concept erbij, voor
-//! de duur van een engine-run op deze draad.
+//! A trial (an action that is not yet recorded) counts as in a trial
+//! reduction: [`with_trial`] adds the gram of the draft, for the duration of
+//! an engine run on this thread.
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -35,63 +34,63 @@ use std::sync::{Arc, OnceLock};
 use regelrecht_engine::{DataSource, LawExecutionService, Value as EngineValue};
 use serde::Deserialize;
 
+use crate::chronicle::Chronicle;
 use crate::gram::Gram;
-use crate::kroniek::Kroniek;
-use crate::laden;
 use crate::lexostatus_engine;
+use crate::load;
 
-/// De uitkomst waarmee een beleid de naam van zijn register noemt.
-pub const NAAM_REGISTER: &str = "naam_register";
+/// The output with which a policy names its register.
+pub const NAME_REGISTER: &str = "naam_register";
 
 thread_local! {
-    /// De grammen van een proef, voor de duur van [`met_proef`].
-    static PROEF: RefCell<Vec<Gram>> = const { RefCell::new(Vec::new()) };
+    /// The grams of a trial, for the duration of [`with_trial`].
+    static TRIAL: RefCell<Vec<Gram>> = const { RefCell::new(Vec::new()) };
 }
 
-/// Voer `f` uit met `grammen` erbij in elke registerbron: het concept van
-/// een handeling op proef telt mee alsof het vastlag. Alleen op deze draad,
-/// en alleen tijdens `f` (een engine-run is synchroon).
-/// Ook na een panic in `f` gaat de overlay eraf: de draad dient daarna een
-/// ander verzoek.
-pub fn met_proef<T>(grams: Vec<Gram>, f: impl FnOnce() -> T) -> T {
-    struct Terug(Option<Vec<Gram>>);
-    impl Drop for Terug {
+/// Run `f` with `grams` added to every register source: the draft of an
+/// action on trial counts as if it were recorded. Only on this thread, and
+/// only during `f` (an engine run is synchronous).
+/// The overlay is removed even after a panic in `f`: the thread serves
+/// another request afterwards.
+pub fn with_trial<T>(grams: Vec<Gram>, f: impl FnOnce() -> T) -> T {
+    struct Back(Option<Vec<Gram>>);
+    impl Drop for Back {
         fn drop(&mut self) {
-            let oud = self.0.take().unwrap_or_default();
-            PROEF.with(|p| *p.borrow_mut() = oud);
+            let old = self.0.take().unwrap_or_default();
+            TRIAL.with(|p| *p.borrow_mut() = old);
         }
     }
-    let _terug = Terug(Some(
-        PROEF.with(|p| std::mem::replace(&mut *p.borrow_mut(), grams)),
+    let _back = Back(Some(
+        TRIAL.with(|p| std::mem::replace(&mut *p.borrow_mut(), grams)),
     ));
     f()
 }
 
-/// Een regel van het koppelbestand.
+/// A line of the binding file.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Koppeling {
+pub struct Binding {
     pub cell: String,
     pub chronicle: String,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Bestand {
-    registers: BTreeMap<String, Koppeling>,
+struct File {
+    registers: BTreeMap<String, Binding>,
 }
 
-/// Een register als databron: de kroniek van een cel, voor de invoer zonder
-/// bron van een beleid.
-pub struct Registerbron {
+/// A register as a data source: the chronicle of a cell, for the source-less
+/// input of a policy.
+pub struct RegisterSource {
     name: String,
-    beleid: String,
+    policy: String,
     field: String,
     chronicle: String,
-    source: Arc<OnceLock<Arc<Kroniek>>>,
+    source: Arc<OnceLock<Arc<Chronicle>>>,
 }
 
-impl DataSource for Registerbron {
+impl DataSource for RegisterSource {
     fn name(&self) -> &str {
         &self.name
     }
@@ -109,43 +108,43 @@ impl DataSource for Registerbron {
             return None;
         }
         let chronicle = self.source.get()?;
-        let vast = chronicle.lees(&self.chronicle).ok()?;
-        let trial: Vec<Gram> = PROEF.with(|p| p.borrow().clone());
-        let grams = vast
+        let fixed = chronicle.read(&self.chronicle).ok()?;
+        let trial: Vec<Gram> = TRIAL.with(|p| p.borrow().clone());
+        let grams = fixed
             .iter()
             .map(|v| &v.gram)
             .chain(trial.iter().filter(|g| g.chronicle == self.chronicle));
-        let list = lexostatus_engine::als_kroniek(grams, &self.chronicle).ok()?;
+        let list = lexostatus_engine::as_chronicle(grams, &self.chronicle).ok()?;
         Some(EngineValue::from(&list))
     }
     fn fields(&self) -> Vec<&str> {
         vec![self.field.as_str()]
     }
     fn law_scope(&self) -> Option<&str> {
-        Some(&self.beleid)
+        Some(&self.policy)
     }
     fn key_fields(&self) -> Option<&[String]> {
         Some(&[])
     }
 }
 
-/// De plek waar een registerbron haar kroniek krijgt.
-type Slot = Arc<OnceLock<Arc<Kroniek>>>;
+/// The place where a register source receives its chronicle.
+type Lock = Arc<OnceLock<Arc<Chronicle>>>;
 
-/// De registers van een deployment, nadat ze als bron in het corpus staan;
-/// de kronieken komen erbij als de cellen hun kroniek openen
+/// The registers of a deployment, once they are in the corpus as sources;
+/// the chronicles are added when the cells open their chronicle
 /// ([`Registers::open`]).
 #[derive(Default)]
 pub struct Registers {
-    koppelingen: Vec<(String, Koppeling, Slot)>,
+    bindings: Vec<(String, Binding, Lock)>,
 }
 
-/// De invoer zonder bron (`source: {}`) van een regeling: de namen.
-fn registerinvoer(service: &LawExecutionService, regulation: &str) -> Vec<String> {
+/// The source-less input (`source: {}`) of a regulation: the names.
+fn register_input(service: &LawExecutionService, regulation: &str) -> Vec<String> {
     let Some(law) = service.resolver().get_law(regulation) else {
         return Vec::new();
     };
-    let mut uit: Vec<String> = law
+    let mut out: Vec<String> = law
         .articles
         .iter()
         .filter_map(|a| a.get_execution_spec())
@@ -157,145 +156,148 @@ fn registerinvoer(service: &LawExecutionService, regulation: &str) -> Vec<String
         })
         .map(|i| i.name.clone())
         .collect();
-    uit.sort();
-    uit.dedup();
-    uit
+    out.sort();
+    out.dedup();
+    out
 }
 
-/// De regelingen van het corpus met een invoer zonder bron: een register dat
-/// de deployment moet koppelen.
-fn beleid_met_register(service: &LawExecutionService) -> Vec<String> {
+/// The regulations of the corpus with a source-less input: a register that
+/// the deployment must bind.
+fn policy_with_register(service: &LawExecutionService) -> Vec<String> {
     service
         .resolver()
         .list_laws()
         .into_iter()
-        .filter(|id| !registerinvoer(service, id).is_empty())
+        .filter(|id| !register_input(service, id).is_empty())
         .map(str::to_string)
         .collect()
 }
 
-/// Lees het koppelbestand (`None`: geen), zet per register een bron in het
-/// corpus, en controleer het tegen het corpus. `datum` is de dag waarop de
-/// naam van het register uit het beleid gelezen wordt.
-pub fn laad(
+/// Read the binding file (`None`: none), add a source to the corpus per
+/// register, and check it against the corpus. `date` is the day on which the
+/// name of the register is read from the policy.
+pub fn load(
     path: Option<&Path>,
     service: &mut LawExecutionService,
     date: &str,
 ) -> Result<Registers, Vec<String>> {
-    let bestand = match path {
-        Some(p) => laden::laad(p, laden::yaml::<Bestand>)?,
-        None => Bestand {
+    let file = match path {
+        Some(p) => load::load(p, load::yaml::<File>)?,
+        None => File {
             registers: BTreeMap::new(),
         },
     };
     let source = path.map_or("CELL_REGISTERS".to_string(), |p| p.display().to_string());
-    let mut fouten = Vec::new();
+    let mut errors = Vec::new();
     let mut registers = Registers::default();
-    let mut gekoppeld: Vec<String> = Vec::new();
-    for (sleutel, k) in bestand.registers {
-        let Some((beleid, name)) = sleutel.split_once('#') else {
-            fouten.push(format!(
-                "{source}: register '{sleutel}' is niet <beleid>#<naam>"
-            ));
+    let mut bound: Vec<String> = Vec::new();
+    for (key, k) in file.registers {
+        let Some((policy, name)) = key.split_once('#') else {
+            errors.push(format!("{source}: register '{key}' is not <policy>#<name>"));
             continue;
         };
-        if service.resolver().get_law(beleid).is_none() {
-            fouten.push(format!(
-                "{source}: register '{sleutel}': geen regeling '{beleid}' in het corpus"
+        if service.resolver().get_law(policy).is_none() {
+            errors.push(format!(
+                "{source}: register '{key}': no regulation '{policy}' in the corpus"
             ));
             continue;
         }
-        let input = registerinvoer(service, beleid);
+        let input = register_input(service, policy);
         let field = match &input[..] {
             [v] => v.clone(),
             [] => {
-                fouten.push(format!(
-                    "{source}: register '{sleutel}': '{beleid}' heeft geen invoer zonder bron (source: {{}}); het bevraagt geen register"
+                errors.push(format!(
+                    "{source}: register '{key}': '{policy}' has no input without a source (source: {{}}); it queries no register"
                 ));
                 continue;
             }
-            meer => {
-                fouten.push(format!(
-                    "{source}: register '{sleutel}': '{beleid}' heeft meer invoer zonder bron ({}); een beleid bevraagt hier een register",
-                    meer.join(", ")
+            more => {
+                errors.push(format!(
+                    "{source}: register '{key}': '{policy}' has more than one input without a source ({}); a policy queries one register here",
+                    more.join(", ")
                 ));
                 continue;
             }
         };
-        // Noemt het beleid de naam van het register, dan is dat de naam hier.
+        // If the policy names the register, that is the name here.
         if service
-            .get_law_info(beleid)
-            .is_some_and(|i| i.outputs.iter().any(|o| o == NAAM_REGISTER))
+            .get_law_info(policy)
+            .is_some_and(|i| i.outputs.iter().any(|o| o == NAME_REGISTER))
         {
-            let e =
-                crate::toets::evalueer(service, beleid, &[NAAM_REGISTER], &BTreeMap::new(), date);
-            match e.waarden.get(NAAM_REGISTER).and_then(serde_json::Value::as_str) {
+            let e = crate::assessment::evaluate(
+                service,
+                policy,
+                &[NAME_REGISTER],
+                &BTreeMap::new(),
+                date,
+            );
+            match e.values.get(NAME_REGISTER).and_then(serde_json::Value::as_str) {
                 Some(n) if n == name => {}
-                Some(n) => fouten.push(format!(
-                    "{source}: register '{sleutel}': het beleid noemt het register '{n}', niet '{name}'"
+                Some(n) => errors.push(format!(
+                    "{source}: register '{key}': the policy names the register '{n}', not '{name}'"
                 )),
-                None => fouten.push(format!(
-                    "{source}: register '{sleutel}': de naam van het register is uit '{beleid}' niet te lezen ({})",
-                    e.reason("geen naam")
+                None => errors.push(format!(
+                    "{source}: register '{key}': the name of the register cannot be read from '{policy}' ({})",
+                    e.reason("no name")
                 )),
             }
         }
-        if gekoppeld.contains(&beleid.to_string()) {
-            fouten.push(format!("{source}: '{beleid}' heeft meer dan een register"));
+        if bound.contains(&policy.to_string()) {
+            errors.push(format!("{source}: '{policy}' has more than one register"));
             continue;
         }
-        gekoppeld.push(beleid.to_string());
-        let slot = Arc::new(OnceLock::new());
-        service.add_data_source(Box::new(Registerbron {
-            name: format!("register:{sleutel}"),
-            beleid: beleid.to_string(),
+        bound.push(policy.to_string());
+        let lock = Arc::new(OnceLock::new());
+        service.add_data_source(Box::new(RegisterSource {
+            name: format!("register:{key}"),
+            policy: policy.to_string(),
             field,
             chronicle: k.chronicle.clone(),
-            source: slot.clone(),
+            source: lock.clone(),
         }));
-        registers.koppelingen.push((sleutel, k, slot));
+        registers.bindings.push((key, k, lock));
     }
-    for beleid in beleid_met_register(service) {
-        if !gekoppeld.contains(&beleid) {
-            fouten.push(format!(
-                "{source}: '{beleid}' bevraagt een register (een invoer zonder bron), maar geen register koppelt het aan een cel of adapter"
+    for policy in policy_with_register(service) {
+        if !bound.contains(&policy) {
+            errors.push(format!(
+                "{source}: '{policy}' queries a register (an input without a source), but no register binds it to a cell or adapter"
             ));
         }
     }
-    if fouten.is_empty() {
+    if errors.is_empty() {
         Ok(registers)
     } else {
-        Err(fouten)
+        Err(errors)
     }
 }
 
 impl Registers {
-    /// Controleer de cellen en kronieken van de koppelingen, voor de
-    /// kronieken open zijn.
-    pub fn controleer(&self, cells: &[(&str, Vec<&str>)]) -> Vec<String> {
-        let mut fouten = Vec::new();
-        for (sleutel, k, _) in &self.koppelingen {
+    /// Check the cells and chronicles of the bindings, before the chronicles
+    /// are open.
+    pub fn check(&self, cells: &[(&str, Vec<&str>)]) -> Vec<String> {
+        let mut errors = Vec::new();
+        for (key, k, _) in &self.bindings {
             match cells.iter().find(|(id, _)| *id == k.cell) {
-                None => fouten.push(format!(
-                    "register '{sleutel}': cel '{}' draait niet in deze runtime",
+                None => errors.push(format!(
+                    "register '{key}': cell '{}' does not run in this runtime",
                     k.cell
                 )),
-                Some((_, chronicles)) if !chronicles.contains(&k.chronicle.as_str()) => fouten
+                Some((_, chronicles)) if !chronicles.contains(&k.chronicle.as_str()) => errors
                     .push(format!(
-                        "register '{sleutel}': cel '{}' heeft geen kroniek '{}'",
+                        "register '{key}': cell '{}' has no chronicle '{}'",
                         k.cell, k.chronicle
                     )),
                 Some(_) => {}
             }
         }
-        fouten
+        errors
     }
 
-    /// Geef elke bron de kroniek van haar cel.
-    pub fn open(&self, cell: &str, chronicle: &Arc<Kroniek>) {
-        for (_, k, slot) in &self.koppelingen {
+    /// Give every source the chronicle of its cell.
+    pub fn open(&self, cell: &str, chronicle: &Arc<Chronicle>) {
+        for (_, k, lock) in &self.bindings {
             if k.cell == cell {
-                let _ = slot.set(chronicle.clone());
+                let _ = lock.set(chronicle.clone());
             }
         }
     }
@@ -306,18 +308,18 @@ mod tests {
     use super::*;
 
     fn trial() -> usize {
-        PROEF.with(|p| p.borrow().len())
+        TRIAL.with(|p| p.borrow().len())
     }
 
-    /// De overlay gaat eraf, ook als de engine-run in paniek raakt: het
-    /// volgende verzoek op deze draad ziet het concept niet als vastgelegd.
+    /// The overlay is removed, even if the engine run panics: the next
+    /// request on this thread does not see the draft as recorded.
     #[test]
-    fn een_proef_gaat_eraf_ook_na_een_panic() {
-        let g = crate::gram::testgram("00000000-0000-4000-8000-000000000001");
-        assert_eq!(met_proef(vec![g.clone()], trial), 1);
+    fn a_trial_is_removed_even_after_a_panic() {
+        let g = crate::gram::test_gram("00000000-0000-4000-8000-000000000001");
+        assert_eq!(with_trial(vec![g.clone()], trial), 1);
         assert_eq!(trial(), 0);
-        let uit = std::panic::catch_unwind(|| met_proef(vec![g], || panic!("engine")));
-        assert!(uit.is_err());
+        let out = std::panic::catch_unwind(|| with_trial(vec![g], || panic!("engine")));
+        assert!(out.is_err());
         assert_eq!(trial(), 0);
     }
 }

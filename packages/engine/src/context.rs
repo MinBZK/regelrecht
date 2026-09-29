@@ -877,7 +877,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "experiment A: FOREACH ziet de buitenste binding"]
+    #[ignore = "experiment A: FOREACH sees the outer binding"]
     fn test_child_context_empty_local_scope() {
         let mut ctx = make_context();
         ctx.set_local("parent_loop_var", Value::Int(999));

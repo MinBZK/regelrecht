@@ -237,16 +237,16 @@ pub fn evaluate_value<R: ValueResolver>(
             // record whose field values are evaluated, so a FOREACH body can
             // build a table row (`{gemeentecode: $r.gebied, zetels: ...}`).
             if let Value::Object(fields) = v {
-                let mut uit = std::collections::BTreeMap::new();
-                for (k, veld) in fields {
-                    let av: ActionValue = serde_json::to_value(veld)
+                let mut out = std::collections::BTreeMap::new();
+                for (k, field) in fields {
+                    let av: ActionValue = serde_json::to_value(field)
                         .and_then(serde_json::from_value)
                         .map_err(|e| {
                             EngineError::InvalidOperation(format!("record field '{k}': {e}"))
                         })?;
-                    uit.insert(k.clone(), evaluate_value(&av, resolver, depth + 1)?);
+                    out.insert(k.clone(), evaluate_value(&av, resolver, depth + 1)?);
                 }
-                return Ok(Value::Object(uit));
+                return Ok(Value::Object(out));
             }
             Ok(v.clone())
         }
@@ -3814,7 +3814,7 @@ mod tests {
         }
 
         #[test]
-        #[ignore = "experiment A: FOREACH ziet de buitenste binding"]
+        #[ignore = "experiment A: FOREACH sees the outer binding"]
         fn test_foreach_inner_scope_does_not_see_outer_binding() {
             // `$huishouden` is bound in the parent, and a child context starts
             // with an empty local scope, so the inner body cannot resolve it.
