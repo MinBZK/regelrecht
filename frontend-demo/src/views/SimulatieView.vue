@@ -432,6 +432,28 @@ function signedMoney(delta) {
   return `${delta > 0 ? '+' : '−'} ${money(Math.abs(delta))}`;
 }
 
+/**
+ * One law in one run, against the first run: the share that qualifies, the
+ * average amount, and what moved. A changed cell is set in bold and accent,
+ * so the one row a changed constant moved stands out among the unchanged.
+ */
+function lawCell(run, i, lawId) {
+  const s = run.summary[lawId];
+  const base = comparable.value[0]?.summary[lawId];
+  const amount = s?.withAmount ? fmtAmount(run, lawId, s.avgAmount) : '';
+  if (i === 0 || !s || !base) return { text: pct(s?.eligiblePct), supporting: amount, changed: false };
+  const points = Math.round(s.eligiblePct ?? 0) - Math.round(base.eligiblePct ?? 0);
+  const delta = s.withAmount && base.withAmount ? s.avgAmount - base.avgAmount : 0;
+  // Compare what is shown: a money amount in whole euros, anything else to one decimal.
+  const shownDelta = fmtAmount(run, lawId, Math.abs(delta));
+  const amountMoved = shownDelta !== fmtAmount(run, lawId, 0);
+  const text = points ? `${pct(s.eligiblePct)} (${points > 0 ? '+' : '−'}${Math.abs(points)})` : pct(s.eligiblePct);
+  const supporting = amountMoved ? `${amount} (${delta > 0 ? '+' : '−'} ${shownDelta})` : amount;
+  const changed = points !== 0 || amountMoved;
+  return { text: changed ? `**${text}**` : text, supporting, changed };
+}
+const comparisonLawRows = computed(() => comparisonLaws.value.map((law) => ({ law, cells: comparable.value.map((r, i) => lawCell(r, i, law.id)) })));
+
 const comparisonChart = computed(() => ({
   categories: comparisonLaws.value.map((l) => l.name),
   series: comparable.value.map((r) => ({ name: runLabel(r), color: runColor(r), values: comparisonLaws.value.map((l) => r.summary[l.id]?.eligiblePct ?? null) })),
@@ -868,7 +890,7 @@ function exportJson() {
               </nldd-table-row>
               <nldd-table-row v-for="row in comparisonIncome" :key="row.label">
                 <nldd-text-cell size="sm" :text="t(row.label)"></nldd-text-cell>
-                <nldd-text-cell v-for="(cell, i) in row.cells" :key="comparable[i].id" size="sm" :text="money(cell.value)" :supporting-text="signedMoney(cell.delta)" horizontal-alignment="right"></nldd-text-cell>
+                <nldd-text-cell v-for="(cell, i) in row.cells" :key="comparable[i].id" size="sm" :text="signedMoney(cell.delta) ? `**${money(cell.value)}**` : money(cell.value)" :supporting-text="signedMoney(cell.delta)" :color="signedMoney(cell.delta) ? 'accent' : undefined" horizontal-alignment="right"></nldd-text-cell>
               </nldd-table-row>
             </nldd-table>
             <nldd-card :accessible-label="t('sim.comparison.label')">
@@ -882,9 +904,9 @@ function exportJson() {
                 <nldd-text-cell size="sm" :text="t('sim.comparison.law')"></nldd-text-cell>
                 <nldd-text-cell v-for="r in comparable" :key="r.id" size="sm" :text="runLabel(r)" :supporting-text="t(Object.keys(r.overrides).length ? 'sim.comparison.overridden' : 'sim.comparison.default')" horizontal-alignment="right"></nldd-text-cell>
               </nldd-table-row>
-              <nldd-table-row v-for="law in comparisonLaws" :key="law.id">
-                <nldd-text-cell size="sm" :text="law.name"></nldd-text-cell>
-                <nldd-text-cell v-for="r in comparable" :key="r.id" size="sm" :text="pct(r.summary[law.id]?.eligiblePct)" :supporting-text="r.summary[law.id]?.withAmount ? fmtAmount(r, law.id, r.summary[law.id].avgAmount) : ''" horizontal-alignment="right"></nldd-text-cell>
+              <nldd-table-row v-for="row in comparisonLawRows" :key="row.law.id">
+                <nldd-text-cell size="sm" :text="row.law.name"></nldd-text-cell>
+                <nldd-text-cell v-for="(cell, i) in row.cells" :key="comparable[i].id" size="sm" :text="cell.text" :supporting-text="cell.supporting" :color="cell.changed ? 'accent' : undefined" horizontal-alignment="right"></nldd-text-cell>
               </nldd-table-row>
             </nldd-table>
           </nldd-container>
