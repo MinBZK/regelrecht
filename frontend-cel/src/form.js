@@ -83,3 +83,23 @@ export function fieldLabel(field) {
   if (inEuros(field)) return `${field.label} (euro)`;
   return field.type === 'amount' && field.unit ? `${field.label} (${field.unit})` : field.label;
 }
+
+// What the channel or a register supplies for a field (`supplied` from
+// GET /api/form, note "het gram uit de wet"): the portal shows it filled in
+// automatically, with where it came from, and does not send it along.
+const SOURCE_TEXT = { channel: 'uit het inlogmiddel', register: 'uit het register' };
+
+export function suppliedText(field) {
+  const s = field?.supplied;
+  if (!s) return '';
+  const from = SOURCE_TEXT[s.source] ?? s.source;
+  const basis = (s.legal_basis ?? []).join(', ');
+  return `Automatisch ingevuld ${from}${basis ? ` (${basis})` : ''}`;
+}
+
+// The values without what the channel or a register supplies.
+export function withoutSupplied(values, fields) {
+  const out = { ...values };
+  for (const f of fields ?? []) if (f.supplied) delete out[f.name];
+  return out;
+}

@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { external, fieldLabel, fieldText, getPath, inEuros, isEmpty, options, setPath, toForm, toLaw } from './form.js';
+import {
+  external,
+  fieldLabel,
+  fieldText,
+  getPath,
+  inEuros,
+  isEmpty,
+  options,
+  setPath,
+  suppliedText,
+  toForm,
+  toLaw,
+  withoutSupplied,
+} from './form.js';
 
 describe('isEmpty', () => {
   it('treats null, blank text and an empty list as empty', () => {
@@ -92,5 +105,21 @@ describe('an amount in the unit of the regulation', () => {
     expect(toLaw(bare, 12)).toBe(12);
     expect(toLaw(cent, null)).toBe(null);
     expect(toLaw({ name: 'n', type: 'number', unit: 'eurocent' }, 5)).toBe(5);
+  });
+});
+
+describe('what the channel or a register supplies', () => {
+  const fields = [
+    { name: 'statutaire_naam', supplied: { value: 'Vereniging Voorbeeld', source: 'register', legal_basis: ['beleid#4 lid 1'] } },
+    { name: 'dagtekening', supplied: { value: '2026-09-29', source: 'channel' } },
+    { name: 'iban' },
+  ];
+  it('says where it came from', () => {
+    expect(suppliedText(fields[0])).toBe('Automatisch ingevuld uit het register (beleid#4 lid 1)');
+    expect(suppliedText(fields[1])).toBe('Automatisch ingevuld uit het inlogmiddel');
+    expect(suppliedText(fields[2])).toBe('');
+  });
+  it('is not sent along', () => {
+    expect(withoutSupplied({ statutaire_naam: 'x', dagtekening: 'y', iban: 'NL' }, fields)).toEqual({ iban: 'NL' });
   });
 });

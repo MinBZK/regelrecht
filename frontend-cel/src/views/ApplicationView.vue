@@ -1,10 +1,12 @@
 <script setup>
 // The form, built from GET /api/form of the process: the fields of the event
 // in the stream of the cell. Labels, types and order come from the form file
-// the process provides; without that file the label is the field name and
-// every field is text.
+// the process provides; without that file the label and the type come from
+// the law. What the channel or a register supplies (`supplied`) is shown
+// filled in and read-only, and is not sent along: the cell takes it from the
+// channel. A field the law lets the applicant leave out says so.
 import { computed, inject, onMounted, ref } from 'vue';
-import { external, getPath, setPath } from '../form.js';
+import { external, getPath, setPath, suppliedText, withoutSupplied } from '../form.js';
 import { provenanceRows, routesFrom, sourceStatusText } from '../text.js';
 import InputField from '../components/InputField.vue';
 import TableInput from '../components/TableInput.vue';
@@ -67,7 +69,7 @@ async function assess() {
   error.value = '';
   busy.value = 'assessment';
   try {
-    assessment.value = await api.assess(external(values.value));
+    assessment.value = await api.assess(external(withoutSupplied(values.value, form.value.fields)));
   } catch (e) {
     error.value = e.message;
   } finally {
@@ -95,7 +97,7 @@ function fillExample() {
 
 // The example as it is, with what is fixed beforehand on top.
 function exampleExternal() {
-  const out = JSON.parse(JSON.stringify(example.value));
+  const out = withoutSupplied(JSON.parse(JSON.stringify(example.value)), form.value.fields);
   for (const [name, v] of Object.entries(props.prefilled)) setPath(out, name, v);
   return out;
 }
@@ -105,7 +107,7 @@ async function submit(withExample = false) {
   busy.value = withExample ? 'example' : 'submit';
   try {
     const send = props.send ?? api.submit;
-    const r = await send(withExample ? exampleExternal() : external(values.value));
+    const r = await send(withExample ? exampleExternal() : external(withoutSupplied(values.value, form.value.fields)));
     // The recorded gram with its YAML: {gram, yaml}.
     emit('submitted', r);
   } catch (e) {
@@ -170,7 +172,16 @@ const resultExplanation = computed(() => {
           <nldd-form-field v-if="f.type === 'checkbox'" label="">
             <InputField :kind="f.type" :label="f.label" :model-value="values[f.name]" @update:model-value="set(f.name, $event)" />
           </nldd-form-field>
-          <nldd-form-field v-else :label="f.label" :supporting-label="f.name !== f.label ? f.name : undefined">
+          <nldd-form-field v-else-if="f.supplied" :label="f.label" :supporting-label="suppliedText(f)">
+            <nldd-text-field readonly :value="String(f.supplied.value ?? '')" :accessible-label="f.label"></nldd-text-field>
+          </nldd-form-field>
+          <nldd-form-field
+            v-else
+            :label="f.label"
+            :supporting-label="f.name !== f.label ? f.name : undefined"
+            :optional="f.optional || undefined"
+            :optional-label="f.optional ? 'niet verplicht' : undefined"
+          >
             <TableInput
               v-if="f.type === 'table'"
               :label="f.label"
