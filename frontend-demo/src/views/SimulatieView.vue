@@ -893,12 +893,6 @@ function exportJson() {
                 <nldd-text-cell v-for="(cell, i) in row.cells" :key="comparable[i].id" size="sm" :text="signedMoney(cell.delta) ? `**${money(cell.value)}**` : money(cell.value)" :supporting-text="signedMoney(cell.delta)" :color="signedMoney(cell.delta) ? 'accent' : undefined" horizontal-alignment="right"></nldd-text-cell>
               </nldd-table-row>
             </nldd-table>
-            <nldd-card :accessible-label="t('sim.comparison.label')">
-              <nldd-container slot="header" padding="12" layout="row" gap="12" vertical-alignment="center"><nldd-title-cell size="5" :text="t('sim.comparison.title')" :supporting-text="t('sim.comparison.lead', { n: comparable.length })"></nldd-title-cell></nldd-container>
-              <nldd-container padding="12">
-                <SimBarChart :categories="comparisonChart.categories" :series="comparisonChart.series" unit="percent" horizontal :height="`${Math.max(220, (18 * comparable.length + 12) * comparisonChart.categories.length + 60)}px`" />
-              </nldd-container>
-            </nldd-card>
             <nldd-table :columns="`minmax(160px, 1fr) repeat(${comparable.length}, 150px)`" :accessible-label="t('sim.comparison.table_label')">
               <nldd-table-row slot="header">
                 <nldd-text-cell size="sm" :text="t('sim.comparison.law')"></nldd-text-cell>
@@ -909,6 +903,12 @@ function exportJson() {
                 <nldd-text-cell v-for="(cell, i) in row.cells" :key="comparable[i].id" size="sm" :text="cell.text" :supporting-text="cell.supporting" :color="cell.changed ? 'accent' : undefined" horizontal-alignment="right"></nldd-text-cell>
               </nldd-table-row>
             </nldd-table>
+            <nldd-card :accessible-label="t('sim.comparison.label')">
+              <nldd-container slot="header" padding="12" layout="row" gap="12" vertical-alignment="center"><nldd-title-cell size="5" :text="t('sim.comparison.title')" :supporting-text="t('sim.comparison.lead', { n: comparable.length })"></nldd-title-cell></nldd-container>
+              <nldd-container padding="12">
+                <SimBarChart :categories="comparisonChart.categories" :series="comparisonChart.series" unit="percent" horizontal :height="`${Math.max(220, (18 * comparable.length + 12) * comparisonChart.categories.length + 60)}px`" />
+              </nldd-container>
+            </nldd-card>
           </nldd-container>
         </nldd-simple-section>
       </nldd-page>
