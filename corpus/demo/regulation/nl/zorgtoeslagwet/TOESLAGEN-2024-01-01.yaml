@@ -188,6 +188,7 @@ articles:
             type: boolean
           - name: hoogte_toeslag
             type: amount
+            nullable: true
             type_spec:
               unit: eurocent
               precision: 0
@@ -269,118 +270,130 @@ articles:
                   value: true
           - output: hoogte_toeslag
         # RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van type_spec)
+            # Art. 2 lid 1: alleen de verzekerde die aan de voorwaarden voldoet heeft
+            # aanspraak. Wie dat niet doet heeft geen aanspraak, en dat is een afwezig
+            # bedrag (null), niet een aanspraak op nihil (0) (RFC-036). De voorwaarden staan
+            # voorop, zodat voor wie er niet aan voldoet het bedrag niet wordt uitgerekend
+            # en inkomen en vermogen niet worden opgehaald (RFC-043).
             value:
-              operation: ROUND
-              precision: 0
-              # Met partner het partnerbedrag, anders het bedrag voor een alleenstaande. Als twee
-              # gevallen (partner ja/nee) zonder default geschreven zou de afronding op een mogelijk
-              # afwezige waarde werken (RFC-036); een boolean laat geen derde geval over.
-              value:
-                operation: IF
-                cases:
-                  - when:
-                      operation: EQUALS
-                      subject: $heeft_partner
-                      value: true
-                    then:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $voldoet_aan_voorwaarden
+                    value: true
+                  then:
+                    operation: ROUND
+                    precision: 0
+                    # Met partner het partnerbedrag, anders het bedrag voor een alleenstaande. Als twee
+                    # gevallen (partner ja/nee) zonder default geschreven zou de afronding op een mogelijk
+                    # afwezige waarde werken (RFC-036); een boolean laat geen derde geval over.
+                    value:
                       operation: IF
                       cases:
                         - when:
-                            operation: GREATER_THAN
-                            subject:
-                              operation: ADD
-                              values:
-                                - $inkomen
-                                - $partner_inkomen
-                            value: $drempelinkomen_toeslagpartner
-                          then: 0
-                        - when:
-                            operation: GREATER_THAN
-                            subject: $gezamenlijk_vermogen
-                            value: $vermogensgrens_toeslagpartner
-                          then: 0
-                      default:
-                        operation: SUBTRACT
-                        values:
-                          - operation: MULTIPLY
-                            values:
-                              - $standaardpremie
-                              - 2
-                          - operation: ADD
-                            values:
-                              - operation: MULTIPLY
-                                values:
-                                  - $percentage_drempelinkomen_met_partner
-                                  - operation: MIN
+                            operation: EQUALS
+                            subject: $heeft_partner
+                            value: true
+                          then:
+                            operation: IF
+                            cases:
+                              - when:
+                                  operation: GREATER_THAN
+                                  subject:
+                                    operation: ADD
                                     values:
-                                      - operation: ADD
-                                        values:
-                                          - $inkomen
-                                          - $partner_inkomen
-                                      - $drempelinkomen_toeslagpartner
-                              - operation: IF
-                                cases:
-                                  - when:
-                                      operation: GREATER_THAN
-                                      subject:
-                                        operation: ADD
-                                        values:
-                                          - $inkomen
-                                          - $partner_inkomen
-                                      value: $drempelinkomen_toeslagpartner
-                                    then:
-                                      operation: MULTIPLY
+                                      - $inkomen
+                                      - $partner_inkomen
+                                  value: $drempelinkomen_toeslagpartner
+                                then: 0
+                              - when:
+                                  operation: GREATER_THAN
+                                  subject: $gezamenlijk_vermogen
+                                  value: $vermogensgrens_toeslagpartner
+                                then: 0
+                            default:
+                              operation: SUBTRACT
+                              values:
+                                - operation: MULTIPLY
+                                  values:
+                                    - $standaardpremie
+                                    - 2
+                                - operation: ADD
+                                  values:
+                                    - operation: MULTIPLY
                                       values:
-                                        - operation: SUBTRACT
+                                        - $percentage_drempelinkomen_met_partner
+                                        - operation: MIN
                                           values:
                                             - operation: ADD
                                               values:
                                                 - $inkomen
                                                 - $partner_inkomen
                                             - $drempelinkomen_toeslagpartner
-                                        - $afbouwpercentage_boven_drempel
-                                default: 0
-                default:
-                  operation: IF
-                  cases:
-                    - when:
-                        operation: GREATER_THAN
-                        subject: $inkomen
-                        value: $drempelinkomen_alleenstaande
-                      then: 0
-                    - when:
-                        operation: GREATER_THAN
-                        subject: $vermogen
-                        value: $vermogensgrens_alleenstaande
-                      then: 0
-                  default:
-                    operation: SUBTRACT
-                    values:
-                      - $standaardpremie
-                      - operation: ADD
-                        values:
-                          - operation: MULTIPLY
-                            values:
-                              - $percentage_drempelinkomen_alleenstaand
-                              - operation: MIN
-                                values:
-                                  - $inkomen
-                                  - $drempelinkomen_alleenstaande
-                          - operation: IF
-                            cases:
-                              - when:
-                                  operation: GREATER_THAN
-                                  subject: $inkomen
-                                  value: $drempelinkomen_alleenstaande
-                                then:
-                                  operation: MULTIPLY
+                                    - operation: IF
+                                      cases:
+                                        - when:
+                                            operation: GREATER_THAN
+                                            subject:
+                                              operation: ADD
+                                              values:
+                                                - $inkomen
+                                                - $partner_inkomen
+                                            value: $drempelinkomen_toeslagpartner
+                                          then:
+                                            operation: MULTIPLY
+                                            values:
+                                              - operation: SUBTRACT
+                                                values:
+                                                  - operation: ADD
+                                                    values:
+                                                      - $inkomen
+                                                      - $partner_inkomen
+                                                  - $drempelinkomen_toeslagpartner
+                                              - $afbouwpercentage_boven_drempel
+                                      default: 0
+                      default:
+                        operation: IF
+                        cases:
+                          - when:
+                              operation: GREATER_THAN
+                              subject: $inkomen
+                              value: $drempelinkomen_alleenstaande
+                            then: 0
+                          - when:
+                              operation: GREATER_THAN
+                              subject: $vermogen
+                              value: $vermogensgrens_alleenstaande
+                            then: 0
+                        default:
+                          operation: SUBTRACT
+                          values:
+                            - $standaardpremie
+                            - operation: ADD
+                              values:
+                                - operation: MULTIPLY
                                   values:
-                                    - operation: SUBTRACT
+                                    - $percentage_drempelinkomen_alleenstaand
+                                    - operation: MIN
                                       values:
                                         - $inkomen
                                         - $drempelinkomen_alleenstaande
-                                    - $afbouwpercentage_minimum
-                            default: 0
+                                - operation: IF
+                                  cases:
+                                    - when:
+                                        operation: GREATER_THAN
+                                        subject: $inkomen
+                                        value: $drempelinkomen_alleenstaande
+                                      then:
+                                        operation: MULTIPLY
+                                        values:
+                                          - operation: SUBTRACT
+                                            values:
+                                              - $inkomen
+                                              - $drempelinkomen_alleenstaande
+                                          - $afbouwpercentage_minimum
+                                  default: 0
   - number: '4'
     text: >-
       Onze Minister stelt jaarlijks, uiterlijk 22 dagen voorafgaande aan het berekeningsjaar,
