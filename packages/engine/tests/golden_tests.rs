@@ -148,8 +148,17 @@ fn run_test_case(test: &TestCase) -> Result<(), String> {
         .map(|(k, v)| (k.clone(), json_to_value(v)))
         .collect();
 
-    // Execute
-    let result = service.evaluate_law_output(law_id, output_name, params, calculation_date);
+    // Execute. The engine computes only what is asked for (RFC-043), so ask
+    // for every output the fixture checks, not just the one it names.
+    let mut requested: Vec<&str> = vec![output_name.as_str()];
+    if expected.success {
+        for name in expected.outputs.keys() {
+            if !requested.contains(&name.as_str()) {
+                requested.push(name);
+            }
+        }
+    }
+    let result = service.evaluate_law(law_id, &requested, params, calculation_date);
 
     // Verify result
     if expected.success {
