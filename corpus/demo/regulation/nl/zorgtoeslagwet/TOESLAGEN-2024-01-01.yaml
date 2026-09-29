@@ -307,11 +307,6 @@ articles:
                                       - $partner_inkomen
                                   value: $drempelinkomen_toeslagpartner
                                 then: 0
-                              - when:
-                                  operation: GREATER_THAN
-                                  subject: $gezamenlijk_vermogen
-                                  value: $vermogensgrens_toeslagpartner
-                                then: 0
                             default:
                               operation: SUBTRACT
                               values:
@@ -360,11 +355,6 @@ articles:
                               operation: GREATER_THAN
                               subject: $inkomen
                               value: $drempelinkomen_alleenstaande
-                            then: 0
-                          - when:
-                              operation: GREATER_THAN
-                              subject: $vermogen
-                              value: $vermogensgrens_alleenstaande
                             then: 0
                         default:
                           operation: SUBTRACT
