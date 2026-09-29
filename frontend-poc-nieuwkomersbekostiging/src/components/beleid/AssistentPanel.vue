@@ -545,7 +545,6 @@ async function submit() {
   // dicht.
   voorbeeldenGebruikt.value = true;
   voorbeeldenOpen.value = false;
-  let iteratie = 0;
 
   // De assistent werkt op de werkversie: stuur die documenten mee als beginstand.
   const documenten = (await lawDocsFor(werkversie.value)).map((d) => ({ key: `${d.entry.id}@${d.entry.valid_from ?? ''}`, yaml: d.yaml }));
@@ -609,7 +608,7 @@ function verwerkEvent(ev) {
       const t = ev.metrics?.totaal;
       if (ev.doel === 'populatie' && t) {
         pad.value.push({
-          iteratie: ++iteratie,
+          iteratie: pad.value.length + 1,
           waarden: {
             regeling_po: t.regeling_po ?? null,
             regeling_vo: t.regeling_vo ?? null,
