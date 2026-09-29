@@ -504,7 +504,6 @@ async function submit() {
   // dicht.
   voorbeeldenGebruikt.value = true;
   voorbeeldenOpen.value = false;
-  let iteratie = 0;
 
   // De assistent werkt op de werkversie: stuur die documenten mee als beginstand.
   const documenten = (await lawDocsFor(werkversie.value)).map((d) => ({ key: `${d.entry.id}@${d.entry.valid_from ?? ''}`, yaml: d.yaml }));
@@ -564,7 +563,7 @@ function verwerkEvent(ev) {
       feed.value.push({ type: 'simulatie', doel: ev.doel, n: ev.n, pct });
       if (ev.doel === 'populatie' && pct !== null) {
         pad.value.push({
-          iteratie: ++iteratie,
+          iteratie: pad.value.length + 1,
           waarden: { pct: Math.round(pct * 1000) / 10 },
           // De stand waarop deze meting rust, zodat het punt aanklikbaar is.
           pct,
