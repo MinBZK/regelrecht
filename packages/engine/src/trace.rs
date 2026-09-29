@@ -2322,6 +2322,32 @@ articles:
         );
     }
 
+    fn object(entries: &[(&str, Value)]) -> Value {
+        Value::Object(
+            entries
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.clone()))
+                .collect(),
+        )
+    }
+
+    #[test]
+    fn an_object_without_an_iso_date_still_renders_as_a_dict() {
+        let adres = object(&[("straat", Value::String("Dorpsstraat".into()))]);
+        assert_eq!(format_value_display(&adres), "{'straat': 'Dorpsstraat'}");
+    }
+
+    #[test]
+    fn a_single_output_that_is_an_object_keeps_its_whole_value() {
+        // One output whose value happens to hold a key with its own name: the
+        // value is the object, not that key.
+        let adres = object(&[("adres", Value::Int(1)), ("postcode", Value::Int(2))]);
+        assert_eq!(
+            format_outputs("adres", &adres),
+            "adres = {'adres': 1, 'postcode': 2}"
+        );
+    }
+
     /// Render one Requirement node carrying `result` and return its verdict
     /// line, the line the four tests below all turn on.
     fn requirement_verdict(result: Value) -> String {
