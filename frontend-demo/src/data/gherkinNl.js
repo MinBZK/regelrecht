@@ -71,6 +71,18 @@ const TEMPLATES = {
   },
 };
 
+/** The canonical step keywords, as a `.feature` file writes them. */
+const CANONICAL_KEYWORDS = ['Given', 'When', 'Then', 'And', 'But'];
+
+/**
+ * Every step keyword the active language shows. A language without its own
+ * keywords shows the canonical English ones, as `renderStep` does.
+ */
+export function stepKeywords() {
+  const own = KEYWORDS[currentLocale()];
+  return own ? Object.values(own) : CANONICAL_KEYWORDS;
+}
+
 /** Grammar step ids that have a Dutch rendering (for the coverage test). */
 export const TRANSLATED_STEP_IDS = new Set(Object.keys(TEMPLATES.nl));
 

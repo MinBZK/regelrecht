@@ -1,7 +1,8 @@
 <script setup>
-import { renderStep } from '../data/gherkinNl.js';
-import { displayCell, emphasiseArguments, hasHeaderRow, isExpectation } from '../data/scenarioSteps.js';
-import { useI18n } from '../i18n/index.js';
+import { computed } from 'vue';
+import { renderStep, stepKeywords } from '../data/gherkinNl.js';
+import { displayCell, emphasiseArguments, hasHeaderRow, isExpectation, keywordColumnWidth } from '../data/scenarioSteps.js';
+import { activeLocale, useI18n } from '../i18n/index.js';
 
 // The steps of a scenario (or of the background) as Gherkin: in order, keyword
 // first, data tables as tables. It shows what the file says and nothing it
@@ -16,6 +17,14 @@ const props = defineProps({
 const { t } = useI18n();
 
 const result = (index) => props.results[index] ?? null;
+
+// Sized to the longest keyword of the language that is on, so it is the same
+// in the background and in every scenario, and follows a language switch.
+const keywordWidth = computed(() => {
+  // stepKeywords() reads the locale outside Vue's reach; this makes the switch a dependency.
+  void activeLocale.value;
+  return keywordColumnWidth(stepKeywords());
+});
 
 function mark(step, index) {
   const status = result(index)?.status;
@@ -48,11 +57,16 @@ function columns(table) {
       <nldd-container layout="row" gap="8" vertical-alignment="top">
         <nldd-icon-cell v-if="mark(step, i)" :icon="mark(step, i).icon" :color="mark(step, i).color" size="16" vertical-alignment="top"></nldd-icon-cell>
         <nldd-spacer-cell v-else size="16"></nldd-spacer-cell>
-        <nldd-text-cell width="64px" vertical-alignment="top" color="accent" :text="`**${renderStep(step).keyword}**`"></nldd-text-cell>
+        <nldd-text-cell :width="keywordWidth" vertical-alignment="top" color="accent" :text="`**${renderStep(step).keyword}**`"></nldd-text-cell>
         <nldd-text-cell vertical-alignment="top" :text="emphasiseArguments(renderStep(step).text)" :supporting-text="supporting(step, i)"></nldd-text-cell>
       </nldd-container>
-      <!-- Indented to the step text: 16 mark + 8 gap + 64 keyword + 8 gap. -->
-      <nldd-container v-if="step.dataTable?.length" padding-left="96">
+      <!-- Indented to the step text by the same two columns as the step row:
+           the mark and the keyword. The last cell may shrink, so a wide table
+           scrolls inside itself instead of pushing the card wider. -->
+      <nldd-container v-if="step.dataTable?.length" layout="row" gap="8">
+        <nldd-spacer-cell size="16"></nldd-spacer-cell>
+        <nldd-cell :width="keywordWidth"></nldd-cell>
+        <nldd-cell width="full">
         <nldd-table :columns="columns(step.dataTable)" :accessible-label="t('scenario.table_for', { step: renderStep(step).text })">
           <nldd-table-row v-if="hasHeaderRow(step)" slot="header">
             <nldd-text-cell v-for="(cell, ci) in step.dataTable[0]" :key="ci" size="sm" :text="cell.trim()"></nldd-text-cell>
@@ -67,6 +81,7 @@ function columns(table) {
             ></nldd-text-cell>
           </nldd-table-row>
         </nldd-table>
+        </nldd-cell>
       </nldd-container>
     </template>
   </nldd-container>

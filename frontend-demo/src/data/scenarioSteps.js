@@ -38,6 +38,19 @@ export function emphasiseArguments(text) {
 }
 
 /**
+ * The width of the keyword column, from the longest keyword it has to hold.
+ *
+ * In `ch`, not pixels, so it follows the font; with room for the bold weight
+ * (wider than the `0` a `ch` measures) plus one `ch` of air. A column narrower
+ * than its keyword breaks it mid-word: the text cell wraps anywhere, so a
+ * 64px column set "Gegeven" as "Gegeve" / "n".
+ */
+export function keywordColumnWidth(keywords) {
+  const longest = Math.max(1, ...keywords.map((k) => String(k).length));
+  return `${Math.ceil(longest * 1.2) + 1}ch`;
+}
+
+/**
  * Whether a step's data table starts with a header row. Every table does
  * except the parameters table (`the following parameters:`), whose rows are
  * name/value pairs from the first line on; the runner reads it that way too.

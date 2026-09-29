@@ -404,9 +404,14 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
                          24px; no tag size matches an sm button. -->
                     <nldd-cell v-if="resultTag(index)"><nldd-tag :color="resultTag(index).color" :text="resultTag(index).text"></nldd-tag></nldd-cell>
                   </nldd-list-item-segment>
+                  <!-- Spacer cells, as the other list rows in the demo space their
+                       cells: the segment stops at the result tag, and without
+                       them the tag and both buttons touch. -->
+                  <nldd-spacer-cell size="8"></nldd-spacer-cell>
                   <nldd-cell>
                     <nldd-button size="xs" variant="secondary" start-icon="play" :text="t('scenario.run')" :loading="runs[index]?.status === 'running' || undefined" :disabled="(anyRunning && runs[index]?.status !== 'running') || undefined" @click="runAndShow(index)"></nldd-button>
                   </nldd-cell>
+                  <nldd-spacer-cell v-if="runs[index]?.traceText" size="8"></nldd-spacer-cell>
                   <nldd-cell v-if="runs[index]?.traceText">
                     <nldd-button size="xs" variant="neutral-tinted" start-icon="list" :text="t('scenario.trace')" @click="activeTrace = index"></nldd-button>
                   </nldd-cell>

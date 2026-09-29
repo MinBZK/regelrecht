@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { displayCell, emphasiseArguments, hasHeaderRow, isExpectation } from './scenarioSteps.js';
+import { displayCell, emphasiseArguments, hasHeaderRow, isExpectation, keywordColumnWidth } from './scenarioSteps.js';
+import { stepKeywords } from './gherkinNl.js';
 import { adoptLocale } from '../i18n/index.js';
 
 afterEach(() => adoptLocale('nl'));
@@ -35,6 +36,18 @@ describe('emphasiseArguments', () => {
 
   it('keeps an empty argument visible', () => {
     expect(emphasiseArguments('parameter "x" is ""')).toBe('parameter **x** is ""');
+  });
+});
+
+describe('keywordColumnWidth', () => {
+  it('fits the longest keyword of the active language, in ch', () => {
+    expect(keywordColumnWidth(stepKeywords())).toBe('10ch'); // Gegeven
+    adoptLocale('en');
+    expect(keywordColumnWidth(stepKeywords())).toBe('7ch'); // Given
+    adoptLocale('fy');
+    // Frisian has no keywords of its own and shows the canonical English ones.
+    expect(stepKeywords()).toContain('Given');
+    expect(keywordColumnWidth(stepKeywords())).toBe('7ch');
   });
 });
 
