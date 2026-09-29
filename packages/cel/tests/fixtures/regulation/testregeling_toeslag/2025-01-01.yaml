@@ -28,13 +28,24 @@ articles:
   - number: '1'
     url: https://example.com/testregeling_toeslag/1
     text: >-
-      Een aanvraag noemt de maand waarvoor de toeslag wordt gevraagd en het
-      inkomen dat de aanvrager over die maand verwacht.
+      De aanvrager kan een maandtoeslag aanvragen (artikel 2 en 3). Een
+      aanvraag noemt de maand waarvoor de toeslag wordt gevraagd, het inkomen
+      dat de aanvrager over die maand verwacht, en zijn naam.
     machine_readable:
       execution:
         produces:
           legal_character: TOETS
           decision_type: GEEN_BESLUIT
+          # De aanvraag, en welke besluiten zij vraagt: het voorschot en de
+          # vaststelling. Wat een aanvraag om een beschikking verder bevat en
+          # wanneer zij telt, zegt de testregeling awb (artikel 9, een haak op
+          # de stage AANVRAAG); dit artikel noemt de testregeling awb niet.
+          extensions:
+            chronolex:
+              establishes:
+                - event: aanvraag_ontvangen
+                  requests: [testregeling_toeslag#2, testregeling_toeslag#3]
+                  fields: {parameters: [maand, geschat_inkomen, naam_aanvrager]}
         parameters:
           - name: maand
             type: date
@@ -44,6 +55,11 @@ articles:
             origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_toeslag#1, rol: TIJDVAK}
           - name: geschat_inkomen
             type: number
+            nullable: true
+            required: false
+            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_toeslag#1}
+          - name: naam_aanvrager
+            type: string
             nullable: true
             required: false
             origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_toeslag#1}
@@ -59,6 +75,8 @@ articles:
                   value: {operation: EQUALS, subject: $maand, value: null}
                 - operation: NOT
                   value: {operation: EQUALS, subject: $geschat_inkomen, value: null}
+                - operation: NOT
+                  value: {operation: EQUALS, subject: $naam_aanvrager, value: null}
   - number: '2'
     url: https://example.com/testregeling_toeslag/2
     text: >-

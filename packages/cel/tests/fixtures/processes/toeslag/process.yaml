@@ -24,6 +24,13 @@ channels:
         message: een persoonsnummer heeft negen cijfers
         numeric: true
     owner: nummer
+    # Wat het kanaal bij een aanvraag levert (testbeleid artikel 4): de
+    # ondertekening en het persoonsnummer uit de login, en de weg.
+    supplies:
+      ondertekening: nummer
+      persoonsnummer: nummer
+      kanaal: $channel
+    legal_basis: [testbeleid_toeslag#4 lid 1, testbeleid_toeslag#4 lid 2]
   medewerker:
     label: Inloggen als medewerker
     fields:

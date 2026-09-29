@@ -3963,8 +3963,7 @@ async fn toeslag_submit(app: &Router, month: &str, estimated_income: i64) -> Str
         &format!("{TOESLAG}/api/application"),
         Some(&a),
         Some(json!({"external": {
-            "naam": "A. Voorbeeld",
-            "adres": "Voorbeeldstraat 1, 1234 AB Voorbeeld",
+            "adres_aanvrager": "Voorbeeldstraat 1, 1234 AB Voorbeeld",
             "dagtekening": "2025-03-12",
             "maand": month,
             "geschat_inkomen": estimated_income,
@@ -4827,4 +4826,352 @@ fn the_reduction_mode_comes_from_the_environment() {
     assert!(ReductionMode::out(Some("engine"), None).is_err());
     assert!(ReductionMode::out(None, Some("k.yaml")).is_err());
     assert!(ReductionMode::out(Some("anders"), Some("k.yaml")).is_err());
+}
+
+// The gram from the law (note "het gram uit de wet", 29-09-2026): the stream of
+// the allowance holds only the registration; the fields come from the law.
+
+/// Log in with a person number on the allowance portal.
+async fn toeslag_login_as(app: &Router, number: &str) -> String {
+    let (status, body, cookie) = call(
+        app,
+        "POST",
+        &format!("{TOESLAG}/api/channels/persoon/login"),
+        None,
+        Some(json!({"nummer": number})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    cookie.unwrap()
+}
+
+/// The field of the form with this name.
+fn form_field<'f>(form: &'f Value, name: &str) -> Option<&'f Value> {
+    form["fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["name"] == name)
+}
+
+/// The fixed core of an application comes from the fictitious Awb (art. 9, a
+/// hook on the stage AANVRAAG), the content from the allowance regulation
+/// (art. 1), and what the channel supplies from the policy (art. 4): the
+/// stream names none of it. The decision requested is fixed by what art. 1
+/// requests; the portal channel supplies the signature and the person
+/// number.
+#[tokio::test]
+async fn the_application_gram_comes_from_the_law() {
+    let data = tempfile::tempdir().unwrap();
+    let app = app(data.path());
+    let a = toeslag_login_as(&app, "123456789").await;
+    let (status, form, _) = call(&app, "GET", &format!("{TOESLAG}/api/form"), Some(&a), None).await;
+    assert_eq!(status, StatusCode::OK, "{form}");
+    let names: Vec<&str> = form["fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["name"].as_str().unwrap())
+        .collect();
+    for n in [
+        "naam_aanvrager",
+        "adres_aanvrager",
+        "dagtekening",
+        "ondertekening",
+        "maand",
+        "geschat_inkomen",
+    ] {
+        assert!(names.contains(&n), "{n} not in {names:?}");
+    }
+    // The decision requested is no question: the law fixes it.
+    assert!(!names.contains(&"gevraagde_beschikking"), "{names:?}");
+    // What the channel supplies comes along, with the policy that says so.
+    let o = form_field(&form, "ondertekening").unwrap();
+    assert_eq!(o["supplied"]["value"], "123456789", "{o}");
+    assert_eq!(o["supplied"]["source"], "channel");
+    // The label and the legal basis come from the law; the Awb field may
+    // be left out (required: false).
+    let d = form_field(&form, "adres_aanvrager").unwrap();
+    assert_eq!(d["label"], "Adres van de aanvrager", "{d}");
+    assert_eq!(d["legal_basis"], json!(["testregeling_awb#9 lid 1"]));
+    assert_eq!(d["optional"], json!(true));
+    // The stream document shows per field where it comes from.
+    let (_, stream, _) = call(
+        &app,
+        "GET",
+        &format!("{TOESLAG_CELL}/api/stream"),
+        None,
+        None,
+    )
+    .await;
+    let e = &stream["streams"][0]["stream"]["events"][0];
+    assert_eq!(e["type"], "submission", "{e}");
+    assert_eq!(e["stage"], "AANVRAAG");
+    let via: Vec<(String, String)> = e["field_sources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| {
+            (
+                f["name"].as_str().unwrap().into(),
+                f["via"].as_str().unwrap().into(),
+            )
+        })
+        .collect();
+    assert!(
+        via.contains(&("dagtekening".into(), "hook".into())),
+        "{via:?}"
+    );
+    assert!(
+        via.contains(&("maand".into(), "establishes".into())),
+        "{via:?}"
+    );
+    assert!(
+        via.contains(&("kanaal".into(), "extends".into())),
+        "{via:?}"
+    );
+
+    let (status, body, _) = call(
+        &app,
+        "POST",
+        &format!("{TOESLAG}/api/application"),
+        Some(&a),
+        Some(json!({"external": {"maand": "2025-03-01", "geschat_inkomen": 90000, "dagtekening": "2025-03-12"}})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let g = &body["gram"];
+    assert_eq!(g["subtype"], "aanvraag");
+    assert_eq!(
+        g["fields"]["gevraagde_beschikking"],
+        "testregeling_toeslag#2, testregeling_toeslag#3"
+    );
+    assert_eq!(g["fields"]["ondertekening"], "123456789");
+    assert_eq!(g["fields"]["kanaal"], "portaal");
+    assert_eq!(g["field_provenance"]["ondertekening"]["source"], "channel");
+    let lb: Vec<&str> = g["legal_basis"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert_eq!(lb[0], "testregeling_toeslag#1", "{lb:?}");
+    assert!(lb.contains(&"testregeling_awb#9 lid 1"), "{lb:?}");
+    schema::validate(Kind::Gram, g).unwrap();
+}
+
+/// Decision 3 of 29-09-2026: a register fact is in the gram every time, and
+/// the gram records where it came from. Known to the register (the policy
+/// fills the name in beforehand from the person register): provenance
+/// register. Not known: the applicant fills it in, provenance applicant. The
+/// assessment of the application gives the same in both cases.
+#[tokio::test]
+async fn a_register_fact_with_and_without_the_register() {
+    let data = tempfile::tempdir().unwrap();
+    let app = app(data.path());
+    let application = |naam: Option<&str>| {
+        let mut e = json!({"maand": "2025-03-01", "geschat_inkomen": 90000, "adres_aanvrager": "Voorbeeldstraat 1", "dagtekening": "2025-03-12"});
+        if let Some(n) = naam {
+            e["naam_aanvrager"] = json!(n);
+        }
+        json!({"external": e})
+    };
+
+    // The register knows person 123456789.
+    let a = toeslag_login_as(&app, "123456789").await;
+    let (_, form, _) = call(&app, "GET", &format!("{TOESLAG}/api/form"), Some(&a), None).await;
+    let n = form_field(&form, "naam_aanvrager").unwrap();
+    assert_eq!(n["supplied"]["value"], "A. Voorbeeld", "{n}");
+    assert_eq!(n["supplied"]["source"], "register");
+    let (_, known, _) = call(
+        &app,
+        "POST",
+        &format!("{TOESLAG}/api/application/assessment"),
+        Some(&a),
+        Some(application(None)),
+    )
+    .await;
+    assert_eq!(known["result"]["value"], json!(true), "{known}");
+    // The applicant may not change what the register supplies.
+    let (status, f, _) = call(
+        &app,
+        "POST",
+        &format!("{TOESLAG}/api/application"),
+        Some(&a),
+        Some(application(Some("C. Anders"))),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{f}");
+    assert!(
+        f["error"]
+            .as_str()
+            .unwrap()
+            .contains("supplied by the register"),
+        "{f}"
+    );
+    let (status, body, _) = call(
+        &app,
+        "POST",
+        &format!("{TOESLAG}/api/application"),
+        Some(&a),
+        Some(application(None)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(body["gram"]["fields"]["naam_aanvrager"], "A. Voorbeeld");
+    assert_eq!(
+        body["gram"]["field_provenance"]["naam_aanvrager"],
+        json!({"source": "register", "legal_basis": ["testbeleid_toeslag#5"]})
+    );
+
+    // The register does not know person 111222333: the applicant fills it in.
+    let b = toeslag_login_as(&app, "111222333").await;
+    let (_, form, _) = call(&app, "GET", &format!("{TOESLAG}/api/form"), Some(&b), None).await;
+    assert!(
+        form_field(&form, "naam_aanvrager")
+            .unwrap()
+            .get("supplied")
+            .is_none(),
+        "{form}"
+    );
+    let (_, unknown, _) = call(
+        &app,
+        "POST",
+        &format!("{TOESLAG}/api/application/assessment"),
+        Some(&b),
+        Some(application(Some("B. Voorbeeld"))),
+    )
+    .await;
+    assert_eq!(
+        unknown["result"]["value"], known["result"]["value"],
+        "{unknown}"
+    );
+    // Without the name the application cannot be judged: the field is
+    // needed, wherever it comes from.
+    let (_, without, _) = call(
+        &app,
+        "POST",
+        &format!("{TOESLAG}/api/application/assessment"),
+        Some(&b),
+        Some(application(None)),
+    )
+    .await;
+    assert_eq!(without["result"]["to_assess"], json!(false), "{without}");
+    assert_eq!(
+        without["result"]["missing"],
+        json!(["naam_aanvrager"]),
+        "{without}"
+    );
+    let (status, body, _) = call(
+        &app,
+        "POST",
+        &format!("{TOESLAG}/api/application"),
+        Some(&b),
+        Some(application(Some("B. Voorbeeld"))),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(body["gram"]["fields"]["naam_aanvrager"], "B. Voorbeeld");
+    assert_eq!(
+        body["gram"]["field_provenance"]["naam_aanvrager"]["source"],
+        "applicant"
+    );
+}
+
+/// Copy a directory tree.
+fn copy_tree(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for e in std::fs::read_dir(from).unwrap() {
+        let e = e.unwrap();
+        let target = to.join(e.file_name());
+        if e.file_type().unwrap().is_dir() {
+            copy_tree(&e.path(), &target);
+        } else {
+            std::fs::copy(e.path(), target).unwrap();
+        }
+    }
+}
+
+/// A runtime over the fixtures with its own regulation directory and clock.
+fn runtime_with(regulation: &Path, data: &Path, now: &'static str) -> Runtime {
+    let config = Config {
+        cells_path: fixtures().join("cells"),
+        processes_path: Some(fixtures().join("processes")),
+        regulation_path: regulation.to_path_buf(),
+        data_dir: data.to_path_buf(),
+        port: DEFAULT_PORT,
+        read_token: None,
+        read_token_sources: Vec::new(),
+        reduction: Default::default(),
+        registers: None,
+    };
+    Runtime::load(
+        &config,
+        Arc::new(move || DateTime::parse_from_rfc3339(now).unwrap()),
+    )
+    .unwrap()
+}
+
+/// A change of the general law reaches every application without touching
+/// a stream or a form: the fictitious Awb gets, per 1 January 2026, a
+/// telephone number in art. 9 (a second version of the regulation). An
+/// application on the portal on 5 January 2026 has the field in its form and
+/// its gram; one on 20 December 2025 does not. The stream is the same file
+/// (the same hash in the gram).
+#[tokio::test]
+async fn a_change_of_the_general_law_reaches_the_application() {
+    // Not a hidden directory: the corpus loader skips those.
+    let regulation = tempfile::Builder::new()
+        .prefix("regulation")
+        .tempdir()
+        .unwrap();
+    copy_tree(&fixtures().join("regulation"), regulation.path());
+    let dir = regulation.path().join("testregeling_awb");
+    let old = std::fs::read_to_string(dir.join("2025-01-01.yaml")).unwrap();
+    let phone = "          - name: telefoon_aanvrager\n            type: string\n            nullable: true\n            required: false\n            description: 'Naam: Telefoonnummer van de aanvrager.'\n            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_awb#9 lid 1}\n        output:\n          - name: aanvraag_bevat_kern\n";
+    let new = old
+        .replace("valid_from: '2025-01-01'", "valid_from: '2026-01-01'")
+        .replace(
+            "        output:\n          - name: aanvraag_bevat_kern\n",
+            phone,
+        );
+    assert_ne!(new, old);
+    std::fs::write(dir.join("2026-01-01.yaml"), new).unwrap();
+
+    let mut hashes = Vec::new();
+    for (now, month, expected) in [
+        ("2025-12-20T10:00:00+01:00", "2025-12-01", false),
+        ("2026-01-05T10:00:00+01:00", "2026-01-01", true),
+    ] {
+        let data = tempfile::tempdir().unwrap();
+        let app = as_reader(&runtime_with(regulation.path(), data.path(), now));
+        let a = toeslag_login_as(&app, "123456789").await;
+        let (_, form, _) = call(&app, "GET", &format!("{TOESLAG}/api/form"), Some(&a), None).await;
+        assert_eq!(
+            form_field(&form, "telefoon_aanvrager").is_some(),
+            expected,
+            "{now}: {form}"
+        );
+        let mut external = json!({"maand": month, "geschat_inkomen": 90000});
+        if expected {
+            external["telefoon_aanvrager"] = json!("010-1234567");
+        }
+        let (status, body, _) = call(
+            &app,
+            "POST",
+            &format!("{TOESLAG}/api/application"),
+            Some(&a),
+            Some(json!({"external": external})),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{now}: {body}");
+        let fields = body["gram"]["fields"].as_object().unwrap();
+        assert_eq!(
+            fields.contains_key("telefoon_aanvrager"),
+            expected,
+            "{now}: {fields:?}"
+        );
+        hashes.push(body["gram"]["stream"]["sha256"].clone());
+    }
+    assert_eq!(hashes[0], hashes[1]);
 }

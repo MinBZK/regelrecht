@@ -321,3 +321,77 @@ articles:
                 - 0
                 - operation: SUBTRACT
                   values: [$betaalde_voorschotten, $te_betalen_geldsom]
+  - number: '9'
+    url: https://example.com/testregeling_awb/9
+    text: |-
+      1. De aanvraag om een beschikking wordt ondertekend en bevat ten minste de naam en het adres van
+      de aanvrager, de dagtekening en een aanduiding van de beschikking die wordt gevraagd.
+      2. Een aanvraag geldt als ingediend op de dag van ontvangst.
+    # Fictief, naar Awb 4:1, 4:2 lid 1 en 4:13 (notitie "het gram uit de
+    # wet"): dit artikel past zichzelf toe op elke aanvraag om een
+    # beschikking, als haak op de stage AANVRAAG, zonder dat de bijzondere
+    # regeling het noemt. Het geeft de aanvraag haar soort, de vaste velden en
+    # het moment dat telt.
+    machine_readable:
+      hooks:
+        - hook_point: pre_actions
+          applies_to: {legal_character: BESCHIKKING, stage: AANVRAAG}
+      execution:
+        produces:
+          legal_character: TOETS
+          decision_type: GEEN_BESLUIT
+          extensions:
+            chronolex:
+              establishes:
+                - extends: {stage: AANVRAAG}
+                  type: submission
+                  subtype: aanvraag
+                  fields: parameters
+                  effective_at: {legal_basis: [testregeling_awb#9 lid 2]}
+        parameters:
+          - name: naam_aanvrager
+            type: string
+            nullable: true
+            required: false
+            description: 'De naam van de aanvrager. Naam: Naam van de aanvrager.'
+            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_awb#9 lid 1}
+          - name: adres_aanvrager
+            type: string
+            nullable: true
+            required: false
+            description: 'Het adres van de aanvrager. Naam: Adres van de aanvrager.'
+            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_awb#9 lid 1}
+          - name: dagtekening
+            type: date
+            nullable: true
+            required: false
+            description: 'Naam: Dagtekening.'
+            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_awb#9 lid 1}
+          - name: gevraagde_beschikking
+            type: string
+            nullable: true
+            required: false
+            description: 'Naam: Gevraagde beschikking.'
+            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_awb#9 lid 1, rol: GEVRAAGD_BESLUIT}
+          - name: ondertekening
+            type: string
+            nullable: true
+            required: false
+            description: 'Wie de aanvraag ondertekende. Naam: Ondertekening.'
+            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_awb#9 lid 1}
+        output:
+          - name: aanvraag_bevat_kern
+            type: boolean
+        actions:
+          - output: aanvraag_bevat_kern
+            value:
+              operation: AND
+              conditions:
+                - operation: NOT
+                  value: {operation: EQUALS, subject: $naam_aanvrager, value: null}
+                - operation: NOT
+                  value: {operation: EQUALS, subject: $adres_aanvrager, value: null}
+                - operation: NOT
+                  value: {operation: EQUALS, subject: $dagtekening, value: null}
+                - operation: NOT
+                  value: {operation: EQUALS, subject: $ondertekening, value: null}

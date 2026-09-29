@@ -13,8 +13,9 @@ lexostatus_definitions:
       filter: {type: submission, subtype: aanvraag, root: $root}
       pick: latest
       derivations:
-        maand: {period_of: content.maand}
-        geschat_inkomen: {field: content.geschat_inkomen}
+        maand: {period_of: maand}
+        geschat_inkomen: {field: geschat_inkomen}
+        naam_aanvrager: {field: naam_aanvrager}
   - name: werkvoorraad
     inputs: []
     reduction:
@@ -24,8 +25,8 @@ lexostatus_definitions:
       pick: latest
       derivations:
         ontvangen_op: {moment: effective_at}
-        aanvrager: {field: core.aanvrager.naam}
-        maand: {period_of: content.maand, period: month}
+        aanvrager: {field: naam_aanvrager}
+        maand: {period_of: maand, period: month}
   - name: besluiten
     inputs: [{name: root, type: string}]
     reduction:

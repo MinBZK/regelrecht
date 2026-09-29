@@ -1,30 +1,17 @@
 ---
-# Fictieve teststroom: de aanvraag van een maandelijkse toeslag. De aanvrager
-# noemt de maand (het tijdvak) en het inkomen dat hij over die maand
-# verwacht. De aanvraag opent de zaak; de besluiten volgen haar.
+# Fictieve teststroom: de aanvraag van een maandelijkse toeslag. Alleen de
+# registratie: welke cel het feit vastlegt en langs welke weg. Wat de aanvraag
+# is en bevat, zegt de wet (notitie "het gram uit de wet"): artikel 1 van de
+# testregeling maandtoeslag vestigt haar en vraagt het voorschot en de
+# vaststelling (artikel 2 en 3); artikel 9 van de testregeling awb haakt op de
+# stage AANVRAAG van elke beschikking en geeft de naam, het adres, de
+# dagtekening, de gevraagde beschikking en de ondertekening; het beleid van de
+# dienst (artikel 4 en 5) legt het persoonsnummer en de weg vast en vult de naam
+# vooraf in uit het personenregister.
 $id: test_toeslag_aanvragen
 recording_actor: test_toeslagdienst
 chronicle: test_toeslag
 events:
   - name: aanvraag_ontvangen
+    establishes: testregeling_toeslag#1
     intake: portaal
-    legal_basis:
-      - testregeling_toeslag#1
-    type: submission
-    subtype: aanvraag
-    stage: AANVRAAG
-    fields:
-      core:
-        aanvrager:
-          naam: $external.naam
-          adres: $external.adres
-        dagtekening: $external.dagtekening
-        gevraagde_beschikking: maandtoeslag, testregeling maandtoeslag artikel 2 en 3
-        signed_via:
-          kanaal: $intake.channel
-          persoonsnummer: $intake.persoon.nummer
-      content:
-        maand: $external.maand
-        geschat_inkomen: $external.geschat_inkomen
-    not_reduced:
-      - {field: core, reason: de vaste kern van een aanvraag; geen artikel van de testregeling leest haar}
