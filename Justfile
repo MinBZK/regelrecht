@@ -303,11 +303,11 @@ demo: wasm-build
         Darwin) open http://127.0.0.1:7400/ ;;
         *) xdg-open http://127.0.0.1:7400/ >/dev/null 2>&1 || true ;;
       esac ) &
-    cd frontend-demo && npx vite --port 7400 --strictPort --host 0.0.0.0
+    cd frontend-demo && npm run dev -- --port 7400 --strictPort --host 0.0.0.0
 
 # Run the demo frontend locally without opening a browser (same server as `demo`)
 dev-demo: wasm-build
-    cd frontend-demo && npx vite --port 7400 --strictPort --host 0.0.0.0
+    cd frontend-demo && npm run dev -- --port 7400 --strictPort --host 0.0.0.0
 
 # Everything the demo consists of, in the order a failure is cheapest to read:
 # the laws themselves, then what they compute, then the app around them.
@@ -321,7 +321,7 @@ dev-demo: wasm-build
 demo-check: validate-demo awb-parity-test service-map-check bdd-demo
     cd frontend-demo && npx vitest run
     just wasm-build
-    cd frontend-demo && npx vite build
+    cd frontend-demo && npm run build
 
 # Regenerate all BDD step bindings from bdd/grammar.yaml
 bdd-codegen:
